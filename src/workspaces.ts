@@ -38,6 +38,20 @@ export const rebuildWorkspace = async (name: string): Promise<void> => {
 	});
 };
 
+export const shutdownWorkspace = async (name: string): Promise<void> => {
+	return new Promise((res, rej) => {
+		cp.exec(`coder envs stop ${name}`, (err, stdout, stderr) => {
+			if (err) {
+				vscode.window.showErrorMessage(`Failed to shutdown Coder Workspaces: ${err}`);
+				rej(err);
+				return;
+			}
+			res();
+			vscode.window.showInformationMessage(`Shutting down Coder Workspace "${name}"`);
+		});
+	});
+};
+
 export const openWorkspace = async (name: string): Promise<void> => {
 	return new Promise((res, rej) => {
 		cp.exec(`code --remote "ssh-remote+coder.${name}" /home/coder`, (err, stdout, stderr) => {
@@ -50,7 +64,7 @@ export const openWorkspace = async (name: string): Promise<void> => {
 			vscode.window.showInformationMessage(`Opening Coder Workspace "${name}"`);
 		});
 	});
-}
+};
 
 const getWorkspaces = async (): Promise<CoderWorkspace[]> => {
 	const images = await getImages();

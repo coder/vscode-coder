@@ -47,6 +47,10 @@
           "when": "view == coderWorkspaces"
         },
         {
+          "command": "coderWorkspaces.shutdownWorkspace",
+          "when": "view == coderWorkspaces"
+        },
+        {
           "command": "coderWorkspaces.openWorkspace",
           "when": "view == coderWorkspaces"
         }
@@ -60,6 +64,10 @@
       {
         "command": "coderWorkspaces.rebuildWorkspace",
         "title": "Rebuild Workspace"
+      },
+      {
+        "command": "coderWorkspaces.shutdownWorkspace",
+        "title": "Shutdown Workspace"
       },
       {
         "command": "coderWorkspaces.openWorkspace",

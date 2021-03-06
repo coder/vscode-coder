@@ -2,7 +2,7 @@
 
 import * as vscode from 'vscode';
 
-import { CoderWorkspacesProvider, CoderWorkspace, rebuildWorkspace, openWorkspace } from './workspaces';
+import { CoderWorkspacesProvider, CoderWorkspace, rebuildWorkspace, openWorkspace, shutdownWorkspace } from './workspaces';
 
 export function activate(context: vscode.ExtensionContext) {
 	const workspaceProvider = new CoderWorkspacesProvider();
@@ -14,6 +14,10 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.commands.registerCommand("coderWorkspaces.rebuildWorkspace", (ws: CoderWorkspace) => {
 		const { name } = ws.workspace;
 		rebuildWorkspace(name).then(() => workspaceProvider.refresh());
+	});
+	vscode.commands.registerCommand("coderWorkspaces.shutdownWorkspace", (ws: CoderWorkspace) => {
+		const { name } = ws.workspace;
+		shutdownWorkspace(name).then(() => workspaceProvider.refresh());
 	});
 
 	vscode.commands.registerCommand("coderWorkspaces.refreshWorkspaces", () => {
