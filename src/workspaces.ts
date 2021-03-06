@@ -23,6 +23,34 @@ export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWor
 	}
 }
 
+export const rebuildWorkspace = async (name: string): Promise<void> => {
+	return new Promise((res, rej) => {
+		cp.exec(`coder envs rebuild ${name} --force`, (err, stdout, stderr) => {
+			if (err) {
+				vscode.window.showErrorMessage(`Failed to rebuild Coder Workspaces: ${err}`);
+				rej(err);
+				return;
+			}
+			res();
+			vscode.window.showInformationMessage(`Rebuilding Coder Workspace "${name}"`);
+		});
+	});
+};
+
+export const openWorkspace = async (name: string): Promise<void> => {
+	return new Promise((res, rej) => {
+		cp.exec(`code --remote "ssh-remote+coder.${name}" /home/coder`, (err, stdout, stderr) => {
+			if (err) {
+				vscode.window.showErrorMessage(`Failed to open Coder Workspaces: ${err}`);
+				rej(err);
+				return;
+			}
+			res();
+			vscode.window.showInformationMessage(`Opening Coder Workspace "${name}"`);
+		});
+	});
+}
+
 const getWorkspaces = async (): Promise<CoderWorkspace[]> => {
 	const images = await getImages();
 		return new Promise((res, rej) => {

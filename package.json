@@ -32,10 +32,39 @@
           "visibility": "visible",
           "icon": "media/dep.svg",
           "contextualTitle": "Workspaces"
+        },
+        {
+          "id": "coderHelpFeedback",
+          "name": "Help and Feedback"
         }
       ]
     },
-    "commands": [ ]
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "coderWorkspaces.rebuildWorkspace",
+          "when": "view == coderWorkspaces"
+        },
+        {
+          "command": "coderWorkspaces.openWorkspace",
+          "when": "view == coderWorkspaces"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "coderWorkspaces.refreshWorkspaces",
+        "title": "Refresh Workspaces"
+      },
+      {
+        "command": "coderWorkspaces.rebuildWorkspace",
+        "title": "Rebuild Workspace"
+      },
+      {
+        "command": "coderWorkspaces.openWorkspace",
+        "title": "Open Workspace"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
