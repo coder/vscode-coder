@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import * as path from 'path';
 
 export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWorkspace> {
 
@@ -89,6 +90,9 @@ export interface CoderWorkspace {
 	image_tag: string
 	image_id: string
 	gpus: number
+	latest_stat: {
+		container_status: string
+	}
 }
 
 export interface CoderImage {
@@ -108,5 +112,16 @@ export class CoderWorkspace extends vscode.TreeItem {
 		this.tooltip = `${this.label}`;
 		const image = images.find(a => a.id === workspace.image_id);
 		this.description = `${image.repository}:${workspace.image_tag}, ${workspace.cpu_cores} vCPU, ${workspace.memory_gb}GB Memory`;
+
+		this.iconPath = path.join(__filename, '..', '..', 'media', workspaceIcon(workspace));
 	}
 }
+
+const workspaceIcon = ({latest_stat: { container_status }}: CoderWorkspace): string => {
+	return {
+		"OFF": "grey.png",
+		"CREATING": "yellow.png",
+		"ERROR": "red.png", 
+		"ON": "green.png"
+	}[container_status];
+};
