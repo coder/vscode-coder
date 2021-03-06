@@ -13,10 +13,10 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	vscode.commands.registerCommand("coderWorkspaces.rebuildWorkspace", (ws: CoderWorkspace) => {
 		const { name } = ws.workspace;
-		rebuildWorkspace(name);
+		rebuildWorkspace(name).then(() => workspaceProvider.refresh());
 	});
 
-	vscode.commands.registerCommand("coderWorkspaces.refreshWorkspaces", (a, b) => {
+	vscode.commands.registerCommand("coderWorkspaces.refreshWorkspaces", () => {
 		workspaceProvider.refresh();
 	});
 }

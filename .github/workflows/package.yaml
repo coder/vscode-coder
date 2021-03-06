@@ -1,0 +1,17 @@
+on:
+  push:
+    branches:
+      - master
+name: Build Extension
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - run: npm install
+      - run: npm install --global vsce
+      - run: vsce package --out coder.vsix
+      - uses: actions/upload-artifact@v2
+        with:
+          name: coder.vsix
+          path: ./coder.vsix

@@ -3,6 +3,7 @@
   "publisher": "coder",
   "displayName": "Coder",
   "description": "Connect VS Code to your Coder Workspaces",
+  "repository": "https://github.com/cdr/vscode-coder",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.54.0"
