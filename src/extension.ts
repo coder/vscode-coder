@@ -11,10 +11,13 @@ import {
   openWorkspace,
   shutdownWorkspace,
 } from "./workspaces"
+import { coderWorkspaceLogsDocumentProvider, handleShowLogsCommand } from "./logs"
 
 export function activate(context: vscode.ExtensionContext) {
   preflightCheckCoderInstalled()
   const workspaceProvider = new CoderWorkspacesProvider()
+
+  vscode.commands.registerCommand("coderWorkspaces.showWorkspaceLogs", handleShowLogsCommand)
   vscode.window.registerTreeDataProvider("coderWorkspaces", workspaceProvider)
   vscode.window.registerTreeDataProvider("coderHelpFeedback", new CoderHelpProvider())
   vscode.commands.registerCommand("coderWorkspaces.openWorkspace", (ws: CoderWorkspace) => {
@@ -33,6 +36,8 @@ export function activate(context: vscode.ExtensionContext) {
   vscode.commands.registerCommand("coderWorkspaces.refreshWorkspaces", () => {
     workspaceProvider.refresh()
   })
+
+  vscode.workspace.registerTextDocumentContentProvider("coder", coderWorkspaceLogsDocumentProvider)
 }
 
 const preflightCheckCoderInstalled = () => {

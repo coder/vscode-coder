@@ -55,6 +55,10 @@
           "when": "view == coderWorkspaces"
         },
         {
+          "command": "coderWorkspaces.showWorkspaceLogs",
+          "when": "view == coderWorkspaces"
+        },
+        {
           "command": "coderWorkspaces.shutdownWorkspace",
           "group": "inline",
           "when": "view == coderWorkspaces"
@@ -97,6 +101,10 @@
           "light": "media/light/refresh.svg",
           "dark": "media/dark/refresh.svg"
         }
+      },
+      {
+        "command": "coderWorkspaces.showWorkspaceLogs",
+        "title": "Show Logs"
       },
       {
         "command": "coderWorkspaces.shutdownWorkspace",
