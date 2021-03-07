@@ -59,6 +59,10 @@
           "when": "view == coderWorkspaces"
         },
         {
+          "command": "coderWorkspaces.showWorkspaceYaml",
+          "when": "view == coderWorkspaces"
+        },
+        {
           "command": "coderWorkspaces.shutdownWorkspace",
           "group": "inline",
           "when": "view == coderWorkspaces"
@@ -107,6 +111,10 @@
         "title": "Show Logs"
       },
       {
+        "command": "coderWorkspaces.showWorkspaceYaml",
+        "title": "Inspect"
+      },
+      {
         "command": "coderWorkspaces.shutdownWorkspace",
         "title": "Shutdown",
         "icon": {
@@ -153,5 +161,8 @@
     "vscode-test": "^1.5.0",
     "webpack": "^5.19.0",
     "webpack-cli": "^4.4.0"
+  },
+  "dependencies": {
+    "yaml": "^1.10.0"
   }
 }

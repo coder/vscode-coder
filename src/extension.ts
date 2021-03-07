@@ -12,7 +12,12 @@ import {
   shutdownWorkspace,
   CoderWorkspaceListItem,
 } from "./workspaces"
-import { coderWorkspaceLogsDocumentProvider, handleShowLogsCommand } from "./logs"
+import {
+  coderWorkspaceInspectDocumentProvider,
+  coderWorkspaceLogsDocumentProvider,
+  handleInspectCommand,
+  handleShowLogsCommand,
+} from "./logs"
 
 export function activate(context: vscode.ExtensionContext) {
   preflightCheckCoderInstalled()
@@ -20,6 +25,8 @@ export function activate(context: vscode.ExtensionContext) {
   const workspaceProvider = new CoderWorkspacesProvider()
 
   vscode.commands.registerCommand("coderWorkspaces.showWorkspaceLogs", handleShowLogsCommand)
+  vscode.commands.registerCommand("coderWorkspaces.showWorkspaceYaml", handleInspectCommand)
+
   vscode.window.registerTreeDataProvider("coderWorkspaces", workspaceProvider)
   vscode.window.registerTreeDataProvider("coderHelpFeedback", new CoderHelpProvider())
   vscode.commands.registerCommand("coderWorkspaces.openWorkspace", (item: CoderWorkspaceListItem) => {
@@ -39,7 +46,8 @@ export function activate(context: vscode.ExtensionContext) {
     workspaceProvider.refresh()
   })
 
-  vscode.workspace.registerTextDocumentContentProvider("coder", coderWorkspaceLogsDocumentProvider)
+  vscode.workspace.registerTextDocumentContentProvider("coder-logs", coderWorkspaceLogsDocumentProvider)
+  vscode.workspace.registerTextDocumentContentProvider("coder-inspect", coderWorkspaceInspectDocumentProvider)
 }
 
 const preflightCheckCoderInstalled = () => {
