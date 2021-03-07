@@ -57,6 +57,7 @@ export const openWorkspace = async (name: string): Promise<void> => {
 const getWorkspaceItems = async (): Promise<CoderWorkspaceListItem[]> => {
   const images = await getImages()
   const envs = await getWorkspaces()
+  envs.sort((a, b) => (a.name > b.name ? 1 : -1))
   return envs.map((w) => new CoderWorkspaceListItem(w, images, vscode.TreeItemCollapsibleState.None))
 }
 
