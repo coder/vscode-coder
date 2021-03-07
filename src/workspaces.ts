@@ -79,6 +79,7 @@ export interface CoderWorkspace {
   latest_stat: {
     container_status: string
   }
+  disk_gb: number
 }
 
 export interface CoderImage {
@@ -96,7 +97,7 @@ export class CoderWorkspaceListItem extends vscode.TreeItem {
     super(workspace.name, collapsibleState)
 
     const image = images.find((a) => a.id === workspace.image_id)!
-    this.description = `${image.repository}:${workspace.image_tag}, ${workspace.cpu_cores} vCPU, ${workspace.memory_gb}GB Memory`
+    this.description = `${image.repository}:${workspace.image_tag}, ${workspace.cpu_cores} vCPU, ${workspace.memory_gb} GB RAM`
 
     const icon = workspaceIcon(workspace)
     this.iconPath = {
@@ -106,7 +107,8 @@ export class CoderWorkspaceListItem extends vscode.TreeItem {
     this.tooltip = `${this.label}
 ${image.repository}:${workspace.image_tag}
 ${workspace.cpu_cores} vCPU
-${workspace.memory_gb} GB Memory`
+${workspace.memory_gb} GB RAM
+${workspace.disk_gb} GB Disk`
   }
 }
 

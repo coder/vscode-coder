@@ -20,20 +20,24 @@ export class CoderHelpProvider implements vscode.TreeDataProvider<vscode.TreeIte
   }
 
   getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
-    return Promise.resolve([docsLink()])
+    return Promise.resolve([
+      makeSimpleLink("Read the Coder Documentation", "books.svg", "https://coder.com/docs"),
+      makeSimpleLink("Watch Coder on YouTube", "video.svg", "https://www.youtube.com/channel/UCWexK_ECcUU3vEIdb-VYkfw"),
+      makeSimpleLink("Contact Us", "feedback.svg", "https://coder.com/contact"),
+    ])
   }
 }
 
-const docsLink = (): vscode.TreeItem => {
-  const item = new vscode.TreeItem("Read the Coder Documentation", vscode.TreeItemCollapsibleState.None)
+const makeSimpleLink = (label: string, icon: string, url: string): vscode.TreeItem => {
+  const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None)
   item.iconPath = {
-    dark: path.join(__filename, "..", "..", "media", "dark", "books.svg"),
-    light: path.join(__filename, "..", "..", "media", "light", "books.svg"),
+    dark: path.join(__filename, "..", "..", "media", "dark", icon),
+    light: path.join(__filename, "..", "..", "media", "light", icon),
   }
   item.command = {
-    title: "Open Coder Documentation",
+    title: label,
     command: "vscode.open",
-    arguments: [vscode.Uri.parse("https://coder.com/docs")],
+    arguments: [vscode.Uri.parse(url)],
   }
   return item
 }
