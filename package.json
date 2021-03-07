@@ -54,12 +54,23 @@
           "command": "coderWorkspaces.openWorkspace",
           "when": "view == coderWorkspaces"
         }
+      ],
+      "view/title": [
+        {
+          "command": "coderWorkspaces.refreshWorkspaces",
+          "when": "view == coderWorkspaces",
+          "group": "navigation"
+        }
       ]
     },
     "commands": [
       {
         "command": "coderWorkspaces.refreshWorkspaces",
-        "title": "Refresh Workspaces"
+        "title": "Refresh Workspaces",
+        "icon": {
+          "light": "media/light/refresh.svg",
+          "dark": "media/dark/refresh.svg"
+        }
       },
       {
         "command": "coderWorkspaces.rebuildWorkspace",
