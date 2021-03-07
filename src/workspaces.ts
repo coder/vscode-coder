@@ -55,7 +55,7 @@ export const shutdownWorkspace = async (name: string): Promise<void> => {
 
 export const openWorkspace = async (name: string): Promise<void> => {
 	return new Promise((res, rej) => {
-		cp.exec(`code --remote "ssh-remote+coder.${name}" /home/coder`, (err, stdout, stderr) => {
+		cp.exec(`coder config-ssh && code --remote "ssh-remote+coder.${name}" $(coder sh ${name} pwd | head -n 1)`, (err, stdout, stderr) => {
 			if (err) {
 				vscode.window.showErrorMessage(`Failed to open Coder Workspaces: ${err}`);
 				rej(err);
