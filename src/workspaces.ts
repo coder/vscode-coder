@@ -97,7 +97,11 @@ export class CoderWorkspaceListItem extends vscode.TreeItem {
     const image = images.find((a) => a.id === workspace.image_id)!
     this.description = `${image.repository}:${workspace.image_tag}, ${workspace.cpu_cores} vCPU, ${workspace.memory_gb}GB Memory`
 
-    this.iconPath = workspaceIcon(workspace)
+    const icon = workspaceIcon(workspace)
+    this.iconPath = {
+      dark: path.join(mediaDir, "dark", icon),
+      light: path.join(mediaDir, "light", icon),
+    }
     this.tooltip = `${this.label}
 ${image.repository}:${workspace.image_tag}
 ${workspace.cpu_cores} vCPU
@@ -107,10 +111,10 @@ ${workspace.memory_gb} GB Memory`
 
 const workspaceIcon = ({ latest_stat: { container_status } }: CoderWorkspace): string => {
   const file = {
-    OFF: "off.png",
-    CREATING: "creating.png",
-    ERROR: "error.png",
-    ON: "on.png",
+    OFF: "off.svg",
+    CREATING: "hourglass.svg",
+    ERROR: "error.svg",
+    ON: "on.svg",
   }[container_status]
-  return path.join(mediaDir, file!)
+  return file!
 }

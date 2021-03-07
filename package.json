@@ -118,16 +118,16 @@
         "command": "coderWorkspaces.shutdownWorkspace",
         "title": "Shutdown",
         "icon": {
-          "light": "media/stop.png",
-          "dark": "media/stop.png"
+          "light": "media/light/stop.svg",
+          "dark": "media//dark/stop.svg"
         }
       },
       {
         "command": "coderWorkspaces.openWorkspace",
         "title": "Open",
         "icon": {
-          "light": "media/open.webp",
-          "dark": "media/open.webp"
+          "light": "media/light/launch.svg",
+          "dark": "media/dark/launch.svg"
         }
       }
     ]

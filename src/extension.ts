@@ -6,7 +6,6 @@ import * as which from "which"
 
 import {
   CoderWorkspacesProvider,
-  CoderWorkspace,
   rebuildWorkspace,
   openWorkspace,
   shutdownWorkspace,

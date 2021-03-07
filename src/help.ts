@@ -26,7 +26,10 @@ export class CoderHelpProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
 const docsLink = (): vscode.TreeItem => {
   const item = new vscode.TreeItem("Read the Coder Documentation", vscode.TreeItemCollapsibleState.None)
-  item.iconPath = path.join(__filename, "..", "..", "media", "docs.svg")
+  item.iconPath = {
+    dark: path.join(__filename, "..", "..", "media", "dark", "books.svg"),
+    light: path.join(__filename, "..", "..", "media", "light", "books.svg"),
+  }
   item.command = {
     title: "Open Coder Documentation",
     command: "vscode.open",
