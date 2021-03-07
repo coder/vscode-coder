@@ -5,9 +5,7 @@
   "overrides": [
     {
       "files": [
-        "./README.md",
-        "./reports/**/*.md",
-        "./rfcs/**/*.md"
+        "./README.md"
       ],
       "options": {
         "printWidth": 80,
