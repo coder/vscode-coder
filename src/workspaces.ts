@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
+import { mediaDir } from './utils';
 
 export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWorkspace> {
 
@@ -127,15 +128,16 @@ export class CoderWorkspace extends vscode.TreeItem {
 		const image = images.find(a => a.id === workspace.image_id);
 		this.description = `${image.repository}:${workspace.image_tag}, ${workspace.cpu_cores} vCPU, ${workspace.memory_gb}GB Memory`;
 
-		this.iconPath = path.join(__filename, '..', '..', 'media', workspaceIcon(workspace));
+		this.iconPath = workspaceIcon(workspace);
 	}
 }
 
 const workspaceIcon = ({latest_stat: { container_status }}: CoderWorkspace): string => {
-	return {
-		"OFF": "grey.png",
-		"CREATING": "yellow.png",
-		"ERROR": "red.png", 
-		"ON": "green.png"
+	const file = {
+		OFF: "off.png",
+		CREATING: "creating.png",
+		ERROR: "error.png", 
+		ON: "on.png"
 	}[container_status];
+	return path.join(mediaDir, file);
 };
