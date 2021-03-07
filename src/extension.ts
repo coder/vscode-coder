@@ -39,7 +39,7 @@ const preflightCheckCoderInstalled = () => {
   which("coder", (err: any) => {
     if (err) {
       vscode.window.showErrorMessage(
-        `"coder" CLI not found in $PATH. Please following install and authentication instructions here: https://coder.com/docs/cli/installation`,
+        `"coder" CLI not found in $PATH. Please follow the install and authentication instructions here: https://coder.com/docs/cli/installation`,
         "Dismiss",
       )
     }
