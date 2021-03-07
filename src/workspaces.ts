@@ -127,11 +127,14 @@ export class CoderWorkspace extends vscode.TreeItem {
   ) {
     super(workspace.name, collapsibleState)
 
-    this.tooltip = `${this.label}`
     const image = images.find((a) => a.id === workspace.image_id)!
     this.description = `${image.repository}:${workspace.image_tag}, ${workspace.cpu_cores} vCPU, ${workspace.memory_gb}GB Memory`
 
     this.iconPath = workspaceIcon(workspace)
+    this.tooltip = `${this.label}
+${image.repository}:${workspace.image_tag}
+${workspace.cpu_cores} vCPU
+${workspace.memory_gb} GB Memory`
   }
 }
 
