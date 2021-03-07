@@ -44,10 +44,25 @@
       "view/item/context": [
         {
           "command": "coderWorkspaces.rebuildWorkspace",
+          "group": "inline",
+          "when": "view == coderWorkspaces"
+        },
+        {
+          "command": "coderWorkspaces.rebuildWorkspace",
           "when": "view == coderWorkspaces"
         },
         {
           "command": "coderWorkspaces.shutdownWorkspace",
+          "group": "inline",
+          "when": "view == coderWorkspaces"
+        },
+        {
+          "command": "coderWorkspaces.shutdownWorkspace",
+          "when": "view == coderWorkspaces"
+        },
+        {
+          "command": "coderWorkspaces.openWorkspace",
+          "group": "inline",
           "when": "view == coderWorkspaces"
         },
         {
@@ -74,15 +89,27 @@
       },
       {
         "command": "coderWorkspaces.rebuildWorkspace",
-        "title": "Rebuild Workspace"
+        "title": "Rebuild",
+        "icon": {
+          "light": "media/light/refresh.svg",
+          "dark": "media/dark/refresh.svg"
+        }
       },
       {
         "command": "coderWorkspaces.shutdownWorkspace",
-        "title": "Shutdown Workspace"
+        "title": "Shutdown",
+        "icon": {
+          "light": "media/stop.png",
+          "dark": "media/stop.png"
+        }
       },
       {
         "command": "coderWorkspaces.openWorkspace",
-        "title": "Open Workspace"
+        "title": "Open",
+        "icon": {
+          "light": "media/open.webp",
+          "dark": "media/open.webp"
+        }
       }
     ]
   },
