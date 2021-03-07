@@ -24,7 +24,7 @@
         {
           "id": "coder",
           "title": "Coder",
-          "icon": "media/dep.svg"
+          "icon": "media/logo.svg"
         }
       ]
     },
@@ -34,7 +34,7 @@
           "id": "coderWorkspaces",
           "name": "Coder Workspaces",
           "visibility": "visible",
-          "icon": "media/dep.svg",
+          "icon": "media/logo.svg",
           "contextualTitle": "Workspaces"
         },
         {
