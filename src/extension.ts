@@ -2,10 +2,12 @@
 
 import * as vscode from 'vscode';
 import { CoderHelpProvider } from './help';
+import * as which from 'which';
 
 import { CoderWorkspacesProvider, CoderWorkspace, rebuildWorkspace, openWorkspace, shutdownWorkspace } from './workspaces';
 
 export function activate(context: vscode.ExtensionContext) {
+	preflightCheckCoderInstalled();
 	const workspaceProvider = new CoderWorkspacesProvider();
 	vscode.window.registerTreeDataProvider('coderWorkspaces', workspaceProvider);
 	vscode.window.registerTreeDataProvider('coderHelpFeedback', new CoderHelpProvider());
@@ -26,3 +28,14 @@ export function activate(context: vscode.ExtensionContext) {
 		workspaceProvider.refresh();
 	});
 }
+
+const preflightCheckCoderInstalled = () => {
+	which("coder", (err) => {
+		if (err) {
+			vscode.window.showErrorMessage(
+				`"coder" CLI not found in $PATH. Please following install and authentication instructions here: https://coder.com/docs/cli/installation`,
+				"Dismiss",
+				);
+		};
+	});
+};
