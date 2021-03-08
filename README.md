@@ -9,6 +9,7 @@
 
 - Context menu action `Show Logs` is blocking, and blocks until a rebuild completes
 - UX confusion risk: `Inspect` shows raw `id` fields
+- Online/Offline/Creating/Error states do not refresh automatically, only on open and after an action
 
 ## Planned work
 
