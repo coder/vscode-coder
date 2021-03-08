@@ -1,7 +1,5 @@
 on:
   push:
-    branches:
-      - master
 name: Package Extension
 jobs:
   pacakge:

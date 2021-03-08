@@ -4,10 +4,15 @@
   "displayName": "Coder",
   "description": "Connect VS Code to your Coder Workspaces",
   "repository": "https://github.com/cdr/vscode-coder",
-  "version": "0.0.1",
+  "version": "0.0.1-dev",
   "engines": {
     "vscode": "^1.54.0"
   },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/cdr/vscode-coder/issues"
+  },
+  "icon": "media/logo.png",
   "extensionKind": [
     "workspace"
   ],
