@@ -1,10 +1,11 @@
 {
-  "name": "coder",
+  "name": "coder-workspaces",
   "publisher": "coder",
-  "displayName": "Coder",
+  "displayName": "Coder Workspaces",
   "description": "Connect VS Code to your Coder Workspaces",
   "repository": "https://github.com/cdr/vscode-coder",
-  "version": "0.0.1-dev",
+  "preview": true,
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.54.0"
   },

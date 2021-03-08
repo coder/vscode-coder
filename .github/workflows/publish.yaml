@@ -1,8 +1,8 @@
 on:
-  push:
-name: Package Extension
+  workflow_dispatch:
+name: Publish Extension
 jobs:
-  package:
+  publish:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
@@ -11,8 +11,6 @@ jobs:
           node-version: '15'
       - run: npm ci
       - run: npm install -g vsce
-      - run: vsce package --out coder.vsix
-      - uses: actions/upload-artifact@v2
-        with:
-          name: coder.vsix
-          path: ./coder.vsix
+      - name: Login to vsce
+        run: echo ${{ secrets.VS_MARKETPLACE_PAT }} | vsce login coder
+      - run: vsce publish
