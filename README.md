@@ -1,9 +1,10 @@
 
+
 # vscode-coder
 
 > Work in Progress
 
-<img width="928" alt="Screen Shot 2021-03-07 at 9 34 00 AM" src="https://user-images.githubusercontent.com/7585078/110245353-4cde7980-7f28-11eb-813b-1c8bc07b3e7d.png">
+<img width="1081" alt="Screen Shot 2021-03-08 at 12 01 25 PM" src="https://user-images.githubusercontent.com/7585078/110361753-0cedc400-8006-11eb-826f-214bfb3dfc6c.png">
 
 ## Known issues
 
