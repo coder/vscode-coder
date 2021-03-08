@@ -13,6 +13,10 @@
 
 ## Planned work
 
+- Rethink `Open` UX
+  - should we link to Remote SSH panel? should
+  - should we allow opening directly into project dirs ourselves?
+
 - Authenticate the CLI from VS Code
   - Install the CLI from VS Code
   - Run without the CLI installed
