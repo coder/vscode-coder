@@ -11,6 +11,7 @@ jobs:
           node-version: '15'
       - run: npm ci
       - run: npm install -g vsce
-      - name: Login to vsce
-        run: echo ${{ secrets.VS_MARKETPLACE_PAT }} | vsce login coder
-      - run: vsce publish
+      - name: Publish
+        run: vsce publish -p "$VS_TOKEN"
+        env:
+          VS_TOKEN: ${{ secrets.VS_MARKETPLACE_PAT }}
