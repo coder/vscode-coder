@@ -10,6 +10,12 @@ export const exec = async (command: string): Promise<string> => {
   })
 }
 
+export const execCombined = async (command: string): Promise<{stderr: string, stdout: string}> => {
+  return new Promise((res, rej) => {
+    cp.exec(command, (err, stdout, stderr) => (err ? rej(err) : res({stderr, stdout})))
+  })
+}
+
 export const execJSON = async <T>(command: string): Promise<T> => {
   const output = await exec(command)
   return JSON.parse(output)
