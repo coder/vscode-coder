@@ -1,6 +1,7 @@
 import * as path from "path"
 import * as cp from "child_process"
 import * as vscode from "vscode"
+import * as nodeWhich from 'which'
 
 export const mediaDir = path.join(__filename, "..", "..", "media")
 
@@ -19,6 +20,11 @@ export const execCombined = async (command: string): Promise<{stderr: string, st
 export const execJSON = async <T>(command: string): Promise<T> => {
   const output = await exec(command)
   return JSON.parse(output)
+}
+
+// binaryExists returns "true" if the binary is found in $PATH
+export const binaryExists = async (bin: string): Promise<boolean> => {
+  return new Promise((res) => { nodeWhich(bin, err => res(!err)) })
 }
 
 export const bubbleError = (f: () => void) => {

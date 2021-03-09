@@ -2,7 +2,6 @@
 
 import * as vscode from "vscode"
 import { CoderHelpProvider } from "./help"
-import * as which from "which"
 
 import {
   CoderWorkspacesProvider,
@@ -17,7 +16,7 @@ import {
   handleInspectCommand,
   handleShowLogsCommand,
 } from "./logs"
-import { execCombined } from "./utils"
+import { execCombined, binaryExists } from "./utils"
 
 export function activate(context: vscode.ExtensionContext) {
   preflightCheckCoderInstalled()
@@ -52,31 +51,33 @@ export function activate(context: vscode.ExtensionContext) {
 
 export const outputChannel = vscode.window.createOutputChannel("Coder")
 
-const preflightCheckCoderInstalled = () => {
-  which("coder", (err: any) => {
-    if (err) {
-      which("brew", async (err: any) => {
-        if (err) {
-          vscode.window.showErrorMessage(
-            `"coder" CLI not found in $PATH. Please follow the install and authentication [instructions here](https://coder.com/docs/cli/installation)`,
-            "Dismiss",
-          )
-        } else {
-          const action = await vscode.window.showErrorMessage(`"coder" CLI not found in $PATH`, "Install with `brew`")
-          if (action) {
-            outputChannel.show()
-            const cmd = "brew install cdr/coder/coder-cli"
-            outputChannel.appendLine(cmd)
-            const output = await execCombined(cmd)
-            outputChannel.appendLine(output.stderr)
-            which("coder", err => err ? (
-              outputChannel.appendLine(`Install failed. "coder" still not found in $PATH.`)
-            ) : (
-              outputChannel.appendLine("Installation successful.\nACTION REQUIRED: run \"coder login [https://coder.domain.com]\"")
-            ))
-          }
-        }
-      })
+const preflightCheckCoderInstalled = async () => {
+  const coderExists = await binaryExists("coder")
+  if (coderExists) {
+    return
+  }
+  const brewExists = await binaryExists("brew")
+  if (!brewExists) {
+    vscode.window.showErrorMessage(
+      `"coder" CLI not found in $PATH. Please follow the install and authentication [instructions here](https://coder.com/docs/cli/installation).`,
+      "Dismiss",
+    )
+  } else {
+    const action = await vscode.window.showErrorMessage(`"coder" CLI not found in $PATH`, "Install with `brew`")
+    if (action) {
+      outputChannel.show()
+      const cmd = "brew install cdr/coder/coder-cli"
+      outputChannel.appendLine(cmd)
+      const output = await execCombined(cmd)
+      outputChannel.appendLine(output.stderr)
+      const coderExists = await binaryExists("coder")
+      if (coderExists) {
+        outputChannel.appendLine(
+          'Installation successful.\nACTION REQUIRED: run "coder login [https://coder.domain.com]"',
+        )
+      } else {
+        outputChannel.appendLine(`Install failed. "coder" still not found in $PATH.`)
+      }
     }
-  })
+  }
 }
