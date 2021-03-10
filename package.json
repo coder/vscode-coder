@@ -5,7 +5,7 @@
   "description": "Connect VS Code to your Coder Workspaces",
   "repository": "https://github.com/cdr/vscode-coder",
   "preview": true,
-  "version": "0.0.2-dev",
+  "version": "0.0.3",
   "engines": {
     "vscode": "^1.54.0"
   },
