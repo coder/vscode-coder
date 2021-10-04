@@ -1,13 +1,12 @@
-import * as vscode from "vscode"
 import * as path from "path"
+import * as vscode from "vscode"
 import { exec, mediaDir, execJSON } from "./utils"
 
 export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWorkspaceListItem> {
-  private _onDidChangeTreeData: vscode.EventEmitter<
-    CoderWorkspaceListItem | undefined | void
-  > = new vscode.EventEmitter<CoderWorkspaceListItem | undefined | void>()
-  readonly onDidChangeTreeData: vscode.Event<CoderWorkspaceListItem | undefined | void> = this._onDidChangeTreeData
-    .event
+  private _onDidChangeTreeData: vscode.EventEmitter<CoderWorkspaceListItem | undefined | void> =
+    new vscode.EventEmitter<CoderWorkspaceListItem | undefined | void>()
+  readonly onDidChangeTreeData: vscode.Event<CoderWorkspaceListItem | undefined | void> =
+    this._onDidChangeTreeData.event
 
   constructor() {
     this.refresh()
@@ -21,7 +20,7 @@ export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWor
     return element
   }
 
-  getChildren(element?: CoderWorkspaceListItem): Thenable<CoderWorkspaceListItem[]> {
+  getChildren(): Thenable<CoderWorkspaceListItem[]> {
     return getWorkspaceItems()
   }
 }
@@ -96,7 +95,10 @@ export class CoderWorkspaceListItem extends vscode.TreeItem {
   ) {
     super(workspace.name, collapsibleState)
 
-    const image = images.find((a) => a.id === workspace.image_id)!
+    const image = images.find((a) => a.id === workspace.image_id)
+    if (!image) {
+      throw new Error("Image does not exist")
+    }
     this.description = `${image.repository}:${workspace.image_tag}, ${workspace.cpu_cores} vCPU, ${workspace.memory_gb} GB RAM`
 
     const icon = workspaceIcon(workspace)
@@ -119,5 +121,8 @@ const workspaceIcon = ({ latest_stat: { container_status } }: CoderWorkspace): s
     ERROR: "error.svg",
     ON: "on.svg",
   }[container_status]
-  return file!
+  if (!file) {
+    throw new Error(`Unknown status ${container_status}`)
+  }
+  return file
 }

@@ -3,18 +3,22 @@ on:
   release:
     types:
     - created
+
 name: Publish Extension
+
 jobs:
   publish:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
+
       - uses: actions/setup-node@v2
         with:
-          node-version: '15'
+          node-version: '16'
+
       - run: npm ci
-      - run: npm install -g vsce
-      - name: Publish
-        run: vsce publish -p "$VS_TOKEN"
+
+      - name: vsce publish
+        run: npx vsce publish -p "$VS_TOKEN"
         env:
           VS_TOKEN: ${{ secrets.VS_MARKETPLACE_PAT }}

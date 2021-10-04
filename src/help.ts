@@ -1,5 +1,5 @@
-import * as vscode from "vscode"
 import * as path from "path"
+import * as vscode from "vscode"
 
 export class CoderHelpProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | void> = new vscode.EventEmitter<
@@ -19,7 +19,7 @@ export class CoderHelpProvider implements vscode.TreeDataProvider<vscode.TreeIte
     return element
   }
 
-  getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
+  getChildren(): Thenable<vscode.TreeItem[]> {
     return Promise.resolve([
       makeSimpleLink("Read the Coder Documentation", "books.svg", "https://coder.com/docs"),
       makeSimpleLink("Watch Coder on YouTube", "video.svg", "https://www.youtube.com/channel/UCWexK_ECcUU3vEIdb-VYkfw"),

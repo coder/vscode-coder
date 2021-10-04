@@ -1,5 +1,5 @@
-import * as path from "path"
 import * as cp from "child_process"
+import * as path from "path"
 import * as vscode from "vscode"
 import * as nodeWhich from "which"
 
@@ -29,7 +29,7 @@ export const binaryExists = async (bin: string): Promise<boolean> => {
   })
 }
 
-export const bubbleError = (f: () => void) => {
+export const bubbleError = (f: () => void): void => {
   try {
     f()
   } catch (e) {

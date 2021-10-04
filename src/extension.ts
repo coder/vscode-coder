@@ -4,21 +4,21 @@ import * as vscode from "vscode"
 import { CoderHelpProvider } from "./help"
 
 import {
-  CoderWorkspacesProvider,
-  rebuildWorkspace,
-  openWorkspace,
-  shutdownWorkspace,
-  CoderWorkspaceListItem,
-} from "./workspaces"
-import {
   coderWorkspaceInspectDocumentProvider,
   coderWorkspaceLogsDocumentProvider,
   handleInspectCommand,
   handleShowLogsCommand,
 } from "./logs"
 import { execCombined, binaryExists } from "./utils"
+import {
+  CoderWorkspacesProvider,
+  rebuildWorkspace,
+  openWorkspace,
+  shutdownWorkspace,
+  CoderWorkspaceListItem,
+} from "./workspaces"
 
-export function activate(context: vscode.ExtensionContext) {
+export function activate(): void {
   preflightCheckCoderInstalled()
 
   const workspaceProvider = new CoderWorkspacesProvider()

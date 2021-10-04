@@ -1,0 +1,43 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+name: Test Extension
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      # VS Code requires a display (it will fail to start without one) so use
+      # Xvfb to provide one on Linux since Linux does not have one running by
+      # default unlike the other platforms. We run VS Code because the tests
+      # include integration tests that run inside VS Code.
+      - if: ${{ matrix.platform == 'ubuntu-latest' }}
+        run: sudo apt install -y xvfb
+
+      - name: Run Xvfb
+        if: ${{ matrix.platform == 'ubuntu-latest' }}
+        run: Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+
+      - run: npm ci
+
+      - run: npm run test
+        env:
+          # This tells the application on which display it should run. Set to
+          # the display we started on Linux via Xvfb. The other platforms do not
+          # use this and will ignore the variable.
+          DISPLAY: ":99.0"
