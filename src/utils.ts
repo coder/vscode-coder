@@ -1,9 +1,10 @@
 import * as cp from "child_process"
 import * as path from "path"
-import * as vscode from "vscode"
 import * as nodeWhich from "which"
 
 export const mediaDir = path.join(__filename, "..", "..", "media")
+
+export const coderBinary = process.env.CODER_BINARY || "coder"
 
 export const exec = async (command: string): Promise<string> => {
   return new Promise((res, rej) => {
@@ -27,12 +28,4 @@ export const binaryExists = async (bin: string): Promise<boolean> => {
   return new Promise((res) => {
     nodeWhich(bin, (err) => res(!err))
   })
-}
-
-export const bubbleError = (f: () => void): void => {
-  try {
-    f()
-  } catch (e) {
-    vscode.window.showErrorMessage(JSON.stringify(e))
-  }
 }

@@ -35,7 +35,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run test
+      - run: npm run test:ci
         env:
           # This tells the application on which display it should run. Set to
           # the display we started on Linux via Xvfb. The other platforms do not

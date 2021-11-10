@@ -19,7 +19,7 @@
     },
     {
       "type": "npm",
-      "script": "test:watch",
+      "script": "tsc:watch",
       "problemMatcher": "$tsc-watch",
       "isBackground": true,
       "presentation": {

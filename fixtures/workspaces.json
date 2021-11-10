@@ -1,0 +1,17 @@
+[
+  {
+    "id": "workspace-id",
+    "name": "workspace-name",
+    "cpu_cores": 1,
+    "memory_gb": 2,
+    "updated": false,
+    "image_tag": "image-tag",
+    "image_id": "image-id",
+    "gpus": 4,
+    "updating": false,
+    "latest_stat": {
+      "container_status": "ON"
+    },
+    "disk_gb": 5
+  }
+]

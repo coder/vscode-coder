@@ -1,6 +1,6 @@
 import * as path from "path"
 import * as vscode from "vscode"
-import { exec, mediaDir, execJSON } from "./utils"
+import { coderBinary, exec, mediaDir, execJSON } from "./utils"
 
 export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWorkspaceListItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<CoderWorkspaceListItem | undefined | void> =
@@ -27,7 +27,7 @@ export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWor
 
 export const rebuildWorkspace = async (name: string): Promise<void> => {
   try {
-    await exec(`coder envs rebuild ${name} --force`)
+    await exec(`${coderBinary} envs rebuild ${name} --force`)
     vscode.window.showInformationMessage(`Rebuilding Coder Workspace "${name}"`)
   } catch (e) {
     vscode.window.showErrorMessage(`Failed to rebuild Coder Workspaces: ${e}`)
@@ -36,7 +36,7 @@ export const rebuildWorkspace = async (name: string): Promise<void> => {
 
 export const shutdownWorkspace = async (name: string): Promise<void> => {
   try {
-    await exec(`coder envs stop ${name}`)
+    await exec(`${coderBinary} envs stop ${name}`)
     vscode.window.showInformationMessage(`Shutting down Coder Workspace "${name}"`)
   } catch (e) {
     vscode.window.showErrorMessage(`Failed to shutdown Coder Workspaces: ${e}`)
@@ -45,7 +45,9 @@ export const shutdownWorkspace = async (name: string): Promise<void> => {
 
 export const openWorkspace = async (name: string): Promise<void> => {
   try {
-    await exec(`coder config-ssh && code --remote "ssh-remote+coder.${name}" $(coder sh ${name} pwd | head -n 1)`)
+    await exec(
+      `${coderBinary} config-ssh && code --remote "ssh-remote+coder.${name}" $(${coderBinary} sh ${name} pwd | head -n 1)`,
+    )
     vscode.window.showInformationMessage(`Opening Coder Workspace ${name}`)
   } catch (e) {
     vscode.window.showErrorMessage(`Failed to open Coder Workspace ${name}: ${e}`)
@@ -60,10 +62,10 @@ const getWorkspaceItems = async (): Promise<CoderWorkspaceListItem[]> => {
   return envs.map((w) => new CoderWorkspaceListItem(w, images, vscode.TreeItemCollapsibleState.None))
 }
 
-const getWorkspaces = async (): Promise<CoderWorkspace[]> =>
-  await execJSON<CoderWorkspace[]>("coder envs ls --output json")
+export const getWorkspaces = async (): Promise<CoderWorkspace[]> =>
+  await execJSON<CoderWorkspace[]>(`${coderBinary} envs ls --output json`)
 
-const getImages = (): Promise<CoderImage[]> => execJSON<CoderImage[]>(`coder images ls --output json`)
+const getImages = (): Promise<CoderImage[]> => execJSON<CoderImage[]>(`${coderBinary} images ls --output json`)
 
 export interface CoderWorkspace {
   id: string
@@ -114,7 +116,7 @@ ${workspace.disk_gb} GB Disk`
   }
 }
 
-const workspaceIcon = ({ latest_stat: { container_status } }: CoderWorkspace): string => {
+export const workspaceIcon = ({ latest_stat: { container_status } }: CoderWorkspace): string => {
   const file = {
     OFF: "off.svg",
     CREATING: "hourglass.svg",

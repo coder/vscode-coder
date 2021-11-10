@@ -13,17 +13,19 @@
 From here you have a few choices:
 
 - Run through VS Code:
-  - `Run Extension` task
-  - `Extension Tests` task
-- Run `npm run test` from the CLI
-  - On Linux to run headless install and run `xvfb`
-    - Refer to CI test workflow for more details
+  - Launch `Run Extension` through the debug panel
+  - Launch `Extension Tests` through the debug panel
+- Run `npm run test` or `npm run test:watch` from the CLI
+  - On Linux to run a headless install use `xvfb`
+    - Refer to CI test workflow for more details about `xvfb`
 
 To fix automatically fixable linting issues run:
 
 ```shell
 npm run lint -- --fix
 ```
+
+Linting will be automatically fixed when you use `npm run test` or `npm run test:watch`.
 
 ## Known issues
 

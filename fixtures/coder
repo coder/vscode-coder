@@ -1,0 +1,30 @@
+#!/bin/sh
+# Coder CLI mock
+
+need_login() {
+  echo "fatal: failed to read session credentials"
+  echo "  | hint: did you run \"coder login [https://coder.domain.com]\"?"
+  exit 1
+}
+
+workspaces() {
+  cat ./workspaces.json
+  exit 0
+}
+
+main() {
+  cd "$(dirname "${0}")"
+
+  # Use CODER_MOCK_STATE to force certain states.
+  case "${CODER_MOCK_STATE-}" in
+    "need_login") need_login ;;
+  esac
+
+  # Mock the output based on the passed arguments.
+  case "$*" in
+    "envs ls --output json") workspaces ;;
+    *) echo "$* is not mocked" ; exit 1 ;;
+  esac
+}
+
+main "$@"

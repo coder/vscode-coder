@@ -9,7 +9,7 @@ import {
   handleInspectCommand,
   handleShowLogsCommand,
 } from "./logs"
-import { execCombined, binaryExists } from "./utils"
+import { coderBinary, execCombined, binaryExists } from "./utils"
 import {
   CoderWorkspacesProvider,
   rebuildWorkspace,
@@ -52,7 +52,7 @@ export function activate(): void {
 export const outputChannel = vscode.window.createOutputChannel("Coder")
 
 const preflightCheckCoderInstalled = async () => {
-  const coderExists = await binaryExists("coder")
+  const coderExists = await binaryExists(coderBinary)
   if (coderExists) {
     return
   }
@@ -70,7 +70,7 @@ const preflightCheckCoderInstalled = async () => {
       outputChannel.appendLine(cmd)
       const output = await execCombined(cmd)
       outputChannel.appendLine(output.stderr)
-      const coderExists = await binaryExists("coder")
+      const coderExists = await binaryExists(coderBinary)
       if (coderExists) {
         outputChannel.appendLine(
           'Installation successful.\nACTION REQUIRED: run "coder login [https://coder.domain.com]"',
