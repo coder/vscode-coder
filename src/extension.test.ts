@@ -1,5 +1,6 @@
 // import * as assert from "assert"
 // import * as vscode from "vscode"
+// import * as extension from "./extension"
 
 suite("Extension", () => {
   // TODO: these notifications should lead to each other and also show on
@@ -46,4 +47,7 @@ suite("Extension", () => {
 
   // TODO: several links
   test("help and feedback")
+
+  // TODO: how to test notification content?
+  test("uriHandler")
 })

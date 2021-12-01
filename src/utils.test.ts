@@ -44,4 +44,10 @@ suite("Utils", () => {
     assert.strictEqual(await utils.binaryExists("sh"), true)
     assert.strictEqual(await utils.binaryExists("surely-no-binary-named-like-this-exists"), false)
   })
+
+  test("split", () => {
+    assert.deepStrictEqual(utils.split("foo/bar/baz", "/"), ["foo", "bar/baz"])
+    assert.deepStrictEqual(utils.split("foo/", "/"), ["foo", ""])
+    assert.deepStrictEqual(utils.split("foo", "/"), ["foo", ""])
+  })
 })

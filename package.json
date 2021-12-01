@@ -5,7 +5,7 @@
   "description": "Connect VS Code to your Coder Workspaces",
   "repository": "https://github.com/cdr/vscode-coder",
   "preview": true,
-  "version": "0.0.3-dev",
+  "version": "0.0.4",
   "engines": {
     "vscode": "^1.54.0"
   },
@@ -21,6 +21,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onUri",
     "onView:coderWorkspaces"
   ],
   "main": "./dist/extension.js",
@@ -144,8 +145,8 @@
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
     "lint": "eslint . --ext ts,md",
-    "tsc:compile": "tsc -p . --outDir out",
-    "tsc:watch": "tsc -p -w . --outDir out",
+    "tsc:compile": "tsc",
+    "tsc:watch": "tsc -w",
     "pretest:ci": "npm run tsc:compile",
     "test:ci": "node ./out/test/runTest.js",
     "test": "npm run test:ci",

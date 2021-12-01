@@ -18,6 +18,31 @@ import {
   CoderWorkspaceListItem,
 } from "./workspaces"
 
+export const uriHandler: vscode.UriHandler = {
+  // URIs look like this: vscode://extension-id/action/resource
+  // To manually test this you can use "Open URL" from the command pallete or
+  // use `code --open-url` from the command line.
+  handleUri(uri: vscode.Uri) {
+    // fsPath will be /action/resource.  Remove the leading slash so we can
+    // split on the first non-leading trailing slash which separates the
+    // action from the resource.  The action is not allowed to contain slashes
+    // but the resource can.
+    const [action, resource] = uri.fsPath.replace(/^\//, "").split("/")
+    if (!action || !resource) {
+      vscode.window.showErrorMessage(`URI is malformed: "${uri}"`)
+      return
+    }
+    switch (action) {
+      case "open-workspace":
+        openWorkspace(resource)
+        break
+      default:
+        vscode.window.showErrorMessage(`Unknown action "${action}"`)
+        break
+    }
+  },
+}
+
 export function activate(): void {
   preflightCheckCoderInstalled()
 
@@ -47,6 +72,8 @@ export function activate(): void {
 
   vscode.workspace.registerTextDocumentContentProvider("coder-logs", coderWorkspaceLogsDocumentProvider)
   vscode.workspace.registerTextDocumentContentProvider("coder-inspect", coderWorkspaceInspectDocumentProvider)
+
+  vscode.window.registerUriHandler(uriHandler)
 }
 
 export const outputChannel = vscode.window.createOutputChannel("Coder")

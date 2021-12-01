@@ -28,29 +28,45 @@ export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWor
 export const rebuildWorkspace = async (name: string): Promise<void> => {
   try {
     await exec(`${coderBinary} envs rebuild ${name} --force`)
-    vscode.window.showInformationMessage(`Rebuilding Coder Workspace "${name}"`)
+    vscode.window.showInformationMessage(`Rebuilding Coder workspace "${name}"`)
   } catch (e) {
-    vscode.window.showErrorMessage(`Failed to rebuild Coder Workspaces: ${e}`)
+    vscode.window.showErrorMessage(`Failed to rebuild Coder workspaces: ${e}`)
   }
 }
 
 export const shutdownWorkspace = async (name: string): Promise<void> => {
   try {
     await exec(`${coderBinary} envs stop ${name}`)
-    vscode.window.showInformationMessage(`Shutting down Coder Workspace "${name}"`)
+    vscode.window.showInformationMessage(`Shutting down Coder workspace "${name}"`)
   } catch (e) {
-    vscode.window.showErrorMessage(`Failed to shutdown Coder Workspaces: ${e}`)
+    vscode.window.showErrorMessage(`Failed to shutdown Coder workspaces: ${e}`)
   }
+}
+
+/**
+ * Inject Coder hosts into the SSH config file.
+ *
+ * If `remote.SSH.configFile` is set use that otherwise use the default.
+ */
+const setupSSH = async (): Promise<void> => {
+  const configFile = vscode.workspace.getConfiguration("remote.SSH").get("configFile")
+  await exec(`${coderBinary} config-ssh ${configFile ? `--filepath ${configFile}` : ""}`)
 }
 
 export const openWorkspace = async (name: string): Promise<void> => {
   try {
-    await exec(
-      `${coderBinary} config-ssh && code --remote "ssh-remote+coder.${name}" $(${coderBinary} sh ${name} pwd | head -n 1)`,
+    await setupSSH()
+    // If the provided workspace does not exist this is the point at which we
+    // will find out because `coder sh` will exit with 1 causing the exec to
+    // reject (piping should be avoided since the exit code is swallowed).
+    const pwd = (await exec(`${coderBinary} sh ${name} pwd`)).trim() || "/"
+    vscode.window.showInformationMessage(`Opening Coder workspace ${name} to ${pwd}`)
+    await vscode.commands.executeCommand(
+      "vscode.openFolder",
+      vscode.Uri.parse(`vscode-remote://ssh-remote+coder.${name}${pwd}`),
     )
-    vscode.window.showInformationMessage(`Opening Coder Workspace ${name}`)
   } catch (e) {
-    vscode.window.showErrorMessage(`Failed to open Coder Workspace ${name}: ${e}`)
+    vscode.window.showErrorMessage(`Failed to open Coder workspace ${name}: ${e}`)
   }
   return
 }
