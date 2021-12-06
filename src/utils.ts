@@ -33,18 +33,6 @@ export const context = (ctx?: vscode.ExtensionContext): vscode.ExtensionContext 
 }
 
 /**
- * Run a command and get its stdout and stderr on completion.
- *
- * Use for short-running processes where you need the full output before you can
- * continue.
- */
-export const exec = async (command: string): Promise<{ stdout: string; stderr: string }> => {
-  return new Promise((res, rej) => {
-    cp.exec(command, (err, stdout, stderr) => (err ? rej(err) : res({ stdout, stderr })))
-  })
-}
-
-/**
  * Split a string up to the delimiter.  If the delimiter does not exist the
  * first item will have all the text and the second item will be an empty
  * string.

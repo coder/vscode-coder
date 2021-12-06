@@ -1,10 +1,11 @@
 import * as cp from "child_process"
 import { promises as fs } from "fs"
 import * as path from "path"
+import { promisify } from "util"
 import * as vscode from "vscode"
 import * as nodeWhich from "which"
 import { requestResponse } from "./request"
-import { context, debug, exec, extractTar, extractZip, getAssetUrl, onLine, outputChannel, wrapExit } from "./utils"
+import { context, debug, extractTar, extractZip, getAssetUrl, onLine, outputChannel, wrapExit } from "./utils"
 
 /**
  * Return "true" if the binary is found in $PATH.
@@ -22,7 +23,7 @@ export const binaryExists = async (bin: string): Promise<boolean> => {
 export const execCoder = async (command: string): Promise<string> => {
   debug(`Run command: ${command}`)
   const coderBinary = await preflight()
-  const output = await exec(coderBinary + " " + command)
+  const output = await promisify(cp.exec)(coderBinary + " " + command)
   return output.stdout
 }
 

@@ -8,21 +8,6 @@ import * as utils from "./utils"
 suite("Utils", () => {
   vscode.window.showInformationMessage("Start util tests.")
 
-  test("exec", async () => {
-    assert.deepStrictEqual(await utils.exec("printf stdout"), {
-      stdout: "stdout",
-      stderr: "",
-    })
-    assert.deepStrictEqual(await utils.exec(">&2 printf stderr"), {
-      stdout: "",
-      stderr: "stderr",
-    })
-    await assert.rejects(utils.exec("false"), {
-      name: "Error",
-      message: "Command failed: false\n",
-    })
-  })
-
   suiteSetup(() => {
     // Cleanup anything left over from the last run.
     utils.clean("tests/utils")
