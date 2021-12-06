@@ -162,7 +162,7 @@
     "@types/node": "^12.11.7",
     "@types/tar-fs": "^2.0.1",
     "@types/vscode": "^1.54.0",
-    "@types/which": "^2.0.0",
+    "@types/which": "^2.0.1",
     "@typescript-eslint/eslint-plugin": "^4.14.1",
     "@typescript-eslint/parser": "^4.14.1",
     "@vscode/test-electron": "^1.6.2",
@@ -185,6 +185,7 @@
   "dependencies": {
     "extract-zip": "^2.0.1",
     "tar-fs": "^2.1.1",
+    "which": "^2.0.2",
     "yaml": "^1.10.0"
   }
 }
