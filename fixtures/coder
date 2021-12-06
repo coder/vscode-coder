@@ -7,6 +7,16 @@ need_login() {
   exit 1
 }
 
+fail() {
+  echo fail
+  exit 1
+}
+
+success () {
+  echo success
+  exit 0
+}
+
 workspaces() {
   cat ./workspaces.json
   exit 0
@@ -23,6 +33,8 @@ main() {
   # Mock the output based on the passed arguments.
   case "$*" in
     "envs ls --output json") workspaces ;;
+    "test fail") fail ;;
+    "test success") success ;;
     *) echo "$* is not mocked" ; exit 1 ;;
   esac
 }

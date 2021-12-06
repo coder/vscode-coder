@@ -1,6 +1,8 @@
 "use strict"
 
+import * as qs from "querystring"
 import * as vscode from "vscode"
+import { preflight } from "./download"
 import { CoderHelpProvider } from "./help"
 
 import {
@@ -9,7 +11,7 @@ import {
   handleInspectCommand,
   handleShowLogsCommand,
 } from "./logs"
-import { coderBinary, execCombined, binaryExists } from "./utils"
+import { context, debug } from "./utils"
 import {
   CoderWorkspacesProvider,
   rebuildWorkspace,
@@ -32,10 +34,18 @@ export const uriHandler: vscode.UriHandler = {
       vscode.window.showErrorMessage(`URI is malformed: "${uri}"`)
       return
     }
+    // Note that VS Code's `uri.query` is decoded (by contrast `URL.search` is
+    // not decoded meaning VS Code's behavior seems incorrect) which means
+    // anything in the query needs to be double encoded before being sent to VS
+    // Code since `qs.parse()` also does decoding (things like + in the version
+    // will become spaces).  For example: ?version=v1.25.0%252Bcli.1
+    const query = qs.parse(uri.query)
+    debug(`Handling URI: ${uri}`)
     switch (action) {
-      case "open-workspace":
-        openWorkspace(resource)
-        break
+      case "open-workspace": {
+        const version = Array.isArray(query.version) ? query.version[0] : query.version
+        return preflight(version).then(() => openWorkspace(resource))
+      }
       default:
         vscode.window.showErrorMessage(`Unknown action "${action}"`)
         break
@@ -43,8 +53,8 @@ export const uriHandler: vscode.UriHandler = {
   },
 }
 
-export function activate(): void {
-  preflightCheckCoderInstalled()
+export function activate(ctx: vscode.ExtensionContext): void {
+  context(ctx)
 
   const workspaceProvider = new CoderWorkspacesProvider()
 
@@ -74,37 +84,4 @@ export function activate(): void {
   vscode.workspace.registerTextDocumentContentProvider("coder-inspect", coderWorkspaceInspectDocumentProvider)
 
   vscode.window.registerUriHandler(uriHandler)
-}
-
-export const outputChannel = vscode.window.createOutputChannel("Coder")
-
-const preflightCheckCoderInstalled = async () => {
-  const coderExists = await binaryExists(coderBinary)
-  if (coderExists) {
-    return
-  }
-  const brewExists = await binaryExists("brew")
-  if (!brewExists) {
-    vscode.window.showErrorMessage(
-      `"coder" CLI not found in $PATH. Please follow the install and authentication [instructions here](https://coder.com/docs/cli/installation).`,
-      "Dismiss",
-    )
-  } else {
-    const action = await vscode.window.showErrorMessage(`"coder" CLI not found in $PATH`, "Install with `brew`")
-    if (action) {
-      outputChannel.show()
-      const cmd = "brew install cdr/coder/coder-cli"
-      outputChannel.appendLine(cmd)
-      const output = await execCombined(cmd)
-      outputChannel.appendLine(output.stderr)
-      const coderExists = await binaryExists(coderBinary)
-      if (coderExists) {
-        outputChannel.appendLine(
-          'Installation successful.\nACTION REQUIRED: run "coder login [https://coder.domain.com]"',
-        )
-      } else {
-        outputChannel.appendLine(`Install failed. "coder" still not found in $PATH.`)
-      }
-    }
-  }
 }

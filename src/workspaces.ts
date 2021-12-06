@@ -1,6 +1,7 @@
 import * as path from "path"
 import * as vscode from "vscode"
-import { coderBinary, exec, mediaDir, execJSON } from "./utils"
+import { execCoder } from "./download"
+import { mediaDir } from "./utils"
 
 export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWorkspaceListItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<CoderWorkspaceListItem | undefined | void> =
@@ -27,7 +28,7 @@ export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWor
 
 export const rebuildWorkspace = async (name: string): Promise<void> => {
   try {
-    await exec(`${coderBinary} envs rebuild ${name} --force`)
+    await execCoder(`envs rebuild ${name} --force`)
     vscode.window.showInformationMessage(`Rebuilding Coder workspace "${name}"`)
   } catch (e) {
     vscode.window.showErrorMessage(`Failed to rebuild Coder workspaces: ${e}`)
@@ -36,7 +37,7 @@ export const rebuildWorkspace = async (name: string): Promise<void> => {
 
 export const shutdownWorkspace = async (name: string): Promise<void> => {
   try {
-    await exec(`${coderBinary} envs stop ${name}`)
+    await execCoder(`envs stop ${name}`)
     vscode.window.showInformationMessage(`Shutting down Coder workspace "${name}"`)
   } catch (e) {
     vscode.window.showErrorMessage(`Failed to shutdown Coder workspaces: ${e}`)
@@ -50,7 +51,7 @@ export const shutdownWorkspace = async (name: string): Promise<void> => {
  */
 const setupSSH = async (): Promise<void> => {
   const configFile = vscode.workspace.getConfiguration("remote.SSH").get("configFile")
-  await exec(`${coderBinary} config-ssh ${configFile ? `--filepath ${configFile}` : ""}`)
+  await execCoder(`config-ssh ${configFile ? `--filepath ${configFile}` : ""}`)
 }
 
 export const openWorkspace = async (name: string): Promise<void> => {
@@ -59,7 +60,7 @@ export const openWorkspace = async (name: string): Promise<void> => {
     // If the provided workspace does not exist this is the point at which we
     // will find out because `coder sh` will exit with 1 causing the exec to
     // reject (piping should be avoided since the exit code is swallowed).
-    const pwd = (await exec(`${coderBinary} sh ${name} pwd`)).trim() || "/"
+    const pwd = (await execCoder(`sh ${name} pwd`)).trim() || "/"
     vscode.window.showInformationMessage(`Opening Coder workspace ${name} to ${pwd}`)
     await vscode.commands.executeCommand(
       "vscode.openFolder",
@@ -68,7 +69,6 @@ export const openWorkspace = async (name: string): Promise<void> => {
   } catch (e) {
     vscode.window.showErrorMessage(`Failed to open Coder workspace ${name}: ${e}`)
   }
-  return
 }
 
 const getWorkspaceItems = async (): Promise<CoderWorkspaceListItem[]> => {
@@ -78,10 +78,13 @@ const getWorkspaceItems = async (): Promise<CoderWorkspaceListItem[]> => {
   return envs.map((w) => new CoderWorkspaceListItem(w, images, vscode.TreeItemCollapsibleState.None))
 }
 
-export const getWorkspaces = async (): Promise<CoderWorkspace[]> =>
-  await execJSON<CoderWorkspace[]>(`${coderBinary} envs ls --output json`)
+export const getWorkspaces = async (): Promise<CoderWorkspace[]> => {
+  return JSON.parse(await execCoder(`envs ls --output json`))
+}
 
-const getImages = (): Promise<CoderImage[]> => execJSON<CoderImage[]>(`${coderBinary} images ls --output json`)
+const getImages = async (): Promise<CoderImage[]> => {
+  return JSON.parse(await execCoder(`images ls --output json`))
+}
 
 export interface CoderWorkspace {
   id: string

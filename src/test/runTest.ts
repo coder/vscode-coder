@@ -6,7 +6,10 @@ process.env.PATH = `${path.resolve(__dirname, "../../fixtures")}${path.delimiter
 
 // TODO: Cannot seem to get Windows to find the binary in the path.
 if (process.platform === "win32") {
-  process.env.CODER_BINARY = `sh ${path.resolve(__dirname, "../../fixtures")}/coder`
+  process.env.CODER_BINARY = JSON.stringify({
+    cmd: "sh",
+    args: [`${path.resolve(__dirname, "../../fixtures")}/coder`],
+  })
 }
 
 async function main() {

@@ -1,7 +1,6 @@
-import * as cp from "child_process"
 import * as vscode from "vscode"
 import * as yaml from "yaml"
-import { coderBinary } from "./utils"
+import { execCoder } from "./download"
 import { CoderWorkspace } from "./workspaces"
 
 export const handleShowLogsCommand = async ({ workspace }: { workspace: CoderWorkspace }): Promise<void> => {
@@ -11,10 +10,10 @@ export const handleShowLogsCommand = async ({ workspace }: { workspace: CoderWor
 }
 
 export const coderWorkspaceLogsDocumentProvider = new (class implements vscode.TextDocumentContentProvider {
-  provideTextDocumentContent(uri: vscode.Uri): string {
+  async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
+    // TODO: Write to document as text comes in instead of waiting.
     // TODO: add a --no-follow flag for cases where a build is in-progress
-    const output = cp.execSync(`${coderBinary} envs watch-build ${uri.fsPath}`)
-    return output.toString("utf-8")
+    return execCoder(`envs watch-build ${uri.fsPath}`)
   }
 })()
 
@@ -25,10 +24,10 @@ export const handleInspectCommand = async ({ workspace }: { workspace: CoderWork
 }
 
 export const coderWorkspaceInspectDocumentProvider = new (class implements vscode.TextDocumentContentProvider {
-  provideTextDocumentContent(uri: vscode.Uri): string {
+  async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
+    // TODO: Write to document as text comes in instead of waiting.
     // TODO: add a --no-follow flag for cases where a build is in-progress
-    const output = cp.execSync(`${coderBinary} envs ls --output json`)
-    const envs: CoderWorkspace[] = JSON.parse(output.toString())
+    const envs: CoderWorkspace[] = JSON.parse(await execCoder(`envs ls --output json`))
     const env = envs.find((e) => e.name === uri.fsPath.replace(".yaml", ""))
     return yaml.stringify(env)
   }
