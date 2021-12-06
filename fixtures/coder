@@ -2,23 +2,28 @@
 # Coder CLI mock
 
 need_login() {
-  echo "fatal: failed to read session credentials"
-  echo "  | hint: did you run \"coder login [https://coder.domain.com]\"?"
+  >&2 echo "fatal: failed to read session credentials"
+  >&2 echo "  | hint: did you run \"coder login [https://coder.domain.com]\"?"
+  exit 1
+}
+
+invalid_token() {
+  >&2 echo "fatal: Get \"https://coder.domain.com/api\": net/http: invalid header field value \"some value\" for key Session-Token"
   exit 1
 }
 
 fail() {
-  echo fail
+  >&2 echo stderr message from fail state
   exit 1
-}
-
-success () {
-  echo success
-  exit 0
 }
 
 workspaces() {
   cat ./workspaces.json
+  exit 0
+}
+
+help() {
+  echo help
   exit 0
 }
 
@@ -28,13 +33,15 @@ main() {
   # Use CODER_MOCK_STATE to force certain states.
   case "${CODER_MOCK_STATE-}" in
     "need_login") need_login ;;
+    "invalid_token") invalid_token ;;
+    "fail_stderr") fail_stderr ;;
+    "fail") fail ;;
   esac
 
   # Mock the output based on the passed arguments.
   case "$*" in
     "envs ls --output json") workspaces ;;
-    "test fail") fail ;;
-    "test success") success ;;
+    "--help") help ;;
     *) echo "$* is not mocked" ; exit 1 ;;
   esac
 }

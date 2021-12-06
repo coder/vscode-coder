@@ -53,6 +53,10 @@ suite("Utils", () => {
       name: "Error",
       message: `Command "false" failed with code 1`,
     })
+    await assert.rejects(utils.wrapExit(cp.spawn("bash", ["-c", ">&2 printf stderr && exit 42"])), {
+      name: "Error",
+      message: `Command "bash" failed with code 42: stderr`,
+    })
     await assert.rejects(utils.wrapExit(cp.spawn("surely-no-executable-named-like-this-exists")), {
       name: "Error",
       message: `spawn surely-no-executable-named-like-this-exists ENOENT`,

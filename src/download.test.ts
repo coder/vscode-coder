@@ -5,16 +5,23 @@ import * as download from "./download"
 suite("Download", () => {
   vscode.window.showInformationMessage("Start download tests.")
 
+  teardown(() => {
+    delete process.env.CODER_MOCK_STATE
+  })
+
   test("binaryExists", async () => {
     assert.strictEqual(await download.binaryExists("sh"), true)
     assert.strictEqual(await download.binaryExists("surely-no-binary-named-like-this-exists"), false)
   })
 
   test("execCoder", async () => {
-    assert.strictEqual(await download.execCoder("test success"), "success\n")
-    await assert.rejects(download.execCoder("test fail"), {
+    assert.strictEqual(await download.execCoder("--help"), "help\n")
+
+    // This will attempt to authenticate first, which will fail.
+    process.env.CODER_MOCK_STATE = "fail"
+    await assert.rejects(download.execCoder("--help"), {
       name: "Error",
-      message: /Command failed: .+ test fail/,
+      message: /Command failed: .+ --help\nstderr message from fail state\n/,
     })
   })
 
@@ -23,6 +30,7 @@ suite("Download", () => {
       name: "Error",
       message: `Command "false" failed with code 1`,
     })
+    // TODO: Test successful download.
   })
 
   // TODO: Implement.

@@ -17,8 +17,9 @@ export const binaryExists = async (bin: string): Promise<boolean> => {
 }
 
 /**
- * Run a command with the Coder CLI after making sure it is installed. Stderr is
- * ignored; only stdout is returned.
+ * Run a command with the Coder CLI after making sure it is installed.  On
+ * success stdout is returned.  On failure the error will include stderr in the
+ * message.
  */
 export const execCoder = async (command: string): Promise<string> => {
   debug(`Run command: ${command}`)

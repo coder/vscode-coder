@@ -50,6 +50,8 @@ export const split = (str: string, delimiter: string): [string, string] => {
  *
  * The callback will always fire at least once (even with just a blank string)
  * even if the process has no output.
+ *
+ * This will set the encoding on the stream to utf8.
  */
 export const onLine = (stream: stream.Readable, callback: (line: string) => void): void => {
   let buffer = ""
@@ -73,18 +75,23 @@ export const onLine = (stream: stream.Readable, callback: (line: string) => void
 }
 
 /**
- * Wrap a promise around a spawned process's exit.
+ * Wrap a promise around a spawned process's exit.  Rejects if the code is
+ * non-zero.  The error will include the code and the stderr if any in the
+ * message.
  *
  * Use in conjunction with `child_process.spawn()`.
  */
 export function wrapExit(proc: cp.ChildProcess): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    const stderr: string[] = []
+    proc.stderr?.on("data", (d) => stderr.push(d.toString()))
     proc.on("error", reject) // Catches ENOENT for example.
     proc.on("exit", (code) => {
       if (code === 0) {
         resolve()
       } else {
-        reject(new Error(`Command "${proc.spawnfile}" failed with code ${code}`))
+        const details = stderr.length > 0 ? `: ${stderr.join()}` : ""
+        reject(new Error(`Command "${proc.spawnfile}" failed with code ${code}${details}`))
       }
     })
   })
