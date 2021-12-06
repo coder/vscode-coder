@@ -204,3 +204,10 @@ export const getAssetUrl = (version: string): string => {
     ? `https://github.com/cdr/coder-cli/releases/${version}/download/${assetFilename}`
     : `https://github.com/cdr/coder-cli/releases/download/${version}/${assetFilename}`
 }
+
+/**
+ * Get the first or only value from a query parameter.
+ */
+export const getQueryValue = (val: string[] | string | undefined): string | undefined => {
+  return Array.isArray(val) ? val[0] : val
+}

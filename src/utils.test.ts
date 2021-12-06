@@ -86,4 +86,11 @@ suite("Utils", () => {
       assert.strictEqual(content2, "archive content\n")
     }
   })
+
+  test("getQueryValue", () => {
+    assert.strictEqual(utils.getQueryValue(undefined), undefined)
+    assert.strictEqual(utils.getQueryValue("foo"), "foo")
+    assert.strictEqual(utils.getQueryValue(["bar"]), "bar")
+    assert.strictEqual(utils.getQueryValue(["bazzle", "qux"]), "bazzle")
+  })
 })

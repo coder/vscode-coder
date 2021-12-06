@@ -11,7 +11,7 @@ import {
   handleInspectCommand,
   handleShowLogsCommand,
 } from "./logs"
-import { context, debug } from "./utils"
+import { context, debug, getQueryValue } from "./utils"
 import {
   CoderWorkspacesProvider,
   rebuildWorkspace,
@@ -43,8 +43,7 @@ export const uriHandler: vscode.UriHandler = {
     debug(`Handling URI: ${uri}`)
     switch (action) {
       case "open-workspace": {
-        const version = Array.isArray(query.version) ? query.version[0] : query.version
-        return preflight(version).then(() => openWorkspace(resource))
+        return preflight(getQueryValue(query.version)).then(() => openWorkspace(resource))
       }
       default:
         vscode.window.showErrorMessage(`Unknown action "${action}"`)
