@@ -8,6 +8,15 @@ import { requestResponse } from "./request"
 import { context, debug, extractTar, extractZip, getAssetUrl, onLine, outputChannel, wrapExit } from "./utils"
 
 /**
+ * Options for installing and authenticating the Coder CLI.
+ */
+export interface CoderOptions {
+  accessUri?: string
+  token?: string
+  version?: string
+}
+
+/**
  * Return "true" if the binary is found in $PATH.
  */
 export const binaryExists = async (bin: string): Promise<boolean> => {
@@ -17,13 +26,13 @@ export const binaryExists = async (bin: string): Promise<boolean> => {
 }
 
 /**
- * Run a command with the Coder CLI after making sure it is installed.  On
- * success stdout is returned.  On failure the error will include stderr in the
- * message.
+ * Run a command with the Coder CLI after making sure it is installed and
+ * authenticated.  On success stdout is returned.  On failure the error will
+ * include stderr in the message.
  */
-export const execCoder = async (command: string): Promise<string> => {
+export const execCoder = async (command: string, opts?: CoderOptions): Promise<string> => {
   debug(`Run command: ${command}`)
-  const coderBinary = await preflight()
+  const coderBinary = await preflight(opts?.version)
   const output = await promisify(cp.exec)(coderBinary + " " + command)
   return output.stdout
 }
@@ -39,9 +48,6 @@ const coderInvocation = (): { cmd: string; args: string[] } => {
   }
   return { cmd: process.platform === "win32" ? "coder.exe" : "coder", args: [] }
 }
-
-/** Only one preflight request at a time. */
-let _preflight: Promise<string> | undefined
 
 /**
  * Download the Coder CLI to the provided location and return that location.
@@ -178,13 +184,13 @@ export const maybeInstall = async (version: string): Promise<string> => {
   }
 }
 
+/** Only one preflight request at a time. */
+let _preflight: Promise<string> | undefined
+
 /**
- * Check that Coder is installed and authenticated.  If not try installing and
- * authenticating.
+ * Check that Coder is installed.  If not try installing.
  *
  * Return the appropriate invocation for the binary.
- *
- * @TODO Implement authentication portion.
  */
 export const preflight = async (version = "latest"): Promise<string> => {
   if (!_preflight) {

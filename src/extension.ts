@@ -43,7 +43,11 @@ export const uriHandler: vscode.UriHandler = {
     debug(`Handling URI: ${uri}`)
     switch (action) {
       case "open-workspace": {
-        return preflight(getQueryValue(query.version)).then(() => openWorkspace(resource))
+        return openWorkspace(resource, {
+          accessUri: getQueryValue(query.accessUri),
+          token: getQueryValue(query.token),
+          version: getQueryValue(query.version),
+        })
       }
       default:
         vscode.window.showErrorMessage(`Unknown action "${action}"`)

@@ -1,6 +1,6 @@
 import * as path from "path"
 import * as vscode from "vscode"
-import { execCoder } from "./download"
+import { CoderOptions, execCoder } from "./download"
 import { mediaDir } from "./utils"
 
 export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWorkspaceListItem> {
@@ -48,15 +48,22 @@ export const shutdownWorkspace = async (name: string): Promise<void> => {
  * Inject Coder hosts into the SSH config file.
  *
  * If `remote.SSH.configFile` is set use that otherwise use the default.
+ *
+ * If version and authentication details are provided use those with the binary.
  */
-const setupSSH = async (): Promise<void> => {
+const setupSSH = async (opts?: CoderOptions): Promise<void> => {
   const configFile = vscode.workspace.getConfiguration("remote.SSH").get("configFile")
-  await execCoder(`config-ssh ${configFile ? `--filepath ${configFile}` : ""}`)
+  await execCoder(`config-ssh ${configFile ? `--filepath ${configFile}` : ""}`, opts)
 }
 
-export const openWorkspace = async (name: string): Promise<void> => {
+/**
+ * Open the specified workspace.
+ *
+ * If version and authentication details are provided use those with the binary.
+ */
+export const openWorkspace = async (name: string, opts?: CoderOptions): Promise<void> => {
   try {
-    await setupSSH()
+    await setupSSH(opts)
     // If the provided workspace does not exist this is the point at which we
     // will find out because `coder sh` will exit with 1 causing the exec to
     // reject (piping should be avoided since the exit code is swallowed).
