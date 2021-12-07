@@ -1,6 +1,6 @@
 import * as vscode from "vscode"
 import * as yaml from "yaml"
-import { execCoder } from "./download"
+import { execCoder } from "./exec"
 import { CoderWorkspace } from "./workspaces"
 
 export const handleShowLogsCommand = async ({ workspace }: { workspace: CoderWorkspace }): Promise<void> => {

@@ -1,4 +1,3 @@
-import * as cp from "child_process"
 import * as unzip from "extract-zip"
 import * as fs from "fs"
 import * as os from "os"
@@ -40,61 +39,6 @@ export const context = (ctx?: vscode.ExtensionContext): vscode.ExtensionContext 
 export const split = (str: string, delimiter: string): [string, string] => {
   const index = str.indexOf(delimiter)
   return index !== -1 ? [str.substring(0, index).trim(), str.substring(index + 1)] : [str, ""]
-}
-
-/**
- * Split a stream on newlines.
- *
- * Use in conjunction with `child_process.spawn()` for long-running process that
- * you want to log as they output.
- *
- * The callback will always fire at least once (even with just a blank string)
- * even if the process has no output.
- *
- * This will set the encoding on the stream to utf8.
- */
-export const onLine = (stream: stream.Readable, callback: (line: string) => void): void => {
-  let buffer = ""
-  stream.setEncoding("utf8")
-  stream.on("data", (d) => {
-    const data = buffer + d
-    const split = data.split("\n")
-    const last = split.length - 1
-
-    for (let i = 0; i < last; ++i) {
-      callback(split[i])
-    }
-
-    // The last item will either be an empty string (the data ended with a
-    // newline) or a partial line (did not end with a newline) and we must wait
-    // to parse it until we get a full line.
-    buffer = split[last]
-  })
-  // If the stream ends send whatever we have left.
-  stream.on("end", () => callback(buffer))
-}
-
-/**
- * Wrap a promise around a spawned process's exit.  Rejects if the code is
- * non-zero.  The error will include the code and the stderr if any in the
- * message.
- *
- * Use in conjunction with `child_process.spawn()`.
- */
-export function wrapExit(proc: cp.ChildProcess): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const stderr: string[] = []
-    proc.stderr?.on("data", (d) => stderr.push(d.toString()))
-    proc.on("error", reject) // Catches ENOENT for example.
-    proc.on("exit", (code) => {
-      if (code === 0) {
-        resolve()
-      } else {
-        const details = stderr.length > 0 ? `: ${stderr.join()}` : ""
-        reject(new Error(`Command "${proc.spawnfile}" failed with code ${code}${details}`))
-      }
-    })
-  })
 }
 
 /**

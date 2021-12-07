@@ -1,6 +1,6 @@
 import * as path from "path"
 import * as vscode from "vscode"
-import { CoderOptions, execCoder } from "./download"
+import { CoderOptions, execCoder } from "./exec"
 import { mediaDir } from "./utils"
 
 export class CoderWorkspacesProvider implements vscode.TreeDataProvider<CoderWorkspaceListItem> {

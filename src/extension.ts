@@ -2,7 +2,6 @@
 
 import * as qs from "querystring"
 import * as vscode from "vscode"
-import { preflight } from "./download"
 import { CoderHelpProvider } from "./help"
 
 import {
