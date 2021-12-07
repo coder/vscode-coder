@@ -3,6 +3,7 @@ import * as path from "path"
 import * as stream from "stream"
 import { promisify } from "util"
 import * as nodeWhich from "which"
+import { authenticate } from "./auth"
 import { download } from "./download"
 import { context, debug } from "./utils"
 
@@ -36,12 +37,40 @@ export const execCoder = async (command: string, opts?: CoderOptions): Promise<s
   debug(`Run command: ${command}`)
 
   const invocation = coderInvocation()
-  const cmd = (await binaryExists(invocation.cmd))
-    ? [invocation.cmd, ...invocation.args].join(" ")
-    : await download(opts?.version || "latest", path.join(await context().globalStoragePath, invocation.cmd))
+  let coderBinary = [invocation.cmd, ...invocation.args].join(" ")
 
-  const output = await promisify(cp.exec)(cmd + " " + command)
-  return output.stdout
+  try {
+    if (!(await binaryExists(invocation.cmd))) {
+      coderBinary = await download(
+        opts?.version || "latest",
+        path.join(await context().globalStoragePath, invocation.cmd),
+      )
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    // Re-throw with some guidance on how to manually install.
+    throw new Error(`${error.message.trim()}. Please [install manually](https://coder.com/docs/cli/installation).`)
+  }
+
+  try {
+    const output = await promisify(cp.exec)(coderBinary + " " + command)
+    return output.stdout
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    // See if the error appears to be related to the token or login.  If it does
+    // we will try authenticating then run the command again.
+    // TODO: Since this relies on stderr output being a certain way it might be
+    // better if the CLI had a command for checking the login status.
+    if (/Session-Token|credentials|API key|401/.test(error.stderr)) {
+      await authenticate(opts?.accessUri, opts?.token)
+      const output = await promisify(cp.exec)(coderBinary + " " + command)
+      return output.stdout
+    } else {
+      // Otherwise it is some other kind of error, like the command does not
+      // exist or the binary is gone, etc.
+      throw error
+    }
+  }
 }
 
 /**
