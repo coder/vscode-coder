@@ -41,10 +41,5 @@ Linting will be automatically fixed when you use `npm run test` or `npm run test
   - should we link to Remote SSH panel?
   - should we allow opening directly into project dirs ourselves?
 
-- Authenticate the CLI from VS Code
-
-  - Install the CLI from VS Code
-  - Run without the CLI installed
-
 - Manage DevURLs
   - List, Open, Create, Delete, etc.
