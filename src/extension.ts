@@ -10,7 +10,7 @@ import {
   handleInspectCommand,
   handleShowLogsCommand,
 } from "./logs"
-import { context, debug, getQueryValue } from "./utils"
+import { context, debug, getQueryValue, split } from "./utils"
 import {
   CoderWorkspacesProvider,
   rebuildWorkspace,
@@ -28,7 +28,7 @@ export const uriHandler: vscode.UriHandler = {
     // split on the first non-leading trailing slash which separates the
     // action from the resource.  The action is not allowed to contain slashes
     // but the resource can.
-    const [action, resource] = uri.fsPath.replace(/^\//, "").split("/")
+    const [action, resource] = split(uri.path.replace(/^\//, ""), "/")
     if (!action || !resource) {
       vscode.window.showErrorMessage(`URI is malformed: "${uri}"`)
       return
