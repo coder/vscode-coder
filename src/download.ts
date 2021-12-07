@@ -24,7 +24,7 @@ const doDownload = async (version: string, downloadPath: string): Promise<string
   return vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `Installing Coder CLI ${version}`,
+      title: `Downloading Coder CLI ${version}`,
     },
     async () => {
       const assetUrl = getAssetUrl(version)
