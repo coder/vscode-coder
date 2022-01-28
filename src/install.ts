@@ -3,7 +3,7 @@ import * as path from "path"
 import * as vscode from "vscode"
 import { download } from "./download"
 import { binaryExists, onLine, wrapExit } from "./exec"
-import { outputChannel } from "./utils"
+import { outputChannel } from "./logs"
 
 /**
  * Install the Coder CLI using the provided command.

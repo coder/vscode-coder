@@ -2,15 +2,16 @@
 
 import * as qs from "querystring"
 import * as vscode from "vscode"
+import { context } from "./exec"
 import { CoderHelpProvider } from "./help"
-
 import {
   coderWorkspaceInspectDocumentProvider,
   coderWorkspaceLogsDocumentProvider,
+  debug,
   handleInspectCommand,
   handleShowLogsCommand,
 } from "./logs"
-import { context, debug, getQueryValue, split } from "./utils"
+import { getQueryValue, split } from "./utils"
 import {
   CoderWorkspacesProvider,
   rebuildWorkspace,

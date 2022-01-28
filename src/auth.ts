@@ -2,19 +2,18 @@ import { promises as fs } from "fs"
 import * as os from "os"
 import * as path from "path"
 import * as vscode from "vscode"
-import { debug } from "./utils"
+import { debug } from "./logs"
 
-const getConfigDir = (): string => {
+export const getConfigDir = (platform = process.platform): string => {
   // The CLI uses localConfig from https://github.com/kirsle/configdir.
-  switch (process.platform) {
+  switch (platform) {
     case "win32":
       return process.env.APPDATA || path.join(os.homedir(), "AppData/Roaming")
     case "darwin":
       return path.join(os.homedir(), "Library/Application Support")
-    case "linux":
+    default:
       return process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config")
   }
-  throw new Error(`Unsupported platform ${process.platform}`)
 }
 
 /**
@@ -56,6 +55,25 @@ const doAuthenticate = async (accessUrl?: string, token?: string): Promise<void>
   const dir = path.join(getConfigDir(), "coder")
   await fs.mkdir(dir, { recursive: true })
   await Promise.all([fs.writeFile(path.join(dir, "session"), token), fs.writeFile(path.join(dir, "url"), accessUrl)])
+}
+
+/**
+ * Return current login URI, if any.
+ */
+export const currentUri = async (): Promise<string | undefined> => {
+  // TODO: Like authentication this unfortunately relies on internal knowledge
+  // since there does not appear to be a command to get the current login
+  // status.
+  const dir = path.join(getConfigDir(), "coder")
+  try {
+    return (await fs.readFile(path.join(dir, "url"), "utf8")).trim()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    if (error.code === "ENOENT") {
+      return undefined
+    }
+    throw error
+  }
 }
 
 /** Only allow one at a time. */

@@ -7,9 +7,10 @@ import * as utils from "./utils"
 suite("Utils", () => {
   vscode.window.showInformationMessage("Start util tests.")
 
-  suiteSetup(() => {
+  const tmpPath = "tests/utils"
+  suiteSetup(async () => {
     // Cleanup anything left over from the last run.
-    utils.clean("tests/utils")
+    await utils.clean(tmpPath)
   })
 
   test("split", () => {
@@ -20,7 +21,7 @@ suite("Utils", () => {
 
   test("extract", async () => {
     for (const ext of [".tar.gz", ".zip"]) {
-      const temp = await utils.tmpdir("tests/utils")
+      const temp = await utils.tmpdir(tmpPath)
       const stream = fs.createReadStream(path.resolve(__dirname, `../fixtures/archive${ext}`))
 
       await (ext === ".tar.gz" ? utils.extractTar(stream, temp) : utils.extractZip(stream, temp))
@@ -47,5 +48,14 @@ suite("Utils", () => {
     assert.strictEqual(utils.getQueryValue("foo"), "foo")
     assert.strictEqual(utils.getQueryValue(["bar"]), "bar")
     assert.strictEqual(utils.getQueryValue(["bazzle", "qux"]), "bazzle")
+  })
+
+  test("set/resetEnv", () => {
+    const key = "CODER_WORKSPACES_FOO"
+    assert.strictEqual(process.env[key], undefined)
+    utils.setEnv(key, "baz")
+    assert.strictEqual(process.env[key], "baz")
+    utils.resetEnv()
+    assert.strictEqual(process.env[key], undefined)
   })
 })

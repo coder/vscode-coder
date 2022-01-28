@@ -5,7 +5,7 @@
   "description": "Connect VS Code to your Coder Workspaces",
   "repository": "https://github.com/cdr/vscode-coder",
   "preview": true,
-  "version": "0.0.4",
+  "version": "0.0.5",
   "engines": {
     "vscode": "^1.54.0"
   },
@@ -159,7 +159,7 @@
     "@types/adm-zip": "^0.4.34",
     "@types/glob": "^7.1.3",
     "@types/mocha": "^8.0.4",
-    "@types/node": "^12.11.7",
+    "@types/node": "^16.11.21",
     "@types/tar-fs": "^2.0.1",
     "@types/vscode": "^1.54.0",
     "@types/which": "^2.0.1",

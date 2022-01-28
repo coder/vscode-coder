@@ -1,8 +1,9 @@
 import { promises as fs } from "fs"
 import * as path from "path"
 import * as vscode from "vscode"
+import { debug } from "./logs"
 import { requestResponse } from "./request"
-import { debug, extractTar, extractZip, getAssetUrl } from "./utils"
+import { extractTar, extractZip, getAssetUrl } from "./utils"
 
 /**
  * Inner function for `download` so it can wrap with a singleton promise.

@@ -2,10 +2,25 @@ import * as cp from "child_process"
 import * as path from "path"
 import * as stream from "stream"
 import { promisify } from "util"
+import * as vscode from "vscode"
 import * as nodeWhich from "which"
-import { authenticate } from "./auth"
+import { authenticate, currentUri } from "./auth"
 import { download } from "./download"
-import { context, debug } from "./utils"
+import { debug } from "./logs"
+
+let _context: vscode.ExtensionContext | undefined
+
+/**
+ * Get or set the extension context.
+ */
+export const context = (ctx?: vscode.ExtensionContext): vscode.ExtensionContext => {
+  if (ctx) {
+    _context = ctx
+  } else if (!_context) {
+    throw new Error("Context has not been set; has the extension been activated?")
+  }
+  return _context
+}
 
 /**
  * How to invoke the Coder CLI.
@@ -50,6 +65,27 @@ export const execCoder = async (command: string, opts?: CoderOptions): Promise<s
   } catch (error: any) {
     // Re-throw with some guidance on how to manually install.
     throw new Error(`${error.message.trim()}. Please [install manually](https://coder.com/docs/cli/installation).`)
+  }
+
+  if (opts?.accessUri) {
+    const uri = await currentUri()
+    if (!uri) {
+      // Not authenticated to anything.
+      await authenticate(opts?.accessUri, opts?.token)
+    } else if (opts?.accessUri !== uri) {
+      // Authenticated to a different deployment.
+      const target = opts?.accessUri.replace(/https?:\/\//, "")
+      const current = uri.replace(/https?:\/\//, "")
+      const action = await vscode.window.showInformationMessage(
+        `This workspace is hosted at ${target} but you are already logged into ${current}. Logging into ${target} will log you out of ${current}.`,
+        "Cancel",
+        `Log into ${target}`,
+      )
+      if (!action || action === "Cancel") {
+        throw new Error("Login canceled")
+      }
+      await authenticate(opts?.accessUri, opts?.token)
+    }
   }
 
   try {

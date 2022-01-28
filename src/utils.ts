@@ -4,32 +4,9 @@ import * as os from "os"
 import * as path from "path"
 import * as stream from "stream"
 import * as tar from "tar-fs"
-import * as vscode from "vscode"
 import * as zlib from "zlib"
 
 export const mediaDir = path.join(__filename, "..", "..", "media")
-
-let _context: vscode.ExtensionContext | undefined
-
-export const outputChannel = vscode.window.createOutputChannel("Coder")
-
-export const debug = (line: string): void => {
-  if (process.env.CODER_DEBUG) {
-    outputChannel.appendLine(line)
-  }
-}
-
-/**
- * Get or set the extension context.
- */
-export const context = (ctx?: vscode.ExtensionContext): vscode.ExtensionContext => {
-  if (ctx) {
-    _context = ctx
-  } else if (!_context) {
-    throw new Error("Context has not been set; has the extension been activated?")
-  }
-  return _context
-}
 
 /**
  * Split a string up to the delimiter.  If the delimiter does not exist the
@@ -92,7 +69,8 @@ export const extractZip = async (response: stream.Readable, downloadPath: string
 
   await fs.promises.mkdir(downloadPath, { recursive: true })
 
-  const temp = await tmpdir("zip-staging")
+  const tmpPath = "zip-staging"
+  const temp = await tmpdir(tmpPath)
   const zipPath = path.join(temp, "archive.zip")
   const write = fs.createWriteStream(zipPath)
   response.pipe(write)
@@ -106,7 +84,7 @@ export const extractZip = async (response: stream.Readable, downloadPath: string
 
   await unzip(zipPath, { dir: downloadPath })
 
-  await clean("zip-staging")
+  await clean(tmpPath)
 
   return downloadPath
 }
@@ -154,4 +132,31 @@ export const getAssetUrl = (version: string): string => {
  */
 export const getQueryValue = (val: string[] | string | undefined): string | undefined => {
   return Array.isArray(val) ? val[0] : val
+}
+
+let envResets: Array<() => void> = []
+
+/**
+ * Reset environment variables to their original values.
+ */
+export const resetEnv = (): void => {
+  envResets.forEach((d) => d())
+  envResets = []
+}
+
+/**
+ * Set an environment variable that will be reset on a call to `resetEnv`.
+ */
+export const setEnv = (key: string, value: string): void => {
+  const original = process.env[key]
+  process.env[key] = value
+  envResets.push(() => {
+    // You cannot set process.env properties to undefined as they will just be
+    // set it to the literal string "undefined" so delete instead.
+    if (typeof original === "undefined") {
+      delete process.env[key]
+    } else {
+      process.env[key] = original
+    }
+  })
 }

@@ -3,6 +3,14 @@ import * as yaml from "yaml"
 import { execCoder } from "./exec"
 import { CoderWorkspace } from "./workspaces"
 
+export const outputChannel = vscode.window.createOutputChannel("Coder")
+
+export const debug = (line: string): void => {
+  if (process.env.CODER_DEBUG) {
+    outputChannel.appendLine(line)
+  }
+}
+
 export const handleShowLogsCommand = async ({ workspace }: { workspace: CoderWorkspace }): Promise<void> => {
   const uri = vscode.Uri.parse("coder-logs:" + workspace.name)
   const doc = await vscode.workspace.openTextDocument(uri)

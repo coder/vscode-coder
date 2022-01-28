@@ -6,7 +6,7 @@
 
 ## Development
 
-- Install Node (preferably >= 16)
+- Install Node >= 16
 - Clone the repository locally
 - Run `npm install`
 

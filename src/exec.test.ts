@@ -2,23 +2,25 @@ import * as assert from "assert"
 import * as cp from "child_process"
 import * as vscode from "vscode"
 import * as exec from "./exec"
+import * as utils from "./utils"
 
 suite("Exec", () => {
   vscode.window.showInformationMessage("Start exec tests.")
 
-  teardown(() => {
-    delete process.env.CODER_MOCK_STATE
-  })
+  teardown(() => utils.resetEnv())
 
   test("execCoder", async () => {
     assert.strictEqual(await exec.execCoder("--help"), "help\n")
 
     // This will attempt to authenticate first, which will fail.
-    process.env.CODER_MOCK_STATE = "fail"
+    utils.setEnv("CODER_MOCK_STATE", "fail")
     await assert.rejects(exec.execCoder("--help"), {
       name: "Error",
       message: /Command failed: .+ --help\nstderr message from fail state\n/,
     })
+
+    // TODO: Test what happens when you are already logged in once we figure out
+    // how to test notifications and user input.
   })
 
   test("onLine", async () => {

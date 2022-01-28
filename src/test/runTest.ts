@@ -1,5 +1,6 @@
 import { runTests } from "@vscode/test-electron"
 import * as path from "path"
+import * as utils from "../utils"
 
 // Place the mock binary into PATH.
 process.env.PATH = `${path.resolve(__dirname, "../../fixtures")}${path.delimiter}${process.env.PATH}`
@@ -14,6 +15,12 @@ if (process.platform === "win32") {
 
 async function main() {
   try {
+    // Cleanup anything left over from the last run.
+    const tmpPath = "tests/config"
+    await utils.clean(tmpPath)
+    const temp = await utils.tmpdir(tmpPath)
+    process.env.HOME = path.join(temp, "home")
+
     // The folder containing the Extension Manifest package.json
     // Passed to `--extensionDevelopmentPath`
     const extensionDevelopmentPath = path.resolve(__dirname, "../..")
