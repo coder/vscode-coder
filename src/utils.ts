@@ -23,7 +23,7 @@ export const split = (str: string, delimiter: string): [string, string] => {
  */
 export const clean = async (name: string): Promise<void> => {
   const dir = path.join(os.tmpdir(), `coder/${name}`)
-  await fs.promises.rmdir(dir, { recursive: true })
+  await fs.promises.rm(dir, { force: true, recursive: true })
 }
 
 /**
