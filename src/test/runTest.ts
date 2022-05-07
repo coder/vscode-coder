@@ -19,7 +19,7 @@ async function main() {
     const tmpPath = "tests/config"
     await utils.clean(tmpPath)
     const temp = await utils.tmpdir(tmpPath)
-    process.env.HOME = path.join(temp, "home")
+    process.env.HOME = process.env.USERPROFILE = path.join(temp, "home")
 
     // The folder containing the Extension Manifest package.json
     // Passed to `--extensionDevelopmentPath`

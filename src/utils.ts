@@ -147,12 +147,17 @@ export const resetEnv = (): void => {
 /**
  * Set an environment variable that will be reset on a call to `resetEnv`.
  */
-export const setEnv = (key: string, value: string): void => {
+export const setEnv = (key: string, value: string | undefined): void => {
   const original = process.env[key]
-  process.env[key] = value
+  // You cannot set process.env properties to undefined as they will just be set
+  // it to the literal string "undefined" so delete instead.
+  if (typeof value === "undefined") {
+    delete process.env[key]
+  } else {
+    process.env[key] = value
+  }
   envResets.push(() => {
-    // You cannot set process.env properties to undefined as they will just be
-    // set it to the literal string "undefined" so delete instead.
+    // Same deal with undefined here.
     if (typeof original === "undefined") {
       delete process.env[key]
     } else {

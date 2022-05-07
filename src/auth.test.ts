@@ -16,17 +16,24 @@ suite("Authenticate", () => {
 
   teardown(() => utils.resetEnv())
 
+  const assertDir = (actual: string, expected: string) => {
+    assert.match(actual, new RegExp(expected.replace(/\\/g, "\\$&") + "$"))
+  }
+
   const assertDirs = (dir: string) => {
-    assert.match(auth.getConfigDir("linux"), new RegExp(path.join(dir, ".config$")))
-    assert.match(auth.getConfigDir("freebsd"), new RegExp(path.join(dir, ".config$")))
-    assert.match(auth.getConfigDir("win32"), new RegExp(path.join(dir, "AppData/Roaming$")))
-    assert.match(auth.getConfigDir("darwin"), new RegExp(path.join(dir, "Library/Application Support$")))
+    assertDir(auth.getConfigDir("linux"), path.join(dir, ".config"))
+    assertDir(auth.getConfigDir("freebsd"), path.join(dir, ".config"))
+    assertDir(auth.getConfigDir("win32"), path.join(dir, "AppData/Roaming"))
+    assertDir(auth.getConfigDir("darwin"), path.join(dir, "Library/Application Support"))
   }
 
   test("getConfigDir", async () => {
     // Make sure local config mocks work.
     const tmpDir = await utils.tmpdir(tmpPath)
     utils.setEnv("HOME", tmpDir)
+    utils.setEnv("USERPROFILE", tmpDir)
+    utils.setEnv("XDG_CONFIG_HOME", undefined)
+    utils.setEnv("APPDATA", undefined)
     assertDirs(tmpDir)
 
     // Make sure the global mock also works.  For example the Linux temp config
@@ -34,6 +41,8 @@ suite("Authenticate", () => {
     // This runs after the local mock to make sure environment variables are
     // being restored correctly.
     utils.resetEnv()
+    utils.setEnv("XDG_CONFIG_HOME", undefined)
+    utils.setEnv("APPDATA", undefined)
     assertDirs("tests/config/.+/home")
   })
 
