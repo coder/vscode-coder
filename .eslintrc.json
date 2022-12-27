@@ -1,0 +1,45 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 6,
+    "sourceType": "module"
+  },
+  "plugins": [
+    "@typescript-eslint",
+    "prettier"
+  ],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:import/recommended",
+    "plugin:import/typescript",
+    "plugin:md/prettier",
+    "prettier"
+  ],
+  "overrides": [{
+    "files": ["*.md"],
+    "parser": "markdown-eslint-parser"
+  }],
+  "rules": {
+    "curly": "error",
+    "eqeqeq": "error",
+    "no-throw-literal": "error",
+    "no-console": "error",
+    "prettier/prettier": "error",
+    "import/order": ["error", {
+      "alphabetize": {
+        "order": "asc"
+      },
+      "groups": [["builtin", "external", "internal"], "parent", "sibling"]
+    }],
+    "import/no-unresolved": ["error", {
+      "ignore": ["vscode"]
+    }]
+  },
+  "ignorePatterns": [
+    "out",
+    "dist",
+    "**/*.d.ts"
+  ]
+}

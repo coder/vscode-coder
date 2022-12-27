@@ -1,0 +1,142 @@
+{
+  "name": "coder-remote",
+  "publisher": "coder",
+  "displayName": "Coder Remote",
+  "description": "Open any workspace with a single click.",
+  "repository": "https://github.com/coder/vscode-coder",
+  "preview": true,
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.73.0"
+  },
+  "license": "AGPLv2",
+  "bugs": {
+    "url": "https://github.com/coder/vscode-coder/issues"
+  },
+  "icon": "media/logo.png",
+  "extensionKind": [
+    "ui"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onResolveRemoteAuthority:coder",
+    "onCommand:coder.connect",
+    "onCommand:coder.open",
+    "onCommand:coder.login",
+    "onView:coderWorkspaces",
+    "onUri"
+  ],
+  "extensionDependencies": [
+    "ms-vscode-remote.remote-ssh"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "coder",
+          "title": "Coder Remote",
+          "icon": "media/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "coder": [
+        {
+          "id": "coderWorkspaces",
+          "name": "Remote",
+          "visibility": "visible",
+          "icon": "media/logo.svg",
+          "contextualTitle": "Coder Remote"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "coderWorkspaces",
+        "contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)\nTo learn more about how to use Coder in VS Code [read our docs]().",
+        "when": "!coder.authenticated && coder.loaded"
+      },
+      {
+        "view": "coderWorkspaces",
+        "contents": "You're logged in! \n[Open Workspace](command:coder.open)\nTo learn more about how to use Coder in VS Code [read our docs]().",
+        "when": "coder.authenticated && coder.loaded"
+      }
+    ],
+    "commands": [
+      {
+        "command": "coder.login",
+        "title": "Coder: Login"
+      },
+      {
+        "command": "coder.logout",
+        "title": "Coder: Logout"
+      },
+      {
+        "command": "coder.open",
+        "title": "Coder: Open Workspace"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "build": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "lint": "eslint . --ext ts,md",
+    "tsc:compile": "tsc",
+    "tsc:watch": "tsc -w",
+    "pretest:ci": "npm run tsc:compile",
+    "test:ci": "node ./out/src/test/runTest.js",
+    "test": "npm run test:ci",
+    "posttest": "npm run lint -- --fix",
+    "test:nocompile": "node ./out/src/test/runTest.js",
+    "posttest:nocompile": "npm run lint -- --fix",
+    "test:watch": "tsc-watch --noClear --onFirstSuccess 'npm run test:nocompile' --onSuccess 'npm run test:nocompile'"
+  },
+  "devDependencies": {
+    "@types/eventsource": "^1.1.10",
+    "@types/glob": "^7.1.3",
+    "@types/mocha": "^8.0.4",
+    "@types/ndjson": "^2.0.1",
+    "@types/node": "^16.11.21",
+    "@types/vscode": "^1.73.0",
+    "@types/which": "^2.0.1",
+    "@types/ws": "^8.5.3",
+    "@typescript-eslint/eslint-plugin": "^5.47.1",
+    "@typescript-eslint/parser": "^4.14.1",
+    "@vscode/test-electron": "^1.6.2",
+    "@vscode/vsce": "^2.15.0",
+    "bufferutil": "^4.0.7",
+    "coder": "https://github.com/coder/coder",
+    "dayjs": "^1.11.7",
+    "eslint": "^7.19.0",
+    "eslint-config-prettier": "^8.3.0",
+    "eslint-plugin-import": "^2.24.2",
+    "eslint-plugin-md": "^1.0.19",
+    "eslint-plugin-prettier": "^4.0.0",
+    "glob": "^7.1.6",
+    "mocha": "^8.2.1",
+    "nyc": "^15.1.0",
+    "prettier": "^2.2.1",
+    "ts-loader": "^8.0.14",
+    "tsc-watch": "^4.5.0",
+    "typescript": "^4.1.3",
+    "utf-8-validate": "^5.0.10",
+    "vscode-test": "^1.5.0",
+    "webpack": "^5.19.0",
+    "webpack-cli": "^5.0.1"
+  },
+  "dependencies": {
+    "axios": "0.26.1",
+    "eventsource": "^2.0.2",
+    "ndjson": "^2.0.0",
+    "pretty-bytes": "^6.0.0",
+    "tar-fs": "^2.1.1",
+    "which": "^2.0.2",
+    "ws": "^8.11.0",
+    "yaml": "^1.10.0"
+  }
+}

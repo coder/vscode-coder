@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es6",
+    "outDir": "out",
+    // "dom" is required for importing the API from coder/coder.
+    "lib": ["es6", "dom"],
+    "sourceMap": true,
+    "rootDirs": ["node_modules", "src"],
+    "strict": true,
+    "esModuleInterop": true
+  },
+  "exclude": ["node_modules", ".vscode-test"]
+}
