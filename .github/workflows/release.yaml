@@ -8,6 +8,7 @@ name: release
 permissions:
   # Required to publish a release
   contents: write
+  pull-requests: "read"
 
 jobs:
   package:

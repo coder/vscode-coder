@@ -5,7 +5,7 @@
   "description": "Open any workspace with a single click.",
   "repository": "https://github.com/coder/vscode-coder",
   "preview": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.73.0"
   },
@@ -46,7 +46,7 @@
       "coder": [
         {
           "id": "coderWorkspaces",
-          "name": "Remote",
+          "name": "",
           "visibility": "visible",
           "icon": "media/logo.svg",
           "contextualTitle": "Coder Remote"
@@ -56,12 +56,12 @@
     "viewsWelcome": [
       {
         "view": "coderWorkspaces",
-        "contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)\nTo learn more about how to use Coder in VS Code [read our docs]().",
+        "contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
         "when": "!coder.authenticated && coder.loaded"
       },
       {
         "view": "coderWorkspaces",
-        "contents": "You're logged in! \n[Open Workspace](command:coder.open)\nTo learn more about how to use Coder in VS Code [read our docs]().",
+        "contents": "You're logged in! \n[Open Workspace](command:coder.open)",
         "when": "coder.authenticated && coder.loaded"
       }
     ],
