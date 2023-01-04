@@ -263,36 +263,67 @@ export class Remote {
     }
     const binPath = agent.operating_system === "windows" ? "code-server" : "$HOME/.vscode-remote/bin/code-server"
 
-    const remotePort = await new Promise<number>((resolve, reject) => {
-      const script =
-        binPath +
-        " serve-local --start-server --port 0 --without-connection-token --commit-id " +
-        this.vscodeCommit +
-        " --accept-server-license-terms"
-      this.ipc
-        ?.execute(shell, script, (data) => {
-          const lines = data.split("\n")
-          lines.forEach((line) => {
-            this.output.appendLine(line)
-
-            if (!line.startsWith("Server bound to")) {
-              return
-            }
-            const parts = line.split(" ").filter((part) => part.startsWith("127.0.0.1:"))
-            if (parts.length === 0) {
-              return reject("No port found in output: " + line)
-            }
-            const port = parts[0].split(":").pop()
-            if (!port) {
-              return reject("No port found in parts: " + parts.join(","))
-            }
-            resolve(Number.parseInt(port))
-          })
-        })
-        .then((exitCode) => {
-          reject("Exited with: " + exitCode)
-        })
+    let running: {
+      commit: string
+      process_id: number
+    }[] = []
+    await this.ipc.execute(shell, `${binPath} ps`, (data) => {
+      try {
+        running = JSON.parse(data)
+      } catch {
+        // We can ignore this, it's probably blank!
+      }
     })
+    // Store the running port for the current commit in a file for reconnection!
+    const portFilePath = `/tmp/.vscode-remote-${this.vscodeCommit}-port`
+    let remotePort = 0
+    if (running.filter((instance) => instance.commit === this.vscodeCommit)) {
+      await this.ipc.execute(shell, `cat ${portFilePath}`, (data) => {
+        if (data.trim()) {
+          remotePort = Number.parseInt(data.trim())
+        }
+      })
+
+      this.output.appendLine("Found existing server running on port: " + remotePort)
+    }
+
+    if (!remotePort) {
+      remotePort = await new Promise<number>((resolve, reject) => {
+        const script =
+          binPath +
+          " serve-local --start-server --port 0 --without-connection-token --commit-id " +
+          this.vscodeCommit +
+          " --accept-server-license-terms"
+        this.ipc
+          ?.execute(shell, script, (data) => {
+            const lines = data.split("\n")
+            lines.forEach((line) => {
+              this.output.appendLine(line)
+              if (!line.startsWith("Server bound to")) {
+                return
+              }
+              const parts = line.split(" ").filter((part) => part.startsWith("127.0.0.1:"))
+              if (parts.length === 0) {
+                return reject("No port found in output: " + line)
+              }
+              const port = parts[0].split(":").pop()
+              if (!port) {
+                return reject("No port found in parts: " + parts.join(","))
+              }
+              resolve(Number.parseInt(port))
+            })
+          })
+          .then((exitCode) => {
+            reject("Exited with: " + exitCode)
+          })
+      })
+
+      await this.ipc.execute(
+        shell,
+        `echo ${remotePort} > /tmp/.vscode-remote-${this.vscodeCommit}-port`,
+        () => undefined,
+      )
+    }
 
     const forwarded = await this.ipc.portForward(remotePort)
     vscode.commands.executeCommand("setContext", "forwardedPortsViewEnabled", true)
