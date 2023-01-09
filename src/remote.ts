@@ -274,8 +274,21 @@ export class Remote {
         // We can ignore this, it's probably blank!
       }
     })
+    let remotePID = 0
     // Store the running port for the current commit in a file for reconnection!
-    const portFilePath = `/tmp/.vscode-remote-${this.vscodeCommit}-port`
+    const portFilePath = (pid = remotePID) => {
+      return `/tmp/.vscode-remote-${pid}`
+    }
+    const filtered = running.filter((instance) => instance.commit === this.vscodeCommit)
+    if (filtered.length) {
+      remotePID = filtered[0].process_id
+      await this.ipc.execute(shell, `cat ${portFilePath(remotePID)}`, (data) => {
+        if (data.trim()) {
+          remotePort = Number.parseInt(data.trim())
+        }
+      })
+    }
+
     let remotePort = 0
     if (running.filter((instance) => instance.commit === this.vscodeCommit)) {
       await this.ipc.execute(shell, `cat ${portFilePath}`, (data) => {
@@ -283,34 +296,39 @@ export class Remote {
           remotePort = Number.parseInt(data.trim())
         }
       })
-
-      this.output.appendLine("Found existing server running on port: " + remotePort)
+      if (remotePort) {
+        this.output.appendLine("Found existing server running on port: " + remotePort)
+      }
     }
 
     if (!remotePort) {
       remotePort = await new Promise<number>((resolve, reject) => {
-        const script =
-          binPath +
-          " serve-local --start-server --port 0 --without-connection-token --commit-id " +
-          this.vscodeCommit +
-          " --accept-server-license-terms"
+        const script = `
+        ${binPath} serve-local --start-server --port 0 --without-connection-token --commit-id ${this.vscodeCommit} --accept-server-license-terms &
+        echo "PID: $!"
+        wait
+        `
+
         this.ipc
           ?.execute(shell, script, (data) => {
             const lines = data.split("\n")
             lines.forEach((line) => {
               this.output.appendLine(line)
-              if (!line.startsWith("Server bound to")) {
-                return
+              if (line.startsWith("PID: ")) {
+                console.log("WE GOT PID", line)
+                remotePID = Number.parseInt(line.split("PID: ")[1].trim())
               }
-              const parts = line.split(" ").filter((part) => part.startsWith("127.0.0.1:"))
-              if (parts.length === 0) {
-                return reject("No port found in output: " + line)
+              if (line.startsWith("Server bound to")) {
+                const parts = line.split(" ").filter((part) => part.startsWith("127.0.0.1:"))
+                if (parts.length === 0) {
+                  return reject("No port found in output: " + line)
+                }
+                const port = parts[0].split(":").pop()
+                if (!port) {
+                  return reject("No port found in parts: " + parts.join(","))
+                }
+                resolve(Number.parseInt(port))
               }
-              const port = parts[0].split(":").pop()
-              if (!port) {
-                return reject("No port found in parts: " + parts.join(","))
-              }
-              resolve(Number.parseInt(port))
             })
           })
           .then((exitCode) => {
@@ -318,11 +336,7 @@ export class Remote {
           })
       })
 
-      await this.ipc.execute(
-        shell,
-        `echo ${remotePort} > /tmp/.vscode-remote-${this.vscodeCommit}-port`,
-        () => undefined,
-      )
+      await this.ipc.execute(shell, `echo ${remotePort} > ${portFilePath(remotePID)}`, () => undefined)
     }
 
     const forwarded = await this.ipc.portForward(remotePort)
