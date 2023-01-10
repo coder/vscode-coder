@@ -1,7 +1,8 @@
 import axios from "axios"
 import { execFile } from "child_process"
 import { getBuildInfo } from "coder/site/src/api/api"
-import fs from "fs"
+import { createWriteStream } from "fs"
+import fs from "fs/promises"
 import { IncomingMessage } from "http"
 import os from "os"
 import path from "path"
@@ -12,19 +13,21 @@ export class Storage {
   constructor(
     private readonly output: vscode.OutputChannel,
     private readonly memento: vscode.Memento,
+    private readonly secrets: vscode.SecretStorage,
     private readonly globalStorageUri: vscode.Uri,
+    private readonly logUri: vscode.Uri,
   ) {}
 
   // init ensures that the storage places values in the
   // appropriate default values.
-  public init(): void {
-    this.updateURL()
-    this.updateSessionToken()
+  public async init(): Promise<void> {
+    await this.updateURL()
+    await this.updateSessionToken()
   }
 
   public setURL(url?: string): Thenable<void> {
     return this.memento.update("url", url).then(() => {
-      this.updateURL()
+      return this.updateURL()
     })
   }
 
@@ -33,13 +36,37 @@ export class Storage {
   }
 
   public setSessionToken(sessionToken?: string): Thenable<void> {
-    return this.memento.update("sessionToken", sessionToken).then(() => {
-      this.updateSessionToken()
+    if (!sessionToken) {
+      return this.secrets.delete("sessionToken").then(() => {
+        return this.updateSessionToken()
+      })
+    }
+    return this.secrets.store("sessionToken", sessionToken).then(() => {
+      return this.updateSessionToken()
     })
   }
 
-  public getSessionToken(): string | undefined {
-    return this.memento.get("sessionToken")
+  public async getSessionToken(): Promise<string | undefined> {
+    return this.secrets.get("sessionToken")
+  }
+
+  // getRemoteSSHLogPath returns the log path for the "Remote - SSH" output panel.
+  // There is no VS Code API to get the contents of an output panel. We use this
+  // to get the active port so we can display network information.
+  public async getRemoteSSHLogPath(): Promise<string | undefined> {
+    const upperDir = path.dirname(this.logUri.fsPath)
+    // Node returns these directories sorted already!
+    const dirs = await fs.readdir(upperDir)
+    const latestOutput = dirs.reverse().filter((dir) => dir.startsWith("output_logging_"))
+    if (latestOutput.length === 0) {
+      return undefined
+    }
+    const dir = await fs.readdir(path.join(upperDir, latestOutput[0]))
+    const remoteSSH = dir.filter((file) => file.indexOf("Remote - SSH") !== -1)
+    if (remoteSSH.length === 0) {
+      return undefined
+    }
+    return path.join(upperDir, latestOutput[0], remoteSSH[0])
   }
 
   // fetchBinary returns the path to a Coder binary.
@@ -53,14 +80,10 @@ export class Storage {
 
     const buildInfo = await getBuildInfo()
     const binPath = this.binaryPath(buildInfo.version)
-    const exists = await new Promise<boolean>((resolve) =>
-      fs.stat(binPath, (err) => {
-        if (err) {
-          this.output.appendLine("Checking for cached binary: " + err)
-        }
-        resolve(err === null)
-      }),
-    )
+    const exists = await fs
+      .stat(binPath)
+      .then(() => true)
+      .catch(() => false)
     if (exists) {
       // Even if the file exists, it could be corrupted.
       // We run `coder version` to ensure the binary can be executed.
@@ -124,20 +147,7 @@ export class Storage {
     const contentLength = Number.parseInt(resp.headers["content-length"])
 
     // Ensure the binary directory exists!
-    await new Promise<void>((resolve, reject) => {
-      fs.mkdir(
-        path.dirname(binPath),
-        {
-          recursive: true,
-        },
-        (err) => {
-          if (err) {
-            return reject(err)
-          }
-          resolve()
-        },
-      )
-    })
+    await fs.mkdir(path.dirname(binPath), { recursive: true })
 
     const completed = await vscode.window.withProgress<boolean>(
       {
@@ -155,7 +165,7 @@ export class Storage {
         })
 
         const contentLengthPretty = prettyBytes(contentLength)
-        const writeStream = fs.createWriteStream(binPath, {
+        const writeStream = createWriteStream(binPath, {
           autoClose: true,
           mode: 0o755,
         })
@@ -202,8 +212,45 @@ export class Storage {
     return path.join(this.globalStorageUri.fsPath, "bin")
   }
 
-  private updateURL() {
-    axios.defaults.baseURL = this.getURL()
+  // getNetworkInfoPath returns the path where network information
+  // for SSH hosts is stored.
+  public getNetworkInfoPath(): string {
+    return path.join(this.globalStorageUri.fsPath, "net")
+  }
+
+  public getUserSettingsPath(): string {
+    return path.join(this.appDataDir(), "Code", "User", "settings.json")
+  }
+
+  public getSessionTokenPath(): string {
+    return path.join(this.globalStorageUri.fsPath, "session_token")
+  }
+
+  public getURLPath(): string {
+    return path.join(this.globalStorageUri.fsPath, "url")
+  }
+
+  private appDataDir(): string {
+    switch (process.platform) {
+      case "darwin":
+        return `${os.homedir()}/Library/Application Support`
+      case "linux":
+        return `${os.homedir()}/.config`
+      case "win32":
+        return process.env.APPDATA || ""
+      default:
+        return "/var/local"
+    }
+  }
+
+  private async updateURL(): Promise<void> {
+    const url = this.getURL()
+    axios.defaults.baseURL = url
+    if (url) {
+      await fs.writeFile(this.getURLPath(), url)
+    } else {
+      await fs.rm(this.getURLPath(), { force: true })
+    }
   }
 
   private binaryPath(version: string): string {
@@ -216,12 +263,14 @@ export class Storage {
     return binPath
   }
 
-  private updateSessionToken() {
-    const token = this.getSessionToken()
+  private async updateSessionToken() {
+    const token = await this.getSessionToken()
     if (token) {
       axios.defaults.headers.common["Coder-Session-Token"] = token
+      await fs.writeFile(this.getSessionTokenPath(), token)
     } else {
       delete axios.defaults.headers.common["Coder-Session-Token"]
+      await fs.rm(this.getSessionTokenPath(), { force: true })
     }
   }
 }
