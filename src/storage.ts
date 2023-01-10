@@ -269,6 +269,7 @@ export class Storage {
     const token = await this.getSessionToken()
     if (token) {
       axios.defaults.headers.common["Coder-Session-Token"] = token
+      await ensureDir(this.globalStorageUri.fsPath)
       await fs.writeFile(this.getSessionTokenPath(), token)
     } else {
       delete axios.defaults.headers.common["Coder-Session-Token"]
