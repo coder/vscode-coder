@@ -157,6 +157,7 @@ export class Remote {
           onDidWrite: writeEmitter.event,
           close: () => undefined,
           open: () => undefined,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as Partial<vscode.Pseudoterminal> as any,
       })
       // This fetches the initial bunch of logs.

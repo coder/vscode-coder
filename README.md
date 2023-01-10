@@ -20,7 +20,7 @@ The Coder Remote VS Code extension lets you open
 Launch VS Code Quick Open (Ctrl+P), paste the following command, and press
 enter.
 
-```
+```text
 ext install coder.coder-remote
 ```
 
