@@ -24,12 +24,28 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     })
 
   vscode.window.registerUriHandler({
-    handleUri: (uri) => {
+    handleUri: async (uri) => {
       const params = new URLSearchParams(uri.query)
       if (uri.path === "/open") {
         const owner = params.get("owner")
-        const name = params.get("name")
-        vscode.commands.executeCommand("coder.open", owner, name)
+        const workspace = params.get("workspace")
+        const agent = params.get("agent")
+        if (!owner) {
+          throw new Error("owner must be specified as a query parameter")
+        }
+        if (!workspace) {
+          throw new Error("workspace must be specified as a query parameter")
+        }
+
+        const url = params.get("url")
+        const token = params.get("token")
+        if (url) {
+          await storage.setURL(url)
+        }
+        if (token) {
+          await storage.setSessionToken(token)
+        }
+        vscode.commands.executeCommand("coder.open", owner, workspace, agent)
       }
     },
   })
