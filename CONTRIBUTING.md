@@ -4,7 +4,7 @@
 
 Workspaces opened with Coder Remote have the following URI structure:
 
-```
+```text
 vscode://ssh-remote+coder-vscode--<username>--<workspace>/
 ```
 
@@ -16,7 +16,7 @@ Coder uses the `onResolveRemoteAuthority:ssh-remote` [extension activation event
 2. Download the matching server binary to the client.
 3. Add an entry to the users SSH config for VS Code Remote to resolve `coder-vscode--*`.
 
-```
+```text
 Host coder-vscode--*
 	ProxyCommand "/tmp/coder" vscodessh --network-info-dir "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/net" --session-token-file "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/session_token" --url-file "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/url" %h
 	ConnectTimeout 0
