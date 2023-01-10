@@ -15,6 +15,8 @@ The Coder Remote VS Code extension lets you open
 - Works in air-gapped or restricted networks. Just connect to your Coder
   deployment!
 
+![demo.gif](./demo.gif)
+
 ## Getting Started
 
 Launch VS Code Quick Open (Ctrl+P), paste the following command, and press

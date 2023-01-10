@@ -384,12 +384,14 @@ export class Remote {
     const parsedConfig = SSHConfig.parse(sshConfigRaw)
     const computedHost = parsedConfig.compute(sshHost)
 
-    let binaryPath = await this.storage.fetchBinary()
+    let binaryPath: string | undefined
+    if (this.mode === vscode.ExtensionMode.Production) {
+      binaryPath = await this.storage.fetchBinary()
+    } else {
+      binaryPath = path.join(os.tmpdir(), "coder")
+    }
     if (!binaryPath) {
       throw new Error("Failed to fetch the Coder binary!")
-    }
-    if (this.mode === vscode.ExtensionMode.Development) {
-      binaryPath = path.join(os.tmpdir(), "coder")
     }
 
     parsedConfig.remove({ Host: computedHost.Host })
