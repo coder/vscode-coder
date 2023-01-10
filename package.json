@@ -108,7 +108,7 @@
     "@typescript-eslint/eslint-plugin": "^5.47.1",
     "@typescript-eslint/parser": "^4.14.1",
     "@vscode/test-electron": "^1.6.2",
-    "@vscode/vsce": "^2.15.0",
+    "@vscode/vsce": "^2.16.0",
     "bufferutil": "^4.0.7",
     "coder": "https://github.com/coder/coder",
     "dayjs": "^1.11.7",
