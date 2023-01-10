@@ -392,9 +392,14 @@ export class Remote {
     }
 
     parsedConfig.remove({ Host: computedHost.Host })
+    const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
     parsedConfig.append({
       Host: `${Remote.Prefix}*`,
-      ProxyCommand: `${binaryPath} vscodessh --network-info-dir ${this.storage.getNetworkInfoPath()} --session-token-file ${this.storage.getSessionTokenPath()} --url-file ${this.storage.getURLPath()} %h`,
+      ProxyCommand: `${escape(binaryPath)} vscodessh --network-info-dir ${escape(
+        this.storage.getNetworkInfoPath(),
+      )} --session-token-file ${escape(this.storage.getSessionTokenPath())} --url-file ${escape(
+        this.storage.getURLPath(),
+      )} %h`,
       ConnectTimeout: "0",
       StrictHostKeyChecking: "no",
       UserKnownHostsFile: "/dev/null",

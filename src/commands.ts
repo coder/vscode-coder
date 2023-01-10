@@ -165,11 +165,14 @@ export class Commands {
       remoteAuthority: "coder",
     })
     if (opened.length > 1) {
-      const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
-        return {
-          label: folder.folderUri.fsPath,
-        }
-      })
+      const items: vscode.QuickPickItem[] = opened
+        // Filter out `/` since that's added above.
+        .filter((folder) => folder.folderUri.path !== "/")
+        .map((folder): vscode.QuickPickItem => {
+          return {
+            label: folder.folderUri.fsPath,
+          }
+        })
       const item = await vscode.window.showQuickPick(items, {
         title: "Select a recently opened folder",
       })
