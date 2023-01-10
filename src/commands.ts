@@ -2,6 +2,7 @@ import axios from "axios"
 import { getUser, getWorkspaces } from "coder/site/src/api/api"
 import { Workspace } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
+import { Remote } from "./remote"
 import { Storage } from "./storage"
 
 export class Commands {
@@ -33,7 +34,7 @@ export class Commands {
         title: "Coder API Key",
         password: true,
         placeHolder: "Copy your API key from the opened browser page.",
-        value: this.storage.getSessionToken(),
+        value: await this.storage.getSessionToken(),
         ignoreFocusOut: true,
         validateInput: (value) => {
           return axios
@@ -151,7 +152,7 @@ export class Commands {
 
     // A workspace can have multiple agents, but that's handled
     // when opening a workspace unless explicitly specified.
-    let uri = vscode.Uri.parse(`vscode-remote://coder+${workspaceOwner}.${workspaceName}/`)
+    let uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}/`)
 
     const output: {
       workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]

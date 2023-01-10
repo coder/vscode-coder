@@ -1,86 +1,141 @@
+import axios from "axios"
 import { getWorkspace, getWorkspaceBuildLogs, getWorkspaceByOwnerAndName, startWorkspace } from "coder/site/src/api/api"
 import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
+import find from "find-process"
+import * as fs from "fs/promises"
+import * as jsonc from "jsonc-parser"
+import * as os from "os"
+import * as path from "path"
 import prettyBytes from "pretty-bytes"
+import SSHConfig from "ssh-config"
 import * as vscode from "vscode"
 import * as ws from "ws"
-import windowsInstallScript from "./install.ps1"
-import installScript from "./install.sh"
-import { IPC } from "./ipc"
 import { Storage } from "./storage"
 
-// Remote is the remote authority provider for the "coder" URI scheme.
-// This creates an IPC connection to `coder vscodeipc` and communicates
-// with it to start a remote extension host.
 export class Remote {
-  private ipc?: IPC
-  private readonly networkStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0)
+  // Prefix is a magic string that is prepended to SSH
+  // hosts to indicate that they should be handled by
+  // this extension.
+  public static readonly Prefix = "coder-vscode--"
 
   public constructor(
-    private readonly output: vscode.OutputChannel,
     private readonly vscodeProposed: typeof vscode,
     private readonly storage: Storage,
-    private readonly vscodeCommit: string,
+    private readonly mode: vscode.ExtensionMode,
   ) {}
 
-  public dispose(): void {
-    this.ipc?.kill()
-    this.networkStatus.dispose()
-    this.output.dispose()
-  }
+  public async setup(uri: vscode.Uri): Promise<vscode.Disposable | undefined> {
+    const authorityParts = uri.authority.split("+")
+    // If the URI passed doesn't have the proper prefix
+    // ignore it. We don't need to do anything special,
+    // because this isn't trying to open a Coder workspace.
+    if (!authorityParts[1].startsWith(Remote.Prefix)) {
+      return
+    }
+    const sshAuthority = authorityParts[1].substring(Remote.Prefix.length)
 
-  public async resolve(authority: string, ctx: vscode.RemoteAuthorityResolverContext): Promise<vscode.ResolverResult> {
-    if (!authority.startsWith("coder+")) {
-      throw new Error("invalid authority: " + authority)
-    }
-    const parts = authority.split("coder+")[1].split(".")
-    if (parts.length < 2) {
-      throw new Error("invalid workspace syntax (must be owner.name or owner.name.agent): " + parts.join(", "))
-    }
-    const owner = parts[0]
-    const name = parts[1]
-
-    const sessionInvalid = () => {
-      vscode.window.showErrorMessage("Your session expired. Sign into Coder again!", "Login").then((action) => {
-        if (!action) {
-          return
-        }
-        vscode.commands.executeCommand("coder.login").then(() => {
-          vscode.commands.executeCommand("workbench.action.reloadWindow")
-        })
-      })
-    }
-    if (!this.storage.getURL()) {
-      sessionInvalid()
-      throw vscode.RemoteAuthorityResolverError.NotAvailable("You must login", true)
+    // Authorities are in the format: coder-vscode--<username>--<workspace>--<agent>
+    // Agent can be omitted then will be prompted for instead.
+    const parts = sshAuthority.split("--")
+    if (parts.length < 2 || parts.length > 3) {
+      throw new Error(`Invalid Coder SSH authority. Must be: <username>--<workspace>--<agent?>`)
     }
 
+    // Find the workspace from the URI scheme provided!
     let workspace: Workspace
     try {
-      workspace = await getWorkspaceByOwnerAndName(owner, name)
-    } catch (ex) {
-      sessionInvalid()
-      throw vscode.RemoteAuthorityResolverError.NotAvailable("You must login", true)
+      workspace = await getWorkspaceByOwnerAndName(parts[0], parts[1])
+    } catch (error) {
+      if (!axios.isAxiosError(error)) {
+        throw error
+      }
+      switch (error.response?.status) {
+        case 404: {
+          const result = await this.vscodeProposed.window.showInformationMessage(
+            `That workspace doesn't exist!`,
+            {
+              modal: true,
+              detail: `${parts[0]}/${parts[1]} cannot be found. Maybe it was deleted...`,
+              useCustom: true,
+            },
+            "Open Workspace",
+          )
+          if (!result) {
+            await this.closeRemote()
+          }
+          await vscode.commands.executeCommand("coder.open")
+          return
+        }
+        case 401: {
+          const result = await this.vscodeProposed.window.showInformationMessage(
+            "Your session expired...",
+            {
+              useCustom: true,
+              modal: true,
+              detail: "You must login again to access your workspace.",
+            },
+            "Login",
+          )
+          if (!result) {
+            await this.closeRemote()
+          }
+          await vscode.commands.executeCommand("coder.login", this.storage.getURL())
+          await this.setup(uri)
+          return
+        }
+        default:
+          throw error
+      }
     }
 
-    this.vscodeProposed.workspace.registerResourceLabelFormatter({
-      scheme: "vscode-remote",
-      formatting: {
-        authorityPrefix: authority,
-        label: "${path}",
-        separator: "/",
-        tildify: true,
-        workspaceSuffix: `Coder: ${owner}/${name}`,
-      },
-    })
+    const disposables: vscode.Disposable[] = []
+    // Register before connection so the label still displays!
+    disposables.push(this.registerLabelFormatter(`${workspace.owner_name}/${workspace.name}`))
 
-    let latestBuild = workspace.latest_build
-    if (latestBuild.status === "stopping" || latestBuild.status === "starting") {
-      const output = vscode.window.createOutputChannel(`@${owner}/${name} Build Log`)
-      const logs = await getWorkspaceBuildLogs(latestBuild.id, new Date())
-      logs.forEach((log) => output.appendLine(log.output))
-      output.show()
-      let path = `/api/v2/workspacebuilds/${latestBuild.id}/logs?follow=true`
+    let buildComplete: undefined | (() => void)
+    if (workspace.latest_build.status === "stopped") {
+      this.vscodeProposed.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          cancellable: false,
+          title: "Starting workspace...",
+        },
+        () =>
+          new Promise<void>((r) => {
+            buildComplete = r
+          }),
+      )
+      this.vscodeProposed.window.showInformationMessage("Starting workspace...")
+      workspace = {
+        ...workspace,
+        latest_build: await startWorkspace(workspace.id),
+      }
+    }
+
+    // If a build is running we should stream the logs to the user so
+    // they can watch what's going on!
+    if (workspace.latest_build.status === "pending" || workspace.latest_build.status === "starting") {
+      const writeEmitter = new vscode.EventEmitter<string>()
+      // We use a terminal instead of an output channel because it feels
+      // more familiar to a user!
+      const terminal = vscode.window.createTerminal({
+        name: "Build Log",
+        location: vscode.TerminalLocation.Panel,
+        // Spin makes this gear icon spin!
+        iconPath: new vscode.ThemeIcon("gear~spin"),
+        pty: {
+          onDidWrite: writeEmitter.event,
+          close: () => undefined,
+          open: () => undefined,
+        } as Partial<vscode.Pseudoterminal> as any,
+      })
+      // This fetches the initial bunch of logs.
+      const logs = await getWorkspaceBuildLogs(workspace.latest_build.id, new Date())
+      logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"))
+      terminal.show(true)
+      // This follows the logs for new activity!
+      let path = `/api/v2/workspacebuilds/${workspace.latest_build.id}/logs?follow=true`
       if (logs.length) {
         path += `&after=${logs[logs.length - 1].id}`
       }
@@ -89,6 +144,7 @@ export class Remote {
         throw new Error("You aren't logged in!")
       }
       const url = new URL(rawURL)
+      const sessionToken = await this.storage.getSessionToken()
       await new Promise<void>((resolve, reject) => {
         let scheme = "wss:"
         if (url.protocol === "http:") {
@@ -96,14 +152,14 @@ export class Remote {
         }
         const socket = new ws.WebSocket(new URL(`${scheme}//${url.host}${path}`), {
           headers: {
-            "Coder-Session-Token": this.storage.getSessionToken(),
+            "Coder-Session-Token": sessionToken,
           },
         })
         socket.binaryType = "nodebuffer"
         socket.on("message", (data) => {
           const buf = data as Buffer
           const log = JSON.parse(buf.toString()) as ProvisionerJobLog
-          output.appendLine(log.output)
+          writeEmitter.fire(log.output + "\r\n")
         })
         socket.on("error", (err) => {
           reject(err)
@@ -112,51 +168,54 @@ export class Remote {
           resolve()
         })
       })
-      output.appendLine("Build complete")
-
+      writeEmitter.fire("Build complete")
       workspace = await getWorkspace(workspace.id)
-      latestBuild = workspace.latest_build
-    }
-    // Only prompt to start on the first resolve attempt!
-    if (workspace.latest_build.status === "stopped") {
-      if (ctx.resolveAttempt !== 1) {
-        throw new Error(`${owner}/${name} is stopped`)
+      terminal.hide()
+
+      if (buildComplete) {
+        buildComplete()
       }
-      const result = await this.vscodeProposed.window.showInformationMessage(
-        `Do you want to start @${owner}/${name}?`,
-        {
-          modal: true,
-          detail:
-            "The build log will appear so you can watch it's progress! We'll automatically connect you when it's done.",
-          useCustom: true,
-        },
-        "Start Workspace",
-      )
-      if (result !== "Start Workspace") {
-        throw vscode.RemoteAuthorityResolverError.NotAvailable("The workspace isn't started!")
+    }
+
+    const agents = workspace.latest_build.resources.reduce((acc, resource) => {
+      return acc.concat(resource.agents || [])
+    }, [] as WorkspaceAgent[])
+
+    let agent: WorkspaceAgent | undefined
+
+    if (parts.length === 2) {
+      if (agents.length === 1) {
+        agent = agents[0]
       }
-      latestBuild = await startWorkspace(workspace.id)
+
+      // If there are multiple agents, we should select one here!
+      // TODO: Support multiple agents!
     }
 
-    const agents: WorkspaceAgent[] = []
-    workspace.latest_build.resources.forEach((resource) => {
-      resource.agents?.forEach((agent) => {
-        agents.push(agent)
-      })
-    })
-    if (agents.length === 0) {
-      throw new Error("This workspace has no agents!")
+    if (!agent) {
+      const matchingAgents = agents.filter((agent) => agent.name === parts[2])
+      if (matchingAgents.length !== 1) {
+        // TODO: Show the agent selector here instead!
+        throw new Error(`Invalid Coder SSH authority. Agent not found!`)
+      }
+      agent = matchingAgents[0]
     }
 
-    const agent = agents[0]
-    if (agents.length > 1) {
-      // TODO: Show a picker!
+    let remotePlatforms = this.vscodeProposed.workspace
+      .getConfiguration()
+      .get<Record<string, string>>("remote.SSH.remotePlatform")
+    remotePlatforms = {
+      ...remotePlatforms,
+      [`${authorityParts[1]}`]: agent.operating_system,
     }
 
-    if (this.ipc) {
-      this.ipc.kill()
-    }
+    const settingsContent = await fs.readFile(this.storage.getUserSettingsPath(), "utf8")
+    const parsed = jsonc.parse(settingsContent)
+    parsed["remote.SSH.remotePlatform"] = remotePlatforms
+    const edits = jsonc.modify(settingsContent, ["remote", "SSH", "remotePlatform"], remotePlatforms, {})
+    await fs.writeFile(this.storage.getUserSettingsPath(), jsonc.applyEdits(settingsContent, edits))
 
+    const workspaceUpdate = new vscode.EventEmitter<Workspace>()
     const watchURL = new URL(`${this.storage.getURL()}/api/v2/workspaces/${workspace.id}/watch`)
     const eventSource = new EventSource(watchURL.toString(), {
       headers: {
@@ -164,175 +223,317 @@ export class Remote {
       },
     })
     eventSource.addEventListener("open", () => {
-      this.output.appendLine("Started watching workspace")
+      // TODO: Add debug output that we began watching here!
+    })
+    eventSource.addEventListener("error", () => {
+      // TODO: Add debug output that we got an error here!
     })
     eventSource.addEventListener("data", (event: MessageEvent<string>) => {
       const workspace = JSON.parse(event.data) as Workspace
       if (!workspace) {
         return
       }
+      workspaceUpdate.fire(workspace)
       if (workspace.latest_build.status === "stopping" || workspace.latest_build.status === "stopped") {
-        // this.vscodeProposed.window.showInformationMessage("Something", {
-        //   useCustom: true,
-        //   modal: true,
-        //   detail: "The workspace stopped!",
-        // })
-        this.ipc?.kill()
-      }
-    })
-    eventSource.addEventListener("error", (event) => {
-      this.output.appendLine("Received error watching workspace: " + event.data)
-    })
-
-    const binaryPath = await this.storage.fetchBinary()
-    if (!binaryPath) {
-      throw new Error("Failed to download binary!")
-    }
-    this.ipc = await IPC.start(binaryPath, this.storage, agent.id)
-    const updateNetworkStatus = () => {
-      if (!this.ipc) {
-        return
-      }
-      this.ipc
-        .network()
-        .then((network) => {
-          let statusText = "$(globe) "
-          if (network.p2p) {
-            statusText += "Direct "
-            this.networkStatus.tooltip = "You're connected peer-to-peer ✨."
-          } else {
-            statusText += network.preferred_derp + " "
-            this.networkStatus.tooltip =
-              "You're connected through a relay 🕵️.\nWe'll switch over to peer-to-peer when available."
-          }
-          this.networkStatus.tooltip +=
-            "\n\nDownload ↓ " +
-            prettyBytes(network.download_bytes_sec, {
-              bits: true,
-            }) +
-            "/s • Upload ↑ " +
-            prettyBytes(network.upload_bytes_sec, {
-              bits: true,
-            }) +
-            "/s\n"
-
-          if (!network.p2p) {
-            const derpLatency = network.derp_latency[network.preferred_derp]
-
-            this.networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(
-              network.latency - derpLatency
-            ).toFixed(2)}ms ↔ Workspace`
-
-            let first = true
-            Object.keys(network.derp_latency).forEach((region) => {
-              if (region === network.preferred_derp) {
-                return
-              }
-              if (first) {
-                this.networkStatus.tooltip += `\n\nOther regions:`
-                first = false
-              }
-              this.networkStatus.tooltip += `\n${region}: ${Math.round(network.derp_latency[region] * 100) / 100}ms`
-            })
-          }
-
-          statusText += "(" + network.latency.toFixed(2) + "ms)"
-          this.networkStatus.text = statusText
-          this.networkStatus.show()
-          setTimeout(updateNetworkStatus, 2500)
-        })
-        .catch((ex) => {
-          if (this.ipc?.killed) {
-            return
-          }
-          this.output.appendLine("Failed to get network status: " + ex)
-          setTimeout(updateNetworkStatus, 2500)
-        })
-    }
-    updateNetworkStatus()
-
-    const shell = agent.operating_system === "windows" ? "powershell -noprofile -noninteractive -" : "sh"
-    const installCodeServer = agent.operating_system === "windows" ? windowsInstallScript : installScript
-    const exitCode = await this.ipc.execute(shell, installCodeServer, (data) => {
-      this.output.appendLine(data.toString())
-    })
-
-    if (exitCode !== 0) {
-      this.output.show()
-      throw new Error("Failed to run the startup script. Check the output log for details!")
-    }
-    const binPath = agent.operating_system === "windows" ? "code-server" : "$HOME/.vscode-remote/bin/code-server"
-
-    let running: {
-      commit: string
-      process_id: number
-    }[] = []
-    await this.ipc.execute(shell, `${binPath} ps`, (data) => {
-      try {
-        running = JSON.parse(data)
-      } catch {
-        // We can ignore this, it's probably blank!
-      }
-    })
-    // Store the running port for the current commit in a file for reconnection!
-    const portFilePath = `/tmp/.vscode-remote-${this.vscodeCommit}-port`
-    let remotePort = 0
-    if (running.filter((instance) => instance.commit === this.vscodeCommit)) {
-      await this.ipc.execute(shell, `cat ${portFilePath}`, (data) => {
-        if (data.trim()) {
-          remotePort = Number.parseInt(data.trim())
+        const action = this.vscodeProposed.window.showInformationMessage(
+          "Your workspace stopped!",
+          {
+            useCustom: true,
+            modal: true,
+            detail: "Reloading the window will start it again.",
+          },
+          "Reload Window",
+        )
+        if (!action) {
+          return
         }
-      })
+        this.reloadWindow()
+      }
+    })
 
-      this.output.appendLine("Found existing server running on port: " + remotePort)
-    }
-
-    if (!remotePort) {
-      remotePort = await new Promise<number>((resolve, reject) => {
-        const script =
-          binPath +
-          " serve-local --start-server --port 0 --without-connection-token --commit-id " +
-          this.vscodeCommit +
-          " --accept-server-license-terms"
-        this.ipc
-          ?.execute(shell, script, (data) => {
-            const lines = data.split("\n")
-            lines.forEach((line) => {
-              this.output.appendLine(line)
-              if (!line.startsWith("Server bound to")) {
+    if (agent.status === "connecting") {
+      await vscode.window.withProgress(
+        {
+          title: "Waiting for the agent to connect...",
+          location: vscode.ProgressLocation.Notification,
+        },
+        async () => {
+          await new Promise<void>((resolve) => {
+            const updateEvent = workspaceUpdate.event((workspace) => {
+              const agents = workspace.latest_build.resources.reduce((acc, resource) => {
+                return acc.concat(resource.agents || [])
+              }, [] as WorkspaceAgent[])
+              if (!agent) {
                 return
               }
-              const parts = line.split(" ").filter((part) => part.startsWith("127.0.0.1:"))
-              if (parts.length === 0) {
-                return reject("No port found in output: " + line)
+              const found = agents.find((newAgent) => {
+                if (!agent) {
+                  // This shouldn't be possible... just makes the types happy!
+                  return false
+                }
+                return newAgent.id === agent.id
+              })
+              if (!found) {
+                return
               }
-              const port = parts[0].split(":").pop()
-              if (!port) {
-                return reject("No port found in parts: " + parts.join(","))
+              agent = found
+              if (agent.status === "connecting") {
+                return
               }
-              resolve(Number.parseInt(port))
+              updateEvent.dispose()
+              resolve()
             })
           })
-          .then((exitCode) => {
-            reject("Exited with: " + exitCode)
-          })
-      })
-
-      await this.ipc.execute(
-        shell,
-        `echo ${remotePort} > /tmp/.vscode-remote-${this.vscodeCommit}-port`,
-        () => undefined,
+        },
       )
     }
 
-    const forwarded = await this.ipc.portForward(remotePort)
-    vscode.commands.executeCommand("setContext", "forwardedPortsViewEnabled", true)
+    if (agent.status === "timeout") {
+      const result = await this.vscodeProposed.window.showErrorMessage("Connection timed out...", {
+        useCustom: true,
+        modal: true,
+        detail: `The ${agent.name} agent didn't connect in time. Try restarting your workspace.`,
+      })
+      if (!result) {
+        await this.closeRemote()
+        return
+      }
+      await this.reloadWindow()
+      return
+    }
+
+    // This ensures the Remote SSH extension resolves
+    // the host to execute the Coder binary properly.
+    //
+    // If we didn't write to the SSH config file,
+    // connecting would fail with "Host not found".
+    await this.updateSSHConfig(authorityParts[1])
+
+    this.findSSHProcessID().then((pid) => {
+      if (!pid) {
+        // TODO: Show an error here!
+        return
+      }
+      disposables.push(this.showNetworkUpdates(pid))
+    })
+
+    // Register the label formatter again because SSH overrides it!
+    let label = `${workspace.owner_name}/${workspace.name}`
+    if (agents.length > 1) {
+      label += `/${agent.name}`
+    }
+
+    disposables.push(
+      vscode.extensions.onDidChange(() => {
+        disposables.push(this.registerLabelFormatter(label))
+      }),
+    )
 
     return {
-      connectionToken: "",
-      host: "127.0.0.1",
-      port: forwarded.localPort,
-      isTrusted: true,
+      dispose: () => {
+        eventSource.close()
+        disposables.forEach((d) => d.dispose())
+      },
     }
+  }
+
+  // updateSSHConfig updates the SSH configuration with a wildcard
+  // that handles all Coder entries.
+  private async updateSSHConfig(sshHost: string) {
+    let sshConfigFile = vscode.workspace.getConfiguration().get<string>("remote.SSH.configFile")
+    if (!sshConfigFile) {
+      sshConfigFile = path.join(os.homedir(), ".ssh", "config")
+    }
+    let sshConfigRaw: string
+    try {
+      sshConfigRaw = await fs.readFile(sshConfigFile, "utf8")
+    } catch (ex) {
+      // Probably just doesn't exist!
+      sshConfigRaw = ""
+    }
+    const parsedConfig = SSHConfig.parse(sshConfigRaw)
+    const computedHost = parsedConfig.compute(sshHost)
+
+    let binaryPath = await this.storage.fetchBinary()
+    if (!binaryPath) {
+      throw new Error("Failed to fetch the Coder binary!")
+    }
+    if (this.mode === vscode.ExtensionMode.Development) {
+      binaryPath = path.join(os.tmpdir(), "coder")
+    }
+
+    parsedConfig.remove({ Host: computedHost.Host })
+    parsedConfig.append({
+      Host: `${Remote.Prefix}*`,
+      ProxyCommand: `${binaryPath} vscodessh --network-info-dir ${this.storage.getNetworkInfoPath()} --session-token-file ${this.storage.getSessionTokenPath()} --url-file ${this.storage.getURLPath()} %h`,
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    })
+
+    await fs.writeFile(sshConfigFile, parsedConfig.toString())
+  }
+
+  // showNetworkUpdates finds the SSH process ID that is being used by
+  // this workspace and reads the file being created by the Coder CLI.
+  private showNetworkUpdates(sshPid: number): vscode.Disposable {
+    const networkStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 1000)
+    const networkInfoFile = path.join(this.storage.getNetworkInfoPath(), `${sshPid}.json`)
+
+    const updateStatus = (network: {
+      p2p: boolean
+      latency: number
+      preferred_derp: string
+      derp_latency: { [key: string]: number }
+      upload_bytes_sec: number
+      download_bytes_sec: number
+    }) => {
+      let statusText = "$(globe) "
+      if (network.p2p) {
+        statusText += "Direct "
+        networkStatus.tooltip = "You're connected peer-to-peer ✨."
+      } else {
+        statusText += network.preferred_derp + " "
+        networkStatus.tooltip =
+          "You're connected through a relay 🕵️.\nWe'll switch over to peer-to-peer when available."
+      }
+      networkStatus.tooltip +=
+        "\n\nDownload ↓ " +
+        prettyBytes(network.download_bytes_sec, {
+          bits: true,
+        }) +
+        "/s • Upload ↑ " +
+        prettyBytes(network.upload_bytes_sec, {
+          bits: true,
+        }) +
+        "/s\n"
+
+      if (!network.p2p) {
+        const derpLatency = network.derp_latency[network.preferred_derp]
+
+        networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(
+          network.latency - derpLatency
+        ).toFixed(2)}ms ↔ Workspace`
+
+        let first = true
+        Object.keys(network.derp_latency).forEach((region) => {
+          if (region === network.preferred_derp) {
+            return
+          }
+          if (first) {
+            networkStatus.tooltip += `\n\nOther regions:`
+            first = false
+          }
+          networkStatus.tooltip += `\n${region}: ${Math.round(network.derp_latency[region] * 100) / 100}ms`
+        })
+      }
+
+      statusText += "(" + network.latency.toFixed(2) + "ms)"
+      networkStatus.text = statusText
+      networkStatus.show()
+    }
+    let disposed = false
+    const periodicRefresh = () => {
+      if (disposed) {
+        return
+      }
+      fs.readFile(networkInfoFile, "utf8")
+        .then((content) => {
+          return JSON.parse(content)
+        })
+        .then((parsed) => {
+          try {
+            updateStatus(parsed)
+          } catch (ex) {
+            // Ignore
+          }
+        })
+        .catch(() => {
+          // TODO: Log a failure here!
+        })
+        .finally(() => {
+          // This matches the write interval of `coder vscodessh`.
+          setTimeout(periodicRefresh, 3000)
+        })
+    }
+    periodicRefresh()
+
+    return {
+      dispose: () => {
+        disposed = true
+        networkStatus.dispose()
+      },
+    }
+  }
+
+  // findSSHProcessID returns the currently active SSH process ID
+  // that is powering the remote SSH connection.
+  private async findSSHProcessID(timeout = 15000): Promise<number | undefined> {
+    const search = async (logPath: string): Promise<number | undefined> => {
+      // This searches for the socksPort that Remote SSH is connecting to.
+      // We do this to find the SSH process that is powering this connection.
+      // That SSH process will be logging network information periodically to
+      // a file.
+      const text = await fs.readFile(logPath, "utf8")
+      const matches = text.match(/-> socksPort (\d+) ->/)
+      if (!matches) {
+        return
+      }
+      if (matches.length < 2) {
+        return
+      }
+      const port = Number.parseInt(matches[1])
+      if (!port) {
+        return
+      }
+      const processes = await find("port", port)
+      if (processes.length < 1) {
+        return
+      }
+      const process = processes[0]
+      return process.pid
+    }
+    const start = Date.now()
+    const loop = async (): Promise<number | undefined> => {
+      if (Date.now() - start > timeout) {
+        return undefined
+      }
+      // Loop until we find the remote SSH log for this window.
+      const filePath = await this.storage.getRemoteSSHLogPath()
+      if (!filePath) {
+        return new Promise((resolve) => setTimeout(() => resolve(loop()), 500))
+      }
+      // Then we search the remote SSH log until we find the port.
+      const result = await search(filePath)
+      if (!result) {
+        return new Promise((resolve) => setTimeout(() => resolve(loop()), 500))
+      }
+      return result
+    }
+    return loop()
+  }
+
+  // closeRemote ends the current remote session.
+  private async closeRemote() {
+    await vscode.commands.executeCommand("workbench.action.remote.close")
+  }
+
+  // reloadWindow reloads the current window.
+  private async reloadWindow() {
+    await vscode.commands.executeCommand("workbench.action.reloadWindow")
+  }
+
+  private registerLabelFormatter(suffix: string): vscode.Disposable {
+    return this.vscodeProposed.workspace.registerResourceLabelFormatter({
+      scheme: "vscode-remote",
+      formatting: {
+        authorityPrefix: "ssh-remote",
+        label: "${path}",
+        separator: "/",
+        tildify: true,
+        workspaceSuffix: `Coder: ${suffix}`,
+      },
+    })
   }
 }

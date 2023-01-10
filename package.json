@@ -21,11 +21,11 @@
     "Other"
   ],
   "activationEvents": [
-    "onResolveRemoteAuthority:coder",
+    "onResolveRemoteAuthority:ssh-remote",
     "onCommand:coder.connect",
     "onCommand:coder.open",
     "onCommand:coder.login",
-    "onView:coderWorkspaces",
+    "onView:coderRemote",
     "onUri"
   ],
   "extensionDependencies": [
@@ -45,7 +45,7 @@
     "views": {
       "coder": [
         {
-          "id": "coderWorkspaces",
+          "id": "coderRemote",
           "name": "",
           "visibility": "visible",
           "icon": "media/logo.svg",
@@ -55,12 +55,12 @@
     },
     "viewsWelcome": [
       {
-        "view": "coderWorkspaces",
+        "view": "coderRemote",
         "contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
         "when": "!coder.authenticated && coder.loaded"
       },
       {
-        "view": "coderWorkspaces",
+        "view": "coderRemote",
         "contents": "You're logged in! \n[Open Workspace](command:coder.open)",
         "when": "coder.authenticated && coder.loaded"
       }
@@ -132,8 +132,11 @@
   "dependencies": {
     "axios": "0.26.1",
     "eventsource": "^2.0.2",
+    "find-process": "^1.4.7",
+    "jsonc-parser": "^3.2.0",
     "ndjson": "^2.0.0",
     "pretty-bytes": "^6.0.0",
+    "ssh-config": "4.1.6",
     "tar-fs": "^2.1.1",
     "which": "^2.0.2",
     "ws": "^8.11.0",
