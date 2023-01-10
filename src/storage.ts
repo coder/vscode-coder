@@ -2,6 +2,7 @@ import axios from "axios"
 import { execFile } from "child_process"
 import { getBuildInfo } from "coder/site/src/api/api"
 import { createWriteStream } from "fs"
+import { ensureDir } from "fs-extra"
 import fs from "fs/promises"
 import { IncomingMessage } from "http"
 import os from "os"
@@ -247,6 +248,7 @@ export class Storage {
     const url = this.getURL()
     axios.defaults.baseURL = url
     if (url) {
+      await ensureDir(this.globalStorageUri.fsPath)
       await fs.writeFile(this.getURLPath(), url)
     } else {
       await fs.rm(this.getURLPath(), { force: true })
