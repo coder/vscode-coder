@@ -157,7 +157,10 @@ export class Commands {
     const output: {
       workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
     } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
-    const opened = output.workspaces.filter((opened) => opened.folderUri?.authority === uri.authority)
+    const opened = output.workspaces.filter(
+      // Filter out `/` since that's added below.
+      (opened) => opened.folderUri?.authority === uri.authority && uri.path !== "/",
+    )
     // Always add `/` as an option to open. If we don't, it can become hard
     // to open multiple VS Code windows.
     opened.splice(0, 0, {
@@ -165,14 +168,11 @@ export class Commands {
       remoteAuthority: "coder",
     })
     if (opened.length > 1) {
-      const items: vscode.QuickPickItem[] = opened
-        // Filter out `/` since that's added above.
-        .filter((folder) => folder.folderUri.path !== "/")
-        .map((folder): vscode.QuickPickItem => {
-          return {
-            label: folder.folderUri.fsPath,
-          }
-        })
+      const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
+        return {
+          label: folder.folderUri.fsPath,
+        }
+      })
       const item = await vscode.window.showQuickPick(items, {
         title: "Select a recently opened folder",
       })
