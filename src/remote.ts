@@ -1,5 +1,11 @@
 import axios from "axios"
-import { getWorkspace, getWorkspaceBuildLogs, getWorkspaceByOwnerAndName, startWorkspace } from "coder/site/src/api/api"
+import {
+  getBuildInfo,
+  getWorkspace,
+  getWorkspaceBuildLogs,
+  getWorkspaceByOwnerAndName,
+  startWorkspace,
+} from "coder/site/src/api/api"
 import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
 import find from "find-process"
@@ -8,6 +14,7 @@ import * as jsonc from "jsonc-parser"
 import * as os from "os"
 import * as path from "path"
 import prettyBytes from "pretty-bytes"
+import * as semver from "semver"
 import SSHConfig from "ssh-config"
 import * as vscode from "vscode"
 import * as ws from "ws"
@@ -40,6 +47,28 @@ export class Remote {
     const parts = sshAuthority.split("--")
     if (parts.length < 2 || parts.length > 3) {
       throw new Error(`Invalid Coder SSH authority. Must be: <username>--<workspace>--<agent?>`)
+    }
+
+    const buildInfo = await getBuildInfo()
+    const parsedVersion = semver.parse(buildInfo.version)
+    // Server versions before v0.14.1 don't support the vscodessh command!
+    if (
+      parsedVersion?.major === 0 &&
+      parsedVersion?.minor <= 14 &&
+      parsedVersion?.patch < 1 &&
+      parsedVersion?.prerelease.length === 0
+    ) {
+      await this.vscodeProposed.window.showErrorMessage(
+        "Incompatible Server",
+        {
+          detail: "Your Coder server is too old to support the Coder extension! Please upgrade to v0.14.1 or newer.",
+          modal: true,
+          useCustom: true,
+        },
+        "Close Remote",
+      )
+      await this.closeRemote()
+      return
     }
 
     // Find the workspace from the URI scheme provided!
