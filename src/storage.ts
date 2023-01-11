@@ -165,7 +165,12 @@ export class Storage {
           cancelled = true
         })
 
-        const contentLengthPretty = prettyBytes(contentLength)
+        let contentLengthPretty = ""
+        // Reverse proxies might not always send a content length!
+        if (!Number.isNaN(contentLength)) {
+          contentLengthPretty = " / " + prettyBytes(contentLength)
+        }
+
         const writeStream = createWriteStream(binPath, {
           autoClose: true,
           mode: 0o755,
@@ -175,7 +180,7 @@ export class Storage {
           writeStream.write(buffer, () => {
             written += buffer.byteLength
             progress.report({
-              message: `${prettyBytes(written)} / ${contentLengthPretty}`,
+              message: `${prettyBytes(written)}${contentLengthPretty}`,
               increment: (buffer.byteLength / contentLength) * 100,
             })
           })
