@@ -152,37 +152,47 @@ export class Commands {
 
     // A workspace can have multiple agents, but that's handled
     // when opening a workspace unless explicitly specified.
-    let uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}/`)
+    const remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}`
 
     const output: {
       workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
     } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
     const opened = output.workspaces.filter(
       // Filter out `/` since that's added below.
-      (opened) => opened.folderUri?.authority === uri.authority && uri.path !== "/",
+      (opened) => opened.folderUri?.authority === remoteAuthority,
     )
-    // Always add `/` as an option to open. If we don't, it can become hard
-    // to open multiple VS Code windows.
-    opened.splice(0, 0, {
-      folderUri: uri,
-      remoteAuthority: "coder",
-    })
-    if (opened.length > 1) {
-      const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
-        return {
-          label: folder.folderUri.fsPath,
+    if (opened.length > 0) {
+      let selected: typeof opened[0]
+
+      if (opened.length > 1) {
+        const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
+          return {
+            label: folder.folderUri.fsPath,
+          }
+        })
+        const item = await vscode.window.showQuickPick(items, {
+          title: "Select a recently opened folder",
+        })
+        if (!item) {
+          return
         }
-      })
-      const item = await vscode.window.showQuickPick(items, {
-        title: "Select a recently opened folder",
-      })
-      if (!item) {
-        return
+        selected = opened[items.indexOf(item)]
+      } else {
+        selected = opened[0]
       }
-      const selected = opened[items.indexOf(item)]
-      uri = vscode.Uri.joinPath(uri, selected.folderUri.path)
+
+      await vscode.commands.executeCommand(
+        "vscode.openFolder",
+        vscode.Uri.from({
+          scheme: "vscode-remote",
+          authority: remoteAuthority,
+          path: selected.folderUri.path,
+        }),
+      )
+      return
     }
 
-    await vscode.commands.executeCommand("vscode.openFolder", uri)
+    // This opens the workspace without an active folder opened.
+    await vscode.commands.executeCommand("vscode.newWindow", { remoteAuthority: remoteAuthority, reuseWindow: true })
   }
 }

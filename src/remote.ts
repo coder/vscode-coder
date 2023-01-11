@@ -32,8 +32,8 @@ export class Remote {
     private readonly mode: vscode.ExtensionMode,
   ) {}
 
-  public async setup(uri: vscode.Uri): Promise<vscode.Disposable | undefined> {
-    const authorityParts = uri.authority.split("+")
+  public async setup(remoteAuthority: string): Promise<vscode.Disposable | undefined> {
+    const authorityParts = remoteAuthority.split("+")
     // If the URI passed doesn't have the proper prefix
     // ignore it. We don't need to do anything special,
     // because this isn't trying to open a Coder workspace.
@@ -110,7 +110,7 @@ export class Remote {
             await this.closeRemote()
           }
           await vscode.commands.executeCommand("coder.login", this.storage.getURL())
-          await this.setup(uri)
+          await this.setup(remoteAuthority)
           return
         }
         default:

@@ -78,15 +78,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
   // in package.json we're able to perform actions before the authority is
   // resolved by the remote SSH extension.
-  const activeRemotes = vscode.workspace.workspaceFolders?.filter((folder) => folder.uri.scheme === "vscode-remote")
-  // If the currently opened folder isn't remote we can return early!
-  if (activeRemotes?.length !== 1) {
+  if (!vscodeProposed.env.remoteAuthority) {
     return
   }
-  const activeRemote = activeRemotes[0].uri
-
-  ctx.globalStorageUri
-
   const remote = new Remote(vscodeProposed, storage, ctx.extensionMode)
-  await remote.setup(activeRemote)
+  await remote.setup(vscodeProposed.env.remoteAuthority)
 }
