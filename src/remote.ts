@@ -240,10 +240,15 @@ export class Remote {
       [`${authorityParts[1]}`]: agent.operating_system,
     }
 
-    const settingsContent = await fs.readFile(this.storage.getUserSettingsPath(), "utf8")
+    let settingsContent = "{}"
+    try {
+      settingsContent = await fs.readFile(this.storage.getUserSettingsPath(), "utf8")
+    } catch (ex) {
+      // Ignore! It's probably because the file doesn't exist.
+    }
     const parsed = jsonc.parse(settingsContent)
     parsed["remote.SSH.remotePlatform"] = remotePlatforms
-    const edits = jsonc.modify(settingsContent, ["remote", "SSH", "remotePlatform"], remotePlatforms, {})
+    const edits = jsonc.modify(settingsContent, ["remote.SSH.remotePlatform"], remotePlatforms, {})
     await fs.writeFile(this.storage.getUserSettingsPath(), jsonc.applyEdits(settingsContent, edits))
 
     const workspaceUpdate = new vscode.EventEmitter<Workspace>()
