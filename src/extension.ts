@@ -82,5 +82,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     return
   }
   const remote = new Remote(vscodeProposed, storage, ctx.extensionMode)
-  await remote.setup(vscodeProposed.env.remoteAuthority)
+  try {
+    await remote.setup(vscodeProposed.env.remoteAuthority)
+  } catch (ex) {
+    await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+      detail: ex as string,
+      modal: true,
+      useCustom: true,
+    })
+  }
 }
