@@ -80,7 +80,7 @@ export class Storage {
     const baseURI = vscode.Uri.parse(baseURL)
 
     const buildInfo = await getBuildInfo()
-    const binPath = this.binaryPath(buildInfo.version)
+    const binPath = this.binaryPath()
     const exists = await fs
       .stat(binPath)
       .then(() => true)
@@ -264,10 +264,10 @@ export class Storage {
     }
   }
 
-  private binaryPath(version: string): string {
+  private binaryPath(): string {
     const os = goos()
     const arch = goarch()
-    let binPath = path.join(this.getBinaryCachePath(), `coder-${os}-${arch}-${version}`)
+    let binPath = path.join(this.getBinaryCachePath(), `coder-${os}-${arch}`)
     if (os === "windows") {
       binPath += ".exe"
     }
