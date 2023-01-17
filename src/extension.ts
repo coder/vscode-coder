@@ -6,11 +6,15 @@ import * as vscode from "vscode"
 import { Commands } from "./commands"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
+import { WorkspacesProvider } from "./workspaces"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Coder")
+  const workspacesProvider = new WorkspacesProvider()
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
+
+  vscode.window.registerTreeDataProvider("coderRemote", workspacesProvider)
 
   getUser()
     .then(() => {
@@ -50,7 +54,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     },
   })
 
-  const commands = new Commands(storage)
+  const commands = new Commands(storage, workspacesProvider)
 
   vscode.commands.registerCommand("coder.login", commands.login.bind(commands))
   vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))

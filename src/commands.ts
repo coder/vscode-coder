@@ -4,9 +4,10 @@ import { Workspace } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
+import { WorkspacesProvider } from "./workspaces"
 
 export class Commands {
-  public constructor(private readonly storage: Storage) {}
+  public constructor(private readonly storage: Storage, private readonly treeDataProvider: WorkspacesProvider) {}
 
   public async login(...args: string[]): Promise<void> {
     let url: string | undefined = args.length >= 1 ? args[0] : undefined
@@ -64,25 +65,17 @@ export class Commands {
     await this.storage.setSessionToken(token)
     const user = await getUser()
     await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
-    vscode.window
-      .showInformationMessage(
-        `Welcome to Coder, ${user.username}!`,
-        {
-          detail: "You can now use the Coder extension to manage your Coder instance.",
-        },
-        "Open Workspace",
-      )
-      .then((action) => {
-        if (action === "Open Workspace") {
-          vscode.commands.executeCommand("coder.open")
-        }
-      })
+    this.treeDataProvider.refresh()
+    vscode.window.showInformationMessage(`Welcome to Coder, ${user.username}!`, {
+      detail: "You can now use the Coder extension to manage your Coder instance.",
+    })
   }
 
   public async logout(): Promise<void> {
     await this.storage.setURL(undefined)
     await this.storage.setSessionToken(undefined)
     await vscode.commands.executeCommand("setContext", "coder.authenticated", false)
+    this.treeDataProvider.refresh()
     vscode.window.showInformationMessage("You've been logged out of Coder!", "Login").then((action) => {
       if (action === "Login") {
         vscode.commands.executeCommand("coder.login")
