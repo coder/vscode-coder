@@ -46,7 +46,7 @@
       "coder": [
         {
           "id": "coderRemote",
-          "name": "",
+          "name": "Workspaces",
           "visibility": "visible",
           "icon": "media/logo.svg",
           "contextualTitle": "Coder Remote"
