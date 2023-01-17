@@ -1,6 +1,6 @@
 # Usage
 
-### How to share extensions with code-server
+## How to share extensions with code-server
 
 When you install extensions remotely with VSCode, they are stored on the machine
 here:
