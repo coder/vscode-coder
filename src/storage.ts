@@ -93,18 +93,13 @@ export class Storage {
     const controller = new AbortController()
 
     if (exists) {
-      this.output.appendLine(`Checking if binary outdated...`)
-      const outdated = await this.checkBinaryOutdated(binName, baseURL, controller)
-      // If it's outdated, we fall through to the download logic.
-      if (outdated) {
-        this.output.appendLine(`Found outdated version.`)
-      } else {
-        // Even if the file exists, it could be corrupted.
-        // We run `coder version` to ensure the binary can be executed.
-        this.output.appendLine(`Using existing binary: ${binPath}`)
-        const valid = await this.checkBinaryValid(binPath)
-        if (valid) {
-          return binPath
+      this.output.appendLine(`Found existing binary: ${binPath}`)
+      const valid = await this.checkBinaryValid(binPath)
+      if (!valid) {
+        const removed = await this.rmBinary(binPath)
+        if (!removed) {
+          vscode.window.showErrorMessage("Failed to remove existing binary!")
+          return undefined
         }
       }
     }
@@ -138,15 +133,12 @@ export class Storage {
         })
       return
     }
-    if (resp.status !== 200) {
-      vscode.window.showErrorMessage("Failed to fetch the Coder binary: " + resp.statusText)
-      return
-    }
 
     const contentLength = Number.parseInt(resp.headers["content-length"])
 
     // Ensure the binary directory exists!
     await fs.mkdir(path.dirname(binPath), { recursive: true })
+    const tempFile = binPath + ".temp-" + Math.random().toString(36).substring(8)
 
     const completed = await vscode.window.withProgress<boolean>(
       {
@@ -169,7 +161,7 @@ export class Storage {
           contentLengthPretty = " / " + prettyBytes(contentLength)
         }
 
-        const writeStream = createWriteStream(binPath, {
+        const writeStream = createWriteStream(tempFile, {
           autoClose: true,
           mode: 0o755,
         })
@@ -205,8 +197,19 @@ export class Storage {
     if (!completed) {
       return
     }
+    if (resp.status === 200) {
+      this.output.appendLine(`Downloaded binary: ${binPath}`)
+      await fs.rename(tempFile, binPath)
+      return binPath
+    }
+    await fs.rm(tempFile)
 
-    this.output.appendLine(`Downloaded binary: ${binPath}`)
+    if (resp.status !== 304) {
+      vscode.window.showErrorMessage("Failed to fetch the Coder binary: " + resp.statusText)
+      return undefined
+    }
+
+    this.output.appendLine(`Using cached binary: ${binPath}`)
     return binPath
   }
 
@@ -279,6 +282,13 @@ export class Storage {
       .catch(() => false)
   }
 
+  private async rmBinary(binPath: string): Promise<boolean> {
+    return await fs
+      .rm(binPath, { force: true })
+      .then(() => true)
+      .catch(() => false)
+  }
+
   private async checkBinaryValid(binPath: string): Promise<boolean> {
     return await new Promise<boolean>((resolve) => {
       try {
@@ -293,24 +303,6 @@ export class Storage {
         resolve(false)
       }
     })
-  }
-
-  private async checkBinaryOutdated(binName: string, baseURL: string, controller: AbortController): Promise<boolean> {
-    const resp = await axios.get("/bin/" + binName, {
-      signal: controller.signal,
-      baseURL: baseURL,
-      headers: {
-        "If-None-Match": this.getBinaryETag(),
-      },
-    })
-
-    switch (resp.status) {
-      case 200:
-        return true
-      case 304:
-      default:
-        return false
-    }
   }
 
   private async updateSessionToken() {
