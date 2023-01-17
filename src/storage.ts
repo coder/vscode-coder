@@ -1,6 +1,7 @@
 import axios from "axios"
 import { execFile } from "child_process"
 import { getBuildInfo } from "coder/site/src/api/api"
+import * as crypto from "crypto"
 import { createWriteStream } from "fs"
 import { ensureDir } from "fs-extra"
 import fs from "fs/promises"
@@ -81,31 +82,7 @@ export class Storage {
 
     const buildInfo = await getBuildInfo()
     const binPath = this.binaryPath()
-    const exists = await fs
-      .stat(binPath)
-      .then(() => true)
-      .catch(() => false)
-    if (exists) {
-      // Even if the file exists, it could be corrupted.
-      // We run `coder version` to ensure the binary can be executed.
-      this.output.appendLine(`Using cached binary: ${binPath}`)
-      const valid = await new Promise<boolean>((resolve) => {
-        try {
-          execFile(binPath, ["version"], (err) => {
-            if (err) {
-              this.output.appendLine("Check for binary corruption: " + err)
-            }
-            resolve(err === null)
-          })
-        } catch (ex) {
-          this.output.appendLine("The cached binary cannot be executed: " + ex)
-          resolve(false)
-        }
-      })
-      if (valid) {
-        return binPath
-      }
-    }
+    const exists = await this.checkBinaryExists(binPath)
     const os = goos()
     const arch = goarch()
     let binName = `coder-${os}-${arch}`
@@ -114,6 +91,23 @@ export class Storage {
       binName += ".exe"
     }
     const controller = new AbortController()
+
+    if (exists) {
+      this.output.appendLine(`Checking if binary outdated...`)
+      const outdated = await this.checkBinaryOutdated(binName, baseURL, controller)
+      // If it's outdated, we fall through to the download logic.
+      if (outdated) {
+        this.output.appendLine(`Found outdated version.`)
+      } else {
+        // Even if the file exists, it could be corrupted.
+        // We run `coder version` to ensure the binary can be executed.
+        this.output.appendLine(`Using existing binary: ${binPath}`)
+        const valid = await this.checkBinaryValid(binPath)
+        if (valid) {
+          return binPath
+        }
+      }
+    }
     const resp = await axios.get("/bin/" + binName, {
       signal: controller.signal,
       baseURL: baseURL,
@@ -240,6 +234,10 @@ export class Storage {
     return path.join(this.globalStorageUri.fsPath, "url")
   }
 
+  public getBinaryETag(): string {
+    return crypto.createHash("sha1").update(this.binaryPath()).digest("hex")
+  }
+
   private appDataDir(): string {
     switch (process.platform) {
       case "darwin":
@@ -272,6 +270,47 @@ export class Storage {
       binPath += ".exe"
     }
     return binPath
+  }
+
+  private async checkBinaryExists(binPath: string): Promise<boolean> {
+    return await fs
+      .stat(binPath)
+      .then(() => true)
+      .catch(() => false)
+  }
+
+  private async checkBinaryValid(binPath: string): Promise<boolean> {
+    return await new Promise<boolean>((resolve) => {
+      try {
+        execFile(binPath, ["version"], (err) => {
+          if (err) {
+            this.output.appendLine("Check for binary corruption: " + err)
+          }
+          resolve(err === null)
+        })
+      } catch (ex) {
+        this.output.appendLine("The cached binary cannot be executed: " + ex)
+        resolve(false)
+      }
+    })
+  }
+
+  private async checkBinaryOutdated(binName: string, baseURL: string, controller: AbortController): Promise<boolean> {
+    const resp = await axios.get("/bin/" + binName, {
+      signal: controller.signal,
+      baseURL: baseURL,
+      headers: {
+        "If-None-Match": this.getBinaryETag(),
+      },
+    })
+
+    switch (resp.status) {
+      case 200:
+        return true
+      case 304:
+      default:
+        return false
+    }
   }
 
   private async updateSessionToken() {
