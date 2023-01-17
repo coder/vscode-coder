@@ -40,6 +40,7 @@ Coder Remote periodically reads the `network-info-dir + "/" + matchingSSHPID` fi
 
    ```bash
    # Inside https://github.com/coder/coder
+   # on Mac replace /tmp/coder with "$TMPDIR"
    $ go build -o /tmp/coder ./cmd/coder
    ```
 
