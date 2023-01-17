@@ -4,6 +4,7 @@
 coverage/**
 out/**
 src/**
+docs/**
 .gitignore
 node_modules/**
 **/tsconfig.json
