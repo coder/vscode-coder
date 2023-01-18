@@ -136,7 +136,6 @@ export class Remote {
             buildComplete = r
           }),
       )
-      this.vscodeProposed.window.showInformationMessage("Starting workspace...")
       workspace = {
         ...workspace,
         latest_build: await startWorkspace(workspace.id),
@@ -255,7 +254,7 @@ export class Remote {
     const watchURL = new URL(`${this.storage.getURL()}/api/v2/workspaces/${workspace.id}/watch`)
     const eventSource = new EventSource(watchURL.toString(), {
       headers: {
-        "Coder-Session-Token": this.storage.getSessionToken(),
+        "Coder-Session-Token": await this.storage.getSessionToken(),
       },
     })
     eventSource.addEventListener("open", () => {
