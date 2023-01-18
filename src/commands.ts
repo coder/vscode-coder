@@ -101,8 +101,8 @@ export class Commands {
     if (args.length === 0) {
       const quickPick = vscode.window.createQuickPick()
       quickPick.value = "owner:me "
-      quickPick.placeholder = "Filter"
-      quickPick.title = "Select a workspace to connect"
+      quickPick.placeholder = "owner:me template:go"
+      quickPick.title = `Connect to a workspace`
       let lastWorkspaces: Workspace[]
       quickPick.onDidChangeValue((value) => {
         quickPick.busy = true
@@ -112,15 +112,15 @@ export class Commands {
           .then((workspaces) => {
             lastWorkspaces = workspaces.workspaces
             const items: vscode.QuickPickItem[] = workspaces.workspaces.map((workspace) => {
-              let icon = "$(circle-filled)"
+              let icon = "$(debug-start)"
               if (workspace.latest_build.status !== "running") {
-                icon = "$(circle-outline)"
+                icon = "$(debug-stop)"
               }
               const status =
                 workspace.latest_build.status.substring(0, 1).toUpperCase() + workspace.latest_build.status.substring(1)
               return {
                 alwaysShow: true,
-                label: `${icon} ${workspace.name}`,
+                label: `${icon} ${workspace.owner_name} / ${workspace.name}`,
                 detail: `Template: ${workspace.template_display_name || workspace.template_name} • Status: ${status}`,
               }
             })
