@@ -171,7 +171,7 @@ export class Commands {
       if (opened.length > 1) {
         const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
           return {
-            label: folder.folderUri.fsPath,
+            label: folder.folderUri.path,
           }
         })
         const item = await vscode.window.showQuickPick(items, {
