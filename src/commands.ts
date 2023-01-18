@@ -48,8 +48,12 @@ export class Commands {
               return undefined
             })
             .catch((err) => {
+              let message = err
+              if (axios.isAxiosError(err) && err.response?.data) {
+                message = err.response.data.detail
+              }
               return {
-                message: "Invalid session token! (" + err + ")",
+                message: "Invalid session token! (" + message + ")",
                 severity: vscode.InputBoxValidationSeverity.Error,
               }
             })
