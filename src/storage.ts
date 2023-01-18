@@ -118,6 +118,10 @@ export class Storage {
       signal: controller.signal,
       baseURL: baseURL,
       responseType: "stream",
+      headers: {
+        "Accept-Encoding": "gzip",
+      },
+      decompress: true,
       // Ignore all errors so we can catch a 404!
       validateStatus: () => true,
     })
