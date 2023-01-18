@@ -114,103 +114,117 @@ export class Storage {
       // Ignore all errors so we can catch a 404!
       validateStatus: () => true,
     })
-    if (resp.status === 404) {
-      vscode.window
-        .showErrorMessage(
-          "Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
-          "Open an Issue",
+
+    switch (resp.status) {
+      case 200: {
+        const contentLength = Number.parseInt(resp.headers["content-length"])
+
+        // Ensure the binary directory exists!
+        await fs.mkdir(path.dirname(binPath), { recursive: true })
+        const tempFile = binPath + ".temp-" + Math.random().toString(36).substring(8)
+
+        const completed = await vscode.window.withProgress<boolean>(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Downloading the latest binary (${buildInfo.version} from ${baseURI.authority})`,
+            cancellable: true,
+          },
+          async (progress, token) => {
+            const readStream = resp.data as IncomingMessage
+            let cancelled = false
+            token.onCancellationRequested(() => {
+              controller.abort()
+              readStream.destroy()
+              cancelled = true
+            })
+
+            let contentLengthPretty = ""
+            // Reverse proxies might not always send a content length!
+            if (!Number.isNaN(contentLength)) {
+              contentLengthPretty = " / " + prettyBytes(contentLength)
+            }
+
+            const writeStream = createWriteStream(tempFile, {
+              autoClose: true,
+              mode: 0o755,
+            })
+            let written = 0
+            readStream.on("data", (buffer: Buffer) => {
+              writeStream.write(buffer, () => {
+                written += buffer.byteLength
+                progress.report({
+                  message: `${prettyBytes(written)}${contentLengthPretty}`,
+                  increment: (buffer.byteLength / contentLength) * 100,
+                })
+              })
+            })
+            try {
+              await new Promise<void>((resolve, reject) => {
+                readStream.on("error", (err) => {
+                  reject(err)
+                })
+                readStream.on("close", () => {
+                  if (cancelled) {
+                    return reject()
+                  }
+                  writeStream.close()
+                  resolve()
+                })
+              })
+              return true
+            } catch (ex) {
+              return false
+            }
+          },
         )
-        .then((value) => {
-          if (!value) {
-            return
-          }
-          const params = new URLSearchParams({
-            title: `Support the \`${os}-${arch}\` platform`,
-            body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
-          })
-          const uri = vscode.Uri.parse(`https://github.com/coder/vscode-coder/issues/new?` + params.toString())
-          vscode.env.openExternal(uri)
-        })
-      return
-    }
-
-    const contentLength = Number.parseInt(resp.headers["content-length"])
-
-    // Ensure the binary directory exists!
-    await fs.mkdir(path.dirname(binPath), { recursive: true })
-    const tempFile = binPath + ".temp-" + Math.random().toString(36).substring(8)
-
-    const completed = await vscode.window.withProgress<boolean>(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Downloading the latest binary (${buildInfo.version} from ${baseURI.authority})`,
-        cancellable: true,
-      },
-      async (progress, token) => {
-        const readStream = resp.data as IncomingMessage
-        let cancelled = false
-        token.onCancellationRequested(() => {
-          controller.abort()
-          readStream.destroy()
-          cancelled = true
-        })
-
-        let contentLengthPretty = ""
-        // Reverse proxies might not always send a content length!
-        if (!Number.isNaN(contentLength)) {
-          contentLengthPretty = " / " + prettyBytes(contentLength)
+        if (!completed) {
+          return
         }
-
-        const writeStream = createWriteStream(tempFile, {
-          autoClose: true,
-          mode: 0o755,
-        })
-        let written = 0
-        readStream.on("data", (buffer: Buffer) => {
-          writeStream.write(buffer, () => {
-            written += buffer.byteLength
-            progress.report({
-              message: `${prettyBytes(written)}${contentLengthPretty}`,
-              increment: (buffer.byteLength / contentLength) * 100,
+        this.output.appendLine(`Downloaded binary: ${binPath}`)
+        await fs.rename(tempFile, binPath)
+        await fs.rm(tempFile)
+        return binPath
+      }
+      case 304: {
+        this.output.appendLine(`Using cached binary: ${binPath}`)
+        return binPath
+      }
+      case 404: {
+        vscode.window
+          .showErrorMessage(
+            "Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
+            "Open an Issue",
+          )
+          .then((value) => {
+            if (!value) {
+              return
+            }
+            const params = new URLSearchParams({
+              title: `Support the \`${os}-${arch}\` platform`,
+              body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
             })
+            const uri = vscode.Uri.parse(`https://github.com/coder/vscode-coder/issues/new?` + params.toString())
+            vscode.env.openExternal(uri)
           })
-        })
-        try {
-          await new Promise<void>((resolve, reject) => {
-            readStream.on("error", (err) => {
-              reject(err)
+        return undefined
+      }
+      default: {
+        vscode.window
+          .showErrorMessage("Failed to download binary. Please open an issue.", "Open an Issue")
+          .then((value) => {
+            if (!value) {
+              return
+            }
+            const params = new URLSearchParams({
+              title: `Failed to download binary on \`${os}-${arch}\``,
+              body: `Received status code \`${resp.status}\` when downloading the binary.`,
             })
-            readStream.on("close", () => {
-              if (cancelled) {
-                return reject()
-              }
-              writeStream.close()
-              resolve()
-            })
+            const uri = vscode.Uri.parse(`https://github.com/coder/vscode-coder/issues/new?` + params.toString())
+            vscode.env.openExternal(uri)
           })
-          return true
-        } catch (ex) {
-          return false
-        }
-      },
-    )
-    if (!completed) {
-      return
+        return undefined
+      }
     }
-    if (resp.status === 200) {
-      this.output.appendLine(`Downloaded binary: ${binPath}`)
-      await fs.rename(tempFile, binPath)
-      return binPath
-    }
-    await fs.rm(tempFile)
-
-    if (resp.status !== 304) {
-      vscode.window.showErrorMessage("Failed to fetch the Coder binary: " + resp.statusText)
-      return undefined
-    }
-
-    this.output.appendLine(`Using cached binary: ${binPath}`)
-    return binPath
   }
 
   // getBinaryCachePath returns the path where binaries are cached.
