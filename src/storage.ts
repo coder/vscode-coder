@@ -182,7 +182,6 @@ export class Storage {
         }
         this.output.appendLine(`Downloaded binary: ${binPath}`)
         await fs.rename(tempFile, binPath)
-        await fs.rm(tempFile)
         return binPath
       }
       case 304: {
