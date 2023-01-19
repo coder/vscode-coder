@@ -123,10 +123,6 @@ export class Storage {
         // Ensure the binary directory exists!
         await fs.mkdir(path.dirname(binPath), { recursive: true })
         const tempFile = binPath + ".temp-" + Math.random().toString(36).substring(8)
-        const oldBinPath = binPath + ".old-" + Math.random().toString(36).substring(8)
-        await fs.rename(binPath, oldBinPath).catch(() => {
-          this.output.appendLine(`Warning: failed to rename ${binPath} to ${oldBinPath}`)
-        })
 
         const completed = await vscode.window.withProgress<boolean>(
           {
@@ -186,6 +182,10 @@ export class Storage {
           return
         }
         this.output.appendLine(`Downloaded binary: ${binPath}`)
+        const oldBinPath = binPath + ".old-" + Math.random().toString(36).substring(8)
+        await fs.rename(binPath, oldBinPath).catch(() => {
+          this.output.appendLine(`Warning: failed to rename ${binPath} to ${oldBinPath}`)
+        })
         await fs.rename(tempFile, binPath)
         await fs.rm(oldBinPath, { force: true }).catch((error) => {
           this.output.appendLine(`Warning: failed to remove old binary: ${error}`)
@@ -293,7 +293,11 @@ export class Storage {
     for (const file of files) {
       const fileName = path.basename(file)
       if (fileName.includes(".old-")) {
-        await fs.rm(path.join(binDir, file), { force: true })
+        try {
+          await fs.rm(path.join(binDir, file), { force: true })
+        } catch (error) {
+          this.output.appendLine(`Warning: failed to remove ${fileName}. Error: ${error}`)
+        }
       }
     }
   }
