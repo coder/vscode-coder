@@ -114,7 +114,7 @@ export class Storage {
       responseType: "stream",
       headers: {
         "Accept-Encoding": "gzip",
-        "If-None-Match": `"${await this.getBinaryETag()}"`,
+        "If-None-Match": `"${etag}"`,
       },
       decompress: true,
       // Ignore all errors so we can catch a 404!
