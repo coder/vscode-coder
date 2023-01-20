@@ -2,7 +2,7 @@ import axios from "axios"
 import { execFile } from "child_process"
 import { getBuildInfo } from "coder/site/src/api/api"
 import * as crypto from "crypto"
-import { createWriteStream } from "fs"
+import { createWriteStream, createReadStream } from "fs"
 import { ensureDir } from "fs-extra"
 import fs from "fs/promises"
 import { IncomingMessage } from "http"
@@ -104,17 +104,23 @@ export class Storage {
         }
       }
     }
+    const etag = await this.getBinaryETag()
+    this.output.appendLine(`Using binPath: ${binPath}`)
+    this.output.appendLine(`Using ETag: ${etag}`)
+
     const resp = await axios.get("/bin/" + binName, {
       signal: controller.signal,
       baseURL: baseURL,
       responseType: "stream",
       headers: {
         "Accept-Encoding": "gzip",
+        "If-None-Match": `"${await this.getBinaryETag()}"`,
       },
       decompress: true,
       // Ignore all errors so we can catch a 404!
       validateStatus: () => true,
     })
+    this.output.appendLine("Response status code: " + resp.status)
 
     switch (resp.status) {
       case 200: {
@@ -258,8 +264,21 @@ export class Storage {
     return path.join(this.globalStorageUri.fsPath, "url")
   }
 
-  public getBinaryETag(): string {
-    return crypto.createHash("sha1").update(this.binaryPath()).digest("hex")
+  public getBinaryETag(): Promise<string> {
+    const hash = crypto.createHash("sha1")
+    const stream = createReadStream(this.binaryPath())
+    return new Promise((resolve, reject) => {
+      stream.on("end", () => {
+        hash.end()
+        resolve(hash.digest("hex"))
+      })
+      stream.on("error", (err) => {
+        reject(err)
+      })
+      stream.on("data", (chunk) => {
+        hash.update(chunk)
+      })
+    })
   }
 
   private appDataDir(): string {
