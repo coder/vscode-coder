@@ -105,6 +105,7 @@ export class Storage {
       }
     }
     const etag = await this.getBinaryETag()
+    this.output.appendLine(`Using binName: ${binName}`)
     this.output.appendLine(`Using binPath: ${binPath}`)
     this.output.appendLine(`Using ETag: ${etag}`)
 
