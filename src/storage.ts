@@ -1,7 +1,8 @@
 import axios from "axios"
 import { execFile } from "child_process"
 import { getBuildInfo } from "coder/site/src/api/api"
-import { createWriteStream } from "fs"
+import * as crypto from "crypto"
+import { createWriteStream, createReadStream } from "fs"
 import { ensureDir } from "fs-extra"
 import fs from "fs/promises"
 import { IncomingMessage } from "http"
@@ -73,6 +74,7 @@ export class Storage {
   // fetchBinary returns the path to a Coder binary.
   // The binary will be cached if a matching server version already exists.
   public async fetchBinary(): Promise<string | undefined> {
+    await this.cleanUpOldBinaries()
     const baseURL = this.getURL()
     if (!baseURL) {
       throw new Error("Must be logged in!")
@@ -80,32 +82,8 @@ export class Storage {
     const baseURI = vscode.Uri.parse(baseURL)
 
     const buildInfo = await getBuildInfo()
-    const binPath = this.binaryPath(buildInfo.version)
-    const exists = await fs
-      .stat(binPath)
-      .then(() => true)
-      .catch(() => false)
-    if (exists) {
-      // Even if the file exists, it could be corrupted.
-      // We run `coder version` to ensure the binary can be executed.
-      this.output.appendLine(`Using cached binary: ${binPath}`)
-      const valid = await new Promise<boolean>((resolve) => {
-        try {
-          execFile(binPath, ["version"], (err) => {
-            if (err) {
-              this.output.appendLine("Check for binary corruption: " + err)
-            }
-            resolve(err === null)
-          })
-        } catch (ex) {
-          this.output.appendLine("The cached binary cannot be executed: " + ex)
-          resolve(false)
-        }
-      })
-      if (valid) {
-        return binPath
-      }
-    }
+    const binPath = this.binaryPath()
+    const exists = await this.checkBinaryExists(binPath)
     const os = goos()
     const arch = goarch()
     let binName = `coder-${os}-${arch}`
@@ -114,106 +92,153 @@ export class Storage {
       binName += ".exe"
     }
     const controller = new AbortController()
+
+    if (exists) {
+      this.output.appendLine(`Found existing binary: ${binPath}`)
+      const valid = await this.checkBinaryValid(binPath)
+      if (!valid) {
+        const removed = await this.rmBinary(binPath)
+        if (!removed) {
+          vscode.window.showErrorMessage("Failed to remove existing binary!")
+          return undefined
+        }
+      }
+    }
+    const etag = await this.getBinaryETag()
+    this.output.appendLine(`Using binName: ${binName}`)
+    this.output.appendLine(`Using binPath: ${binPath}`)
+    this.output.appendLine(`Using ETag: ${etag}`)
+
     const resp = await axios.get("/bin/" + binName, {
       signal: controller.signal,
       baseURL: baseURL,
       responseType: "stream",
       headers: {
         "Accept-Encoding": "gzip",
+        "If-None-Match": `"${etag}"`,
       },
       decompress: true,
       // Ignore all errors so we can catch a 404!
       validateStatus: () => true,
     })
-    if (resp.status === 404) {
-      vscode.window
-        .showErrorMessage(
-          "Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
-          "Open an Issue",
+    this.output.appendLine("Response status code: " + resp.status)
+
+    switch (resp.status) {
+      case 200: {
+        const contentLength = Number.parseInt(resp.headers["content-length"])
+
+        // Ensure the binary directory exists!
+        await fs.mkdir(path.dirname(binPath), { recursive: true })
+        const tempFile = binPath + ".temp-" + Math.random().toString(36).substring(8)
+
+        const completed = await vscode.window.withProgress<boolean>(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Downloading the latest binary (${buildInfo.version} from ${baseURI.authority})`,
+            cancellable: true,
+          },
+          async (progress, token) => {
+            const readStream = resp.data as IncomingMessage
+            let cancelled = false
+            token.onCancellationRequested(() => {
+              controller.abort()
+              readStream.destroy()
+              cancelled = true
+            })
+
+            let contentLengthPretty = ""
+            // Reverse proxies might not always send a content length!
+            if (!Number.isNaN(contentLength)) {
+              contentLengthPretty = " / " + prettyBytes(contentLength)
+            }
+
+            const writeStream = createWriteStream(tempFile, {
+              autoClose: true,
+              mode: 0o755,
+            })
+            let written = 0
+            readStream.on("data", (buffer: Buffer) => {
+              writeStream.write(buffer, () => {
+                written += buffer.byteLength
+                progress.report({
+                  message: `${prettyBytes(written)}${contentLengthPretty}`,
+                  increment: (buffer.byteLength / contentLength) * 100,
+                })
+              })
+            })
+            try {
+              await new Promise<void>((resolve, reject) => {
+                readStream.on("error", (err) => {
+                  reject(err)
+                })
+                readStream.on("close", () => {
+                  if (cancelled) {
+                    return reject()
+                  }
+                  writeStream.close()
+                  resolve()
+                })
+              })
+              return true
+            } catch (ex) {
+              return false
+            }
+          },
         )
-        .then((value) => {
-          if (!value) {
-            return
-          }
-          const params = new URLSearchParams({
-            title: `Support the \`${os}-${arch}\` platform`,
-            body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
-          })
-          const uri = vscode.Uri.parse(`https://github.com/coder/vscode-coder/issues/new?` + params.toString())
-          vscode.env.openExternal(uri)
-        })
-      return
-    }
-    if (resp.status !== 200) {
-      vscode.window.showErrorMessage("Failed to fetch the Coder binary: " + resp.statusText)
-      return
-    }
-
-    const contentLength = Number.parseInt(resp.headers["content-length"])
-
-    // Ensure the binary directory exists!
-    await fs.mkdir(path.dirname(binPath), { recursive: true })
-
-    const completed = await vscode.window.withProgress<boolean>(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Downloading the latest binary (${buildInfo.version} from ${baseURI.authority})`,
-        cancellable: true,
-      },
-      async (progress, token) => {
-        const readStream = resp.data as IncomingMessage
-        let cancelled = false
-        token.onCancellationRequested(() => {
-          controller.abort()
-          readStream.destroy()
-          cancelled = true
-        })
-
-        let contentLengthPretty = ""
-        // Reverse proxies might not always send a content length!
-        if (!Number.isNaN(contentLength)) {
-          contentLengthPretty = " / " + prettyBytes(contentLength)
+        if (!completed) {
+          return
         }
-
-        const writeStream = createWriteStream(binPath, {
-          autoClose: true,
-          mode: 0o755,
+        this.output.appendLine(`Downloaded binary: ${binPath}`)
+        const oldBinPath = binPath + ".old-" + Math.random().toString(36).substring(8)
+        await fs.rename(binPath, oldBinPath).catch(() => {
+          this.output.appendLine(`Warning: failed to rename ${binPath} to ${oldBinPath}`)
         })
-        let written = 0
-        readStream.on("data", (buffer: Buffer) => {
-          writeStream.write(buffer, () => {
-            written += buffer.byteLength
-            progress.report({
-              message: `${prettyBytes(written)}${contentLengthPretty}`,
-              increment: (buffer.byteLength / contentLength) * 100,
-            })
-          })
+        await fs.rename(tempFile, binPath)
+        await fs.rm(oldBinPath, { force: true }).catch((error) => {
+          this.output.appendLine(`Warning: failed to remove old binary: ${error}`)
         })
-        try {
-          await new Promise<void>((resolve, reject) => {
-            readStream.on("error", (err) => {
-              reject(err)
+        return binPath
+      }
+      case 304: {
+        this.output.appendLine(`Using cached binary: ${binPath}`)
+        return binPath
+      }
+      case 404: {
+        vscode.window
+          .showErrorMessage(
+            "Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
+            "Open an Issue",
+          )
+          .then((value) => {
+            if (!value) {
+              return
+            }
+            const params = new URLSearchParams({
+              title: `Support the \`${os}-${arch}\` platform`,
+              body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
             })
-            readStream.on("close", () => {
-              if (cancelled) {
-                return reject()
-              }
-              writeStream.close()
-              resolve()
-            })
+            const uri = vscode.Uri.parse(`https://github.com/coder/vscode-coder/issues/new?` + params.toString())
+            vscode.env.openExternal(uri)
           })
-          return true
-        } catch (ex) {
-          return false
-        }
-      },
-    )
-    if (!completed) {
-      return
+        return undefined
+      }
+      default: {
+        vscode.window
+          .showErrorMessage("Failed to download binary. Please open an issue.", "Open an Issue")
+          .then((value) => {
+            if (!value) {
+              return
+            }
+            const params = new URLSearchParams({
+              title: `Failed to download binary on \`${os}-${arch}\``,
+              body: `Received status code \`${resp.status}\` when downloading the binary.`,
+            })
+            const uri = vscode.Uri.parse(`https://github.com/coder/vscode-coder/issues/new?` + params.toString())
+            vscode.env.openExternal(uri)
+          })
+        return undefined
+      }
     }
-
-    this.output.appendLine(`Downloaded binary: ${binPath}`)
-    return binPath
   }
 
   // getBinaryCachePath returns the path where binaries are cached.
@@ -240,6 +265,23 @@ export class Storage {
     return path.join(this.globalStorageUri.fsPath, "url")
   }
 
+  public getBinaryETag(): Promise<string> {
+    const hash = crypto.createHash("sha1")
+    const stream = createReadStream(this.binaryPath())
+    return new Promise((resolve, reject) => {
+      stream.on("end", () => {
+        hash.end()
+        resolve(hash.digest("hex"))
+      })
+      stream.on("error", (err) => {
+        reject(err)
+      })
+      stream.on("data", (chunk) => {
+        hash.update(chunk)
+      })
+    })
+  }
+
   private appDataDir(): string {
     switch (process.platform) {
       case "darwin":
@@ -264,14 +306,60 @@ export class Storage {
     }
   }
 
-  private binaryPath(version: string): string {
+  private async cleanUpOldBinaries(): Promise<void> {
+    const binPath = this.binaryPath()
+    const binDir = path.dirname(binPath)
+    const files = await fs.readdir(binDir)
+    for (const file of files) {
+      const fileName = path.basename(file)
+      if (fileName.includes(".old-")) {
+        try {
+          await fs.rm(path.join(binDir, file), { force: true })
+        } catch (error) {
+          this.output.appendLine(`Warning: failed to remove ${fileName}. Error: ${error}`)
+        }
+      }
+    }
+  }
+
+  private binaryPath(): string {
     const os = goos()
     const arch = goarch()
-    let binPath = path.join(this.getBinaryCachePath(), `coder-${os}-${arch}-${version}`)
+    let binPath = path.join(this.getBinaryCachePath(), `coder-${os}-${arch}`)
     if (os === "windows") {
       binPath += ".exe"
     }
     return binPath
+  }
+
+  private async checkBinaryExists(binPath: string): Promise<boolean> {
+    return await fs
+      .stat(binPath)
+      .then(() => true)
+      .catch(() => false)
+  }
+
+  private async rmBinary(binPath: string): Promise<boolean> {
+    return await fs
+      .rm(binPath, { force: true })
+      .then(() => true)
+      .catch(() => false)
+  }
+
+  private async checkBinaryValid(binPath: string): Promise<boolean> {
+    return await new Promise<boolean>((resolve) => {
+      try {
+        execFile(binPath, ["version"], (err) => {
+          if (err) {
+            this.output.appendLine("Check for binary corruption: " + err)
+          }
+          resolve(err === null)
+        })
+      } catch (ex) {
+        this.output.appendLine("The cached binary cannot be executed: " + ex)
+        resolve(false)
+      }
+    })
   }
 
   private async updateSessionToken() {
