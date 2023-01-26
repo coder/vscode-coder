@@ -9,7 +9,6 @@ import {
 import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
 import find from "find-process"
-import { ensureDir } from "fs-extra"
 import * as fs from "fs/promises"
 import * as jsonc from "jsonc-parser"
 import * as os from "os"
