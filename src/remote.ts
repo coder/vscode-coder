@@ -16,9 +16,9 @@ import * as os from "os"
 import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
-import SSHConfig from "ssh-config"
 import * as vscode from "vscode"
 import * as ws from "ws"
+import { SSHConfig } from "./SSHConfig"
 import { Storage } from "./storage"
 
 export class Remote {
@@ -342,7 +342,7 @@ export class Remote {
     //
     // If we didn't write to the SSH config file, connecting would fail with
     // "Host not found".
-    await this.updateSSHConfig(authorityParts[1])
+    await this.updateSSHConfig()
 
     this.findSSHProcessID().then((pid) => {
       if (!pid) {
@@ -374,42 +374,13 @@ export class Remote {
 
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
-  private async updateSSHConfig(sshHost: string) {
-    const startBlockComment = "# --- START CODER VSCODE ---"
-    const endBlockComment = "# --- END CODER VSCODE ---"
+  private async updateSSHConfig() {
     let sshConfigFile = vscode.workspace.getConfiguration().get<string>("remote.SSH.configFile")
     if (!sshConfigFile) {
       sshConfigFile = path.join(os.homedir(), ".ssh", "config")
     }
-    let sshConfigRaw: string
-    try {
-      sshConfigRaw = await fs.readFile(sshConfigFile, "utf8")
-    } catch (ex) {
-      // Probably just doesn't exist!
-      sshConfigRaw = ""
-    }
-
-    // We are going to extract only the coder config
-    let coderConfigRaw = ""
-    const startOfCoderConfig = sshConfigRaw.indexOf(startBlockComment)
-    const endOfCoderConfig = sshConfigRaw.lastIndexOf(endBlockComment)
-
-    // There is an existent coder config
-    if (startOfCoderConfig > -1 && endOfCoderConfig > -1) {
-      coderConfigRaw = sshConfigRaw
-        .substring(startOfCoderConfig, endOfCoderConfig)
-        .replace(startBlockComment, "")
-        .replace(endBlockComment, "")
-      // We are going to override the configuration so we can remove it
-      // including the comments from the ssh config
-      sshConfigRaw = sshConfigRaw
-        .replace(sshConfigRaw.substring(startOfCoderConfig, endOfCoderConfig), "")
-        .replace(startBlockComment, "")
-        .replace(endBlockComment, "")
-    }
-
-    const parsedConfig = SSHConfig.parse(coderConfigRaw)
-    const computedHost = parsedConfig.compute(sshHost)
+    const sshConfig = new SSHConfig(sshConfigFile)
+    await sshConfig.load()
 
     let binaryPath: string | undefined
     if (this.mode === vscode.ExtensionMode.Production) {
@@ -421,9 +392,8 @@ export class Remote {
       throw new Error("Failed to fetch the Coder binary!")
     }
 
-    parsedConfig.remove({ Host: computedHost.Host })
     const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
-    parsedConfig.append({
+    const sshValues = {
       Host: `${Remote.Prefix}*`,
       ProxyCommand: `${escape(binaryPath)} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
@@ -434,13 +404,9 @@ export class Remote {
       StrictHostKeyChecking: "no",
       UserKnownHostsFile: "/dev/null",
       LogLevel: "ERROR",
-    })
+    }
 
-    await ensureDir(path.dirname(sshConfigFile))
-    const sshConfigContent = [sshConfigRaw.trimEnd(), startBlockComment, parsedConfig.toString(), endBlockComment].join(
-      "\n",
-    )
-    await fs.writeFile(sshConfigFile, sshConfigContent, "utf-8")
+    await sshConfig.update(sshValues)
   }
 
   // showNetworkUpdates finds the SSH process ID that is being used by this
