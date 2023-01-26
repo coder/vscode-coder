@@ -4557,11 +4557,6 @@ sprintf-js@~1.0.2:
   resolved "https://registry.yarnpkg.com/sprintf-js/-/sprintf-js-1.0.3.tgz#04e6926f662895354f3dd015203633b857297e2c"
   integrity sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==
 
-ssh-config@4.1.6:
-  version "4.1.6"
-  resolved "https://registry.yarnpkg.com/ssh-config/-/ssh-config-4.1.6.tgz#008eee24f5e5029dc64d50de4a5a7a12342db8b1"
-  integrity sha512-YdPYn/2afoBonSFoMSvC1FraA/LKKrvy8UvbvAFGJ8gdlKuANvufLLkf8ynF2uq7Tl5+DQBIFyN37//09nAgNQ==
-
 state-toggle@^1.0.0:
   version "1.0.3"
   resolved "https://registry.yarnpkg.com/state-toggle/-/state-toggle-1.0.3.tgz#e123b16a88e143139b09c6852221bc9815917dfe"
