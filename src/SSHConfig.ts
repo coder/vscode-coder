@@ -52,12 +52,23 @@ export class SSHConfig {
   }
 
   async update(values: SSHValues) {
+    // We should remove this in March 2023 because there is not going to have
+    // old configs
+    this.cleanUpOldConfig()
     const block = this.getBlock()
     if (block) {
       this.eraseBlock(block)
     }
     this.appendBlock(values)
     await this.save()
+  }
+
+  private async cleanUpOldConfig() {
+    const raw = this.getRaw()
+    const oldConfig = raw.split("\n\n").find((config) => config.includes("Host coder--vscode--*"))
+    if (oldConfig) {
+      this.raw = raw.replace(oldConfig, "")
+    }
   }
 
   private getBlock(): Block | undefined {

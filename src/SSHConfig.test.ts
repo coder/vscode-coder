@@ -131,3 +131,39 @@ Host coder--updated--vscode--*
     mode: 384,
   })
 })
+
+it("removes old coder SSH config and adds the new one", async () => {
+  const existentSSHConfig = `Host coder--vscode--*
+  HostName coder.something
+  ConnectTimeout=0
+  StrictHostKeyChecking=no
+  UserKnownHostsFile=/dev/null
+  LogLevel ERROR
+  ProxyCommand command`
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  await sshConfig.load()
+  await sshConfig.update({
+    Host: "coder--vscode--*",
+    ProxyCommand: "some-command-here",
+    ConnectTimeout: "0",
+    StrictHostKeyChecking: "no",
+    UserKnownHostsFile: "/dev/null",
+    LogLevel: "ERROR",
+  })
+
+  const expectedOutput = `# --- START CODER VSCODE ---
+Host coder--vscode--*
+  ProxyCommand some-command-here
+  ConnectTimeout 0
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  LogLevel ERROR
+# --- END CODER VSCODE ---`
+
+  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
+    encoding: "utf-8",
+    mode: 384,
+  })
+})
