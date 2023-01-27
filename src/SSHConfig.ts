@@ -1,4 +1,4 @@
-import { ensureDir } from "fs-extra"
+import { ensureDir, existsSync } from "fs-extra"
 import * as fs from "fs/promises"
 import path from "path"
 
@@ -83,7 +83,8 @@ export class SSHConfig {
       lines.push(this.withIndentation(`${key} ${otherValues[key]}`))
     })
     lines.push(this.endBlockComment)
-    this.raw = `${this.raw}\n${lines.join("\n")}`
+    const raw = this.getRaw()
+    this.raw = `${raw.trimEnd()}\n${lines.join("\n")}`
   }
 
   private withIndentation(text: string) {
@@ -91,12 +92,17 @@ export class SSHConfig {
   }
 
   private async save() {
-    await ensureDir(path.dirname(this.filePath))
-    return fs.writeFile(this.filePath, this.getRaw(), "utf-8")
+    await ensureDir(path.dirname(this.filePath), {
+      mode: 0o700, // only owner has rwx permission, not group or everyone.
+    })
+    return fs.writeFile(this.filePath, this.getRaw(), {
+      mode: 0o600, // owner rw
+      encoding: "utf-8",
+    })
   }
 
   private getRaw() {
-    if (!this.raw) {
+    if (this.raw === undefined) {
       throw new Error("SSHConfig is not loaded. Try sshConfig.load()")
     }
 
