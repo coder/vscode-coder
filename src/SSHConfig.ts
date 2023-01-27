@@ -64,7 +64,7 @@ export class SSHConfig {
     }
 
     if (endBlockIndex < startBlockIndex) {
-      throw new SSHConfigBadFormat("End block is starting before the start block")
+      throw new SSHConfigBadFormat("Malformed config, end block is before start block")
     }
 
     return {
