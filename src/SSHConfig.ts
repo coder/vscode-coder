@@ -1,4 +1,4 @@
-import { ensureDir, existsSync } from "fs-extra"
+import { ensureDir } from "fs-extra"
 import * as fs from "fs/promises"
 import path from "path"
 
