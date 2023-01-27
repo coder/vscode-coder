@@ -1,0 +1,9 @@
+
+# --- START CODER VSCODE ---
+Host coder--vscode--*
+  ProxyCommand some-command-here
+  ConnectTimeout 0
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  LogLevel ERROR
+# --- END CODER VSCODE ---

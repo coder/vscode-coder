@@ -128,6 +128,7 @@
     "find-process": "^1.4.7",
     "fs-extra": "^11.1.0",
     "jsonc-parser": "^3.2.0",
+    "memfs": "^3.4.13",
     "ndjson": "^2.0.0",
     "pretty-bytes": "^6.0.0",
     "semver": "^7.3.8",

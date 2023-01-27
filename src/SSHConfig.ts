@@ -1,5 +1,5 @@
 import { ensureDir } from "fs-extra"
-import * as fs from "fs/promises"
+import { writeFile, readFile } from "fs/promises"
 import path from "path"
 
 class SSHConfigBadFormat extends Error {}
@@ -17,19 +17,34 @@ interface SSHValues {
   LogLevel: string
 }
 
+// Creating an interface for the FileSystem to make it easier to mock
+export interface FileSystem {
+  readFile: typeof readFile
+  ensureDir: typeof ensureDir
+  writeFile: typeof writeFile
+}
+
+const defaultFileSystem: FileSystem = {
+  readFile,
+  ensureDir,
+  writeFile,
+}
+
 export class SSHConfig {
   private filePath: string
+  private fileSystem: FileSystem
   private raw: string | undefined
   private startBlockComment = "# --- START CODER VSCODE ---"
   private endBlockComment = "# --- END CODER VSCODE ---"
 
-  constructor(filePath: string) {
+  constructor(filePath: string, fileSystem: FileSystem = defaultFileSystem) {
     this.filePath = filePath
+    this.fileSystem = fileSystem
   }
 
   async load() {
     try {
-      this.raw = await fs.readFile(this.filePath, "utf-8")
+      this.raw = await this.fileSystem.readFile(this.filePath, "utf-8")
     } catch (ex) {
       // Probably just doesn't exist!
       this.raw = ""
@@ -84,7 +99,12 @@ export class SSHConfig {
     })
     lines.push(this.endBlockComment)
     const raw = this.getRaw()
-    this.raw = `${raw.trimEnd()}\n${lines.join("\n")}`
+
+    if (this.raw === "") {
+      this.raw = lines.join("\n")
+    } else {
+      this.raw = `${raw.trimEnd()}\n\n${lines.join("\n")}`
+    }
   }
 
   private withIndentation(text: string) {
@@ -92,10 +112,10 @@ export class SSHConfig {
   }
 
   private async save() {
-    await ensureDir(path.dirname(this.filePath), {
+    await this.fileSystem.ensureDir(path.dirname(this.filePath), {
       mode: 0o700, // only owner has rwx permission, not group or everyone.
     })
-    return fs.writeFile(this.filePath, this.getRaw(), {
+    return this.fileSystem.writeFile(this.filePath, this.getRaw(), {
       mode: 0o600, // owner rw
       encoding: "utf-8",
     })
