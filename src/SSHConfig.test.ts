@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import { it, afterEach, vi, expect } from "vitest"
-import { SSHConfig } from "./SSHConfig"
+import { SSHConfig } from "./sshConfig"
 
 const sshFilePath = "~/.config/ssh"
 

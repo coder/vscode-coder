@@ -17,7 +17,7 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
-import { SSHConfig } from "./SSHConfig"
+import { SSHConfig } from "./sshConfig"
 import { Storage } from "./storage"
 
 export class Remote {
