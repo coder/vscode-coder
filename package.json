@@ -86,8 +86,10 @@
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
     "package:prerelease": "npx vsce package --pre-release",
-    "lint": "eslint . --ext ts,md --fix",
-    "test": "vitest ./src"
+    "lint": "eslint . --ext ts,md",
+    "lint:fix": "yarn lint --fix",
+    "test": "vitest ./src",
+    "test:ci": "CI=true yarn test"
   },
   "devDependencies": {
     "@types/eventsource": "^1.1.10",
