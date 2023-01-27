@@ -17,7 +17,7 @@ interface SSHValues {
   LogLevel: string
 }
 
-// Creating an interface for the FileSystem to make it easier to mock
+// Interface for the file system to make it easier to test
 export interface FileSystem {
   readFile: typeof readFile
   ensureDir: typeof ensureDir
