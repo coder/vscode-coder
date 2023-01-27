@@ -166,7 +166,7 @@ export class Commands {
       (opened) => opened.folderUri?.authority === remoteAuthority,
     )
     if (opened.length > 0) {
-      let selected: typeof opened[0]
+      let selected: (typeof opened)[0]
 
       if (opened.length > 1) {
         const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {

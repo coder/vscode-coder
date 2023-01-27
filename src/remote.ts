@@ -9,22 +9,20 @@ import {
 import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
 import find from "find-process"
-import { ensureDir } from "fs-extra"
 import * as fs from "fs/promises"
 import * as jsonc from "jsonc-parser"
 import * as os from "os"
 import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
-import SSHConfig from "ssh-config"
 import * as vscode from "vscode"
 import * as ws from "ws"
+import { SSHConfig } from "./sshConfig"
 import { Storage } from "./storage"
 
 export class Remote {
-  // Prefix is a magic string that is prepended to SSH
-  // hosts to indicate that they should be handled by
-  // this extension.
+  // Prefix is a magic string that is prepended to SSH hosts to indicate that
+  // they should be handled by this extension.
   public static readonly Prefix = "coder-vscode--"
 
   public constructor(
@@ -35,16 +33,17 @@ export class Remote {
 
   public async setup(remoteAuthority: string): Promise<vscode.Disposable | undefined> {
     const authorityParts = remoteAuthority.split("+")
-    // If the URI passed doesn't have the proper prefix
-    // ignore it. We don't need to do anything special,
-    // because this isn't trying to open a Coder workspace.
+    // If the URI passed doesn't have the proper prefix ignore it. We don't need
+    // to do anything special, because this isn't trying to open a Coder
+    // workspace.
     if (!authorityParts[1].startsWith(Remote.Prefix)) {
       return
     }
     const sshAuthority = authorityParts[1].substring(Remote.Prefix.length)
 
-    // Authorities are in the format: coder-vscode--<username>--<workspace>--<agent>
-    // Agent can be omitted then will be prompted for instead.
+    // Authorities are in the format:
+    // coder-vscode--<username>--<workspace>--<agent> Agent can be omitted then
+    // will be prompted for instead.
     const parts = sshAuthority.split("--")
     if (parts.length < 2 || parts.length > 3) {
       throw new Error(`Invalid Coder SSH authority. Must be: <username>--<workspace>--<agent?>`)
@@ -142,12 +141,12 @@ export class Remote {
       }
     }
 
-    // If a build is running we should stream the logs to the user so
-    // they can watch what's going on!
+    // If a build is running we should stream the logs to the user so they can
+    // watch what's going on!
     if (workspace.latest_build.status === "pending" || workspace.latest_build.status === "starting") {
       const writeEmitter = new vscode.EventEmitter<string>()
-      // We use a terminal instead of an output channel because it feels
-      // more familiar to a user!
+      // We use a terminal instead of an output channel because it feels more
+      // familiar to a user!
       const terminal = vscode.window.createTerminal({
         name: "Build Log",
         location: vscode.TerminalLocation.Panel,
@@ -218,8 +217,8 @@ export class Remote {
         agent = agents[0]
       }
 
-      // If there are multiple agents, we should select one here!
-      // TODO: Support multiple agents!
+      // If there are multiple agents, we should select one here! TODO: Support
+      // multiple agents!
     }
 
     if (!agent) {
@@ -337,12 +336,12 @@ export class Remote {
       return
     }
 
-    // This ensures the Remote SSH extension resolves
-    // the host to execute the Coder binary properly.
+    // This ensures the Remote SSH extension resolves the host to execute the
+    // Coder binary properly.
     //
-    // If we didn't write to the SSH config file,
-    // connecting would fail with "Host not found".
-    await this.updateSSHConfig(authorityParts[1])
+    // If we didn't write to the SSH config file, connecting would fail with
+    // "Host not found".
+    await this.updateSSHConfig()
 
     this.findSSHProcessID().then((pid) => {
       if (!pid) {
@@ -372,22 +371,15 @@ export class Remote {
     }
   }
 
-  // updateSSHConfig updates the SSH configuration with a wildcard
-  // that handles all Coder entries.
-  private async updateSSHConfig(sshHost: string) {
+  // updateSSHConfig updates the SSH configuration with a wildcard that handles
+  // all Coder entries.
+  private async updateSSHConfig() {
     let sshConfigFile = vscode.workspace.getConfiguration().get<string>("remote.SSH.configFile")
     if (!sshConfigFile) {
       sshConfigFile = path.join(os.homedir(), ".ssh", "config")
     }
-    let sshConfigRaw: string
-    try {
-      sshConfigRaw = await fs.readFile(sshConfigFile, "utf8")
-    } catch (ex) {
-      // Probably just doesn't exist!
-      sshConfigRaw = ""
-    }
-    const parsedConfig = SSHConfig.parse(sshConfigRaw)
-    const computedHost = parsedConfig.compute(sshHost)
+    const sshConfig = new SSHConfig(sshConfigFile)
+    await sshConfig.load()
 
     let binaryPath: string | undefined
     if (this.mode === vscode.ExtensionMode.Production) {
@@ -399,9 +391,8 @@ export class Remote {
       throw new Error("Failed to fetch the Coder binary!")
     }
 
-    parsedConfig.remove({ Host: computedHost.Host })
     const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
-    parsedConfig.append({
+    const sshValues = {
       Host: `${Remote.Prefix}*`,
       ProxyCommand: `${escape(binaryPath)} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
@@ -412,14 +403,13 @@ export class Remote {
       StrictHostKeyChecking: "no",
       UserKnownHostsFile: "/dev/null",
       LogLevel: "ERROR",
-    })
+    }
 
-    await ensureDir(path.dirname(sshConfigFile))
-    await fs.writeFile(sshConfigFile, parsedConfig.toString())
+    await sshConfig.update(sshValues)
   }
 
-  // showNetworkUpdates finds the SSH process ID that is being used by
-  // this workspace and reads the file being created by the Coder CLI.
+  // showNetworkUpdates finds the SSH process ID that is being used by this
+  // workspace and reads the file being created by the Coder CLI.
   private showNetworkUpdates(sshPid: number): vscode.Disposable {
     const networkStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 1000)
     const networkInfoFile = path.join(this.storage.getNetworkInfoPath(), `${sshPid}.json`)
@@ -510,14 +500,13 @@ export class Remote {
     }
   }
 
-  // findSSHProcessID returns the currently active SSH process ID
-  // that is powering the remote SSH connection.
+  // findSSHProcessID returns the currently active SSH process ID that is
+  // powering the remote SSH connection.
   private async findSSHProcessID(timeout = 15000): Promise<number | undefined> {
     const search = async (logPath: string): Promise<number | undefined> => {
-      // This searches for the socksPort that Remote SSH is connecting to.
-      // We do this to find the SSH process that is powering this connection.
-      // That SSH process will be logging network information periodically to
-      // a file.
+      // This searches for the socksPort that Remote SSH is connecting to. We do
+      // this to find the SSH process that is powering this connection. That SSH
+      // process will be logging network information periodically to a file.
       const text = await fs.readFile(logPath, "utf8")
       const matches = text.match(/-> socksPort (\d+) ->/)
       if (!matches) {
