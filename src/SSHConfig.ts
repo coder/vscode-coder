@@ -1,5 +1,5 @@
-import { ensureDir } from "fs-extra"
 import { writeFile, readFile } from "fs/promises"
+import { ensureDir } from "fs-extra"
 import path from "path"
 
 class SSHConfigBadFormat extends Error {}
