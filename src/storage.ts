@@ -104,7 +104,10 @@ export class Storage {
         }
       }
     }
-    const etag = await this.getBinaryETag()
+    let etag = ""
+    if (exists) {
+      etag = await this.getBinaryETag()
+    }
     this.output.appendLine(`Using binName: ${binName}`)
     this.output.appendLine(`Using binPath: ${binPath}`)
     this.output.appendLine(`Using ETag: ${etag}`)
@@ -189,14 +192,17 @@ export class Storage {
           return
         }
         this.output.appendLine(`Downloaded binary: ${binPath}`)
-        const oldBinPath = binPath + ".old-" + Math.random().toString(36).substring(8)
-        await fs.rename(binPath, oldBinPath).catch(() => {
-          this.output.appendLine(`Warning: failed to rename ${binPath} to ${oldBinPath}`)
-        })
+        if (exists) {
+          const oldBinPath = binPath + ".old-" + Math.random().toString(36).substring(8)
+          await fs.rename(binPath, oldBinPath).catch(() => {
+            this.output.appendLine(`Warning: failed to rename ${binPath} to ${oldBinPath}`)
+          })
+          await fs.rm(oldBinPath, { force: true }).catch((error) => {
+            this.output.appendLine(`Warning: failed to remove old binary: ${error}`)
+          })
+        }
         await fs.rename(tempFile, binPath)
-        await fs.rm(oldBinPath, { force: true }).catch((error) => {
-          this.output.appendLine(`Warning: failed to remove old binary: ${error}`)
-        })
+
         return binPath
       }
       case 304: {

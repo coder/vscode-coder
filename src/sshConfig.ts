@@ -65,7 +65,7 @@ export class SSHConfig {
 
   private async cleanUpOldConfig() {
     const raw = this.getRaw()
-    const oldConfig = raw.split("\n\n").find((config) => config.includes("Host coder--vscode--*"))
+    const oldConfig = raw.split("\n\n").find((config) => config.startsWith("Host coder-vscode--*"))
     if (oldConfig) {
       this.raw = raw.replace(oldConfig, "")
     }
