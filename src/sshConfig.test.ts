@@ -162,8 +162,6 @@ Host coder-vscode--*
   LogLevel ERROR
 # --- END CODER VSCODE ---`
 
-  console.log(sshConfig.getRaw())
-
   expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
     encoding: "utf-8",
     mode: 384,
