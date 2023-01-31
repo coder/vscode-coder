@@ -132,7 +132,7 @@ export class SSHConfig {
     })
   }
 
-  private getRaw() {
+  public getRaw() {
     if (this.raw === undefined) {
       throw new Error("SSHConfig is not loaded. Try sshConfig.load()")
     }

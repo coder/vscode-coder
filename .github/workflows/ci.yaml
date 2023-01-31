@@ -24,8 +24,6 @@ jobs:
 
       - run: yarn lint
 
-      - run: yarn test:ci
-
   test:
     runs-on: ubuntu-22.04
 

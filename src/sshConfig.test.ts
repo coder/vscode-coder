@@ -20,7 +20,7 @@ it("creates a new file and adds the config", async () => {
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
   await sshConfig.update({
-    Host: "coder--vscode--*",
+    Host: "coder-vscode--*",
     ProxyCommand: "some-command-here",
     ConnectTimeout: "0",
     StrictHostKeyChecking: "no",
@@ -29,7 +29,7 @@ it("creates a new file and adds the config", async () => {
   })
 
   const expectedOutput = `# --- START CODER VSCODE ---
-Host coder--vscode--*
+Host coder-vscode--*
   ProxyCommand some-command-here
   ConnectTimeout 0
   StrictHostKeyChecking no
@@ -54,7 +54,7 @@ it("adds a new coder config in an existent SSH configuration", async () => {
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
   await sshConfig.update({
-    Host: "coder--vscode--*",
+    Host: "coder-vscode--*",
     ProxyCommand: "some-command-here",
     ConnectTimeout: "0",
     StrictHostKeyChecking: "no",
@@ -65,7 +65,7 @@ it("adds a new coder config in an existent SSH configuration", async () => {
   const expectedOutput = `${existentSSHConfig}
 
 # --- START CODER VSCODE ---
-Host coder--vscode--*
+Host coder-vscode--*
   ProxyCommand some-command-here
   ConnectTimeout 0
   StrictHostKeyChecking no
@@ -89,7 +89,7 @@ it("updates an existent coder config", async () => {
   ProxyCommand command
 
 # --- START CODER VSCODE ---
-Host coder--vscode--*
+Host coder-vscode--*
   ProxyCommand some-command-here
   ConnectTimeout 0
   StrictHostKeyChecking no
@@ -133,7 +133,7 @@ Host coder--updated--vscode--*
 })
 
 it("removes old coder SSH config and adds the new one", async () => {
-  const existentSSHConfig = `Host coder--vscode--*
+  const existentSSHConfig = `Host coder-vscode--*
   HostName coder.something
   ConnectTimeout=0
   StrictHostKeyChecking=no
@@ -145,7 +145,7 @@ it("removes old coder SSH config and adds the new one", async () => {
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
   await sshConfig.update({
-    Host: "coder--vscode--*",
+    Host: "coder-vscode--*",
     ProxyCommand: "some-command-here",
     ConnectTimeout: "0",
     StrictHostKeyChecking: "no",
@@ -154,13 +154,15 @@ it("removes old coder SSH config and adds the new one", async () => {
   })
 
   const expectedOutput = `# --- START CODER VSCODE ---
-Host coder--vscode--*
+Host coder-vscode--*
   ProxyCommand some-command-here
   ConnectTimeout 0
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   LogLevel ERROR
 # --- END CODER VSCODE ---`
+
+  console.log(sshConfig.getRaw())
 
   expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
     encoding: "utf-8",

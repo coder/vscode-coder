@@ -201,6 +201,7 @@ export class Storage {
             this.output.appendLine(`Warning: failed to remove old binary: ${error}`)
           })
         }
+        await fs.mkdir(path.dirname(binPath), { recursive: true })
         await fs.rename(tempFile, binPath)
 
         return binPath
@@ -315,6 +316,7 @@ export class Storage {
   private async cleanUpOldBinaries(): Promise<void> {
     const binPath = this.binaryPath()
     const binDir = path.dirname(binPath)
+    await fs.mkdir(binDir, { recursive: true })
     const files = await fs.readdir(binDir)
     for (const file of files) {
       const fileName = path.basename(file)
