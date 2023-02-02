@@ -192,11 +192,13 @@ export class Commands {
           authority: remoteAuthority,
           path: selected.folderUri.path,
         }),
+        // Open this in a new window!
+        true,
       )
       return
     }
 
     // This opens the workspace without an active folder opened.
-    await vscode.commands.executeCommand("vscode.newWindow", { remoteAuthority: remoteAuthority, reuseWindow: true })
+    await vscode.commands.executeCommand("vscode.newWindow", { remoteAuthority: remoteAuthority, reuseWindow: false })
   }
 }
