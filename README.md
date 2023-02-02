@@ -3,8 +3,6 @@
 [![Visual Studio Marketplace](https://vsmarketplacebadges.dev/version/coder.coder-remote.svg)](https://marketplace.visualstudio.com/items?itemName=coder.coder-remote)
 [!["Join us on
 Discord"](https://badgen.net/discord/online-members/coder)](https://coder.com/chat?utm_source=github.com/coder/vscode-coder&utm_medium=github&utm_campaign=readme.md)
-![Twitter
-Follow](https://badgen.net/twitter/follow/coderhq)
 
 The Coder Remote VS Code extension lets you open
 [Coder](https://github.com/coder/coder) workspaces with a single click.
