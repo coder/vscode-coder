@@ -158,6 +158,12 @@ export class Commands {
     // when opening a workspace unless explicitly specified.
     const remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}`
 
+    let newWindow = true
+    // Open in the existing window if no workspaces are open.
+    if (!vscode.workspace.workspaceFolders?.length) {
+      newWindow = false
+    }
+
     const output: {
       workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
     } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
@@ -193,12 +199,15 @@ export class Commands {
           path: selected.folderUri.path,
         }),
         // Open this in a new window!
-        true,
+        newWindow,
       )
       return
     }
 
     // This opens the workspace without an active folder opened.
-    await vscode.commands.executeCommand("vscode.newWindow", { remoteAuthority: remoteAuthority, reuseWindow: false })
+    await vscode.commands.executeCommand("vscode.newWindow", {
+      remoteAuthority: remoteAuthority,
+      reuseWindow: !newWindow,
+    })
   }
 }
