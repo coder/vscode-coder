@@ -21,6 +21,11 @@ export class Commands {
     if (!url) {
       return
     }
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      // Default to HTTPS if not provided!
+      // https://github.com/coder/vscode-coder/issues/44
+      url = "https://" + url
+    }
 
     let token: string | undefined = args.length >= 2 ? args[1] : undefined
     if (!token) {
