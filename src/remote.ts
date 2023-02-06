@@ -268,17 +268,21 @@ export class Remote {
     const workspaceUpdatedStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
     disposables.push(workspaceUpdatedStatus)
 
+    let hasShownOutdatedNotification = false
     const refreshWorkspaceUpdatedStatus = (newWorkspace: Workspace) => {
       // If the newly gotten workspace was updated, then we show a notification
       // to the user that they should update.
-      if (!this.storage.workspace?.outdated && newWorkspace.outdated) {
-        vscode.window
-          .showInformationMessage("A new version of your workspace is available.", "Update")
-          .then((action) => {
-            if (action === "Update") {
-              vscode.commands.executeCommand("coder.workspace.update", newWorkspace)
-            }
-          })
+      if (newWorkspace.outdated) {
+        if (!this.storage.workspace?.outdated || !hasShownOutdatedNotification) {
+          hasShownOutdatedNotification = true
+          vscode.window
+            .showInformationMessage("A new version of your workspace is available.", "Update")
+            .then((action) => {
+              if (action === "Update") {
+                vscode.commands.executeCommand("coder.workspace.update", newWorkspace)
+              }
+            })
+        }
       }
       if (!newWorkspace.outdated) {
         vscode.commands.executeCommand("setContext", "coder.workspace.updatable", false)
