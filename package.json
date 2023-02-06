@@ -23,9 +23,6 @@
   "activationEvents": [
     "onResolveRemoteAuthority:ssh-remote",
     "onCommand:coder.connect",
-    "onCommand:coder.open",
-    "onCommand:coder.login",
-    "onView:coderRemote",
     "onUri"
   ],
   "extensionDependencies": [
@@ -77,6 +74,11 @@
       {
         "command": "coder.open",
         "title": "Coder: Open Workspace"
+      },
+      {
+        "command": "coder.workspace.update",
+        "title": "Coder: Update Workspace",
+        "when": "coder.workspace.updatable"
       }
     ]
   },

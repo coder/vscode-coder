@@ -1,8 +1,9 @@
 import axios from "axios"
 import { execFile } from "child_process"
 import { getBuildInfo } from "coder/site/src/api/api"
+import { Workspace } from "coder/site/src/api/typesGenerated"
 import * as crypto from "crypto"
-import { createWriteStream, createReadStream } from "fs"
+import { createReadStream, createWriteStream } from "fs"
 import fs from "fs/promises"
 import { ensureDir } from "fs-extra"
 import { IncomingMessage } from "http"
@@ -12,6 +13,8 @@ import prettyBytes from "pretty-bytes"
 import * as vscode from "vscode"
 
 export class Storage {
+  public workspace?: Workspace
+
   constructor(
     private readonly output: vscode.OutputChannel,
     private readonly memento: vscode.Memento,
