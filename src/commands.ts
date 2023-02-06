@@ -1,12 +1,12 @@
 import axios from "axios"
-import { getUser, getWorkspaces } from "coder/site/src/api/api"
+import { getUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
 import { Workspace } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 
 export class Commands {
-  public constructor(private readonly storage: Storage) {}
+  public constructor(private readonly vscodeProposed: typeof vscode, private readonly storage: Storage) {}
 
   public async login(...args: string[]): Promise<void> {
     let url: string | undefined = args.length >= 1 ? args[0] : undefined
@@ -214,5 +214,23 @@ export class Commands {
       remoteAuthority: remoteAuthority,
       reuseWindow: !newWindow,
     })
+  }
+
+  public async updateWorkspace(): Promise<void> {
+    if (!this.storage.workspace) {
+      return
+    }
+    const action = await this.vscodeProposed.window.showInformationMessage(
+      "Update Workspace",
+      {
+        useCustom: true,
+        modal: true,
+        detail: `${this.storage.workspace.owner_name}/${this.storage.workspace.name} will be updated then this window will reload to watch the build logs and reconnect.`,
+      },
+      "Update",
+    )
+    if (action === "Update") {
+      await updateWorkspaceVersion(this.storage.workspace)
+    }
   }
 }

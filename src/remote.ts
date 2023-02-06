@@ -72,9 +72,8 @@ export class Remote {
     }
 
     // Find the workspace from the URI scheme provided!
-    let workspace: Workspace
     try {
-      workspace = await getWorkspaceByOwnerAndName(parts[0], parts[1])
+      this.storage.workspace = await getWorkspaceByOwnerAndName(parts[0], parts[1])
     } catch (error) {
       if (!axios.isAxiosError(error)) {
         throw error
@@ -120,10 +119,10 @@ export class Remote {
 
     const disposables: vscode.Disposable[] = []
     // Register before connection so the label still displays!
-    disposables.push(this.registerLabelFormatter(`${workspace.owner_name}/${workspace.name}`))
+    disposables.push(this.registerLabelFormatter(`${this.storage.workspace.owner_name}/${this.storage.workspace.name}`))
 
     let buildComplete: undefined | (() => void)
-    if (workspace.latest_build.status === "stopped") {
+    if (this.storage.workspace.latest_build.status === "stopped") {
       this.vscodeProposed.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -135,15 +134,18 @@ export class Remote {
             buildComplete = r
           }),
       )
-      workspace = {
-        ...workspace,
-        latest_build: await startWorkspace(workspace.id),
+      this.storage.workspace = {
+        ...this.storage.workspace,
+        latest_build: await startWorkspace(this.storage.workspace.id),
       }
     }
 
     // If a build is running we should stream the logs to the user so they can
     // watch what's going on!
-    if (workspace.latest_build.status === "pending" || workspace.latest_build.status === "starting") {
+    if (
+      this.storage.workspace.latest_build.status === "pending" ||
+      this.storage.workspace.latest_build.status === "starting"
+    ) {
       const writeEmitter = new vscode.EventEmitter<string>()
       // We use a terminal instead of an output channel because it feels more
       // familiar to a user!
@@ -160,11 +162,11 @@ export class Remote {
         } as Partial<vscode.Pseudoterminal> as any,
       })
       // This fetches the initial bunch of logs.
-      const logs = await getWorkspaceBuildLogs(workspace.latest_build.id, new Date())
+      const logs = await getWorkspaceBuildLogs(this.storage.workspace.latest_build.id, new Date())
       logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"))
       terminal.show(true)
       // This follows the logs for new activity!
-      let path = `/api/v2/workspacebuilds/${workspace.latest_build.id}/logs?follow=true`
+      let path = `/api/v2/workspacebuilds/${this.storage.workspace.latest_build.id}/logs?follow=true`
       if (logs.length) {
         path += `&after=${logs[logs.length - 1].id}`
       }
@@ -198,15 +200,15 @@ export class Remote {
         })
       })
       writeEmitter.fire("Build complete")
-      workspace = await getWorkspace(workspace.id)
-      terminal.hide()
+      this.storage.workspace = await getWorkspace(this.storage.workspace.id)
+      terminal.dispose()
 
       if (buildComplete) {
         buildComplete()
       }
     }
 
-    const agents = workspace.latest_build.resources.reduce((acc, resource) => {
+    const agents = this.storage.workspace.latest_build.resources.reduce((acc, resource) => {
       return acc.concat(resource.agents || [])
     }, [] as WorkspaceAgent[])
 
@@ -250,7 +252,7 @@ export class Remote {
     await fs.writeFile(this.storage.getUserSettingsPath(), jsonc.applyEdits(settingsContent, edits))
 
     const workspaceUpdate = new vscode.EventEmitter<Workspace>()
-    const watchURL = new URL(`${this.storage.getURL()}/api/v2/workspaces/${workspace.id}/watch`)
+    const watchURL = new URL(`${this.storage.getURL()}/api/v2/workspaces/${this.storage.workspace.id}/watch`)
     const eventSource = new EventSource(watchURL.toString(), {
       headers: {
         "Coder-Session-Token": await this.storage.getSessionToken(),
@@ -262,11 +264,48 @@ export class Remote {
     eventSource.addEventListener("error", () => {
       // TODO: Add debug output that we got an error here!
     })
+
+    const workspaceUpdatedStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
+    disposables.push(workspaceUpdatedStatus)
+
+    let hasShownOutdatedNotification = false
+    const refreshWorkspaceUpdatedStatus = (newWorkspace: Workspace) => {
+      // If the newly gotten workspace was updated, then we show a notification
+      // to the user that they should update.
+      if (newWorkspace.outdated) {
+        if (!this.storage.workspace?.outdated || !hasShownOutdatedNotification) {
+          hasShownOutdatedNotification = true
+          vscode.window
+            .showInformationMessage("A new version of your workspace is available.", "Update")
+            .then((action) => {
+              if (action === "Update") {
+                vscode.commands.executeCommand("coder.workspace.update", newWorkspace)
+              }
+            })
+        }
+      }
+      if (!newWorkspace.outdated) {
+        vscode.commands.executeCommand("setContext", "coder.workspace.updatable", false)
+        workspaceUpdatedStatus.hide()
+        return
+      }
+      workspaceUpdatedStatus.name = "Coder Workspace Update"
+      workspaceUpdatedStatus.text = "$(fold-up) Update Workspace"
+      workspaceUpdatedStatus.command = "coder.workspace.update"
+      // Important for hiding the "Update Workspace" command.
+      vscode.commands.executeCommand("setContext", "coder.workspace.updatable", true)
+      workspaceUpdatedStatus.show()
+    }
+    // Show an initial status!
+    refreshWorkspaceUpdatedStatus(this.storage.workspace)
+
     eventSource.addEventListener("data", (event: MessageEvent<string>) => {
       const workspace = JSON.parse(event.data) as Workspace
       if (!workspace) {
         return
       }
+      refreshWorkspaceUpdatedStatus(workspace)
+      this.storage.workspace = workspace
       workspaceUpdate.fire(workspace)
       if (workspace.latest_build.status === "stopping" || workspace.latest_build.status === "stopped") {
         const action = this.vscodeProposed.window.showInformationMessage(
@@ -282,6 +321,13 @@ export class Remote {
           return
         }
         this.reloadWindow()
+      }
+      // If a new build is initialized for a workspace, we automatically
+      // reload the window. Then the build log will appear, and startup
+      // will continue as expected.
+      if (workspace.latest_build.status === "starting") {
+        this.reloadWindow()
+        return
       }
     })
 
@@ -352,7 +398,7 @@ export class Remote {
     })
 
     // Register the label formatter again because SSH overrides it!
-    let label = `${workspace.owner_name}/${workspace.name}`
+    let label = `${this.storage.workspace.owner_name}/${this.storage.workspace.name}`
     if (agents.length > 1) {
       label += `/${agent.name}`
     }

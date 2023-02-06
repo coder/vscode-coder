@@ -50,12 +50,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     },
   })
 
-  const commands = new Commands(storage)
-
-  vscode.commands.registerCommand("coder.login", commands.login.bind(commands))
-  vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))
-  vscode.commands.registerCommand("coder.open", commands.open.bind(commands))
-
   // The Remote SSH extension's proposed APIs are used to override
   // the SSH host name in VS Code itself. It's visually unappealing
   // having a lengthy name!
@@ -74,6 +68,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     },
     false,
   )
+
+  const commands = new Commands(vscodeProposed, storage)
+
+  vscode.commands.registerCommand("coder.login", commands.login.bind(commands))
+  vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))
+  vscode.commands.registerCommand("coder.open", commands.open.bind(commands))
+  vscode.commands.registerCommand("coder.workspace.update", commands.updateWorkspace.bind(commands))
 
   // Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
   // in package.json we're able to perform actions before the authority is
