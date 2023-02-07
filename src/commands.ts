@@ -26,7 +26,9 @@ export class Commands {
       // https://github.com/coder/vscode-coder/issues/44
       url = "https://" + url
     }
-
+    while (url.endsWith("/")) {
+      url = url.substring(0, url.length - 1)
+    }
     let token: string | undefined = args.length >= 2 ? args[1] : undefined
     if (!token) {
       const opened = await vscode.env.openExternal(vscode.Uri.parse(`${url}/cli-auth`))
