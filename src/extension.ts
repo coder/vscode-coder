@@ -30,6 +30,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         const owner = params.get("owner")
         const workspace = params.get("workspace")
         const agent = params.get("agent")
+        const folder = params.get("folder")
         if (!owner) {
           throw new Error("owner must be specified as a query parameter")
         }
@@ -45,7 +46,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         if (token) {
           await storage.setSessionToken(token)
         }
-        vscode.commands.executeCommand("coder.open", owner, workspace, agent)
+        vscode.commands.executeCommand("coder.open", owner, workspace, agent, folder)
       }
     },
   })

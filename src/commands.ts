@@ -1,6 +1,6 @@
 import axios from "axios"
 import { getUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
-import { Workspace } from "coder/site/src/api/typesGenerated"
+import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
@@ -104,6 +104,7 @@ export class Commands {
   public async open(...args: string[]): Promise<void> {
     let workspaceOwner: string
     let workspaceName: string
+    let folderPath: string | undefined
 
     if (args.length === 0) {
       const quickPick = vscode.window.createQuickPick()
@@ -156,9 +157,20 @@ export class Commands {
       }
       workspaceOwner = workspace.owner_name
       workspaceName = workspace.name
+
+      // TODO: multiple agent support
+      const agents = workspace.latest_build.resources.reduce((acc, resource) => {
+        return acc.concat(resource.agents || [])
+      }, [] as WorkspaceAgent[])
+
+      if (agents.length === 1) {
+        folderPath = agents[0].expanded_directory
+      }
     } else {
       workspaceOwner = args[0]
       workspaceName = args[1]
+      // workspaceAgent is reserved for args[2], but multiple agents aren't supported yet.
+      folderPath = args[3]
     }
 
     // A workspace can have multiple agents, but that's handled
@@ -171,39 +183,46 @@ export class Commands {
       newWindow = false
     }
 
-    const output: {
-      workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
-    } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
-    const opened = output.workspaces.filter(
-      // Filter out `/` since that's added below.
-      (opened) => opened.folderUri?.authority === remoteAuthority,
-    )
-    if (opened.length > 0) {
-      let selected: (typeof opened)[0]
+    // If a folder isn't specified, we can try to open a recently opened folder.
+    if (!folderPath) {
+      const output: {
+        workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
+      } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
+      const opened = output.workspaces.filter(
+        // Filter out `/` since that's added below.
+        (opened) => opened.folderUri?.authority === remoteAuthority,
+      )
+      if (opened.length > 0) {
+        let selected: (typeof opened)[0]
 
-      if (opened.length > 1) {
-        const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
-          return {
-            label: folder.folderUri.path,
+        if (opened.length > 1) {
+          const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
+            return {
+              label: folder.folderUri.path,
+            }
+          })
+          const item = await vscode.window.showQuickPick(items, {
+            title: "Select a recently opened folder",
+          })
+          if (!item) {
+            return
           }
-        })
-        const item = await vscode.window.showQuickPick(items, {
-          title: "Select a recently opened folder",
-        })
-        if (!item) {
-          return
+          selected = opened[items.indexOf(item)]
+        } else {
+          selected = opened[0]
         }
-        selected = opened[items.indexOf(item)]
-      } else {
-        selected = opened[0]
-      }
 
+        folderPath = selected.folderUri.path
+      }
+    }
+
+    if (folderPath) {
       await vscode.commands.executeCommand(
         "vscode.openFolder",
         vscode.Uri.from({
           scheme: "vscode-remote",
           authority: remoteAuthority,
-          path: selected.folderUri.path,
+          path: folderPath,
         }),
         // Open this in a new window!
         newWindow,
