@@ -1,6 +1,7 @@
 import axios from "axios"
 import {
   getBuildInfo,
+  getTemplate,
   getWorkspace,
   getWorkspaceBuildLogs,
   getWorkspaceByOwnerAndName,
@@ -134,9 +135,10 @@ export class Remote {
             buildComplete = r
           }),
       )
+      const template = await getTemplate(this.storage.workspace.template_id)
       this.storage.workspace = {
         ...this.storage.workspace,
-        latest_build: await startWorkspace(this.storage.workspace.id),
+        latest_build: await startWorkspace(this.storage.workspace.id, template.active_version_id),
       }
     }
 
