@@ -166,50 +166,49 @@ export class Commands {
       if (agents.length === 1) {
         folderPath = agents[0].expanded_directory
         workspaceAgent = agents[0].name
-      }else{
-          const agentQuickPick = vscode.window.createQuickPick()
-          let lastAgents: WorkspaceAgent[]
-          agentQuickPick.title = `Select an agent`;
-  
-          agentQuickPick.busy = true;
-          lastAgents = agents
-          const agentItems: vscode.QuickPickItem[] = agents.map((agent) => {
-              let icon = "$(debug-start)"
-              if (agent.status !== "connected") {
-                icon = "$(debug-stop)"
-              }
-              return {
-                alwaysShow: true,
-                label: `${icon} ${agent.name}`,
-                detail: `${agent.name} • Status: ${agent.status}`,
-              }
-          })
-          agentQuickPick.items = agentItems
-          agentQuickPick.busy = false
-          agentQuickPick.show()
-  
-          const agent = await new Promise<WorkspaceAgent | undefined>((resolve) => {
-            agentQuickPick.onDidHide(() => {
-              resolve(undefined)
-            })
-            agentQuickPick.onDidChangeSelection((selected) => {
-              if (selected.length < 1) {
-                return resolve(undefined)
-              }
-              const agent = lastAgents[agentQuickPick.items.indexOf(selected[0])]
-              resolve(agent)
-            })
-          })
-          
-          if(agent != undefined){
-            folderPath = agent.expanded_directory
-            workspaceAgent = agent.name
-          }else{
-            folderPath = ''
-            workspaceAgent = ''
+      } else {
+        const agentQuickPick = vscode.window.createQuickPick()
+        let lastAgents: WorkspaceAgent[]
+        agentQuickPick.title = `Select an agent`
+
+        agentQuickPick.busy = true
+        lastAgents = agents
+        const agentItems: vscode.QuickPickItem[] = agents.map((agent) => {
+          let icon = "$(debug-start)"
+          if (agent.status !== "connected") {
+            icon = "$(debug-stop)"
           }
+          return {
+            alwaysShow: true,
+            label: `${icon} ${agent.name}`,
+            detail: `${agent.name} • Status: ${agent.status}`,
+          }
+        })
+        agentQuickPick.items = agentItems
+        agentQuickPick.busy = false
+        agentQuickPick.show()
+
+        const agent = await new Promise<WorkspaceAgent | undefined>((resolve) => {
+          agentQuickPick.onDidHide(() => {
+            resolve(undefined)
+          })
+          agentQuickPick.onDidChangeSelection((selected) => {
+            if (selected.length < 1) {
+              return resolve(undefined)
+            }
+            const agent = lastAgents[agentQuickPick.items.indexOf(selected[0])]
+            resolve(agent)
+          })
+        })
+
+        if (agent != undefined) {
+          folderPath = agent.expanded_directory
+          workspaceAgent = agent.name
+        } else {
+          folderPath = ""
+          workspaceAgent = ""
         }
-      
+      }
     } else {
       workspaceOwner = args[0]
       workspaceName = args[1]
@@ -219,7 +218,8 @@ export class Commands {
 
     // A workspace can have multiple agents, but that's handled
     // when opening a workspace unless explicitly specified.
-    const remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}--${workspaceAgent}`
+    let remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}`
+    if (workspaceAgent) remoteAuthority += `--${workspaceAgent}`
 
     let newWindow = true
     // Open in the existing window if no workspaces are open.
