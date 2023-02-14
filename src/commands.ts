@@ -169,7 +169,7 @@ export class Commands {
       }else{
           const agentQuickPick = vscode.window.createQuickPick()
           let lastAgents: WorkspaceAgent[]
-          agentQuickPick.title = `Connect to a agent`;
+          agentQuickPick.title = `Select an agent`;
   
           agentQuickPick.busy = true;
           lastAgents = agents
