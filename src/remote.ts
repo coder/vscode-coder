@@ -451,6 +451,9 @@ export class Remote {
       StrictHostKeyChecking: "no",
       UserKnownHostsFile: "/dev/null",
       LogLevel: "ERROR",
+      // This allows for tracking the number of extension
+      // users connected to workspaces!
+      SetEnv: "CODER_SSH_SESSION_TYPE=vscode",
     }
 
     await sshConfig.update(sshValues)
