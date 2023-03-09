@@ -146,7 +146,8 @@ export class Remote {
     // watch what's going on!
     if (
       this.storage.workspace.latest_build.status === "pending" ||
-      this.storage.workspace.latest_build.status === "starting"
+      this.storage.workspace.latest_build.status === "starting" ||
+      this.storage.workspace.latest_build.status === "stopping"
     ) {
       const writeEmitter = new vscode.EventEmitter<string>()
       // We use a terminal instead of an output channel because it feels more
@@ -207,6 +208,23 @@ export class Remote {
 
       if (buildComplete) {
         buildComplete()
+      }
+
+      if (this.storage.workspace.latest_build.status === "stopped") {
+        const result = await this.vscodeProposed.window.showInformationMessage(
+          `This workspace is stopped!`,
+          {
+            modal: true,
+            detail: `Click below to start and open ${parts[0]}/${parts[1]}.`,
+            useCustom: true,
+          },
+          "Start Workspace",
+        )
+        if (!result) {
+          await this.closeRemote()
+        }
+        await this.reloadWindow()
+        return
       }
     }
 
