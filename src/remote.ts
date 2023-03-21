@@ -444,6 +444,12 @@ export class Remote {
     if (!sshConfigFile) {
       sshConfigFile = path.join(os.homedir(), ".ssh", "config")
     }
+    // VS Code Remote resolves ~ to the home directory.
+    // This is required for the tilde to work on Windows.
+    if (sshConfigFile.startsWith("~")) {
+      sshConfigFile = path.join(os.homedir(), sshConfigFile.slice(1))
+    }
+
     const sshConfig = new SSHConfig(sshConfigFile)
     await sshConfig.load()
 
