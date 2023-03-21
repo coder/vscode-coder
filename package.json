@@ -42,7 +42,7 @@
       "coder": [
         {
           "id": "coderRemote",
-          "name": "",
+          "name": "Workspaces",
           "visibility": "visible",
           "icon": "media/logo.svg",
           "contextualTitle": "Coder Remote"
@@ -54,11 +54,6 @@
         "view": "coderRemote",
         "contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
         "when": "!coder.authenticated && coder.loaded"
-      },
-      {
-        "view": "coderRemote",
-        "contents": "You're logged in! \n[Open Workspace](command:coder.open)",
-        "when": "coder.authenticated && coder.loaded"
       }
     ],
     "commands": [
@@ -79,7 +74,27 @@
         "title": "Coder: Update Workspace",
         "when": "coder.workspace.updatable"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "coder.logout",
+          "when": "coder.authenticated"
+        },
+        {
+          "command": "coder.createWorkspace",
+          "when": "coder.authenticated",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "coder.open",
+          "when": "coder.authenticated",
+          "group": "inline"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "yarn package",

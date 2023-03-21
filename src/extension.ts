@@ -6,11 +6,14 @@ import * as vscode from "vscode"
 import { Commands } from "./commands"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
+import { WorkspaceProvider } from "./workspacesProvider"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Coder")
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
+
+  vscode.window.registerTreeDataProvider("coderRemote", new WorkspaceProvider())
 
   getAuthenticatedUser()
     .then(() => {
