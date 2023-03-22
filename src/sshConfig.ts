@@ -1,3 +1,4 @@
+import { SSHConfigResponse } from "coder/site/src/api/typesGenerated"
 import { writeFile, readFile } from "fs/promises"
 import { ensureDir } from "fs-extra"
 import path from "path"
@@ -30,16 +31,27 @@ const defaultFileSystem: FileSystem = {
   writeFile,
 }
 
+const defaultSSHConfigResponse: SSHConfigResponse = {
+  ssh_config_options: {},
+  hostname_prefix: "coder.",
+}
+
 export class SSHConfig {
   private filePath: string
   private fileSystem: FileSystem
+  private deploymentConfig: SSHConfigResponse
   private raw: string | undefined
   private startBlockComment = "# --- START CODER VSCODE ---"
   private endBlockComment = "# --- END CODER VSCODE ---"
 
-  constructor(filePath: string, fileSystem: FileSystem = defaultFileSystem) {
+  constructor(
+    filePath: string,
+    fileSystem: FileSystem = defaultFileSystem,
+    sshConfig: SSHConfigResponse = defaultSSHConfigResponse,
+  ) {
     this.filePath = filePath
     this.fileSystem = fileSystem
+    this.deploymentConfig = sshConfig
   }
 
   async load() {
@@ -59,7 +71,7 @@ export class SSHConfig {
     if (block) {
       this.eraseBlock(block)
     }
-    this.appendBlock(values)
+    this.appendBlock(values, this.deploymentConfig.ssh_config_options)
     await this.save()
   }
 
@@ -102,12 +114,49 @@ export class SSHConfig {
     this.raw = this.getRaw().replace(block.raw, "")
   }
 
-  private appendBlock({ Host, ...otherValues }: SSHValues) {
+  /**
+   *
+   * appendBlock builds the ssh config block. The order of the keys is determinstic based on the input.
+   * Expected values are always in a consistent order followed by any additional overrides in sorted order.
+   *
+   * @param param0 - SSHValues are the expected SSH values for using ssh with coder.
+   * @param overrides - Overrides typically come from the deployment api and are used to override the default values.
+   *                    The overrides are given as key:value pairs where the key is the ssh config file key.
+   *                    If the key matches an expected value, the expected value is overridden. If it does not
+   *                    match an expected value, it is appended to the end of the block.
+   */
+  private appendBlock({ Host, ...otherValues }: SSHValues, overrides: Record<string, string>) {
     const lines = [this.startBlockComment, `Host ${Host}`]
+    // We need to do a case insensitive match for the overrides as ssh config keys are case insensitive.
+    // To get the correct key:value, use:
+    //   key = caseInsensitiveOverrides[key.toLowerCase()]
+    //   value = overrides[key]
+    const caseInsensitiveOverrides: Record<string, string> = {}
+    Object.keys(overrides).forEach((key) => {
+      caseInsensitiveOverrides[key.toLowerCase()] = key
+    })
+
     const keys = Object.keys(otherValues) as Array<keyof typeof otherValues>
     keys.forEach((key) => {
+      const lower = key.toLowerCase()
+      if (caseInsensitiveOverrides[lower]) {
+        const correctCaseKey = caseInsensitiveOverrides[lower]
+        // If the key is in overrides, use the override value.
+        // Doing it this way maintains the default order of the keys.
+        lines.push(this.withIndentation(`${key} ${overrides[correctCaseKey]}`))
+        // Remove the key from the overrides so we don't write it again.
+        delete caseInsensitiveOverrides[lower]
+        return
+      }
       lines.push(this.withIndentation(`${key} ${otherValues[key]}`))
     })
+    // Write remaining overrides that have not been written yet. Sort to maintain deterministic order.
+    const remainingKeys = (Object.keys(caseInsensitiveOverrides) as Array<keyof typeof caseInsensitiveOverrides>).sort()
+    remainingKeys.forEach((key) => {
+      const correctKey = caseInsensitiveOverrides[key]
+      lines.push(this.withIndentation(`${key} ${overrides[correctKey]}`))
+    })
+
     lines.push(this.endBlockComment)
     const raw = this.getRaw()
 
