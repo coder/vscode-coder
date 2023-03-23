@@ -31,27 +31,22 @@ const defaultFileSystem: FileSystem = {
   writeFile,
 }
 
-const defaultSSHConfigResponse: SSHConfigResponse = {
+export const defaultSSHConfigResponse: SSHConfigResponse = {
   ssh_config_options: {},
+  // The prefix is not used by the vscode-extension
   hostname_prefix: "coder.",
 }
 
 export class SSHConfig {
   private filePath: string
   private fileSystem: FileSystem
-  private deploymentConfig: SSHConfigResponse
   private raw: string | undefined
   private startBlockComment = "# --- START CODER VSCODE ---"
   private endBlockComment = "# --- END CODER VSCODE ---"
 
-  constructor(
-    filePath: string,
-    fileSystem: FileSystem = defaultFileSystem,
-    sshConfig: SSHConfigResponse = defaultSSHConfigResponse,
-  ) {
+  constructor(filePath: string, fileSystem: FileSystem = defaultFileSystem) {
     this.filePath = filePath
     this.fileSystem = fileSystem
-    this.deploymentConfig = sshConfig
   }
 
   async load() {
@@ -63,7 +58,7 @@ export class SSHConfig {
     }
   }
 
-  async update(values: SSHValues) {
+  async update(values: SSHValues, overrides: SSHConfigResponse = defaultSSHConfigResponse) {
     // We should remove this in March 2023 because there is not going to have
     // old configs
     this.cleanUpOldConfig()
@@ -71,7 +66,7 @@ export class SSHConfig {
     if (block) {
       this.eraseBlock(block)
     }
-    this.appendBlock(values, this.deploymentConfig.ssh_config_options)
+    this.appendBlock(values, overrides.ssh_config_options)
     await this.save()
   }
 
