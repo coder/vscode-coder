@@ -149,7 +149,7 @@ export class SSHConfig {
     const remainingKeys = (Object.keys(caseInsensitiveOverrides) as Array<keyof typeof caseInsensitiveOverrides>).sort()
     remainingKeys.forEach((key) => {
       const correctKey = caseInsensitiveOverrides[key]
-      lines.push(this.withIndentation(`${key} ${overrides[correctKey]}`))
+      lines.push(this.withIndentation(`${correctKey} ${overrides[correctKey]}`))
     })
 
     lines.push(this.endBlockComment)
