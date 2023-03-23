@@ -170,25 +170,28 @@ Host coder-vscode--*
 
 it("override values", async () => {
   mockFileSystem.readFile.mockRejectedValueOnce("No file found")
-  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem, {
-    ssh_config_options: {
-      loglevel: "DEBUG", // This tests case insensitive
-      ConnectTimeout: "500",
-      ExtraKey: "ExtraValue",
-      Foo: "bar",
-      Buzz: "baz",
-    },
-    hostname_prefix: "",
-  })
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
-  await sshConfig.update({
-    Host: "coder-vscode--*",
-    ProxyCommand: "some-command-here",
-    ConnectTimeout: "0",
-    StrictHostKeyChecking: "no",
-    UserKnownHostsFile: "/dev/null",
-    LogLevel: "ERROR",
-  })
+  await sshConfig.update(
+    {
+      Host: "coder-vscode--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    },
+    {
+      ssh_config_options: {
+        loglevel: "DEBUG", // This tests case insensitive
+        ConnectTimeout: "500",
+        ExtraKey: "ExtraValue",
+        Foo: "bar",
+        Buzz: "baz",
+      },
+      hostname_prefix: "",
+    },
+  )
 
   const expectedOutput = `# --- START CODER VSCODE ---
 Host coder-vscode--*
