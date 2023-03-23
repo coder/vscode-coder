@@ -456,15 +456,7 @@ export class Remote {
           break
         }
         case 401: {
-          const result = await this.vscodeProposed.window.showInformationMessage(
-            "Your session expired...",
-            {
-              useCustom: true,
-              modal: true,
-              detail: "You must login again to access your workspace.",
-            },
-            "Login",
-          )
+          await this.vscodeProposed.window.showErrorMessage("Your session expired...")
           throw error
         }
         default:
