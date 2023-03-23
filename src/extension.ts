@@ -1,6 +1,6 @@
 "use strict"
 
-import { getUser } from "coder/site/src/api/api"
+import { getAuthenticatedUser } from "coder/site/src/api/api"
 import * as module from "module"
 import * as vscode from "vscode"
 import { Commands } from "./commands"
@@ -12,7 +12,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
 
-  getUser()
+  getAuthenticatedUser()
     .then(() => {
       vscode.commands.executeCommand("setContext", "coder.authenticated", true)
     })
