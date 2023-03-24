@@ -44,8 +44,7 @@
           "id": "coderRemote",
           "name": "Workspaces",
           "visibility": "visible",
-          "icon": "media/logo.svg",
-          "contextualTitle": "Coder Remote"
+          "icon": "media/logo.svg"
         }
       ]
     },
@@ -70,6 +69,14 @@
         "title": "Coder: Open Workspace"
       },
       {
+        "command": "coder.createWorkspace",
+        "title": "Create Workspace"
+      },
+      {
+        "command": "coder.removeWorkspace",
+        "title": "Remove Workspace"
+      },
+      {
         "command": "coder.workspace.update",
         "title": "Coder: Update Workspace",
         "when": "coder.workspace.updatable"
@@ -79,19 +86,23 @@
       "view/title": [
         {
           "command": "coder.logout",
-          "when": "coder.authenticated"
+          "when": "coder.authenticated && view == coderRemote"
         },
         {
           "command": "coder.createWorkspace",
-          "when": "coder.authenticated",
+          "when": "coder.authenticated && view == coderRemote",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "coder.open",
-          "when": "coder.authenticated",
+          "when": "coder.authenticated && viewItem.label !== 'My Workspaces' && view == coderRemote",
           "group": "inline"
+        },
+        {
+          "command": "coder.removeWorkspace",
+          "when": "coder.authenticated"
         }
       ]
     }

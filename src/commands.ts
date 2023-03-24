@@ -108,6 +108,11 @@ export class Commands {
     })
   }
 
+  public async createWorkspace(): Promise<void> {
+    const uri = this.storage.getURL() + "/templates"
+    await vscode.commands.executeCommand("vscode.open", uri)
+  }
+
   public async open(...args: string[]): Promise<void> {
     let workspaceOwner: string
     let workspaceName: string
