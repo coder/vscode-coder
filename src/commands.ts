@@ -1,6 +1,6 @@
 import axios from "axios"
 import { getAuthenticatedUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
-import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { Workspace } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
 import { extractAgentsAndFolderPath } from "./api-helper"
 import { Remote } from "./remote"
