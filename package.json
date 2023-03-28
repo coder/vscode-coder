@@ -80,7 +80,7 @@
       },
       {
         "command": "coder.navigateToWorkspace",
-        "title": "Open Workspace in Browser"
+        "title": "Navigate to Workspace Page"
       },
       {
         "command": "coder.workspace.update",
