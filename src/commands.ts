@@ -1,5 +1,5 @@
 import axios from "axios"
-import { getUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
+import { getAuthenticatedUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
 import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
 import { Remote } from "./remote"
@@ -73,21 +73,28 @@ export class Commands {
 
     await this.storage.setURL(url)
     await this.storage.setSessionToken(token)
-    const user = await getUser()
-    await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
-    vscode.window
-      .showInformationMessage(
-        `Welcome to Coder, ${user.username}!`,
-        {
-          detail: "You can now use the Coder extension to manage your Coder instance.",
-        },
-        "Open Workspace",
-      )
-      .then((action) => {
-        if (action === "Open Workspace") {
-          vscode.commands.executeCommand("coder.open")
-        }
-      })
+    try {
+      const user = await getAuthenticatedUser()
+      if (!user) {
+        throw new Error("Failed to get authenticated user")
+      }
+      await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+      vscode.window
+        .showInformationMessage(
+          `Welcome to Coder, ${user.username}!`,
+          {
+            detail: "You can now use the Coder extension to manage your Coder instance.",
+          },
+          "Open Workspace",
+        )
+        .then((action) => {
+          if (action === "Open Workspace") {
+            vscode.commands.executeCommand("coder.open")
+          }
+        })
+    } catch (error) {
+      vscode.window.showErrorMessage("Failed to authenticate with Coder: " + error)
+    }
   }
 
   public async logout(): Promise<void> {

@@ -6,8 +6,9 @@ import {
   getWorkspaceBuildLogs,
   getWorkspaceByOwnerAndName,
   startWorkspace,
+  getDeploymentSSHConfig,
 } from "coder/site/src/api/api"
-import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { ProvisionerJobLog, SSHConfigResponse, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
 import find from "find-process"
 import * as fs from "fs/promises"
@@ -18,7 +19,7 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
-import { SSHConfig } from "./sshConfig"
+import { SSHConfig, defaultSSHConfigResponse } from "./sshConfig"
 import { Storage } from "./storage"
 
 export class Remote {
@@ -440,6 +441,29 @@ export class Remote {
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
   private async updateSSHConfig() {
+    let deploymentConfig: SSHConfigResponse = defaultSSHConfigResponse
+    try {
+      deploymentConfig = await getDeploymentSSHConfig()
+    } catch (error) {
+      if (!axios.isAxiosError(error)) {
+        throw error
+      }
+      switch (error.response?.status) {
+        case 404: {
+          // Deployment does not support overriding ssh config yet. Likely an
+          // older version, just use the default.
+          deploymentConfig = defaultSSHConfigResponse
+          break
+        }
+        case 401: {
+          await this.vscodeProposed.window.showErrorMessage("Your session expired...")
+          throw error
+        }
+        default:
+          throw error
+      }
+    }
+
     let sshConfigFile = vscode.workspace.getConfiguration().get<string>("remote.SSH.configFile")
     if (!sshConfigFile) {
       sshConfigFile = path.join(os.homedir(), ".ssh", "config")
@@ -480,7 +504,7 @@ export class Remote {
       SetEnv: "CODER_SSH_SESSION_TYPE=vscode",
     }
 
-    await sshConfig.update(sshValues)
+    await sshConfig.update(sshValues, deploymentConfig)
   }
 
   // showNetworkUpdates finds the SSH process ID that is being used by this

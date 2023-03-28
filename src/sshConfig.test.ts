@@ -167,3 +167,46 @@ Host coder-vscode--*
     mode: 384,
   })
 })
+
+it("override values", async () => {
+  mockFileSystem.readFile.mockRejectedValueOnce("No file found")
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  await sshConfig.load()
+  await sshConfig.update(
+    {
+      Host: "coder-vscode--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    },
+    {
+      ssh_config_options: {
+        loglevel: "DEBUG", // This tests case insensitive
+        ConnectTimeout: "500",
+        ExtraKey: "ExtraValue",
+        Foo: "bar",
+        Buzz: "baz",
+        // Remove this key
+        StrictHostKeyChecking: "",
+        ExtraRemove: "",
+      },
+      hostname_prefix: "",
+    },
+  )
+
+  const expectedOutput = `# --- START CODER VSCODE ---
+Host coder-vscode--*
+  ProxyCommand some-command-here
+  ConnectTimeout 500
+  UserKnownHostsFile /dev/null
+  LogLevel DEBUG
+  Buzz baz
+  ExtraKey ExtraValue
+  Foo bar
+# --- END CODER VSCODE ---`
+
+  expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
+  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, expect.anything())
+})
