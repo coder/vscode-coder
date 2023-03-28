@@ -95,6 +95,10 @@
           "when": "coder.authenticated && view == myWorkspaces"
         },
         {
+          "command": "coder.login",
+          "when": "!coder.authenticated && view == myWorkspaces"
+        },
+        {
           "command": "coder.createWorkspace",
           "when": "coder.authenticated && view == myWorkspaces",
           "group": "navigation"
