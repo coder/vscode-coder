@@ -90,6 +90,12 @@
         "icon": "$(link-external)"
       },
       {
+        "command": "coder.navigateToWorkspaceSettings",
+        "title": "Edit Workspace Settings",
+        "when": "coder.authenticated",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "coder.workspace.update",
         "title": "Coder: Update Workspace",
         "when": "coder.workspace.updatable"
@@ -130,6 +136,11 @@
         },
         {
           "command": "coder.navigateToWorkspace",
+          "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
+          "group": "inline"
+        },
+        {
+          "command": "coder.navigateToWorkspaceSettings",
           "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
           "group": "inline"
         }

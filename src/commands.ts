@@ -115,9 +115,29 @@ export class Commands {
     await vscode.commands.executeCommand("vscode.open", uri)
   }
 
-  public async navigateToWorkspace(workspace: WorkspaceTreeItem): Promise<void> {
-    const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}`
-    await vscode.commands.executeCommand("vscode.open", uri)
+  public async navigateToWorkspace(workspace: WorkspaceTreeItem) {
+    if (workspace) {
+      const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}`
+      await vscode.commands.executeCommand("vscode.open", uri)
+    } else if (this.storage.workspace) {
+      const uri = this.storage.getURL() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}`
+      await vscode.commands.executeCommand("vscode.open", uri)
+    } else {
+      vscode.window.showInformationMessage("No workspace found.")
+    }
+  }
+
+  public async navigateToWorkspaceSettings(workspace: WorkspaceTreeItem) {
+    if (workspace) {
+      const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}/settings`
+      await vscode.commands.executeCommand("vscode.open", uri)
+    } else if (this.storage.workspace) {
+      const uri =
+        this.storage.getURL() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}/settings`
+      await vscode.commands.executeCommand("vscode.open", uri)
+    } else {
+      vscode.window.showInformationMessage("No workspace found.")
+    }
   }
 
   public async open(...args: unknown[]): Promise<void> {

@@ -85,6 +85,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.commands.registerCommand("coder.workspace.update", commands.updateWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.createWorkspace", commands.createWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.navigateToWorkspace", commands.navigateToWorkspace.bind(commands))
+  vscode.commands.registerCommand(
+    "coder.navigateToWorkspaceSettings",
+    commands.navigateToWorkspaceSettings.bind(commands),
+  )
   vscode.commands.registerCommand("coder.refreshWorkspaces", () => {
     myWorkspacesProvider.refresh()
     allWorkspacesProvider.refresh()
