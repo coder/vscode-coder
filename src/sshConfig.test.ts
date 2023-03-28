@@ -188,6 +188,9 @@ it("override values", async () => {
         ExtraKey: "ExtraValue",
         Foo: "bar",
         Buzz: "baz",
+        // Remove this key
+        StrictHostKeyChecking: "",
+        ExtraRemove: "",
       },
       hostname_prefix: "",
     },
@@ -197,7 +200,6 @@ it("override values", async () => {
 Host coder-vscode--*
   ProxyCommand some-command-here
   ConnectTimeout 500
-  StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   LogLevel DEBUG
   Buzz baz

@@ -136,11 +136,17 @@ export class SSHConfig {
       const lower = key.toLowerCase()
       if (caseInsensitiveOverrides[lower]) {
         const correctCaseKey = caseInsensitiveOverrides[lower]
-        // If the key is in overrides, use the override value.
-        // Doing it this way maintains the default order of the keys.
-        lines.push(this.withIndentation(`${key} ${overrides[correctCaseKey]}`))
+        const value = overrides[correctCaseKey]
         // Remove the key from the overrides so we don't write it again.
         delete caseInsensitiveOverrides[lower]
+        if (value === "") {
+          // If the value is empty, don't write it. Prevent writing the default
+          // value as well.
+          return
+        }
+        // If the key is in overrides, use the override value.
+        // Doing it this way maintains the default order of the keys.
+        lines.push(this.withIndentation(`${key} ${value}`))
         return
       }
       lines.push(this.withIndentation(`${key} ${otherValues[key]}`))
@@ -149,7 +155,11 @@ export class SSHConfig {
     const remainingKeys = (Object.keys(caseInsensitiveOverrides) as Array<keyof typeof caseInsensitiveOverrides>).sort()
     remainingKeys.forEach((key) => {
       const correctKey = caseInsensitiveOverrides[key]
-      lines.push(this.withIndentation(`${correctKey} ${overrides[correctKey]}`))
+      const value = overrides[correctKey]
+      // Only write the value if it is not empty.
+      if (value !== "") {
+        lines.push(this.withIndentation(`${correctKey} ${value}`))
+      }
     })
 
     lines.push(this.endBlockComment)
