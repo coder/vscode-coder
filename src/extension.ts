@@ -13,8 +13,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
 
-  vscode.window.registerTreeDataProvider("myWorkspaces", new WorkspaceProvider(WorkspaceQuery.Mine))
-  vscode.window.registerTreeDataProvider("allWorkspaces", new WorkspaceProvider(WorkspaceQuery.All))
+  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine)
+  const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All)
+
+  vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
+  vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
 
   getAuthenticatedUser()
     .then(() => {
@@ -82,6 +85,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.commands.registerCommand("coder.workspace.update", commands.updateWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.createWorkspace", commands.createWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.navigateToWorkspace", commands.navigateToWorkspace.bind(commands))
+  vscode.commands.registerCommand("coder.refreshWorkspaces", () => {
+    myWorkspacesProvider.refresh()
+    allWorkspacesProvider.refresh()
+  })
 
   // Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
   // in package.json we're able to perform actions before the authority is

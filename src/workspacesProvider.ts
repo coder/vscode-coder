@@ -11,6 +11,15 @@ export enum WorkspaceQuery {
 export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeItem> {
   constructor(private readonly getWorkspacesQuery: WorkspaceQuery) {}
 
+  private _onDidChangeTreeData: vscode.EventEmitter<WorkspaceTreeItem | undefined | null | void> =
+    new vscode.EventEmitter<WorkspaceTreeItem | undefined | null | void>()
+  readonly onDidChangeTreeData: vscode.Event<WorkspaceTreeItem | undefined | null | void> =
+    this._onDidChangeTreeData.event
+
+  refresh(): void {
+    this._onDidChangeTreeData.fire()
+  }
+
   getTreeItem(element: WorkspaceTreeItem): vscode.TreeItem {
     return element
   }
