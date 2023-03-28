@@ -3,37 +3,17 @@ import * as path from "path"
 import * as vscode from "vscode"
 
 export class WorkspaceProvider implements vscode.TreeDataProvider<TreeItem> {
+  constructor(private readonly getWorkspacesQuery?: string) {}
   getTreeItem(element: TreeItem): vscode.TreeItem {
     return element
   }
 
-  getChildren(element?: TreeItem): Thenable<TreeItem[]> {
-    if (!element) {
-      return Promise.resolve([
-        new TreeItem("My Workspaces", vscode.TreeItemCollapsibleState.Expanded),
-        new TreeItem("All Workspaces", vscode.TreeItemCollapsibleState.None),
-      ])
-    }
-    if (element.label === "My Workspaces") {
-      return getWorkspaces({
-        q: "owner:me",
-      }).then((workspaces) => {
-        return workspaces.workspaces.map(
-          (workspace) => new TreeItem(workspace.name, vscode.TreeItemCollapsibleState.None),
-        )
-      })
-    }
-    if (element.label === "All Workspaces") {
-      return getWorkspaces({
-        q: "owner:all",
-      }).then((workspaces) => {
-        const exampleWorkspaces = [{ name: "example1" }, { name: "example2" }]
-        return [...workspaces.workspaces, ...exampleWorkspaces].map(
-          (workspace) => new TreeItem(workspace.name, vscode.TreeItemCollapsibleState.None),
-        )
-      })
-    }
-    return Promise.resolve([])
+  getChildren(): Thenable<TreeItem[]> {
+    return getWorkspaces({ q: this.getWorkspacesQuery }).then((workspaces) => {
+      return workspaces.workspaces.map(
+        (workspace) => new TreeItem(workspace.name, vscode.TreeItemCollapsibleState.None),
+      )
+    })
   }
 }
 

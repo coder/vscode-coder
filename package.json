@@ -41,8 +41,14 @@
     "views": {
       "coder": [
         {
-          "id": "coderRemote",
-          "name": "Workspaces",
+          "id": "myWorkspaces",
+          "name": "My Workspaces",
+          "visibility": "visible",
+          "icon": "media/logo.svg"
+        },
+        {
+          "id": "allWorkspaces",
+          "name": "All Workspaces",
           "visibility": "visible",
           "icon": "media/logo.svg"
         }
@@ -50,7 +56,7 @@
     },
     "viewsWelcome": [
       {
-        "view": "coderRemote",
+        "view": "myWorkspaces",
         "contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
         "when": "!coder.authenticated && coder.loaded"
       }
@@ -86,23 +92,19 @@
       "view/title": [
         {
           "command": "coder.logout",
-          "when": "coder.authenticated && view == coderRemote"
+          "when": "coder.authenticated && view == myWorkspaces"
         },
         {
           "command": "coder.createWorkspace",
-          "when": "coder.authenticated && view == coderRemote",
+          "when": "coder.authenticated && view == myWorkspaces",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "coder.open",
-          "when": "coder.authenticated && viewItem.label !== 'My Workspaces' && view == coderRemote",
+          "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
           "group": "inline"
-        },
-        {
-          "command": "coder.removeWorkspace",
-          "when": "coder.authenticated"
         }
       ]
     }

@@ -13,7 +13,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
 
-  vscode.window.registerTreeDataProvider("coderRemote", new WorkspaceProvider())
+  vscode.window.registerTreeDataProvider("myWorkspaces", new WorkspaceProvider("owner:me"))
+  vscode.window.registerTreeDataProvider("allWorkspaces", new WorkspaceProvider())
 
   getAuthenticatedUser()
     .then(() => {
