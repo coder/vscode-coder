@@ -79,8 +79,8 @@
         "title": "Create Workspace"
       },
       {
-        "command": "coder.removeWorkspace",
-        "title": "Remove Workspace"
+        "command": "coder.navigateToWorkspace",
+        "title": "Open Workspace in Browser"
       },
       {
         "command": "coder.workspace.update",
@@ -105,6 +105,10 @@
           "command": "coder.open",
           "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
           "group": "inline"
+        },
+        {
+          "command": "coder.navigateToWorkspace",
+          "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces"
         }
       ]
     }

@@ -6,15 +6,15 @@ import * as vscode from "vscode"
 import { Commands } from "./commands"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
-import { WorkspaceProvider } from "./workspacesProvider"
+import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Coder")
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
 
-  vscode.window.registerTreeDataProvider("myWorkspaces", new WorkspaceProvider("owner:me"))
-  vscode.window.registerTreeDataProvider("allWorkspaces", new WorkspaceProvider())
+  vscode.window.registerTreeDataProvider("myWorkspaces", new WorkspaceProvider(WorkspaceQuery.Mine))
+  vscode.window.registerTreeDataProvider("allWorkspaces", new WorkspaceProvider(WorkspaceQuery.All))
 
   getAuthenticatedUser()
     .then(() => {
@@ -81,6 +81,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.commands.registerCommand("coder.open", commands.open.bind(commands))
   vscode.commands.registerCommand("coder.workspace.update", commands.updateWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.createWorkspace", commands.createWorkspace.bind(commands))
+  vscode.commands.registerCommand("coder.navigateToWorkspace", commands.navigateToWorkspace.bind(commands))
 
   // Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
   // in package.json we're able to perform actions before the authority is

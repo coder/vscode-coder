@@ -1,26 +1,47 @@
 import { getWorkspaces } from "coder/site/src/api/api"
 import * as path from "path"
 import * as vscode from "vscode"
+import { extractAgentsAndFolderPath } from "./api-helper"
 
-export class WorkspaceProvider implements vscode.TreeDataProvider<TreeItem> {
-  constructor(private readonly getWorkspacesQuery?: string) {}
-  getTreeItem(element: TreeItem): vscode.TreeItem {
+export enum WorkspaceQuery {
+  Mine = "owner:me",
+  All = "",
+}
+
+export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeItem> {
+  constructor(private readonly getWorkspacesQuery: WorkspaceQuery) {}
+
+  getTreeItem(element: WorkspaceTreeItem): vscode.TreeItem {
     return element
   }
 
-  getChildren(): Thenable<TreeItem[]> {
+  getChildren(): Thenable<WorkspaceTreeItem[]> {
     return getWorkspaces({ q: this.getWorkspacesQuery }).then((workspaces) => {
-      return workspaces.workspaces.map(
-        (workspace) => new TreeItem(workspace.name, vscode.TreeItemCollapsibleState.None),
-      )
+      return workspaces.workspaces.map((workspace) => {
+        const status =
+          workspace.latest_build.status.substring(0, 1).toUpperCase() + workspace.latest_build.status.substring(1)
+
+        const label =
+          this.getWorkspacesQuery === WorkspaceQuery.All
+            ? `${workspace.owner_name} / ${workspace.name}`
+            : workspace.name
+        const detail = `Template: ${workspace.template_display_name || workspace.template_name} • Status: ${status}`
+        const [, folderPath] = extractAgentsAndFolderPath(workspace)
+        return new WorkspaceTreeItem(label, detail, workspace.owner_name, workspace.name, folderPath)
+      })
     })
   }
 }
 
-class TreeItem extends vscode.TreeItem {
-  constructor(public readonly label: string, public readonly collapsibleState: vscode.TreeItemCollapsibleState) {
-    super(label, collapsibleState)
-    this.tooltip = `${this.label}`
+export class WorkspaceTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly label: string,
+    public readonly tooltip: string,
+    public readonly workspaceOwner: string,
+    public readonly workspaceName: string,
+    public readonly workspaceFolderPath: string | undefined,
+  ) {
+    super(label, vscode.TreeItemCollapsibleState.None)
   }
 
   iconPath = {

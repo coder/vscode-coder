@@ -2,8 +2,10 @@ import axios from "axios"
 import { getAuthenticatedUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
 import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
+import { extractAgentsAndFolderPath } from "./api-helper"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
+import { WorkspaceTreeItem } from "./workspacesProvider"
 
 export class Commands {
   public constructor(private readonly vscodeProposed: typeof vscode, private readonly storage: Storage) {}
@@ -113,7 +115,12 @@ export class Commands {
     await vscode.commands.executeCommand("vscode.open", uri)
   }
 
-  public async open(...args: string[]): Promise<void> {
+  public async navigateToWorkspace(workspace: WorkspaceTreeItem): Promise<void> {
+    const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}`
+    await vscode.commands.executeCommand("vscode.open", uri)
+  }
+
+  public async open(...args: unknown[]): Promise<void> {
     let workspaceOwner: string
     let workspaceName: string
     let folderPath: string | undefined
@@ -170,19 +177,19 @@ export class Commands {
       workspaceOwner = workspace.owner_name
       workspaceName = workspace.name
 
-      // TODO: multiple agent support
-      const agents = workspace.latest_build.resources.reduce((acc, resource) => {
-        return acc.concat(resource.agents || [])
-      }, [] as WorkspaceAgent[])
-
-      if (agents.length === 1) {
-        folderPath = agents[0].expanded_directory
-      }
+      const [, folderPathExtracted] = extractAgentsAndFolderPath(workspace)
+      folderPath = folderPathExtracted
+    } else if (args.length === 2) {
+      // opening a workspace from the sidebar
+      const workspaceTreeItem = args[0] as WorkspaceTreeItem
+      workspaceOwner = workspaceTreeItem.workspaceOwner
+      workspaceName = workspaceTreeItem.workspaceName
+      folderPath = workspaceTreeItem.workspaceFolderPath
     } else {
-      workspaceOwner = args[0]
-      workspaceName = args[1]
+      workspaceOwner = args[0] as string
+      workspaceName = args[1] as string
       // workspaceAgent is reserved for args[2], but multiple agents aren't supported yet.
-      folderPath = args[3]
+      folderPath = args[3] as string | undefined
     }
 
     // A workspace can have multiple agents, but that's handled
