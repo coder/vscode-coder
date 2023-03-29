@@ -75,9 +75,7 @@ export function mergeSSHConfigValues(
   // Add remaining overrides.
   Object.keys(caseInsensitiveOverrides).forEach((lower) => {
     const correctCaseKey = caseInsensitiveOverrides[lower]
-    if (overrides[correctCaseKey] !== "") {
-      merged[correctCaseKey] = overrides[correctCaseKey]
-    }
+    merged[correctCaseKey] = overrides[correctCaseKey]
   })
 
   return merged
@@ -174,7 +172,10 @@ export class SSHConfig {
 
     const keys = Object.keys(configValues) as Array<keyof typeof configValues>
     keys.forEach((key) => {
-      lines.push(this.withIndentation(`${key} ${configValues[key]}`))
+      const value = configValues[key]
+      if (value !== "") {
+        lines.push(this.withIndentation(`${key} ${value}`))
+      }
     })
 
     lines.push(this.endBlockComment)
