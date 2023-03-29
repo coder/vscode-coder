@@ -8,7 +8,7 @@ import {
   startWorkspace,
   getDeploymentSSHConfig,
 } from "coder/site/src/api/api"
-import { ProvisionerJobLog, SSHConfigResponse, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
 import find from "find-process"
 import * as fs from "fs/promises"

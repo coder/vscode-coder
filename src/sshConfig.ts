@@ -170,7 +170,8 @@ export class SSHConfig {
     // configValues is the merged values of the defaults and the overrides.
     const configValues = mergeSSHConfigValues(otherValues, overrides)
 
-    const keys = Object.keys(configValues) as Array<keyof typeof configValues>
+    // keys is the sorted keys of the merged values.
+    const keys = (Object.keys(configValues) as Array<keyof typeof configValues>).sort()
     keys.forEach((key) => {
       const value = configValues[key]
       if (value !== "") {

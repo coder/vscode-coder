@@ -198,7 +198,7 @@ Host coder-vscode--*
   ProxyCommand some-command-here
   ConnectTimeout 500
   UserKnownHostsFile /dev/null
-  LogLevel DEBUG
+  loglevel DEBUG
   Buzz baz
   ExtraKey ExtraValue
   Foo bar
