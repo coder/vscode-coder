@@ -57,6 +57,7 @@ export function mergeSSHConfigValues(
     if (caseInsensitiveOverrides[lower]) {
       const correctCaseKey = caseInsensitiveOverrides[lower]
       const value = overrides[correctCaseKey]
+      delete caseInsensitiveOverrides[lower]
 
       // If the value is empty, do not add the key. It is being removed.
       if (value === "") {
@@ -69,6 +70,12 @@ export function mergeSSHConfigValues(
     if (config[key] !== "") {
       merged[key] = config[key]
     }
+  })
+
+  // Add remaining overrides.
+  Object.keys(caseInsensitiveOverrides).forEach((lower) => {
+    const correctCaseKey = caseInsensitiveOverrides[lower]
+    merged[correctCaseKey] = overrides[correctCaseKey]
   })
 
   return merged
