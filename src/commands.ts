@@ -81,6 +81,9 @@ export class Commands {
         throw new Error("Failed to get authenticated user")
       }
       await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+      if (user.roles.find((role) => role.name === "owner")) {
+        await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
+      }
       vscode.window
         .showInformationMessage(
           `Welcome to Coder, ${user.username}!`,

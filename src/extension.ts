@@ -20,8 +20,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
 
   getAuthenticatedUser()
-    .then(() => {
-      vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+    .then(async (user) => {
+      if (user) {
+        vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+        if (user.roles.find((role) => role.name === "owner")) {
+          await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
+        }
+      }
     })
     .catch(() => {
       // Not authenticated!
