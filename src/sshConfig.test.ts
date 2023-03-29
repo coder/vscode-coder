@@ -30,11 +30,11 @@ it("creates a new file and adds the config", async () => {
 
   const expectedOutput = `# --- START CODER VSCODE ---
 Host coder-vscode--*
-  ProxyCommand some-command-here
   ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-  LogLevel ERROR
 # --- END CODER VSCODE ---`
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
@@ -43,12 +43,12 @@ Host coder-vscode--*
 
 it("adds a new coder config in an existent SSH configuration", async () => {
   const existentSSHConfig = `Host coder.something
-  HostName coder.something
   ConnectTimeout=0
-  StrictHostKeyChecking=no
-  UserKnownHostsFile=/dev/null
   LogLevel ERROR
-  ProxyCommand command`
+  HostName coder.something
+  ProxyCommand command
+  StrictHostKeyChecking=no
+  UserKnownHostsFile=/dev/null`
   mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
@@ -66,11 +66,11 @@ it("adds a new coder config in an existent SSH configuration", async () => {
 
 # --- START CODER VSCODE ---
 Host coder-vscode--*
-  ProxyCommand some-command-here
   ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-  LogLevel ERROR
 # --- END CODER VSCODE ---`
 
   expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
@@ -90,11 +90,11 @@ it("updates an existent coder config", async () => {
 
 # --- START CODER VSCODE ---
 Host coder-vscode--*
-  ProxyCommand some-command-here
   ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-  LogLevel ERROR
 # --- END CODER VSCODE ---`
   mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
 
@@ -119,11 +119,11 @@ Host coder-vscode--*
 
 # --- START CODER VSCODE ---
 Host coder--updated--vscode--*
-  ProxyCommand some-command-here
   ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-  LogLevel ERROR
 # --- END CODER VSCODE ---`
 
   expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
@@ -134,12 +134,12 @@ Host coder--updated--vscode--*
 
 it("removes old coder SSH config and adds the new one", async () => {
   const existentSSHConfig = `Host coder-vscode--*
-  HostName coder.something
   ConnectTimeout=0
-  StrictHostKeyChecking=no
-  UserKnownHostsFile=/dev/null
+  HostName coder.something
   LogLevel ERROR
-  ProxyCommand command`
+  ProxyCommand command
+  StrictHostKeyChecking=no
+  UserKnownHostsFile=/dev/null`
   mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
@@ -155,11 +155,11 @@ it("removes old coder SSH config and adds the new one", async () => {
 
   const expectedOutput = `# --- START CODER VSCODE ---
 Host coder-vscode--*
-  ProxyCommand some-command-here
   ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-  LogLevel ERROR
 # --- END CODER VSCODE ---`
 
   expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
@@ -199,9 +199,9 @@ Host coder-vscode--*
   ConnectTimeout 500
   ExtraKey ExtraValue
   Foo bar
-  LogLevel DEBUG
   ProxyCommand some-command-here
   UserKnownHostsFile /dev/null
+  logLevel DEBUG
 # --- END CODER VSCODE ---`
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
