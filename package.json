@@ -37,7 +37,8 @@
           "type": "array",
           "items": {
             "title": "SSH Config Value",
-            "type": "string"
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9-]+[=\\s].*$"
           },
           "scope": "machine",
           "default": []

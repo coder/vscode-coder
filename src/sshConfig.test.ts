@@ -182,17 +182,14 @@ it("override values", async () => {
       LogLevel: "ERROR",
     },
     {
-      ssh_config_options: {
-        loglevel: "DEBUG", // This tests case insensitive
-        ConnectTimeout: "500",
-        ExtraKey: "ExtraValue",
-        Foo: "bar",
-        Buzz: "baz",
-        // Remove this key
-        StrictHostKeyChecking: "",
-        ExtraRemove: "",
-      },
-      hostname_prefix: "",
+      loglevel: "DEBUG", // This tests case insensitive
+      ConnectTimeout: "500",
+      ExtraKey: "ExtraValue",
+      Foo: "bar",
+      Buzz: "baz",
+      // Remove this key
+      StrictHostKeyChecking: "",
+      ExtraRemove: "",
     },
   )
 

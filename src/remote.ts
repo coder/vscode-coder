@@ -19,7 +19,7 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
-import { SSHConfig, defaultSSHConfigResponse } from "./sshConfig"
+import { SSHConfig, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { Storage } from "./storage"
 
 export class Remote {
@@ -441,9 +441,10 @@ export class Remote {
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
   private async updateSSHConfig() {
-    let deploymentConfig: SSHConfigResponse = defaultSSHConfigResponse
+    let deploymentSSHConfig = defaultSSHConfigResponse
     try {
-      deploymentConfig = await getDeploymentSSHConfig()
+      const deploymentConfig = await getDeploymentSSHConfig()
+      deploymentSSHConfig = deploymentConfig.ssh_config_options
     } catch (error) {
       if (!axios.isAxiosError(error)) {
         throw error
@@ -452,7 +453,6 @@ export class Remote {
         case 404: {
           // Deployment does not support overriding ssh config yet. Likely an
           // older version, just use the default.
-          deploymentConfig = defaultSSHConfigResponse
           break
         }
         case 401: {
@@ -463,6 +463,27 @@ export class Remote {
           throw error
       }
     }
+
+    // deploymentConfig is now set from the remote coderd deployment.
+    // Now override with the user's config.
+    const userConfigSSH = vscode.workspace.getConfiguration("coder").get<string[]>("sshConfig") || []
+    // Parse the user's config into a Record<string, string>.
+    const userConfig = userConfigSSH.reduce((acc, line) => {
+      let i = line.indexOf("=")
+      if (i === -1) {
+        i = line.indexOf(" ")
+        if (i === -1) {
+          // This line is malformed. The setting is incorrect, and does not match
+          // the pattern regex in the settings schema.
+          return acc
+        }
+      }
+      const key = line.slice(0, i)
+      const value = line.slice(i + 1)
+      acc[key] = value
+      return acc
+    }, {} as Record<string, string>)
+    const sshConfigOverrides = mergeSSHConfigValues(deploymentSSHConfig, userConfig)
 
     let sshConfigFile = vscode.workspace.getConfiguration().get<string>("remote.SSH.configFile")
     if (!sshConfigFile) {
@@ -504,7 +525,7 @@ export class Remote {
       SetEnv: "CODER_SSH_SESSION_TYPE=vscode",
     }
 
-    await sshConfig.update(sshValues, deploymentConfig)
+    await sshConfig.update(sshValues, sshConfigOverrides)
   }
 
   // showNetworkUpdates finds the SSH process ID that is being used by this

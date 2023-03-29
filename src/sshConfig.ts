@@ -31,10 +31,47 @@ const defaultFileSystem: FileSystem = {
   writeFile,
 }
 
-export const defaultSSHConfigResponse: SSHConfigResponse = {
-  ssh_config_options: {},
-  // The prefix is not used by the vscode-extension
-  hostname_prefix: "coder.",
+export const defaultSSHConfigResponse: Record<string, string> = {}
+
+// mergeSSHConfigValues will take a given ssh config and merge it with the overrides
+// provided. The merge handles key case insensitivity, so casing in the "key" does
+// not matter.
+export function mergeSSHConfigValues(
+  config: Record<string, string>,
+  overrides: Record<string, string>,
+): Record<string, string> {
+  const merged: Record<string, string> = {}
+
+  // We need to do a case insensitive match for the overrides as ssh config keys are case insensitive.
+  // To get the correct key:value, use:
+  //   key = caseInsensitiveOverrides[key.toLowerCase()]
+  //   value = overrides[key]
+  const caseInsensitiveOverrides: Record<string, string> = {}
+  Object.keys(overrides).forEach((key) => {
+    caseInsensitiveOverrides[key.toLowerCase()] = key
+  })
+
+  Object.keys(config).forEach((key) => {
+    const lower = key.toLowerCase()
+    // If the key is in overrides, use the override value.
+    if (caseInsensitiveOverrides[lower]) {
+      const correctCaseKey = caseInsensitiveOverrides[lower]
+      const value = overrides[correctCaseKey]
+
+      // If the value is empty, do not add the key. It is being removed.
+      if (value === "") {
+        return
+      }
+      merged[correctCaseKey] = value
+      return
+    }
+    // If no override, take the original value.
+    if (config[key] !== "") {
+      merged[key] = config[key]
+    }
+  })
+
+  return merged
 }
 
 export class SSHConfig {
@@ -58,7 +95,7 @@ export class SSHConfig {
     }
   }
 
-  async update(values: SSHValues, overrides: SSHConfigResponse = defaultSSHConfigResponse) {
+  async update(values: SSHValues, overrides: Record<string, string> = defaultSSHConfigResponse) {
     // We should remove this in March 2023 because there is not going to have
     // old configs
     this.cleanUpOldConfig()
@@ -66,7 +103,7 @@ export class SSHConfig {
     if (block) {
       this.eraseBlock(block)
     }
-    this.appendBlock(values, overrides.ssh_config_options)
+    this.appendBlock(values, overrides)
     await this.save()
   }
 
@@ -122,44 +159,13 @@ export class SSHConfig {
    */
   private appendBlock({ Host, ...otherValues }: SSHValues, overrides: Record<string, string>) {
     const lines = [this.startBlockComment, `Host ${Host}`]
-    // We need to do a case insensitive match for the overrides as ssh config keys are case insensitive.
-    // To get the correct key:value, use:
-    //   key = caseInsensitiveOverrides[key.toLowerCase()]
-    //   value = overrides[key]
-    const caseInsensitiveOverrides: Record<string, string> = {}
-    Object.keys(overrides).forEach((key) => {
-      caseInsensitiveOverrides[key.toLowerCase()] = key
-    })
 
-    const keys = Object.keys(otherValues) as Array<keyof typeof otherValues>
+    // configValues is the merged values of the defaults and the overrides.
+    const configValues = mergeSSHConfigValues(otherValues, overrides)
+
+    const keys = Object.keys(configValues) as Array<keyof typeof configValues>
     keys.forEach((key) => {
-      const lower = key.toLowerCase()
-      if (caseInsensitiveOverrides[lower]) {
-        const correctCaseKey = caseInsensitiveOverrides[lower]
-        const value = overrides[correctCaseKey]
-        // Remove the key from the overrides so we don't write it again.
-        delete caseInsensitiveOverrides[lower]
-        if (value === "") {
-          // If the value is empty, don't write it. Prevent writing the default
-          // value as well.
-          return
-        }
-        // If the key is in overrides, use the override value.
-        // Doing it this way maintains the default order of the keys.
-        lines.push(this.withIndentation(`${key} ${value}`))
-        return
-      }
-      lines.push(this.withIndentation(`${key} ${otherValues[key]}`))
-    })
-    // Write remaining overrides that have not been written yet. Sort to maintain deterministic order.
-    const remainingKeys = (Object.keys(caseInsensitiveOverrides) as Array<keyof typeof caseInsensitiveOverrides>).sort()
-    remainingKeys.forEach((key) => {
-      const correctKey = caseInsensitiveOverrides[key]
-      const value = overrides[correctKey]
-      // Only write the value if it is not empty.
-      if (value !== "") {
-        lines.push(this.withIndentation(`${correctKey} ${value}`))
-      }
+      lines.push(this.withIndentation(`${key} ${configValues[key]}`))
     })
 
     lines.push(this.endBlockComment)
