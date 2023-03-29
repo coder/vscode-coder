@@ -195,13 +195,13 @@ it("override values", async () => {
 
   const expectedOutput = `# --- START CODER VSCODE ---
 Host coder-vscode--*
-  ProxyCommand some-command-here
-  ConnectTimeout 500
-  UserKnownHostsFile /dev/null
-  loglevel DEBUG
   Buzz baz
+  ConnectTimeout 500
   ExtraKey ExtraValue
   Foo bar
+  LogLevel DEBUG
+  ProxyCommand some-command-here
+  UserKnownHostsFile /dev/null
 # --- END CODER VSCODE ---`
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
