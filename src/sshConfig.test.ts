@@ -201,7 +201,7 @@ Host coder-vscode--*
   Foo bar
   ProxyCommand some-command-here
   UserKnownHostsFile /dev/null
-  logLevel DEBUG
+  loglevel DEBUG
 # --- END CODER VSCODE ---`
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
