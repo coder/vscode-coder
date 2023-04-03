@@ -57,24 +57,25 @@
     "views": {
       "coder": [
         {
-          "id": "coderRemote",
-          "name": "",
+          "id": "myWorkspaces",
+          "name": "My Workspaces",
+          "visibility": "visible",
+          "icon": "media/logo.svg"
+        },
+        {
+          "id": "allWorkspaces",
+          "name": "All Workspaces",
           "visibility": "visible",
           "icon": "media/logo.svg",
-          "contextualTitle": "Coder Remote"
+          "when": "coder.authenticated && coder.isOwner"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "coderRemote",
+        "view": "myWorkspaces",
         "contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
         "when": "!coder.authenticated && coder.loaded"
-      },
-      {
-        "view": "coderRemote",
-        "contents": "You're logged in! \n[Open Workspace](command:coder.open)",
-        "when": "coder.authenticated && coder.loaded"
       }
     ],
     "commands": [
@@ -84,18 +85,84 @@
       },
       {
         "command": "coder.logout",
-        "title": "Coder: Logout"
+        "title": "Coder: Logout",
+        "when": "coder.authenticated",
+        "icon": "$(sign-out)"
       },
       {
         "command": "coder.open",
-        "title": "Coder: Open Workspace"
+        "title": "Coder: Open Workspace",
+        "icon": "$(play)"
+      },
+      {
+        "command": "coder.createWorkspace",
+        "title": "Create Workspace",
+        "when": "coder.authenticated",
+        "icon": "$(add)"
+      },
+      {
+        "command": "coder.navigateToWorkspace",
+        "title": "Navigate to Workspace Page",
+        "when": "coder.authenticated",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "coder.navigateToWorkspaceSettings",
+        "title": "Edit Workspace Settings",
+        "when": "coder.authenticated",
+        "icon": "$(settings-gear)"
       },
       {
         "command": "coder.workspace.update",
         "title": "Coder: Update Workspace",
         "when": "coder.workspace.updatable"
+      },
+      {
+        "command": "coder.refreshWorkspaces",
+        "title": "Coder: Refresh Workspace",
+        "icon": "$(refresh)",
+        "when": "coder.authenticated"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "coder.logout",
+          "when": "coder.authenticated && view == myWorkspaces"
+        },
+        {
+          "command": "coder.login",
+          "when": "!coder.authenticated && view == myWorkspaces"
+        },
+        {
+          "command": "coder.createWorkspace",
+          "when": "coder.authenticated && view == myWorkspaces",
+          "group": "navigation"
+        },
+        {
+          "command": "coder.refreshWorkspaces",
+          "when": "coder.authenticated && view == myWorkspaces",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "coder.open",
+          "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
+          "group": "inline"
+        },
+        {
+          "command": "coder.navigateToWorkspace",
+          "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
+          "group": "inline"
+        },
+        {
+          "command": "coder.navigateToWorkspaceSettings",
+          "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
+          "group": "inline"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "yarn package",

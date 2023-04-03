@@ -6,15 +6,27 @@ import * as vscode from "vscode"
 import { Commands } from "./commands"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
+import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Coder")
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
 
+  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine)
+  const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All)
+
+  vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
+  vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
+
   getAuthenticatedUser()
-    .then(() => {
-      vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+    .then(async (user) => {
+      if (user) {
+        vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+        if (user.roles.find((role) => role.name === "owner")) {
+          await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
+        }
+      }
     })
     .catch(() => {
       // Not authenticated!
@@ -76,6 +88,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))
   vscode.commands.registerCommand("coder.open", commands.open.bind(commands))
   vscode.commands.registerCommand("coder.workspace.update", commands.updateWorkspace.bind(commands))
+  vscode.commands.registerCommand("coder.createWorkspace", commands.createWorkspace.bind(commands))
+  vscode.commands.registerCommand("coder.navigateToWorkspace", commands.navigateToWorkspace.bind(commands))
+  vscode.commands.registerCommand(
+    "coder.navigateToWorkspaceSettings",
+    commands.navigateToWorkspaceSettings.bind(commands),
+  )
+  vscode.commands.registerCommand("coder.refreshWorkspaces", () => {
+    myWorkspacesProvider.refresh()
+    allWorkspacesProvider.refresh()
+  })
 
   // Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
   // in package.json we're able to perform actions before the authority is
