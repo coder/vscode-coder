@@ -680,7 +680,6 @@ export class Remote {
     return this.vscodeProposed.workspace.registerResourceLabelFormatter({
       scheme: "vscode-remote",
       formatting: {
-        authorityPrefix: "ssh-remote",
         label: "${path}",
         separator: "/",
         tildify: true,
