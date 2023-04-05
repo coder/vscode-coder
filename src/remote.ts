@@ -17,6 +17,7 @@ import * as os from "os"
 import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
+
 import * as vscode from "vscode"
 import * as ws from "ws"
 import { SSHConfig, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
@@ -25,7 +26,8 @@ import { Storage } from "./storage"
 export class Remote {
   // Prefix is a magic string that is prepended to SSH hosts to indicate that
   // they should be handled by this extension.
-  public static readonly Prefix = "coder-vscode--"
+  private static userHostPrefix = vscode.workspace.getConfiguration("coder").get<string>("userHostPrefix")
+  public static readonly Prefix = Remote.userHostPrefix || "coder"
 
   public constructor(
     private readonly vscodeProposed: typeof vscode,
@@ -38,18 +40,13 @@ export class Remote {
     // If the URI passed doesn't have the proper prefix ignore it. We don't need
     // to do anything special, because this isn't trying to open a Coder
     // workspace.
-    if (!authorityParts[1].startsWith(Remote.Prefix)) {
-      return
-    }
+    // if (!authorityParts[1].startsWith(Remote.Prefix)) {
+    //   return
+    // }
     const sshAuthority = authorityParts[1].substring(Remote.Prefix.length)
-
+    const workspaceName = sshAuthority.split(".")[1] //format is coder.<workspace>.<agent>
     // Authorities are in the format:
-    // coder-vscode--<username>--<workspace>--<agent> Agent can be omitted then
-    // will be prompted for instead.
-    const parts = sshAuthority.split("--")
-    if (parts.length < 2 || parts.length > 3) {
-      throw new Error(`Invalid Coder SSH authority. Must be: <username>--<workspace>--<agent?>`)
-    }
+    // coder.<workspace>.<agent>? Agent can be omitted then
 
     const buildInfo = await getBuildInfo()
     const parsedVersion = semver.parse(buildInfo.version)
@@ -75,7 +72,8 @@ export class Remote {
 
     // Find the workspace from the URI scheme provided!
     try {
-      this.storage.workspace = await getWorkspaceByOwnerAndName(parts[0], parts[1])
+
+      this.storage.workspace = await getWorkspaceByOwnerAndName(undefined, workspaceName)
     } catch (error) {
       if (!axios.isAxiosError(error)) {
         throw error
@@ -86,7 +84,7 @@ export class Remote {
             `That workspace doesn't exist!`,
             {
               modal: true,
-              detail: `${parts[0]}/${parts[1]} cannot be found. Maybe it was deleted...`,
+              detail: `${workspaceName} cannot be found. Maybe it was deleted...`,
               useCustom: true,
             },
             "Open Workspace",
@@ -216,7 +214,7 @@ export class Remote {
           `This workspace is stopped!`,
           {
             modal: true,
-            detail: `Click below to start and open ${parts[0]}/${parts[1]}.`,
+            detail: `Click below to start and open ${workspaceName}.`,
             useCustom: true,
           },
           "Start Workspace",
@@ -235,17 +233,13 @@ export class Remote {
 
     let agent: WorkspaceAgent | undefined
 
-    if (parts.length === 2) {
-      if (agents.length === 1) {
-        agent = agents[0]
-      }
+    const userSpecifiedAgent = sshAuthority.split(".")[1] || "main"
 
-      // If there are multiple agents, we should select one here! TODO: Support
-      // multiple agents!
-    }
+    // If there are multiple agents, we should select one here! TODO: Support
+    // multiple agents!
 
     if (!agent) {
-      const matchingAgents = agents.filter((agent) => agent.name === parts[2])
+      const matchingAgents = agents.filter((agent) => agent.name === userSpecifiedAgent)
       if (matchingAgents.length !== 1) {
         // TODO: Show the agent selector here instead!
         throw new Error(`Invalid Coder SSH authority. Agent not found!`)
