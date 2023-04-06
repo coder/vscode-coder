@@ -1,5 +1,6 @@
 "use strict"
 
+import axios from "axios"
 import { getAuthenticatedUser } from "coder/site/src/api/api"
 import * as module from "module"
 import * as vscode from "vscode"
@@ -18,7 +19,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
   vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
-
+  await addGlobalVpnHeaders()
   getAuthenticatedUser()
     .then(async (user) => {
       if (user) {
@@ -114,5 +115,29 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       modal: true,
       useCustom: true,
     })
+  }
+}
+async function addGlobalVpnHeaders(): Promise<void> {
+  //find if global vpn headers are needed
+  type VpnHeaderConfig = {
+    headerName: string
+    value: string
+    requiredOnStartup: boolean
+  }
+  const vpnHeaderConf = vscode.workspace.getConfiguration("coder").get<VpnHeaderConfig>("vpnHeader") || undefined
+  if (!vpnHeaderConf || vpnHeaderConf.requiredOnStartup === false) {
+    return
+  }
+  const { headerName } = vpnHeaderConf
+  //read global headers from user prompt
+  const vpnToken = await vscode.window.showInputBox({
+    title: "VpnToken",
+    prompt: "you need to add your vpn access token to be able to run queries",
+    placeHolder: "put your token here",
+    // value: ,
+  })
+
+  if (vpnToken) {
+    axios.defaults.headers.common[headerName] = vpnToken
   }
 }
