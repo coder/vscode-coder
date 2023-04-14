@@ -1,4 +1,4 @@
-import axios from "axios"
+import axios  from "axios"
 import { getAuthenticatedUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
 import { Workspace } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
@@ -8,8 +8,8 @@ import { Storage } from "./storage"
 import { WorkspaceTreeItem } from "./workspacesProvider"
 
 export class Commands {
-  public constructor(private readonly vscodeProposed: typeof vscode, private readonly storage: Storage) {}
 
+  public constructor(private readonly vscodeProposed: typeof vscode, private readonly storage: Storage) {}
   public async login(...args: string[]): Promise<void> {
     let url: string | undefined = args.length >= 1 ? args[0] : undefined
     if (!url) {

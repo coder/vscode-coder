@@ -42,6 +42,26 @@
           },
           "scope": "machine",
           "default": []
+        },
+        "coder.vpnHeader":{
+          "markdownDescription": "key/ value pair to add to coder",
+            "type": "object",
+            "properties": {
+              "headerName": {
+                "type": "string",
+                "description": "header name"
+              },
+              "value": {
+                "type": "string",
+                "description": "header value optional"
+              },
+              "requiredOnStartup":{
+                "type":"boolean",
+                "description": "if set to true will open a box to add the headers"
+
+              }
+            }
+
         }
       }
     },

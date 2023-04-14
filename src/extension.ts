@@ -20,6 +20,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
   vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
   await addGlobalVpnHeaders()
+  addAxiosInterceptor()
   getAuthenticatedUser()
     .then(async (user) => {
       if (user) {
@@ -116,6 +117,22 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       useCustom: true,
     })
   }
+}
+function addAxiosInterceptor(): void {
+  axios.interceptors.response.use(
+    (res) => {
+      if (typeof res.data === "object") {
+        return res
+      } else {
+        vscode.window.showErrorMessage(JSON.stringify("vpn token expired or missing"))
+      }
+    },
+    (error) => {
+      if (error.status === 403) {
+        vscode.window.showErrorMessage(JSON.stringify("vpn token not valid, make sure you added a correct token"))
+      }
+    },
+  )
 }
 async function addGlobalVpnHeaders(): Promise<void> {
   //find if global vpn headers are needed
