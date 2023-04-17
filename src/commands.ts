@@ -8,8 +8,8 @@ import { Storage } from "./storage"
 import { WorkspaceTreeItem } from "./workspacesProvider"
 
 export class Commands {
-
   public constructor(private readonly vscodeProposed: typeof vscode, private readonly storage: Storage) {}
+
   public async login(...args: string[]): Promise<void> {
     let url: string | undefined = args.length >= 1 ? args[0] : undefined
     if (!url) {
