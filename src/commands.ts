@@ -1,4 +1,4 @@
-import axios  from "axios"
+import axios from "axios"
 import { getAuthenticatedUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
 import { Workspace } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
