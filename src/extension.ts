@@ -1,13 +1,16 @@
 "use strict"
 
-import axios from "axios"
+import axios, { AxiosResponse } from "axios"
 import { getAuthenticatedUser } from "coder/site/src/api/api"
+import { readFileSync } from "fs"
 import * as module from "module"
 import * as vscode from "vscode"
 import { Commands } from "./commands"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
+import * as os from "os"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
+import path from "path"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Coder")
@@ -19,8 +22,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
   vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
-  await addGlobalVpnHeaders()
-  addAxiosInterceptor()
+  await initGlobalVpnHeaders(storage)
+  addAxiosInterceptor(storage)
   getAuthenticatedUser()
     .then(async (user) => {
       if (user) {
@@ -118,43 +121,94 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     })
   }
 }
-function addAxiosInterceptor(): void {
+function addAxiosInterceptor(storage: Storage): void {
   axios.interceptors.response.use(
-    (res) => {
-      if (typeof res.data === "object") {
-        return res
+    ;(res) => {
+      if (isVpnTokenInvalid(res)) {
+        getVpnHeaderFromUser(
+          "seems like the Vpn Token provided is either invalid or expired, please provide a new token",
+        ).then((token) => {
+          storage.setVpnHeaderToken(token)
+        })
       } else {
-        vscode.window.showErrorMessage(JSON.stringify("vpn token expired or missing"))
+        return res
       }
     },
-    (error) => {
-      if (error.status === 403) {
-        vscode.window.showErrorMessage(JSON.stringify("vpn token not valid, make sure you added a correct token"))
-      }
-    },
+      (error) => {
+        if (isVpnTokenInvalidOnError(error)) {
+          getVpnHeaderFromUser(
+            "seems like the Vpn Token provided is either invalid or expired, please provide a new token",
+          ).then((token) => {
+            storage.setVpnHeaderToken(token)
+          })
+          // vscode.window.showErrorMessage(JSON.stringify("vpn token not valid, make sure you added a correct token"))
+        }
+        return error
+      },
   )
 }
-async function addGlobalVpnHeaders(): Promise<void> {
+async function initGlobalVpnHeaders(storage: Storage): Promise<void> {
   //find if global vpn headers are needed
   type VpnHeaderConfig = {
     headerName: string
-    value: string
-    requiredOnStartup: boolean
+    token: string
+    tokenFile: string
   }
-  const vpnHeaderConf = vscode.workspace.getConfiguration("coder").get<VpnHeaderConfig>("vpnHeader") || undefined
-  if (!vpnHeaderConf || vpnHeaderConf.requiredOnStartup === false) {
+  const vpnHeaderConf = vscode.workspace.getConfiguration("coder").get<VpnHeaderConfig>("vpnHeader")
+  if (!vpnHeaderConf) {
     return
   }
-  const { headerName } = vpnHeaderConf
-  //read global headers from user prompt
-  const vpnToken = await vscode.window.showInputBox({
+  const { headerName, tokenFile, token } = vpnHeaderConf
+  if (!headerName) {
+    throw Error(
+      "vpn header name was not defined in extension setting, please make sure to set `coder.vpnHeader.headerName`",
+    )
+  }
+  const maybeVpnHeaderToken = (await storage.getVpnHeaderToken()) || token || readVpnHeaderTokenFromFile(tokenFile)
+  if (maybeVpnHeaderToken) {
+    storage.setVpnHeaderToken(maybeVpnHeaderToken)
+    axios.defaults.headers.common[headerName] = maybeVpnHeaderToken
+  } else {
+    //default to read global headers from user prompt
+    const vpnToken = await getVpnHeaderFromUser(
+      "you need to add your vpn access token to be able to run api calls to coder ",
+    )
+
+    if (vpnToken) {
+      storage.setVpnHeaderToken(vpnToken)
+      axios.defaults.headers.common[headerName] = vpnToken
+    } else {
+      throw Error(
+        "you must provide a vpn token, either by user prompt, path to file holding the token, or explicitly as conf argument ",
+      )
+    }
+  }
+}
+
+async function getVpnHeaderFromUser(message: string): Promise<string | undefined> {
+  return await vscode.window.showInputBox({
     title: "VpnToken",
-    prompt: "you need to add your vpn access token to be able to run queries",
+    prompt: message,
     placeHolder: "put your token here",
     // value: ,
   })
+}
 
-  if (vpnToken) {
-    axios.defaults.headers.common[headerName] = vpnToken
+function readVpnHeaderTokenFromFile(filepath: string): string | undefined {
+  if (!filepath) {
+    return
   }
+  if (filepath.startsWith("~")) {
+    return readFileSync(path.join(os.homedir(), filepath.slice(1)), "utf-8")
+  } else {
+    return readFileSync(filepath, "utf-8")
+  }
+}
+function isVpnTokenInvalid(res: AxiosResponse<any, any>): boolean {
+  //if token expired or missing the vpn will return 200 OK with the actual html page to get you to reauthenticate
+  // , this will result in "data" not being an object but a string containing the html
+  return typeof res.data !== "object"
+}
+function isVpnTokenInvalidOnError(error: any): boolean {
+  return error.isAxiosError && error.response.status === 403
 }

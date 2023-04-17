@@ -54,6 +54,14 @@ export class Storage {
   public async getSessionToken(): Promise<string | undefined> {
     return this.secrets.get("sessionToken")
   }
+  public async setVpnHeaderToken(headerToken?: string): Promise<void> {
+    if (headerToken) {
+      this.secrets.store("vpnHeaderToken", headerToken)
+    }
+  }
+  public async getVpnHeaderToken(): Promise<string | undefined> {
+    return await this.secrets.get("vpnHeaderToken")
+  }
 
   // getRemoteSSHLogPath returns the log path for the "Remote - SSH" output panel.
   // There is no VS Code API to get the contents of an output panel. We use this

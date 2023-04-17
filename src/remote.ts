@@ -509,13 +509,20 @@ export class Remote {
     }
 
     const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+    const vpnTokenHeaderName = this.vscodeProposed.workspace
+      .getConfiguration()
+      .get<string>("coder.vpnHeader.headerName")
+    const VpnHeaderToken = await this.storage.getVpnHeaderToken()
     const sshValues = {
       Host: `${Remote.Prefix}*`,
-      ProxyCommand: `${escape(binaryPath)} vscodessh --network-info-dir ${escape(
+      // when running vscodessh command we get the following error "find workspace: invalid character '<' looking for beginning of value" which means that the header is not proppgate currectly
+      ProxyCommand: `${escape(
+        binaryPath,
+      )} --header="${vpnTokenHeaderName}=${VpnHeaderToken}" vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
       )} --session-token-file ${escape(this.storage.getSessionTokenPath())} --url-file ${escape(
         this.storage.getURLPath(),
-      )} %h`,
+      )}  %h`,
       ConnectTimeout: "0",
       StrictHostKeyChecking: "no",
       UserKnownHostsFile: "/dev/null",
