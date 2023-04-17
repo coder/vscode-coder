@@ -1,5 +1,4 @@
-import { SSHConfigResponse } from "coder/site/src/api/typesGenerated"
-import { writeFile, readFile } from "fs/promises"
+import { readFile, writeFile } from "fs/promises"
 import { ensureDir } from "fs-extra"
 import path from "path"
 
@@ -9,13 +8,14 @@ interface Block {
   raw: string
 }
 
-interface SSHValues {
+export interface SSHValues {
   Host: string
   ProxyCommand: string
   ConnectTimeout: string
   StrictHostKeyChecking: string
   UserKnownHostsFile: string
   LogLevel: string
+  SetEnv?: string
 }
 
 // Interface for the file system to make it easier to test
