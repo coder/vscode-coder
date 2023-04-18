@@ -217,7 +217,8 @@ export class Commands {
 
     // A workspace can have multiple agents, but that's handled
     // when opening a workspace unless explicitly specified.
-    const remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}`
+    // search for workspace name in the ssh config
+    const remoteAuthority = `ssh-remote+${Remote.Prefix}.${workspaceName}.main` //main is the default agent
 
     let newWindow = true
     // Open in the existing window if no workspaces are open.

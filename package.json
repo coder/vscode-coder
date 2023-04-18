@@ -42,6 +42,12 @@
           },
           "scope": "machine",
           "default": []
+        },
+        "coder.userHostPrefix": {
+          "markdownDescription": "Override the default host prefix",
+          "type": "string",
+          "scope": "machine",
+          "default": ""
         }
       }
     },
@@ -185,7 +191,7 @@
     "@types/which": "^2.0.1",
     "@types/ws": "^8.5.3",
     "@typescript-eslint/eslint-plugin": "^5.47.1",
-    "@typescript-eslint/parser": "^4.14.1",
+    "@typescript-eslint/parser": "^5.47.1",
     "@vscode/test-electron": "^1.6.2",
     "@vscode/vsce": "^2.16.0",
     "bufferutil": "^4.0.7",
