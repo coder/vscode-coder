@@ -19,7 +19,8 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
-import { SSHConfig, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
+import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
+import { sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
 
 export class Remote {
@@ -509,11 +510,14 @@ export class Remote {
     }
 
     const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+
     const vpnTokenHeaderName = this.vscodeProposed.workspace
       .getConfiguration()
       .get<string>("coder.vpnHeader.headerName")
     const VpnHeaderToken = await this.storage.getVpnHeaderToken()
-    const sshValues = {
+
+    const sshValues: SSHValues = {
+
       Host: `${Remote.Prefix}*`,
       // when running vscodessh command we get the following error "find workspace: invalid character '<' looking for beginning of value" which means that the header is not proppgate currectly
       ProxyCommand: `${escape(
@@ -527,9 +531,11 @@ export class Remote {
       StrictHostKeyChecking: "no",
       UserKnownHostsFile: "/dev/null",
       LogLevel: "ERROR",
+    }
+    if (sshSupportsSetEnv()) {
       // This allows for tracking the number of extension
       // users connected to workspaces!
-      SetEnv: "CODER_SSH_SESSION_TYPE=vscode",
+      sshValues.SetEnv = " CODER_SSH_SESSION_TYPE=vscode"
     }
 
     await sshConfig.update(sshValues, sshConfigOverrides)
