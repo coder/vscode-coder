@@ -168,11 +168,10 @@ export class Commands {
         workspaceAgent = agents[0].name
       } else {
         const agentQuickPick = vscode.window.createQuickPick()
-        let lastAgents: WorkspaceAgent[]
         agentQuickPick.title = `Select an agent`
 
         agentQuickPick.busy = true
-        lastAgents = agents
+        const lastAgents = agents
         const agentItems: vscode.QuickPickItem[] = agents.map((agent) => {
           let icon = "$(debug-start)"
           if (agent.status !== "connected") {
@@ -201,7 +200,7 @@ export class Commands {
           })
         })
 
-        if (agent != undefined) {
+        if (agent) {
           folderPath = agent.expanded_directory
           workspaceAgent = agent.name
         } else {
@@ -219,7 +218,9 @@ export class Commands {
     // A workspace can have multiple agents, but that's handled
     // when opening a workspace unless explicitly specified.
     let remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}`
-    if (workspaceAgent) remoteAuthority += `--${workspaceAgent}`
+    if (workspaceAgent) {
+      remoteAuthority += `--${workspaceAgent}`
+    }
 
     let newWindow = true
     // Open in the existing window if no workspaces are open.
