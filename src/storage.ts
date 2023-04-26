@@ -52,7 +52,11 @@ export class Storage {
   }
 
   public async getSessionToken(): Promise<string | undefined> {
-    return this.secrets.get("sessionToken")
+    try {
+      return this.secrets.get("sessionToken");
+    } catch {
+      return undefined;
+    }
   }
 
   // getRemoteSSHLogPath returns the log path for the "Remote - SSH" output panel.
