@@ -1,4 +1,4 @@
-import { writeFile, readFile } from "fs/promises"
+import { readFile, writeFile } from "fs/promises"
 import { ensureDir } from "fs-extra"
 import path from "path"
 
@@ -8,13 +8,14 @@ interface Block {
   raw: string
 }
 
-interface SSHValues {
+export interface SSHValues {
   Host: string
   ProxyCommand: string
   ConnectTimeout: string
   StrictHostKeyChecking: string
   UserKnownHostsFile: string
   LogLevel: string
+  SetEnv?: string
 }
 
 // Interface for the file system to make it easier to test
@@ -28,6 +29,56 @@ const defaultFileSystem: FileSystem = {
   readFile,
   ensureDir,
   writeFile,
+}
+
+export const defaultSSHConfigResponse: Record<string, string> = {}
+
+// mergeSSHConfigValues will take a given ssh config and merge it with the overrides
+// provided. The merge handles key case insensitivity, so casing in the "key" does
+// not matter.
+export function mergeSSHConfigValues(
+  config: Record<string, string>,
+  overrides: Record<string, string>,
+): Record<string, string> {
+  const merged: Record<string, string> = {}
+
+  // We need to do a case insensitive match for the overrides as ssh config keys are case insensitive.
+  // To get the correct key:value, use:
+  //   key = caseInsensitiveOverrides[key.toLowerCase()]
+  //   value = overrides[key]
+  const caseInsensitiveOverrides: Record<string, string> = {}
+  Object.keys(overrides).forEach((key) => {
+    caseInsensitiveOverrides[key.toLowerCase()] = key
+  })
+
+  Object.keys(config).forEach((key) => {
+    const lower = key.toLowerCase()
+    // If the key is in overrides, use the override value.
+    if (caseInsensitiveOverrides[lower]) {
+      const correctCaseKey = caseInsensitiveOverrides[lower]
+      const value = overrides[correctCaseKey]
+      delete caseInsensitiveOverrides[lower]
+
+      // If the value is empty, do not add the key. It is being removed.
+      if (value === "") {
+        return
+      }
+      merged[correctCaseKey] = value
+      return
+    }
+    // If no override, take the original value.
+    if (config[key] !== "") {
+      merged[key] = config[key]
+    }
+  })
+
+  // Add remaining overrides.
+  Object.keys(caseInsensitiveOverrides).forEach((lower) => {
+    const correctCaseKey = caseInsensitiveOverrides[lower]
+    merged[correctCaseKey] = overrides[correctCaseKey]
+  })
+
+  return merged
 }
 
 export class SSHConfig {
@@ -51,7 +102,7 @@ export class SSHConfig {
     }
   }
 
-  async update(values: SSHValues) {
+  async update(values: SSHValues, overrides: Record<string, string> = defaultSSHConfigResponse) {
     // We should remove this in March 2023 because there is not going to have
     // old configs
     this.cleanUpOldConfig()
@@ -59,7 +110,7 @@ export class SSHConfig {
     if (block) {
       this.eraseBlock(block)
     }
-    this.appendBlock(values)
+    this.appendBlock(values, overrides)
     await this.save()
   }
 
@@ -102,12 +153,32 @@ export class SSHConfig {
     this.raw = this.getRaw().replace(block.raw, "")
   }
 
-  private appendBlock({ Host, ...otherValues }: SSHValues) {
+  /**
+   *
+   * appendBlock builds the ssh config block. The order of the keys is determinstic based on the input.
+   * Expected values are always in a consistent order followed by any additional overrides in sorted order.
+   *
+   * @param param0 - SSHValues are the expected SSH values for using ssh with coder.
+   * @param overrides - Overrides typically come from the deployment api and are used to override the default values.
+   *                    The overrides are given as key:value pairs where the key is the ssh config file key.
+   *                    If the key matches an expected value, the expected value is overridden. If it does not
+   *                    match an expected value, it is appended to the end of the block.
+   */
+  private appendBlock({ Host, ...otherValues }: SSHValues, overrides: Record<string, string>) {
     const lines = [this.startBlockComment, `Host ${Host}`]
-    const keys = Object.keys(otherValues) as Array<keyof typeof otherValues>
+
+    // configValues is the merged values of the defaults and the overrides.
+    const configValues = mergeSSHConfigValues(otherValues, overrides)
+
+    // keys is the sorted keys of the merged values.
+    const keys = (Object.keys(configValues) as Array<keyof typeof configValues>).sort()
     keys.forEach((key) => {
-      lines.push(this.withIndentation(`${key} ${otherValues[key]}`))
+      const value = configValues[key]
+      if (value !== "") {
+        lines.push(this.withIndentation(`${key} ${value}`))
+      }
     })
+
     lines.push(this.endBlockComment)
     const raw = this.getRaw()
 

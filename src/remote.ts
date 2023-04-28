@@ -6,6 +6,7 @@ import {
   getWorkspaceBuildLogs,
   getWorkspaceByOwnerAndName,
   startWorkspace,
+  getDeploymentSSHConfig,
 } from "coder/site/src/api/api"
 import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
@@ -18,7 +19,8 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
-import { SSHConfig } from "./sshConfig"
+import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
+import { sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
 
 export class Remote {
@@ -146,7 +148,8 @@ export class Remote {
     // watch what's going on!
     if (
       this.storage.workspace.latest_build.status === "pending" ||
-      this.storage.workspace.latest_build.status === "starting"
+      this.storage.workspace.latest_build.status === "starting" ||
+      this.storage.workspace.latest_build.status === "stopping"
     ) {
       const writeEmitter = new vscode.EventEmitter<string>()
       // We use a terminal instead of an output channel because it feels more
@@ -207,6 +210,23 @@ export class Remote {
 
       if (buildComplete) {
         buildComplete()
+      }
+
+      if (this.storage.workspace.latest_build.status === "stopped") {
+        const result = await this.vscodeProposed.window.showInformationMessage(
+          `This workspace is stopped!`,
+          {
+            modal: true,
+            detail: `Click below to start and open ${parts[0]}/${parts[1]}.`,
+            useCustom: true,
+          },
+          "Start Workspace",
+        )
+        if (!result) {
+          await this.closeRemote()
+        }
+        await this.reloadWindow()
+        return
       }
     }
 
@@ -422,10 +442,60 @@ export class Remote {
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
   private async updateSSHConfig() {
+    let deploymentSSHConfig = defaultSSHConfigResponse
+    try {
+      const deploymentConfig = await getDeploymentSSHConfig()
+      deploymentSSHConfig = deploymentConfig.ssh_config_options
+    } catch (error) {
+      if (!axios.isAxiosError(error)) {
+        throw error
+      }
+      switch (error.response?.status) {
+        case 404: {
+          // Deployment does not support overriding ssh config yet. Likely an
+          // older version, just use the default.
+          break
+        }
+        case 401: {
+          await this.vscodeProposed.window.showErrorMessage("Your session expired...")
+          throw error
+        }
+        default:
+          throw error
+      }
+    }
+
+    // deploymentConfig is now set from the remote coderd deployment.
+    // Now override with the user's config.
+    const userConfigSSH = vscode.workspace.getConfiguration("coder").get<string[]>("sshConfig") || []
+    // Parse the user's config into a Record<string, string>.
+    const userConfig = userConfigSSH.reduce((acc, line) => {
+      let i = line.indexOf("=")
+      if (i === -1) {
+        i = line.indexOf(" ")
+        if (i === -1) {
+          // This line is malformed. The setting is incorrect, and does not match
+          // the pattern regex in the settings schema.
+          return acc
+        }
+      }
+      const key = line.slice(0, i)
+      const value = line.slice(i + 1)
+      acc[key] = value
+      return acc
+    }, {} as Record<string, string>)
+    const sshConfigOverrides = mergeSSHConfigValues(deploymentSSHConfig, userConfig)
+
     let sshConfigFile = vscode.workspace.getConfiguration().get<string>("remote.SSH.configFile")
     if (!sshConfigFile) {
       sshConfigFile = path.join(os.homedir(), ".ssh", "config")
     }
+    // VS Code Remote resolves ~ to the home directory.
+    // This is required for the tilde to work on Windows.
+    if (sshConfigFile.startsWith("~")) {
+      sshConfigFile = path.join(os.homedir(), sshConfigFile.slice(1))
+    }
+
     const sshConfig = new SSHConfig(sshConfigFile)
     await sshConfig.load()
 
@@ -440,7 +510,7 @@ export class Remote {
     }
 
     const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
-    const sshValues = {
+    const sshValues: SSHValues = {
       Host: `${Remote.Prefix}*`,
       ProxyCommand: `${escape(binaryPath)} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
@@ -452,8 +522,13 @@ export class Remote {
       UserKnownHostsFile: "/dev/null",
       LogLevel: "ERROR",
     }
+    if (sshSupportsSetEnv()) {
+      // This allows for tracking the number of extension
+      // users connected to workspaces!
+      sshValues.SetEnv = " CODER_SSH_SESSION_TYPE=vscode"
+    }
 
-    await sshConfig.update(sshValues)
+    await sshConfig.update(sshValues, sshConfigOverrides)
   }
 
   // showNetworkUpdates finds the SSH process ID that is being used by this
@@ -608,7 +683,6 @@ export class Remote {
     return this.vscodeProposed.workspace.registerResourceLabelFormatter({
       scheme: "vscode-remote",
       formatting: {
-        authorityPrefix: "ssh-remote",
         label: "${path}",
         separator: "/",
         tildify: true,

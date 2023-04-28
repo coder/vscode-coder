@@ -1,9 +1,11 @@
 import axios from "axios"
-import { getUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
+import { getAuthenticatedUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
 import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
+import { extractAgents } from "./api-helper"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
+import { WorkspaceTreeItem } from "./workspacesProvider"
 
 export class Commands {
   public constructor(private readonly vscodeProposed: typeof vscode, private readonly storage: Storage) {}
@@ -73,21 +75,31 @@ export class Commands {
 
     await this.storage.setURL(url)
     await this.storage.setSessionToken(token)
-    const user = await getUser()
-    await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
-    vscode.window
-      .showInformationMessage(
-        `Welcome to Coder, ${user.username}!`,
-        {
-          detail: "You can now use the Coder extension to manage your Coder instance.",
-        },
-        "Open Workspace",
-      )
-      .then((action) => {
-        if (action === "Open Workspace") {
-          vscode.commands.executeCommand("coder.open")
-        }
-      })
+    try {
+      const user = await getAuthenticatedUser()
+      if (!user) {
+        throw new Error("Failed to get authenticated user")
+      }
+      await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+      if (user.roles.find((role) => role.name === "owner")) {
+        await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
+      }
+      vscode.window
+        .showInformationMessage(
+          `Welcome to Coder, ${user.username}!`,
+          {
+            detail: "You can now use the Coder extension to manage your Coder instance.",
+          },
+          "Open Workspace",
+        )
+        .then((action) => {
+          if (action === "Open Workspace") {
+            vscode.commands.executeCommand("coder.open")
+          }
+        })
+    } catch (error) {
+      vscode.window.showErrorMessage("Failed to authenticate with Coder: " + error)
+    }
   }
 
   public async logout(): Promise<void> {
@@ -101,10 +113,40 @@ export class Commands {
     })
   }
 
-  public async open(...args: string[]): Promise<void> {
+  public async createWorkspace(): Promise<void> {
+    const uri = this.storage.getURL() + "/templates"
+    await vscode.commands.executeCommand("vscode.open", uri)
+  }
+
+  public async navigateToWorkspace(workspace: WorkspaceTreeItem) {
+    if (workspace) {
+      const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}`
+      await vscode.commands.executeCommand("vscode.open", uri)
+    } else if (this.storage.workspace) {
+      const uri = this.storage.getURL() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}`
+      await vscode.commands.executeCommand("vscode.open", uri)
+    } else {
+      vscode.window.showInformationMessage("No workspace found.")
+    }
+  }
+
+  public async navigateToWorkspaceSettings(workspace: WorkspaceTreeItem) {
+    if (workspace) {
+      const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}/settings`
+      await vscode.commands.executeCommand("vscode.open", uri)
+    } else if (this.storage.workspace) {
+      const uri =
+        this.storage.getURL() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}/settings`
+      await vscode.commands.executeCommand("vscode.open", uri)
+    } else {
+      vscode.window.showInformationMessage("No workspace found.")
+    }
+  }
+
+  public async open(...args: unknown[]): Promise<void> {
     let workspaceOwner: string
     let workspaceName: string
-    let workspaceAgent: string
+    let workspaceAgent: string | undefined
     let folderPath: string | undefined
 
     if (args.length === 0) {
@@ -159,9 +201,7 @@ export class Commands {
       workspaceOwner = workspace.owner_name
       workspaceName = workspace.name
 
-      const agents = workspace.latest_build.resources.reduce((acc, resource) => {
-        return acc.concat(resource.agents || [])
-      }, [] as WorkspaceAgent[])
+      const agents = extractAgents(workspace)
 
       if (agents.length === 1) {
         folderPath = agents[0].expanded_directory
@@ -208,11 +248,17 @@ export class Commands {
           workspaceAgent = ""
         }
       }
+    } else if (args.length === 2) {
+      // opening a workspace from the sidebar
+      const workspaceTreeItem = args[0] as WorkspaceTreeItem
+      workspaceOwner = workspaceTreeItem.workspaceOwner
+      workspaceName = workspaceTreeItem.workspaceName
+      folderPath = workspaceTreeItem.workspaceFolderPath
     } else {
-      workspaceOwner = args[0]
-      workspaceName = args[1]
-      workspaceAgent = args[2]
-      folderPath = args[3]
+      workspaceOwner = args[0] as string
+      workspaceName = args[1] as string
+      // workspaceAgent is reserved for args[2], but multiple agents aren't supported yet.
+      folderPath = args[3] as string | undefined
     }
 
     // A workspace can have multiple agents, but that's handled
