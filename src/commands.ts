@@ -143,6 +143,17 @@ export class Commands {
     }
   }
 
+  public async openFromSidebar(treeItem: WorkspaceTreeItem) {
+    if (treeItem) {
+      await openWorkspace(
+        treeItem.workspaceOwner,
+        treeItem.workspaceName,
+        treeItem.workspaceAgent,
+        treeItem.workspaceFolderPath,
+      )
+    }
+  }
+
   public async open(...args: unknown[]): Promise<void> {
     let workspaceOwner: string
     let workspaceName: string
@@ -248,12 +259,6 @@ export class Commands {
           workspaceAgent = ""
         }
       }
-    } else if (args.length === 2) {
-      // opening a workspace from the sidebar
-      const workspaceTreeItem = args[0] as WorkspaceTreeItem
-      workspaceOwner = workspaceTreeItem.workspaceOwner
-      workspaceName = workspaceTreeItem.workspaceName
-      folderPath = workspaceTreeItem.workspaceFolderPath
     } else {
       workspaceOwner = args[0] as string
       workspaceName = args[1] as string
@@ -261,71 +266,7 @@ export class Commands {
       folderPath = args[3] as string | undefined
     }
 
-    // A workspace can have multiple agents, but that's handled
-    // when opening a workspace unless explicitly specified.
-    let remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}`
-    if (workspaceAgent) {
-      remoteAuthority += `--${workspaceAgent}`
-    }
-
-    let newWindow = true
-    // Open in the existing window if no workspaces are open.
-    if (!vscode.workspace.workspaceFolders?.length) {
-      newWindow = false
-    }
-
-    // If a folder isn't specified, we can try to open a recently opened folder.
-    if (!folderPath) {
-      const output: {
-        workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
-      } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
-      const opened = output.workspaces.filter(
-        // Filter out `/` since that's added below.
-        (opened) => opened.folderUri?.authority === remoteAuthority,
-      )
-      if (opened.length > 0) {
-        let selected: (typeof opened)[0]
-
-        if (opened.length > 1) {
-          const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
-            return {
-              label: folder.folderUri.path,
-            }
-          })
-          const item = await vscode.window.showQuickPick(items, {
-            title: "Select a recently opened folder",
-          })
-          if (!item) {
-            return
-          }
-          selected = opened[items.indexOf(item)]
-        } else {
-          selected = opened[0]
-        }
-
-        folderPath = selected.folderUri.path
-      }
-    }
-
-    if (folderPath) {
-      await vscode.commands.executeCommand(
-        "vscode.openFolder",
-        vscode.Uri.from({
-          scheme: "vscode-remote",
-          authority: remoteAuthority,
-          path: folderPath,
-        }),
-        // Open this in a new window!
-        newWindow,
-      )
-      return
-    }
-
-    // This opens the workspace without an active folder opened.
-    await vscode.commands.executeCommand("vscode.newWindow", {
-      remoteAuthority: remoteAuthority,
-      reuseWindow: !newWindow,
-    })
+    await openWorkspace(workspaceOwner, workspaceName, workspaceAgent, folderPath)
   }
 
   public async updateWorkspace(): Promise<void> {
@@ -345,4 +286,77 @@ export class Commands {
       await updateWorkspaceVersion(this.storage.workspace)
     }
   }
+}
+
+async function openWorkspace(
+  workspaceOwner: string,
+  workspaceName: string,
+  workspaceAgent: string | undefined,
+  folderPath: string | undefined,
+) {
+  // A workspace can have multiple agents, but that's handled
+  // when opening a workspace unless explicitly specified.
+  let remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}`
+  if (workspaceAgent) {
+    remoteAuthority += `--${workspaceAgent}`
+  }
+
+  let newWindow = true
+  // Open in the existing window if no workspaces are open.
+  if (!vscode.workspace.workspaceFolders?.length) {
+    newWindow = false
+  }
+
+  // If a folder isn't specified, we can try to open a recently opened folder.
+  if (!folderPath) {
+    const output: {
+      workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
+    } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
+    const opened = output.workspaces.filter(
+      // Filter out `/` since that's added below.
+      (opened) => opened.folderUri?.authority === remoteAuthority,
+    )
+    if (opened.length > 0) {
+      let selected: (typeof opened)[0]
+
+      if (opened.length > 1) {
+        const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
+          return {
+            label: folder.folderUri.path,
+          }
+        })
+        const item = await vscode.window.showQuickPick(items, {
+          title: "Select a recently opened folder",
+        })
+        if (!item) {
+          return
+        }
+        selected = opened[items.indexOf(item)]
+      } else {
+        selected = opened[0]
+      }
+
+      folderPath = selected.folderUri.path
+    }
+  }
+
+  if (folderPath) {
+    await vscode.commands.executeCommand(
+      "vscode.openFolder",
+      vscode.Uri.from({
+        scheme: "vscode-remote",
+        authority: remoteAuthority,
+        path: folderPath,
+      }),
+      // Open this in a new window!
+      newWindow,
+    )
+    return
+  }
+
+  // This opens the workspace without an active folder opened.
+  await vscode.commands.executeCommand("vscode.newWindow", {
+    remoteAuthority: remoteAuthority,
+    reuseWindow: !newWindow,
+  })
 }
