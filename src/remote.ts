@@ -17,11 +17,32 @@ import * as os from "os"
 import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
+import { getBorderCharacters, table } from "table"
 import * as vscode from "vscode"
 import * as ws from "ws"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
+
+type AgentMetadata = {
+  result: Result
+  description: Description
+}
+
+type Description = {
+  display_name: string
+  key: string
+  script: string
+  interval: number
+  timeout: number
+}
+
+type Result = {
+  collected_at: Date
+  age: number
+  value: string
+  error: string
+}
 
 export class Remote {
   // Prefix is a magic string that is prepended to SSH hosts to indicate that
@@ -289,6 +310,41 @@ export class Remote {
 
     const workspaceUpdatedStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
     disposables.push(workspaceUpdatedStatus)
+
+    const agentMetadataURL = new URL(`${this.storage.getURL()}/api/v2/workspaceagents/${agent?.id}/watch-metadata`)
+
+    const agentMetadataEventSource = new EventSource(agentMetadataURL.toString(), {
+      headers: {
+        "Coder-Session-Token": await this.storage.getSessionToken(),
+      },
+    })
+    agentMetadataEventSource.addEventListener("open", () => {
+      vscode.window.showInformationMessage("Connected to agent metadata")
+    })
+    agentMetadataEventSource.addEventListener("error", () => {
+      vscode.window.showErrorMessage("Error connecting to agent metadata")
+    })
+    agentMetadataEventSource.addEventListener("data", (event) => {
+      const agentMetadata = JSON.parse(event.data) as AgentMetadata[]
+      agentMetadataStatus.text = `Agent: ${agent?.name}`
+      agentMetadataStatus.tooltip = table(
+        agentMetadata.map((agentMetadata) => {
+          return [agentMetadata.description.display_name, agentMetadata.result.value.replace("\n", "")]
+        }),
+        {
+          columnDefault: {
+            paddingLeft: 0,
+            paddingRight: 1,
+          },
+          drawHorizontalLine: () => false,
+          border: getBorderCharacters(`void`),
+          columns: [{ alignment: "left" }, { alignment: "right" }],
+        },
+      )
+      agentMetadataStatus.show()
+    })
+    const agentMetadataStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
+    disposables.push(agentMetadataStatus)
 
     let hasShownOutdatedNotification = false
     const refreshWorkspaceUpdatedStatus = (newWorkspace: Workspace) => {
