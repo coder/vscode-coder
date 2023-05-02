@@ -51,6 +51,9 @@ export class Storage {
     })
   }
 
+  // this.secrets.get sometimes fails on Apple Silicon. Instead of returning 
+  // undefined it breaks the code and stops it. The try-catch is a workaround 
+  // in case the function fails. The user needs to renew the session then.
   public async getSessionToken(): Promise<string | undefined> {
     try {
       return this.secrets.get("sessionToken")
