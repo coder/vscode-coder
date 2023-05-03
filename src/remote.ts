@@ -450,39 +450,57 @@ export class Remote {
       },
     })
 
-    agentMetadataEventSource.addEventListener("data", (event) => {
-      const AgentMetadataEventSchema = z
-        .object({
-          result: z.object({
-            collected_at: z.string(),
-            age: z.number(),
-            value: z.string(),
-            error: z.string(),
-          }),
-          description: z.object({
-            display_name: z.string(),
-            key: z.string(),
-            script: z.string(),
-            interval: z.number(),
-            timeout: z.number(),
-          }),
-        })
-        .array()
+    agentMetadataEventSource.addEventListener("error", () => {
+      agentMetadataStatusBarItem.hide()
+    })
 
-      const dataEvent = JSON.parse(event.data)
-      const agentMetadata = AgentMetadataEventSchema.parse(dataEvent)
-      agentMetadataStatusBarItem.text = `Agent: ${agent?.name}`
-
-      const tooltipData = agentMetadata.map((agentMetadata) => {
-        return [agentMetadata.description.display_name.trim(), agentMetadata.result.value.replace("\n", "").trim()]
-      })
-
-      const tooltipMarkdown = new vscode.MarkdownString(
-        "| | | " + "\n" + "|:--- | ---: |" + "\n" + tooltipData.map((row) => `| ${row[0]} | ${row[1]} |`).join("\n"),
-      )
-
-      agentMetadataStatusBarItem.tooltip = tooltipMarkdown
+    agentMetadataEventSource.addEventListener("open", () => {
       agentMetadataStatusBarItem.show()
+    })
+
+    agentMetadataEventSource.addEventListener("data", (event) => {
+      try {
+        const AgentMetadataEventSchema = z
+          .object({
+            result: z.object({
+              collected_at: z.string(),
+              age: z.number(),
+              value: z.string(),
+              error: z.string(),
+            }),
+            description: z.object({
+              display_name: z.string(),
+              key: z.string(),
+              script: z.string(),
+              interval: z.number(),
+              timeout: z.number(),
+            }),
+          })
+          .array()
+
+        const dataEvent = JSON.parse(event.data)
+        const agentMetadata = AgentMetadataEventSchema.parse(dataEvent)
+
+        if (agentMetadata.length === 0) {
+          agentMetadataStatusBarItem.hide()
+          agentMetadataEventSource.close()
+        }
+
+        agentMetadataStatusBarItem.text = "$(symbol-variable) Metadata"
+
+        const tooltipData = agentMetadata.map((agentMetadata) => {
+          return [agentMetadata.description.display_name.trim(), agentMetadata.result.value.replace("\n", "").trim()]
+        })
+
+        const tooltipMarkdown = new vscode.MarkdownString(
+          "| | | " + "\n" + "|:--- | ---: |" + "\n" + tooltipData.map((row) => `| ${row[0]} | ${row[1]} |`).join("\n"),
+        )
+
+        agentMetadataStatusBarItem.tooltip = tooltipMarkdown
+      } catch (error) {
+        agentMetadataStatusBarItem.hide()
+        agentMetadataEventSource.close()
+      }
     })
   }
 
@@ -738,10 +756,3 @@ export class Remote {
     })
   }
 }
-/**
- * | A    | B     |
- * | -----: |------- |
- * | a | b |
- * | aaaa | rodrigo |
- */
-function test() {}
