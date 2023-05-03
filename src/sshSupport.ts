@@ -24,10 +24,12 @@ export function sshVersionSupportsSetEnv(sshVersionString: string): boolean {
       return false
     }
     // 7.8 is the first version that supports SetEnv
-    if (Number.parseInt(parts[0], 10) < 7) {
+    const major = Number.parseInt(parts[0], 10)
+    const minor = Number.parseInt(parts[1], 10)
+    if (major < 7) {
       return false
     }
-    if (Number.parseInt(parts[1], 10) < 8) {
+    if (major === 7 && minor < 8) {
       return false
     }
     return true

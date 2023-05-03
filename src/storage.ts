@@ -264,7 +264,7 @@ export class Storage {
   }
 
   public getUserSettingsPath(): string {
-    return path.join(this.appDataDir(), "Code", "User", "settings.json")
+    return path.join(this.globalStorageUri.fsPath, "..", "..", "..", "User", "settings.json")
   }
 
   public getSessionTokenPath(): string {
@@ -290,19 +290,6 @@ export class Storage {
         hash.update(chunk)
       })
     })
-  }
-
-  private appDataDir(): string {
-    switch (process.platform) {
-      case "darwin":
-        return `${os.homedir()}/Library/Application Support`
-      case "linux":
-        return `${os.homedir()}/.config`
-      case "win32":
-        return process.env.APPDATA || ""
-      default:
-        return "/var/local"
-    }
   }
 
   private async updateURL(): Promise<void> {
