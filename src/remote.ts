@@ -122,7 +122,9 @@ export class Remote {
 
     const disposables: vscode.Disposable[] = []
     // Register before connection so the label still displays!
-    disposables.push(this.registerLabelFormatter(`${this.storage.workspace.owner_name}/${this.storage.workspace.name}`))
+    disposables.push(
+      this.registerLabelFormatter(remoteAuthority, this.storage.workspace.owner_name, this.storage.workspace.name),
+    )
 
     let buildComplete: undefined | (() => void)
     if (this.storage.workspace.latest_build.status === "stopped") {
@@ -420,14 +422,11 @@ export class Remote {
     })
 
     // Register the label formatter again because SSH overrides it!
-    let label = `${this.storage.workspace.owner_name}/${this.storage.workspace.name}`
-    if (agents.length > 1) {
-      label += `/${agent.name}`
-    }
-
+    const workspace = this.storage.workspace
+    const agentName = agents.length > 1 ? agent.name : undefined
     disposables.push(
       vscode.extensions.onDidChange(() => {
-        disposables.push(this.registerLabelFormatter(label))
+        disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name, agentName))
       }),
     )
 
@@ -679,14 +678,34 @@ export class Remote {
     await vscode.commands.executeCommand("workbench.action.reloadWindow")
   }
 
-  private registerLabelFormatter(suffix: string): vscode.Disposable {
+  private registerLabelFormatter(
+    remoteAuthority: string,
+    owner: string,
+    workspace: string,
+    agent?: string,
+  ): vscode.Disposable {
+    // VS Code splits based on the separator when displaying the label
+    // in a recently opened dialog. If the workspace suffix contains /,
+    // then it'll visually display weird:
+    // "/home/kyle [Coder: kyle/workspace]" displays as "workspace] /home/kyle [Coder: kyle"
+    // For this reason, we use a different / that visually appears the
+    // same on non-monospace fonts "∕".
+    let suffix = `Coder: ${owner}∕${workspace}`
+    if (agent) {
+      suffix += `∕${agent}`
+    }
+    // VS Code caches resource label formatters in it's global storage SQLite database
+    // under the key "memento/cachedResourceLabelFormatters2".
     return this.vscodeProposed.workspace.registerResourceLabelFormatter({
       scheme: "vscode-remote",
+      // authority is optional but VS Code prefers formatters that most
+      // accurately match the requested authority, so we include it.
+      authority: remoteAuthority,
       formatting: {
         label: "${path}",
         separator: "/",
         tildify: true,
-        workspaceSuffix: `Coder: ${suffix}`,
+        workspaceSuffix: suffix,
       },
     })
   }
