@@ -52,7 +52,13 @@ export class Storage {
   }
 
   public async getSessionToken(): Promise<string | undefined> {
-    return this.secrets.get("sessionToken")
+    try {
+      return await this.secrets.get("sessionToken")
+    } catch (ex) {
+      // The VS Code session store has become corrupt before, and
+      // will fail to get the session token...
+      return undefined
+    }
   }
 
   // getRemoteSSHLogPath returns the log path for the "Remote - SSH" output panel.
