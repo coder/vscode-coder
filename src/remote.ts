@@ -17,7 +17,6 @@ import * as os from "os"
 import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
-import { TableUserConfig, getBorderCharacters, table } from "table"
 import * as vscode from "vscode"
 import * as ws from "ws"
 import { z } from "zod"
@@ -474,16 +473,15 @@ export class Remote {
       const agentMetadata = AgentMetadataEventSchema.parse(dataEvent)
       agentMetadataStatusBarItem.text = `Agent: ${agent?.name}`
 
-      const tableOptions: TableUserConfig = {
-        drawHorizontalLine: () => false,
-        border: getBorderCharacters(`void`),
-        columns: [{ alignment: "left" }, { alignment: "right" }],
-      }
-
       const tooltipData = agentMetadata.map((agentMetadata) => {
         return [agentMetadata.description.display_name.trim(), agentMetadata.result.value.replace("\n", "").trim()]
       })
-      agentMetadataStatusBarItem.tooltip = table(tooltipData, tableOptions)
+
+      const tooltipMarkdown = new vscode.MarkdownString(
+        "| | | " + "\n" + "|:--- | ---: |" + "\n" + tooltipData.map((row) => `| ${row[0]} | ${row[1]} |`).join("\n"),
+      )
+
+      agentMetadataStatusBarItem.tooltip = tooltipMarkdown
       agentMetadataStatusBarItem.show()
     })
   }
@@ -740,3 +738,10 @@ export class Remote {
     })
   }
 }
+/**
+ * | A    | B     |
+ * | -----: |------- |
+ * | a | b |
+ * | aaaa | rodrigo |
+ */
+function test() {}
