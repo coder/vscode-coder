@@ -1,5 +1,5 @@
 import { it, expect } from "vitest"
-import { sshSupportsSetEnv, sshVersionSupportsSetEnv } from "./sshSupport"
+import { computeSSHProperties, sshSupportsSetEnv, sshVersionSupportsSetEnv } from "./sshSupport"
 
 const supports = {
   "OpenSSH_8.9p1 Ubuntu-3ubuntu0.1, OpenSSL 3.0.2 15 Mar 2022": true,
@@ -16,4 +16,24 @@ Object.entries(supports).forEach(([version, expected]) => {
 
 it("current shell supports ssh", () => {
   expect(sshSupportsSetEnv()).toBeTruthy()
+})
+
+it("computes the config for a host", () => {
+  const properties = computeSSHProperties(
+    "coder-vscode--testing",
+    `Host *
+  StrictHostKeyChecking yes
+
+# --- START CODER VSCODE ---
+Host coder-vscode--*
+  StrictHostKeyChecking no
+  Another=true
+# --- END CODER VSCODE ---
+`,
+  )
+
+  expect(properties).toEqual({
+    Another: "true",
+    StrictHostKeyChecking: "yes",
+  })
 })
