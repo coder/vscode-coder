@@ -21,7 +21,7 @@ import * as vscode from "vscode"
 import * as ws from "ws"
 import { z } from "zod"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
-import { sshSupportsSetEnv } from "./sshSupport"
+import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
 
 export class Remote {
@@ -123,7 +123,9 @@ export class Remote {
 
     const disposables: vscode.Disposable[] = []
     // Register before connection so the label still displays!
-    disposables.push(this.registerLabelFormatter(`${this.storage.workspace.owner_name}/${this.storage.workspace.name}`))
+    disposables.push(
+      this.registerLabelFormatter(remoteAuthority, this.storage.workspace.owner_name, this.storage.workspace.name),
+    )
 
     let buildComplete: undefined | (() => void)
     if (this.storage.workspace.latest_build.status === "stopped") {
@@ -409,7 +411,7 @@ export class Remote {
     //
     // If we didn't write to the SSH config file, connecting would fail with
     // "Host not found".
-    await this.updateSSHConfig()
+    await this.updateSSHConfig(authorityParts[1])
 
     this.findSSHProcessID().then((pid) => {
       if (!pid) {
@@ -420,14 +422,11 @@ export class Remote {
     })
 
     // Register the label formatter again because SSH overrides it!
-    let label = `${this.storage.workspace.owner_name}/${this.storage.workspace.name}`
-    if (agents.length > 1) {
-      label += `/${agent.name}`
-    }
-
+    const workspace = this.storage.workspace
+    const agentName = agents.length > 1 ? agent.name : undefined
     disposables.push(
       vscode.extensions.onDidChange(() => {
-        disposables.push(this.registerLabelFormatter(label))
+        disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name, agentName))
       }),
     )
 
@@ -506,7 +505,7 @@ export class Remote {
 
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
-  private async updateSSHConfig() {
+  private async updateSSHConfig(hostName: string) {
     let deploymentSSHConfig = defaultSSHConfigResponse
     try {
       const deploymentConfig = await getDeploymentSSHConfig()
@@ -594,6 +593,34 @@ export class Remote {
     }
 
     await sshConfig.update(sshValues, sshConfigOverrides)
+
+    // A user can provide a "Host *" entry in their SSH config to add options
+    // to all hosts. We need to ensure that the options we set are not
+    // overridden by the user's config.
+    const computedProperties = computeSSHProperties(hostName, sshConfig.getRaw())
+    const keysToMatch: Array<keyof SSHValues> = ["ProxyCommand", "UserKnownHostsFile", "StrictHostKeyChecking"]
+    for (let i = 0; i < keysToMatch.length; i++) {
+      const key = keysToMatch[i]
+      if (computedProperties[key] === sshValues[key]) {
+        continue
+      }
+
+      const result = await this.vscodeProposed.window.showErrorMessage(
+        "Unexpected SSH Config Option",
+        {
+          useCustom: true,
+          modal: true,
+          detail: `Your SSH config is overriding the "${key}" property to "${computedProperties[key]}" when it expected "${sshValues[key]}" for the "${hostName}" host. Please fix this and try again!`,
+        },
+        "Reload Window",
+      )
+      if (result === "Reload Window") {
+        await this.reloadWindow()
+      }
+      await this.closeRemote()
+    }
+
+    return sshConfig.getRaw()
   }
 
   // showNetworkUpdates finds the SSH process ID that is being used by this
@@ -744,14 +771,34 @@ export class Remote {
     await vscode.commands.executeCommand("workbench.action.reloadWindow")
   }
 
-  private registerLabelFormatter(suffix: string): vscode.Disposable {
+  private registerLabelFormatter(
+    remoteAuthority: string,
+    owner: string,
+    workspace: string,
+    agent?: string,
+  ): vscode.Disposable {
+    // VS Code splits based on the separator when displaying the label
+    // in a recently opened dialog. If the workspace suffix contains /,
+    // then it'll visually display weird:
+    // "/home/kyle [Coder: kyle/workspace]" displays as "workspace] /home/kyle [Coder: kyle"
+    // For this reason, we use a different / that visually appears the
+    // same on non-monospace fonts "∕".
+    let suffix = `Coder: ${owner}∕${workspace}`
+    if (agent) {
+      suffix += `∕${agent}`
+    }
+    // VS Code caches resource label formatters in it's global storage SQLite database
+    // under the key "memento/cachedResourceLabelFormatters2".
     return this.vscodeProposed.workspace.registerResourceLabelFormatter({
       scheme: "vscode-remote",
+      // authority is optional but VS Code prefers formatters that most
+      // accurately match the requested authority, so we include it.
+      authority: remoteAuthority,
       formatting: {
         label: "${path}",
         separator: "/",
         tildify: true,
-        workspaceSuffix: `Coder: ${suffix}`,
+        workspaceSuffix: suffix,
       },
     })
   }

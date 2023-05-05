@@ -217,7 +217,7 @@ export class Commands {
       if (agents.length === 1) {
         folderPath = agents[0].expanded_directory
         workspaceAgent = agents[0].name
-      } else {
+      } else if (agents.length > 0) {
         const agentQuickPick = vscode.window.createQuickPick()
         agentQuickPick.title = `Select an agent`
 
