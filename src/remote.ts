@@ -19,7 +19,6 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
-import { z } from "zod"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
@@ -287,11 +286,6 @@ export class Remote {
     const workspaceUpdatedStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
     disposables.push(workspaceUpdatedStatus)
 
-    const agentMetadataStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
-    disposables.push(agentMetadataStatusBarItem)
-
-    await this.populateAgentMetadataStatusBarItem(agent, agentMetadataStatusBarItem)
-
     let hasShownOutdatedNotification = false
     const refreshWorkspaceUpdatedStatus = (newWorkspace: Workspace) => {
       // If the newly gotten workspace was updated, then we show a notification
@@ -436,71 +430,6 @@ export class Remote {
         disposables.forEach((d) => d.dispose())
       },
     }
-  }
-
-  private async populateAgentMetadataStatusBarItem(
-    agent: WorkspaceAgent,
-    agentMetadataStatusBarItem: vscode.StatusBarItem,
-  ) {
-    const agentMetadataURL = new URL(`${this.storage.getURL()}/api/v2/workspaceagents/${agent?.id}/watch-metadata`)
-    const agentMetadataEventSource = new EventSource(agentMetadataURL.toString(), {
-      headers: {
-        "Coder-Session-Token": await this.storage.getSessionToken(),
-      },
-    })
-
-    agentMetadataEventSource.addEventListener("error", () => {
-      agentMetadataStatusBarItem.hide()
-    })
-
-    agentMetadataEventSource.addEventListener("open", () => {
-      agentMetadataStatusBarItem.show()
-    })
-
-    agentMetadataEventSource.addEventListener("data", (event) => {
-      try {
-        const AgentMetadataEventSchema = z
-          .object({
-            result: z.object({
-              collected_at: z.string(),
-              age: z.number(),
-              value: z.string(),
-              error: z.string(),
-            }),
-            description: z.object({
-              display_name: z.string(),
-              key: z.string(),
-              script: z.string(),
-              interval: z.number(),
-              timeout: z.number(),
-            }),
-          })
-          .array()
-
-        const dataEvent = JSON.parse(event.data)
-        const agentMetadata = AgentMetadataEventSchema.parse(dataEvent)
-
-        if (agentMetadata.length === 0) {
-          agentMetadataStatusBarItem.hide()
-          agentMetadataEventSource.close()
-        }
-
-        agentMetadataStatusBarItem.text = "$(symbol-variable) Metadata"
-
-        const tooltipData = agentMetadata.map((agentMetadata) => {
-          return [agentMetadata.description.display_name.trim(), agentMetadata.result.value.replace("\n", "").trim()]
-        })
-
-        const tooltipMarkdown = new vscode.MarkdownString(
-          "| | | " + "\n" + "|:--- | ---: |" + "\n" + tooltipData.map((row) => `| ${row[0]} | ${row[1]} |`).join("\n"),
-        )
-
-        agentMetadataStatusBarItem.tooltip = tooltipMarkdown
-      } catch (error) {
-        agentMetadataStatusBarItem.hide()
-        agentMetadataEventSource.close()
-      }
-    })
   }
 
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
