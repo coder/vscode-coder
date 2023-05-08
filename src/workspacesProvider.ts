@@ -21,8 +21,10 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         const workspacesTreeItem: WorkspaceTreeItem[] = []
         workspaces.workspaces.forEach((workspace) => {
           const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
-          const agents = extractAgents(workspace)
-          agents.forEach((agent) => this.monitorMetadata(agent.id)) // monitor metadata for all agents
+          if (showMetadata) {
+            const agents = extractAgents(workspace)
+            agents.forEach((agent) => this.monitorMetadata(agent.id)) // monitor metadata for all agents
+          }
           const treeItem = new WorkspaceTreeItem(
             workspace,
             this.getWorkspacesQuery === WorkspaceQuery.All,
@@ -84,7 +86,11 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
           agentMetadataEventSource.close()
         }
 
-        this.agentMetadata[agentId] = agentMetadata // overwrite existing metadata
+        const savedMetadata = this.agentMetadata[agentId]
+        if (JSON.stringify(savedMetadata) !== JSON.stringify(agentMetadata)) {
+          this.agentMetadata[agentId] = agentMetadata // overwrite existing metadata
+          this.refresh()
+        }
       } catch (error) {
         agentMetadataEventSource.close()
       }
