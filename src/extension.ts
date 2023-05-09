@@ -1,5 +1,4 @@
 "use strict"
-
 import { getAuthenticatedUser } from "coder/site/src/api/api"
 import * as module from "module"
 import * as vscode from "vscode"
@@ -13,8 +12,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
 
-  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine)
-  const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All)
+  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine, storage)
+  const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All, storage)
 
   vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
   vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)

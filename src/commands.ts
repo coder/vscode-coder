@@ -5,7 +5,7 @@ import * as vscode from "vscode"
 import { extractAgents } from "./api-helper"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
-import { WorkspaceTreeItem } from "./workspacesProvider"
+import { OpenableTreeItem } from "./workspacesProvider"
 
 export class Commands {
   public constructor(private readonly vscodeProposed: typeof vscode, private readonly storage: Storage) {}
@@ -118,7 +118,7 @@ export class Commands {
     await vscode.commands.executeCommand("vscode.open", uri)
   }
 
-  public async navigateToWorkspace(workspace: WorkspaceTreeItem) {
+  public async navigateToWorkspace(workspace: OpenableTreeItem) {
     if (workspace) {
       const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}`
       await vscode.commands.executeCommand("vscode.open", uri)
@@ -130,7 +130,7 @@ export class Commands {
     }
   }
 
-  public async navigateToWorkspaceSettings(workspace: WorkspaceTreeItem) {
+  public async navigateToWorkspaceSettings(workspace: OpenableTreeItem) {
     if (workspace) {
       const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}/settings`
       await vscode.commands.executeCommand("vscode.open", uri)
@@ -143,7 +143,7 @@ export class Commands {
     }
   }
 
-  public async openFromSidebar(treeItem: WorkspaceTreeItem) {
+  public async openFromSidebar(treeItem: OpenableTreeItem) {
     if (treeItem) {
       await openWorkspace(
         treeItem.workspaceOwner,

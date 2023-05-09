@@ -282,12 +282,6 @@ export class Remote {
         "Coder-Session-Token": await this.storage.getSessionToken(),
       },
     })
-    eventSource.addEventListener("open", () => {
-      // TODO: Add debug output that we began watching here!
-    })
-    eventSource.addEventListener("error", () => {
-      // TODO: Add debug output that we got an error here!
-    })
 
     const workspaceUpdatedStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
     disposables.push(workspaceUpdatedStatus)
