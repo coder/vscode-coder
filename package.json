@@ -91,7 +91,7 @@
       },
       {
         "command": "coder.open",
-        "title": "Coder: Open Workspace",
+        "title": "Open Workspace",
         "icon": "$(play)",
         "category": "Coder"
       },
