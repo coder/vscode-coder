@@ -57,7 +57,9 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     if (element) {
       if (element instanceof WorkspaceTreeItem) {
         const agents = extractAgents(element.workspace)
-        const agentTreeItems = agents.map((agent) => new AgentTreeItem(agent, element.watchMetadata))
+        const agentTreeItems = agents.map(
+          (agent) => new AgentTreeItem(agent, element.workspaceOwner, element.workspaceName, element.watchMetadata),
+        )
         return Promise.resolve(agentTreeItems)
       } else if (element instanceof AgentTreeItem) {
         const savedMetadata = this.agentMetadata[element.agent.id] || []
@@ -138,15 +140,20 @@ export class OpenableTreeItem extends vscode.TreeItem {
 }
 
 class AgentTreeItem extends OpenableTreeItem {
-  constructor(public readonly agent: WorkspaceAgent, watchMetadata = false) {
+  constructor(
+    public readonly agent: WorkspaceAgent,
+    workspaceOwner: string,
+    workspaceName: string,
+    watchMetadata = false,
+  ) {
     const label = agent.name
     const detail = `Status: ${agent.status}`
     super(
       label,
       detail,
       watchMetadata ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
-      "",
-      "",
+      workspaceOwner,
+      workspaceName,
       agent.name,
       agent.expanded_directory,
       "coderAgent",
@@ -174,7 +181,7 @@ export class WorkspaceTreeItem extends OpenableTreeItem {
       workspace.name,
       undefined,
       agents[0]?.expanded_directory,
-      "coderWorkspaceMultipleAgents",
+      agents.length > 1 ? "coderWorkspaceMultipleAgents" : "coderWorkspaceSingleAgent",
     )
   }
 }
