@@ -91,8 +91,9 @@
       },
       {
         "command": "coder.open",
-        "title": "Coder: Open Workspace",
-        "icon": "$(play)"
+        "title": "Open Workspace",
+        "icon": "$(play)",
+        "category": "Coder"
       },
       {
         "command": "coder.openFromSidebar",
@@ -165,6 +166,17 @@
           "command": "coder.navigateToWorkspaceSettings",
           "when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderWorkspaceMultipleAgents",
           "group": "inline"
+        }
+      ],
+      "statusBar/remoteIndicator": [
+        {
+          "command": "coder.open",
+          "group": "remote_11_ssh_coder@1"
+        },
+        {
+          "command": "coder.createWorkspace",
+          "group": "remote_11_ssh_coder@2",
+          "when": "coder.authenticated"
         }
       ]
     }

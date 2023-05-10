@@ -106,7 +106,9 @@ class AgentMetadataTreeItem extends vscode.TreeItem {
       metadataEvent.description.display_name.trim() + ": " + metadataEvent.result.value.replace(/\n/g, "").trim()
 
     super(label, vscode.TreeItemCollapsibleState.None)
-    this.tooltip = "Collected at " + metadataEvent.result.collected_at
+    const collected_at = new Date(metadataEvent.result.collected_at).toLocaleString()
+
+    this.tooltip = "Collected at " + collected_at
     this.contextValue = "coderAgentMetadata"
   }
 }
