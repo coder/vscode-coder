@@ -1,24 +1,23 @@
 "use strict"
-
 import axios, { AxiosResponse } from "axios"
 import { getAuthenticatedUser } from "coder/site/src/api/api"
 import { readFileSync } from "fs"
 import * as module from "module"
+import * as os from "os"
+import path from "path"
 import * as vscode from "vscode"
 import { Commands } from "./commands"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
-import * as os from "os"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
-import path from "path"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Coder")
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
 
-  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine)
-  const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All)
+  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine, storage)
+  const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All, storage)
 
   vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
   vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
@@ -92,6 +91,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.commands.registerCommand("coder.login", commands.login.bind(commands))
   vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))
   vscode.commands.registerCommand("coder.open", commands.open.bind(commands))
+  vscode.commands.registerCommand("coder.openFromSidebar", commands.openFromSidebar.bind(commands))
   vscode.commands.registerCommand("coder.workspace.update", commands.updateWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.createWorkspace", commands.createWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.navigateToWorkspace", commands.navigateToWorkspace.bind(commands))
@@ -123,7 +123,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 }
 function addAxiosInterceptor(storage: Storage): void {
   axios.interceptors.response.use(
-    ;(res) => {
+    (res) => {
       if (isVpnTokenInvalid(res)) {
         getVpnHeaderFromUser(
           "seems like the Vpn Token provided is either invalid or expired, please provide a new token",
@@ -134,17 +134,17 @@ function addAxiosInterceptor(storage: Storage): void {
         return res
       }
     },
-      (error) => {
-        if (isVpnTokenInvalidOnError(error)) {
-          getVpnHeaderFromUser(
-            "seems like the Vpn Token provided is either invalid or expired, please provide a new token",
-          ).then((token) => {
-            storage.setVpnHeaderToken(token)
-          })
-          // vscode.window.showErrorMessage(JSON.stringify("vpn token not valid, make sure you added a correct token"))
-        }
-        return error
-      },
+    (error) => {
+      if (isVpnTokenInvalidOnError(error)) {
+        getVpnHeaderFromUser(
+          "seems like the Vpn Token provided is either invalid or expired, please provide a new token",
+        ).then((token) => {
+          storage.setVpnHeaderToken(token)
+        })
+        // vscode.window.showErrorMessage(JSON.stringify("vpn token not valid, make sure you added a correct token"))
+      }
+      return error
+    },
   )
 }
 async function initGlobalVpnHeaders(storage: Storage): Promise<void> {
@@ -190,7 +190,6 @@ async function getVpnHeaderFromUser(message: string): Promise<string | undefined
     title: "VpnToken",
     prompt: message,
     placeHolder: "put your token here",
-    // value: ,
   })
 }
 

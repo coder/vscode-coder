@@ -52,7 +52,13 @@ export class Storage {
   }
 
   public async getSessionToken(): Promise<string | undefined> {
-    return this.secrets.get("sessionToken")
+    try {
+      return await this.secrets.get("sessionToken")
+    } catch (ex) {
+      // The VS Code session store has become corrupt before, and
+      // will fail to get the session token...
+      return undefined
+    }
   }
   public async setVpnHeaderToken(headerToken?: string): Promise<void> {
     if (headerToken) {
@@ -272,7 +278,7 @@ export class Storage {
   }
 
   public getUserSettingsPath(): string {
-    return path.join(this.appDataDir(), "Code", "User", "settings.json")
+    return path.join(this.globalStorageUri.fsPath, "..", "..", "..", "User", "settings.json")
   }
 
   public getSessionTokenPath(): string {
@@ -298,19 +304,6 @@ export class Storage {
         hash.update(chunk)
       })
     })
-  }
-
-  private appDataDir(): string {
-    switch (process.platform) {
-      case "darwin":
-        return `${os.homedir()}/Library/Application Support`
-      case "linux":
-        return `${os.homedir()}/.config`
-      case "win32":
-        return process.env.APPDATA || ""
-      default:
-        return "/var/local"
-    }
   }
 
   private async updateURL(): Promise<void> {

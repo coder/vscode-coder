@@ -4,7 +4,7 @@
   "displayName": "Coder Remote",
   "description": "Open any workspace with a single click.",
   "repository": "https://github.com/coder/vscode-coder",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "engines": {
     "vscode": "^1.73.0"
   },
@@ -111,6 +111,12 @@
       },
       {
         "command": "coder.open",
+        "title": "Open Workspace",
+        "icon": "$(play)",
+        "category": "Coder"
+      },
+      {
+        "command": "coder.openFromSidebar",
         "title": "Coder: Open Workspace",
         "icon": "$(play)"
       },
@@ -167,19 +173,30 @@
       ],
       "view/item/context": [
         {
-          "command": "coder.open",
-          "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
+          "command": "coder.openFromSidebar",
+          "when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderAgent",
           "group": "inline"
         },
         {
           "command": "coder.navigateToWorkspace",
-          "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
+          "when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderWorkspaceMultipleAgents",
           "group": "inline"
         },
         {
           "command": "coder.navigateToWorkspaceSettings",
-          "when": "coder.authenticated && view == myWorkspaces || coder.authenticated && view == allWorkspaces",
+          "when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderWorkspaceMultipleAgents",
           "group": "inline"
+        }
+      ],
+      "statusBar/remoteIndicator": [
+        {
+          "command": "coder.open",
+          "group": "remote_11_ssh_coder@1"
+        },
+        {
+          "command": "coder.createWorkspace",
+          "group": "remote_11_ssh_coder@2",
+          "when": "coder.authenticated"
         }
       ]
     }
@@ -241,6 +258,7 @@
     "tar-fs": "^2.1.1",
     "which": "^2.0.2",
     "ws": "^8.11.0",
-    "yaml": "^1.10.0"
+    "yaml": "^1.10.0",
+    "zod": "^3.21.4"
   }
 }
