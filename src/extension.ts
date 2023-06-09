@@ -8,8 +8,58 @@ import { Commands } from "./commands"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
+import { SelfSignedCertificateError } from "./error"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
+  // The Remote SSH extension's proposed APIs are used to override
+  // the SSH host name in VS Code itself. It's visually unappealing
+  // having a lengthy name!
+  //
+  // This is janky, but that's alright since it provides such minimal
+  // functionality to the extension.
+  const remoteSSHExtension = vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
+  if (!remoteSSHExtension) {
+    throw new Error("Remote SSH extension not found")
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const vscodeProposed: typeof vscode = (module as any)._load(
+    "vscode",
+    {
+      filename: remoteSSHExtension?.extensionPath,
+    },
+    false,
+  )
+
+  // updateInsecure is called on extension activation and when the insecure
+  // setting is changed. It updates the https agent to allow self-signed
+  // certificates if the insecure setting is true.
+  const applyInsecure = () => {
+    const insecure = Boolean(vscode.workspace.getConfiguration().get("coder.insecure"))
+    console.log("updating insecure", insecure)
+
+    axios.defaults.httpsAgent = new https.Agent({
+      // rejectUnauthorized defaults to true, so we need to explicitly set it to false
+      // if we want to allow self-signed certificates.
+      rejectUnauthorized: !insecure,
+    })
+  }
+
+  axios.interceptors.response.use(r => r, (err) => {
+    if (err) {
+      const msg = err.toString() as string
+      if (msg.indexOf("unable to verify the first certificate") !== -1) {
+        throw new SelfSignedCertificateError(msg)
+      }
+    }
+
+    throw err
+  })
+
+  vscode.workspace.onDidChangeConfiguration((e) => {
+    e.affectsConfiguration("coder.insecure") && applyInsecure()
+  })
+  applyInsecure()
+
   const output = vscode.window.createOutputChannel("Coder")
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
@@ -64,47 +114,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     },
   })
 
-  // The Remote SSH extension's proposed APIs are used to override
-  // the SSH host name in VS Code itself. It's visually unappealing
-  // having a lengthy name!
-  //
-  // This is janky, but that's alright since it provides such minimal
-  // functionality to the extension.
-  const remoteSSHExtension = vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
-  if (!remoteSSHExtension) {
-    throw new Error("Remote SSH extension not found")
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const vscodeProposed: typeof vscode = (module as any)._load(
-    "vscode",
-    {
-      filename: remoteSSHExtension?.extensionPath,
-    },
-    false,
-  )
-
   const commands = new Commands(vscodeProposed, storage)
-
-  // updateInsecure is called on extension activation and when the insecure
-  // setting is changed. It updates the https agent to allow self-signed
-  // certificates if the insecure setting is true.
-  const updateInsecure = () => {
-    const insecure = Boolean(vscode.workspace.getConfiguration().get("coder.insecure"))
-    axios.defaults.httpsAgent = new https.Agent({
-      // rejectUnauthorized defaults to true, so we need to explicitly set it to false
-      // if we want to allow self-signed certificates.
-      rejectUnauthorized: !insecure,
-    })
-  }
-
-  axios.interceptors.response.use(undefined, (error) => {
-    // if (error)
-    return error
-  })
-
-  vscode.workspace.onDidChangeConfiguration((e) => {
-    e.affectsConfiguration("coder.insecure") && updateInsecure()
-  })
 
   vscode.commands.registerCommand("coder.login", commands.login.bind(commands))
   vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))
@@ -132,6 +142,22 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   try {
     await remote.setup(vscodeProposed.env.remoteAuthority)
   } catch (ex) {
+    if (ex instanceof SelfSignedCertificateError) {
+      const prompt = await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+        detail: SelfSignedCertificateError.Notification,
+        modal: true,
+        useCustom: true,
+      }, SelfSignedCertificateError.ActionAllowInsecure, SelfSignedCertificateError.ActionViewMoreDetails)
+      if (prompt === SelfSignedCertificateError.ActionAllowInsecure) {
+        await ex.allowInsecure(storage)
+        await remote.reloadWindow()
+        return
+      }
+      if (prompt === SelfSignedCertificateError.ActionViewMoreDetails) {
+        await ex.viewMoreDetails()
+        return
+      }
+    }
     await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
       detail: (ex as string).toString(),
       modal: true,

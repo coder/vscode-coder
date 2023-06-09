@@ -6,6 +6,7 @@ import { extractAgents } from "./api-helper"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { OpenableTreeItem } from "./workspacesProvider"
+import { SelfSignedCertificateError } from "./error"
 
 export class Commands {
   public constructor(private readonly vscodeProposed: typeof vscode, private readonly storage: Storage) {}
@@ -60,6 +61,14 @@ export class Commands {
               let message = err
               if (axios.isAxiosError(err) && err.response?.data) {
                 message = err.response.data.detail
+              }
+              if (err instanceof SelfSignedCertificateError) {
+                err.showInsecureNotification(this.storage)
+                
+                return {
+                  message: err.message,
+                  severity: vscode.InputBoxValidationSeverity.Error,
+                }
               }
               return {
                 message: "Invalid session token! (" + message + ")",
@@ -189,7 +198,10 @@ export class Commands {
             quickPick.items = items
             quickPick.busy = false
           })
-          .catch(() => {
+          .catch((ex) => {
+            if (ex instanceof SelfSignedCertificateError) {
+              ex.showInsecureNotification(this.storage)
+            }
             return
           })
       })
