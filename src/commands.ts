@@ -3,10 +3,10 @@ import { getAuthenticatedUser, getWorkspaces, updateWorkspaceVersion } from "cod
 import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
 import { extractAgents } from "./api-helper"
+import { SelfSignedCertificateError } from "./error"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { OpenableTreeItem } from "./workspacesProvider"
-import { SelfSignedCertificateError } from "./error"
 
 export class Commands {
   public constructor(private readonly vscodeProposed: typeof vscode, private readonly storage: Storage) {}
@@ -64,7 +64,7 @@ export class Commands {
               }
               if (err instanceof SelfSignedCertificateError) {
                 err.showInsecureNotification(this.storage)
-                
+
                 return {
                   message: err.message,
                   severity: vscode.InputBoxValidationSeverity.Error,

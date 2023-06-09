@@ -5,10 +5,10 @@ import * as https from "https"
 import * as module from "module"
 import * as vscode from "vscode"
 import { Commands } from "./commands"
+import { SelfSignedCertificateError } from "./error"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
-import { SelfSignedCertificateError } from "./error"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // The Remote SSH extension's proposed APIs are used to override
@@ -35,7 +35,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // certificates if the insecure setting is true.
   const applyInsecure = () => {
     const insecure = Boolean(vscode.workspace.getConfiguration().get("coder.insecure"))
-    console.log("updating insecure", insecure)
 
     axios.defaults.httpsAgent = new https.Agent({
       // rejectUnauthorized defaults to true, so we need to explicitly set it to false
@@ -44,16 +43,19 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     })
   }
 
-  axios.interceptors.response.use(r => r, (err) => {
-    if (err) {
-      const msg = err.toString() as string
-      if (msg.indexOf("unable to verify the first certificate") !== -1) {
-        throw new SelfSignedCertificateError(msg)
+  axios.interceptors.response.use(
+    (r) => r,
+    (err) => {
+      if (err) {
+        const msg = err.toString() as string
+        if (msg.indexOf("unable to verify the first certificate") !== -1) {
+          throw new SelfSignedCertificateError(msg)
+        }
       }
-    }
 
-    throw err
-  })
+      throw err
+    },
+  )
 
   vscode.workspace.onDidChangeConfiguration((e) => {
     e.affectsConfiguration("coder.insecure") && applyInsecure()
@@ -143,11 +145,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     await remote.setup(vscodeProposed.env.remoteAuthority)
   } catch (ex) {
     if (ex instanceof SelfSignedCertificateError) {
-      const prompt = await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-        detail: SelfSignedCertificateError.Notification,
-        modal: true,
-        useCustom: true,
-      }, SelfSignedCertificateError.ActionAllowInsecure, SelfSignedCertificateError.ActionViewMoreDetails)
+      const prompt = await vscodeProposed.window.showErrorMessage(
+        "Failed to open workspace",
+        {
+          detail: SelfSignedCertificateError.Notification,
+          modal: true,
+          useCustom: true,
+        },
+        SelfSignedCertificateError.ActionAllowInsecure,
+        SelfSignedCertificateError.ActionViewMoreDetails,
+      )
       if (prompt === SelfSignedCertificateError.ActionAllowInsecure) {
         await ex.allowInsecure(storage)
         await remote.reloadWindow()

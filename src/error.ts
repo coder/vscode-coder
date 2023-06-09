@@ -1,10 +1,11 @@
-import * as vscode from "vscode"
 import * as fs from "fs/promises"
 import * as jsonc from "jsonc-parser"
+import * as vscode from "vscode"
 import { Storage } from "./storage"
 
 export class SelfSignedCertificateError extends Error {
-  public static Notification = "Your Coder deployment is using a self-signed certificate. VS Code uses a version of Electron that does not support registering self-signed intermediate certificates with extensions."
+  public static Notification =
+    "Your Coder deployment is using a self-signed certificate. VS Code uses a version of Electron that does not support registering self-signed intermediate certificates with extensions."
   public static ActionAllowInsecure = "Allow Insecure"
   public static ActionViewMoreDetails = "View More Details"
 
@@ -28,11 +29,17 @@ export class SelfSignedCertificateError extends Error {
     const edits = jsonc.modify(settingsContent, ["coder.insecure"], true, {})
     await fs.writeFile(storage.getUserSettingsPath(), jsonc.applyEdits(settingsContent, edits))
 
-    vscode.window.showInformationMessage("The Coder extension will no longer verify TLS on HTTPS requests. You can change this at any time with the \"coder.insecure\" property in your VS Code settings.")
+    vscode.window.showInformationMessage(
+      'The Coder extension will no longer verify TLS on HTTPS requests. You can change this at any time with the "coder.insecure" property in your VS Code settings.',
+    )
   }
 
   public async showInsecureNotification(storage: Storage): Promise<void> {
-    const value = await vscode.window.showErrorMessage(SelfSignedCertificateError.Notification, SelfSignedCertificateError.ActionAllowInsecure, SelfSignedCertificateError.ActionViewMoreDetails)
+    const value = await vscode.window.showErrorMessage(
+      SelfSignedCertificateError.Notification,
+      SelfSignedCertificateError.ActionAllowInsecure,
+      SelfSignedCertificateError.ActionViewMoreDetails,
+    )
     if (value === SelfSignedCertificateError.ActionViewMoreDetails) {
       await this.viewMoreDetails()
       return
