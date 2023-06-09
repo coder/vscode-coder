@@ -1,5 +1,7 @@
 "use strict"
+import axios from "axios"
 import { getAuthenticatedUser } from "coder/site/src/api/api"
+import * as https from "https"
 import * as module from "module"
 import * as vscode from "vscode"
 import { Commands } from "./commands"
@@ -82,6 +84,27 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   )
 
   const commands = new Commands(vscodeProposed, storage)
+
+  // updateInsecure is called on extension activation and when the insecure
+  // setting is changed. It updates the https agent to allow self-signed
+  // certificates if the insecure setting is true.
+  const updateInsecure = () => {
+    const insecure = Boolean(vscode.workspace.getConfiguration().get("coder.insecure"))
+    axios.defaults.httpsAgent = new https.Agent({
+      // rejectUnauthorized defaults to true, so we need to explicitly set it to false
+      // if we want to allow self-signed certificates.
+      rejectUnauthorized: !insecure,
+    })
+  }
+
+  axios.interceptors.response.use(undefined, (error) => {
+    // if (error)
+    return error
+  })
+
+  vscode.workspace.onDidChangeConfiguration((e) => {
+    e.affectsConfiguration("coder.insecure") && updateInsecure()
+  })
 
   vscode.commands.registerCommand("coder.login", commands.login.bind(commands))
   vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))
