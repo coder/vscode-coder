@@ -42,6 +42,11 @@
           },
           "scope": "machine",
           "default": []
+        },
+        "coder.insecure": {
+          "markdownDescription": "If true, the extension will not verify the authenticity of the remote host. This is useful for self-signed certificates.",
+          "type": "boolean",
+          "default": false
         }
       }
     },

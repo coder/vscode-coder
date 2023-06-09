@@ -16,7 +16,7 @@ export function sshSupportsSetEnv(): boolean {
 //
 // It was introduced in SSH 7.8 and not all versions support it.
 export function sshVersionSupportsSetEnv(sshVersionString: string): boolean {
-  const match = sshVersionString.match(/OpenSSH_([\d.]+)[^,]*/)
+  const match = sshVersionString.match(/OpenSSH.*_([\d.]+)[^,]*/)
   if (match && match[1]) {
     const installedVersion = match[1]
     const parts = installedVersion.split(".")
