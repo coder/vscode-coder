@@ -706,7 +706,7 @@ export class Remote {
   }
 
   // reloadWindow reloads the current window.
-  private async reloadWindow() {
+  public async reloadWindow() {
     await vscode.commands.executeCommand("workbench.action.reloadWindow")
   }
 

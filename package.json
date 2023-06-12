@@ -60,8 +60,12 @@
                 "description": "optional.Path to a file to retrieve the token from, if set, it will ignore the the require on startup "
 
               }
-            }
-
+          }
+        },
+        "coder.insecure": {
+          "markdownDescription": "If true, the extension will not verify the authenticity of the remote host. This is useful for self-signed certificates.",
+          "type": "boolean",
+          "default": false
         }
       }
     },
