@@ -3,6 +3,7 @@ import {
   getBuildInfo,
   getTemplate,
   getWorkspace,
+  getWorkspaces,
   getWorkspaceBuildLogs,
   getWorkspaceByOwnerAndName,
   startWorkspace,
@@ -125,6 +126,44 @@ export class Remote {
     disposables.push(
       this.registerLabelFormatter(remoteAuthority, this.storage.workspace.owner_name, this.storage.workspace.name),
     )
+
+    const notifyWorkspacesEligibleForAutostop = () => {
+      const eligibleWorkspaces = this.storage.ownedWorkspaces?.filter((workspace: Workspace) => {
+        if (workspace.latest_build.transition !== "start" || !workspace.latest_build.deadline) {
+          return false
+        }
+
+        const hoursMilli = 1000 * 60 * 60
+        // return workspaces with a deadline that is in 1 hr or less
+        return Math.abs(new Date().getTime() - new Date(workspace.latest_build.deadline).getTime()) <= hoursMilli
+      })
+
+      eligibleWorkspaces?.forEach((workspace: Workspace) => {
+        if (this.storage.workspaceIdsEligibleForAutostop?.includes(workspace.id)) {
+          // don't message the user; we've already messaged
+          return
+        }
+        // we display individual notifications for each workspace as VS Code
+        // intentionally strips new lines from the message text
+        // https://github.com/Microsoft/vscode/issues/48900
+        this.vscodeProposed.window.showInformationMessage(`${workspace.name} is scheduled to shut down in 1 hour.`)
+        this.storage.workspaceIdsEligibleForAutostop?.push(workspace.id)
+      })
+    }
+
+    let errorCount = 0
+    const fetchWorkspacesInterval = setInterval(async () => {
+      try {
+        const workspacesResult = await getWorkspaces({ q: "owner:me" })
+        this.storage.ownedWorkspaces = workspacesResult.workspaces
+        notifyWorkspacesEligibleForAutostop()
+      } catch (error) {
+        if (errorCount === 3) {
+          clearInterval(fetchWorkspacesInterval)
+        }
+        errorCount++
+      }
+    }, 1000 * 5)
 
     let buildComplete: undefined | (() => void)
     if (this.storage.workspace.latest_build.status === "stopped") {
@@ -427,6 +466,7 @@ export class Remote {
     return {
       dispose: () => {
         eventSource.close()
+        clearInterval(fetchWorkspacesInterval)
         disposables.forEach((d) => d.dispose())
       },
     }
