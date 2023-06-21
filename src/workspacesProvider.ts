@@ -20,20 +20,15 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
       .then((workspaces) => {
         const workspacesTreeItem: WorkspaceTreeItem[] = []
         workspaces.workspaces.forEach((workspace) => {
-          const isOwnedWorkspace = this.getWorkspacesQuery === WorkspaceQuery.Mine
-          if (isOwnedWorkspace) {
-            // update ownedWorkspaces list in storage such that we can display to the user
-            // notifications about their own workspaces
-            this.storage.ownedWorkspaces?.push(workspace)
-
-            // Show metadata for workspaces owned by the user
+          const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
+          if (showMetadata) {
             const agents = extractAgents(workspace)
             agents.forEach((agent) => this.monitorMetadata(agent.id)) // monitor metadata for all agents
           }
           const treeItem = new WorkspaceTreeItem(
             workspace,
             this.getWorkspacesQuery === WorkspaceQuery.All,
-            isOwnedWorkspace,
+            showMetadata,
           )
           workspacesTreeItem.push(treeItem)
         })

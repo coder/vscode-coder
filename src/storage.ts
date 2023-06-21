@@ -14,8 +14,6 @@ import * as vscode from "vscode"
 
 export class Storage {
   public workspace?: Workspace
-  public ownedWorkspaces?: Workspace[] = []
-  public workspaceIdsEligibleForAutostop?: string[] = []
 
   constructor(
     private readonly output: vscode.OutputChannel,

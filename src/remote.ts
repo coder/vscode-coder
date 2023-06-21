@@ -3,7 +3,6 @@ import {
   getBuildInfo,
   getTemplate,
   getWorkspace,
-  getWorkspaces,
   getWorkspaceBuildLogs,
   getWorkspaceByOwnerAndName,
   startWorkspace,
@@ -23,6 +22,7 @@ import * as ws from "ws"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
+import { WorkspaceAction } from "./WorkspaceAction"
 
 export class Remote {
   // Prefix is a magic string that is prepended to SSH hosts to indicate that
@@ -127,43 +127,8 @@ export class Remote {
       this.registerLabelFormatter(remoteAuthority, this.storage.workspace.owner_name, this.storage.workspace.name),
     )
 
-    const notifyWorkspacesEligibleForAutostop = () => {
-      const eligibleWorkspaces = this.storage.ownedWorkspaces?.filter((workspace: Workspace) => {
-        if (workspace.latest_build.transition !== "start" || !workspace.latest_build.deadline) {
-          return false
-        }
-
-        const hoursMilli = 1000 * 60 * 60
-        // return workspaces with a deadline that is in 1 hr or less
-        return Math.abs(new Date().getTime() - new Date(workspace.latest_build.deadline).getTime()) <= hoursMilli
-      })
-
-      eligibleWorkspaces?.forEach((workspace: Workspace) => {
-        if (this.storage.workspaceIdsEligibleForAutostop?.includes(workspace.id)) {
-          // don't message the user; we've already messaged
-          return
-        }
-        // we display individual notifications for each workspace as VS Code
-        // intentionally strips new lines from the message text
-        // https://github.com/Microsoft/vscode/issues/48900
-        this.vscodeProposed.window.showInformationMessage(`${workspace.name} is scheduled to shut down in 1 hour.`)
-        this.storage.workspaceIdsEligibleForAutostop?.push(workspace.id)
-      })
-    }
-
-    let errorCount = 0
-    const fetchWorkspacesInterval = setInterval(async () => {
-      try {
-        const workspacesResult = await getWorkspaces({ q: "owner:me" })
-        this.storage.ownedWorkspaces = workspacesResult.workspaces
-        notifyWorkspacesEligibleForAutostop()
-      } catch (error) {
-        if (errorCount === 3) {
-          clearInterval(fetchWorkspacesInterval)
-        }
-        errorCount++
-      }
-    }, 1000 * 5)
+    // Initialize any WorkspaceAction notifications (auto-off, upcoming deletion)
+    const Action = await WorkspaceAction.init(this.vscodeProposed)
 
     let buildComplete: undefined | (() => void)
     if (this.storage.workspace.latest_build.status === "stopped") {
@@ -466,7 +431,7 @@ export class Remote {
     return {
       dispose: () => {
         eventSource.close()
-        clearInterval(fetchWorkspacesInterval)
+        Action.cleanupWorkspaceActions()
         disposables.forEach((d) => d.dispose())
       },
     }
@@ -533,7 +498,7 @@ export class Remote {
     await sshConfig.load()
 
     let binaryPath: string | undefined
-    if (this.mode === vscode.ExtensionMode.Production) {
+    if (this.mode !== vscode.ExtensionMode.Production) {
       binaryPath = await this.storage.fetchBinary()
     } else {
       binaryPath = path.join(os.tmpdir(), "coder")
