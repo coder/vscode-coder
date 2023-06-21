@@ -1,5 +1,5 @@
-import { Workspace, WorkspacesResponse } from "coder/site/src/api/typesGenerated"
 import { getWorkspaces } from "coder/site/src/api/api"
+import { Workspace, WorkspacesResponse } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
 
 interface NotifiedWorkspace {
