@@ -498,7 +498,7 @@ export class Remote {
     await sshConfig.load()
 
     let binaryPath: string | undefined
-    if (this.mode !== vscode.ExtensionMode.Production) {
+    if (this.mode === vscode.ExtensionMode.Production) {
       binaryPath = await this.storage.fetchBinary()
     } else {
       binaryPath = path.join(os.tmpdir(), "coder")
