@@ -1,10 +1,12 @@
 import { getWorkspaces } from "coder/site/src/api/api"
 import { Workspace, WorkspacesResponse } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
+import { formatDistanceToNowStrict } from "date-fns"
 
 interface NotifiedWorkspace {
   workspace: Workspace
   wasNotified: boolean
+  impendingActionDeadline: string
 }
 
 export class WorkspaceAction {
@@ -20,6 +22,8 @@ export class WorkspaceAction {
     // seed initial lists
     this.seedNotificationLists()
 
+    this.notifyAll()
+
     // set up polling so we get current workspaces data
     this.pollGetWorkspaces()
   }
@@ -32,25 +36,20 @@ export class WorkspaceAction {
     } catch (error) {
       ownedWorkspacesResponse = { workspaces: [], count: 0 }
     }
-
     return new WorkspaceAction(vscodeProposed, ownedWorkspacesResponse.workspaces)
   }
 
   seedNotificationLists() {
     this.#workspacesApproachingAutostop = this.#ownedWorkspaces
-      .filter(this.filterImpendingAutostopWorkspaces)
-      .map((workspace: Workspace) => {
-        const wasNotified =
-          this.#workspacesApproachingAutostop.find((wn) => wn.workspace.id === workspace.id)?.wasNotified ?? false
-        return { workspace, wasNotified }
-      })
+      .filter(this.filterWorkspacesImpendingAutostop)
+      .map((workspace: Workspace) => this.transformWorkspaceObjects(workspace, workspace.latest_build.deadline))
 
-    // NOTE: this feature is currently in-progess; however, we're including scaffolding for it
-    // to exemplify the class pattern used for Workspace Actions
-    this.#workspacesApproachingDeletion = []
+    this.#workspacesApproachingDeletion = this.#ownedWorkspaces
+      .filter(this.filterWorkspacesImpendingDeletion)
+      .map((workspace: Workspace) => this.transformWorkspaceObjects(workspace, workspace.deleting_at))
   }
 
-  filterImpendingAutostopWorkspaces(workspace: Workspace) {
+  filterWorkspacesImpendingAutostop(workspace: Workspace) {
     // a workspace is eligible for autostop if the last build was successful,
     // and the workspace is started,
     // and it has a deadline
@@ -62,9 +61,30 @@ export class WorkspaceAction {
       return false
     }
 
-    const hoursMilli = 1000 * 60 * 60
+    const hourMilli = 1000 * 60 * 60
     // return workspaces with a deadline that is in 1 hr or less
-    return Math.abs(new Date().getTime() - new Date(workspace.latest_build.deadline).getTime()) <= hoursMilli
+    return Math.abs(new Date().getTime() - new Date(workspace.latest_build.deadline).getTime()) <= hourMilli
+  }
+
+  filterWorkspacesImpendingDeletion(workspace: Workspace) {
+    if (!workspace.deleting_at) {
+      return
+    }
+
+    const dayMilli = 1000 * 60 * 60 * 24
+
+    // return workspaces with a deleting_at  that is 24 hrs or less
+    return Math.abs(new Date().getTime() - new Date(workspace.deleting_at).getTime()) <= dayMilli
+  }
+
+  transformWorkspaceObjects(workspace: Workspace, deadlineField?: string) {
+    // the below line is to satisfy TS; we should always pass a deadlineField, e.g
+    // workspace,deleting_at or workspace.latest_build.deadline
+    if (!deadlineField) return { workspace, wasNotified: true, impendingActionDeadline: "" }
+    const wasNotified =
+      this.#workspacesApproachingAutostop.find((wn) => wn.workspace.id === workspace.id)?.wasNotified ?? false
+    const impendingActionDeadline = formatDistanceToNowStrict(new Date(deadlineField))
+    return { workspace, wasNotified, impendingActionDeadline }
   }
 
   async pollGetWorkspaces() {
@@ -100,7 +120,7 @@ export class WorkspaceAction {
       // intentionally strips new lines from the message text
       // https://github.com/Microsoft/vscode/issues/48900
       this.vscodeProposed.window.showInformationMessage(
-        `${notifiedWorkspace.workspace.name} is scheduled to shut down in 1 hour.`,
+        `${notifiedWorkspace.workspace.name} is scheduled to shut down in ${notifiedWorkspace.impendingActionDeadline}.`,
       )
       notifiedWorkspace.wasNotified = true
     })
@@ -117,7 +137,7 @@ export class WorkspaceAction {
       // intentionally strips new lines from the message text
       // https://github.com/Microsoft/vscode/issues/48900
       this.vscodeProposed.window.showInformationMessage(
-        `${notifiedWorkspace.workspace.name} is scheduled for deletion.`,
+        `${notifiedWorkspace.workspace.name} is scheduled for deletion in ${notifiedWorkspace.impendingActionDeadline}.`,
       )
       notifiedWorkspace.wasNotified = true
     })
