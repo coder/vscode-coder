@@ -1,7 +1,7 @@
 import { getWorkspaces } from "coder/site/src/api/api"
 import { Workspace, WorkspacesResponse } from "coder/site/src/api/typesGenerated"
-import * as vscode from "vscode"
 import { formatDistanceToNowStrict } from "date-fns"
+import * as vscode from "vscode"
 
 interface NotifiedWorkspace {
   workspace: Workspace
@@ -80,7 +80,9 @@ export class WorkspaceAction {
   transformWorkspaceObjects(workspace: Workspace, deadlineField?: string) {
     // the below line is to satisfy TS; we should always pass a deadlineField, e.g
     // workspace,deleting_at or workspace.latest_build.deadline
-    if (!deadlineField) return { workspace, wasNotified: true, impendingActionDeadline: "" }
+    if (!deadlineField) {
+      return { workspace, wasNotified: true, impendingActionDeadline: "" }
+    }
     const wasNotified =
       this.#workspacesApproachingAutostop.find((wn) => wn.workspace.id === workspace.id)?.wasNotified ?? false
     const impendingActionDeadline = formatDistanceToNowStrict(new Date(deadlineField))
