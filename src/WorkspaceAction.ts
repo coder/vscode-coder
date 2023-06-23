@@ -26,7 +26,7 @@ export class WorkspaceAction {
     this.#ownedWorkspaces = ownedWorkspaces
 
     // seed initial lists
-    this.seedNotificationLists()
+    this.updateNotificationLists()
 
     this.notifyAll()
 
@@ -51,14 +51,18 @@ export class WorkspaceAction {
     return new WorkspaceAction(vscodeProposed, storage, ownedWorkspacesResponse.workspaces)
   }
 
-  seedNotificationLists() {
+  updateNotificationLists() {
     this.#workspacesApproachingAutostop = this.#ownedWorkspaces
       .filter(this.filterWorkspacesImpendingAutostop)
-      .map((workspace: Workspace) => this.transformWorkspaceObjects(workspace, workspace.latest_build.deadline))
+      .map((workspace: Workspace) =>
+        this.transformWorkspaceObjects(workspace, this.#workspacesApproachingAutostop, workspace.latest_build.deadline),
+      )
 
     this.#workspacesApproachingDeletion = this.#ownedWorkspaces
       .filter(this.filterWorkspacesImpendingDeletion)
-      .map((workspace: Workspace) => this.transformWorkspaceObjects(workspace, workspace.deleting_at))
+      .map((workspace: Workspace) =>
+        this.transformWorkspaceObjects(workspace, this.#workspacesApproachingDeletion, workspace.deleting_at),
+      )
   }
 
   filterWorkspacesImpendingAutostop(workspace: Workspace) {
@@ -89,14 +93,13 @@ export class WorkspaceAction {
     return Math.abs(new Date().getTime() - new Date(workspace.deleting_at).getTime()) <= dayMilli
   }
 
-  transformWorkspaceObjects(workspace: Workspace, deadlineField?: string) {
+  transformWorkspaceObjects(workspace: Workspace, workspaceList: NotifiedWorkspace[], deadlineField?: string) {
     // the below line is to satisfy TS; we should always pass a deadlineField, e.g
     // workspace,deleting_at or workspace.latest_build.deadline
     if (!deadlineField) {
       return { workspace, wasNotified: true, impendingActionDeadline: "" }
     }
-    const wasNotified =
-      this.#workspacesApproachingAutostop.find((wn) => wn.workspace.id === workspace.id)?.wasNotified ?? false
+    const wasNotified = workspaceList.find((nw) => nw.workspace.id === workspace.id)?.wasNotified ?? false
     const impendingActionDeadline = formatDistanceToNowStrict(new Date(deadlineField))
     return { workspace, wasNotified, impendingActionDeadline }
   }
@@ -107,7 +110,7 @@ export class WorkspaceAction {
       try {
         const workspacesResult = await getWorkspaces({ q: "owner:me" })
         this.#ownedWorkspaces = workspacesResult.workspaces
-        this.seedNotificationLists()
+        this.updateNotificationLists()
         this.notifyAll()
       } catch (error) {
         errorCount++
