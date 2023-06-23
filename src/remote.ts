@@ -128,7 +128,7 @@ export class Remote {
     )
 
     // Initialize any WorkspaceAction notifications (auto-off, upcoming deletion)
-    const Action = await WorkspaceAction.init(this.vscodeProposed)
+    const Action = await WorkspaceAction.init(this.vscodeProposed, this.storage)
 
     let buildComplete: undefined | (() => void)
     if (this.storage.workspace.latest_build.status === "stopped") {

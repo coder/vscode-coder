@@ -1,6 +1,8 @@
 import { getWorkspaces } from "coder/site/src/api/api"
 import { Workspace, WorkspacesResponse } from "coder/site/src/api/typesGenerated"
 import { formatDistanceToNowStrict } from "date-fns"
+import { Storage } from "./storage"
+import axios from "axios"
 import * as vscode from "vscode"
 
 interface NotifiedWorkspace {
@@ -16,7 +18,11 @@ export class WorkspaceAction {
   #workspacesApproachingAutostop: NotifiedWorkspace[] = []
   #workspacesApproachingDeletion: NotifiedWorkspace[] = []
 
-  private constructor(private readonly vscodeProposed: typeof vscode, ownedWorkspaces: Workspace[]) {
+  private constructor(
+    private readonly vscodeProposed: typeof vscode,
+    private readonly storage: Storage,
+    ownedWorkspaces: Workspace[],
+  ) {
     this.#ownedWorkspaces = ownedWorkspaces
 
     // seed initial lists
@@ -28,15 +34,21 @@ export class WorkspaceAction {
     this.pollGetWorkspaces()
   }
 
-  static async init(vscodeProposed: typeof vscode) {
+  static async init(vscodeProposed: typeof vscode, storage: Storage) {
     // fetch all workspaces owned by the user and set initial public class fields
     let ownedWorkspacesResponse: WorkspacesResponse
     try {
       ownedWorkspacesResponse = await getWorkspaces({ q: "owner:me" })
     } catch (error) {
+      if (!axios.isAxiosError(error) || error.response?.status !== 401) {
+        storage.writeToCoderOutputChannel(
+          `Failed to fetch owned workspaces. Some workspace notifications may be missing: ${error}`,
+        )
+      }
+
       ownedWorkspacesResponse = { workspaces: [], count: 0 }
     }
-    return new WorkspaceAction(vscodeProposed, ownedWorkspacesResponse.workspaces)
+    return new WorkspaceAction(vscodeProposed, storage, ownedWorkspacesResponse.workspaces)
   }
 
   seedNotificationLists() {
@@ -98,10 +110,15 @@ export class WorkspaceAction {
         this.seedNotificationLists()
         this.notifyAll()
       } catch (error) {
+        errorCount++
+        if (!axios.isAxiosError(error) || error.response?.status !== 401) {
+          this.storage.writeToCoderOutputChannel(
+            `Failed to poll owned workspaces. Some workspace notifications may be missing: ${error}`,
+          )
+        }
         if (errorCount === 3) {
           clearInterval(this.#fetchWorkspacesInterval)
         }
-        errorCount++
       }
     }, 1000 * 5)
   }
