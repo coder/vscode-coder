@@ -96,7 +96,7 @@ export class WorkspaceAction {
 
     const dayMilli = 1000 * 60 * 60 * 24
 
-    // return workspaces with a deleting_at  that is 24 hrs or less
+    // return workspaces with a deleting_at that is 24 hrs or less
     return Math.abs(new Date().getTime() - new Date(workspace.deleting_at).getTime()) <= dayMilli
   }
 
