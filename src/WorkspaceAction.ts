@@ -17,6 +17,8 @@ type WorkspaceWithDeadline = Workspace & { latest_build: WithRequired<WorkspaceB
 type WorkspaceWithDeletingAt = Workspace & WithRequired<Workspace, "deleting_at">
 
 export class WorkspaceAction {
+  // We use this same interval in the Dashboard to poll for updates on the Workspaces page.
+  #POLL_INTERVAL: number = 1000 * 5
   #fetchWorkspacesInterval?: ReturnType<typeof setInterval>
 
   #ownedWorkspaces: Workspace[] = []
@@ -123,7 +125,7 @@ export class WorkspaceAction {
           clearInterval(this.#fetchWorkspacesInterval)
         }
       }
-    }, 1000 * 5)
+    }, this.#POLL_INTERVAL)
   }
 
   notifyAll() {

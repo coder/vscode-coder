@@ -128,7 +128,7 @@ export class Remote {
     )
 
     // Initialize any WorkspaceAction notifications (auto-off, upcoming deletion)
-    const Action = await WorkspaceAction.init(this.vscodeProposed, this.storage)
+    const action = await WorkspaceAction.init(this.vscodeProposed, this.storage)
 
     let buildComplete: undefined | (() => void)
     if (this.storage.workspace.latest_build.status === "stopped") {
@@ -431,7 +431,7 @@ export class Remote {
     return {
       dispose: () => {
         eventSource.close()
-        Action.cleanupWorkspaceActions()
+        action.cleanupWorkspaceActions()
         disposables.forEach((d) => d.dispose())
       },
     }
@@ -498,7 +498,7 @@ export class Remote {
     await sshConfig.load()
 
     let binaryPath: string | undefined
-    if (this.mode !== vscode.ExtensionMode.Production) {
+    if (this.mode === vscode.ExtensionMode.Production) {
       binaryPath = await this.storage.fetchBinary()
     } else {
       binaryPath = path.join(os.tmpdir(), "coder")
