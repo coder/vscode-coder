@@ -1,5 +1,5 @@
 import { getWorkspaces } from "coder/site/src/api/api"
-import { Workspace, WorkspacesResponse } from "coder/site/src/api/typesGenerated"
+import { Workspace, WorkspacesResponse, WorkspaceBuild } from "coder/site/src/api/typesGenerated"
 import { formatDistanceToNowStrict } from "date-fns"
 import { Storage } from "./storage"
 import axios from "axios"
@@ -10,6 +10,11 @@ interface NotifiedWorkspace {
   wasNotified: boolean
   impendingActionDeadline: string
 }
+
+type WithRequired<T, K extends keyof T> = T & Required<Pick<T, K>>
+
+type WorkspaceWithDeadline = Workspace & { latest_build: WithRequired<WorkspaceBuild, "deadline"> }
+type WorkspaceWithDeletingAt = Workspace & WithRequired<Workspace, "deleting_at">
 
 export class WorkspaceAction {
   #fetchWorkspacesInterval?: ReturnType<typeof setInterval>
@@ -54,18 +59,18 @@ export class WorkspaceAction {
   updateNotificationLists() {
     this.#workspacesApproachingAutostop = this.#ownedWorkspaces
       .filter(this.filterWorkspacesImpendingAutostop)
-      .map((workspace: Workspace) =>
+      .map((workspace) =>
         this.transformWorkspaceObjects(workspace, this.#workspacesApproachingAutostop, workspace.latest_build.deadline),
       )
 
     this.#workspacesApproachingDeletion = this.#ownedWorkspaces
       .filter(this.filterWorkspacesImpendingDeletion)
-      .map((workspace: Workspace) =>
+      .map((workspace) =>
         this.transformWorkspaceObjects(workspace, this.#workspacesApproachingDeletion, workspace.deleting_at),
       )
   }
 
-  filterWorkspacesImpendingAutostop(workspace: Workspace) {
+  filterWorkspacesImpendingAutostop(workspace: Workspace): workspace is WorkspaceWithDeadline {
     // a workspace is eligible for autostop if the last build was successful,
     // and the workspace is started,
     // and it has a deadline
@@ -82,9 +87,9 @@ export class WorkspaceAction {
     return Math.abs(new Date().getTime() - new Date(workspace.latest_build.deadline).getTime()) <= hourMilli
   }
 
-  filterWorkspacesImpendingDeletion(workspace: Workspace) {
+  filterWorkspacesImpendingDeletion(workspace: Workspace): workspace is WorkspaceWithDeletingAt {
     if (!workspace.deleting_at) {
-      return
+      return false
     }
 
     const dayMilli = 1000 * 60 * 60 * 24
@@ -93,12 +98,7 @@ export class WorkspaceAction {
     return Math.abs(new Date().getTime() - new Date(workspace.deleting_at).getTime()) <= dayMilli
   }
 
-  transformWorkspaceObjects(workspace: Workspace, workspaceList: NotifiedWorkspace[], deadlineField?: string) {
-    // the below line is to satisfy TS; we should always pass a deadlineField, e.g
-    // workspace,deleting_at or workspace.latest_build.deadline
-    if (!deadlineField) {
-      return { workspace, wasNotified: true, impendingActionDeadline: "" }
-    }
+  transformWorkspaceObjects(workspace: Workspace, workspaceList: NotifiedWorkspace[], deadlineField: string) {
     const wasNotified = workspaceList.find((nw) => nw.workspace.id === workspace.id)?.wasNotified ?? false
     const impendingActionDeadline = formatDistanceToNowStrict(new Date(deadlineField))
     return { workspace, wasNotified, impendingActionDeadline }
