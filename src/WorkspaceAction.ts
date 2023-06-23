@@ -1,9 +1,9 @@
+import axios from "axios"
 import { getWorkspaces } from "coder/site/src/api/api"
 import { Workspace, WorkspacesResponse, WorkspaceBuild } from "coder/site/src/api/typesGenerated"
 import { formatDistanceToNowStrict } from "date-fns"
-import { Storage } from "./storage"
-import axios from "axios"
 import * as vscode from "vscode"
+import { Storage } from "./storage"
 
 interface NotifiedWorkspace {
   workspace: Workspace
