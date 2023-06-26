@@ -23,6 +23,8 @@ const config = {
   resolve: {
     // support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader
     extensions: [".ts", ".js"],
+    // the Coder dependency uses absolute paths
+    modules: ["./node_modules", "./node_modules/coder/site/src"],
   },
   module: {
     rules: [

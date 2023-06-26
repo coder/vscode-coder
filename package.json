@@ -211,7 +211,7 @@
     "@vscode/test-electron": "^1.6.2",
     "@vscode/vsce": "^2.16.0",
     "bufferutil": "^4.0.7",
-    "coder": "https://github.com/coder/coder",
+    "coder": "https://github.com/coder/coder#main",
     "dayjs": "^1.11.7",
     "eslint": "^7.19.0",
     "eslint-config-prettier": "^8.3.0",
@@ -231,6 +231,7 @@
     "webpack-cli": "^5.0.1"
   },
   "dependencies": {
+    "@types/ua-parser-js": "^0.7.36",
     "axios": "0.26.1",
     "date-fns": "^2.30.0",
     "eventsource": "^2.0.2",
@@ -242,6 +243,7 @@
     "pretty-bytes": "^6.0.0",
     "semver": "^7.3.8",
     "tar-fs": "^2.1.1",
+    "ua-parser-js": "^1.0.35",
     "which": "^2.0.2",
     "ws": "^8.11.0",
     "yaml": "^1.10.0",
