@@ -73,14 +73,8 @@ export class WorkspaceAction {
   }
 
   filterWorkspacesImpendingAutostop(workspace: Workspace): workspace is WorkspaceWithDeadline {
-    // a workspace is eligible for autostop if the last build was successful,
-    // and the workspace is started,
-    // and it has a deadline
-    if (
-      workspace.latest_build.job.status !== "succeeded" ||
-      workspace.latest_build.transition !== "start" ||
-      !workspace.latest_build.deadline
-    ) {
+    // a workspace is eligible for autostop if the workspace is running and it has a deadline
+    if (workspace.latest_build.status !== "running" || !workspace.latest_build.deadline) {
       return false
     }
 
