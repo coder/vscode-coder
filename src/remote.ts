@@ -19,6 +19,7 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
+import { WorkspaceAction } from "./WorkspaceAction"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
@@ -125,6 +126,9 @@ export class Remote {
     disposables.push(
       this.registerLabelFormatter(remoteAuthority, this.storage.workspace.owner_name, this.storage.workspace.name),
     )
+
+    // Initialize any WorkspaceAction notifications (auto-off, upcoming deletion)
+    const action = await WorkspaceAction.init(this.vscodeProposed, this.storage)
 
     let buildComplete: undefined | (() => void)
     if (this.storage.workspace.latest_build.status === "stopped") {
@@ -427,6 +431,7 @@ export class Remote {
     return {
       dispose: () => {
         eventSource.close()
+        action.cleanupWorkspaceActions()
         disposables.forEach((d) => d.dispose())
       },
     }

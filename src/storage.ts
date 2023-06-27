@@ -298,6 +298,11 @@ export class Storage {
     })
   }
 
+  public writeToCoderOutputChannel(message: string) {
+    this.output.appendLine(message)
+    this.output.show(true)
+  }
+
   private async updateURL(): Promise<void> {
     const url = this.getURL()
     axios.defaults.baseURL = url
