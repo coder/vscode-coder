@@ -14,7 +14,7 @@ interface NotifiedWorkspace {
 type WithRequired<T, K extends keyof T> = T & Required<Pick<T, K>>
 
 type WorkspaceWithDeadline = Workspace & { latest_build: WithRequired<WorkspaceBuild, "deadline"> }
-type WorkspaceWithDeletingAt = Workspace & WithRequired<Workspace, "deleting_at">
+type WorkspaceWithDeletingAt = WithRequired<Workspace, "deleting_at">
 
 export class WorkspaceAction {
   // We use this same interval in the Dashboard to poll for updates on the Workspaces page.
