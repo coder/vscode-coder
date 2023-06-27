@@ -47,7 +47,11 @@ export class WorkspaceAction {
     try {
       ownedWorkspacesResponse = await getWorkspaces({ q: "owner:me" })
     } catch (error) {
-      if (!axios.isAxiosError(error) || error.response?.status !== 401) {
+      let status
+      if (axios.isAxiosError(error)) {
+        status = error.response?.status
+      }
+      if (status !== 401) {
         storage.writeToCoderOutputChannel(
           `Failed to fetch owned workspaces. Some workspace notifications may be missing: ${error}`,
         )
@@ -110,7 +114,12 @@ export class WorkspaceAction {
         this.notifyAll()
       } catch (error) {
         errorCount++
-        if (!axios.isAxiosError(error) || error.response?.status !== 401) {
+
+        let status
+        if (axios.isAxiosError(error)) {
+          status = error.response?.status
+        }
+        if (status !== 401) {
           this.storage.writeToCoderOutputChannel(
             `Failed to poll owned workspaces. Some workspace notifications may be missing: ${error}`,
           )
