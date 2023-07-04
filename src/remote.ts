@@ -19,10 +19,10 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
-import { WorkspaceAction } from "./WorkspaceAction"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
+import { WorkspaceAction } from "./workspaceAction"
 
 export class Remote {
   // Prefix is a magic string that is prepended to SSH hosts to indicate that
