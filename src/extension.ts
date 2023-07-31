@@ -5,7 +5,7 @@ import * as https from "https"
 import * as module from "module"
 import * as vscode from "vscode"
 import { Commands } from "./commands"
-import { SelfSignedCertificateError } from "./error"
+import { CertificateError } from "./error"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
@@ -49,7 +49,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       if (err) {
         const msg = err.toString() as string
         if (msg.indexOf("unable to verify the first certificate") !== -1) {
-          throw new SelfSignedCertificateError(msg)
+          throw new CertificateError(msg)
         }
       }
 
@@ -144,23 +144,23 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   try {
     await remote.setup(vscodeProposed.env.remoteAuthority)
   } catch (ex) {
-    if (ex instanceof SelfSignedCertificateError) {
+    if (ex instanceof CertificateError) {
       const prompt = await vscodeProposed.window.showErrorMessage(
         "Failed to open workspace",
         {
-          detail: SelfSignedCertificateError.Notification,
+          detail: CertificateError.Notification,
           modal: true,
           useCustom: true,
         },
-        SelfSignedCertificateError.ActionAllowInsecure,
-        SelfSignedCertificateError.ActionViewMoreDetails,
+        CertificateError.ActionAllowInsecure,
+        CertificateError.ActionViewMoreDetails,
       )
-      if (prompt === SelfSignedCertificateError.ActionAllowInsecure) {
+      if (prompt === CertificateError.ActionAllowInsecure) {
         await ex.allowInsecure(storage)
         await remote.reloadWindow()
         return
       }
-      if (prompt === SelfSignedCertificateError.ActionViewMoreDetails) {
+      if (prompt === CertificateError.ActionViewMoreDetails) {
         await ex.viewMoreDetails()
         return
       }

@@ -3,7 +3,7 @@ import { getAuthenticatedUser, getWorkspaces, updateWorkspaceVersion } from "cod
 import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
 import { extractAgents } from "./api-helper"
-import { SelfSignedCertificateError } from "./error"
+import { CertificateError } from "./error"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { OpenableTreeItem } from "./workspacesProvider"
@@ -62,8 +62,8 @@ export class Commands {
               if (axios.isAxiosError(err) && err.response?.data) {
                 message = err.response.data.detail
               }
-              if (err instanceof SelfSignedCertificateError) {
-                err.showInsecureNotification()
+              if (err instanceof CertificateError) {
+                err.showNotification()
 
                 return {
                   message: err.message,
@@ -199,8 +199,8 @@ export class Commands {
             quickPick.busy = false
           })
           .catch((ex) => {
-            if (ex instanceof SelfSignedCertificateError) {
-              ex.showInsecureNotification()
+            if (ex instanceof CertificateError) {
+              ex.showNotification()
             }
             return
           })

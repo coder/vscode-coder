@@ -1,6 +1,6 @@
 import * as vscode from "vscode"
 
-export class SelfSignedCertificateError extends Error {
+export class CertificateError extends Error {
   public static Notification =
     "Your Coder deployment is using a self-signed certificate. VS Code uses a version of Electron that does not support registering self-signed intermediate certificates with extensions."
   public static ActionAllowInsecure = "Allow Insecure"
@@ -20,17 +20,17 @@ export class SelfSignedCertificateError extends Error {
     vscode.window.showInformationMessage(CertificateError.InsecureMessage)
   }
 
-  public async showInsecureNotification(): Promise<void> {
+  public async showNotification(): Promise<void> {
     const value = await vscode.window.showErrorMessage(
-      SelfSignedCertificateError.Notification,
-      SelfSignedCertificateError.ActionAllowInsecure,
-      SelfSignedCertificateError.ActionViewMoreDetails,
+      CertificateError.Notification,
+      CertificateError.ActionAllowInsecure,
+      CertificateError.ActionViewMoreDetails,
     )
-    if (value === SelfSignedCertificateError.ActionViewMoreDetails) {
+    if (value === CertificateError.ActionViewMoreDetails) {
       await this.viewMoreDetails()
       return
     }
-    if (value === SelfSignedCertificateError.ActionAllowInsecure) {
+    if (value === CertificateError.ActionAllowInsecure) {
       return this.allowInsecure()
     }
   }
