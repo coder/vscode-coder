@@ -63,7 +63,7 @@ export class Commands {
                 message = err.response.data.detail
               }
               if (err instanceof SelfSignedCertificateError) {
-                err.showInsecureNotification(this.storage)
+                err.showInsecureNotification()
 
                 return {
                   message: err.message,
@@ -200,7 +200,7 @@ export class Commands {
           })
           .catch((ex) => {
             if (ex instanceof SelfSignedCertificateError) {
-              ex.showInsecureNotification(this.storage)
+              ex.showInsecureNotification()
             }
             return
           })

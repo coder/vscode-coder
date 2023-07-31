@@ -1,7 +1,4 @@
-import * as fs from "fs/promises"
-import * as jsonc from "jsonc-parser"
 import * as vscode from "vscode"
-import { Storage } from "./storage"
 
 export class SelfSignedCertificateError extends Error {
   public static Notification =
@@ -17,24 +14,13 @@ export class SelfSignedCertificateError extends Error {
     return vscode.env.openExternal(vscode.Uri.parse("https://github.com/coder/vscode-coder/issues/105"))
   }
 
-  // allowInsecure manually reads the settings file and updates the value of the
-  // "coder.insecure" property.
-  public async allowInsecure(storage: Storage): Promise<void> {
-    let settingsContent = "{}"
-    try {
-      settingsContent = await fs.readFile(storage.getUserSettingsPath(), "utf8")
-    } catch (ex) {
-      // Ignore! It's probably because the file doesn't exist.
-    }
-    const edits = jsonc.modify(settingsContent, ["coder.insecure"], true, {})
-    await fs.writeFile(storage.getUserSettingsPath(), jsonc.applyEdits(settingsContent, edits))
-
-    vscode.window.showInformationMessage(
-      'The Coder extension will no longer verify TLS on HTTPS requests. You can change this at any time with the "coder.insecure" property in your VS Code settings.',
-    )
+  // allowInsecure updates the value of the "coder.insecure" property.
+  async allowInsecure(): Promise<void> {
+    vscode.workspace.getConfiguration().update("coder.insecure", true, vscode.ConfigurationTarget.Global)
+    vscode.window.showInformationMessage(CertificateError.InsecureMessage)
   }
 
-  public async showInsecureNotification(storage: Storage): Promise<void> {
+  public async showInsecureNotification(): Promise<void> {
     const value = await vscode.window.showErrorMessage(
       SelfSignedCertificateError.Notification,
       SelfSignedCertificateError.ActionAllowInsecure,
@@ -45,7 +31,7 @@ export class SelfSignedCertificateError extends Error {
       return
     }
     if (value === SelfSignedCertificateError.ActionAllowInsecure) {
-      return this.allowInsecure(storage)
+      return this.allowInsecure()
     }
   }
 }
