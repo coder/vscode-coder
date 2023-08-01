@@ -231,6 +231,7 @@
     "webpack-cli": "^5.0.1"
   },
   "dependencies": {
+    "@types/node-forge": "^1.3.4",
     "@types/ua-parser-js": "^0.7.36",
     "axios": "0.26.1",
     "date-fns": "^2.30.0",
@@ -240,6 +241,7 @@
     "jsonc-parser": "^3.2.0",
     "memfs": "^3.4.13",
     "ndjson": "^2.0.0",
+    "node-forge": "^1.3.1",
     "pretty-bytes": "^6.0.0",
     "semver": "^7.3.8",
     "tar-fs": "^2.1.1",

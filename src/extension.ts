@@ -45,15 +45,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   axios.interceptors.response.use(
     (r) => r,
-    (err) => {
-      if (err) {
-        const msg = err.toString() as string
-        if (msg.indexOf("unable to verify the first certificate") !== -1) {
-          throw new CertificateError(msg)
-        }
-      }
-
-      throw err
+    async (err) => {
+      throw await CertificateError.maybeWrap(err, err.config.baseURL, storage)
     },
   )
 
@@ -145,25 +138,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     await remote.setup(vscodeProposed.env.remoteAuthority)
   } catch (ex) {
     if (ex instanceof CertificateError) {
-      const prompt = await vscodeProposed.window.showErrorMessage(
-        "Failed to open workspace",
-        {
-          detail: CertificateError.Notification,
-          modal: true,
-          useCustom: true,
-        },
-        CertificateError.ActionAllowInsecure,
-        CertificateError.ActionViewMoreDetails,
-      )
-      if (prompt === CertificateError.ActionAllowInsecure) {
-        await ex.allowInsecure(storage)
-        await remote.reloadWindow()
-        return
-      }
-      if (prompt === CertificateError.ActionViewMoreDetails) {
-        await ex.viewMoreDetails()
-        return
-      }
+      return await ex.showModal("Failed to open workspace")
     }
     await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
       detail: (ex as string).toString(),
