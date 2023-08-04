@@ -29,6 +29,7 @@ it("computes the config for a host", () => {
 Host coder-vscode--*
   StrictHostKeyChecking no
   Another=true
+  ProxyCommand=/tmp/coder --header="X-FOO=bar" coder.dev
 # --- END CODER VSCODE ---
 `,
   )
@@ -36,5 +37,6 @@ Host coder-vscode--*
   expect(properties).toEqual({
     Another: "true",
     StrictHostKeyChecking: "yes",
+    ProxyCommand: '/tmp/coder --header="X-FOO=bar" coder.dev',
   })
 })

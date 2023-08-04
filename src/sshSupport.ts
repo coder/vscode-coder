@@ -52,7 +52,11 @@ export function computeSSHProperties(host: string, config: string): Record<strin
     if (line === "") {
       return
     }
-    const [key, ...valueParts] = line.split(/\s+|=/)
+    // The capture group here will include the captured portion in the array
+    // which we need to join them back up with their original values.  The first
+    // separate is ignored since it splits the key and value but is not part of
+    // the value itself.
+    const [key, _, ...valueParts] = line.split(/(\s+|=)/)
     if (key.startsWith("#")) {
       // Ignore comments!
       return
@@ -62,7 +66,7 @@ export function computeSSHProperties(host: string, config: string): Record<strin
         configs.push(currentConfig)
       }
       currentConfig = {
-        Host: valueParts.join(" "),
+        Host: valueParts.join(""),
         properties: {},
       }
       return
@@ -70,7 +74,7 @@ export function computeSSHProperties(host: string, config: string): Record<strin
     if (!currentConfig) {
       return
     }
-    currentConfig.properties[key] = valueParts.join(" ")
+    currentConfig.properties[key] = valueParts.join("")
   })
   if (currentConfig) {
     configs.push(currentConfig)
