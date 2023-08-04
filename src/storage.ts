@@ -11,6 +11,7 @@ import os from "os"
 import path from "path"
 import prettyBytes from "pretty-bytes"
 import * as vscode from "vscode"
+import { getHeaders } from "./headers"
 
 export class Storage {
   public workspace?: Workspace
@@ -390,6 +391,10 @@ export class Storage {
       delete axios.defaults.headers.common["Coder-Session-Token"]
       await fs.rm(this.getSessionTokenPath(), { force: true })
     }
+  }
+
+  public async getHeaders(url = this.getURL()): Promise<Record<string, string> | undefined> {
+    return getHeaders(url, vscode.workspace.getConfiguration().get("coder.headerCommand"), this)
   }
 }
 

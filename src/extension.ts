@@ -59,6 +59,17 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
 
+  // Add headers from the header command.
+  axios.interceptors.request.use(async (config) => {
+    return {
+      ...config,
+      headers: {
+        ...(await storage.getHeaders()),
+        ...creds.headers,
+      },
+    }
+  })
+
   const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine, storage)
   const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All, storage)
 
@@ -74,8 +85,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         }
       }
     })
-    .catch(() => {
-      // Not authenticated!
+    .catch((error) => {
+      // This should be a failure to make the request, like the header command
+      // errored.
+      vscodeProposed.window.showErrorMessage("Failed to check user authentication: " + error.message)
     })
     .finally(() => {
       vscode.commands.executeCommand("setContext", "coder.loaded", true)

@@ -57,6 +57,11 @@
           "markdownDescription": "The full path of the directory into which the Coder CLI will be downloaded. Defaults to the extension's global storage directory.",
           "type": "string",
           "default": ""
+        },
+        "coder.headerCommand": {
+          "markdownDescription": "An external command that outputs additional HTTP headers added to all requests. The command must output each header as `key=value` on its own line. The following environment variables will be available to the process: `CODER_URL`.",
+          "type": "string",
+          "default": ""
         }
       }
     },
