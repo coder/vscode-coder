@@ -89,7 +89,6 @@ export class CertificateError extends Error {
             //    first place.
             const cert = forge.pki.certificateFromPem(x509.toString())
             if (!cert.issued(cert)) {
-              // Self-issued?
               return resolve(X509_ERR.PARTIAL_CHAIN)
             }
 
