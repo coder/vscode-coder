@@ -5,7 +5,7 @@ import * as https from "https"
 import * as module from "module"
 import * as vscode from "vscode"
 import { Commands } from "./commands"
-import { SelfSignedCertificateError } from "./error"
+import { CertificateError } from "./error"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
@@ -45,15 +45,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   axios.interceptors.response.use(
     (r) => r,
-    (err) => {
-      if (err) {
-        const msg = err.toString() as string
-        if (msg.indexOf("unable to verify the first certificate") !== -1) {
-          throw new SelfSignedCertificateError(msg)
-        }
-      }
-
-      throw err
+    async (err) => {
+      throw await CertificateError.maybeWrap(err, err.config.baseURL, storage)
     },
   )
 
@@ -144,26 +137,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   try {
     await remote.setup(vscodeProposed.env.remoteAuthority)
   } catch (ex) {
-    if (ex instanceof SelfSignedCertificateError) {
-      const prompt = await vscodeProposed.window.showErrorMessage(
-        "Failed to open workspace",
-        {
-          detail: SelfSignedCertificateError.Notification,
-          modal: true,
-          useCustom: true,
-        },
-        SelfSignedCertificateError.ActionAllowInsecure,
-        SelfSignedCertificateError.ActionViewMoreDetails,
-      )
-      if (prompt === SelfSignedCertificateError.ActionAllowInsecure) {
-        await ex.allowInsecure(storage)
-        await remote.reloadWindow()
-        return
-      }
-      if (prompt === SelfSignedCertificateError.ActionViewMoreDetails) {
-        await ex.viewMoreDetails()
-        return
-      }
+    if (ex instanceof CertificateError) {
+      return await ex.showModal("Failed to open workspace")
     }
     await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
       detail: (ex as string).toString(),
