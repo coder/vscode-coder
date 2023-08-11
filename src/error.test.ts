@@ -219,6 +219,6 @@ it("falls back with different error", async () => {
   } catch (error) {
     const wrapped = await CertificateError.maybeWrap(error, "1", logger)
     expect(wrapped instanceof CertificateError).toBeFalsy()
-    expect(wrapped.message).toMatch(/failed with status code 500/)
+    expect((wrapped as Error).message).toMatch(/failed with status code 500/)
   }
 })
