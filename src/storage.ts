@@ -88,7 +88,6 @@ export class Storage {
     if (!baseURL) {
       throw new Error("Must be logged in!")
     }
-    const baseURI = vscode.Uri.parse(baseURL)
 
     const buildInfo = await getBuildInfo()
     const binPath = this.binaryPath()
@@ -117,11 +116,16 @@ export class Storage {
     if (exists) {
       etag = await this.getBinaryETag()
     }
+
+    const configSource = vscode.workspace.getConfiguration().get("coder.binarySource")
+    const binSource = configSource && String(configSource).trim().length > 0 ? String(configSource) : "/bin/" + binName
+
     this.output.appendLine(`Using binName: ${binName}`)
     this.output.appendLine(`Using binPath: ${binPath}`)
+    this.output.appendLine(`Using binSource: ${binSource}`)
     this.output.appendLine(`Using ETag: ${etag}`)
 
-    const resp = await axios.get("/bin/" + binName, {
+    const resp = await axios.get(binSource, {
       signal: controller.signal,
       baseURL: baseURL,
       responseType: "stream",
@@ -146,7 +150,9 @@ export class Storage {
         const completed = await vscode.window.withProgress<boolean>(
           {
             location: vscode.ProgressLocation.Notification,
-            title: `Downloading the latest binary (${buildInfo.version} from ${baseURI.authority})`,
+            title: `Downloading the latest binary (${buildInfo.version} from ${axios.getUri(
+              resp.config,
+            )}) to ${binPath}`,
             cancellable: true,
           },
           async (progress, token) => {
@@ -260,7 +266,10 @@ export class Storage {
   // getBinaryCachePath returns the path where binaries are cached.
   // The caller must ensure it exists before use.
   public getBinaryCachePath(): string {
-    return path.join(this.globalStorageUri.fsPath, "bin")
+    const configPath = vscode.workspace.getConfiguration().get("coder.binaryDestination")
+    return configPath && String(configPath).trim().length > 0
+      ? path.resolve(String(configPath))
+      : path.join(this.globalStorageUri.fsPath, "bin")
   }
 
   // getNetworkInfoPath returns the path where network information
