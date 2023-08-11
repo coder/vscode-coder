@@ -47,6 +47,16 @@
           "markdownDescription": "If true, the extension will not verify the authenticity of the remote host. This is useful for self-signed certificates.",
           "type": "boolean",
           "default": false
+        },
+        "coder.binarySource": {
+          "markdownDescription": "Used to download the Coder CLI which is necessary to make SSH connections. The If-None-Match header will be set to the SHA1 of the CLI and can be used for caching. Absolute URLs will be used as-is; otherwise this value will be resolved against the deployment domain. Defaults to downloading from the Coder deployment.",
+          "type": "string",
+          "default": ""
+        },
+        "coder.binaryDestination": {
+          "markdownDescription": "The full path of the directory into which the Coder CLI will be downloaded. Defaults to the extension's global storage directory.",
+          "type": "string",
+          "default": ""
         }
       }
     },
