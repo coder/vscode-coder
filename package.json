@@ -4,7 +4,7 @@
   "displayName": "Coder Remote",
   "description": "Open any workspace with a single click.",
   "repository": "https://github.com/coder/vscode-coder",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "engines": {
     "vscode": "^1.73.0"
   },
