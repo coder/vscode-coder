@@ -277,7 +277,13 @@ export class Remote {
     const parsed = jsonc.parse(settingsContent)
     parsed["remote.SSH.remotePlatform"] = remotePlatforms
     const edits = jsonc.modify(settingsContent, ["remote.SSH.remotePlatform"], remotePlatforms, {})
-    await fs.writeFile(this.storage.getUserSettingsPath(), jsonc.applyEdits(settingsContent, edits))
+    try {
+      await fs.writeFile(this.storage.getUserSettingsPath(), jsonc.applyEdits(settingsContent, edits))
+    } catch (ex) {
+      // The user will just be prompted instead, which is fine!
+      // If a user's settings.json is read-only, then we can't write to it.
+      // This is the case when using home-manager on NixOS.
+    }
 
     const workspaceUpdate = new vscode.EventEmitter<Workspace>()
     const watchURL = new URL(`${this.storage.getURL()}/api/v2/workspaces/${this.storage.workspace.id}/watch`)
