@@ -13,7 +13,7 @@ export enum WorkspaceQuery {
 
 export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private workspaces: WorkspaceTreeItem[] = []
-  private agentMetadata: Record<WorkspaceAgent["id"], AgentMetadataEvent[]> = {}
+  private agentWatchers: Record<WorkspaceAgent["id"], { dispose: () => void; metadata?: AgentMetadataEvent[] }> = {}
 
   constructor(private readonly getWorkspacesQuery: WorkspaceQuery, private readonly storage: Storage) {
     this.fetchAndRefresh()
@@ -21,15 +21,17 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
   // fetchAndRefrehsh fetches new workspaces then re-renders the entire tree.
   async fetchAndRefresh() {
+    const token = await this.storage.getSessionToken()
     const workspacesTreeItem: WorkspaceTreeItem[] = []
+    Object.values(this.agentWatchers).forEach((watcher) => watcher.dispose())
     // If the URL is set then we are logged in.
     if (this.storage.getURL()) {
       const resp = await getWorkspaces({ q: this.getWorkspacesQuery })
       resp.workspaces.forEach((workspace) => {
         const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
-        if (showMetadata) {
+        if (showMetadata && token) {
           const agents = extractAgents(workspace)
-          agents.forEach((agent) => this.monitorMetadata(agent.id)) // monitor metadata for all agents
+          agents.forEach((agent) => this.monitorMetadata(agent.id, token)) // monitor metadata for all agents
         }
         const treeItem = new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
         workspacesTreeItem.push(treeItem)
@@ -62,7 +64,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         )
         return Promise.resolve(agentTreeItems)
       } else if (element instanceof AgentTreeItem) {
-        const savedMetadata = this.agentMetadata[element.agent.id] || []
+        const savedMetadata = this.agentWatchers[element.agent.id]?.metadata || []
         return Promise.resolve(savedMetadata.map((metadata) => new AgentMetadataTreeItem(metadata)))
       }
 
@@ -71,13 +73,22 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     return Promise.resolve(this.workspaces)
   }
 
-  async monitorMetadata(agentId: WorkspaceAgent["id"]): Promise<void> {
+  // monitorMetadata opens a web socket to monitor metadata on the specified
+  // agent and registers a disposer that can be used to stop the watch.
+  monitorMetadata(agentId: WorkspaceAgent["id"], token: string): void {
     const agentMetadataURL = new URL(`${this.storage.getURL()}/api/v2/workspaceagents/${agentId}/watch-metadata`)
     const agentMetadataEventSource = new EventSource(agentMetadataURL.toString(), {
       headers: {
-        "Coder-Session-Token": await this.storage.getSessionToken(),
+        "Coder-Session-Token": token,
       },
     })
+
+    this.agentWatchers[agentId] = {
+      dispose: () => {
+        delete this.agentWatchers[agentId]
+        agentMetadataEventSource.close()
+      },
+    }
 
     agentMetadataEventSource.addEventListener("data", (event) => {
       try {
@@ -85,16 +96,16 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         const agentMetadata = AgentMetadataEventSchemaArray.parse(dataEvent)
 
         if (agentMetadata.length === 0) {
-          agentMetadataEventSource.close()
+          this.agentWatchers[agentId].dispose()
         }
 
-        const savedMetadata = this.agentMetadata[agentId]
+        const savedMetadata = this.agentWatchers[agentId].metadata
         if (JSON.stringify(savedMetadata) !== JSON.stringify(agentMetadata)) {
-          this.agentMetadata[agentId] = agentMetadata // overwrite existing metadata
+          this.agentWatchers[agentId].metadata = agentMetadata // overwrite existing metadata
           this.refresh()
         }
       } catch (error) {
-        agentMetadataEventSource.close()
+        this.agentWatchers[agentId].dispose()
       }
     })
   }
