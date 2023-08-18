@@ -108,6 +108,7 @@ export class Commands {
             vscode.commands.executeCommand("coder.open")
           }
         })
+      vscode.commands.executeCommand("coder.refreshWorkspaces")
     } catch (error) {
       vscode.window.showErrorMessage("Failed to authenticate with Coder: " + error)
     }
@@ -122,6 +123,7 @@ export class Commands {
         vscode.commands.executeCommand("coder.login")
       }
     })
+    vscode.commands.executeCommand("coder.refreshWorkspaces")
   }
 
   public async createWorkspace(): Promise<void> {
