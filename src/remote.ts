@@ -513,7 +513,7 @@ export class Remote {
     let headerArg = ""
     const headerCommand = vscode.workspace.getConfiguration().get("coder.headerCommand")
     if (typeof headerCommand === "string" && headerCommand.trim().length > 0) {
-      headerArg = ` --header-command "${escape(headerCommand)}"`
+      headerArg = ` --header-command ${escape(headerCommand)}`
     }
 
     const sshValues: SSHValues = {
