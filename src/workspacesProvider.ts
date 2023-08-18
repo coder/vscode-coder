@@ -16,32 +16,27 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   private agentMetadata: Record<WorkspaceAgent["id"], AgentMetadataEvent[]> = {}
 
   constructor(private readonly getWorkspacesQuery: WorkspaceQuery, private readonly storage: Storage) {
-    if (!storage.getURL()) {
-      // Not logged in.
-      return
+    this.fetchAndRefresh()
+  }
+
+  // fetchAndRefrehsh fetches new workspaces then re-renders the entire tree.
+  async fetchAndRefresh() {
+    const workspacesTreeItem: WorkspaceTreeItem[] = []
+    // If the URL is set then we are logged in.
+    if (this.storage.getURL()) {
+      const resp = await getWorkspaces({ q: this.getWorkspacesQuery })
+      resp.workspaces.forEach((workspace) => {
+        const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
+        if (showMetadata) {
+          const agents = extractAgents(workspace)
+          agents.forEach((agent) => this.monitorMetadata(agent.id)) // monitor metadata for all agents
+        }
+        const treeItem = new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
+        workspacesTreeItem.push(treeItem)
+      })
     }
-    getWorkspaces({ q: this.getWorkspacesQuery })
-      .then((workspaces) => {
-        const workspacesTreeItem: WorkspaceTreeItem[] = []
-        workspaces.workspaces.forEach((workspace) => {
-          const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
-          if (showMetadata) {
-            const agents = extractAgents(workspace)
-            agents.forEach((agent) => this.monitorMetadata(agent.id)) // monitor metadata for all agents
-          }
-          const treeItem = new WorkspaceTreeItem(
-            workspace,
-            this.getWorkspacesQuery === WorkspaceQuery.All,
-            showMetadata,
-          )
-          workspacesTreeItem.push(treeItem)
-        })
-        return workspacesTreeItem
-      })
-      .then((workspaces) => {
-        this.workspaces = workspaces
-        this.refresh()
-      })
+    this.workspaces = workspacesTreeItem
+    this.refresh()
   }
 
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> =
@@ -49,6 +44,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> =
     this._onDidChangeTreeData.event
 
+  // refresh causes the tree to re-render.  It does not fetch fresh workspaces.
   refresh(item: vscode.TreeItem | undefined | null | void): void {
     this._onDidChangeTreeData.fire(item)
   }

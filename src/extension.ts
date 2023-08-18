@@ -138,8 +138,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     commands.navigateToWorkspaceSettings.bind(commands),
   )
   vscode.commands.registerCommand("coder.refreshWorkspaces", () => {
-    myWorkspacesProvider.refresh()
-    allWorkspacesProvider.refresh()
+    myWorkspacesProvider.fetchAndRefresh()
+    allWorkspacesProvider.fetchAndRefresh()
   })
 
   // Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
