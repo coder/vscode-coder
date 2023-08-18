@@ -16,6 +16,10 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   private agentMetadata: Record<WorkspaceAgent["id"], AgentMetadataEvent[]> = {}
 
   constructor(private readonly getWorkspacesQuery: WorkspaceQuery, private readonly storage: Storage) {
+    if (!storage.getURL()) {
+      // Not logged in.
+      return
+    }
     getWorkspaces({ q: this.getWorkspacesQuery })
       .then((workspaces) => {
         const workspacesTreeItem: WorkspaceTreeItem[] = []
