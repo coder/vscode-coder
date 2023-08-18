@@ -73,23 +73,28 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
   vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
 
-  getAuthenticatedUser()
-    .then(async (user) => {
-      if (user) {
-        vscode.commands.executeCommand("setContext", "coder.authenticated", true)
-        if (user.roles.find((role) => role.name === "owner")) {
-          await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
+  const url = storage.getURL()
+  if (url) {
+    getAuthenticatedUser()
+      .then(async (user) => {
+        if (user) {
+          vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+          if (user.roles.find((role) => role.name === "owner")) {
+            await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
+          }
         }
-      }
-    })
-    .catch((error) => {
-      // This should be a failure to make the request, like the header command
-      // errored.
-      vscodeProposed.window.showErrorMessage("Failed to check user authentication: " + error.message)
-    })
-    .finally(() => {
-      vscode.commands.executeCommand("setContext", "coder.loaded", true)
-    })
+      })
+      .catch((error) => {
+        // This should be a failure to make the request, like the header command
+        // errored.
+        vscodeProposed.window.showErrorMessage("Failed to check user authentication: " + error.message)
+      })
+      .finally(() => {
+        vscode.commands.executeCommand("setContext", "coder.loaded", true)
+      })
+  } else {
+    vscode.commands.executeCommand("setContext", "coder.loaded", true)
+  }
 
   vscode.window.registerUriHandler({
     handleUri: async (uri) => {
