@@ -393,7 +393,7 @@ export class Storage {
     }
   }
 
-  public async getHeaders(url = this.getURL()): Promise<Record<string, string> | undefined> {
+  public async getHeaders(url = this.getURL()): Promise<Record<string, string>> {
     return getHeaders(url, vscode.workspace.getConfiguration().get("coder.headerCommand"), this)
   }
 }

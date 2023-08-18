@@ -61,13 +61,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   // Add headers from the header command.
   axios.interceptors.request.use(async (config) => {
-    return {
-      ...config,
-      headers: {
-        ...(await storage.getHeaders()),
-        ...creds.headers,
-      },
-    }
+    Object.entries(await storage.getHeaders()).forEach(([key, value]) => {
+      config.headers[key] = value
+    })
+    return config
   })
 
   const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine, storage)
