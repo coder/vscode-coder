@@ -40,8 +40,8 @@ export class CertificateError extends Error {
 
   // maybeWrap returns a CertificateError if the code is a certificate error
   // otherwise it returns the original error.
-  static async maybeWrap<T>(err: T, address: string | undefined, logger: Logger): Promise<CertificateError | T> {
-    if (address && axios.isAxiosError(err)) {
+  static async maybeWrap<T>(err: T, address: string, logger: Logger): Promise<CertificateError | T> {
+    if (axios.isAxiosError(err)) {
       switch (err.code) {
         case X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE:
           // "Unable to verify" can mean different things so we will attempt to

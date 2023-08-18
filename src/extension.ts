@@ -46,7 +46,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   axios.interceptors.response.use(
     (r) => r,
     async (err) => {
-      throw await CertificateError.maybeWrap(err, err?.config?.baseURL, storage)
+      throw await CertificateError.maybeWrap(err, axios.getUri(err.config), storage)
     },
   )
 
