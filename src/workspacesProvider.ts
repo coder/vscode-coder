@@ -73,7 +73,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     return Promise.resolve(this.workspaces)
   }
 
-  // monitorMetadata opens a web socket to monitor metadata on the specified
+  // monitorMetadata opens an SSE endpoint to monitor metadata on the specified
   // agent and registers a disposer that can be used to stop the watch.
   monitorMetadata(agentId: WorkspaceAgent["id"], token: string): void {
     const agentMetadataURL = new URL(`${this.storage.getURL()}/api/v2/workspaceagents/${agentId}/watch-metadata`)
