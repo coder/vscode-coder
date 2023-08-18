@@ -61,7 +61,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   // Add headers from the header command.
   axios.interceptors.request.use(async (config) => {
-    Object.entries(await storage.getHeaders()).forEach(([key, value]) => {
+    Object.entries(await storage.getHeaders(config.baseURL || axios.getUri(config))).forEach(([key, value]) => {
       config.headers[key] = value
     })
     return config
