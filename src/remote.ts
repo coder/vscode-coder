@@ -514,9 +514,17 @@ export class Remote {
     }
 
     const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+
+    // Add headers from the header command.
+    let headerArg = ""
+    const headerCommand = vscode.workspace.getConfiguration().get("coder.headerCommand")
+    if (typeof headerCommand === "string" && headerCommand.trim().length > 0) {
+      headerArg = ` --header-command ${escape(headerCommand)}`
+    }
+
     const sshValues: SSHValues = {
       Host: `${Remote.Prefix}*`,
-      ProxyCommand: `${escape(binaryPath)} vscodessh --network-info-dir ${escape(
+      ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
       )} --session-token-file ${escape(this.storage.getSessionTokenPath())} --url-file ${escape(
         this.storage.getURLPath(),

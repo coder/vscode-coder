@@ -46,7 +46,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   axios.interceptors.response.use(
     (r) => r,
     async (err) => {
-      throw await CertificateError.maybeWrap(err, err.config.baseURL, storage)
+      throw await CertificateError.maybeWrap(err, axios.getUri(err.config), storage)
     },
   )
 
@@ -59,27 +59,42 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
   await storage.init()
 
+  // Add headers from the header command.
+  axios.interceptors.request.use(async (config) => {
+    Object.entries(await storage.getHeaders(config.baseURL || axios.getUri(config))).forEach(([key, value]) => {
+      config.headers[key] = value
+    })
+    return config
+  })
+
   const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine, storage)
   const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All, storage)
 
   vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
   vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
 
-  getAuthenticatedUser()
-    .then(async (user) => {
-      if (user) {
-        vscode.commands.executeCommand("setContext", "coder.authenticated", true)
-        if (user.roles.find((role) => role.name === "owner")) {
-          await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
+  const url = storage.getURL()
+  if (url) {
+    getAuthenticatedUser()
+      .then(async (user) => {
+        if (user) {
+          vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+          if (user.roles.find((role) => role.name === "owner")) {
+            await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
+          }
         }
-      }
-    })
-    .catch(() => {
-      // Not authenticated!
-    })
-    .finally(() => {
-      vscode.commands.executeCommand("setContext", "coder.loaded", true)
-    })
+      })
+      .catch((error) => {
+        // This should be a failure to make the request, like the header command
+        // errored.
+        vscodeProposed.window.showErrorMessage("Failed to check user authentication: " + error.message)
+      })
+      .finally(() => {
+        vscode.commands.executeCommand("setContext", "coder.loaded", true)
+      })
+  } else {
+    vscode.commands.executeCommand("setContext", "coder.loaded", true)
+  }
 
   vscode.window.registerUriHandler({
     handleUri: async (uri) => {

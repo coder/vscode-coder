@@ -70,8 +70,10 @@ export class Commands {
                   severity: vscode.InputBoxValidationSeverity.Error,
                 }
               }
+              // This could be something like the header command erroring or an
+              // invalid session token.
               return {
-                message: "Invalid session token! (" + message + ")",
+                message: "Failed to authenticate: " + message,
                 severity: vscode.InputBoxValidationSeverity.Error,
               }
             })

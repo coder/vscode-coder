@@ -35,7 +35,13 @@
     }],
     "import/no-unresolved": ["error", {
       "ignore": ["vscode"]
-    }]
+    }],
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "varsIgnorePattern": "^_"
+      }
+    ]
   },
   "ignorePatterns": [
     "out",
