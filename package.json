@@ -62,6 +62,21 @@
           "markdownDescription": "An external command that outputs additional HTTP headers added to all requests. The command must output each header as `key=value` on its own line. The following environment variables will be available to the process: `CODER_URL`.",
           "type": "string",
           "default": ""
+        },
+        "coder.tlsCertFile": {
+          "markdownDescription": "Path to file for TLS client cert",
+          "type": "string",
+          "default": ""
+        },
+        "coder.tlsKeyFile": {
+          "markdownDescription": "Path to file for TLS client key",
+          "type": "string",
+          "default": ""
+        },
+        "coder.tlsCaFile": {
+          "markdownDescription": "Path to file for TLS certificate authority",
+          "type": "string",
+          "default": ""
         }
       }
     },
