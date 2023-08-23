@@ -7,6 +7,7 @@ import {
   getWorkspaceByOwnerAndName,
   startWorkspace,
   getDeploymentSSHConfig,
+  getTemplateVersion,
 } from "coder/site/src/api/api"
 import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
@@ -303,12 +304,20 @@ export class Remote {
       if (newWorkspace.outdated) {
         if (!this.storage.workspace?.outdated || !hasShownOutdatedNotification) {
           hasShownOutdatedNotification = true
-          vscode.window
-            .showInformationMessage("A new version of your workspace is available.", "Update")
-            .then((action) => {
-              if (action === "Update") {
-                vscode.commands.executeCommand("coder.workspace.update", newWorkspace)
+          getTemplate(newWorkspace.template_id)
+            .then((template) => {
+              return getTemplateVersion(template.active_version_id)
+            })
+            .then((version) => {
+              let infoMessage = `A new version of your workspace is available.`
+              if (version.message) {
+                infoMessage = `A new version of your workspace is available: ${version.message}`
               }
+              vscode.window.showInformationMessage(infoMessage, "Update").then((action) => {
+                if (action === "Update") {
+                  vscode.commands.executeCommand("coder.workspace.update", newWorkspace)
+                }
+              })
             })
         }
       }
@@ -507,7 +516,14 @@ export class Remote {
     if (this.mode === vscode.ExtensionMode.Production) {
       binaryPath = await this.storage.fetchBinary()
     } else {
-      binaryPath = path.join(os.tmpdir(), "coder")
+      try {
+        // In development, try to use `/tmp/coder` as the binary path.
+        // This is useful for debugging with a custom bin!
+        binaryPath = path.join(os.tmpdir(), "coder")
+        await fs.stat(binaryPath)
+      } catch (ex) {
+        binaryPath = await this.storage.fetchBinary()
+      }
     }
     if (!binaryPath) {
       throw new Error("Failed to fetch the Coder binary!")

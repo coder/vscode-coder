@@ -1444,7 +1444,7 @@ co@3.1.0:
 
 "coder@https://github.com/coder/coder#main":
   version "0.0.0"
-  resolved "https://github.com/coder/coder#140683813d794081a0c0dbab70ec7eee16c5f5c4"
+  resolved "https://github.com/coder/coder#07188b123a6bf925064c3972f581ac7098476839"
 
 collapse-white-space@^1.0.2:
   version "1.0.6"
