@@ -58,10 +58,6 @@ export class Commands {
               return undefined
             })
             .catch((err) => {
-              let message = err
-              if (axios.isAxiosError(err) && err.response?.data) {
-                message = err.response.data.detail
-              }
               if (err instanceof CertificateError) {
                 err.showNotification()
 
@@ -72,6 +68,8 @@ export class Commands {
               }
               // This could be something like the header command erroring or an
               // invalid session token.
+              const message =
+                err?.response?.data?.detail || err?.message || err?.response?.status || "no response from the server"
               return {
                 message: "Failed to authenticate: " + message,
                 severity: vscode.InputBoxValidationSeverity.Error,
