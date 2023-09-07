@@ -26,7 +26,7 @@ function prepare() {
      nameopt        = default_ca
      certopt        = default_ca
      policy         = policy_match
-     default_days   = 365
+     default_days   = 36500
      default_md     = sha256
 
      [ policy_match ]
@@ -63,7 +63,7 @@ function chain() {
 
   # Create root certificate and key.
   openssl genrsa -out root/private/ca.key 2048
-  openssl req -new -x509 -sha256 -days 3650 \
+  openssl req -new -x509 -sha256 -days 36500 \
           -config root/openssl.cnf -extensions v3_req \
           -key root/private/ca.key --out root/certs/ca.crt \
           -subj '/CN=TEST-root'
@@ -83,7 +83,7 @@ function chain() {
           -out intermediate/certs/intermediate.crt
 
   # Create a key and request for an end certificate.
-  openssl req -new -days 365 -nodes -newkey rsa:2048 \
+  openssl req -new -days 36500 -nodes -newkey rsa:2048 \
           -config out/openssl.cnf -extensions v3_req \
           -keyout out/private/localhost.key -out out/certs/localhost.csr \
           -subj "/CN=localhost"
@@ -111,7 +111,7 @@ function chain() {
 # non-signing generates a self-signed certificate that has cert signing
 # explicitly omitted.
 function non-signing() {
-  openssl req -x509 -nodes -newkey rsa:2048 \
+  openssl req -x509 -nodes -newkey rsa:2048 -days 36500 \
           -keyout no-signing.key -out no-signing.crt \
           -addext "keyUsage = digitalSignature, keyEncipherment" \
           -addext "subjectAltName=DNS:localhost" \
@@ -120,7 +120,7 @@ function non-signing() {
 
 # self-signed generates a certificate without specifying key usage.
 function self-signed() {
-  openssl req -x509 -nodes -newkey rsa:2048 \
+  openssl req -x509 -nodes -newkey rsa:2048 -days 36500 \
           -keyout self-signed.key -out self-signed.crt \
           -addext "subjectAltName=DNS:localhost" \
           -subj "/CN=localhost"
