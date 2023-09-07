@@ -93,7 +93,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   if (url) {
     getAuthenticatedUser()
       .then(async (user) => {
-        if (user) {
+        if (user && user.roles) {
           vscode.commands.executeCommand("setContext", "coder.authenticated", true)
           if (user.roles.find((role) => role.name === "owner")) {
             await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
