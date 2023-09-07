@@ -1,6 +1,7 @@
 "use strict"
 import axios from "axios"
 import { getAuthenticatedUser } from "coder/site/src/api/api"
+import fs from "fs"
 import * as https from "https"
 import * as module from "module"
 import * as vscode from "vscode"
@@ -30,13 +31,21 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     false,
   )
 
-  // updateInsecure is called on extension activation and when the insecure
-  // setting is changed. It updates the https agent to allow self-signed
-  // certificates if the insecure setting is true.
-  const applyInsecure = () => {
-    const insecure = Boolean(vscode.workspace.getConfiguration().get("coder.insecure"))
+  // applyHttpProperties is called on extension activation and when the
+  // insecure or TLS setting are changed. It updates the https agent to allow
+  // self-signed certificates if the insecure setting is true, as well as
+  // adding cert/key/ca properties for TLS.
+  const applyHttpProperties = () => {
+    const cfg = vscode.workspace.getConfiguration()
+    const insecure = Boolean(cfg.get("coder.insecure"))
+    const certFile = String(cfg.get("coder.tlsCertFile"))
+    const keyFile = String(cfg.get("coder.tlsKeyFile"))
+    const caFile = String(cfg.get("coder.tlsCaFile"))
 
     axios.defaults.httpsAgent = new https.Agent({
+      cert: certFile === "" ? undefined : fs.readFileSync(certFile),
+      key: keyFile === "" ? undefined : fs.readFileSync(keyFile),
+      ca: caFile === "" ? undefined : fs.readFileSync(caFile),
       // rejectUnauthorized defaults to true, so we need to explicitly set it to false
       // if we want to allow self-signed certificates.
       rejectUnauthorized: !insecure,
@@ -51,9 +60,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   )
 
   vscode.workspace.onDidChangeConfiguration((e) => {
-    e.affectsConfiguration("coder.insecure") && applyInsecure()
+    if (
+      e.affectsConfiguration("coder.insecure") ||
+      e.affectsConfiguration("coder.tlsCertFile") ||
+      e.affectsConfiguration("coder.tlsKeyFile") ||
+      e.affectsConfiguration("coder.tlsCaFile")
+    ) {
+      applyHttpProperties()
+    }
   })
-  applyInsecure()
+  applyHttpProperties()
 
   const output = vscode.window.createOutputChannel("Coder")
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
