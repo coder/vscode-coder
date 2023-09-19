@@ -38,9 +38,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const applyHttpProperties = () => {
     const cfg = vscode.workspace.getConfiguration()
     const insecure = Boolean(cfg.get("coder.insecure"))
-    const certFile = String(cfg.get("coder.tlsCertFile"))
-    const keyFile = String(cfg.get("coder.tlsKeyFile"))
-    const caFile = String(cfg.get("coder.tlsCaFile"))
+    const certFile = String(cfg.get("coder.tlsCertFile") ?? "").trim()
+    const keyFile = String(cfg.get("coder.tlsKeyFile") ?? "").trim()
+    const caFile = String(cfg.get("coder.tlsCaFile") ?? "").trim()
 
     axios.defaults.httpsAgent = new https.Agent({
       cert: certFile === "" ? undefined : fs.readFileSync(certFile),
