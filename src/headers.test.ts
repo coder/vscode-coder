@@ -19,26 +19,26 @@ it("should return no headers", async () => {
 })
 
 it("should return headers", async () => {
-  await expect(getHeaders("localhost", "printf foo=bar'\n'baz=qux", logger)).resolves.toStrictEqual({
+  await expect(getHeaders("localhost", "printf 'foo=bar\\nbaz=qux'", logger)).resolves.toStrictEqual({
     foo: "bar",
     baz: "qux",
   })
-  await expect(getHeaders("localhost", "printf foo=bar'\r\n'baz=qux", logger)).resolves.toStrictEqual({
+  await expect(getHeaders("localhost", "printf 'foo=bar\\r\\nbaz=qux'", logger)).resolves.toStrictEqual({
     foo: "bar",
     baz: "qux",
   })
-  await expect(getHeaders("localhost", "printf foo=bar'\r\n'", logger)).resolves.toStrictEqual({ foo: "bar" })
-  await expect(getHeaders("localhost", "printf foo=bar", logger)).resolves.toStrictEqual({ foo: "bar" })
-  await expect(getHeaders("localhost", "printf foo=bar=", logger)).resolves.toStrictEqual({ foo: "bar=" })
-  await expect(getHeaders("localhost", "printf foo=bar=baz", logger)).resolves.toStrictEqual({ foo: "bar=baz" })
-  await expect(getHeaders("localhost", "printf foo=", logger)).resolves.toStrictEqual({ foo: "" })
+  await expect(getHeaders("localhost", "printf 'foo=bar\\r\\n'", logger)).resolves.toStrictEqual({ foo: "bar" })
+  await expect(getHeaders("localhost", "printf 'foo=bar'", logger)).resolves.toStrictEqual({ foo: "bar" })
+  await expect(getHeaders("localhost", "printf 'foo=bar='", logger)).resolves.toStrictEqual({ foo: "bar=" })
+  await expect(getHeaders("localhost", "printf 'foo=bar=baz'", logger)).resolves.toStrictEqual({ foo: "bar=baz" })
+  await expect(getHeaders("localhost", "printf 'foo='", logger)).resolves.toStrictEqual({ foo: "" })
 })
 
 it("should error on malformed or empty lines", async () => {
-  await expect(getHeaders("localhost", "printf foo=bar'\r\n\r\n'", logger)).rejects.toMatch(/Malformed/)
-  await expect(getHeaders("localhost", "printf '\r\n'foo=bar", logger)).rejects.toMatch(/Malformed/)
-  await expect(getHeaders("localhost", "printf =foo", logger)).rejects.toMatch(/Malformed/)
-  await expect(getHeaders("localhost", "printf foo", logger)).rejects.toMatch(/Malformed/)
+  await expect(getHeaders("localhost", "printf 'foo=bar\\r\\n\\r\\n'", logger)).rejects.toMatch(/Malformed/)
+  await expect(getHeaders("localhost", "printf '\\r\\nfoo=bar'", logger)).rejects.toMatch(/Malformed/)
+  await expect(getHeaders("localhost", "printf '=foo'", logger)).rejects.toMatch(/Malformed/)
+  await expect(getHeaders("localhost", "printf 'foo'", logger)).rejects.toMatch(/Malformed/)
   await expect(getHeaders("localhost", "printf '  =foo'", logger)).rejects.toMatch(/Malformed/)
   await expect(getHeaders("localhost", "printf 'foo  =bar'", logger)).rejects.toMatch(/Malformed/)
   await expect(getHeaders("localhost", "printf 'foo  foo=bar'", logger)).rejects.toMatch(/Malformed/)
@@ -48,7 +48,7 @@ it("should error on malformed or empty lines", async () => {
 it("should have access to environment variables", async () => {
   const coderUrl = "dev.coder.com"
   await expect(
-    getHeaders(coderUrl, os.platform() === "win32" ? "printf url=%CODER_URL" : "printf url=$CODER_URL", logger),
+    getHeaders(coderUrl, os.platform() === "win32" ? "printf url=%CODER_URL%" : "printf url=$CODER_URL", logger),
   ).resolves.toStrictEqual({ url: coderUrl })
 })
 
