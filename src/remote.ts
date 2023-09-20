@@ -112,9 +112,10 @@ export class Remote {
           )
           if (!result) {
             await this.closeRemote()
+          } else {
+            await vscode.commands.executeCommand("coder.login", this.storage.getURL())
+            await this.setup(remoteAuthority)
           }
-          await vscode.commands.executeCommand("coder.login", this.storage.getURL())
-          await this.setup(remoteAuthority)
           return
         }
         default:
