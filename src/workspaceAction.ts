@@ -1,4 +1,4 @@
-import axios from "axios"
+import { isAxiosError } from "axios"
 import { getWorkspaces } from "coder/site/src/api/api"
 import { Workspace, WorkspacesResponse, WorkspaceBuild } from "coder/site/src/api/typesGenerated"
 import { formatDistanceToNowStrict } from "date-fns"
@@ -48,7 +48,7 @@ export class WorkspaceAction {
       ownedWorkspacesResponse = await getWorkspaces({ q: "owner:me" })
     } catch (error) {
       let status
-      if (axios.isAxiosError(error)) {
+      if (isAxiosError(error)) {
         status = error.response?.status
       }
       if (status !== 401) {
@@ -116,7 +116,7 @@ export class WorkspaceAction {
         errorCount++
 
         let status
-        if (axios.isAxiosError(error)) {
+        if (isAxiosError(error)) {
           status = error.response?.status
         }
         if (status !== 401) {
