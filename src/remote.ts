@@ -1,4 +1,4 @@
-import axios from "axios"
+import { isAxiosError } from "axios"
 import {
   getBuildInfo,
   getTemplate,
@@ -80,7 +80,7 @@ export class Remote {
     try {
       this.storage.workspace = await getWorkspaceByOwnerAndName(parts[0], parts[1])
     } catch (error) {
-      if (!axios.isAxiosError(error)) {
+      if (!isAxiosError(error)) {
         throw error
       }
       switch (error.response?.status) {
@@ -461,7 +461,7 @@ export class Remote {
       const deploymentConfig = await getDeploymentSSHConfig()
       deploymentSSHConfig = deploymentConfig.ssh_config_options
     } catch (error) {
-      if (!axios.isAxiosError(error)) {
+      if (!isAxiosError(error)) {
         throw error
       }
       switch (error.response?.status) {
@@ -483,21 +483,24 @@ export class Remote {
     // Now override with the user's config.
     const userConfigSSH = vscode.workspace.getConfiguration("coder").get<string[]>("sshConfig") || []
     // Parse the user's config into a Record<string, string>.
-    const userConfig = userConfigSSH.reduce((acc, line) => {
-      let i = line.indexOf("=")
-      if (i === -1) {
-        i = line.indexOf(" ")
+    const userConfig = userConfigSSH.reduce(
+      (acc, line) => {
+        let i = line.indexOf("=")
         if (i === -1) {
-          // This line is malformed. The setting is incorrect, and does not match
-          // the pattern regex in the settings schema.
-          return acc
+          i = line.indexOf(" ")
+          if (i === -1) {
+            // This line is malformed. The setting is incorrect, and does not match
+            // the pattern regex in the settings schema.
+            return acc
+          }
         }
-      }
-      const key = line.slice(0, i)
-      const value = line.slice(i + 1)
-      acc[key] = value
-      return acc
-    }, {} as Record<string, string>)
+        const key = line.slice(0, i)
+        const value = line.slice(i + 1)
+        acc[key] = value
+        return acc
+      },
+      {} as Record<string, string>,
+    )
     const sshConfigOverrides = mergeSSHConfigValues(deploymentSSHConfig, userConfig)
 
     let sshConfigFile = vscode.workspace.getConfiguration().get<string>("remote.SSH.configFile")

@@ -1,4 +1,4 @@
-import axios from "axios"
+import { isAxiosError } from "axios"
 import * as forge from "node-forge"
 import * as tls from "tls"
 import * as vscode from "vscode"
@@ -34,14 +34,17 @@ export class CertificateError extends Error {
   public static InsecureMessage =
     'The Coder extension will no longer verify TLS on HTTPS requests. You can change this at any time with the "coder.insecure" property in your VS Code settings.'
 
-  private constructor(message: string, public readonly x509Err?: X509_ERR) {
+  private constructor(
+    message: string,
+    public readonly x509Err?: X509_ERR,
+  ) {
     super("Secure connection to your Coder deployment failed: " + message)
   }
 
   // maybeWrap returns a CertificateError if the code is a certificate error
   // otherwise it returns the original error.
   static async maybeWrap<T>(err: T, address: string, logger: Logger): Promise<CertificateError | T> {
-    if (axios.isAxiosError(err)) {
+    if (isAxiosError(err)) {
       switch (err.code) {
         case X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE:
           // "Unable to verify" can mean different things so we will attempt to

@@ -15,7 +15,10 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   private workspaces: WorkspaceTreeItem[] = []
   private agentWatchers: Record<WorkspaceAgent["id"], { dispose: () => void; metadata?: AgentMetadataEvent[] }> = {}
 
-  constructor(private readonly getWorkspacesQuery: WorkspaceQuery, private readonly storage: Storage) {
+  constructor(
+    private readonly getWorkspacesQuery: WorkspaceQuery,
+    private readonly storage: Storage,
+  ) {
     this.fetchAndRefresh()
   }
 
