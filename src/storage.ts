@@ -310,7 +310,10 @@ export class Storage {
 
   public writeToCoderOutputChannel(message: string) {
     this.output.appendLine(message)
-    this.output.show(true)
+    // We don't want to focus on the output here, because the
+    // Coder server is designed to restart gracefully for users
+    // because of P2P connections, and we don't want to draw
+    // attention to it.
   }
 
   private async updateURL(): Promise<void> {
