@@ -85,7 +85,8 @@ export function computeSSHProperties(host: string, config: string): Record<strin
     if (!config) {
       return
     }
-    if (!new RegExp("^" + config?.Host.replace(/\*/g, ".*") + "$").test(host)) {
+    // In OpenSSH * matches any number of characters and ? matches exactly one.
+    if (!new RegExp("^" + config?.Host.replace(/\*/g, ".*").replace(/\?/g, ".") + "$").test(host)) {
       return
     }
     Object.assign(merged, config.properties)

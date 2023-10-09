@@ -40,3 +40,31 @@ Host coder-vscode--*
     ProxyCommand: '/tmp/coder --header="X-FOO=bar" coder.dev',
   })
 })
+
+it("handles ? wildcards", () => {
+  const properties = computeSSHProperties(
+    "coder-vscode--testing",
+    `Host *
+  StrictHostKeyChecking yes
+
+Host i-???????? i-?????????????????
+  User test
+
+# --- START CODER VSCODE ---
+Host coder-v?ode--*
+  StrictHostKeyChecking yes
+  Another=false
+Host coder-v?code--*
+  StrictHostKeyChecking no
+  Another=true
+  ProxyCommand=/tmp/coder --header="X-BAR=foo" coder.dev
+# --- END CODER VSCODE ---
+`,
+  )
+
+  expect(properties).toEqual({
+    Another: "true",
+    StrictHostKeyChecking: "yes",
+    ProxyCommand: '/tmp/coder --header="X-BAR=foo" coder.dev',
+  })
+})
