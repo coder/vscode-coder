@@ -233,7 +233,7 @@
     "test:ci": "CI=true yarn test"
   },
   "devDependencies": {
-    "@types/eventsource": "^1.1.10",
+    "@types/eventsource": "^1.1.14",
     "@types/fs-extra": "^11.0.0",
     "@types/glob": "^7.1.3",
     "@types/ndjson": "^2.0.1",
