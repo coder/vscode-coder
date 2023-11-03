@@ -11,7 +11,7 @@ import os from "os"
 import path from "path"
 import prettyBytes from "pretty-bytes"
 import * as vscode from "vscode"
-import { getHeaders } from "./headers"
+import { getHeaderCommand, getHeaders } from "./headers"
 
 export class Storage {
   public workspace?: Workspace
@@ -397,7 +397,7 @@ export class Storage {
   }
 
   public async getHeaders(url = this.getURL()): Promise<Record<string, string>> {
-    return getHeaders(url, vscode.workspace.getConfiguration().get("coder.headerCommand"), this)
+    return getHeaders(url, getHeaderCommand(vscode.workspace.getConfiguration()), this)
   }
 }
 

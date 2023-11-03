@@ -1,6 +1,8 @@
 import * as cp from "child_process"
 import * as util from "util"
 
+import { WorkspaceConfiguration } from "vscode"
+
 export interface Logger {
   writeToCoderOutputChannel(message: string): void
 }
@@ -13,6 +15,14 @@ interface ExecException {
 
 function isExecException(err: unknown): err is ExecException {
   return typeof (err as ExecException).code !== "undefined"
+}
+
+export function getHeaderCommand(config: WorkspaceConfiguration): string | undefined {
+  const cmd = config.get("coder.headerCommand") || process.env.CODER_HEADER_COMMAND
+  if (!cmd || typeof cmd !== "string") {
+    return undefined
+  }
+  return cmd
 }
 
 // TODO: getHeaders might make more sense to directly implement on Storage
