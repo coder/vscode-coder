@@ -243,7 +243,7 @@
     "@types/ws": "^8.5.3",
     "@typescript-eslint/eslint-plugin": "^6.7.4",
     "@typescript-eslint/parser": "^6.7.4",
-    "@vscode/test-electron": "^1.6.2",
+    "@vscode/test-electron": "^2.3.6",
     "@vscode/vsce": "^2.21.1",
     "bufferutil": "^4.0.7",
     "coder": "https://github.com/coder/coder#main",
