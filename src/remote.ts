@@ -20,6 +20,7 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
+import { getHeaderCommand } from "./headers"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
@@ -537,8 +538,7 @@ export class Remote {
 
     // Add headers from the header command.
     let headerArg = ""
-    const headerCommand =
-      vscode.workspace.getConfiguration().get("coder.headerCommand") || process.env.CODER_HEADER_COMMAND
+    const headerCommand = getHeaderCommand(vscode.workspace.getConfiguration())
     if (typeof headerCommand === "string" && headerCommand.trim().length > 0) {
       headerArg = ` --header-command ${escape(headerCommand)}`
     }
