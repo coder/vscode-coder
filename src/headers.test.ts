@@ -74,6 +74,14 @@ describe("getHeaderCommand", () => {
     expect(getHeaderCommand(config)).toBeUndefined()
   })
 
+  it("should return undefined if coder.headerCommand is not a string", () => {
+    const config = {
+      get: () => 1234,
+    } as unknown as WorkspaceConfiguration
+
+    expect(getHeaderCommand(config)).toBeUndefined()
+  })
+
   it("should return coder.headerCommand if set in config", () => {
     vi.stubEnv("CODER_HEADER_COMMAND", "printf 'x=y'")
 
