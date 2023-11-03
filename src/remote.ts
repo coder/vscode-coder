@@ -537,7 +537,8 @@ export class Remote {
 
     // Add headers from the header command.
     let headerArg = ""
-    const headerCommand = vscode.workspace.getConfiguration().get("coder.headerCommand")
+    const headerCommand =
+      vscode.workspace.getConfiguration().get("coder.headerCommand") || process.env.CODER_HEADER_COMMAND
     if (typeof headerCommand === "string" && headerCommand.trim().length > 0) {
       headerArg = ` --header-command ${escape(headerCommand)}`
     }

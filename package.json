@@ -64,7 +64,7 @@
           "default": ""
         },
         "coder.headerCommand": {
-          "markdownDescription": "An external command that outputs additional HTTP headers added to all requests. The command must output each header as `key=value` on its own line. The following environment variables will be available to the process: `CODER_URL`.",
+          "markdownDescription": "An external command that outputs additional HTTP headers added to all requests. The command must output each header as `key=value` on its own line. The following environment variables will be available to the process: `CODER_URL`. Defaults to the value of `CODER_HEADER_COMMAND` if not set.",
           "type": "string",
           "default": ""
         },
