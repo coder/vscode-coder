@@ -101,6 +101,5 @@ describe("getHeaderCommand", () => {
 
     expect(getHeaderCommand(config)).toBe("printf 'x=y'")
 
-    delete process.env.CODER_HEADER_COMMAND
   })
 })
