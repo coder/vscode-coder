@@ -100,6 +100,5 @@ describe("getHeaderCommand", () => {
     } as unknown as WorkspaceConfiguration
 
     expect(getHeaderCommand(config)).toBe("printf 'x=y'")
-
   })
 })
