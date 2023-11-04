@@ -1,7 +1,7 @@
 {
   "name": "coder-remote",
   "publisher": "coder",
-  "displayName": "Coder Remote",
+  "displayName": "Coder",
   "description": "Open any workspace with a single click.",
   "repository": "https://github.com/coder/vscode-coder",
   "version": "0.1.25",
