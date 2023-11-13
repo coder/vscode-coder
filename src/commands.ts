@@ -115,6 +115,17 @@ export class Commands {
     }
   }
 
+  // viewLogs opens the workspace logs.
+  public async viewLogs(): Promise<void> {
+    if (!this.storage.workspaceLogPath) {
+      vscode.window.showInformationMessage("No logs available.", this.storage.workspaceLogPath || "<unset>")
+      return
+    }
+    const uri = vscode.Uri.file(this.storage.workspaceLogPath)
+    const doc = await vscode.workspace.openTextDocument(uri)
+    await vscode.window.showTextDocument(doc)
+  }
+
   public async logout(): Promise<void> {
     await this.storage.setURL(undefined)
     await this.storage.setSessionToken(undefined)

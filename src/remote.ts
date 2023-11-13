@@ -76,9 +76,10 @@ export class Remote {
       await this.closeRemote()
       return
     }
+    // CLI versions before 2.3.3 don't support the --log-dir flag!
+    // If this check didn't exist, VS Code connections would fail on
+    // older versions because of an unknown CLI argument.
     const hasCoderLogs = (parsedVersion?.compare("2.3.3") || 0) >= 0 || parsedVersion?.prerelease[0] === "devel"
-
-    console.log("hasCoderLogs", hasCoderLogs)
 
     // Find the workspace from the URI scheme provided!
     try {
@@ -429,7 +430,7 @@ export class Remote {
     //
     // If we didn't write to the SSH config file, connecting would fail with
     // "Host not found".
-    await this.updateSSHConfig(authorityParts[1])
+    await this.updateSSHConfig(authorityParts[1], hasCoderLogs)
 
     this.findSSHProcessID().then((pid) => {
       if (!pid) {
@@ -437,6 +438,7 @@ export class Remote {
         return
       }
       disposables.push(this.showNetworkUpdates(pid))
+      this.storage.workspaceLogPath = path.join(this.storage.getLogPath(), `${pid}.log`)
     })
 
     // Register the label formatter again because SSH overrides it!
@@ -459,7 +461,7 @@ export class Remote {
 
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
-  private async updateSSHConfig(hostName: string) {
+  private async updateSSHConfig(hostName: string, hasCoderLogs = false) {
     let deploymentSSHConfig = defaultSSHConfigResponse
     try {
       const deploymentConfig = await getDeploymentSSHConfig()
@@ -487,21 +489,24 @@ export class Remote {
     // Now override with the user's config.
     const userConfigSSH = vscode.workspace.getConfiguration("coder").get<string[]>("sshConfig") || []
     // Parse the user's config into a Record<string, string>.
-    const userConfig = userConfigSSH.reduce((acc, line) => {
-      let i = line.indexOf("=")
-      if (i === -1) {
-        i = line.indexOf(" ")
+    const userConfig = userConfigSSH.reduce(
+      (acc, line) => {
+        let i = line.indexOf("=")
         if (i === -1) {
-          // This line is malformed. The setting is incorrect, and does not match
-          // the pattern regex in the settings schema.
-          return acc
+          i = line.indexOf(" ")
+          if (i === -1) {
+            // This line is malformed. The setting is incorrect, and does not match
+            // the pattern regex in the settings schema.
+            return acc
+          }
         }
-      }
-      const key = line.slice(0, i)
-      const value = line.slice(i + 1)
-      acc[key] = value
-      return acc
-    }, {} as Record<string, string>)
+        const key = line.slice(0, i)
+        const value = line.slice(i + 1)
+        acc[key] = value
+        return acc
+      },
+      {} as Record<string, string>,
+    )
     const sshConfigOverrides = mergeSSHConfigValues(deploymentSSHConfig, userConfig)
 
     let sshConfigFile = vscode.workspace.getConfiguration().get<string>("remote.SSH.configFile")
@@ -542,12 +547,16 @@ export class Remote {
     if (typeof headerCommand === "string" && headerCommand.trim().length > 0) {
       headerArg = ` --header-command ${escape(headerCommand)}`
     }
-
+    let logArg = ""
+    if (hasCoderLogs) {
+      await fs.mkdir(this.storage.getLogPath(), { recursive: true })
+      logArg = ` --log-dir ${escape(this.storage.getLogPath())}`
+    }
     const sshValues: SSHValues = {
       Host: `${Remote.Prefix}*`,
       ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
-      )} --session-token-file ${escape(this.storage.getSessionTokenPath())} --url-file ${escape(
+      )}${logArg} --session-token-file ${escape(this.storage.getSessionTokenPath())} --url-file ${escape(
         this.storage.getURLPath(),
       )} %h`,
       ConnectTimeout: "0",

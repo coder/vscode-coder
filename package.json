@@ -168,6 +168,12 @@
         "title": "Coder: Refresh Workspace",
         "icon": "$(refresh)",
         "when": "coder.authenticated"
+      },
+      {
+        "command": "coder.viewLogs",
+        "title": "Coder: View Logs",
+        "icon": "$(list-unordered)",
+        "when": "coder.authenticated"
       }
     ],
     "menus": {

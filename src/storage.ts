@@ -15,6 +15,7 @@ import { getHeaderCommand, getHeaders } from "./headers"
 
 export class Storage {
   public workspace?: Workspace
+  public workspaceLogPath?: string
 
   constructor(
     private readonly output: vscode.OutputChannel,
@@ -277,6 +278,12 @@ export class Storage {
   // for SSH hosts is stored.
   public getNetworkInfoPath(): string {
     return path.join(this.globalStorageUri.fsPath, "net")
+  }
+
+  // getLogPath returns the path where log data from the Coder
+  // agent is stored.
+  public getLogPath(): string {
+    return path.join(this.globalStorageUri.fsPath, "log")
   }
 
   public getUserSettingsPath(): string {
