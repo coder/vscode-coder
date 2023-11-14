@@ -1,7 +1,7 @@
 {
   "name": "coder-remote",
   "publisher": "coder",
-  "displayName": "Coder Remote",
+  "displayName": "Coder",
   "description": "Open any workspace with a single click.",
   "repository": "https://github.com/coder/vscode-coder",
   "version": "0.1.26",
@@ -167,6 +167,12 @@
         "command": "coder.refreshWorkspaces",
         "title": "Coder: Refresh Workspace",
         "icon": "$(refresh)",
+        "when": "coder.authenticated"
+      },
+      {
+        "command": "coder.viewLogs",
+        "title": "Coder: View Logs",
+        "icon": "$(list-unordered)",
         "when": "coder.authenticated"
       }
     ],
