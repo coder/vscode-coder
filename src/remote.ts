@@ -24,6 +24,7 @@ import { getHeaderCommand } from "./headers"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
+import { supportsCoderAgentLogDirFlag } from "./version"
 import { WorkspaceAction } from "./workspaceAction"
 
 export class Remote {
@@ -76,10 +77,7 @@ export class Remote {
       await this.closeRemote()
       return
     }
-    // CLI versions before 2.3.3 don't support the --log-dir flag!
-    // If this check didn't exist, VS Code connections would fail on
-    // older versions because of an unknown CLI argument.
-    const hasCoderLogs = (parsedVersion?.compare("2.3.3") || 0) >= 0 || parsedVersion?.prerelease[0] === "devel"
+    const hasCoderLogs = supportsCoderAgentLogDirFlag(parsedVersion)
 
     // Find the workspace from the URI scheme provided!
     try {
