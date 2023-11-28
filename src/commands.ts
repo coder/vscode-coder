@@ -8,6 +8,34 @@ import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { OpenableTreeItem } from "./workspacesProvider"
 
+// maybeAskUrl asks the user for the URL if it was not provided and normalizes
+// the returned URL.
+export async function maybeAskUrl(
+  providedUrl: string | undefined | null,
+  lastUsedUrl?: string,
+): Promise<string | undefined> {
+  let url =
+    providedUrl ||
+    (await vscode.window.showInputBox({
+      title: "Coder URL",
+      prompt: "Enter the URL of your Coder deployment.",
+      placeHolder: "https://example.coder.com",
+      value: lastUsedUrl,
+    }))
+  if (!url) {
+    return undefined
+  }
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    // Default to HTTPS if not provided!
+    // https://github.com/coder/vscode-coder/issues/44
+    url = "https://" + url
+  }
+  while (url.endsWith("/")) {
+    url = url.substring(0, url.length - 1)
+  }
+  return url
+}
+
 export class Commands {
   public constructor(
     private readonly vscodeProposed: typeof vscode,
@@ -15,26 +43,7 @@ export class Commands {
   ) {}
 
   public async login(...args: string[]): Promise<void> {
-    let url: string | undefined = args.length >= 1 ? args[0] : undefined
-    if (!url) {
-      url = await vscode.window.showInputBox({
-        title: "Coder URL",
-        prompt: "Enter the URL of your Coder deployment.",
-        placeHolder: "https://example.coder.com",
-        value: url,
-      })
-    }
-    if (!url) {
-      return
-    }
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      // Default to HTTPS if not provided!
-      // https://github.com/coder/vscode-coder/issues/44
-      url = "https://" + url
-    }
-    while (url.endsWith("/")) {
-      url = url.substring(0, url.length - 1)
-    }
+    const url = await maybeAskUrl(args[0])
     let token: string | undefined = args.length >= 2 ? args[1] : undefined
     if (!token) {
       const opened = await vscode.env.openExternal(vscode.Uri.parse(`${url}/cli-auth`))

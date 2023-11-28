@@ -127,14 +127,25 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
           throw new Error("workspace must be specified as a query parameter")
         }
 
-        const url = params.get("url")
-        const token = params.get("token")
+        // We are not guaranteed that the URL we currently have is for the URL
+        // this workspace belongs to, or that we even have a URL at all (the
+        // queries will default to localhost) so ask for it if missing.
+        // Pre-populate in case we do have the right URL so the user can just
+        // hit enter and move on.
+        const url = await maybeAskUrl(params.get("url"), storage.getURL())
         if (url) {
           await storage.setURL(url)
+        } else {
+          throw new Error("url must be provided or specified as a query parameter")
         }
+
+        // If the token is missing we will get a 401 later and the user will be
+        // prompted to sign in again, so we do not need to ensure it is set.
+        const token = params.get("token")
         if (token) {
           await storage.setSessionToken(token)
         }
+
         vscode.commands.executeCommand("coder.open", owner, workspace, agent, folder)
       }
     },
