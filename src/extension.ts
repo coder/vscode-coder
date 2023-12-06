@@ -4,6 +4,7 @@ import { getAuthenticatedUser } from "coder/site/src/api/api"
 import fs from "fs"
 import * as https from "https"
 import * as module from "module"
+import * as os from "os"
 import * as vscode from "vscode"
 import { Commands } from "./commands"
 import { CertificateError } from "./error"
@@ -31,6 +32,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     false,
   )
 
+  // expandPath will expand ${userHome} in the input string.
+  const expandPath = (input: string): string => {
+    const userHome = os.homedir()
+    return input.replace(/\${userHome}/g, userHome)
+  }
+
   // applyHttpProperties is called on extension activation and when the
   // insecure or TLS setting are changed. It updates the https agent to allow
   // self-signed certificates if the insecure setting is true, as well as
@@ -38,9 +45,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const applyHttpProperties = () => {
     const cfg = vscode.workspace.getConfiguration()
     const insecure = Boolean(cfg.get("coder.insecure"))
-    const certFile = String(cfg.get("coder.tlsCertFile") ?? "").trim()
-    const keyFile = String(cfg.get("coder.tlsKeyFile") ?? "").trim()
-    const caFile = String(cfg.get("coder.tlsCaFile") ?? "").trim()
+    const certFile = expandPath(String(cfg.get("coder.tlsCertFile") ?? "").trim())
+    const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim())
+    const caFile = expandPath(String(cfg.get("coder.tlsCaFile") ?? "").trim())
 
     axios.defaults.httpsAgent = new https.Agent({
       cert: certFile === "" ? undefined : fs.readFileSync(certFile),
