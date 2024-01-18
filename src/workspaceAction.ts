@@ -82,9 +82,9 @@ export class WorkspaceAction {
       return false
     }
 
-    const hourMilli = 1000 * 60 * 60
-    // return workspaces with a deadline that is in 1 hr or less
-    return Math.abs(new Date().getTime() - new Date(workspace.latest_build.deadline).getTime()) <= hourMilli
+    const halfHourMilli = 1000 * 60 * 30
+    // return workspaces with a deadline that is in 30 min or less
+    return Math.abs(new Date().getTime() - new Date(workspace.latest_build.deadline).getTime()) <= halfHourMilli
   }
 
   filterWorkspacesImpendingDeletion(workspace: Workspace): workspace is WorkspaceWithDeletingAt {
