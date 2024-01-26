@@ -273,17 +273,30 @@ export class Remote {
       [`${authorityParts[1]}`]: agent.operating_system,
     }
 
+    // VS Code ignores the connect timeout in the SSH config and uses a default
+    // of 15 seconds, which can be too short in the case where we wait for
+    // startup scripts.  For now we hardcode a longer value.
+    const connectTimeout = 1800
+
     let settingsContent = "{}"
     try {
       settingsContent = await fs.readFile(this.storage.getUserSettingsPath(), "utf8")
     } catch (ex) {
       // Ignore! It's probably because the file doesn't exist.
     }
-    const parsed = jsonc.parse(settingsContent)
-    parsed["remote.SSH.remotePlatform"] = remotePlatforms
-    const edits = jsonc.modify(settingsContent, ["remote.SSH.remotePlatform"], remotePlatforms, {})
+
+    settingsContent = jsonc.applyEdits(
+      settingsContent,
+      jsonc.modify(settingsContent, ["remote.SSH.remotePlatform"], remotePlatforms, {}),
+    )
+
+    settingsContent = jsonc.applyEdits(
+      settingsContent,
+      jsonc.modify(settingsContent, ["remote.SSH.connectTimeout"], connectTimeout, {}),
+    )
+
     try {
-      await fs.writeFile(this.storage.getUserSettingsPath(), jsonc.applyEdits(settingsContent, edits))
+      await fs.writeFile(this.storage.getUserSettingsPath(), settingsContent)
     } catch (ex) {
       // The user will just be prompted instead, which is fine!
       // If a user's settings.json is read-only, then we can't write to it.
