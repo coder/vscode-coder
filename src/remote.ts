@@ -265,20 +265,17 @@ export class Remote {
       agent = matchingAgents[0]
     }
 
-    let remotePlatforms = this.vscodeProposed.workspace
+    const hostname = authorityParts[1]
+    const remotePlatforms = this.vscodeProposed.workspace
       .getConfiguration()
-      .get<Record<string, string>>("remote.SSH.remotePlatform")
-    remotePlatforms = {
-      ...remotePlatforms,
-      [`${authorityParts[1]}`]: agent.operating_system,
-    }
+      .get<Record<string, string>>("remote.SSH.remotePlatform", {})
+    const connTimeout = this.vscodeProposed.workspace.getConfiguration().get<number | undefined>("remote.SSH.connectTimeout")
 
-    // VS Code ignores the connect timeout in the SSH config and uses a default
-    // of 15 seconds, which can be too short in the case where we wait for
-    // startup scripts.  For now we hardcode a longer value.
-    // If microsoft/vscode-remote-release#8519 is resolved we can remove this.
-    const connectTimeout = 1800
-
+    // We have to directly munge the settings file with jsonc because trying to
+    // update properly through the extension API hangs indefinitely.  Possibly
+    // VS Code is trying to update configuration on the remote, which cannot
+    // connect until we finish here leading to a deadlock.  We need to update it
+    // locally, anyway, and it does not seem possible to force that via API.
     let settingsContent = "{}"
     try {
       settingsContent = await fs.readFile(this.storage.getUserSettingsPath(), "utf8")
@@ -286,22 +283,44 @@ export class Remote {
       // Ignore! It's probably because the file doesn't exist.
     }
 
-    settingsContent = jsonc.applyEdits(
-      settingsContent,
-      jsonc.modify(settingsContent, ["remote.SSH.remotePlatform"], remotePlatforms, {}),
-    )
+    // Add the remote platform for this host to bypass a step where VS Code asks
+    // the user for the platform.
+    let mungedPlatforms = false
+    if (!remotePlatforms[hostname] || remotePlatforms[hostname] !== agent.operating_system) {
+      remotePlatforms[hostname] = agent.operating_system
+      settingsContent = jsonc.applyEdits(
+        settingsContent,
+        jsonc.modify(settingsContent, ["remote.SSH.remotePlatform"], remotePlatforms, {}),
+      )
+      mungedPlatforms = true
+    }
 
-    settingsContent = jsonc.applyEdits(
-      settingsContent,
-      jsonc.modify(settingsContent, ["remote.SSH.connectTimeout"], connectTimeout, {}),
-    )
+    // VS Code ignores the connect timeout in the SSH config and uses a default
+    // of 15 seconds, which can be too short in the case where we wait for
+    // startup scripts.  For now we hardcode a longer value.  Because this is
+    // potentially overwriting user configuration, it feels a bit sketchy.  If
+    // microsoft/vscode-remote-release#8519 is resolved we can remove this but
+    // for now to mitigate the sketchiness we will reset it after connecting.
+    const minConnTimeout = 1800
+    let mungedConnTimeout = false
+    if (!connTimeout || connTimeout < minConnTimeout) {
+      settingsContent = jsonc.applyEdits(
+        settingsContent,
+        jsonc.modify(settingsContent, ["remote.SSH.connectTimeout"], minConnTimeout, {}),
+      )
+      mungedConnTimeout = true
+    }
 
-    try {
-      await fs.writeFile(this.storage.getUserSettingsPath(), settingsContent)
-    } catch (ex) {
-      // The user will just be prompted instead, which is fine!
-      // If a user's settings.json is read-only, then we can't write to it.
-      // This is the case when using home-manager on NixOS.
+    if (mungedPlatforms || mungedConnTimeout) {
+      try {
+        await fs.writeFile(this.storage.getUserSettingsPath(), settingsContent)
+      } catch (ex) {
+        // This could be because the user's settings.json is read-only.  This is
+        // the case when using home-manager on NixOS, for example.  Failure to
+        // write here is not necessarily catastrophic since the user will be
+        // asked for the platform and the default timeout might be sufficient.
+        mungedPlatforms = mungedConnTimeout = false
+      }
     }
 
     const workspaceUpdate = new vscode.EventEmitter<Workspace>()
@@ -445,6 +464,26 @@ export class Remote {
     await this.updateSSHConfig(authorityParts[1], hasCoderLogs)
 
     this.findSSHProcessID().then((pid) => {
+      // Once the SSH process has spawned we can reset the timeout.
+      if (mungedConnTimeout) {
+        // Re-read settings in case they changed.
+        fs.readFile(this.storage.getUserSettingsPath(), "utf8").then(async (rawSettings) => {
+          try {
+            await fs.writeFile(
+              this.storage.getUserSettingsPath(),
+              jsonc.applyEdits(
+                rawSettings,
+                jsonc.modify(rawSettings, ["remote.SSH.connectTimeout"], connTimeout, {}),
+              ),
+            )
+          } catch (error) {
+            this.storage.writeToCoderOutputChannel(
+              `Failed to reset remote.SSH.connectTimeout back to ${connTimeout}: ${error}`,
+            )
+          }
+        })
+      }
+
       if (!pid) {
         // TODO: Show an error here!
         return
