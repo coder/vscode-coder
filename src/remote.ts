@@ -276,6 +276,7 @@ export class Remote {
     // VS Code ignores the connect timeout in the SSH config and uses a default
     // of 15 seconds, which can be too short in the case where we wait for
     // startup scripts.  For now we hardcode a longer value.
+    // If microsoft/vscode-remote-release#8519 is resolved we can remove this.
     const connectTimeout = 1800
 
     let settingsContent = "{}"
