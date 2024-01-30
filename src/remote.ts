@@ -269,7 +269,9 @@ export class Remote {
     const remotePlatforms = this.vscodeProposed.workspace
       .getConfiguration()
       .get<Record<string, string>>("remote.SSH.remotePlatform", {})
-    const connTimeout = this.vscodeProposed.workspace.getConfiguration().get<number | undefined>("remote.SSH.connectTimeout")
+    const connTimeout = this.vscodeProposed.workspace
+      .getConfiguration()
+      .get<number | undefined>("remote.SSH.connectTimeout")
 
     // We have to directly munge the settings file with jsonc because trying to
     // update properly through the extension API hangs indefinitely.  Possibly
@@ -471,10 +473,7 @@ export class Remote {
           try {
             await fs.writeFile(
               this.storage.getUserSettingsPath(),
-              jsonc.applyEdits(
-                rawSettings,
-                jsonc.modify(rawSettings, ["remote.SSH.connectTimeout"], connTimeout, {}),
-              ),
+              jsonc.applyEdits(rawSettings, jsonc.modify(rawSettings, ["remote.SSH.connectTimeout"], connTimeout, {})),
             )
           } catch (error) {
             this.storage.writeToCoderOutputChannel(
