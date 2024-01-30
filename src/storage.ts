@@ -13,6 +13,9 @@ import prettyBytes from "pretty-bytes"
 import * as vscode from "vscode"
 import { getHeaderCommand, getHeaders } from "./headers"
 
+// Maximium number of recent URLs to store.
+const MAX_URLS = 10
+
 export class Storage {
   public workspace?: Workspace
   public workspaceLogPath?: string
@@ -25,21 +28,55 @@ export class Storage {
     private readonly logUri: vscode.Uri,
   ) {}
 
-  // init ensures that the storage places values in the
-  // appropriate default values.
+  /**
+   * Set the URL and session token on the Axios client and on disk for the cli
+   * if they are set.
+   */
   public async init(): Promise<void> {
-    await this.updateURL()
+    await this.updateURL(this.getURL())
     await this.updateSessionToken()
   }
 
-  public setURL(url?: string): Thenable<void> {
-    return this.memento.update("url", url).then(() => {
-      return this.updateURL()
-    })
+  /**
+   * Add the URL to the list of recently accessed URLs in global storage, then
+   * set it as the current URL and update it on the Axios client and on disk for
+   * the cli.
+   *
+   * If the URL is falsey, then remove it as the currently accessed URL and do
+   * not touch the history.
+   */
+  public async setURL(url?: string): Promise<void> {
+    await this.memento.update("url", url)
+    this.updateURL(url)
+    if (url) {
+      const history = this.withUrlHistory(url)
+      await this.memento.update("urlHistory", history)
+    }
   }
 
+  /**
+   * Get the currently configured URL.
+   */
   public getURL(): string | undefined {
     return this.memento.get("url")
+  }
+
+  /**
+   * Get the most recently accessed URLs (oldest to newest) with the provided
+   * values appended.  Duplicates will be removed.
+   */
+  public withUrlHistory(...append: (string | undefined)[]): string[] {
+    const val = this.memento.get("urlHistory")
+    const urls = Array.isArray(val) ? new Set(val) : new Set()
+    for (const url of append) {
+      if (url) {
+        // It might exist; delete first so it gets appended.
+        urls.delete(url)
+        urls.add(url)
+      }
+    }
+    // Slice off the head if the list is too large.
+    return urls.size > MAX_URLS ? Array.from(urls).slice(urls.size - MAX_URLS, urls.size) : Array.from(urls)
   }
 
   public setSessionToken(sessionToken?: string): Thenable<void> {
@@ -323,8 +360,11 @@ export class Storage {
     // attention to it.
   }
 
-  private async updateURL(): Promise<void> {
-    const url = this.getURL()
+  /**
+   * Set the URL on the global Axios client and write the URL to disk which will
+   * be used by the CLI via --url-file.
+   */
+  private async updateURL(url: string | undefined): Promise<void> {
     axios.defaults.baseURL = url
     if (url) {
       await ensureDir(this.globalStorageUri.fsPath)
