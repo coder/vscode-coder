@@ -18,7 +18,7 @@ export class Commands {
    * Ask the user for the URL, letting them choose from a list of recent URLs or
    * CODER_URL or enter a new one.  Undefined means the user aborted.
    */
-  private askURL(selection?: string): Promise<string | undefined> {
+  private async askURL(selection?: string): Promise<string | undefined> {
     const quickPick = vscode.window.createQuickPick()
     quickPick.value = selection || process.env.CODER_URL || ""
     quickPick.placeholder = "https://example.coder.com"
@@ -42,10 +42,12 @@ export class Commands {
 
     quickPick.show()
 
-    return new Promise<string | undefined>((resolve) => {
+    const selected = await new Promise<string | undefined>((resolve) => {
       quickPick.onDidHide(() => resolve(undefined))
       quickPick.onDidChangeSelection((selected) => resolve(selected[0]?.label))
     })
+    quickPick.dispose()
+    return selected
   }
 
   /**
