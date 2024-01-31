@@ -14,17 +14,22 @@ export enum WorkspaceQuery {
 export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private workspaces: WorkspaceTreeItem[] = []
   private agentWatchers: Record<WorkspaceAgent["id"], { dispose: () => void; metadata?: AgentMetadataEvent[] }> = {}
+  private timeout: NodeJS.Timeout | undefined
+  private visible = false
   private fetching = false
 
   constructor(
     private readonly getWorkspacesQuery: WorkspaceQuery,
     private readonly storage: Storage,
+    private readonly timerSeconds?: number,
   ) {
     this.fetchAndRefresh()
   }
 
-  // fetchAndRefresh fetches new workspaces then re-renders the entire tree.
-  // Trying to call this while already refreshing is a no-op and will return
+  // fetchAndRefresh fetches new workspaces, re-renders the entire tree, then
+  // keeps refreshing (if a timer length was provided) as long as the user is
+  // still logged in and no errors were encountered fetching workspaces.
+  // Calling this while already refreshing is a no-op and will return
   // immediately.
   async fetchAndRefresh() {
     if (this.fetching) {
@@ -32,16 +37,24 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     }
     this.fetching = true
 
+    // TODO: It would be better to reuse these.
     Object.values(this.agentWatchers).forEach((watcher) => watcher.dispose())
+
+    // It is possible we called fetchAndRefresh() manually (through the button
+    // for example), in which case we might still have a pending refresh that
+    // needs to be cleared.
+    this.cancelPendingRefresh()
 
     try {
       this.workspaces = await this.fetch()
+      this.fetching = false
+      this.maybeScheduleRefresh()
     } catch (error) {
       this.workspaces = []
+      this.fetching = false
     }
 
     this.refresh()
-    this.fetching = false
   }
 
   /**
@@ -80,6 +93,37 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
       }
       return new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
     })
+  }
+
+  /**
+   * Either start or stop the refresh timer based on visibility.
+   */
+  setVisibility(visible: boolean) {
+    this.visible = visible
+    if (!visible) {
+      this.cancelPendingRefresh()
+    } else {
+      this.maybeScheduleRefresh()
+    }
+  }
+
+  private cancelPendingRefresh() {
+    if (this.timeout) {
+      clearTimeout(this.timeout)
+      this.timeout = undefined
+    }
+  }
+
+  /**
+   * Schedule a refresh if one is not already scheduled or underway and a
+   * timeout length was provided.
+   */
+  private maybeScheduleRefresh() {
+    if (this.timerSeconds && !this.timeout && !this.fetching) {
+      this.timeout = setTimeout(() => {
+        this.fetchAndRefresh()
+      }, this.timerSeconds * 1000)
+    }
   }
 
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> =
