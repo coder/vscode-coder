@@ -8,42 +8,81 @@ import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { OpenableTreeItem } from "./workspacesProvider"
 
-// maybeAskUrl asks the user for the URL if it was not provided and normalizes
-// the returned URL.
-export async function maybeAskUrl(
-  providedUrl: string | undefined | null,
-  lastUsedUrl?: string,
-): Promise<string | undefined> {
-  let url =
-    providedUrl ||
-    (await vscode.window.showInputBox({
-      title: "Coder URL",
-      prompt: "Enter the URL of your Coder deployment.",
-      placeHolder: "https://example.coder.com",
-      value: lastUsedUrl,
-    }))
-  if (!url) {
-    return undefined
-  }
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    // Default to HTTPS if not provided!
-    // https://github.com/coder/vscode-coder/issues/44
-    url = "https://" + url
-  }
-  while (url.endsWith("/")) {
-    url = url.substring(0, url.length - 1)
-  }
-  return url
-}
-
 export class Commands {
   public constructor(
     private readonly vscodeProposed: typeof vscode,
     private readonly storage: Storage,
   ) {}
 
+  /**
+   * Ask the user for the URL, letting them choose from a list of recent URLs or
+   * CODER_URL or enter a new one.  Undefined means the user aborted.
+   */
+  private async askURL(selection?: string): Promise<string | undefined> {
+    const quickPick = vscode.window.createQuickPick()
+    quickPick.value = selection || process.env.CODER_URL || ""
+    quickPick.placeholder = "https://example.coder.com"
+    quickPick.title = "Enter the URL of your Coder deployment."
+
+    // Initial items.
+    quickPick.items = this.storage.withUrlHistory(process.env.CODER_URL).map((url) => ({
+      alwaysShow: true,
+      label: url,
+    }))
+
+    // Quick picks do not allow arbitrary values, so we add the value itself as
+    // an option in case the user wants to connect to something that is not in
+    // the list.
+    quickPick.onDidChangeValue((value) => {
+      quickPick.items = this.storage.withUrlHistory(process.env.CODER_URL, value).map((url) => ({
+        alwaysShow: true,
+        label: url,
+      }))
+    })
+
+    quickPick.show()
+
+    const selected = await new Promise<string | undefined>((resolve) => {
+      quickPick.onDidHide(() => resolve(undefined))
+      quickPick.onDidChangeSelection((selected) => resolve(selected[0]?.label))
+    })
+    quickPick.dispose()
+    return selected
+  }
+
+  /**
+   * Ask the user for the URL if it was not provided, letting them choose from a
+   * list of recent URLs or CODER_URL or enter a new one, and normalizes the
+   * returned URL.  Undefined means the user aborted.
+   */
+  public async maybeAskUrl(providedUrl: string | undefined | null, lastUsedUrl?: string): Promise<string | undefined> {
+    let url = providedUrl || (await this.askURL(lastUsedUrl))
+    if (!url) {
+      // User aborted.
+      return undefined
+    }
+
+    // Normalize URL.
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      // Default to HTTPS if not provided so URLs can be typed more easily.
+      url = "https://" + url
+    }
+    while (url.endsWith("/")) {
+      url = url.substring(0, url.length - 1)
+    }
+    return url
+  }
+
+  /**
+   * Log into the provided deployment.  If the deployment URL is not specified,
+   * ask for it first with a menu showing recent URLs and CODER_URL, if set.
+   */
   public async login(...args: string[]): Promise<void> {
-    const url = await maybeAskUrl(args[0])
+    const url = await this.maybeAskUrl(args[0])
+    if (!url) {
+      return
+    }
+
     let token: string | undefined = args.length >= 2 ? args[1] : undefined
     if (!token) {
       const opened = await vscode.env.openExternal(vscode.Uri.parse(`${url}/cli-auth`))

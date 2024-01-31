@@ -139,7 +139,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         // queries will default to localhost) so ask for it if missing.
         // Pre-populate in case we do have the right URL so the user can just
         // hit enter and move on.
-        const url = await maybeAskUrl(params.get("url"), storage.getURL())
+        const url = await commands.maybeAskUrl(params.get("url"), storage.getURL())
         if (url) {
           await storage.setURL(url)
         } else {
