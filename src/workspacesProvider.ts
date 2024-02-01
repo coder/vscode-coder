@@ -58,16 +58,25 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
     const resp = await getWorkspaces({ q: this.getWorkspacesQuery })
 
-    // We could have logged out while waiting for the query.
-    if (!url || !token) {
+    // We could have logged out while waiting for the query, or logged into a
+    // different deployment.
+    const url2 = this.storage.getURL()
+    const token2 = await this.storage.getSessionToken()
+    if (!url2 || !token2) {
       throw new Error("not logged in")
+    } else if (url !== url2) {
+      // In this case we need to fetch from the new deployment instead.
+      // TODO: It would be better to cancel this fetch when that happens,
+      // because this means we have to wait for the old fetch to finish before
+      // finally getting workspaces for the new one.
+      return this.fetch()
     }
 
     return resp.workspaces.map((workspace) => {
       const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
       if (showMetadata) {
         const agents = extractAgents(workspace)
-        agents.forEach((agent) => this.monitorMetadata(agent.id, url, token)) // monitor metadata for all agents
+        agents.forEach((agent) => this.monitorMetadata(agent.id, url, token2)) // monitor metadata for all agents
       }
       return new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
     })
