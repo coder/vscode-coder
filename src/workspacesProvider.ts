@@ -45,16 +45,22 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     // needs to be cleared.
     this.cancelPendingRefresh()
 
+    let hadError = false
     try {
       this.workspaces = await this.fetch()
-      this.fetching = false
-      this.maybeScheduleRefresh()
     } catch (error) {
+      hadError = true
       this.workspaces = []
-      this.fetching = false
     }
 
+    this.fetching = false
+
     this.refresh()
+
+    // As long as there was no error we can schedule the next refresh.
+    if (hadError) {
+      this.maybeScheduleRefresh()
+    }
   }
 
   /**
