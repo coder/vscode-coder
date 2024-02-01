@@ -58,7 +58,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     this.refresh()
 
     // As long as there was no error we can schedule the next refresh.
-    if (hadError) {
+    if (!hadError) {
       this.maybeScheduleRefresh()
     }
   }
