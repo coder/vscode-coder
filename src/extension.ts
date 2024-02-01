@@ -90,11 +90,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     return config
   })
 
-  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine, storage)
+  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine, storage, 5)
   const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All, storage)
 
-  vscode.window.registerTreeDataProvider("myWorkspaces", myWorkspacesProvider)
+  // createTreeView, unlike registerTreeDataProvider, gives us the tree view API
+  // (so we can see when it is visible) but otherwise they have the same effect.
+  const wsTree = vscode.window.createTreeView("myWorkspaces", { treeDataProvider: myWorkspacesProvider })
   vscode.window.registerTreeDataProvider("allWorkspaces", allWorkspacesProvider)
+
+  myWorkspacesProvider.setVisibility(wsTree.visible)
+  wsTree.onDidChangeVisibility((event) => {
+    myWorkspacesProvider.setVisibility(event.visible)
+  })
 
   const url = storage.getURL()
   if (url) {
