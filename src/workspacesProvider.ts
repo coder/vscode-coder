@@ -67,7 +67,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
       const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
       if (showMetadata) {
         const agents = extractAgents(workspace)
-        agents.forEach((agent) => this.monitorMetadata(agent.id, token)) // monitor metadata for all agents
+        agents.forEach((agent) => this.monitorMetadata(agent.id, url, token)) // monitor metadata for all agents
       }
       return new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
     })
@@ -107,8 +107,8 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
   // monitorMetadata opens an SSE endpoint to monitor metadata on the specified
   // agent and registers a disposer that can be used to stop the watch.
-  monitorMetadata(agentId: WorkspaceAgent["id"], token: string): void {
-    const agentMetadataURL = new URL(`${this.storage.getURL()}/api/v2/workspaceagents/${agentId}/watch-metadata`)
+  monitorMetadata(agentId: WorkspaceAgent["id"], url: string, token: string): void {
+    const agentMetadataURL = new URL(`${url}/api/v2/workspaceagents/${agentId}/watch-metadata`)
     const agentMetadataEventSource = new EventSource(agentMetadataURL.toString(), {
       headers: {
         "Coder-Session-Token": token,
