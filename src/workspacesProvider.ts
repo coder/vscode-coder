@@ -14,6 +14,7 @@ export enum WorkspaceQuery {
 export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private workspaces: WorkspaceTreeItem[] = []
   private agentWatchers: Record<WorkspaceAgent["id"], { dispose: () => void; metadata?: AgentMetadataEvent[] }> = {}
+  private fetching = false
 
   constructor(
     private readonly getWorkspacesQuery: WorkspaceQuery,
@@ -22,26 +23,54 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     this.fetchAndRefresh()
   }
 
-  // fetchAndRefrehsh fetches new workspaces then re-renders the entire tree.
+  // fetchAndRefresh fetches new workspaces then re-renders the entire tree.
+  // Trying to call this while already refreshing is a no-op and will return
+  // immediately.
   async fetchAndRefresh() {
-    const token = await this.storage.getSessionToken()
-    const workspacesTreeItem: WorkspaceTreeItem[] = []
-    Object.values(this.agentWatchers).forEach((watcher) => watcher.dispose())
-    // If the URL is set then we are logged in.
-    if (this.storage.getURL()) {
-      const resp = await getWorkspaces({ q: this.getWorkspacesQuery })
-      resp.workspaces.forEach((workspace) => {
-        const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
-        if (showMetadata && token) {
-          const agents = extractAgents(workspace)
-          agents.forEach((agent) => this.monitorMetadata(agent.id, token)) // monitor metadata for all agents
-        }
-        const treeItem = new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
-        workspacesTreeItem.push(treeItem)
-      })
+    if (this.fetching) {
+      return
     }
-    this.workspaces = workspacesTreeItem
+    this.fetching = true
+
+    Object.values(this.agentWatchers).forEach((watcher) => watcher.dispose())
+
+    try {
+      this.workspaces = await this.fetch()
+    } catch (error) {
+      this.workspaces = []
+    }
+
     this.refresh()
+    this.fetching = false
+  }
+
+  /**
+   * Fetch workspaces and turn them into tree items.  Throw an error if not
+   * logged in or the query fails.
+   */
+  async fetch(): Promise<WorkspaceTreeItem[]> {
+    // Assume that no URL or no token means we are not logged in.
+    const url = this.storage.getURL()
+    const token = await this.storage.getSessionToken()
+    if (!url || !token) {
+      throw new Error("not logged in")
+    }
+
+    const resp = await getWorkspaces({ q: this.getWorkspacesQuery })
+
+    // We could have logged out while waiting for the query.
+    if (!url || !token) {
+      throw new Error("not logged in")
+    }
+
+    return resp.workspaces.map((workspace) => {
+      const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
+      if (showMetadata) {
+        const agents = extractAgents(workspace)
+        agents.forEach((agent) => this.monitorMetadata(agent.id, token)) // monitor metadata for all agents
+      }
+      return new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
+    })
   }
 
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> =
