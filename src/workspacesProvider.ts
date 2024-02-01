@@ -11,9 +11,11 @@ export enum WorkspaceQuery {
   All = "",
 }
 
+type AgentWatcher = { dispose: () => void; metadata?: AgentMetadataEvent[] }
+
 export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private workspaces: WorkspaceTreeItem[] = []
-  private agentWatchers: Record<WorkspaceAgent["id"], { dispose: () => void; metadata?: AgentMetadataEvent[] }> = {}
+  private agentWatchers: Record<WorkspaceAgent["id"], AgentWatcher> = {}
   private timeout: NodeJS.Timeout | undefined
   private visible = false
   private fetching = false
@@ -174,12 +176,18 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
       },
     })
 
-    this.agentWatchers[agentId] = {
+    let disposed = false
+    const watcher: AgentWatcher = {
       dispose: () => {
-        delete this.agentWatchers[agentId]
-        agentMetadataEventSource.close()
+        if (!disposed) {
+          delete this.agentWatchers[agentId]
+          agentMetadataEventSource.close()
+          disposed = true
+        }
       },
     }
+
+    this.agentWatchers[agentId] = watcher
 
     agentMetadataEventSource.addEventListener("data", (event) => {
       try {
@@ -187,16 +195,16 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         const agentMetadata = AgentMetadataEventSchemaArray.parse(dataEvent)
 
         if (agentMetadata.length === 0) {
-          this.agentWatchers[agentId].dispose()
+          watcher.dispose()
         }
 
-        const savedMetadata = this.agentWatchers[agentId].metadata
-        if (JSON.stringify(savedMetadata) !== JSON.stringify(agentMetadata)) {
-          this.agentWatchers[agentId].metadata = agentMetadata // overwrite existing metadata
+        // Overwrite metadata if it changed.
+        if (JSON.stringify(watcher.metadata) !== JSON.stringify(agentMetadata)) {
+          watcher.metadata = agentMetadata
           this.refresh()
         }
       } catch (error) {
-        this.agentWatchers[agentId].dispose()
+        watcher.dispose()
       }
     })
   }
