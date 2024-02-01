@@ -14,6 +14,7 @@ export enum WorkspaceQuery {
 export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private workspaces: WorkspaceTreeItem[] = []
   private agentWatchers: Record<WorkspaceAgent["id"], { dispose: () => void; metadata?: AgentMetadataEvent[] }> = {}
+  private fetching = false
 
   constructor(
     private readonly getWorkspacesQuery: WorkspaceQuery,
@@ -22,26 +23,63 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     this.fetchAndRefresh()
   }
 
-  // fetchAndRefrehsh fetches new workspaces then re-renders the entire tree.
+  // fetchAndRefresh fetches new workspaces then re-renders the entire tree.
+  // Trying to call this while already refreshing is a no-op and will return
+  // immediately.
   async fetchAndRefresh() {
-    const token = await this.storage.getSessionToken()
-    const workspacesTreeItem: WorkspaceTreeItem[] = []
-    Object.values(this.agentWatchers).forEach((watcher) => watcher.dispose())
-    // If the URL is set then we are logged in.
-    if (this.storage.getURL()) {
-      const resp = await getWorkspaces({ q: this.getWorkspacesQuery })
-      resp.workspaces.forEach((workspace) => {
-        const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
-        if (showMetadata && token) {
-          const agents = extractAgents(workspace)
-          agents.forEach((agent) => this.monitorMetadata(agent.id, token)) // monitor metadata for all agents
-        }
-        const treeItem = new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
-        workspacesTreeItem.push(treeItem)
-      })
+    if (this.fetching) {
+      return
     }
-    this.workspaces = workspacesTreeItem
+    this.fetching = true
+
+    Object.values(this.agentWatchers).forEach((watcher) => watcher.dispose())
+
+    try {
+      this.workspaces = await this.fetch()
+    } catch (error) {
+      this.workspaces = []
+    }
+
     this.refresh()
+    this.fetching = false
+  }
+
+  /**
+   * Fetch workspaces and turn them into tree items.  Throw an error if not
+   * logged in or the query fails.
+   */
+  async fetch(): Promise<WorkspaceTreeItem[]> {
+    // Assume that no URL or no token means we are not logged in.
+    const url = this.storage.getURL()
+    const token = await this.storage.getSessionToken()
+    if (!url || !token) {
+      throw new Error("not logged in")
+    }
+
+    const resp = await getWorkspaces({ q: this.getWorkspacesQuery })
+
+    // We could have logged out while waiting for the query, or logged into a
+    // different deployment.
+    const url2 = this.storage.getURL()
+    const token2 = await this.storage.getSessionToken()
+    if (!url2 || !token2) {
+      throw new Error("not logged in")
+    } else if (url !== url2) {
+      // In this case we need to fetch from the new deployment instead.
+      // TODO: It would be better to cancel this fetch when that happens,
+      // because this means we have to wait for the old fetch to finish before
+      // finally getting workspaces for the new one.
+      return this.fetch()
+    }
+
+    return resp.workspaces.map((workspace) => {
+      const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
+      if (showMetadata) {
+        const agents = extractAgents(workspace)
+        agents.forEach((agent) => this.monitorMetadata(agent.id, url, token2)) // monitor metadata for all agents
+      }
+      return new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
+    })
   }
 
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> =
@@ -78,8 +116,8 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
   // monitorMetadata opens an SSE endpoint to monitor metadata on the specified
   // agent and registers a disposer that can be used to stop the watch.
-  monitorMetadata(agentId: WorkspaceAgent["id"], token: string): void {
-    const agentMetadataURL = new URL(`${this.storage.getURL()}/api/v2/workspaceagents/${agentId}/watch-metadata`)
+  monitorMetadata(agentId: WorkspaceAgent["id"], url: string, token: string): void {
+    const agentMetadataURL = new URL(`${url}/api/v2/workspaceagents/${agentId}/watch-metadata`)
     const agentMetadataEventSource = new EventSource(agentMetadataURL.toString(), {
       headers: {
         "Coder-Session-Token": token,
