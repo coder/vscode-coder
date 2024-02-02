@@ -128,6 +128,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     oldWatcherIds.forEach((id) => {
       if (!reusedWatcherIds.includes(id)) {
         this.agentWatchers[id].dispose()
+        delete this.agentWatchers[id]
       }
     })
 
