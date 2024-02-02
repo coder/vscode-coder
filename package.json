@@ -4,7 +4,7 @@
   "displayName": "Coder",
   "description": "Open any workspace with a single click.",
   "repository": "https://github.com/coder/vscode-coder",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "engines": {
     "vscode": "^1.73.0"
   },
