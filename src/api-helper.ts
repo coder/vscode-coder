@@ -1,12 +1,26 @@
 import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import { z } from "zod"
 
+export function errToStr(error: unknown, def: string) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error
+  }
+  return def
+}
+
+export function extractAllAgents(workspaces: Workspace[]): WorkspaceAgent[] {
+  return workspaces.reduce((acc, workspace) => {
+    return acc.concat(extractAgents(workspace))
+  }, [] as WorkspaceAgent[])
+}
+
 export function extractAgents(workspace: Workspace): WorkspaceAgent[] {
-  const agents = workspace.latest_build.resources.reduce((acc, resource) => {
+  return workspace.latest_build.resources.reduce((acc, resource) => {
     return acc.concat(resource.agents || [])
   }, [] as WorkspaceAgent[])
-
-  return agents
 }
 
 export const AgentMetadataEventSchema = z.object({

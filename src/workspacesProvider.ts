@@ -3,7 +3,13 @@ import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
 import * as path from "path"
 import * as vscode from "vscode"
-import { AgentMetadataEvent, AgentMetadataEventSchemaArray, extractAgents } from "./api-helper"
+import {
+  AgentMetadataEvent,
+  AgentMetadataEventSchemaArray,
+  extractAllAgents,
+  extractAgents,
+  errToStr,
+} from "./api-helper"
 import { Storage } from "./storage"
 
 export enum WorkspaceQuery {
@@ -11,7 +17,12 @@ export enum WorkspaceQuery {
   All = "",
 }
 
-type AgentWatcher = { dispose: () => void; metadata?: AgentMetadataEvent[] }
+type AgentWatcher = {
+  onChange: vscode.EventEmitter<null>["event"]
+  dispose: () => void
+  metadata?: AgentMetadataEvent[]
+  error?: unknown
+}
 
 export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private workspaces: WorkspaceTreeItem[] = []
@@ -38,9 +49,6 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
       return
     }
     this.fetching = true
-
-    // TODO: It would be better to reuse these.
-    Object.values(this.agentWatchers).forEach((watcher) => watcher.dispose())
 
     // It is possible we called fetchAndRefresh() manually (through the button
     // for example), in which case we might still have a pending refresh that
@@ -93,12 +101,37 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
       return this.fetch()
     }
 
-    return resp.workspaces.map((workspace) => {
-      const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
-      if (showMetadata) {
-        const agents = extractAgents(workspace)
-        agents.forEach((agent) => this.monitorMetadata(agent.id, url, token2)) // monitor metadata for all agents
+    const oldWatcherIds = Object.keys(this.agentWatchers)
+    const reusedWatcherIds: string[] = []
+
+    // TODO: I think it might make more sense for the tree items to contain
+    // their own watchers, rather than recreate the tree items every time and
+    // have this separate map held outside the tree.
+    const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine
+    if (showMetadata) {
+      const agents = extractAllAgents(resp.workspaces)
+      agents.forEach((agent) => {
+        // If we have an existing watcher, re-use it.
+        if (this.agentWatchers[agent.id]) {
+          reusedWatcherIds.push(agent.id)
+          return this.agentWatchers[agent.id]
+        }
+        // Otherwise create a new watcher.
+        const watcher = monitorMetadata(agent.id, url, token2)
+        watcher.onChange(() => this.refresh())
+        this.agentWatchers[agent.id] = watcher
+        return watcher
+      })
+    }
+
+    // Dispose of watchers we ended up not reusing.
+    oldWatcherIds.forEach((id) => {
+      if (!reusedWatcherIds.includes(id)) {
+        this.agentWatchers[id].dispose()
       }
+    })
+
+    return resp.workspaces.map((workspace) => {
       return new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
     })
   }
@@ -157,7 +190,11 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         )
         return Promise.resolve(agentTreeItems)
       } else if (element instanceof AgentTreeItem) {
-        const savedMetadata = this.agentWatchers[element.agent.id]?.metadata || []
+        const watcher = this.agentWatchers[element.agent.id]
+        if (watcher?.error) {
+          return Promise.resolve([new ErrorTreeItem(watcher.error)])
+        }
+        const savedMetadata = watcher?.metadata || []
         return Promise.resolve(savedMetadata.map((metadata) => new AgentMetadataTreeItem(metadata)))
       }
 
@@ -165,52 +202,56 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     }
     return Promise.resolve(this.workspaces)
   }
-
-  // monitorMetadata opens an SSE endpoint to monitor metadata on the specified
-  // agent and registers a disposer that can be used to stop the watch.
-  monitorMetadata(agentId: WorkspaceAgent["id"], url: string, token: string): void {
-    const agentMetadataURL = new URL(`${url}/api/v2/workspaceagents/${agentId}/watch-metadata`)
-    const agentMetadataEventSource = new EventSource(agentMetadataURL.toString(), {
-      headers: {
-        "Coder-Session-Token": token,
-      },
-    })
-
-    let disposed = false
-    const watcher: AgentWatcher = {
-      dispose: () => {
-        if (!disposed) {
-          delete this.agentWatchers[agentId]
-          agentMetadataEventSource.close()
-          disposed = true
-        }
-      },
-    }
-
-    this.agentWatchers[agentId] = watcher
-
-    agentMetadataEventSource.addEventListener("data", (event) => {
-      try {
-        const dataEvent = JSON.parse(event.data)
-        const agentMetadata = AgentMetadataEventSchemaArray.parse(dataEvent)
-
-        if (agentMetadata.length === 0) {
-          watcher.dispose()
-        }
-
-        // Overwrite metadata if it changed.
-        if (JSON.stringify(watcher.metadata) !== JSON.stringify(agentMetadata)) {
-          watcher.metadata = agentMetadata
-          this.refresh()
-        }
-      } catch (error) {
-        watcher.dispose()
-      }
-    })
-  }
 }
 
-type CoderTreeItemType = "coderWorkspaceSingleAgent" | "coderWorkspaceMultipleAgents" | "coderAgent"
+// monitorMetadata opens an SSE endpoint to monitor metadata on the specified
+// agent and registers a watcher that can be disposed to stop the watch and
+// emits an event when the metadata changes.
+function monitorMetadata(agentId: WorkspaceAgent["id"], url: string, token: string): AgentWatcher {
+  const metadataUrl = new URL(`${url}/api/v2/workspaceagents/${agentId}/watch-metadata`)
+  const eventSource = new EventSource(metadataUrl.toString(), {
+    headers: {
+      "Coder-Session-Token": token,
+    },
+  })
+
+  let disposed = false
+  const onChange = new vscode.EventEmitter<null>()
+  const watcher: AgentWatcher = {
+    onChange: onChange.event,
+    dispose: () => {
+      if (!disposed) {
+        eventSource.close()
+        disposed = true
+      }
+    },
+  }
+
+  eventSource.addEventListener("data", (event) => {
+    try {
+      const dataEvent = JSON.parse(event.data)
+      const metadata = AgentMetadataEventSchemaArray.parse(dataEvent)
+
+      // Overwrite metadata if it changed.
+      if (JSON.stringify(watcher.metadata) !== JSON.stringify(metadata)) {
+        watcher.metadata = metadata
+        onChange.fire(null)
+      }
+    } catch (error) {
+      watcher.error = error
+      onChange.fire(null)
+    }
+  })
+
+  return watcher
+}
+
+class ErrorTreeItem extends vscode.TreeItem {
+  constructor(error: unknown) {
+    super("Failed to query metadata: " + errToStr(error, "no error provided"), vscode.TreeItemCollapsibleState.None)
+    this.contextValue = "coderAgentMetadata"
+  }
+}
 
 class AgentMetadataTreeItem extends vscode.TreeItem {
   constructor(metadataEvent: AgentMetadataEvent) {
@@ -225,6 +266,8 @@ class AgentMetadataTreeItem extends vscode.TreeItem {
   }
 }
 
+type CoderOpenableTreeItemType = "coderWorkspaceSingleAgent" | "coderWorkspaceMultipleAgents" | "coderAgent"
+
 export class OpenableTreeItem extends vscode.TreeItem {
   constructor(
     label: string,
@@ -236,7 +279,7 @@ export class OpenableTreeItem extends vscode.TreeItem {
     public readonly workspaceAgent: string | undefined,
     public readonly workspaceFolderPath: string | undefined,
 
-    contextValue: CoderTreeItemType,
+    contextValue: CoderOpenableTreeItemType,
   ) {
     super(label, collapsibleState)
     this.contextValue = contextValue
