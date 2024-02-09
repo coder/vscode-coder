@@ -95,7 +95,10 @@ Host coder-vscode--*
   ProxyCommand some-command-here
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-# --- END CODER VSCODE ---`
+# --- END CODER VSCODE ---
+
+Host *
+  SetEnv TEST=1`
   mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
@@ -124,7 +127,10 @@ Host coder--updated--vscode--*
   ProxyCommand some-command-here
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-# --- END CODER VSCODE ---`
+# --- END CODER VSCODE ---
+
+Host *
+  SetEnv TEST=1`
 
   expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
     encoding: "utf-8",

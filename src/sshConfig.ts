@@ -107,17 +107,21 @@ export class SSHConfig {
     // old configs
     this.cleanUpOldConfig()
     const block = this.getBlock()
+    const newBlock = this.buildBlock(values, overrides)
     if (block) {
-      this.eraseBlock(block)
+      this.replaceBlock(block, newBlock)
+    } else {
+      this.appendBlock(newBlock)
     }
-    this.appendBlock(values, overrides)
     await this.save()
   }
 
   private async cleanUpOldConfig() {
     const raw = this.getRaw()
     const oldConfig = raw.split("\n\n").find((config) => config.startsWith("Host coder-vscode--*"))
-    if (oldConfig) {
+    // Perform additional sanity check that the block also contains a
+    // ProxyCommand, otherwise it might be a different block.
+    if (oldConfig && oldConfig.includes(" ProxyCommand ")) {
       this.raw = raw.replace(oldConfig, "")
     }
   }
@@ -149,13 +153,8 @@ export class SSHConfig {
     }
   }
 
-  private eraseBlock(block: Block) {
-    this.raw = this.getRaw().replace(block.raw, "")
-  }
-
   /**
-   *
-   * appendBlock builds the ssh config block. The order of the keys is determinstic based on the input.
+   * buildBlock builds the ssh config block. The order of the keys is determinstic based on the input.
    * Expected values are always in a consistent order followed by any additional overrides in sorted order.
    *
    * @param param0 - SSHValues are the expected SSH values for using ssh with coder.
@@ -164,7 +163,7 @@ export class SSHConfig {
    *                    If the key matches an expected value, the expected value is overridden. If it does not
    *                    match an expected value, it is appended to the end of the block.
    */
-  private appendBlock({ Host, ...otherValues }: SSHValues, overrides: Record<string, string>) {
+  private buildBlock({ Host, ...otherValues }: SSHValues, overrides: Record<string, string>): Block {
     const lines = [this.startBlockComment, `Host ${Host}`]
 
     // configValues is the merged values of the defaults and the overrides.
@@ -180,12 +179,22 @@ export class SSHConfig {
     })
 
     lines.push(this.endBlockComment)
+    return {
+      raw: lines.join("\n"),
+    }
+  }
+
+  private replaceBlock(oldBlock: Block, newBlock: Block) {
+    this.raw = this.getRaw().replace(oldBlock.raw, newBlock.raw)
+  }
+
+  private appendBlock(block: Block) {
     const raw = this.getRaw()
 
     if (this.raw === "") {
-      this.raw = lines.join("\n")
+      this.raw = block.raw
     } else {
-      this.raw = `${raw.trimEnd()}\n\n${lines.join("\n")}`
+      this.raw = `${raw.trimEnd()}\n\n${block.raw}`
     }
   }
 
