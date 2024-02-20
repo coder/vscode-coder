@@ -1,5 +1,7 @@
 # Change Log
 
-## [Unreleased]
+## [v0.1.33](https://github.com/coder/vscode-coder/releases/tag/v0.1.33) (2024-02-20)
 
-- Initial release
+### Bug fixes
+
+- Prevent updating template when automatically starting workspace.
