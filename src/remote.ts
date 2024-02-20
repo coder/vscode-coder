@@ -148,10 +148,12 @@ export class Remote {
             buildComplete = r
           }),
       )
-      const template = await getTemplate(this.storage.workspace.template_id)
       this.storage.workspace = {
         ...this.storage.workspace,
-        latest_build: await startWorkspace(this.storage.workspace.id, template.active_version_id),
+        latest_build: await startWorkspace(
+          this.storage.workspace.id,
+          this.storage.workspace.latest_build.template_version_id,
+        ),
       }
     }
 
