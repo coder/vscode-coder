@@ -465,7 +465,14 @@ export class Remote {
     //
     // If we didn't write to the SSH config file, connecting would fail with
     // "Host not found".
-    await this.updateSSHConfig(authorityParts[1], hasCoderLogs)
+    try {
+      await this.updateSSHConfig(authorityParts[1], hasCoderLogs)
+    } catch (error) {
+      // TODO: This is a bit weird, because even if we throw an error VS Code
+      // still tries to connect.  Can we stop it?
+      this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
+      throw error
+    }
 
     this.findSSHProcessID().then((pid) => {
       // Once the SSH process has spawned we can reset the timeout.
@@ -586,9 +593,6 @@ export class Remote {
       } catch (ex) {
         binaryPath = await this.storage.fetchBinary()
       }
-    }
-    if (!binaryPath) {
-      throw new Error("Failed to fetch the Coder binary!")
     }
 
     const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
