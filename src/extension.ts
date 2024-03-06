@@ -19,15 +19,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   //
   // This is janky, but that's alright since it provides such minimal
   // functionality to the extension.
-  const remoteSSHExtension = vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
-  if (!remoteSSHExtension) {
+  const msRemoteSSHExtension = vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
+  const openRemoteSSHExtension = vscode.extensions.getExtension("anysphere.open-remote-ssh")
+  if (!msRemoteSSHExtension && !openRemoteSSHExtension) {
     throw new Error("Remote SSH extension not found")
   }
+  // Use "anysphere.open-remote-ssh" if it exists as the cursor is using it
+  const useRemoteSSHExtension = openRemoteSSHExtension ? openRemoteSSHExtension : msRemoteSSHExtension
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const vscodeProposed: typeof vscode = (module as any)._load(
     "vscode",
     {
-      filename: remoteSSHExtension?.extensionPath,
+      filename: useRemoteSSHExtension?.extensionPath,
     },
     false,
   )
