@@ -22,6 +22,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const openRemoteSSHExtension = vscode.extensions.getExtension("anysphere.open-remote-ssh")
   // If the "anysphere.open-remote-ssh" extension is available, it is used with priority
   // If it is not found, then the extension "ms-vscode-remote.remote-ssh" is sought as a fallback.
+  // This is specifically for non-official VS Code distributions, such as Cursor.
   const useRemoteSSHExtension = openRemoteSSHExtension
     ? openRemoteSSHExtension
     : vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
