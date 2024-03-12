@@ -275,7 +275,7 @@ export class Storage {
           throw new Error("User aborted download")
         }
 
-        this.output.appendLine(`Downloaded ${prettyBytes(written)} bytes to ${path.basename(tempFile)}`)
+        this.output.appendLine(`Downloaded ${prettyBytes(written)} to ${path.basename(tempFile)}`)
 
         // Move the old binary to a backup location first, just in case.  And,
         // on Linux at least, you cannot write onto a binary that is in use so
