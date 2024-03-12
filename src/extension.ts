@@ -13,27 +13,26 @@ import { Storage } from "./storage"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
-  // The Remote SSH extension's proposed APIs are used to override
-  // the SSH host name in VS Code itself. It's visually unappealing
-  // having a lengthy name!
+  // The Remote SSH extension's proposed APIs are used to override the SSH host
+  // name in VS Code itself. It's visually unappealing having a lengthy name!
   //
   // This is janky, but that's alright since it provides such minimal
   // functionality to the extension.
-  const openRemoteSSHExtension = vscode.extensions.getExtension("anysphere.open-remote-ssh")
-  // If the "anysphere.open-remote-ssh" extension is available, it is used with priority
-  // If it is not found, then the extension "ms-vscode-remote.remote-ssh" is sought as a fallback.
-  // This is specifically for non-official VS Code distributions, such as Cursor.
-  const useRemoteSSHExtension = openRemoteSSHExtension
-    ? openRemoteSSHExtension
-    : vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
-  if (!useRemoteSSHExtension) {
+  //
+  // Prefer the anysphere.open-remote-ssh extension if it exists.  This makes
+  // our extension compatible with Cursor.  Otherwise fall back to the official
+  // SSH extension.
+  const remoteSSHExtension =
+    vscode.extensions.getExtension("anysphere.open-remote-ssh") ||
+    vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
+  if (!remoteSSHExtension) {
     throw new Error("Remote SSH extension not found")
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const vscodeProposed: typeof vscode = (module as any)._load(
     "vscode",
     {
-      filename: useRemoteSSHExtension?.extensionPath,
+      filename: remoteSSHExtension?.extensionPath,
     },
     false,
   )
