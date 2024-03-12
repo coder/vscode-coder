@@ -41,6 +41,14 @@
       {
         "varsIgnorePattern": "^_"
       }
+    ],
+    "md/remark": [
+      "error",
+      {
+        "no-duplicate-headings": {
+          "sublings_only": true
+        }
+      }
     ]
   },
   "ignorePatterns": [
