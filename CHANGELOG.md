@@ -1,5 +1,11 @@
 # Change Log
 
+## [v0.1.35](https://github.com/coder/vscode-coder/releases/tag/v0.1.35) (2024-03-12)
+
+### Changes
+
+- Support running within Cursor.
+
 ## [v0.1.34](https://github.com/coder/vscode-coder/releases/tag/v0.1.34) (2024-03-03)
 
 ### Changes
