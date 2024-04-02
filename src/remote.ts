@@ -137,11 +137,22 @@ export class Remote {
 
     let buildComplete: undefined | (() => void)
     if (this.storage.workspace.latest_build.status === "stopped") {
+      // If the workspace requires the latest active template version, we should attempt
+      // to update that here.
+      // TODO: If param set changes, what do we do??
+      const versionID = this.storage.workspace.template_require_active_version
+        ? // Use the latest template version
+          this.storage.workspace.template_active_version_id
+        : // Default to not updating the workspace if not required.
+          this.storage.workspace.latest_build.template_version_id
+
       this.vscodeProposed.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
           cancellable: false,
-          title: "Starting workspace...",
+          title: this.storage.workspace.template_require_active_version
+            ? "Updating workspace..."
+            : "Starting workspace...",
         },
         () =>
           new Promise<void>((r) => {
@@ -150,10 +161,7 @@ export class Remote {
       )
       this.storage.workspace = {
         ...this.storage.workspace,
-        latest_build: await startWorkspace(
-          this.storage.workspace.id,
-          this.storage.workspace.latest_build.template_version_id,
-        ),
+        latest_build: await startWorkspace(this.storage.workspace.id, versionID),
       }
     }
 
