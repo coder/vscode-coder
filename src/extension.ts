@@ -1,6 +1,7 @@
 "use strict"
 import axios, { isAxiosError } from "axios"
 import { getAuthenticatedUser } from "coder/site/src/api/api"
+import { getErrorMessage } from "coder/site/src/api/errors"
 import fs from "fs"
 import * as https from "https"
 import * as module from "module"
@@ -11,7 +12,6 @@ import { CertificateError, getErrorDetail } from "./error"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
-import { getErrorMessage } from "coder/site/src/api/errors"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // The Remote SSH extension's proposed APIs are used to override the SSH host

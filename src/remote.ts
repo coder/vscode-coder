@@ -9,7 +9,6 @@ import {
   getDeploymentSSHConfig,
   getTemplateVersion,
 } from "coder/site/src/api/api"
-import { getErrorMessage } from "coder/site/src/api/errors"
 import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
 import find from "find-process"
@@ -21,7 +20,6 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
-import { getErrorDetail } from "./error"
 import { getHeaderCommand } from "./headers"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
