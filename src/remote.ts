@@ -9,6 +9,7 @@ import {
   getDeploymentSSHConfig,
   getTemplateVersion,
 } from "coder/site/src/api/api"
+import { getErrorMessage } from "coder/site/src/api/errors"
 import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
 import find from "find-process"
@@ -26,6 +27,7 @@ import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
 import { supportsCoderAgentLogDirFlag } from "./version"
 import { WorkspaceAction } from "./workspaceAction"
+import { getErrorDetail } from "./error"
 
 export class Remote {
   // Prefix is a magic string that is prepended to SSH hosts to indicate that
@@ -159,9 +161,32 @@ export class Remote {
             buildComplete = r
           }),
       )
+
+      let latestBuild
+      try {
+        latestBuild = await startWorkspace(this.storage.workspace.id, versionID)
+      } catch (error) {
+        if (!isAxiosError(error)) {
+          throw error
+        }
+
+        const msg = getErrorMessage(error, "unknown")
+        const detail = getErrorDetail(error)
+
+        await this.vscodeProposed.window.showInformationMessage("Workspace failed to start!", {
+          modal: true,
+          detail: `Error, remote session will be closed.\nMessage: ${msg}\nDetail: ${detail}`,
+        })
+
+        // Always close remote
+        await this.closeRemote()
+
+        return
+      }
+
       this.storage.workspace = {
         ...this.storage.workspace,
-        latest_build: await startWorkspace(this.storage.workspace.id, versionID),
+        latest_build: latestBuild,
       }
     }
 

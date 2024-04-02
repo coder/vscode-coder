@@ -1,4 +1,5 @@
 import { isAxiosError } from "axios"
+import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors"
 import * as forge from "node-forge"
 import * as tls from "tls"
 import * as vscode from "vscode"
@@ -156,4 +157,15 @@ export class CertificateError extends Error {
         return
     }
   }
+}
+
+// getErrorDetail is copied from coder/site, but changes the default return.
+export const getErrorDetail = (error: unknown): string | undefined | null => {
+  if (isApiError(error)) {
+    return error.response.data.detail
+  }
+  if (isApiErrorResponse(error)) {
+    return error.detail
+  }
+  return null
 }
