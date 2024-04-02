@@ -21,13 +21,13 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
+import { getErrorDetail } from "./error"
 import { getHeaderCommand } from "./headers"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
 import { supportsCoderAgentLogDirFlag } from "./version"
 import { WorkspaceAction } from "./workspaceAction"
-import { getErrorDetail } from "./error"
 
 export class Remote {
   // Prefix is a magic string that is prepended to SSH hosts to indicate that
@@ -162,28 +162,7 @@ export class Remote {
           }),
       )
 
-      let latestBuild
-      try {
-        latestBuild = await startWorkspace(this.storage.workspace.id, versionID)
-      } catch (error) {
-        if (!isAxiosError(error)) {
-          throw error
-        }
-
-        const msg = getErrorMessage(error, "unknown")
-        const detail = getErrorDetail(error)
-
-        await this.vscodeProposed.window.showInformationMessage("Workspace failed to start!", {
-          modal: true,
-          detail: `Error, remote session will be closed.\nMessage: ${msg}\nDetail: ${detail}`,
-        })
-
-        // Always close remote
-        await this.closeRemote()
-
-        return
-      }
-
+      const latestBuild = await startWorkspace(this.storage.workspace.id, versionID)
       this.storage.workspace = {
         ...this.storage.workspace,
         latest_build: latestBuild,
@@ -829,7 +808,7 @@ export class Remote {
   }
 
   // closeRemote ends the current remote session.
-  private async closeRemote() {
+  public async closeRemote() {
     await vscode.commands.executeCommand("workbench.action.remote.close")
   }
 
