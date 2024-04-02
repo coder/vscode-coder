@@ -1,13 +1,14 @@
 "use strict"
-import axios from "axios"
+import axios, { isAxiosError } from "axios"
 import { getAuthenticatedUser } from "coder/site/src/api/api"
+import { getErrorMessage } from "coder/site/src/api/errors"
 import fs from "fs"
 import * as https from "https"
 import * as module from "module"
 import * as os from "os"
 import * as vscode from "vscode"
 import { Commands } from "./commands"
-import { CertificateError } from "./error"
+import { CertificateError, getErrorDetail } from "./error"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
@@ -199,13 +200,38 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   try {
     await remote.setup(vscodeProposed.env.remoteAuthority)
   } catch (ex) {
-    if (ex instanceof CertificateError) {
-      return await ex.showModal("Failed to open workspace")
+    switch (true) {
+      case ex instanceof CertificateError:
+        await ex.showModal("Failed to open workspace")
+        break
+      case isAxiosError(ex):
+        {
+          const msg = getErrorMessage(ex, "")
+          const detail = getErrorDetail(ex)
+          const urlString = axios.getUri(ex.response?.config)
+          let path = urlString
+          try {
+            path = new URL(urlString).pathname
+          } catch (e) {
+            // ignore, default to full url
+          }
+
+          await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+            detail: `API ${ex.response?.config.method?.toUpperCase()} to '${path}' failed with code ${ex.response?.status}.\nMessage: ${msg}\nDetail: ${detail}`,
+            modal: true,
+            useCustom: true,
+          })
+        }
+        break
+      default:
+        await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+          detail: (ex as string).toString(),
+          modal: true,
+          useCustom: true,
+        })
     }
-    await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-      detail: (ex as string).toString(),
-      modal: true,
-      useCustom: true,
-    })
+
+    // Always close remote session when we fail to open a workspace.
+    await remote.closeRemote()
   }
 }
