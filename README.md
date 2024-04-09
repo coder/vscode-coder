@@ -26,3 +26,11 @@ ext install coder.coder-remote
 
 Alternatively, manually install the VSIX from the
 [latest release](https://github.com/coder/vscode-coder/releases/latest).
+
+## Publishing
+
+1. Update the changelog.
+2. Update the package.json version.
+3. Push a tag matching the new package.json version.
+4. Update the release with the changelog contents.
+5. Download the .vsix from the release and upload to the marketplace.
