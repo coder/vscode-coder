@@ -1632,7 +1632,7 @@ co@3.1.0:
 
 "coder@https://github.com/coder/coder#main":
   version "0.0.0"
-  resolved "https://github.com/coder/coder#0d16df9df926cf1b3c5e56a911b5f3ee6563eb57"
+  resolved "https://github.com/coder/coder#1d4bf30c0d2de68560331e4c99e6538dde746b08"
   dependencies:
     exec "^0.2.1"
 
