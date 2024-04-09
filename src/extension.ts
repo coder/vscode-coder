@@ -200,37 +200,30 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   try {
     await remote.setup(vscodeProposed.env.remoteAuthority)
   } catch (ex) {
-    switch (true) {
-      case ex instanceof CertificateError:
-        await ex.showModal("Failed to open workspace")
-        break
-      case isAxiosError(ex):
-        {
-          const msg = getErrorMessage(ex, "")
-          const detail = getErrorDetail(ex)
-          const urlString = axios.getUri(ex.response?.config)
-          let path = urlString
-          try {
-            path = new URL(urlString).pathname
-          } catch (e) {
-            // ignore, default to full url
-          }
-
-          await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-            detail: `API ${ex.response?.config.method?.toUpperCase()} to '${path}' failed with code ${ex.response?.status}.\nMessage: ${msg}\nDetail: ${detail}`,
-            modal: true,
-            useCustom: true,
-          })
-        }
-        break
-      default:
-        await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-          detail: (ex as string).toString(),
-          modal: true,
-          useCustom: true,
-        })
+    if (ex instanceof CertificateError) {
+      await ex.showModal("Failed to open workspace")
+    } else if (isAxiosError(ex)) {
+      const msg = getErrorMessage(ex, "")
+      const detail = getErrorDetail(ex)
+      const urlString = axios.getUri(ex.response?.config)
+      let path = urlString
+      try {
+        path = new URL(urlString).pathname
+      } catch (e) {
+        // ignore, default to full url
+      }
+      await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+        detail: `API ${ex.response?.config.method?.toUpperCase()} to '${path}' failed with code ${ex.response?.status}.\nMessage: ${msg}\nDetail: ${detail}`,
+        modal: true,
+        useCustom: true,
+      })
+    } else {
+      await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+        detail: (ex as string).toString(),
+        modal: true,
+        useCustom: true,
+      })
     }
-
     // Always close remote session when we fail to open a workspace.
     await remote.closeRemote()
   }
