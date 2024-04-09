@@ -1,5 +1,16 @@
 # Change Log
 
+## [v0.1.36](https://github.com/coder/vscode-coder/releases/tag/v0.1.36) (2024-04-09)
+
+### Changes
+
+- Automatically update a workspace if required by the template.
+- Show more information when remote setup fails.
+
+### Fixes
+
+- Abort remote connection when remote setup fails.
+
 ## [v0.1.35](https://github.com/coder/vscode-coder/releases/tag/v0.1.35) (2024-03-12)
 
 ### Changes
