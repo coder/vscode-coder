@@ -1,5 +1,11 @@
 # Change Log
 
+## Unreleased
+
+### Changes
+
+- Show certificate errors under the token input.
+
 ## [v0.1.36](https://github.com/coder/vscode-coder/releases/tag/v0.1.36) (2024-04-09)
 
 ### Changes
