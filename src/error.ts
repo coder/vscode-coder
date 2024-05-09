@@ -31,7 +31,7 @@ interface KeyUsage {
 
 export class CertificateError extends Error {
   public static ActionAllowInsecure = "Allow Insecure"
-  public static ActionViewMoreDetails = "View More Details"
+  public static ActionOK = "OK"
   public static InsecureMessage =
     'The Coder extension will no longer verify TLS on HTTPS requests. You can change this at any time with the "coder.insecure" property in your VS Code settings.'
 
@@ -116,12 +116,6 @@ export class CertificateError extends Error {
     })
   }
 
-  viewMoreDetails(): Thenable<boolean> {
-    return vscode.env.openExternal(
-      vscode.Uri.parse("https://github.com/coder/vscode-coder/issues/115#issuecomment-1631512493"),
-    )
-  }
-
   // allowInsecure updates the value of the "coder.insecure" property.
   async allowInsecure(): Promise<void> {
     vscode.workspace.getConfiguration().update("coder.insecure", true, vscode.ConfigurationTarget.Global)
@@ -146,11 +140,10 @@ export class CertificateError extends Error {
       // inside VS Code.  Disabling the "Strict SSL" setting does not help
       // either.  For now avoid showing the button until this is sorted.
       // CertificateError.ActionAllowInsecure,
-      CertificateError.ActionViewMoreDetails,
+      CertificateError.ActionOK,
     )
     switch (val) {
-      case CertificateError.ActionViewMoreDetails:
-        await this.viewMoreDetails()
+      case CertificateError.ActionOK:
         return
       case CertificateError.ActionAllowInsecure:
         await this.allowInsecure()
