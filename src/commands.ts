@@ -238,7 +238,7 @@ export class Commands {
       quickPick.value = "owner:me "
       quickPick.placeholder = "owner:me template:go"
       quickPick.title = `Connect to a workspace`
-      let lastWorkspaces: Workspace[]
+      let lastWorkspaces: readonly Workspace[]
       quickPick.onDidChangeValue((value) => {
         quickPick.busy = true
         getWorkspaces({

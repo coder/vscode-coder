@@ -21,14 +21,14 @@ export class WorkspaceAction {
   #POLL_INTERVAL: number = 1000 * 5
   #fetchWorkspacesInterval?: ReturnType<typeof setInterval>
 
-  #ownedWorkspaces: Workspace[] = []
+  #ownedWorkspaces: readonly Workspace[] = []
   #workspacesApproachingAutostop: NotifiedWorkspace[] = []
   #workspacesApproachingDeletion: NotifiedWorkspace[] = []
 
   private constructor(
     private readonly vscodeProposed: typeof vscode,
     private readonly storage: Storage,
-    ownedWorkspaces: Workspace[],
+    ownedWorkspaces: readonly Workspace[],
   ) {
     this.#ownedWorkspaces = ownedWorkspaces
 

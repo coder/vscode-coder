@@ -11,7 +11,7 @@ export function errToStr(error: unknown, def: string) {
   return def
 }
 
-export function extractAllAgents(workspaces: Workspace[]): WorkspaceAgent[] {
+export function extractAllAgents(workspaces: readonly Workspace[]): WorkspaceAgent[] {
   return workspaces.reduce((acc, workspace) => {
     return acc.concat(extractAgents(workspace))
   }, [] as WorkspaceAgent[])
