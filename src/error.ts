@@ -13,7 +13,7 @@ export enum X509_ERR_CODE {
 
 // X509_ERR contains human-friendly versions of TLS errors.
 export enum X509_ERR {
-  PARTIAL_CHAIN = "Your Coder deployment's certificate cannot be verified because a certificate is missing from its chain. To fix this your deployment's administrator should bundle the missing certificates or you can add the missing certificates directly to this system's trust store.",
+  PARTIAL_CHAIN = "Your Coder deployment's certificate cannot be verified because a certificate is missing from its chain. To fix this your deployment's administrator should bundle the missing certificates.",
   // NON_SIGNING can be removed if BoringSSL is patched and the patch makes it
   // into the version of Electron used by VS Code.
   NON_SIGNING = "Your Coder deployment's certificate is not marked as being capable of signing. VS Code uses a version of Electron that does not support certificates like this even if they are self-issued. The certificate should be regenerated with the certificate signing capability.",
