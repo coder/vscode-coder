@@ -113,7 +113,7 @@ export class Commands {
                 err.showNotification()
 
                 return {
-                  message: err.message,
+                  message: err.x509Err || err.message,
                   severity: vscode.InputBoxValidationSeverity.Error,
                 }
               }
