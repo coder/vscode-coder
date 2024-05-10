@@ -121,7 +121,9 @@ export class Storage {
   /**
    * Download and return the path to a working binary.  If there is already a
    * working binary and it matches the server version, return that, skipping the
-   * download.  Throw if unable to download a working binary.
+   * download.  If it does not match but downloads are disabled, return whatever
+   * we have and log a warning.  Otherwise throw if unable to download a working
+   * binary, whether because of network issues or downloads being disabled.
    */
   public async fetchBinary(): Promise<string> {
     const baseURL = this.getURL()
@@ -130,13 +132,19 @@ export class Storage {
     }
     this.output.appendLine(`Using deployment URL: ${baseURL}`)
 
+    // Settings can be undefined when set to their defaults (true in this case),
+    // so explicitly check against false.
+    const enableDownloads = vscode.workspace.getConfiguration().get("coder.enableDownloads") !== false
+    this.output.appendLine(`Downloads are ${enableDownloads ? "enabled" : "disabled"}`)
+
     // Get the build info to compare with the existing binary version, if any,
     // and to log for debugging.
     const buildInfo = await getBuildInfo()
     this.output.appendLine(`Got server version: ${buildInfo.version}`)
 
     // Check if there is an existing binary and whether it looks valid.  If it
-    // is valid and matches the server, we can return early.
+    // is valid and matches the server, or if it does not match the server but
+    // downloads are disabled, we can return early.
     const binPath = this.binaryPath()
     this.output.appendLine(`Using binary path: ${binPath}`)
     const stat = await cli.stat(binPath)
@@ -151,12 +159,22 @@ export class Storage {
         if (version === buildInfo.version) {
           this.output.appendLine("Using existing binary since it matches the server version")
           return binPath
+        } else if (!enableDownloads) {
+          this.output.appendLine(
+            "Using existing binary even though it does not match the server version because downloads are disabled",
+          )
+          return binPath
         }
         this.output.appendLine("Downloading since existing binary does not match the server version")
       } catch (error) {
         this.output.appendLine(`Unable to get version of existing binary: ${error}`)
         this.output.appendLine("Downloading new binary instead")
       }
+    }
+
+    if (!enableDownloads) {
+      this.output.appendLine("Unable to download CLI because downloads are disabled")
+      throw new Error("Unable to download CLI because downloads are disabled")
     }
 
     // Remove any left-over old or temporary binaries.
