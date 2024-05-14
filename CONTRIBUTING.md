@@ -31,6 +31,28 @@ The `vscodessh` subcommand on the `coder` binary periodically flushes it's netwo
 
 Coder Remote periodically reads the `network-info-dir + "/" + matchingSSHPID` file to display network information.
 
+## Testing
+
+There are a few ways you can test the "Open in VS Code" flow:
+
+- Use the "VS Code Desktop" button from a Coder dashboard.
+- Manually open the link with `Developer: Open URL` from inside VS Code.
+- Use `code --open-url <link>` on the command line.
+
+The link format is `vscode://coder.coder-remote/open?${query}`. For example:
+
+```bash
+code --open-url 'vscode://coder.coder-remote/open?url=dev.coder.com&owner=my-username&workspace=my-ws&agent=my-agent'
+```
+
+There are some unit tests as well:
+
+```bash
+yarn test
+```
+
+However, fully testing the plugin is blocked on switching back to the standard VS Code extension testing framework.
+
 ## Development
 
 1. Run `yarn watch` in the background.
