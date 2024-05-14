@@ -1632,8 +1632,8 @@ co@3.1.0:
 
 "coder@https://github.com/coder/coder#main":
   version "0.0.0"
-  uid "2e49fa94d4d89111de7a41dd810a8bf755574de6"
-  resolved "https://github.com/coder/coder#2e49fa94d4d89111de7a41dd810a8bf755574de6"
+  uid f14927955d7361d9a50c633e69fbebca2d9946cb
+  resolved "https://github.com/coder/coder#f14927955d7361d9a50c633e69fbebca2d9946cb"
   dependencies:
     exec "^0.2.1"
 
