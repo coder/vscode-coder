@@ -37,7 +37,7 @@ There are a few ways you can test the "Open in VS Code" flow:
 
 - Use the "VS Code Desktop" button from a Coder dashboard.
 - Manually open the link with `Developer: Open URL` from inside VS Code.
-- Use `code --open-url <link>` on the command line.
+- Use `code --open-url` on the command line.
 
 The link format is `vscode://coder.coder-remote/open?${query}`. For example:
 
