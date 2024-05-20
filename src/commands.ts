@@ -407,7 +407,7 @@ async function openWorkspace(
     if (opened.length === 1 || (opened.length > 1 && openRecent)) {
       folderPath = opened[0].folderUri.path
     } else if (opened.length > 1) {
-      const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
+      const items = opened.map<vscode.QuickPickItem>((folder) => {
         return {
           label: folder.folderUri.path,
         }
