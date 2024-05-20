@@ -407,19 +407,14 @@ async function openWorkspace(
     if (opened.length === 1 || (opened.length > 1 && openRecent)) {
       folderPath = opened[0].folderUri.path
     } else if (opened.length > 1) {
-      const items = opened.map<vscode.QuickPickItem>((folder) => {
-        return {
-          label: folder.folderUri.path,
-        }
-      })
-      const item = await vscode.window.showQuickPick(items, {
+      const items = opened.map((f) => f.folderUri.path)
+      folderPath = await vscode.window.showQuickPick(items, {
         title: "Select a recently opened folder",
       })
-      if (!item) {
+      if (!folderPath) {
         // User aborted.
         return
       }
-      folderPath = opened[items.indexOf(item)].folderUri.path
     }
   }
 
