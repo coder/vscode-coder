@@ -223,6 +223,7 @@ export class Commands {
         treeItem.workspaceName,
         treeItem.workspaceAgent,
         treeItem.workspaceFolderPath,
+        true,
       )
     }
   }
@@ -232,6 +233,7 @@ export class Commands {
     let workspaceName: string
     let workspaceAgent: string | undefined
     let folderPath: string | undefined
+    let openRecent: boolean | undefined
 
     if (args.length === 0) {
       const quickPick = vscode.window.createQuickPick()
@@ -340,9 +342,10 @@ export class Commands {
       workspaceName = args[1] as string
       // workspaceAgent is reserved for args[2], but multiple agents aren't supported yet.
       folderPath = args[3] as string | undefined
+      openRecent = args[4] as boolean | undefined
     }
 
-    await openWorkspace(workspaceOwner, workspaceName, workspaceAgent, folderPath)
+    await openWorkspace(workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
   }
 
   public async updateWorkspace(): Promise<void> {
@@ -369,6 +372,7 @@ async function openWorkspace(
   workspaceName: string,
   workspaceAgent: string | undefined,
   folderPath: string | undefined,
+  openRecent: boolean | undefined,
 ) {
   // A workspace can have multiple agents, but that's handled
   // when opening a workspace unless explicitly specified.
@@ -383,36 +387,34 @@ async function openWorkspace(
     newWindow = false
   }
 
-  // If a folder isn't specified, we can try to open a recently opened folder.
-  if (!folderPath) {
+  // If a folder isn't specified or we have been asked to open the most recent,
+  // we can try to open a recently opened folder/workspace.
+  if (!folderPath || openRecent) {
     const output: {
       workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
     } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
     const opened = output.workspaces.filter(
-      // Filter out `/` since that's added below.
+      // Remove recents that do not belong to this connection.  The remote
+      // authority maps to a workspace or workspace/agent combination (using the
+      // SSH host name).  This means, at the moment, you can have a different
+      // set of recents for a workspace versus workspace/agent combination, even
+      // if that agent is the default for the workspace.
       (opened) => opened.folderUri?.authority === remoteAuthority,
     )
-    if (opened.length > 0) {
-      let selected: (typeof opened)[0]
 
-      if (opened.length > 1) {
-        const items: vscode.QuickPickItem[] = opened.map((folder): vscode.QuickPickItem => {
-          return {
-            label: folder.folderUri.path,
-          }
-        })
-        const item = await vscode.window.showQuickPick(items, {
-          title: "Select a recently opened folder",
-        })
-        if (!item) {
-          return
-        }
-        selected = opened[items.indexOf(item)]
-      } else {
-        selected = opened[0]
+    // openRecent will always use the most recent.  Otherwise, if there are
+    // multiple we ask the user which to use.
+    if (opened.length === 1 || (opened.length > 1 && openRecent)) {
+      folderPath = opened[0].folderUri.path
+    } else if (opened.length > 1) {
+      const items = opened.map((f) => f.folderUri.path)
+      folderPath = await vscode.window.showQuickPick(items, {
+        title: "Select a recently opened folder",
+      })
+      if (!folderPath) {
+        // User aborted.
+        return
       }
-
-      folderPath = selected.folderUri.path
     }
   }
 

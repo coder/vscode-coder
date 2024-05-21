@@ -140,6 +140,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         const workspace = params.get("workspace")
         const agent = params.get("agent")
         const folder = params.get("folder")
+        const openRecent =
+          params.has("openRecent") && (!params.get("openRecent") || params.get("openRecent") === "true")
+
         if (!owner) {
           throw new Error("owner must be specified as a query parameter")
         }
@@ -166,7 +169,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
           await storage.setSessionToken(token)
         }
 
-        vscode.commands.executeCommand("coder.open", owner, workspace, agent, folder)
+        vscode.commands.executeCommand("coder.open", owner, workspace, agent, folder, openRecent)
       }
     },
   })
