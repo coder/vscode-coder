@@ -605,7 +605,7 @@ export class Remote {
       }
     }
 
-    const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+    const escape = (str: string): string => `'${str.replace(/'/g, "'\\''")}'`
 
     // Add headers from the header command.
     let headerArg = ""
