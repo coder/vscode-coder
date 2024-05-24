@@ -605,13 +605,21 @@ export class Remote {
       }
     }
 
-    const escape = (str: string): string => `'${str.replace(/'/g, "'\\''")}'`
+    const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+    // Escape a command line to be executed by the Coder binary, so ssh doesn't substitute variables.
+    const escapeSubcommand: (str: string) => string =
+      os.platform() === "win32"
+        ? // On Windows variables are %VAR%, and we need to use double quotes.
+          (str) => escape(str).replace(/%/g, "%%")
+        : // On *nix we can use single quotes to escape $VARS.
+          // Note single quotes cannot be escaped inside single quotes.
+          (str) => `'${str.replace(/'/g, "'\\''")}'`
 
     // Add headers from the header command.
     let headerArg = ""
     const headerCommand = getHeaderCommand(vscode.workspace.getConfiguration())
     if (typeof headerCommand === "string" && headerCommand.trim().length > 0) {
-      headerArg = ` --header-command ${escape(headerCommand)}`
+      headerArg = ` --header-command ${escapeSubcommand(headerCommand)}`
     }
     let logArg = ""
     if (hasCoderLogs) {
