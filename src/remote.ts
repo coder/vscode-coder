@@ -334,6 +334,7 @@ export class Remote {
         // write here is not necessarily catastrophic since the user will be
         // asked for the platform and the default timeout might be sufficient.
         mungedPlatforms = mungedConnTimeout = false
+        this.storage.writeToCoderOutputChannel(`Failed to configure settings: ${ex}`)
       }
     }
 
@@ -485,23 +486,6 @@ export class Remote {
     }
 
     this.findSSHProcessID().then((pid) => {
-      // Once the SSH process has spawned we can reset the timeout.
-      if (mungedConnTimeout) {
-        // Re-read settings in case they changed.
-        fs.readFile(this.storage.getUserSettingsPath(), "utf8").then(async (rawSettings) => {
-          try {
-            await fs.writeFile(
-              this.storage.getUserSettingsPath(),
-              jsonc.applyEdits(rawSettings, jsonc.modify(rawSettings, ["remote.SSH.connectTimeout"], connTimeout, {})),
-            )
-          } catch (error) {
-            this.storage.writeToCoderOutputChannel(
-              `Failed to reset remote.SSH.connectTimeout back to ${connTimeout}: ${error}`,
-            )
-          }
-        })
-      }
-
       if (!pid) {
         // TODO: Show an error here!
         return
