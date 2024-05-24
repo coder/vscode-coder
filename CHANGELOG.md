@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## [v0.1.37](https://github.com/coder/vscode-coder/releases/tag/v0.1.37) (2024-05-24)
+
+### Added
+
+- openRecent query parameter to open the most recent workspace or directory for
+  that remote.
+- Setting to disable downloading the binary. When disabled, the existing binary
+  will be used as-is. If the binary is missing, the plugin will error.
+
+### Fixes
+
+- Increased timeout will apply to reconnects as well.
+
 ### Changes
 
 - Show certificate errors under the token input.

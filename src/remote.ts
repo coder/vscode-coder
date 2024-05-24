@@ -313,8 +313,7 @@ export class Remote {
     // of 15 seconds, which can be too short in the case where we wait for
     // startup scripts.  For now we hardcode a longer value.  Because this is
     // potentially overwriting user configuration, it feels a bit sketchy.  If
-    // microsoft/vscode-remote-release#8519 is resolved we can remove this but
-    // for now to mitigate the sketchiness we will reset it after connecting.
+    // microsoft/vscode-remote-release#8519 is resolved we can remove this.
     const minConnTimeout = 1800
     let mungedConnTimeout = false
     if (!connTimeout || connTimeout < minConnTimeout) {
