@@ -36,8 +36,8 @@ afterAll(() => {
 async function startServer(certName: string): Promise<string> {
   const server = https.createServer(
     {
-      key: await fs.readFile(path.join(__dirname, `../fixtures/${certName}.key`)),
-      cert: await fs.readFile(path.join(__dirname, `../fixtures/${certName}.crt`)),
+      key: await fs.readFile(path.join(__dirname, `../fixtures/tls/${certName}.key`)),
+      cert: await fs.readFile(path.join(__dirname, `../fixtures/tls/${certName}.crt`)),
     },
     (req, res) => {
       if (req.url?.endsWith("/error")) {
@@ -71,7 +71,7 @@ it("detects partial chains", async () => {
   const address = await startServer("chain-leaf")
   const request = axios.get(address, {
     httpsAgent: new https.Agent({
-      ca: await fs.readFile(path.join(__dirname, "../fixtures/chain-leaf.crt")),
+      ca: await fs.readFile(path.join(__dirname, "../fixtures/tls/chain-leaf.crt")),
     }),
   })
   await expect(request).rejects.toHaveProperty("code", X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE)
@@ -101,7 +101,7 @@ it("detects self-signed certificates without signing capability", async () => {
   const address = await startServer("no-signing")
   const request = axios.get(address, {
     httpsAgent: new https.Agent({
-      ca: await fs.readFile(path.join(__dirname, "../fixtures/no-signing.crt")),
+      ca: await fs.readFile(path.join(__dirname, "../fixtures/tls/no-signing.crt")),
       servername: "localhost",
     }),
   })
@@ -150,7 +150,7 @@ it("is ok with trusted self-signed certificates", async () => {
   const address = await startServer("self-signed")
   const request = axios.get(address, {
     httpsAgent: new https.Agent({
-      ca: await fs.readFile(path.join(__dirname, "../fixtures/self-signed.crt")),
+      ca: await fs.readFile(path.join(__dirname, "../fixtures/tls/self-signed.crt")),
       servername: "localhost",
     }),
   })
@@ -188,7 +188,7 @@ it("is ok with chains with a trusted root", async () => {
   const address = await startServer("chain")
   const request = axios.get(address, {
     httpsAgent: new https.Agent({
-      ca: await fs.readFile(path.join(__dirname, "../fixtures/chain-root.crt")),
+      ca: await fs.readFile(path.join(__dirname, "../fixtures/tls/chain-root.crt")),
       servername: "localhost",
     }),
   })
@@ -209,7 +209,7 @@ it("falls back with different error", async () => {
   const address = await startServer("chain")
   const request = axios.get(address + "/error", {
     httpsAgent: new https.Agent({
-      ca: await fs.readFile(path.join(__dirname, "../fixtures/chain-root.crt")),
+      ca: await fs.readFile(path.join(__dirname, "../fixtures/tls/chain-root.crt")),
       servername: "localhost",
     }),
   })
