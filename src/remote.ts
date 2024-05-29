@@ -478,8 +478,6 @@ export class Remote {
     try {
       await this.updateSSHConfig(authorityParts[1], hasCoderLogs)
     } catch (error) {
-      // TODO: This is a bit weird, because even if we throw an error VS Code
-      // still tries to connect.  Can we stop it?
       this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
       throw error
     }
