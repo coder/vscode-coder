@@ -1,12 +1,9 @@
 "use strict"
 import axios, { isAxiosError } from "axios"
-import { getAuthenticatedUser } from "coder/site/src/api/api"
 import { getErrorMessage } from "coder/site/src/api/errors"
-import fs from "fs"
-import * as https from "https"
 import * as module from "module"
-import * as os from "os"
 import * as vscode from "vscode"
+import { makeCoderSdk } from "./api"
 import { Commands } from "./commands"
 import { CertificateError, getErrorDetail } from "./error"
 import { Remote } from "./remote"
@@ -38,66 +35,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     false,
   )
 
-  // expandPath will expand ${userHome} in the input string.
-  const expandPath = (input: string): string => {
-    const userHome = os.homedir()
-    return input.replace(/\${userHome}/g, userHome)
-  }
-
-  // applyHttpProperties is called on extension activation and when the
-  // insecure or TLS setting are changed. It updates the https agent to allow
-  // self-signed certificates if the insecure setting is true, as well as
-  // adding cert/key/ca properties for TLS.
-  const applyHttpProperties = () => {
-    const cfg = vscode.workspace.getConfiguration()
-    const insecure = Boolean(cfg.get("coder.insecure"))
-    const certFile = expandPath(String(cfg.get("coder.tlsCertFile") ?? "").trim())
-    const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim())
-    const caFile = expandPath(String(cfg.get("coder.tlsCaFile") ?? "").trim())
-
-    axios.defaults.httpsAgent = new https.Agent({
-      cert: certFile === "" ? undefined : fs.readFileSync(certFile),
-      key: keyFile === "" ? undefined : fs.readFileSync(keyFile),
-      ca: caFile === "" ? undefined : fs.readFileSync(caFile),
-      // rejectUnauthorized defaults to true, so we need to explicitly set it to false
-      // if we want to allow self-signed certificates.
-      rejectUnauthorized: !insecure,
-    })
-  }
-
-  axios.interceptors.response.use(
-    (r) => r,
-    async (err) => {
-      throw await CertificateError.maybeWrap(err, axios.getUri(err.config), storage)
-    },
-  )
-
-  vscode.workspace.onDidChangeConfiguration((e) => {
-    if (
-      e.affectsConfiguration("coder.insecure") ||
-      e.affectsConfiguration("coder.tlsCertFile") ||
-      e.affectsConfiguration("coder.tlsKeyFile") ||
-      e.affectsConfiguration("coder.tlsCaFile")
-    ) {
-      applyHttpProperties()
-    }
-  })
-  applyHttpProperties()
-
   const output = vscode.window.createOutputChannel("Coder")
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
-  await storage.init()
 
-  // Add headers from the header command.
-  axios.interceptors.request.use(async (config) => {
-    Object.entries(await storage.getHeaders(config.baseURL || axios.getUri(config))).forEach(([key, value]) => {
-      config.headers[key] = value
-    })
-    return config
-  })
+  // This client tracks the current login and will be used through the life of
+  // the plugin to poll workspaces for the current login.
+  const url = storage.getUrl()
+  const restClient = await makeCoderSdk(url || "", await storage.getSessionToken(), storage)
 
-  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine, storage, 5)
-  const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All, storage)
+  const myWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.Mine, restClient, 5)
+  const allWorkspacesProvider = new WorkspaceProvider(WorkspaceQuery.All, restClient)
 
   // createTreeView, unlike registerTreeDataProvider, gives us the tree view API
   // (so we can see when it is visible) but otherwise they have the same effect.
@@ -109,15 +56,19 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     myWorkspacesProvider.setVisibility(event.visible)
   })
 
-  const url = storage.getURL()
   if (url) {
-    getAuthenticatedUser()
+    restClient
+      .getAuthenticatedUser()
       .then(async (user) => {
         if (user && user.roles) {
           vscode.commands.executeCommand("setContext", "coder.authenticated", true)
           if (user.roles.find((role) => role.name === "owner")) {
             await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
           }
+
+          // Fetch and monitor workspaces, now that we know the client is good.
+          myWorkspacesProvider.fetchAndRefresh()
+          allWorkspacesProvider.fetchAndRefresh()
         }
       })
       .catch((error) => {
@@ -155,7 +106,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         // queries will default to localhost) so ask for it if missing.
         // Pre-populate in case we do have the right URL so the user can just
         // hit enter and move on.
-        const url = await commands.maybeAskUrl(params.get("url"), storage.getURL())
+        const url = await commands.maybeAskUrl(params.get("url"), storage.getUrl())
         if (url) {
           await storage.setURL(url)
         } else {
@@ -174,7 +125,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     },
   })
 
-  const commands = new Commands(vscodeProposed, storage)
+  const commands = new Commands(vscodeProposed, restClient, storage)
 
   vscode.commands.registerCommand("coder.login", commands.login.bind(commands))
   vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))

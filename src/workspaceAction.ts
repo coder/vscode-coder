@@ -1,5 +1,5 @@
 import { isAxiosError } from "axios"
-import { getWorkspaces } from "coder/site/src/api/api"
+import { Api } from "coder/site/src/api/api"
 import { Workspace, WorkspacesResponse, WorkspaceBuild } from "coder/site/src/api/typesGenerated"
 import { formatDistanceToNowStrict } from "date-fns"
 import * as vscode from "vscode"
@@ -27,6 +27,7 @@ export class WorkspaceAction {
 
   private constructor(
     private readonly vscodeProposed: typeof vscode,
+    private readonly restClient: Api,
     private readonly storage: Storage,
     ownedWorkspaces: readonly Workspace[],
   ) {
@@ -41,11 +42,11 @@ export class WorkspaceAction {
     this.pollGetWorkspaces()
   }
 
-  static async init(vscodeProposed: typeof vscode, storage: Storage) {
+  static async init(vscodeProposed: typeof vscode, restClient: Api, storage: Storage) {
     // fetch all workspaces owned by the user and set initial public class fields
     let ownedWorkspacesResponse: WorkspacesResponse
     try {
-      ownedWorkspacesResponse = await getWorkspaces({ q: "owner:me" })
+      ownedWorkspacesResponse = await restClient.getWorkspaces({ q: "owner:me" })
     } catch (error) {
       let status
       if (isAxiosError(error)) {
@@ -59,7 +60,7 @@ export class WorkspaceAction {
 
       ownedWorkspacesResponse = { workspaces: [], count: 0 }
     }
-    return new WorkspaceAction(vscodeProposed, storage, ownedWorkspacesResponse.workspaces)
+    return new WorkspaceAction(vscodeProposed, restClient, storage, ownedWorkspacesResponse.workspaces)
   }
 
   updateNotificationLists() {
@@ -108,7 +109,7 @@ export class WorkspaceAction {
     let errorCount = 0
     this.#fetchWorkspacesInterval = setInterval(async () => {
       try {
-        const workspacesResult = await getWorkspaces({ q: "owner:me" })
+        const workspacesResult = await this.restClient.getWorkspaces({ q: "owner:me" })
         this.#ownedWorkspaces = workspacesResult.workspaces
         this.updateNotificationLists()
         this.notifyAll()

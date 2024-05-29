@@ -1,6 +1,6 @@
-import axios from "axios"
-import { getAuthenticatedUser, getWorkspaces, updateWorkspaceVersion } from "coder/site/src/api/api"
-import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { Api } from "coder/site/src/api/api"
+import { getErrorMessage } from "coder/site/src/api/errors"
+import { User, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
 import { extractAgents } from "./api-helper"
 import { CertificateError } from "./error"
@@ -11,6 +11,7 @@ import { OpenableTreeItem } from "./workspacesProvider"
 export class Commands {
   public constructor(
     private readonly vscodeProposed: typeof vscode,
+    private readonly restClient: Api,
     private readonly storage: Storage,
   ) {}
 
@@ -82,7 +83,9 @@ export class Commands {
     if (!url) {
       return
     }
+    this.restClient.setHost(url)
 
+    let user: User | undefined
     let token: string | undefined = args.length >= 2 ? args[1] : undefined
     if (!token) {
       const opened = await vscode.env.openExternal(vscode.Uri.parse(`${url}/cli-auth`))
@@ -97,74 +100,72 @@ export class Commands {
         placeHolder: "Copy your API key from the opened browser page.",
         value: await this.storage.getSessionToken(),
         ignoreFocusOut: true,
-        validateInput: (value) => {
-          return axios
-            .get("/api/v2/users/me", {
-              baseURL: url,
-              headers: {
-                "Coder-Session-Token": value,
-              },
-            })
-            .then(() => {
-              return undefined
-            })
-            .catch((err) => {
-              if (err instanceof CertificateError) {
-                err.showNotification()
+        validateInput: async (value) => {
+          this.restClient.setSessionToken(value)
+          try {
+            user = await this.restClient.getAuthenticatedUser()
+            if (!user) {
+              throw new Error("Failed to get authenticated user")
+            }
+          } catch (err) {
+            // For certificate errors show both a notification and add to the
+            // text under the input box, since users sometimes miss the
+            // notification.
+            if (err instanceof CertificateError) {
+              err.showNotification()
 
-                return {
-                  message: err.x509Err || err.message,
-                  severity: vscode.InputBoxValidationSeverity.Error,
-                }
-              }
-              // This could be something like the header command erroring or an
-              // invalid session token.
-              const message =
-                err?.response?.data?.detail || err?.message || err?.response?.status || "no response from the server"
               return {
-                message: "Failed to authenticate: " + message,
+                message: err.x509Err || err.message,
                 severity: vscode.InputBoxValidationSeverity.Error,
               }
-            })
+            }
+            // This could be something like the header command erroring or an
+            // invalid session token.
+            const message = getErrorMessage(err, "no response from the server")
+            return {
+              message: "Failed to authenticate: " + message,
+              severity: vscode.InputBoxValidationSeverity.Error,
+            }
+          }
         },
       })
     }
-    if (!token) {
+    if (!token || !user) {
       return
     }
 
+    // Store these to be used in later sessions and in the cli.
     await this.storage.setURL(url)
     await this.storage.setSessionToken(token)
-    try {
-      const user = await getAuthenticatedUser()
-      if (!user) {
-        throw new Error("Failed to get authenticated user")
-      }
-      await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
-      if (user.roles.find((role) => role.name === "owner")) {
-        await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
-      }
-      vscode.window
-        .showInformationMessage(
-          `Welcome to Coder, ${user.username}!`,
-          {
-            detail: "You can now use the Coder extension to manage your Coder instance.",
-          },
-          "Open Workspace",
-        )
-        .then((action) => {
-          if (action === "Open Workspace") {
-            vscode.commands.executeCommand("coder.open")
-          }
-        })
-      vscode.commands.executeCommand("coder.refreshWorkspaces")
-    } catch (error) {
-      vscode.window.showErrorMessage("Failed to authenticate with Coder: " + error)
+
+    await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+    if (user.roles.find((role) => role.name === "owner")) {
+      await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
     }
+
+    vscode.window
+      .showInformationMessage(
+        `Welcome to Coder, ${user.username}!`,
+        {
+          detail: "You can now use the Coder extension to manage your Coder instance.",
+        },
+        "Open Workspace",
+      )
+      .then((action) => {
+        if (action === "Open Workspace") {
+          vscode.commands.executeCommand("coder.open")
+        }
+      })
+
+    // Fetch workspaces for the new deployment.
+    vscode.commands.executeCommand("coder.refreshWorkspaces")
   }
 
-  // viewLogs opens the workspace logs.
+  /**
+   * View the logs for the currently logged-in deployment.
+   */
   public async viewLogs(): Promise<void> {
+    // TODO: This will need to be refactored for multi-deployment support.
     if (!this.storage.workspaceLogPath) {
       vscode.window.showInformationMessage("No logs available.", this.storage.workspaceLogPath || "<unset>")
       return
@@ -174,48 +175,81 @@ export class Commands {
     await vscode.window.showTextDocument(doc)
   }
 
+  /**
+   * Log out from the currently logged-in deployment.
+   */
   public async logout(): Promise<void> {
+    // Clear from the REST client.  An empty url will indicate to other parts of
+    // the code that we are logged out.
+    this.restClient.setHost("")
+    this.restClient.setSessionToken("")
+
+    // Clear from memory.
     await this.storage.setURL(undefined)
     await this.storage.setSessionToken(undefined)
+
     await vscode.commands.executeCommand("setContext", "coder.authenticated", false)
     vscode.window.showInformationMessage("You've been logged out of Coder!", "Login").then((action) => {
       if (action === "Login") {
         vscode.commands.executeCommand("coder.login")
       }
     })
+
+    // This will result in clearing the workspace list.
     vscode.commands.executeCommand("coder.refreshWorkspaces")
   }
 
+  /**
+   * Create a new workspace for the currently logged-in deployment.
+   *
+   * Must only be called if currently logged in.
+   */
   public async createWorkspace(): Promise<void> {
-    const uri = this.storage.getURL() + "/templates"
+    const uri = this.storage.getUrl() + "/templates"
     await vscode.commands.executeCommand("vscode.open", uri)
   }
 
+  /**
+   * Open a link to the workspace in the Coder dashboard.
+   *
+   * Must only be called if currently logged in.
+   */
   public async navigateToWorkspace(workspace: OpenableTreeItem) {
     if (workspace) {
-      const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}`
+      const uri = this.storage.getUrl() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}`
       await vscode.commands.executeCommand("vscode.open", uri)
     } else if (this.storage.workspace) {
-      const uri = this.storage.getURL() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}`
+      const uri = this.storage.getUrl() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}`
       await vscode.commands.executeCommand("vscode.open", uri)
     } else {
       vscode.window.showInformationMessage("No workspace found.")
     }
   }
 
+  /**
+   * Open a link to the workspace settings in the Coder dashboard.
+   *
+   * Must only be called if currently logged in.
+   */
   public async navigateToWorkspaceSettings(workspace: OpenableTreeItem) {
     if (workspace) {
-      const uri = this.storage.getURL() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}/settings`
+      const uri = this.storage.getUrl() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}/settings`
       await vscode.commands.executeCommand("vscode.open", uri)
     } else if (this.storage.workspace) {
       const uri =
-        this.storage.getURL() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}/settings`
+        this.storage.getUrl() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}/settings`
       await vscode.commands.executeCommand("vscode.open", uri)
     } else {
       vscode.window.showInformationMessage("No workspace found.")
     }
   }
 
+  /**
+   * Open a workspace or agent that is showing in the sidebar.
+   *
+   * This essentially just builds the host name and passes it to the VS Code
+   * Remote SSH extension.
+   */
   public async openFromSidebar(treeItem: OpenableTreeItem) {
     if (treeItem) {
       await openWorkspace(
@@ -228,6 +262,11 @@ export class Commands {
     }
   }
 
+  /**
+   * Open a workspace from the currently logged-in deployment.
+   *
+   * This must only be called if the REST client is logged in.
+   */
   public async open(...args: unknown[]): Promise<void> {
     let workspaceOwner: string
     let workspaceName: string
@@ -243,9 +282,10 @@ export class Commands {
       let lastWorkspaces: readonly Workspace[]
       quickPick.onDidChangeValue((value) => {
         quickPick.busy = true
-        getWorkspaces({
-          q: value,
-        })
+        this.restClient
+          .getWorkspaces({
+            q: value,
+          })
           .then((workspaces) => {
             lastWorkspaces = workspaces.workspaces
             const items: vscode.QuickPickItem[] = workspaces.workspaces.map((workspace) => {
@@ -348,8 +388,12 @@ export class Commands {
     await openWorkspace(workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
   }
 
+  /**
+   * Update the current workspace.  If there is no active workspace connection,
+   * this is a no-op.
+   */
   public async updateWorkspace(): Promise<void> {
-    if (!this.storage.workspace) {
+    if (!this.storage.workspace || !this.storage.restClient) {
       return
     }
     const action = await this.vscodeProposed.window.showInformationMessage(
@@ -362,11 +406,15 @@ export class Commands {
       "Update",
     )
     if (action === "Update") {
-      await updateWorkspaceVersion(this.storage.workspace)
+      await this.storage.restClient.updateWorkspaceVersion(this.storage.workspace)
     }
   }
 }
 
+/**
+ * Given a workspace, build the host name, find a directory to open, and pass
+ * both to the Remote SSH plugin.
+ */
 async function openWorkspace(
   workspaceOwner: string,
   workspaceName: string,
