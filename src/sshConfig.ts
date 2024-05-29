@@ -103,9 +103,6 @@ export class SSHConfig {
   }
 
   async update(values: SSHValues, overrides: Record<string, string> = defaultSSHConfigResponse) {
-    // We should remove this in March 2023 because there is not going to have
-    // old configs
-    this.cleanUpOldConfig()
     const block = this.getBlock()
     const newBlock = this.buildBlock(values, overrides)
     if (block) {
@@ -114,16 +111,6 @@ export class SSHConfig {
       this.appendBlock(newBlock)
     }
     await this.save()
-  }
-
-  private async cleanUpOldConfig() {
-    const raw = this.getRaw()
-    const oldConfig = raw.split("\n\n").find((config) => config.startsWith("Host coder-vscode--*"))
-    // Perform additional sanity check that the block also contains a
-    // ProxyCommand, otherwise it might be a different block.
-    if (oldConfig && oldConfig.includes(" ProxyCommand ")) {
-      this.raw = raw.replace(oldConfig, "")
-    }
   }
 
   private getBlock(): Block | undefined {
