@@ -78,15 +78,13 @@ export class Storage {
     return urls.size > MAX_URLS ? Array.from(urls).slice(urls.size - MAX_URLS, urls.size) : Array.from(urls)
   }
 
-  public setSessionToken(sessionToken?: string): Thenable<void> {
+  public async setSessionToken(sessionToken?: string): Promise<void> {
     if (!sessionToken) {
-      return this.secrets.delete("sessionToken").then(() => {
-        return this.updateSessionToken()
-      })
+      await this.secrets.delete("sessionToken")
+    } else {
+      await this.secrets.store("sessionToken", sessionToken)
     }
-    return this.secrets.store("sessionToken", sessionToken).then(() => {
-      return this.updateSessionToken()
-    })
+    return this.updateSessionToken()
   }
 
   public async getSessionToken(): Promise<string | undefined> {
