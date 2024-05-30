@@ -26,6 +26,8 @@ type AgentWatcher = {
 /**
  * Polls workspaces using the provided REST client and renders them in a tree.
  *
+ * Polling does not start until fetchAndRefresh() is called at least once.
+ *
  * If the poll fails or the client has no URL configured, clear the tree and
  * abort polling until fetchAndRefresh() is called again.
  */

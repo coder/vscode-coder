@@ -9,6 +9,17 @@ import { Storage } from "./storage"
 import { OpenableTreeItem } from "./workspacesProvider"
 
 export class Commands {
+  // These will only be populated when actively connected to a workspace and are
+  // used in commands.  Because commands can be executed by the user, it is not
+  // possible to pass in arguments, so we have to store the current workspace
+  // and its client somewhere, separately from the current globally logged-in
+  // client, since you can connect to workspaces not belonging to whatever you
+  // are logged into (for convenience; otherwise the recents menu can be a pain
+  // if you use multiple deployments).
+  public workspace?: Workspace
+  public workspaceLogPath?: string
+  public workspaceRestClient?: Api
+
   public constructor(
     private readonly vscodeProposed: typeof vscode,
     private readonly restClient: Api,
@@ -162,15 +173,14 @@ export class Commands {
   }
 
   /**
-   * View the logs for the currently logged-in deployment.
+   * View the logs for the currently connected workspace.
    */
   public async viewLogs(): Promise<void> {
-    // TODO: This will need to be refactored for multi-deployment support.
-    if (!this.storage.workspaceLogPath) {
-      vscode.window.showInformationMessage("No logs available.", this.storage.workspaceLogPath || "<unset>")
+    if (!this.workspaceLogPath) {
+      vscode.window.showInformationMessage("No logs available.", this.workspaceLogPath || "<unset>")
       return
     }
-    const uri = vscode.Uri.file(this.storage.workspaceLogPath)
+    const uri = vscode.Uri.file(this.workspaceLogPath)
     const doc = await vscode.workspace.openTextDocument(uri)
     await vscode.window.showTextDocument(doc)
   }
@@ -212,14 +222,18 @@ export class Commands {
   /**
    * Open a link to the workspace in the Coder dashboard.
    *
-   * Must only be called if currently logged in.
+   * If passing in a workspace, it must belong to the currently logged-in
+   * deployment.
+   *
+   * Otherwise, the currently connected workspace is used (if any).
    */
   public async navigateToWorkspace(workspace: OpenableTreeItem) {
     if (workspace) {
       const uri = this.storage.getUrl() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}`
       await vscode.commands.executeCommand("vscode.open", uri)
-    } else if (this.storage.workspace) {
-      const uri = this.storage.getUrl() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}`
+    } else if (this.workspace && this.workspaceRestClient) {
+      const baseUrl = this.workspaceRestClient.getAxiosInstance().defaults.baseURL
+      const uri = `${baseUrl}/@${this.workspace.owner_name}/${this.workspace.name}`
       await vscode.commands.executeCommand("vscode.open", uri)
     } else {
       vscode.window.showInformationMessage("No workspace found.")
@@ -229,15 +243,18 @@ export class Commands {
   /**
    * Open a link to the workspace settings in the Coder dashboard.
    *
-   * Must only be called if currently logged in.
+   * If passing in a workspace, it must belong to the currently logged-in
+   * deployment.
+   *
+   * Otherwise, the currently connected workspace is used (if any).
    */
   public async navigateToWorkspaceSettings(workspace: OpenableTreeItem) {
     if (workspace) {
       const uri = this.storage.getUrl() + `/@${workspace.workspaceOwner}/${workspace.workspaceName}/settings`
       await vscode.commands.executeCommand("vscode.open", uri)
-    } else if (this.storage.workspace) {
-      const uri =
-        this.storage.getUrl() + `/@${this.storage.workspace.owner_name}/${this.storage.workspace.name}/settings`
+    } else if (this.workspace && this.workspaceRestClient) {
+      const baseUrl = this.workspaceRestClient.getAxiosInstance().defaults.baseURL
+      const uri = `${baseUrl}/@${this.workspace.owner_name}/${this.workspace.name}/settings`
       await vscode.commands.executeCommand("vscode.open", uri)
     } else {
       vscode.window.showInformationMessage("No workspace found.")
@@ -248,7 +265,8 @@ export class Commands {
    * Open a workspace or agent that is showing in the sidebar.
    *
    * This essentially just builds the host name and passes it to the VS Code
-   * Remote SSH extension.
+   * Remote SSH extension, so it is not necessary to be logged in, although then
+   * the sidebar would not have any workspaces in it anyway.
    */
   public async openFromSidebar(treeItem: OpenableTreeItem) {
     if (treeItem) {
@@ -263,9 +281,9 @@ export class Commands {
   }
 
   /**
-   * Open a workspace from the currently logged-in deployment.
+   * Open a workspace belonging to the currently logged-in deployment.
    *
-   * This must only be called if the REST client is logged in.
+   * This must only be called if logged into a deployment.
    */
   public async open(...args: unknown[]): Promise<void> {
     let workspaceOwner: string
@@ -393,7 +411,7 @@ export class Commands {
    * this is a no-op.
    */
   public async updateWorkspace(): Promise<void> {
-    if (!this.storage.workspace || !this.storage.restClient) {
+    if (!this.workspace || !this.workspaceRestClient) {
       return
     }
     const action = await this.vscodeProposed.window.showInformationMessage(
@@ -401,12 +419,12 @@ export class Commands {
       {
         useCustom: true,
         modal: true,
-        detail: `${this.storage.workspace.owner_name}/${this.storage.workspace.name} will be updated then this window will reload to watch the build logs and reconnect.`,
+        detail: `${this.workspace.owner_name}/${this.workspace.name} will be updated then this window will reload to watch the build logs and reconnect.`,
       },
       "Update",
     )
     if (action === "Update") {
-      await this.storage.restClient.updateWorkspaceVersion(this.storage.workspace)
+      await this.workspaceRestClient.updateWorkspaceVersion(this.workspace)
     }
   }
 }

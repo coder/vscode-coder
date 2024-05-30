@@ -150,7 +150,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   if (!vscodeProposed.env.remoteAuthority) {
     return
   }
-  const remote = new Remote(vscodeProposed, storage, ctx.extensionMode)
+  const remote = new Remote(vscodeProposed, storage, commands, ctx.extensionMode)
   try {
     await remote.setup(vscodeProposed.env.remoteAuthority)
   } catch (ex) {

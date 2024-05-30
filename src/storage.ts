@@ -1,5 +1,4 @@
 import { Api } from "coder/site/src/api/api"
-import { Workspace } from "coder/site/src/api/typesGenerated"
 import { createWriteStream } from "fs"
 import fs from "fs/promises"
 import { ensureDir } from "fs-extra"
@@ -15,18 +14,6 @@ import { getHeaderCommand, getHeaders } from "./headers"
 const MAX_URLS = 10
 
 export class Storage {
-  // These will only be populated when actively connected to a workspace and are
-  // used in commands.  Because commands can be executed by the user, it is not
-  // possible to pass in arguments, so we have to store the current workspace
-  // and client somewhere, separately from the current login, since you can
-  // connect to workspaces not belonging to whatever you are logged into (for
-  // convenience; otherwise the recents menu can be a pain if you use multiple
-  // deployments).
-  // TODO: Should maybe store on the Commands class instead.
-  public workspace?: Workspace
-  public workspaceLogPath?: string
-  public restClient?: Api
-
   constructor(
     private readonly output: vscode.OutputChannel,
     private readonly memento: vscode.Memento,

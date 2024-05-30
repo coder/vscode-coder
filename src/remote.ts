@@ -12,6 +12,7 @@ import * as semver from "semver"
 import * as vscode from "vscode"
 import * as ws from "ws"
 import { makeCoderSdk } from "./api"
+import { Commands } from "./commands"
 import { getHeaderCommand } from "./headers"
 import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
@@ -27,6 +28,7 @@ export class Remote {
   public constructor(
     private readonly vscodeProposed: typeof vscode,
     private readonly storage: Storage,
+    private readonly commands: Commands,
     private readonly mode: vscode.ExtensionMode,
   ) {}
 
@@ -82,7 +84,7 @@ export class Remote {
     const token = await this.storage.getSessionToken()
     const restClient = await makeCoderSdk(baseUrlRaw, token, this.storage)
     // Store for use in commands.
-    this.storage.restClient = restClient
+    this.commands.workspaceRestClient = restClient
 
     // First thing is to check the version.
     const buildInfo = await restClient.getBuildInfo()
@@ -112,7 +114,7 @@ export class Remote {
     let workspace: Workspace
     try {
       workspace = await restClient.getWorkspaceByOwnerAndName(parts[0], parts[1])
-      this.storage.workspace = workspace
+      this.commands.workspace = workspace
     } catch (error) {
       if (!isAxiosError(error)) {
         throw error
@@ -193,7 +195,7 @@ export class Remote {
         ...workspace,
         latest_build: latestBuild,
       }
-      this.storage.workspace = workspace
+      this.commands.workspace = workspace
     }
 
     // If a build is running we should stream the logs to the user so they can
@@ -251,7 +253,7 @@ export class Remote {
       })
       writeEmitter.fire("Build complete")
       workspace = await restClient.getWorkspace(workspace.id)
-      this.storage.workspace = workspace
+      this.commands.workspace = workspace
       terminal.dispose()
 
       if (buildComplete) {
@@ -420,7 +422,7 @@ export class Remote {
         return
       }
       refreshWorkspaceUpdatedStatus(workspace)
-      this.storage.workspace = workspace
+      this.commands.workspace = workspace
       workspaceUpdate.fire(workspace)
       if (workspace.latest_build.status === "stopping" || workspace.latest_build.status === "stopped") {
         const action = this.vscodeProposed.window.showInformationMessage(
@@ -520,7 +522,7 @@ export class Remote {
         return
       }
       disposables.push(this.showNetworkUpdates(pid))
-      this.storage.workspaceLogPath = path.join(this.storage.getLogPath(), `${pid}.log`)
+      this.commands.workspaceLogPath = path.join(this.storage.getLogPath(), `${pid}.log`)
     })
 
     // Register the label formatter again because SSH overrides it!
