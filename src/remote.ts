@@ -43,10 +43,10 @@ export class Remote {
     const sshAuthority = authorityParts[1].substring(Remote.Prefix.length)
 
     // Authorities are in the format:
-    // coder-vscode--<username>--<workspace>--<agent> Agent can be omitted then
-    // will be prompted for instead.
+    // coder-vscode--<username>--<workspace>--<agent>
+    // The agent can be omitted; the user will be prompted for it instead.
     const parts = sshAuthority.split("--")
-    if (parts.length < 2 || parts.length > 3) {
+    if (parts.length !== 2 && parts.length !== 3) {
       throw new Error(`Invalid Coder SSH authority. Must be: <username>--<workspace>--<agent?>`)
     }
     const workspaceName = `${parts[0]}/${parts[1]}`
