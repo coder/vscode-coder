@@ -2,6 +2,7 @@ import { Api } from "coder/site/src/api/api"
 import { getErrorMessage } from "coder/site/src/api/errors"
 import { User, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
+import { makeCoderSdk } from "./api"
 import { extractAgents } from "./api-helper"
 import { CertificateError } from "./error"
 import { Remote } from "./remote"
@@ -94,7 +95,10 @@ export class Commands {
     if (!url) {
       return
     }
-    this.restClient.setHost(url)
+
+    // Use a temporary client to avoid messing with the global one while trying
+    // to log in.
+    const restClient = await makeCoderSdk(url, undefined, this.storage)
 
     let user: User | undefined
     let token: string | undefined = args.length >= 2 ? args[1] : undefined
@@ -112,9 +116,9 @@ export class Commands {
         value: await this.storage.getSessionToken(),
         ignoreFocusOut: true,
         validateInput: async (value) => {
-          this.restClient.setSessionToken(value)
+          restClient.setSessionToken(value)
           try {
-            user = await this.restClient.getAuthenticatedUser()
+            user = await restClient.getAuthenticatedUser()
             if (!user) {
               throw new Error("Failed to get authenticated user")
             }
@@ -144,6 +148,10 @@ export class Commands {
     if (!token || !user) {
       return
     }
+
+    // The URL and token are good; authenticate the global client.
+    this.restClient.setHost(url)
+    this.restClient.setSessionToken(token)
 
     // Store these to be used in later sessions and in the cli.
     await this.storage.setURL(url)
