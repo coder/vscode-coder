@@ -14,16 +14,17 @@ import * as ws from "ws"
 import { makeCoderSdk } from "./api"
 import { Commands } from "./commands"
 import { getHeaderCommand } from "./headers"
-import { SSHConfig, SSHValues, defaultSSHConfigResponse, mergeSSHConfigValues } from "./sshConfig"
+import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
+import { toSafeHost } from "./util"
 import { supportsCoderAgentLogDirFlag } from "./version"
 import { WorkspaceAction } from "./workspaceAction"
 
 export class Remote {
   // Prefix is a magic string that is prepended to SSH hosts to indicate that
   // they should be handled by this extension.
-  public static readonly Prefix = "coder-vscode--"
+  public static readonly Prefix = "coder-vscode"
 
   public constructor(
     private readonly vscodeProposed: typeof vscode,
@@ -42,8 +43,9 @@ export class Remote {
     }
     const sshAuthority = authorityParts[1].substring(Remote.Prefix.length)
 
-    // Authorities are in the format:
-    // coder-vscode--<username>--<workspace>--<agent>
+    // Authorities are in one of two formats:
+    // coder-vscode--<username>--<workspace>--<agent> (old style)
+    // coder-vscode.<label>--<username>--<workspace>--<agent>
     // The agent can be omitted; the user will be prompted for it instead.
     const parts = sshAuthority.split("--")
     if (parts.length !== 2 && parts.length !== 3) {
@@ -81,6 +83,7 @@ export class Remote {
     }
 
     const baseUrl = new URL(baseUrlRaw)
+    const safeHost = toSafeHost(baseUrlRaw) // Deployment label.
     const token = await this.storage.getSessionToken()
     const restClient = await makeCoderSdk(baseUrlRaw, token, this.storage)
     // Store for use in commands.
@@ -509,7 +512,7 @@ export class Remote {
     // If we didn't write to the SSH config file, connecting would fail with
     // "Host not found".
     try {
-      await this.updateSSHConfig(restClient, authorityParts[1], hasCoderLogs)
+      await this.updateSSHConfig(restClient, safeHost, authorityParts[1], hasCoderLogs)
     } catch (error) {
       this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
       throw error
@@ -544,8 +547,8 @@ export class Remote {
 
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
-  private async updateSSHConfig(restClient: Api, hostName: string, hasCoderLogs = false) {
-    let deploymentSSHConfig = defaultSSHConfigResponse
+  private async updateSSHConfig(restClient: Api, label: string, hostName: string, hasCoderLogs = false) {
+    let deploymentSSHConfig = {}
     try {
       const deploymentConfig = await restClient.getDeploymentSSHConfig()
       deploymentSSHConfig = deploymentConfig.ssh_config_options
@@ -641,7 +644,7 @@ export class Remote {
       logArg = ` --log-dir ${escape(this.storage.getLogPath())}`
     }
     const sshValues: SSHValues = {
-      Host: `${Remote.Prefix}*`,
+      Host: label ? `${Remote.Prefix}.${label}--*` : `${RemotePrefix}--*`,
       ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
       )}${logArg} --session-token-file ${escape(this.storage.getSessionTokenPath())} --url-file ${escape(
@@ -658,7 +661,7 @@ export class Remote {
       sshValues.SetEnv = " CODER_SSH_SESSION_TYPE=vscode"
     }
 
-    await sshConfig.update(sshValues, sshConfigOverrides)
+    await sshConfig.update(label, sshValues, sshConfigOverrides)
 
     // A user can provide a "Host *" entry in their SSH config to add options
     // to all hosts. We need to ensure that the options we set are not

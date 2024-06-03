@@ -7,6 +7,7 @@ import { extractAgents } from "./api-helper"
 import { CertificateError } from "./error"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
+import { toSafeHost } from "./util"
 import { OpenableTreeItem } from "./workspacesProvider"
 
 export class Commands {
@@ -272,13 +273,19 @@ export class Commands {
   /**
    * Open a workspace or agent that is showing in the sidebar.
    *
-   * This essentially just builds the host name and passes it to the VS Code
-   * Remote SSH extension, so it is not necessary to be logged in, although then
-   * the sidebar would not have any workspaces in it anyway.
+   * This builds the host name and passes it to the VS Code Remote SSH
+   * extension.
+
+   * Throw if not logged into a deployment.
    */
   public async openFromSidebar(treeItem: OpenableTreeItem) {
     if (treeItem) {
+      const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL
+      if (!baseUrl) {
+        throw new Error("You are not logged in")
+      }
       await openWorkspace(
+        baseUrl,
         treeItem.workspaceOwner,
         treeItem.workspaceName,
         treeItem.workspaceAgent,
@@ -291,7 +298,7 @@ export class Commands {
   /**
    * Open a workspace belonging to the currently logged-in deployment.
    *
-   * This must only be called if logged into a deployment.
+   * Throw if not logged into a deployment.
    */
   public async open(...args: unknown[]): Promise<void> {
     let workspaceOwner: string
@@ -299,6 +306,11 @@ export class Commands {
     let workspaceAgent: string | undefined
     let folderPath: string | undefined
     let openRecent: boolean | undefined
+
+    const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL
+    if (!baseUrl) {
+      throw new Error("You are not logged in")
+    }
 
     if (args.length === 0) {
       const quickPick = vscode.window.createQuickPick()
@@ -411,7 +423,7 @@ export class Commands {
       openRecent = args[4] as boolean | undefined
     }
 
-    await openWorkspace(workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
+    await openWorkspace(baseUrl, workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
   }
 
   /**
@@ -439,9 +451,10 @@ export class Commands {
 
 /**
  * Given a workspace, build the host name, find a directory to open, and pass
- * both to the Remote SSH plugin.
+ * both to the Remote SSH plugin in the form of a remote authority URI.
  */
 async function openWorkspace(
+  baseUrl: string,
   workspaceOwner: string,
   workspaceName: string,
   workspaceAgent: string | undefined,
@@ -450,7 +463,7 @@ async function openWorkspace(
 ) {
   // A workspace can have multiple agents, but that's handled
   // when opening a workspace unless explicitly specified.
-  let remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}`
+  let remoteAuthority = `ssh-remote+${Remote.Prefix}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`
   if (workspaceAgent) {
     remoteAuthority += `--${workspaceAgent}`
   }
