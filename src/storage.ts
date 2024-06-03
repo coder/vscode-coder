@@ -1,6 +1,4 @@
-import axios from "axios"
-import { getBuildInfo } from "coder/site/src/api/api"
-import { Workspace } from "coder/site/src/api/typesGenerated"
+import { Api } from "coder/site/src/api/api"
 import { createWriteStream } from "fs"
 import fs from "fs/promises"
 import { ensureDir } from "fs-extra"
@@ -16,9 +14,6 @@ import { getHeaderCommand, getHeaders } from "./headers"
 const MAX_URLS = 10
 
 export class Storage {
-  public workspace?: Workspace
-  public workspaceLogPath?: string
-
   constructor(
     private readonly output: vscode.OutputChannel,
     private readonly memento: vscode.Memento,
@@ -28,25 +23,15 @@ export class Storage {
   ) {}
 
   /**
-   * Set the URL and session token on the Axios client and on disk for the cli
-   * if they are set.
-   */
-  public async init(): Promise<void> {
-    await this.updateURL(this.getURL())
-    await this.updateSessionToken()
-  }
-
-  /**
    * Add the URL to the list of recently accessed URLs in global storage, then
-   * set it as the current URL and update it on the Axios client and on disk for
-   * the cli.
+   * set it as the last used URL and update it on disk for the cli.
    *
    * If the URL is falsey, then remove it as the currently accessed URL and do
    * not touch the history.
    */
   public async setURL(url?: string): Promise<void> {
     await this.memento.update("url", url)
-    this.updateURL(url)
+    this.updateUrl(url)
     if (url) {
       const history = this.withUrlHistory(url)
       await this.memento.update("urlHistory", history)
@@ -54,9 +39,9 @@ export class Storage {
   }
 
   /**
-   * Get the currently configured URL.
+   * Get the last used URL.
    */
-  public getURL(): string | undefined {
+  public getUrl(): string | undefined {
     return this.memento.get("url")
   }
 
@@ -78,17 +63,22 @@ export class Storage {
     return urls.size > MAX_URLS ? Array.from(urls).slice(urls.size - MAX_URLS, urls.size) : Array.from(urls)
   }
 
-  public setSessionToken(sessionToken?: string): Thenable<void> {
+  /**
+   * Set or unset the last used token and update it on disk for the cli.
+   */
+  public async setSessionToken(sessionToken?: string): Promise<void> {
     if (!sessionToken) {
-      return this.secrets.delete("sessionToken").then(() => {
-        return this.updateSessionToken()
-      })
+      await this.secrets.delete("sessionToken")
+      this.updateSessionToken(undefined)
+    } else {
+      await this.secrets.store("sessionToken", sessionToken)
+      this.updateSessionToken(sessionToken)
     }
-    return this.secrets.store("sessionToken", sessionToken).then(() => {
-      return this.updateSessionToken()
-    })
   }
 
+  /**
+   * Get the last used token.
+   */
   public async getSessionToken(): Promise<string | undefined> {
     try {
       return await this.secrets.get("sessionToken")
@@ -119,18 +109,16 @@ export class Storage {
   }
 
   /**
-   * Download and return the path to a working binary.  If there is already a
-   * working binary and it matches the server version, return that, skipping the
-   * download.  If it does not match but downloads are disabled, return whatever
-   * we have and log a warning.  Otherwise throw if unable to download a working
-   * binary, whether because of network issues or downloads being disabled.
+   * Download and return the path to a working binary using the provided client.
+   * If there is already a working binary and it matches the server version,
+   * return that, skipping the download.  If it does not match but downloads are
+   * disabled, return whatever we have and log a warning.  Otherwise throw if
+   * unable to download a working binary, whether because of network issues or
+   * downloads being disabled.
    */
-  public async fetchBinary(): Promise<string> {
-    const baseURL = this.getURL()
-    if (!baseURL) {
-      throw new Error("Must be logged in!")
-    }
-    this.output.appendLine(`Using deployment URL: ${baseURL}`)
+  public async fetchBinary(restClient: Api): Promise<string> {
+    const baseUrl = restClient.getAxiosInstance().defaults.baseURL
+    this.output.appendLine(`Using deployment URL: ${baseUrl}`)
 
     // Settings can be undefined when set to their defaults (true in this case),
     // so explicitly check against false.
@@ -139,13 +127,13 @@ export class Storage {
 
     // Get the build info to compare with the existing binary version, if any,
     // and to log for debugging.
-    const buildInfo = await getBuildInfo()
+    const buildInfo = await restClient.getBuildInfo()
     this.output.appendLine(`Got server version: ${buildInfo.version}`)
 
     // Check if there is an existing binary and whether it looks valid.  If it
     // is valid and matches the server, or if it does not match the server but
     // downloads are disabled, we can return early.
-    const binPath = this.binaryPath()
+    const binPath = path.join(this.getBinaryCachePath(), cli.name())
     this.output.appendLine(`Using binary path: ${binPath}`)
     const stat = await cli.stat(binPath)
     if (stat === undefined) {
@@ -200,9 +188,9 @@ export class Storage {
 
     // Make the download request.
     const controller = new AbortController()
-    const resp = await axios.get(binSource, {
+    const resp = await restClient.getAxiosInstance().get(binSource, {
       signal: controller.signal,
-      baseURL: baseURL,
+      baseURL: baseUrl,
       responseType: "stream",
       headers: {
         "Accept-Encoding": "gzip",
@@ -234,7 +222,7 @@ export class Storage {
         const completed = await vscode.window.withProgress<boolean>(
           {
             location: vscode.ProgressLocation.Notification,
-            title: `Downloading ${buildInfo.version} from ${axios.getUri(resp.config)} to ${binPath}`,
+            title: `Downloading ${buildInfo.version} from ${baseUrl} to ${binPath}`,
             cancellable: true,
           },
           async (progress, token) => {
@@ -388,10 +376,16 @@ export class Storage {
     return path.join(this.globalStorageUri.fsPath, "..", "..", "..", "User", "settings.json")
   }
 
+  /**
+   * Return the path to the session token file for the cli.
+   */
   public getSessionTokenPath(): string {
     return path.join(this.globalStorageUri.fsPath, "session_token")
   }
 
+  /**
+   * Return the path to the URL file for the cli.
+   */
   public getURLPath(): string {
     return path.join(this.globalStorageUri.fsPath, "url")
   }
@@ -405,11 +399,10 @@ export class Storage {
   }
 
   /**
-   * Set the URL on the global Axios client and write the URL to disk which will
-   * be used by the CLI via --url-file.
+   * Update or remove the URL on disk which can be used by the CLI via
+   * --url-file.
    */
-  private async updateURL(url: string | undefined): Promise<void> {
-    axios.defaults.baseURL = url
+  private async updateUrl(url: string | undefined): Promise<void> {
     if (url) {
       await ensureDir(this.globalStorageUri.fsPath)
       await fs.writeFile(this.getURLPath(), url)
@@ -418,23 +411,23 @@ export class Storage {
     }
   }
 
-  private binaryPath(): string {
-    return path.join(this.getBinaryCachePath(), cli.name())
-  }
-
-  private async updateSessionToken() {
-    const token = await this.getSessionToken()
+  /**
+   * Update or remove the session token on disk which can be used by the CLI
+   * via --session-token-file.
+   */
+  private async updateSessionToken(token: string | undefined) {
     if (token) {
-      axios.defaults.headers.common["Coder-Session-Token"] = token
       await ensureDir(this.globalStorageUri.fsPath)
       await fs.writeFile(this.getSessionTokenPath(), token)
     } else {
-      delete axios.defaults.headers.common["Coder-Session-Token"]
       await fs.rm(this.getSessionTokenPath(), { force: true })
     }
   }
 
-  public async getHeaders(url = this.getURL()): Promise<Record<string, string>> {
+  /**
+   * Run the header command and return the generated headers.
+   */
+  public async getHeaders(url: string | undefined): Promise<Record<string, string>> {
     return getHeaders(url, getHeaderCommand(vscode.workspace.getConfiguration()), this)
   }
 }
