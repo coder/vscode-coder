@@ -5,9 +5,8 @@ import * as vscode from "vscode"
 import { makeCoderSdk } from "./api"
 import { extractAgents } from "./api-helper"
 import { CertificateError } from "./error"
-import { Remote } from "./remote"
 import { Storage } from "./storage"
-import { toSafeHost } from "./util"
+import { AuthorityPrefix, toSafeHost } from "./util"
 import { OpenableTreeItem } from "./workspacesProvider"
 
 export class Commands {
@@ -475,7 +474,7 @@ async function openWorkspace(
 ) {
   // A workspace can have multiple agents, but that's handled
   // when opening a workspace unless explicitly specified.
-  let remoteAuthority = `ssh-remote+${Remote.Prefix}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`
+  let remoteAuthority = `ssh-remote+${AuthorityPrefix}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`
   if (workspaceAgent) {
     remoteAuthority += `--${workspaceAgent}`
   }

@@ -118,7 +118,7 @@ export class Storage {
   public async fetchBinary(restClient: Api, label: string | string): Promise<string> {
     const baseUrl = restClient.getAxiosInstance().defaults.baseURL
     this.output.appendLine(`Using deployment URL: ${baseUrl}`)
-    this.output.appendLine(`Using deployment label: ${label}`)
+    this.output.appendLine(`Using deployment label: ${label || "n/a"}`)
 
     // Settings can be undefined when set to their defaults (true in this case),
     // so explicitly check against false.
@@ -456,6 +456,23 @@ export class Storage {
       await fs.writeFile(tokenPath, token)
     } else {
       await fs.rm(tokenPath, { force: true })
+    }
+  }
+
+  /**
+   * Read the CLI config for a deployment with the provided label.
+   *
+   * IF a config file does not exist, return an empty string.
+   *
+   * If the label is empty, read the old deployment-unaware config.
+   */
+  public async readCliConfig(label: string): Promise<{ url: string; token: string }> {
+    const urlPath = this.getURLPath(label)
+    const tokenPath = this.getSessionTokenPath(label)
+    const [url, token] = await Promise.allSettled([fs.readFile(urlPath, "utf8"), fs.readFile(tokenPath, "utf8")])
+    return {
+      url: url.status === "fulfilled" ? url.value : "",
+      token: token.status === "fulfilled" ? token.value : "",
     }
   }
 

@@ -17,15 +17,11 @@ import { getHeaderCommand } from "./headers"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
-import { toSafeHost } from "./util"
+import { AuthorityPrefix, parseRemoteAuthority } from "./util"
 import { supportsCoderAgentLogDirFlag } from "./version"
 import { WorkspaceAction } from "./workspaceAction"
 
 export class Remote {
-  // Prefix is a magic string that is prepended to SSH hosts to indicate that
-  // they should be handled by this extension.
-  public static readonly Prefix = "coder-vscode"
-
   public constructor(
     private readonly vscodeProposed: typeof vscode,
     private readonly storage: Storage,
@@ -34,34 +30,19 @@ export class Remote {
   ) {}
 
   public async setup(remoteAuthority: string): Promise<vscode.Disposable | undefined> {
-    const authorityParts = remoteAuthority.split("+")
-    // If the URI passed doesn't have the proper prefix ignore it. We don't need
-    // to do anything special, because this isn't trying to open a Coder
-    // workspace.
-    if (!authorityParts[1].startsWith(Remote.Prefix)) {
+    const parts = parseRemoteAuthority(remoteAuthority)
+    if (!parts) {
+      // Not a Coder host.
       return
     }
-    const sshAuthority = authorityParts[1].substring(Remote.Prefix.length)
 
-    // Authorities are in one of two formats:
-    // coder-vscode--<username>--<workspace>--<agent> (old style)
-    // coder-vscode.<label>--<username>--<workspace>--<agent>
-    // The agent can be omitted; the user will be prompted for it instead.
-    const parts = sshAuthority.split("--")
-    if (parts.length !== 2 && parts.length !== 3) {
-      throw new Error(`Invalid Coder SSH authority. Must be: <username>--<workspace>--<agent?>`)
-    }
-    const workspaceName = `${parts[0]}/${parts[1]}`
+    const workspaceName = `${parts.username}/${parts.workspace}`
 
-    // It is possible to connect to any previously connected workspace, which
-    // might not belong to the deployment the plugin is currently logged into.
-    // For that reason, create a separate REST client instead of using the
-    // global one generally used by the plugin.  For now this is not actually
-    // useful because we are using the the current URL and token anyway, but in
-    // a future PR we will store these per deployment and grab the right one
-    // based on the host name of the workspace to which we are connecting.
-    const baseUrlRaw = this.storage.getUrl()
-    if (!baseUrlRaw) {
+    // Get the URL and token belonging to this host.
+    const { url: baseUrlRaw, token } = await this.storage.readCliConfig(parts.label)
+
+    // It could be that the cli config was deleted.  If so, ask for the url.
+    if (!baseUrlRaw || !token) {
       const result = await this.vscodeProposed.window.showInformationMessage(
         "You are not logged in...",
         {
@@ -76,15 +57,16 @@ export class Remote {
         await this.closeRemote()
       } else {
         // Log in then try again.
-        await vscode.commands.executeCommand("coder.login")
+        await vscode.commands.executeCommand("coder.login", baseUrlRaw)
         await this.setup(remoteAuthority)
       }
       return
     }
 
-    const baseUrl = new URL(baseUrlRaw)
-    const safeHost = toSafeHost(baseUrlRaw) // Deployment label.
-    const token = await this.storage.getSessionToken()
+    // It is possible to connect to any previously connected workspace, which
+    // might not belong to the deployment the plugin is currently logged into.
+    // For that reason, create a separate REST client instead of using the
+    // global one generally used by the plugin.
     const restClient = await makeCoderSdk(baseUrlRaw, token, this.storage)
     // Store for use in commands.
     this.commands.workspaceRestClient = restClient
@@ -116,7 +98,7 @@ export class Remote {
     // Next is to find the workspace from the URI scheme provided.
     let workspace: Workspace
     try {
-      workspace = await restClient.getWorkspaceByOwnerAndName(parts[0], parts[1])
+      workspace = await restClient.getWorkspaceByOwnerAndName(parts.username, parts.workspace)
       this.commands.workspace = workspace
     } catch (error) {
       if (!isAxiosError(error)) {
@@ -235,24 +217,30 @@ export class Remote {
         path += `&after=${logs[logs.length - 1].id}`
       }
       await new Promise<void>((resolve, reject) => {
-        const proto = baseUrl.protocol === "https:" ? "wss:" : "ws:"
-        const socket = new ws.WebSocket(new URL(`${proto}//${baseUrl.host}${path}`), {
-          headers: {
-            "Coder-Session-Token": token,
-          },
-        })
-        socket.binaryType = "nodebuffer"
-        socket.on("message", (data) => {
-          const buf = data as Buffer
-          const log = JSON.parse(buf.toString()) as ProvisionerJobLog
-          writeEmitter.fire(log.output + "\r\n")
-        })
-        socket.on("error", (err) => {
-          reject(err)
-        })
-        socket.on("close", () => {
-          resolve()
-        })
+        try {
+          const baseUrl = new URL(baseUrlRaw)
+          const proto = baseUrl.protocol === "https:" ? "wss:" : "ws:"
+          const socket = new ws.WebSocket(new URL(`${proto}//${baseUrl.host}${path}`), {
+            headers: {
+              "Coder-Session-Token": token,
+            },
+          })
+          socket.binaryType = "nodebuffer"
+          socket.on("message", (data) => {
+            const buf = data as Buffer
+            const log = JSON.parse(buf.toString()) as ProvisionerJobLog
+            writeEmitter.fire(log.output + "\r\n")
+          })
+          socket.on("error", (err) => {
+            reject(err)
+          })
+          socket.on("close", () => {
+            resolve()
+          })
+        } catch (error) {
+          // If this errors, it is probably a malformed URL.
+          reject(error)
+        }
       })
       writeEmitter.fire("Build complete")
       workspace = await restClient.getWorkspace(workspace.id)
@@ -268,7 +256,7 @@ export class Remote {
           `This workspace is stopped!`,
           {
             modal: true,
-            detail: `Click below to start and open ${parts[0]}/${parts[1]}.`,
+            detail: `Click below to start and open ${workspaceName}.`,
             useCustom: true,
           },
           "Start Workspace",
@@ -286,28 +274,26 @@ export class Remote {
       return acc.concat(resource.agents || [])
     }, [] as WorkspaceAgent[])
 
-    let agent: WorkspaceAgent | undefined
-
-    if (parts.length === 2) {
+    // With no agent specified, pick the first one.  Otherwise choose the
+    // matching agent.
+    let agent: WorkspaceAgent
+    if (!parts.agent) {
       if (agents.length === 1) {
         agent = agents[0]
+      } else {
+        // TODO: Show the agent selector here instead.
+        throw new Error("Invalid Coder SSH authority. An agent must be specified when there are multiple.")
       }
-
-      // If there are multiple agents, we should select one here! TODO: Support
-      // multiple agents!
-    }
-
-    if (!agent) {
-      const matchingAgents = agents.filter((agent) => agent.name === parts[2])
+    } else {
+      const matchingAgents = agents.filter((agent) => agent.name === parts.agent)
       if (matchingAgents.length !== 1) {
-        // TODO: Show the agent selector here instead!
-        throw new Error(`Invalid Coder SSH authority. Agent not found!`)
+        // TODO: Show the agent selector here instead.
+        throw new Error("Invalid Coder SSH authority. Agent not found.")
       }
       agent = matchingAgents[0]
     }
 
     // Do some janky setting manipulation.
-    const hostname = authorityParts[1]
     const remotePlatforms = this.vscodeProposed.workspace
       .getConfiguration()
       .get<Record<string, string>>("remote.SSH.remotePlatform", {})
@@ -330,8 +316,8 @@ export class Remote {
     // Add the remote platform for this host to bypass a step where VS Code asks
     // the user for the platform.
     let mungedPlatforms = false
-    if (!remotePlatforms[hostname] || remotePlatforms[hostname] !== agent.operating_system) {
-      remotePlatforms[hostname] = agent.operating_system
+    if (!remotePlatforms[parts.host] || remotePlatforms[parts.host] !== agent.operating_system) {
+      remotePlatforms[parts.host] = agent.operating_system
       settingsContent = jsonc.applyEdits(
         settingsContent,
         jsonc.modify(settingsContent, ["remote.SSH.remotePlatform"], remotePlatforms, {}),
@@ -512,7 +498,7 @@ export class Remote {
     // If we didn't write to the SSH config file, connecting would fail with
     // "Host not found".
     try {
-      await this.updateSSHConfig(restClient, safeHost, authorityParts[1], hasCoderLogs)
+      await this.updateSSHConfig(restClient, parts.label, parts.host, hasCoderLogs)
     } catch (error) {
       this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
       throw error
@@ -644,7 +630,7 @@ export class Remote {
       logArg = ` --log-dir ${escape(this.storage.getLogPath())}`
     }
     const sshValues: SSHValues = {
-      Host: label ? `${Remote.Prefix}.${label}--*` : `${RemotePrefix}--*`,
+      Host: label ? `${AuthorityPrefix}.${label}--*` : `${AuthorityPrefix}--*`,
       ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
       )}${logArg} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
