@@ -40,7 +40,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const storage = new Storage(output, ctx.globalState, ctx.secrets, ctx.globalStorageUri, ctx.logUri)
 
   // This client tracks the current login and will be used through the life of
-  // the plugin to poll workspaces for the current login.
+  // the plugin to poll workspaces for the current login, as well as being used
+  // in commands that operate on the current login.
   const url = storage.getUrl()
   const restClient = await makeCoderSdk(url || "", await storage.getSessionToken(), storage)
 
@@ -57,33 +58,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     myWorkspacesProvider.setVisibility(event.visible)
   })
 
-  if (url) {
-    restClient
-      .getAuthenticatedUser()
-      .then(async (user) => {
-        if (user && user.roles) {
-          vscode.commands.executeCommand("setContext", "coder.authenticated", true)
-          if (user.roles.find((role) => role.name === "owner")) {
-            await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
-          }
-
-          // Fetch and monitor workspaces, now that we know the client is good.
-          myWorkspacesProvider.fetchAndRefresh()
-          allWorkspacesProvider.fetchAndRefresh()
-        }
-      })
-      .catch((error) => {
-        // This should be a failure to make the request, like the header command
-        // errored.
-        vscodeProposed.window.showErrorMessage("Failed to check user authentication: " + error.message)
-      })
-      .finally(() => {
-        vscode.commands.executeCommand("setContext", "coder.loaded", true)
-      })
-  } else {
-    vscode.commands.executeCommand("setContext", "coder.loaded", true)
-  }
-
+  // Handle vscode:// URIs.
   vscode.window.registerUriHandler({
     handleUri: async (uri) => {
       const params = new URLSearchParams(uri.query)
@@ -127,12 +102,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         await storage.configureCli(toSafeHost(url), url, token)
 
         vscode.commands.executeCommand("coder.open", owner, workspace, agent, folder, openRecent)
+      } else {
+        throw new Error(`Unknown path ${uri.path}`)
       }
     },
   })
 
+  // Register globally available commands.  Many of these have visibility
+  // controlled by contexts, see `when` in the package.json.
   const commands = new Commands(vscodeProposed, restClient, storage)
-
   vscode.commands.registerCommand("coder.login", commands.login.bind(commands))
   vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))
   vscode.commands.registerCommand("coder.open", commands.open.bind(commands))
@@ -153,38 +131,71 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
   // in package.json we're able to perform actions before the authority is
   // resolved by the remote SSH extension.
-  if (!vscodeProposed.env.remoteAuthority) {
-    return
-  }
-  const remote = new Remote(vscodeProposed, storage, commands, ctx.extensionMode)
-  try {
-    await remote.setup(vscodeProposed.env.remoteAuthority)
-  } catch (ex) {
-    if (ex instanceof CertificateError) {
-      await ex.showModal("Failed to open workspace")
-    } else if (isAxiosError(ex)) {
-      const msg = getErrorMessage(ex, "")
-      const detail = getErrorDetail(ex)
-      const urlString = axios.getUri(ex.response?.config)
-      let path = urlString
-      try {
-        path = new URL(urlString).pathname
-      } catch (e) {
-        // ignore, default to full url
+  if (vscodeProposed.env.remoteAuthority) {
+    const remote = new Remote(vscodeProposed, storage, commands, ctx.extensionMode)
+    try {
+      const details = await remote.setup(vscodeProposed.env.remoteAuthority)
+      if (details) {
+        // Authenticate the plugin client which is used in the sidebar to display
+        // workspaces belonging to this deployment.
+        restClient.setHost(details.url)
+        restClient.setSessionToken(details.token)
       }
-      await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-        detail: `API ${ex.response?.config.method?.toUpperCase()} to '${path}' failed with code ${ex.response?.status}.\nMessage: ${msg}\nDetail: ${detail}`,
-        modal: true,
-        useCustom: true,
-      })
-    } else {
-      await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-        detail: (ex as string).toString(),
-        modal: true,
-        useCustom: true,
-      })
+    } catch (ex) {
+      if (ex instanceof CertificateError) {
+        await ex.showModal("Failed to open workspace")
+      } else if (isAxiosError(ex)) {
+        const msg = getErrorMessage(ex, "")
+        const detail = getErrorDetail(ex)
+        const urlString = axios.getUri(ex.response?.config)
+        let path = urlString
+        try {
+          path = new URL(urlString).pathname
+        } catch (e) {
+          // ignore, default to full url
+        }
+        await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+          detail: `API ${ex.response?.config.method?.toUpperCase()} to '${path}' failed with code ${ex.response?.status}.\nMessage: ${msg}\nDetail: ${detail}`,
+          modal: true,
+          useCustom: true,
+        })
+      } else {
+        await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+          detail: (ex as string).toString(),
+          modal: true,
+          useCustom: true,
+        })
+      }
+      // Always close remote session when we fail to open a workspace.
+      await remote.closeRemote()
     }
-    // Always close remote session when we fail to open a workspace.
-    await remote.closeRemote()
+  }
+
+  // See if the plugin client is authenticated.
+  if (restClient.getAxiosInstance().defaults.baseURL) {
+    restClient
+      .getAuthenticatedUser()
+      .then(async (user) => {
+        if (user && user.roles) {
+          vscode.commands.executeCommand("setContext", "coder.authenticated", true)
+          if (user.roles.find((role) => role.name === "owner")) {
+            await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
+          }
+
+          // Fetch and monitor workspaces, now that we know the client is good.
+          myWorkspacesProvider.fetchAndRefresh()
+          allWorkspacesProvider.fetchAndRefresh()
+        }
+      })
+      .catch((error) => {
+        // This should be a failure to make the request, like the header command
+        // errored.
+        vscode.window.showErrorMessage("Failed to check user authentication: " + error.message)
+      })
+      .finally(() => {
+        vscode.commands.executeCommand("setContext", "coder.loaded", true)
+      })
+  } else {
+    vscode.commands.executeCommand("setContext", "coder.loaded", true)
   }
 }

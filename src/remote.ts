@@ -21,6 +21,11 @@ import { AuthorityPrefix, parseRemoteAuthority } from "./util"
 import { supportsCoderAgentLogDirFlag } from "./version"
 import { WorkspaceAction } from "./workspaceAction"
 
+export interface RemoteDetails extends vscode.Disposable {
+  url: string
+  token: string
+}
+
 export class Remote {
   public constructor(
     private readonly vscodeProposed: typeof vscode,
@@ -29,7 +34,12 @@ export class Remote {
     private readonly mode: vscode.ExtensionMode,
   ) {}
 
-  public async setup(remoteAuthority: string): Promise<vscode.Disposable | undefined> {
+  /**
+   * Ensure the workspace specified by the remote authority is ready to receive
+   * SSH connections.  Return undefined if the authority is not for a Coder
+   * workspace or when explicitly closing the remote.
+   */
+  public async setup(remoteAuthority: string): Promise<RemoteDetails | undefined> {
     const parts = parseRemoteAuthority(remoteAuthority)
     if (!parts) {
       // Not a Coder host.
@@ -63,16 +73,17 @@ export class Remote {
       return
     }
 
-    // It is possible to connect to any previously connected workspace, which
-    // might not belong to the deployment the plugin is currently logged into.
-    // For that reason, create a separate REST client instead of using the
-    // global one generally used by the plugin.
-    const restClient = await makeCoderSdk(baseUrlRaw, token, this.storage)
+    // We could use the plugin client, but it is possible for the user to log
+    // out or log into a different deployment while still connected, which would
+    // break this connection.  We could force close the remote session or
+    // disallow logging out/in altogether, but for now just use a separate
+    // client to remain unaffected by whatever the plugin is doing.
+    const workspaceRestClient = await makeCoderSdk(baseUrlRaw, token, this.storage)
     // Store for use in commands.
-    this.commands.workspaceRestClient = restClient
+    this.commands.workspaceRestClient = workspaceRestClient
 
     // First thing is to check the version.
-    const buildInfo = await restClient.getBuildInfo()
+    const buildInfo = await workspaceRestClient.getBuildInfo()
     const parsedVersion = semver.parse(buildInfo.version)
     // Server versions before v0.14.1 don't support the vscodessh command!
     if (
@@ -98,7 +109,7 @@ export class Remote {
     // Next is to find the workspace from the URI scheme provided.
     let workspace: Workspace
     try {
-      workspace = await restClient.getWorkspaceByOwnerAndName(parts.username, parts.workspace)
+      workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(parts.username, parts.workspace)
       this.commands.workspace = workspace
     } catch (error) {
       if (!isAxiosError(error)) {
@@ -149,7 +160,7 @@ export class Remote {
     disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name))
 
     // Initialize any WorkspaceAction notifications (auto-off, upcoming deletion)
-    const action = await WorkspaceAction.init(this.vscodeProposed, restClient, this.storage)
+    const action = await WorkspaceAction.init(this.vscodeProposed, workspaceRestClient, this.storage)
 
     // Make sure the workspace has started.
     let buildComplete: undefined | (() => void)
@@ -175,7 +186,7 @@ export class Remote {
           }),
       )
 
-      const latestBuild = await restClient.startWorkspace(workspace.id, versionID)
+      const latestBuild = await workspaceRestClient.startWorkspace(workspace.id, versionID)
       workspace = {
         ...workspace,
         latest_build: latestBuild,
@@ -206,7 +217,7 @@ export class Remote {
         } as Partial<vscode.Pseudoterminal> as any,
       })
       // This fetches the initial bunch of logs.
-      const logs = await restClient.getWorkspaceBuildLogs(workspace.latest_build.id, new Date())
+      const logs = await workspaceRestClient.getWorkspaceBuildLogs(workspace.latest_build.id, new Date())
       logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"))
       terminal.show(true)
       // This follows the logs for new activity!
@@ -243,7 +254,7 @@ export class Remote {
         }
       })
       writeEmitter.fire("Build complete")
-      workspace = await restClient.getWorkspace(workspace.id)
+      workspace = await workspaceRestClient.getWorkspace(workspace.id)
       this.commands.workspace = workspace
       terminal.dispose()
 
@@ -372,10 +383,10 @@ export class Remote {
       if (newWorkspace.outdated) {
         if (!workspace.outdated || !hasShownOutdatedNotification) {
           hasShownOutdatedNotification = true
-          restClient
+          workspaceRestClient
             .getTemplate(newWorkspace.template_id)
             .then((template) => {
-              return restClient.getTemplateVersion(template.active_version_id)
+              return workspaceRestClient.getTemplateVersion(template.active_version_id)
             })
             .then((version) => {
               let infoMessage = `A new version of your workspace is available.`
@@ -384,7 +395,7 @@ export class Remote {
               }
               vscode.window.showInformationMessage(infoMessage, "Update").then((action) => {
                 if (action === "Update") {
-                  vscode.commands.executeCommand("coder.workspace.update", newWorkspace, restClient)
+                  vscode.commands.executeCommand("coder.workspace.update", newWorkspace, workspaceRestClient)
                 }
               })
             })
@@ -498,7 +509,7 @@ export class Remote {
     // If we didn't write to the SSH config file, connecting would fail with
     // "Host not found".
     try {
-      await this.updateSSHConfig(restClient, parts.label, parts.host, hasCoderLogs)
+      await this.updateSSHConfig(workspaceRestClient, parts.label, parts.host, hasCoderLogs)
     } catch (error) {
       this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
       throw error
@@ -522,7 +533,13 @@ export class Remote {
       }),
     )
 
+    // Returning the URL and token allows the plugin to authenticate its own
+    // client, for example to display the list of workspaces belonging to this
+    // deployment in the sidebar.  We use our own client in here for reasons
+    // explained above.
     return {
+      url: baseUrlRaw,
+      token,
       dispose: () => {
         eventSource.close()
         action.cleanupWorkspaceActions()
