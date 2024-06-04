@@ -1,7 +1,6 @@
 import { Api } from "coder/site/src/api/api"
 import { createWriteStream } from "fs"
 import fs from "fs/promises"
-import { ensureDir } from "fs-extra"
 import { IncomingMessage } from "http"
 import path from "path"
 import prettyBytes from "pretty-bytes"
@@ -24,14 +23,13 @@ export class Storage {
 
   /**
    * Add the URL to the list of recently accessed URLs in global storage, then
-   * set it as the last used URL and update it on disk for the cli.
+   * set it as the last used URL.
    *
-   * If the URL is falsey, then remove it as the currently accessed URL and do
-   * not touch the history.
+   * If the URL is falsey, then remove it as the last used URL and do not touch
+   * the history.
    */
   public async setURL(url?: string): Promise<void> {
     await this.memento.update("url", url)
-    this.updateUrl(url)
     if (url) {
       const history = this.withUrlHistory(url)
       await this.memento.update("urlHistory", history)
@@ -64,15 +62,13 @@ export class Storage {
   }
 
   /**
-   * Set or unset the last used token and update it on disk for the cli.
+   * Set or unset the last used token.
    */
   public async setSessionToken(sessionToken?: string): Promise<void> {
     if (!sessionToken) {
       await this.secrets.delete("sessionToken")
-      this.updateSessionToken(undefined)
     } else {
       await this.secrets.store("sessionToken", sessionToken)
-      this.updateSessionToken(sessionToken)
     }
   }
 
@@ -109,16 +105,20 @@ export class Storage {
   }
 
   /**
-   * Download and return the path to a working binary using the provided client.
+   * Download and return the path to a working binary for the deployment with
+   * the provided label using the provided client.  If the label is empty, use
+   * the old deployment-unaware path instead.
+   *
    * If there is already a working binary and it matches the server version,
    * return that, skipping the download.  If it does not match but downloads are
    * disabled, return whatever we have and log a warning.  Otherwise throw if
    * unable to download a working binary, whether because of network issues or
    * downloads being disabled.
    */
-  public async fetchBinary(restClient: Api): Promise<string> {
+  public async fetchBinary(restClient: Api, label: string): Promise<string> {
     const baseUrl = restClient.getAxiosInstance().defaults.baseURL
     this.output.appendLine(`Using deployment URL: ${baseUrl}`)
+    this.output.appendLine(`Using deployment label: ${label || "n/a"}`)
 
     // Settings can be undefined when set to their defaults (true in this case),
     // so explicitly check against false.
@@ -133,7 +133,7 @@ export class Storage {
     // Check if there is an existing binary and whether it looks valid.  If it
     // is valid and matches the server, or if it does not match the server but
     // downloads are disabled, we can return early.
-    const binPath = path.join(this.getBinaryCachePath(), cli.name())
+    const binPath = path.join(this.getBinaryCachePath(label), cli.name())
     this.output.appendLine(`Using binary path: ${binPath}`)
     const stat = await cli.stat(binPath)
     if (stat === undefined) {
@@ -351,13 +351,21 @@ export class Storage {
     }
   }
 
-  // getBinaryCachePath returns the path where binaries are cached.
-  // The caller must ensure it exists before use.
-  public getBinaryCachePath(): string {
+  /**
+   * Return the directory for a deployment with the provided label to where its
+   * binary is cached.
+   *
+   * If the label is empty, read the old deployment-unaware config instead.
+   *
+   * The caller must ensure this directory exists before use.
+   */
+  public getBinaryCachePath(label: string): string {
     const configPath = vscode.workspace.getConfiguration().get("coder.binaryDestination")
     return configPath && String(configPath).trim().length > 0
       ? path.resolve(String(configPath))
-      : path.join(this.globalStorageUri.fsPath, "bin")
+      : label
+        ? path.join(this.globalStorageUri.fsPath, label, "bin")
+        : path.join(this.globalStorageUri.fsPath, "bin")
   }
 
   // getNetworkInfoPath returns the path where network information
@@ -377,17 +385,31 @@ export class Storage {
   }
 
   /**
-   * Return the path to the session token file for the cli.
+   * Return the directory for the deployment with the provided label to where
+   * its session token is stored.
+   *
+   * If the label is empty, read the old deployment-unaware config instead.
+   *
+   * The caller must ensure this directory exists before use.
    */
-  public getSessionTokenPath(): string {
-    return path.join(this.globalStorageUri.fsPath, "session_token")
+  public getSessionTokenPath(label: string): string {
+    return label
+      ? path.join(this.globalStorageUri.fsPath, label, "session_token")
+      : path.join(this.globalStorageUri.fsPath, "session_token")
   }
 
   /**
-   * Return the path to the URL file for the cli.
+   * Return the directory for the deployment with the provided label to where
+   * its url is stored.
+   *
+   * If the label is empty, read the old deployment-unaware config instead.
+   *
+   * The caller must ensure this directory exists before use.
    */
-  public getURLPath(): string {
-    return path.join(this.globalStorageUri.fsPath, "url")
+  public getURLPath(label: string): string {
+    return label
+      ? path.join(this.globalStorageUri.fsPath, label, "url")
+      : path.join(this.globalStorageUri.fsPath, "url")
   }
 
   public writeToCoderOutputChannel(message: string) {
@@ -399,28 +421,58 @@ export class Storage {
   }
 
   /**
-   * Update or remove the URL on disk which can be used by the CLI via
-   * --url-file.
+   * Configure the CLI for the deployment with the provided label.
    */
-  private async updateUrl(url: string | undefined): Promise<void> {
+  public async configureCli(label: string, url: string | undefined, token: string | undefined | null) {
+    await Promise.all([this.updateUrlForCli(label, url), this.updateTokenForCli(label, token)])
+  }
+
+  /**
+   * Update or remove the URL for the deployment with the provided label on disk
+   * which can be used by the CLI via --url-file.
+   *
+   * If the label is empty, read the old deployment-unaware config instead.
+   */
+  private async updateUrlForCli(label: string, url: string | undefined): Promise<void> {
+    const urlPath = this.getURLPath(label)
     if (url) {
-      await ensureDir(this.globalStorageUri.fsPath)
-      await fs.writeFile(this.getURLPath(), url)
+      await fs.mkdir(path.dirname(urlPath), { recursive: true })
+      await fs.writeFile(urlPath, url)
     } else {
-      await fs.rm(this.getURLPath(), { force: true })
+      await fs.rm(urlPath, { force: true })
     }
   }
 
   /**
-   * Update or remove the session token on disk which can be used by the CLI
-   * via --session-token-file.
+   * Update or remove the session token for a deployment with the provided label
+   * on disk which can be used by the CLI via --session-token-file.
+   *
+   * If the label is empty, read the old deployment-unaware config instead.
    */
-  private async updateSessionToken(token: string | undefined) {
+  private async updateTokenForCli(label: string, token: string | undefined | null) {
+    const tokenPath = this.getSessionTokenPath(label)
     if (token) {
-      await ensureDir(this.globalStorageUri.fsPath)
-      await fs.writeFile(this.getSessionTokenPath(), token)
+      await fs.mkdir(path.dirname(tokenPath), { recursive: true })
+      await fs.writeFile(tokenPath, token)
     } else {
-      await fs.rm(this.getSessionTokenPath(), { force: true })
+      await fs.rm(tokenPath, { force: true })
+    }
+  }
+
+  /**
+   * Read the CLI config for a deployment with the provided label.
+   *
+   * IF a config file does not exist, return an empty string.
+   *
+   * If the label is empty, read the old deployment-unaware config.
+   */
+  public async readCliConfig(label: string): Promise<{ url: string; token: string }> {
+    const urlPath = this.getURLPath(label)
+    const tokenPath = this.getSessionTokenPath(label)
+    const [url, token] = await Promise.allSettled([fs.readFile(urlPath, "utf8"), fs.readFile(tokenPath, "utf8")])
+    return {
+      url: url.status === "fulfilled" ? url.value : "",
+      token: token.status === "fulfilled" ? token.value : "",
     }
   }
 

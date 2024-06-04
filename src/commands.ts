@@ -5,8 +5,8 @@ import * as vscode from "vscode"
 import { makeCoderSdk } from "./api"
 import { extractAgents } from "./api-helper"
 import { CertificateError } from "./error"
-import { Remote } from "./remote"
 import { Storage } from "./storage"
+import { AuthorityPrefix, toSafeHost } from "./util"
 import { OpenableTreeItem } from "./workspacesProvider"
 
 export class Commands {
@@ -153,9 +153,12 @@ export class Commands {
     this.restClient.setHost(url)
     this.restClient.setSessionToken(token)
 
-    // Store these to be used in later sessions and in the cli.
+    // Store these to be used in later sessions.
     await this.storage.setURL(url)
     await this.storage.setSessionToken(token)
+
+    // Store on disk to be used by the cli.
+    await this.storage.configureCli(toSafeHost(url), url, token)
 
     await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
     if (user.roles.find((role) => role.name === "owner")) {
@@ -197,6 +200,12 @@ export class Commands {
    * Log out from the currently logged-in deployment.
    */
   public async logout(): Promise<void> {
+    const url = this.storage.getUrl()
+    if (!url) {
+      // Sanity check; command should not be available if no url.
+      throw new Error("You are not logged in")
+    }
+
     // Clear from the REST client.  An empty url will indicate to other parts of
     // the code that we are logged out.
     this.restClient.setHost("")
@@ -205,6 +214,9 @@ export class Commands {
     // Clear from memory.
     await this.storage.setURL(undefined)
     await this.storage.setSessionToken(undefined)
+
+    // Clear from disk.
+    await this.storage.configureCli(toSafeHost(url), undefined, undefined)
 
     await vscode.commands.executeCommand("setContext", "coder.authenticated", false)
     vscode.window.showInformationMessage("You've been logged out of Coder!", "Login").then((action) => {
@@ -272,13 +284,19 @@ export class Commands {
   /**
    * Open a workspace or agent that is showing in the sidebar.
    *
-   * This essentially just builds the host name and passes it to the VS Code
-   * Remote SSH extension, so it is not necessary to be logged in, although then
-   * the sidebar would not have any workspaces in it anyway.
+   * This builds the host name and passes it to the VS Code Remote SSH
+   * extension.
+
+   * Throw if not logged into a deployment.
    */
   public async openFromSidebar(treeItem: OpenableTreeItem) {
     if (treeItem) {
+      const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL
+      if (!baseUrl) {
+        throw new Error("You are not logged in")
+      }
       await openWorkspace(
+        baseUrl,
         treeItem.workspaceOwner,
         treeItem.workspaceName,
         treeItem.workspaceAgent,
@@ -291,7 +309,7 @@ export class Commands {
   /**
    * Open a workspace belonging to the currently logged-in deployment.
    *
-   * This must only be called if logged into a deployment.
+   * Throw if not logged into a deployment.
    */
   public async open(...args: unknown[]): Promise<void> {
     let workspaceOwner: string
@@ -299,6 +317,11 @@ export class Commands {
     let workspaceAgent: string | undefined
     let folderPath: string | undefined
     let openRecent: boolean | undefined
+
+    const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL
+    if (!baseUrl) {
+      throw new Error("You are not logged in")
+    }
 
     if (args.length === 0) {
       const quickPick = vscode.window.createQuickPick()
@@ -411,7 +434,7 @@ export class Commands {
       openRecent = args[4] as boolean | undefined
     }
 
-    await openWorkspace(workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
+    await openWorkspace(baseUrl, workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
   }
 
   /**
@@ -439,9 +462,10 @@ export class Commands {
 
 /**
  * Given a workspace, build the host name, find a directory to open, and pass
- * both to the Remote SSH plugin.
+ * both to the Remote SSH plugin in the form of a remote authority URI.
  */
 async function openWorkspace(
+  baseUrl: string,
   workspaceOwner: string,
   workspaceName: string,
   workspaceAgent: string | undefined,
@@ -450,7 +474,7 @@ async function openWorkspace(
 ) {
   // A workspace can have multiple agents, but that's handled
   // when opening a workspace unless explicitly specified.
-  let remoteAuthority = `ssh-remote+${Remote.Prefix}${workspaceOwner}--${workspaceName}`
+  let remoteAuthority = `ssh-remote+${AuthorityPrefix}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`
   if (workspaceAgent) {
     remoteAuthority += `--${workspaceAgent}`
   }
