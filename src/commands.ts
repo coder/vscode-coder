@@ -154,7 +154,7 @@ export class Commands {
     this.restClient.setSessionToken(token)
 
     // Store these to be used in later sessions.
-    await this.storage.setURL(url)
+    await this.storage.setUrl(url)
     await this.storage.setSessionToken(token)
 
     // Store on disk to be used by the cli.
@@ -212,7 +212,7 @@ export class Commands {
     this.restClient.setSessionToken("")
 
     // Clear from memory.
-    await this.storage.setURL(undefined)
+    await this.storage.setUrl(undefined)
     await this.storage.setSessionToken(undefined)
 
     // Clear from disk.

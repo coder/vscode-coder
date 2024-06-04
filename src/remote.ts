@@ -634,7 +634,7 @@ export class Remote {
       ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
       )}${logArg} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
-        this.storage.getURLPath(label),
+        this.storage.getUrlPath(label),
       )} %h`,
       ConnectTimeout: "0",
       StrictHostKeyChecking: "no",

@@ -28,7 +28,7 @@ export class Storage {
    * If the URL is falsey, then remove it as the last used URL and do not touch
    * the history.
    */
-  public async setURL(url?: string): Promise<void> {
+  public async setUrl(url?: string): Promise<void> {
     await this.memento.update("url", url)
     if (url) {
       const history = this.withUrlHistory(url)
@@ -85,9 +85,11 @@ export class Storage {
     }
   }
 
-  // getRemoteSSHLogPath returns the log path for the "Remote - SSH" output panel.
-  // There is no VS Code API to get the contents of an output panel. We use this
-  // to get the active port so we can display network information.
+  /**
+   * Returns the log path for the "Remote - SSH" output panel.  There is no VS
+   * Code API to get the contents of an output panel.  We use this to get the
+   * active port so we can display network information.
+   */
   public async getRemoteSSHLogPath(): Promise<string | undefined> {
     const upperDir = path.dirname(this.logUri.fsPath)
     // Node returns these directories sorted already!
@@ -368,18 +370,30 @@ export class Storage {
         : path.join(this.globalStorageUri.fsPath, "bin")
   }
 
-  // getNetworkInfoPath returns the path where network information
-  // for SSH hosts is stored.
+  /**
+   * Return the path where network information for SSH hosts are stored.
+   *
+   * The CLI will write files here named after the process PID.
+   */
   public getNetworkInfoPath(): string {
     return path.join(this.globalStorageUri.fsPath, "net")
   }
 
-  // getLogPath returns the path where log data from the Coder
-  // agent is stored.
+  /**
+   *
+   * Return the path where log data from the connection is stored.
+   *
+   * The CLI will write files here named after the process PID.
+   */
   public getLogPath(): string {
     return path.join(this.globalStorageUri.fsPath, "log")
   }
 
+  /**
+   * Get the path to the user's settings.json file.
+   *
+   * Going through VSCode's API should be preferred when modifying settings.
+   */
   public getUserSettingsPath(): string {
     return path.join(this.globalStorageUri.fsPath, "..", "..", "..", "User", "settings.json")
   }
@@ -406,7 +420,7 @@ export class Storage {
    *
    * The caller must ensure this directory exists before use.
    */
-  public getURLPath(label: string): string {
+  public getUrlPath(label: string): string {
     return label
       ? path.join(this.globalStorageUri.fsPath, label, "url")
       : path.join(this.globalStorageUri.fsPath, "url")
@@ -434,7 +448,7 @@ export class Storage {
    * If the label is empty, read the old deployment-unaware config instead.
    */
   private async updateUrlForCli(label: string, url: string | undefined): Promise<void> {
-    const urlPath = this.getURLPath(label)
+    const urlPath = this.getUrlPath(label)
     if (url) {
       await fs.mkdir(path.dirname(urlPath), { recursive: true })
       await fs.writeFile(urlPath, url)
@@ -467,7 +481,7 @@ export class Storage {
    * If the label is empty, read the old deployment-unaware config.
    */
   public async readCliConfig(label: string): Promise<{ url: string; token: string }> {
-    const urlPath = this.getURLPath(label)
+    const urlPath = this.getUrlPath(label)
     const tokenPath = this.getSessionTokenPath(label)
     const [url, token] = await Promise.allSettled([fs.readFile(urlPath, "utf8"), fs.readFile(tokenPath, "utf8")])
     return {

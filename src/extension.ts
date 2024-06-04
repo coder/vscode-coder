@@ -110,7 +110,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         const url = await commands.maybeAskUrl(params.get("url"), storage.getUrl())
         if (url) {
           restClient.setHost(url)
-          await storage.setURL(url)
+          await storage.setUrl(url)
         } else {
           throw new Error("url must be provided or specified as a query parameter")
         }
