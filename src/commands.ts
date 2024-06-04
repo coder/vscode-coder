@@ -154,9 +154,12 @@ export class Commands {
     this.restClient.setHost(url)
     this.restClient.setSessionToken(token)
 
-    // Store these to be used in later sessions and in the cli.
+    // Store these to be used in later sessions.
     await this.storage.setURL(url)
     await this.storage.setSessionToken(token)
+
+    // Store on disk to be used by the cli.
+    await this.storage.configureCli(toSafeHost(url), url, token)
 
     await vscode.commands.executeCommand("setContext", "coder.authenticated", true)
     if (user.roles.find((role) => role.name === "owner")) {
@@ -198,6 +201,12 @@ export class Commands {
    * Log out from the currently logged-in deployment.
    */
   public async logout(): Promise<void> {
+    const url = this.storage.getUrl()
+    if (!url) {
+      // Sanity check; command should not be available if no url.
+      throw new Error("You are not logged in")
+    }
+
     // Clear from the REST client.  An empty url will indicate to other parts of
     // the code that we are logged out.
     this.restClient.setHost("")
@@ -206,6 +215,9 @@ export class Commands {
     // Clear from memory.
     await this.storage.setURL(undefined)
     await this.storage.setSessionToken(undefined)
+
+    // Clear from disk.
+    await this.storage.configureCli(toSafeHost(url), undefined, undefined)
 
     await vscode.commands.executeCommand("setContext", "coder.authenticated", false)
     vscode.window.showInformationMessage("You've been logged out of Coder!", "Login").then((action) => {

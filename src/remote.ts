@@ -610,7 +610,7 @@ export class Remote {
 
     let binaryPath: string | undefined
     if (this.mode === vscode.ExtensionMode.Production) {
-      binaryPath = await this.storage.fetchBinary(restClient)
+      binaryPath = await this.storage.fetchBinary(restClient, label)
     } else {
       try {
         // In development, try to use `/tmp/coder` as the binary path.
@@ -618,7 +618,7 @@ export class Remote {
         binaryPath = path.join(os.tmpdir(), "coder")
         await fs.stat(binaryPath)
       } catch (ex) {
-        binaryPath = await this.storage.fetchBinary(restClient)
+        binaryPath = await this.storage.fetchBinary(restClient, label)
       }
     }
 
@@ -647,8 +647,8 @@ export class Remote {
       Host: label ? `${Remote.Prefix}.${label}--*` : `${RemotePrefix}--*`,
       ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
-      )}${logArg} --session-token-file ${escape(this.storage.getSessionTokenPath())} --url-file ${escape(
-        this.storage.getURLPath(),
+      )}${logArg} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
+        this.storage.getURLPath(label),
       )} %h`,
       ConnectTimeout: "0",
       StrictHostKeyChecking: "no",

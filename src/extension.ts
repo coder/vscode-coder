@@ -8,6 +8,7 @@ import { Commands } from "./commands"
 import { CertificateError, getErrorDetail } from "./error"
 import { Remote } from "./remote"
 import { Storage } from "./storage"
+import { toSafeHost } from "./util"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
@@ -108,6 +109,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         // hit enter and move on.
         const url = await commands.maybeAskUrl(params.get("url"), storage.getUrl())
         if (url) {
+          restClient.setHost(url)
           await storage.setURL(url)
         } else {
           throw new Error("url must be provided or specified as a query parameter")
@@ -117,8 +119,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         // prompted to sign in again, so we do not need to ensure it is set.
         const token = params.get("token")
         if (token) {
+          restClient.setSessionToken(token)
           await storage.setSessionToken(token)
         }
+
+        // Store on disk to be used by the cli.
+        await storage.configureCli(toSafeHost(url), url, token)
 
         vscode.commands.executeCommand("coder.open", owner, workspace, agent, folder, openRecent)
       }
