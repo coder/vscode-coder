@@ -115,7 +115,7 @@ export class Storage {
    * unable to download a working binary, whether because of network issues or
    * downloads being disabled.
    */
-  public async fetchBinary(restClient: Api, label: string | string): Promise<string> {
+  public async fetchBinary(restClient: Api, label: string): Promise<string> {
     const baseUrl = restClient.getAxiosInstance().defaults.baseURL
     this.output.appendLine(`Using deployment URL: ${baseUrl}`)
     this.output.appendLine(`Using deployment label: ${label || "n/a"}`)
