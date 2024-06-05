@@ -67,7 +67,7 @@ export class Remote {
         await this.closeRemote()
       } else {
         // Log in then try again.
-        await vscode.commands.executeCommand("coder.login", baseUrlRaw)
+        await vscode.commands.executeCommand("coder.login", baseUrlRaw, undefined, parts.label)
         await this.setup(remoteAuthority)
       }
       return
@@ -149,7 +149,7 @@ export class Remote {
           if (!result) {
             await this.closeRemote()
           } else {
-            await vscode.commands.executeCommand("coder.login", baseUrlRaw)
+            await vscode.commands.executeCommand("coder.login", baseUrlRaw, undefined, parts.label)
             await this.setup(remoteAuthority)
           }
           return
