@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## [v1.0.0](https://github.com/coder/vscode-coder/releases/tag/v1.0.0) (2024-06-05)
+
+### Added
+
+- Support opening workspaces that belong to a different deployment than the one
+  which is currently logged in. This will only work for new connections. If you
+  have an existing connection that errors when connecting because of this,
+  please connect it again using the plugin or the Coder dashboard. Optionally,
+  you may also want to delete your old workspaces from the recents list.
+
+### Fixed
+
+- Escape variables in the header command. If you have a variable in the header
+  command itself, like `echo TEST=$CODER_URL`, it will now work as expected
+  instead of being substituted with a blank or erroneous value.
+
 ## [v0.1.37](https://github.com/coder/vscode-coder/releases/tag/v0.1.37) (2024-05-24)
 
 ### Added
