@@ -284,8 +284,9 @@ export class Remote {
       )
       if (!result) {
         await this.closeRemote()
+      } else {
+        await this.reloadWindow()
       }
-      await this.reloadWindow()
       return
     }
 
