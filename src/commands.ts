@@ -215,9 +215,6 @@ export class Commands {
     await this.storage.setUrl(undefined)
     await this.storage.setSessionToken(undefined)
 
-    // Clear from disk.
-    await this.storage.configureCli(toSafeHost(url), undefined, undefined)
-
     await vscode.commands.executeCommand("setContext", "coder.authenticated", false)
     vscode.window.showInformationMessage("You've been logged out of Coder!", "Login").then((action) => {
       if (action === "Login") {
