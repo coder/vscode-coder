@@ -270,12 +270,14 @@ export class Remote {
       buildComplete()
     }
 
-    if (workspace.latest_build.status === "stopped") {
+    // The workspace should now be running, but it could be stopped if the user
+    // stopped the workspace while connected.
+    if (workspace.latest_build.status !== "running") {
       const result = await this.vscodeProposed.window.showInformationMessage(
-        `This workspace is stopped!`,
+        `${workspaceName} is ${workspace.latest_build.status}`,
         {
           modal: true,
-          detail: `Click below to start and open ${workspaceName}.`,
+          detail: `Click below to start the workspace and reconnect.`,
           useCustom: true,
         },
         "Start Workspace",
@@ -499,16 +501,17 @@ export class Remote {
       this.storage.writeToCoderOutputChannel(`Agent ${agent.name} status is now ${agent.status}`)
     }
 
-    // Make sure agent did not time out.
-    // TODO: Seems like maybe we should check for all the good states rather
-    //       than one bad state?  Agents can error in many ways.
-    if (agent.status === "timeout") {
-      this.storage.writeToCoderOutputChannel(`${workspaceName}/${agent.name} timed out`)
-      const result = await this.vscodeProposed.window.showErrorMessage("Connection timed out...", {
-        useCustom: true,
-        modal: true,
-        detail: `The ${agent.name} agent didn't connect in time. Try restarting your workspace.`,
-      })
+    // Make sure the agent is connected.
+    // TODO: Should account for the lifecycle state as well?
+    if (agent.status !== "connected") {
+      const result = await this.vscodeProposed.window.showErrorMessage(
+        `${workspaceName}/${agent.name} ${agent.status}`,
+        {
+          useCustom: true,
+          modal: true,
+          detail: `The ${agent.name} agent failed to connect. Try restarting your workspace.`,
+        },
+      )
       if (!result) {
         await this.closeRemote()
         return
