@@ -4,6 +4,7 @@ import { getErrorMessage } from "coder/site/src/api/errors"
 import * as module from "module"
 import * as vscode from "vscode"
 import { makeCoderSdk } from "./api"
+import { errToStr } from "./api-helper"
 import { Commands } from "./commands"
 import { CertificateError, getErrorDetail } from "./error"
 import { Remote } from "./remote"
@@ -143,40 +144,45 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       }
     } catch (ex) {
       if (ex instanceof CertificateError) {
+        storage.writeToCoderOutputChannel(ex.x509Err || ex.message)
         await ex.showModal("Failed to open workspace")
       } else if (isAxiosError(ex)) {
-        const msg = getErrorMessage(ex, "")
-        const detail = getErrorDetail(ex)
-        const urlString = axios.getUri(ex.response?.config)
-        let path = urlString
-        try {
-          path = new URL(urlString).pathname
-        } catch (e) {
-          // ignore, default to full url
-        }
+        const msg = getErrorMessage(ex, "None")
+        const detail = getErrorDetail(ex) || "None"
+        const urlString = axios.getUri(ex.config)
+        const method = ex.config?.method?.toUpperCase() || "request"
+        const status = ex.response?.status || "None"
+        const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`
+        storage.writeToCoderOutputChannel(message)
         await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-          detail: `API ${ex.response?.config.method?.toUpperCase()} to '${path}' failed with code ${ex.response?.status}.\nMessage: ${msg}\nDetail: ${detail}`,
+          detail: message,
           modal: true,
           useCustom: true,
         })
       } else {
+        const message = errToStr(ex, "No error message was provided")
+        storage.writeToCoderOutputChannel(message)
         await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-          detail: (ex as string).toString(),
+          detail: message,
           modal: true,
           useCustom: true,
         })
       }
       // Always close remote session when we fail to open a workspace.
       await remote.closeRemote()
+      return
     }
   }
 
   // See if the plugin client is authenticated.
-  if (restClient.getAxiosInstance().defaults.baseURL) {
+  const baseUrl = restClient.getAxiosInstance().defaults.baseURL
+  if (baseUrl) {
+    storage.writeToCoderOutputChannel(`Logged in to ${baseUrl}; checking credentials`)
     restClient
       .getAuthenticatedUser()
       .then(async (user) => {
         if (user && user.roles) {
+          storage.writeToCoderOutputChannel("Credentials are valid")
           vscode.commands.executeCommand("setContext", "coder.authenticated", true)
           if (user.roles.find((role) => role.name === "owner")) {
             await vscode.commands.executeCommand("setContext", "coder.isOwner", true)
@@ -185,17 +191,21 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
           // Fetch and monitor workspaces, now that we know the client is good.
           myWorkspacesProvider.fetchAndRefresh()
           allWorkspacesProvider.fetchAndRefresh()
+        } else {
+          storage.writeToCoderOutputChannel(`No error, but got unexpected response: ${user}`)
         }
       })
       .catch((error) => {
         // This should be a failure to make the request, like the header command
         // errored.
-        vscode.window.showErrorMessage("Failed to check user authentication: " + error.message)
+        storage.writeToCoderOutputChannel(`Failed to check user authentication: ${error.message}`)
+        vscode.window.showErrorMessage(`Failed to check user authentication: ${error.message}`)
       })
       .finally(() => {
         vscode.commands.executeCommand("setContext", "coder.loaded", true)
       })
   } else {
+    storage.writeToCoderOutputChannel("Not currently logged in")
     vscode.commands.executeCommand("setContext", "coder.loaded", true)
   }
 }

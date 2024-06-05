@@ -109,7 +109,11 @@ export class Remote {
     // Next is to find the workspace from the URI scheme provided.
     let workspace: Workspace
     try {
+      this.storage.writeToCoderOutputChannel(`Looking for workspace ${workspaceName}...`)
       workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(parts.username, parts.workspace)
+      this.storage.writeToCoderOutputChannel(
+        `Found workspace ${workspaceName} with status ${workspace.latest_build.status}`,
+      )
       this.commands.workspace = workspace
     } catch (error) {
       if (!isAxiosError(error)) {
@@ -186,11 +190,13 @@ export class Remote {
           }),
       )
 
+      this.storage.writeToCoderOutputChannel(`Trying to start ${workspaceName}...`)
       const latestBuild = await workspaceRestClient.startWorkspace(workspace.id, versionID)
       workspace = {
         ...workspace,
         latest_build: latestBuild,
       }
+      this.storage.writeToCoderOutputChannel(`${workspaceName} is now ${workspace.latest_build.status}`)
       this.commands.workspace = workspace
     }
 
@@ -201,6 +207,7 @@ export class Remote {
       workspace.latest_build.status === "starting" ||
       workspace.latest_build.status === "stopping"
     ) {
+      this.storage.writeToCoderOutputChannel(`Waiting for ${workspaceName}...`)
       const writeEmitter = new vscode.EventEmitter<string>()
       // We use a terminal instead of an output channel because it feels more
       // familiar to a user!
@@ -257,30 +264,31 @@ export class Remote {
       workspace = await workspaceRestClient.getWorkspace(workspace.id)
       this.commands.workspace = workspace
       terminal.dispose()
+    }
 
-      if (buildComplete) {
-        buildComplete()
-      }
+    if (buildComplete) {
+      buildComplete()
+    }
 
-      if (workspace.latest_build.status === "stopped") {
-        const result = await this.vscodeProposed.window.showInformationMessage(
-          `This workspace is stopped!`,
-          {
-            modal: true,
-            detail: `Click below to start and open ${workspaceName}.`,
-            useCustom: true,
-          },
-          "Start Workspace",
-        )
-        if (!result) {
-          await this.closeRemote()
-        }
-        await this.reloadWindow()
-        return
+    if (workspace.latest_build.status === "stopped") {
+      const result = await this.vscodeProposed.window.showInformationMessage(
+        `This workspace is stopped!`,
+        {
+          modal: true,
+          detail: `Click below to start and open ${workspaceName}.`,
+          useCustom: true,
+        },
+        "Start Workspace",
+      )
+      if (!result) {
+        await this.closeRemote()
       }
+      await this.reloadWindow()
+      return
     }
 
     // Pick an agent.
+    this.storage.writeToCoderOutputChannel(`Finding agent for ${workspaceName}...`)
     const agents = workspace.latest_build.resources.reduce((acc, resource) => {
       return acc.concat(resource.agents || [])
     }, [] as WorkspaceAgent[])
@@ -303,8 +311,10 @@ export class Remote {
       }
       agent = matchingAgents[0]
     }
+    this.storage.writeToCoderOutputChannel(`Found agent ${agent.name} with status ${agent.status}`)
 
     // Do some janky setting manipulation.
+    this.storage.writeToCoderOutputChannel("Modifying settings...")
     const remotePlatforms = this.vscodeProposed.workspace
       .getConfiguration()
       .get<Record<string, string>>("remote.SSH.remotePlatform", {})
@@ -365,6 +375,7 @@ export class Remote {
     }
 
     // Watch for workspace updates.
+    this.storage.writeToCoderOutputChannel(`Establishing watcher for ${workspaceName}...`)
     const workspaceUpdate = new vscode.EventEmitter<Workspace>()
     const watchURL = new URL(`${baseUrlRaw}/api/v2/workspaces/${workspace.id}/watch`)
     const eventSource = new EventSource(watchURL.toString(), {
@@ -450,6 +461,7 @@ export class Remote {
 
     // Wait for the agent to connect.
     if (agent.status === "connecting") {
+      this.storage.writeToCoderOutputChannel(`Waiting for ${workspaceName}/${agent.name}...`)
       await vscode.window.withProgress(
         {
           title: "Waiting for the agent to connect...",
@@ -484,12 +496,14 @@ export class Remote {
           })
         },
       )
+      this.storage.writeToCoderOutputChannel(`Agent ${agent.name} status is now ${agent.status}`)
     }
 
     // Make sure agent did not time out.
     // TODO: Seems like maybe we should check for all the good states rather
     //       than one bad state?  Agents can error in many ways.
     if (agent.status === "timeout") {
+      this.storage.writeToCoderOutputChannel(`${workspaceName}/${agent.name} timed out`)
       const result = await this.vscodeProposed.window.showErrorMessage("Connection timed out...", {
         useCustom: true,
         modal: true,
@@ -509,6 +523,7 @@ export class Remote {
     // If we didn't write to the SSH config file, connecting would fail with
     // "Host not found".
     try {
+      this.storage.writeToCoderOutputChannel("Updating SSH config...")
       await this.updateSSHConfig(workspaceRestClient, parts.label, parts.host, hasCoderLogs)
     } catch (error) {
       this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
@@ -532,6 +547,8 @@ export class Remote {
         disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name, agentName))
       }),
     )
+
+    this.storage.writeToCoderOutputChannel("Remote setup complete")
 
     // Returning the URL and token allows the plugin to authenticate its own
     // client, for example to display the list of workspaces belonging to this
