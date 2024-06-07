@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [v1.0.1](https://github.com/coder/vscode-coder/releases/tag/v1.0.1) (2024-06-07)
+
+### Changed
+
+- Improve an error message for when watching a build fails.
+
 ## [v1.0.0](https://github.com/coder/vscode-coder/releases/tag/v1.0.0) (2024-06-05)
 
 ### Added
