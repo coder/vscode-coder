@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.0.2](https://github.com/coder/vscode-coder/releases/tag/v1.0.2) (2024-06-12)
+
 ### Fixed
 
 - Redirects will now be followed when watching a workspace build, like when a
