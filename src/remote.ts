@@ -253,7 +253,7 @@ export class Remote {
             writeEmitter.fire(log.output + "\r\n")
           })
           socket.on("error", (error) => {
-            reject(new Error(`Failed to open web socket to ${socketUrlRaw}: ${errToStr(error, "no further details")}`))
+            reject(new Error(`Failed to watch workspace build using ${socketUrlRaw}: ${errToStr(error, "no further details")}`))
           })
           socket.on("close", () => {
             resolve()
