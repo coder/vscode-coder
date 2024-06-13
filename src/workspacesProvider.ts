@@ -35,7 +35,6 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   private workspaces: WorkspaceTreeItem[] = []
   private agentWatchers: Record<WorkspaceAgent["id"], AgentWatcher> = {}
   private timeout: NodeJS.Timeout | undefined
-  private visible = false
   private fetching = false
 
   constructor(
@@ -147,7 +146,6 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
    * Either start or stop the refresh timer based on visibility.
    */
   setVisibility(visible: boolean) {
-    this.visible = visible
     if (!visible) {
       this.cancelPendingRefresh()
     } else {
