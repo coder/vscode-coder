@@ -244,6 +244,7 @@ export class Remote {
             headers: {
               "Coder-Session-Token": token,
             },
+            followRedirects: true,
           })
           socket.binaryType = "nodebuffer"
           socket.on("message", (data) => {
