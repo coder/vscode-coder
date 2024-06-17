@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Workspace and agent statuses now show in the sidebar. These are updated every
+  five seconds.
+
 ## [v1.0.2](https://github.com/coder/vscode-coder/releases/tag/v1.0.2) (2024-06-12)
 
 ### Fixed

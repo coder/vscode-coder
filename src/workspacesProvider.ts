@@ -35,7 +35,6 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   private workspaces: WorkspaceTreeItem[] = []
   private agentWatchers: Record<WorkspaceAgent["id"], AgentWatcher> = {}
   private timeout: NodeJS.Timeout | undefined
-  private visible = false
   private fetching = false
 
   constructor(
@@ -147,7 +146,6 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
    * Either start or stop the refresh timer based on visibility.
    */
   setVisibility(visible: boolean) {
-    this.visible = visible
     if (!visible) {
       this.cancelPendingRefresh()
     } else {
@@ -282,6 +280,7 @@ export class OpenableTreeItem extends vscode.TreeItem {
   constructor(
     label: string,
     tooltip: string,
+    description: string,
     collapsibleState: vscode.TreeItemCollapsibleState,
 
     public readonly workspaceOwner: string,
@@ -294,6 +293,7 @@ export class OpenableTreeItem extends vscode.TreeItem {
     super(label, collapsibleState)
     this.contextValue = contextValue
     this.tooltip = tooltip
+    this.description = description
   }
 
   iconPath = {
@@ -309,11 +309,10 @@ class AgentTreeItem extends OpenableTreeItem {
     workspaceName: string,
     watchMetadata = false,
   ) {
-    const label = agent.name
-    const detail = `Status: ${agent.status}`
     super(
-      label,
-      detail,
+      agent.name, // label
+      `Status: ${agent.status}`, // tooltip
+      agent.status, // description
       watchMetadata ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
       workspaceOwner,
       workspaceName,
@@ -339,6 +338,7 @@ export class WorkspaceTreeItem extends OpenableTreeItem {
     super(
       label,
       detail,
+      workspace.latest_build.status, // description
       showOwner ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded,
       workspace.owner_name,
       workspace.name,
