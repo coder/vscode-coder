@@ -2,11 +2,15 @@
 
 ## Unreleased
 
+## [v1.1.0](https://github.com/coder/vscode-coder/releases/tag/v1.1.0) (2024-06-17)
+
 ### Added
 
 - Workspace and agent statuses now show in the sidebar. These are updated every
   five seconds.
-- Support http.proxy setting and proxy environment variables.
+- Support http.proxy setting and proxy environment variables. This only takes
+  effect if http.proxySupport is `off` or `on`, otherwise VS Code overrides the
+  HTTP agent the plugin sets.
 
 ## [v1.0.2](https://github.com/coder/vscode-coder/releases/tag/v1.0.2) (2024-06-12)
 
