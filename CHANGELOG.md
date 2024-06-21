@@ -2,15 +2,23 @@
 
 ## Unreleased
 
+## [v1.2.0](https://github.com/coder/vscode-coder/releases/tag/v1.2.0) (2024-06-21)
+
+### Added
+
+- New setting `coder.proxyBypass` which is the equivalent of `no_proxy`. This
+  only takes effect if `http.proxySupport` is `on` or `off`, otherwise VS Code
+  overrides the HTTP agent the plugin sets.
+
 ## [v1.1.0](https://github.com/coder/vscode-coder/releases/tag/v1.1.0) (2024-06-17)
 
 ### Added
 
 - Workspace and agent statuses now show in the sidebar. These are updated every
   five seconds.
-- Support http.proxy setting and proxy environment variables. This only takes
-  effect if http.proxySupport is `off` or `on`, otherwise VS Code overrides the
-  HTTP agent the plugin sets.
+- Support `http.proxy` setting and proxy environment variables. These only take
+  effect if `http.proxySupport` is `on` or `off`, otherwise VS Code overrides
+  the HTTP agent the plugin sets.
 
 ## [v1.0.2](https://github.com/coder/vscode-coder/releases/tag/v1.0.2) (2024-06-12)
 
