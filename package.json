@@ -269,7 +269,7 @@
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-md": "^1.0.19",
     "eslint-plugin-prettier": "^5.1.3",
-    "glob": "^7.1.6",
+    "glob": "^10.4.2",
     "nyc": "^15.1.0",
     "prettier": "^3.2.5",
     "ts-loader": "^9.5.1",
