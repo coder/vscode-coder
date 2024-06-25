@@ -296,7 +296,7 @@
     "pretty-bytes": "^6.0.0",
     "proxy-agent": "^6.4.0",
     "semver": "^7.6.2",
-    "tar-fs": "^2.1.1",
+    "tar-fs": "^3.0.6",
     "ua-parser-js": "^1.0.38",
     "which": "^4.0.0",
     "ws": "^8.17.1",
