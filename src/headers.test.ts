@@ -17,6 +17,7 @@ it("should return no headers", async () => {
   await expect(getHeaders("", "command", logger)).resolves.toStrictEqual({})
   await expect(getHeaders("localhost", "  ", logger)).resolves.toStrictEqual({})
   await expect(getHeaders("  ", "command", logger)).resolves.toStrictEqual({})
+  await expect(getHeaders("localhost", "printf ''", logger)).resolves.toStrictEqual({})
 })
 
 it("should return headers", async () => {
@@ -43,7 +44,6 @@ it("should error on malformed or empty lines", async () => {
   await expect(getHeaders("localhost", "printf '  =foo'", logger)).rejects.toMatch(/Malformed/)
   await expect(getHeaders("localhost", "printf 'foo  =bar'", logger)).rejects.toMatch(/Malformed/)
   await expect(getHeaders("localhost", "printf 'foo  foo=bar'", logger)).rejects.toMatch(/Malformed/)
-  await expect(getHeaders("localhost", "printf ''", logger)).rejects.toMatch(/Malformed/)
 })
 
 it("should have access to environment variables", async () => {

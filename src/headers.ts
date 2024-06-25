@@ -59,6 +59,10 @@ export async function getHeaders(
       }
       throw new Error(`Header command exited unexpectedly: ${error}`)
     }
+    if (!result.stdout) {
+      // Allow no output for parity with the Coder CLI.
+      return headers
+    }
     const lines = result.stdout.replace(/\r?\n$/, "").split(/\r?\n/)
     for (let i = 0; i < lines.length; ++i) {
       const [key, value] = lines[i].split(/=(.*)/)
