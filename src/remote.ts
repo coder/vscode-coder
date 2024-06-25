@@ -400,27 +400,25 @@ export class Remote {
     let hasShownOutdatedNotification = false
     const refreshWorkspaceUpdatedStatus = (newWorkspace: Workspace) => {
       // If the newly gotten workspace was updated, then we show a notification
-      // to the user that they should update.
-      if (newWorkspace.outdated) {
-        if (!workspace.outdated || !hasShownOutdatedNotification) {
-          hasShownOutdatedNotification = true
-          workspaceRestClient
-            .getTemplate(newWorkspace.template_id)
-            .then((template) => {
-              return workspaceRestClient.getTemplateVersion(template.active_version_id)
-            })
-            .then((version) => {
-              let infoMessage = `A new version of your workspace is available.`
-              if (version.message) {
-                infoMessage = `A new version of your workspace is available: ${version.message}`
+      // to the user that they should update.  Only show this once per session.
+      if (newWorkspace.outdated && !hasShownOutdatedNotification) {
+        hasShownOutdatedNotification = true
+        workspaceRestClient
+          .getTemplate(newWorkspace.template_id)
+          .then((template) => {
+            return workspaceRestClient.getTemplateVersion(template.active_version_id)
+          })
+          .then((version) => {
+            let infoMessage = `A new version of your workspace is available.`
+            if (version.message) {
+              infoMessage = `A new version of your workspace is available: ${version.message}`
+            }
+            vscode.window.showInformationMessage(infoMessage, "Update").then((action) => {
+              if (action === "Update") {
+                vscode.commands.executeCommand("coder.workspace.update", newWorkspace, workspaceRestClient)
               }
-              vscode.window.showInformationMessage(infoMessage, "Update").then((action) => {
-                if (action === "Update") {
-                  vscode.commands.executeCommand("coder.workspace.update", newWorkspace, workspaceRestClient)
-                }
-              })
             })
-        }
+          })
       }
       if (!newWorkspace.outdated) {
         vscode.commands.executeCommand("setContext", "coder.workspace.updatable", false)
