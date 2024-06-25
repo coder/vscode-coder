@@ -1,5 +1,4 @@
-import { readFile, writeFile } from "fs/promises"
-import { ensureDir } from "fs-extra"
+import { mkdir, readFile, writeFile } from "fs/promises"
 import path from "path"
 
 class SSHConfigBadFormat extends Error {}
@@ -21,13 +20,13 @@ export interface SSHValues {
 // Interface for the file system to make it easier to test
 export interface FileSystem {
   readFile: typeof readFile
-  ensureDir: typeof ensureDir
+  mkdir: typeof mkdir
   writeFile: typeof writeFile
 }
 
 const defaultFileSystem: FileSystem = {
   readFile,
-  ensureDir,
+  mkdir,
   writeFile,
 }
 
@@ -204,8 +203,9 @@ export class SSHConfig {
   }
 
   private async save() {
-    await this.fileSystem.ensureDir(path.dirname(this.filePath), {
+    await this.fileSystem.mkdir(path.dirname(this.filePath), {
       mode: 0o700, // only owner has rwx permission, not group or everyone.
+      recursive: true,
     })
     return this.fileSystem.writeFile(this.filePath, this.getRaw(), {
       mode: 0o600, // owner rw

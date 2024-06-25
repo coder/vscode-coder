@@ -6,7 +6,7 @@ const sshFilePath = "~/.config/ssh"
 
 const mockFileSystem = {
   readFile: vi.fn(),
-  ensureDir: vi.fn(),
+  mkdir: vi.fn(),
   writeFile: vi.fn(),
 }
 
