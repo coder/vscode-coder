@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.2.1](https://github.com/coder/vscode-coder/releases/tag/v1.2.1) (2024-06-25)
+
 ### Fixed
 
 - Fix the update dialog continually reappearing.
