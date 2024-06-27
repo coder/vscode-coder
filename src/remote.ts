@@ -1,6 +1,6 @@
 import { isAxiosError } from "axios"
 import { Api } from "coder/site/src/api/api"
-import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { Workspace } from "coder/site/src/api/typesGenerated"
 import EventSource from "eventsource"
 import find from "find-process"
 import * as fs from "fs/promises"
@@ -11,6 +11,7 @@ import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
 import { makeCoderSdk, startWorkspace, waitForBuild } from "./api"
+import { extractAgents } from "./api-helper"
 import { Commands } from "./commands"
 import { getHeaderCommand } from "./headers"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
@@ -287,28 +288,13 @@ export class Remote {
 
     // Pick an agent.
     this.storage.writeToCoderOutputChannel(`Finding agent for ${workspaceName}...`)
-    const agents = workspace.latest_build.resources.reduce((acc, resource) => {
-      return acc.concat(resource.agents || [])
-    }, [] as WorkspaceAgent[])
-
-    // With no agent specified, pick the first one.  Otherwise choose the
-    // matching agent.
-    let agent: WorkspaceAgent
-    if (!parts.agent) {
-      if (agents.length === 1) {
-        agent = agents[0]
-      } else {
-        // TODO: Show the agent selector here instead.
-        throw new Error("Invalid Coder SSH authority. An agent must be specified when there are multiple.")
-      }
-    } else {
-      const matchingAgents = agents.filter((agent) => agent.name === parts.agent)
-      if (matchingAgents.length !== 1) {
-        // TODO: Show the agent selector here instead.
-        throw new Error("Invalid Coder SSH authority. Agent not found.")
-      }
-      agent = matchingAgents[0]
+    const gotAgent = await this.commands.maybeAskAgent(workspace, parts.agent)
+    if (!gotAgent) {
+      // User declined to pick an agent.
+      await this.closeRemote()
+      return
     }
+    let agent = gotAgent // Reassign so it cannot be undefined in callbacks.
     this.storage.writeToCoderOutputChannel(`Found agent ${agent.name} with status ${agent.status}`)
 
     // Do some janky setting manipulation.
@@ -466,17 +452,11 @@ export class Remote {
         async () => {
           await new Promise<void>((resolve) => {
             const updateEvent = workspaceUpdate.event((workspace) => {
-              const agents = workspace.latest_build.resources.reduce((acc, resource) => {
-                return acc.concat(resource.agents || [])
-              }, [] as WorkspaceAgent[])
               if (!agent) {
                 return
               }
+              const agents = extractAgents(workspace)
               const found = agents.find((newAgent) => {
-                if (!agent) {
-                  // This shouldn't be possible... just makes the types happy!
-                  return false
-                }
                 return newAgent.id === agent.id
               })
               if (!found) {
@@ -538,10 +518,9 @@ export class Remote {
     })
 
     // Register the label formatter again because SSH overrides it!
-    const agentName = agents.length > 1 ? agent.name : undefined
     disposables.push(
       vscode.extensions.onDidChange(() => {
-        disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name, agentName))
+        disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name, agent.name))
       }),
     )
 
