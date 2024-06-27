@@ -74,6 +74,9 @@ export class Remote {
       return
     }
 
+    this.storage.writeToCoderOutputChannel(`Using deployment URL: ${baseUrlRaw}`)
+    this.storage.writeToCoderOutputChannel(`Using deployment label: ${parts.label || "n/a"}`)
+
     // We could use the plugin client, but it is possible for the user to log
     // out or log into a different deployment while still connected, which would
     // break this connection.  We could force close the remote session or

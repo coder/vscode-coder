@@ -119,8 +119,6 @@ export class Storage {
    */
   public async fetchBinary(restClient: Api, label: string): Promise<string> {
     const baseUrl = restClient.getAxiosInstance().defaults.baseURL
-    this.output.appendLine(`Using deployment URL: ${baseUrl}`)
-    this.output.appendLine(`Using deployment label: ${label || "n/a"}`)
 
     // Settings can be undefined when set to their defaults (true in this case),
     // so explicitly check against false.
