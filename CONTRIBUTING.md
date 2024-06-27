@@ -66,3 +66,12 @@ However, fully testing the plugin is blocked on switching back to the standard V
    ```
 
 3. Press `F5` or navigate to the "Run and Debug" tab of VS Code and click "Run Extension".
+
+## Dependencies
+
+Some dependencies are not directly used in the source but are required anyway.
+
+- `bufferutil` and `utf-8-validate` are peer dependencies of `ws`.
+- `ua-parser-js` and `dayjs` are used by the Coder API client.
+- `glob`, `nyc`, `vscode-test`, and `@vscode/test-electron` are currently unused
+  but we need to switch back to them from `vitest`.
