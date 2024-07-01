@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## [v1.3.0](https://github.com/coder/vscode-coder/releases/tag/v1.3.0) (2024-07-01)
+
+### Added
+
+- If there are multiple agents, the plugin will now ask which to use.
+
+### Fixed
+
+- If the workspace is stopping as the plugin tries to connect, it will wait for
+  the stop and then try to start the workspace. Previously it would only start
+  the workspace if it happened to be in a fully stopped state when connecting.
+- Whenever the plugin wants to start a workspace, it will ask the user first to
+  prevent constantly keeping a workspace up and defeating the point of
+  auto-stop.
+
 ## [v1.2.1](https://github.com/coder/vscode-coder/releases/tag/v1.2.1) (2024-06-25)
 
 ### Fixed
