@@ -27,13 +27,29 @@ export interface RemoteDetails extends vscode.Disposable {
 
 export class Remote {
   public constructor(
+    // We use the proposed API to get access to useCustom in dialogs.
     private readonly vscodeProposed: typeof vscode,
     private readonly storage: Storage,
     private readonly commands: Commands,
     private readonly mode: vscode.ExtensionMode,
   ) {}
 
-  private async waitForRunning(restClient: Api, workspace: Workspace): Promise<Workspace> {
+  private async confirmStart(workspaceName: string): Promise<boolean> {
+    const action = await this.vscodeProposed.window.showInformationMessage(
+      `Unable to connect to the workspace ${workspaceName} because it is not running. Start the workspace?`,
+      {
+        useCustom: true,
+        modal: true,
+      },
+      "Start",
+    )
+    return action === "Start"
+  }
+
+  /**
+   * Try to get the workspace running.  Return undefined if the user canceled.
+   */
+  private async maybeWaitForRunning(restClient: Api, workspace: Workspace): Promise<Workspace | undefined> {
     // Maybe already running?
     if (workspace.latest_build.status === "running") {
       return workspace
@@ -83,6 +99,9 @@ export class Remote {
                 workspace = await waitForBuild(restClient, writeEmitter, workspace)
                 break
               case "stopped":
+                if (!(await this.confirmStart(workspaceName))) {
+                  return undefined
+                }
                 this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
                 workspace = await startWorkspace(restClient, workspace)
                 break
@@ -90,11 +109,14 @@ export class Remote {
                 // On a first attempt, we will try starting a failed workspace
                 // (for example canceling a start seems to cause this state).
                 if (attempts === 1) {
+                  if (!(await this.confirmStart(workspaceName))) {
+                    return undefined
+                  }
                   this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
                   workspace = await startWorkspace(restClient, workspace)
                   break
                 }
-                // Otherwise fall through and error.
+              // Otherwise fall through and error.
               case "canceled":
               case "canceling":
               case "deleted":
@@ -255,8 +277,13 @@ export class Remote {
     const action = await WorkspaceAction.init(this.vscodeProposed, workspaceRestClient, this.storage)
 
     // If the workspace is not in a running state, try to get it running.
-    workspace = await this.waitForRunning(workspaceRestClient, workspace)
-    this.commands.workspace = workspace
+    const updatedWorkspace = await this.maybeWaitForRunning(workspaceRestClient, workspace)
+    if (!updatedWorkspace) {
+      // User declined to start the workspace.
+      await this.closeRemote()
+      return
+    }
+    this.commands.workspace = workspace = updatedWorkspace
 
     // Pick an agent.
     this.storage.writeToCoderOutputChannel(`Finding agent for ${workspaceName}...`)
