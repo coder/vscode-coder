@@ -434,40 +434,40 @@ export class Storage {
 
   /**
    * Configure the CLI for the deployment with the provided label.
+   *
+   * Falsey values are a no-op; we avoid unconfiguring the CLI to avoid breaking
+   * existing connections.
    */
   public async configureCli(label: string, url: string | undefined, token: string | undefined | null) {
     await Promise.all([this.updateUrlForCli(label, url), this.updateTokenForCli(label, token)])
   }
 
   /**
-   * Update or remove the URL for the deployment with the provided label on disk
-   * which can be used by the CLI via --url-file.
+   * Update the URL for the deployment with the provided label on disk which can
+   * be used by the CLI via --url-file.  If the URL is falsey, do nothing.
    *
    * If the label is empty, read the old deployment-unaware config instead.
    */
   private async updateUrlForCli(label: string, url: string | undefined): Promise<void> {
-    const urlPath = this.getUrlPath(label)
     if (url) {
+      const urlPath = this.getUrlPath(label)
       await fs.mkdir(path.dirname(urlPath), { recursive: true })
       await fs.writeFile(urlPath, url)
-    } else {
-      await fs.rm(urlPath, { force: true })
     }
   }
 
   /**
-   * Update or remove the session token for a deployment with the provided label
-   * on disk which can be used by the CLI via --session-token-file.
+   * Update the session token for a deployment with the provided label on disk
+   * which can be used by the CLI via --session-token-file.  If the token is
+   * falsey, do nothing.
    *
    * If the label is empty, read the old deployment-unaware config instead.
    */
   private async updateTokenForCli(label: string, token: string | undefined | null) {
-    const tokenPath = this.getSessionTokenPath(label)
     if (token) {
+      const tokenPath = this.getSessionTokenPath(label)
       await fs.mkdir(path.dirname(tokenPath), { recursive: true })
       await fs.writeFile(tokenPath, token)
-    } else {
-      await fs.rm(tokenPath, { force: true })
     }
   }
 

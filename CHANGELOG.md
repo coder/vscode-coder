@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Avoid deleting the existing token when launching with a link that omits the
+  token.
+
 ## [v1.3.0](https://github.com/coder/vscode-coder/releases/tag/v1.3.0) (2024-07-01)
 
 ### Added
