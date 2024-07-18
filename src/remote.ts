@@ -17,7 +17,7 @@ import { getHeaderCommand } from "./headers"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
-import { AuthorityPrefix, parseRemoteAuthority } from "./util"
+import { AuthorityPrefix, expandPath, parseRemoteAuthority } from "./util"
 import { supportsCoderAgentLogDirFlag } from "./version"
 import { WorkspaceAction } from "./workspaceAction"
 
@@ -33,6 +33,7 @@ export class Remote {
     private readonly storage: Storage,
     private readonly commands: Commands,
     private readonly mode: vscode.ExtensionMode,
+    private coderVersion: semver.SemVer | null = null
   ) {}
 
   private async confirmStart(workspaceName: string): Promise<boolean> {
@@ -195,13 +196,13 @@ export class Remote {
 
     // First thing is to check the version.
     const buildInfo = await workspaceRestClient.getBuildInfo()
-    const parsedVersion = semver.parse(buildInfo.version)
+    this.coderVersion = semver.parse(buildInfo.version)
     // Server versions before v0.14.1 don't support the vscodessh command!
     if (
-      parsedVersion?.major === 0 &&
-      parsedVersion?.minor <= 14 &&
-      parsedVersion?.patch < 1 &&
-      parsedVersion?.prerelease.length === 0
+      this.coderVersion?.major === 0 &&
+      this.coderVersion?.minor <= 14 &&
+      this.coderVersion?.patch < 1 &&
+      this.coderVersion?.prerelease.length === 0
     ) {
       await this.vscodeProposed.window.showErrorMessage(
         "Incompatible Server",
@@ -215,7 +216,6 @@ export class Remote {
       await this.closeRemote()
       return
     }
-    const hasCoderLogs = supportsCoderAgentLogDirFlag(parsedVersion)
 
     // Next is to find the workspace from the URI scheme provided.
     let workspace: Workspace
@@ -501,7 +501,7 @@ export class Remote {
     // "Host not found".
     try {
       this.storage.writeToCoderOutputChannel("Updating SSH config...")
-      await this.updateSSHConfig(workspaceRestClient, parts.label, parts.host, hasCoderLogs)
+      await this.updateSSHConfig(workspaceRestClient, parts.label, parts.host)
     } catch (error) {
       this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
       throw error
@@ -543,7 +543,7 @@ export class Remote {
 
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
-  private async updateSSHConfig(restClient: Api, label: string, hostName: string, hasCoderLogs = false) {
+  private async updateSSHConfig(restClient: Api, label: string, hostName: string) {
     let deploymentSSHConfig = {}
     try {
       const deploymentConfig = await restClient.getDeploymentSSHConfig()
@@ -635,9 +635,13 @@ export class Remote {
       headerArg = ` --header-command ${escapeSubcommand(headerCommand)}`
     }
     let logArg = ""
-    if (hasCoderLogs) {
-      await fs.mkdir(this.storage.getLogPath(), { recursive: true })
-      logArg = ` --log-dir ${escape(this.storage.getLogPath())}`
+    if (supportsCoderAgentLogDirFlag(this.coderVersion)) {
+      const logDir = expandPath(String(vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ?? "").trim())
+      if (logDir) {
+        await fs.mkdir(this.storage.getLogPath(), { recursive: true })
+        logArg = ` --log-dir ${escape(this.storage.getLogPath())}`
+        this.storage.writeToCoderOutputChannel(`Your logs are being written to ${this.storage.getLogPath()}`)
+      }
     }
     const sshValues: SSHValues = {
       Host: label ? `${AuthorityPrefix}.${label}--*` : `${AuthorityPrefix}--*`,

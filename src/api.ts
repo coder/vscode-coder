@@ -9,12 +9,7 @@ import { errToStr } from "./api-helper"
 import { CertificateError } from "./error"
 import { getProxyForUrl } from "./proxy"
 import { Storage } from "./storage"
-
-// expandPath will expand ${userHome} in the input string.
-function expandPath(input: string): string {
-  const userHome = os.homedir()
-  return input.replace(/\${userHome}/g, userHome)
-}
+import { expandPath } from "./util"
 
 async function createHttpAgent(): Promise<ProxyAgent> {
   const cfg = vscode.workspace.getConfiguration()
