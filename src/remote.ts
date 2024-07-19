@@ -541,6 +541,26 @@ export class Remote {
     }
   }
 
+  /**
+   * Format's the --log-dir argument for the ProxyCommand
+   */
+  private async formatLogArg(): Promise<string> {
+    if (!supportsCoderAgentLogDirFlag(this.coderVersion)) {
+      return ""
+    }
+
+    // If the proxyLogDirectory is not set in the extension settings we don't send one.
+    // Question for Asher: How do VSCode extension settings behave in terms of semver for the extension?
+    const logDir = expandPath(String(vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ?? "").trim())
+    if (!logDir) {
+      return ""
+    }
+
+    await fs.mkdir(logDir, { recursive: true })
+    this.storage.writeToCoderOutputChannel(`Your logs are being written to ${logDir}`)
+    return ` --log-dir ${escape(logDir)}`
+  }
+
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
   private async updateSSHConfig(restClient: Api, label: string, hostName: string) {
@@ -634,20 +654,12 @@ export class Remote {
     if (typeof headerCommand === "string" && headerCommand.trim().length > 0) {
       headerArg = ` --header-command ${escapeSubcommand(headerCommand)}`
     }
-    let logArg = ""
-    if (supportsCoderAgentLogDirFlag(this.coderVersion)) {
-      const logDir = expandPath(String(vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ?? "").trim())
-      if (logDir) {
-        await fs.mkdir(logDir, { recursive: true })
-        logArg = ` --log-dir ${escape(logDir)}`
-        this.storage.writeToCoderOutputChannel(`Your logs are being written to ${logDir}`)
-      }
-    }
+    
     const sshValues: SSHValues = {
       Host: label ? `${AuthorityPrefix}.${label}--*` : `${AuthorityPrefix}--*`,
       ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
-      )}${logArg} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
+      )}${await this.formatLogArg()} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
         this.storage.getUrlPath(label),
       )} %h`,
       ConnectTimeout: "0",
