@@ -638,9 +638,9 @@ export class Remote {
     if (supportsCoderAgentLogDirFlag(this.coderVersion)) {
       const logDir = expandPath(String(vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ?? "").trim())
       if (logDir) {
-        await fs.mkdir(this.storage.getLogPath(), { recursive: true })
-        logArg = ` --log-dir ${escape(this.storage.getLogPath())}`
-        this.storage.writeToCoderOutputChannel(`Your logs are being written to ${this.storage.getLogPath()}`)
+        await fs.mkdir(logDir, { recursive: true })
+        logArg = ` --log-dir ${escape(logDir)}`
+        this.storage.writeToCoderOutputChannel(`Your logs are being written to ${logDir}`)
       }
     }
     const sshValues: SSHValues = {
