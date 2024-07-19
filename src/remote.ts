@@ -33,7 +33,7 @@ export class Remote {
     private readonly storage: Storage,
     private readonly commands: Commands,
     private readonly mode: vscode.ExtensionMode,
-    private coderVersion: semver.SemVer | null = null
+    private coderVersion: semver.SemVer | null = null,
   ) {}
 
   private async confirmStart(workspaceName: string): Promise<boolean> {

@@ -1,5 +1,5 @@
-import url from "url"
 import * as os from "os"
+import url from "url"
 
 export interface AuthorityParts {
   agent: string | undefined

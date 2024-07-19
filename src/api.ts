@@ -1,7 +1,6 @@
 import { Api } from "coder/site/src/api/api"
 import { ProvisionerJobLog, Workspace } from "coder/site/src/api/typesGenerated"
 import fs from "fs/promises"
-import * as os from "os"
 import { ProxyAgent } from "proxy-agent"
 import * as vscode from "vscode"
 import * as ws from "ws"
