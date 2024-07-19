@@ -654,7 +654,7 @@ export class Remote {
     if (typeof headerCommand === "string" && headerCommand.trim().length > 0) {
       headerArg = ` --header-command ${escapeSubcommand(headerCommand)}`
     }
-    
+
     const sshValues: SSHValues = {
       Host: label ? `${AuthorityPrefix}.${label}--*` : `${AuthorityPrefix}--*`,
       ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
