@@ -557,7 +557,7 @@ export class Remote {
     }
 
     await fs.mkdir(logDir, { recursive: true })
-    this.storage.writeToCoderOutputChannel(`Your logs are being written to ${logDir}`)
+    this.storage.writeToCoderOutputChannel(`SSH proxy diagnostics are being written to ${logDir}`)
     return ` --log-dir ${escape(logDir)}`
   }
 
