@@ -30,7 +30,7 @@ Alternatively, manually install the VSIX from the
 #### Variables Reference
 
 Coder uses
-${userHome} from VSCode's
+${userHome} from VS Code's
 [variables reference](https://code.visualstudio.com/docs/editor/variables-reference).
 Use this when formatting paths in the Coder extension settings rather than ~ or
 $HOME.
