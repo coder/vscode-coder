@@ -1,7 +1,6 @@
 import { Api } from "coder/site/src/api/api"
 import { ProvisionerJobLog, Workspace } from "coder/site/src/api/typesGenerated"
 import fs from "fs/promises"
-import * as os from "os"
 import { ProxyAgent } from "proxy-agent"
 import * as vscode from "vscode"
 import * as ws from "ws"
@@ -9,12 +8,7 @@ import { errToStr } from "./api-helper"
 import { CertificateError } from "./error"
 import { getProxyForUrl } from "./proxy"
 import { Storage } from "./storage"
-
-// expandPath will expand ${userHome} in the input string.
-function expandPath(input: string): string {
-  const userHome = os.homedir()
-  return input.replace(/\${userHome}/g, userHome)
-}
+import { expandPath } from "./util"
 
 async function createHttpAgent(): Promise<ProxyAgent> {
   const cfg = vscode.workspace.getConfiguration()

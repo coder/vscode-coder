@@ -88,6 +88,11 @@
           "type": "string",
           "default": ""
         },
+        "coder.proxyLogDirectory": {
+          "markdownDescription": "If set, the Coder CLI will output extra SSH information into this directory, which can be helpful for debugging connectivity issues.",
+          "type": "string",
+          "default": ""
+        },
         "coder.proxyBypass": {
           "markdownDescription": "If not set, will inherit from the `no_proxy` or `NO_PROXY` environment variables. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
           "type": "string",

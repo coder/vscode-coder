@@ -26,3 +26,13 @@ ext install coder.coder-remote
 
 Alternatively, manually install the VSIX from the
 [latest release](https://github.com/coder/vscode-coder/releases/latest).
+
+#### Variables Reference
+
+Coder uses
+${userHome} from VS Code's
+[variables reference](https://code.visualstudio.com/docs/editor/variables-reference).
+Use this when formatting paths in the Coder extension settings rather than ~ or
+$HOME.
+
+Example: ${userHome}/foo/bar.baz

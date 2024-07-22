@@ -1,3 +1,4 @@
+import * as os from "os"
 import url from "url"
 
 export interface AuthorityParts {
@@ -57,4 +58,14 @@ export function toSafeHost(rawUrl: string): string {
   // If the host is invalid, an empty string is returned.  Although, `new URL`
   // should already have thrown in that case.
   return url.domainToASCII(u.hostname) || u.hostname
+}
+
+/**
+ * Expand a path with ${userHome} in the input string
+ * @param input string
+ * @returns string
+ */
+export function expandPath(input: string): string {
+  const userHome = os.homedir()
+  return input.replace(/\${userHome}/g, userHome)
 }

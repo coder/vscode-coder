@@ -52,7 +52,7 @@ async function startServer(certName: string): Promise<string> {
   disposers.push(() => server.close())
   return new Promise<string>((resolve, reject) => {
     server.on("error", reject)
-    server.listen(0, "localhost", () => {
+    server.listen(0, "127.0.0.1", () => {
       const address = server.address()
       if (!address) {
         throw new Error("Server has no address")
