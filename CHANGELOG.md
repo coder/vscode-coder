@@ -4,8 +4,10 @@
 
 ### Changed
 
-- Make proxyLogDirectory a setting in the vscode extension rather than using the default for vscode,
-  and only send the --log-dir argument to coder/coder if the value is set.
+- Previously, the extension would always log SSH proxy diagnostics to a fixed
+  directory. Now this must be explicitly enabled by configuring a new setting
+  `coder.proxyLogDirectory`. If you are having connectivity issues, please
+  configure this setting and gather the logs before submitting an issue.
 
 ## [v1.3.1](https://github.com/coder/vscode-coder/releases/tag/v1.3.1) (2024-07-15)
 
