@@ -29,6 +29,10 @@ Alternatively, manually install the VSIX from the
 
 #### Variables Reference
 
-Coder uses ${userHome} from VSCode's [variables reference](https://code.visualstudio.com/docs/editor/variables-reference). Use this when formatting paths in the coder extension settings rather than ~ or $HOME.
+Coder uses
+${userHome} from VSCode's
+[variables reference](https://code.visualstudio.com/docs/editor/variables-reference).
+Use this when formatting paths in the coder extension settings rather than ~ or
+$HOME.
 
 Example: ${userHome}/foo/bar.baz
