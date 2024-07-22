@@ -262,7 +262,7 @@
     "@vscode/vsce": "^2.21.1",
     "bufferutil": "^4.0.8",
     "coder": "https://github.com/coder/coder#main",
-    "dayjs": "^1.11.10",
+    "dayjs": "^1.11.12",
     "eslint": "^8.50.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
