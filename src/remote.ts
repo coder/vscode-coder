@@ -12,6 +12,7 @@ import * as semver from "semver"
 import * as vscode from "vscode"
 import { makeCoderSdk, startWorkspace, waitForBuild } from "./api"
 import { extractAgents } from "./api-helper"
+import * as cli from "./cliManager"
 import { Commands } from "./commands"
 import { getHeaderCommand } from "./headers"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
@@ -542,10 +543,27 @@ export class Remote {
   }
 
   /**
+   * Tries to get the install CLI version. If that fails, defaults
+   * to the remote coder version. For the most part these should be in sync.
+   */
+  private async probableCoderVersion(binaryPath: string): Promise<semver.SemVer | null> {
+    try {
+      const version = await cli.version(binaryPath)
+      const parsedVersion = semver.parse(version)
+      if (!parsedVersion) {
+        return this.coderVersion
+      }
+      return parsedVersion
+    } catch (e) {
+      return this.coderVersion
+    }
+  }
+
+  /**
    * Format's the --log-dir argument for the ProxyCommand
    */
-  private async formatLogArg(): Promise<string> {
-    if (!supportsCoderAgentLogDirFlag(this.coderVersion)) {
+  private async formatLogArg(binpath: string): Promise<string> {
+    if (!supportsCoderAgentLogDirFlag(await this.probableCoderVersion(binpath))) {
       return ""
     }
 
@@ -659,7 +677,7 @@ export class Remote {
       Host: label ? `${AuthorityPrefix}.${label}--*` : `${AuthorityPrefix}--*`,
       ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
-      )}${await this.formatLogArg()} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
+      )}${await this.formatLogArg(binaryPath)} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
         this.storage.getUrlPath(label),
       )} %h`,
       ConnectTimeout: "0",
