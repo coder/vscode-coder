@@ -10,8 +10,12 @@ export type FeatureSet = {
  */
 export function featureSetForVersion(version: semver.SemVer | null): FeatureSet {
   return {
-    coderExtension:
-      version?.major === 0 && version?.minor <= 14 && version?.patch < 1 && version?.prerelease.length === 0,
+    coderExtension: !(
+      version?.major === 0 &&
+      version?.minor <= 14 &&
+      version?.patch < 1 &&
+      version?.prerelease.length === 0
+    ),
 
     // CLI versions before 2.3.3 don't support the --log-dir flag!
     // If this check didn't exist, VS Code connections would fail on

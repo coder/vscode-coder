@@ -213,11 +213,7 @@ export class Remote {
 
     let version: semver.SemVer | null = null
     try {
-      let v = await cli.version(binaryPath)
-      if (!v) {
-        v = buildInfo.version
-      }
-      version = semver.parse(v)
+      version = semver.parse(await cli.version(binaryPath))
     } catch (e) {
       version = semver.parse(buildInfo.version)
     }
@@ -225,7 +221,7 @@ export class Remote {
     const featureSet = featureSetForVersion(version)
 
     // Server versions before v0.14.1 don't support the vscodessh command!
-    if (featureSet.coderExtension) {
+    if (!featureSet.coderExtension) {
       await this.vscodeProposed.window.showErrorMessage(
         "Incompatible Server",
         {
