@@ -221,7 +221,7 @@ export class Remote {
     const featureSet = featureSetForVersion(version)
 
     // Server versions before v0.14.1 don't support the vscodessh command!
-    if (!featureSet.coderExtension) {
+    if (!featureSet.vscodessh) {
       await this.vscodeProposed.window.showErrorMessage(
         "Incompatible Server",
         {

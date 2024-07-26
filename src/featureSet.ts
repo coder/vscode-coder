@@ -1,7 +1,7 @@
 import * as semver from "semver"
 
 export type FeatureSet = {
-  coderExtension: boolean
+  vscodessh: boolean
   proxyLogDirectory: boolean
 }
 
@@ -10,7 +10,7 @@ export type FeatureSet = {
  */
 export function featureSetForVersion(version: semver.SemVer | null): FeatureSet {
   return {
-    coderExtension: !(
+    vscodessh: !(
       version?.major === 0 &&
       version?.minor <= 14 &&
       version?.patch < 1 &&
