@@ -10,7 +10,7 @@ import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
-import { makeCoderSdk, startWorkspace, waitForBuild } from "./api"
+import { getWorkspaceStatus, makeCoderSdk, startWorkspace, waitForBuild } from "./api"
 import { extractAgents } from "./api-helper"
 import * as cli from "./cliManager"
 import { Commands } from "./commands"
@@ -104,8 +104,10 @@ export class Remote {
                 if (!(await this.confirmStart(workspaceName))) {
                   return undefined
                 }
-                this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
-                workspace = await startWorkspace(restClient, workspace)
+                if (!["running", "starting"].includes(await getWorkspaceStatus(restClient, workspace.id))) {
+                  this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
+                  workspace = await startWorkspace(restClient, workspace)
+                }
                 break
               case "failed":
                 // On a first attempt, we will try starting a failed workspace
