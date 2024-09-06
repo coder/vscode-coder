@@ -1,5 +1,5 @@
 import { Api } from "coder/site/src/api/api"
-import { ProvisionerJobLog, Workspace, WorkspaceStatus } from "coder/site/src/api/typesGenerated"
+import { ProvisionerJobLog, Workspace } from "coder/site/src/api/typesGenerated"
 import fs from "fs/promises"
 import { ProxyAgent } from "proxy-agent"
 import * as vscode from "vscode"
@@ -115,16 +115,6 @@ export async function startWorkspace(restClient: Api, workspace: Workspace): Pro
     ...workspace,
     latest_build: latestBuild,
   }
-}
-
-/**
- * Get the status of a workspace
- * @param restClient Api
- * @param workspaceId string
- * @returns WorkspaceStatus
- */
-export async function getWorkspaceStatus(restClient: Api, workspaceId: string): Promise<WorkspaceStatus> {
-  return (await restClient.getWorkspace(workspaceId)).latest_build.status
 }
 
 /**
