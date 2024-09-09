@@ -104,15 +104,17 @@ export async function startWorkspace(restClient: Api, workspace: Workspace): Pro
     : // Default to not updating the workspace if not required.
       workspace.latest_build.template_version_id
 
-  const latestBuild = await restClient.startWorkspace(workspace.id, versionID)
   // Before we start a workspace, we make an initial request to check it's not already started
-  // let latestBuild = (await restClient.getWorkspace(workspace.id)).latest_build
-  // if (!["starting", "running"].includes(latestBuild.status)) {
+  const updatedWorkspace = await restClient.getWorkspace(workspace.id)
 
-  // }
+  if (["starting", "running"].includes(updatedWorkspace.latest_build.status)) {
+    return updatedWorkspace
+  }
+
+  const latestBuild = await restClient.startWorkspace(updatedWorkspace.id, versionID)
 
   return {
-    ...workspace,
+    ...updatedWorkspace,
     latest_build: latestBuild,
   }
 }
