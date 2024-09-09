@@ -93,6 +93,11 @@ was but for now it means some things are difficult to test as you cannot import
 
 ## Development
 
+> [!IMPORTANT]
+> Reasoning about networking gets really wonky trying to develop
+> this extension from a coder workspace. We currently recommend cloning the
+> repo locally
+
 1. Run `yarn watch` in the background.
 2. OPTIONAL: Compile the `coder` binary and place it in the equivalent of
    `os.tmpdir() + "/coder"`. If this is missing, it will download the binary
