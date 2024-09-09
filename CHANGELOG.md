@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-- Previously, if a workspace stopped or restarted causing the "Start" dialog to 
+- Previously, if a workspace stopped or restarted causing the "Start" dialog to
   appear in VS Code, the start button would fire a start workspace request regardless
   of the workspace status.
-  Now we perform a check to see if the workspace is still stopped or failed. If its status 
+  Now we perform a check to see if the workspace is still stopped or failed. If its status
   has changed out from under the IDE, it will not fire a redundant start request.
 
 ### Changed
