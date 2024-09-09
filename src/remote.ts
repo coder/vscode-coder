@@ -10,7 +10,7 @@ import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
-import { makeCoderSdk, startWorkspace, waitForBuild } from "./api"
+import { makeCoderSdk, startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api"
 import { extractAgents } from "./api-helper"
 import * as cli from "./cliManager"
 import { Commands } from "./commands"
@@ -105,7 +105,7 @@ export class Remote {
                   return undefined
                 }
                 this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
-                workspace = await startWorkspace(restClient, workspace)
+                workspace = await startWorkspaceIfStoppedOrFailed(restClient, workspace)
                 break
               case "failed":
                 // On a first attempt, we will try starting a failed workspace
@@ -115,7 +115,7 @@ export class Remote {
                     return undefined
                   }
                   this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
-                  workspace = await startWorkspace(restClient, workspace)
+                  workspace = await startWorkspaceIfStoppedOrFailed(restClient, workspace)
                   break
                 }
               // Otherwise fall through and error.

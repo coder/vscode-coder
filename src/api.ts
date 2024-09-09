@@ -94,7 +94,7 @@ export async function makeCoderSdk(baseUrl: string, token: string | undefined, s
 /**
  * Start or update a workspace and return the updated workspace.
  */
-export async function startWorkspace(restClient: Api, workspace: Workspace): Promise<Workspace> {
+export async function startWorkspaceIfStoppedOrFailed(restClient: Api, workspace: Workspace): Promise<Workspace> {
   // If the workspace requires the latest active template version, we should attempt
   // to update that here.
   // TODO: If param set changes, what do we do??
@@ -103,9 +103,18 @@ export async function startWorkspace(restClient: Api, workspace: Workspace): Pro
       workspace.template_active_version_id
     : // Default to not updating the workspace if not required.
       workspace.latest_build.template_version_id
-  const latestBuild = await restClient.startWorkspace(workspace.id, versionID)
+
+  // Before we start a workspace, we make an initial request to check it's not already started
+  const updatedWorkspace = await restClient.getWorkspace(workspace.id)
+
+  if (!["stopped", "failed"].includes(updatedWorkspace.latest_build.status)) {
+    return updatedWorkspace
+  }
+
+  const latestBuild = await restClient.startWorkspace(updatedWorkspace.id, versionID)
+
   return {
-    ...workspace,
+    ...updatedWorkspace,
     latest_build: latestBuild,
   }
 }
