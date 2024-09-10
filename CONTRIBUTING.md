@@ -128,7 +128,7 @@ Some dependencies are not directly used in the source but are required anyway.
 ## Releasing
 
 1. Check that the changelog lists all the important changes.
-2. Update the package.json version.
+2. Update the package.json version and add a version heading to the changelog.
 3. Push a tag matching the new package.json version.
 4. Update the resulting draft release with the changelog contents.
 5. Publish the draft release.
