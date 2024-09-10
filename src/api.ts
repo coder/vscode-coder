@@ -76,6 +76,7 @@ export async function makeCoderSdk(baseUrl: string, token: string | undefined, s
     const agent = await getHttpAgent()
     config.httpsAgent = agent
     config.httpAgent = agent
+    config.proxy = false
 
     return config
   })
