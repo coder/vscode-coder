@@ -2,11 +2,19 @@
 
 ## Unreleased
 
+## [v1.3.2](https://github.com/coder/vscode-coder/releases/tag/v1.3.2) (2024-09-10)
+
+### Fixed
+
 - Previously, if a workspace stopped or restarted causing the "Start" dialog to
-  appear in VS Code, the start button would fire a start workspace request regardless
-  of the workspace status.
-  Now we perform a check to see if the workspace is still stopped or failed. If its status
-  has changed out from under the IDE, it will not fire a redundant start request.
+  appear in VS Code, the start button would fire a start workspace request
+  regardless of the workspace status.
+  Now we perform a check to see if the workspace is still stopped or failed. If
+  its status has changed out from under the IDE, it will not fire a redundant
+  start request.
+- Fix a conflict with HTTP proxies and the library we use to make HTTP
+  requests. If you were getting 400 errors or similar from your proxy, please
+  try again.
 
 ### Changed
 
