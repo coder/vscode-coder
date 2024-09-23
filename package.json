@@ -268,7 +268,7 @@
     "bufferutil": "^4.0.8",
     "coder": "https://github.com/coder/coder#main",
     "dayjs": "^1.11.10",
-    "eslint": "^8.50.0",
+    "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-md": "^1.0.19",
