@@ -192,6 +192,12 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+          {
+              "command": "coder.openFromSidebar",
+              "when": "false"
+          }
+      ],
       "view/title": [
         {
           "command": "coder.logout",
