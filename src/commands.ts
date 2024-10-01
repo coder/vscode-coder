@@ -351,6 +351,10 @@ export class Commands {
         treeItem.workspaceFolderPath,
         true,
       )
+    } else {
+      // If there is no tree item, then the user manually ran this command.
+      // Default to the regular open instead.
+      return this.open()
     }
   }
 
