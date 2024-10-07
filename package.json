@@ -293,7 +293,7 @@
   },
   "dependencies": {
     "axios": "1.7.7",
-    "date-fns": "^3.6.0",
+    "date-fns": "^4.1.0",
     "eventsource": "^2.0.2",
     "find-process": "^1.4.7",
     "jsonc-parser": "^3.3.1",
