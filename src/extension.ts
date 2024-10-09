@@ -3,7 +3,7 @@ import axios, { isAxiosError } from "axios"
 import { getErrorMessage } from "coder/site/src/api/errors"
 import * as module from "module"
 import * as vscode from "vscode"
-import { makeCoderSdk } from "./api"
+import { makeCoderSdk, needToken } from "./api"
 import { errToStr } from "./api-helper"
 import { Commands } from "./commands"
 import { CertificateError, getErrorDetail } from "./error"
@@ -92,8 +92,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         }
 
         // If the token is missing we will get a 401 later and the user will be
-        // prompted to sign in again, so we do not need to ensure it is set.
-        const token = params.get("token")
+        // prompted to sign in again, so we do not need to ensure it is set now.
+        // For non-token auth, we write a blank token since the `vscodessh`
+        // command currently always requires a token file.  However, if there is
+        // a query parameter for non-token auth go ahead and use it anyway; all
+        // that really matters is the file is created.
+        const token = needToken() ? params.get("token") : (params.get("token") ?? "")
         if (token) {
           restClient.setSessionToken(token)
           await storage.setSessionToken(token)

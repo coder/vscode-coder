@@ -10,6 +10,21 @@ import { getProxyForUrl } from "./proxy"
 import { Storage } from "./storage"
 import { expandPath } from "./util"
 
+/**
+ * Return whether the API will need a token for authorization.
+ * If mTLS is in use (as specified by the cert or key files being set) then
+ * token authorization is disabled.  Otherwise, it is enabled.
+ */
+export function needToken(): boolean {
+  const cfg = vscode.workspace.getConfiguration()
+  const certFile = expandPath(String(cfg.get("coder.tlsCertFile") ?? "").trim())
+  const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim())
+  return !certFile && !keyFile
+}
+
+/**
+ * Create a new agent based off the current settings.
+ */
 async function createHttpAgent(): Promise<ProxyAgent> {
   const cfg = vscode.workspace.getConfiguration()
   const insecure = Boolean(cfg.get("coder.insecure"))
@@ -32,7 +47,16 @@ async function createHttpAgent(): Promise<ProxyAgent> {
   })
 }
 
+// The agent is a singleton so we only have to listen to the configuration once
+// (otherwise we would have to carefully dispose agents to remove their
+// configuration listeners), and to share the connection pool.
 let agent: Promise<ProxyAgent> | undefined = undefined
+
+/**
+ * Get the existing agent or create one if necessary.  On settings change,
+ * recreate the agent.  The agent on the client is not automatically updated;
+ * this must be called before every request to get the latest agent.
+ */
 async function getHttpAgent(): Promise<ProxyAgent> {
   if (!agent) {
     vscode.workspace.onDidChangeConfiguration((e) => {
