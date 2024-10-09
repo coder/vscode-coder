@@ -74,17 +74,17 @@
           "default": ""
         },
         "coder.tlsCertFile": {
-          "markdownDescription": "Path to file for TLS client cert",
+          "markdownDescription": "Path to file for TLS client cert. When specified, token authorization will be skipped.",
           "type": "string",
           "default": ""
         },
         "coder.tlsKeyFile": {
-          "markdownDescription": "Path to file for TLS client key",
+          "markdownDescription": "Path to file for TLS client key. When specified, token authorization will be skipped.",
           "type": "string",
           "default": ""
         },
         "coder.tlsCaFile": {
-          "markdownDescription": "Path to file for TLS certificate authority",
+          "markdownDescription": "Path to file for TLS certificate authority.",
           "type": "string",
           "default": ""
         },
