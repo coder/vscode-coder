@@ -36,6 +36,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   private agentWatchers: Record<WorkspaceAgent["id"], AgentWatcher> = {}
   private timeout: NodeJS.Timeout | undefined
   private fetching = false
+  private visible = false
 
   constructor(
     private readonly getWorkspacesQuery: WorkspaceQuery,
@@ -48,10 +49,10 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   // fetchAndRefresh fetches new workspaces, re-renders the entire tree, then
   // keeps refreshing (if a timer length was provided) as long as the user is
   // still logged in and no errors were encountered fetching workspaces.
-  // Calling this while already refreshing is a no-op and will return
-  // immediately.
+  // Calling this while already refreshing or not visible is a no-op and will
+  // return immediately.
   async fetchAndRefresh() {
-    if (this.fetching) {
+    if (this.fetching || !this.visible) {
       return
     }
     this.fetching = true
@@ -83,7 +84,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
    * Fetch workspaces and turn them into tree items.  Throw an error if not
    * logged in or the query fails.
    */
-  async fetch(): Promise<WorkspaceTreeItem[]> {
+  private async fetch(): Promise<WorkspaceTreeItem[]> {
     // If there is no URL configured, assume we are logged out.
     const restClient = this.restClient
     const url = restClient.getAxiosInstance().defaults.baseURL
@@ -146,6 +147,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
    * Either start or stop the refresh timer based on visibility.
    */
   setVisibility(visible: boolean) {
+    this.visible = visible
     if (!visible) {
       this.cancelPendingRefresh()
     } else {
