@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.3.3](https://github.com/coder/vscode-coder/releases/tag/v1.3.3) (2024-10-14)
+
 ### Fixed
 
 - The plugin no longer immediately starts polling workspaces when connecting to
