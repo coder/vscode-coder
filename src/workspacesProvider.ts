@@ -10,6 +10,7 @@ import {
   extractAgents,
   errToStr,
 } from "./api-helper"
+import { Storage } from "./storage"
 
 export enum WorkspaceQuery {
   Mine = "owner:me",
@@ -42,6 +43,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   constructor(
     private readonly getWorkspacesQuery: WorkspaceQuery,
     private readonly restClient: Api,
+    private readonly storage: Storage,
     private readonly timerSeconds?: number,
   ) {
     // No initialization.
@@ -86,6 +88,10 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
    * logged in or the query fails.
    */
   private async fetch(): Promise<WorkspaceTreeItem[]> {
+    if (vscode.env.logLevel <= vscode.LogLevel.Debug) {
+      this.storage.writeToCoderOutputChannel(`Fetching workspaces: ${this.getWorkspacesQuery || "no filter"}...`)
+    }
+
     // If there is no URL configured, assume we are logged out.
     const restClient = this.restClient
     const url = restClient.getAxiosInstance().defaults.baseURL
