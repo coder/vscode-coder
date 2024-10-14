@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- The plugin no longer immediately starts polling workspaces when connecting to
+  a remote. It will only do this when the Coder sidebar is open.
+
+### Changed
+
+- Instead of monitoring all workspaces for impending autostops and deletions,
+  the plugin now only monitors the connected workspace.
+
 ## [v1.3.2](https://github.com/coder/vscode-coder/releases/tag/v1.3.2) (2024-09-10)
 
 ### Fixed
