@@ -83,7 +83,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
    * Fetch workspaces and turn them into tree items.  Throw an error if not
    * logged in or the query fails.
    */
-  async fetch(): Promise<WorkspaceTreeItem[]> {
+  private async fetch(): Promise<WorkspaceTreeItem[]> {
     // If there is no URL configured, assume we are logged out.
     const restClient = this.restClient
     const url = restClient.getAxiosInstance().defaults.baseURL
