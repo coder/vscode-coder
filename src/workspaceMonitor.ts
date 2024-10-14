@@ -25,7 +25,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
   private notifiedOutdated = false
 
   readonly onChange = new vscode.EventEmitter<Workspace>()
-  private readonly updateStatusBarItem: vscode.StatusBarItem
+  private readonly statusBarItem: vscode.StatusBarItem
 
   // For logging.
   private readonly name: String
@@ -67,10 +67,13 @@ export class WorkspaceMonitor implements vscode.Disposable {
     // Store so we can close in dispose().
     this.eventSource = eventSource
 
-    this.updateStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
-    this.updateStatusBarItem.name = "Coder Workspace Update"
-    this.updateStatusBarItem.text = "$(fold-up) Update Workspace"
-    this.updateStatusBarItem.command = "coder.workspace.update"
+    const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
+    statusBarItem.name = "Coder Workspace Update"
+    statusBarItem.text = "$(fold-up) Update Workspace"
+    statusBarItem.command = "coder.workspace.update"
+
+    // Store so we can update when the workspace data updates.
+    this.statusBarItem = statusBarItem
 
     this.update(workspace) // Set initial state.
     this.maybeNotify(workspace)
@@ -82,7 +85,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
   dispose() {
     if (!this.disposed) {
       this.storage.writeToCoderOutputChannel(`Unmonitoring ${this.name}...`)
-      this.updateStatusBarItem.dispose()
+      this.statusBarItem.dispose()
       this.eventSource.close()
       this.disposed = true
     }
@@ -182,9 +185,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
   private updateStatusBar(workspace: Workspace) {
     if (!workspace.outdated) {
-      this.updateStatusBarItem.hide()
+      this.statusBarItem.hide()
     } else {
-      this.updateStatusBarItem.show()
+      this.statusBarItem.show()
     }
   }
 }
