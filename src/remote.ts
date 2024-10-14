@@ -1,7 +1,6 @@
 import { isAxiosError } from "axios"
 import { Api } from "coder/site/src/api/api"
 import { Workspace } from "coder/site/src/api/typesGenerated"
-import EventSource from "eventsource"
 import find from "find-process"
 import * as fs from "fs/promises"
 import * as jsonc from "jsonc-parser"
@@ -20,7 +19,7 @@ import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
 import { AuthorityPrefix, expandPath, parseRemoteAuthority } from "./util"
-import { WorkspaceAction } from "./workspaceAction"
+import { WorkspaceMonitor } from "./workspaceMonitor"
 
 export interface RemoteDetails extends vscode.Disposable {
   url: string
@@ -292,9 +291,6 @@ export class Remote {
     // Register before connection so the label still displays!
     disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name))
 
-    // Initialize any WorkspaceAction notifications (auto-off, upcoming deletion)
-    const action = await WorkspaceAction.init(this.vscodeProposed, workspaceRestClient, this.storage)
-
     // If the workspace is not in a running state, try to get it running.
     const updatedWorkspace = await this.maybeWaitForRunning(workspaceRestClient, workspace)
     if (!updatedWorkspace) {
@@ -376,88 +372,9 @@ export class Remote {
       }
     }
 
-    // Watch for workspace updates.
-    this.storage.writeToCoderOutputChannel(`Establishing watcher for ${workspaceName}...`)
-    const workspaceUpdate = new vscode.EventEmitter<Workspace>()
-    const watchURL = new URL(`${baseUrlRaw}/api/v2/workspaces/${workspace.id}/watch`)
-    const eventSource = new EventSource(watchURL.toString(), {
-      headers: {
-        "Coder-Session-Token": token,
-      },
-    })
-
-    const workspaceUpdatedStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
-    disposables.push(workspaceUpdatedStatus)
-
-    let hasShownOutdatedNotification = false
-    const refreshWorkspaceUpdatedStatus = (newWorkspace: Workspace) => {
-      // If the newly gotten workspace was updated, then we show a notification
-      // to the user that they should update.  Only show this once per session.
-      if (newWorkspace.outdated && !hasShownOutdatedNotification) {
-        hasShownOutdatedNotification = true
-        workspaceRestClient
-          .getTemplate(newWorkspace.template_id)
-          .then((template) => {
-            return workspaceRestClient.getTemplateVersion(template.active_version_id)
-          })
-          .then((version) => {
-            let infoMessage = `A new version of your workspace is available.`
-            if (version.message) {
-              infoMessage = `A new version of your workspace is available: ${version.message}`
-            }
-            vscode.window.showInformationMessage(infoMessage, "Update").then((action) => {
-              if (action === "Update") {
-                vscode.commands.executeCommand("coder.workspace.update", newWorkspace, workspaceRestClient)
-              }
-            })
-          })
-      }
-      if (!newWorkspace.outdated) {
-        vscode.commands.executeCommand("setContext", "coder.workspace.updatable", false)
-        workspaceUpdatedStatus.hide()
-        return
-      }
-      workspaceUpdatedStatus.name = "Coder Workspace Update"
-      workspaceUpdatedStatus.text = "$(fold-up) Update Workspace"
-      workspaceUpdatedStatus.command = "coder.workspace.update"
-      // Important for hiding the "Update Workspace" command.
-      vscode.commands.executeCommand("setContext", "coder.workspace.updatable", true)
-      workspaceUpdatedStatus.show()
-    }
-    // Show an initial status!
-    refreshWorkspaceUpdatedStatus(workspace)
-
-    eventSource.addEventListener("data", (event: MessageEvent<string>) => {
-      const workspace = JSON.parse(event.data) as Workspace
-      if (!workspace) {
-        return
-      }
-      refreshWorkspaceUpdatedStatus(workspace)
-      this.commands.workspace = workspace
-      workspaceUpdate.fire(workspace)
-      if (workspace.latest_build.status === "stopping" || workspace.latest_build.status === "stopped") {
-        const action = this.vscodeProposed.window.showInformationMessage(
-          "Your workspace stopped!",
-          {
-            useCustom: true,
-            modal: true,
-            detail: "Reloading the window will start it again.",
-          },
-          "Reload Window",
-        )
-        if (!action) {
-          return
-        }
-        this.reloadWindow()
-      }
-      // If a new build is initialized for a workspace, we automatically
-      // reload the window. Then the build log will appear, and startup
-      // will continue as expected.
-      if (workspace.latest_build.status === "starting") {
-        this.reloadWindow()
-        return
-      }
-    })
+    // Watch the workspace for changes.
+    const monitor = new WorkspaceMonitor(workspace, workspaceRestClient, this.storage)
+    disposables.push(monitor)
 
     // Wait for the agent to connect.
     if (agent.status === "connecting") {
@@ -469,7 +386,7 @@ export class Remote {
         },
         async () => {
           await new Promise<void>((resolve) => {
-            const updateEvent = workspaceUpdate.event((workspace) => {
+            const updateEvent = monitor.onChange.event((workspace) => {
               if (!agent) {
                 return
               }
@@ -552,8 +469,6 @@ export class Remote {
       url: baseUrlRaw,
       token,
       dispose: () => {
-        eventSource.close()
-        action.cleanupWorkspaceActions()
         disposables.forEach((d) => d.dispose())
       },
     }
@@ -735,7 +650,7 @@ export class Remote {
       } else {
         statusText += network.preferred_derp + " "
         networkStatus.tooltip =
-          "You're connected through a relay 🕵️.\nWe'll switch over to peer-to-peer when available."
+          "You're connected through a relay 🕵.\nWe'll switch over to peer-to-peer when available."
       }
       networkStatus.tooltip +=
         "\n\nDownload ↓ " +
@@ -751,9 +666,7 @@ export class Remote {
       if (!network.p2p) {
         const derpLatency = network.derp_latency[network.preferred_derp]
 
-        networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(
-          network.latency - derpLatency
-        ).toFixed(2)}ms ↔ Workspace`
+        networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(network.latency - derpLatency).toFixed(2)}ms ↔ Workspace`
 
         let first = true
         Object.keys(network.derp_latency).forEach((region) => {
