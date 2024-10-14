@@ -215,5 +215,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   } else {
     storage.writeToCoderOutputChannel("Not currently logged in")
     vscode.commands.executeCommand("setContext", "coder.loaded", true)
+
+    // Handle autologin, if not already logged in.
+    const cfg = vscode.workspace.getConfiguration()
+    if (cfg.get("coder.autologin") === true) {
+      const defaultUrl = cfg.get("coder.defaultUrl") || process.env.CODER_URL
+      if (defaultUrl) {
+        vscode.commands.executeCommand("coder.login", defaultUrl)
+      }
+    }
   }
 }

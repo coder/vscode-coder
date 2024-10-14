@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- Default URL setting that takes precedence over CODER_URL.
+- Autologin setting that automatically initiates login when the extension
+  activates using either the default URL or CODER_URL.
+
 ## [v1.3.5](https://github.com/coder/vscode-coder/releases/tag/v1.3.5) (2024-10-16)
 
 ### Fixed
