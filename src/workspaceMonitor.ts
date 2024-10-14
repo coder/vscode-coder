@@ -39,25 +39,29 @@ export class WorkspaceMonitor implements vscode.Disposable {
     const watchUrl = new URL(`${url}/api/v2/workspaces/${workspace.id}/watch`)
     this.storage.writeToCoderOutputChannel(`Monitoring ${watchUrl}`)
 
-    this.eventSource = new EventSource(watchUrl.toString(), {
+    const eventSource = new EventSource(watchUrl.toString(), {
       headers: {
         "Coder-Session-Token": token,
       },
     })
 
-    this.eventSource.addEventListener("data", (event) => {
+    eventSource.addEventListener("data", (event) => {
       try {
         const newWorkspaceData = JSON.parse(event.data) as Workspace
         this.update(newWorkspaceData)
+        this.maybeNotify(newWorkspaceData)
         this.onChange.fire(newWorkspaceData)
       } catch (error) {
         this.notifyError(error)
       }
     })
 
-    this.eventSource.addEventListener("error", (error) => {
+    eventSource.addEventListener("error", (error) => {
       this.notifyError(error)
     })
+
+    // Store so we can close in dispose().
+    this.eventSource = eventSource
 
     this.updateStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999)
     this.updateStatusBarItem.name = "Coder Workspace Update"
@@ -65,6 +69,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
     this.updateStatusBarItem.command = "coder.workspace.update"
 
     this.update(workspace) // Set initial state.
+    this.maybeNotify(workspace)
   }
 
   /**
@@ -81,9 +86,13 @@ export class WorkspaceMonitor implements vscode.Disposable {
   private update(workspace: Workspace) {
     this.updateContext(workspace)
     this.updateStatusBar(workspace)
+  }
+
+  private maybeNotify(workspace: Workspace) {
     this.maybeNotifyOutdated(workspace)
     this.maybeNotifyAutostop(workspace)
     this.maybeNotifyDeletion(workspace)
+    this.maybeNotifyNotRunning(workspace)
   }
 
   private maybeNotifyAutostop(workspace: Workspace) {
@@ -108,6 +117,23 @@ export class WorkspaceMonitor implements vscode.Disposable {
       const toShutdownTime = formatDistanceToNowStrict(new Date(workspace.deleting_at))
       vscode.window.showInformationMessage(`${workspace.name} is scheduled for deletion in ${toShutdownTime}.`)
       this.notifiedDeletion = true
+    }
+  }
+
+  private maybeNotifyNotRunning(workspace: Workspace) {
+    if (workspace.latest_build.status !== "running") {
+      vscode.window.showInformationMessage(
+        "Your workspace is no longer running!",
+        {
+          detail: "Reloading the window to reconnect.",
+        },
+        "Reload Window",
+      ).then((action) => {
+        if (!action) {
+          return
+        }
+        vscode.commands.executeCommand("workbench.action.reloadWindow")
+      })
     }
   }
 
