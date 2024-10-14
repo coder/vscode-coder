@@ -27,17 +27,21 @@ export class WorkspaceMonitor implements vscode.Disposable {
   readonly onChange = new vscode.EventEmitter<Workspace>()
   private readonly updateStatusBarItem: vscode.StatusBarItem
 
+  // For logging.
+  private readonly name: String
+
   constructor(
     workspace: Workspace,
     private readonly restClient: Api,
     private readonly storage: Storage,
   ) {
+    this.name = `${workspace.owner_name}/${workspace.name}`
     const url = this.restClient.getAxiosInstance().defaults.baseURL
     const token = this.restClient.getAxiosInstance().defaults.headers.common["Coder-Session-Token"] as
       | string
       | undefined
     const watchUrl = new URL(`${url}/api/v2/workspaces/${workspace.id}/watch`)
-    this.storage.writeToCoderOutputChannel(`Monitoring ${watchUrl}`)
+    this.storage.writeToCoderOutputChannel(`Monitoring ${this.name}...`)
 
     const eventSource = new EventSource(watchUrl.toString(), {
       headers: {
@@ -77,6 +81,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
    */
   dispose() {
     if (!this.disposed) {
+      this.storage.writeToCoderOutputChannel(`Unmonitoring ${this.name}...`)
       this.updateStatusBarItem.dispose()
       this.eventSource.close()
       this.disposed = true
@@ -103,7 +108,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
       this.isImpending(workspace.latest_build.deadline, this.autostopNotifyTime)
     ) {
       const toAutostopTime = formatDistanceToNowStrict(new Date(workspace.latest_build.deadline))
-      vscode.window.showInformationMessage(`${workspace.name} is scheduled to shut down in ${toAutostopTime}.`)
+      vscode.window.showInformationMessage(`${this.name} is scheduled to shut down in ${toAutostopTime}.`)
       this.notifiedAutostop = true
     }
   }
@@ -115,7 +120,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
       this.isImpending(workspace.deleting_at, this.deletionNotifyTime)
     ) {
       const toShutdownTime = formatDistanceToNowStrict(new Date(workspace.deleting_at))
-      vscode.window.showInformationMessage(`${workspace.name} is scheduled for deletion in ${toShutdownTime}.`)
+      vscode.window.showInformationMessage(`${this.name} is scheduled for deletion in ${toShutdownTime}.`)
       this.notifiedDeletion = true
     }
   }
