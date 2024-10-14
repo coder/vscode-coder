@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## [v1.3.4](https://github.com/coder/vscode-coder/releases/tag/v1.3.4) (2024-10-14)
+
+### Fixed
+
+- The "All Workspaces" view was not being populated due to visibility check.
+
+### Added
+
+- Log workspaces queries when running with `--log=debug`.
+- Coder output logs will now have the date prefixed to each line.
+
 ## [v1.3.3](https://github.com/coder/vscode-coder/releases/tag/v1.3.3) (2024-10-14)
 
 ### Fixed
