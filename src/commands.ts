@@ -459,7 +459,7 @@ export class Commands {
       {
         useCustom: true,
         modal: true,
-        detail: `${this.workspace.owner_name}/${this.workspace.name} will be updated then this window will reload to watch the build logs and reconnect.`,
+        detail: `Update ${this.workspace.owner_name}/${this.workspace.name} to the latest version?`,
       },
       "Update",
     )
