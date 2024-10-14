@@ -23,17 +23,20 @@ export class WorkspaceMonitor implements vscode.Disposable {
   private notifiedAutostop = false
   private notifiedDeletion = false
   private notifiedOutdated = false
+  private notifiedNotRunning = false
 
   readonly onChange = new vscode.EventEmitter<Workspace>()
   private readonly statusBarItem: vscode.StatusBarItem
 
   // For logging.
-  private readonly name: String
+  private readonly name: string
 
   constructor(
     workspace: Workspace,
     private readonly restClient: Api,
     private readonly storage: Storage,
+    // We use the proposed API to get access to useCustom in dialogs.
+    private readonly vscodeProposed: typeof vscode,
   ) {
     this.name = `${workspace.owner_name}/${workspace.name}`
     const url = this.restClient.getAxiosInstance().defaults.baseURL
@@ -129,19 +132,24 @@ export class WorkspaceMonitor implements vscode.Disposable {
   }
 
   private maybeNotifyNotRunning(workspace: Workspace) {
-    if (workspace.latest_build.status !== "running") {
-      vscode.window.showInformationMessage(
-        "Your workspace is no longer running!",
-        {
-          detail: "Reloading the window to reconnect.",
-        },
-        "Reload Window",
-      ).then((action) => {
-        if (!action) {
-          return
-        }
-        vscode.commands.executeCommand("workbench.action.reloadWindow")
-      })
+    if (!this.notifiedNotRunning && workspace.latest_build.status !== "running") {
+      this.notifiedNotRunning = true
+      this.vscodeProposed.window
+        .showInformationMessage(
+          `${this.name} is no longer running!`,
+          {
+            detail: `The workspace status is "${workspace.latest_build.status}". Reload the window to reconnect.`,
+            modal: true,
+            useCustom: true,
+          },
+          "Reload Window",
+        )
+        .then((action) => {
+          if (!action) {
+            return
+          }
+          vscode.commands.executeCommand("workbench.action.reloadWindow")
+        })
     }
   }
 

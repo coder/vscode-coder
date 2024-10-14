@@ -373,7 +373,7 @@ export class Remote {
     }
 
     // Watch the workspace for changes.
-    const monitor = new WorkspaceMonitor(workspace, workspaceRestClient, this.storage)
+    const monitor = new WorkspaceMonitor(workspace, workspaceRestClient, this.storage, this.vscodeProposed)
     disposables.push(monitor)
     disposables.push(monitor.onChange.event((w) => (this.commands.workspace = w)))
 
