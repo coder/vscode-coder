@@ -113,6 +113,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     },
   })
 
+  // Handle autologin, if not already logged in.
+  const cfg = vscode.workspace.getConfiguration()
+  if (cfg.get("coder.autologin") === true) {
+    const defaultUrl = cfg.get("coder.defaultUrl")
+    vscode.commands.executeCommand("coder.login", defaultUrl, undefined, parts.label).catch((error) => {
+
+    })
+  }
+
   // Register globally available commands.  Many of these have visibility
   // controlled by contexts, see `when` in the package.json.
   const commands = new Commands(vscodeProposed, restClient, storage)
