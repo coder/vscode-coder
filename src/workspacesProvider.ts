@@ -32,7 +32,8 @@ type AgentWatcher = {
  * abort polling until fetchAndRefresh() is called again.
  */
 export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
-  private workspaces: WorkspaceTreeItem[] = []
+  // Undefined if we have never fetched workspaces before.
+  private workspaces: WorkspaceTreeItem[] | undefined
   private agentWatchers: Record<WorkspaceAgent["id"], AgentWatcher> = {}
   private timeout: NodeJS.Timeout | undefined
   private fetching = false
@@ -145,11 +146,15 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
   /**
    * Either start or stop the refresh timer based on visibility.
+   *
+   * If we have never fetched workspaces and are visible, fetch immediately.
    */
   setVisibility(visible: boolean) {
     this.visible = visible
     if (!visible) {
       this.cancelPendingRefresh()
+    } else if (!this.workspaces) {
+      this.fetchAndRefresh()
     } else {
       this.maybeScheduleRefresh()
     }
@@ -207,7 +212,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
       return Promise.resolve([])
     }
-    return Promise.resolve(this.workspaces)
+    return Promise.resolve(this.workspaces || [])
   }
 }
 
