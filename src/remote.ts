@@ -375,6 +375,7 @@ export class Remote {
     // Watch the workspace for changes.
     const monitor = new WorkspaceMonitor(workspace, workspaceRestClient, this.storage)
     disposables.push(monitor)
+    disposables.push(monitor.onChange.event((w) => (this.commands.workspace = w)))
 
     // Wait for the agent to connect.
     if (agent.status === "connecting") {
