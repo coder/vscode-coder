@@ -63,8 +63,8 @@ export class WorkspaceMonitor implements vscode.Disposable {
       }
     })
 
-    eventSource.addEventListener("error", (error) => {
-      this.notifyError(error)
+    eventSource.addEventListener("error", (event) => {
+      this.notifyError(event.data)
     })
 
     // Store so we can close in dispose().
@@ -182,9 +182,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
   }
 
   private notifyError(error: unknown) {
-    const message = errToStr(error, "No error message was provided")
+    // For now, we are not bothering the user about this.
+    const message = errToStr(error, "Got empty error while monitoring workspace")
     this.storage.writeToCoderOutputChannel(message)
-    vscode.window.showErrorMessage(`Failed to monitor workspace: ${message}`)
   }
 
   private updateContext(workspace: Workspace) {

@@ -1,11 +1,15 @@
+import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors"
 import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import { z } from "zod"
 
 export function errToStr(error: unknown, def: string) {
   if (error instanceof Error && error.message) {
     return error.message
-  }
-  if (typeof error === "string" && error.trim().length > 0) {
+  } else if (isApiError(error)) {
+    return error.response.data.message
+  } else if (isApiErrorResponse(error)) {
+    return error.message
+  } else if (typeof error === "string" && error.trim().length > 0) {
     return error
   }
   return def
