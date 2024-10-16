@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## [v1.3.5](https://github.com/coder/vscode-coder/releases/tag/v1.3.5) (2024-10-16)
+
+### Fixed
+
+- Error messages from the workspace watch endpoint were not logged correctly.
+- Delay notifying about workspaces shutting down since the connection might bump
+  the activity, making the notification misleading.
+
 ## [v1.3.4](https://github.com/coder/vscode-coder/releases/tag/v1.3.4) (2024-10-14)
 
 ### Fixed
