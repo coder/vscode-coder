@@ -79,7 +79,6 @@ export class WorkspaceMonitor implements vscode.Disposable {
     this.statusBarItem = statusBarItem
 
     this.update(workspace) // Set initial state.
-    this.maybeNotify(workspace)
   }
 
   /**
