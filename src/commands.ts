@@ -136,7 +136,12 @@ export class Commands {
    * Log into the provided deployment.  If the deployment URL is not specified,
    * ask for it first with a menu showing recent URLs and CODER_URL, if set.
    */
-  public async login([inputUrl, inputLabel, inputToken]: string[]): Promise<void> {
+  public async login(...args: string[]): Promise<void> {
+    // Destructure would be nice but VS Code can pass undefined which errors.
+    const inputUrl = args[0]
+    const inputToken = args[1]
+    const inputLabel = args[2]
+
     const url = await this.maybeAskUrl(inputUrl)
     if (!url) {
       return
