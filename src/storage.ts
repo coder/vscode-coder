@@ -438,7 +438,7 @@ export class Storage {
    * Falsey URLs and null tokens are a no-op; we avoid unconfiguring the CLI to
    * avoid breaking existing connections.
    */
-  public async configureCli(label: string, url: string | undefined, token: string | undefined | null) {
+  public async configureCli(label: string, url: string | undefined, token: string | null) {
     await Promise.all([this.updateUrlForCli(label, url), this.updateTokenForCli(label, token)])
   }
 
