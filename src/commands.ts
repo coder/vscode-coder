@@ -136,8 +136,8 @@ export class Commands {
    * Log into the provided deployment.  If the deployment URL is not specified,
    * ask for it first with a menu showing recent URLs and CODER_URL, if set.
    */
-  public async login(...args: string[]): Promise<void> {
-    const url = await this.maybeAskUrl(args[0])
+  public async login([inputUrl, inputLabel, inputToken]: string[]): Promise<void> {
+    const url = await this.maybeAskUrl(inputUrl)
     if (!url) {
       return
     }
@@ -145,10 +145,10 @@ export class Commands {
     // It is possible that we are trying to log into an old-style host, in which
     // case we want to write with the provided blank label instead of generating
     // a host label.
-    const label = typeof args[2] === "undefined" ? toSafeHost(url) : args[2]
+    const label = typeof inputLabel === "undefined" ? toSafeHost(url) : inputLabel
 
     // Try to get a token from the user, if we need one, and their user.
-    const res = await this.maybeAskToken(url, args[1])
+    const res = await this.maybeAskToken(url, inputToken)
     if (!res) {
       return // The user aborted.
     }
