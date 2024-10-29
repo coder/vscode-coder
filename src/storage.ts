@@ -435,10 +435,10 @@ export class Storage {
   /**
    * Configure the CLI for the deployment with the provided label.
    *
-   * Falsey values are a no-op; we avoid unconfiguring the CLI to avoid breaking
-   * existing connections.
+   * Falsey URLs and null tokens are a no-op; we avoid unconfiguring the CLI to
+   * avoid breaking existing connections.
    */
-  public async configureCli(label: string, url: string | undefined, token: string | undefined | null) {
+  public async configureCli(label: string, url: string | undefined, token: string | null) {
     await Promise.all([this.updateUrlForCli(label, url), this.updateTokenForCli(label, token)])
   }
 
@@ -459,15 +459,15 @@ export class Storage {
   /**
    * Update the session token for a deployment with the provided label on disk
    * which can be used by the CLI via --session-token-file.  If the token is
-   * falsey, do nothing.
+   * null, do nothing.
    *
    * If the label is empty, read the old deployment-unaware config instead.
    */
   private async updateTokenForCli(label: string, token: string | undefined | null) {
-    if (token) {
+    if (token !== null) {
       const tokenPath = this.getSessionTokenPath(label)
       await fs.mkdir(path.dirname(tokenPath), { recursive: true })
-      await fs.writeFile(tokenPath, token)
+      await fs.writeFile(tokenPath, token ?? "")
     }
   }
 
