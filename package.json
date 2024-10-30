@@ -99,12 +99,12 @@
           "default": ""
         },
         "coder.defaultUrl": {
-          "markdownDescription": "This will be shown in the URL prompt, along with CODER_URL if set, for the user to select when logging in. If autologin is enabled, this URL will be automatically logged into when the extension is activated.",
+          "markdownDescription": "This will be shown in the URL prompt, along with CODER_URL if set, for the user to select when logging in.",
           "type": "string",
           "default": ""
         },
         "coder.autologin": {
-          "markdownDescription": "Automatically log into the default URL or CODER_URL when the extension is activated. Has no effect if neither is set.",
+          "markdownDescription": "Automatically log into the default URL when the extension is activated. coder.defaultUrl is preferred, otherwise the CODER_URL environment variable will be used. This setting has no effect if neither is set.",
           "type": "boolean",
           "default": false
         }
