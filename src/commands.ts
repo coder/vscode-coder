@@ -266,7 +266,10 @@ export class Commands {
    */
   public async viewLogs(): Promise<void> {
     if (!this.workspaceLogPath) {
-      vscode.window.showInformationMessage("No logs available.", this.workspaceLogPath || "<unset>")
+      vscode.window.showInformationMessage(
+        "No logs available. Make sure to set coder.proxyLogDirectory to get logs.",
+        this.workspaceLogPath || "<unset>",
+      )
       return
     }
     const uri = vscode.Uri.file(this.workspaceLogPath)

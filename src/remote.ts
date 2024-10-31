@@ -430,6 +430,8 @@ export class Remote {
       return
     }
 
+    const logDir = this.getLogDir(featureSet)
+
     // This ensures the Remote SSH extension resolves the host to execute the
     // Coder binary properly.
     //
@@ -437,7 +439,7 @@ export class Remote {
     // "Host not found".
     try {
       this.storage.writeToCoderOutputChannel("Updating SSH config...")
-      await this.updateSSHConfig(workspaceRestClient, parts.label, parts.host, binaryPath, featureSet)
+      await this.updateSSHConfig(workspaceRestClient, parts.label, parts.host, binaryPath, logDir)
     } catch (error) {
       this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
       throw error
@@ -450,7 +452,7 @@ export class Remote {
         return
       }
       disposables.push(this.showNetworkUpdates(pid))
-      this.commands.workspaceLogPath = path.join(this.storage.getLogPath(), `${pid}.log`)
+      this.commands.workspaceLogPath = logDir ? path.join(logDir, `${pid}.log`) : undefined
     })
 
     // Register the label formatter again because SSH overrides it!
@@ -476,20 +478,25 @@ export class Remote {
   }
 
   /**
-   * Format's the --log-dir argument for the ProxyCommand
+   * Return the --log-dir argument value for the ProxyCommand.  It may be an
+   * empty string if the setting is not set or the cli does not support it.
    */
-  private async formatLogArg(featureSet: FeatureSet): Promise<string> {
+  private getLogDir(featureSet: FeatureSet): string {
     if (!featureSet.proxyLogDirectory) {
       return ""
     }
-
     // If the proxyLogDirectory is not set in the extension settings we don't send one.
-    // Question for Asher: How do VSCode extension settings behave in terms of semver for the extension?
-    const logDir = expandPath(String(vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ?? "").trim())
+    return expandPath(String(vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ?? "").trim())
+  }
+
+  /**
+   * Formats the --log-dir argument for the ProxyCommand after making sure it
+   * has been created.
+   */
+  private async formatLogArg(logDir: string): Promise<string> {
     if (!logDir) {
       return ""
     }
-
     await fs.mkdir(logDir, { recursive: true })
     this.storage.writeToCoderOutputChannel(`SSH proxy diagnostics are being written to ${logDir}`)
     return ` --log-dir ${escape(logDir)}`
@@ -497,13 +504,7 @@ export class Remote {
 
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
-  private async updateSSHConfig(
-    restClient: Api,
-    label: string,
-    hostName: string,
-    binaryPath: string,
-    featureSet: FeatureSet,
-  ) {
+  private async updateSSHConfig(restClient: Api, label: string, hostName: string, binaryPath: string, logDir: string) {
     let deploymentSSHConfig = {}
     try {
       const deploymentConfig = await restClient.getDeploymentSSHConfig()
@@ -585,7 +586,7 @@ export class Remote {
       Host: label ? `${AuthorityPrefix}.${label}--*` : `${AuthorityPrefix}--*`,
       ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
         this.storage.getNetworkInfoPath(),
-      )}${await this.formatLogArg(featureSet)} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
+      )}${await this.formatLogArg(logDir)} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
         this.storage.getUrlPath(label),
       )} %h`,
       ConnectTimeout: "0",
