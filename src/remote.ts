@@ -9,7 +9,7 @@ import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
-import { makeCoderSdk, startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api"
+import { makeCoderSdk, needToken, startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api"
 import { extractAgents } from "./api-helper"
 import * as cli from "./cliManager"
 import { Commands } from "./commands"
@@ -160,7 +160,7 @@ export class Remote {
     const { url: baseUrlRaw, token } = await this.storage.readCliConfig(parts.label)
 
     // It could be that the cli config was deleted.  If so, ask for the url.
-    if (!baseUrlRaw || !token) {
+    if (!baseUrlRaw || (!token && needToken())) {
       const result = await this.vscodeProposed.window.showInformationMessage(
         "You are not logged in...",
         {
