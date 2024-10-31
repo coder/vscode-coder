@@ -99,7 +99,7 @@
           "default": ""
         },
         "coder.defaultUrl": {
-          "markdownDescription": "This will be shown in the URL prompt, along with CODER_URL if set, for the user to select when logging in.",
+          "markdownDescription": "This will be shown in the URL prompt, along with the CODER_URL environment variable if set, for the user to select when logging in.",
           "type": "string",
           "default": ""
         },
