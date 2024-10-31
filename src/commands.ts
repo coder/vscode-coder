@@ -78,13 +78,14 @@ export class Commands {
    * CODER_URL or enter a new one.  Undefined means the user aborted.
    */
   private async askURL(selection?: string): Promise<string | undefined> {
+    const defaultURL = vscode.workspace.getConfiguration().get<string>("coder.defaultUrl") ?? ""
     const quickPick = vscode.window.createQuickPick()
-    quickPick.value = selection || process.env.CODER_URL || ""
+    quickPick.value = selection || defaultURL || process.env.CODER_URL || ""
     quickPick.placeholder = "https://example.coder.com"
     quickPick.title = "Enter the URL of your Coder deployment."
 
     // Initial items.
-    quickPick.items = this.storage.withUrlHistory(process.env.CODER_URL).map((url) => ({
+    quickPick.items = this.storage.withUrlHistory(defaultURL, process.env.CODER_URL).map((url) => ({
       alwaysShow: true,
       label: url,
     }))
@@ -93,7 +94,7 @@ export class Commands {
     // an option in case the user wants to connect to something that is not in
     // the list.
     quickPick.onDidChangeValue((value) => {
-      quickPick.items = this.storage.withUrlHistory(process.env.CODER_URL, value).map((url) => ({
+      quickPick.items = this.storage.withUrlHistory(defaultURL, process.env.CODER_URL, value).map((url) => ({
         alwaysShow: true,
         label: url,
       }))
@@ -111,8 +112,8 @@ export class Commands {
 
   /**
    * Ask the user for the URL if it was not provided, letting them choose from a
-   * list of recent URLs or CODER_URL or enter a new one, and normalizes the
-   * returned URL.  Undefined means the user aborted.
+   * list of recent URLs or the default URL or CODER_URL or enter a new one, and
+   * normalizes the returned URL.  Undefined means the user aborted.
    */
   public async maybeAskUrl(providedUrl: string | undefined | null, lastUsedUrl?: string): Promise<string | undefined> {
     let url = providedUrl || (await this.askURL(lastUsedUrl))
@@ -134,7 +135,8 @@ export class Commands {
 
   /**
    * Log into the provided deployment.  If the deployment URL is not specified,
-   * ask for it first with a menu showing recent URLs and CODER_URL, if set.
+   * ask for it first with a menu showing recent URLs along with the default URL
+   * and CODER_URL, if those are set.
    */
   public async login(...args: string[]): Promise<void> {
     // Destructure would be nice but VS Code can pass undefined which errors.

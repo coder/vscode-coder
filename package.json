@@ -97,6 +97,16 @@
           "markdownDescription": "If not set, will inherit from the `no_proxy` or `NO_PROXY` environment variables. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
           "type": "string",
           "default": ""
+        },
+        "coder.defaultUrl": {
+          "markdownDescription": "This will be shown in the URL prompt, along with the CODER_URL environment variable if set, for the user to select when logging in.",
+          "type": "string",
+          "default": ""
+        },
+        "coder.autologin": {
+          "markdownDescription": "Automatically log into the default URL when the extension is activated. coder.defaultUrl is preferred, otherwise the CODER_URL environment variable will be used. This setting has no effect if neither is set.",
+          "type": "boolean",
+          "default": false
         }
       }
     },
