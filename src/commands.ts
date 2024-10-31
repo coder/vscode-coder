@@ -146,7 +146,7 @@ export class Commands {
 
     const url = await this.maybeAskUrl(inputUrl)
     if (!url) {
-      return
+      return // The user aborted.
     }
 
     // It is possible that we are trying to log into an old-style host, in which
@@ -157,7 +157,7 @@ export class Commands {
     // Try to get a token from the user, if we need one, and their user.
     const res = await this.maybeAskToken(url, inputToken)
     if (!res) {
-      return // The user aborted.
+      return // The user aborted, or unable to auth.
     }
 
     // The URL is good and the token is either good or not required; authorize
@@ -199,16 +199,26 @@ export class Commands {
   /**
    * If necessary, ask for a token, and keep asking until the token has been
    * validated.  Return the token and user that was fetched to validate the
-   * token.
+   * token.  Null means the user aborted or we were unable to authenticate with
+   * mTLS (in the latter case, an error notification will have been displayed).
    */
   private async maybeAskToken(url: string, token: string): Promise<{ user: User; token: string } | null> {
     const restClient = await makeCoderSdk(url, token, this.storage)
     if (!needToken()) {
-      return {
+      try {
+        const user = await restClient.getAuthenticatedUser()
         // For non-token auth, we write a blank token since the `vscodessh`
         // command currently always requires a token file.
-        token: "",
-        user: await restClient.getAuthenticatedUser(),
+        return { token: "", user }
+      } catch (err) {
+        const message = getErrorMessage(err, "no response from the server")
+        this.vscodeProposed.window.showErrorMessage("Failed to log in", {
+          detail: message,
+          modal: true,
+          useCustom: true,
+        })
+        // Invalid certificate, most likely.
+        return null
       }
     }
 
