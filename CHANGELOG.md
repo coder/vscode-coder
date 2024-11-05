@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## [v1.3.7](https://github.com/coder/vscode-coder/releases/tag/v1.3.7) (2024-11-04)
+
+### Added
+
+- New setting `coder.tlsAltHost` to configure an alternative hostname to use for
+  TLS verification. This is useful when the hostname in the certificate does not
+  match the hostname used to connect.
+
+## [v1.3.6](https://github.com/coder/vscode-coder/releases/tag/v1.3.6) (2024-11-04)
+
 ### Added
 
 - Default URL setting that takes precedence over CODER_URL.

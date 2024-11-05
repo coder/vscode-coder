@@ -4,7 +4,7 @@
   "displayName": "Coder",
   "description": "Open any workspace with a single click.",
   "repository": "https://github.com/coder/vscode-coder",
-  "version": "1.3.6",
+  "version": "1.3.7",
   "engines": {
     "vscode": "^1.73.0"
   },
@@ -74,17 +74,17 @@
           "default": ""
         },
         "coder.tlsCertFile": {
-          "markdownDescription": "Path to file for TLS client cert. When specified, token authorization will be skipped.",
+          "markdownDescription": "Path to file for TLS client cert. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
           "type": "string",
           "default": ""
         },
         "coder.tlsKeyFile": {
-          "markdownDescription": "Path to file for TLS client key. When specified, token authorization will be skipped.",
+          "markdownDescription": "Path to file for TLS client key. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
           "type": "string",
           "default": ""
         },
         "coder.tlsCaFile": {
-          "markdownDescription": "Path to file for TLS certificate authority.",
+          "markdownDescription": "Path to file for TLS certificate authority. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
           "type": "string",
           "default": ""
         },
