@@ -31,6 +31,7 @@ async function createHttpAgent(): Promise<ProxyAgent> {
   const certFile = expandPath(String(cfg.get("coder.tlsCertFile") ?? "").trim())
   const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim())
   const caFile = expandPath(String(cfg.get("coder.tlsCaFile") ?? "").trim())
+  const altHost = expandPath(String(cfg.get("coder.tlsAltHost") ?? "").trim())
 
   return new ProxyAgent({
     // Called each time a request is made.
@@ -41,6 +42,7 @@ async function createHttpAgent(): Promise<ProxyAgent> {
     cert: certFile === "" ? undefined : await fs.readFile(certFile),
     key: keyFile === "" ? undefined : await fs.readFile(keyFile),
     ca: caFile === "" ? undefined : await fs.readFile(caFile),
+    servername: altHost === "" ? undefined : altHost,
     // rejectUnauthorized defaults to true, so we need to explicitly set it to
     // false if we want to allow self-signed certificates.
     rejectUnauthorized: !insecure,
@@ -66,7 +68,8 @@ async function getHttpAgent(): Promise<ProxyAgent> {
         e.affectsConfiguration("coder.insecure") ||
         e.affectsConfiguration("coder.tlsCertFile") ||
         e.affectsConfiguration("coder.tlsKeyFile") ||
-        e.affectsConfiguration("coder.tlsCaFile")
+        e.affectsConfiguration("coder.tlsCaFile") ||
+        e.affectsConfiguration("coder.tlsAltHost")
       ) {
         agent = createHttpAgent()
       }

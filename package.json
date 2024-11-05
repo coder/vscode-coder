@@ -88,6 +88,11 @@
           "type": "string",
           "default": ""
         },
+        "coder.tlsAltHost": {
+          "markdownDescription": "Alternative hostname to use for TLS verification. This is useful when the hostname in the certificate does not match the hostname used to connect.",
+          "type": "string",
+          "default": ""
+        },
         "coder.proxyLogDirectory": {
           "markdownDescription": "If set, the Coder CLI will output extra SSH information into this directory, which can be helpful for debugging connectivity issues.",
           "type": "string",
