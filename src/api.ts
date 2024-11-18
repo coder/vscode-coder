@@ -1,3 +1,4 @@
+import { spawn, ChildProcessWithoutNullStreams } from "child_process"
 import { Api } from "coder/site/src/api/api"
 import { ProvisionerJobLog, Workspace } from "coder/site/src/api/typesGenerated"
 import fs from "fs/promises"
@@ -122,16 +123,12 @@ export async function makeCoderSdk(baseUrl: string, token: string | undefined, s
 /**
  * Start or update a workspace and return the updated workspace.
  */
-export async function startWorkspaceIfStoppedOrFailed(restClient: Api, workspace: Workspace): Promise<Workspace> {
-  // If the workspace requires the latest active template version, we should attempt
-  // to update that here.
-  // TODO: If param set changes, what do we do??
-  const versionID = workspace.template_require_active_version
-    ? // Use the latest template version
-      workspace.template_active_version_id
-    : // Default to not updating the workspace if not required.
-      workspace.latest_build.template_version_id
-
+export async function startWorkspaceIfStoppedOrFailed(
+  restClient: Api,
+  binPath: string,
+  workspace: Workspace,
+  writeEmitter: vscode.EventEmitter<string>,
+): Promise<Workspace> {
   // Before we start a workspace, we make an initial request to check it's not already started
   const updatedWorkspace = await restClient.getWorkspace(workspace.id)
 
@@ -139,12 +136,43 @@ export async function startWorkspaceIfStoppedOrFailed(restClient: Api, workspace
     return updatedWorkspace
   }
 
-  const latestBuild = await restClient.startWorkspace(updatedWorkspace.id, versionID)
+  return new Promise((resolve, reject) => {
+    const startProcess: ChildProcessWithoutNullStreams = spawn(binPath, [
+      "start",
+      "--yes",
+      workspace.owner_name + "/" + workspace.name,
+    ])
 
-  return {
-    ...updatedWorkspace,
-    latest_build: latestBuild,
-  }
+    startProcess.stdout.on("data", (data: Buffer) => {
+      data
+        .toString()
+        .split(/\r*\n/)
+        .forEach((line: string) => {
+          if (line !== "") {
+            writeEmitter.fire(line.toString() + "\r\n")
+          }
+        })
+    })
+
+    startProcess.stderr.on("data", (data: Buffer) => {
+      data
+        .toString()
+        .split(/\r*\n/)
+        .forEach((line: string) => {
+          if (line !== "") {
+            writeEmitter.fire(line.toString() + "\r\n")
+          }
+        })
+    })
+
+    startProcess.on("close", (code: number) => {
+      if (code === 0) {
+        resolve(restClient.getWorkspace(workspace.id))
+      } else {
+        reject(new Error(`"coder start" process exited with code ${code}`))
+      }
+    })
+  })
 }
 
 /**
