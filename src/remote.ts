@@ -53,6 +53,7 @@ export class Remote {
   private async maybeWaitForRunning(
     restClient: Api,
     workspace: Workspace,
+    label: string,
     binPath: string,
   ): Promise<Workspace | undefined> {
     // Maybe already running?
@@ -98,6 +99,7 @@ export class Remote {
           title: "Waiting for workspace build...",
         },
         async () => {
+          const globalConfigDir = path.dirname(this.storage.getSessionTokenPath(label))
           while (workspace.latest_build.status !== "running") {
             ++attempts
             switch (workspace.latest_build.status) {
@@ -114,7 +116,13 @@ export class Remote {
                 }
                 writeEmitter = initWriteEmitterAndTerminal()
                 this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
-                workspace = await startWorkspaceIfStoppedOrFailed(restClient, binPath, workspace, writeEmitter)
+                workspace = await startWorkspaceIfStoppedOrFailed(
+                  restClient,
+                  globalConfigDir,
+                  binPath,
+                  workspace,
+                  writeEmitter,
+                )
                 break
               case "failed":
                 // On a first attempt, we will try starting a failed workspace
@@ -125,7 +133,13 @@ export class Remote {
                   }
                   writeEmitter = initWriteEmitterAndTerminal()
                   this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
-                  workspace = await startWorkspaceIfStoppedOrFailed(restClient, binPath, workspace, writeEmitter)
+                  workspace = await startWorkspaceIfStoppedOrFailed(
+                    restClient,
+                    globalConfigDir,
+                    binPath,
+                    workspace,
+                    writeEmitter,
+                  )
                   break
                 }
               // Otherwise fall through and error.
@@ -166,6 +180,9 @@ export class Remote {
     }
 
     const workspaceName = `${parts.username}/${parts.workspace}`
+
+    // Migrate "session_token" file to "session", if needed.
+    this.storage.migrateSessionToken(parts.label)
 
     // Get the URL and token belonging to this host.
     const { url: baseUrlRaw, token } = await this.storage.readCliConfig(parts.label)
@@ -303,7 +320,7 @@ export class Remote {
     disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name))
 
     // If the workspace is not in a running state, try to get it running.
-    const updatedWorkspace = await this.maybeWaitForRunning(workspaceRestClient, workspace, binaryPath)
+    const updatedWorkspace = await this.maybeWaitForRunning(workspaceRestClient, workspace, parts.label, binaryPath)
     if (!updatedWorkspace) {
       // User declined to start the workspace.
       await this.closeRemote()

@@ -125,6 +125,7 @@ export async function makeCoderSdk(baseUrl: string, token: string | undefined, s
  */
 export async function startWorkspaceIfStoppedOrFailed(
   restClient: Api,
+  globalConfigDir: string,
   binPath: string,
   workspace: Workspace,
   writeEmitter: vscode.EventEmitter<string>,
@@ -137,7 +138,13 @@ export async function startWorkspaceIfStoppedOrFailed(
   }
 
   return new Promise((resolve, reject) => {
-    const startArgs = ["start", "--yes", workspace.owner_name + "/" + workspace.name]
+    const startArgs = [
+      "--global-config",
+      globalConfigDir,
+      "start",
+      "--yes",
+      workspace.owner_name + "/" + workspace.name,
+    ]
     const startProcess = spawn(binPath, startArgs)
 
     startProcess.stdout.on("data", (data: Buffer) => {
