@@ -182,7 +182,7 @@ export class Remote {
     const workspaceName = `${parts.username}/${parts.workspace}`
 
     // Migrate "session_token" file to "session", if needed.
-    this.storage.migrateSessionToken(parts.label)
+    await this.storage.migrateSessionToken(parts.label)
 
     // Get the URL and token belonging to this host.
     const { url: baseUrlRaw, token } = await this.storage.readCliConfig(parts.label)
