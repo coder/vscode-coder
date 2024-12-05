@@ -137,7 +137,8 @@ export async function startWorkspaceIfStoppedOrFailed(
   }
 
   return new Promise((resolve, reject) => {
-    const startProcess = spawn(binPath, ["start", "--yes", workspace.owner_name + "/" + workspace.name])
+    const startArgs = ["start", "--yes", workspace.owner_name + "/" + workspace.name]
+    const startProcess = spawn(binPath, startArgs)
 
     startProcess.stdout.on("data", (data: Buffer) => {
       data
@@ -150,6 +151,7 @@ export async function startWorkspaceIfStoppedOrFailed(
         })
     })
 
+    let capturedStderr = ""
     startProcess.stderr.on("data", (data: Buffer) => {
       data
         .toString()
@@ -157,6 +159,7 @@ export async function startWorkspaceIfStoppedOrFailed(
         .forEach((line: string) => {
           if (line !== "") {
             writeEmitter.fire(line.toString() + "\r\n")
+            capturedStderr += line.toString() + "\n"
           }
         })
     })
@@ -165,7 +168,11 @@ export async function startWorkspaceIfStoppedOrFailed(
       if (code === 0) {
         resolve(restClient.getWorkspace(workspace.id))
       } else {
-        reject(new Error(`"coder start" process exited with code ${code}`))
+        let errorText = `"${startArgs.join(" ")}" exited with code ${code}`
+        if (capturedStderr !== "") {
+          errorText += `: ${capturedStderr}`
+        }
+        reject(new Error(errorText))
       }
     })
   })
