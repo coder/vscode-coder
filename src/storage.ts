@@ -507,11 +507,9 @@ export class Storage {
    */
   public async migrateSessionToken(label: string) {
     const oldTokenPath = this.getLegacySessionTokenPath(label)
+    const newTokenPath = this.getSessionTokenPath(label)
     try {
-      await fs.stat(oldTokenPath)
-      const newTokenPath = this.getSessionTokenPath(label)
       await fs.rename(oldTokenPath, newTokenPath)
-      return
     } catch (error) {
       if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
         return
