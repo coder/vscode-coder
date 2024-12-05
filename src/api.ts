@@ -1,4 +1,4 @@
-import { spawn, ChildProcessWithoutNullStreams } from "child_process"
+import { spawn } from "child_process"
 import { Api } from "coder/site/src/api/api"
 import { ProvisionerJobLog, Workspace } from "coder/site/src/api/typesGenerated"
 import fs from "fs/promises"
@@ -137,11 +137,7 @@ export async function startWorkspaceIfStoppedOrFailed(
   }
 
   return new Promise((resolve, reject) => {
-    const startProcess: ChildProcessWithoutNullStreams = spawn(binPath, [
-      "start",
-      "--yes",
-      workspace.owner_name + "/" + workspace.name,
-    ])
+    const startProcess = spawn(binPath, ["start", "--yes", workspace.owner_name + "/" + workspace.name])
 
     startProcess.stdout.on("data", (data: Buffer) => {
       data
