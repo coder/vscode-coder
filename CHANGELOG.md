@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## [v1.3.8](https://github.com/coder/vscode-coder/releases/tag/v1.3.8) (2024-12-06)
+
+- When starting a workspace, shell out to the Coder binary instead of making an
+  API call. This reduces drift between what the plugin does and the CLI does. As
+  part of this, the `session_token` file was renamed to `session` since that is
+  what the CLI expects.
+
 ## [v1.3.7](https://github.com/coder/vscode-coder/releases/tag/v1.3.7) (2024-11-04)
 
 ### Added
