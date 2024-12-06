@@ -50,7 +50,12 @@ export class Remote {
   /**
    * Try to get the workspace running.  Return undefined if the user canceled.
    */
-  private async maybeWaitForRunning(restClient: Api, workspace: Workspace): Promise<Workspace | undefined> {
+  private async maybeWaitForRunning(
+    restClient: Api,
+    workspace: Workspace,
+    label: string,
+    binPath: string,
+  ): Promise<Workspace | undefined> {
     // Maybe already running?
     if (workspace.latest_build.status === "running") {
       return workspace
@@ -63,6 +68,28 @@ export class Remote {
     let terminal: undefined | vscode.Terminal
     let attempts = 0
 
+    function initWriteEmitterAndTerminal(): vscode.EventEmitter<string> {
+      if (!writeEmitter) {
+        writeEmitter = new vscode.EventEmitter<string>()
+      }
+      if (!terminal) {
+        terminal = vscode.window.createTerminal({
+          name: "Build Log",
+          location: vscode.TerminalLocation.Panel,
+          // Spin makes this gear icon spin!
+          iconPath: new vscode.ThemeIcon("gear~spin"),
+          pty: {
+            onDidWrite: writeEmitter.event,
+            close: () => undefined,
+            open: () => undefined,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as Partial<vscode.Pseudoterminal> as any,
+        })
+        terminal.show(true)
+      }
+      return writeEmitter
+    }
+
     try {
       // Show a notification while we wait.
       return await this.vscodeProposed.window.withProgress(
@@ -72,30 +99,14 @@ export class Remote {
           title: "Waiting for workspace build...",
         },
         async () => {
+          const globalConfigDir = path.dirname(this.storage.getSessionTokenPath(label))
           while (workspace.latest_build.status !== "running") {
             ++attempts
             switch (workspace.latest_build.status) {
               case "pending":
               case "starting":
               case "stopping":
-                if (!writeEmitter) {
-                  writeEmitter = new vscode.EventEmitter<string>()
-                }
-                if (!terminal) {
-                  terminal = vscode.window.createTerminal({
-                    name: "Build Log",
-                    location: vscode.TerminalLocation.Panel,
-                    // Spin makes this gear icon spin!
-                    iconPath: new vscode.ThemeIcon("gear~spin"),
-                    pty: {
-                      onDidWrite: writeEmitter.event,
-                      close: () => undefined,
-                      open: () => undefined,
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    } as Partial<vscode.Pseudoterminal> as any,
-                  })
-                  terminal.show(true)
-                }
+                writeEmitter = initWriteEmitterAndTerminal()
                 this.storage.writeToCoderOutputChannel(`Waiting for ${workspaceName}...`)
                 workspace = await waitForBuild(restClient, writeEmitter, workspace)
                 break
@@ -103,8 +114,15 @@ export class Remote {
                 if (!(await this.confirmStart(workspaceName))) {
                   return undefined
                 }
+                writeEmitter = initWriteEmitterAndTerminal()
                 this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
-                workspace = await startWorkspaceIfStoppedOrFailed(restClient, workspace)
+                workspace = await startWorkspaceIfStoppedOrFailed(
+                  restClient,
+                  globalConfigDir,
+                  binPath,
+                  workspace,
+                  writeEmitter,
+                )
                 break
               case "failed":
                 // On a first attempt, we will try starting a failed workspace
@@ -113,8 +131,15 @@ export class Remote {
                   if (!(await this.confirmStart(workspaceName))) {
                     return undefined
                   }
+                  writeEmitter = initWriteEmitterAndTerminal()
                   this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
-                  workspace = await startWorkspaceIfStoppedOrFailed(restClient, workspace)
+                  workspace = await startWorkspaceIfStoppedOrFailed(
+                    restClient,
+                    globalConfigDir,
+                    binPath,
+                    workspace,
+                    writeEmitter,
+                  )
                   break
                 }
               // Otherwise fall through and error.
@@ -155,6 +180,9 @@ export class Remote {
     }
 
     const workspaceName = `${parts.username}/${parts.workspace}`
+
+    // Migrate "session_token" file to "session", if needed.
+    await this.storage.migrateSessionToken(parts.label)
 
     // Get the URL and token belonging to this host.
     const { url: baseUrlRaw, token } = await this.storage.readCliConfig(parts.label)
@@ -292,7 +320,7 @@ export class Remote {
     disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name))
 
     // If the workspace is not in a running state, try to get it running.
-    const updatedWorkspace = await this.maybeWaitForRunning(workspaceRestClient, workspace)
+    const updatedWorkspace = await this.maybeWaitForRunning(workspaceRestClient, workspace, parts.label, binaryPath)
     if (!updatedWorkspace) {
       // User declined to start the workspace.
       await this.closeRemote()

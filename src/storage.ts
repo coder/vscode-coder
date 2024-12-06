@@ -406,6 +406,20 @@ export class Storage {
    */
   public getSessionTokenPath(label: string): string {
     return label
+      ? path.join(this.globalStorageUri.fsPath, label, "session")
+      : path.join(this.globalStorageUri.fsPath, "session")
+  }
+
+  /**
+   * Return the directory for the deployment with the provided label to where
+   * its session token was stored by older code.
+   *
+   * If the label is empty, read the old deployment-unaware config instead.
+   *
+   * The caller must ensure this directory exists before use.
+   */
+  public getLegacySessionTokenPath(label: string): string {
+    return label
       ? path.join(this.globalStorageUri.fsPath, label, "session_token")
       : path.join(this.globalStorageUri.fsPath, "session_token")
   }
@@ -485,6 +499,22 @@ export class Storage {
     return {
       url: url.status === "fulfilled" ? url.value.trim() : "",
       token: token.status === "fulfilled" ? token.value.trim() : "",
+    }
+  }
+
+  /**
+   * Migrate the session token file from "session_token" to "session", if needed.
+   */
+  public async migrateSessionToken(label: string) {
+    const oldTokenPath = this.getLegacySessionTokenPath(label)
+    const newTokenPath = this.getSessionTokenPath(label)
+    try {
+      await fs.rename(oldTokenPath, newTokenPath)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+        return
+      }
+      throw error
     }
   }
 
