@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## [v1.3.9](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2024-12-12)
+
+- Only show a login failure dialog for explicit logins (and not autologins).
+
 ## [v1.3.8](https://github.com/coder/vscode-coder/releases/tag/v1.3.8) (2024-12-06)
 
 - When starting a workspace, shell out to the Coder binary instead of making an
