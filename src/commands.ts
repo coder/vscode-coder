@@ -143,6 +143,7 @@ export class Commands {
     const inputUrl = args[0]
     const inputToken = args[1]
     const inputLabel = args[2]
+    const isAutologin = typeof args[3] === "undefined" ? false : Boolean(args[3])
 
     const url = await this.maybeAskUrl(inputUrl)
     if (!url) {
@@ -155,7 +156,7 @@ export class Commands {
     const label = typeof inputLabel === "undefined" ? toSafeHost(url) : inputLabel
 
     // Try to get a token from the user, if we need one, and their user.
-    const res = await this.maybeAskToken(url, inputToken)
+    const res = await this.maybeAskToken(url, inputToken, isAutologin)
     if (!res) {
       return // The user aborted, or unable to auth.
     }
@@ -202,7 +203,11 @@ export class Commands {
    * token.  Null means the user aborted or we were unable to authenticate with
    * mTLS (in the latter case, an error notification will have been displayed).
    */
-  private async maybeAskToken(url: string, token: string): Promise<{ user: User; token: string } | null> {
+  private async maybeAskToken(
+    url: string,
+    token: string,
+    isAutologin: boolean,
+  ): Promise<{ user: User; token: string } | null> {
     const restClient = await makeCoderSdk(url, token, this.storage)
     if (!needToken()) {
       try {
@@ -212,11 +217,15 @@ export class Commands {
         return { token: "", user }
       } catch (err) {
         const message = getErrorMessage(err, "no response from the server")
-        this.vscodeProposed.window.showErrorMessage("Failed to log in", {
-          detail: message,
-          modal: true,
-          useCustom: true,
-        })
+        if (isAutologin) {
+          this.storage.writeToCoderOutputChannel(`Failed to log in to Coder server: ${message}`)
+        } else {
+          this.vscodeProposed.window.showErrorMessage("Failed to log in to Coder server", {
+            detail: message,
+            modal: true,
+            useCustom: true,
+          })
+        }
         // Invalid certificate, most likely.
         return null
       }

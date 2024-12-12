@@ -221,7 +221,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     if (cfg.get("coder.autologin") === true) {
       const defaultUrl = cfg.get("coder.defaultUrl") || process.env.CODER_URL
       if (defaultUrl) {
-        vscode.commands.executeCommand("coder.login", defaultUrl)
+        vscode.commands.executeCommand("coder.login", defaultUrl, undefined, undefined, "true")
       }
     }
   }
