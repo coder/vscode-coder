@@ -459,10 +459,10 @@
     hyperdyperid "^1.2.0"
     thingies "^1.20.0"
 
-"@jsonjoy.com/util@^1.1.2":
-  version "1.1.3"
-  resolved "https://registry.yarnpkg.com/@jsonjoy.com/util/-/util-1.1.3.tgz#75b1c3cf21b70e665789d1ad3eabeff8b7fd1429"
-  integrity sha512-g//kkF4kOwUjemValCtOc/xiYzmwMRmWq3Bn+YnzOzuZLHq2PpMOxxIayN3cKbo7Ko2Np65t6D9H81IvXbXhqg==
+"@jsonjoy.com/util@^1.1.2", "@jsonjoy.com/util@^1.3.0":
+  version "1.5.0"
+  resolved "https://registry.yarnpkg.com/@jsonjoy.com/util/-/util-1.5.0.tgz#6008e35b9d9d8ee27bc4bfaa70c8cbf33a537b4c"
+  integrity sha512-ojoNsrIuPI9g6o8UxhraZQSyF2ByJanAY4cTFbc8Mf2AXEF4aQRGY1dJxyJpuyav8r9FGflEt/Ff3u5Nt6YMPA==
 
 "@nodelib/fs.scandir@2.1.5":
   version "2.1.5"
@@ -3938,13 +3938,13 @@ mdurl@^1.0.1:
   resolved "https://registry.yarnpkg.com/mdurl/-/mdurl-1.0.1.tgz#fe85b2ec75a59037f2adfec100fd6c601761152e"
   integrity sha512-/sKlQJCBYVY9Ers9hqzKou4H6V5UWc/M59TH2dvkt+84itfnq7uFOMLpOiOS4ujvHP4etln18fmIxA5R5fll0g==
 
-memfs@^4.9.3:
-  version "4.9.3"
-  resolved "https://registry.yarnpkg.com/memfs/-/memfs-4.9.3.tgz#41a3218065fe3911d9eba836250c8f4e43f816bc"
-  integrity sha512-bsYSSnirtYTWi1+OPMFb0M048evMKyUYe0EbtuGQgq6BVQM1g1W8/KIUJCCvjgI/El0j6Q4WsmMiBwLUBSw8LA==
+memfs@^4.17.0:
+  version "4.17.0"
+  resolved "https://registry.yarnpkg.com/memfs/-/memfs-4.17.0.tgz#a3c4b5490b9b1e7df5d433adc163e08208ce7ca2"
+  integrity sha512-4eirfZ7thblFmqFjywlTmuWVSvccHAJbn1r8qQLzmTO11qcqpohOjmY2mFce6x7x7WtskzRqApPD0hv+Oa74jg==
   dependencies:
     "@jsonjoy.com/json-pack" "^1.0.3"
-    "@jsonjoy.com/util" "^1.1.2"
+    "@jsonjoy.com/util" "^1.3.0"
     tree-dump "^1.0.1"
     tslib "^2.0.0"
 
