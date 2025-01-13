@@ -538,7 +538,7 @@ async function openWorkspace(
   // when opening a workspace unless explicitly specified.
   let remoteAuthority = `ssh-remote+${AuthorityPrefix}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`
   if (workspaceAgent) {
-    remoteAuthority += `--${workspaceAgent}`
+    remoteAuthority += `.${workspaceAgent}`
   }
 
   let newWindow = true

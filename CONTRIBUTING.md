@@ -34,7 +34,7 @@ contains the `coder-vscode` prefix, and if so we delay activation to:
 
 ```text
 Host coder-vscode.dev.coder.com--*
-	ProxyCommand "/tmp/coder" vscodessh --network-info-dir "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/net" --session-token-file "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/dev.coder.com/session_token" --url-file "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/dev.coder.com/url" %h
+	ProxyCommand "/tmp/coder" --global-config "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/dev.coder.com" ssh --stdio --network-info-dir "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/net" --ssh-host-prefix coder-vscode.dev.coder.com-- %h
 	ConnectTimeout 0
 	StrictHostKeyChecking no
 	UserKnownHostsFile /dev/null
@@ -50,8 +50,8 @@ specified port. This port is printed to the `Remote - SSH` log file in the VS
 Code Output panel in the format `-> socksPort <port> ->`. We use this port to
 find the SSH process ID that is being used by the remote session.
 
-The `vscodessh` subcommand on the `coder` binary periodically flushes its
-network information to `network-info-dir + "/" + process.ppid`. SSH executes
+The `ssh` subcommand on the `coder` binary periodically flushes its network
+information to `network-info-dir + "/" + process.ppid`. SSH executes
 `ProxyCommand`, which means the `process.ppid` will always be the matching SSH
 command.
 
