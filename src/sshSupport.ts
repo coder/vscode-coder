@@ -47,9 +47,7 @@ export function computeSSHProperties(host: string, config: string): Record<strin
       }
     | undefined
   const configs: Array<typeof currentConfig> = []
-  // biome-ignore lint/complexity/noForEach: <explanation>
   config.split("\n").forEach((line) => {
-    // biome-ignore lint/style/noParameterAssign: <explanation>
     line = line.trim()
     if (line === "") {
       return
