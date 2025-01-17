@@ -47,7 +47,9 @@ export function computeSSHProperties(host: string, config: string): Record<strin
       }
     | undefined
   const configs: Array<typeof currentConfig> = []
+  // biome-ignore lint/complexity/noForEach: <explanation>
   config.split("\n").forEach((line) => {
+    // biome-ignore lint/style/noParameterAssign: <explanation>
     line = line.trim()
     if (line === "") {
       return
@@ -85,8 +87,11 @@ export function computeSSHProperties(host: string, config: string): Record<strin
     if (!config) {
       return
     }
+
     // In OpenSSH * matches any number of characters and ? matches exactly one.
-    if (!new RegExp("^" + config?.Host.replace(/\*/g, ".*").replace(/\?/g, ".") + "$").test(host)) {
+    if (
+      !new RegExp("^" + config?.Host.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$").test(host)
+    ) {
       return
     }
     Object.assign(merged, config.properties)

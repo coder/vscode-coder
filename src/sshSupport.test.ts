@@ -68,3 +68,39 @@ Host coder-v?code--*
     ProxyCommand: '/tmp/coder --header="X-BAR=foo" coder.dev',
   })
 })
+
+it("properly escapes meaningful regex characters", () => {
+  const properties = computeSSHProperties(
+    "coder-vscode.dev.coder.com--matalfi--dogfood",
+    `Host *
+  StrictHostKeyChecking yes
+
+# ------------START-CODER-----------
+# This section is managed by coder. DO NOT EDIT.
+#
+# You should not hand-edit this section unless you are removing it, all
+# changes will be lost when running "coder config-ssh".
+#
+Host coder.*
+        StrictHostKeyChecking=no
+        UserKnownHostsFile=/dev/null
+        ProxyCommand /usr/local/bin/coder --global-config "/Users/matifali/Library/Application Support/coderv2" ssh --stdio --ssh-host-prefix coder. %h
+# ------------END-CODER------------
+
+# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+  StrictHostKeyChecking no
+  UserKnownHostsFile=/dev/null
+  ProxyCommand "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/bin/coder-darwin-arm64" vscodessh --network-info-dir "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/net" --session-token-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/session" --url-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/url" %h
+# --- END CODER VSCODE dev.coder.com ---%
+
+`,
+  )
+
+  expect(properties).toEqual({
+    StrictHostKeyChecking: "yes",
+    ProxyCommand:
+      '"/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/bin/coder-darwin-arm64" vscodessh --network-info-dir "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/net" --session-token-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/session" --url-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/url" %h',
+    UserKnownHostsFile: "/dev/null",
+  })
+})
