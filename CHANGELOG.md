@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix bug where checking for overridden properties incorrectly converted host name pattern to regular expression.
+
 ## [v1.3.9](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2024-12-12)
 
 - Only show a login failure dialog for explicit logins (and not autologins).
