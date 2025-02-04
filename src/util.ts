@@ -24,9 +24,8 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
   // The authority looks like: vscode://ssh-remote+<ssh host name>
   const authorityParts = authority.split("+")
 
-  // We create SSH host names in one of two formats:
-  // coder-vscode--<username>--<workspace>--<agent?> (old style)
-  // coder-vscode.<label>--<username>--<workspace>--<agent>
+  // We create SSH host names in a format matching:
+  // coder-vscode(--|.)<username>--<workspace>(--|.)<agent?>
   // The agent can be omitted; the user will be prompted for it instead.
   // Anything else is unrelated to Coder and can be ignored.
   const parts = authorityParts[1].split("--")
@@ -38,15 +37,27 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
   // Validate the SSH host name.  Including the prefix, we expect at least
   // three parts, or four if including the agent.
   if ((parts.length !== 3 && parts.length !== 4) || parts.some((p) => !p)) {
-    throw new Error(`Invalid Coder SSH authority. Must be: <username>--<workspace>--<agent?>`)
+    throw new Error(`Invalid Coder SSH authority. Must be: <username>--<workspace>(--|.)<agent?>`)
+  }
+
+  let workspace = parts[2]
+  let agent = ""
+  if (parts.length === 4) {
+    agent = parts[3]
+  } else if (parts.length === 3) {
+    const workspaceParts = parts[2].split(".")
+    if (workspaceParts.length === 2) {
+      workspace = workspaceParts[0]
+      agent = workspaceParts[1]
+    }
   }
 
   return {
-    agent: parts[3] ?? "",
+    agent: agent,
     host: authorityParts[1],
     label: parts[0].replace(/^coder-vscode\.?/, ""),
     username: parts[1],
-    workspace: parts[2],
+    workspace: workspace,
   }
 }
 

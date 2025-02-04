@@ -56,6 +56,13 @@ it("should parse authority", async () => {
     username: "foo",
     workspace: "bar",
   })
+  expect(parseRemoteAuthority("vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz")).toStrictEqual({
+    agent: "baz",
+    host: "coder-vscode.dev.coder.com--foo--bar.baz",
+    label: "dev.coder.com",
+    username: "foo",
+    workspace: "bar",
+  })
 })
 
 it("escapes url host", async () => {

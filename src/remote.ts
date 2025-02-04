@@ -467,20 +467,27 @@ export class Remote {
     // "Host not found".
     try {
       this.storage.writeToCoderOutputChannel("Updating SSH config...")
-      await this.updateSSHConfig(workspaceRestClient, parts.label, parts.host, binaryPath, logDir)
+      await this.updateSSHConfig(workspaceRestClient, parts.label, parts.host, binaryPath, logDir, featureSet)
     } catch (error) {
       this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
       throw error
     }
 
     // TODO: This needs to be reworked; it fails to pick up reconnects.
-    this.findSSHProcessID().then((pid) => {
+    this.findSSHProcessID().then(async (pid) => {
       if (!pid) {
         // TODO: Show an error here!
         return
       }
       disposables.push(this.showNetworkUpdates(pid))
-      this.commands.workspaceLogPath = logDir ? path.join(logDir, `${pid}.log`) : undefined
+      if (logDir) {
+        const logFiles = await fs.readdir(logDir)
+        this.commands.workspaceLogPath = logFiles
+          .reverse()
+          .find((file) => file === `${pid}.log` || file.endsWith(`-${pid}.log`))
+      } else {
+        this.commands.workspaceLogPath = undefined
+      }
     })
 
     // Register the label formatter again because SSH overrides it!
@@ -532,7 +539,14 @@ export class Remote {
 
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
-  private async updateSSHConfig(restClient: Api, label: string, hostName: string, binaryPath: string, logDir: string) {
+  private async updateSSHConfig(
+    restClient: Api,
+    label: string,
+    hostName: string,
+    binaryPath: string,
+    logDir: string,
+    featureSet: FeatureSet,
+  ) {
     let deploymentSSHConfig = {}
     try {
       const deploymentConfig = await restClient.getDeploymentSSHConfig()
@@ -610,13 +624,21 @@ export class Remote {
       headerArg = ` --header-command ${escapeSubcommand(headerCommand)}`
     }
 
+    const hostPrefix = label ? `${AuthorityPrefix}.${label}--` : `${AuthorityPrefix}--`
+
+    const proxyCommand = featureSet.wildcardSSH
+      ? `${escape(binaryPath)}${headerArg} --global-config ${escape(
+          path.dirname(this.storage.getSessionTokenPath(label)),
+        )} ssh --stdio --network-info-dir ${escape(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
+      : `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
+          this.storage.getNetworkInfoPath(),
+        )}${await this.formatLogArg(logDir)} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
+          this.storage.getUrlPath(label),
+        )} %h`
+
     const sshValues: SSHValues = {
-      Host: label ? `${AuthorityPrefix}.${label}--*` : `${AuthorityPrefix}--*`,
-      ProxyCommand: `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
-        this.storage.getNetworkInfoPath(),
-      )}${await this.formatLogArg(logDir)} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
-        this.storage.getUrlPath(label),
-      )} %h`,
+      Host: hostPrefix + `*`,
+      ProxyCommand: proxyCommand,
       ConnectTimeout: "0",
       StrictHostKeyChecking: "no",
       UserKnownHostsFile: "/dev/null",
