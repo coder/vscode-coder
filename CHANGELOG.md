@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Recreate REST client after starting a workspace to ensure fresh TLS certificates.
+- Use `coder ssh` subcommand in place of `coder vscodessh`.
 
 ## [v1.3.10](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2025-01-17)
 
