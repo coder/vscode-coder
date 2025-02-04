@@ -56,11 +56,6 @@ export class Remote {
     label: string,
     binPath: string,
   ): Promise<Workspace | undefined> {
-    // Maybe already running?
-    if (workspace.latest_build.status === "running") {
-      return workspace
-    }
-
     const workspaceName = `${workspace.owner_name}/${workspace.name}`
 
     // A terminal will be used to stream the build, if one is necessary.
@@ -320,13 +315,19 @@ export class Remote {
     disposables.push(this.registerLabelFormatter(remoteAuthority, workspace.owner_name, workspace.name))
 
     // If the workspace is not in a running state, try to get it running.
-    const updatedWorkspace = await this.maybeWaitForRunning(workspaceRestClient, workspace, parts.label, binaryPath)
-    if (!updatedWorkspace) {
-      // User declined to start the workspace.
-      await this.closeRemote()
+    if (workspace.latest_build.status !== "running") {
+      if (!(await this.maybeWaitForRunning(workspaceRestClient, workspace, parts.label, binaryPath))) {
+        // User declined to start the workspace.
+        await this.closeRemote()
+      } else {
+        // Start over with a fresh REST client because we may have waited an
+        // indeterminate amount amount of time for confirmation to start the
+        // workspace.
+        await this.setup(remoteAuthority)
+      }
       return
     }
-    this.commands.workspace = workspace = updatedWorkspace
+    this.commands.workspace = workspace
 
     // Pick an agent.
     this.storage.writeToCoderOutputChannel(`Finding agent for ${workspaceName}...`)

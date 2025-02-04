@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Recreate REST client after starting a workspace to ensure fresh TLS certificates.
+
 ## [v1.3.10](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2025-01-17)
 
 - Fix bug where checking for overridden properties incorrectly converted host name pattern to regular expression.
