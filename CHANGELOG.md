@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.4.1](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2025-02-19)
+
 ### Fixed
 
 - Recreate REST client in spots where confirmStart may have waited indefinitely.
