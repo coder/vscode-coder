@@ -51,10 +51,11 @@ export class Remote {
    * Try to get the workspace running.  Return undefined if the user canceled.
    */
   private async maybeWaitForRunning(
-    restClient: Api,
     workspace: Workspace,
     label: string,
     binPath: string,
+    baseUrlRaw: string,
+    token: string,
   ): Promise<Workspace | undefined> {
     const workspaceName = `${workspace.owner_name}/${workspace.name}`
 
@@ -94,6 +95,7 @@ export class Remote {
           title: "Waiting for workspace build...",
         },
         async () => {
+          let restClient = await makeCoderSdk(baseUrlRaw, token, this.storage)
           const globalConfigDir = path.dirname(this.storage.getSessionTokenPath(label))
           while (workspace.latest_build.status !== "running") {
             ++attempts
@@ -109,6 +111,9 @@ export class Remote {
                 if (!(await this.confirmStart(workspaceName))) {
                   return undefined
                 }
+                // Recreate REST client since confirmStart may have waited an
+                // indeterminate amount of time for confirmation.
+                restClient = await makeCoderSdk(baseUrlRaw, token, this.storage)
                 writeEmitter = initWriteEmitterAndTerminal()
                 this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
                 workspace = await startWorkspaceIfStoppedOrFailed(
@@ -126,6 +131,9 @@ export class Remote {
                   if (!(await this.confirmStart(workspaceName))) {
                     return undefined
                   }
+                  // Recreate REST client since confirmStart may have waited an
+                  // indeterminate amount of time for confirmation.
+                  restClient = await makeCoderSdk(baseUrlRaw, token, this.storage)
                   writeEmitter = initWriteEmitterAndTerminal()
                   this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`)
                   workspace = await startWorkspaceIfStoppedOrFailed(
@@ -316,7 +324,7 @@ export class Remote {
 
     // If the workspace is not in a running state, try to get it running.
     if (workspace.latest_build.status !== "running") {
-      if (!(await this.maybeWaitForRunning(workspaceRestClient, workspace, parts.label, binaryPath))) {
+      if (!(await this.maybeWaitForRunning(workspace, parts.label, binaryPath, baseUrlRaw, token))) {
         // User declined to start the workspace.
         await this.closeRemote()
       } else {
