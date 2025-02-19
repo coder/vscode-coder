@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Recreate REST client in spots where confirmStart may have waited indefinitely.
+
 ## [v1.4.0](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2025-02-04)
 
 - Recreate REST client after starting a workspace to ensure fresh TLS certificates.
