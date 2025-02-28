@@ -1,8 +1,9 @@
 import { Api } from "coder/site/src/api/api"
 import { Workspace } from "coder/site/src/api/typesGenerated"
 import { formatDistanceToNowStrict } from "date-fns"
-import EventSource from "eventsource"
+import { EventSource } from "eventsource"
 import * as vscode from "vscode"
+import { createStreamingFetchAdapter } from "./api"
 import { errToStr } from "./api-helper"
 import { Storage } from "./storage"
 
@@ -40,16 +41,11 @@ export class WorkspaceMonitor implements vscode.Disposable {
   ) {
     this.name = `${workspace.owner_name}/${workspace.name}`
     const url = this.restClient.getAxiosInstance().defaults.baseURL
-    const token = this.restClient.getAxiosInstance().defaults.headers.common["Coder-Session-Token"] as
-      | string
-      | undefined
     const watchUrl = new URL(`${url}/api/v2/workspaces/${workspace.id}/watch`)
     this.storage.writeToCoderOutputChannel(`Monitoring ${this.name}...`)
 
     const eventSource = new EventSource(watchUrl.toString(), {
-      headers: {
-        "Coder-Session-Token": token,
-      },
+      fetch: createStreamingFetchAdapter(this.restClient.getAxiosInstance()),
     })
 
     eventSource.addEventListener("data", (event) => {
@@ -64,7 +60,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
     })
 
     eventSource.addEventListener("error", (event) => {
-      this.notifyError(event.data)
+      this.notifyError(event)
     })
 
     // Store so we can close in dispose().

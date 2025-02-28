@@ -1,6 +1,8 @@
+import { AxiosInstance } from "axios"
 import { spawn } from "child_process"
 import { Api } from "coder/site/src/api/api"
 import { ProvisionerJobLog, Workspace } from "coder/site/src/api/typesGenerated"
+import { FetchLikeInit } from "eventsource"
 import fs from "fs/promises"
 import { ProxyAgent } from "proxy-agent"
 import * as vscode from "vscode"
@@ -88,6 +90,60 @@ export async function makeCoderSdk(baseUrl: string, token: string | undefined, s
   )
 
   return restClient
+}
+
+/**
+ * Creates a fetch adapter using an Axios instance that returns streaming responses.
+ * This can be used with APIs that accept fetch-like interfaces.
+ */
+export function createStreamingFetchAdapter(axiosInstance: AxiosInstance) {
+  return async (url: string | URL, init?: FetchLikeInit) => {
+    const urlStr = url.toString()
+
+    const response = await axiosInstance.request({
+      url: urlStr,
+      headers: init?.headers as Record<string, string>,
+      responseType: "stream",
+      validateStatus: () => true, // Don't throw on any status code
+    })
+    const stream = new ReadableStream({
+      start(controller) {
+        response.data.on("data", (chunk: Buffer) => {
+          controller.enqueue(chunk)
+        })
+
+        response.data.on("end", () => {
+          controller.close()
+        })
+
+        response.data.on("error", (err: Error) => {
+          controller.error(err)
+        })
+      },
+
+      cancel() {
+        response.data.destroy()
+        return Promise.resolve()
+      },
+    })
+
+    const createReader = () => stream.getReader()
+
+    return {
+      body: {
+        getReader: () => createReader(),
+      },
+      url: urlStr,
+      status: response.status,
+      redirected: response.request.res.responseUrl !== urlStr,
+      headers: {
+        get: (name: string) => {
+          const value = response.headers[name.toLowerCase()]
+          return value === undefined ? null : String(value)
+        },
+      },
+    }
+  }
 }
 
 /**
@@ -182,6 +238,7 @@ export async function waitForBuild(
     path += `&after=${logs[logs.length - 1].id}`
   }
 
+  const agent = await createHttpAgent()
   await new Promise<void>((resolve, reject) => {
     try {
       const baseUrl = new URL(baseUrlRaw)
@@ -194,6 +251,7 @@ export async function waitForBuild(
             | undefined,
         },
         followRedirects: true,
+        agent: agent,
       })
       socket.binaryType = "nodebuffer"
       socket.on("message", (data) => {

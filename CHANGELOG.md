@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Remove agent singleton so that client TLS certificates are reloaded on every API request.
+- Use Axios client to receive event stream so TLS settings are properly applied.
 
 ### Fixed
 

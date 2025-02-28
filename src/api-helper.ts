@@ -1,5 +1,6 @@
 import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors"
 import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { ErrorEvent } from "eventsource"
 import { z } from "zod"
 
 export function errToStr(error: unknown, def: string) {
@@ -9,6 +10,8 @@ export function errToStr(error: unknown, def: string) {
     return error.response.data.message
   } else if (isApiErrorResponse(error)) {
     return error.message
+  } else if (error instanceof ErrorEvent) {
+    return error.code ? `${error.code}: ${error.message}` : error.message?.toString() || def
   } else if (typeof error === "string" && error.trim().length > 0) {
     return error
   }
