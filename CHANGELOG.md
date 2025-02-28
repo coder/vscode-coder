@@ -2,18 +2,20 @@
 
 ## Unreleased
 
-## [v1.4.1](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2025-02-19)
+- Remove agent singleton so that client TLS certificates are reloaded on every API request.
 
 ### Fixed
 
+## [v1.4.1](https://github.com/coder/vscode-coder/releases/tag/v1.4.1) (2025-02-19)
+
 - Recreate REST client in spots where confirmStart may have waited indefinitely.
 
-## [v1.4.0](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2025-02-04)
+## [v1.4.0](https://github.com/coder/vscode-coder/releases/tag/v1.4.0) (2025-02-04)
 
 - Recreate REST client after starting a workspace to ensure fresh TLS certificates.
 - Use `coder ssh` subcommand in place of `coder vscodessh`.
 
-## [v1.3.10](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2025-01-17)
+## [v1.3.10](https://github.com/coder/vscode-coder/releases/tag/v1.3.10) (2025-01-17)
 
 - Fix bug where checking for overridden properties incorrectly converted host name pattern to regular expression.
 

@@ -50,36 +50,6 @@ async function createHttpAgent(): Promise<ProxyAgent> {
   })
 }
 
-// The agent is a singleton so we only have to listen to the configuration once
-// (otherwise we would have to carefully dispose agents to remove their
-// configuration listeners), and to share the connection pool.
-let agent: Promise<ProxyAgent> | undefined = undefined
-
-/**
- * Get the existing agent or create one if necessary.  On settings change,
- * recreate the agent.  The agent on the client is not automatically updated;
- * this must be called before every request to get the latest agent.
- */
-async function getHttpAgent(): Promise<ProxyAgent> {
-  if (!agent) {
-    vscode.workspace.onDidChangeConfiguration((e) => {
-      if (
-        // http.proxy and coder.proxyBypass are read each time a request is
-        // made, so no need to watch them.
-        e.affectsConfiguration("coder.insecure") ||
-        e.affectsConfiguration("coder.tlsCertFile") ||
-        e.affectsConfiguration("coder.tlsKeyFile") ||
-        e.affectsConfiguration("coder.tlsCaFile") ||
-        e.affectsConfiguration("coder.tlsAltHost")
-      ) {
-        agent = createHttpAgent()
-      }
-    })
-    agent = createHttpAgent()
-  }
-  return agent
-}
-
 /**
  * Create an sdk instance using the provided URL and token and hook it up to
  * configuration.  The token may be undefined if some other form of
@@ -101,7 +71,7 @@ export async function makeCoderSdk(baseUrl: string, token: string | undefined, s
     // Configure proxy and TLS.
     // Note that by default VS Code overrides the agent.  To prevent this, set
     // `http.proxySupport` to `on` or `off`.
-    const agent = await getHttpAgent()
+    const agent = await createHttpAgent()
     config.httpsAgent = agent
     config.httpAgent = agent
     config.proxy = false
