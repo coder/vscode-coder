@@ -127,11 +127,9 @@ export function createStreamingFetchAdapter(axiosInstance: AxiosInstance) {
       },
     })
 
-    const createReader = () => stream.getReader()
-
     return {
       body: {
-        getReader: () => createReader(),
+        getReader: () => stream.getReader(),
       },
       url: urlStr,
       status: response.status,

@@ -11,7 +11,7 @@ export function errToStr(error: unknown, def: string) {
   } else if (isApiErrorResponse(error)) {
     return error.message
   } else if (error instanceof ErrorEvent) {
-    return error.code ? `${error.code}: ${error.message}` : error.message?.toString() || def
+    return error.code ? `${error.code}: ${error.message || def}` : error.message || def
   } else if (typeof error === "string" && error.trim().length > 0) {
     return error
   }
