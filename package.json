@@ -29,9 +29,6 @@
     "onCommand:coder.connect",
     "onUri"
   ],
-  "extensionDependencies": [
-    "ms-vscode-remote.remote-ssh"
-  ],
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {

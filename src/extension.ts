@@ -29,6 +29,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     vscode.extensions.getExtension("anysphere.open-remote-ssh") ||
     vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
   if (!remoteSSHExtension) {
+    vscode.window.showErrorMessage("Remote SSH extension not found, cannot activate Coder extension")
     throw new Error("Remote SSH extension not found")
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
