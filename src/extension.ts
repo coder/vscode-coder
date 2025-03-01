@@ -19,10 +19,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // This is janky, but that's alright since it provides such minimal
   // functionality to the extension.
   //
-  // Prefer the anysphere.open-remote-ssh extension if it exists.  This makes
-  // our extension compatible with Cursor.  Otherwise fall back to the official
-  // SSH extension.
+  // The jeanp413 extension is available for vscodium and all bundled from there,
+  // so we check for that first.  If it's not available, we check for the windsurf, then
+  // anysphere extension which is the cursor fork of the first one.  If that's not
+  // available, we check for the official ms remote-ssh extension.
   const remoteSSHExtension =
+    vscode.extensions.getExtension("jeanp413.open-remote-ssh") ||
+    vscode.extensions.getExtension("codeium.windsurf-remote-openssh") ||
     vscode.extensions.getExtension("anysphere.open-remote-ssh") ||
     vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
   if (!remoteSSHExtension) {
