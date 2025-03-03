@@ -15,6 +15,7 @@ import * as cli from "./cliManager"
 import { Commands } from "./commands"
 import { featureSetForVersion, FeatureSet } from "./featureSet"
 import { getHeaderCommand } from "./headers"
+import { Inbox } from "./inbox"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
@@ -402,6 +403,10 @@ export class Remote {
     const monitor = new WorkspaceMonitor(workspace, workspaceRestClient, this.storage, this.vscodeProposed)
     disposables.push(monitor)
     disposables.push(monitor.onChange.event((w) => (this.commands.workspace = w)))
+
+    // Watch coder inbox for messages
+    const inbox = new Inbox(workspaceRestClient, this.storage)
+    disposables.push(inbox)
 
     // Wait for the agent to connect.
     if (agent.status === "connecting") {
