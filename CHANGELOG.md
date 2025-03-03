@@ -2,28 +2,42 @@
 
 ## Unreleased
 
-- Remove agent singleton so that client TLS certificates are reloaded on every API request.
-
 ### Fixed
 
+- Remove agent singleton so that client TLS certificates are reloaded on every API request.
+- Use Axios client to receive event stream so TLS settings are properly applied.
+
 ## [v1.4.1](https://github.com/coder/vscode-coder/releases/tag/v1.4.1) (2025-02-19)
+
+### Fixed
 
 - Recreate REST client in spots where confirmStart may have waited indefinitely.
 
 ## [v1.4.0](https://github.com/coder/vscode-coder/releases/tag/v1.4.0) (2025-02-04)
 
+### Fixed
+
 - Recreate REST client after starting a workspace to ensure fresh TLS certificates.
+
+### Changed
+
 - Use `coder ssh` subcommand in place of `coder vscodessh`.
 
 ## [v1.3.10](https://github.com/coder/vscode-coder/releases/tag/v1.3.10) (2025-01-17)
+
+### Fixed
 
 - Fix bug where checking for overridden properties incorrectly converted host name pattern to regular expression.
 
 ## [v1.3.9](https://github.com/coder/vscode-coder/releases/tag/v1.3.9) (2024-12-12)
 
+### Fixed
+
 - Only show a login failure dialog for explicit logins (and not autologins).
 
 ## [v1.3.8](https://github.com/coder/vscode-coder/releases/tag/v1.3.8) (2024-12-06)
+
+### Changed
 
 - When starting a workspace, shell out to the Coder binary instead of making an
   API call. This reduces drift between what the plugin does and the CLI does. As

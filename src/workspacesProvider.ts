@@ -1,8 +1,9 @@
 import { Api } from "coder/site/src/api/api"
 import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
-import EventSource from "eventsource"
+import { EventSource } from "eventsource"
 import * as path from "path"
 import * as vscode from "vscode"
+import { createStreamingFetchAdapter } from "./api"
 import {
   AgentMetadataEvent,
   AgentMetadataEventSchemaArray,
@@ -228,12 +229,9 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 function monitorMetadata(agentId: WorkspaceAgent["id"], restClient: Api): AgentWatcher {
   // TODO: Is there a better way to grab the url and token?
   const url = restClient.getAxiosInstance().defaults.baseURL
-  const token = restClient.getAxiosInstance().defaults.headers.common["Coder-Session-Token"] as string | undefined
   const metadataUrl = new URL(`${url}/api/v2/workspaceagents/${agentId}/watch-metadata`)
   const eventSource = new EventSource(metadataUrl.toString(), {
-    headers: {
-      "Coder-Session-Token": token,
-    },
+    fetch: createStreamingFetchAdapter(restClient.getAxiosInstance()),
   })
 
   let disposed = false
