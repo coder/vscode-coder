@@ -28,7 +28,7 @@ export function needToken(): boolean {
 /**
  * Create a new agent based off the current settings.
  */
-async function createHttpAgent(): Promise<ProxyAgent> {
+export async function createHttpAgent(): Promise<ProxyAgent> {
   const cfg = vscode.workspace.getConfiguration()
   const insecure = Boolean(cfg.get("coder.insecure"))
   const certFile = expandPath(String(cfg.get("coder.tlsCertFile") ?? "").trim())

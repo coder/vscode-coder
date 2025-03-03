@@ -9,7 +9,7 @@ import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
-import { makeCoderSdk, needToken, startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api"
+import { createHttpAgent, makeCoderSdk, needToken, startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api"
 import { extractAgents } from "./api-helper"
 import * as cli from "./cliManager"
 import { Commands } from "./commands"
@@ -405,7 +405,8 @@ export class Remote {
     disposables.push(monitor.onChange.event((w) => (this.commands.workspace = w)))
 
     // Watch coder inbox for messages
-    const inbox = new Inbox(workspaceRestClient, this.storage)
+    const httpAgent = await createHttpAgent();
+    const inbox = new Inbox(httpAgent, workspaceRestClient, this.storage)
     disposables.push(inbox)
 
     // Wait for the agent to connect.

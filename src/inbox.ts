@@ -3,6 +3,7 @@ import * as vscode from "vscode"
 import { WebSocket } from "ws"
 import { errToStr } from "./api-helper"
 import { Storage } from "./storage"
+import { ProxyAgent } from "proxy-agent"
 
 type InboxMessage = {
   unread_count: number
@@ -29,29 +30,31 @@ export class Inbox implements vscode.Disposable {
   private socket: WebSocket
 
   constructor(
-    private readonly restClient: Api,
+    httpAgent: ProxyAgent,
+    restClient: Api,
     private readonly storage: Storage,
   ) {
-    // const url = this.restClient.getAxiosInstance().defaults.baseURL
-    const token = this.restClient.getAxiosInstance().defaults.headers.common["Coder-Session-Token"] as
-      | string
-      | undefined
-    // const inboxUrl = new URL(`${url}/api/v2/notifications/watch`);
-    const inboxUrl = new URL(`ws://localhost:8080`)
-
-    this.storage.writeToCoderOutputChannel("Listening to Coder Inbox")
-
-    // We're gonna connect over WebSocket so replace the scheme.
-    if (inboxUrl.protocol === "https") {
-      inboxUrl.protocol = "wss"
-    } else if (inboxUrl.protocol === "http") {
-      inboxUrl.protocol = "ws"
+    const baseUrlRaw = restClient.getAxiosInstance().defaults.baseURL
+    if (!baseUrlRaw) {
+      throw new Error("No base URL set on REST client")
     }
 
-    this.socket = new WebSocket(inboxUrl, {
+    const baseUrl = new URL(baseUrlRaw)
+    const socketProto = baseUrl.protocol === "https:" ? "wss:" : "ws:"
+    const socketUrlRaw = `${socketProto}//${baseUrl.host}/api/v2/notifications/watch`
+
+    this.socket = new WebSocket(new URL(socketUrlRaw), {
+      followRedirects: true,
+      agent: httpAgent,
       headers: {
-        "Coder-Session-Token": token,
+        "Coder-Session-Token": restClient.getAxiosInstance().defaults.headers.common["Coder-Session-Token"] as
+          | string
+          | undefined,
       },
+    })
+
+    this.socket.on("open", () => {
+      this.storage.writeToCoderOutputChannel("Listening to Coder Inbox")
     })
 
     this.socket.on("error", (error) => {
