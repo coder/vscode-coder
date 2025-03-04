@@ -225,7 +225,7 @@ export async function waitForBuild(
   }
 
   // This fetches the initial bunch of logs.
-  const logs = await restClient.getWorkspaceBuildLogs(workspace.latest_build.id, new Date())
+  const logs = await restClient.getWorkspaceBuildLogs(workspace.latest_build.id)
   logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"))
 
   // This follows the logs for new activity!
