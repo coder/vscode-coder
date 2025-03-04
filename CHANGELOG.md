@@ -6,6 +6,7 @@
 
 - Remove agent singleton so that client TLS certificates are reloaded on every API request.
 - Use Axios client to receive event stream so TLS settings are properly applied.
+- Set `usage-app=vscode` on `coder ssh` to fix deployment session counting.
 
 ## [v1.4.1](https://github.com/coder/vscode-coder/releases/tag/v1.4.1) (2025-02-19)
 
