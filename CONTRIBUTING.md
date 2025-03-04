@@ -125,6 +125,9 @@ Some dependencies are not directly used in the source but are required anyway.
 - `glob`, `nyc`, `vscode-test`, and `@vscode/test-electron` are currently unused
   but we need to switch back to them from `vitest`.
 
+The coder client is vendored from coder/coder. Every now and then, we should be running `yarn upgrade coder --latest`
+to make sure we're using up to date versions of the client.
+
 ## Releasing
 
 1. Check that the changelog lists all the important changes.

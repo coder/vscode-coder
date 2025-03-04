@@ -1589,9 +1589,7 @@ co@3.1.0:
 
 "coder@https://github.com/coder/coder#main":
   version "0.0.0"
-  resolved "https://github.com/coder/coder#9eb797eb5a2bfb115db1fe8eccad78908a5f8ec1"
-  dependencies:
-    exec "^0.2.1"
+  resolved "https://github.com/coder/coder#975ea23d6f49a4043131f79036d1bf5166eb9140"
 
 collapse-white-space@^1.0.2:
   version "1.0.6"
@@ -2542,11 +2540,6 @@ eventsource@*, eventsource@^3.0.5:
   integrity sha512-LT/5J605bx5SNyE+ITBDiM3FxffBiq9un7Vx0EwMDM3vg8sWKx/tO2zC+LMqZ+smAM0F2hblaDZUVZF0te2pSw==
   dependencies:
     eventsource-parser "^3.0.0"
-
-exec@^0.2.1:
-  version "0.2.1"
-  resolved "https://registry.yarnpkg.com/exec/-/exec-0.2.1.tgz#2661f0bfc5532918629117cb9f80c7564af2c51f"
-  integrity sha512-lE5ZlJgRYh+rmwidatL2AqRA/U9IBoCpKlLriBmnfUIrV/Rj4oLjb63qZ57iBCHWi5j9IjLt5wOWkFYPiTfYAg==
 
 expand-template@^2.0.3:
   version "2.0.3"
