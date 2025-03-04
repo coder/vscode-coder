@@ -1,9 +1,9 @@
 import { Api } from "coder/site/src/api/api"
+import { ProxyAgent } from "proxy-agent"
 import * as vscode from "vscode"
 import { WebSocket } from "ws"
 import { errToStr } from "./api-helper"
-import { Storage } from "./storage"
-import { ProxyAgent } from "proxy-agent"
+import { type Storage } from "./storage"
 
 type InboxMessage = {
   unread_count: number
@@ -14,26 +14,26 @@ type InboxMessage = {
     targets: string[]
     title: string
     content: string
-    actions: {
-      [key: string]: string
-    }
+    actions: Record<string, string>
     read_at: string
     created_at: string
   }
 }
 
-const TemplateWorkspaceOutOfMemory = "a9d027b4-ac49-4fb1-9f6d-45af15f64e7a"
-const TemplateWorkspaceOutOfDisk = "f047f6a3-5713-40f7-85aa-0394cce9fa3a"
+// These are the template IDs of our notifications.
+// Maybe in the future we should avoid hardcoding
+// these in both coderd and here.
+const TEMPLATE_WORKSPACE_OUT_OF_MEMORY = "a9d027b4-ac49-4fb1-9f6d-45af15f64e7a"
+const TEMPLATE_WORKSPACE_OUT_OF_DISK = "f047f6a3-5713-40f7-85aa-0394cce9fa3a"
 
 export class Inbox implements vscode.Disposable {
+  private readonly storage: Storage
   private disposed = false
   private socket: WebSocket
 
-  constructor(
-    httpAgent: ProxyAgent,
-    restClient: Api,
-    private readonly storage: Storage,
-  ) {
+  constructor(httpAgent: ProxyAgent, restClient: Api, storage: Storage) {
+    this.storage = storage
+
     const baseUrlRaw = restClient.getAxiosInstance().defaults.baseURL
     if (!baseUrlRaw) {
       throw new Error("No base URL set on REST client")
@@ -43,11 +43,12 @@ export class Inbox implements vscode.Disposable {
     const socketProto = baseUrl.protocol === "https:" ? "wss:" : "ws:"
     const socketUrlRaw = `${socketProto}//${baseUrl.host}/api/v2/notifications/watch`
 
+    const coderSessionTokenHeader = "Coder-Session-Token"
     this.socket = new WebSocket(new URL(socketUrlRaw), {
       followRedirects: true,
       agent: httpAgent,
       headers: {
-        "Coder-Session-Token": restClient.getAxiosInstance().defaults.headers.common["Coder-Session-Token"] as
+        [coderSessionTokenHeader]: restClient.getAxiosInstance().defaults.headers.common[coderSessionTokenHeader] as
           | string
           | undefined,
       },
@@ -66,8 +67,8 @@ export class Inbox implements vscode.Disposable {
         const inboxMessage = JSON.parse(data.toString()) as InboxMessage
 
         if (
-          inboxMessage.notification.template_id === TemplateWorkspaceOutOfDisk ||
-          inboxMessage.notification.template_id === TemplateWorkspaceOutOfMemory
+          inboxMessage.notification.template_id === TEMPLATE_WORKSPACE_OUT_OF_DISK ||
+          inboxMessage.notification.template_id === TEMPLATE_WORKSPACE_OUT_OF_MEMORY
         ) {
           vscode.window.showWarningMessage(inboxMessage.notification.title)
         }

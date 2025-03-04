@@ -405,7 +405,7 @@ export class Remote {
     disposables.push(monitor.onChange.event((w) => (this.commands.workspace = w)))
 
     // Watch coder inbox for messages
-    const httpAgent = await createHttpAgent();
+    const httpAgent = await createHttpAgent()
     const inbox = new Inbox(httpAgent, workspaceRestClient, this.storage)
     disposables.push(inbox)
 
