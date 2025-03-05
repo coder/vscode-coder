@@ -22,6 +22,6 @@ export function featureSetForVersion(version: semver.SemVer | null): FeatureSet 
     // If this check didn't exist, VS Code connections would fail on
     // older versions because of an unknown CLI argument.
     proxyLogDirectory: (version?.compare("2.3.3") || 0) > 0 || version?.prerelease[0] === "devel",
-    wildcardSSH: (version?.compare("2.19.0") || 0) > 0 || version?.prerelease[0] === "devel",
+    wildcardSSH: (version ? version.compare("2.19.0") : -1) >= 0 || version?.prerelease[0] === "devel",
   }
 }
