@@ -24,13 +24,13 @@
   "categories": [
     "Other"
   ],
+  "extensionPack": [
+    "ms-vscode-remote.remote-ssh"
+  ],
   "activationEvents": [
     "onResolveRemoteAuthority:ssh-remote",
     "onCommand:coder.connect",
     "onUri"
-  ],
-  "extensionDependencies": [
-    "ms-vscode-remote.remote-ssh"
   ],
   "main": "./dist/extension.js",
   "contributes": {
