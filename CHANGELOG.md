@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.4.2](https://github.com/coder/vscode-coder/releases/tag/v1.4.2) (2025-03-07)
+
 ### Fixed
 
 - Remove agent singleton so that client TLS certificates are reloaded on every API request.
