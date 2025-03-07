@@ -11,4 +11,12 @@ describe("check version support", () => {
       expect(featureSetForVersion(semver.parse(v)).proxyLogDirectory).toBeTruthy()
     })
   })
+  it("wildcard ssh", () => {
+    ;["v1.3.3+e491217", "v2.3.3+e491217"].forEach((v: string) => {
+      expect(featureSetForVersion(semver.parse(v)).wildcardSSH).toBeFalsy()
+    })
+    ;["v2.19.0", "v2.19.1", "v2.20.0+e491217", "v5.0.4+e491217"].forEach((v: string) => {
+      expect(featureSetForVersion(semver.parse(v)).wildcardSSH).toBeTruthy()
+    })
+  })
 })
