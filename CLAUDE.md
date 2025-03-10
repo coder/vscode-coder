@@ -1,6 +1,7 @@
 # Coder Extension Development Guidelines
 
 ## Build and Test Commands
+
 - Build: `yarn build`
 - Watch mode: `yarn watch`
 - Package: `yarn package`
@@ -11,6 +12,7 @@
 - CI test mode: `yarn test:ci`
 
 ## Code Style Guidelines
+
 - TypeScript with strict typing
 - No semicolons (see `.prettierrc`)
 - Trailing commas for all multi-line lists
