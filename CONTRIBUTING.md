@@ -135,4 +135,4 @@ to make sure we're using up to date versions of the client.
 3. Push a tag matching the new package.json version.
 4. Update the resulting draft release with the changelog contents.
 5. Publish the draft release.
-6. Download the `.vsix` file from the release and upload to the marketplace.
+6. Download the `.vsix` file from the release and upload to the marketplace (both Microsoft and OpenVSX).
