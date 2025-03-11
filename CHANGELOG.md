@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- Make the MS Remote SSH extension part of an extension pack rather than a hard dependency, to enable
+  using the plugin in other VSCode likes (cursor, windsurf, etc.)
+
 ## [v1.4.2](https://github.com/coder/vscode-coder/releases/tag/v1.4.2) (2025-03-07)
 
 ### Fixed
