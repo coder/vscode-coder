@@ -4,8 +4,8 @@
 [!["Join us on
 Discord"](https://badgen.net/discord/online-members/coder)](https://coder.com/chat?utm_source=github.com/coder/vscode-coder&utm_medium=github&utm_campaign=readme.md)
 
-The Coder Remote extension lets you open
-[Coder](https://github.com/coder/coder) workspaces with a single click.
+The Coder Remote extension lets you open [Coder](https://github.com/coder/coder)
+workspaces with a single click.
 
 - Open workspaces from the dashboard in a single click.
 - Automatically start workspaces when opened.
@@ -14,9 +14,10 @@ The Coder Remote extension lets you open
   deployment!
 - Supports multiple editors: VS Code, Cursor, and Windsurf.
   > [!NOTE]  
-  > The extension builds on VSCode provided implementations of SSH. Make sure you have
-  > the correct ssh extension installed for your editor (ms-vscode-remote.remote-ssh or 
-  > codeium.windsurf-remote-openssh for windsurf)
+  > The extension builds on VSCode provided implementations of SSH. Make sure
+  > you have the correct ssh extension installed for your editor
+  > (ms-vscode-remote.remote-ssh or codeium.windsurf-remote-openssh for
+  > windsurf)
 
 ![Demo](https://github.com/coder/vscode-coder/raw/main/demo.gif?raw=true)
 
