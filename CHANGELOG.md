@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Support for VSCodium with Windsurf via the Windsurf Remote OpenSSH extension
+
 ## [v1.4.2](https://github.com/coder/vscode-coder/releases/tag/v1.4.2) (2025-03-07)
 
 ### Fixed
