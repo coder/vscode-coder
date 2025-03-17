@@ -70,7 +70,7 @@ export class Inbox implements vscode.Disposable {
           inboxMessage.notification.template_id === TEMPLATE_WORKSPACE_OUT_OF_DISK ||
           inboxMessage.notification.template_id === TEMPLATE_WORKSPACE_OUT_OF_MEMORY
         ) {
-          vscode.window.showWarningMessage(inboxMessage.notification.title)
+          vscode.window.showInformationMessage(inboxMessage.notification.title)
         }
       } catch (error) {
         this.notifyError(error)
