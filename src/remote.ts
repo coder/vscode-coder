@@ -633,7 +633,7 @@ export class Remote {
     const proxyCommand = featureSet.wildcardSSH
       ? `${escape(binaryPath)}${headerArg} --global-config ${escape(
           path.dirname(this.storage.getSessionTokenPath(label)),
-        )} ssh --stdio --network-info-dir ${escape(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
+        )} ssh --stdio --usage-app=vscode --network-info-dir ${escape(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
       : `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
           this.storage.getNetworkInfoPath(),
         )}${await this.formatLogArg(logDir)} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(

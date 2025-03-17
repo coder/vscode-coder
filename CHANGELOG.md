@@ -2,10 +2,19 @@
 
 ## Unreleased
 
+### Changed
+
+- Make the MS Remote SSH extension part of an extension pack rather than a hard dependency, to enable
+  using the plugin in other VSCode likes (cursor, windsurf, etc.)
+
+## [v1.4.2](https://github.com/coder/vscode-coder/releases/tag/v1.4.2) (2025-03-07)
+
 ### Fixed
 
 - Remove agent singleton so that client TLS certificates are reloaded on every API request.
 - Use Axios client to receive event stream so TLS settings are properly applied.
+- Set `usage-app=vscode` on `coder ssh` to fix deployment session counting.
+- Fix version comparison logic for checking wildcard support in "coder ssh"
 
 ## [v1.4.1](https://github.com/coder/vscode-coder/releases/tag/v1.4.1) (2025-02-19)
 
