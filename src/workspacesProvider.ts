@@ -158,7 +158,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         // Fetch AI tasks for the workspace
         try {
           // Create a dummy emitter for logs
-          const emitter = new vscode.EventEmitter<string>()
+          const _emitter = new vscode.EventEmitter<string>()
         } catch (error) {
           // Log the error but continue - we don't want to fail the whole tree if AI tasks fail
           this.storage.writeToCoderOutputChannel(
@@ -236,18 +236,33 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         if (watcher?.error) {
           return Promise.resolve([new ErrorTreeItem(watcher.error)])
         }
-        
+
         const items: vscode.TreeItem[] = []
-        
-        // Add AI tasks first, if the agent has any associated tasks
-        const agentTasks = element.agent.tasks.map((task) => new AITaskTreeItem(task))
-        items.push(...agentTasks)
-        
-        // Add agent metadata
+
+        // Add AI tasks section with collapsible header
+        if (element.agent.tasks.length > 0) {
+          const aiTasksSection = new SectionTreeItem(
+            "AI Tasks",
+            element.agent.tasks.map((task) => new AITaskTreeItem(task)),
+          )
+          items.push(aiTasksSection)
+        }
+
         const savedMetadata = watcher?.metadata || []
-        items.push(...savedMetadata.map((metadata) => new AgentMetadataTreeItem(metadata)))
-        
+
+        // Add agent metadata section with collapsible header
+        if (savedMetadata.length > 0) {
+          const metadataSection = new SectionTreeItem(
+            "Agent Metadata",
+            savedMetadata.map((metadata) => new AgentMetadataTreeItem(metadata)),
+          )
+          items.push(metadataSection)
+        }
+
         return Promise.resolve(items)
+      } else if (element instanceof SectionTreeItem) {
+        // Return the children of the section
+        return Promise.resolve(element.children)
       }
 
       return Promise.resolve([])
@@ -296,6 +311,19 @@ function monitorMetadata(agentId: WorkspaceAgent["id"], restClient: Api): AgentW
   })
 
   return watcher
+}
+
+/**
+ * A tree item that represents a collapsible section with child items
+ */
+class SectionTreeItem extends vscode.TreeItem {
+  constructor(
+    label: string,
+    public readonly children: vscode.TreeItem[],
+  ) {
+    super(label, vscode.TreeItemCollapsibleState.Expanded)
+    this.contextValue = "coderSectionHeader"
+  }
 }
 
 class ErrorTreeItem extends vscode.TreeItem {
@@ -382,13 +410,13 @@ class AgentTreeItem extends OpenableTreeItem {
     )
 
     if (agent.task_waiting_for_user_input) {
-      this.label = "🙋 " + this.label;
+      this.label = "🙋 " + this.label
     }
   }
 }
 
 export class WorkspaceTreeItem extends OpenableTreeItem {
-  public aiTasks: {waiting: boolean, tasks: WorkspaceAgentTask[]}[] = []
+  public aiTasks: { waiting: boolean; tasks: WorkspaceAgentTask[] }[] = []
 
   constructor(
     public readonly workspace: Workspace,

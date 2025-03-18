@@ -1,7 +1,7 @@
 import { AxiosInstance } from "axios"
 import { spawn } from "child_process"
 import { Api } from "coder/site/src/api/api"
-import { ProvisionerJobLog, Workspace, WorkspaceAgent, WorkspaceAgentTask } from "coder/site/src/api/typesGenerated"
+import { ProvisionerJobLog, Workspace } from "coder/site/src/api/typesGenerated"
 import { FetchLikeInit } from "eventsource"
 import fs from "fs/promises"
 import { ProxyAgent } from "proxy-agent"
