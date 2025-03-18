@@ -296,14 +296,6 @@ export class Commands {
     await vscode.window.showTextDocument(doc)
   }
   
-  /**
-   * Open a view to show AI tasks across all workspaces
-   */
-  public async viewAITasks(): Promise<void> {
-    vscode.window.showInformationMessage("Viewing AI tasks across workspaces")
-    // Refresh workspaces to ensure we have the latest tasks
-    vscode.commands.executeCommand("coder.refreshWorkspaces")
-  }
 
   /**
    * Log out from the currently logged-in deployment.
@@ -414,6 +406,18 @@ export class Commands {
       // Default to the regular open instead.
       return this.open()
     }
+  }
+
+  public async openAISession(): Promise<void> {
+    
+    // Then launch an integrated terminal with screen session
+    const terminal = vscode.window.createTerminal({
+      name: "Claude Code Session",
+    })
+    
+    // Show the terminal and run the screen command
+    terminal.show(true)
+    terminal.sendText("screen -xRR claude-code")
   }
 
   /**

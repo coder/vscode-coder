@@ -238,12 +238,9 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         if (aiTaskItems.length == 0) {
           return Promise.resolve(agentTreeItems)
         }
-        // Create a separator item
-        const separator = new vscode.TreeItem("AI Tasks", vscode.TreeItemCollapsibleState.None)
-        separator.contextValue = "coderAITaskHeader"
         
         // Return AI task items first, then a separator, then agent items
-        return Promise.resolve([...aiTaskItems, separator, ...agentTreeItems])
+        return Promise.resolve([...aiTaskItems, ...agentTreeItems])
       } else if (element instanceof AgentTreeItem) {
         const watcher = this.agentWatchers[element.agent.id]
         if (watcher?.error) {
@@ -326,6 +323,9 @@ class AITaskTreeItem extends vscode.TreeItem {
     super(task.summary, vscode.TreeItemCollapsibleState.None)
     this.description = task.summary
     this.contextValue = "coderAITask"
+    
+    // Add an icon using VSCode's built-in Codicons
+    this.iconPath = new vscode.ThemeIcon("sparkle")
     
     // Add command to handle clicking on the task
     this.command = {

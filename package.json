@@ -171,6 +171,11 @@
         "icon": "$(play)"
       },
       {
+        "command": "coder.openFromSidebarAndOpenSession",
+        "title": "Coder: Open Workspace with Claude Code Session",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "coder.createWorkspace",
         "title": "Create Workspace",
         "when": "coder.authenticated",
@@ -206,8 +211,8 @@
         "when": "coder.authenticated"
       },
       {
-        "command": "coder.viewAITasks",
-        "title": "Coder: View AI Tasks",
+        "command": "coder.openAITask",
+        "title": "Coder: Open AI Task",
         "icon": "$(robot)",
         "when": "coder.authenticated"
       }
@@ -239,7 +244,7 @@
           "group": "navigation"
         },
         {
-          "command": "coder.viewAITasks",
+          "command": "coder.openAITask",
           "when": "coder.authenticated && view == myWorkspaces",
           "group": "navigation"
         }
@@ -247,6 +252,11 @@
       "view/item/context": [
         {
           "command": "coder.openFromSidebar",
+          "when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderAgent",
+          "group": "inline"
+        },
+        {
+          "command": "coder.openFromSidebarAndOpenSession",
           "when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderAgent",
           "group": "inline"
         },
@@ -272,7 +282,7 @@
           "when": "coder.authenticated"
         },
         {
-          "command": "coder.viewAITasks",
+          "command": "coder.openAITask",
           "group": "remote_11_ssh_coder@3",
           "when": "coder.authenticated"
         }
