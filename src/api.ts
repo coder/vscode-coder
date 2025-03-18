@@ -1,7 +1,7 @@
 import { AxiosInstance } from "axios"
 import { spawn } from "child_process"
 import { Api } from "coder/site/src/api/api"
-import { ProvisionerJobLog, Workspace } from "coder/site/src/api/typesGenerated"
+import { ProvisionerJobLog, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import { FetchLikeInit } from "eventsource"
 import fs from "fs/promises"
 import { ProxyAgent } from "proxy-agent"
@@ -275,4 +275,46 @@ export async function waitForBuild(
   const updatedWorkspace = await restClient.getWorkspace(workspace.id)
   writeEmitter.fire(`Workspace is now ${updatedWorkspace.latest_build.status}\r\n`)
   return updatedWorkspace
+}
+
+// 1. First, get a workspace by owner and name
+export async function getAITasksForWorkspace(
+  restClient: Api,
+  writeEmitter: vscode.EventEmitter<string>,
+  workspace: Workspace,
+) {
+
+  // The workspace will include agents, and within each agent you can find tasks
+  // You can access the agents from the workspace resource
+  const resources = workspace.latest_build.resources;
+
+  // Go through each resource
+  for (const resource of resources) {
+    // Each resource can have multiple agents
+    if (!resource.agents) {
+      continue
+    }
+
+    for (const agent of resource.agents) {
+      // Check if this agent has any AI tasks
+      if (agent.tasks && agent.tasks.length > 0) {
+        // This agent has AI tasks!
+        console.log(`Agent ${agent.name} (${agent.id}) has ${agent.tasks.length} tasks`);
+
+        // Examine task details
+        for (const task of agent.tasks) {
+          console.log(`Task: ${task.summary}`);
+          console.log(`Reporter: ${task.reporter}`);
+          console.log(`Status: ${task.completion ? 'Completed' : 'In Progress'}`);
+          console.log(`URL: ${task.url}`);
+          console.log(`Icon: ${task.icon}`);
+        }
+
+        // Check if the agent is waiting for user input
+        if (agent.task_waiting_for_user_input) {
+          console.log("This agent is waiting for user input!");
+        }
+      }
+    }
+  }
 }

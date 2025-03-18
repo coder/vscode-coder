@@ -287,7 +287,7 @@
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^2.21.1",
     "bufferutil": "^4.0.8",
-    "coder": "https://github.com/coder/coder#main",
+    "coder": "https://github.com/coder/coder#kyle/tasks",
     "dayjs": "^1.11.13",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",

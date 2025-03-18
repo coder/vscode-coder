@@ -1592,9 +1592,9 @@ co@3.1.0:
   resolved "https://registry.yarnpkg.com/co/-/co-3.1.0.tgz#4ea54ea5a08938153185e15210c68d9092bc1b78"
   integrity sha512-CQsjCRiNObI8AtTsNIBDRMQ4oMR83CzEswHYahClvul7gKk+lDQiOKv+5qh7LQWf5sh6jkZNispz/QlsZxyNgA==
 
-"coder@https://github.com/coder/coder#main":
+"coder@https://github.com/coder/coder#kyle/tasks":
   version "0.0.0"
-  resolved "https://github.com/coder/coder#975ea23d6f49a4043131f79036d1bf5166eb9140"
+  resolved "https://github.com/coder/coder#87e086298f19fec18b2ba18bf4ff39081d670570"
 
 collapse-white-space@^1.0.2:
   version "1.0.6"
