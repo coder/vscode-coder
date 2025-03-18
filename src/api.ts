@@ -276,32 +276,3 @@ export async function waitForBuild(
   writeEmitter.fire(`Workspace is now ${updatedWorkspace.latest_build.status}\r\n`)
   return updatedWorkspace
 }
-
-// 1. First, get a workspace by owner and name
-export async function getAITasksForWorkspace(
-  restClient: Api,
-  writeEmitter: vscode.EventEmitter<string>,
-  workspace: Workspace,
-): Promise<WorkspaceAgentTask[]> {
-  // We need to build up tasks
-  let awaiting_tasks: WorkspaceAgentTask[] = [];
-
-  // The workspace will include agents, and within each agent you can find tasks
-  // You can access the agents from the workspace resource
-  const resources = workspace.latest_build.resources;
-
-  // Go through each resource
-  for (const resource of resources) {
-    if (!resource.agents) {
-      continue
-    }
-
-    resource.agents.forEach((agent) => {
-      for (const task of agent.tasks) {
-        awaiting_tasks.push(task);
-      }
-    })
-  }
-
-  return awaiting_tasks;
-}

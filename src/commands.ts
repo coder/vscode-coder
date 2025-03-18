@@ -2,7 +2,7 @@ import { Api } from "coder/site/src/api/api"
 import { getErrorMessage } from "coder/site/src/api/errors"
 import { User, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
-import { getAITasksForWorkspace, makeCoderSdk, needToken } from "./api"
+import { makeCoderSdk, needToken } from "./api"
 import { extractAgents } from "./api-helper"
 import { CertificateError } from "./error"
 import { Storage } from "./storage"
@@ -295,7 +295,6 @@ export class Commands {
     const doc = await vscode.workspace.openTextDocument(uri)
     await vscode.window.showTextDocument(doc)
   }
-  
 
   /**
    * Log out from the currently logged-in deployment.
@@ -409,12 +408,11 @@ export class Commands {
   }
 
   public async openAISession(): Promise<void> {
-    
     // Then launch an integrated terminal with screen session
     const terminal = vscode.window.createTerminal({
       name: "Claude Code Session",
     })
-    
+
     // Show the terminal and run the screen command
     terminal.show(true)
     terminal.sendText("screen -xRR claude-code")
