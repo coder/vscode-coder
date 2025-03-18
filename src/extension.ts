@@ -136,6 +136,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     allWorkspacesProvider.fetchAndRefresh()
   })
   vscode.commands.registerCommand("coder.viewLogs", commands.viewLogs.bind(commands))
+  vscode.commands.registerCommand("coder.viewAITasks", commands.viewAITasks.bind(commands))
+  vscode.commands.registerCommand("coder.openAITask", (task) => {
+    // Open the task URL if available
+    if (task && task.url) {
+      vscode.env.openExternal(vscode.Uri.parse(task.url))
+    } else {
+      vscode.window.showInformationMessage("This AI task has no associated URL")
+    }
+  })
 
   // Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
   // in package.json we're able to perform actions before the authority is

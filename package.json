@@ -204,6 +204,12 @@
         "title": "Coder: View Logs",
         "icon": "$(list-unordered)",
         "when": "coder.authenticated"
+      },
+      {
+        "command": "coder.viewAITasks",
+        "title": "Coder: View AI Tasks",
+        "icon": "$(robot)",
+        "when": "coder.authenticated"
       }
     ],
     "menus": {
@@ -229,6 +235,11 @@
         },
         {
           "command": "coder.refreshWorkspaces",
+          "when": "coder.authenticated && view == myWorkspaces",
+          "group": "navigation"
+        },
+        {
+          "command": "coder.viewAITasks",
           "when": "coder.authenticated && view == myWorkspaces",
           "group": "navigation"
         }
@@ -258,6 +269,11 @@
         {
           "command": "coder.createWorkspace",
           "group": "remote_11_ssh_coder@2",
+          "when": "coder.authenticated"
+        },
+        {
+          "command": "coder.viewAITasks",
+          "group": "remote_11_ssh_coder@3",
           "when": "coder.authenticated"
         }
       ]

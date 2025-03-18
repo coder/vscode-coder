@@ -2,7 +2,7 @@ import { Api } from "coder/site/src/api/api"
 import { getErrorMessage } from "coder/site/src/api/errors"
 import { User, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import * as vscode from "vscode"
-import { makeCoderSdk, needToken } from "./api"
+import { getAITasksForWorkspace, makeCoderSdk, needToken } from "./api"
 import { extractAgents } from "./api-helper"
 import { CertificateError } from "./error"
 import { Storage } from "./storage"
@@ -294,6 +294,15 @@ export class Commands {
     const uri = vscode.Uri.file(this.workspaceLogPath)
     const doc = await vscode.workspace.openTextDocument(uri)
     await vscode.window.showTextDocument(doc)
+  }
+  
+  /**
+   * Open a view to show AI tasks across all workspaces
+   */
+  public async viewAITasks(): Promise<void> {
+    vscode.window.showInformationMessage("Viewing AI tasks across workspaces")
+    // Refresh workspaces to ensure we have the latest tasks
+    vscode.commands.executeCommand("coder.refreshWorkspaces")
   }
 
   /**

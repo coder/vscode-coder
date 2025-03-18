@@ -1,9 +1,9 @@
 import { Api } from "coder/site/src/api/api"
-import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { Workspace, WorkspaceAgent, WorkspaceAgentTask } from "coder/site/src/api/typesGenerated"
 import { EventSource } from "eventsource"
 import * as path from "path"
 import * as vscode from "vscode"
-import { createStreamingFetchAdapter } from "./api"
+import { createStreamingFetchAdapter, getAITasksForWorkspace } from "./api"
 import {
   AgentMetadataEvent,
   AgentMetadataEventSchemaArray,
@@ -146,9 +146,32 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
       }
     })
 
-    return resp.workspaces.map((workspace) => {
-      return new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
-    })
+    // Create tree items for each workspace
+    const workspaceTreeItems = await Promise.all(resp.workspaces.map(async (workspace) => {
+      const workspaceTreeItem = new WorkspaceTreeItem(
+        workspace, 
+        this.getWorkspacesQuery === WorkspaceQuery.All, 
+        showMetadata
+      )
+      
+      // Fetch AI tasks for the workspace
+      try {
+        // Create a dummy emitter for logs
+        const emitter = new vscode.EventEmitter<string>()
+        const aiTasks = await getAITasksForWorkspace(restClient, emitter, workspace)
+        workspaceTreeItem.aiTasks = aiTasks
+        this.storage.writeToCoderOutputChannel(aiTasks.length.toString())
+        console.log(aiTasks.length.toString())
+      } catch (error) {
+        // Log the error but continue - we don't want to fail the whole tree if AI tasks fail
+        this.storage.writeToCoderOutputChannel(`Failed to fetch AI tasks for workspace ${workspace.name}: ${errToStr(error, "unknown error")}`)
+        
+      }
+      
+      return workspaceTreeItem
+    }))
+
+    return workspaceTreeItems
   }
 
   /**
@@ -207,7 +230,20 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         const agentTreeItems = agents.map(
           (agent) => new AgentTreeItem(agent, element.workspaceOwner, element.workspaceName, element.watchMetadata),
         )
-        return Promise.resolve(agentTreeItems)
+        
+        // Add AI task items to the workspace children if there are any
+        const aiTaskItems = element.aiTasks.map(task => new AITaskTreeItem(task))
+        
+        // If there are AI tasks, add them at the beginning of the list
+        if (aiTaskItems.length == 0) {
+          return Promise.resolve(agentTreeItems)
+        }
+        // Create a separator item
+        const separator = new vscode.TreeItem("AI Tasks", vscode.TreeItemCollapsibleState.None)
+        separator.contextValue = "coderAITaskHeader"
+        
+        // Return AI task items first, then a separator, then agent items
+        return Promise.resolve([...aiTaskItems, separator, ...agentTreeItems])
       } else if (element instanceof AgentTreeItem) {
         const watcher = this.agentWatchers[element.agent.id]
         if (watcher?.error) {
@@ -285,6 +321,21 @@ class AgentMetadataTreeItem extends vscode.TreeItem {
   }
 }
 
+class AITaskTreeItem extends vscode.TreeItem {
+  constructor(public readonly task: WorkspaceAgentTask) {
+    super(task.summary, vscode.TreeItemCollapsibleState.None)
+    this.description = task.summary
+    this.contextValue = "coderAITask"
+    
+    // Add command to handle clicking on the task
+    this.command = {
+      command: "coder.openAITask", 
+      title: "Open AI Task",
+      arguments: [task]
+    }
+  }
+}
+
 type CoderOpenableTreeItemType = "coderWorkspaceSingleAgent" | "coderWorkspaceMultipleAgents" | "coderAgent"
 
 export class OpenableTreeItem extends vscode.TreeItem {
@@ -335,6 +386,8 @@ class AgentTreeItem extends OpenableTreeItem {
 }
 
 export class WorkspaceTreeItem extends OpenableTreeItem {
+  public aiTasks: WorkspaceAgentTask[] = []
+  
   constructor(
     public readonly workspace: Workspace,
     public readonly showOwner: boolean,
