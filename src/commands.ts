@@ -411,10 +411,16 @@ export class Commands {
     // Then launch an integrated terminal with screen session
     const terminal = vscode.window.createTerminal({
       name: "Claude Code Session",
+      location: vscode.TerminalLocation.Panel
     })
 
     // Show the terminal and run the screen command
     terminal.show(true)
+    
+    // Hide sidebar and maximize terminal panel
+    // await vscode.commands.executeCommand("workbench.action.toggleSidebarVisibility")
+    await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel")
+    
     terminal.sendText("screen -xRR claude-code")
   }
 
