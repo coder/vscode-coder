@@ -1,24 +1,10 @@
 import { Api } from "coder/site/src/api/api"
+import { Workspace, GetInboxNotificationResponse } from "coder/site/src/api/typesGenerated"
 import { ProxyAgent } from "proxy-agent"
 import * as vscode from "vscode"
 import { WebSocket } from "ws"
 import { errToStr } from "./api-helper"
 import { type Storage } from "./storage"
-
-type InboxMessage = {
-  unread_count: number
-  notification: {
-    id: string
-    user_id: string
-    template_id: string
-    targets: string[]
-    title: string
-    content: string
-    actions: Record<string, string>
-    read_at: string
-    created_at: string
-  }
-}
 
 // These are the template IDs of our notifications.
 // Maybe in the future we should avoid hardcoding
@@ -31,7 +17,7 @@ export class Inbox implements vscode.Disposable {
   private disposed = false
   private socket: WebSocket
 
-  constructor(httpAgent: ProxyAgent, restClient: Api, storage: Storage) {
+  constructor(workspace: Workspace, httpAgent: ProxyAgent, restClient: Api, storage: Storage) {
     this.storage = storage
 
     const baseUrlRaw = restClient.getAxiosInstance().defaults.baseURL
@@ -39,9 +25,15 @@ export class Inbox implements vscode.Disposable {
       throw new Error("No base URL set on REST client")
     }
 
+    const watchTemplates = [TEMPLATE_WORKSPACE_OUT_OF_DISK, TEMPLATE_WORKSPACE_OUT_OF_MEMORY]
+    const watchTemplatesParam = encodeURIComponent(watchTemplates.join(","))
+
+    const watchTargets = [workspace.id]
+    const watchTargetsParam = encodeURIComponent(watchTargets.join(","))
+
     const baseUrl = new URL(baseUrlRaw)
     const socketProto = baseUrl.protocol === "https:" ? "wss:" : "ws:"
-    const socketUrlRaw = `${socketProto}//${baseUrl.host}/api/v2/notifications/inbox/watch`
+    const socketUrlRaw = `${socketProto}//${baseUrl.host}/api/v2/notifications/inbox/watch?templates=${watchTemplatesParam}&targets=${watchTargetsParam}`
 
     const coderSessionTokenHeader = "Coder-Session-Token"
     this.socket = new WebSocket(new URL(socketUrlRaw), {
@@ -64,14 +56,9 @@ export class Inbox implements vscode.Disposable {
 
     this.socket.on("message", (data) => {
       try {
-        const inboxMessage = JSON.parse(data.toString()) as InboxMessage
+        const inboxMessage = JSON.parse(data.toString()) as GetInboxNotificationResponse
 
-        if (
-          inboxMessage.notification.template_id === TEMPLATE_WORKSPACE_OUT_OF_DISK ||
-          inboxMessage.notification.template_id === TEMPLATE_WORKSPACE_OUT_OF_MEMORY
-        ) {
-          vscode.window.showInformationMessage(inboxMessage.notification.title)
-        }
+        vscode.window.showInformationMessage(inboxMessage.notification.title)
       } catch (error) {
         this.notifyError(error)
       }

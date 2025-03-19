@@ -406,7 +406,7 @@ export class Remote {
 
     // Watch coder inbox for messages
     const httpAgent = await createHttpAgent()
-    const inbox = new Inbox(httpAgent, workspaceRestClient, this.storage)
+    const inbox = new Inbox(workspace, httpAgent, workspaceRestClient, this.storage)
     disposables.push(inbox)
 
     // Wait for the agent to connect.
