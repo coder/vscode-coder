@@ -54,7 +54,7 @@ export class Inbox implements vscode.Disposable {
 
     this.#socket.on("error", (error) => {
       this.notifyError(error)
-      this.dispose();
+      this.dispose()
     })
 
     this.#socket.on("message", (data) => {
