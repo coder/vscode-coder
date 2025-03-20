@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Fixed regression where autostart needed to be disabled.
+
 ### Changed
 
 - Make the MS Remote SSH extension part of an extension pack rather than a hard dependency, to enable
