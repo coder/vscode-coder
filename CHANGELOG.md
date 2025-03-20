@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.5.0](https://github.com/coder/vscode-coder/releases/tag/v1.5.0) (2025-03-20)
+
 ### Fixed
 
 - Fixed regression where autostart needed to be disabled.
