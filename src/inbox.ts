@@ -33,10 +33,10 @@ export class Inbox implements vscode.Disposable {
 
     const baseUrl = new URL(baseUrlRaw)
     const socketProto = baseUrl.protocol === "https:" ? "wss:" : "ws:"
-    const socketUrlRaw = `${socketProto}//${baseUrl.host}/api/v2/notifications/inbox/watch?templates=${watchTemplatesParam}&targets=${watchTargetsParam}`
+    const socketUrl = `${socketProto}//${baseUrl.host}/api/v2/notifications/inbox/watch?templates=${watchTemplatesParam}&targets=${watchTargetsParam}`
 
     const coderSessionTokenHeader = "Coder-Session-Token"
-    this.socket = new WebSocket(new URL(socketUrlRaw), {
+    this.socket = new WebSocket(new URL(socketUrl), {
       followRedirects: true,
       agent: httpAgent,
       headers: {
