@@ -13,12 +13,12 @@ const TEMPLATE_WORKSPACE_OUT_OF_MEMORY = "a9d027b4-ac49-4fb1-9f6d-45af15f64e7a"
 const TEMPLATE_WORKSPACE_OUT_OF_DISK = "f047f6a3-5713-40f7-85aa-0394cce9fa3a"
 
 export class Inbox implements vscode.Disposable {
-  private readonly storage: Storage
-  private disposed = false
-  private socket: WebSocket
+  readonly #storage: Storage
+  #disposed = false
+  #socket: WebSocket
 
   constructor(workspace: Workspace, httpAgent: ProxyAgent, restClient: Api, storage: Storage) {
-    this.storage = storage
+    this.#storage = storage
 
     const baseUrlRaw = restClient.getAxiosInstance().defaults.baseURL
     if (!baseUrlRaw) {
@@ -36,7 +36,7 @@ export class Inbox implements vscode.Disposable {
     const socketUrl = `${socketProto}//${baseUrl.host}/api/v2/notifications/inbox/watch?templates=${watchTemplatesParam}&targets=${watchTargetsParam}`
 
     const coderSessionTokenHeader = "Coder-Session-Token"
-    this.socket = new WebSocket(new URL(socketUrl), {
+    this.#socket = new WebSocket(new URL(socketUrl), {
       followRedirects: true,
       agent: httpAgent,
       headers: {
@@ -46,15 +46,15 @@ export class Inbox implements vscode.Disposable {
       },
     })
 
-    this.socket.on("open", () => {
-      this.storage.writeToCoderOutputChannel("Listening to Coder Inbox")
+    this.#socket.on("open", () => {
+      this.#storage.writeToCoderOutputChannel("Listening to Coder Inbox")
     })
 
-    this.socket.on("error", (error) => {
+    this.#socket.on("error", (error) => {
       this.notifyError(error)
     })
 
-    this.socket.on("message", (data) => {
+    this.#socket.on("message", (data) => {
       try {
         const inboxMessage = JSON.parse(data.toString()) as GetInboxNotificationResponse
 
@@ -66,15 +66,15 @@ export class Inbox implements vscode.Disposable {
   }
 
   dispose() {
-    if (!this.disposed) {
-      this.storage.writeToCoderOutputChannel("No longer listening to Coder Inbox")
-      this.socket.close()
-      this.disposed = true
+    if (!this.#disposed) {
+      this.#storage.writeToCoderOutputChannel("No longer listening to Coder Inbox")
+      this.#socket.close()
+      this.#disposed = true
     }
   }
 
   private notifyError(error: unknown) {
     const message = errToStr(error, "Got empty error while monitoring Coder Inbox")
-    this.storage.writeToCoderOutputChannel(message)
+    this.#storage.writeToCoderOutputChannel(message)
   }
 }
