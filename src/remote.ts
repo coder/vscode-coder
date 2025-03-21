@@ -9,12 +9,13 @@ import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
-import { makeCoderSdk, needToken, startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api"
+import { createHttpAgent, makeCoderSdk, needToken, startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api"
 import { extractAgents } from "./api-helper"
 import * as cli from "./cliManager"
 import { Commands } from "./commands"
 import { featureSetForVersion, FeatureSet } from "./featureSet"
 import { getHeaderCommand } from "./headers"
+import { Inbox } from "./inbox"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
@@ -402,6 +403,11 @@ export class Remote {
     const monitor = new WorkspaceMonitor(workspace, workspaceRestClient, this.storage, this.vscodeProposed)
     disposables.push(monitor)
     disposables.push(monitor.onChange.event((w) => (this.commands.workspace = w)))
+
+    // Watch coder inbox for messages
+    const httpAgent = await createHttpAgent()
+    const inbox = new Inbox(workspace, httpAgent, workspaceRestClient, this.storage)
+    disposables.push(inbox)
 
     // Wait for the agent to connect.
     if (agent.status === "connecting") {
