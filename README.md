@@ -15,11 +15,10 @@ workspaces with a single click.
   deployment!
 - Supports multiple editors: VS Code, Cursor, and Windsurf.
 
-> [!NOTE]  
-> The extension builds on VSCode provided implementations of SSH. Make sure
-> you have the correct ssh extension installed for your editor
-> (ms-vscode-remote.remote-ssh or codeium.windsurf-remote-openssh for
-> windsurf)
+> [!NOTE]
+> The extension builds on VSCode provided implementations of SSH. Make sure you
+> have the correct ssh extension installed for your editor
+> (ms-vscode-remote.remote-ssh or codeium.windsurf-remote-openssh for windsurf)
 
 ![Demo](https://github.com/coder/vscode-coder/raw/main/demo.gif?raw=true)
 
@@ -35,12 +34,11 @@ ext install coder.coder-remote
 Alternatively, manually install the VSIX from the
 [latest release](https://github.com/coder/vscode-coder/releases/latest).
 
-#### Variables Reference
+### Variables Reference
 
-Coder uses
-`${userHome}` from VS Code's
+Coder uses `${userHome}` from VS Code's
 [variables reference](https://code.visualstudio.com/docs/editor/variables-reference).
-Use this when formatting paths in the Coder extension settings rather than `~` or
-`$HOME`.
+Use this when formatting paths in the Coder extension settings rather than `~`
+or `$HOME`.
 
 Example: ${userHome}/foo/bar.baz
