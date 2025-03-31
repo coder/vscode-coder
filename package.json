@@ -309,7 +309,7 @@
   "dependencies": {
     "axios": "1.8.4",
     "date-fns": "^3.6.0",
-    "eventsource": "^3.0.5",
+    "eventsource": "^3.0.6",
     "find-process": "^1.4.7",
     "jsonc-parser": "^3.3.1",
     "memfs": "^4.9.3",
