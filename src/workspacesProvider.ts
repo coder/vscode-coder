@@ -12,7 +12,7 @@ import {
   errToStr,
 } from "./api-helper"
 import { Storage } from "./storage"
-import { getMemoryLogger, MemoryLogger } from "./memoryLogger"
+import { getMemoryLogger } from "./memoryLogger"
 
 export enum WorkspaceQuery {
   Mine = "owner:me",
@@ -57,10 +57,21 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   // Calling this while already refreshing or not visible is a no-op and will
   // return immediately.
   async fetchAndRefresh() {
-    if (this.fetching || !this.visible) {
+    const logger = getMemoryLogger()
+
+    if (this.fetching) {
+      logger.debug(`WorkspaceProvider(${this.getWorkspacesQuery}): Already fetching, ignoring refresh request`)
       return
     }
+
+    if (!this.visible) {
+      logger.debug(`WorkspaceProvider(${this.getWorkspacesQuery}): Not visible, ignoring refresh request`)
+      return
+    }
+
+    logger.info(`WorkspaceProvider(${this.getWorkspacesQuery}): Starting workspace fetch`)
     this.fetching = true
+    let fetchStart = Date.now()
 
     // It is possible we called fetchAndRefresh() manually (through the button
     // for example), in which case we might still have a pending refresh that
@@ -70,12 +81,17 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
     let hadError = false
     try {
       this.workspaces = await this.fetch()
+      logger.info(
+        `WorkspaceProvider(${this.getWorkspacesQuery}): Fetch completed in ${Date.now() - fetchStart}ms, found ${this.workspaces.length} workspaces`,
+      )
     } catch (error) {
       hadError = true
+      logger.error(`WorkspaceProvider(${this.getWorkspacesQuery}): Fetch failed`, error)
       this.workspaces = []
     }
 
     this.fetching = false
+    logger.logMemoryUsage("WORKSPACE_PROVIDER_FETCH")
 
     this.refresh()
 
@@ -158,10 +174,18 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
    * If we have never fetched workspaces and are visible, fetch immediately.
    */
   setVisibility(visible: boolean) {
+    const logger = getMemoryLogger()
+
+    if (this.visible !== visible) {
+      logger.info(`WorkspaceProvider(${this.getWorkspacesQuery}): Visibility changed to ${visible}`)
+    }
+
     this.visible = visible
+
     if (!visible) {
       this.cancelPendingRefresh()
     } else if (!this.workspaces) {
+      logger.info(`WorkspaceProvider(${this.getWorkspacesQuery}): Initial fetch required`)
       this.fetchAndRefresh()
     } else {
       this.maybeScheduleRefresh()
@@ -169,24 +193,30 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
   }
 
   private cancelPendingRefresh() {
+    const logger = getMemoryLogger()
+
     if (this.timeout) {
+      logger.debug(`WorkspaceProvider(${this.getWorkspacesQuery}): Canceling pending refresh`)
       clearTimeout(this.timeout)
       this.timeout = undefined
     }
   }
-
   /**
    * Schedule a refresh if one is not already scheduled or underway and a
    * timeout length was provided.
    */
   private maybeScheduleRefresh() {
+    const logger = getMemoryLogger()
+
     if (this.timerSeconds && !this.timeout && !this.fetching) {
+      logger.debug(`WorkspaceProvider(${this.getWorkspacesQuery}): Scheduling refresh in ${this.timerSeconds} seconds`)
+
       this.timeout = setTimeout(() => {
+        logger.debug(`WorkspaceProvider(${this.getWorkspacesQuery}): Executing scheduled refresh`)
         this.fetchAndRefresh()
       }, this.timerSeconds * 1000)
     }
   }
-
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> =
     new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>()
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> =
@@ -194,7 +224,31 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
   // refresh causes the tree to re-render.  It does not fetch fresh workspaces.
   refresh(item: vscode.TreeItem | undefined | null | void): void {
+    const logger = getMemoryLogger()
+    logger.debug(
+      `WorkspaceProvider(${this.getWorkspacesQuery}): Refreshing tree view${item ? " for specific item" : ""}`,
+    )
+
     this._onDidChangeTreeData.fire(item)
+  }
+
+  dispose(): void {
+    const logger = getMemoryLogger()
+    logger.info(`WorkspaceProvider(${this.getWorkspacesQuery}): Disposing`)
+
+    // Cancel any pending refreshes
+    this.cancelPendingRefresh()
+
+    // Dispose all watchers
+    Object.keys(this.agentWatchers).forEach((id) => {
+      logger.debug(`WorkspaceProvider(${this.getWorkspacesQuery}): Disposing agent watcher ${id}`)
+      this.agentWatchers[id].dispose()
+    })
+
+    this.agentWatchers = {}
+    this.workspaces = undefined
+
+    logger.logMemoryUsage("WORKSPACE_PROVIDER_DISPOSE")
   }
 
   async getTreeItem(element: vscode.TreeItem): Promise<vscode.TreeItem> {
