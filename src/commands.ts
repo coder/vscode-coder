@@ -412,14 +412,32 @@ export class Commands {
     status?: string
     url?: string
     agent_name?: string
+    command?: string
+    workspace_name?: string
   }): Promise<void> {
+    // Launch and run command in terminal if command is provided
+    if (app.command) {
+      const terminal = vscode.window.createTerminal(`${app.name || "Application"} Status`)
+      terminal.show(false)
+      vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel")
+      // If workspace_name is provided, run coder ssh before the command
+      if (app.workspace_name) {
+        terminal.sendText(`coder ssh ${app.workspace_name}`)
+        // Sleep for 5 seconds
+        await new Promise((resolve) => setTimeout(resolve, 5000))
+        terminal.sendText(app.command)
+      } else {
+        terminal.sendText("need workspace name")
+      }
+      return
+    }
     // Check if app has a URL to open
     if (app.url) {
       await vscode.env.openExternal(vscode.Uri.parse(app.url))
       return
     }
 
-    // If no URL, show information about the app status
+    // If no URL or command, show information about the app status
     vscode.window.showInformationMessage(`${app.name || "Application"}: ${app.status || "Running"}`, {
       detail: `Agent: ${app.agent_name || "Unknown"}`,
     })

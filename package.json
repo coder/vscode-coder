@@ -211,8 +211,8 @@
         "when": "coder.authenticated"
       },
       {
-        "command": "coder.openAITask",
-        "title": "Coder: Open AI Task",
+        "command": "coder.openAppStatus",
+        "title": "Coder: Open App Status",
         "icon": "$(robot)",
         "when": "coder.authenticated"
       }
@@ -244,7 +244,7 @@
           "group": "navigation"
         },
         {
-          "command": "coder.openAITask",
+          "command": "coder.openAppStatus",
           "when": "coder.authenticated && view == myWorkspaces",
           "group": "navigation"
         }
@@ -279,11 +279,6 @@
         {
           "command": "coder.createWorkspace",
           "group": "remote_11_ssh_coder@2",
-          "when": "coder.authenticated"
-        },
-        {
-          "command": "coder.openAITask",
-          "group": "remote_11_ssh_coder@3",
           "when": "coder.authenticated"
         }
       ]

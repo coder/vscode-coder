@@ -168,6 +168,8 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
                 url: app.url,
                 agent_id: agent.id,
                 agent_name: agent.name,
+                command: app.command,
+                workspace_name: workspace.name,
               }))
             }
           })
@@ -253,21 +255,25 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
         // Add app status section with collapsible header
         if (element.agent.apps && element.agent.apps.length > 0) {
-          let needsAttention = []
+          const needsAttention = []
           for (const app of element.agent.apps) {
             if (app.statuses && app.statuses.length > 0) {
               for (const status of app.statuses) {
                 if (status.needs_user_attention) {
-                  needsAttention.push(new AppStatusTreeItem(status))
+                  needsAttention.push(
+                    new AppStatusTreeItem({
+                      name: status.message,
+                      command: app.command,
+                      status: status.state,
+                      workspace_name: element.workspaceName,
+                    }),
+                  )
                 }
               }
             }
           }
 
-          const appStatusSection = new SectionTreeItem(
-            "Applications in need of attention",
-            needsAttention,
-          )
+          const appStatusSection = new SectionTreeItem("Applications in need of attention", needsAttention)
           items.push(appStatusSection)
         }
 
@@ -372,17 +378,15 @@ class AgentMetadataTreeItem extends vscode.TreeItem {
 class AppStatusTreeItem extends vscode.TreeItem {
   constructor(
     public readonly app: {
-      name?: string
-      display_name?: string
+      name: string
       status?: string
-      icon?: string
       url?: string
-      agent_id?: string
-      agent_name?: string
+      command?: string
+      workspace_name?: string
     },
   ) {
-    super(app.icon || "$(pulse)", vscode.TreeItemCollapsibleState.None)
-    this.description = app.status || "Running"
+    super(app.name, vscode.TreeItemCollapsibleState.None)
+    this.description = app.status
     this.contextValue = "coderAppStatus"
 
     // Add command to handle clicking on the app
@@ -449,7 +453,16 @@ class AgentTreeItem extends OpenableTreeItem {
 }
 
 export class WorkspaceTreeItem extends OpenableTreeItem {
-  public appStatus: { name: string; status: string; icon?: string }[] = []
+  public appStatus: {
+    name: string
+    status: string
+    icon?: string
+    url?: string
+    agent_id?: string
+    agent_name?: string
+    command?: string
+    workspace_name?: string
+  }[] = []
 
   constructor(
     public readonly workspace: Workspace,
