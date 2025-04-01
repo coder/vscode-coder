@@ -171,11 +171,6 @@
         "icon": "$(play)"
       },
       {
-        "command": "coder.openFromSidebarAndOpenSession",
-        "title": "Coder: Open Workspace with Claude Code Session",
-        "icon": "$(terminal)"
-      },
-      {
         "command": "coder.createWorkspace",
         "title": "Create Workspace",
         "when": "coder.authenticated",
@@ -242,21 +237,11 @@
           "command": "coder.refreshWorkspaces",
           "when": "coder.authenticated && view == myWorkspaces",
           "group": "navigation"
-        },
-        {
-          "command": "coder.openAppStatus",
-          "when": "coder.authenticated && view == myWorkspaces",
-          "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "coder.openFromSidebar",
-          "when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderAgent",
-          "group": "inline"
-        },
-        {
-          "command": "coder.openFromSidebarAndOpenSession",
           "when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderAgent",
           "group": "inline"
         },
