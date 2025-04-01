@@ -273,8 +273,11 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
             }
           }
 
-          const appStatusSection = new SectionTreeItem("Applications in need of attention", needsAttention)
-          items.push(appStatusSection)
+          // Only show the section if it has items that need attention
+          if (needsAttention.length > 0) {
+            const appStatusSection = new SectionTreeItem("Applications in need of attention", needsAttention)
+            items.push(appStatusSection)
+          }
         }
 
         const savedMetadata = watcher?.metadata || []
