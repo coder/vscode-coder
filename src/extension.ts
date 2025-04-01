@@ -11,8 +11,12 @@ import { Remote } from "./remote"
 import { Storage } from "./storage"
 import { toSafeHost } from "./util"
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider"
+import { getMemoryLogger } from "./memoryLogger"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
+  // Initialize the memory logger right when the extension starts.
+  getMemoryLogger();
+
   // The Remote SSH extension's proposed APIs are used to override the SSH host
   // name in VS Code itself. It's visually unappealing having a lengthy name!
   //
