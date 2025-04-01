@@ -262,9 +262,9 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
                 // Show all statuses, not just ones needing attention
                 appStatuses.push(
                   new AppStatusTreeItem({
-                    name: status.message,
+                    name: status.icon,
                     command: app.command,
-                    status: status.state,
+                    status: status.message,
                     workspace_name: element.workspaceName,
                   }),
                 )
