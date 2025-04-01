@@ -16,12 +16,12 @@ import { Commands } from "./commands"
 import { featureSetForVersion, FeatureSet } from "./featureSet"
 import { getHeaderCommand } from "./headers"
 import { Inbox } from "./inbox"
+import { getMemoryLogger } from "./memoryLogger"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
 import { AuthorityPrefix, expandPath, parseRemoteAuthority } from "./util"
 import { WorkspaceMonitor } from "./workspaceMonitor"
-import { getMemoryLogger } from "./memoryLogger"
 
 export interface RemoteDetails extends vscode.Disposable {
   url: string

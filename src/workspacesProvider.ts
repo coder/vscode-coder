@@ -11,8 +11,8 @@ import {
   extractAgents,
   errToStr,
 } from "./api-helper"
-import { Storage } from "./storage"
 import { getMemoryLogger } from "./memoryLogger"
+import { Storage } from "./storage"
 
 export enum WorkspaceQuery {
   Mine = "owner:me",
@@ -71,7 +71,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
     logger.info(`WorkspaceProvider(${this.getWorkspacesQuery}): Starting workspace fetch`)
     this.fetching = true
-    let fetchStart = Date.now()
+    const fetchStart = Date.now()
 
     // It is possible we called fetchAndRefresh() manually (through the button
     // for example), in which case we might still have a pending refresh that
@@ -348,7 +348,7 @@ function monitorMetadata(agentId: WorkspaceAgent["id"], restClient: Api): AgentW
     logger.error(`Metadata EventSource error for agent: ${agentId}`, error)
 
     // If connection closes permanently, clean up resources
-    if ((error as any).readyState === EventSource.CLOSED) {
+    if (eventSource.readyState === EventSource.CLOSED) {
       logger.info(`Metadata EventSource connection closed for agent: ${agentId}`)
       if (!disposed) {
         watcher.dispose()

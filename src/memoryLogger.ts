@@ -1,7 +1,7 @@
-import * as vscode from "vscode"
+import * as fs from "fs/promises"
 import * as os from "os"
 import * as path from "path"
-import * as fs from "fs/promises"
+import * as vscode from "vscode"
 
 /**
  * A class for tracking memory usage and logging resource lifecycles
@@ -32,7 +32,9 @@ export class MemoryLogger {
     }
 
     this.logInterval = setInterval(() => {
-      if (this.disposed) return
+      if (this.disposed) {
+        return
+      }
       this.logMemoryUsage("PERIODIC")
       this.logResourceCounts()
     }, intervalMs)
@@ -159,7 +161,9 @@ export class MemoryLogger {
    * Write to log file
    */
   private async writeToLogFile(message: string): Promise<void> {
-    if (!this.logFile) return
+    if (!this.logFile) {
+      return
+    }
 
     try {
       const timestamp = new Date().toISOString()

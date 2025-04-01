@@ -4,8 +4,8 @@ import { ProxyAgent } from "proxy-agent"
 import * as vscode from "vscode"
 import { WebSocket } from "ws"
 import { errToStr } from "./api-helper"
-import { type Storage } from "./storage"
 import { getMemoryLogger } from "./memoryLogger"
+import { type Storage } from "./storage"
 
 // These are the template IDs of our notifications.
 // Maybe in the future we should avoid hardcoding
