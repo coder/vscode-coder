@@ -12,6 +12,7 @@ import {
   errToStr,
 } from "./api-helper"
 import { Storage } from "./storage"
+import { getMemoryLogger, MemoryLogger } from "./memoryLogger"
 
 export enum WorkspaceQuery {
   Mine = "owner:me",
@@ -227,38 +228,77 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 // agent and registers a watcher that can be disposed to stop the watch and
 // emits an event when the metadata changes.
 function monitorMetadata(agentId: WorkspaceAgent["id"], restClient: Api): AgentWatcher {
+  const logger = getMemoryLogger()
+  logger.trackResourceCreated("AgentMetadataWatcher", agentId)
+
   // TODO: Is there a better way to grab the url and token?
   const url = restClient.getAxiosInstance().defaults.baseURL
   const metadataUrl = new URL(`${url}/api/v2/workspaceagents/${agentId}/watch-metadata`)
+
+  logger.info(`Starting metadata watcher for agent: ${agentId} at ${metadataUrl}`)
+
   const eventSource = new EventSource(metadataUrl.toString(), {
     fetch: createStreamingFetchAdapter(restClient.getAxiosInstance()),
   })
 
   let disposed = false
+  let eventCount = 0
   const onChange = new vscode.EventEmitter<null>()
   const watcher: AgentWatcher = {
     onChange: onChange.event,
     dispose: () => {
       if (!disposed) {
+        logger.info(`Disposing metadata watcher for agent: ${agentId} after ${eventCount} events`)
         eventSource.close()
+        onChange.dispose()
         disposed = true
+        logger.trackResourceDisposed("AgentMetadataWatcher", agentId)
       }
     },
   }
 
+  eventSource.addEventListener("open", () => {
+    logger.info(`Metadata EventSource connection opened for agent: ${agentId}`)
+  })
+
   eventSource.addEventListener("data", (event) => {
+    eventCount++
+
+    // Log periodic updates
+    if (eventCount % 50 === 0) {
+      logger.info(`Received ${eventCount} metadata events for agent: ${agentId}`)
+      logger.logMemoryUsage("AGENT_METADATA")
+    }
+
     try {
       const dataEvent = JSON.parse(event.data)
       const metadata = AgentMetadataEventSchemaArray.parse(dataEvent)
 
       // Overwrite metadata if it changed.
       if (JSON.stringify(watcher.metadata) !== JSON.stringify(metadata)) {
+        if (eventCount === 1) {
+          logger.debug(`Initial metadata received for agent: ${agentId}`)
+        }
+
         watcher.metadata = metadata
         onChange.fire(null)
       }
     } catch (error) {
+      logger.error(`Error processing metadata for agent: ${agentId}`, error)
       watcher.error = error
       onChange.fire(null)
+    }
+  })
+
+  eventSource.addEventListener("error", (error) => {
+    logger.error(`Metadata EventSource error for agent: ${agentId}`, error)
+
+    // If connection closes permanently, clean up resources
+    if ((error as any).readyState === EventSource.CLOSED) {
+      logger.info(`Metadata EventSource connection closed for agent: ${agentId}`)
+      if (!disposed) {
+        watcher.dispose()
+      }
     }
   })
 
