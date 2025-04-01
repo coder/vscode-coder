@@ -417,7 +417,7 @@ export class Commands {
   }): Promise<void> {
     // Launch and run command in terminal if command is provided
     if (app.command) {
-      const terminal = vscode.window.createTerminal(`${app.name || "Application"} Status`)
+      const terminal = vscode.window.createTerminal(app.status)
       terminal.show(true)
       vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel")
       // If workspace_name is provided, run coder ssh before the command
