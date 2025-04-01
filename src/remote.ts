@@ -829,46 +829,100 @@ export class Remote {
   // findSSHProcessID returns the currently active SSH process ID that is
   // powering the remote SSH connection.
   private async findSSHProcessID(timeout = 15000): Promise<number | undefined> {
+    const logger = getMemoryLogger()
+    logger.info(`Starting SSH process ID search with timeout: ${timeout}ms`)
+
+    let attempts = 0
+    let lastFilePath: string | undefined
+
     const search = async (logPath: string): Promise<number | undefined> => {
-      // This searches for the socksPort that Remote SSH is connecting to. We do
-      // this to find the SSH process that is powering this connection. That SSH
-      // process will be logging network information periodically to a file.
-      const text = await fs.readFile(logPath, "utf8")
-      const matches = text.match(/-> socksPort (\d+) ->/)
-      if (!matches) {
-        return
-      }
-      if (matches.length < 2) {
-        return
-      }
-      const port = Number.parseInt(matches[1])
-      if (!port) {
-        return
-      }
-      const processes = await find("port", port)
-      if (processes.length < 1) {
-        return
-      }
-      const process = processes[0]
-      return process.pid
-    }
-    const start = Date.now()
-    const loop = async (): Promise<number | undefined> => {
-      if (Date.now() - start > timeout) {
+      try {
+        // This searches for the socksPort that Remote SSH is connecting to. We do
+        // this to find the SSH process that is powering this connection. That SSH
+        // process will be logging network information periodically to a file.
+        const text = await fs.readFile(logPath, "utf8")
+
+        if (attempts % 5 === 0) {
+          logger.debug(`SSH log file size: ${text.length} bytes`)
+        }
+
+        const matches = text.match(/-> socksPort (\d+) ->/)
+        if (!matches) {
+          return
+        }
+        if (matches.length < 2) {
+          return
+        }
+        const port = Number.parseInt(matches[1])
+        if (!port) {
+          return
+        }
+
+        logger.info(`Found SSH socks port: ${port}, searching for process`)
+        const processes = await find("port", port)
+
+        if (processes.length < 1) {
+          logger.debug(`No processes found using port: ${port}`)
+          return
+        }
+
+        const process = processes[0]
+        logger.info(`Found SSH process: PID=${process.pid}, CMD=${process.cmd}`)
+        return process.pid
+      } catch (error) {
+        logger.error(`Error searching for SSH process in log: ${logPath}`, error)
         return undefined
       }
+    }
+
+    const start = Date.now()
+
+    const loop = async (): Promise<number | undefined> => {
+      attempts++
+
+      const elapsed = Date.now() - start
+      if (elapsed > timeout) {
+        logger.info(`SSH process ID search timed out after ${attempts} attempts, elapsed: ${elapsed}ms`)
+        return undefined
+      }
+
+      // Log progress periodically
+      if (attempts % 5 === 0) {
+        logger.info(`SSH process ID search attempt #${attempts}, elapsed: ${elapsed}ms`)
+        logger.logMemoryUsage("SSH_PROCESS_SEARCH")
+      }
+
       // Loop until we find the remote SSH log for this window.
       const filePath = await this.storage.getRemoteSSHLogPath()
+
       if (!filePath) {
-        return new Promise((resolve) => setTimeout(() => resolve(loop()), 500))
+        if (lastFilePath !== filePath) {
+          lastFilePath = filePath
+          logger.debug(`SSH log file not found, will retry`)
+        }
+
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(loop()), 500)
+        })
       }
+
+      if (lastFilePath !== filePath) {
+        lastFilePath = filePath
+        logger.info(`Found SSH log file: ${filePath}`)
+      }
+
       // Then we search the remote SSH log until we find the port.
       const result = await search(filePath)
       if (!result) {
-        return new Promise((resolve) => setTimeout(() => resolve(loop()), 500))
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(loop()), 500)
+        })
       }
+
+      logger.info(`SSH process ID search completed successfully after ${attempts} attempts, elapsed: ${elapsed}ms`)
       return result
     }
+
     return loop()
   }
 
