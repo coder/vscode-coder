@@ -6,7 +6,7 @@ import { makeCoderSdk, needToken } from "./api"
 import { extractAgents } from "./api-helper"
 import { CertificateError } from "./error"
 import { Storage } from "./storage"
-import { AuthorityPrefix, toSafeHost } from "./util"
+import { toRemoteAuthority, toSafeHost } from "./util"
 import { OpenableTreeItem } from "./workspacesProvider"
 
 export class Commands {
@@ -500,6 +500,26 @@ export class Commands {
   }
 
   /**
+   * Open a devcontainer from a workspace belonging to the currently logged-in deployment.
+   *
+   * Throw if not logged into a deployment.
+   */
+  public async openDevContainer(...args: string[]): Promise<void> {
+    const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL
+    if (!baseUrl) {
+      throw new Error("You are not logged in")
+    }
+
+    const workspaceOwner = args[0] as string
+    const workspaceName = args[1] as string
+    const workspaceAgent = undefined // args[2] is reserved, but we do not support multiple agents yet.
+    const devContainerName = args[3] as string
+    const devContainerFolder = args[4] as string
+
+    await openDevContainer(baseUrl, workspaceOwner, workspaceName, workspaceAgent, devContainerName, devContainerFolder)
+  }
+
+  /**
    * Update the current workspace.  If there is no active workspace connection,
    * this is a no-op.
    */
@@ -536,10 +556,7 @@ async function openWorkspace(
 ) {
   // A workspace can have multiple agents, but that's handled
   // when opening a workspace unless explicitly specified.
-  let remoteAuthority = `ssh-remote+${AuthorityPrefix}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`
-  if (workspaceAgent) {
-    remoteAuthority += `.${workspaceAgent}`
-  }
+  const remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
 
   let newWindow = true
   // Open in the existing window if no workspaces are open.
@@ -597,4 +614,33 @@ async function openWorkspace(
     remoteAuthority: remoteAuthority,
     reuseWindow: !newWindow,
   })
+}
+
+async function openDevContainer(
+  baseUrl: string,
+  workspaceOwner: string,
+  workspaceName: string,
+  workspaceAgent: string | undefined,
+  devContainerName: string,
+  devContainerFolder: string,
+) {
+  const remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
+
+  const devContainer = Buffer.from(JSON.stringify({ containerName: devContainerName }), "utf-8").toString("hex")
+  const devContainerAuthority = `attached-container+${devContainer}@${remoteAuthority}`
+
+  let newWindow = true
+  if (!vscode.workspace.workspaceFolders?.length) {
+    newWindow = false
+  }
+
+  await vscode.commands.executeCommand(
+    "vscode.openFolder",
+    vscode.Uri.from({
+      scheme: "vscode-remote",
+      authority: devContainerAuthority,
+      path: devContainerFolder,
+    }),
+    newWindow,
+  )
 }
