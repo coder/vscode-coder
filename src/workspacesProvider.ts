@@ -255,27 +255,26 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
         // Add app status section with collapsible header
         if (element.agent.apps && element.agent.apps.length > 0) {
-          const needsAttention = []
+          const appStatuses = []
           for (const app of element.agent.apps) {
             if (app.statuses && app.statuses.length > 0) {
               for (const status of app.statuses) {
-                if (status.needs_user_attention) {
-                  needsAttention.push(
-                    new AppStatusTreeItem({
-                      name: status.message,
-                      command: app.command,
-                      status: status.state,
-                      workspace_name: element.workspaceName,
-                    }),
-                  )
-                }
+                // Show all statuses, not just ones needing attention
+                appStatuses.push(
+                  new AppStatusTreeItem({
+                    name: status.message,
+                    command: app.command,
+                    status: status.state,
+                    workspace_name: element.workspaceName,
+                  }),
+                )
               }
             }
           }
 
-          // Only show the section if it has items that need attention
-          if (needsAttention.length > 0) {
-            const appStatusSection = new SectionTreeItem("Applications in need of attention", needsAttention)
+          // Show the section if it has any items
+          if (appStatuses.length > 0) {
+            const appStatusSection = new SectionTreeItem("Application Statuses", appStatuses)
             items.push(appStatusSection)
           }
         }
@@ -353,7 +352,7 @@ class SectionTreeItem extends vscode.TreeItem {
     label: string,
     public readonly children: vscode.TreeItem[],
   ) {
-    super(label, vscode.TreeItemCollapsibleState.Expanded)
+    super(label, vscode.TreeItemCollapsibleState.Collapsed)
     this.contextValue = "coderSectionHeader"
   }
 }
