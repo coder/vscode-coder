@@ -122,13 +122,16 @@ export class MemoryLogger {
         heapUsed: `${(memoryUsage.heapUsed / 1024 / 1024).toFixed(2)}MB`,
         external: `${(memoryUsage.external / 1024 / 1024).toFixed(2)}MB`,
         uptime: formatDuration(process.uptime() * 1000),
-        totalUptime: formatDuration(Date.now() - this.startTime)
+        totalUptime: formatDuration(Date.now() - this.startTime),
       }
 
       const systemMemoryInfo = {
         totalMem: `${(os.totalmem() / 1024 / 1024 / 1024).toFixed(2)}GB`,
         freeMem: `${(os.freemem() / 1024 / 1024 / 1024).toFixed(2)}GB`,
-        loadAvg: os.loadavg().map(load => load.toFixed(2)).join(", ")
+        loadAvg: os
+          .loadavg()
+          .map((load) => load.toFixed(2))
+          .join(", "),
       }
 
       const memoryLog = `[MEMORY:${context}] Node: ${JSON.stringify(nodeMemoryInfo)} | System: ${JSON.stringify(systemMemoryInfo)}`
