@@ -15,7 +15,18 @@ import { getMemoryLogger } from "./memoryLogger"
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // Initialize the memory logger right when the extension starts.
-  getMemoryLogger();
+  const logger = getMemoryLogger();
+  await logger.initLogFile(ctx.globalStorageUri.fsPath)
+
+  // Log initial memory usage and activation
+  logger.info("CODER extension activating")
+  logger.logMemoryUsage("EXTENSION_ACTIVATE")
+
+  // Register disposal of the logger when the extension deactivates
+  ctx.subscriptions.push({ dispose: () => logger.dispose() })
+
+  // Log extension mode
+  logger.info(`Extension mode: ${extensionModeToString(ctx.extensionMode)}`);
 
   // The Remote SSH extension's proposed APIs are used to override the SSH host
   // name in VS Code itself. It's visually unappealing having a lengthy name!
@@ -29,9 +40,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     vscode.extensions.getExtension("codeium.windsurf-remote-openssh") ||
     vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
   if (!remoteSSHExtension) {
+    logger.error("Remote SSH extension not found, cannot activate Coder extension")
     vscode.window.showErrorMessage("Remote SSH extension not found, cannot activate Coder extension")
     throw new Error("Remote SSH extension not found")
   }
+  
+  logger.info(`Found Remote SSH extension: ${remoteSSHExtension.id}`);  
+  
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const vscodeProposed: typeof vscode = (module as any)._load(
     "vscode",
@@ -229,4 +244,26 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       }
     }
   }
+
+  logger.info("Coder extension activation complete")
+}
+
+function extensionModeToString(mode: vscode.ExtensionMode): string {
+  switch (mode) {
+    case vscode.ExtensionMode.Development:
+      return "Development";
+    case vscode.ExtensionMode.Production:
+      return "Production";
+    case vscode.ExtensionMode.Test:
+      return "Test";
+    default:
+      return `Unknown (${mode})`;
+  }
+}
+
+// Add deactivation handler to log memory usage on extension shutdown
+export function deactivate(): void {
+  const logger = getMemoryLogger();
+  logger.info("Coder extension deactivating");
+  logger.logMemoryUsage("EXTENSION_DEACTIVATE");
 }
