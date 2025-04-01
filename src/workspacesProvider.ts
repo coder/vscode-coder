@@ -259,7 +259,9 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
           for (const app of element.agent.apps) {
             if (app.statuses && app.statuses.length > 0) {
               for (const status of app.statuses) {
-                // Show all statuses, not just ones needing attention
+                // Show all statuses, not just ones needing attention.
+                // We need to do this for now because the reporting isn't super accurate 
+                // yet.
                 appStatuses.push(
                   new AppStatusTreeItem({
                     name: status.icon,
@@ -449,7 +451,7 @@ class AgentTreeItem extends OpenableTreeItem {
 
     if (agent.apps && agent.apps.length > 0) {
       // Add an icon to indicate this agent has running apps
-      this.label = "🖐️ " + this.label
+      this.label = this.label
     }
   }
 }
