@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## [v1.6.0](https://github.com/coder/vscode-coder/releases/tag/v1.6.0) (2025-04-01)
+
+### Added
+
+- Add support for Coder inbox.
+
+## [v1.5.0](https://github.com/coder/vscode-coder/releases/tag/v1.5.0) (2025-03-20)
+
+### Fixed
+
+- Fixed regression where autostart needed to be disabled.
+
 ### Changed
 
 - Make the MS Remote SSH extension part of an extension pack rather than a hard dependency, to enable

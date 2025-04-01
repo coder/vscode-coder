@@ -1,6 +1,7 @@
 # Coder Remote
 
 [![Visual Studio Marketplace](https://vsmarketplacebadges.dev/version/coder.coder-remote.svg)](https://marketplace.visualstudio.com/items?itemName=coder.coder-remote)
+[![Open VSX Version](https://img.shields.io/open-vsx/v/coder/coder-remote)](https://open-vsx.org/extension/coder/coder-remote)
 [!["Join us on
 Discord"](https://badgen.net/discord/online-members/coder)](https://coder.com/chat?utm_source=github.com/coder/vscode-coder&utm_medium=github&utm_campaign=readme.md)
 
@@ -13,11 +14,11 @@ workspaces with a single click.
 - Works in air-gapped or restricted networks. Just connect to your Coder
   deployment!
 - Supports multiple editors: VS Code, Cursor, and Windsurf.
-  > [!NOTE]  
-  > The extension builds on VSCode provided implementations of SSH. Make sure
-  > you have the correct ssh extension installed for your editor
-  > (ms-vscode-remote.remote-ssh or codeium.windsurf-remote-openssh for
-  > windsurf)
+
+> [!NOTE]
+> The extension builds on VS Code-provided implementations of SSH. Make
+> sure you have the correct SSH extension installed for your editor
+> (`ms-vscode-remote.remote-ssh` or `codeium.windsurf-remote-openssh` for Windsurf).
 
 ![Demo](https://github.com/coder/vscode-coder/raw/main/demo.gif?raw=true)
 
@@ -26,19 +27,18 @@ workspaces with a single click.
 Launch VS Code Quick Open (Ctrl+P), paste the following command, and press
 enter.
 
-```text
+```shell
 ext install coder.coder-remote
 ```
 
 Alternatively, manually install the VSIX from the
 [latest release](https://github.com/coder/vscode-coder/releases/latest).
 
-#### Variables Reference
+### Variables Reference
 
-Coder uses
-${userHome} from VS Code's
+Coder uses `${userHome}` from VS Code's
 [variables reference](https://code.visualstudio.com/docs/editor/variables-reference).
-Use this when formatting paths in the Coder extension settings rather than ~ or
-$HOME.
+Use this when formatting paths in the Coder extension settings rather than `~`
+or `$HOME`.
 
 Example: ${userHome}/foo/bar.baz
