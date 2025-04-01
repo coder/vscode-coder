@@ -407,21 +407,22 @@ export class Commands {
     }
   }
 
-  public async openAISession(): Promise<void> {
-    // Then launch an integrated terminal with screen session
-    const terminal = vscode.window.createTerminal({
-      name: "Claude Code Session",
-      location: vscode.TerminalLocation.Panel
-    })
+  public async openAppStatus(app: {
+    name?: string
+    status?: string
+    url?: string
+    agent_name?: string
+  }): Promise<void> {
+    // Check if app has a URL to open
+    if (app.url) {
+      await vscode.env.openExternal(vscode.Uri.parse(app.url))
+      return
+    }
 
-    // Show the terminal and run the screen command
-    terminal.show(true)
-    
-    // Hide sidebar and maximize terminal panel
-    // await vscode.commands.executeCommand("workbench.action.toggleSidebarVisibility")
-    await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel")
-    
-    terminal.sendText("screen -xRR claude-code")
+    // If no URL, show information about the app status
+    vscode.window.showInformationMessage(`${app.name || "Application"}: ${app.status || "Running"}`, {
+      detail: `Agent: ${app.agent_name || "Unknown"}`,
+    })
   }
 
   /**

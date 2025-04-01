@@ -1,5 +1,5 @@
 import { Api } from "coder/site/src/api/api"
-import { Workspace, WorkspaceAgent, WorkspaceAgentTask } from "coder/site/src/api/typesGenerated"
+import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import { EventSource } from "eventsource"
 import * as path from "path"
 import * as vscode from "vscode"
@@ -155,14 +155,26 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
           showMetadata,
         )
 
-        // Fetch AI tasks for the workspace
+        // Get app status from the workspace agents
         try {
-          // Create a dummy emitter for logs
-          const _emitter = new vscode.EventEmitter<string>()
+          const agents = extractAgents(workspace)
+          agents.forEach((agent) => {
+            // Check if agent has apps property with status reporting
+            if (agent.apps && Array.isArray(agent.apps)) {
+              workspaceTreeItem.appStatus = agent.apps.map((app) => ({
+                name: app.display_name || app.name || "App",
+                status: app.status || "Running",
+                icon: app.icon || "$(pulse)",
+                url: app.url,
+                agent_id: agent.id,
+                agent_name: agent.name,
+              }))
+            }
+          })
         } catch (error) {
-          // Log the error but continue - we don't want to fail the whole tree if AI tasks fail
+          // Log the error but continue - we don't want to fail the whole tree if app status fails
           this.storage.writeToCoderOutputChannel(
-            `Failed to fetch AI tasks for workspace ${workspace.name}: ${errToStr(error, "unknown error")}`,
+            `Failed to get app status for workspace ${workspace.name}: ${errToStr(error, "unknown error")}`,
           )
         }
 
@@ -239,13 +251,24 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
         const items: vscode.TreeItem[] = []
 
-        // Add AI tasks section with collapsible header
-        if (element.agent.tasks.length > 0) {
-          const aiTasksSection = new SectionTreeItem(
-            "AI Tasks",
-            element.agent.tasks.map((task) => new AITaskTreeItem(task)),
+        // Add app status section with collapsible header
+        if (element.agent.apps && element.agent.apps.length > 0) {
+          let needsAttention = []
+          for (const app of element.agent.apps) {
+            if (app.statuses && app.statuses.length > 0) {
+              for (const status of app.statuses) {
+                if (status.needs_user_attention) {
+                  needsAttention.push(new AppStatusTreeItem(status))
+                }
+              }
+            }
+          }
+
+          const appStatusSection = new SectionTreeItem(
+            "Applications in need of attention",
+            needsAttention,
           )
-          items.push(aiTasksSection)
+          items.push(appStatusSection)
         }
 
         const savedMetadata = watcher?.metadata || []
@@ -346,18 +369,27 @@ class AgentMetadataTreeItem extends vscode.TreeItem {
   }
 }
 
-class AITaskTreeItem extends vscode.TreeItem {
-  constructor(public readonly task: WorkspaceAgentTask) {
-    // Add a hand raise emoji (✋) to indicate tasks awaiting user input
-    super(task.icon, vscode.TreeItemCollapsibleState.None)
-    this.description = task.summary
-    this.contextValue = "coderAITask"
+class AppStatusTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly app: {
+      name?: string
+      display_name?: string
+      status?: string
+      icon?: string
+      url?: string
+      agent_id?: string
+      agent_name?: string
+    },
+  ) {
+    super(app.icon || "$(pulse)", vscode.TreeItemCollapsibleState.None)
+    this.description = app.status || "Running"
+    this.contextValue = "coderAppStatus"
 
-    // Add command to handle clicking on the task
+    // Add command to handle clicking on the app
     this.command = {
-      command: "coder.openAITask",
-      title: "Open AI Task",
-      arguments: [task],
+      command: "coder.openAppStatus",
+      title: "Open App Status",
+      arguments: [app],
     }
   }
 }
@@ -409,14 +441,15 @@ class AgentTreeItem extends OpenableTreeItem {
       "coderAgent",
     )
 
-    if (agent.task_waiting_for_user_input) {
-      this.label = "🙋 " + this.label
+    if (agent.apps && agent.apps.length > 0) {
+      // Add an icon to indicate this agent has running apps
+      this.label = "🖐️ " + this.label
     }
   }
 }
 
 export class WorkspaceTreeItem extends OpenableTreeItem {
-  public aiTasks: { waiting: boolean; tasks: WorkspaceAgentTask[] }[] = []
+  public appStatus: { name: string; status: string; icon?: string }[] = []
 
   constructor(
     public readonly workspace: Workspace,

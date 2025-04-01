@@ -124,7 +124,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.commands.registerCommand("coder.logout", commands.logout.bind(commands))
   vscode.commands.registerCommand("coder.open", commands.open.bind(commands))
   vscode.commands.registerCommand("coder.openFromSidebar", commands.openFromSidebar.bind(commands))
-  vscode.commands.registerCommand("coder.openAITask", commands.openAISession.bind(commands))
+  vscode.commands.registerCommand("coder.openAppStatus", commands.openAppStatus.bind(commands))
   vscode.commands.registerCommand("coder.workspace.update", commands.updateWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.createWorkspace", commands.createWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.navigateToWorkspace", commands.navigateToWorkspace.bind(commands))
