@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [v1.6.0](https://github.com/coder/vscode-coder/releases/tag/v1.6.0) (2025-04-01)
+
+### Added
+
+- Add support for Coder inbox.
+
 ## [v1.5.0](https://github.com/coder/vscode-coder/releases/tag/v1.5.0) (2025-03-20)
 
 ### Fixed
