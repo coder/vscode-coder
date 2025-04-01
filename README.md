@@ -16,9 +16,9 @@ workspaces with a single click.
 - Supports multiple editors: VS Code, Cursor, and Windsurf.
 
 > [!NOTE]
-> The extension builds on VSCode provided implementations of SSH. Make
-> sure you have the correct ssh extension installed for your editor
-> (ms-vscode-remote.remote-ssh or codeium.windsurf-remote-openssh for windsurf)
+> The extension builds on VS Code-provided implementations of SSH. Make
+> sure you have the correct SSH extension installed for your editor
+> (`ms-vscode-remote.remote-ssh` or `codeium.windsurf-remote-openssh` for Windsurf).
 
 ![Demo](https://github.com/coder/vscode-coder/raw/main/demo.gif?raw=true)
 
