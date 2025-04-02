@@ -130,10 +130,6 @@ export class MemoryLogger {
       const systemMemoryInfo = {
         totalMem: `${(os.totalmem() / 1024 / 1024 / 1024).toFixed(2)}GB`,
         freeMem: `${(os.freemem() / 1024 / 1024 / 1024).toFixed(2)}GB`,
-        loadAvg: os
-          .loadavg()
-          .map((load) => load.toFixed(2))
-          .join(", "),
       }
 
       const memoryLog = `[MEMORY:${context}] Node: ${JSON.stringify(nodeMemoryInfo)} | System: ${JSON.stringify(systemMemoryInfo)}`
