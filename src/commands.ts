@@ -8,6 +8,7 @@ import { CertificateError } from "./error"
 import { Storage } from "./storage"
 import { AuthorityPrefix, toSafeHost } from "./util"
 import { OpenableTreeItem } from "./workspacesProvider"
+import path from "node:path"
 
 export class Commands {
   // These will only be populated when actively connected to a workspace and are
@@ -422,8 +423,15 @@ export class Commands {
       vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel")
       // If workspace_name is provided, run coder ssh before the command
       if (app.workspace_name) {
-        terminal.sendText(`coder ssh ${app.workspace_name}`)
-        // Sleep for 5 seconds
+        let url = this.storage.getUrl()
+        if (!url) {
+          throw new Error("No coder url found for sidebar");
+        }
+        let binary = await this.storage.fetchBinary(this.restClient, toSafeHost(url))
+        const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+        terminal.sendText(`${escape(binary)} ssh --global-config ${escape(
+                  path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
+                )} ${app.workspace_name}`)
         await new Promise((resolve) => setTimeout(resolve, 5000))
         terminal.sendText(app.command)
       } else {
