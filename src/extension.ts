@@ -22,6 +22,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // Cursor and VSCode are covered by ms remote, and the only other is windsurf for now
   // Means that vscodium is not supported by this for now
   const remoteSSHExtension =
+    vscode.extensions.getExtension("jeanp413.open-remote-ssh") ||
     vscode.extensions.getExtension("codeium.windsurf-remote-openssh") ||
     vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
   if (!remoteSSHExtension) {
