@@ -11,9 +11,9 @@ export class MemoryLogger {
   private outputChannel: vscode.OutputChannel
   private logFile: string | undefined
   private resourceCounts = new Map<string, number>()
-  private startTime: number = Date.now()
+  private startTime = Date.now()
   private logInterval: NodeJS.Timeout | undefined
-  private disposed: boolean = false
+  private disposed = false
 
   constructor() {
     this.outputChannel = vscode.window.createOutputChannel("Coder Memory Logging")
