@@ -853,7 +853,7 @@ export class Remote {
         if (matches.length < 2) {
           return
         }
-        const port = Number.parseInt(matches[1])
+        const port = Number.parseInt(matches[1], 10)
         if (!port) {
           return
         }
