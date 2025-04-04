@@ -3,6 +3,7 @@ import { Workspace, GetInboxNotificationResponse } from "coder/site/src/api/type
 import { ProxyAgent } from "proxy-agent"
 import * as vscode from "vscode"
 import { WebSocket } from "ws"
+import { coderSessionTokenHeader } from "./api"
 import { errToStr } from "./api-helper"
 import { getMemoryLogger } from "./memoryLogger"
 import { type Storage } from "./storage"
@@ -49,14 +50,15 @@ export class Inbox implements vscode.Disposable {
     logger.debug(`Connecting to inbox WebSocket at: ${socketUrl}`)
 
     const coderSessionTokenHeader = "Coder-Session-Token"
+    const token = restClient.getAxiosInstance().defaults.headers.common[coderSessionTokenHeader] as string | undefined
     this.#socket = new WebSocket(new URL(socketUrl), {
-      followRedirects: true,
       agent: httpAgent,
-      headers: {
-        [coderSessionTokenHeader]: restClient.getAxiosInstance().defaults.headers.common[coderSessionTokenHeader] as
-          | string
-          | undefined,
-      },
+      followRedirects: true,
+      headers: token
+        ? {
+            [coderSessionTokenHeader]: token,
+          }
+        : undefined,
     })
 
     this.#socket.on("open", () => {

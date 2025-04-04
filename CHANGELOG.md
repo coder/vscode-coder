@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## [v1.7.0](https://github.com/coder/vscode-coder/releases/tag/v1.7.0) (2025-04-03)
+
+### Added
+
+- Add new `/openDevContainer` path, similar to the `/open` path, except this
+  allows connecting to a dev container inside a workspace. For now, the dev
+  container must already be running for this to work.
+
+### Fixed
+
+- When not using token authentication, avoid setting `undefined` for the token
+  header, as Node will throw an error when headers are undefined. Now, we will
+  not set any header at all.
+
+## [v1.6.0](https://github.com/coder/vscode-coder/releases/tag/v1.6.0) (2025-04-01)
+
+### Added
+
+- Add support for Coder inbox.
+
 ## [v1.5.0](https://github.com/coder/vscode-coder/releases/tag/v1.5.0) (2025-03-20)
 
 ### Fixed

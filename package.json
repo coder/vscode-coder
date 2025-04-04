@@ -4,7 +4,7 @@
   "displayName": "Coder",
   "description": "Open any workspace with a single click.",
   "repository": "https://github.com/coder/vscode-coder",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "engines": {
     "vscode": "^1.73.0"
   },
@@ -303,13 +303,13 @@
     "utf-8-validate": "^6.0.5",
     "vitest": "^0.34.6",
     "vscode-test": "^1.5.0",
-    "webpack": "^5.94.0",
+    "webpack": "^5.98.0",
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "axios": "1.7.7",
+    "axios": "1.8.4",
     "date-fns": "^3.6.0",
-    "eventsource": "^3.0.5",
+    "eventsource": "^3.0.6",
     "find-process": "^1.4.7",
     "jsonc-parser": "^3.3.1",
     "memfs": "^4.9.3",

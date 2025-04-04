@@ -61,6 +61,19 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
   }
 }
 
+export function toRemoteAuthority(
+  baseUrl: string,
+  workspaceOwner: string,
+  workspaceName: string,
+  workspaceAgent: string | undefined,
+): string {
+  let remoteAuthority = `ssh-remote+${AuthorityPrefix}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`
+  if (workspaceAgent) {
+    remoteAuthority += `.${workspaceAgent}`
+  }
+  return remoteAuthority
+}
+
 /**
  * Given a URL, return the host in a format that is safe to write.
  */
