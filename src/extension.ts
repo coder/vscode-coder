@@ -261,7 +261,6 @@ function extensionModeToString(mode: vscode.ExtensionMode): string {
   }
 }
 
-// Add deactivation handler to log memory usage on extension shutdown
 export function deactivate(): void {
   const logger = getMemoryLogger()
   logger.info("Coder extension deactivating")
