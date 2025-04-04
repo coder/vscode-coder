@@ -6,7 +6,7 @@
   "repository": "https://github.com/coder/vscode-coder",
   "version": "1.7.0",
   "engines": {
-    "vscode": "^1.73.0"
+    "vscode": "^1.73.0-debug.1"
   },
   "license": "MIT",
   "bugs": {
