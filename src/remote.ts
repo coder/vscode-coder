@@ -832,7 +832,7 @@ export class Remote {
     const logger = getMemoryLogger()
     logger.info(`Starting SSH process ID search with timeout: ${timeout}ms`)
 
-    let attempts = 0
+    let loopAttempts = 0
     let lastFilePath: string | undefined
 
     const search = async (logPath: string): Promise<number | undefined> => {
@@ -842,7 +842,7 @@ export class Remote {
         // process will be logging network information periodically to a file.
         const text = await fs.readFile(logPath, "utf8")
 
-        if (attempts % 5 === 0) {
+        if (loopAttempts % 5 === 0) {
           logger.debug(`SSH log file size: ${text.length} bytes`)
         }
 
@@ -878,17 +878,17 @@ export class Remote {
     const start = Date.now()
 
     const loop = async (): Promise<number | undefined> => {
-      attempts++
+      loopAttempts++
 
       const elapsed = Date.now() - start
       if (elapsed > timeout) {
-        logger.info(`SSH process ID search timed out after ${attempts} attempts, elapsed: ${elapsed}ms`)
+        logger.info(`SSH process ID search timed out after ${loopAttempts} attempts, elapsed: ${elapsed}ms`)
         return undefined
       }
 
       // Log progress periodically
-      if (attempts % 5 === 0) {
-        logger.info(`SSH process ID search attempt #${attempts}, elapsed: ${elapsed}ms`)
+      if (loopAttempts % 5 === 0) {
+        logger.info(`SSH process ID search attempt #${loopAttempts}, elapsed: ${elapsed}ms`)
         logger.logMemoryUsage("SSH_PROCESS_SEARCH")
       }
 
@@ -919,7 +919,7 @@ export class Remote {
         })
       }
 
-      logger.info(`SSH process ID search completed successfully after ${attempts} attempts, elapsed: ${elapsed}ms`)
+      logger.info(`SSH process ID search completed successfully after ${loopAttempts} attempts, elapsed: ${elapsed}ms`)
       return result
     }
 
