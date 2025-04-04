@@ -792,11 +792,7 @@ export class Remote {
           return JSON.parse(content)
         })
         .then((parsed) => {
-          try {
-            updateStatus(parsed)
-          } catch (ex) {
-            logger.error(`Failed to update status from parsed network info`, ex)
-          }
+          updateStatus(parsed)
         })
         .catch((error) => {
           // Replace empty catch with proper error logging
