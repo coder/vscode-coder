@@ -711,60 +711,57 @@ export class Remote {
       upload_bytes_sec: number
       download_bytes_sec: number
     }) => {
-      try {
-        let statusText = "$(globe) "
-        if (network.p2p) {
-          statusText += "Direct "
-          networkStatus.tooltip = "You're connected peer-to-peer ✨."
-        } else {
-          statusText += network.preferred_derp + " "
-          networkStatus.tooltip =
-            "You're connected through a relay 🕵.\nWe'll switch over to peer-to-peer when available."
-        }
-        networkStatus.tooltip +=
-          "\n\nDownload ↓ " +
-          prettyBytes(network.download_bytes_sec, {
-            bits: true,
-          }) +
-          "/s • Upload ↑ " +
-          prettyBytes(network.upload_bytes_sec, {
-            bits: true,
-          }) +
-          "/s\n"
+      let statusText = "$(globe) "
+      if (network.p2p) {
+        statusText += "Direct "
+        networkStatus.tooltip = "You're connected peer-to-peer ✨."
+      } else {
+        statusText += network.preferred_derp + " "
+        networkStatus.tooltip =
+          "You're connected through a relay 🕵.\nWe'll switch over to peer-to-peer when available."
+      }
+      networkStatus.tooltip +=
+        "\n\nDownload ↓ " +
+        prettyBytes(network.download_bytes_sec, {
+          bits: true,
+        }) +
+        "/s • Upload ↑ " +
+        prettyBytes(network.upload_bytes_sec, {
+          bits: true,
+        }) +
+        "/s\n"
 
-        if (!network.p2p) {
-          const derpLatency = network.derp_latency[network.preferred_derp]
+      const derpLatency = network.derp_latency[network.preferred_derp] || undefined;
+      if (!network.p2p && derpLatency !== undefined) {
 
-          networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(
-            network.latency - derpLatency
-          ).toFixed(2)}ms ↔ Workspace`
+        networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(
+          network.latency - derpLatency
+        ).toFixed(2)}ms ↔ Workspace`
 
-          let first = true
-          Object.keys(network.derp_latency).forEach((region) => {
-            if (region === network.preferred_derp) {
-              return
-            }
-            if (first) {
-              networkStatus.tooltip += `\n\nOther regions:`
-              first = false
-            }
-            networkStatus.tooltip += `\n${region}: ${Math.round(network.derp_latency[region] * 100) / 100}ms`
-          })
-        }
+        let first = true
+        Object.keys(network.derp_latency).forEach((region) => {
+          if (region === network.preferred_derp) {
+            return
+          }
+          if (first) {
+            networkStatus.tooltip += `\n\nOther regions:`
+            first = false
+          }
+          networkStatus.tooltip += `\n${region}: ${Math.round(network.derp_latency[region] * 100) / 100}ms`
+        })
+      } else {
+        logger.error("Network P2P is false and DERP Latency is undefined")
+      }
 
-        statusText += "(" + network.latency.toFixed(2) + "ms)"
-        networkStatus.text = statusText
-        networkStatus.show()
+      statusText += "(" + network.latency.toFixed(2) + "ms)"
+      networkStatus.text = statusText
+      networkStatus.show()
 
-        // Log occasional network stats updates (every 20 refreshes)
-        if (refreshCount % 20 === 0) {
-          logger.debug(
-            `Network stats update #${refreshCount}: p2p=${network.p2p}, latency=${network.latency.toFixed(2)}ms`,
-          )
-        }
-      } catch (ex) {
-        // Replace silent error ignoring with proper logging
-        logger.error("Error updating network status", ex)
+      // Log occasional network stats updates (every 20 refreshes)
+      if (refreshCount % 20 === 0) {
+        logger.debug(
+          `Network stats update #${refreshCount}: p2p=${network.p2p}, latency=${network.latency.toFixed(2)}ms`,
+        )
       }
     }
 
