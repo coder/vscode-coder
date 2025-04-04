@@ -19,6 +19,7 @@ export class Inbox implements vscode.Disposable {
   #socket: WebSocket
   #messageCount = 0
   #workspaceId: string
+  #memoryInterval: NodeJS.Timeout
 
   constructor(workspace: Workspace, httpAgent: ProxyAgent, restClient: Api, storage: Storage) {
     const logger = getMemoryLogger()
@@ -96,12 +97,12 @@ export class Inbox implements vscode.Disposable {
     })
 
     // Log memory stats periodically
-    const memoryInterval = setInterval(
+    this.#memoryInterval = setInterval(
       () => {
         if (!this.#disposed) {
           logger.logMemoryUsage("INBOX_PERIODIC")
         } else {
-          clearInterval(memoryInterval)
+          clearInterval(this.#memoryInterval)
         }
       },
       5 * 60 * 1000,
@@ -118,6 +119,8 @@ export class Inbox implements vscode.Disposable {
       this.#disposed = true
       logger.trackResourceDisposed("InboxWebSocket", this.#workspaceId)
     }
+
+    clearInterval(this.#memoryInterval)
   }
 
   private notifyError(error: unknown) {
