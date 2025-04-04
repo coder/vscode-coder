@@ -731,9 +731,8 @@ export class Remote {
         }) +
         "/s\n"
 
-      const derpLatency = network.derp_latency[network.preferred_derp] || undefined;
+      const derpLatency = network.derp_latency[network.preferred_derp] || undefined
       if (!network.p2p && derpLatency !== undefined) {
-
         networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(
           network.latency - derpLatency
         ).toFixed(2)}ms ↔ Workspace`

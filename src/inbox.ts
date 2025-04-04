@@ -49,7 +49,6 @@ export class Inbox implements vscode.Disposable {
 
     logger.debug(`Connecting to inbox WebSocket at: ${socketUrl}`)
 
-    const coderSessionTokenHeader = "Coder-Session-Token"
     const token = restClient.getAxiosInstance().defaults.headers.common[coderSessionTokenHeader] as string | undefined
     this.#socket = new WebSocket(new URL(socketUrl), {
       agent: httpAgent,
