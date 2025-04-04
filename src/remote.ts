@@ -795,7 +795,6 @@ export class Remote {
           updateStatus(parsed)
         })
         .catch((error) => {
-          // Replace empty catch with proper error logging
           logger.error(`Failed to read or parse network info file: ${networkInfoFile}`, error)
         })
         .finally(() => {
