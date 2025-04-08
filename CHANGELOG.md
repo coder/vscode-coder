@@ -2,12 +2,6 @@
 
 ## Unreleased
 
-## [v1.8.0](https://github.com/coder/vscode-coder/releases/tag/v1.8.0) (2025-04-08)
-
-### Added
-
-- Add support for the `jeanp413.open-remote-ssh` extension used by VSCodium.
-
 ## [v1.7.0](https://github.com/coder/vscode-coder/releases/tag/v1.7.0) (2025-04-03)
 
 ### Added
