@@ -13,6 +13,8 @@ import { getProxyForUrl } from "./proxy"
 import { Storage } from "./storage"
 import { expandPath } from "./util"
 
+export const coderSessionTokenHeader = "Coder-Session-Token"
+
 /**
  * Return whether the API will need a token for authorization.
  * If mTLS is in use (as specified by the cert or key files being set) then
@@ -242,14 +244,15 @@ export async function waitForBuild(
       const baseUrl = new URL(baseUrlRaw)
       const proto = baseUrl.protocol === "https:" ? "wss:" : "ws:"
       const socketUrlRaw = `${proto}//${baseUrl.host}${path}`
+      const token = restClient.getAxiosInstance().defaults.headers.common[coderSessionTokenHeader] as string | undefined
       const socket = new ws.WebSocket(new URL(socketUrlRaw), {
-        headers: {
-          "Coder-Session-Token": restClient.getAxiosInstance().defaults.headers.common["Coder-Session-Token"] as
-            | string
-            | undefined,
-        },
-        followRedirects: true,
         agent: agent,
+        followRedirects: true,
+        headers: token
+          ? {
+              [coderSessionTokenHeader]: token,
+            }
+          : undefined,
       })
       socket.binaryType = "nodebuffer"
       socket.on("message", (data) => {
