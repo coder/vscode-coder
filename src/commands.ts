@@ -26,7 +26,7 @@ export class Commands {
     private readonly vscodeProposed: typeof vscode,
     private readonly restClient: Api,
     private readonly storage: Storage,
-  ) {}
+  ) { }
 
   /**
    * Find the requested agent if specified, otherwise return the agent if there
@@ -430,8 +430,8 @@ export class Commands {
         let binary = await this.storage.fetchBinary(this.restClient, toSafeHost(url))
         const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
         terminal.sendText(`${escape(binary)} ssh --global-config ${escape(
-                  path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
-                )} ${app.workspace_name}`)
+          path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
+        )} ${app.workspace_name}`)
         await new Promise((resolve) => setTimeout(resolve, 5000))
         terminal.sendText(app.command)
       } else {
@@ -450,7 +450,7 @@ export class Commands {
       detail: `Agent: ${app.agent_name || "Unknown"}`,
     })
   }
-  
+
   /**
    * Launch tmux in the integrated terminal with windows for AI agents based on app statuses
    */
@@ -460,59 +460,89 @@ export class Commands {
     if (!baseUrl) {
       throw new Error("You are not logged in")
     }
-    
+
     try {
       // Fetch workspaces to get app statuses
       const workspacesResponse = await this.restClient.getWorkspaces({ q: "owner:me" })
       const workspaces = workspacesResponse.workspaces
-      
+
       // Collect all app statuses from all workspaces
-      const appStatuses: {status: WorkspaceAppStatus, workspaceName: string}[] = []
-      
+      const appStatuses: { status: WorkspaceAppStatus, workspaceName: string, command?: string }[] = []
+
       for (const workspace of workspaces) {
         const agents = extractAgents(workspace)
         for (const agent of agents) {
-            for (const app of agent.apps) {
-              if (app.statuses.length > 0) {
-                const mostRecentStatus = app.statuses[0];
-                appStatuses.push({status: mostRecentStatus, workspaceName: workspace.name})
-              }
+          for (const app of agent.apps) {
+            if (app.statuses.length > 0) {
+              const mostRecentStatus = app.statuses[0];
+              appStatuses.push({ status: mostRecentStatus, workspaceName: workspace.name, command: app.command })
             }
-          
+          }
+
         }
       }
 
       this.storage.writeToCoderOutputChannel(`${appStatuses}`)
-      
+
+      // Escape binary path and config path for shell
+      const shellEscape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+        
+      // Escape the entire command for tmux send-keys (needs different escaping)
+      const tmuxEscape = (str: string): string => str.replace(/['"]/g, '\\$&')
+
       // Create the terminal and tmux session
       const terminal = vscode.window.createTerminal("Tmux")
-      terminal.show(true)
-      
+      terminal.show(false)
+
       // Check if existing session and kill it
       terminal.sendText("tmux has-session -t agents 2>/dev/null && tmux kill-session -t agents || true")
-      
+
       // Create a new tmux session named "agents"
       terminal.sendText("tmux new-session -d -s agents")
-      
-        // Process each app status
-        for (let i = 0; i < appStatuses.length; i++) {
-          if (i === 0) {
-            // Rename the first window
-            terminal.sendText(`tmux rename-window -t agents:0 "${appStatuses[i].status.icon}"`)
-          } else {
-            // Create additional windows
-            terminal.sendText(`tmux new-window -t agents -n "${appStatuses[i].status.icon}"`)
-          }
-          
-          // SSH into the workspace in this window
-          if (appStatuses[i].workspaceName) {
-            terminal.sendText(`tmux send-keys -t agents:${i} "coder ssh ${appStatuses[i].workspaceName}" C-m`)
-          }
+
+      // Process each app status
+      for (let i = 0; i < appStatuses.length; i++) {
+        if (i === 0) {
+          // Rename the first window
+          terminal.sendText(`tmux rename-window -t agents:0 "${appStatuses[i].status.icon}"`)
+        } else {
+          // Create additional windows
+          terminal.sendText(`tmux new-window -t agents -n "${appStatuses[i].status.icon}"`)
         }
-      
+
+        let url = this.storage.getUrl()
+        if (!url) {
+          throw new Error("No coder url found for sidebar");
+        }
+        let binary = await this.storage.fetchBinary(this.restClient, toSafeHost(url))
+        
+        
+        const sshCmd = `${shellEscape(binary)} ssh --global-config ${shellEscape(
+          path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
+        )} ${appStatuses[i].workspaceName}`;
+        
+        terminal.sendText(`tmux send-keys -t agents:${i} "${tmuxEscape(sshCmd)}" C-m`)
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+
+      for (let i = 0; i < appStatuses.length; i++) {
+        if (appStatuses[i].command) {
+          // Create a temporary file to store the command
+          terminal.sendText(`ls`)
+          // Write the command to the temporary file
+          // terminal.sendText(`$TMPFILE_${i} << ${appStatuses[i].command}`)
+          // terminal.sendText(`echo TMPFILE_${i}`)
+          // Use the file as input instead of sending the command directly
+          terminal.sendText(`tmux send-keys -t agents:${i} "ls" C-m`)
+          // Clean up the temporary file
+          // terminal.sendText(`rm -f $TMPFILE_${i}`)
+        }
+      }
+
       // Attach to the session
       terminal.sendText("tmux attach-session -t agents")
-      
+
     } catch (error) {
       // If there was an error, propagate it
       throw new Error(`Error creating tmux windows: ${errToStr(error, "Unknown error")}`)
