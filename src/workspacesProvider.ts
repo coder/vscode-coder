@@ -155,7 +155,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
           showMetadata,
         )
 
-        // Get app status from the workspace agents
+        // Get app from the workspace agents
         try {
           const agents = extractAgents(workspace)
           agents.forEach((agent) => {
