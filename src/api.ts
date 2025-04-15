@@ -104,6 +104,7 @@ export function createStreamingFetchAdapter(axiosInstance: AxiosInstance) {
 
     const response = await axiosInstance.request({
       url: urlStr,
+      signal: init?.signal,
       headers: init?.headers as Record<string, string>,
       responseType: "stream",
       validateStatus: () => true, // Don't throw on any status code

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [v1.7.1](https://github.com/coder/vscode-coder/releases/tag/v1.7.1) (2025-04-14)
+
+### Fixed
+
+- Fix bug where we were leaking SSE connections
+
 ## [v1.7.0](https://github.com/coder/vscode-coder/releases/tag/v1.7.0) (2025-04-03)
 
 ### Added
