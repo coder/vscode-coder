@@ -2777,7 +2777,7 @@ find-cache-dir@^3.2.0:
 
 "find-process@https://github.com/coder/find-process#fix/sequoia-compat":
   version "1.4.10"
-  resolved "https://github.com/coder/find-process#843bcd6dde534be0722ecd0d81b288f7d9f19667"
+  resolved "https://github.com/coder/find-process#58804f57e5bdedad72c4319109d3ce2eae09a1ad"
   dependencies:
     chalk "~4.1.2"
     commander "^12.1.0"
