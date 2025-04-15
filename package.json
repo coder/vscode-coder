@@ -210,6 +210,12 @@
         "title": "Coder: Open App Status",
         "icon": "$(robot)",
         "when": "coder.authenticated"
+      },
+      {
+        "command": "coder.launchTmux",
+        "title": "Coder: Launch Tmux",
+        "icon": "$(terminal)",
+        "category": "Coder"
       }
     ],
     "menus": {

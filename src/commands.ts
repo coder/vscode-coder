@@ -450,6 +450,25 @@ export class Commands {
       detail: `Agent: ${app.agent_name || "Unknown"}`,
     })
   }
+  
+  /**
+   * Launch tmux in the integrated terminal with windows for AI agents
+   */
+  public async launchTmux(): Promise<void> {
+    const terminal = vscode.window.createTerminal("Tmux")
+    terminal.show(true)
+    
+    // Create a new tmux session named "ai-session"
+    terminal.sendText("tmux new-session -d -s ai-session")
+    
+    // Create a window for each AI model (just examples for now)
+    terminal.sendText("tmux rename-window -t ai-session:0 claude")
+    terminal.sendText("tmux new-window -t ai-session -n llama")
+    terminal.sendText("tmux new-window -t ai-session -n mistral")
+    
+    // Attach to the session
+    terminal.sendText("tmux attach-session -t ai-session")
+  }
 
   /**
    * Open a workspace belonging to the currently logged-in deployment.
