@@ -1,11 +1,11 @@
 import { isAxiosError } from "axios"
 import { Api } from "coder/site/src/api/api"
 import { Workspace } from "coder/site/src/api/typesGenerated"
-import { portToPid } from 'pid-port';
 import * as fs from "fs/promises"
 import * as jsonc from "jsonc-parser"
 import * as os from "os"
 import * as path from "path"
+import { portToPid } from "pid-port"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
