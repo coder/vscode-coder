@@ -528,15 +528,7 @@ export class Commands {
 
       for (let i = 0; i < appStatuses.length; i++) {
         if (appStatuses[i].command) {
-          // Create a temporary file to store the command
-          terminal.sendText(`ls`)
-          // Write the command to the temporary file
-          // terminal.sendText(`$TMPFILE_${i} << ${appStatuses[i].command}`)
-          // terminal.sendText(`echo TMPFILE_${i}`)
-          // Use the file as input instead of sending the command directly
-          terminal.sendText(`tmux send-keys -t agents:${i} "ls" C-m`)
-          // Clean up the temporary file
-          // terminal.sendText(`rm -f $TMPFILE_${i}`)
+          terminal.sendText(`tmux send-keys -t agents:${i} "tmux attach-session -t claude-code" C-m`)
         }
       }
 
