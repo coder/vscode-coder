@@ -9,7 +9,7 @@ it("ignore unrelated authorities", async () => {
     "vscode://ssh-remote+coder-vscode-test--foo--bar",
     "vscode://ssh-remote+coder-vscode-foo--bar",
     "vscode://ssh-remote+coder--foo--bar",
-    "vscode://attached-container+namehash@ssh-remote+dev.foo.admin.coder"
+    "vscode://attached-container+namehash@ssh-remote+dev.foo.admin.coder",
   ]
   for (const test of tests) {
     expect(parseRemoteAuthority(test)).toBe(null)
@@ -69,7 +69,9 @@ it("should parse authority", async () => {
     username: "foo",
     workspace: "bar",
   })
-  expect(parseRemoteAuthority("vscode://attached-container+namehash@ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz")).toStrictEqual({
+  expect(
+    parseRemoteAuthority("vscode://attached-container+namehash@ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz"),
+  ).toStrictEqual({
     containerNameHex: "namehash",
     agent: "baz",
     host: "coder-vscode.dev.coder.com--foo--bar.baz",

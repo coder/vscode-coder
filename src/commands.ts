@@ -526,7 +526,14 @@ export class Commands {
     const devContainerName = args[3] as string
     const devContainerFolder = args[4] as string
 
-    await this.openDevContainerInner(baseUrl, workspaceOwner, workspaceName, workspaceAgent, devContainerName, devContainerFolder)
+    await this.openDevContainerInner(
+      baseUrl,
+      workspaceOwner,
+      workspaceName,
+      workspaceAgent,
+      devContainerName,
+      devContainerFolder,
+    )
   }
 
   /**
@@ -709,4 +716,3 @@ export class Commands {
     )
   }
 }
-

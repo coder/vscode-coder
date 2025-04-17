@@ -529,9 +529,9 @@ export class Remote {
     )
     if (coderConnectAddr) {
       // Find the path of the current workspace, which will have the same authority
-      const folderPath = this.vscodeProposed.workspace.workspaceFolders
-      ?.find(folder => folder.uri.authority === remoteAuthority)
-      ?.uri.path;
+      const folderPath = this.vscodeProposed.workspace.workspaceFolders?.find(
+        (folder) => folder.uri.authority === remoteAuthority,
+      )?.uri.path
       let newRemoteAuthority = `ssh-remote+${coderConnectAddr}`
       if (parts.containerNameHex) {
         newRemoteAuthority = `attached-container+${parts.containerNameHex}@${newRemoteAuthority}`

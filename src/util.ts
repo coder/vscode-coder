@@ -33,7 +33,7 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
   let sshAuthority
   if (authorityParts.length == 1) {
     sshAuthority = authorityParts[0]
-  }  else if (authorityParts.length == 2 && authorityParts[0].includes("attached-container+")) {
+  } else if (authorityParts.length == 2 && authorityParts[0].includes("attached-container+")) {
     sshAuthority = authorityParts[1]
     containerNameHex = authorityParts[0].split("+")[1]
   } else {
