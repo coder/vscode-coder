@@ -353,7 +353,7 @@ export class WorkspaceTreeItem extends OpenableTreeItem {
       showOwner ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded,
       workspace.owner_name,
       workspace.name,
-      undefined,
+      agents.length > 0 ? agents[0].name : undefined,
       agents[0]?.expanded_directory,
       agents.length > 1 ? "coderWorkspaceMultipleAgents" : "coderWorkspaceSingleAgent",
     )

@@ -1,6 +1,10 @@
+import { isAxiosError } from "axios"
 import { Api } from "coder/site/src/api/api"
 import { getErrorMessage } from "coder/site/src/api/errors"
 import { User, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { lookup } from "dns"
+import { inRange } from "range_check"
+import { promisify } from "util"
 import * as vscode from "vscode"
 import { makeCoderSdk, needToken } from "./api"
 import { extractAgents } from "./api-helper"
@@ -392,14 +396,33 @@ export class Commands {
       if (!baseUrl) {
         throw new Error("You are not logged in")
       }
-      await openWorkspace(
-        baseUrl,
-        treeItem.workspaceOwner,
-        treeItem.workspaceName,
-        treeItem.workspaceAgent,
-        treeItem.workspaceFolderPath,
-        true,
-      )
+
+      let agent = treeItem.workspaceAgent
+      if (!agent) {
+        // `openFromSidebar` is only callable on agents or single-agent workspaces,
+        // where this will always be set.
+        return
+      }
+
+      try {
+        await openWorkspace(
+          this.restClient,
+          baseUrl,
+          treeItem.workspaceOwner,
+          treeItem.workspaceName,
+          agent,
+          treeItem.workspaceFolderPath,
+          true,
+        )
+      } catch (err) {
+        const message = getErrorMessage(err, "no response from the server")
+        this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
+        this.vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+          detail: message,
+          modal: true,
+          useCustom: true,
+        })
+      }
     } else {
       // If there is no tree item, then the user manually ran this command.
       // Default to the regular open instead.
@@ -491,12 +514,30 @@ export class Commands {
     } else {
       workspaceOwner = args[0] as string
       workspaceName = args[1] as string
-      // workspaceAgent is reserved for args[2], but multiple agents aren't supported yet.
+      workspaceAgent = args[2] as string
       folderPath = args[3] as string | undefined
       openRecent = args[4] as boolean | undefined
     }
 
-    await openWorkspace(baseUrl, workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
+    try {
+      await openWorkspace(
+        this.restClient,
+        baseUrl,
+        workspaceOwner,
+        workspaceName,
+        workspaceAgent,
+        folderPath,
+        openRecent,
+      )
+    } catch (err) {
+      const message = getErrorMessage(err, "no response from the server")
+      this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
+      this.vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+        detail: message,
+        modal: true,
+        useCustom: true,
+      })
+    }
   }
 
   /**
@@ -547,16 +588,42 @@ export class Commands {
  * both to the Remote SSH plugin in the form of a remote authority URI.
  */
 async function openWorkspace(
+  restClient: Api,
   baseUrl: string,
   workspaceOwner: string,
   workspaceName: string,
-  workspaceAgent: string | undefined,
+  workspaceAgent: string,
   folderPath: string | undefined,
   openRecent: boolean | undefined,
 ) {
-  // A workspace can have multiple agents, but that's handled
-  // when opening a workspace unless explicitly specified.
-  const remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
+  let remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
+
+  let hostnameSuffix = "coder"
+  try {
+    const sshConfig = await restClient.getDeploymentSSHConfig()
+    // If the field is undefined, it's an older server, and always 'coder'
+    hostnameSuffix = sshConfig.hostname_suffix ?? hostnameSuffix
+  } catch (error) {
+    if (!isAxiosError(error)) {
+      throw error
+    }
+    switch (error.response?.status) {
+      case 404: {
+        // Likely a very old deployment, just use the default.
+        break
+      }
+      case 401: {
+        throw error
+      }
+      default:
+        throw error
+    }
+  }
+
+  const coderConnectAddr = await maybeCoderConnectAddr(workspaceAgent, workspaceName, workspaceOwner, hostnameSuffix)
+  if (coderConnectAddr) {
+    remoteAuthority = `ssh-remote+${coderConnectAddr}`
+  }
 
   let newWindow = true
   // Open in the existing window if no workspaces are open.
@@ -614,6 +681,21 @@ async function openWorkspace(
     remoteAuthority: remoteAuthority,
     reuseWindow: !newWindow,
   })
+}
+
+async function maybeCoderConnectAddr(
+  agent: string,
+  workspace: string,
+  owner: string,
+  hostnameSuffix: string,
+): Promise<string | undefined> {
+  const coderConnectHostname = `${agent}.${workspace}.${owner}.${hostnameSuffix}`
+  try {
+    const res = await promisify(lookup)(coderConnectHostname)
+    return res.family == 6 && inRange(res.address, "fd60:627a:a42b::/48") ? coderConnectHostname : undefined
+  } catch {
+    return undefined
+  }
 }
 
 async function openDevContainer(
