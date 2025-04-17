@@ -585,6 +585,7 @@ export class Commands {
           modal: true,
           useCustom: true,
         })
+        return
       }
 
       const coderConnectAddr = await maybeCoderConnectAddr(
