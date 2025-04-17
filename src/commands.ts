@@ -496,17 +496,7 @@ export class Commands {
       openRecent = args[4] as boolean | undefined
     }
 
-    try {
-      await this.openWorkspace(baseUrl, workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
-    } catch (err) {
-      const message = getErrorMessage(err, "no response from the server")
-      this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
-      this.vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-        detail: message,
-        modal: true,
-        useCustom: true,
-      })
-    }
+    await this.openWorkspace(baseUrl, workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
   }
 
   /**
