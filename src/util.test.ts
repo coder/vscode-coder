@@ -9,6 +9,7 @@ it("ignore unrelated authorities", async () => {
     "vscode://ssh-remote+coder-vscode-test--foo--bar",
     "vscode://ssh-remote+coder-vscode-foo--bar",
     "vscode://ssh-remote+coder--foo--bar",
+    "vscode://attached-container+namehash@ssh-remote+dev.foo.admin.coder"
   ]
   for (const test of tests) {
     expect(parseRemoteAuthority(test)).toBe(null)
@@ -29,6 +30,7 @@ it("should error on invalid authorities", async () => {
 
 it("should parse authority", async () => {
   expect(parseRemoteAuthority("vscode://ssh-remote+coder-vscode--foo--bar")).toStrictEqual({
+    containerNameHex: undefined,
     agent: "",
     host: "coder-vscode--foo--bar",
     label: "",
@@ -36,6 +38,7 @@ it("should parse authority", async () => {
     workspace: "bar",
   })
   expect(parseRemoteAuthority("vscode://ssh-remote+coder-vscode--foo--bar--baz")).toStrictEqual({
+    containerNameHex: undefined,
     agent: "baz",
     host: "coder-vscode--foo--bar--baz",
     label: "",
@@ -43,6 +46,7 @@ it("should parse authority", async () => {
     workspace: "bar",
   })
   expect(parseRemoteAuthority("vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar")).toStrictEqual({
+    containerNameHex: undefined,
     agent: "",
     host: "coder-vscode.dev.coder.com--foo--bar",
     label: "dev.coder.com",
@@ -50,6 +54,7 @@ it("should parse authority", async () => {
     workspace: "bar",
   })
   expect(parseRemoteAuthority("vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar--baz")).toStrictEqual({
+    containerNameHex: undefined,
     agent: "baz",
     host: "coder-vscode.dev.coder.com--foo--bar--baz",
     label: "dev.coder.com",
@@ -57,6 +62,15 @@ it("should parse authority", async () => {
     workspace: "bar",
   })
   expect(parseRemoteAuthority("vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz")).toStrictEqual({
+    containerNameHex: undefined,
+    agent: "baz",
+    host: "coder-vscode.dev.coder.com--foo--bar.baz",
+    label: "dev.coder.com",
+    username: "foo",
+    workspace: "bar",
+  })
+  expect(parseRemoteAuthority("vscode://attached-container+namehash@ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz")).toStrictEqual({
+    containerNameHex: "namehash",
     agent: "baz",
     host: "coder-vscode.dev.coder.com--foo--bar.baz",
     label: "dev.coder.com",

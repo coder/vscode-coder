@@ -491,7 +491,7 @@ export class Commands {
     } else {
       workspaceOwner = args[0] as string
       workspaceName = args[1] as string
-      workspaceAgent = args[2] as string
+      workspaceAgent = args[2] as string | undefined
       folderPath = args[3] as string | undefined
       openRecent = args[4] as boolean | undefined
     }
@@ -522,11 +522,11 @@ export class Commands {
 
     const workspaceOwner = args[0] as string
     const workspaceName = args[1] as string
-    const workspaceAgent = undefined // args[2] is reserved, but we do not support multiple agents yet.
+    const workspaceAgent = args[2] as string | undefined
     const devContainerName = args[3] as string
     const devContainerFolder = args[4] as string
 
-    await openDevContainer(baseUrl, workspaceOwner, workspaceName, workspaceAgent, devContainerName, devContainerFolder)
+    await this.openDevContainerInner(baseUrl, workspaceOwner, workspaceName, workspaceAgent, devContainerName, devContainerFolder)
   }
 
   /**
@@ -652,33 +652,61 @@ export class Commands {
       reuseWindow: !newWindow,
     })
   }
-}
 
-async function openDevContainer(
-  baseUrl: string,
-  workspaceOwner: string,
-  workspaceName: string,
-  workspaceAgent: string | undefined,
-  devContainerName: string,
-  devContainerFolder: string,
-) {
-  const remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
+  private async openDevContainerInner(
+    baseUrl: string,
+    workspaceOwner: string,
+    workspaceName: string,
+    workspaceAgent: string | undefined,
+    devContainerName: string,
+    devContainerFolder: string,
+  ) {
+    let remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
 
-  const devContainer = Buffer.from(JSON.stringify({ containerName: devContainerName }), "utf-8").toString("hex")
-  const devContainerAuthority = `attached-container+${devContainer}@${remoteAuthority}`
+    if (workspaceAgent) {
+      let sshConfig
+      try {
+        // Fetch (or get defaults) for the SSH config.
+        sshConfig = await fetchSSHConfig(this.restClient, this.vscodeProposed)
+      } catch (error) {
+        const message = getErrorMessage(error, "no response from the server")
+        this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
+        this.vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+          detail: message,
+          modal: true,
+          useCustom: true,
+        })
+        return
+      }
 
-  let newWindow = true
-  if (!vscode.workspace.workspaceFolders?.length) {
-    newWindow = false
+      const coderConnectAddr = await maybeCoderConnectAddr(
+        workspaceAgent,
+        workspaceName,
+        workspaceOwner,
+        sshConfig.hostname_suffix,
+      )
+      if (coderConnectAddr) {
+        remoteAuthority = `ssh-remote+${coderConnectAddr}`
+      }
+    }
+
+    const devContainer = Buffer.from(JSON.stringify({ containerName: devContainerName }), "utf-8").toString("hex")
+    const devContainerAuthority = `attached-container+${devContainer}@${remoteAuthority}`
+
+    let newWindow = true
+    if (!vscode.workspace.workspaceFolders?.length) {
+      newWindow = false
+    }
+
+    await vscode.commands.executeCommand(
+      "vscode.openFolder",
+      vscode.Uri.from({
+        scheme: "vscode-remote",
+        authority: devContainerAuthority,
+        path: devContainerFolder,
+      }),
+      newWindow,
+    )
   }
-
-  await vscode.commands.executeCommand(
-    "vscode.openFolder",
-    vscode.Uri.from({
-      scheme: "vscode-remote",
-      authority: devContainerAuthority,
-      path: devContainerFolder,
-    }),
-    newWindow,
-  )
 }
+

@@ -1,10 +1,12 @@
 import { lookup } from "dns"
 import ipRangeCheck from "ip-range-check"
+import { ssh } from "node-forge"
 import * as os from "os"
 import url from "url"
 import { promisify } from "util"
 
 export interface AuthorityParts {
+  containerNameHex: string | undefined
   agent: string | undefined
   host: string
   label: string
@@ -24,14 +26,26 @@ export const AuthorityPrefix = "coder-vscode"
  * Throw an error if the host is invalid.
  */
 export function parseRemoteAuthority(authority: string): AuthorityParts | null {
-  // The authority looks like: vscode://ssh-remote+<ssh host name>
-  const authorityParts = authority.split("+")
+  // The Dev Container authority looks like: vscode://attached-container+containerNameHex@ssh-remote+<ssh host name>
+  // The SSH authority looks like: vscode://ssh-remote+<ssh host name>
+  const authorityParts = authority.split("@")
+  let containerNameHex = undefined
+  let sshAuthority
+  if (authorityParts.length == 1) {
+    sshAuthority = authorityParts[0]
+  }  else if (authorityParts.length == 2 && authorityParts[0].includes("attached-container+")) {
+    sshAuthority = authorityParts[1]
+    containerNameHex = authorityParts[0].split("+")[1]
+  } else {
+    return null
+  }
+  const sshAuthorityParts = sshAuthority.split("+")
 
   // We create SSH host names in a format matching:
   // coder-vscode(--|.)<username>--<workspace>(--|.)<agent?>
   // The agent can be omitted; the user will be prompted for it instead.
   // Anything else is unrelated to Coder and can be ignored.
-  const parts = authorityParts[1].split("--")
+  const parts = sshAuthorityParts[1].split("--")
   if (parts.length <= 1 || (parts[0] !== AuthorityPrefix && !parts[0].startsWith(`${AuthorityPrefix}.`))) {
     return null
   }
@@ -56,8 +70,9 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
   }
 
   return {
+    containerNameHex: containerNameHex,
     agent: agent,
-    host: authorityParts[1],
+    host: sshAuthorityParts[1],
     label: parts[0].replace(/^coder-vscode\.?/, ""),
     username: parts[1],
     workspace: workspace,
