@@ -3,7 +3,7 @@ import { Api } from "coder/site/src/api/api"
 import { getErrorMessage } from "coder/site/src/api/errors"
 import { User, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
 import { lookup } from "dns"
-import { inRange } from "range_check"
+import ipRangeCheck from "ip-range-check"
 import { promisify } from "util"
 import * as vscode from "vscode"
 import { makeCoderSdk, needToken } from "./api"
@@ -396,26 +396,14 @@ export class Commands {
       if (!baseUrl) {
         throw new Error("You are not logged in")
       }
-
-      try {
-        await openWorkspace(
-          this.restClient,
-          baseUrl,
-          treeItem.workspaceOwner,
-          treeItem.workspaceName,
-          treeItem.workspaceAgent,
-          treeItem.workspaceFolderPath,
-          true,
-        )
-      } catch (err) {
-        const message = getErrorMessage(err, "no response from the server")
-        this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
-        this.vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-          detail: message,
-          modal: true,
-          useCustom: true,
-        })
-      }
+      await this.openWorkspace(
+        baseUrl,
+        treeItem.workspaceOwner,
+        treeItem.workspaceName,
+        treeItem.workspaceAgent,
+        treeItem.workspaceFolderPath,
+        true,
+      )
     } else {
       // If there is no tree item, then the user manually ran this command.
       // Default to the regular open instead.
@@ -513,15 +501,7 @@ export class Commands {
     }
 
     try {
-      await openWorkspace(
-        this.restClient,
-        baseUrl,
-        workspaceOwner,
-        workspaceName,
-        workspaceAgent,
-        folderPath,
-        openRecent,
-      )
+      await this.openWorkspace(baseUrl, workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
     } catch (err) {
       const message = getErrorMessage(err, "no response from the server")
       this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
@@ -574,32 +554,112 @@ export class Commands {
       await this.workspaceRestClient.updateWorkspaceVersion(this.workspace)
     }
   }
-}
 
-/**
- * Given a workspace, build the host name, find a directory to open, and pass
- * both to the Remote SSH plugin in the form of a remote authority URI.
- */
-async function openWorkspace(
-  restClient: Api,
-  baseUrl: string,
-  workspaceOwner: string,
-  workspaceName: string,
-  workspaceAgent: string | undefined,
-  folderPath: string | undefined,
-  openRecent: boolean | undefined,
-) {
-  let remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
+  /**
+   * Given a workspace, build the host name, find a directory to open, and pass
+   * both to the Remote SSH plugin in the form of a remote authority URI.
+   */
+  private async openWorkspace(
+    baseUrl: string,
+    workspaceOwner: string,
+    workspaceName: string,
+    workspaceAgent: string | undefined,
+    folderPath: string | undefined,
+    openRecent: boolean | undefined,
+  ) {
+    let remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
 
-  // When called from `openFromSidebar`, the workspaceAgent will only not be set
-  // if the workspace is stopped, in which case we can't use Coder Connect
-  // When called from `open`, the workspaceAgent will always be set.
-  if (workspaceAgent) {
-    let hostnameSuffix = "coder"
+    // When called from `openFromSidebar`, the workspaceAgent will only not be set
+    // if the workspace is stopped, in which case we can't use Coder Connect
+    // When called from `open`, the workspaceAgent will always be set.
+    if (workspaceAgent) {
+      let hostnameSuffix = "coder"
+      try {
+        // If the field was undefined, it's an older server, and always 'coder'
+        hostnameSuffix = (await this.fetchHostnameSuffix()) ?? hostnameSuffix
+      } catch (error) {
+        const message = getErrorMessage(error, "no response from the server")
+        this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
+        this.vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+          detail: message,
+          modal: true,
+          useCustom: true,
+        })
+      }
+
+      const coderConnectAddr = await maybeCoderConnectAddr(
+        workspaceAgent,
+        workspaceName,
+        workspaceOwner,
+        hostnameSuffix,
+      )
+      if (coderConnectAddr) {
+        remoteAuthority = `ssh-remote+${coderConnectAddr}`
+      }
+    }
+
+    let newWindow = true
+    // Open in the existing window if no workspaces are open.
+    if (!vscode.workspace.workspaceFolders?.length) {
+      newWindow = false
+    }
+
+    // If a folder isn't specified or we have been asked to open the most recent,
+    // we can try to open a recently opened folder/workspace.
+    if (!folderPath || openRecent) {
+      const output: {
+        workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
+      } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
+      const opened = output.workspaces.filter(
+        // Remove recents that do not belong to this connection.  The remote
+        // authority maps to a workspace or workspace/agent combination (using the
+        // SSH host name).  This means, at the moment, you can have a different
+        // set of recents for a workspace versus workspace/agent combination, even
+        // if that agent is the default for the workspace.
+        (opened) => opened.folderUri?.authority === remoteAuthority,
+      )
+
+      // openRecent will always use the most recent.  Otherwise, if there are
+      // multiple we ask the user which to use.
+      if (opened.length === 1 || (opened.length > 1 && openRecent)) {
+        folderPath = opened[0].folderUri.path
+      } else if (opened.length > 1) {
+        const items = opened.map((f) => f.folderUri.path)
+        folderPath = await vscode.window.showQuickPick(items, {
+          title: "Select a recently opened folder",
+        })
+        if (!folderPath) {
+          // User aborted.
+          return
+        }
+      }
+    }
+
+    if (folderPath) {
+      await vscode.commands.executeCommand(
+        "vscode.openFolder",
+        vscode.Uri.from({
+          scheme: "vscode-remote",
+          authority: remoteAuthority,
+          path: folderPath,
+        }),
+        // Open this in a new window!
+        newWindow,
+      )
+      return
+    }
+
+    // This opens the workspace without an active folder opened.
+    await vscode.commands.executeCommand("vscode.newWindow", {
+      remoteAuthority: remoteAuthority,
+      reuseWindow: !newWindow,
+    })
+  }
+
+  private async fetchHostnameSuffix(): Promise<string | undefined> {
     try {
-      const sshConfig = await restClient.getDeploymentSSHConfig()
-      // If the field is undefined, it's an older server, and always 'coder'
-      hostnameSuffix = sshConfig.hostname_suffix ?? hostnameSuffix
+      const sshConfig = await this.restClient.getDeploymentSSHConfig()
+      return sshConfig.hostname_suffix
     } catch (error) {
       if (!isAxiosError(error)) {
         throw error
@@ -609,75 +669,11 @@ async function openWorkspace(
           // Likely a very old deployment, just use the default.
           break
         }
-        case 401: {
-          throw error
-        }
         default:
           throw error
       }
     }
-    const coderConnectAddr = await maybeCoderConnectAddr(workspaceAgent, workspaceName, workspaceOwner, hostnameSuffix)
-    if (coderConnectAddr) {
-      remoteAuthority = `ssh-remote+${coderConnectAddr}`
-    }
   }
-
-  let newWindow = true
-  // Open in the existing window if no workspaces are open.
-  if (!vscode.workspace.workspaceFolders?.length) {
-    newWindow = false
-  }
-
-  // If a folder isn't specified or we have been asked to open the most recent,
-  // we can try to open a recently opened folder/workspace.
-  if (!folderPath || openRecent) {
-    const output: {
-      workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[]
-    } = await vscode.commands.executeCommand("_workbench.getRecentlyOpened")
-    const opened = output.workspaces.filter(
-      // Remove recents that do not belong to this connection.  The remote
-      // authority maps to a workspace or workspace/agent combination (using the
-      // SSH host name).  This means, at the moment, you can have a different
-      // set of recents for a workspace versus workspace/agent combination, even
-      // if that agent is the default for the workspace.
-      (opened) => opened.folderUri?.authority === remoteAuthority,
-    )
-
-    // openRecent will always use the most recent.  Otherwise, if there are
-    // multiple we ask the user which to use.
-    if (opened.length === 1 || (opened.length > 1 && openRecent)) {
-      folderPath = opened[0].folderUri.path
-    } else if (opened.length > 1) {
-      const items = opened.map((f) => f.folderUri.path)
-      folderPath = await vscode.window.showQuickPick(items, {
-        title: "Select a recently opened folder",
-      })
-      if (!folderPath) {
-        // User aborted.
-        return
-      }
-    }
-  }
-
-  if (folderPath) {
-    await vscode.commands.executeCommand(
-      "vscode.openFolder",
-      vscode.Uri.from({
-        scheme: "vscode-remote",
-        authority: remoteAuthority,
-        path: folderPath,
-      }),
-      // Open this in a new window!
-      newWindow,
-    )
-    return
-  }
-
-  // This opens the workspace without an active folder opened.
-  await vscode.commands.executeCommand("vscode.newWindow", {
-    remoteAuthority: remoteAuthority,
-    reuseWindow: !newWindow,
-  })
 }
 
 async function maybeCoderConnectAddr(
@@ -689,7 +685,7 @@ async function maybeCoderConnectAddr(
   const coderConnectHostname = `${agent}.${workspace}.${owner}.${hostnameSuffix}`
   try {
     const res = await promisify(lookup)(coderConnectHostname)
-    return res.family === 6 && inRange(res.address, "fd60:627a:a42b::/48") ? coderConnectHostname : undefined
+    return res.family === 6 && ipRangeCheck(res.address, "fd60:627a:a42b::/48") ? coderConnectHostname : undefined
   } catch {
     return undefined
   }
