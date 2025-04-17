@@ -1,16 +1,12 @@
-import { isAxiosError } from "axios"
 import { Api } from "coder/site/src/api/api"
 import { getErrorMessage } from "coder/site/src/api/errors"
 import { User, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
-import { lookup } from "dns"
-import ipRangeCheck from "ip-range-check"
-import { promisify } from "util"
 import * as vscode from "vscode"
-import { makeCoderSdk, needToken } from "./api"
+import { fetchSSHConfig, makeCoderSdk, needToken } from "./api"
 import { extractAgents } from "./api-helper"
 import { CertificateError } from "./error"
 import { Storage } from "./storage"
-import { toRemoteAuthority, toSafeHost } from "./util"
+import { maybeCoderConnectAddr, toRemoteAuthority, toSafeHost } from "./util"
 import { OpenableTreeItem } from "./workspacesProvider"
 
 export class Commands {
@@ -573,10 +569,10 @@ export class Commands {
     // if the workspace is stopped, in which case we can't use Coder Connect
     // When called from `open`, the workspaceAgent will always be set.
     if (workspaceAgent) {
-      let hostnameSuffix = "coder"
+      let sshConfig
       try {
-        // If the field was undefined, it's an older server, and always 'coder'
-        hostnameSuffix = (await this.fetchHostnameSuffix()) ?? hostnameSuffix
+        // Fetch (or get defaults) for the SSH config.
+        sshConfig = await fetchSSHConfig(this.restClient, this.vscodeProposed)
       } catch (error) {
         const message = getErrorMessage(error, "no response from the server")
         this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
@@ -592,7 +588,7 @@ export class Commands {
         workspaceAgent,
         workspaceName,
         workspaceOwner,
-        hostnameSuffix,
+        sshConfig.hostname_suffix,
       )
       if (coderConnectAddr) {
         remoteAuthority = `ssh-remote+${coderConnectAddr}`
@@ -655,42 +651,6 @@ export class Commands {
       remoteAuthority: remoteAuthority,
       reuseWindow: !newWindow,
     })
-  }
-
-  private async fetchHostnameSuffix(): Promise<string | undefined> {
-    try {
-      const sshConfig = await this.restClient.getDeploymentSSHConfig()
-      return sshConfig.hostname_suffix
-    } catch (error) {
-      if (!isAxiosError(error)) {
-        throw error
-      }
-      switch (error.response?.status) {
-        case 404: {
-          // Likely a very old deployment, just use the default.
-          break
-        }
-        default:
-          throw error
-      }
-    }
-  }
-}
-
-async function maybeCoderConnectAddr(
-  agent: string,
-  workspace: string,
-  owner: string,
-  hostnameSuffix: string,
-): Promise<string | undefined> {
-  const coderConnectHostname = `${agent}.${workspace}.${owner}.${hostnameSuffix}`
-  try {
-    const res = await promisify(lookup)(coderConnectHostname)
-    // Captive DNS portals may return an unrelated address, so we check it's
-    // within the Coder Service Prefix.
-    return res.family === 6 && ipRangeCheck(res.address, "fd60:627a:a42b::/48") ? coderConnectHostname : undefined
-  } catch {
-    return undefined
   }
 }
 

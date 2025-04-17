@@ -1,5 +1,8 @@
+import { lookup } from "dns"
+import ipRangeCheck from "ip-range-check"
 import * as os from "os"
 import url from "url"
+import { promisify } from "util"
 
 export interface AuthorityParts {
   agent: string | undefined
@@ -58,6 +61,23 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
     label: parts[0].replace(/^coder-vscode\.?/, ""),
     username: parts[1],
     workspace: workspace,
+  }
+}
+
+export async function maybeCoderConnectAddr(
+  agent: string,
+  workspace: string,
+  owner: string,
+  hostnameSuffix: string,
+): Promise<string | undefined> {
+  const coderConnectHostname = `${agent}.${workspace}.${owner}.${hostnameSuffix}`
+  try {
+    const res = await promisify(lookup)(coderConnectHostname)
+    // Captive DNS portals may return an unrelated address, so we check it's
+    // within the Coder Service Prefix.
+    return res.family === 6 && ipRangeCheck(res.address, "fd60:627a:a42b::/48") ? coderConnectHostname : undefined
+  } catch {
+    return undefined
   }
 }
 

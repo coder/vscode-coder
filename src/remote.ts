@@ -1,6 +1,6 @@
 import { isAxiosError } from "axios"
 import { Api } from "coder/site/src/api/api"
-import { Workspace } from "coder/site/src/api/typesGenerated"
+import { SSHConfigResponse, Workspace } from "coder/site/src/api/typesGenerated"
 import find from "find-process"
 import * as fs from "fs/promises"
 import * as jsonc from "jsonc-parser"
@@ -9,7 +9,14 @@ import * as path from "path"
 import prettyBytes from "pretty-bytes"
 import * as semver from "semver"
 import * as vscode from "vscode"
-import { createHttpAgent, makeCoderSdk, needToken, startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api"
+import {
+  createHttpAgent,
+  fetchSSHConfig,
+  makeCoderSdk,
+  needToken,
+  startWorkspaceIfStoppedOrFailed,
+  waitForBuild,
+} from "./api"
 import { extractAgents } from "./api-helper"
 import * as cli from "./cliManager"
 import { Commands } from "./commands"
@@ -19,7 +26,7 @@ import { Inbox } from "./inbox"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
-import { AuthorityPrefix, expandPath, parseRemoteAuthority } from "./util"
+import { AuthorityPrefix, expandPath, maybeCoderConnectAddr, parseRemoteAuthority } from "./util"
 import { WorkspaceMonitor } from "./workspaceMonitor"
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -469,9 +476,19 @@ export class Remote {
     //
     // If we didn't write to the SSH config file, connecting would fail with
     // "Host not found".
+    let sshConfigResponse: SSHConfigResponse
     try {
       this.storage.writeToCoderOutputChannel("Updating SSH config...")
-      await this.updateSSHConfig(workspaceRestClient, parts.label, parts.host, binaryPath, logDir, featureSet)
+      sshConfigResponse = await fetchSSHConfig(workspaceRestClient, this.vscodeProposed)
+      await this.updateSSHConfig(
+        workspaceRestClient,
+        parts.label,
+        parts.host,
+        binaryPath,
+        logDir,
+        featureSet,
+        sshConfigResponse,
+      )
     } catch (error) {
       this.storage.writeToCoderOutputChannel(`Failed to configure SSH: ${error}`)
       throw error
@@ -502,6 +519,20 @@ export class Remote {
     )
 
     this.storage.writeToCoderOutputChannel("Remote setup complete")
+
+    // If Coder Connect is available for this workspace, switch to that
+    const coderConnectAddr = await maybeCoderConnectAddr(
+      agent.name,
+      parts.workspace,
+      parts.username,
+      sshConfigResponse.hostname_suffix,
+    )
+    if (coderConnectAddr) {
+      await vscode.commands.executeCommand("vscode.newWindow", {
+        remoteAuthority: `ssh-remote+${coderConnectAddr}`,
+        reuseWindow: true,
+      })
+    }
 
     // Returning the URL and token allows the plugin to authenticate its own
     // client, for example to display the list of workspaces belonging to this
@@ -550,30 +581,8 @@ export class Remote {
     binaryPath: string,
     logDir: string,
     featureSet: FeatureSet,
+    sshConfigResponse: SSHConfigResponse,
   ) {
-    let deploymentSSHConfig = {}
-    try {
-      const deploymentConfig = await restClient.getDeploymentSSHConfig()
-      deploymentSSHConfig = deploymentConfig.ssh_config_options
-    } catch (error) {
-      if (!isAxiosError(error)) {
-        throw error
-      }
-      switch (error.response?.status) {
-        case 404: {
-          // Deployment does not support overriding ssh config yet. Likely an
-          // older version, just use the default.
-          break
-        }
-        case 401: {
-          await this.vscodeProposed.window.showErrorMessage("Your session expired...")
-          throw error
-        }
-        default:
-          throw error
-      }
-    }
-
     // deploymentConfig is now set from the remote coderd deployment.
     // Now override with the user's config.
     const userConfigSSH = vscode.workspace.getConfiguration("coder").get<string[]>("sshConfig") || []
@@ -596,7 +605,7 @@ export class Remote {
       },
       {} as Record<string, string>,
     )
-    const sshConfigOverrides = mergeSSHConfigValues(deploymentSSHConfig, userConfig)
+    const sshConfigOverrides = mergeSSHConfigValues(sshConfigResponse.ssh_config_options, userConfig)
 
     let sshConfigFile = vscode.workspace.getConfiguration().get<string>("remote.SSH.configFile")
     if (!sshConfigFile) {

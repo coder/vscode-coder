@@ -1,7 +1,7 @@
-import { AxiosInstance } from "axios"
+import { AxiosInstance, isAxiosError } from "axios"
 import { spawn } from "child_process"
 import { Api } from "coder/site/src/api/api"
-import { ProvisionerJobLog, Workspace } from "coder/site/src/api/typesGenerated"
+import { ProvisionerJobLog, SSHConfigResponse, Workspace } from "coder/site/src/api/typesGenerated"
 import { FetchLikeInit } from "eventsource"
 import fs from "fs/promises"
 import { ProxyAgent } from "proxy-agent"
@@ -279,4 +279,35 @@ export async function waitForBuild(
   const updatedWorkspace = await restClient.getWorkspace(workspace.id)
   writeEmitter.fire(`Workspace is now ${updatedWorkspace.latest_build.status}\r\n`)
   return updatedWorkspace
+}
+
+export async function fetchSSHConfig(restClient: Api, vsc: typeof vscode): Promise<SSHConfigResponse> {
+  try {
+    const sshConfig = await restClient.getDeploymentSSHConfig()
+    return {
+      hostname_prefix: sshConfig.hostname_prefix,
+      hostname_suffix: sshConfig.hostname_suffix ?? "coder",
+      ssh_config_options: sshConfig.ssh_config_options,
+    }
+  } catch (error) {
+    if (!isAxiosError(error)) {
+      throw error
+    }
+    switch (error.response?.status) {
+      case 404: {
+        // Very old deployment that doesn't support SSH config
+        return {
+          hostname_prefix: "coder",
+          hostname_suffix: "coder",
+          ssh_config_options: {},
+        }
+      }
+      case 401: {
+        vsc.window.showErrorMessage("Your session expired...")
+        throw error
+      }
+      default:
+        throw error
+    }
+  }
 }
