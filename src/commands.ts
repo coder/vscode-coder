@@ -572,9 +572,14 @@ export class Commands {
   ) {
     let remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
 
-    // When called from `openFromSidebar`, the workspaceAgent will only not be set
-    // if the workspace is stopped, in which case we can't use Coder Connect
-    // When called from `open`, the workspaceAgent will always be set.
+    // We can't connect using Coder Connect straightaway if `workspaceAgent`
+    // is undefined. This happens when:
+    // 1. The workspace is stopped
+    // 2. A `vscode://coder.coder-remote` URI does not include the agent as a
+    // query parameter.
+    //
+    // For 1. `Remote.setup` will migrate us to Coder Connect once the workspace is built.
+    // For 2. `Remote.setup` will call `maybeAskAgent` and then migrate us to Coder Connect
     if (workspaceAgent) {
       let sshConfig
       try {
