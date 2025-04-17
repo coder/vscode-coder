@@ -397,7 +397,7 @@ export class Commands {
         throw new Error("You are not logged in")
       }
 
-      let agent = treeItem.workspaceAgent
+      const agent = treeItem.workspaceAgent
       if (!agent) {
         // `openFromSidebar` is only callable on agents or single-agent workspaces,
         // where this will always be set.
@@ -692,7 +692,7 @@ async function maybeCoderConnectAddr(
   const coderConnectHostname = `${agent}.${workspace}.${owner}.${hostnameSuffix}`
   try {
     const res = await promisify(lookup)(coderConnectHostname)
-    return res.family == 6 && inRange(res.address, "fd60:627a:a42b::/48") ? coderConnectHostname : undefined
+    return res.family === 6 && inRange(res.address, "fd60:627a:a42b::/48") ? coderConnectHostname : undefined
   } catch {
     return undefined
   }
