@@ -397,20 +397,13 @@ export class Commands {
         throw new Error("You are not logged in")
       }
 
-      const agent = treeItem.workspaceAgent
-      if (!agent) {
-        // `openFromSidebar` is only callable on agents or single-agent workspaces,
-        // where this will always be set.
-        return
-      }
-
       try {
         await openWorkspace(
           this.restClient,
           baseUrl,
           treeItem.workspaceOwner,
           treeItem.workspaceName,
-          agent,
+          treeItem.workspaceAgent,
           treeItem.workspaceFolderPath,
           true,
         )
@@ -592,37 +585,41 @@ async function openWorkspace(
   baseUrl: string,
   workspaceOwner: string,
   workspaceName: string,
-  workspaceAgent: string,
+  workspaceAgent: string | undefined,
   folderPath: string | undefined,
   openRecent: boolean | undefined,
 ) {
   let remoteAuthority = toRemoteAuthority(baseUrl, workspaceOwner, workspaceName, workspaceAgent)
 
-  let hostnameSuffix = "coder"
-  try {
-    const sshConfig = await restClient.getDeploymentSSHConfig()
-    // If the field is undefined, it's an older server, and always 'coder'
-    hostnameSuffix = sshConfig.hostname_suffix ?? hostnameSuffix
-  } catch (error) {
-    if (!isAxiosError(error)) {
-      throw error
-    }
-    switch (error.response?.status) {
-      case 404: {
-        // Likely a very old deployment, just use the default.
-        break
-      }
-      case 401: {
+  // When called from `openFromSidebar`, the workspaceAgent will only not be set
+  // if the workspace is stopped, in which case we can't use Coder Connect
+  // When called from `open`, the workspaceAgent will always be set.
+  if (workspaceAgent) {
+    let hostnameSuffix = "coder"
+    try {
+      const sshConfig = await restClient.getDeploymentSSHConfig()
+      // If the field is undefined, it's an older server, and always 'coder'
+      hostnameSuffix = sshConfig.hostname_suffix ?? hostnameSuffix
+    } catch (error) {
+      if (!isAxiosError(error)) {
         throw error
       }
-      default:
-        throw error
+      switch (error.response?.status) {
+        case 404: {
+          // Likely a very old deployment, just use the default.
+          break
+        }
+        case 401: {
+          throw error
+        }
+        default:
+          throw error
+      }
     }
-  }
-
-  const coderConnectAddr = await maybeCoderConnectAddr(workspaceAgent, workspaceName, workspaceOwner, hostnameSuffix)
-  if (coderConnectAddr) {
-    remoteAuthority = `ssh-remote+${coderConnectAddr}`
+    const coderConnectAddr = await maybeCoderConnectAddr(workspaceAgent, workspaceName, workspaceOwner, hostnameSuffix)
+    if (coderConnectAddr) {
+      remoteAuthority = `ssh-remote+${coderConnectAddr}`
+    }
   }
 
   let newWindow = true
