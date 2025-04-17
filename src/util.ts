@@ -1,6 +1,5 @@
 import { lookup } from "dns"
 import ipRangeCheck from "ip-range-check"
-import { ssh } from "node-forge"
 import * as os from "os"
 import url from "url"
 import { promisify } from "util"
@@ -31,9 +30,9 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
   const authorityParts = authority.split("@")
   let containerNameHex = undefined
   let sshAuthority
-  if (authorityParts.length == 1) {
+  if (authorityParts.length === 1) {
     sshAuthority = authorityParts[0]
-  } else if (authorityParts.length == 2 && authorityParts[0].includes("attached-container+")) {
+  } else if (authorityParts.length === 2 && authorityParts[0].includes("attached-container+")) {
     sshAuthority = authorityParts[1]
     containerNameHex = authorityParts[0].split("+")[1]
   } else {
