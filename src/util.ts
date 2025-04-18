@@ -1,7 +1,11 @@
+import { lookup } from "dns"
+import ipRangeCheck from "ip-range-check"
 import * as os from "os"
 import url from "url"
+import { promisify } from "util"
 
 export interface AuthorityParts {
+  containerNameHex: string | undefined
   agent: string | undefined
   host: string
   label: string
@@ -21,14 +25,20 @@ export const AuthorityPrefix = "coder-vscode"
  * Throw an error if the host is invalid.
  */
 export function parseRemoteAuthority(authority: string): AuthorityParts | null {
-  // The authority looks like: vscode://ssh-remote+<ssh host name>
-  const authorityParts = authority.split("+")
+  // The Dev Container authority looks like: vscode://attached-container+containerNameHex@ssh-remote+<ssh host name>
+  // The SSH authority looks like: vscode://ssh-remote+<ssh host name>
+  const authorityURI = authority.startsWith("vscode://") ? authority : `vscode://${authority}`
+  const authorityParts = new URL(authorityURI)
+  const containerParts = authorityParts.username.split("+")
+  const containerNameHex = containerParts[1]
+  const sshAuthority = authorityParts.host
+  const sshAuthorityParts = sshAuthority.split("+")
 
   // We create SSH host names in a format matching:
   // coder-vscode(--|.)<username>--<workspace>(--|.)<agent?>
   // The agent can be omitted; the user will be prompted for it instead.
   // Anything else is unrelated to Coder and can be ignored.
-  const parts = authorityParts[1].split("--")
+  const parts = sshAuthorityParts[1].split("--")
   if (parts.length <= 1 || (parts[0] !== AuthorityPrefix && !parts[0].startsWith(`${AuthorityPrefix}.`))) {
     return null
   }
@@ -53,11 +63,29 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
   }
 
   return {
+    containerNameHex: containerNameHex,
     agent: agent,
-    host: authorityParts[1],
+    host: sshAuthorityParts[1],
     label: parts[0].replace(/^coder-vscode\.?/, ""),
     username: parts[1],
     workspace: workspace,
+  }
+}
+
+export async function maybeCoderConnectAddr(
+  agent: string,
+  workspace: string,
+  owner: string,
+  hostnameSuffix: string,
+): Promise<string | undefined> {
+  const coderConnectHostname = `${agent}.${workspace}.${owner}.${hostnameSuffix}`
+  try {
+    const res = await promisify(lookup)(coderConnectHostname)
+    // Captive DNS portals may return an unrelated address, so we check it's
+    // within the Coder Service Prefix.
+    return res.family === 6 && ipRangeCheck(res.address, "fd60:627a:a42b::/48") ? coderConnectHostname : undefined
+  } catch {
+    return undefined
   }
 }
 
