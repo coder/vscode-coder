@@ -27,17 +27,11 @@ export const AuthorityPrefix = "coder-vscode"
 export function parseRemoteAuthority(authority: string): AuthorityParts | null {
   // The Dev Container authority looks like: vscode://attached-container+containerNameHex@ssh-remote+<ssh host name>
   // The SSH authority looks like: vscode://ssh-remote+<ssh host name>
-  const authorityParts = authority.split("@")
-  let containerNameHex = undefined
-  let sshAuthority
-  if (authorityParts.length === 1) {
-    sshAuthority = authorityParts[0]
-  } else if (authorityParts.length === 2 && authorityParts[0].includes("attached-container+")) {
-    sshAuthority = authorityParts[1]
-    containerNameHex = authorityParts[0].split("+")[1]
-  } else {
-    return null
-  }
+  const authorityURI = authority.startsWith("vscode://") ? authority : `vscode://${authority}`
+  const authorityParts = new URL(authorityURI)
+  const containerParts = authorityParts.username.split("+")
+  const containerNameHex = containerParts[1]
+  const sshAuthority = authorityParts.host
   const sshAuthorityParts = sshAuthority.split("+")
 
   // We create SSH host names in a format matching:

@@ -1,3 +1,4 @@
+import { isAxiosError } from "axios"
 import { Api } from "coder/site/src/api/api"
 import { getErrorMessage } from "coder/site/src/api/errors"
 import { User, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
@@ -574,16 +575,11 @@ export class Commands {
       let sshConfig
       try {
         // Fetch (or get defaults) for the SSH config.
-        sshConfig = await fetchSSHConfig(this.restClient, this.vscodeProposed)
+        sshConfig = await fetchSSHConfig(this.restClient)
       } catch (error) {
-        const message = getErrorMessage(error, "no response from the server")
-        this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
-        this.vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-          detail: message,
-          modal: true,
-          useCustom: true,
+        return this.handleInitialRequestError(error, workspaceName, baseUrl, async () => {
+          await this.openWorkspace(baseUrl, workspaceOwner, workspaceName, workspaceAgent, folderPath, openRecent)
         })
-        return
       }
 
       const coderConnectAddr = await maybeCoderConnectAddr(
@@ -669,16 +665,18 @@ export class Commands {
       let sshConfig
       try {
         // Fetch (or get defaults) for the SSH config.
-        sshConfig = await fetchSSHConfig(this.restClient, this.vscodeProposed)
+        sshConfig = await fetchSSHConfig(this.restClient)
       } catch (error) {
-        const message = getErrorMessage(error, "no response from the server")
-        this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
-        this.vscodeProposed.window.showErrorMessage("Failed to open workspace", {
-          detail: message,
-          modal: true,
-          useCustom: true,
+        return this.handleInitialRequestError(error, workspaceName, baseUrl, async () => {
+          await this.openDevContainerInner(
+            baseUrl,
+            workspaceOwner,
+            workspaceName,
+            workspaceAgent,
+            devContainerName,
+            devContainerFolder,
+          )
         })
-        return
       }
 
       const coderConnectAddr = await maybeCoderConnectAddr(
@@ -709,5 +707,47 @@ export class Commands {
       }),
       newWindow,
     )
+  }
+
+  private async handleInitialRequestError(
+    error: unknown,
+    workspaceName: string,
+    baseUrl: string,
+    retryCallback: () => Promise<void>,
+  ) {
+    if (!isAxiosError(error)) {
+      throw error
+    }
+    switch (error.response?.status) {
+      case 401: {
+        const result = await this.vscodeProposed.window.showInformationMessage(
+          "Your session expired...",
+          {
+            useCustom: true,
+            modal: true,
+            detail: `You must log in to access ${workspaceName}.`,
+          },
+          "Log In",
+        )
+        if (!result) {
+          // User declined to log in.
+          return
+        }
+        // Log in then try again
+        await vscode.commands.executeCommand("coder.login", baseUrl, undefined, undefined)
+        await retryCallback()
+        return
+      }
+      default: {
+        const message = getErrorMessage(error, "no response from the server")
+        this.storage.writeToCoderOutputChannel(`Failed to open workspace: ${message}`)
+        this.vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+          detail: message,
+          modal: true,
+          useCustom: true,
+        })
+        return
+      }
+    }
   }
 }

@@ -479,7 +479,7 @@ export class Remote {
     let sshConfigResponse: SSHConfigResponse
     try {
       this.storage.writeToCoderOutputChannel("Updating SSH config...")
-      sshConfigResponse = await fetchSSHConfig(workspaceRestClient, this.vscodeProposed)
+      sshConfigResponse = await fetchSSHConfig(workspaceRestClient)
       await this.updateSSHConfig(
         workspaceRestClient,
         parts.label,

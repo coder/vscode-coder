@@ -281,7 +281,7 @@ export async function waitForBuild(
   return updatedWorkspace
 }
 
-export async function fetchSSHConfig(restClient: Api, vsc: typeof vscode): Promise<SSHConfigResponse> {
+export async function fetchSSHConfig(restClient: Api): Promise<SSHConfigResponse> {
   try {
     const sshConfig = await restClient.getDeploymentSSHConfig()
     return {
@@ -301,10 +301,6 @@ export async function fetchSSHConfig(restClient: Api, vsc: typeof vscode): Promi
           hostname_suffix: "coder",
           ssh_config_options: {},
         }
-      }
-      case 401: {
-        vsc.window.showErrorMessage("Your session expired...")
-        throw error
       }
       default:
         throw error
