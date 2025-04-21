@@ -255,9 +255,8 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
                 // yet.
                 appStatuses.push(
                   new AppStatusTreeItem({
-                    name: status.icon,
+                    name: status.message,
                     command: app.command,
-                    status: status.message,
                     workspace_name: element.workspaceName,
                   }),
                 )
@@ -374,14 +373,13 @@ class AppStatusTreeItem extends vscode.TreeItem {
   constructor(
     public readonly app: {
       name: string
-      status?: string
       url?: string
       command?: string
       workspace_name?: string
     },
   ) {
-    super(app.name, vscode.TreeItemCollapsibleState.None)
-    this.description = app.status
+    super("", vscode.TreeItemCollapsibleState.None)
+    this.description = app.name
     this.contextValue = "coderAppStatus"
 
     // Add command to handle clicking on the app

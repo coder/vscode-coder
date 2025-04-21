@@ -410,7 +410,6 @@ export class Commands {
 
   public async openAppStatus(app: {
     name?: string
-    status?: string
     url?: string
     agent_name?: string
     command?: string
@@ -423,7 +422,7 @@ export class Commands {
         title: `Connecting to AI Agent...`,
         cancellable: false
       }, async () => {
-        const terminal = vscode.window.createTerminal(app.status)
+        const terminal = vscode.window.createTerminal(app.name)
 
         // If workspace_name is provided, run coder ssh before the command
 
@@ -453,7 +452,7 @@ export class Commands {
     }
 
     // If no URL or command, show information about the app status
-    vscode.window.showInformationMessage(`${app.name || "Application"}: ${app.status || "Running"}`, {
+    vscode.window.showInformationMessage(`${app.name}`, {
       detail: `Agent: ${app.agent_name || "Unknown"}`,
     })
   }
