@@ -414,7 +414,7 @@ export class Commands {
     url?: string
     agent_name?: string
     command?: string
-    workspace_name?: string
+    workspace_name: string
   }): Promise<void> {
     // Launch and run command in terminal if command is provided
     if (app.command) {
@@ -426,7 +426,7 @@ export class Commands {
         const terminal = vscode.window.createTerminal(app.status)
         
         // If workspace_name is provided, run coder ssh before the command
-        if (app.workspace_name) {
+        
           let url = this.storage.getUrl()
           if (!url) {
             throw new Error("No coder url found for sidebar");
@@ -438,9 +438,6 @@ export class Commands {
                   )} ${app.workspace_name}`)
           await new Promise((resolve) => setTimeout(resolve, 5000))
           terminal.sendText(app.command ?? "")
-        } else {
-          terminal.sendText("need workspace name")
-        }
         terminal.show(false)
       });
     }
