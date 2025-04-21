@@ -285,7 +285,7 @@
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^6.21.0",
     "@vscode/test-electron": "^2.4.1",
-    "@vscode/vsce": "^2.21.1",
+    "@vscode/vsce": "^3.3.2",
     "bufferutil": "^4.0.9",
     "coder": "https://github.com/coder/coder#main",
     "dayjs": "^1.11.13",
