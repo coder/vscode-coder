@@ -1,5 +1,5 @@
 import { Api } from "coder/site/src/api/api"
-import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { Workspace, WorkspaceAgent, WorkspaceApp } from "coder/site/src/api/typesGenerated"
 import { EventSource } from "eventsource"
 import * as path from "path"
 import * as vscode from "vscode"
@@ -156,29 +156,20 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         )
 
         // Get app status from the workspace agents
-        try {
-          const agents = extractAgents(workspace)
-          agents.forEach((agent) => {
-            // Check if agent has apps property with status reporting
-            if (agent.apps && Array.isArray(agent.apps)) {
-              workspaceTreeItem.appStatus = agent.apps.map((app) => ({
-                name: app.display_name || app.name || "App",
-                status: app.status || "Running",
-                icon: app.icon || "$(pulse)",
-                url: app.url,
-                agent_id: agent.id,
-                agent_name: agent.name,
-                command: app.command,
-                workspace_name: workspace.name,
-              }))
-            }
-          })
-        } catch (error) {
-          // Log the error but continue - we don't want to fail the whole tree if app status fails
-          this.storage.writeToCoderOutputChannel(
-            `Failed to get app status for workspace ${workspace.name}: ${errToStr(error, "unknown error")}`,
-          )
-        }
+        const agents = extractAgents(workspace)
+        agents.forEach((agent) => {
+          // Check if agent has apps property with status reporting
+          if (agent.apps && Array.isArray(agent.apps)) {
+            workspaceTreeItem.appStatus = agent.apps.map((app: WorkspaceApp) => ({
+              name: app.display_name,
+              url: app.url,
+              agent_id: agent.id,
+              agent_name: agent.name,
+              command: app.command,
+              workspace_name: workspace.name,
+            }))
+          }
+        })
 
         return workspaceTreeItem
       }),
@@ -459,8 +450,6 @@ class AgentTreeItem extends OpenableTreeItem {
 export class WorkspaceTreeItem extends OpenableTreeItem {
   public appStatus: {
     name: string
-    status: string
-    icon?: string
     url?: string
     agent_id?: string
     agent_name?: string
