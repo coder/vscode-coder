@@ -420,7 +420,7 @@ export class Commands {
     if (app.command) {
       return vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Launching ${app.name || "application"}...`,
+        title: `Connecting to AI Agent...`,
         cancellable: false
       }, async () => {
         const terminal = vscode.window.createTerminal(app.status)
