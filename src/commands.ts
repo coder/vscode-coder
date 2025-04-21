@@ -26,7 +26,7 @@ export class Commands {
     private readonly vscodeProposed: typeof vscode,
     private readonly restClient: Api,
     private readonly storage: Storage,
-  ) {}
+  ) { }
 
   /**
    * Find the requested agent if specified, otherwise return the agent if there
@@ -424,20 +424,20 @@ export class Commands {
         cancellable: false
       }, async () => {
         const terminal = vscode.window.createTerminal(app.status)
-        
+
         // If workspace_name is provided, run coder ssh before the command
-        
-          let url = this.storage.getUrl()
-          if (!url) {
-            throw new Error("No coder url found for sidebar");
-          }
-          let binary = await this.storage.fetchBinary(this.restClient, toSafeHost(url))
-          const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
-          terminal.sendText(`${escape(binary)} ssh --global-config ${escape(
-                    path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
-                  )} ${app.workspace_name}`)
-          await new Promise((resolve) => setTimeout(resolve, 5000))
-          terminal.sendText(app.command ?? "")
+
+        let url = this.storage.getUrl()
+        if (!url) {
+          throw new Error("No coder url found for sidebar");
+        }
+        let binary = await this.storage.fetchBinary(this.restClient, toSafeHost(url))
+        const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+        terminal.sendText(`${escape(binary)} ssh --global-config ${escape(
+          path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
+        )} ${app.workspace_name}`)
+        await new Promise((resolve) => setTimeout(resolve, 5000))
+        terminal.sendText(app.command ?? "")
         terminal.show(false)
       });
     }
