@@ -441,9 +441,6 @@ export class Commands {
         } else {
           terminal.sendText("need workspace name")
         }
-
-        // Maximise the terminal and switch focus to the launch terminal window.
-        vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel")
         terminal.show(false)
       });
     }
