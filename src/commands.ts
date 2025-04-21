@@ -418,31 +418,44 @@ export class Commands {
   }): Promise<void> {
     // Launch and run command in terminal if command is provided
     if (app.command) {
-      const terminal = vscode.window.createTerminal(app.status)
-      vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel")
-      // If workspace_name is provided, run coder ssh before the command
-      if (app.workspace_name) {
-        let url = this.storage.getUrl()
-        if (!url) {
-          throw new Error("No coder url found for sidebar");
+      return vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Launching ${app.name || "application"}...`,
+        cancellable: false
+      }, async () => {
+        const terminal = vscode.window.createTerminal(app.status)
+        
+        // If workspace_name is provided, run coder ssh before the command
+        if (app.workspace_name) {
+          let url = this.storage.getUrl()
+          if (!url) {
+            throw new Error("No coder url found for sidebar");
+          }
+          let binary = await this.storage.fetchBinary(this.restClient, toSafeHost(url))
+          const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+          terminal.sendText(`${escape(binary)} ssh --global-config ${escape(
+                    path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
+                  )} ${app.workspace_name}`)
+          await new Promise((resolve) => setTimeout(resolve, 5000))
+          terminal.sendText(app.command ?? "")
+        } else {
+          terminal.sendText("need workspace name")
         }
-        let binary = await this.storage.fetchBinary(this.restClient, toSafeHost(url))
-        const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
-        terminal.sendText(`${escape(binary)} ssh --global-config ${escape(
-                  path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
-                )} ${app.workspace_name}`)
-        await new Promise((resolve) => setTimeout(resolve, 5000))
-        terminal.sendText(app.command)
-      } else {
-        terminal.sendText("need workspace name")
-      }
-      terminal.show(false)
-      return
+
+        // Maximise the terminal and switch focus to the launch terminal window.
+        vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel")
+        terminal.show(false)
+      });
     }
     // Check if app has a URL to open
     if (app.url) {
-      await vscode.env.openExternal(vscode.Uri.parse(app.url))
-      return
+      return vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Opening ${app.name || "application"} in browser...`,
+        cancellable: false
+      }, async () => {
+        await vscode.env.openExternal(vscode.Uri.parse(app.url!))
+      });
     }
 
     // If no URL or command, show information about the app status
