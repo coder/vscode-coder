@@ -276,7 +276,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
           // Show the section if it has any items
           if (appStatuses.length > 0) {
-            const appStatusSection = new SectionTreeItem("App Statuses", appStatuses)
+            const appStatusSection = new SectionTreeItem("App Statuses", appStatuses.reverse())
             items.push(appStatusSection)
           }
         }
