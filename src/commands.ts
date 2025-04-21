@@ -419,7 +419,6 @@ export class Commands {
     // Launch and run command in terminal if command is provided
     if (app.command) {
       const terminal = vscode.window.createTerminal(app.status)
-      terminal.show(true)
       vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel")
       // If workspace_name is provided, run coder ssh before the command
       if (app.workspace_name) {
@@ -437,6 +436,7 @@ export class Commands {
       } else {
         terminal.sendText("need workspace name")
       }
+      terminal.show(false)
       return
     }
     // Check if app has a URL to open
