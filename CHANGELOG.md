@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Coder extension sidebar now displays available app statuses, and let's
+  the user click them to drop into a session with a running AI Agent.
+
 ## [v1.7.1](https://github.com/coder/vscode-coder/releases/tag/v1.7.1) (2025-04-14)
 
 ### Fixed

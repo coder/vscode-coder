@@ -204,6 +204,12 @@
         "title": "Coder: View Logs",
         "icon": "$(list-unordered)",
         "when": "coder.authenticated"
+      },
+      {
+        "command": "coder.openAppStatus",
+        "title": "Coder: Open App Status",
+        "icon": "$(robot)",
+        "when": "coder.authenticated"
       }
     ],
     "menus": {
