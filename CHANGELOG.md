@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.8.0](https://github.com/coder/vscode-coder/releases/tag/v1.8.0) (2025-04-22)
+
 ### Added
 
 - Coder extension sidebar now displays available app statuses, and let's
