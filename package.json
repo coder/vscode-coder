@@ -304,7 +304,7 @@
     "nyc": "^17.1.0",
     "prettier": "^3.3.3",
     "ts-loader": "^9.5.1",
-    "tsc-watch": "^6.2.0",
+    "tsc-watch": "^6.2.1",
     "typescript": "^5.4.5",
     "utf-8-validate": "^6.0.5",
     "vitest": "^0.34.6",
