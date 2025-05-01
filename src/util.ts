@@ -16,8 +16,7 @@ export const AuthorityPrefix = "coder-vscode"
 // `ms-vscode-remote.remote-ssh`: `-> socksPort <port> ->`
 // `codeium.windsurf-remote-openssh`: `=> <port>(socks) =>`
 // Windows `ms-vscode-remote.remote-ssh`: `between local port <port>`
-export const RemoteSSHLogPortRegex = /(?:-> socksPort (\d+) ->|=> (\d+)\(socks\) =>|between local port (\d+))/;
-
+export const RemoteSSHLogPortRegex = /(?:-> socksPort (\d+) ->|=> (\d+)\(socks\) =>|between local port (\d+))/
 
 /**
  * Given the contents of a Remote - SSH log file, find a port number used by the
@@ -33,12 +32,12 @@ export async function findPort(text: string): Promise<number | null> {
   if (matches.length < 2) {
     return null
   }
-  const portStr = matches[1] || matches[2] || matches[3];
+  const portStr = matches[1] || matches[2] || matches[3]
   if (!portStr) {
     return null
   }
 
-  return Number.parseInt(portStr);
+  return Number.parseInt(portStr)
 }
 
 /**
