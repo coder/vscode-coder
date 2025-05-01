@@ -14,7 +14,7 @@ export interface AuthorityParts {
 export const AuthorityPrefix = "coder-vscode"
 
 // `ms-vscode-remote.remote-ssh`: `-> socksPort <port> ->`
-// `codeium.windsurf-remote-openssh`: `=> <port>(socks) =>`
+// `codeium.windsurf-remote-openssh`, `jeanp413.open-remote-ssh`: `=> <port>(socks) =>`
 // Windows `ms-vscode-remote.remote-ssh`: `between local port <port>`
 export const RemoteSSHLogPortRegex = /(?:-> socksPort (\d+) ->|=> (\d+)\(socks\) =>|between local port (\d+))/
 
