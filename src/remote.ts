@@ -19,7 +19,7 @@ import { Inbox } from "./inbox"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
-import { AuthorityPrefix, expandPath, parseRemoteAuthority } from "./util"
+import { AuthorityPrefix, expandPath, findPort, parseRemoteAuthority } from "./util"
 import { WorkspaceMonitor } from "./workspaceMonitor"
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -793,14 +793,7 @@ export class Remote {
       // this to find the SSH process that is powering this connection. That SSH
       // process will be logging network information periodically to a file.
       const text = await fs.readFile(logPath, "utf8")
-      const matches = text.match(/-> socksPort (\d+) ->/)
-      if (!matches) {
-        return
-      }
-      if (matches.length < 2) {
-        return
-      }
-      const port = Number.parseInt(matches[1])
+      const port = await findPort(text)
       if (!port) {
         return
       }

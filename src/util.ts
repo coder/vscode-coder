@@ -13,6 +13,34 @@ export interface AuthorityParts {
 // they should be handled by this extension.
 export const AuthorityPrefix = "coder-vscode"
 
+// `ms-vscode-remote.remote-ssh`: `-> socksPort <port> ->`
+// `codeium.windsurf-remote-openssh`: `=> <port>(socks) =>`
+// Windows `ms-vscode-remote.remote-ssh`: `between local port <port>`
+export const RemoteSSHLogPortRegex = /(?:-> socksPort (\d+) ->|=> (\d+)\(socks\) =>|between local port (\d+))/;
+
+
+/**
+ * Given the contents of a Remote - SSH log file, find a port number used by the
+ * SSH process. This is typically the socks port, but the local port works too.
+ *
+ * Returns null if no port is found.
+ */
+export async function findPort(text: string): Promise<number | null> {
+  const matches = text.match(RemoteSSHLogPortRegex)
+  if (!matches) {
+    return null
+  }
+  if (matches.length < 2) {
+    return null
+  }
+  const portStr = matches[1] || matches[2] || matches[3];
+  if (!portStr) {
+    return null
+  }
+
+  return Number.parseInt(portStr);
+}
+
 /**
  * Given an authority, parse into the expected parts.
  *
