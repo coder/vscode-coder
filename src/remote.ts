@@ -705,7 +705,7 @@ export class Remote {
       // Coder Connect doesn't populate any other stats
       if (network.using_coder_connect) {
         networkStatus.text = statusText + "Coder Connect "
-        networkStatus.tooltip = "You're connected using Coder Connect!"
+        networkStatus.tooltip = "You're connected using Coder Connect."
         networkStatus.show()
         return
       }
