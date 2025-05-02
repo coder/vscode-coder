@@ -698,8 +698,18 @@ export class Remote {
       derp_latency: { [key: string]: number }
       upload_bytes_sec: number
       download_bytes_sec: number
+      using_coder_connect: boolean
     }) => {
       let statusText = "$(globe) "
+
+      // Coder Connect doesn't populate any other stats
+      if (network.using_coder_connect) {
+        networkStatus.text = statusText + "Coder Connect "
+        networkStatus.tooltip = "You're connected using Coder Connect."
+        networkStatus.show()
+        return
+      }
+
       if (network.p2p) {
         statusText += "Direct "
         networkStatus.tooltip = "You're connected peer-to-peer ✨."
