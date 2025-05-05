@@ -318,7 +318,7 @@
     "eventsource": "^3.0.6",
     "find-process": "https://github.com/coder/find-process#fix/sequoia-compat",
     "jsonc-parser": "^3.3.1",
-    "memfs": "^4.9.3",
+    "memfs": "^4.17.1",
     "node-forge": "^1.3.1",
     "pretty-bytes": "^6.1.1",
     "proxy-agent": "^6.4.0",
