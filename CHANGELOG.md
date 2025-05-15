@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## [v1.9.0](https://github.com/coder/vscode-coder/releases/tag/v1.9.0) 2025-05-15
+
+### Fixed
+
+- The connection indicator will now show for VS Code on Windows, Windsurf, and
+  when using the `jeanp413.open-remote-ssh` extension.
+
+### Changed
+
+- The connection indicator now shows if connecting through Coder Desktop.
+
 ## [v1.8.0](https://github.com/coder/vscode-coder/releases/tag/v1.8.0) (2025-04-22)
 
 ### Added
