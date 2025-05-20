@@ -249,6 +249,189 @@ Host coder-vscode.dev.coder.com--*
   })
 })
 
+it("throws an error if there is a mismatched start and end block count", async () => {
+  // The below config contains two start blocks and one end block.
+  // This is a malformed config and should throw an error.
+  // Previously were were simply taking the first occurrences of the start and
+  // end blocks, which would potentially lead to loss of any content between the
+  // missing end block and the next start block.
+  const existentSSHConfig = `Host beforeconfig
+  HostName before.config.tld
+  User before
+
+# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# missing END CODER VSCODE dev.coder.com ---
+
+Host donotdelete
+  HostName dont.delete.me
+  User please
+
+# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# --- END CODER VSCODE dev.coder.com ---
+
+Host afterconfig
+  HostName after.config.tld
+  User after`
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  await sshConfig.load()
+
+  // When we try to update the config, it should throw an error.
+  await expect(
+    sshConfig.update("dev.coder.com", {
+      Host: "coder-vscode.dev.coder.com--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    }),
+  ).rejects.toThrow(
+    `Malformed config: ssh config has 2 dev.coder.com START comments but 1 dev.coder.com END comments. Each START must have a matching END.`,
+  )
+})
+
+it("throws an error if there are more than one sections with the same label", async () => {
+  const existentSSHConfig = `Host beforeconfig
+  HostName before.config.tld
+  User before
+
+# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# --- END CODER VSCODE dev.coder.com ---
+
+Host donotdelete
+  HostName dont.delete.me
+  User please
+
+# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# --- END CODER VSCODE dev.coder.com ---
+
+Host afterconfig
+  HostName after.config.tld
+  User after`
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  await sshConfig.load()
+
+  // When we try to update the config, it should throw an error.
+  await expect(
+    sshConfig.update("dev.coder.com", {
+      Host: "coder-vscode.dev.coder.com--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    }),
+  ).rejects.toThrow(`Malformed config: ssh config has 2 dev.coder.com sections, please remove all but one.`)
+})
+
+it("correctly handles interspersed blocks with and without label", async () => {
+  const existentSSHConfig = `Host beforeconfig
+  HostName before.config.tld
+  User before
+
+# --- START CODER VSCODE ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# --- END CODER VSCODE ---
+
+Host donotdelete
+  HostName dont.delete.me
+  User please
+
+# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# --- END CODER VSCODE dev.coder.com ---
+
+Host afterconfig
+  HostName after.config.tld
+  User after`
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  await sshConfig.load()
+
+  const expectedOutput = `Host beforeconfig
+  HostName before.config.tld
+  User before
+
+# --- START CODER VSCODE ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# --- END CODER VSCODE ---
+
+Host donotdelete
+  HostName dont.delete.me
+  User please
+
+# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# --- END CODER VSCODE dev.coder.com ---
+
+Host afterconfig
+  HostName after.config.tld
+  User after`
+
+  await sshConfig.update("dev.coder.com", {
+    Host: "coder-vscode.dev.coder.com--*",
+    ProxyCommand: "some-command-here",
+    ConnectTimeout: "0",
+    StrictHostKeyChecking: "no",
+    UserKnownHostsFile: "/dev/null",
+    LogLevel: "ERROR",
+  })
+
+  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
+    encoding: "utf-8",
+    mode: 384,
+  })
+})
+
 it("override values", async () => {
   mockFileSystem.readFile.mockRejectedValueOnce("No file found")
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)

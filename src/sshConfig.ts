@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "fs/promises"
 import path from "path"
+import { countSubstring } from "./util"
 
 class SSHConfigBadFormat extends Error {}
 
@@ -123,12 +124,27 @@ export class SSHConfig {
    */
   private getBlock(label: string): Block | undefined {
     const raw = this.getRaw()
-    const startBlockIndex = raw.indexOf(this.startBlockComment(label))
-    const endBlockIndex = raw.indexOf(this.endBlockComment(label))
+    const startBlock = this.startBlockComment(label)
+    const endBlock = this.endBlockComment(label)
+    const startBlockCount = countSubstring(startBlock, raw)
+    const endBlockCount = countSubstring(endBlock, raw)
+    const startBlockIndex = raw.indexOf(startBlock)
+    const endBlockIndex = raw.indexOf(endBlock)
     const hasBlock = startBlockIndex > -1 && endBlockIndex > -1
 
     if (!hasBlock) {
       return
+    }
+
+    if (startBlockCount !== endBlockCount) {
+      throw new SSHConfigBadFormat(
+        `Malformed config: ssh config has ${startBlockCount} ${label} START comments but ${endBlockCount} ${label} END comments. Each START must have a matching END.`,
+      )
+    }
+    if (startBlockCount > 1 || endBlockCount > 1) {
+      throw new SSHConfigBadFormat(
+        `Malformed config: ssh config has ${startBlockCount} ${label} sections, please remove all but one.`,
+      )
     }
 
     if (startBlockIndex === -1) {
@@ -144,7 +160,7 @@ export class SSHConfig {
     }
 
     return {
-      raw: raw.substring(startBlockIndex, endBlockIndex + this.endBlockComment(label).length),
+      raw: raw.substring(startBlockIndex, endBlockIndex + endBlock.length),
     }
   }
 
