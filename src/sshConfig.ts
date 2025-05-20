@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "fs/promises"
+import { mkdir, readFile, writeFile, rename } from "fs/promises"
 import path from "path"
 import { countSubstring } from "./util"
 
@@ -23,12 +23,14 @@ export interface FileSystem {
   readFile: typeof readFile
   mkdir: typeof mkdir
   writeFile: typeof writeFile
+  rename: typeof rename
 }
 
 const defaultFileSystem: FileSystem = {
   readFile,
   mkdir,
   writeFile,
+  rename,
 }
 
 // mergeSSHConfigValues will take a given ssh config and merge it with the overrides
@@ -224,10 +226,13 @@ export class SSHConfig {
       mode: 0o700, // only owner has rwx permission, not group or everyone.
       recursive: true,
     })
-    return this.fileSystem.writeFile(this.filePath, this.getRaw(), {
+    const randSuffix = Math.random().toString(36).substring(8)
+    const tempFilePath = `${this.filePath}.${randSuffix}`
+    await this.fileSystem.writeFile(tempFilePath, this.getRaw(), {
       mode: 0o600, // owner rw
       encoding: "utf-8",
     })
+    await this.fileSystem.rename(tempFilePath, this.filePath)
   }
 
   public getRaw() {
