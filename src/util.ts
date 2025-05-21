@@ -123,9 +123,6 @@ export function expandPath(input: string): string {
 
 /**
  * Return the number of times a substring appears in a string.
- * @param needle string
- * @param haystack string
- * @returns number
  */
 export function countSubstring(needle: string, haystack: string): number {
   if (needle.length < 1 || haystack.length < 1) {
