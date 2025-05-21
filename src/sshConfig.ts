@@ -126,25 +126,26 @@ export class SSHConfig {
     const raw = this.getRaw()
     const startBlock = this.startBlockComment(label)
     const endBlock = this.endBlockComment(label)
+
     const startBlockCount = countSubstring(startBlock, raw)
     const endBlockCount = countSubstring(endBlock, raw)
-    const startBlockIndex = raw.indexOf(startBlock)
-    const endBlockIndex = raw.indexOf(endBlock)
-    const hasBlock = startBlockIndex > -1 && endBlockIndex > -1
-
-    if (!hasBlock) {
-      return
-    }
-
     if (startBlockCount !== endBlockCount) {
       throw new SSHConfigBadFormat(
         `Malformed config: Unterminated START CODER VSCODE ${label ? label + " " : ""}block: Each START block must have an END block.`,
       )
     }
+
     if (startBlockCount > 1 || endBlockCount > 1) {
       throw new SSHConfigBadFormat(
         `Malformed config: ssh config has ${startBlockCount} START CODER VSCODE ${label ? label + " " : ""}sections, please remove all but one.`,
       )
+    }
+
+    const startBlockIndex = raw.indexOf(startBlock)
+    const endBlockIndex = raw.indexOf(endBlock)
+    const hasBlock = startBlockIndex > -1 && endBlockIndex > -1
+    if (!hasBlock) {
+      return
     }
 
     if (startBlockIndex === -1) {

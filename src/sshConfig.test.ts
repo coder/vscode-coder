@@ -249,6 +249,44 @@ Host coder-vscode.dev.coder.com--*
   })
 })
 
+it("throws an error if there is a missing end block", async () => {
+  // The below config is missing an end block.
+  // This is a malformed config and should throw an error.
+  const existentSSHConfig = `Host beforeconfig
+  HostName before.config.tld
+  User before
+
+# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+
+Host afterconfig
+  HostName after.config.tld
+  User after`
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  await sshConfig.load()
+
+  // When we try to update the config, it should throw an error.
+  await expect(
+    sshConfig.update("dev.coder.com", {
+      Host: "coder-vscode.dev.coder.com--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    }),
+  ).rejects.toThrow(
+    `Malformed config: Unterminated START CODER VSCODE dev.coder.com block: Each START block must have an END block.`,
+  )
+})
+
 it("throws an error if there is a mismatched start and end block count", async () => {
   // The below config contains two start blocks and one end block.
   // This is a malformed config and should throw an error.
