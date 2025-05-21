@@ -283,7 +283,7 @@ Host afterconfig
       LogLevel: "ERROR",
     }),
   ).rejects.toThrow(
-    `Malformed config: Unterminated START CODER VSCODE dev.coder.com block: Each START block must have an END block.`,
+    `Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE dev.coder.com block. Each START block must have an END block.`,
   )
 })
 
@@ -338,7 +338,7 @@ Host afterconfig
       LogLevel: "ERROR",
     }),
   ).rejects.toThrow(
-    `Malformed config: Unterminated START CODER VSCODE dev.coder.com block: Each START block must have an END block.`,
+    `Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE dev.coder.com block. Each START block must have an END block.`,
   )
 })
 
@@ -388,7 +388,9 @@ Host afterconfig
       UserKnownHostsFile: "/dev/null",
       LogLevel: "ERROR",
     }),
-  ).rejects.toThrow(`Malformed config: Unterminated START CODER VSCODE block: Each START block must have an END block.`)
+  ).rejects.toThrow(
+    `Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE block. Each START block must have an END block.`,
+  )
 })
 
 it("throws an error if there are more than one sections with the same label", async () => {
@@ -437,7 +439,7 @@ Host afterconfig
       LogLevel: "ERROR",
     }),
   ).rejects.toThrow(
-    `Malformed config: ssh config has 2 START CODER VSCODE dev.coder.com sections, please remove all but one.`,
+    `Malformed config: ${sshFilePath} has 2 START CODER VSCODE dev.coder.com sections. Please remove all but one.`,
   )
 })
 
