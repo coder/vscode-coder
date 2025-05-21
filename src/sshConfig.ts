@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename } from "fs/promises"
+import { mkdir, readFile, rename, stat, writeFile } from "fs/promises"
 import path from "path"
 import { countSubstring } from "./util"
 
@@ -20,17 +20,19 @@ export interface SSHValues {
 
 // Interface for the file system to make it easier to test
 export interface FileSystem {
-  readFile: typeof readFile
   mkdir: typeof mkdir
-  writeFile: typeof writeFile
+  readFile: typeof readFile
   rename: typeof rename
+  stat: typeof stat
+  writeFile: typeof writeFile
 }
 
 const defaultFileSystem: FileSystem = {
-  readFile,
   mkdir,
-  writeFile,
+  readFile,
   rename,
+  stat,
+  writeFile,
 }
 
 // mergeSSHConfigValues will take a given ssh config and merge it with the overrides
@@ -222,6 +224,16 @@ export class SSHConfig {
   }
 
   private async save() {
+    // We want to preserve the original file mode.
+    const existingMode = await this.fileSystem
+      .stat(this.filePath)
+      .then((stat) => stat.mode)
+      .catch((ex) => {
+        if (ex.code && ex.code === "ENOENT") {
+          return 0o600 // default to 0600 if file does not exist
+        }
+        throw ex // Any other error is unexpected
+      })
     await this.fileSystem.mkdir(path.dirname(this.filePath), {
       mode: 0o700, // only owner has rwx permission, not group or everyone.
       recursive: true,
@@ -229,7 +241,7 @@ export class SSHConfig {
     const randSuffix = Math.random().toString(36).substring(8)
     const tempFilePath = `${this.filePath}.${randSuffix}`
     await this.fileSystem.writeFile(tempFilePath, this.getRaw(), {
-      mode: 0o600, // owner rw
+      mode: existingMode,
       encoding: "utf-8",
     })
     await this.fileSystem.rename(tempFilePath, this.filePath)
