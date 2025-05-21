@@ -242,11 +242,27 @@ export class SSHConfig {
     const fileName = path.basename(this.filePath)
     const dirName = path.dirname(this.filePath)
     const tempFilePath = `${dirName}/.${fileName}.vscode-coder-tmp.${randSuffix}`
-    await this.fileSystem.writeFile(tempFilePath, this.getRaw(), {
-      mode: existingMode,
-      encoding: "utf-8",
-    })
-    await this.fileSystem.rename(tempFilePath, this.filePath)
+    try {
+      await this.fileSystem.writeFile(tempFilePath, this.getRaw(), {
+        mode: existingMode,
+        encoding: "utf-8",
+      })
+    } catch (err) {
+      throw new Error(
+        `Failed to write temporary SSH config file at ${tempFilePath}: ${err instanceof Error ? err.message : String(err)}. ` +
+          `Please check your disk space, permissions, and that the directory exists.`,
+      )
+    }
+
+    try {
+      await this.fileSystem.rename(tempFilePath, this.filePath)
+    } catch (err) {
+      throw new Error(
+        `Failed to rename temporary SSH config file at ${tempFilePath} to ${this.filePath}: ${
+          err instanceof Error ? err.message : String(err)
+        }. Please check your disk space, permissions, and that the directory exists.`,
+      )
+    }
   }
 
   public getRaw() {

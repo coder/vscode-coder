@@ -607,3 +607,52 @@ Host coder-vscode.dev.coder.com--*
   )
   expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
+
+it("fails if we are unable to write the temporary file", async () => {
+  const existentSSHConfig = `Host beforeconfig
+  HostName before.config.tld
+  User before`
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 })
+  mockFileSystem.writeFile.mockRejectedValueOnce(new Error("EACCES"))
+
+  await sshConfig.load()
+
+  expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
+  await expect(
+    sshConfig.update("dev.coder.com", {
+      Host: "coder-vscode.dev.coder.com--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    }),
+  ).rejects.toThrow(/Failed to write temporary SSH config file.*EACCES/)
+})
+
+it("fails if we are unable to rename the temporary file", async () => {
+  const existentSSHConfig = `Host beforeconfig
+  HostName before.config.tld
+  User before`
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 })
+  mockFileSystem.writeFile.mockResolvedValueOnce("")
+  mockFileSystem.rename.mockRejectedValueOnce(new Error("EACCES"))
+
+  await sshConfig.load()
+  await expect(
+    sshConfig.update("dev.coder.com", {
+      Host: "coder-vscode.dev.coder.com--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    }),
+  ).rejects.toThrow(/Failed to rename temporary SSH config file.*EACCES/)
+})
