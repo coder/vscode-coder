@@ -138,12 +138,12 @@ export class SSHConfig {
 
     if (startBlockCount !== endBlockCount) {
       throw new SSHConfigBadFormat(
-        `Malformed config: ssh config has ${startBlockCount} ${label} START comments but ${endBlockCount} ${label} END comments. Each START must have a matching END.`,
+        `Malformed config: Unterminated START CODER VSCODE ${label ? label + " " : ""}block: Each START block must have an END block.`,
       )
     }
     if (startBlockCount > 1 || endBlockCount > 1) {
       throw new SSHConfigBadFormat(
-        `Malformed config: ssh config has ${startBlockCount} ${label} sections, please remove all but one.`,
+        `Malformed config: ssh config has ${startBlockCount} START CODER VSCODE ${label ? label + " " : ""}sections, please remove all but one.`,
       )
     }
 

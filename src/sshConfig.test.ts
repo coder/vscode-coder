@@ -300,8 +300,57 @@ Host afterconfig
       LogLevel: "ERROR",
     }),
   ).rejects.toThrow(
-    `Malformed config: ssh config has 2 dev.coder.com START comments but 1 dev.coder.com END comments. Each START must have a matching END.`,
+    `Malformed config: Unterminated START CODER VSCODE dev.coder.com block: Each START block must have an END block.`,
   )
+})
+
+it("throws an error if there is a mismatched start and end block count (without label)", async () => {
+  // As above, but without a label.
+  const existentSSHConfig = `Host beforeconfig
+  HostName before.config.tld
+  User before
+
+# --- START CODER VSCODE ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# missing END CODER VSCODE ---
+
+Host donotdelete
+  HostName dont.delete.me
+  User please
+
+# --- START CODER VSCODE ---
+Host coder-vscode.dev.coder.com--*
+  ConnectTimeout 0
+  LogLevel ERROR
+  ProxyCommand some-command-here
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+# --- END CODER VSCODE ---
+
+Host afterconfig
+  HostName after.config.tld
+  User after`
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  await sshConfig.load()
+
+  // When we try to update the config, it should throw an error.
+  await expect(
+    sshConfig.update("", {
+      Host: "coder-vscode.dev.coder.com--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    }),
+  ).rejects.toThrow(`Malformed config: Unterminated START CODER VSCODE block: Each START block must have an END block.`)
 })
 
 it("throws an error if there are more than one sections with the same label", async () => {
@@ -349,7 +398,9 @@ Host afterconfig
       UserKnownHostsFile: "/dev/null",
       LogLevel: "ERROR",
     }),
-  ).rejects.toThrow(`Malformed config: ssh config has 2 dev.coder.com sections, please remove all but one.`)
+  ).rejects.toThrow(
+    `Malformed config: ssh config has 2 START CODER VSCODE dev.coder.com sections, please remove all but one.`,
+  )
 })
 
 it("correctly handles interspersed blocks with and without label", async () => {
