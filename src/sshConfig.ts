@@ -131,13 +131,13 @@ export class SSHConfig {
     const endBlockCount = countSubstring(endBlock, raw)
     if (startBlockCount !== endBlockCount) {
       throw new SSHConfigBadFormat(
-        `Malformed config: Unterminated START CODER VSCODE ${label ? label + " " : ""}block: Each START block must have an END block.`,
+        `Malformed config: ${this.filePath} has an unterminated START CODER VSCODE ${label ? label + " " : ""}block. Each START block must have an END block.`,
       )
     }
 
     if (startBlockCount > 1 || endBlockCount > 1) {
       throw new SSHConfigBadFormat(
-        `Malformed config: ssh config has ${startBlockCount} START CODER VSCODE ${label ? label + " " : ""}sections, please remove all but one.`,
+        `Malformed config: ${this.filePath} has ${startBlockCount} START CODER VSCODE ${label ? label + " " : ""}sections. Please remove all but one.`,
       )
     }
 
