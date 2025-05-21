@@ -239,7 +239,9 @@ export class SSHConfig {
       recursive: true,
     })
     const randSuffix = Math.random().toString(36).substring(8)
-    const tempFilePath = `${this.filePath}.${randSuffix}`
+    const fileName = path.basename(this.filePath)
+    const dirName = path.dirname(this.filePath)
+    const tempFilePath = `${dirName}/.${fileName}.vscode-coder-tmp.${randSuffix}`
     await this.fileSystem.writeFile(tempFilePath, this.getRaw(), {
       mode: existingMode,
       encoding: "utf-8",

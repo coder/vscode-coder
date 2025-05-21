@@ -2,7 +2,11 @@
 import { it, afterEach, vi, expect } from "vitest"
 import { SSHConfig } from "./sshConfig"
 
-const sshFilePath = "~/.config/ssh"
+// This is not the usual path to ~/.ssh/config, but
+// setting it to a different path makes it easier to test
+// and makes mistakes abundantly clear.
+const sshFilePath = "/Path/To/UserHomeDir/.sshConfigDir/sshConfigFile"
+const sshTempFilePathExpr = `^/Path/To/UserHomeDir/.sshConfigDir/.sshConfigFile.vscode-coder-tmp.[a-z0-9]+$`
 
 const mockFileSystem = {
   mkdir: vi.fn(),
@@ -42,11 +46,14 @@ Host coder-vscode--*
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
   expect(mockFileSystem.writeFile).toBeCalledWith(
-    expect.stringContaining(sshFilePath),
+    expect.stringMatching(sshTempFilePathExpr),
     expectedOutput,
-    expect.anything(),
+    expect.objectContaining({
+      encoding: "utf-8",
+      mode: 0o600, // Default mode for new files.
+    }),
   )
-  expect(mockFileSystem.rename).toBeCalledWith(expect.stringContaining(sshFilePath + "."), sshFilePath)
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("creates a new file and adds the config", async () => {
@@ -75,11 +82,14 @@ Host coder-vscode.dev.coder.com--*
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
   expect(mockFileSystem.writeFile).toBeCalledWith(
-    expect.stringContaining(sshFilePath),
+    expect.stringMatching(sshTempFilePathExpr),
     expectedOutput,
-    expect.anything(),
+    expect.objectContaining({
+      encoding: "utf-8",
+      mode: 0o600, // Default mode for new files.
+    }),
   )
-  expect(mockFileSystem.rename).toBeCalledWith(expect.stringContaining(sshFilePath + "."), sshFilePath)
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("adds a new coder config in an existent SSH configuration", async () => {
@@ -115,11 +125,11 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringContaining(sshFilePath), expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
     mode: 0o644,
   })
-  expect(mockFileSystem.rename).toBeCalledWith(expect.stringContaining(sshFilePath + "."), sshFilePath)
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("updates an existent coder config", async () => {
@@ -181,11 +191,11 @@ Host coder-vscode.dev-updated.coder.com--*
 Host *
   SetEnv TEST=1`
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringContaining(sshFilePath), expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
     mode: 0o644,
   })
-  expect(mockFileSystem.rename).toBeCalledWith(expect.stringContaining(sshFilePath + "."), sshFilePath)
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("does not remove deployment-unaware SSH config and adds the new one", async () => {
@@ -228,11 +238,11 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringContaining(sshFilePath), expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
     mode: 0o644,
   })
-  expect(mockFileSystem.rename).toBeCalledWith(expect.stringContaining(sshFilePath + "."), sshFilePath)
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("it does not remove a user-added block that only matches the host of an old coder SSH config", async () => {
@@ -264,11 +274,11 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringContaining(sshFilePath), expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
     mode: 0o644,
   })
-  expect(mockFileSystem.rename).toBeCalledWith(expect.stringContaining(sshFilePath + "."), sshFilePath)
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("throws an error if there is a missing end block", async () => {
@@ -540,11 +550,11 @@ Host afterconfig
     LogLevel: "ERROR",
   })
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringContaining(sshFilePath), expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
     mode: 0o644,
   })
-  expect(mockFileSystem.rename).toBeCalledWith(expect.stringContaining(sshFilePath + "."), sshFilePath)
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("override values", async () => {
@@ -588,9 +598,12 @@ Host coder-vscode.dev.coder.com--*
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
   expect(mockFileSystem.writeFile).toBeCalledWith(
-    expect.stringContaining(sshFilePath),
+    expect.stringMatching(sshTempFilePathExpr),
     expectedOutput,
-    expect.anything(),
+    expect.objectContaining({
+      encoding: "utf-8",
+      mode: 0o600, // Default mode for new files.
+    }),
   )
-  expect(mockFileSystem.rename).toBeCalledWith(expect.stringContaining(sshFilePath + "."), sshFilePath)
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
