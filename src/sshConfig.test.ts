@@ -6,7 +6,7 @@ import { SSHConfig } from "./sshConfig"
 // setting it to a different path makes it easier to test
 // and makes mistakes abundantly clear.
 const sshFilePath = "/Path/To/UserHomeDir/.sshConfigDir/sshConfigFile"
-const sshTempFilePathExpr = `^/Path/To/UserHomeDir/.sshConfigDir/.sshConfigFile.vscode-coder-tmp.[a-z0-9]+$`
+const sshTempFilePathExpr = `^/Path/To/UserHomeDir/\\.sshConfigDir/\\.sshConfigFile\\.vscode-coder-tmp\\.[a-z0-9]+$`
 
 const mockFileSystem = {
   mkdir: vi.fn(),
