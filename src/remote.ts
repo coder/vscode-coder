@@ -46,7 +46,7 @@ export class Remote {
 		private readonly storage: Storage,
 		private readonly commands: Commands,
 		private readonly mode: vscode.ExtensionMode,
-	) {}
+	) { }
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
 		const action = await this.vscodeProposed.window.showInformationMessage(
@@ -660,7 +660,7 @@ export class Remote {
 		return expandPath(
 			String(
 				vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ??
-					"",
+				"",
 			).trim(),
 		);
 	}
@@ -678,6 +678,24 @@ export class Remote {
 			`SSH proxy diagnostics are being written to ${logDir}`,
 		);
 		return ` --log-dir ${escape(logDir)}`;
+	}
+
+	/**
+ * Properly escapes a Windows path for use in SSH config
+ * This preserves backslashes and handles spaces/special characters
+ */
+	public escapeWindowsPath(path: string): string {
+		// Replace backslashes with forward slashes for SSH compatibility
+		const normalizedPath = path.replace(/\\/g, '/')
+		// Escape any special characters and wrap in quotes
+		return `"${normalizedPath.replace(/"/g, '\\"')}"`
+	}
+
+	public escape = (str: string): string => {
+		if (os.platform() === "win32") {
+			return this.escapeWindowsPath(str)
+		}
+		return `"${str.replace(/"/g, '\\"')}"`
 	}
 
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles
@@ -762,6 +780,14 @@ export class Remote {
 		const headerArgs = getHeaderArgs(vscode.workspace.getConfiguration());
 		const headerArgList =
 			headerArgs.length > 0 ? ` ${headerArgs.join(" ")}` : "";
+		// Escape a command line to be executed by the Coder binary, so ssh doesn't substitute variables.
+		const escapeSubcommand: (str: string) => string =
+			os.platform() === "win32"
+				? // On Windows variables are %VAR%, and we need to use double quotes.
+				(str) => escape(str).replace(/%/g, "%%")
+				: // On *nix we can use single quotes to escape $VARS.
+				// Note single quotes cannot be escaped inside single quotes.
+				(str) => `'${str.replace(/'/g, "'\\''")}'`
 
 		const hostPrefix = label
 			? `${AuthorityPrefix}.${label}--`
@@ -769,13 +795,13 @@ export class Remote {
 
 		const proxyCommand = featureSet.wildcardSSH
 			? `${escapeCommandArg(binaryPath)}${headerArgList} --global-config ${escapeCommandArg(
-					path.dirname(this.storage.getSessionTokenPath(label)),
-				)} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
+				path.dirname(this.storage.getSessionTokenPath(label)),
+			)} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
 			: `${escapeCommandArg(binaryPath)}${headerArgList} vscodessh --network-info-dir ${escapeCommandArg(
-					this.storage.getNetworkInfoPath(),
-				)}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.storage.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
-					this.storage.getUrlPath(label),
-				)} %h`;
+				this.storage.getNetworkInfoPath(),
+			)}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.storage.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
+				this.storage.getUrlPath(label),
+			)} %h`;
 
 		const sshValues: SSHValues = {
 			Host: hostPrefix + `*`,
