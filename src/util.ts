@@ -120,3 +120,19 @@ export function expandPath(input: string): string {
   const userHome = os.homedir()
   return input.replace(/\${userHome}/g, userHome)
 }
+
+/**
+ * Return the number of times a substring appears in a string.
+ */
+export function countSubstring(needle: string, haystack: string): number {
+  if (needle.length < 1 || haystack.length < 1) {
+    return 0
+  }
+  let count = 0
+  let pos = haystack.indexOf(needle)
+  while (pos !== -1) {
+    count++
+    pos = haystack.indexOf(needle, pos + needle.length)
+  }
+  return count
+}
