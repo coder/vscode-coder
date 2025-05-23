@@ -541,6 +541,24 @@ export class Remote {
     return ` --log-dir ${escape(logDir)}`
   }
 
+  /**
+   * Properly escapes a Windows path for use in SSH config
+   * This preserves backslashes and handles spaces/special characters
+   */
+  public escapeWindowsPath(path: string): string {
+    // Replace backslashes with forward slashes for SSH compatibility
+    const normalizedPath = path.replace(/\\/g, '/')
+    // Escape any special characters and wrap in quotes
+    return `"${normalizedPath.replace(/"/g, '\\"')}"`
+  }
+
+  public escape = (str: string): string => {
+    if (os.platform() === "win32") {
+      return this.escapeWindowsPath(str)
+    }
+    return `"${str.replace(/"/g, '\\"')}"`
+  }
+
   // updateSSHConfig updates the SSH configuration with a wildcard that handles
   // all Coder entries.
   private async updateSSHConfig(
@@ -611,7 +629,6 @@ export class Remote {
     const sshConfig = new SSHConfig(sshConfigFile)
     await sshConfig.load()
 
-    const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
     // Escape a command line to be executed by the Coder binary, so ssh doesn't substitute variables.
     const escapeSubcommand: (str: string) => string =
       os.platform() === "win32"
