@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "fs/promises"
+import { mkdir, readFile, rename, stat, writeFile } from "fs/promises"
 import path from "path"
 import { countSubstring } from "./util"
 
@@ -20,14 +20,18 @@ export interface SSHValues {
 
 // Interface for the file system to make it easier to test
 export interface FileSystem {
-  readFile: typeof readFile
   mkdir: typeof mkdir
+  readFile: typeof readFile
+  rename: typeof rename
+  stat: typeof stat
   writeFile: typeof writeFile
 }
 
 const defaultFileSystem: FileSystem = {
-  readFile,
   mkdir,
+  readFile,
+  rename,
+  stat,
   writeFile,
 }
 
@@ -220,14 +224,45 @@ export class SSHConfig {
   }
 
   private async save() {
+    // We want to preserve the original file mode.
+    const existingMode = await this.fileSystem
+      .stat(this.filePath)
+      .then((stat) => stat.mode)
+      .catch((ex) => {
+        if (ex.code && ex.code === "ENOENT") {
+          return 0o600 // default to 0600 if file does not exist
+        }
+        throw ex // Any other error is unexpected
+      })
     await this.fileSystem.mkdir(path.dirname(this.filePath), {
       mode: 0o700, // only owner has rwx permission, not group or everyone.
       recursive: true,
     })
-    return this.fileSystem.writeFile(this.filePath, this.getRaw(), {
-      mode: 0o600, // owner rw
-      encoding: "utf-8",
-    })
+    const randSuffix = Math.random().toString(36).substring(8)
+    const fileName = path.basename(this.filePath)
+    const dirName = path.dirname(this.filePath)
+    const tempFilePath = `${dirName}/.${fileName}.vscode-coder-tmp.${randSuffix}`
+    try {
+      await this.fileSystem.writeFile(tempFilePath, this.getRaw(), {
+        mode: existingMode,
+        encoding: "utf-8",
+      })
+    } catch (err) {
+      throw new Error(
+        `Failed to write temporary SSH config file at ${tempFilePath}: ${err instanceof Error ? err.message : String(err)}. ` +
+          `Please check your disk space, permissions, and that the directory exists.`,
+      )
+    }
+
+    try {
+      await this.fileSystem.rename(tempFilePath, this.filePath)
+    } catch (err) {
+      throw new Error(
+        `Failed to rename temporary SSH config file at ${tempFilePath} to ${this.filePath}: ${
+          err instanceof Error ? err.message : String(err)
+        }. Please check your disk space, permissions, and that the directory exists.`,
+      )
+    }
   }
 
   public getRaw() {

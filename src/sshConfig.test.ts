@@ -2,11 +2,17 @@
 import { it, afterEach, vi, expect } from "vitest"
 import { SSHConfig } from "./sshConfig"
 
-const sshFilePath = "~/.config/ssh"
+// This is not the usual path to ~/.ssh/config, but
+// setting it to a different path makes it easier to test
+// and makes mistakes abundantly clear.
+const sshFilePath = "/Path/To/UserHomeDir/.sshConfigDir/sshConfigFile"
+const sshTempFilePathExpr = `^/Path/To/UserHomeDir/\\.sshConfigDir/\\.sshConfigFile\\.vscode-coder-tmp\\.[a-z0-9]+$`
 
 const mockFileSystem = {
-  readFile: vi.fn(),
   mkdir: vi.fn(),
+  readFile: vi.fn(),
+  rename: vi.fn(),
+  stat: vi.fn(),
   writeFile: vi.fn(),
 }
 
@@ -16,6 +22,7 @@ afterEach(() => {
 
 it("creates a new file and adds config with empty label", async () => {
   mockFileSystem.readFile.mockRejectedValueOnce("No file found")
+  mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" })
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
@@ -38,11 +45,20 @@ Host coder-vscode--*
 # --- END CODER VSCODE ---`
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
-  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, expect.anything())
+  expect(mockFileSystem.writeFile).toBeCalledWith(
+    expect.stringMatching(sshTempFilePathExpr),
+    expectedOutput,
+    expect.objectContaining({
+      encoding: "utf-8",
+      mode: 0o600, // Default mode for new files.
+    }),
+  )
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("creates a new file and adds the config", async () => {
   mockFileSystem.readFile.mockRejectedValueOnce("No file found")
+  mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" })
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
@@ -65,7 +81,15 @@ Host coder-vscode.dev.coder.com--*
 # --- END CODER VSCODE dev.coder.com ---`
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
-  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, expect.anything())
+  expect(mockFileSystem.writeFile).toBeCalledWith(
+    expect.stringMatching(sshTempFilePathExpr),
+    expectedOutput,
+    expect.objectContaining({
+      encoding: "utf-8",
+      mode: 0o600, // Default mode for new files.
+    }),
+  )
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("adds a new coder config in an existent SSH configuration", async () => {
@@ -77,6 +101,7 @@ it("adds a new coder config in an existent SSH configuration", async () => {
   StrictHostKeyChecking=no
   UserKnownHostsFile=/dev/null`
   mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 })
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
@@ -100,10 +125,11 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
-    mode: 384,
+    mode: 0o644,
   })
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("updates an existent coder config", async () => {
@@ -138,6 +164,7 @@ Host coder-vscode.dev.coder.com--*
 Host *
   SetEnv TEST=1`
   mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 })
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
@@ -164,10 +191,11 @@ Host coder-vscode.dev-updated.coder.com--*
 Host *
   SetEnv TEST=1`
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
-    mode: 384,
+    mode: 0o644,
   })
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("does not remove deployment-unaware SSH config and adds the new one", async () => {
@@ -186,6 +214,7 @@ Host coder-vscode--*
   UserKnownHostsFile=/dev/null
 # --- END CODER VSCODE ---`
   mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 })
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
@@ -209,16 +238,18 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
-    mode: 384,
+    mode: 0o644,
   })
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("it does not remove a user-added block that only matches the host of an old coder SSH config", async () => {
   const existentSSHConfig = `Host coder-vscode--*
   ForwardAgent=yes`
   mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 })
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
@@ -243,10 +274,11 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
-    mode: 384,
+    mode: 0o644,
   })
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("throws an error if there is a missing end block", async () => {
@@ -476,6 +508,7 @@ Host afterconfig
 
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 })
   await sshConfig.load()
 
   const expectedOutput = `Host beforeconfig
@@ -517,14 +550,17 @@ Host afterconfig
     LogLevel: "ERROR",
   })
 
-  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, {
+  expect(mockFileSystem.writeFile).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), expectedOutput, {
     encoding: "utf-8",
-    mode: 384,
+    mode: 0o644,
   })
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
 })
 
 it("override values", async () => {
   mockFileSystem.readFile.mockRejectedValueOnce("No file found")
+  mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" })
+
   const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
   await sshConfig.load()
   await sshConfig.update(
@@ -561,5 +597,62 @@ Host coder-vscode.dev.coder.com--*
 # --- END CODER VSCODE dev.coder.com ---`
 
   expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
-  expect(mockFileSystem.writeFile).toBeCalledWith(sshFilePath, expectedOutput, expect.anything())
+  expect(mockFileSystem.writeFile).toBeCalledWith(
+    expect.stringMatching(sshTempFilePathExpr),
+    expectedOutput,
+    expect.objectContaining({
+      encoding: "utf-8",
+      mode: 0o600, // Default mode for new files.
+    }),
+  )
+  expect(mockFileSystem.rename).toBeCalledWith(expect.stringMatching(sshTempFilePathExpr), sshFilePath)
+})
+
+it("fails if we are unable to write the temporary file", async () => {
+  const existentSSHConfig = `Host beforeconfig
+  HostName before.config.tld
+  User before`
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 })
+  mockFileSystem.writeFile.mockRejectedValueOnce(new Error("EACCES"))
+
+  await sshConfig.load()
+
+  expect(mockFileSystem.readFile).toBeCalledWith(sshFilePath, expect.anything())
+  await expect(
+    sshConfig.update("dev.coder.com", {
+      Host: "coder-vscode.dev.coder.com--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    }),
+  ).rejects.toThrow(/Failed to write temporary SSH config file.*EACCES/)
+})
+
+it("fails if we are unable to rename the temporary file", async () => {
+  const existentSSHConfig = `Host beforeconfig
+  HostName before.config.tld
+  User before`
+
+  const sshConfig = new SSHConfig(sshFilePath, mockFileSystem)
+  mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig)
+  mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 })
+  mockFileSystem.writeFile.mockResolvedValueOnce("")
+  mockFileSystem.rename.mockRejectedValueOnce(new Error("EACCES"))
+
+  await sshConfig.load()
+  await expect(
+    sshConfig.update("dev.coder.com", {
+      Host: "coder-vscode.dev.coder.com--*",
+      ProxyCommand: "some-command-here",
+      ConnectTimeout: "0",
+      StrictHostKeyChecking: "no",
+      UserKnownHostsFile: "/dev/null",
+      LogLevel: "ERROR",
+    }),
+  ).rejects.toThrow(/Failed to rename temporary SSH config file.*EACCES/)
 })
