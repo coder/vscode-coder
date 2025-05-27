@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- Missing or otherwise malformed `START CODER VSCODE` / `END CODER VSCODE`
+  blocks in `${HOME}/.ssh/config` will now result in an error when attempting to
+  update the file. These will need to be manually fixed before proceeding.
+- Multiple open instances of the extension could potentially clobber writes to
+  `~/.ssh/config`. Updates to this file are now atomic.
+
 ## [v1.9.0](https://github.com/coder/vscode-coder/releases/tag/v1.9.0) 2025-05-15
 
 ### Fixed
