@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.9.1](https://github.com/coder/vscode-coder/releases/tag/v1.9.1) 2025-05-27
+
 ### Fixed
 
 - Missing or otherwise malformed `START CODER VSCODE` / `END CODER VSCODE`
