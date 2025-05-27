@@ -11,6 +11,7 @@
   update the file. These will need to be manually fixed before proceeding.
 - Multiple open instances of the extension could potentially clobber writes to
   `~/.ssh/config`. Updates to this file are now atomic.
+- Add support for `anysphere.remote-ssh` Remote SSH extension.
 
 ## [v1.9.0](https://github.com/coder/vscode-coder/releases/tag/v1.9.0) 2025-05-15
 
