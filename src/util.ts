@@ -93,3 +93,7 @@ export function expandPath(input: string): string {
   const userHome = os.homedir()
   return input.replace(/\${userHome}/g, userHome)
 }
+
+export function escapeCommandArg(arg: string): string {
+  return `"${arg.replace(/"/g, '\\"')}"`
+}

@@ -14,12 +14,12 @@ import { extractAgents } from "./api-helper"
 import * as cli from "./cliManager"
 import { Commands } from "./commands"
 import { featureSetForVersion, FeatureSet } from "./featureSet"
-import { getHeaderCommand } from "./headers"
+import { getHeaderArgs } from "./headers"
 import { Inbox } from "./inbox"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
-import { AuthorityPrefix, expandPath, parseRemoteAuthority } from "./util"
+import { AuthorityPrefix, escapeCommandArg, expandPath, parseRemoteAuthority } from "./util"
 import { WorkspaceMonitor } from "./workspaceMonitor"
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -611,32 +611,18 @@ export class Remote {
     const sshConfig = new SSHConfig(sshConfigFile)
     await sshConfig.load()
 
-    const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
-    // Escape a command line to be executed by the Coder binary, so ssh doesn't substitute variables.
-    const escapeSubcommand: (str: string) => string =
-      os.platform() === "win32"
-        ? // On Windows variables are %VAR%, and we need to use double quotes.
-          (str) => escape(str).replace(/%/g, "%%")
-        : // On *nix we can use single quotes to escape $VARS.
-          // Note single quotes cannot be escaped inside single quotes.
-          (str) => `'${str.replace(/'/g, "'\\''")}'`
-
-    // Add headers from the header command.
-    let headerArg = ""
-    const headerCommand = getHeaderCommand(vscode.workspace.getConfiguration())
-    if (typeof headerCommand === "string" && headerCommand.trim().length > 0) {
-      headerArg = ` --header-command ${escapeSubcommand(headerCommand)}`
-    }
+    const headerArgs = getHeaderArgs(vscode.workspace.getConfiguration())
+    const headerArgList = headerArgs.length > 0 ? ` ${headerArgs.join(" ")}` : ""
 
     const hostPrefix = label ? `${AuthorityPrefix}.${label}--` : `${AuthorityPrefix}--`
 
     const proxyCommand = featureSet.wildcardSSH
-      ? `${escape(binaryPath)}${headerArg} --global-config ${escape(
+      ? `${escapeCommandArg(binaryPath)}${headerArgList} --global-config ${escapeCommandArg(
           path.dirname(this.storage.getSessionTokenPath(label)),
-        )} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escape(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
-      : `${escape(binaryPath)}${headerArg} vscodessh --network-info-dir ${escape(
+        )} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
+      : `${escapeCommandArg(binaryPath)}${headerArgList} vscodessh --network-info-dir ${escapeCommandArg(
           this.storage.getNetworkInfoPath(),
-        )}${await this.formatLogArg(logDir)} --session-token-file ${escape(this.storage.getSessionTokenPath(label))} --url-file ${escape(
+        )}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.storage.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
           this.storage.getUrlPath(label),
         )} %h`
 
