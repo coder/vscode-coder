@@ -19,7 +19,7 @@ import { Inbox } from "./inbox"
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig"
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport"
 import { Storage } from "./storage"
-import { AuthorityPrefix, escapeCommandArg, expandPath, parseRemoteAuthority } from "./util"
+import { AuthorityPrefix, escapeCommandArg, expandPath, findPort, parseRemoteAuthority } from "./util"
 import { WorkspaceMonitor } from "./workspaceMonitor"
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -684,8 +684,18 @@ export class Remote {
       derp_latency: { [key: string]: number }
       upload_bytes_sec: number
       download_bytes_sec: number
+      using_coder_connect: boolean
     }) => {
       let statusText = "$(globe) "
+
+      // Coder Connect doesn't populate any other stats
+      if (network.using_coder_connect) {
+        networkStatus.text = statusText + "Coder Connect "
+        networkStatus.tooltip = "You're connected using Coder Connect."
+        networkStatus.show()
+        return
+      }
+
       if (network.p2p) {
         statusText += "Direct "
         networkStatus.tooltip = "You're connected peer-to-peer ✨."
@@ -769,14 +779,7 @@ export class Remote {
       // this to find the SSH process that is powering this connection. That SSH
       // process will be logging network information periodically to a file.
       const text = await fs.readFile(logPath, "utf8")
-      const matches = text.match(/-> socksPort (\d+) ->/)
-      if (!matches) {
-        return
-      }
-      if (matches.length < 2) {
-        return
-      }
-      const port = Number.parseInt(matches[1])
+      const port = await findPort(text)
       if (!port) {
         return
       }

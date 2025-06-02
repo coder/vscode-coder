@@ -13,6 +13,33 @@ export interface AuthorityParts {
 // they should be handled by this extension.
 export const AuthorityPrefix = "coder-vscode"
 
+// `ms-vscode-remote.remote-ssh`: `-> socksPort <port> ->`
+// `codeium.windsurf-remote-openssh`, `jeanp413.open-remote-ssh`: `=> <port>(socks) =>`
+// Windows `ms-vscode-remote.remote-ssh`: `between local port <port>`
+export const RemoteSSHLogPortRegex = /(?:-> socksPort (\d+) ->|=> (\d+)\(socks\) =>|between local port (\d+))/
+
+/**
+ * Given the contents of a Remote - SSH log file, find a port number used by the
+ * SSH process. This is typically the socks port, but the local port works too.
+ *
+ * Returns null if no port is found.
+ */
+export async function findPort(text: string): Promise<number | null> {
+  const matches = text.match(RemoteSSHLogPortRegex)
+  if (!matches) {
+    return null
+  }
+  if (matches.length < 2) {
+    return null
+  }
+  const portStr = matches[1] || matches[2] || matches[3]
+  if (!portStr) {
+    return null
+  }
+
+  return Number.parseInt(portStr)
+}
+
 /**
  * Given an authority, parse into the expected parts.
  *
@@ -92,6 +119,22 @@ export function toSafeHost(rawUrl: string): string {
 export function expandPath(input: string): string {
   const userHome = os.homedir()
   return input.replace(/\${userHome}/g, userHome)
+}
+
+/**
+ * Return the number of times a substring appears in a string.
+ */
+export function countSubstring(needle: string, haystack: string): number {
+  if (needle.length < 1 || haystack.length < 1) {
+    return 0
+  }
+  let count = 0
+  let pos = haystack.indexOf(needle)
+  while (pos !== -1) {
+    count++
+    pos = haystack.indexOf(needle, pos + needle.length)
+  }
+  return count
 }
 
 export function escapeCommandArg(arg: string): string {

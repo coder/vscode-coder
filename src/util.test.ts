@@ -1,5 +1,5 @@
-import { it, expect } from "vitest"
-import { parseRemoteAuthority, toSafeHost } from "./util"
+import { describe, it, expect } from "vitest"
+import { countSubstring, parseRemoteAuthority, toSafeHost } from "./util"
 
 it("ignore unrelated authorities", async () => {
   const tests = [
@@ -72,4 +72,36 @@ it("escapes url host", async () => {
   expect(toSafeHost("https://dev.😉-coder.com")).toBe("dev.xn---coder-vx74e.com")
   expect(() => toSafeHost("invalid url")).toThrow("Invalid URL")
   expect(toSafeHost("http://ignore-port.com:8080")).toBe("ignore-port.com")
+})
+
+describe("countSubstring", () => {
+  it("handles empty strings", () => {
+    expect(countSubstring("", "")).toBe(0)
+    expect(countSubstring("foo", "")).toBe(0)
+    expect(countSubstring("", "foo")).toBe(0)
+  })
+
+  it("handles single character", () => {
+    expect(countSubstring("a", "a")).toBe(1)
+    expect(countSubstring("a", "b")).toBe(0)
+    expect(countSubstring("a", "aa")).toBe(2)
+    expect(countSubstring("a", "aaa")).toBe(3)
+    expect(countSubstring("a", "baaa")).toBe(3)
+  })
+
+  it("handles multiple characters", () => {
+    expect(countSubstring("foo", "foo")).toBe(1)
+    expect(countSubstring("foo", "bar")).toBe(0)
+    expect(countSubstring("foo", "foobar")).toBe(1)
+    expect(countSubstring("foo", "foobarbaz")).toBe(1)
+    expect(countSubstring("foo", "foobarbazfoo")).toBe(2)
+    expect(countSubstring("foo", "foobarbazfoof")).toBe(2)
+  })
+
+  it("does not handle overlapping substrings", () => {
+    expect(countSubstring("aa", "aaa")).toBe(1)
+    expect(countSubstring("aa", "aaaa")).toBe(2)
+    expect(countSubstring("aa", "aaaaa")).toBe(2)
+    expect(countSubstring("aa", "aaaaaa")).toBe(3)
+  })
 })

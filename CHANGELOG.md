@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+## [v1.9.1](https://github.com/coder/vscode-coder/releases/tag/v1.9.1) 2025-05-27
+
+### Fixed
+
+- Missing or otherwise malformed `START CODER VSCODE` / `END CODER VSCODE`
+  blocks in `${HOME}/.ssh/config` will now result in an error when attempting to
+  update the file. These will need to be manually fixed before proceeding.
+- Multiple open instances of the extension could potentially clobber writes to
+  `~/.ssh/config`. Updates to this file are now atomic.
+- Add support for `anysphere.remote-ssh` Remote SSH extension.
+
+## [v1.9.0](https://github.com/coder/vscode-coder/releases/tag/v1.9.0) 2025-05-15
+
+### Fixed
+
+- The connection indicator will now show for VS Code on Windows, Windsurf, and
+  when using the `jeanp413.open-remote-ssh` extension.
+
+### Changed
+
+- The connection indicator now shows if connecting through Coder Desktop.
+
+## [v1.8.0](https://github.com/coder/vscode-coder/releases/tag/v1.8.0) (2025-04-22)
+
+### Added
+
+- Coder extension sidebar now displays available app statuses, and let's
+  the user click them to drop into a session with a running AI Agent.
+
 ## [v1.7.1](https://github.com/coder/vscode-coder/releases/tag/v1.7.1) (2025-04-14)
 
 ### Fixed

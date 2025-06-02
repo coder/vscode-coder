@@ -1,6 +1,7 @@
 import { Api } from "coder/site/src/api/api"
 import { getErrorMessage } from "coder/site/src/api/errors"
 import { User, Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import path from "node:path"
 import * as vscode from "vscode"
 import { makeCoderSdk, needToken } from "./api"
 import { extractAgents } from "./api-helper"
@@ -405,6 +406,63 @@ export class Commands {
       // Default to the regular open instead.
       return this.open()
     }
+  }
+
+  public async openAppStatus(app: {
+    name?: string
+    url?: string
+    agent_name?: string
+    command?: string
+    workspace_name: string
+  }): Promise<void> {
+    // Launch and run command in terminal if command is provided
+    if (app.command) {
+      return vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Connecting to AI Agent...`,
+          cancellable: false,
+        },
+        async () => {
+          const terminal = vscode.window.createTerminal(app.name)
+
+          // If workspace_name is provided, run coder ssh before the command
+
+          const url = this.storage.getUrl()
+          if (!url) {
+            throw new Error("No coder url found for sidebar")
+          }
+          const binary = await this.storage.fetchBinary(this.restClient, toSafeHost(url))
+          const escape = (str: string): string => `"${str.replace(/"/g, '\\"')}"`
+          terminal.sendText(
+            `${escape(binary)} ssh --global-config ${escape(
+              path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
+            )} ${app.workspace_name}`,
+          )
+          await new Promise((resolve) => setTimeout(resolve, 5000))
+          terminal.sendText(app.command ?? "")
+          terminal.show(false)
+        },
+      )
+    }
+    // Check if app has a URL to open
+    if (app.url) {
+      return vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Opening ${app.name || "application"} in browser...`,
+          cancellable: false,
+        },
+        async () => {
+          await vscode.env.openExternal(vscode.Uri.parse(app.url!))
+        },
+      )
+    }
+
+    // If no URL or command, show information about the app status
+    vscode.window.showInformationMessage(`${app.name}`, {
+      detail: `Agent: ${app.agent_name || "Unknown"}`,
+    })
   }
 
   /**

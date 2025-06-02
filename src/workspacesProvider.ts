@@ -1,5 +1,5 @@
 import { Api } from "coder/site/src/api/api"
-import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated"
+import { Workspace, WorkspaceAgent, WorkspaceApp } from "coder/site/src/api/typesGenerated"
 import { EventSource } from "eventsource"
 import * as path from "path"
 import * as vscode from "vscode"
@@ -146,9 +146,36 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
       }
     })
 
-    return resp.workspaces.map((workspace) => {
-      return new WorkspaceTreeItem(workspace, this.getWorkspacesQuery === WorkspaceQuery.All, showMetadata)
-    })
+    // Create tree items for each workspace
+    const workspaceTreeItems = await Promise.all(
+      resp.workspaces.map(async (workspace) => {
+        const workspaceTreeItem = new WorkspaceTreeItem(
+          workspace,
+          this.getWorkspacesQuery === WorkspaceQuery.All,
+          showMetadata,
+        )
+
+        // Get app status from the workspace agents
+        const agents = extractAgents(workspace)
+        agents.forEach((agent) => {
+          // Check if agent has apps property with status reporting
+          if (agent.apps && Array.isArray(agent.apps)) {
+            workspaceTreeItem.appStatus = agent.apps.map((app: WorkspaceApp) => ({
+              name: app.display_name,
+              url: app.url,
+              agent_id: agent.id,
+              agent_name: agent.name,
+              command: app.command,
+              workspace_name: workspace.name,
+            }))
+          }
+        })
+
+        return workspaceTreeItem
+      }),
+    )
+
+    return workspaceTreeItems
   }
 
   /**
@@ -207,14 +234,58 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<vscode.TreeIte
         const agentTreeItems = agents.map(
           (agent) => new AgentTreeItem(agent, element.workspaceOwner, element.workspaceName, element.watchMetadata),
         )
+
         return Promise.resolve(agentTreeItems)
       } else if (element instanceof AgentTreeItem) {
         const watcher = this.agentWatchers[element.agent.id]
         if (watcher?.error) {
           return Promise.resolve([new ErrorTreeItem(watcher.error)])
         }
+
+        const items: vscode.TreeItem[] = []
+
+        // Add app status section with collapsible header
+        if (element.agent.apps && element.agent.apps.length > 0) {
+          const appStatuses = []
+          for (const app of element.agent.apps) {
+            if (app.statuses && app.statuses.length > 0) {
+              for (const status of app.statuses) {
+                // Show all statuses, not just ones needing attention.
+                // We need to do this for now because the reporting isn't super accurate
+                // yet.
+                appStatuses.push(
+                  new AppStatusTreeItem({
+                    name: status.message,
+                    command: app.command,
+                    workspace_name: element.workspaceName,
+                  }),
+                )
+              }
+            }
+          }
+
+          // Show the section if it has any items
+          if (appStatuses.length > 0) {
+            const appStatusSection = new SectionTreeItem("App Statuses", appStatuses.reverse())
+            items.push(appStatusSection)
+          }
+        }
+
         const savedMetadata = watcher?.metadata || []
-        return Promise.resolve(savedMetadata.map((metadata) => new AgentMetadataTreeItem(metadata)))
+
+        // Add agent metadata section with collapsible header
+        if (savedMetadata.length > 0) {
+          const metadataSection = new SectionTreeItem(
+            "Agent Metadata",
+            savedMetadata.map((metadata) => new AgentMetadataTreeItem(metadata)),
+          )
+          items.push(metadataSection)
+        }
+
+        return Promise.resolve(items)
+      } else if (element instanceof SectionTreeItem) {
+        // Return the children of the section
+        return Promise.resolve(element.children)
       }
 
       return Promise.resolve([])
@@ -265,6 +336,19 @@ function monitorMetadata(agentId: WorkspaceAgent["id"], restClient: Api): AgentW
   return watcher
 }
 
+/**
+ * A tree item that represents a collapsible section with child items
+ */
+class SectionTreeItem extends vscode.TreeItem {
+  constructor(
+    label: string,
+    public readonly children: vscode.TreeItem[],
+  ) {
+    super(label, vscode.TreeItemCollapsibleState.Collapsed)
+    this.contextValue = "coderSectionHeader"
+  }
+}
+
 class ErrorTreeItem extends vscode.TreeItem {
   constructor(error: unknown) {
     super("Failed to query metadata: " + errToStr(error, "no error provided"), vscode.TreeItemCollapsibleState.None)
@@ -282,6 +366,28 @@ class AgentMetadataTreeItem extends vscode.TreeItem {
 
     this.tooltip = "Collected at " + collected_at
     this.contextValue = "coderAgentMetadata"
+  }
+}
+
+class AppStatusTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly app: {
+      name: string
+      url?: string
+      command?: string
+      workspace_name?: string
+    },
+  ) {
+    super("", vscode.TreeItemCollapsibleState.None)
+    this.description = app.name
+    this.contextValue = "coderAppStatus"
+
+    // Add command to handle clicking on the app
+    this.command = {
+      command: "coder.openAppStatus",
+      title: "Open App Status",
+      arguments: [app],
+    }
   }
 }
 
@@ -335,6 +441,15 @@ class AgentTreeItem extends OpenableTreeItem {
 }
 
 export class WorkspaceTreeItem extends OpenableTreeItem {
+  public appStatus: {
+    name: string
+    url?: string
+    agent_id?: string
+    agent_name?: string
+    command?: string
+    workspace_name?: string
+  }[] = []
+
   constructor(
     public readonly workspace: Workspace,
     public readonly showOwner: boolean,

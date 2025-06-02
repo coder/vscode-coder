@@ -24,6 +24,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const remoteSSHExtension =
     vscode.extensions.getExtension("jeanp413.open-remote-ssh") ||
     vscode.extensions.getExtension("codeium.windsurf-remote-openssh") ||
+    vscode.extensions.getExtension("anysphere.remote-ssh") ||
     vscode.extensions.getExtension("ms-vscode-remote.remote-ssh")
   if (!remoteSSHExtension) {
     vscode.window.showErrorMessage("Remote SSH extension not found, cannot activate Coder extension")
@@ -181,6 +182,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   vscode.commands.registerCommand("coder.open", commands.open.bind(commands))
   vscode.commands.registerCommand("coder.openDevContainer", commands.openDevContainer.bind(commands))
   vscode.commands.registerCommand("coder.openFromSidebar", commands.openFromSidebar.bind(commands))
+  vscode.commands.registerCommand("coder.openAppStatus", commands.openAppStatus.bind(commands))
   vscode.commands.registerCommand("coder.workspace.update", commands.updateWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.createWorkspace", commands.createWorkspace.bind(commands))
   vscode.commands.registerCommand("coder.navigateToWorkspace", commands.navigateToWorkspace.bind(commands))
