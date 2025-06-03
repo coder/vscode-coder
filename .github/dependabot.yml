@@ -15,3 +15,6 @@ updates:
       interval: "weekly"
     ignore:
       - dependency-name: "@types/vscode"
+      # These versions must match the versions specified in coder/coder exactly.
+      - dependency-name: "@types/ua-parser-js"
+      - dependency-name: "ua-parser-js"
