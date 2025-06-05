@@ -1,7 +1,8 @@
 import * as cp from "child_process"
+import * as os from "os"
 import * as util from "util"
-
-import { WorkspaceConfiguration } from "vscode"
+import type { WorkspaceConfiguration } from "vscode"
+import { escapeCommandArg } from "./util"
 
 export interface Logger {
   writeToCoderOutputChannel(message: string): void
@@ -23,6 +24,23 @@ export function getHeaderCommand(config: WorkspaceConfiguration): string | undef
     return undefined
   }
   return cmd
+}
+
+export function getHeaderArgs(config: WorkspaceConfiguration): string[] {
+  // Escape a command line to be executed by the Coder binary, so ssh doesn't substitute variables.
+  const escapeSubcommand: (str: string) => string =
+    os.platform() === "win32"
+      ? // On Windows variables are %VAR%, and we need to use double quotes.
+        (str) => escapeCommandArg(str).replace(/%/g, "%%")
+      : // On *nix we can use single quotes to escape $VARS.
+        // Note single quotes cannot be escaped inside single quotes.
+        (str) => `'${str.replace(/'/g, "'\\''")}'`
+
+  const command = getHeaderCommand(config)
+  if (!command) {
+    return []
+  }
+  return ["--header-command", escapeSubcommand(command)]
 }
 
 // TODO: getHeaders might make more sense to directly implement on Storage

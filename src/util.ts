@@ -136,3 +136,7 @@ export function countSubstring(needle: string, haystack: string): number {
   }
   return count
 }
+
+export function escapeCommandArg(arg: string): string {
+  return `"${arg.replace(/"/g, '\\"')}"`
+}

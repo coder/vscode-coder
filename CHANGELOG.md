@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Use `--header-command` properly when starting a workspace.
+
 ## [v1.9.1](https://github.com/coder/vscode-coder/releases/tag/v1.9.1) 2025-05-27
 
 ### Fixed

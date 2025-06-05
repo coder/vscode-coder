@@ -9,6 +9,7 @@ import * as vscode from "vscode"
 import * as ws from "ws"
 import { errToStr } from "./api-helper"
 import { CertificateError } from "./error"
+import { getHeaderArgs } from "./headers"
 import { getProxyForUrl } from "./proxy"
 import { Storage } from "./storage"
 import { expandPath } from "./util"
@@ -168,6 +169,7 @@ export async function startWorkspaceIfStoppedOrFailed(
     const startArgs = [
       "--global-config",
       globalConfigDir,
+      ...getHeaderArgs(vscode.workspace.getConfiguration()),
       "start",
       "--yes",
       workspace.owner_name + "/" + workspace.name,
