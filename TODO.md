@@ -1,131 +1,131 @@
-# VSCode Coder Extension - Testing Status & Roadmap
+# VSCode Coder Extension - Testing Status & Coverage Roadmap
 
 ## Current Status ✅
 
-**Test Coverage Achieved:** 13/17 source files have comprehensive test coverage
-**Total Tests:** 257 tests passing across 13 test files
-**Test Framework:** Vitest with comprehensive mocking infrastructure
-
-### ✅ Completed Test Files (13 files)
-
-| File | Tests | Coverage | Status |
-|------|-------|----------|---------|
-| `src/api.test.ts` | 46 | 95%+ | ✅ Comprehensive |
-| `src/api-helper.test.ts` | 32 | 100% | ✅ Complete |
-| `src/commands.test.ts` | 12 | 85%+ | ✅ Core functionality |
-| `src/extension.test.ts` | 26 | 93%+ | ✅ Entry point & lifecycle |
-| `src/storage.test.ts` | 55 | 89%+ | ✅ Data persistence |
-| `src/workspacesProvider.test.ts` | 27 | 85%+ | ✅ Tree view provider |
-| `src/cliManager.test.ts` | 6 | 75%+ | ✅ CLI operations |
-| `src/error.test.ts` | 11 | 90%+ | ✅ Error handling |
-| `src/featureSet.test.ts` | 2 | 100% | ✅ Feature detection |
-| `src/headers.test.ts` | 9 | 85%+ | ✅ Header management |
-| `src/sshConfig.test.ts` | 14 | 90%+ | ✅ SSH configuration |
-| `src/sshSupport.test.ts` | 9 | 85%+ | ✅ SSH support utilities |
-| `src/util.test.ts` | 8 | 95%+ | ✅ Utility functions |
-
-### Key Achievements ✨
-
-1. **Core API Testing Complete**: All critical API functions (`makeCoderSdk`, `createStreamingFetchAdapter`, `waitForBuild`, etc.) have comprehensive test coverage
-2. **Extension Lifecycle**: Full testing of extension activation, command registration, and URI handling
-3. **Data Persistence**: Complete testing of storage operations, token management, and CLI configuration
-4. **Tree View Provider**: Comprehensive testing with proper mocking for complex VSCode tree interactions
-5. **Test Infrastructure**: Robust mocking system for VSCode APIs, file system, network, and child processes
+**Test Infrastructure Complete:** 17/17 source files have test files  
+**Total Tests:** 345 tests passing across 17 test files  
+**Test Framework:** Vitest with comprehensive mocking infrastructure  
+**Overall Line Coverage:** 70.43% (significant gaps remain)
 
 ---
 
-## Remaining Work 🚧
+## Test Coverage Analysis 📊
 
-### 🔴 Missing Test Files (4 files remaining)
+### 🎯 **100% Coverage Achieved (4 files)**
+| File | Lines | Status |
+|------|-------|---------|
+| `api-helper.ts` | 100% | ✅ Perfect coverage |
+| `api.ts` | 100% | ✅ Perfect coverage |
+| `inbox.ts` | 100% | ✅ Perfect coverage |
+| `proxy.ts` | 100% | ✅ Perfect coverage |
 
-#### High Priority
-- **`src/remote.ts`** - Remote connection handling
-  - SSH connection setup and management
-  - Workspace lifecycle (start/stop/monitor)
-  - CLI integration and process management
-  - **Complexity:** High (complex SSH logic, process management)
+### 🟢 **High Coverage (90%+ lines, 5 files)**
+| File | Lines | Tests | Priority |
+|------|-------|-------|----------|
+| `workspaceMonitor.ts` | 98.65% | 19 | ✅ Nearly complete |
+| `sshConfig.ts` | 96.21% | 14 | ✅ Nearly complete |
+| `extension.ts` | 93.44% | 26 | 🔸 Minor gaps |
+| `featureSet.ts` | 90.9% | 2 | 🔸 Minor gaps |
+| `cliManager.ts` | 90.05% | 6 | 🔸 Minor gaps |
 
-#### Low Priority
-- **`src/proxy.ts`** - Proxy configuration
-  - HTTP proxy URL resolution and NO_PROXY bypass logic
-  - **Complexity:** Low (utility functions, minimal dependencies)
+### 🟡 **Medium Coverage (70-90% lines, 4 files)**
+| File | Lines | Tests | Key Gaps |
+|------|-------|-------|----------|
+| `storage.ts` | 89.19% | 55 | Error scenarios, file operations |
+| `sshSupport.ts` | 88.78% | 9 | Edge cases, environment detection |
+| `headers.ts` | 85.08% | 9 | Complex header parsing scenarios |
+| `util.ts` | 79.19% | 8 | Helper functions, path operations |
 
-- **`src/inbox.ts`** - Message handling
-  - Message queuing and event-based processing
-  - **Complexity:** Low (standalone utility)
-
-- **`src/workspaceMonitor.ts`** - Workspace monitoring
-  - File watching and workspace state tracking
-  - **Complexity:** Low (file system operations)
-
-### 📄 Non-Code Files
-- `src/typings/vscode.proposed.resolvers.d.ts` - TypeScript definitions (no tests needed)
-
----
-
-## Next Steps 🎯
-
-### Phase 1: Complete Test Coverage (Priority)
-1. **`src/remote.ts`** - Implement comprehensive tests for remote connection handling
-   - Focus on SSH connection setup, workspace lifecycle management
-   - Mock child processes, file system operations, and CLI interactions
-   - Test error scenarios and edge cases
-
-2. **Low-priority files** - Add basic test coverage for remaining utility files
-   - `src/proxy.ts` - Test proxy URL resolution and bypass logic
-   - `src/inbox.ts` - Test message queuing and processing
-   - `src/workspaceMonitor.ts` - Test file watching and state tracking
-
-### Phase 2: Test Quality Improvements
-1. **Coverage Analysis** - Run coverage reports to identify gaps in existing tests
-2. **Integration Tests** - Add cross-module integration scenarios
-3. **Performance Tests** - Add timeout and concurrent operation testing
-4. **Flaky Test Prevention** - Ensure all tests are deterministic and reliable
-
-### Phase 3: Test Infrastructure Enhancements
-1. **Test Helpers** - Create shared mock factories and test utilities
-2. **Custom Matchers** - Add VSCode-specific assertion helpers
-3. **CI/CD Integration** - Enhance automated testing and coverage reporting
+### 🔴 **Major Coverage Gaps (< 70% lines, 4 files)**
+| File | Lines | Tests | Status | Major Issues |
+|------|-------|-------|---------|--------------|
+| **`remote.ts`** | **25.4%** | 17 | 🚨 **Critical gap** | SSH setup, workspace lifecycle, error handling |
+| **`workspacesProvider.ts`** | **65.12%** | 27 | 🔸 Significant gaps | Tree operations, refresh logic, agent handling |
+| **`error.ts`** | **64.6%** | 11 | 🔸 Significant gaps | Error transformation, logging scenarios |
+| **`commands.ts`** | **56.01%** | 12 | 🔸 Significant gaps | Command implementations, user interactions |
 
 ---
 
-## Success Metrics 📊
+## Next Steps - Coverage Improvement 🎯
 
-- [x] **13/17** source files have test coverage (76% complete)
-- [x] **257** tests passing in CI mode
-- [x] **Zero** flaky tests (all tests deterministic)
-- [x] **< 1 second** average test execution time
-- [ ] **17/17** source files have test coverage (target: 100%)
-- [ ] **>90%** code coverage across all modules
-- [ ] **Integration test suite** for cross-module interactions
+### **Phase 1: Critical Coverage Gaps (High Priority)**
+
+#### 1. **`remote.ts` - Critical Priority** 🚨
+- **Current:** 25.4% lines covered (Major problem!)
+- **Missing:** SSH connection setup, workspace lifecycle, process management
+- **Action:** Expand existing 17 tests to cover:
+  - Complete `setup()` method flow
+  - `maybeWaitForRunning()` scenarios
+  - SSH config generation and validation
+  - Process monitoring and error handling
+
+#### 2. **`commands.ts` - High Priority** 🔸
+- **Current:** 56.01% lines covered  
+- **Missing:** Command implementations, user interaction flows
+- **Action:** Expand existing 12 tests to cover all command handlers
+
+#### 3. **`workspacesProvider.ts` - High Priority** 🔸
+- **Current:** 65.12% lines covered
+- **Missing:** Tree refresh logic, agent selection, error scenarios
+- **Action:** Expand existing 27 tests for complete tree operations
+
+#### 4. **`error.ts` - Medium Priority** 🔸
+- **Current:** 64.6% lines covered
+- **Missing:** Error transformation scenarios, logging paths
+- **Action:** Expand existing 11 tests for all error types
+
+### **Phase 2: Polish Existing High Coverage Files**
+- **Target:** Get 90%+ files to 95%+ coverage
+- **Files:** `extension.ts`, `storage.ts`, `headers.ts`, `util.ts`, `sshSupport.ts`
+- **Effort:** Low (minor gap filling)
+
+### **Phase 3: Integration & Edge Case Testing**
+- **Cross-module integration scenarios**
+- **Complex error propagation testing**  
+- **Performance and timeout scenarios**
 
 ---
 
-## Testing Standards 📋
+## Success Metrics 🎯
 
-**Framework:** Vitest with TypeScript support
-**Mocking:** Comprehensive VSCode API, file system, network, and process mocking
-**Structure:** Descriptive test names with organized `describe()` blocks
-**Coverage:** Both success and failure scenarios, async/await error handling
-**Performance:** Fast execution with proper cleanup and resource management
+### **Completed ✅**
+- [x] **17/17** source files have test files
+- [x] **345** tests passing (zero flaky tests)
+- [x] **4/17** files at 100% line coverage
+- [x] **9/17** files at 85%+ line coverage
+
+### **Target Goals 🎯**
+- [ ] **70% → 90%** overall line coverage (primary goal)
+- [ ] **`remote.ts`** from 25% → 80%+ coverage (critical)
+- [ ] **15/17** files at 85%+ line coverage
+- [ ] **8/17** files at 95%+ line coverage
 
 ---
 
 ## Recent Achievements 🏆
 
-**Latest:** Fixed all workspacesProvider test failures through strategic refactoring
-- Resolved infinite recursion issues in test helper classes
-- Improved testability by extracting protected helper methods
-- Added proper test isolation and mocking strategies
-- **Result:** 27/27 tests passing (previously 21 failing)
+✅ **Test Infrastructure Complete** (Just completed)
+- Created test files for all 17 source files
+- Fixed workspacesProvider test failures through strategic refactoring  
+- Added comprehensive tests for proxy, inbox, and workspaceMonitor
+- Established robust mocking patterns for VSCode APIs
 
-**Previous:** Completed comprehensive test coverage for 5 core modules:
-- `api.ts` - Full SDK and streaming functionality testing
-- `extension.ts` - Complete extension lifecycle testing  
-- `storage.ts` - Comprehensive data persistence testing
-- `commands.ts` - VSCode command implementation testing
-- `api-helper.ts` - Complete utility function testing
+✅ **Perfect Coverage Achieved** (4 files)
+- `api-helper.ts`, `api.ts`, `inbox.ts`, `proxy.ts` at 100% coverage
+- Strong foundation with core API and utility functions fully tested
 
 ---
 
-**Priority:** Focus on `src/remote.ts` testing as the primary remaining complex module, then complete coverage for the remaining 3 low-complexity utility files.
+## Priority Action Items 📋
+
+**Immediate (Next Session):**
+1. 🚨 **Fix `remote.ts` coverage** - Expand from 25% to 80%+ (critical business logic)
+2. 🔸 **Improve `commands.ts`** - Expand from 56% to 80%+ (user-facing functionality)
+3. 🔸 **Polish `workspacesProvider.ts`** - Expand from 65% to 80%+ (UI component)
+
+**Secondary:**
+4. Fill remaining gaps in medium-coverage files
+5. Add integration test scenarios
+6. Performance and edge case testing
+
+**Target:** Achieve **90% overall line coverage** with robust, maintainable tests.
