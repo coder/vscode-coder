@@ -279,7 +279,9 @@
 		"lint": "eslint . --ext ts,md",
 		"lint:fix": "yarn lint --fix",
 		"test": "vitest ./src",
-		"test:ci": "CI=true yarn test"
+		"test:ci": "CI=true yarn test",
+		"test:coverage": "vitest run --coverage",
+		"test:coverage:ui": "vitest --coverage --ui"
 	},
 	"devDependencies": {
 		"@types/eventsource": "^3.0.0",
@@ -291,6 +293,8 @@
 		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^7.0.0",
 		"@typescript-eslint/parser": "^6.21.0",
+		"@vitest/coverage-v8": "^0.34.6",
+		"@vitest/ui": "^0.34.6",
 		"@vscode/test-electron": "^2.5.2",
 		"@vscode/vsce": "^2.21.1",
 		"bufferutil": "^4.0.9",

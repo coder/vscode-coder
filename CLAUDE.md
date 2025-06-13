@@ -7,9 +7,10 @@
 - Package: `yarn package`
 - Lint: `yarn lint`
 - Lint with auto-fix: `yarn lint:fix`
-- Run all tests: `yarn test`
-- Run specific test: `vitest ./src/filename.test.ts`
-- CI test mode: `yarn test:ci`
+- Run all tests: `yarn test:ci` (always use CI mode for reliable results, runs all test files automatically)
+- Watch mode (development only): `yarn test`
+- Run tests with coverage: `yarn test:coverage`
+- View coverage in browser: `yarn test:coverage:ui`
 
 ## Code Style Guidelines
 

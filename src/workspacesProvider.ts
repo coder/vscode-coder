@@ -47,13 +47,29 @@ export class WorkspaceProvider
 	private fetching = false;
 	private visible = false;
 
+	private _onDidChangeTreeData: vscode.EventEmitter<
+		vscode.TreeItem | undefined | null | void
+	>;
+	readonly onDidChangeTreeData: vscode.Event<
+		vscode.TreeItem | undefined | null | void
+	>;
+
 	constructor(
 		private readonly getWorkspacesQuery: WorkspaceQuery,
 		private readonly restClient: Api,
 		private readonly storage: Storage,
 		private readonly timerSeconds?: number,
 	) {
-		// No initialization.
+		this._onDidChangeTreeData = this.createEventEmitter();
+		this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+	}
+
+	/**
+	 * Create event emitter for tree data changes.
+	 * Extracted for testability.
+	 */
+	protected createEventEmitter(): vscode.EventEmitter<vscode.TreeItem | undefined | null | void> {
+		return new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
 	}
 
 	// fetchAndRefresh fetches new workspaces, re-renders the entire tree, then
@@ -123,66 +139,12 @@ export class WorkspaceProvider
 			return this.fetch();
 		}
 
-		const oldWatcherIds = Object.keys(this.agentWatchers);
-		const reusedWatcherIds: string[] = [];
-
-		// TODO: I think it might make more sense for the tree items to contain
-		// their own watchers, rather than recreate the tree items every time and
-		// have this separate map held outside the tree.
-		const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine;
-		if (showMetadata) {
-			const agents = extractAllAgents(resp.workspaces);
-			agents.forEach((agent) => {
-				// If we have an existing watcher, re-use it.
-				if (this.agentWatchers[agent.id]) {
-					reusedWatcherIds.push(agent.id);
-					return this.agentWatchers[agent.id];
-				}
-				// Otherwise create a new watcher.
-				const watcher = monitorMetadata(agent.id, restClient);
-				watcher.onChange(() => this.refresh());
-				this.agentWatchers[agent.id] = watcher;
-				return watcher;
-			});
-		}
-
-		// Dispose of watchers we ended up not reusing.
-		oldWatcherIds.forEach((id) => {
-			if (!reusedWatcherIds.includes(id)) {
-				this.agentWatchers[id].dispose();
-				delete this.agentWatchers[id];
-			}
-		});
+		// Manage agent watchers for metadata monitoring
+		this.updateAgentWatchers(resp.workspaces, restClient);
 
 		// Create tree items for each workspace
 		const workspaceTreeItems = await Promise.all(
-			resp.workspaces.map(async (workspace) => {
-				const workspaceTreeItem = new WorkspaceTreeItem(
-					workspace,
-					this.getWorkspacesQuery === WorkspaceQuery.All,
-					showMetadata,
-				);
-
-				// Get app status from the workspace agents
-				const agents = extractAgents(workspace);
-				agents.forEach((agent) => {
-					// Check if agent has apps property with status reporting
-					if (agent.apps && Array.isArray(agent.apps)) {
-						workspaceTreeItem.appStatus = agent.apps.map(
-							(app: WorkspaceApp) => ({
-								name: app.display_name,
-								url: app.url,
-								agent_id: agent.id,
-								agent_name: agent.name,
-								command: app.command,
-								workspace_name: workspace.name,
-							}),
-						);
-					}
-				});
-
-				return workspaceTreeItem;
-			}),
+			resp.workspaces.map((workspace) => this.createWorkspaceTreeItem(workspace)),
 		);
 
 		return workspaceTreeItems;
@@ -195,6 +157,14 @@ export class WorkspaceProvider
 	 */
 	setVisibility(visible: boolean) {
 		this.visible = visible;
+		this.handleVisibilityChange(visible);
+	}
+
+	/**
+	 * Handle visibility changes.
+	 * Extracted for testability.
+	 */
+	protected handleVisibilityChange(visible: boolean) {
 		if (!visible) {
 			this.cancelPendingRefresh();
 		} else if (!this.workspaces) {
@@ -223,12 +193,6 @@ export class WorkspaceProvider
 		}
 	}
 
-	private _onDidChangeTreeData: vscode.EventEmitter<
-		vscode.TreeItem | undefined | null | void
-	> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-	readonly onDidChangeTreeData: vscode.Event<
-		vscode.TreeItem | undefined | null | void
-	> = this._onDidChangeTreeData.event;
 
 	// refresh causes the tree to re-render.  It does not fetch fresh workspaces.
 	refresh(item: vscode.TreeItem | undefined | null | void): void {
@@ -242,70 +206,9 @@ export class WorkspaceProvider
 	getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
 		if (element) {
 			if (element instanceof WorkspaceTreeItem) {
-				const agents = extractAgents(element.workspace);
-				const agentTreeItems = agents.map(
-					(agent) =>
-						new AgentTreeItem(
-							agent,
-							element.workspaceOwner,
-							element.workspaceName,
-							element.watchMetadata,
-						),
-				);
-
-				return Promise.resolve(agentTreeItems);
+				return this.getWorkspaceChildren(element);
 			} else if (element instanceof AgentTreeItem) {
-				const watcher = this.agentWatchers[element.agent.id];
-				if (watcher?.error) {
-					return Promise.resolve([new ErrorTreeItem(watcher.error)]);
-				}
-
-				const items: vscode.TreeItem[] = [];
-
-				// Add app status section with collapsible header
-				if (element.agent.apps && element.agent.apps.length > 0) {
-					const appStatuses = [];
-					for (const app of element.agent.apps) {
-						if (app.statuses && app.statuses.length > 0) {
-							for (const status of app.statuses) {
-								// Show all statuses, not just ones needing attention.
-								// We need to do this for now because the reporting isn't super accurate
-								// yet.
-								appStatuses.push(
-									new AppStatusTreeItem({
-										name: status.message,
-										command: app.command,
-										workspace_name: element.workspaceName,
-									}),
-								);
-							}
-						}
-					}
-
-					// Show the section if it has any items
-					if (appStatuses.length > 0) {
-						const appStatusSection = new SectionTreeItem(
-							"App Statuses",
-							appStatuses.reverse(),
-						);
-						items.push(appStatusSection);
-					}
-				}
-
-				const savedMetadata = watcher?.metadata || [];
-
-				// Add agent metadata section with collapsible header
-				if (savedMetadata.length > 0) {
-					const metadataSection = new SectionTreeItem(
-						"Agent Metadata",
-						savedMetadata.map(
-							(metadata) => new AgentMetadataTreeItem(metadata),
-						),
-					);
-					items.push(metadataSection);
-				}
-
-				return Promise.resolve(items);
+				return this.getAgentChildren(element);
 			} else if (element instanceof SectionTreeItem) {
 				// Return the children of the section
 				return Promise.resolve(element.children);
@@ -314,6 +217,162 @@ export class WorkspaceProvider
 			return Promise.resolve([]);
 		}
 		return Promise.resolve(this.workspaces || []);
+	}
+
+	/**
+	 * Update agent watchers for metadata monitoring.
+	 * Extracted for testability.
+	 */
+	protected updateAgentWatchers(workspaces: Workspace[], restClient: Api): void {
+		const oldWatcherIds = Object.keys(this.agentWatchers);
+		const reusedWatcherIds: string[] = [];
+
+		// TODO: I think it might make more sense for the tree items to contain
+		// their own watchers, rather than recreate the tree items every time and
+		// have this separate map held outside the tree.
+		const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine;
+		if (showMetadata) {
+			const agents = extractAllAgents(workspaces);
+			agents.forEach((agent) => {
+				// If we have an existing watcher, re-use it.
+				if (this.agentWatchers[agent.id]) {
+					reusedWatcherIds.push(agent.id);
+					return this.agentWatchers[agent.id];
+				}
+				// Otherwise create a new watcher.
+				const watcher = this.createAgentWatcher(agent.id, restClient);
+				this.agentWatchers[agent.id] = watcher;
+				return watcher;
+			});
+		}
+
+		// Dispose of watchers we ended up not reusing.
+		oldWatcherIds.forEach((id) => {
+			if (!reusedWatcherIds.includes(id)) {
+				this.agentWatchers[id].dispose();
+				delete this.agentWatchers[id];
+			}
+		});
+	}
+
+	/**
+	 * Create agent watcher for metadata monitoring.
+	 * Extracted for testability.
+	 */
+	protected createAgentWatcher(agentId: string, restClient: Api): AgentWatcher {
+		const watcher = monitorMetadata(agentId, restClient);
+		watcher.onChange(() => this.refresh());
+		return watcher;
+	}
+
+	/**
+	 * Create workspace tree item with app status.
+	 * Extracted for testability.
+	 */
+	protected createWorkspaceTreeItem(workspace: Workspace): WorkspaceTreeItem {
+		const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine;
+		const workspaceTreeItem = new WorkspaceTreeItem(
+			workspace,
+			this.getWorkspacesQuery === WorkspaceQuery.All,
+			showMetadata,
+		);
+
+		// Get app status from the workspace agents
+		const agents = extractAgents(workspace);
+		agents.forEach((agent) => {
+			// Check if agent has apps property with status reporting
+			if (agent.apps && Array.isArray(agent.apps)) {
+				workspaceTreeItem.appStatus = agent.apps.map(
+					(app: WorkspaceApp) => ({
+						name: app.display_name,
+						url: app.url,
+						agent_id: agent.id,
+						agent_name: agent.name,
+						command: app.command,
+						workspace_name: workspace.name,
+					}),
+				);
+			}
+		});
+
+		return workspaceTreeItem;
+	}
+
+	/**
+	 * Get children for workspace tree item.
+	 * Extracted for testability.
+	 */
+	protected getWorkspaceChildren(element: WorkspaceTreeItem): Promise<vscode.TreeItem[]> {
+		const agents = extractAgents(element.workspace);
+		const agentTreeItems = agents.map(
+			(agent) =>
+				new AgentTreeItem(
+					agent,
+					element.workspaceOwner,
+					element.workspaceName,
+					element.watchMetadata,
+				),
+		);
+
+		return Promise.resolve(agentTreeItems);
+	}
+
+	/**
+	 * Get children for agent tree item.
+	 * Extracted for testability.
+	 */
+	protected getAgentChildren(element: AgentTreeItem): Promise<vscode.TreeItem[]> {
+		const watcher = this.agentWatchers[element.agent.id];
+		if (watcher?.error) {
+			return Promise.resolve([new ErrorTreeItem(watcher.error)]);
+		}
+
+		const items: vscode.TreeItem[] = [];
+
+		// Add app status section with collapsible header
+		if (element.agent.apps && element.agent.apps.length > 0) {
+			const appStatuses = [];
+			for (const app of element.agent.apps) {
+				if (app.statuses && app.statuses.length > 0) {
+					for (const status of app.statuses) {
+						// Show all statuses, not just ones needing attention.
+						// We need to do this for now because the reporting isn't super accurate
+						// yet.
+						appStatuses.push(
+							new AppStatusTreeItem({
+								name: status.message,
+								command: app.command,
+								workspace_name: element.workspaceName,
+							}),
+						);
+					}
+				}
+			}
+
+			// Show the section if it has any items
+			if (appStatuses.length > 0) {
+				const appStatusSection = new SectionTreeItem(
+					"App Statuses",
+					appStatuses.reverse(),
+				);
+				items.push(appStatusSection);
+			}
+		}
+
+		const savedMetadata = watcher?.metadata || [];
+
+		// Add agent metadata section with collapsible header
+		if (savedMetadata.length > 0) {
+			const metadataSection = new SectionTreeItem(
+				"Agent Metadata",
+				savedMetadata.map(
+					(metadata) => new AgentMetadataTreeItem(metadata),
+				),
+			);
+			items.push(metadataSection);
+		}
+
+		return Promise.resolve(items);
 	}
 }
 

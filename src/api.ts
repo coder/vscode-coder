@@ -20,16 +20,29 @@ import { expandPath } from "./util";
 export const coderSessionTokenHeader = "Coder-Session-Token";
 
 /**
+ * Get a string configuration value, with consistent handling of null/undefined.
+ */
+function getConfigString(cfg: vscode.WorkspaceConfiguration, key: string): string {
+	return String(cfg.get(key) ?? "").trim();
+}
+
+/**
+ * Get a configuration path value, with expansion and consistent handling.
+ */
+function getConfigPath(cfg: vscode.WorkspaceConfiguration, key: string): string {
+	const value = getConfigString(cfg, key);
+	return value ? expandPath(value) : "";
+}
+
+/**
  * Return whether the API will need a token for authorization.
  * If mTLS is in use (as specified by the cert or key files being set) then
  * token authorization is disabled.  Otherwise, it is enabled.
  */
 export function needToken(): boolean {
 	const cfg = vscode.workspace.getConfiguration();
-	const certFile = expandPath(
-		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
-	);
-	const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim());
+	const certFile = getConfigPath(cfg, "coder.tlsCertFile");
+	const keyFile = getConfigPath(cfg, "coder.tlsKeyFile");
 	return !certFile && !keyFile;
 }
 
@@ -39,12 +52,10 @@ export function needToken(): boolean {
 export async function createHttpAgent(): Promise<ProxyAgent> {
 	const cfg = vscode.workspace.getConfiguration();
 	const insecure = Boolean(cfg.get("coder.insecure"));
-	const certFile = expandPath(
-		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
-	);
-	const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim());
-	const caFile = expandPath(String(cfg.get("coder.tlsCaFile") ?? "").trim());
-	const altHost = expandPath(String(cfg.get("coder.tlsAltHost") ?? "").trim());
+	const certFile = getConfigPath(cfg, "coder.tlsCertFile");
+	const keyFile = getConfigPath(cfg, "coder.tlsKeyFile");
+	const caFile = getConfigPath(cfg, "coder.tlsCaFile");
+	const altHost = getConfigString(cfg, "coder.tlsAltHost");
 
 	return new ProxyAgent({
 		// Called each time a request is made.
@@ -113,6 +124,27 @@ export async function makeCoderSdk(
 }
 
 /**
+ * Sets up event handlers for a Node.js stream to pipe data to a ReadableStream controller.
+ * This is used internally by createStreamingFetchAdapter.
+ */
+export function setupStreamHandlers(
+	nodeStream: NodeJS.ReadableStream,
+	controller: ReadableStreamDefaultController<any>,
+): void {
+	nodeStream.on("data", (chunk: Buffer) => {
+		controller.enqueue(chunk);
+	});
+
+	nodeStream.on("end", () => {
+		controller.close();
+	});
+
+	nodeStream.on("error", (err: Error) => {
+		controller.error(err);
+	});
+}
+
+/**
  * Creates a fetch adapter using an Axios instance that returns streaming responses.
  * This can be used with APIs that accept fetch-like interfaces.
  */
@@ -129,17 +161,7 @@ export function createStreamingFetchAdapter(axiosInstance: AxiosInstance) {
 		});
 		const stream = new ReadableStream({
 			start(controller) {
-				response.data.on("data", (chunk: Buffer) => {
-					controller.enqueue(chunk);
-				});
-
-				response.data.on("end", () => {
-					controller.close();
-				});
-
-				response.data.on("error", (err: Error) => {
-					controller.error(err);
-				});
+				setupStreamHandlers(response.data, controller);
 			},
 
 			cancel() {
