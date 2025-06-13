@@ -62,8 +62,64 @@ vi.mock("./api", () => ({
   createStreamingFetchAdapter: vi.fn(),
 }))
 
+// Create a testable WorkspaceProvider class that allows mocking of protected methods
+class TestableWorkspaceProvider extends WorkspaceProvider {
+  public createEventEmitter() {
+    return super.createEventEmitter()
+  }
+
+  public handleVisibilityChange(visible: boolean) {
+    return super.handleVisibilityChange(visible)
+  }
+
+  public updateAgentWatchers(workspaces: any[], restClient: any) {
+    return super.updateAgentWatchers(workspaces, restClient)
+  }
+
+  public createAgentWatcher(agentId: string, restClient: any) {
+    return super.createAgentWatcher(agentId, restClient)
+  }
+
+  public createWorkspaceTreeItem(workspace: any) {
+    return super.createWorkspaceTreeItem(workspace)
+  }
+
+  public getWorkspaceChildren(element: any) {
+    return super.getWorkspaceChildren(element)
+  }
+
+  public getAgentChildren(element: any) {
+    return super.getAgentChildren(element)
+  }
+
+  // Allow access to private properties for testing using helper methods
+  public getWorkspaces() {
+    return (this as any).workspaces
+  }
+
+  public setWorkspaces(value: any) {
+    ;(this as any).workspaces = value
+  }
+
+  public getFetching() {
+    return (this as any).fetching
+  }
+
+  public setFetching(value: boolean) {
+    ;(this as any).fetching = value
+  }
+
+  public getVisible() {
+    return (this as any).visible
+  }
+
+  public setVisible(value: boolean) {
+    ;(this as any).visible = value
+  }
+}
+
 describe("WorkspaceProvider", () => {
-  let provider: WorkspaceProvider
+  let provider: TestableWorkspaceProvider
   let mockRestClient: any
   let mockStorage: any
   let mockEventEmitter: any
@@ -154,7 +210,7 @@ describe("WorkspaceProvider", () => {
       writeToCoderOutputChannel: vi.fn(),
     }
 
-    provider = new WorkspaceProvider(
+    provider = new TestableWorkspaceProvider(
       WorkspaceQuery.Mine,
       mockRestClient,
       mockStorage,
@@ -173,7 +229,7 @@ describe("WorkspaceProvider", () => {
 
   describe("constructor", () => {
     it("should create provider with correct initial state", () => {
-      const provider = new WorkspaceProvider(
+      const provider = new TestableWorkspaceProvider(
         WorkspaceQuery.All,
         mockRestClient,
         mockStorage,
@@ -181,16 +237,27 @@ describe("WorkspaceProvider", () => {
       )
 
       expect(provider).toBeDefined()
+      expect(provider.getVisible()).toBe(false)
+      expect(provider.getWorkspaces()).toBeUndefined()
     })
 
     it("should create provider without timer", () => {
-      const provider = new WorkspaceProvider(
+      const provider = new TestableWorkspaceProvider(
         WorkspaceQuery.Mine,
         mockRestClient,
         mockStorage
       )
 
       expect(provider).toBeDefined()
+    })
+  })
+
+  describe("createEventEmitter", () => {
+    it("should create and return event emitter", () => {
+      const emitter = provider.createEventEmitter()
+
+      expect(vscode.EventEmitter).toHaveBeenCalled()
+      expect(emitter).toBe(mockEventEmitter)
     })
   })
 
@@ -203,13 +270,30 @@ describe("WorkspaceProvider", () => {
       expect(mockRestClient.getWorkspaces).not.toHaveBeenCalled()
     })
 
+    it("should not fetch when already fetching", async () => {
+      // Mock the handleVisibilityChange to prevent automatic fetchAndRefresh
+      const handleVisibilitySpy = vi.spyOn(provider, "handleVisibilityChange").mockImplementation(() => {})
+      provider.setVisibility(true)
+      handleVisibilitySpy.mockRestore()
+      
+      provider.setFetching(true)
+
+      await provider.fetchAndRefresh()
+
+      expect(mockRestClient.getWorkspaces).not.toHaveBeenCalled()
+    })
+
     it("should fetch workspaces successfully", async () => {
       mockRestClient.getWorkspaces.mockResolvedValue({
         workspaces: [mockWorkspace],
         count: 1,
       })
 
+      // Mock the handleVisibilityChange to prevent automatic fetchAndRefresh
+      const handleVisibilitySpy = vi.spyOn(provider, "handleVisibilityChange").mockImplementation(() => {})
       provider.setVisibility(true)
+      handleVisibilitySpy.mockRestore()
+
       await provider.fetchAndRefresh()
 
       expect(mockRestClient.getWorkspaces).toHaveBeenCalledWith({
@@ -221,7 +305,11 @@ describe("WorkspaceProvider", () => {
     it("should handle fetch errors gracefully", async () => {
       mockRestClient.getWorkspaces.mockRejectedValue(new Error("Network error"))
 
+      // Mock the handleVisibilityChange to prevent automatic fetchAndRefresh
+      const handleVisibilitySpy = vi.spyOn(provider, "handleVisibilityChange").mockImplementation(() => {})
       provider.setVisibility(true)
+      handleVisibilitySpy.mockRestore()
+
       await provider.fetchAndRefresh()
 
       expect(mockEventEmitter.fire).toHaveBeenCalled()
@@ -240,7 +328,11 @@ describe("WorkspaceProvider", () => {
         count: 0,
       })
 
+      // Mock the handleVisibilityChange to prevent automatic fetchAndRefresh
+      const handleVisibilitySpy = vi.spyOn(provider, "handleVisibilityChange").mockImplementation(() => {})
       provider.setVisibility(true)
+      handleVisibilitySpy.mockRestore()
+
       await provider.fetchAndRefresh()
 
       expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
@@ -252,19 +344,43 @@ describe("WorkspaceProvider", () => {
   })
 
   describe("setVisibility", () => {
-    it("should start fetching when becoming visible for first time", async () => {
-      const fetchSpy = vi.spyOn(provider, "fetchAndRefresh").mockResolvedValue()
+    it("should set visibility and call handleVisibilityChange", () => {
+      const handleVisibilitySpy = vi.spyOn(provider, "handleVisibilityChange").mockImplementation(() => {})
 
       provider.setVisibility(true)
 
+      expect(provider.getVisible()).toBe(true)
+      expect(handleVisibilitySpy).toHaveBeenCalledWith(true)
+    })
+  })
+
+  describe("handleVisibilityChange", () => {
+    it("should start fetching when becoming visible for first time", async () => {
+      const fetchSpy = vi.spyOn(provider, "fetchAndRefresh").mockResolvedValue()
+
+      provider.handleVisibilityChange(true)
+
       expect(fetchSpy).toHaveBeenCalled()
+    })
+
+    it("should not fetch when workspaces already exist", () => {
+      const fetchSpy = vi.spyOn(provider, "fetchAndRefresh").mockResolvedValue()
+      
+      // Set workspaces to simulate having fetched before
+      provider.setWorkspaces([])
+
+      provider.handleVisibilityChange(true)
+
+      expect(fetchSpy).not.toHaveBeenCalled()
     })
 
     it("should cancel pending refresh when becoming invisible", () => {
       vi.useFakeTimers()
 
-      provider.setVisibility(true)
-      provider.setVisibility(false)
+      // First set visible to potentially schedule refresh
+      provider.handleVisibilityChange(true)
+      // Then set invisible to cancel
+      provider.handleVisibilityChange(false)
 
       // Fast-forward time - should not trigger refresh
       vi.advanceTimersByTime(10000)
@@ -299,7 +415,11 @@ describe("WorkspaceProvider", () => {
         count: 1,
       })
 
+      // Mock the handleVisibilityChange to prevent automatic fetchAndRefresh
+      const handleVisibilitySpy = vi.spyOn(provider, "handleVisibilityChange").mockImplementation(() => {})
       provider.setVisibility(true)
+      handleVisibilitySpy.mockRestore()
+
       await provider.fetchAndRefresh()
 
       const children = await provider.getChildren()
@@ -333,13 +453,50 @@ describe("WorkspaceProvider", () => {
     })
   })
 
-  describe("fetch method edge cases", () => {
+  describe("createWorkspaceTreeItem", () => {
+    it("should create workspace tree item with app status", async () => {
+      const { extractAgents } = await import("./api-helper")
+      
+      const agentWithApps = {
+        ...mockAgent,
+        apps: [
+          {
+            display_name: "Test App",
+            url: "https://app.example.com",
+            command: "npm start",
+          },
+        ],
+      }
+      
+      vi.mocked(extractAgents).mockReturnValue([agentWithApps])
+
+      const result = provider.createWorkspaceTreeItem(mockWorkspace)
+
+      expect(result).toBeInstanceOf(WorkspaceTreeItem)
+      expect(result.appStatus).toEqual([
+        {
+          name: "Test App",
+          url: "https://app.example.com",
+          agent_id: "agent-1",
+          agent_name: "main",
+          command: "npm start",
+          workspace_name: "test-workspace",
+        },
+      ])
+    })
+  })
+
+  describe("edge cases", () => {
     it("should throw error when not logged in", async () => {
       mockRestClient.getAxiosInstance.mockReturnValue({
         defaults: { baseURL: undefined },
       })
 
+      // Mock the handleVisibilityChange to prevent automatic fetchAndRefresh
+      const handleVisibilitySpy = vi.spyOn(provider, "handleVisibilityChange").mockImplementation(() => {})
       provider.setVisibility(true)
+      handleVisibilitySpy.mockRestore()
+
       await provider.fetchAndRefresh()
 
       // Should result in empty workspaces due to error handling
@@ -348,7 +505,7 @@ describe("WorkspaceProvider", () => {
     })
 
     it("should handle workspace query for All workspaces", async () => {
-      const allProvider = new WorkspaceProvider(
+      const allProvider = new TestableWorkspaceProvider(
         WorkspaceQuery.All,
         mockRestClient,
         mockStorage,
@@ -360,7 +517,11 @@ describe("WorkspaceProvider", () => {
         count: 1,
       })
 
+      // Mock the handleVisibilityChange to prevent automatic fetchAndRefresh
+      const handleVisibilitySpy = vi.spyOn(allProvider, "handleVisibilityChange").mockImplementation(() => {})
       allProvider.setVisibility(true)
+      handleVisibilitySpy.mockRestore()
+
       await allProvider.fetchAndRefresh()
 
       expect(mockRestClient.getWorkspaces).toHaveBeenCalledWith({
