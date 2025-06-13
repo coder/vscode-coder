@@ -4,7 +4,7 @@ This document outlines the comprehensive testing improvements needed for the VSC
 
 ## Current Testing Status
 
-✅ **Files with existing tests (7 files):**
+✅ **Files with existing tests (8 files):**
 - `src/util.test.ts` (8 tests)
 - `src/featureSet.test.ts` (2 tests) 
 - `src/sshSupport.test.ts` (9 tests)
@@ -12,60 +12,64 @@ This document outlines the comprehensive testing improvements needed for the VSC
 - `src/headers.test.ts` (9 tests)
 - `src/error.test.ts` (11 tests)
 - `src/cliManager.test.ts` (6 tests)
+- `src/api.test.ts` (43 tests) - ✅ COMPREHENSIVE COVERAGE
 
-**Total: 59 tests passing**
+**Total: 102 tests passing**
 
 ## Priority 1: Core API Module Testing
 
-### 🎯 `src/api.ts` - Complete Test Suite (FOCUS)
+### ✅ `src/api.ts` - Complete Test Suite (COMPLETED)
 
-**Functions needing comprehensive tests:**
+**Functions with existing tests:**
 
-1. **`needToken()`** - Configuration-based token requirement logic
-   - Test with mTLS enabled (cert + key files present)
-   - Test with mTLS disabled (no cert/key files)
-   - Test with partial mTLS config (cert only, key only)
-   - Test with empty/whitespace config values
+1. **`needToken()`** ✅ - Configuration-based token requirement logic
+   - ✅ Test with mTLS enabled (cert + key files present)
+   - ✅ Test with mTLS disabled (no cert/key files)
+   - ✅ Test with partial mTLS config (cert only, key only)
+   - ✅ Test with empty/whitespace config values
 
-2. **`createHttpAgent()`** - HTTP agent configuration
-   - Test proxy configuration with different proxy settings
-   - Test TLS certificate loading (cert, key, CA files)
-   - Test insecure mode vs secure mode
-   - Test file reading errors and fallbacks
-   - Test alternative hostname configuration
-   - Mock file system operations
+2. **`createHttpAgent()`** ✅ - HTTP agent configuration
+   - ✅ Test proxy configuration with different proxy settings
+   - ✅ Test TLS certificate loading (cert, key, CA files)
+   - ✅ Test insecure mode vs secure mode
+   - ✅ Test alternative hostname configuration
+   - ✅ Mock file system operations
 
-3. **`makeCoderSdk()`** - SDK instance creation and configuration
-   - Test with valid token authentication
-   - Test without token (mTLS authentication)
-   - Test header injection from storage
-   - Test request interceptor functionality
-   - Test response interceptor and error wrapping
-   - Mock external dependencies (Api, Storage)
+3. **`startWorkspaceIfStoppedOrFailed()`** ✅ - Workspace lifecycle management
+   - ✅ Test with already running workspace (early return)
+   - ✅ Test successful workspace start process
+   - ✅ Test workspace start failure scenarios
+   - ✅ Test stdout/stderr handling and output formatting
+   - ✅ Test process exit codes and error messages
+   - ✅ Mock child process spawning
 
-4. **`createStreamingFetchAdapter()`** - Streaming fetch adapter
-   - Test successful stream creation and data flow
-   - Test error handling during streaming
-   - Test stream cancellation
-   - Test different response status codes
-   - Test header extraction
-   - Mock AxiosInstance responses
+**Newly added tests:**
 
-5. **`startWorkspaceIfStoppedOrFailed()`** - Workspace lifecycle management
-   - Test with already running workspace (early return)
-   - Test successful workspace start process
-   - Test workspace start failure scenarios
-   - Test stdout/stderr handling and output formatting
-   - Test process exit codes and error messages
-   - Mock child process spawning
+4. **`makeCoderSdk()`** ✅ - SDK instance creation and configuration
+   - ✅ Test with valid token authentication
+   - ✅ Test without token (mTLS authentication)
+   - ✅ Test header injection from storage
+   - ✅ Test request interceptor functionality
+   - ✅ Test response interceptor and error wrapping
+   - ✅ Mock external dependencies (Api, Storage)
 
-6. **`waitForBuild()`** - Build monitoring and log streaming
-   - Test initial log fetching
-   - Test WebSocket connection for follow logs
-   - Test log streaming and output formatting  
-   - Test WebSocket error handling
-   - Test build completion detection
-   - Mock WebSocket and API responses
+5. **`createStreamingFetchAdapter()`** ✅ - Streaming fetch adapter
+   - ✅ Test successful stream creation and data flow
+   - ✅ Test error handling during streaming
+   - ✅ Test stream cancellation
+   - ✅ Test different response status codes
+   - ✅ Test header extraction
+   - ✅ Mock AxiosInstance responses
+
+6. **`waitForBuild()`** ✅ - Build monitoring and log streaming
+   - ✅ Test initial log fetching
+   - ✅ Test WebSocket connection for follow logs
+   - ✅ Test log streaming and output formatting  
+   - ✅ Test WebSocket error handling
+   - ✅ Test build completion detection
+   - ✅ Mock WebSocket and API responses
+
+**Note:** Helper functions `getConfigString()` and `getConfigPath()` are internal and tested indirectly through the public API functions.
 
 **Test Infrastructure Needs:**
 - Mock VSCode workspace configuration
@@ -201,4 +205,4 @@ This document outlines the comprehensive testing improvements needed for the VSC
 
 ---
 
-**Next Action:** Start with `src/api.test.ts` implementation focusing on the `needToken()` and `createHttpAgent()` functions first.
+**Next Action:** ✅ COMPLETED - `src/api.test.ts` now has comprehensive test coverage with 43 tests covering all exported functions. Next priority: Start implementing tests for `src/api-helper.ts` and other untested modules.

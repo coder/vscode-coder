@@ -3,11 +3,16 @@ import * as vscode from "vscode"
 import fs from "fs/promises"
 import { ProxyAgent } from "proxy-agent"
 import { spawn } from "child_process"
-import { needToken, createHttpAgent, startWorkspaceIfStoppedOrFailed } from "./api"
+import { needToken, createHttpAgent, startWorkspaceIfStoppedOrFailed, makeCoderSdk, createStreamingFetchAdapter, setupStreamHandlers, waitForBuild } from "./api"
 import * as proxyModule from "./proxy"
 import * as headersModule from "./headers"
+import * as utilModule from "./util"
 import { Api } from "coder/site/src/api/api"
-import { Workspace } from "coder/site/src/api/typesGenerated"
+import { Workspace, ProvisionerJobLog } from "coder/site/src/api/typesGenerated"
+import { Storage } from "./storage"
+import * as ws from "ws"
+import { AxiosInstance } from "axios"
+import { CertificateError } from "./error"
 
 vi.mock("vscode", () => ({
   workspace: {
@@ -38,6 +43,28 @@ vi.mock("./headers", () => ({
 
 vi.mock("child_process", () => ({
   spawn: vi.fn(),
+}))
+
+vi.mock("./util", () => ({
+  expandPath: vi.fn((path: string) => path.replace("${userHome}", "/home/user")),
+}))
+
+vi.mock("ws", () => ({
+  WebSocket: vi.fn(),
+}))
+
+vi.mock("./storage", () => ({
+  Storage: vi.fn(),
+}))
+
+vi.mock("./error", () => ({
+  CertificateError: {
+    maybeWrap: vi.fn((err) => Promise.resolve(err)),
+  },
+}))
+
+vi.mock("coder/site/src/api/api", () => ({
+  Api: vi.fn(),
 }))
 
 describe("needToken", () => {
@@ -617,5 +644,552 @@ describe("startWorkspaceIfStoppedOrFailed", () => {
     expect(mockWriteEmitter.fire).toHaveBeenCalledTimes(2)
     expect(mockWriteEmitter.fire).toHaveBeenCalledWith("Line 1\r\n")
     expect(mockWriteEmitter.fire).toHaveBeenCalledWith("Line 2\r\n")
+  })
+})
+
+describe("makeCoderSdk", () => {
+  let mockStorage: Storage
+  let mockGet: ReturnType<typeof vi.fn>
+  let mockAxiosInstance: any
+  let mockApi: any
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    
+    mockGet = vi.fn()
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: mockGet,
+    } as any)
+
+    mockStorage = {
+      getHeaders: vi.fn().mockResolvedValue({}),
+    } as any
+
+    mockAxiosInstance = {
+      interceptors: {
+        request: { use: vi.fn() },
+        response: { use: vi.fn() },
+      },
+      defaults: {
+        baseURL: "https://coder.example.com",
+        headers: {
+          common: {},
+        },
+      },
+    }
+
+    mockApi = {
+      setHost: vi.fn(),
+      setSessionToken: vi.fn(),
+      getAxiosInstance: vi.fn().mockReturnValue(mockAxiosInstance),
+    }
+
+    // Mock the Api constructor
+    vi.mocked(Api).mockImplementation(() => mockApi)
+  })
+
+  it("should create SDK with token authentication", async () => {
+    const sdk = await makeCoderSdk("https://coder.example.com", "test-token", mockStorage)
+
+    expect(mockApi.setHost).toHaveBeenCalledWith("https://coder.example.com")
+    expect(mockApi.setSessionToken).toHaveBeenCalledWith("test-token")
+    expect(mockAxiosInstance.interceptors.request.use).toHaveBeenCalled()
+    expect(mockAxiosInstance.interceptors.response.use).toHaveBeenCalled()
+  })
+
+  it("should create SDK without token (mTLS auth)", async () => {
+    const sdk = await makeCoderSdk("https://coder.example.com", undefined, mockStorage)
+
+    expect(mockApi.setHost).toHaveBeenCalledWith("https://coder.example.com")
+    expect(mockApi.setSessionToken).not.toHaveBeenCalled()
+  })
+
+  it("should configure request interceptor with headers from storage", async () => {
+    const customHeaders = {
+      "X-Custom-Header": "custom-value",
+      "Authorization": "Bearer special-token",
+    }
+    vi.mocked(mockStorage.getHeaders).mockResolvedValue(customHeaders)
+
+    await makeCoderSdk("https://coder.example.com", "test-token", mockStorage)
+
+    const requestInterceptor = mockAxiosInstance.interceptors.request.use.mock.calls[0][0]
+    
+    const config = {
+      headers: {},
+      httpsAgent: undefined,
+      httpAgent: undefined,
+      proxy: undefined,
+    }
+    
+    const result = await requestInterceptor(config)
+    
+    expect(mockStorage.getHeaders).toHaveBeenCalledWith("https://coder.example.com")
+    expect(result.headers).toEqual(customHeaders)
+    expect(result.httpsAgent).toBeDefined()
+    expect(result.httpAgent).toBeDefined()
+    expect(result.proxy).toBe(false)
+  })
+
+  it("should configure response interceptor for certificate errors", async () => {
+    const testError = new Error("Certificate error")
+    const wrappedError = new Error("Wrapped certificate error")
+    
+    vi.mocked(CertificateError.maybeWrap).mockResolvedValue(wrappedError)
+
+    await makeCoderSdk("https://coder.example.com", "test-token", mockStorage)
+
+    const responseInterceptor = mockAxiosInstance.interceptors.response.use.mock.calls[0]
+    const successHandler = responseInterceptor[0]
+    const errorHandler = responseInterceptor[1]
+
+    // Test success handler
+    const response = { data: "test" }
+    expect(successHandler(response)).toBe(response)
+
+    // Test error handler
+    await expect(errorHandler(testError)).rejects.toBe(wrappedError)
+    expect(CertificateError.maybeWrap).toHaveBeenCalledWith(
+      testError,
+      "https://coder.example.com",
+      mockStorage
+    )
+  })
+})
+
+describe("setupStreamHandlers", () => {
+  let mockStream: any
+  let mockController: any
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    mockStream = {
+      on: vi.fn(),
+    }
+
+    mockController = {
+      enqueue: vi.fn(),
+      close: vi.fn(),
+      error: vi.fn(),
+    }
+  })
+
+  it("should register handlers for data, end, and error events", () => {
+    setupStreamHandlers(mockStream, mockController)
+
+    expect(mockStream.on).toHaveBeenCalledTimes(3)
+    expect(mockStream.on).toHaveBeenCalledWith("data", expect.any(Function))
+    expect(mockStream.on).toHaveBeenCalledWith("end", expect.any(Function))
+    expect(mockStream.on).toHaveBeenCalledWith("error", expect.any(Function))
+  })
+
+  it("should enqueue chunks when data event is emitted", () => {
+    setupStreamHandlers(mockStream, mockController)
+
+    const dataHandler = mockStream.on.mock.calls.find(
+      (call: any[]) => call[0] === "data"
+    )?.[1]
+
+    const testChunk = Buffer.from("test data")
+    dataHandler(testChunk)
+
+    expect(mockController.enqueue).toHaveBeenCalledWith(testChunk)
+  })
+
+  it("should close controller when end event is emitted", () => {
+    setupStreamHandlers(mockStream, mockController)
+
+    const endHandler = mockStream.on.mock.calls.find(
+      (call: any[]) => call[0] === "end"
+    )?.[1]
+
+    endHandler()
+
+    expect(mockController.close).toHaveBeenCalled()
+  })
+
+  it("should error controller when error event is emitted", () => {
+    setupStreamHandlers(mockStream, mockController)
+
+    const errorHandler = mockStream.on.mock.calls.find(
+      (call: any[]) => call[0] === "error"
+    )?.[1]
+
+    const testError = new Error("Stream error")
+    errorHandler(testError)
+
+    expect(mockController.error).toHaveBeenCalledWith(testError)
+  })
+})
+
+describe("createStreamingFetchAdapter", () => {
+  let mockAxiosInstance: any
+  let mockStream: any
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    mockStream = {
+      on: vi.fn(),
+      destroy: vi.fn(),
+    }
+
+    mockAxiosInstance = {
+      request: vi.fn().mockResolvedValue({
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-custom-header": "test-value",
+        },
+        data: mockStream,
+        request: {
+          res: {
+            responseUrl: "https://example.com/api",
+          },
+        },
+      }),
+    }
+  })
+
+  it("should create a fetch-like response with streaming body", async () => {
+    const fetchAdapter = createStreamingFetchAdapter(mockAxiosInstance)
+    const response = await fetchAdapter("https://example.com/api")
+
+    expect(mockAxiosInstance.request).toHaveBeenCalledWith({
+      url: "https://example.com/api",
+      signal: undefined,
+      headers: undefined,
+      responseType: "stream",
+      validateStatus: expect.any(Function),
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.url).toBe("https://example.com/api")
+    expect(response.redirected).toBe(false)
+    expect(response.headers.get("content-type")).toBe("application/json")
+    expect(response.headers.get("x-custom-header")).toBe("test-value")
+    expect(response.headers.get("non-existent")).toBeNull()
+  })
+
+  it("should handle URL objects", async () => {
+    const fetchAdapter = createStreamingFetchAdapter(mockAxiosInstance)
+    const url = new URL("https://example.com/api/v2")
+    
+    await fetchAdapter(url)
+
+    expect(mockAxiosInstance.request).toHaveBeenCalledWith({
+      url: "https://example.com/api/v2",
+      signal: undefined,
+      headers: undefined,
+      responseType: "stream",
+      validateStatus: expect.any(Function),
+    })
+  })
+
+  it("should pass through init options", async () => {
+    const fetchAdapter = createStreamingFetchAdapter(mockAxiosInstance)
+    const signal = new AbortController().signal
+    const headers = { "Authorization": "Bearer token" }
+    
+    await fetchAdapter("https://example.com/api", { signal, headers })
+
+    expect(mockAxiosInstance.request).toHaveBeenCalledWith({
+      url: "https://example.com/api",
+      signal,
+      headers,
+      responseType: "stream",
+      validateStatus: expect.any(Function),
+    })
+  })
+
+  it("should handle redirected responses", async () => {
+    mockAxiosInstance.request.mockResolvedValue({
+      status: 302,
+      headers: {},
+      data: mockStream,
+      request: {
+        res: {
+          responseUrl: "https://example.com/redirected",
+        },
+      },
+    })
+
+    const fetchAdapter = createStreamingFetchAdapter(mockAxiosInstance)
+    const response = await fetchAdapter("https://example.com/api")
+
+    expect(response.redirected).toBe(true)
+  })
+
+  it("should stream data through ReadableStream", async () => {
+    const fetchAdapter = createStreamingFetchAdapter(mockAxiosInstance)
+    const response = await fetchAdapter("https://example.com/api")
+
+    // Test that getReader returns a reader
+    const reader = response.body.getReader()
+    expect(reader).toBeDefined()
+  })
+
+  it("should handle stream cancellation", async () => {
+    let streamController: any
+    const mockReadableStream = vi.fn().mockImplementation(({ start, cancel }) => {
+      streamController = { start, cancel }
+      return {
+        getReader: () => ({ read: vi.fn() }),
+      }
+    })
+    
+    // Replace global ReadableStream temporarily
+    const originalReadableStream = global.ReadableStream
+    global.ReadableStream = mockReadableStream as any
+
+    try {
+      const fetchAdapter = createStreamingFetchAdapter(mockAxiosInstance)
+      await fetchAdapter("https://example.com/api")
+
+      // Call the cancel function
+      await streamController.cancel()
+      
+      expect(mockStream.destroy).toHaveBeenCalled()
+    } finally {
+      global.ReadableStream = originalReadableStream
+    }
+  })
+
+  it("should validate all status codes", async () => {
+    const fetchAdapter = createStreamingFetchAdapter(mockAxiosInstance)
+    await fetchAdapter("https://example.com/api")
+
+    const validateStatus = mockAxiosInstance.request.mock.calls[0][0].validateStatus
+    
+    // Should return true for any status code
+    expect(validateStatus(200)).toBe(true)
+    expect(validateStatus(404)).toBe(true)
+    expect(validateStatus(500)).toBe(true)
+  })
+})
+
+describe("waitForBuild", () => {
+  let mockRestClient: Partial<Api>
+  let mockWorkspace: Workspace
+  let mockWriteEmitter: vscode.EventEmitter<string>
+  let mockWebSocket: any
+  let mockAxiosInstance: any
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    
+    mockWorkspace = {
+      id: "workspace-123",
+      owner_name: "testuser",
+      name: "testworkspace",
+      latest_build: {
+        id: "build-456",
+        status: "running",
+      },
+    } as Workspace
+
+    mockAxiosInstance = {
+      defaults: {
+        baseURL: "https://coder.example.com",
+        headers: {
+          common: {
+            "Coder-Session-Token": "test-token",
+          },
+        },
+      },
+    }
+
+    mockRestClient = {
+      getWorkspace: vi.fn(),
+      getWorkspaceBuildLogs: vi.fn(),
+      getAxiosInstance: vi.fn().mockReturnValue(mockAxiosInstance),
+    }
+
+    mockWriteEmitter = new (vi.mocked(vscode.EventEmitter))()
+
+    mockWebSocket = {
+      on: vi.fn(),
+      binaryType: undefined,
+    }
+
+    vi.mocked(ws.WebSocket).mockImplementation(() => mockWebSocket)
+  })
+
+  it("should fetch initial logs and stream follow logs", async () => {
+    const initialLogs: ProvisionerJobLog[] = [
+      { id: 1, output: "Initial log 1", created_at: new Date().toISOString() },
+      { id: 2, output: "Initial log 2", created_at: new Date().toISOString() },
+    ]
+
+    const updatedWorkspace = {
+      ...mockWorkspace,
+      latest_build: { status: "running" },
+    } as Workspace
+
+    vi.mocked(mockRestClient.getWorkspaceBuildLogs).mockResolvedValue(initialLogs)
+    vi.mocked(mockRestClient.getWorkspace).mockResolvedValue(updatedWorkspace)
+
+    // Simulate websocket close event
+    mockWebSocket.on.mockImplementation((event: string, callback: Function) => {
+      if (event === "close") {
+        setTimeout(() => callback(), 10)
+      }
+    })
+
+    const result = await waitForBuild(mockRestClient as Api, mockWriteEmitter, mockWorkspace)
+
+    // Verify initial logs were fetched
+    expect(mockRestClient.getWorkspaceBuildLogs).toHaveBeenCalledWith("build-456")
+    expect(mockWriteEmitter.fire).toHaveBeenCalledWith("Initial log 1\r\n")
+    expect(mockWriteEmitter.fire).toHaveBeenCalledWith("Initial log 2\r\n")
+
+    // Verify WebSocket was created with correct URL (https -> wss)
+    expect(ws.WebSocket).toHaveBeenCalledWith(
+      new URL("wss://coder.example.com/api/v2/workspacebuilds/build-456/logs?follow=true&after=2"),
+      {
+        agent: expect.any(Object),
+        followRedirects: true,
+        headers: {
+          "Coder-Session-Token": "test-token",
+        },
+      }
+    )
+
+    // Verify final messages
+    expect(mockWriteEmitter.fire).toHaveBeenCalledWith("Build complete\r\n")
+    expect(mockWriteEmitter.fire).toHaveBeenCalledWith("Workspace is now running\r\n")
+    
+    expect(result).toBe(updatedWorkspace)
+  })
+
+  it("should handle HTTPS URLs for WebSocket", async () => {
+    mockAxiosInstance.defaults.baseURL = "https://secure.coder.com"
+    
+    vi.mocked(mockRestClient.getWorkspaceBuildLogs).mockResolvedValue([])
+    vi.mocked(mockRestClient.getWorkspace).mockResolvedValue(mockWorkspace)
+    
+    mockWebSocket.on.mockImplementation((event: string, callback: Function) => {
+      if (event === "close") {
+        setTimeout(() => callback(), 10)
+      }
+    })
+
+    await waitForBuild(mockRestClient as Api, mockWriteEmitter, mockWorkspace)
+
+    expect(ws.WebSocket).toHaveBeenCalledWith(
+      new URL("wss://secure.coder.com/api/v2/workspacebuilds/build-456/logs?follow=true"),
+      expect.any(Object)
+    )
+  })
+
+  it("should handle WebSocket messages", async () => {
+    vi.mocked(mockRestClient.getWorkspaceBuildLogs).mockResolvedValue([])
+    vi.mocked(mockRestClient.getWorkspace).mockResolvedValue(mockWorkspace)
+    
+    const followLogs: ProvisionerJobLog[] = [
+      { id: 3, output: "Follow log 1", created_at: new Date().toISOString() },
+      { id: 4, output: "Follow log 2", created_at: new Date().toISOString() },
+    ]
+
+    let messageHandler: Function
+    mockWebSocket.on.mockImplementation((event: string, callback: Function) => {
+      if (event === "message") {
+        messageHandler = callback
+      } else if (event === "close") {
+        setTimeout(() => {
+          // Simulate receiving messages before close
+          followLogs.forEach(log => {
+            messageHandler(Buffer.from(JSON.stringify(log)))
+          })
+          callback()
+        }, 10)
+      }
+    })
+
+    await waitForBuild(mockRestClient as Api, mockWriteEmitter, mockWorkspace)
+
+    expect(mockWriteEmitter.fire).toHaveBeenCalledWith("Follow log 1\r\n")
+    expect(mockWriteEmitter.fire).toHaveBeenCalledWith("Follow log 2\r\n")
+    expect(mockWebSocket.binaryType).toBe("nodebuffer")
+  })
+
+  it("should handle WebSocket errors", async () => {
+    vi.mocked(mockRestClient.getWorkspaceBuildLogs).mockResolvedValue([])
+    
+    let errorHandler: Function
+    mockWebSocket.on.mockImplementation((event: string, callback: Function) => {
+      if (event === "error") {
+        errorHandler = callback
+        setTimeout(() => errorHandler(new Error("WebSocket connection failed")), 10)
+      }
+    })
+
+    await expect(
+      waitForBuild(mockRestClient as Api, mockWriteEmitter, mockWorkspace)
+    ).rejects.toThrow(
+      "Failed to watch workspace build using wss://coder.example.com/api/v2/workspacebuilds/build-456/logs?follow=true: WebSocket connection failed"
+    )
+  })
+
+  it("should handle missing baseURL", async () => {
+    mockAxiosInstance.defaults.baseURL = undefined
+
+    await expect(
+      waitForBuild(mockRestClient as Api, mockWriteEmitter, mockWorkspace)
+    ).rejects.toThrow("No base URL set on REST client")
+  })
+
+  it("should handle URL construction errors", async () => {
+    mockAxiosInstance.defaults.baseURL = "not-a-valid-url"
+    
+    vi.mocked(mockRestClient.getWorkspaceBuildLogs).mockResolvedValue([])
+
+    await expect(
+      waitForBuild(mockRestClient as Api, mockWriteEmitter, mockWorkspace)
+    ).rejects.toThrow(/Failed to watch workspace build on not-a-valid-url/)
+  })
+
+  it("should not include token header when token is undefined", async () => {
+    mockAxiosInstance.defaults.headers.common["Coder-Session-Token"] = undefined
+    
+    vi.mocked(mockRestClient.getWorkspaceBuildLogs).mockResolvedValue([])
+    vi.mocked(mockRestClient.getWorkspace).mockResolvedValue(mockWorkspace)
+    
+    mockWebSocket.on.mockImplementation((event: string, callback: Function) => {
+      if (event === "close") {
+        setTimeout(() => callback(), 10)
+      }
+    })
+
+    await waitForBuild(mockRestClient as Api, mockWriteEmitter, mockWorkspace)
+
+    expect(ws.WebSocket).toHaveBeenCalledWith(
+      new URL("wss://coder.example.com/api/v2/workspacebuilds/build-456/logs?follow=true"),
+      {
+        agent: expect.any(Object),
+        followRedirects: true,
+        headers: undefined,
+      }
+    )
+  })
+
+  it("should handle empty initial logs", async () => {
+    vi.mocked(mockRestClient.getWorkspaceBuildLogs).mockResolvedValue([])
+    vi.mocked(mockRestClient.getWorkspace).mockResolvedValue(mockWorkspace)
+    
+    mockWebSocket.on.mockImplementation((event: string, callback: Function) => {
+      if (event === "close") {
+        setTimeout(() => callback(), 10)
+      }
+    })
+
+    await waitForBuild(mockRestClient as Api, mockWriteEmitter, mockWorkspace)
+
+    // Should not include after parameter when no initial logs
+    expect(ws.WebSocket).toHaveBeenCalledWith(
+      new URL("wss://coder.example.com/api/v2/workspacebuilds/build-456/logs?follow=true"),
+      expect.any(Object)
+    )
   })
 })

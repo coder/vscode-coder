@@ -124,6 +124,27 @@ export async function makeCoderSdk(
 }
 
 /**
+ * Sets up event handlers for a Node.js stream to pipe data to a ReadableStream controller.
+ * This is used internally by createStreamingFetchAdapter.
+ */
+export function setupStreamHandlers(
+	nodeStream: NodeJS.ReadableStream,
+	controller: ReadableStreamDefaultController<any>,
+): void {
+	nodeStream.on("data", (chunk: Buffer) => {
+		controller.enqueue(chunk);
+	});
+
+	nodeStream.on("end", () => {
+		controller.close();
+	});
+
+	nodeStream.on("error", (err: Error) => {
+		controller.error(err);
+	});
+}
+
+/**
  * Creates a fetch adapter using an Axios instance that returns streaming responses.
  * This can be used with APIs that accept fetch-like interfaces.
  */
@@ -140,17 +161,7 @@ export function createStreamingFetchAdapter(axiosInstance: AxiosInstance) {
 		});
 		const stream = new ReadableStream({
 			start(controller) {
-				response.data.on("data", (chunk: Buffer) => {
-					controller.enqueue(chunk);
-				});
-
-				response.data.on("end", () => {
-					controller.close();
-				});
-
-				response.data.on("error", (err: Error) => {
-					controller.error(err);
-				});
+				setupStreamHandlers(response.data, controller);
 			},
 
 			cancel() {
