@@ -20,16 +20,29 @@ import { expandPath } from "./util";
 export const coderSessionTokenHeader = "Coder-Session-Token";
 
 /**
+ * Get a string configuration value, with consistent handling of null/undefined.
+ */
+function getConfigString(cfg: vscode.WorkspaceConfiguration, key: string): string {
+	return String(cfg.get(key) ?? "").trim();
+}
+
+/**
+ * Get a configuration path value, with expansion and consistent handling.
+ */
+function getConfigPath(cfg: vscode.WorkspaceConfiguration, key: string): string {
+	const value = getConfigString(cfg, key);
+	return value ? expandPath(value) : "";
+}
+
+/**
  * Return whether the API will need a token for authorization.
  * If mTLS is in use (as specified by the cert or key files being set) then
  * token authorization is disabled.  Otherwise, it is enabled.
  */
 export function needToken(): boolean {
 	const cfg = vscode.workspace.getConfiguration();
-	const certFile = expandPath(
-		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
-	);
-	const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim());
+	const certFile = getConfigPath(cfg, "coder.tlsCertFile");
+	const keyFile = getConfigPath(cfg, "coder.tlsKeyFile");
 	return !certFile && !keyFile;
 }
 
@@ -39,12 +52,10 @@ export function needToken(): boolean {
 export async function createHttpAgent(): Promise<ProxyAgent> {
 	const cfg = vscode.workspace.getConfiguration();
 	const insecure = Boolean(cfg.get("coder.insecure"));
-	const certFile = expandPath(
-		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
-	);
-	const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim());
-	const caFile = expandPath(String(cfg.get("coder.tlsCaFile") ?? "").trim());
-	const altHost = expandPath(String(cfg.get("coder.tlsAltHost") ?? "").trim());
+	const certFile = getConfigPath(cfg, "coder.tlsCertFile");
+	const keyFile = getConfigPath(cfg, "coder.tlsKeyFile");
+	const caFile = getConfigPath(cfg, "coder.tlsCaFile");
+	const altHost = getConfigString(cfg, "coder.tlsAltHost");
 
 	return new ProxyAgent({
 		// Called each time a request is made.
