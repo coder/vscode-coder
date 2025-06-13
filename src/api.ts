@@ -113,9 +113,14 @@ export async function createHttpAgent(): Promise<ProxyAgent> {
 				config("coder.proxyBypass"),
 			);
 		},
-		cert: await readFile(certFile),
-		key: await readFile(keyFile),
-		ca: await readFile(caFile),
+		...(() => {
+			const [cert, key, ca] = await Promise.all([
+				readFile(certFile),
+				readFile(keyFile),
+				readFile(caFile),
+			]);
+			return { cert, key, ca };
+		})(),
 		servername: checkEmptyString(altHost),
 		// rejectUnauthorized defaults to true, so we need to explicitly set it to
 		// false if we want to allow self-signed certificates.
