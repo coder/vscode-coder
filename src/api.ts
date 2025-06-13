@@ -1,4 +1,4 @@
-import { AxiosInstance } from "axios";
+import { AxiosInstance, AxiosResponse } from "axios";
 import { spawn } from "child_process";
 import { Api } from "coder/site/src/api/api";
 import {
@@ -19,47 +19,104 @@ import { expandPath } from "./util";
 
 export const coderSessionTokenHeader = "Coder-Session-Token";
 
+function getCertFilePath(): string {
+	return config("coder.tlsCertFile").trim();
+}
+
+function getKeyFilePath(): string {
+	return config("coder.tlsKeyFile").trim();
+}
+
+function config(key:string): string {
+    return vscode.workspace.getConfiguration().get(key) ?? "";
+}
+
+function readFile(filePath: string): Promise<string|undefined> {
+	if (!checkEmptyString(filePath)) {
+		return Promise.resolve(undefined)
+	}
+	return fs.readFile(filePath, "utf8")
+}
+
+function checkEmptyString(str: string): string | undefined {
+	if (!str || str.trim() === "") {
+		return undefined;
+	}
+	return str;
+}
+
+function getPath(key:string): string {
+	const path = config(key).trim();
+	if (!path) {
+		return "";
+	}
+	return expandPath(path);
+}
+
+function getHost(key:string): string {
+	const value = config(key).trim();
+	if (!value) {
+		return "";
+	}
+	return value;
+}
+
+function getStreamFromResponse(response: AxiosResponse<any, any>): ReadableStream<Buffer> {
+	return new ReadableStream({
+			start(controller) {
+				response.data.on("data", (chunk: Buffer) => {
+					controller.enqueue(chunk);
+				});
+
+				response.data.on("end", () => {
+					controller.close();
+				});
+
+				response.data.on("error", (err: Error) => {
+					controller.error(err);
+				});
+			},
+
+			cancel() {
+				response.data.destroy();
+				return Promise.resolve();
+			},
+		});
+}
+
+
 /**
  * Return whether the API will need a token for authorization.
  * If mTLS is in use (as specified by the cert or key files being set) then
  * token authorization is disabled.  Otherwise, it is enabled.
  */
 export function needToken(): boolean {
-	const cfg = vscode.workspace.getConfiguration();
-	const certFile = expandPath(
-		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
-	);
-	const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim());
-	return !certFile && !keyFile;
+	return !getCertFilePath() && !getKeyFilePath();
 }
 
 /**
  * Create a new agent based off the current settings.
  */
 export async function createHttpAgent(): Promise<ProxyAgent> {
-	const cfg = vscode.workspace.getConfiguration();
-	const insecure = Boolean(cfg.get("coder.insecure"));
-	const certFile = expandPath(
-		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
-	);
-	const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim());
-	const caFile = expandPath(String(cfg.get("coder.tlsCaFile") ?? "").trim());
-	const altHost = expandPath(String(cfg.get("coder.tlsAltHost") ?? "").trim());
+	const insecure = Boolean(config("coder.insecure"));
+	const certFile = getPath("coder.tlsCertFile");
+	const keyFile = getPath("coder.tlsKeyFile");
+	const caFile = getPath("coder.tlsCaFile");
+	const altHost = getHost("coder.tlsAltHost");
 
 	return new ProxyAgent({
 		// Called each time a request is made.
 		getProxyForUrl: (url: string) => {
-			const cfg = vscode.workspace.getConfiguration();
 			return getProxyForUrl(
 				url,
-				cfg.get("http.proxy"),
-				cfg.get("coder.proxyBypass"),
+				config("http.proxy"),
+				config("coder.proxyBypass"),
 			);
 		},
-		cert: certFile === "" ? undefined : await fs.readFile(certFile),
-		key: keyFile === "" ? undefined : await fs.readFile(keyFile),
-		ca: caFile === "" ? undefined : await fs.readFile(caFile),
-		servername: altHost === "" ? undefined : altHost,
+		cert: await readFile(certFile),
+		key: await readFile(keyFile),
+		ca: await readFile(caFile),
+		servername: checkEmptyString(altHost),
 		// rejectUnauthorized defaults to true, so we need to explicitly set it to
 		// false if we want to allow self-signed certificates.
 		rejectUnauthorized: !insecure,
@@ -127,40 +184,25 @@ export function createStreamingFetchAdapter(axiosInstance: AxiosInstance) {
 			responseType: "stream",
 			validateStatus: () => true, // Don't throw on any status code
 		});
-		const stream = new ReadableStream({
-			start(controller) {
-				response.data.on("data", (chunk: Buffer) => {
-					controller.enqueue(chunk);
-				});
-
-				response.data.on("end", () => {
-					controller.close();
-				});
-
-				response.data.on("error", (err: Error) => {
-					controller.error(err);
-				});
-			},
-
-			cancel() {
-				response.data.destroy();
-				return Promise.resolve();
-			},
-		});
-
-		return {
-			body: {
-				getReader: () => stream.getReader(),
-			},
-			url: urlStr,
-			status: response.status,
-			redirected: response.request.res.responseUrl !== urlStr,
-			headers: {
-				get: (name: string) => {
+		const getHeaderFromResponse = (name: string) => {
 					const value = response.headers[name.toLowerCase()];
 					return value === undefined ? null : String(value);
-				},
-			},
+				}
+		const getReader = () => getStreamFromResponse(response).getReader()
+		const body = {
+			getReader,
+		};
+		const redirected = response.request.res.responseUrl !== urlStr;
+		const headers = {
+				get: getHeaderFromResponse,
+			};
+
+		return {
+			body,
+			url: urlStr,
+			status: response.status,
+			redirected,
+			headers,
 		};
 	};
 }
