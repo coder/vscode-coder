@@ -9,6 +9,7 @@ import { Commands } from "./commands";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
+import type { Api } from "coder/site/src/api/api";
 import { toSafeHost } from "./util";
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider";
 
@@ -279,56 +280,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// in package.json we're able to perform actions before the authority is
 	// resolved by the remote SSH extension.
 	if (vscodeProposed.env.remoteAuthority) {
-		const remote = new Remote(
+		await handleRemoteAuthority(
 			vscodeProposed,
 			storage,
 			commands,
 			ctx.extensionMode,
+			restClient,
 		);
-		try {
-			const details = await remote.setup(vscodeProposed.env.remoteAuthority);
-			if (details) {
-				// Authenticate the plugin client which is used in the sidebar to display
-				// workspaces belonging to this deployment.
-				restClient.setHost(details.url);
-				restClient.setSessionToken(details.token);
-			}
-		} catch (ex) {
-			if (ex instanceof CertificateError) {
-				storage.writeToCoderOutputChannel(ex.x509Err || ex.message);
-				await ex.showModal("Failed to open workspace");
-			} else if (isAxiosError(ex)) {
-				const msg = getErrorMessage(ex, "None");
-				const detail = getErrorDetail(ex) || "None";
-				const urlString = axios.getUri(ex.config);
-				const method = ex.config?.method?.toUpperCase() || "request";
-				const status = ex.response?.status || "None";
-				const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
-				storage.writeToCoderOutputChannel(message);
-				await vscodeProposed.window.showErrorMessage(
-					"Failed to open workspace",
-					{
-						detail: message,
-						modal: true,
-						useCustom: true,
-					},
-				);
-			} else {
-				const message = errToStr(ex, "No error message was provided");
-				storage.writeToCoderOutputChannel(message);
-				await vscodeProposed.window.showErrorMessage(
-					"Failed to open workspace",
-					{
-						detail: message,
-						modal: true,
-						useCustom: true,
-					},
-				);
-			}
-			// Always close remote session when we fail to open a workspace.
-			await remote.closeRemote();
-			return;
-		}
 	}
 
 	// See if the plugin client is authenticated.
@@ -359,9 +317,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					myWorkspacesProvider.fetchAndRefresh();
 					allWorkspacesProvider.fetchAndRefresh();
 				} else {
-					storage.writeToCoderOutputChannel(
-						`No error, but got unexpected response: ${user}`,
-					);
+					handleUnexpectedAuthResponse(user, storage);
 				}
 			})
 			.catch((error) => {
@@ -396,4 +352,76 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		}
 	}
+}
+
+/**
+ * Handle remote authority setup when connecting to a workspace.
+ * Extracted for testability.
+ */
+export async function handleRemoteAuthority(
+	vscodeProposed: typeof vscode,
+	storage: Storage,
+	commands: Commands,
+	extensionMode: vscode.ExtensionMode,
+	restClient: Api,
+): Promise<void> {
+	const remote = new Remote(vscodeProposed, storage, commands, extensionMode);
+	try {
+		const details = await remote.setup(vscodeProposed.env.remoteAuthority!);
+		if (details) {
+			// Authenticate the plugin client which is used in the sidebar to display
+			// workspaces belonging to this deployment.
+			restClient.setHost(details.url);
+			restClient.setSessionToken(details.token);
+		}
+	} catch (ex) {
+		await handleRemoteSetupError(ex, vscodeProposed, storage, remote);
+	}
+}
+
+/**
+ * Handle errors during remote setup.
+ * Extracted for testability.
+ */
+export async function handleRemoteSetupError(
+	ex: unknown,
+	vscodeProposed: typeof vscode,
+	storage: Storage,
+	remote: Remote,
+): Promise<void> {
+	if (ex instanceof CertificateError) {
+		storage.writeToCoderOutputChannel(ex.x509Err || ex.message);
+		await ex.showModal("Failed to open workspace");
+	} else if (isAxiosError(ex)) {
+		const msg = getErrorMessage(ex, "None");
+		const detail = getErrorDetail(ex) || "None";
+		const urlString = axios.getUri(ex.config);
+		const method = ex.config?.method?.toUpperCase() || "request";
+		const status = ex.response?.status || "None";
+		const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
+		storage.writeToCoderOutputChannel(message);
+		await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+			detail: message,
+			modal: true,
+			useCustom: true,
+		});
+	} else {
+		const message = errToStr(ex, "No error message was provided");
+		storage.writeToCoderOutputChannel(message);
+		await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+			detail: message,
+			modal: true,
+			useCustom: true,
+		});
+	}
+	// Always close remote session when we fail to open a workspace.
+	await remote.closeRemote();
+}
+
+/**
+ * Handle unexpected authentication response.
+ * Extracted for testability.
+ */
+export function handleUnexpectedAuthResponse(user: unknown, storage: Storage): void {
+	storage.writeToCoderOutputChannel(`No error, but got unexpected response: ${user}`);
 }

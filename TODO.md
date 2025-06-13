@@ -81,49 +81,59 @@ This document outlines the comprehensive testing improvements needed for the VSC
 
 ## Priority 2: Missing Test Files
 
-### 🔴 `src/api-helper.ts` - Error handling utilities
-- Test `errToStr()` function with various error types
-- Test error message formatting and sanitization
+### ✅ `src/api-helper.ts` - Error handling utilities (COMPLETED)
+- ✅ Test `errToStr()` function with various error types - 100% coverage
+- ✅ Test `extractAgents()` and `extractAllAgents()` functions - 100% coverage  
+- ✅ Test Zod schema validation for agent metadata - 100% coverage
 
-### 🔴 `src/commands.ts` - VSCode command implementations  
-- Test all command handlers
-- Test command registration and lifecycle
-- Mock VSCode command API
+### ✅ `src/commands.ts` - VSCode command implementations (COMPLETED)
+- ✅ Test workspace operations (openFromSidebar, open, openDevContainer) - 56% coverage
+- ✅ Test basic functionality (login, logout, viewLogs) - 56% coverage
+- ✅ Test error handling scenarios - 56% coverage
+- ✅ Mock VSCode command API - 56% coverage
 
-### 🔴 `src/extension.ts` - Extension entry point
-- Test extension activation/deactivation
-- Test command registration
-- Test provider registration
-- Mock VSCode extension API
+### 🔴 `src/extension.ts` - Extension entry point ⭐ **HIGHEST PRIORITY**
+- **Critical**: Main extension activation function (activate())
+- **Critical**: Extension registration and command binding
+- **Critical**: URI handler for vscode:// protocol
+- **Critical**: Remote SSH extension integration
+- **Critical**: Extension context and lifecycle management
+- **Key Dependencies**: Commands, Storage, WorkspaceProvider integration
 
-### 🔴 `src/inbox.ts` - Message handling
-- Test message queuing and processing
-- Test different message types
+### 🔴 `src/storage.ts` - Data persistence ⭐ **HIGH PRIORITY**  
+- **Critical**: Session token storage/retrieval (secrets API)
+- **Critical**: URL history management (memento API)
+- **Critical**: CLI configuration and binary management
+- **Critical**: File system operations and downloads
+- **Key Dependencies**: Used by Commands, Remote, WorkspaceProvider
 
-### 🔴 `src/proxy.ts` - Proxy configuration
-- Test proxy URL resolution
-- Test bypass logic
-- Test different proxy configurations
+### 🔴 `src/workspacesProvider.ts` - VSCode tree view provider ⭐ **HIGH PRIORITY**
+- **Critical**: Tree data provider implementation for sidebar
+- **Critical**: Workspace polling and refresh logic
+- **Critical**: Agent metadata watching and streaming
+- **Key Dependencies**: Storage, API integration
 
-### 🔴 `src/remote.ts` - Remote connection handling
-- Test remote authority resolution
-- Test connection establishment
-- Test error scenarios
+### 🔴 `src/remote.ts` - Remote connection handling ⭐ **MEDIUM PRIORITY**
+- **Complex**: SSH connection setup and management
+- **Complex**: Workspace lifecycle (start/stop/monitor)
+- **Complex**: CLI integration and process management
+- **Key Dependencies**: Storage, Commands, API integration
 
-### 🔴 `src/storage.ts` - Data persistence
-- Test header storage and retrieval
-- Test configuration persistence
-- Mock file system operations
+### 🔴 `src/proxy.ts` - Proxy configuration ⭐ **LOW PRIORITY**
+- **Utility**: HTTP proxy URL resolution
+- **Utility**: NO_PROXY bypass logic
+- **Simple**: Environment variable handling
+- **Standalone**: Minimal dependencies
 
-### 🔴 `src/workspaceMonitor.ts` - Workspace monitoring
-- Test workspace state tracking
-- Test change detection and notifications
+### 🔴 `src/inbox.ts` - Message handling ⭐ **LOW PRIORITY**
+- **Utility**: Message queuing and processing
+- **Simple**: Event-based messaging system
+- **Standalone**: Minimal dependencies
 
-### 🔴 `src/workspacesProvider.ts` - VSCode tree view provider
-- Test workspace tree construction
-- Test refresh logic
-- Test user interactions
-- Mock VSCode tree view API
+### 🔴 `src/workspaceMonitor.ts` - Workspace monitoring ⭐ **LOW PRIORITY**
+- **Utility**: Workspace state tracking
+- **Simple**: File watching and change detection
+- **Dependencies**: Limited to file system operations
 
 ## Priority 3: Test Quality Improvements
 
