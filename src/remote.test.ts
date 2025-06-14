@@ -19,7 +19,17 @@ vi.mock("vscode", () => ({
   window: {
     showInformationMessage: vi.fn(),
     showErrorMessage: vi.fn(),
+    createTerminal: vi.fn(),
   },
+  EventEmitter: vi.fn().mockImplementation(() => ({
+    event: vi.fn(),
+    fire: vi.fn(),
+    dispose: vi.fn(),
+  })),
+  TerminalLocation: {
+    Panel: 1,
+  },
+  ThemeIcon: vi.fn(),
 }))
 
 vi.mock("fs/promises", () => ({
@@ -62,6 +72,15 @@ vi.mock("./featureSet", () => ({
 
 vi.mock("./util", () => ({
   parseRemoteAuthority: vi.fn(),
+  findPort: vi.fn(),
+}))
+
+vi.mock("find-process", () => ({
+  default: vi.fn(),
+}))
+
+vi.mock("pretty-bytes", () => ({
+  default: vi.fn((bytes) => `${bytes}B`),
 }))
 
 // Create a testable Remote class that exposes protected methods
@@ -84,6 +103,18 @@ class TestableRemote extends Remote {
 
   public fetchWorkspace(workspaceRestClient: Api, parts: any, baseUrlRaw: string, remoteAuthority: string) {
     return super.fetchWorkspace(workspaceRestClient, parts, baseUrlRaw, remoteAuthority)
+  }
+
+  public createBuildLogTerminal(writeEmitter: vscode.EventEmitter<string>) {
+    return super.createBuildLogTerminal(writeEmitter)
+  }
+
+  public searchSSHLogForPID(logPath: string) {
+    return super.searchSSHLogForPID(logPath)
+  }
+
+  public updateNetworkStatus(networkStatus: vscode.StatusBarItem, network: any) {
+    return super.updateNetworkStatus(networkStatus, network)
   }
 }
 
@@ -476,6 +507,108 @@ describe("Remote", () => {
       expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
         "workbench.action.reloadWindow"
       )
+    })
+  })
+
+  describe("createBuildLogTerminal", () => {
+    it("should create terminal with correct configuration", () => {
+      const mockWriteEmitter = new vscode.EventEmitter<string>()
+      mockWriteEmitter.event = vi.fn()
+      
+      const mockTerminal = { name: "Build Log" }
+      vscode.window.createTerminal.mockReturnValue(mockTerminal)
+
+      const result = remote.createBuildLogTerminal(mockWriteEmitter)
+
+      expect(result).toBe(mockTerminal)
+      expect(vscode.window.createTerminal).toHaveBeenCalledWith({
+        name: "Build Log",
+        location: vscode.TerminalLocation.Panel,
+        iconPath: expect.any(vscode.ThemeIcon),
+        pty: expect.objectContaining({
+          onDidWrite: mockWriteEmitter.event,
+          close: expect.any(Function),
+          open: expect.any(Function),
+        }),
+      })
+    })
+  })
+
+  describe("searchSSHLogForPID", () => {
+    it("should find SSH process ID from log file", async () => {
+      const logPath = "/path/to/ssh.log"
+      
+      const fs = await import("fs/promises")
+      vi.mocked(fs.readFile).mockResolvedValue("Forwarding port 12345...")
+      
+      const { findPort } = await import("./util")
+      vi.mocked(findPort).mockResolvedValue(12345)
+      
+      const find = (await import("find-process")).default
+      vi.mocked(find).mockResolvedValue([{ pid: 54321, name: "ssh" }])
+
+      const result = await remote.searchSSHLogForPID(logPath)
+
+      expect(result).toBe(54321)
+      expect(fs.readFile).toHaveBeenCalledWith(logPath, "utf8")
+      expect(findPort).toHaveBeenCalled()
+      expect(find).toHaveBeenCalledWith("port", 12345)
+    })
+
+    it("should return undefined when no port found", async () => {
+      const logPath = "/path/to/ssh.log"
+      
+      const fs = await import("fs/promises")
+      vi.mocked(fs.readFile).mockResolvedValue("No port info here")
+      
+      const { findPort } = await import("./util")
+      vi.mocked(findPort).mockResolvedValue(undefined)
+
+      const result = await remote.searchSSHLogForPID(logPath)
+
+      expect(result).toBeUndefined()
+    })
+  })
+
+  describe("updateNetworkStatus", () => {
+    let mockStatusBar: any
+
+    beforeEach(() => {
+      mockStatusBar = {
+        text: "",
+        tooltip: "",
+        show: vi.fn(),
+        hide: vi.fn(),
+        dispose: vi.fn(),
+      }
+    })
+
+    it("should update status for peer-to-peer connection", () => {
+      const network = {
+        using_coder_connect: false,
+        p2p: true,
+        latency: 15.5,
+        download_bytes_sec: 1000000,
+        upload_bytes_sec: 500000,
+      }
+
+      remote.updateNetworkStatus(mockStatusBar, network)
+
+      expect(mockStatusBar.text).toBe("$(globe) Direct (15.50ms)")
+      expect(mockStatusBar.tooltip).toContain("You're connected peer-to-peer")
+      expect(mockStatusBar.show).toHaveBeenCalled()
+    })
+
+    it("should update status for Coder Connect", () => {
+      const network = {
+        using_coder_connect: true,
+      }
+
+      remote.updateNetworkStatus(mockStatusBar, network)
+
+      expect(mockStatusBar.text).toBe("$(globe) Coder Connect ")
+      expect(mockStatusBar.tooltip).toBe("You're connected using Coder Connect.")
+      expect(mockStatusBar.show).toHaveBeenCalled()
     })
   })
 })
