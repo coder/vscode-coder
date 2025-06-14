@@ -229,6 +229,214 @@ export class Remote {
 	}
 
 	/**
+	 * Wait for agent to connect.
+	 * Extracted for testability.
+	 */
+	protected async waitForAgentConnection(
+		agent: any,
+		monitor: WorkspaceMonitor
+	): Promise<any> {
+		return await vscode.window.withProgress(
+			{
+				title: "Waiting for the agent to connect...",
+				location: vscode.ProgressLocation.Notification,
+			},
+			async () => {
+				return await new Promise<any>((resolve) => {
+					const updateEvent = monitor.onChange.event((workspace) => {
+						const agents = extractAgents(workspace);
+						const found = agents.find((newAgent) => {
+							return newAgent.id === agent.id;
+						});
+						if (!found) {
+							return;
+						}
+						agent = found;
+						if (agent.status === "connecting") {
+							return;
+						}
+						updateEvent.dispose();
+						resolve(agent);
+					});
+				});
+			},
+		);
+	}
+
+	/**
+	 * Handle SSH process found.
+	 * Extracted for testability.
+	 */
+	protected async handleSSHProcessFound(
+		disposables: vscode.Disposable[],
+		logDir: string,
+		pid: number | undefined
+	): Promise<void> {
+		if (!pid) {
+			// TODO: Show an error here!
+			return;
+		}
+		disposables.push(this.showNetworkUpdates(pid));
+		if (logDir) {
+			const logFiles = await fs.readdir(logDir);
+			this.commands.workspaceLogPath = logFiles
+				.reverse()
+				.find(
+					(file) => file === `${pid}.log` || file.endsWith(`-${pid}.log`),
+				);
+		} else {
+			this.commands.workspaceLogPath = undefined;
+		}
+	}
+
+	/**
+	 * Handle extension change event.
+	 * Extracted for testability.
+	 */
+	protected handleExtensionChange(
+		disposables: vscode.Disposable[],
+		remoteAuthority: string,
+		workspace: Workspace,
+		agent: any
+	): void {
+		disposables.push(
+			this.registerLabelFormatter(
+				remoteAuthority,
+				workspace.owner_name,
+				workspace.name,
+				agent.name,
+			),
+		);
+	}
+
+	/**
+	 * Create a terminal for build logs.
+	 * Extracted for testability.
+	 */
+	protected createBuildLogTerminal(writeEmitter: vscode.EventEmitter<string>): vscode.Terminal {
+		return vscode.window.createTerminal({
+			name: "Build Log",
+			location: vscode.TerminalLocation.Panel,
+			// Spin makes this gear icon spin!
+			iconPath: new vscode.ThemeIcon("gear~spin"),
+			pty: {
+				onDidWrite: writeEmitter.event,
+				close: () => undefined,
+				open: () => undefined,
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} as Partial<vscode.Pseudoterminal> as any,
+		});
+	}
+
+	/**
+	 * Initialize write emitter and terminal for build logs.
+	 * Extracted for testability.
+	 */
+	protected initWriteEmitterAndTerminal(
+		writeEmitter: vscode.EventEmitter<string> | undefined,
+		terminal: vscode.Terminal | undefined
+	): { writeEmitter: vscode.EventEmitter<string>; terminal: vscode.Terminal } {
+		if (!writeEmitter) {
+			writeEmitter = new vscode.EventEmitter<string>();
+		}
+		if (!terminal) {
+			terminal = this.createBuildLogTerminal(writeEmitter);
+			terminal.show(true);
+		}
+		return { writeEmitter, terminal };
+	}
+
+	/**
+	 * Handle workspace build status.
+	 * Extracted for testability.
+	 */
+	protected async handleWorkspaceBuildStatus(
+		restClient: Api,
+		workspace: Workspace,
+		workspaceName: string,
+		globalConfigDir: string,
+		binPath: string,
+		attempts: number,
+		writeEmitter: vscode.EventEmitter<string> | undefined,
+		terminal: vscode.Terminal | undefined
+	): Promise<{
+		workspace: Workspace | undefined;
+		writeEmitter: vscode.EventEmitter<string> | undefined;
+		terminal: vscode.Terminal | undefined;
+	}> {
+		switch (workspace.latest_build.status) {
+			case "pending":
+			case "starting":
+			case "stopping":
+				const emitterAndTerminal = this.initWriteEmitterAndTerminal(writeEmitter, terminal);
+				writeEmitter = emitterAndTerminal.writeEmitter;
+				terminal = emitterAndTerminal.terminal;
+				this.storage.writeToCoderOutputChannel(
+					`Waiting for ${workspaceName}...`,
+				);
+				workspace = await waitForBuild(
+					restClient,
+					writeEmitter,
+					workspace,
+				);
+				break;
+			case "stopped":
+				if (!(await this.confirmStart(workspaceName))) {
+					return { workspace: undefined, writeEmitter, terminal };
+				}
+				const emitterAndTerminal2 = this.initWriteEmitterAndTerminal(writeEmitter, terminal);
+				writeEmitter = emitterAndTerminal2.writeEmitter;
+				terminal = emitterAndTerminal2.terminal;
+				this.storage.writeToCoderOutputChannel(
+					`Starting ${workspaceName}...`,
+				);
+				workspace = await startWorkspaceIfStoppedOrFailed(
+					restClient,
+					globalConfigDir,
+					binPath,
+					workspace,
+					writeEmitter,
+				);
+				break;
+			case "failed":
+				// On a first attempt, we will try starting a failed workspace
+				// (for example canceling a start seems to cause this state).
+				if (attempts === 1) {
+					if (!(await this.confirmStart(workspaceName))) {
+						return { workspace: undefined, writeEmitter, terminal };
+					}
+					const emitterAndTerminal3 = this.initWriteEmitterAndTerminal(writeEmitter, terminal);
+					writeEmitter = emitterAndTerminal3.writeEmitter;
+					terminal = emitterAndTerminal3.terminal;
+					this.storage.writeToCoderOutputChannel(
+						`Starting ${workspaceName}...`,
+					);
+					workspace = await startWorkspaceIfStoppedOrFailed(
+						restClient,
+						globalConfigDir,
+						binPath,
+						workspace,
+						writeEmitter,
+					);
+					break;
+				}
+			// Otherwise fall through and error.
+			case "canceled":
+			case "canceling":
+			case "deleted":
+			case "deleting":
+			default: {
+				const is =
+					workspace.latest_build.status === "failed" ? "has" : "is";
+				throw new Error(
+					`${workspaceName} ${is} ${workspace.latest_build.status}`,
+				);
+			}
+		}
+		return { workspace, writeEmitter, terminal };
+	}
+
+	/**
 	 * Try to get the workspace running.  Return undefined if the user canceled.
 	 */
 	private async maybeWaitForRunning(
@@ -244,28 +452,6 @@ export class Remote {
 		let terminal: undefined | vscode.Terminal;
 		let attempts = 0;
 
-		function initWriteEmitterAndTerminal(): vscode.EventEmitter<string> {
-			if (!writeEmitter) {
-				writeEmitter = new vscode.EventEmitter<string>();
-			}
-			if (!terminal) {
-				terminal = vscode.window.createTerminal({
-					name: "Build Log",
-					location: vscode.TerminalLocation.Panel,
-					// Spin makes this gear icon spin!
-					iconPath: new vscode.ThemeIcon("gear~spin"),
-					pty: {
-						onDidWrite: writeEmitter.event,
-						close: () => undefined,
-						open: () => undefined,
-						// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					} as Partial<vscode.Pseudoterminal> as any,
-				});
-				terminal.show(true);
-			}
-			return writeEmitter;
-		}
-
 		try {
 			// Show a notification while we wait.
 			return await this.vscodeProposed.window.withProgress(
@@ -280,69 +466,22 @@ export class Remote {
 					);
 					while (workspace.latest_build.status !== "running") {
 						++attempts;
-						switch (workspace.latest_build.status) {
-							case "pending":
-							case "starting":
-							case "stopping":
-								writeEmitter = initWriteEmitterAndTerminal();
-								this.storage.writeToCoderOutputChannel(
-									`Waiting for ${workspaceName}...`,
-								);
-								workspace = await waitForBuild(
-									restClient,
-									writeEmitter,
-									workspace,
-								);
-								break;
-							case "stopped":
-								if (!(await this.confirmStart(workspaceName))) {
-									return undefined;
-								}
-								writeEmitter = initWriteEmitterAndTerminal();
-								this.storage.writeToCoderOutputChannel(
-									`Starting ${workspaceName}...`,
-								);
-								workspace = await startWorkspaceIfStoppedOrFailed(
-									restClient,
-									globalConfigDir,
-									binPath,
-									workspace,
-									writeEmitter,
-								);
-								break;
-							case "failed":
-								// On a first attempt, we will try starting a failed workspace
-								// (for example canceling a start seems to cause this state).
-								if (attempts === 1) {
-									if (!(await this.confirmStart(workspaceName))) {
-										return undefined;
-									}
-									writeEmitter = initWriteEmitterAndTerminal();
-									this.storage.writeToCoderOutputChannel(
-										`Starting ${workspaceName}...`,
-									);
-									workspace = await startWorkspaceIfStoppedOrFailed(
-										restClient,
-										globalConfigDir,
-										binPath,
-										workspace,
-										writeEmitter,
-									);
-									break;
-								}
-							// Otherwise fall through and error.
-							case "canceled":
-							case "canceling":
-							case "deleted":
-							case "deleting":
-							default: {
-								const is =
-									workspace.latest_build.status === "failed" ? "has" : "is";
-								throw new Error(
-									`${workspaceName} ${is} ${workspace.latest_build.status}`,
-								);
-							}
+						const result = await this.handleWorkspaceBuildStatus(
+							restClient,
+							workspace,
+							workspaceName,
+							globalConfigDir,
+							binPath,
+							attempts,
+							writeEmitter,
+							terminal
+						);
+						if (!result.workspace) {
+							return undefined;
 						}
+						workspace = result.workspace;
+						writeEmitter = result.writeEmitter;
+						terminal = result.terminal;
 						this.storage.writeToCoderOutputChannel(
 							`${workspaceName} status is now ${workspace.latest_build.status}`,
 						);
@@ -425,6 +564,7 @@ export class Remote {
 		this.commands.workspace = workspace;
 
 		// Pick an agent.
+		const workspaceName = `${workspace.owner_name}/${workspace.name}`;
 		this.storage.writeToCoderOutputChannel(
 			`Finding agent for ${workspaceName}...`,
 		);
@@ -545,34 +685,7 @@ export class Remote {
 			this.storage.writeToCoderOutputChannel(
 				`Waiting for ${workspaceName}/${agent.name}...`,
 			);
-			await vscode.window.withProgress(
-				{
-					title: "Waiting for the agent to connect...",
-					location: vscode.ProgressLocation.Notification,
-				},
-				async () => {
-					await new Promise<void>((resolve) => {
-						const updateEvent = monitor.onChange.event((workspace) => {
-							if (!agent) {
-								return;
-							}
-							const agents = extractAgents(workspace);
-							const found = agents.find((newAgent) => {
-								return newAgent.id === agent.id;
-							});
-							if (!found) {
-								return;
-							}
-							agent = found;
-							if (agent.status === "connecting") {
-								return;
-							}
-							updateEvent.dispose();
-							resolve();
-						});
-					});
-				},
-			);
+			agent = await this.waitForAgentConnection(agent, monitor);
 			this.storage.writeToCoderOutputChannel(
 				`Agent ${agent.name} status is now ${agent.status}`,
 			);
@@ -622,36 +735,13 @@ export class Remote {
 		}
 
 		// TODO: This needs to be reworked; it fails to pick up reconnects.
-		this.findSSHProcessID().then(async (pid) => {
-			if (!pid) {
-				// TODO: Show an error here!
-				return;
-			}
-			disposables.push(this.showNetworkUpdates(pid));
-			if (logDir) {
-				const logFiles = await fs.readdir(logDir);
-				this.commands.workspaceLogPath = logFiles
-					.reverse()
-					.find(
-						(file) => file === `${pid}.log` || file.endsWith(`-${pid}.log`),
-					);
-			} else {
-				this.commands.workspaceLogPath = undefined;
-			}
-		});
+		this.findSSHProcessID().then(this.handleSSHProcessFound.bind(this, disposables, logDir));
 
 		// Register the label formatter again because SSH overrides it!
 		disposables.push(
-			vscode.extensions.onDidChange(() => {
-				disposables.push(
-					this.registerLabelFormatter(
-						remoteAuthority,
-						workspace.owner_name,
-						workspace.name,
-						agent.name,
-					),
-				);
-			}),
+			vscode.extensions.onDidChange(
+				this.handleExtensionChange.bind(this, disposables, remoteAuthority, workspace, agent)
+			),
 		);
 
 		this.storage.writeToCoderOutputChannel("Remote setup complete");
@@ -698,7 +788,7 @@ export class Remote {
 		this.storage.writeToCoderOutputChannel(
 			`SSH proxy diagnostics are being written to ${logDir}`,
 		);
-		return ` --log-dir ${escape(logDir)}`;
+		return ` --log-dir ${escapeCommandArg(logDir)}`;
 	}
 
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles
@@ -850,6 +940,105 @@ export class Remote {
 		return sshConfig.getRaw();
 	}
 
+	/**
+	 * Update network status bar item.
+	 * Extracted for testability.
+	 */
+	protected updateNetworkStatus(
+		networkStatus: vscode.StatusBarItem,
+		network: {
+			p2p: boolean;
+			latency: number;
+			preferred_derp: string;
+			derp_latency: { [key: string]: number };
+			upload_bytes_sec: number;
+			download_bytes_sec: number;
+			using_coder_connect: boolean;
+		}
+	): void {
+		let statusText = "$(globe) ";
+
+		// Coder Connect doesn't populate any other stats
+		if (network.using_coder_connect) {
+			networkStatus.text = statusText + "Coder Connect ";
+			networkStatus.tooltip = "You're connected using Coder Connect.";
+			networkStatus.show();
+			return;
+		}
+
+		if (network.p2p) {
+			statusText += "Direct ";
+			networkStatus.tooltip = "You're connected peer-to-peer ✨.";
+		} else {
+			statusText += network.preferred_derp + " ";
+			networkStatus.tooltip =
+				"You're connected through a relay 🕵.\nWe'll switch over to peer-to-peer when available.";
+		}
+		networkStatus.tooltip +=
+			"\n\nDownload ↓ " +
+			prettyBytes(network.download_bytes_sec, {
+				bits: true,
+			}) +
+			"/s • Upload ↑ " +
+			prettyBytes(network.upload_bytes_sec, {
+				bits: true,
+			}) +
+			"/s\n";
+
+		if (!network.p2p) {
+			const derpLatency = network.derp_latency[network.preferred_derp];
+
+			networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(network.latency - derpLatency).toFixed(2)}ms ↔ Workspace`;
+
+			let first = true;
+			Object.keys(network.derp_latency).forEach((region) => {
+				if (region === network.preferred_derp) {
+					return;
+				}
+				if (first) {
+					networkStatus.tooltip += `\n\nOther regions:`;
+					first = false;
+				}
+				networkStatus.tooltip += `\n${region}: ${Math.round(network.derp_latency[region] * 100) / 100}ms`;
+			});
+		}
+
+		statusText += "(" + network.latency.toFixed(2) + "ms)";
+		networkStatus.text = statusText;
+		networkStatus.show();
+	}
+
+	/**
+	 * Create network refresh function.
+	 * Extracted for testability.
+	 */
+	protected createNetworkRefreshFunction(
+		networkInfoFile: string,
+		updateStatus: (network: any) => void,
+		isDisposed: () => boolean
+	): () => void {
+		const periodicRefresh = async () => {
+			if (isDisposed()) {
+				return;
+			}
+			try {
+				const content = await fs.readFile(networkInfoFile, "utf8");
+				const parsed = JSON.parse(content);
+				try {
+					updateStatus(parsed);
+				} catch (ex) {
+					// Ignore
+				}
+			} catch {
+				// TODO: Log a failure here!
+			} finally {
+				// This matches the write interval of `coder vscodessh`.
+				setTimeout(periodicRefresh, 3000);
+			}
+		};
+		return periodicRefresh;
+	}
+
 	// showNetworkUpdates finds the SSH process ID that is being used by this
 	// workspace and reads the file being created by the Coder CLI.
 	private showNetworkUpdates(sshPid: number): vscode.Disposable {
@@ -862,90 +1051,13 @@ export class Remote {
 			`${sshPid}.json`,
 		);
 
-		const updateStatus = (network: {
-			p2p: boolean;
-			latency: number;
-			preferred_derp: string;
-			derp_latency: { [key: string]: number };
-			upload_bytes_sec: number;
-			download_bytes_sec: number;
-			using_coder_connect: boolean;
-		}) => {
-			let statusText = "$(globe) ";
-
-			// Coder Connect doesn't populate any other stats
-			if (network.using_coder_connect) {
-				networkStatus.text = statusText + "Coder Connect ";
-				networkStatus.tooltip = "You're connected using Coder Connect.";
-				networkStatus.show();
-				return;
-			}
-
-			if (network.p2p) {
-				statusText += "Direct ";
-				networkStatus.tooltip = "You're connected peer-to-peer ✨.";
-			} else {
-				statusText += network.preferred_derp + " ";
-				networkStatus.tooltip =
-					"You're connected through a relay 🕵.\nWe'll switch over to peer-to-peer when available.";
-			}
-			networkStatus.tooltip +=
-				"\n\nDownload ↓ " +
-				prettyBytes(network.download_bytes_sec, {
-					bits: true,
-				}) +
-				"/s • Upload ↑ " +
-				prettyBytes(network.upload_bytes_sec, {
-					bits: true,
-				}) +
-				"/s\n";
-
-			if (!network.p2p) {
-				const derpLatency = network.derp_latency[network.preferred_derp];
-
-				networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(network.latency - derpLatency).toFixed(2)}ms ↔ Workspace`;
-
-				let first = true;
-				Object.keys(network.derp_latency).forEach((region) => {
-					if (region === network.preferred_derp) {
-						return;
-					}
-					if (first) {
-						networkStatus.tooltip += `\n\nOther regions:`;
-						first = false;
-					}
-					networkStatus.tooltip += `\n${region}: ${Math.round(network.derp_latency[region] * 100) / 100}ms`;
-				});
-			}
-
-			statusText += "(" + network.latency.toFixed(2) + "ms)";
-			networkStatus.text = statusText;
-			networkStatus.show();
-		};
+		const updateStatus = this.updateNetworkStatus.bind(this, networkStatus);
 		let disposed = false;
-		const periodicRefresh = () => {
-			if (disposed) {
-				return;
-			}
-			fs.readFile(networkInfoFile, "utf8")
-				.then((content) => {
-					return JSON.parse(content);
-				})
-				.then((parsed) => {
-					try {
-						updateStatus(parsed);
-					} catch (ex) {
-						// Ignore
-					}
-				})
-				.catch(() => {
-					// TODO: Log a failure here!
-				})
-				.finally(() => {
-					// This matches the write interval of `coder vscodessh`.
-					setTimeout(periodicRefresh, 3000);
-				});
-		};
+		const periodicRefresh = this.createNetworkRefreshFunction(
+			networkInfoFile,
+			updateStatus,
+			() => disposed
+		);
 		periodicRefresh();
 
 		return {
@@ -956,43 +1068,48 @@ export class Remote {
 		};
 	}
 
+	/**
+	 * Search SSH log file for process ID.
+	 * Extracted for testability.
+	 */
+	protected async searchSSHLogForPID(logPath: string): Promise<number | undefined> {
+		// This searches for the socksPort that Remote SSH is connecting to. We do
+		// this to find the SSH process that is powering this connection. That SSH
+		// process will be logging network information periodically to a file.
+		const text = await fs.readFile(logPath, "utf8");
+		const port = await findPort(text);
+		if (!port) {
+			return;
+		}
+		const processes = await find("port", port);
+		if (processes.length < 1) {
+			return;
+		}
+		const process = processes[0];
+		return process.pid;
+	}
+
 	// findSSHProcessID returns the currently active SSH process ID that is
 	// powering the remote SSH connection.
 	private async findSSHProcessID(timeout = 15000): Promise<number | undefined> {
-		const search = async (logPath: string): Promise<number | undefined> => {
-			// This searches for the socksPort that Remote SSH is connecting to. We do
-			// this to find the SSH process that is powering this connection. That SSH
-			// process will be logging network information periodically to a file.
-			const text = await fs.readFile(logPath, "utf8");
-			const port = await findPort(text);
-			if (!port) {
-				return;
-			}
-			const processes = await find("port", port);
-			if (processes.length < 1) {
-				return;
-			}
-			const process = processes[0];
-			return process.pid;
-		};
 		const start = Date.now();
-		const loop = async (): Promise<number | undefined> => {
-			if (Date.now() - start > timeout) {
-				return undefined;
-			}
+		const pollInterval = 500;
+		
+		while (Date.now() - start < timeout) {
 			// Loop until we find the remote SSH log for this window.
 			const filePath = await this.storage.getRemoteSSHLogPath();
-			if (!filePath) {
-				return new Promise((resolve) => setTimeout(() => resolve(loop()), 500));
+			if (filePath) {
+				// Then we search the remote SSH log until we find the port.
+				const result = await this.searchSSHLogForPID(filePath);
+				if (result) {
+					return result;
+				}
 			}
-			// Then we search the remote SSH log until we find the port.
-			const result = await search(filePath);
-			if (!result) {
-				return new Promise((resolve) => setTimeout(() => resolve(loop()), 500));
-			}
-			return result;
-		};
-		return loop();
+			// Wait before trying again
+			await new Promise((resolve) => setTimeout(resolve, pollInterval));
+		}
+		
+		return undefined;
 	}
 
 	// closeRemote ends the current remote session.

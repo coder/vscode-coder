@@ -5,7 +5,7 @@
 **Test Infrastructure Complete:** 17/17 source files have test files  
 **Total Tests:** 345 tests passing across 17 test files  
 **Test Framework:** Vitest with comprehensive mocking infrastructure  
-**Overall Line Coverage:** 70.43% (significant gaps remain)
+**Overall Line Coverage:** 70.43% (Target: 100%)
 
 ---
 
@@ -20,29 +20,29 @@
 | `proxy.ts` | 100% | ✅ Perfect coverage |
 
 ### 🟢 **High Coverage (90%+ lines, 5 files)**
-| File | Lines | Tests | Priority |
+| File | Lines | Tests | Remaining Gaps |
 |------|-------|-------|----------|
-| `workspaceMonitor.ts` | 98.65% | 19 | ✅ Nearly complete |
-| `sshConfig.ts` | 96.21% | 14 | ✅ Nearly complete |
-| `extension.ts` | 93.44% | 26 | 🔸 Minor gaps |
-| `featureSet.ts` | 90.9% | 2 | 🔸 Minor gaps |
-| `cliManager.ts` | 90.05% | 6 | 🔸 Minor gaps |
+| `workspaceMonitor.ts` | 98.65% | 19 | Lines 158-159, 183 |
+| `sshConfig.ts` | 96.21% | 14 | Lines 175, 251, 286-287 |
+| `extension.ts` | 93.44% | 26 | Lines 271-272, 320-321 |
+| `featureSet.ts` | 90.9% | 2 | Lines 18-20 |
+| `cliManager.ts` | 90.05% | 6 | Lines 140, 152, 165, 167 |
 
 ### 🟡 **Medium Coverage (70-90% lines, 4 files)**
-| File | Lines | Tests | Key Gaps |
+| File | Lines | Tests | Uncovered Lines |
 |------|-------|-------|----------|
-| `storage.ts` | 89.19% | 55 | Error scenarios, file operations |
-| `sshSupport.ts` | 88.78% | 9 | Edge cases, environment detection |
-| `headers.ts` | 85.08% | 9 | Complex header parsing scenarios |
-| `util.ts` | 79.19% | 8 | Helper functions, path operations |
+| `storage.ts` | 89.19% | 55 | Lines 373-374, 390-410 |
+| `sshSupport.ts` | 88.78% | 9 | Lines 38, 78-79, 89-90 |
+| `headers.ts` | 85.08% | 9 | Lines 33-47, 90-91 |
+| `util.ts` | 79.19% | 8 | Lines 127-129, 148-149 |
 
 ### 🔴 **Major Coverage Gaps (< 70% lines, 4 files)**
-| File | Lines | Tests | Status | Major Issues |
-|------|-------|-------|---------|--------------|
-| **`remote.ts`** | **25.4%** | 17 | 🚨 **Critical gap** | SSH setup, workspace lifecycle, error handling |
-| **`workspacesProvider.ts`** | **65.12%** | 27 | 🔸 Significant gaps | Tree operations, refresh logic, agent handling |
-| **`error.ts`** | **64.6%** | 11 | 🔸 Significant gaps | Error transformation, logging scenarios |
-| **`commands.ts`** | **56.01%** | 12 | 🔸 Significant gaps | Command implementations, user interactions |
+| File | Lines | Tests | Uncovered Lines |
+|------|-------|-------|----------|
+| **`remote.ts`** | **25.4%** | 17 | Lines 264-996, 1009-1038 (775 lines!) |
+| **`workspacesProvider.ts`** | **65.12%** | 27 | Lines 468-485, 521-539 |
+| **`error.ts`** | **64.6%** | 11 | Lines 145-166, 171-178 |
+| **`commands.ts`** | **56.01%** | 12 | Lines 550-665, 715-723 |
 
 ---
 
@@ -95,10 +95,10 @@
 - [x] **9/17** files at 85%+ line coverage
 
 ### **Target Goals 🎯**
-- [ ] **70% → 90%** overall line coverage (primary goal)
-- [ ] **`remote.ts`** from 25% → 80%+ coverage (critical)
-- [ ] **15/17** files at 85%+ line coverage
-- [ ] **8/17** files at 95%+ line coverage
+- [ ] **70% → 100%** overall line coverage (updated goal)
+- [ ] **`remote.ts`** from 25% → 100% coverage (critical)
+- [ ] **17/17** files at 100% line coverage
+- [ ] **100%** branch coverage across all files
 
 ---
 
@@ -118,14 +118,40 @@
 
 ## Priority Action Items 📋
 
-**Immediate (Next Session):**
-1. 🚨 **Fix `remote.ts` coverage** - Expand from 25% to 80%+ (critical business logic)
-2. 🔸 **Improve `commands.ts`** - Expand from 56% to 80%+ (user-facing functionality)
-3. 🔸 **Polish `workspacesProvider.ts`** - Expand from 65% to 80%+ (UI component)
+**Immediate - 100% Coverage Sprint:**
 
-**Secondary:**
-4. Fill remaining gaps in medium-coverage files
-5. Add integration test scenarios
-6. Performance and edge case testing
+1. 🚨 **`remote.ts`** (25.4% → 100%) - 775 uncovered lines
+   - Complete SSH setup and workspace lifecycle tests
+   - Error handling and process management scenarios
+   - Mock all VSCode API interactions
 
-**Target:** Achieve **90% overall line coverage** with robust, maintainable tests.
+2. 🔸 **`commands.ts`** (56.01% → 100%) - ~340 uncovered lines
+   - Test all command implementations
+   - User interaction flows and error cases
+
+3. 🔸 **`error.ts`** (64.6% → 100%) - ~60 uncovered lines
+   - Error transformation scenarios
+   - Logging and telemetry paths
+
+4. 🔸 **`workspacesProvider.ts`** (65.12% → 100%) - ~200 uncovered lines
+   - Tree operations and refresh logic
+   - Agent selection scenarios
+
+5. 📈 **Medium Coverage Files** (70-90% → 100%)
+   - `util.ts` (79.19% → 100%)
+   - `headers.ts` (85.08% → 100%)  
+   - `sshSupport.ts` (88.78% → 100%)
+   - `storage.ts` (89.19% → 100%)
+
+6. ✨ **Final Polish** (90%+ → 100%)
+   - `cliManager.ts` (90.05% → 100%)
+   - `featureSet.ts` (90.9% → 100%)
+   - `extension.ts` (93.44% → 100%)
+   - `sshConfig.ts` (96.21% → 100%)
+   - `workspaceMonitor.ts` (98.65% → 100%)
+
+7. 🌿 **Branch Coverage**
+   - `api.ts` (98.52% → 100% branches)
+   - `proxy.ts` (95.12% → 100% branches)
+
+**Target:** Achieve **100% line and branch coverage** across all files.
