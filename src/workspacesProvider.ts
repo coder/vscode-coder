@@ -68,7 +68,9 @@ export class WorkspaceProvider
 	 * Create event emitter for tree data changes.
 	 * Extracted for testability.
 	 */
-	protected createEventEmitter(): vscode.EventEmitter<vscode.TreeItem | undefined | null | void> {
+	protected createEventEmitter(): vscode.EventEmitter<
+		vscode.TreeItem | undefined | null | void
+	> {
 		return new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
 	}
 
@@ -144,7 +146,9 @@ export class WorkspaceProvider
 
 		// Create tree items for each workspace
 		const workspaceTreeItems = await Promise.all(
-			resp.workspaces.map((workspace) => this.createWorkspaceTreeItem(workspace)),
+			resp.workspaces.map((workspace) =>
+				this.createWorkspaceTreeItem(workspace),
+			),
 		);
 
 		return workspaceTreeItems;
@@ -193,7 +197,6 @@ export class WorkspaceProvider
 		}
 	}
 
-
 	// refresh causes the tree to re-render.  It does not fetch fresh workspaces.
 	refresh(item: vscode.TreeItem | undefined | null | void): void {
 		this._onDidChangeTreeData.fire(item);
@@ -223,7 +226,10 @@ export class WorkspaceProvider
 	 * Update agent watchers for metadata monitoring.
 	 * Extracted for testability.
 	 */
-	protected updateAgentWatchers(workspaces: Workspace[], restClient: Api): void {
+	protected updateAgentWatchers(
+		workspaces: Workspace[],
+		restClient: Api,
+	): void {
 		const oldWatcherIds = Object.keys(this.agentWatchers);
 		const reusedWatcherIds: string[] = [];
 
@@ -282,16 +288,14 @@ export class WorkspaceProvider
 		agents.forEach((agent) => {
 			// Check if agent has apps property with status reporting
 			if (agent.apps && Array.isArray(agent.apps)) {
-				workspaceTreeItem.appStatus = agent.apps.map(
-					(app: WorkspaceApp) => ({
-						name: app.display_name,
-						url: app.url,
-						agent_id: agent.id,
-						agent_name: agent.name,
-						command: app.command,
-						workspace_name: workspace.name,
-					}),
-				);
+				workspaceTreeItem.appStatus = agent.apps.map((app: WorkspaceApp) => ({
+					name: app.display_name,
+					url: app.url,
+					agent_id: agent.id,
+					agent_name: agent.name,
+					command: app.command,
+					workspace_name: workspace.name,
+				}));
 			}
 		});
 
@@ -302,7 +306,9 @@ export class WorkspaceProvider
 	 * Get children for workspace tree item.
 	 * Extracted for testability.
 	 */
-	protected getWorkspaceChildren(element: WorkspaceTreeItem): Promise<vscode.TreeItem[]> {
+	protected getWorkspaceChildren(
+		element: WorkspaceTreeItem,
+	): Promise<vscode.TreeItem[]> {
 		const agents = extractAgents(element.workspace);
 		const agentTreeItems = agents.map(
 			(agent) =>
@@ -321,7 +327,9 @@ export class WorkspaceProvider
 	 * Get children for agent tree item.
 	 * Extracted for testability.
 	 */
-	protected getAgentChildren(element: AgentTreeItem): Promise<vscode.TreeItem[]> {
+	protected getAgentChildren(
+		element: AgentTreeItem,
+	): Promise<vscode.TreeItem[]> {
 		const watcher = this.agentWatchers[element.agent.id];
 		if (watcher?.error) {
 			return Promise.resolve([new ErrorTreeItem(watcher.error)]);
@@ -365,9 +373,7 @@ export class WorkspaceProvider
 		if (savedMetadata.length > 0) {
 			const metadataSection = new SectionTreeItem(
 				"Agent Metadata",
-				savedMetadata.map(
-					(metadata) => new AgentMetadataTreeItem(metadata),
-				),
+				savedMetadata.map((metadata) => new AgentMetadataTreeItem(metadata)),
 			);
 			items.push(metadataSection);
 		}

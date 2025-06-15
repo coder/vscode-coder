@@ -3,12 +3,17 @@ import * as fs from "fs/promises";
 import https from "https";
 import * as path from "path";
 import { afterAll, beforeAll, it, expect, vi, describe } from "vitest";
-import { CertificateError, X509_ERR, X509_ERR_CODE, getErrorDetail } from "./error";
+import {
+	CertificateError,
+	X509_ERR,
+	X509_ERR_CODE,
+	getErrorDetail,
+} from "./error";
 
 // Mock API error functions for getErrorDetail tests
 vi.mock("coder/site/src/api/errors", () => ({
 	isApiError: vi.fn(),
-	isApiErrorResponse: vi.fn()
+	isApiErrorResponse: vi.fn(),
 }));
 
 // Before each test we make a request to sanity check that we really get the
@@ -27,16 +32,16 @@ beforeAll(() => {
 	vi.mock("vscode", () => ({
 		workspace: {
 			getConfiguration: vi.fn(() => ({
-				update: vi.fn()
-			}))
+				update: vi.fn(),
+			})),
 		},
 		window: {
 			showInformationMessage: vi.fn(),
-			showErrorMessage: vi.fn()
+			showErrorMessage: vi.fn(),
 		},
 		ConfigurationTarget: {
-			Global: 1
-		}
+			Global: 1,
+		},
 	}));
 });
 
@@ -272,42 +277,48 @@ it("falls back with different error", async () => {
 
 describe("getErrorDetail function", () => {
 	it("should return detail from ApiError", async () => {
-		const { isApiError, isApiErrorResponse } = await import("coder/site/src/api/errors");
+		const { isApiError, isApiErrorResponse } = await import(
+			"coder/site/src/api/errors"
+		);
 		vi.mocked(isApiError).mockReturnValue(true);
 		vi.mocked(isApiErrorResponse).mockReturnValue(false);
-		
+
 		const apiError = {
 			response: {
 				data: {
-					detail: "API error detail"
-				}
-			}
+					detail: "API error detail",
+				},
+			},
 		};
-		
+
 		const result = getErrorDetail(apiError);
 		expect(result).toBe("API error detail");
 	});
 
 	it("should return detail from ApiErrorResponse", async () => {
-		const { isApiError, isApiErrorResponse } = await import("coder/site/src/api/errors");
+		const { isApiError, isApiErrorResponse } = await import(
+			"coder/site/src/api/errors"
+		);
 		vi.mocked(isApiError).mockReturnValue(false);
 		vi.mocked(isApiErrorResponse).mockReturnValue(true);
-		
+
 		const apiErrorResponse = {
-			detail: "API error response detail"
+			detail: "API error response detail",
 		};
-		
+
 		const result = getErrorDetail(apiErrorResponse);
 		expect(result).toBe("API error response detail");
 	});
 
 	it("should return null for unknown error types", async () => {
-		const { isApiError, isApiErrorResponse } = await import("coder/site/src/api/errors");
+		const { isApiError, isApiErrorResponse } = await import(
+			"coder/site/src/api/errors"
+		);
 		vi.mocked(isApiError).mockReturnValue(false);
 		vi.mocked(isApiErrorResponse).mockReturnValue(false);
-		
+
 		const unknownError = new Error("Unknown error");
-		
+
 		const result = getErrorDetail(unknownError);
 		expect(result).toBeNull();
 	});

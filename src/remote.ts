@@ -64,14 +64,23 @@ export class Remote {
 	 * Validate credentials and handle login flow if needed.
 	 * Extracted for testability.
 	 */
-	protected async validateCredentials(parts: any): Promise<{ baseUrlRaw: string; token: string } | { baseUrlRaw?: undefined; token?: undefined }> {
+	protected async validateCredentials(parts: {
+		username: string;
+		workspace: string;
+		label: string;
+	}): Promise<
+		| { baseUrlRaw: string; token: string }
+		| { baseUrlRaw?: undefined; token?: undefined }
+	> {
 		const workspaceName = `${parts.username}/${parts.workspace}`;
 
 		// Migrate "session_token" file to "session", if needed.
 		await this.storage.migrateSessionToken(parts.label);
 
 		// Get the URL and token belonging to this host.
-		const { url: baseUrlRaw, token } = await this.storage.readCliConfig(parts.label);
+		const { url: baseUrlRaw, token } = await this.storage.readCliConfig(
+			parts.label,
+		);
 
 		// It could be that the cli config was deleted.  If so, ask for the url.
 		if (!baseUrlRaw || (!token && needToken())) {
@@ -102,8 +111,12 @@ export class Remote {
 			}
 		}
 
-		this.storage.writeToCoderOutputChannel(`Using deployment URL: ${baseUrlRaw}`);
-		this.storage.writeToCoderOutputChannel(`Using deployment label: ${parts.label || "n/a"}`);
+		this.storage.writeToCoderOutputChannel(
+			`Using deployment URL: ${baseUrlRaw}`,
+		);
+		this.storage.writeToCoderOutputChannel(
+			`Using deployment label: ${parts.label || "n/a"}`,
+		);
 
 		return { baseUrlRaw, token };
 	}
@@ -112,7 +125,10 @@ export class Remote {
 	 * Create workspace REST client.
 	 * Extracted for testability.
 	 */
-	protected async createWorkspaceClient(baseUrlRaw: string, token: string): Promise<Api> {
+	protected async createWorkspaceClient(
+		baseUrlRaw: string,
+		token: string,
+	): Promise<Api> {
 		return await makeCoderSdk(baseUrlRaw, token, this.storage);
 	}
 
@@ -120,7 +136,10 @@ export class Remote {
 	 * Setup binary path for current mode.
 	 * Extracted for testability.
 	 */
-	protected async setupBinary(workspaceRestClient: Api, label: string): Promise<string> {
+	protected async setupBinary(
+		workspaceRestClient: Api,
+		label: string,
+	): Promise<string> {
 		if (this.mode === vscode.ExtensionMode.Production) {
 			return await this.storage.fetchBinary(workspaceRestClient, label);
 		} else {
@@ -140,7 +159,10 @@ export class Remote {
 	 * Validate server version and return feature set.
 	 * Extracted for testability.
 	 */
-	protected async validateServerVersion(workspaceRestClient: Api, binaryPath: string): Promise<any | undefined> {
+	protected async validateServerVersion(
+		workspaceRestClient: Api,
+		binaryPath: string,
+	): Promise<{ process: ChildProcess; logPath: string } | undefined> {
 		// First thing is to check the version.
 		const buildInfo = await workspaceRestClient.getBuildInfo();
 
@@ -158,7 +180,8 @@ export class Remote {
 			await this.vscodeProposed.window.showErrorMessage(
 				"Incompatible Server",
 				{
-					detail: "Your Coder server is too old to support the Coder extension! Please upgrade to v0.14.1 or newer.",
+					detail:
+						"Your Coder server is too old to support the Coder extension! Please upgrade to v0.14.1 or newer.",
 					modal: true,
 					useCustom: true,
 				},
@@ -175,13 +198,25 @@ export class Remote {
 	 * Fetch workspace and handle errors.
 	 * Extracted for testability.
 	 */
-	protected async fetchWorkspace(workspaceRestClient: Api, parts: any, baseUrlRaw: string, remoteAuthority: string): Promise<Workspace | undefined> {
+	protected async fetchWorkspace(
+		workspaceRestClient: Api,
+		parts: { username: string; workspace: string; label: string },
+		baseUrlRaw: string,
+		remoteAuthority: string,
+	): Promise<Workspace | undefined> {
 		const workspaceName = `${parts.username}/${parts.workspace}`;
-		
+
 		try {
-			this.storage.writeToCoderOutputChannel(`Looking for workspace ${workspaceName}...`);
-			const workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(parts.username, parts.workspace);
-			this.storage.writeToCoderOutputChannel(`Found workspace ${workspaceName} with status ${workspace.latest_build.status}`);
+			this.storage.writeToCoderOutputChannel(
+				`Looking for workspace ${workspaceName}...`,
+			);
+			const workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(
+				parts.username,
+				parts.workspace,
+			);
+			this.storage.writeToCoderOutputChannel(
+				`Found workspace ${workspaceName} with status ${workspace.latest_build.status}`,
+			);
 			return workspace;
 		} catch (error) {
 			if (!isAxiosError(error)) {
@@ -189,15 +224,16 @@ export class Remote {
 			}
 			switch (error.response?.status) {
 				case 404: {
-					const result = await this.vscodeProposed.window.showInformationMessage(
-						`That workspace doesn't exist!`,
-						{
-							modal: true,
-							detail: `${workspaceName} cannot be found on ${baseUrlRaw}. Maybe it was deleted...`,
-							useCustom: true,
-						},
-						"Open Workspace",
-					);
+					const result =
+						await this.vscodeProposed.window.showInformationMessage(
+							`That workspace doesn't exist!`,
+							{
+								modal: true,
+								detail: `${workspaceName} cannot be found on ${baseUrlRaw}. Maybe it was deleted...`,
+								useCustom: true,
+							},
+							"Open Workspace",
+						);
 					if (!result) {
 						await this.closeRemote();
 					}
@@ -205,19 +241,25 @@ export class Remote {
 					return undefined;
 				}
 				case 401: {
-					const result = await this.vscodeProposed.window.showInformationMessage(
-						"Your session expired...",
-						{
-							useCustom: true,
-							modal: true,
-							detail: `You must log in to access ${workspaceName}.`,
-						},
-						"Log In",
-					);
+					const result =
+						await this.vscodeProposed.window.showInformationMessage(
+							"Your session expired...",
+							{
+								useCustom: true,
+								modal: true,
+								detail: `You must log in to access ${workspaceName}.`,
+							},
+							"Log In",
+						);
 					if (!result) {
 						await this.closeRemote();
 					} else {
-						await vscode.commands.executeCommand("coder.login", baseUrlRaw, undefined, parts.label);
+						await vscode.commands.executeCommand(
+							"coder.login",
+							baseUrlRaw,
+							undefined,
+							parts.label,
+						);
 						await this.setup(remoteAuthority);
 					}
 					return undefined;
@@ -233,32 +275,34 @@ export class Remote {
 	 * Extracted for testability.
 	 */
 	protected async waitForAgentConnection(
-		agent: any,
-		monitor: WorkspaceMonitor
-	): Promise<any> {
+		agent: { id: string; status: string; name?: string },
+		monitor: WorkspaceMonitor,
+	): Promise<{ id: string; status: string; name?: string }> {
 		return await vscode.window.withProgress(
 			{
 				title: "Waiting for the agent to connect...",
 				location: vscode.ProgressLocation.Notification,
 			},
 			async () => {
-				return await new Promise<any>((resolve) => {
-					const updateEvent = monitor.onChange.event((workspace) => {
-						const agents = extractAgents(workspace);
-						const found = agents.find((newAgent) => {
-							return newAgent.id === agent.id;
+				return await new Promise<{ id: string; status: string; name?: string }>(
+					(resolve) => {
+						const updateEvent = monitor.onChange.event((workspace) => {
+							const agents = extractAgents(workspace);
+							const found = agents.find((newAgent) => {
+								return newAgent.id === agent.id;
+							});
+							if (!found) {
+								return;
+							}
+							agent = found;
+							if (agent.status === "connecting") {
+								return;
+							}
+							updateEvent.dispose();
+							resolve(agent);
 						});
-						if (!found) {
-							return;
-						}
-						agent = found;
-						if (agent.status === "connecting") {
-							return;
-						}
-						updateEvent.dispose();
-						resolve(agent);
-					});
-				});
+					},
+				);
 			},
 		);
 	}
@@ -270,7 +314,7 @@ export class Remote {
 	protected async handleSSHProcessFound(
 		disposables: vscode.Disposable[],
 		logDir: string,
-		pid: number | undefined
+		pid: number | undefined,
 	): Promise<void> {
 		if (!pid) {
 			// TODO: Show an error here!
@@ -281,9 +325,7 @@ export class Remote {
 			const logFiles = await fs.readdir(logDir);
 			this.commands.workspaceLogPath = logFiles
 				.reverse()
-				.find(
-					(file) => file === `${pid}.log` || file.endsWith(`-${pid}.log`),
-				);
+				.find((file) => file === `${pid}.log` || file.endsWith(`-${pid}.log`));
 		} else {
 			this.commands.workspaceLogPath = undefined;
 		}
@@ -297,7 +339,7 @@ export class Remote {
 		disposables: vscode.Disposable[],
 		remoteAuthority: string,
 		workspace: Workspace,
-		agent: any
+		agent: { id: string; status: string; name?: string },
 	): void {
 		disposables.push(
 			this.registerLabelFormatter(
@@ -313,7 +355,9 @@ export class Remote {
 	 * Create a terminal for build logs.
 	 * Extracted for testability.
 	 */
-	protected createBuildLogTerminal(writeEmitter: vscode.EventEmitter<string>): vscode.Terminal {
+	protected createBuildLogTerminal(
+		writeEmitter: vscode.EventEmitter<string>,
+	): vscode.Terminal {
 		return vscode.window.createTerminal({
 			name: "Build Log",
 			location: vscode.TerminalLocation.Panel,
@@ -334,7 +378,7 @@ export class Remote {
 	 */
 	protected initWriteEmitterAndTerminal(
 		writeEmitter: vscode.EventEmitter<string> | undefined,
-		terminal: vscode.Terminal | undefined
+		terminal: vscode.Terminal | undefined,
 	): { writeEmitter: vscode.EventEmitter<string>; terminal: vscode.Terminal } {
 		if (!writeEmitter) {
 			writeEmitter = new vscode.EventEmitter<string>();
@@ -358,7 +402,7 @@ export class Remote {
 		binPath: string,
 		attempts: number,
 		writeEmitter: vscode.EventEmitter<string> | undefined,
-		terminal: vscode.Terminal | undefined
+		terminal: vscode.Terminal | undefined,
 	): Promise<{
 		workspace: Workspace | undefined;
 		writeEmitter: vscode.EventEmitter<string> | undefined;
@@ -367,29 +411,30 @@ export class Remote {
 		switch (workspace.latest_build.status) {
 			case "pending":
 			case "starting":
-			case "stopping":
-				const emitterAndTerminal = this.initWriteEmitterAndTerminal(writeEmitter, terminal);
+			case "stopping": {
+				const emitterAndTerminal = this.initWriteEmitterAndTerminal(
+					writeEmitter,
+					terminal,
+				);
 				writeEmitter = emitterAndTerminal.writeEmitter;
 				terminal = emitterAndTerminal.terminal;
 				this.storage.writeToCoderOutputChannel(
 					`Waiting for ${workspaceName}...`,
 				);
-				workspace = await waitForBuild(
-					restClient,
-					writeEmitter,
-					workspace,
-				);
+				workspace = await waitForBuild(restClient, writeEmitter, workspace);
 				break;
-			case "stopped":
+			}
+			case "stopped": {
 				if (!(await this.confirmStart(workspaceName))) {
 					return { workspace: undefined, writeEmitter, terminal };
 				}
-				const emitterAndTerminal2 = this.initWriteEmitterAndTerminal(writeEmitter, terminal);
+				const emitterAndTerminal2 = this.initWriteEmitterAndTerminal(
+					writeEmitter,
+					terminal,
+				);
 				writeEmitter = emitterAndTerminal2.writeEmitter;
 				terminal = emitterAndTerminal2.terminal;
-				this.storage.writeToCoderOutputChannel(
-					`Starting ${workspaceName}...`,
-				);
+				this.storage.writeToCoderOutputChannel(`Starting ${workspaceName}...`);
 				workspace = await startWorkspaceIfStoppedOrFailed(
 					restClient,
 					globalConfigDir,
@@ -398,6 +443,7 @@ export class Remote {
 					writeEmitter,
 				);
 				break;
+			}
 			case "failed":
 				// On a first attempt, we will try starting a failed workspace
 				// (for example canceling a start seems to cause this state).
@@ -405,7 +451,10 @@ export class Remote {
 					if (!(await this.confirmStart(workspaceName))) {
 						return { workspace: undefined, writeEmitter, terminal };
 					}
-					const emitterAndTerminal3 = this.initWriteEmitterAndTerminal(writeEmitter, terminal);
+					const emitterAndTerminal3 = this.initWriteEmitterAndTerminal(
+						writeEmitter,
+						terminal,
+					);
 					writeEmitter = emitterAndTerminal3.writeEmitter;
 					terminal = emitterAndTerminal3.terminal;
 					this.storage.writeToCoderOutputChannel(
@@ -426,8 +475,7 @@ export class Remote {
 			case "deleted":
 			case "deleting":
 			default: {
-				const is =
-					workspace.latest_build.status === "failed" ? "has" : "is";
+				const is = workspace.latest_build.status === "failed" ? "has" : "is";
 				throw new Error(
 					`${workspaceName} ${is} ${workspace.latest_build.status}`,
 				);
@@ -474,7 +522,7 @@ export class Remote {
 							binPath,
 							attempts,
 							writeEmitter,
-							terminal
+							terminal,
 						);
 						if (!result.workspace) {
 							return undefined;
@@ -519,18 +567,29 @@ export class Remote {
 			return; // User declined to log in or setup failed
 		}
 
-		const workspaceRestClient = await this.createWorkspaceClient(baseUrlRaw, token);
+		const workspaceRestClient = await this.createWorkspaceClient(
+			baseUrlRaw,
+			token,
+		);
 		this.commands.workspaceRestClient = workspaceRestClient;
 
 		// Setup binary and validate server version
 		const binaryPath = await this.setupBinary(workspaceRestClient, parts.label);
-		const featureSet = await this.validateServerVersion(workspaceRestClient, binaryPath);
+		const featureSet = await this.validateServerVersion(
+			workspaceRestClient,
+			binaryPath,
+		);
 		if (!featureSet) {
 			return; // Server version incompatible
 		}
 
 		// Find the workspace from the URI scheme provided
-		const workspace = await this.fetchWorkspace(workspaceRestClient, parts, baseUrlRaw, remoteAuthority);
+		const workspace = await this.fetchWorkspace(
+			workspaceRestClient,
+			parts,
+			baseUrlRaw,
+			remoteAuthority,
+		);
 		if (!workspace) {
 			return; // Workspace not found or user cancelled
 		}
@@ -735,12 +794,20 @@ export class Remote {
 		}
 
 		// TODO: This needs to be reworked; it fails to pick up reconnects.
-		this.findSSHProcessID().then(this.handleSSHProcessFound.bind(this, disposables, logDir));
+		this.findSSHProcessID().then(
+			this.handleSSHProcessFound.bind(this, disposables, logDir),
+		);
 
 		// Register the label formatter again because SSH overrides it!
 		disposables.push(
 			vscode.extensions.onDidChange(
-				this.handleExtensionChange.bind(this, disposables, remoteAuthority, workspace, agent)
+				this.handleExtensionChange.bind(
+					this,
+					disposables,
+					remoteAuthority,
+					workspace,
+					agent,
+				),
 			),
 		);
 
@@ -954,7 +1021,7 @@ export class Remote {
 			upload_bytes_sec: number;
 			download_bytes_sec: number;
 			using_coder_connect: boolean;
-		}
+		},
 	): void {
 		let statusText = "$(globe) ";
 
@@ -1014,8 +1081,14 @@ export class Remote {
 	 */
 	protected createNetworkRefreshFunction(
 		networkInfoFile: string,
-		updateStatus: (network: any) => void,
-		isDisposed: () => boolean
+		updateStatus: (network: {
+			using_coder_connect?: boolean;
+			p2p?: boolean;
+			latency?: number;
+			download_bytes_sec?: number;
+			upload_bytes_sec?: number;
+		}) => void,
+		isDisposed: () => boolean,
 	): () => void {
 		const periodicRefresh = async () => {
 			if (isDisposed()) {
@@ -1056,7 +1129,7 @@ export class Remote {
 		const periodicRefresh = this.createNetworkRefreshFunction(
 			networkInfoFile,
 			updateStatus,
-			() => disposed
+			() => disposed,
 		);
 		periodicRefresh();
 
@@ -1072,7 +1145,9 @@ export class Remote {
 	 * Search SSH log file for process ID.
 	 * Extracted for testability.
 	 */
-	protected async searchSSHLogForPID(logPath: string): Promise<number | undefined> {
+	protected async searchSSHLogForPID(
+		logPath: string,
+	): Promise<number | undefined> {
 		// This searches for the socksPort that Remote SSH is connecting to. We do
 		// this to find the SSH process that is powering this connection. That SSH
 		// process will be logging network information periodically to a file.
@@ -1094,7 +1169,7 @@ export class Remote {
 	private async findSSHProcessID(timeout = 15000): Promise<number | undefined> {
 		const start = Date.now();
 		const pollInterval = 500;
-		
+
 		while (Date.now() - start < timeout) {
 			// Loop until we find the remote SSH log for this window.
 			const filePath = await this.storage.getRemoteSSHLogPath();
@@ -1108,7 +1183,7 @@ export class Remote {
 			// Wait before trying again
 			await new Promise((resolve) => setTimeout(resolve, pollInterval));
 		}
-		
+
 		return undefined;
 	}
 

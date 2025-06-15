@@ -22,14 +22,20 @@ export const coderSessionTokenHeader = "Coder-Session-Token";
 /**
  * Get a string configuration value, with consistent handling of null/undefined.
  */
-function getConfigString(cfg: vscode.WorkspaceConfiguration, key: string): string {
+function getConfigString(
+	cfg: vscode.WorkspaceConfiguration,
+	key: string,
+): string {
 	return String(cfg.get(key) ?? "").trim();
 }
 
 /**
  * Get a configuration path value, with expansion and consistent handling.
  */
-function getConfigPath(cfg: vscode.WorkspaceConfiguration, key: string): string {
+function getConfigPath(
+	cfg: vscode.WorkspaceConfiguration,
+	key: string,
+): string {
 	const value = getConfigString(cfg, key);
 	return value ? expandPath(value) : "";
 }
@@ -129,7 +135,7 @@ export async function makeCoderSdk(
  */
 export function setupStreamHandlers(
 	nodeStream: NodeJS.ReadableStream,
-	controller: ReadableStreamDefaultController<any>,
+	controller: ReadableStreamDefaultController<Uint8Array>,
 ): void {
 	nodeStream.on("data", (chunk: Buffer) => {
 		controller.enqueue(chunk);

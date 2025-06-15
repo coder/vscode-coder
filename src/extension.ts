@@ -1,5 +1,6 @@
 "use strict";
 import axios, { isAxiosError } from "axios";
+import type { Api } from "coder/site/src/api/api";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import * as module from "module";
 import * as vscode from "vscode";
@@ -9,7 +10,6 @@ import { Commands } from "./commands";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
-import type { Api } from "coder/site/src/api/api";
 import { toSafeHost } from "./util";
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider";
 
@@ -422,6 +422,11 @@ export async function handleRemoteSetupError(
  * Handle unexpected authentication response.
  * Extracted for testability.
  */
-export function handleUnexpectedAuthResponse(user: unknown, storage: Storage): void {
-	storage.writeToCoderOutputChannel(`No error, but got unexpected response: ${user}`);
+export function handleUnexpectedAuthResponse(
+	user: unknown,
+	storage: Storage,
+): void {
+	storage.writeToCoderOutputChannel(
+		`No error, but got unexpected response: ${user}`,
+	);
 }
