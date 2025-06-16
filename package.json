@@ -279,7 +279,10 @@
 		"lint": "eslint . --ext ts,md",
 		"lint:fix": "yarn lint --fix",
 		"test": "vitest ./src",
-		"test:ci": "CI=true yarn test"
+		"test:ci": "CI=true yarn test",
+		"test:integration": "vscode-test",
+		"pretest": "yarn run compile-tests && yarn run build && yarn run lint",
+		"compile-tests": "tsc -p . --outDir out"
 	},
 	"devDependencies": {
 		"@types/eventsource": "^3.0.0",
@@ -326,7 +329,7 @@
 		"semver": "^7.7.1",
 		"ua-parser-js": "1.0.40",
 		"ws": "^8.18.2",
-		"zod": "^3.25.1"
+		"zod": "^3.25.65"
 	},
 	"resolutions": {
 		"semver": "7.7.1",
