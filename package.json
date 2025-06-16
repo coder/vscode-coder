@@ -278,7 +278,7 @@
 		"package:prerelease": "npx vsce package --pre-release",
 		"lint": "eslint . --ext ts,md",
 		"lint:fix": "yarn lint --fix",
-		"test": "vitest ./src",
+		"test": "vitest",
 		"test:ci": "CI=true yarn test",
 		"test:integration": "vscode-test",
 		"pretest": "yarn run compile-tests && yarn run build && yarn run lint",
