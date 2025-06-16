@@ -1,6 +1,6 @@
 import { isAxiosError } from "axios";
 import { Api } from "coder/site/src/api/api";
-import { Workspace } from "coder/site/src/api/typesGenerated";
+import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated";
 import find from "find-process";
 import * as fs from "fs/promises";
 import * as jsonc from "jsonc-parser";
@@ -19,7 +19,7 @@ import {
 import { extractAgents } from "./api-helper";
 import * as cli from "./cliManager";
 import { Commands } from "./commands";
-import { featureSetForVersion, FeatureSet } from "./featureSet";
+import { FeatureSet, featureSetForVersion } from "./featureSet";
 import { getHeaderArgs } from "./headers";
 import { Inbox } from "./inbox";
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig";
@@ -162,7 +162,7 @@ export class Remote {
 	protected async validateServerVersion(
 		workspaceRestClient: Api,
 		binaryPath: string,
-	): Promise<{ process: ChildProcess; logPath: string } | undefined> {
+	): Promise<FeatureSet | undefined> {
 		// First thing is to check the version.
 		const buildInfo = await workspaceRestClient.getBuildInfo();
 
@@ -275,34 +275,32 @@ export class Remote {
 	 * Extracted for testability.
 	 */
 	protected async waitForAgentConnection(
-		agent: { id: string; status: string; name?: string },
+		agent: WorkspaceAgent,
 		monitor: WorkspaceMonitor,
-	): Promise<{ id: string; status: string; name?: string }> {
+	): Promise<WorkspaceAgent> {
 		return await vscode.window.withProgress(
 			{
 				title: "Waiting for the agent to connect...",
 				location: vscode.ProgressLocation.Notification,
 			},
 			async () => {
-				return await new Promise<{ id: string; status: string; name?: string }>(
-					(resolve) => {
-						const updateEvent = monitor.onChange.event((workspace) => {
-							const agents = extractAgents(workspace);
-							const found = agents.find((newAgent) => {
-								return newAgent.id === agent.id;
-							});
-							if (!found) {
-								return;
-							}
-							agent = found;
-							if (agent.status === "connecting") {
-								return;
-							}
-							updateEvent.dispose();
-							resolve(agent);
+				return await new Promise<WorkspaceAgent>((resolve) => {
+					const updateEvent = monitor.onChange.event((workspace) => {
+						const agents = extractAgents(workspace);
+						const found = agents.find((newAgent) => {
+							return newAgent.id === agent.id;
 						});
-					},
-				);
+						if (!found) {
+							return;
+						}
+						agent = found;
+						if (agent.status === "connecting") {
+							return;
+						}
+						updateEvent.dispose();
+						resolve(agent);
+					});
+				});
 			},
 		);
 	}
@@ -584,7 +582,7 @@ export class Remote {
 		}
 
 		// Find the workspace from the URI scheme provided
-		const workspace = await this.fetchWorkspace(
+		let workspace = await this.fetchWorkspace(
 			workspaceRestClient,
 			parts,
 			baseUrlRaw,
@@ -1014,13 +1012,11 @@ export class Remote {
 	protected updateNetworkStatus(
 		networkStatus: vscode.StatusBarItem,
 		network: {
-			p2p: boolean;
-			latency: number;
-			preferred_derp: string;
-			derp_latency: { [key: string]: number };
-			upload_bytes_sec: number;
-			download_bytes_sec: number;
-			using_coder_connect: boolean;
+			using_coder_connect?: boolean;
+			p2p?: boolean;
+			latency?: number;
+			download_bytes_sec?: number;
+			upload_bytes_sec?: number;
 		},
 	): void {
 		let statusText = "$(globe) ";
@@ -1037,40 +1033,26 @@ export class Remote {
 			statusText += "Direct ";
 			networkStatus.tooltip = "You're connected peer-to-peer ✨.";
 		} else {
-			statusText += network.preferred_derp + " ";
+			statusText += "Relay ";
 			networkStatus.tooltip =
 				"You're connected through a relay 🕵.\nWe'll switch over to peer-to-peer when available.";
 		}
-		networkStatus.tooltip +=
-			"\n\nDownload ↓ " +
-			prettyBytes(network.download_bytes_sec, {
-				bits: true,
-			}) +
-			"/s • Upload ↑ " +
-			prettyBytes(network.upload_bytes_sec, {
-				bits: true,
-			}) +
-			"/s\n";
-
-		if (!network.p2p) {
-			const derpLatency = network.derp_latency[network.preferred_derp];
-
-			networkStatus.tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(network.latency - derpLatency).toFixed(2)}ms ↔ Workspace`;
-
-			let first = true;
-			Object.keys(network.derp_latency).forEach((region) => {
-				if (region === network.preferred_derp) {
-					return;
-				}
-				if (first) {
-					networkStatus.tooltip += `\n\nOther regions:`;
-					first = false;
-				}
-				networkStatus.tooltip += `\n${region}: ${Math.round(network.derp_latency[region] * 100) / 100}ms`;
-			});
+		if (network.download_bytes_sec && network.upload_bytes_sec) {
+			networkStatus.tooltip +=
+				"\n\nDownload ↓ " +
+				prettyBytes(network.download_bytes_sec, {
+					bits: true,
+				}) +
+				"/s • Upload ↑ " +
+				prettyBytes(network.upload_bytes_sec, {
+					bits: true,
+				}) +
+				"/s\n";
 		}
 
-		statusText += "(" + network.latency.toFixed(2) + "ms)";
+		if (network.latency) {
+			statusText += "(" + network.latency.toFixed(2) + "ms)";
+		}
 		networkStatus.text = statusText;
 		networkStatus.show();
 	}

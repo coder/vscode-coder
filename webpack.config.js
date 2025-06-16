@@ -30,12 +30,17 @@ const config = {
 		rules: [
 			{
 				test: /\.ts$/,
-				exclude: /node_modules\/(?!(coder).*)/,
+				exclude: [
+					/node_modules\/(?!(coder).*)/,
+					/\.test\.ts$/,
+					/vitest\.config\.ts$/,
+				],
 				use: [
 					{
 						loader: "ts-loader",
 						options: {
 							allowTsInNodeModules: true,
+							configFile: "tsconfig.build.json",
 						},
 					},
 				],

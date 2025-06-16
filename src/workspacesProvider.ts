@@ -227,7 +227,7 @@ export class WorkspaceProvider
 	 * Extracted for testability.
 	 */
 	protected updateAgentWatchers(
-		workspaces: Workspace[],
+		workspaces: readonly Workspace[],
 		restClient: Api,
 	): void {
 		const oldWatcherIds = Object.keys(this.agentWatchers);
