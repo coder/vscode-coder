@@ -107,7 +107,7 @@ export class SSHConfig {
 	async load() {
 		try {
 			this.raw = await this.fileSystem.readFile(this.filePath, "utf-8");
-		} catch (ex) {
+		} catch {
 			// Probably just doesn't exist!
 			this.raw = "";
 		}

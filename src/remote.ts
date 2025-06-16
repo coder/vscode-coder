@@ -149,7 +149,7 @@ export class Remote {
 				const devBinaryPath = path.join(os.tmpdir(), "coder");
 				await fs.stat(devBinaryPath);
 				return devBinaryPath;
-			} catch (ex) {
+			} catch {
 				return await this.storage.fetchBinary(workspaceRestClient, label);
 			}
 		}
@@ -169,7 +169,7 @@ export class Remote {
 		let version: semver.SemVer | null = null;
 		try {
 			version = semver.parse(await cli.version(binaryPath));
-		} catch (e) {
+		} catch {
 			version = semver.parse(buildInfo.version);
 		}
 
@@ -656,7 +656,7 @@ export class Remote {
 				this.storage.getUserSettingsPath(),
 				"utf8",
 			);
-		} catch (ex) {
+		} catch {
 			// Ignore! It's probably because the file doesn't exist.
 		}
 
@@ -1081,7 +1081,7 @@ export class Remote {
 				const parsed = JSON.parse(content);
 				try {
 					updateStatus(parsed);
-				} catch (ex) {
+				} catch {
 					// Ignore
 				}
 			} catch {
