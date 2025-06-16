@@ -21,25 +21,36 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	//
 	// Cursor and VSCode are covered by ms remote, and the only other is windsurf for now
 	// Means that vscodium is not supported by this for now
+	const isTestMode =
+		process.env.NODE_ENV === "test" ||
+		ctx.extensionMode === vscode.ExtensionMode.Test;
+
 	const remoteSSHExtension =
 		vscode.extensions.getExtension("jeanp413.open-remote-ssh") ||
 		vscode.extensions.getExtension("codeium.windsurf-remote-openssh") ||
 		vscode.extensions.getExtension("anysphere.remote-ssh") ||
 		vscode.extensions.getExtension("ms-vscode-remote.remote-ssh");
+
+	let vscodeProposed: typeof vscode = vscode;
+
 	if (!remoteSSHExtension) {
-		vscode.window.showErrorMessage(
-			"Remote SSH extension not found, cannot activate Coder extension",
+		if (!isTestMode) {
+			vscode.window.showErrorMessage(
+				"Remote SSH extension not found, cannot activate Coder extension",
+			);
+			throw new Error("Remote SSH extension not found");
+		}
+		// In test mode, use regular vscode API
+	} else {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		vscodeProposed = (module as any)._load(
+			"vscode",
+			{
+				filename: remoteSSHExtension.extensionPath,
+			},
+			false,
 		);
-		throw new Error("Remote SSH extension not found");
 	}
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const vscodeProposed: typeof vscode = (module as any)._load(
-		"vscode",
-		{
-			filename: remoteSSHExtension?.extensionPath,
-		},
-		false,
-	);
 
 	const output = vscode.window.createOutputChannel("Coder");
 	const storage = new Storage(
@@ -278,7 +289,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
 	// resolved by the remote SSH extension.
-	if (vscodeProposed.env.remoteAuthority) {
+	if (!isTestMode && vscodeProposed.env.remoteAuthority) {
 		const remote = new Remote(
 			vscodeProposed,
 			storage,
