@@ -6,9 +6,7 @@ import * as fs from "fs/promises";
 import * as jsonc from "jsonc-parser";
 import * as os from "os";
 import * as path from "path";
-// Dynamic import for ESM module
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let prettyBytes: any;
+import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
 import {
@@ -852,10 +850,6 @@ export class Remote {
 			download_bytes_sec: number;
 			using_coder_connect: boolean;
 		}) => {
-			// Load ESM module if not already loaded
-			if (!prettyBytes) {
-				prettyBytes = (await import("pretty-bytes")).default;
-			}
 			let statusText = "$(globe) ";
 
 			// Coder Connect doesn't populate any other stats

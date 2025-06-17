@@ -3,9 +3,7 @@ import { createWriteStream } from "fs";
 import fs from "fs/promises";
 import { IncomingMessage } from "http";
 import path from "path";
-// Dynamic import for ESM module
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let prettyBytes: any;
+import prettyBytes from "pretty-bytes";
 import * as vscode from "vscode";
 import { errToStr } from "./api-helper";
 import * as cli from "./cliManager";
@@ -124,10 +122,6 @@ export class Storage {
 	 * downloads being disabled.
 	 */
 	public async fetchBinary(restClient: Api, label: string): Promise<string> {
-		// Load ESM module if not already loaded
-		if (!prettyBytes) {
-			prettyBytes = (await import("pretty-bytes")).default;
-		}
 		const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
 
 		// Settings can be undefined when set to their defaults (true in this case),
