@@ -21,9 +21,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	//
 	// Cursor and VSCode are covered by ms remote, and the only other is windsurf for now
 	// Means that vscodium is not supported by this for now
-	const isTestMode =
-		process.env.NODE_ENV === "test" ||
-		ctx.extensionMode === vscode.ExtensionMode.Test;
 
 	const remoteSSHExtension =
 		vscode.extensions.getExtension("jeanp413.open-remote-ssh") ||
@@ -34,13 +31,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	let vscodeProposed: typeof vscode = vscode;
 
 	if (!remoteSSHExtension) {
-		if (!isTestMode) {
-			vscode.window.showErrorMessage(
-				"Remote SSH extension not found, cannot activate Coder extension",
-			);
-			throw new Error("Remote SSH extension not found");
-		}
-		// In test mode, use regular vscode API
+		vscode.window.showErrorMessage(
+			"Remote SSH extension not found, this may not work as expected.\n" +
+				// NB should we link to documentation or marketplace?
+				"Please install your choice of Remote SSH extension from the VS Code Marketplace.",
+		);
 	} else {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		vscodeProposed = (module as any)._load(
@@ -289,7 +284,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
 	// resolved by the remote SSH extension.
-	if (!isTestMode && vscodeProposed.env.remoteAuthority) {
+	//
+	// In addition, if we don't have a remote SSH extension, we skip this
+	// activation event. This may allow the user to install the extension
+	// after the Coder extension is installed, instead of throwing a fatal error
+	// (this would require the user to uninstall the Coder extension and
+	// reinstall after installing the remote SSH extension, which is annoying)
+	if (remoteSSHExtension && vscodeProposed.env.remoteAuthority) {
 		const remote = new Remote(
 			vscodeProposed,
 			storage,
