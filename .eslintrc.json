@@ -22,6 +22,21 @@
 			"rules": {
 				"@typescript-eslint/require-await": "off"
 			}
+		},
+		{
+			"files": ["*.json"],
+			"parser": "jsonc-eslint-parser",
+			"rules": {
+				"@typescript-eslint/require-await": "off"
+			}
+		},
+		{
+			"extends": ["plugin:package-json/legacy-recommended"],
+			"files": ["package.json"],
+			"parser": "jsonc-eslint-parser",
+			"rules": {
+				"@typescript-eslint/require-await": "off"
+			}
 		}
 	],
 	"rules": {
@@ -60,7 +75,7 @@
 			}
 		],
 		"require-await": "off",
-    	"@typescript-eslint/require-await": "error"
+		"@typescript-eslint/require-await": "error"
 	},
 	"ignorePatterns": ["out", "dist", "**/*.d.ts"]
 }

@@ -155,35 +155,31 @@ export class WorkspaceProvider
 		});
 
 		// Create tree items for each workspace
-		const workspaceTreeItems = await Promise.all(
-			resp.workspaces.map((workspace) => {
-				const workspaceTreeItem = new WorkspaceTreeItem(
-					workspace,
-					this.getWorkspacesQuery === WorkspaceQuery.All,
-					showMetadata,
-				);
+		const workspaceTreeItems = resp.workspaces.map((workspace: Workspace) => {
+			const workspaceTreeItem = new WorkspaceTreeItem(
+				workspace,
+				this.getWorkspacesQuery === WorkspaceQuery.All,
+				showMetadata,
+			);
 
-				// Get app status from the workspace agents
-				const agents = extractAgents(workspace);
-				agents.forEach((agent) => {
-					// Check if agent has apps property with status reporting
-					if (agent.apps && Array.isArray(agent.apps)) {
-						workspaceTreeItem.appStatus = agent.apps.map(
-							(app: WorkspaceApp) => ({
-								name: app.display_name,
-								url: app.url,
-								agent_id: agent.id,
-								agent_name: agent.name,
-								command: app.command,
-								workspace_name: workspace.name,
-							}),
-						);
-					}
-				});
+			// Get app status from the workspace agents
+			const agents = extractAgents(workspace);
+			agents.forEach((agent) => {
+				// Check if agent has apps property with status reporting
+				if (agent.apps && Array.isArray(agent.apps)) {
+					workspaceTreeItem.appStatus = agent.apps.map((app: WorkspaceApp) => ({
+						name: app.display_name,
+						url: app.url,
+						agent_id: agent.id,
+						agent_name: agent.name,
+						command: app.command,
+						workspace_name: workspace.name,
+					}));
+				}
+			});
 
-				return workspaceTreeItem;
-			}),
-		);
+			return workspaceTreeItem;
+		});
 
 		return workspaceTreeItems;
 	}

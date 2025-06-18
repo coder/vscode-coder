@@ -1,17 +1,17 @@
 {
 	"compilerOptions": {
 		"module": "commonjs",
-		"target": "ES2022",
+		"target": "ES2021",
 		"moduleResolution": "node",
 		"outDir": "out",
 		// "dom" is required for importing the API from coder/coder.
-		"lib": ["ES2022", "dom"],
+		"lib": ["ES2021", "dom"],
 		"sourceMap": true,
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true
 	},
-	"exclude": ["node_modules", "vitest.config.ts"],
+	"exclude": ["node_modules"],
 	"include": ["src/**/*"]
 }
