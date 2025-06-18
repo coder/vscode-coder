@@ -3,7 +3,8 @@
 	"parser": "@typescript-eslint/parser",
 	"parserOptions": {
 		"ecmaVersion": 6,
-		"sourceType": "module"
+		"sourceType": "module",
+		"project": "./tsconfig.json"
 	},
 	"plugins": ["@typescript-eslint", "prettier"],
 	"extends": [
@@ -17,7 +18,10 @@
 	"overrides": [
 		{
 			"files": ["*.md"],
-			"parser": "markdown-eslint-parser"
+			"parser": "markdown-eslint-parser",
+			"rules": {
+				"@typescript-eslint/require-await": "off"
+			}
 		}
 	],
 	"rules": {

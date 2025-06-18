@@ -156,7 +156,7 @@ export class WorkspaceProvider
 
 		// Create tree items for each workspace
 		const workspaceTreeItems = await Promise.all(
-			resp.workspaces.map(async (workspace) => {
+			resp.workspaces.map((workspace) => {
 				const workspaceTreeItem = new WorkspaceTreeItem(
 					workspace,
 					this.getWorkspacesQuery === WorkspaceQuery.All,
@@ -235,7 +235,7 @@ export class WorkspaceProvider
 		this._onDidChangeTreeData.fire(item);
 	}
 
-	async getTreeItem(element: vscode.TreeItem): Promise<vscode.TreeItem> {
+	getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
 		return element;
 	}
 

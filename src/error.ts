@@ -126,7 +126,7 @@ export class CertificateError extends Error {
 	}
 
 	// allowInsecure updates the value of the "coder.insecure" property.
-	async allowInsecure(): Promise<void> {
+	allowInsecure(): void {
 		vscode.workspace
 			.getConfiguration()
 			.update("coder.insecure", true, vscode.ConfigurationTarget.Global);

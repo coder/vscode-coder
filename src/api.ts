@@ -71,11 +71,11 @@ export async function createHttpAgent(): Promise<ProxyAgent> {
  * configuration.  The token may be undefined if some other form of
  * authentication is being used.
  */
-export async function makeCoderSdk(
+export function makeCoderSdk(
 	baseUrl: string,
 	token: string | undefined,
 	storage: Storage,
-): Promise<Api> {
+): Api {
 	const restClient = new Api();
 	restClient.setHost(baseUrl);
 	if (token) {
