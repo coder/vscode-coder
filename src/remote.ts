@@ -841,7 +841,7 @@ export class Remote {
 			`${sshPid}.json`,
 		);
 
-		const updateStatus = async (network: {
+		const updateStatus = (network: {
 			p2p: boolean;
 			latency: number;
 			preferred_derp: string;
