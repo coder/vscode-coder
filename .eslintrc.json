@@ -17,26 +17,20 @@
 	],
 	"overrides": [
 		{
-			"files": ["*.md"],
-			"parser": "markdown-eslint-parser",
+			"files": ["*.ts"],
 			"rules": {
-				"@typescript-eslint/require-await": "off"
-			}
-		},
-		{
-			"files": ["*.json"],
-			"parser": "jsonc-eslint-parser",
-			"rules": {
-				"@typescript-eslint/require-await": "off"
+				"require-await": "off",
+				"@typescript-eslint/require-await": "error"
 			}
 		},
 		{
 			"extends": ["plugin:package-json/legacy-recommended"],
-			"files": ["package.json"],
-			"parser": "jsonc-eslint-parser",
-			"rules": {
-				"@typescript-eslint/require-await": "off"
-			}
+			"files": ["*.json"],
+			"parser": "jsonc-eslint-parser"
+		},
+		{
+			"files": ["*.md"],
+			"parser": "markdown-eslint-parser"
 		}
 	],
 	"rules": {
@@ -73,9 +67,7 @@
 					"sublings_only": true
 				}
 			}
-		],
-		"require-await": "off",
-		"@typescript-eslint/require-await": "error"
+		]
 	},
 	"ignorePatterns": ["out", "dist", "**/*.d.ts"]
 }
