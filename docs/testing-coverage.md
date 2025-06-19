@@ -24,7 +24,7 @@ yarn test:integration:coverage
 
 ## Coverage Analysis
 
-The integration tests can be run with coverage analysis using NYC (Istanbul). This provides insights into which parts of the codebase are exercised by the integration tests.
+The integration tests can be run with coverage analysis using VS Code's built-in coverage support. This provides insights into which parts of the codebase are exercised by the integration tests.
 
 ### Running Coverage
 
@@ -38,68 +38,53 @@ yarn test:integration:coverage
 
 ### Coverage Output
 
-After running tests with coverage, you'll find:
+When running with the `--coverage` flag, VS Code Test will generate:
 
-- **Terminal Output**: Summary of coverage percentages
-- **HTML Report**: Detailed coverage report at `./coverage-integration/index.html`
-- **LCOV Report**: Machine-readable coverage data at `./coverage-integration/lcov.info`
+- **Terminal Output**: Summary of coverage percentages for statements, branches, functions, and lines
+- **HTML Report**: Detailed coverage report at `./coverage/index.html`
 
-### Coverage Configuration
-
-Coverage is configured in `.nycrc.json`:
-
-- **Includes**: All TypeScript files in `src/`
-- **Excludes**: Test files, test directory, and typings
-- **Reporters**: text (console), lcov (for CI tools), and html (for viewing)
-
-### Viewing Coverage Reports
+The coverage data helps identify:
+- Untested code paths
+- Dead code that's never executed
+- Areas that need additional test coverage
 
 To view the detailed HTML coverage report:
 
 ```bash
 # macOS
-open ./coverage-integration/index.html
+open ./coverage/index.html
 
-# Linux
-xdg-open ./coverage-integration/index.html
+# Linux  
+xdg-open ./coverage/index.html
 
 # Windows
-start ./coverage-integration/index.html
+start ./coverage/index.html
 ```
 
 ### Coverage Goals
 
-While 100% coverage is not always practical or necessary, aim for:
-
-- **Statements**: > 70%
-- **Branches**: > 60%
-- **Functions**: > 70%
-- **Lines**: > 70%
-
-Focus coverage efforts on:
+While 100% coverage is not always practical or necessary, aim to test:
 
 - Core business logic
-- Command handlers
+- Command handlers  
 - Tree data providers
 - Extension activation logic
+- Error handling paths
 
-### Interpreting Coverage
+### Best Practices
 
-- **Red lines**: Code not executed during tests
-- **Yellow lines**: Partially covered branches
-- **Green lines**: Fully covered code
+1. **Write tests for new features**: Add integration tests when adding new functionality
+2. **Test user workflows**: Focus on testing complete user scenarios rather than individual functions
+3. **Test error cases**: Ensure your extension handles errors gracefully
+4. **Keep tests maintainable**: Write clear, focused tests that are easy to understand
 
-Use coverage data to:
+### Running Tests in CI
 
-1. Identify untested code paths
-2. Find dead code
-3. Improve test scenarios
-4. Ensure critical paths are tested
+Both unit and integration tests can be run in CI pipelines:
 
-### Integration with CI
+```bash
+# Run all tests in CI mode
+yarn test:ci && yarn test:integration
+```
 
-The coverage reports can be integrated with CI tools:
-
-- Upload LCOV reports to services like Codecov or Coveralls
-- Set coverage thresholds in CI pipelines
-- Track coverage trends over time
+This ensures that both unit tests and integration tests pass before merging changes.

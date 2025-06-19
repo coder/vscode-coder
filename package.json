@@ -28,7 +28,7 @@
 		"test": "vitest",
 		"test:ci": "CI=true yarn test",
 		"test:integration": "vscode-test",
-		"test:integration:coverage": "nyc --nycrc-path .nycrc.json vscode-test",
+		"test:integration:coverage": "vscode-test --coverage --coverage-output ./coverage --coverage-reporter text",
 		"vscode:prepublish": "yarn package",
 		"watch": "webpack --watch"
 	},
