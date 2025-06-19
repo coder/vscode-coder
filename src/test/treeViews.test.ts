@@ -20,13 +20,25 @@ suite("Tree Views Test Suite", () => {
 
 		// Check that workspace-related commands are registered
 		const commands = await vscode.commands.getCommands(true);
-		const treeViewCommands = commands.filter((cmd) =>
-			cmd.includes("workspaces"),
-		);
+
+		// Look for commands that indicate tree view support
+		const treeViewRelatedCommands = [
+			"coder.refreshWorkspaces",
+			"coder.openFromSidebar",
+			"coder.createWorkspace",
+			"coder.navigateToWorkspace",
+		];
+
+		let found = 0;
+		for (const cmd of treeViewRelatedCommands) {
+			if (commands.includes(cmd)) {
+				found++;
+			}
+		}
 
 		assert.ok(
-			treeViewCommands.length > 0,
-			"Tree view commands should be registered",
+			found > 0,
+			`Tree view related commands should be registered, found ${found}`,
 		);
 	});
 
@@ -44,17 +56,26 @@ suite("Tree Views Test Suite", () => {
 		);
 	});
 
-	test("Tree view click handlers should be registered", async () => {
+	test("Tree view interaction commands should be registered", async () => {
 		const commands = await vscode.commands.getCommands(true);
 
-		// Check for click handler commands
-		const clickCommands = commands.filter(
-			(cmd) => cmd.includes("click") && cmd.includes("coder"),
-		);
+		// Check for commands that handle tree view interactions
+		const interactionCommands = [
+			"coder.openFromSidebar",
+			"coder.openAppStatus",
+			"coder.navigateToWorkspace",
+		];
+
+		let found = 0;
+		for (const cmd of interactionCommands) {
+			if (commands.includes(cmd)) {
+				found++;
+			}
+		}
 
 		assert.ok(
-			clickCommands.length > 0,
-			"Click handler commands should be registered",
+			found > 0,
+			`Tree view interaction commands should be registered, found ${found}`,
 		);
 	});
 
@@ -77,22 +98,18 @@ suite("Tree Views Test Suite", () => {
 		// We can't directly test the views, but we can verify related commands exist
 		const commands = await vscode.commands.getCommands(true);
 
-		const viewCommands = [
-			"coder.workspaces.refresh",
-			"myWorkspaces.refreshEntry",
-			"allWorkspaces.refreshEntry",
-		];
-
-		let foundCount = 0;
-		for (const cmd of viewCommands) {
-			if (commands.includes(cmd)) {
-				foundCount++;
-			}
-		}
+		// The extension should have commands that work with tree views
+		const viewRelatedCommands = commands.filter(
+			(cmd) =>
+				cmd.startsWith("coder.") &&
+				(cmd.includes("refresh") ||
+					cmd.includes("open") ||
+					cmd.includes("navigate")),
+		);
 
 		assert.ok(
-			foundCount > 0,
-			"At least some tree view commands should be registered",
+			viewRelatedCommands.length > 0,
+			`Extension should have view-related commands, found ${viewRelatedCommands.length}`,
 		);
 	});
 
@@ -145,4 +162,3 @@ suite("Tree Views Test Suite", () => {
 		assert.ok(true, "Tree view state is managed by VS Code");
 	});
 });
-

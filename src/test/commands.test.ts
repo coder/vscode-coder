@@ -25,7 +25,7 @@ suite("Commands Test Suite", () => {
 			"coder.login",
 			"coder.logout",
 			"coder.open",
-			"coder.showLogs",
+			"coder.viewLogs",
 		];
 
 		for (const cmd of coreCommands) {
@@ -36,41 +36,40 @@ suite("Commands Test Suite", () => {
 	test("Workspace commands should be registered", async () => {
 		const commands = await vscode.commands.getCommands(true);
 
-		const workspaceCommands = commands.filter((cmd) =>
-			cmd.startsWith("coder.workspaces."),
-		);
-
-		assert.ok(
-			workspaceCommands.length > 0,
-			"Workspace commands should be registered",
-		);
-
-		// Check for specific workspace commands
-		const expectedWorkspaceCommands = [
-			"coder.workspaces.refresh",
-			"coder.workspaces.open",
-			"coder.workspaces.click",
+		// Check for workspace-related commands (they don't use coder.workspaces. prefix)
+		const workspaceCommands = [
+			"coder.refreshWorkspaces",
+			"coder.createWorkspace",
+			"coder.navigateToWorkspace",
+			"coder.navigateToWorkspaceSettings",
+			"coder.workspace.update",
 		];
 
-		for (const cmd of expectedWorkspaceCommands) {
+		let foundCommands = 0;
+		for (const cmd of workspaceCommands) {
 			if (commands.includes(cmd)) {
-				assert.ok(true, `Found workspace command: ${cmd}`);
+				foundCommands++;
 			}
 		}
+
+		assert.ok(
+			foundCommands > 0,
+			`Should have workspace-related commands, found ${foundCommands}`,
+		);
 	});
 
-	test("Command execution - showLogs", async () => {
+	test("Command execution - viewLogs", async () => {
 		try {
 			// This should not throw an error
-			await vscode.commands.executeCommand("coder.showLogs");
-			assert.ok(true, "showLogs command executed successfully");
+			await vscode.commands.executeCommand("coder.viewLogs");
+			assert.ok(true, "viewLogs command executed successfully");
 		} catch (error) {
 			// Some commands may require setup, which is OK in tests
 			assert.ok(
 				error instanceof Error &&
 					(error.message.includes("not found") ||
 						error.message.includes("No output channel")),
-				"Expected error for showLogs in test environment",
+				"Expected error for viewLogs in test environment",
 			);
 		}
 	});

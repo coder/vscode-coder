@@ -156,4 +156,3 @@ suite("SSH Extension Warning Test Suite", () => {
 		}
 	});
 });
-

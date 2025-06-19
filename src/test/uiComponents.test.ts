@@ -41,9 +41,10 @@ suite("UI Components Test Suite", () => {
 
 		// These commands are associated with tree views
 		const treeViewCommands = [
-			"coder.workspaces.refresh",
-			"coder.workspaces.click",
-			"coder.workspaces.open",
+			"coder.refreshWorkspaces",
+			"coder.openFromSidebar",
+			"coder.navigateToWorkspace",
+			"coder.createWorkspace",
 		];
 
 		// At least some of these should be registered
@@ -52,7 +53,7 @@ suite("UI Components Test Suite", () => {
 		);
 		assert.ok(
 			foundCommands.length > 0,
-			"Tree view commands should be registered",
+			`Tree view commands should be registered, found ${foundCommands.length}`,
 		);
 	});
 

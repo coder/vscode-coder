@@ -3,6 +3,7 @@
 ## Running Tests
 
 ### Unit Tests
+
 ```bash
 # Run unit tests
 yarn test
@@ -12,6 +13,7 @@ yarn test:ci
 ```
 
 ### Integration Tests
+
 ```bash
 # Run integration tests
 yarn test:integration
@@ -75,6 +77,7 @@ While 100% coverage is not always practical or necessary, aim for:
 - **Lines**: > 70%
 
 Focus coverage efforts on:
+
 - Core business logic
 - Command handlers
 - Tree data providers
@@ -87,6 +90,7 @@ Focus coverage efforts on:
 - **Green lines**: Fully covered code
 
 Use coverage data to:
+
 1. Identify untested code paths
 2. Find dead code
 3. Improve test scenarios
