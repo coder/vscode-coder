@@ -1,3 +1,22 @@
+Initial prompt:
+
+Make a comprehensive plan for the next steps in this repository to
+increase confidence and code quality, and then update TODO.md with that
+plan - the plan can be relatively concise, and the current TODO.md has
+largely been completed, so feel free to ignore it where it is no longer
+valid. My plan in general is to build out the integration test suite and
+unit test suite without changing any of the production code, as far as
+can be done, and then delve into some modest manual mutation testing to
+validate the integration tests actually cover functionality, followed by
+expansion of the unit tests to cover 90% (or all reachable code in the
+test environment as it currently stands), then to make a light
+refactoring pass to clean up complicated functions, anonymous callbacks
+(I prefer explicitly named callback functions where the callback has any
+real complexity), and simplify the usage of the api and command line tool
+in preparation for transitioning all interactions with the coder backend
+to the CLI tool, in addition to firming up connection/reconnection which
+can be a little flakey.
+
 # Coder VSCode Extension - Quality Improvement Plan
 
 ## Phase 1: Test Infrastructure & Coverage (No Production Code Changes)

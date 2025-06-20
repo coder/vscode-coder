@@ -1,6 +1,9 @@
 // Import all integration test suites
 import "./authentication.test";
 import "./workspace-operations.test";
+import "./cli-integration.test";
+import "./uri-handler.test";
+import "./app-status-logs.test";
 // Temporarily comment out other imports until they're converted
 // import "./remote-connection.test";
 // import "./tree-views.test";

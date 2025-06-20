@@ -44,6 +44,7 @@ When running with the `--coverage` flag, VS Code Test will generate:
 - **HTML Report**: Detailed coverage report at `./coverage/index.html`
 
 The coverage data helps identify:
+
 - Untested code paths
 - Dead code that's never executed
 - Areas that need additional test coverage
@@ -66,7 +67,7 @@ start ./coverage/index.html
 While 100% coverage is not always practical or necessary, aim to test:
 
 - Core business logic
-- Command handlers  
+- Command handlers
 - Tree data providers
 - Extension activation logic
 - Error handling paths
