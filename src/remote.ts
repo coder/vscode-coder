@@ -910,9 +910,9 @@ export class Remote {
 				.then((content) => {
 					return JSON.parse(content);
 				})
-				.then(async (parsed) => {
+				.then((parsed) => {
 					try {
-						await updateStatus(parsed);
+						updateStatus(parsed);
 					} catch (ex) {
 						// Ignore
 					}
