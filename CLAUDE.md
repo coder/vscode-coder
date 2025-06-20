@@ -10,6 +10,7 @@
 - Run all tests: `yarn test`
 - Run specific test: `vitest ./src/filename.test.ts`
 - CI test mode: `yarn test:ci`
+- Integration tests: `yarn test:integration`
 
 ## Code Style Guidelines
 

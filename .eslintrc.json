@@ -3,7 +3,8 @@
 	"parser": "@typescript-eslint/parser",
 	"parserOptions": {
 		"ecmaVersion": 6,
-		"sourceType": "module"
+		"sourceType": "module",
+		"project": "./tsconfig.json"
 	},
 	"plugins": ["@typescript-eslint", "prettier"],
 	"extends": [
@@ -15,6 +16,18 @@
 		"prettier"
 	],
 	"overrides": [
+		{
+			"files": ["*.ts"],
+			"rules": {
+				"require-await": "off",
+				"@typescript-eslint/require-await": "error"
+			}
+		},
+		{
+			"extends": ["plugin:package-json/legacy-recommended"],
+			"files": ["*.json"],
+			"parser": "jsonc-eslint-parser"
+		},
 		{
 			"files": ["*.md"],
 			"parser": "markdown-eslint-parser"

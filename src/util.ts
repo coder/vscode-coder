@@ -25,7 +25,7 @@ export const RemoteSSHLogPortRegex =
  *
  * Returns null if no port is found.
  */
-export async function findPort(text: string): Promise<number | null> {
+export function findPort(text: string): number | null {
 	const matches = text.match(RemoteSSHLogPortRegex);
 	if (!matches) {
 		return null;

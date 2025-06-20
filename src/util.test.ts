@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { countSubstring, parseRemoteAuthority, toSafeHost } from "./util";
 
-it("ignore unrelated authorities", async () => {
+it("ignore unrelated authorities", () => {
 	const tests = [
 		"vscode://ssh-remote+some-unrelated-host.com",
 		"vscode://ssh-remote+coder-vscode",
@@ -15,7 +15,7 @@ it("ignore unrelated authorities", async () => {
 	}
 });
 
-it("should error on invalid authorities", async () => {
+it("should error on invalid authorities", () => {
 	const tests = [
 		"vscode://ssh-remote+coder-vscode--foo",
 		"vscode://ssh-remote+coder-vscode--",
@@ -27,7 +27,7 @@ it("should error on invalid authorities", async () => {
 	}
 });
 
-it("should parse authority", async () => {
+it("should parse authority", () => {
 	expect(
 		parseRemoteAuthority("vscode://ssh-remote+coder-vscode--foo--bar"),
 	).toStrictEqual({
@@ -81,7 +81,7 @@ it("should parse authority", async () => {
 	});
 });
 
-it("escapes url host", async () => {
+it("escapes url host", () => {
 	expect(toSafeHost("https://foobar:8080")).toBe("foobar");
 	expect(toSafeHost("https://ほげ")).toBe("xn--18j4d");
 	expect(toSafeHost("https://test.😉.invalid")).toBe("test.xn--n28h.invalid");

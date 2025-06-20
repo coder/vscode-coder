@@ -21,25 +21,31 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	//
 	// Cursor and VSCode are covered by ms remote, and the only other is windsurf for now
 	// Means that vscodium is not supported by this for now
+
 	const remoteSSHExtension =
 		vscode.extensions.getExtension("jeanp413.open-remote-ssh") ||
 		vscode.extensions.getExtension("codeium.windsurf-remote-openssh") ||
 		vscode.extensions.getExtension("anysphere.remote-ssh") ||
 		vscode.extensions.getExtension("ms-vscode-remote.remote-ssh");
+
+	let vscodeProposed: typeof vscode = vscode;
+
 	if (!remoteSSHExtension) {
 		vscode.window.showErrorMessage(
-			"Remote SSH extension not found, cannot activate Coder extension",
+			"Remote SSH extension not found, this may not work as expected.\n" +
+				// NB should we link to documentation or marketplace?
+				"Please install your choice of Remote SSH extension from the VS Code Marketplace.",
 		);
-		throw new Error("Remote SSH extension not found");
+	} else {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		vscodeProposed = (module as any)._load(
+			"vscode",
+			{
+				filename: remoteSSHExtension.extensionPath,
+			},
+			false,
+		);
 	}
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const vscodeProposed: typeof vscode = (module as any)._load(
-		"vscode",
-		{
-			filename: remoteSSHExtension?.extensionPath,
-		},
-		false,
-	);
 
 	const output = vscode.window.createOutputChannel("Coder");
 	const storage = new Storage(
@@ -278,7 +284,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
 	// resolved by the remote SSH extension.
-	if (vscodeProposed.env.remoteAuthority) {
+	//
+	// In addition, if we don't have a remote SSH extension, we skip this
+	// activation event. This may allow the user to install the extension
+	// after the Coder extension is installed, instead of throwing a fatal error
+	// (this would require the user to uninstall the Coder extension and
+	// reinstall after installing the remote SSH extension, which is annoying)
+	if (remoteSSHExtension && vscodeProposed.env.remoteAuthority) {
 		const remote = new Remote(
 			vscodeProposed,
 			storage,
