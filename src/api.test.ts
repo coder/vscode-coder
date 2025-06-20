@@ -280,6 +280,20 @@ describe("api", () => {
 	});
 
 	describe("makeCoderSdk", () => {
+		let mockCreateHttpAgent: any;
+
+		beforeEach(() => {
+			// Mock createHttpAgent
+			mockCreateHttpAgent = vi.fn().mockResolvedValue(new ProxyAgent({}));
+			vi.doMock("./api", async () => {
+				const actual = (await vi.importActual("./api")) as any;
+				return {
+					...actual,
+					createHttpAgent: mockCreateHttpAgent,
+				};
+			});
+		});
+
 		it("should create and configure API instance with token", () => {
 			const mockStorage = {
 				getHeaders: vi.fn().mockResolvedValue({ "Custom-Header": "value" }),
@@ -310,6 +324,78 @@ describe("api", () => {
 			expect(mockApi.setHost).toHaveBeenCalledWith("https://coder.example.com");
 			expect(mockApi.setSessionToken).not.toHaveBeenCalled();
 			expect(result).toBe(mockApi);
+		});
+
+		it("should configure request interceptor correctly", async () => {
+			const mockStorage = {
+				getHeaders: vi.fn().mockResolvedValue({ "Custom-Header": "value" }),
+			};
+
+			makeCoderSdk(
+				"https://coder.example.com",
+				"test-token",
+				mockStorage as any,
+			);
+
+			// Get the request interceptor callback
+			const requestInterceptorCall =
+				mockAxiosInstance.interceptors.request.use.mock.calls[0];
+			const requestInterceptor = requestInterceptorCall[0];
+
+			// Test the request interceptor
+			const mockConfig = {
+				headers: {},
+			};
+
+			const result = await requestInterceptor(mockConfig);
+
+			expect(mockStorage.getHeaders).toHaveBeenCalledWith(
+				"https://coder.example.com",
+			);
+			expect(result.headers["Custom-Header"]).toBe("value");
+			expect(result.httpsAgent).toBeDefined();
+			expect(result.httpAgent).toBeDefined();
+			expect(result.proxy).toBe(false);
+		});
+
+		it("should configure response interceptor correctly", async () => {
+			const mockStorage = {
+				getHeaders: vi.fn().mockResolvedValue({}),
+			};
+
+			// Mock CertificateError.maybeWrap
+			const { CertificateError } = await import("./error");
+			const mockMaybeWrap = vi
+				.fn()
+				.mockRejectedValue(new Error("Certificate error"));
+			(CertificateError as any).maybeWrap = mockMaybeWrap;
+
+			makeCoderSdk(
+				"https://coder.example.com",
+				"test-token",
+				mockStorage as any,
+			);
+
+			// Get the response interceptor callbacks
+			const responseInterceptorCall =
+				mockAxiosInstance.interceptors.response.use.mock.calls[0];
+			const successCallback = responseInterceptorCall[0];
+			const errorCallback = responseInterceptorCall[1];
+
+			// Test success callback
+			const mockResponse = { data: "test" };
+			expect(successCallback(mockResponse)).toBe(mockResponse);
+
+			// Test error callback
+			const mockError = new Error("Network error");
+			await expect(errorCallback(mockError)).rejects.toThrow(
+				"Certificate error",
+			);
+			expect(mockMaybeWrap).toHaveBeenCalledWith(
+				mockError,
+				"https://coder.example.com",
+				mockStorage,
+			);
 		});
 	});
 
@@ -673,6 +759,159 @@ describe("api", () => {
 					mockWorkspace as any,
 				),
 			).rejects.toThrow("No base URL set on REST client");
+		});
+
+		it("should handle malformed URL errors in try-catch", async () => {
+			const mockWorkspace = {
+				id: "workspace-1",
+				latest_build: { id: "build-1" },
+			};
+
+			const mockRestClient = {
+				getWorkspaceBuildLogs: vi.fn().mockResolvedValue([]),
+				getAxiosInstance: vi.fn(() => ({
+					defaults: {
+						baseURL: "invalid-url://this-will-fail",
+						headers: { common: {} },
+					},
+				})),
+			};
+
+			const mockWriteEmitter = new vscode.EventEmitter<string>();
+
+			// Mock WebSocket constructor to throw an error (simulating malformed URL)
+			vi.mocked(WebSocket).mockImplementation(() => {
+				throw new Error("Invalid URL");
+			});
+
+			// Mock errToStr
+			vi.mocked(errToStr).mockReturnValue("malformed URL");
+
+			await expect(
+				waitForBuild(
+					mockRestClient as any,
+					mockWriteEmitter,
+					mockWorkspace as any,
+				),
+			).rejects.toThrow(
+				"Failed to watch workspace build on invalid-url://this-will-fail: malformed URL",
+			);
+		});
+
+		it("should handle logs with after parameter", async () => {
+			const mockWorkspace = {
+				id: "workspace-1",
+				latest_build: { id: "build-1", status: "running" },
+			};
+
+			const mockLogs = [
+				{ id: 10, output: "Starting build..." },
+				{ id: 20, output: "Build in progress..." },
+			];
+
+			const mockRestClient = {
+				getWorkspaceBuildLogs: vi.fn().mockResolvedValue(mockLogs),
+				getWorkspace: vi.fn().mockResolvedValue({
+					...mockWorkspace,
+					latest_build: { ...mockWorkspace.latest_build, status: "running" },
+				}),
+				getAxiosInstance: vi.fn(() => ({
+					defaults: {
+						baseURL: "https://coder.example.com",
+						headers: {
+							common: {},
+						},
+					},
+				})),
+			};
+
+			const mockWriteEmitter = new vscode.EventEmitter<string>();
+
+			// Mock WebSocket
+			const mockSocket = new EventEmitter() as any;
+			mockSocket.binaryType = "nodebuffer";
+			vi.mocked(WebSocket).mockImplementation(() => mockSocket);
+
+			// Start the async operation
+			const resultPromise = waitForBuild(
+				mockRestClient as any,
+				mockWriteEmitter,
+				mockWorkspace as any,
+			);
+
+			// Simulate WebSocket events
+			setTimeout(() => {
+				mockSocket.emit("close");
+			}, 10);
+
+			await resultPromise;
+
+			// Verify WebSocket was created with after parameter from last log
+			const websocketCalls = vi.mocked(WebSocket).mock.calls;
+			expect(websocketCalls).toHaveLength(1);
+			expect(websocketCalls[0][0]).toBeInstanceOf(URL);
+			expect((websocketCalls[0][0] as URL).href).toBe(
+				"wss://coder.example.com/api/v2/workspacebuilds/build-1/logs?follow=true&after=20",
+			);
+			expect(websocketCalls[0][1]).toMatchObject({
+				followRedirects: true,
+				headers: undefined,
+			});
+			expect(websocketCalls[0][1]).toHaveProperty("agent");
+		});
+
+		it("should handle WebSocket without auth token", async () => {
+			const mockWorkspace = {
+				id: "workspace-1",
+				latest_build: { id: "build-1", status: "running" },
+			};
+
+			const mockRestClient = {
+				getWorkspaceBuildLogs: vi.fn().mockResolvedValue([]),
+				getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
+				getAxiosInstance: vi.fn(() => ({
+					defaults: {
+						baseURL: "https://coder.example.com",
+						headers: {
+							common: {}, // No token
+						},
+					},
+				})),
+			};
+
+			const mockWriteEmitter = new vscode.EventEmitter<string>();
+
+			// Mock WebSocket
+			const mockSocket = new EventEmitter() as any;
+			mockSocket.binaryType = "nodebuffer";
+			vi.mocked(WebSocket).mockImplementation(() => mockSocket);
+
+			// Start the async operation
+			const resultPromise = waitForBuild(
+				mockRestClient as any,
+				mockWriteEmitter,
+				mockWorkspace as any,
+			);
+
+			// Simulate WebSocket events
+			setTimeout(() => {
+				mockSocket.emit("close");
+			}, 10);
+
+			await resultPromise;
+
+			// Verify WebSocket was created without auth headers
+			const websocketCalls = vi.mocked(WebSocket).mock.calls;
+			expect(websocketCalls).toHaveLength(1);
+			expect(websocketCalls[0][0]).toBeInstanceOf(URL);
+			expect((websocketCalls[0][0] as URL).href).toBe(
+				"wss://coder.example.com/api/v2/workspacebuilds/build-1/logs?follow=true",
+			);
+			expect(websocketCalls[0][1]).toMatchObject({
+				followRedirects: true,
+				headers: undefined,
+			});
+			expect(websocketCalls[0][1]).toHaveProperty("agent");
 		});
 	});
 });
