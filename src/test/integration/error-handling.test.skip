@@ -1,0 +1,94 @@
+import { test, describe } from "vitest";
+import * as _vscode from "vscode";
+
+describe("Error Handling Integration Tests", () => {
+	describe("Certificate Errors", () => {
+		test.skip("should show certificate error notification", async () => {
+			// Test certificate error display
+		});
+
+		test.skip("should handle self-signed certificates", async () => {
+			// Test self-signed cert handling
+		});
+
+		test.skip("should suggest insecure mode for cert errors", async () => {
+			// Test insecure mode suggestion
+		});
+
+		test.skip("should handle expired certificates", async () => {
+			// Test expired cert handling
+		});
+	});
+
+	describe("Network Errors", () => {
+		test.skip("should handle connection timeouts", async () => {
+			// Test timeout errors
+		});
+
+		test.skip("should handle network unreachable", async () => {
+			// Test network errors
+		});
+
+		test.skip("should retry failed requests", async () => {
+			// Test retry logic
+		});
+
+		test.skip("should handle proxy errors", async () => {
+			// Test proxy error handling
+		});
+	});
+
+	describe("Authentication Errors", () => {
+		test.skip("should handle 401 unauthorized", async () => {
+			// Test auth errors
+		});
+
+		test.skip("should prompt for re-authentication", async () => {
+			// Test re-auth flow
+		});
+
+		test.skip("should handle token expiration", async () => {
+			// Test token expiry
+		});
+
+		test.skip("should handle invalid credentials", async () => {
+			// Test bad credentials
+		});
+	});
+
+	describe("Workspace Errors", () => {
+		test.skip("should handle workspace not found", async () => {
+			// Test 404 errors
+		});
+
+		test.skip("should handle workspace build failures", async () => {
+			// Test build errors
+		});
+
+		test.skip("should handle agent connection failures", async () => {
+			// Test agent errors
+		});
+
+		test.skip("should handle permission errors", async () => {
+			// Test access denied
+		});
+	});
+
+	describe("General Error Handling", () => {
+		test.skip("should log errors to output channel", async () => {
+			// Test error logging
+		});
+
+		test.skip("should show user-friendly error messages", async () => {
+			// Test error formatting
+		});
+
+		test.skip("should handle unexpected errors gracefully", async () => {
+			// Test unknown errors
+		});
+
+		test.skip("should clean up resources on error", async () => {
+			// Test cleanup
+		});
+	});
+});

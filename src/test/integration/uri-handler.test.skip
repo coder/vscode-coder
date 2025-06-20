@@ -1,0 +1,54 @@
+import { test, describe } from "vitest";
+import * as _vscode from "vscode";
+
+describe("URI Handler Integration Tests", () => {
+	describe("vscode:// URI Handling", () => {
+		test.skip("should handle /open path", async () => {
+			// Test workspace open URI
+		});
+
+		test.skip("should handle /openDevContainer path", async () => {
+			// Test devcontainer open URI
+		});
+
+		test.skip("should validate owner parameter", async () => {
+			// Test owner validation
+		});
+
+		test.skip("should validate workspace parameter", async () => {
+			// Test workspace validation
+		});
+
+		test.skip("should handle optional agent parameter", async () => {
+			// Test agent handling
+		});
+
+		test.skip("should handle optional folder parameter", async () => {
+			// Test folder handling
+		});
+
+		test.skip("should handle openRecent parameter", async () => {
+			// Test recent folder behavior
+		});
+
+		test.skip("should prompt for URL if not provided", async () => {
+			// Test URL prompting
+		});
+
+		test.skip("should use existing URL if available", async () => {
+			// Test URL reuse
+		});
+
+		test.skip("should handle token in query parameters", async () => {
+			// Test token handling
+		});
+
+		test.skip("should configure CLI after URI handling", async () => {
+			// Test CLI configuration
+		});
+
+		test.skip("should handle unknown URI paths", async () => {
+			// Test error handling
+		});
+	});
+});

@@ -1,0 +1,116 @@
+import { test, describe } from "vitest";
+import * as _vscode from "vscode";
+
+describe("Tree Views Integration Tests", () => {
+	describe("My Workspaces View", () => {
+		test.skip("should show user workspaces when authenticated", async () => {
+			// Test workspace list display
+		});
+
+		test.skip("should show login prompt when not authenticated", async () => {
+			// Test unauthenticated state
+		});
+
+		test.skip("should group workspaces by status", async () => {
+			// Test workspace grouping
+		});
+
+		test.skip("should show workspace agents as children", async () => {
+			// Test agent hierarchy
+		});
+
+		test.skip("should show workspace apps under agents", async () => {
+			// Test app display
+		});
+
+		test.skip("should update workspace status in real-time", async () => {
+			// Test real-time updates
+		});
+
+		test.skip("should handle workspace polling", async () => {
+			// Test polling mechanism
+		});
+
+		test.skip("should stop polling when view is hidden", async () => {
+			// Test visibility-based polling
+		});
+
+		test.skip("should show workspace icons based on status", async () => {
+			// Test status icons
+		});
+
+		test.skip("should handle workspace provider errors", async () => {
+			// Test error handling in tree
+		});
+
+		test.skip("should support workspace context menu actions", async () => {
+			// Test context menu items
+		});
+
+		test.skip("should handle agent metadata streaming", async () => {
+			// Test SSE metadata updates
+		});
+	});
+
+	describe("All Workspaces View", () => {
+		test.skip("should show all workspaces for owners", async () => {
+			// Test owner workspace list
+		});
+
+		test.skip("should be hidden for non-owners", async () => {
+			// Test visibility context
+		});
+
+		test.skip("should support same features as My Workspaces", async () => {
+			// Test feature parity
+		});
+	});
+
+	describe("Tree Item Actions", () => {
+		test.skip("should open workspace from tree item", async () => {
+			// Test open action
+		});
+
+		test.skip("should navigate to workspace page", async () => {
+			// Test navigation action
+		});
+
+		test.skip("should navigate to workspace settings", async () => {
+			// Test settings action
+		});
+
+		test.skip("should handle app status click", async () => {
+			// Test app interactions
+		});
+
+		test.skip("should open app URL in browser", async () => {
+			// Test URL apps
+		});
+
+		test.skip("should run app command in terminal", async () => {
+			// Test command apps
+		});
+	});
+
+	describe("Tree View Toolbar", () => {
+		test.skip("should show login button when logged out", async () => {
+			// Test login button
+		});
+
+		test.skip("should show logout button when logged in", async () => {
+			// Test logout button
+		});
+
+		test.skip("should show create workspace button", async () => {
+			// Test create button
+		});
+
+		test.skip("should show refresh button", async () => {
+			// Test refresh button
+		});
+
+		test.skip("should update toolbar based on authentication", async () => {
+			// Test toolbar state
+		});
+	});
+});
