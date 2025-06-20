@@ -13,5 +13,15 @@ export default defineConfig({
 			"./src/test/**",
 		],
 		environment: "node",
+		coverage: {
+			provider: "v8",
+			reporter: ["text", "html"],
+			include: ["src/**/*.ts"],
+			exclude: [
+				"src/**/*.test.ts",
+				"src/test/**",
+				"src/**/*.d.ts",
+			],
+		},
 	},
 });
