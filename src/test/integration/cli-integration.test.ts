@@ -222,7 +222,7 @@ suite("CLI Integration Tests", () => {
 	});
 
 	suite("CLI Error Handling", () => {
-		test("should handle missing CLI binary gracefully", () => {
+		test("should handle missing CLI binary gracefully", async () => {
 			// Test behavior when CLI binary is not available
 			const config = vscode.workspace.getConfiguration("coder");
 			const originalPath = config.get("binaryPath");

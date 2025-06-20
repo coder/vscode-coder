@@ -1,12 +1,17 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import * as vscode from "vscode";
 import { Storage } from "./storage";
 
 // Mock dependencies
-vi.mock("vscode");
 vi.mock("./headers");
 vi.mock("./api-helper");
 vi.mock("./cliManager");
+
+beforeAll(() => {
+	vi.mock("vscode", () => {
+		return {};
+	});
+});
 
 describe("storage", () => {
 	it("should create Storage instance", () => {

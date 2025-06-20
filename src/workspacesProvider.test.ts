@@ -1,14 +1,35 @@
 import { Api } from "coder/site/src/api/api";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import { Storage } from "./storage";
 import { WorkspaceProvider, WorkspaceQuery } from "./workspacesProvider";
 
 // Mock dependencies
-vi.mock("vscode");
 vi.mock("eventsource");
 vi.mock("./api");
 vi.mock("./api-helper");
 vi.mock("./storage");
+
+beforeAll(() => {
+	vi.mock("vscode", () => {
+		return {
+			TreeItem: class MockTreeItem {
+				constructor() {
+					// Mock implementation
+				}
+			},
+			TreeItemCollapsibleState: {
+				None: 0,
+				Collapsed: 1,
+				Expanded: 2,
+			},
+			EventEmitter: class MockEventEmitter {
+				fire = vi.fn();
+				event = vi.fn();
+				dispose = vi.fn();
+			},
+		};
+	});
+});
 
 describe("workspacesProvider", () => {
 	it("should export WorkspaceQuery enum", () => {
