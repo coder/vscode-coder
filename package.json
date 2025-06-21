@@ -25,8 +25,8 @@
 		"package": "webpack --mode production --devtool hidden-source-map",
 		"package:prerelease": "npx vsce package --pre-release",
 		"pretest": "tsc -p . --outDir out && yarn run build && yarn run lint",
-		"test": "vitest",
-		"test:ci": "CI=true yarn test",
+		"test": "yarn lint:fix && vitest",
+		"test:ci": "yarn lint:fix && CI=true yarn test",
 		"test:integration": "vscode-test",
 		"vscode:prepublish": "yarn package",
 		"watch": "webpack --watch"

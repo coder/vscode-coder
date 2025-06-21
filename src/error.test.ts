@@ -2,8 +2,13 @@ import axios from "axios";
 import * as fs from "fs/promises";
 import https from "https";
 import * as path from "path";
-import { afterAll, beforeAll, it, expect, vi } from "vitest";
-import { CertificateError, X509_ERR, X509_ERR_CODE } from "./error";
+import { afterAll, beforeAll, it, expect, vi, describe } from "vitest";
+import {
+	CertificateError,
+	X509_ERR,
+	X509_ERR_CODE,
+	getErrorDetail,
+} from "./error";
 
 // Before each test we make a request to sanity check that we really get the
 // error we are expecting, then we run it through CertificateError.
@@ -19,9 +24,39 @@ const isElectron =
 // TODO: Remove the vscode mock once we revert the testing framework.
 beforeAll(() => {
 	vi.mock("vscode", () => {
-		return {};
+		return {
+			window: {
+				showErrorMessage: vi.fn(),
+				showInformationMessage: vi.fn(),
+			},
+			workspace: {
+				getConfiguration: vi.fn(() => ({
+					update: vi.fn(),
+				})),
+			},
+			ConfigurationTarget: {
+				Global: 1,
+			},
+		};
 	});
 });
+
+// Mock the coder/site modules
+vi.mock("coder/site/src/api/errors", () => ({
+	isApiError: vi.fn((error: unknown) => {
+		const err = error as {
+			isAxiosError?: boolean;
+			response?: { data?: { detail?: string } };
+		};
+		return (
+			err?.isAxiosError === true && err?.response?.data?.detail !== undefined
+		);
+	}),
+	isApiErrorResponse: vi.fn((error: unknown) => {
+		const err = error as { detail?: string };
+		return err?.detail !== undefined && typeof err.detail === "string";
+	}),
+}));
 
 const logger = {
 	writeToCoderOutputChannel(message: string) {
@@ -251,4 +286,140 @@ it("falls back with different error", async () => {
 		expect(wrapped instanceof CertificateError).toBeFalsy();
 		expect((wrapped as Error).message).toMatch(/failed with status code 500/);
 	}
+});
+
+describe("getErrorDetail", () => {
+	it("should return detail from API error response", () => {
+		const apiError = {
+			isAxiosError: true,
+			response: {
+				data: {
+					detail: "API error detail message",
+				},
+			},
+		};
+		expect(getErrorDetail(apiError)).toBe("API error detail message");
+	});
+
+	it("should return detail from error response object", () => {
+		const errorResponse = {
+			detail: "Error response detail message",
+		};
+		expect(getErrorDetail(errorResponse)).toBe("Error response detail message");
+	});
+
+	it("should return null for non-API errors", () => {
+		const regularError = new Error("Regular error");
+		expect(getErrorDetail(regularError)).toBeNull();
+	});
+
+	it("should return null for string errors", () => {
+		expect(getErrorDetail("String error")).toBeNull();
+	});
+
+	it("should return null for undefined", () => {
+		expect(getErrorDetail(undefined)).toBeNull();
+	});
+});
+
+describe("CertificateError instance methods", () => {
+	it("should update configuration and show message when allowInsecure is called", async () => {
+		const vscode = await import("vscode");
+		const mockUpdate = vi.fn();
+		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+			update: mockUpdate,
+		} as never);
+
+		// Create a CertificateError instance using maybeWrap
+		const axiosError = {
+			isAxiosError: true,
+			code: X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
+			message: "self signed certificate",
+		};
+		const certError = await CertificateError.maybeWrap(
+			axiosError,
+			"https://test.com",
+			logger,
+		);
+
+		// Call allowInsecure
+		(certError as CertificateError).allowInsecure();
+
+		// Verify configuration was updated
+		expect(mockUpdate).toHaveBeenCalledWith(
+			"coder.insecure",
+			true,
+			vscode.ConfigurationTarget.Global,
+		);
+		// Verify information message was shown
+		expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+			CertificateError.InsecureMessage,
+		);
+	});
+
+	it("should call showNotification with modal options when showModal is called", async () => {
+		const vscode = await import("vscode");
+
+		// Create a CertificateError instance with x509Err
+		const axiosError = {
+			isAxiosError: true,
+			code: X509_ERR_CODE.SELF_SIGNED_CERT_IN_CHAIN,
+			message: "self signed certificate in chain",
+		};
+		const certError = await CertificateError.maybeWrap(
+			axiosError,
+			"https://test.com",
+			logger,
+		);
+
+		// Mock showErrorMessage to return OK
+		vi.mocked(vscode.window.showErrorMessage).mockResolvedValue(
+			CertificateError.ActionOK as never,
+		);
+
+		// Call showModal
+		await (certError as CertificateError).showModal("Test Title");
+
+		// Verify showErrorMessage was called with correct parameters
+		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+			"Test Title",
+			{
+				detail: X509_ERR.UNTRUSTED_CHAIN,
+				modal: true,
+				useCustom: true,
+			},
+			CertificateError.ActionOK,
+		);
+	});
+
+	it("should use x509Err as title when no title provided to showNotification", async () => {
+		const vscode = await import("vscode");
+
+		// Create a CertificateError instance
+		const axiosError = {
+			isAxiosError: true,
+			code: X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
+			message: "self signed certificate",
+		};
+		const certError = await CertificateError.maybeWrap(
+			axiosError,
+			"https://test.com",
+			logger,
+		);
+
+		// Mock showErrorMessage to return OK
+		vi.mocked(vscode.window.showErrorMessage).mockResolvedValue(
+			CertificateError.ActionOK as never,
+		);
+
+		// Call showNotification without title
+		await (certError as CertificateError).showNotification();
+
+		// Verify showErrorMessage was called with x509Err as title
+		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+			X509_ERR.UNTRUSTED_LEAF,
+			{},
+			CertificateError.ActionOK,
+		);
+	});
 });

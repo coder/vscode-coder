@@ -86,6 +86,67 @@ describe("storage", () => {
 		});
 	});
 
+	describe("withUrlHistory", () => {
+		it("should return empty array when no history exists", () => {
+			vi.mocked(mockMemento.get).mockReturnValue(undefined);
+
+			const result = storage.withUrlHistory();
+
+			expect(result).toEqual([]);
+			expect(mockMemento.get).toHaveBeenCalledWith("urlHistory");
+		});
+
+		it("should append new URLs to existing history", () => {
+			vi.mocked(mockMemento.get).mockReturnValue(["https://old.com"]);
+
+			const result = storage.withUrlHistory("https://new.com");
+
+			expect(result).toEqual(["https://old.com", "https://new.com"]);
+		});
+
+		it("should filter out undefined values", () => {
+			vi.mocked(mockMemento.get).mockReturnValue(["https://old.com"]);
+
+			const result = storage.withUrlHistory(
+				undefined,
+				"https://new.com",
+				undefined,
+			);
+
+			expect(result).toEqual(["https://old.com", "https://new.com"]);
+		});
+
+		it("should remove duplicates and move to end", () => {
+			vi.mocked(mockMemento.get).mockReturnValue([
+				"https://a.com",
+				"https://b.com",
+				"https://c.com",
+			]);
+
+			const result = storage.withUrlHistory("https://b.com");
+
+			expect(result).toEqual([
+				"https://a.com",
+				"https://c.com",
+				"https://b.com",
+			]);
+		});
+
+		it("should limit history to MAX_URLS (10)", () => {
+			const existingUrls = Array.from(
+				{ length: 10 },
+				(_, i) => `https://url${i}.com`,
+			);
+			vi.mocked(mockMemento.get).mockReturnValue(existingUrls);
+
+			const result = storage.withUrlHistory("https://new.com");
+
+			expect(result).toHaveLength(10);
+			expect(result[0]).toBe("https://url1.com");
+			expect(result[9]).toBe("https://new.com");
+		});
+	});
+
 	describe("setUrl", () => {
 		it("should set URL and update history when URL is provided", async () => {
 			const testUrl = "https://coder.example.com";
@@ -440,6 +501,25 @@ describe("storage", () => {
 
 			expect(result).toBeUndefined();
 		});
+
+		it("should return path when Remote SSH file exists", async () => {
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readdir)
+				.mockResolvedValueOnce([
+					"output_logging_20240102",
+					"output_logging_20240101",
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				] as any)
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				.mockResolvedValueOnce(["1-Remote - SSH.log", "2-Other.log"] as any);
+
+			const result = await storage.getRemoteSSHLogPath();
+
+			// Directories are sorted and then reversed, so 20240101 comes first
+			expect(result).toBe(
+				"/mock/log/output_logging_20240101/1-Remote - SSH.log",
+			);
+		});
 	});
 
 	describe("configureCli", () => {
@@ -463,6 +543,41 @@ describe("storage", () => {
 				"/mock/global/storage/test-label/session",
 				testToken,
 			);
+		});
+	});
+
+	describe("getHeaders", () => {
+		beforeEach(async () => {
+			const { getHeaders, getHeaderCommand } = await import("./headers");
+			vi.mocked(getHeaders).mockClear();
+			vi.mocked(getHeaderCommand).mockClear();
+		});
+
+		it("should call getHeaders with correct parameters", async () => {
+			const { getHeaders } = await import("./headers");
+			const { getHeaderCommand } = await import("./headers");
+			vi.mocked(getHeaders).mockResolvedValue({ "X-Test": "test-value" });
+			vi.mocked(getHeaderCommand).mockReturnValue("test-command");
+
+			const testUrl = "https://test.coder.com";
+			const result = await storage.getHeaders(testUrl);
+
+			expect(getHeaderCommand).toHaveBeenCalled();
+			expect(getHeaders).toHaveBeenCalledWith(testUrl, "test-command", storage);
+			expect(result).toEqual({ "X-Test": "test-value" });
+		});
+
+		it("should handle undefined URL", async () => {
+			const { getHeaders } = await import("./headers");
+			const { getHeaderCommand } = await import("./headers");
+			vi.mocked(getHeaders).mockResolvedValue({});
+			vi.mocked(getHeaderCommand).mockReturnValue("");
+
+			const result = await storage.getHeaders(undefined);
+
+			expect(getHeaderCommand).toHaveBeenCalled();
+			expect(getHeaders).toHaveBeenCalledWith(undefined, "", storage);
+			expect(result).toEqual({});
 		});
 	});
 });

@@ -37,12 +37,14 @@ Your goal is to help me arrive at the most elegant and effective solution by com
 Current status: **48.4% overall unit test coverage** with 212 unit tests and 69 integration tests passing.
 
 ### Testing Priority Framework
+
 1. **Files with <50% coverage** need immediate attention (remote.ts: 8.84%, commands.ts: 21.09%)
 2. **Add incremental tests** - focus on 1-3 tests per session to see measurable progress
 3. **Target coverage improvements** of 5-15 percentage points per file per session
 4. **Always run coverage after changes** to measure progress: `yarn test:ci --coverage`
 
 ### Testing Patterns to Follow
+
 - **Mock external dependencies** properly using vi.mock() and proper TypeScript types
 - **Create reusable mock types** instead of using `any` or eslint-disable
 - **Test core functionality first** - constructor, main methods, error paths
@@ -50,8 +52,9 @@ Current status: **48.4% overall unit test coverage** with 212 unit tests and 69 
 - **Group related tests** in describe blocks for better organization
 
 ### Files with Excellent Coverage (>90%) - Use as Examples:
+
 - featureSet.ts: 100%
-- proxy.ts: 100% 
+- proxy.ts: 100%
 - util.ts: 97.31%
 - headers.ts: 96.49%
 - api-helper.ts: 96.36%
@@ -59,6 +62,7 @@ Current status: **48.4% overall unit test coverage** with 212 unit tests and 69 
 - api.ts: 95.52%
 
 ### Current Testing Approach
+
 - **No production code changes** during testing phase
 - **Incremental improvements** - systematically work through files by coverage priority
 - **Comprehensive mocking** for VS Code API, external dependencies, and internal modules

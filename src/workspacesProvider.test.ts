@@ -143,4 +143,405 @@ describe("workspacesProvider", () => {
 			expect(result).toBe(mockTreeItem);
 		});
 	});
+
+	describe("fetchAndRefresh", () => {
+		it("should not fetch when already fetching", async () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Set up state
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).fetching = true;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).visible = true;
+
+			// Mock the fetch method to ensure it's not called
+			const fetchSpy = vi
+				.spyOn(
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					provider as any,
+					"fetch",
+				)
+				.mockResolvedValue([]);
+
+			await provider.fetchAndRefresh();
+
+			expect(fetchSpy).not.toHaveBeenCalled();
+
+			fetchSpy.mockRestore();
+		});
+
+		it("should not fetch when not visible", async () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Set up state
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).fetching = false;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).visible = false;
+
+			// Mock the fetch method to ensure it's not called
+			const fetchSpy = vi
+				.spyOn(
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					provider as any,
+					"fetch",
+				)
+				.mockResolvedValue([]);
+
+			await provider.fetchAndRefresh();
+
+			expect(fetchSpy).not.toHaveBeenCalled();
+
+			fetchSpy.mockRestore();
+		});
+
+		it("should handle errors when fetching workspaces", async () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Set up state
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).fetching = false;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).visible = true;
+
+			// Mock the fetch method to throw an error
+			const fetchSpy = vi
+				.spyOn(
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					provider as any,
+					"fetch",
+				)
+				.mockRejectedValue(new Error("Fetch failed"));
+
+			// Mock refresh and maybeScheduleRefresh methods
+			const refreshSpy = vi
+				.spyOn(provider, "refresh")
+				.mockImplementation(() => {});
+			const maybeScheduleRefreshSpy = vi
+				.spyOn(
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					provider as any,
+					"maybeScheduleRefresh",
+				)
+				.mockImplementation(() => {});
+
+			await provider.fetchAndRefresh();
+
+			expect(fetchSpy).toHaveBeenCalled();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((provider as any).workspaces).toEqual([]);
+			expect(refreshSpy).toHaveBeenCalled();
+			// Should not schedule refresh on error
+			expect(maybeScheduleRefreshSpy).not.toHaveBeenCalled();
+
+			fetchSpy.mockRestore();
+			refreshSpy.mockRestore();
+			maybeScheduleRefreshSpy.mockRestore();
+		});
+	});
+
+	describe("refresh", () => {
+		it("should fire onDidChangeTreeData event", () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock the EventEmitter's fire method
+			const fireSpy = vi.spyOn(
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				(provider as any)._onDidChangeTreeData,
+				"fire",
+			);
+
+			const mockItem = { label: "test" } as vscode.TreeItem;
+			provider.refresh(mockItem);
+
+			expect(fireSpy).toHaveBeenCalledWith(mockItem);
+
+			fireSpy.mockRestore();
+		});
+
+		it("should fire onDidChangeTreeData event with undefined", () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock the EventEmitter's fire method
+			const fireSpy = vi.spyOn(
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				(provider as any)._onDidChangeTreeData,
+				"fire",
+			);
+
+			provider.refresh(undefined);
+
+			expect(fireSpy).toHaveBeenCalledWith(undefined);
+
+			fireSpy.mockRestore();
+		});
+	});
+
+	describe("getChildren", () => {
+		it("should return workspaces when no element is provided", async () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Set up workspaces
+			const mockWorkspaces = [{ label: "workspace1" }, { label: "workspace2" }];
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).workspaces = mockWorkspaces;
+
+			const result = await provider.getChildren();
+
+			expect(result).toBe(mockWorkspaces);
+		});
+
+		it("should return empty array when workspaces is undefined", async () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Ensure workspaces is undefined
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).workspaces = undefined;
+
+			const result = await provider.getChildren();
+
+			expect(result).toEqual([]);
+		});
+
+		it("should return agent items when WorkspaceTreeItem element is provided", async () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock extractAgents to return agents
+			const { extractAgents } = await import("./api-helper");
+			const mockAgents = [
+				{ id: "agent1", name: "main", status: "connected" },
+				{ id: "agent2", name: "gpu", status: "connected" },
+			];
+			vi.mocked(extractAgents).mockReturnValue(mockAgents as never);
+
+			// Create a mock WorkspaceTreeItem
+			const mockWorkspaceTreeItem = {
+				workspace: { id: "workspace1", name: "my-workspace" },
+				workspaceOwner: "testuser",
+				workspaceName: "my-workspace",
+				watchMetadata: false,
+			};
+
+			// Access the WorkspaceTreeItem class
+			const { WorkspaceTreeItem } = await import("./workspacesProvider");
+			Object.setPrototypeOf(mockWorkspaceTreeItem, WorkspaceTreeItem.prototype);
+
+			const result = await provider.getChildren(mockWorkspaceTreeItem as never);
+
+			expect(extractAgents).toHaveBeenCalledWith(
+				mockWorkspaceTreeItem.workspace,
+			);
+			expect(result).toHaveLength(2);
+		});
+	});
+
+	describe("fetchAndRefresh - success path", () => {
+		it("should fetch workspaces successfully and schedule refresh", async () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+			const timerSeconds = 60;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+				timerSeconds,
+			);
+
+			// Set up state
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).fetching = false;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).visible = true;
+
+			// Mock successful fetch
+			const mockWorkspaces = [{ label: "workspace1" }];
+			const fetchSpy = vi
+				.spyOn(
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					provider as any,
+					"fetch",
+				)
+				.mockResolvedValue(mockWorkspaces);
+
+			// Mock refresh and maybeScheduleRefresh methods
+			const refreshSpy = vi
+				.spyOn(provider, "refresh")
+				.mockImplementation(() => {});
+			const maybeScheduleRefreshSpy = vi
+				.spyOn(
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					provider as any,
+					"maybeScheduleRefresh",
+				)
+				.mockImplementation(() => {});
+
+			await provider.fetchAndRefresh();
+
+			expect(fetchSpy).toHaveBeenCalled();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((provider as any).workspaces).toBe(mockWorkspaces);
+			expect(refreshSpy).toHaveBeenCalled();
+			// Should schedule refresh on success
+			expect(maybeScheduleRefreshSpy).toHaveBeenCalled();
+
+			fetchSpy.mockRestore();
+			refreshSpy.mockRestore();
+			maybeScheduleRefreshSpy.mockRestore();
+		});
+	});
+
+	describe("maybeScheduleRefresh", () => {
+		it("should schedule refresh when timer is set and not fetching", () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+			const timerSeconds = 30;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+				timerSeconds,
+			);
+
+			// Set up state
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).fetching = false;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).timeout = undefined;
+
+			// Spy on setTimeout
+			const setTimeoutSpy = vi
+				.spyOn(global, "setTimeout")
+				.mockImplementation(() => 123 as never);
+
+			// Call maybeScheduleRefresh
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).maybeScheduleRefresh();
+
+			expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 30000);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((provider as any).timeout).toBe(123);
+
+			setTimeoutSpy.mockRestore();
+		});
+	});
+
+	describe("fetchAndRefresh - clears pending refresh", () => {
+		it("should clear pending refresh before fetching", async () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Set up state with existing timeout
+			const mockTimeout = setTimeout(() => {}, 1000);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).fetching = false;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).visible = true;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).timeout = mockTimeout;
+
+			// Spy on clearTimeout
+			const clearTimeoutSpy = vi.spyOn(global, "clearTimeout");
+
+			// Mock successful fetch
+			const fetchSpy = vi
+				.spyOn(
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					provider as any,
+					"fetch",
+				)
+				.mockResolvedValue([]);
+
+			// Mock other methods
+			vi.spyOn(provider, "refresh").mockImplementation(() => {});
+			vi.spyOn(
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				provider as any,
+				"maybeScheduleRefresh",
+			).mockImplementation(() => {});
+
+			await provider.fetchAndRefresh();
+
+			expect(clearTimeoutSpy).toHaveBeenCalledWith(mockTimeout);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((provider as any).timeout).toBeUndefined();
+
+			clearTimeoutSpy.mockRestore();
+			fetchSpy.mockRestore();
+		});
+	});
 });
