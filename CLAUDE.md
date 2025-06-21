@@ -14,6 +14,7 @@ Your goal is to help me arrive at the most elegant and effective solution by com
 - Run specific unit test: `yarn test:ci` (always use this instead of vitest directly)
 - Integration tests: `yarn pretest; yarn test:integration`
 - Unit test coverage: `yarn test:ci --coverage`
+- Full test suite: `yarn test:ci --coverage && yarn pretest && yarn test:integration`
 
 ## Code Style Guidelines
 
@@ -30,3 +31,35 @@ Your goal is to help me arrive at the most elegant and effective solution by com
 - Unit test files must be named `*.test.ts` and use Vitest
 - Integration test files must be named `*.test.ts` and be located in the `src/test` directory
 - Avoid eslint-disable comments where at all possible - it's better to make a custom type than disable linting
+
+## Test Coverage Guidelines
+
+Current status: **48.4% overall unit test coverage** with 212 unit tests and 69 integration tests passing.
+
+### Testing Priority Framework
+1. **Files with <50% coverage** need immediate attention (remote.ts: 8.84%, commands.ts: 21.09%)
+2. **Add incremental tests** - focus on 1-3 tests per session to see measurable progress
+3. **Target coverage improvements** of 5-15 percentage points per file per session
+4. **Always run coverage after changes** to measure progress: `yarn test:ci --coverage`
+
+### Testing Patterns to Follow
+- **Mock external dependencies** properly using vi.mock() and proper TypeScript types
+- **Create reusable mock types** instead of using `any` or eslint-disable
+- **Test core functionality first** - constructor, main methods, error paths
+- **Use descriptive test names** that explain the specific behavior being tested
+- **Group related tests** in describe blocks for better organization
+
+### Files with Excellent Coverage (>90%) - Use as Examples:
+- featureSet.ts: 100%
+- proxy.ts: 100% 
+- util.ts: 97.31%
+- headers.ts: 96.49%
+- api-helper.ts: 96.36%
+- sshConfig.ts: 96.21%
+- api.ts: 95.52%
+
+### Current Testing Approach
+- **No production code changes** during testing phase
+- **Incremental improvements** - systematically work through files by coverage priority
+- **Comprehensive mocking** for VS Code API, external dependencies, and internal modules
+- **Both positive and negative test cases** for robust coverage
