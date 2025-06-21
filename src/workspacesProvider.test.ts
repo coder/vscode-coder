@@ -28,6 +28,17 @@ beforeAll(() => {
 				event = vi.fn();
 				dispose = vi.fn();
 			},
+			env: {
+				logLevel: 2,
+			},
+			LogLevel: {
+				Off: 0,
+				Trace: 1,
+				Debug: 2,
+				Info: 3,
+				Warning: 4,
+				Error: 5,
+			},
 		};
 	});
 });
@@ -542,6 +553,99 @@ describe("workspacesProvider", () => {
 
 			clearTimeoutSpy.mockRestore();
 			fetchSpy.mockRestore();
+		});
+	});
+
+	describe("cancelPendingRefresh", () => {
+		it("should clear timeout when called", () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Set up a mock timeout
+			const mockTimeout = setTimeout(() => {}, 1000);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).timeout = mockTimeout;
+
+			// Spy on clearTimeout
+			const clearTimeoutSpy = vi.spyOn(global, "clearTimeout");
+
+			// Call private method
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(provider as any).cancelPendingRefresh();
+
+			expect(clearTimeoutSpy).toHaveBeenCalledWith(mockTimeout);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((provider as any).timeout).toBeUndefined();
+
+			clearTimeoutSpy.mockRestore();
+		});
+	});
+
+	describe("onDidChangeTreeData", () => {
+		it("should expose event emitter", () => {
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {} as Api;
+			const mockStorage = {} as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			expect(provider.onDidChangeTreeData).toBeDefined();
+			expect(typeof provider.onDidChangeTreeData).toBe("function");
+		});
+	});
+
+	describe("fetch - with debug logging", () => {
+		it("should log when debug logging is enabled", async () => {
+			const mockWorkspaceQuery = WorkspaceQuery.All;
+			const mockRestClient = {
+				getAxiosInstance: vi.fn().mockReturnValue({
+					defaults: {
+						baseURL: "https://test.coder.com",
+					},
+				}),
+				getWorkspaces: vi.fn(),
+			} as unknown as Api;
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn(),
+			} as unknown as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock getWorkspaces to return empty workspaces
+			vi.mocked(mockRestClient.getWorkspaces).mockResolvedValue({
+				workspaces: [],
+			} as never);
+
+			// Mock extractAllAgents to return empty array
+			const { extractAllAgents } = await import("./api-helper");
+			vi.mocked(extractAllAgents).mockReturnValue([]);
+
+			// Set vscode.env.logLevel to Debug
+			vi.mocked(vscode.env).logLevel = vscode.LogLevel.Debug;
+
+			// Call private fetch method
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await (provider as any).fetch();
+
+			// Verify debug log was written
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				"Fetching workspaces: no filter...",
+			);
 		});
 	});
 });

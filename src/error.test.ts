@@ -322,6 +322,71 @@ describe("getErrorDetail", () => {
 	});
 });
 
+describe("CertificateError.maybeWrap error handling", () => {
+	it("should handle errors thrown by determineVerifyErrorCause", async () => {
+		// Create a logger spy to verify the error message is logged
+		const loggerSpy = {
+			writeToCoderOutputChannel: vi.fn(),
+		};
+
+		// Mock CertificateError.determineVerifyErrorCause to throw an error
+		const originalDetermine = CertificateError.determineVerifyErrorCause;
+		CertificateError.determineVerifyErrorCause = vi
+			.fn()
+			.mockRejectedValue(new Error("Failed to parse certificate"));
+
+		const axiosError = {
+			isAxiosError: true,
+			code: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+			message: "unable to verify leaf signature",
+		};
+
+		const result = await CertificateError.maybeWrap(
+			axiosError,
+			"https://test.com",
+			loggerSpy,
+		);
+
+		// Should return original error when determineVerifyErrorCause fails
+		expect(result).toBe(axiosError);
+		expect(loggerSpy.writeToCoderOutputChannel).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"Failed to parse certificate from https://test.com",
+			),
+		);
+
+		// Restore original method
+		CertificateError.determineVerifyErrorCause = originalDetermine;
+	});
+
+	it("should return original error when not an axios error", async () => {
+		const regularError = new Error("Not a certificate error");
+		const result = await CertificateError.maybeWrap(
+			regularError,
+			"https://test.com",
+			logger,
+		);
+
+		expect(result).toBe(regularError);
+	});
+
+	it("should return original error for unknown axios error codes", async () => {
+		const axiosError = {
+			isAxiosError: true,
+			code: "UNKNOWN_ERROR_CODE",
+			message: "Unknown error",
+		};
+
+		const result = await CertificateError.maybeWrap(
+			axiosError,
+			"https://test.com",
+			logger,
+		);
+
+		expect(result).toBe(axiosError);
+	});
+});
+
 describe("CertificateError instance methods", () => {
 	it("should update configuration and show message when allowInsecure is called", async () => {
 		const vscode = await import("vscode");
@@ -421,5 +486,35 @@ describe("CertificateError instance methods", () => {
 			{},
 			CertificateError.ActionOK,
 		);
+	});
+
+	it("should call allowInsecure when ActionAllowInsecure is selected", async () => {
+		const vscode = await import("vscode");
+
+		// Create a CertificateError instance
+		const axiosError = {
+			isAxiosError: true,
+			code: X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
+			message: "self signed certificate",
+		};
+		const certError = (await CertificateError.maybeWrap(
+			axiosError,
+			"https://test.com",
+			logger,
+		)) as CertificateError;
+
+		// Mock showErrorMessage to return ActionAllowInsecure
+		vi.mocked(vscode.window.showErrorMessage).mockResolvedValue(
+			CertificateError.ActionAllowInsecure as never,
+		);
+
+		// Spy on allowInsecure method
+		const allowInsecureSpy = vi.spyOn(certError, "allowInsecure");
+
+		// Call showNotification
+		await certError.showNotification("Test");
+
+		// Verify allowInsecure was called
+		expect(allowInsecureSpy).toHaveBeenCalled();
 	});
 });

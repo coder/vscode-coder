@@ -1,9 +1,12 @@
-import { it, expect } from "vitest";
+import * as childProcess from "child_process";
+import { it, expect, vi } from "vitest";
 import {
 	computeSSHProperties,
 	sshSupportsSetEnv,
 	sshVersionSupportsSetEnv,
 } from "./sshSupport";
+
+vi.mock("child_process");
 
 const supports = {
 	"OpenSSH_8.9p1 Ubuntu-3ubuntu0.1, OpenSSL 3.0.2 15 Mar 2022": true,
@@ -26,7 +29,21 @@ it("should return false for invalid version format", () => {
 });
 
 it("current shell supports ssh", () => {
+	// Mock spawnSync to return a valid SSH version
+	vi.mocked(childProcess.spawnSync).mockReturnValue({
+		stderr: Buffer.from(
+			"OpenSSH_8.0p1 Ubuntu-6build1, OpenSSL 1.1.1 11 Sep 2018",
+		),
+	} as never);
 	expect(sshSupportsSetEnv()).toBeTruthy();
+});
+
+it("returns false when ssh command throws error", () => {
+	// Mock spawnSync to throw an error
+	vi.mocked(childProcess.spawnSync).mockImplementation(() => {
+		throw new Error("Command not found");
+	});
+	expect(sshSupportsSetEnv()).toBe(false);
 });
 
 it("computes the config for a host", () => {
@@ -138,5 +155,33 @@ Host *
 	expect(properties).toEqual({
 		User: "testuser",
 		StrictHostKeyChecking: "yes",
+	});
+});
+
+it("handles version with single part", () => {
+	expect(sshVersionSupportsSetEnv("OpenSSH_7")).toBe(false);
+	expect(sshVersionSupportsSetEnv("OpenSSH_8")).toBe(false);
+});
+
+it("handles major version less than 7", () => {
+	expect(sshVersionSupportsSetEnv("OpenSSH_6.9p1 Ubuntu")).toBe(false);
+	expect(sshVersionSupportsSetEnv("OpenSSH_5.0p1")).toBe(false);
+});
+
+it("handles version 7.7 and below", () => {
+	expect(sshVersionSupportsSetEnv("OpenSSH_7.7p1 Ubuntu")).toBe(false);
+	expect(sshVersionSupportsSetEnv("OpenSSH_7.0p1")).toBe(false);
+});
+
+it("handles configs array with undefined entries", () => {
+	// This tests the falsy check in computeSSHProperties
+	const properties = computeSSHProperties(
+		"test-host",
+		`Host test-host
+  User testuser`,
+	);
+
+	expect(properties).toEqual({
+		User: "testuser",
 	});
 });

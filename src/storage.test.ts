@@ -580,4 +580,110 @@ describe("storage", () => {
 			expect(result).toEqual({});
 		});
 	});
+
+	describe("writeToCoderOutputChannel", () => {
+		it("should write message with timestamp to output channel", () => {
+			const testMessage = "Test log message";
+			const mockDate = new Date("2024-01-01T12:00:00.000Z");
+			vi.spyOn(global, "Date").mockImplementation(() => mockDate);
+
+			storage.writeToCoderOutputChannel(testMessage);
+
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"[2024-01-01T12:00:00.000Z] Test log message",
+			);
+		});
+	});
+
+	describe("getBinaryCachePath", () => {
+		it("should return path with label when label is provided", () => {
+			const testLabel = "my-deployment";
+
+			const result = storage.getBinaryCachePath(testLabel);
+
+			expect(result).toBe("/mock/global/storage/my-deployment/bin");
+		});
+
+		it("should return path without label when label is empty", () => {
+			const result = storage.getBinaryCachePath("");
+
+			expect(result).toBe("/mock/global/storage/bin");
+		});
+
+		it("should use custom destination when configured", () => {
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn().mockReturnValue("/custom/path"),
+			} as never);
+
+			const result = storage.getBinaryCachePath("test-label");
+
+			expect(result).toBe("/custom/path");
+		});
+	});
+
+	describe("getNetworkInfoPath", () => {
+		it("should return network info path", () => {
+			const result = storage.getNetworkInfoPath();
+
+			expect(result).toBe("/mock/global/storage/net");
+		});
+	});
+
+	describe("getLogPath", () => {
+		it("should return log path", () => {
+			const result = storage.getLogPath();
+
+			expect(result).toBe("/mock/global/storage/log");
+		});
+	});
+
+	describe("getUserSettingsPath", () => {
+		it("should return user settings path", () => {
+			const result = storage.getUserSettingsPath();
+
+			expect(result).toBe("/User/settings.json");
+		});
+	});
+
+	describe("getSessionTokenPath", () => {
+		it("should return path with label when label is provided", () => {
+			const result = storage.getSessionTokenPath("test-label");
+
+			expect(result).toBe("/mock/global/storage/test-label/session");
+		});
+
+		it("should return path without label when label is empty", () => {
+			const result = storage.getSessionTokenPath("");
+
+			expect(result).toBe("/mock/global/storage/session");
+		});
+	});
+
+	describe("getLegacySessionTokenPath", () => {
+		it("should return legacy path with label when label is provided", () => {
+			const result = storage.getLegacySessionTokenPath("test-label");
+
+			expect(result).toBe("/mock/global/storage/test-label/session_token");
+		});
+
+		it("should return legacy path without label when label is empty", () => {
+			const result = storage.getLegacySessionTokenPath("");
+
+			expect(result).toBe("/mock/global/storage/session_token");
+		});
+	});
+
+	describe("getUrlPath", () => {
+		it("should return path with label when label is provided", () => {
+			const result = storage.getUrlPath("test-label");
+
+			expect(result).toBe("/mock/global/storage/test-label/url");
+		});
+
+		it("should return path without label when label is empty", () => {
+			const result = storage.getUrlPath("");
+
+			expect(result).toBe("/mock/global/storage/url");
+		});
+	});
 });

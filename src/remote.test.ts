@@ -18,6 +18,7 @@ vi.mock("axios", () => ({
 			},
 		})),
 	},
+	isAxiosError: vi.fn(),
 }));
 vi.mock("coder/site/src/api/api", () => ({
 	Api: class MockApi {
@@ -47,6 +48,8 @@ vi.mock("./sshSupport");
 vi.mock("./storage");
 vi.mock("./util");
 vi.mock("./workspaceMonitor");
+vi.mock("fs/promises");
+vi.mock("os");
 
 // Mock vscode module
 vi.mock("vscode", () => ({
@@ -103,6 +106,10 @@ describe("remote", () => {
 		mockStorage = {
 			getSessionTokenPath: vi.fn().mockReturnValue("/mock/session/path"),
 			writeToCoderOutputChannel: vi.fn(),
+			migrateSessionToken: vi.fn().mockResolvedValue(undefined),
+			readCliConfig: vi.fn().mockResolvedValue({ url: "", token: "" }),
+			getRemoteSSHLogPath: vi.fn().mockResolvedValue(undefined),
+			fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
 		} as unknown as Storage;
 		mockCommands = {} as Commands;
 	});
@@ -265,6 +272,438 @@ describe("remote", () => {
 
 			expect(result).toBeUndefined();
 			expect(mockShowInformationMessage).toHaveBeenCalled();
+		});
+	});
+
+	describe("setup", () => {
+		it("should return undefined for non-coder host", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock parseRemoteAuthority to return null (not a Coder host)
+			const { parseRemoteAuthority } = await import("./util");
+			vi.mocked(parseRemoteAuthority).mockReturnValue(null);
+
+			// Call setup with a non-coder remote authority
+			const result = await remote.setup("non-coder-host");
+
+			expect(result).toBeUndefined();
+			expect(parseRemoteAuthority).toHaveBeenCalledWith("non-coder-host");
+		});
+
+		it("should close remote when user declines to log in", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock parseRemoteAuthority to return valid parts
+			const { parseRemoteAuthority } = await import("./util");
+			vi.mocked(parseRemoteAuthority).mockReturnValue({
+				host: "test.coder.com",
+				label: "test-label",
+				username: "test-user",
+				workspace: "test-workspace",
+				agent: undefined,
+			});
+
+			// Mock storage to return empty config (not logged in)
+			vi.mocked(mockStorage.migrateSessionToken).mockResolvedValue();
+			vi.mocked(mockStorage.readCliConfig).mockResolvedValue({
+				url: "",
+				token: "",
+			});
+
+			// Mock needToken to return true
+			const { needToken } = await import("./api");
+			vi.mocked(needToken).mockReturnValue(true);
+
+			// Mock showInformationMessage to return undefined (user declined)
+			const showInfoMessageSpy = mockVscodeProposed.window
+				.showInformationMessage as ReturnType<typeof vi.fn>;
+			showInfoMessageSpy.mockResolvedValue(undefined);
+
+			// Mock closeRemote
+			const closeRemoteSpy = vi
+				.spyOn(remote, "closeRemote")
+				.mockResolvedValue();
+
+			await remote.setup("coder-vscode--test-label--test-user--test-workspace");
+
+			expect(closeRemoteSpy).toHaveBeenCalled();
+			expect(showInfoMessageSpy).toHaveBeenCalledWith(
+				"You are not logged in...",
+				expect.objectContaining({
+					detail: "You must log in to access test-user/test-workspace.",
+				}),
+				"Log In",
+			);
+		});
+
+		it("should show error and close remote for incompatible server version", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock parseRemoteAuthority to return valid parts
+			const { parseRemoteAuthority } = await import("./util");
+			vi.mocked(parseRemoteAuthority).mockReturnValue({
+				host: "test.coder.com",
+				label: "test-label",
+				username: "test-user",
+				workspace: "test-workspace",
+				agent: undefined,
+			});
+
+			// Mock storage to return valid config
+			vi.mocked(mockStorage.migrateSessionToken).mockResolvedValue();
+			vi.mocked(mockStorage.readCliConfig).mockResolvedValue({
+				url: "https://test.coder.com",
+				token: "test-token",
+			});
+
+			// Mock needToken to return false
+			const { needToken } = await import("./api");
+			vi.mocked(needToken).mockReturnValue(false);
+
+			// Mock makeCoderSdk
+			const mockWorkspaceRestClient = {
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v0.13.0" }),
+			} as never;
+			const { makeCoderSdk } = await import("./api");
+			vi.mocked(makeCoderSdk).mockResolvedValue(mockWorkspaceRestClient);
+
+			// Mock storage.fetchBinary
+			vi.mocked(mockStorage.fetchBinary).mockResolvedValue("/path/to/coder");
+
+			// Mock cli.version to return old version
+			const cli = await import("./cliManager");
+			vi.mocked(cli.version).mockResolvedValue("v0.13.0");
+
+			// Mock featureSetForVersion to return featureSet without vscodessh
+			const { featureSetForVersion } = await import("./featureSet");
+			vi.mocked(featureSetForVersion).mockReturnValue({
+				vscodessh: false,
+			} as never);
+
+			// Mock showErrorMessage
+			const showErrorMessageSpy = mockVscodeProposed.window
+				.showErrorMessage as ReturnType<typeof vi.fn>;
+			showErrorMessageSpy.mockResolvedValue("Close Remote");
+
+			// Mock closeRemote
+			const closeRemoteSpy = vi
+				.spyOn(remote, "closeRemote")
+				.mockResolvedValue();
+
+			const result = await remote.setup(
+				"coder-vscode--test-label--test-user--test-workspace",
+			);
+
+			expect(result).toBeUndefined();
+			expect(showErrorMessageSpy).toHaveBeenCalledWith(
+				"Incompatible Server",
+				expect.objectContaining({
+					detail: expect.stringContaining(
+						"Your Coder server is too old to support the Coder extension",
+					),
+				}),
+				"Close Remote",
+			);
+			expect(closeRemoteSpy).toHaveBeenCalled();
+		});
+
+		it("should handle workspace not found (404) error", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock parseRemoteAuthority to return valid parts
+			const { parseRemoteAuthority } = await import("./util");
+			vi.mocked(parseRemoteAuthority).mockReturnValue({
+				host: "test.coder.com",
+				label: "test-label",
+				username: "test-user",
+				workspace: "test-workspace",
+				agent: undefined,
+			});
+
+			// Mock storage to return valid config
+			vi.mocked(mockStorage.migrateSessionToken).mockResolvedValue();
+			vi.mocked(mockStorage.readCliConfig).mockResolvedValue({
+				url: "https://test.coder.com",
+				token: "test-token",
+			});
+
+			// Mock needToken to return false
+			const { needToken } = await import("./api");
+			vi.mocked(needToken).mockReturnValue(false);
+
+			// Mock makeCoderSdk
+			const mockWorkspaceRestClient = {
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v0.15.0" }),
+				getWorkspaceByOwnerAndName: vi.fn().mockRejectedValue({
+					isAxiosError: true,
+					response: { status: 404 },
+				}),
+			} as never;
+			const { makeCoderSdk } = await import("./api");
+			vi.mocked(makeCoderSdk).mockResolvedValue(mockWorkspaceRestClient);
+
+			// Mock cli.version to return compatible version
+			const cli = await import("./cliManager");
+			vi.mocked(cli.version).mockResolvedValue("v0.15.0");
+
+			// Mock featureSetForVersion to return featureSet with vscodessh
+			const { featureSetForVersion } = await import("./featureSet");
+			vi.mocked(featureSetForVersion).mockReturnValue({
+				vscodessh: true,
+			} as never);
+
+			// Mock showInformationMessage for workspace not found
+			const showInfoMessageSpy = mockVscodeProposed.window
+				.showInformationMessage as ReturnType<typeof vi.fn>;
+			showInfoMessageSpy.mockResolvedValue(undefined); // User cancels
+
+			// Mock closeRemote
+			const closeRemoteSpy = vi
+				.spyOn(remote, "closeRemote")
+				.mockResolvedValue();
+
+			// Mock commands.executeCommand
+			const executeCommandSpy = vi.fn();
+			vi.mocked(vscode.commands.executeCommand).mockImplementation(
+				executeCommandSpy,
+			);
+
+			// Mock isAxiosError
+			const { isAxiosError } = await import("axios");
+			vi.mocked(isAxiosError).mockReturnValue(true);
+
+			const result = await remote.setup(
+				"coder-vscode--test-label--test-user--test-workspace",
+			);
+
+			expect(result).toBeUndefined();
+			expect(showInfoMessageSpy).toHaveBeenCalledWith(
+				"That workspace doesn't exist!",
+				expect.objectContaining({
+					modal: true,
+					detail: expect.stringContaining(
+						"test-user/test-workspace cannot be found",
+					),
+				}),
+				"Open Workspace",
+			);
+			expect(closeRemoteSpy).toHaveBeenCalled();
+			expect(executeCommandSpy).toHaveBeenCalledWith("coder.open");
+		});
+
+		it("should handle session expired (401) error", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock parseRemoteAuthority to return valid parts
+			const { parseRemoteAuthority } = await import("./util");
+			vi.mocked(parseRemoteAuthority).mockReturnValue({
+				host: "test.coder.com",
+				label: "test-label",
+				username: "test-user",
+				workspace: "test-workspace",
+				agent: undefined,
+			});
+
+			// Mock storage to return valid config
+			vi.mocked(mockStorage.migrateSessionToken).mockResolvedValue();
+			vi.mocked(mockStorage.readCliConfig).mockResolvedValue({
+				url: "https://test.coder.com",
+				token: "test-token",
+			});
+
+			// Mock needToken to return false
+			const { needToken } = await import("./api");
+			vi.mocked(needToken).mockReturnValue(false);
+
+			// Mock makeCoderSdk
+			const mockWorkspaceRestClient = {
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v0.15.0" }),
+				getWorkspaceByOwnerAndName: vi.fn().mockRejectedValue({
+					isAxiosError: true,
+					response: { status: 401 },
+				}),
+			} as never;
+			const { makeCoderSdk } = await import("./api");
+			vi.mocked(makeCoderSdk).mockResolvedValue(mockWorkspaceRestClient);
+
+			// Mock cli.version to return compatible version
+			const cli = await import("./cliManager");
+			vi.mocked(cli.version).mockResolvedValue("v0.15.0");
+
+			// Mock featureSetForVersion to return featureSet with vscodessh
+			const { featureSetForVersion } = await import("./featureSet");
+			vi.mocked(featureSetForVersion).mockReturnValue({
+				vscodessh: true,
+			} as never);
+
+			// Mock showInformationMessage for session expired
+			const showInfoMessageSpy = mockVscodeProposed.window
+				.showInformationMessage as ReturnType<typeof vi.fn>;
+			showInfoMessageSpy.mockResolvedValue("Log In");
+
+			// Mock commands.executeCommand
+			const executeCommandSpy = vi.fn();
+			vi.mocked(vscode.commands.executeCommand).mockImplementation(
+				executeCommandSpy,
+			);
+
+			// Mock isAxiosError
+			const { isAxiosError } = await import("axios");
+			vi.mocked(isAxiosError).mockReturnValue(true);
+
+			// Track recursive setup call
+			let setupCallCount = 0;
+			const originalSetup = remote.setup.bind(remote);
+			remote.setup = vi.fn(async (authority) => {
+				setupCallCount++;
+				if (setupCallCount === 1) {
+					// First call - run the actual implementation
+					return originalSetup(authority);
+				} else {
+					// Second call (after login) - return success
+					return {
+						url: "https://test.coder.com",
+						token: "test-token",
+						dispose: vi.fn(),
+					} as never;
+				}
+			});
+
+			const result = await remote.setup(
+				"coder-vscode--test-label--test-user--test-workspace",
+			);
+
+			expect(result).toBeUndefined();
+			expect(showInfoMessageSpy).toHaveBeenCalledWith(
+				"Your session expired...",
+				expect.objectContaining({
+					modal: true,
+					detail: expect.stringContaining(
+						"You must log in to access test-user/test-workspace",
+					),
+				}),
+				"Log In",
+			);
+			expect(executeCommandSpy).toHaveBeenCalledWith(
+				"coder.login",
+				"https://test.coder.com",
+				undefined,
+				"test-label",
+			);
+			// Should call setup again after login
+			expect(setupCallCount).toBe(2);
+		});
+
+		it("should use development binary path when in development mode", async () => {
+			// Create remote in development mode
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Development,
+			);
+
+			// Mock parseRemoteAuthority to return valid parts
+			const { parseRemoteAuthority } = await import("./util");
+			vi.mocked(parseRemoteAuthority).mockReturnValue({
+				host: "test.coder.com",
+				label: "test-label",
+				username: "test-user",
+				workspace: "test-workspace",
+				agent: undefined,
+			});
+
+			// Mock storage to return valid config
+			vi.mocked(mockStorage.migrateSessionToken).mockResolvedValue();
+			vi.mocked(mockStorage.readCliConfig).mockResolvedValue({
+				url: "https://test.coder.com",
+				token: "test-token",
+			});
+
+			// Mock needToken to return false
+			const { needToken } = await import("./api");
+			vi.mocked(needToken).mockReturnValue(false);
+
+			// Mock fs.stat to simulate /tmp/coder exists
+			const fs = await import("fs/promises");
+			vi.mocked(fs.stat).mockResolvedValue({} as never);
+
+			// Mock makeCoderSdk to return workspace not found to exit early
+			const mockWorkspaceRestClient = {
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v0.15.0" }),
+				getWorkspaceByOwnerAndName: vi.fn().mockRejectedValue({
+					isAxiosError: true,
+					response: { status: 404 },
+				}),
+			} as never;
+			const { makeCoderSdk } = await import("./api");
+			vi.mocked(makeCoderSdk).mockResolvedValue(mockWorkspaceRestClient);
+
+			// Mock cli.version to return compatible version
+			const cli = await import("./cliManager");
+			vi.mocked(cli.version).mockResolvedValue("v0.15.0");
+
+			// Mock featureSetForVersion to return featureSet with vscodessh
+			const { featureSetForVersion } = await import("./featureSet");
+			vi.mocked(featureSetForVersion).mockReturnValue({
+				vscodessh: true,
+			} as never);
+
+			// Mock showInformationMessage to cancel
+			const showInfoMessageSpy = mockVscodeProposed.window
+				.showInformationMessage as ReturnType<typeof vi.fn>;
+			showInfoMessageSpy.mockResolvedValue(undefined);
+
+			// Mock closeRemote
+			const _closeRemoteSpy = vi
+				.spyOn(remote, "closeRemote")
+				.mockResolvedValue();
+
+			// Mock commands.executeCommand
+			const executeCommandSpy = vi.fn();
+			vi.mocked(vscode.commands.executeCommand).mockImplementation(
+				executeCommandSpy,
+			);
+
+			// Mock isAxiosError
+			const { isAxiosError } = await import("axios");
+			vi.mocked(isAxiosError).mockReturnValue(true);
+
+			// Mock os.tmpdir to ensure we're checking the right path
+			const os = await import("os");
+			vi.mocked(os.tmpdir).mockReturnValue("/tmp");
+
+			await remote.setup("coder-vscode--test-label--test-user--test-workspace");
+
+			// Verify that fs.stat was called with the development binary path
+			expect(fs.stat).toHaveBeenCalledWith("/tmp/coder");
+			// Verify that fetchBinary was not called because development binary exists
+			expect(mockStorage.fetchBinary).not.toHaveBeenCalled();
 		});
 	});
 });
