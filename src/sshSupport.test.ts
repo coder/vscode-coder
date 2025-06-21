@@ -19,6 +19,12 @@ Object.entries(supports).forEach(([version, expected]) => {
 	});
 });
 
+it("should return false for invalid version format", () => {
+	expect(sshVersionSupportsSetEnv("Invalid SSH version")).toBe(false);
+	expect(sshVersionSupportsSetEnv("")).toBe(false);
+	expect(sshVersionSupportsSetEnv("Some random text")).toBe(false);
+});
+
 it("current shell supports ssh", () => {
 	expect(sshSupportsSetEnv()).toBeTruthy();
 });
@@ -106,5 +112,31 @@ Host coder-vscode.dev.coder.com--*
 		ProxyCommand:
 			'"/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/bin/coder-darwin-arm64" vscodessh --network-info-dir "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/net" --session-token-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/session" --url-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/url" %h',
 		UserKnownHostsFile: "/dev/null",
+	});
+});
+
+it("handles config without Host directive", () => {
+	const properties = computeSSHProperties(
+		"any-host",
+		`StrictHostKeyChecking no
+UserKnownHostsFile /dev/null`,
+	);
+
+	expect(properties).toEqual({});
+});
+
+it("handles empty config sections", () => {
+	const properties = computeSSHProperties(
+		"test-host",
+		`Host test-host
+  User testuser
+
+Host *
+  StrictHostKeyChecking yes`,
+	);
+
+	expect(properties).toEqual({
+		User: "testuser",
+		StrictHostKeyChecking: "yes",
 	});
 });

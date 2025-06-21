@@ -60,6 +60,16 @@
 					"type": "string",
 					"default": ""
 				},
+				"coder.binaryPath": {
+					"markdownDescription": "The full path to the Coder CLI binary. If not specified, the extension will attempt to download it automatically.",
+					"type": "string",
+					"default": ""
+				},
+				"coder.verbose": {
+					"markdownDescription": "Enable verbose logging for debugging purposes.",
+					"type": "boolean",
+					"default": false
+				},
 				"coder.enableDownloads": {
 					"markdownDescription": "Allow the plugin to download the CLI when missing or out of date.",
 					"type": "boolean",
@@ -109,6 +119,11 @@
 					"markdownDescription": "Automatically log into the default URL when the extension is activated. coder.defaultUrl is preferred, otherwise the CODER_URL environment variable will be used. This setting has no effect if neither is set.",
 					"type": "boolean",
 					"default": false
+				},
+				"coder.url": {
+					"markdownDescription": "The URL of the Coder deployment. This can be used to automatically configure the connection.",
+					"type": "string",
+					"default": ""
 				}
 			}
 		},

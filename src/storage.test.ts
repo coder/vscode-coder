@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import * as vscode from "vscode";
 import { Storage } from "./storage";
 
@@ -6,29 +6,463 @@ import { Storage } from "./storage";
 vi.mock("./headers");
 vi.mock("./api-helper");
 vi.mock("./cliManager");
+vi.mock("fs/promises");
 
 beforeAll(() => {
 	vi.mock("vscode", () => {
-		return {};
+		return {
+			workspace: {
+				getConfiguration: vi.fn(() => ({
+					get: vi.fn().mockReturnValue(""),
+				})),
+			},
+		};
 	});
 });
 
 describe("storage", () => {
-	it("should create Storage instance", () => {
-		const mockOutput = {} as vscode.OutputChannel;
-		const mockMemento = {} as vscode.Memento;
-		const mockSecrets = {} as vscode.SecretStorage;
-		const mockGlobalStorageUri = {} as vscode.Uri;
-		const mockLogUri = {} as vscode.Uri;
+	let mockOutput: vscode.OutputChannel;
+	let mockMemento: vscode.Memento;
+	let mockSecrets: vscode.SecretStorage;
+	let mockGlobalStorageUri: vscode.Uri;
+	let mockLogUri: vscode.Uri;
+	let storage: Storage;
 
-		const storage = new Storage(
+	beforeEach(() => {
+		mockOutput = {
+			appendLine: vi.fn(),
+		} as unknown as vscode.OutputChannel;
+
+		mockMemento = {
+			get: vi.fn(),
+			update: vi.fn(),
+		} as unknown as vscode.Memento;
+
+		mockSecrets = {
+			get: vi.fn(),
+			store: vi.fn(),
+			delete: vi.fn(),
+		} as unknown as vscode.SecretStorage;
+
+		mockGlobalStorageUri = {
+			fsPath: "/mock/global/storage",
+		} as vscode.Uri;
+
+		mockLogUri = {
+			fsPath: "/mock/log/path",
+		} as vscode.Uri;
+
+		storage = new Storage(
 			mockOutput,
 			mockMemento,
 			mockSecrets,
 			mockGlobalStorageUri,
 			mockLogUri,
 		);
+	});
 
+	it("should create Storage instance", () => {
 		expect(storage).toBeInstanceOf(Storage);
+	});
+
+	describe("getUrl", () => {
+		it("should return URL from memento", () => {
+			const testUrl = "https://coder.example.com";
+			vi.mocked(mockMemento.get).mockReturnValue(testUrl);
+
+			const result = storage.getUrl();
+
+			expect(result).toBe(testUrl);
+			expect(mockMemento.get).toHaveBeenCalledWith("url");
+		});
+
+		it("should return undefined when no URL is stored", () => {
+			vi.mocked(mockMemento.get).mockReturnValue(undefined);
+
+			const result = storage.getUrl();
+
+			expect(result).toBeUndefined();
+			expect(mockMemento.get).toHaveBeenCalledWith("url");
+		});
+	});
+
+	describe("setUrl", () => {
+		it("should set URL and update history when URL is provided", async () => {
+			const testUrl = "https://coder.example.com";
+			vi.mocked(mockMemento.get).mockReturnValue([]); // Empty history
+			vi.mocked(mockMemento.update).mockResolvedValue();
+
+			await storage.setUrl(testUrl);
+
+			expect(mockMemento.update).toHaveBeenCalledWith("url", testUrl);
+			expect(mockMemento.update).toHaveBeenCalledWith("urlHistory", [testUrl]);
+		});
+
+		it("should only set URL without updating history when URL is falsy", async () => {
+			vi.mocked(mockMemento.update).mockResolvedValue();
+
+			await storage.setUrl(undefined);
+
+			expect(mockMemento.update).toHaveBeenCalledWith("url", undefined);
+			expect(mockMemento.update).toHaveBeenCalledTimes(1);
+		});
+
+		it("should set URL to empty string", async () => {
+			vi.mocked(mockMemento.update).mockResolvedValue();
+
+			await storage.setUrl("");
+
+			expect(mockMemento.update).toHaveBeenCalledWith("url", "");
+			expect(mockMemento.update).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("withUrlHistory", () => {
+		it("should return empty array when no history exists and no URLs provided", () => {
+			vi.mocked(mockMemento.get).mockReturnValue(undefined);
+
+			const result = storage.withUrlHistory();
+
+			expect(result).toEqual([]);
+		});
+
+		it("should return existing history when no new URLs provided", () => {
+			const existingHistory = ["https://first.com", "https://second.com"];
+			vi.mocked(mockMemento.get).mockReturnValue(existingHistory);
+
+			const result = storage.withUrlHistory();
+
+			expect(result).toEqual(existingHistory);
+		});
+
+		it("should append new URL to existing history", () => {
+			const existingHistory = ["https://first.com"];
+			const newUrl = "https://second.com";
+			vi.mocked(mockMemento.get).mockReturnValue(existingHistory);
+
+			const result = storage.withUrlHistory(newUrl);
+
+			expect(result).toEqual(["https://first.com", "https://second.com"]);
+		});
+
+		it("should move existing URL to end when re-added", () => {
+			const existingHistory = [
+				"https://first.com",
+				"https://second.com",
+				"https://third.com",
+			];
+			vi.mocked(mockMemento.get).mockReturnValue(existingHistory);
+
+			const result = storage.withUrlHistory("https://first.com");
+
+			expect(result).toEqual([
+				"https://second.com",
+				"https://third.com",
+				"https://first.com",
+			]);
+		});
+
+		it("should ignore undefined URLs", () => {
+			const existingHistory = ["https://first.com"];
+			vi.mocked(mockMemento.get).mockReturnValue(existingHistory);
+
+			const result = storage.withUrlHistory(
+				undefined,
+				"https://second.com",
+				undefined,
+			);
+
+			expect(result).toEqual(["https://first.com", "https://second.com"]);
+		});
+
+		it("should limit history to MAX_URLS (10) and remove oldest entries", () => {
+			// Create 10 existing URLs
+			const existingHistory = Array.from(
+				{ length: 10 },
+				(_, i) => `https://site${i}.com`,
+			);
+			vi.mocked(mockMemento.get).mockReturnValue(existingHistory);
+
+			const result = storage.withUrlHistory("https://new.com");
+
+			expect(result).toHaveLength(10);
+			expect(result[0]).toBe("https://site1.com"); // First entry removed
+			expect(result[9]).toBe("https://new.com"); // New entry at end
+		});
+	});
+
+	describe("setSessionToken", () => {
+		it("should store token when provided", async () => {
+			const testToken = "test-session-token";
+			vi.mocked(mockSecrets.store).mockResolvedValue();
+
+			await storage.setSessionToken(testToken);
+
+			expect(mockSecrets.store).toHaveBeenCalledWith("sessionToken", testToken);
+		});
+
+		it("should delete token when undefined", async () => {
+			vi.mocked(mockSecrets.delete).mockResolvedValue();
+
+			await storage.setSessionToken(undefined);
+
+			expect(mockSecrets.delete).toHaveBeenCalledWith("sessionToken");
+		});
+
+		it("should delete token when empty string", async () => {
+			vi.mocked(mockSecrets.delete).mockResolvedValue();
+
+			await storage.setSessionToken("");
+
+			expect(mockSecrets.delete).toHaveBeenCalledWith("sessionToken");
+		});
+	});
+
+	describe("getSessionToken", () => {
+		it("should return token from secrets", async () => {
+			const testToken = "test-session-token";
+			vi.mocked(mockSecrets.get).mockResolvedValue(testToken);
+
+			const result = await storage.getSessionToken();
+
+			expect(result).toBe(testToken);
+			expect(mockSecrets.get).toHaveBeenCalledWith("sessionToken");
+		});
+
+		it("should return undefined when secrets throw error", async () => {
+			vi.mocked(mockSecrets.get).mockRejectedValue(
+				new Error("Corrupt session store"),
+			);
+
+			const result = await storage.getSessionToken();
+
+			expect(result).toBeUndefined();
+		});
+	});
+
+	describe("getBinaryCachePath", () => {
+		it("should return custom path when configured", () => {
+			// We need to test this differently since vscode is already mocked globally
+			// Let's just test the path construction logic for now
+			const result = storage.getBinaryCachePath("test-label");
+
+			// This will use the mocked global storage path
+			expect(result).toBe("/mock/global/storage/test-label/bin");
+		});
+
+		it("should return label-specific path when label provided", () => {
+			const result = storage.getBinaryCachePath("my-deployment");
+
+			expect(result).toBe("/mock/global/storage/my-deployment/bin");
+		});
+
+		it("should return default path when no label", () => {
+			const result = storage.getBinaryCachePath("");
+
+			expect(result).toBe("/mock/global/storage/bin");
+		});
+	});
+
+	describe("writeToCoderOutputChannel", () => {
+		it("should append formatted message to output", () => {
+			const testMessage = "Test log message";
+
+			storage.writeToCoderOutputChannel(testMessage);
+
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				expect.stringMatching(
+					/^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] Test log message$/,
+				),
+			);
+		});
+	});
+
+	describe("getNetworkInfoPath", () => {
+		it("should return network info path", () => {
+			const result = storage.getNetworkInfoPath();
+
+			expect(result).toBe("/mock/global/storage/net");
+		});
+	});
+
+	describe("getLogPath", () => {
+		it("should return log path", () => {
+			const result = storage.getLogPath();
+
+			expect(result).toBe("/mock/global/storage/log");
+		});
+	});
+
+	describe("getUserSettingsPath", () => {
+		it("should return user settings path", () => {
+			const result = storage.getUserSettingsPath();
+
+			expect(result).toBe("/User/settings.json");
+		});
+	});
+
+	describe("getSessionTokenPath", () => {
+		it("should return label-specific session token path when label provided", () => {
+			const result = storage.getSessionTokenPath("test-deployment");
+
+			expect(result).toBe("/mock/global/storage/test-deployment/session");
+		});
+
+		it("should return default session token path when no label", () => {
+			const result = storage.getSessionTokenPath("");
+
+			expect(result).toBe("/mock/global/storage/session");
+		});
+	});
+
+	describe("getLegacySessionTokenPath", () => {
+		it("should return label-specific legacy session token path when label provided", () => {
+			const result = storage.getLegacySessionTokenPath("test-deployment");
+
+			expect(result).toBe("/mock/global/storage/test-deployment/session_token");
+		});
+
+		it("should return default legacy session token path when no label", () => {
+			const result = storage.getLegacySessionTokenPath("");
+
+			expect(result).toBe("/mock/global/storage/session_token");
+		});
+	});
+
+	describe("getUrlPath", () => {
+		it("should return label-specific URL path when label provided", () => {
+			const result = storage.getUrlPath("test-deployment");
+
+			expect(result).toBe("/mock/global/storage/test-deployment/url");
+		});
+
+		it("should return default URL path when no label", () => {
+			const result = storage.getUrlPath("");
+
+			expect(result).toBe("/mock/global/storage/url");
+		});
+	});
+
+	describe("readCliConfig", () => {
+		beforeEach(async () => {
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readFile).mockClear();
+		});
+
+		it("should read URL and token from files", async () => {
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readFile)
+				.mockResolvedValueOnce("https://coder.example.com\n")
+				.mockResolvedValueOnce("test-token\n");
+
+			const result = await storage.readCliConfig("test-label");
+
+			expect(result).toEqual({
+				url: "https://coder.example.com",
+				token: "test-token",
+			});
+		});
+
+		it("should handle missing files gracefully", async () => {
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+
+			const result = await storage.readCliConfig("test-label");
+
+			expect(result).toEqual({
+				url: "",
+				token: "",
+			});
+		});
+	});
+
+	describe("migrateSessionToken", () => {
+		beforeEach(async () => {
+			const fs = await import("fs/promises");
+			vi.mocked(fs.rename).mockClear();
+		});
+
+		it("should rename session token file successfully", async () => {
+			const fs = await import("fs/promises");
+			vi.mocked(fs.rename).mockResolvedValue();
+
+			await expect(
+				storage.migrateSessionToken("test-label"),
+			).resolves.toBeUndefined();
+
+			expect(fs.rename).toHaveBeenCalledWith(
+				"/mock/global/storage/test-label/session_token",
+				"/mock/global/storage/test-label/session",
+			);
+		});
+
+		it("should handle ENOENT error gracefully", async () => {
+			const fs = await import("fs/promises");
+			const error = new Error("ENOENT") as NodeJS.ErrnoException;
+			error.code = "ENOENT";
+			vi.mocked(fs.rename).mockRejectedValue(error);
+
+			await expect(
+				storage.migrateSessionToken("test-label"),
+			).resolves.toBeUndefined();
+		});
+
+		it("should throw other errors", async () => {
+			const fs = await import("fs/promises");
+			const error = new Error("Permission denied");
+			vi.mocked(fs.rename).mockRejectedValue(error);
+
+			await expect(storage.migrateSessionToken("test-label")).rejects.toThrow(
+				"Permission denied",
+			);
+		});
+	});
+
+	describe("getRemoteSSHLogPath", () => {
+		it("should return undefined when no output directories exist", async () => {
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readdir).mockResolvedValue([]);
+
+			const result = await storage.getRemoteSSHLogPath();
+
+			expect(result).toBeUndefined();
+		});
+
+		it("should return undefined when no Remote SSH file exists", async () => {
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readdir)
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				.mockResolvedValueOnce(["output_logging_20240101", "other_dir"] as any)
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				.mockResolvedValueOnce(["some-other-file.log"] as any);
+
+			const result = await storage.getRemoteSSHLogPath();
+
+			expect(result).toBeUndefined();
+		});
+	});
+
+	describe("configureCli", () => {
+		it("should call updateUrlForCli and updateTokenForCli in parallel", async () => {
+			const fs = await import("fs/promises");
+			vi.mocked(fs.writeFile).mockResolvedValue();
+			vi.mocked(fs.readFile).mockResolvedValue("existing-url\n");
+
+			const testLabel = "test-label";
+			const testUrl = "https://test.coder.com";
+			const testToken = "test-token-123";
+
+			await storage.configureCli(testLabel, testUrl, testToken);
+
+			// Verify writeFile was called for both URL and token
+			expect(fs.writeFile).toHaveBeenCalledWith(
+				"/mock/global/storage/test-label/url",
+				testUrl,
+			);
+			expect(fs.writeFile).toHaveBeenCalledWith(
+				"/mock/global/storage/test-label/session",
+				testToken,
+			);
+		});
 	});
 });

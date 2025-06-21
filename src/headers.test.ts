@@ -1,7 +1,7 @@
 import * as os from "os";
 import { it, expect, describe, beforeEach, afterEach, vi } from "vitest";
 import { WorkspaceConfiguration } from "vscode";
-import { getHeaderCommand, getHeaders } from "./headers";
+import { getHeaderArgs, getHeaderCommand, getHeaders } from "./headers";
 
 const logger = {
 	writeToCoderOutputChannel() {
@@ -146,5 +146,46 @@ describe("getHeaderCommand", () => {
 		} as unknown as WorkspaceConfiguration;
 
 		expect(getHeaderCommand(config)).toBe("printf 'x=y'");
+	});
+});
+
+describe("getHeaderArgs", () => {
+	beforeEach(() => {
+		vi.stubEnv("CODER_HEADER_COMMAND", "");
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("should return empty array when no header command is set", () => {
+		const config = {
+			get: () => undefined,
+		} as unknown as WorkspaceConfiguration;
+
+		expect(getHeaderArgs(config)).toEqual([]);
+	});
+
+	it("should return escaped header args with simple command", () => {
+		const config = {
+			get: () => "printf test",
+		} as unknown as WorkspaceConfiguration;
+
+		const result = getHeaderArgs(config);
+		expect(result).toHaveLength(2);
+		expect(result[0]).toBe("--header-command");
+		expect(result[1]).toContain("printf test");
+	});
+
+	it("should handle commands with special characters", () => {
+		const config = {
+			get: () => "echo 'hello world'",
+		} as unknown as WorkspaceConfiguration;
+
+		const result = getHeaderArgs(config);
+		expect(result).toHaveLength(2);
+		expect(result[0]).toBe("--header-command");
+		// The escaping will vary by platform but should contain the command
+		expect(result[1]).toContain("hello world");
 	});
 });

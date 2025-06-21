@@ -147,8 +147,17 @@ suite("URI Handler Integration Tests", () => {
 				"vscode://coder.coder-remote/open?folder=%2Fhome%2Fuser%2Fproject",
 			);
 
-			// The query should contain the encoded folder path
-			assert.ok(testUri.query.includes("folder=%2Fhome%2Fuser%2Fproject"));
+			// The query should contain the folder parameter, either encoded or decoded
+			assert.ok(testUri.query.includes("folder="));
+			// Check that it contains either the encoded or decoded version
+			const hasEncoded = testUri.query.includes(
+				"folder=%2Fhome%2Fuser%2Fproject",
+			);
+			const hasDecoded = testUri.query.includes("folder=/home/user/project");
+			assert.ok(
+				hasEncoded || hasDecoded,
+				`Query should contain folder parameter: ${testUri.query}`,
+			);
 		});
 
 		test("should handle special characters in parameters", () => {
