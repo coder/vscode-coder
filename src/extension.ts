@@ -56,6 +56,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		ctx.logUri,
 	);
 
+	// Create and set Logger for structured logging
+	const { Logger } = await import("./logger");
+	const verbose =
+		vscode.workspace.getConfiguration().get<boolean>("coder.verbose") ?? false;
+	const logger = new Logger(output, { verbose });
+	storage.setLogger(logger);
+
 	// This client tracks the current login and will be used through the life of
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.

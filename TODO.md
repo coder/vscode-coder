@@ -21,7 +21,8 @@
 
 1. **Replace writeToCoderOutputChannel calls** (43 instances across 10 files)
    - ✅ remote.ts (18) - Completed with Logger integration test
-   - Priority: extension.ts (8), headers.ts (4)
+   - ✅ extension.ts (8) - Completed with Logger initialization and test
+   - Priority: headers.ts (4)
    - Use TDD approach: write test → implement → verify
 2. **Add structured logging to high-value areas**
    - API calls and responses
@@ -57,7 +58,7 @@
 | ------------------------ | ------ | ------- | ----------- |
 | Unit test coverage       | 80%+   | 74.38%  | 🔄 Progress |
 | Integration tests        | 60+    | 69      | ✅ Complete |
-| Logger adoption          | 100%   | 10%     | 🔄 Progress |
+| Logger adoption          | 100%   | 20%     | 🔄 Progress |
 | Files with <50% coverage | 0      | 3       | 🔄 Progress |
 
 ## Immediate Next Steps

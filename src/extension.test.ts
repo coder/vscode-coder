@@ -46,6 +46,14 @@ vi.mock("./storage", () => ({
 	Storage: vi.fn(),
 }));
 vi.mock("./util");
+vi.mock("./logger", () => ({
+	Logger: vi.fn().mockImplementation(() => ({
+		info: vi.fn(),
+		error: vi.fn(),
+		warn: vi.fn(),
+		debug: vi.fn(),
+	})),
+}));
 vi.mock("./workspacesProvider", () => ({
 	WorkspaceProvider: vi.fn(() => ({
 		setVisibility: vi.fn(),
@@ -130,6 +138,7 @@ const createMockStorage = (overrides = {}) => ({
 	getUrl: vi.fn().mockReturnValue(""),
 	getSessionToken: vi.fn().mockResolvedValue(""),
 	writeToCoderOutputChannel: vi.fn(),
+	setLogger: vi.fn(),
 	...overrides,
 });
 
@@ -428,4 +437,81 @@ describe("extension", () => {
 	});
 
 	// Note: deactivate function is not exported from extension.ts
+
+	describe("Logger integration", () => {
+		it("should create Logger and set it on Storage", async () => {
+			const vscode = await import("vscode");
+
+			// Track output channel creation
+			const mockOutputChannel = {
+				appendLine: vi.fn(),
+			};
+			vi.mocked(vscode.window.createOutputChannel).mockReturnValue(
+				mockOutputChannel as never,
+			);
+
+			// Mock extension context
+			const mockContext = {
+				globalState: {
+					get: vi.fn(),
+					update: vi.fn(),
+				},
+				secrets: {
+					get: vi.fn(),
+					store: vi.fn(),
+					delete: vi.fn(),
+				},
+				globalStorageUri: {
+					fsPath: "/mock/global/storage",
+				},
+				logUri: {
+					fsPath: "/mock/log/path",
+				},
+				extensionMode: 1, // Normal mode
+			};
+
+			// Track Storage instance and setLogger call
+			let setLoggerCalled = false;
+			let storageInstance = createMockStorage();
+			const Storage = (await import("./storage")).Storage;
+			vi.mocked(Storage).mockImplementation(() => {
+				storageInstance = createMockStorage({
+					setLogger: vi.fn(() => {
+						setLoggerCalled = true;
+					}),
+					getUrl: vi.fn().mockReturnValue(""),
+					getSessionToken: vi.fn().mockResolvedValue(""),
+				});
+				return storageInstance as never;
+			});
+
+			// Logger is already mocked at the top level
+
+			// Mock Commands
+			const Commands = (await import("./commands")).Commands;
+			const mockCommandsInstance = createMockCommands();
+			vi.mocked(Commands).mockImplementation(
+				() => mockCommandsInstance as never,
+			);
+
+			// Mock makeCoderSdk
+			const { makeCoderSdk } = await import("./api");
+			vi.mocked(makeCoderSdk).mockResolvedValue({
+				getAxiosInstance: vi.fn(() => ({
+					defaults: { baseURL: "" },
+				})),
+			} as never);
+
+			await extension.activate(
+				mockContext as unknown as vscode.ExtensionContext,
+			);
+
+			// Verify Storage was created
+			expect(Storage).toHaveBeenCalled();
+
+			// Verify setLogger was called on Storage
+			expect(setLoggerCalled).toBe(true);
+			expect(storageInstance.setLogger).toHaveBeenCalled();
+		});
+	});
 });
