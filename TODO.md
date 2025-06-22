@@ -72,8 +72,15 @@
 ### 3.1 Test Quality Improvements 🔄 IN PROGRESS
 
 - [x] Created test-helpers.ts for reusable mock builders
-- [x] Cleaned up type casting in api-helper.test.ts
-- [ ] Continue removing `as any` type casts from test files
+- [x] Cleaned up type casting in api-helper.test.ts (removed all `as any`)
+- [x] Fixed type casting in storage.test.ts (replaced with `as never`)
+- [x] Created createMockConfiguration and createMockStorage helpers
+- [x] Started cleaning up api.test.ts (partial progress)
+- [ ] Continue removing `as any` type casts from remaining test files:
+  - [ ] api.test.ts (30+ remaining)
+  - [ ] commands.test.ts (private method access)
+  - [ ] workspaceMonitor.test.ts (private property access)
+  - [ ] workspacesProvider.test.ts (private property access)
 - [ ] Replace eslint-disable comments with proper types
 - [ ] Create more domain-specific test helpers
 
@@ -112,9 +119,16 @@
 
 ## Next Steps
 
-1. **Immediate**: Continue logging integration across codebase
+1. **Immediate**: Continue test quality improvements
+   - Focus on creating proper type definitions for test mocks
+   - Consider exposing test interfaces for classes with many private members
+   - Create domain-specific mock builders (e.g., createMockAxiosInstance)
 2. **Short-term**: Complete Phase 2 logging implementation
+   - Integrate Logger throughout codebase
+   - Add structured logging for debugging
 3. **Medium-term**: Begin refactoring complex functions for testability
+   - Extract complex logic from extension.ts
+   - Break down large methods in remote.ts
 4. **Long-term**: Implement connection reliability improvements
 
 ## Notes
