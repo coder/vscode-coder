@@ -4,6 +4,7 @@ import { ProxyAgent } from "proxy-agent";
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { Inbox } from "./inbox";
 import { Storage } from "./storage";
+import { createMockOutputChannelWithLogger } from "./test-helpers";
 
 // Mock dependencies
 vi.mock("ws");
@@ -160,5 +161,179 @@ describe("inbox", () => {
 			"Test error message",
 		);
 		expect(mockWebSocket.close).toHaveBeenCalled();
+	});
+
+	describe("Logger integration", () => {
+		it("should log messages through Logger when Storage has Logger set", async () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			// Mock WebSocket
+			let openHandler: (() => void) | undefined;
+			const mockWebSocket = {
+				on: vi.fn((event, handler) => {
+					if (event === "open") {
+						openHandler = handler;
+					}
+				}),
+				close: vi.fn(),
+			};
+			const { WebSocket: MockWebSocket } = await import("ws");
+			vi.mocked(MockWebSocket).mockImplementation(() => mockWebSocket as never);
+
+			const mockWorkspace = { id: "workspace-123" } as Workspace;
+			const mockHttpAgent = {} as ProxyAgent;
+			const mockRestClient = {
+				getAxiosInstance: vi.fn(() => ({
+					defaults: {
+						baseURL: "https://test.com",
+						headers: {
+							common: {},
+						},
+					},
+				})),
+			} as unknown as Api;
+
+			// Create mock Storage that uses Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.info(msg);
+				}),
+			} as unknown as Storage;
+
+			new Inbox(mockWorkspace, mockHttpAgent, mockRestClient, mockStorage);
+
+			// Trigger open event
+			openHandler?.();
+
+			// Verify "Listening to Coder Inbox" was logged
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				"Listening to Coder Inbox",
+			);
+
+			const logs = logger.getLogs();
+			expect(logs.length).toBe(1);
+			expect(logs[0].message).toBe("Listening to Coder Inbox");
+			expect(logs[0].level).toBe("INFO");
+		});
+
+		it("should log dispose message through Logger", async () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			// Mock WebSocket
+			const mockWebSocket = {
+				on: vi.fn(),
+				close: vi.fn(),
+			};
+			const { WebSocket: MockWebSocket } = await import("ws");
+			vi.mocked(MockWebSocket).mockImplementation(() => mockWebSocket as never);
+
+			const mockWorkspace = { id: "workspace-123" } as Workspace;
+			const mockHttpAgent = {} as ProxyAgent;
+			const mockRestClient = {
+				getAxiosInstance: vi.fn(() => ({
+					defaults: {
+						baseURL: "https://test.com",
+						headers: {
+							common: {},
+						},
+					},
+				})),
+			} as unknown as Api;
+
+			// Create mock Storage that uses Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.info(msg);
+				}),
+			} as unknown as Storage;
+
+			const inbox = new Inbox(
+				mockWorkspace,
+				mockHttpAgent,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Clear any logs from initialization
+			logger.clear();
+			vi.mocked(mockStorage.writeToCoderOutputChannel).mockClear();
+
+			// Dispose
+			inbox.dispose();
+
+			// Verify dispose message was logged
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				"No longer listening to Coder Inbox",
+			);
+
+			const logs = logger.getLogs();
+			expect(logs.length).toBe(1);
+			expect(logs[0].message).toBe("No longer listening to Coder Inbox");
+		});
+
+		it("should log error messages through Logger", async () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			// Mock WebSocket
+			let errorHandler: ((error: Error) => void) | undefined;
+			const mockWebSocket = {
+				on: vi.fn((event, handler) => {
+					if (event === "error") {
+						errorHandler = handler;
+					}
+				}),
+				close: vi.fn(),
+			};
+			const { WebSocket: MockWebSocket } = await import("ws");
+			vi.mocked(MockWebSocket).mockImplementation(() => mockWebSocket as never);
+
+			// Mock errToStr
+			const { errToStr } = await import("./api-helper");
+			vi.mocked(errToStr).mockReturnValue("WebSocket connection error");
+
+			const mockWorkspace = { id: "workspace-123" } as Workspace;
+			const mockHttpAgent = {} as ProxyAgent;
+			const mockRestClient = {
+				getAxiosInstance: vi.fn(() => ({
+					defaults: {
+						baseURL: "https://test.com",
+						headers: {
+							common: {},
+						},
+					},
+				})),
+			} as unknown as Api;
+
+			// Create mock Storage that uses Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.info(msg);
+				}),
+			} as unknown as Storage;
+
+			new Inbox(mockWorkspace, mockHttpAgent, mockRestClient, mockStorage);
+
+			// Clear any logs from initialization
+			logger.clear();
+			vi.mocked(mockStorage.writeToCoderOutputChannel).mockClear();
+
+			// Trigger error event
+			const testError = new Error("Test WebSocket error");
+			errorHandler?.(testError);
+
+			// Verify error was logged
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				"WebSocket connection error",
+			);
+
+			// The second call should be for "No longer listening to Coder Inbox"
+			// because the error handler calls dispose()
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledTimes(2);
+
+			const logs = logger.getLogs();
+			expect(logs.length).toBe(2);
+			expect(logs[0].message).toBe("WebSocket connection error");
+			expect(logs[1].message).toBe("No longer listening to Coder Inbox");
+		});
 	});
 });
