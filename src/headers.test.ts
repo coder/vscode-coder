@@ -2,6 +2,7 @@ import * as os from "os";
 import { it, expect, describe, beforeEach, afterEach, vi } from "vitest";
 import { WorkspaceConfiguration } from "vscode";
 import { getHeaderArgs, getHeaderCommand, getHeaders } from "./headers";
+import { createMockOutputChannelWithLogger } from "./test-helpers";
 
 const logger = {
 	writeToCoderOutputChannel() {
@@ -187,5 +188,67 @@ describe("getHeaderArgs", () => {
 		expect(result[0]).toBe("--header-command");
 		// The escaping will vary by platform but should contain the command
 		expect(result[1]).toContain("hello world");
+	});
+});
+
+describe("Logger integration", () => {
+	it("should log errors through Logger when header command fails", async () => {
+		const { mockOutputChannel, logger: realLogger } =
+			createMockOutputChannelWithLogger();
+
+		// Use the backward compatibility method
+		const loggerWrapper = {
+			writeToCoderOutputChannel: (msg: string) =>
+				realLogger.writeToCoderOutputChannel(msg),
+		};
+
+		// Test with a failing command
+		await expect(
+			getHeaders("localhost", "exit 42", loggerWrapper),
+		).rejects.toThrow("Header command exited unexpectedly with code 42");
+
+		// Verify error was logged through Logger
+		const logs = realLogger.getLogs();
+		expect(logs).toHaveLength(3); // Main error + stdout + stderr
+
+		const logMessages = logs.map((log) => log.message);
+		expect(logMessages[0]).toBe(
+			"Header command exited unexpectedly with code 42",
+		);
+		expect(logMessages[1]).toContain("stdout:");
+		expect(logMessages[2]).toContain("stderr:");
+
+		// Verify output channel received formatted messages
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			expect.stringMatching(
+				/\[.*\] \[INFO\] Header command exited unexpectedly with code 42/,
+			),
+		);
+	});
+
+	it("should work with Storage instance that has Logger set", async () => {
+		const { logger: realLogger } = createMockOutputChannelWithLogger();
+
+		// Simulate Storage with Logger
+		const mockStorage = {
+			writeToCoderOutputChannel: (msg: string) => {
+				realLogger.info(msg);
+			},
+		};
+
+		// Test with a failing command
+		await expect(
+			getHeaders("localhost", "command-not-found", mockStorage),
+		).rejects.toThrow(/Header command exited unexpectedly/);
+
+		// Verify error was logged
+		const logs = realLogger.getLogs();
+		expect(logs.length).toBeGreaterThan(0);
+
+		// At least the main error should be logged
+		const hasMainError = logs.some((log) =>
+			log.message.includes("Header command exited unexpectedly"),
+		);
+		expect(hasMainError).toBe(true);
 	});
 });
