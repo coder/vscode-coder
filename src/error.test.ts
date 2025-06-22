@@ -615,3 +615,92 @@ describe("CertificateError instance methods", () => {
 		expect(allowInsecureSpy).toHaveBeenCalled();
 	});
 });
+
+describe("Logger integration", () => {
+	it("should log certificate parsing errors through Logger", async () => {
+		const { logger: realLogger } = createMockOutputChannelWithLogger();
+
+		// Create a logger that uses the real Logger
+		const loggerWrapper = {
+			writeToCoderOutputChannel: (msg: string) => {
+				realLogger.info(msg);
+			},
+		};
+
+		// Create an axios error that will trigger certificate parsing
+		const axiosError = {
+			isAxiosError: true,
+			code: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+			message: "unable to verify the first certificate",
+		};
+
+		// Mock CertificateError.determineVerifyErrorCause to throw an error
+		const determineVerifyErrorCauseSpy = vi
+			.spyOn(CertificateError, "determineVerifyErrorCause")
+			.mockRejectedValue(new Error("Failed to parse certificate"));
+
+		// Call maybeWrap which should log the parsing error
+		const result = await CertificateError.maybeWrap(
+			axiosError,
+			"https://test.com",
+			loggerWrapper,
+		);
+
+		// Verify the error was logged
+		const logs = realLogger.getLogs();
+		expect(logs.length).toBe(1);
+		expect(logs[0].message).toBe(
+			"Failed to parse certificate from https://test.com: Error: Failed to parse certificate",
+		);
+		expect(logs[0].level).toBe("INFO");
+
+		// Verify the original error was returned (not wrapped)
+		expect(result).toBe(axiosError);
+
+		// Restore the spy
+		determineVerifyErrorCauseSpy.mockRestore();
+	});
+
+	it("should work with Storage instance that has Logger set", async () => {
+		const { logger: realLogger } = createMockOutputChannelWithLogger();
+
+		// Simulate Storage with Logger
+		const mockStorage = {
+			writeToCoderOutputChannel: (msg: string) => {
+				realLogger.info(msg);
+			},
+		};
+
+		// Create an axios error that will trigger certificate parsing
+		const axiosError = {
+			isAxiosError: true,
+			code: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+			message: "unable to verify the first certificate",
+		};
+
+		// Mock determineVerifyErrorCause to throw
+		const determineVerifyErrorCauseSpy = vi
+			.spyOn(CertificateError, "determineVerifyErrorCause")
+			.mockRejectedValue(new Error("Certificate parsing failed"));
+
+		// Call maybeWrap with the mockStorage
+		await CertificateError.maybeWrap(
+			axiosError,
+			"https://example.com:8443",
+			mockStorage,
+		);
+
+		// Verify error was logged through Logger
+		const logs = realLogger.getLogs();
+		expect(logs.length).toBeGreaterThan(0);
+		const hasExpectedLog = logs.some((log) =>
+			log.message.includes(
+				"Failed to parse certificate from https://example.com:8443",
+			),
+		);
+		expect(hasExpectedLog).toBe(true);
+
+		// Restore the spy
+		determineVerifyErrorCauseSpy.mockRestore();
+	});
+});
