@@ -686,4 +686,176 @@ describe("storage", () => {
 			expect(result).toBe("/mock/global/storage/url");
 		});
 	});
+
+	describe("fetchBinary", () => {
+		let mockRestClient: {
+			getAxiosInstance: ReturnType<typeof vi.fn>;
+			getBuildInfo: ReturnType<typeof vi.fn>;
+		};
+
+		beforeEach(() => {
+			mockRestClient = {
+				getAxiosInstance: vi.fn().mockReturnValue({
+					defaults: { baseURL: "https://test.coder.com" },
+					get: vi.fn(),
+				}),
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v2.0.0" }),
+			};
+		});
+
+		it("should throw error when downloads are disabled and no binary exists", async () => {
+			// Mock downloads disabled
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn((key) => {
+					if (key === "coder.enableDownloads") {
+						return false;
+					} // downloads disabled
+					if (key === "coder.binaryDestination") {
+						return "";
+					}
+					return "";
+				}),
+			} as never);
+
+			// Mock cli.stat to return undefined (no existing binary)
+			const cli = await import("./cliManager");
+			vi.mocked(cli.stat).mockResolvedValue(undefined);
+			vi.mocked(cli.name).mockReturnValue("coder");
+
+			await expect(
+				storage.fetchBinary(mockRestClient as never, "test-label"),
+			).rejects.toThrow(
+				"Unable to download CLI because downloads are disabled",
+			);
+
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"Downloads are disabled",
+			);
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"Got server version: v2.0.0",
+			);
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"No existing binary found, starting download",
+			);
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"Unable to download CLI because downloads are disabled",
+			);
+		});
+
+		it("should return existing binary when it matches server version", async () => {
+			// Mock downloads enabled
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn((key) => {
+					if (key === "coder.enableDownloads") {
+						return true;
+					}
+					if (key === "coder.binaryDestination") {
+						return "";
+					}
+					return "";
+				}),
+			} as never);
+
+			// Mock cli methods
+			const cli = await import("./cliManager");
+			vi.mocked(cli.stat).mockResolvedValue({ size: 10485760 } as never); // 10MB
+			vi.mocked(cli.name).mockReturnValue("coder");
+			vi.mocked(cli.version).mockResolvedValue("v2.0.0"); // matches server version
+
+			const result = await storage.fetchBinary(
+				mockRestClient as never,
+				"test-label",
+			);
+
+			expect(result).toBe("/mock/global/storage/test-label/bin/coder");
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"Using existing binary since it matches the server version",
+			);
+		});
+
+		it("should return existing binary when downloads disabled even if version doesn't match", async () => {
+			// Mock downloads disabled
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn((key) => {
+					if (key === "coder.enableDownloads") {
+						return false;
+					} // downloads disabled
+					if (key === "coder.binaryDestination") {
+						return "";
+					}
+					return "";
+				}),
+			} as never);
+
+			// Mock cli methods
+			const cli = await import("./cliManager");
+			vi.mocked(cli.stat).mockResolvedValue({ size: 10485760 } as never); // 10MB
+			vi.mocked(cli.name).mockReturnValue("coder");
+			vi.mocked(cli.version).mockResolvedValue("v1.9.0"); // different from server version
+
+			const result = await storage.fetchBinary(
+				mockRestClient as never,
+				"test-label",
+			);
+
+			expect(result).toBe("/mock/global/storage/test-label/bin/coder");
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"Using existing binary even though it does not match the server version because downloads are disabled",
+			);
+		});
+
+		it("should handle error when checking existing binary version", async () => {
+			// Mock downloads enabled
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn((key) => {
+					if (key === "coder.enableDownloads") {
+						return true;
+					}
+					if (key === "coder.binaryDestination") {
+						return "";
+					}
+					if (key === "coder.binarySource") {
+						return "";
+					}
+					return "";
+				}),
+			} as never);
+
+			// Mock cli methods
+			const cli = await import("./cliManager");
+			vi.mocked(cli.stat).mockResolvedValue({ size: 10485760 } as never); // 10MB
+			vi.mocked(cli.name).mockReturnValue("coder");
+			vi.mocked(cli.version).mockRejectedValue(new Error("Invalid binary"));
+			vi.mocked(cli.rmOld).mockResolvedValue([]);
+			vi.mocked(cli.eTag).mockResolvedValue("");
+
+			// Mock axios response for download
+			const mockAxios = {
+				get: vi.fn().mockResolvedValue({
+					status: 304, // Not Modified
+				}),
+			};
+			mockRestClient.getAxiosInstance.mockReturnValue({
+				defaults: { baseURL: "https://test.coder.com" },
+				get: mockAxios.get,
+			});
+
+			const result = await storage.fetchBinary(
+				mockRestClient as never,
+				"test-label",
+			);
+
+			expect(result).toBe("/mock/global/storage/test-label/bin/coder");
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"Unable to get version of existing binary: Error: Invalid binary",
+			);
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"Downloading new binary instead",
+			);
+			expect(mockOutput.appendLine).toHaveBeenCalledWith("Got status code 304");
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				"Using existing binary since server returned a 304",
+			);
+		});
+	});
 });
