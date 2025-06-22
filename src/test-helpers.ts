@@ -4,6 +4,7 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 import { vi } from "vitest";
 import type * as vscode from "vscode";
+import type { Storage } from "./storage";
 
 /**
  * Create a mock WorkspaceAgent with default values
@@ -171,7 +172,7 @@ export function createMockStorage(
 		getHeaders: ReturnType<typeof vi.fn>;
 		writeToCoderOutputChannel: ReturnType<typeof vi.fn>;
 	}> = {},
-): any {
+): Partial<Storage> {
 	return {
 		getHeaders: overrides.getHeaders ?? vi.fn().mockResolvedValue({}),
 		writeToCoderOutputChannel: overrides.writeToCoderOutputChannel ?? vi.fn(),

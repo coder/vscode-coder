@@ -170,7 +170,9 @@ describe("api", () => {
 	describe("createHttpAgent", () => {
 		beforeEach(() => {
 			// Mock fs.readFile to return buffer data
-			vi.mocked(fs.readFile).mockResolvedValue(Buffer.from("mock-file-content"));
+			vi.mocked(fs.readFile).mockResolvedValue(
+				Buffer.from("mock-file-content"),
+			);
 
 			// Mock expandPath to return paths as-is
 			vi.mocked(expandPath).mockImplementation((path: string) => path);
