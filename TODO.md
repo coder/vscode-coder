@@ -2,138 +2,72 @@
 
 ## Phase 1: Test Infrastructure & Coverage ✅ COMPLETED
 
-### Testing Achievements Summary
-
-- **355 unit tests** passing with 74% overall coverage (up from 73.18%)
-- **69 integration tests** passing with comprehensive command coverage
-- **18 files** with >90% coverage
-- **Zero test failures** across entire test suite
-
-### Key Testing Milestones
-
-- [x] Achieved 70%+ unit test coverage (up from ~3% baseline)
-- [x] Comprehensive integration test suite covering all user-facing commands
-- [x] Test infrastructure supporting both unit and integration testing
-- [x] Consistent testing patterns established across codebase
-- [x] Created reusable test helpers (test-helpers.ts) for type-safe mocking
+- **359 unit tests** passing with 74.35% overall coverage
+- **69 integration tests** passing
+- **18 files** with >90% coverage  
+- Established TDD workflow and testing patterns
 
 ## Phase 2: Structured Logging Implementation 🔄 IN PROGRESS
 
-### 2.1 Structured Logging Foundation ✅ COMPLETED
+### Completed
+- [x] Logger class with levels (ERROR, WARN, INFO, DEBUG) - 98.44% coverage
+- [x] VS Code output channel integration with verbose setting support
+- [x] Backward compatibility via writeToCoderOutputChannel method
+- [x] Test factory createMockOutputChannelWithLogger for consistent testing
+- [x] Verified Logger works with existing error.ts Logger interface
 
-- [x] Created Logger class with log levels (ERROR, WARN, INFO, DEBUG)
-- [x] Implemented VS Code output channel integration
-- [x] Added log level filtering based on `coder.verbose` setting
-- [x] Support for structured data (JSON serialization)
-- [x] LoggerService for configuration integration
-- [x] 100% test coverage with TDD approach
-
-### 2.2 Logging Integration 🔄 IN PROGRESS
-
-#### Current State Analysis
-
-- 45+ locations using `writeToCoderOutputChannel`
-- No consistent error logging strategy
-- No performance metrics or request/response logging
-- No correlation IDs for operation tracking
-
-#### Implementation Plan
-
-**Phase 2.2.1: Replace Existing Logging**
-
-- [x] Integrated Logger into Storage class with backward compatibility
-- [ ] Replace remaining `writeToCoderOutputChannel` calls with new Logger
-- [ ] Add appropriate log levels to existing log statements
-- [ ] Maintain backward compatibility with output format
-
-**Phase 2.2.2: Enhanced Error Tracking**
-
-- [ ] Add correlation IDs for operation tracking
-- [ ] Include stack traces for errors
-- [ ] Log request/response data (sanitized)
-- [ ] Track user actions that trigger errors
-
-**Phase 2.2.3: Performance Monitoring**
-
-- [ ] Track operation durations
-- [ ] Log slow operations automatically
-- [ ] Monitor resource usage
-- [ ] Track active connections
-
-**Phase 2.2.4: Customer Support Features**
-
-- [ ] Log export command with sanitization
-- [ ] Include system diagnostics
-- [ ] Network connectivity status logging
-- [ ] Certificate validation logging
+### Next Steps
+1. **Replace writeToCoderOutputChannel calls** (43 instances across 10 files)
+   - Priority: remote.ts (18), extension.ts (8), headers.ts (4)
+   - Use TDD approach: write test → implement → verify
+2. **Add structured logging to high-value areas**
+   - API calls and responses
+   - Connection establishment/failures  
+   - Certificate errors
+   - Command execution
 
 ## Phase 3: Code Quality Improvements
 
-### 3.1 Test Quality Improvements 🔄 IN PROGRESS
+### Test Quality
+- [x] test-helpers.ts with type-safe mock builders
+- [x] Removed most `as any` casts from tests
+- [ ] api.test.ts cleanup (30+ `as any` with eslint-disable)
+- [ ] Fix private property access in remaining test files
 
-- [x] Created test-helpers.ts for reusable mock builders
-- [x] Cleaned up type casting in api-helper.test.ts (removed all `as any`)
-- [x] Fixed type casting in storage.test.ts (replaced with `as never`)
-- [x] Created createMockConfiguration and createMockStorage helpers
-- [x] Started cleaning up api.test.ts (partial progress)
-- [ ] Continue removing `as any` type casts from remaining test files:
-  - [ ] api.test.ts (30+ remaining)
-  - [ ] commands.test.ts (private method access)
-  - [ ] workspaceMonitor.test.ts (private property access)
-  - [ ] workspacesProvider.test.ts (private property access)
-- [ ] Replace eslint-disable comments with proper types
-- [ ] Create more domain-specific test helpers
+### Refactoring Priority
+1. **extension.ts** (38.68% coverage) - extract initialization logic
+2. **remote.ts** (49.21% coverage) - break down 400+ line methods
+3. **commands.ts** (64.19% coverage) - create UI abstraction layer
 
-### 3.2 Refactoring for Testability
+## Phase 4: Connection Reliability & API Consolidation
 
-- [ ] Extract complex logic from `extension.ts` (38.68% coverage)
-- [ ] Break down `remote.ts` setup method (449 lines)
-- [ ] Create UI abstraction layer for `commands.ts`
-- [ ] Implement dependency injection patterns
-
-### 3.3 API and CLI Consolidation
-
-- [ ] Document all API interaction points
-- [ ] Create abstraction layer for API/CLI switching
-- [ ] Migrate to CLI-first approach
-- [ ] Remove direct API dependencies where possible
-
-## Phase 4: Connection Reliability
-
-### 4.1 Connection Improvements
-
-- [ ] Implement exponential backoff
-- [ ] Add connection health monitoring
-- [ ] Improve error recovery
-- [ ] Add connection telemetry
+- [ ] Implement exponential backoff for retries
+- [ ] Add connection health monitoring with Logger
+- [ ] Create API/CLI abstraction layer
+- [ ] Migrate to CLI-first approach where possible
 
 ## Success Metrics
 
-| Metric                       | Target                | Current  | Status         |
-| ---------------------------- | --------------------- | -------- | -------------- |
-| Unit test coverage           | 90%+                  | 74%      | 🔄 In Progress |
-| Integration test coverage    | 80%+                  | 69 tests | ✅ Achieved    |
-| Structured logging adoption  | 100%                  | 5%       | 🔄 In Progress |
-| Complex function refactoring | 0 functions >50 lines | TBD      | ⏳ Planned     |
-| Connection reliability       | <1% failure rate      | TBD      | ⏳ Planned     |
+| Metric                    | Target | Current | Status     |
+| ------------------------- | ------ | ------- | ---------- |
+| Unit test coverage        | 80%+   | 74.35%  | 🔄 Progress |
+| Integration tests         | 60+    | 69      | ✅ Complete |
+| Logger adoption           | 100%   | 5%      | 🔄 Progress |
+| Files with <50% coverage  | 0      | 3       | 🔄 Progress |
 
-## Next Steps
+## Immediate Next Steps
 
-1. **Immediate**: Continue test quality improvements
-   - Focus on creating proper type definitions for test mocks
-   - Consider exposing test interfaces for classes with many private members
-   - Create domain-specific mock builders (e.g., createMockAxiosInstance)
-2. **Short-term**: Complete Phase 2 logging implementation
-   - Integrate Logger throughout codebase
-   - Add structured logging for debugging
-3. **Medium-term**: Begin refactoring complex functions for testability
-   - Extract complex logic from extension.ts
-   - Break down large methods in remote.ts
-4. **Long-term**: Implement connection reliability improvements
+1. **Continue Logger integration** using TDD approach
+   - Start with remote.ts (18 calls) - highest impact
+   - Add structured data (request IDs, durations, errors)
+   - Maintain backward compatibility
 
-## Notes
+2. **Clean up api.test.ts**
+   - Remove eslint-disable comment
+   - Create proper mock types for 30+ `as any` casts
+   - Consider exposing test interfaces for better type safety
 
-- Maintain TDD approach for all new features
-- No breaking changes to existing functionality
-- Regular code reviews for all changes
-- Update metrics weekly
+3. **Improve low-coverage files**
+   - extension.ts: 38.68% → 60%+ (extract initialization)
+   - remote.ts: 49.21% → 70%+ (break down large methods)
+   - commands.ts: 64.19% → 75%+ (UI abstraction)
