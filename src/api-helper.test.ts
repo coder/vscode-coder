@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ErrorEvent } from "eventsource";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,6 +7,11 @@ import {
 	extractAgents,
 	extractAllAgents,
 } from "./api-helper";
+import {
+	createMockAgent,
+	createMockWorkspace,
+	createWorkspaceWithAgents,
+} from "./test-helpers";
 
 describe("api-helper", () => {
 	describe("errToStr", () => {
@@ -27,9 +31,12 @@ describe("api-helper", () => {
 		it("should return ErrorEvent message without code formatting", () => {
 			const errorEvent = new ErrorEvent("error", {
 				message: "Connection failed",
-			}) as any;
+			});
 			// Add code property to the event
-			errorEvent.code = 500;
+			Object.defineProperty(errorEvent, "code", {
+				value: 500,
+				writable: true,
+			});
 
 			const result = errToStr(errorEvent, "default");
 			// ErrorEvent doesn't have code property access in this test environment
@@ -90,21 +97,42 @@ describe("api-helper", () => {
 
 	describe("extractAgents", () => {
 		it("should extract agents from workspace resources", () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				latest_build: {
+					...createMockWorkspace().latest_build,
 					resources: [
 						{
+							id: "resource-1",
+							created_at: new Date().toISOString(),
+							job_id: "job-id",
+							workspace_transition: "start",
+							type: "docker_container",
+							name: "main",
+							hide: false,
+							icon: "",
 							agents: [
-								{ id: "agent1", name: "main" },
-								{ id: "agent2", name: "secondary" },
+								createMockAgent({ id: "agent1", name: "main" }),
+								createMockAgent({ id: "agent2", name: "secondary" }),
 							],
+							metadata: [],
+							daily_cost: 0,
 						},
 						{
-							agents: [{ id: "agent3", name: "tertiary" }],
+							id: "resource-2",
+							created_at: new Date().toISOString(),
+							job_id: "job-id",
+							workspace_transition: "start",
+							type: "docker_container",
+							name: "secondary",
+							hide: false,
+							icon: "",
+							agents: [createMockAgent({ id: "agent3", name: "tertiary" })],
+							metadata: [],
+							daily_cost: 0,
 						},
 					],
 				},
-			} as any;
+			});
 
 			const agents = extractAgents(mockWorkspace);
 
@@ -118,44 +146,58 @@ describe("api-helper", () => {
 		});
 
 		it("should return empty array when workspace has no agents", () => {
-			const mockWorkspace = {
-				latest_build: {
-					resources: [
-						{
-							agents: [],
-						},
-					],
-				},
-			} as any;
+			const mockWorkspace = createWorkspaceWithAgents([]);
 
 			const agents = extractAgents(mockWorkspace);
 			expect(agents).toHaveLength(0);
 		});
 
 		it("should handle resources with undefined agents", () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				latest_build: {
+					...createMockWorkspace().latest_build,
 					resources: [
 						{
+							id: "resource-1",
+							created_at: new Date().toISOString(),
+							job_id: "job-id",
+							workspace_transition: "start",
+							type: "docker_container",
+							name: "main",
+							hide: false,
+							icon: "",
 							agents: undefined,
+							metadata: [],
+							daily_cost: 0,
 						},
 						{
-							agents: null,
+							id: "resource-2",
+							created_at: new Date().toISOString(),
+							job_id: "job-id",
+							workspace_transition: "start",
+							type: "docker_container",
+							name: "secondary",
+							hide: false,
+							icon: "",
+							agents: undefined,
+							metadata: [],
+							daily_cost: 0,
 						},
 					],
 				},
-			} as any;
+			});
 
 			const agents = extractAgents(mockWorkspace);
 			expect(agents).toHaveLength(0);
 		});
 
 		it("should handle empty resources array", () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				latest_build: {
+					...createMockWorkspace().latest_build,
 					resources: [],
 				},
-			} as any;
+			});
 
 			const agents = extractAgents(mockWorkspace);
 			expect(agents).toHaveLength(0);
@@ -165,25 +207,9 @@ describe("api-helper", () => {
 	describe("extractAllAgents", () => {
 		it("should extract agents from multiple workspaces", () => {
 			const mockWorkspaces = [
-				{
-					latest_build: {
-						resources: [
-							{
-								agents: [{ id: "agent1", name: "main" }],
-							},
-						],
-					},
-				},
-				{
-					latest_build: {
-						resources: [
-							{
-								agents: [{ id: "agent2", name: "secondary" }],
-							},
-						],
-					},
-				},
-			] as any;
+				createWorkspaceWithAgents([{ id: "agent1", name: "main" }]),
+				createWorkspaceWithAgents([{ id: "agent2", name: "secondary" }]),
+			];
 
 			const allAgents = extractAllAgents(mockWorkspaces);
 
@@ -199,21 +225,14 @@ describe("api-helper", () => {
 
 		it("should handle workspaces with no agents", () => {
 			const mockWorkspaces = [
-				{
+				createMockWorkspace({
 					latest_build: {
+						...createMockWorkspace().latest_build,
 						resources: [],
 					},
-				},
-				{
-					latest_build: {
-						resources: [
-							{
-								agents: [],
-							},
-						],
-					},
-				},
-			] as any;
+				}),
+				createWorkspaceWithAgents([]),
+			];
 
 			const allAgents = extractAllAgents(mockWorkspaces);
 			expect(allAgents).toHaveLength(0);
@@ -221,30 +240,15 @@ describe("api-helper", () => {
 
 		it("should handle mixed workspaces with and without agents", () => {
 			const mockWorkspaces = [
-				{
+				createWorkspaceWithAgents([{ id: "agent1", name: "main" }]),
+				createMockWorkspace({
 					latest_build: {
-						resources: [
-							{
-								agents: [{ id: "agent1", name: "main" }],
-							},
-						],
-					},
-				},
-				{
-					latest_build: {
+						...createMockWorkspace().latest_build,
 						resources: [],
 					},
-				},
-				{
-					latest_build: {
-						resources: [
-							{
-								agents: [{ id: "agent2", name: "secondary" }],
-							},
-						],
-					},
-				},
-			] as any;
+				}),
+				createWorkspaceWithAgents([{ id: "agent2", name: "secondary" }]),
+			];
 
 			const allAgents = extractAllAgents(mockWorkspaces);
 
