@@ -23,7 +23,9 @@
    - ✅ remote.ts (18) - Completed with Logger integration test
    - ✅ extension.ts (8) - Completed with Logger initialization and test
    - ✅ headers.ts (4) - Completed via Logger interface compatibility
-   - Remaining: workspaceMonitor.ts (3), inbox.ts (3), error.ts (2), workspacesProvider.ts (1), commands.ts (1)
+   - ✅ workspaceMonitor.ts (3) - Completed via Storage interface compatibility
+   - ✅ inbox.ts (3) - Completed via Storage interface compatibility
+   - Remaining: error.ts (2), workspacesProvider.ts (1), commands.ts (1)
    - Use TDD approach: write test → implement → verify
 2. **Add structured logging to high-value areas**
    - API calls and responses
@@ -57,9 +59,9 @@
 
 | Metric                   | Target | Current | Status      |
 | ------------------------ | ------ | ------- | ----------- |
-| Unit test coverage       | 80%+   | 74.38%  | 🔄 Progress |
+| Unit test coverage       | 80%+   | 74.43%  | 🔄 Progress |
 | Integration tests        | 60+    | 69      | ✅ Complete |
-| Logger adoption          | 100%   | 30%     | 🔄 Progress |
+| Logger adoption          | 100%   | 85%     | 🔄 Progress |
 | Files with <50% coverage | 0      | 3       | 🔄 Progress |
 
 ## Immediate Next Steps
