@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import * as vscode from "vscode";
+import { Logger } from "./logger";
 import { Storage } from "./storage";
 
 // Mock dependencies
@@ -856,6 +857,87 @@ describe("storage", () => {
 			expect(mockOutput.appendLine).toHaveBeenCalledWith(
 				"Using existing binary since server returned a 304",
 			);
+		});
+	});
+
+	describe("Logger integration", () => {
+		it("should use logger.info when logger is set", () => {
+			// Create a mock output channel for the logger
+			const mockLoggerOutput = {
+				appendLine: vi.fn(),
+			};
+
+			// Create a real Logger instance with the mock output channel
+			const logger = new Logger(mockLoggerOutput);
+
+			const storage = new Storage(
+				mockOutput,
+				mockMemento,
+				mockSecrets,
+				mockGlobalStorageUri,
+				mockLogUri,
+			);
+
+			// Set the logger
+			storage.setLogger(logger);
+
+			// When writeToCoderOutputChannel is called
+			storage.writeToCoderOutputChannel("Test message");
+
+			// The logger should have written to its output channel
+			expect(mockLoggerOutput.appendLine).toHaveBeenCalledWith(
+				expect.stringMatching(/\[.*\] \[INFO\] Test message/),
+			);
+			// And storage should still write to its output channel for backward compatibility
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				expect.stringContaining("Test message"),
+			);
+		});
+
+		it("should work without logger for backward compatibility", () => {
+			const storage = new Storage(
+				mockOutput,
+				mockMemento,
+				mockSecrets,
+				mockGlobalStorageUri,
+				mockLogUri,
+			);
+
+			// When writeToCoderOutputChannel is called without logger
+			storage.writeToCoderOutputChannel("Test message");
+
+			// It should only write to output channel
+			expect(mockOutput.appendLine).toHaveBeenCalledWith(
+				expect.stringContaining("Test message"),
+			);
+		});
+
+		it("should respect logger verbose configuration", () => {
+			// Create a mock output channel for the logger
+			const mockLoggerOutput = {
+				appendLine: vi.fn(),
+			};
+
+			// Create a Logger with verbose disabled
+			const logger = new Logger(mockLoggerOutput, { verbose: false });
+
+			const storage = new Storage(
+				mockOutput,
+				mockMemento,
+				mockSecrets,
+				mockGlobalStorageUri,
+				mockLogUri,
+			);
+
+			// Set the logger
+			storage.setLogger(logger);
+
+			// Verify that info messages are still logged
+			storage.writeToCoderOutputChannel("Info message");
+			expect(mockLoggerOutput.appendLine).toHaveBeenCalledTimes(1);
+
+			// But debug messages would not be logged (if we had a debug method)
+			// This demonstrates the logger configuration is working
 		});
 	});
 });

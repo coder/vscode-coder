@@ -8,11 +8,15 @@ import * as vscode from "vscode";
 import { errToStr } from "./api-helper";
 import * as cli from "./cliManager";
 import { getHeaderCommand, getHeaders } from "./headers";
+import { Logger } from "./logger";
 
 // Maximium number of recent URLs to store.
 const MAX_URLS = 10;
 
 export class Storage {
+	// Optional logger for structured logging
+	private logger?: Logger;
+
 	constructor(
 		private readonly output: vscode.OutputChannel,
 		private readonly memento: vscode.Memento,
@@ -20,6 +24,13 @@ export class Storage {
 		private readonly globalStorageUri: vscode.Uri,
 		private readonly logUri: vscode.Uri,
 	) {}
+
+	/**
+	 * Set the logger for structured logging
+	 */
+	public setLogger(logger: Logger): void {
+		this.logger = logger;
+	}
 
 	/**
 	 * Add the URL to the list of recently accessed URLs in global storage, then
@@ -508,6 +519,12 @@ export class Storage {
 	}
 
 	public writeToCoderOutputChannel(message: string) {
+		// Use logger if available
+		if (this.logger) {
+			this.logger.info(message);
+		}
+
+		// Always write to output channel for backward compatibility
 		this.output.appendLine(`[${new Date().toISOString()}] ${message}`);
 		// We don't want to focus on the output here, because the
 		// Coder server is designed to restart gracefully for users
