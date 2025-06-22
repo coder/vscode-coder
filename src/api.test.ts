@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { spawn } from "child_process";
 import { Api } from "coder/site/src/api/api";
 import { EventEmitter } from "events";
@@ -262,11 +263,13 @@ describe("api", () => {
 
 			await createHttpAgent();
 
-			const proxyAgentCall = vi.mocked(ProxyAgent).mock.calls[0][0];
-			const getProxyForUrlFn = proxyAgentCall.getProxyForUrl;
+			const proxyAgentCall = vi.mocked(ProxyAgent).mock.calls[0]?.[0];
+			const getProxyForUrlFn = proxyAgentCall?.getProxyForUrl;
 
 			// Test the getProxyForUrl callback
-			getProxyForUrlFn("https://example.com");
+			if (getProxyForUrlFn) {
+				getProxyForUrlFn("https://example.com");
+			}
 
 			expect(vi.mocked(getProxyForUrl)).toHaveBeenCalledWith(
 				"https://example.com",
