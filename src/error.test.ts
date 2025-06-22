@@ -9,6 +9,7 @@ import {
 	X509_ERR_CODE,
 	getErrorDetail,
 } from "./error";
+import { createMockOutputChannelWithLogger } from "./test-helpers";
 
 // Before each test we make a request to sanity check that we really get the
 // error we are expecting, then we run it through CertificateError.
@@ -58,6 +59,7 @@ vi.mock("coder/site/src/api/errors", () => ({
 	}),
 }));
 
+// Use a mock logger that throws on error messages to ensure tests fail if unexpected logs occur
 const logger = {
 	writeToCoderOutputChannel(message: string) {
 		throw new Error(message);
@@ -384,6 +386,101 @@ describe("CertificateError.maybeWrap error handling", () => {
 		);
 
 		expect(result).toBe(axiosError);
+	});
+});
+
+describe("CertificateError with real Logger", () => {
+	it("should be backward compatible with existing mock logger", () => {
+		// Verify our Logger class implements the Logger interface used by error.ts
+		const { mockOutputChannel, logger: realLogger } =
+			createMockOutputChannelWithLogger();
+
+		// Verify the Logger has the required writeToCoderOutputChannel method
+		expect(typeof realLogger.writeToCoderOutputChannel).toBe("function");
+
+		// Verify it works like the mock logger
+		realLogger.writeToCoderOutputChannel("Test message");
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			expect.stringMatching(/\[.*\] \[INFO\] Test message/),
+		);
+	});
+
+	it("should work with our Logger implementation", async () => {
+		// Create a real Logger instance with mock output channel
+		const { mockOutputChannel, logger: realLogger } =
+			createMockOutputChannelWithLogger();
+
+		// Mock CertificateError.determineVerifyErrorCause to throw an error
+		const originalDetermine = CertificateError.determineVerifyErrorCause;
+		CertificateError.determineVerifyErrorCause = vi
+			.fn()
+			.mockRejectedValue(new Error("Failed to parse certificate"));
+
+		const axiosError = {
+			isAxiosError: true,
+			code: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+			message: "unable to verify leaf signature",
+		};
+
+		// Test that maybeWrap works with our real Logger
+		const result = await CertificateError.maybeWrap(
+			axiosError,
+			"https://test.com",
+			realLogger,
+		);
+
+		// Should return original error when determineVerifyErrorCause fails
+		expect(result).toBe(axiosError);
+
+		// Verify the message was logged through our Logger
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			expect.stringMatching(
+				/\[.*\] \[INFO\] Failed to parse certificate from https:\/\/test.com/,
+			),
+		);
+
+		// Verify the log was stored in the Logger
+		const logs = realLogger.getLogs();
+		expect(logs).toHaveLength(1);
+		expect(logs[0].level).toBe("INFO");
+		expect(logs[0].message).toContain(
+			"Failed to parse certificate from https://test.com",
+		);
+
+		// Restore original method
+		CertificateError.determineVerifyErrorCause = originalDetermine;
+	});
+
+	it("should log successful certificate wrapping with real Logger", async () => {
+		const { logger: realLogger } = createMockOutputChannelWithLogger();
+		const address = await startServer("chain");
+
+		const request = axios.get(address);
+		await expect(request).rejects.toHaveProperty(
+			"code",
+			X509_ERR_CODE.SELF_SIGNED_CERT_IN_CHAIN,
+		);
+
+		try {
+			await request;
+		} catch (error) {
+			// Clear any existing logs
+			realLogger.clear();
+
+			const wrapped = await CertificateError.maybeWrap(
+				error,
+				address,
+				realLogger,
+			);
+			expect(wrapped instanceof CertificateError).toBeTruthy();
+			expect((wrapped as CertificateError).x509Err).toBe(
+				X509_ERR.UNTRUSTED_CHAIN,
+			);
+
+			// Since the certificate error was successfully wrapped, no error should be logged
+			const logs = realLogger.getLogs();
+			expect(logs).toHaveLength(0);
+		}
 	});
 });
 

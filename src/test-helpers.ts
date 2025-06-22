@@ -4,6 +4,7 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 import { vi } from "vitest";
 import type * as vscode from "vscode";
+import { Logger } from "./logger";
 import type { Storage } from "./storage";
 
 /**
@@ -165,6 +166,25 @@ export function createMockConfiguration(
 }
 
 /**
+ * Create a mock output channel and Logger instance for testing
+ * Returns both the mock output channel and a real Logger instance
+ */
+export function createMockOutputChannelWithLogger(options?: {
+	verbose?: boolean;
+}): {
+	mockOutputChannel: {
+		appendLine: ReturnType<typeof vi.fn>;
+	};
+	logger: Logger;
+} {
+	const mockOutputChannel = {
+		appendLine: vi.fn(),
+	};
+	const logger = new Logger(mockOutputChannel, options);
+	return { mockOutputChannel, logger };
+}
+
+/**
  * Create a partial mock Storage with only the methods needed
  */
 export function createMockStorage(
@@ -172,10 +192,10 @@ export function createMockStorage(
 		getHeaders: ReturnType<typeof vi.fn>;
 		writeToCoderOutputChannel: ReturnType<typeof vi.fn>;
 	}> = {},
-): Partial<Storage> {
+): Storage {
 	return {
 		getHeaders: overrides.getHeaders ?? vi.fn().mockResolvedValue({}),
 		writeToCoderOutputChannel: overrides.writeToCoderOutputChannel ?? vi.fn(),
 		...overrides,
-	};
+	} as unknown as Storage;
 }

@@ -98,6 +98,14 @@ export class Logger {
 			this.outputChannel.appendLine(message);
 		}
 	}
+
+	/**
+	 * Backward compatibility method for existing code using writeToCoderOutputChannel
+	 * Logs messages at INFO level
+	 */
+	writeToCoderOutputChannel(message: string): void {
+		this.info(message);
+	}
 }
 
 export interface WorkspaceConfiguration {

@@ -1,11 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Logger, LoggerService } from "./logger";
+import { createMockOutputChannelWithLogger } from "./test-helpers";
 
 describe("Logger", () => {
 	let logger: Logger;
+	let mockOutputChannel: {
+		appendLine: ReturnType<typeof vi.fn>;
+	};
 
 	beforeEach(() => {
-		logger = new Logger();
+		mockOutputChannel = {
+			appendLine: vi.fn(),
+		};
+		logger = new Logger(mockOutputChannel);
 	});
 
 	it("should log error messages", () => {
@@ -80,11 +87,7 @@ describe("Logger", () => {
 
 describe("Logger with OutputChannel", () => {
 	it("should write logs to output channel when provided", () => {
-		const mockOutputChannel = {
-			appendLine: vi.fn(),
-		};
-
-		const logger = new Logger(mockOutputChannel);
+		const { mockOutputChannel, logger } = createMockOutputChannelWithLogger();
 		logger.info("Test message");
 
 		expect(mockOutputChannel.appendLine).toHaveBeenCalledOnce();
@@ -92,15 +95,44 @@ describe("Logger with OutputChannel", () => {
 			expect.stringContaining("[INFO] Test message"),
 		);
 	});
+
+	it("should implement writeToCoderOutputChannel for backward compatibility", () => {
+		const { mockOutputChannel, logger } = createMockOutputChannelWithLogger();
+
+		logger.writeToCoderOutputChannel("Test message");
+
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			expect.stringMatching(/\[.*\] \[INFO\] Test message/),
+		);
+	});
+
+	it("should log writeToCoderOutputChannel messages as INFO level", () => {
+		const logger = new Logger();
+
+		logger.writeToCoderOutputChannel("Backward compatible message");
+
+		const logs = logger.getLogs();
+		expect(logs).toHaveLength(1);
+		expect(logs[0].level).toBe("INFO");
+		expect(logs[0].message).toBe("Backward compatible message");
+	});
+
+	it("should handle error-like messages appropriately", () => {
+		const { mockOutputChannel, logger } = createMockOutputChannelWithLogger();
+
+		logger.writeToCoderOutputChannel("Error: Something went wrong");
+
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			expect.stringMatching(/\[.*\] \[INFO\] Error: Something went wrong/),
+		);
+	});
 });
 
 describe("Logger with log level filtering", () => {
 	it("should filter debug logs when verbose is false", () => {
-		const mockOutputChannel = {
-			appendLine: vi.fn(),
-		};
-
-		const logger = new Logger(mockOutputChannel, { verbose: false });
+		const { mockOutputChannel, logger } = createMockOutputChannelWithLogger({
+			verbose: false,
+		});
 		logger.debug("Debug message");
 		logger.info("Info message");
 		logger.warn("Warn message");
@@ -113,13 +145,10 @@ describe("Logger with log level filtering", () => {
 	});
 
 	it("should include debug logs when verbose is true", () => {
-		const mockOutputChannel = {
-			appendLine: vi.fn(),
-		};
-
-		const logger = new Logger(mockOutputChannel, { verbose: true });
-		logger.debug("Debug message");
-		logger.info("Info message");
+		const { mockOutputChannel, logger: verboseLogger } =
+			createMockOutputChannelWithLogger({ verbose: true });
+		verboseLogger.debug("Debug message");
+		verboseLogger.info("Info message");
 
 		expect(mockOutputChannel.appendLine).toHaveBeenCalledTimes(2);
 		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
@@ -128,11 +157,7 @@ describe("Logger with log level filtering", () => {
 	});
 
 	it("should include data in output when provided", () => {
-		const mockOutputChannel = {
-			appendLine: vi.fn(),
-		};
-
-		const logger = new Logger(mockOutputChannel);
+		const { mockOutputChannel, logger } = createMockOutputChannelWithLogger();
 		const data = { userId: 123, action: "login" };
 		logger.info("User action", data);
 
