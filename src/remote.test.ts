@@ -45,7 +45,8 @@ vi.mock("./headers");
 vi.mock("./inbox");
 vi.mock("./sshConfig");
 vi.mock("./sshSupport");
-vi.mock("./storage");
+// Don't mock storage - we'll create real instances in tests
+// vi.mock("./storage");
 vi.mock("./util");
 vi.mock("./workspaceMonitor");
 vi.mock("fs/promises");
@@ -123,6 +124,7 @@ describe("remote", () => {
 			},
 		} as unknown as typeof vscode;
 
+		// Storage import not needed here since we use mocks
 		mockStorage = {
 			getSessionTokenPath: vi.fn().mockReturnValue("/mock/session/path"),
 			writeToCoderOutputChannel: vi.fn(),
@@ -1281,6 +1283,152 @@ describe("remote", () => {
 
 			expect(result).toBeUndefined();
 			expect(findProcess.default).toHaveBeenCalledWith("port", 9999);
+		});
+	});
+
+	describe("Logger integration", () => {
+		it("should use Logger when set on Storage for logging messages", async () => {
+			// Import the factory function for creating logger with mock
+			const { createMockOutputChannelWithLogger } = await import(
+				"./test-helpers"
+			);
+			const { mockOutputChannel, logger } = createMockOutputChannelWithLogger();
+
+			// Create a real Storage instance with the mock output channel
+			const { Storage } = await import("./storage");
+			const realStorage = new Storage(
+				mockOutputChannel as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+			);
+
+			// Set the logger on storage
+			realStorage.setLogger(logger);
+
+			// Spy on storage methods we need
+			vi.spyOn(realStorage, "getSessionTokenPath").mockReturnValue(
+				"/mock/session/path",
+			);
+			vi.spyOn(realStorage, "migrateSessionToken").mockResolvedValue(undefined);
+			vi.spyOn(realStorage, "readCliConfig").mockResolvedValue({
+				url: "https://test.coder.com",
+				token: "test-token",
+			});
+			vi.spyOn(realStorage, "getRemoteSSHLogPath").mockResolvedValue(undefined);
+			vi.spyOn(realStorage, "fetchBinary").mockResolvedValue("/path/to/coder");
+			vi.spyOn(realStorage, "getNetworkInfoPath").mockReturnValue(
+				"/mock/network/info",
+			);
+			vi.spyOn(realStorage, "getLogPath").mockReturnValue("/mock/log/path");
+			vi.spyOn(realStorage, "getHeaders").mockResolvedValue({});
+
+			// Create remote with the real storage that has logger
+			remote = new Remote(
+				mockVscodeProposed,
+				realStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock parseRemoteAuthority to return valid parts
+			const { parseRemoteAuthority } = await import("./util");
+			vi.mocked(parseRemoteAuthority).mockReturnValue({
+				host: "test.coder.com",
+				label: "test-label",
+				username: "test-user",
+				workspace: "test-workspace",
+				agent: undefined,
+			});
+
+			// Storage config already mocked above
+
+			// Mock needToken to return false
+			const { needToken } = await import("./api");
+			vi.mocked(needToken).mockReturnValue(false);
+
+			// Mock makeCoderSdk to return workspace not found to exit early
+			const mockWorkspaceRestClient = {
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v0.15.0" }),
+				getWorkspaceByOwnerAndName: vi.fn().mockRejectedValue({
+					isAxiosError: true,
+					response: { status: 404 },
+				}),
+			} as never;
+			const { makeCoderSdk } = await import("./api");
+			vi.mocked(makeCoderSdk).mockResolvedValue(mockWorkspaceRestClient);
+
+			// Mock cli.version
+			const cli = await import("./cliManager");
+			vi.mocked(cli.version).mockResolvedValue("v0.15.0");
+
+			// Mock featureSetForVersion
+			const { featureSetForVersion } = await import("./featureSet");
+			vi.mocked(featureSetForVersion).mockReturnValue({
+				vscodessh: true,
+			} as never);
+
+			// Mock user cancellation
+			const showInfoMessageSpy = mockVscodeProposed.window
+				.showInformationMessage as ReturnType<typeof vi.fn>;
+			showInfoMessageSpy.mockResolvedValue(undefined);
+
+			// Mock closeRemote
+			vi.spyOn(remote, "closeRemote").mockResolvedValue();
+
+			// Mock isAxiosError
+			const { isAxiosError } = await import("axios");
+			vi.mocked(isAxiosError).mockReturnValue(true);
+
+			// Execute setup which should trigger logging
+			await remote.setup("coder-vscode--test-label--test-user--test-workspace");
+
+			// Verify that messages were logged through the Logger
+			const logs = logger.getLogs();
+			expect(logs.length).toBeGreaterThan(0);
+
+			// Verify specific log messages were created
+			const logMessages = logs.map((log) => log.message);
+			expect(logMessages).toContain(
+				"Setting up remote: test-user/test-workspace",
+			);
+			expect(logMessages).toContain(
+				"Using deployment URL: https://test.coder.com",
+			);
+			expect(logMessages).toContain("Using deployment label: test-label");
+			expect(logMessages).toContain(
+				"Got build info: v0.15.0 vscodessh feature: true",
+			);
+
+			// Verify messages were written to output channel with proper formatting
+			expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+				expect.stringMatching(
+					/\[.*\] \[INFO\] Setting up remote: test-user\/test-workspace/,
+				),
+			);
+		});
+
+		it("should maintain backward compatibility with writeToCoderOutputChannel", async () => {
+			// Import the factory function for creating logger with mock
+			const { createMockOutputChannelWithLogger } = await import(
+				"./test-helpers"
+			);
+			const { mockOutputChannel, logger } = createMockOutputChannelWithLogger();
+
+			// Test backward compatibility method
+			logger.writeToCoderOutputChannel("Test backward compatibility");
+
+			// Verify it logs at INFO level
+			const logs = logger.getLogs();
+			expect(logs).toHaveLength(1);
+			expect(logs[0].level).toBe("INFO");
+			expect(logs[0].message).toBe("Test backward compatibility");
+
+			// Verify output format
+			expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+				expect.stringMatching(/\[.*\] \[INFO\] Test backward compatibility/),
+			);
 		});
 	});
 });

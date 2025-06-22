@@ -95,6 +95,7 @@ export function createMockOutputChannelWithLogger(options?: {
 ### Refactoring Strategy
 
 When replacing legacy patterns (e.g., writeToCoderOutputChannel):
+
 1. Add backward compatibility method to new implementation
 2. Write tests verifying compatibility
 3. Incrementally replace usage starting with highest-impact files

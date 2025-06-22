@@ -207,6 +207,9 @@ export class Remote {
 		}
 
 		const workspaceName = `${parts.username}/${parts.workspace}`;
+		this.storage.writeToCoderOutputChannel(
+			`Setting up remote: ${workspaceName}`,
+		);
 
 		// Migrate "session_token" file to "session", if needed.
 		await this.storage.migrateSessionToken(parts.label);
@@ -294,6 +297,9 @@ export class Remote {
 		}
 
 		const featureSet = featureSetForVersion(version);
+		this.storage.writeToCoderOutputChannel(
+			`Got build info: ${buildInfo.version} vscodessh feature: ${featureSet.vscodessh}`,
+		);
 
 		// Server versions before v0.14.1 don't support the vscodessh command!
 		if (!featureSet.vscodessh) {

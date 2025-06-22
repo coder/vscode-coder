@@ -4,12 +4,13 @@
 
 - **359 unit tests** passing with 74.35% overall coverage
 - **69 integration tests** passing
-- **18 files** with >90% coverage  
+- **18 files** with >90% coverage
 - Established TDD workflow and testing patterns
 
 ## Phase 2: Structured Logging Implementation 🔄 IN PROGRESS
 
 ### Completed
+
 - [x] Logger class with levels (ERROR, WARN, INFO, DEBUG) - 98.44% coverage
 - [x] VS Code output channel integration with verbose setting support
 - [x] Backward compatibility via writeToCoderOutputChannel method
@@ -17,24 +18,28 @@
 - [x] Verified Logger works with existing error.ts Logger interface
 
 ### Next Steps
+
 1. **Replace writeToCoderOutputChannel calls** (43 instances across 10 files)
-   - Priority: remote.ts (18), extension.ts (8), headers.ts (4)
+   - ✅ remote.ts (18) - Completed with Logger integration test
+   - Priority: extension.ts (8), headers.ts (4)
    - Use TDD approach: write test → implement → verify
 2. **Add structured logging to high-value areas**
    - API calls and responses
-   - Connection establishment/failures  
+   - Connection establishment/failures
    - Certificate errors
    - Command execution
 
 ## Phase 3: Code Quality Improvements
 
 ### Test Quality
+
 - [x] test-helpers.ts with type-safe mock builders
 - [x] Removed most `as any` casts from tests
 - [ ] api.test.ts cleanup (30+ `as any` with eslint-disable)
 - [ ] Fix private property access in remaining test files
 
 ### Refactoring Priority
+
 1. **extension.ts** (38.68% coverage) - extract initialization logic
 2. **remote.ts** (49.21% coverage) - break down 400+ line methods
 3. **commands.ts** (64.19% coverage) - create UI abstraction layer
@@ -48,21 +53,23 @@
 
 ## Success Metrics
 
-| Metric                    | Target | Current | Status     |
-| ------------------------- | ------ | ------- | ---------- |
-| Unit test coverage        | 80%+   | 74.35%  | 🔄 Progress |
-| Integration tests         | 60+    | 69      | ✅ Complete |
-| Logger adoption           | 100%   | 5%      | 🔄 Progress |
-| Files with <50% coverage  | 0      | 3       | 🔄 Progress |
+| Metric                   | Target | Current | Status      |
+| ------------------------ | ------ | ------- | ----------- |
+| Unit test coverage       | 80%+   | 74.38%  | 🔄 Progress |
+| Integration tests        | 60+    | 69      | ✅ Complete |
+| Logger adoption          | 100%   | 10%     | 🔄 Progress |
+| Files with <50% coverage | 0      | 3       | 🔄 Progress |
 
 ## Immediate Next Steps
 
 1. **Continue Logger integration** using TDD approach
+
    - Start with remote.ts (18 calls) - highest impact
    - Add structured data (request IDs, durations, errors)
    - Maintain backward compatibility
 
 2. **Clean up api.test.ts**
+
    - Remove eslint-disable comment
    - Create proper mock types for 30+ `as any` casts
    - Consider exposing test interfaces for better type safety
