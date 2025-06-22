@@ -50,6 +50,12 @@ vi.mock("./util");
 vi.mock("./workspaceMonitor");
 vi.mock("fs/promises");
 vi.mock("os");
+vi.mock("pretty-bytes", () => ({
+	default: vi.fn((bytes) => `${bytes}B`),
+}));
+vi.mock("find-process", () => ({
+	default: vi.fn(),
+}));
 
 // Mock vscode module
 vi.mock("vscode", () => ({
@@ -62,6 +68,18 @@ vi.mock("vscode", () => ({
 		Notification: 15,
 		SourceControl: 1,
 		Window: 10,
+	},
+	StatusBarAlignment: {
+		Left: 1,
+		Right: 2,
+	},
+	window: {
+		createStatusBarItem: vi.fn(() => ({
+			text: "",
+			tooltip: "",
+			show: vi.fn(),
+			dispose: vi.fn(),
+		})),
 	},
 	workspace: {
 		getConfiguration: vi.fn(),
@@ -95,11 +113,13 @@ describe("remote", () => {
 					// Execute the task immediately with a mock progress object
 					return task({ report: vi.fn() }, { isCancellationRequested: false });
 				}),
+				createStatusBarItem: vi.fn(),
 			},
 			workspace: {
 				getConfiguration: vi.fn().mockReturnValue({
 					get: vi.fn(),
 				}),
+				registerResourceLabelFormatter: vi.fn(),
 			},
 		} as unknown as typeof vscode;
 
@@ -110,6 +130,7 @@ describe("remote", () => {
 			readCliConfig: vi.fn().mockResolvedValue({ url: "", token: "" }),
 			getRemoteSSHLogPath: vi.fn().mockResolvedValue(undefined),
 			fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
+			getNetworkInfoPath: vi.fn().mockReturnValue("/mock/network/info"),
 		} as unknown as Storage;
 		mockCommands = {} as Commands;
 	});
@@ -704,6 +725,562 @@ describe("remote", () => {
 			expect(fs.stat).toHaveBeenCalledWith("/tmp/coder");
 			// Verify that fetchBinary was not called because development binary exists
 			expect(mockStorage.fetchBinary).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("getLogDir", () => {
+		it("should return empty string when feature is not supported", () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			const featureSet = {
+				proxyLogDirectory: false,
+			} as never;
+
+			// Access private method using bracket notation
+			const result = remote["getLogDir"](featureSet);
+
+			expect(result).toBe("");
+			expect(vscode.workspace.getConfiguration).not.toHaveBeenCalled();
+		});
+
+		it("should return empty string when config is not set", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			const featureSet = {
+				proxyLogDirectory: true,
+			} as never;
+
+			// Mock getConfiguration to return undefined
+			const mockConfig = {
+				get: vi.fn().mockReturnValue(undefined),
+			};
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue(
+				mockConfig as never,
+			);
+
+			// Mock expandPath to return empty string for empty/undefined input
+			const { expandPath } = await import("./util");
+			vi.mocked(expandPath).mockReturnValue("");
+
+			// Access private method using bracket notation
+			const result = remote["getLogDir"](featureSet);
+
+			expect(result).toBe("");
+			expect(mockConfig.get).toHaveBeenCalledWith("coder.proxyLogDirectory");
+		});
+
+		it("should return expanded path when config is set", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			const featureSet = {
+				proxyLogDirectory: true,
+			} as never;
+
+			// Mock getConfiguration to return a path
+			const mockConfig = {
+				get: vi.fn().mockReturnValue("~/logs/coder"),
+			};
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue(
+				mockConfig as never,
+			);
+
+			// Mock expandPath
+			const { expandPath } = await import("./util");
+			vi.mocked(expandPath).mockReturnValue("/home/user/logs/coder");
+
+			// Access private method using bracket notation
+			const result = remote["getLogDir"](featureSet);
+
+			expect(result).toBe("/home/user/logs/coder");
+			expect(mockConfig.get).toHaveBeenCalledWith("coder.proxyLogDirectory");
+			expect(expandPath).toHaveBeenCalledWith("~/logs/coder");
+		});
+	});
+
+	describe("formatLogArg", () => {
+		it("should return empty string when logDir is empty", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Access private method using bracket notation
+			const result = await remote["formatLogArg"]("");
+
+			expect(result).toBe("");
+			expect(mockStorage.writeToCoderOutputChannel).not.toHaveBeenCalled();
+		});
+
+		it("should create directory and return formatted arg when logDir is provided", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock fs.mkdir
+			const fs = await import("fs/promises");
+			vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+
+			// Access private method using bracket notation
+			const result = await remote["formatLogArg"]("/path/to/logs");
+
+			expect(fs.mkdir).toHaveBeenCalledWith("/path/to/logs", {
+				recursive: true,
+			});
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				"SSH proxy diagnostics are being written to /path/to/logs",
+			);
+			expect(result).toBe(" --log-dir /path/to/logs");
+		});
+	});
+
+	describe("registerLabelFormatter", () => {
+		it("should register label formatter with workspace only", () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock registerResourceLabelFormatter
+			const disposable = { dispose: vi.fn() };
+			mockVscodeProposed.workspace.registerResourceLabelFormatter = vi
+				.fn()
+				.mockReturnValue(disposable);
+
+			// Access private method using bracket notation
+			const result = remote["registerLabelFormatter"](
+				"test-authority",
+				"test-owner",
+				"test-workspace",
+			);
+
+			expect(
+				mockVscodeProposed.workspace.registerResourceLabelFormatter,
+			).toHaveBeenCalledWith({
+				scheme: "vscode-remote",
+				authority: "test-authority",
+				formatting: {
+					label: "${path}",
+					separator: "/",
+					tildify: true,
+					workspaceSuffix: "Coder: test-owner∕test-workspace",
+				},
+			});
+			expect(result).toBe(disposable);
+		});
+
+		it("should register label formatter with workspace and agent", () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock registerResourceLabelFormatter
+			const disposable = { dispose: vi.fn() };
+			mockVscodeProposed.workspace.registerResourceLabelFormatter = vi
+				.fn()
+				.mockReturnValue(disposable);
+
+			// Access private method using bracket notation
+			const result = remote["registerLabelFormatter"](
+				"test-authority",
+				"test-owner",
+				"test-workspace",
+				"test-agent",
+			);
+
+			expect(
+				mockVscodeProposed.workspace.registerResourceLabelFormatter,
+			).toHaveBeenCalledWith({
+				scheme: "vscode-remote",
+				authority: "test-authority",
+				formatting: {
+					label: "${path}",
+					separator: "/",
+					tildify: true,
+					workspaceSuffix: "Coder: test-owner∕test-workspace∕test-agent",
+				},
+			});
+			expect(result).toBe(disposable);
+		});
+	});
+
+	describe("showNetworkUpdates", () => {
+		it("should create status bar item and show network status", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock createStatusBarItem on the vscode module
+			const mockStatusBarItem = {
+				text: "",
+				tooltip: "",
+				show: vi.fn(),
+				dispose: vi.fn(),
+			};
+			vi.mocked(vscode.window.createStatusBarItem).mockReturnValue(
+				mockStatusBarItem as never,
+			);
+
+			// Mock fs.readFile to return network info
+			const fs = await import("fs/promises");
+			const networkInfo = {
+				p2p: true,
+				latency: 25.5,
+				preferred_derp: "us-east",
+				derp_latency: { "us-east": 10.5 },
+				upload_bytes_sec: 1024,
+				download_bytes_sec: 2048,
+				using_coder_connect: false,
+			};
+			vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(networkInfo));
+
+			// Access private method using bracket notation
+			const disposable = remote["showNetworkUpdates"](12345);
+
+			// Wait for the periodic refresh to run at least once
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// Verify status bar was created
+			expect(vscode.window.createStatusBarItem).toHaveBeenCalledWith(
+				vscode.StatusBarAlignment.Left,
+				1000,
+			);
+
+			// Verify status bar item was updated
+			expect(mockStatusBarItem.text).toBe("$(globe) Direct (25.50ms)");
+			expect(mockStatusBarItem.tooltip).toContain("peer-to-peer");
+			expect(mockStatusBarItem.show).toHaveBeenCalled();
+
+			// Cleanup
+			disposable.dispose();
+			expect(mockStatusBarItem.dispose).toHaveBeenCalled();
+		});
+
+		it("should show Coder Connect status when using Coder Connect", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock createStatusBarItem on the vscode module
+			const mockStatusBarItem = {
+				text: "",
+				tooltip: "",
+				show: vi.fn(),
+				dispose: vi.fn(),
+			};
+			vi.mocked(vscode.window.createStatusBarItem).mockReturnValue(
+				mockStatusBarItem as never,
+			);
+
+			// Mock fs.readFile to return network info with Coder Connect
+			const fs = await import("fs/promises");
+			const networkInfo = {
+				p2p: false,
+				latency: 0,
+				preferred_derp: "",
+				derp_latency: {},
+				upload_bytes_sec: 0,
+				download_bytes_sec: 0,
+				using_coder_connect: true,
+			};
+			vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(networkInfo));
+
+			// Access private method using bracket notation
+			const disposable = remote["showNetworkUpdates"](12345);
+
+			// Wait for the periodic refresh to run at least once
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// Verify Coder Connect status
+			expect(mockStatusBarItem.text).toBe("$(globe) Coder Connect ");
+			expect(mockStatusBarItem.tooltip).toBe(
+				"You're connected using Coder Connect.",
+			);
+			expect(mockStatusBarItem.show).toHaveBeenCalled();
+
+			// Cleanup
+			disposable.dispose();
+		});
+
+		it("should show relay status when not p2p", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock createStatusBarItem on the vscode module
+			const mockStatusBarItem = {
+				text: "",
+				tooltip: "",
+				show: vi.fn(),
+				dispose: vi.fn(),
+			};
+			vi.mocked(vscode.window.createStatusBarItem).mockReturnValue(
+				mockStatusBarItem as never,
+			);
+
+			// Mock fs.readFile to return network info with relay
+			const fs = await import("fs/promises");
+			const networkInfo = {
+				p2p: false,
+				latency: 50.0,
+				preferred_derp: "us-west",
+				derp_latency: {
+					"us-west": 20.0,
+					"us-east": 30.0,
+					"eu-west": 100.0,
+				},
+				upload_bytes_sec: 5120,
+				download_bytes_sec: 10240,
+				using_coder_connect: false,
+			};
+			vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(networkInfo));
+
+			// Access private method using bracket notation
+			const disposable = remote["showNetworkUpdates"](12345);
+
+			// Wait for the periodic refresh to run at least once
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// Verify relay status
+			expect(mockStatusBarItem.text).toBe("$(globe) us-west (50.00ms)");
+			expect(mockStatusBarItem.tooltip).toContain("connected through a relay");
+			expect(mockStatusBarItem.tooltip).toContain("You ↔ 20.00ms ↔ us-west");
+			expect(mockStatusBarItem.tooltip).toContain("Other regions:");
+			expect(mockStatusBarItem.tooltip).toContain("us-east: 30ms");
+			expect(mockStatusBarItem.tooltip).toContain("eu-west: 100ms");
+			expect(mockStatusBarItem.show).toHaveBeenCalled();
+
+			// Cleanup
+			disposable.dispose();
+		});
+
+		it("should handle file read errors gracefully", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock createStatusBarItem on the vscode module
+			const mockStatusBarItem = {
+				text: "",
+				tooltip: "",
+				show: vi.fn(),
+				dispose: vi.fn(),
+			};
+			vi.mocked(vscode.window.createStatusBarItem).mockReturnValue(
+				mockStatusBarItem as never,
+			);
+
+			// Mock fs.readFile to reject
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readFile).mockRejectedValue(new Error("File not found"));
+
+			// Access private method using bracket notation
+			const disposable = remote["showNetworkUpdates"](12345);
+
+			// Wait for the periodic refresh to run at least once
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// Verify status bar was created but not updated
+			expect(vscode.window.createStatusBarItem).toHaveBeenCalled();
+			expect(mockStatusBarItem.show).not.toHaveBeenCalled();
+
+			// Cleanup
+			disposable.dispose();
+		});
+	});
+
+	describe("reloadWindow", () => {
+		it("should execute workbench.action.reloadWindow command", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			await remote.reloadWindow();
+
+			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+				"workbench.action.reloadWindow",
+			);
+		});
+	});
+
+	describe("findSSHProcessID", () => {
+		it("should return undefined when no log path is found", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock getRemoteSSHLogPath to return undefined
+			vi.mocked(mockStorage.getRemoteSSHLogPath).mockResolvedValue(undefined);
+
+			// Access private method using bracket notation
+			const result = await remote["findSSHProcessID"](100);
+
+			expect(result).toBeUndefined();
+		});
+
+		it("should return process ID when found in log", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock getRemoteSSHLogPath
+			vi.mocked(mockStorage.getRemoteSSHLogPath).mockResolvedValue(
+				"/path/to/log",
+			);
+
+			// Mock fs.readFile to return log with port
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readFile).mockResolvedValue(
+				"SSH connection established on port 12345",
+			);
+
+			// Mock findPort
+			const { findPort } = await import("./util");
+			vi.mocked(findPort).mockResolvedValue(12345);
+
+			// Mock find-process
+			const findProcess = await import("find-process");
+			vi.mocked(findProcess.default).mockResolvedValue([
+				{
+					pid: 98765,
+					ppid: 1,
+					uid: 1000,
+					gid: 1000,
+					name: "ssh",
+					cmd: "ssh command",
+				},
+			]);
+
+			// Access private method using bracket notation
+			const result = await remote["findSSHProcessID"](1000);
+
+			expect(result).toBe(98765);
+			expect(findPort).toHaveBeenCalledWith(
+				"SSH connection established on port 12345",
+			);
+			expect(findProcess.default).toHaveBeenCalledWith("port", 12345);
+		});
+
+		it("should timeout when process not found in time", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock getRemoteSSHLogPath to return undefined repeatedly
+			vi.mocked(mockStorage.getRemoteSSHLogPath).mockResolvedValue(undefined);
+
+			// Access private method using bracket notation with short timeout
+			const result = await remote["findSSHProcessID"](50);
+
+			expect(result).toBeUndefined();
+		});
+
+		it("should return undefined when no port found in log", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock getRemoteSSHLogPath
+			vi.mocked(mockStorage.getRemoteSSHLogPath).mockResolvedValue(
+				"/path/to/log",
+			);
+
+			// Mock fs.readFile to return log without port
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readFile).mockResolvedValue("No port info in this log");
+
+			// Mock findPort to return null
+			const { findPort } = await import("./util");
+			vi.mocked(findPort).mockResolvedValue(null);
+
+			// Access private method using bracket notation with short timeout
+			const result = await remote["findSSHProcessID"](50);
+
+			expect(result).toBeUndefined();
+			expect(findPort).toHaveBeenCalledWith("No port info in this log");
+		});
+
+		it("should return undefined when no processes found for port", async () => {
+			remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock getRemoteSSHLogPath
+			vi.mocked(mockStorage.getRemoteSSHLogPath).mockResolvedValue(
+				"/path/to/log",
+			);
+
+			// Mock fs.readFile to return log with port
+			const fs = await import("fs/promises");
+			vi.mocked(fs.readFile).mockResolvedValue("SSH on port 9999");
+
+			// Mock findPort
+			const { findPort } = await import("./util");
+			vi.mocked(findPort).mockResolvedValue(9999);
+
+			// Mock find-process to return empty array
+			const findProcess = await import("find-process");
+			vi.mocked(findProcess.default).mockResolvedValue([]);
+
+			// Access private method using bracket notation
+			const result = await remote["findSSHProcessID"](1000);
+
+			expect(result).toBeUndefined();
+			expect(findProcess.default).toHaveBeenCalledWith("port", 9999);
 		});
 	});
 });
