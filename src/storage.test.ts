@@ -493,10 +493,11 @@ describe("storage", () => {
 		it("should return undefined when no Remote SSH file exists", async () => {
 			const fs = await import("fs/promises");
 			vi.mocked(fs.readdir)
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				.mockResolvedValueOnce(["output_logging_20240101", "other_dir"] as any)
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				.mockResolvedValueOnce(["some-other-file.log"] as any);
+				.mockResolvedValueOnce([
+					"output_logging_20240101",
+					"other_dir",
+				] as never)
+				.mockResolvedValueOnce(["some-other-file.log"] as never);
 
 			const result = await storage.getRemoteSSHLogPath();
 
@@ -509,10 +510,8 @@ describe("storage", () => {
 				.mockResolvedValueOnce([
 					"output_logging_20240102",
 					"output_logging_20240101",
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				] as any)
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				.mockResolvedValueOnce(["1-Remote - SSH.log", "2-Other.log"] as any);
+				] as never)
+				.mockResolvedValueOnce(["1-Remote - SSH.log", "2-Other.log"] as never);
 
 			const result = await storage.getRemoteSSHLogPath();
 

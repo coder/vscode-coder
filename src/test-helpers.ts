@@ -2,6 +2,8 @@ import type {
 	Workspace,
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
+import { vi } from "vitest";
+import type * as vscode from "vscode";
 
 /**
  * Create a mock WorkspaceAgent with default values
@@ -127,4 +129,52 @@ export function createWorkspaceWithAgents(
 			],
 		},
 	});
+}
+
+/**
+ * Create a mock VS Code WorkspaceConfiguration with vitest mocks
+ */
+export function createMockConfiguration(
+	defaultValues: Record<string, unknown> = {},
+): vscode.WorkspaceConfiguration & {
+	get: ReturnType<typeof vi.fn>;
+	has: ReturnType<typeof vi.fn>;
+	inspect: ReturnType<typeof vi.fn>;
+	update: ReturnType<typeof vi.fn>;
+} {
+	const get = vi.fn((section: string, defaultValue?: unknown) => {
+		return defaultValues[section] ?? defaultValue ?? "";
+	});
+
+	const has = vi.fn((section: string) => section in defaultValues);
+	const inspect = vi.fn(() => undefined);
+	const update = vi.fn(async () => {});
+
+	return {
+		get,
+		has,
+		inspect,
+		update,
+	} as vscode.WorkspaceConfiguration & {
+		get: typeof get;
+		has: typeof has;
+		inspect: typeof inspect;
+		update: typeof update;
+	};
+}
+
+/**
+ * Create a partial mock Storage with only the methods needed
+ */
+export function createMockStorage(
+	overrides: Partial<{
+		getHeaders: ReturnType<typeof vi.fn>;
+		writeToCoderOutputChannel: ReturnType<typeof vi.fn>;
+	}> = {},
+): any {
+	return {
+		getHeaders: overrides.getHeaders ?? vi.fn().mockResolvedValue({}),
+		writeToCoderOutputChannel: overrides.writeToCoderOutputChannel ?? vi.fn(),
+		...overrides,
+	};
 }

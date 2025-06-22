@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { spawn } from "child_process";
 import { Api } from "coder/site/src/api/api";
 import { EventEmitter } from "events";
@@ -19,6 +18,7 @@ import {
 import { errToStr } from "./api-helper";
 import { getHeaderArgs } from "./headers";
 import { getProxyForUrl } from "./proxy";
+import { createMockConfiguration, createMockStorage } from "./test-helpers";
 import { expandPath } from "./util";
 
 // Mock dependencies
@@ -47,12 +47,7 @@ vi.mock("vscode", () => ({
 
 describe("api", () => {
 	// Mock VS Code configuration
-	const mockConfiguration = {
-		get: vi.fn(),
-		has: vi.fn(),
-		inspect: vi.fn(),
-		update: vi.fn(),
-	};
+	const mockConfiguration = createMockConfiguration();
 
 	// Mock API and axios
 	const mockAxiosInstance = {
@@ -79,7 +74,7 @@ describe("api", () => {
 
 		// Setup vscode mock
 		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue(
-			mockConfiguration as any,
+			mockConfiguration,
 		);
 
 		// Setup API mock (after clearAllMocks)
@@ -175,7 +170,7 @@ describe("api", () => {
 	describe("createHttpAgent", () => {
 		beforeEach(() => {
 			// Mock fs.readFile to return buffer data
-			(fs.readFile as any).mockResolvedValue(Buffer.from("mock-file-content"));
+			vi.mocked(fs.readFile).mockResolvedValue(Buffer.from("mock-file-content"));
 
 			// Mock expandPath to return paths as-is
 			vi.mocked(expandPath).mockImplementation((path: string) => path);
@@ -239,7 +234,7 @@ describe("api", () => {
 			const mockKeyBuffer = Buffer.from("key-content");
 			const mockCaBuffer = Buffer.from("ca-content");
 
-			(fs.readFile as any)
+			vi.mocked(fs.readFile)
 				.mockResolvedValueOnce(mockCertBuffer)
 				.mockResolvedValueOnce(mockKeyBuffer)
 				.mockResolvedValueOnce(mockCaBuffer);
@@ -265,7 +260,7 @@ describe("api", () => {
 
 			await createHttpAgent();
 
-			const proxyAgentCall = (ProxyAgent as any).mock.calls[0][0];
+			const proxyAgentCall = vi.mocked(ProxyAgent).mock.calls[0][0];
 			const getProxyForUrlFn = proxyAgentCall.getProxyForUrl;
 
 			// Test the getProxyForUrl callback
@@ -295,14 +290,14 @@ describe("api", () => {
 		});
 
 		it("should create and configure API instance with token", () => {
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				getHeaders: vi.fn().mockResolvedValue({ "Custom-Header": "value" }),
-			};
+			});
 
 			const result = makeCoderSdk(
 				"https://coder.example.com",
 				"test-token",
-				mockStorage as any,
+				mockStorage,
 			);
 
 			expect(mockApi.setHost).toHaveBeenCalledWith("https://coder.example.com");
@@ -311,14 +306,14 @@ describe("api", () => {
 		});
 
 		it("should create API instance without token", () => {
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				getHeaders: vi.fn().mockResolvedValue({}),
-			};
+			});
 
 			const result = makeCoderSdk(
 				"https://coder.example.com",
 				undefined,
-				mockStorage as any,
+				mockStorage,
 			);
 
 			expect(mockApi.setHost).toHaveBeenCalledWith("https://coder.example.com");
@@ -327,15 +322,11 @@ describe("api", () => {
 		});
 
 		it("should configure request interceptor correctly", async () => {
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				getHeaders: vi.fn().mockResolvedValue({ "Custom-Header": "value" }),
-			};
+			});
 
-			makeCoderSdk(
-				"https://coder.example.com",
-				"test-token",
-				mockStorage as any,
-			);
+			makeCoderSdk("https://coder.example.com", "test-token", mockStorage);
 
 			// Get the request interceptor callback
 			const requestInterceptorCall =
@@ -359,22 +350,18 @@ describe("api", () => {
 		});
 
 		it("should configure response interceptor correctly", async () => {
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				getHeaders: vi.fn().mockResolvedValue({}),
-			};
+			});
 
 			// Mock CertificateError.maybeWrap
 			const { CertificateError } = await import("./error");
 			const mockMaybeWrap = vi
 				.fn()
 				.mockRejectedValue(new Error("Certificate error"));
-			(CertificateError as any).maybeWrap = mockMaybeWrap;
+			vi.spyOn(CertificateError, "maybeWrap").mockImplementation(mockMaybeWrap);
 
-			makeCoderSdk(
-				"https://coder.example.com",
-				"test-token",
-				mockStorage as any,
-			);
+			makeCoderSdk("https://coder.example.com", "test-token", mockStorage);
 
 			// Get the response interceptor callbacks
 			const responseInterceptorCall =
@@ -421,7 +408,9 @@ describe("api", () => {
 				request: vi.fn().mockResolvedValue(mockAxiosResponse),
 			};
 
-			const adapter = createStreamingFetchAdapter(mockAxiosInstance as any);
+			const adapter = createStreamingFetchAdapter(
+				mockAxiosInstance as unknown as any,
+			);
 
 			// Mock ReadableStream
 			global.ReadableStream = vi.fn().mockImplementation((options) => {
@@ -483,7 +472,9 @@ describe("api", () => {
 				}),
 			};
 
-			const adapter = createStreamingFetchAdapter(mockAxiosInstance as any);
+			const adapter = createStreamingFetchAdapter(
+				mockAxiosInstance as unknown as any,
+			);
 
 			await adapter(new URL("https://example.com/api"));
 
