@@ -2,6 +2,7 @@ import { Api } from "coder/site/src/api/api";
 import { Workspace } from "coder/site/src/api/typesGenerated";
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { Storage } from "./storage";
+import { createMockOutputChannelWithLogger } from "./test-helpers";
 import { WorkspaceMonitor } from "./workspaceMonitor";
 
 // Mock dependencies
@@ -511,6 +512,98 @@ describe("workspaceMonitor", () => {
 				mockWorkspace,
 				mockRestClient,
 			);
+		});
+	});
+
+	describe("Logger integration", () => {
+		it("should log messages through Logger when Storage has Logger set", () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			const mockWorkspace = {
+				owner_name: "test-owner",
+				name: "test-workspace",
+				id: "test-id",
+			} as Workspace;
+
+			const mockRestClient = {
+				getAxiosInstance: vi.fn(() => ({
+					defaults: { baseURL: "https://test.com" },
+				})),
+			} as unknown as Api;
+
+			// Create mock Storage that uses Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.info(msg);
+				}),
+			} as unknown as Storage;
+
+			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+
+			// Create WorkspaceMonitor which should log initialization
+			new WorkspaceMonitor(
+				mockWorkspace,
+				mockRestClient,
+				mockStorage,
+				mockVscodeProposed,
+			);
+
+			// Verify monitoring message was logged
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				"Monitoring test-owner/test-workspace...",
+			);
+
+			const logs = logger.getLogs();
+			expect(logs.length).toBeGreaterThan(0);
+			expect(logs[0].message).toBe("Monitoring test-owner/test-workspace...");
+		});
+
+		it("should handle dispose and log unmonitoring message", () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			const mockWorkspace = {
+				owner_name: "test-owner",
+				name: "test-workspace",
+				id: "test-id",
+			} as Workspace;
+
+			const mockRestClient = {
+				getAxiosInstance: vi.fn(() => ({
+					defaults: { baseURL: "https://test.com" },
+				})),
+			} as unknown as Api;
+
+			// Create mock Storage that uses Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.info(msg);
+				}),
+			} as unknown as Storage;
+
+			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+
+			const monitor = new WorkspaceMonitor(
+				mockWorkspace,
+				mockRestClient,
+				mockStorage,
+				mockVscodeProposed,
+			);
+
+			// Clear logs from initialization
+			logger.clear();
+			vi.mocked(mockStorage.writeToCoderOutputChannel).mockClear();
+
+			// Dispose the monitor
+			monitor.dispose();
+
+			// Verify unmonitoring message was logged
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				"Unmonitoring test-owner/test-workspace...",
+			);
+
+			const logs = logger.getLogs();
+			expect(logs.length).toBe(1);
+			expect(logs[0].message).toBe("Unmonitoring test-owner/test-workspace...");
 		});
 	});
 });
