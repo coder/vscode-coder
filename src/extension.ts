@@ -7,21 +7,16 @@ import { makeCoderSdk, needToken } from "./api";
 import { errToStr } from "./api-helper";
 import { Commands } from "./commands";
 import { CertificateError, getErrorDetail } from "./error";
+import { Logger } from "./logger";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
 import { toSafeHost } from "./util";
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider";
 
-export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
-	// The Remote SSH extension's proposed APIs are used to override the SSH host
-	// name in VS Code itself. It's visually unappealing having a lengthy name!
-	//
-	// This is janky, but that's alright since it provides such minimal
-	// functionality to the extension.
-	//
-	// Cursor and VSCode are covered by ms remote, and the only other is windsurf for now
-	// Means that vscodium is not supported by this for now
-
+export function setupRemoteSSHExtension(): {
+	vscodeProposed: typeof vscode;
+	remoteSSHExtension: vscode.Extension<unknown> | undefined;
+} {
 	const remoteSSHExtension =
 		vscode.extensions.getExtension("jeanp413.open-remote-ssh") ||
 		vscode.extensions.getExtension("codeium.windsurf-remote-openssh") ||
@@ -47,7 +42,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		);
 	}
 
-	const output = vscode.window.createOutputChannel("Coder");
+	return { vscodeProposed, remoteSSHExtension };
+}
+
+export async function initializeInfrastructure(
+	ctx: vscode.ExtensionContext,
+	output: vscode.OutputChannel,
+): Promise<{ storage: Storage; logger: Logger }> {
 	const storage = new Storage(
 		output,
 		ctx.globalState,
@@ -63,16 +64,25 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const logger = new Logger(output, { verbose });
 	storage.setLogger(logger);
 
-	// This client tracks the current login and will be used through the life of
-	// the plugin to poll workspaces for the current login, as well as being used
-	// in commands that operate on the current login.
-	const url = storage.getUrl();
-	const restClient = await makeCoderSdk(
-		url || "",
-		await storage.getSessionToken(),
-		storage,
-	);
+	return { storage, logger };
+}
 
+export async function initializeRestClient(
+	storage: Storage,
+): Promise<ReturnType<typeof makeCoderSdk>> {
+	const url = storage.getUrl();
+	const sessionToken = await storage.getSessionToken();
+	const restClient = await makeCoderSdk(url || "", sessionToken, storage);
+	return restClient;
+}
+
+export function setupTreeViews(
+	restClient: ReturnType<typeof makeCoderSdk>,
+	storage: Storage,
+): {
+	myWorkspacesProvider: WorkspaceProvider;
+	allWorkspacesProvider: WorkspaceProvider;
+} {
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
 		restClient,
@@ -103,6 +113,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		allWorkspacesProvider.setVisibility(event.visible);
 	});
 
+	return { myWorkspacesProvider, allWorkspacesProvider };
+}
+
+export function registerUriHandler(
+	commands: Commands,
+	restClient: ReturnType<typeof makeCoderSdk>,
+	storage: Storage,
+): void {
 	// Handle vscode:// URIs.
 	vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
@@ -241,10 +259,33 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		},
 	});
+}
+
+export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
+	// Setup remote SSH extension if available
+	const { vscodeProposed, remoteSSHExtension } = setupRemoteSSHExtension();
+
+	// Initialize infrastructure
+	const output = vscode.window.createOutputChannel("Coder");
+	const { storage } = await initializeInfrastructure(ctx, output);
+
+	// Initialize REST client
+	const restClient = await initializeRestClient(storage);
+
+	// Setup tree views
+	const { myWorkspacesProvider, allWorkspacesProvider } = setupTreeViews(
+		restClient,
+		storage,
+	);
+
+	// Create commands instance (needed for URI handler)
+	const commands = new Commands(vscodeProposed, restClient, storage);
+
+	// Register URI handler
+	registerUriHandler(commands, restClient, storage);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(vscodeProposed, restClient, storage);
 	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
 	vscode.commands.registerCommand(
 		"coder.logout",

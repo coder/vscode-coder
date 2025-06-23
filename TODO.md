@@ -46,7 +46,22 @@
 
 ### Refactoring Priority
 
-1. **extension.ts** (38.68% coverage) - extract initialization logic
+1. **extension.ts** (39.71% → 71.02% coverage ✅) - Break down monolithic activate() function
+
+   Extract these helper functions (TDD - write tests first):
+
+   - [x] setupRemoteSSHExtension() - Configure remote SSH extension
+   - [x] initializeInfrastructure() - Create storage and logger
+   - [x] initializeRestClient() - Setup REST client
+   - [x] setupTreeViews() - Create workspace providers and trees
+   - [x] registerUriHandler() - Handle vscode:// URIs
+   - [ ] registerCommands() - Register all VS Code commands
+   - [ ] handleRemoteEnvironment() - Setup remote workspace if needed
+   - [ ] checkAuthentication() - Verify user auth and fetch workspaces
+   - [ ] handleAutologin() - Process autologin configuration
+
+   Approach: Extract one function at a time, add tests, maintain passing suite
+
 2. **remote.ts** (49.21% coverage) - break down 400+ line methods
 3. **commands.ts** (64.19% coverage) - create UI abstraction layer
 
@@ -59,22 +74,23 @@
 
 ## Success Metrics
 
-| Metric                   | Target | Current | Status      |
-| ------------------------ | ------ | ------- | ----------- |
-| Unit test coverage       | 80%+   | 74.97%  | 🔄 Progress |
+| Metric                   | Target | Current               | Status      |
+| ------------------------ | ------ | --------------------- | ----------- |
+| Unit test coverage       | 80%+   | 77.28%  | 🔄 Progress |
 | Integration tests        | 60+    | 69      | ✅ Complete |
 | Logger adoption          | 100%   | 100%    | ✅ Complete |
-| Files with <50% coverage | 0      | 3       | 🔄 Progress |
+| Files with <50% coverage | 0      | 1       | 🔄 Progress |
 
 ## Immediate Next Steps
 
-1. **Clean up api.test.ts**
+1. **Refactor extension.ts using TDD**
 
+   - Start with setupRemoteSSHExtension() - write test first
+   - Continue with initializeInfrastructure() and other functions
+   - Run `yarn test:ci --coverage` after each extraction
+   - Target: 39.71% → 60%+ coverage
+
+2. **Clean up api.test.ts**
    - Remove eslint-disable comment
    - Create proper mock types for 30+ `as any` casts
    - Consider exposing test interfaces for better type safety
-
-3. **Improve low-coverage files**
-   - extension.ts: 38.68% → 60%+ (extract initialization)
-   - remote.ts: 49.21% → 70%+ (break down large methods)
-   - commands.ts: 64.19% → 75%+ (UI abstraction)
