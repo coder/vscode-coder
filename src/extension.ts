@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import { makeCoderSdk, needToken } from "./api";
 import { errToStr } from "./api-helper";
 import { Commands } from "./commands";
-import { CertificateError, getErrorDetail } from "./error";
+import { getErrorDetail } from "./error";
 import { Logger } from "./logger";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
@@ -261,29 +261,11 @@ export function registerUriHandler(
 	});
 }
 
-export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
-	// Setup remote SSH extension if available
-	const { vscodeProposed, remoteSSHExtension } = setupRemoteSSHExtension();
-
-	// Initialize infrastructure
-	const output = vscode.window.createOutputChannel("Coder");
-	const { storage } = await initializeInfrastructure(ctx, output);
-
-	// Initialize REST client
-	const restClient = await initializeRestClient(storage);
-
-	// Setup tree views
-	const { myWorkspacesProvider, allWorkspacesProvider } = setupTreeViews(
-		restClient,
-		storage,
-	);
-
-	// Create commands instance (needed for URI handler)
-	const commands = new Commands(vscodeProposed, restClient, storage);
-
-	// Register URI handler
-	registerUriHandler(commands, restClient, storage);
-
+export function registerCommands(
+	commands: Commands,
+	myWorkspacesProvider: WorkspaceProvider,
+	allWorkspacesProvider: WorkspaceProvider,
+): void {
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
 	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
@@ -328,132 +310,211 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		"coder.viewLogs",
 		commands.viewLogs.bind(commands),
 	);
+}
 
-	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
-	// in package.json we're able to perform actions before the authority is
-	// resolved by the remote SSH extension.
-	//
-	// In addition, if we don't have a remote SSH extension, we skip this
-	// activation event. This may allow the user to install the extension
-	// after the Coder extension is installed, instead of throwing a fatal error
-	// (this would require the user to uninstall the Coder extension and
-	// reinstall after installing the remote SSH extension, which is annoying)
-	if (remoteSSHExtension && vscodeProposed.env.remoteAuthority) {
-		const remote = new Remote(
-			vscodeProposed,
-			storage,
-			commands,
-			ctx.extensionMode,
-		);
-		try {
-			const details = await remote.setup(vscodeProposed.env.remoteAuthority);
-			if (details) {
-				// Authenticate the plugin client which is used in the sidebar to display
-				// workspaces belonging to this deployment.
-				restClient.setHost(details.url);
-				restClient.setSessionToken(details.token);
-			}
-		} catch (ex) {
-			if (ex instanceof CertificateError) {
-				storage.writeToCoderOutputChannel(ex.x509Err || ex.message);
-				await ex.showModal("Failed to open workspace");
-			} else if (isAxiosError(ex)) {
-				const msg = getErrorMessage(ex, "None");
-				const detail = getErrorDetail(ex) || "None";
-				const urlString = axios.getUri(ex.config);
-				const method = ex.config?.method?.toUpperCase() || "request";
-				const status = ex.response?.status || "None";
-				const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
-				storage.writeToCoderOutputChannel(message);
-				await vscodeProposed.window.showErrorMessage(
-					"Failed to open workspace",
-					{
-						detail: message,
-						modal: true,
-						useCustom: true,
-					},
-				);
-			} else {
-				const message = errToStr(ex, "No error message was provided");
-				storage.writeToCoderOutputChannel(message);
-				await vscodeProposed.window.showErrorMessage(
-					"Failed to open workspace",
-					{
-						detail: message,
-						modal: true,
-						useCustom: true,
-					},
-				);
-			}
-			// Always close remote session when we fail to open a workspace.
-			await remote.closeRemote();
-			return;
-		}
+export async function handleRemoteEnvironment(
+	vscodeProposed: typeof vscode,
+	remoteSSHExtension: vscode.Extension<unknown> | undefined,
+	restClient: ReturnType<typeof makeCoderSdk>,
+	storage: Storage,
+	commands: Commands,
+	ctx: vscode.ExtensionContext,
+): Promise<boolean> {
+	// Skip if no remote SSH extension or no remote authority
+	if (!remoteSSHExtension || !vscodeProposed.env.remoteAuthority) {
+		return true; // No remote environment to handle
 	}
 
+	const remote = new Remote(
+		vscodeProposed,
+		storage,
+		commands,
+		ctx.extensionMode,
+	);
+
+	try {
+		const details = await remote.setup(vscodeProposed.env.remoteAuthority);
+		if (details) {
+			// Authenticate the plugin client which is used in the sidebar to display
+			// workspaces belonging to this deployment.
+			restClient.setHost(details.url);
+			restClient.setSessionToken(details.token);
+		}
+		return true; // Success
+	} catch (ex) {
+		if (ex && typeof ex === "object" && "x509Err" in ex && "showModal" in ex) {
+			const certError = ex as {
+				x509Err?: string;
+				message?: string;
+				showModal: (title: string) => Promise<void>;
+			};
+			storage.writeToCoderOutputChannel(
+				certError.x509Err || certError.message || "Certificate error",
+			);
+			await certError.showModal("Failed to open workspace");
+		} else if (isAxiosError(ex)) {
+			const msg = getErrorMessage(ex, "None");
+			const detail = getErrorDetail(ex) || "None";
+			const urlString = axios.getUri(ex.config);
+			const method = ex.config?.method?.toUpperCase() || "request";
+			const status = ex.response?.status || "None";
+			const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
+			storage.writeToCoderOutputChannel(message);
+			await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+				detail: message,
+				modal: true,
+				useCustom: true,
+			});
+		} else {
+			const message = errToStr(ex, "No error message was provided");
+			storage.writeToCoderOutputChannel(message);
+			await vscodeProposed.window.showErrorMessage("Failed to open workspace", {
+				detail: message,
+				modal: true,
+				useCustom: true,
+			});
+		}
+		// Always close remote session when we fail to open a workspace.
+		await remote.closeRemote();
+		return false; // Failed
+	}
+}
+
+export async function checkAuthentication(
+	restClient: ReturnType<typeof makeCoderSdk>,
+	storage: Storage,
+	myWorkspacesProvider: WorkspaceProvider,
+	allWorkspacesProvider: WorkspaceProvider,
+): Promise<void> {
 	// See if the plugin client is authenticated.
 	const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
 	if (baseUrl) {
 		storage.writeToCoderOutputChannel(
 			`Logged in to ${baseUrl}; checking credentials`,
 		);
-		restClient
-			.getAuthenticatedUser()
-			.then(async (user) => {
-				if (user && user.roles) {
-					storage.writeToCoderOutputChannel("Credentials are valid");
-					vscode.commands.executeCommand(
+		try {
+			const user = await restClient.getAuthenticatedUser();
+			if (user && user.roles) {
+				storage.writeToCoderOutputChannel("Credentials are valid");
+				await vscode.commands.executeCommand(
+					"setContext",
+					"coder.authenticated",
+					true,
+				);
+				if (user.roles.find((role) => role.name === "owner")) {
+					await vscode.commands.executeCommand(
 						"setContext",
-						"coder.authenticated",
+						"coder.isOwner",
 						true,
 					);
-					if (user.roles.find((role) => role.name === "owner")) {
-						await vscode.commands.executeCommand(
-							"setContext",
-							"coder.isOwner",
-							true,
-						);
-					}
-
-					// Fetch and monitor workspaces, now that we know the client is good.
-					myWorkspacesProvider.fetchAndRefresh();
-					allWorkspacesProvider.fetchAndRefresh();
-				} else {
-					storage.writeToCoderOutputChannel(
-						`No error, but got unexpected response: ${user}`,
-					);
 				}
-			})
-			.catch((error) => {
-				// This should be a failure to make the request, like the header command
-				// errored.
-				storage.writeToCoderOutputChannel(
-					`Failed to check user authentication: ${error.message}`,
-				);
-				vscode.window.showErrorMessage(
-					`Failed to check user authentication: ${error.message}`,
-				);
-			})
-			.finally(() => {
-				vscode.commands.executeCommand("setContext", "coder.loaded", true);
-			});
-	} else {
-		storage.writeToCoderOutputChannel("Not currently logged in");
-		vscode.commands.executeCommand("setContext", "coder.loaded", true);
 
-		// Handle autologin, if not already logged in.
-		const cfg = vscode.workspace.getConfiguration();
-		if (cfg.get("coder.autologin") === true) {
-			const defaultUrl = cfg.get("coder.defaultUrl") || process.env.CODER_URL;
-			if (defaultUrl) {
-				vscode.commands.executeCommand(
-					"coder.login",
-					defaultUrl,
-					undefined,
-					undefined,
-					"true",
+				// Fetch and monitor workspaces, now that we know the client is good.
+				myWorkspacesProvider.fetchAndRefresh();
+				allWorkspacesProvider.fetchAndRefresh();
+			} else {
+				storage.writeToCoderOutputChannel(
+					`No error, but got unexpected response: ${user}`,
 				);
 			}
+		} catch (error) {
+			// This should be a failure to make the request, like the header command
+			// errored.
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			storage.writeToCoderOutputChannel(
+				`Failed to check user authentication: ${errorMessage}`,
+			);
+			vscode.window.showErrorMessage(
+				`Failed to check user authentication: ${errorMessage}`,
+			);
+		} finally {
+			await vscode.commands.executeCommand("setContext", "coder.loaded", true);
 		}
+	} else {
+		storage.writeToCoderOutputChannel("Not currently logged in");
+		await vscode.commands.executeCommand("setContext", "coder.loaded", true);
 	}
+}
+
+export async function handleAutologin(
+	restClient: ReturnType<typeof makeCoderSdk>,
+): Promise<void> {
+	// Only proceed if not already authenticated
+	const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
+	if (baseUrl) {
+		return; // Already logged in
+	}
+
+	// Check if autologin is enabled
+	const cfg = vscode.workspace.getConfiguration();
+	if (cfg.get("coder.autologin") !== true) {
+		return; // Autologin not enabled
+	}
+
+	// Get the URL from config or environment
+	const defaultUrl = cfg.get("coder.defaultUrl") || process.env.CODER_URL;
+	if (!defaultUrl) {
+		return; // No URL available
+	}
+
+	// Execute login command
+	await vscode.commands.executeCommand(
+		"coder.login",
+		defaultUrl,
+		undefined,
+		undefined,
+		"true",
+	);
+}
+
+export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
+	// Setup remote SSH extension if available
+	const { vscodeProposed, remoteSSHExtension } = setupRemoteSSHExtension();
+
+	// Initialize infrastructure
+	const output = vscode.window.createOutputChannel("Coder");
+	const { storage } = await initializeInfrastructure(ctx, output);
+
+	// Initialize REST client
+	const restClient = await initializeRestClient(storage);
+
+	// Setup tree views
+	const { myWorkspacesProvider, allWorkspacesProvider } = setupTreeViews(
+		restClient,
+		storage,
+	);
+
+	// Create commands instance (needed for URI handler)
+	const commands = new Commands(vscodeProposed, restClient, storage);
+
+	// Register URI handler
+	registerUriHandler(commands, restClient, storage);
+
+	// Register commands
+	registerCommands(commands, myWorkspacesProvider, allWorkspacesProvider);
+
+	// Handle remote environment if applicable
+	const remoteHandled = await handleRemoteEnvironment(
+		vscodeProposed,
+		remoteSSHExtension,
+		restClient,
+		storage,
+		commands,
+		ctx,
+	);
+	if (!remoteHandled) {
+		return; // Exit early if remote setup failed
+	}
+
+	// Check authentication
+	await checkAuthentication(
+		restClient,
+		storage,
+		myWorkspacesProvider,
+		allWorkspacesProvider,
+	);
+
+	// Handle autologin if not authenticated
+	await handleAutologin(restClient);
 }

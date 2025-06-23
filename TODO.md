@@ -46,7 +46,7 @@
 
 ### Refactoring Priority
 
-1. **extension.ts** (39.71% → 71.02% coverage ✅) - Break down monolithic activate() function
+1. **extension.ts** (39.71% → 81.51% coverage ✅) - Break down monolithic activate() function
 
    Extract these helper functions (TDD - write tests first):
 
@@ -55,8 +55,8 @@
    - [x] initializeRestClient() - Setup REST client
    - [x] setupTreeViews() - Create workspace providers and trees
    - [x] registerUriHandler() - Handle vscode:// URIs
-   - [ ] registerCommands() - Register all VS Code commands
-   - [ ] handleRemoteEnvironment() - Setup remote workspace if needed
+   - [x] registerCommands() - Register all VS Code commands
+   - [x] handleRemoteEnvironment() - Setup remote workspace if needed
    - [ ] checkAuthentication() - Verify user auth and fetch workspaces
    - [ ] handleAutologin() - Process autologin configuration
 
@@ -74,9 +74,9 @@
 
 ## Success Metrics
 
-| Metric                   | Target | Current               | Status      |
-| ------------------------ | ------ | --------------------- | ----------- |
-| Unit test coverage       | 80%+   | 77.28%  | 🔄 Progress |
+| Metric                   | Target | Current | Status      |
+| ------------------------ | ------ | ------- | ----------- |
+| Unit test coverage       | 80%+   | 78.15%  | 🔄 Progress |
 | Integration tests        | 60+    | 69      | ✅ Complete |
 | Logger adoption          | 100%   | 100%    | ✅ Complete |
 | Files with <50% coverage | 0      | 1       | 🔄 Progress |
