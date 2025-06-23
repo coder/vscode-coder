@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as vscode from "vscode";
 import * as vscodeActual from "vscode";
 import * as extension from "./extension";
+import {
+	createMockExtensionContext,
+	createMockRemoteSSHExtension,
+	createMockWorkspaceProvider,
+	createMockRemote,
+	createMockStorage,
+	createMockCommands,
+	createMockOutputChannel,
+} from "./test-helpers";
 
 // Mock dependencies
 vi.mock("axios", () => ({
@@ -158,35 +167,6 @@ vi.mock("vscode", () => ({
 	},
 }));
 
-const createMockCommands = () => ({
-	login: vi.fn(),
-	logout: vi.fn(),
-	openFromDashboard: vi.fn(),
-	navigateToWorkspace: vi.fn(),
-	navigateToAgent: vi.fn(),
-	viewAgentLogs: vi.fn(),
-	viewLogs: vi.fn(),
-	viewDebugLogs: vi.fn(),
-	vscodeSsh: vi.fn(),
-	createWorkspace: vi.fn(),
-	updateWorkspace: vi.fn(),
-	open: vi.fn(),
-	reloadWindow: vi.fn(),
-	refreshWorkspaces: vi.fn(),
-	navigateToWorkspaceSettings: vi.fn(),
-	openDevContainer: vi.fn(),
-	openFromSidebar: vi.fn(),
-	openAppStatus: vi.fn(),
-});
-
-const createMockStorage = (overrides = {}) => ({
-	getUrl: vi.fn().mockReturnValue(""),
-	getSessionToken: vi.fn().mockResolvedValue(""),
-	writeToCoderOutputChannel: vi.fn(),
-	setLogger: vi.fn(),
-	...overrides,
-});
-
 beforeEach(() => {
 	// Clear all mocks before each test
 	vi.clearAllMocks();
@@ -215,9 +195,9 @@ describe("extension", () => {
 
 		it("should return vscodeProposed when jeanp413.open-remote-ssh is found", async () => {
 			const vscode = await import("vscode");
-			const mockExtension = {
+			const mockExtension = createMockRemoteSSHExtension({
 				extensionPath: "/path/to/extension",
-			};
+			});
 
 			vi.mocked(vscode.extensions.getExtension).mockImplementation((id) => {
 				if (id === "jeanp413.open-remote-ssh") {
@@ -238,9 +218,9 @@ describe("extension", () => {
 
 		it("should return vscodeProposed when ms-vscode-remote.remote-ssh is found", async () => {
 			const vscode = await import("vscode");
-			const mockExtension = {
+			const mockExtension = createMockRemoteSSHExtension({
 				extensionPath: "/path/to/extension",
-			};
+			});
 
 			vi.mocked(vscode.extensions.getExtension).mockImplementation((id) => {
 				if (id === "ms-vscode-remote.remote-ssh") {
@@ -271,15 +251,11 @@ describe("extension", () => {
 				get: vi.fn().mockReturnValue(true), // verbose = true
 			} as never);
 
-			const mockOutputChannel = {
-				appendLine: vi.fn(),
-			};
-			const mockContext = {
-				globalState: { get: vi.fn(), update: vi.fn() },
-				secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() },
-				globalStorageUri: { fsPath: "/mock/global/storage" },
-				logUri: { fsPath: "/mock/log/path" },
-			};
+			const mockOutputChannel = createMockOutputChannel();
+			const mockContext = createMockExtensionContext({
+				globalStorageUri: { fsPath: "/mock/global/storage" } as vscode.Uri,
+				logUri: { fsPath: "/mock/log/path" } as vscode.Uri,
+			});
 
 			// Track Storage and Logger creation
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -333,13 +309,11 @@ describe("extension", () => {
 				get: vi.fn().mockReturnValue(undefined),
 			} as never);
 
-			const mockOutputChannel = { appendLine: vi.fn() };
-			const mockContext = {
-				globalState: { get: vi.fn(), update: vi.fn() },
-				secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() },
-				globalStorageUri: { fsPath: "/mock/global/storage" },
-				logUri: { fsPath: "/mock/log/path" },
-			};
+			const mockOutputChannel = createMockOutputChannel();
+			const mockContext = createMockExtensionContext({
+				globalStorageUri: { fsPath: "/mock/global/storage" } as vscode.Uri,
+				logUri: { fsPath: "/mock/log/path" } as vscode.Uri,
+			});
 
 			await extension.initializeInfrastructure(
 				mockContext as never,
@@ -410,14 +384,14 @@ describe("extension", () => {
 			const mockStorage = {};
 
 			// Mock workspace providers
-			const mockMyWorkspacesProvider = {
+			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
 				setVisibility: vi.fn(),
 				fetchAndRefresh: vi.fn(),
-			};
-			const mockAllWorkspacesProvider = {
+			});
+			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
 				setVisibility: vi.fn(),
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
 			vi.mocked(WorkspaceProvider).mockImplementation((query) => {
 				if (query === WorkspaceQuery.Mine) {
@@ -770,12 +744,12 @@ describe("extension", () => {
 				viewLogs: vi.fn(),
 			};
 
-			const mockMyWorkspacesProvider = {
+			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
-			const mockAllWorkspacesProvider = {
+			});
+			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
 			// Track registered commands
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -838,9 +812,9 @@ describe("extension", () => {
 				},
 			} as unknown as typeof vscode;
 
-			const mockRemoteSSHExtension = {
+			const mockRemoteSSHExtension = createMockRemoteSSHExtension({
 				extensionPath: "/path/to/extension",
-			} as vscode.Extension<unknown>;
+			});
 
 			const mockRestClient = {
 				setHost: vi.fn(),
@@ -853,17 +827,17 @@ describe("extension", () => {
 
 			const mockCommands = {};
 
-			const mockContext = {
+			const mockContext = createMockExtensionContext({
 				extensionMode: 1, // Normal mode
-			} as vscode.ExtensionContext;
+			});
 
-			const mockRemote = {
+			const mockRemote = createMockRemote({
 				setup: vi.fn().mockResolvedValue({
 					url: "https://test.coder.com",
 					token: "test-token-123",
 				}),
 				closeRemote: vi.fn(),
-			};
+			});
 
 			vi.mocked(Remote).mockImplementation(() => mockRemote as never);
 
@@ -903,18 +877,18 @@ describe("extension", () => {
 				},
 			} as unknown as typeof vscode;
 
-			const mockRemoteSSHExtension = {
+			const mockRemoteSSHExtension = createMockRemoteSSHExtension({
 				extensionPath: "/path/to/extension",
-			} as vscode.Extension<unknown>;
+			});
 
 			const mockRestClient = {};
 			const mockStorage = {
 				writeToCoderOutputChannel: vi.fn(),
 			};
 			const mockCommands = {};
-			const mockContext = {
+			const mockContext = createMockExtensionContext({
 				extensionMode: 1,
-			} as vscode.ExtensionContext;
+			});
 
 			// Create a mock error that mimics CertificateError
 			const mockError = {
@@ -924,10 +898,10 @@ describe("extension", () => {
 				showModal: vi.fn(),
 			};
 
-			const mockRemote = {
+			const mockRemote = createMockRemote({
 				setup: vi.fn().mockRejectedValue(mockError),
 				closeRemote: vi.fn(),
-			};
+			});
 
 			vi.mocked(Remote).mockImplementation(() => mockRemote as never);
 
@@ -962,18 +936,18 @@ describe("extension", () => {
 				},
 			} as unknown as typeof vscode;
 
-			const mockRemoteSSHExtension = {
+			const mockRemoteSSHExtension = createMockRemoteSSHExtension({
 				extensionPath: "/path/to/extension",
-			} as vscode.Extension<unknown>;
+			});
 
 			const mockRestClient = {};
 			const mockStorage = {
 				writeToCoderOutputChannel: vi.fn(),
 			};
 			const mockCommands = {};
-			const mockContext = {
+			const mockContext = createMockExtensionContext({
 				extensionMode: 1,
-			} as vscode.ExtensionContext;
+			});
 
 			const mockAxiosError = {
 				response: { status: 401 },
@@ -983,10 +957,10 @@ describe("extension", () => {
 
 			vi.mocked(isAxiosError).mockReturnValue(true);
 
-			const mockRemote = {
+			const mockRemote = createMockRemote({
 				setup: vi.fn().mockRejectedValue(mockAxiosError),
 				closeRemote: vi.fn(),
-			};
+			});
 
 			vi.mocked(Remote).mockImplementation(() => mockRemote as never);
 
@@ -1025,7 +999,7 @@ describe("extension", () => {
 			const mockRestClient = {};
 			const mockStorage = {};
 			const mockCommands = {};
-			const mockContext = {} as vscode.ExtensionContext;
+			const mockContext = createMockExtensionContext();
 
 			const result = await extension.handleRemoteEnvironment(
 				mockVscodeProposed,
@@ -1046,14 +1020,14 @@ describe("extension", () => {
 				env: { remoteAuthority: undefined }, // No remote authority
 			} as unknown as typeof vscode;
 
-			const mockRemoteSSHExtension = {
+			const mockRemoteSSHExtension = createMockRemoteSSHExtension({
 				extensionPath: "/path/to/extension",
-			} as vscode.Extension<unknown>;
+			});
 
 			const mockRestClient = {};
 			const mockStorage = {};
 			const mockCommands = {};
-			const mockContext = {} as vscode.ExtensionContext;
+			const mockContext = createMockExtensionContext();
 
 			const result = await extension.handleRemoteEnvironment(
 				mockVscodeProposed,
@@ -1089,13 +1063,13 @@ describe("extension", () => {
 				writeToCoderOutputChannel: vi.fn(),
 			};
 
-			const mockMyWorkspacesProvider = {
+			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
-			const mockAllWorkspacesProvider = {
+			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
 			await extension.checkAuthentication(
 				mockRestClient as never,
@@ -1144,13 +1118,13 @@ describe("extension", () => {
 				writeToCoderOutputChannel: vi.fn(),
 			};
 
-			const mockMyWorkspacesProvider = {
+			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
-			const mockAllWorkspacesProvider = {
+			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
 			await extension.checkAuthentication(
 				mockRestClient as never,
@@ -1189,13 +1163,13 @@ describe("extension", () => {
 				writeToCoderOutputChannel: vi.fn(),
 			};
 
-			const mockMyWorkspacesProvider = {
+			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
-			const mockAllWorkspacesProvider = {
+			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
 			await extension.checkAuthentication(
 				mockRestClient as never,
@@ -1239,13 +1213,13 @@ describe("extension", () => {
 				writeToCoderOutputChannel: vi.fn(),
 			};
 
-			const mockMyWorkspacesProvider = {
+			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
-			const mockAllWorkspacesProvider = {
+			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
 			await extension.checkAuthentication(
 				mockRestClient as never,
@@ -1273,13 +1247,13 @@ describe("extension", () => {
 				writeToCoderOutputChannel: vi.fn(),
 			};
 
-			const mockMyWorkspacesProvider = {
+			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
-			const mockAllWorkspacesProvider = {
+			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
-			};
+			});
 
 			await extension.checkAuthentication(
 				mockRestClient as never,
@@ -1488,24 +1462,15 @@ describe("extension", () => {
 			const vscode = await import("vscode");
 
 			// Mock extension context
-			const mockContext = {
-				globalState: {
-					get: vi.fn(),
-					update: vi.fn(),
-				},
-				secrets: {
-					get: vi.fn(),
-					store: vi.fn(),
-					delete: vi.fn(),
-				},
+			const mockContext = createMockExtensionContext({
 				globalStorageUri: {
 					fsPath: "/mock/global/storage",
-				},
+				} as vscode.Uri,
 				logUri: {
 					fsPath: "/mock/log/path",
-				},
+				} as vscode.Uri,
 				extensionMode: 1, // Normal mode
-			};
+			});
 
 			// Mock remote SSH extension not found to trigger error message
 			vi.mocked(vscode.extensions.getExtension).mockReturnValue(undefined);
@@ -1530,9 +1495,7 @@ describe("extension", () => {
 				})),
 			} as never);
 
-			await extension.activate(
-				mockContext as unknown as vscode.ExtensionContext,
-			);
+			await extension.activate(mockContext);
 
 			// Verify basic initialization steps
 			expect(vscode.window.createOutputChannel).toHaveBeenCalledWith("Coder");
@@ -1546,24 +1509,15 @@ describe("extension", () => {
 			const vscode = await import("vscode");
 
 			// Mock extension context
-			const mockContext = {
-				globalState: {
-					get: vi.fn(),
-					update: vi.fn(),
-				},
-				secrets: {
-					get: vi.fn(),
-					store: vi.fn(),
-					delete: vi.fn(),
-				},
+			const mockContext = createMockExtensionContext({
 				globalStorageUri: {
 					fsPath: "/mock/global/storage",
-				},
+				} as vscode.Uri,
 				logUri: {
 					fsPath: "/mock/log/path",
-				},
+				} as vscode.Uri,
 				extensionMode: 1, // Normal mode
-			};
+			});
 
 			// Track if URI handler was registered
 			let handlerRegistered = false;
@@ -1592,9 +1546,7 @@ describe("extension", () => {
 				})),
 			} as never);
 
-			await extension.activate(
-				mockContext as unknown as vscode.ExtensionContext,
-			);
+			await extension.activate(mockContext);
 
 			// Verify URI handler was registered
 			expect(handlerRegistered).toBe(true);
@@ -1614,31 +1566,22 @@ describe("extension", () => {
 
 			// Mock Remote class
 			const Remote = (await import("./remote")).Remote;
-			const mockRemote = {
-				setupRemote: vi.fn().mockResolvedValue({ id: "workspace-123" }),
-			};
+			const mockRemote = createMockRemote({
+				setup: vi.fn().mockResolvedValue({ id: "workspace-123" }),
+			});
 			vi.mocked(Remote).mockImplementation(() => mockRemote as never);
 
 			// Mock extension context
-			const mockContext = {
-				globalState: {
-					get: vi.fn(),
-					update: vi.fn(),
-				},
-				secrets: {
-					get: vi.fn(),
-					store: vi.fn(),
-					delete: vi.fn(),
-				},
+			const mockContext = createMockExtensionContext({
 				globalStorageUri: {
 					fsPath: "/mock/global/storage",
-				},
+				} as vscode.Uri,
 				logUri: {
 					fsPath: "/mock/log/path",
-				},
+				} as vscode.Uri,
 				extensionMode: 1,
 				subscriptions: [],
-			};
+			});
 
 			// Mock Storage
 			const Storage = (await import("./storage")).Storage;
@@ -1679,15 +1622,13 @@ describe("extension", () => {
 					}) as never,
 			);
 
-			await extension.activate(
-				mockContext as unknown as vscode.ExtensionContext,
-			);
+			await extension.activate(mockContext);
 
 			// Wait for async operations to complete
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
 			// Verify remote setup was called
-			expect(mockRemote.setupRemote).toHaveBeenCalled();
+			expect(mockRemote.setup).toHaveBeenCalled();
 			expect(WorkspaceMonitor).toHaveBeenCalled();
 
 			// Reset remote authority
@@ -1708,25 +1649,16 @@ describe("extension", () => {
 			} as never);
 
 			// Mock extension context
-			const mockContext = {
-				globalState: {
-					get: vi.fn(),
-					update: vi.fn(),
-				},
-				secrets: {
-					get: vi.fn(),
-					store: vi.fn(),
-					delete: vi.fn(),
-				},
+			const mockContext = createMockExtensionContext({
 				globalStorageUri: {
 					fsPath: "/mock/global/storage",
-				},
+				} as vscode.Uri,
 				logUri: {
 					fsPath: "/mock/log/path",
-				},
+				} as vscode.Uri,
 				extensionMode: 1,
 				subscriptions: [],
-			};
+			});
 
 			// Mock Storage to return expected values
 			const Storage = (await import("./storage")).Storage;
@@ -1755,9 +1687,7 @@ describe("extension", () => {
 				}),
 			} as never);
 
-			await extension.activate(
-				mockContext as unknown as vscode.ExtensionContext,
-			);
+			await extension.activate(mockContext);
 
 			// Wait for async operations to complete
 			await new Promise((resolve) => setTimeout(resolve, 100));
@@ -1782,39 +1712,24 @@ describe("extension", () => {
 			);
 
 			// Mock extension context
-			const mockContext = {
-				globalState: {
-					get: vi.fn(),
-					update: vi.fn(),
-				},
-				secrets: {
-					get: vi.fn(),
-					store: vi.fn(),
-					delete: vi.fn(),
-				},
+			const mockContext = createMockExtensionContext({
 				globalStorageUri: {
 					fsPath: "/mock/global/storage",
-				},
+				} as vscode.Uri,
 				logUri: {
 					fsPath: "/mock/log/path",
-				},
+				} as vscode.Uri,
 				extensionMode: 1, // Normal mode
-			};
+			});
 
 			// Track Storage instance and setLogger call
-			let setLoggerCalled = false;
-			let storageInstance = createMockStorage();
-			const Storage = (await import("./storage")).Storage;
-			vi.mocked(Storage).mockImplementation(() => {
-				storageInstance = createMockStorage({
-					setLogger: vi.fn(() => {
-						setLoggerCalled = true;
-					}),
-					getUrl: vi.fn().mockReturnValue(""),
-					getSessionToken: vi.fn().mockResolvedValue(""),
-				});
-				return storageInstance as never;
+			const mockStorage = createMockStorage({
+				getUrl: vi.fn().mockReturnValue(""),
+				getSessionToken: vi.fn().mockResolvedValue(""),
+				setLogger: vi.fn(),
 			});
+			const Storage = (await import("./storage")).Storage;
+			vi.mocked(Storage).mockImplementation(() => mockStorage as never);
 
 			// Logger is already mocked at the top level
 
@@ -1833,16 +1748,13 @@ describe("extension", () => {
 				})),
 			} as never);
 
-			await extension.activate(
-				mockContext as unknown as vscode.ExtensionContext,
-			);
+			await extension.activate(mockContext);
 
 			// Verify Storage was created
 			expect(Storage).toHaveBeenCalled();
 
 			// Verify setLogger was called on Storage
-			expect(setLoggerCalled).toBe(true);
-			expect(storageInstance.setLogger).toHaveBeenCalled();
+			expect(mockStorage.setLogger).toHaveBeenCalled();
 		});
 	});
 });

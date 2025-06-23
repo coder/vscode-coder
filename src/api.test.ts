@@ -1,7 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { spawn } from "child_process";
 import { Api } from "coder/site/src/api/api";
-import { EventEmitter } from "events";
 import * as fs from "fs/promises";
 import { ProxyAgent } from "proxy-agent";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
@@ -19,7 +17,13 @@ import {
 import { errToStr } from "./api-helper";
 import { getHeaderArgs } from "./headers";
 import { getProxyForUrl } from "./proxy";
-import { createMockConfiguration, createMockStorage } from "./test-helpers";
+import {
+	createMockConfiguration,
+	createMockStorage,
+	createMockApi,
+	createMockChildProcess,
+	createMockWebSocket,
+} from "./test-helpers";
 import { expandPath } from "./util";
 
 // Mock dependencies
@@ -62,11 +66,7 @@ describe("api", () => {
 		},
 	};
 
-	const mockApi = {
-		setHost: vi.fn(),
-		setSessionToken: vi.fn(),
-		getAxiosInstance: vi.fn().mockReturnValue(mockAxiosInstance),
-	};
+	let mockApi: ReturnType<typeof createMockApi>;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -79,9 +79,10 @@ describe("api", () => {
 		);
 
 		// Setup API mock (after clearAllMocks)
-		vi.mocked(Api).mockImplementation(() => mockApi as any);
-		// Re-setup the getAxiosInstance mock after clearAllMocks
-		mockApi.getAxiosInstance.mockReturnValue(mockAxiosInstance);
+		mockApi = createMockApi({
+			getAxiosInstance: vi.fn().mockReturnValue(mockAxiosInstance),
+		});
+		vi.mocked(Api).mockImplementation(() => mockApi as never);
 	});
 
 	afterEach(() => {
@@ -280,13 +281,13 @@ describe("api", () => {
 	});
 
 	describe("makeCoderSdk", () => {
-		let mockCreateHttpAgent: any;
+		let mockCreateHttpAgent: ReturnType<typeof vi.fn>;
 
 		beforeEach(() => {
 			// Mock createHttpAgent
 			mockCreateHttpAgent = vi.fn().mockResolvedValue(new ProxyAgent({}));
 			vi.doMock("./api", async () => {
-				const actual = (await vi.importActual("./api")) as any;
+				const actual = await vi.importActual<typeof import("./api")>("./api");
 				return {
 					...actual,
 					createHttpAgent: mockCreateHttpAgent,
@@ -413,9 +414,7 @@ describe("api", () => {
 				request: vi.fn().mockResolvedValue(mockAxiosResponse),
 			};
 
-			const adapter = createStreamingFetchAdapter(
-				mockAxiosInstance as unknown as any,
-			);
+			const adapter = createStreamingFetchAdapter(mockAxiosInstance as never);
 
 			// Mock ReadableStream
 			global.ReadableStream = vi.fn().mockImplementation((options) => {
@@ -436,7 +435,7 @@ describe("api", () => {
 				}
 
 				return stream;
-			}) as any;
+			}) as never;
 
 			const result = await adapter("https://example.com/api", {
 				headers: { Authorization: "Bearer token" },
@@ -477,9 +476,7 @@ describe("api", () => {
 				}),
 			};
 
-			const adapter = createStreamingFetchAdapter(
-				mockAxiosInstance as unknown as any,
-			);
+			const adapter = createStreamingFetchAdapter(mockAxiosInstance as never);
 
 			await adapter(new URL("https://example.com/api"));
 
@@ -500,17 +497,17 @@ describe("api", () => {
 				latest_build: { status: "running" },
 			};
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
-			};
+			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
 			const result = await startWorkspaceIfStoppedOrFailed(
-				mockRestClient as any,
+				mockRestClient,
 				"/config",
 				"/bin/coder",
-				mockWorkspace as any,
+				mockWorkspace as never,
 				mockWriteEmitter,
 			);
 
@@ -531,30 +528,28 @@ describe("api", () => {
 				latest_build: { status: "running" },
 			};
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getWorkspace: vi
 					.fn()
 					.mockResolvedValueOnce(stoppedWorkspace)
 					.mockResolvedValueOnce(runningWorkspace),
-			};
+			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
 			// Mock child_process.spawn
-			const mockProcess = new EventEmitter() as any;
-			mockProcess.stdout = new EventEmitter();
-			mockProcess.stderr = new EventEmitter();
-			vi.mocked(spawn).mockReturnValue(mockProcess);
+			const mockProcess = createMockChildProcess();
+			vi.mocked(spawn).mockReturnValue(mockProcess as never);
 
 			// Mock getHeaderArgs
 			vi.mocked(getHeaderArgs).mockReturnValue(["--header", "key=value"]);
 
 			// Start the async operation
 			const resultPromise = startWorkspaceIfStoppedOrFailed(
-				mockRestClient as any,
+				mockRestClient,
 				"/config",
 				"/bin/coder",
-				stoppedWorkspace as any,
+				stoppedWorkspace as never,
 				mockWriteEmitter,
 			);
 
@@ -586,27 +581,25 @@ describe("api", () => {
 				latest_build: { status: "failed" },
 			};
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getWorkspace: vi.fn().mockResolvedValue(stoppedWorkspace),
-			};
+			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
 			// Mock child_process.spawn
-			const mockProcess = new EventEmitter() as any;
-			mockProcess.stdout = new EventEmitter();
-			mockProcess.stderr = new EventEmitter();
-			vi.mocked(spawn).mockReturnValue(mockProcess);
+			const mockProcess = createMockChildProcess();
+			vi.mocked(spawn).mockReturnValue(mockProcess as never);
 
 			// Mock getHeaderArgs
 			vi.mocked(getHeaderArgs).mockReturnValue([]);
 
 			// Start the async operation
 			const resultPromise = startWorkspaceIfStoppedOrFailed(
-				mockRestClient as any,
+				mockRestClient,
 				"/config",
 				"/bin/coder",
-				stoppedWorkspace as any,
+				stoppedWorkspace as never,
 				mockWriteEmitter,
 			);
 
@@ -634,7 +627,7 @@ describe("api", () => {
 				{ id: 2, output: "Build in progress..." },
 			];
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getWorkspaceBuildLogs: vi.fn().mockResolvedValue(mockLogs),
 				getWorkspace: vi.fn().mockResolvedValue({
 					...mockWorkspace,
@@ -650,20 +643,19 @@ describe("api", () => {
 						},
 					},
 				})),
-			};
+			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
 			// Mock WebSocket
-			const mockSocket = new EventEmitter() as any;
-			mockSocket.binaryType = "nodebuffer";
-			vi.mocked(WebSocket).mockImplementation(() => mockSocket);
+			const mockSocket = createMockWebSocket();
+			vi.mocked(WebSocket).mockImplementation(() => mockSocket as never);
 
 			// Start the async operation
 			const resultPromise = waitForBuild(
-				mockRestClient as any,
+				mockRestClient,
 				mockWriteEmitter,
-				mockWorkspace as any,
+				mockWorkspace as never,
 			);
 
 			// Simulate WebSocket events
@@ -698,7 +690,7 @@ describe("api", () => {
 				latest_build: { id: "build-1" },
 			};
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getWorkspaceBuildLogs: vi.fn().mockResolvedValue([]),
 				getAxiosInstance: vi.fn(() => ({
 					defaults: {
@@ -706,23 +698,22 @@ describe("api", () => {
 						headers: { common: {} },
 					},
 				})),
-			};
+			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
 			// Mock WebSocket
-			const mockSocket = new EventEmitter() as any;
-			mockSocket.binaryType = "nodebuffer";
-			vi.mocked(WebSocket).mockImplementation(() => mockSocket);
+			const mockSocket = createMockWebSocket();
+			vi.mocked(WebSocket).mockImplementation(() => mockSocket as never);
 
 			// Mock errToStr
 			vi.mocked(errToStr).mockReturnValue("connection failed");
 
 			// Start the async operation
 			const resultPromise = waitForBuild(
-				mockRestClient as any,
+				mockRestClient,
 				mockWriteEmitter,
-				mockWorkspace as any,
+				mockWorkspace as never,
 			);
 
 			// Simulate WebSocket error
@@ -740,20 +731,16 @@ describe("api", () => {
 				latest_build: { id: "build-1" },
 			};
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn(() => ({
 					defaults: {},
 				})),
-			};
+			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
 			await expect(
-				waitForBuild(
-					mockRestClient as any,
-					mockWriteEmitter,
-					mockWorkspace as any,
-				),
+				waitForBuild(mockRestClient, mockWriteEmitter, mockWorkspace as never),
 			).rejects.toThrow("No base URL set on REST client");
 		});
 
@@ -763,7 +750,7 @@ describe("api", () => {
 				latest_build: { id: "build-1" },
 			};
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getWorkspaceBuildLogs: vi.fn().mockResolvedValue([]),
 				getAxiosInstance: vi.fn(() => ({
 					defaults: {
@@ -771,7 +758,7 @@ describe("api", () => {
 						headers: { common: {} },
 					},
 				})),
-			};
+			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
@@ -784,11 +771,7 @@ describe("api", () => {
 			vi.mocked(errToStr).mockReturnValue("malformed URL");
 
 			await expect(
-				waitForBuild(
-					mockRestClient as any,
-					mockWriteEmitter,
-					mockWorkspace as any,
-				),
+				waitForBuild(mockRestClient, mockWriteEmitter, mockWorkspace as never),
 			).rejects.toThrow(
 				"Failed to watch workspace build on invalid-url://this-will-fail: malformed URL",
 			);
@@ -805,7 +788,7 @@ describe("api", () => {
 				{ id: 20, output: "Build in progress..." },
 			];
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getWorkspaceBuildLogs: vi.fn().mockResolvedValue(mockLogs),
 				getWorkspace: vi.fn().mockResolvedValue({
 					...mockWorkspace,
@@ -819,20 +802,19 @@ describe("api", () => {
 						},
 					},
 				})),
-			};
+			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
 			// Mock WebSocket
-			const mockSocket = new EventEmitter() as any;
-			mockSocket.binaryType = "nodebuffer";
-			vi.mocked(WebSocket).mockImplementation(() => mockSocket);
+			const mockSocket = createMockWebSocket();
+			vi.mocked(WebSocket).mockImplementation(() => mockSocket as never);
 
 			// Start the async operation
 			const resultPromise = waitForBuild(
-				mockRestClient as any,
+				mockRestClient,
 				mockWriteEmitter,
-				mockWorkspace as any,
+				mockWorkspace as never,
 			);
 
 			// Simulate WebSocket events
@@ -862,7 +844,7 @@ describe("api", () => {
 				latest_build: { id: "build-1", status: "running" },
 			};
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getWorkspaceBuildLogs: vi.fn().mockResolvedValue([]),
 				getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
 				getAxiosInstance: vi.fn(() => ({
@@ -873,20 +855,19 @@ describe("api", () => {
 						},
 					},
 				})),
-			};
+			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
 			// Mock WebSocket
-			const mockSocket = new EventEmitter() as any;
-			mockSocket.binaryType = "nodebuffer";
-			vi.mocked(WebSocket).mockImplementation(() => mockSocket);
+			const mockSocket = createMockWebSocket();
+			vi.mocked(WebSocket).mockImplementation(() => mockSocket as never);
 
 			// Start the async operation
 			const resultPromise = waitForBuild(
-				mockRestClient as any,
+				mockRestClient,
 				mockWriteEmitter,
-				mockWorkspace as any,
+				mockWorkspace as never,
 			);
 
 			// Simulate WebSocket events

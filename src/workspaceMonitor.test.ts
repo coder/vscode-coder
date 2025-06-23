@@ -1,8 +1,15 @@
-import { Api } from "coder/site/src/api/api";
 import { Workspace } from "coder/site/src/api/typesGenerated";
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { Storage } from "./storage";
-import { createMockOutputChannelWithLogger } from "./test-helpers";
+import {
+	createMockOutputChannelWithLogger,
+	getPrivateProperty,
+	createMockWorkspace,
+	createMockApi,
+	createMockStorage,
+	createMockVSCode,
+	createMockWorkspaceRunning,
+	createMockWorkspaceStopped,
+} from "./test-helpers";
 import { WorkspaceMonitor } from "./workspaceMonitor";
 
 // Mock dependencies
@@ -17,27 +24,20 @@ vi.mock("./api-helper");
 vi.mock("./storage");
 
 beforeAll(() => {
-	vi.mock("vscode", () => {
+	vi.mock("vscode", async () => {
+		const { createMockVSCode, createMockStatusBarItem } = await import(
+			"./test-helpers"
+		);
+		const mockVSCode = createMockVSCode();
 		return {
-			EventEmitter: class MockEventEmitter {
-				fire = vi.fn();
-				event = vi.fn();
-				dispose = vi.fn();
-			},
+			...mockVSCode,
 			window: {
-				createStatusBarItem: vi.fn(() => ({
-					hide: vi.fn(),
-					show: vi.fn(),
-					dispose: vi.fn(),
-				})),
-				showInformationMessage: vi.fn(),
+				...mockVSCode.window,
+				createStatusBarItem: vi.fn(() => createMockStatusBarItem()),
 			},
 			StatusBarAlignment: {
 				Left: 1,
 				Right: 2,
-			},
-			commands: {
-				executeCommand: vi.fn(),
 			},
 		};
 	});
@@ -45,16 +45,10 @@ beforeAll(() => {
 
 describe("workspaceMonitor", () => {
 	it("should create WorkspaceMonitor instance", () => {
-		const mockWorkspace = {} as Workspace;
-		const mockRestClient = {
-			getAxiosInstance: vi.fn(() => ({
-				defaults: { baseURL: "https://test.com" },
-			})),
-		} as unknown as Api;
-		const mockStorage = {
-			writeToCoderOutputChannel: vi.fn(),
-		} as unknown as Storage;
-		const mockVscodeProposed = {} as unknown as typeof import("vscode");
+		const mockWorkspace = createMockWorkspace();
+		const mockRestClient = createMockApi();
+		const mockStorage = createMockStorage();
+		const mockVscodeProposed = createMockVSCode();
 
 		const monitor = new WorkspaceMonitor(
 			mockWorkspace,
@@ -70,21 +64,15 @@ describe("workspaceMonitor", () => {
 
 	describe("dispose", () => {
 		it("should dispose resources and close event source", () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				owner_name: "test-owner",
 				name: "test-workspace",
 				id: "test-id",
-			} as Workspace;
+			});
 
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -94,10 +82,14 @@ describe("workspaceMonitor", () => {
 			);
 
 			// Spy on the private properties - we need to access them to verify cleanup
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const monitorAny = monitor as any;
-			const closeSpy = vi.spyOn(monitorAny.eventSource, "close");
-			const disposeSpy = vi.spyOn(monitorAny.statusBarItem, "dispose");
+			const eventSource = getPrivateProperty(monitor, "eventSource") as {
+				close: ReturnType<typeof vi.fn>;
+			};
+			const statusBarItem = getPrivateProperty(monitor, "statusBarItem") as {
+				dispose: ReturnType<typeof vi.fn>;
+			};
+			const closeSpy = vi.spyOn(eventSource, "close");
+			const disposeSpy = vi.spyOn(statusBarItem, "dispose");
 
 			// Call dispose
 			monitor.dispose();
@@ -110,25 +102,19 @@ describe("workspaceMonitor", () => {
 			expect(closeSpy).toHaveBeenCalled();
 
 			// Verify disposed flag is set
-			expect(monitorAny.disposed).toBe(true);
+			expect(getPrivateProperty(monitor, "disposed")).toBe(true);
 		});
 
 		it("should not dispose twice when called multiple times", () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				owner_name: "test-owner",
 				name: "test-workspace",
 				id: "test-id",
-			} as Workspace;
+			});
 
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -137,10 +123,14 @@ describe("workspaceMonitor", () => {
 				mockVscodeProposed,
 			);
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const monitorAny = monitor as any;
-			const closeSpy = vi.spyOn(monitorAny.eventSource, "close");
-			const disposeSpy = vi.spyOn(monitorAny.statusBarItem, "dispose");
+			const eventSource = getPrivateProperty(monitor, "eventSource") as {
+				close: ReturnType<typeof vi.fn>;
+			};
+			const statusBarItem = getPrivateProperty(monitor, "statusBarItem") as {
+				dispose: ReturnType<typeof vi.fn>;
+			};
+			const closeSpy = vi.spyOn(eventSource, "close");
+			const disposeSpy = vi.spyOn(statusBarItem, "dispose");
 
 			// Call dispose twice
 			monitor.dispose();
@@ -155,25 +145,19 @@ describe("workspaceMonitor", () => {
 
 	describe("maybeNotifyAutostop", () => {
 		it("should notify about impending autostop when workspace is running and deadline is soon", async () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspaceRunning({
 				owner_name: "test-owner",
 				name: "test-workspace",
 				id: "test-id",
 				latest_build: {
-					status: "running",
+					...createMockWorkspaceRunning().latest_build,
 					deadline: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 minutes from now
 				},
-			} as Workspace;
+			});
 
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -187,8 +171,11 @@ describe("workspaceMonitor", () => {
 			vi.mocked(vscode.window.showInformationMessage).mockClear();
 
 			// Call the private maybeNotifyAutostop method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(monitor as any).maybeNotifyAutostop(mockWorkspace);
+			const maybeNotifyAutostop = getPrivateProperty(
+				monitor,
+				"maybeNotifyAutostop",
+			) as (workspace: Workspace) => void;
+			maybeNotifyAutostop.call(monitor, mockWorkspace);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				expect.stringContaining("is scheduled to shut down in"),
@@ -198,16 +185,10 @@ describe("workspaceMonitor", () => {
 
 	describe("isImpending", () => {
 		it("should return true when target time is within notify window", () => {
-			const mockWorkspace = {} as Workspace;
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			const mockWorkspace = createMockWorkspace();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -220,23 +201,20 @@ describe("workspaceMonitor", () => {
 			const targetTime = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 			const notifyTime = 30 * 60 * 1000; // 30 minutes
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const result = (monitor as any).isImpending(targetTime, notifyTime);
+			const isImpending = getPrivateProperty(monitor, "isImpending") as (
+				targetTime: string,
+				notifyTime: number,
+			) => boolean;
+			const result = isImpending.call(monitor, targetTime, notifyTime);
 
 			expect(result).toBe(true);
 		});
 
 		it("should return false when target time is beyond notify window", () => {
-			const mockWorkspace = {} as Workspace;
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			const mockWorkspace = createMockWorkspace();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -251,8 +229,11 @@ describe("workspaceMonitor", () => {
 			).toISOString();
 			const notifyTime = 30 * 60 * 1000; // 30 minutes
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const result = (monitor as any).isImpending(targetTime, notifyTime);
+			const isImpending = getPrivateProperty(monitor, "isImpending") as (
+				targetTime: string,
+				notifyTime: number,
+			) => boolean;
+			const result = isImpending.call(monitor, targetTime, notifyTime);
 
 			expect(result).toBe(false);
 		});
@@ -260,18 +241,12 @@ describe("workspaceMonitor", () => {
 
 	describe("updateStatusBar", () => {
 		it("should show status bar when workspace is outdated", () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				outdated: false,
-			} as Workspace;
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			});
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -280,14 +255,20 @@ describe("workspaceMonitor", () => {
 				mockVscodeProposed,
 			);
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const monitorAny = monitor as any;
-			const showSpy = vi.spyOn(monitorAny.statusBarItem, "show");
-			const hideSpy = vi.spyOn(monitorAny.statusBarItem, "hide");
+			const statusBarItem = getPrivateProperty(monitor, "statusBarItem") as {
+				show: ReturnType<typeof vi.fn>;
+				hide: ReturnType<typeof vi.fn>;
+			};
+			const showSpy = vi.spyOn(statusBarItem, "show");
+			const hideSpy = vi.spyOn(statusBarItem, "hide");
 
 			// Test outdated workspace
-			const outdatedWorkspace = { outdated: true } as Workspace;
-			monitorAny.updateStatusBar(outdatedWorkspace);
+			const outdatedWorkspace = createMockWorkspace({ outdated: true });
+			const updateStatusBar = getPrivateProperty(
+				monitor,
+				"updateStatusBar",
+			) as (workspace: Workspace) => void;
+			updateStatusBar.call(monitor, outdatedWorkspace);
 			expect(showSpy).toHaveBeenCalled();
 			expect(hideSpy).not.toHaveBeenCalled();
 
@@ -296,8 +277,8 @@ describe("workspaceMonitor", () => {
 			hideSpy.mockClear();
 
 			// Test up-to-date workspace
-			const currentWorkspace = { outdated: false } as Workspace;
-			monitorAny.updateStatusBar(currentWorkspace);
+			const currentWorkspace = createMockWorkspace({ outdated: false });
+			updateStatusBar.call(monitor, currentWorkspace);
 			expect(hideSpy).toHaveBeenCalled();
 			expect(showSpy).not.toHaveBeenCalled();
 		});
@@ -305,16 +286,10 @@ describe("workspaceMonitor", () => {
 
 	describe("notifyError", () => {
 		it("should write error to output channel", () => {
-			const mockWorkspace = {} as Workspace;
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			const mockWorkspace = createMockWorkspace();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -330,8 +305,10 @@ describe("workspaceMonitor", () => {
 
 			// Call the private notifyError method
 			const testError = new Error("Test error");
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(monitor as any).notifyError(testError);
+			const notifyError = getPrivateProperty(monitor, "notifyError") as (
+				error: Error,
+			) => void;
+			notifyError.call(monitor, testError);
 
 			// Verify error was written to output channel
 			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
@@ -344,22 +321,16 @@ describe("workspaceMonitor", () => {
 
 	describe("maybeNotifyDeletion", () => {
 		it("should notify about impending deletion when workspace has deleting_at and deadline is soon", async () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				owner_name: "test-owner",
 				name: "test-workspace",
 				id: "test-id",
 				deleting_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(), // 12 hours from now
-			} as Workspace;
+			});
 
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -373,8 +344,11 @@ describe("workspaceMonitor", () => {
 			vi.mocked(vscode.window.showInformationMessage).mockClear();
 
 			// Call the private maybeNotifyDeletion method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(monitor as any).maybeNotifyDeletion(mockWorkspace);
+			const maybeNotifyDeletion = getPrivateProperty(
+				monitor,
+				"maybeNotifyDeletion",
+			) as (workspace: Workspace) => void;
+			maybeNotifyDeletion.call(monitor, mockWorkspace);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				expect.stringContaining("is scheduled for deletion in"),
@@ -384,33 +358,23 @@ describe("workspaceMonitor", () => {
 
 	describe("maybeNotifyNotRunning", () => {
 		it("should notify and offer reload when workspace is not running", async () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspaceStopped({
 				owner_name: "test-owner",
 				name: "test-workspace",
 				id: "test-id",
-				latest_build: {
-					status: "stopped",
-				},
-			} as Workspace;
+			});
 
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			// Mock vscodeProposed with showInformationMessage
 			const mockShowInformationMessage = vi
 				.fn()
 				.mockResolvedValue("Reload Window");
-			const mockVscodeProposed = {
-				window: {
-					showInformationMessage: mockShowInformationMessage,
-				},
-			} as unknown as typeof import("vscode");
+			const mockVscodeProposed = createMockVSCode();
+			vi.mocked(
+				mockVscodeProposed.window.showInformationMessage,
+			).mockImplementation(mockShowInformationMessage);
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -424,8 +388,11 @@ describe("workspaceMonitor", () => {
 			vi.mocked(vscode.commands.executeCommand).mockClear();
 
 			// Call the private maybeNotifyNotRunning method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await (monitor as any).maybeNotifyNotRunning(mockWorkspace);
+			const maybeNotifyNotRunning = getPrivateProperty(
+				monitor,
+				"maybeNotifyNotRunning",
+			) as (workspace: Workspace) => Promise<void>;
+			await maybeNotifyNotRunning.call(monitor, mockWorkspace);
 
 			expect(mockShowInformationMessage).toHaveBeenCalledWith(
 				"test-owner/test-workspace is no longer running!",
@@ -449,13 +416,13 @@ describe("workspaceMonitor", () => {
 
 	describe("maybeNotifyOutdated", () => {
 		it("should notify about outdated workspace and offer update", async () => {
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				owner_name: "test-owner",
 				name: "test-workspace",
 				id: "test-id",
 				template_id: "template-123",
 				outdated: true,
-			} as Workspace;
+			});
 
 			const mockTemplate = {
 				active_version_id: "version-456",
@@ -465,17 +432,12 @@ describe("workspaceMonitor", () => {
 				message: "New version with improved performance",
 			};
 
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
+			const mockRestClient = createMockApi({
 				getTemplate: vi.fn().mockResolvedValue(mockTemplate),
 				getTemplateVersion: vi.fn().mockResolvedValue(mockTemplateVersion),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			});
+			const mockStorage = createMockStorage();
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,
@@ -493,8 +455,11 @@ describe("workspaceMonitor", () => {
 			vi.mocked(vscode.commands.executeCommand).mockClear();
 
 			// Call the private maybeNotifyOutdated method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await (monitor as any).maybeNotifyOutdated(mockWorkspace);
+			const maybeNotifyOutdated = getPrivateProperty(
+				monitor,
+				"maybeNotifyOutdated",
+			) as (workspace: Workspace) => Promise<void>;
+			await maybeNotifyOutdated.call(monitor, mockWorkspace);
 
 			// Wait for promises to resolve
 			await new Promise((resolve) => setTimeout(resolve, 10));
@@ -519,26 +484,22 @@ describe("workspaceMonitor", () => {
 		it("should log messages through Logger when Storage has Logger set", () => {
 			const { logger } = createMockOutputChannelWithLogger();
 
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				owner_name: "test-owner",
 				name: "test-workspace",
 				id: "test-id",
-			} as Workspace;
+			});
 
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
+			const mockRestClient = createMockApi();
 
 			// Create mock Storage that uses Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.info(msg);
 				}),
-			} as unknown as Storage;
+			});
 
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			const mockVscodeProposed = createMockVSCode();
 
 			// Create WorkspaceMonitor which should log initialization
 			new WorkspaceMonitor(
@@ -561,26 +522,22 @@ describe("workspaceMonitor", () => {
 		it("should handle dispose and log unmonitoring message", () => {
 			const { logger } = createMockOutputChannelWithLogger();
 
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				owner_name: "test-owner",
 				name: "test-workspace",
 				id: "test-id",
-			} as Workspace;
+			});
 
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.com" },
-				})),
-			} as unknown as Api;
+			const mockRestClient = createMockApi();
 
 			// Create mock Storage that uses Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.info(msg);
 				}),
-			} as unknown as Storage;
+			});
 
-			const mockVscodeProposed = {} as unknown as typeof import("vscode");
+			const mockVscodeProposed = createMockVSCode();
 
 			const monitor = new WorkspaceMonitor(
 				mockWorkspace,

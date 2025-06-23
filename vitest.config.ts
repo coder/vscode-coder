@@ -21,6 +21,7 @@ export default defineConfig({
 				"src/**/*.test.ts",
 				"src/test/**",
 				"src/**/*.d.ts",
+				"src/test-helpers.ts",
 			],
 		},
 	},

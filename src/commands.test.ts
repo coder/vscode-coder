@@ -1,10 +1,15 @@
-import { Api } from "coder/site/src/api/api";
-import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated";
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import * as vscode from "vscode";
 import { Commands } from "./commands";
-import { Storage } from "./storage";
-import { createMockOutputChannelWithLogger } from "./test-helpers";
+import {
+	createMockOutputChannelWithLogger,
+	createMockVSCode,
+	createMockApi,
+	createMockStorage,
+	createMockStorageWithAuth,
+	createMockWorkspace,
+	createMockAgent,
+} from "./test-helpers";
 import { OpenableTreeItem } from "./workspacesProvider";
 
 // Mock dependencies
@@ -60,9 +65,9 @@ beforeAll(() => {
 
 describe("commands", () => {
 	it("should create Commands instance", () => {
-		const mockVscodeProposed = {} as typeof vscode;
-		const mockRestClient = {} as Api;
-		const mockStorage = {} as Storage;
+		const mockVscodeProposed = createMockVSCode();
+		const mockRestClient = createMockApi();
+		const mockStorage = createMockStorage();
 
 		const commands = new Commands(
 			mockVscodeProposed,
@@ -78,13 +83,9 @@ describe("commands", () => {
 
 	describe("maybeAskAgent", () => {
 		it("should throw error when no matching agents", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
@@ -95,7 +96,7 @@ describe("commands", () => {
 			const { extractAgents } = await import("./api-helper");
 			vi.mocked(extractAgents).mockReturnValue([]);
 
-			const mockWorkspace = { id: "test-workspace" } as Workspace;
+			const mockWorkspace = createMockWorkspace({ id: "test-workspace" });
 
 			await expect(commands.maybeAskAgent(mockWorkspace)).rejects.toThrow(
 				"Workspace has no matching agents",
@@ -103,66 +104,58 @@ describe("commands", () => {
 		});
 
 		it("should return single agent when only one exists", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
 			);
 
-			const mockAgent = {
+			const mockAgent = createMockAgent({
 				id: "agent-1",
 				name: "main",
 				status: "connected",
-			} as WorkspaceAgent;
+			});
 
 			// Mock extractAgents to return single agent
 			const { extractAgents } = await import("./api-helper");
 			vi.mocked(extractAgents).mockReturnValue([mockAgent]);
 
-			const mockWorkspace = { id: "test-workspace" } as Workspace;
+			const mockWorkspace = createMockWorkspace({ id: "test-workspace" });
 
 			const result = await commands.maybeAskAgent(mockWorkspace);
 			expect(result).toBe(mockAgent);
 		});
 
 		it("should filter agents by name when filter provided", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
 			);
 
-			const mainAgent = {
+			const mainAgent = createMockAgent({
 				id: "agent-1",
 				name: "main",
 				status: "connected",
-			} as WorkspaceAgent;
+			});
 
-			const gpuAgent = {
+			const gpuAgent = createMockAgent({
 				id: "agent-2",
 				name: "gpu",
 				status: "connected",
-			} as WorkspaceAgent;
+			});
 
 			// Mock extractAgents to return multiple agents
 			const { extractAgents } = await import("./api-helper");
 			vi.mocked(extractAgents).mockReturnValue([mainAgent, gpuAgent]);
 
-			const mockWorkspace = { id: "test-workspace" } as Workspace;
+			const mockWorkspace = createMockWorkspace({ id: "test-workspace" });
 
 			// Should return gpu agent when filtered by name
 			const result = await commands.maybeAskAgent(mockWorkspace, "gpu");
@@ -178,13 +171,9 @@ describe("commands", () => {
 				showInformationMessageMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
@@ -217,13 +206,9 @@ describe("commands", () => {
 			);
 			vi.mocked(vscode.Uri.file).mockImplementation(fileMock);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
@@ -253,16 +238,16 @@ describe("commands", () => {
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi({
 				setHost: vi.fn(),
 				setSessionToken: vi.fn(),
-			} as unknown as Api;
-			const mockStorage = {
+			});
+			const mockStorage = createMockStorage({
 				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
 				setUrl: vi.fn(),
 				setSessionToken: vi.fn(),
-			} as unknown as Storage;
+			});
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -307,13 +292,9 @@ describe("commands", () => {
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -340,13 +321,9 @@ describe("commands", () => {
 				showInformationMessageMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -375,13 +352,9 @@ describe("commands", () => {
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -408,20 +381,16 @@ describe("commands", () => {
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
+			const mockVscodeProposed = createMockVSCode();
 			const mockAxiosInstance = {
 				defaults: {
 					baseURL: "https://connected.coder.com",
 				},
 			};
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn().mockReturnValue(mockAxiosInstance),
-			} as unknown as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			});
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -430,10 +399,10 @@ describe("commands", () => {
 			);
 
 			// Set up connected workspace
-			commands.workspace = {
+			commands.workspace = createMockWorkspace({
 				owner_name: "connecteduser",
 				name: "connected-workspace",
-			} as Workspace;
+			});
 			commands.workspaceRestClient = mockRestClient;
 
 			await commands.navigateToWorkspaceSettings(
@@ -454,13 +423,9 @@ describe("commands", () => {
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -479,13 +444,9 @@ describe("commands", () => {
 
 	describe("maybeAskUrl", () => {
 		it("should return undefined when user aborts", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -506,13 +467,9 @@ describe("commands", () => {
 		});
 
 		it("should normalize URL with https prefix when missing", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -526,13 +483,9 @@ describe("commands", () => {
 		});
 
 		it("should remove trailing slashes", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -548,17 +501,9 @@ describe("commands", () => {
 
 	describe("updateWorkspace", () => {
 		it("should do nothing when no workspace is active", async () => {
-			const mockVscodeProposed = {
-				window: {
-					showInformationMessage: vi.fn(),
-				},
-			} as unknown as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -582,22 +527,16 @@ describe("commands", () => {
 			const showInformationMessageMock = vi.fn().mockResolvedValue("Update");
 			const updateWorkspaceVersionMock = vi.fn().mockResolvedValue(undefined);
 
-			const mockVscodeProposed = {
-				window: {
-					showInformationMessage: showInformationMessageMock,
-				},
-			} as unknown as typeof vscode;
+			const mockVscodeProposed = createMockVSCode();
+			mockVscodeProposed.window.showInformationMessage =
+				showInformationMessageMock;
 
-			const mockWorkspaceRestClient = {
+			const mockWorkspaceRestClient = createMockApi({
 				updateWorkspaceVersion: updateWorkspaceVersionMock,
-			} as unknown as Api;
+			});
 
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -606,10 +545,10 @@ describe("commands", () => {
 			);
 
 			// Set up active workspace
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				owner_name: "testuser",
 				name: "my-workspace",
-			} as Workspace;
+			});
 			commands.workspace = mockWorkspace;
 			commands.workspaceRestClient = mockWorkspaceRestClient;
 
@@ -633,17 +572,13 @@ describe("commands", () => {
 
 	describe("openFromSidebar", () => {
 		it("should throw error when not logged in", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn().mockReturnValue({
 					defaults: { baseURL: "" }, // Empty baseURL indicates not logged in
 				}),
-			} as unknown as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			});
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -664,13 +599,9 @@ describe("commands", () => {
 
 	describe("login", () => {
 		it("should abort when user cancels URL selection", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -690,13 +621,9 @@ describe("commands", () => {
 		});
 
 		it("should abort when user cancels token request", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -734,16 +661,16 @@ describe("commands", () => {
 				undefined,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi({
 				setHost: vi.fn(),
 				setSessionToken: vi.fn(),
-			} as unknown as Api;
-			const mockStorage = {
+			});
+			const mockStorage = createMockStorage({
 				setUrl: vi.fn(),
 				setSessionToken: vi.fn(),
 				configureCli: vi.fn(),
-			} as unknown as Storage;
+			});
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -794,11 +721,11 @@ describe("commands", () => {
 			const openExternalMock = vi.fn().mockResolvedValue(true);
 			vi.mocked(vscode.env.openExternal).mockImplementation(openExternalMock);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage({
 				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-			} as unknown as Storage;
+			});
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -827,11 +754,11 @@ describe("commands", () => {
 				showInformationMessageMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage({
 				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-			} as unknown as Storage;
+			});
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -872,13 +799,9 @@ describe("commands", () => {
 			const { toSafeHost } = await import("./util");
 			vi.mocked(toSafeHost).mockReturnValue("test.coder.com");
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -911,17 +834,13 @@ describe("commands", () => {
 
 	describe("open", () => {
 		it("should throw error when no deployment URL is provided", async () => {
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn().mockReturnValue({
 					defaults: { baseURL: "" },
 				}),
-			} as unknown as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			});
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -938,17 +857,13 @@ describe("commands", () => {
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn().mockReturnValue({
 					defaults: { baseURL: "https://test.coder.com" },
 				}),
-			} as unknown as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			});
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -984,17 +899,13 @@ describe("commands", () => {
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn().mockReturnValue({
 					defaults: { baseURL: "https://test.coder.com" },
 				}),
-			} as unknown as Api;
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
-				getSessionTokenPath: vi.fn().mockReturnValue("/path/to/token"),
-			} as unknown as Storage;
+			});
+			const mockStorage = createMockStorageWithAuth();
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -1035,11 +946,11 @@ describe("commands", () => {
 				},
 			);
 
-			const mockVscodeProposed = {} as typeof vscode;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
+			const mockVscodeProposed = createMockVSCode();
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage({
 				getUrl: vi.fn().mockReturnValue(undefined), // No URL
-			} as unknown as Storage;
+			});
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -1081,26 +992,22 @@ describe("commands", () => {
 			vi.mocked(getErrorMessage).mockReturnValue("Authentication failed");
 
 			// Mock showErrorMessage for vscodeProposed
-			const mockVscodeProposed = {
-				window: {
-					showErrorMessage: vi.fn(),
-				},
-			} as unknown as typeof vscode;
+			const mockVscodeProposed = createMockVSCode();
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				setHost: vi.fn(),
 				setSessionToken: vi.fn(),
-			} as unknown as Api;
+			});
 
 			// Create mock Storage that uses Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.info(msg);
 				}),
 				setUrl: vi.fn(),
 				setSessionToken: vi.fn(),
 				configureCli: vi.fn(),
-			} as unknown as Storage;
+			});
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -1151,26 +1058,22 @@ describe("commands", () => {
 			const { getErrorMessage } = await import("coder/site/src/api/errors");
 			vi.mocked(getErrorMessage).mockReturnValue("Network error");
 
-			const mockVscodeProposed = {
-				window: {
-					showErrorMessage: vi.fn(),
-				},
-			} as unknown as typeof vscode;
+			const mockVscodeProposed = createMockVSCode();
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				setHost: vi.fn(),
 				setSessionToken: vi.fn(),
-			} as unknown as Api;
+			});
 
 			// Simulate Storage with Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.error(msg);
 				}),
 				setUrl: vi.fn(),
 				setSessionToken: vi.fn(),
 				configureCli: vi.fn(),
-			} as unknown as Storage;
+			});
 
 			const commands = new Commands(
 				mockVscodeProposed,
@@ -1220,27 +1123,24 @@ describe("commands", () => {
 			vi.mocked(getErrorMessage).mockReturnValue("Invalid token");
 
 			// Mock showErrorMessage for vscodeProposed
-			const showErrorMessageMock = vi.fn();
-			const mockVscodeProposed = {
-				window: {
-					showErrorMessage: showErrorMessageMock,
-				},
-			} as unknown as typeof vscode;
+			const mockVscodeProposed = createMockVSCode();
+			const showErrorMessageMock = mockVscodeProposed.window
+				.showErrorMessage as ReturnType<typeof vi.fn>;
 
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				setHost: vi.fn(),
 				setSessionToken: vi.fn(),
-			} as unknown as Api;
+			});
 
 			// Create mock Storage that uses Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.info(msg);
 				}),
 				setUrl: vi.fn(),
 				setSessionToken: vi.fn(),
 				configureCli: vi.fn(),
-			} as unknown as Storage;
+			});
 
 			const commands = new Commands(
 				mockVscodeProposed,

@@ -1,8 +1,10 @@
 import * as os from "os";
 import { it, expect, describe, beforeEach, afterEach, vi } from "vitest";
-import { WorkspaceConfiguration } from "vscode";
 import { getHeaderArgs, getHeaderCommand, getHeaders } from "./headers";
-import { createMockOutputChannelWithLogger } from "./test-helpers";
+import {
+	createMockConfiguration,
+	createMockOutputChannelWithLogger,
+} from "./test-helpers";
 
 const logger = {
 	writeToCoderOutputChannel() {
@@ -114,17 +116,15 @@ describe("getHeaderCommand", () => {
 	});
 
 	it("should return undefined if coder.headerCommand is not set in config", () => {
-		const config = {
-			get: () => undefined,
-		} as unknown as WorkspaceConfiguration;
+		const config = createMockConfiguration();
 
 		expect(getHeaderCommand(config)).toBeUndefined();
 	});
 
 	it("should return undefined if coder.headerCommand is not a string", () => {
-		const config = {
-			get: () => 1234,
-		} as unknown as WorkspaceConfiguration;
+		const config = createMockConfiguration({
+			"coder.headerCommand": 1234,
+		});
 
 		expect(getHeaderCommand(config)).toBeUndefined();
 	});
@@ -132,9 +132,9 @@ describe("getHeaderCommand", () => {
 	it("should return coder.headerCommand if set in config", () => {
 		vi.stubEnv("CODER_HEADER_COMMAND", "printf 'x=y'");
 
-		const config = {
-			get: () => "printf 'foo=bar'",
-		} as unknown as WorkspaceConfiguration;
+		const config = createMockConfiguration({
+			"coder.headerCommand": "printf 'foo=bar'",
+		});
 
 		expect(getHeaderCommand(config)).toBe("printf 'foo=bar'");
 	});
@@ -142,9 +142,7 @@ describe("getHeaderCommand", () => {
 	it("should return CODER_HEADER_COMMAND if coder.headerCommand is not set in config and CODER_HEADER_COMMAND is set in environment", () => {
 		vi.stubEnv("CODER_HEADER_COMMAND", "printf 'x=y'");
 
-		const config = {
-			get: () => undefined,
-		} as unknown as WorkspaceConfiguration;
+		const config = createMockConfiguration();
 
 		expect(getHeaderCommand(config)).toBe("printf 'x=y'");
 	});
@@ -160,17 +158,15 @@ describe("getHeaderArgs", () => {
 	});
 
 	it("should return empty array when no header command is set", () => {
-		const config = {
-			get: () => undefined,
-		} as unknown as WorkspaceConfiguration;
+		const config = createMockConfiguration();
 
 		expect(getHeaderArgs(config)).toEqual([]);
 	});
 
 	it("should return escaped header args with simple command", () => {
-		const config = {
-			get: () => "printf test",
-		} as unknown as WorkspaceConfiguration;
+		const config = createMockConfiguration({
+			"coder.headerCommand": "printf test",
+		});
 
 		const result = getHeaderArgs(config);
 		expect(result).toHaveLength(2);
@@ -179,9 +175,9 @@ describe("getHeaderArgs", () => {
 	});
 
 	it("should handle commands with special characters", () => {
-		const config = {
-			get: () => "echo 'hello world'",
-		} as unknown as WorkspaceConfiguration;
+		const config = createMockConfiguration({
+			"coder.headerCommand": "echo 'hello world'",
+		});
 
 		const result = getHeaderArgs(config);
 		expect(result).toHaveLength(2);

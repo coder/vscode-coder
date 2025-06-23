@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { Commands } from "./commands";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
+import { createMockStorage } from "./test-helpers";
 
 // Mock dependencies
 vi.mock("axios", () => ({
@@ -124,8 +125,8 @@ describe("remote", () => {
 			},
 		} as unknown as typeof vscode;
 
-		// Storage import not needed here since we use mocks
-		mockStorage = {
+		// Create mock storage with overrides
+		mockStorage = createMockStorage({
 			getSessionTokenPath: vi.fn().mockReturnValue("/mock/session/path"),
 			writeToCoderOutputChannel: vi.fn(),
 			migrateSessionToken: vi.fn().mockResolvedValue(undefined),
@@ -133,7 +134,7 @@ describe("remote", () => {
 			getRemoteSSHLogPath: vi.fn().mockResolvedValue(undefined),
 			fetchBinary: vi.fn().mockResolvedValue("/path/to/coder"),
 			getNetworkInfoPath: vi.fn().mockReturnValue("/mock/network/info"),
-		} as unknown as Storage;
+		});
 		mockCommands = {} as Commands;
 	});
 

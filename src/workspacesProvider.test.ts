@@ -1,8 +1,14 @@
-import { Api } from "coder/site/src/api/api";
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import * as vscode from "vscode";
-import { Storage } from "./storage";
-import { createMockOutputChannelWithLogger } from "./test-helpers";
+import {
+	createMockApi,
+	createMockStorage,
+	getPrivateProperty,
+	setPrivateProperty,
+	createMockOutputChannelWithLogger,
+	createMockVSCode,
+	createMockWorkspace,
+} from "./test-helpers";
 import { WorkspaceProvider, WorkspaceQuery } from "./workspacesProvider";
 
 // Mock dependencies
@@ -11,43 +17,9 @@ vi.mock("./api");
 vi.mock("./api-helper");
 vi.mock("./storage");
 
-beforeAll(() => {
-	vi.mock("vscode", () => {
-		return {
-			TreeItem: class MockTreeItem {
-				label: string;
-				description?: string;
-				tooltip?: string;
-				contextValue?: string;
-				collapsibleState?: number;
-				constructor(label: string, collapsibleState?: number) {
-					this.label = label;
-					this.collapsibleState = collapsibleState;
-				}
-			},
-			TreeItemCollapsibleState: {
-				None: 0,
-				Collapsed: 1,
-				Expanded: 2,
-			},
-			EventEmitter: class MockEventEmitter {
-				fire = vi.fn();
-				event = vi.fn();
-				dispose = vi.fn();
-			},
-			env: {
-				logLevel: 2,
-			},
-			LogLevel: {
-				Off: 0,
-				Trace: 1,
-				Debug: 2,
-				Info: 3,
-				Warning: 4,
-				Error: 5,
-			},
-		};
-	});
+vi.mock("vscode", async () => {
+	const helpers = await import("./test-helpers");
+	return helpers.createMockVSCode();
 });
 
 describe("workspacesProvider", () => {
@@ -58,8 +30,8 @@ describe("workspacesProvider", () => {
 
 	it("should create WorkspaceProvider instance", () => {
 		const mockWorkspaceQuery = WorkspaceQuery.Mine;
-		const mockRestClient = {} as Api;
-		const mockStorage = {} as Storage;
+		const mockRestClient = createMockApi();
+		const mockStorage = createMockStorage();
 
 		const provider = new WorkspaceProvider(
 			mockWorkspaceQuery,
@@ -73,10 +45,8 @@ describe("workspacesProvider", () => {
 	describe("setVisibility", () => {
 		it("should set visibility to false and cancel pending refresh", () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -86,31 +56,25 @@ describe("workspacesProvider", () => {
 
 			// Set up initial state - simulate having a timeout
 			const mockTimeout = setTimeout(() => {}, 1000);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).timeout = mockTimeout;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).visible = true;
+			setPrivateProperty(provider, "timeout", mockTimeout);
+			setPrivateProperty(provider, "visible", true);
 
 			// Spy on clearTimeout to verify it's called
 			const clearTimeoutSpy = vi.spyOn(global, "clearTimeout");
 
 			provider.setVisibility(false);
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			expect((provider as any).visible).toBe(false);
+			expect(getPrivateProperty(provider, "visible")).toBe(false);
 			expect(clearTimeoutSpy).toHaveBeenCalledWith(mockTimeout);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			expect((provider as any).timeout).toBeUndefined();
+			expect(getPrivateProperty(provider, "timeout")).toBeUndefined();
 
 			clearTimeoutSpy.mockRestore();
 		});
 
 		it("should set visibility to true when workspaces exist", () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -119,24 +83,21 @@ describe("workspacesProvider", () => {
 			);
 
 			// Set up initial state - simulate having workspaces
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).workspaces = [{ label: "test-workspace" }];
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).visible = false;
+			const MockTreeItem = createMockVSCode()
+				.TreeItem as typeof vscode.TreeItem;
+			setPrivateProperty(provider, "workspaces", [
+				new MockTreeItem("test-workspace"),
+			]);
+			setPrivateProperty(provider, "visible", false);
 
 			// Mock the maybeScheduleRefresh method
 			const maybeScheduleRefreshSpy = vi
-				.spyOn(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					provider as any,
-					"maybeScheduleRefresh",
-				)
+				.spyOn(provider, "maybeScheduleRefresh" as never)
 				.mockImplementation(() => {});
 
 			provider.setVisibility(true);
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			expect((provider as any).visible).toBe(true);
+			expect(getPrivateProperty(provider, "visible")).toBe(true);
 			expect(maybeScheduleRefreshSpy).toHaveBeenCalled();
 
 			maybeScheduleRefreshSpy.mockRestore();
@@ -146,10 +107,8 @@ describe("workspacesProvider", () => {
 	describe("getTreeItem", () => {
 		it("should return the same element passed to it", () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -157,10 +116,10 @@ describe("workspacesProvider", () => {
 				mockStorage,
 			);
 
-			const mockTreeItem = {
-				label: "test-item",
-				description: "Test description",
-			} as vscode.TreeItem;
+			const MockTreeItem = createMockVSCode()
+				.TreeItem as typeof vscode.TreeItem;
+			const mockTreeItem = new MockTreeItem("test-item");
+			mockTreeItem.description = "Test description";
 
 			const result = provider.getTreeItem(mockTreeItem);
 
@@ -171,10 +130,8 @@ describe("workspacesProvider", () => {
 	describe("fetchAndRefresh", () => {
 		it("should not fetch when already fetching", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -183,18 +140,12 @@ describe("workspacesProvider", () => {
 			);
 
 			// Set up state
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).fetching = true;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).visible = true;
+			setPrivateProperty(provider, "fetching", true);
+			setPrivateProperty(provider, "visible", true);
 
 			// Mock the fetch method to ensure it's not called
 			const fetchSpy = vi
-				.spyOn(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					provider as any,
-					"fetch",
-				)
+				.spyOn(provider, "fetch" as never)
 				.mockResolvedValue([]);
 
 			await provider.fetchAndRefresh();
@@ -206,10 +157,8 @@ describe("workspacesProvider", () => {
 
 		it("should not fetch when not visible", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -218,18 +167,12 @@ describe("workspacesProvider", () => {
 			);
 
 			// Set up state
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).fetching = false;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).visible = false;
+			setPrivateProperty(provider, "fetching", false);
+			setPrivateProperty(provider, "visible", false);
 
 			// Mock the fetch method to ensure it's not called
 			const fetchSpy = vi
-				.spyOn(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					provider as any,
-					"fetch",
-				)
+				.spyOn(provider, "fetch" as never)
 				.mockResolvedValue([]);
 
 			await provider.fetchAndRefresh();
@@ -241,10 +184,8 @@ describe("workspacesProvider", () => {
 
 		it("should handle errors when fetching workspaces", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -253,18 +194,12 @@ describe("workspacesProvider", () => {
 			);
 
 			// Set up state
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).fetching = false;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).visible = true;
+			setPrivateProperty(provider, "fetching", false);
+			setPrivateProperty(provider, "visible", true);
 
 			// Mock the fetch method to throw an error
 			const fetchSpy = vi
-				.spyOn(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					provider as any,
-					"fetch",
-				)
+				.spyOn(provider, "fetch" as never)
 				.mockRejectedValue(new Error("Fetch failed"));
 
 			// Mock refresh and maybeScheduleRefresh methods
@@ -272,18 +207,13 @@ describe("workspacesProvider", () => {
 				.spyOn(provider, "refresh")
 				.mockImplementation(() => {});
 			const maybeScheduleRefreshSpy = vi
-				.spyOn(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					provider as any,
-					"maybeScheduleRefresh",
-				)
+				.spyOn(provider, "maybeScheduleRefresh" as never)
 				.mockImplementation(() => {});
 
 			await provider.fetchAndRefresh();
 
 			expect(fetchSpy).toHaveBeenCalled();
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			expect((provider as any).workspaces).toEqual([]);
+			expect(getPrivateProperty(provider, "workspaces")).toEqual([]);
 			expect(refreshSpy).toHaveBeenCalled();
 			// Should not schedule refresh on error
 			expect(maybeScheduleRefreshSpy).not.toHaveBeenCalled();
@@ -297,10 +227,8 @@ describe("workspacesProvider", () => {
 	describe("refresh", () => {
 		it("should fire onDidChangeTreeData event", () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -310,8 +238,10 @@ describe("workspacesProvider", () => {
 
 			// Mock the EventEmitter's fire method
 			const fireSpy = vi.spyOn(
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				(provider as any)._onDidChangeTreeData,
+				getPrivateProperty(
+					provider,
+					"_onDidChangeTreeData",
+				) as vscode.EventEmitter<null>,
 				"fire",
 			);
 
@@ -325,10 +255,8 @@ describe("workspacesProvider", () => {
 
 		it("should fire onDidChangeTreeData event with undefined", () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -338,8 +266,10 @@ describe("workspacesProvider", () => {
 
 			// Mock the EventEmitter's fire method
 			const fireSpy = vi.spyOn(
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				(provider as any)._onDidChangeTreeData,
+				getPrivateProperty(
+					provider,
+					"_onDidChangeTreeData",
+				) as vscode.EventEmitter<null>,
 				"fire",
 			);
 
@@ -354,10 +284,8 @@ describe("workspacesProvider", () => {
 	describe("getChildren", () => {
 		it("should return workspaces when no element is provided", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -366,9 +294,13 @@ describe("workspacesProvider", () => {
 			);
 
 			// Set up workspaces
-			const mockWorkspaces = [{ label: "workspace1" }, { label: "workspace2" }];
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).workspaces = mockWorkspaces;
+			const MockTreeItem = createMockVSCode()
+				.TreeItem as typeof vscode.TreeItem;
+			const mockWorkspaces = [
+				new MockTreeItem("workspace1"),
+				new MockTreeItem("workspace2"),
+			];
+			setPrivateProperty(provider, "workspaces", mockWorkspaces);
 
 			const result = await provider.getChildren();
 
@@ -377,10 +309,8 @@ describe("workspacesProvider", () => {
 
 		it("should return empty array when workspaces is undefined", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -389,8 +319,7 @@ describe("workspacesProvider", () => {
 			);
 
 			// Ensure workspaces is undefined
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).workspaces = undefined;
+			setPrivateProperty(provider, "workspaces", undefined);
 
 			const result = await provider.getChildren();
 
@@ -399,10 +328,8 @@ describe("workspacesProvider", () => {
 
 		it("should return agent items when WorkspaceTreeItem element is provided", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -442,10 +369,8 @@ describe("workspacesProvider", () => {
 	describe("fetchAndRefresh - success path", () => {
 		it("should fetch workspaces successfully and schedule refresh", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 			const timerSeconds = 60;
 
 			const provider = new WorkspaceProvider(
@@ -456,19 +381,15 @@ describe("workspacesProvider", () => {
 			);
 
 			// Set up state
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).fetching = false;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).visible = true;
+			setPrivateProperty(provider, "fetching", false);
+			setPrivateProperty(provider, "visible", true);
 
 			// Mock successful fetch
-			const mockWorkspaces = [{ label: "workspace1" }];
+			const MockTreeItem = createMockVSCode()
+				.TreeItem as typeof vscode.TreeItem;
+			const mockWorkspaces = [new MockTreeItem("workspace1")];
 			const fetchSpy = vi
-				.spyOn(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					provider as any,
-					"fetch",
-				)
+				.spyOn(provider, "fetch" as never)
 				.mockResolvedValue(mockWorkspaces);
 
 			// Mock refresh and maybeScheduleRefresh methods
@@ -476,18 +397,13 @@ describe("workspacesProvider", () => {
 				.spyOn(provider, "refresh")
 				.mockImplementation(() => {});
 			const maybeScheduleRefreshSpy = vi
-				.spyOn(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					provider as any,
-					"maybeScheduleRefresh",
-				)
+				.spyOn(provider, "maybeScheduleRefresh" as never)
 				.mockImplementation(() => {});
 
 			await provider.fetchAndRefresh();
 
 			expect(fetchSpy).toHaveBeenCalled();
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			expect((provider as any).workspaces).toBe(mockWorkspaces);
+			expect(getPrivateProperty(provider, "workspaces")).toBe(mockWorkspaces);
 			expect(refreshSpy).toHaveBeenCalled();
 			// Should schedule refresh on success
 			expect(maybeScheduleRefreshSpy).toHaveBeenCalled();
@@ -501,10 +417,8 @@ describe("workspacesProvider", () => {
 	describe("maybeScheduleRefresh", () => {
 		it("should schedule refresh when timer is set and not fetching", () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 			const timerSeconds = 30;
 
 			const provider = new WorkspaceProvider(
@@ -515,10 +429,8 @@ describe("workspacesProvider", () => {
 			);
 
 			// Set up state
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).fetching = false;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).timeout = undefined;
+			setPrivateProperty(provider, "fetching", false);
+			setPrivateProperty(provider, "timeout", undefined);
 
 			// Spy on setTimeout
 			const setTimeoutSpy = vi
@@ -526,12 +438,14 @@ describe("workspacesProvider", () => {
 				.mockImplementation(() => 123 as never);
 
 			// Call maybeScheduleRefresh
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).maybeScheduleRefresh();
+			const maybeScheduleRefresh = getPrivateProperty(
+				provider,
+				"maybeScheduleRefresh",
+			) as () => void;
+			maybeScheduleRefresh.call(provider);
 
 			expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 30000);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			expect((provider as any).timeout).toBe(123);
+			expect(getPrivateProperty(provider, "timeout")).toBe(123);
 
 			setTimeoutSpy.mockRestore();
 		});
@@ -540,10 +454,8 @@ describe("workspacesProvider", () => {
 	describe("fetchAndRefresh - clears pending refresh", () => {
 		it("should clear pending refresh before fetching", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -553,38 +465,28 @@ describe("workspacesProvider", () => {
 
 			// Set up state with existing timeout
 			const mockTimeout = setTimeout(() => {}, 1000);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).fetching = false;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).visible = true;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).timeout = mockTimeout;
+			setPrivateProperty(provider, "fetching", false);
+			setPrivateProperty(provider, "visible", true);
+			setPrivateProperty(provider, "timeout", mockTimeout);
 
 			// Spy on clearTimeout
 			const clearTimeoutSpy = vi.spyOn(global, "clearTimeout");
 
 			// Mock successful fetch
 			const fetchSpy = vi
-				.spyOn(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					provider as any,
-					"fetch",
-				)
+				.spyOn(provider, "fetch" as never)
 				.mockResolvedValue([]);
 
 			// Mock other methods
 			vi.spyOn(provider, "refresh").mockImplementation(() => {});
-			vi.spyOn(
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				provider as any,
-				"maybeScheduleRefresh",
-			).mockImplementation(() => {});
+			vi.spyOn(provider, "maybeScheduleRefresh" as never).mockImplementation(
+				() => {},
+			);
 
 			await provider.fetchAndRefresh();
 
 			expect(clearTimeoutSpy).toHaveBeenCalledWith(mockTimeout);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			expect((provider as any).timeout).toBeUndefined();
+			expect(getPrivateProperty(provider, "timeout")).toBeUndefined();
 
 			clearTimeoutSpy.mockRestore();
 			fetchSpy.mockRestore();
@@ -594,10 +496,8 @@ describe("workspacesProvider", () => {
 	describe("cancelPendingRefresh", () => {
 		it("should clear timeout when called", () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -607,19 +507,20 @@ describe("workspacesProvider", () => {
 
 			// Set up a mock timeout
 			const mockTimeout = setTimeout(() => {}, 1000);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).timeout = mockTimeout;
+			setPrivateProperty(provider, "timeout", mockTimeout);
 
 			// Spy on clearTimeout
 			const clearTimeoutSpy = vi.spyOn(global, "clearTimeout");
 
 			// Call private method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).cancelPendingRefresh();
+			const cancelPendingRefresh = getPrivateProperty(
+				provider,
+				"cancelPendingRefresh",
+			) as () => void;
+			cancelPendingRefresh.call(provider);
 
 			expect(clearTimeoutSpy).toHaveBeenCalledWith(mockTimeout);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			expect((provider as any).timeout).toBeUndefined();
+			expect(getPrivateProperty(provider, "timeout")).toBeUndefined();
 
 			clearTimeoutSpy.mockRestore();
 		});
@@ -628,10 +529,8 @@ describe("workspacesProvider", () => {
 	describe("onDidChangeTreeData", () => {
 		it("should expose event emitter", () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -647,17 +546,10 @@ describe("workspacesProvider", () => {
 	describe("fetch - with debug logging", () => {
 		it("should log when debug logging is enabled", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.All;
-			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: {
-						baseURL: "https://test.coder.com",
-					},
-				}),
+			const mockRestClient = createMockApi({
 				getWorkspaces: vi.fn(),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			});
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -668,7 +560,8 @@ describe("workspacesProvider", () => {
 			// Mock getWorkspaces to return empty workspaces
 			vi.mocked(mockRestClient.getWorkspaces).mockResolvedValue({
 				workspaces: [],
-			} as never);
+				count: 0,
+			});
 
 			// Mock extractAllAgents to return empty array
 			const { extractAllAgents } = await import("./api-helper");
@@ -678,8 +571,11 @@ describe("workspacesProvider", () => {
 			vi.mocked(vscode.env).logLevel = vscode.LogLevel.Debug;
 
 			// Call private fetch method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await (provider as any).fetch();
+			const fetch = getPrivateProperty(
+				provider,
+				"fetch",
+			) as () => Promise<void>;
+			await fetch.call(provider);
 
 			// Verify debug log was written
 			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
@@ -691,16 +587,14 @@ describe("workspacesProvider", () => {
 	describe("fetch - edge cases", () => {
 		it("should throw error when not logged in (no URL)", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn().mockReturnValue({
 					defaults: {
 						baseURL: undefined, // No URL = not logged in
 					},
 				}),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			});
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -709,16 +603,17 @@ describe("workspacesProvider", () => {
 			);
 
 			// Call private fetch method
-			await expect(
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				(provider as any).fetch(),
-			).rejects.toThrow("not logged in");
+			const fetch = getPrivateProperty(
+				provider,
+				"fetch",
+			) as () => Promise<void>;
+			await expect(fetch.call(provider)).rejects.toThrow("not logged in");
 		});
 
 		it("should re-fetch when URL changes during fetch", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
 			let callCount = 0;
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn().mockImplementation(() => {
 					// First call returns one URL, second call returns different URL
 					if (callCount === 0) {
@@ -730,12 +625,10 @@ describe("workspacesProvider", () => {
 				getWorkspaces: vi.fn().mockImplementation(() => {
 					callCount++;
 					// Simulate URL change after first getWorkspaces call
-					return Promise.resolve({ workspaces: [] });
+					return Promise.resolve({ workspaces: [], count: 0 });
 				}),
-			} as unknown as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			});
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -748,8 +641,11 @@ describe("workspacesProvider", () => {
 			vi.mocked(extractAllAgents).mockReturnValue([]);
 
 			// Call private fetch method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const result = await (provider as any).fetch();
+			const fetch = getPrivateProperty(
+				provider,
+				"fetch",
+			) as () => Promise<unknown>;
+			const result = await fetch.call(provider);
 
 			// Should have called getWorkspaces twice due to URL change
 			expect(mockRestClient.getWorkspaces).toHaveBeenCalledTimes(2);
@@ -760,10 +656,8 @@ describe("workspacesProvider", () => {
 	describe("setVisibility - fetchAndRefresh when no workspaces", () => {
 		it("should call fetchAndRefresh when visible and no workspaces exist", () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -772,10 +666,8 @@ describe("workspacesProvider", () => {
 			);
 
 			// Set up initial state - no workspaces
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).workspaces = undefined;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).visible = false;
+			setPrivateProperty(provider, "workspaces", undefined);
+			setPrivateProperty(provider, "visible", false);
 
 			// Mock fetchAndRefresh
 			const fetchAndRefreshSpy = vi
@@ -784,8 +676,7 @@ describe("workspacesProvider", () => {
 
 			provider.setVisibility(true);
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			expect((provider as any).visible).toBe(true);
+			expect(getPrivateProperty(provider, "visible")).toBe(true);
 			expect(fetchAndRefreshSpy).toHaveBeenCalled();
 
 			fetchAndRefreshSpy.mockRestore();
@@ -795,10 +686,8 @@ describe("workspacesProvider", () => {
 	describe("getChildren - AgentTreeItem", () => {
 		it("should return error item when watcher has error", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -808,12 +697,11 @@ describe("workspacesProvider", () => {
 
 			// Set up agent watcher with error
 			const testError = new Error("Watcher error");
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).agentWatchers = {
+			setPrivateProperty(provider, "agentWatchers", {
 				agent1: {
 					error: testError,
 				},
-			};
+			});
 
 			// Access the AgentTreeItem class via import
 			const { extractAgents } = await import("./api-helper");
@@ -827,11 +715,14 @@ describe("workspacesProvider", () => {
 			]);
 
 			// Create a WorkspaceTreeItem first
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				owner_name: "testuser",
 				name: "test-workspace",
-				latest_build: { status: "running" },
-			} as never;
+				latest_build: {
+					...createMockWorkspace().latest_build,
+					status: "running",
+				},
+			});
 
 			// Use the exported WorkspaceTreeItem class
 			const { WorkspaceTreeItem } = await import("./workspacesProvider");
@@ -857,10 +748,8 @@ describe("workspacesProvider", () => {
 
 		it("should return app status and metadata sections", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -869,8 +758,7 @@ describe("workspacesProvider", () => {
 			);
 
 			// Set up agent watcher with metadata
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(provider as any).agentWatchers = {
+			setPrivateProperty(provider, "agentWatchers", {
 				agent1: {
 					metadata: [
 						{
@@ -879,7 +767,7 @@ describe("workspacesProvider", () => {
 						},
 					],
 				},
-			};
+			});
 
 			// Mock extractAgents
 			const { extractAgents } = await import("./api-helper");
@@ -898,11 +786,14 @@ describe("workspacesProvider", () => {
 			]);
 
 			// Create a WorkspaceTreeItem first
-			const mockWorkspace = {
+			const mockWorkspace = createMockWorkspace({
 				owner_name: "testuser",
 				name: "test-workspace",
-				latest_build: { status: "running" },
-			} as never;
+				latest_build: {
+					...createMockWorkspace().latest_build,
+					status: "running",
+				},
+			});
 
 			// Use the exported WorkspaceTreeItem class
 			const { WorkspaceTreeItem } = await import("./workspacesProvider");
@@ -931,10 +822,8 @@ describe("workspacesProvider", () => {
 	describe("getChildren - SectionTreeItem", () => {
 		it("should return children for section-like tree items", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -943,9 +832,11 @@ describe("workspacesProvider", () => {
 			);
 
 			// Create a mock tree item with children property
+			const MockTreeItem = createMockVSCode()
+				.TreeItem as typeof vscode.TreeItem;
 			const mockChildren = [
-				{ label: "child1" } as vscode.TreeItem,
-				{ label: "child2" } as vscode.TreeItem,
+				new MockTreeItem("child1"),
+				new MockTreeItem("child2"),
 			];
 			const mockSectionTreeItem = {
 				label: "Test Section",
@@ -962,10 +853,8 @@ describe("workspacesProvider", () => {
 	describe("getChildren - unknown element type", () => {
 		it("should return empty array for unknown element type", async () => {
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {} as Api;
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			} as unknown as Storage;
+			const mockRestClient = createMockApi();
+			const mockStorage = createMockStorage();
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -974,7 +863,9 @@ describe("workspacesProvider", () => {
 			);
 
 			// Create an unknown tree item type
-			const unknownItem = { label: "unknown" } as vscode.TreeItem;
+			const MockTreeItem = createMockVSCode()
+				.TreeItem as typeof vscode.TreeItem;
+			const unknownItem = new MockTreeItem("unknown");
 
 			const result = await provider.getChildren(unknownItem);
 
@@ -992,23 +883,21 @@ describe("workspacesProvider", () => {
 			vscode.env.logLevel = vscode.LogLevel.Debug;
 
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.coder.com" },
-				})),
+			const mockRestClient = createMockApi({
 				getWorkspaces: vi.fn(() =>
 					Promise.resolve({
 						workspaces: [],
+						count: 0,
 					}),
 				),
-			} as unknown as Api;
+			});
 
 			// Create mock Storage that uses Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.debug(msg);
 				}),
-			} as unknown as Storage;
+			});
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -1021,8 +910,11 @@ describe("workspacesProvider", () => {
 			vi.mocked(extractAllAgents).mockReturnValue([]);
 
 			// Call private fetch method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await (provider as any).fetch();
+			const fetch = getPrivateProperty(
+				provider,
+				"fetch",
+			) as () => Promise<void>;
+			await fetch.call(provider);
 
 			// Verify debug message was logged
 			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
@@ -1048,23 +940,24 @@ describe("workspacesProvider", () => {
 			vscode.env.logLevel = vscode.LogLevel.Debug;
 
 			const mockWorkspaceQuery = WorkspaceQuery.All;
-			const mockRestClient = {
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn(() => ({
 					defaults: { baseURL: "https://example.com" },
 				})),
 				getWorkspaces: vi.fn(() =>
 					Promise.resolve({
 						workspaces: [],
+						count: 0,
 					}),
 				),
-			} as unknown as Api;
+			});
 
 			// Simulate Storage with Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.info(msg);
 				}),
-			} as unknown as Storage;
+			});
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -1077,8 +970,11 @@ describe("workspacesProvider", () => {
 			vi.mocked(extractAllAgents).mockReturnValue([]);
 
 			// Call private fetch method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await (provider as any).fetch();
+			const fetch = getPrivateProperty(
+				provider,
+				"fetch",
+			) as () => Promise<void>;
+			await fetch.call(provider);
 
 			// Verify message was logged through Logger
 			const logs = logger.getLogs();
@@ -1099,23 +995,21 @@ describe("workspacesProvider", () => {
 			vscode.env.logLevel = vscode.LogLevel.Info;
 
 			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = {
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://test.coder.com" },
-				})),
+			const mockRestClient = createMockApi({
 				getWorkspaces: vi.fn(() =>
 					Promise.resolve({
 						workspaces: [],
+						count: 0,
 					}),
 				),
-			} as unknown as Api;
+			});
 
 			// Create mock Storage that uses Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.debug(msg);
 				}),
-			} as unknown as Storage;
+			});
 
 			const provider = new WorkspaceProvider(
 				mockWorkspaceQuery,
@@ -1128,8 +1022,11 @@ describe("workspacesProvider", () => {
 			vi.mocked(extractAllAgents).mockReturnValue([]);
 
 			// Call private fetch method
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await (provider as any).fetch();
+			const fetch = getPrivateProperty(
+				provider,
+				"fetch",
+			) as () => Promise<void>;
+			await fetch.call(provider);
 
 			// Verify writeToCoderOutputChannel was NOT called
 			expect(mockStorage.writeToCoderOutputChannel).not.toHaveBeenCalled();

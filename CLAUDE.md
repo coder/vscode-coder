@@ -44,10 +44,11 @@ Current status: **74.35% overall unit test coverage** with 359 unit tests and 69
 
 ### Testing Priority Framework
 
-1. **Files with <50% coverage** need immediate attention (remote.ts: 49.21%, extension.ts: 38.68%)
+1. **Files with <50% coverage** need immediate attention (remote.ts: 49.51%)
 2. **Add incremental tests** - focus on measurable progress each session
 3. **Target coverage improvements** of 5-15 percentage points per file
 4. **ALWAYS use `yarn test:ci --coverage`** - never test individual files
+5. **Ignore coverage for test-helpers.ts** - this is a test utility file containing mock factories and helper functions
 
 ### Testing Patterns to Follow
 

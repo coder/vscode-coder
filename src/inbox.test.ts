@@ -1,10 +1,12 @@
-import { Api } from "coder/site/src/api/api";
-import { Workspace } from "coder/site/src/api/typesGenerated";
-import { ProxyAgent } from "proxy-agent";
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { Inbox } from "./inbox";
-import { Storage } from "./storage";
-import { createMockOutputChannelWithLogger } from "./test-helpers";
+import {
+	createMockOutputChannelWithLogger,
+	createMockWorkspace,
+	createMockApi,
+	createMockStorage,
+	createMockProxyAgent,
+} from "./test-helpers";
 
 // Mock dependencies
 vi.mock("ws");
@@ -20,9 +22,9 @@ beforeAll(() => {
 
 describe("inbox", () => {
 	it("should create Inbox instance", () => {
-		const mockWorkspace = {} as Workspace;
-		const mockHttpAgent = {} as ProxyAgent;
-		const mockRestClient = {
+		const mockWorkspace = createMockWorkspace();
+		const mockHttpAgent = createMockProxyAgent();
+		const mockRestClient = createMockApi({
 			getAxiosInstance: vi.fn(() => ({
 				defaults: {
 					baseURL: "https://test.com",
@@ -31,8 +33,8 @@ describe("inbox", () => {
 					},
 				},
 			})),
-		} as unknown as Api;
-		const mockStorage = {} as Storage;
+		});
+		const mockStorage = createMockStorage();
 
 		const inbox = new Inbox(
 			mockWorkspace,
@@ -46,9 +48,9 @@ describe("inbox", () => {
 	});
 
 	it("should throw error when no base URL is set", () => {
-		const mockWorkspace = {} as Workspace;
-		const mockHttpAgent = {} as ProxyAgent;
-		const mockRestClient = {
+		const mockWorkspace = createMockWorkspace();
+		const mockHttpAgent = createMockProxyAgent();
+		const mockRestClient = createMockApi({
 			getAxiosInstance: vi.fn(() => ({
 				defaults: {
 					baseURL: undefined,
@@ -57,8 +59,8 @@ describe("inbox", () => {
 					},
 				},
 			})),
-		} as unknown as Api;
-		const mockStorage = {} as Storage;
+		});
+		const mockStorage = createMockStorage();
 
 		expect(() => {
 			new Inbox(mockWorkspace, mockHttpAgent, mockRestClient, mockStorage);
@@ -74,9 +76,9 @@ describe("inbox", () => {
 		const { WebSocket: MockWebSocket } = await import("ws");
 		vi.mocked(MockWebSocket).mockImplementation(() => mockWebSocket as never);
 
-		const mockWorkspace = { id: "workspace-123" } as Workspace;
-		const mockHttpAgent = {} as ProxyAgent;
-		const mockRestClient = {
+		const mockWorkspace = createMockWorkspace({ id: "workspace-123" });
+		const mockHttpAgent = createMockProxyAgent();
+		const mockRestClient = createMockApi({
 			getAxiosInstance: vi.fn(() => ({
 				defaults: {
 					baseURL: "https://test.com",
@@ -85,10 +87,10 @@ describe("inbox", () => {
 					},
 				},
 			})),
-		} as unknown as Api;
-		const mockStorage = {
+		});
+		const mockStorage = createMockStorage({
 			writeToCoderOutputChannel: vi.fn(),
-		} as unknown as Storage;
+		});
 
 		const inbox = new Inbox(
 			mockWorkspace,
@@ -131,9 +133,9 @@ describe("inbox", () => {
 		const { errToStr } = await import("./api-helper");
 		vi.mocked(errToStr).mockReturnValue("Test error message");
 
-		const mockWorkspace = { id: "workspace-123" } as Workspace;
-		const mockHttpAgent = {} as ProxyAgent;
-		const mockRestClient = {
+		const mockWorkspace = createMockWorkspace({ id: "workspace-123" });
+		const mockHttpAgent = createMockProxyAgent();
+		const mockRestClient = createMockApi({
 			getAxiosInstance: vi.fn(() => ({
 				defaults: {
 					baseURL: "https://test.com",
@@ -142,10 +144,10 @@ describe("inbox", () => {
 					},
 				},
 			})),
-		} as unknown as Api;
-		const mockStorage = {
+		});
+		const mockStorage = createMockStorage({
 			writeToCoderOutputChannel: vi.fn(),
-		} as unknown as Storage;
+		});
 
 		new Inbox(mockWorkspace, mockHttpAgent, mockRestClient, mockStorage);
 
@@ -180,9 +182,9 @@ describe("inbox", () => {
 			const { WebSocket: MockWebSocket } = await import("ws");
 			vi.mocked(MockWebSocket).mockImplementation(() => mockWebSocket as never);
 
-			const mockWorkspace = { id: "workspace-123" } as Workspace;
-			const mockHttpAgent = {} as ProxyAgent;
-			const mockRestClient = {
+			const mockWorkspace = createMockWorkspace({ id: "workspace-123" });
+			const mockHttpAgent = createMockProxyAgent();
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn(() => ({
 					defaults: {
 						baseURL: "https://test.com",
@@ -191,14 +193,14 @@ describe("inbox", () => {
 						},
 					},
 				})),
-			} as unknown as Api;
+			});
 
 			// Create mock Storage that uses Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.info(msg);
 				}),
-			} as unknown as Storage;
+			});
 
 			new Inbox(mockWorkspace, mockHttpAgent, mockRestClient, mockStorage);
 
@@ -227,9 +229,9 @@ describe("inbox", () => {
 			const { WebSocket: MockWebSocket } = await import("ws");
 			vi.mocked(MockWebSocket).mockImplementation(() => mockWebSocket as never);
 
-			const mockWorkspace = { id: "workspace-123" } as Workspace;
-			const mockHttpAgent = {} as ProxyAgent;
-			const mockRestClient = {
+			const mockWorkspace = createMockWorkspace({ id: "workspace-123" });
+			const mockHttpAgent = createMockProxyAgent();
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn(() => ({
 					defaults: {
 						baseURL: "https://test.com",
@@ -238,14 +240,14 @@ describe("inbox", () => {
 						},
 					},
 				})),
-			} as unknown as Api;
+			});
 
 			// Create mock Storage that uses Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.info(msg);
 				}),
-			} as unknown as Storage;
+			});
 
 			const inbox = new Inbox(
 				mockWorkspace,
@@ -291,9 +293,9 @@ describe("inbox", () => {
 			const { errToStr } = await import("./api-helper");
 			vi.mocked(errToStr).mockReturnValue("WebSocket connection error");
 
-			const mockWorkspace = { id: "workspace-123" } as Workspace;
-			const mockHttpAgent = {} as ProxyAgent;
-			const mockRestClient = {
+			const mockWorkspace = createMockWorkspace({ id: "workspace-123" });
+			const mockHttpAgent = createMockProxyAgent();
+			const mockRestClient = createMockApi({
 				getAxiosInstance: vi.fn(() => ({
 					defaults: {
 						baseURL: "https://test.com",
@@ -302,14 +304,14 @@ describe("inbox", () => {
 						},
 					},
 				})),
-			} as unknown as Api;
+			});
 
 			// Create mock Storage that uses Logger
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				writeToCoderOutputChannel: vi.fn((msg: string) => {
 					logger.info(msg);
 				}),
-			} as unknown as Storage;
+			});
 
 			new Inbox(mockWorkspace, mockHttpAgent, mockRestClient, mockStorage);
 
