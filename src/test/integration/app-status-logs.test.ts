@@ -293,10 +293,10 @@ suite("App Status and Logs Integration Tests", () => {
 			);
 		});
 
-		test("should handle workspace connection status", () => {
+		test.skip("should handle workspace connection status", () => {
 			// Test workspace connection status reporting
-			// This verifies that the extension can report its connection state
-			assert.ok(true, "Connection status reporting capability verified");
+			// This test doesn't actually verify connection status reporting
+			// TODO: Would need to mock workspace connection state to test properly
 		});
 
 		test.skip("should collect system information for debugging", async () => {

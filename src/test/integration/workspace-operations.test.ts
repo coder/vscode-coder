@@ -266,16 +266,10 @@ suite("Workspace Operations Integration Tests", () => {
 			}
 		});
 
-		test("should update workspace to latest version", async () => {
+		test.skip("should update workspace to latest version", async () => {
 			// Test workspace update API call
-			// Command should exist and be callable
-			try {
-				// Would need a workspace context to actually update
-				await vscode.commands.executeCommand("coder.workspace.update");
-			} catch (error) {
-				// Expected without proper context
-				assert.ok(true, "Update command is registered");
-			}
+			// This test doesn't actually verify workspace update, just that command exists
+			// TODO: Would need mock workspace and API to test actual update functionality
 		});
 
 		test.skip("should only be available for outdated workspaces", async () => {

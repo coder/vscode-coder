@@ -72,71 +72,32 @@ suite("URI Handler Integration Tests", () => {
 			// const testUri = vscode.Uri.parse("vscode://coder.coder-remote/openDevContainer?owner=test&workspace=test&devContainerName=app&devContainerFolder=/workspace");
 		});
 
-		test("should validate owner parameter", async () => {
+		test.skip("should validate owner parameter", async () => {
 			// Test that missing owner parameter triggers appropriate error
-			// Execute open command without owner parameter
-			try {
-				// Command with missing required parameters should fail
-				await vscode.commands.executeCommand("coder.open", undefined);
-			} catch (error) {
-				// Expected - command should validate parameters
-				assert.ok(true, "Command validates owner parameter requirement");
-			}
+			// This test doesn't actually verify parameter validation
+			// TODO: Would need to check error message or behavior to verify validation
 		});
 
 		test.skip("should validate workspace parameter", async () => {
 			// Test that missing workspace parameter triggers appropriate error
 		});
 
-		test("should handle optional agent parameter", async () => {
+		test.skip("should handle optional agent parameter", async () => {
 			// Test agent parameter parsing and usage
-			// The open command should accept agent as optional parameter
-			try {
-				// Execute with agent parameter
-				await vscode.commands.executeCommand(
-					"coder.open",
-					undefined,
-					"test-agent",
-				);
-			} catch (error) {
-				// Expected to fail without authentication, but parameter should be accepted
-			}
-			assert.ok(true, "Command accepts optional agent parameter");
+			// This test doesn't verify agent parameter handling
+			// TODO: Would need mock workspace with agents to test properly
 		});
 
-		test("should handle optional folder parameter", async () => {
+		test.skip("should handle optional folder parameter", async () => {
 			// Test folder parameter parsing and usage
-			// The open command should accept folder as optional parameter
-			try {
-				// Execute with folder parameter
-				await vscode.commands.executeCommand(
-					"coder.open",
-					undefined,
-					undefined,
-					"/workspace/project",
-				);
-			} catch (error) {
-				// Expected to fail without authentication, but parameter should be accepted
-			}
-			assert.ok(true, "Command accepts optional folder parameter");
+			// This test doesn't verify folder parameter handling
+			// TODO: Would need mock workspace connection to test folder opening
 		});
 
-		test("should handle openRecent parameter", async () => {
+		test.skip("should handle openRecent parameter", async () => {
 			// Test recent folder behavior when openRecent=true
-			// The open command should accept openRecent as boolean parameter
-			try {
-				// Execute with openRecent parameter
-				await vscode.commands.executeCommand(
-					"coder.open",
-					undefined,
-					undefined,
-					undefined,
-					true,
-				);
-			} catch (error) {
-				// Expected to fail without authentication, but parameter should be accepted
-			}
-			assert.ok(true, "Command accepts openRecent parameter");
+			// This test doesn't verify openRecent behavior
+			// TODO: Would need mock recent folders list to test properly
 		});
 
 		test.skip("should prompt for URL if not provided", async () => {

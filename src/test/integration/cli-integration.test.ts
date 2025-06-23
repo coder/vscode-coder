@@ -165,13 +165,10 @@ suite("CLI Integration Tests", () => {
 	});
 
 	suite("CLI Command Execution", () => {
-		test("should handle CLI version command", () => {
+		test.skip("should handle CLI version command", () => {
 			// Test version command integration
-			// This is a basic connectivity test that doesn't require authentication
-
-			// We can test that the version command would be callable
-			// In a real scenario, this would execute `coder version`
-			assert.ok(true, "Version command structure validated");
+			// This test doesn't actually execute or verify CLI version command
+			// TODO: Would need to mock CLI execution to test properly
 		});
 
 		test.skip("should execute CLI SSH commands", async () => {
@@ -231,17 +228,10 @@ suite("CLI Integration Tests", () => {
 			);
 		});
 
-		test("should configure CLI after login", async () => {
+		test.skip("should configure CLI after login", async () => {
 			// Test CLI configuration after successful authentication
-			// Verify CLI config would be updated on login
-			const commands = await vscode.commands.getCommands(true);
-			assert.ok(
-				commands.includes("coder.login"),
-				"Login command should configure CLI",
-			);
-
-			// In a real scenario, login would update CLI config files
-			assert.ok(true, "CLI configuration would be updated after login");
+			// This test doesn't verify CLI configuration, just that login command exists
+			// TODO: Would need to mock file system to verify CLI config file updates
 		});
 
 		test.skip("should clean up CLI config on logout", async () => {
@@ -293,19 +283,10 @@ suite("CLI Integration Tests", () => {
 	});
 
 	suite("CLI Platform Support", () => {
-		test("should detect current platform", () => {
+		test.skip("should detect current platform", () => {
 			// Test platform detection logic
-			const platform = process.platform;
-			const arch = process.arch;
-
-			assert.ok(
-				typeof platform === "string" && platform.length > 0,
-				"Platform should be detected",
-			);
-			assert.ok(
-				typeof arch === "string" && arch.length > 0,
-				"Architecture should be detected",
-			);
+			// This test just verifies Node.js process.platform works, not extension logic
+			// TODO: Would need to test the extension's platform detection implementation
 		});
 
 		test.skip("should generate correct binary names for platforms", async () => {
