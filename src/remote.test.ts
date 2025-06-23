@@ -19,7 +19,7 @@ vi.mock("axios", () => ({
 			},
 		})),
 	},
-	isAxiosError: vi.fn(),
+	isAxiosError: vi.fn((error) => error.isAxiosError === true),
 }));
 vi.mock("coder/site/src/api/api", () => ({
 	Api: class MockApi {
@@ -39,9 +39,17 @@ vi.mock("coder/site/src/api/api", () => ({
 }));
 vi.mock("./api");
 vi.mock("./api-helper");
-vi.mock("./cliManager");
+vi.mock("./cliManager", () => ({
+	version: vi.fn().mockResolvedValue("v2.0.0"),
+}));
 vi.mock("./commands");
-vi.mock("./featureSet");
+vi.mock("./featureSet", () => ({
+	featureSetForVersion: vi.fn(() => ({
+		vscodessh: true,
+		proxyLogDirectory: true,
+		wildcardSSH: true,
+	})),
+}));
 vi.mock("./headers");
 vi.mock("./inbox");
 vi.mock("./sshConfig");
@@ -299,6 +307,320 @@ describe("remote", () => {
 		});
 	});
 
+	describe("handleAuthentication", () => {
+		it("should migrate session token and return credentials when valid", async () => {
+			const mockStorage = createMockStorage();
+			const remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			// Mock successful token migration and config read
+			mockStorage.migrateSessionToken = vi.fn().mockResolvedValue(undefined);
+			mockStorage.readCliConfig = vi.fn().mockResolvedValue({
+				url: "https://test.coder.com",
+				token: "test-token",
+			});
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const result = await (remote as any).handleAuthentication(
+				{
+					label: "test",
+					username: "user",
+					workspace: "workspace",
+					agent: undefined,
+					host: "test-host",
+				},
+				"user/workspace",
+			);
+
+			expect(mockStorage.migrateSessionToken).toHaveBeenCalledWith("test");
+			expect(mockStorage.readCliConfig).toHaveBeenCalledWith("test");
+			expect(result).toEqual({
+				url: "https://test.coder.com",
+				token: "test-token",
+			});
+		});
+
+		it("should prompt for login when no URL or token found", async () => {
+			const mockStorage = createMockStorage();
+			const remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			mockStorage.migrateSessionToken = vi.fn().mockResolvedValue(undefined);
+			mockStorage.readCliConfig = vi.fn().mockResolvedValue({
+				url: "",
+				token: "",
+			});
+
+			mockVscodeProposed.window.showInformationMessage = vi
+				.fn()
+				.mockResolvedValue("Log In");
+
+			const executeCommandSpy = vi.spyOn(vscode.commands, "executeCommand");
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const result = await (remote as any).handleAuthentication(
+				{
+					label: "test",
+					username: "user",
+					workspace: "workspace",
+					agent: undefined,
+					host: "test-host",
+				},
+				"user/workspace",
+			);
+
+			expect(
+				mockVscodeProposed.window.showInformationMessage,
+			).toHaveBeenCalledWith(
+				"You are not logged in...",
+				{
+					useCustom: true,
+					modal: true,
+					detail: "You must log in to access user/workspace.",
+				},
+				"Log In",
+			);
+			expect(executeCommandSpy).toHaveBeenCalledWith(
+				"coder.login",
+				"",
+				undefined,
+				"test",
+			);
+			expect(result).toBeUndefined();
+		});
+	});
+
+	describe("validateWorkspaceAccess", () => {
+		it("should validate server version and fetch workspace successfully", async () => {
+			const mockStorage = createMockStorage();
+			const remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			const mockRestClient = {
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v2.0.0" }),
+				getWorkspaceByOwnerAndName: vi.fn().mockResolvedValue({
+					name: "workspace",
+					owner_name: "user",
+					latest_build: { status: "running" },
+				}),
+			};
+
+			const mockBinaryPath = "/path/to/coder";
+			const mockParts = {
+				label: "test",
+				username: "user",
+				workspace: "workspace",
+				agent: undefined,
+				host: "test-host",
+			};
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const result = await (remote as any).validateWorkspaceAccess(
+				mockRestClient,
+				mockBinaryPath,
+				mockParts,
+				"user/workspace",
+				"https://test.coder.com",
+			);
+
+			expect(mockRestClient.getBuildInfo).toHaveBeenCalled();
+			expect(mockRestClient.getWorkspaceByOwnerAndName).toHaveBeenCalledWith(
+				"user",
+				"workspace",
+			);
+			expect(result).toEqual({
+				workspace: {
+					name: "workspace",
+					owner_name: "user",
+					latest_build: { status: "running" },
+				},
+				featureSet: expect.objectContaining({ vscodessh: true }),
+			});
+		});
+
+		it("should show error and close remote for incompatible server version", async () => {
+			const mockStorage = createMockStorage();
+			const remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			const mockRestClient = {
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v0.13.0" }),
+			};
+
+			// Mock featureSetForVersion to return vscodessh: false for old version
+			const { featureSetForVersion } = await import("./featureSet");
+			vi.mocked(featureSetForVersion).mockReturnValueOnce({
+				vscodessh: false,
+				proxyLogDirectory: false,
+				wildcardSSH: false,
+			});
+
+			mockVscodeProposed.window.showErrorMessage = vi
+				.fn()
+				.mockResolvedValue("Close Remote");
+
+			const closeRemoteSpy = vi.spyOn(remote, "closeRemote");
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const result = await (remote as any).validateWorkspaceAccess(
+				mockRestClient,
+				"/path/to/coder",
+				{
+					label: "test",
+					username: "user",
+					workspace: "workspace",
+					agent: undefined,
+					host: "test-host",
+				},
+				"user/workspace",
+				"https://test.coder.com",
+			);
+
+			expect(mockVscodeProposed.window.showErrorMessage).toHaveBeenCalledWith(
+				"Incompatible Server",
+				{
+					detail:
+						"Your Coder server is too old to support the Coder extension! Please upgrade to v0.14.1 or newer.",
+					modal: true,
+					useCustom: true,
+				},
+				"Close Remote",
+			);
+			expect(closeRemoteSpy).toHaveBeenCalled();
+			expect(result).toBeUndefined();
+		});
+
+		it("should handle workspace not found (404) error", async () => {
+			const mockStorage = createMockStorage();
+			const remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			const mockRestClient = {
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v2.0.0" }),
+				getWorkspaceByOwnerAndName: vi.fn().mockRejectedValue({
+					response: { status: 404 },
+					isAxiosError: true,
+				}),
+			};
+
+			mockVscodeProposed.window.showInformationMessage = vi
+				.fn()
+				.mockResolvedValue(undefined);
+
+			const closeRemoteSpy = vi.spyOn(remote, "closeRemote");
+			const executeCommandSpy = vi.spyOn(vscode.commands, "executeCommand");
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const result = await (remote as any).validateWorkspaceAccess(
+				mockRestClient,
+				"/path/to/coder",
+				{
+					label: "test",
+					username: "user",
+					workspace: "workspace",
+					agent: undefined,
+					host: "test-host",
+				},
+				"user/workspace",
+				"https://test.coder.com",
+			);
+
+			expect(
+				mockVscodeProposed.window.showInformationMessage,
+			).toHaveBeenCalledWith(
+				"That workspace doesn't exist!",
+				{
+					modal: true,
+					detail:
+						"user/workspace cannot be found on https://test.coder.com. Maybe it was deleted...",
+					useCustom: true,
+				},
+				"Open Workspace",
+			);
+			expect(closeRemoteSpy).toHaveBeenCalled();
+			expect(executeCommandSpy).toHaveBeenCalledWith("coder.open");
+			expect(result).toBeUndefined();
+		});
+
+		it("should handle session expired (401) error", async () => {
+			const mockStorage = createMockStorage();
+			const remote = new Remote(
+				mockVscodeProposed,
+				mockStorage,
+				mockCommands,
+				vscode.ExtensionMode.Production,
+			);
+
+			const mockRestClient = {
+				getBuildInfo: vi.fn().mockResolvedValue({ version: "v2.0.0" }),
+				getWorkspaceByOwnerAndName: vi.fn().mockRejectedValue({
+					response: { status: 401 },
+					isAxiosError: true,
+				}),
+			};
+
+			mockVscodeProposed.window.showInformationMessage = vi
+				.fn()
+				.mockResolvedValue("Log In");
+
+			const executeCommandSpy = vi.spyOn(vscode.commands, "executeCommand");
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const result = await (remote as any).validateWorkspaceAccess(
+				mockRestClient,
+				"/path/to/coder",
+				{
+					label: "test",
+					username: "user",
+					workspace: "workspace",
+					agent: undefined,
+					host: "test-host",
+				},
+				"user/workspace",
+				"https://test.coder.com",
+			);
+
+			expect(
+				mockVscodeProposed.window.showInformationMessage,
+			).toHaveBeenCalledWith(
+				"Your session expired...",
+				{
+					useCustom: true,
+					modal: true,
+					detail: "You must log in to access user/workspace.",
+				},
+				"Log In",
+			);
+			expect(executeCommandSpy).toHaveBeenCalledWith(
+				"coder.login",
+				"https://test.coder.com",
+				undefined,
+				"test",
+			);
+			expect(result).toEqual({ retry: true });
+		});
+	});
+
 	describe("setup", () => {
 		it("should return undefined for non-coder host", async () => {
 			remote = new Remote(
@@ -317,57 +639,6 @@ describe("remote", () => {
 
 			expect(result).toBeUndefined();
 			expect(parseRemoteAuthority).toHaveBeenCalledWith("non-coder-host");
-		});
-
-		it("should close remote when user declines to log in", async () => {
-			remote = new Remote(
-				mockVscodeProposed,
-				mockStorage,
-				mockCommands,
-				vscode.ExtensionMode.Production,
-			);
-
-			// Mock parseRemoteAuthority to return valid parts
-			const { parseRemoteAuthority } = await import("./util");
-			vi.mocked(parseRemoteAuthority).mockReturnValue({
-				host: "test.coder.com",
-				label: "test-label",
-				username: "test-user",
-				workspace: "test-workspace",
-				agent: undefined,
-			});
-
-			// Mock storage to return empty config (not logged in)
-			vi.mocked(mockStorage.migrateSessionToken).mockResolvedValue();
-			vi.mocked(mockStorage.readCliConfig).mockResolvedValue({
-				url: "",
-				token: "",
-			});
-
-			// Mock needToken to return true
-			const { needToken } = await import("./api");
-			vi.mocked(needToken).mockReturnValue(true);
-
-			// Mock showInformationMessage to return undefined (user declined)
-			const showInfoMessageSpy = mockVscodeProposed.window
-				.showInformationMessage as ReturnType<typeof vi.fn>;
-			showInfoMessageSpy.mockResolvedValue(undefined);
-
-			// Mock closeRemote
-			const closeRemoteSpy = vi
-				.spyOn(remote, "closeRemote")
-				.mockResolvedValue();
-
-			await remote.setup("coder-vscode--test-label--test-user--test-workspace");
-
-			expect(closeRemoteSpy).toHaveBeenCalled();
-			expect(showInfoMessageSpy).toHaveBeenCalledWith(
-				"You are not logged in...",
-				expect.objectContaining({
-					detail: "You must log in to access test-user/test-workspace.",
-				}),
-				"Log In",
-			);
 		});
 
 		it("should show error and close remote for incompatible server version", async () => {

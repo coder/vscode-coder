@@ -81,14 +81,122 @@
 | Files with <50% coverage | 0      | 1       | 🔄 Progress |
 | Test mock consolidation  | 100%   | 100%    | ✅ Complete |
 
+## Phase 5: Integration Test Implementation
+
+### Current State
+
+- **94 skipped integration tests** across 11 test files
+- Only 2 simple tests currently running (command existence checks)
+- Integration tests use VS Code Test API, not Vitest
+
+### Implementation Plan
+
+#### Phase 1: Foundation Tests (High Priority) - Current Focus
+
+1. **Authentication** (`authentication.test.ts` - 24 skipped tests)
+
+   - Login Flow: 13 tests
+   - Logout Flow: 5 tests
+   - Token Management: 4 tests
+   - Token validation: 2 tests
+
+2. **Workspace Operations** (`workspace-operations.test.ts` - 23 skipped tests)
+   - Open Workspace: 8 tests
+   - Create/Update: 4 tests
+   - Navigation: 5 tests
+   - Refresh: 6 tests
+
+#### Phase 2: Core Functionality Tests
+
+3. **Tree Views** (`tree-views.test.ts` - 21 skipped tests)
+
+   - Display & Updates: 8 tests
+   - Tree Item Actions: 7 tests
+   - Toolbar Updates: 6 tests
+
+4. **Remote Connection** (`remote-connection.test.ts` - 36 skipped tests)
+   - SSH Connection: 12 tests
+   - Remote Authority: 4 tests
+   - Connection Monitoring: 4 tests
+   - Binary Management: 16 tests
+
+#### Phase 3: Feature-Specific Tests
+
+5. **Settings** (`settings.test.ts` - 15 skipped tests)
+6. **Error Handling** (`error-handling.test.ts` - 17 skipped tests)
+7. **DevContainer** (`devcontainer.test.ts` - 8 skipped tests)
+8. **URI Handler** (`uri-handler.test.ts` - 3 skipped tests)
+9. **Logs** (`logs.test.ts` - 7 skipped tests)
+10. **Storage** (`storage.test.ts` - 12 skipped tests)
+11. **App Status** (`app-status.test.ts` - 7 skipped tests)
+
+### Integration Test Success Metrics
+
+| Metric                  | Target | Current | Status         |
+| ----------------------- | ------ | ------- | -------------- |
+| Total integration tests | 170+   | 95      | 🔄 In Progress |
+| Skipped tests           | 0      | 84      | 🔄 In Progress |
+| Test coverage           | 80%+   | ~50%    | 🔄 In Progress |
+
+### Progress Update
+
+- ✅ **95 integration tests passing** (up from 86)
+- ✅ **0 failing tests** (fixed all 4 failing tests)
+- ✅ Created integration-specific test helpers without Vitest dependencies
+- ✅ Applied UI automation patterns to avoid test timeouts
+- 📈 **84 tests remaining to enable** (down from 94)
+
+### UI Testing Automation Solution
+
+- ✅ **UI Automation Helpers**: Created mock UI elements with simulation capabilities in test-helpers.ts
+- 📚 **Documentation**: Added UI-TESTING-PATTERNS.md guide for UI testing patterns
+- 🚀 **Implementation**: Updated authentication tests to use UI automation
+- 🎯 **Benefits**: Tests can now simulate user input without pausing
+- 📈 **Next Steps**: Apply UI automation patterns to remaining integration tests
+
+## UI Testing Automation Patterns
+
+### Added UI Automation Helpers
+
+- ✅ Created `createMockInputBox()` - Mock InputBox with simulation methods
+- ✅ Created `createMockQuickPickWithAutomation()` - Enhanced QuickPick mock
+- ✅ Added `simulateInputBox()` - Helper for simulating showInputBox
+- ✅ Added `simulateQuickPick()` - Helper for createQuickPick simulation
+- ✅ Added `simulateShowQuickPick()` - Helper for showQuickPick simulation
+
+### UI Automation Test Examples
+
+- ✅ Created `ui-automation-patterns.test.ts` - Real-world pattern demonstrations
+- ✅ Demonstrates QuickPick URL selection with dynamic items
+- ✅ Shows InputBox password entry with validation
+- ✅ Multi-step UI flows (workspace → agent selection)
+- ✅ Cancellation handling and error scenarios
+
+### Key UI Testing Patterns Demonstrated
+
+1. **QuickPick URL Selection** - Dynamic items based on user input
+2. **InputBox Token Entry** - Password fields with validation
+3. **Multi-step Flows** - Workspace → Agent selection
+4. **Cancellation Handling** - User pressing Escape
+5. **Input Validation** - Real-time validation feedback
+6. **Button Interactions** - QuickPick custom buttons
+
 ## Immediate Next Steps
 
-1. **Refactor remote.ts (49.21% coverage)**
+1. **Complete Integration Test Implementation**
+
+   - Currently implementing authentication tests (Phase 1)
+   - Use mock factories from test-helpers.ts
+   - Follow VS Code Test API patterns
+   - Target: 0 skipped tests
+
+2. **Refactor remote.ts (49.21% coverage)**
+
    - Break down 400+ line methods into testable units
    - Apply TDD approach similar to extension.ts
    - Target: 49.21% → 80%+ coverage
 
-2. **Improve commands.ts coverage (68.03%)**
+3. **Improve commands.ts coverage (68.03%)**
    - Create UI abstraction layer for better testability
    - Add tests for uncovered command handlers
    - Target: 68.03% → 80%+ coverage

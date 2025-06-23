@@ -1051,3 +1051,276 @@ export function createMockFileSystemWatcher(
 		...overrides,
 	} as vscode.FileSystemWatcher;
 }
+
+// ============================================================================
+// UI Automation Helpers
+// ============================================================================
+
+/**
+ * Create a mock InputBox with automation capabilities
+ */
+export function createMockInputBox(
+	overrides: Partial<vscode.InputBox> = {},
+): vscode.InputBox & {
+	simulateUserInput: (value: string) => void;
+	simulateAccept: () => void;
+	simulateHide: () => void;
+} {
+	const eventEmitters = {
+		onDidChangeValue: createMockEventEmitter<string>(),
+		onDidAccept: createMockEventEmitter<void>(),
+		onDidHide: createMockEventEmitter<void>(),
+		onDidTriggerButton: createMockEventEmitter<vscode.QuickInputButton>(),
+	};
+
+	const inputBox = {
+		value: "",
+		placeholder: "",
+		password: false,
+		prompt: "",
+		title: "",
+		step: undefined,
+		totalSteps: undefined,
+		enabled: true,
+		busy: false,
+		ignoreFocusOut: false,
+		buttons: [],
+		validationMessage: undefined,
+		onDidChangeValue: eventEmitters.onDidChangeValue.event,
+		onDidAccept: eventEmitters.onDidAccept.event,
+		onDidHide: eventEmitters.onDidHide.event,
+		onDidTriggerButton: eventEmitters.onDidTriggerButton.event,
+		show: vi.fn(),
+		hide: vi.fn(),
+		dispose: vi.fn(),
+		...overrides,
+	} as vscode.InputBox;
+
+	// Add automation methods
+	return Object.assign(inputBox, {
+		simulateUserInput: (value: string) => {
+			inputBox.value = value;
+			eventEmitters.onDidChangeValue.fire(value);
+		},
+		simulateAccept: () => {
+			eventEmitters.onDidAccept.fire();
+		},
+		simulateHide: () => {
+			eventEmitters.onDidHide.fire();
+			inputBox.hide();
+		},
+	});
+}
+
+/**
+ * Create a mock QuickPick with automation capabilities
+ */
+export function createMockQuickPickWithAutomation<
+	T extends vscode.QuickPickItem,
+>(
+	overrides: Partial<vscode.QuickPick<T>> = {},
+): vscode.QuickPick<T> & {
+	simulateUserInput: (value: string) => void;
+	simulateItemSelection: (index: number | T) => void;
+	simulateAccept: () => void;
+	simulateHide: () => void;
+} {
+	const eventEmitters = {
+		onDidChangeValue: createMockEventEmitter<string>(),
+		onDidAccept: createMockEventEmitter<void>(),
+		onDidChangeActive: createMockEventEmitter<readonly T[]>(),
+		onDidChangeSelection: createMockEventEmitter<readonly T[]>(),
+		onDidHide: createMockEventEmitter<void>(),
+		onDidTriggerButton: createMockEventEmitter<vscode.QuickInputButton>(),
+		onDidTriggerItemButton:
+			createMockEventEmitter<vscode.QuickPickItemButtonEvent<T>>(),
+	};
+
+	const quickPick = {
+		items: [] as T[],
+		placeholder: "",
+		value: "",
+		busy: false,
+		enabled: true,
+		title: undefined,
+		step: undefined,
+		totalSteps: undefined,
+		canSelectMany: false,
+		matchOnDescription: false,
+		matchOnDetail: false,
+		activeItems: [] as T[],
+		selectedItems: [] as T[],
+		buttons: [],
+		onDidChangeValue: eventEmitters.onDidChangeValue.event,
+		onDidAccept: eventEmitters.onDidAccept.event,
+		onDidChangeActive: eventEmitters.onDidChangeActive.event,
+		onDidChangeSelection: eventEmitters.onDidChangeSelection.event,
+		onDidHide: eventEmitters.onDidHide.event,
+		onDidTriggerButton: eventEmitters.onDidTriggerButton.event,
+		onDidTriggerItemButton: eventEmitters.onDidTriggerItemButton.event,
+		show: vi.fn(),
+		hide: vi.fn(),
+		dispose: vi.fn(),
+		...overrides,
+	} as vscode.QuickPick<T>;
+
+	// Add automation methods
+	return Object.assign(quickPick, {
+		simulateUserInput: (value: string) => {
+			quickPick.value = value;
+			eventEmitters.onDidChangeValue.fire(value);
+		},
+		simulateItemSelection: (indexOrItem: number | T) => {
+			const item =
+				typeof indexOrItem === "number"
+					? quickPick.items[indexOrItem]
+					: indexOrItem;
+			if (item) {
+				quickPick.activeItems = [item];
+				quickPick.selectedItems = [item];
+				eventEmitters.onDidChangeActive.fire([item]);
+				eventEmitters.onDidChangeSelection.fire([item]);
+			}
+		},
+		simulateAccept: () => {
+			eventEmitters.onDidAccept.fire();
+		},
+		simulateHide: () => {
+			eventEmitters.onDidHide.fire();
+			quickPick.hide();
+		},
+	});
+}
+
+/**
+ * UI Automation Test Helper - Simulates showInputBox interaction
+ */
+export function simulateInputBox(
+	options: {
+		returnValue?: string;
+		simulateCancel?: boolean;
+		onShow?: (inputBox: ReturnType<typeof createMockInputBox>) => void;
+	} = {},
+): Promise<string | undefined> {
+	const inputBox = createMockInputBox();
+
+	// Setup the mock implementation
+	// @ts-expect-error - mocking vscode API
+	vi.mocked(globalThis.vscode.window.showInputBox).mockImplementation(() =>
+		Promise.resolve(
+			(() => {
+				// Simulate showing the input box
+				inputBox.show();
+
+				// Allow custom interaction
+				if (options.onShow) {
+					options.onShow(inputBox);
+				}
+
+				// Simulate user action
+				if (options.simulateCancel) {
+					inputBox.simulateHide();
+					return undefined;
+				} else if (options.returnValue !== undefined) {
+					inputBox.simulateUserInput(options.returnValue);
+					inputBox.simulateAccept();
+					return options.returnValue;
+				}
+
+				return undefined;
+			})(),
+		),
+	);
+
+	return Promise.resolve(options.returnValue);
+}
+
+/**
+ * UI Automation Test Helper - Simulates createQuickPick interaction
+ */
+export function simulateQuickPick<T extends vscode.QuickPickItem>(options: {
+	items: T[];
+	selectedItem?: T;
+	selectedIndex?: number;
+	simulateCancel?: boolean;
+	onShow?: (
+		quickPick: ReturnType<typeof createMockQuickPickWithAutomation<T>>,
+	) => void;
+}): ReturnType<typeof createMockQuickPickWithAutomation<T>> {
+	const quickPick = createMockQuickPickWithAutomation<T>({
+		items: options.items,
+	});
+
+	// Setup the mock implementation
+	// @ts-expect-error - mocking vscode API
+	vi.mocked(globalThis.vscode.window.createQuickPick).mockReturnValue(
+		quickPick,
+	);
+
+	// Set up interaction simulation
+	const originalShow = quickPick.show;
+	quickPick.show = vi.fn(() => {
+		originalShow();
+
+		// Allow custom interaction
+		if (options.onShow) {
+			options.onShow(quickPick);
+		}
+
+		// Simulate user action
+		if (options.simulateCancel) {
+			quickPick.simulateHide();
+		} else if (options.selectedItem) {
+			quickPick.simulateItemSelection(options.selectedItem);
+			quickPick.simulateAccept();
+		} else if (options.selectedIndex !== undefined) {
+			quickPick.simulateItemSelection(options.selectedIndex);
+			quickPick.simulateAccept();
+		}
+	});
+
+	return quickPick;
+}
+
+/**
+ * UI Automation Test Helper - Simulates showQuickPick interaction
+ */
+export function simulateShowQuickPick<T extends vscode.QuickPickItem>(
+	options: {
+		items: T[];
+		selectedItem?: T;
+		selectedIndex?: number;
+		simulateCancel?: boolean;
+	} = { items: [] },
+): Promise<T | undefined> {
+	// @ts-expect-error - mocking vscode API
+	vi.mocked(globalThis.vscode.window.showQuickPick).mockImplementation(() =>
+		Promise.resolve(
+			(() => {
+				if (options.simulateCancel) {
+					return undefined;
+				}
+
+				if (options.selectedItem) {
+					return options.selectedItem;
+				}
+
+				if (
+					options.selectedIndex !== undefined &&
+					options.items[options.selectedIndex]
+				) {
+					return options.items[options.selectedIndex];
+				}
+
+				return undefined;
+			})(),
+		),
+	);
+
+	return Promise.resolve(
+		options.selectedItem ||
+			(options.selectedIndex !== undefined
+				? options.items[options.selectedIndex]
+				: undefined),
+	);
+}

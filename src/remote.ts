@@ -19,13 +19,14 @@ import {
 import { extractAgents } from "./api-helper";
 import * as cli from "./cliManager";
 import { Commands } from "./commands";
-import { featureSetForVersion, FeatureSet } from "./featureSet";
+import { FeatureSet, featureSetForVersion } from "./featureSet";
 import { getHeaderArgs } from "./headers";
 import { Inbox } from "./inbox";
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 import { Storage } from "./storage";
 import {
+	AuthorityParts,
 	AuthorityPrefix,
 	escapeCommandArg,
 	expandPath,
@@ -58,6 +59,167 @@ export class Remote {
 			"Start",
 		);
 		return action === "Start";
+	}
+
+	/**
+	 * Handle authentication for a remote connection.
+	 * Returns the URL and token if successful, undefined if the user needs to re-authenticate.
+	 */
+	private async handleAuthentication(
+		parts: AuthorityParts,
+		workspaceName: string,
+	): Promise<{ url: string; token: string } | undefined> {
+		// Migrate "session_token" file to "session", if needed.
+		await this.storage.migrateSessionToken(parts.label);
+
+		// Get the URL and token belonging to this host.
+		const { url: baseUrlRaw, token } = await this.storage.readCliConfig(
+			parts.label,
+		);
+
+		// It could be that the cli config was deleted.  If so, ask for the url.
+		if (!baseUrlRaw || (!token && needToken())) {
+			const result = await this.vscodeProposed.window.showInformationMessage(
+				"You are not logged in...",
+				{
+					useCustom: true,
+					modal: true,
+					detail: `You must log in to access ${workspaceName}.`,
+				},
+				"Log In",
+			);
+			if (!result) {
+				// User declined to log in.
+				await this.closeRemote();
+			} else {
+				// Log in then try again.
+				await vscode.commands.executeCommand(
+					"coder.login",
+					baseUrlRaw,
+					undefined,
+					parts.label,
+				);
+				// Return undefined to signal that setup should be retried
+				return undefined;
+			}
+			return undefined;
+		}
+
+		return { url: baseUrlRaw, token };
+	}
+
+	/**
+	 * Validate workspace access, including server version and workspace existence.
+	 * Returns workspace and feature set if successful, undefined or retry flag for errors.
+	 */
+	private async validateWorkspaceAccess(
+		workspaceRestClient: Api,
+		binaryPath: string,
+		parts: AuthorityParts,
+		workspaceName: string,
+		baseUrlRaw: string,
+	): Promise<
+		| { workspace: Workspace; featureSet: FeatureSet }
+		| { retry: boolean }
+		| undefined
+	> {
+		// First thing is to check the version.
+		const buildInfo = await workspaceRestClient.getBuildInfo();
+
+		let version: semver.SemVer | null = null;
+		try {
+			version = semver.parse(await cli.version(binaryPath));
+		} catch (e) {
+			version = semver.parse(buildInfo.version);
+		}
+
+		const featureSet = featureSetForVersion(version);
+		this.storage.writeToCoderOutputChannel(
+			`Got build info: ${buildInfo.version} vscodessh feature: ${featureSet.vscodessh}`,
+		);
+
+		// Server versions before v0.14.1 don't support the vscodessh command!
+		if (!featureSet.vscodessh) {
+			await this.vscodeProposed.window.showErrorMessage(
+				"Incompatible Server",
+				{
+					detail:
+						"Your Coder server is too old to support the Coder extension! Please upgrade to v0.14.1 or newer.",
+					modal: true,
+					useCustom: true,
+				},
+				"Close Remote",
+			);
+			await this.closeRemote();
+			return undefined;
+		}
+
+		// Next is to find the workspace from the URI scheme provided.
+		let workspace: Workspace;
+		try {
+			this.storage.writeToCoderOutputChannel(
+				`Looking for workspace ${workspaceName}...`,
+			);
+			workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(
+				parts.username,
+				parts.workspace,
+			);
+			this.storage.writeToCoderOutputChannel(
+				`Found workspace ${workspaceName} with status ${workspace.latest_build.status}`,
+			);
+			this.commands.workspace = workspace;
+		} catch (error) {
+			if (!isAxiosError(error)) {
+				throw error;
+			}
+			switch (error.response?.status) {
+				case 404: {
+					const result =
+						await this.vscodeProposed.window.showInformationMessage(
+							`That workspace doesn't exist!`,
+							{
+								modal: true,
+								detail: `${workspaceName} cannot be found on ${baseUrlRaw}. Maybe it was deleted...`,
+								useCustom: true,
+							},
+							"Open Workspace",
+						);
+					if (!result) {
+						await this.closeRemote();
+					}
+					await vscode.commands.executeCommand("coder.open");
+					return undefined;
+				}
+				case 401: {
+					const result =
+						await this.vscodeProposed.window.showInformationMessage(
+							"Your session expired...",
+							{
+								useCustom: true,
+								modal: true,
+								detail: `You must log in to access ${workspaceName}.`,
+							},
+							"Log In",
+						);
+					if (!result) {
+						await this.closeRemote();
+					} else {
+						await vscode.commands.executeCommand(
+							"coder.login",
+							baseUrlRaw,
+							undefined,
+							parts.label,
+						);
+						return { retry: true };
+					}
+					return undefined;
+				}
+				default:
+					throw error;
+			}
+		}
+
+		return { workspace, featureSet };
 	}
 
 	/**
@@ -211,40 +373,15 @@ export class Remote {
 			`Setting up remote: ${workspaceName}`,
 		);
 
-		// Migrate "session_token" file to "session", if needed.
-		await this.storage.migrateSessionToken(parts.label);
-
-		// Get the URL and token belonging to this host.
-		const { url: baseUrlRaw, token } = await this.storage.readCliConfig(
-			parts.label,
-		);
-
-		// It could be that the cli config was deleted.  If so, ask for the url.
-		if (!baseUrlRaw || (!token && needToken())) {
-			const result = await this.vscodeProposed.window.showInformationMessage(
-				"You are not logged in...",
-				{
-					useCustom: true,
-					modal: true,
-					detail: `You must log in to access ${workspaceName}.`,
-				},
-				"Log In",
-			);
-			if (!result) {
-				// User declined to log in.
-				await this.closeRemote();
-			} else {
-				// Log in then try again.
-				await vscode.commands.executeCommand(
-					"coder.login",
-					baseUrlRaw,
-					undefined,
-					parts.label,
-				);
-				await this.setup(remoteAuthority);
-			}
+		// Handle authentication
+		const authResult = await this.handleAuthentication(parts, workspaceName);
+		if (!authResult) {
+			// User needs to re-authenticate, retry setup
+			await this.setup(remoteAuthority);
 			return;
 		}
+
+		const { url: baseUrlRaw, token } = authResult;
 
 		this.storage.writeToCoderOutputChannel(
 			`Using deployment URL: ${baseUrlRaw}`,
@@ -286,101 +423,31 @@ export class Remote {
 			}
 		}
 
-		// First thing is to check the version.
-		const buildInfo = await workspaceRestClient.getBuildInfo();
-
-		let version: semver.SemVer | null = null;
-		try {
-			version = semver.parse(await cli.version(binaryPath));
-		} catch (e) {
-			version = semver.parse(buildInfo.version);
-		}
-
-		const featureSet = featureSetForVersion(version);
-		this.storage.writeToCoderOutputChannel(
-			`Got build info: ${buildInfo.version} vscodessh feature: ${featureSet.vscodessh}`,
+		// Validate workspace access
+		const validationResult = await this.validateWorkspaceAccess(
+			workspaceRestClient,
+			binaryPath,
+			parts,
+			workspaceName,
+			baseUrlRaw,
 		);
 
-		// Server versions before v0.14.1 don't support the vscodessh command!
-		if (!featureSet.vscodessh) {
-			await this.vscodeProposed.window.showErrorMessage(
-				"Incompatible Server",
-				{
-					detail:
-						"Your Coder server is too old to support the Coder extension! Please upgrade to v0.14.1 or newer.",
-					modal: true,
-					useCustom: true,
-				},
-				"Close Remote",
-			);
-			await this.closeRemote();
+		if (!validationResult) {
 			return;
 		}
 
-		// Next is to find the workspace from the URI scheme provided.
-		let workspace: Workspace;
-		try {
-			this.storage.writeToCoderOutputChannel(
-				`Looking for workspace ${workspaceName}...`,
-			);
-			workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(
-				parts.username,
-				parts.workspace,
-			);
-			this.storage.writeToCoderOutputChannel(
-				`Found workspace ${workspaceName} with status ${workspace.latest_build.status}`,
-			);
-			this.commands.workspace = workspace;
-		} catch (error) {
-			if (!isAxiosError(error)) {
-				throw error;
-			}
-			switch (error.response?.status) {
-				case 404: {
-					const result =
-						await this.vscodeProposed.window.showInformationMessage(
-							`That workspace doesn't exist!`,
-							{
-								modal: true,
-								detail: `${workspaceName} cannot be found on ${baseUrlRaw}. Maybe it was deleted...`,
-								useCustom: true,
-							},
-							"Open Workspace",
-						);
-					if (!result) {
-						await this.closeRemote();
-					}
-					await vscode.commands.executeCommand("coder.open");
-					return;
-				}
-				case 401: {
-					const result =
-						await this.vscodeProposed.window.showInformationMessage(
-							"Your session expired...",
-							{
-								useCustom: true,
-								modal: true,
-								detail: `You must log in to access ${workspaceName}.`,
-							},
-							"Log In",
-						);
-					if (!result) {
-						await this.closeRemote();
-					} else {
-						await vscode.commands.executeCommand(
-							"coder.login",
-							baseUrlRaw,
-							undefined,
-							parts.label,
-						);
-						await this.setup(remoteAuthority);
-					}
-					return;
-				}
-				default:
-					throw error;
-			}
+		if ("retry" in validationResult && validationResult.retry) {
+			await this.setup(remoteAuthority);
+			return;
 		}
+
+		// TypeScript can now narrow the type properly
+		const workspaceResult = validationResult as {
+			workspace: Workspace;
+			featureSet: FeatureSet;
+		};
+		let workspace = workspaceResult.workspace;
+		const featureSet = workspaceResult.featureSet;
 
 		const disposables: vscode.Disposable[] = [];
 		// Register before connection so the label still displays!
