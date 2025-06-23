@@ -32,7 +32,7 @@ Your goal is to help me arrive at the most elegant and effective solution by com
 
 ## Test Coverage Guidelines
 
-Current status: **74.35% overall unit test coverage** with 359 unit tests and 69 integration tests passing.
+Current status: **78.49% overall unit test coverage** with 405 unit tests and 69 integration tests passing.
 
 ### TDD Approach for New Features
 
@@ -52,9 +52,10 @@ Current status: **74.35% overall unit test coverage** with 359 unit tests and 69
 
 ### Testing Patterns to Follow
 
-- **Create factory functions** for common test setups (see test-helpers.ts)
+- **Use mock factories from test-helpers.ts** - 30+ factory functions available for all common types
+- **No inline mock definitions** - always use factory functions for consistency
+- **Minimal `as any` usage** - reduced from 95 to 4 instances (96% reduction)
 - **Use createMockOutputChannelWithLogger()** for consistent Logger testing
-- **Avoid `as any`** - create proper mock types or use `as never` for VS Code mocks
 - **Mock external dependencies** properly using vi.mock() with TypeScript types
 - **Test core functionality first** - constructor, main methods, error paths
 - **Ensure backward compatibility** by adding compatibility methods during refactoring
@@ -63,13 +64,34 @@ Current status: **74.35% overall unit test coverage** with 359 unit tests and 69
 ### Test Helper Patterns
 
 ```typescript
-// Example factory function from test-helpers.ts
-export function createMockOutputChannelWithLogger(options?: {
-	verbose?: boolean;
-}): {
-	mockOutputChannel: { appendLine: ReturnType<typeof vi.fn> };
-	logger: Logger;
-}
+// Example factory functions from test-helpers.ts
+
+// Storage variants
+export function createMockStorageWithAuth(): Storage
+export function createMockStorageMinimal(): Storage
+
+// Workspace variants
+export function createMockWorkspaceRunning(): Workspace
+export function createMockWorkspaceStopped(): Workspace
+export function createMockWorkspaceFailed(): Workspace
+
+// VSCode components
+export function createMockExtensionContext(): vscode.ExtensionContext
+export function createMockRemoteSSHExtension(): vscode.Extension<unknown>
+export function createMockTreeView<T>(): vscode.TreeView<T>
+export function createMockStatusBarItem(): vscode.StatusBarItem
+export function createMockQuickPick<T>(): vscode.QuickPick<T>
+export function createMockTerminal(): vscode.Terminal
+export function createMockOutputChannel(): vscode.OutputChannel
+
+// Other utilities
+export function createMockWorkspaceProvider(): WorkspaceProvider
+export function createMockRemote(): Remote
+export function createMockCommands(): Commands
+export function createMockEventEmitter<T>(): vscode.EventEmitter<T>
+export function createMockAxiosInstance(): AxiosInstance
+export function createMockProxyAgent(): ProxyAgent
+export function createMockUri(path: string, scheme?: string): vscode.Uri
 ```
 
 ### Files with Excellent Coverage (>90%) - Use as Examples:
@@ -77,20 +99,25 @@ export function createMockOutputChannelWithLogger(options?: {
 - featureSet.ts: 100%
 - proxy.ts: 100%
 - logger.ts: 98.44% (good TDD example)
+- sshSupport.ts: 98.13%
 - util.ts: 97.31%
 - headers.ts: 96.49%
 - api-helper.ts: 96.36%
 - sshConfig.ts: 96.21%
 - api.ts: 95.52%
+- extension.ts: 93.07% (refactored from 39.71% using TDD)
+- workspaceMonitor.ts: 92.37%
 - error.ts: 90.44%
+- cliManager.ts: 90.05%
 
 ### Current Development Approach
 
 - **TDD for new features** - test first, implement second
 - **Incremental refactoring** - small, measurable improvements
 - **Backward compatibility** - add compatibility methods when changing interfaces
-- **Factory functions in test-helpers.ts** - reusable test setup patterns
-- **Systematic cleanup** - remove `as any` casts, add proper types
+- **Comprehensive mock factories** - 30+ factory functions in test-helpers.ts
+- **No inline mocks** - all test mocks use factory functions
+- **Type-safe testing** - minimal `as any` usage (only 4 instances remain)
 - **Measure progress constantly** - run `yarn test:ci --coverage` after every change
 
 ### Refactoring Strategy
@@ -102,32 +129,34 @@ When replacing legacy patterns (e.g., writeToCoderOutputChannel):
 3. Incrementally replace usage starting with highest-impact files
 4. Maintain full test suite passing throughout
 
-### Example: Logger Integration Pattern
+### Example: TDD Refactoring Pattern (extension.ts success story)
 
 ```typescript
-// 1. Add backward compatibility to new class
-class Logger {
-  // ... new methods ...
-  
-  // Backward compatibility for legacy code
-  writeToCoderOutputChannel(message: string): void {
-    this.info(message);
-  }
-}
-
-// 2. Create factory in test-helpers.ts
-export function createMockOutputChannelWithLogger() {
-  const mockOutputChannel = { appendLine: vi.fn() };
-  const logger = new Logger(mockOutputChannel);
-  return { mockOutputChannel, logger };
-}
-
-// 3. Test compatibility before refactoring
-it("should be backward compatible", () => {
-  const { mockOutputChannel, logger } = createMockOutputChannelWithLogger();
-  logger.writeToCoderOutputChannel("Test");
-  expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-    expect.stringMatching(/\[.*\] \[INFO\] Test/)
-  );
+// 1. Write test for extracted function FIRST
+describe("setupRemoteSSHExtension", () => {
+  it("should configure remote SSH when available", () => {
+    const mockExtension = createMockRemoteSSHExtension();
+    const mockRemote = createMockRemote();
+    
+    const result = setupRemoteSSHExtension(mockExtension);
+    
+    expect(result).toBe(mockRemote);
+  });
 });
+
+// 2. Extract function to make test pass
+export function setupRemoteSSHExtension(
+  remoteSSHExtension: vscode.Extension<unknown> | undefined,
+): Remote | undefined {
+  if (!remoteSSHExtension) {
+    return undefined;
+  }
+  // Implementation here
+}
+
+// 3. Replace in original code
+const remoteSSHExtension = vscode.extensions.getExtension("ms-vscode-remote.remote-ssh");
+const remote = setupRemoteSSHExtension(remoteSSHExtension);
+
+// Result: extension.ts coverage improved from 39.71% to 93.07%
 ```
