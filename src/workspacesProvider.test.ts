@@ -2,6 +2,7 @@ import { Api } from "coder/site/src/api/api";
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import * as vscode from "vscode";
 import { Storage } from "./storage";
+import { createMockOutputChannelWithLogger } from "./test-helpers";
 import { WorkspaceProvider, WorkspaceQuery } from "./workspacesProvider";
 
 // Mock dependencies
@@ -978,6 +979,164 @@ describe("workspacesProvider", () => {
 			const result = await provider.getChildren(unknownItem);
 
 			expect(result).toEqual([]);
+		});
+	});
+
+	describe("Logger integration", () => {
+		it("should log debug messages through Logger when Storage has Logger set", async () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			// Set debug log level to ensure message is logged
+			const originalLogLevel = vscode.env.logLevel;
+			// @ts-expect-error - mocking readonly property
+			vscode.env.logLevel = vscode.LogLevel.Debug;
+
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {
+				getAxiosInstance: vi.fn(() => ({
+					defaults: { baseURL: "https://test.coder.com" },
+				})),
+				getWorkspaces: vi.fn(() =>
+					Promise.resolve({
+						workspaces: [],
+					}),
+				),
+			} as unknown as Api;
+
+			// Create mock Storage that uses Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.debug(msg);
+				}),
+			} as unknown as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock extractAllAgents
+			const { extractAllAgents } = await import("./api-helper");
+			vi.mocked(extractAllAgents).mockReturnValue([]);
+
+			// Call private fetch method
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await (provider as any).fetch();
+
+			// Verify debug message was logged
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				"Fetching workspaces: owner:me...",
+			);
+
+			const logs = logger.getLogs();
+			expect(logs.length).toBe(1);
+			expect(logs[0].message).toBe("Fetching workspaces: owner:me...");
+			expect(logs[0].level).toBe("DEBUG");
+
+			// Restore log level
+			// @ts-expect-error - mocking readonly property
+			vscode.env.logLevel = originalLogLevel;
+		});
+
+		it("should work with Storage instance that has Logger set", async () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			// Set debug log level
+			const originalLogLevel = vscode.env.logLevel;
+			// @ts-expect-error - mocking readonly property
+			vscode.env.logLevel = vscode.LogLevel.Debug;
+
+			const mockWorkspaceQuery = WorkspaceQuery.All;
+			const mockRestClient = {
+				getAxiosInstance: vi.fn(() => ({
+					defaults: { baseURL: "https://example.com" },
+				})),
+				getWorkspaces: vi.fn(() =>
+					Promise.resolve({
+						workspaces: [],
+					}),
+				),
+			} as unknown as Api;
+
+			// Simulate Storage with Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.info(msg);
+				}),
+			} as unknown as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock extractAllAgents
+			const { extractAllAgents } = await import("./api-helper");
+			vi.mocked(extractAllAgents).mockReturnValue([]);
+
+			// Call private fetch method
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await (provider as any).fetch();
+
+			// Verify message was logged through Logger
+			const logs = logger.getLogs();
+			expect(logs.length).toBeGreaterThan(0);
+			expect(logs[0].message).toBe("Fetching workspaces: no filter...");
+
+			// Restore log level
+			// @ts-expect-error - mocking readonly property
+			vscode.env.logLevel = originalLogLevel;
+		});
+
+		it("should not log when log level is above Debug", async () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			// Set info log level (above debug)
+			const originalLogLevel = vscode.env.logLevel;
+			// @ts-expect-error - mocking readonly property
+			vscode.env.logLevel = vscode.LogLevel.Info;
+
+			const mockWorkspaceQuery = WorkspaceQuery.Mine;
+			const mockRestClient = {
+				getAxiosInstance: vi.fn(() => ({
+					defaults: { baseURL: "https://test.coder.com" },
+				})),
+				getWorkspaces: vi.fn(() =>
+					Promise.resolve({
+						workspaces: [],
+					}),
+				),
+			} as unknown as Api;
+
+			// Create mock Storage that uses Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.debug(msg);
+				}),
+			} as unknown as Storage;
+
+			const provider = new WorkspaceProvider(
+				mockWorkspaceQuery,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock extractAllAgents
+			const { extractAllAgents } = await import("./api-helper");
+			vi.mocked(extractAllAgents).mockReturnValue([]);
+
+			// Call private fetch method
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await (provider as any).fetch();
+
+			// Verify writeToCoderOutputChannel was NOT called
+			expect(mockStorage.writeToCoderOutputChannel).not.toHaveBeenCalled();
+
+			// Restore log level
+			// @ts-expect-error - mocking readonly property
+			vscode.env.logLevel = originalLogLevel;
 		});
 	});
 });
