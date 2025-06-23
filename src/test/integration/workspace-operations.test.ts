@@ -58,59 +58,22 @@ suite("Workspace Operations Integration Tests", () => {
 			}
 		});
 
-		test("should filter agents by name when specified", async () => {
+		test.skip("should filter agents by name when specified", async () => {
 			// Test agent filtering
-			// This would require passing parameters to the open command
-			try {
-				// Execute open command with agent filter
-				await vscode.commands.executeCommand(
-					"coder.open",
-					undefined,
-					"test-agent",
-				);
-			} catch (error) {
-				// Expected to fail without workspace data
-			}
-
-			// Verify command accepts parameters
-			assert.ok(true, "Command accepts agent filter parameter");
+			// This test doesn't actually verify agent filtering, just that command accepts parameters
+			// TODO: Would need mock workspace data to test agent filtering properly
 		});
 
-		test("should open workspace with folder path", async () => {
+		test.skip("should open workspace with folder path", async () => {
 			// Test opening specific folder in workspace
-			try {
-				// Execute open command with folder parameter
-				await vscode.commands.executeCommand(
-					"coder.open",
-					undefined,
-					undefined,
-					"/home/coder/project",
-				);
-			} catch (error) {
-				// Expected to fail without workspace data
-			}
-
-			// Verify command accepts folder parameter
-			assert.ok(true, "Command accepts folder path parameter");
+			// This test doesn't actually verify folder opening, just that command accepts parameters
+			// TODO: Would need mock workspace connection to test folder opening properly
 		});
 
-		test("should open most recent folder when openRecent is true", async () => {
+		test.skip("should open most recent folder when openRecent is true", async () => {
 			// Test recent folder functionality
-			try {
-				// Execute open command with openRecent parameter
-				await vscode.commands.executeCommand(
-					"coder.open",
-					undefined,
-					undefined,
-					undefined,
-					true,
-				);
-			} catch (error) {
-				// Expected to fail without workspace data
-			}
-
-			// Verify command accepts openRecent parameter
-			assert.ok(true, "Command accepts openRecent parameter");
+			// This test doesn't actually verify recent folder behavior, just that command accepts parameters
+			// TODO: Would need mock workspace history to test recent folder functionality
 		});
 
 		test("should prompt for folder selection from recents", async () => {

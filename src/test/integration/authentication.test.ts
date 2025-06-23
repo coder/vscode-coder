@@ -94,46 +94,20 @@ suite("Authentication Integration Tests", () => {
 			}
 		});
 
-		test("should handle login with new URL entry", async () => {
+		test.skip("should handle login with new URL entry", async () => {
 			// Test login flow when user enters a new URL
-			// Verify command accepts URL parameter
-			try {
-				// Execute login with a specific URL
-				await vscode.commands.executeCommand(
-					"coder.login",
-					"https://example.coder.com",
-				);
-			} catch (error) {
-				// Expected to fail without user interaction for token
-			}
-
-			// Command should accept URL parameter
-			assert.ok(true, "Login command accepts URL parameter");
+			// This test doesn't actually verify URL entry handling, just that command accepts a parameter
+			// TODO: Would need UI automation to test the actual URL entry flow
 		});
 
 		test.skip("should handle login with certificate authentication", async () => {
 			// Test mTLS authentication flow
 		});
 
-		test("should normalize URLs during login", async () => {
+		test.skip("should normalize URLs during login", async () => {
 			// Test URL normalization (https:// prefix, trailing slash removal)
-			// Test various URL formats
-			const testUrls = [
-				"coder.com",
-				"http://coder.com/",
-				"https://coder.com///",
-			];
-
-			for (const url of testUrls) {
-				try {
-					await vscode.commands.executeCommand("coder.login", url);
-				} catch (error) {
-					// Expected to fail without interaction
-				}
-			}
-
-			// Command should handle various URL formats
-			assert.ok(true, "Login command handles URL normalization");
+			// This test doesn't actually verify normalization, just that the command accepts URLs
+			// TODO: Would need to mock the actual normalization logic to test properly
 		});
 
 		test.skip("should store credentials after successful login", async () => {
@@ -263,22 +237,10 @@ suite("Authentication Integration Tests", () => {
 	});
 
 	suite("Token Management", () => {
-		test("should validate token with API before accepting", async () => {
+		test.skip("should validate token with API before accepting", async () => {
 			// Test token validation during input
-			// Command should validate tokens
-			try {
-				// Login with URL and token parameters
-				await vscode.commands.executeCommand(
-					"coder.login",
-					"https://test.coder.com",
-					"invalid-token",
-				);
-			} catch (error) {
-				// Expected to fail with invalid token
-			}
-
-			// Command accepts token parameter for validation
-			assert.ok(true, "Login command validates tokens");
+			// This test doesn't actually verify token validation, just that command accepts token parameter
+			// TODO: Would need to mock API validation to test properly
 		});
 
 		test.skip("should open browser for token generation", async () => {
