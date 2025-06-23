@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 import * as vscode from "vscode";
 import { Commands } from "./commands";
 import { Storage } from "./storage";
+import { createMockOutputChannelWithLogger } from "./test-helpers";
 import { OpenableTreeItem } from "./workspacesProvider";
 
 // Mock dependencies
@@ -13,6 +14,14 @@ vi.mock("./error");
 vi.mock("./storage");
 vi.mock("./util");
 vi.mock("./workspacesProvider");
+vi.mock("coder/site/src/api/errors", () => ({
+	getErrorMessage: vi.fn((error: unknown, defaultMessage: string) => {
+		if (error instanceof Error) {
+			return error.message;
+		}
+		return defaultMessage;
+	}),
+}));
 
 beforeAll(() => {
 	vi.mock("vscode", () => {
@@ -1047,6 +1056,221 @@ describe("commands", () => {
 			await expect(commands.openAppStatus(mockApp)).rejects.toThrow(
 				"No coder url found for sidebar",
 			);
+		});
+	});
+
+	describe("Logger integration", () => {
+		it("should log autologin failure messages through Logger", async () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			// Mock makeCoderSdk to return a client that fails auth
+			const { makeCoderSdk } = await import("./api");
+			const mockSdkClient = {
+				getAuthenticatedUser: vi
+					.fn()
+					.mockRejectedValue(new Error("Authentication failed")),
+			};
+			vi.mocked(makeCoderSdk).mockResolvedValue(mockSdkClient as never);
+
+			// Mock needToken to return false so we go into the non-token auth path
+			const { needToken } = await import("./api");
+			vi.mocked(needToken).mockReturnValue(false);
+
+			// Mock getErrorMessage from coder/site
+			const { getErrorMessage } = await import("coder/site/src/api/errors");
+			vi.mocked(getErrorMessage).mockReturnValue("Authentication failed");
+
+			// Mock showErrorMessage for vscodeProposed
+			const mockVscodeProposed = {
+				window: {
+					showErrorMessage: vi.fn(),
+				},
+			} as unknown as typeof vscode;
+
+			const mockRestClient = {
+				setHost: vi.fn(),
+				setSessionToken: vi.fn(),
+			} as unknown as Api;
+
+			// Create mock Storage that uses Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.info(msg);
+				}),
+				setUrl: vi.fn(),
+				setSessionToken: vi.fn(),
+				configureCli: vi.fn(),
+			} as unknown as Storage;
+
+			const commands = new Commands(
+				mockVscodeProposed,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock toSafeHost
+			const { toSafeHost } = await import("./util");
+			vi.mocked(toSafeHost).mockReturnValue("test.coder.com");
+
+			// Call login with isAutologin = true (as string in args)
+			await commands.login("https://test.coder.com", "test-token", "", "true");
+
+			// Verify error was logged for autologin
+			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				"Failed to log in to Coder server: Authentication failed",
+			);
+
+			const logs = logger.getLogs();
+			expect(logs.length).toBe(1);
+			expect(logs[0].message).toBe(
+				"Failed to log in to Coder server: Authentication failed",
+			);
+			expect(logs[0].level).toBe("INFO");
+
+			// Verify showErrorMessage was NOT called (since it's autologin)
+			expect(mockVscodeProposed.window.showErrorMessage).not.toHaveBeenCalled();
+		});
+
+		it("should work with Storage instance that has Logger set", async () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			// Mock makeCoderSdk to return a client that fails auth
+			const { makeCoderSdk } = await import("./api");
+			const mockSdkClient = {
+				getAuthenticatedUser: vi
+					.fn()
+					.mockRejectedValue(new Error("Network error")),
+			};
+			vi.mocked(makeCoderSdk).mockResolvedValue(mockSdkClient as never);
+
+			// Mock needToken to return false
+			const { needToken } = await import("./api");
+			vi.mocked(needToken).mockReturnValue(false);
+
+			// Mock getErrorMessage from coder/site
+			const { getErrorMessage } = await import("coder/site/src/api/errors");
+			vi.mocked(getErrorMessage).mockReturnValue("Network error");
+
+			const mockVscodeProposed = {
+				window: {
+					showErrorMessage: vi.fn(),
+				},
+			} as unknown as typeof vscode;
+
+			const mockRestClient = {
+				setHost: vi.fn(),
+				setSessionToken: vi.fn(),
+			} as unknown as Api;
+
+			// Simulate Storage with Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.error(msg);
+				}),
+				setUrl: vi.fn(),
+				setSessionToken: vi.fn(),
+				configureCli: vi.fn(),
+			} as unknown as Storage;
+
+			const commands = new Commands(
+				mockVscodeProposed,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock toSafeHost
+			const { toSafeHost } = await import("./util");
+			vi.mocked(toSafeHost).mockReturnValue("example.coder.com");
+
+			// Call login with isAutologin = true (as string in args)
+			await commands.login(
+				"https://example.coder.com",
+				"bad-token",
+				"",
+				"true",
+			);
+
+			// Verify error was logged through Logger
+			const logs = logger.getLogs();
+			expect(logs.length).toBeGreaterThan(0);
+			const hasExpectedLog = logs.some((log) =>
+				log.message.includes("Failed to log in to Coder server: Network error"),
+			);
+			expect(hasExpectedLog).toBe(true);
+		});
+
+		it("should show error dialog when not autologin", async () => {
+			const { logger } = createMockOutputChannelWithLogger();
+
+			// Mock makeCoderSdk to return a client that fails auth
+			const { makeCoderSdk } = await import("./api");
+			const mockSdkClient = {
+				getAuthenticatedUser: vi
+					.fn()
+					.mockRejectedValue(new Error("Invalid token")),
+			};
+			vi.mocked(makeCoderSdk).mockResolvedValue(mockSdkClient as never);
+
+			// Mock needToken to return false
+			const { needToken } = await import("./api");
+			vi.mocked(needToken).mockReturnValue(false);
+
+			// Mock getErrorMessage from coder/site
+			const { getErrorMessage } = await import("coder/site/src/api/errors");
+			vi.mocked(getErrorMessage).mockReturnValue("Invalid token");
+
+			// Mock showErrorMessage for vscodeProposed
+			const showErrorMessageMock = vi.fn();
+			const mockVscodeProposed = {
+				window: {
+					showErrorMessage: showErrorMessageMock,
+				},
+			} as unknown as typeof vscode;
+
+			const mockRestClient = {
+				setHost: vi.fn(),
+				setSessionToken: vi.fn(),
+			} as unknown as Api;
+
+			// Create mock Storage that uses Logger
+			const mockStorage = {
+				writeToCoderOutputChannel: vi.fn((msg: string) => {
+					logger.info(msg);
+				}),
+				setUrl: vi.fn(),
+				setSessionToken: vi.fn(),
+				configureCli: vi.fn(),
+			} as unknown as Storage;
+
+			const commands = new Commands(
+				mockVscodeProposed,
+				mockRestClient,
+				mockStorage,
+			);
+
+			// Mock toSafeHost
+			const { toSafeHost } = await import("./util");
+			vi.mocked(toSafeHost).mockReturnValue("test.coder.com");
+
+			// Call login with isAutologin = false (default)
+			await commands.login("https://test.coder.com", "test-token");
+
+			// Verify error dialog was shown (not logged)
+			expect(showErrorMessageMock).toHaveBeenCalledWith(
+				"Failed to log in to Coder server",
+				{
+					detail: "Invalid token",
+					modal: true,
+					useCustom: true,
+				},
+			);
+
+			// Verify writeToCoderOutputChannel was NOT called
+			expect(mockStorage.writeToCoderOutputChannel).not.toHaveBeenCalled();
+
+			// Verify no logs were written
+			const logs = logger.getLogs();
+			expect(logs.length).toBe(0);
 		});
 	});
 });
