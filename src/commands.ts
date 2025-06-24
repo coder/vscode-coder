@@ -628,7 +628,7 @@ export class Commands {
 
 		const workspaceOwner = args[0] as string;
 		const workspaceName = args[1] as string;
-		const workspaceAgent =  args[2] as string;
+		const workspaceAgent = args[2] as string;
 		const devContainerName = args[3] as string;
 		const devContainerFolder = args[4] as string;
 
