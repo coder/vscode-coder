@@ -107,21 +107,6 @@ suite("CLI Integration Tests", () => {
 				);
 			}
 		});
-
-		test.skip("should download CLI binary when missing", async () => {
-			// Test binary download functionality
-			// This would require mocking network requests or using a test server
-		});
-
-		test.skip("should update CLI binary when version mismatch", async () => {
-			// Test binary update logic
-			// This would require simulating version mismatches
-		});
-
-		test.skip("should validate CLI binary checksums", async () => {
-			// Test binary integrity validation
-			// This would require known test binaries with checksums
-		});
 	});
 
 	suite("CLI Configuration Management", () => {
@@ -149,37 +134,9 @@ suite("CLI Integration Tests", () => {
 				);
 			}
 		});
-
-		test.skip("should create CLI configuration files", async () => {
-			// Test CLI config file creation
-			// This would require access to the storage layer
-		});
-
-		test.skip("should handle multiple deployment configurations", async () => {
-			// Test multi-deployment CLI config management
-		});
-
-		test.skip("should migrate legacy CLI configurations", async () => {
-			// Test configuration migration from older versions
-		});
 	});
 
 	suite("CLI Command Execution", () => {
-		test.skip("should handle CLI version command", () => {
-			// Test version command integration
-			// This test doesn't actually execute or verify CLI version command
-			// TODO: Would need to mock CLI execution to test properly
-		});
-
-		test.skip("should execute CLI SSH commands", async () => {
-			// Test SSH command execution through CLI
-			// This would require authenticated session and workspace
-		});
-
-		test.skip("should handle CLI command timeouts", async () => {
-			// Test timeout handling for long-running CLI commands
-		});
-
 		test("should handle CLI command errors", async () => {
 			// Test error handling and user feedback for CLI failures
 			// Mock showErrorMessage to verify error handling
@@ -206,14 +163,6 @@ suite("CLI Integration Tests", () => {
 
 			assert.ok(true, "CLI error handling is implemented");
 		});
-
-		test.skip("should parse CLI JSON output", async () => {
-			// Test parsing of structured CLI output
-		});
-
-		test.skip("should handle CLI text output fallback", async () => {
-			// Test fallback parsing for older CLI versions
-		});
 	});
 
 	suite("CLI Authentication Integration", () => {
@@ -226,20 +175,6 @@ suite("CLI Integration Tests", () => {
 				config.has("sessionToken") !== undefined,
 				"Session token setting should be available",
 			);
-		});
-
-		test.skip("should configure CLI after login", async () => {
-			// Test CLI configuration after successful authentication
-			// This test doesn't verify CLI configuration, just that login command exists
-			// TODO: Would need to mock file system to verify CLI config file updates
-		});
-
-		test.skip("should clean up CLI config on logout", async () => {
-			// Test CLI config cleanup during logout
-		});
-
-		test.skip("should handle certificate authentication with CLI", async () => {
-			// Test mTLS authentication integration
 		});
 	});
 
@@ -268,33 +203,7 @@ suite("CLI Integration Tests", () => {
 				);
 			}
 		});
-
-		test.skip("should handle network errors during binary download", async () => {
-			// Test network error handling
-		});
-
-		test.skip("should handle permission errors with CLI binary", async () => {
-			// Test file permission error handling
-		});
-
-		test.skip("should handle unsupported platform errors", async () => {
-			// Test platform compatibility error handling
-		});
 	});
 
-	suite("CLI Platform Support", () => {
-		test.skip("should detect current platform", () => {
-			// Test platform detection logic
-			// This test just verifies Node.js process.platform works, not extension logic
-			// TODO: Would need to test the extension's platform detection implementation
-		});
-
-		test.skip("should generate correct binary names for platforms", async () => {
-			// Test platform-specific binary naming
-		});
-
-		test.skip("should handle platform-specific CLI features", async () => {
-			// Test platform-specific CLI functionality
-		});
-	});
+	suite("CLI Platform Support", () => {});
 });

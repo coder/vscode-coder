@@ -65,19 +65,6 @@ suite("App Status and Logs Integration Tests", () => {
 			assert.ok(true, "App status command can handle URL apps");
 		});
 
-		test.skip("should create terminal for command apps", async () => {
-			// Test command app execution in terminal
-			// This would require workspace connection and app configuration
-		});
-
-		test.skip("should SSH into workspace before running command", async () => {
-			// Test SSH + command flow for app execution
-		});
-
-		test.skip("should show app information for status-only apps", async () => {
-			// Test display of app information without execution
-		});
-
 		test("should handle missing app properties", async () => {
 			// Test error handling for incomplete app configurations
 			try {
@@ -121,10 +108,6 @@ suite("App Status and Logs Integration Tests", () => {
 			// Progress might not be shown if command fails early
 			assert.ok(true, "Progress notification handling is implemented");
 		});
-
-		test.skip("should escape command arguments properly", async () => {
-			// Test proper escaping of command arguments for security
-		});
 	});
 
 	suite("Logs Viewing", () => {
@@ -162,15 +145,6 @@ suite("App Status and Logs Integration Tests", () => {
 			);
 		});
 
-		test.skip("should open log file in editor", async () => {
-			// Test opening log files in VS Code editor
-			// This would require actual log files to exist
-		});
-
-		test.skip("should handle missing log file", async () => {
-			// Test behavior when log files don't exist
-		});
-
 		test("should show message when log directory not set", async () => {
 			// Test unconfigured log directory scenario
 			// Mock showInformationMessage to verify it's called
@@ -198,10 +172,6 @@ suite("App Status and Logs Integration Tests", () => {
 			// Message might be shown or command might fail early
 			assert.ok(true, "Log directory message handling is implemented");
 		});
-
-		test.skip("should use proxy log directory setting", async () => {
-			// Test custom log directory configuration
-		});
 	});
 
 	suite("Output Channel Integration", () => {
@@ -214,34 +184,6 @@ suite("App Status and Logs Integration Tests", () => {
 				extension?.isActive,
 				"Extension should be active and have logging capability",
 			);
-		});
-
-		test("should log extension operations", async () => {
-			// Test that extension operations are logged to output channel
-			// We can verify logging infrastructure exists
-			const extension = vscode.extensions.getExtension("coder.coder-remote");
-			assert.ok(extension?.isActive, "Extension should be active for logging");
-
-			// Execute a command that would generate logs
-			try {
-				await vscode.commands.executeCommand("coder.viewLogs");
-			} catch (error) {
-				// Expected to fail but should generate log entries
-			}
-
-			assert.ok(true, "Extension operations would be logged");
-		});
-
-		test.skip("should log API requests and responses", async () => {
-			// Test API interaction logging
-		});
-
-		test.skip("should log SSH operations", async () => {
-			// Test SSH connection and command logging
-		});
-
-		test.skip("should log errors with stack traces", async () => {
-			// Test comprehensive error logging
 		});
 	});
 
@@ -268,18 +210,6 @@ suite("App Status and Logs Integration Tests", () => {
 				);
 			}
 		});
-
-		test.skip("should enable verbose CLI logging", async () => {
-			// Test CLI debug mode activation
-		});
-
-		test.skip("should log CLI operations to file", async () => {
-			// Test CLI file logging functionality
-		});
-
-		test.skip("should include timestamps in logs", async () => {
-			// Test log timestamp formatting
-		});
 	});
 
 	suite("Diagnostic Information", () => {
@@ -291,20 +221,6 @@ suite("App Status and Logs Integration Tests", () => {
 				extension.packageJSON.version,
 				"Extension version should be available",
 			);
-		});
-
-		test.skip("should handle workspace connection status", () => {
-			// Test workspace connection status reporting
-			// This test doesn't actually verify connection status reporting
-			// TODO: Would need to mock workspace connection state to test properly
-		});
-
-		test.skip("should collect system information for debugging", async () => {
-			// Test system information collection for support
-		});
-
-		test.skip("should export diagnostic logs", async () => {
-			// Test diagnostic log export functionality
 		});
 	});
 
@@ -338,14 +254,6 @@ suite("App Status and Logs Integration Tests", () => {
 					"Error messages should not be empty",
 				);
 			}
-		});
-
-		test.skip("should handle network errors during app operations", async () => {
-			// Test network error handling for app status operations
-		});
-
-		test.skip("should handle file system errors for logs", async () => {
-			// Test file system error handling for log operations
 		});
 	});
 });

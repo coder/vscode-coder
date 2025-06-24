@@ -58,24 +58,6 @@ suite("Workspace Operations Integration Tests", () => {
 			}
 		});
 
-		test.skip("should filter agents by name when specified", async () => {
-			// Test agent filtering
-			// This test doesn't actually verify agent filtering, just that command accepts parameters
-			// TODO: Would need mock workspace data to test agent filtering properly
-		});
-
-		test.skip("should open workspace with folder path", async () => {
-			// Test opening specific folder in workspace
-			// This test doesn't actually verify folder opening, just that command accepts parameters
-			// TODO: Would need mock workspace connection to test folder opening properly
-		});
-
-		test.skip("should open most recent folder when openRecent is true", async () => {
-			// Test recent folder functionality
-			// This test doesn't actually verify recent folder behavior, just that command accepts parameters
-			// TODO: Would need mock workspace history to test recent folder functionality
-		});
-
 		test("should prompt for folder selection from recents", async () => {
 			// Test folder selection from recent list
 			// This tests the openRecent functionality with user selection
@@ -120,14 +102,6 @@ suite("Workspace Operations Integration Tests", () => {
 			assert.ok(true, "Folder selection prompt was handled");
 		});
 
-		test.skip("should open workspace in new window", async () => {
-			// Test new window behavior
-		});
-
-		test.skip("should open workspace in current window when empty", async () => {
-			// Test current window reuse
-		});
-
 		test("should handle workspace search with filters", async () => {
 			// Test workspace search functionality
 			// Verify the open command supports filtering
@@ -163,10 +137,6 @@ suite("Workspace Operations Integration Tests", () => {
 			assert.ok(true, "Workspace search with filters is supported");
 		});
 
-		test.skip("should show workspace status icons", async () => {
-			// Test workspace status visualization
-		});
-
 		test("should handle workspace open cancellation", async () => {
 			// Test user cancellation during open
 			// Command should handle cancellation gracefully
@@ -180,14 +150,6 @@ suite("Workspace Operations Integration Tests", () => {
 					"Should handle cancellation gracefully",
 				);
 			}
-		});
-
-		test.skip("should handle opening stopped workspace", async () => {
-			// Test auto-start functionality
-		});
-
-		test.skip("should handle workspace build timeout", async () => {
-			// Test timeout handling
 		});
 	});
 
@@ -266,16 +228,6 @@ suite("Workspace Operations Integration Tests", () => {
 			}
 		});
 
-		test.skip("should update workspace to latest version", async () => {
-			// Test workspace update API call
-			// This test doesn't actually verify workspace update, just that command exists
-			// TODO: Would need mock workspace and API to test actual update functionality
-		});
-
-		test.skip("should only be available for outdated workspaces", async () => {
-			// Test update availability context
-		});
-
 		test("should handle update errors", async () => {
 			// Test error handling during update
 			// Mock showWarningMessage to verify error handling
@@ -351,10 +303,6 @@ suite("Workspace Operations Integration Tests", () => {
 
 			assert.ok(true, "Command accepts workspace item parameter");
 		});
-
-		test.skip("should handle navigation for current workspace", async () => {
-			// Test navigation without parameters
-		});
 	});
 
 	suite("Navigate to Workspace Settings", () => {
@@ -392,10 +340,6 @@ suite("Workspace Operations Integration Tests", () => {
 			}
 
 			assert.ok(true, "Settings command accepts workspace parameter");
-		});
-
-		test.skip("should handle settings for current workspace", async () => {
-			// Test settings without parameters
 		});
 	});
 });

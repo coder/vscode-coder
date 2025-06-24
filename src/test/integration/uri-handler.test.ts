@@ -60,78 +60,6 @@ suite("URI Handler Integration Tests", () => {
 				);
 			}
 		});
-
-		test.skip("should handle /open path with valid parameters", async () => {
-			// Test complete /open URI handling
-			// This would require creating a mock URI and testing the full flow
-			// const testUri = vscode.Uri.parse("vscode://coder.coder-remote/open?owner=test&workspace=test");
-		});
-
-		test.skip("should handle /openDevContainer path with valid parameters", async () => {
-			// Test complete /openDevContainer URI handling
-			// const testUri = vscode.Uri.parse("vscode://coder.coder-remote/openDevContainer?owner=test&workspace=test&devContainerName=app&devContainerFolder=/workspace");
-		});
-
-		test.skip("should validate owner parameter", async () => {
-			// Test that missing owner parameter triggers appropriate error
-			// This test doesn't actually verify parameter validation
-			// TODO: Would need to check error message or behavior to verify validation
-		});
-
-		test.skip("should validate workspace parameter", async () => {
-			// Test that missing workspace parameter triggers appropriate error
-		});
-
-		test.skip("should handle optional agent parameter", async () => {
-			// Test agent parameter parsing and usage
-			// This test doesn't verify agent parameter handling
-			// TODO: Would need mock workspace with agents to test properly
-		});
-
-		test.skip("should handle optional folder parameter", async () => {
-			// Test folder parameter parsing and usage
-			// This test doesn't verify folder parameter handling
-			// TODO: Would need mock workspace connection to test folder opening
-		});
-
-		test.skip("should handle openRecent parameter", async () => {
-			// Test recent folder behavior when openRecent=true
-			// This test doesn't verify openRecent behavior
-			// TODO: Would need mock recent folders list to test properly
-		});
-
-		test.skip("should prompt for URL if not provided", async () => {
-			// Test URL prompting when url parameter is missing
-		});
-
-		test.skip("should use existing URL if available", async () => {
-			// Test URL reuse from stored configuration
-		});
-
-		test.skip("should handle token in query parameters", async () => {
-			// Test token parameter parsing and authentication
-		});
-
-		test.skip("should configure CLI after URI handling", async () => {
-			// Test that CLI configuration files are created/updated
-		});
-
-		test.skip("should handle unknown URI paths", async () => {
-			// Test error handling for invalid URI paths
-			// const testUri = vscode.Uri.parse("vscode://coder.coder-remote/unknown");
-		});
-
-		test.skip("should normalize URLs properly", async () => {
-			// Test URL normalization (https:// prefix, trailing slash removal)
-		});
-
-		test.skip("should handle dev container name validation", async () => {
-			// Test dev container name parameter validation
-		});
-
-		test.skip("should handle dev container folder validation", async () => {
-			// Test dev container folder parameter validation
-		});
 	});
 
 	suite("URI Parameter Parsing", () => {
@@ -177,10 +105,6 @@ suite("URI Handler Integration Tests", () => {
 			assert.ok(testUri.query.includes("workspace=test-workspace"));
 			assert.ok(testUri.query.includes("owner=user.name"));
 		});
-
-		test.skip("should validate parameter combinations", async () => {
-			// Test that required parameter combinations are validated
-		});
 	});
 
 	suite("URI Security", () => {
@@ -189,14 +113,6 @@ suite("URI Handler Integration Tests", () => {
 			const validUri = vscode.Uri.parse("vscode://coder.coder-remote/open");
 			assert.strictEqual(validUri.scheme, "vscode");
 			assert.strictEqual(validUri.authority, "coder.coder-remote");
-		});
-
-		test.skip("should sanitize URI parameters", async () => {
-			// Test that URI parameters are properly sanitized
-		});
-
-		test.skip("should validate token format", async () => {
-			// Test token parameter validation
 		});
 
 		test("should handle malformed URIs gracefully", () => {
@@ -229,14 +145,6 @@ suite("URI Handler Integration Tests", () => {
 			// Commands that should be available for URI handling
 			assert.ok(commands.includes("coder.open"));
 			assert.ok(commands.includes("coder.openDevContainer"));
-		});
-
-		test.skip("should pass parameters correctly to commands", async () => {
-			// Test that URI parameters are correctly passed to commands
-		});
-
-		test.skip("should handle command execution errors", async () => {
-			// Test error handling when commands fail
 		});
 	});
 });
