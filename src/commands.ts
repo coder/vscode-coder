@@ -748,7 +748,7 @@ async function openDevContainer(
 	baseUrl: string,
 	workspaceOwner: string,
 	workspaceName: string,
-	workspaceAgent: string | undefined,
+	workspaceAgent: string,
 	devContainerName: string,
 	devContainerFolder: string,
 ) {
