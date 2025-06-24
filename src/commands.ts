@@ -600,7 +600,7 @@ export class Commands {
 		} else {
 			workspaceOwner = args[0] as string;
 			workspaceName = args[1] as string;
-			// workspaceAgent is reserved for args[2], but multiple agents aren't supported yet.
+			workspaceAgent = args[2] as string | undefined;
 			folderPath = args[3] as string | undefined;
 			openRecent = args[4] as boolean | undefined;
 		}
@@ -628,7 +628,7 @@ export class Commands {
 
 		const workspaceOwner = args[0] as string;
 		const workspaceName = args[1] as string;
-		const workspaceAgent = undefined; // args[2] is reserved, but we do not support multiple agents yet.
+		const workspaceAgent =  args[2] as string;
 		const devContainerName = args[3] as string;
 		const devContainerFolder = args[4] as string;
 
