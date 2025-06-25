@@ -117,7 +117,7 @@
 				{
 					"id": "coder",
 					"title": "Coder Remote",
-					"icon": "media/logo.svg"
+					"icon": "media/logo-white.svg"
 				}
 			]
 		},
@@ -127,13 +127,13 @@
 					"id": "myWorkspaces",
 					"name": "My Workspaces",
 					"visibility": "visible",
-					"icon": "media/logo.svg"
+					"icon": "media/logo-white.svg"
 				},
 				{
 					"id": "allWorkspaces",
 					"name": "All Workspaces",
 					"visibility": "visible",
-					"icon": "media/logo.svg",
+					"icon": "media/logo-white.svg",
 					"when": "coder.authenticated && coder.isOwner"
 				}
 			]

@@ -448,8 +448,8 @@ export class OpenableTreeItem extends vscode.TreeItem {
 	}
 
 	iconPath = {
-		light: path.join(__filename, "..", "..", "media", "logo.svg"),
-		dark: path.join(__filename, "..", "..", "media", "logo.svg"),
+		light: path.join(__filename, "..", "..", "media", "logo-black.svg"),
+		dark: path.join(__filename, "..", "..", "media", "logo-white.svg"),
 	};
 }
 
