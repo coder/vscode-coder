@@ -2,9 +2,17 @@
 
 ## Unreleased
 
+## [v1.9.2](https://github.com/coder/vscode-coder/releases/tag/v1.9.2) 2025-06-25
+
 ### Fixed
 
 - Use `--header-command` properly when starting a workspace.
+
+- Handle `agent` parameter when opening workspace.
+
+### Changed
+
+- The Coder logo has been updated.
 
 ## [v1.9.1](https://github.com/coder/vscode-coder/releases/tag/v1.9.1) 2025-05-27
 
