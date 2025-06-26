@@ -278,20 +278,18 @@ describe("extension", () => {
 				mockOutputChannel as never,
 			);
 
-			// Verify Storage was created with correct args
+			// Verify Logger was created with verbose setting
+			expect(Logger).toHaveBeenCalledWith(mockOutputChannel, { verbose: true });
+
+			// Verify Storage was created with correct args including Logger
 			expect(Storage).toHaveBeenCalledWith(
 				mockOutputChannel,
 				mockContext.globalState,
 				mockContext.secrets,
 				mockContext.globalStorageUri,
 				mockContext.logUri,
+				loggerInstance,
 			);
-
-			// Verify Logger was created with verbose setting
-			expect(Logger).toHaveBeenCalledWith(mockOutputChannel, { verbose: true });
-
-			// Verify setLogger was called
-			expect(storageInstance.setLogger).toHaveBeenCalledWith(loggerInstance);
 
 			// Verify return value
 			expect(result).toEqual({
@@ -1579,16 +1577,16 @@ describe("extension", () => {
 				extensionMode: 1, // Normal mode
 			});
 
-			// Track Storage instance and setLogger call
+			// Track Storage instance
 			const mockStorage = createMockStorage({
 				getUrl: vi.fn().mockReturnValue(""),
 				getSessionToken: vi.fn().mockResolvedValue(""),
-				setLogger: vi.fn(),
 			});
 			const Storage = (await import("./storage")).Storage;
 			vi.mocked(Storage).mockImplementation(() => mockStorage as never);
 
 			// Logger is already mocked at the top level
+			const { Logger } = await import("./logger");
 
 			// Mock Commands
 			const Commands = (await import("./commands")).Commands;
@@ -1609,9 +1607,16 @@ describe("extension", () => {
 
 			// Verify Storage was created
 			expect(Storage).toHaveBeenCalled();
-
-			// Verify setLogger was called on Storage
-			expect(mockStorage.setLogger).toHaveBeenCalled();
+			// Verify Logger was created and passed to Storage
+			expect(Logger).toHaveBeenCalled();
+			const storageCallArgs = vi.mocked(Storage).mock.calls[0];
+			expect(storageCallArgs).toHaveLength(6);
+			// The 6th argument should be the Logger instance
+			expect(storageCallArgs[5]).toEqual(
+				expect.objectContaining({
+					args: expect.any(Array),
+				}),
+			);
 		});
 	});
 });

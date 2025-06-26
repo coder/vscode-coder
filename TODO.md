@@ -75,11 +75,12 @@
 
 | Metric                   | Target | Current | Status      |
 | ------------------------ | ------ | ------- | ----------- |
-| Unit test coverage       | 80%+   | 78.49%  | 🔄 Progress |
-| Integration tests        | 60+    | 69      | ✅ Complete |
+| Unit test coverage       | 85%+   | 78.49%  | 🔄 Progress |
+| Integration tests        | 95+    | 69      | 🔄 Progress |
 | Logger adoption          | 100%   | 100%    | ✅ Complete |
 | Files with <50% coverage | 0      | 1       | 🔄 Progress |
 | Test mock consolidation  | 100%   | 100%    | ✅ Complete |
+| Average method length    | <50    | >100    | 🔄 Progress |
 
 ## Phase 5: Integration Test Implementation
 
@@ -181,22 +182,67 @@
 5. **Input Validation** - Real-time validation feedback
 6. **Button Interactions** - QuickPick custom buttons
 
-## Immediate Next Steps
+## Phase 6: Test Simplification Refactoring 🚀 NEW
 
-1. **Complete Integration Test Implementation**
+### Overview
 
-   - Currently implementing authentication tests (Phase 1)
-   - Use mock factories from test-helpers.ts
-   - Follow VS Code Test API patterns
-   - Target: 0 skipped tests
+Major refactoring to dramatically improve testability by breaking down monolithic methods and creating proper abstractions.
 
-2. **Refactor remote.ts (49.21% coverage)**
+### Sub-Phase 6.1: Break Down Monolithic Methods (Week 1-2)
 
-   - Break down 400+ line methods into testable units
-   - Apply TDD approach similar to extension.ts
-   - Target: 49.21% → 80%+ coverage
+#### remote.ts Refactoring (52.15% → 80%+ coverage)
 
-3. **Improve commands.ts coverage (68.03%)**
-   - Create UI abstraction layer for better testability
-   - Add tests for uncovered command handlers
-   - Target: 68.03% → 80%+ coverage
+- [ ] Extract `validateRemoteAuthority()` from 366-line setup() method
+- [ ] Extract `authenticateRemote()` - Handle auth flow
+- [ ] Extract `fetchWorkspaceDetails()` - Get workspace info
+- [ ] Extract `ensureWorkspaceRunning()` - Start if needed
+- [ ] Extract `configureSSHConnection()` - SSH setup
+- [ ] Extract `setupBinaryManagement()` - Binary download/update
+- [ ] Extract `configureLogging()` - Log directory setup
+- [ ] Extract `establishConnection()` - Final connection
+
+#### commands.ts UI Abstraction (68.03% → 80%+ coverage)
+
+- [ ] Create `UIProvider` interface for all UI interactions
+- [ ] Implement `DefaultUIProvider` using vscode APIs
+- [ ] Implement `TestUIProvider` with programmable responses
+- [ ] Migrate all commands to use UIProvider
+
+### Sub-Phase 6.2: Test Infrastructure Enhancements
+
+- [ ] Add `createMockSSHConfig()` to test-helpers.ts
+- [ ] Add `createMockProcess()` for process testing
+- [ ] Add `createMockFileSystem()` for file operations
+- [ ] Add `createMockNetworkMonitor()` for network testing
+- [ ] Create `withMockWorkspace()` integration helper
+- [ ] Create `withMockAuthentication()` integration helper
+- [ ] Create `withMockSSHConnection()` integration helper
+
+### Sub-Phase 6.3: Enable Integration Tests
+
+- [ ] Enable authentication tests (24 tests)
+- [ ] Enable workspace operation tests (23 tests)
+- [ ] Enable tree view tests (21 tests)
+- [ ] Enable remote connection tests (36 tests)
+
+### Sub-Phase 6.4: Implement Testing Patterns
+
+- [ ] Create WorkspaceStateMachine for state testing
+- [ ] Implement Command pattern for complex operations
+- [ ] Document all new patterns in CLAUDE.md
+
+### Success Metrics for Phase 6
+
+| Metric                    | Current    | Target    | Status |
+| ------------------------- | ---------- | --------- | ------ |
+| Unit test coverage        | 78.49%     | 85%+      | 🔄     |
+| Integration tests enabled | 11         | 95+       | 🔄     |
+| Average method length     | >100 lines | <50 lines | 🔄     |
+| Files with <50% coverage  | 1          | 0         | 🔄     |
+| Test execution time       | ~3 min     | <5 min    | 🔄     |
+
+## Immediate Next Steps (Priority)
+
+1. **Extract validateRemoteAuthority() using TDD** - Start with remote.ts refactoring
+2. **Create UIProvider interface** - Enable commands.ts testing
+3. **Enable first 5 authentication tests** - Prove integration test approach

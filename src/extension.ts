@@ -10,6 +10,7 @@ import { getErrorDetail } from "./error";
 import { Logger } from "./logger";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
+import { DefaultUIProvider } from "./uiProvider";
 import { toSafeHost } from "./util";
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider";
 
@@ -49,20 +50,20 @@ export async function initializeInfrastructure(
 	ctx: vscode.ExtensionContext,
 	output: vscode.OutputChannel,
 ): Promise<{ storage: Storage; logger: Logger }> {
+	// Create Logger for structured logging
+	const { Logger } = await import("./logger");
+	const verbose =
+		vscode.workspace.getConfiguration().get<boolean>("coder.verbose") ?? false;
+	const logger = new Logger(output, { verbose });
+
 	const storage = new Storage(
 		output,
 		ctx.globalState,
 		ctx.secrets,
 		ctx.globalStorageUri,
 		ctx.logUri,
+		logger,
 	);
-
-	// Create and set Logger for structured logging
-	const { Logger } = await import("./logger");
-	const verbose =
-		vscode.workspace.getConfiguration().get<boolean>("coder.verbose") ?? false;
-	const logger = new Logger(output, { verbose });
-	storage.setLogger(logger);
 
 	return { storage, logger };
 }
@@ -485,8 +486,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		storage,
 	);
 
+	// Create UI provider
+	const uiProvider = new DefaultUIProvider(vscodeProposed.window);
+
 	// Create commands instance (needed for URI handler)
-	const commands = new Commands(vscodeProposed, restClient, storage);
+	const commands = new Commands(
+		vscodeProposed,
+		restClient,
+		storage,
+		uiProvider,
+	);
 
 	// Register URI handler
 	registerUriHandler(commands, restClient, storage);

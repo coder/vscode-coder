@@ -11,6 +11,7 @@ import { makeCoderSdk, needToken } from "./api";
 import { extractAgents } from "./api-helper";
 import { CertificateError } from "./error";
 import { Storage } from "./storage";
+import { UIProvider } from "./uiProvider";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { OpenableTreeItem } from "./workspacesProvider";
 
@@ -30,6 +31,7 @@ export class Commands {
 		private readonly vscodeProposed: typeof vscode,
 		private readonly restClient: Api,
 		private readonly storage: Storage,
+		private readonly uiProvider: UIProvider,
 	) {}
 
 	/**
@@ -50,7 +52,7 @@ export class Commands {
 		} else if (filteredAgents.length === 1) {
 			return filteredAgents[0];
 		} else {
-			const quickPick = vscode.window.createQuickPick();
+			const quickPick = this.uiProvider.createQuickPick();
 			quickPick.title = "Select an agent";
 			quickPick.busy = true;
 			const agentItems: vscode.QuickPickItem[] = filteredAgents.map((agent) => {
@@ -92,7 +94,7 @@ export class Commands {
 	private async askURL(selection?: string): Promise<string | undefined> {
 		const defaultURL =
 			vscode.workspace.getConfiguration().get<string>("coder.defaultUrl") ?? "";
-		const quickPick = vscode.window.createQuickPick();
+		const quickPick = this.uiProvider.createQuickPick();
 		quickPick.value = selection || defaultURL || process.env.CODER_URL || "";
 		quickPick.placeholder = "https://example.coder.com";
 		quickPick.title = "Enter the URL of your Coder deployment.";
@@ -205,7 +207,7 @@ export class Commands {
 			await vscode.commands.executeCommand("setContext", "coder.isOwner", true);
 		}
 
-		vscode.window
+		this.uiProvider
 			.showInformationMessage(
 				`Welcome to Coder, ${res.user.username}!`,
 				{
@@ -249,14 +251,11 @@ export class Commands {
 						`Failed to log in to Coder server: ${message}`,
 					);
 				} else {
-					this.vscodeProposed.window.showErrorMessage(
-						"Failed to log in to Coder server",
-						{
-							detail: message,
-							modal: true,
-							useCustom: true,
-						},
-					);
+					this.uiProvider.showErrorMessage("Failed to log in to Coder server", {
+						detail: message,
+						modal: true,
+						useCustom: true,
+					});
 				}
 				// Invalid certificate, most likely.
 				return null;
@@ -317,7 +316,7 @@ export class Commands {
 	 */
 	public async viewLogs(): Promise<void> {
 		if (!this.workspaceLogPath) {
-			vscode.window.showInformationMessage(
+			this.uiProvider.showInformationMessage(
 				"No logs available. Make sure to set coder.proxyLogDirectory to get logs.",
 				this.workspaceLogPath || "<unset>",
 			);
@@ -394,7 +393,7 @@ export class Commands {
 			const uri = `${baseUrl}/@${this.workspace.owner_name}/${this.workspace.name}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
-			vscode.window.showInformationMessage("No workspace found.");
+			this.uiProvider.showInformationMessage("No workspace found.");
 		}
 	}
 
@@ -418,7 +417,7 @@ export class Commands {
 			const uri = `${baseUrl}/@${this.workspace.owner_name}/${this.workspace.name}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
-			vscode.window.showInformationMessage("No workspace found.");
+			this.uiProvider.showInformationMessage("No workspace found.");
 		}
 	}
 
@@ -460,7 +459,7 @@ export class Commands {
 	}): Promise<void> {
 		// Launch and run command in terminal if command is provided
 		if (app.command) {
-			return vscode.window.withProgress(
+			return this.uiProvider.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
 					title: `Connecting to AI Agent...`,
@@ -494,7 +493,7 @@ export class Commands {
 		}
 		// Check if app has a URL to open
 		if (app.url) {
-			return vscode.window.withProgress(
+			return this.uiProvider.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
 					title: `Opening ${app.name || "application"} in browser...`,
@@ -507,7 +506,7 @@ export class Commands {
 		}
 
 		// If no URL or command, show information about the app status
-		vscode.window.showInformationMessage(`${app.name}`, {
+		this.uiProvider.showInformationMessage(`${app.name}`, {
 			detail: `Agent: ${app.agent_name || "Unknown"}`,
 		});
 	}
@@ -530,7 +529,7 @@ export class Commands {
 		}
 
 		if (args.length === 0) {
-			const quickPick = vscode.window.createQuickPick();
+			const quickPick = this.uiProvider.createQuickPick();
 			quickPick.value = "owner:me ";
 			quickPick.placeholder = "owner:me template:go";
 			quickPick.title = `Connect to a workspace`;
@@ -650,7 +649,7 @@ export class Commands {
 		if (!this.workspace || !this.workspaceRestClient) {
 			return;
 		}
-		const action = await this.vscodeProposed.window.showInformationMessage(
+		const action = await this.uiProvider.showInformationMessage(
 			"Update Workspace",
 			{
 				useCustom: true,

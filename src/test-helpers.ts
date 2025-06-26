@@ -12,6 +12,7 @@ import type { Commands } from "./commands";
 import { Logger } from "./logger";
 import type { Remote } from "./remote";
 import type { Storage } from "./storage";
+import type { UIProvider } from "./uiProvider";
 import type { WorkspaceProvider } from "./workspacesProvider";
 
 /**
@@ -211,6 +212,7 @@ export function createMockStorage(
 		getRemoteSSHLogPath: ReturnType<typeof vi.fn>;
 		getNetworkInfoPath: ReturnType<typeof vi.fn>;
 		getLogPath: ReturnType<typeof vi.fn>;
+		withUrlHistory: ReturnType<typeof vi.fn>;
 	}> = {},
 ): Storage {
 	return {
@@ -230,7 +232,6 @@ export function createMockStorage(
 		getSessionTokenPath:
 			overrides.getSessionTokenPath ??
 			vi.fn().mockReturnValue("/path/to/token"),
-		setLogger: overrides.setLogger ?? vi.fn(),
 		migrateSessionToken:
 			overrides.migrateSessionToken ?? vi.fn().mockResolvedValue(undefined),
 		readCliConfig:
@@ -243,6 +244,7 @@ export function createMockStorage(
 			vi.fn().mockReturnValue("/mock/network/info"),
 		getLogPath:
 			overrides.getLogPath ?? vi.fn().mockReturnValue("/mock/log/path"),
+		withUrlHistory: overrides.withUrlHistory ?? vi.fn().mockReturnValue([]),
 		...overrides,
 	} as unknown as Storage;
 }
@@ -956,6 +958,206 @@ export function createMockEventEmitter<T>(): vscode.EventEmitter<T> {
 }
 
 // ============================================================================
+// UI Provider Factories
+// ============================================================================
+
+/**
+ * Create a test UI provider with programmable responses
+ */
+export function createTestUIProvider(): {
+	uiProvider: UIProvider;
+	addMessageResponse: (response: string | undefined) => void;
+	addQuickPickResponse: (response: {
+		selection?: vscode.QuickPickItem[];
+		hidden?: boolean;
+	}) => void;
+	addProgressResult: <T>(result: T) => void;
+	addInputBoxResponse: (response: { value?: string; hidden?: boolean }) => void;
+	getShownMessages: () => Array<{
+		type: string;
+		message: string;
+		options?: vscode.MessageOptions;
+		items: Array<string | vscode.MessageItem>;
+	}>;
+	getProgressCalls: () => Array<{
+		options: vscode.ProgressOptions;
+		taskCompleted: boolean;
+	}>;
+} {
+	const messageResponses: Array<string | undefined> = [];
+	const quickPickResponses: Array<{
+		selection?: vscode.QuickPickItem[];
+		hidden?: boolean;
+	}> = [];
+	const progressResults: Array<unknown> = [];
+	const inputBoxResponses: Array<{ value?: string; hidden?: boolean }> = [];
+	const shownMessages: Array<{
+		type: string;
+		message: string;
+		options?: vscode.MessageOptions;
+		items: Array<string | vscode.MessageItem>;
+	}> = [];
+	const progressCalls: Array<{
+		options: vscode.ProgressOptions;
+		taskCompleted: boolean;
+	}> = [];
+
+	const uiProvider: UIProvider = {
+		createQuickPick: <T extends vscode.QuickPickItem>() => {
+			const quickPick = createMockQuickPick<T>();
+			const originalShow = quickPick.show;
+			quickPick.show = () => {
+				originalShow.call(quickPick);
+				const response = quickPickResponses.shift();
+				if (response) {
+					if (response.hidden) {
+						setTimeout(() => quickPick.hide(), 0);
+					} else if (response.selection) {
+						setTimeout(() => {
+							quickPick.selectedItems = response.selection as T[];
+							const eventEmitter = quickPick as unknown as {
+								onDidChangeSelection?: vscode.EventEmitter<readonly T[]>;
+							};
+							eventEmitter.onDidChangeSelection?.fire?.(
+								response.selection as T[],
+							);
+						}, 0);
+					}
+				}
+			};
+			return quickPick;
+		},
+		showInformationMessage: (
+			message: string,
+			...args: Array<string | vscode.MessageOptions | vscode.MessageItem>
+		) => {
+			const [optionsOrFirstItem, ...rest] = args;
+			const isOptions =
+				optionsOrFirstItem &&
+				typeof optionsOrFirstItem === "object" &&
+				!("title" in optionsOrFirstItem);
+			shownMessages.push({
+				type: "info",
+				message,
+				options: isOptions
+					? (optionsOrFirstItem as vscode.MessageOptions)
+					: undefined,
+				items: isOptions
+					? (rest as Array<string | vscode.MessageItem>)
+					: (args as Array<string | vscode.MessageItem>),
+			});
+			return Promise.resolve(messageResponses.shift());
+		},
+		showErrorMessage: (
+			message: string,
+			...args: Array<string | vscode.MessageOptions | vscode.MessageItem>
+		) => {
+			const [optionsOrFirstItem, ...rest] = args;
+			const isOptions =
+				optionsOrFirstItem &&
+				typeof optionsOrFirstItem === "object" &&
+				!("title" in optionsOrFirstItem);
+			shownMessages.push({
+				type: "error",
+				message,
+				options: isOptions
+					? (optionsOrFirstItem as vscode.MessageOptions)
+					: undefined,
+				items: isOptions
+					? (rest as Array<string | vscode.MessageItem>)
+					: (args as Array<string | vscode.MessageItem>),
+			});
+			return Promise.resolve(messageResponses.shift());
+		},
+		showWarningMessage: (
+			message: string,
+			...args: Array<string | vscode.MessageOptions | vscode.MessageItem>
+		) => {
+			const [optionsOrFirstItem, ...rest] = args;
+			const isOptions =
+				optionsOrFirstItem &&
+				typeof optionsOrFirstItem === "object" &&
+				!("title" in optionsOrFirstItem);
+			shownMessages.push({
+				type: "warning",
+				message,
+				options: isOptions
+					? (optionsOrFirstItem as vscode.MessageOptions)
+					: undefined,
+				items: isOptions
+					? (rest as Array<string | vscode.MessageItem>)
+					: (args as Array<string | vscode.MessageItem>),
+			});
+			return Promise.resolve(messageResponses.shift());
+		},
+		withProgress: <R>(
+			options: vscode.ProgressOptions,
+			task: (
+				progress: vscode.Progress<{ message?: string; increment?: number }>,
+				token: vscode.CancellationToken,
+			) => Thenable<R>,
+		): Thenable<R> => {
+			const progressCall = { options, taskCompleted: false };
+			progressCalls.push(progressCall);
+			const result = progressResults.shift() as R | undefined;
+			if (result !== undefined) {
+				progressCall.taskCompleted = true;
+				return Promise.resolve(result);
+			}
+			const mockProgress = { report: vi.fn() };
+			const mockToken = {
+				isCancellationRequested: false,
+				onCancellationRequested: vi.fn(),
+			};
+			return task(mockProgress, mockToken).then((taskResult: R) => {
+				progressCall.taskCompleted = true;
+				return taskResult;
+			});
+		},
+		createInputBox: () => {
+			const inputBox = createMockInputBox();
+			const originalShow = inputBox.show;
+			inputBox.show = () => {
+				originalShow.call(inputBox);
+				const response = inputBoxResponses.shift();
+				if (response) {
+					if (response.hidden) {
+						setTimeout(() => inputBox.hide(), 0);
+					} else if (response.value !== undefined) {
+						const value = response.value;
+						setTimeout(() => {
+							inputBox.value = value;
+							const inputEventEmitter = inputBox as unknown as {
+								onDidChangeValue?: vscode.EventEmitter<string>;
+								onDidAccept?: vscode.EventEmitter<void>;
+							};
+							inputEventEmitter.onDidChangeValue?.fire?.(value);
+							inputEventEmitter.onDidAccept?.fire?.();
+						}, 0);
+					}
+				}
+			};
+			return inputBox;
+		},
+	};
+
+	return {
+		uiProvider,
+		addMessageResponse: (response: string | undefined) =>
+			messageResponses.push(response),
+		addQuickPickResponse: (response: {
+			selection?: vscode.QuickPickItem[];
+			hidden?: boolean;
+		}) => quickPickResponses.push(response),
+		addProgressResult: <T>(result: T) => progressResults.push(result),
+		addInputBoxResponse: (response: { value?: string; hidden?: boolean }) =>
+			inputBoxResponses.push(response),
+		getShownMessages: () => shownMessages,
+		getProgressCalls: () => progressCalls,
+	};
+}
+
+// ============================================================================
 // HTTP/Network Mock Factories
 // ============================================================================
 
@@ -1323,4 +1525,32 @@ export function simulateShowQuickPick<T extends vscode.QuickPickItem>(
 				? options.items[options.selectedIndex]
 				: undefined),
 	);
+}
+
+/**
+ * Create a mock RestClient (Api instance) with default methods
+ */
+export function createMockRestClient(overrides: Partial<Api> = {}): Api {
+	return {
+		setHost: vi.fn(),
+		setSessionToken: vi.fn(),
+		getAxiosInstance: vi.fn(() => ({
+			defaults: {
+				headers: { common: {} },
+				baseURL: "https://test.com",
+			},
+			interceptors: {
+				request: { use: vi.fn() },
+				response: { use: vi.fn() },
+			},
+		})),
+		getBuildInfo: vi.fn().mockResolvedValue({ version: "v2.0.0" }),
+		getWorkspaceByOwnerAndName: vi
+			.fn()
+			.mockResolvedValue(createMockWorkspaceRunning()),
+		getWorkspaceAgents: vi.fn().mockResolvedValue([createMockAgent()]),
+		startWorkspace: vi.fn().mockResolvedValue(createMockBuild()),
+		stopWorkspace: vi.fn().mockResolvedValue(createMockBuild()),
+		...overrides,
+	} as unknown as Api;
 }

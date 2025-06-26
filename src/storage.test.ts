@@ -875,10 +875,8 @@ describe("storage", () => {
 				mockSecrets,
 				mockGlobalStorageUri,
 				mockLogUri,
+				logger,
 			);
-
-			// Set the logger
-			storage.setLogger(logger);
 
 			// When writeToCoderOutputChannel is called
 			storage.writeToCoderOutputChannel("Test message");
@@ -926,10 +924,8 @@ describe("storage", () => {
 				mockSecrets,
 				mockGlobalStorageUri,
 				mockLogUri,
+				logger,
 			);
-
-			// Set the logger
-			storage.setLogger(logger);
 
 			// Verify that info messages are still logged
 			storage.writeToCoderOutputChannel("Info message");

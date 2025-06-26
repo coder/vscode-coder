@@ -14,23 +14,14 @@ import { Logger } from "./logger";
 const MAX_URLS = 10;
 
 export class Storage {
-	// Optional logger for structured logging
-	private logger?: Logger;
-
 	constructor(
 		private readonly output: vscode.OutputChannel,
 		private readonly memento: vscode.Memento,
 		private readonly secrets: vscode.SecretStorage,
 		private readonly globalStorageUri: vscode.Uri,
 		private readonly logUri: vscode.Uri,
+		private readonly logger?: Logger,
 	) {}
-
-	/**
-	 * Set the logger for structured logging
-	 */
-	public setLogger(logger: Logger): void {
-		this.logger = logger;
-	}
 
 	/**
 	 * Add the URL to the list of recently accessed URLs in global storage, then

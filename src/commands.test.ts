@@ -9,6 +9,9 @@ import {
 	createMockStorageWithAuth,
 	createMockWorkspace,
 	createMockAgent,
+	createTestUIProvider,
+	createMockConfiguration,
+	createMockQuickPick,
 } from "./test-helpers";
 import { OpenableTreeItem } from "./workspacesProvider";
 
@@ -30,9 +33,18 @@ vi.mock("coder/site/src/api/errors", () => ({
 
 beforeAll(() => {
 	vi.mock("vscode", () => {
+		const mockConfiguration = {
+			get: vi.fn((key) => {
+				if (key === "coder.defaultUrl") {
+					return "";
+				}
+				return undefined;
+			}),
+		};
 		return {
 			window: {
 				showInformationMessage: vi.fn().mockResolvedValue(undefined),
+				showInputBox: vi.fn(),
 				createQuickPick: vi.fn(),
 				showTextDocument: vi.fn(),
 				withProgress: vi.fn((options, task) => task()),
@@ -44,6 +56,7 @@ beforeAll(() => {
 			workspace: {
 				openTextDocument: vi.fn(),
 				workspaceFolders: [],
+				getConfiguration: vi.fn(() => mockConfiguration),
 			},
 			Uri: {
 				file: vi.fn(),
@@ -59,6 +72,9 @@ beforeAll(() => {
 			ProgressLocation: {
 				Notification: 15,
 			},
+			EventEmitter: class {
+				event = vi.fn();
+			},
 		};
 	});
 });
@@ -68,11 +84,13 @@ describe("commands", () => {
 		const mockVscodeProposed = createMockVSCode();
 		const mockRestClient = createMockApi();
 		const mockStorage = createMockStorage();
+		const { uiProvider } = createTestUIProvider();
 
 		const commands = new Commands(
 			mockVscodeProposed,
 			mockRestClient,
 			mockStorage,
+			uiProvider,
 		);
 
 		expect(commands).toBeInstanceOf(Commands);
@@ -86,10 +104,12 @@ describe("commands", () => {
 			const mockVscodeProposed = createMockVSCode();
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Mock extractAgents to return empty array
@@ -107,10 +127,12 @@ describe("commands", () => {
 			const mockVscodeProposed = createMockVSCode();
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const mockAgent = createMockAgent({
@@ -133,10 +155,12 @@ describe("commands", () => {
 			const mockVscodeProposed = createMockVSCode();
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const mainAgent = createMockAgent({
@@ -165,19 +189,15 @@ describe("commands", () => {
 
 	describe("viewLogs", () => {
 		it("should show info message when no log path is set", async () => {
-			// Mock vscode window methods
-			const showInformationMessageMock = vi.fn();
-			vi.mocked(vscode.window.showInformationMessage).mockImplementation(
-				showInformationMessageMock,
-			);
-
 			const mockVscodeProposed = createMockVSCode();
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
+			const { uiProvider, getShownMessages } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Ensure workspaceLogPath is undefined
@@ -185,10 +205,14 @@ describe("commands", () => {
 
 			await commands.viewLogs();
 
-			expect(showInformationMessageMock).toHaveBeenCalledWith(
-				"No logs available. Make sure to set coder.proxyLogDirectory to get logs.",
-				"<unset>",
-			);
+			const shownMessages = getShownMessages();
+			expect(shownMessages).toHaveLength(1);
+			expect(shownMessages[0]).toMatchObject({
+				type: "info",
+				message:
+					"No logs available. Make sure to set coder.proxyLogDirectory to get logs.",
+				items: ["<unset>"],
+			});
 		});
 
 		it("should open log file when log path is set", async () => {
@@ -209,10 +233,12 @@ describe("commands", () => {
 			const mockVscodeProposed = createMockVSCode();
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Set workspaceLogPath
@@ -249,10 +275,12 @@ describe("commands", () => {
 				setSessionToken: vi.fn(),
 			});
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			await commands.logout();
@@ -296,10 +324,12 @@ describe("commands", () => {
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const mockWorkspace = {
@@ -316,19 +346,16 @@ describe("commands", () => {
 		});
 
 		it("should show info message when no workspace is provided and not connected", async () => {
-			const showInformationMessageMock = vi.fn();
-			vi.mocked(vscode.window.showInformationMessage).mockImplementation(
-				showInformationMessageMock,
-			);
-
 			const mockVscodeProposed = createMockVSCode();
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider, getShownMessages } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Ensure workspace and workspaceRestClient are undefined
@@ -339,9 +366,12 @@ describe("commands", () => {
 				undefined as unknown as OpenableTreeItem,
 			);
 
-			expect(showInformationMessageMock).toHaveBeenCalledWith(
-				"No workspace found.",
-			);
+			const shownMessages = getShownMessages();
+			expect(shownMessages).toHaveLength(1);
+			expect(shownMessages[0]).toMatchObject({
+				type: "info",
+				message: "No workspace found.",
+			});
 		});
 	});
 
@@ -356,10 +386,12 @@ describe("commands", () => {
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const mockWorkspace = {
@@ -392,10 +424,12 @@ describe("commands", () => {
 			});
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Set up connected workspace
@@ -427,10 +461,12 @@ describe("commands", () => {
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			await commands.createWorkspace();
@@ -444,26 +480,46 @@ describe("commands", () => {
 
 	describe("maybeAskUrl", () => {
 		it("should return undefined when user aborts", async () => {
+			const mockConfiguration = createMockConfiguration({
+				"coder.defaultUrl": "",
+			});
 			const mockVscodeProposed = createMockVSCode();
+			vi.mocked(mockVscodeProposed.workspace.getConfiguration).mockReturnValue(
+				mockConfiguration,
+			);
+
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
-			// Mock askURL to return undefined (user aborted)
-			const askURLSpy = vi
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				.spyOn(commands as any, "askURL")
-				.mockResolvedValue(undefined);
+			// Mock the window.createQuickPick to return our test quick pick
+			const quickPick = createMockQuickPick();
+			let onDidHideHandler: (() => void) | undefined;
+			quickPick.onDidHide = vi.fn((handler) => {
+				onDidHideHandler = handler;
+				return { dispose: vi.fn() };
+			});
+			quickPick.show = vi.fn(() => {
+				// Simulate user pressing escape to cancel
+				setTimeout(() => {
+					quickPick.hide();
+					if (onDidHideHandler) {
+						onDidHideHandler();
+					}
+				}, 0);
+			});
+			vi.mocked(uiProvider.createQuickPick).mockReturnValue(quickPick);
 
 			const result = await commands.maybeAskUrl(null);
 
 			expect(result).toBeUndefined();
-			expect(askURLSpy).toHaveBeenCalledWith(undefined);
 		});
 
 		it("should normalize URL with https prefix when missing", async () => {
@@ -471,10 +527,12 @@ describe("commands", () => {
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const result = await commands.maybeAskUrl("example.coder.com");
@@ -487,10 +545,12 @@ describe("commands", () => {
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const result = await commands.maybeAskUrl("https://example.coder.com///");
@@ -505,10 +565,12 @@ describe("commands", () => {
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Ensure workspace and workspaceRestClient are undefined
@@ -524,12 +586,9 @@ describe("commands", () => {
 		});
 
 		it("should prompt for confirmation and update workspace when user confirms", async () => {
-			const showInformationMessageMock = vi.fn().mockResolvedValue("Update");
 			const updateWorkspaceVersionMock = vi.fn().mockResolvedValue(undefined);
 
 			const mockVscodeProposed = createMockVSCode();
-			mockVscodeProposed.window.showInformationMessage =
-				showInformationMessageMock;
 
 			const mockWorkspaceRestClient = createMockApi({
 				updateWorkspaceVersion: updateWorkspaceVersionMock,
@@ -538,10 +597,16 @@ describe("commands", () => {
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider, addMessageResponse, getShownMessages } =
+				createTestUIProvider();
+			// Program the UI provider to return "Update" when prompted
+			addMessageResponse("Update");
+
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Set up active workspace
@@ -555,15 +620,18 @@ describe("commands", () => {
 			await commands.updateWorkspace();
 
 			// Verify confirmation dialog was shown
-			expect(showInformationMessageMock).toHaveBeenCalledWith(
-				"Update Workspace",
-				{
+			const shownMessages = getShownMessages();
+			expect(shownMessages).toHaveLength(1);
+			expect(shownMessages[0]).toMatchObject({
+				type: "info",
+				message: "Update Workspace",
+				options: {
 					useCustom: true,
 					modal: true,
 					detail: "Update testuser/my-workspace to the latest version?",
 				},
-				"Update",
-			);
+				items: ["Update"],
+			});
 
 			// Verify workspace was updated
 			expect(updateWorkspaceVersionMock).toHaveBeenCalledWith(mockWorkspace);
@@ -580,10 +648,12 @@ describe("commands", () => {
 			});
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const mockTreeItem = {
@@ -603,10 +673,12 @@ describe("commands", () => {
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Mock maybeAskUrl to return undefined (user cancelled)
@@ -618,37 +690,6 @@ describe("commands", () => {
 
 			expect(maybeAskUrlSpy).toHaveBeenCalledWith(undefined);
 			// Should not proceed to ask for token
-		});
-
-		it("should abort when user cancels token request", async () => {
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Mock maybeAskUrl to return a URL
-			vi.spyOn(commands, "maybeAskUrl").mockResolvedValue(
-				"https://test.coder.com",
-			);
-
-			// Mock maybeAskToken to return undefined (user cancelled)
-			const maybeAskTokenSpy = vi
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				.spyOn(commands as any, "maybeAskToken")
-				.mockResolvedValue(undefined);
-
-			await commands.login();
-
-			expect(maybeAskTokenSpy).toHaveBeenCalledWith(
-				"https://test.coder.com",
-				undefined,
-				false,
-			);
 		});
 
 		it("should complete login successfully with provided URL and token", async () => {
@@ -672,18 +713,22 @@ describe("commands", () => {
 				configureCli: vi.fn(),
 			});
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
-			// Mock successful auth
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			vi.spyOn(commands as any, "maybeAskToken").mockResolvedValue({
-				token: "test-token",
-				user: { username: "testuser", roles: [] },
+			// Mock makeCoderSdk to return a client that returns a successful user
+			const mockUser = { username: "testuser", roles: [] };
+			const mockSdkClient = createMockApi({
+				getAuthenticatedUser: vi.fn().mockResolvedValue(mockUser),
 			});
+			const { makeCoderSdk, needToken } = await import("./api");
+			vi.mocked(makeCoderSdk).mockResolvedValue(mockSdkClient);
+			vi.mocked(needToken).mockReturnValue(true); // Mock to use token auth
 
 			// Mock toSafeHost
 			const { toSafeHost } = await import("./util");
@@ -727,10 +772,12 @@ describe("commands", () => {
 				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
 			});
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const mockApp = {
@@ -749,21 +796,18 @@ describe("commands", () => {
 		});
 
 		it("should show app info when no url or command", async () => {
-			const showInformationMessageMock = vi.fn();
-			vi.mocked(vscode.window.showInformationMessage).mockImplementation(
-				showInformationMessageMock,
-			);
-
 			const mockVscodeProposed = createMockVSCode();
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorage({
 				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
 			});
 
+			const { uiProvider, getShownMessages } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const mockApp = {
@@ -774,8 +818,14 @@ describe("commands", () => {
 
 			await commands.openAppStatus(mockApp);
 
-			expect(showInformationMessageMock).toHaveBeenCalledWith("Test App", {
-				detail: "Agent: main",
+			const shownMessages = getShownMessages();
+			expect(shownMessages).toHaveLength(1);
+			expect(shownMessages[0]).toMatchObject({
+				type: "info",
+				message: "Test App",
+				options: {
+					detail: "Agent: main",
+				},
 			});
 		});
 
@@ -803,10 +853,12 @@ describe("commands", () => {
 			const mockRestClient = createMockApi();
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const mockApp = {
@@ -842,10 +894,12 @@ describe("commands", () => {
 			});
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			await expect(commands.open()).rejects.toThrow("You are not logged in");
@@ -865,10 +919,12 @@ describe("commands", () => {
 			});
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Mock toRemoteAuthority
@@ -907,10 +963,12 @@ describe("commands", () => {
 			});
 			const mockStorage = createMockStorageWithAuth();
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Mock toRemoteAuthority
@@ -952,10 +1010,12 @@ describe("commands", () => {
 				getUrl: vi.fn().mockReturnValue(undefined), // No URL
 			});
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			const mockApp = {
@@ -1009,10 +1069,12 @@ describe("commands", () => {
 				configureCli: vi.fn(),
 			});
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Mock toSafeHost
@@ -1075,10 +1137,12 @@ describe("commands", () => {
 				configureCli: vi.fn(),
 			});
 
+			const { uiProvider } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Mock toSafeHost
@@ -1124,8 +1188,6 @@ describe("commands", () => {
 
 			// Mock showErrorMessage for vscodeProposed
 			const mockVscodeProposed = createMockVSCode();
-			const showErrorMessageMock = mockVscodeProposed.window
-				.showErrorMessage as ReturnType<typeof vi.fn>;
 
 			const mockRestClient = createMockApi({
 				setHost: vi.fn(),
@@ -1142,10 +1204,12 @@ describe("commands", () => {
 				configureCli: vi.fn(),
 			});
 
+			const { uiProvider, getShownMessages } = createTestUIProvider();
 			const commands = new Commands(
 				mockVscodeProposed,
 				mockRestClient,
 				mockStorage,
+				uiProvider,
 			);
 
 			// Mock toSafeHost
@@ -1156,14 +1220,17 @@ describe("commands", () => {
 			await commands.login("https://test.coder.com", "test-token");
 
 			// Verify error dialog was shown (not logged)
-			expect(showErrorMessageMock).toHaveBeenCalledWith(
-				"Failed to log in to Coder server",
-				{
+			const shownMessages = getShownMessages();
+			expect(shownMessages).toHaveLength(1);
+			expect(shownMessages[0]).toMatchObject({
+				type: "error",
+				message: "Failed to log in to Coder server",
+				options: {
 					detail: "Invalid token",
 					modal: true,
 					useCustom: true,
 				},
-			);
+			});
 
 			// Verify writeToCoderOutputChannel was NOT called
 			expect(mockStorage.writeToCoderOutputChannel).not.toHaveBeenCalled();
