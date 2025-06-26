@@ -1,7 +1,15 @@
+import type { AxiosInstance } from "axios";
+import type { Api } from "coder/site/src/api/api";
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import * as vscode from "vscode";
 import { Logger } from "./logger";
 import { Storage } from "./storage";
+import {
+	createMockOutputChannelWithLogger,
+	createMockExtensionContext,
+	createMockUri,
+	createMockRestClient,
+} from "./test-helpers";
 
 // Mock dependencies
 vi.mock("./headers");
@@ -28,30 +36,23 @@ describe("storage", () => {
 	let mockGlobalStorageUri: vscode.Uri;
 	let mockLogUri: vscode.Uri;
 	let storage: Storage;
+	let logger: Logger;
 
 	beforeEach(() => {
-		mockOutput = {
-			appendLine: vi.fn(),
-		} as unknown as vscode.OutputChannel;
+		// Use factory functions instead of inline mocks
+		const { mockOutputChannel, logger: testLogger } =
+			createMockOutputChannelWithLogger();
+		mockOutput = mockOutputChannel as unknown as vscode.OutputChannel;
+		logger = testLogger;
 
-		mockMemento = {
-			get: vi.fn(),
-			update: vi.fn(),
-		} as unknown as vscode.Memento;
+		// Use real extension context factory for memento and secrets
+		const mockContext = createMockExtensionContext();
+		mockMemento = mockContext.globalState;
+		mockSecrets = mockContext.secrets;
 
-		mockSecrets = {
-			get: vi.fn(),
-			store: vi.fn(),
-			delete: vi.fn(),
-		} as unknown as vscode.SecretStorage;
-
-		mockGlobalStorageUri = {
-			fsPath: "/mock/global/storage",
-		} as vscode.Uri;
-
-		mockLogUri = {
-			fsPath: "/mock/log/path",
-		} as vscode.Uri;
+		// Use URI factory
+		mockGlobalStorageUri = createMockUri("/mock/global/storage");
+		mockLogUri = createMockUri("/mock/log/path");
 
 		storage = new Storage(
 			mockOutput,
@@ -59,6 +60,7 @@ describe("storage", () => {
 			mockSecrets,
 			mockGlobalStorageUri,
 			mockLogUri,
+			logger,
 		);
 	});
 
@@ -688,19 +690,19 @@ describe("storage", () => {
 	});
 
 	describe("fetchBinary", () => {
-		let mockRestClient: {
-			getAxiosInstance: ReturnType<typeof vi.fn>;
-			getBuildInfo: ReturnType<typeof vi.fn>;
-		};
+		let mockRestClient: Api;
 
 		beforeEach(() => {
-			mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "https://test.coder.com" },
-					get: vi.fn(),
-				}),
-				getBuildInfo: vi.fn().mockResolvedValue({ version: "v2.0.0" }),
-			};
+			// Use the factory function to create a mock API/RestClient
+			mockRestClient = createMockRestClient();
+			// Override specific methods for our tests
+			vi.mocked(mockRestClient.getAxiosInstance).mockReturnValue({
+				defaults: { baseURL: "https://test.coder.com" },
+				get: vi.fn(),
+			} as unknown as AxiosInstance);
+			vi.mocked(mockRestClient.getBuildInfo).mockResolvedValue({
+				version: "v2.0.0",
+			} as never);
 		});
 
 		it("should throw error when downloads are disabled and no binary exists", async () => {
@@ -835,10 +837,10 @@ describe("storage", () => {
 					status: 304, // Not Modified
 				}),
 			};
-			mockRestClient.getAxiosInstance.mockReturnValue({
+			vi.mocked(mockRestClient.getAxiosInstance).mockReturnValue({
 				defaults: { baseURL: "https://test.coder.com" },
 				get: mockAxios.get,
-			});
+			} as unknown as AxiosInstance);
 
 			const result = await storage.fetchBinary(
 				mockRestClient as never,

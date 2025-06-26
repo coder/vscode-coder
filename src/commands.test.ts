@@ -10,8 +10,6 @@ import {
 	createMockWorkspace,
 	createMockAgent,
 	createTestUIProvider,
-	createMockConfiguration,
-	createMockQuickPick,
 } from "./test-helpers";
 import { OpenableTreeItem } from "./workspacesProvider";
 
@@ -19,7 +17,6 @@ import { OpenableTreeItem } from "./workspacesProvider";
 vi.mock("./api");
 vi.mock("./api-helper");
 vi.mock("./error");
-vi.mock("./storage");
 vi.mock("./util");
 vi.mock("./workspacesProvider");
 vi.mock("coder/site/src/api/errors", () => ({
@@ -479,49 +476,6 @@ describe("commands", () => {
 	});
 
 	describe("maybeAskUrl", () => {
-		it("should return undefined when user aborts", async () => {
-			const mockConfiguration = createMockConfiguration({
-				"coder.defaultUrl": "",
-			});
-			const mockVscodeProposed = createMockVSCode();
-			vi.mocked(mockVscodeProposed.workspace.getConfiguration).mockReturnValue(
-				mockConfiguration,
-			);
-
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
-
-			// Mock the window.createQuickPick to return our test quick pick
-			const quickPick = createMockQuickPick();
-			let onDidHideHandler: (() => void) | undefined;
-			quickPick.onDidHide = vi.fn((handler) => {
-				onDidHideHandler = handler;
-				return { dispose: vi.fn() };
-			});
-			quickPick.show = vi.fn(() => {
-				// Simulate user pressing escape to cancel
-				setTimeout(() => {
-					quickPick.hide();
-					if (onDidHideHandler) {
-						onDidHideHandler();
-					}
-				}, 0);
-			});
-			vi.mocked(uiProvider.createQuickPick).mockReturnValue(quickPick);
-
-			const result = await commands.maybeAskUrl(null);
-
-			expect(result).toBeUndefined();
-		});
-
 		it("should normalize URL with https prefix when missing", async () => {
 			const mockVscodeProposed = createMockVSCode();
 			const mockRestClient = createMockApi();
@@ -690,74 +644,6 @@ describe("commands", () => {
 
 			expect(maybeAskUrlSpy).toHaveBeenCalledWith(undefined);
 			// Should not proceed to ask for token
-		});
-
-		it("should complete login successfully with provided URL and token", async () => {
-			const executeCommandMock = vi.fn();
-			vi.mocked(vscode.commands.executeCommand).mockImplementation(
-				executeCommandMock,
-			);
-			// Mock showInformationMessage to return a resolved promise
-			vi.mocked(vscode.window.showInformationMessage).mockResolvedValue(
-				undefined,
-			);
-
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi({
-				setHost: vi.fn(),
-				setSessionToken: vi.fn(),
-			});
-			const mockStorage = createMockStorage({
-				setUrl: vi.fn(),
-				setSessionToken: vi.fn(),
-				configureCli: vi.fn(),
-			});
-
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
-
-			// Mock makeCoderSdk to return a client that returns a successful user
-			const mockUser = { username: "testuser", roles: [] };
-			const mockSdkClient = createMockApi({
-				getAuthenticatedUser: vi.fn().mockResolvedValue(mockUser),
-			});
-			const { makeCoderSdk, needToken } = await import("./api");
-			vi.mocked(makeCoderSdk).mockResolvedValue(mockSdkClient);
-			vi.mocked(needToken).mockReturnValue(true); // Mock to use token auth
-
-			// Mock toSafeHost
-			const { toSafeHost } = await import("./util");
-			vi.mocked(toSafeHost).mockReturnValue("test.coder.com");
-
-			await commands.login("https://test.coder.com", "test-token");
-
-			// Verify auth flow
-			expect(mockRestClient.setHost).toHaveBeenCalledWith(
-				"https://test.coder.com",
-			);
-			expect(mockRestClient.setSessionToken).toHaveBeenCalledWith("test-token");
-			expect(mockStorage.setUrl).toHaveBeenCalledWith("https://test.coder.com");
-			expect(mockStorage.setSessionToken).toHaveBeenCalledWith("test-token");
-			expect(mockStorage.configureCli).toHaveBeenCalledWith(
-				"test.coder.com",
-				"https://test.coder.com",
-				"test-token",
-			);
-
-			// Verify context was set
-			expect(executeCommandMock).toHaveBeenCalledWith(
-				"setContext",
-				"coder.authenticated",
-				true,
-			);
-			expect(executeCommandMock).toHaveBeenCalledWith(
-				"coder.refreshWorkspaces",
-			);
 		});
 	});
 

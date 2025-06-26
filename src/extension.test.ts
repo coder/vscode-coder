@@ -10,6 +10,7 @@ import {
 	createMockStorage,
 	createMockCommands,
 	createMockOutputChannel,
+	createMockRestClient,
 } from "./test-helpers";
 
 // Mock dependencies
@@ -329,15 +330,15 @@ describe("extension", () => {
 		it("should create REST client with URL and session token from storage", async () => {
 			const { makeCoderSdk } = await import("./api");
 
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
 				getSessionToken: vi.fn().mockResolvedValue("test-token-123"),
-			};
+			});
 
-			const mockRestClient = {
+			const mockRestClient = createMockRestClient({
 				setHost: vi.fn(),
 				setSessionToken: vi.fn(),
-			};
+			});
 
 			vi.mocked(makeCoderSdk).mockResolvedValue(mockRestClient as never);
 
@@ -356,12 +357,12 @@ describe("extension", () => {
 		it("should handle empty URL from storage", async () => {
 			const { makeCoderSdk } = await import("./api");
 
-			const mockStorage = {
+			const mockStorage = createMockStorage({
 				getUrl: vi.fn().mockReturnValue(""),
 				getSessionToken: vi.fn().mockResolvedValue(""),
-			};
+			});
 
-			const mockRestClient = {};
+			const mockRestClient = createMockRestClient();
 			vi.mocked(makeCoderSdk).mockResolvedValue(mockRestClient as never);
 
 			const result = await extension.initializeRestClient(mockStorage as never);
@@ -378,8 +379,8 @@ describe("extension", () => {
 				"./workspacesProvider"
 			);
 
-			const mockRestClient = {};
-			const mockStorage = {};
+			const mockRestClient = createMockRestClient();
+			const mockStorage = createMockStorage();
 
 			// Mock workspace providers
 			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
@@ -490,19 +491,19 @@ describe("extension", () => {
 			const { needToken } = await import("./api");
 			const { toSafeHost } = await import("./util");
 
-			const mockCommands = {
+			const mockCommands = createMockCommands({
 				maybeAskUrl: vi.fn().mockResolvedValue("https://test.coder.com"),
-			};
-			const mockRestClient = {
+			});
+			const mockRestClient = createMockRestClient({
 				setHost: vi.fn(),
 				setSessionToken: vi.fn(),
-			};
-			const mockStorage = {
+			});
+			const mockStorage = createMockStorage({
 				getUrl: vi.fn().mockReturnValue("https://old.coder.com"),
 				setUrl: vi.fn(),
 				setSessionToken: vi.fn(),
 				configureCli: vi.fn(),
-			};
+			});
 
 			// Mock needToken to return true
 			vi.mocked(needToken).mockReturnValue(true);
@@ -1559,9 +1560,7 @@ describe("extension", () => {
 			const vscode = await import("vscode");
 
 			// Track output channel creation
-			const mockOutputChannel = {
-				appendLine: vi.fn(),
-			};
+			const mockOutputChannel = createMockOutputChannel();
 			vi.mocked(vscode.window.createOutputChannel).mockReturnValue(
 				mockOutputChannel as never,
 			);
