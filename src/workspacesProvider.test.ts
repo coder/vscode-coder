@@ -22,6 +22,30 @@ vi.mock("vscode", async () => {
 	return helpers.createMockVSCode();
 });
 
+// Helper to create WorkspaceProvider with common setup
+const createTestProvider = (
+	overrides: {
+		query?: WorkspaceQuery;
+		restClient?: Parameters<typeof createMockApi>[0];
+		storage?: Parameters<typeof createMockStorage>[0];
+		timerSeconds?: number;
+	} = {},
+) => {
+	const query = overrides.query ?? WorkspaceQuery.Mine;
+	const restClient = createMockApi(overrides.restClient);
+	const storage = createMockStorage(overrides.storage);
+	const timerSeconds = overrides.timerSeconds;
+
+	const provider = new WorkspaceProvider(
+		query,
+		restClient,
+		storage,
+		timerSeconds,
+	);
+
+	return { provider, query, restClient, storage };
+};
+
 describe("workspacesProvider", () => {
 	it("should export WorkspaceQuery enum", () => {
 		expect(WorkspaceQuery.Mine).toBe("owner:me");
@@ -29,92 +53,71 @@ describe("workspacesProvider", () => {
 	});
 
 	it("should create WorkspaceProvider instance", () => {
-		const mockWorkspaceQuery = WorkspaceQuery.Mine;
-		const mockRestClient = createMockApi();
-		const mockStorage = createMockStorage();
-
-		const provider = new WorkspaceProvider(
-			mockWorkspaceQuery,
-			mockRestClient,
-			mockStorage,
-		);
+		const { provider } = createTestProvider();
 
 		expect(provider).toBeInstanceOf(WorkspaceProvider);
 	});
 
 	describe("setVisibility", () => {
-		it("should set visibility to false and cancel pending refresh", () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
+		it.each([
+			[
+				"should set visibility to false and cancel pending refresh",
+				false,
+				true,
+				true,
+			],
+			[
+				"should set visibility to true when workspaces exist",
+				true,
+				false,
+				true,
+			],
+		])("%s", (_, newVisibility, initialVisibility) => {
+			const { provider } = createTestProvider();
 
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+			// Set up initial state
+			if (newVisibility === false) {
+				const mockTimeout = setTimeout(() => {}, 1000);
+				setPrivateProperty(provider, "timeout", mockTimeout);
+				setPrivateProperty(provider, "visible", initialVisibility);
 
-			// Set up initial state - simulate having a timeout
-			const mockTimeout = setTimeout(() => {}, 1000);
-			setPrivateProperty(provider, "timeout", mockTimeout);
-			setPrivateProperty(provider, "visible", true);
+				// Spy on clearTimeout to verify it's called
+				const clearTimeoutSpy = vi.spyOn(global, "clearTimeout");
 
-			// Spy on clearTimeout to verify it's called
-			const clearTimeoutSpy = vi.spyOn(global, "clearTimeout");
+				provider.setVisibility(newVisibility);
 
-			provider.setVisibility(false);
+				expect(getPrivateProperty(provider, "visible")).toBe(newVisibility);
+				expect(clearTimeoutSpy).toHaveBeenCalledWith(mockTimeout);
+				expect(getPrivateProperty(provider, "timeout")).toBeUndefined();
 
-			expect(getPrivateProperty(provider, "visible")).toBe(false);
-			expect(clearTimeoutSpy).toHaveBeenCalledWith(mockTimeout);
-			expect(getPrivateProperty(provider, "timeout")).toBeUndefined();
+				clearTimeoutSpy.mockRestore();
+			} else {
+				// Set up initial state - simulate having workspaces
+				const MockTreeItem = createMockVSCode()
+					.TreeItem as typeof vscode.TreeItem;
+				setPrivateProperty(provider, "workspaces", [
+					new MockTreeItem("test-workspace"),
+				]);
+				setPrivateProperty(provider, "visible", initialVisibility);
 
-			clearTimeoutSpy.mockRestore();
-		});
+				// Mock the maybeScheduleRefresh method
+				const maybeScheduleRefreshSpy = vi
+					.spyOn(provider, "maybeScheduleRefresh" as never)
+					.mockImplementation(() => {});
 
-		it("should set visibility to true when workspaces exist", () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
+				provider.setVisibility(newVisibility);
 
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+				expect(getPrivateProperty(provider, "visible")).toBe(newVisibility);
+				expect(maybeScheduleRefreshSpy).toHaveBeenCalled();
 
-			// Set up initial state - simulate having workspaces
-			const MockTreeItem = createMockVSCode()
-				.TreeItem as typeof vscode.TreeItem;
-			setPrivateProperty(provider, "workspaces", [
-				new MockTreeItem("test-workspace"),
-			]);
-			setPrivateProperty(provider, "visible", false);
-
-			// Mock the maybeScheduleRefresh method
-			const maybeScheduleRefreshSpy = vi
-				.spyOn(provider, "maybeScheduleRefresh" as never)
-				.mockImplementation(() => {});
-
-			provider.setVisibility(true);
-
-			expect(getPrivateProperty(provider, "visible")).toBe(true);
-			expect(maybeScheduleRefreshSpy).toHaveBeenCalled();
-
-			maybeScheduleRefreshSpy.mockRestore();
+				maybeScheduleRefreshSpy.mockRestore();
+			}
 		});
 	});
 
 	describe("getTreeItem", () => {
 		it("should return the same element passed to it", () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+			const { provider } = createTestProvider();
 
 			const MockTreeItem = createMockVSCode()
 				.TreeItem as typeof vscode.TreeItem;
@@ -128,47 +131,15 @@ describe("workspacesProvider", () => {
 	});
 
 	describe("fetchAndRefresh", () => {
-		it("should not fetch when already fetching", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+		it.each([
+			["should not fetch when already fetching", true, true],
+			["should not fetch when not visible", false, false],
+		])("%s", async (_, fetching, visible) => {
+			const { provider } = createTestProvider();
 
 			// Set up state
-			setPrivateProperty(provider, "fetching", true);
-			setPrivateProperty(provider, "visible", true);
-
-			// Mock the fetch method to ensure it's not called
-			const fetchSpy = vi
-				.spyOn(provider, "fetch" as never)
-				.mockResolvedValue([]);
-
-			await provider.fetchAndRefresh();
-
-			expect(fetchSpy).not.toHaveBeenCalled();
-
-			fetchSpy.mockRestore();
-		});
-
-		it("should not fetch when not visible", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Set up state
-			setPrivateProperty(provider, "fetching", false);
-			setPrivateProperty(provider, "visible", false);
+			setPrivateProperty(provider, "fetching", fetching);
+			setPrivateProperty(provider, "visible", visible);
 
 			// Mock the fetch method to ensure it's not called
 			const fetchSpy = vi
@@ -225,16 +196,11 @@ describe("workspacesProvider", () => {
 	});
 
 	describe("refresh", () => {
-		it("should fire onDidChangeTreeData event", () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+		it.each([
+			["should fire onDidChangeTreeData event", { label: "test" }],
+			["should fire onDidChangeTreeData event with undefined", undefined],
+		])("%s", (_, item) => {
+			const { provider } = createTestProvider();
 
 			// Mock the EventEmitter's fire method
 			const fireSpy = vi.spyOn(
@@ -245,85 +211,40 @@ describe("workspacesProvider", () => {
 				"fire",
 			);
 
-			const mockItem = { label: "test" } as vscode.TreeItem;
-			provider.refresh(mockItem);
+			provider.refresh(item as vscode.TreeItem);
 
-			expect(fireSpy).toHaveBeenCalledWith(mockItem);
-
-			fireSpy.mockRestore();
-		});
-
-		it("should fire onDidChangeTreeData event with undefined", () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Mock the EventEmitter's fire method
-			const fireSpy = vi.spyOn(
-				getPrivateProperty(
-					provider,
-					"_onDidChangeTreeData",
-				) as vscode.EventEmitter<null>,
-				"fire",
-			);
-
-			provider.refresh(undefined);
-
-			expect(fireSpy).toHaveBeenCalledWith(undefined);
+			expect(fireSpy).toHaveBeenCalledWith(item);
 
 			fireSpy.mockRestore();
 		});
 	});
 
 	describe("getChildren", () => {
-		it("should return workspaces when no element is provided", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
+		it.each([
+			["should return workspaces when no element is provided", true],
+			["should return empty array when workspaces is undefined", false],
+		])("%s", async (_, hasWorkspaces) => {
+			const { provider } = createTestProvider();
 
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+			if (hasWorkspaces) {
+				// Set up workspaces
+				const MockTreeItem = createMockVSCode()
+					.TreeItem as typeof vscode.TreeItem;
+				const mockWorkspaces = [
+					new MockTreeItem("workspace1"),
+					new MockTreeItem("workspace2"),
+				];
+				setPrivateProperty(provider, "workspaces", mockWorkspaces);
 
-			// Set up workspaces
-			const MockTreeItem = createMockVSCode()
-				.TreeItem as typeof vscode.TreeItem;
-			const mockWorkspaces = [
-				new MockTreeItem("workspace1"),
-				new MockTreeItem("workspace2"),
-			];
-			setPrivateProperty(provider, "workspaces", mockWorkspaces);
+				const result = await provider.getChildren();
+				expect(result).toBe(mockWorkspaces);
+			} else {
+				// Ensure workspaces is undefined
+				setPrivateProperty(provider, "workspaces", undefined);
 
-			const result = await provider.getChildren();
-
-			expect(result).toBe(mockWorkspaces);
-		});
-
-		it("should return empty array when workspaces is undefined", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Ensure workspaces is undefined
-			setPrivateProperty(provider, "workspaces", undefined);
-
-			const result = await provider.getChildren();
-
-			expect(result).toEqual([]);
+				const result = await provider.getChildren();
+				expect(result).toEqual([]);
+			}
 		});
 
 		it("should return agent items when WorkspaceTreeItem element is provided", async () => {
@@ -368,17 +289,7 @@ describe("workspacesProvider", () => {
 
 	describe("fetchAndRefresh - success path", () => {
 		it("should fetch workspaces successfully and schedule refresh", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const timerSeconds = 60;
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-				timerSeconds,
-			);
+			const { provider } = createTestProvider({ timerSeconds: 60 });
 
 			// Set up state
 			setPrivateProperty(provider, "fetching", false);
@@ -416,17 +327,7 @@ describe("workspacesProvider", () => {
 
 	describe("maybeScheduleRefresh", () => {
 		it("should schedule refresh when timer is set and not fetching", () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const timerSeconds = 30;
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-				timerSeconds,
-			);
+			const { provider } = createTestProvider({ timerSeconds: 30 });
 
 			// Set up state
 			setPrivateProperty(provider, "fetching", false);
@@ -453,15 +354,7 @@ describe("workspacesProvider", () => {
 
 	describe("fetchAndRefresh - clears pending refresh", () => {
 		it("should clear pending refresh before fetching", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+			const { provider } = createTestProvider();
 
 			// Set up state with existing timeout
 			const mockTimeout = setTimeout(() => {}, 1000);
@@ -495,15 +388,7 @@ describe("workspacesProvider", () => {
 
 	describe("cancelPendingRefresh", () => {
 		it("should clear timeout when called", () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+			const { provider } = createTestProvider();
 
 			// Set up a mock timeout
 			const mockTimeout = setTimeout(() => {}, 1000);
@@ -528,15 +413,7 @@ describe("workspacesProvider", () => {
 
 	describe("onDidChangeTreeData", () => {
 		it("should expose event emitter", () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+			const { provider } = createTestProvider();
 
 			expect(provider.onDidChangeTreeData).toBeDefined();
 			expect(typeof provider.onDidChangeTreeData).toBe("function");
@@ -545,22 +422,14 @@ describe("workspacesProvider", () => {
 
 	describe("fetch - with debug logging", () => {
 		it("should log when debug logging is enabled", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.All;
-			const mockRestClient = createMockApi({
-				getWorkspaces: vi.fn(),
-			});
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Mock getWorkspaces to return empty workspaces
-			vi.mocked(mockRestClient.getWorkspaces).mockResolvedValue({
-				workspaces: [],
-				count: 0,
+			const { provider, storage } = createTestProvider({
+				query: WorkspaceQuery.All,
+				restClient: {
+					getWorkspaces: vi.fn().mockResolvedValue({
+						workspaces: [],
+						count: 0,
+					}),
+				},
 			});
 
 			// Mock extractAllAgents to return empty array
@@ -578,63 +447,55 @@ describe("workspacesProvider", () => {
 			await fetch.call(provider);
 
 			// Verify debug log was written
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+			expect(storage.writeToCoderOutputChannel).toHaveBeenCalledWith(
 				"Fetching workspaces: no filter...",
 			);
 		});
 	});
 
 	describe("fetch - edge cases", () => {
-		it("should throw error when not logged in (no URL)", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi({
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: {
-						baseURL: undefined, // No URL = not logged in
-					},
-				}),
+		it.each([
+			[
+				"should throw error when not logged in (no URL)",
+				{ baseURL: undefined },
+				"not logged in",
+			],
+		])("%s", async (_, axiosDefaults, expectedError) => {
+			const { provider } = createTestProvider({
+				restClient: {
+					getAxiosInstance: vi.fn().mockReturnValue({
+						defaults: axiosDefaults,
+					}),
+				},
 			});
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
 
 			// Call private fetch method
 			const fetch = getPrivateProperty(
 				provider,
 				"fetch",
 			) as () => Promise<void>;
-			await expect(fetch.call(provider)).rejects.toThrow("not logged in");
+			await expect(fetch.call(provider)).rejects.toThrow(expectedError);
 		});
 
 		it("should re-fetch when URL changes during fetch", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
 			let callCount = 0;
-			const mockRestClient = createMockApi({
-				getAxiosInstance: vi.fn().mockImplementation(() => {
-					// First call returns one URL, second call returns different URL
-					if (callCount === 0) {
-						return { defaults: { baseURL: "https://old.coder.com" } };
-					} else {
-						return { defaults: { baseURL: "https://new.coder.com" } };
-					}
-				}),
-				getWorkspaces: vi.fn().mockImplementation(() => {
-					callCount++;
-					// Simulate URL change after first getWorkspaces call
-					return Promise.resolve({ workspaces: [], count: 0 });
-				}),
+			const { provider, restClient: mockRestClient } = createTestProvider({
+				restClient: {
+					getAxiosInstance: vi.fn().mockImplementation(() => {
+						// First call returns one URL, second call returns different URL
+						if (callCount === 0) {
+							return { defaults: { baseURL: "https://old.coder.com" } };
+						} else {
+							return { defaults: { baseURL: "https://new.coder.com" } };
+						}
+					}),
+					getWorkspaces: vi.fn().mockImplementation(() => {
+						callCount++;
+						// Simulate URL change after first getWorkspaces call
+						return Promise.resolve({ workspaces: [], count: 0 });
+					}),
+				},
 			});
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
 
 			// Mock extractAllAgents
 			const { extractAllAgents } = await import("./api-helper");
@@ -655,15 +516,7 @@ describe("workspacesProvider", () => {
 
 	describe("setVisibility - fetchAndRefresh when no workspaces", () => {
 		it("should call fetchAndRefresh when visible and no workspaces exist", () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+			const { provider } = createTestProvider();
 
 			// Set up initial state - no workspaces
 			setPrivateProperty(provider, "workspaces", undefined);
@@ -684,356 +537,226 @@ describe("workspacesProvider", () => {
 	});
 
 	describe("getChildren - AgentTreeItem", () => {
-		it("should return error item when watcher has error", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Set up agent watcher with error
-			const testError = new Error("Watcher error");
-			setPrivateProperty(provider, "agentWatchers", {
-				agent1: {
-					error: testError,
-				},
-			});
-
-			// Access the AgentTreeItem class via import
-			const { extractAgents } = await import("./api-helper");
-			vi.mocked(extractAgents).mockReturnValue([
+		it.each([
+			[
+				"should return error item when watcher has error",
+				{ agent1: { error: new Error("Watcher error") } },
+				[{ id: "agent1", name: "main", status: "connected", apps: [] }],
+				1,
+				["Failed to query metadata"],
+			],
+			[
+				"should return app status and metadata sections",
 				{
-					id: "agent1",
-					name: "main",
-					status: "connected",
-					apps: [],
-				} as never,
-			]);
-
-			// Create a WorkspaceTreeItem first
-			const mockWorkspace = createMockWorkspace({
-				owner_name: "testuser",
-				name: "test-workspace",
-				latest_build: {
-					...createMockWorkspace().latest_build,
-					status: "running",
+					agent1: {
+						metadata: [
+							{
+								description: { display_name: "CPU" },
+								result: { value: "50%", collected_at: "2024-01-01T12:00:00Z" },
+							},
+						],
+					},
 				},
-			});
+				[
+					{
+						id: "agent1",
+						name: "main",
+						status: "connected",
+						apps: [
+							{
+								command: "npm start",
+								statuses: [{ message: "App is running" }],
+							},
+						],
+					},
+				],
+				2,
+				["App Statuses", "Agent Metadata"],
+			],
+		])(
+			"%s",
+			async (_, agentWatchers, agents, expectedLength, expectedLabels) => {
+				const { provider } = createTestProvider();
 
-			// Use the exported WorkspaceTreeItem class
-			const { WorkspaceTreeItem } = await import("./workspacesProvider");
-			const workspaceTreeItem = new WorkspaceTreeItem(
-				mockWorkspace,
-				false,
-				true,
-			);
+				// Set up agent watcher
+				setPrivateProperty(provider, "agentWatchers", agentWatchers);
 
-			// Get children of workspace (agents)
-			const agents = await provider.getChildren(workspaceTreeItem);
-			expect(agents).toHaveLength(1);
+				// Mock extractAgents
+				const { extractAgents } = await import("./api-helper");
+				vi.mocked(extractAgents).mockReturnValue(agents as never);
 
-			// Now get children of the agent
-			const result = await provider.getChildren(agents[0]);
+				// Create a WorkspaceTreeItem first
+				const mockWorkspace = createMockWorkspace({
+					owner_name: "testuser",
+					name: "test-workspace",
+					latest_build: {
+						...createMockWorkspace().latest_build,
+						status: "running",
+					},
+				});
 
-			expect(result).toHaveLength(1);
-			// The error tree item is a vscode.TreeItem with label property
-			expect(result[0]).toBeDefined();
-			expect(result[0].label).toBeDefined();
-			expect(result[0].label).toContain("Failed to query metadata");
-		});
+				// Use the exported WorkspaceTreeItem class
+				const { WorkspaceTreeItem } = await import("./workspacesProvider");
+				const workspaceTreeItem = new WorkspaceTreeItem(
+					mockWorkspace,
+					false,
+					true,
+				);
 
-		it("should return app status and metadata sections", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
+				// Get children of workspace (agents)
+				const agentItems = await provider.getChildren(workspaceTreeItem);
+				expect(agentItems).toHaveLength(1);
 
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
+				// Now get children of the agent
+				const result = await provider.getChildren(agentItems[0]);
 
-			// Set up agent watcher with metadata
-			setPrivateProperty(provider, "agentWatchers", {
-				agent1: {
-					metadata: [
-						{
-							description: { display_name: "CPU" },
-							result: { value: "50%", collected_at: "2024-01-01T12:00:00Z" },
-						},
-					],
-				},
-			});
+				expect(result).toHaveLength(expectedLength);
 
-			// Mock extractAgents
-			const { extractAgents } = await import("./api-helper");
-			vi.mocked(extractAgents).mockReturnValue([
-				{
-					id: "agent1",
-					name: "main",
-					status: "connected",
-					apps: [
-						{
-							command: "npm start",
-							statuses: [{ message: "App is running" }],
-						},
-					],
-				} as never,
-			]);
-
-			// Create a WorkspaceTreeItem first
-			const mockWorkspace = createMockWorkspace({
-				owner_name: "testuser",
-				name: "test-workspace",
-				latest_build: {
-					...createMockWorkspace().latest_build,
-					status: "running",
-				},
-			});
-
-			// Use the exported WorkspaceTreeItem class
-			const { WorkspaceTreeItem } = await import("./workspacesProvider");
-			const workspaceTreeItem = new WorkspaceTreeItem(
-				mockWorkspace,
-				false,
-				true,
-			);
-
-			// Get children of workspace (agents)
-			const agents = await provider.getChildren(workspaceTreeItem);
-			expect(agents).toHaveLength(1);
-
-			// Now get children of the agent
-			const result = await provider.getChildren(agents[0]);
-
-			expect(result).toHaveLength(2); // App status section + metadata section
-			// These are vscode.TreeItem instances with label property
-			expect(result[0]).toBeDefined();
-			expect(result[0].label).toBe("App Statuses");
-			expect(result[1]).toBeDefined();
-			expect(result[1].label).toBe("Agent Metadata");
-		});
+				// Check expected labels
+				expectedLabels.forEach((label, index) => {
+					expect(result[index]).toBeDefined();
+					if (label.includes("Failed")) {
+						expect(result[index].label).toContain(label);
+					} else {
+						expect(result[index].label).toBe(label);
+					}
+				});
+			},
+		);
 	});
 
-	describe("getChildren - SectionTreeItem", () => {
-		it("should return children for section-like tree items", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
+	describe("getChildren - edge cases", () => {
+		it.each([
+			[
+				"should return children for section-like tree items",
+				{ label: "Test Section", children: [] },
+			],
+			[
+				"should return empty array for unknown element type",
+				{ label: "unknown" },
+			],
+		])("%s", async (_, treeItem) => {
+			const { provider } = createTestProvider();
 
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Create a mock tree item with children property
+			// Create mock tree item
 			const MockTreeItem = createMockVSCode()
 				.TreeItem as typeof vscode.TreeItem;
-			const mockChildren = [
-				new MockTreeItem("child1"),
-				new MockTreeItem("child2"),
-			];
-			const mockSectionTreeItem = {
-				label: "Test Section",
-				children: mockChildren,
-			} as never;
+			const mockItem =
+				"children" in treeItem
+					? (treeItem as never)
+					: new MockTreeItem(treeItem.label);
 
-			const result = await provider.getChildren(mockSectionTreeItem);
+			const result = await provider.getChildren(mockItem);
 
-			// Since SectionTreeItem is not exported, the default case will return empty array
-			expect(result).toEqual([]);
-		});
-	});
-
-	describe("getChildren - unknown element type", () => {
-		it("should return empty array for unknown element type", async () => {
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Create an unknown tree item type
-			const MockTreeItem = createMockVSCode()
-				.TreeItem as typeof vscode.TreeItem;
-			const unknownItem = new MockTreeItem("unknown");
-
-			const result = await provider.getChildren(unknownItem);
-
+			// Both cases should return empty array
 			expect(result).toEqual([]);
 		});
 	});
 
 	describe("Logger integration", () => {
-		it("should log debug messages through Logger when Storage has Logger set", async () => {
-			const { logger } = createMockOutputChannelWithLogger();
-
-			// Set debug log level to ensure message is logged
-			const originalLogLevel = vscode.env.logLevel;
-			// @ts-expect-error - mocking readonly property
-			vscode.env.logLevel = vscode.LogLevel.Debug;
-
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi({
-				getWorkspaces: vi.fn(() =>
-					Promise.resolve({
-						workspaces: [],
-						count: 0,
-					}),
-				),
-			});
-
-			// Create mock Storage that uses Logger
-			const mockStorage = createMockStorage({
-				writeToCoderOutputChannel: vi.fn((msg: string) => {
-					logger.debug(msg);
-				}),
-			});
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Mock extractAllAgents
-			const { extractAllAgents } = await import("./api-helper");
-			vi.mocked(extractAllAgents).mockReturnValue([]);
-
-			// Call private fetch method
-			const fetch = getPrivateProperty(
-				provider,
-				"fetch",
-			) as () => Promise<void>;
-			await fetch.call(provider);
-
-			// Verify debug message was logged
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+		it.each([
+			[
+				"should log debug messages through Logger when Storage has Logger set",
+				WorkspaceQuery.Mine,
+				vscode.LogLevel.Debug,
+				"debug",
 				"Fetching workspaces: owner:me...",
-			);
+				"DEBUG",
+				true,
+			],
+			[
+				"should work with Storage instance that has Logger set",
+				WorkspaceQuery.All,
+				vscode.LogLevel.Debug,
+				"info",
+				"Fetching workspaces: no filter...",
+				"INFO",
+				true,
+			],
+			[
+				"should not log when log level is above Debug",
+				WorkspaceQuery.Mine,
+				vscode.LogLevel.Info,
+				"debug",
+				"Fetching workspaces: owner:me...",
+				"DEBUG",
+				false,
+			],
+		])(
+			"%s",
+			async (
+				_,
+				query,
+				logLevel,
+				logMethod,
+				expectedMessage,
+				expectedLevel,
+				shouldLog,
+			) => {
+				const { logger } = createMockOutputChannelWithLogger();
 
-			const logs = logger.getLogs();
-			expect(logs.length).toBe(1);
-			expect(logs[0].message).toBe("Fetching workspaces: owner:me...");
-			expect(logs[0].level).toBe("DEBUG");
+				// Set log level
+				const originalLogLevel = vscode.env.logLevel;
+				// @ts-expect-error - mocking readonly property
+				vscode.env.logLevel = logLevel;
 
-			// Restore log level
-			// @ts-expect-error - mocking readonly property
-			vscode.env.logLevel = originalLogLevel;
-		});
+				const { provider, storage } = createTestProvider({
+					query,
+					restClient: {
+						getAxiosInstance: vi.fn(() => ({
+							defaults: { baseURL: "https://example.com" },
+						})),
+						getWorkspaces: vi.fn(() =>
+							Promise.resolve({
+								workspaces: [],
+								count: 0,
+							}),
+						),
+					},
+					storage: {
+						writeToCoderOutputChannel: vi.fn((msg: string) => {
+							// eslint-disable-next-line @typescript-eslint/no-explicit-any
+							(logger as any)[logMethod](msg);
+						}),
+					},
+				});
 
-		it("should work with Storage instance that has Logger set", async () => {
-			const { logger } = createMockOutputChannelWithLogger();
+				// Mock extractAllAgents
+				const { extractAllAgents } = await import("./api-helper");
+				vi.mocked(extractAllAgents).mockReturnValue([]);
 
-			// Set debug log level
-			const originalLogLevel = vscode.env.logLevel;
-			// @ts-expect-error - mocking readonly property
-			vscode.env.logLevel = vscode.LogLevel.Debug;
+				// Call private fetch method
+				const fetch = getPrivateProperty(
+					provider,
+					"fetch",
+				) as () => Promise<void>;
+				await fetch.call(provider);
 
-			const mockWorkspaceQuery = WorkspaceQuery.All;
-			const mockRestClient = createMockApi({
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "https://example.com" },
-				})),
-				getWorkspaces: vi.fn(() =>
-					Promise.resolve({
-						workspaces: [],
-						count: 0,
-					}),
-				),
-			});
+				if (shouldLog) {
+					// Verify message was logged
+					expect(storage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+						expectedMessage,
+					);
 
-			// Simulate Storage with Logger
-			const mockStorage = createMockStorage({
-				writeToCoderOutputChannel: vi.fn((msg: string) => {
-					logger.info(msg);
-				}),
-			});
+					if (logMethod === "debug") {
+						const logs = logger.getLogs();
+						expect(logs.length).toBe(1);
+						expect(logs[0].message).toBe(expectedMessage);
+						expect(logs[0].level).toBe(expectedLevel);
+					} else {
+						const logs = logger.getLogs();
+						expect(logs.length).toBeGreaterThan(0);
+						expect(logs[0].message).toBe(expectedMessage);
+					}
+				} else {
+					// Verify writeToCoderOutputChannel was NOT called
+					expect(storage.writeToCoderOutputChannel).not.toHaveBeenCalled();
+				}
 
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Mock extractAllAgents
-			const { extractAllAgents } = await import("./api-helper");
-			vi.mocked(extractAllAgents).mockReturnValue([]);
-
-			// Call private fetch method
-			const fetch = getPrivateProperty(
-				provider,
-				"fetch",
-			) as () => Promise<void>;
-			await fetch.call(provider);
-
-			// Verify message was logged through Logger
-			const logs = logger.getLogs();
-			expect(logs.length).toBeGreaterThan(0);
-			expect(logs[0].message).toBe("Fetching workspaces: no filter...");
-
-			// Restore log level
-			// @ts-expect-error - mocking readonly property
-			vscode.env.logLevel = originalLogLevel;
-		});
-
-		it("should not log when log level is above Debug", async () => {
-			const { logger } = createMockOutputChannelWithLogger();
-
-			// Set info log level (above debug)
-			const originalLogLevel = vscode.env.logLevel;
-			// @ts-expect-error - mocking readonly property
-			vscode.env.logLevel = vscode.LogLevel.Info;
-
-			const mockWorkspaceQuery = WorkspaceQuery.Mine;
-			const mockRestClient = createMockApi({
-				getWorkspaces: vi.fn(() =>
-					Promise.resolve({
-						workspaces: [],
-						count: 0,
-					}),
-				),
-			});
-
-			// Create mock Storage that uses Logger
-			const mockStorage = createMockStorage({
-				writeToCoderOutputChannel: vi.fn((msg: string) => {
-					logger.debug(msg);
-				}),
-			});
-
-			const provider = new WorkspaceProvider(
-				mockWorkspaceQuery,
-				mockRestClient,
-				mockStorage,
-			);
-
-			// Mock extractAllAgents
-			const { extractAllAgents } = await import("./api-helper");
-			vi.mocked(extractAllAgents).mockReturnValue([]);
-
-			// Call private fetch method
-			const fetch = getPrivateProperty(
-				provider,
-				"fetch",
-			) as () => Promise<void>;
-			await fetch.call(provider);
-
-			// Verify writeToCoderOutputChannel was NOT called
-			expect(mockStorage.writeToCoderOutputChannel).not.toHaveBeenCalled();
-
-			// Restore log level
-			// @ts-expect-error - mocking readonly property
-			vscode.env.logLevel = originalLogLevel;
-		});
+				// Restore log level
+				// @ts-expect-error - mocking readonly property
+				vscode.env.logLevel = originalLogLevel;
+			},
+		);
 	});
 });

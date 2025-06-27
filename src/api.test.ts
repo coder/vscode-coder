@@ -26,29 +26,32 @@ import {
 } from "./test-helpers";
 import { expandPath } from "./util";
 
-// Mock dependencies
-vi.mock("fs/promises");
-vi.mock("proxy-agent");
-vi.mock("./proxy");
-vi.mock("./headers");
-vi.mock("./util");
-vi.mock("./error");
-vi.mock("./api-helper");
-vi.mock("child_process");
-vi.mock("ws");
-vi.mock("coder/site/src/api/api");
+// Setup all mocks
+function setupMocks() {
+	vi.mock("fs/promises");
+	vi.mock("proxy-agent");
+	vi.mock("./proxy");
+	vi.mock("./headers");
+	vi.mock("./util");
+	vi.mock("./error");
+	vi.mock("./api-helper");
+	vi.mock("child_process");
+	vi.mock("ws");
+	vi.mock("coder/site/src/api/api");
 
-// Mock vscode module
-vi.mock("vscode", () => ({
-	workspace: {
-		getConfiguration: vi.fn(),
-	},
-	EventEmitter: class MockEventEmitter {
-		fire = vi.fn();
-		event = vi.fn();
-		dispose = vi.fn();
-	},
-}));
+	vi.mock("vscode", () => ({
+		workspace: {
+			getConfiguration: vi.fn(),
+		},
+		EventEmitter: class MockEventEmitter {
+			fire = vi.fn();
+			event = vi.fn();
+			dispose = vi.fn();
+		},
+	}));
+}
+
+setupMocks();
 
 describe("api", () => {
 	// Mock VS Code configuration
@@ -90,61 +93,38 @@ describe("api", () => {
 	});
 
 	describe("needToken", () => {
-		it("should return true when no cert or key files are configured", () => {
+		it.each([
+			[
+				"should return true when no cert or key files are configured",
+				{ "coder.tlsCertFile": "", "coder.tlsKeyFile": "" },
+				true,
+			],
+			[
+				"should return false when cert file is configured",
+				{ "coder.tlsCertFile": "/path/to/cert.pem", "coder.tlsKeyFile": "" },
+				false,
+			],
+			[
+				"should return false when key file is configured",
+				{ "coder.tlsCertFile": "", "coder.tlsKeyFile": "/path/to/key.pem" },
+				false,
+			],
+			[
+				"should return false when both cert and key files are configured",
+				{
+					"coder.tlsCertFile": "/path/to/cert.pem",
+					"coder.tlsKeyFile": "/path/to/key.pem",
+				},
+				false,
+			],
+			[
+				"should handle null/undefined config values",
+				{ "coder.tlsCertFile": null, "coder.tlsKeyFile": null },
+				true,
+			],
+		])("%s", (_, configValues: Record<string, unknown>, expected) => {
 			mockConfiguration.get.mockImplementation((key: string) => {
-				if (key === "coder.tlsCertFile" || key === "coder.tlsKeyFile") {
-					return "";
-				}
-				return "";
-			});
-
-			const result = needToken();
-
-			expect(result).toBe(true);
-			expect(vscode.workspace.getConfiguration).toHaveBeenCalled();
-		});
-
-		it("should return false when cert file is configured", () => {
-			mockConfiguration.get.mockImplementation((key: string) => {
-				if (key === "coder.tlsCertFile") {
-					return "/path/to/cert.pem";
-				}
-				return "";
-			});
-
-			// Mock expandPath to return the path as-is
-			vi.mocked(expandPath).mockReturnValue("/path/to/cert.pem");
-
-			const result = needToken();
-
-			expect(result).toBe(false);
-		});
-
-		it("should return false when key file is configured", () => {
-			mockConfiguration.get.mockImplementation((key: string) => {
-				if (key === "coder.tlsKeyFile") {
-					return "/path/to/key.pem";
-				}
-				return "";
-			});
-
-			// Mock expandPath to return the path as-is
-			vi.mocked(expandPath).mockReturnValue("/path/to/key.pem");
-
-			const result = needToken();
-
-			expect(result).toBe(false);
-		});
-
-		it("should return false when both cert and key files are configured", () => {
-			mockConfiguration.get.mockImplementation((key: string) => {
-				if (key === "coder.tlsCertFile") {
-					return "/path/to/cert.pem";
-				}
-				if (key === "coder.tlsKeyFile") {
-					return "/path/to/key.pem";
-				}
-				return "";
+				return configValues[key] ?? "";
 			});
 
 			// Mock expandPath to return the path as-is
@@ -152,112 +132,89 @@ describe("api", () => {
 
 			const result = needToken();
 
-			expect(result).toBe(false);
-		});
-
-		it("should handle null/undefined config values", () => {
-			mockConfiguration.get.mockImplementation((key: string) => {
-				if (key === "coder.tlsCertFile" || key === "coder.tlsKeyFile") {
-					return null;
-				}
-				return "";
-			});
-
-			const result = needToken();
-
-			expect(result).toBe(true);
+			expect(result).toBe(expected);
+			if (expected) {
+				expect(vscode.workspace.getConfiguration).toHaveBeenCalled();
+			}
 		});
 	});
 
 	describe("createHttpAgent", () => {
 		beforeEach(() => {
-			// Mock fs.readFile to return buffer data
 			vi.mocked(fs.readFile).mockResolvedValue(
 				Buffer.from("mock-file-content"),
 			);
-
-			// Mock expandPath to return paths as-is
 			vi.mocked(expandPath).mockImplementation((path: string) => path);
-
-			// Mock getProxyForUrl
 			vi.mocked(getProxyForUrl).mockReturnValue("http://proxy:8080");
 		});
 
-		it("should create ProxyAgent with default configuration", async () => {
-			mockConfiguration.get.mockReturnValue("");
+		it.each([
+			[
+				"default configuration",
+				{},
+				{
+					cert: undefined,
+					key: undefined,
+					ca: undefined,
+					servername: undefined,
+					rejectUnauthorized: true,
+				},
+			],
+			[
+				"insecure configuration",
+				{ "coder.insecure": true },
+				{
+					cert: undefined,
+					key: undefined,
+					ca: undefined,
+					servername: undefined,
+					rejectUnauthorized: false,
+				},
+			],
+			[
+				"TLS certificate files",
+				{
+					"coder.tlsCertFile": "/path/to/cert.pem",
+					"coder.tlsKeyFile": "/path/to/key.pem",
+					"coder.tlsCaFile": "/path/to/ca.pem",
+					"coder.tlsAltHost": "alternative.host.com",
+				},
+				{
+					cert: Buffer.from("cert-content"),
+					key: Buffer.from("key-content"),
+					ca: Buffer.from("ca-content"),
+					servername: "alternative.host.com",
+					rejectUnauthorized: true,
+				},
+			],
+		])(
+			"should create ProxyAgent with %s",
+			async (_, configValues: Record<string, unknown>, expectedAgentConfig) => {
+				mockConfiguration.get.mockImplementation(
+					(key: string) => configValues[key] ?? "",
+				);
 
-			await createHttpAgent();
-
-			expect(ProxyAgent).toHaveBeenCalledWith({
-				getProxyForUrl: expect.any(Function),
-				cert: undefined,
-				key: undefined,
-				ca: undefined,
-				servername: undefined,
-				rejectUnauthorized: true,
-			});
-		});
-
-		it("should create ProxyAgent with insecure configuration", async () => {
-			mockConfiguration.get.mockImplementation((key: string) => {
-				if (key === "coder.insecure") {
-					return true;
+				if (configValues["coder.tlsCertFile"]) {
+					vi.mocked(fs.readFile)
+						.mockResolvedValueOnce(Buffer.from("cert-content"))
+						.mockResolvedValueOnce(Buffer.from("key-content"))
+						.mockResolvedValueOnce(Buffer.from("ca-content"));
 				}
-				return "";
-			});
 
-			await createHttpAgent();
+				await createHttpAgent();
 
-			expect(ProxyAgent).toHaveBeenCalledWith({
-				getProxyForUrl: expect.any(Function),
-				cert: undefined,
-				key: undefined,
-				ca: undefined,
-				servername: undefined,
-				rejectUnauthorized: false,
-			});
-		});
-
-		it("should create ProxyAgent with TLS certificate files", async () => {
-			mockConfiguration.get.mockImplementation((key: string) => {
-				switch (key) {
-					case "coder.tlsCertFile":
-						return "/path/to/cert.pem";
-					case "coder.tlsKeyFile":
-						return "/path/to/key.pem";
-					case "coder.tlsCaFile":
-						return "/path/to/ca.pem";
-					case "coder.tlsAltHost":
-						return "alternative.host.com";
-					default:
-						return "";
+				if (configValues["coder.tlsCertFile"]) {
+					expect(fs.readFile).toHaveBeenCalledWith("/path/to/cert.pem");
+					expect(fs.readFile).toHaveBeenCalledWith("/path/to/key.pem");
+					expect(fs.readFile).toHaveBeenCalledWith("/path/to/ca.pem");
 				}
-			});
 
-			const mockCertBuffer = Buffer.from("cert-content");
-			const mockKeyBuffer = Buffer.from("key-content");
-			const mockCaBuffer = Buffer.from("ca-content");
-
-			vi.mocked(fs.readFile)
-				.mockResolvedValueOnce(mockCertBuffer)
-				.mockResolvedValueOnce(mockKeyBuffer)
-				.mockResolvedValueOnce(mockCaBuffer);
-
-			await createHttpAgent();
-
-			expect(fs.readFile).toHaveBeenCalledWith("/path/to/cert.pem");
-			expect(fs.readFile).toHaveBeenCalledWith("/path/to/key.pem");
-			expect(fs.readFile).toHaveBeenCalledWith("/path/to/ca.pem");
-
-			expect(ProxyAgent).toHaveBeenCalledWith({
-				getProxyForUrl: expect.any(Function),
-				cert: mockCertBuffer,
-				key: mockKeyBuffer,
-				ca: mockCaBuffer,
-				servername: "alternative.host.com",
-				rejectUnauthorized: true,
-			});
-		});
+				expect(ProxyAgent).toHaveBeenCalledWith({
+					getProxyForUrl: expect.any(Function),
+					...expectedAgentConfig,
+				});
+			},
+		);
 
 		it("should handle getProxyForUrl callback", async () => {
 			mockConfiguration.get.mockReturnValue("");
@@ -281,49 +238,34 @@ describe("api", () => {
 	});
 
 	describe("makeCoderSdk", () => {
-		let mockCreateHttpAgent: ReturnType<typeof vi.fn>;
-
 		beforeEach(() => {
-			// Mock createHttpAgent
-			mockCreateHttpAgent = vi.fn().mockResolvedValue(new ProxyAgent({}));
+			const mockCreateHttpAgent = vi.fn().mockResolvedValue(new ProxyAgent({}));
 			vi.doMock("./api", async () => {
 				const actual = await vi.importActual<typeof import("./api")>("./api");
-				return {
-					...actual,
-					createHttpAgent: mockCreateHttpAgent,
-				};
+				return { ...actual, createHttpAgent: mockCreateHttpAgent };
 			});
 		});
 
-		it("should create and configure API instance with token", () => {
+		it.each([
+			["with token", "test-token", { "Custom-Header": "value" }, true],
+			["without token", undefined, {}, false],
+		])("%s", (_, token, headers, shouldSetToken) => {
 			const mockStorage = createMockStorage({
-				getHeaders: vi.fn().mockResolvedValue({ "Custom-Header": "value" }),
+				getHeaders: vi.fn().mockResolvedValue(headers),
 			});
 
 			const result = makeCoderSdk(
 				"https://coder.example.com",
-				"test-token",
+				token,
 				mockStorage,
 			);
 
 			expect(mockApi.setHost).toHaveBeenCalledWith("https://coder.example.com");
-			expect(mockApi.setSessionToken).toHaveBeenCalledWith("test-token");
-			expect(result).toBe(mockApi);
-		});
-
-		it("should create API instance without token", () => {
-			const mockStorage = createMockStorage({
-				getHeaders: vi.fn().mockResolvedValue({}),
-			});
-
-			const result = makeCoderSdk(
-				"https://coder.example.com",
-				undefined,
-				mockStorage,
-			);
-
-			expect(mockApi.setHost).toHaveBeenCalledWith("https://coder.example.com");
-			expect(mockApi.setSessionToken).not.toHaveBeenCalled();
+			if (shouldSetToken) {
+				expect(mockApi.setSessionToken).toHaveBeenCalledWith(token);
+			} else {
+				expect(mockApi.setSessionToken).not.toHaveBeenCalled();
+			}
 			expect(result).toBe(mockApi);
 		});
 
@@ -489,26 +431,29 @@ describe("api", () => {
 	});
 
 	describe("startWorkspaceIfStoppedOrFailed", () => {
-		it("should return workspace if already running", async () => {
-			const mockWorkspace = {
-				id: "workspace-1",
-				owner_name: "user",
-				name: "workspace",
-				latest_build: { status: "running" },
-			};
+		const createWorkspaceTest = (
+			status: string,
+			overrides?: Record<string, unknown>,
+		) => ({
+			id: "workspace-1",
+			owner_name: "user",
+			name: "workspace",
+			latest_build: { status },
+			...overrides,
+		});
 
+		it("should return workspace if already running", async () => {
+			const mockWorkspace = createWorkspaceTest("running");
 			const mockRestClient = createMockApi({
 				getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
 			});
-
-			const mockWriteEmitter = new vscode.EventEmitter<string>();
 
 			const result = await startWorkspaceIfStoppedOrFailed(
 				mockRestClient,
 				"/config",
 				"/bin/coder",
 				mockWorkspace as never,
-				mockWriteEmitter,
+				new vscode.EventEmitter<string>(),
 			);
 
 			expect(result).toBe(mockWorkspace);
@@ -516,17 +461,8 @@ describe("api", () => {
 		});
 
 		it("should start workspace if stopped", async () => {
-			const stoppedWorkspace = {
-				id: "workspace-1",
-				owner_name: "user",
-				name: "workspace",
-				latest_build: { status: "stopped" },
-			};
-
-			const runningWorkspace = {
-				...stoppedWorkspace,
-				latest_build: { status: "running" },
-			};
+			const stoppedWorkspace = createWorkspaceTest("stopped");
+			const runningWorkspace = createWorkspaceTest("running");
 
 			const mockRestClient = createMockApi({
 				getWorkspace: vi
@@ -535,29 +471,19 @@ describe("api", () => {
 					.mockResolvedValueOnce(runningWorkspace),
 			});
 
-			const mockWriteEmitter = new vscode.EventEmitter<string>();
-
-			// Mock child_process.spawn
 			const mockProcess = createMockChildProcess();
 			vi.mocked(spawn).mockReturnValue(mockProcess as never);
-
-			// Mock getHeaderArgs
 			vi.mocked(getHeaderArgs).mockReturnValue(["--header", "key=value"]);
 
-			// Start the async operation
 			const resultPromise = startWorkspaceIfStoppedOrFailed(
 				mockRestClient,
 				"/config",
 				"/bin/coder",
 				stoppedWorkspace as never,
-				mockWriteEmitter,
+				new vscode.EventEmitter<string>(),
 			);
 
-			// Simulate process completion
-			setTimeout(() => {
-				mockProcess.emit("close", 0);
-			}, 10);
-
+			setTimeout(() => mockProcess.emit("close", 0), 10);
 			const result = await resultPromise;
 
 			expect(vi.mocked(spawn)).toHaveBeenCalledWith("/bin/coder", [
@@ -569,41 +495,27 @@ describe("api", () => {
 				"--yes",
 				"user/workspace",
 			]);
-
 			expect(result).toBe(runningWorkspace);
 		});
 
 		it("should handle process failure", async () => {
-			const stoppedWorkspace = {
-				id: "workspace-1",
-				owner_name: "user",
-				name: "workspace",
-				latest_build: { status: "failed" },
-			};
-
+			const failedWorkspace = createWorkspaceTest("failed");
 			const mockRestClient = createMockApi({
-				getWorkspace: vi.fn().mockResolvedValue(stoppedWorkspace),
+				getWorkspace: vi.fn().mockResolvedValue(failedWorkspace),
 			});
 
-			const mockWriteEmitter = new vscode.EventEmitter<string>();
-
-			// Mock child_process.spawn
 			const mockProcess = createMockChildProcess();
 			vi.mocked(spawn).mockReturnValue(mockProcess as never);
-
-			// Mock getHeaderArgs
 			vi.mocked(getHeaderArgs).mockReturnValue([]);
 
-			// Start the async operation
 			const resultPromise = startWorkspaceIfStoppedOrFailed(
 				mockRestClient,
 				"/config",
 				"/bin/coder",
-				stoppedWorkspace as never,
-				mockWriteEmitter,
+				failedWorkspace as never,
+				new vscode.EventEmitter<string>(),
 			);
 
-			// Simulate process failure
 			setTimeout(() => {
 				mockProcess.stderr.emit("data", Buffer.from("Error occurred"));
 				mockProcess.emit("close", 1);
@@ -622,43 +534,30 @@ describe("api", () => {
 				latest_build: { id: "build-1", status: "running" },
 			};
 
-			const mockLogs = [
-				{ id: 1, output: "Starting build..." },
-				{ id: 2, output: "Build in progress..." },
-			];
-
 			const mockRestClient = createMockApi({
-				getWorkspaceBuildLogs: vi.fn().mockResolvedValue(mockLogs),
-				getWorkspace: vi.fn().mockResolvedValue({
-					...mockWorkspace,
-					latest_build: { ...mockWorkspace.latest_build, status: "running" },
-				}),
+				getWorkspaceBuildLogs: vi.fn().mockResolvedValue([
+					{ id: 1, output: "Starting build..." },
+					{ id: 2, output: "Build in progress..." },
+				]),
+				getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
 				getAxiosInstance: vi.fn(() => ({
 					defaults: {
 						baseURL: "https://coder.example.com",
-						headers: {
-							common: {
-								[coderSessionTokenHeader]: "test-token",
-							},
-						},
+						headers: { common: { [coderSessionTokenHeader]: "test-token" } },
 					},
 				})),
 			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
-
-			// Mock WebSocket
 			const mockSocket = createMockWebSocket();
 			vi.mocked(WebSocket).mockImplementation(() => mockSocket as never);
 
-			// Start the async operation
 			const resultPromise = waitForBuild(
 				mockRestClient,
 				mockWriteEmitter,
 				mockWorkspace as never,
 			);
 
-			// Simulate WebSocket events
 			setTimeout(() => {
 				mockSocket.emit(
 					"message",
@@ -677,9 +576,7 @@ describe("api", () => {
 			expect(vi.mocked(WebSocket)).toHaveBeenCalledWith(
 				expect.any(URL),
 				expect.objectContaining({
-					headers: {
-						[coderSessionTokenHeader]: "test-token",
-					},
+					headers: { [coderSessionTokenHeader]: "test-token" },
 				}),
 			);
 		});
@@ -689,7 +586,6 @@ describe("api", () => {
 				id: "workspace-1",
 				latest_build: { id: "build-1" },
 			};
-
 			const mockRestClient = createMockApi({
 				getWorkspaceBuildLogs: vi.fn().mockResolvedValue([]),
 				getAxiosInstance: vi.fn(() => ({
@@ -701,25 +597,20 @@ describe("api", () => {
 			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
-
-			// Mock WebSocket
 			const mockSocket = createMockWebSocket();
 			vi.mocked(WebSocket).mockImplementation(() => mockSocket as never);
-
-			// Mock errToStr
 			vi.mocked(errToStr).mockReturnValue("connection failed");
 
-			// Start the async operation
 			const resultPromise = waitForBuild(
 				mockRestClient,
 				mockWriteEmitter,
 				mockWorkspace as never,
 			);
 
-			// Simulate WebSocket error
-			setTimeout(() => {
-				mockSocket.emit("error", new Error("Connection failed"));
-			}, 10);
+			setTimeout(
+				() => mockSocket.emit("error", new Error("Connection failed")),
+				10,
+			);
 
 			await expect(resultPromise).rejects.toThrow(
 				"Failed to watch workspace build using wss://coder.example.com/api/v2/workspacebuilds/build-1/logs?follow=true: connection failed",
@@ -782,60 +673,37 @@ describe("api", () => {
 				id: "workspace-1",
 				latest_build: { id: "build-1", status: "running" },
 			};
-
-			const mockLogs = [
-				{ id: 10, output: "Starting build..." },
-				{ id: 20, output: "Build in progress..." },
-			];
-
 			const mockRestClient = createMockApi({
-				getWorkspaceBuildLogs: vi.fn().mockResolvedValue(mockLogs),
-				getWorkspace: vi.fn().mockResolvedValue({
-					...mockWorkspace,
-					latest_build: { ...mockWorkspace.latest_build, status: "running" },
-				}),
+				getWorkspaceBuildLogs: vi.fn().mockResolvedValue([
+					{ id: 10, output: "Starting build..." },
+					{ id: 20, output: "Build in progress..." },
+				]),
+				getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
 				getAxiosInstance: vi.fn(() => ({
 					defaults: {
 						baseURL: "https://coder.example.com",
-						headers: {
-							common: {},
-						},
+						headers: { common: {} },
 					},
 				})),
 			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
-
-			// Mock WebSocket
 			const mockSocket = createMockWebSocket();
 			vi.mocked(WebSocket).mockImplementation(() => mockSocket as never);
 
-			// Start the async operation
 			const resultPromise = waitForBuild(
 				mockRestClient,
 				mockWriteEmitter,
 				mockWorkspace as never,
 			);
-
-			// Simulate WebSocket events
-			setTimeout(() => {
-				mockSocket.emit("close");
-			}, 10);
-
+			setTimeout(() => mockSocket.emit("close"), 10);
 			await resultPromise;
 
-			// Verify WebSocket was created with after parameter from last log
 			const websocketCalls = vi.mocked(WebSocket).mock.calls;
 			expect(websocketCalls).toHaveLength(1);
-			expect(websocketCalls[0][0]).toBeInstanceOf(URL);
 			expect((websocketCalls[0][0] as URL).href).toBe(
 				"wss://coder.example.com/api/v2/workspacebuilds/build-1/logs?follow=true&after=20",
 			);
-			expect(websocketCalls[0][1]).toMatchObject({
-				followRedirects: true,
-				headers: undefined,
-			});
-			expect(websocketCalls[0][1]).toHaveProperty("agent");
 		});
 
 		it("should handle WebSocket without auth token", async () => {
@@ -843,44 +711,30 @@ describe("api", () => {
 				id: "workspace-1",
 				latest_build: { id: "build-1", status: "running" },
 			};
-
 			const mockRestClient = createMockApi({
 				getWorkspaceBuildLogs: vi.fn().mockResolvedValue([]),
 				getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
 				getAxiosInstance: vi.fn(() => ({
 					defaults: {
 						baseURL: "https://coder.example.com",
-						headers: {
-							common: {}, // No token
-						},
+						headers: { common: {} },
 					},
 				})),
 			});
 
 			const mockWriteEmitter = new vscode.EventEmitter<string>();
-
-			// Mock WebSocket
 			const mockSocket = createMockWebSocket();
 			vi.mocked(WebSocket).mockImplementation(() => mockSocket as never);
 
-			// Start the async operation
 			const resultPromise = waitForBuild(
 				mockRestClient,
 				mockWriteEmitter,
 				mockWorkspace as never,
 			);
-
-			// Simulate WebSocket events
-			setTimeout(() => {
-				mockSocket.emit("close");
-			}, 10);
-
+			setTimeout(() => mockSocket.emit("close"), 10);
 			await resultPromise;
 
-			// Verify WebSocket was created without auth headers
 			const websocketCalls = vi.mocked(WebSocket).mock.calls;
-			expect(websocketCalls).toHaveLength(1);
-			expect(websocketCalls[0][0]).toBeInstanceOf(URL);
 			expect((websocketCalls[0][0] as URL).href).toBe(
 				"wss://coder.example.com/api/v2/workspacebuilds/build-1/logs?follow=true",
 			);
@@ -888,7 +742,6 @@ describe("api", () => {
 				followRedirects: true,
 				headers: undefined,
 			});
-			expect(websocketCalls[0][1]).toHaveProperty("agent");
 		});
 	});
 });

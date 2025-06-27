@@ -11,6 +11,7 @@ import {
 	createMockAgent,
 	createTestUIProvider,
 } from "./test-helpers";
+import type { UIProvider } from "./uiProvider";
 import { OpenableTreeItem } from "./workspacesProvider";
 
 // Mock dependencies
@@ -29,66 +30,45 @@ vi.mock("coder/site/src/api/errors", () => ({
 }));
 
 beforeAll(() => {
-	vi.mock("vscode", () => {
-		const mockConfiguration = {
-			get: vi.fn((key) => {
-				if (key === "coder.defaultUrl") {
-					return "";
-				}
-				return undefined;
-			}),
-		};
-		return {
-			window: {
-				showInformationMessage: vi.fn().mockResolvedValue(undefined),
-				showInputBox: vi.fn(),
-				createQuickPick: vi.fn(),
-				showTextDocument: vi.fn(),
-				withProgress: vi.fn((options, task) => task()),
-				createTerminal: vi.fn(() => ({
-					sendText: vi.fn(),
-					show: vi.fn(),
-				})),
-			},
-			workspace: {
-				openTextDocument: vi.fn(),
-				workspaceFolders: [],
-				getConfiguration: vi.fn(() => mockConfiguration),
-			},
-			Uri: {
-				file: vi.fn(),
-				from: vi.fn((obj) => obj),
-				parse: vi.fn((url) => ({ toString: () => url })),
-			},
-			commands: {
-				executeCommand: vi.fn(),
-			},
-			env: {
-				openExternal: vi.fn().mockResolvedValue(true),
-			},
-			ProgressLocation: {
-				Notification: 15,
-			},
-			EventEmitter: class {
-				event = vi.fn();
-			},
-		};
+	vi.mock("vscode", async () => {
+		const helpers = await import("./test-helpers");
+		return helpers.createMockVSCode();
 	});
 });
 
-describe("commands", () => {
-	it("should create Commands instance", () => {
-		const mockVscodeProposed = createMockVSCode();
-		const mockRestClient = createMockApi();
-		const mockStorage = createMockStorage();
-		const { uiProvider } = createTestUIProvider();
+// Helper to create Commands instance with common setup
+const createTestCommands = (
+	overrides: {
+		restClient?: Parameters<typeof createMockApi>[0];
+		storage?: Parameters<typeof createMockStorage>[0];
+		vscodeProposed?: typeof vscode;
+		uiProvider?: UIProvider;
+	} = {},
+) => {
+	const mockVscodeProposed = overrides.vscodeProposed || createMockVSCode();
+	const mockRestClient = createMockApi(overrides.restClient);
+	const mockStorage = overrides.storage
+		? createMockStorage(overrides.storage)
+		: createMockStorageWithAuth();
+	const uiProvider = overrides.uiProvider || createTestUIProvider().uiProvider;
 
-		const commands = new Commands(
-			mockVscodeProposed,
+	return {
+		commands: new Commands(
+			mockVscodeProposed as typeof vscode,
 			mockRestClient,
 			mockStorage,
 			uiProvider,
-		);
+		),
+		mockVscodeProposed,
+		mockRestClient,
+		mockStorage,
+		uiProvider,
+	};
+};
+
+describe("commands", () => {
+	it("should create Commands instance", () => {
+		const { commands } = createTestCommands({ storage: {} });
 
 		expect(commands).toBeInstanceOf(Commands);
 		expect(commands.workspace).toBeUndefined();
@@ -97,105 +77,51 @@ describe("commands", () => {
 	});
 
 	describe("maybeAskAgent", () => {
-		it("should throw error when no matching agents", async () => {
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
+		it.each([
+			["no matching agents", [], undefined, "Workspace has no matching agents"],
+			[
+				"single agent",
+				[createMockAgent({ id: "agent-1", name: "main", status: "connected" })],
+				undefined,
+				null,
+			],
+			[
+				"filtered agent",
+				[
+					createMockAgent({ id: "agent-1", name: "main", status: "connected" }),
+					createMockAgent({ id: "agent-2", name: "gpu", status: "connected" }),
+				],
+				"gpu",
+				null,
+			],
+		])("should handle %s", async (_, agents, filter, expectedError) => {
+			const { commands } = createTestCommands();
 
-			// Mock extractAgents to return empty array
+			// Mock extractAgents
 			const { extractAgents } = await import("./api-helper");
-			vi.mocked(extractAgents).mockReturnValue([]);
+			vi.mocked(extractAgents).mockReturnValue(agents);
 
 			const mockWorkspace = createMockWorkspace({ id: "test-workspace" });
 
-			await expect(commands.maybeAskAgent(mockWorkspace)).rejects.toThrow(
-				"Workspace has no matching agents",
-			);
-		});
-
-		it("should return single agent when only one exists", async () => {
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
-
-			const mockAgent = createMockAgent({
-				id: "agent-1",
-				name: "main",
-				status: "connected",
-			});
-
-			// Mock extractAgents to return single agent
-			const { extractAgents } = await import("./api-helper");
-			vi.mocked(extractAgents).mockReturnValue([mockAgent]);
-
-			const mockWorkspace = createMockWorkspace({ id: "test-workspace" });
-
-			const result = await commands.maybeAskAgent(mockWorkspace);
-			expect(result).toBe(mockAgent);
-		});
-
-		it("should filter agents by name when filter provided", async () => {
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
-
-			const mainAgent = createMockAgent({
-				id: "agent-1",
-				name: "main",
-				status: "connected",
-			});
-
-			const gpuAgent = createMockAgent({
-				id: "agent-2",
-				name: "gpu",
-				status: "connected",
-			});
-
-			// Mock extractAgents to return multiple agents
-			const { extractAgents } = await import("./api-helper");
-			vi.mocked(extractAgents).mockReturnValue([mainAgent, gpuAgent]);
-
-			const mockWorkspace = createMockWorkspace({ id: "test-workspace" });
-
-			// Should return gpu agent when filtered by name
-			const result = await commands.maybeAskAgent(mockWorkspace, "gpu");
-			expect(result).toBe(gpuAgent);
+			if (expectedError) {
+				await expect(
+					commands.maybeAskAgent(mockWorkspace, filter),
+				).rejects.toThrow(expectedError);
+			} else {
+				const result = await commands.maybeAskAgent(mockWorkspace, filter);
+				if (filter === "gpu") {
+					expect(result).toBe(agents.find((a) => a.name === "gpu"));
+				} else {
+					expect(result).toBe(agents[0]);
+				}
+			}
 		});
 	});
 
 	describe("viewLogs", () => {
 		it("should show info message when no log path is set", async () => {
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
 			const { uiProvider, getShownMessages } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
+			const { commands } = createTestCommands({ uiProvider });
 
 			// Ensure workspaceLogPath is undefined
 			commands.workspaceLogPath = undefined;
@@ -227,16 +153,7 @@ describe("commands", () => {
 			);
 			vi.mocked(vscode.Uri.file).mockImplementation(fileMock);
 
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
+			const { commands } = createTestCommands();
 
 			// Set workspaceLogPath
 			commands.workspaceLogPath = "/path/to/log.txt";
@@ -261,24 +178,17 @@ describe("commands", () => {
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi({
-				setHost: vi.fn(),
-				setSessionToken: vi.fn(),
+			const { commands, mockStorage, mockRestClient } = createTestCommands({
+				restClient: {
+					setHost: vi.fn(),
+					setSessionToken: vi.fn(),
+				},
+				storage: {
+					getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
+					setUrl: vi.fn(),
+					setSessionToken: vi.fn(),
+				},
 			});
-			const mockStorage = createMockStorage({
-				getUrl: vi.fn().mockReturnValue("https://test.coder.com"),
-				setUrl: vi.fn(),
-				setSessionToken: vi.fn(),
-			});
-
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
 
 			await commands.logout();
 
@@ -310,56 +220,42 @@ describe("commands", () => {
 		});
 	});
 
-	describe("navigateToWorkspace", () => {
+	describe.each([
+		["navigateToWorkspace", "navigateToWorkspace", ""],
+		["navigateToWorkspaceSettings", "navigateToWorkspaceSettings", "/settings"],
+	])("%s", (_, methodName, urlSuffix) => {
 		it("should open workspace URL when workspace is provided", async () => {
 			const executeCommandMock = vi.fn();
 			vi.mocked(vscode.commands.executeCommand).mockImplementation(
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
+			const { commands } = createTestCommands();
 
 			const mockWorkspace = {
 				workspaceOwner: "testuser",
 				workspaceName: "my-workspace",
 			} as OpenableTreeItem;
 
-			await commands.navigateToWorkspace(mockWorkspace);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await (commands as any)[methodName](mockWorkspace);
 
 			expect(executeCommandMock).toHaveBeenCalledWith(
 				"vscode.open",
-				"https://test.coder.com/@testuser/my-workspace",
+				`https://test.coder.com/@testuser/my-workspace${urlSuffix}`,
 			);
 		});
 
 		it("should show info message when no workspace is provided and not connected", async () => {
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-
 			const { uiProvider, getShownMessages } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
+			const { commands } = createTestCommands({ uiProvider });
 
 			// Ensure workspace and workspaceRestClient are undefined
 			commands.workspace = undefined;
 			commands.workspaceRestClient = undefined;
 
-			await commands.navigateToWorkspace(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			await (commands as any)[methodName](
 				undefined as unknown as OpenableTreeItem,
 			);
 
@@ -372,81 +268,6 @@ describe("commands", () => {
 		});
 	});
 
-	describe("navigateToWorkspaceSettings", () => {
-		it("should open workspace settings URL when workspace is provided", async () => {
-			const executeCommandMock = vi.fn();
-			vi.mocked(vscode.commands.executeCommand).mockImplementation(
-				executeCommandMock,
-			);
-
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
-
-			const mockWorkspace = {
-				workspaceOwner: "testuser",
-				workspaceName: "my-workspace",
-			} as OpenableTreeItem;
-
-			await commands.navigateToWorkspaceSettings(mockWorkspace);
-
-			expect(executeCommandMock).toHaveBeenCalledWith(
-				"vscode.open",
-				"https://test.coder.com/@testuser/my-workspace/settings",
-			);
-		});
-
-		it("should use current workspace when none provided and connected", async () => {
-			const executeCommandMock = vi.fn();
-			vi.mocked(vscode.commands.executeCommand).mockImplementation(
-				executeCommandMock,
-			);
-
-			const mockVscodeProposed = createMockVSCode();
-			const mockAxiosInstance = {
-				defaults: {
-					baseURL: "https://connected.coder.com",
-				},
-			};
-			const mockRestClient = createMockApi({
-				getAxiosInstance: vi.fn().mockReturnValue(mockAxiosInstance),
-			});
-			const mockStorage = createMockStorageWithAuth();
-
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
-
-			// Set up connected workspace
-			commands.workspace = createMockWorkspace({
-				owner_name: "connecteduser",
-				name: "connected-workspace",
-			});
-			commands.workspaceRestClient = mockRestClient;
-
-			await commands.navigateToWorkspaceSettings(
-				undefined as unknown as OpenableTreeItem,
-			);
-
-			expect(executeCommandMock).toHaveBeenCalledWith(
-				"vscode.open",
-				"https://connected.coder.com/@connecteduser/connected-workspace/settings",
-			);
-		});
-	});
-
 	describe("createWorkspace", () => {
 		it("should open templates URL", async () => {
 			const executeCommandMock = vi.fn();
@@ -454,17 +275,7 @@ describe("commands", () => {
 				executeCommandMock,
 			);
 
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
+			const { commands } = createTestCommands();
 
 			await commands.createWorkspace();
 
@@ -476,56 +287,29 @@ describe("commands", () => {
 	});
 
 	describe("maybeAskUrl", () => {
-		it("should normalize URL with https prefix when missing", async () => {
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
+		it.each([
+			[
+				"should normalize URL with https prefix when missing",
+				"example.coder.com",
+				"https://example.coder.com",
+			],
+			[
+				"should remove trailing slashes",
+				"https://example.coder.com///",
+				"https://example.coder.com",
+			],
+		])("%s", async (_, input, expected) => {
+			const { commands } = createTestCommands();
 
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
+			const result = await commands.maybeAskUrl(input);
 
-			const result = await commands.maybeAskUrl("example.coder.com");
-
-			expect(result).toBe("https://example.coder.com");
-		});
-
-		it("should remove trailing slashes", async () => {
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
-
-			const result = await commands.maybeAskUrl("https://example.coder.com///");
-
-			expect(result).toBe("https://example.coder.com");
+			expect(result).toBe(expected);
 		});
 	});
 
 	describe("updateWorkspace", () => {
 		it("should do nothing when no workspace is active", async () => {
-			const mockVscodeProposed = createMockVSCode();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
-
-			const { uiProvider } = createTestUIProvider();
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
+			const { commands, mockVscodeProposed } = createTestCommands();
 
 			// Ensure workspace and workspaceRestClient are undefined
 			commands.workspace = undefined;
@@ -535,33 +319,22 @@ describe("commands", () => {
 
 			// Should not show any message when no workspace
 			expect(
-				mockVscodeProposed.window.showInformationMessage,
+				mockVscodeProposed.window?.showInformationMessage,
 			).not.toHaveBeenCalled();
 		});
 
 		it("should prompt for confirmation and update workspace when user confirms", async () => {
 			const updateWorkspaceVersionMock = vi.fn().mockResolvedValue(undefined);
-
-			const mockVscodeProposed = createMockVSCode();
-
 			const mockWorkspaceRestClient = createMockApi({
 				updateWorkspaceVersion: updateWorkspaceVersionMock,
 			});
-
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorageWithAuth();
 
 			const { uiProvider, addMessageResponse, getShownMessages } =
 				createTestUIProvider();
 			// Program the UI provider to return "Update" when prompted
 			addMessageResponse("Update");
 
-			const commands = new Commands(
-				mockVscodeProposed,
-				mockRestClient,
-				mockStorage,
-				uiProvider,
-			);
+			const { commands } = createTestCommands({ uiProvider });
 
 			// Set up active workspace
 			const mockWorkspace = createMockWorkspace({

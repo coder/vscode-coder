@@ -11,162 +11,124 @@ import {
 	createMockCommands,
 	createMockOutputChannel,
 	createMockRestClient,
+	createMockAxiosInstance,
 } from "./test-helpers";
 
-// Mock dependencies
-vi.mock("axios", () => ({
-	default: {
-		create: vi.fn(() => ({
-			defaults: {
-				headers: { common: {} },
-				baseURL: "https://test.com",
-			},
-			interceptors: {
-				request: { use: vi.fn() },
-				response: { use: vi.fn() },
-			},
-		})),
-		getUri: vi.fn(() => "https://test.coder.com/api/v2/user"),
-	},
-	isAxiosError: vi.fn(),
-}));
+// Setup all mocks
+function setupMocks() {
+	// Mock axios
+	vi.mock("axios", () => ({
+		default: {
+			create: vi.fn(() => createMockAxiosInstance()),
+			getUri: vi.fn(() => "https://test.coder.com/api/v2/user"),
+		},
+		isAxiosError: vi.fn(),
+	}));
 
-// Mock module._load for remote SSH extension tests
-vi.mock("module", async () => {
-	const actual = await vi.importActual<typeof import("module")>("module");
-	return {
-		...actual,
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		_load: vi.fn((request: string, parent: any, isMain: boolean) => {
-			// Return mocked vscode when loading from extension path
-			if (
-				request === "vscode" &&
-				parent?.filename?.includes("/path/to/extension")
-			) {
-				return { test: "proposed", isMocked: true };
-			}
-			// Otherwise use the actual implementation
+	// Mock module._load for remote SSH extension tests
+	vi.mock("module", async () => {
+		const actual = await vi.importActual<typeof import("module")>("module");
+		return {
+			...actual,
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			return (actual as any)._load(request, parent, isMain);
-		}),
-	};
-});
-vi.mock("coder/site/src/api/api", () => ({
-	Api: class MockApi {
-		setHost = vi.fn();
-		setSessionToken = vi.fn();
-		getAxiosInstance = vi.fn(() => ({
-			defaults: {
-				headers: { common: {} },
-				baseURL: "https://test.com",
-			},
-			interceptors: {
-				request: { use: vi.fn() },
-				response: { use: vi.fn() },
-			},
-		}));
-	},
-}));
-vi.mock("./api");
-vi.mock("./api-helper", () => ({
-	errToStr: vi.fn((error, defaultMessage) => error?.message || defaultMessage),
-}));
-vi.mock("./commands", () => ({
-	Commands: vi.fn(),
-}));
-vi.mock("./error", () => {
-	class MockCertificateError extends Error {
-		x509Err?: string;
-		showModal = vi.fn();
-		constructor(message: string, x509Err?: string) {
-			super(message);
-			this.x509Err = x509Err;
-			this.name = "CertificateError";
-		}
-	}
-	return {
-		CertificateError: MockCertificateError,
-		getErrorDetail: vi.fn(() => "Some error detail"),
-	};
-});
-vi.mock("./remote", () => ({
-	Remote: vi.fn(),
-}));
-vi.mock("./storage", () => ({
-	Storage: vi.fn(),
-}));
-vi.mock("./util");
-vi.mock("./logger", () => ({
-	Logger: vi.fn().mockImplementation(() => ({
-		info: vi.fn(),
-		error: vi.fn(),
-		warn: vi.fn(),
-		debug: vi.fn(),
-	})),
-}));
-vi.mock("./workspacesProvider", () => ({
-	WorkspaceProvider: vi.fn(() => ({
-		setVisibility: vi.fn(),
-		refresh: vi.fn(),
-	})),
-	WorkspaceQuery: {
-		Mine: "mine",
-		All: "all",
-	},
-}));
-vi.mock("./workspaceMonitor", () => ({
-	WorkspaceMonitor: vi.fn(),
-}));
-vi.mock("coder/site/src/api/errors", () => ({
-	getErrorMessage: vi.fn(
-		(error, defaultMessage) => error?.message || defaultMessage,
-	),
-}));
+			_load: vi.fn((request: string, parent: any, isMain: boolean) => {
+				if (
+					request === "vscode" &&
+					parent?.filename?.includes("/path/to/extension")
+				) {
+					return { test: "proposed", isMocked: true };
+				}
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				return (actual as any)._load(request, parent, isMain);
+			}),
+		};
+	});
 
-// Mock vscode module
-vi.mock("vscode", () => ({
-	workspace: {
-		getConfiguration: vi.fn(() => ({
-			get: vi.fn().mockReturnValue(false), // Return false for autologin to skip that flow
+	// Mock all local modules
+	vi.mock("./api");
+	vi.mock("./api-helper", () => ({
+		errToStr: vi.fn(
+			(error, defaultMessage) => error?.message || defaultMessage,
+		),
+	}));
+	vi.mock("./commands", () => ({ Commands: vi.fn() }));
+	vi.mock("./error", () => ({
+		CertificateError: class extends Error {
+			x509Err?: string;
+			showModal = vi.fn();
+			constructor(message: string, x509Err?: string) {
+				super(message);
+				this.x509Err = x509Err;
+				this.name = "CertificateError";
+			}
+		},
+		getErrorDetail: vi.fn(() => "Some error detail"),
+	}));
+	vi.mock("./remote", () => ({ Remote: vi.fn() }));
+	vi.mock("./storage", () => ({ Storage: vi.fn() }));
+	vi.mock("./util");
+	vi.mock("./logger", () => ({
+		Logger: vi.fn().mockImplementation(() => ({
+			info: vi.fn(),
+			error: vi.fn(),
+			warn: vi.fn(),
+			debug: vi.fn(),
 		})),
-	},
-	window: {
-		createOutputChannel: vi.fn(() => ({
-			appendLine: vi.fn(),
+	}));
+	vi.mock("./workspacesProvider", () => ({
+		WorkspaceProvider: vi.fn(() => ({
+			setVisibility: vi.fn(),
+			refresh: vi.fn(),
 		})),
-		createTreeView: vi.fn(() => ({
-			visible: true,
-			onDidChangeVisibility: vi.fn(),
-		})),
-		registerUriHandler: vi.fn(),
-		showErrorMessage: vi.fn(),
-	},
-	commands: {
-		registerCommand: vi.fn(),
-		executeCommand: vi.fn().mockResolvedValue(undefined),
-	},
-	extensions: {
-		getExtension: vi.fn(),
-	},
-	env: {
-		remoteAuthority: undefined,
-	},
-	EventEmitter: class MockEventEmitter {
-		fire = vi.fn();
-		event = vi.fn();
-		dispose = vi.fn();
-	},
-	TreeItem: class MockTreeItem {
-		constructor() {
-			// Mock implementation
-		}
-	},
-	TreeItemCollapsibleState: {
-		None: 0,
-		Collapsed: 1,
-		Expanded: 2,
-	},
-}));
+		WorkspaceQuery: { Mine: "mine", All: "all" },
+	}));
+	vi.mock("./workspaceMonitor", () => ({ WorkspaceMonitor: vi.fn() }));
+	vi.mock("coder/site/src/api/errors", () => ({
+		getErrorMessage: vi.fn(
+			(error, defaultMessage) => error?.message || defaultMessage,
+		),
+	}));
+	vi.mock("coder/site/src/api/api", () => ({
+		Api: class MockApi {
+			setHost = vi.fn();
+			setSessionToken = vi.fn();
+			getAxiosInstance = vi.fn(() => createMockAxiosInstance());
+		},
+	}));
+
+	// Mock vscode module with minimal configuration
+	vi.mock("vscode", () => ({
+		workspace: {
+			getConfiguration: vi.fn(() => ({
+				get: vi.fn().mockReturnValue(false),
+			})),
+		},
+		window: {
+			createOutputChannel: vi.fn(() => ({ appendLine: vi.fn() })),
+			createTreeView: vi.fn(() => ({
+				visible: true,
+				onDidChangeVisibility: vi.fn(),
+			})),
+			registerUriHandler: vi.fn(),
+			showErrorMessage: vi.fn(),
+		},
+		commands: {
+			registerCommand: vi.fn(),
+			executeCommand: vi.fn().mockResolvedValue(undefined),
+		},
+		extensions: { getExtension: vi.fn() },
+		env: { remoteAuthority: undefined },
+		EventEmitter: class {
+			fire = vi.fn();
+			event = vi.fn();
+			dispose = vi.fn();
+		},
+		TreeItem: class {},
+		TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+	}));
+}
+
+setupMocks();
 
 beforeEach(() => {
 	// Clear all mocks before each test
@@ -179,65 +141,35 @@ describe("extension", () => {
 	});
 
 	describe("setupRemoteSSHExtension", () => {
-		it("should show error message when no remote SSH extension is found", async () => {
+		it.each([
+			["no extension", undefined, true],
+			["jeanp413.open-remote-ssh", "jeanp413.open-remote-ssh", false],
+			["ms-vscode-remote.remote-ssh", "ms-vscode-remote.remote-ssh", false],
+		])("should handle %s", async (_, extensionId, shouldShowError) => {
 			const vscode = await import("vscode");
-
-			// Mock no extension found
-			vi.mocked(vscode.extensions.getExtension).mockReturnValue(undefined);
-
-			const result = extension.setupRemoteSSHExtension();
-
-			expect(vscodeActual.window.showErrorMessage).toHaveBeenCalledWith(
-				expect.stringContaining("Remote SSH extension not found"),
-			);
-			expect(result.vscodeProposed).toBe(vscode);
-			expect(result.remoteSSHExtension).toBeUndefined();
-		});
-
-		it("should return vscodeProposed when jeanp413.open-remote-ssh is found", async () => {
-			const vscode = await import("vscode");
-			const mockExtension = createMockRemoteSSHExtension({
-				extensionPath: "/path/to/extension",
-			});
+			const mockExtension = extensionId
+				? createMockRemoteSSHExtension({ extensionPath: "/path/to/extension" })
+				: undefined;
 
 			vi.mocked(vscode.extensions.getExtension).mockImplementation((id) => {
-				if (id === "jeanp413.open-remote-ssh") {
-					return mockExtension as never;
-				}
-				return undefined;
+				return id === extensionId ? (mockExtension as never) : undefined;
 			});
 
 			const result = extension.setupRemoteSSHExtension();
 
-			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
-			expect(result.vscodeProposed).toMatchObject({
-				test: "proposed",
-				isMocked: true,
-			});
-			expect(result.remoteSSHExtension).toBe(mockExtension);
-		});
-
-		it("should return vscodeProposed when ms-vscode-remote.remote-ssh is found", async () => {
-			const vscode = await import("vscode");
-			const mockExtension = createMockRemoteSSHExtension({
-				extensionPath: "/path/to/extension",
-			});
-
-			vi.mocked(vscode.extensions.getExtension).mockImplementation((id) => {
-				if (id === "ms-vscode-remote.remote-ssh") {
-					return mockExtension as never;
-				}
-				return undefined;
-			});
-
-			const result = extension.setupRemoteSSHExtension();
-
-			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
-			expect(result.vscodeProposed).toMatchObject({
-				test: "proposed",
-				isMocked: true,
-			});
-			expect(result.remoteSSHExtension).toBe(mockExtension);
+			if (shouldShowError) {
+				expect(vscodeActual.window.showErrorMessage).toHaveBeenCalledWith(
+					expect.stringContaining("Remote SSH extension not found"),
+				);
+				expect(result.remoteSSHExtension).toBeUndefined();
+			} else {
+				expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+				expect(result.vscodeProposed).toMatchObject({
+					test: "proposed",
+					isMocked: true,
+				});
+				expect(result.remoteSSHExtension).toBe(mockExtension);
+			}
 		});
 	});
 
@@ -865,210 +797,163 @@ describe("extension", () => {
 			expect(result).toBe(true); // Success
 		});
 
-		it("should handle CertificateError during remote setup", async () => {
-			const vscode = await import("vscode");
-			const { Remote } = await import("./remote");
-
-			const mockVscodeProposed = {
-				env: { remoteAuthority: "test-remote-authority" },
-				window: {
-					showErrorMessage: vi.fn(),
+		it.each([
+			[
+				"CertificateError",
+				{
+					name: "CertificateError",
+					message: "Certificate error",
+					x509Err: "x509 error details",
+					showModal: vi.fn(),
 				},
-			} as unknown as typeof vscode;
-
-			const mockRemoteSSHExtension = createMockRemoteSSHExtension({
-				extensionPath: "/path/to/extension",
-			});
-
-			const mockRestClient = {};
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			};
-			const mockCommands = {};
-			const mockContext = createMockExtensionContext({
-				extensionMode: 1,
-			});
-
-			// Create a mock error that mimics CertificateError
-			const mockError = {
-				name: "CertificateError",
-				message: "Certificate error",
-				x509Err: "x509 error details",
-				showModal: vi.fn(),
-			};
-
-			const mockRemote = createMockRemote({
-				setup: vi.fn().mockRejectedValue(mockError),
-				closeRemote: vi.fn(),
-			});
-
-			vi.mocked(Remote).mockImplementation(() => mockRemote as never);
-
-			const result = await extension.handleRemoteEnvironment(
-				mockVscodeProposed,
-				mockRemoteSSHExtension,
-				mockRestClient as never,
-				mockStorage as never,
-				mockCommands as never,
-				mockContext,
-			);
-
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				"x509 error details",
-			);
-			expect(mockError.showModal).toHaveBeenCalledWith(
-				"Failed to open workspace",
-			);
-			expect(mockRemote.closeRemote).toHaveBeenCalled();
-			expect(result).toBe(false); // Failed
-		});
-
-		it("should handle axios error during remote setup", async () => {
-			const vscode = await import("vscode");
-			const { Remote } = await import("./remote");
-			const { isAxiosError } = await import("axios");
-
-			const mockVscodeProposed = {
-				env: { remoteAuthority: "test-remote-authority" },
-				window: {
-					showErrorMessage: vi.fn(),
+				{ isAxios: false, expectedLog: "x509 error details" },
+			],
+			[
+				"axios error",
+				{
+					response: { status: 401 },
+					config: { method: "get", url: "https://test.coder.com/api/v2/user" },
+					message: "Unauthorized",
 				},
-			} as unknown as typeof vscode;
+				{ isAxios: true, expectedLog: "API GET to" },
+			],
+		])(
+			"should handle %s during remote setup",
+			async (_, error, { isAxios, expectedLog }) => {
+				const vscode = await import("vscode");
+				const { Remote } = await import("./remote");
+				const { isAxiosError } = await import("axios");
 
-			const mockRemoteSSHExtension = createMockRemoteSSHExtension({
-				extensionPath: "/path/to/extension",
-			});
+				if (isAxios) {
+					vi.mocked(isAxiosError).mockReturnValue(true);
+				}
 
-			const mockRestClient = {};
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			};
-			const mockCommands = {};
-			const mockContext = createMockExtensionContext({
-				extensionMode: 1,
-			});
+				const mockVscodeProposed = {
+					env: { remoteAuthority: "test-remote-authority" },
+					window: { showErrorMessage: vi.fn() },
+				} as unknown as typeof vscode;
 
-			const mockAxiosError = {
-				response: { status: 401 },
-				config: { method: "get", url: "https://test.coder.com/api/v2/user" },
-				message: "Unauthorized",
-			};
+				const mockRemote = createMockRemote({
+					setup: vi.fn().mockRejectedValue(error),
+					closeRemote: vi.fn(),
+				});
 
-			vi.mocked(isAxiosError).mockReturnValue(true);
+				vi.mocked(Remote).mockImplementation(() => mockRemote as never);
 
-			const mockRemote = createMockRemote({
-				setup: vi.fn().mockRejectedValue(mockAxiosError),
-				closeRemote: vi.fn(),
-			});
+				const mockStorage = { writeToCoderOutputChannel: vi.fn() };
 
-			vi.mocked(Remote).mockImplementation(() => mockRemote as never);
+				const result = await extension.handleRemoteEnvironment(
+					mockVscodeProposed,
+					createMockRemoteSSHExtension({ extensionPath: "/path/to/extension" }),
+					{} as never,
+					mockStorage as never,
+					{} as never,
+					createMockExtensionContext({ extensionMode: 1 }),
+				);
 
-			const result = await extension.handleRemoteEnvironment(
-				mockVscodeProposed,
-				mockRemoteSSHExtension,
-				mockRestClient as never,
-				mockStorage as never,
-				mockCommands as never,
-				mockContext,
-			);
+				expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+					expect.stringContaining(expectedLog),
+				);
+				if ("showModal" in error) {
+					expect(error.showModal).toHaveBeenCalledWith(
+						"Failed to open workspace",
+					);
+				} else {
+					expect(mockVscodeProposed.window.showErrorMessage).toHaveBeenCalled();
+				}
+				expect(mockRemote.closeRemote).toHaveBeenCalled();
+				expect(result).toBe(false);
+			},
+		);
 
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				expect.stringContaining("API GET to"),
-			);
-			expect(mockVscodeProposed.window.showErrorMessage).toHaveBeenCalledWith(
-				"Failed to open workspace",
-				expect.objectContaining({
-					modal: true,
-					useCustom: true,
-				}),
-			);
-			expect(mockRemote.closeRemote).toHaveBeenCalled();
-			expect(result).toBe(false); // Failed
-		});
+		it.each([
+			["no remoteSSHExtension", undefined, "test-remote-authority"],
+			[
+				"no remoteAuthority",
+				createMockRemoteSSHExtension({ extensionPath: "/path/to/extension" }),
+				undefined,
+			],
+		])(
+			"should skip remote setup when %s",
+			async (_, remoteSSHExtension, remoteAuthority) => {
+				const vscode = await import("vscode");
 
-		it("should skip remote setup when no remoteSSHExtension", async () => {
-			const vscode = await import("vscode");
+				const result = await extension.handleRemoteEnvironment(
+					{ env: { remoteAuthority } } as unknown as typeof vscode,
+					remoteSSHExtension,
+					{} as never,
+					{} as never,
+					{} as never,
+					createMockExtensionContext(),
+				);
 
-			const mockVscodeProposed = {
-				env: { remoteAuthority: "test-remote-authority" },
-			} as unknown as typeof vscode;
-
-			const mockRemoteSSHExtension = undefined; // No extension
-
-			const mockRestClient = {};
-			const mockStorage = {};
-			const mockCommands = {};
-			const mockContext = createMockExtensionContext();
-
-			const result = await extension.handleRemoteEnvironment(
-				mockVscodeProposed,
-				mockRemoteSSHExtension,
-				mockRestClient as never,
-				mockStorage as never,
-				mockCommands as never,
-				mockContext,
-			);
-
-			expect(result).toBe(true); // Skipped, but successful
-		});
-
-		it("should skip remote setup when no remoteAuthority", async () => {
-			const vscode = await import("vscode");
-
-			const mockVscodeProposed = {
-				env: { remoteAuthority: undefined }, // No remote authority
-			} as unknown as typeof vscode;
-
-			const mockRemoteSSHExtension = createMockRemoteSSHExtension({
-				extensionPath: "/path/to/extension",
-			});
-
-			const mockRestClient = {};
-			const mockStorage = {};
-			const mockCommands = {};
-			const mockContext = createMockExtensionContext();
-
-			const result = await extension.handleRemoteEnvironment(
-				mockVscodeProposed,
-				mockRemoteSSHExtension,
-				mockRestClient as never,
-				mockStorage as never,
-				mockCommands as never,
-				mockContext,
-			);
-
-			expect(result).toBe(true); // Skipped, but successful
-		});
+				expect(result).toBe(true);
+			},
+		);
 	});
 
 	describe("checkAuthentication", () => {
 		beforeEach(() => {
-			// Clear all mocks before each test
 			vi.clearAllMocks();
 		});
 
-		it("should check authentication when baseUrl exists", async () => {
-			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "https://test.coder.com" },
-				}),
-				getAuthenticatedUser: vi.fn().mockResolvedValue({
-					username: "test-user",
-					roles: [{ name: "member" }],
-				}),
-			};
-
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			};
-
+		const createAuthTestSetup = () => {
+			const mockStorage = { writeToCoderOutputChannel: vi.fn() };
 			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
 			});
-
 			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
 				fetchAndRefresh: vi.fn(),
 			});
+			return {
+				mockStorage,
+				mockMyWorkspacesProvider,
+				mockAllWorkspacesProvider,
+			};
+		};
+
+		it.each([
+			[
+				"valid member authentication",
+				{
+					baseURL: "https://test.coder.com",
+					user: { username: "test-user", roles: [{ name: "member" }] },
+				},
+				{ authenticated: true, isOwner: false, workspacesRefreshed: true },
+			],
+			[
+				"valid owner authentication",
+				{
+					baseURL: "https://test.coder.com",
+					user: { username: "test-owner", roles: [{ name: "owner" }] },
+				},
+				{ authenticated: true, isOwner: true, workspacesRefreshed: true },
+			],
+			[
+				"no baseUrl (not logged in)",
+				{ baseURL: "", user: null },
+				{
+					authenticated: false,
+					isOwner: false,
+					workspacesRefreshed: false,
+					skipUserCheck: true,
+				},
+			],
+		])("%s", async (_, config, expected) => {
+			const {
+				mockStorage,
+				mockMyWorkspacesProvider,
+				mockAllWorkspacesProvider,
+			} = createAuthTestSetup();
+
+			const mockRestClient = {
+				getAxiosInstance: vi
+					.fn()
+					.mockReturnValue({ defaults: { baseURL: config.baseURL } }),
+				getAuthenticatedUser: config.user
+					? vi.fn().mockResolvedValue(config.user)
+					: vi.fn(),
+			};
 
 			await extension.checkAuthentication(
 				mockRestClient as never,
@@ -1077,98 +962,54 @@ describe("extension", () => {
 				mockAllWorkspacesProvider as never,
 			);
 
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				"Logged in to https://test.coder.com; checking credentials",
-			);
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				"Credentials are valid",
-			);
-			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
-				"setContext",
-				"coder.authenticated",
-				true,
-			);
-			expect(vscodeActual.commands.executeCommand).not.toHaveBeenCalledWith(
-				"setContext",
-				"coder.isOwner",
-				true,
-			);
+			if (expected.authenticated) {
+				expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
+					"setContext",
+					"coder.authenticated",
+					true,
+				);
+				if (expected.isOwner) {
+					expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
+						"setContext",
+						"coder.isOwner",
+						true,
+					);
+				}
+			} else if ("skipUserCheck" in expected && expected.skipUserCheck) {
+				expect(mockRestClient.getAuthenticatedUser).not.toHaveBeenCalled();
+			}
+
 			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
 				"setContext",
 				"coder.loaded",
 				true,
 			);
-			expect(mockMyWorkspacesProvider.fetchAndRefresh).toHaveBeenCalled();
-			expect(mockAllWorkspacesProvider.fetchAndRefresh).toHaveBeenCalled();
-		});
 
-		it("should set owner context when user has owner role", async () => {
-			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "https://test.coder.com" },
-				}),
-				getAuthenticatedUser: vi.fn().mockResolvedValue({
-					username: "test-owner",
-					roles: [{ name: "owner" }, { name: "member" }],
-				}),
-			};
-
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			};
-
-			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-
-			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-
-			await extension.checkAuthentication(
-				mockRestClient as never,
-				mockStorage as never,
-				mockMyWorkspacesProvider as never,
-				mockAllWorkspacesProvider as never,
-			);
-
-			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
-				"setContext",
-				"coder.authenticated",
-				true,
-			);
-			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
-				"setContext",
-				"coder.isOwner",
-				true,
-			);
-			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
-				"setContext",
-				"coder.loaded",
-				true,
-			);
+			if (expected.workspacesRefreshed) {
+				expect(mockMyWorkspacesProvider.fetchAndRefresh).toHaveBeenCalled();
+				expect(mockAllWorkspacesProvider.fetchAndRefresh).toHaveBeenCalled();
+			} else {
+				expect(mockMyWorkspacesProvider.fetchAndRefresh).not.toHaveBeenCalled();
+				expect(
+					mockAllWorkspacesProvider.fetchAndRefresh,
+				).not.toHaveBeenCalled();
+			}
 		});
 
 		it("should handle authentication error", async () => {
+			const {
+				mockStorage,
+				mockMyWorkspacesProvider,
+				mockAllWorkspacesProvider,
+			} = createAuthTestSetup();
 			const mockError = new Error("Network error");
+
 			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "https://test.coder.com" },
-				}),
+				getAxiosInstance: vi
+					.fn()
+					.mockReturnValue({ defaults: { baseURL: "https://test.coder.com" } }),
 				getAuthenticatedUser: vi.fn().mockRejectedValue(mockError),
 			};
-
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			};
-
-			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-
-			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
 
 			await extension.checkAuthentication(
 				mockRestClient as never,
@@ -1177,16 +1018,8 @@ describe("extension", () => {
 				mockAllWorkspacesProvider as never,
 			);
 
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				"Failed to check user authentication: Network error",
-			);
 			expect(vscodeActual.window.showErrorMessage).toHaveBeenCalledWith(
 				"Failed to check user authentication: Network error",
-			);
-			expect(vscodeActual.commands.executeCommand).not.toHaveBeenCalledWith(
-				"setContext",
-				"coder.authenticated",
-				true,
 			);
 			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
 				"setContext",
@@ -1194,31 +1027,23 @@ describe("extension", () => {
 				true,
 			);
 			expect(mockMyWorkspacesProvider.fetchAndRefresh).not.toHaveBeenCalled();
-			expect(mockAllWorkspacesProvider.fetchAndRefresh).not.toHaveBeenCalled();
 		});
 
 		it("should handle unexpected user response", async () => {
+			const {
+				mockStorage,
+				mockMyWorkspacesProvider,
+				mockAllWorkspacesProvider,
+			} = createAuthTestSetup();
+
 			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "https://test.coder.com" },
-				}),
-				getAuthenticatedUser: vi.fn().mockResolvedValue({
-					username: "test-user",
-					// Missing roles
-				}),
+				getAxiosInstance: vi
+					.fn()
+					.mockReturnValue({ defaults: { baseURL: "https://test.coder.com" } }),
+				getAuthenticatedUser: vi
+					.fn()
+					.mockResolvedValue({ username: "test-user" /* Missing roles */ }),
 			};
-
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			};
-
-			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-
-			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
 
 			await extension.checkAuthentication(
 				mockRestClient as never,
@@ -1231,47 +1056,6 @@ describe("extension", () => {
 				expect.stringContaining("No error, but got unexpected response:"),
 			);
 			expect(mockMyWorkspacesProvider.fetchAndRefresh).not.toHaveBeenCalled();
-			expect(mockAllWorkspacesProvider.fetchAndRefresh).not.toHaveBeenCalled();
-		});
-
-		it("should handle no baseUrl (not logged in)", async () => {
-			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "" }, // Empty baseURL
-				}),
-				getAuthenticatedUser: vi.fn(), // Won't be called but needed for type check
-			};
-
-			const mockStorage = {
-				writeToCoderOutputChannel: vi.fn(),
-			};
-
-			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-
-			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-
-			await extension.checkAuthentication(
-				mockRestClient as never,
-				mockStorage as never,
-				mockMyWorkspacesProvider as never,
-				mockAllWorkspacesProvider as never,
-			);
-
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				"Not currently logged in",
-			);
-			expect(mockRestClient.getAuthenticatedUser).not.toHaveBeenCalled();
-			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
-				"setContext",
-				"coder.loaded",
-				true,
-			);
-			expect(mockMyWorkspacesProvider.fetchAndRefresh).not.toHaveBeenCalled();
-			expect(mockAllWorkspacesProvider.fetchAndRefresh).not.toHaveBeenCalled();
 		});
 	});
 
@@ -1280,178 +1064,109 @@ describe("extension", () => {
 			vi.clearAllMocks();
 		});
 
-		it("should execute login command when autologin is enabled and defaultUrl exists", async () => {
+		it.each([
+			[
+				"autologin enabled with defaultUrl",
+				{
+					autologin: true,
+					defaultUrl: "https://auto.coder.com",
+					baseURL: "",
+					envUrl: undefined,
+				},
+				{ shouldLogin: true, expectedUrl: "https://auto.coder.com" },
+			],
+			[
+				"autologin enabled with CODER_URL env",
+				{
+					autologin: true,
+					defaultUrl: undefined,
+					baseURL: "",
+					envUrl: "https://env.coder.com",
+				},
+				{ shouldLogin: true, expectedUrl: "https://env.coder.com" },
+			],
+			[
+				"autologin disabled",
+				{
+					autologin: false,
+					defaultUrl: "https://test.coder.com",
+					baseURL: "",
+					envUrl: undefined,
+				},
+				{ shouldLogin: false },
+			],
+			[
+				"already authenticated",
+				{
+					autologin: true,
+					defaultUrl: "https://test.coder.com",
+					baseURL: "https://existing.coder.com",
+					envUrl: undefined,
+				},
+				{ shouldLogin: false },
+			],
+			[
+				"no URL available",
+				{
+					autologin: true,
+					defaultUrl: undefined,
+					baseURL: "",
+					envUrl: undefined,
+				},
+				{ shouldLogin: false },
+			],
+		])("should handle %s", async (_, config, expected) => {
 			const mockRestClient = {
 				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "" }, // No baseURL means not logged in
+					defaults: { baseURL: config.baseURL },
 				}),
 			};
 
-			// Mock configuration with autologin enabled
 			vi.mocked(vscodeActual.workspace.getConfiguration).mockReturnValue({
 				get: vi.fn((key) => {
 					if (key === "coder.autologin") {
-						return true;
+						return config.autologin;
 					}
 					if (key === "coder.defaultUrl") {
-						return "https://auto.coder.com";
+						return config.defaultUrl;
 					}
 					return undefined;
 				}),
 			} as never);
 
-			await extension.handleAutologin(mockRestClient as never);
-
-			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
-				"coder.login",
-				"https://auto.coder.com",
-				undefined,
-				undefined,
-				"true",
-			);
-		});
-
-		it("should execute login command with CODER_URL env var when defaultUrl not set", async () => {
-			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "" },
-				}),
-			};
-
-			// Mock configuration with autologin enabled but no defaultUrl
-			vi.mocked(vscodeActual.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn((key) => {
-					if (key === "coder.autologin") {
-						return true;
-					}
-					if (key === "coder.defaultUrl") {
-						return undefined;
-					}
-					return undefined;
-				}),
-			} as never);
-
-			// Set environment variable
+			// Handle environment variable
 			const originalEnv = process.env.CODER_URL;
-			process.env.CODER_URL = "https://env.coder.com";
+			if (config.envUrl !== undefined) {
+				process.env.CODER_URL = config.envUrl;
+			} else {
+				delete process.env.CODER_URL;
+			}
 
 			await extension.handleAutologin(mockRestClient as never);
 
-			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
-				"coder.login",
-				"https://env.coder.com",
-				undefined,
-				undefined,
-				"true",
-			);
+			if (expected.shouldLogin) {
+				expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
+					"coder.login",
+					"expectedUrl" in expected ? expected.expectedUrl : undefined,
+					undefined,
+					undefined,
+					"true",
+				);
+			} else {
+				expect(vscodeActual.commands.executeCommand).not.toHaveBeenCalledWith(
+					"coder.login",
+					expect.anything(),
+					expect.anything(),
+					expect.anything(),
+					expect.anything(),
+				);
+			}
 
 			// Restore environment
 			if (originalEnv !== undefined) {
 				process.env.CODER_URL = originalEnv;
 			} else {
 				delete process.env.CODER_URL;
-			}
-		});
-
-		it("should not execute login when autologin is disabled", async () => {
-			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "" },
-				}),
-			};
-
-			// Mock configuration with autologin disabled
-			vi.mocked(vscodeActual.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn((key) => {
-					if (key === "coder.autologin") {
-						return false;
-					}
-					if (key === "coder.defaultUrl") {
-						return "https://test.coder.com";
-					}
-					return undefined;
-				}),
-			} as never);
-
-			await extension.handleAutologin(mockRestClient as never);
-
-			expect(vscodeActual.commands.executeCommand).not.toHaveBeenCalledWith(
-				"coder.login",
-				expect.anything(),
-				expect.anything(),
-				expect.anything(),
-				expect.anything(),
-			);
-		});
-
-		it("should not execute login when already authenticated", async () => {
-			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "https://existing.coder.com" }, // Has baseURL, already logged in
-				}),
-			};
-
-			// Mock configuration with autologin enabled
-			vi.mocked(vscodeActual.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn((key) => {
-					if (key === "coder.autologin") {
-						return true;
-					}
-					if (key === "coder.defaultUrl") {
-						return "https://test.coder.com";
-					}
-					return undefined;
-				}),
-			} as never);
-
-			await extension.handleAutologin(mockRestClient as never);
-
-			expect(vscodeActual.commands.executeCommand).not.toHaveBeenCalledWith(
-				"coder.login",
-				expect.anything(),
-				expect.anything(),
-				expect.anything(),
-				expect.anything(),
-			);
-		});
-
-		it("should not execute login when no URL is available", async () => {
-			const mockRestClient = {
-				getAxiosInstance: vi.fn().mockReturnValue({
-					defaults: { baseURL: "" },
-				}),
-			};
-
-			// Mock configuration with autologin enabled but no URL
-			vi.mocked(vscodeActual.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn((key) => {
-					if (key === "coder.autologin") {
-						return true;
-					}
-					if (key === "coder.defaultUrl") {
-						return undefined;
-					}
-					return undefined;
-				}),
-			} as never);
-
-			// Ensure no env var
-			const originalEnv = process.env.CODER_URL;
-			delete process.env.CODER_URL;
-
-			await extension.handleAutologin(mockRestClient as never);
-
-			expect(vscodeActual.commands.executeCommand).not.toHaveBeenCalledWith(
-				"coder.login",
-				expect.anything(),
-				expect.anything(),
-				expect.anything(),
-				expect.anything(),
-			);
-
-			// Restore environment
-			if (originalEnv !== undefined) {
-				process.env.CODER_URL = originalEnv;
 			}
 		});
 	});

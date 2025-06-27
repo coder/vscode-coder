@@ -11,22 +11,24 @@ import {
 	createMockRestClient,
 } from "./test-helpers";
 
-// Mock dependencies
-vi.mock("./headers");
-vi.mock("./api-helper");
-vi.mock("./cliManager");
-vi.mock("fs/promises");
+// Setup all mocks
+function setupMocks() {
+	vi.mock("./headers");
+	vi.mock("./api-helper");
+	vi.mock("./cliManager");
+	vi.mock("fs/promises");
+}
+
+setupMocks();
 
 beforeAll(() => {
-	vi.mock("vscode", () => {
-		return {
-			workspace: {
-				getConfiguration: vi.fn(() => ({
-					get: vi.fn().mockReturnValue(""),
-				})),
-			},
-		};
-	});
+	vi.mock("vscode", () => ({
+		workspace: {
+			getConfiguration: vi.fn(() => ({
+				get: vi.fn().mockReturnValue(""),
+			})),
+		},
+	}));
 });
 
 describe("storage", () => {
@@ -90,64 +92,55 @@ describe("storage", () => {
 	});
 
 	describe("withUrlHistory", () => {
-		it("should return empty array when no history exists", () => {
-			vi.mocked(mockMemento.get).mockReturnValue(undefined);
+		it.each([
+			["empty array when no history exists", undefined, [], []],
+			[
+				"append new URLs to existing history",
+				["https://old.com"],
+				["https://new.com"],
+				["https://old.com", "https://new.com"],
+			],
+			[
+				"filter out undefined values",
+				["https://old.com"],
+				[undefined, "https://new.com", undefined],
+				["https://old.com", "https://new.com"],
+			],
+			[
+				"remove duplicates and move to end",
+				["https://a.com", "https://b.com", "https://c.com"],
+				["https://b.com"],
+				["https://a.com", "https://c.com", "https://b.com"],
+			],
+			[
+				"limit history to MAX_URLS (10)",
+				Array.from({ length: 10 }, (_, i) => `https://url${i}.com`),
+				["https://new.com"],
+				[
+					...Array.from({ length: 9 }, (_, i) => `https://url${i + 1}.com`),
+					"https://new.com",
+				],
+			],
+		])(
+			"should return %s",
+			(
+				_: string,
+				existing: string[] | undefined,
+				newUrls: (string | undefined)[],
+				expected: string[],
+			) => {
+				vi.mocked(mockMemento.get).mockReturnValue(existing);
 
-			const result = storage.withUrlHistory();
+				const result = storage.withUrlHistory(
+					...(newUrls as [string?, string?]),
+				);
 
-			expect(result).toEqual([]);
-			expect(mockMemento.get).toHaveBeenCalledWith("urlHistory");
-		});
-
-		it("should append new URLs to existing history", () => {
-			vi.mocked(mockMemento.get).mockReturnValue(["https://old.com"]);
-
-			const result = storage.withUrlHistory("https://new.com");
-
-			expect(result).toEqual(["https://old.com", "https://new.com"]);
-		});
-
-		it("should filter out undefined values", () => {
-			vi.mocked(mockMemento.get).mockReturnValue(["https://old.com"]);
-
-			const result = storage.withUrlHistory(
-				undefined,
-				"https://new.com",
-				undefined,
-			);
-
-			expect(result).toEqual(["https://old.com", "https://new.com"]);
-		});
-
-		it("should remove duplicates and move to end", () => {
-			vi.mocked(mockMemento.get).mockReturnValue([
-				"https://a.com",
-				"https://b.com",
-				"https://c.com",
-			]);
-
-			const result = storage.withUrlHistory("https://b.com");
-
-			expect(result).toEqual([
-				"https://a.com",
-				"https://c.com",
-				"https://b.com",
-			]);
-		});
-
-		it("should limit history to MAX_URLS (10)", () => {
-			const existingUrls = Array.from(
-				{ length: 10 },
-				(_, i) => `https://url${i}.com`,
-			);
-			vi.mocked(mockMemento.get).mockReturnValue(existingUrls);
-
-			const result = storage.withUrlHistory("https://new.com");
-
-			expect(result).toHaveLength(10);
-			expect(result[0]).toBe("https://url1.com");
-			expect(result[9]).toBe("https://new.com");
-		});
+				expect(result).toEqual(expected);
+				if (existing !== undefined || newUrls.length > 0) {
+					expect(mockMemento.get).toHaveBeenCalledWith("urlHistory");
+				}
+			},
+		);
 	});
 
 	describe("setUrl", () => {
@@ -256,30 +249,24 @@ describe("storage", () => {
 	});
 
 	describe("setSessionToken", () => {
-		it("should store token when provided", async () => {
-			const testToken = "test-session-token";
-			vi.mocked(mockSecrets.store).mockResolvedValue();
-
-			await storage.setSessionToken(testToken);
-
-			expect(mockSecrets.store).toHaveBeenCalledWith("sessionToken", testToken);
-		});
-
-		it("should delete token when undefined", async () => {
-			vi.mocked(mockSecrets.delete).mockResolvedValue();
-
-			await storage.setSessionToken(undefined);
-
-			expect(mockSecrets.delete).toHaveBeenCalledWith("sessionToken");
-		});
-
-		it("should delete token when empty string", async () => {
-			vi.mocked(mockSecrets.delete).mockResolvedValue();
-
-			await storage.setSessionToken("");
-
-			expect(mockSecrets.delete).toHaveBeenCalledWith("sessionToken");
-		});
+		it.each([
+			["store token when provided", "test-session-token", "store"],
+			["delete token when undefined", undefined, "delete"],
+			["delete token when empty string", "", "delete"],
+		])(
+			"should %s",
+			async (_, token: string | undefined, expectedAction: string) => {
+				if (expectedAction === "store") {
+					vi.mocked(mockSecrets.store).mockResolvedValue();
+					await storage.setSessionToken(token);
+					expect(mockSecrets.store).toHaveBeenCalledWith("sessionToken", token);
+				} else {
+					vi.mocked(mockSecrets.delete).mockResolvedValue();
+					await storage.setSessionToken(token);
+					expect(mockSecrets.delete).toHaveBeenCalledWith("sessionToken");
+				}
+			},
+		);
 	});
 
 	describe("getSessionToken", () => {
@@ -305,25 +292,39 @@ describe("storage", () => {
 	});
 
 	describe("getBinaryCachePath", () => {
-		it("should return custom path when configured", () => {
-			// We need to test this differently since vscode is already mocked globally
-			// Let's just test the path construction logic for now
-			const result = storage.getBinaryCachePath("test-label");
-
-			// This will use the mocked global storage path
-			expect(result).toBe("/mock/global/storage/test-label/bin");
+		it.each([
+			[
+				"label-specific path",
+				"test-label",
+				"/mock/global/storage/test-label/bin",
+			],
+			[
+				"deployment-specific path",
+				"my-deployment",
+				"/mock/global/storage/my-deployment/bin",
+			],
+			["default path when no label", "", "/mock/global/storage/bin"],
+		])("should return %s", (_, label, expected) => {
+			expect(storage.getBinaryCachePath(label)).toBe(expected);
 		});
 
-		it("should return label-specific path when label provided", () => {
-			const result = storage.getBinaryCachePath("my-deployment");
+		it("should use custom destination when configured", () => {
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn((key) =>
+					key === "coder.binaryDestination" ? "/custom/path" : "",
+				),
+			} as never);
 
-			expect(result).toBe("/mock/global/storage/my-deployment/bin");
-		});
+			const newStorage = new Storage(
+				mockOutput,
+				mockMemento,
+				mockSecrets,
+				mockGlobalStorageUri,
+				mockLogUri,
+				logger,
+			);
 
-		it("should return default path when no label", () => {
-			const result = storage.getBinaryCachePath("");
-
-			expect(result).toBe("/mock/global/storage/bin");
+			expect(newStorage.getBinaryCachePath("test-label")).toBe("/custom/path");
 		});
 	});
 
@@ -365,45 +366,28 @@ describe("storage", () => {
 		});
 	});
 
-	describe("getSessionTokenPath", () => {
-		it("should return label-specific session token path when label provided", () => {
-			const result = storage.getSessionTokenPath("test-deployment");
-
-			expect(result).toBe("/mock/global/storage/test-deployment/session");
-		});
-
-		it("should return default session token path when no label", () => {
-			const result = storage.getSessionTokenPath("");
-
-			expect(result).toBe("/mock/global/storage/session");
-		});
-	});
-
-	describe("getLegacySessionTokenPath", () => {
-		it("should return label-specific legacy session token path when label provided", () => {
-			const result = storage.getLegacySessionTokenPath("test-deployment");
-
-			expect(result).toBe("/mock/global/storage/test-deployment/session_token");
-		});
-
-		it("should return default legacy session token path when no label", () => {
-			const result = storage.getLegacySessionTokenPath("");
-
-			expect(result).toBe("/mock/global/storage/session_token");
-		});
-	});
-
-	describe("getUrlPath", () => {
-		it("should return label-specific URL path when label provided", () => {
-			const result = storage.getUrlPath("test-deployment");
-
-			expect(result).toBe("/mock/global/storage/test-deployment/url");
-		});
-
-		it("should return default URL path when no label", () => {
-			const result = storage.getUrlPath("");
-
-			expect(result).toBe("/mock/global/storage/url");
+	describe.each([
+		[
+			"getSessionTokenPath",
+			(s: Storage, l: string) => s.getSessionTokenPath(l),
+			"session",
+		],
+		[
+			"getLegacySessionTokenPath",
+			(s: Storage, l: string) => s.getLegacySessionTokenPath(l),
+			"session_token",
+		],
+		["getUrlPath", (s: Storage, l: string) => s.getUrlPath(l), "url"],
+	])("%s", (_, method, suffix) => {
+		it.each([
+			[
+				"label-specific path",
+				"test-deployment",
+				`/mock/global/storage/test-deployment/${suffix}`,
+			],
+			["default path when no label", "", `/mock/global/storage/${suffix}`],
+		])("should return %s", (_, label, expected) => {
+			expect(method(storage, label)).toBe(expected);
 		});
 	});
 
@@ -594,32 +578,6 @@ describe("storage", () => {
 			expect(mockOutput.appendLine).toHaveBeenCalledWith(
 				"[2024-01-01T12:00:00.000Z] Test log message",
 			);
-		});
-	});
-
-	describe("getBinaryCachePath", () => {
-		it("should return path with label when label is provided", () => {
-			const testLabel = "my-deployment";
-
-			const result = storage.getBinaryCachePath(testLabel);
-
-			expect(result).toBe("/mock/global/storage/my-deployment/bin");
-		});
-
-		it("should return path without label when label is empty", () => {
-			const result = storage.getBinaryCachePath("");
-
-			expect(result).toBe("/mock/global/storage/bin");
-		});
-
-		it("should use custom destination when configured", () => {
-			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn().mockReturnValue("/custom/path"),
-			} as never);
-
-			const result = storage.getBinaryCachePath("test-label");
-
-			expect(result).toBe("/custom/path");
 		});
 	});
 
