@@ -1,9 +1,12 @@
-import { it, expect } from "vitest";
+import * as childProcess from "child_process";
+import { it, expect, vi } from "vitest";
 import {
 	computeSSHProperties,
 	sshSupportsSetEnv,
 	sshVersionSupportsSetEnv,
 } from "./sshSupport";
+
+vi.mock("child_process");
 
 const supports = {
 	"OpenSSH_8.9p1 Ubuntu-3ubuntu0.1, OpenSSL 3.0.2 15 Mar 2022": true,
@@ -20,7 +23,21 @@ Object.entries(supports).forEach(([version, expected]) => {
 });
 
 it("current shell supports ssh", () => {
+	// Mock spawnSync to return a valid SSH version
+	vi.mocked(childProcess.spawnSync).mockReturnValue({
+		stderr: Buffer.from(
+			"OpenSSH_8.0p1 Ubuntu-6build1, OpenSSL 1.1.1 11 Sep 2018",
+		),
+	} as never);
 	expect(sshSupportsSetEnv()).toBeTruthy();
+});
+
+it("returns false when ssh command throws error", () => {
+	// Mock spawnSync to throw an error
+	vi.mocked(childProcess.spawnSync).mockImplementation(() => {
+		throw new Error("Command not found");
+	});
+	expect(sshSupportsSetEnv()).toBe(false);
 });
 
 it("computes the config for a host", () => {

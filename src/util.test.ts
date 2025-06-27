@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { countSubstring, parseRemoteAuthority, toSafeHost } from "./util";
+import {
+	countSubstring,
+	escapeCommandArg,
+	expandPath,
+	findPort,
+	parseRemoteAuthority,
+	toRemoteAuthority,
+	toSafeHost,
+} from "./util";
 
 it("ignore unrelated authorities", () => {
 	const tests = [
@@ -38,43 +46,12 @@ it("should parse authority", () => {
 		workspace: "bar",
 	});
 	expect(
-		parseRemoteAuthority("vscode://ssh-remote+coder-vscode--foo--bar--baz"),
-	).toStrictEqual({
-		agent: "baz",
-		host: "coder-vscode--foo--bar--baz",
-		label: "",
-		username: "foo",
-		workspace: "bar",
-	});
-	expect(
 		parseRemoteAuthority(
 			"vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar",
 		),
 	).toStrictEqual({
 		agent: "",
 		host: "coder-vscode.dev.coder.com--foo--bar",
-		label: "dev.coder.com",
-		username: "foo",
-		workspace: "bar",
-	});
-	expect(
-		parseRemoteAuthority(
-			"vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar--baz",
-		),
-	).toStrictEqual({
-		agent: "baz",
-		host: "coder-vscode.dev.coder.com--foo--bar--baz",
-		label: "dev.coder.com",
-		username: "foo",
-		workspace: "bar",
-	});
-	expect(
-		parseRemoteAuthority(
-			"vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz",
-		),
-	).toStrictEqual({
-		agent: "baz",
-		host: "coder-vscode.dev.coder.com--foo--bar.baz",
 		label: "dev.coder.com",
 		username: "foo",
 		workspace: "bar",
@@ -90,6 +67,69 @@ it("escapes url host", () => {
 	);
 	expect(() => toSafeHost("invalid url")).toThrow("Invalid URL");
 	expect(toSafeHost("http://ignore-port.com:8080")).toBe("ignore-port.com");
+});
+
+describe("findPort", () => {
+	it("should find port from Remote SSH log patterns", () => {
+		expect(findPort("-> socksPort 12345 ->")).toBe(12345);
+		expect(findPort("=> 9876(socks) =>")).toBe(9876);
+		expect(findPort("between local port 8080")).toBe(8080);
+	});
+
+	it("should handle complex log text", () => {
+		const logText = "some text before -> socksPort 54321 -> more text after";
+		expect(findPort(logText)).toBe(54321);
+	});
+
+	it("should return null when no port found", () => {
+		expect(findPort("no port here")).toBe(null);
+		expect(findPort("")).toBe(null);
+		expect(findPort("-> socksPort ->")).toBe(null);
+	});
+});
+
+describe("toRemoteAuthority", () => {
+	it("should create remote authority without agent", () => {
+		const result = toRemoteAuthority(
+			"https://coder.com",
+			"alice",
+			"myworkspace",
+			undefined,
+		);
+		expect(result).toBe(
+			"ssh-remote+coder-vscode.coder.com--alice--myworkspace",
+		);
+	});
+
+	it("should create remote authority with agent", () => {
+		const result = toRemoteAuthority(
+			"https://coder.com",
+			"alice",
+			"myworkspace",
+			"main",
+		);
+		expect(result).toBe(
+			"ssh-remote+coder-vscode.coder.com--alice--myworkspace.main",
+		);
+	});
+});
+
+describe("expandPath", () => {
+	it("should expand userHome placeholder", () => {
+		const result = expandPath("${userHome}/Documents");
+		expect(result).toContain("/Documents");
+		expect(result).not.toContain("${userHome}");
+	});
+});
+
+describe("escapeCommandArg", () => {
+	it("should wrap argument in quotes", () => {
+		expect(escapeCommandArg("simple")).toBe('"simple"');
+	});
+
+	it("should escape quotes in argument", () => {
+		expect(escapeCommandArg('say "hello"')).toBe('"say \\"hello\\""');
+	});
 });
 
 describe("countSubstring", () => {

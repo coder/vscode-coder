@@ -27,4 +27,42 @@ describe("check version support", () => {
 			},
 		);
 	});
+
+	it("vscodessh support", () => {
+		// Test versions that don't support vscodessh (0.14.0 and below without prerelease)
+		expect(featureSetForVersion(semver.parse("v0.14.0"))).toMatchObject({
+			vscodessh: false,
+		});
+		expect(featureSetForVersion(semver.parse("v0.13.0"))).toMatchObject({
+			vscodessh: false,
+		});
+		expect(featureSetForVersion(semver.parse("v0.14.1-beta"))).toMatchObject({
+			vscodessh: true,
+		});
+
+		// Test versions that support vscodessh
+		expect(featureSetForVersion(semver.parse("v0.14.1"))).toMatchObject({
+			vscodessh: true,
+		});
+		expect(featureSetForVersion(semver.parse("v0.15.0"))).toMatchObject({
+			vscodessh: true,
+		});
+		expect(featureSetForVersion(semver.parse("v1.0.0"))).toMatchObject({
+			vscodessh: true,
+		});
+	});
+
+	it("handles null version", () => {
+		const features = featureSetForVersion(null);
+		expect(features.vscodessh).toBe(true);
+		expect(features.proxyLogDirectory).toBe(false);
+		expect(features.wildcardSSH).toBe(false);
+	});
+
+	it("handles devel prerelease", () => {
+		const devVersion = semver.parse("v2.0.0-devel");
+		const features = featureSetForVersion(devVersion);
+		expect(features.proxyLogDirectory).toBe(true);
+		expect(features.wildcardSSH).toBe(true);
+	});
 });
