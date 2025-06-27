@@ -9,3 +9,4 @@ yarn-error.log
 /reports/
 /.stryker-tmp/
 stryker.log
+.DS_Store
