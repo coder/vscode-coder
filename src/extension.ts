@@ -14,6 +14,14 @@ export function setupRemoteSSHExtension(): {
 	vscodeProposed: typeof vscode;
 	remoteSSHExtension: vscode.Extension<unknown> | undefined;
 } {
+	// The Remote SSH extension's proposed APIs are used to override the SSH host
+	// name in VS Code itself. It's visually unappealing having a lengthy name!
+	//
+	// This is janky, but that's alright since it provides such minimal
+	// functionality to the extension.
+	//
+	// Cursor and VSCode are covered by ms remote, and the only other is windsurf for now
+	// Means that vscodium is not supported by this for now
 	const remoteSSHExtension =
 		vscode.extensions.getExtension("jeanp413.open-remote-ssh") ||
 		vscode.extensions.getExtension("codeium.windsurf-remote-openssh") ||

@@ -919,7 +919,7 @@ export class Remote {
 		this.storage.writeToCoderOutputChannel(
 			`SSH proxy diagnostics are being written to ${logDir}`,
 		);
-		return ` --log-dir ${escape(logDir)}`;
+		return ` --log-dir ${escapeCommandArg(logDir)}`;
 	}
 
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles

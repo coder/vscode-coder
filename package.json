@@ -1,7 +1,7 @@
 {
 	"name": "coder-remote",
 	"displayName": "Coder",
-	"version": "1.9.1",
+	"version": "1.9.2",
 	"description": "Open any workspace with a single click.",
 	"categories": [
 		"Other"
@@ -26,8 +26,8 @@
 		"package": "webpack --mode production --devtool hidden-source-map",
 		"package:prerelease": "npx vsce package --pre-release",
 		"pretest": "tsc -p . --outDir out && yarn run build && yarn run lint",
-		"test": "yarn lint:fix && vitest",
-		"test:ci": "yarn lint:fix && CI=true yarn test",
+		"test": "vitest",
+		"test:ci": "CI=true yarn test",
 		"test:integration": "vscode-test",
 		"vscode:prepublish": "yarn package",
 		"watch": "webpack --watch"
@@ -133,7 +133,7 @@
 				{
 					"id": "coder",
 					"title": "Coder Remote",
-					"icon": "media/logo.svg"
+					"icon": "media/logo-white.svg"
 				}
 			]
 		},
@@ -143,13 +143,13 @@
 					"id": "myWorkspaces",
 					"name": "My Workspaces",
 					"visibility": "visible",
-					"icon": "media/logo.svg"
+					"icon": "media/logo-white.svg"
 				},
 				{
 					"id": "allWorkspaces",
 					"name": "All Workspaces",
 					"visibility": "visible",
-					"icon": "media/logo.svg",
+					"icon": "media/logo-white.svg",
 					"when": "coder.authenticated && coder.isOwner"
 				}
 			]
