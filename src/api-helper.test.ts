@@ -1,11 +1,11 @@
 import { ErrorEvent } from "eventsource";
 import { describe, expect, it } from "vitest";
+import * as apiHelper from "./api-helper";
 import {
 	AgentMetadataEventSchema,
 	AgentMetadataEventSchemaArray,
 	errToStr,
 	extractAgents,
-	extractAllAgents,
 } from "./api-helper";
 import {
 	createMockAgent,
@@ -140,33 +140,31 @@ describe("api-helper", () => {
 	});
 
 	describe("extractAllAgents", () => {
-		it.each([
-			[
-				"multiple workspaces with agents",
-				[
-					createWorkspaceWithAgents([{ id: "agent1", name: "main" }]),
-					createWorkspaceWithAgents([{ id: "agent2", name: "secondary" }]),
-				],
-				["agent1", "agent2"],
-			],
-			["empty workspace list", [], []],
-			[
-				"mixed workspaces",
-				[
-					createWorkspaceWithAgents([{ id: "agent1", name: "main" }]),
-					createMockWorkspace({
-						latest_build: {
-							...createMockWorkspace().latest_build,
-							resources: [],
-						},
-					}),
-					createWorkspaceWithAgents([{ id: "agent2", name: "secondary" }]),
-				],
-				["agent1", "agent2"],
-			],
-		])("should handle %s", (_, workspaces, expectedIds) => {
-			const allAgents = extractAllAgents(workspaces);
-			expect(allAgents.map((a) => a.id)).toEqual(expectedIds);
+		it("should extract agents from multiple workspaces", () => {
+			const workspaces = [
+				createWorkspaceWithAgents([
+					createMockAgent({ id: "agent1", name: "main" }),
+				]),
+				createWorkspaceWithAgents([
+					createMockAgent({ id: "agent2", name: "secondary" }),
+				]),
+			];
+
+			const agents = apiHelper.extractAllAgents(workspaces);
+			expect(agents).toHaveLength(2);
+			expect(agents.map((a) => a.id)).toEqual(["agent1", "agent2"]);
+		});
+
+		it("should handle empty workspaces array", () => {
+			const agents = apiHelper.extractAllAgents([]);
+			expect(agents).toHaveLength(0);
+			expect(agents).toEqual([]);
+		});
+
+		it("should handle workspaces with no agents", () => {
+			const workspaces = [createMockWorkspace(), createMockWorkspace()];
+			const agents = apiHelper.extractAllAgents(workspaces);
+			expect(agents).toHaveLength(0);
 		});
 	});
 
