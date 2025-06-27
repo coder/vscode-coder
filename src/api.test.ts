@@ -104,13 +104,22 @@ describe("api", () => {
 				false,
 			],
 			[
-				"should handle null/undefined config values",
+				"should handle null config values",
 				{ "coder.tlsCertFile": null, "coder.tlsKeyFile": null },
 				true,
 			],
+			[
+				"should handle undefined config values",
+				{ "coder.tlsCertFile": undefined, "coder.tlsKeyFile": undefined },
+				true,
+			],
+			["should handle missing config entries", {}, true],
 		])("%s", (_, configValues: Record<string, unknown>, expected) => {
 			mockConfiguration.get.mockImplementation((key: string) => {
-				return configValues[key] ?? "";
+				if (key in configValues) {
+					return configValues[key];
+				}
+				return undefined;
 			});
 
 			// Mock expandPath to return the path as-is
@@ -173,12 +182,32 @@ describe("api", () => {
 					rejectUnauthorized: true,
 				},
 			],
+			[
+				"undefined configuration values",
+				{
+					"coder.tlsCertFile": undefined,
+					"coder.tlsKeyFile": undefined,
+					"coder.tlsCaFile": undefined,
+					"coder.tlsAltHost": undefined,
+					"coder.insecure": undefined,
+				},
+				{
+					cert: undefined,
+					key: undefined,
+					ca: undefined,
+					servername: undefined,
+					rejectUnauthorized: true,
+				},
+			],
 		])(
 			"should create ProxyAgent with %s",
 			async (_, configValues: Record<string, unknown>, expectedAgentConfig) => {
-				mockConfiguration.get.mockImplementation(
-					(key: string) => configValues[key] ?? "",
-				);
+				mockConfiguration.get.mockImplementation((key: string) => {
+					if (key in configValues) {
+						return configValues[key];
+					}
+					return undefined;
+				});
 
 				if (configValues["coder.tlsCertFile"]) {
 					vi.mocked(fs.readFile)
@@ -373,6 +402,171 @@ describe("api", () => {
 			expect(mockAxiosInstance.request).toHaveBeenCalledWith(
 				expect.objectContaining({ url: "https://example.com/api" }),
 			);
+		});
+
+		it("should handle stream data events", async () => {
+			let dataHandler: (chunk: Buffer) => void;
+			const mockData = {
+				on: vi.fn((event: string, handler: (chunk: Buffer) => void) => {
+					if (event === "data") {
+						dataHandler = handler;
+					}
+				}),
+				destroy: vi.fn(),
+			};
+
+			const mockAxiosInstance = {
+				request: vi
+					.fn()
+					.mockResolvedValue(createMockAxiosResponse({ data: mockData })),
+			};
+
+			const adapter = createStreamingFetchAdapter(mockAxiosInstance as never);
+
+			let enqueuedData: Buffer | undefined;
+			global.ReadableStream = vi.fn().mockImplementation((options) => {
+				const controller = {
+					enqueue: vi.fn((chunk: Buffer) => {
+						enqueuedData = chunk;
+					}),
+					close: vi.fn(),
+					error: vi.fn(),
+				};
+				if (options.start) {
+					options.start(controller);
+				}
+				return { getReader: vi.fn(() => ({ read: vi.fn() })) };
+			}) as never;
+
+			await adapter("https://example.com/api");
+
+			// Simulate data event
+			const testData = Buffer.from("test data");
+			dataHandler!(testData);
+
+			expect(enqueuedData).toEqual(testData);
+			expect(mockData.on).toHaveBeenCalledWith("data", expect.any(Function));
+		});
+
+		it("should handle stream end event", async () => {
+			let endHandler: () => void;
+			const mockData = {
+				on: vi.fn((event: string, handler: () => void) => {
+					if (event === "end") {
+						endHandler = handler;
+					}
+				}),
+				destroy: vi.fn(),
+			};
+
+			const mockAxiosInstance = {
+				request: vi
+					.fn()
+					.mockResolvedValue(createMockAxiosResponse({ data: mockData })),
+			};
+
+			const adapter = createStreamingFetchAdapter(mockAxiosInstance as never);
+
+			let streamClosed = false;
+			global.ReadableStream = vi.fn().mockImplementation((options) => {
+				const controller = {
+					enqueue: vi.fn(),
+					close: vi.fn(() => {
+						streamClosed = true;
+					}),
+					error: vi.fn(),
+				};
+				if (options.start) {
+					options.start(controller);
+				}
+				return { getReader: vi.fn(() => ({ read: vi.fn() })) };
+			}) as never;
+
+			await adapter("https://example.com/api");
+
+			// Simulate end event
+			endHandler!();
+
+			expect(streamClosed).toBe(true);
+			expect(mockData.on).toHaveBeenCalledWith("end", expect.any(Function));
+		});
+
+		it("should handle stream error event", async () => {
+			let errorHandler: (err: Error) => void;
+			const mockData = {
+				on: vi.fn((event: string, handler: (err: Error) => void) => {
+					if (event === "error") {
+						errorHandler = handler;
+					}
+				}),
+				destroy: vi.fn(),
+			};
+
+			const mockAxiosInstance = {
+				request: vi
+					.fn()
+					.mockResolvedValue(createMockAxiosResponse({ data: mockData })),
+			};
+
+			const adapter = createStreamingFetchAdapter(mockAxiosInstance as never);
+
+			let streamError: Error | undefined;
+			global.ReadableStream = vi.fn().mockImplementation((options) => {
+				const controller = {
+					enqueue: vi.fn(),
+					close: vi.fn(),
+					error: vi.fn((err: Error) => {
+						streamError = err;
+					}),
+				};
+				if (options.start) {
+					options.start(controller);
+				}
+				return { getReader: vi.fn(() => ({ read: vi.fn() })) };
+			}) as never;
+
+			await adapter("https://example.com/api");
+
+			// Simulate error event
+			const testError = new Error("Stream error");
+			errorHandler!(testError);
+
+			expect(streamError).toBe(testError);
+			expect(mockData.on).toHaveBeenCalledWith("error", expect.any(Function));
+		});
+
+		it("should handle stream cancel", async () => {
+			const mockData = {
+				on: vi.fn(),
+				destroy: vi.fn(),
+			};
+
+			const mockAxiosInstance = {
+				request: vi
+					.fn()
+					.mockResolvedValue(createMockAxiosResponse({ data: mockData })),
+			};
+
+			const adapter = createStreamingFetchAdapter(mockAxiosInstance as never);
+
+			let cancelFunction: (() => Promise<void>) | undefined;
+			global.ReadableStream = vi.fn().mockImplementation((options) => {
+				if (options.cancel) {
+					cancelFunction = options.cancel;
+				}
+				if (options.start) {
+					options.start({ enqueue: vi.fn(), close: vi.fn(), error: vi.fn() });
+				}
+				return { getReader: vi.fn(() => ({ read: vi.fn() })) };
+			}) as never;
+
+			await adapter("https://example.com/api");
+
+			// Call cancel
+			expect(cancelFunction).toBeDefined();
+			await cancelFunction!();
+
+			expect(mockData.destroy).toHaveBeenCalled();
 		});
 	});
 

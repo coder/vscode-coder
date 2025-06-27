@@ -10,6 +10,7 @@
 yarn lint:fix                                   # Lint with auto-fix
 yarn test:ci --coverage                         # Run ALL unit tests (ALWAYS use this)
 yarn pretest && yarn test:integration           # Integration tests
+yarn mutate                                     # Mutation testing (may take up to 180s - run occasionally)
 ```
 
 ## Key Rules

@@ -46,5 +46,5 @@ it("should return headers", async () => {
 it("should error on malformed headers", async () => {
 	await expect(
 		getHeaders("localhost", "printf 'foo=bar\\r\\n\\r\\n'", logger),
-	).rejects.toMatch(/Malformed/);
+	).rejects.toThrow(/Malformed/);
 });
