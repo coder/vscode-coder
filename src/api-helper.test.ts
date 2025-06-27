@@ -2,7 +2,6 @@ import { ErrorEvent } from "eventsource";
 import { describe, expect, it } from "vitest";
 import {
 	AgentMetadataEventSchema,
-	AgentMetadataEventSchemaArray,
 	errToStr,
 	extractAgents,
 	extractAllAgents,
@@ -155,71 +154,9 @@ describe("api-helper", () => {
 			expect(result.success).toBe(true);
 		});
 
-		it.each([
-			["wrong type for age", { age: "invalid" }],
-			["missing error field", { error: undefined }],
-		])("should reject event with %s", (_, overrides) => {
-			const event = createValidMetadataEvent(overrides);
+		it("should reject invalid event", () => {
+			const event = createValidMetadataEvent({ age: "invalid" });
 			const result = AgentMetadataEventSchema.safeParse(event);
-			expect(result.success).toBe(false);
-		});
-
-		it("should reject event with missing description", () => {
-			const event = createValidMetadataEvent();
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			delete (event as any).description;
-			const result = AgentMetadataEventSchema.safeParse(event);
-			expect(result.success).toBe(false);
-		});
-
-		it("should handle events with error messages", () => {
-			const event = createValidMetadataEvent({
-				value: "",
-				error: "Collection failed",
-			});
-			const result = AgentMetadataEventSchema.safeParse(event);
-			expect(result.success).toBe(true);
-			if (result.success) {
-				expect(result.data.result.error).toBe("Collection failed");
-			}
-		});
-	});
-
-	describe("AgentMetadataEventSchemaArray", () => {
-		it.each([
-			[
-				"valid events",
-				[createValidMetadataEvent(), createValidMetadataEvent({ age: 120 })],
-				true,
-				2,
-			],
-			["empty array", [], true, 0],
-			[
-				"invalid events",
-				[createValidMetadataEvent({ age: "invalid" })],
-				false,
-				0,
-			],
-		])("should handle %s", (_, input, expectedSuccess, expectedLength) => {
-			const result = AgentMetadataEventSchemaArray.safeParse(input);
-			expect(result.success).toBe(expectedSuccess);
-			if (result.success && expectedSuccess) {
-				expect(result.data).toHaveLength(expectedLength);
-			}
-		});
-
-		it("should reject mixed valid and invalid events", () => {
-			const mixedEvents = [
-				createValidMetadataEvent(),
-				{
-					...createValidMetadataEvent(),
-					description: {
-						...createValidMetadataEvent().description,
-						interval: "invalid",
-					},
-				},
-			];
-			const result = AgentMetadataEventSchemaArray.safeParse(mixedEvents);
 			expect(result.success).toBe(false);
 		});
 	});

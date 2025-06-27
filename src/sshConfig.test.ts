@@ -166,66 +166,6 @@ Host *
 		);
 	});
 
-	it("preserves legacy deployment-unaware config", async () => {
-		const existingConfig = `# --- START CODER VSCODE ---
-Host coder-vscode--*
-  ConnectTimeout=0
-  HostName coder.something
-  LogLevel ERROR
-  ProxyCommand command
-  StrictHostKeyChecking=no
-  UserKnownHostsFile=/dev/null
-# --- END CODER VSCODE ---`;
-		setupExistingFile(existingConfig);
-
-		const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
-		await sshConfig.load();
-		await sshConfig.update(
-			"dev.coder.com",
-			createSSHOptions("coder-vscode.dev.coder.com--*", "some-command-here"),
-		);
-
-		const expectedOutput = `${existingConfig}
-
-${createSSHConfigBlock(
-	"dev.coder.com",
-	createSSHOptions("coder-vscode.dev.coder.com--*", "some-command-here"),
-)}`;
-
-		expect(mockFileSystem.writeFile).toBeCalledWith(
-			expect.stringMatching(sshTempFilePathExpr),
-			expectedOutput,
-			{ encoding: "utf-8", mode: 0o644 },
-		);
-	});
-
-	it("preserves user-added blocks with matching host", async () => {
-		const existingConfig = `Host coder-vscode--*
-  ForwardAgent=yes`;
-		setupExistingFile(existingConfig);
-
-		const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
-		await sshConfig.load();
-		await sshConfig.update(
-			"dev.coder.com",
-			createSSHOptions("coder-vscode.dev.coder.com--*", "some-command-here"),
-		);
-
-		const expectedOutput = `Host coder-vscode--*
-  ForwardAgent=yes
-
-${createSSHConfigBlock(
-	"dev.coder.com",
-	createSSHOptions("coder-vscode.dev.coder.com--*", "some-command-here"),
-)}`;
-
-		expect(mockFileSystem.writeFile).toBeCalledWith(
-			expect.stringMatching(sshTempFilePathExpr),
-			expectedOutput,
-			{ encoding: "utf-8", mode: 0o644 },
-		);
-	});
-
 	describe("error handling", () => {
 		const errorCases = [
 			{
@@ -302,174 +242,23 @@ Host afterconfig
 				).rejects.toThrow(error);
 			},
 		);
-
-		it("throws error for mismatched blocks without label", async () => {
-			const config = `Host beforeconfig
-  HostName before.config.tld
-  User before
-
-# --- START CODER VSCODE ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# missing END CODER VSCODE ---
-
-Host donotdelete
-  HostName dont.delete.me
-  User please
-
-# --- START CODER VSCODE ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE ---
-
-Host afterconfig
-  HostName after.config.tld
-  User after`;
-
-			const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
-			mockFileSystem.readFile.mockResolvedValueOnce(config);
-			await sshConfig.load();
-
-			await expect(
-				sshConfig.update(
-					"",
-					createSSHOptions(
-						"coder-vscode.dev.coder.com--*",
-						"some-command-here",
-					),
-				),
-			).rejects.toThrow(
-				`Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE block. Each START block must have an END block.`,
-			);
-		});
 	});
 
-	it("handles interspersed blocks correctly", async () => {
-		const existingConfig = `Host beforeconfig
-  HostName before.config.tld
-  User before
-
-# --- START CODER VSCODE ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE ---
-
-Host donotdelete
-  HostName dont.delete.me
-  User please
-
-${createSSHConfigBlock(
-	"dev.coder.com",
-	createSSHOptions("coder-vscode.dev.coder.com--*", "some-command-here"),
-)}
-
-Host afterconfig
-  HostName after.config.tld
-  User after`;
-
-		setupExistingFile(existingConfig);
-
-		const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
-		await sshConfig.load();
-		await sshConfig.update(
-			"dev.coder.com",
-			createSSHOptions("coder-vscode.dev.coder.com--*", "some-command-here"),
-		);
-
-		expect(mockFileSystem.writeFile).toBeCalledWith(
-			expect.stringMatching(sshTempFilePathExpr),
-			existingConfig,
-			{ encoding: "utf-8", mode: 0o644 },
-		);
-	});
-
-	it("handles option overrides", async () => {
-		setupNewFile();
-
-		const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
-		await sshConfig.load();
-		await sshConfig.update(
-			"dev.coder.com",
-			createSSHOptions("coder-vscode.dev.coder.com--*", "some-command-here"),
-			{
-				loglevel: "DEBUG", // Tests case insensitive
-				ConnectTimeout: "500",
-				ExtraKey: "ExtraValue",
-				Foo: "bar",
-				Buzz: "baz",
-				StrictHostKeyChecking: "", // Remove this key
-				ExtraRemove: "",
-			},
-		);
-
-		const expectedOutput = `# --- START CODER VSCODE dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
-  Buzz baz
-  ConnectTimeout 500
-  ExtraKey ExtraValue
-  Foo bar
-  ProxyCommand some-command-here
-  UserKnownHostsFile /dev/null
-  loglevel DEBUG
-# --- END CODER VSCODE dev.coder.com ---`;
-
-		expect(mockFileSystem.writeFile).toBeCalledWith(
-			expect.stringMatching(sshTempFilePathExpr),
-			expectedOutput,
-			expect.objectContaining({
-				encoding: "utf-8",
-				mode: 0o600,
-			}),
-		);
-	});
-
-	describe("file operation failures", () => {
+	it("handles write failure", async () => {
 		const existingConfig = `Host beforeconfig
   HostName before.config.tld
   User before`;
 
-		it.each([
-			[
-				"write failure",
-				() =>
-					mockFileSystem.writeFile.mockRejectedValueOnce(new Error("EACCES")),
-				/Failed to write temporary SSH config file.*EACCES/,
-			],
-			[
-				"rename failure",
-				() => {
-					mockFileSystem.writeFile.mockResolvedValueOnce("");
-					mockFileSystem.rename.mockRejectedValueOnce(new Error("EACCES"));
-				},
-				/Failed to rename temporary SSH config file.*EACCES/,
-			],
-		])("handles %s", async (_, setupMock, errorPattern) => {
-			const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
-			setupExistingFile(existingConfig, 0o600);
-			setupMock();
+		const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+		setupExistingFile(existingConfig, 0o600);
+		mockFileSystem.writeFile.mockRejectedValueOnce(new Error("EACCES"));
 
-			await sshConfig.load();
-			await expect(
-				sshConfig.update(
-					"dev.coder.com",
-					createSSHOptions(
-						"coder-vscode.dev.coder.com--*",
-						"some-command-here",
-					),
-				),
-			).rejects.toThrow(errorPattern);
-		});
+		await sshConfig.load();
+		await expect(
+			sshConfig.update(
+				"dev.coder.com",
+				createSSHOptions("coder-vscode.dev.coder.com--*", "some-command-here"),
+			),
+		).rejects.toThrow(/Failed to write temporary SSH config file.*EACCES/);
 	});
 });

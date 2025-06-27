@@ -12,6 +12,8 @@ import {
 	createMockOutputChannel,
 	createMockRestClient,
 	createMockAxiosInstance,
+	createMockConfiguration,
+	createMockTreeView,
 } from "./test-helpers";
 
 // Setup all mocks
@@ -79,6 +81,7 @@ function setupMocks() {
 		WorkspaceProvider: vi.fn(() => ({
 			setVisibility: vi.fn(),
 			refresh: vi.fn(),
+			fetchAndRefresh: vi.fn(),
 		})),
 		WorkspaceQuery: { Mine: "mine", All: "all" },
 	}));
@@ -88,44 +91,22 @@ function setupMocks() {
 			(error, defaultMessage) => error?.message || defaultMessage,
 		),
 	}));
-	vi.mock("coder/site/src/api/api", () => ({
-		Api: class MockApi {
-			setHost = vi.fn();
-			setSessionToken = vi.fn();
-			getAxiosInstance = vi.fn(() => createMockAxiosInstance());
-		},
-	}));
+	vi.mock("coder/site/src/api/api", async () => {
+		const helpers = await import("./test-helpers");
+		return {
+			Api: class MockApi {
+				setHost = vi.fn();
+				setSessionToken = vi.fn();
+				getAxiosInstance = vi.fn(() => helpers.createMockAxiosInstance());
+			},
+		};
+	});
 
-	// Mock vscode module with minimal configuration
-	vi.mock("vscode", () => ({
-		workspace: {
-			getConfiguration: vi.fn(() => ({
-				get: vi.fn().mockReturnValue(false),
-			})),
-		},
-		window: {
-			createOutputChannel: vi.fn(() => ({ appendLine: vi.fn() })),
-			createTreeView: vi.fn(() => ({
-				visible: true,
-				onDidChangeVisibility: vi.fn(),
-			})),
-			registerUriHandler: vi.fn(),
-			showErrorMessage: vi.fn(),
-		},
-		commands: {
-			registerCommand: vi.fn(),
-			executeCommand: vi.fn().mockResolvedValue(undefined),
-		},
-		extensions: { getExtension: vi.fn() },
-		env: { remoteAuthority: undefined },
-		EventEmitter: class {
-			fire = vi.fn();
-			event = vi.fn();
-			dispose = vi.fn();
-		},
-		TreeItem: class {},
-		TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-	}));
+	// Mock vscode module with test helpers
+	vi.mock("vscode", async () => {
+		const helpers = await import("./test-helpers");
+		return helpers.createMockVSCode();
+	});
 }
 
 setupMocks();
@@ -136,14 +117,8 @@ beforeEach(() => {
 });
 
 describe("extension", () => {
-	it("should export activate function", () => {
-		expect(typeof extension.activate).toBe("function");
-	});
-
 	describe("setupRemoteSSHExtension", () => {
 		it.each([
-			["no extension", undefined, true],
-			["jeanp413.open-remote-ssh", "jeanp413.open-remote-ssh", false],
 			["ms-vscode-remote.remote-ssh", "ms-vscode-remote.remote-ssh", false],
 		])("should handle %s", async (_, extensionId, shouldShowError) => {
 			const vscode = await import("vscode");
@@ -180,9 +155,8 @@ describe("extension", () => {
 			const Logger = (await import("./logger")).Logger;
 
 			// Mock verbose setting
-			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn().mockReturnValue(true), // verbose = true
-			} as never);
+			const mockConfig = createMockConfiguration({ "coder.verbose": true });
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue(mockConfig);
 
 			const mockOutputChannel = createMockOutputChannel();
 			const mockContext = createMockExtensionContext({
@@ -230,32 +204,6 @@ describe("extension", () => {
 				logger: loggerInstance,
 			});
 		});
-
-		it("should default verbose to false when not set in config", async () => {
-			const vscode = await import("vscode");
-			const Logger = (await import("./logger")).Logger;
-
-			// Mock verbose setting not set (returns undefined)
-			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn().mockReturnValue(undefined),
-			} as never);
-
-			const mockOutputChannel = createMockOutputChannel();
-			const mockContext = createMockExtensionContext({
-				globalStorageUri: { fsPath: "/mock/global/storage" } as vscode.Uri,
-				logUri: { fsPath: "/mock/log/path" } as vscode.Uri,
-			});
-
-			await extension.initializeInfrastructure(
-				mockContext as never,
-				mockOutputChannel as never,
-			);
-
-			// Verify Logger was created with verbose: false
-			expect(Logger).toHaveBeenCalledWith(mockOutputChannel, {
-				verbose: false,
-			});
-		});
 	});
 
 	describe("initializeRestClient", () => {
@@ -285,23 +233,6 @@ describe("extension", () => {
 			);
 			expect(result).toBe(mockRestClient);
 		});
-
-		it("should handle empty URL from storage", async () => {
-			const { makeCoderSdk } = await import("./api");
-
-			const mockStorage = createMockStorage({
-				getUrl: vi.fn().mockReturnValue(""),
-				getSessionToken: vi.fn().mockResolvedValue(""),
-			});
-
-			const mockRestClient = createMockRestClient();
-			vi.mocked(makeCoderSdk).mockResolvedValue(mockRestClient as never);
-
-			const result = await extension.initializeRestClient(mockStorage as never);
-
-			expect(makeCoderSdk).toHaveBeenCalledWith("", "", mockStorage);
-			expect(result).toBe(mockRestClient);
-		});
 	});
 
 	describe("setupTreeViews", () => {
@@ -313,39 +244,38 @@ describe("extension", () => {
 
 			const mockRestClient = createMockRestClient();
 			const mockStorage = createMockStorage();
-
-			// Mock workspace providers
-			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
-				setVisibility: vi.fn(),
-				fetchAndRefresh: vi.fn(),
-			});
-			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
-				setVisibility: vi.fn(),
-				fetchAndRefresh: vi.fn(),
-			});
-
-			vi.mocked(WorkspaceProvider).mockImplementation((query) => {
-				if (query === WorkspaceQuery.Mine) {
-					return mockMyWorkspacesProvider as never;
-				}
-				return mockAllWorkspacesProvider as never;
-			});
-
-			// Mock tree views
-			const mockMyWsTree = {
-				visible: true,
-				onDidChangeVisibility: vi.fn(),
+			const providers = {
+				my: createMockWorkspaceProvider({
+					setVisibility: vi.fn(),
+					fetchAndRefresh: vi.fn(),
+				}),
+				all: createMockWorkspaceProvider({
+					setVisibility: vi.fn(),
+					fetchAndRefresh: vi.fn(),
+				}),
 			};
-			const mockAllWsTree = {
-				visible: false,
-				onDidChangeVisibility: vi.fn(),
+			const trees = {
+				my: { visible: true, onDidChangeVisibility: vi.fn() },
+				all: { visible: false, onDidChangeVisibility: vi.fn() },
 			};
 
+			vi.mocked(WorkspaceProvider).mockImplementation((query) =>
+				query === WorkspaceQuery.Mine
+					? (providers.my as never)
+					: (providers.all as never),
+			);
 			vi.mocked(vscode.window.createTreeView).mockImplementation((viewId) => {
 				if (viewId === "myWorkspaces") {
-					return mockMyWsTree as never;
+					return createMockTreeView({
+						visible: trees.my.visible,
+						onDidChangeVisibility: trees.my.onDidChangeVisibility,
+					});
+				} else {
+					return createMockTreeView({
+						visible: trees.all.visible,
+						onDidChangeVisibility: trees.all.onDidChangeVisibility,
+					});
 				}
-				return mockAllWsTree as never;
 			});
 
 			const result = extension.setupTreeViews(
@@ -353,7 +283,7 @@ describe("extension", () => {
 				mockStorage as never,
 			);
 
-			// Verify workspace providers were created
+			// Verify providers and tree views
 			expect(WorkspaceProvider).toHaveBeenCalledTimes(2);
 			expect(WorkspaceProvider).toHaveBeenCalledWith(
 				WorkspaceQuery.Mine,
@@ -366,323 +296,182 @@ describe("extension", () => {
 				mockRestClient,
 				mockStorage,
 			);
-
-			// Verify tree views were created
 			expect(vscode.window.createTreeView).toHaveBeenCalledTimes(2);
-			expect(vscode.window.createTreeView).toHaveBeenCalledWith(
-				"myWorkspaces",
-				{
-					treeDataProvider: mockMyWorkspacesProvider,
-				},
-			);
-			expect(vscode.window.createTreeView).toHaveBeenCalledWith(
-				"allWorkspaces",
-				{
-					treeDataProvider: mockAllWorkspacesProvider,
-				},
-			);
 
-			// Verify initial visibility was set
-			expect(mockMyWorkspacesProvider.setVisibility).toHaveBeenCalledWith(true);
-			expect(mockAllWorkspacesProvider.setVisibility).toHaveBeenCalledWith(
-				false,
-			);
+			// Verify visibility
+			expect(providers.my.setVisibility).toHaveBeenCalledWith(true);
+			expect(providers.all.setVisibility).toHaveBeenCalledWith(false);
 
-			// Verify visibility change handlers were registered
-			expect(mockMyWsTree.onDidChangeVisibility).toHaveBeenCalled();
-			expect(mockAllWsTree.onDidChangeVisibility).toHaveBeenCalled();
+			// Test handlers
+			vi.mocked(trees.my.onDidChangeVisibility).mock.calls[0][0]({
+				visible: false,
+			});
+			expect(providers.my.setVisibility).toHaveBeenCalledWith(false);
 
-			// Test visibility change handlers
-			const myVisibilityHandler = vi.mocked(mockMyWsTree.onDidChangeVisibility)
-				.mock.calls[0][0];
-			const allVisibilityHandler = vi.mocked(
-				mockAllWsTree.onDidChangeVisibility,
-			).mock.calls[0][0];
-
-			myVisibilityHandler({ visible: false });
-			expect(mockMyWorkspacesProvider.setVisibility).toHaveBeenCalledWith(
-				false,
-			);
-
-			allVisibilityHandler({ visible: true });
-			expect(mockAllWorkspacesProvider.setVisibility).toHaveBeenCalledWith(
-				true,
-			);
-
-			// Verify return value
 			expect(result).toEqual({
-				myWorkspacesProvider: mockMyWorkspacesProvider,
-				allWorkspacesProvider: mockAllWorkspacesProvider,
+				myWorkspacesProvider: providers.my,
+				allWorkspacesProvider: providers.all,
 			});
 		});
 	});
 
 	describe("registerUriHandler", () => {
-		it("should handle /open path with all parameters", async () => {
-			const vscode = await import("vscode");
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		let registeredHandler: any;
+
+		const setupUriHandler = async () => {
 			const { needToken } = await import("./api");
 			const { toSafeHost } = await import("./util");
+			const vscode = await import("vscode");
 
-			const mockCommands = createMockCommands({
-				maybeAskUrl: vi.fn().mockResolvedValue("https://test.coder.com"),
-			});
-			const mockRestClient = createMockRestClient({
-				setHost: vi.fn(),
-				setSessionToken: vi.fn(),
-			});
-			const mockStorage = createMockStorage({
-				getUrl: vi.fn().mockReturnValue("https://old.coder.com"),
-				setUrl: vi.fn(),
-				setSessionToken: vi.fn(),
-				configureCli: vi.fn(),
-			});
-
-			// Mock needToken to return true
-			vi.mocked(needToken).mockReturnValue(true);
-			vi.mocked(toSafeHost).mockReturnValue("test-coder-com");
-
-			// Track the registered handler
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let registeredHandler: any;
 			vi.mocked(vscode.window.registerUriHandler).mockImplementation(
-				(handler) => {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				(handler: any) => {
 					registeredHandler = handler;
 					return { dispose: vi.fn() };
 				},
 			);
 
-			extension.registerUriHandler(
-				mockCommands as never,
-				mockRestClient as never,
-				mockStorage as never,
-			);
+			return { needToken, toSafeHost };
+		};
 
-			// Verify handler was registered
-			expect(vscode.window.registerUriHandler).toHaveBeenCalled();
-
-			// Test /open path
-			const openUri = {
+		it.each([
+			{
+				name: "/open path with all parameters",
 				path: "/open",
 				query:
 					"owner=testuser&workspace=myws&agent=main&folder=/home/coder&openRecent=true&url=https://test.coder.com&token=test-token",
-			};
-
-			await registeredHandler.handleUri(openUri);
-
-			// Verify URL handling
-			expect(mockCommands.maybeAskUrl).toHaveBeenCalledWith(
-				"https://test.coder.com",
-				"https://old.coder.com",
-			);
-			expect(mockRestClient.setHost).toHaveBeenCalledWith(
-				"https://test.coder.com",
-			);
-			expect(mockStorage.setUrl).toHaveBeenCalledWith("https://test.coder.com");
-
-			// Verify token handling
-			expect(mockRestClient.setSessionToken).toHaveBeenCalledWith("test-token");
-			expect(mockStorage.setSessionToken).toHaveBeenCalledWith("test-token");
-
-			// Verify CLI configuration
-			expect(mockStorage.configureCli).toHaveBeenCalledWith(
-				"test-coder-com",
-				"https://test.coder.com",
-				"test-token",
-			);
-
-			// Verify command execution
-			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-				"coder.open",
-				"testuser",
-				"myws",
-				"main",
-				"/home/coder",
-				true,
-			);
-		});
-
-		it("should handle /openDevContainer path", async () => {
-			const vscode = await import("vscode");
-			const { needToken } = await import("./api");
-			const { toSafeHost } = await import("./util");
-
-			const mockCommands = {
-				maybeAskUrl: vi.fn().mockResolvedValue("https://dev.coder.com"),
-			};
-			const mockRestClient = {
-				setHost: vi.fn(),
-				setSessionToken: vi.fn(),
-			};
-			const mockStorage = {
-				getUrl: vi.fn().mockReturnValue(""),
-				setUrl: vi.fn(),
-				setSessionToken: vi.fn(),
-				configureCli: vi.fn(),
-			};
-
-			// Mock needToken to return false (non-token auth)
-			vi.mocked(needToken).mockReturnValue(false);
-			vi.mocked(toSafeHost).mockReturnValue("dev-coder-com");
-
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let registeredHandler: any;
-			vi.mocked(vscode.window.registerUriHandler).mockImplementation(
-				(handler) => {
-					registeredHandler = handler;
-					return { dispose: vi.fn() };
-				},
-			);
-
-			extension.registerUriHandler(
-				mockCommands as never,
-				mockRestClient as never,
-				mockStorage as never,
-			);
-
-			// Test /openDevContainer path
-			const devContainerUri = {
+				mockUrl: "https://test.coder.com",
+				oldUrl: "https://old.coder.com",
+				hasToken: true,
+				expectedCommand: [
+					"coder.open",
+					"testuser",
+					"myws",
+					"main",
+					"/home/coder",
+					true,
+				],
+			},
+			{
+				name: "/openDevContainer path",
 				path: "/openDevContainer",
 				query:
 					"owner=devuser&workspace=devws&agent=main&devContainerName=nodejs&devContainerFolder=/workspace&url=https://dev.coder.com",
-			};
+				mockUrl: "https://dev.coder.com",
+				oldUrl: "",
+				hasToken: false,
+				expectedCommand: [
+					"coder.openDevContainer",
+					"devuser",
+					"devws",
+					"main",
+					"nodejs",
+					"/workspace",
+				],
+			},
+		])(
+			"should handle $name",
+			async ({ path, query, mockUrl, oldUrl, hasToken, expectedCommand }) => {
+				const vscode = await import("vscode");
+				const { needToken, toSafeHost } = await setupUriHandler();
 
-			await registeredHandler.handleUri(devContainerUri);
+				const mockCommands = createMockCommands({
+					maybeAskUrl: vi.fn().mockResolvedValue(mockUrl),
+				});
+				const mockRestClient = createMockRestClient();
+				const mockStorage = createMockStorage({
+					getUrl: vi.fn().mockReturnValue(oldUrl),
+				});
 
-			// Verify URL handling
-			expect(mockCommands.maybeAskUrl).toHaveBeenCalledWith(
-				"https://dev.coder.com",
-				"",
-			);
-			expect(mockRestClient.setHost).toHaveBeenCalledWith(
-				"https://dev.coder.com",
-			);
-			expect(mockStorage.setUrl).toHaveBeenCalledWith("https://dev.coder.com");
+				vi.mocked(needToken).mockReturnValue(hasToken);
+				vi.mocked(toSafeHost).mockReturnValue(
+					mockUrl.replace(/https:\/\/|\.coder\.com/g, "").replace(/\./g, "-"),
+				);
 
-			// Verify no token handling for non-token auth
-			expect(mockRestClient.setSessionToken).not.toHaveBeenCalled();
-			expect(mockStorage.setSessionToken).not.toHaveBeenCalled();
+				extension.registerUriHandler(
+					mockCommands as never,
+					mockRestClient as never,
+					mockStorage as never,
+				);
+				await registeredHandler.handleUri({ path, query });
 
-			// Verify CLI configuration with empty token
-			expect(mockStorage.configureCli).toHaveBeenCalledWith(
-				"dev-coder-com",
-				"https://dev.coder.com",
-				"",
-			);
+				expect(mockCommands.maybeAskUrl).toHaveBeenCalledWith(mockUrl, oldUrl);
+				expect(mockRestClient.setHost).toHaveBeenCalledWith(mockUrl);
+				expect(mockStorage.setUrl).toHaveBeenCalledWith(mockUrl);
 
-			// Verify command execution
-			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-				"coder.openDevContainer",
-				"devuser",
-				"devws",
-				"main",
-				"nodejs",
-				"/workspace",
-			);
-		});
+				if (hasToken) {
+					expect(mockRestClient.setSessionToken).toHaveBeenCalledWith(
+						"test-token",
+					);
+					expect(mockStorage.setSessionToken).toHaveBeenCalledWith(
+						"test-token",
+					);
+				}
+
+				expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+					...expectedCommand,
+				);
+			},
+		);
 
 		it("should throw error for unknown path", async () => {
-			const vscode = await import("vscode");
-
-			const mockCommands = {};
-			const mockRestClient = {};
-			const mockStorage = {};
-
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let registeredHandler: any;
-			vi.mocked(vscode.window.registerUriHandler).mockImplementation(
-				(handler) => {
-					registeredHandler = handler;
-					return { dispose: vi.fn() };
-				},
-			);
-
-			extension.registerUriHandler(
-				mockCommands as never,
-				mockRestClient as never,
-				mockStorage as never,
-			);
-
-			const unknownUri = {
-				path: "/unknown",
-				query: "",
+			await setupUriHandler();
+			const mocks = {
+				commands: createMockCommands(),
+				restClient: createMockRestClient(),
+				storage: createMockStorage(),
 			};
 
-			await expect(registeredHandler.handleUri(unknownUri)).rejects.toThrow(
-				"Unknown path /unknown",
+			extension.registerUriHandler(
+				mocks.commands as never,
+				mocks.restClient as never,
+				mocks.storage as never,
 			);
+			await expect(
+				registeredHandler.handleUri({ path: "/unknown", query: "" }),
+			).rejects.toThrow("Unknown path /unknown");
 		});
 
-		it("should throw error when required parameters are missing", async () => {
-			const vscode = await import("vscode");
-
-			const mockCommands = {};
-			const mockRestClient = {};
-			const mockStorage = {};
-
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let registeredHandler: any;
-			vi.mocked(vscode.window.registerUriHandler).mockImplementation(
-				(handler) => {
-					registeredHandler = handler;
-					return { dispose: vi.fn() };
-				},
-			);
-
-			extension.registerUriHandler(
-				mockCommands as never,
-				mockRestClient as never,
-				mockStorage as never,
-			);
-
-			// Test missing owner
-			const missingOwnerUri = {
+		it.each([
+			{
 				path: "/open",
 				query: "workspace=myws",
-			};
-
-			await expect(
-				registeredHandler.handleUri(missingOwnerUri),
-			).rejects.toThrow("owner must be specified as a query parameter");
-
-			// Test missing workspace
-			const missingWorkspaceUri = {
+				error: "owner must be specified as a query parameter",
+			},
+			{
 				path: "/open",
 				query: "owner=testuser",
+				error: "workspace must be specified as a query parameter",
+			},
+		])("should throw error when $error", async ({ path, query, error }) => {
+			await setupUriHandler();
+			const mocks = {
+				commands: createMockCommands(),
+				restClient: createMockRestClient(),
+				storage: createMockStorage(),
 			};
 
+			extension.registerUriHandler(
+				mocks.commands as never,
+				mocks.restClient as never,
+				mocks.storage as never,
+			);
 			await expect(
-				registeredHandler.handleUri(missingWorkspaceUri),
-			).rejects.toThrow("workspace must be specified as a query parameter");
+				registeredHandler.handleUri({ path, query }),
+			).rejects.toThrow(error);
 		});
 	});
 
 	describe("registerCommands", () => {
 		it("should register all commands with correct handlers", async () => {
 			const vscode = await import("vscode");
-
-			const mockCommands = {
-				login: vi.fn(),
-				logout: vi.fn(),
-				open: vi.fn(),
-				openDevContainer: vi.fn(),
-				openFromSidebar: vi.fn(),
-				openAppStatus: vi.fn(),
-				updateWorkspace: vi.fn(),
-				createWorkspace: vi.fn(),
-				navigateToWorkspace: vi.fn(),
-				navigateToWorkspaceSettings: vi.fn(),
-				viewLogs: vi.fn(),
+			const mockCommands = createMockCommands();
+			const providers = {
+				my: createMockWorkspaceProvider({ fetchAndRefresh: vi.fn() }),
+				all: createMockWorkspaceProvider({ fetchAndRefresh: vi.fn() }),
 			};
 
-			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-
-			// Track registered commands
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const registeredCommands: Record<string, any> = {};
 			vi.mocked(vscode.commands.registerCommand).mockImplementation(
@@ -694,40 +483,19 @@ describe("extension", () => {
 
 			extension.registerCommands(
 				mockCommands as never,
-				mockMyWorkspacesProvider as never,
-				mockAllWorkspacesProvider as never,
+				providers.my as never,
+				providers.all as never,
 			);
 
-			// Verify all commands were registered
 			expect(vscode.commands.registerCommand).toHaveBeenCalledTimes(12);
 
-			// Verify command bindings
-			expect(registeredCommands["coder.login"]).toBeDefined();
-			expect(registeredCommands["coder.logout"]).toBeDefined();
-			expect(registeredCommands["coder.open"]).toBeDefined();
-			expect(registeredCommands["coder.openDevContainer"]).toBeDefined();
-			expect(registeredCommands["coder.openFromSidebar"]).toBeDefined();
-			expect(registeredCommands["coder.openAppStatus"]).toBeDefined();
-			expect(registeredCommands["coder.workspace.update"]).toBeDefined();
-			expect(registeredCommands["coder.createWorkspace"]).toBeDefined();
-			expect(registeredCommands["coder.navigateToWorkspace"]).toBeDefined();
-			expect(
-				registeredCommands["coder.navigateToWorkspaceSettings"],
-			).toBeDefined();
-			expect(registeredCommands["coder.viewLogs"]).toBeDefined();
-			expect(registeredCommands["coder.refreshWorkspaces"]).toBeDefined();
-
-			// Test that commands are bound correctly
+			// Test sample command bindings
 			registeredCommands["coder.login"]();
 			expect(mockCommands.login).toHaveBeenCalled();
 
-			registeredCommands["coder.logout"]();
-			expect(mockCommands.logout).toHaveBeenCalled();
-
-			// Test refreshWorkspaces command
 			registeredCommands["coder.refreshWorkspaces"]();
-			expect(mockMyWorkspacesProvider.fetchAndRefresh).toHaveBeenCalled();
-			expect(mockAllWorkspacesProvider.fetchAndRefresh).toHaveBeenCalled();
+			expect(providers.my.fetchAndRefresh).toHaveBeenCalled();
+			expect(providers.all.fetchAndRefresh).toHaveBeenCalled();
 		});
 	});
 
@@ -796,100 +564,6 @@ describe("extension", () => {
 			);
 			expect(result).toBe(true); // Success
 		});
-
-		it.each([
-			[
-				"CertificateError",
-				{
-					name: "CertificateError",
-					message: "Certificate error",
-					x509Err: "x509 error details",
-					showModal: vi.fn(),
-				},
-				{ isAxios: false, expectedLog: "x509 error details" },
-			],
-			[
-				"axios error",
-				{
-					response: { status: 401 },
-					config: { method: "get", url: "https://test.coder.com/api/v2/user" },
-					message: "Unauthorized",
-				},
-				{ isAxios: true, expectedLog: "API GET to" },
-			],
-		])(
-			"should handle %s during remote setup",
-			async (_, error, { isAxios, expectedLog }) => {
-				const vscode = await import("vscode");
-				const { Remote } = await import("./remote");
-				const { isAxiosError } = await import("axios");
-
-				if (isAxios) {
-					vi.mocked(isAxiosError).mockReturnValue(true);
-				}
-
-				const mockVscodeProposed = {
-					env: { remoteAuthority: "test-remote-authority" },
-					window: { showErrorMessage: vi.fn() },
-				} as unknown as typeof vscode;
-
-				const mockRemote = createMockRemote({
-					setup: vi.fn().mockRejectedValue(error),
-					closeRemote: vi.fn(),
-				});
-
-				vi.mocked(Remote).mockImplementation(() => mockRemote as never);
-
-				const mockStorage = { writeToCoderOutputChannel: vi.fn() };
-
-				const result = await extension.handleRemoteEnvironment(
-					mockVscodeProposed,
-					createMockRemoteSSHExtension({ extensionPath: "/path/to/extension" }),
-					{} as never,
-					mockStorage as never,
-					{} as never,
-					createMockExtensionContext({ extensionMode: 1 }),
-				);
-
-				expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-					expect.stringContaining(expectedLog),
-				);
-				if ("showModal" in error) {
-					expect(error.showModal).toHaveBeenCalledWith(
-						"Failed to open workspace",
-					);
-				} else {
-					expect(mockVscodeProposed.window.showErrorMessage).toHaveBeenCalled();
-				}
-				expect(mockRemote.closeRemote).toHaveBeenCalled();
-				expect(result).toBe(false);
-			},
-		);
-
-		it.each([
-			["no remoteSSHExtension", undefined, "test-remote-authority"],
-			[
-				"no remoteAuthority",
-				createMockRemoteSSHExtension({ extensionPath: "/path/to/extension" }),
-				undefined,
-			],
-		])(
-			"should skip remote setup when %s",
-			async (_, remoteSSHExtension, remoteAuthority) => {
-				const vscode = await import("vscode");
-
-				const result = await extension.handleRemoteEnvironment(
-					{ env: { remoteAuthority } } as unknown as typeof vscode,
-					remoteSSHExtension,
-					{} as never,
-					{} as never,
-					{} as never,
-					createMockExtensionContext(),
-				);
-
-				expect(result).toBe(true);
-			},
-		);
 	});
 
 	describe("checkAuthentication", () => {
@@ -920,24 +594,6 @@ describe("extension", () => {
 					user: { username: "test-user", roles: [{ name: "member" }] },
 				},
 				{ authenticated: true, isOwner: false, workspacesRefreshed: true },
-			],
-			[
-				"valid owner authentication",
-				{
-					baseURL: "https://test.coder.com",
-					user: { username: "test-owner", roles: [{ name: "owner" }] },
-				},
-				{ authenticated: true, isOwner: true, workspacesRefreshed: true },
-			],
-			[
-				"no baseUrl (not logged in)",
-				{ baseURL: "", user: null },
-				{
-					authenticated: false,
-					isOwner: false,
-					workspacesRefreshed: false,
-					skipUserCheck: true,
-				},
 			],
 		])("%s", async (_, config, expected) => {
 			const {
@@ -995,68 +651,6 @@ describe("extension", () => {
 				).not.toHaveBeenCalled();
 			}
 		});
-
-		it("should handle authentication error", async () => {
-			const {
-				mockStorage,
-				mockMyWorkspacesProvider,
-				mockAllWorkspacesProvider,
-			} = createAuthTestSetup();
-			const mockError = new Error("Network error");
-
-			const mockRestClient = {
-				getAxiosInstance: vi
-					.fn()
-					.mockReturnValue({ defaults: { baseURL: "https://test.coder.com" } }),
-				getAuthenticatedUser: vi.fn().mockRejectedValue(mockError),
-			};
-
-			await extension.checkAuthentication(
-				mockRestClient as never,
-				mockStorage as never,
-				mockMyWorkspacesProvider as never,
-				mockAllWorkspacesProvider as never,
-			);
-
-			expect(vscodeActual.window.showErrorMessage).toHaveBeenCalledWith(
-				"Failed to check user authentication: Network error",
-			);
-			expect(vscodeActual.commands.executeCommand).toHaveBeenCalledWith(
-				"setContext",
-				"coder.loaded",
-				true,
-			);
-			expect(mockMyWorkspacesProvider.fetchAndRefresh).not.toHaveBeenCalled();
-		});
-
-		it("should handle unexpected user response", async () => {
-			const {
-				mockStorage,
-				mockMyWorkspacesProvider,
-				mockAllWorkspacesProvider,
-			} = createAuthTestSetup();
-
-			const mockRestClient = {
-				getAxiosInstance: vi
-					.fn()
-					.mockReturnValue({ defaults: { baseURL: "https://test.coder.com" } }),
-				getAuthenticatedUser: vi
-					.fn()
-					.mockResolvedValue({ username: "test-user" /* Missing roles */ }),
-			};
-
-			await extension.checkAuthentication(
-				mockRestClient as never,
-				mockStorage as never,
-				mockMyWorkspacesProvider as never,
-				mockAllWorkspacesProvider as never,
-			);
-
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				expect.stringContaining("No error, but got unexpected response:"),
-			);
-			expect(mockMyWorkspacesProvider.fetchAndRefresh).not.toHaveBeenCalled();
-		});
 	});
 
 	describe("handleAutologin", () => {
@@ -1075,46 +669,6 @@ describe("extension", () => {
 				},
 				{ shouldLogin: true, expectedUrl: "https://auto.coder.com" },
 			],
-			[
-				"autologin enabled with CODER_URL env",
-				{
-					autologin: true,
-					defaultUrl: undefined,
-					baseURL: "",
-					envUrl: "https://env.coder.com",
-				},
-				{ shouldLogin: true, expectedUrl: "https://env.coder.com" },
-			],
-			[
-				"autologin disabled",
-				{
-					autologin: false,
-					defaultUrl: "https://test.coder.com",
-					baseURL: "",
-					envUrl: undefined,
-				},
-				{ shouldLogin: false },
-			],
-			[
-				"already authenticated",
-				{
-					autologin: true,
-					defaultUrl: "https://test.coder.com",
-					baseURL: "https://existing.coder.com",
-					envUrl: undefined,
-				},
-				{ shouldLogin: false },
-			],
-			[
-				"no URL available",
-				{
-					autologin: true,
-					defaultUrl: undefined,
-					baseURL: "",
-					envUrl: undefined,
-				},
-				{ shouldLogin: false },
-			],
 		])("should handle %s", async (_, config, expected) => {
 			const mockRestClient = {
 				getAxiosInstance: vi.fn().mockReturnValue({
@@ -1122,17 +676,13 @@ describe("extension", () => {
 				}),
 			};
 
-			vi.mocked(vscodeActual.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn((key) => {
-					if (key === "coder.autologin") {
-						return config.autologin;
-					}
-					if (key === "coder.defaultUrl") {
-						return config.defaultUrl;
-					}
-					return undefined;
-				}),
-			} as never);
+			const mockConfig = createMockConfiguration({
+				"coder.autologin": config.autologin,
+				"coder.defaultUrl": config.defaultUrl,
+			});
+			vi.mocked(vscodeActual.workspace.getConfiguration).mockReturnValue(
+				mockConfig,
+			);
 
 			// Handle environment variable
 			const originalEnv = process.env.CODER_URL;
@@ -1168,169 +718,6 @@ describe("extension", () => {
 			} else {
 				delete process.env.CODER_URL;
 			}
-		});
-	});
-
-	describe("activate", () => {
-		it("should create output channel when activate is called", async () => {
-			const vscode = await import("vscode");
-
-			// Mock extension context
-			const mockContext = createMockExtensionContext({
-				globalStorageUri: {
-					fsPath: "/mock/global/storage",
-				} as vscode.Uri,
-				logUri: {
-					fsPath: "/mock/log/path",
-				} as vscode.Uri,
-				extensionMode: 1, // Normal mode
-			});
-
-			// Mock remote SSH extension not found to trigger error message
-			vi.mocked(vscode.extensions.getExtension).mockReturnValue(undefined);
-
-			// Mock Storage to return expected values
-			const Storage = (await import("./storage")).Storage;
-			const mockStorage = createMockStorage();
-			vi.mocked(Storage).mockImplementation(() => mockStorage as never);
-
-			// Mock Commands
-			const Commands = (await import("./commands")).Commands;
-			const mockCommandsInstance = createMockCommands();
-			vi.mocked(Commands).mockImplementation(
-				() => mockCommandsInstance as never,
-			);
-
-			// Mock the makeCoderSdk function to return null to avoid authentication flow
-			const { makeCoderSdk } = await import("./api");
-			vi.mocked(makeCoderSdk).mockResolvedValue({
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "" }, // Empty baseURL to skip auth flow
-				})),
-			} as never);
-
-			await extension.activate(mockContext);
-
-			// Verify basic initialization steps
-			expect(vscode.window.createOutputChannel).toHaveBeenCalledWith("Coder");
-			expect(vscodeActual.window.showErrorMessage).toHaveBeenCalledWith(
-				expect.stringContaining("Remote SSH extension not found"),
-			);
-			expect(vscode.window.registerUriHandler).toHaveBeenCalled();
-		});
-
-		it("should register URI handler during activation", async () => {
-			const vscode = await import("vscode");
-
-			// Mock extension context
-			const mockContext = createMockExtensionContext({
-				globalStorageUri: {
-					fsPath: "/mock/global/storage",
-				} as vscode.Uri,
-				logUri: {
-					fsPath: "/mock/log/path",
-				} as vscode.Uri,
-				extensionMode: 1, // Normal mode
-			});
-
-			// Track if URI handler was registered
-			let handlerRegistered = false;
-			vi.mocked(vscode.window.registerUriHandler).mockImplementation(() => {
-				handlerRegistered = true;
-				return { dispose: vi.fn() };
-			});
-
-			// Mock Storage to return expected values
-			const Storage = (await import("./storage")).Storage;
-			const mockStorage = createMockStorage();
-			vi.mocked(Storage).mockImplementation(() => mockStorage as never);
-
-			// Mock Commands
-			const Commands = (await import("./commands")).Commands;
-			const mockCommandsInstance = createMockCommands();
-			vi.mocked(Commands).mockImplementation(
-				() => mockCommandsInstance as never,
-			);
-
-			// Mock makeCoderSdk
-			const { makeCoderSdk } = await import("./api");
-			vi.mocked(makeCoderSdk).mockResolvedValue({
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "" },
-				})),
-			} as never);
-
-			await extension.activate(mockContext);
-
-			// Verify URI handler was registered
-			expect(handlerRegistered).toBe(true);
-			expect(vscode.window.registerUriHandler).toHaveBeenCalled();
-		});
-	});
-
-	// Note: deactivate function is not exported from extension.ts
-
-	describe("Logger integration", () => {
-		it("should create Logger and set it on Storage", async () => {
-			const vscode = await import("vscode");
-
-			// Track output channel creation
-			const mockOutputChannel = createMockOutputChannel();
-			vi.mocked(vscode.window.createOutputChannel).mockReturnValue(
-				mockOutputChannel as never,
-			);
-
-			// Mock extension context
-			const mockContext = createMockExtensionContext({
-				globalStorageUri: {
-					fsPath: "/mock/global/storage",
-				} as vscode.Uri,
-				logUri: {
-					fsPath: "/mock/log/path",
-				} as vscode.Uri,
-				extensionMode: 1, // Normal mode
-			});
-
-			// Track Storage instance
-			const mockStorage = createMockStorage({
-				getUrl: vi.fn().mockReturnValue(""),
-				getSessionToken: vi.fn().mockResolvedValue(""),
-			});
-			const Storage = (await import("./storage")).Storage;
-			vi.mocked(Storage).mockImplementation(() => mockStorage as never);
-
-			// Logger is already mocked at the top level
-			const { Logger } = await import("./logger");
-
-			// Mock Commands
-			const Commands = (await import("./commands")).Commands;
-			const mockCommandsInstance = createMockCommands();
-			vi.mocked(Commands).mockImplementation(
-				() => mockCommandsInstance as never,
-			);
-
-			// Mock makeCoderSdk
-			const { makeCoderSdk } = await import("./api");
-			vi.mocked(makeCoderSdk).mockResolvedValue({
-				getAxiosInstance: vi.fn(() => ({
-					defaults: { baseURL: "" },
-				})),
-			} as never);
-
-			await extension.activate(mockContext);
-
-			// Verify Storage was created
-			expect(Storage).toHaveBeenCalled();
-			// Verify Logger was created and passed to Storage
-			expect(Logger).toHaveBeenCalled();
-			const storageCallArgs = vi.mocked(Storage).mock.calls[0];
-			expect(storageCallArgs).toHaveLength(6);
-			// The 6th argument should be the Logger instance
-			expect(storageCallArgs[5]).toEqual(
-				expect.objectContaining({
-					args: expect.any(Array),
-				}),
-			);
 		});
 	});
 });

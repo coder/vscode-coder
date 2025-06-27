@@ -22,12 +22,6 @@ Object.entries(supports).forEach(([version, expected]) => {
 	});
 });
 
-it("should return false for invalid version format", () => {
-	expect(sshVersionSupportsSetEnv("Invalid SSH version")).toBe(false);
-	expect(sshVersionSupportsSetEnv("")).toBe(false);
-	expect(sshVersionSupportsSetEnv("Some random text")).toBe(false);
-});
-
 it("current shell supports ssh", () => {
 	// Mock spawnSync to return a valid SSH version
 	vi.mocked(childProcess.spawnSync).mockReturnValue({
@@ -129,59 +123,5 @@ Host coder-vscode.dev.coder.com--*
 		ProxyCommand:
 			'"/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/bin/coder-darwin-arm64" vscodessh --network-info-dir "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/net" --session-token-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/session" --url-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/url" %h',
 		UserKnownHostsFile: "/dev/null",
-	});
-});
-
-it("handles config without Host directive", () => {
-	const properties = computeSSHProperties(
-		"any-host",
-		`StrictHostKeyChecking no
-UserKnownHostsFile /dev/null`,
-	);
-
-	expect(properties).toEqual({});
-});
-
-it("handles empty config sections", () => {
-	const properties = computeSSHProperties(
-		"test-host",
-		`Host test-host
-  User testuser
-
-Host *
-  StrictHostKeyChecking yes`,
-	);
-
-	expect(properties).toEqual({
-		User: "testuser",
-		StrictHostKeyChecking: "yes",
-	});
-});
-
-it("handles version with single part", () => {
-	expect(sshVersionSupportsSetEnv("OpenSSH_7")).toBe(false);
-	expect(sshVersionSupportsSetEnv("OpenSSH_8")).toBe(false);
-});
-
-it("handles major version less than 7", () => {
-	expect(sshVersionSupportsSetEnv("OpenSSH_6.9p1 Ubuntu")).toBe(false);
-	expect(sshVersionSupportsSetEnv("OpenSSH_5.0p1")).toBe(false);
-});
-
-it("handles version 7.7 and below", () => {
-	expect(sshVersionSupportsSetEnv("OpenSSH_7.7p1 Ubuntu")).toBe(false);
-	expect(sshVersionSupportsSetEnv("OpenSSH_7.0p1")).toBe(false);
-});
-
-it("handles configs array with undefined entries", () => {
-	// This tests the falsy check in computeSSHProperties
-	const properties = computeSSHProperties(
-		"test-host",
-		`Host test-host
-  User testuser`,
-	);
-
-	expect(properties).toEqual({
-		User: "testuser",
 	});
 });

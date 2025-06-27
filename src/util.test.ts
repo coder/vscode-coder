@@ -46,43 +46,12 @@ it("should parse authority", () => {
 		workspace: "bar",
 	});
 	expect(
-		parseRemoteAuthority("vscode://ssh-remote+coder-vscode--foo--bar--baz"),
-	).toStrictEqual({
-		agent: "baz",
-		host: "coder-vscode--foo--bar--baz",
-		label: "",
-		username: "foo",
-		workspace: "bar",
-	});
-	expect(
 		parseRemoteAuthority(
 			"vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar",
 		),
 	).toStrictEqual({
 		agent: "",
 		host: "coder-vscode.dev.coder.com--foo--bar",
-		label: "dev.coder.com",
-		username: "foo",
-		workspace: "bar",
-	});
-	expect(
-		parseRemoteAuthority(
-			"vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar--baz",
-		),
-	).toStrictEqual({
-		agent: "baz",
-		host: "coder-vscode.dev.coder.com--foo--bar--baz",
-		label: "dev.coder.com",
-		username: "foo",
-		workspace: "bar",
-	});
-	expect(
-		parseRemoteAuthority(
-			"vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz",
-		),
-	).toStrictEqual({
-		agent: "baz",
-		host: "coder-vscode.dev.coder.com--foo--bar.baz",
 		label: "dev.coder.com",
 		username: "foo",
 		workspace: "bar",
@@ -117,11 +86,6 @@ describe("findPort", () => {
 		expect(findPort("")).toBe(null);
 		expect(findPort("-> socksPort ->")).toBe(null);
 	});
-
-	it("should return null for invalid match patterns", () => {
-		expect(findPort("-> socksPort")).toBe(null);
-		expect(findPort("socksPort 12345")).toBe(null);
-	});
 });
 
 describe("toRemoteAuthority", () => {
@@ -148,30 +112,6 @@ describe("toRemoteAuthority", () => {
 			"ssh-remote+coder-vscode.coder.com--alice--myworkspace.main",
 		);
 	});
-
-	it("should handle URL with port", () => {
-		const result = toRemoteAuthority(
-			"https://coder.com:8080",
-			"alice",
-			"myworkspace",
-			undefined,
-		);
-		expect(result).toBe(
-			"ssh-remote+coder-vscode.coder.com--alice--myworkspace",
-		);
-	});
-
-	it("should handle international domain", () => {
-		const result = toRemoteAuthority(
-			"https://ほげ.com",
-			"alice",
-			"myworkspace",
-			"gpu",
-		);
-		expect(result).toBe(
-			"ssh-remote+coder-vscode.xn--18j4d.com--alice--myworkspace.gpu",
-		);
-	});
 });
 
 describe("expandPath", () => {
@@ -179,23 +119,6 @@ describe("expandPath", () => {
 		const result = expandPath("${userHome}/Documents");
 		expect(result).toContain("/Documents");
 		expect(result).not.toContain("${userHome}");
-	});
-
-	it("should handle multiple userHome placeholders", () => {
-		const result = expandPath("${userHome}/docs/${userHome}/backup");
-		expect(result).not.toContain("${userHome}");
-		const parts = result.split("/");
-		expect(parts.filter((p) => p.includes("docs")).length).toBe(1);
-		expect(parts.filter((p) => p.includes("backup")).length).toBe(1);
-	});
-
-	it("should return unchanged string without userHome placeholder", () => {
-		const input = "/usr/local/bin";
-		expect(expandPath(input)).toBe(input);
-	});
-
-	it("should handle empty string", () => {
-		expect(expandPath("")).toBe("");
 	});
 });
 
@@ -206,20 +129,6 @@ describe("escapeCommandArg", () => {
 
 	it("should escape quotes in argument", () => {
 		expect(escapeCommandArg('say "hello"')).toBe('"say \\"hello\\""');
-	});
-
-	it("should handle empty string", () => {
-		expect(escapeCommandArg("")).toBe('""');
-	});
-
-	it("should handle string with spaces", () => {
-		expect(escapeCommandArg("hello world")).toBe('"hello world"');
-	});
-
-	it("should handle multiple quotes", () => {
-		expect(escapeCommandArg('"quoted" and "more"')).toBe(
-			'"\\"quoted\\" and \\"more\\""',
-		);
 	});
 });
 

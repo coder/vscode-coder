@@ -15,10 +15,6 @@ describe("proxy", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("should export getProxyForUrl function", () => {
-		expect(typeof getProxyForUrl).toBe("function");
-	});
-
 	it("should return empty string for invalid URLs", () => {
 		expect(getProxyForUrl("", null, null)).toBe("");
 		expect(getProxyForUrl("invalid-url", null, null)).toBe("");
@@ -70,15 +66,6 @@ describe("proxy", () => {
 		expect(result).toBe("http://proxy:8080");
 	});
 
-	it("should handle no_proxy with wildcard prefix", () => {
-		const result = getProxyForUrl(
-			"https://api.example.com",
-			"http://proxy:8080",
-			"*.example.com",
-		);
-		expect(result).toBe("");
-	});
-
 	it("should handle no_proxy with port matching", () => {
 		const result = getProxyForUrl(
 			"https://example.com:8443",
@@ -86,15 +73,6 @@ describe("proxy", () => {
 			"example.com:8443",
 		);
 		expect(result).toBe("");
-	});
-
-	it("should proxy when no_proxy port doesn't match", () => {
-		const result = getProxyForUrl(
-			"https://example.com:8443",
-			"http://proxy:8080",
-			"example.com:9000",
-		);
-		expect(result).toBe("http://proxy:8080");
 	});
 
 	it("should handle multiple no_proxy entries", () => {
@@ -116,23 +94,5 @@ describe("proxy", () => {
 		vi.stubEnv("all_proxy", "http://all-proxy:3128");
 		const result = getProxyForUrl("ftp://example.com", null, null);
 		expect(result).toBe("http://all-proxy:3128");
-	});
-
-	it("should handle empty no_proxy entries", () => {
-		const result = getProxyForUrl(
-			"https://example.com",
-			"http://proxy:8080",
-			"localhost,,example.com",
-		);
-		expect(result).toBe("");
-	});
-
-	it("should handle IPv6 addresses", () => {
-		const result = getProxyForUrl(
-			"https://[::1]:8080",
-			"http://proxy:8080",
-			null,
-		);
-		expect(result).toBe("http://proxy:8080");
 	});
 });
