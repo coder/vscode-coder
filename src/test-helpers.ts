@@ -1554,3 +1554,106 @@ export function createMockRestClient(overrides: Partial<Api> = {}): Api {
 		...overrides,
 	} as unknown as Api;
 }
+
+// ============================================================================
+// File System Mock Helpers for SSH Config Tests
+// ============================================================================
+
+/**
+ * Create a mock file system for SSH config testing
+ */
+export function createMockFileSystem(
+	overrides: Partial<{
+		mkdir: ReturnType<typeof vi.fn>;
+		readFile: ReturnType<typeof vi.fn>;
+		rename: ReturnType<typeof vi.fn>;
+		stat: ReturnType<typeof vi.fn>;
+		writeFile: ReturnType<typeof vi.fn>;
+	}> = {},
+) {
+	return {
+		mkdir: overrides.mkdir ?? vi.fn().mockResolvedValue(undefined),
+		readFile: overrides.readFile ?? vi.fn().mockResolvedValue(""),
+		rename: overrides.rename ?? vi.fn().mockResolvedValue(undefined),
+		stat: overrides.stat ?? vi.fn().mockResolvedValue({ mode: 0o644 }),
+		writeFile: overrides.writeFile ?? vi.fn().mockResolvedValue(undefined),
+	};
+}
+
+/**
+ * Create an SSH config block string
+ */
+export function createSSHConfigBlock(
+	label: string,
+	options: Record<string, string>,
+): string {
+	const header = label
+		? `# --- START CODER VSCODE ${label} ---`
+		: `# --- START CODER VSCODE ---`;
+	const footer = label
+		? `# --- END CODER VSCODE ${label} ---`
+		: `# --- END CODER VSCODE ---`;
+
+	const lines = [header];
+	if (options.Host) {
+		lines.push(`Host ${options.Host}`);
+		const sortedKeys = Object.keys(options)
+			.filter((k) => k !== "Host")
+			.sort();
+		for (const key of sortedKeys) {
+			lines.push(`  ${key} ${options[key]}`);
+		}
+	}
+	lines.push(footer);
+	return lines.join("\n");
+}
+
+/**
+ * Create a mock EventSource for workspace monitoring
+ */
+export function createMockEventSource(
+	overrides: Partial<{
+		addEventListener: ReturnType<typeof vi.fn>;
+		close: ReturnType<typeof vi.fn>;
+		removeEventListener: ReturnType<typeof vi.fn>;
+	}> = {},
+) {
+	return {
+		addEventListener: overrides.addEventListener ?? vi.fn(),
+		close: overrides.close ?? vi.fn(),
+		removeEventListener: overrides.removeEventListener ?? vi.fn(),
+	};
+}
+
+/**
+ * Create a mock HTTPS server for certificate testing
+ */
+export function createMockHttpsServer(
+	overrides: Partial<{
+		on: ReturnType<typeof vi.fn>;
+		listen: ReturnType<typeof vi.fn>;
+		close: ReturnType<typeof vi.fn>;
+		address: ReturnType<typeof vi.fn>;
+	}> = {},
+) {
+	const mockServer = {
+		on: overrides.on ?? vi.fn(),
+		listen:
+			overrides.listen ??
+			vi.fn((port, host, callback) => {
+				// Immediately call the callback to simulate server ready
+				if (callback) {
+					setTimeout(callback, 0);
+				}
+			}),
+		close: overrides.close ?? vi.fn(),
+		address:
+			overrides.address ??
+			vi.fn(() => ({
+				family: "IPv4",
+				address: "127.0.0.1",
+				port: 443,
+			})),
+	};
+	return mockServer;
+}

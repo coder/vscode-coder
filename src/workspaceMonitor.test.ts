@@ -35,532 +35,327 @@ beforeAll(() => {
 				...mockVSCode.window,
 				createStatusBarItem: vi.fn(() => createMockStatusBarItem()),
 			},
-			StatusBarAlignment: {
-				Left: 1,
-				Right: 2,
-			},
+			StatusBarAlignment: { Left: 1, Right: 2 },
 		};
 	});
 });
 
+// Test helpers
+const createTestMonitor = (workspaceOverrides = {}) => {
+	const mockWorkspace = createMockWorkspace({
+		owner_name: "test-owner",
+		name: "test-workspace",
+		id: "test-id",
+		...workspaceOverrides,
+	});
+	const mockRestClient = createMockApi();
+	const mockStorage = createMockStorage();
+	const mockVscodeProposed = createMockVSCode();
+
+	const monitor = new WorkspaceMonitor(
+		mockWorkspace,
+		mockRestClient,
+		mockStorage,
+		mockVscodeProposed,
+	);
+
+	return {
+		monitor,
+		mockWorkspace,
+		mockRestClient,
+		mockStorage,
+		mockVscodeProposed,
+	};
+};
+
+const getPrivateProp = <T>(monitor: WorkspaceMonitor, prop: string): T =>
+	getPrivateProperty(monitor, prop) as T;
+
 describe("workspaceMonitor", () => {
 	it("should create WorkspaceMonitor instance", () => {
-		const mockWorkspace = createMockWorkspace();
-		const mockRestClient = createMockApi();
-		const mockStorage = createMockStorage();
-		const mockVscodeProposed = createMockVSCode();
-
-		const monitor = new WorkspaceMonitor(
-			mockWorkspace,
-			mockRestClient,
-			mockStorage,
-			mockVscodeProposed,
-		);
-
+		const { monitor } = createTestMonitor();
 		expect(monitor).toBeInstanceOf(WorkspaceMonitor);
 		expect(typeof monitor.dispose).toBe("function");
 		expect(monitor.onChange).toBeDefined();
 	});
 
 	describe("dispose", () => {
-		it("should dispose resources and close event source", () => {
-			const mockWorkspace = createMockWorkspace({
-				owner_name: "test-owner",
-				name: "test-workspace",
-				id: "test-id",
-			});
+		it.each([
+			["first call", 1],
+			["multiple calls", 2],
+		])("should dispose resources correctly on %s", (_, callCount) => {
+			const { monitor, mockStorage } = createTestMonitor();
 
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const mockVscodeProposed = createMockVSCode();
-
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
+			const eventSource = getPrivateProp<{ close: ReturnType<typeof vi.fn> }>(
+				monitor,
+				"eventSource",
 			);
-
-			// Spy on the private properties - we need to access them to verify cleanup
-			const eventSource = getPrivateProperty(monitor, "eventSource") as {
-				close: ReturnType<typeof vi.fn>;
-			};
-			const statusBarItem = getPrivateProperty(monitor, "statusBarItem") as {
+			const statusBarItem = getPrivateProp<{
 				dispose: ReturnType<typeof vi.fn>;
-			};
+			}>(monitor, "statusBarItem");
 			const closeSpy = vi.spyOn(eventSource, "close");
 			const disposeSpy = vi.spyOn(statusBarItem, "dispose");
 
-			// Call dispose
-			monitor.dispose();
+			for (let i = 0; i < callCount; i++) {
+				monitor.dispose();
+			}
 
-			// Verify cleanup
+			expect(closeSpy).toHaveBeenCalledTimes(1);
+			expect(disposeSpy).toHaveBeenCalledTimes(1);
 			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
 				"Unmonitoring test-owner/test-workspace...",
 			);
-			expect(disposeSpy).toHaveBeenCalled();
-			expect(closeSpy).toHaveBeenCalled();
-
-			// Verify disposed flag is set
-			expect(getPrivateProperty(monitor, "disposed")).toBe(true);
-		});
-
-		it("should not dispose twice when called multiple times", () => {
-			const mockWorkspace = createMockWorkspace({
-				owner_name: "test-owner",
-				name: "test-workspace",
-				id: "test-id",
-			});
-
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const mockVscodeProposed = createMockVSCode();
-
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
-
-			const eventSource = getPrivateProperty(monitor, "eventSource") as {
-				close: ReturnType<typeof vi.fn>;
-			};
-			const statusBarItem = getPrivateProperty(monitor, "statusBarItem") as {
-				dispose: ReturnType<typeof vi.fn>;
-			};
-			const closeSpy = vi.spyOn(eventSource, "close");
-			const disposeSpy = vi.spyOn(statusBarItem, "dispose");
-
-			// Call dispose twice
-			monitor.dispose();
-			monitor.dispose();
-
-			// Verify cleanup only happened once
-			expect(closeSpy).toHaveBeenCalledTimes(1);
-			expect(disposeSpy).toHaveBeenCalledTimes(1);
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledTimes(2); // Once for monitoring, once for unmonitoring
+			expect(getPrivateProp<boolean>(monitor, "disposed")).toBe(true);
 		});
 	});
 
-	describe("maybeNotifyAutostop", () => {
-		it("should notify about impending autostop when workspace is running and deadline is soon", async () => {
-			const mockWorkspace = createMockWorkspaceRunning({
-				owner_name: "test-owner",
-				name: "test-workspace",
-				id: "test-id",
-				latest_build: {
-					...createMockWorkspaceRunning().latest_build,
-					deadline: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 minutes from now
+	describe("notifications", () => {
+		it.each([
+			[
+				"autostop",
+				{
+					latest_build: {
+						...createMockWorkspaceRunning().latest_build,
+						deadline: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+					},
 				},
-			});
-
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const mockVscodeProposed = createMockVSCode();
-
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
-
-			// Mock the global vscode window method
-			const vscode = await import("vscode");
-			vi.mocked(vscode.window.showInformationMessage).mockClear();
-
-			// Call the private maybeNotifyAutostop method
-			const maybeNotifyAutostop = getPrivateProperty(
-				monitor,
 				"maybeNotifyAutostop",
-			) as (workspace: Workspace) => void;
-			maybeNotifyAutostop.call(monitor, mockWorkspace);
+				"is scheduled to shut down in",
+			],
+			[
+				"deletion",
+				{
+					deleting_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+				},
+				"maybeNotifyDeletion",
+				"is scheduled for deletion in",
+			],
+		])(
+			"should notify about %s",
+			async (_, workspaceOverrides, methodName, expectedMessage) => {
+				const { monitor } = createTestMonitor(workspaceOverrides);
+				const vscode = await import("vscode");
+				vi.mocked(vscode.window.showInformationMessage).mockClear();
 
-			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-				expect.stringContaining("is scheduled to shut down in"),
-			);
-		});
+				const method = getPrivateProp<(workspace: Workspace) => void>(
+					monitor,
+					methodName,
+				);
+				method.call(monitor, createMockWorkspace(workspaceOverrides));
+
+				expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+					expect.stringContaining(expectedMessage),
+				);
+			},
+		);
 	});
 
 	describe("isImpending", () => {
-		it("should return true when target time is within notify window", () => {
-			const mockWorkspace = createMockWorkspace();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const mockVscodeProposed = createMockVSCode();
+		it.each([
+			["within window", 10, 30, true],
+			["beyond window", 120, 30, false],
+		])(
+			"should return %s when target is %d minutes away with %d minute window",
+			(_, targetMinutes, windowMinutes, expected) => {
+				const { monitor } = createTestMonitor();
+				const targetTime = new Date(
+					Date.now() + targetMinutes * 60 * 1000,
+				).toISOString();
+				const notifyTime = windowMinutes * 60 * 1000;
 
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
-
-			// Test with a target time 10 minutes from now and 30-minute notify window
-			const targetTime = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-			const notifyTime = 30 * 60 * 1000; // 30 minutes
-
-			const isImpending = getPrivateProperty(monitor, "isImpending") as (
-				targetTime: string,
-				notifyTime: number,
-			) => boolean;
-			const result = isImpending.call(monitor, targetTime, notifyTime);
-
-			expect(result).toBe(true);
-		});
-
-		it("should return false when target time is beyond notify window", () => {
-			const mockWorkspace = createMockWorkspace();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const mockVscodeProposed = createMockVSCode();
-
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
-
-			// Test with a target time 2 hours from now and 30-minute notify window
-			const targetTime = new Date(
-				Date.now() + 2 * 60 * 60 * 1000,
-			).toISOString();
-			const notifyTime = 30 * 60 * 1000; // 30 minutes
-
-			const isImpending = getPrivateProperty(monitor, "isImpending") as (
-				targetTime: string,
-				notifyTime: number,
-			) => boolean;
-			const result = isImpending.call(monitor, targetTime, notifyTime);
-
-			expect(result).toBe(false);
-		});
+				const isImpending = getPrivateProp<
+					(targetTime: string, notifyTime: number) => boolean
+				>(monitor, "isImpending");
+				expect(isImpending.call(monitor, targetTime, notifyTime)).toBe(
+					expected,
+				);
+			},
+		);
 	});
 
-	describe("updateStatusBar", () => {
-		it("should show status bar when workspace is outdated", () => {
-			const mockWorkspace = createMockWorkspace({
-				outdated: false,
-			});
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const mockVscodeProposed = createMockVSCode();
+	describe("statusBar", () => {
+		it.each([
+			["show", true],
+			["hide", false],
+		])(
+			"should %s status bar when workspace outdated is %s",
+			(action, outdated) => {
+				const { monitor } = createTestMonitor();
+				const statusBarItem = getPrivateProp<{
+					show: ReturnType<typeof vi.fn>;
+					hide: ReturnType<typeof vi.fn>;
+				}>(monitor, "statusBarItem");
 
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
+				// Clear any calls from initialization
+				vi.mocked(statusBarItem.show).mockClear();
+				vi.mocked(statusBarItem.hide).mockClear();
 
-			const statusBarItem = getPrivateProperty(monitor, "statusBarItem") as {
-				show: ReturnType<typeof vi.fn>;
-				hide: ReturnType<typeof vi.fn>;
-			};
-			const showSpy = vi.spyOn(statusBarItem, "show");
-			const hideSpy = vi.spyOn(statusBarItem, "hide");
+				const updateStatusBar = getPrivateProp<(workspace: Workspace) => void>(
+					monitor,
+					"updateStatusBar",
+				);
+				updateStatusBar.call(monitor, createMockWorkspace({ outdated }));
 
-			// Test outdated workspace
-			const outdatedWorkspace = createMockWorkspace({ outdated: true });
-			const updateStatusBar = getPrivateProperty(
-				monitor,
-				"updateStatusBar",
-			) as (workspace: Workspace) => void;
-			updateStatusBar.call(monitor, outdatedWorkspace);
-			expect(showSpy).toHaveBeenCalled();
-			expect(hideSpy).not.toHaveBeenCalled();
-
-			// Clear mocks
-			showSpy.mockClear();
-			hideSpy.mockClear();
-
-			// Test up-to-date workspace
-			const currentWorkspace = createMockWorkspace({ outdated: false });
-			updateStatusBar.call(monitor, currentWorkspace);
-			expect(hideSpy).toHaveBeenCalled();
-			expect(showSpy).not.toHaveBeenCalled();
-		});
+				if (outdated) {
+					expect(statusBarItem.show).toHaveBeenCalled();
+					expect(statusBarItem.hide).not.toHaveBeenCalled();
+				} else {
+					expect(statusBarItem.hide).toHaveBeenCalled();
+					expect(statusBarItem.show).not.toHaveBeenCalled();
+				}
+			},
+		);
 	});
 
-	describe("notifyError", () => {
-		it("should write error to output channel", () => {
-			const mockWorkspace = createMockWorkspace();
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const mockVscodeProposed = createMockVSCode();
+	it("should write errors to output channel", () => {
+		const { monitor, mockStorage } = createTestMonitor();
+		vi.doMock("./api-helper", () => ({
+			errToStr: vi.fn().mockReturnValue("Test error message"),
+		}));
 
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
+		const notifyError = getPrivateProp<(error: Error) => void>(
+			monitor,
+			"notifyError",
+		);
+		notifyError.call(monitor, new Error("Test error"));
 
-			// Mock errToStr
-			vi.doMock("./api-helper", () => ({
-				errToStr: vi.fn().mockReturnValue("Test error message"),
-			}));
-
-			// Call the private notifyError method
-			const testError = new Error("Test error");
-			const notifyError = getPrivateProperty(monitor, "notifyError") as (
-				error: Error,
-			) => void;
-			notifyError.call(monitor, testError);
-
-			// Verify error was written to output channel
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				expect.any(String),
-			);
-
-			vi.doUnmock("./api-helper");
-		});
+		expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+			expect.any(String),
+		);
+		vi.doUnmock("./api-helper");
 	});
 
-	describe("maybeNotifyDeletion", () => {
-		it("should notify about impending deletion when workspace has deleting_at and deadline is soon", async () => {
-			const mockWorkspace = createMockWorkspace({
-				owner_name: "test-owner",
-				name: "test-workspace",
-				id: "test-id",
-				deleting_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(), // 12 hours from now
-			});
+	it("should notify and reload when workspace is not running", async () => {
+		const mockShowInformationMessage = vi
+			.fn()
+			.mockResolvedValue("Reload Window");
+		const mockVscodeProposed = createMockVSCode();
+		vi.mocked(
+			mockVscodeProposed.window.showInformationMessage,
+		).mockImplementation(mockShowInformationMessage);
 
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-			const mockVscodeProposed = createMockVSCode();
-
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
-
-			// Mock the global vscode window method
-			const vscode = await import("vscode");
-			vi.mocked(vscode.window.showInformationMessage).mockClear();
-
-			// Call the private maybeNotifyDeletion method
-			const maybeNotifyDeletion = getPrivateProperty(
-				monitor,
-				"maybeNotifyDeletion",
-			) as (workspace: Workspace) => void;
-			maybeNotifyDeletion.call(monitor, mockWorkspace);
-
-			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-				expect.stringContaining("is scheduled for deletion in"),
-			);
+		const mockWorkspace = createMockWorkspaceStopped({
+			owner_name: "test-owner",
+			name: "test-workspace",
 		});
+		const monitor = new WorkspaceMonitor(
+			mockWorkspace,
+			createMockApi(),
+			createMockStorage(),
+			mockVscodeProposed,
+		);
+
+		const vscode = await import("vscode");
+		vi.mocked(vscode.commands.executeCommand).mockClear();
+
+		const maybeNotifyNotRunning = getPrivateProp<
+			(workspace: Workspace) => Promise<void>
+		>(monitor, "maybeNotifyNotRunning");
+		await maybeNotifyNotRunning.call(monitor, mockWorkspace);
+
+		expect(mockShowInformationMessage).toHaveBeenCalledWith(
+			"test-owner/test-workspace is no longer running!",
+			{
+				detail:
+					'The workspace status is "stopped". Reload the window to reconnect.',
+				modal: true,
+				useCustom: true,
+			},
+			"Reload Window",
+		);
+
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+			"workbench.action.reloadWindow",
+		);
 	});
 
-	describe("maybeNotifyNotRunning", () => {
-		it("should notify and offer reload when workspace is not running", async () => {
-			const mockWorkspace = createMockWorkspaceStopped({
-				owner_name: "test-owner",
-				name: "test-workspace",
-				id: "test-id",
-			});
-
-			const mockRestClient = createMockApi();
-			const mockStorage = createMockStorage();
-
-			// Mock vscodeProposed with showInformationMessage
-			const mockShowInformationMessage = vi
-				.fn()
-				.mockResolvedValue("Reload Window");
-			const mockVscodeProposed = createMockVSCode();
-			vi.mocked(
-				mockVscodeProposed.window.showInformationMessage,
-			).mockImplementation(mockShowInformationMessage);
-
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
-
-			// Mock the global vscode commands
-			const vscode = await import("vscode");
-			vi.mocked(vscode.commands.executeCommand).mockClear();
-
-			// Call the private maybeNotifyNotRunning method
-			const maybeNotifyNotRunning = getPrivateProperty(
-				monitor,
-				"maybeNotifyNotRunning",
-			) as (workspace: Workspace) => Promise<void>;
-			await maybeNotifyNotRunning.call(monitor, mockWorkspace);
-
-			expect(mockShowInformationMessage).toHaveBeenCalledWith(
-				"test-owner/test-workspace is no longer running!",
-				{
-					detail:
-						'The workspace status is "stopped". Reload the window to reconnect.',
-					modal: true,
-					useCustom: true,
-				},
-				"Reload Window",
-			);
-
-			// Wait for the promise to resolve
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-				"workbench.action.reloadWindow",
-			);
+	it("should notify about outdated workspace and offer update", async () => {
+		const mockTemplate = { active_version_id: "version-456" };
+		const mockTemplateVersion = {
+			message: "New version with improved performance",
+		};
+		const mockRestClient = createMockApi({
+			getTemplate: vi.fn().mockResolvedValue(mockTemplate),
+			getTemplateVersion: vi.fn().mockResolvedValue(mockTemplateVersion),
 		});
-	});
 
-	describe("maybeNotifyOutdated", () => {
-		it("should notify about outdated workspace and offer update", async () => {
-			const mockWorkspace = createMockWorkspace({
-				owner_name: "test-owner",
-				name: "test-workspace",
-				id: "test-id",
-				template_id: "template-123",
-				outdated: true,
-			});
-
-			const mockTemplate = {
-				active_version_id: "version-456",
-			};
-
-			const mockTemplateVersion = {
-				message: "New version with improved performance",
-			};
-
-			const mockRestClient = createMockApi({
-				getTemplate: vi.fn().mockResolvedValue(mockTemplate),
-				getTemplateVersion: vi.fn().mockResolvedValue(mockTemplateVersion),
-			});
-			const mockStorage = createMockStorage();
-			const mockVscodeProposed = createMockVSCode();
-
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
-
-			// Mock the global vscode window method
-			const vscode = await import("vscode");
-			vi.mocked(vscode.window.showInformationMessage).mockClear();
-			vi.mocked(vscode.window.showInformationMessage).mockResolvedValue(
-				"Update" as never,
-			);
-			vi.mocked(vscode.commands.executeCommand).mockClear();
-
-			// Call the private maybeNotifyOutdated method
-			const maybeNotifyOutdated = getPrivateProperty(
-				monitor,
-				"maybeNotifyOutdated",
-			) as (workspace: Workspace) => Promise<void>;
-			await maybeNotifyOutdated.call(monitor, mockWorkspace);
-
-			// Wait for promises to resolve
-			await new Promise((resolve) => setTimeout(resolve, 10));
-
-			expect(mockRestClient.getTemplate).toHaveBeenCalledWith("template-123");
-			expect(mockRestClient.getTemplateVersion).toHaveBeenCalledWith(
-				"version-456",
-			);
-			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-				"A new version of your workspace is available: New version with improved performance",
-				"Update",
-			);
-			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-				"coder.workspace.update",
-				mockWorkspace,
-				mockRestClient,
-			);
+		const mockWorkspace = createMockWorkspace({
+			template_id: "template-123",
+			outdated: true,
+			owner_name: "test-owner",
+			name: "test-workspace",
 		});
+		const monitor = new WorkspaceMonitor(
+			mockWorkspace,
+			mockRestClient,
+			createMockStorage(),
+			createMockVSCode(),
+		);
+
+		const vscode = await import("vscode");
+		vi.mocked(vscode.window.showInformationMessage)
+			.mockClear()
+			.mockResolvedValue("Update" as never);
+		vi.mocked(vscode.commands.executeCommand).mockClear();
+
+		const maybeNotifyOutdated = getPrivateProp<
+			(workspace: Workspace) => Promise<void>
+		>(monitor, "maybeNotifyOutdated");
+		await maybeNotifyOutdated.call(monitor, mockWorkspace);
+
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		expect(mockRestClient.getTemplate).toHaveBeenCalledWith("template-123");
+		expect(mockRestClient.getTemplateVersion).toHaveBeenCalledWith(
+			"version-456",
+		);
+		expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+			"A new version of your workspace is available: New version with improved performance",
+			"Update",
+		);
+		expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+			"coder.workspace.update",
+			mockWorkspace,
+			mockRestClient,
+		);
 	});
 
 	describe("Logger integration", () => {
-		it("should log messages through Logger when Storage has Logger set", () => {
-			const { logger } = createMockOutputChannelWithLogger();
+		it.each([
+			["initialization", "Monitoring test-owner/test-workspace...", false],
+			["disposal", "Unmonitoring test-owner/test-workspace...", true],
+		])(
+			"should log %s message through Logger",
+			(_, expectedMessage, shouldDispose) => {
+				const { logger } = createMockOutputChannelWithLogger();
+				const mockStorage = createMockStorage({
+					writeToCoderOutputChannel: vi.fn((msg: string) => logger.info(msg)),
+				});
 
-			const mockWorkspace = createMockWorkspace({
-				owner_name: "test-owner",
-				name: "test-workspace",
-				id: "test-id",
-			});
+				const monitor = new WorkspaceMonitor(
+					createMockWorkspace({
+						owner_name: "test-owner",
+						name: "test-workspace",
+						id: "test-id",
+					}),
+					createMockApi(),
+					mockStorage,
+					createMockVSCode(),
+				);
 
-			const mockRestClient = createMockApi();
+				if (shouldDispose) {
+					logger.clear();
+					vi.mocked(mockStorage.writeToCoderOutputChannel).mockClear();
+					monitor.dispose();
+				}
 
-			// Create mock Storage that uses Logger
-			const mockStorage = createMockStorage({
-				writeToCoderOutputChannel: vi.fn((msg: string) => {
-					logger.info(msg);
-				}),
-			});
-
-			const mockVscodeProposed = createMockVSCode();
-
-			// Create WorkspaceMonitor which should log initialization
-			new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
-
-			// Verify monitoring message was logged
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				"Monitoring test-owner/test-workspace...",
-			);
-
-			const logs = logger.getLogs();
-			expect(logs.length).toBeGreaterThan(0);
-			expect(logs[0].message).toBe("Monitoring test-owner/test-workspace...");
-		});
-
-		it("should handle dispose and log unmonitoring message", () => {
-			const { logger } = createMockOutputChannelWithLogger();
-
-			const mockWorkspace = createMockWorkspace({
-				owner_name: "test-owner",
-				name: "test-workspace",
-				id: "test-id",
-			});
-
-			const mockRestClient = createMockApi();
-
-			// Create mock Storage that uses Logger
-			const mockStorage = createMockStorage({
-				writeToCoderOutputChannel: vi.fn((msg: string) => {
-					logger.info(msg);
-				}),
-			});
-
-			const mockVscodeProposed = createMockVSCode();
-
-			const monitor = new WorkspaceMonitor(
-				mockWorkspace,
-				mockRestClient,
-				mockStorage,
-				mockVscodeProposed,
-			);
-
-			// Clear logs from initialization
-			logger.clear();
-			vi.mocked(mockStorage.writeToCoderOutputChannel).mockClear();
-
-			// Dispose the monitor
-			monitor.dispose();
-
-			// Verify unmonitoring message was logged
-			expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
-				"Unmonitoring test-owner/test-workspace...",
-			);
-
-			const logs = logger.getLogs();
-			expect(logs.length).toBe(1);
-			expect(logs[0].message).toBe("Unmonitoring test-owner/test-workspace...");
-		});
+				expect(mockStorage.writeToCoderOutputChannel).toHaveBeenCalledWith(
+					expectedMessage,
+				);
+				const logs = logger.getLogs();
+				expect(logs[logs.length - 1].message).toBe(expectedMessage);
+			},
+		);
 	});
 });

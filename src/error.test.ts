@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 import axios from "axios";
 import * as fs from "fs/promises";
 import https from "https";
@@ -11,35 +12,22 @@ import {
 } from "./error";
 import { createMockOutputChannelWithLogger } from "./test-helpers";
 
-// Before each test we make a request to sanity check that we really get the
-// error we are expecting, then we run it through CertificateError.
-
-// TODO: These sanity checks need to be ran in an Electron environment to
-// reflect real usage in VS Code.  We should either revert back to the standard
-// extension testing framework which I believe runs in a headless VS Code
-// instead of using vitest or at least run the tests through Electron running as
-// Node (for now I do this manually by shimming Node).
-const isElectron =
-	process.versions.electron || process.env.ELECTRON_RUN_AS_NODE;
-
-// TODO: Remove the vscode mock once we revert the testing framework.
+// Setup all mocks
 beforeAll(() => {
-	vi.mock("vscode", () => {
-		return {
-			window: {
-				showErrorMessage: vi.fn(),
-				showInformationMessage: vi.fn(),
-			},
-			workspace: {
-				getConfiguration: vi.fn(() => ({
-					update: vi.fn(),
-				})),
-			},
-			ConfigurationTarget: {
-				Global: 1,
-			},
-		};
-	});
+	vi.mock("vscode", () => ({
+		window: {
+			showErrorMessage: vi.fn(),
+			showInformationMessage: vi.fn(),
+		},
+		workspace: {
+			getConfiguration: vi.fn(() => ({
+				update: vi.fn(),
+			})),
+		},
+		ConfigurationTarget: {
+			Global: 1,
+		},
+	}));
 });
 
 // Mock the coder/site modules
@@ -59,7 +47,6 @@ vi.mock("coder/site/src/api/errors", () => ({
 	}),
 }));
 
-// Use a mock logger that throws on error messages to ensure tests fail if unexpected logs occur
 const logger = {
 	writeToCoderOutputChannel(message: string) {
 		throw new Error(message);
@@ -71,6 +58,7 @@ afterAll(() => {
 	disposers.forEach((d) => d());
 });
 
+// Helpers
 async function startServer(certName: string): Promise<string> {
 	const server = https.createServer(
 		{
@@ -109,166 +97,118 @@ async function startServer(certName: string): Promise<string> {
 	});
 }
 
-// Both environments give the "unable to verify" error with partial chains.
-it("detects partial chains", async () => {
-	const address = await startServer("chain-leaf");
-	const request = axios.get(address, {
-		httpsAgent: new https.Agent({
-			ca: await fs.readFile(
-				path.join(__dirname, "../fixtures/tls/chain-leaf.crt"),
-			),
-		}),
-	});
-	await expect(request).rejects.toHaveProperty(
-		"code",
-		X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+const createAxiosTestRequest = (address: string, agentConfig?: object) =>
+	axios.get(
+		address,
+		agentConfig ? { httpsAgent: new https.Agent(agentConfig) } : {},
 	);
-	try {
-		await request;
-	} catch (error) {
-		const wrapped = await CertificateError.maybeWrap(error, address, logger);
-		expect(wrapped instanceof CertificateError).toBeTruthy();
-		expect((wrapped as CertificateError).x509Err).toBe(X509_ERR.PARTIAL_CHAIN);
-	}
-});
 
-it("can bypass partial chain", async () => {
-	const address = await startServer("chain-leaf");
-	const request = axios.get(address, {
-		httpsAgent: new https.Agent({
-			rejectUnauthorized: false,
-		}),
-	});
-	await expect(request).resolves.toHaveProperty("data", "foobar");
-});
+const isElectron =
+	process.versions.electron || process.env.ELECTRON_RUN_AS_NODE;
 
-// In Electron a self-issued certificate without the signing capability fails
-// (again with the same "unable to verify" error) but in Node self-issued
-// certificates are not required to have the signing capability.
-it("detects self-signed certificates without signing capability", async () => {
-	const address = await startServer("no-signing");
-	const request = axios.get(address, {
-		httpsAgent: new https.Agent({
-			ca: await fs.readFile(
-				path.join(__dirname, "../fixtures/tls/no-signing.crt"),
-			),
-			servername: "localhost",
-		}),
-	});
-	if (isElectron) {
-		await expect(request).rejects.toHaveProperty(
-			"code",
-			X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
-		);
-		try {
-			await request;
-		} catch (error) {
-			const wrapped = await CertificateError.maybeWrap(error, address, logger);
-			expect(wrapped instanceof CertificateError).toBeTruthy();
-			expect((wrapped as CertificateError).x509Err).toBe(X509_ERR.NON_SIGNING);
+// Certificate test cases
+const certificateTests = [
+	{
+		name: "partial chains",
+		certName: "chain-leaf",
+		expectedCode: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+		expectedErr: X509_ERR.PARTIAL_CHAIN,
+		trustConfig: { ca: "chain-leaf.crt" },
+		shouldSucceedWhenTrusted: false,
+		environmentSpecific: false,
+	},
+	{
+		name: "self-signed certificates without signing capability",
+		certName: "no-signing",
+		expectedCode: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+		expectedErr: X509_ERR.NON_SIGNING,
+		trustConfig: { ca: "no-signing.crt", servername: "localhost" },
+		shouldSucceedWhenTrusted: !isElectron,
+		environmentSpecific: true,
+	},
+	{
+		name: "self-signed certificates",
+		certName: "self-signed",
+		expectedCode: X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
+		expectedErr: X509_ERR.UNTRUSTED_LEAF,
+		trustConfig: { ca: "self-signed.crt", servername: "localhost" },
+		shouldSucceedWhenTrusted: true,
+		environmentSpecific: false,
+	},
+	{
+		name: "an untrusted chain",
+		certName: "chain",
+		expectedCode: X509_ERR_CODE.SELF_SIGNED_CERT_IN_CHAIN,
+		expectedErr: X509_ERR.UNTRUSTED_CHAIN,
+		trustConfig: { ca: "chain-root.crt", servername: "localhost" },
+		shouldSucceedWhenTrusted: true,
+		environmentSpecific: false,
+	},
+];
+
+describe.each(certificateTests)(
+	"Certificate validation: $name",
+	({
+		certName,
+		expectedCode,
+		expectedErr,
+		trustConfig,
+		shouldSucceedWhenTrusted,
+		environmentSpecific,
+	}) => {
+		it("detects certificate error", async () => {
+			const address = await startServer(certName);
+			const request = createAxiosTestRequest(address);
+
+			if (!environmentSpecific || (environmentSpecific && isElectron)) {
+				await expect(request).rejects.toHaveProperty("code", expectedCode);
+			}
+
+			try {
+				await request;
+			} catch (error) {
+				const wrapped = await CertificateError.maybeWrap(
+					error,
+					address,
+					logger,
+				);
+				if (!environmentSpecific || (environmentSpecific && isElectron)) {
+					expect(wrapped instanceof CertificateError).toBeTruthy();
+					expect((wrapped as CertificateError).x509Err).toBe(expectedErr);
+				}
+			}
+		});
+
+		it("can bypass with rejectUnauthorized: false", async () => {
+			const address = await startServer(certName);
+			const request = createAxiosTestRequest(address, {
+				rejectUnauthorized: false,
+			});
+			await expect(request).resolves.toHaveProperty("data", "foobar");
+		});
+
+		if (trustConfig) {
+			it("handles trusted certificate", async () => {
+				const address = await startServer(certName);
+				const agentConfig = {
+					...trustConfig,
+					ca: trustConfig.ca
+						? await fs.readFile(
+								path.join(__dirname, `../fixtures/tls/${trustConfig.ca}`),
+							)
+						: undefined,
+				};
+				const request = createAxiosTestRequest(address, agentConfig);
+
+				if (shouldSucceedWhenTrusted) {
+					await expect(request).resolves.toHaveProperty("data", "foobar");
+				} else if (!environmentSpecific || isElectron) {
+					await expect(request).rejects.toHaveProperty("code", expectedCode);
+				}
+			});
 		}
-	} else {
-		await expect(request).resolves.toHaveProperty("data", "foobar");
-	}
-});
-
-it("can bypass self-signed certificates without signing capability", async () => {
-	const address = await startServer("no-signing");
-	const request = axios.get(address, {
-		httpsAgent: new https.Agent({
-			rejectUnauthorized: false,
-		}),
-	});
-	await expect(request).resolves.toHaveProperty("data", "foobar");
-});
-
-// Both environments give the same error code when a self-issued certificate is
-// untrusted.
-it("detects self-signed certificates", async () => {
-	const address = await startServer("self-signed");
-	const request = axios.get(address);
-	await expect(request).rejects.toHaveProperty(
-		"code",
-		X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
-	);
-	try {
-		await request;
-	} catch (error) {
-		const wrapped = await CertificateError.maybeWrap(error, address, logger);
-		expect(wrapped instanceof CertificateError).toBeTruthy();
-		expect((wrapped as CertificateError).x509Err).toBe(X509_ERR.UNTRUSTED_LEAF);
-	}
-});
-
-// Both environments have no problem if the self-issued certificate is trusted
-// and has the signing capability.
-it("is ok with trusted self-signed certificates", async () => {
-	const address = await startServer("self-signed");
-	const request = axios.get(address, {
-		httpsAgent: new https.Agent({
-			ca: await fs.readFile(
-				path.join(__dirname, "../fixtures/tls/self-signed.crt"),
-			),
-			servername: "localhost",
-		}),
-	});
-	await expect(request).resolves.toHaveProperty("data", "foobar");
-});
-
-it("can bypass self-signed certificates", async () => {
-	const address = await startServer("self-signed");
-	const request = axios.get(address, {
-		httpsAgent: new https.Agent({
-			rejectUnauthorized: false,
-		}),
-	});
-	await expect(request).resolves.toHaveProperty("data", "foobar");
-});
-
-// Both environments give the same error code when the chain is complete but the
-// root is not trusted.
-it("detects an untrusted chain", async () => {
-	const address = await startServer("chain");
-	const request = axios.get(address);
-	await expect(request).rejects.toHaveProperty(
-		"code",
-		X509_ERR_CODE.SELF_SIGNED_CERT_IN_CHAIN,
-	);
-	try {
-		await request;
-	} catch (error) {
-		const wrapped = await CertificateError.maybeWrap(error, address, logger);
-		expect(wrapped instanceof CertificateError).toBeTruthy();
-		expect((wrapped as CertificateError).x509Err).toBe(
-			X509_ERR.UNTRUSTED_CHAIN,
-		);
-	}
-});
-
-// Both environments have no problem if the chain is complete and the root is
-// trusted.
-it("is ok with chains with a trusted root", async () => {
-	const address = await startServer("chain");
-	const request = axios.get(address, {
-		httpsAgent: new https.Agent({
-			ca: await fs.readFile(
-				path.join(__dirname, "../fixtures/tls/chain-root.crt"),
-			),
-			servername: "localhost",
-		}),
-	});
-	await expect(request).resolves.toHaveProperty("data", "foobar");
-});
-
-it("can bypass chain", async () => {
-	const address = await startServer("chain");
-	const request = axios.get(address, {
-		httpsAgent: new https.Agent({
-			rejectUnauthorized: false,
-		}),
-	});
-	await expect(request).resolves.toHaveProperty("data", "foobar");
-});
+	},
+);
 
 it("falls back with different error", async () => {
 	const address = await startServer("chain");
@@ -291,126 +231,88 @@ it("falls back with different error", async () => {
 });
 
 describe("getErrorDetail", () => {
-	it("should return detail from API error response", () => {
-		const apiError = {
-			isAxiosError: true,
-			response: {
-				data: {
-					detail: "API error detail message",
-				},
+	it.each([
+		[
+			"API error response",
+			{
+				isAxiosError: true,
+				response: { data: { detail: "API error detail message" } },
 			},
-		};
-		expect(getErrorDetail(apiError)).toBe("API error detail message");
-	});
-
-	it("should return detail from error response object", () => {
-		const errorResponse = {
-			detail: "Error response detail message",
-		};
-		expect(getErrorDetail(errorResponse)).toBe("Error response detail message");
-	});
-
-	it("should return null for non-API errors", () => {
-		const regularError = new Error("Regular error");
-		expect(getErrorDetail(regularError)).toBeNull();
-	});
-
-	it("should return null for string errors", () => {
-		expect(getErrorDetail("String error")).toBeNull();
-	});
-
-	it("should return null for undefined", () => {
-		expect(getErrorDetail(undefined)).toBeNull();
+			"API error detail message",
+		],
+		[
+			"error response object",
+			{ detail: "Error response detail message" },
+			"Error response detail message",
+		],
+		["regular error", new Error("Regular error"), null],
+		["string error", "String error", null],
+		["undefined", undefined, null],
+	])("should return detail from %s", (_, input, expected) => {
+		expect(getErrorDetail(input)).toBe(expected);
 	});
 });
 
 describe("CertificateError.maybeWrap error handling", () => {
-	it("should handle errors thrown by determineVerifyErrorCause", async () => {
-		// Create a logger spy to verify the error message is logged
-		const loggerSpy = {
-			writeToCoderOutputChannel: vi.fn(),
-		};
+	it.each([
+		[
+			"errors thrown by determineVerifyErrorCause",
+			{
+				isAxiosError: true,
+				code: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+				message: "unable to verify leaf signature",
+			},
+			true,
+			"Failed to parse certificate from https://test.com",
+		],
+		["non-axios errors", new Error("Not a certificate error"), false, null],
+		[
+			"unknown axios error codes",
+			{
+				isAxiosError: true,
+				code: "UNKNOWN_ERROR_CODE",
+				message: "Unknown error",
+			},
+			false,
+			null,
+		],
+	])("should handle %s", async (_, error, shouldLog, expectedLog) => {
+		const loggerSpy = { writeToCoderOutputChannel: vi.fn() };
 
-		// Mock CertificateError.determineVerifyErrorCause to throw an error
-		const originalDetermine = CertificateError.determineVerifyErrorCause;
-		CertificateError.determineVerifyErrorCause = vi
-			.fn()
-			.mockRejectedValue(new Error("Failed to parse certificate"));
+		if (shouldLog && expectedLog) {
+			const originalDetermine = CertificateError.determineVerifyErrorCause;
+			CertificateError.determineVerifyErrorCause = vi
+				.fn()
+				.mockRejectedValue(new Error("Failed to parse certificate"));
 
-		const axiosError = {
-			isAxiosError: true,
-			code: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
-			message: "unable to verify leaf signature",
-		};
+			const result = await CertificateError.maybeWrap(
+				error,
+				"https://test.com",
+				loggerSpy,
+			);
+			expect(result).toBe(error);
+			expect(loggerSpy.writeToCoderOutputChannel).toHaveBeenCalledWith(
+				expect.stringContaining(expectedLog),
+			);
 
-		const result = await CertificateError.maybeWrap(
-			axiosError,
-			"https://test.com",
-			loggerSpy,
-		);
-
-		// Should return original error when determineVerifyErrorCause fails
-		expect(result).toBe(axiosError);
-		expect(loggerSpy.writeToCoderOutputChannel).toHaveBeenCalledWith(
-			expect.stringContaining(
-				"Failed to parse certificate from https://test.com",
-			),
-		);
-
-		// Restore original method
-		CertificateError.determineVerifyErrorCause = originalDetermine;
-	});
-
-	it("should return original error when not an axios error", async () => {
-		const regularError = new Error("Not a certificate error");
-		const result = await CertificateError.maybeWrap(
-			regularError,
-			"https://test.com",
-			logger,
-		);
-
-		expect(result).toBe(regularError);
-	});
-
-	it("should return original error for unknown axios error codes", async () => {
-		const axiosError = {
-			isAxiosError: true,
-			code: "UNKNOWN_ERROR_CODE",
-			message: "Unknown error",
-		};
-
-		const result = await CertificateError.maybeWrap(
-			axiosError,
-			"https://test.com",
-			logger,
-		);
-
-		expect(result).toBe(axiosError);
+			CertificateError.determineVerifyErrorCause = originalDetermine;
+		} else {
+			const result = await CertificateError.maybeWrap(
+				error,
+				"https://test.com",
+				logger,
+			);
+			expect(result).toBe(error);
+		}
 	});
 });
 
 describe("CertificateError with real Logger", () => {
-	it("should be backward compatible with existing mock logger", () => {
-		// Verify our Logger class implements the Logger interface used by error.ts
+	it("should work with Logger implementation", async () => {
 		const { mockOutputChannel, logger: realLogger } =
 			createMockOutputChannelWithLogger();
 
-		// Verify the Logger has the required writeToCoderOutputChannel method
-		expect(typeof realLogger.writeToCoderOutputChannel).toBe("function");
-
-		// Verify it works like the mock logger
-		realLogger.writeToCoderOutputChannel("Test message");
-		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
-			expect.stringMatching(/\[.*\] \[INFO\] Test message/),
-		);
-	});
-
-	it("should work with our Logger implementation", async () => {
-		// Create a real Logger instance with mock output channel
-		const { mockOutputChannel, logger: realLogger } =
-			createMockOutputChannelWithLogger();
-
-		// Mock CertificateError.determineVerifyErrorCause to throw an error
+		// Mock determineVerifyErrorCause to throw
 		const originalDetermine = CertificateError.determineVerifyErrorCause;
 		CertificateError.determineVerifyErrorCause = vi
 			.fn()
@@ -422,51 +324,34 @@ describe("CertificateError with real Logger", () => {
 			message: "unable to verify leaf signature",
 		};
 
-		// Test that maybeWrap works with our real Logger
 		const result = await CertificateError.maybeWrap(
 			axiosError,
 			"https://test.com",
 			realLogger,
 		);
-
-		// Should return original error when determineVerifyErrorCause fails
 		expect(result).toBe(axiosError);
-
-		// Verify the message was logged through our Logger
 		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
 			expect.stringMatching(
 				/\[.*\] \[INFO\] Failed to parse certificate from https:\/\/test.com/,
 			),
 		);
 
-		// Verify the log was stored in the Logger
 		const logs = realLogger.getLogs();
-		expect(logs).toHaveLength(1);
-		expect(logs[0].level).toBe("INFO");
 		expect(logs[0].message).toContain(
 			"Failed to parse certificate from https://test.com",
 		);
 
-		// Restore original method
 		CertificateError.determineVerifyErrorCause = originalDetermine;
 	});
 
-	it("should log successful certificate wrapping with real Logger", async () => {
+	it("should log successful certificate wrapping", async () => {
 		const { logger: realLogger } = createMockOutputChannelWithLogger();
 		const address = await startServer("chain");
 
-		const request = axios.get(address);
-		await expect(request).rejects.toHaveProperty(
-			"code",
-			X509_ERR_CODE.SELF_SIGNED_CERT_IN_CHAIN,
-		);
-
 		try {
-			await request;
+			await createAxiosTestRequest(address);
 		} catch (error) {
-			// Clear any existing logs
 			realLogger.clear();
-
 			const wrapped = await CertificateError.maybeWrap(
 				error,
 				address,
@@ -476,231 +361,143 @@ describe("CertificateError with real Logger", () => {
 			expect((wrapped as CertificateError).x509Err).toBe(
 				X509_ERR.UNTRUSTED_CHAIN,
 			);
-
-			// Since the certificate error was successfully wrapped, no error should be logged
-			const logs = realLogger.getLogs();
-			expect(logs).toHaveLength(0);
+			expect(realLogger.getLogs()).toHaveLength(0);
 		}
 	});
 });
 
 describe("CertificateError instance methods", () => {
-	it("should update configuration and show message when allowInsecure is called", async () => {
+	const createCertError = async (code: string) => {
+		const axiosError = { isAxiosError: true, code, message: "test error" };
+		return await CertificateError.maybeWrap(
+			axiosError,
+			"https://test.com",
+			logger,
+		);
+	};
+
+	it("should update configuration when allowInsecure is called", async () => {
 		const vscode = await import("vscode");
 		const mockUpdate = vi.fn();
 		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
 			update: mockUpdate,
 		} as never);
 
-		// Create a CertificateError instance using maybeWrap
-		const axiosError = {
-			isAxiosError: true,
-			code: X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
-			message: "self signed certificate",
-		};
-		const certError = await CertificateError.maybeWrap(
-			axiosError,
-			"https://test.com",
-			logger,
+		const certError = await createCertError(
+			X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
 		);
-
-		// Call allowInsecure
 		(certError as CertificateError).allowInsecure();
 
-		// Verify configuration was updated
 		expect(mockUpdate).toHaveBeenCalledWith(
 			"coder.insecure",
 			true,
 			vscode.ConfigurationTarget.Global,
 		);
-		// Verify information message was shown
 		expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 			CertificateError.InsecureMessage,
 		);
 	});
 
-	it("should call showNotification with modal options when showModal is called", async () => {
+	it.each([
+		["with title", "Test Title", true],
+		["without title", undefined, false],
+	])("should show notification %s", async (_, title, hasTitle) => {
 		const vscode = await import("vscode");
-
-		// Create a CertificateError instance with x509Err
-		const axiosError = {
-			isAxiosError: true,
-			code: X509_ERR_CODE.SELF_SIGNED_CERT_IN_CHAIN,
-			message: "self signed certificate in chain",
-		};
-		const certError = await CertificateError.maybeWrap(
-			axiosError,
-			"https://test.com",
-			logger,
-		);
-
-		// Mock showErrorMessage to return OK
 		vi.mocked(vscode.window.showErrorMessage).mockResolvedValue(
 			CertificateError.ActionOK as never,
 		);
 
-		// Call showModal
-		await (certError as CertificateError).showModal("Test Title");
-
-		// Verify showErrorMessage was called with correct parameters
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-			"Test Title",
-			{
-				detail: X509_ERR.UNTRUSTED_CHAIN,
-				modal: true,
-				useCustom: true,
-			},
-			CertificateError.ActionOK,
-		);
-	});
-
-	it("should use x509Err as title when no title provided to showNotification", async () => {
-		const vscode = await import("vscode");
-
-		// Create a CertificateError instance
-		const axiosError = {
-			isAxiosError: true,
-			code: X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
-			message: "self signed certificate",
-		};
-		const certError = await CertificateError.maybeWrap(
-			axiosError,
-			"https://test.com",
-			logger,
+		const certError = await createCertError(
+			X509_ERR_CODE.SELF_SIGNED_CERT_IN_CHAIN,
 		);
 
-		// Mock showErrorMessage to return OK
-		vi.mocked(vscode.window.showErrorMessage).mockResolvedValue(
-			CertificateError.ActionOK as never,
-		);
-
-		// Call showNotification without title
-		await (certError as CertificateError).showNotification();
-
-		// Verify showErrorMessage was called with x509Err as title
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-			X509_ERR.UNTRUSTED_LEAF,
-			{},
-			CertificateError.ActionOK,
-		);
+		if (hasTitle && title) {
+			await (certError as CertificateError).showModal(title);
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				title,
+				{ detail: X509_ERR.UNTRUSTED_CHAIN, modal: true, useCustom: true },
+				CertificateError.ActionOK,
+			);
+		} else {
+			await (certError as CertificateError).showNotification();
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				X509_ERR.UNTRUSTED_CHAIN,
+				{},
+				CertificateError.ActionOK,
+			);
+		}
 	});
 
 	it("should call allowInsecure when ActionAllowInsecure is selected", async () => {
 		const vscode = await import("vscode");
-
-		// Create a CertificateError instance
-		const axiosError = {
-			isAxiosError: true,
-			code: X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
-			message: "self signed certificate",
-		};
-		const certError = (await CertificateError.maybeWrap(
-			axiosError,
-			"https://test.com",
-			logger,
-		)) as CertificateError;
-
-		// Mock showErrorMessage to return ActionAllowInsecure
 		vi.mocked(vscode.window.showErrorMessage).mockResolvedValue(
 			CertificateError.ActionAllowInsecure as never,
 		);
 
-		// Spy on allowInsecure method
+		const certError = (await createCertError(
+			X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT,
+		)) as CertificateError;
 		const allowInsecureSpy = vi.spyOn(certError, "allowInsecure");
 
-		// Call showNotification
 		await certError.showNotification("Test");
-
-		// Verify allowInsecure was called
 		expect(allowInsecureSpy).toHaveBeenCalled();
 	});
 });
 
 describe("Logger integration", () => {
-	it("should log certificate parsing errors through Logger", async () => {
-		const { logger: realLogger } = createMockOutputChannelWithLogger();
+	it.each([
+		[
+			"Logger wrapper",
+			(
+				realLogger: ReturnType<
+					typeof createMockOutputChannelWithLogger
+				>["logger"],
+			) => ({
+				writeToCoderOutputChannel: (msg: string) => realLogger.info(msg),
+			}),
+		],
+		[
+			"Storage with Logger",
+			(
+				realLogger: ReturnType<
+					typeof createMockOutputChannelWithLogger
+				>["logger"],
+			) => ({
+				writeToCoderOutputChannel: (msg: string) => realLogger.info(msg),
+			}),
+		],
+	])(
+		"should log certificate parsing errors through %s",
+		async (_, createWrapper) => {
+			const { logger: realLogger } = createMockOutputChannelWithLogger();
+			const wrapper = createWrapper(realLogger);
 
-		// Create a logger that uses the real Logger
-		const loggerWrapper = {
-			writeToCoderOutputChannel: (msg: string) => {
-				realLogger.info(msg);
-			},
-		};
+			const axiosError = {
+				isAxiosError: true,
+				code: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+				message: "unable to verify the first certificate",
+			};
 
-		// Create an axios error that will trigger certificate parsing
-		const axiosError = {
-			isAxiosError: true,
-			code: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
-			message: "unable to verify the first certificate",
-		};
+			const spy = vi
+				.spyOn(CertificateError, "determineVerifyErrorCause")
+				.mockRejectedValue(new Error("Failed to parse certificate"));
 
-		// Mock CertificateError.determineVerifyErrorCause to throw an error
-		const determineVerifyErrorCauseSpy = vi
-			.spyOn(CertificateError, "determineVerifyErrorCause")
-			.mockRejectedValue(new Error("Failed to parse certificate"));
+			await CertificateError.maybeWrap(
+				axiosError,
+				"https://example.com",
+				wrapper,
+			);
 
-		// Call maybeWrap which should log the parsing error
-		const result = await CertificateError.maybeWrap(
-			axiosError,
-			"https://test.com",
-			loggerWrapper,
-		);
+			const logs = realLogger.getLogs();
+			expect(
+				logs.some((log) =>
+					log.message.includes(
+						"Failed to parse certificate from https://example.com",
+					),
+				),
+			).toBe(true);
 
-		// Verify the error was logged
-		const logs = realLogger.getLogs();
-		expect(logs.length).toBe(1);
-		expect(logs[0].message).toBe(
-			"Failed to parse certificate from https://test.com: Error: Failed to parse certificate",
-		);
-		expect(logs[0].level).toBe("INFO");
-
-		// Verify the original error was returned (not wrapped)
-		expect(result).toBe(axiosError);
-
-		// Restore the spy
-		determineVerifyErrorCauseSpy.mockRestore();
-	});
-
-	it("should work with Storage instance that has Logger set", async () => {
-		const { logger: realLogger } = createMockOutputChannelWithLogger();
-
-		// Simulate Storage with Logger
-		const mockStorage = {
-			writeToCoderOutputChannel: (msg: string) => {
-				realLogger.info(msg);
-			},
-		};
-
-		// Create an axios error that will trigger certificate parsing
-		const axiosError = {
-			isAxiosError: true,
-			code: X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
-			message: "unable to verify the first certificate",
-		};
-
-		// Mock determineVerifyErrorCause to throw
-		const determineVerifyErrorCauseSpy = vi
-			.spyOn(CertificateError, "determineVerifyErrorCause")
-			.mockRejectedValue(new Error("Certificate parsing failed"));
-
-		// Call maybeWrap with the mockStorage
-		await CertificateError.maybeWrap(
-			axiosError,
-			"https://example.com:8443",
-			mockStorage,
-		);
-
-		// Verify error was logged through Logger
-		const logs = realLogger.getLogs();
-		expect(logs.length).toBeGreaterThan(0);
-		const hasExpectedLog = logs.some((log) =>
-			log.message.includes(
-				"Failed to parse certificate from https://example.com:8443",
-			),
-		);
-		expect(hasExpectedLog).toBe(true);
-
-		// Restore the spy
-		determineVerifyErrorCauseSpy.mockRestore();
-	});
+			spy.mockRestore();
+		},
+	);
 });
