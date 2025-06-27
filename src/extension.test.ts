@@ -14,6 +14,7 @@ import {
 	createMockAxiosInstance,
 	createMockConfiguration,
 	createMockTreeView,
+	createMockUri,
 } from "./test-helpers";
 
 // Setup all mocks
@@ -116,12 +117,33 @@ beforeEach(() => {
 	vi.clearAllMocks();
 });
 
+// Test helper functions
+const setupVSCodeMocks = async () => {
+	const vscode = await import("vscode");
+	return vscode;
+};
+
+const createAuthTestContext = () => {
+	const mockStorage = createMockStorage({ writeToCoderOutputChannel: vi.fn() });
+	const mockMyWorkspacesProvider = createMockWorkspaceProvider({
+		fetchAndRefresh: vi.fn(),
+	});
+	const mockAllWorkspacesProvider = createMockWorkspaceProvider({
+		fetchAndRefresh: vi.fn(),
+	});
+	return {
+		mockStorage,
+		mockMyWorkspacesProvider,
+		mockAllWorkspacesProvider,
+	};
+};
+
 describe("extension", () => {
 	describe("setupRemoteSSHExtension", () => {
 		it.each([
 			["ms-vscode-remote.remote-ssh", "ms-vscode-remote.remote-ssh", false],
 		])("should handle %s", async (_, extensionId, shouldShowError) => {
-			const vscode = await import("vscode");
+			const vscode = await setupVSCodeMocks();
 			const mockExtension = extensionId
 				? createMockRemoteSSHExtension({ extensionPath: "/path/to/extension" })
 				: undefined;
@@ -150,7 +172,7 @@ describe("extension", () => {
 
 	describe("initializeInfrastructure", () => {
 		it("should create storage and logger with verbose setting from config", async () => {
-			const vscode = await import("vscode");
+			const vscode = await setupVSCodeMocks();
 			const Storage = (await import("./storage")).Storage;
 			const Logger = (await import("./logger")).Logger;
 
@@ -165,17 +187,13 @@ describe("extension", () => {
 			});
 
 			// Track Storage and Logger creation
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let storageInstance: any;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let loggerInstance: any;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			vi.mocked(Storage).mockImplementation((...args: any[]) => {
+			let storageInstance: unknown;
+			let loggerInstance: unknown;
+			vi.mocked(Storage).mockImplementation((...args: unknown[]) => {
 				storageInstance = { args, setLogger: vi.fn() };
 				return storageInstance as never;
 			});
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			vi.mocked(Logger).mockImplementation((...args: any[]) => {
+			vi.mocked(Logger).mockImplementation((...args: unknown[]) => {
 				loggerInstance = { args };
 				return loggerInstance as never;
 			});
@@ -316,17 +334,15 @@ describe("extension", () => {
 	});
 
 	describe("registerUriHandler", () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		let registeredHandler: any;
+		let registeredHandler: vscodeActual.UriHandler;
 
 		const setupUriHandler = async () => {
 			const { needToken } = await import("./api");
 			const { toSafeHost } = await import("./util");
-			const vscode = await import("vscode");
+			const vscode = await setupVSCodeMocks();
 
 			vi.mocked(vscode.window.registerUriHandler).mockImplementation(
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				(handler: any) => {
+				(handler: vscodeActual.UriHandler) => {
 					registeredHandler = handler;
 					return { dispose: vi.fn() };
 				},
@@ -335,7 +351,8 @@ describe("extension", () => {
 			return { needToken, toSafeHost };
 		};
 
-		it.each([
+		// Test data for URI handler tests
+		const uriHandlerTestCases = [
 			{
 				name: "/open path with all parameters",
 				path: "/open",
@@ -370,7 +387,9 @@ describe("extension", () => {
 					"/workspace",
 				],
 			},
-		])(
+		];
+
+		it.each(uriHandlerTestCases)(
 			"should handle $name",
 			async ({ path, query, mockUrl, oldUrl, hasToken, expectedCommand }) => {
 				const vscode = await import("vscode");
@@ -394,7 +413,7 @@ describe("extension", () => {
 					mockRestClient as never,
 					mockStorage as never,
 				);
-				await registeredHandler.handleUri({ path, query });
+				await registeredHandler.handleUri(createMockUri(`${path}?${query}`));
 
 				expect(mockCommands.maybeAskUrl).toHaveBeenCalledWith(mockUrl, oldUrl);
 				expect(mockRestClient.setHost).toHaveBeenCalledWith(mockUrl);
@@ -429,7 +448,7 @@ describe("extension", () => {
 				mocks.storage as never,
 			);
 			await expect(
-				registeredHandler.handleUri({ path: "/unknown", query: "" }),
+				registeredHandler.handleUri(createMockUri("/unknown?")),
 			).rejects.toThrow("Unknown path /unknown");
 		});
 
@@ -458,7 +477,7 @@ describe("extension", () => {
 				mocks.storage as never,
 			);
 			await expect(
-				registeredHandler.handleUri({ path, query }),
+				registeredHandler.handleUri(createMockUri(`${path}?${query}`)),
 			).rejects.toThrow(error);
 		});
 	});
@@ -571,21 +590,6 @@ describe("extension", () => {
 			vi.clearAllMocks();
 		});
 
-		const createAuthTestSetup = () => {
-			const mockStorage = { writeToCoderOutputChannel: vi.fn() };
-			const mockMyWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-			const mockAllWorkspacesProvider = createMockWorkspaceProvider({
-				fetchAndRefresh: vi.fn(),
-			});
-			return {
-				mockStorage,
-				mockMyWorkspacesProvider,
-				mockAllWorkspacesProvider,
-			};
-		};
-
 		it.each([
 			[
 				"valid member authentication",
@@ -600,7 +604,7 @@ describe("extension", () => {
 				mockStorage,
 				mockMyWorkspacesProvider,
 				mockAllWorkspacesProvider,
-			} = createAuthTestSetup();
+			} = createAuthTestContext();
 
 			const mockRestClient = {
 				getAxiosInstance: vi

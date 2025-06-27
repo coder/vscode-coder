@@ -1214,19 +1214,20 @@ export function createMockProxyAgent(
  * Create a mock vscode.Uri
  */
 export function createMockUri(
-	path: string,
+	pathWithQuery: string,
 	scheme: string = "file",
 ): vscode.Uri {
+	const [path, query = ""] = pathWithQuery.split("?");
 	return {
 		scheme,
 		path,
 		fsPath: path,
 		authority: "",
-		query: "",
+		query,
 		fragment: "",
 		with: vi.fn(),
-		toString: vi.fn(() => `${scheme}://${path}`),
-		toJSON: vi.fn(() => ({ scheme, path })),
+		toString: vi.fn(() => `${scheme}://${path}${query ? `?${query}` : ""}`),
+		toJSON: vi.fn(() => ({ scheme, path, query })),
 	} as unknown as vscode.Uri;
 }
 
