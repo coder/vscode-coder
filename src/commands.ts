@@ -631,6 +631,8 @@ export class Commands {
 		const workspaceAgent = args[2] as string;
 		const devContainerName = args[3] as string;
 		const devContainerFolder = args[4] as string;
+		const localWorkspaceFolder = args[5] as string | undefined;
+		const localConfigFile = args[6] as string | undefined;
 
 		await openDevContainer(
 			baseUrl,
@@ -639,6 +641,8 @@ export class Commands {
 			workspaceAgent,
 			devContainerName,
 			devContainerFolder,
+			localWorkspaceFolder,
+			localConfigFile,
 		);
 	}
 
@@ -751,6 +755,8 @@ async function openDevContainer(
 	workspaceAgent: string,
 	devContainerName: string,
 	devContainerFolder: string,
+	localWorkspaceFolder: string | undefined,
+	localConfigFile: string | undefined,
 ) {
 	const remoteAuthority = toRemoteAuthority(
 		baseUrl,
@@ -759,11 +765,28 @@ async function openDevContainer(
 		workspaceAgent,
 	);
 
+	if (!localWorkspaceFolder) {
+		localConfigFile = undefined;
+	}
+	let configFile;
+	if (localConfigFile) {
+		configFile = {
+			path: localConfigFile,
+			scheme: "vscode-fileHost",
+		};
+	}
 	const devContainer = Buffer.from(
-		JSON.stringify({ containerName: devContainerName }),
+		JSON.stringify({
+			containerName: devContainerName,
+			hostPath: localWorkspaceFolder,
+			configFile,
+			localDocker: false,
+		}),
 		"utf-8",
 	).toString("hex");
-	const devContainerAuthority = `attached-container+${devContainer}@${remoteAuthority}`;
+
+	const type = localWorkspaceFolder ? "dev-container" : "attached-container";
+	const devContainerAuthority = `${type}+${devContainer}@${remoteAuthority}`;
 
 	let newWindow = true;
 	if (!vscode.workspace.workspaceFolders?.length) {

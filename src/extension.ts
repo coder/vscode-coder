@@ -165,6 +165,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const workspaceAgent = params.get("agent");
 				const devContainerName = params.get("devContainerName");
 				const devContainerFolder = params.get("devContainerFolder");
+				const localWorkspaceFolder = params.get("localWorkspaceFolder");
+				const localConfigFile = params.get("localConfigFile");
 
 				if (!workspaceOwner) {
 					throw new Error(
@@ -187,6 +189,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				if (!devContainerFolder) {
 					throw new Error(
 						"dev container folder must be specified as a query parameter",
+					);
+				}
+
+				if (localConfigFile && !localWorkspaceFolder) {
+					throw new Error(
+						"local workspace folder must be specified as a query parameter if local config file is provided",
 					);
 				}
 
@@ -228,6 +236,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					workspaceAgent,
 					devContainerName,
 					devContainerFolder,
+					localWorkspaceFolder,
+					localConfigFile,
 				);
 			} else {
 				throw new Error(`Unknown path ${uri.path}`);
