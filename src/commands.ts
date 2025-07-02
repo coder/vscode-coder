@@ -620,17 +620,19 @@ export class Commands {
 	 *
 	 * Throw if not logged into a deployment.
 	 */
-	public async openDevContainer(...args: string[]): Promise<void> {
+	public async openDevContainer(
+		workspaceOwner: string,
+		workspaceName: string,
+		workspaceAgent: string,
+		devContainerName: string,
+		devContainerFolder: string,
+		localWorkspaceFolder: string = "",
+		localConfigFile: string = "",
+	): Promise<void> {
 		const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
 		}
-
-		const workspaceOwner = args[0] as string;
-		const workspaceName = args[1] as string;
-		const workspaceAgent = args[2] as string;
-		const devContainerName = args[3] as string;
-		const devContainerFolder = args[4] as string;
 
 		await openDevContainer(
 			baseUrl,
@@ -639,6 +641,8 @@ export class Commands {
 			workspaceAgent,
 			devContainerName,
 			devContainerFolder,
+			localWorkspaceFolder,
+			localConfigFile,
 		);
 	}
 
@@ -751,6 +755,8 @@ async function openDevContainer(
 	workspaceAgent: string,
 	devContainerName: string,
 	devContainerFolder: string,
+	localWorkspaceFolder: string = "",
+	localConfigFile: string = "",
 ) {
 	const remoteAuthority = toRemoteAuthority(
 		baseUrl,
@@ -759,11 +765,26 @@ async function openDevContainer(
 		workspaceAgent,
 	);
 
+	const hostPath = localWorkspaceFolder ? localWorkspaceFolder : undefined;
+	const configFile =
+		hostPath && localConfigFile
+			? {
+					path: localConfigFile,
+					scheme: "vscode-fileHost",
+				}
+			: undefined;
 	const devContainer = Buffer.from(
-		JSON.stringify({ containerName: devContainerName }),
+		JSON.stringify({
+			containerName: devContainerName,
+			hostPath,
+			configFile,
+			localDocker: false,
+		}),
 		"utf-8",
 	).toString("hex");
-	const devContainerAuthority = `attached-container+${devContainer}@${remoteAuthority}`;
+
+	const type = localWorkspaceFolder ? "dev-container" : "attached-container";
+	const devContainerAuthority = `${type}+${devContainer}@${remoteAuthority}`;
 
 	let newWindow = true;
 	if (!vscode.workspace.workspaceFolders?.length) {
