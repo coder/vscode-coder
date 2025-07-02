@@ -620,19 +620,19 @@ export class Commands {
 	 *
 	 * Throw if not logged into a deployment.
 	 */
-	public async openDevContainer(...args: string[]): Promise<void> {
+	public async openDevContainer(
+		workspaceOwner: string,
+		workspaceName: string,
+		workspaceAgent: string,
+		devContainerName: string,
+		devContainerFolder: string,
+		localWorkspaceFolder: string = "",
+		localConfigFile: string = "",
+	): Promise<void> {
 		const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
 		}
-
-		const workspaceOwner = args[0] as string;
-		const workspaceName = args[1] as string;
-		const workspaceAgent = args[2] as string;
-		const devContainerName = args[3] as string;
-		const devContainerFolder = args[4] as string;
-		const localWorkspaceFolder = args[5] as string | undefined;
-		const localConfigFile = args[6] as string | undefined;
 
 		await openDevContainer(
 			baseUrl,
@@ -755,8 +755,8 @@ async function openDevContainer(
 	workspaceAgent: string,
 	devContainerName: string,
 	devContainerFolder: string,
-	localWorkspaceFolder: string | undefined,
-	localConfigFile: string | undefined,
+	localWorkspaceFolder: string = "",
+	localConfigFile: string = "",
 ) {
 	const remoteAuthority = toRemoteAuthority(
 		baseUrl,
@@ -765,20 +765,18 @@ async function openDevContainer(
 		workspaceAgent,
 	);
 
-	if (!localWorkspaceFolder) {
-		localConfigFile = undefined;
-	}
-	let configFile;
-	if (localConfigFile) {
-		configFile = {
-			path: localConfigFile,
-			scheme: "vscode-fileHost",
-		};
-	}
+	const hostPath = localWorkspaceFolder ? localWorkspaceFolder : undefined;
+	const configFile =
+		hostPath && localConfigFile
+			? {
+					path: localConfigFile,
+					scheme: "vscode-fileHost",
+				}
+			: undefined;
 	const devContainer = Buffer.from(
 		JSON.stringify({
 			containerName: devContainerName,
-			hostPath: localWorkspaceFolder,
+			hostPath,
 			configFile,
 			localDocker: false,
 		}),
