@@ -10,6 +10,7 @@ import * as vscode from "vscode";
 import { makeCoderSdk, needToken } from "./api";
 import { extractAgents } from "./api-helper";
 import { CertificateError } from "./error";
+import { logger } from "./logger";
 import { Storage } from "./storage";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { OpenableTreeItem } from "./workspacesProvider";
@@ -245,9 +246,7 @@ export class Commands {
 			} catch (err) {
 				const message = getErrorMessage(err, "no response from the server");
 				if (isAutologin) {
-					this.storage.writeToCoderOutputChannel(
-						`Failed to log in to Coder server: ${message}`,
-					);
+					logger.info(`Failed to log in to Coder server: ${message}`);
 				} else {
 					this.vscodeProposed.window.showErrorMessage(
 						"Failed to log in to Coder server",

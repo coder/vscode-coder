@@ -1,86 +1,94 @@
 import * as os from "os";
-import { it, expect, describe, beforeEach, afterEach, vi } from "vitest";
+import {
+	it,
+	expect,
+	describe,
+	beforeEach,
+	afterEach,
+	vi,
+	beforeAll,
+} from "vitest";
 import { WorkspaceConfiguration } from "vscode";
 import { getHeaderCommand, getHeaders } from "./headers";
 
-const logger = {
-	writeToCoderOutputChannel() {
-		// no-op
-	},
-};
+// Mock vscode module before importing anything that uses logger
+beforeAll(() => {
+	vi.mock("vscode", () => {
+		return {
+			workspace: {
+				getConfiguration: vi.fn().mockReturnValue({
+					get: vi.fn().mockReturnValue(false),
+				}),
+				onDidChangeConfiguration: vi.fn().mockReturnValue({
+					dispose: vi.fn(),
+				}),
+			},
+		};
+	});
+});
 
 it("should return no headers", async () => {
-	await expect(getHeaders(undefined, undefined, logger)).resolves.toStrictEqual(
-		{},
-	);
-	await expect(
-		getHeaders("localhost", undefined, logger),
-	).resolves.toStrictEqual({});
-	await expect(getHeaders(undefined, "command", logger)).resolves.toStrictEqual(
-		{},
-	);
-	await expect(getHeaders("localhost", "", logger)).resolves.toStrictEqual({});
-	await expect(getHeaders("", "command", logger)).resolves.toStrictEqual({});
-	await expect(getHeaders("localhost", "  ", logger)).resolves.toStrictEqual(
-		{},
-	);
-	await expect(getHeaders("  ", "command", logger)).resolves.toStrictEqual({});
-	await expect(
-		getHeaders("localhost", "printf ''", logger),
-	).resolves.toStrictEqual({});
+	await expect(getHeaders(undefined, undefined)).resolves.toStrictEqual({});
+	await expect(getHeaders("localhost", undefined)).resolves.toStrictEqual({});
+	await expect(getHeaders(undefined, "command")).resolves.toStrictEqual({});
+	await expect(getHeaders("localhost", "")).resolves.toStrictEqual({});
+	await expect(getHeaders("", "command")).resolves.toStrictEqual({});
+	await expect(getHeaders("localhost", "  ")).resolves.toStrictEqual({});
+	await expect(getHeaders("  ", "command")).resolves.toStrictEqual({});
+	await expect(getHeaders("localhost", "printf ''")).resolves.toStrictEqual({});
 });
 
 it("should return headers", async () => {
 	await expect(
-		getHeaders("localhost", "printf 'foo=bar\\nbaz=qux'", logger),
+		getHeaders("localhost", "printf 'foo=bar\\nbaz=qux'"),
 	).resolves.toStrictEqual({
 		foo: "bar",
 		baz: "qux",
 	});
 	await expect(
-		getHeaders("localhost", "printf 'foo=bar\\r\\nbaz=qux'", logger),
+		getHeaders("localhost", "printf 'foo=bar\\r\\nbaz=qux'"),
 	).resolves.toStrictEqual({
 		foo: "bar",
 		baz: "qux",
 	});
 	await expect(
-		getHeaders("localhost", "printf 'foo=bar\\r\\n'", logger),
+		getHeaders("localhost", "printf 'foo=bar\\r\\n'"),
 	).resolves.toStrictEqual({ foo: "bar" });
 	await expect(
-		getHeaders("localhost", "printf 'foo=bar'", logger),
+		getHeaders("localhost", "printf 'foo=bar'"),
 	).resolves.toStrictEqual({ foo: "bar" });
 	await expect(
-		getHeaders("localhost", "printf 'foo=bar='", logger),
+		getHeaders("localhost", "printf 'foo=bar='"),
 	).resolves.toStrictEqual({ foo: "bar=" });
 	await expect(
-		getHeaders("localhost", "printf 'foo=bar=baz'", logger),
+		getHeaders("localhost", "printf 'foo=bar=baz'"),
 	).resolves.toStrictEqual({ foo: "bar=baz" });
-	await expect(
-		getHeaders("localhost", "printf 'foo='", logger),
-	).resolves.toStrictEqual({ foo: "" });
+	await expect(getHeaders("localhost", "printf 'foo='")).resolves.toStrictEqual(
+		{ foo: "" },
+	);
 });
 
 it("should error on malformed or empty lines", async () => {
 	await expect(
-		getHeaders("localhost", "printf 'foo=bar\\r\\n\\r\\n'", logger),
+		getHeaders("localhost", "printf 'foo=bar\\r\\n\\r\\n'"),
 	).rejects.toMatch(/Malformed/);
 	await expect(
-		getHeaders("localhost", "printf '\\r\\nfoo=bar'", logger),
+		getHeaders("localhost", "printf '\\r\\nfoo=bar'"),
 	).rejects.toMatch(/Malformed/);
-	await expect(
-		getHeaders("localhost", "printf '=foo'", logger),
-	).rejects.toMatch(/Malformed/);
-	await expect(getHeaders("localhost", "printf 'foo'", logger)).rejects.toMatch(
+	await expect(getHeaders("localhost", "printf '=foo'")).rejects.toMatch(
+		/Malformed/,
+	);
+	await expect(getHeaders("localhost", "printf 'foo'")).rejects.toMatch(
+		/Malformed/,
+	);
+	await expect(getHeaders("localhost", "printf '  =foo'")).rejects.toMatch(
+		/Malformed/,
+	);
+	await expect(getHeaders("localhost", "printf 'foo  =bar'")).rejects.toMatch(
 		/Malformed/,
 	);
 	await expect(
-		getHeaders("localhost", "printf '  =foo'", logger),
-	).rejects.toMatch(/Malformed/);
-	await expect(
-		getHeaders("localhost", "printf 'foo  =bar'", logger),
-	).rejects.toMatch(/Malformed/);
-	await expect(
-		getHeaders("localhost", "printf 'foo  foo=bar'", logger),
+		getHeaders("localhost", "printf 'foo  foo=bar'"),
 	).rejects.toMatch(/Malformed/);
 });
 
@@ -92,13 +100,12 @@ it("should have access to environment variables", async () => {
 			os.platform() === "win32"
 				? "printf url=%CODER_URL%"
 				: "printf url=$CODER_URL",
-			logger,
 		),
 	).resolves.toStrictEqual({ url: coderUrl });
 });
 
 it("should error on non-zero exit", async () => {
-	await expect(getHeaders("localhost", "exit 10", logger)).rejects.toMatch(
+	await expect(getHeaders("localhost", "exit 10")).rejects.toMatch(
 		/exited unexpectedly with code 10/,
 	);
 });

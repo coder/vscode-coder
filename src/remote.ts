@@ -22,6 +22,7 @@ import { Commands } from "./commands";
 import { featureSetForVersion, FeatureSet } from "./featureSet";
 import { getHeaderArgs } from "./headers";
 import { Inbox } from "./inbox";
+import { logger } from "./logger";
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 import { Storage } from "./storage";
@@ -117,9 +118,7 @@ export class Remote {
 							case "starting":
 							case "stopping":
 								writeEmitter = initWriteEmitterAndTerminal();
-								this.storage.writeToCoderOutputChannel(
-									`Waiting for ${workspaceName}...`,
-								);
+								logger.debug(`Waiting for ${workspaceName}...`);
 								workspace = await waitForBuild(
 									restClient,
 									writeEmitter,
@@ -131,9 +130,7 @@ export class Remote {
 									return undefined;
 								}
 								writeEmitter = initWriteEmitterAndTerminal();
-								this.storage.writeToCoderOutputChannel(
-									`Starting ${workspaceName}...`,
-								);
+								logger.info(`Starting ${workspaceName}...`);
 								workspace = await startWorkspaceIfStoppedOrFailed(
 									restClient,
 									globalConfigDir,
@@ -150,9 +147,7 @@ export class Remote {
 										return undefined;
 									}
 									writeEmitter = initWriteEmitterAndTerminal();
-									this.storage.writeToCoderOutputChannel(
-										`Starting ${workspaceName}...`,
-									);
+									logger.info(`Starting ${workspaceName}...`);
 									workspace = await startWorkspaceIfStoppedOrFailed(
 										restClient,
 										globalConfigDir,
@@ -175,7 +170,7 @@ export class Remote {
 								);
 							}
 						}
-						this.storage.writeToCoderOutputChannel(
+						logger.debug(
 							`${workspaceName} status is now ${workspace.latest_build.status}`,
 						);
 					}
@@ -243,12 +238,8 @@ export class Remote {
 			return;
 		}
 
-		this.storage.writeToCoderOutputChannel(
-			`Using deployment URL: ${baseUrlRaw}`,
-		);
-		this.storage.writeToCoderOutputChannel(
-			`Using deployment label: ${parts.label || "n/a"}`,
-		);
+		logger.info(`Using deployment URL: ${baseUrlRaw}`);
+		logger.debug(`Using deployment label: ${parts.label || "n/a"}`);
 
 		// We could use the plugin client, but it is possible for the user to log
 		// out or log into a different deployment while still connected, which would
@@ -314,14 +305,12 @@ export class Remote {
 		// Next is to find the workspace from the URI scheme provided.
 		let workspace: Workspace;
 		try {
-			this.storage.writeToCoderOutputChannel(
-				`Looking for workspace ${workspaceName}...`,
-			);
+			logger.debug(`Looking for workspace ${workspaceName}...`);
 			workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(
 				parts.username,
 				parts.workspace,
 			);
-			this.storage.writeToCoderOutputChannel(
+			logger.info(
 				`Found workspace ${workspaceName} with status ${workspace.latest_build.status}`,
 			);
 			this.commands.workspace = workspace;
@@ -404,9 +393,7 @@ export class Remote {
 		this.commands.workspace = workspace;
 
 		// Pick an agent.
-		this.storage.writeToCoderOutputChannel(
-			`Finding agent for ${workspaceName}...`,
-		);
+		logger.debug(`Finding agent for ${workspaceName}...`);
 		const gotAgent = await this.commands.maybeAskAgent(workspace, parts.agent);
 		if (!gotAgent) {
 			// User declined to pick an agent.
@@ -414,12 +401,10 @@ export class Remote {
 			return;
 		}
 		let agent = gotAgent; // Reassign so it cannot be undefined in callbacks.
-		this.storage.writeToCoderOutputChannel(
-			`Found agent ${agent.name} with status ${agent.status}`,
-		);
+		logger.info(`Found agent ${agent.name} with status ${agent.status}`);
 
 		// Do some janky setting manipulation.
-		this.storage.writeToCoderOutputChannel("Modifying settings...");
+		logger.debug("Modifying settings...");
 		const remotePlatforms = this.vscodeProposed.workspace
 			.getConfiguration()
 			.get<Record<string, string>>("remote.SSH.remotePlatform", {});
@@ -491,9 +476,7 @@ export class Remote {
 				// write here is not necessarily catastrophic since the user will be
 				// asked for the platform and the default timeout might be sufficient.
 				mungedPlatforms = mungedConnTimeout = false;
-				this.storage.writeToCoderOutputChannel(
-					`Failed to configure settings: ${ex}`,
-				);
+				logger.info(`Failed to configure settings: ${ex}`);
 			}
 		}
 
@@ -521,9 +504,7 @@ export class Remote {
 
 		// Wait for the agent to connect.
 		if (agent.status === "connecting") {
-			this.storage.writeToCoderOutputChannel(
-				`Waiting for ${workspaceName}/${agent.name}...`,
-			);
+			logger.debug(`Waiting for ${workspaceName}/${agent.name}...`);
 			await vscode.window.withProgress(
 				{
 					title: "Waiting for the agent to connect...",
@@ -552,9 +533,7 @@ export class Remote {
 					});
 				},
 			);
-			this.storage.writeToCoderOutputChannel(
-				`Agent ${agent.name} status is now ${agent.status}`,
-			);
+			logger.info(`Agent ${agent.name} status is now ${agent.status}`);
 		}
 
 		// Make sure the agent is connected.
@@ -584,7 +563,7 @@ export class Remote {
 		// If we didn't write to the SSH config file, connecting would fail with
 		// "Host not found".
 		try {
-			this.storage.writeToCoderOutputChannel("Updating SSH config...");
+			logger.debug("Updating SSH config...");
 			await this.updateSSHConfig(
 				workspaceRestClient,
 				parts.label,
@@ -594,9 +573,7 @@ export class Remote {
 				featureSet,
 			);
 		} catch (error) {
-			this.storage.writeToCoderOutputChannel(
-				`Failed to configure SSH: ${error}`,
-			);
+			logger.info(`Failed to configure SSH: ${error}`);
 			throw error;
 		}
 
@@ -633,7 +610,7 @@ export class Remote {
 			}),
 		);
 
-		this.storage.writeToCoderOutputChannel("Remote setup complete");
+		logger.info("Remote setup complete");
 
 		// Returning the URL and token allows the plugin to authenticate its own
 		// client, for example to display the list of workspaces belonging to this
@@ -674,9 +651,7 @@ export class Remote {
 			return "";
 		}
 		await fs.mkdir(logDir, { recursive: true });
-		this.storage.writeToCoderOutputChannel(
-			`SSH proxy diagnostics are being written to ${logDir}`,
-		);
+		logger.info(`SSH proxy diagnostics are being written to ${logDir}`);
 		return ` --log-dir ${escapeCommandArg(logDir)}`;
 	}
 

@@ -8,6 +8,7 @@ import * as vscode from "vscode";
 import { WebSocket } from "ws";
 import { coderSessionTokenHeader } from "./api";
 import { errToStr } from "./api-helper";
+import { logger } from "./logger";
 import { type Storage } from "./storage";
 
 // These are the template IDs of our notifications.
@@ -63,7 +64,7 @@ export class Inbox implements vscode.Disposable {
 		});
 
 		this.#socket.on("open", () => {
-			this.#storage.writeToCoderOutputChannel("Listening to Coder Inbox");
+			logger.debug("Listening to Coder Inbox");
 		});
 
 		this.#socket.on("error", (error) => {
@@ -86,9 +87,7 @@ export class Inbox implements vscode.Disposable {
 
 	dispose() {
 		if (!this.#disposed) {
-			this.#storage.writeToCoderOutputChannel(
-				"No longer listening to Coder Inbox",
-			);
+			logger.debug("No longer listening to Coder Inbox");
 			this.#socket.close();
 			this.#disposed = true;
 		}
@@ -99,6 +98,6 @@ export class Inbox implements vscode.Disposable {
 			error,
 			"Got empty error while monitoring Coder Inbox",
 		);
-		this.#storage.writeToCoderOutputChannel(message);
+		logger.debug(message);
 	}
 }

@@ -15,6 +15,7 @@ import {
 	extractAgents,
 	errToStr,
 } from "./api-helper";
+import { logger } from "./logger";
 import { Storage } from "./storage";
 
 export enum WorkspaceQuery {
@@ -96,7 +97,7 @@ export class WorkspaceProvider
 	 */
 	private async fetch(): Promise<WorkspaceTreeItem[]> {
 		if (vscode.env.logLevel <= vscode.LogLevel.Debug) {
-			this.storage.writeToCoderOutputChannel(
+			logger.debug(
 				`Fetching workspaces: ${this.getWorkspacesQuery || "no filter"}...`,
 			);
 		}

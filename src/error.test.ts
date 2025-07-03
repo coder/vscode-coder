@@ -19,15 +19,18 @@ const isElectron =
 // TODO: Remove the vscode mock once we revert the testing framework.
 beforeAll(() => {
 	vi.mock("vscode", () => {
-		return {};
+		return {
+			workspace: {
+				getConfiguration: vi.fn().mockReturnValue({
+					get: vi.fn().mockReturnValue(false),
+				}),
+				onDidChangeConfiguration: vi.fn().mockReturnValue({
+					dispose: vi.fn(),
+				}),
+			},
+		};
 	});
 });
-
-const logger = {
-	writeToCoderOutputChannel(message: string) {
-		throw new Error(message);
-	},
-};
 
 const disposers: (() => void)[] = [];
 afterAll(() => {
@@ -89,7 +92,7 @@ it("detects partial chains", async () => {
 	try {
 		await request;
 	} catch (error) {
-		const wrapped = await CertificateError.maybeWrap(error, address, logger);
+		const wrapped = await CertificateError.maybeWrap(error, address);
 		expect(wrapped instanceof CertificateError).toBeTruthy();
 		expect((wrapped as CertificateError).x509Err).toBe(X509_ERR.PARTIAL_CHAIN);
 	}
@@ -126,7 +129,7 @@ it("detects self-signed certificates without signing capability", async () => {
 		try {
 			await request;
 		} catch (error) {
-			const wrapped = await CertificateError.maybeWrap(error, address, logger);
+			const wrapped = await CertificateError.maybeWrap(error, address);
 			expect(wrapped instanceof CertificateError).toBeTruthy();
 			expect((wrapped as CertificateError).x509Err).toBe(X509_ERR.NON_SIGNING);
 		}
@@ -157,7 +160,7 @@ it("detects self-signed certificates", async () => {
 	try {
 		await request;
 	} catch (error) {
-		const wrapped = await CertificateError.maybeWrap(error, address, logger);
+		const wrapped = await CertificateError.maybeWrap(error, address);
 		expect(wrapped instanceof CertificateError).toBeTruthy();
 		expect((wrapped as CertificateError).x509Err).toBe(X509_ERR.UNTRUSTED_LEAF);
 	}
@@ -200,7 +203,7 @@ it("detects an untrusted chain", async () => {
 	try {
 		await request;
 	} catch (error) {
-		const wrapped = await CertificateError.maybeWrap(error, address, logger);
+		const wrapped = await CertificateError.maybeWrap(error, address);
 		expect(wrapped instanceof CertificateError).toBeTruthy();
 		expect((wrapped as CertificateError).x509Err).toBe(
 			X509_ERR.UNTRUSTED_CHAIN,
@@ -247,7 +250,7 @@ it("falls back with different error", async () => {
 	try {
 		await request;
 	} catch (error) {
-		const wrapped = await CertificateError.maybeWrap(error, "1", logger);
+		const wrapped = await CertificateError.maybeWrap(error, "1");
 		expect(wrapped instanceof CertificateError).toBeFalsy();
 		expect((wrapped as Error).message).toMatch(/failed with status code 500/);
 	}
