@@ -20,7 +20,7 @@ The vscode-coder extension currently handles logging through the Storage class, 
    - No `any` types in the logger module or modified files
    - No `@ts-ignore` or `eslint-disable` comments
    - All types explicitly defined or properly inferred
-4. **Testable**: 
+4. **Testable**:
    - Unit tests use `ArrayAdapter` for fast, isolated testing
    - ArrayAdapter provides immutable snapshots via `getSnapshot()` to prevent test interference
    - Integration tests use `OutputChannelAdapter` to verify VS Code integration
@@ -53,6 +53,7 @@ The vscode-coder extension currently handles logging through the Storage class, 
 ## Scope & Constraints
 
 ### In Scope
+
 - Extract logging functionality from the Storage class into a dedicated logging adapter
 - Create a logging adapter/service with support for debug and info levels
 - Convert all existing `writeToCoderOutputChannel` and `output.appendLine` calls to use the adapter
@@ -69,6 +70,7 @@ The vscode-coder extension currently handles logging through the Storage class, 
 - Remove only the `writeToCoderOutputChannel` method from Storage class
 
 ### Out of Scope
+
 - External logging services integration (future enhancement)
 - File-based logging (all logs go to VS Code OutputChannel)
 - Log file rotation or persistence
@@ -81,6 +83,7 @@ The vscode-coder extension currently handles logging through the Storage class, 
 ## Technical Considerations
 
 ### Architecture
+
 - Singleton pattern for the logger instance
 - Interface-based design with pluggable adapters:
   - `LogAdapter` interface for output handling
@@ -106,80 +109,81 @@ The vscode-coder extension currently handles logging through the Storage class, 
 - **Centralized formatting**: All log formatting (timestamps, level tags, source location) happens within the logger implementation, not at call sites
 
 ### API Design
+
 ```typescript
 interface LogAdapter {
-  write(message: string): void
-  clear(): void
+	write(message: string): void;
+	clear(): void;
 }
 
 interface Logger {
-  log(message: string, severity?: LogLevel): void  // Core method, defaults to INFO
-  debug(message: string): void  // String only - no object serialization
-  info(message: string): void   // String only - no object serialization
-  setLevel(level: LogLevel): void
-  setAdapter(adapter: LogAdapter): void  // For testing only - throws if adapter already set
-  withAdapter<T>(adapter: LogAdapter, fn: () => T): T  // Safe temporary adapter swap
-  reset(): void  // For testing only - throws if NODE_ENV !== 'test', disposes listeners
+	log(message: string, severity?: LogLevel): void; // Core method, defaults to INFO
+	debug(message: string): void; // String only - no object serialization
+	info(message: string): void; // String only - no object serialization
+	setLevel(level: LogLevel): void;
+	setAdapter(adapter: LogAdapter): void; // For testing only - throws if adapter already set
+	withAdapter<T>(adapter: LogAdapter, fn: () => T): T; // Safe temporary adapter swap
+	reset(): void; // For testing only - throws if NODE_ENV !== 'test', disposes listeners
 }
 
 enum LogLevel {
-  DEBUG = 0,
-  INFO = 1,
-  NONE = 2   // Disables all logging
+	DEBUG = 0,
+	INFO = 1,
+	NONE = 2, // Disables all logging
 }
 
 // Example implementations
 class OutputChannelAdapter implements LogAdapter {
-  constructor(private outputChannel: vscode.OutputChannel) {}
-  write(message: string): void {
-    try {
-      this.outputChannel.appendLine(message)
-    } catch {
-      // Silently ignore - channel may be disposed
-    }
-  }
-  clear(): void {
-    try {
-      this.outputChannel.clear()
-    } catch {
-      // Silently ignore - channel may be disposed
-    }
-  }
+	constructor(private outputChannel: vscode.OutputChannel) {}
+	write(message: string): void {
+		try {
+			this.outputChannel.appendLine(message);
+		} catch {
+			// Silently ignore - channel may be disposed
+		}
+	}
+	clear(): void {
+		try {
+			this.outputChannel.clear();
+		} catch {
+			// Silently ignore - channel may be disposed
+		}
+	}
 }
 
 class ArrayAdapter implements LogAdapter {
-  private logs: string[] = []
-  
-  write(message: string): void {
-    this.logs.push(message)
-  }
-  
-  clear(): void {
-    this.logs = []
-  }
-  
-  getSnapshot(): readonly string[] {
-    return [...this.logs]  // Return defensive copy
-  }
+	private logs: string[] = [];
+
+	write(message: string): void {
+		this.logs.push(message);
+	}
+
+	clear(): void {
+		this.logs = [];
+	}
+
+	getSnapshot(): readonly string[] {
+		return [...this.logs]; // Return defensive copy
+	}
 }
 
 class NoOpAdapter implements LogAdapter {
-  write(message: string): void {
-    // Intentionally empty - baseline for performance tests
-  }
-  
-  clear(): void {
-    // Intentionally empty - baseline for performance tests
-  }
+	write(message: string): void {
+		// Intentionally empty - baseline for performance tests
+	}
+
+	clear(): void {
+		// Intentionally empty - baseline for performance tests
+	}
 }
 ```
 
 ### Log Format
+
 - **Standard format**: `[LEVEL] TIMESTAMP MESSAGE`
   - Timestamp in UTC ISO-8601 format (e.g., `2024-01-15T10:30:45.123Z`)
   - Example: `[info] 2024-01-15T10:30:45.123Z Starting extension...`
   - Example: `[debug] 2024-01-15T10:30:45.456Z Processing file: example.ts`
-  
 - **Debug mode enhancement**: When `coder.verbose` is true, debug logs include source location:
   ```
   [debug] 2024-01-15T10:30:45.456Z Processing file: example.ts
@@ -238,7 +242,7 @@ class NoOpAdapter implements LogAdapter {
 9. Run linting (`yarn lint`) and ensure code quality
 
 ### File Locations
+
 - Logger implementation: `src/logger.ts`
 - Tests: `src/logger.test.ts`
 - Type definitions included in the logger file
-
