@@ -6,7 +6,10 @@ import * as vscode from "vscode";
 import { makeCoderSdk, needToken } from "./api";
 import { errToStr } from "./api-helper";
 import { Commands } from "./commands";
+import { VSCodeConfigProvider } from "./config";
 import { CertificateError, getErrorDetail } from "./error";
+import { logger } from "./logger";
+import { OutputChannelAdapter } from "./logging";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
 import { toSafeHost } from "./util";
@@ -48,6 +51,60 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	}
 
 	const output = vscode.window.createOutputChannel("Coder");
+
+	// Initialize logger with the output channel and config provider
+	logger.initialize(new OutputChannelAdapter(output));
+	logger.setConfigProvider(new VSCodeConfigProvider());
+
+	// Set up error handlers for uncaught exceptions and unhandled rejections
+	process.on("uncaughtException", (error) => {
+		logger.debug(`[process#global] error: Uncaught exception - ${error.stack}`);
+		// Don't crash the extension - let VS Code handle it
+	});
+
+	process.on("unhandledRejection", (reason, promise) => {
+		logger.debug(
+			`[process#global] error: Unhandled rejection at ${promise} - reason: ${reason}`,
+		);
+	});
+
+	// Set up process signal handlers
+	const signals: NodeJS.Signals[] = ["SIGTERM", "SIGINT", "SIGHUP"];
+	signals.forEach((signal) => {
+		process.on(signal, () => {
+			logger.debug(`[process#global] disconnect: Received signal ${signal}`);
+		});
+	});
+
+	// Set up memory pressure monitoring
+	let memoryCheckInterval: NodeJS.Timeout | undefined;
+	const checkMemoryPressure = () => {
+		const usage = process.memoryUsage();
+		const heapUsedPercent = (usage.heapUsed / usage.heapTotal) * 100;
+		if (heapUsedPercent > 90) {
+			logger.debug(
+				`[process#global] error: High memory usage detected - heap used: ${heapUsedPercent.toFixed(
+					1,
+				)}% (${Math.round(usage.heapUsed / 1024 / 1024)}MB / ${Math.round(
+					usage.heapTotal / 1024 / 1024,
+				)}MB)`,
+			);
+		}
+	};
+
+	// Check memory every 30 seconds when verbose logging is enabled
+	const configProvider = new VSCodeConfigProvider();
+	if (configProvider.getVerbose()) {
+		memoryCheckInterval = setInterval(checkMemoryPressure, 30000);
+		ctx.subscriptions.push({
+			dispose: () => {
+				if (memoryCheckInterval) {
+					clearInterval(memoryCheckInterval);
+				}
+			},
+		});
+	}
+
 	const storage = new Storage(
 		output,
 		ctx.globalState,
@@ -317,7 +374,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
-				storage.writeToCoderOutputChannel(ex.x509Err || ex.message);
+				logger.info(ex.x509Err || ex.message);
 				await ex.showModal("Failed to open workspace");
 			} else if (isAxiosError(ex)) {
 				const msg = getErrorMessage(ex, "None");
@@ -326,7 +383,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const method = ex.config?.method?.toUpperCase() || "request";
 				const status = ex.response?.status || "None";
 				const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
-				storage.writeToCoderOutputChannel(message);
+				logger.info(message);
 				await vscodeProposed.window.showErrorMessage(
 					"Failed to open workspace",
 					{
@@ -337,7 +394,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				);
 			} else {
 				const message = errToStr(ex, "No error message was provided");
-				storage.writeToCoderOutputChannel(message);
+				logger.info(message);
 				await vscodeProposed.window.showErrorMessage(
 					"Failed to open workspace",
 					{
@@ -356,14 +413,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// See if the plugin client is authenticated.
 	const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
 	if (baseUrl) {
-		storage.writeToCoderOutputChannel(
-			`Logged in to ${baseUrl}; checking credentials`,
-		);
+		logger.info(`Logged in to ${baseUrl}; checking credentials`);
 		restClient
 			.getAuthenticatedUser()
 			.then(async (user) => {
 				if (user && user.roles) {
-					storage.writeToCoderOutputChannel("Credentials are valid");
+					logger.info("Credentials are valid");
 					vscode.commands.executeCommand(
 						"setContext",
 						"coder.authenticated",
@@ -381,17 +436,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					myWorkspacesProvider.fetchAndRefresh();
 					allWorkspacesProvider.fetchAndRefresh();
 				} else {
-					storage.writeToCoderOutputChannel(
-						`No error, but got unexpected response: ${user}`,
-					);
+					logger.info(`No error, but got unexpected response: ${user}`);
 				}
 			})
 			.catch((error) => {
 				// This should be a failure to make the request, like the header command
 				// errored.
-				storage.writeToCoderOutputChannel(
-					`Failed to check user authentication: ${error.message}`,
-				);
+				logger.info(`Failed to check user authentication: ${error.message}`);
 				vscode.window.showErrorMessage(
 					`Failed to check user authentication: ${error.message}`,
 				);
@@ -400,7 +451,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				vscode.commands.executeCommand("setContext", "coder.loaded", true);
 			});
 	} else {
-		storage.writeToCoderOutputChannel("Not currently logged in");
+		logger.info("Not currently logged in");
 		vscode.commands.executeCommand("setContext", "coder.loaded", true);
 
 		// Handle autologin, if not already logged in.

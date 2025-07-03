@@ -5,6 +5,7 @@ import { EventSource } from "eventsource";
 import * as vscode from "vscode";
 import { createStreamingFetchAdapter } from "./api";
 import { errToStr } from "./api-helper";
+import { logger } from "./logger";
 import { Storage } from "./storage";
 
 /**
@@ -42,7 +43,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		this.name = `${workspace.owner_name}/${workspace.name}`;
 		const url = this.restClient.getAxiosInstance().defaults.baseURL;
 		const watchUrl = new URL(`${url}/api/v2/workspaces/${workspace.id}/watch`);
-		this.storage.writeToCoderOutputChannel(`Monitoring ${this.name}...`);
+		logger.info(`Monitoring ${this.name}...`);
+		logger.debug(
+			`[monitor#${workspace.id}] init: Starting workspace monitor via SSE at ${watchUrl}`,
+		);
 
 		const eventSource = new EventSource(watchUrl.toString(), {
 			fetch: createStreamingFetchAdapter(this.restClient.getAxiosInstance()),
@@ -51,15 +55,24 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		eventSource.addEventListener("data", (event) => {
 			try {
 				const newWorkspaceData = JSON.parse(event.data) as Workspace;
+				logger.debug(
+					`[monitor#${workspace.id}] connect: Received workspace update - Status: ${newWorkspaceData.latest_build.status}, Transition: ${newWorkspaceData.latest_build.transition}`,
+				);
 				this.update(newWorkspaceData);
 				this.maybeNotify(newWorkspaceData);
 				this.onChange.fire(newWorkspaceData);
 			} catch (error) {
+				logger.debug(
+					`[monitor#${workspace.id}] error: Failed to parse workspace data: ${error}`,
+				);
 				this.notifyError(error);
 			}
 		});
 
 		eventSource.addEventListener("error", (event) => {
+			logger.debug(
+				`[monitor#${workspace.id}] error: SSE connection error: ${JSON.stringify(event)}`,
+			);
 			this.notifyError(event);
 		});
 
@@ -85,7 +98,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	 */
 	dispose() {
 		if (!this.disposed) {
-			this.storage.writeToCoderOutputChannel(`Unmonitoring ${this.name}...`);
+			logger.info(`Unmonitoring ${this.name}...`);
+			logger.debug(
+				`[monitor#${this.name}] disconnect: Closing SSE connection and disposing resources`,
+			);
 			this.statusBarItem.dispose();
 			this.eventSource.close();
 			this.disposed = true;
@@ -143,6 +159,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			workspace.latest_build.status !== "running"
 		) {
 			this.notifiedNotRunning = true;
+			logger.debug(
+				`[monitor#${workspace.id}] disconnect: Workspace stopped running - Status: ${workspace.latest_build.status}, Transition: ${workspace.latest_build.transition}`,
+			);
 			this.vscodeProposed.window
 				.showInformationMessage(
 					`${this.name} is no longer running!`,
@@ -202,7 +221,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			error,
 			"Got empty error while monitoring workspace",
 		);
-		this.storage.writeToCoderOutputChannel(message);
+		logger.info(message);
 	}
 
 	private updateContext(workspace: Workspace) {

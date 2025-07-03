@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-import { it, afterEach, vi, expect } from "vitest";
+import { it, afterEach, vi, expect, beforeEach } from "vitest";
+import { logger, ArrayAdapter } from "./logger";
 import { SSHConfig } from "./sshConfig";
+import { TestConfigProvider } from "./test";
 
 // This is not the usual path to ~/.ssh/config, but
 // setting it to a different path makes it easier to test
@@ -16,8 +18,22 @@ const mockFileSystem = {
 	writeFile: vi.fn(),
 };
 
+let logAdapter: ArrayAdapter;
+let configProvider: TestConfigProvider;
+
+beforeEach(() => {
+	// Set up logger for tests
+	logAdapter = new ArrayAdapter();
+	configProvider = new TestConfigProvider();
+	configProvider.setVerbose(true); // Enable debug logging for tests
+	logger.reset();
+	logger.setAdapter(logAdapter);
+	logger.setConfigProvider(configProvider);
+});
+
 afterEach(() => {
 	vi.clearAllMocks();
+	logger.reset();
 });
 
 it("creates a new file and adds config with empty label", async () => {
@@ -60,6 +76,27 @@ Host coder-vscode--*
 		expect.stringMatching(sshTempFilePathExpr),
 		sshFilePath,
 	);
+
+	// Verify logging occurred
+	const logs = logAdapter.getSnapshot();
+	expect(
+		logs.some((log) => log.includes("[ssh#config] init: Loading SSH config")),
+	).toBe(true);
+	expect(
+		logs.some((log) =>
+			log.includes("[ssh#config] init: SSH config file not found"),
+		),
+	).toBe(true);
+	expect(
+		logs.some((log) =>
+			log.includes("[ssh#config] connect: Updating SSH config block"),
+		),
+	).toBe(true);
+	expect(
+		logs.some((log) =>
+			log.includes("[ssh#config] connect: SSH config updated successfully"),
+		),
+	).toBe(true);
 });
 
 it("creates a new file and adds the config", async () => {

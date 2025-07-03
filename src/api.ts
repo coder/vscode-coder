@@ -17,6 +17,11 @@ import { getProxyForUrl } from "./proxy";
 import { Storage } from "./storage";
 import { expandPath } from "./util";
 
+// TODO: Add WebSocket connection logging
+// TODO: Add HTTP API call logging
+// TODO: Add certificate validation logging
+// TODO: Add token refresh logging
+
 export const coderSessionTokenHeader = "Coder-Session-Token";
 
 /**
@@ -105,7 +110,7 @@ export function makeCoderSdk(
 	restClient.getAxiosInstance().interceptors.response.use(
 		(r) => r,
 		async (err) => {
-			throw await CertificateError.maybeWrap(err, baseUrl, storage);
+			throw await CertificateError.maybeWrap(err, baseUrl);
 		},
 	);
 

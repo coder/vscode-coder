@@ -22,6 +22,7 @@ import { Commands } from "./commands";
 import { featureSetForVersion, FeatureSet } from "./featureSet";
 import { getHeaderArgs } from "./headers";
 import { Inbox } from "./inbox";
+import { logger } from "./logger";
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 import { Storage } from "./storage";
@@ -70,11 +71,16 @@ export class Remote {
 		binPath: string,
 	): Promise<Workspace | undefined> {
 		const workspaceName = `${workspace.owner_name}/${workspace.name}`;
+		const retryId = Math.random().toString(36).substring(7);
 
 		// A terminal will be used to stream the build, if one is necessary.
 		let writeEmitter: undefined | vscode.EventEmitter<string>;
 		let terminal: undefined | vscode.Terminal;
 		let attempts = 0;
+
+		logger.debug(
+			`[retry#${retryId}] init: Starting workspace wait loop for ${workspaceName}, current status: ${workspace.latest_build.status}`,
+		);
 
 		function initWriteEmitterAndTerminal(): vscode.EventEmitter<string> {
 			if (!writeEmitter) {
@@ -112,27 +118,40 @@ export class Remote {
 					);
 					while (workspace.latest_build.status !== "running") {
 						++attempts;
+						logger.debug(
+							`[retry#${retryId}] retry: Attempt ${attempts} - workspace status: ${workspace.latest_build.status}`,
+						);
+						const startTime = Date.now();
+
 						switch (workspace.latest_build.status) {
 							case "pending":
 							case "starting":
 							case "stopping":
 								writeEmitter = initWriteEmitterAndTerminal();
-								this.storage.writeToCoderOutputChannel(
-									`Waiting for ${workspaceName}...`,
+								logger.info(`Waiting for ${workspaceName}...`);
+								logger.debug(
+									`[retry#${retryId}] retry: Workspace is ${workspace.latest_build.status}, waiting for build completion`,
 								);
 								workspace = await waitForBuild(
 									restClient,
 									writeEmitter,
 									workspace,
 								);
+								logger.debug(
+									`[retry#${retryId}] retry: Build wait completed after ${Date.now() - startTime}ms`,
+								);
 								break;
 							case "stopped":
 								if (!(await this.confirmStart(workspaceName))) {
+									logger.debug(
+										`[retry#${retryId}] disconnect: User declined to start stopped workspace`,
+									);
 									return undefined;
 								}
 								writeEmitter = initWriteEmitterAndTerminal();
-								this.storage.writeToCoderOutputChannel(
-									`Starting ${workspaceName}...`,
+								logger.info(`Starting ${workspaceName}...`);
+								logger.debug(
+									`[retry#${retryId}] retry: Starting stopped workspace`,
 								);
 								workspace = await startWorkspaceIfStoppedOrFailed(
 									restClient,
@@ -141,17 +160,24 @@ export class Remote {
 									workspace,
 									writeEmitter,
 								);
+								logger.debug(
+									`[retry#${retryId}] retry: Workspace start initiated after ${Date.now() - startTime}ms`,
+								);
 								break;
 							case "failed":
 								// On a first attempt, we will try starting a failed workspace
 								// (for example canceling a start seems to cause this state).
 								if (attempts === 1) {
 									if (!(await this.confirmStart(workspaceName))) {
+										logger.debug(
+											`[retry#${retryId}] disconnect: User declined to start failed workspace`,
+										);
 										return undefined;
 									}
 									writeEmitter = initWriteEmitterAndTerminal();
-									this.storage.writeToCoderOutputChannel(
-										`Starting ${workspaceName}...`,
+									logger.info(`Starting ${workspaceName}...`);
+									logger.debug(
+										`[retry#${retryId}] retry: Attempting to start failed workspace (first attempt)`,
 									);
 									workspace = await startWorkspaceIfStoppedOrFailed(
 										restClient,
@@ -159,6 +185,9 @@ export class Remote {
 										binPath,
 										workspace,
 										writeEmitter,
+									);
+									logger.debug(
+										`[retry#${retryId}] retry: Failed workspace restart initiated after ${Date.now() - startTime}ms`,
 									);
 									break;
 								}
@@ -175,10 +204,13 @@ export class Remote {
 								);
 							}
 						}
-						this.storage.writeToCoderOutputChannel(
+						logger.info(
 							`${workspaceName} status is now ${workspace.latest_build.status}`,
 						);
 					}
+					logger.debug(
+						`[retry#${retryId}] connect: Workspace reached running state after ${attempts} attempt(s)`,
+					);
 					return workspace;
 				},
 			);
@@ -200,13 +232,26 @@ export class Remote {
 	public async setup(
 		remoteAuthority: string,
 	): Promise<RemoteDetails | undefined> {
+		const connectionId = Math.random().toString(36).substring(7);
+		logger.debug(
+			`[remote#${connectionId}] init: Starting connection setup for ${remoteAuthority}`,
+		);
+
 		const parts = parseRemoteAuthority(remoteAuthority);
 		if (!parts) {
 			// Not a Coder host.
+			logger.debug(
+				`[remote#${connectionId}] init: Not a Coder host, skipping setup`,
+			);
 			return;
 		}
 
 		const workspaceName = `${parts.username}/${parts.workspace}`;
+		logger.debug(
+			`[remote#${connectionId}] init: Connecting to workspace ${workspaceName} with label: ${
+				parts.label || "default"
+			}`,
+		);
 
 		// Migrate "session_token" file to "session", if needed.
 		await this.storage.migrateSessionToken(parts.label);
@@ -243,12 +288,8 @@ export class Remote {
 			return;
 		}
 
-		this.storage.writeToCoderOutputChannel(
-			`Using deployment URL: ${baseUrlRaw}`,
-		);
-		this.storage.writeToCoderOutputChannel(
-			`Using deployment label: ${parts.label || "n/a"}`,
-		);
+		logger.info(`Using deployment URL: ${baseUrlRaw}`);
+		logger.info(`Using deployment label: ${parts.label || "n/a"}`);
 
 		// We could use the plugin client, but it is possible for the user to log
 		// out or log into a different deployment while still connected, which would
@@ -314,15 +355,19 @@ export class Remote {
 		// Next is to find the workspace from the URI scheme provided.
 		let workspace: Workspace;
 		try {
-			this.storage.writeToCoderOutputChannel(
-				`Looking for workspace ${workspaceName}...`,
+			logger.info(`Looking for workspace ${workspaceName}...`);
+			logger.debug(
+				`[remote#${connectionId}] connect: Fetching workspace details from API`,
 			);
 			workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(
 				parts.username,
 				parts.workspace,
 			);
-			this.storage.writeToCoderOutputChannel(
+			logger.info(
 				`Found workspace ${workspaceName} with status ${workspace.latest_build.status}`,
+			);
+			logger.debug(
+				`[remote#${connectionId}] connect: Workspace ID: ${workspace.id}, Template: ${workspace.template_display_name}, Last transition: ${workspace.latest_build.transition}`,
 			);
 			this.commands.workspace = workspace;
 		} catch (error) {
@@ -388,6 +433,9 @@ export class Remote {
 
 		// If the workspace is not in a running state, try to get it running.
 		if (workspace.latest_build.status !== "running") {
+			logger.debug(
+				`[remote#${connectionId}] connect: Workspace not running, current status: ${workspace.latest_build.status}, attempting to start`,
+			);
 			const updatedWorkspace = await this.maybeWaitForRunning(
 				workspaceRestClient,
 				workspace,
@@ -395,6 +443,9 @@ export class Remote {
 				binaryPath,
 			);
 			if (!updatedWorkspace) {
+				logger.debug(
+					`[remote#${connectionId}] disconnect: User cancelled workspace start`,
+				);
 				// User declined to start the workspace.
 				await this.closeRemote();
 				return;
@@ -404,22 +455,29 @@ export class Remote {
 		this.commands.workspace = workspace;
 
 		// Pick an agent.
-		this.storage.writeToCoderOutputChannel(
-			`Finding agent for ${workspaceName}...`,
+		logger.info(`Finding agent for ${workspaceName}...`);
+		logger.debug(
+			`[remote#${connectionId}] connect: Selecting agent, requested: ${
+				parts.agent || "auto"
+			}`,
 		);
 		const gotAgent = await this.commands.maybeAskAgent(workspace, parts.agent);
 		if (!gotAgent) {
 			// User declined to pick an agent.
+			logger.debug(
+				`[remote#${connectionId}] disconnect: User declined to pick an agent`,
+			);
 			await this.closeRemote();
 			return;
 		}
 		let agent = gotAgent; // Reassign so it cannot be undefined in callbacks.
-		this.storage.writeToCoderOutputChannel(
-			`Found agent ${agent.name} with status ${agent.status}`,
+		logger.info(`Found agent ${agent.name} with status ${agent.status}`);
+		logger.debug(
+			`[remote#${connectionId}] connect: Agent ID: ${agent.id}, Version: ${agent.version}, Architecture: ${agent.architecture}`,
 		);
 
 		// Do some janky setting manipulation.
-		this.storage.writeToCoderOutputChannel("Modifying settings...");
+		logger.info("Modifying settings...");
 		const remotePlatforms = this.vscodeProposed.workspace
 			.getConfiguration()
 			.get<Record<string, string>>("remote.SSH.remotePlatform", {});
@@ -491,9 +549,7 @@ export class Remote {
 				// write here is not necessarily catastrophic since the user will be
 				// asked for the platform and the default timeout might be sufficient.
 				mungedPlatforms = mungedConnTimeout = false;
-				this.storage.writeToCoderOutputChannel(
-					`Failed to configure settings: ${ex}`,
-				);
+				logger.info(`Failed to configure settings: ${ex}`);
 			}
 		}
 
@@ -521,9 +577,7 @@ export class Remote {
 
 		// Wait for the agent to connect.
 		if (agent.status === "connecting") {
-			this.storage.writeToCoderOutputChannel(
-				`Waiting for ${workspaceName}/${agent.name}...`,
-			);
+			logger.info(`Waiting for ${workspaceName}/${agent.name}...`);
 			await vscode.window.withProgress(
 				{
 					title: "Waiting for the agent to connect...",
@@ -552,9 +606,7 @@ export class Remote {
 					});
 				},
 			);
-			this.storage.writeToCoderOutputChannel(
-				`Agent ${agent.name} status is now ${agent.status}`,
-			);
+			logger.info(`Agent ${agent.name} status is now ${agent.status}`);
 		}
 
 		// Make sure the agent is connected.
@@ -584,7 +636,10 @@ export class Remote {
 		// If we didn't write to the SSH config file, connecting would fail with
 		// "Host not found".
 		try {
-			this.storage.writeToCoderOutputChannel("Updating SSH config...");
+			logger.info("Updating SSH config...");
+			logger.debug(
+				`[remote#${connectionId}] connect: Updating SSH config for host ${parts.host}`,
+			);
 			await this.updateSSHConfig(
 				workspaceRestClient,
 				parts.label,
@@ -593,9 +648,13 @@ export class Remote {
 				logDir,
 				featureSet,
 			);
+			logger.debug(
+				`[remote#${connectionId}] connect: SSH config updated successfully`,
+			);
 		} catch (error) {
-			this.storage.writeToCoderOutputChannel(
-				`Failed to configure SSH: ${error}`,
+			logger.info(`Failed to configure SSH: ${error}`);
+			logger.debug(
+				`[remote#${connectionId}] error: SSH config update failed: ${error}`,
 			);
 			throw error;
 		}
@@ -604,8 +663,14 @@ export class Remote {
 		this.findSSHProcessID().then(async (pid) => {
 			if (!pid) {
 				// TODO: Show an error here!
+				logger.debug(
+					`[remote#${connectionId}] error: Failed to find SSH process ID`,
+				);
 				return;
 			}
+			logger.debug(
+				`[remote#${connectionId}] connect: Found SSH process with PID ${pid}`,
+			);
 			disposables.push(this.showNetworkUpdates(pid));
 			if (logDir) {
 				const logFiles = await fs.readdir(logDir);
@@ -633,7 +698,10 @@ export class Remote {
 			}),
 		);
 
-		this.storage.writeToCoderOutputChannel("Remote setup complete");
+		logger.info("Remote setup complete");
+		logger.debug(
+			`[remote#${connectionId}] connect: Connection established successfully to ${workspaceName}`,
+		);
 
 		// Returning the URL and token allows the plugin to authenticate its own
 		// client, for example to display the list of workspaces belonging to this
@@ -643,6 +711,9 @@ export class Remote {
 			url: baseUrlRaw,
 			token,
 			dispose: () => {
+				logger.debug(
+					`[remote#${connectionId}] disconnect: Disposing remote connection resources`,
+				);
 				disposables.forEach((d) => d.dispose());
 			},
 		};
@@ -674,9 +745,7 @@ export class Remote {
 			return "";
 		}
 		await fs.mkdir(logDir, { recursive: true });
-		this.storage.writeToCoderOutputChannel(
-			`SSH proxy diagnostics are being written to ${logDir}`,
-		);
+		logger.info(`SSH proxy diagnostics are being written to ${logDir}`);
 		return ` --log-dir ${escapeCommandArg(logDir)}`;
 	}
 
