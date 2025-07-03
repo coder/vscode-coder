@@ -246,7 +246,7 @@ it("falls back with different error", async () => {
 			servername: "localhost",
 		}),
 	});
-	await expect(request).rejects.toMatch(/failed with status code 500/);
+	await expect(request).rejects.toThrowError(/failed with status code 500/);
 	try {
 		await request;
 	} catch (error) {
