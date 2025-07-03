@@ -15,6 +15,6 @@ export default defineConfig({
 		environment: "node",
 		env: {
 			NODE_ENV: "test",
-		  },
+		},
 	},
 });
