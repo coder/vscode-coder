@@ -2,11 +2,8 @@ import * as cp from "child_process";
 import * as os from "os";
 import * as util from "util";
 import type { WorkspaceConfiguration } from "vscode";
+import { logger } from "./logger";
 import { escapeCommandArg } from "./util";
-
-export interface Logger {
-	writeToCoderOutputChannel(message: string): void;
-}
 
 interface ExecException {
 	code?: number;
@@ -59,7 +56,6 @@ export function getHeaderArgs(config: WorkspaceConfiguration): string[] {
 export async function getHeaders(
 	url: string | undefined,
 	command: string | undefined,
-	logger: Logger,
 ): Promise<Record<string, string>> {
 	const headers: Record<string, string> = {};
 	if (
@@ -78,11 +74,11 @@ export async function getHeaders(
 			});
 		} catch (error) {
 			if (isExecException(error)) {
-				logger.writeToCoderOutputChannel(
+				logger.info(
 					`Header command exited unexpectedly with code ${error.code}`,
 				);
-				logger.writeToCoderOutputChannel(`stdout: ${error.stdout}`);
-				logger.writeToCoderOutputChannel(`stderr: ${error.stderr}`);
+				logger.info(`stdout: ${error.stdout}`);
+				logger.info(`stderr: ${error.stderr}`);
 				throw new Error(
 					`Header command exited unexpectedly with code ${error.code}`,
 				);
