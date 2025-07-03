@@ -118,7 +118,7 @@ export class Remote {
 							case "starting":
 							case "stopping":
 								writeEmitter = initWriteEmitterAndTerminal();
-								logger.debug(`Waiting for ${workspaceName}...`);
+								logger.info(`Waiting for ${workspaceName}...`);
 								workspace = await waitForBuild(
 									restClient,
 									writeEmitter,
@@ -170,7 +170,7 @@ export class Remote {
 								);
 							}
 						}
-						logger.debug(
+						logger.info(
 							`${workspaceName} status is now ${workspace.latest_build.status}`,
 						);
 					}
@@ -239,7 +239,7 @@ export class Remote {
 		}
 
 		logger.info(`Using deployment URL: ${baseUrlRaw}`);
-		logger.debug(`Using deployment label: ${parts.label || "n/a"}`);
+		logger.info(`Using deployment label: ${parts.label || "n/a"}`);
 
 		// We could use the plugin client, but it is possible for the user to log
 		// out or log into a different deployment while still connected, which would
@@ -305,7 +305,7 @@ export class Remote {
 		// Next is to find the workspace from the URI scheme provided.
 		let workspace: Workspace;
 		try {
-			logger.debug(`Looking for workspace ${workspaceName}...`);
+			logger.info(`Looking for workspace ${workspaceName}...`);
 			workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(
 				parts.username,
 				parts.workspace,
@@ -393,7 +393,7 @@ export class Remote {
 		this.commands.workspace = workspace;
 
 		// Pick an agent.
-		logger.debug(`Finding agent for ${workspaceName}...`);
+		logger.info(`Finding agent for ${workspaceName}...`);
 		const gotAgent = await this.commands.maybeAskAgent(workspace, parts.agent);
 		if (!gotAgent) {
 			// User declined to pick an agent.
@@ -404,7 +404,7 @@ export class Remote {
 		logger.info(`Found agent ${agent.name} with status ${agent.status}`);
 
 		// Do some janky setting manipulation.
-		logger.debug("Modifying settings...");
+		logger.info("Modifying settings...");
 		const remotePlatforms = this.vscodeProposed.workspace
 			.getConfiguration()
 			.get<Record<string, string>>("remote.SSH.remotePlatform", {});
@@ -504,7 +504,7 @@ export class Remote {
 
 		// Wait for the agent to connect.
 		if (agent.status === "connecting") {
-			logger.debug(`Waiting for ${workspaceName}/${agent.name}...`);
+			logger.info(`Waiting for ${workspaceName}/${agent.name}...`);
 			await vscode.window.withProgress(
 				{
 					title: "Waiting for the agent to connect...",
@@ -563,7 +563,7 @@ export class Remote {
 		// If we didn't write to the SSH config file, connecting would fail with
 		// "Host not found".
 		try {
-			logger.debug("Updating SSH config...");
+			logger.info("Updating SSH config...");
 			await this.updateSSHConfig(
 				workspaceRestClient,
 				parts.label,

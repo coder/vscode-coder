@@ -55,7 +55,7 @@ export class CertificateError extends Error {
 							await CertificateError.determineVerifyErrorCause(address);
 						return new CertificateError(err.message, cause);
 					} catch (error) {
-						logger.debug(
+						logger.info(
 							`Failed to parse certificate from ${address}: ${error}`,
 						);
 						break;

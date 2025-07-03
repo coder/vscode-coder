@@ -64,7 +64,7 @@ export class Inbox implements vscode.Disposable {
 		});
 
 		this.#socket.on("open", () => {
-			logger.debug("Listening to Coder Inbox");
+			logger.info("Listening to Coder Inbox");
 		});
 
 		this.#socket.on("error", (error) => {
@@ -87,7 +87,7 @@ export class Inbox implements vscode.Disposable {
 
 	dispose() {
 		if (!this.#disposed) {
-			logger.debug("No longer listening to Coder Inbox");
+			logger.info("No longer listening to Coder Inbox");
 			this.#socket.close();
 			this.#disposed = true;
 		}
@@ -98,6 +98,6 @@ export class Inbox implements vscode.Disposable {
 			error,
 			"Got empty error while monitoring Coder Inbox",
 		);
-		logger.debug(message);
+		logger.info(message);
 	}
 }

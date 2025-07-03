@@ -97,7 +97,7 @@ export class WorkspaceProvider
 	 */
 	private async fetch(): Promise<WorkspaceTreeItem[]> {
 		if (vscode.env.logLevel <= vscode.LogLevel.Debug) {
-			logger.debug(
+			logger.info(
 				`Fetching workspaces: ${this.getWorkspacesQuery || "no filter"}...`,
 			);
 		}
