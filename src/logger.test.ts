@@ -16,13 +16,9 @@ vi.mock("vscode", () => ({
 }));
 
 import * as vscode from "vscode";
-import {
-	ArrayAdapter,
-	LogLevel,
-	NoOpAdapter,
-	OutputChannelAdapter,
-	logger,
-} from "./logger";
+import { ArrayAdapter, LogLevel, NoOpAdapter, logger } from "./logger";
+import { OutputChannelAdapter } from "./logging";
+import { TestConfigProvider } from "./test";
 
 describe("Logger", () => {
 	beforeEach(() => {
@@ -191,79 +187,56 @@ describe("Logger", () => {
 
 	describe("Configuration", () => {
 		it("should read verbose setting on initialization", () => {
-			const mockConfig = {
-				get: vi.fn().mockReturnValue(true),
-			};
-			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue(
-				mockConfig as unknown as vscode.WorkspaceConfiguration,
-			);
+			const adapter = new ArrayAdapter();
+			const configProvider = new TestConfigProvider();
 
-			logger.reset(); // Reset triggers re-initialization
+			logger.setAdapter(adapter);
+			logger.setConfigProvider(configProvider);
 
-			expect(vscode.workspace.getConfiguration).toHaveBeenCalledWith("coder");
-			expect(mockConfig.get).toHaveBeenCalledWith("verbose", false);
+			// Test with verbose = false
+			configProvider.setVerbose(false);
+			logger.debug("Debug message");
+			logger.info("Info message");
+
+			let logs = adapter.getSnapshot();
+			expect(logs.length).toBe(1); // Only info should be logged
+			expect(logs[0]).toContain("Info message");
+
+			// Clear and test with verbose = true
+			adapter.clear();
+			configProvider.setVerbose(true);
+			logger.debug("Debug message 2");
+			logger.info("Info message 2");
+
+			logs = adapter.getSnapshot();
+			expect(logs.length).toBe(2); // Both should be logged
+			expect(logs[0]).toContain("Debug message 2");
+			expect(logs[1]).toContain("Info message 2");
 		});
 
 		it("should update log level when configuration changes", () => {
-			let configChangeCallback: (
-				e: vscode.ConfigurationChangeEvent,
-			) => void = () => {};
-			const mockDisposable = { dispose: vi.fn() };
+			const adapter = new ArrayAdapter();
+			const configProvider = new TestConfigProvider();
 
-			vi.mocked(vscode.workspace.onDidChangeConfiguration).mockImplementation(
-				(callback) => {
-					configChangeCallback = callback;
-					return mockDisposable as vscode.Disposable;
-				},
-			);
+			logger.setAdapter(adapter);
+			logger.setConfigProvider(configProvider);
 
-			const mockConfig = {
-				get: vi.fn().mockReturnValue(false),
-			};
-			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue(
-				mockConfig as unknown as vscode.WorkspaceConfiguration,
-			);
+			// Start with verbose = false
+			configProvider.setVerbose(false);
+			logger.debug("Debug 1");
+			logger.info("Info 1");
 
-			logger.reset();
+			let logs = adapter.getSnapshot();
+			expect(logs.length).toBe(1); // Only info
 
-			// Change config to verbose
-			mockConfig.get.mockReturnValue(true);
-			configChangeCallback({
-				affectsConfiguration: (section: string) => section === "coder.verbose",
-			} as vscode.ConfigurationChangeEvent);
+			// Change to verbose = true
+			adapter.clear();
+			configProvider.setVerbose(true);
+			logger.debug("Debug 2");
+			logger.info("Info 2");
 
-			// Verify it reads the new config
-			expect(mockConfig.get).toHaveBeenCalledWith("verbose", false);
-		});
-
-		it("should ignore non-coder.verbose configuration changes", () => {
-			let configChangeCallback: (
-				e: vscode.ConfigurationChangeEvent,
-			) => void = () => {};
-			vi.mocked(vscode.workspace.onDidChangeConfiguration).mockImplementation(
-				(callback) => {
-					configChangeCallback = callback;
-					return { dispose: vi.fn() } as unknown as vscode.Disposable;
-				},
-			);
-
-			const mockConfig = {
-				get: vi.fn().mockReturnValue(false),
-			};
-			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue(
-				mockConfig as unknown as vscode.WorkspaceConfiguration,
-			);
-
-			logger.reset();
-			mockConfig.get.mockClear();
-
-			// Trigger non-verbose config change
-			configChangeCallback({
-				affectsConfiguration: (section: string) => section === "other.setting",
-			} as vscode.ConfigurationChangeEvent);
-
-			// Should not re-read config
-			expect(mockConfig.get).not.toHaveBeenCalled();
+			logs = adapter.getSnapshot();
+			expect(logs.length).toBe(2); // Both logged
 		});
 	});
 
@@ -345,15 +318,33 @@ describe("Logger", () => {
 		});
 
 		it("should dispose configuration listener on reset", () => {
-			const mockDisposable = { dispose: vi.fn() };
-			vi.mocked(vscode.workspace.onDidChangeConfiguration).mockReturnValue(
-				mockDisposable as unknown as vscode.Disposable,
-			);
+			const adapter = new ArrayAdapter();
+			const configProvider = new TestConfigProvider();
 
+			logger.setAdapter(adapter);
+			logger.setConfigProvider(configProvider);
+
+			// Track if dispose was called
+			let disposed = false;
+			const originalOnVerboseChange =
+				configProvider.onVerboseChange.bind(configProvider);
+			configProvider.onVerboseChange = (callback: () => void) => {
+				const result = originalOnVerboseChange(callback);
+				return {
+					dispose: () => {
+						disposed = true;
+						result.dispose();
+					},
+				};
+			};
+
+			// Re-set config provider to register the wrapped listener
+			logger.setConfigProvider(configProvider);
+
+			// Reset should dispose the listener
 			logger.reset();
-			logger.reset(); // Second reset should dispose the first listener
 
-			expect(mockDisposable.dispose).toHaveBeenCalled();
+			expect(disposed).toBe(true);
 		});
 	});
 
@@ -364,7 +355,12 @@ describe("Logger", () => {
 				clear: vi.fn(),
 			} as unknown as vscode.OutputChannel;
 
-			logger.initialize(mockChannel);
+			const adapter = new OutputChannelAdapter(mockChannel);
+			logger.initialize(adapter);
+
+			// Set up config provider for test
+			const configProvider = new TestConfigProvider();
+			logger.setConfigProvider(configProvider);
 
 			// Verify we can log after initialization
 			logger.info("Test message");
@@ -373,9 +369,10 @@ describe("Logger", () => {
 
 		it("should throw if already initialized", () => {
 			const mockChannel = {} as vscode.OutputChannel;
-			logger.initialize(mockChannel);
+			const adapter = new OutputChannelAdapter(mockChannel);
+			logger.initialize(adapter);
 
-			expect(() => logger.initialize(mockChannel)).toThrow(
+			expect(() => logger.initialize(adapter)).toThrow(
 				"Logger already initialized",
 			);
 		});

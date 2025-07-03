@@ -44,6 +44,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		const url = this.restClient.getAxiosInstance().defaults.baseURL;
 		const watchUrl = new URL(`${url}/api/v2/workspaces/${workspace.id}/watch`);
 		logger.info(`Monitoring ${this.name}...`);
+		logger.debug(
+			`[monitor#${workspace.id}] init: Starting workspace monitor via SSE at ${watchUrl}`,
+		);
 
 		const eventSource = new EventSource(watchUrl.toString(), {
 			fetch: createStreamingFetchAdapter(this.restClient.getAxiosInstance()),
@@ -52,15 +55,24 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		eventSource.addEventListener("data", (event) => {
 			try {
 				const newWorkspaceData = JSON.parse(event.data) as Workspace;
+				logger.debug(
+					`[monitor#${workspace.id}] connect: Received workspace update - Status: ${newWorkspaceData.latest_build.status}, Transition: ${newWorkspaceData.latest_build.transition}`,
+				);
 				this.update(newWorkspaceData);
 				this.maybeNotify(newWorkspaceData);
 				this.onChange.fire(newWorkspaceData);
 			} catch (error) {
+				logger.debug(
+					`[monitor#${workspace.id}] error: Failed to parse workspace data: ${error}`,
+				);
 				this.notifyError(error);
 			}
 		});
 
 		eventSource.addEventListener("error", (event) => {
+			logger.debug(
+				`[monitor#${workspace.id}] error: SSE connection error: ${JSON.stringify(event)}`,
+			);
 			this.notifyError(event);
 		});
 
@@ -87,6 +99,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	dispose() {
 		if (!this.disposed) {
 			logger.info(`Unmonitoring ${this.name}...`);
+			logger.debug(
+				`[monitor#${this.name}] disconnect: Closing SSE connection and disposing resources`,
+			);
 			this.statusBarItem.dispose();
 			this.eventSource.close();
 			this.disposed = true;
@@ -144,6 +159,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			workspace.latest_build.status !== "running"
 		) {
 			this.notifiedNotRunning = true;
+			logger.debug(
+				`[monitor#${workspace.id}] disconnect: Workspace stopped running - Status: ${workspace.latest_build.status}, Transition: ${workspace.latest_build.transition}`,
+			);
 			this.vscodeProposed.window
 				.showInformationMessage(
 					`${this.name} is no longer running!`,

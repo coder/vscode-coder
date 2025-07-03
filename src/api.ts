@@ -17,6 +17,11 @@ import { getProxyForUrl } from "./proxy";
 import { Storage } from "./storage";
 import { expandPath } from "./util";
 
+// TODO: Add WebSocket connection logging
+// TODO: Add HTTP API call logging
+// TODO: Add certificate validation logging
+// TODO: Add token refresh logging
+
 export const coderSessionTokenHeader = "Coder-Session-Token";
 
 /**

@@ -1,5 +1,7 @@
 import { mkdir, readFile, rename, stat, writeFile } from "fs/promises";
 import path from "path";
+import { logger } from "./logger";
+import { maskSensitiveData, truncateLargeData } from "./logging";
 import { countSubstring } from "./util";
 
 class SSHConfigBadFormat extends Error {}
@@ -105,10 +107,20 @@ export class SSHConfig {
 	}
 
 	async load() {
+		logger.debug(`[ssh#config] init: Loading SSH config from ${this.filePath}`);
 		try {
 			this.raw = await this.fileSystem.readFile(this.filePath, "utf-8");
+			logger.debug(
+				`[ssh#config] init: Successfully loaded SSH config (${this.raw.length} bytes)`,
+			);
+			// Log a masked version of the config for debugging
+			const masked = maskSensitiveData(truncateLargeData(this.raw));
+			logger.debug(`[ssh#config] init: Config content:\n${masked}`);
 		} catch (ex) {
 			// Probably just doesn't exist!
+			logger.debug(
+				`[ssh#config] init: SSH config file not found or unreadable: ${ex}`,
+			);
 			this.raw = "";
 		}
 	}
@@ -121,14 +133,37 @@ export class SSHConfig {
 		values: SSHValues,
 		overrides?: Record<string, string>,
 	) {
+		logger.debug(
+			`[ssh#config] connect: Updating SSH config block for ${label}`,
+		);
+		logger.debug(
+			`[ssh#config] connect: Host: ${values.Host}, ProxyCommand: ${maskSensitiveData(
+				values.ProxyCommand,
+			)}`,
+		);
+		if (overrides && Object.keys(overrides).length > 0) {
+			logger.debug(
+				`[ssh#config] connect: Applying overrides: ${maskSensitiveData(
+					JSON.stringify(overrides),
+				)}`,
+			);
+		}
+
 		const block = this.getBlock(label);
 		const newBlock = this.buildBlock(label, values, overrides);
+
 		if (block) {
+			logger.debug(
+				`[ssh#config] connect: Replacing existing block for ${label}`,
+			);
 			this.replaceBlock(block, newBlock);
 		} else {
+			logger.debug(`[ssh#config] connect: Appending new block for ${label}`);
 			this.appendBlock(newBlock);
 		}
+
 		await this.save();
+		logger.debug(`[ssh#config] connect: SSH config updated successfully`);
 	}
 
 	/**
@@ -216,9 +251,18 @@ export class SSHConfig {
 		});
 
 		lines.push(this.endBlockComment(label));
-		return {
+		const block = {
 			raw: lines.join("\n"),
 		};
+
+		// Log the generated block (masked)
+		logger.debug(
+			`[ssh#config] connect: Generated SSH config block:\n${maskSensitiveData(
+				block.raw,
+			)}`,
+		);
+
+		return block;
 	}
 
 	private replaceBlock(oldBlock: Block, newBlock: Block) {
@@ -240,30 +284,41 @@ export class SSHConfig {
 	}
 
 	private async save() {
+		logger.debug(`[ssh#config] connect: Saving SSH config to ${this.filePath}`);
+
 		// We want to preserve the original file mode.
 		const existingMode = await this.fileSystem
 			.stat(this.filePath)
 			.then((stat) => stat.mode)
 			.catch((ex) => {
 				if (ex.code && ex.code === "ENOENT") {
+					logger.debug(
+						`[ssh#config] connect: File doesn't exist, will create with mode 0600`,
+					);
 					return 0o600; // default to 0600 if file does not exist
 				}
 				throw ex; // Any other error is unexpected
 			});
+
 		await this.fileSystem.mkdir(path.dirname(this.filePath), {
 			mode: 0o700, // only owner has rwx permission, not group or everyone.
 			recursive: true,
 		});
+
 		const randSuffix = Math.random().toString(36).substring(8);
 		const fileName = path.basename(this.filePath);
 		const dirName = path.dirname(this.filePath);
 		const tempFilePath = `${dirName}/.${fileName}.vscode-coder-tmp.${randSuffix}`;
+
+		logger.debug(`[ssh#config] connect: Writing to temp file ${tempFilePath}`);
+
 		try {
 			await this.fileSystem.writeFile(tempFilePath, this.getRaw(), {
 				mode: existingMode,
 				encoding: "utf-8",
 			});
 		} catch (err) {
+			logger.debug(`[ssh#config] error: Failed to write temp file: ${err}`);
 			throw new Error(
 				`Failed to write temporary SSH config file at ${tempFilePath}: ${err instanceof Error ? err.message : String(err)}. ` +
 					`Please check your disk space, permissions, and that the directory exists.`,
@@ -272,7 +327,11 @@ export class SSHConfig {
 
 		try {
 			await this.fileSystem.rename(tempFilePath, this.filePath);
+			logger.debug(
+				`[ssh#config] connect: Successfully saved SSH config to ${this.filePath}`,
+			);
 		} catch (err) {
+			logger.debug(`[ssh#config] error: Failed to rename temp file: ${err}`);
 			throw new Error(
 				`Failed to rename temporary SSH config file at ${tempFilePath} to ${this.filePath}: ${
 					err instanceof Error ? err.message : String(err)

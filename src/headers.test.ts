@@ -71,25 +71,25 @@ it("should return headers", async () => {
 it("should error on malformed or empty lines", async () => {
 	await expect(
 		getHeaders("localhost", "printf 'foo=bar\\r\\n\\r\\n'"),
-	).rejects.toMatch(/Malformed/);
+	).rejects.toThrow(/Malformed/);
 	await expect(
 		getHeaders("localhost", "printf '\\r\\nfoo=bar'"),
-	).rejects.toMatch(/Malformed/);
-	await expect(getHeaders("localhost", "printf '=foo'")).rejects.toMatch(
+	).rejects.toThrow(/Malformed/);
+	await expect(getHeaders("localhost", "printf '=foo'")).rejects.toThrow(
 		/Malformed/,
 	);
-	await expect(getHeaders("localhost", "printf 'foo'")).rejects.toMatch(
+	await expect(getHeaders("localhost", "printf 'foo'")).rejects.toThrow(
 		/Malformed/,
 	);
-	await expect(getHeaders("localhost", "printf '  =foo'")).rejects.toMatch(
+	await expect(getHeaders("localhost", "printf '  =foo'")).rejects.toThrow(
 		/Malformed/,
 	);
-	await expect(getHeaders("localhost", "printf 'foo  =bar'")).rejects.toMatch(
+	await expect(getHeaders("localhost", "printf 'foo  =bar'")).rejects.toThrow(
 		/Malformed/,
 	);
 	await expect(
 		getHeaders("localhost", "printf 'foo  foo=bar'"),
-	).rejects.toMatch(/Malformed/);
+	).rejects.toThrow(/Malformed/);
 });
 
 it("should have access to environment variables", async () => {
@@ -105,7 +105,7 @@ it("should have access to environment variables", async () => {
 });
 
 it("should error on non-zero exit", async () => {
-	await expect(getHeaders("localhost", "exit 10")).rejects.toMatch(
+	await expect(getHeaders("localhost", "exit 10")).rejects.toThrow(
 		/exited unexpectedly with code 10/,
 	);
 });

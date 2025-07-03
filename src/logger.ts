@@ -1,5 +1,3 @@
-import * as vscode from "vscode";
-
 export enum LogLevel {
 	DEBUG = 0,
 	INFO = 1,
@@ -11,24 +9,9 @@ export interface LogAdapter {
 	clear(): void;
 }
 
-export class OutputChannelAdapter implements LogAdapter {
-	constructor(private outputChannel: vscode.OutputChannel) {}
-
-	write(message: string): void {
-		try {
-			this.outputChannel.appendLine(message);
-		} catch {
-			// Silently ignore - channel may be disposed
-		}
-	}
-
-	clear(): void {
-		try {
-			this.outputChannel.clear();
-		} catch {
-			// Silently ignore - channel may be disposed
-		}
-	}
+export interface ConfigProvider {
+	getVerbose(): boolean;
+	onVerboseChange(callback: () => void): { dispose: () => void };
 }
 
 export class ArrayAdapter implements LogAdapter {
@@ -61,33 +44,40 @@ export class NoOpAdapter implements LogAdapter {
 class LoggerImpl {
 	private adapter: LogAdapter | null = null;
 	private level: LogLevel = LogLevel.INFO;
-	private configListener: vscode.Disposable | null = null;
+	private configProvider: ConfigProvider | null = null;
+	private configListener: { dispose: () => void } | null = null;
 
 	constructor() {
+		// Level will be set when configProvider is set
+	}
+
+	setConfigProvider(provider: ConfigProvider): void {
+		this.configProvider = provider;
 		this.updateLogLevel();
 		this.setupConfigListener();
 	}
 
 	private setupConfigListener(): void {
-		// In test environment, vscode.workspace might not be available
-		if (!vscode.workspace?.onDidChangeConfiguration) {
+		if (!this.configProvider) {
 			return;
 		}
-		this.configListener = vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration("coder.verbose")) {
-				this.updateLogLevel();
-			}
+
+		// Dispose previous listener if exists
+		if (this.configListener) {
+			this.configListener.dispose();
+		}
+
+		this.configListener = this.configProvider.onVerboseChange(() => {
+			this.updateLogLevel();
 		});
 	}
 
 	private updateLogLevel(): void {
-		// In test environment, vscode.workspace might not be available
-		if (!vscode.workspace?.getConfiguration) {
+		if (!this.configProvider) {
 			this.level = LogLevel.INFO;
 			return;
 		}
-		const config = vscode.workspace.getConfiguration("coder");
-		const verbose = config.get<boolean>("verbose", false);
+		const verbose = this.configProvider.getVerbose();
 		this.level = verbose ? LogLevel.DEBUG : LogLevel.INFO;
 	}
 
@@ -177,17 +167,15 @@ class LoggerImpl {
 			this.configListener.dispose();
 			this.configListener = null;
 		}
-		// Re-setup config listener for next test
-		this.updateLogLevel();
-		this.setupConfigListener();
+		this.configProvider = null;
 	}
 
-	// Initialize with OutputChannel for production use
-	initialize(outputChannel: vscode.OutputChannel): void {
+	// Initialize for production use - adapter must be set externally
+	initialize(adapter: LogAdapter): void {
 		if (this.adapter !== null) {
 			throw new Error("Logger already initialized");
 		}
-		this.adapter = new OutputChannelAdapter(outputChannel);
+		this.adapter = adapter;
 	}
 }
 

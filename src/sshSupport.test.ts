@@ -1,9 +1,28 @@
-import { it, expect } from "vitest";
+import { it, expect, beforeEach, afterEach } from "vitest";
+import { logger, ArrayAdapter } from "./logger";
 import {
 	computeSSHProperties,
 	sshSupportsSetEnv,
 	sshVersionSupportsSetEnv,
 } from "./sshSupport";
+import { TestConfigProvider } from "./test";
+
+let logAdapter: ArrayAdapter;
+let configProvider: TestConfigProvider;
+
+beforeEach(() => {
+	// Set up logger for tests
+	logAdapter = new ArrayAdapter();
+	configProvider = new TestConfigProvider();
+	configProvider.setVerbose(true); // Enable debug logging for tests
+	logger.reset();
+	logger.setAdapter(logAdapter);
+	logger.setConfigProvider(configProvider);
+});
+
+afterEach(() => {
+	logger.reset();
+});
 
 const supports = {
 	"OpenSSH_8.9p1 Ubuntu-3ubuntu0.1, OpenSSL 3.0.2 15 Mar 2022": true,
@@ -43,6 +62,21 @@ Host coder-vscode--*
 		StrictHostKeyChecking: "yes",
 		ProxyCommand: '/tmp/coder --header="X-FOO=bar" coder.dev',
 	});
+
+	// Verify logging occurred
+	const logs = logAdapter.getSnapshot();
+	expect(
+		logs.some((log) =>
+			log.includes(
+				"[ssh#properties] init: Computing SSH properties for host: coder-vscode--testing",
+			),
+		),
+	).toBe(true);
+	expect(
+		logs.some((log) =>
+			log.includes("[ssh#properties] init: Computed properties"),
+		),
+	).toBe(true);
 });
 
 it("handles ? wildcards", () => {
