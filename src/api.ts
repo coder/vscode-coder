@@ -190,6 +190,8 @@ export async function startWorkspaceIfStoppedOrFailed(
 			"start",
 			"--yes",
 			workspace.owner_name + "/" + workspace.name,
+			"--reason",
+			"vscode_connection"
 		];
 		const startProcess = spawn(binPath, startArgs);
 
