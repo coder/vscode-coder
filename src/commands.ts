@@ -440,8 +440,8 @@ export class Commands {
 				baseUrl,
 				treeItem.workspaceOwner,
 				treeItem.workspaceName,
-				treeItem.workspaceAgent,
-				treeItem.workspaceFolderPath,
+				treeItem.primaryAgentName,
+				treeItem.primaryAgentFolderPath,
 				true,
 			);
 		} else {
