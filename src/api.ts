@@ -12,11 +12,11 @@ import * as vscode from "vscode";
 import * as ws from "ws";
 import { errToStr } from "./api-helper";
 import { CertificateError } from "./error";
+import { FeatureSet } from "./featureSet";
 import { getHeaderArgs } from "./headers";
 import { getProxyForUrl } from "./proxy";
 import { Storage } from "./storage";
 import { expandPath } from "./util";
-import { FeatureSet } from "./featureSet";
 
 export const coderSessionTokenHeader = "Coder-Session-Token";
 
@@ -175,7 +175,7 @@ export async function startWorkspaceIfStoppedOrFailed(
 	binPath: string,
 	workspace: Workspace,
 	writeEmitter: vscode.EventEmitter<string>,
-	featureSet: FeatureSet
+	featureSet: FeatureSet,
 ): Promise<Workspace> {
 	// Before we start a workspace, we make an initial request to check it's not already started
 	const updatedWorkspace = await restClient.getWorkspace(workspace.id);
@@ -191,10 +191,10 @@ export async function startWorkspaceIfStoppedOrFailed(
 			...getHeaderArgs(vscode.workspace.getConfiguration()),
 			"start",
 			"--yes",
-			workspace.owner_name + "/" + workspace.name
+			workspace.owner_name + "/" + workspace.name,
 		];
 		if (featureSet.buildReason) {
-			startArgs.push(...['--reason', 'vscode_connection'])
+			startArgs.push(...["--reason", "vscode_connection"]);
 		}
 
 		const startProcess = spawn(binPath, startArgs);
