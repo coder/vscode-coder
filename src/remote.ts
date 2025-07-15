@@ -68,6 +68,7 @@ export class Remote {
 		workspace: Workspace,
 		label: string,
 		binPath: string,
+		featureSet: FeatureSet
 	): Promise<Workspace | undefined> {
 		const workspaceName = `${workspace.owner_name}/${workspace.name}`;
 
@@ -140,6 +141,7 @@ export class Remote {
 									binPath,
 									workspace,
 									writeEmitter,
+									featureSet
 								);
 								break;
 							case "failed":
@@ -159,6 +161,7 @@ export class Remote {
 										binPath,
 										workspace,
 										writeEmitter,
+										featureSet
 									);
 									break;
 								}
@@ -393,6 +396,7 @@ export class Remote {
 				workspace,
 				parts.label,
 				binaryPath,
+				featureSet
 			);
 			if (!updatedWorkspace) {
 				// User declined to start the workspace.
