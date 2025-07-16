@@ -436,6 +436,9 @@ export class Commands {
 			if (!baseUrl) {
 				throw new Error("You are not logged in");
 			}
+			if (treeItem.primaryAgentName === undefined) {
+				return;
+			}
 			await openWorkspace(
 				baseUrl,
 				treeItem.workspaceOwner,
@@ -524,6 +527,8 @@ export class Commands {
 		let folderPath: string | undefined;
 		let openRecent: boolean | undefined;
 
+		let workspace: Workspace | undefined;
+
 		const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
@@ -570,7 +575,7 @@ export class Commands {
 					});
 			});
 			quickPick.show();
-			const workspace = await new Promise<Workspace | undefined>((resolve) => {
+			workspace = await new Promise<Workspace | undefined>((resolve) => {
 				quickPick.onDidHide(() => {
 					resolve(undefined);
 				});
@@ -589,20 +594,31 @@ export class Commands {
 			}
 			workspaceOwner = workspace.owner_name;
 			workspaceName = workspace.name;
-
-			const agent = await this.maybeAskAgent(workspace);
-			if (!agent) {
-				// User declined to pick an agent.
-				return;
-			}
-			folderPath = agent.expanded_directory;
-			workspaceAgent = agent.name;
 		} else {
 			workspaceOwner = args[0] as string;
 			workspaceName = args[1] as string;
 			workspaceAgent = args[2] as string | undefined;
 			folderPath = args[3] as string | undefined;
 			openRecent = args[4] as boolean | undefined;
+		}
+
+		if (!workspaceAgent) {
+			if (workspace === undefined) {
+				workspace = await this.restClient.getWorkspaceByOwnerAndName(
+					workspaceOwner,
+					workspaceName,
+				);
+			}
+
+			const agent = await this.maybeAskAgent(workspace);
+			if (!agent) {
+				// User declined to pick an agent.
+				return;
+			}
+			if (!folderPath) {
+				folderPath = agent.expanded_directory;
+			}
+			workspaceAgent = agent.name;
 		}
 
 		await openWorkspace(
@@ -677,7 +693,7 @@ async function openWorkspace(
 	baseUrl: string,
 	workspaceOwner: string,
 	workspaceName: string,
-	workspaceAgent: string | undefined,
+	workspaceAgent: string,
 	folderPath: string | undefined,
 	openRecent: boolean | undefined,
 ) {
