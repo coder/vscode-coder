@@ -129,28 +129,26 @@ export class Storage {
 		const enableDownloads =
 			vscode.workspace.getConfiguration().get("coder.enableDownloads") !==
 			false;
-		this.output.info(
-			`Downloads are ${enableDownloads ? "enabled" : "disabled"}`,
-		);
+		this.output.info("Downloads are", enableDownloads ? "enabled" : "disabled");
 
 		// Get the build info to compare with the existing binary version, if any,
 		// and to log for debugging.
 		const buildInfo = await restClient.getBuildInfo();
-		this.output.info(`Got server version: ${buildInfo.version}`);
+		this.output.info("Got server version", buildInfo.version);
 
 		// Check if there is an existing binary and whether it looks valid.  If it
 		// is valid and matches the server, or if it does not match the server but
 		// downloads are disabled, we can return early.
 		const binPath = path.join(this.getBinaryCachePath(label), cli.name());
-		this.output.info(`Using binary path: ${binPath}`);
+		this.output.info("Using binary path", binPath);
 		const stat = await cli.stat(binPath);
 		if (stat === undefined) {
 			this.output.info("No existing binary found, starting download");
 		} else {
-			this.output.info(`Existing binary size is ${prettyBytes(stat.size)}`);
+			this.output.info("Existing binary size is", prettyBytes(stat.size));
 			try {
 				const version = await cli.version(binPath);
-				this.output.info(`Existing binary version is ${version}`);
+				this.output.info("Existing binary version is", version);
 				// If we have the right version we can avoid the request entirely.
 				if (version === buildInfo.version) {
 					this.output.info(
@@ -167,16 +165,14 @@ export class Storage {
 					"Downloading since existing binary does not match the server version",
 				);
 			} catch (error) {
-				this.output.error(
+				this.output.warn(
 					`Unable to get version of existing binary: ${error}. Downloading new binary instead`,
 				);
 			}
 		}
 
 		if (!enableDownloads) {
-			this.output.error(
-				"Unable to download CLI because downloads are disabled",
-			);
+			this.output.warn("Unable to download CLI because downloads are disabled");
 			throw new Error("Unable to download CLI because downloads are disabled");
 		}
 
@@ -184,9 +180,9 @@ export class Storage {
 		const removed = await cli.rmOld(binPath);
 		removed.forEach(({ fileName, error }) => {
 			if (error) {
-				this.output.error(`Failed to remove ${fileName}: ${error}`);
+				this.output.warn(`Failed to remove ${fileName}`, error);
 			} else {
-				this.output.info(`Removed ${fileName}`);
+				this.output.info("Removed", fileName);
 			}
 		});
 
@@ -199,12 +195,12 @@ export class Storage {
 			configSource && String(configSource).trim().length > 0
 				? String(configSource)
 				: "/bin/" + binName;
-		this.output.info(`Downloading binary from: ${binSource}`);
+		this.output.info("Downloading binary from", binSource);
 
 		// Ideally we already caught that this was the right version and returned
 		// early, but just in case set the ETag.
 		const etag = stat !== undefined ? await cli.eTag(binPath) : "";
-		this.output.info(`Using ETag: ${etag}`);
+		this.output.info("Using ETag", etag);
 
 		// Make the download request.
 		const controller = new AbortController();
@@ -220,18 +216,19 @@ export class Storage {
 			// Ignore all errors so we can catch a 404!
 			validateStatus: () => true,
 		});
-		this.output.info(`Got status code ${resp.status}`);
+		this.output.info("Got status code", resp.status);
 
 		switch (resp.status) {
 			case 200: {
 				const rawContentLength = resp.headers["content-length"];
 				const contentLength = Number.parseInt(rawContentLength);
 				if (Number.isNaN(contentLength)) {
-					this.output.error(
-						`Got invalid or missing content length: ${rawContentLength}`,
+					this.output.warn(
+						"Got invalid or missing content length",
+						rawContentLength,
 					);
 				} else {
-					this.output.info(`Got content length: ${prettyBytes(contentLength)}`);
+					this.output.info("Got content length", prettyBytes(contentLength));
 				}
 
 				// Download to a temporary file.
@@ -312,7 +309,7 @@ export class Storage {
 				// False means the user canceled, although in practice it appears we
 				// would not get this far because VS Code already throws on cancelation.
 				if (!completed) {
-					this.output.error("User aborted download");
+					this.output.warn("User aborted download");
 					throw new Error("User aborted download");
 				}
 
@@ -327,25 +324,27 @@ export class Storage {
 					const oldBinPath =
 						binPath + ".old-" + Math.random().toString(36).substring(8);
 					this.output.info(
-						`Moving existing binary to ${path.basename(oldBinPath)}`,
+						"Moving existing binary to",
+						path.basename(oldBinPath),
 					);
 					await fs.rename(binPath, oldBinPath);
 				}
 
 				// Then move the temporary binary into the right place.
-				this.output.info(`Moving downloaded file to ${path.basename(binPath)}`);
+				this.output.info("Moving downloaded file to", path.basename(binPath));
 				await fs.mkdir(path.dirname(binPath), { recursive: true });
 				await fs.rename(tempFile, binPath);
 
 				// For debugging, to see if the binary only partially downloaded.
 				const newStat = await cli.stat(binPath);
 				this.output.info(
-					`Downloaded binary size is ${prettyBytes(newStat?.size || 0)}`,
+					"Downloaded binary size is",
+					prettyBytes(newStat?.size || 0),
 				);
 
 				// Make sure we can execute this new binary.
 				const version = await cli.version(binPath);
-				this.output.info(`Downloaded binary version is ${version}`);
+				this.output.info("Downloaded binary version is", version);
 
 				return binPath;
 			}
