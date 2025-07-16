@@ -317,7 +317,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
-				storage.writeToCoderOutputChannel(ex.x509Err || ex.message);
+				storage.output.warn(ex.x509Err || ex.message);
 				await ex.showModal("Failed to open workspace");
 			} else if (isAxiosError(ex)) {
 				const msg = getErrorMessage(ex, "None");
@@ -326,7 +326,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const method = ex.config?.method?.toUpperCase() || "request";
 				const status = ex.response?.status || "None";
 				const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
-				storage.writeToCoderOutputChannel(message);
+				storage.output.warn(message);
 				await vscodeProposed.window.showErrorMessage(
 					"Failed to open workspace",
 					{
@@ -337,7 +337,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				);
 			} else {
 				const message = errToStr(ex, "No error message was provided");
-				storage.writeToCoderOutputChannel(message);
+				storage.output.warn(message);
 				await vscodeProposed.window.showErrorMessage(
 					"Failed to open workspace",
 					{
@@ -356,14 +356,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// See if the plugin client is authenticated.
 	const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
 	if (baseUrl) {
-		storage.writeToCoderOutputChannel(
-			`Logged in to ${baseUrl}; checking credentials`,
-		);
+		storage.output.info(`Logged in to ${baseUrl}; checking credentials`);
 		restClient
 			.getAuthenticatedUser()
 			.then(async (user) => {
 				if (user && user.roles) {
-					storage.writeToCoderOutputChannel("Credentials are valid");
+					storage.output.info("Credentials are valid");
 					vscode.commands.executeCommand(
 						"setContext",
 						"coder.authenticated",
@@ -381,17 +379,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					myWorkspacesProvider.fetchAndRefresh();
 					allWorkspacesProvider.fetchAndRefresh();
 				} else {
-					storage.writeToCoderOutputChannel(
-						`No error, but got unexpected response: ${user}`,
-					);
+					storage.output.warn("No error, but got unexpected response", user);
 				}
 			})
 			.catch((error) => {
 				// This should be a failure to make the request, like the header command
 				// errored.
-				storage.writeToCoderOutputChannel(
-					`Failed to check user authentication: ${error.message}`,
-				);
+				storage.output.warn("Failed to check user authentication", error);
 				vscode.window.showErrorMessage(
 					`Failed to check user authentication: ${error.message}`,
 				);
@@ -400,7 +394,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				vscode.commands.executeCommand("setContext", "coder.loaded", true);
 			});
 	} else {
-		storage.writeToCoderOutputChannel("Not currently logged in");
+		storage.output.info("Not currently logged in");
 		vscode.commands.executeCommand("setContext", "coder.loaded", true);
 
 		// Handle autologin, if not already logged in.
