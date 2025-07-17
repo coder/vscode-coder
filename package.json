@@ -109,6 +109,11 @@
 					"markdownDescription": "Automatically log into the default URL when the extension is activated. coder.defaultUrl is preferred, otherwise the CODER_URL environment variable will be used. This setting has no effect if neither is set.",
 					"type": "boolean",
 					"default": false
+				},
+				"coder.disableUpdateNotifications": {
+					"markdownDescription": "Disable notifications when workspace template updates are available.",
+					"type": "boolean",
+					"default": false
 				}
 			}
 		},
