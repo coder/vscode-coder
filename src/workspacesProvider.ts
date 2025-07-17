@@ -436,8 +436,8 @@ export class OpenableTreeItem extends vscode.TreeItem {
 
 		public readonly workspaceOwner: string,
 		public readonly workspaceName: string,
-		public readonly workspaceAgent: string | undefined,
-		public readonly workspaceFolderPath: string | undefined,
+		public readonly primaryAgentName: string | undefined,
+		public readonly primaryAgentFolderPath: string | undefined,
 
 		contextValue: CoderOpenableTreeItemType,
 	) {
@@ -476,7 +476,7 @@ class AgentTreeItem extends OpenableTreeItem {
 	}
 }
 
-export class WorkspaceTreeItem extends OpenableTreeItem {
+class WorkspaceTreeItem extends OpenableTreeItem {
 	public appStatus: {
 		name: string;
 		url?: string;
@@ -509,7 +509,7 @@ export class WorkspaceTreeItem extends OpenableTreeItem {
 				: vscode.TreeItemCollapsibleState.Expanded,
 			workspace.owner_name,
 			workspace.name,
-			undefined,
+			agents[0]?.name,
 			agents[0]?.expanded_directory,
 			agents.length > 1
 				? "coderWorkspaceMultipleAgents"
