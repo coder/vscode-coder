@@ -8,6 +8,7 @@ import * as vscode from "vscode";
 import { errToStr } from "./api-helper";
 import * as cli from "./cliManager";
 import { getHeaderCommand, getHeaders } from "./headers";
+import { logger } from "./logger";
 
 // Maximium number of recent URLs to store.
 const MAX_URLS = 10;
@@ -507,12 +508,12 @@ export class Storage {
 			: path.join(this.globalStorageUri.fsPath, "url");
 	}
 
-	public writeToCoderOutputChannel(message: string) {
-		this.output.appendLine(`[${new Date().toISOString()}] ${message}`);
-		// We don't want to focus on the output here, because the
-		// Coder server is designed to restart gracefully for users
-		// because of P2P connections, and we don't want to draw
-		// attention to it.
+	/**
+	 * Compatibility method for Logger interface used by headers.ts and error.ts.
+	 * Delegates to the logger module.
+	 */
+	public writeToCoderOutputChannel(message: string): void {
+		logger.info(message);
 	}
 
 	/**
@@ -614,7 +615,6 @@ export class Storage {
 		return getHeaders(
 			url,
 			getHeaderCommand(vscode.workspace.getConfiguration()),
-			this,
 		);
 	}
 }

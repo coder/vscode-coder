@@ -1,4 +1,6 @@
 import * as childProcess from "child_process";
+import { logger } from "./logger";
+import { maskSensitiveData } from "./logging";
 
 export function sshSupportsSetEnv(): boolean {
 	try {
@@ -43,6 +45,10 @@ export function computeSSHProperties(
 	host: string,
 	config: string,
 ): Record<string, string> {
+	logger.debug(
+		`[ssh#properties] init: Computing SSH properties for host: ${host}`,
+	);
+
 	let currentConfig:
 		| {
 				Host: string;
@@ -103,5 +109,18 @@ export function computeSSHProperties(
 		}
 		Object.assign(merged, config.properties);
 	});
+
+	if (Object.keys(merged).length > 0) {
+		logger.debug(
+			`[ssh#properties] init: Computed properties for ${host}: ${maskSensitiveData(
+				JSON.stringify(merged),
+			)}`,
+		);
+	} else {
+		logger.debug(
+			`[ssh#properties] init: No matching SSH properties found for ${host}`,
+		);
+	}
+
 	return merged;
 }
