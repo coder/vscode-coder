@@ -12,6 +12,7 @@ import * as vscode from "vscode";
 import * as ws from "ws";
 import { errToStr } from "./api-helper";
 import { CertificateError } from "./error";
+import { FeatureSet } from "./featureSet";
 import { getHeaderArgs } from "./headers";
 import { getProxyForUrl } from "./proxy";
 import { Storage } from "./storage";
@@ -174,6 +175,7 @@ export async function startWorkspaceIfStoppedOrFailed(
 	binPath: string,
 	workspace: Workspace,
 	writeEmitter: vscode.EventEmitter<string>,
+	featureSet: FeatureSet,
 ): Promise<Workspace> {
 	// Before we start a workspace, we make an initial request to check it's not already started
 	const updatedWorkspace = await restClient.getWorkspace(workspace.id);
@@ -191,6 +193,10 @@ export async function startWorkspaceIfStoppedOrFailed(
 			"--yes",
 			workspace.owner_name + "/" + workspace.name,
 		];
+		if (featureSet.buildReason) {
+			startArgs.push(...["--reason", "vscode_connection"]);
+		}
+
 		const startProcess = spawn(binPath, startArgs);
 
 		startProcess.stdout.on("data", (data: Buffer) => {

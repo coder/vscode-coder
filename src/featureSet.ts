@@ -4,6 +4,7 @@ export type FeatureSet = {
 	vscodessh: boolean;
 	proxyLogDirectory: boolean;
 	wildcardSSH: boolean;
+	buildReason: boolean;
 };
 
 /**
@@ -28,6 +29,11 @@ export function featureSetForVersion(
 			version?.prerelease[0] === "devel",
 		wildcardSSH:
 			(version ? version.compare("2.19.0") : -1) >= 0 ||
+			version?.prerelease[0] === "devel",
+
+		// --reason flag was added in 2.25.0
+		buildReason:
+			(version?.compare("2.25.0") || 0) >= 0 ||
 			version?.prerelease[0] === "devel",
 	};
 }
