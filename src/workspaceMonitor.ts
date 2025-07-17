@@ -172,13 +172,15 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	private maybeNotifyOutdated(workspace: Workspace) {
 		if (!this.notifiedOutdated && workspace.outdated) {
 			this.notifiedOutdated = true;
-			
+
 			// Check if update notifications are disabled
-			const disableNotifications = vscode.workspace.getConfiguration("coder").get<boolean>("disableUpdateNotifications", false);
+			const disableNotifications = vscode.workspace
+				.getConfiguration("coder")
+				.get<boolean>("disableUpdateNotifications", false);
 			if (disableNotifications) {
 				return;
 			}
-			
+
 			this.restClient
 				.getTemplate(workspace.template_id)
 				.then((template) => {
