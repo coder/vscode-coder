@@ -609,11 +609,14 @@ export class Remote {
 			disposables.push(this.showNetworkUpdates(pid));
 			if (logDir) {
 				const logFiles = await fs.readdir(logDir);
-				this.commands.workspaceLogPath = logFiles
+				const logFileName = logFiles
 					.reverse()
 					.find(
 						(file) => file === `${pid}.log` || file.endsWith(`-${pid}.log`),
 					);
+				this.commands.workspaceLogPath = logFileName
+					? path.join(logDir, logFileName)
+					: undefined;
 			} else {
 				this.commands.workspaceLogPath = undefined;
 			}
