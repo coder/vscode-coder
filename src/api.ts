@@ -105,7 +105,7 @@ export function makeCoderSdk(
 	restClient.getAxiosInstance().interceptors.response.use(
 		(r) => r,
 		async (err) => {
-			throw await CertificateError.maybeWrap(err, baseUrl, storage);
+			throw await CertificateError.maybeWrap(err, baseUrl, storage.output);
 		},
 	);
 

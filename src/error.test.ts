@@ -4,6 +4,7 @@ import https from "https";
 import * as path from "path";
 import { afterAll, beforeAll, it, expect, vi } from "vitest";
 import { CertificateError, X509_ERR, X509_ERR_CODE } from "./error";
+import { Logger } from "./logger";
 
 // Before each test we make a request to sanity check that we really get the
 // error we are expecting, then we run it through CertificateError.
@@ -23,10 +24,16 @@ beforeAll(() => {
 	});
 });
 
-const logger = {
-	writeToCoderOutputChannel(message: string) {
-		throw new Error(message);
-	},
+const throwingLog = (message: string) => {
+	throw new Error(message);
+};
+
+const logger: Logger = {
+	trace: throwingLog,
+	debug: throwingLog,
+	info: throwingLog,
+	warn: throwingLog,
+	error: throwingLog,
 };
 
 const disposers: (() => void)[] = [];

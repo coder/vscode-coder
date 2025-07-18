@@ -42,7 +42,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		this.name = `${workspace.owner_name}/${workspace.name}`;
 		const url = this.restClient.getAxiosInstance().defaults.baseURL;
 		const watchUrl = new URL(`${url}/api/v2/workspaces/${workspace.id}/watch`);
-		this.storage.writeToCoderOutputChannel(`Monitoring ${this.name}...`);
+		this.storage.output.info(`Monitoring ${this.name}...`);
 
 		const eventSource = new EventSource(watchUrl.toString(), {
 			fetch: createStreamingFetchAdapter(this.restClient.getAxiosInstance()),
@@ -85,7 +85,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	 */
 	dispose() {
 		if (!this.disposed) {
-			this.storage.writeToCoderOutputChannel(`Unmonitoring ${this.name}...`);
+			this.storage.output.info(`Unmonitoring ${this.name}...`);
 			this.statusBarItem.dispose();
 			this.eventSource.close();
 			this.disposed = true;
@@ -211,7 +211,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			error,
 			"Got empty error while monitoring workspace",
 		);
-		this.storage.writeToCoderOutputChannel(message);
+		this.storage.output.error(message);
 	}
 
 	private updateContext(workspace: Workspace) {

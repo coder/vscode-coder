@@ -245,8 +245,9 @@ export class Commands {
 			} catch (err) {
 				const message = getErrorMessage(err, "no response from the server");
 				if (isAutologin) {
-					this.storage.writeToCoderOutputChannel(
-						`Failed to log in to Coder server: ${message}`,
+					this.storage.output.warn(
+						"Failed to log in to Coder server:",
+						message,
 					);
 				} else {
 					this.vscodeProposed.window.showErrorMessage(
