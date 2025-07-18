@@ -4,6 +4,8 @@
 
 - Update `/openDevContainer` to support all dev container features when hostPath
   and configFile are provided.
+- Fix opening a workspace restores the VS Code session (files, tabs, context)
+  of the selected agent.
 
 ## [v1.9.2](https://github.com/coder/vscode-coder/releases/tag/v1.9.2) 2025-06-25
 
