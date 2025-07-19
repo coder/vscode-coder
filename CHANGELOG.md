@@ -8,6 +8,8 @@
   update notifications.
 - Coder output panel enhancements: All log entries now include timestamps, and you
   can filter messages by log level in the panel.
+- Added an agent metadata monitor status bar item, so you can view your active
+  agent metadata at a glance.
 
 ## [v1.9.2](https://github.com/coder/vscode-coder/releases/tag/v1.9.2) 2025-06-25
 
