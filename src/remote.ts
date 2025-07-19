@@ -639,7 +639,9 @@ export class Remote {
 			}),
 		);
 
-		this.createAgentMetadataStatusBar(agent, workspaceRestClient, disposables);
+		disposables.push(
+			...this.createAgentMetadataStatusBar(agent, workspaceRestClient),
+		);
 
 		this.storage.writeToCoderOutputChannel("Remote setup complete");
 
@@ -990,40 +992,35 @@ export class Remote {
 	private createAgentMetadataStatusBar(
 		agent: WorkspaceAgent,
 		restClient: Api,
-		disposables: vscode.Disposable[],
-	): void {
+	): vscode.Disposable[] {
 		const statusBarItem = vscode.window.createStatusBarItem(
 			"agentMetadata",
 			vscode.StatusBarAlignment.Left,
 		);
-		disposables.push(statusBarItem);
 
 		const agentWatcher = createAgentMetadataWatcher(agent.id, restClient);
-		disposables.push(agentWatcher);
 
-		agentWatcher.onChange(
-			() => {
-				if (agentWatcher.error) {
-					this.storage.writeToCoderOutputChannel(
-						formatMetadataError(agentWatcher.error),
-					);
-					statusBarItem.hide();
-					return;
-				}
+		const onChangeDisposable = agentWatcher.onChange(() => {
+			if (agentWatcher.error) {
+				this.storage.writeToCoderOutputChannel(
+					formatMetadataError(agentWatcher.error),
+				);
+				statusBarItem.hide();
+				return;
+			}
 
-				if (agentWatcher.metadata && agentWatcher.metadata.length > 0) {
-					statusBarItem.text = getEventValue(agentWatcher.metadata[0]);
-					statusBarItem.tooltip = agentWatcher.metadata
-						.map((metadata) => formatEventLabel(metadata))
-						.join("\n");
-					statusBarItem.show();
-				} else {
-					statusBarItem.hide();
-				}
-			},
-			undefined,
-			disposables,
-		);
+			if (agentWatcher.metadata && agentWatcher.metadata.length > 0) {
+				statusBarItem.text = getEventValue(agentWatcher.metadata[0]);
+				statusBarItem.tooltip = agentWatcher.metadata
+					.map((metadata) => formatEventLabel(metadata))
+					.join("\n");
+				statusBarItem.show();
+			} else {
+				statusBarItem.hide();
+			}
+		});
+
+		return [statusBarItem, agentWatcher, onChangeDisposable];
 	}
 
 	// closeRemote ends the current remote session.
