@@ -994,16 +994,29 @@ export class Remote {
 
 		const onChangeDisposable = agentWatcher.onChange(() => {
 			if (agentWatcher.error) {
-				this.storage.output.warn(formatMetadataError(agentWatcher.error));
-				statusBarItem.hide();
+				const errMessage = formatMetadataError(agentWatcher.error);
+				this.storage.output.warn(errMessage);
+
+				statusBarItem.text = "$(warning) Agent Status Unavailable";
+				statusBarItem.tooltip = errMessage;
+				statusBarItem.color = new vscode.ThemeColor(
+					"statusBarItem.warningForeground",
+				);
+				statusBarItem.backgroundColor = new vscode.ThemeColor(
+					"statusBarItem.warningBackground",
+				);
+				statusBarItem.show();
 				return;
 			}
 
 			if (agentWatcher.metadata && agentWatcher.metadata.length > 0) {
-				statusBarItem.text = getEventValue(agentWatcher.metadata[0]);
+				statusBarItem.text =
+					"$(dashboard) " + getEventValue(agentWatcher.metadata[0]);
 				statusBarItem.tooltip = agentWatcher.metadata
 					.map((metadata) => formatEventLabel(metadata))
 					.join("\n");
+				statusBarItem.color = undefined;
+				statusBarItem.backgroundColor = undefined;
 				statusBarItem.show();
 			} else {
 				statusBarItem.hide();
