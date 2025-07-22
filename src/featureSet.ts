@@ -31,7 +31,7 @@ export function featureSetForVersion(
 			(version ? version.compare("2.19.0") : -1) >= 0 ||
 			version?.prerelease[0] === "devel",
 
-		// --reason flag was added in 2.25.0
+		// The --reason flag was added to `coder start` in 2.25.0
 		buildReason:
 			(version?.compare("2.25.0") || 0) >= 0 ||
 			version?.prerelease[0] === "devel",
