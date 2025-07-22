@@ -659,7 +659,7 @@ export class Commands {
 			{
 				useCustom: true,
 				modal: true,
-				detail: `Update ${this.workspace.owner_name}/${this.workspace.name} to the latest version?\n\nUpdating will restart your workspace and stop any running processes that may result in loss of unsaved work.`,
+				detail: `Update ${this.workspace.owner_name}/${this.workspace.name} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
 			},
 			"Update",
 			"Cancel",
