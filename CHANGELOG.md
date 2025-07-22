@@ -6,6 +6,10 @@
   and configFile are provided.
 - Fix opening a workspace restores the VS Code session (files, tabs, context)
   of the selected agent.
+- Consistently use the same session for each agent. Previously,
+  depending on how you connected, it could be possible to get two
+  different sessions for an agent. Existing connections may still
+  have this problem, only new connections are fixed.
 
 ## [v1.9.2](https://github.com/coder/vscode-coder/releases/tag/v1.9.2) 2025-06-25
 
