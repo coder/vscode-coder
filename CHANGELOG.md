@@ -4,8 +4,10 @@
 
 - Update `/openDevContainer` to support all dev container features when hostPath
   and configFile are provided.
-- Fix opening a workspace restores the VS Code session (files, tabs, context)
-  of the selected agent.
+- Add `coder.disableUpdateNotifications` setting to disable workspace template
+  update notifications.
+- Coder output panel enhancements: All log entries now include timestamps, and you
+  can filter messages by log level in the panel.
 - Consistently use the same session for each agent. Previously,
   depending on how you connected, it could be possible to get two
   different sessions for an agent. Existing connections may still

@@ -3,6 +3,7 @@ import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
 import * as forge from "node-forge";
 import * as tls from "tls";
 import * as vscode from "vscode";
+import { Logger } from "./logger";
 
 // X509_ERR_CODE represents error codes as returned from BoringSSL/OpenSSL.
 export enum X509_ERR_CODE {
@@ -19,10 +20,6 @@ export enum X509_ERR {
 	NON_SIGNING = "Your Coder deployment's certificate is not marked as being capable of signing. VS Code uses a version of Electron that does not support certificates like this even if they are self-issued. The certificate must be regenerated with the certificate signing capability.",
 	UNTRUSTED_LEAF = "Your Coder deployment's certificate does not appear to be trusted by this system. The certificate must be added to this system's trust store.",
 	UNTRUSTED_CHAIN = "Your Coder deployment's certificate chain does not appear to be trusted by this system. The root of the certificate chain must be added to this system's trust store. ",
-}
-
-export interface Logger {
-	writeToCoderOutputChannel(message: string): void;
 }
 
 interface KeyUsage {
@@ -59,9 +56,7 @@ export class CertificateError extends Error {
 							await CertificateError.determineVerifyErrorCause(address);
 						return new CertificateError(err.message, cause);
 					} catch (error) {
-						logger.writeToCoderOutputChannel(
-							`Failed to parse certificate from ${address}: ${error}`,
-						);
+						logger.warn(`Failed to parse certificate from ${address}`, error);
 						break;
 					}
 				case X509_ERR_CODE.DEPTH_ZERO_SELF_SIGNED_CERT:

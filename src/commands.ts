@@ -245,8 +245,9 @@ export class Commands {
 			} catch (err) {
 				const message = getErrorMessage(err, "no response from the server");
 				if (isAutologin) {
-					this.storage.writeToCoderOutputChannel(
-						`Failed to log in to Coder server: ${message}`,
+					this.storage.output.warn(
+						"Failed to log in to Coder server:",
+						message,
 					);
 				} else {
 					this.vscodeProposed.window.showErrorMessage(
@@ -670,14 +671,15 @@ export class Commands {
 		if (!this.workspace || !this.workspaceRestClient) {
 			return;
 		}
-		const action = await this.vscodeProposed.window.showInformationMessage(
+		const action = await this.vscodeProposed.window.showWarningMessage(
 			"Update Workspace",
 			{
 				useCustom: true,
 				modal: true,
-				detail: `Update ${this.workspace.owner_name}/${this.workspace.name} to the latest version?`,
+				detail: `Update ${this.workspace.owner_name}/${this.workspace.name} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
 			},
 			"Update",
+			"Cancel",
 		);
 		if (action === "Update") {
 			await this.workspaceRestClient.updateWorkspaceVersion(this.workspace);
