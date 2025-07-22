@@ -655,14 +655,15 @@ export class Commands {
 		if (!this.workspace || !this.workspaceRestClient) {
 			return;
 		}
-		const action = await this.vscodeProposed.window.showInformationMessage(
+		const action = await this.vscodeProposed.window.showWarningMessage(
 			"Update Workspace",
 			{
 				useCustom: true,
 				modal: true,
-				detail: `Update ${this.workspace.owner_name}/${this.workspace.name} to the latest version?`,
+				detail: `Update ${this.workspace.owner_name}/${this.workspace.name} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
 			},
 			"Update",
+			"Cancel",
 		);
 		if (action === "Update") {
 			await this.workspaceRestClient.updateWorkspaceVersion(this.workspace);
