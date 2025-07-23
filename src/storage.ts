@@ -123,13 +123,11 @@ export class Storage {
 	 * downloads being disabled.
 	 */
 	public async fetchBinary(restClient: Api, label: string): Promise<string> {
-		const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
+		const cfg = vscode.workspace.getConfiguration("coder");
 
 		// Settings can be undefined when set to their defaults (true in this case),
 		// so explicitly check against false.
-		const enableDownloads =
-			vscode.workspace.getConfiguration().get("coder.enableDownloads") !==
-			false;
+		const enableDownloads = cfg.get("enableDownloads") !== false;
 		this.output.info("Downloads are", enableDownloads ? "enabled" : "disabled");
 
 		// Get the build info to compare with the existing binary version, if any,
@@ -189,9 +187,7 @@ export class Storage {
 
 		// Figure out where to get the binary.
 		const binName = cli.name();
-		const configSource = vscode.workspace
-			.getConfiguration()
-			.get("coder.binarySource");
+		const configSource = cfg.get("binarySource");
 		const binSource =
 			configSource && String(configSource).trim().length > 0
 				? String(configSource)
