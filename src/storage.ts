@@ -1,6 +1,9 @@
-import type { AxiosInstance, AxiosRequestConfig } from "axios";
+import globalAxios, {
+	type AxiosInstance,
+	type AxiosRequestConfig,
+} from "axios";
 import { Api } from "coder/site/src/api/api";
-import { createWriteStream } from "fs";
+import { createWriteStream, type WriteStream } from "fs";
 import fs from "fs/promises";
 import { IncomingMessage } from "http";
 import path from "path";
@@ -9,12 +12,14 @@ import * as vscode from "vscode";
 import { errToStr } from "./api-helper";
 import * as cli from "./cliManager";
 import { getHeaderCommand, getHeaders } from "./headers";
+import * as pgp from "./pgp";
 
 // Maximium number of recent URLs to store.
 const MAX_URLS = 10;
 
 export class Storage {
 	constructor(
+		private readonly vscodeProposed: typeof vscode,
 		public readonly output: vscode.LogOutputChannel,
 		private readonly memento: vscode.Memento,
 		private readonly secrets: vscode.SecretStorage,
@@ -175,7 +180,7 @@ export class Storage {
 			throw new Error("Unable to download CLI because downloads are disabled");
 		}
 
-		// Remove any left-over old or temporary binaries.
+		// Remove any left-over old or temporary binaries and signatures.
 		const removed = await cli.rmOld(binPath);
 		removed.forEach(({ fileName, error }) => {
 			if (error) {
@@ -215,6 +220,22 @@ export class Storage {
 
 		switch (status) {
 			case 200: {
+				if (cfg.get("disableSignatureVerification")) {
+					this.output.info(
+						"Skipping binary signature verification due to settings",
+					);
+				} else {
+					await this.verifyBinarySignatures(client, tempFile, [
+						// A signature placed at the same level as the binary.  It must be
+						// named exactly the same with an appended `.asc` (such as
+						// coder-windows-amd64.exe.asc or coder-linux-amd64.asc).
+						binSource + ".asc",
+						// The releases.coder.com bucket does not include the leading "v".
+						// The signature name follows the same rule as above.
+						`https://releases.coder.com/coder-cli/${buildInfo.version.replace(/^v/, "")}/${binName}.asc`,
+					]);
+				}
+
 				// Move the old binary to a backup location first, just in case.  And,
 				// on Linux at least, you cannot write onto a binary that is in use so
 				// moving first works around that (delete would also work).
@@ -412,6 +433,121 @@ export class Storage {
 		}
 
 		return resp.status;
+	}
+
+	/**
+	 * Download detached signatures one at a time and use them to verify the
+	 * binary.  The first signature is always downloaded, but the next signatures
+	 * are only tried if the previous ones did not exist and the user indicates
+	 * they want to try the next source.
+	 *
+	 * If the first successfully downloaded signature is valid or it is invalid
+	 * and the user indicates to use the binary anyway, return, otherwise throw.
+	 *
+	 * If no signatures could be downloaded, return if the user indicates to use
+	 * the binary anyway, otherwise throw.
+	 */
+	private async verifyBinarySignatures(
+		client: AxiosInstance,
+		cliPath: string,
+		sources: string[],
+	): Promise<void> {
+		const publicKeys = await pgp.readPublicKeys(this.output);
+		for (let i = 0; i < sources.length; ++i) {
+			const source = sources[i];
+			// For the primary source we use the common client, but for the rest we do
+			// not to avoid sending user-provided headers to external URLs.
+			if (i === 1) {
+				client = globalAxios.create();
+			}
+			const status = await this.verifyBinarySignature(
+				client,
+				cliPath,
+				publicKeys,
+				source,
+			);
+			if (status === 200) {
+				return;
+			}
+			// If we failed to download, try the next source.
+			let nextPrompt = "";
+			const options: string[] = [];
+			const nextSource = sources[i + 1];
+			if (nextSource) {
+				nextPrompt = ` Would you like to download the signature from ${nextSource}?`;
+				options.push("Download signature");
+			}
+			options.push("Run without verification");
+			const action = await this.vscodeProposed.window.showWarningMessage(
+				status === 404 ? "Signature not found" : "Failed to download signature",
+				{
+					useCustom: true,
+					modal: true,
+					detail:
+						status === 404
+							? `No binary signature was found at ${source}.${nextPrompt}`
+							: `Received ${status} trying to download binary signature from ${source}.${nextPrompt}`,
+				},
+				...options,
+			);
+			switch (action) {
+				case "Download signature": {
+					continue;
+				}
+				case "Run without verification":
+					this.output.info(`Signature download from ${nextSource} declined`);
+					this.output.info("Binary will be ran anyway at user request");
+					return;
+				default:
+					this.output.info(`Signature download from ${nextSource} declined`);
+					this.output.info("Binary was rejected at user request");
+					throw new Error("Signature download aborted");
+			}
+		}
+		// Reaching here would be a developer error.
+		throw new Error("Unable to download any signatures");
+	}
+
+	/**
+	 * Download a detached signature and if successful (200 status code) use it to
+	 * verify the binary.  Throw if the binary signature is invalid and the user
+	 * declined to run the binary, otherwise return the status code.
+	 */
+	private async verifyBinarySignature(
+		client: AxiosInstance,
+		cliPath: string,
+		publicKeys: pgp.Key[],
+		source: string,
+	): Promise<number> {
+		this.output.info("Downloading signature from", source);
+		const signaturePath = path.join(cliPath + ".asc");
+		const writeStream = createWriteStream(signaturePath);
+		const status = await this.download(client, source, writeStream);
+		if (status === 200) {
+			const result = await pgp.verifySignature(
+				publicKeys,
+				cliPath,
+				signaturePath,
+				this.output,
+			);
+			if (result !== true) {
+				const action = await this.vscodeProposed.window.showWarningMessage(
+					result.summary(),
+					{
+						useCustom: true,
+						modal: true,
+						detail: `${result.message} Would you like to accept this risk and run the binary anyway?`,
+					},
+					"Run anyway",
+				);
+				if (!action) {
+					this.output.info("Binary was rejected at user request");
+					throw new Error("Signature verification aborted");
+				}
+				this.output.info("Binary will be ran anyway at user request");
+			}
+		}
+		return status;
 	}
 
 	/**
