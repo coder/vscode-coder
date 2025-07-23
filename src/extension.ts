@@ -49,6 +49,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	const output = vscode.window.createOutputChannel("Coder", { log: true });
 	const storage = new Storage(
+		vscodeProposed,
 		output,
 		ctx.globalState,
 		ctx.secrets,

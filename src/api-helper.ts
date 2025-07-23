@@ -3,7 +3,10 @@ import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated";
 import { ErrorEvent } from "eventsource";
 import { z } from "zod";
 
-export function errToStr(error: unknown, def: string) {
+export function errToStr(
+	error: unknown,
+	def: string = "No error message provided",
+) {
 	if (error instanceof Error && error.message) {
 		return error.message;
 	} else if (isApiError(error)) {

@@ -106,10 +106,21 @@ describe("cliManager", () => {
 		await fs.writeFile(path.join(binDir, "bin.temp-2"), "echo hello");
 		await fs.writeFile(path.join(binDir, "bin1"), "echo hello");
 		await fs.writeFile(path.join(binDir, "bin2"), "echo hello");
+		await fs.writeFile(path.join(binDir, "bin.asc"), "echo hello");
+		await fs.writeFile(path.join(binDir, "bin.old-1.asc"), "echo hello");
+		await fs.writeFile(path.join(binDir, "bin.temp-2.asc"), "echo hello");
 
 		expect(await cli.rmOld(path.join(binDir, "bin1"))).toStrictEqual([
 			{
+				fileName: "bin.asc",
+				error: undefined,
+			},
+			{
 				fileName: "bin.old-1",
+				error: undefined,
+			},
+			{
+				fileName: "bin.old-1.asc",
 				error: undefined,
 			},
 			{
@@ -122,6 +133,10 @@ describe("cliManager", () => {
 			},
 			{
 				fileName: "bin.temp-2",
+				error: undefined,
+			},
+			{
+				fileName: "bin.temp-2.asc",
 				error: undefined,
 			},
 		]);
