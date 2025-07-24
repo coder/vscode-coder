@@ -12,6 +12,8 @@
   depending on how you connected, it could be possible to get two
   different sessions for an agent. Existing connections may still
   have this problem, only new connections are fixed.
+- Added an agent metadata monitor status bar item, so you can view your active
+  agent metadata at a glance.
 
 ## [v1.9.2](https://github.com/coder/vscode-coder/releases/tag/v1.9.2) 2025-06-25
 
