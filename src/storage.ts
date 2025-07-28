@@ -524,19 +524,24 @@ export class Storage {
 		const writeStream = createWriteStream(signaturePath);
 		const status = await this.download(client, source, writeStream);
 		if (status === 200) {
-			const result = await pgp.verifySignature(
-				publicKeys,
-				cliPath,
-				signaturePath,
-				this.output,
-			);
-			if (result !== true) {
+			try {
+				await pgp.verifySignature(
+					publicKeys,
+					cliPath,
+					signaturePath,
+					this.output,
+				);
+			} catch (error) {
 				const action = await this.vscodeProposed.window.showWarningMessage(
-					result.summary(),
+					// VerificationError should be the only thing that throws, but
+					// unfortunately caught errors are always type unknown.
+					error instanceof pgp.VerificationError
+						? error.summary()
+						: "Failed to verify signature",
 					{
 						useCustom: true,
 						modal: true,
-						detail: `${result.message} Would you like to accept this risk and run the binary anyway?`,
+						detail: `${errToStr(error)} Would you like to accept this risk and run the binary anyway?`,
 					},
 					"Run anyway",
 				);

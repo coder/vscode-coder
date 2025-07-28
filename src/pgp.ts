@@ -46,15 +46,15 @@ export async function readPublicKeys(
 
 /**
  * Given public keys, a path to a file to verify, and a path to a detached
- * signature, verify the file's signature.  Return true if valid, otherwise
- * return VerificationError.
+ * signature, verify the file's signature.  Throw VerificationError if invalid
+ * or unable to validate.
  */
 export async function verifySignature(
 	publicKeys: openpgp.Key[],
 	cliPath: string,
 	signaturePath: string,
 	logger?: vscode.LogOutputChannel,
-): Promise<true | VerificationError> {
+): Promise<void> {
 	try {
 		logger?.info("Reading signature", signaturePath);
 		const armoredSignature = await fs.readFile(signaturePath, "utf8");
@@ -81,12 +81,11 @@ export async function verifySignature(
 		} catch (e) {
 			const error = `Unable to verify the authenticity of the binary: ${errToStr(e)}. The binary may have been tampered with.`;
 			logger?.warn(error);
-			return new VerificationError(VerificationErrorCode.Invalid, error);
+			throw new VerificationError(VerificationErrorCode.Invalid, error);
 		}
 	} catch (e) {
 		const error = `Failed to read signature or binary: ${errToStr(e)}.`;
 		logger?.warn(error);
-		return new VerificationError(VerificationErrorCode.Read, error);
+		throw new VerificationError(VerificationErrorCode.Read, error);
 	}
-	return true;
 }

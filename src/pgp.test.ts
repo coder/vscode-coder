@@ -29,63 +29,46 @@ describe("pgp", () => {
 	it("cannot read non-existent signature", async () => {
 		const armoredKeys = await fs.readFile(publicKeysPath, "utf8");
 		const publicKeys = await openpgp.readKeys({ armoredKeys });
-		const result = await pgp.verifySignature(
-			publicKeys,
-			cliPath,
-			path.join(__dirname, "does-not-exist"),
-		);
-		expect((result as pgp.VerificationError).code).toBe(
-			pgp.VerificationErrorCode.Read,
-		);
+		await expect(
+			pgp.verifySignature(
+				publicKeys,
+				cliPath,
+				path.join(__dirname, "does-not-exist"),
+			),
+		).rejects.toThrow("Failed to read");
 	});
 
 	it("cannot read invalid signature", async () => {
 		const armoredKeys = await fs.readFile(publicKeysPath, "utf8");
 		const publicKeys = await openpgp.readKeys({ armoredKeys });
-		const result = await pgp.verifySignature(
-			publicKeys,
-			cliPath,
-			invalidSignaturePath,
-		);
-		expect((result as pgp.VerificationError).code).toBe(
-			pgp.VerificationErrorCode.Read,
-		);
+		await expect(
+			pgp.verifySignature(publicKeys, cliPath, invalidSignaturePath),
+		).rejects.toThrow("Failed to read");
 	});
 
 	it("cannot read file", async () => {
 		const armoredKeys = await fs.readFile(publicKeysPath, "utf8");
 		const publicKeys = await openpgp.readKeys({ armoredKeys });
-		const result = await pgp.verifySignature(
-			publicKeys,
-			path.join(__dirname, "does-not-exist"),
-			validSignaturePath,
-		);
-		expect((result as pgp.VerificationError).code).toBe(
-			pgp.VerificationErrorCode.Read,
-		);
+		await expect(
+			pgp.verifySignature(
+				publicKeys,
+				path.join(__dirname, "does-not-exist"),
+				validSignaturePath,
+			),
+		).rejects.toThrow("Failed to read");
 	});
 
 	it("mismatched signature", async () => {
 		const armoredKeys = await fs.readFile(publicKeysPath, "utf8");
 		const publicKeys = await openpgp.readKeys({ armoredKeys });
-		const result = await pgp.verifySignature(
-			publicKeys,
-			__filename,
-			validSignaturePath,
-		);
-		expect((result as pgp.VerificationError).code).toBe(
-			pgp.VerificationErrorCode.Invalid,
-		);
+		await expect(
+			pgp.verifySignature(publicKeys, __filename, validSignaturePath),
+		).rejects.toThrow("Unable to verify");
 	});
 
 	it("verifies signature", async () => {
 		const armoredKeys = await fs.readFile(publicKeysPath, "utf8");
 		const publicKeys = await openpgp.readKeys({ armoredKeys });
-		const result = await pgp.verifySignature(
-			publicKeys,
-			cliPath,
-			validSignaturePath,
-		);
-		expect(result).toBe(true);
+		await pgp.verifySignature(publicKeys, cliPath, validSignaturePath);
 	});
 });
