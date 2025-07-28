@@ -1,5 +1,9 @@
 import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
-import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated";
+import {
+	Workspace,
+	WorkspaceAgent,
+	WorkspaceResource,
+} from "coder/site/src/api/typesGenerated";
 import { ErrorEvent } from "eventsource";
 import { z } from "zod";
 
@@ -27,12 +31,14 @@ export function extractAllAgents(
 	workspaces: readonly Workspace[],
 ): WorkspaceAgent[] {
 	return workspaces.reduce((acc, workspace) => {
-		return acc.concat(extractAgents(workspace));
+		return acc.concat(extractAgents(workspace.latest_build.resources));
 	}, [] as WorkspaceAgent[]);
 }
 
-export function extractAgents(workspace: Workspace): WorkspaceAgent[] {
-	return workspace.latest_build.resources.reduce((acc, resource) => {
+export function extractAgents(
+	resources: readonly WorkspaceResource[],
+): WorkspaceAgent[] {
+	return resources.reduce((acc, resource) => {
 		return acc.concat(resource.agents || []);
 	}, [] as WorkspaceAgent[]);
 }

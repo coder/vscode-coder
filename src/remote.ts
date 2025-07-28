@@ -255,11 +255,7 @@ export class Remote {
 		// break this connection.  We could force close the remote session or
 		// disallow logging out/in altogether, but for now just use a separate
 		// client to remain unaffected by whatever the plugin is doing.
-		const workspaceRestClient = await makeCoderSdk(
-			baseUrlRaw,
-			token,
-			this.storage,
-		);
+		const workspaceRestClient = makeCoderSdk(baseUrlRaw, token, this.storage);
 		// Store for use in commands.
 		this.commands.workspaceRestClient = workspaceRestClient;
 
@@ -405,7 +401,8 @@ export class Remote {
 
 		// Pick an agent.
 		this.storage.output.info(`Finding agent for ${workspaceName}...`);
-		const gotAgent = await this.commands.maybeAskAgent(workspace, parts.agent);
+		const agents = extractAgents(workspace.latest_build.resources);
+		const gotAgent = await this.commands.maybeAskAgent(agents, parts.agent);
 		if (!gotAgent) {
 			// User declined to pick an agent.
 			await this.closeRemote();
@@ -530,7 +527,7 @@ export class Remote {
 							if (!agent) {
 								return;
 							}
-							const agents = extractAgents(workspace);
+							const agents = extractAgents(workspace.latest_build.resources);
 							const found = agents.find((newAgent) => {
 								return newAgent.id === agent.id;
 							});
