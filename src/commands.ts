@@ -12,7 +12,11 @@ import { extractAgents } from "./api-helper";
 import { CertificateError } from "./error";
 import { Storage } from "./storage";
 import { toRemoteAuthority, toSafeHost } from "./util";
-import { OpenableTreeItem } from "./workspacesProvider";
+import {
+	AgentTreeItem,
+	WorkspaceTreeItem,
+	OpenableTreeItem,
+} from "./workspacesProvider";
 
 export class Commands {
 	// These will only be populated when actively connected to a workspace and are
@@ -38,10 +42,9 @@ export class Commands {
 	 * undefined if the user cancels.
 	 */
 	public async maybeAskAgent(
-		workspace: Workspace,
+		agents: WorkspaceAgent[],
 		filter?: string,
 	): Promise<WorkspaceAgent | undefined> {
-		const agents = extractAgents(workspace);
 		const filteredAgents = filter
 			? agents.filter((agent) => agent.name === filter)
 			: agents;
@@ -383,11 +386,11 @@ export class Commands {
 	 *
 	 * Otherwise, the currently connected workspace is used (if any).
 	 */
-	public async navigateToWorkspace(workspace: OpenableTreeItem) {
-		if (workspace) {
+	public async navigateToWorkspace(item: OpenableTreeItem) {
+		if (item) {
 			const uri =
 				this.storage.getUrl() +
-				`/@${workspace.workspaceOwner}/${workspace.workspaceName}`;
+				`/@${item.workspace.owner_name}/${item.workspace.name}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
@@ -407,11 +410,11 @@ export class Commands {
 	 *
 	 * Otherwise, the currently connected workspace is used (if any).
 	 */
-	public async navigateToWorkspaceSettings(workspace: OpenableTreeItem) {
-		if (workspace) {
+	public async navigateToWorkspaceSettings(item: OpenableTreeItem) {
+		if (item) {
 			const uri =
 				this.storage.getUrl() +
-				`/@${workspace.workspaceOwner}/${workspace.workspaceName}/settings`;
+				`/@${item.workspace.owner_name}/${item.workspace.name}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
@@ -424,30 +427,38 @@ export class Commands {
 	}
 
 	/**
-   * Open a workspace or agent that is showing in the sidebar.
-   *
-   * This builds the host name and passes it to the VS Code Remote SSH
-   * extension.
+	 * Open a workspace or agent that is showing in the sidebar.
+	 *
+	 * This builds the host name and passes it to the VS Code Remote SSH
+	 * extension.
 
-   * Throw if not logged into a deployment.
-   */
-	public async openFromSidebar(treeItem: OpenableTreeItem) {
-		if (treeItem) {
+	 * Throw if not logged into a deployment.
+	 */
+	public async openFromSidebar(item: OpenableTreeItem) {
+		if (item) {
 			const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL;
 			if (!baseUrl) {
 				throw new Error("You are not logged in");
 			}
-			if (treeItem.primaryAgentName === undefined) {
-				return;
+			if (item instanceof AgentTreeItem) {
+				await openWorkspace(
+					baseUrl,
+					item.workspace,
+					item.agent,
+					undefined,
+					true,
+				);
+			} else if (item instanceof WorkspaceTreeItem) {
+				const agents = await this.extractAgentsWithFallback(item.workspace);
+				const agent = await this.maybeAskAgent(agents);
+				if (!agent) {
+					// User declined to pick an agent.
+					return;
+				}
+				await openWorkspace(baseUrl, item.workspace, agent, undefined, true);
+			} else {
+				throw new Error("Unable to open unknown sidebar item");
 			}
-			await openWorkspace(
-				baseUrl,
-				treeItem.workspaceOwner,
-				treeItem.workspaceName,
-				treeItem.primaryAgentName,
-				treeItem.primaryAgentFolderPath,
-				true,
-			);
 		} else {
 			// If there is no tree item, then the user manually ran this command.
 			// Default to the regular open instead.
@@ -519,117 +530,46 @@ export class Commands {
 	/**
 	 * Open a workspace belonging to the currently logged-in deployment.
 	 *
-	 * Throw if not logged into a deployment.
+	 * If no workspace is provided, ask the user for one.  If no agent is
+	 * provided, use the first or ask the user if there are multiple.
+	 *
+	 * Throw if not logged into a deployment or if a matching workspace or agent
+	 * cannot be found.
 	 */
-	public async open(...args: unknown[]): Promise<void> {
-		let workspaceOwner: string;
-		let workspaceName: string;
-		let workspaceAgent: string | undefined;
-		let folderPath: string | undefined;
-		let openRecent: boolean | undefined;
-
-		let workspace: Workspace | undefined;
-
+	public async open(
+		workspaceOwner?: string,
+		workspaceName?: string,
+		agentName?: string,
+		folderPath?: string,
+		openRecent?: boolean,
+	): Promise<void> {
 		const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
 		}
 
-		if (args.length === 0) {
-			const quickPick = vscode.window.createQuickPick();
-			quickPick.value = "owner:me ";
-			quickPick.placeholder = "owner:me template:go";
-			quickPick.title = `Connect to a workspace`;
-			let lastWorkspaces: readonly Workspace[];
-			quickPick.onDidChangeValue((value) => {
-				quickPick.busy = true;
-				this.restClient
-					.getWorkspaces({
-						q: value,
-					})
-					.then((workspaces) => {
-						lastWorkspaces = workspaces.workspaces;
-						const items: vscode.QuickPickItem[] = workspaces.workspaces.map(
-							(workspace) => {
-								let icon = "$(debug-start)";
-								if (workspace.latest_build.status !== "running") {
-									icon = "$(debug-stop)";
-								}
-								const status =
-									workspace.latest_build.status.substring(0, 1).toUpperCase() +
-									workspace.latest_build.status.substring(1);
-								return {
-									alwaysShow: true,
-									label: `${icon} ${workspace.owner_name} / ${workspace.name}`,
-									detail: `Template: ${workspace.template_display_name || workspace.template_name} • Status: ${status}`,
-								};
-							},
-						);
-						quickPick.items = items;
-						quickPick.busy = false;
-					})
-					.catch((ex) => {
-						if (ex instanceof CertificateError) {
-							ex.showNotification();
-						}
-						return;
-					});
-			});
-			quickPick.show();
-			workspace = await new Promise<Workspace | undefined>((resolve) => {
-				quickPick.onDidHide(() => {
-					resolve(undefined);
-				});
-				quickPick.onDidChangeSelection((selected) => {
-					if (selected.length < 1) {
-						return resolve(undefined);
-					}
-					const workspace =
-						lastWorkspaces[quickPick.items.indexOf(selected[0])];
-					resolve(workspace);
-				});
-			});
+		let workspace: Workspace | undefined;
+		if (workspaceOwner && workspaceName) {
+			workspace = await this.restClient.getWorkspaceByOwnerAndName(
+				workspaceOwner,
+				workspaceName,
+			);
+		} else {
+			workspace = await this.pickWorkspace();
 			if (!workspace) {
 				// User declined to pick a workspace.
 				return;
 			}
-			workspaceOwner = workspace.owner_name;
-			workspaceName = workspace.name;
-		} else {
-			workspaceOwner = args[0] as string;
-			workspaceName = args[1] as string;
-			workspaceAgent = args[2] as string | undefined;
-			folderPath = args[3] as string | undefined;
-			openRecent = args[4] as boolean | undefined;
 		}
 
-		if (!workspaceAgent) {
-			if (workspace === undefined) {
-				workspace = await this.restClient.getWorkspaceByOwnerAndName(
-					workspaceOwner,
-					workspaceName,
-				);
-			}
-
-			const agent = await this.maybeAskAgent(workspace);
-			if (!agent) {
-				// User declined to pick an agent.
-				return;
-			}
-			if (!folderPath) {
-				folderPath = agent.expanded_directory;
-			}
-			workspaceAgent = agent.name;
+		const agents = await this.extractAgentsWithFallback(workspace);
+		const agent = await this.maybeAskAgent(agents, agentName);
+		if (!agent) {
+			// User declined to pick an agent.
+			return;
 		}
 
-		await openWorkspace(
-			baseUrl,
-			workspaceOwner,
-			workspaceName,
-			workspaceAgent,
-			folderPath,
-			openRecent,
-		);
+		await openWorkspace(baseUrl, workspace, agent, folderPath, openRecent);
 	}
 
 	/**
@@ -685,27 +625,111 @@ export class Commands {
 			await this.workspaceRestClient.updateWorkspaceVersion(this.workspace);
 		}
 	}
+
+	/**
+	 * Ask the user to select a workspace.  Return undefined if canceled.
+	 */
+	private async pickWorkspace(): Promise<Workspace | undefined> {
+		const quickPick = vscode.window.createQuickPick();
+		quickPick.value = "owner:me ";
+		quickPick.placeholder = "owner:me template:go";
+		quickPick.title = `Connect to a workspace`;
+		let lastWorkspaces: readonly Workspace[];
+		quickPick.onDidChangeValue((value) => {
+			quickPick.busy = true;
+			this.restClient
+				.getWorkspaces({
+					q: value,
+				})
+				.then((workspaces) => {
+					lastWorkspaces = workspaces.workspaces;
+					const items: vscode.QuickPickItem[] = workspaces.workspaces.map(
+						(workspace) => {
+							let icon = "$(debug-start)";
+							if (workspace.latest_build.status !== "running") {
+								icon = "$(debug-stop)";
+							}
+							const status =
+								workspace.latest_build.status.substring(0, 1).toUpperCase() +
+								workspace.latest_build.status.substring(1);
+							return {
+								alwaysShow: true,
+								label: `${icon} ${workspace.owner_name} / ${workspace.name}`,
+								detail: `Template: ${workspace.template_display_name || workspace.template_name} • Status: ${status}`,
+							};
+						},
+					);
+					quickPick.items = items;
+					quickPick.busy = false;
+				})
+				.catch((ex) => {
+					if (ex instanceof CertificateError) {
+						ex.showNotification();
+					}
+					return;
+				});
+		});
+		quickPick.show();
+		return new Promise<Workspace | undefined>((resolve) => {
+			quickPick.onDidHide(() => {
+				resolve(undefined);
+			});
+			quickPick.onDidChangeSelection((selected) => {
+				if (selected.length < 1) {
+					return resolve(undefined);
+				}
+				const workspace = lastWorkspaces[quickPick.items.indexOf(selected[0])];
+				resolve(workspace);
+			});
+		});
+	}
+
+	/**
+	 * Return agents from the workspace.
+	 *
+	 * This function can return agents even if the workspace is off.  Use this to
+	 * ensure we have an agent so we get a stable host name, because Coder will
+	 * happily connect to the same agent with or without it in the URL (if it is
+	 * the first) but VS Code will treat these as different sessions.
+	 */
+	private async extractAgentsWithFallback(
+		workspace: Workspace,
+	): Promise<WorkspaceAgent[]> {
+		const agents = extractAgents(workspace.latest_build.resources);
+		if (workspace.latest_build.status !== "running" && agents.length === 0) {
+			// If we have no agents, the workspace may not be running, in which case
+			// we need to fetch the agents through the resources API, as the
+			// workspaces query does not include agents when off.
+			this.storage.output.info("Fetching agents from template version");
+			const resources = await this.restClient.getTemplateVersionResources(
+				workspace.latest_build.template_version_id,
+			);
+			return extractAgents(resources);
+		}
+		return agents;
+	}
 }
 
 /**
- * Given a workspace, build the host name, find a directory to open, and pass
- * both to the Remote SSH plugin in the form of a remote authority URI.
+ * Given a workspace and agent, build the host name, find a directory to open,
+ * and pass both to the Remote SSH plugin in the form of a remote authority
+ * URI.
+ *
+ * If provided, folderPath is always used, otherwise expanded_directory from
+ * the agent is used.
  */
 async function openWorkspace(
 	baseUrl: string,
-	workspaceOwner: string,
-	workspaceName: string,
-	workspaceAgent: string,
+	workspace: Workspace,
+	agent: WorkspaceAgent,
 	folderPath: string | undefined,
-	openRecent: boolean | undefined,
+	openRecent: boolean = false,
 ) {
-	// A workspace can have multiple agents, but that's handled
-	// when opening a workspace unless explicitly specified.
 	const remoteAuthority = toRemoteAuthority(
 		baseUrl,
-		workspaceOwner,
-		workspaceName,
-		workspaceAgent,
+		workspace.owner_name,
+		workspace.name,
+		agent.name,
 	);
 
 	let newWindow = true;
@@ -714,7 +738,11 @@ async function openWorkspace(
 		newWindow = false;
 	}
 
-	// If a folder isn't specified or we have been asked to open the most recent,
+	if (!folderPath) {
+		folderPath = agent.expanded_directory;
+	}
+
+	// If the agent had no folder or we have been asked to open the most recent,
 	// we can try to open a recently opened folder/workspace.
 	if (!folderPath || openRecent) {
 		const output: {
@@ -722,10 +750,9 @@ async function openWorkspace(
 		} = await vscode.commands.executeCommand("_workbench.getRecentlyOpened");
 		const opened = output.workspaces.filter(
 			// Remove recents that do not belong to this connection.  The remote
-			// authority maps to a workspace or workspace/agent combination (using the
-			// SSH host name).  This means, at the moment, you can have a different
-			// set of recents for a workspace versus workspace/agent combination, even
-			// if that agent is the default for the workspace.
+			// authority maps to a workspace/agent combination (using the SSH host
+			// name).  There may also be some legacy connections that still may
+			// reference a workspace without an agent name, which will be missed.
 			(opened) => opened.folderUri?.authority === remoteAuthority,
 		);
 

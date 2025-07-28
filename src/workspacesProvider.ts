@@ -159,7 +159,7 @@ export class WorkspaceProvider
 			);
 
 			// Get app status from the workspace agents
-			const agents = extractAgents(workspace);
+			const agents = extractAgents(workspace.latest_build.resources);
 			agents.forEach((agent) => {
 				// Check if agent has apps property with status reporting
 				if (agent.apps && Array.isArray(agent.apps)) {
@@ -234,15 +234,10 @@ export class WorkspaceProvider
 	getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
 		if (element) {
 			if (element instanceof WorkspaceTreeItem) {
-				const agents = extractAgents(element.workspace);
+				const agents = extractAgents(element.workspace.latest_build.resources);
 				const agentTreeItems = agents.map(
 					(agent) =>
-						new AgentTreeItem(
-							agent,
-							element.workspaceOwner,
-							element.workspaceName,
-							element.watchMetadata,
-						),
+						new AgentTreeItem(agent, element.workspace, element.watchMetadata),
 				);
 
 				return Promise.resolve(agentTreeItems);
@@ -267,7 +262,7 @@ export class WorkspaceProvider
 									new AppStatusTreeItem({
 										name: status.message,
 										command: app.command,
-										workspace_name: element.workspaceName,
+										workspace_name: element.workspace.name,
 									}),
 								);
 							}
@@ -377,10 +372,7 @@ export class OpenableTreeItem extends vscode.TreeItem {
 		description: string,
 		collapsibleState: vscode.TreeItemCollapsibleState,
 
-		public readonly workspaceOwner: string,
-		public readonly workspaceName: string,
-		public readonly primaryAgentName: string | undefined,
-		public readonly primaryAgentFolderPath: string | undefined,
+		public readonly workspace: Workspace,
 
 		contextValue: CoderOpenableTreeItemType,
 	) {
@@ -396,30 +388,26 @@ export class OpenableTreeItem extends vscode.TreeItem {
 	};
 }
 
-class AgentTreeItem extends OpenableTreeItem {
+export class AgentTreeItem extends OpenableTreeItem {
 	constructor(
 		public readonly agent: WorkspaceAgent,
-		workspaceOwner: string,
-		workspaceName: string,
+		workspace: Workspace,
 		watchMetadata = false,
 	) {
 		super(
 			agent.name, // label
 			`Status: ${agent.status}`, // tooltip
 			agent.status, // description
-			watchMetadata
+			watchMetadata // collapsed
 				? vscode.TreeItemCollapsibleState.Collapsed
 				: vscode.TreeItemCollapsibleState.None,
-			workspaceOwner,
-			workspaceName,
-			agent.name,
-			agent.expanded_directory,
+			workspace,
 			"coderAgent",
 		);
 	}
 }
 
-class WorkspaceTreeItem extends OpenableTreeItem {
+export class WorkspaceTreeItem extends OpenableTreeItem {
 	public appStatus: {
 		name: string;
 		url?: string;
@@ -430,7 +418,7 @@ class WorkspaceTreeItem extends OpenableTreeItem {
 	}[] = [];
 
 	constructor(
-		public readonly workspace: Workspace,
+		workspace: Workspace,
 		public readonly showOwner: boolean,
 		public readonly watchMetadata = false,
 	) {
@@ -442,18 +430,15 @@ class WorkspaceTreeItem extends OpenableTreeItem {
 			? `${workspace.owner_name} / ${workspace.name}`
 			: workspace.name;
 		const detail = `Template: ${workspace.template_display_name || workspace.template_name} • Status: ${status}`;
-		const agents = extractAgents(workspace);
+		const agents = extractAgents(workspace.latest_build.resources);
 		super(
 			label,
 			detail,
 			workspace.latest_build.status, // description
-			showOwner
+			showOwner // collapsed
 				? vscode.TreeItemCollapsibleState.Collapsed
 				: vscode.TreeItemCollapsibleState.Expanded,
-			workspace.owner_name,
-			workspace.name,
-			agents[0]?.name,
-			agents[0]?.expanded_directory,
+			workspace,
 			agents.length > 1
 				? "coderWorkspaceMultipleAgents"
 				: "coderWorkspaceSingleAgent",
