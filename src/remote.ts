@@ -255,11 +255,7 @@ export class Remote {
 		// break this connection.  We could force close the remote session or
 		// disallow logging out/in altogether, but for now just use a separate
 		// client to remain unaffected by whatever the plugin is doing.
-		const workspaceRestClient = await makeCoderSdk(
-			baseUrlRaw,
-			token,
-			this.storage,
-		);
+		const workspaceRestClient = makeCoderSdk(baseUrlRaw, token, this.storage);
 		// Store for use in commands.
 		this.commands.workspaceRestClient = workspaceRestClient;
 

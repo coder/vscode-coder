@@ -60,7 +60,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
 	const url = storage.getUrl();
-	const restClient = await makeCoderSdk(
+	const restClient = makeCoderSdk(
 		url || "",
 		await storage.getSessionToken(),
 		storage,

@@ -238,7 +238,7 @@ export class Commands {
 		token: string,
 		isAutologin: boolean,
 	): Promise<{ user: User; token: string } | null> {
-		const restClient = await makeCoderSdk(url, token, this.storage);
+		const restClient = makeCoderSdk(url, token, this.storage);
 		if (!needToken()) {
 			try {
 				const user = await restClient.getAuthenticatedUser();
