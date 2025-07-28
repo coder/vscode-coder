@@ -26,7 +26,7 @@ export class VerificationError extends Error {
 		switch (this.code) {
 			case VerificationErrorCode.Invalid:
 				return "Signature does not match";
-			default:
+			case VerificationErrorCode.Read:
 				return "Failed to read signature";
 		}
 	}
