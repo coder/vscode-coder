@@ -13,6 +13,14 @@
   and configFile are provided.
 - Add `coder.disableUpdateNotifications` setting to disable workspace template
   update notifications.
+- Coder output panel enhancements: All log entries now include timestamps, and you
+  can filter messages by log level in the panel.
+- Consistently use the same session for each agent. Previously,
+  depending on how you connected, it could be possible to get two
+  different sessions for an agent. Existing connections may still
+  have this problem, only new connections are fixed.
+- Added an agent metadata monitor status bar item, so you can view your active
+  agent metadata at a glance.
 - Add binary signature verification. This can be disabled with
   `coder.disableSignatureVerification` if you purposefully run a binary that is
   not signed by Coder (for example a binary you built yourself).

@@ -1,6 +1,6 @@
 import { isAxiosError } from "axios";
 import { Api } from "coder/site/src/api/api";
-import { Workspace } from "coder/site/src/api/typesGenerated";
+import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated";
 import find from "find-process";
 import * as fs from "fs/promises";
 import * as jsonc from "jsonc-parser";
@@ -9,6 +9,12 @@ import * as path from "path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
+import {
+	createAgentMetadataWatcher,
+	getEventValue,
+	formatEventLabel,
+	formatMetadataError,
+} from "./agentMetadataHelper";
 import {
 	createHttpAgent,
 	makeCoderSdk,
@@ -68,6 +74,7 @@ export class Remote {
 		workspace: Workspace,
 		label: string,
 		binPath: string,
+		featureSet: FeatureSet,
 	): Promise<Workspace | undefined> {
 		const workspaceName = `${workspace.owner_name}/${workspace.name}`;
 
@@ -136,6 +143,7 @@ export class Remote {
 									binPath,
 									workspace,
 									writeEmitter,
+									featureSet,
 								);
 								break;
 							case "failed":
@@ -153,6 +161,7 @@ export class Remote {
 										binPath,
 										workspace,
 										writeEmitter,
+										featureSet,
 									);
 									break;
 								}
@@ -383,6 +392,7 @@ export class Remote {
 				workspace,
 				parts.label,
 				binaryPath,
+				featureSet,
 			);
 			if (!updatedWorkspace) {
 				// User declined to start the workspace.
@@ -618,6 +628,10 @@ export class Remote {
 					),
 				);
 			}),
+		);
+
+		disposables.push(
+			...this.createAgentMetadataStatusBar(agent, workspaceRestClient),
 		);
 
 		this.storage.output.info("Remote setup complete");
@@ -960,6 +974,56 @@ export class Remote {
 			return result;
 		};
 		return loop();
+	}
+
+	/**
+	 * Creates and manages a status bar item that displays metadata information for a given workspace agent.
+	 * The status bar item updates dynamically based on changes to the agent's metadata,
+	 * and hides itself if no metadata is available or an error occurs.
+	 */
+	private createAgentMetadataStatusBar(
+		agent: WorkspaceAgent,
+		restClient: Api,
+	): vscode.Disposable[] {
+		const statusBarItem = vscode.window.createStatusBarItem(
+			"agentMetadata",
+			vscode.StatusBarAlignment.Left,
+		);
+
+		const agentWatcher = createAgentMetadataWatcher(agent.id, restClient);
+
+		const onChangeDisposable = agentWatcher.onChange(() => {
+			if (agentWatcher.error) {
+				const errMessage = formatMetadataError(agentWatcher.error);
+				this.storage.output.warn(errMessage);
+
+				statusBarItem.text = "$(warning) Agent Status Unavailable";
+				statusBarItem.tooltip = errMessage;
+				statusBarItem.color = new vscode.ThemeColor(
+					"statusBarItem.warningForeground",
+				);
+				statusBarItem.backgroundColor = new vscode.ThemeColor(
+					"statusBarItem.warningBackground",
+				);
+				statusBarItem.show();
+				return;
+			}
+
+			if (agentWatcher.metadata && agentWatcher.metadata.length > 0) {
+				statusBarItem.text =
+					"$(dashboard) " + getEventValue(agentWatcher.metadata[0]);
+				statusBarItem.tooltip = agentWatcher.metadata
+					.map((metadata) => formatEventLabel(metadata))
+					.join("\n");
+				statusBarItem.color = undefined;
+				statusBarItem.backgroundColor = undefined;
+				statusBarItem.show();
+			} else {
+				statusBarItem.hide();
+			}
+		});
+
+		return [statusBarItem, agentWatcher, onChangeDisposable];
 	}
 
 	// closeRemote ends the current remote session.

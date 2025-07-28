@@ -4,16 +4,18 @@ import {
 	WorkspaceAgent,
 	WorkspaceApp,
 } from "coder/site/src/api/typesGenerated";
-import { EventSource } from "eventsource";
 import * as path from "path";
 import * as vscode from "vscode";
-import { createStreamingFetchAdapter } from "./api";
+import {
+	AgentMetadataWatcher,
+	createAgentMetadataWatcher,
+	formatEventLabel,
+	formatMetadataError,
+} from "./agentMetadataHelper";
 import {
 	AgentMetadataEvent,
-	AgentMetadataEventSchemaArray,
 	extractAllAgents,
 	extractAgents,
-	errToStr,
 } from "./api-helper";
 import { Storage } from "./storage";
 
@@ -21,13 +23,6 @@ export enum WorkspaceQuery {
 	Mine = "owner:me",
 	All = "",
 }
-
-type AgentWatcher = {
-	onChange: vscode.EventEmitter<null>["event"];
-	dispose: () => void;
-	metadata?: AgentMetadataEvent[];
-	error?: unknown;
-};
 
 /**
  * Polls workspaces using the provided REST client and renders them in a tree.
@@ -42,7 +37,8 @@ export class WorkspaceProvider
 {
 	// Undefined if we have never fetched workspaces before.
 	private workspaces: WorkspaceTreeItem[] | undefined;
-	private agentWatchers: Record<WorkspaceAgent["id"], AgentWatcher> = {};
+	private agentWatchers: Record<WorkspaceAgent["id"], AgentMetadataWatcher> =
+		{};
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
 	private visible = false;
@@ -139,7 +135,7 @@ export class WorkspaceProvider
 					return this.agentWatchers[agent.id];
 				}
 				// Otherwise create a new watcher.
-				const watcher = monitorMetadata(agent.id, restClient);
+				const watcher = createAgentMetadataWatcher(agent.id, restClient);
 				watcher.onChange(() => this.refresh());
 				this.agentWatchers[agent.id] = watcher;
 				return watcher;
@@ -313,53 +309,6 @@ export class WorkspaceProvider
 	}
 }
 
-// monitorMetadata opens an SSE endpoint to monitor metadata on the specified
-// agent and registers a watcher that can be disposed to stop the watch and
-// emits an event when the metadata changes.
-function monitorMetadata(
-	agentId: WorkspaceAgent["id"],
-	restClient: Api,
-): AgentWatcher {
-	// TODO: Is there a better way to grab the url and token?
-	const url = restClient.getAxiosInstance().defaults.baseURL;
-	const metadataUrl = new URL(
-		`${url}/api/v2/workspaceagents/${agentId}/watch-metadata`,
-	);
-	const eventSource = new EventSource(metadataUrl.toString(), {
-		fetch: createStreamingFetchAdapter(restClient.getAxiosInstance()),
-	});
-
-	let disposed = false;
-	const onChange = new vscode.EventEmitter<null>();
-	const watcher: AgentWatcher = {
-		onChange: onChange.event,
-		dispose: () => {
-			if (!disposed) {
-				eventSource.close();
-				disposed = true;
-			}
-		},
-	};
-
-	eventSource.addEventListener("data", (event) => {
-		try {
-			const dataEvent = JSON.parse(event.data);
-			const metadata = AgentMetadataEventSchemaArray.parse(dataEvent);
-
-			// Overwrite metadata if it changed.
-			if (JSON.stringify(watcher.metadata) !== JSON.stringify(metadata)) {
-				watcher.metadata = metadata;
-				onChange.fire(null);
-			}
-		} catch (error) {
-			watcher.error = error;
-			onChange.fire(null);
-		}
-	});
-
-	return watcher;
-}
-
 /**
  * A tree item that represents a collapsible section with child items
  */
@@ -375,20 +324,14 @@ class SectionTreeItem extends vscode.TreeItem {
 
 class ErrorTreeItem extends vscode.TreeItem {
 	constructor(error: unknown) {
-		super(
-			"Failed to query metadata: " + errToStr(error, "no error provided"),
-			vscode.TreeItemCollapsibleState.None,
-		);
+		super(formatMetadataError(error), vscode.TreeItemCollapsibleState.None);
 		this.contextValue = "coderAgentMetadata";
 	}
 }
 
 class AgentMetadataTreeItem extends vscode.TreeItem {
 	constructor(metadataEvent: AgentMetadataEvent) {
-		const label =
-			metadataEvent.description.display_name.trim() +
-			": " +
-			metadataEvent.result.value.replace(/\n/g, "").trim();
+		const label = formatEventLabel(metadataEvent);
 
 		super(label, vscode.TreeItemCollapsibleState.None);
 		const collected_at = new Date(
@@ -436,8 +379,8 @@ export class OpenableTreeItem extends vscode.TreeItem {
 
 		public readonly workspaceOwner: string,
 		public readonly workspaceName: string,
-		public readonly workspaceAgent: string | undefined,
-		public readonly workspaceFolderPath: string | undefined,
+		public readonly primaryAgentName: string | undefined,
+		public readonly primaryAgentFolderPath: string | undefined,
 
 		contextValue: CoderOpenableTreeItemType,
 	) {
@@ -476,7 +419,7 @@ class AgentTreeItem extends OpenableTreeItem {
 	}
 }
 
-export class WorkspaceTreeItem extends OpenableTreeItem {
+class WorkspaceTreeItem extends OpenableTreeItem {
 	public appStatus: {
 		name: string;
 		url?: string;
@@ -509,7 +452,7 @@ export class WorkspaceTreeItem extends OpenableTreeItem {
 				: vscode.TreeItemCollapsibleState.Expanded,
 			workspace.owner_name,
 			workspace.name,
-			undefined,
+			agents[0]?.name,
 			agents[0]?.expanded_directory,
 			agents.length > 1
 				? "coderWorkspaceMultipleAgents"
