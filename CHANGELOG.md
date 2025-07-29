@@ -14,6 +14,12 @@
   have this problem, only new connections are fixed.
 - Added an agent metadata monitor status bar item, so you can view your active
   agent metadata at a glance.
+- Add search functionality to the "All Workspaces" view with performance optimizations.
+  - Implement smart search that prioritizes exact word matches over substring matches.
+  - Add debounced search input (150ms delay) to improve responsiveness during typing.
+  - Pre-compile regex patterns and cache metadata strings for better performance.
+  - Include comprehensive error handling for malformed data and edge cases.
+  - Add input validation to prevent performance issues from long search terms.
 
 ## [v1.9.2](https://github.com/coder/vscode-coder/releases/tag/v1.9.2) 2025-06-25
 
