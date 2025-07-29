@@ -43,6 +43,7 @@ export class WorkspaceProvider
 	private fetching = false;
 	private visible = false;
 	private searchFilter = "";
+	private metadataCache: Record<string, string> = {};
 
 	constructor(
 		private readonly getWorkspacesQuery: WorkspaceQuery,
@@ -54,6 +55,10 @@ export class WorkspaceProvider
 	}
 
 	setSearchFilter(filter: string) {
+		// Validate search term length to prevent performance issues
+		if (filter.length > 200) {
+			filter = filter.substring(0, 200);
+		}
 		this.searchFilter = filter;
 		this.refresh(undefined);
 	}
@@ -72,6 +77,9 @@ export class WorkspaceProvider
 			return;
 		}
 		this.fetching = true;
+
+		// Clear metadata cache when refreshing to ensure data consistency
+		this.clearMetadataCache();
 
 		// It is possible we called fetchAndRefresh() manually (through the button
 		// for example), in which case we might still have a pending refresh that
@@ -325,6 +333,75 @@ export class WorkspaceProvider
 	}
 
 	/**
+	 * Extract and normalize searchable text fields from a workspace.
+	 * This helper method reduces code duplication between exact word and substring matching.
+	 */
+	private extractSearchableFields(workspace: WorkspaceTreeItem): {
+		workspaceName: string;
+		ownerName: string;
+		templateName: string;
+		status: string;
+		agentNames: string[];
+		agentMetadataText: string;
+	} {
+		// Handle null/undefined workspace data safely
+		const workspaceName = (workspace.workspace.name || "").toLowerCase();
+		const ownerName = (workspace.workspace.owner_name || "").toLowerCase();
+		const templateName = (
+			workspace.workspace.template_display_name ||
+			workspace.workspace.template_name ||
+			""
+		).toLowerCase();
+		const status = (
+			workspace.workspace.latest_build?.status || ""
+		).toLowerCase();
+
+		// Extract agent names with null safety
+		const agents = extractAgents(
+			workspace.workspace.latest_build?.resources || [],
+		);
+		const agentNames = agents
+			.map((agent) => (agent.name || "").toLowerCase())
+			.filter((name) => name.length > 0);
+
+		// Extract and cache agent metadata with error handling
+		let agentMetadataText = "";
+		const metadataCacheKey = agents.map((agent) => agent.id).join(",");
+
+		if (this.metadataCache[metadataCacheKey]) {
+			agentMetadataText = this.metadataCache[metadataCacheKey];
+		} else {
+			const metadataStrings: string[] = [];
+			agents.forEach((agent) => {
+				const watcher = this.agentWatchers[agent.id];
+				if (watcher?.metadata) {
+					watcher.metadata.forEach((metadata) => {
+						try {
+							metadataStrings.push(JSON.stringify(metadata).toLowerCase());
+						} catch (error) {
+							// Handle JSON serialization errors gracefully
+							this.storage.output.warn(
+								`Failed to serialize metadata for agent ${agent.id}: ${error}`,
+							);
+						}
+					});
+				}
+			});
+			agentMetadataText = metadataStrings.join(" ");
+			this.metadataCache[metadataCacheKey] = agentMetadataText;
+		}
+
+		return {
+			workspaceName,
+			ownerName,
+			templateName,
+			status,
+			agentNames,
+			agentMetadataText,
+		};
+	}
+
+	/**
 	 * Check if a workspace matches the given search term using smart search logic.
 	 * Prioritizes exact word matches over substring matches.
 	 */
@@ -332,68 +409,87 @@ export class WorkspaceProvider
 		workspace: WorkspaceTreeItem,
 		searchTerm: string,
 	): boolean {
-		const workspaceName = workspace.workspace.name.toLowerCase();
-		const ownerName = workspace.workspace.owner_name.toLowerCase();
-		const templateName = (
-			workspace.workspace.template_display_name ||
-			workspace.workspace.template_name ||
-			""
-		).toLowerCase();
-		const status = workspace.workspace.latest_build.status.toLowerCase();
+		// Early return for empty search terms
+		if (!searchTerm || searchTerm.trim().length === 0) {
+			return true;
+		}
 
-		// Check if any agent names match the search term
-		const agents = extractAgents(workspace.workspace.latest_build.resources);
-		const agentNames = agents.map((agent) => agent.name.toLowerCase());
-		const hasMatchingAgent = agentNames.some((agentName) =>
-			agentName.includes(searchTerm),
-		);
+		// Extract all searchable fields once
+		const fields = this.extractSearchableFields(workspace);
 
-		// Check if any agent metadata contains the search term
-		const hasMatchingMetadata = agents.some((agent) => {
-			const watcher = this.agentWatchers[agent.id];
-			if (watcher?.metadata) {
-				return watcher.metadata.some((metadata) => {
-					const metadataStr = JSON.stringify(metadata).toLowerCase();
-					return metadataStr.includes(searchTerm);
-				});
-			}
-			return false;
-		});
-
-		// Smart search: Try exact word match first, then fall back to substring
+		// Pre-compile regex patterns for exact word matching
 		const searchWords = searchTerm
 			.split(/\s+/)
 			.filter((word) => word.length > 0);
+
+		const regexPatterns: RegExp[] = [];
+		for (const word of searchWords) {
+			try {
+				// Escape special regex characters to prevent injection
+				const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+				regexPatterns.push(new RegExp(`\\b${escapedWord}\\b`, "i"));
+			} catch (error) {
+				// Handle invalid regex patterns
+				this.storage.output.warn(
+					`Invalid regex pattern for search word "${word}": ${error}`,
+				);
+				// Fall back to simple substring matching for this word
+				continue;
+			}
+		}
+
+		// Combine all text for exact word matching
 		const allText = [
-			workspaceName,
-			ownerName,
-			templateName,
-			status,
-			...agentNames,
+			fields.workspaceName,
+			fields.ownerName,
+			fields.templateName,
+			fields.status,
+			...fields.agentNames,
+			fields.agentMetadataText,
 		].join(" ");
 
 		// Check for exact word matches (higher priority)
 		const hasExactWordMatch =
-			searchWords.length > 0 &&
-			searchWords.some((word) => {
-				// Escape special regex characters to prevent injection
-				const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-				const wordBoundaryRegex = new RegExp(`\\b${escapedWord}\\b`, "i");
-				return wordBoundaryRegex.test(allText);
+			regexPatterns.length > 0 &&
+			regexPatterns.some((pattern) => {
+				try {
+					return pattern.test(allText);
+				} catch (error) {
+					// Handle regex test errors gracefully
+					this.storage.output.warn(
+						`Regex test failed for pattern ${pattern}: ${error}`,
+					);
+					return false;
+				}
 			});
 
 		// Check for substring matches (lower priority) - only if no exact word match
 		const hasSubstringMatch =
 			!hasExactWordMatch &&
-			(workspaceName.includes(searchTerm) ||
-				ownerName.includes(searchTerm) ||
-				templateName.includes(searchTerm) ||
-				status.includes(searchTerm) ||
-				hasMatchingAgent ||
-				hasMatchingMetadata);
+			(fields.workspaceName.includes(searchTerm) ||
+				fields.ownerName.includes(searchTerm) ||
+				fields.templateName.includes(searchTerm) ||
+				fields.status.includes(searchTerm) ||
+				fields.agentNames.some((agentName) => agentName.includes(searchTerm)) ||
+				fields.agentMetadataText.includes(searchTerm));
 
 		// Return true if either exact word match or substring match
 		return hasExactWordMatch || hasSubstringMatch;
+	}
+
+	/**
+	 * Clear the metadata cache when workspaces are refreshed to ensure data consistency.
+	 * Also clears cache if it grows too large to prevent memory issues.
+	 */
+	private clearMetadataCache(): void {
+		// Clear cache if it grows too large (prevent memory issues)
+		const cacheSize = Object.keys(this.metadataCache).length;
+		if (cacheSize > 1000) {
+			this.storage.output.info(
+				`Clearing metadata cache due to size (${cacheSize} entries)`,
+			);
+		}
+		this.metadataCache = {};
 	}
 }
 
