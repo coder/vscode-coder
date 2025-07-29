@@ -412,4 +412,58 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		}
 	}
+
+	/**
+	 * Synchronize authentication state across all VS Code windows.
+	 * Fixes Issue #498 by ensuring consistent logout behavior when the session token changes.
+	 */
+	async function syncAuth() {
+		const url = storage.getUrl();
+		const token = await storage.getSessionToken();
+
+		// Update the REST client with current credentials
+		restClient.setHost(url || "");
+		restClient.setSessionToken(token || "");
+
+		// Determine authentication state
+		const isAuthenticated = !!(url && token);
+
+		// Update VS Code contexts to reflect current auth state
+		await vscode.commands.executeCommand(
+			"setContext",
+			"coder.authenticated",
+			isAuthenticated,
+		);
+
+		if (!isAuthenticated) {
+			// Clear owner context since user is not authenticated
+			await vscode.commands.executeCommand(
+				"setContext",
+				"coder.isOwner",
+				false,
+			);
+
+			// Show consistent logout notification across all windows
+			vscode.window
+				.showInformationMessage("You've been logged out of Coder!", "Login")
+				.then((action) => {
+					if (action === "Login") {
+						vscode.commands.executeCommand("coder.login");
+					}
+				});
+
+			vscode.commands.executeCommand("coder.refreshWorkspaces");
+		} else {
+			vscode.commands.executeCommand("coder.refreshWorkspaces");
+		}
+	}
+
+	// Listen for session token changes to sync auth state across windows
+	ctx.subscriptions.push(
+		ctx.secrets.onDidChange((e) => {
+			if (e.key === "sessionToken") {
+				syncAuth();
+			}
+		}),
+	);
 }
