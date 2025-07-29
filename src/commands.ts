@@ -685,6 +685,53 @@ export class Commands {
 	}
 
 	/**
+	 * Search/filter workspaces in the All Workspaces view.
+	 * This method will be called from the view title menu.
+	 */
+	public async searchWorkspaces(): Promise<void> {
+		const quickPick = vscode.window.createQuickPick();
+		quickPick.placeholder =
+			"Type to search workspaces by name, owner, template, status, or agent";
+		quickPick.title = "Search All Workspaces";
+		quickPick.value = "";
+
+		// Get current search filter to show in the input
+		const currentFilter = (await vscode.commands.executeCommand(
+			"coder.getWorkspaceSearchFilter",
+		)) as string;
+		if (currentFilter) {
+			quickPick.value = currentFilter;
+		}
+
+		quickPick.ignoreFocusOut = true; // Keep open when clicking elsewhere
+		quickPick.canSelectMany = false; // Don't show selection list
+
+		quickPick.onDidChangeValue((value) => {
+			// Update the search filter in real-time as user types
+			vscode.commands.executeCommand("coder.setWorkspaceSearchFilter", value);
+		});
+
+		quickPick.onDidAccept(() => {
+			// When user presses Enter, close the search
+			quickPick.hide();
+		});
+
+		quickPick.onDidHide(() => {
+			// Don't clear the search when closed - keep the filter active
+			quickPick.dispose();
+		});
+
+		quickPick.show();
+	}
+
+	/**
+	 * Clear the workspace search filter.
+	 */
+	public clearWorkspaceSearch(): void {
+		vscode.commands.executeCommand("coder.setWorkspaceSearchFilter", "");
+	}
+
+	/**
 	 * Return agents from the workspace.
 	 *
 	 * This function can return agents even if the workspace is off.  Use this to

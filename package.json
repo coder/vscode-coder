@@ -212,6 +212,18 @@
 				"title": "Coder: Open App Status",
 				"icon": "$(robot)",
 				"when": "coder.authenticated"
+			},
+			{
+				"command": "coder.searchWorkspaces",
+				"title": "Coder: Search Workspaces",
+				"icon": "$(search)",
+				"when": "coder.authenticated && coder.isOwner"
+			},
+			{
+				"command": "coder.clearWorkspaceSearch",
+				"title": "Coder: Clear Workspace Search",
+				"icon": "$(clear-all)",
+				"when": "coder.authenticated && coder.isOwner"
 			}
 		],
 		"menus": {
@@ -238,6 +250,21 @@
 				{
 					"command": "coder.refreshWorkspaces",
 					"when": "coder.authenticated && view == myWorkspaces",
+					"group": "navigation"
+				},
+				{
+					"command": "coder.searchWorkspaces",
+					"when": "coder.authenticated && coder.isOwner && view == allWorkspaces",
+					"group": "navigation"
+				},
+				{
+					"command": "coder.refreshWorkspaces",
+					"when": "coder.authenticated && coder.isOwner && view == allWorkspaces",
+					"group": "navigation"
+				},
+				{
+					"command": "coder.clearWorkspaceSearch",
+					"when": "coder.authenticated && coder.isOwner && view == allWorkspaces",
 					"group": "navigation"
 				}
 			],

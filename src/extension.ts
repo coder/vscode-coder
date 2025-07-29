@@ -290,6 +290,23 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		"coder.viewLogs",
 		commands.viewLogs.bind(commands),
 	);
+	vscode.commands.registerCommand(
+		"coder.searchWorkspaces",
+		commands.searchWorkspaces.bind(commands),
+	);
+	vscode.commands.registerCommand(
+		"coder.setWorkspaceSearchFilter",
+		(searchTerm: string) => {
+			allWorkspacesProvider.setSearchFilter(searchTerm);
+		},
+	);
+	vscode.commands.registerCommand("coder.getWorkspaceSearchFilter", () => {
+		return allWorkspacesProvider.getSearchFilter();
+	});
+	vscode.commands.registerCommand(
+		"coder.clearWorkspaceSearch",
+		commands.clearWorkspaceSearch.bind(commands),
+	);
 
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is

@@ -42,6 +42,7 @@ export class WorkspaceProvider
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
 	private visible = false;
+	private searchFilter = "";
 
 	constructor(
 		private readonly getWorkspacesQuery: WorkspaceQuery,
@@ -50,6 +51,15 @@ export class WorkspaceProvider
 		private readonly timerSeconds?: number,
 	) {
 		// No initialization.
+	}
+
+	setSearchFilter(filter: string) {
+		this.searchFilter = filter;
+		this.refresh(undefined);
+	}
+
+	getSearchFilter(): string {
+		return this.searchFilter;
 	}
 
 	// fetchAndRefresh fetches new workspaces, re-renders the entire tree, then
@@ -300,7 +310,90 @@ export class WorkspaceProvider
 
 			return Promise.resolve([]);
 		}
-		return Promise.resolve(this.workspaces || []);
+
+		// Filter workspaces based on search term
+		let filteredWorkspaces = this.workspaces || [];
+		const trimmedFilter = this.searchFilter.trim();
+		if (trimmedFilter) {
+			const searchTerm = trimmedFilter.toLowerCase();
+			filteredWorkspaces = filteredWorkspaces.filter((workspace) =>
+				this.matchesSearchTerm(workspace, searchTerm),
+			);
+		}
+
+		return Promise.resolve(filteredWorkspaces);
+	}
+
+	/**
+	 * Check if a workspace matches the given search term using smart search logic.
+	 * Prioritizes exact word matches over substring matches.
+	 */
+	private matchesSearchTerm(
+		workspace: WorkspaceTreeItem,
+		searchTerm: string,
+	): boolean {
+		const workspaceName = workspace.workspace.name.toLowerCase();
+		const ownerName = workspace.workspace.owner_name.toLowerCase();
+		const templateName = (
+			workspace.workspace.template_display_name ||
+			workspace.workspace.template_name ||
+			""
+		).toLowerCase();
+		const status = workspace.workspace.latest_build.status.toLowerCase();
+
+		// Check if any agent names match the search term
+		const agents = extractAgents(workspace.workspace.latest_build.resources);
+		const agentNames = agents.map((agent) => agent.name.toLowerCase());
+		const hasMatchingAgent = agentNames.some((agentName) =>
+			agentName.includes(searchTerm),
+		);
+
+		// Check if any agent metadata contains the search term
+		const hasMatchingMetadata = agents.some((agent) => {
+			const watcher = this.agentWatchers[agent.id];
+			if (watcher?.metadata) {
+				return watcher.metadata.some((metadata) => {
+					const metadataStr = JSON.stringify(metadata).toLowerCase();
+					return metadataStr.includes(searchTerm);
+				});
+			}
+			return false;
+		});
+
+		// Smart search: Try exact word match first, then fall back to substring
+		const searchWords = searchTerm
+			.split(/\s+/)
+			.filter((word) => word.length > 0);
+		const allText = [
+			workspaceName,
+			ownerName,
+			templateName,
+			status,
+			...agentNames,
+		].join(" ");
+
+		// Check for exact word matches (higher priority)
+		const hasExactWordMatch =
+			searchWords.length > 0 &&
+			searchWords.some((word) => {
+				// Escape special regex characters to prevent injection
+				const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+				const wordBoundaryRegex = new RegExp(`\\b${escapedWord}\\b`, "i");
+				return wordBoundaryRegex.test(allText);
+			});
+
+		// Check for substring matches (lower priority) - only if no exact word match
+		const hasSubstringMatch =
+			!hasExactWordMatch &&
+			(workspaceName.includes(searchTerm) ||
+				ownerName.includes(searchTerm) ||
+				templateName.includes(searchTerm) ||
+				status.includes(searchTerm) ||
+				hasMatchingAgent ||
+				hasMatchingMetadata);
+
+		// Return true if either exact word match or substring match
+		return hasExactWordMatch || hasSubstringMatch;
 	}
 }
 
