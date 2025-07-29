@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- Coder output panel enhancements: All log entries now include timestamps, and you
+  can filter messages by log level in the panel.
+
+### Added
+
 - Update `/openDevContainer` to support all dev container features when hostPath
   and configFile are provided.
 - Add `coder.disableUpdateNotifications` setting to disable workspace template
@@ -14,6 +21,9 @@
   have this problem, only new connections are fixed.
 - Added an agent metadata monitor status bar item, so you can view your active
   agent metadata at a glance.
+- Add binary signature verification. This can be disabled with
+  `coder.disableSignatureVerification` if you purposefully run a binary that is
+  not signed by Coder (for example a binary you built yourself).
 
 ## [v1.9.2](https://github.com/coder/vscode-coder/releases/tag/v1.9.2) 2025-06-25
 
