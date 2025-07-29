@@ -421,6 +421,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		const url = storage.getUrl();
 		const token = await storage.getSessionToken();
 
+		storage.output.info("Auth sync called!");
+		output.info(
+			`Auth sync triggered: url=${url ? "present" : "none"}, token=${token ? "present" : "none"}`,
+		);
+
 		// Update the REST client with current credentials
 		restClient.setHost(url || "");
 		restClient.setSessionToken(token || "");
@@ -462,6 +467,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	ctx.subscriptions.push(
 		ctx.secrets.onDidChange((e) => {
 			if (e.key === "sessionToken") {
+				output.info("Session token changed, syncing auth state");
 				syncAuth();
 			}
 		}),
