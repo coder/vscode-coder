@@ -44,6 +44,7 @@ export class WorkspaceProvider
 	private visible = false;
 	private searchFilter = "";
 	private metadataCache: Record<string, string> = {};
+	private searchDebounceTimer: NodeJS.Timeout | undefined;
 
 	constructor(
 		private readonly getWorkspacesQuery: WorkspaceQuery,
@@ -59,12 +60,36 @@ export class WorkspaceProvider
 		if (filter.length > 200) {
 			filter = filter.substring(0, 200);
 		}
-		this.searchFilter = filter;
-		this.refresh(undefined);
+
+		// Clear any existing debounce timer
+		if (this.searchDebounceTimer) {
+			clearTimeout(this.searchDebounceTimer);
+		}
+
+		// Debounce the search operation to improve performance
+		this.searchDebounceTimer = setTimeout(() => {
+			this.searchFilter = filter;
+			this.refresh(undefined);
+			this.searchDebounceTimer = undefined;
+		}, 150); // 150ms debounce delay - good balance between responsiveness and performance
 	}
 
 	getSearchFilter(): string {
 		return this.searchFilter;
+	}
+
+	/**
+	 * Clear the search filter immediately without debouncing.
+	 * Use this when the user explicitly clears the search.
+	 */
+	clearSearchFilter(): void {
+		// Clear any pending debounce timer
+		if (this.searchDebounceTimer) {
+			clearTimeout(this.searchDebounceTimer);
+			this.searchDebounceTimer = undefined;
+		}
+		this.searchFilter = "";
+		this.refresh(undefined);
 	}
 
 	// fetchAndRefresh fetches new workspaces, re-renders the entire tree, then
@@ -218,6 +243,11 @@ export class WorkspaceProvider
 		if (this.timeout) {
 			clearTimeout(this.timeout);
 			this.timeout = undefined;
+		}
+		// clear search debounce timer
+		if (this.searchDebounceTimer) {
+			clearTimeout(this.searchDebounceTimer);
+			this.searchDebounceTimer = undefined;
 		}
 	}
 

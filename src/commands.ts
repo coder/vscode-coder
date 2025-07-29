@@ -725,13 +725,6 @@ export class Commands {
 	}
 
 	/**
-	 * Clear the workspace search filter.
-	 */
-	public clearWorkspaceSearch(): void {
-		vscode.commands.executeCommand("coder.setWorkspaceSearchFilter", "");
-	}
-
-	/**
 	 * Return agents from the workspace.
 	 *
 	 * This function can return agents even if the workspace is off.  Use this to
