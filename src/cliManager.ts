@@ -78,8 +78,8 @@ export type RemovalResult = { fileName: string; error: unknown };
 
 /**
  * Remove binaries in the same directory as the specified path that have a
- * .old-* or .temp-* extension.  Return a list of files and the errors trying to
- * remove them, when applicable.
+ * .old-* or .temp-* extension along with signatures (files ending in .asc).
+ * Return a list of files and the errors trying to remove them, when applicable.
  */
 export async function rmOld(binPath: string): Promise<RemovalResult[]> {
 	const binDir = path.dirname(binPath);
@@ -88,7 +88,11 @@ export async function rmOld(binPath: string): Promise<RemovalResult[]> {
 		const results: RemovalResult[] = [];
 		for (const file of files) {
 			const fileName = path.basename(file);
-			if (fileName.includes(".old-") || fileName.includes(".temp-")) {
+			if (
+				fileName.includes(".old-") ||
+				fileName.includes(".temp-") ||
+				fileName.endsWith(".asc")
+			) {
 				try {
 					await fs.rm(path.join(binDir, file), { force: true });
 					results.push({ fileName, error: undefined });
