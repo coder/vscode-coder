@@ -24,12 +24,7 @@
 - Add binary signature verification. This can be disabled with
   `coder.disableSignatureVerification` if you purposefully run a binary that is
   not signed by Coder (for example a binary you built yourself).
-- Add search functionality to the "All Workspaces" view with performance optimizations.
-  - Implement smart search that prioritizes exact word matches over substring matches.
-  - Add debounced search input (150ms delay) to improve responsiveness during typing.
-  - Pre-compile regex patterns and cache metadata strings for better performance.
-  - Include comprehensive error handling for malformed data and edge cases.
-  - Add input validation to prevent performance issues from long search terms.
+- Add search functionality to the "All Workspaces" view.
 
 ## [v1.9.2](https://github.com/coder/vscode-coder/releases/tag/v1.9.2) 2025-06-25
 
