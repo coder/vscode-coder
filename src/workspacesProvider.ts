@@ -375,23 +375,20 @@ export class WorkspaceProvider
 		agentMetadataText: string;
 	} {
 		// Handle null/undefined workspace data safely
-		const workspaceName = (workspace.workspace.name || "").toLowerCase();
-		const ownerName = (workspace.workspace.owner_name || "").toLowerCase();
+		const workspaceName = workspace.workspace.name.toLowerCase();
+		const ownerName = workspace.workspace.owner_name.toLowerCase();
 		const templateName = (
 			workspace.workspace.template_display_name ||
-			workspace.workspace.template_name ||
-			""
+			workspace.workspace.template_name
 		).toLowerCase();
 		const status = (
-			workspace.workspace.latest_build?.status || ""
+			workspace.workspace.latest_build.status || ""
 		).toLowerCase();
 
 		// Extract agent names with null safety
-		const agents = extractAgents(
-			workspace.workspace.latest_build?.resources || [],
-		);
+		const agents = extractAgents(workspace.workspace.latest_build.resources);
 		const agentNames = agents
-			.map((agent) => (agent.name || "").toLowerCase())
+			.map((agent) => agent.name.toLowerCase())
 			.filter((name) => name.length > 0);
 
 		// Extract and cache agent metadata with error handling
@@ -402,6 +399,8 @@ export class WorkspaceProvider
 			agentMetadataText = this.metadataCache[metadataCacheKey];
 		} else {
 			const metadataStrings: string[] = [];
+			let hasSerializationErrors = false;
+
 			agents.forEach((agent) => {
 				const watcher = this.agentWatchers[agent.id];
 				if (watcher?.metadata) {
@@ -409,6 +408,7 @@ export class WorkspaceProvider
 						try {
 							metadataStrings.push(JSON.stringify(metadata).toLowerCase());
 						} catch (error) {
+							hasSerializationErrors = true;
 							// Handle JSON serialization errors gracefully
 							this.storage.output.warn(
 								`Failed to serialize metadata for agent ${agent.id}: ${error}`,
@@ -417,8 +417,13 @@ export class WorkspaceProvider
 					});
 				}
 			});
+
 			agentMetadataText = metadataStrings.join(" ");
-			this.metadataCache[metadataCacheKey] = agentMetadataText;
+
+			// Only cache if all metadata serialized successfully
+			if (!hasSerializationErrors) {
+				this.metadataCache[metadataCacheKey] = agentMetadataText;
+			}
 		}
 
 		return {
@@ -454,18 +459,8 @@ export class WorkspaceProvider
 
 		const regexPatterns: RegExp[] = [];
 		for (const word of searchWords) {
-			try {
-				// Escape special regex characters to prevent injection
-				const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-				regexPatterns.push(new RegExp(`\\b${escapedWord}\\b`, "i"));
-			} catch (error) {
-				// Handle invalid regex patterns
-				this.storage.output.warn(
-					`Invalid regex pattern for search word "${word}": ${error}`,
-				);
-				// Fall back to simple substring matching for this word
-				continue;
-			}
+			// Simple word boundary search
+			regexPatterns.push(new RegExp(`\\b${word}\\b`, "i"));
 		}
 
 		// Combine all text for exact word matching
@@ -481,27 +476,11 @@ export class WorkspaceProvider
 		// Check for exact word matches (higher priority)
 		const hasExactWordMatch =
 			regexPatterns.length > 0 &&
-			regexPatterns.some((pattern) => {
-				try {
-					return pattern.test(allText);
-				} catch (error) {
-					// Handle regex test errors gracefully
-					this.storage.output.warn(
-						`Regex test failed for pattern ${pattern}: ${error}`,
-					);
-					return false;
-				}
-			});
+			regexPatterns.some((pattern) => pattern.test(allText));
 
 		// Check for substring matches (lower priority) - only if no exact word match
 		const hasSubstringMatch =
-			!hasExactWordMatch &&
-			(fields.workspaceName.includes(searchTerm) ||
-				fields.ownerName.includes(searchTerm) ||
-				fields.templateName.includes(searchTerm) ||
-				fields.status.includes(searchTerm) ||
-				fields.agentNames.some((agentName) => agentName.includes(searchTerm)) ||
-				fields.agentMetadataText.includes(searchTerm));
+			!hasExactWordMatch && allText.includes(searchTerm);
 
 		// Return true if either exact word match or substring match
 		return hasExactWordMatch || hasSubstringMatch;
