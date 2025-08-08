@@ -44,11 +44,16 @@ jobs:
 
   preview:
     name: preview prerelease (marketplace)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.VSCE_PAT != ''
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && env.VSCE_PAT != '' }}
     runs-on: ubuntu-22.04
     needs: [lint, test]
+    concurrency:
+      group: preview-marketplace
+      cancel-in-progress: true
     permissions:
       contents: read
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +71,4 @@ jobs:
           echo "value=${BASE_VERSION}-pre.${GITHUB_RUN_NUMBER}.${SHORT_SHA}" >> $GITHUB_OUTPUT
 
       - name: Publish prerelease to VS Code Marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx vsce publish --pre-release --no-git-tag-version ${{ steps.version.outputs.value }}
+        run: npx vsce publish --pre-release ${{ steps.version.outputs.value }}
