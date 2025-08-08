@@ -41,3 +41,31 @@ jobs:
       - run: yarn
 
       - run: yarn test:ci
+
+  preview:
+    name: preview prerelease (marketplace)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.VSCE_PAT != ''
+    runs-on: ubuntu-22.04
+    needs: [lint, test]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: yarn
+
+      - name: Compute prerelease version
+        id: version
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA=${GITHUB_SHA::7}
+          echo "value=${BASE_VERSION}-pre.${GITHUB_RUN_NUMBER}.${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Publish prerelease to VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --pre-release --no-git-tag-version ${{ steps.version.outputs.value }}
