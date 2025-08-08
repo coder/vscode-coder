@@ -44,7 +44,7 @@ jobs:
 
   preview:
     name: preview prerelease (marketplace)
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && env.VSCE_PAT != '' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.VSCE_PAT != '' }}
     runs-on: ubuntu-22.04
     needs: [lint, test]
     concurrency:
@@ -70,5 +70,8 @@ jobs:
           SHORT_SHA=${GITHUB_SHA::7}
           echo "value=${BASE_VERSION}-pre.${GITHUB_RUN_NUMBER}.${SHORT_SHA}" >> $GITHUB_OUTPUT
 
+      - name: Update package.json version
+        run: npm version "${{ steps.version.outputs.value }}" --no-git-tag-version
+
       - name: Publish prerelease to VS Code Marketplace
-        run: npx vsce publish --pre-release ${{ steps.version.outputs.value }}
+        run: npx vsce publish --pre-release
