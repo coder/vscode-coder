@@ -22,7 +22,7 @@ jobs:
 
       - run: yarn
 
-      - run: npx vsce package
+      - run: yarn vsce package
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
