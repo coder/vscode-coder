@@ -142,7 +142,9 @@ export class Storage {
 		this.output.info("Got server version", buildInfo.version);
 		const parsedVersion = semver.parse(buildInfo.version);
 		if (!parsedVersion) {
-			throw new Error(`Got invalid version from deployment: ${buildInfo.version}`)
+			throw new Error(
+				`Got invalid version from deployment: ${buildInfo.version}`,
+			);
 		}
 
 		// Check if there is an existing binary and whether it looks valid.  If it
