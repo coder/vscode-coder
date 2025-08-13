@@ -8,6 +8,7 @@ import fs from "fs/promises";
 import { IncomingMessage } from "http";
 import path from "path";
 import prettyBytes from "pretty-bytes";
+import * as semver from "semver";
 import * as vscode from "vscode";
 import { errToStr } from "./api-helper";
 import * as cli from "./cliManager";
@@ -139,6 +140,10 @@ export class Storage {
 		// and to log for debugging.
 		const buildInfo = await restClient.getBuildInfo();
 		this.output.info("Got server version", buildInfo.version);
+		const parsedVersion = semver.parse(buildInfo.version);
+		if (!parsedVersion) {
+			throw new Error(`Got invalid version from deployment: ${buildInfo.version}`)
+		}
 
 		// Check if there is an existing binary and whether it looks valid.  If it
 		// is valid and matches the server, or if it does not match the server but
@@ -230,9 +235,11 @@ export class Storage {
 						// named exactly the same with an appended `.asc` (such as
 						// coder-windows-amd64.exe.asc or coder-linux-amd64.asc).
 						binSource + ".asc",
-						// The releases.coder.com bucket does not include the leading "v".
-						// The signature name follows the same rule as above.
-						`https://releases.coder.com/coder-cli/${buildInfo.version.replace(/^v/, "")}/${binName}.asc`,
+						// The releases.coder.com bucket does not include the leading "v",
+						// and unlike what we get from buildinfo it uses a truncated version
+						// with only major.minor.patch.  The signature name follows the same
+						// rule as above.
+						`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.asc`,
 					]);
 				}
 
