@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## [1.10.1](https://github.com/coder/vscode-coder/releases/tag/v1.10.1) 2025-08-13
+
+### Fixed
+
+- The signature download fallback now uses only major.minor.patch without any
+  extra labels (like the hash), since the releases server does not include those
+  labels with its artifacts.
+
 ## [v1.10.0](https://github.com/coder/vscode-coder/releases/tag/v1.10.0) 2025-08-05
 
 ### Changed
