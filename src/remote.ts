@@ -26,7 +26,7 @@ import { extractAgents } from "./api-helper";
 import * as cli from "./cliManager";
 import { Commands } from "./commands";
 import { featureSetForVersion, FeatureSet } from "./featureSet";
-import { getHeaderArgs } from "./headers";
+import { getGlobalFlags } from "./globalFlags";
 import { Inbox } from "./inbox";
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
@@ -758,19 +758,15 @@ export class Remote {
 		const sshConfig = new SSHConfig(sshConfigFile);
 		await sshConfig.load();
 
-		const headerArgs = getHeaderArgs(vscode.workspace.getConfiguration());
-		const headerArgList =
-			headerArgs.length > 0 ? ` ${headerArgs.join(" ")}` : "";
-
 		const hostPrefix = label
 			? `${AuthorityPrefix}.${label}--`
 			: `${AuthorityPrefix}--`;
 
+		const globalConfigs = this.globalConfigs(featureSet, label);
+
 		const proxyCommand = featureSet.wildcardSSH
-			? `${escapeCommandArg(binaryPath)}${headerArgList} --global-config ${escapeCommandArg(
-					path.dirname(this.storage.getSessionTokenPath(label)),
-				)} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
-			: `${escapeCommandArg(binaryPath)}${headerArgList} vscodessh --network-info-dir ${escapeCommandArg(
+			? `${escapeCommandArg(binaryPath)}${globalConfigs} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
+			: `${escapeCommandArg(binaryPath)}${globalConfigs} vscodessh --network-info-dir ${escapeCommandArg(
 					this.storage.getNetworkInfoPath(),
 				)}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.storage.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
 					this.storage.getUrlPath(label),
@@ -826,6 +822,20 @@ export class Remote {
 		}
 
 		return sshConfig.getRaw();
+	}
+
+	private globalConfigs(featureSet: FeatureSet, label: string): string {
+		const vscodeConfig = vscode.workspace.getConfiguration();
+		let args: string[];
+		if (featureSet.wildcardSSH) {
+			args = getGlobalFlags(
+				vscodeConfig,
+				path.dirname(this.storage.getSessionTokenPath(label)),
+			);
+		} else {
+			args = getGlobalFlags(vscodeConfig);
+		}
+		return args.length === 0 ? "" : ` ${args.join(" ")}`;
 	}
 
 	// showNetworkUpdates finds the SSH process ID that is being used by this

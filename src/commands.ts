@@ -10,8 +10,9 @@ import * as vscode from "vscode";
 import { makeCoderSdk, needToken } from "./api";
 import { extractAgents } from "./api-helper";
 import { CertificateError } from "./error";
+import { getGlobalFlags } from "./globalFlags";
 import { Storage } from "./storage";
-import { toRemoteAuthority, toSafeHost } from "./util";
+import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
 	AgentTreeItem,
 	WorkspaceTreeItem,
@@ -503,12 +504,16 @@ export class Commands {
 						this.restClient,
 						toSafeHost(url),
 					);
-					const escape = (str: string): string =>
-						`"${str.replace(/"/g, '\\"')}"`;
+
+					const configDir = path.dirname(
+						this.storage.getSessionTokenPath(toSafeHost(url)),
+					);
+					const globalFlags = getGlobalFlags(
+						vscode.workspace.getConfiguration(),
+						configDir,
+					);
 					terminal.sendText(
-						`${escape(binary)} ssh --global-config ${escape(
-							path.dirname(this.storage.getSessionTokenPath(toSafeHost(url))),
-						)} ${app.workspace_name}`,
+						`${escapeCommandArg(binary)}${globalFlags.length === 0 ? "" : ` ${globalFlags.join(" ")}`} ssh ${app.workspace_name}`,
 					);
 					await new Promise((resolve) => setTimeout(resolve, 5000));
 					terminal.sendText(app.command ?? "");

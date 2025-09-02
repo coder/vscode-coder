@@ -6,6 +6,10 @@
 
 - Always enable verbose (`-v`) flag when a log directory is configured (`coder.proxyLogDir`).
 
+### Added
+
+- Add support for CLI global flag configurations.
+
 ## [1.10.1](https://github.com/coder/vscode-coder/releases/tag/v1.10.1) 2025-08-13
 
 ### Fixed
