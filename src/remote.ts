@@ -762,7 +762,7 @@ export class Remote {
 			? `${AuthorityPrefix}.${label}--`
 			: `${AuthorityPrefix}--`;
 
-		const globalConfigs = this.globalConfigs(featureSet, label);
+		const globalConfigs = this.globalConfigs(label);
 
 		const proxyCommand = featureSet.wildcardSSH
 			? `${escapeCommandArg(binaryPath)}${globalConfigs} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
@@ -824,17 +824,12 @@ export class Remote {
 		return sshConfig.getRaw();
 	}
 
-	private globalConfigs(featureSet: FeatureSet, label: string): string {
+	private globalConfigs(label: string): string {
 		const vscodeConfig = vscode.workspace.getConfiguration();
-		let args: string[];
-		if (featureSet.wildcardSSH) {
-			args = getGlobalFlags(
-				vscodeConfig,
-				path.dirname(this.storage.getSessionTokenPath(label)),
-			);
-		} else {
-			args = getGlobalFlags(vscodeConfig);
-		}
+		const args: string[] = getGlobalFlags(
+			vscodeConfig,
+			path.dirname(this.storage.getSessionTokenPath(label)),
+		);
 		return args.length === 0 ? "" : ` ${args.join(" ")}`;
 	}
 

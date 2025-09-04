@@ -8,7 +8,7 @@
 
 ### Added
 
-- Add support for CLI global flag configurations.
+- Add support for CLI global flag configurations through the `coder.globalFlags` setting.
 
 ## [1.10.1](https://github.com/coder/vscode-coder/releases/tag/v1.10.1) 2025-08-13
 
