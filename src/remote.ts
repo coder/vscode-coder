@@ -676,7 +676,7 @@ export class Remote {
 			"SSH proxy diagnostics are being written to",
 			logDir,
 		);
-		return ` --log-dir ${escapeCommandArg(logDir)}`;
+		return ` --log-dir ${escapeCommandArg(logDir)} -v`;
 	}
 
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles

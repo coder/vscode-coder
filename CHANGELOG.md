@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Always enable verbose (`-v`) flag when a log directory is configured (`coder.proxyLogDir`).
+
 ## [1.10.1](https://github.com/coder/vscode-coder/releases/tag/v1.10.1) 2025-08-13
 
 ### Fixed
