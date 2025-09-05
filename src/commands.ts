@@ -321,10 +321,19 @@ export class Commands {
 	 */
 	public async viewLogs(): Promise<void> {
 		if (!this.workspaceLogPath) {
-			vscode.window.showInformationMessage(
-				"No logs available. Make sure to set coder.proxyLogDirectory to get logs.",
-				this.workspaceLogPath || "<unset>",
-			);
+			vscode.window
+				.showInformationMessage(
+					"No logs available. Make sure to set coder.proxyLogDirectory to get logs.",
+					"Open Settings",
+				)
+				.then((action) => {
+					if (action === "Open Settings") {
+						vscode.commands.executeCommand(
+							"workbench.action.openSettings",
+							"coder.proxyLogDirectory",
+						);
+					}
+				});
 			return;
 		}
 		const uri = vscode.Uri.file(this.workspaceLogPath);
