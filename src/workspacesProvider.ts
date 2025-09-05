@@ -5,6 +5,7 @@ import {
 	WorkspaceApp,
 } from "coder/site/src/api/typesGenerated";
 import * as path from "path";
+import { ProxyAgent } from "proxy-agent";
 import * as vscode from "vscode";
 import {
 	AgentMetadataWatcher,
@@ -47,6 +48,7 @@ export class WorkspaceProvider
 		private readonly getWorkspacesQuery: WorkspaceQuery,
 		private readonly restClient: Api,
 		private readonly storage: Storage,
+		private readonly httpAgent: ProxyAgent,
 		private readonly timerSeconds?: number,
 	) {
 		// No initialization.
@@ -135,7 +137,11 @@ export class WorkspaceProvider
 					return this.agentWatchers[agent.id];
 				}
 				// Otherwise create a new watcher.
-				const watcher = createAgentMetadataWatcher(agent.id, restClient);
+				const watcher = createAgentMetadataWatcher(
+					agent.id,
+					restClient,
+					this.httpAgent,
+				);
 				watcher.onChange(() => this.refresh());
 				this.agentWatchers[agent.id] = watcher;
 				return watcher;

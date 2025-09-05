@@ -1,11 +1,12 @@
 import { Api } from "coder/site/src/api/api";
-import { Workspace } from "coder/site/src/api/typesGenerated";
+import { ServerSentEvent, Workspace } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
-import { EventSource } from "eventsource";
+import { ProxyAgent } from "proxy-agent";
 import * as vscode from "vscode";
-import { createStreamingFetchAdapter } from "./api";
 import { errToStr } from "./api-helper";
 import { Storage } from "./storage";
+import { OneWayCodeWebSocket } from "./websocket/OneWayCodeWebSocket";
+import { watchWorkspace } from "./websocket/ws-helper";
 
 /**
  * Monitor a single workspace using SSE for events like shutdown and deletion.
@@ -13,7 +14,7 @@ import { Storage } from "./storage";
  * workspace status is also shown in the status bar menu.
  */
 export class WorkspaceMonitor implements vscode.Disposable {
-	private eventSource: EventSource;
+	private socket: OneWayCodeWebSocket<ServerSentEvent>;
 	private disposed = false;
 
 	// How soon in advance to notify about autostop and deletion.
@@ -38,19 +39,18 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		private readonly storage: Storage,
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
+		httpAgent: ProxyAgent,
 	) {
 		this.name = `${workspace.owner_name}/${workspace.name}`;
-		const url = this.restClient.getAxiosInstance().defaults.baseURL;
-		const watchUrl = new URL(`${url}/api/v2/workspaces/${workspace.id}/watch`);
-		this.storage.output.info(`Monitoring ${this.name}...`);
+		const socket = watchWorkspace(this.restClient, httpAgent, workspace);
 
-		const eventSource = new EventSource(watchUrl.toString(), {
-			fetch: createStreamingFetchAdapter(this.restClient.getAxiosInstance()),
+		socket.addEventListener("open", () => {
+			this.storage.output.info(`Monitoring ${this.name}...`);
 		});
 
-		eventSource.addEventListener("data", (event) => {
+		socket.addEventListener("message", (event) => {
 			try {
-				const newWorkspaceData = JSON.parse(event.data) as Workspace;
+				const newWorkspaceData = event.parsedMessage?.data as Workspace;
 				this.update(newWorkspaceData);
 				this.maybeNotify(newWorkspaceData);
 				this.onChange.fire(newWorkspaceData);
@@ -59,12 +59,12 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			}
 		});
 
-		eventSource.addEventListener("error", (event) => {
+		socket.addEventListener("error", (event) => {
 			this.notifyError(event);
 		});
 
 		// Store so we can close in dispose().
-		this.eventSource = eventSource;
+		this.socket = socket;
 
 		const statusBarItem = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
@@ -81,13 +81,13 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	/**
-	 * Permanently close the SSE stream.
+	 * Permanently close the websocket.
 	 */
 	dispose() {
 		if (!this.disposed) {
 			this.storage.output.info(`Unmonitoring ${this.name}...`);
 			this.statusBarItem.dispose();
-			this.eventSource.close();
+			this.socket.close();
 			this.disposed = true;
 		}
 	}

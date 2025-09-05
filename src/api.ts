@@ -1,11 +1,10 @@
-import { AxiosInstance } from "axios";
+import { AxiosInstance, InternalAxiosRequestConfig, isAxiosError } from "axios";
 import { spawn } from "child_process";
 import { Api } from "coder/site/src/api/api";
 import {
 	ProvisionerJobLog,
 	Workspace,
 } from "coder/site/src/api/typesGenerated";
-import { FetchLikeInit } from "eventsource";
 import fs from "fs/promises";
 import { ProxyAgent } from "proxy-agent";
 import * as vscode from "vscode";
@@ -83,6 +82,9 @@ export function makeCoderSdk(
 		restClient.setSessionToken(token);
 	}
 
+	// Logging interceptor
+	addLoggingInterceptors(restClient.getAxiosInstance(), storage.output);
+
 	restClient.getAxiosInstance().interceptors.request.use(async (config) => {
 		// Add headers from the header command.
 		Object.entries(await storage.getHeaders(baseUrl)).forEach(
@@ -113,57 +115,75 @@ export function makeCoderSdk(
 	return restClient;
 }
 
-/**
- * Creates a fetch adapter using an Axios instance that returns streaming responses.
- * This can be used with APIs that accept fetch-like interfaces.
- */
-export function createStreamingFetchAdapter(axiosInstance: AxiosInstance) {
-	return async (url: string | URL, init?: FetchLikeInit) => {
-		const urlStr = url.toString();
-
-		const response = await axiosInstance.request({
-			url: urlStr,
-			signal: init?.signal,
-			headers: init?.headers as Record<string, string>,
-			responseType: "stream",
-			validateStatus: () => true, // Don't throw on any status code
-		});
-		const stream = new ReadableStream({
-			start(controller) {
-				response.data.on("data", (chunk: Buffer) => {
-					controller.enqueue(chunk);
-				});
-
-				response.data.on("end", () => {
-					controller.close();
-				});
-
-				response.data.on("error", (err: Error) => {
-					controller.error(err);
-				});
-			},
-
-			cancel() {
-				response.data.destroy();
-				return Promise.resolve();
-			},
-		});
-
-		return {
-			body: {
-				getReader: () => stream.getReader(),
-			},
-			url: urlStr,
-			status: response.status,
-			redirected: response.request.res.responseUrl !== urlStr,
-			headers: {
-				get: (name: string) => {
-					const value = response.headers[name.toLowerCase()];
-					return value === undefined ? null : String(value);
-				},
-			},
-		};
+interface RequestConfigWithMetadata extends InternalAxiosRequestConfig {
+	metadata?: {
+		requestId: string;
+		startedAt: number;
 	};
+}
+
+function addLoggingInterceptors(
+	client: AxiosInstance,
+	logger: vscode.LogOutputChannel,
+) {
+	client.interceptors.request.use(
+		(config) => {
+			const requestId = crypto.randomUUID();
+			(config as RequestConfigWithMetadata).metadata = {
+				requestId,
+				startedAt: Date.now(),
+			};
+
+			logger.trace(
+				`Request ${requestId}: ${config.method?.toUpperCase()} ${config.url}`,
+				config.data ?? "",
+			);
+
+			return config;
+		},
+		(error: unknown) => {
+			let message: string = "Request error";
+			if (isAxiosError(error)) {
+				const meta = (error.config as RequestConfigWithMetadata)?.metadata;
+				const requestId = meta?.requestId ?? "n/a";
+				message = `Request ${requestId} error`;
+			}
+			logger.warn(message, error);
+
+			return Promise.reject(error);
+		},
+	);
+
+	client.interceptors.response.use(
+		(response) => {
+			const { requestId, startedAt } =
+				(response.config as RequestConfigWithMetadata).metadata ?? {};
+			const ms = startedAt ? Date.now() - startedAt : undefined;
+
+			logger.trace(
+				`Response ${requestId ?? "n/a"}: ${response.status}${
+					ms !== undefined ? ` in ${ms}ms` : ""
+				}`,
+				// { responseBody: response.data }, // TODO too noisy
+			);
+			return response;
+		},
+		(error: unknown) => {
+			let message = "Response error";
+			if (isAxiosError(error)) {
+				const { metadata } = (error.config as RequestConfigWithMetadata) ?? {};
+				const requestId = metadata?.requestId ?? "n/a";
+				const startedAt = metadata?.startedAt;
+				const ms = startedAt ? Date.now() - startedAt : undefined;
+
+				const status = error.response?.status ?? "unknown";
+				message = `Response ${requestId}: ${status}${ms !== undefined ? ` in ${ms}ms` : ""}`;
+			}
+			logger.warn(message, error);
+
+			return Promise.reject(error);
+		},
+	);
 }
 
 /**
@@ -267,6 +287,7 @@ export async function waitForBuild(
 	const agent = await createHttpAgent();
 	await new Promise<void>((resolve, reject) => {
 		try {
+			// TODO move to `ws-helper`
 			const baseUrl = new URL(baseUrlRaw);
 			const proto = baseUrl.protocol === "https:" ? "wss:" : "ws:";
 			const socketUrlRaw = `${proto}//${baseUrl.host}${path}`;
