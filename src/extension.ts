@@ -3,7 +3,7 @@ import axios, { isAxiosError } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import * as module from "module";
 import * as vscode from "vscode";
-import { makeCoderSdk, needToken } from "./api";
+import { createHttpAgent, makeCoderSdk, needToken } from "./api";
 import { errToStr } from "./api-helper";
 import { Commands } from "./commands";
 import { CertificateError, getErrorDetail } from "./error";
@@ -70,16 +70,20 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		storage,
 	);
 
+	// TODO this won't get updated when users change their settings; Listen to changes and update this
+	const httpAgent = await createHttpAgent();
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
 		restClient,
 		storage,
+		httpAgent,
 		5,
 	);
 	const allWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.All,
 		restClient,
 		storage,
+		httpAgent,
 	);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API

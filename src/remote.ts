@@ -7,6 +7,7 @@ import * as jsonc from "jsonc-parser";
 import * as os from "os";
 import * as path from "path";
 import prettyBytes from "pretty-bytes";
+import { ProxyAgent } from "proxy-agent";
 import * as semver from "semver";
 import * as vscode from "vscode";
 import {
@@ -500,12 +501,15 @@ export class Remote {
 			}
 		}
 
+		const httpAgent = await createHttpAgent();
+
 		// Watch the workspace for changes.
 		const monitor = new WorkspaceMonitor(
 			workspace,
 			workspaceRestClient,
 			this.storage,
 			this.vscodeProposed,
+			httpAgent,
 		);
 		disposables.push(monitor);
 		disposables.push(
@@ -513,7 +517,6 @@ export class Remote {
 		);
 
 		// Watch coder inbox for messages
-		const httpAgent = await createHttpAgent();
 		const inbox = new Inbox(
 			workspace,
 			httpAgent,
@@ -637,7 +640,11 @@ export class Remote {
 		);
 
 		disposables.push(
-			...this.createAgentMetadataStatusBar(agent, workspaceRestClient),
+			...this.createAgentMetadataStatusBar(
+				agent,
+				workspaceRestClient,
+				httpAgent,
+			),
 		);
 
 		this.storage.output.info("Remote setup complete");
@@ -995,13 +1002,18 @@ export class Remote {
 	private createAgentMetadataStatusBar(
 		agent: WorkspaceAgent,
 		restClient: Api,
+		httpAgent: ProxyAgent,
 	): vscode.Disposable[] {
 		const statusBarItem = vscode.window.createStatusBarItem(
 			"agentMetadata",
 			vscode.StatusBarAlignment.Left,
 		);
 
-		const agentWatcher = createAgentMetadataWatcher(agent.id, restClient);
+		const agentWatcher = createAgentMetadataWatcher(
+			agent.id,
+			restClient,
+			httpAgent,
+		);
 
 		const onChangeDisposable = agentWatcher.onChange(() => {
 			if (agentWatcher.error) {
