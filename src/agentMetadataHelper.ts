@@ -1,13 +1,11 @@
-import { Api } from "coder/site/src/api/api";
 import { WorkspaceAgent } from "coder/site/src/api/typesGenerated";
-import { ProxyAgent } from "proxy-agent";
 import * as vscode from "vscode";
 import {
 	AgentMetadataEvent,
 	AgentMetadataEventSchemaArray,
 	errToStr,
 } from "./api-helper";
-import { watchAgentMetadata } from "./websocket/ws-helper";
+import { CoderWebSocketClient } from "./websocket/webSocketClient";
 
 export type AgentMetadataWatcher = {
 	onChange: vscode.EventEmitter<null>["event"];
@@ -22,10 +20,9 @@ export type AgentMetadataWatcher = {
  */
 export function createAgentMetadataWatcher(
 	agentId: WorkspaceAgent["id"],
-	restClient: Api,
-	httpAgent: ProxyAgent,
+	webSocketClient: CoderWebSocketClient,
 ): AgentMetadataWatcher {
-	const socket = watchAgentMetadata(restClient, httpAgent, agentId);
+	const socket = webSocketClient.watchAgentMetadata(agentId);
 
 	let disposed = false;
 	const onChange = new vscode.EventEmitter<null>();
@@ -42,7 +39,7 @@ export function createAgentMetadataWatcher(
 	socket.addEventListener("message", (event) => {
 		try {
 			const metadata = AgentMetadataEventSchemaArray.parse(
-				event.parsedMessage?.data,
+				event.parsedMessage!.data,
 			);
 
 			// Overwrite metadata if it changed.

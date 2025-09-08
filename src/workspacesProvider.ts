@@ -5,7 +5,6 @@ import {
 	WorkspaceApp,
 } from "coder/site/src/api/typesGenerated";
 import * as path from "path";
-import { ProxyAgent } from "proxy-agent";
 import * as vscode from "vscode";
 import {
 	AgentMetadataWatcher,
@@ -19,6 +18,7 @@ import {
 	extractAgents,
 } from "./api-helper";
 import { Storage } from "./storage";
+import { CoderWebSocketClient } from "./websocket/webSocketClient";
 
 export enum WorkspaceQuery {
 	Mine = "owner:me",
@@ -48,7 +48,7 @@ export class WorkspaceProvider
 		private readonly getWorkspacesQuery: WorkspaceQuery,
 		private readonly restClient: Api,
 		private readonly storage: Storage,
-		private readonly httpAgent: ProxyAgent,
+		private readonly webSocketClient: CoderWebSocketClient,
 		private readonly timerSeconds?: number,
 	) {
 		// No initialization.
@@ -139,8 +139,7 @@ export class WorkspaceProvider
 				// Otherwise create a new watcher.
 				const watcher = createAgentMetadataWatcher(
 					agent.id,
-					restClient,
-					this.httpAgent,
+					this.webSocketClient,
 				);
 				watcher.onChange(() => this.refresh());
 				this.agentWatchers[agent.id] = watcher;

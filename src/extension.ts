@@ -10,6 +10,7 @@ import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
 import { toSafeHost } from "./util";
+import { CoderWebSocketClient } from "./websocket/webSocketClient";
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
@@ -72,18 +73,23 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// TODO this won't get updated when users change their settings; Listen to changes and update this
 	const httpAgent = await createHttpAgent();
+	const webSocketClient = new CoderWebSocketClient(
+		restClient,
+		httpAgent,
+		storage,
+	);
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
 		restClient,
 		storage,
-		httpAgent,
+		webSocketClient,
 		5,
 	);
 	const allWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.All,
 		restClient,
 		storage,
-		httpAgent,
+		webSocketClient,
 	);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API

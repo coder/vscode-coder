@@ -7,7 +7,6 @@ import * as jsonc from "jsonc-parser";
 import * as os from "os";
 import * as path from "path";
 import prettyBytes from "pretty-bytes";
-import { ProxyAgent } from "proxy-agent";
 import * as semver from "semver";
 import * as vscode from "vscode";
 import {
@@ -39,6 +38,7 @@ import {
 	findPort,
 	parseRemoteAuthority,
 } from "./util";
+import { CoderWebSocketClient } from "./websocket/webSocketClient";
 import { WorkspaceMonitor } from "./workspaceMonitor";
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -124,15 +124,23 @@ export class Remote {
 						switch (workspace.latest_build.status) {
 							case "pending":
 							case "starting":
-							case "stopping":
+							case "stopping": {
 								writeEmitter = initWriteEmitterAndTerminal();
 								this.storage.output.info(`Waiting for ${workspaceName}...`);
+								const httpAgent = await createHttpAgent();
+								const webSocketClient = new CoderWebSocketClient(
+									restClient,
+									httpAgent,
+									this.storage,
+								);
 								workspace = await waitForBuild(
 									restClient,
+									webSocketClient,
 									writeEmitter,
 									workspace,
 								);
 								break;
+							}
 							case "stopped":
 								if (
 									!firstConnect &&
@@ -502,6 +510,11 @@ export class Remote {
 		}
 
 		const httpAgent = await createHttpAgent();
+		const webSocketClient = new CoderWebSocketClient(
+			workspaceRestClient,
+			httpAgent,
+			this.storage,
+		);
 
 		// Watch the workspace for changes.
 		const monitor = new WorkspaceMonitor(
@@ -509,7 +522,7 @@ export class Remote {
 			workspaceRestClient,
 			this.storage,
 			this.vscodeProposed,
-			httpAgent,
+			webSocketClient,
 		);
 		disposables.push(monitor);
 		disposables.push(
@@ -517,12 +530,7 @@ export class Remote {
 		);
 
 		// Watch coder inbox for messages
-		const inbox = new Inbox(
-			workspace,
-			httpAgent,
-			workspaceRestClient,
-			this.storage,
-		);
+		const inbox = new Inbox(workspace, webSocketClient, this.storage);
 		disposables.push(inbox);
 
 		// Wait for the agent to connect.
@@ -640,11 +648,7 @@ export class Remote {
 		);
 
 		disposables.push(
-			...this.createAgentMetadataStatusBar(
-				agent,
-				workspaceRestClient,
-				httpAgent,
-			),
+			...this.createAgentMetadataStatusBar(agent, webSocketClient),
 		);
 
 		this.storage.output.info("Remote setup complete");
@@ -1001,19 +1005,14 @@ export class Remote {
 	 */
 	private createAgentMetadataStatusBar(
 		agent: WorkspaceAgent,
-		restClient: Api,
-		httpAgent: ProxyAgent,
+		webSocketClient: CoderWebSocketClient,
 	): vscode.Disposable[] {
 		const statusBarItem = vscode.window.createStatusBarItem(
 			"agentMetadata",
 			vscode.StatusBarAlignment.Left,
 		);
 
-		const agentWatcher = createAgentMetadataWatcher(
-			agent.id,
-			restClient,
-			httpAgent,
-		);
+		const agentWatcher = createAgentMetadataWatcher(agent.id, webSocketClient);
 
 		const onChangeDisposable = agentWatcher.onChange(() => {
 			if (agentWatcher.error) {
