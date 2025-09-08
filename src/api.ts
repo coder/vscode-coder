@@ -195,7 +195,7 @@ export async function startWorkspaceIfStoppedOrFailed(
 			startArgs.push(...["--reason", "vscode_connection"]);
 		}
 
-		const startProcess = spawn(binPath, startArgs);
+		const startProcess = spawn(binPath, startArgs, { shell: true });
 
 		startProcess.stdout.on("data", (data: Buffer) => {
 			data
