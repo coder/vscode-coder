@@ -826,11 +826,11 @@ export class Remote {
 
 	private globalConfigs(label: string): string {
 		const vscodeConfig = vscode.workspace.getConfiguration();
-		const args: string[] = getGlobalFlags(
+		const args = getGlobalFlags(
 			vscodeConfig,
 			path.dirname(this.storage.getSessionTokenPath(label)),
 		);
-		return args.length === 0 ? "" : ` ${args.join(" ")}`;
+		return ` ${args.join(" ")}`;
 	}
 
 	// showNetworkUpdates finds the SSH process ID that is being used by this

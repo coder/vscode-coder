@@ -513,7 +513,7 @@ export class Commands {
 						configDir,
 					);
 					terminal.sendText(
-						`${escapeCommandArg(binary)}${globalFlags.length === 0 ? "" : ` ${globalFlags.join(" ")}`} ssh ${app.workspace_name}`,
+						`${escapeCommandArg(binary)}${` ${globalFlags.join(" ")}`} ssh ${app.workspace_name}`,
 					);
 					await new Promise((resolve) => setTimeout(resolve, 5000));
 					terminal.sendText(app.command ?? "");
