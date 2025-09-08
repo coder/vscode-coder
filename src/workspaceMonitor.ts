@@ -1,12 +1,11 @@
 import { Api } from "coder/site/src/api/api";
 import { ServerSentEvent, Workspace } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
-import { ProxyAgent } from "proxy-agent";
 import * as vscode from "vscode";
 import { errToStr } from "./api-helper";
 import { Storage } from "./storage";
-import { OneWayCodeWebSocket } from "./websocket/OneWayCodeWebSocket";
-import { watchWorkspace } from "./websocket/ws-helper";
+import { OneWayCodeWebSocket } from "./websocket/oneWayCodeWebSocket";
+import { CoderWebSocketClient } from "./websocket/webSocketClient";
 
 /**
  * Monitor a single workspace using SSE for events like shutdown and deletion.
@@ -39,10 +38,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		private readonly storage: Storage,
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
-		httpAgent: ProxyAgent,
+		webSocketClient: CoderWebSocketClient,
 	) {
 		this.name = `${workspace.owner_name}/${workspace.name}`;
-		const socket = watchWorkspace(this.restClient, httpAgent, workspace);
+		const socket = webSocketClient.watchWorkspace(workspace);
 
 		socket.addEventListener("open", () => {
 			this.storage.output.info(`Monitoring ${this.name}...`);
@@ -50,17 +49,14 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 		socket.addEventListener("message", (event) => {
 			try {
-				const newWorkspaceData = event.parsedMessage?.data as Workspace;
+				// Perhaps we need to parse this and validate it.
+				const newWorkspaceData = event.parsedMessage!.data as Workspace;
 				this.update(newWorkspaceData);
 				this.maybeNotify(newWorkspaceData);
 				this.onChange.fire(newWorkspaceData);
 			} catch (error) {
 				this.notifyError(error);
 			}
-		});
-
-		socket.addEventListener("error", (event) => {
-			this.notifyError(event);
 		});
 
 		// Store so we can close in dispose().

@@ -1,14 +1,10 @@
 import { AxiosInstance, InternalAxiosRequestConfig, isAxiosError } from "axios";
 import { spawn } from "child_process";
 import { Api } from "coder/site/src/api/api";
-import {
-	ProvisionerJobLog,
-	Workspace,
-} from "coder/site/src/api/typesGenerated";
+import { Workspace } from "coder/site/src/api/typesGenerated";
 import fs from "fs/promises";
 import { ProxyAgent } from "proxy-agent";
 import * as vscode from "vscode";
-import * as ws from "ws";
 import { errToStr } from "./api-helper";
 import { CertificateError } from "./error";
 import { FeatureSet } from "./featureSet";
@@ -16,6 +12,7 @@ import { getGlobalFlags } from "./globalFlags";
 import { getProxyForUrl } from "./proxy";
 import { Storage } from "./storage";
 import { expandPath } from "./util";
+import { CoderWebSocketClient } from "./websocket/webSocketClient";
 
 export const coderSessionTokenHeader = "Coder-Session-Token";
 
@@ -68,8 +65,12 @@ export async function createHttpAgent(): Promise<ProxyAgent> {
 
 /**
  * Create an sdk instance using the provided URL and token and hook it up to
- * configuration.  The token may be undefined if some other form of
+ * configuration. The token may be undefined if some other form of
  * authentication is being used.
+ *
+ * Automatically configures logging interceptors that log:
+ * - Requests and responses at the trace level
+ * - Errors at the error level
  */
 export function makeCoderSdk(
 	baseUrl: string,
@@ -128,14 +129,14 @@ function addLoggingInterceptors(
 ) {
 	client.interceptors.request.use(
 		(config) => {
-			const requestId = crypto.randomUUID();
+			const requestId = crypto.randomUUID().replace(/-/g, "");
 			(config as RequestConfigWithMetadata).metadata = {
 				requestId,
 				startedAt: Date.now(),
 			};
 
 			logger.trace(
-				`Request ${requestId}: ${config.method?.toUpperCase()} ${config.url}`,
+				`req ${requestId}: ${config.method?.toUpperCase()} ${config.url}`,
 				config.data ?? "",
 			);
 
@@ -146,9 +147,9 @@ function addLoggingInterceptors(
 			if (isAxiosError(error)) {
 				const meta = (error.config as RequestConfigWithMetadata)?.metadata;
 				const requestId = meta?.requestId ?? "n/a";
-				message = `Request ${requestId} error`;
+				message = `req ${requestId} error`;
 			}
-			logger.warn(message, error);
+			logger.error(message, error);
 
 			return Promise.reject(error);
 		},
@@ -161,7 +162,7 @@ function addLoggingInterceptors(
 			const ms = startedAt ? Date.now() - startedAt : undefined;
 
 			logger.trace(
-				`Response ${requestId ?? "n/a"}: ${response.status}${
+				`res ${requestId ?? "n/a"}: ${response.status}${
 					ms !== undefined ? ` in ${ms}ms` : ""
 				}`,
 				// { responseBody: response.data }, // TODO too noisy
@@ -177,9 +178,9 @@ function addLoggingInterceptors(
 				const ms = startedAt ? Date.now() - startedAt : undefined;
 
 				const status = error.response?.status ?? "unknown";
-				message = `Response ${requestId}: ${status}${ms !== undefined ? ` in ${ms}ms` : ""}`;
+				message = `res ${requestId}: ${status}${ms !== undefined ? ` in ${ms}ms` : ""}`;
 			}
-			logger.warn(message, error);
+			logger.error(message, error);
 
 			return Promise.reject(error);
 		},
@@ -262,71 +263,44 @@ export async function startWorkspaceIfStoppedOrFailed(
  */
 export async function waitForBuild(
 	restClient: Api,
+	webSocketClient: CoderWebSocketClient,
 	writeEmitter: vscode.EventEmitter<string>,
 	workspace: Workspace,
 ): Promise<Workspace> {
-	const baseUrlRaw = restClient.getAxiosInstance().defaults.baseURL;
-	if (!baseUrlRaw) {
-		throw new Error("No base URL set on REST client");
-	}
-
 	// This fetches the initial bunch of logs.
 	const logs = await restClient.getWorkspaceBuildLogs(
 		workspace.latest_build.id,
 	);
 	logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"));
 
-	// This follows the logs for new activity!
-	// TODO: watchBuildLogsByBuildId exists, but it uses `location`.
-	//       Would be nice if we could use it here.
-	let path = `/api/v2/workspacebuilds/${workspace.latest_build.id}/logs?follow=true`;
-	if (logs.length) {
-		path += `&after=${logs[logs.length - 1].id}`;
-	}
-
-	const agent = await createHttpAgent();
 	await new Promise<void>((resolve, reject) => {
-		try {
-			// TODO move to `ws-helper`
-			const baseUrl = new URL(baseUrlRaw);
-			const proto = baseUrl.protocol === "https:" ? "wss:" : "ws:";
-			const socketUrlRaw = `${proto}//${baseUrl.host}${path}`;
-			const token = restClient.getAxiosInstance().defaults.headers.common[
-				coderSessionTokenHeader
-			] as string | undefined;
-			const socket = new ws.WebSocket(new URL(socketUrlRaw), {
-				agent: agent,
-				followRedirects: true,
-				headers: token
-					? {
-							[coderSessionTokenHeader]: token,
-						}
-					: undefined,
-			});
-			socket.binaryType = "nodebuffer";
-			socket.on("message", (data) => {
-				const buf = data as Buffer;
-				const log = JSON.parse(buf.toString()) as ProvisionerJobLog;
-				writeEmitter.fire(log.output + "\r\n");
-			});
-			socket.on("error", (error) => {
-				reject(
-					new Error(
-						`Failed to watch workspace build using ${socketUrlRaw}: ${errToStr(error, "no further details")}`,
-					),
-				);
-			});
-			socket.on("close", () => {
-				resolve();
-			});
-		} catch (error) {
-			// If this errors, it is probably a malformed URL.
-			reject(
+		const rejectError = (error: unknown) => {
+			const baseUrlRaw = restClient.getAxiosInstance().defaults.baseURL!;
+			return reject(
 				new Error(
 					`Failed to watch workspace build on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
 				),
 			);
-		}
+		};
+
+		const socket = webSocketClient.watchBuildLogsByBuildId(
+			workspace.latest_build.id,
+			logs,
+		);
+		const closeHandler = () => {
+			resolve();
+		};
+		socket.addEventListener("close", closeHandler);
+		socket.addEventListener("message", (data) => {
+			const log = data.parsedMessage!;
+			writeEmitter.fire(log.output + "\r\n");
+		});
+		socket.addEventListener("error", (error) => {
+			// Do not want to trigger the close handler.
+			socket.removeEventListener("close", closeHandler);
+			socket.close();
+			rejectError(error);
+		});
 	});
 
 	writeEmitter.fire("Build complete\r\n");

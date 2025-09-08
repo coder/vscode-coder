@@ -1,14 +1,11 @@
-import { Api } from "coder/site/src/api/api";
 import {
 	Workspace,
 	GetInboxNotificationResponse,
 } from "coder/site/src/api/typesGenerated";
-import { ProxyAgent } from "proxy-agent";
 import * as vscode from "vscode";
-import { errToStr } from "./api-helper";
 import { type Storage } from "./storage";
-import { OneWayCodeWebSocket } from "./websocket/OneWayCodeWebSocket";
-import { watchInboxNotifications } from "./websocket/ws-helper";
+import { OneWayCodeWebSocket } from "./websocket/oneWayCodeWebSocket";
+import { CoderWebSocketClient } from "./websocket/webSocketClient";
 
 // These are the template IDs of our notifications.
 // Maybe in the future we should avoid hardcoding
@@ -23,8 +20,7 @@ export class Inbox implements vscode.Disposable {
 
 	constructor(
 		workspace: Workspace,
-		httpAgent: ProxyAgent,
-		restClient: Api,
+		webSocketClient: CoderWebSocketClient,
 		storage: Storage,
 	) {
 		this.#storage = storage;
@@ -36,9 +32,7 @@ export class Inbox implements vscode.Disposable {
 
 		const watchTargets = [workspace.id];
 
-		this.#socket = watchInboxNotifications(
-			restClient,
-			httpAgent,
+		this.#socket = webSocketClient.watchInboxNotifications(
 			watchTemplates,
 			watchTargets,
 		);
@@ -47,18 +41,14 @@ export class Inbox implements vscode.Disposable {
 			this.#storage.output.info("Listening to Coder Inbox");
 		});
 
-		this.#socket.addEventListener("error", (error) => {
-			this.notifyError(error);
+		this.#socket.addEventListener("error", () => {
+			// Errors are already logged internally
 			this.dispose();
 		});
 
 		this.#socket.addEventListener("message", (data) => {
-			try {
-				const inboxMessage = data.parsedMessage!;
-				vscode.window.showInformationMessage(inboxMessage.notification.title);
-			} catch (error) {
-				this.notifyError(error);
-			}
+			const inboxMessage = data.parsedMessage!;
+			vscode.window.showInformationMessage(inboxMessage.notification.title);
 		});
 	}
 
@@ -68,13 +58,5 @@ export class Inbox implements vscode.Disposable {
 			this.#socket.close();
 			this.#disposed = true;
 		}
-	}
-
-	private notifyError(error: unknown) {
-		const message = errToStr(
-			error,
-			"Got empty error while monitoring Coder Inbox",
-		);
-		this.#storage.output.error(message);
 	}
 }
