@@ -13,7 +13,7 @@ import * as ws from "ws";
 import { errToStr } from "./api-helper";
 import { CertificateError } from "./error";
 import { FeatureSet } from "./featureSet";
-import { getHeaderArgs } from "./headers";
+import { getGlobalFlags } from "./globalFlags";
 import { getProxyForUrl } from "./proxy";
 import { Storage } from "./storage";
 import { expandPath } from "./util";
@@ -186,9 +186,7 @@ export async function startWorkspaceIfStoppedOrFailed(
 
 	return new Promise((resolve, reject) => {
 		const startArgs = [
-			"--global-config",
-			globalConfigDir,
-			...getHeaderArgs(vscode.workspace.getConfiguration()),
+			...getGlobalFlags(vscode.workspace.getConfiguration(), globalConfigDir),
 			"start",
 			"--yes",
 			workspace.owner_name + "/" + workspace.name,
@@ -197,7 +195,7 @@ export async function startWorkspaceIfStoppedOrFailed(
 			startArgs.push(...["--reason", "vscode_connection"]);
 		}
 
-		const startProcess = spawn(binPath, startArgs);
+		const startProcess = spawn(binPath, startArgs, { shell: true });
 
 		startProcess.stdout.on("data", (data: Buffer) => {
 			data
