@@ -1,4 +1,4 @@
-import { AxiosInstance, InternalAxiosRequestConfig, isAxiosError } from "axios";
+import { AxiosInstance } from "axios";
 import { spawn } from "child_process";
 import { Api } from "coder/site/src/api/api";
 import { Workspace } from "coder/site/src/api/typesGenerated";
@@ -9,6 +9,13 @@ import { errToStr } from "./api-helper";
 import { CertificateError } from "./error";
 import { FeatureSet } from "./featureSet";
 import { getGlobalFlags } from "./globalFlags";
+import {
+	createRequestMeta,
+	logRequestStart,
+	logRequestSuccess,
+	logRequestError,
+	RequestConfigWithMeta,
+} from "./logging/netLog";
 import { getProxyForUrl } from "./proxy";
 import { Storage } from "./storage";
 import { expandPath } from "./util";
@@ -116,72 +123,33 @@ export function makeCoderSdk(
 	return restClient;
 }
 
-interface RequestConfigWithMetadata extends InternalAxiosRequestConfig {
-	metadata?: {
-		requestId: string;
-		startedAt: number;
-	};
-}
-
-function addLoggingInterceptors(
+export function addLoggingInterceptors(
 	client: AxiosInstance,
 	logger: vscode.LogOutputChannel,
 ) {
 	client.interceptors.request.use(
 		(config) => {
-			const requestId = crypto.randomUUID().replace(/-/g, "");
-			(config as RequestConfigWithMetadata).metadata = {
-				requestId,
-				startedAt: Date.now(),
-			};
-
-			logger.trace(
-				`req ${requestId}: ${config.method?.toUpperCase()} ${config.url}`,
-				config.data ?? "",
-			);
-
+			const meta = createRequestMeta();
+			(config as RequestConfigWithMeta).metadata = meta;
+			logRequestStart(logger, meta.requestId, config);
 			return config;
 		},
 		(error: unknown) => {
-			let message: string = "Request error";
-			if (isAxiosError(error)) {
-				const meta = (error.config as RequestConfigWithMetadata)?.metadata;
-				const requestId = meta?.requestId ?? "n/a";
-				message = `req ${requestId} error`;
-			}
-			logger.error(message, error);
-
+			logRequestError(logger, error);
 			return Promise.reject(error);
 		},
 	);
 
 	client.interceptors.response.use(
 		(response) => {
-			const { requestId, startedAt } =
-				(response.config as RequestConfigWithMetadata).metadata ?? {};
-			const ms = startedAt ? Date.now() - startedAt : undefined;
-
-			logger.trace(
-				`res ${requestId ?? "n/a"}: ${response.status}${
-					ms !== undefined ? ` in ${ms}ms` : ""
-				}`,
-				// { responseBody: response.data }, // TODO too noisy
-			);
+			const meta = (response.config as RequestConfigWithMeta).metadata;
+			if (meta) {
+				logRequestSuccess(logger, meta, response);
+			}
 			return response;
 		},
 		(error: unknown) => {
-			let message = "Response error";
-			if (isAxiosError(error)) {
-				const { metadata } = (error.config as RequestConfigWithMetadata) ?? {};
-				const requestId = metadata?.requestId ?? "n/a";
-				const startedAt = metadata?.startedAt;
-				const ms = startedAt ? Date.now() - startedAt : undefined;
-
-				const status = error.response?.status ?? "unknown";
-				message = `res ${requestId}: ${status}${ms !== undefined ? ` in ${ms}ms` : ""}`;
-			}
-			logger.error(message, error);
-
+			logRequestError(logger, error);
 			return Promise.reject(error);
 		},
 	);

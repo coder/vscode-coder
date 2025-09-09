@@ -9,7 +9,7 @@ import {
 import { ProxyAgent } from "proxy-agent";
 import { ClientOptions } from "ws";
 import { coderSessionTokenHeader } from "../api";
-import { errToStr } from "../api-helper";
+import { WsLogger } from "../logging/netLog";
 import { Storage } from "../storage";
 import { OneWayCodeWebSocket } from "./oneWayCodeWebSocket";
 
@@ -86,17 +86,10 @@ export class CoderWebSocketClient {
 			throw new Error("No base URL set on REST client");
 		}
 
-		// We shouldn't need to worry about this throwing. Whilst `baseURL` could
-		// be an invalid URL, that would've caused issues before we got to here.
 		const baseUrl = new URL(baseUrlRaw);
 		const token = this.client.getAxiosInstance().defaults.headers.common[
 			coderSessionTokenHeader
 		] as string | undefined;
-
-		// Log WebSocket connection attempt
-		this.storage.output.trace(
-			`Creating WebSocket connection to ${configs.apiRoute}`,
-		);
 
 		const webSocket = new OneWayCodeWebSocket<TData>({
 			location: baseUrl,
@@ -104,35 +97,33 @@ export class CoderWebSocketClient {
 			options: {
 				agent: this.httpAgent,
 				followRedirects: true,
-				headers: token
-					? {
-							[coderSessionTokenHeader]: token,
-							...configs.options?.headers,
-						}
-					: configs.options?.headers,
+				headers: {
+					...(token ? { [coderSessionTokenHeader]: token } : {}),
+					...configs.options?.headers,
+				},
 				...configs.options,
 			},
 		});
 
-		// Add logging for WebSocket events
+		const wsUrl = new URL(webSocket.url);
+		const pathWithQuery = wsUrl.pathname + wsUrl.search;
+		const wsLogger = new WsLogger(this.storage.output, pathWithQuery);
+		wsLogger.logConnecting();
+
 		webSocket.addEventListener("open", () => {
-			this.storage.output.trace(
-				`WebSocket connection opened to ${configs.apiRoute}`,
-			);
+			wsLogger.logOpen();
+		});
+
+		webSocket.addEventListener("message", (event) => {
+			wsLogger.logMessage(event.sourceEvent.data);
 		});
 
 		webSocket.addEventListener("close", (event) => {
-			this.storage.output.trace(
-				`WebSocket connection closed to ${configs.apiRoute}, code: ${event.code}, reason: ${event.reason}`,
-			);
+			wsLogger.logClose(event.code, event.reason);
 		});
 
 		webSocket.addEventListener("error", (event) => {
-			const err = errToStr(
-				event.error,
-				`Got empty error while monitoring ${configs.apiRoute}`,
-			);
-			this.storage.output.error(err);
+			wsLogger.logError(event?.error ?? event);
 		});
 
 		return webSocket;

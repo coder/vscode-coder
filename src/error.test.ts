@@ -4,7 +4,7 @@ import https from "https";
 import * as path from "path";
 import { afterAll, beforeAll, it, expect, vi } from "vitest";
 import { CertificateError, X509_ERR, X509_ERR_CODE } from "./error";
-import { Logger } from "./logger";
+import { Logger } from "./logging/logger";
 
 // Before each test we make a request to sanity check that we really get the
 // error we are expecting, then we run it through CertificateError.
