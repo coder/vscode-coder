@@ -21,6 +21,7 @@ import { needToken } from "./api/utils";
 import { startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api/workspace";
 import * as cli from "./cliManager";
 import { Commands } from "./commands";
+import { PathResolver } from "./core/pathResolver";
 import { featureSetForVersion, FeatureSet } from "./featureSet";
 import { getGlobalFlags } from "./globalFlags";
 import { Inbox } from "./inbox";
@@ -48,6 +49,7 @@ export class Remote {
 		private readonly storage: Storage,
 		private readonly commands: Commands,
 		private readonly mode: vscode.ExtensionMode,
+		private readonly pathResolver: PathResolver,
 	) {}
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
@@ -111,9 +113,7 @@ export class Remote {
 					title: "Waiting for workspace build...",
 				},
 				async () => {
-					const globalConfigDir = path.dirname(
-						this.storage.getSessionTokenPath(label),
-					);
+					const globalConfigDir = this.pathResolver.getGlobalConfigDir(label);
 					while (workspace.latest_build.status !== "running") {
 						++attempts;
 						switch (workspace.latest_build.status) {
@@ -437,7 +437,7 @@ export class Remote {
 		let settingsContent = "{}";
 		try {
 			settingsContent = await fs.readFile(
-				this.storage.getUserSettingsPath(),
+				this.pathResolver.getUserSettingsPath(),
 				"utf8",
 			);
 		} catch (ex) {
@@ -486,7 +486,10 @@ export class Remote {
 
 		if (mungedPlatforms || mungedConnTimeout) {
 			try {
-				await fs.writeFile(this.storage.getUserSettingsPath(), settingsContent);
+				await fs.writeFile(
+					this.pathResolver.getUserSettingsPath(),
+					settingsContent,
+				);
 			} catch (ex) {
 				// This could be because the user's settings.json is read-only.  This is
 				// the case when using home-manager on NixOS, for example.  Failure to
@@ -765,11 +768,11 @@ export class Remote {
 		const globalConfigs = this.globalConfigs(label);
 
 		const proxyCommand = featureSet.wildcardSSH
-			? `${escapeCommandArg(binaryPath)}${globalConfigs} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.storage.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
+			? `${escapeCommandArg(binaryPath)}${globalConfigs} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.pathResolver.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
 			: `${escapeCommandArg(binaryPath)}${globalConfigs} vscodessh --network-info-dir ${escapeCommandArg(
-					this.storage.getNetworkInfoPath(),
-				)}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.storage.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
-					this.storage.getUrlPath(label),
+					this.pathResolver.getNetworkInfoPath(),
+				)}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.pathResolver.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
+					this.pathResolver.getUrlPath(label),
 				)} %h`;
 
 		const sshValues: SSHValues = {
@@ -828,7 +831,7 @@ export class Remote {
 		const vscodeConfig = vscode.workspace.getConfiguration();
 		const args = getGlobalFlags(
 			vscodeConfig,
-			path.dirname(this.storage.getSessionTokenPath(label)),
+			this.pathResolver.getGlobalConfigDir(label),
 		);
 		return ` ${args.join(" ")}`;
 	}
@@ -841,7 +844,7 @@ export class Remote {
 			1000,
 		);
 		const networkInfoFile = path.join(
-			this.storage.getNetworkInfoPath(),
+			this.pathResolver.getNetworkInfoPath(),
 			`${sshPid}.json`,
 		);
 

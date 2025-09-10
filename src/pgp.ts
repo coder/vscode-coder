@@ -2,8 +2,8 @@ import { createReadStream, promises as fs } from "fs";
 import * as openpgp from "openpgp";
 import * as path from "path";
 import { Readable } from "stream";
-import * as vscode from "vscode";
 import { errToStr } from "./api/api-helper";
+import { Logger } from "./logging/logger";
 
 export type Key = openpgp.Key;
 
@@ -35,9 +35,7 @@ export class VerificationError extends Error {
 /**
  * Return the public keys bundled with the plugin.
  */
-export async function readPublicKeys(
-	logger?: vscode.LogOutputChannel,
-): Promise<Key[]> {
+export async function readPublicKeys(logger?: Logger): Promise<Key[]> {
 	const keyFile = path.join(__dirname, "../pgp-public.key");
 	logger?.info("Reading public key", keyFile);
 	const armoredKeys = await fs.readFile(keyFile, "utf8");
@@ -53,7 +51,7 @@ export async function verifySignature(
 	publicKeys: openpgp.Key[],
 	cliPath: string,
 	signaturePath: string,
-	logger?: vscode.LogOutputChannel,
+	logger?: Logger,
 ): Promise<void> {
 	try {
 		logger?.info("Reading signature", signaturePath);

@@ -5,11 +5,11 @@ import {
 	Workspace,
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
-import path from "node:path";
 import * as vscode from "vscode";
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
+import { PathResolver } from "./core/pathResolver";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
 import { Storage } from "./storage";
@@ -36,6 +36,7 @@ export class Commands {
 		private readonly vscodeProposed: typeof vscode,
 		private readonly restClient: Api,
 		private readonly storage: Storage,
+		private readonly pathResolver: PathResolver,
 	) {}
 
 	/**
@@ -512,8 +513,8 @@ export class Commands {
 						toSafeHost(url),
 					);
 
-					const configDir = path.dirname(
-						this.storage.getSessionTokenPath(toSafeHost(url)),
+					const configDir = this.pathResolver.getGlobalConfigDir(
+						toSafeHost(url),
 					);
 					const globalFlags = getGlobalFlags(
 						vscode.workspace.getConfiguration(),

@@ -7,6 +7,7 @@ import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
+import { PathResolver } from "./core/pathResolver";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
@@ -48,14 +49,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		);
 	}
 
+	const pathResolver = new PathResolver(
+		ctx.globalStorageUri.fsPath,
+		vscode.workspace.getConfiguration(),
+	);
 	const output = vscode.window.createOutputChannel("Coder", { log: true });
 	const storage = new Storage(
 		vscodeProposed,
 		output,
 		ctx.globalState,
 		ctx.secrets,
-		ctx.globalStorageUri,
 		ctx.logUri,
+		pathResolver,
 	);
 
 	// Try to clear this flag ASAP then pass it around if needed
@@ -253,7 +258,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(vscodeProposed, client, storage);
+	const commands = new Commands(vscodeProposed, client, storage, pathResolver);
 	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
 	vscode.commands.registerCommand(
 		"coder.logout",
@@ -312,6 +317,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			storage,
 			commands,
 			ctx.extensionMode,
+			pathResolver,
 		);
 		try {
 			const details = await remote.setup(

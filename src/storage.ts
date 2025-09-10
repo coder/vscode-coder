@@ -12,6 +12,7 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 import { errToStr } from "./api/api-helper";
 import * as cli from "./cliManager";
+import { PathResolver } from "./core/pathResolver";
 import { getHeaderCommand, getHeaders } from "./headers";
 import * as pgp from "./pgp";
 
@@ -24,8 +25,8 @@ export class Storage {
 		public readonly output: vscode.LogOutputChannel,
 		private readonly memento: vscode.Memento,
 		private readonly secrets: vscode.SecretStorage,
-		private readonly globalStorageUri: vscode.Uri,
 		private readonly logUri: vscode.Uri,
+		private readonly pathResolver: PathResolver,
 	) {}
 
 	/**
@@ -171,7 +172,10 @@ export class Storage {
 		// Check if there is an existing binary and whether it looks valid.  If it
 		// is valid and matches the server, or if it does not match the server but
 		// downloads are disabled, we can return early.
-		const binPath = path.join(this.getBinaryCachePath(label), cli.name());
+		const binPath = path.join(
+			this.pathResolver.getBinaryCachePath(label),
+			cli.name(),
+		);
 		this.output.info("Using binary path", binPath);
 		const stat = await cli.stat(binPath);
 		if (stat === undefined) {
@@ -586,102 +590,6 @@ export class Storage {
 	}
 
 	/**
-	 * Return the directory for a deployment with the provided label to where its
-	 * binary is cached.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 *
-	 * The caller must ensure this directory exists before use.
-	 */
-	public getBinaryCachePath(label: string): string {
-		const configPath = vscode.workspace
-			.getConfiguration()
-			.get("coder.binaryDestination");
-		return configPath && String(configPath).trim().length > 0
-			? path.resolve(String(configPath))
-			: label
-				? path.join(this.globalStorageUri.fsPath, label, "bin")
-				: path.join(this.globalStorageUri.fsPath, "bin");
-	}
-
-	/**
-	 * Return the path where network information for SSH hosts are stored.
-	 *
-	 * The CLI will write files here named after the process PID.
-	 */
-	public getNetworkInfoPath(): string {
-		return path.join(this.globalStorageUri.fsPath, "net");
-	}
-
-	/**
-	 *
-	 * Return the path where log data from the connection is stored.
-	 *
-	 * The CLI will write files here named after the process PID.
-	 */
-	public getLogPath(): string {
-		return path.join(this.globalStorageUri.fsPath, "log");
-	}
-
-	/**
-	 * Get the path to the user's settings.json file.
-	 *
-	 * Going through VSCode's API should be preferred when modifying settings.
-	 */
-	public getUserSettingsPath(): string {
-		return path.join(
-			this.globalStorageUri.fsPath,
-			"..",
-			"..",
-			"..",
-			"User",
-			"settings.json",
-		);
-	}
-
-	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * its session token is stored.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 *
-	 * The caller must ensure this directory exists before use.
-	 */
-	public getSessionTokenPath(label: string): string {
-		return label
-			? path.join(this.globalStorageUri.fsPath, label, "session")
-			: path.join(this.globalStorageUri.fsPath, "session");
-	}
-
-	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * its session token was stored by older code.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 *
-	 * The caller must ensure this directory exists before use.
-	 */
-	public getLegacySessionTokenPath(label: string): string {
-		return label
-			? path.join(this.globalStorageUri.fsPath, label, "session_token")
-			: path.join(this.globalStorageUri.fsPath, "session_token");
-	}
-
-	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * its url is stored.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 *
-	 * The caller must ensure this directory exists before use.
-	 */
-	public getUrlPath(label: string): string {
-		return label
-			? path.join(this.globalStorageUri.fsPath, label, "url")
-			: path.join(this.globalStorageUri.fsPath, "url");
-	}
-
-	/**
 	 * Configure the CLI for the deployment with the provided label.
 	 *
 	 * Falsey URLs and null tokens are a no-op; we avoid unconfiguring the CLI to
@@ -709,7 +617,7 @@ export class Storage {
 		url: string | undefined,
 	): Promise<void> {
 		if (url) {
-			const urlPath = this.getUrlPath(label);
+			const urlPath = this.pathResolver.getUrlPath(label);
 			await fs.mkdir(path.dirname(urlPath), { recursive: true });
 			await fs.writeFile(urlPath, url);
 		}
@@ -727,7 +635,7 @@ export class Storage {
 		token: string | undefined | null,
 	) {
 		if (token !== null) {
-			const tokenPath = this.getSessionTokenPath(label);
+			const tokenPath = this.pathResolver.getSessionTokenPath(label);
 			await fs.mkdir(path.dirname(tokenPath), { recursive: true });
 			await fs.writeFile(tokenPath, token ?? "");
 		}
@@ -743,8 +651,8 @@ export class Storage {
 	public async readCliConfig(
 		label: string,
 	): Promise<{ url: string; token: string }> {
-		const urlPath = this.getUrlPath(label);
-		const tokenPath = this.getSessionTokenPath(label);
+		const urlPath = this.pathResolver.getUrlPath(label);
+		const tokenPath = this.pathResolver.getSessionTokenPath(label);
 		const [url, token] = await Promise.allSettled([
 			fs.readFile(urlPath, "utf8"),
 			fs.readFile(tokenPath, "utf8"),
@@ -759,8 +667,8 @@ export class Storage {
 	 * Migrate the session token file from "session_token" to "session", if needed.
 	 */
 	public async migrateSessionToken(label: string) {
-		const oldTokenPath = this.getLegacySessionTokenPath(label);
-		const newTokenPath = this.getSessionTokenPath(label);
+		const oldTokenPath = this.pathResolver.getLegacySessionTokenPath(label);
+		const newTokenPath = this.pathResolver.getSessionTokenPath(label);
 		try {
 			await fs.rename(oldTokenPath, newTokenPath);
 		} catch (error) {
