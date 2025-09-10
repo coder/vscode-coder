@@ -15,128 +15,11 @@ import * as cli from "./cliManager";
 import { PathResolver } from "./core/pathResolver";
 import * as pgp from "./pgp";
 
-// Maximium number of recent URLs to store.
-const MAX_URLS = 10;
-
 export class Storage {
 	constructor(
-		private readonly vscodeProposed: typeof vscode,
 		public readonly output: vscode.LogOutputChannel,
-		private readonly memento: vscode.Memento,
-		private readonly secrets: vscode.SecretStorage,
-		private readonly logUri: vscode.Uri,
 		private readonly pathResolver: PathResolver,
 	) {}
-
-	/**
-	 * Add the URL to the list of recently accessed URLs in global storage, then
-	 * set it as the last used URL.
-	 *
-	 * If the URL is falsey, then remove it as the last used URL and do not touch
-	 * the history.
-	 */
-	public async setUrl(url?: string): Promise<void> {
-		await this.memento.update("url", url);
-		if (url) {
-			const history = this.withUrlHistory(url);
-			await this.memento.update("urlHistory", history);
-		}
-	}
-
-	/**
-	 * Get the last used URL.
-	 */
-	public getUrl(): string | undefined {
-		return this.memento.get("url");
-	}
-
-	/**
-	 * Get the most recently accessed URLs (oldest to newest) with the provided
-	 * values appended.  Duplicates will be removed.
-	 */
-	public withUrlHistory(...append: (string | undefined)[]): string[] {
-		const val = this.memento.get("urlHistory");
-		const urls = Array.isArray(val) ? new Set(val) : new Set();
-		for (const url of append) {
-			if (url) {
-				// It might exist; delete first so it gets appended.
-				urls.delete(url);
-				urls.add(url);
-			}
-		}
-		// Slice off the head if the list is too large.
-		return urls.size > MAX_URLS
-			? Array.from(urls).slice(urls.size - MAX_URLS, urls.size)
-			: Array.from(urls);
-	}
-
-	/**
-	 * Mark this as the first connection to a workspace, which influences whether
-	 * the workspace startup confirmation is shown to the user.
-	 */
-	public async setFirstConnect(): Promise<void> {
-		return this.memento.update("firstConnect", true);
-	}
-
-	/**
-	 * Check if this is the first connection to a workspace and clear the flag.
-	 * Used to determine whether to automatically start workspaces without
-	 * prompting the user for confirmation.
-	 */
-	public async getAndClearFirstConnect(): Promise<boolean> {
-		const isFirst = this.memento.get<boolean>("firstConnect");
-		if (isFirst !== undefined) {
-			await this.memento.update("firstConnect", undefined);
-		}
-		return isFirst === true;
-	}
-
-	/**
-	 * Set or unset the last used token.
-	 */
-	public async setSessionToken(sessionToken?: string): Promise<void> {
-		if (!sessionToken) {
-			await this.secrets.delete("sessionToken");
-		} else {
-			await this.secrets.store("sessionToken", sessionToken);
-		}
-	}
-
-	/**
-	 * Get the last used token.
-	 */
-	public async getSessionToken(): Promise<string | undefined> {
-		try {
-			return await this.secrets.get("sessionToken");
-		} catch (ex) {
-			// The VS Code session store has become corrupt before, and
-			// will fail to get the session token...
-			return undefined;
-		}
-	}
-
-	/**
-	 * Returns the log path for the "Remote - SSH" output panel.  There is no VS
-	 * Code API to get the contents of an output panel.  We use this to get the
-	 * active port so we can display network information.
-	 */
-	public async getRemoteSSHLogPath(): Promise<string | undefined> {
-		const upperDir = path.dirname(this.logUri.fsPath);
-		// Node returns these directories sorted already!
-		const dirs = await fs.readdir(upperDir);
-		const latestOutput = dirs
-			.reverse()
-			.filter((dir) => dir.startsWith("output_logging_"));
-		if (latestOutput.length === 0) {
-			return undefined;
-		}
-		const dir = await fs.readdir(path.join(upperDir, latestOutput[0]));
-		const remoteSSH = dir.filter((file) => file.indexOf("Remote - SSH") !== -1);
-		if (remoteSSH.length === 0) {
-			return undefined;
-		}
-		return path.join(upperDir, latestOutput[0], remoteSSH[0]);
-	}
 
 	/**
 	 * Download and return the path to a working binary for the deployment with
@@ -511,7 +394,7 @@ export class Storage {
 				options.push("Download signature");
 			}
 			options.push("Run without verification");
-			const action = await this.vscodeProposed.window.showWarningMessage(
+			const action = await vscode.window.showWarningMessage(
 				status === 404 ? "Signature not found" : "Failed to download signature",
 				{
 					useCustom: true,
@@ -565,7 +448,7 @@ export class Storage {
 					this.output,
 				);
 			} catch (error) {
-				const action = await this.vscodeProposed.window.showWarningMessage(
+				const action = await vscode.window.showWarningMessage(
 					// VerificationError should be the only thing that throws, but
 					// unfortunately caught errors are always type unknown.
 					error instanceof pgp.VerificationError

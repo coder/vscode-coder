@@ -8,7 +8,9 @@ import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { CliConfigManager } from "./core/cliConfig";
+import { MementoManager } from "./core/mementoManager";
 import { PathResolver } from "./core/pathResolver";
+import { SecretsManager } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
@@ -52,28 +54,26 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	const pathResolver = new PathResolver(
 		ctx.globalStorageUri.fsPath,
+		ctx.logUri.fsPath,
 		vscode.workspace.getConfiguration(),
 	);
-	const output = vscode.window.createOutputChannel("Coder", { log: true });
-	const storage = new Storage(
-		vscodeProposed,
-		output,
-		ctx.globalState,
-		ctx.secrets,
-		ctx.logUri,
-		pathResolver,
-	);
+	const cliConfigManager = new CliConfigManager(pathResolver);
+	const mementoManager = new MementoManager(ctx.globalState);
+	const secretsManager = new SecretsManager(ctx.secrets);
 
-	// Try to clear this flag ASAP then pass it around if needed
-	const isFirstConnect = await storage.getAndClearFirstConnect();
+	const output = vscode.window.createOutputChannel("Coder", { log: true });
+	const storage = new Storage(output, pathResolver);
+
+	// Try to clear this flag ASAP
+	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
 
 	// This client tracks the current login and will be used through the life of
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
-	const url = storage.getUrl();
+	const url = mementoManager.getUrl();
 	const client = CoderApi.create(
 		url || "",
-		await storage.getSessionToken(),
+		await secretsManager.getSessionToken(),
 		storage.output,
 		() => vscode.workspace.getConfiguration(),
 	);
@@ -108,8 +108,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		allWorkspacesProvider.setVisibility(event.visible);
 	});
 
-	const cliConfigManager = new CliConfigManager(pathResolver);
-
 	// Handle vscode:// URIs.
 	vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
@@ -137,11 +135,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// hit enter and move on.
 				const url = await commands.maybeAskUrl(
 					params.get("url"),
-					storage.getUrl(),
+					mementoManager.getUrl(),
 				);
 				if (url) {
 					client.setHost(url);
-					await storage.setUrl(url);
+					await mementoManager.setUrl(url);
 				} else {
 					throw new Error(
 						"url must be provided or specified as a query parameter",
@@ -159,7 +157,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					: (params.get("token") ?? "");
 				if (token) {
 					client.setSessionToken(token);
-					await storage.setSessionToken(token);
+					await secretsManager.setSessionToken(token);
 				}
 
 				// Store on disk to be used by the cli.
@@ -219,11 +217,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// hit enter and move on.
 				const url = await commands.maybeAskUrl(
 					params.get("url"),
-					storage.getUrl(),
+					mementoManager.getUrl(),
 				);
 				if (url) {
 					client.setHost(url);
-					await storage.setUrl(url);
+					await mementoManager.setUrl(url);
 				} else {
 					throw new Error(
 						"url must be provided or specified as a query parameter",
@@ -261,7 +259,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(vscodeProposed, client, storage, pathResolver);
+	const commands = new Commands(
+		vscodeProposed,
+		client,
+		storage,
+		pathResolver,
+		mementoManager,
+		secretsManager,
+	);
 	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
 	vscode.commands.registerCommand(
 		"coder.logout",

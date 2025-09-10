@@ -987,7 +987,7 @@ export class Remote {
 				return undefined;
 			}
 			// Loop until we find the remote SSH log for this window.
-			const filePath = await this.storage.getRemoteSSHLogPath();
+			const filePath = await this.getRemoteSSHLogPath();
 			if (!filePath) {
 				return new Promise((resolve) => setTimeout(() => resolve(loop()), 500));
 			}
@@ -999,6 +999,29 @@ export class Remote {
 			return result;
 		};
 		return loop();
+	}
+
+	/**
+	 * Returns the log path for the "Remote - SSH" output panel.  There is no VS
+	 * Code API to get the contents of an output panel.  We use this to get the
+	 * active port so we can display network information.
+	 */
+	private async getRemoteSSHLogPath(): Promise<string | undefined> {
+		const upperDir = path.dirname(this.pathResolver.getCodeLogDir());
+		// Node returns these directories sorted already!
+		const dirs = await fs.readdir(upperDir);
+		const latestOutput = dirs
+			.reverse()
+			.filter((dir) => dir.startsWith("output_logging_"));
+		if (latestOutput.length === 0) {
+			return undefined;
+		}
+		const dir = await fs.readdir(path.join(upperDir, latestOutput[0]));
+		const remoteSSH = dir.filter((file) => file.indexOf("Remote - SSH") !== -1);
+		if (remoteSSH.length === 0) {
+			return undefined;
+		}
+		return path.join(upperDir, latestOutput[0], remoteSSH[0]);
 	}
 
 	/**

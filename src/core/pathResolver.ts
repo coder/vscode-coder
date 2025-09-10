@@ -4,6 +4,7 @@ import type { WorkspaceConfiguration } from "vscode";
 export class PathResolver {
 	constructor(
 		private readonly basePath: string,
+		private readonly codeLogPath: string,
 		private readonly configurations: WorkspaceConfiguration,
 	) {}
 
@@ -99,5 +100,17 @@ export class PathResolver {
 	 */
 	public getUrlPath(label: string): string {
 		return path.join(this.getGlobalConfigDir(label), "url");
+	}
+
+	/**
+	 * The uri of a directory in which the extension can create log files.
+	 *
+	 * The directory might not exist on disk and creation is up to the extension.
+	 * However, the parent directory is guaranteed to be existent.
+	 *
+	 * This directory is provided by VS Code and may not be the same as the directory where the Coder CLI writes its log files.
+	 */
+	public getCodeLogDir(): string {
+		return this.codeLogPath;
 	}
 }
