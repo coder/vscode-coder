@@ -1,10 +1,10 @@
 import * as path from "path";
-import * as vscode from "vscode";
+import type { WorkspaceConfiguration } from "vscode";
 
 export class PathResolver {
 	constructor(
 		private readonly basePath: string,
-		private readonly configurations: vscode.WorkspaceConfiguration,
+		private readonly configurations: WorkspaceConfiguration,
 	) {}
 
 	/**

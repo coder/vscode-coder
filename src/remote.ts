@@ -21,6 +21,7 @@ import { needToken } from "./api/utils";
 import { startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api/workspace";
 import * as cli from "./cliManager";
 import { Commands } from "./commands";
+import { CliConfigManager } from "./core/cliConfig";
 import { PathResolver } from "./core/pathResolver";
 import { featureSetForVersion, FeatureSet } from "./featureSet";
 import { getGlobalFlags } from "./globalFlags";
@@ -43,6 +44,7 @@ export interface RemoteDetails extends vscode.Disposable {
 }
 
 export class Remote {
+	private readonly cliConfigManager: CliConfigManager;
 	public constructor(
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
@@ -50,7 +52,9 @@ export class Remote {
 		private readonly commands: Commands,
 		private readonly mode: vscode.ExtensionMode,
 		private readonly pathResolver: PathResolver,
-	) {}
+	) {
+		this.cliConfigManager = new CliConfigManager(pathResolver);
+	}
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
 		const action = await this.vscodeProposed.window.showInformationMessage(
@@ -213,10 +217,10 @@ export class Remote {
 		const workspaceName = `${parts.username}/${parts.workspace}`;
 
 		// Migrate "session_token" file to "session", if needed.
-		await this.storage.migrateSessionToken(parts.label);
+		await this.migrateSessionToken(parts.label);
 
 		// Get the URL and token belonging to this host.
-		const { url: baseUrlRaw, token } = await this.storage.readCliConfig(
+		const { url: baseUrlRaw, token } = await this.cliConfigManager.readConfig(
 			parts.label,
 		);
 
@@ -647,6 +651,22 @@ export class Remote {
 				disposables.forEach((d) => d.dispose());
 			},
 		};
+	}
+
+	/**
+	 * Migrate the session token file from "session_token" to "session", if needed.
+	 */
+	private async migrateSessionToken(label: string) {
+		const oldTokenPath = this.pathResolver.getLegacySessionTokenPath(label);
+		const newTokenPath = this.pathResolver.getSessionTokenPath(label);
+		try {
+			await fs.rename(oldTokenPath, newTokenPath);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+				return;
+			}
+			throw error;
+		}
 	}
 
 	/**

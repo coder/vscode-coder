@@ -13,7 +13,6 @@ import * as vscode from "vscode";
 import { errToStr } from "./api/api-helper";
 import * as cli from "./cliManager";
 import { PathResolver } from "./core/pathResolver";
-import { getHeaderCommand, getHeaders } from "./headers";
 import * as pgp from "./pgp";
 
 // Maximium number of recent URLs to store.
@@ -587,108 +586,5 @@ export class Storage {
 			}
 		}
 		return status;
-	}
-
-	/**
-	 * Configure the CLI for the deployment with the provided label.
-	 *
-	 * Falsey URLs and null tokens are a no-op; we avoid unconfiguring the CLI to
-	 * avoid breaking existing connections.
-	 */
-	public async configureCli(
-		label: string,
-		url: string | undefined,
-		token: string | null,
-	) {
-		await Promise.all([
-			this.updateUrlForCli(label, url),
-			this.updateTokenForCli(label, token),
-		]);
-	}
-
-	/**
-	 * Update the URL for the deployment with the provided label on disk which can
-	 * be used by the CLI via --url-file.  If the URL is falsey, do nothing.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 */
-	private async updateUrlForCli(
-		label: string,
-		url: string | undefined,
-	): Promise<void> {
-		if (url) {
-			const urlPath = this.pathResolver.getUrlPath(label);
-			await fs.mkdir(path.dirname(urlPath), { recursive: true });
-			await fs.writeFile(urlPath, url);
-		}
-	}
-
-	/**
-	 * Update the session token for a deployment with the provided label on disk
-	 * which can be used by the CLI via --session-token-file.  If the token is
-	 * null, do nothing.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 */
-	private async updateTokenForCli(
-		label: string,
-		token: string | undefined | null,
-	) {
-		if (token !== null) {
-			const tokenPath = this.pathResolver.getSessionTokenPath(label);
-			await fs.mkdir(path.dirname(tokenPath), { recursive: true });
-			await fs.writeFile(tokenPath, token ?? "");
-		}
-	}
-
-	/**
-	 * Read the CLI config for a deployment with the provided label.
-	 *
-	 * IF a config file does not exist, return an empty string.
-	 *
-	 * If the label is empty, read the old deployment-unaware config.
-	 */
-	public async readCliConfig(
-		label: string,
-	): Promise<{ url: string; token: string }> {
-		const urlPath = this.pathResolver.getUrlPath(label);
-		const tokenPath = this.pathResolver.getSessionTokenPath(label);
-		const [url, token] = await Promise.allSettled([
-			fs.readFile(urlPath, "utf8"),
-			fs.readFile(tokenPath, "utf8"),
-		]);
-		return {
-			url: url.status === "fulfilled" ? url.value.trim() : "",
-			token: token.status === "fulfilled" ? token.value.trim() : "",
-		};
-	}
-
-	/**
-	 * Migrate the session token file from "session_token" to "session", if needed.
-	 */
-	public async migrateSessionToken(label: string) {
-		const oldTokenPath = this.pathResolver.getLegacySessionTokenPath(label);
-		const newTokenPath = this.pathResolver.getSessionTokenPath(label);
-		try {
-			await fs.rename(oldTokenPath, newTokenPath);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-				return;
-			}
-			throw error;
-		}
-	}
-
-	/**
-	 * Run the header command and return the generated headers.
-	 */
-	public async getHeaders(
-		url: string | undefined,
-	): Promise<Record<string, string>> {
-		return getHeaders(
-			url,
-			getHeaderCommand(vscode.workspace.getConfiguration()),
-			this.output,
-		);
 	}
 }

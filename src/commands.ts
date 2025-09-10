@@ -9,6 +9,7 @@ import * as vscode from "vscode";
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
+import { CliConfigManager } from "./core/cliConfig";
 import { PathResolver } from "./core/pathResolver";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
@@ -21,6 +22,7 @@ import {
 } from "./workspacesProvider";
 
 export class Commands {
+	private readonly cliConfigManager: CliConfigManager;
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
 	// possible to pass in arguments, so we have to store the current workspace
@@ -37,7 +39,9 @@ export class Commands {
 		private readonly restClient: Api,
 		private readonly storage: Storage,
 		private readonly pathResolver: PathResolver,
-	) {}
+	) {
+		this.cliConfigManager = new CliConfigManager(pathResolver);
+	}
 
 	/**
 	 * Find the requested agent if specified, otherwise return the agent if there
@@ -199,7 +203,7 @@ export class Commands {
 		await this.storage.setSessionToken(res.token);
 
 		// Store on disk to be used by the cli.
-		await this.storage.configureCli(label, url, res.token);
+		await this.cliConfigManager.configure(label, url, res.token);
 
 		// These contexts control various menu items and the sidebar.
 		await vscode.commands.executeCommand(

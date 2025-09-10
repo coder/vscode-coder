@@ -7,6 +7,7 @@ import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
+import { CliConfigManager } from "./core/cliConfig";
 import { PathResolver } from "./core/pathResolver";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
@@ -107,6 +108,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		allWorkspacesProvider.setVisibility(event.visible);
 	});
 
+	const cliConfigManager = new CliConfigManager(pathResolver);
+
 	// Handle vscode:// URIs.
 	vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
@@ -160,7 +163,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				}
 
 				// Store on disk to be used by the cli.
-				await storage.configureCli(toSafeHost(url), url, token);
+				await cliConfigManager.configure(toSafeHost(url), url, token);
 
 				vscode.commands.executeCommand(
 					"coder.open",
@@ -238,7 +241,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					: (params.get("token") ?? "");
 
 				// Store on disk to be used by the cli.
-				await storage.configureCli(toSafeHost(url), url, token);
+				await cliConfigManager.configure(toSafeHost(url), url, token);
 
 				vscode.commands.executeCommand(
 					"coder.openDevContainer",
