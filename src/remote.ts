@@ -16,7 +16,6 @@ import {
 	formatMetadataError,
 } from "./agentMetadataHelper";
 import {
-	createHttpAgent,
 	makeCoderSdk,
 	needToken,
 	startWorkspaceIfStoppedOrFailed,
@@ -126,10 +125,8 @@ export class Remote {
 							case "stopping": {
 								writeEmitter = initWriteEmitterAndTerminal();
 								this.storage.output.info(`Waiting for ${workspaceName}...`);
-								const httpAgent = await createHttpAgent();
 								const webSocketClient = new CoderWebSocketClient(
 									restClient,
-									httpAgent,
 									this.storage,
 								);
 								workspace = await waitForBuild(
@@ -500,10 +497,8 @@ export class Remote {
 			}
 		}
 
-		const httpAgent = await createHttpAgent();
 		const webSocketClient = new CoderWebSocketClient(
 			workspaceRestClient,
-			httpAgent,
 			this.storage,
 		);
 

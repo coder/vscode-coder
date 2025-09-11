@@ -47,8 +47,16 @@ export class Inbox implements vscode.Disposable {
 		});
 
 		this.#socket.addEventListener("message", (data) => {
-			const inboxMessage = data.parsedMessage!;
-			vscode.window.showInformationMessage(inboxMessage.notification.title);
+			if (data.parseError) {
+				this.#storage.output.error(
+					"Failed to parse inbox message",
+					data.parseError,
+				);
+			} else {
+				vscode.window.showInformationMessage(
+					data.parsedMessage.notification.title,
+				);
+			}
 		});
 	}
 

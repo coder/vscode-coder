@@ -2,7 +2,7 @@ import { AxiosInstance } from "axios";
 import { spawn } from "child_process";
 import { Api } from "coder/site/src/api/api";
 import { Workspace } from "coder/site/src/api/typesGenerated";
-import fs from "fs/promises";
+import fs from "fs";
 import { ProxyAgent } from "proxy-agent";
 import * as vscode from "vscode";
 import { errToStr } from "./api-helper";
@@ -40,7 +40,7 @@ export function needToken(): boolean {
 /**
  * Create a new agent based off the current settings.
  */
-export async function createHttpAgent(): Promise<ProxyAgent> {
+export function createHttpAgent(): ProxyAgent {
 	const cfg = vscode.workspace.getConfiguration();
 	const insecure = Boolean(cfg.get("coder.insecure"));
 	const certFile = expandPath(
@@ -60,9 +60,9 @@ export async function createHttpAgent(): Promise<ProxyAgent> {
 				cfg.get("coder.proxyBypass"),
 			);
 		},
-		cert: certFile === "" ? undefined : await fs.readFile(certFile),
-		key: keyFile === "" ? undefined : await fs.readFile(keyFile),
-		ca: caFile === "" ? undefined : await fs.readFile(caFile),
+		cert: certFile === "" ? undefined : fs.readFileSync(certFile),
+		key: keyFile === "" ? undefined : fs.readFileSync(keyFile),
+		ca: caFile === "" ? undefined : fs.readFileSync(caFile),
 		servername: altHost === "" ? undefined : altHost,
 		// rejectUnauthorized defaults to true, so we need to explicitly set it to
 		// false if we want to allow self-signed certificates.
@@ -90,7 +90,6 @@ export function makeCoderSdk(
 		restClient.setSessionToken(token);
 	}
 
-	// Logging interceptor
 	addLoggingInterceptors(restClient.getAxiosInstance(), storage.output);
 
 	restClient.getAxiosInstance().interceptors.request.use(async (config) => {
@@ -104,7 +103,7 @@ export function makeCoderSdk(
 		// Configure proxy and TLS.
 		// Note that by default VS Code overrides the agent.  To prevent this, set
 		// `http.proxySupport` to `on` or `off`.
-		const agent = await createHttpAgent();
+		const agent = createHttpAgent();
 		config.httpsAgent = agent;
 		config.httpAgent = agent;
 		config.proxy = false;
@@ -242,33 +241,39 @@ export async function waitForBuild(
 	logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"));
 
 	await new Promise<void>((resolve, reject) => {
-		const rejectError = (error: unknown) => {
-			const baseUrlRaw = restClient.getAxiosInstance().defaults.baseURL!;
+		const socket = webSocketClient.watchBuildLogsByBuildId(
+			workspace.latest_build.id,
+			logs,
+		);
+
+		const closeHandler = () => {
+			resolve();
+		};
+
+		socket.addEventListener("message", (data) => {
+			if (data.parseError) {
+				writeEmitter.fire(
+					errToStr(data.parseError, "Failed to parse message") + "\r\n",
+				);
+			} else {
+				writeEmitter.fire(data.parsedMessage.output + "\r\n");
+			}
+		});
+
+		socket.addEventListener("error", (error) => {
+			// Do not want to trigger the close handler and resolve the promise normally.
+			socket.removeEventListener("close", closeHandler);
+			socket.close();
+
+			const baseUrlRaw = restClient.getAxiosInstance().defaults.baseURL;
 			return reject(
 				new Error(
 					`Failed to watch workspace build on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
 				),
 			);
-		};
+		});
 
-		const socket = webSocketClient.watchBuildLogsByBuildId(
-			workspace.latest_build.id,
-			logs,
-		);
-		const closeHandler = () => {
-			resolve();
-		};
 		socket.addEventListener("close", closeHandler);
-		socket.addEventListener("message", (data) => {
-			const log = data.parsedMessage!;
-			writeEmitter.fire(log.output + "\r\n");
-		});
-		socket.addEventListener("error", (error) => {
-			// Do not want to trigger the close handler.
-			socket.removeEventListener("close", closeHandler);
-			socket.close();
-			rejectError(error);
-		});
 	});
 
 	writeEmitter.fire("Build complete\r\n");

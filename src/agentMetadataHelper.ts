@@ -36,10 +36,20 @@ export function createAgentMetadataWatcher(
 		},
 	};
 
+	const handleError = (error: unknown) => {
+		watcher.error = error;
+		onChange.fire(null);
+	};
+
 	socket.addEventListener("message", (event) => {
 		try {
+			if (event.parseError) {
+				handleError(event.parseError);
+				return;
+			}
+
 			const metadata = AgentMetadataEventSchemaArray.parse(
-				event.parsedMessage!.data,
+				event.parsedMessage.data,
 			);
 
 			// Overwrite metadata if it changed.
@@ -48,15 +58,11 @@ export function createAgentMetadataWatcher(
 				onChange.fire(null);
 			}
 		} catch (error) {
-			watcher.error = error;
-			onChange.fire(null);
+			handleError(error);
 		}
 	});
 
-	socket.addEventListener("error", (error) => {
-		watcher.error = error;
-		onChange.fire(null);
-	});
+	socket.addEventListener("error", handleError);
 
 	return watcher;
 }
