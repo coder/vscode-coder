@@ -7,8 +7,9 @@ import {
 } from "coder/site/src/api/typesGenerated";
 import path from "node:path";
 import * as vscode from "vscode";
-import { makeCoderSdk, needToken } from "./api";
-import { extractAgents } from "./api-helper";
+import { extractAgents } from "./api/api-helper";
+import { needToken } from "./api/auth";
+import { CodeApi } from "./api/codeApi";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
 import { Storage } from "./storage";
@@ -239,10 +240,11 @@ export class Commands {
 		token: string,
 		isAutologin: boolean,
 	): Promise<{ user: User; token: string } | null> {
-		const restClient = makeCoderSdk(url, token, this.storage);
-		if (!needToken()) {
+		const cfg = vscode.workspace.getConfiguration();
+		const client = CodeApi.create(url, token, this.storage.output, cfg);
+		if (!needToken(cfg)) {
 			try {
-				const user = await restClient.getAuthenticatedUser();
+				const user = await client.getAuthenticatedUser();
 				// For non-token auth, we write a blank token since the `vscodessh`
 				// command currently always requires a token file.
 				return { token: "", user };
@@ -283,9 +285,9 @@ export class Commands {
 			value: token || (await this.storage.getSessionToken()),
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
-				restClient.setSessionToken(value);
+				client.setSessionToken(value);
 				try {
-					user = await restClient.getAuthenticatedUser();
+					user = await client.getAuthenticatedUser();
 				} catch (err) {
 					// For certificate errors show both a notification and add to the
 					// text under the input box, since users sometimes miss the

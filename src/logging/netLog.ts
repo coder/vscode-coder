@@ -7,9 +7,9 @@ import {
 import { getErrorMessage } from "coder/site/src/api/errors";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
-import type * as vscode from "vscode";
-import { errToStr } from "../api-helper";
+import { errToStr } from "../api/api-helper";
 import { getErrorDetail } from "../error";
+import { Logger } from "./logger";
 
 export interface RequestMeta {
 	requestId: string;
@@ -55,7 +55,7 @@ export function createRequestMeta(): RequestMeta {
 }
 
 export function logRequestStart(
-	logger: vscode.LogOutputChannel,
+	logger: Logger,
 	requestId: string,
 	config: InternalAxiosRequestConfig,
 ): void {
@@ -66,7 +66,7 @@ export function logRequestStart(
 }
 
 export function logRequestSuccess(
-	logger: vscode.LogOutputChannel,
+	logger: Logger,
 	meta: RequestMeta,
 	response: AxiosResponse,
 ): void {
@@ -89,7 +89,7 @@ function extractContentLength(headers: Record<string, unknown>): string {
 }
 
 export function logRequestError(
-	logger: vscode.LogOutputChannel,
+	logger: Logger,
 	error: AxiosError | unknown,
 ): void {
 	if (isAxiosError(error)) {
@@ -126,7 +126,7 @@ export function logRequestError(
 }
 
 export class WsLogger {
-	private logger: vscode.LogOutputChannel;
+	private logger: Logger;
 	private url: string;
 	private id: string;
 	private startedAt: number;
@@ -134,7 +134,7 @@ export class WsLogger {
 	private msgCount = 0;
 	private byteCount = 0;
 
-	constructor(logger: vscode.LogOutputChannel, url: string) {
+	constructor(logger: Logger, url: string) {
 		this.logger = logger;
 		this.url = url;
 		this.id = crypto.randomUUID().replace(/-/g, "");

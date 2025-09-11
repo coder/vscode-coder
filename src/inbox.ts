@@ -3,9 +3,9 @@ import {
 	GetInboxNotificationResponse,
 } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
+import { CodeApi } from "./api/codeApi";
 import { type Storage } from "./storage";
 import { OneWayCodeWebSocket } from "./websocket/oneWayCodeWebSocket";
-import { CoderWebSocketClient } from "./websocket/webSocketClient";
 
 // These are the template IDs of our notifications.
 // Maybe in the future we should avoid hardcoding
@@ -18,11 +18,7 @@ export class Inbox implements vscode.Disposable {
 	#disposed = false;
 	#socket: OneWayCodeWebSocket<GetInboxNotificationResponse>;
 
-	constructor(
-		workspace: Workspace,
-		webSocketClient: CoderWebSocketClient,
-		storage: Storage,
-	) {
+	constructor(workspace: Workspace, client: CodeApi, storage: Storage) {
 		this.#storage = storage;
 
 		const watchTemplates = [
@@ -32,10 +28,7 @@ export class Inbox implements vscode.Disposable {
 
 		const watchTargets = [workspace.id];
 
-		this.#socket = webSocketClient.watchInboxNotifications(
-			watchTemplates,
-			watchTargets,
-		);
+		this.#socket = client.watchInboxNotifications(watchTemplates, watchTargets);
 
 		this.#socket.addEventListener("open", () => {
 			this.#storage.output.info("Listening to Coder Inbox");

@@ -1,11 +1,10 @@
-import { Api } from "coder/site/src/api/api";
 import { ServerSentEvent, Workspace } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
-import { errToStr } from "./api-helper";
+import { errToStr } from "./api/api-helper";
+import { CodeApi } from "./api/codeApi";
 import { Storage } from "./storage";
 import { OneWayCodeWebSocket } from "./websocket/oneWayCodeWebSocket";
-import { CoderWebSocketClient } from "./websocket/webSocketClient";
 
 /**
  * Monitor a single workspace using SSE for events like shutdown and deletion.
@@ -34,14 +33,13 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	constructor(
 		workspace: Workspace,
-		private readonly restClient: Api,
+		private readonly client: CodeApi,
 		private readonly storage: Storage,
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
-		webSocketClient: CoderWebSocketClient,
 	) {
 		this.name = `${workspace.owner_name}/${workspace.name}`;
-		const socket = webSocketClient.watchWorkspace(workspace);
+		const socket = this.client.watchWorkspace(workspace);
 
 		socket.addEventListener("open", () => {
 			this.storage.output.info(`Monitoring ${this.name}...`);
@@ -181,10 +179,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 			this.notifiedOutdated = true;
 
-			this.restClient
+			this.client
 				.getTemplate(workspace.template_id)
 				.then((template) => {
-					return this.restClient.getTemplateVersion(template.active_version_id);
+					return this.client.getTemplateVersion(template.active_version_id);
 				})
 				.then((version) => {
 					const infoMessage = version.message
@@ -197,7 +195,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 								vscode.commands.executeCommand(
 									"coder.workspace.update",
 									workspace,
-									this.restClient,
+									this.client,
 								);
 							}
 						});

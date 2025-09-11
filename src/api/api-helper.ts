@@ -7,6 +7,9 @@ import {
 import { ErrorEvent } from "eventsource";
 import { z } from "zod";
 
+/**
+ * Convert various error types to readable strings
+ */
 export function errToStr(
 	error: unknown,
 	def: string = "No error message provided",
@@ -25,6 +28,13 @@ export function errToStr(
 		return error;
 	}
 	return def;
+}
+
+/**
+ * Create workspace owner/name identifier
+ */
+export function createWorkspaceIdentifier(workspace: Workspace): string {
+	return `${workspace.owner_name}/${workspace.name}`;
 }
 
 export function extractAllAgents(
