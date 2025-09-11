@@ -3,14 +3,14 @@ import axios, { isAxiosError } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import * as module from "module";
 import * as vscode from "vscode";
-import { makeCoderSdk, needToken } from "./api";
-import { errToStr } from "./api-helper";
+import { errToStr } from "./api/api-helper";
+import { needToken } from "./api/auth";
+import { CodeApi } from "./api/codeApi";
 import { Commands } from "./commands";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
 import { Storage } from "./storage";
 import { toSafeHost } from "./util";
-import { CoderWebSocketClient } from "./websocket/webSocketClient";
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
@@ -65,25 +65,23 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
 	const url = storage.getUrl();
-	const restClient = makeCoderSdk(
+	const client = CodeApi.create(
 		url || "",
 		await storage.getSessionToken(),
-		storage,
+		storage.output,
+		vscode.workspace.getConfiguration(),
 	);
 
-	const webSocketClient = new CoderWebSocketClient(restClient, storage);
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
-		restClient,
+		client,
 		storage,
-		webSocketClient,
 		5,
 	);
 	const allWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.All,
-		restClient,
+		client,
 		storage,
-		webSocketClient,
 	);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
@@ -134,7 +132,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					storage.getUrl(),
 				);
 				if (url) {
-					restClient.setHost(url);
+					client.setHost(url);
 					await storage.setUrl(url);
 				} else {
 					throw new Error(
@@ -148,11 +146,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// command currently always requires a token file.  However, if there is
 				// a query parameter for non-token auth go ahead and use it anyway; all
 				// that really matters is the file is created.
-				const token = needToken()
+				const token = needToken(vscode.workspace.getConfiguration())
 					? params.get("token")
 					: (params.get("token") ?? "");
 				if (token) {
-					restClient.setSessionToken(token);
+					client.setSessionToken(token);
 					await storage.setSessionToken(token);
 				}
 
@@ -216,7 +214,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					storage.getUrl(),
 				);
 				if (url) {
-					restClient.setHost(url);
+					client.setHost(url);
 					await storage.setUrl(url);
 				} else {
 					throw new Error(
@@ -230,7 +228,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// command currently always requires a token file.  However, if there is
 				// a query parameter for non-token auth go ahead and use it anyway; all
 				// that really matters is the file is created.
-				const token = needToken()
+				const token = needToken(vscode.workspace.getConfiguration())
 					? params.get("token")
 					: (params.get("token") ?? "");
 
@@ -255,7 +253,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(vscodeProposed, restClient, storage);
+	const commands = new Commands(vscodeProposed, client, storage);
 	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
 	vscode.commands.registerCommand(
 		"coder.logout",
@@ -323,8 +321,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			if (details) {
 				// Authenticate the plugin client which is used in the sidebar to display
 				// workspaces belonging to this deployment.
-				restClient.setHost(details.url);
-				restClient.setSessionToken(details.token);
+				client.setHost(details.url);
+				client.setSessionToken(details.token);
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
@@ -365,10 +363,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	}
 
 	// See if the plugin client is authenticated.
-	const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
+	const baseUrl = client.getAxiosInstance().defaults.baseURL;
 	if (baseUrl) {
 		storage.output.info(`Logged in to ${baseUrl}; checking credentials`);
-		restClient
+		client
 			.getAuthenticatedUser()
 			.then(async (user) => {
 				if (user && user.roles) {

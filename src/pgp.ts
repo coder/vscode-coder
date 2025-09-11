@@ -3,7 +3,7 @@ import * as openpgp from "openpgp";
 import * as path from "path";
 import { Readable } from "stream";
 import * as vscode from "vscode";
-import { errToStr } from "./api-helper";
+import { errToStr } from "./api/api-helper";
 
 export type Key = openpgp.Key;
 

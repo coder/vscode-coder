@@ -10,7 +10,7 @@ import path from "path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
-import { errToStr } from "./api-helper";
+import { errToStr } from "./api/api-helper";
 import * as cli from "./cliManager";
 import { getHeaderCommand, getHeaders } from "./headers";
 import * as pgp from "./pgp";
