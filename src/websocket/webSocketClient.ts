@@ -6,9 +6,8 @@ import {
 	Workspace,
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
-import { ProxyAgent } from "proxy-agent";
 import { ClientOptions } from "ws";
-import { coderSessionTokenHeader } from "../api";
+import { coderSessionTokenHeader, createHttpAgent } from "../api";
 import { WsLogger } from "../logging/netLog";
 import { Storage } from "../storage";
 import { OneWayCodeWebSocket } from "./oneWayCodeWebSocket";
@@ -17,14 +16,12 @@ import { OneWayCodeWebSocket } from "./oneWayCodeWebSocket";
  * WebSocket client for Coder API connections.
  *
  * Automatically configures logging for WebSocket events:
- * - Connection attempts and successful opens at the trace level
- * - Connection closes at the trace level
+ * - Connection attempts, successful opens and closes at the trace level
  * - Errors at the error level
  */
 export class CoderWebSocketClient {
 	constructor(
 		private readonly client: Api,
-		private readonly httpAgent: ProxyAgent,
 		private readonly storage: Storage,
 	) {}
 
@@ -91,11 +88,12 @@ export class CoderWebSocketClient {
 			coderSessionTokenHeader
 		] as string | undefined;
 
+		const httpAgent = createHttpAgent();
 		const webSocket = new OneWayCodeWebSocket<TData>({
 			location: baseUrl,
 			...configs,
 			options: {
-				agent: this.httpAgent,
+				agent: httpAgent,
 				followRedirects: true,
 				headers: {
 					...(token ? { [coderSessionTokenHeader]: token } : {}),
@@ -123,7 +121,7 @@ export class CoderWebSocketClient {
 		});
 
 		webSocket.addEventListener("error", (event) => {
-			wsLogger.logError(event?.error ?? event);
+			wsLogger.logError(event.error, event.message);
 		});
 
 		return webSocket;

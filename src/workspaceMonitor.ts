@@ -49,8 +49,12 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 		socket.addEventListener("message", (event) => {
 			try {
+				if (event.parseError) {
+					this.notifyError(event.parseError);
+					return;
+				}
 				// Perhaps we need to parse this and validate it.
-				const newWorkspaceData = event.parsedMessage!.data as Workspace;
+				const newWorkspaceData = event.parsedMessage.data as Workspace;
 				this.update(newWorkspaceData);
 				this.maybeNotify(newWorkspaceData);
 				this.onChange.fire(newWorkspaceData);

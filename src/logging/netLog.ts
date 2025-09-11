@@ -4,10 +4,12 @@ import {
 	type AxiosError,
 	isAxiosError,
 } from "axios";
+import { getErrorMessage } from "coder/site/src/api/errors";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import type * as vscode from "vscode";
 import { errToStr } from "../api-helper";
+import { getErrorDetail } from "../error";
 
 export interface RequestMeta {
 	requestId: string;
@@ -58,10 +60,9 @@ export function logRequestStart(
 	config: InternalAxiosRequestConfig,
 ): void {
 	const method = (config.method ?? "GET").toUpperCase();
-	const url = config.url || "";
-	const len = config.headers?.["content-length"] as string | undefined;
-	const lenStr = len ? ` (${len}b)` : "";
-	logger.trace(`→ ${shortId(requestId)} ${method} ${url}${lenStr}`);
+	const url = extractUri(config);
+	const len = extractContentLength(config.headers);
+	logger.trace(`→ ${shortId(requestId)} ${method} ${url} ${len}`);
 }
 
 export function logRequestSuccess(
@@ -70,13 +71,21 @@ export function logRequestSuccess(
 	response: AxiosResponse,
 ): void {
 	const method = (response.config.method ?? "GET").toUpperCase();
-	const url = response.config.url || "";
-	const len = response.headers?.["content-length"] as string | undefined;
+	const url = extractUri(response.config);
 	const ms = Date.now() - meta.startedAt;
-	const lenStr = len ? ` (${len}b)` : "";
+	const len = extractContentLength(response.headers);
 	logger.trace(
-		`← ${shortId(meta.requestId)} ${response.status} ${method} ${url} ${ms}ms${lenStr}`,
+		`← ${shortId(meta.requestId)} ${response.status} ${method} ${url} ${ms}ms ${len}`,
 	);
+}
+
+function extractUri(config: InternalAxiosRequestConfig | undefined): string {
+	return config?.url || "<no url>";
+}
+
+function extractContentLength(headers: Record<string, unknown>): string {
+	const len = headers["content-length"];
+	return len && typeof len === "string" ? `(${len}b)` : "<unknown size>";
 }
 
 export function logRequestError(
@@ -87,23 +96,27 @@ export function logRequestError(
 		const config = error.config as RequestConfigWithMeta | undefined;
 		const meta = config?.metadata;
 		const method = (config?.method ?? "GET").toUpperCase();
-		const url = config?.url || "";
-		const requestId = meta?.requestId ?? "unknown";
+		const url = extractUri(config);
+		const requestId = meta?.requestId || "unknown";
 		const ms = meta ? Date.now() - meta.startedAt : "?";
 
+		const msg = getErrorMessage(error, "No error message");
+		const detail = getErrorDetail(error) ?? "";
 		if (error.response) {
 			// Response error (4xx, 5xx status codes)
-			const msg =
+			const responseData =
 				error.response.statusText || String(error.response.data).slice(0, 100);
+			const errorInfo = [msg, detail, responseData].filter(Boolean).join(" - ");
 			logger.error(
-				`← ${shortId(requestId)} ${error.response.status} ${method} ${url} ${ms}ms - ${msg}`,
+				`← ${shortId(requestId)} ${error.response.status} ${method} ${url} ${ms}ms - ${errorInfo}`,
 				error,
 			);
 		} else {
 			// Request error (network, timeout, etc)
 			const reason = error.code || error.message || "Network error";
+			const errorInfo = [msg, detail, reason].filter(Boolean).join(" - ");
 			logger.error(
-				`✗ ${shortId(requestId)} ${method} ${url} ${ms}ms - ${reason}`,
+				`✗ ${shortId(requestId)} ${method} ${url} ${ms}ms - ${errorInfo}`,
 				error,
 			);
 		}
@@ -161,13 +174,13 @@ export class WsLogger {
 		const statsStr = stats.length > 0 ? ` [${stats.join(", ")}]` : "";
 
 		this.logger.trace(
-			`✗ WS ${shortId(this.id)} closed${codeStr}${reasonStr}${statsStr}`,
+			`▣ WS ${shortId(this.id)} closed${codeStr}${reasonStr}${statsStr}`,
 		);
 	}
 
-	logError(error: unknown): void {
+	logError(error: unknown, message: string): void {
 		const ms = Date.now() - this.startedAt;
-		const errorMsg = errToStr(error, "connection error");
+		const errorMsg = message || errToStr(error, "connection error");
 		this.logger.error(
 			`✗ WS ${shortId(this.id)} error ${ms}ms - ${errorMsg}`,
 			error,
