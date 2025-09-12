@@ -54,18 +54,6 @@ export class Remote {
 		private readonly mode: vscode.ExtensionMode,
 	) {}
 
-	private async confirmStart(workspaceName: string): Promise<boolean> {
-		const action = await this.vscodeProposed.window.showInformationMessage(
-			`Unable to connect to the workspace ${workspaceName} because it is not running. Start the workspace?`,
-			{
-				useCustom: true,
-				modal: true,
-			},
-			"Start",
-		);
-		return action === "Start";
-	}
-
 	/**
 	 * Try to get the workspace running.  Return undefined if the user canceled.
 	 */
@@ -132,9 +120,6 @@ export class Remote {
 								);
 								break;
 							case "stopped":
-								if (!(await this.confirmStart(workspaceName))) {
-									return undefined;
-								}
 								writeEmitter = initWriteEmitterAndTerminal();
 								this.storage.output.info(`Starting ${workspaceName}...`);
 								workspace = await startWorkspaceIfStoppedOrFailed(
@@ -150,9 +135,6 @@ export class Remote {
 								// On a first attempt, we will try starting a failed workspace
 								// (for example canceling a start seems to cause this state).
 								if (attempts === 1) {
-									if (!(await this.confirmStart(workspaceName))) {
-										return undefined;
-									}
 									writeEmitter = initWriteEmitterAndTerminal();
 									this.storage.output.info(`Starting ${workspaceName}...`);
 									workspace = await startWorkspaceIfStoppedOrFailed(
