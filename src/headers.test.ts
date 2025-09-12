@@ -2,7 +2,7 @@ import * as os from "os";
 import { it, expect, describe, beforeEach, afterEach, vi } from "vitest";
 import { WorkspaceConfiguration } from "vscode";
 import { getHeaderCommand, getHeaders } from "./headers";
-import { Logger } from "./logger";
+import { Logger } from "./logging/logger";
 
 const logger: Logger = {
 	trace: () => {},
