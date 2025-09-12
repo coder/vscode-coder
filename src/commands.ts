@@ -240,9 +240,10 @@ export class Commands {
 		token: string,
 		isAutologin: boolean,
 	): Promise<{ user: User; token: string } | null> {
-		const cfg = vscode.workspace.getConfiguration();
-		const client = CodeApi.create(url, token, this.storage.output, cfg);
-		if (!needToken(cfg)) {
+		const client = CodeApi.create(url, token, this.storage.output, () =>
+			vscode.workspace.getConfiguration(),
+		);
+		if (!needToken(vscode.workspace.getConfiguration())) {
 			try {
 				const user = await client.getAuthenticatedUser();
 				// For non-token auth, we write a blank token since the `vscodessh`

@@ -5,7 +5,7 @@ import {
 import * as vscode from "vscode";
 import { CodeApi } from "./api/codeApi";
 import { type Storage } from "./storage";
-import { OneWayCodeWebSocket } from "./websocket/oneWayCodeWebSocket";
+import { OneWayWebSocket } from "./websocket/oneWayWebSocket";
 
 // These are the template IDs of our notifications.
 // Maybe in the future we should avoid hardcoding
@@ -16,7 +16,7 @@ const TEMPLATE_WORKSPACE_OUT_OF_DISK = "f047f6a3-5713-40f7-85aa-0394cce9fa3a";
 export class Inbox implements vscode.Disposable {
 	readonly #storage: Storage;
 	#disposed = false;
-	#socket: OneWayCodeWebSocket<GetInboxNotificationResponse>;
+	#socket: OneWayWebSocket<GetInboxNotificationResponse>;
 
 	constructor(workspace: Workspace, client: CodeApi, storage: Storage) {
 		this.#storage = storage;

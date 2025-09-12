@@ -64,6 +64,16 @@ export function createAgentMetadataWatcher(
 
 	socket.addEventListener("error", handleError);
 
+	socket.addEventListener("close", (event) => {
+		if (event.code !== 1000) {
+			handleError(
+				new Error(
+					`WebSocket closed unexpectedly: ${event.code} ${event.reason}`,
+				),
+			);
+		}
+	});
+
 	return watcher;
 }
 

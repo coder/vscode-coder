@@ -263,7 +263,7 @@ export class Remote {
 			baseUrlRaw,
 			token,
 			this.storage.output,
-			vscode.workspace.getConfiguration(),
+			() => vscode.workspace.getConfiguration(),
 		);
 		// Store for use in commands.
 		this.commands.workspaceRestClient = workspaceClient;

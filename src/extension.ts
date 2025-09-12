@@ -69,7 +69,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		url || "",
 		await storage.getSessionToken(),
 		storage.output,
-		vscode.workspace.getConfiguration(),
+		() => vscode.workspace.getConfiguration(),
 	);
 
 	const myWorkspacesProvider = new WorkspaceProvider(

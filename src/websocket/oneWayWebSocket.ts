@@ -1,6 +1,10 @@
 /**
  * A simplified wrapper over WebSockets using the 'ws' library that enforces
  * one-way communication and supports automatic JSON parsing of messages.
+ *
+ * Similar to coder/site/src/utils/OneWayWebSocket.ts but uses `ws` library
+ * instead of the browser's WebSocket and also supports a custom base URL
+ * instead of always deriving it from `window.location`.
  */
 
 import { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
@@ -30,7 +34,7 @@ type OneWayEventCallback<TData, TEvent extends WebSocketEventType> = (
 	payload: OneWayEventPayloadMap<TData>[TEvent],
 ) => void;
 
-interface OneWayCodeWebSocketApi<TData> {
+interface OneWayWebSocketApi<TData> {
 	get url(): string;
 	addEventListener<TEvent extends WebSocketEventType>(
 		eventType: TEvent,
@@ -43,7 +47,7 @@ interface OneWayCodeWebSocketApi<TData> {
 	close(code?: number, reason?: string): void;
 }
 
-type OneWayCodeWebSocketInit = {
+type OneWayWebSocketInit = {
 	location: { protocol: string; host: string };
 	apiRoute: string;
 	searchParams?: Record<string, string> | URLSearchParams;
@@ -51,8 +55,8 @@ type OneWayCodeWebSocketInit = {
 	options?: ClientOptions;
 };
 
-export class OneWayCodeWebSocket<TData = unknown>
-	implements OneWayCodeWebSocketApi<TData>
+export class OneWayWebSocket<TData = unknown>
+	implements OneWayWebSocketApi<TData>
 {
 	readonly #socket: WebSocket;
 	readonly #messageCallbacks = new Map<
@@ -60,7 +64,7 @@ export class OneWayCodeWebSocket<TData = unknown>
 		(data: WebSocket.RawData) => void
 	>();
 
-	constructor(init: OneWayCodeWebSocketInit) {
+	constructor(init: OneWayWebSocketInit) {
 		const { location, apiRoute, protocols, options, searchParams } = init;
 
 		const formattedParams =
