@@ -96,10 +96,6 @@ export async function waitForBuild(
 			logs,
 		);
 
-		const closeHandler = () => {
-			resolve();
-		};
-
 		socket.addEventListener("message", (data) => {
 			if (data.parseError) {
 				writeEmitter.fire(
@@ -111,10 +107,6 @@ export async function waitForBuild(
 		});
 
 		socket.addEventListener("error", (error) => {
-			// Do not want to trigger the close handler and resolve the promise normally.
-			socket.removeEventListener("close", closeHandler);
-			socket.close();
-
 			const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
 			return reject(
 				new Error(
@@ -123,7 +115,7 @@ export async function waitForBuild(
 			);
 		});
 
-		socket.addEventListener("close", closeHandler);
+		socket.addEventListener("close", () => resolve());
 	});
 
 	writeEmitter.fire("Build complete\r\n");

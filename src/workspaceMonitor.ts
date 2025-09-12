@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import { errToStr } from "./api/api-helper";
 import { CodeApi } from "./api/codeApi";
 import { Storage } from "./storage";
-import { OneWayCodeWebSocket } from "./websocket/oneWayCodeWebSocket";
+import { OneWayWebSocket } from "./websocket/oneWayWebSocket";
 
 /**
  * Monitor a single workspace using SSE for events like shutdown and deletion.
@@ -12,7 +12,7 @@ import { OneWayCodeWebSocket } from "./websocket/oneWayCodeWebSocket";
  * workspace status is also shown in the status bar menu.
  */
 export class WorkspaceMonitor implements vscode.Disposable {
-	private socket: OneWayCodeWebSocket<ServerSentEvent>;
+	private socket: OneWayWebSocket<ServerSentEvent>;
 	private disposed = false;
 
 	// How soon in advance to notify about autostop and deletion.

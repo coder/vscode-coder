@@ -11,19 +11,21 @@ import { type WorkspaceConfiguration } from "vscode";
 import { ClientOptions } from "ws";
 import { CertificateError } from "../error";
 import { getHeaderCommand, getHeaders } from "../headers";
-import { Logger } from "../logging/logger";
 import {
 	createRequestMeta,
+	logRequest,
 	logRequestError,
-	logRequestStart,
-	logRequestSuccess,
-	RequestConfigWithMeta,
-	WsLogger,
-} from "../logging/netLog";
-import { OneWayCodeWebSocket } from "../websocket/oneWayCodeWebSocket";
+	logResponse,
+} from "../logging/httpLogger";
+import { Logger } from "../logging/logger";
+import { RequestConfigWithMeta, HttpClientLogLevel } from "../logging/types";
+import { WsLogger } from "../logging/wsLogger";
+import { OneWayWebSocket } from "../websocket/oneWayWebSocket";
 import { createHttpAgent } from "./auth";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
+
+type WorkspaceConfigurationProvider = () => WorkspaceConfiguration;
 
 /**
  * Unified API class that includes both REST API methods from the base Api class
@@ -32,7 +34,7 @@ const coderSessionTokenHeader = "Coder-Session-Token";
 export class CodeApi extends Api {
 	private constructor(
 		private readonly output: Logger,
-		private readonly cfg: WorkspaceConfiguration,
+		private readonly configProvider: WorkspaceConfigurationProvider,
 	) {
 		super();
 	}
@@ -45,15 +47,15 @@ export class CodeApi extends Api {
 		baseUrl: string,
 		token: string | undefined,
 		output: Logger,
-		cfg: WorkspaceConfiguration,
+		configProvider: WorkspaceConfigurationProvider,
 	): CodeApi {
-		const client = new CodeApi(output, cfg);
+		const client = new CodeApi(output, configProvider);
 		client.setHost(baseUrl);
 		if (token) {
 			client.setSessionToken(token);
 		}
 
-		setupInterceptors(client, baseUrl, output, cfg);
+		setupInterceptors(client, baseUrl, output, configProvider);
 		return client;
 	}
 
@@ -120,8 +122,8 @@ export class CodeApi extends Api {
 			coderSessionTokenHeader
 		] as string | undefined;
 
-		const httpAgent = createHttpAgent(this.cfg);
-		const webSocket = new OneWayCodeWebSocket<TData>({
+		const httpAgent = createHttpAgent(this.configProvider());
+		const webSocket = new OneWayWebSocket<TData>({
 			location: baseUrl,
 			...configs,
 			options: {
@@ -167,12 +169,16 @@ function setupInterceptors(
 	client: CodeApi,
 	baseUrl: string,
 	output: Logger,
-	cfg: WorkspaceConfiguration,
+	configProvider: WorkspaceConfigurationProvider,
 ): void {
-	addLoggingInterceptors(client.getAxiosInstance(), output);
+	addLoggingInterceptors(client.getAxiosInstance(), output, configProvider);
 
 	client.getAxiosInstance().interceptors.request.use(async (config) => {
-		const headers = await getHeaders(baseUrl, getHeaderCommand(cfg), output);
+		const headers = await getHeaders(
+			baseUrl,
+			getHeaderCommand(configProvider()),
+			output,
+		);
 		// Add headers from the header command.
 		Object.entries(headers).forEach(([key, value]) => {
 			config.headers[key] = value;
@@ -181,7 +187,7 @@ function setupInterceptors(
 		// Configure proxy and TLS.
 		// Note that by default VS Code overrides the agent. To prevent this, set
 		// `http.proxySupport` to `on` or `off`.
-		const agent = createHttpAgent(cfg);
+		const agent = createHttpAgent(configProvider());
 		config.httpsAgent = agent;
 		config.httpAgent = agent;
 		config.proxy = false;
@@ -198,12 +204,16 @@ function setupInterceptors(
 	);
 }
 
-function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
+function addLoggingInterceptors(
+	client: AxiosInstance,
+	logger: Logger,
+	configProvider: WorkspaceConfigurationProvider,
+) {
 	client.interceptors.request.use(
 		(config) => {
 			const meta = createRequestMeta();
 			(config as RequestConfigWithMeta).metadata = meta;
-			logRequestStart(logger, meta.requestId, config);
+			logRequest(logger, meta.requestId, config, getLogLevel(configProvider()));
 			return config;
 		},
 		(error: unknown) => {
@@ -216,7 +226,7 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 		(response) => {
 			const meta = (response.config as RequestConfigWithMeta).metadata;
 			if (meta) {
-				logRequestSuccess(logger, meta, response);
+				logResponse(logger, meta, response, getLogLevel(configProvider()));
 			}
 			return response;
 		},
@@ -225,4 +235,14 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 			return Promise.reject(error);
 		},
 	);
+}
+
+function getLogLevel(cfg: WorkspaceConfiguration): HttpClientLogLevel {
+	const logLevelStr = cfg
+		.get(
+			"coder.httpClientLogLevel",
+			HttpClientLogLevel[HttpClientLogLevel.BASIC],
+		)
+		.toUpperCase();
+	return HttpClientLogLevel[logLevelStr as keyof typeof HttpClientLogLevel];
 }
