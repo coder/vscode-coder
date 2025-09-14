@@ -1,7 +1,7 @@
 import { ServerSentEvent, Workspace } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
-import { errToStr } from "./api/api-helper";
+import { createWorkspaceIdentifier, errToStr } from "./api/api-helper";
 import { CodeApi } from "./api/codeApi";
 import { Storage } from "./storage";
 import { OneWayWebSocket } from "./websocket/oneWayWebSocket";
@@ -38,7 +38,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
 	) {
-		this.name = `${workspace.owner_name}/${workspace.name}`;
+		this.name = createWorkspaceIdentifier(workspace);
 		const socket = this.client.watchWorkspace(workspace);
 
 		socket.addEventListener("open", () => {

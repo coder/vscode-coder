@@ -15,7 +15,7 @@ import {
 	formatEventLabel,
 	formatMetadataError,
 } from "./agentMetadataHelper";
-import { extractAgents } from "./api/api-helper";
+import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { needToken } from "./api/auth";
 import { CodeApi } from "./api/codeApi";
 import { startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api/workspace";
@@ -73,7 +73,7 @@ export class Remote {
 		featureSet: FeatureSet,
 		firstConnect: boolean,
 	): Promise<Workspace | undefined> {
-		const workspaceName = `${workspace.owner_name}/${workspace.name}`;
+		const workspaceName = createWorkspaceIdentifier(workspace);
 
 		// A terminal will be used to stream the build, if one is necessary.
 		let writeEmitter: undefined | vscode.EventEmitter<string>;
@@ -119,12 +119,11 @@ export class Remote {
 						switch (workspace.latest_build.status) {
 							case "pending":
 							case "starting":
-							case "stopping": {
+							case "stopping":
 								writeEmitter = initWriteEmitterAndTerminal();
 								this.storage.output.info(`Waiting for ${workspaceName}...`);
 								workspace = await waitForBuild(client, writeEmitter, workspace);
 								break;
-							}
 							case "stopped":
 								if (
 									!firstConnect &&

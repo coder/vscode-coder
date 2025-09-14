@@ -7,7 +7,7 @@ import {
 } from "coder/site/src/api/typesGenerated";
 import path from "node:path";
 import * as vscode from "vscode";
-import { extractAgents } from "./api/api-helper";
+import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { needToken } from "./api/auth";
 import { CodeApi } from "./api/codeApi";
 import { CertificateError } from "./error";
@@ -401,14 +401,13 @@ export class Commands {
 	 */
 	public async navigateToWorkspace(item: OpenableTreeItem) {
 		if (item) {
-			const uri =
-				this.storage.getUrl() +
-				`/@${item.workspace.owner_name}/${item.workspace.name}`;
+			const workspaceId = createWorkspaceIdentifier(item.workspace);
+			const uri = this.storage.getUrl() + `/@${workspaceId}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
 				this.workspaceRestClient.getAxiosInstance().defaults.baseURL;
-			const uri = `${baseUrl}/@${this.workspace.owner_name}/${this.workspace.name}`;
+			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
 			vscode.window.showInformationMessage("No workspace found.");
@@ -425,14 +424,13 @@ export class Commands {
 	 */
 	public async navigateToWorkspaceSettings(item: OpenableTreeItem) {
 		if (item) {
-			const uri =
-				this.storage.getUrl() +
-				`/@${item.workspace.owner_name}/${item.workspace.name}/settings`;
+			const workspaceId = createWorkspaceIdentifier(item.workspace);
+			const uri = this.storage.getUrl() + `/@${workspaceId}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
 				this.workspaceRestClient.getAxiosInstance().defaults.baseURL;
-			const uri = `${baseUrl}/@${this.workspace.owner_name}/${this.workspace.name}/settings`;
+			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
 			vscode.window.showInformationMessage("No workspace found.");
@@ -673,7 +671,7 @@ export class Commands {
 			{
 				useCustom: true,
 				modal: true,
-				detail: `Update ${this.workspace.owner_name}/${this.workspace.name} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
+				detail: `Update ${createWorkspaceIdentifier(this.workspace)} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
 			},
 			"Update",
 			"Cancel",
