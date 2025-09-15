@@ -13,5 +13,8 @@ export default defineConfig({
 			"./src/test/**",
 		],
 		environment: "node",
+		coverage: {
+			provider: "v8",
+		},
 	},
 });

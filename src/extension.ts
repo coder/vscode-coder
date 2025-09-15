@@ -8,6 +8,11 @@ import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { BinaryManager } from "./core/binaryManager";
+import {
+	VSCodeConfigurationProvider,
+	VSCodeProgressReporter,
+	VSCodeUserInteraction,
+} from "./core/binaryManager.adapters";
 import { CliConfigManager } from "./core/cliConfig";
 import { MementoManager } from "./core/mementoManager";
 import { PathResolver } from "./core/pathResolver";
@@ -256,7 +261,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		},
 	});
 
-	const binaryManager = new BinaryManager(output, pathResolver);
+	const binaryManager = new BinaryManager(
+		output,
+		pathResolver,
+		new VSCodeConfigurationProvider(),
+		new VSCodeProgressReporter(),
+		new VSCodeUserInteraction(),
+	);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
