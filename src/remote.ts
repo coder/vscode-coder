@@ -21,14 +21,15 @@ import { needToken } from "./api/utils";
 import { startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api/workspace";
 import * as cli from "./cliManager";
 import { Commands } from "./commands";
+import { BinaryManager } from "./core/binaryManager";
 import { CliConfigManager } from "./core/cliConfig";
 import { PathResolver } from "./core/pathResolver";
 import { featureSetForVersion, FeatureSet } from "./featureSet";
 import { getGlobalFlags } from "./globalFlags";
 import { Inbox } from "./inbox";
+import { Logger } from "./logging/logger";
 import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
-import { Storage } from "./storage";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,
@@ -48,10 +49,11 @@ export class Remote {
 	public constructor(
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
-		private readonly storage: Storage,
+		private readonly logger: Logger,
 		private readonly commands: Commands,
 		private readonly mode: vscode.ExtensionMode,
 		private readonly pathResolver: PathResolver,
+		private readonly binaryManager: BinaryManager,
 	) {
 		this.cliConfigManager = new CliConfigManager(pathResolver);
 	}
@@ -125,7 +127,7 @@ export class Remote {
 							case "starting":
 							case "stopping":
 								writeEmitter = initWriteEmitterAndTerminal();
-								this.storage.output.info(`Waiting for ${workspaceName}...`);
+								this.logger.info(`Waiting for ${workspaceName}...`);
 								workspace = await waitForBuild(client, writeEmitter, workspace);
 								break;
 							case "stopped":
@@ -136,7 +138,7 @@ export class Remote {
 									return undefined;
 								}
 								writeEmitter = initWriteEmitterAndTerminal();
-								this.storage.output.info(`Starting ${workspaceName}...`);
+								this.logger.info(`Starting ${workspaceName}...`);
 								workspace = await startWorkspaceIfStoppedOrFailed(
 									client,
 									globalConfigDir,
@@ -157,7 +159,7 @@ export class Remote {
 										return undefined;
 									}
 									writeEmitter = initWriteEmitterAndTerminal();
-									this.storage.output.info(`Starting ${workspaceName}...`);
+									this.logger.info(`Starting ${workspaceName}...`);
 									workspace = await startWorkspaceIfStoppedOrFailed(
 										client,
 										globalConfigDir,
@@ -181,7 +183,7 @@ export class Remote {
 								);
 							}
 						}
-						this.storage.output.info(
+						this.logger.info(
 							`${workspaceName} status is now`,
 							workspace.latest_build.status,
 						);
@@ -254,8 +256,8 @@ export class Remote {
 			return;
 		}
 
-		this.storage.output.info("Using deployment URL", baseUrlRaw);
-		this.storage.output.info("Using deployment label", parts.label || "n/a");
+		this.logger.info("Using deployment URL", baseUrlRaw);
+		this.logger.info("Using deployment label", parts.label || "n/a");
 
 		// We could use the plugin client, but it is possible for the user to log
 		// out or log into a different deployment while still connected, which would
@@ -265,7 +267,7 @@ export class Remote {
 		const workspaceClient = CoderApi.create(
 			baseUrlRaw,
 			token,
-			this.storage.output,
+			this.logger,
 			() => vscode.workspace.getConfiguration(),
 		);
 		// Store for use in commands.
@@ -273,7 +275,10 @@ export class Remote {
 
 		let binaryPath: string | undefined;
 		if (this.mode === vscode.ExtensionMode.Production) {
-			binaryPath = await this.storage.fetchBinary(workspaceClient, parts.label);
+			binaryPath = await this.binaryManager.fetchBinary(
+				workspaceClient,
+				parts.label,
+			);
 		} else {
 			try {
 				// In development, try to use `/tmp/coder` as the binary path.
@@ -281,7 +286,7 @@ export class Remote {
 				binaryPath = path.join(os.tmpdir(), "coder");
 				await fs.stat(binaryPath);
 			} catch (ex) {
-				binaryPath = await this.storage.fetchBinary(
+				binaryPath = await this.binaryManager.fetchBinary(
 					workspaceClient,
 					parts.label,
 				);
@@ -319,12 +324,12 @@ export class Remote {
 		// Next is to find the workspace from the URI scheme provided.
 		let workspace: Workspace;
 		try {
-			this.storage.output.info(`Looking for workspace ${workspaceName}...`);
+			this.logger.info(`Looking for workspace ${workspaceName}...`);
 			workspace = await workspaceClient.getWorkspaceByOwnerAndName(
 				parts.username,
 				parts.workspace,
 			);
-			this.storage.output.info(
+			this.logger.info(
 				`Found workspace ${workspaceName} with status`,
 				workspace.latest_build.status,
 			);
@@ -410,7 +415,7 @@ export class Remote {
 		this.commands.workspace = workspace;
 
 		// Pick an agent.
-		this.storage.output.info(`Finding agent for ${workspaceName}...`);
+		this.logger.info(`Finding agent for ${workspaceName}...`);
 		const agents = extractAgents(workspace.latest_build.resources);
 		const gotAgent = await this.commands.maybeAskAgent(agents, parts.agent);
 		if (!gotAgent) {
@@ -419,13 +424,10 @@ export class Remote {
 			return;
 		}
 		let agent = gotAgent; // Reassign so it cannot be undefined in callbacks.
-		this.storage.output.info(
-			`Found agent ${agent.name} with status`,
-			agent.status,
-		);
+		this.logger.info(`Found agent ${agent.name} with status`, agent.status);
 
 		// Do some janky setting manipulation.
-		this.storage.output.info("Modifying settings...");
+		this.logger.info("Modifying settings...");
 		const remotePlatforms = this.vscodeProposed.workspace
 			.getConfiguration()
 			.get<Record<string, string>>("remote.SSH.remotePlatform", {});
@@ -500,7 +502,7 @@ export class Remote {
 				// write here is not necessarily catastrophic since the user will be
 				// asked for the platform and the default timeout might be sufficient.
 				mungedPlatforms = mungedConnTimeout = false;
-				this.storage.output.warn("Failed to configure settings", ex);
+				this.logger.warn("Failed to configure settings", ex);
 			}
 		}
 
@@ -508,7 +510,7 @@ export class Remote {
 		const monitor = new WorkspaceMonitor(
 			workspace,
 			workspaceClient,
-			this.storage,
+			this.logger,
 			this.vscodeProposed,
 		);
 		disposables.push(monitor);
@@ -517,12 +519,12 @@ export class Remote {
 		);
 
 		// Watch coder inbox for messages
-		const inbox = new Inbox(workspace, workspaceClient, this.storage);
+		const inbox = new Inbox(workspace, workspaceClient, this.logger);
 		disposables.push(inbox);
 
 		// Wait for the agent to connect.
 		if (agent.status === "connecting") {
-			this.storage.output.info(`Waiting for ${workspaceName}/${agent.name}...`);
+			this.logger.info(`Waiting for ${workspaceName}/${agent.name}...`);
 			await vscode.window.withProgress(
 				{
 					title: "Waiting for the agent to connect...",
@@ -551,10 +553,7 @@ export class Remote {
 					});
 				},
 			);
-			this.storage.output.info(
-				`Agent ${agent.name} status is now`,
-				agent.status,
-			);
+			this.logger.info(`Agent ${agent.name} status is now`, agent.status);
 		}
 
 		// Make sure the agent is connected.
@@ -584,7 +583,7 @@ export class Remote {
 		// If we didn't write to the SSH config file, connecting would fail with
 		// "Host not found".
 		try {
-			this.storage.output.info("Updating SSH config...");
+			this.logger.info("Updating SSH config...");
 			await this.updateSSHConfig(
 				workspaceClient,
 				parts.label,
@@ -594,7 +593,7 @@ export class Remote {
 				featureSet,
 			);
 		} catch (error) {
-			this.storage.output.warn("Failed to configure SSH", error);
+			this.logger.warn("Failed to configure SSH", error);
 			throw error;
 		}
 
@@ -638,7 +637,7 @@ export class Remote {
 			...this.createAgentMetadataStatusBar(agent, workspaceClient),
 		);
 
-		this.storage.output.info("Remote setup complete");
+		this.logger.info("Remote setup complete");
 
 		// Returning the URL and token allows the plugin to authenticate its own
 		// client, for example to display the list of workspaces belonging to this
@@ -695,10 +694,7 @@ export class Remote {
 			return "";
 		}
 		await fs.mkdir(logDir, { recursive: true });
-		this.storage.output.info(
-			"SSH proxy diagnostics are being written to",
-			logDir,
-		);
+		this.logger.info("SSH proxy diagnostics are being written to", logDir);
 		return ` --log-dir ${escapeCommandArg(logDir)} -v`;
 	}
 
@@ -1043,7 +1039,7 @@ export class Remote {
 		const onChangeDisposable = agentWatcher.onChange(() => {
 			if (agentWatcher.error) {
 				const errMessage = formatMetadataError(agentWatcher.error);
-				this.storage.output.warn(errMessage);
+				this.logger.warn(errMessage);
 
 				statusBarItem.text = "$(warning) Agent Status Unavailable";
 				statusBarItem.tooltip = errMessage;

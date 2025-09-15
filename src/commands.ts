@@ -9,13 +9,14 @@ import * as vscode from "vscode";
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
+import { BinaryManager } from "./core/binaryManager";
 import { CliConfigManager } from "./core/cliConfig";
 import { MementoManager } from "./core/mementoManager";
 import { PathResolver } from "./core/pathResolver";
 import { SecretsManager } from "./core/secretsManager";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
-import { Storage } from "./storage";
+import { Logger } from "./logging/logger";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
 	AgentTreeItem,
@@ -39,10 +40,11 @@ export class Commands {
 	public constructor(
 		private readonly vscodeProposed: typeof vscode,
 		private readonly restClient: Api,
-		private readonly storage: Storage,
+		private readonly logger: Logger,
 		private readonly pathResolver: PathResolver,
 		private readonly mementoManager: MementoManager,
 		private readonly secretsManager: SecretsManager,
+		private readonly binaryManager: BinaryManager,
 	) {
 		this.cliConfigManager = new CliConfigManager(pathResolver);
 	}
@@ -249,7 +251,7 @@ export class Commands {
 		token: string,
 		isAutologin: boolean,
 	): Promise<{ user: User; token: string } | null> {
-		const client = CoderApi.create(url, token, this.storage.output, () =>
+		const client = CoderApi.create(url, token, this.logger, () =>
 			vscode.workspace.getConfiguration(),
 		);
 		if (!needToken(vscode.workspace.getConfiguration())) {
@@ -261,10 +263,7 @@ export class Commands {
 			} catch (err) {
 				const message = getErrorMessage(err, "no response from the server");
 				if (isAutologin) {
-					this.storage.output.warn(
-						"Failed to log in to Coder server:",
-						message,
-					);
+					this.logger.warn("Failed to log in to Coder server:", message);
 				} else {
 					this.vscodeProposed.window.showErrorMessage(
 						"Failed to log in to Coder server",
@@ -516,7 +515,7 @@ export class Commands {
 					if (!url) {
 						throw new Error("No coder url found for sidebar");
 					}
-					const binary = await this.storage.fetchBinary(
+					const binary = await this.binaryManager.fetchBinary(
 						this.restClient,
 						toSafeHost(url),
 					);
@@ -764,7 +763,7 @@ export class Commands {
 			// If we have no agents, the workspace may not be running, in which case
 			// we need to fetch the agents through the resources API, as the
 			// workspaces query does not include agents when off.
-			this.storage.output.info("Fetching agents from template version");
+			this.logger.info("Fetching agents from template version");
 			const resources = await this.restClient.getTemplateVersionResources(
 				workspace.latest_build.template_version_id,
 			);

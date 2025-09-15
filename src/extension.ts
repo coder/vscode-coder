@@ -7,13 +7,13 @@ import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
+import { BinaryManager } from "./core/binaryManager";
 import { CliConfigManager } from "./core/cliConfig";
 import { MementoManager } from "./core/mementoManager";
 import { PathResolver } from "./core/pathResolver";
 import { SecretsManager } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
-import { Storage } from "./storage";
 import { toSafeHost } from "./util";
 import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider";
 
@@ -62,7 +62,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const secretsManager = new SecretsManager(ctx.secrets);
 
 	const output = vscode.window.createOutputChannel("Coder", { log: true });
-	const storage = new Storage(output, pathResolver);
 
 	// Try to clear this flag ASAP
 	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
@@ -74,20 +73,20 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const client = CoderApi.create(
 		url || "",
 		await secretsManager.getSessionToken(),
-		storage.output,
+		output,
 		() => vscode.workspace.getConfiguration(),
 	);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
 		client,
-		storage,
+		output,
 		5,
 	);
 	const allWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.All,
 		client,
-		storage,
+		output,
 	);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
@@ -257,15 +256,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		},
 	});
 
+	const binaryManager = new BinaryManager(output, pathResolver);
+
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
 	const commands = new Commands(
 		vscodeProposed,
 		client,
-		storage,
+		output,
 		pathResolver,
 		mementoManager,
 		secretsManager,
+		binaryManager,
 	);
 	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
 	vscode.commands.registerCommand(
@@ -322,10 +324,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	if (remoteSSHExtension && vscodeProposed.env.remoteAuthority) {
 		const remote = new Remote(
 			vscodeProposed,
-			storage,
+			output,
 			commands,
 			ctx.extensionMode,
 			pathResolver,
+			binaryManager,
 		);
 		try {
 			const details = await remote.setup(
@@ -340,7 +343,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
-				storage.output.warn(ex.x509Err || ex.message);
+				output.warn(ex.x509Err || ex.message);
 				await ex.showModal("Failed to open workspace");
 			} else if (isAxiosError(ex)) {
 				const msg = getErrorMessage(ex, "None");
@@ -349,7 +352,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const method = ex.config?.method?.toUpperCase() || "request";
 				const status = ex.response?.status || "None";
 				const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
-				storage.output.warn(message);
+				output.warn(message);
 				await vscodeProposed.window.showErrorMessage(
 					"Failed to open workspace",
 					{
@@ -360,7 +363,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				);
 			} else {
 				const message = errToStr(ex, "No error message was provided");
-				storage.output.warn(message);
+				output.warn(message);
 				await vscodeProposed.window.showErrorMessage(
 					"Failed to open workspace",
 					{
@@ -379,12 +382,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// See if the plugin client is authenticated.
 	const baseUrl = client.getAxiosInstance().defaults.baseURL;
 	if (baseUrl) {
-		storage.output.info(`Logged in to ${baseUrl}; checking credentials`);
+		output.info(`Logged in to ${baseUrl}; checking credentials`);
 		client
 			.getAuthenticatedUser()
 			.then(async (user) => {
 				if (user && user.roles) {
-					storage.output.info("Credentials are valid");
+					output.info("Credentials are valid");
 					vscode.commands.executeCommand(
 						"setContext",
 						"coder.authenticated",
@@ -402,13 +405,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					myWorkspacesProvider.fetchAndRefresh();
 					allWorkspacesProvider.fetchAndRefresh();
 				} else {
-					storage.output.warn("No error, but got unexpected response", user);
+					output.warn("No error, but got unexpected response", user);
 				}
 			})
 			.catch((error) => {
 				// This should be a failure to make the request, like the header command
 				// errored.
-				storage.output.warn("Failed to check user authentication", error);
+				output.warn("Failed to check user authentication", error);
 				vscode.window.showErrorMessage(
 					`Failed to check user authentication: ${error.message}`,
 				);
@@ -417,7 +420,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				vscode.commands.executeCommand("setContext", "coder.loaded", true);
 			});
 	} else {
-		storage.output.info("Not currently logged in");
+		output.info("Not currently logged in");
 		vscode.commands.executeCommand("setContext", "coder.loaded", true);
 
 		// Handle autologin, if not already logged in.

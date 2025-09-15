@@ -3,7 +3,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 import { createWorkspaceIdentifier, errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
-import { Storage } from "./storage";
+import { Logger } from "./logging/logger";
 import { OneWayWebSocket } from "./websocket/oneWayWebSocket";
 
 /**
@@ -34,7 +34,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	constructor(
 		workspace: Workspace,
 		private readonly client: CoderApi,
-		private readonly storage: Storage,
+		private readonly logger: Logger,
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
 	) {
@@ -42,7 +42,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		const socket = this.client.watchWorkspace(workspace);
 
 		socket.addEventListener("open", () => {
-			this.storage.output.info(`Monitoring ${this.name}...`);
+			this.logger.info(`Monitoring ${this.name}...`);
 		});
 
 		socket.addEventListener("message", (event) => {
@@ -83,7 +83,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	 */
 	dispose() {
 		if (!this.disposed) {
-			this.storage.output.info(`Unmonitoring ${this.name}...`);
+			this.logger.info(`Unmonitoring ${this.name}...`);
 			this.statusBarItem.dispose();
 			this.socket.close();
 			this.disposed = true;
@@ -209,7 +209,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			error,
 			"Got empty error while monitoring workspace",
 		);
-		this.storage.output.error(message);
+		this.logger.error(message);
 	}
 
 	private updateContext(workspace: Workspace) {
