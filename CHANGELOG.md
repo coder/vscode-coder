@@ -5,6 +5,7 @@
 ### Changed
 
 - Always enable verbose (`-v`) flag when a log directory is configured (`coder.proxyLogDir`).
+- Automatically start a workspace if it is opened but not running.
 
 ### Added
 
