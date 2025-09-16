@@ -47,7 +47,7 @@ interface OneWayWebSocketApi<TData> {
 	close(code?: number, reason?: string): void;
 }
 
-type OneWayWebSocketInit = {
+export type OneWayWebSocketInit = {
 	location: { protocol: string; host: string };
 	apiRoute: string;
 	searchParams?: Record<string, string> | URLSearchParams;

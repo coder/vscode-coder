@@ -1,25 +1,26 @@
 import type {
-	InternalAxiosRequestConfig,
-	AxiosResponse,
 	AxiosError,
+	AxiosResponse,
+	InternalAxiosRequestConfig,
 } from "axios";
 import { isAxiosError } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import { getErrorDetail } from "../error";
 import {
-	formatHeaders,
 	formatBody,
-	formatUri,
 	formatContentLength,
+	formatHeaders,
 	formatMethod,
+	formatTime,
+	formatUri,
 } from "./formatters";
 import type { Logger } from "./logger";
 import {
 	HttpClientLogLevel,
-	RequestMeta,
 	RequestConfigWithMeta,
+	RequestMeta,
 } from "./types";
-import { shortId, formatTime, createRequestId } from "./utils";
+import { createRequestId, shortId } from "./utils";
 
 export function createRequestMeta(): RequestMeta {
 	return {
@@ -40,7 +41,7 @@ export function logRequest(
 
 	const method = formatMethod(config.method);
 	const url = formatUri(config);
-	const len = formatContentLength(config.headers);
+	const len = formatContentLength(config.headers, config.data);
 
 	let msg = `→ ${shortId(requestId)} ${method} ${url} ${len}`;
 	if (logLevel >= HttpClientLogLevel.HEADERS) {
@@ -67,7 +68,7 @@ export function logResponse(
 	const method = formatMethod(response.config.method);
 	const url = formatUri(response.config);
 	const time = formatTime(Date.now() - meta.startedAt);
-	const len = formatContentLength(response.headers);
+	const len = formatContentLength(response.headers, response.data);
 
 	let msg = `← ${shortId(meta.requestId)} ${response.status} ${method} ${url} ${len} ${time}`;
 
@@ -94,22 +95,32 @@ export function logRequestError(
 		const requestId = meta?.requestId || "unknown";
 		const time = meta ? formatTime(Date.now() - meta.startedAt) : "?ms";
 
-		const msg = getErrorMessage(error, "No error message");
+		const msg = getErrorMessage(error, "");
 		const detail = getErrorDetail(error) ?? "";
 
 		if (error.response) {
-			const responseData =
-				error.response.statusText || String(error.response.data).slice(0, 100);
-			const errorInfo = [msg, detail, responseData].filter(Boolean).join(" - ");
-			logger.error(
-				`← ${shortId(requestId)} ${error.response.status} ${method} ${url} ${time} - ${errorInfo}`,
-				error,
-			);
+			const msgParts = [
+				`← ${shortId(requestId)} ${error.response.status} ${method} ${url} ${time}`,
+				msg,
+				detail,
+			];
+			if (msg.trim().length === 0 && detail.trim().length === 0) {
+				const responseData =
+					error.response.statusText ||
+					String(error.response.data).slice(0, 100) ||
+					"No error info";
+				msgParts.push(responseData);
+			}
+
+			const fullMsg = msgParts.map((str) => str.trim()).join(" - ");
+			const headers = formatHeaders(error.response.headers);
+			logger.error(`${fullMsg}\n${headers}`, error);
 		} else {
 			const reason = error.code || error.message || "Network error";
 			const errorInfo = [msg, detail, reason].filter(Boolean).join(" - ");
+			const headers = formatHeaders(config?.headers ?? {});
 			logger.error(
-				`✗ ${shortId(requestId)} ${method} ${url} ${time} - ${errorInfo}`,
+				`✗ ${shortId(requestId)} ${method} ${url} ${time} - ${errorInfo}\n${headers}`,
 				error,
 			);
 		}

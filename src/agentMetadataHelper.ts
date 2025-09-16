@@ -5,7 +5,7 @@ import {
 	AgentMetadataEventSchemaArray,
 	errToStr,
 } from "./api/api-helper";
-import { CodeApi } from "./api/codeApi";
+import { CoderApi } from "./api/coderApi";
 
 export type AgentMetadataWatcher = {
 	onChange: vscode.EventEmitter<null>["event"];
@@ -20,7 +20,7 @@ export type AgentMetadataWatcher = {
  */
 export function createAgentMetadataWatcher(
 	agentId: WorkspaceAgent["id"],
-	client: CodeApi,
+	client: CoderApi,
 ): AgentMetadataWatcher {
 	const socket = client.watchAgentMetadata(agentId);
 

@@ -3,7 +3,7 @@ import {
 	GetInboxNotificationResponse,
 } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
-import { CodeApi } from "./api/codeApi";
+import { CoderApi } from "./api/coderApi";
 import { type Storage } from "./storage";
 import { OneWayWebSocket } from "./websocket/oneWayWebSocket";
 
@@ -18,7 +18,7 @@ export class Inbox implements vscode.Disposable {
 	#disposed = false;
 	#socket: OneWayWebSocket<GetInboxNotificationResponse>;
 
-	constructor(workspace: Workspace, client: CodeApi, storage: Storage) {
+	constructor(workspace: Workspace, client: CoderApi, storage: Storage) {
 		this.#storage = storage;
 
 		const watchTemplates = [

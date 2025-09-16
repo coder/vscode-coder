@@ -3,17 +3,44 @@ import prettyBytes from "pretty-bytes";
 
 const SENSITIVE_HEADERS = ["Coder-Session-Token", "Proxy-Authorization"];
 
+export function formatTime(ms: number): string {
+	if (ms < 1000) {
+		return `${ms}ms`;
+	}
+	if (ms < 60000) {
+		return `${(ms / 1000).toFixed(2)}s`;
+	}
+	if (ms < 3600000) {
+		return `${(ms / 60000).toFixed(2)}m`;
+	}
+	return `${(ms / 3600000).toFixed(2)}h`;
+}
+
 export function formatMethod(method: string | undefined): string {
 	return (method ?? "GET").toUpperCase();
 }
 
-export function formatContentLength(headers: Record<string, unknown>): string {
+/**
+ * Formats content-length for display. Returns the header value if available,
+ * otherwise estimates size by serializing the data body (prefixed with ~).
+ */
+export function formatContentLength(
+	headers: Record<string, unknown>,
+	data: unknown,
+): string {
 	const len = headers["content-length"];
 	if (len && typeof len === "string") {
 		const bytes = parseInt(len, 10);
 		return isNaN(bytes) ? "(?b)" : `(${prettyBytes(bytes)})`;
 	}
-	return "(?b)";
+
+	// Estimate from data if no header
+	if (data !== undefined && data !== null) {
+		const estimated = Buffer.byteLength(JSON.stringify(data), "utf8");
+		return `(~${prettyBytes(estimated)})`;
+	}
+
+	return `(${prettyBytes(0)})`;
 }
 
 export function formatUri(

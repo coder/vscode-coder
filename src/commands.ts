@@ -8,16 +8,16 @@ import {
 import path from "node:path";
 import * as vscode from "vscode";
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
-import { needToken } from "./api/auth";
-import { CodeApi } from "./api/codeApi";
+import { CoderApi } from "./api/coderApi";
+import { needToken } from "./api/utils";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
 import { Storage } from "./storage";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
 	AgentTreeItem,
-	WorkspaceTreeItem,
 	OpenableTreeItem,
+	WorkspaceTreeItem,
 } from "./workspacesProvider";
 
 export class Commands {
@@ -240,7 +240,7 @@ export class Commands {
 		token: string,
 		isAutologin: boolean,
 	): Promise<{ user: User; token: string } | null> {
-		const client = CodeApi.create(url, token, this.storage.output, () =>
+		const client = CoderApi.create(url, token, this.storage.output, () =>
 			vscode.workspace.getConfiguration(),
 		);
 		if (!needToken(vscode.workspace.getConfiguration())) {

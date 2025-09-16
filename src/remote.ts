@@ -16,8 +16,8 @@ import {
 	formatMetadataError,
 } from "./agentMetadataHelper";
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
-import { needToken } from "./api/auth";
-import { CodeApi } from "./api/codeApi";
+import { CoderApi } from "./api/coderApi";
+import { needToken } from "./api/utils";
 import { startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api/workspace";
 import * as cli from "./cliManager";
 import { Commands } from "./commands";
@@ -66,7 +66,7 @@ export class Remote {
 	 * Try to get the workspace running.  Return undefined if the user canceled.
 	 */
 	private async maybeWaitForRunning(
-		client: CodeApi,
+		client: CoderApi,
 		workspace: Workspace,
 		label: string,
 		binPath: string,
@@ -258,7 +258,7 @@ export class Remote {
 		// break this connection.  We could force close the remote session or
 		// disallow logging out/in altogether, but for now just use a separate
 		// client to remain unaffected by whatever the plugin is doing.
-		const workspaceClient = CodeApi.create(
+		const workspaceClient = CoderApi.create(
 			baseUrlRaw,
 			token,
 			this.storage.output,
@@ -985,7 +985,7 @@ export class Remote {
 	 */
 	private createAgentMetadataStatusBar(
 		agent: WorkspaceAgent,
-		client: CodeApi,
+		client: CoderApi,
 	): vscode.Disposable[] {
 		const statusBarItem = vscode.window.createStatusBarItem(
 			"agentMetadata",

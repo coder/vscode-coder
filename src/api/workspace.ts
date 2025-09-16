@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
-import { CodeApi } from "./codeApi";
+import { CoderApi } from "./coderApi";
 
 /**
  * Start or update a workspace and return the updated workspace.
@@ -82,7 +82,7 @@ export async function startWorkspaceIfStoppedOrFailed(
  * Once completed, fetch the workspace again and return it.
  */
 export async function waitForBuild(
-	client: CodeApi,
+	client: CoderApi,
 	writeEmitter: vscode.EventEmitter<string>,
 	workspace: Workspace,
 ): Promise<Workspace> {

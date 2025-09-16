@@ -16,7 +16,7 @@ import {
 	extractAllAgents,
 	extractAgents,
 } from "./api/api-helper";
-import { CodeApi } from "./api/codeApi";
+import { CoderApi } from "./api/coderApi";
 import { Storage } from "./storage";
 
 export enum WorkspaceQuery {
@@ -45,7 +45,7 @@ export class WorkspaceProvider
 
 	constructor(
 		private readonly getWorkspacesQuery: WorkspaceQuery,
-		private readonly client: CodeApi,
+		private readonly client: CoderApi,
 		private readonly storage: Storage,
 		private readonly timerSeconds?: number,
 	) {

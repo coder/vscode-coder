@@ -20,8 +20,11 @@ import {
 import { Logger } from "../logging/logger";
 import { RequestConfigWithMeta, HttpClientLogLevel } from "../logging/types";
 import { WsLogger } from "../logging/wsLogger";
-import { OneWayWebSocket } from "../websocket/oneWayWebSocket";
-import { createHttpAgent } from "./auth";
+import {
+	OneWayWebSocket,
+	OneWayWebSocketInit,
+} from "../websocket/oneWayWebSocket";
+import { createHttpAgent } from "./utils";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
 
@@ -31,7 +34,7 @@ type WorkspaceConfigurationProvider = () => WorkspaceConfiguration;
  * Unified API class that includes both REST API methods from the base Api class
  * and WebSocket methods for real-time functionality.
  */
-export class CodeApi extends Api {
+export class CoderApi extends Api {
 	private constructor(
 		private readonly output: Logger,
 		private readonly configProvider: WorkspaceConfigurationProvider,
@@ -40,7 +43,7 @@ export class CodeApi extends Api {
 	}
 
 	/**
-	 * Create a new CodeApi instance with the provided configuration.
+	 * Create a new CoderApi instance with the provided configuration.
 	 * Automatically sets up logging interceptors and certificate handling.
 	 */
 	static create(
@@ -48,8 +51,8 @@ export class CodeApi extends Api {
 		token: string | undefined,
 		output: Logger,
 		configProvider: WorkspaceConfigurationProvider,
-	): CodeApi {
-		const client = new CodeApi(output, configProvider);
+	): CoderApi {
+		const client = new CoderApi(output, configProvider);
 		client.setHost(baseUrl);
 		if (token) {
 			client.setSessionToken(token);
@@ -106,12 +109,9 @@ export class CodeApi extends Api {
 		return socket;
 	};
 
-	private createWebSocket<TData = unknown>(configs: {
-		apiRoute: string;
-		protocols?: string | string[];
-		searchParams?: Record<string, string> | URLSearchParams;
-		options?: ClientOptions;
-	}) {
+	private createWebSocket<TData = unknown>(
+		configs: Omit<OneWayWebSocketInit, "location">,
+	) {
 		const baseUrlRaw = this.getAxiosInstance().defaults.baseURL;
 		if (!baseUrlRaw) {
 			throw new Error("No base URL set on REST client");
@@ -163,10 +163,10 @@ export class CodeApi extends Api {
 }
 
 /**
- * Set up logging and request interceptors for the CodeApi instance.
+ * Set up logging and request interceptors for the CoderApi instance.
  */
 function setupInterceptors(
-	client: CodeApi,
+	client: CoderApi,
 	baseUrl: string,
 	output: Logger,
 	configProvider: WorkspaceConfigurationProvider,

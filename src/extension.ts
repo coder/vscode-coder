@@ -4,8 +4,8 @@ import { getErrorMessage } from "coder/site/src/api/errors";
 import * as module from "module";
 import * as vscode from "vscode";
 import { errToStr } from "./api/api-helper";
-import { needToken } from "./api/auth";
-import { CodeApi } from "./api/codeApi";
+import { CoderApi } from "./api/coderApi";
+import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
@@ -65,7 +65,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
 	const url = storage.getUrl();
-	const client = CodeApi.create(
+	const client = CoderApi.create(
 		url || "",
 		await storage.getSessionToken(),
 		storage.output,

@@ -1,7 +1,8 @@
 import prettyBytes from "pretty-bytes";
 import { errToStr } from "../api/api-helper";
+import { formatTime } from "./formatters";
 import type { Logger } from "./logger";
-import { shortId, formatTime, sizeOf, createRequestId } from "./utils";
+import { createRequestId, shortId, sizeOf } from "./utils";
 
 const numFormatter = new Intl.NumberFormat("en", {
 	notation: "compact",
@@ -32,7 +33,7 @@ export class WsLogger {
 	logOpen(): void {
 		this.openedAt = Date.now();
 		const time = formatTime(this.openedAt - this.startedAt);
-		this.logger.trace(`← WS ${shortId(this.id)} connected ${time}`);
+		this.logger.trace(`← WS ${shortId(this.id)} connected ${this.url} ${time}`);
 	}
 
 	logMessage(data: unknown): void {
@@ -58,7 +59,7 @@ export class WsLogger {
 		const statsStr = ` [${stats.join(", ")}]`;
 
 		this.logger.trace(
-			`▣ WS ${shortId(this.id)} closed${codeStr}${reasonStr}${statsStr}`,
+			`▣ WS ${shortId(this.id)} closed ${this.url}${codeStr}${reasonStr}${statsStr}`,
 		);
 	}
 
@@ -66,7 +67,7 @@ export class WsLogger {
 		const time = formatTime(Date.now() - this.startedAt);
 		const errorMsg = message || errToStr(error, "connection error");
 		this.logger.error(
-			`✗ WS ${shortId(this.id)} error ${time} - ${errorMsg}`,
+			`✗ WS ${shortId(this.id)} error ${this.url} ${time} - ${errorMsg}`,
 			error,
 		);
 	}

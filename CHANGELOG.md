@@ -11,9 +11,9 @@
 ### Added
 
 - Add support for CLI global flag configurations through the `coder.globalFlags` setting.
-- Add logging for all REST and some WebSocket traffic, with REST verbosity configurable via `coder.httpClientLogLevel` (`none`, `basic`, `headers`, `body`).
-- An Axios interceptor that tags each request with a UUID to correlate with its response and measure duration.
-- Lifecycle logs for WebSocket creation, errors, and closures.
+- Add logging for all REST traffic. Verbosity is configurable via `coder.httpClientLogLevel` (`none`, `basic`, `headers`, `body`).
+- Add lifecycle logs for WebSocket creation, errors, and closures.
+- Include UUIDs in REST and WebSocket logs to correlate events and measure duration.
 
 ## [1.10.1](https://github.com/coder/vscode-coder/releases/tag/v1.10.1) 2025-08-13
 

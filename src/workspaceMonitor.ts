@@ -2,13 +2,13 @@ import { ServerSentEvent, Workspace } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 import { createWorkspaceIdentifier, errToStr } from "./api/api-helper";
-import { CodeApi } from "./api/codeApi";
+import { CoderApi } from "./api/coderApi";
 import { Storage } from "./storage";
 import { OneWayWebSocket } from "./websocket/oneWayWebSocket";
 
 /**
- * Monitor a single workspace using SSE for events like shutdown and deletion.
- * Notify the user about relevant changes and update contexts as needed.  The
+ * Monitor a single workspace using a WebSocket for events like shutdown and deletion.
+ * Notify the user about relevant changes and update contexts as needed. The
  * workspace status is also shown in the status bar menu.
  */
 export class WorkspaceMonitor implements vscode.Disposable {
@@ -33,7 +33,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	constructor(
 		workspace: Workspace,
-		private readonly client: CodeApi,
+		private readonly client: CoderApi,
 		private readonly storage: Storage,
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
