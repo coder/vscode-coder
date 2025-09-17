@@ -15,14 +15,10 @@ import {
 	formatEventLabel,
 	formatMetadataError,
 } from "./agentMetadataHelper";
-import {
-	createHttpAgent,
-	makeCoderSdk,
-	needToken,
-	startWorkspaceIfStoppedOrFailed,
-	waitForBuild,
-} from "./api";
-import { extractAgents } from "./api-helper";
+import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
+import { CoderApi } from "./api/coderApi";
+import { needToken } from "./api/utils";
+import { startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api/workspace";
 import * as cli from "./cliManager";
 import { Commands } from "./commands";
 import { featureSetForVersion, FeatureSet } from "./featureSet";
@@ -70,14 +66,14 @@ export class Remote {
 	 * Try to get the workspace running.  Return undefined if the user canceled.
 	 */
 	private async maybeWaitForRunning(
-		restClient: Api,
+		client: CoderApi,
 		workspace: Workspace,
 		label: string,
 		binPath: string,
 		featureSet: FeatureSet,
 		firstConnect: boolean,
 	): Promise<Workspace | undefined> {
-		const workspaceName = `${workspace.owner_name}/${workspace.name}`;
+		const workspaceName = createWorkspaceIdentifier(workspace);
 
 		// A terminal will be used to stream the build, if one is necessary.
 		let writeEmitter: undefined | vscode.EventEmitter<string>;
@@ -126,11 +122,7 @@ export class Remote {
 							case "stopping":
 								writeEmitter = initWriteEmitterAndTerminal();
 								this.storage.output.info(`Waiting for ${workspaceName}...`);
-								workspace = await waitForBuild(
-									restClient,
-									writeEmitter,
-									workspace,
-								);
+								workspace = await waitForBuild(client, writeEmitter, workspace);
 								break;
 							case "stopped":
 								if (
@@ -142,7 +134,7 @@ export class Remote {
 								writeEmitter = initWriteEmitterAndTerminal();
 								this.storage.output.info(`Starting ${workspaceName}...`);
 								workspace = await startWorkspaceIfStoppedOrFailed(
-									restClient,
+									client,
 									globalConfigDir,
 									binPath,
 									workspace,
@@ -163,7 +155,7 @@ export class Remote {
 									writeEmitter = initWriteEmitterAndTerminal();
 									this.storage.output.info(`Starting ${workspaceName}...`);
 									workspace = await startWorkspaceIfStoppedOrFailed(
-										restClient,
+										client,
 										globalConfigDir,
 										binPath,
 										workspace,
@@ -229,7 +221,10 @@ export class Remote {
 		);
 
 		// It could be that the cli config was deleted.  If so, ask for the url.
-		if (!baseUrlRaw || (!token && needToken())) {
+		if (
+			!baseUrlRaw ||
+			(!token && needToken(vscode.workspace.getConfiguration()))
+		) {
 			const result = await this.vscodeProposed.window.showInformationMessage(
 				"You are not logged in...",
 				{
@@ -263,16 +258,18 @@ export class Remote {
 		// break this connection.  We could force close the remote session or
 		// disallow logging out/in altogether, but for now just use a separate
 		// client to remain unaffected by whatever the plugin is doing.
-		const workspaceRestClient = makeCoderSdk(baseUrlRaw, token, this.storage);
+		const workspaceClient = CoderApi.create(
+			baseUrlRaw,
+			token,
+			this.storage.output,
+			() => vscode.workspace.getConfiguration(),
+		);
 		// Store for use in commands.
-		this.commands.workspaceRestClient = workspaceRestClient;
+		this.commands.workspaceRestClient = workspaceClient;
 
 		let binaryPath: string | undefined;
 		if (this.mode === vscode.ExtensionMode.Production) {
-			binaryPath = await this.storage.fetchBinary(
-				workspaceRestClient,
-				parts.label,
-			);
+			binaryPath = await this.storage.fetchBinary(workspaceClient, parts.label);
 		} else {
 			try {
 				// In development, try to use `/tmp/coder` as the binary path.
@@ -281,14 +278,14 @@ export class Remote {
 				await fs.stat(binaryPath);
 			} catch (ex) {
 				binaryPath = await this.storage.fetchBinary(
-					workspaceRestClient,
+					workspaceClient,
 					parts.label,
 				);
 			}
 		}
 
 		// First thing is to check the version.
-		const buildInfo = await workspaceRestClient.getBuildInfo();
+		const buildInfo = await workspaceClient.getBuildInfo();
 
 		let version: semver.SemVer | null = null;
 		try {
@@ -319,7 +316,7 @@ export class Remote {
 		let workspace: Workspace;
 		try {
 			this.storage.output.info(`Looking for workspace ${workspaceName}...`);
-			workspace = await workspaceRestClient.getWorkspaceByOwnerAndName(
+			workspace = await workspaceClient.getWorkspaceByOwnerAndName(
 				parts.username,
 				parts.workspace,
 			);
@@ -392,7 +389,7 @@ export class Remote {
 		// If the workspace is not in a running state, try to get it running.
 		if (workspace.latest_build.status !== "running") {
 			const updatedWorkspace = await this.maybeWaitForRunning(
-				workspaceRestClient,
+				workspaceClient,
 				workspace,
 				parts.label,
 				binaryPath,
@@ -503,7 +500,7 @@ export class Remote {
 		// Watch the workspace for changes.
 		const monitor = new WorkspaceMonitor(
 			workspace,
-			workspaceRestClient,
+			workspaceClient,
 			this.storage,
 			this.vscodeProposed,
 		);
@@ -513,13 +510,7 @@ export class Remote {
 		);
 
 		// Watch coder inbox for messages
-		const httpAgent = await createHttpAgent();
-		const inbox = new Inbox(
-			workspace,
-			httpAgent,
-			workspaceRestClient,
-			this.storage,
-		);
+		const inbox = new Inbox(workspace, workspaceClient, this.storage);
 		disposables.push(inbox);
 
 		// Wait for the agent to connect.
@@ -588,7 +579,7 @@ export class Remote {
 		try {
 			this.storage.output.info("Updating SSH config...");
 			await this.updateSSHConfig(
-				workspaceRestClient,
+				workspaceClient,
 				parts.label,
 				parts.host,
 				binaryPath,
@@ -637,7 +628,7 @@ export class Remote {
 		);
 
 		disposables.push(
-			...this.createAgentMetadataStatusBar(agent, workspaceRestClient),
+			...this.createAgentMetadataStatusBar(agent, workspaceClient),
 		);
 
 		this.storage.output.info("Remote setup complete");
@@ -994,14 +985,14 @@ export class Remote {
 	 */
 	private createAgentMetadataStatusBar(
 		agent: WorkspaceAgent,
-		restClient: Api,
+		client: CoderApi,
 	): vscode.Disposable[] {
 		const statusBarItem = vscode.window.createStatusBarItem(
 			"agentMetadata",
 			vscode.StatusBarAlignment.Left,
 		);
 
-		const agentWatcher = createAgentMetadataWatcher(agent.id, restClient);
+		const agentWatcher = createAgentMetadataWatcher(agent.id, client);
 
 		const onChangeDisposable = agentWatcher.onChange(() => {
 			if (agentWatcher.error) {

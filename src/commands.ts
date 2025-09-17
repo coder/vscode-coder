@@ -7,16 +7,17 @@ import {
 } from "coder/site/src/api/typesGenerated";
 import path from "node:path";
 import * as vscode from "vscode";
-import { makeCoderSdk, needToken } from "./api";
-import { extractAgents } from "./api-helper";
+import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
+import { CoderApi } from "./api/coderApi";
+import { needToken } from "./api/utils";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
 import { Storage } from "./storage";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
 	AgentTreeItem,
-	WorkspaceTreeItem,
 	OpenableTreeItem,
+	WorkspaceTreeItem,
 } from "./workspacesProvider";
 
 export class Commands {
@@ -239,10 +240,12 @@ export class Commands {
 		token: string,
 		isAutologin: boolean,
 	): Promise<{ user: User; token: string } | null> {
-		const restClient = makeCoderSdk(url, token, this.storage);
-		if (!needToken()) {
+		const client = CoderApi.create(url, token, this.storage.output, () =>
+			vscode.workspace.getConfiguration(),
+		);
+		if (!needToken(vscode.workspace.getConfiguration())) {
 			try {
-				const user = await restClient.getAuthenticatedUser();
+				const user = await client.getAuthenticatedUser();
 				// For non-token auth, we write a blank token since the `vscodessh`
 				// command currently always requires a token file.
 				return { token: "", user };
@@ -283,9 +286,9 @@ export class Commands {
 			value: token || (await this.storage.getSessionToken()),
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
-				restClient.setSessionToken(value);
+				client.setSessionToken(value);
 				try {
-					user = await restClient.getAuthenticatedUser();
+					user = await client.getAuthenticatedUser();
 				} catch (err) {
 					// For certificate errors show both a notification and add to the
 					// text under the input box, since users sometimes miss the
@@ -398,14 +401,13 @@ export class Commands {
 	 */
 	public async navigateToWorkspace(item: OpenableTreeItem) {
 		if (item) {
-			const uri =
-				this.storage.getUrl() +
-				`/@${item.workspace.owner_name}/${item.workspace.name}`;
+			const workspaceId = createWorkspaceIdentifier(item.workspace);
+			const uri = this.storage.getUrl() + `/@${workspaceId}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
 				this.workspaceRestClient.getAxiosInstance().defaults.baseURL;
-			const uri = `${baseUrl}/@${this.workspace.owner_name}/${this.workspace.name}`;
+			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
 			vscode.window.showInformationMessage("No workspace found.");
@@ -422,14 +424,13 @@ export class Commands {
 	 */
 	public async navigateToWorkspaceSettings(item: OpenableTreeItem) {
 		if (item) {
-			const uri =
-				this.storage.getUrl() +
-				`/@${item.workspace.owner_name}/${item.workspace.name}/settings`;
+			const workspaceId = createWorkspaceIdentifier(item.workspace);
+			const uri = this.storage.getUrl() + `/@${workspaceId}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
 				this.workspaceRestClient.getAxiosInstance().defaults.baseURL;
-			const uri = `${baseUrl}/@${this.workspace.owner_name}/${this.workspace.name}/settings`;
+			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
 			vscode.window.showInformationMessage("No workspace found.");
@@ -670,7 +671,7 @@ export class Commands {
 			{
 				useCustom: true,
 				modal: true,
-				detail: `Update ${this.workspace.owner_name}/${this.workspace.name} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
+				detail: `Update ${createWorkspaceIdentifier(this.workspace)} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
 			},
 			"Update",
 			"Cancel",

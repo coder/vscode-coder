@@ -126,6 +126,23 @@
 					"items": {
 						"type": "string"
 					}
+				},
+				"coder.httpClientLogLevel": {
+					"markdownDescription": "Controls the verbosity of HTTP client logging. This affects what details are logged for each HTTP request and response.",
+					"type": "string",
+					"enum": [
+						"none",
+						"basic",
+						"headers",
+						"body"
+					],
+					"markdownEnumDescriptions": [
+						"Disables all HTTP client logging",
+						"Logs the request method, URL, length, and the response status code",
+						"Logs everything from *basic* plus sanitized request and response headers",
+						"Logs everything from *headers* plus request and response bodies (may include sensitive data)"
+					],
+					"default": "basic"
 				}
 			}
 		},

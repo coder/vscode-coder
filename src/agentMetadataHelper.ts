@@ -1,13 +1,11 @@
-import { Api } from "coder/site/src/api/api";
 import { WorkspaceAgent } from "coder/site/src/api/typesGenerated";
-import { EventSource } from "eventsource";
 import * as vscode from "vscode";
-import { createStreamingFetchAdapter } from "./api";
 import {
 	AgentMetadataEvent,
 	AgentMetadataEventSchemaArray,
 	errToStr,
-} from "./api-helper";
+} from "./api/api-helper";
+import { CoderApi } from "./api/coderApi";
 
 export type AgentMetadataWatcher = {
 	onChange: vscode.EventEmitter<null>["event"];
@@ -17,21 +15,14 @@ export type AgentMetadataWatcher = {
 };
 
 /**
- * Opens an SSE connection to watch metadata for a given workspace agent.
+ * Opens a websocket connection to watch metadata for a given workspace agent.
  * Emits onChange when metadata updates or an error occurs.
  */
 export function createAgentMetadataWatcher(
 	agentId: WorkspaceAgent["id"],
-	restClient: Api,
+	client: CoderApi,
 ): AgentMetadataWatcher {
-	// TODO: Is there a better way to grab the url and token?
-	const url = restClient.getAxiosInstance().defaults.baseURL;
-	const metadataUrl = new URL(
-		`${url}/api/v2/workspaceagents/${agentId}/watch-metadata`,
-	);
-	const eventSource = new EventSource(metadataUrl.toString(), {
-		fetch: createStreamingFetchAdapter(restClient.getAxiosInstance()),
-	});
+	const socket = client.watchAgentMetadata(agentId);
 
 	let disposed = false;
 	const onChange = new vscode.EventEmitter<null>();
@@ -39,16 +30,27 @@ export function createAgentMetadataWatcher(
 		onChange: onChange.event,
 		dispose: () => {
 			if (!disposed) {
-				eventSource.close();
+				socket.close();
 				disposed = true;
 			}
 		},
 	};
 
-	eventSource.addEventListener("data", (event) => {
+	const handleError = (error: unknown) => {
+		watcher.error = error;
+		onChange.fire(null);
+	};
+
+	socket.addEventListener("message", (event) => {
 		try {
-			const dataEvent = JSON.parse(event.data);
-			const metadata = AgentMetadataEventSchemaArray.parse(dataEvent);
+			if (event.parseError) {
+				handleError(event.parseError);
+				return;
+			}
+
+			const metadata = AgentMetadataEventSchemaArray.parse(
+				event.parsedMessage.data,
+			);
 
 			// Overwrite metadata if it changed.
 			if (JSON.stringify(watcher.metadata) !== JSON.stringify(metadata)) {
@@ -56,8 +58,19 @@ export function createAgentMetadataWatcher(
 				onChange.fire(null);
 			}
 		} catch (error) {
-			watcher.error = error;
-			onChange.fire(null);
+			handleError(error);
+		}
+	});
+
+	socket.addEventListener("error", handleError);
+
+	socket.addEventListener("close", (event) => {
+		if (event.code !== 1000) {
+			handleError(
+				new Error(
+					`WebSocket closed unexpectedly: ${event.code} ${event.reason}`,
+				),
+			);
 		}
 	});
 

@@ -1,4 +1,3 @@
-import { Api } from "coder/site/src/api/api";
 import {
 	Workspace,
 	WorkspaceAgent,
@@ -16,7 +15,8 @@ import {
 	AgentMetadataEvent,
 	extractAllAgents,
 	extractAgents,
-} from "./api-helper";
+} from "./api/api-helper";
+import { CoderApi } from "./api/coderApi";
 import { Storage } from "./storage";
 
 export enum WorkspaceQuery {
@@ -45,7 +45,7 @@ export class WorkspaceProvider
 
 	constructor(
 		private readonly getWorkspacesQuery: WorkspaceQuery,
-		private readonly restClient: Api,
+		private readonly client: CoderApi,
 		private readonly storage: Storage,
 		private readonly timerSeconds?: number,
 	) {
@@ -98,17 +98,18 @@ export class WorkspaceProvider
 		}
 
 		// If there is no URL configured, assume we are logged out.
-		const restClient = this.restClient;
-		const url = restClient.getAxiosInstance().defaults.baseURL;
+		const url = this.client.getAxiosInstance().defaults.baseURL;
 		if (!url) {
 			throw new Error("not logged in");
 		}
 
-		const resp = await restClient.getWorkspaces({ q: this.getWorkspacesQuery });
+		const resp = await this.client.getWorkspaces({
+			q: this.getWorkspacesQuery,
+		});
 
 		// We could have logged out while waiting for the query, or logged into a
 		// different deployment.
-		const url2 = restClient.getAxiosInstance().defaults.baseURL;
+		const url2 = this.client.getAxiosInstance().defaults.baseURL;
 		if (!url2) {
 			throw new Error("not logged in");
 		} else if (url !== url2) {
@@ -135,7 +136,7 @@ export class WorkspaceProvider
 					return this.agentWatchers[agent.id];
 				}
 				// Otherwise create a new watcher.
-				const watcher = createAgentMetadataWatcher(agent.id, restClient);
+				const watcher = createAgentMetadataWatcher(agent.id, this.client);
 				watcher.onChange(() => this.refresh());
 				this.agentWatchers[agent.id] = watcher;
 				return watcher;

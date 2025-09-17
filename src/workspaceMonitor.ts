@@ -1,19 +1,18 @@
-import { Api } from "coder/site/src/api/api";
-import { Workspace } from "coder/site/src/api/typesGenerated";
+import { ServerSentEvent, Workspace } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
-import { EventSource } from "eventsource";
 import * as vscode from "vscode";
-import { createStreamingFetchAdapter } from "./api";
-import { errToStr } from "./api-helper";
+import { createWorkspaceIdentifier, errToStr } from "./api/api-helper";
+import { CoderApi } from "./api/coderApi";
 import { Storage } from "./storage";
+import { OneWayWebSocket } from "./websocket/oneWayWebSocket";
 
 /**
- * Monitor a single workspace using SSE for events like shutdown and deletion.
- * Notify the user about relevant changes and update contexts as needed.  The
+ * Monitor a single workspace using a WebSocket for events like shutdown and deletion.
+ * Notify the user about relevant changes and update contexts as needed. The
  * workspace status is also shown in the status bar menu.
  */
 export class WorkspaceMonitor implements vscode.Disposable {
-	private eventSource: EventSource;
+	private socket: OneWayWebSocket<ServerSentEvent>;
 	private disposed = false;
 
 	// How soon in advance to notify about autostop and deletion.
@@ -34,23 +33,26 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	constructor(
 		workspace: Workspace,
-		private readonly restClient: Api,
+		private readonly client: CoderApi,
 		private readonly storage: Storage,
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
 	) {
-		this.name = `${workspace.owner_name}/${workspace.name}`;
-		const url = this.restClient.getAxiosInstance().defaults.baseURL;
-		const watchUrl = new URL(`${url}/api/v2/workspaces/${workspace.id}/watch`);
-		this.storage.output.info(`Monitoring ${this.name}...`);
+		this.name = createWorkspaceIdentifier(workspace);
+		const socket = this.client.watchWorkspace(workspace);
 
-		const eventSource = new EventSource(watchUrl.toString(), {
-			fetch: createStreamingFetchAdapter(this.restClient.getAxiosInstance()),
+		socket.addEventListener("open", () => {
+			this.storage.output.info(`Monitoring ${this.name}...`);
 		});
 
-		eventSource.addEventListener("data", (event) => {
+		socket.addEventListener("message", (event) => {
 			try {
-				const newWorkspaceData = JSON.parse(event.data) as Workspace;
+				if (event.parseError) {
+					this.notifyError(event.parseError);
+					return;
+				}
+				// Perhaps we need to parse this and validate it.
+				const newWorkspaceData = event.parsedMessage.data as Workspace;
 				this.update(newWorkspaceData);
 				this.maybeNotify(newWorkspaceData);
 				this.onChange.fire(newWorkspaceData);
@@ -59,12 +61,8 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			}
 		});
 
-		eventSource.addEventListener("error", (event) => {
-			this.notifyError(event);
-		});
-
 		// Store so we can close in dispose().
-		this.eventSource = eventSource;
+		this.socket = socket;
 
 		const statusBarItem = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
@@ -81,13 +79,13 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	/**
-	 * Permanently close the SSE stream.
+	 * Permanently close the websocket.
 	 */
 	dispose() {
 		if (!this.disposed) {
 			this.storage.output.info(`Unmonitoring ${this.name}...`);
 			this.statusBarItem.dispose();
-			this.eventSource.close();
+			this.socket.close();
 			this.disposed = true;
 		}
 	}
@@ -181,10 +179,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 			this.notifiedOutdated = true;
 
-			this.restClient
+			this.client
 				.getTemplate(workspace.template_id)
 				.then((template) => {
-					return this.restClient.getTemplateVersion(template.active_version_id);
+					return this.client.getTemplateVersion(template.active_version_id);
 				})
 				.then((version) => {
 					const infoMessage = version.message
@@ -197,7 +195,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 								vscode.commands.executeCommand(
 									"coder.workspace.update",
 									workspace,
-									this.restClient,
+									this.client,
 								);
 							}
 						});
