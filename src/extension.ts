@@ -57,6 +57,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		ctx.logUri,
 	);
 
+	// Try to clear this flag ASAP then pass it around if needed
+	const isFirstConnect = await storage.getAndClearFirstConnect();
+
 	// This client tracks the current login and will be used through the life of
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
@@ -309,7 +312,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			ctx.extensionMode,
 		);
 		try {
-			const details = await remote.setup(vscodeProposed.env.remoteAuthority);
+			const details = await remote.setup(
+				vscodeProposed.env.remoteAuthority,
+				isFirstConnect,
+			);
 			if (details) {
 				// Authenticate the plugin client which is used in the sidebar to display
 				// workspaces belonging to this deployment.

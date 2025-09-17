@@ -71,6 +71,27 @@ export class Storage {
 	}
 
 	/**
+	 * Mark this as the first connection to a workspace, which influences whether
+	 * the workspace startup confirmation is shown to the user.
+	 */
+	public async setFirstConnect(): Promise<void> {
+		return this.memento.update("firstConnect", true);
+	}
+
+	/**
+	 * Check if this is the first connection to a workspace and clear the flag.
+	 * Used to determine whether to automatically start workspaces without
+	 * prompting the user for confirmation.
+	 */
+	public async getAndClearFirstConnect(): Promise<boolean> {
+		const isFirst = this.memento.get<boolean>("firstConnect");
+		if (isFirst !== undefined) {
+			await this.memento.update("firstConnect", undefined);
+		}
+		return isFirst === true;
+	}
+
+	/**
 	 * Set or unset the last used token.
 	 */
 	public async setSessionToken(sessionToken?: string): Promise<void> {

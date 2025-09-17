@@ -451,7 +451,7 @@ export class Commands {
 				throw new Error("You are not logged in");
 			}
 			if (item instanceof AgentTreeItem) {
-				await openWorkspace(
+				await this.openWorkspace(
 					baseUrl,
 					item.workspace,
 					item.agent,
@@ -465,7 +465,13 @@ export class Commands {
 					// User declined to pick an agent.
 					return;
 				}
-				await openWorkspace(baseUrl, item.workspace, agent, undefined, true);
+				await this.openWorkspace(
+					baseUrl,
+					item.workspace,
+					agent,
+					undefined,
+					true,
+				);
 			} else {
 				throw new Error("Unable to open unknown sidebar item");
 			}
@@ -583,7 +589,7 @@ export class Commands {
 			return;
 		}
 
-		await openWorkspace(baseUrl, workspace, agent, folderPath, openRecent);
+		await this.openWorkspace(baseUrl, workspace, agent, folderPath, openRecent);
 	}
 
 	/**
@@ -605,15 +611,49 @@ export class Commands {
 			throw new Error("You are not logged in");
 		}
 
-		await openDevContainer(
+		const remoteAuthority = toRemoteAuthority(
 			baseUrl,
 			workspaceOwner,
 			workspaceName,
 			workspaceAgent,
-			devContainerName,
-			devContainerFolder,
-			localWorkspaceFolder,
-			localConfigFile,
+		);
+
+		const hostPath = localWorkspaceFolder ? localWorkspaceFolder : undefined;
+		const configFile =
+			hostPath && localConfigFile
+				? {
+						path: localConfigFile,
+						scheme: "vscode-fileHost",
+					}
+				: undefined;
+		const devContainer = Buffer.from(
+			JSON.stringify({
+				containerName: devContainerName,
+				hostPath,
+				configFile,
+				localDocker: false,
+			}),
+			"utf-8",
+		).toString("hex");
+
+		const type = localWorkspaceFolder ? "dev-container" : "attached-container";
+		const devContainerAuthority = `${type}+${devContainer}@${remoteAuthority}`;
+
+		let newWindow = true;
+		if (!vscode.workspace.workspaceFolders?.length) {
+			newWindow = false;
+		}
+
+		// Only set the memento if when opening a new folder
+		await this.storage.setFirstConnect();
+		await vscode.commands.executeCommand(
+			"vscode.openFolder",
+			vscode.Uri.from({
+				scheme: "vscode-remote",
+				authority: devContainerAuthority,
+				path: devContainerFolder,
+			}),
+			newWindow,
 		);
 	}
 
@@ -722,141 +762,89 @@ export class Commands {
 		}
 		return agents;
 	}
-}
 
-/**
- * Given a workspace and agent, build the host name, find a directory to open,
- * and pass both to the Remote SSH plugin in the form of a remote authority
- * URI.
- *
- * If provided, folderPath is always used, otherwise expanded_directory from
- * the agent is used.
- */
-async function openWorkspace(
-	baseUrl: string,
-	workspace: Workspace,
-	agent: WorkspaceAgent,
-	folderPath: string | undefined,
-	openRecent: boolean = false,
-) {
-	const remoteAuthority = toRemoteAuthority(
-		baseUrl,
-		workspace.owner_name,
-		workspace.name,
-		agent.name,
-	);
-
-	let newWindow = true;
-	// Open in the existing window if no workspaces are open.
-	if (!vscode.workspace.workspaceFolders?.length) {
-		newWindow = false;
-	}
-
-	if (!folderPath) {
-		folderPath = agent.expanded_directory;
-	}
-
-	// If the agent had no folder or we have been asked to open the most recent,
-	// we can try to open a recently opened folder/workspace.
-	if (!folderPath || openRecent) {
-		const output: {
-			workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[];
-		} = await vscode.commands.executeCommand("_workbench.getRecentlyOpened");
-		const opened = output.workspaces.filter(
-			// Remove recents that do not belong to this connection.  The remote
-			// authority maps to a workspace/agent combination (using the SSH host
-			// name).  There may also be some legacy connections that still may
-			// reference a workspace without an agent name, which will be missed.
-			(opened) => opened.folderUri?.authority === remoteAuthority,
+	/**
+	 * Given a workspace and agent, build the host name, find a directory to open,
+	 * and pass both to the Remote SSH plugin in the form of a remote authority
+	 * URI.
+	 *
+	 * If provided, folderPath is always used, otherwise expanded_directory from
+	 * the agent is used.
+	 */
+	async openWorkspace(
+		baseUrl: string,
+		workspace: Workspace,
+		agent: WorkspaceAgent,
+		folderPath: string | undefined,
+		openRecent: boolean = false,
+	) {
+		const remoteAuthority = toRemoteAuthority(
+			baseUrl,
+			workspace.owner_name,
+			workspace.name,
+			agent.name,
 		);
 
-		// openRecent will always use the most recent.  Otherwise, if there are
-		// multiple we ask the user which to use.
-		if (opened.length === 1 || (opened.length > 1 && openRecent)) {
-			folderPath = opened[0].folderUri.path;
-		} else if (opened.length > 1) {
-			const items = opened.map((f) => f.folderUri.path);
-			folderPath = await vscode.window.showQuickPick(items, {
-				title: "Select a recently opened folder",
-			});
-			if (!folderPath) {
-				// User aborted.
-				return;
+		let newWindow = true;
+		// Open in the existing window if no workspaces are open.
+		if (!vscode.workspace.workspaceFolders?.length) {
+			newWindow = false;
+		}
+
+		if (!folderPath) {
+			folderPath = agent.expanded_directory;
+		}
+
+		// If the agent had no folder or we have been asked to open the most recent,
+		// we can try to open a recently opened folder/workspace.
+		if (!folderPath || openRecent) {
+			const output: {
+				workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[];
+			} = await vscode.commands.executeCommand("_workbench.getRecentlyOpened");
+			const opened = output.workspaces.filter(
+				// Remove recents that do not belong to this connection.  The remote
+				// authority maps to a workspace/agent combination (using the SSH host
+				// name).  There may also be some legacy connections that still may
+				// reference a workspace without an agent name, which will be missed.
+				(opened) => opened.folderUri?.authority === remoteAuthority,
+			);
+
+			// openRecent will always use the most recent.  Otherwise, if there are
+			// multiple we ask the user which to use.
+			if (opened.length === 1 || (opened.length > 1 && openRecent)) {
+				folderPath = opened[0].folderUri.path;
+			} else if (opened.length > 1) {
+				const items = opened.map((f) => f.folderUri.path);
+				folderPath = await vscode.window.showQuickPick(items, {
+					title: "Select a recently opened folder",
+				});
+				if (!folderPath) {
+					// User aborted.
+					return;
+				}
 			}
 		}
+
+		// Only set the memento if when opening a new folder/window
+		await this.storage.setFirstConnect();
+		if (folderPath) {
+			await vscode.commands.executeCommand(
+				"vscode.openFolder",
+				vscode.Uri.from({
+					scheme: "vscode-remote",
+					authority: remoteAuthority,
+					path: folderPath,
+				}),
+				// Open this in a new window!
+				newWindow,
+			);
+			return;
+		}
+
+		// This opens the workspace without an active folder opened.
+		await vscode.commands.executeCommand("vscode.newWindow", {
+			remoteAuthority: remoteAuthority,
+			reuseWindow: !newWindow,
+		});
 	}
-
-	if (folderPath) {
-		await vscode.commands.executeCommand(
-			"vscode.openFolder",
-			vscode.Uri.from({
-				scheme: "vscode-remote",
-				authority: remoteAuthority,
-				path: folderPath,
-			}),
-			// Open this in a new window!
-			newWindow,
-		);
-		return;
-	}
-
-	// This opens the workspace without an active folder opened.
-	await vscode.commands.executeCommand("vscode.newWindow", {
-		remoteAuthority: remoteAuthority,
-		reuseWindow: !newWindow,
-	});
-}
-
-async function openDevContainer(
-	baseUrl: string,
-	workspaceOwner: string,
-	workspaceName: string,
-	workspaceAgent: string,
-	devContainerName: string,
-	devContainerFolder: string,
-	localWorkspaceFolder: string = "",
-	localConfigFile: string = "",
-) {
-	const remoteAuthority = toRemoteAuthority(
-		baseUrl,
-		workspaceOwner,
-		workspaceName,
-		workspaceAgent,
-	);
-
-	const hostPath = localWorkspaceFolder ? localWorkspaceFolder : undefined;
-	const configFile =
-		hostPath && localConfigFile
-			? {
-					path: localConfigFile,
-					scheme: "vscode-fileHost",
-				}
-			: undefined;
-	const devContainer = Buffer.from(
-		JSON.stringify({
-			containerName: devContainerName,
-			hostPath,
-			configFile,
-			localDocker: false,
-		}),
-		"utf-8",
-	).toString("hex");
-
-	const type = localWorkspaceFolder ? "dev-container" : "attached-container";
-	const devContainerAuthority = `${type}+${devContainer}@${remoteAuthority}`;
-
-	let newWindow = true;
-	if (!vscode.workspace.workspaceFolders?.length) {
-		newWindow = false;
-	}
-
-	await vscode.commands.executeCommand(
-		"vscode.openFolder",
-		vscode.Uri.from({
-			scheme: "vscode-remote",
-			authority: devContainerAuthority,
-			path: devContainerFolder,
-		}),
-		newWindow,
-	);
 }
