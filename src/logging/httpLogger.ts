@@ -1,8 +1,4 @@
-import type {
-	AxiosError,
-	AxiosResponse,
-	InternalAxiosRequestConfig,
-} from "axios";
+import type { AxiosError, AxiosResponse } from "axios";
 import { isAxiosError } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import { getErrorDetail } from "../error";
@@ -22,6 +18,9 @@ import {
 } from "./types";
 import { createRequestId, shortId } from "./utils";
 
+/**
+ * Creates metadata for tracking HTTP requests.
+ */
 export function createRequestMeta(): RequestMeta {
 	return {
 		requestId: createRequestId(),
@@ -29,35 +28,33 @@ export function createRequestMeta(): RequestMeta {
 	};
 }
 
+/**
+ * Logs an outgoing HTTP RESTful request.
+ */
 export function logRequest(
 	logger: Logger,
-	requestId: string,
-	config: InternalAxiosRequestConfig,
+	config: RequestConfigWithMeta,
 	logLevel: HttpClientLogLevel,
 ): void {
 	if (logLevel === HttpClientLogLevel.NONE) {
 		return;
 	}
 
-	const method = formatMethod(config.method);
-	const url = formatUri(config);
+	const { requestId, method, url } = parseConfig(config);
 	const len = formatContentLength(config.headers, config.data);
 
-	let msg = `→ ${shortId(requestId)} ${method} ${url} ${len}`;
-	if (logLevel >= HttpClientLogLevel.HEADERS) {
-		msg += `\n${formatHeaders(config.headers)}`;
-	}
-
-	if (logLevel >= HttpClientLogLevel.BODY) {
-		msg += `\n${formatBody(config.data)}`;
-	}
-
-	logger.trace(msg);
+	const msg = [
+		`→ ${shortId(requestId)} ${method} ${url} ${len}`,
+		...buildExtraLogs(config.headers, config.data, logLevel),
+	];
+	logger.trace(msg.join("\n"));
 }
 
+/**
+ * Logs an incoming HTTP RESTful response.
+ */
 export function logResponse(
 	logger: Logger,
-	meta: RequestMeta,
 	response: AxiosResponse,
 	logLevel: HttpClientLogLevel,
 ): void {
@@ -65,66 +62,98 @@ export function logResponse(
 		return;
 	}
 
-	const method = formatMethod(response.config.method);
-	const url = formatUri(response.config);
-	const time = formatTime(Date.now() - meta.startedAt);
+	const { requestId, method, url, time } = parseConfig(response.config);
 	const len = formatContentLength(response.headers, response.data);
 
-	let msg = `← ${shortId(meta.requestId)} ${response.status} ${method} ${url} ${len} ${time}`;
-
-	if (logLevel >= HttpClientLogLevel.HEADERS) {
-		msg += `\n${formatHeaders(response.headers)}`;
-	}
-
-	if (logLevel >= HttpClientLogLevel.BODY) {
-		msg += `\n${formatBody(response.data)}`;
-	}
-
-	logger.trace(msg);
+	const msg = [
+		`← ${shortId(requestId)} ${response.status} ${method} ${url} ${len} ${time}`,
+		...buildExtraLogs(response.headers, response.data, logLevel),
+	];
+	logger.trace(msg.join("\n"));
 }
 
-export function logRequestError(
+/**
+ * Logs HTTP RESTful request errors and failures.
+ *
+ * Note: Errors are always logged regardless of log level.
+ */
+export function logError(
 	logger: Logger,
 	error: AxiosError | unknown,
+	logLevel: HttpClientLogLevel,
 ): void {
 	if (isAxiosError(error)) {
 		const config = error.config as RequestConfigWithMeta | undefined;
-		const meta = config?.metadata;
-		const method = formatMethod(config?.method);
-		const url = formatUri(config);
-		const requestId = meta?.requestId || "unknown";
-		const time = meta ? formatTime(Date.now() - meta.startedAt) : "?ms";
+		const { requestId, method, url, time } = parseConfig(config);
 
-		const msg = getErrorMessage(error, "");
+		const errMsg = getErrorMessage(error, "");
 		const detail = getErrorDetail(error) ?? "";
+		const errorParts = [errMsg, detail]
+			.map((part) => part.trim())
+			.filter(Boolean);
 
+		let logPrefix: string;
+		let extraLines: string[];
 		if (error.response) {
-			const msgParts = [
-				`← ${shortId(requestId)} ${error.response.status} ${method} ${url} ${time}`,
-				msg,
-				detail,
-			];
-			if (msg.trim().length === 0 && detail.trim().length === 0) {
-				const responseData =
+			if (errorParts.length === 0) {
+				errorParts.push(
 					error.response.statusText ||
-					String(error.response.data).slice(0, 100) ||
-					"No error info";
-				msgParts.push(responseData);
+						String(error.response.data).slice(0, 100) ||
+						"No error info",
+				);
 			}
 
-			const fullMsg = msgParts.map((str) => str.trim()).join(" - ");
-			const headers = formatHeaders(error.response.headers);
-			logger.error(`${fullMsg}\n${headers}`, error);
+			logPrefix = `← ${shortId(requestId)} ${error.response.status} ${method} ${url} ${time}`;
+			extraLines = buildExtraLogs(
+				error.response.headers,
+				error.response.data,
+				logLevel,
+			);
 		} else {
-			const reason = error.code || error.message || "Network error";
-			const errorInfo = [msg, detail, reason].filter(Boolean).join(" - ");
-			const headers = formatHeaders(config?.headers ?? {});
-			logger.error(
-				`✗ ${shortId(requestId)} ${method} ${url} ${time} - ${errorInfo}\n${headers}`,
-				error,
+			if (errorParts.length === 0) {
+				errorParts.push(error.code || "Network error");
+			}
+			logPrefix = `✗ ${shortId(requestId)} ${method} ${url} ${time}`;
+			extraLines = buildExtraLogs(
+				error?.config?.headers ?? {},
+				error.config?.data,
+				logLevel,
 			);
 		}
+
+		const msg = [[logPrefix, ...errorParts].join(" - "), ...extraLines];
+		logger.error(msg.join("\n"));
 	} else {
 		logger.error("Request error", error);
 	}
+}
+
+function buildExtraLogs(
+	headers: Record<string, unknown>,
+	body: unknown,
+	logLevel: HttpClientLogLevel,
+) {
+	const msg = [];
+	if (logLevel >= HttpClientLogLevel.HEADERS) {
+		msg.push(formatHeaders(headers));
+	}
+	if (logLevel >= HttpClientLogLevel.BODY) {
+		msg.push(formatBody(body));
+	}
+	return msg;
+}
+
+function parseConfig(config: RequestConfigWithMeta | undefined): {
+	requestId: string;
+	method: string;
+	url: string;
+	time: string;
+} {
+	const meta = config?.metadata;
+	return {
+		requestId: meta?.requestId || "unknown",
+		method: formatMethod(config?.method),
+		url: formatUri(config),
+		time: meta ? formatTime(Date.now() - meta.startedAt) : "?ms",
+	};
 }

@@ -14,7 +14,7 @@ import { getHeaderCommand, getHeaders } from "../headers";
 import {
 	createRequestMeta,
 	logRequest,
-	logRequestError,
+	logError,
 	logResponse,
 } from "../logging/httpLogger";
 import { Logger } from "../logging/logger";
@@ -211,27 +211,24 @@ function addLoggingInterceptors(
 ) {
 	client.interceptors.request.use(
 		(config) => {
-			const meta = createRequestMeta();
-			(config as RequestConfigWithMeta).metadata = meta;
-			logRequest(logger, meta.requestId, config, getLogLevel(configProvider()));
+			const configWithMeta = config as RequestConfigWithMeta;
+			configWithMeta.metadata = createRequestMeta();
+			logRequest(logger, configWithMeta, getLogLevel(configProvider()));
 			return config;
 		},
 		(error: unknown) => {
-			logRequestError(logger, error);
+			logError(logger, error, getLogLevel(configProvider()));
 			return Promise.reject(error);
 		},
 	);
 
 	client.interceptors.response.use(
 		(response) => {
-			const meta = (response.config as RequestConfigWithMeta).metadata;
-			if (meta) {
-				logResponse(logger, meta, response, getLogLevel(configProvider()));
-			}
+			logResponse(logger, response, getLogLevel(configProvider()));
 			return response;
 		},
 		(error: unknown) => {
-			logRequestError(logger, error);
+			logError(logger, error, getLogLevel(configProvider()));
 			return Promise.reject(error);
 		},
 	);

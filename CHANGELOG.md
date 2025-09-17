@@ -6,7 +6,6 @@
 
 - Always enable verbose (`-v`) flag when a log directory is configured (`coder.proxyLogDir`).
 - Automatically start a workspace without prompting if it is explicitly opened but not running.
-- Replaced SSE paths with a one-way WebSocket and centralized creation on `OneWayWebSocket`, and unified socket handling.
 
 ### Added
 
