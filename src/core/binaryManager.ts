@@ -10,7 +10,7 @@ import path from "path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 
-import { errToStr } from "../api-helper";
+import { errToStr } from "../api/api-helper";
 import * as cli from "../cliManager";
 import { Logger } from "../logging/logger";
 import * as pgp from "../pgp";
