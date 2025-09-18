@@ -1,11 +1,10 @@
 import * as path from "path";
-import type { WorkspaceConfiguration } from "vscode";
+import * as vscode from "vscode";
 
 export class PathResolver {
 	constructor(
 		private readonly basePath: string,
 		private readonly codeLogPath: string,
-		private readonly configurations: WorkspaceConfiguration,
 	) {}
 
 	/**
@@ -29,9 +28,9 @@ export class PathResolver {
 	 * The caller must ensure this directory exists before use.
 	 */
 	public getBinaryCachePath(label: string): string {
-		const configPath = this.configurations.get<string>(
-			"coder.binaryDestination",
-		);
+		const configPath = vscode.workspace
+			.getConfiguration()
+			.get<string>("coder.binaryDestination");
 		return configPath && configPath.trim().length > 0
 			? path.normalize(configPath)
 			: path.join(this.getGlobalConfigDir(label), "bin");

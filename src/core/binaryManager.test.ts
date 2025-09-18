@@ -1,34 +1,30 @@
 import globalAxios, { AxiosInstance } from "axios";
 import { Api } from "coder/site/src/api/api";
-import { BuildInfoResponse } from "coder/site/src/api/typesGenerated";
-import type { Stats, WriteStream } from "fs";
 import * as fs from "fs";
 import * as fse from "fs/promises";
 import { IncomingMessage } from "http";
-import * as path from "path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { WorkspaceConfiguration } from "vscode";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
+import {
+	MockConfigurationProvider,
+	MockProgressReporter,
+	MockUserInteraction,
+	setupVSCodeMocks,
+} from "../__mocks__/testHelpers";
 import * as cli from "../cliManager";
 import { Logger } from "../logging/logger";
 import * as pgp from "../pgp";
 import { BinaryManager } from "./binaryManager";
-import {
-	ConfigurationProvider,
-	ProgressReporter,
-	UserInteraction,
-} from "./binaryManager.interfaces";
 import { PathResolver } from "./pathResolver";
 
 // Mock all external modules
+vi.mock("axios");
 vi.mock("fs/promises");
-vi.mock("fs", () => ({
-	createWriteStream: vi.fn(),
-}));
+vi.mock("fs");
 vi.mock("../cliManager");
 vi.mock("../pgp");
-vi.mock("axios");
 
-describe("Binary Manager", () => {
+describe("BinaryManager", () => {
 	let manager: BinaryManager;
 	let mockLogger: Logger;
 	let mockConfig: MockConfigurationProvider;
@@ -37,537 +33,569 @@ describe("Binary Manager", () => {
 	let mockApi: Api;
 	let mockAxios: AxiosInstance;
 
-	// Test constants
 	const TEST_VERSION = "1.2.3";
 	const TEST_URL = "https://test.coder.com";
-	const BINARY_PATH = "/path/binary/coder";
+	const BINARY_PATH = "/path/base/test/bin/coder";
 
 	beforeEach(() => {
-		vi.clearAllMocks();
+		vi.resetAllMocks();
 
-		// Initialize all mocks
+		// Core setup
 		mockLogger = createMockLogger();
-		mockConfig = new MockConfigurationProvider();
-		mockProgress = new MockProgressReporter();
-		mockUI = new MockUserInteraction();
 		mockApi = createMockApi(TEST_VERSION, TEST_URL);
 		mockAxios = mockApi.getAxiosInstance();
-
 		vi.mocked(globalAxios.create).mockReturnValue(mockAxios);
-
-		const config = {
-			get: (key: string) =>
-				key === "coder.binaryDestination"
-					? path.dirname(BINARY_PATH)
-					: undefined,
-		} as unknown as WorkspaceConfiguration;
-		const pathResolver = new PathResolver("/path/base", "/code/log", config);
-
+		({ mockConfig, mockProgress, mockUI } = setupVSCodeMocks());
 		manager = new BinaryManager(
 			mockLogger,
-			pathResolver,
-			mockConfig,
-			mockProgress,
-			mockUI,
+			new PathResolver("/path/base", "/code/log"),
 		);
 
-		// Setup default CLI mocks
-		setupDefaultCliMocks();
+		// Default mocks - most tests rely on these
+		vi.mocked(cli.name).mockReturnValue("coder");
+		vi.mocked(cli.stat).mockResolvedValue(undefined); // No existing binary by default
+		vi.mocked(cli.rmOld).mockResolvedValue([]);
+		vi.mocked(cli.eTag).mockResolvedValue("");
+		vi.mocked(cli.version).mockResolvedValue(TEST_VERSION);
+		vi.mocked(cli.goos).mockReturnValue("linux");
+		vi.mocked(cli.goarch).mockReturnValue("amd64");
+		vi.mocked(fse.mkdir).mockResolvedValue(undefined);
+		vi.mocked(fse.rename).mockResolvedValue(undefined);
+		vi.mocked(pgp.readPublicKeys).mockResolvedValue([]);
 	});
 
-	describe("Configuration", () => {
-		it("respects disabled downloads setting", async () => {
-			mockConfig.set("coder.enableDownloads", false);
+	afterEach(() => {
+		mockProgress?.setCancellation(false);
+		vi.clearAllTimers();
+	});
 
-			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
-				"Unable to download CLI because downloads are disabled",
-			);
-		});
-
-		it("validates server version", async () => {
-			mockApi.getBuildInfo = vi.fn().mockResolvedValue({
-				version: "invalid-version",
-			});
-
+	describe("Version Validation", () => {
+		it("rejects invalid server versions", async () => {
+			mockApi.getBuildInfo = vi.fn().mockResolvedValue({ version: "invalid" });
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Got invalid version from deployment",
 			);
 		});
 
-		it("uses existing binary when versions match", async () => {
-			setupExistingBinary(TEST_VERSION);
-
+		it("accepts valid semver versions", async () => {
+			withExistingBinary(TEST_VERSION);
 			const result = await manager.fetchBinary(mockApi, "test");
-
 			expect(result).toBe(BINARY_PATH);
+		});
+	});
+
+	describe("Existing Binary Handling", () => {
+		beforeEach(() => {
+			// Disable signature verification for these tests
+			mockConfig.set("coder.disableSignatureVerification", true);
+		});
+
+		it("reuses matching binary without downloading", async () => {
+			withExistingBinary(TEST_VERSION);
+			const result = await manager.fetchBinary(mockApi, "test");
+			expect(result).toBe(BINARY_PATH);
+			expect(mockAxios.get).not.toHaveBeenCalled();
 			expect(mockLogger.info).toHaveBeenCalledWith(
-				"Using existing binary since it matches the server version",
+				expect.stringContaining(
+					"Using existing binary since it matches the server version",
+				),
 			);
 		});
 
-		it("handles corrupted existing binary gracefully", async () => {
-			vi.mocked(cli.stat).mockResolvedValue({ size: 1024 } as Stats);
-			vi.mocked(cli.version).mockRejectedValueOnce(new Error("corrupted"));
-
-			setupSuccessfulDownload(mockApi);
-
+		it("downloads when versions differ", async () => {
+			withExistingBinary("1.0.0");
+			withSuccessfulDownload();
 			const result = await manager.fetchBinary(mockApi, "test");
+			expect(result).toBe(BINARY_PATH);
+			expect(mockAxios.get).toHaveBeenCalled();
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Downloaded binary version is",
+				TEST_VERSION,
+			);
+		});
 
+		it("keeps mismatched binary when downloads disabled", async () => {
+			mockConfig.set("coder.enableDownloads", false);
+			withExistingBinary("1.0.0");
+			const result = await manager.fetchBinary(mockApi, "test");
+			expect(result).toBe(BINARY_PATH);
+			expect(mockAxios.get).not.toHaveBeenCalled();
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				expect.stringContaining(
+					"Using existing binary even though it does not match the server version",
+				),
+			);
+		});
+
+		it("downloads fresh binary when corrupted", async () => {
+			withCorruptedBinary();
+			withSuccessfulDownload();
+			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
 			expect(mockLogger.warn).toHaveBeenCalledWith(
-				expect.stringContaining("Unable to get version of existing binary"),
+				expect.stringContaining("Unable to get version"),
+			);
+
+			// Should attempt to download now
+			expect(mockAxios.get).toHaveBeenCalled();
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Downloaded binary version is",
+				TEST_VERSION,
+			);
+		});
+
+		it("downloads when no binary exists", async () => {
+			withSuccessfulDownload();
+			const result = await manager.fetchBinary(mockApi, "test");
+			expect(result).toBe(BINARY_PATH);
+			expect(mockAxios.get).toHaveBeenCalled();
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Downloaded binary version is",
+				TEST_VERSION,
+			);
+		});
+
+		it("fails when downloads disabled and no binary", async () => {
+			mockConfig.set("coder.enableDownloads", false);
+			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
+				"Unable to download CLI because downloads are disabled",
 			);
 		});
 	});
 
-	describe("Download Flow", () => {
-		it("downloads binary successfully", async () => {
-			setupSuccessfulDownload(mockApi);
+	describe("Download Behavior", () => {
+		beforeEach(() => {
+			// Disable signature verification for download behavior tests
+			mockConfig.set("coder.disableSignatureVerification", true);
+		});
 
-			const result = await manager.fetchBinary(mockApi, "test");
-
-			expect(result).toBe(BINARY_PATH);
+		it("downloads with correct headers", async () => {
+			withSuccessfulDownload();
+			await manager.fetchBinary(mockApi, "test");
 			expect(mockAxios.get).toHaveBeenCalledWith(
 				"/bin/coder",
 				expect.objectContaining({
 					responseType: "stream",
 					headers: expect.objectContaining({
 						"Accept-Encoding": "gzip",
+						"If-None-Match": '""',
 					}),
 				}),
 			);
 		});
 
-		it("handles 304 Not Modified response", async () => {
-			setupExistingBinary("1.2.5"); // Different version
-			mockAxios.get = vi.fn().mockResolvedValue({
-				status: 304,
-				headers: {},
-				data: undefined,
-			});
-
-			const result = await manager.fetchBinary(mockApi, "test");
-
-			expect(result).toBe(BINARY_PATH);
-			expect(mockLogger.info).toHaveBeenCalledWith(
-				"Using existing binary since server returned a 304",
+		it("uses custom binary source", async () => {
+			mockConfig.set("coder.binarySource", "/custom/path");
+			withSuccessfulDownload();
+			await manager.fetchBinary(mockApi, "test");
+			expect(mockAxios.get).toHaveBeenCalledWith(
+				"/custom/path",
+				expect.any(Object),
 			);
+		});
+
+		it("uses ETag for existing binaries", async () => {
+			withExistingBinary("1.0.0");
+			vi.mocked(cli.eTag).mockResolvedValueOnce("abc123");
+			withSuccessfulDownload();
+			await manager.fetchBinary(mockApi, "test");
+			expect(mockAxios.get).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.objectContaining({
+					headers: expect.objectContaining({ "If-None-Match": '"abc123"' }),
+				}),
+			);
+		});
+
+		it("cleans up old files before download", async () => {
+			vi.mocked(cli.rmOld).mockResolvedValueOnce([
+				{ fileName: "coder.old-xyz", error: undefined },
+				{ fileName: "coder.temp-abc", error: undefined },
+			]);
+			withSuccessfulDownload();
+			await manager.fetchBinary(mockApi, "test");
+			expect(cli.rmOld).toHaveBeenCalledWith(BINARY_PATH);
+			expect(mockLogger.info).toHaveBeenCalledWith("Removed", "coder.old-xyz");
+			expect(mockLogger.info).toHaveBeenCalledWith("Removed", "coder.temp-abc");
+		});
+
+		it("backs up existing binary before replacement", async () => {
+			// Setup existing old binary
+			vi.mocked(cli.stat).mockReset();
+			vi.mocked(cli.stat)
+				.mockResolvedValueOnce({ size: 1024 } as fs.Stats) // Existing binary
+				.mockResolvedValueOnce({ size: 5242880 } as fs.Stats); // After download
+			vi.mocked(cli.version).mockReset();
+			vi.mocked(cli.version)
+				.mockResolvedValueOnce("1.0.0") // Old version
+				.mockResolvedValueOnce(TEST_VERSION); // New version after download
+
+			// Setup download
+			const stream = createMockStream();
+			const writeStream = createMockWriteStream();
+			withHttpResponse(200, { "content-length": "1024" }, stream);
+			vi.mocked(fs.createWriteStream).mockReturnValue(writeStream);
+
+			await manager.fetchBinary(mockApi, "test");
+			expect(fse.rename).toHaveBeenCalledWith(
+				BINARY_PATH,
+				expect.stringMatching(/\.old-[a-z0-9]+$/),
+			);
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Moving existing binary to",
+				expect.stringMatching(/\.old-[a-z0-9]+$/),
+			);
+		});
+	});
+
+	describe("HTTP Response Handling", () => {
+		beforeEach(() => {
+			// Disable signature verification for these tests
+			mockConfig.set("coder.disableSignatureVerification", true);
+		});
+
+		it("handles 304 Not Modified", async () => {
+			withExistingBinary("1.0.0");
+			withHttpResponse(304);
+			const result = await manager.fetchBinary(mockApi, "test");
+			expect(result).toBe(BINARY_PATH);
 		});
 
 		it("handles 404 platform not supported", async () => {
-			mockAxios.get = vi.fn().mockResolvedValue({
-				status: 404,
-				headers: {},
-				data: undefined,
-			});
+			withHttpResponse(404);
 			mockUI.setResponse("Open an Issue");
-
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Platform not supported",
 			);
-
-			expect(mockUI.openExternal).toHaveBeenCalledWith(
-				expect.stringContaining("github.com/coder/vscode-coder/issues/new"),
-			);
+			expect(vscode.env.openExternal).toHaveBeenCalled();
 		});
 
-		it("handles download failure", async () => {
-			mockAxios.get = vi.fn().mockResolvedValue({
-				status: 500,
-				headers: {},
-				data: undefined,
-			});
-
+		it("handles server errors", async () => {
+			withHttpResponse(500);
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Failed to download binary",
 			);
 		});
 	});
 
-	describe("Stream Error Handling", () => {
+	describe("Stream Handling", () => {
+		beforeEach(() => {
+			// Disable signature verification for these tests
+			mockConfig.set("coder.disableSignatureVerification", true);
+		});
+
 		it("handles write stream errors", async () => {
-			const writeError = new Error("disk full");
-			const { mockWriteStream, mockReadStream } = setupStreamMocks();
-
-			// Trigger write error after setup
-			mockWriteStream.on = vi.fn((event, callback) => {
-				if (event === "error") {
-					setTimeout(() => callback(writeError), 5);
-				}
-				return mockWriteStream;
-			});
-
-			mockAxios.get = vi.fn().mockResolvedValue({
-				status: 200,
-				headers: { "content-length": "1024" },
-				data: mockReadStream,
-			});
-
-			vi.mocked(fs.createWriteStream).mockReturnValue(mockWriteStream);
-
+			withStreamError("write", "disk full");
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Unable to download binary: disk full",
 			);
-
-			expect(mockReadStream.destroy).toHaveBeenCalled();
 		});
 
 		it("handles read stream errors", async () => {
-			const { mockWriteStream } = setupStreamMocks();
-			const mockReadStream = createMockReadStream((event, callback) => {
-				if (event === "error") {
-					setTimeout(() => callback(new Error("network timeout")), 5);
-				}
-			});
-
-			mockAxios.get = vi.fn().mockResolvedValue({
-				status: 200,
-				headers: { "content-length": "1024" },
-				data: mockReadStream,
-			});
-
-			vi.mocked(fs.createWriteStream).mockReturnValue(mockWriteStream);
-
+			withStreamError("read", "network timeout");
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Unable to download binary: network timeout",
 			);
+		});
 
-			expect(mockWriteStream.close).toHaveBeenCalled();
+		it("handles missing content-length", async () => {
+			withSuccessfulDownload({ headers: {} });
+			const result = await manager.fetchBinary(mockApi, "test");
+			expect(result).toBe(BINARY_PATH);
+			expect(mockLogger.warn).toHaveBeenCalledWith(
+				"Got invalid or missing content length",
+				undefined,
+			);
 		});
 	});
 
-	describe("Progress Monitor", () => {
-		it("rejects with 'Download aborted' when cancelled", async () => {
-			const { mockWriteStream, mockReadStream } = setupStreamMocks();
+	describe("Progress Tracking", () => {
+		beforeEach(() => {
+			// Disable signature verification for these tests
+			mockConfig.set("coder.disableSignatureVerification", true);
+		});
 
-			// Enable cancellation for this test
+		it("shows download progress", async () => {
+			withSuccessfulDownload();
+			await manager.fetchBinary(mockApi, "test");
+			expect(vscode.window.withProgress).toHaveBeenCalledWith(
+				expect.objectContaining({ title: `Downloading ${TEST_URL}` }),
+				expect.any(Function),
+			);
+		});
+
+		it("handles user cancellation", async () => {
 			mockProgress.setCancellation(true);
-
-			mockAxios.get = vi.fn().mockResolvedValue({
-				status: 200,
-				headers: { "content-length": "1024" },
-				data: mockReadStream,
-			});
-
-			vi.mocked(fs.createWriteStream).mockReturnValue(mockWriteStream);
-
+			withSuccessfulDownload();
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Download aborted",
 			);
-
-			expect(mockReadStream.destroy).toHaveBeenCalled();
-
-			// Reset cancellation state
-			mockProgress.setCancellation(false);
 		});
 	});
 
 	describe("Signature Verification", () => {
-		beforeEach(() => {
-			vi.mocked(pgp.readPublicKeys).mockResolvedValue([]);
-		});
-
-		it("verifies signature successfully", async () => {
-			vi.mocked(pgp.verifySignature).mockResolvedValue();
-			setupSuccessfulDownloadWithSignature(mockApi);
-
+		it("verifies valid signatures", async () => {
+			withSuccessfulDownloadAndSignature();
+			vi.mocked(pgp.verifySignature).mockResolvedValueOnce();
 			const result = await manager.fetchBinary(mockApi, "test");
-
 			expect(result).toBe(BINARY_PATH);
 			expect(pgp.verifySignature).toHaveBeenCalled();
 		});
 
-		it("tries alternative signature source on 404", async () => {
-			vi.mocked(pgp.verifySignature).mockResolvedValue();
-
-			const { mockWriteStream, mockReadStream } = setupStreamMocks();
-			mockAxios.get = vi
-				.fn()
-				.mockResolvedValueOnce(createStreamResponse(200, mockReadStream)) // Binary
-				.mockResolvedValueOnce({ status: 404, headers: {}, data: undefined }) // First sig
-				.mockResolvedValueOnce(createStreamResponse(200, mockReadStream)); // Alt sig
-
-			vi.mocked(fs.createWriteStream).mockReturnValue(mockWriteStream);
-			vi.mocked(cli.stat)
-				.mockResolvedValueOnce(undefined)
-				.mockResolvedValueOnce({ size: 1024 } as Stats);
-
+		it("tries fallback signature on 404", async () => {
+			withBinaryDownload();
+			withSignatureResponses([404, 200]);
+			vi.mocked(pgp.verifySignature).mockResolvedValueOnce();
 			mockUI.setResponse("Download signature");
-
 			const result = await manager.fetchBinary(mockApi, "test");
-
 			expect(result).toBe(BINARY_PATH);
-			expect(mockUI.showWarningMessage).toHaveBeenCalledWith(
-				"Signature not found",
-				expect.any(Object),
-				expect.any(String),
-				expect.any(String),
-			);
+			expect(mockAxios.get).toHaveBeenCalledTimes(3);
 		});
 
-		it("allows running without verification on user request", async () => {
-			setupSuccessfulDownload(mockApi);
-			mockAxios.get = vi
-				.fn()
-				.mockResolvedValueOnce(
-					createStreamResponse(200, createMockReadStream()),
-				)
-				.mockResolvedValueOnce({ status: 404, headers: {}, data: undefined });
-
-			mockUI.setResponse("Run without verification");
-
-			const result = await manager.fetchBinary(mockApi, "test");
-
-			expect(result).toBe(BINARY_PATH);
-			expect(pgp.verifySignature).not.toHaveBeenCalled();
-		});
-
-		it("handles invalid signature with user override", async () => {
-			const verificationError = new pgp.VerificationError(
-				pgp.VerificationErrorCode.Invalid,
-				"Invalid signature",
+		it("allows running despite invalid signature", async () => {
+			withSuccessfulDownloadAndSignature();
+			vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
+				createVerificationError("Invalid signature"),
 			);
-			verificationError.summary = () => "Signature does not match";
-			vi.mocked(pgp.verifySignature).mockRejectedValue(verificationError);
-
-			setupSuccessfulDownloadWithSignature(mockApi);
 			mockUI.setResponse("Run anyway");
-
 			const result = await manager.fetchBinary(mockApi, "test");
-
 			expect(result).toBe(BINARY_PATH);
-			expect(mockLogger.info).toHaveBeenCalledWith(
-				"Binary will be ran anyway at user request",
-			);
 		});
 
-		it("aborts on signature verification rejection", async () => {
-			const verificationError = new pgp.VerificationError(
-				pgp.VerificationErrorCode.Invalid,
-				"Invalid signature",
+		it("aborts on signature rejection", async () => {
+			withSuccessfulDownloadAndSignature();
+			vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
+				createVerificationError("Invalid signature"),
 			);
-			verificationError.summary = () => "Signature does not match";
-			vi.mocked(pgp.verifySignature).mockRejectedValue(verificationError);
-
-			setupSuccessfulDownloadWithSignature(mockApi);
-			mockUI.setResponse(undefined); // User rejects
-
+			mockUI.setResponse(undefined);
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Signature verification aborted",
 			);
 		});
 
-		it("skips verification when disabled in config", async () => {
+		it("skips verification when disabled", async () => {
 			mockConfig.set("coder.disableSignatureVerification", true);
-			vi.mocked(cli.version).mockResolvedValueOnce("1.5.9"); // No existing binary
-			setupSuccessfulDownload(mockApi);
-
+			withSuccessfulDownload();
 			const result = await manager.fetchBinary(mockApi, "test");
-
 			expect(result).toBe(BINARY_PATH);
 			expect(pgp.verifySignature).not.toHaveBeenCalled();
-			expect(mockLogger.info).toHaveBeenCalledWith(
-				"Skipping binary signature verification due to settings",
+		});
+
+		it("allows skipping verification on 404", async () => {
+			withBinaryDownload();
+			withHttpResponse(404);
+			mockUI.setResponse("Run without verification");
+			const result = await manager.fetchBinary(mockApi, "test");
+			expect(result).toBe(BINARY_PATH);
+			expect(pgp.verifySignature).not.toHaveBeenCalled();
+		});
+
+		it("handles signature download failure", async () => {
+			withBinaryDownload();
+			withHttpResponse(500);
+			mockUI.setResponse("Run without verification");
+			const result = await manager.fetchBinary(mockApi, "test");
+			expect(result).toBe(BINARY_PATH);
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				"Failed to download signature",
+				expect.any(Object),
+				"Download signature", // from the next source
+				"Run without verification",
+			);
+		});
+
+		it("aborts when user declines missing signature", async () => {
+			withBinaryDownload();
+			withHttpResponse(404);
+			mockUI.setResponse(undefined); // User cancels
+			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
+				"Signature download aborted",
 			);
 		});
 	});
-});
 
-// Helper Classes
-class MockConfigurationProvider implements ConfigurationProvider {
-	private config = new Map<string, unknown>();
+	describe("File System Operations", () => {
+		beforeEach(() => {
+			// Disable signature verification for these tests
+			mockConfig.set("coder.disableSignatureVerification", true);
+		});
 
-	set(key: string, value: unknown): void {
-		this.config.set(key, value);
-	}
+		it("creates binary directory", async () => {
+			withSuccessfulDownload();
+			await manager.fetchBinary(mockApi, "test");
+			expect(fse.mkdir).toHaveBeenCalledWith(expect.stringContaining("/bin"), {
+				recursive: true,
+			});
+		});
 
-	get<T>(key: string): T | undefined;
-	get<T>(key: string, defaultValue: T): T;
-	get<T>(key: string, defaultValue?: T): T | undefined {
-		const value = this.config.get(key);
-		return value !== undefined ? (value as T) : defaultValue;
-	}
-}
+		it("validates downloaded binary version", async () => {
+			withSuccessfulDownload();
+			await manager.fetchBinary(mockApi, "test");
+			expect(cli.version).toHaveBeenCalledWith(BINARY_PATH);
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Downloaded binary version is",
+				TEST_VERSION,
+			);
+		});
 
-class MockProgressReporter implements ProgressReporter {
-	private shouldCancel = false;
+		it("logs file sizes for debugging", async () => {
+			withSuccessfulDownload();
+			vi.mocked(cli.stat).mockResolvedValueOnce({ size: 5242880 } as fs.Stats);
+			await manager.fetchBinary(mockApi, "test");
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Downloaded binary size is",
+				"5.24 MB",
+			);
+		});
+	});
 
-	setCancellation(cancel: boolean): void {
-		this.shouldCancel = cancel;
-	}
-
-	async withProgress<T>(
-		_title: string,
-		operation: (
-			progress: {
-				report: (value: { message?: string; increment?: number }) => void;
-			},
-			cancellationToken: {
-				onCancellationRequested: (listener: () => void) => void;
-			},
-		) => Promise<T>,
-	): Promise<T> {
-		const mockToken = {
-			onCancellationRequested: vi.fn((callback: () => void) => {
-				if (this.shouldCancel) {
-					setTimeout(callback, 0);
-				}
-			}),
+	function createMockLogger(): Logger {
+		return {
+			trace: vi.fn(),
+			debug: vi.fn(),
+			info: vi.fn(),
+			warn: vi.fn(),
+			error: vi.fn(),
 		};
-		return operation({ report: vi.fn() }, mockToken);
-	}
-}
-
-class MockUserInteraction implements UserInteraction {
-	private responses = new Map<string, string | undefined>();
-
-	setResponse(response: string | undefined): void;
-	setResponse(message: string, response: string | undefined): void;
-	setResponse(
-		messageOrResponse: string | undefined,
-		response?: string | undefined,
-	): void {
-		if (response === undefined && messageOrResponse !== undefined) {
-			// Single argument - set default response
-			this.responses.set("default", messageOrResponse);
-		} else if (messageOrResponse !== undefined) {
-			// Two arguments - set specific response
-			this.responses.set(messageOrResponse, response);
-		}
 	}
 
-	showErrorMessage = vi.fn(
-		async (message: string): Promise<string | undefined> => {
-			return (
-				(await this.responses.get(message)) ?? this.responses.get("default")
-			);
-		},
-	);
+	function createMockApi(version: string, url: string): Api {
+		const axios = {
+			defaults: { baseURL: url },
+			get: vi.fn(),
+		} as unknown as AxiosInstance;
+		return {
+			getBuildInfo: vi.fn().mockResolvedValue({ version }),
+			getAxiosInstance: () => axios,
+		} as unknown as Api;
+	}
 
-	showWarningMessage = vi.fn(
-		async (message: string): Promise<string | undefined> => {
-			return (
-				(await this.responses.get(message)) ?? this.responses.get("default")
-			);
-		},
-	);
+	function withExistingBinary(version: string) {
+		vi.mocked(cli.stat).mockReset();
+		vi.mocked(cli.stat).mockResolvedValueOnce({ size: 1024 } as fs.Stats);
+		vi.mocked(cli.version).mockReset();
+		vi.mocked(cli.version).mockResolvedValueOnce(version);
+	}
 
-	openExternal = vi.fn();
-}
+	function withCorruptedBinary() {
+		vi.mocked(cli.stat).mockReset();
+		vi.mocked(cli.stat).mockResolvedValueOnce({ size: 1024 } as fs.Stats); // Existing binary exists
+		vi.mocked(cli.version).mockReset();
+		vi.mocked(cli.version)
+			.mockRejectedValueOnce(new Error("corrupted")) // Existing binary is corrupted
+			.mockResolvedValueOnce(TEST_VERSION); // New download works
+	}
 
-// Helper Functions
-function createMockLogger(): Logger {
-	return {
-		trace: vi.fn(),
-		debug: vi.fn(),
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-	};
-}
+	function withSuccessfulDownload(opts?: {
+		headers?: Record<string, unknown>;
+	}) {
+		const stream = createMockStream();
+		const writeStream = createMockWriteStream();
+		withHttpResponse(
+			200,
+			opts?.headers ?? { "content-length": "1024" },
+			stream,
+		);
+		vi.mocked(fs.createWriteStream).mockReturnValue(writeStream);
+		// Ensure no existing binary initially, then file exists after download
+		vi.mocked(cli.stat)
+			.mockResolvedValueOnce(undefined) // No existing binary
+			.mockResolvedValueOnce({ size: 5242880 } as fs.Stats); // After download
+		// Version check after download
+		vi.mocked(cli.version).mockResolvedValueOnce(TEST_VERSION);
+	}
 
-function createMockApi(version: string, url: string): Api {
-	const mockAxios = {
-		defaults: { baseURL: url },
-		get: vi.fn(),
-	} as unknown as AxiosInstance;
+	function withBinaryDownload() {
+		const stream = createMockStream();
+		const writeStream = createMockWriteStream();
+		withHttpResponse(200, { "content-length": "1024" }, stream);
+		vi.mocked(fs.createWriteStream).mockReturnValue(writeStream);
+		// Override to ensure no existing binary initially
+		vi.mocked(cli.stat).mockReset();
+		vi.mocked(cli.stat)
+			.mockResolvedValueOnce(undefined) // No existing binary
+			.mockResolvedValueOnce({ size: 5242880 } as fs.Stats); // After download
+		vi.mocked(cli.version).mockReset();
+		vi.mocked(cli.version).mockResolvedValueOnce(TEST_VERSION);
+	}
 
-	return {
-		getBuildInfo: vi.fn().mockResolvedValue({
-			version,
-			external_url: url,
-			dashboard_url: url,
-			telemetry: false,
-			workspace_proxy: false,
-			upgrade_message: "",
-			deployment_id: "test",
-			agent_api_version: "1.0",
-			provisioner_api_version: "1.0",
-		} as BuildInfoResponse),
-		getAxiosInstance: vi.fn().mockReturnValue(mockAxios),
-	} as unknown as Api;
-}
+	function withSuccessfulDownloadAndSignature() {
+		withBinaryDownload();
+		withHttpResponse(200, { "content-length": "256" }, createMockStream());
+	}
 
-function setupDefaultCliMocks(): void {
-	vi.mocked(cli.name).mockReturnValue("coder");
-	vi.mocked(cli.stat).mockResolvedValue(undefined);
-	vi.mocked(cli.rmOld).mockResolvedValue([]);
-	vi.mocked(cli.eTag).mockResolvedValue("");
-	vi.mocked(cli.version).mockResolvedValue("1.2.3");
-	vi.mocked(cli.goos).mockReturnValue("linux");
-	vi.mocked(cli.goarch).mockReturnValue("amd64");
-	vi.mocked(fse.mkdir).mockResolvedValue(undefined);
-	vi.mocked(fse.rename).mockResolvedValue(undefined);
-}
-
-function setupExistingBinary(version: string): void {
-	vi.mocked(cli.stat).mockResolvedValue({ size: 1024 } as Stats);
-	vi.mocked(cli.version).mockResolvedValue(version);
-}
-
-function setupStreamMocks() {
-	const mockWriteStream = {
-		on: vi.fn().mockReturnThis(),
-		write: vi.fn((_buffer: Buffer, callback?: () => void) => {
-			callback?.();
-		}),
-		close: vi.fn(),
-	} as unknown as WriteStream;
-
-	const mockReadStream = createMockReadStream();
-
-	return { mockWriteStream, mockReadStream };
-}
-
-function createMockReadStream(
-	customHandler?: (event: string, callback: (data?: unknown) => void) => void,
-): IncomingMessage {
-	return {
-		on: vi.fn((event: string, callback: (data?: unknown) => void) => {
-			if (customHandler) {
-				customHandler(event, callback);
+	function withSignatureResponses(statuses: number[]) {
+		statuses.forEach((status) => {
+			if (status === 200) {
+				withHttpResponse(200, { "content-length": "256" }, createMockStream());
 			} else {
+				withHttpResponse(status);
+			}
+		});
+	}
+
+	function withHttpResponse(
+		status: number,
+		headers: Record<string, unknown> = {},
+		data?: unknown,
+	) {
+		vi.mocked(mockAxios.get).mockResolvedValueOnce({
+			status,
+			headers,
+			data,
+		});
+	}
+
+	function withStreamError(type: "read" | "write", message: string) {
+		const writeStream = createMockWriteStream();
+		const readStream = createMockStream();
+
+		if (type === "write") {
+			writeStream.on = vi.fn((event, callback) => {
+				if (event === "error") {
+					setTimeout(() => callback(new Error(message)), 5);
+				}
+				return writeStream;
+			});
+		} else {
+			readStream.on = vi.fn((event, callback) => {
+				if (event === "error") {
+					setTimeout(() => callback(new Error(message)), 5);
+				}
+				return readStream;
+			});
+		}
+
+		withHttpResponse(200, { "content-length": "1024" }, readStream);
+		vi.mocked(fs.createWriteStream).mockReturnValue(writeStream);
+	}
+
+	function createMockStream(): IncomingMessage {
+		return {
+			on: vi.fn((event: string, callback: (data: unknown) => void) => {
 				if (event === "data") {
-					setTimeout(() => callback(Buffer.from("mock-data")), 0);
+					setTimeout(() => callback(Buffer.from("mock")), 0);
 				} else if (event === "close") {
 					setTimeout(callback, 10);
 				}
-			}
-		}),
-		destroy: vi.fn(),
-	} as unknown as IncomingMessage;
-}
+			}),
+			destroy: vi.fn(),
+		} as unknown as IncomingMessage;
+	}
 
-function createStreamResponse(status: number, stream: IncomingMessage) {
-	return {
-		status,
-		headers: { "content-length": "1024" },
-		data: stream,
-	};
-}
+	function createMockWriteStream(): fs.WriteStream {
+		return {
+			on: vi.fn().mockReturnThis(),
+			write: vi.fn((_: Buffer, cb?: () => void) => cb?.()),
+			close: vi.fn(),
+		} as unknown as fs.WriteStream;
+	}
 
-function setupSuccessfulDownload(mockApi: Api): void {
-	const { mockWriteStream, mockReadStream } = setupStreamMocks();
-
-	vi.mocked(fs.createWriteStream).mockReturnValue(mockWriteStream);
-	const axios = mockApi.getAxiosInstance();
-	axios.get = vi
-		.fn()
-		.mockResolvedValue(createStreamResponse(200, mockReadStream));
-}
-
-function setupSuccessfulDownloadWithSignature(mockApi: Api): void {
-	const { mockWriteStream, mockReadStream } = setupStreamMocks();
-	const signatureStream = createMockReadStream();
-
-	vi.mocked(fs.createWriteStream).mockReturnValue(mockWriteStream);
-	vi.mocked(cli.stat)
-		.mockResolvedValueOnce(undefined)
-		.mockResolvedValueOnce({ size: 1024 } as Stats);
-
-	const axios = mockApi.getAxiosInstance() as AxiosInstance;
-	axios.get = vi
-		.fn()
-		.mockResolvedValueOnce(createStreamResponse(200, mockReadStream)) // Binary
-		.mockResolvedValueOnce(createStreamResponse(200, signatureStream)); // Signature
-}
+	function createVerificationError(msg: string): pgp.VerificationError {
+		const error = new pgp.VerificationError(
+			pgp.VerificationErrorCode.Invalid,
+			msg,
+		);
+		return error;
+	}
+});

@@ -8,11 +8,6 @@ import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { BinaryManager } from "./core/binaryManager";
-import {
-	VSCodeConfigurationProvider,
-	VSCodeProgressReporter,
-	VSCodeUserInteraction,
-} from "./core/binaryManager.adapters";
 import { CliConfigManager } from "./core/cliConfig";
 import { MementoManager } from "./core/mementoManager";
 import { PathResolver } from "./core/pathResolver";
@@ -20,7 +15,7 @@ import { SecretsManager } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
 import { toSafeHost } from "./util";
-import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider";
+import { WorkspaceProvider, WorkspaceQuery } from "./workspacesProvider";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// The Remote SSH extension's proposed APIs are used to override the SSH host
@@ -60,7 +55,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const pathResolver = new PathResolver(
 		ctx.globalStorageUri.fsPath,
 		ctx.logUri.fsPath,
-		vscode.workspace.getConfiguration(),
 	);
 	const cliConfigManager = new CliConfigManager(pathResolver);
 	const mementoManager = new MementoManager(ctx.globalState);
@@ -261,13 +255,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		},
 	});
 
-	const binaryManager = new BinaryManager(
-		output,
-		pathResolver,
-		new VSCodeConfigurationProvider(),
-		new VSCodeProgressReporter(),
-		new VSCodeUserInteraction(),
-	);
+	const binaryManager = new BinaryManager(output, pathResolver);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.

@@ -1,0 +1,223 @@
+import { vi } from "vitest";
+import * as vscode from "vscode";
+
+/**
+ * Mock configuration provider that integrates with the vscode workspace configuration mock.
+ * Use this to set configuration values that will be returned by vscode.workspace.getConfiguration().
+ */
+export class MockConfigurationProvider {
+	private config = new Map<string, unknown>();
+
+	/**
+	 * Set a configuration value that will be returned by vscode.workspace.getConfiguration().get()
+	 */
+	set(key: string, value: unknown): void {
+		this.config.set(key, value);
+		this.setupVSCodeMock();
+	}
+
+	/**
+	 * Get a configuration value (for testing purposes)
+	 */
+	get<T>(key: string): T | undefined;
+	get<T>(key: string, defaultValue: T): T;
+	get<T>(key: string, defaultValue?: T): T | undefined {
+		const value = this.config.get(key);
+		return value !== undefined ? (value as T) : defaultValue;
+	}
+
+	/**
+	 * Clear all configuration values
+	 */
+	clear(): void {
+		this.config.clear();
+		this.setupVSCodeMock();
+	}
+
+	/**
+	 * Setup the vscode.workspace.getConfiguration mock to return our values
+	 */
+	setupVSCodeMock(): void {
+		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+			get: vi.fn((key: string, defaultValue?: unknown) => {
+				const value = this.config.get(key);
+				return value !== undefined ? value : defaultValue;
+			}),
+			has: vi.fn((key: string) => this.config.has(key)),
+			inspect: vi.fn(),
+			update: vi.fn(),
+		} as unknown as vscode.WorkspaceConfiguration);
+	}
+}
+
+/**
+ * Mock progress reporter that integrates with vscode.window.withProgress.
+ * Use this to control progress reporting behavior and cancellation in tests.
+ */
+export class MockProgressReporter {
+	private shouldCancel = false;
+	private progressReports: Array<{ message?: string; increment?: number }> = [];
+
+	/**
+	 * Set whether the progress should be cancelled
+	 */
+	setCancellation(cancel: boolean): void {
+		this.shouldCancel = cancel;
+	}
+
+	/**
+	 * Get all progress reports that were made
+	 */
+	getProgressReports(): Array<{ message?: string; increment?: number }> {
+		return [...this.progressReports];
+	}
+
+	/**
+	 * Clear all progress reports
+	 */
+	clearProgressReports(): void {
+		this.progressReports = [];
+	}
+
+	/**
+	 * Setup the vscode.window.withProgress mock
+	 */
+	setupVSCodeMock(): void {
+		vi.mocked(vscode.window.withProgress).mockImplementation(
+			async <T>(
+				_options: vscode.ProgressOptions,
+				task: (
+					progress: vscode.Progress<{ message?: string; increment?: number }>,
+					token: vscode.CancellationToken,
+				) => Thenable<T>,
+			): Promise<T> => {
+				const progress = {
+					report: vi.fn((value: { message?: string; increment?: number }) => {
+						this.progressReports.push(value);
+					}),
+				};
+
+				const cancellationToken: vscode.CancellationToken = {
+					isCancellationRequested: this.shouldCancel,
+					onCancellationRequested: vi.fn((listener: (x: unknown) => void) => {
+						if (this.shouldCancel) {
+							setTimeout(listener, 0);
+						}
+						return { dispose: vi.fn() };
+					}),
+				};
+
+				return task(progress, cancellationToken);
+			},
+		);
+	}
+}
+
+/**
+ * Mock user interaction that integrates with vscode.window message dialogs.
+ * Use this to control user responses in tests.
+ */
+export class MockUserInteraction {
+	private responses = new Map<string, string | undefined>();
+	private externalUrls: string[] = [];
+
+	/**
+	 * Set a response for a specific message or set a default response
+	 */
+	setResponse(response: string | undefined): void;
+	setResponse(message: string, response: string | undefined): void;
+	setResponse(
+		messageOrResponse: string | undefined,
+		response?: string | undefined,
+	): void {
+		if (response === undefined && messageOrResponse !== undefined) {
+			// Single argument - set default response
+			this.responses.set("default", messageOrResponse);
+		} else if (messageOrResponse !== undefined) {
+			// Two arguments - set specific response
+			this.responses.set(messageOrResponse, response);
+		}
+	}
+
+	/**
+	 * Get all URLs that were opened externally
+	 */
+	getExternalUrls(): string[] {
+		return [...this.externalUrls];
+	}
+
+	/**
+	 * Clear all external URLs
+	 */
+	clearExternalUrls(): void {
+		this.externalUrls = [];
+	}
+
+	/**
+	 * Clear all responses
+	 */
+	clearResponses(): void {
+		this.responses.clear();
+	}
+
+	/**
+	 * Setup the vscode.window message dialog mocks
+	 */
+	setupVSCodeMock(): void {
+		const getResponse = (message: string): string | undefined => {
+			return this.responses.get(message) ?? this.responses.get("default");
+		};
+
+		vi.mocked(vscode.window.showErrorMessage).mockImplementation(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(message: string): Thenable<any> => {
+				const response = getResponse(message);
+				return Promise.resolve(response);
+			},
+		);
+
+		vi.mocked(vscode.window.showWarningMessage).mockImplementation(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(message: string): Thenable<any> => {
+				const response = getResponse(message);
+				return Promise.resolve(response);
+			},
+		);
+
+		vi.mocked(vscode.window.showInformationMessage).mockImplementation(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(message: string): Thenable<any> => {
+				const response = getResponse(message);
+				return Promise.resolve(response);
+			},
+		);
+
+		vi.mocked(vscode.env.openExternal).mockImplementation(
+			(target: vscode.Uri): Promise<boolean> => {
+				this.externalUrls.push(target.toString());
+				return Promise.resolve(true);
+			},
+		);
+	}
+}
+
+/**
+ * Helper function to setup all VS Code mocks for testing.
+ * Call this in your test setup to initialize all the mock integrations.
+ */
+export function setupVSCodeMocks(): {
+	mockConfig: MockConfigurationProvider;
+	mockProgress: MockProgressReporter;
+	mockUI: MockUserInteraction;
+} {
+	const mockConfig = new MockConfigurationProvider();
+	const mockProgress = new MockProgressReporter();
+	const mockUI = new MockUserInteraction();
+
+	// Setup all the VS Code API mocks
+	mockConfig.setupVSCodeMock();
+	mockProgress.setupVSCodeMock();
+	mockUI.setupVSCodeMock();
+
+	return { mockConfig, mockProgress, mockUI };
+}

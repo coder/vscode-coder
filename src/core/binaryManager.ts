@@ -10,24 +10,17 @@ import path from "path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 
+import * as vscode from "vscode";
 import { errToStr } from "../api/api-helper";
 import * as cli from "../cliManager";
 import { Logger } from "../logging/logger";
 import * as pgp from "../pgp";
-import {
-	ConfigurationProvider,
-	ProgressReporter,
-	UserInteraction,
-} from "./binaryManager.interfaces";
 import { PathResolver } from "./pathResolver";
 
 export class BinaryManager {
 	constructor(
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
-		private readonly config: ConfigurationProvider,
-		private readonly progressReporter: ProgressReporter,
-		private readonly userInteraction: UserInteraction,
 	) {}
 
 	/**
@@ -44,7 +37,9 @@ export class BinaryManager {
 	public async fetchBinary(restClient: Api, label: string): Promise<string> {
 		// Settings can be undefined when set to their defaults (true in this case),
 		// so explicitly check against false.
-		const enableDownloads = this.config.get("coder.enableDownloads") !== false;
+		const enableDownloads =
+			vscode.workspace.getConfiguration().get("coder.enableDownloads") !==
+			false;
 		this.output.info("Downloads are", enableDownloads ? "enabled" : "disabled");
 
 		// Get the build info to compare with the existing binary version, if any,
@@ -113,7 +108,9 @@ export class BinaryManager {
 
 		// Figure out where to get the binary.
 		const binName = cli.name();
-		const configSource = this.config.get("coder.binarySource");
+		const configSource = vscode.workspace
+			.getConfiguration()
+			.get("coder.binarySource");
 		const binSource =
 			configSource && String(configSource).trim().length > 0
 				? String(configSource)
@@ -141,7 +138,11 @@ export class BinaryManager {
 
 		switch (status) {
 			case 200: {
-				if (this.config.get("coder.disableSignatureVerification")) {
+				if (
+					vscode.workspace
+						.getConfiguration()
+						.get("coder.disableSignatureVerification")
+				) {
 					this.output.info(
 						"Skipping binary signature verification due to settings",
 					);
@@ -195,7 +196,7 @@ export class BinaryManager {
 				return binPath;
 			}
 			case 404: {
-				this.userInteraction
+				vscode.window
 					.showErrorMessage(
 						"Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
 						{},
@@ -211,13 +212,15 @@ export class BinaryManager {
 							title: `Support the \`${os}-${arch}\` platform`,
 							body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
 						});
-						const url = `https://github.com/coder/vscode-coder/issues/new?${params.toString()}`;
-						this.userInteraction.openExternal(url);
+						const url = vscode.Uri.parse(
+							`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
+						);
+						vscode.env.openExternal(url);
 					});
 				throw new Error("Platform not supported");
 			}
 			default: {
-				this.userInteraction
+				vscode.window
 					.showErrorMessage(
 						"Failed to download binary. Please open an issue.",
 						{},
@@ -231,8 +234,10 @@ export class BinaryManager {
 							title: `Failed to download binary on \`${cli.goos()}-${cli.goarch()}\``,
 							body: `Received status code \`${status}\` when downloading the binary.`,
 						});
-						const url = `https://github.com/coder/vscode-coder/issues/new?${params.toString()}`;
-						this.userInteraction.openExternal(url);
+						const url = vscode.Uri.parse(
+							`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
+						);
+						vscode.env.openExternal(url);
 					});
 				throw new Error("Failed to download binary");
 			}
@@ -278,8 +283,11 @@ export class BinaryManager {
 			// Track how many bytes were written.
 			let written = 0;
 
-			const completed = await this.progressReporter.withProgress<boolean>(
-				`Downloading ${baseUrl}`,
+			const completed = await vscode.window.withProgress<boolean>(
+				{
+					title: `Downloading ${baseUrl}`,
+					location: vscode.ProgressLocation.Notification,
+				},
 				async (progress, token) => {
 					const readStream = resp.data as IncomingMessage;
 					let cancelled = false;
@@ -393,7 +401,7 @@ export class BinaryManager {
 				options.push("Download signature");
 			}
 			options.push("Run without verification");
-			const action = await this.userInteraction.showWarningMessage(
+			const action = await vscode.window.showWarningMessage(
 				status === 404 ? "Signature not found" : "Failed to download signature",
 				{
 					useCustom: true,
@@ -447,7 +455,7 @@ export class BinaryManager {
 					this.output,
 				);
 			} catch (error) {
-				const action = await this.userInteraction.showWarningMessage(
+				const action = await vscode.window.showWarningMessage(
 					// VerificationError should be the only thing that throws, but
 					// unfortunately caught errors are always type unknown.
 					error instanceof pgp.VerificationError
