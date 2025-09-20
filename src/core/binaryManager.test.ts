@@ -9,7 +9,6 @@ import {
 	MockConfigurationProvider,
 	MockProgressReporter,
 	MockUserInteraction,
-	setupVSCodeMocks,
 } from "../__mocks__/testHelpers";
 import * as cli from "../cliManager";
 import { Logger } from "../logging/logger";
@@ -45,7 +44,9 @@ describe("BinaryManager", () => {
 		mockApi = createMockApi(TEST_VERSION, TEST_URL);
 		mockAxios = mockApi.getAxiosInstance();
 		vi.mocked(globalAxios.create).mockReturnValue(mockAxios);
-		({ mockConfig, mockProgress, mockUI } = setupVSCodeMocks());
+		mockConfig = new MockConfigurationProvider();
+		mockProgress = new MockProgressReporter();
+		mockUI = new MockUserInteraction();
 		manager = new BinaryManager(
 			mockLogger,
 			new PathResolver("/path/base", "/code/log"),

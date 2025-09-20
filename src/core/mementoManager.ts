@@ -30,7 +30,7 @@ export class MementoManager {
 
 	/**
 	 * Get the most recently accessed URLs (oldest to newest) with the provided
-	 * values appended.  Duplicates will be removed.
+	 * values appended. Duplicates will be removed.
 	 */
 	public withUrlHistory(...append: (string | undefined)[]): string[] {
 		const val = this.memento.get("urlHistory");

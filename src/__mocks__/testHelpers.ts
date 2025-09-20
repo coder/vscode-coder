@@ -8,12 +8,15 @@ import * as vscode from "vscode";
 export class MockConfigurationProvider {
 	private config = new Map<string, unknown>();
 
+	constructor() {
+		this.setupVSCodeMock();
+	}
+
 	/**
 	 * Set a configuration value that will be returned by vscode.workspace.getConfiguration().get()
 	 */
 	set(key: string, value: unknown): void {
 		this.config.set(key, value);
-		this.setupVSCodeMock();
 	}
 
 	/**
@@ -31,13 +34,12 @@ export class MockConfigurationProvider {
 	 */
 	clear(): void {
 		this.config.clear();
-		this.setupVSCodeMock();
 	}
 
 	/**
 	 * Setup the vscode.workspace.getConfiguration mock to return our values
 	 */
-	setupVSCodeMock(): void {
+	private setupVSCodeMock(): void {
 		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
 			get: vi.fn((key: string, defaultValue?: unknown) => {
 				const value = this.config.get(key);
@@ -57,6 +59,10 @@ export class MockConfigurationProvider {
 export class MockProgressReporter {
 	private shouldCancel = false;
 	private progressReports: Array<{ message?: string; increment?: number }> = [];
+
+	constructor() {
+		this.setupVSCodeMock();
+	}
 
 	/**
 	 * Set whether the progress should be cancelled
@@ -82,7 +88,7 @@ export class MockProgressReporter {
 	/**
 	 * Setup the vscode.window.withProgress mock
 	 */
-	setupVSCodeMock(): void {
+	private setupVSCodeMock(): void {
 		vi.mocked(vscode.window.withProgress).mockImplementation(
 			async <T>(
 				_options: vscode.ProgressOptions,
@@ -120,6 +126,10 @@ export class MockProgressReporter {
 export class MockUserInteraction {
 	private responses = new Map<string, string | undefined>();
 	private externalUrls: string[] = [];
+
+	constructor() {
+		this.setupVSCodeMock();
+	}
 
 	/**
 	 * Set a response for a specific message or set a default response
@@ -163,7 +173,7 @@ export class MockUserInteraction {
 	/**
 	 * Setup the vscode.window message dialog mocks
 	 */
-	setupVSCodeMock(): void {
+	private setupVSCodeMock(): void {
 		const getResponse = (message: string): string | undefined => {
 			return this.responses.get(message) ?? this.responses.get("default");
 		};
@@ -199,25 +209,4 @@ export class MockUserInteraction {
 			},
 		);
 	}
-}
-
-/**
- * Helper function to setup all VS Code mocks for testing.
- * Call this in your test setup to initialize all the mock integrations.
- */
-export function setupVSCodeMocks(): {
-	mockConfig: MockConfigurationProvider;
-	mockProgress: MockProgressReporter;
-	mockUI: MockUserInteraction;
-} {
-	const mockConfig = new MockConfigurationProvider();
-	const mockProgress = new MockProgressReporter();
-	const mockUI = new MockUserInteraction();
-
-	// Setup all the VS Code API mocks
-	mockConfig.setupVSCodeMock();
-	mockProgress.setupVSCodeMock();
-	mockUI.setupVSCodeMock();
-
-	return { mockConfig, mockProgress, mockUI };
 }
