@@ -11,14 +11,17 @@
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
+		"baseUrl": ".",
 		"paths": {
 			// axios contains both an index.d.ts and index.d.cts which apparently have
 			// conflicting types.  For some reason TypeScript is reading both and
 			// throwing errors about AxiosInstance not being compatible with
 			// AxiosInstance.  This ensures we use only index.d.ts.
-			"axios": ["./node_modules/axios/index.d.ts"]
+			"axios": ["./node_modules/axios/index.d.ts"],
+			"@/*": ["src/*"],
+			"@tests/*": ["test/*"]
 		}
 	},
 	"exclude": ["node_modules"],
-	"include": ["src/**/*"]
+	"include": ["src/**/*", "test/**/*"]
 }

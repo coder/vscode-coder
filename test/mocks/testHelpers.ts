@@ -181,28 +181,20 @@ export class MockUserInteraction {
 			return this.responses.get(message);
 		};
 
-		vi.mocked(vscode.window.showErrorMessage).mockImplementation(
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(message: string): Thenable<any> => {
-				const response = getResponse(message);
-				return Promise.resolve(response);
-			},
-		);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const handleMessage = (message: string): Thenable<any> => {
+			const response = getResponse(message);
+			return Promise.resolve(response);
+		};
+
+		vi.mocked(vscode.window.showErrorMessage).mockImplementation(handleMessage);
 
 		vi.mocked(vscode.window.showWarningMessage).mockImplementation(
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(message: string): Thenable<any> => {
-				const response = getResponse(message);
-				return Promise.resolve(response);
-			},
+			handleMessage,
 		);
 
 		vi.mocked(vscode.window.showInformationMessage).mockImplementation(
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(message: string): Thenable<any> => {
-				const response = getResponse(message);
-				return Promise.resolve(response);
-			},
+			handleMessage,
 		);
 
 		vi.mocked(vscode.env.openExternal).mockImplementation(

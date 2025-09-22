@@ -20,7 +20,7 @@ export class SecretsManager {
 	public async getSessionToken(): Promise<string | undefined> {
 		try {
 			return await this.secrets.get("sessionToken");
-		} catch (ex) {
+		} catch {
 			// The VS Code session store has become corrupt before, and
 			// will fail to get the session token...
 			return undefined;

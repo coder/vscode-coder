@@ -1,10 +1,10 @@
+import { CertificateError, X509_ERR, X509_ERR_CODE } from "@/error";
+import { Logger } from "@/logging/logger";
 import axios from "axios";
 import * as fs from "fs/promises";
 import https from "https";
 import * as path from "path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { CertificateError, X509_ERR, X509_ERR_CODE } from "./error";
-import { Logger } from "./logging/logger";
 
 describe("Certificate errors", () => {
 	// Before each test we make a request to sanity check that we really get the

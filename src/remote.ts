@@ -281,7 +281,7 @@ export class Remote {
 				// This is useful for debugging with a custom bin!
 				binaryPath = path.join(os.tmpdir(), "coder");
 				await fs.stat(binaryPath);
-			} catch (ex) {
+			} catch {
 				binaryPath = await this.cliManager.fetchBinary(
 					workspaceClient,
 					parts.label,
@@ -442,7 +442,7 @@ export class Remote {
 				this.pathResolver.getUserSettingsPath(),
 				"utf8",
 			);
-		} catch (ex) {
+		} catch {
 			// Ignore! It's probably because the file doesn't exist.
 		}
 
@@ -932,7 +932,7 @@ export class Remote {
 				.then((parsed) => {
 					try {
 						updateStatus(parsed);
-					} catch (ex) {
+					} catch {
 						// Ignore
 					}
 				})

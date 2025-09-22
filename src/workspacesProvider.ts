@@ -71,7 +71,7 @@ export class WorkspaceProvider
 		let hadError = false;
 		try {
 			this.workspaces = await this.fetch();
-		} catch (error) {
+		} catch {
 			hadError = true;
 			this.workspaces = [];
 		}

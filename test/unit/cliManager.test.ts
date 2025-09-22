@@ -1,3 +1,13 @@
+import * as cliUtils from "@/cliUtils";
+import { CliManager } from "@/core/cliManager";
+import { PathResolver } from "@/core/pathResolver";
+import { Logger } from "@/logging/logger";
+import * as pgp from "@/pgp";
+import {
+	MockConfigurationProvider,
+	MockProgressReporter,
+	MockUserInteraction,
+} from "@tests/mocks/testHelpers";
 import globalAxios, { AxiosInstance } from "axios";
 import { Api } from "coder/site/src/api/api";
 import EventEmitter from "events";
@@ -8,16 +18,9 @@ import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
-import * as cli from "@/cliManager";
-import { CliManager } from "@/core/cliManager";
-import { PathResolver } from "@/core/pathResolver";
-import { Logger } from "@/logging/logger";
-import * as pgp from "@/pgp";
 
 vi.mock("os");
 vi.mock("axios");
-vi.mock("../pgp");
-vi.mock("@/cliManager");
 vi.mock("@/pgp");
 
 vi.mock("fs", async () => {
@@ -37,9 +40,9 @@ vi.mock("fs/promises", async () => {
 });
 
 // Only mock the platform detection functions from CLI manager
-vi.mock("../cliUtils", async () => {
+vi.mock("@/cliUtils", async () => {
 	const actual =
-		await vi.importActual<typeof import("../cliUtils")>("../cliUtils");
+		await vi.importActual<typeof import("@/cliUtils")>("@/cliUtils");
 	return {
 		...actual,
 		// No need to test script execution here
@@ -649,7 +652,7 @@ describe("CliManager", () => {
 		});
 
 		// Mock version to return the specified version
-		vi.mocked(cli.version).mockResolvedValueOnce(version);
+		vi.mocked(cliUtils.version).mockResolvedValueOnce(version);
 	}
 
 	function withCorruptedBinary() {
@@ -659,7 +662,7 @@ describe("CliManager", () => {
 		});
 
 		// Mock version to fail
-		vi.mocked(cli.version).mockRejectedValueOnce(new Error("corrupted"));
+		vi.mocked(cliUtils.version).mockRejectedValueOnce(new Error("corrupted"));
 	}
 
 	function withSuccessfulDownload(opts?: {
@@ -673,7 +676,7 @@ describe("CliManager", () => {
 		);
 
 		// Mock version to return TEST_VERSION after download
-		vi.mocked(cli.version).mockResolvedValue(TEST_VERSION);
+		vi.mocked(cliUtils.version).mockResolvedValue(TEST_VERSION);
 	}
 
 	function withSignatureResponses(statuses: number[]): void {
