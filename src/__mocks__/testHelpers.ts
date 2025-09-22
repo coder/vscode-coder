@@ -40,15 +40,22 @@ export class MockConfigurationProvider {
 	 * Setup the vscode.workspace.getConfiguration mock to return our values
 	 */
 	private setupVSCodeMock(): void {
-		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
-			get: vi.fn((key: string, defaultValue?: unknown) => {
-				const value = this.config.get(key);
-				return value !== undefined ? value : defaultValue;
-			}),
-			has: vi.fn((key: string) => this.config.has(key)),
-			inspect: vi.fn(),
-			update: vi.fn(),
-		} as unknown as vscode.WorkspaceConfiguration);
+		vi.mocked(vscode.workspace.getConfiguration).mockImplementation(
+			(section?: string) =>
+				({
+					get: vi.fn((key: string, defaultValue?: unknown) => {
+						const fullKey = section ? `${section}.${key}` : key;
+						const value = this.config.get(fullKey);
+						return value !== undefined ? value : defaultValue;
+					}),
+					has: vi.fn((key: string) => {
+						const fullKey = section ? `${section}.${key}` : key;
+						return this.config.has(fullKey);
+					}),
+					inspect: vi.fn(),
+					update: vi.fn(),
+				}) as unknown as vscode.WorkspaceConfiguration,
+		);
 	}
 }
 

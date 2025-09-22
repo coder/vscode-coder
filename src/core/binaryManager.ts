@@ -35,11 +35,10 @@ export class BinaryManager {
 	 * downloads being disabled.
 	 */
 	public async fetchBinary(restClient: Api, label: string): Promise<string> {
+		const cfg = vscode.workspace.getConfiguration("coder");
 		// Settings can be undefined when set to their defaults (true in this case),
 		// so explicitly check against false.
-		const enableDownloads =
-			vscode.workspace.getConfiguration().get("coder.enableDownloads") !==
-			false;
+		const enableDownloads = cfg.get("enableDownloads") !== false;
 		this.output.info("Downloads are", enableDownloads ? "enabled" : "disabled");
 
 		// Get the build info to compare with the existing binary version, if any,
@@ -108,9 +107,7 @@ export class BinaryManager {
 
 		// Figure out where to get the binary.
 		const binName = cli.name();
-		const configSource = vscode.workspace
-			.getConfiguration()
-			.get("coder.binarySource");
+		const configSource = cfg.get("binarySource");
 		const binSource =
 			configSource && String(configSource).trim().length > 0
 				? String(configSource)
@@ -138,11 +135,7 @@ export class BinaryManager {
 
 		switch (status) {
 			case 200: {
-				if (
-					vscode.workspace
-						.getConfiguration()
-						.get("coder.disableSignatureVerification")
-				) {
+				if (cfg.get("disableSignatureVerification")) {
 					this.output.info(
 						"Skipping binary signature verification due to settings",
 					);
@@ -199,7 +192,6 @@ export class BinaryManager {
 				vscode.window
 					.showErrorMessage(
 						"Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
-						{},
 						"Open an Issue",
 					)
 					.then((value) => {
@@ -212,10 +204,10 @@ export class BinaryManager {
 							title: `Support the \`${os}-${arch}\` platform`,
 							body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
 						});
-						const url = vscode.Uri.parse(
+						const uri = vscode.Uri.parse(
 							`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
 						);
-						vscode.env.openExternal(url);
+						vscode.env.openExternal(uri);
 					});
 				throw new Error("Platform not supported");
 			}
@@ -223,7 +215,6 @@ export class BinaryManager {
 				vscode.window
 					.showErrorMessage(
 						"Failed to download binary. Please open an issue.",
-						{},
 						"Open an Issue",
 					)
 					.then((value) => {
@@ -234,10 +225,10 @@ export class BinaryManager {
 							title: `Failed to download binary on \`${cli.goos()}-${cli.goarch()}\``,
 							body: `Received status code \`${status}\` when downloading the binary.`,
 						});
-						const url = vscode.Uri.parse(
+						const uri = vscode.Uri.parse(
 							`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
 						);
-						vscode.env.openExternal(url);
+						vscode.env.openExternal(uri);
 					});
 				throw new Error("Failed to download binary");
 			}
@@ -285,8 +276,9 @@ export class BinaryManager {
 
 			const completed = await vscode.window.withProgress<boolean>(
 				{
-					title: `Downloading ${baseUrl}`,
 					location: vscode.ProgressLocation.Notification,
+					title: `Downloading ${baseUrl}`,
+					cancellable: true,
 				},
 				async (progress, token) => {
 					const readStream = resp.data as IncomingMessage;

@@ -136,7 +136,6 @@ describe("BinaryManager", () => {
 			expect(mockLogger.warn).toHaveBeenCalledWith(
 				expect.stringContaining("Unable to get version"),
 			);
-
 			// Should attempt to download now
 			expect(mockAxios.get).toHaveBeenCalled();
 			expect(mockLogger.info).toHaveBeenCalledWith(
@@ -150,6 +149,9 @@ describe("BinaryManager", () => {
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
 			expect(mockAxios.get).toHaveBeenCalled();
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"No existing binary found, starting download",
+			);
 			expect(mockLogger.info).toHaveBeenCalledWith(
 				"Downloaded binary version is",
 				TEST_VERSION,
@@ -221,21 +223,8 @@ describe("BinaryManager", () => {
 		});
 
 		it("backs up existing binary before replacement", async () => {
-			// Setup existing old binary
-			vi.mocked(cli.stat).mockReset();
-			vi.mocked(cli.stat)
-				.mockResolvedValueOnce({ size: 1024 } as fs.Stats) // Existing binary
-				.mockResolvedValueOnce({ size: 5242880 } as fs.Stats); // After download
-			vi.mocked(cli.version).mockReset();
-			vi.mocked(cli.version)
-				.mockResolvedValueOnce("1.0.0") // Old version
-				.mockResolvedValueOnce(TEST_VERSION); // New version after download
-
-			// Setup download
-			const stream = createMockStream();
-			const writeStream = createMockWriteStream();
-			withHttpResponse(200, { "content-length": "1024" }, stream);
-			vi.mocked(fs.createWriteStream).mockReturnValue(writeStream);
+			withExistingBinary("1.0.0");
+			withSuccessfulDownload();
 
 			await manager.fetchBinary(mockApi, "test");
 			expect(fse.rename).toHaveBeenCalledWith(
@@ -260,6 +249,9 @@ describe("BinaryManager", () => {
 			withHttpResponse(304);
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Using existing binary since server returned a 304",
+			);
 		});
 
 		it("handles 404 platform not supported", async () => {
@@ -268,13 +260,27 @@ describe("BinaryManager", () => {
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Platform not supported",
 			);
-			expect(vscode.env.openExternal).toHaveBeenCalled();
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				expect.objectContaining({
+					path: expect.stringContaining(
+						"github.com/coder/vscode-coder/issues/new?",
+					),
+				}),
+			);
 		});
 
 		it("handles server errors", async () => {
 			withHttpResponse(500);
+			mockUI.setResponse("Open an Issue");
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Failed to download binary",
+			);
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				expect.objectContaining({
+					path: expect.stringContaining(
+						"github.com/coder/vscode-coder/issues/new?",
+					),
+				}),
 			);
 		});
 	});
@@ -336,35 +342,46 @@ describe("BinaryManager", () => {
 
 	describe("Signature Verification", () => {
 		it("verifies valid signatures", async () => {
-			withSuccessfulDownloadAndSignature();
-			vi.mocked(pgp.verifySignature).mockResolvedValueOnce();
+			withSuccessfulDownload();
+			withSignatureResponses([200]);
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
 			expect(pgp.verifySignature).toHaveBeenCalled();
 		});
 
 		it("tries fallback signature on 404", async () => {
-			withBinaryDownload();
+			withSuccessfulDownload();
 			withSignatureResponses([404, 200]);
-			vi.mocked(pgp.verifySignature).mockResolvedValueOnce();
 			mockUI.setResponse("Download signature");
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				"Signature not found",
+				expect.any(Object),
+				expect.any(String),
+				expect.any(String),
+			);
+			// First download and when verfiying twice (404 then 200)
 			expect(mockAxios.get).toHaveBeenCalledTimes(3);
 		});
 
 		it("allows running despite invalid signature", async () => {
-			withSuccessfulDownloadAndSignature();
+			withSuccessfulDownload();
+			withSignatureResponses([200]);
 			vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
 				createVerificationError("Invalid signature"),
 			);
 			mockUI.setResponse("Run anyway");
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Binary will be ran anyway at user request",
+			);
 		});
 
 		it("aborts on signature rejection", async () => {
-			withSuccessfulDownloadAndSignature();
+			withSuccessfulDownload();
+			withSignatureResponses([200]);
 			vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
 				createVerificationError("Invalid signature"),
 			);
@@ -380,19 +397,25 @@ describe("BinaryManager", () => {
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
 			expect(pgp.verifySignature).not.toHaveBeenCalled();
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Skipping binary signature verification due to settings",
+			);
 		});
 
 		it("allows skipping verification on 404", async () => {
-			withBinaryDownload();
+			withSuccessfulDownload();
 			withHttpResponse(404);
 			mockUI.setResponse("Run without verification");
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
 			expect(pgp.verifySignature).not.toHaveBeenCalled();
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				expect.stringMatching(/Signature download from (.+) declined/),
+			);
 		});
 
 		it("handles signature download failure", async () => {
-			withBinaryDownload();
+			withSuccessfulDownload();
 			withHttpResponse(500);
 			mockUI.setResponse("Run without verification");
 			const result = await manager.fetchBinary(mockApi, "test");
@@ -406,7 +429,7 @@ describe("BinaryManager", () => {
 		});
 
 		it("aborts when user declines missing signature", async () => {
-			withBinaryDownload();
+			withSuccessfulDownload();
 			withHttpResponse(404);
 			mockUI.setResponse(undefined); // User cancels
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
@@ -482,11 +505,12 @@ describe("BinaryManager", () => {
 		vi.mocked(cli.stat).mockReset();
 		vi.mocked(cli.stat).mockResolvedValueOnce({ size: 1024 } as fs.Stats); // Existing binary exists
 		vi.mocked(cli.version).mockReset();
-		vi.mocked(cli.version)
-			.mockRejectedValueOnce(new Error("corrupted")) // Existing binary is corrupted
-			.mockResolvedValueOnce(TEST_VERSION); // New download works
+		vi.mocked(cli.version).mockRejectedValueOnce(new Error("corrupted")); // Existing binary is corrupted
 	}
 
+	/**
+	 * Shouldn't reset mocks since this method is combined with other mocks.
+	 */
 	function withSuccessfulDownload(opts?: {
 		headers?: Record<string, unknown>;
 	}) {
@@ -504,25 +528,6 @@ describe("BinaryManager", () => {
 			.mockResolvedValueOnce({ size: 5242880 } as fs.Stats); // After download
 		// Version check after download
 		vi.mocked(cli.version).mockResolvedValueOnce(TEST_VERSION);
-	}
-
-	function withBinaryDownload() {
-		const stream = createMockStream();
-		const writeStream = createMockWriteStream();
-		withHttpResponse(200, { "content-length": "1024" }, stream);
-		vi.mocked(fs.createWriteStream).mockReturnValue(writeStream);
-		// Override to ensure no existing binary initially
-		vi.mocked(cli.stat).mockReset();
-		vi.mocked(cli.stat)
-			.mockResolvedValueOnce(undefined) // No existing binary
-			.mockResolvedValueOnce({ size: 5242880 } as fs.Stats); // After download
-		vi.mocked(cli.version).mockReset();
-		vi.mocked(cli.version).mockResolvedValueOnce(TEST_VERSION);
-	}
-
-	function withSuccessfulDownloadAndSignature() {
-		withBinaryDownload();
-		withHttpResponse(200, { "content-length": "256" }, createMockStream());
 	}
 
 	function withSignatureResponses(statuses: number[]) {
