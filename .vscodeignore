@@ -13,4 +13,4 @@ node_modules/**
 **/*.map
 **/*.ts
 *.gif
-fixtures/**
+test/**

@@ -8,26 +8,34 @@
  */
 
 import { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
-import WebSocket, { type ClientOptions } from "ws";
+import type {
+	ClientOptions,
+	CloseEvent,
+	ErrorEvent,
+	Event,
+	MessageEvent,
+	RawData,
+} from "ws";
+import Ws from "ws";
 
 export type OneWayMessageEvent<TData> = Readonly<
 	| {
-			sourceEvent: WebSocket.MessageEvent;
+			sourceEvent: MessageEvent;
 			parsedMessage: TData;
 			parseError: undefined;
 	  }
 	| {
-			sourceEvent: WebSocket.MessageEvent;
+			sourceEvent: MessageEvent;
 			parsedMessage: undefined;
 			parseError: Error;
 	  }
 >;
 
 type OneWayEventPayloadMap<TData> = {
-	close: WebSocket.CloseEvent;
-	error: WebSocket.ErrorEvent;
+	close: CloseEvent;
+	error: ErrorEvent;
 	message: OneWayMessageEvent<TData>;
-	open: WebSocket.Event;
+	open: Event;
 };
 
 type OneWayEventCallback<TData, TEvent extends WebSocketEventType> = (
@@ -58,10 +66,10 @@ export type OneWayWebSocketInit = {
 export class OneWayWebSocket<TData = unknown>
 	implements OneWayWebSocketApi<TData>
 {
-	readonly #socket: WebSocket;
+	readonly #socket: Ws;
 	readonly #messageCallbacks = new Map<
 		OneWayEventCallback<TData, "message">,
-		(data: WebSocket.RawData) => void
+		(data: RawData) => void
 	>();
 
 	constructor(init: OneWayWebSocketInit) {
@@ -76,7 +84,7 @@ export class OneWayWebSocket<TData = unknown>
 		const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 		const url = `${wsProtocol}//${location.host}${apiRoute}${paramsSuffix}`;
 
-		this.#socket = new WebSocket(url, protocols, options);
+		this.#socket = new Ws(url, protocols, options);
 	}
 
 	get url(): string {
@@ -94,17 +102,17 @@ export class OneWayWebSocket<TData = unknown>
 				return;
 			}
 
-			const wrapped = (data: WebSocket.RawData): void => {
+			const wrapped = (data: RawData): void => {
 				try {
 					const message = JSON.parse(data.toString()) as TData;
 					messageCallback({
-						sourceEvent: { data } as WebSocket.MessageEvent,
+						sourceEvent: { data } as MessageEvent,
 						parseError: undefined,
 						parsedMessage: message,
 					});
 				} catch (err) {
 					messageCallback({
-						sourceEvent: { data } as WebSocket.MessageEvent,
+						sourceEvent: { data } as MessageEvent,
 						parseError: err as Error,
 						parsedMessage: undefined,
 					});

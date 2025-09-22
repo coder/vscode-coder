@@ -6,7 +6,7 @@
 		"sourceType": "module",
 		"project": "./tsconfig.json"
 	},
-	"plugins": ["@typescript-eslint", "prettier"],
+	"plugins": ["@typescript-eslint", "prettier", "import"],
 	"extends": [
 		"eslint:recommended",
 		"plugin:@typescript-eslint/recommended",
@@ -69,5 +69,10 @@
 			}
 		]
 	},
-	"ignorePatterns": ["out", "dist", "**/*.d.ts"]
+	"ignorePatterns": ["out", "dist", "**/*.d.ts"],
+	"settings": {
+		"import/resolver": {
+			"typescript": {}
+		}
+	}
 }
