@@ -263,14 +263,14 @@ export class Commands {
 	): Promise<{ user: User; token: string } | null> {
 		const client = CoderApi.create(url, token, this.logger);
 		const needsToken = needToken(vscode.workspace.getConfiguration());
-		try {
-			const user = await client.getAuthenticatedUser();
-			// For non-token auth, we write a blank token since the `vscodessh`
-			// command currently always requires a token file.
-			// For token auth, we have valid access so we can just return the user here
-			return { token: needsToken && token ? token : "", user };
-		} catch (err) {
-			if (!needToken(vscode.workspace.getConfiguration())) {
+		if (!needsToken || token) {
+			try {
+				const user = await client.getAuthenticatedUser();
+				// For non-token auth, we write a blank token since the `vscodessh`
+				// command currently always requires a token file.
+				// For token auth, we have valid access so we can just return the user here
+				return { token: needsToken && token ? token : "", user };
+			} catch (err) {
 				const message = getErrorMessage(err, "no response from the server");
 				if (isAutoLogin) {
 					this.logger.warn("Failed to log in to Coder server:", message);
