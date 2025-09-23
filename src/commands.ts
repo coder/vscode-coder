@@ -179,19 +179,17 @@ export class Commands {
 	}
 
 	/**
-	 * Log into the provided deployment.  If the deployment URL is not specified,
+	 * Log into the provided deployment. If the deployment URL is not specified,
 	 * ask for it first with a menu showing recent URLs along with the default URL
 	 * and CODER_URL, if those are set.
 	 */
-	public async login(...args: string[]): Promise<void> {
-		// Destructure would be nice but VS Code can pass undefined which errors.
-		const inputUrl = args[0];
-		const inputToken = args[1];
-		const inputLabel = args[2];
-		const isAutologin =
-			typeof args[3] === "undefined" ? false : Boolean(args[3]);
-
-		const url = await this.maybeAskUrl(inputUrl);
+	public async login(args?: {
+		url?: string;
+		token?: string;
+		label?: string;
+		autoLogin?: boolean;
+	}): Promise<void> {
+		const url = await this.maybeAskUrl(args?.url);
 		if (!url) {
 			return; // The user aborted.
 		}
@@ -199,11 +197,14 @@ export class Commands {
 		// It is possible that we are trying to log into an old-style host, in which
 		// case we want to write with the provided blank label instead of generating
 		// a host label.
-		const label =
-			typeof inputLabel === "undefined" ? toSafeHost(url) : inputLabel;
+		const label = args?.label === undefined ? toSafeHost(url) : args?.label;
 
 		// Try to get a token from the user, if we need one, and their user.
-		const res = await this.maybeAskToken(url, inputToken, isAutologin);
+		const res = await this.maybeAskToken(
+			url,
+			args?.token,
+			args?.autoLogin === true,
+		);
 		if (!res) {
 			return; // The user aborted, or unable to auth.
 		}
@@ -257,19 +258,21 @@ export class Commands {
 	 */
 	private async maybeAskToken(
 		url: string,
-		token: string,
-		isAutologin: boolean,
+		token: string | undefined,
+		isAutoLogin: boolean,
 	): Promise<{ user: User; token: string } | null> {
 		const client = CoderApi.create(url, token, this.logger);
-		if (!needToken(vscode.workspace.getConfiguration())) {
-			try {
-				const user = await client.getAuthenticatedUser();
-				// For non-token auth, we write a blank token since the `vscodessh`
-				// command currently always requires a token file.
-				return { token: "", user };
-			} catch (err) {
+		const needsToken = needToken(vscode.workspace.getConfiguration());
+		try {
+			const user = await client.getAuthenticatedUser();
+			// For non-token auth, we write a blank token since the `vscodessh`
+			// command currently always requires a token file.
+			// For token auth, we have valid access so we can just return the user here
+			return { token: needsToken && token ? token : "", user };
+		} catch (err) {
+			if (!needToken(vscode.workspace.getConfiguration())) {
 				const message = getErrorMessage(err, "no response from the server");
-				if (isAutologin) {
+				if (isAutoLogin) {
 					this.logger.warn("Failed to log in to Coder server:", message);
 				} else {
 					this.vscodeProposed.window.showErrorMessage(
@@ -301,6 +304,9 @@ export class Commands {
 			value: token || (await this.secretsManager.getSessionToken()),
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
+				if (!value) {
+					return null;
+				}
 				client.setSessionToken(value);
 				try {
 					user = await client.getAuthenticatedUser();
@@ -369,7 +375,10 @@ export class Commands {
 			// Sanity check; command should not be available if no url.
 			throw new Error("You are not logged in");
 		}
+		await this.forceLogout();
+	}
 
+	public async forceLogout(): Promise<void> {
 		// Clear from the REST client.  An empty url will indicate to other parts of
 		// the code that we are logged out.
 		this.restClient.setHost("");
@@ -388,7 +397,7 @@ export class Commands {
 			.showInformationMessage("You've been logged out of Coder!", "Login")
 			.then((action) => {
 				if (action === "Login") {
-					vscode.commands.executeCommand("coder.login");
+					this.login();
 				}
 			});
 

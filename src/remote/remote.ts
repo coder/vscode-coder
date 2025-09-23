@@ -257,12 +257,7 @@ export class Remote {
 				await this.closeRemote();
 			} else {
 				// Log in then try again.
-				await vscode.commands.executeCommand(
-					"coder.login",
-					baseUrlRaw,
-					undefined,
-					parts.label,
-				);
+				await this.commands.login({ url: baseUrlRaw, label: parts.label });
 				await this.setup(remoteAuthority, firstConnect);
 			}
 			return;
@@ -377,12 +372,7 @@ export class Remote {
 					if (!result) {
 						await this.closeRemote();
 					} else {
-						await vscode.commands.executeCommand(
-							"coder.login",
-							baseUrlRaw,
-							undefined,
-							parts.label,
-						);
+						await this.commands.login({ url: baseUrlRaw, label: parts.label });
 						await this.setup(remoteAuthority, firstConnect);
 					}
 					return;
