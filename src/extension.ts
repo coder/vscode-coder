@@ -309,6 +309,21 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		commands.viewLogs.bind(commands),
 	);
 
+	ctx.subscriptions.push(
+		secretsManager.onDidChangeSessionToken(async () => {
+			const token = await secretsManager.getSessionToken();
+			const url = mementoManager.getUrl();
+			if (!token) {
+				output.info("Logging out");
+				await commands.forceLogout();
+			} else if (url) {
+				output.info("Logging in");
+				// Should login the user directly if the URL+Token are valid
+				await commands.login({ url, token });
+			}
+		}),
+	);
+
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
 	// resolved by the remote SSH extension.
@@ -423,15 +438,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		// Handle autologin, if not already logged in.
 		const cfg = vscode.workspace.getConfiguration();
 		if (cfg.get("coder.autologin") === true) {
-			const defaultUrl = cfg.get("coder.defaultUrl") || process.env.CODER_URL;
+			const defaultUrl =
+				cfg.get<string>("coder.defaultUrl") || process.env.CODER_URL;
 			if (defaultUrl) {
-				vscode.commands.executeCommand(
-					"coder.login",
-					defaultUrl,
-					undefined,
-					undefined,
-					"true",
-				);
+				commands.login({ url: defaultUrl, autoLogin: true });
 			}
 		}
 	}
