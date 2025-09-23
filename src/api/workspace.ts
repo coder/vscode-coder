@@ -4,6 +4,7 @@ import { Workspace } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
 import { FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
+import { escapeCommandArg } from "../util";
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
 import { CoderApi } from "./coderApi";
 
@@ -36,7 +37,9 @@ export async function startWorkspaceIfStoppedOrFailed(
 			startArgs.push(...["--reason", "vscode_connection"]);
 		}
 
-		const startProcess = spawn(binPath, startArgs, { shell: true });
+		// { shell: true } requires one shell-safe command string, otherwise we lose all escaping
+		const cmd = `${escapeCommandArg(binPath)} ${startArgs.join(" ")}`;
+		const startProcess = spawn(cmd, { shell: true });
 
 		startProcess.stdout.on("data", (data: Buffer) => {
 			data
