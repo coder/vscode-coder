@@ -256,7 +256,10 @@ describe("BinaryManager", () => {
 
 		it("handles 404 platform not supported", async () => {
 			withHttpResponse(404);
-			mockUI.setResponse("Open an Issue");
+			mockUI.setResponse(
+				"Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
+				"Open an Issue",
+			);
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Platform not supported",
 			);
@@ -271,7 +274,10 @@ describe("BinaryManager", () => {
 
 		it("handles server errors", async () => {
 			withHttpResponse(500);
-			mockUI.setResponse("Open an Issue");
+			mockUI.setResponse(
+				"Failed to download binary. Please open an issue.",
+				"Open an Issue",
+			);
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Failed to download binary",
 			);
@@ -352,16 +358,10 @@ describe("BinaryManager", () => {
 		it("tries fallback signature on 404", async () => {
 			withSuccessfulDownload();
 			withSignatureResponses([404, 200]);
-			mockUI.setResponse("Download signature");
+			mockUI.setResponse("Signature not found", "Download signature");
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
-			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-				"Signature not found",
-				expect.any(Object),
-				expect.any(String),
-				expect.any(String),
-			);
-			// First download and when verfiying twice (404 then 200)
+			// First download and then verfiying twice (404 then 200)
 			expect(mockAxios.get).toHaveBeenCalledTimes(3);
 		});
 
@@ -371,7 +371,7 @@ describe("BinaryManager", () => {
 			vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
 				createVerificationError("Invalid signature"),
 			);
-			mockUI.setResponse("Run anyway");
+			mockUI.setResponse("Signature does not match", "Run anyway");
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
 			expect(mockLogger.info).toHaveBeenCalledWith(
@@ -385,7 +385,7 @@ describe("BinaryManager", () => {
 			vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
 				createVerificationError("Invalid signature"),
 			);
-			mockUI.setResponse(undefined);
+			mockUI.setResponse("Signature does not match", undefined);
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Signature verification aborted",
 			);
@@ -405,7 +405,7 @@ describe("BinaryManager", () => {
 		it("allows skipping verification on 404", async () => {
 			withSuccessfulDownload();
 			withHttpResponse(404);
-			mockUI.setResponse("Run without verification");
+			mockUI.setResponse("Signature not found", "Run without verification");
 			const result = await manager.fetchBinary(mockApi, "test");
 			expect(result).toBe(BINARY_PATH);
 			expect(pgp.verifySignature).not.toHaveBeenCalled();
@@ -417,21 +417,19 @@ describe("BinaryManager", () => {
 		it("handles signature download failure", async () => {
 			withSuccessfulDownload();
 			withHttpResponse(500);
-			mockUI.setResponse("Run without verification");
-			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
-			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+			mockUI.setResponse(
 				"Failed to download signature",
-				expect.any(Object),
-				"Download signature", // from the next source
 				"Run without verification",
 			);
+			const result = await manager.fetchBinary(mockApi, "test");
+			expect(result).toBe(BINARY_PATH);
+			// TODO test that a file was run?
 		});
 
 		it("aborts when user declines missing signature", async () => {
 			withSuccessfulDownload();
 			withHttpResponse(404);
-			mockUI.setResponse(undefined); // User cancels
+			mockUI.setResponse("Signature not found", undefined); // User cancels
 			await expect(manager.fetchBinary(mockApi, "test")).rejects.toThrow(
 				"Signature download aborted",
 			);
@@ -602,6 +600,7 @@ describe("BinaryManager", () => {
 			pgp.VerificationErrorCode.Invalid,
 			msg,
 		);
+		vi.mocked(error.summary).mockReturnValue("Signature does not match");
 		return error;
 	}
 });

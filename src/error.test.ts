@@ -19,7 +19,6 @@ describe("Certificate errors", () => {
 		(process.versions.electron || process.env.ELECTRON_RUN_AS_NODE) &&
 		!process.env.VSCODE_PID; // Running from the test explorer in VS Code
 
-	// TODO: Remove the vscode mock once we revert the testing framework.
 	beforeAll(() => {
 		vi.mock("vscode", () => {
 			return {};

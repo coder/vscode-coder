@@ -41,20 +41,27 @@ export class MockConfigurationProvider {
 	 */
 	private setupVSCodeMock(): void {
 		vi.mocked(vscode.workspace.getConfiguration).mockImplementation(
-			(section?: string) =>
-				({
+			(section?: string) => {
+				// Create a snapshot of the current config when getConfiguration is called
+				const snapshot = new Map(this.config);
+				const getFullKey = (part: string) =>
+					section ? `${section}.${part}` : part;
+
+				return {
 					get: vi.fn((key: string, defaultValue?: unknown) => {
-						const fullKey = section ? `${section}.${key}` : key;
-						const value = this.config.get(fullKey);
+						const value = snapshot.get(getFullKey(key));
 						return value !== undefined ? value : defaultValue;
 					}),
 					has: vi.fn((key: string) => {
-						const fullKey = section ? `${section}.${key}` : key;
-						return this.config.has(fullKey);
+						return snapshot.has(getFullKey(key));
 					}),
 					inspect: vi.fn(),
-					update: vi.fn(),
-				}) as unknown as vscode.WorkspaceConfiguration,
+					update: vi.fn((key: string, value: unknown) => {
+						this.config.set(getFullKey(key), value);
+						return Promise.resolve();
+					}),
+				};
+			},
 		);
 	}
 }
@@ -139,21 +146,10 @@ export class MockUserInteraction {
 	}
 
 	/**
-	 * Set a response for a specific message or set a default response
+	 * Set a response for a specific message
 	 */
-	setResponse(response: string | undefined): void;
-	setResponse(message: string, response: string | undefined): void;
-	setResponse(
-		messageOrResponse: string | undefined,
-		response?: string | undefined,
-	): void {
-		if (response === undefined && messageOrResponse !== undefined) {
-			// Single argument - set default response
-			this.responses.set("default", messageOrResponse);
-		} else if (messageOrResponse !== undefined) {
-			// Two arguments - set specific response
-			this.responses.set(messageOrResponse, response);
-		}
+	setResponse(message: string, response: string | undefined): void {
+		this.responses.set(message, response);
 	}
 
 	/**
@@ -182,7 +178,7 @@ export class MockUserInteraction {
 	 */
 	private setupVSCodeMock(): void {
 		const getResponse = (message: string): string | undefined => {
-			return this.responses.get(message) ?? this.responses.get("default");
+			return this.responses.get(message);
 		};
 
 		vi.mocked(vscode.window.showErrorMessage).mockImplementation(
