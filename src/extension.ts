@@ -13,9 +13,12 @@ import { MementoManager } from "./core/mementoManager";
 import { PathResolver } from "./core/pathResolver";
 import { SecretsManager } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
-import { Remote } from "./remote";
+import { Remote } from "./remote/remote";
 import { toSafeHost } from "./util";
-import { WorkspaceProvider, WorkspaceQuery } from "./workspacesProvider";
+import {
+	WorkspaceProvider,
+	WorkspaceQuery,
+} from "./workspace/workspacesProvider";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// The Remote SSH extension's proposed APIs are used to override the SSH host

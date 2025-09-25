@@ -18,29 +18,32 @@ import {
 	getEventValue,
 	formatEventLabel,
 	formatMetadataError,
-} from "./agentMetadataHelper";
-import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
-import { CoderApi } from "./api/coderApi";
-import { needToken } from "./api/utils";
-import { startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api/workspace";
-import * as cliUtils from "./cliUtils";
-import { type Commands } from "./commands";
-import { type CliManager } from "./core/cliManager";
-import { type PathResolver } from "./core/pathResolver";
-import { featureSetForVersion, type FeatureSet } from "./featureSet";
-import { getGlobalFlags } from "./globalFlags";
-import { Inbox } from "./inbox";
-import { type Logger } from "./logging/logger";
-import { SSHConfig, type SSHValues, mergeSSHConfigValues } from "./sshConfig";
+} from "../agentMetadataHelper";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
+import { createWorkspaceIdentifier, extractAgents } from "../api/api-helper";
+import { CoderApi } from "../api/coderApi";
+import { needToken } from "../api/utils";
+import {
+	startWorkspaceIfStoppedOrFailed,
+	waitForBuild,
+} from "../api/workspace";
+import * as cliUtils from "../core/cliUtils";
+import { type Commands } from "../commands";
+import { type CliManager } from "../core/cliManager";
+import { type PathResolver } from "../core/pathResolver";
+import { featureSetForVersion, type FeatureSet } from "../featureSet";
+import { getGlobalFlags } from "../globalFlags";
+import { Inbox } from "../inbox";
+import { SSHConfig, type SSHValues, mergeSSHConfigValues } from "./sshConfig";
+import { type Logger } from "../logging/logger";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,
 	expandPath,
 	findPort,
 	parseRemoteAuthority,
-} from "./util";
-import { WorkspaceMonitor } from "./workspaceMonitor";
+} from "../util";
+import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 export interface RemoteDetails extends vscode.Disposable {
 	url: string;

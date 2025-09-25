@@ -12,7 +12,7 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import * as cli from "../cliUtils";
+import * as cli from "./cliUtils";
 import { type Logger } from "../logging/logger";
 import * as pgp from "../pgp";
 import { type PathResolver } from "./pathResolver";
