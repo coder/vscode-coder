@@ -1,23 +1,25 @@
-import * as cliUtils from "@/cliUtils";
-import { CliManager } from "@/core/cliManager";
-import { PathResolver } from "@/core/pathResolver";
-import { Logger } from "@/logging/logger";
-import * as pgp from "@/pgp";
-import {
-	MockConfigurationProvider,
-	MockProgressReporter,
-	MockUserInteraction,
-} from "@tests/mocks/testHelpers";
-import globalAxios, { AxiosInstance } from "axios";
-import { Api } from "coder/site/src/api/api";
+import globalAxios, { type AxiosInstance } from "axios";
+import { type Api } from "coder/site/src/api/api";
 import EventEmitter from "events";
 import * as fs from "fs";
-import { IncomingMessage } from "http";
+import { type IncomingMessage } from "http";
 import { fs as memfs, vol } from "memfs";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
+
+import {
+	MockConfigurationProvider,
+	MockProgressReporter,
+	MockUserInteraction,
+} from "@tests/mocks/testHelpers";
+
+import * as cliUtils from "@/cliUtils";
+import { CliManager } from "@/core/cliManager";
+import { PathResolver } from "@/core/pathResolver";
+import { type Logger } from "@/logging/logger";
+import * as pgp from "@/pgp";
 
 vi.mock("os");
 vi.mock("axios");

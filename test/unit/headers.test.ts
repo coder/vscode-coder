@@ -1,8 +1,9 @@
-import { getHeaderCommand, getHeaders } from "@/headers";
-import { Logger } from "@/logging/logger";
 import * as os from "os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { WorkspaceConfiguration } from "vscode";
+import { type WorkspaceConfiguration } from "vscode";
+
+import { getHeaderCommand, getHeaders } from "@/headers";
+import { type Logger } from "@/logging/logger";
 
 const logger: Logger = {
 	trace: () => {},

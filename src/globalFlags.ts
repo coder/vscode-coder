@@ -1,4 +1,5 @@
-import { WorkspaceConfiguration } from "vscode";
+import { type WorkspaceConfiguration } from "vscode";
+
 import { getHeaderArgs } from "./headers";
 import { escapeCommandArg } from "./util";
 

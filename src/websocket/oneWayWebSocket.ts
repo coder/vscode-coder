@@ -7,16 +7,15 @@
  * instead of always deriving it from `window.location`.
  */
 
-import { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
-import type {
-	ClientOptions,
-	CloseEvent,
-	ErrorEvent,
-	Event,
-	MessageEvent,
-	RawData,
+import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
+import Ws, {
+	type ClientOptions,
+	type CloseEvent,
+	type ErrorEvent,
+	type Event,
+	type MessageEvent,
+	type RawData,
 } from "ws";
-import Ws from "ws";
 
 export type OneWayMessageEvent<TData> = Readonly<
 	| {

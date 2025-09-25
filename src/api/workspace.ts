@@ -1,12 +1,13 @@
 import { spawn } from "child_process";
-import { Api } from "coder/site/src/api/api";
-import { Workspace } from "coder/site/src/api/typesGenerated";
+import { type Api } from "coder/site/src/api/api";
+import { type Workspace } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
-import { FeatureSet } from "../featureSet";
+
+import { type FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
 import { escapeCommandArg } from "../util";
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
-import { CoderApi } from "./coderApi";
+import { type CoderApi } from "./coderApi";
 
 /**
  * Start or update a workspace and return the updated workspace.

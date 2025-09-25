@@ -1,6 +1,8 @@
-import { PathResolver } from "@/core/pathResolver";
 import * as path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { PathResolver } from "@/core/pathResolver";
+
 import { MockConfigurationProvider } from "../mocks/testHelpers";
 
 describe("PathResolver", () => {

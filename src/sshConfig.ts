@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, stat, writeFile } from "fs/promises";
 import path from "path";
+
 import { countSubstring } from "./util";
 
 class SSHConfigBadFormat extends Error {}

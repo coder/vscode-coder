@@ -1,8 +1,9 @@
-import * as cliUtils from "@/cliUtils";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { beforeAll, describe, expect, it } from "vitest";
+
+import * as cliUtils from "@/cliUtils";
 
 describe("CliUtils", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests");
