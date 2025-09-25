@@ -2,8 +2,9 @@ import { createReadStream, promises as fs } from "fs";
 import * as openpgp from "openpgp";
 import * as path from "path";
 import { Readable } from "stream";
+
 import { errToStr } from "./api/api-helper";
-import { Logger } from "./logging/logger";
+import { type Logger } from "./logging/logger";
 
 export type Key = openpgp.Key;
 

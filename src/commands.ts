@@ -1,25 +1,26 @@
-import { Api } from "coder/site/src/api/api";
+import { type Api } from "coder/site/src/api/api";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import {
-	User,
-	Workspace,
-	WorkspaceAgent,
+	type User,
+	type Workspace,
+	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
+
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
-import { CliManager } from "./core/cliManager";
-import { MementoManager } from "./core/mementoManager";
-import { PathResolver } from "./core/pathResolver";
-import { SecretsManager } from "./core/secretsManager";
+import { type CliManager } from "./core/cliManager";
+import { type MementoManager } from "./core/mementoManager";
+import { type PathResolver } from "./core/pathResolver";
+import { type SecretsManager } from "./core/secretsManager";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
-import { Logger } from "./logging/logger";
+import { type Logger } from "./logging/logger";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
 	AgentTreeItem,
-	OpenableTreeItem,
+	type OpenableTreeItem,
 	WorkspaceTreeItem,
 } from "./workspacesProvider";
 

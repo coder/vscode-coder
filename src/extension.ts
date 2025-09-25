@@ -3,6 +3,7 @@ import axios, { isAxiosError } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import * as module from "module";
 import * as vscode from "vscode";
+
 import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";

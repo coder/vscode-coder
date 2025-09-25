@@ -1,6 +1,8 @@
-import { MementoManager } from "@/core/mementoManager";
-import { InMemoryMemento } from "@tests/mocks/testHelpers";
 import { beforeEach, describe, expect, it } from "vitest";
+
+import { InMemoryMemento } from "@tests/mocks/testHelpers";
+
+import { MementoManager } from "@/core/mementoManager";
 
 describe("MementoManager", () => {
 	let memento: InMemoryMemento;

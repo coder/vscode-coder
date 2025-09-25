@@ -3,7 +3,8 @@ import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
 import * as forge from "node-forge";
 import * as tls from "tls";
 import * as vscode from "vscode";
-import { Logger } from "./logging/logger";
+
+import { type Logger } from "./logging/logger";
 
 // X509_ERR_CODE represents error codes as returned from BoringSSL/OpenSSL.
 export enum X509_ERR_CODE {

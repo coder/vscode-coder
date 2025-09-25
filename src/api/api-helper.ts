@@ -1,8 +1,8 @@
 import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
 import {
-	Workspace,
-	WorkspaceAgent,
-	WorkspaceResource,
+	type Workspace,
+	type WorkspaceAgent,
+	type WorkspaceResource,
 } from "coder/site/src/api/typesGenerated";
 import { ErrorEvent } from "eventsource";
 import { z } from "zod";

@@ -1,6 +1,7 @@
-import { featureSetForVersion } from "@/featureSet";
 import * as semver from "semver";
 import { describe, expect, it } from "vitest";
+
+import { featureSetForVersion } from "@/featureSet";
 
 describe("check version support", () => {
 	it("has logs", () => {

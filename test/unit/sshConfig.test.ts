@@ -1,5 +1,6 @@
-import { SSHConfig } from "@/sshConfig";
 import { it, afterEach, vi, expect } from "vitest";
+
+import { SSHConfig } from "@/sshConfig";
 
 // This is not the usual path to ~/.ssh/config, but
 // setting it to a different path makes it easier to test

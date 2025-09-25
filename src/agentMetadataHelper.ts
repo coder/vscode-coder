@@ -1,11 +1,12 @@
-import { WorkspaceAgent } from "coder/site/src/api/typesGenerated";
+import { type WorkspaceAgent } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
+
 import {
-	AgentMetadataEvent,
+	type AgentMetadataEvent,
 	AgentMetadataEventSchemaArray,
 	errToStr,
 } from "./api/api-helper";
-import { CoderApi } from "./api/coderApi";
+import { type CoderApi } from "./api/coderApi";
 
 export type AgentMetadataWatcher = {
 	onChange: vscode.EventEmitter<null>["event"];

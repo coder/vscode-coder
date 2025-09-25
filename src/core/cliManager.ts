@@ -2,20 +2,20 @@ import globalAxios, {
 	type AxiosInstance,
 	type AxiosRequestConfig,
 } from "axios";
-import { Api } from "coder/site/src/api/api";
-import { createWriteStream, WriteStream } from "fs";
+import { type Api } from "coder/site/src/api/api";
+import { createWriteStream, type WriteStream } from "fs";
 import fs from "fs/promises";
-import { IncomingMessage } from "http";
+import { type IncomingMessage } from "http";
 import path from "path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
-
 import * as vscode from "vscode";
+
 import { errToStr } from "../api/api-helper";
 import * as cli from "../cliUtils";
-import { Logger } from "../logging/logger";
+import { type Logger } from "../logging/logger";
 import * as pgp from "../pgp";
-import { PathResolver } from "./pathResolver";
+import { type PathResolver } from "./pathResolver";
 
 export class CliManager {
 	constructor(
