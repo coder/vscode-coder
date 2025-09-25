@@ -1,4 +1,5 @@
 "use strict";
+
 import axios, { isAxiosError } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import * as module from "module";
@@ -8,10 +9,7 @@ import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
-import { CliManager } from "./core/cliManager";
-import { MementoManager } from "./core/mementoManager";
-import { PathResolver } from "./core/pathResolver";
-import { SecretsManager } from "./core/secretsManager";
+import { ServiceContainer } from "./core/container";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote/remote";
 import { toSafeHost } from "./util";
@@ -55,14 +53,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		);
 	}
 
-	const pathResolver = new PathResolver(
-		ctx.globalStorageUri.fsPath,
-		ctx.logUri.fsPath,
-	);
-	const mementoManager = new MementoManager(ctx.globalState);
-	const secretsManager = new SecretsManager(ctx.secrets);
-
-	const output = vscode.window.createOutputChannel("Coder", { log: true });
+	const serviceContainer = new ServiceContainer(ctx, vscodeProposed);
+	const output = serviceContainer.getLogger();
+	const mementoManager = serviceContainer.getMementoManager();
+	const secretsManager = serviceContainer.getSecretsManager();
 
 	// Try to clear this flag ASAP
 	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
@@ -257,19 +251,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		},
 	});
 
-	const cliManager = new CliManager(vscodeProposed, output, pathResolver);
+	const cliManager = serviceContainer.getCliManager();
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(
-		vscodeProposed,
-		client,
-		output,
-		pathResolver,
-		mementoManager,
-		secretsManager,
-		cliManager,
-	);
+	const commands = new Commands(serviceContainer, client);
 	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
 	vscode.commands.registerCommand(
 		"coder.logout",
@@ -323,14 +309,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// (this would require the user to uninstall the Coder extension and
 	// reinstall after installing the remote SSH extension, which is annoying)
 	if (remoteSSHExtension && vscodeProposed.env.remoteAuthority) {
-		const remote = new Remote(
-			vscodeProposed,
-			output,
-			commands,
-			ctx.extensionMode,
-			pathResolver,
-			cliManager,
-		);
+		const remote = new Remote(serviceContainer, commands, ctx.extensionMode);
 		try {
 			const details = await remote.setup(
 				vscodeProposed.env.remoteAuthority,

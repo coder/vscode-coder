@@ -12,9 +12,10 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import * as cli from "./cliUtils";
 import { type Logger } from "../logging/logger";
 import * as pgp from "../pgp";
+
+import * as cliUtils from "./cliUtils";
 import { type PathResolver } from "./pathResolver";
 
 export class CliManager {
@@ -58,16 +59,16 @@ export class CliManager {
 		// downloads are disabled, we can return early.
 		const binPath = path.join(
 			this.pathResolver.getBinaryCachePath(label),
-			cli.name(),
+			cliUtils.name(),
 		);
 		this.output.info("Using binary path", binPath);
-		const stat = await cli.stat(binPath);
+		const stat = await cliUtils.stat(binPath);
 		if (stat === undefined) {
 			this.output.info("No existing binary found, starting download");
 		} else {
 			this.output.info("Existing binary size is", prettyBytes(stat.size));
 			try {
-				const version = await cli.version(binPath);
+				const version = await cliUtils.version(binPath);
 				this.output.info("Existing binary version is", version);
 				// If we have the right version we can avoid the request entirely.
 				if (version === buildInfo.version) {
@@ -97,7 +98,7 @@ export class CliManager {
 		}
 
 		// Remove any left-over old or temporary binaries and signatures.
-		const removed = await cli.rmOld(binPath);
+		const removed = await cliUtils.rmOld(binPath);
 		removed.forEach(({ fileName, error }) => {
 			if (error) {
 				this.output.warn("Failed to remove", fileName, error);
@@ -107,7 +108,7 @@ export class CliManager {
 		});
 
 		// Figure out where to get the binary.
-		const binName = cli.name();
+		const binName = cliUtils.name();
 		const configSource = cfg.get("binarySource");
 		const binSource =
 			configSource && String(configSource).trim().length > 0
@@ -117,7 +118,7 @@ export class CliManager {
 
 		// Ideally we already caught that this was the right version and returned
 		// early, but just in case set the ETag.
-		const etag = stat !== undefined ? await cli.eTag(binPath) : "";
+		const etag = stat !== undefined ? await cliUtils.eTag(binPath) : "";
 		this.output.info("Using ETag", etag);
 
 		// Download the binary to a temporary file.
@@ -173,14 +174,14 @@ export class CliManager {
 				await fs.rename(tempFile, binPath);
 
 				// For debugging, to see if the binary only partially downloaded.
-				const newStat = await cli.stat(binPath);
+				const newStat = await cliUtils.stat(binPath);
 				this.output.info(
 					"Downloaded binary size is",
 					prettyBytes(newStat?.size || 0),
 				);
 
 				// Make sure we can execute this new binary.
-				const version = await cli.version(binPath);
+				const version = await cliUtils.version(binPath);
 				this.output.info("Downloaded binary version is", version);
 
 				return binPath;
@@ -199,8 +200,8 @@ export class CliManager {
 						if (!value) {
 							return;
 						}
-						const os = cli.goos();
-						const arch = cli.goarch();
+						const os = cliUtils.goos();
+						const arch = cliUtils.goarch();
 						const params = new URLSearchParams({
 							title: `Support the \`${os}-${arch}\` platform`,
 							body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
@@ -223,7 +224,7 @@ export class CliManager {
 							return;
 						}
 						const params = new URLSearchParams({
-							title: `Failed to download binary on \`${cli.goos()}-${cli.goarch()}\``,
+							title: `Failed to download binary on \`${cliUtils.goos()}-${cliUtils.goarch()}\``,
 							body: `Received status code \`${status}\` when downloading the binary.`,
 						});
 						const uri = vscode.Uri.parse(

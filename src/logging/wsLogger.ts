@@ -1,8 +1,9 @@
 import prettyBytes from "pretty-bytes";
 
+import { errToStr } from "../api/api-helper";
+
 import { formatTime } from "./formatters";
 import { createRequestId, shortId, sizeOf } from "./utils";
-import { errToStr } from "../api/api-helper";
 
 import type { Logger } from "./logger";
 

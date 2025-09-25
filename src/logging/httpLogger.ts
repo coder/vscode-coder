@@ -2,6 +2,7 @@ import { isAxiosError, type AxiosError, type AxiosResponse } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 
 import { getErrorDetail } from "../error";
+
 import {
 	formatBody,
 	formatContentLength,

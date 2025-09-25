@@ -53,17 +53,16 @@
 				"groups": [
 					["builtin", "external"],
 					"internal",
-					["parent", "sibling", "index"],
+					"parent",
+					["sibling", "index"],
 					"type"
 				],
 				"pathGroups": [
-					{ "pattern": "@/**", "group": "internal", "position": "after" }
+					{ "pattern": "@/**", "group": "internal", "position": "before" }
 				],
-				// Don't reclassify real externals like @babel/* into the alias group
 				"pathGroupsExcludedImportTypes": ["builtin", "external"],
 				"newlines-between": "always",
-				"alphabetize": { "order": "asc", "caseInsensitive": true },
-				"distinctGroup": true // separates type imports into the "type" group
+				"alphabetize": { "order": "asc", "caseInsensitive": true }
 			}
 		],
 		// Prevent duplicates and prefer merging into a single import
