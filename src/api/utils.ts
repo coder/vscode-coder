@@ -2,7 +2,7 @@ import fs from "fs";
 import { ProxyAgent } from "proxy-agent";
 import { type WorkspaceConfiguration } from "vscode";
 
-import { getProxyForUrl } from "../proxy";
+import { getProxyForUrl } from "./proxy";
 import { expandPath } from "../util";
 
 /**

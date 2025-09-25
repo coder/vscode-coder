@@ -11,14 +11,14 @@ import {
 	createAgentMetadataWatcher,
 	formatEventLabel,
 	formatMetadataError,
-} from "./agentMetadataHelper";
+} from "../agentMetadataHelper";
 import {
 	type AgentMetadataEvent,
 	extractAgents,
 	extractAllAgents,
-} from "./api/api-helper";
-import { type CoderApi } from "./api/coderApi";
-import { type Logger } from "./logging/logger";
+} from "../api/api-helper";
+import { type CoderApi } from "../api/coderApi";
+import { type Logger } from "../logging/logger";
 
 export enum WorkspaceQuery {
 	Mine = "owner:me",

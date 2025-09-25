@@ -15,7 +15,7 @@ import {
 	MockUserInteraction,
 } from "@tests/mocks/testHelpers";
 
-import * as cliUtils from "@/cliUtils";
+import * as cliUtils from "@/core/cliUtils";
 import { CliManager } from "@/core/cliManager";
 import { PathResolver } from "@/core/pathResolver";
 import { type Logger } from "@/logging/logger";
@@ -43,7 +43,7 @@ vi.mock("fs/promises", async () => {
 
 vi.mock("@/cliUtils", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/cliUtils")>("@/cliUtils");
+		await vi.importActual<typeof import("@/core/cliUtils")>("@/cliUtils");
 	return {
 		...actual,
 		// No need to test script execution here

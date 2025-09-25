@@ -22,7 +22,7 @@ import {
 	AgentTreeItem,
 	type OpenableTreeItem,
 	WorkspaceTreeItem,
-} from "./workspacesProvider";
+} from "./workspace/workspacesProvider";
 
 export class Commands {
 	// These will only be populated when actively connected to a workspace and are
