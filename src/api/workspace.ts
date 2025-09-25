@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { type FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
 import { escapeCommandArg } from "../util";
+
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
 import { type CoderApi } from "./coderApi";
 

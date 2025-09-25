@@ -12,7 +12,6 @@ import { type ClientOptions } from "ws";
 
 import { CertificateError } from "../error";
 import { getHeaderCommand, getHeaders } from "../headers";
-import { createHttpAgent } from "./utils";
 import {
 	createRequestMeta,
 	logRequest,
@@ -29,6 +28,8 @@ import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
 } from "../websocket/oneWayWebSocket";
+
+import { createHttpAgent } from "./utils";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
 

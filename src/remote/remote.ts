@@ -19,7 +19,6 @@ import {
 	formatEventLabel,
 	formatMetadataError,
 } from "../agentMetadataHelper";
-import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 import { createWorkspaceIdentifier, extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
@@ -27,14 +26,14 @@ import {
 	startWorkspaceIfStoppedOrFailed,
 	waitForBuild,
 } from "../api/workspace";
-import * as cliUtils from "../core/cliUtils";
 import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
+import * as cliUtils from "../core/cliUtils";
+import { type ServiceContainer } from "../core/container";
 import { type PathResolver } from "../core/pathResolver";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
 import { Inbox } from "../inbox";
-import { SSHConfig, type SSHValues, mergeSSHConfigValues } from "./sshConfig";
 import { type Logger } from "../logging/logger";
 import {
 	AuthorityPrefix,
@@ -45,21 +44,31 @@ import {
 } from "../util";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
+import { SSHConfig, type SSHValues, mergeSSHConfigValues } from "./sshConfig";
+import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
+
 export interface RemoteDetails extends vscode.Disposable {
 	url: string;
 	token: string;
 }
 
 export class Remote {
+	// We use the proposed API to get access to useCustom in dialogs.
+	private readonly vscodeProposed: typeof vscode;
+	private readonly logger: Logger;
+	private readonly pathResolver: PathResolver;
+	private readonly cliManager: CliManager;
+
 	public constructor(
-		// We use the proposed API to get access to useCustom in dialogs.
-		private readonly vscodeProposed: typeof vscode,
-		private readonly logger: Logger,
+		serviceContainer: ServiceContainer,
 		private readonly commands: Commands,
 		private readonly mode: vscode.ExtensionMode,
-		private readonly pathResolver: PathResolver,
-		private readonly cliManager: CliManager,
-	) {}
+	) {
+		this.vscodeProposed = serviceContainer.getVsCodeProposed();
+		this.logger = serviceContainer.getLogger();
+		this.pathResolver = serviceContainer.getPathResolver();
+		this.cliManager = serviceContainer.getCliManager();
+	}
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
 		const action = await this.vscodeProposed.window.showInformationMessage(

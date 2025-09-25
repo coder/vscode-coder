@@ -2,8 +2,9 @@ import fs from "fs";
 import { ProxyAgent } from "proxy-agent";
 import { type WorkspaceConfiguration } from "vscode";
 
-import { getProxyForUrl } from "./proxy";
 import { expandPath } from "../util";
+
+import { getProxyForUrl } from "./proxy";
 
 /**
  * Return whether the API will need a token for authorization.

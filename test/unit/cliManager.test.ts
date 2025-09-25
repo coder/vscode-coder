@@ -9,17 +9,17 @@ import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { CliManager } from "@/core/cliManager";
+import * as cliUtils from "@/core/cliUtils";
+import { PathResolver } from "@/core/pathResolver";
+import { type Logger } from "@/logging/logger";
+import * as pgp from "@/pgp";
+
 import {
 	MockConfigurationProvider,
 	MockProgressReporter,
 	MockUserInteraction,
 } from "@tests/mocks/testHelpers";
-
-import * as cliUtils from "@/core/cliUtils";
-import { CliManager } from "@/core/cliManager";
-import { PathResolver } from "@/core/pathResolver";
-import { type Logger } from "@/logging/logger";
-import * as pgp from "@/pgp";
 
 vi.mock("os");
 vi.mock("axios");
@@ -41,9 +41,9 @@ vi.mock("fs/promises", async () => {
 	};
 });
 
-vi.mock("@/cliUtils", async () => {
+vi.mock("@/core/cliUtils", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/core/cliUtils")>("@/cliUtils");
+		await vi.importActual<typeof import("@/core/cliUtils")>("@/core/cliUtils");
 	return {
 		...actual,
 		// No need to test script execution here
