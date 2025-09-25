@@ -7,8 +7,7 @@ import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
-import { BinaryManager } from "./core/binaryManager";
-import { CliConfigManager } from "./core/cliConfig";
+import { CliManager } from "./core/cliManager";
 import { MementoManager } from "./core/mementoManager";
 import { PathResolver } from "./core/pathResolver";
 import { SecretsManager } from "./core/secretsManager";
@@ -56,7 +55,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		ctx.globalStorageUri.fsPath,
 		ctx.logUri.fsPath,
 	);
-	const cliConfigManager = new CliConfigManager(pathResolver);
 	const mementoManager = new MementoManager(ctx.globalState);
 	const secretsManager = new SecretsManager(ctx.secrets);
 
@@ -159,7 +157,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				}
 
 				// Store on disk to be used by the cli.
-				await cliConfigManager.configure(toSafeHost(url), url, token);
+				await cliManager.configure(toSafeHost(url), url, token);
 
 				vscode.commands.executeCommand(
 					"coder.open",
@@ -237,7 +235,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					: (params.get("token") ?? "");
 
 				// Store on disk to be used by the cli.
-				await cliConfigManager.configure(toSafeHost(url), url, token);
+				await cliManager.configure(toSafeHost(url), url, token);
 
 				vscode.commands.executeCommand(
 					"coder.openDevContainer",
@@ -255,7 +253,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		},
 	});
 
-	const binaryManager = new BinaryManager(output, pathResolver);
+	const cliManager = new CliManager(vscodeProposed, output, pathResolver);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
@@ -266,7 +264,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		pathResolver,
 		mementoManager,
 		secretsManager,
-		binaryManager,
+		cliManager,
 	);
 	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
 	vscode.commands.registerCommand(
@@ -327,7 +325,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			commands,
 			ctx.extensionMode,
 			pathResolver,
-			binaryManager,
+			cliManager,
 		);
 		try {
 			const details = await remote.setup(

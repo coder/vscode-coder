@@ -9,8 +9,7 @@ import * as vscode from "vscode";
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
-import { BinaryManager } from "./core/binaryManager";
-import { CliConfigManager } from "./core/cliConfig";
+import { CliManager } from "./core/cliManager";
 import { MementoManager } from "./core/mementoManager";
 import { PathResolver } from "./core/pathResolver";
 import { SecretsManager } from "./core/secretsManager";
@@ -25,7 +24,6 @@ import {
 } from "./workspacesProvider";
 
 export class Commands {
-	private readonly cliConfigManager: CliConfigManager;
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
 	// possible to pass in arguments, so we have to store the current workspace
@@ -44,10 +42,8 @@ export class Commands {
 		private readonly pathResolver: PathResolver,
 		private readonly mementoManager: MementoManager,
 		private readonly secretsManager: SecretsManager,
-		private readonly binaryManager: BinaryManager,
-	) {
-		this.cliConfigManager = new CliConfigManager(pathResolver);
-	}
+		private readonly cliManager: CliManager,
+	) {}
 
 	/**
 	 * Find the requested agent if specified, otherwise return the agent if there
@@ -209,7 +205,7 @@ export class Commands {
 		await this.secretsManager.setSessionToken(res.token);
 
 		// Store on disk to be used by the cli.
-		await this.cliConfigManager.configure(label, url, res.token);
+		await this.cliManager.configure(label, url, res.token);
 
 		// These contexts control various menu items and the sidebar.
 		await vscode.commands.executeCommand(
@@ -515,7 +511,7 @@ export class Commands {
 					if (!url) {
 						throw new Error("No coder url found for sidebar");
 					}
-					const binary = await this.binaryManager.fetchBinary(
+					const binary = await this.cliManager.fetchBinary(
 						this.restClient,
 						toSafeHost(url),
 					);

@@ -19,10 +19,9 @@ import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api/workspace";
-import * as cli from "./cliManager";
+import * as cliUtils from "./cliUtils";
 import { Commands } from "./commands";
-import { BinaryManager } from "./core/binaryManager";
-import { CliConfigManager } from "./core/cliConfig";
+import { CliManager } from "./core/cliManager";
 import { PathResolver } from "./core/pathResolver";
 import { featureSetForVersion, FeatureSet } from "./featureSet";
 import { getGlobalFlags } from "./globalFlags";
@@ -45,7 +44,6 @@ export interface RemoteDetails extends vscode.Disposable {
 }
 
 export class Remote {
-	private readonly cliConfigManager: CliConfigManager;
 	public constructor(
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
@@ -53,10 +51,8 @@ export class Remote {
 		private readonly commands: Commands,
 		private readonly mode: vscode.ExtensionMode,
 		private readonly pathResolver: PathResolver,
-		private readonly binaryManager: BinaryManager,
-	) {
-		this.cliConfigManager = new CliConfigManager(pathResolver);
-	}
+		private readonly cliManager: CliManager,
+	) {}
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
 		const action = await this.vscodeProposed.window.showInformationMessage(
@@ -222,7 +218,7 @@ export class Remote {
 		await this.migrateSessionToken(parts.label);
 
 		// Get the URL and token belonging to this host.
-		const { url: baseUrlRaw, token } = await this.cliConfigManager.readConfig(
+		const { url: baseUrlRaw, token } = await this.cliManager.readConfig(
 			parts.label,
 		);
 
@@ -275,7 +271,7 @@ export class Remote {
 
 		let binaryPath: string | undefined;
 		if (this.mode === vscode.ExtensionMode.Production) {
-			binaryPath = await this.binaryManager.fetchBinary(
+			binaryPath = await this.cliManager.fetchBinary(
 				workspaceClient,
 				parts.label,
 			);
@@ -286,7 +282,7 @@ export class Remote {
 				binaryPath = path.join(os.tmpdir(), "coder");
 				await fs.stat(binaryPath);
 			} catch (ex) {
-				binaryPath = await this.binaryManager.fetchBinary(
+				binaryPath = await this.cliManager.fetchBinary(
 					workspaceClient,
 					parts.label,
 				);
@@ -298,7 +294,7 @@ export class Remote {
 
 		let version: semver.SemVer | null = null;
 		try {
-			version = semver.parse(await cli.version(binaryPath));
+			version = semver.parse(await cliUtils.version(binaryPath));
 		} catch (e) {
 			version = semver.parse(buildInfo.version);
 		}

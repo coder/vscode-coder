@@ -1,39 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { SecretStorage, Event, SecretStorageChangeEvent } from "vscode";
+import { InMemorySecretStorage } from "../__mocks__/testHelpers";
 import { SecretsManager } from "./secretsManager";
-
-// Simple in-memory implementation of SecretStorage
-class InMemorySecretStorage implements SecretStorage {
-	private secrets = new Map<string, string>();
-	private isCorrupted = false;
-
-	onDidChange: Event<SecretStorageChangeEvent> = () => ({ dispose: () => {} });
-
-	async get(key: string): Promise<string | undefined> {
-		if (this.isCorrupted) {
-			return Promise.reject(new Error("Storage corrupted"));
-		}
-		return this.secrets.get(key);
-	}
-
-	async store(key: string, value: string): Promise<void> {
-		if (this.isCorrupted) {
-			return Promise.reject(new Error("Storage corrupted"));
-		}
-		this.secrets.set(key, value);
-	}
-
-	async delete(key: string): Promise<void> {
-		if (this.isCorrupted) {
-			return Promise.reject(new Error("Storage corrupted"));
-		}
-		this.secrets.delete(key);
-	}
-
-	corruptStorage(): void {
-		this.isCorrupted = true;
-	}
-}
 
 describe("SecretsManager", () => {
 	let secretStorage: InMemorySecretStorage;

@@ -213,3 +213,62 @@ export class MockUserInteraction {
 		);
 	}
 }
+
+// Simple in-memory implementation of Memento
+export class InMemoryMemento implements vscode.Memento {
+	private storage = new Map<string, unknown>();
+
+	get<T>(key: string): T | undefined;
+	get<T>(key: string, defaultValue: T): T;
+	get<T>(key: string, defaultValue?: T): T | undefined {
+		return this.storage.has(key) ? (this.storage.get(key) as T) : defaultValue;
+	}
+
+	async update(key: string, value: unknown): Promise<void> {
+		if (value === undefined) {
+			this.storage.delete(key);
+		} else {
+			this.storage.set(key, value);
+		}
+		return Promise.resolve();
+	}
+
+	keys(): readonly string[] {
+		return Array.from(this.storage.keys());
+	}
+}
+
+// Simple in-memory implementation of SecretStorage
+export class InMemorySecretStorage implements vscode.SecretStorage {
+	private secrets = new Map<string, string>();
+	private isCorrupted = false;
+
+	onDidChange: vscode.Event<vscode.SecretStorageChangeEvent> = () => ({
+		dispose: () => {},
+	});
+
+	async get(key: string): Promise<string | undefined> {
+		if (this.isCorrupted) {
+			return Promise.reject(new Error("Storage corrupted"));
+		}
+		return this.secrets.get(key);
+	}
+
+	async store(key: string, value: string): Promise<void> {
+		if (this.isCorrupted) {
+			return Promise.reject(new Error("Storage corrupted"));
+		}
+		this.secrets.set(key, value);
+	}
+
+	async delete(key: string): Promise<void> {
+		if (this.isCorrupted) {
+			return Promise.reject(new Error("Storage corrupted"));
+		}
+		this.secrets.delete(key);
+	}
+
+	corruptStorage(): void {
+		this.isCorrupted = true;
+	}
+}

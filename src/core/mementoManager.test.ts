@@ -1,30 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { Memento } from "vscode";
+import { InMemoryMemento } from "../__mocks__/testHelpers";
 import { MementoManager } from "./mementoManager";
-
-// Simple in-memory implementation of Memento
-class InMemoryMemento implements Memento {
-	private storage = new Map<string, unknown>();
-
-	get<T>(key: string): T | undefined;
-	get<T>(key: string, defaultValue: T): T;
-	get<T>(key: string, defaultValue?: T): T | undefined {
-		return this.storage.has(key) ? (this.storage.get(key) as T) : defaultValue;
-	}
-
-	async update(key: string, value: unknown): Promise<void> {
-		if (value === undefined) {
-			this.storage.delete(key);
-		} else {
-			this.storage.set(key, value);
-		}
-		return Promise.resolve();
-	}
-
-	keys(): readonly string[] {
-		return Array.from(this.storage.keys());
-	}
-}
 
 describe("MementoManager", () => {
 	let memento: InMemoryMemento;
