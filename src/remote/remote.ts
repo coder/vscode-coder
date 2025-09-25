@@ -59,6 +59,9 @@ export class Remote {
 	private readonly pathResolver: PathResolver;
 	private readonly cliManager: CliManager;
 
+	private loginDetectedResolver: (() => void) | undefined;
+	private loginDetectedPromise: Promise<void> = Promise.resolve();
+
 	public constructor(
 		serviceContainer: ServiceContainer,
 		private readonly commands: Commands,
@@ -68,6 +71,27 @@ export class Remote {
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.cliManager = serviceContainer.getCliManager();
+	}
+
+	/**
+	 * Creates a new promise that will be resolved when login is detected in another window.
+	 * This should be called when starting a setup operation that might need login.
+	 */
+	private createLoginDetectionPromise(): void {
+		this.loginDetectedPromise = new Promise<void>((resolve) => {
+			this.loginDetectedResolver = resolve;
+		});
+	}
+
+	/**
+	 * Resolves the current login detection promise if one exists.
+	 * This should be called from the extension when login is detected.
+	 */
+	public resolveLoginDetected(): void {
+		if (this.loginDetectedResolver) {
+			this.loginDetectedResolver();
+			this.loginDetectedResolver = undefined;
+		}
 	}
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
@@ -233,34 +257,54 @@ export class Remote {
 		// Migrate "session_token" file to "session", if needed.
 		await this.migrateSessionToken(parts.label);
 
+		// Try to detect any login event that might happen after  we read the current configs
+		this.createLoginDetectionPromise();
 		// Get the URL and token belonging to this host.
 		const { url: baseUrlRaw, token } = await this.cliManager.readConfig(
 			parts.label,
 		);
+
+		const showLoginDialog = async (message: string) => {
+			const dialogPromise = this.vscodeProposed.window.showInformationMessage(
+				message,
+				{
+					useCustom: true,
+					modal: true,
+					detail: `You must log in to access ${workspaceName}. If you've already logged in, you may close this dialog.`,
+				},
+				"Log In",
+			);
+
+			// Race between dialog and login detection
+			const result = await Promise.race([
+				this.loginDetectedPromise.then(() => ({ type: "login" as const })),
+				dialogPromise.then((userChoice) => ({
+					type: "dialog" as const,
+					userChoice,
+				})),
+			]);
+
+			if (result.type === "login") {
+				return this.setup(remoteAuthority, firstConnect);
+			} else {
+				if (!result.userChoice) {
+					// User declined to log in.
+					await this.closeRemote();
+					return;
+				} else {
+					// Log in then try again.
+					await this.commands.login({ url: baseUrlRaw, label: parts.label });
+					return this.setup(remoteAuthority, firstConnect);
+				}
+			}
+		};
 
 		// It could be that the cli config was deleted.  If so, ask for the url.
 		if (
 			!baseUrlRaw ||
 			(!token && needToken(vscode.workspace.getConfiguration()))
 		) {
-			const result = await this.vscodeProposed.window.showInformationMessage(
-				"You are not logged in...",
-				{
-					useCustom: true,
-					modal: true,
-					detail: `You must log in to access ${workspaceName}.`,
-				},
-				"Log In",
-			);
-			if (!result) {
-				// User declined to log in.
-				await this.closeRemote();
-			} else {
-				// Log in then try again.
-				await this.commands.login({ url: baseUrlRaw, label: parts.label });
-				await this.setup(remoteAuthority, firstConnect);
-			}
-			return;
+			return showLoginDialog("You are not logged in...");
 		}
 
 		this.logger.info("Using deployment URL", baseUrlRaw);
@@ -326,6 +370,8 @@ export class Remote {
 		// Next is to find the workspace from the URI scheme provided.
 		let workspace: Workspace;
 		try {
+			// We could've logged out in the meantime
+			this.createLoginDetectionPromise();
 			this.logger.info(`Looking for workspace ${workspaceName}...`);
 			workspace = await workspaceClient.getWorkspaceByOwnerAndName(
 				parts.username,
@@ -359,23 +405,7 @@ export class Remote {
 					return;
 				}
 				case 401: {
-					const result =
-						await this.vscodeProposed.window.showInformationMessage(
-							"Your session expired...",
-							{
-								useCustom: true,
-								modal: true,
-								detail: `You must log in to access ${workspaceName}.`,
-							},
-							"Log In",
-						);
-					if (!result) {
-						await this.closeRemote();
-					} else {
-						await this.commands.login({ url: baseUrlRaw, label: parts.label });
-						await this.setup(remoteAuthority, firstConnect);
-					}
-					return;
+					return showLoginDialog("Your session expired...");
 				}
 				default:
 					throw error;

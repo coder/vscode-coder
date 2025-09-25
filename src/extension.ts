@@ -327,6 +327,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		),
 	);
 
+	const remote = new Remote(serviceContainer, commands, ctx.extensionMode);
+
 	ctx.subscriptions.push(
 		secretsManager.onDidChangeSessionToken(async () => {
 			const token = await secretsManager.getSessionToken();
@@ -338,6 +340,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				output.info("Logging in");
 				// Should login the user directly if the URL+Token are valid
 				await commands.login({ url, token });
+				// Resolve any pending login detection promises
+				remote.resolveLoginDetected();
 			}
 		}),
 	);
@@ -352,7 +356,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// (this would require the user to uninstall the Coder extension and
 	// reinstall after installing the remote SSH extension, which is annoying)
 	if (remoteSSHExtension && vscodeProposed.env.remoteAuthority) {
-		const remote = new Remote(serviceContainer, commands, ctx.extensionMode);
 		try {
 			const details = await remote.setup(
 				vscodeProposed.env.remoteAuthority,
