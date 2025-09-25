@@ -46,6 +46,7 @@
 - Add binary signature verification. This can be disabled with
   `coder.disableSignatureVerification` if you purposefully run a binary that is
   not signed by Coder (for example a binary you built yourself).
+- Add search functionality to the "All Workspaces" view.
 
 ## [v1.9.2](https://github.com/coder/vscode-coder/releases/tag/v1.9.2) 2025-06-25
 
