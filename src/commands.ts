@@ -5,14 +5,17 @@ import {
 	Workspace,
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
-import path from "node:path";
 import * as vscode from "vscode";
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
+import { CliManager } from "./core/cliManager";
+import { MementoManager } from "./core/mementoManager";
+import { PathResolver } from "./core/pathResolver";
+import { SecretsManager } from "./core/secretsManager";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
-import { Storage } from "./storage";
+import { Logger } from "./logging/logger";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
 	AgentTreeItem,
@@ -35,7 +38,11 @@ export class Commands {
 	public constructor(
 		private readonly vscodeProposed: typeof vscode,
 		private readonly restClient: Api,
-		private readonly storage: Storage,
+		private readonly logger: Logger,
+		private readonly pathResolver: PathResolver,
+		private readonly mementoManager: MementoManager,
+		private readonly secretsManager: SecretsManager,
+		private readonly cliManager: CliManager,
 	) {}
 
 	/**
@@ -103,7 +110,7 @@ export class Commands {
 		quickPick.title = "Enter the URL of your Coder deployment.";
 
 		// Initial items.
-		quickPick.items = this.storage
+		quickPick.items = this.mementoManager
 			.withUrlHistory(defaultURL, process.env.CODER_URL)
 			.map((url) => ({
 				alwaysShow: true,
@@ -114,7 +121,7 @@ export class Commands {
 		// an option in case the user wants to connect to something that is not in
 		// the list.
 		quickPick.onDidChangeValue((value) => {
-			quickPick.items = this.storage
+			quickPick.items = this.mementoManager
 				.withUrlHistory(defaultURL, process.env.CODER_URL, value)
 				.map((url) => ({
 					alwaysShow: true,
@@ -194,11 +201,11 @@ export class Commands {
 		this.restClient.setSessionToken(res.token);
 
 		// Store these to be used in later sessions.
-		await this.storage.setUrl(url);
-		await this.storage.setSessionToken(res.token);
+		await this.mementoManager.setUrl(url);
+		await this.secretsManager.setSessionToken(res.token);
 
 		// Store on disk to be used by the cli.
-		await this.storage.configureCli(label, url, res.token);
+		await this.cliManager.configure(label, url, res.token);
 
 		// These contexts control various menu items and the sidebar.
 		await vscode.commands.executeCommand(
@@ -240,7 +247,7 @@ export class Commands {
 		token: string,
 		isAutologin: boolean,
 	): Promise<{ user: User; token: string } | null> {
-		const client = CoderApi.create(url, token, this.storage.output, () =>
+		const client = CoderApi.create(url, token, this.logger, () =>
 			vscode.workspace.getConfiguration(),
 		);
 		if (!needToken(vscode.workspace.getConfiguration())) {
@@ -252,10 +259,7 @@ export class Commands {
 			} catch (err) {
 				const message = getErrorMessage(err, "no response from the server");
 				if (isAutologin) {
-					this.storage.output.warn(
-						"Failed to log in to Coder server:",
-						message,
-					);
+					this.logger.warn("Failed to log in to Coder server:", message);
 				} else {
 					this.vscodeProposed.window.showErrorMessage(
 						"Failed to log in to Coder server",
@@ -283,7 +287,7 @@ export class Commands {
 			title: "Coder API Key",
 			password: true,
 			placeHolder: "Paste your API key.",
-			value: token || (await this.storage.getSessionToken()),
+			value: token || (await this.secretsManager.getSessionToken()),
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
 				client.setSessionToken(value);
@@ -349,7 +353,7 @@ export class Commands {
 	 * Log out from the currently logged-in deployment.
 	 */
 	public async logout(): Promise<void> {
-		const url = this.storage.getUrl();
+		const url = this.mementoManager.getUrl();
 		if (!url) {
 			// Sanity check; command should not be available if no url.
 			throw new Error("You are not logged in");
@@ -361,8 +365,8 @@ export class Commands {
 		this.restClient.setSessionToken("");
 
 		// Clear from memory.
-		await this.storage.setUrl(undefined);
-		await this.storage.setSessionToken(undefined);
+		await this.mementoManager.setUrl(undefined);
+		await this.secretsManager.setSessionToken(undefined);
 
 		await vscode.commands.executeCommand(
 			"setContext",
@@ -387,7 +391,7 @@ export class Commands {
 	 * Must only be called if currently logged in.
 	 */
 	public async createWorkspace(): Promise<void> {
-		const uri = this.storage.getUrl() + "/templates";
+		const uri = this.mementoManager.getUrl() + "/templates";
 		await vscode.commands.executeCommand("vscode.open", uri);
 	}
 
@@ -402,7 +406,7 @@ export class Commands {
 	public async navigateToWorkspace(item: OpenableTreeItem) {
 		if (item) {
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			const uri = this.storage.getUrl() + `/@${workspaceId}`;
+			const uri = this.mementoManager.getUrl() + `/@${workspaceId}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
@@ -425,7 +429,7 @@ export class Commands {
 	public async navigateToWorkspaceSettings(item: OpenableTreeItem) {
 		if (item) {
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			const uri = this.storage.getUrl() + `/@${workspaceId}/settings`;
+			const uri = this.mementoManager.getUrl() + `/@${workspaceId}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
@@ -503,17 +507,17 @@ export class Commands {
 
 					// If workspace_name is provided, run coder ssh before the command
 
-					const url = this.storage.getUrl();
+					const url = this.mementoManager.getUrl();
 					if (!url) {
 						throw new Error("No coder url found for sidebar");
 					}
-					const binary = await this.storage.fetchBinary(
+					const binary = await this.cliManager.fetchBinary(
 						this.restClient,
 						toSafeHost(url),
 					);
 
-					const configDir = path.dirname(
-						this.storage.getSessionTokenPath(toSafeHost(url)),
+					const configDir = this.pathResolver.getGlobalConfigDir(
+						toSafeHost(url),
 					);
 					const globalFlags = getGlobalFlags(
 						vscode.workspace.getConfiguration(),
@@ -645,8 +649,8 @@ export class Commands {
 			newWindow = false;
 		}
 
-		// Only set the memento if when opening a new folder
-		await this.storage.setFirstConnect();
+		// Only set the memento when opening a new folder
+		await this.mementoManager.setFirstConnect();
 		await vscode.commands.executeCommand(
 			"vscode.openFolder",
 			vscode.Uri.from({
@@ -755,7 +759,7 @@ export class Commands {
 			// If we have no agents, the workspace may not be running, in which case
 			// we need to fetch the agents through the resources API, as the
 			// workspaces query does not include agents when off.
-			this.storage.output.info("Fetching agents from template version");
+			this.logger.info("Fetching agents from template version");
 			const resources = await this.restClient.getTemplateVersionResources(
 				workspace.latest_build.template_version_id,
 			);
@@ -826,8 +830,8 @@ export class Commands {
 			}
 		}
 
-		// Only set the memento if when opening a new folder/window
-		await this.storage.setFirstConnect();
+		// Only set the memento when opening a new folder/window
+		await this.mementoManager.setFirstConnect();
 		if (folderPath) {
 			await vscode.commands.executeCommand(
 				"vscode.openFolder",

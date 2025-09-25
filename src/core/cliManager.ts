@@ -3,140 +3,26 @@ import globalAxios, {
 	type AxiosRequestConfig,
 } from "axios";
 import { Api } from "coder/site/src/api/api";
-import { createWriteStream, type WriteStream } from "fs";
+import { createWriteStream, WriteStream } from "fs";
 import fs from "fs/promises";
 import { IncomingMessage } from "http";
 import path from "path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
+
 import * as vscode from "vscode";
-import { errToStr } from "./api/api-helper";
-import * as cli from "./cliManager";
-import { getHeaderCommand, getHeaders } from "./headers";
-import * as pgp from "./pgp";
+import { errToStr } from "../api/api-helper";
+import * as cli from "../cliUtils";
+import { Logger } from "../logging/logger";
+import * as pgp from "../pgp";
+import { PathResolver } from "./pathResolver";
 
-// Maximium number of recent URLs to store.
-const MAX_URLS = 10;
-
-export class Storage {
+export class CliManager {
 	constructor(
 		private readonly vscodeProposed: typeof vscode,
-		public readonly output: vscode.LogOutputChannel,
-		private readonly memento: vscode.Memento,
-		private readonly secrets: vscode.SecretStorage,
-		private readonly globalStorageUri: vscode.Uri,
-		private readonly logUri: vscode.Uri,
+		private readonly output: Logger,
+		private readonly pathResolver: PathResolver,
 	) {}
-
-	/**
-	 * Add the URL to the list of recently accessed URLs in global storage, then
-	 * set it as the last used URL.
-	 *
-	 * If the URL is falsey, then remove it as the last used URL and do not touch
-	 * the history.
-	 */
-	public async setUrl(url?: string): Promise<void> {
-		await this.memento.update("url", url);
-		if (url) {
-			const history = this.withUrlHistory(url);
-			await this.memento.update("urlHistory", history);
-		}
-	}
-
-	/**
-	 * Get the last used URL.
-	 */
-	public getUrl(): string | undefined {
-		return this.memento.get("url");
-	}
-
-	/**
-	 * Get the most recently accessed URLs (oldest to newest) with the provided
-	 * values appended.  Duplicates will be removed.
-	 */
-	public withUrlHistory(...append: (string | undefined)[]): string[] {
-		const val = this.memento.get("urlHistory");
-		const urls = Array.isArray(val) ? new Set(val) : new Set();
-		for (const url of append) {
-			if (url) {
-				// It might exist; delete first so it gets appended.
-				urls.delete(url);
-				urls.add(url);
-			}
-		}
-		// Slice off the head if the list is too large.
-		return urls.size > MAX_URLS
-			? Array.from(urls).slice(urls.size - MAX_URLS, urls.size)
-			: Array.from(urls);
-	}
-
-	/**
-	 * Mark this as the first connection to a workspace, which influences whether
-	 * the workspace startup confirmation is shown to the user.
-	 */
-	public async setFirstConnect(): Promise<void> {
-		return this.memento.update("firstConnect", true);
-	}
-
-	/**
-	 * Check if this is the first connection to a workspace and clear the flag.
-	 * Used to determine whether to automatically start workspaces without
-	 * prompting the user for confirmation.
-	 */
-	public async getAndClearFirstConnect(): Promise<boolean> {
-		const isFirst = this.memento.get<boolean>("firstConnect");
-		if (isFirst !== undefined) {
-			await this.memento.update("firstConnect", undefined);
-		}
-		return isFirst === true;
-	}
-
-	/**
-	 * Set or unset the last used token.
-	 */
-	public async setSessionToken(sessionToken?: string): Promise<void> {
-		if (!sessionToken) {
-			await this.secrets.delete("sessionToken");
-		} else {
-			await this.secrets.store("sessionToken", sessionToken);
-		}
-	}
-
-	/**
-	 * Get the last used token.
-	 */
-	public async getSessionToken(): Promise<string | undefined> {
-		try {
-			return await this.secrets.get("sessionToken");
-		} catch (ex) {
-			// The VS Code session store has become corrupt before, and
-			// will fail to get the session token...
-			return undefined;
-		}
-	}
-
-	/**
-	 * Returns the log path for the "Remote - SSH" output panel.  There is no VS
-	 * Code API to get the contents of an output panel.  We use this to get the
-	 * active port so we can display network information.
-	 */
-	public async getRemoteSSHLogPath(): Promise<string | undefined> {
-		const upperDir = path.dirname(this.logUri.fsPath);
-		// Node returns these directories sorted already!
-		const dirs = await fs.readdir(upperDir);
-		const latestOutput = dirs
-			.reverse()
-			.filter((dir) => dir.startsWith("output_logging_"));
-		if (latestOutput.length === 0) {
-			return undefined;
-		}
-		const dir = await fs.readdir(path.join(upperDir, latestOutput[0]));
-		const remoteSSH = dir.filter((file) => file.indexOf("Remote - SSH") !== -1);
-		if (remoteSSH.length === 0) {
-			return undefined;
-		}
-		return path.join(upperDir, latestOutput[0], remoteSSH[0]);
-	}
 
 	/**
 	 * Download and return the path to a working binary for the deployment with
@@ -151,7 +37,6 @@ export class Storage {
 	 */
 	public async fetchBinary(restClient: Api, label: string): Promise<string> {
 		const cfg = vscode.workspace.getConfiguration("coder");
-
 		// Settings can be undefined when set to their defaults (true in this case),
 		// so explicitly check against false.
 		const enableDownloads = cfg.get("enableDownloads") !== false;
@@ -171,7 +56,10 @@ export class Storage {
 		// Check if there is an existing binary and whether it looks valid.  If it
 		// is valid and matches the server, or if it does not match the server but
 		// downloads are disabled, we can return early.
-		const binPath = path.join(this.getBinaryCachePath(label), cli.name());
+		const binPath = path.join(
+			this.pathResolver.getBinaryCachePath(label),
+			cli.name(),
+		);
 		this.output.info("Using binary path", binPath);
 		const stat = await cli.stat(binPath);
 		if (stat === undefined) {
@@ -318,8 +206,7 @@ export class Storage {
 							body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
 						});
 						const uri = vscode.Uri.parse(
-							`https://github.com/coder/vscode-coder/issues/new?` +
-								params.toString(),
+							`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
 						);
 						vscode.env.openExternal(uri);
 					});
@@ -340,8 +227,7 @@ export class Storage {
 							body: `Received status code \`${status}\` when downloading the binary.`,
 						});
 						const uri = vscode.Uri.parse(
-							`https://github.com/coder/vscode-coder/issues/new?` +
-								params.toString(),
+							`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
 						);
 						vscode.env.openExternal(uri);
 					});
@@ -586,108 +472,12 @@ export class Storage {
 	}
 
 	/**
-	 * Return the directory for a deployment with the provided label to where its
-	 * binary is cached.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 *
-	 * The caller must ensure this directory exists before use.
-	 */
-	public getBinaryCachePath(label: string): string {
-		const configPath = vscode.workspace
-			.getConfiguration()
-			.get("coder.binaryDestination");
-		return configPath && String(configPath).trim().length > 0
-			? path.resolve(String(configPath))
-			: label
-				? path.join(this.globalStorageUri.fsPath, label, "bin")
-				: path.join(this.globalStorageUri.fsPath, "bin");
-	}
-
-	/**
-	 * Return the path where network information for SSH hosts are stored.
-	 *
-	 * The CLI will write files here named after the process PID.
-	 */
-	public getNetworkInfoPath(): string {
-		return path.join(this.globalStorageUri.fsPath, "net");
-	}
-
-	/**
-	 *
-	 * Return the path where log data from the connection is stored.
-	 *
-	 * The CLI will write files here named after the process PID.
-	 */
-	public getLogPath(): string {
-		return path.join(this.globalStorageUri.fsPath, "log");
-	}
-
-	/**
-	 * Get the path to the user's settings.json file.
-	 *
-	 * Going through VSCode's API should be preferred when modifying settings.
-	 */
-	public getUserSettingsPath(): string {
-		return path.join(
-			this.globalStorageUri.fsPath,
-			"..",
-			"..",
-			"..",
-			"User",
-			"settings.json",
-		);
-	}
-
-	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * its session token is stored.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 *
-	 * The caller must ensure this directory exists before use.
-	 */
-	public getSessionTokenPath(label: string): string {
-		return label
-			? path.join(this.globalStorageUri.fsPath, label, "session")
-			: path.join(this.globalStorageUri.fsPath, "session");
-	}
-
-	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * its session token was stored by older code.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 *
-	 * The caller must ensure this directory exists before use.
-	 */
-	public getLegacySessionTokenPath(label: string): string {
-		return label
-			? path.join(this.globalStorageUri.fsPath, label, "session_token")
-			: path.join(this.globalStorageUri.fsPath, "session_token");
-	}
-
-	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * its url is stored.
-	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
-	 *
-	 * The caller must ensure this directory exists before use.
-	 */
-	public getUrlPath(label: string): string {
-		return label
-			? path.join(this.globalStorageUri.fsPath, label, "url")
-			: path.join(this.globalStorageUri.fsPath, "url");
-	}
-
-	/**
 	 * Configure the CLI for the deployment with the provided label.
 	 *
 	 * Falsey URLs and null tokens are a no-op; we avoid unconfiguring the CLI to
 	 * avoid breaking existing connections.
 	 */
-	public async configureCli(
+	public async configure(
 		label: string,
 		url: string | undefined,
 		token: string | null,
@@ -709,7 +499,7 @@ export class Storage {
 		url: string | undefined,
 	): Promise<void> {
 		if (url) {
-			const urlPath = this.getUrlPath(label);
+			const urlPath = this.pathResolver.getUrlPath(label);
 			await fs.mkdir(path.dirname(urlPath), { recursive: true });
 			await fs.writeFile(urlPath, url);
 		}
@@ -727,7 +517,7 @@ export class Storage {
 		token: string | undefined | null,
 	) {
 		if (token !== null) {
-			const tokenPath = this.getSessionTokenPath(label);
+			const tokenPath = this.pathResolver.getSessionTokenPath(label);
 			await fs.mkdir(path.dirname(tokenPath), { recursive: true });
 			await fs.writeFile(tokenPath, token ?? "");
 		}
@@ -740,11 +530,11 @@ export class Storage {
 	 *
 	 * If the label is empty, read the old deployment-unaware config.
 	 */
-	public async readCliConfig(
+	public async readConfig(
 		label: string,
 	): Promise<{ url: string; token: string }> {
-		const urlPath = this.getUrlPath(label);
-		const tokenPath = this.getSessionTokenPath(label);
+		const urlPath = this.pathResolver.getUrlPath(label);
+		const tokenPath = this.pathResolver.getSessionTokenPath(label);
 		const [url, token] = await Promise.allSettled([
 			fs.readFile(urlPath, "utf8"),
 			fs.readFile(tokenPath, "utf8"),
@@ -753,34 +543,5 @@ export class Storage {
 			url: url.status === "fulfilled" ? url.value.trim() : "",
 			token: token.status === "fulfilled" ? token.value.trim() : "",
 		};
-	}
-
-	/**
-	 * Migrate the session token file from "session_token" to "session", if needed.
-	 */
-	public async migrateSessionToken(label: string) {
-		const oldTokenPath = this.getLegacySessionTokenPath(label);
-		const newTokenPath = this.getSessionTokenPath(label);
-		try {
-			await fs.rename(oldTokenPath, newTokenPath);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-				return;
-			}
-			throw error;
-		}
-	}
-
-	/**
-	 * Run the header command and return the generated headers.
-	 */
-	public async getHeaders(
-		url: string | undefined,
-	): Promise<Record<string, string>> {
-		return getHeaders(
-			url,
-			getHeaderCommand(vscode.workspace.getConfiguration()),
-			this.output,
-		);
 	}
 }

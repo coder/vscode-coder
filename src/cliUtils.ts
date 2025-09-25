@@ -21,20 +21,6 @@ export async function stat(binPath: string): Promise<Stats | undefined> {
 	}
 }
 
-/**
- * Remove the path.  Throw if unable to remove.
- */
-export async function rm(binPath: string): Promise<void> {
-	try {
-		await fs.rm(binPath, { force: true });
-	} catch (error) {
-		// Just in case; we should never get an ENOENT because of force: true.
-		if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-			throw error;
-		}
-	}
-}
-
 // util.promisify types are dynamic so there is no concrete type we can import
 // and we have to make our own.
 type ExecException = ExecFileException & { stdout?: string; stderr?: string };

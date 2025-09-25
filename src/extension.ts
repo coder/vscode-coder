@@ -7,11 +7,14 @@ import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
+import { CliManager } from "./core/cliManager";
+import { MementoManager } from "./core/mementoManager";
+import { PathResolver } from "./core/pathResolver";
+import { SecretsManager } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote";
-import { Storage } from "./storage";
 import { toSafeHost } from "./util";
-import { WorkspaceQuery, WorkspaceProvider } from "./workspacesProvider";
+import { WorkspaceProvider, WorkspaceQuery } from "./workspacesProvider";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// The Remote SSH extension's proposed APIs are used to override the SSH host
@@ -48,40 +51,39 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		);
 	}
 
-	const output = vscode.window.createOutputChannel("Coder", { log: true });
-	const storage = new Storage(
-		vscodeProposed,
-		output,
-		ctx.globalState,
-		ctx.secrets,
-		ctx.globalStorageUri,
-		ctx.logUri,
+	const pathResolver = new PathResolver(
+		ctx.globalStorageUri.fsPath,
+		ctx.logUri.fsPath,
 	);
+	const mementoManager = new MementoManager(ctx.globalState);
+	const secretsManager = new SecretsManager(ctx.secrets);
 
-	// Try to clear this flag ASAP then pass it around if needed
-	const isFirstConnect = await storage.getAndClearFirstConnect();
+	const output = vscode.window.createOutputChannel("Coder", { log: true });
+
+	// Try to clear this flag ASAP
+	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
 
 	// This client tracks the current login and will be used through the life of
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
-	const url = storage.getUrl();
+	const url = mementoManager.getUrl();
 	const client = CoderApi.create(
 		url || "",
-		await storage.getSessionToken(),
-		storage.output,
+		await secretsManager.getSessionToken(),
+		output,
 		() => vscode.workspace.getConfiguration(),
 	);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
 		client,
-		storage,
+		output,
 		5,
 	);
 	const allWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.All,
 		client,
-		storage,
+		output,
 	);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
@@ -129,11 +131,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// hit enter and move on.
 				const url = await commands.maybeAskUrl(
 					params.get("url"),
-					storage.getUrl(),
+					mementoManager.getUrl(),
 				);
 				if (url) {
 					client.setHost(url);
-					await storage.setUrl(url);
+					await mementoManager.setUrl(url);
 				} else {
 					throw new Error(
 						"url must be provided or specified as a query parameter",
@@ -151,11 +153,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					: (params.get("token") ?? "");
 				if (token) {
 					client.setSessionToken(token);
-					await storage.setSessionToken(token);
+					await secretsManager.setSessionToken(token);
 				}
 
 				// Store on disk to be used by the cli.
-				await storage.configureCli(toSafeHost(url), url, token);
+				await cliManager.configure(toSafeHost(url), url, token);
 
 				vscode.commands.executeCommand(
 					"coder.open",
@@ -211,11 +213,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// hit enter and move on.
 				const url = await commands.maybeAskUrl(
 					params.get("url"),
-					storage.getUrl(),
+					mementoManager.getUrl(),
 				);
 				if (url) {
 					client.setHost(url);
-					await storage.setUrl(url);
+					await mementoManager.setUrl(url);
 				} else {
 					throw new Error(
 						"url must be provided or specified as a query parameter",
@@ -233,7 +235,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					: (params.get("token") ?? "");
 
 				// Store on disk to be used by the cli.
-				await storage.configureCli(toSafeHost(url), url, token);
+				await cliManager.configure(toSafeHost(url), url, token);
 
 				vscode.commands.executeCommand(
 					"coder.openDevContainer",
@@ -251,9 +253,19 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		},
 	});
 
+	const cliManager = new CliManager(vscodeProposed, output, pathResolver);
+
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(vscodeProposed, client, storage);
+	const commands = new Commands(
+		vscodeProposed,
+		client,
+		output,
+		pathResolver,
+		mementoManager,
+		secretsManager,
+		cliManager,
+	);
 	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
 	vscode.commands.registerCommand(
 		"coder.logout",
@@ -309,9 +321,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	if (remoteSSHExtension && vscodeProposed.env.remoteAuthority) {
 		const remote = new Remote(
 			vscodeProposed,
-			storage,
+			output,
 			commands,
 			ctx.extensionMode,
+			pathResolver,
+			cliManager,
 		);
 		try {
 			const details = await remote.setup(
@@ -326,7 +340,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
-				storage.output.warn(ex.x509Err || ex.message);
+				output.warn(ex.x509Err || ex.message);
 				await ex.showModal("Failed to open workspace");
 			} else if (isAxiosError(ex)) {
 				const msg = getErrorMessage(ex, "None");
@@ -335,7 +349,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const method = ex.config?.method?.toUpperCase() || "request";
 				const status = ex.response?.status || "None";
 				const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
-				storage.output.warn(message);
+				output.warn(message);
 				await vscodeProposed.window.showErrorMessage(
 					"Failed to open workspace",
 					{
@@ -346,7 +360,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				);
 			} else {
 				const message = errToStr(ex, "No error message was provided");
-				storage.output.warn(message);
+				output.warn(message);
 				await vscodeProposed.window.showErrorMessage(
 					"Failed to open workspace",
 					{
@@ -365,12 +379,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// See if the plugin client is authenticated.
 	const baseUrl = client.getAxiosInstance().defaults.baseURL;
 	if (baseUrl) {
-		storage.output.info(`Logged in to ${baseUrl}; checking credentials`);
+		output.info(`Logged in to ${baseUrl}; checking credentials`);
 		client
 			.getAuthenticatedUser()
 			.then(async (user) => {
 				if (user && user.roles) {
-					storage.output.info("Credentials are valid");
+					output.info("Credentials are valid");
 					vscode.commands.executeCommand(
 						"setContext",
 						"coder.authenticated",
@@ -388,13 +402,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					myWorkspacesProvider.fetchAndRefresh();
 					allWorkspacesProvider.fetchAndRefresh();
 				} else {
-					storage.output.warn("No error, but got unexpected response", user);
+					output.warn("No error, but got unexpected response", user);
 				}
 			})
 			.catch((error) => {
 				// This should be a failure to make the request, like the header command
 				// errored.
-				storage.output.warn("Failed to check user authentication", error);
+				output.warn("Failed to check user authentication", error);
 				vscode.window.showErrorMessage(
 					`Failed to check user authentication: ${error.message}`,
 				);
@@ -403,7 +417,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				vscode.commands.executeCommand("setContext", "coder.loaded", true);
 			});
 	} else {
-		storage.output.info("Not currently logged in");
+		output.info("Not currently logged in");
 		vscode.commands.executeCommand("setContext", "coder.loaded", true);
 
 		// Handle autologin, if not already logged in.

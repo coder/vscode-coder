@@ -13,11 +13,11 @@ import {
 } from "./agentMetadataHelper";
 import {
 	AgentMetadataEvent,
-	extractAllAgents,
 	extractAgents,
+	extractAllAgents,
 } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
-import { Storage } from "./storage";
+import { Logger } from "./logging/logger";
 
 export enum WorkspaceQuery {
 	Mine = "owner:me",
@@ -46,7 +46,7 @@ export class WorkspaceProvider
 	constructor(
 		private readonly getWorkspacesQuery: WorkspaceQuery,
 		private readonly client: CoderApi,
-		private readonly storage: Storage,
+		private readonly logger: Logger,
 		private readonly timerSeconds?: number,
 	) {
 		// No initialization.
@@ -92,7 +92,7 @@ export class WorkspaceProvider
 	 */
 	private async fetch(): Promise<WorkspaceTreeItem[]> {
 		if (vscode.env.logLevel <= vscode.LogLevel.Debug) {
-			this.storage.output.info(
+			this.logger.info(
 				`Fetching workspaces: ${this.getWorkspacesQuery || "no filter"}...`,
 			);
 		}

@@ -2,9 +2,9 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { beforeAll, describe, expect, it } from "vitest";
-import * as cli from "./cliManager";
+import * as cli from "./cliUtils";
 
-describe("cliManager", () => {
+describe("cliUtils", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests");
 
 	beforeAll(async () => {
@@ -23,14 +23,6 @@ describe("cliManager", () => {
 
 		await fs.writeFile(binPath, "test");
 		expect((await cli.stat(binPath))?.size).toBe(4);
-	});
-
-	it("rm", async () => {
-		const binPath = path.join(tmp, "rm");
-		await cli.rm(binPath);
-
-		await fs.writeFile(binPath, "test");
-		await cli.rm(binPath);
 	});
 
 	// TODO: CI only runs on Linux but we should run it on Windows too.
