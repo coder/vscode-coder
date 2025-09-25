@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import { beforeAll, describe, expect, it } from "vitest";
 
-describe("cliUtils", () => {
+describe("CliUtils", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests");
 
 	beforeAll(async () => {

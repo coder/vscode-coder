@@ -39,7 +39,6 @@ vi.mock("fs/promises", async () => {
 	};
 });
 
-// Only mock the platform detection functions from CLI manager
 vi.mock("@/cliUtils", async () => {
 	const actual =
 		await vi.importActual<typeof import("@/cliUtils")>("@/cliUtils");

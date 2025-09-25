@@ -295,7 +295,7 @@ export class Remote {
 		let version: semver.SemVer | null = null;
 		try {
 			version = semver.parse(await cliUtils.version(binaryPath));
-		} catch (e) {
+		} catch {
 			version = semver.parse(buildInfo.version);
 		}
 
