@@ -17,11 +17,9 @@
 			// conflicting types.  For some reason TypeScript is reading both and
 			// throwing errors about AxiosInstance not being compatible with
 			// AxiosInstance.  This ensures we use only index.d.ts.
-			"axios": ["./node_modules/axios/index.d.ts"],
-			"@/*": ["src/*"],
-			"@tests/*": ["test/*"]
+			"axios": ["./node_modules/axios/index.d.ts"]
 		}
 	},
 	"exclude": ["node_modules"],
-	"include": ["src/**/*", "test/**/*"]
+	"include": ["src"]
 }

@@ -21,7 +21,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "src"),
-			"@tests": path.resolve(__dirname, "test"),
+			"@test": path.resolve(__dirname, "test"),
 			vscode: path.resolve(__dirname, "test/mocks/vscode.runtime.ts"),
 		},
 	},

@@ -19,7 +19,7 @@ import {
 	MockConfigurationProvider,
 	MockProgressReporter,
 	MockUserInteraction,
-} from "@tests/mocks/testHelpers";
+} from "@test/mocks/testHelpers";
 
 vi.mock("os");
 vi.mock("axios");
