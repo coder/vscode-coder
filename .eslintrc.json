@@ -4,7 +4,7 @@
 	"parserOptions": {
 		"ecmaVersion": 6,
 		"sourceType": "module",
-		"project": "./tsconfig.json"
+		"project": true
 	},
 	"plugins": ["@typescript-eslint", "prettier", "import"],
 	"extends": [
@@ -15,7 +15,25 @@
 		"plugin:md/prettier",
 		"prettier"
 	],
+	"ignorePatterns": ["out", "dist", "**/*.d.ts"],
+	"settings": {
+		"import/resolver": {
+			"typescript": { "project": "./tsconfig.json" }
+		},
+		"import/internal-regex": "^@/"
+	},
 	"overrides": [
+		{
+			"files": ["test/**/*.{ts,tsx}", "**/*.{test,spec}.ts?(x)"],
+			"settings": {
+				"import/resolver": {
+					"typescript": {
+						// In tests, resolve using the test tsconfig (has @test/* mapping)
+						"project": "test/tsconfig.json"
+					}
+				}
+			}
+		},
 		{
 			"files": ["*.ts"],
 			"rules": {
@@ -88,12 +106,5 @@
 				}
 			}
 		]
-	},
-	"ignorePatterns": ["out", "dist", "**/*.d.ts"],
-	"settings": {
-		"import/resolver": {
-			"typescript": { "project": "./tsconfig.json" }
-		},
-		"import/internal-regex": "^@/"
 	}
 }
