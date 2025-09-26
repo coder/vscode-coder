@@ -1,7 +1,8 @@
-import type { AxiosError, AxiosResponse } from "axios";
-import { isAxiosError } from "axios";
+import { isAxiosError, type AxiosError, type AxiosResponse } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
+
 import { getErrorDetail } from "../error";
+
 import {
 	formatBody,
 	formatContentLength,
@@ -10,13 +11,14 @@ import {
 	formatTime,
 	formatUri,
 } from "./formatters";
-import type { Logger } from "./logger";
 import {
 	HttpClientLogLevel,
-	RequestConfigWithMeta,
-	RequestMeta,
+	type RequestConfigWithMeta,
+	type RequestMeta,
 } from "./types";
 import { createRequestId, shortId } from "./utils";
+
+import type { Logger } from "./logger";
 
 /**
  * Creates metadata for tracking HTTP requests.

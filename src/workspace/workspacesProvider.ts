@@ -1,23 +1,24 @@
 import {
-	Workspace,
-	WorkspaceAgent,
-	WorkspaceApp,
+	type Workspace,
+	type WorkspaceAgent,
+	type WorkspaceApp,
 } from "coder/site/src/api/typesGenerated";
 import * as path from "path";
 import * as vscode from "vscode";
+
 import {
-	AgentMetadataWatcher,
+	type AgentMetadataWatcher,
 	createAgentMetadataWatcher,
 	formatEventLabel,
 	formatMetadataError,
-} from "./agentMetadataHelper";
+} from "../agentMetadataHelper";
 import {
-	AgentMetadataEvent,
+	type AgentMetadataEvent,
 	extractAgents,
 	extractAllAgents,
-} from "./api/api-helper";
-import { CoderApi } from "./api/coderApi";
-import { Logger } from "./logging/logger";
+} from "../api/api-helper";
+import { type CoderApi } from "../api/coderApi";
+import { type Logger } from "../logging/logger";
 
 export enum WorkspaceQuery {
 	Mine = "owner:me",
@@ -71,7 +72,7 @@ export class WorkspaceProvider
 		let hadError = false;
 		try {
 			this.workspaces = await this.fetch();
-		} catch (error) {
+		} catch {
 			hadError = true;
 			this.workspaces = [];
 		}

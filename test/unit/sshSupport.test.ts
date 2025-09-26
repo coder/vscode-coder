@@ -1,9 +1,10 @@
 import { it, expect } from "vitest";
+
 import {
 	computeSSHProperties,
 	sshSupportsSetEnv,
 	sshVersionSupportsSetEnv,
-} from "./sshSupport";
+} from "@/remote/sshSupport";
 
 const supports = {
 	"OpenSSH_8.9p1 Ubuntu-3ubuntu0.1, OpenSSL 3.0.2 15 Mar 2022": true,

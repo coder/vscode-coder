@@ -1,8 +1,11 @@
 import prettyBytes from "pretty-bytes";
+
 import { errToStr } from "../api/api-helper";
+
 import { formatTime } from "./formatters";
-import type { Logger } from "./logger";
 import { createRequestId, shortId, sizeOf } from "./utils";
+
+import type { Logger } from "./logger";
 
 const numFormatter = new Intl.NumberFormat("en", {
 	notation: "compact",

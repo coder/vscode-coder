@@ -1,5 +1,6 @@
-import type { InternalAxiosRequestConfig } from "axios";
 import prettyBytes from "pretty-bytes";
+
+import type { InternalAxiosRequestConfig } from "axios";
 
 const SENSITIVE_HEADERS = ["Coder-Session-Token", "Proxy-Authorization"];
 

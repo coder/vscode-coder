@@ -2,7 +2,8 @@ import fs from "fs/promises";
 import * as openpgp from "openpgp";
 import path from "path";
 import { describe, expect, it } from "vitest";
-import * as pgp from "./pgp";
+
+import * as pgp from "@/pgp";
 
 describe("pgp", () => {
 	// This contains two keys, like Coder's.

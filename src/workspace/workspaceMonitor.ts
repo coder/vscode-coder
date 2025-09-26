@@ -1,10 +1,14 @@
-import { ServerSentEvent, Workspace } from "coder/site/src/api/typesGenerated";
+import {
+	type ServerSentEvent,
+	type Workspace,
+} from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
-import { createWorkspaceIdentifier, errToStr } from "./api/api-helper";
-import { CoderApi } from "./api/coderApi";
-import { Logger } from "./logging/logger";
-import { OneWayWebSocket } from "./websocket/oneWayWebSocket";
+
+import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
+import { type CoderApi } from "../api/coderApi";
+import { type Logger } from "../logging/logger";
+import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
 
 /**
  * Monitor a single workspace using a WebSocket for events like shutdown and deletion.

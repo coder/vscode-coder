@@ -1,6 +1,7 @@
 import { it, expect, describe } from "vitest";
-import { WorkspaceConfiguration } from "vscode";
-import { getGlobalFlags } from "./globalFlags";
+import { type WorkspaceConfiguration } from "vscode";
+
+import { getGlobalFlags } from "@/globalFlags";
 
 describe("Global flags suite", () => {
 	it("should return global-config and header args when no global flags configured", () => {
