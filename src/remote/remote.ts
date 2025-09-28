@@ -59,6 +59,7 @@ export class Remote {
 	private readonly pathResolver: PathResolver;
 	private readonly cliManager: CliManager;
 
+	// Used to race between the login dialog and the logging in from a different window
 	private loginDetectedResolver: (() => void) | undefined;
 	private loginDetectedPromise: Promise<void> = Promise.resolve();
 
@@ -75,7 +76,6 @@ export class Remote {
 
 	/**
 	 * Creates a new promise that will be resolved when login is detected in another window.
-	 * This should be called when starting a setup operation that might need login.
 	 */
 	private createLoginDetectionPromise(): void {
 		this.loginDetectedPromise = new Promise<void>((resolve) => {
@@ -85,7 +85,6 @@ export class Remote {
 
 	/**
 	 * Resolves the current login detection promise if one exists.
-	 * This should be called from the extension when login is detected.
 	 */
 	public resolveLoginDetected(): void {
 		if (this.loginDetectedResolver) {
@@ -257,14 +256,13 @@ export class Remote {
 		// Migrate "session_token" file to "session", if needed.
 		await this.migrateSessionToken(parts.label);
 
-		// Try to detect any login event that might happen after  we read the current configs
-		this.createLoginDetectionPromise();
 		// Get the URL and token belonging to this host.
 		const { url: baseUrlRaw, token } = await this.cliManager.readConfig(
 			parts.label,
 		);
 
 		const showLoginDialog = async (message: string) => {
+			this.createLoginDetectionPromise();
 			const dialogPromise = this.vscodeProposed.window.showInformationMessage(
 				message,
 				{
@@ -370,8 +368,6 @@ export class Remote {
 		// Next is to find the workspace from the URI scheme provided.
 		let workspace: Workspace;
 		try {
-			// We could've logged out in the meantime
-			this.createLoginDetectionPromise();
 			this.logger.info(`Looking for workspace ${workspaceName}...`);
 			workspace = await workspaceClient.getWorkspaceByOwnerAndName(
 				parts.username,
