@@ -56,7 +56,7 @@
 					"default": ""
 				},
 				"coder.binaryDestination": {
-					"markdownDescription": "The full path of the directory into which the Coder CLI will be downloaded. Defaults to the extension's global storage directory.",
+					"markdownDescription": "The full path of the directory into which the Coder CLI will be downloaded. Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.",
 					"type": "string",
 					"default": ""
 				},
