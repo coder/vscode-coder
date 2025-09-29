@@ -346,7 +346,7 @@
 		"eslint-config-prettier": "^9.1.0",
 		"eslint-plugin-import": "^2.31.0",
 		"eslint-plugin-md": "^1.0.19",
-		"eslint-plugin-package-json": "^0.40.1",
+		"eslint-plugin-package-json": "^0.56.3",
 		"eslint-plugin-prettier": "^5.5.4",
 		"glob": "^10.4.2",
 		"jsonc-eslint-parser": "^2.4.0",
