@@ -7,10 +7,10 @@
   resolved "https://registry.yarnpkg.com/@aashutoshrathi/word-wrap/-/word-wrap-1.2.6.tgz#bd9154aec9983f77b3a034ecaa015c2e4201f6cf"
   integrity sha512-1Yjs2SvM8TflER/OD3cOjhWWOZb58A2t7wpE2S9XfBYTiIl+XFhQG2bjy4Pu1I+EAlCNUzRDYDdFwFYUKvXcIA==
 
-"@altano/repository-tools@^1.0.0":
-  version "1.0.1"
-  resolved "https://registry.yarnpkg.com/@altano/repository-tools/-/repository-tools-1.0.1.tgz#969bb94cc80f8b4d62c7d6956466edc3f3c3817a"
-  integrity sha512-/FFHQOMp5TZWplkDWbbLIjmANDr9H/FtqUm+hfJMK76OBut0Ht0cNfd0ZXd/6LXf4pWUTzvpgVjcin7EEHSznA==
+"@altano/repository-tools@^2.0.1":
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@altano/repository-tools/-/repository-tools-2.0.1.tgz#22b43b5ee9dde190a055c281059d57ac665128df"
+  integrity sha512-YE/52CkFtb+YtHPgbWPai7oo5N9AKnMuP5LM+i2AG7G1H2jdYBCO1iDnkDE3dZ3C1MIgckaF+d5PNRulgt0bdw==
 
 "@ampproject/remapping@^2.2.0", "@ampproject/remapping@^2.3.0":
   version "2.3.0"
@@ -2674,7 +2674,7 @@ delayed-stream@~1.0.0:
   resolved "https://registry.yarnpkg.com/delayed-stream/-/delayed-stream-1.0.0.tgz#df3ae199acadfb7d440aaae0b29e2272b24ec619"
   integrity sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==
 
-detect-indent@7.0.1, detect-indent@^7.0.1:
+detect-indent@^7.0.1:
   version "7.0.1"
   resolved "https://registry.yarnpkg.com/detect-indent/-/detect-indent-7.0.1.tgz#cbb060a12842b9c4d333f1cac4aa4da1bb66bc25"
   integrity sha512-Mc7QhQ8s+cLrnUfU/Ji94vG/r8M26m8f++vyres4ZoojaRDpZ1eSIh/EpzLNwlWuvzSZ3UbDFspjFvTDXe6e/g==
@@ -2684,7 +2684,7 @@ detect-libc@^2.0.0:
   resolved "https://registry.yarnpkg.com/detect-libc/-/detect-libc-2.0.1.tgz#e1897aa88fa6ad197862937fbc0441ef352ee0cd"
   integrity sha512-463v3ZeIrcWtdgIg6vI6XUncguvr2TnGl4SzDXinkt9mSLpBJKXT3mW6xT3VQdDN11+WVs29pgvivTc4Lp8v+w==
 
-detect-newline@4.0.1, detect-newline@^4.0.1:
+detect-newline@^4.0.1:
   version "4.0.1"
   resolved "https://registry.yarnpkg.com/detect-newline/-/detect-newline-4.0.1.tgz#fcefdb5713e1fb8cb2839b8b6ee22e6716ab8f23"
   integrity sha512-qE3Veg1YXzGHQhlA6jzebZN2qVf6NX+A7m7qlhCGG30dJixrAQhYOsJjsnBjJkCSmuOPpCk30145fr8FV0bzog==
@@ -3132,10 +3132,10 @@ eslint-config-prettier@^9.1.0:
   resolved "https://registry.yarnpkg.com/eslint-config-prettier/-/eslint-config-prettier-9.1.0.tgz#31af3d94578645966c082fcb71a5846d3c94867f"
   integrity sha512-NSWl5BFQWEPi1j4TjVNItzYV7dZXZ+wP6I6ZhrBGpChQhZRUaElihE9uRRkcbRnNb76UMKDF3r+WTmNcGPKsqw==
 
-eslint-fix-utils@^0.3.0:
-  version "0.3.0"
-  resolved "https://registry.yarnpkg.com/eslint-fix-utils/-/eslint-fix-utils-0.3.0.tgz#5643ae3c47c49ab247afc1565b2fe7b64ca4fbab"
-  integrity sha512-0wAVRhCkSCSu4goaIb05gKjFxTd/FC3Jee0ptvWYHS2gBh1mDhsrFyg6JyK47wvM10az/Ns4BlATbTW9HIoQ+Q==
+eslint-fix-utils@~0.4.0:
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/eslint-fix-utils/-/eslint-fix-utils-0.4.0.tgz#e1085b4f94f41e7448a80b774d8ed5cbbe7f7e31"
+  integrity sha512-nCEciwqByGxsKiWqZjqK7xfL+7dUX9Pi0UL3J0tOwfxVN9e6Y59UxEt1ZYsc3XH0ce6T1WQM/QU2DbKK/6IG7g==
 
 eslint-import-resolver-node@^0.3.9:
   version "0.3.9"
@@ -3191,21 +3191,21 @@ eslint-plugin-md@^1.0.19:
     remark-preset-lint-markdown-style-guide "^2.1.3"
     requireindex "~1.1.0"
 
-eslint-plugin-package-json@^0.40.1:
-  version "0.40.1"
-  resolved "https://registry.yarnpkg.com/eslint-plugin-package-json/-/eslint-plugin-package-json-0.40.1.tgz#73fb3138840d4de232bb87d228024f62db4d7cda"
-  integrity sha512-e5BcFpqLORfOZQS+Ygo307b1pCzvhzx+LQgzOd+qi9Uyj3J1UPDMPp5NBjli+l6SD9p9D794aiEwohwbHIPNDA==
+eslint-plugin-package-json@^0.56.3:
+  version "0.56.3"
+  resolved "https://registry.yarnpkg.com/eslint-plugin-package-json/-/eslint-plugin-package-json-0.56.3.tgz#dcf50aaf3a3bc377396d3df72bb63819b02e8d73"
+  integrity sha512-ArN3wnOAsduM/6a0egB83DQQfF/4KzxE53U8qcvELCXT929TnBy2IeCli4+in3QSHxcVYSIDa2Y5T2vVAXbe6A==
   dependencies:
-    "@altano/repository-tools" "^1.0.0"
+    "@altano/repository-tools" "^2.0.1"
     change-case "^5.4.4"
-    detect-indent "7.0.1"
-    detect-newline "4.0.1"
-    eslint-fix-utils "^0.3.0"
-    package-json-validator "~0.13.1"
+    detect-indent "^7.0.1"
+    detect-newline "^4.0.1"
+    eslint-fix-utils "~0.4.0"
+    package-json-validator "~0.30.0"
     semver "^7.5.4"
     sort-object-keys "^1.1.3"
-    sort-package-json "^3.0.0"
-    validate-npm-package-name "^6.0.0"
+    sort-package-json "^3.3.0"
+    validate-npm-package-name "^6.0.2"
 
 eslint-plugin-prettier@^5.5.4:
   version "5.5.4"
@@ -5675,11 +5675,13 @@ package-json-from-dist@^1.0.0:
   resolved "https://registry.yarnpkg.com/package-json-from-dist/-/package-json-from-dist-1.0.0.tgz#e501cd3094b278495eb4258d4c9f6d5ac3019f00"
   integrity sha512-dATvCeZN/8wQsGywez1mzHtTlP22H8OEfPrVMLNr4/eGa+ijtLn/6M5f0dY8UKNrC2O9UCU6SSoG3qRKnt7STw==
 
-package-json-validator@~0.13.1:
-  version "0.13.3"
-  resolved "https://registry.yarnpkg.com/package-json-validator/-/package-json-validator-0.13.3.tgz#f661fb1a54643de999133f2c41e90d2f947e88c2"
-  integrity sha512-/BeP6SFebqXJS27aLrTMjpmF0OZtsptoxYVU9pUGPdUNTc1spFfNcnOOhvT4Cghm1OQ75CyMM11H5jtQbe7bAQ==
+package-json-validator@~0.30.0:
+  version "0.30.0"
+  resolved "https://registry.yarnpkg.com/package-json-validator/-/package-json-validator-0.30.0.tgz#31613a3e4a2455599c7ad3a97f134707f13de1e0"
+  integrity sha512-gOLW+BBye32t+IB2trIALIcL3DZBy3s4G4ZV6dAgDM+qLs/7jUNOV7iO7PwXqyf+3izI12qHBwtS4kOSJp5Tdg==
   dependencies:
+    semver "^7.7.2"
+    validate-npm-package-license "^3.0.4"
     yargs "~18.0.0"
 
 pako@~1.0.2:
@@ -6885,7 +6887,7 @@ secretlint@^10.1.1:
     globby "^14.1.0"
     read-pkg "^9.0.1"
 
-semver@7.7.1, semver@^5.1.0, semver@^5.5.0, semver@^6.0.0, semver@^6.1.2, semver@^6.3.1, semver@^7.3.4, semver@^7.3.5, semver@^7.5.2, semver@^7.5.3, semver@^7.5.4, semver@^7.6.2, semver@^7.7.1:
+semver@7.7.1, semver@^5.1.0, semver@^5.5.0, semver@^6.0.0, semver@^6.1.2, semver@^6.3.1, semver@^7.3.4, semver@^7.3.5, semver@^7.5.2, semver@^7.5.3, semver@^7.5.4, semver@^7.6.2, semver@^7.7.1, semver@^7.7.2:
   version "7.7.1"
   resolved "https://registry.yarnpkg.com/semver/-/semver-7.7.1.tgz#abd5098d82b18c6c81f6074ff2647fd3e7220c9f"
   integrity sha512-hlq8tAfn0m/61p4BVRcPzIGr6LKiMwo4VM6dGi6pt4qcRkmNzTcWq6eCEjEh+qXjkMDvPlOFFSGwQjoEa6gyMA==
@@ -7078,10 +7080,10 @@ sort-object-keys@^1.1.3:
   resolved "https://registry.yarnpkg.com/sort-object-keys/-/sort-object-keys-1.1.3.tgz#bff833fe85cab147b34742e45863453c1e190b45"
   integrity sha512-855pvK+VkU7PaKYPc+Jjnmt4EzejQHyhhF33q31qG8x7maDzkeFhAAThdCYay11CISO+qAMwjOBP+fPZe0IPyg==
 
-sort-package-json@^3.0.0:
-  version "3.2.1"
-  resolved "https://registry.yarnpkg.com/sort-package-json/-/sort-package-json-3.2.1.tgz#889f3bdf43ceeff5fa4278a7c53ae5b1520d287e"
-  integrity sha512-rTfRdb20vuoAn7LDlEtCqOkYfl2X+Qze6cLbNOzcDpbmKEhJI30tTN44d5shbKJnXsvz24QQhlCm81Bag7EOKg==
+sort-package-json@^3.3.0:
+  version "3.4.0"
+  resolved "https://registry.yarnpkg.com/sort-package-json/-/sort-package-json-3.4.0.tgz#98e42b78848c517736b069f8aa4fa322fae56677"
+  integrity sha512-97oFRRMM2/Js4oEA9LJhjyMlde+2ewpZQf53pgue27UkbEXfHJnDzHlUxQ/DWUkzqmp7DFwJp8D+wi/TYeQhpA==
   dependencies:
     detect-indent "^7.0.1"
     detect-newline "^4.0.1"
@@ -7991,10 +7993,10 @@ validate-npm-package-license@^3.0.4:
     spdx-correct "^3.0.0"
     spdx-expression-parse "^3.0.0"
 
-validate-npm-package-name@^6.0.0:
-  version "6.0.1"
-  resolved "https://registry.yarnpkg.com/validate-npm-package-name/-/validate-npm-package-name-6.0.1.tgz#7b928e5fe23996045a6de5b5a22eedb3611264dd"
-  integrity sha512-OaI//3H0J7ZkR1OqlhGA8cA+Cbk/2xFOQpJOt5+s27/ta9eZwpeervh4Mxh4w0im/kdgktowaqVNR7QOrUd7Yg==
+validate-npm-package-name@^6.0.2:
+  version "6.0.2"
+  resolved "https://registry.yarnpkg.com/validate-npm-package-name/-/validate-npm-package-name-6.0.2.tgz#4e8d2c4d939975a73dd1b7a65e8f08d44c85df96"
+  integrity sha512-IUoow1YUtvoBBC06dXs8bR8B9vuA3aJfmQNKMoaPG/OFsPmoQvw8xh+6Ye25Gx9DQhoEom3Pcu9MKHerm/NpUQ==
 
 version-range@^4.13.0:
   version "4.14.0"
