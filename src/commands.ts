@@ -211,12 +211,12 @@ export class Commands {
 		this.restClient.setHost(url);
 		this.restClient.setSessionToken(res.token);
 
+		// Store on disk to be used by the cli.
+		await this.cliManager.configure(label, url, res.token);
+
 		// Store these to be used in later sessions.
 		await this.mementoManager.setUrl(url);
 		await this.secretsManager.setSessionToken(res.token);
-
-		// Store on disk to be used by the cli.
-		await this.cliManager.configure(label, url, res.token);
 
 		// These contexts control various menu items and the sidebar.
 		await vscode.commands.executeCommand(

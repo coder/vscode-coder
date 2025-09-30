@@ -167,13 +167,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const token = needToken(vscode.workspace.getConfiguration())
 					? params.get("token")
 					: (params.get("token") ?? "");
+
+				// Store on disk to be used by the cli.
+				await cliManager.configure(toSafeHost(url), url, token);
+
 				if (token) {
 					client.setSessionToken(token);
 					await secretsManager.setSessionToken(token);
 				}
-
-				// Store on disk to be used by the cli.
-				await cliManager.configure(toSafeHost(url), url, token);
 
 				vscode.commands.executeCommand(
 					"coder.open",
