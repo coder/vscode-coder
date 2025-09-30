@@ -61,6 +61,7 @@ export class Remote {
 
 	// Used to race between the login dialog and the logging in from a different window
 	private loginDetectedResolver: (() => void) | undefined;
+	private loginDetectedRejector: ((reason?: Error) => void) | undefined;
 	private loginDetectedPromise: Promise<void> = Promise.resolve();
 
 	public constructor(
@@ -78,8 +79,14 @@ export class Remote {
 	 * Creates a new promise that will be resolved when login is detected in another window.
 	 */
 	private createLoginDetectionPromise(): void {
-		this.loginDetectedPromise = new Promise<void>((resolve) => {
+		if (this.loginDetectedRejector) {
+			this.loginDetectedRejector(
+				new Error("Login detection cancelled - new login attempt started"),
+			);
+		}
+		this.loginDetectedPromise = new Promise<void>((resolve, reject) => {
 			this.loginDetectedResolver = resolve;
+			this.loginDetectedRejector = reject;
 		});
 	}
 
@@ -90,6 +97,7 @@ export class Remote {
 		if (this.loginDetectedResolver) {
 			this.loginDetectedResolver();
 			this.loginDetectedResolver = undefined;
+			this.loginDetectedRejector = undefined;
 		}
 	}
 
