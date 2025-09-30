@@ -1,12 +1,13 @@
 import * as vscode from "vscode";
 
-import type { CoderApi } from "./api/coderApi";
-import type { Logger } from "./logging/logger";
-import type { OneWayWebSocket } from "./websocket/oneWayWebSocket";
 import type {
 	Workspace,
 	GetInboxNotificationResponse,
 } from "coder/site/src/api/typesGenerated";
+
+import type { CoderApi } from "./api/coderApi";
+import type { Logger } from "./logging/logger";
+import type { OneWayWebSocket } from "./websocket/oneWayWebSocket";
 
 // These are the template IDs of our notifications.
 // Maybe in the future we should avoid hardcoding

@@ -80,7 +80,8 @@
 				],
 				"pathGroupsExcludedImportTypes": ["builtin", "external"],
 				"newlines-between": "always",
-				"alphabetize": { "order": "asc", "caseInsensitive": true }
+				"alphabetize": { "order": "asc", "caseInsensitive": true },
+				"sortTypesGroup": true
 			}
 		],
 		// Prevent duplicates and prefer merging into a single import
