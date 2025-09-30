@@ -358,7 +358,7 @@
 		"utf-8-validate": "^6.0.5",
 		"vitest": "^3.2.4",
 		"vscode-test": "^1.5.0",
-		"webpack": "^5.99.6",
+		"webpack": "^5.101.3",
 		"webpack-cli": "^6.0.1"
 	},
 	"extensionPack": [
