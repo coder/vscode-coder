@@ -18,6 +18,9 @@ import {
 	WorkspaceQuery,
 } from "./workspace/workspacesProvider";
 
+const MY_WORKSPACES_TREE_ID = "myWorkspaces";
+const ALL_WORKSPACES_TREE_ID = "allWorkspaces";
+
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// The Remote SSH extension's proposed APIs are used to override the SSH host
 	// name in VS Code itself. It's visually unappealing having a lengthy name!
@@ -86,7 +89,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
 	// (so we can see when it is visible) but otherwise they have the same effect.
-	const myWsTree = vscode.window.createTreeView("myWorkspaces", {
+	const myWsTree = vscode.window.createTreeView(MY_WORKSPACES_TREE_ID, {
 		treeDataProvider: myWorkspacesProvider,
 	});
 	myWorkspacesProvider.setVisibility(myWsTree.visible);
@@ -94,7 +97,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		myWorkspacesProvider.setVisibility(event.visible);
 	});
 
-	const allWsTree = vscode.window.createTreeView("allWorkspaces", {
+	const allWsTree = vscode.window.createTreeView(ALL_WORKSPACES_TREE_ID, {
 		treeDataProvider: allWorkspacesProvider,
 	});
 	allWorkspacesProvider.setVisibility(allWsTree.visible);
@@ -298,6 +301,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		"coder.viewLogs",
 		commands.viewLogs.bind(commands),
 	);
+	vscode.commands.registerCommand("coder.searchMyWorkspaces", async () =>
+		showTreeViewSearch(MY_WORKSPACES_TREE_ID),
+	);
+	vscode.commands.registerCommand("coder.searchAllWorkspaces", async () =>
+		showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
+	);
 
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
@@ -420,4 +429,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		}
 	}
+}
+
+async function showTreeViewSearch(id: string): Promise<void> {
+	await vscode.commands.executeCommand(`${id}.focus`);
+	await vscode.commands.executeCommand("list.find");
 }

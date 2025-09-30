@@ -204,6 +204,7 @@
 			{
 				"command": "coder.createWorkspace",
 				"title": "Create Workspace",
+				"category": "Coder",
 				"when": "coder.authenticated",
 				"icon": "$(add)"
 			},
@@ -226,7 +227,8 @@
 			},
 			{
 				"command": "coder.refreshWorkspaces",
-				"title": "Coder: Refresh Workspace",
+				"title": "Refresh Workspace",
+				"category": "Coder",
 				"icon": "$(refresh)",
 				"when": "coder.authenticated"
 			},
@@ -241,12 +243,32 @@
 				"title": "Coder: Open App Status",
 				"icon": "$(robot)",
 				"when": "coder.authenticated"
+			},
+			{
+				"command": "coder.searchMyWorkspaces",
+				"title": "Search",
+				"category": "Coder",
+				"icon": "$(search)"
+			},
+			{
+				"command": "coder.searchAllWorkspaces",
+				"title": "Search",
+				"category": "Coder",
+				"icon": "$(search)"
 			}
 		],
 		"menus": {
 			"commandPalette": [
 				{
 					"command": "coder.openFromSidebar",
+					"when": "false"
+				},
+				{
+					"command": "coder.searchMyWorkspaces",
+					"when": "false"
+				},
+				{
+					"command": "coder.searchAllWorkspaces",
 					"when": "false"
 				}
 			],
@@ -262,12 +284,22 @@
 				{
 					"command": "coder.createWorkspace",
 					"when": "coder.authenticated && view == myWorkspaces",
-					"group": "navigation"
+					"group": "navigation@1"
 				},
 				{
 					"command": "coder.refreshWorkspaces",
 					"when": "coder.authenticated && view == myWorkspaces",
-					"group": "navigation"
+					"group": "navigation@2"
+				},
+				{
+					"command": "coder.searchMyWorkspaces",
+					"when": "coder.authenticated && view == myWorkspaces",
+					"group": "navigation@3"
+				},
+				{
+					"command": "coder.searchAllWorkspaces",
+					"when": "coder.authenticated && view == allWorkspaces",
+					"group": "navigation@3"
 				}
 			],
 			"view/item/context": [
