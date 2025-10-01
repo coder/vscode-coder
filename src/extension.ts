@@ -423,7 +423,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		// Handle autologin, if not already logged in.
 		const cfg = vscode.workspace.getConfiguration();
 		if (cfg.get("coder.autologin") === true) {
-			const defaultUrl = cfg.get("coder.defaultUrl") || process.env.CODER_URL;
+			const defaultUrl =
+				cfg.get<string>("coder.defaultUrl")?.trim() ||
+				process.env.CODER_URL?.trim();
 			if (defaultUrl) {
 				vscode.commands.executeCommand(
 					"coder.login",

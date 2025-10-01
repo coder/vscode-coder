@@ -123,9 +123,9 @@ describe("getHeaderCommand", () => {
 		expect(getHeaderCommand(config)).toBeUndefined();
 	});
 
-	it("should return undefined if coder.headerCommand is not a string", () => {
+	it("should return undefined if coder.headerCommand is a blank string", () => {
 		const config = {
-			get: () => 1234,
+			get: () => "   ",
 		} as unknown as WorkspaceConfiguration;
 
 		expect(getHeaderCommand(config)).toBeUndefined();
