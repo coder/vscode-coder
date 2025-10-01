@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PathResolver } from "@/core/pathResolver";
 
-import { MockConfigurationProvider } from "../mocks/testHelpers";
+import { MockConfigurationProvider } from "../../mocks/testHelpers";
 
 describe("PathResolver", () => {
 	const basePath =

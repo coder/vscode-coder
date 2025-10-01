@@ -32,7 +32,7 @@ describe("CliUtils", () => {
 		await expect(cliUtils.version(binPath)).rejects.toThrow("ENOENT");
 
 		const binTmpl = await fs.readFile(
-			path.join(__dirname, "../fixtures/bin.bash"),
+			path.join(__dirname, "../../fixtures/bin.bash"),
 			"utf8",
 		);
 		await fs.writeFile(binPath, binTmpl.replace("$ECHO", "hello"));
@@ -58,7 +58,7 @@ describe("CliUtils", () => {
 		expect(await cliUtils.version(binPath)).toBe("v0.0.0");
 
 		const oldTmpl = await fs.readFile(
-			path.join(__dirname, "../fixtures/bin.old.bash"),
+			path.join(__dirname, "../../fixtures/bin.old.bash"),
 			"utf8",
 		);
 		const old = (stderr: string, stdout: string): string => {
