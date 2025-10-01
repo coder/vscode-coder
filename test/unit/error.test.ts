@@ -1,11 +1,12 @@
 import axios from "axios";
 import * as fs from "fs/promises";
 import https from "https";
-import * as path from "path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { CertificateError, X509_ERR, X509_ERR_CODE } from "@/error";
 import { type Logger } from "@/logging/logger";
+
+import { getFixturePath } from "../utils/fixtures";
 
 describe("Certificate errors", () => {
 	// Before each test we make a request to sanity check that we really get the
@@ -46,12 +47,8 @@ describe("Certificate errors", () => {
 	async function startServer(certName: string): Promise<string> {
 		const server = https.createServer(
 			{
-				key: await fs.readFile(
-					path.join(__dirname, `../fixtures/tls/${certName}.key`),
-				),
-				cert: await fs.readFile(
-					path.join(__dirname, `../fixtures/tls/${certName}.crt`),
-				),
+				key: await fs.readFile(getFixturePath("tls", `${certName}.key`)),
+				cert: await fs.readFile(getFixturePath("tls", `${certName}.crt`)),
 			},
 			(req, res) => {
 				if (req.url?.endsWith("/error")) {
@@ -88,9 +85,7 @@ describe("Certificate errors", () => {
 		const address = await startServer("chain-leaf");
 		const request = axios.get(address, {
 			httpsAgent: new https.Agent({
-				ca: await fs.readFile(
-					path.join(__dirname, "../fixtures/tls/chain-leaf.crt"),
-				),
+				ca: await fs.readFile(getFixturePath("tls", "chain-leaf.crt")),
 			}),
 		});
 		await expect(request).rejects.toHaveProperty(
@@ -125,9 +120,7 @@ describe("Certificate errors", () => {
 		const address = await startServer("no-signing");
 		const request = axios.get(address, {
 			httpsAgent: new https.Agent({
-				ca: await fs.readFile(
-					path.join(__dirname, "../fixtures/tls/no-signing.crt"),
-				),
+				ca: await fs.readFile(getFixturePath("tls", "no-signing.crt")),
 				servername: "localhost",
 			}),
 		});
@@ -190,9 +183,7 @@ describe("Certificate errors", () => {
 		const address = await startServer("self-signed");
 		const request = axios.get(address, {
 			httpsAgent: new https.Agent({
-				ca: await fs.readFile(
-					path.join(__dirname, "../fixtures/tls/self-signed.crt"),
-				),
+				ca: await fs.readFile(getFixturePath("tls", "self-signed.crt")),
 				servername: "localhost",
 			}),
 		});
@@ -235,9 +226,7 @@ describe("Certificate errors", () => {
 		const address = await startServer("chain");
 		const request = axios.get(address, {
 			httpsAgent: new https.Agent({
-				ca: await fs.readFile(
-					path.join(__dirname, "../fixtures/tls/chain-root.crt"),
-				),
+				ca: await fs.readFile(getFixturePath("tls", "chain-root.crt")),
 				servername: "localhost",
 			}),
 		});
@@ -258,9 +247,7 @@ describe("Certificate errors", () => {
 		const address = await startServer("chain");
 		const request = axios.get(address + "/error", {
 			httpsAgent: new https.Agent({
-				ca: await fs.readFile(
-					path.join(__dirname, "../fixtures/tls/chain-root.crt"),
-				),
+				ca: await fs.readFile(getFixturePath("tls", "chain-root.crt")),
 				servername: "localhost",
 			}),
 		});

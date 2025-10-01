@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { MementoManager } from "@/core/mementoManager";
 
-import { InMemoryMemento } from "@test/mocks/testHelpers";
+import { InMemoryMemento } from "../../mocks/testHelpers";
 
 describe("MementoManager", () => {
 	let memento: InMemoryMemento;

@@ -28,7 +28,7 @@
 			"settings": {
 				"import/resolver": {
 					"typescript": {
-						// In tests, resolve using the test tsconfig (has @test/* mapping)
+						// In tests, resolve using the test tsconfig
 						"project": "test/tsconfig.json"
 					}
 				}
