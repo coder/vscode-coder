@@ -1,6 +1,9 @@
 import { isAxiosError } from "axios";
-import { Api } from "coder/site/src/api/api";
-import { Workspace, WorkspaceAgent } from "coder/site/src/api/typesGenerated";
+import { type Api } from "coder/site/src/api/api";
+import {
+	type Workspace,
+	type WorkspaceAgent,
+} from "coder/site/src/api/typesGenerated";
 import find from "find-process";
 import * as fs from "fs/promises";
 import * as jsonc from "jsonc-parser";
@@ -9,34 +12,40 @@ import * as path from "path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
+
 import {
 	createAgentMetadataWatcher,
 	getEventValue,
 	formatEventLabel,
 	formatMetadataError,
-} from "./agentMetadataHelper";
-import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
-import { CoderApi } from "./api/coderApi";
-import { needToken } from "./api/utils";
-import { startWorkspaceIfStoppedOrFailed, waitForBuild } from "./api/workspace";
-import * as cliUtils from "./cliUtils";
-import { Commands } from "./commands";
-import { CliManager } from "./core/cliManager";
-import { PathResolver } from "./core/pathResolver";
-import { featureSetForVersion, FeatureSet } from "./featureSet";
-import { getGlobalFlags } from "./globalFlags";
-import { Inbox } from "./inbox";
-import { Logger } from "./logging/logger";
-import { SSHConfig, SSHValues, mergeSSHConfigValues } from "./sshConfig";
-import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
+} from "../agentMetadataHelper";
+import { createWorkspaceIdentifier, extractAgents } from "../api/api-helper";
+import { CoderApi } from "../api/coderApi";
+import { needToken } from "../api/utils";
+import {
+	startWorkspaceIfStoppedOrFailed,
+	waitForBuild,
+} from "../api/workspace";
+import { type Commands } from "../commands";
+import { type CliManager } from "../core/cliManager";
+import * as cliUtils from "../core/cliUtils";
+import { type ServiceContainer } from "../core/container";
+import { type PathResolver } from "../core/pathResolver";
+import { featureSetForVersion, type FeatureSet } from "../featureSet";
+import { getGlobalFlags } from "../globalFlags";
+import { Inbox } from "../inbox";
+import { type Logger } from "../logging/logger";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,
 	expandPath,
 	findPort,
 	parseRemoteAuthority,
-} from "./util";
-import { WorkspaceMonitor } from "./workspaceMonitor";
+} from "../util";
+import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
+
+import { SSHConfig, type SSHValues, mergeSSHConfigValues } from "./sshConfig";
+import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 
 export interface RemoteDetails extends vscode.Disposable {
 	url: string;
@@ -44,15 +53,22 @@ export interface RemoteDetails extends vscode.Disposable {
 }
 
 export class Remote {
+	// We use the proposed API to get access to useCustom in dialogs.
+	private readonly vscodeProposed: typeof vscode;
+	private readonly logger: Logger;
+	private readonly pathResolver: PathResolver;
+	private readonly cliManager: CliManager;
+
 	public constructor(
-		// We use the proposed API to get access to useCustom in dialogs.
-		private readonly vscodeProposed: typeof vscode,
-		private readonly logger: Logger,
+		serviceContainer: ServiceContainer,
 		private readonly commands: Commands,
 		private readonly mode: vscode.ExtensionMode,
-		private readonly pathResolver: PathResolver,
-		private readonly cliManager: CliManager,
-	) {}
+	) {
+		this.vscodeProposed = serviceContainer.getVsCodeProposed();
+		this.logger = serviceContainer.getLogger();
+		this.pathResolver = serviceContainer.getPathResolver();
+		this.cliManager = serviceContainer.getCliManager();
+	}
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
 		const action = await this.vscodeProposed.window.showInformationMessage(
@@ -281,7 +297,7 @@ export class Remote {
 				// This is useful for debugging with a custom bin!
 				binaryPath = path.join(os.tmpdir(), "coder");
 				await fs.stat(binaryPath);
-			} catch (ex) {
+			} catch {
 				binaryPath = await this.cliManager.fetchBinary(
 					workspaceClient,
 					parts.label,
@@ -295,7 +311,7 @@ export class Remote {
 		let version: semver.SemVer | null = null;
 		try {
 			version = semver.parse(await cliUtils.version(binaryPath));
-		} catch (e) {
+		} catch {
 			version = semver.parse(buildInfo.version);
 		}
 
@@ -442,7 +458,7 @@ export class Remote {
 				this.pathResolver.getUserSettingsPath(),
 				"utf8",
 			);
-		} catch (ex) {
+		} catch {
 			// Ignore! It's probably because the file doesn't exist.
 		}
 
@@ -932,7 +948,7 @@ export class Remote {
 				.then((parsed) => {
 					try {
 						updateStatus(parsed);
-					} catch (ex) {
+					} catch {
 						// Ignore
 					}
 				})

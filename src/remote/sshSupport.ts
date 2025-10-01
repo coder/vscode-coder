@@ -6,7 +6,7 @@ export function sshSupportsSetEnv(): boolean {
 		const spawned = childProcess.spawnSync("ssh", ["-V"]);
 		// The version string outputs to stderr.
 		return sshVersionSupportsSetEnv(spawned.stderr.toString().trim());
-	} catch (error) {
+	} catch {
 		return false;
 	}
 }

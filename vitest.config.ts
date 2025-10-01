@@ -3,24 +3,25 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
 	test: {
-		include: ["src/**/*.test.ts"],
-		exclude: [
-			"**/node_modules/**",
-			"**/dist/**",
-			"**/build/**",
-			"**/out/**",
-			"**/src/test/**",
-			"src/test/**",
-			"./src/test/**",
-		],
+		globals: true,
 		environment: "node",
+		include: ["test/unit/**/*.test.ts", "test/integration/**/*.test.ts"],
+		exclude: [
+			"test/integration/**",
+			"**/node_modules/**",
+			"**/out/**",
+			"**/*.d.ts",
+		],
+		pool: "threads",
+		fileParallelism: true,
 		coverage: {
 			provider: "v8",
 		},
 	},
 	resolve: {
 		alias: {
-			vscode: path.resolve(__dirname, "src/__mocks__/vscode.runtime.ts"),
+			"@": path.resolve(__dirname, "src"),
+			vscode: path.resolve(__dirname, "test/mocks/vscode.runtime.ts"),
 		},
 	},
 });

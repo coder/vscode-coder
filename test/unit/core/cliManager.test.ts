@@ -1,27 +1,29 @@
-import globalAxios, { AxiosInstance } from "axios";
-import { Api } from "coder/site/src/api/api";
+import globalAxios, { type AxiosInstance } from "axios";
+import { type Api } from "coder/site/src/api/api";
 import EventEmitter from "events";
 import * as fs from "fs";
-import { IncomingMessage } from "http";
+import { type IncomingMessage } from "http";
 import { fs as memfs, vol } from "memfs";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
+
+import { CliManager } from "@/core/cliManager";
+import * as cliUtils from "@/core/cliUtils";
+import { PathResolver } from "@/core/pathResolver";
+import { type Logger } from "@/logging/logger";
+import * as pgp from "@/pgp";
+
 import {
 	MockConfigurationProvider,
 	MockProgressReporter,
 	MockUserInteraction,
-} from "../__mocks__/testHelpers";
-import * as cli from "../cliUtils";
-import { Logger } from "../logging/logger";
-import * as pgp from "../pgp";
-import { CliManager } from "./cliManager";
-import { PathResolver } from "./pathResolver";
+} from "../../mocks/testHelpers";
 
 vi.mock("os");
 vi.mock("axios");
-vi.mock("../pgp");
+vi.mock("@/pgp");
 
 vi.mock("fs", async () => {
 	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
@@ -39,10 +41,9 @@ vi.mock("fs/promises", async () => {
 	};
 });
 
-// Only mock the platform detection functions from CLI manager
-vi.mock("../cliUtils", async () => {
+vi.mock("@/core/cliUtils", async () => {
 	const actual =
-		await vi.importActual<typeof import("../cliUtils")>("../cliUtils");
+		await vi.importActual<typeof import("@/core/cliUtils")>("@/core/cliUtils");
 	return {
 		...actual,
 		// No need to test script execution here
@@ -652,7 +653,7 @@ describe("CliManager", () => {
 		});
 
 		// Mock version to return the specified version
-		vi.mocked(cli.version).mockResolvedValueOnce(version);
+		vi.mocked(cliUtils.version).mockResolvedValueOnce(version);
 	}
 
 	function withCorruptedBinary() {
@@ -662,7 +663,7 @@ describe("CliManager", () => {
 		});
 
 		// Mock version to fail
-		vi.mocked(cli.version).mockRejectedValueOnce(new Error("corrupted"));
+		vi.mocked(cliUtils.version).mockRejectedValueOnce(new Error("corrupted"));
 	}
 
 	function withSuccessfulDownload(opts?: {
@@ -676,7 +677,7 @@ describe("CliManager", () => {
 		);
 
 		// Mock version to return TEST_VERSION after download
-		vi.mocked(cli.version).mockResolvedValue(TEST_VERSION);
+		vi.mocked(cliUtils.version).mockResolvedValue(TEST_VERSION);
 	}
 
 	function withSignatureResponses(statuses: number[]): void {

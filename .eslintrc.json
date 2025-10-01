@@ -4,9 +4,9 @@
 	"parserOptions": {
 		"ecmaVersion": 6,
 		"sourceType": "module",
-		"project": "./tsconfig.json"
+		"project": true
 	},
-	"plugins": ["@typescript-eslint", "prettier"],
+	"plugins": ["@typescript-eslint", "prettier", "import"],
 	"extends": [
 		"eslint:recommended",
 		"plugin:@typescript-eslint/recommended",
@@ -15,12 +15,38 @@
 		"plugin:md/prettier",
 		"prettier"
 	],
+	"ignorePatterns": ["out", "dist", "**/*.d.ts"],
+	"settings": {
+		"import/resolver": {
+			"typescript": { "project": "./tsconfig.json" }
+		},
+		"import/internal-regex": "^@/"
+	},
 	"overrides": [
+		{
+			"files": ["test/**/*.{ts,tsx}", "**/*.{test,spec}.ts?(x)"],
+			"settings": {
+				"import/resolver": {
+					"typescript": {
+						// In tests, resolve using the test tsconfig
+						"project": "test/tsconfig.json"
+					}
+				}
+			}
+		},
 		{
 			"files": ["*.ts"],
 			"rules": {
 				"require-await": "off",
-				"@typescript-eslint/require-await": "error"
+				"@typescript-eslint/require-await": "error",
+				"@typescript-eslint/consistent-type-imports": [
+					"error",
+					{
+						"disallowTypeAnnotations": false, // Used in tests
+						"prefer": "type-imports",
+						"fixStyle": "inline-type-imports"
+					}
+				]
 			}
 		},
 		{
@@ -42,12 +68,25 @@
 		"import/order": [
 			"error",
 			{
-				"alphabetize": {
-					"order": "asc"
-				},
-				"groups": [["builtin", "external", "internal"], "parent", "sibling"]
+				"groups": [
+					["builtin", "external"],
+					"internal",
+					"parent",
+					["sibling", "index"],
+					"type"
+				],
+				"pathGroups": [
+					{ "pattern": "@/**", "group": "internal", "position": "before" }
+				],
+				"pathGroupsExcludedImportTypes": ["builtin", "external"],
+				"newlines-between": "always",
+				"alphabetize": { "order": "asc", "caseInsensitive": true },
+				"sortTypesGroup": true
 			}
 		],
+		// Prevent duplicates and prefer merging into a single import
+		"no-duplicate-imports": "off",
+		"import/no-duplicates": ["error", { "prefer-inline": true }],
 		"import/no-unresolved": [
 			"error",
 			{
@@ -68,6 +107,5 @@
 				}
 			}
 		]
-	},
-	"ignorePatterns": ["out", "dist", "**/*.d.ts"]
+	}
 }

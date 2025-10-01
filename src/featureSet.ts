@@ -1,4 +1,4 @@
-import * as semver from "semver";
+import type * as semver from "semver";
 
 export type FeatureSet = {
 	vscodessh: boolean;

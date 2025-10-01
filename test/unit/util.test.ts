@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { countSubstring, parseRemoteAuthority, toSafeHost } from "./util";
+
+import { countSubstring, parseRemoteAuthority, toSafeHost } from "@/util";
 
 it("ignore unrelated authorities", () => {
 	const tests = [

@@ -1,9 +1,11 @@
 import * as cp from "child_process";
 import * as os from "os";
 import * as util from "util";
-import type { WorkspaceConfiguration } from "vscode";
-import { Logger } from "./logging/logger";
+
+import { type Logger } from "./logging/logger";
 import { escapeCommandArg } from "./util";
+
+import type { WorkspaceConfiguration } from "vscode";
 
 interface ExecException {
 	code?: number;

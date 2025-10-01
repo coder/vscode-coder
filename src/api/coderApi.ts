@@ -1,14 +1,15 @@
-import { AxiosInstance } from "axios";
+import { type AxiosInstance } from "axios";
 import { Api } from "coder/site/src/api/api";
 import {
-	GetInboxNotificationResponse,
-	ProvisionerJobLog,
-	ServerSentEvent,
-	Workspace,
-	WorkspaceAgent,
+	type GetInboxNotificationResponse,
+	type ProvisionerJobLog,
+	type ServerSentEvent,
+	type Workspace,
+	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 import { type WorkspaceConfiguration } from "vscode";
-import { ClientOptions } from "ws";
+import { type ClientOptions } from "ws";
+
 import { CertificateError } from "../error";
 import { getHeaderCommand, getHeaders } from "../headers";
 import {
@@ -17,13 +18,17 @@ import {
 	logError,
 	logResponse,
 } from "../logging/httpLogger";
-import { Logger } from "../logging/logger";
-import { RequestConfigWithMeta, HttpClientLogLevel } from "../logging/types";
+import { type Logger } from "../logging/logger";
+import {
+	type RequestConfigWithMeta,
+	HttpClientLogLevel,
+} from "../logging/types";
 import { WsLogger } from "../logging/wsLogger";
 import {
 	OneWayWebSocket,
-	OneWayWebSocketInit,
+	type OneWayWebSocketInit,
 } from "../websocket/oneWayWebSocket";
+
 import { createHttpAgent } from "./utils";
 
 const coderSessionTokenHeader = "Coder-Session-Token";

@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { InMemorySecretStorage } from "../__mocks__/testHelpers";
-import { SecretsManager } from "./secretsManager";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { SecretsManager } from "@/core/secretsManager";
+
+import { InMemorySecretStorage } from "../../mocks/testHelpers";
 
 describe("SecretsManager", () => {
 	let secretStorage: InMemorySecretStorage;

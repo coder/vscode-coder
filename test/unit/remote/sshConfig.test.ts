@@ -1,6 +1,6 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
 import { it, afterEach, vi, expect } from "vitest";
-import { SSHConfig } from "./sshConfig";
+
+import { SSHConfig } from "@/remote/sshConfig";
 
 // This is not the usual path to ~/.ssh/config, but
 // setting it to a different path makes it easier to test

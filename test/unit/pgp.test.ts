@@ -2,22 +2,19 @@ import fs from "fs/promises";
 import * as openpgp from "openpgp";
 import path from "path";
 import { describe, expect, it } from "vitest";
-import * as pgp from "./pgp";
+
+import * as pgp from "@/pgp";
+
+import { getFixturePath } from "../utils/fixtures";
 
 describe("pgp", () => {
 	// This contains two keys, like Coder's.
-	const publicKeysPath = path.join(__dirname, "../fixtures/pgp/public.pgp");
+	const publicKeysPath = getFixturePath("pgp", "public.pgp");
 	// Just a text file, not an actual binary.
-	const cliPath = path.join(__dirname, "../fixtures/pgp/cli");
-	const invalidSignaturePath = path.join(
-		__dirname,
-		"../fixtures/pgp/cli.invalid.asc",
-	);
+	const cliPath = getFixturePath("pgp", "cli");
+	const invalidSignaturePath = getFixturePath("pgp", "cli.invalid.asc");
 	// This is signed with the second key, like Coder's.
-	const validSignaturePath = path.join(
-		__dirname,
-		"../fixtures/pgp/cli.valid.asc",
-	);
+	const validSignaturePath = getFixturePath("pgp", "cli.valid.asc");
 
 	it("reads bundled public keys", async () => {
 		const keys = await pgp.readPublicKeys();
