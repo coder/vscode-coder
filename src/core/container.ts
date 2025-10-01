@@ -11,7 +11,7 @@ import { SecretsManager } from "./secretsManager";
  * Service container for dependency injection.
  * Centralizes the creation and management of all core services.
  */
-export class ServiceContainer {
+export class ServiceContainer implements vscode.Disposable {
 	private readonly logger: vscode.LogOutputChannel;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;

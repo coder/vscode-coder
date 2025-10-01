@@ -276,12 +276,7 @@ export class Remote {
 		// break this connection.  We could force close the remote session or
 		// disallow logging out/in altogether, but for now just use a separate
 		// client to remain unaffected by whatever the plugin is doing.
-		const workspaceClient = CoderApi.create(
-			baseUrlRaw,
-			token,
-			this.logger,
-			() => vscode.workspace.getConfiguration(),
-		);
+		const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
 		// Store for use in commands.
 		this.commands.workspaceRestClient = workspaceClient;
 
@@ -398,256 +393,262 @@ export class Remote {
 		}
 
 		const disposables: vscode.Disposable[] = [];
-		// Register before connection so the label still displays!
-		disposables.push(
-			this.registerLabelFormatter(
+		try {
+			// Register before connection so the label still displays!
+			let labelFormatterDisposable = this.registerLabelFormatter(
 				remoteAuthority,
 				workspace.owner_name,
 				workspace.name,
-			),
-		);
-
-		// If the workspace is not in a running state, try to get it running.
-		if (workspace.latest_build.status !== "running") {
-			const updatedWorkspace = await this.maybeWaitForRunning(
-				workspaceClient,
-				workspace,
-				parts.label,
-				binaryPath,
-				featureSet,
-				firstConnect,
 			);
-			if (!updatedWorkspace) {
-				// User declined to start the workspace.
-				await this.closeRemote();
-				return;
-			}
-			workspace = updatedWorkspace;
-		}
-		this.commands.workspace = workspace;
+			disposables.push(labelFormatterDisposable);
 
-		// Pick an agent.
-		this.logger.info(`Finding agent for ${workspaceName}...`);
-		const agents = extractAgents(workspace.latest_build.resources);
-		const gotAgent = await this.commands.maybeAskAgent(agents, parts.agent);
-		if (!gotAgent) {
-			// User declined to pick an agent.
-			await this.closeRemote();
-			return;
-		}
-		let agent = gotAgent; // Reassign so it cannot be undefined in callbacks.
-		this.logger.info(`Found agent ${agent.name} with status`, agent.status);
-
-		// Do some janky setting manipulation.
-		this.logger.info("Modifying settings...");
-		const remotePlatforms = this.vscodeProposed.workspace
-			.getConfiguration()
-			.get<Record<string, string>>("remote.SSH.remotePlatform", {});
-		const connTimeout = this.vscodeProposed.workspace
-			.getConfiguration()
-			.get<number | undefined>("remote.SSH.connectTimeout");
-
-		// We have to directly munge the settings file with jsonc because trying to
-		// update properly through the extension API hangs indefinitely.  Possibly
-		// VS Code is trying to update configuration on the remote, which cannot
-		// connect until we finish here leading to a deadlock.  We need to update it
-		// locally, anyway, and it does not seem possible to force that via API.
-		let settingsContent = "{}";
-		try {
-			settingsContent = await fs.readFile(
-				this.pathResolver.getUserSettingsPath(),
-				"utf8",
-			);
-		} catch {
-			// Ignore! It's probably because the file doesn't exist.
-		}
-
-		// Add the remote platform for this host to bypass a step where VS Code asks
-		// the user for the platform.
-		let mungedPlatforms = false;
-		if (
-			!remotePlatforms[parts.host] ||
-			remotePlatforms[parts.host] !== agent.operating_system
-		) {
-			remotePlatforms[parts.host] = agent.operating_system;
-			settingsContent = jsonc.applyEdits(
-				settingsContent,
-				jsonc.modify(
-					settingsContent,
-					["remote.SSH.remotePlatform"],
-					remotePlatforms,
-					{},
-				),
-			);
-			mungedPlatforms = true;
-		}
-
-		// VS Code ignores the connect timeout in the SSH config and uses a default
-		// of 15 seconds, which can be too short in the case where we wait for
-		// startup scripts.  For now we hardcode a longer value.  Because this is
-		// potentially overwriting user configuration, it feels a bit sketchy.  If
-		// microsoft/vscode-remote-release#8519 is resolved we can remove this.
-		const minConnTimeout = 1800;
-		let mungedConnTimeout = false;
-		if (!connTimeout || connTimeout < minConnTimeout) {
-			settingsContent = jsonc.applyEdits(
-				settingsContent,
-				jsonc.modify(
-					settingsContent,
-					["remote.SSH.connectTimeout"],
-					minConnTimeout,
-					{},
-				),
-			);
-			mungedConnTimeout = true;
-		}
-
-		if (mungedPlatforms || mungedConnTimeout) {
-			try {
-				await fs.writeFile(
-					this.pathResolver.getUserSettingsPath(),
-					settingsContent,
+			// If the workspace is not in a running state, try to get it running.
+			if (workspace.latest_build.status !== "running") {
+				const updatedWorkspace = await this.maybeWaitForRunning(
+					workspaceClient,
+					workspace,
+					parts.label,
+					binaryPath,
+					featureSet,
+					firstConnect,
 				);
-			} catch (ex) {
-				// This could be because the user's settings.json is read-only.  This is
-				// the case when using home-manager on NixOS, for example.  Failure to
-				// write here is not necessarily catastrophic since the user will be
-				// asked for the platform and the default timeout might be sufficient.
-				mungedPlatforms = mungedConnTimeout = false;
-				this.logger.warn("Failed to configure settings", ex);
+				if (!updatedWorkspace) {
+					// User declined to start the workspace.
+					await this.closeRemote();
+					return;
+				}
+				workspace = updatedWorkspace;
 			}
-		}
+			this.commands.workspace = workspace;
 
-		// Watch the workspace for changes.
-		const monitor = new WorkspaceMonitor(
-			workspace,
-			workspaceClient,
-			this.logger,
-			this.vscodeProposed,
-		);
-		disposables.push(monitor);
-		disposables.push(
-			monitor.onChange.event((w) => (this.commands.workspace = w)),
-		);
-
-		// Watch coder inbox for messages
-		const inbox = new Inbox(workspace, workspaceClient, this.logger);
-		disposables.push(inbox);
-
-		// Wait for the agent to connect.
-		if (agent.status === "connecting") {
-			this.logger.info(`Waiting for ${workspaceName}/${agent.name}...`);
-			await vscode.window.withProgress(
-				{
-					title: "Waiting for the agent to connect...",
-					location: vscode.ProgressLocation.Notification,
-				},
-				async () => {
-					await new Promise<void>((resolve) => {
-						const updateEvent = monitor.onChange.event((workspace) => {
-							if (!agent) {
-								return;
-							}
-							const agents = extractAgents(workspace.latest_build.resources);
-							const found = agents.find((newAgent) => {
-								return newAgent.id === agent.id;
-							});
-							if (!found) {
-								return;
-							}
-							agent = found;
-							if (agent.status === "connecting") {
-								return;
-							}
-							updateEvent.dispose();
-							resolve();
-						});
-					});
-				},
-			);
-			this.logger.info(`Agent ${agent.name} status is now`, agent.status);
-		}
-
-		// Make sure the agent is connected.
-		// TODO: Should account for the lifecycle state as well?
-		if (agent.status !== "connected") {
-			const result = await this.vscodeProposed.window.showErrorMessage(
-				`${workspaceName}/${agent.name} ${agent.status}`,
-				{
-					useCustom: true,
-					modal: true,
-					detail: `The ${agent.name} agent failed to connect. Try restarting your workspace.`,
-				},
-			);
-			if (!result) {
+			// Pick an agent.
+			this.logger.info(`Finding agent for ${workspaceName}...`);
+			const agents = extractAgents(workspace.latest_build.resources);
+			const gotAgent = await this.commands.maybeAskAgent(agents, parts.agent);
+			if (!gotAgent) {
+				// User declined to pick an agent.
 				await this.closeRemote();
 				return;
 			}
-			await this.reloadWindow();
-			return;
-		}
+			let agent = gotAgent; // Reassign so it cannot be undefined in callbacks.
+			this.logger.info(`Found agent ${agent.name} with status`, agent.status);
 
-		const logDir = this.getLogDir(featureSet);
+			// Do some janky setting manipulation.
+			this.logger.info("Modifying settings...");
+			const remotePlatforms = this.vscodeProposed.workspace
+				.getConfiguration()
+				.get<Record<string, string>>("remote.SSH.remotePlatform", {});
+			const connTimeout = this.vscodeProposed.workspace
+				.getConfiguration()
+				.get<number | undefined>("remote.SSH.connectTimeout");
 
-		// This ensures the Remote SSH extension resolves the host to execute the
-		// Coder binary properly.
-		//
-		// If we didn't write to the SSH config file, connecting would fail with
-		// "Host not found".
-		try {
-			this.logger.info("Updating SSH config...");
-			await this.updateSSHConfig(
+			// We have to directly munge the settings file with jsonc because trying to
+			// update properly through the extension API hangs indefinitely.  Possibly
+			// VS Code is trying to update configuration on the remote, which cannot
+			// connect until we finish here leading to a deadlock.  We need to update it
+			// locally, anyway, and it does not seem possible to force that via API.
+			let settingsContent = "{}";
+			try {
+				settingsContent = await fs.readFile(
+					this.pathResolver.getUserSettingsPath(),
+					"utf8",
+				);
+			} catch {
+				// Ignore! It's probably because the file doesn't exist.
+			}
+
+			// Add the remote platform for this host to bypass a step where VS Code asks
+			// the user for the platform.
+			let mungedPlatforms = false;
+			if (
+				!remotePlatforms[parts.host] ||
+				remotePlatforms[parts.host] !== agent.operating_system
+			) {
+				remotePlatforms[parts.host] = agent.operating_system;
+				settingsContent = jsonc.applyEdits(
+					settingsContent,
+					jsonc.modify(
+						settingsContent,
+						["remote.SSH.remotePlatform"],
+						remotePlatforms,
+						{},
+					),
+				);
+				mungedPlatforms = true;
+			}
+
+			// VS Code ignores the connect timeout in the SSH config and uses a default
+			// of 15 seconds, which can be too short in the case where we wait for
+			// startup scripts.  For now we hardcode a longer value.  Because this is
+			// potentially overwriting user configuration, it feels a bit sketchy.  If
+			// microsoft/vscode-remote-release#8519 is resolved we can remove this.
+			const minConnTimeout = 1800;
+			let mungedConnTimeout = false;
+			if (!connTimeout || connTimeout < minConnTimeout) {
+				settingsContent = jsonc.applyEdits(
+					settingsContent,
+					jsonc.modify(
+						settingsContent,
+						["remote.SSH.connectTimeout"],
+						minConnTimeout,
+						{},
+					),
+				);
+				mungedConnTimeout = true;
+			}
+
+			if (mungedPlatforms || mungedConnTimeout) {
+				try {
+					await fs.writeFile(
+						this.pathResolver.getUserSettingsPath(),
+						settingsContent,
+					);
+				} catch (ex) {
+					// This could be because the user's settings.json is read-only.  This is
+					// the case when using home-manager on NixOS, for example.  Failure to
+					// write here is not necessarily catastrophic since the user will be
+					// asked for the platform and the default timeout might be sufficient.
+					mungedPlatforms = mungedConnTimeout = false;
+					this.logger.warn("Failed to configure settings", ex);
+				}
+			}
+
+			// Watch the workspace for changes.
+			const monitor = new WorkspaceMonitor(
+				workspace,
 				workspaceClient,
-				parts.label,
-				parts.host,
-				binaryPath,
-				logDir,
-				featureSet,
+				this.logger,
+				this.vscodeProposed,
 			);
-		} catch (error) {
-			this.logger.warn("Failed to configure SSH", error);
-			throw error;
-		}
+			disposables.push(monitor);
+			disposables.push(
+				monitor.onChange.event((w) => (this.commands.workspace = w)),
+			);
 
-		// TODO: This needs to be reworked; it fails to pick up reconnects.
-		this.findSSHProcessID().then(async (pid) => {
-			if (!pid) {
-				// TODO: Show an error here!
+			// Watch coder inbox for messages
+			const inbox = new Inbox(workspace, workspaceClient, this.logger);
+			disposables.push(inbox);
+
+			// Wait for the agent to connect.
+			if (agent.status === "connecting") {
+				this.logger.info(`Waiting for ${workspaceName}/${agent.name}...`);
+				await vscode.window.withProgress(
+					{
+						title: "Waiting for the agent to connect...",
+						location: vscode.ProgressLocation.Notification,
+					},
+					async () => {
+						await new Promise<void>((resolve) => {
+							const updateEvent = monitor.onChange.event((workspace) => {
+								if (!agent) {
+									return;
+								}
+								const agents = extractAgents(workspace.latest_build.resources);
+								const found = agents.find((newAgent) => {
+									return newAgent.id === agent.id;
+								});
+								if (!found) {
+									return;
+								}
+								agent = found;
+								if (agent.status === "connecting") {
+									return;
+								}
+								updateEvent.dispose();
+								resolve();
+							});
+						});
+					},
+				);
+				this.logger.info(`Agent ${agent.name} status is now`, agent.status);
+			}
+
+			// Make sure the agent is connected.
+			// TODO: Should account for the lifecycle state as well?
+			if (agent.status !== "connected") {
+				const result = await this.vscodeProposed.window.showErrorMessage(
+					`${workspaceName}/${agent.name} ${agent.status}`,
+					{
+						useCustom: true,
+						modal: true,
+						detail: `The ${agent.name} agent failed to connect. Try restarting your workspace.`,
+					},
+				);
+				if (!result) {
+					await this.closeRemote();
+					return;
+				}
+				await this.reloadWindow();
 				return;
 			}
-			disposables.push(this.showNetworkUpdates(pid));
-			if (logDir) {
-				const logFiles = await fs.readdir(logDir);
-				const logFileName = logFiles
-					.reverse()
-					.find(
-						(file) => file === `${pid}.log` || file.endsWith(`-${pid}.log`),
-					);
-				this.commands.workspaceLogPath = logFileName
-					? path.join(logDir, logFileName)
-					: undefined;
-			} else {
-				this.commands.workspaceLogPath = undefined;
-			}
-		});
 
-		// Register the label formatter again because SSH overrides it!
-		disposables.push(
-			vscode.extensions.onDidChange(() => {
-				disposables.push(
-					this.registerLabelFormatter(
+			const logDir = this.getLogDir(featureSet);
+
+			// This ensures the Remote SSH extension resolves the host to execute the
+			// Coder binary properly.
+			//
+			// If we didn't write to the SSH config file, connecting would fail with
+			// "Host not found".
+			try {
+				this.logger.info("Updating SSH config...");
+				await this.updateSSHConfig(
+					workspaceClient,
+					parts.label,
+					parts.host,
+					binaryPath,
+					logDir,
+					featureSet,
+				);
+			} catch (error) {
+				this.logger.warn("Failed to configure SSH", error);
+				throw error;
+			}
+
+			// TODO: This needs to be reworked; it fails to pick up reconnects.
+			this.findSSHProcessID().then(async (pid) => {
+				if (!pid) {
+					// TODO: Show an error here!
+					return;
+				}
+				disposables.push(this.showNetworkUpdates(pid));
+				if (logDir) {
+					const logFiles = await fs.readdir(logDir);
+					const logFileName = logFiles
+						.reverse()
+						.find(
+							(file) => file === `${pid}.log` || file.endsWith(`-${pid}.log`),
+						);
+					this.commands.workspaceLogPath = logFileName
+						? path.join(logDir, logFileName)
+						: undefined;
+				} else {
+					this.commands.workspaceLogPath = undefined;
+				}
+			});
+
+			// Register the label formatter again because SSH overrides it!
+			disposables.push(
+				vscode.extensions.onDidChange(() => {
+					// Dispose previous label formatter
+					labelFormatterDisposable.dispose();
+					labelFormatterDisposable = this.registerLabelFormatter(
 						remoteAuthority,
 						workspace.owner_name,
 						workspace.name,
 						agent.name,
-					),
-				);
-			}),
-		);
+					);
+					disposables.push(labelFormatterDisposable);
+				}),
+			);
 
-		disposables.push(
-			...this.createAgentMetadataStatusBar(agent, workspaceClient),
-		);
+			disposables.push(
+				...this.createAgentMetadataStatusBar(agent, workspaceClient),
+			);
+		} catch (ex) {
+			// Whatever error happens, make sure we clean up the disposables in case of failure
+			disposables.forEach((d) => d.dispose());
+			throw ex;
+		}
 
 		this.logger.info("Remote setup complete");
 

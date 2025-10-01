@@ -34,12 +34,12 @@ export enum WorkspaceQuery {
  * abort polling until fetchAndRefresh() is called again.
  */
 export class WorkspaceProvider
-	implements vscode.TreeDataProvider<vscode.TreeItem>
+	implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable
 {
 	// Undefined if we have never fetched workspaces before.
 	private workspaces: WorkspaceTreeItem[] | undefined;
-	private agentWatchers: Record<WorkspaceAgent["id"], AgentMetadataWatcher> =
-		{};
+	private agentWatchers: Map<WorkspaceAgent["id"], AgentMetadataWatcher> =
+		new Map();
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
 	private visible = false;
@@ -121,7 +121,7 @@ export class WorkspaceProvider
 			return this.fetch();
 		}
 
-		const oldWatcherIds = Object.keys(this.agentWatchers);
+		const oldWatcherIds = [...this.agentWatchers.keys()];
 		const reusedWatcherIds: string[] = [];
 
 		// TODO: I think it might make more sense for the tree items to contain
@@ -132,23 +132,23 @@ export class WorkspaceProvider
 			const agents = extractAllAgents(resp.workspaces);
 			agents.forEach((agent) => {
 				// If we have an existing watcher, re-use it.
-				if (this.agentWatchers[agent.id]) {
+				const oldWatcher = this.agentWatchers.get(agent.id);
+				if (oldWatcher) {
 					reusedWatcherIds.push(agent.id);
-					return this.agentWatchers[agent.id];
+				} else {
+					// Otherwise create a new watcher.
+					const watcher = createAgentMetadataWatcher(agent.id, this.client);
+					watcher.onChange(() => this.refresh());
+					this.agentWatchers.set(agent.id, watcher);
 				}
-				// Otherwise create a new watcher.
-				const watcher = createAgentMetadataWatcher(agent.id, this.client);
-				watcher.onChange(() => this.refresh());
-				this.agentWatchers[agent.id] = watcher;
-				return watcher;
 			});
 		}
 
 		// Dispose of watchers we ended up not reusing.
 		oldWatcherIds.forEach((id) => {
 			if (!reusedWatcherIds.includes(id)) {
-				this.agentWatchers[id].dispose();
-				delete this.agentWatchers[id];
+				this.agentWatchers.get(id)?.dispose();
+				this.agentWatchers.delete(id);
 			}
 		});
 
@@ -244,7 +244,7 @@ export class WorkspaceProvider
 
 				return Promise.resolve(agentTreeItems);
 			} else if (element instanceof AgentTreeItem) {
-				const watcher = this.agentWatchers[element.agent.id];
+				const watcher = this.agentWatchers.get(element.agent.id);
 				if (watcher?.error) {
 					return Promise.resolve([new ErrorTreeItem(watcher.error)]);
 				}
@@ -304,6 +304,14 @@ export class WorkspaceProvider
 			return Promise.resolve([]);
 		}
 		return Promise.resolve(this.workspaces || []);
+	}
+
+	dispose() {
+		this.cancelPendingRefresh();
+		for (const watcher of this.agentWatchers.values()) {
+			watcher.dispose();
+		}
+		this.agentWatchers.clear();
 	}
 }
 

@@ -57,6 +57,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	}
 
 	const serviceContainer = new ServiceContainer(ctx, vscodeProposed);
+	ctx.subscriptions.push(serviceContainer);
+
 	const output = serviceContainer.getLogger();
 	const mementoManager = serviceContainer.getMementoManager();
 	const secretsManager = serviceContainer.getSecretsManager();
@@ -72,7 +74,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		url || "",
 		await secretsManager.getSessionToken(),
 		output,
-		() => vscode.workspace.getConfiguration(),
 	);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
@@ -81,33 +82,47 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output,
 		5,
 	);
+	ctx.subscriptions.push(myWorkspacesProvider);
+
 	const allWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.All,
 		client,
 		output,
 	);
+	ctx.subscriptions.push(allWorkspacesProvider);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
 	// (so we can see when it is visible) but otherwise they have the same effect.
 	const myWsTree = vscode.window.createTreeView(MY_WORKSPACES_TREE_ID, {
 		treeDataProvider: myWorkspacesProvider,
 	});
+	ctx.subscriptions.push(myWsTree);
 	myWorkspacesProvider.setVisibility(myWsTree.visible);
-	myWsTree.onDidChangeVisibility((event) => {
-		myWorkspacesProvider.setVisibility(event.visible);
-	});
+	myWsTree.onDidChangeVisibility(
+		(event) => {
+			myWorkspacesProvider.setVisibility(event.visible);
+		},
+		undefined,
+		ctx.subscriptions,
+	);
 
 	const allWsTree = vscode.window.createTreeView(ALL_WORKSPACES_TREE_ID, {
 		treeDataProvider: allWorkspacesProvider,
 	});
+	ctx.subscriptions.push(allWsTree);
 	allWorkspacesProvider.setVisibility(allWsTree.visible);
-	allWsTree.onDidChangeVisibility((event) => {
-		allWorkspacesProvider.setVisibility(event.visible);
-	});
+	allWsTree.onDidChangeVisibility(
+		(event) => {
+			allWorkspacesProvider.setVisibility(event.visible);
+		},
+		undefined,
+		ctx.subscriptions,
+	);
 
 	// Handle vscode:// URIs.
-	vscode.window.registerUriHandler({
+	const uriHandler = vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
+			const cliManager = serviceContainer.getCliManager();
 			const params = new URLSearchParams(uri.query);
 			if (uri.path === "/open") {
 				const owner = params.get("owner");
@@ -253,59 +268,89 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		},
 	});
-
-	const cliManager = serviceContainer.getCliManager();
+	ctx.subscriptions.push(uriHandler);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
 	const commands = new Commands(serviceContainer, client);
-	vscode.commands.registerCommand("coder.login", commands.login.bind(commands));
-	vscode.commands.registerCommand(
-		"coder.logout",
-		commands.logout.bind(commands),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.login",
+			commands.login.bind(commands),
+		),
 	);
-	vscode.commands.registerCommand("coder.open", commands.open.bind(commands));
-	vscode.commands.registerCommand(
-		"coder.openDevContainer",
-		commands.openDevContainer.bind(commands),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.logout",
+			commands.logout.bind(commands),
+		),
 	);
-	vscode.commands.registerCommand(
-		"coder.openFromSidebar",
-		commands.openFromSidebar.bind(commands),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand("coder.open", commands.open.bind(commands)),
 	);
-	vscode.commands.registerCommand(
-		"coder.openAppStatus",
-		commands.openAppStatus.bind(commands),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.openDevContainer",
+			commands.openDevContainer.bind(commands),
+		),
 	);
-	vscode.commands.registerCommand(
-		"coder.workspace.update",
-		commands.updateWorkspace.bind(commands),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.openFromSidebar",
+			commands.openFromSidebar.bind(commands),
+		),
 	);
-	vscode.commands.registerCommand(
-		"coder.createWorkspace",
-		commands.createWorkspace.bind(commands),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.openAppStatus",
+			commands.openAppStatus.bind(commands),
+		),
 	);
-	vscode.commands.registerCommand(
-		"coder.navigateToWorkspace",
-		commands.navigateToWorkspace.bind(commands),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.workspace.update",
+			commands.updateWorkspace.bind(commands),
+		),
 	);
-	vscode.commands.registerCommand(
-		"coder.navigateToWorkspaceSettings",
-		commands.navigateToWorkspaceSettings.bind(commands),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.createWorkspace",
+			commands.createWorkspace.bind(commands),
+		),
 	);
-	vscode.commands.registerCommand("coder.refreshWorkspaces", () => {
-		myWorkspacesProvider.fetchAndRefresh();
-		allWorkspacesProvider.fetchAndRefresh();
-	});
-	vscode.commands.registerCommand(
-		"coder.viewLogs",
-		commands.viewLogs.bind(commands),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.navigateToWorkspace",
+			commands.navigateToWorkspace.bind(commands),
+		),
 	);
-	vscode.commands.registerCommand("coder.searchMyWorkspaces", async () =>
-		showTreeViewSearch(MY_WORKSPACES_TREE_ID),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.navigateToWorkspaceSettings",
+			commands.navigateToWorkspaceSettings.bind(commands),
+		),
 	);
-	vscode.commands.registerCommand("coder.searchAllWorkspaces", async () =>
-		showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand("coder.refreshWorkspaces", () => {
+			myWorkspacesProvider.fetchAndRefresh();
+			allWorkspacesProvider.fetchAndRefresh();
+		}),
+	);
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand(
+			"coder.viewLogs",
+			commands.viewLogs.bind(commands),
+		),
+	);
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand("coder.searchMyWorkspaces", async () =>
+			showTreeViewSearch(MY_WORKSPACES_TREE_ID),
+		),
+	);
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand("coder.searchAllWorkspaces", async () =>
+			showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
+		),
 	);
 
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
@@ -325,6 +370,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				isFirstConnect,
 			);
 			if (details) {
+				ctx.subscriptions.push(details);
 				// Authenticate the plugin client which is used in the sidebar to display
 				// workspaces belonging to this deployment.
 				client.setHost(details.url);
