@@ -102,10 +102,13 @@ export class Commands {
 	 * CODER_URL or enter a new one.  Undefined means the user aborted.
 	 */
 	private async askURL(selection?: string): Promise<string | undefined> {
-		const defaultURL =
-			vscode.workspace.getConfiguration().get<string>("coder.defaultUrl") ?? "";
+		const defaultURL = vscode.workspace
+			.getConfiguration()
+			.get<string>("coder.defaultUrl")
+			?.trim();
 		const quickPick = vscode.window.createQuickPick();
-		quickPick.value = selection || defaultURL || process.env.CODER_URL || "";
+		quickPick.value =
+			selection || defaultURL || process.env.CODER_URL?.trim() || "";
 		quickPick.placeholder = "https://example.coder.com";
 		quickPick.title = "Enter the URL of your Coder deployment.";
 

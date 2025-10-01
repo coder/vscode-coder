@@ -19,11 +19,10 @@ export function getHeaderCommand(
 	config: WorkspaceConfiguration,
 ): string | undefined {
 	const cmd =
-		config.get("coder.headerCommand") || process.env.CODER_HEADER_COMMAND;
-	if (!cmd || typeof cmd !== "string") {
-		return undefined;
-	}
-	return cmd;
+		config.get<string>("coder.headerCommand")?.trim() ||
+		process.env.CODER_HEADER_COMMAND?.trim();
+
+	return cmd ? cmd : undefined;
 }
 
 export function getHeaderArgs(config: WorkspaceConfiguration): string[] {

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Support for `CODER_BINARY_DESTINATION` environment variable to set CLI download location (overridden by extension setting `coder.binaryDestination` if configured).
+
 ## [v1.11.0](https://github.com/coder/vscode-coder/releases/tag/v1.11.0) 2025-09-24
 
 ### Changed

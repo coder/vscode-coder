@@ -28,11 +28,14 @@ export class PathResolver {
 	 * The caller must ensure this directory exists before use.
 	 */
 	public getBinaryCachePath(label: string): string {
-		const configPath = vscode.workspace
+		const settingPath = vscode.workspace
 			.getConfiguration()
-			.get<string>("coder.binaryDestination");
-		return configPath && configPath.trim().length > 0
-			? path.normalize(configPath)
+			.get<string>("coder.binaryDestination")
+			?.trim();
+		const binaryPath =
+			settingPath || process.env.CODER_BINARY_DESTINATION?.trim();
+		return binaryPath
+			? path.normalize(binaryPath)
 			: path.join(this.getGlobalConfigDir(label), "bin");
 	}
 
