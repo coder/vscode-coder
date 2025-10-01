@@ -2,8 +2,13 @@ import type { SecretStorage, Disposable } from "vscode";
 
 const SESSION_TOKEN_KEY = "sessionToken";
 
+const LOGIN_STATE_KEY = "loginState";
+
+type AuthAction = "login" | "logout";
 export class SecretsManager {
-	constructor(private readonly secrets: SecretStorage) {}
+	constructor(private readonly secrets: SecretStorage) {
+		void this.secrets.delete(LOGIN_STATE_KEY);
+	}
 
 	/**
 	 * Set or unset the last used token.
@@ -29,13 +34,17 @@ export class SecretsManager {
 		}
 	}
 
-	/**
-	 * Subscribe to changes to the session token which can be used to indicate user login status.
-	 */
-	public onDidChangeSessionToken(listener: () => Promise<void>): Disposable {
-		return this.secrets.onDidChange((e) => {
-			if (e.key === SESSION_TOKEN_KEY) {
-				listener();
+	public triggerLoginStateChange(action: AuthAction): void {
+		this.secrets.store(LOGIN_STATE_KEY, action);
+	}
+
+	public onDidChangeLoginState(
+		listener: (state?: AuthAction) => Promise<void>,
+	): Disposable {
+		return this.secrets.onDidChange(async (e) => {
+			if (e.key === LOGIN_STATE_KEY) {
+				const state = await this.secrets.get(LOGIN_STATE_KEY);
+				listener(state as AuthAction | undefined);
 			}
 		});
 	}

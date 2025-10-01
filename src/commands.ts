@@ -12,6 +12,7 @@ import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { type CliManager } from "./core/cliManager";
 import { type ServiceContainer } from "./core/container";
+import { type ContextManager } from "./core/contextManager";
 import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
 import { type SecretsManager } from "./core/secretsManager";
@@ -32,6 +33,7 @@ export class Commands {
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
 	private readonly cliManager: CliManager;
+	private readonly contextManager: ContextManager;
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
 	// possible to pass in arguments, so we have to store the current workspace
@@ -53,6 +55,7 @@ export class Commands {
 		this.mementoManager = serviceContainer.getMementoManager();
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.cliManager = serviceContainer.getCliManager();
+		this.contextManager = serviceContainer.getContextManager();
 	}
 
 	/**
@@ -189,6 +192,11 @@ export class Commands {
 		label?: string;
 		autoLogin?: boolean;
 	}): Promise<void> {
+		if (this.contextManager.get("coder.authenticated")) {
+			return;
+		}
+		this.logger.info("Logging in");
+
 		const url = await this.maybeAskUrl(args?.url);
 		if (!url) {
 			return; // The user aborted.
@@ -219,13 +227,9 @@ export class Commands {
 		await this.secretsManager.setSessionToken(res.token);
 
 		// These contexts control various menu items and the sidebar.
-		await vscode.commands.executeCommand(
-			"setContext",
-			"coder.authenticated",
-			true,
-		);
+		this.contextManager.set("coder.authenticated", true);
 		if (res.user.roles.find((role) => role.name === "owner")) {
-			await vscode.commands.executeCommand("setContext", "coder.isOwner", true);
+			this.contextManager.set("coder.isOwner", true);
 		}
 
 		vscode.window
@@ -245,6 +249,7 @@ export class Commands {
 
 		// Fetch workspaces for the new deployment.
 		vscode.commands.executeCommand("coder.refreshWorkspaces");
+		this.secretsManager.triggerLoginStateChange("login");
 	}
 
 	/**
@@ -376,6 +381,10 @@ export class Commands {
 	}
 
 	public async forceLogout(): Promise<void> {
+		if (!this.contextManager.get("coder.authenticated")) {
+			return;
+		}
+		this.logger.info("Logging out");
 		// Clear from the REST client.  An empty url will indicate to other parts of
 		// the code that we are logged out.
 		this.restClient.setHost("");
@@ -385,11 +394,7 @@ export class Commands {
 		await this.mementoManager.setUrl(undefined);
 		await this.secretsManager.setSessionToken(undefined);
 
-		await vscode.commands.executeCommand(
-			"setContext",
-			"coder.authenticated",
-			false,
-		);
+		this.contextManager.set("coder.authenticated", false);
 		vscode.window
 			.showInformationMessage("You've been logged out of Coder!", "Login")
 			.then((action) => {
@@ -400,6 +405,7 @@ export class Commands {
 
 		// This will result in clearing the workspace list.
 		vscode.commands.executeCommand("coder.refreshWorkspaces");
+		this.secretsManager.triggerLoginStateChange("logout");
 	}
 
 	/**

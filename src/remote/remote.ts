@@ -30,6 +30,7 @@ import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
 import * as cliUtils from "../core/cliUtils";
 import { type ServiceContainer } from "../core/container";
+import { type ContextManager } from "../core/contextManager";
 import { type PathResolver } from "../core/pathResolver";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
@@ -58,6 +59,7 @@ export class Remote {
 	private readonly logger: Logger;
 	private readonly pathResolver: PathResolver;
 	private readonly cliManager: CliManager;
+	private readonly contextManager: ContextManager;
 
 	// Used to race between the login dialog and the logging in from a different window
 	private loginDetectedResolver: (() => void) | undefined;
@@ -73,6 +75,7 @@ export class Remote {
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.cliManager = serviceContainer.getCliManager();
+		this.contextManager = serviceContainer.getContextManager();
 	}
 
 	/**
@@ -545,6 +548,7 @@ export class Remote {
 				workspaceClient,
 				this.logger,
 				this.vscodeProposed,
+				this.contextManager,
 			);
 			disposables.push(monitor);
 			disposables.push(
