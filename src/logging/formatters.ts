@@ -32,16 +32,35 @@ export function formatContentLength(
 	const len = headers["content-length"];
 	if (len && typeof len === "string") {
 		const bytes = parseInt(len, 10);
-		return isNaN(bytes) ? "(?b)" : `(${prettyBytes(bytes)})`;
+		return isNaN(bytes) ? "(?B)" : `(${prettyBytes(bytes)})`;
 	}
 
 	// Estimate from data if no header
-	if (data !== undefined && data !== null) {
-		const estimated = Buffer.byteLength(JSON.stringify(data), "utf8");
-		return `(~${prettyBytes(estimated)})`;
+
+	if (data === undefined || data === null) {
+		return `(${prettyBytes(0)})`;
 	}
 
-	return `(${prettyBytes(0)})`;
+	if (Buffer.isBuffer(data)) {
+		return `(${prettyBytes(data.byteLength)})`;
+	}
+	if (typeof data === "string" || typeof data === "bigint") {
+		const bytes = Buffer.byteLength(data.toString(), "utf8");
+		return `(${prettyBytes(bytes)})`;
+	}
+	if (typeof data === "number" || typeof data === "boolean") {
+		return `(~${prettyBytes(8)})`;
+	}
+
+	if (typeof data === "object") {
+		const stringified = safeStringify(data);
+		if (stringified !== null) {
+			const bytes = Buffer.byteLength(stringified, "utf8");
+			return `(~${prettyBytes(bytes)})`;
+		}
+	}
+
+	return "(?B)";
 }
 
 export function formatUri(
@@ -66,8 +85,38 @@ export function formatHeaders(headers: Record<string, unknown>): string {
 
 export function formatBody(body: unknown): string {
 	if (body) {
-		return JSON.stringify(body);
+		return safeStringify(body) ?? "<invalid body>";
 	} else {
 		return "<no body>";
+	}
+}
+
+function safeStringify(data: unknown): string | null {
+	try {
+		const seen = new WeakSet();
+		return JSON.stringify(data, (_key, value) => {
+			// Handle circular references
+			if (typeof value === "object" && value !== null) {
+				if (seen.has(value)) {
+					return "[Circular]";
+				}
+				seen.add(value);
+			}
+
+			// Handle special types that might slip through
+			if (typeof value === "function") {
+				return "[Function]";
+			}
+			if (typeof value === "symbol") {
+				return "[Symbol]";
+			}
+			if (typeof value === "bigint") {
+				return value.toString();
+			}
+
+			return value;
+		});
+	} catch {
+		return null;
 	}
 }
