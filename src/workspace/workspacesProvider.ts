@@ -262,6 +262,7 @@ export class WorkspaceProvider
 								// yet.
 								appStatuses.push(
 									new AppStatusTreeItem({
+										id: status.id,
 										name: status.message,
 										command: app.command,
 										workspace_name: element.workspace.name,
@@ -335,6 +336,7 @@ class AgentMetadataTreeItem extends vscode.TreeItem {
 			metadataEvent.result.collected_at,
 		).toLocaleString();
 
+		this.id = metadataEvent.description.key;
 		this.tooltip = "Collected at " + collected_at;
 		this.contextValue = "coderAgentMetadata";
 	}
@@ -343,6 +345,7 @@ class AgentMetadataTreeItem extends vscode.TreeItem {
 class AppStatusTreeItem extends vscode.TreeItem {
 	constructor(
 		public readonly app: {
+			id: string;
 			name: string;
 			url?: string;
 			command?: string;
@@ -350,6 +353,7 @@ class AppStatusTreeItem extends vscode.TreeItem {
 		},
 	) {
 		super("", vscode.TreeItemCollapsibleState.None);
+		this.id = app.id;
 		this.description = app.name;
 		this.contextValue = "coderAppStatus";
 
@@ -369,6 +373,7 @@ type CoderOpenableTreeItemType =
 
 export class OpenableTreeItem extends vscode.TreeItem {
 	constructor(
+		id: string,
 		label: string,
 		tooltip: string,
 		description: string,
@@ -379,6 +384,7 @@ export class OpenableTreeItem extends vscode.TreeItem {
 		contextValue: CoderOpenableTreeItemType,
 	) {
 		super(label, collapsibleState);
+		this.id = id;
 		this.contextValue = contextValue;
 		this.tooltip = tooltip;
 		this.description = description;
@@ -397,6 +403,7 @@ export class AgentTreeItem extends OpenableTreeItem {
 		watchMetadata = false,
 	) {
 		super(
+			agent.id, // id
 			agent.name, // label
 			`Status: ${agent.status}`, // tooltip
 			agent.status, // description
@@ -434,6 +441,7 @@ export class WorkspaceTreeItem extends OpenableTreeItem {
 		const detail = `Template: ${workspace.template_display_name || workspace.template_name} • Status: ${status}`;
 		const agents = extractAgents(workspace.latest_build.resources);
 		super(
+			workspace.id,
 			label,
 			detail,
 			workspace.latest_build.status, // description
