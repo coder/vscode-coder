@@ -267,7 +267,7 @@ export class CliManager {
 			if (Number.isNaN(contentLength)) {
 				this.output.warn(
 					"Got invalid or missing content length",
-					rawContentLength,
+					rawContentLength ?? "",
 				);
 			} else {
 				this.output.info("Got content length", prettyBytes(contentLength));
