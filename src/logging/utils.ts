@@ -5,6 +5,10 @@ export function shortId(id: string): string {
 	return id.slice(0, 8);
 }
 
+/**
+ * Returns the byte size of the data if it can be determined from the data's intrinsic properties,
+ * otherwise returns undefined (e.g., for plain objects and arrays that would require serialization).
+ */
 export function sizeOf(data: unknown): number | undefined {
 	if (data === null || data === undefined) {
 		return 0;
