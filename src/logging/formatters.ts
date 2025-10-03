@@ -3,7 +3,7 @@ import prettyBytes from "pretty-bytes";
 
 import { sizeOf } from "./utils";
 
-import type { InternalAxiosRequestConfig } from "axios";
+import type { AxiosRequestConfig } from "axios";
 
 const SENSITIVE_HEADERS = ["Coder-Session-Token", "Proxy-Authorization"];
 
@@ -21,7 +21,7 @@ export function formatTime(ms: number): string {
 }
 
 export function formatMethod(method: string | undefined): string {
-	return (method ?? "GET").toUpperCase();
+	return (method ? method : "GET").toUpperCase();
 }
 
 /**
@@ -55,9 +55,7 @@ export function formatContentLength(
 	return "(? B)";
 }
 
-export function formatUri(
-	config: InternalAxiosRequestConfig | undefined,
-): string {
+export function formatUri(config: AxiosRequestConfig | undefined): string {
 	return config?.url || "<no url>";
 }
 

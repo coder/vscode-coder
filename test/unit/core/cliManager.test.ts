@@ -12,10 +12,10 @@ import * as vscode from "vscode";
 import { CliManager } from "@/core/cliManager";
 import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
-import { type Logger } from "@/logging/logger";
 import * as pgp from "@/pgp";
 
 import {
+	createMockLogger,
 	MockConfigurationProvider,
 	MockProgressReporter,
 	MockUserInteraction,
@@ -624,16 +624,6 @@ describe("CliManager", () => {
 			expect(result).toBe(path.join(BASE_PATH, "bin", BINARY_NAME));
 		});
 	});
-
-	function createMockLogger(): Logger {
-		return {
-			trace: vi.fn(),
-			debug: vi.fn(),
-			info: vi.fn(),
-			warn: vi.fn(),
-			error: vi.fn(),
-		};
-	}
 
 	function createMockApi(version: string, url: string): Api {
 		const axios = {
