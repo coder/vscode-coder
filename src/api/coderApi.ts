@@ -7,7 +7,7 @@ import {
 	type Workspace,
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
-import { type WorkspaceConfiguration } from "vscode";
+import * as vscode from "vscode";
 import { type ClientOptions } from "ws";
 
 import { CertificateError } from "../error";
@@ -33,17 +33,12 @@ import { createHttpAgent } from "./utils";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
 
-type WorkspaceConfigurationProvider = () => WorkspaceConfiguration;
-
 /**
  * Unified API class that includes both REST API methods from the base Api class
  * and WebSocket methods for real-time functionality.
  */
 export class CoderApi extends Api {
-	private constructor(
-		private readonly output: Logger,
-		private readonly configProvider: WorkspaceConfigurationProvider,
-	) {
+	private constructor(private readonly output: Logger) {
 		super();
 	}
 
@@ -55,15 +50,14 @@ export class CoderApi extends Api {
 		baseUrl: string,
 		token: string | undefined,
 		output: Logger,
-		configProvider: WorkspaceConfigurationProvider,
 	): CoderApi {
-		const client = new CoderApi(output, configProvider);
+		const client = new CoderApi(output);
 		client.setHost(baseUrl);
 		if (token) {
 			client.setSessionToken(token);
 		}
 
-		setupInterceptors(client, baseUrl, output, configProvider);
+		setupInterceptors(client, baseUrl, output);
 		return client;
 	}
 
@@ -127,7 +121,7 @@ export class CoderApi extends Api {
 			coderSessionTokenHeader
 		] as string | undefined;
 
-		const httpAgent = createHttpAgent(this.configProvider());
+		const httpAgent = createHttpAgent(vscode.workspace.getConfiguration());
 		const webSocket = new OneWayWebSocket<TData>({
 			location: baseUrl,
 			...configs,
@@ -174,14 +168,13 @@ function setupInterceptors(
 	client: CoderApi,
 	baseUrl: string,
 	output: Logger,
-	configProvider: WorkspaceConfigurationProvider,
 ): void {
-	addLoggingInterceptors(client.getAxiosInstance(), output, configProvider);
+	addLoggingInterceptors(client.getAxiosInstance(), output);
 
 	client.getAxiosInstance().interceptors.request.use(async (config) => {
 		const headers = await getHeaders(
 			baseUrl,
-			getHeaderCommand(configProvider()),
+			getHeaderCommand(vscode.workspace.getConfiguration()),
 			output,
 		);
 		// Add headers from the header command.
@@ -192,7 +185,7 @@ function setupInterceptors(
 		// Configure proxy and TLS.
 		// Note that by default VS Code overrides the agent. To prevent this, set
 		// `http.proxySupport` to `on` or `off`.
-		const agent = createHttpAgent(configProvider());
+		const agent = createHttpAgent(vscode.workspace.getConfiguration());
 		config.httpsAgent = agent;
 		config.httpAgent = agent;
 		config.proxy = false;
@@ -209,38 +202,35 @@ function setupInterceptors(
 	);
 }
 
-function addLoggingInterceptors(
-	client: AxiosInstance,
-	logger: Logger,
-	configProvider: WorkspaceConfigurationProvider,
-) {
+function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 	client.interceptors.request.use(
 		(config) => {
 			const configWithMeta = config as RequestConfigWithMeta;
 			configWithMeta.metadata = createRequestMeta();
-			logRequest(logger, configWithMeta, getLogLevel(configProvider()));
+			logRequest(logger, configWithMeta, getLogLevel());
 			return config;
 		},
 		(error: unknown) => {
-			logError(logger, error, getLogLevel(configProvider()));
+			logError(logger, error, getLogLevel());
 			return Promise.reject(error);
 		},
 	);
 
 	client.interceptors.response.use(
 		(response) => {
-			logResponse(logger, response, getLogLevel(configProvider()));
+			logResponse(logger, response, getLogLevel());
 			return response;
 		},
 		(error: unknown) => {
-			logError(logger, error, getLogLevel(configProvider()));
+			logError(logger, error, getLogLevel());
 			return Promise.reject(error);
 		},
 	);
 }
 
-function getLogLevel(cfg: WorkspaceConfiguration): HttpClientLogLevel {
-	const logLevelStr = cfg
+function getLogLevel(): HttpClientLogLevel {
+	const logLevelStr = vscode.workspace
+		.getConfiguration()
 		.get(
 			"coder.httpClientLogLevel",
 			HttpClientLogLevel[HttpClientLogLevel.BASIC],

@@ -260,9 +260,7 @@ export class Commands {
 		token: string,
 		isAutologin: boolean,
 	): Promise<{ user: User; token: string } | null> {
-		const client = CoderApi.create(url, token, this.logger, () =>
-			vscode.workspace.getConfiguration(),
-		);
+		const client = CoderApi.create(url, token, this.logger);
 		if (!needToken(vscode.workspace.getConfiguration())) {
 			try {
 				const user = await client.getAuthenticatedUser();
