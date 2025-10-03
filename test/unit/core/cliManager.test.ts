@@ -730,10 +730,11 @@ describe("CliManager", () => {
 		content: string,
 		options: { chunkSize?: number; delay?: number } = {},
 	): IncomingMessage {
-		const { chunkSize = 8, delay = 0 } = options;
+		const { chunkSize = 8, delay = 1 } = options;
 
 		const buffer = Buffer.from(content);
 		let position = 0;
+		let closeCallback: ((...args: unknown[]) => void) | null = null;
 
 		return {
 			on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
@@ -749,13 +750,20 @@ describe("CliManager", () => {
 							callback(chunk);
 							if (position < buffer.length) {
 								setTimeout(sendChunk, delay);
+							} else {
+								// All chunks sent - use setImmediate to ensure close happens
+								// after all synchronous operations and I/O callbacks complete
+								setImmediate(() => {
+									if (closeCallback) {
+										closeCallback();
+									}
+								});
 							}
 						}
 					};
 					setTimeout(sendChunk, delay);
 				} else if (event === "close") {
-					// Just close after a delay
-					setTimeout(() => callback(), 10);
+					closeCallback = callback;
 				}
 			}),
 			destroy: vi.fn(),
