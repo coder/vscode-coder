@@ -1,4 +1,7 @@
+import util from "node:util";
 import prettyBytes from "pretty-bytes";
+
+import { sizeOf } from "./utils";
 
 import type { InternalAxiosRequestConfig } from "axios";
 
@@ -32,24 +35,13 @@ export function formatContentLength(
 	const len = headers["content-length"];
 	if (len && typeof len === "string") {
 		const bytes = parseInt(len, 10);
-		return isNaN(bytes) ? "(?B)" : `(${prettyBytes(bytes)})`;
+		return isNaN(bytes) ? "(? B)" : `(${prettyBytes(bytes)})`;
 	}
 
 	// Estimate from data if no header
-
-	if (data === undefined || data === null) {
-		return `(${prettyBytes(0)})`;
-	}
-
-	if (Buffer.isBuffer(data)) {
-		return `(${prettyBytes(data.byteLength)})`;
-	}
-	if (typeof data === "string" || typeof data === "bigint") {
-		const bytes = Buffer.byteLength(data.toString(), "utf8");
-		return `(${prettyBytes(bytes)})`;
-	}
-	if (typeof data === "number" || typeof data === "boolean") {
-		return `(~${prettyBytes(8)})`;
+	const size = sizeOf(data);
+	if (size !== undefined) {
+		return `(${prettyBytes(size)})`;
 	}
 
 	if (typeof data === "object") {
@@ -60,7 +52,7 @@ export function formatContentLength(
 		}
 	}
 
-	return "(?B)";
+	return "(? B)";
 }
 
 export function formatUri(
@@ -93,30 +85,17 @@ export function formatBody(body: unknown): string {
 
 function safeStringify(data: unknown): string | null {
 	try {
-		const seen = new WeakSet();
-		return JSON.stringify(data, (_key, value) => {
-			// Handle circular references
-			if (typeof value === "object" && value !== null) {
-				if (seen.has(value)) {
-					return "[Circular]";
-				}
-				seen.add(value);
-			}
-
-			// Handle special types that might slip through
-			if (typeof value === "function") {
-				return "[Function]";
-			}
-			if (typeof value === "symbol") {
-				return "[Symbol]";
-			}
-			if (typeof value === "bigint") {
-				return value.toString();
-			}
-
-			return value;
+		return util.inspect(data, {
+			showHidden: false,
+			depth: Infinity,
+			maxArrayLength: Infinity,
+			maxStringLength: Infinity,
+			breakLength: Infinity,
+			compact: true,
+			getters: false, // avoid side-effects
 		});
 	} catch {
+		// Should rarely happen but just in case
 		return null;
 	}
 }
