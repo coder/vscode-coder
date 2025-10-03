@@ -278,76 +278,50 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			"coder.login",
 			commands.login.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.logout",
 			commands.logout.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand("coder.open", commands.open.bind(commands)),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.openDevContainer",
 			commands.openDevContainer.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.openFromSidebar",
 			commands.openFromSidebar.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.openAppStatus",
 			commands.openAppStatus.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.workspace.update",
 			commands.updateWorkspace.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.createWorkspace",
 			commands.createWorkspace.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.navigateToWorkspace",
 			commands.navigateToWorkspace.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.navigateToWorkspaceSettings",
 			commands.navigateToWorkspaceSettings.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand("coder.refreshWorkspaces", () => {
 			myWorkspacesProvider.fetchAndRefresh();
 			allWorkspacesProvider.fetchAndRefresh();
 		}),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.viewLogs",
 			commands.viewLogs.bind(commands),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand("coder.searchMyWorkspaces", async () =>
 			showTreeViewSearch(MY_WORKSPACES_TREE_ID),
 		),
-	);
-	ctx.subscriptions.push(
 		vscode.commands.registerCommand("coder.searchAllWorkspaces", async () =>
 			showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
 		),

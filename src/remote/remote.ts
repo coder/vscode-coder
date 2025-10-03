@@ -400,7 +400,9 @@ export class Remote {
 				workspace.owner_name,
 				workspace.name,
 			);
-			disposables.push(labelFormatterDisposable);
+			disposables.push({
+				dispose: () => labelFormatterDisposable.dispose(),
+			});
 
 			// If the workspace is not in a running state, try to get it running.
 			if (workspace.latest_build.status !== "running") {
@@ -637,11 +639,7 @@ export class Remote {
 						workspace.name,
 						agent.name,
 					);
-					disposables.push(labelFormatterDisposable);
 				}),
-			);
-
-			disposables.push(
 				...this.createAgentMetadataStatusBar(agent, workspaceClient),
 			);
 		} catch (ex) {
