@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
 import { type CoderApi } from "../api/coderApi";
+import { type ContextManager } from "../core/contextManager";
 import { type Logger } from "../logging/logger";
 import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
 
@@ -41,6 +42,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		private readonly logger: Logger,
 		// We use the proposed API to get access to useCustom in dialogs.
 		private readonly vscodeProposed: typeof vscode,
+		private readonly contextManager: ContextManager,
 	) {
 		this.name = createWorkspaceIdentifier(workspace);
 		const socket = this.client.watchWorkspace(workspace);
@@ -217,11 +219,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private updateContext(workspace: Workspace) {
-		vscode.commands.executeCommand(
-			"setContext",
-			"coder.workspace.updatable",
-			workspace.outdated,
-		);
+		this.contextManager.set("coder.workspace.updatable", workspace.outdated);
 	}
 
 	private updateStatusBar(workspace: Workspace) {

@@ -62,6 +62,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const output = serviceContainer.getLogger();
 	const mementoManager = serviceContainer.getMementoManager();
 	const secretsManager = serviceContainer.getSecretsManager();
+	const contextManager = serviceContainer.getContextManager();
 
 	// Try to clear this flag ASAP
 	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
@@ -167,6 +168,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const token = needToken(vscode.workspace.getConfiguration())
 					? params.get("token")
 					: (params.get("token") ?? "");
+
 				if (token) {
 					client.setSessionToken(token);
 					await secretsManager.setSessionToken(token);
@@ -327,6 +329,27 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		),
 	);
 
+	const remote = new Remote(serviceContainer, commands, ctx.extensionMode);
+
+	ctx.subscriptions.push(
+		secretsManager.onDidChangeLoginState(async (state) => {
+			if (state === undefined) {
+				return;
+			}
+
+			if (state === "login") {
+				const token = await secretsManager.getSessionToken();
+				const url = mementoManager.getUrl();
+				// Should login the user directly if the URL+Token are valid
+				await commands.login({ url, token });
+				// Resolve any pending login detection promises
+				remote.resolveLoginDetected();
+			} else {
+				await commands.forceLogout();
+			}
+		}),
+	);
+
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
 	// resolved by the remote SSH extension.
@@ -337,7 +360,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// (this would require the user to uninstall the Coder extension and
 	// reinstall after installing the remote SSH extension, which is annoying)
 	if (remoteSSHExtension && vscodeProposed.env.remoteAuthority) {
-		const remote = new Remote(serviceContainer, commands, ctx.extensionMode);
 		try {
 			const details = await remote.setup(
 				vscodeProposed.env.remoteAuthority,
@@ -394,20 +416,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output.info(`Logged in to ${baseUrl}; checking credentials`);
 		client
 			.getAuthenticatedUser()
-			.then(async (user) => {
+			.then((user) => {
 				if (user && user.roles) {
 					output.info("Credentials are valid");
-					vscode.commands.executeCommand(
-						"setContext",
-						"coder.authenticated",
-						true,
-					);
+					contextManager.set("coder.authenticated", true);
 					if (user.roles.find((role) => role.name === "owner")) {
-						await vscode.commands.executeCommand(
-							"setContext",
-							"coder.isOwner",
-							true,
-						);
+						contextManager.set("coder.isOwner", true);
 					}
 
 					// Fetch and monitor workspaces, now that we know the client is good.
@@ -426,11 +440,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				);
 			})
 			.finally(() => {
-				vscode.commands.executeCommand("setContext", "coder.loaded", true);
+				contextManager.set("coder.loaded", true);
 			});
 	} else {
 		output.info("Not currently logged in");
-		vscode.commands.executeCommand("setContext", "coder.loaded", true);
+		contextManager.set("coder.loaded", true);
 
 		// Handle autologin, if not already logged in.
 		const cfg = vscode.workspace.getConfiguration();
@@ -439,13 +453,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				cfg.get<string>("coder.defaultUrl")?.trim() ||
 				process.env.CODER_URL?.trim();
 			if (defaultUrl) {
-				vscode.commands.executeCommand(
-					"coder.login",
-					defaultUrl,
-					undefined,
-					undefined,
-					"true",
-				);
+				commands.login({ url: defaultUrl, autoLogin: true });
 			}
 		}
 	}

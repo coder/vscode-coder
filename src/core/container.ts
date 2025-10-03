@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { type Logger } from "../logging/logger";
 
 import { CliManager } from "./cliManager";
+import { ContextManager } from "./contextManager";
 import { MementoManager } from "./mementoManager";
 import { PathResolver } from "./pathResolver";
 import { SecretsManager } from "./secretsManager";
@@ -17,6 +18,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
 	private readonly cliManager: CliManager;
+	private readonly contextManager: ContextManager;
 
 	constructor(
 		context: vscode.ExtensionContext,
@@ -34,6 +36,7 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 			this.pathResolver,
 		);
+		this.contextManager = new ContextManager();
 	}
 
 	getVsCodeProposed(): typeof vscode {
@@ -60,10 +63,15 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.cliManager;
 	}
 
+	getContextManager(): ContextManager {
+		return this.contextManager;
+	}
+
 	/**
 	 * Dispose of all services and clean up resources.
 	 */
 	dispose(): void {
+		this.contextManager.dispose();
 		this.logger.dispose();
 	}
 }

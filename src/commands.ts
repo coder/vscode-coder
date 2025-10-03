@@ -12,6 +12,7 @@ import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { type CliManager } from "./core/cliManager";
 import { type ServiceContainer } from "./core/container";
+import { type ContextManager } from "./core/contextManager";
 import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
 import { type SecretsManager } from "./core/secretsManager";
@@ -32,6 +33,7 @@ export class Commands {
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
 	private readonly cliManager: CliManager;
+	private readonly contextManager: ContextManager;
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
 	// possible to pass in arguments, so we have to store the current workspace
@@ -53,6 +55,7 @@ export class Commands {
 		this.mementoManager = serviceContainer.getMementoManager();
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.cliManager = serviceContainer.getCliManager();
+		this.contextManager = serviceContainer.getContextManager();
 	}
 
 	/**
@@ -179,19 +182,22 @@ export class Commands {
 	}
 
 	/**
-	 * Log into the provided deployment.  If the deployment URL is not specified,
+	 * Log into the provided deployment. If the deployment URL is not specified,
 	 * ask for it first with a menu showing recent URLs along with the default URL
 	 * and CODER_URL, if those are set.
 	 */
-	public async login(...args: string[]): Promise<void> {
-		// Destructure would be nice but VS Code can pass undefined which errors.
-		const inputUrl = args[0];
-		const inputToken = args[1];
-		const inputLabel = args[2];
-		const isAutologin =
-			typeof args[3] === "undefined" ? false : Boolean(args[3]);
+	public async login(args?: {
+		url?: string;
+		token?: string;
+		label?: string;
+		autoLogin?: boolean;
+	}): Promise<void> {
+		if (this.contextManager.get("coder.authenticated")) {
+			return;
+		}
+		this.logger.info("Logging in");
 
-		const url = await this.maybeAskUrl(inputUrl);
+		const url = await this.maybeAskUrl(args?.url);
 		if (!url) {
 			return; // The user aborted.
 		}
@@ -199,11 +205,11 @@ export class Commands {
 		// It is possible that we are trying to log into an old-style host, in which
 		// case we want to write with the provided blank label instead of generating
 		// a host label.
-		const label =
-			typeof inputLabel === "undefined" ? toSafeHost(url) : inputLabel;
+		const label = args?.label === undefined ? toSafeHost(url) : args.label;
 
 		// Try to get a token from the user, if we need one, and their user.
-		const res = await this.maybeAskToken(url, inputToken, isAutologin);
+		const autoLogin = args?.autoLogin === true;
+		const res = await this.maybeAskToken(url, args?.token, autoLogin);
 		if (!res) {
 			return; // The user aborted, or unable to auth.
 		}
@@ -221,13 +227,9 @@ export class Commands {
 		await this.cliManager.configure(label, url, res.token);
 
 		// These contexts control various menu items and the sidebar.
-		await vscode.commands.executeCommand(
-			"setContext",
-			"coder.authenticated",
-			true,
-		);
+		this.contextManager.set("coder.authenticated", true);
 		if (res.user.roles.find((role) => role.name === "owner")) {
-			await vscode.commands.executeCommand("setContext", "coder.isOwner", true);
+			this.contextManager.set("coder.isOwner", true);
 		}
 
 		vscode.window
@@ -245,6 +247,7 @@ export class Commands {
 				}
 			});
 
+		await this.secretsManager.triggerLoginStateChange("login");
 		// Fetch workspaces for the new deployment.
 		vscode.commands.executeCommand("coder.refreshWorkspaces");
 	}
@@ -257,19 +260,21 @@ export class Commands {
 	 */
 	private async maybeAskToken(
 		url: string,
-		token: string,
-		isAutologin: boolean,
+		token: string | undefined,
+		isAutoLogin: boolean,
 	): Promise<{ user: User; token: string } | null> {
 		const client = CoderApi.create(url, token, this.logger);
-		if (!needToken(vscode.workspace.getConfiguration())) {
+		const needsToken = needToken(vscode.workspace.getConfiguration());
+		if (!needsToken || token) {
 			try {
 				const user = await client.getAuthenticatedUser();
 				// For non-token auth, we write a blank token since the `vscodessh`
 				// command currently always requires a token file.
-				return { token: "", user };
+				// For token auth, we have valid access so we can just return the user here
+				return { token: needsToken && token ? token : "", user };
 			} catch (err) {
 				const message = getErrorMessage(err, "no response from the server");
-				if (isAutologin) {
+				if (isAutoLogin) {
 					this.logger.warn("Failed to log in to Coder server:", message);
 				} else {
 					this.vscodeProposed.window.showErrorMessage(
@@ -301,6 +306,9 @@ export class Commands {
 			value: token || (await this.secretsManager.getSessionToken()),
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
+				if (!value) {
+					return null;
+				}
 				client.setSessionToken(value);
 				try {
 					user = await client.getAuthenticatedUser();
@@ -369,7 +377,14 @@ export class Commands {
 			// Sanity check; command should not be available if no url.
 			throw new Error("You are not logged in");
 		}
+		await this.forceLogout();
+	}
 
+	public async forceLogout(): Promise<void> {
+		if (!this.contextManager.get("coder.authenticated")) {
+			return;
+		}
+		this.logger.info("Logging out");
 		// Clear from the REST client.  An empty url will indicate to other parts of
 		// the code that we are logged out.
 		this.restClient.setHost("");
@@ -379,19 +394,16 @@ export class Commands {
 		await this.mementoManager.setUrl(undefined);
 		await this.secretsManager.setSessionToken(undefined);
 
-		await vscode.commands.executeCommand(
-			"setContext",
-			"coder.authenticated",
-			false,
-		);
+		this.contextManager.set("coder.authenticated", false);
 		vscode.window
 			.showInformationMessage("You've been logged out of Coder!", "Login")
 			.then((action) => {
 				if (action === "Login") {
-					vscode.commands.executeCommand("coder.login");
+					this.login();
 				}
 			});
 
+		await this.secretsManager.triggerLoginStateChange("logout");
 		// This will result in clearing the workspace list.
 		vscode.commands.executeCommand("coder.refreshWorkspaces");
 	}
