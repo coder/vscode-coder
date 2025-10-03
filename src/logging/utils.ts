@@ -9,13 +9,17 @@ export function sizeOf(data: unknown): number | undefined {
 	if (data === null || data === undefined) {
 		return 0;
 	}
-	if (typeof data === "string") {
-		return Buffer.byteLength(data);
+	if (typeof data === "number" || typeof data === "boolean") {
+		return 8;
 	}
-	if (Buffer.isBuffer(data)) {
-		return data.length;
+	if (typeof data === "string" || typeof data === "bigint") {
+		return Buffer.byteLength(data.toString());
 	}
-	if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+	if (
+		Buffer.isBuffer(data) ||
+		data instanceof ArrayBuffer ||
+		ArrayBuffer.isView(data)
+	) {
 		return data.byteLength;
 	}
 	if (
