@@ -1,6 +1,8 @@
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
+import { type Logger } from "@/logging/logger";
+
 /**
  * Mock configuration provider that integrates with the vscode workspace configuration mock.
  * Use this to set configuration values that will be returned by vscode.workspace.getConfiguration().
@@ -263,4 +265,14 @@ export class InMemorySecretStorage implements vscode.SecretStorage {
 	corruptStorage(): void {
 		this.isCorrupted = true;
 	}
+}
+
+export function createMockLogger(): Logger {
+	return {
+		trace: vi.fn(),
+		debug: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+	};
 }

@@ -1,6 +1,9 @@
+import util from "node:util";
 import prettyBytes from "pretty-bytes";
 
-import type { InternalAxiosRequestConfig } from "axios";
+import { sizeOf } from "./utils";
+
+import type { AxiosRequestConfig } from "axios";
 
 const SENSITIVE_HEADERS = ["Coder-Session-Token", "Proxy-Authorization"];
 
@@ -18,7 +21,7 @@ export function formatTime(ms: number): string {
 }
 
 export function formatMethod(method: string | undefined): string {
-	return (method ?? "GET").toUpperCase();
+	return (method ? method : "GET").toUpperCase();
 }
 
 /**
@@ -32,21 +35,27 @@ export function formatContentLength(
 	const len = headers["content-length"];
 	if (len && typeof len === "string") {
 		const bytes = parseInt(len, 10);
-		return isNaN(bytes) ? "(?b)" : `(${prettyBytes(bytes)})`;
+		return isNaN(bytes) ? "(? B)" : `(${prettyBytes(bytes)})`;
 	}
 
 	// Estimate from data if no header
-	if (data !== undefined && data !== null) {
-		const estimated = Buffer.byteLength(JSON.stringify(data), "utf8");
-		return `(~${prettyBytes(estimated)})`;
+	const size = sizeOf(data);
+	if (size !== undefined) {
+		return `(${prettyBytes(size)})`;
 	}
 
-	return `(${prettyBytes(0)})`;
+	if (typeof data === "object") {
+		const stringified = safeStringify(data);
+		if (stringified !== null) {
+			const bytes = Buffer.byteLength(stringified, "utf8");
+			return `(~${prettyBytes(bytes)})`;
+		}
+	}
+
+	return "(? B)";
 }
 
-export function formatUri(
-	config: InternalAxiosRequestConfig | undefined,
-): string {
+export function formatUri(config: AxiosRequestConfig | undefined): string {
 	return config?.url || "<no url>";
 }
 
@@ -66,8 +75,25 @@ export function formatHeaders(headers: Record<string, unknown>): string {
 
 export function formatBody(body: unknown): string {
 	if (body) {
-		return JSON.stringify(body);
+		return safeStringify(body) ?? "<invalid body>";
 	} else {
 		return "<no body>";
+	}
+}
+
+function safeStringify(data: unknown): string | null {
+	try {
+		return util.inspect(data, {
+			showHidden: false,
+			depth: Infinity,
+			maxArrayLength: Infinity,
+			maxStringLength: Infinity,
+			breakLength: Infinity,
+			compact: true,
+			getters: false, // avoid side-effects
+		});
+	} catch {
+		// Should rarely happen but just in case
+		return null;
 	}
 }

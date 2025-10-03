@@ -5,17 +5,25 @@ export function shortId(id: string): string {
 	return id.slice(0, 8);
 }
 
+/**
+ * Returns the byte size of the data if it can be determined from the data's intrinsic properties,
+ * otherwise returns undefined (e.g., for plain objects and arrays that would require serialization).
+ */
 export function sizeOf(data: unknown): number | undefined {
 	if (data === null || data === undefined) {
 		return 0;
 	}
-	if (typeof data === "string") {
-		return Buffer.byteLength(data);
+	if (typeof data === "number" || typeof data === "boolean") {
+		return 8;
 	}
-	if (Buffer.isBuffer(data)) {
-		return data.length;
+	if (typeof data === "string" || typeof data === "bigint") {
+		return Buffer.byteLength(data.toString());
 	}
-	if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+	if (
+		Buffer.isBuffer(data) ||
+		data instanceof ArrayBuffer ||
+		ArrayBuffer.isView(data)
+	) {
 		return data.byteLength;
 	}
 	if (
