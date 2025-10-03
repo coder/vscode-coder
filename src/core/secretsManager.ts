@@ -5,10 +5,9 @@ const SESSION_TOKEN_KEY = "sessionToken";
 const LOGIN_STATE_KEY = "loginState";
 
 type AuthAction = "login" | "logout";
+
 export class SecretsManager {
-	constructor(private readonly secrets: SecretStorage) {
-		void this.secrets.delete(LOGIN_STATE_KEY);
-	}
+	constructor(private readonly secrets: SecretStorage) {}
 
 	/**
 	 * Set or unset the last used token.
@@ -34,17 +33,34 @@ export class SecretsManager {
 		}
 	}
 
-	public triggerLoginStateChange(action: AuthAction): void {
-		this.secrets.store(LOGIN_STATE_KEY, action);
+	/**
+	 * Triggers a login/logout event that propagates across all VS Code windows.
+	 * Uses the secrets storage onDidChange event as a cross-window communication mechanism.
+	 * Appends a timestamp to ensure the value always changes, guaranteeing the event fires.
+	 */
+	public async triggerLoginStateChange(action: AuthAction): Promise<void> {
+		const date = new Date().toISOString();
+		await this.secrets.store(LOGIN_STATE_KEY, `${action}-${date}`);
 	}
 
+	/**
+	 * Listens for login/logout events from any VS Code window.
+	 * The secrets storage onDidChange event fires across all windows, enabling cross-window sync.
+	 */
 	public onDidChangeLoginState(
 		listener: (state?: AuthAction) => Promise<void>,
 	): Disposable {
 		return this.secrets.onDidChange(async (e) => {
 			if (e.key === LOGIN_STATE_KEY) {
 				const state = await this.secrets.get(LOGIN_STATE_KEY);
-				listener(state as AuthAction | undefined);
+				if (state?.startsWith("login")) {
+					listener("login");
+				} else if (state?.startsWith("logout")) {
+					listener("logout");
+				} else {
+					// Secret was deleted or is invalid
+					listener(undefined);
+				}
 			}
 		});
 	}

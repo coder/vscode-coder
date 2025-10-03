@@ -234,10 +234,19 @@ export class InMemoryMemento implements vscode.Memento {
 export class InMemorySecretStorage implements vscode.SecretStorage {
 	private secrets = new Map<string, string>();
 	private isCorrupted = false;
+	private listeners: Array<(e: vscode.SecretStorageChangeEvent) => void> = [];
 
-	onDidChange: vscode.Event<vscode.SecretStorageChangeEvent> = () => ({
-		dispose: () => {},
-	});
+	onDidChange: vscode.Event<vscode.SecretStorageChangeEvent> = (listener) => {
+		this.listeners.push(listener);
+		return {
+			dispose: () => {
+				const index = this.listeners.indexOf(listener);
+				if (index > -1) {
+					this.listeners.splice(index, 1);
+				}
+			},
+		};
+	};
 
 	async get(key: string): Promise<string | undefined> {
 		if (this.isCorrupted) {
@@ -250,17 +259,30 @@ export class InMemorySecretStorage implements vscode.SecretStorage {
 		if (this.isCorrupted) {
 			return Promise.reject(new Error("Storage corrupted"));
 		}
+		const oldValue = this.secrets.get(key);
 		this.secrets.set(key, value);
+		if (oldValue !== value) {
+			this.fireChangeEvent(key);
+		}
 	}
 
 	async delete(key: string): Promise<void> {
 		if (this.isCorrupted) {
 			return Promise.reject(new Error("Storage corrupted"));
 		}
+		const hadKey = this.secrets.has(key);
 		this.secrets.delete(key);
+		if (hadKey) {
+			this.fireChangeEvent(key);
+		}
 	}
 
 	corruptStorage(): void {
 		this.isCorrupted = true;
+	}
+
+	private fireChangeEvent(key: string): void {
+		const event: vscode.SecretStorageChangeEvent = { key };
+		this.listeners.forEach((listener) => listener(event));
 	}
 }

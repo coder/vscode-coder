@@ -61,7 +61,7 @@ export class Remote {
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;
 
-	// Used to race between the login dialog and the logging in from a different window
+	// Used to race between the login dialog and logging in from a different window
 	private loginDetectedResolver: (() => void) | undefined;
 	private loginDetectedRejector: ((reason?: Error) => void) | undefined;
 	private loginDetectedPromise: Promise<void> = Promise.resolve();

@@ -169,13 +169,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					? params.get("token")
 					: (params.get("token") ?? "");
 
-				// Store on disk to be used by the cli.
-				await cliManager.configure(toSafeHost(url), url, token);
-
 				if (token) {
 					client.setSessionToken(token);
 					await secretsManager.setSessionToken(token);
 				}
+
+				// Store on disk to be used by the cli.
+				await cliManager.configure(toSafeHost(url), url, token);
 
 				vscode.commands.executeCommand(
 					"coder.open",
@@ -334,7 +334,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	ctx.subscriptions.push(
 		secretsManager.onDidChangeLoginState(async (state) => {
 			if (state === undefined) {
-				// Initalization - Ignore those events
 				return;
 			}
 
