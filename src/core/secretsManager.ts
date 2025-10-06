@@ -4,7 +4,11 @@ const SESSION_TOKEN_KEY = "sessionToken";
 
 const LOGIN_STATE_KEY = "loginState";
 
-type AuthAction = "login" | "logout";
+export enum AuthAction {
+	LOGIN,
+	LOGOUT,
+	INVALID,
+}
 
 export class SecretsManager {
 	constructor(private readonly secrets: SecretStorage) {}
@@ -38,7 +42,9 @@ export class SecretsManager {
 	 * Uses the secrets storage onDidChange event as a cross-window communication mechanism.
 	 * Appends a timestamp to ensure the value always changes, guaranteeing the event fires.
 	 */
-	public async triggerLoginStateChange(action: AuthAction): Promise<void> {
+	public async triggerLoginStateChange(
+		action: "login" | "logout",
+	): Promise<void> {
 		const date = new Date().toISOString();
 		await this.secrets.store(LOGIN_STATE_KEY, `${action}-${date}`);
 	}
@@ -48,18 +54,18 @@ export class SecretsManager {
 	 * The secrets storage onDidChange event fires across all windows, enabling cross-window sync.
 	 */
 	public onDidChangeLoginState(
-		listener: (state?: AuthAction) => Promise<void>,
+		listener: (state: AuthAction) => Promise<void>,
 	): Disposable {
 		return this.secrets.onDidChange(async (e) => {
 			if (e.key === LOGIN_STATE_KEY) {
 				const state = await this.secrets.get(LOGIN_STATE_KEY);
 				if (state?.startsWith("login")) {
-					listener("login");
+					listener(AuthAction.LOGIN);
 				} else if (state?.startsWith("logout")) {
-					listener("logout");
+					listener(AuthAction.LOGOUT);
 				} else {
 					// Secret was deleted or is invalid
-					listener(undefined);
+					listener(AuthAction.INVALID);
 				}
 			}
 		});

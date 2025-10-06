@@ -10,6 +10,7 @@ import { CoderApi } from "./api/coderApi";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
+import { AuthAction } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
 import { Remote } from "./remote/remote";
 import { toSafeHost } from "./util";
@@ -333,19 +334,21 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	ctx.subscriptions.push(
 		secretsManager.onDidChangeLoginState(async (state) => {
-			if (state === undefined) {
-				return;
-			}
-
-			if (state === "login") {
-				const token = await secretsManager.getSessionToken();
-				const url = mementoManager.getUrl();
-				// Should login the user directly if the URL+Token are valid
-				await commands.login({ url, token });
-				// Resolve any pending login detection promises
-				remote.resolveLoginDetected();
-			} else {
-				await commands.forceLogout();
+			switch (state) {
+				case AuthAction.LOGIN: {
+					const token = await secretsManager.getSessionToken();
+					const url = mementoManager.getUrl();
+					// Should login the user directly if the URL+Token are valid
+					await commands.login({ url, token });
+					// Resolve any pending login detection promises
+					remote.resolveLoginDetected();
+					break;
+				}
+				case AuthAction.LOGOUT:
+					await commands.forceLogout();
+					break;
+				case AuthAction.INVALID:
+					break;
 			}
 		}),
 	);

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SecretsManager } from "@/core/secretsManager";
+import { AuthAction, SecretsManager } from "@/core/secretsManager";
 
 import { InMemorySecretStorage } from "../../mocks/testHelpers";
 
@@ -42,30 +42,30 @@ describe("SecretsManager", () => {
 
 	describe("login state", () => {
 		it("should trigger login events", async () => {
-			const events: Array<string | undefined> = [];
+			const events: Array<AuthAction> = [];
 			secretsManager.onDidChangeLoginState((state) => {
 				events.push(state);
 				return Promise.resolve();
 			});
 
 			await secretsManager.triggerLoginStateChange("login");
-			expect(events).toEqual(["login"]);
+			expect(events).toEqual([AuthAction.LOGIN]);
 		});
 
 		it("should trigger logout events", async () => {
-			const events: Array<string | undefined> = [];
+			const events: Array<AuthAction> = [];
 			secretsManager.onDidChangeLoginState((state) => {
 				events.push(state);
 				return Promise.resolve();
 			});
 
 			await secretsManager.triggerLoginStateChange("logout");
-			expect(events).toEqual(["logout"]);
+			expect(events).toEqual([AuthAction.LOGOUT]);
 		});
 
 		it("should fire same event twice in a row", async () => {
 			vi.useFakeTimers();
-			const events: Array<string | undefined> = [];
+			const events: Array<AuthAction> = [];
 			secretsManager.onDidChangeLoginState((state) => {
 				events.push(state);
 				return Promise.resolve();
@@ -75,7 +75,7 @@ describe("SecretsManager", () => {
 			vi.advanceTimersByTime(5);
 			await secretsManager.triggerLoginStateChange("login");
 
-			expect(events).toEqual(["login", "login"]);
+			expect(events).toEqual([AuthAction.LOGIN, AuthAction.LOGIN]);
 			vi.useRealTimers();
 		});
 	});

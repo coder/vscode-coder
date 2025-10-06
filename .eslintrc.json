@@ -46,6 +46,10 @@
 						"prefer": "type-imports",
 						"fixStyle": "inline-type-imports"
 					}
+				],
+				"@typescript-eslint/switch-exhaustiveness-check": [
+					"error",
+					{ "considerDefaultExhaustiveForUnions": true }
 				]
 			}
 		},
