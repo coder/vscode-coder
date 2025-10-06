@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
 	formatBody,
-	formatContentLength,
 	formatHeaders,
 	formatMethod,
+	formatSize,
 	formatTime,
 	formatUri,
 } from "@/logging/formatters";
@@ -34,40 +34,14 @@ describe("Logging formatters", () => {
 		});
 	});
 
-	describe("formatContentLength", () => {
-		it("uses content-length header when available", () => {
-			const result = formatContentLength({ "content-length": "1024" }, null);
-			expect(result).toContain("1.02 kB");
+	describe("formatSize", () => {
+		it("formats byte sizes using pretty-bytes", () => {
+			expect(formatSize(1024)).toContain("1.02 kB");
+			expect(formatSize(0)).toBe("(0 B)");
 		});
 
-		it("handles invalid content-length header", () => {
-			const result = formatContentLength({ "content-length": "invalid" }, null);
-			expect(result).toContain("?");
-		});
-
-		it.each([
-			["hello", 5],
-			[Buffer.from("test"), 4],
-			[123, 8],
-			[false, 8],
-			[BigInt(1234), 4],
-			[null, 0],
-			[undefined, 0],
-		])("calculates size for %s", (data: unknown, bytes: number) => {
-			const result = formatContentLength({}, data);
-			expect(result).toContain(`${bytes} B`);
-		});
-
-		it("estimates size for objects", () => {
-			const result = formatContentLength({}, { foo: "bar" });
-			expect(result).toMatch(/~\d+/);
-		});
-
-		it("handles circular references safely", () => {
-			const circular: Record<string, unknown> = { a: 1 };
-			circular.self = circular;
-			const result = formatContentLength({}, circular);
-			expect(result).toMatch(/~\d+/);
+		it("returns placeholder for undefined", () => {
+			expect(formatSize(undefined)).toBe("(? B)");
 		});
 	});
 

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createRequestId, shortId, sizeOf } from "@/logging/utils";
+import {
+	createRequestId,
+	serializeValue,
+	shortId,
+	sizeOf,
+} from "@/logging/utils";
 
 describe("Logging utils", () => {
 	describe("shortId", () => {
@@ -24,7 +29,7 @@ describe("Logging utils", () => {
 			[undefined, 0],
 			[42, 8],
 			[3.14, 8],
-			[false, 8],
+			[false, 4],
 			// Strings
 			["hello", 5],
 			["✓", 3],
@@ -62,6 +67,32 @@ describe("Logging utils", () => {
 			const arr: unknown[] = [1, 2, 3];
 			arr.push(arr);
 			expect(sizeOf(arr)).toBeUndefined();
+		});
+	});
+
+	describe("serializeValue", () => {
+		it("formats various data types", () => {
+			expect(serializeValue({ key: "value" })).toContain("key: 'value'");
+			expect(serializeValue("plain text")).toContain("plain text");
+			expect(serializeValue([1, 2, 3])).toContain("1");
+			expect(serializeValue(123)).toContain("123");
+			expect(serializeValue(true)).toContain("true");
+		});
+
+		it("handles circular references safely", () => {
+			const circular: Record<string, unknown> = { a: 1 };
+			circular.self = circular;
+			const result = serializeValue(circular);
+			expect(result).toBeTruthy();
+			expect(result).toContain("a: 1");
+		});
+
+		it("handles deep nesting", () => {
+			const deep = {
+				level1: { level2: { level3: { level4: { value: "deep" } } } },
+			};
+			const result = serializeValue(deep);
+			expect(result).toContain("level4: { value: 'deep' }");
 		});
 	});
 

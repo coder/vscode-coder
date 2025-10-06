@@ -1,8 +1,13 @@
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
+import util from "node:util";
 
 export function shortId(id: string): string {
 	return id.slice(0, 8);
+}
+
+export function createRequestId(): string {
+	return crypto.randomUUID().replace(/-/g, "");
 }
 
 /**
@@ -13,7 +18,10 @@ export function sizeOf(data: unknown): number | undefined {
 	if (data === null || data === undefined) {
 		return 0;
 	}
-	if (typeof data === "number" || typeof data === "boolean") {
+	if (typeof data === "boolean") {
+		return 4;
+	}
+	if (typeof data === "number") {
 		return 8;
 	}
 	if (typeof data === "string" || typeof data === "bigint") {
@@ -36,6 +44,19 @@ export function sizeOf(data: unknown): number | undefined {
 	return undefined;
 }
 
-export function createRequestId(): string {
-	return crypto.randomUUID().replace(/-/g, "");
+export function serializeValue(data: unknown): string | null {
+	try {
+		return util.inspect(data, {
+			showHidden: false,
+			depth: Infinity,
+			maxArrayLength: Infinity,
+			maxStringLength: Infinity,
+			breakLength: Infinity,
+			compact: true,
+			getters: false, // avoid side-effects
+		});
+	} catch {
+		// Should rarely happen but just in case
+		return null;
+	}
 }

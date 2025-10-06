@@ -14,4 +14,6 @@ export interface RequestMeta {
 
 export type RequestConfigWithMeta = InternalAxiosRequestConfig & {
 	metadata?: RequestMeta;
+	rawRequestSize?: number;
+	rawResponseSize?: number;
 };
