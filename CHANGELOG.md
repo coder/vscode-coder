@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Logging in or out in one VS Code window now properly updates the authentication status in all other open windows.
+
 ### Added
 
 - Support for `CODER_BINARY_DESTINATION` environment variable to set CLI download location (overridden by extension setting `coder.binaryDestination` if configured).
