@@ -24,17 +24,6 @@
 	},
 	"overrides": [
 		{
-			"files": ["test/**/*.{ts,tsx}", "**/*.{test,spec}.ts?(x)"],
-			"settings": {
-				"import/resolver": {
-					"typescript": {
-						// In tests, resolve using the test tsconfig
-						"project": "test/tsconfig.json"
-					}
-				}
-			}
-		},
-		{
 			"files": ["*.ts"],
 			"rules": {
 				"require-await": "off",
@@ -51,6 +40,23 @@
 					"error",
 					{ "considerDefaultExhaustiveForUnions": true }
 				]
+			}
+		},
+		{
+			"files": ["test/**/*.{ts,tsx}", "**/*.{test,spec}.ts?(x)"],
+			"settings": {
+				"import/resolver": {
+					"typescript": {
+						// In tests, resolve using the test tsconfig
+						"project": "test/tsconfig.json"
+					}
+				}
+			}
+		},
+		{
+			"files": ["src/core/contextManager.ts"],
+			"rules": {
+				"no-restricted-syntax": "off"
 			}
 		},
 		{
@@ -109,6 +115,13 @@
 				"no-duplicate-headings": {
 					"sublings_only": true
 				}
+			}
+		],
+		"no-restricted-syntax": [
+			"error",
+			{
+				"selector": "CallExpression[callee.property.name='executeCommand'][arguments.0.value='setContext'][arguments.length>=3]",
+				"message": "Do not use executeCommand('setContext', ...) directly. Use the ContextManager class instead."
 			}
 		]
 	}
