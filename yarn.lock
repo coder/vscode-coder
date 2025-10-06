@@ -5672,10 +5672,10 @@ mdurl@^2.0.0:
   resolved "https://registry.yarnpkg.com/mdurl/-/mdurl-2.0.0.tgz#80676ec0433025dd3e17ee983d0fe8de5a2237e0"
   integrity sha512-Lf+9+2r+Tdp5wXDXC4PcIBjTDtq4UKjCPMQhKIuzpJNW0b96kVqSwW0bT7FhRSfmAiFYgP+SCRvdrDozfh0U5w==
 
-memfs@^4.47.0:
-  version "4.47.0"
-  resolved "https://registry.yarnpkg.com/memfs/-/memfs-4.47.0.tgz#410291da6dcce89a0d6c9cab23b135231a5ed44c"
-  integrity sha512-Xey8IZA57tfotV/TN4d6BmccQuhFP+CqRiI7TTNdipZdZBzF2WnzUcH//Cudw6X4zJiUbo/LTuU/HPA/iC/pNg==
+memfs@^4.48.1:
+  version "4.48.1"
+  resolved "https://registry.yarnpkg.com/memfs/-/memfs-4.48.1.tgz#28a9a52d238a90dbec20172f86a9bb3d1923ad1f"
+  integrity sha512-vWO+1ROkhOALF1UnT9aNOOflq5oFDlqwTXaPg6duo07fBLxSH0+bcF0TY1lbA1zTNKyGgDxgaDdKx5MaewLX5A==
   dependencies:
     "@jsonjoy.com/json-pack" "^1.11.0"
     "@jsonjoy.com/util" "^1.9.0"
