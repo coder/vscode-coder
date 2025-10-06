@@ -5,6 +5,7 @@
 ### Fixed
 
 - Logging in or out in one VS Code window now properly updates the authentication status in all other open windows.
+- Fix an issue with JSON stringification errors occurring when logging circular objects.
 
 ### Added
 
