@@ -30,6 +30,7 @@ import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
 import * as cliUtils from "../core/cliUtils";
 import { type ServiceContainer } from "../core/container";
+import { type ContextManager } from "../core/contextManager";
 import { type PathResolver } from "../core/pathResolver";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
@@ -58,6 +59,12 @@ export class Remote {
 	private readonly logger: Logger;
 	private readonly pathResolver: PathResolver;
 	private readonly cliManager: CliManager;
+	private readonly contextManager: ContextManager;
+
+	// Used to race between the login dialog and logging in from a different window
+	private loginDetectedResolver: (() => void) | undefined;
+	private loginDetectedRejector: ((reason?: Error) => void) | undefined;
+	private loginDetectedPromise: Promise<void> = Promise.resolve();
 
 	public constructor(
 		serviceContainer: ServiceContainer,
@@ -68,6 +75,33 @@ export class Remote {
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.cliManager = serviceContainer.getCliManager();
+		this.contextManager = serviceContainer.getContextManager();
+	}
+
+	/**
+	 * Creates a new promise that will be resolved when login is detected in another window.
+	 */
+	private createLoginDetectionPromise(): void {
+		if (this.loginDetectedRejector) {
+			this.loginDetectedRejector(
+				new Error("Login detection cancelled - new login attempt started"),
+			);
+		}
+		this.loginDetectedPromise = new Promise<void>((resolve, reject) => {
+			this.loginDetectedResolver = resolve;
+			this.loginDetectedRejector = reject;
+		});
+	}
+
+	/**
+	 * Resolves the current login detection promise if one exists.
+	 */
+	public resolveLoginDetected(): void {
+		if (this.loginDetectedResolver) {
+			this.loginDetectedResolver();
+			this.loginDetectedResolver = undefined;
+			this.loginDetectedRejector = undefined;
+		}
 	}
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
@@ -238,34 +272,48 @@ export class Remote {
 			parts.label,
 		);
 
+		const showLoginDialog = async (message: string) => {
+			this.createLoginDetectionPromise();
+			const dialogPromise = this.vscodeProposed.window.showInformationMessage(
+				message,
+				{
+					useCustom: true,
+					modal: true,
+					detail: `You must log in to access ${workspaceName}. If you've already logged in, you may close this dialog.`,
+				},
+				"Log In",
+			);
+
+			// Race between dialog and login detection
+			const result = await Promise.race([
+				this.loginDetectedPromise.then(() => ({ type: "login" as const })),
+				dialogPromise.then((userChoice) => ({
+					type: "dialog" as const,
+					userChoice,
+				})),
+			]);
+
+			if (result.type === "login") {
+				return this.setup(remoteAuthority, firstConnect);
+			} else {
+				if (!result.userChoice) {
+					// User declined to log in.
+					await this.closeRemote();
+					return;
+				} else {
+					// Log in then try again.
+					await this.commands.login({ url: baseUrlRaw, label: parts.label });
+					return this.setup(remoteAuthority, firstConnect);
+				}
+			}
+		};
+
 		// It could be that the cli config was deleted.  If so, ask for the url.
 		if (
 			!baseUrlRaw ||
 			(!token && needToken(vscode.workspace.getConfiguration()))
 		) {
-			const result = await this.vscodeProposed.window.showInformationMessage(
-				"You are not logged in...",
-				{
-					useCustom: true,
-					modal: true,
-					detail: `You must log in to access ${workspaceName}.`,
-				},
-				"Log In",
-			);
-			if (!result) {
-				// User declined to log in.
-				await this.closeRemote();
-			} else {
-				// Log in then try again.
-				await vscode.commands.executeCommand(
-					"coder.login",
-					baseUrlRaw,
-					undefined,
-					parts.label,
-				);
-				await this.setup(remoteAuthority, firstConnect);
-			}
-			return;
+			return showLoginDialog("You are not logged in...");
 		}
 
 		this.logger.info("Using deployment URL", baseUrlRaw);
@@ -364,28 +412,7 @@ export class Remote {
 					return;
 				}
 				case 401: {
-					const result =
-						await this.vscodeProposed.window.showInformationMessage(
-							"Your session expired...",
-							{
-								useCustom: true,
-								modal: true,
-								detail: `You must log in to access ${workspaceName}.`,
-							},
-							"Log In",
-						);
-					if (!result) {
-						await this.closeRemote();
-					} else {
-						await vscode.commands.executeCommand(
-							"coder.login",
-							baseUrlRaw,
-							undefined,
-							parts.label,
-						);
-						await this.setup(remoteAuthority, firstConnect);
-					}
-					return;
+					return showLoginDialog("Your session expired...");
 				}
 				default:
 					throw error;
@@ -521,6 +548,7 @@ export class Remote {
 				workspaceClient,
 				this.logger,
 				this.vscodeProposed,
+				this.contextManager,
 			);
 			disposables.push(monitor);
 			disposables.push(

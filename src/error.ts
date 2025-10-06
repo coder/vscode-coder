@@ -64,6 +64,8 @@ export class CertificateError extends Error {
 					return new CertificateError(err.message, X509_ERR.UNTRUSTED_LEAF);
 				case X509_ERR_CODE.SELF_SIGNED_CERT_IN_CHAIN:
 					return new CertificateError(err.message, X509_ERR.UNTRUSTED_CHAIN);
+				case undefined:
+					break;
 			}
 		}
 		return err;
@@ -154,6 +156,7 @@ export class CertificateError extends Error {
 		);
 		switch (val) {
 			case CertificateError.ActionOK:
+			case undefined:
 				return;
 			case CertificateError.ActionAllowInsecure:
 				await this.allowInsecure();

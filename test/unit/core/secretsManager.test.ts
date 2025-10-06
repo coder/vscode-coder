@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SecretsManager } from "@/core/secretsManager";
+import { AuthAction, SecretsManager } from "@/core/secretsManager";
 
 import { InMemorySecretStorage } from "../../mocks/testHelpers";
 
@@ -13,7 +13,7 @@ describe("SecretsManager", () => {
 		secretsManager = new SecretsManager(secretStorage);
 	});
 
-	describe("setSessionToken", () => {
+	describe("session token", () => {
 		it("should store and retrieve tokens", async () => {
 			await secretsManager.setSessionToken("test-token");
 			expect(await secretsManager.getSessionToken()).toBe("test-token");
@@ -31,14 +31,52 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionToken(undefined);
 			expect(await secretsManager.getSessionToken()).toBeUndefined();
 		});
-	});
 
-	describe("getSessionToken", () => {
 		it("should return undefined for corrupted storage", async () => {
 			await secretStorage.store("sessionToken", "valid-token");
 			secretStorage.corruptStorage();
 
 			expect(await secretsManager.getSessionToken()).toBeUndefined();
+		});
+	});
+
+	describe("login state", () => {
+		it("should trigger login events", async () => {
+			const events: Array<AuthAction> = [];
+			secretsManager.onDidChangeLoginState((state) => {
+				events.push(state);
+				return Promise.resolve();
+			});
+
+			await secretsManager.triggerLoginStateChange("login");
+			expect(events).toEqual([AuthAction.LOGIN]);
+		});
+
+		it("should trigger logout events", async () => {
+			const events: Array<AuthAction> = [];
+			secretsManager.onDidChangeLoginState((state) => {
+				events.push(state);
+				return Promise.resolve();
+			});
+
+			await secretsManager.triggerLoginStateChange("logout");
+			expect(events).toEqual([AuthAction.LOGOUT]);
+		});
+
+		it("should fire same event twice in a row", async () => {
+			vi.useFakeTimers();
+			const events: Array<AuthAction> = [];
+			secretsManager.onDidChangeLoginState((state) => {
+				events.push(state);
+				return Promise.resolve();
+			});
+
+			await secretsManager.triggerLoginStateChange("login");
+			vi.advanceTimersByTime(5);
+			await secretsManager.triggerLoginStateChange("login");
+
+			expect(events).toEqual([AuthAction.LOGIN, AuthAction.LOGIN]);
+			vi.useRealTimers();
 		});
 	});
 });
