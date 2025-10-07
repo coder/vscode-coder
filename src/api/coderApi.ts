@@ -28,7 +28,7 @@ import {
 	type RequestConfigWithMeta,
 	HttpClientLogLevel,
 } from "../logging/types";
-import { serializeValue, sizeOf } from "../logging/utils";
+import { sizeOf } from "../logging/utils";
 import { WsLogger } from "../logging/wsLogger";
 import {
 	OneWayWebSocket,
@@ -261,7 +261,7 @@ function wrapRequestTransform(
 				? transformer
 				: [transformer];
 
-			// Transform the request first then estimate the size
+			// Transform the request first then get the size (measure what's sent over the wire)
 			const result = transformerArray.reduce(
 				(d, fn) => fn.call(config, d, headers),
 				data,
@@ -280,7 +280,7 @@ function wrapResponseTransform(
 ): AxiosResponseTransformer[] {
 	return [
 		(data: unknown, headers: AxiosResponseHeaders, status?: number) => {
-			// estimate the size before transforming the response
+			// Get the size before transforming the response (measure what's sent over the wire)
 			config.rawResponseSize = getSize(headers, data);
 
 			const transformerArray = Array.isArray(transformer)
@@ -301,14 +301,7 @@ function getSize(headers: AxiosHeaders, data: unknown): number | undefined {
 		return parseInt(contentLength, 10);
 	}
 
-	const size = sizeOf(data);
-	if (size !== undefined) {
-		return size;
-	}
-
-	// Fallback
-	const stringified = serializeValue(data);
-	return stringified === null ? undefined : Buffer.byteLength(stringified);
+	return sizeOf(data);
 }
 
 function getLogLevel(): HttpClientLogLevel {

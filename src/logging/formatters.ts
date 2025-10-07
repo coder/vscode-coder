@@ -1,6 +1,6 @@
 import prettyBytes from "pretty-bytes";
 
-import { serializeValue } from "./utils";
+import { safeStringify } from "./utils";
 
 import type { AxiosRequestConfig } from "axios";
 
@@ -47,7 +47,7 @@ export function formatHeaders(headers: Record<string, unknown>): string {
 
 export function formatBody(body: unknown): string {
 	if (body) {
-		return serializeValue(body) ?? "<invalid body>";
+		return safeStringify(body) ?? "<invalid body>";
 	} else {
 		return "<no body>";
 	}

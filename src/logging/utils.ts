@@ -44,7 +44,7 @@ export function sizeOf(data: unknown): number | undefined {
 	return undefined;
 }
 
-export function serializeValue(data: unknown): string | null {
+export function safeStringify(data: unknown): string | null {
 	try {
 		return util.inspect(data, {
 			showHidden: false,
