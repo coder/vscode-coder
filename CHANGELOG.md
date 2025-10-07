@@ -2,14 +2,18 @@
 
 ## Unreleased
 
+## [v1.11.1](https://github.com/coder/vscode-coder/releases/tag/v1.11.1) 2025-10-07
+
 ### Fixed
 
 - Logging in or out in one VS Code window now properly updates the authentication status in all other open windows.
 - Fix an issue with JSON stringification errors occurring when logging circular objects.
+- Fix resource cleanup issues that could leave lingering components after extension deactivation.
 
 ### Added
 
 - Support for `CODER_BINARY_DESTINATION` environment variable to set CLI download location (overridden by extension setting `coder.binaryDestination` if configured).
+- Search filter button to Coder Workspaces tree views for easier workspace discovery.
 
 ## [v1.11.0](https://github.com/coder/vscode-coder/releases/tag/v1.11.0) 2025-09-24
 
