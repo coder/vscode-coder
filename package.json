@@ -354,7 +354,7 @@
 		"proxy-agent": "^6.5.0",
 		"semver": "^7.7.1",
 		"ua-parser-js": "1.0.40",
-		"ws": "^8.18.2",
+		"ws": "^8.18.3",
 		"zod": "^3.25.65"
 	},
 	"devDependencies": {
