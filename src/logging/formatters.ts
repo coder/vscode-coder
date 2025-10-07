@@ -1,6 +1,8 @@
 import prettyBytes from "pretty-bytes";
 
-import type { InternalAxiosRequestConfig } from "axios";
+import { safeStringify } from "./utils";
+
+import type { AxiosRequestConfig } from "axios";
 
 const SENSITIVE_HEADERS = ["Coder-Session-Token", "Proxy-Authorization"];
 
@@ -18,35 +20,14 @@ export function formatTime(ms: number): string {
 }
 
 export function formatMethod(method: string | undefined): string {
-	return (method ?? "GET").toUpperCase();
+	return method?.toUpperCase() || "GET";
 }
 
-/**
- * Formats content-length for display. Returns the header value if available,
- * otherwise estimates size by serializing the data body (prefixed with ~).
- */
-export function formatContentLength(
-	headers: Record<string, unknown>,
-	data: unknown,
-): string {
-	const len = headers["content-length"];
-	if (len && typeof len === "string") {
-		const bytes = parseInt(len, 10);
-		return isNaN(bytes) ? "(?b)" : `(${prettyBytes(bytes)})`;
-	}
-
-	// Estimate from data if no header
-	if (data !== undefined && data !== null) {
-		const estimated = Buffer.byteLength(JSON.stringify(data), "utf8");
-		return `(~${prettyBytes(estimated)})`;
-	}
-
-	return `(${prettyBytes(0)})`;
+export function formatSize(size: number | undefined): string {
+	return size === undefined ? "(? B)" : `(${prettyBytes(size)})`;
 }
 
-export function formatUri(
-	config: InternalAxiosRequestConfig | undefined,
-): string {
+export function formatUri(config: AxiosRequestConfig | undefined): string {
 	return config?.url || "<no url>";
 }
 
@@ -66,7 +47,7 @@ export function formatHeaders(headers: Record<string, unknown>): string {
 
 export function formatBody(body: unknown): string {
 	if (body) {
-		return JSON.stringify(body);
+		return safeStringify(body) ?? "<invalid body>";
 	} else {
 		return "<no body>";
 	}

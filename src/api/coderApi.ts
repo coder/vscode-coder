@@ -1,4 +1,9 @@
-import { type AxiosInstance } from "axios";
+import {
+	type AxiosResponseHeaders,
+	type AxiosInstance,
+	type AxiosHeaders,
+	type AxiosResponseTransformer,
+} from "axios";
 import { Api } from "coder/site/src/api/api";
 import {
 	type GetInboxNotificationResponse,
@@ -23,6 +28,7 @@ import {
 	type RequestConfigWithMeta,
 	HttpClientLogLevel,
 } from "../logging/types";
+import { sizeOf } from "../logging/utils";
 import { WsLogger } from "../logging/wsLogger";
 import {
 	OneWayWebSocket,
@@ -207,7 +213,24 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 		(config) => {
 			const configWithMeta = config as RequestConfigWithMeta;
 			configWithMeta.metadata = createRequestMeta();
-			logRequest(logger, configWithMeta, getLogLevel());
+
+			config.transformRequest = [
+				...wrapRequestTransform(
+					config.transformRequest || client.defaults.transformRequest || [],
+					configWithMeta,
+				),
+				(data) => {
+					// Log after setting the raw request size
+					logRequest(logger, configWithMeta, getLogLevel());
+					return data;
+				},
+			];
+
+			config.transformResponse = wrapResponseTransform(
+				config.transformResponse || client.defaults.transformResponse || [],
+				configWithMeta,
+			);
+
 			return config;
 		},
 		(error: unknown) => {
@@ -226,6 +249,59 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 			return Promise.reject(error);
 		},
 	);
+}
+
+function wrapRequestTransform(
+	transformer: AxiosResponseTransformer | AxiosResponseTransformer[],
+	config: RequestConfigWithMeta,
+): AxiosResponseTransformer[] {
+	return [
+		(data: unknown, headers: AxiosHeaders) => {
+			const transformerArray = Array.isArray(transformer)
+				? transformer
+				: [transformer];
+
+			// Transform the request first then get the size (measure what's sent over the wire)
+			const result = transformerArray.reduce(
+				(d, fn) => fn.call(config, d, headers),
+				data,
+			);
+
+			config.rawRequestSize = getSize(config.headers, result);
+
+			return result;
+		},
+	];
+}
+
+function wrapResponseTransform(
+	transformer: AxiosResponseTransformer | AxiosResponseTransformer[],
+	config: RequestConfigWithMeta,
+): AxiosResponseTransformer[] {
+	return [
+		(data: unknown, headers: AxiosResponseHeaders, status?: number) => {
+			// Get the size before transforming the response (measure what's sent over the wire)
+			config.rawResponseSize = getSize(headers, data);
+
+			const transformerArray = Array.isArray(transformer)
+				? transformer
+				: [transformer];
+
+			return transformerArray.reduce(
+				(d, fn) => fn.call(config, d, headers, status),
+				data,
+			);
+		},
+	];
+}
+
+function getSize(headers: AxiosHeaders, data: unknown): number | undefined {
+	const contentLength = headers["content-length"];
+	if (contentLength !== undefined) {
+		return parseInt(contentLength, 10);
+	}
+
+	return sizeOf(data);
 }
 
 function getLogLevel(): HttpClientLogLevel {

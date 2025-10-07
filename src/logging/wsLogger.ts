@@ -77,6 +77,6 @@ export class WsLogger {
 
 	private formatBytes(): string {
 		const bytes = prettyBytes(this.byteCount);
-		return this.unknownByteCount ? `>=${bytes}` : bytes;
+		return this.unknownByteCount ? `>= ${bytes}` : bytes;
 	}
 }

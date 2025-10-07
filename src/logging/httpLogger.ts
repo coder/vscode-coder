@@ -5,9 +5,9 @@ import { getErrorDetail } from "../error";
 
 import {
 	formatBody,
-	formatContentLength,
 	formatHeaders,
 	formatMethod,
+	formatSize,
 	formatTime,
 	formatUri,
 } from "./formatters";
@@ -42,11 +42,10 @@ export function logRequest(
 		return;
 	}
 
-	const { requestId, method, url } = parseConfig(config);
-	const len = formatContentLength(config.headers, config.data);
+	const { requestId, method, url, requestSize } = parseConfig(config);
 
 	const msg = [
-		`→ ${shortId(requestId)} ${method} ${url} ${len}`,
+		`→ ${shortId(requestId)} ${method} ${url} ${requestSize}`,
 		...buildExtraLogs(config.headers, config.data, logLevel),
 	];
 	logger.trace(msg.join("\n"));
@@ -64,11 +63,12 @@ export function logResponse(
 		return;
 	}
 
-	const { requestId, method, url, time } = parseConfig(response.config);
-	const len = formatContentLength(response.headers, response.data);
+	const { requestId, method, url, time, responseSize } = parseConfig(
+		response.config,
+	);
 
 	const msg = [
-		`← ${shortId(requestId)} ${response.status} ${method} ${url} ${len} ${time}`,
+		`← ${shortId(requestId)} ${response.status} ${method} ${url} ${responseSize} ${time}`,
 		...buildExtraLogs(response.headers, response.data, logLevel),
 	];
 	logger.trace(msg.join("\n"));
@@ -150,6 +150,8 @@ function parseConfig(config: RequestConfigWithMeta | undefined): {
 	method: string;
 	url: string;
 	time: string;
+	requestSize: string;
+	responseSize: string;
 } {
 	const meta = config?.metadata;
 	return {
@@ -157,5 +159,7 @@ function parseConfig(config: RequestConfigWithMeta | undefined): {
 		method: formatMethod(config?.method),
 		url: formatUri(config),
 		time: meta ? formatTime(Date.now() - meta.startedAt) : "?ms",
+		requestSize: formatSize(config?.rawRequestSize),
+		responseSize: formatSize(config?.rawResponseSize),
 	};
 }
