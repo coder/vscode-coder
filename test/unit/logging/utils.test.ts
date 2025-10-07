@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	createRequestId,
-	serializeValue,
+	safeStringify,
 	shortId,
 	sizeOf,
 } from "@/logging/utils";
@@ -70,19 +70,19 @@ describe("Logging utils", () => {
 		});
 	});
 
-	describe("serializeValue", () => {
+	describe("safeStringify", () => {
 		it("formats various data types", () => {
-			expect(serializeValue({ key: "value" })).toContain("key: 'value'");
-			expect(serializeValue("plain text")).toContain("plain text");
-			expect(serializeValue([1, 2, 3])).toContain("1");
-			expect(serializeValue(123)).toContain("123");
-			expect(serializeValue(true)).toContain("true");
+			expect(safeStringify({ key: "value" })).toContain("key: 'value'");
+			expect(safeStringify("plain text")).toContain("plain text");
+			expect(safeStringify([1, 2, 3])).toContain("1");
+			expect(safeStringify(123)).toContain("123");
+			expect(safeStringify(true)).toContain("true");
 		});
 
 		it("handles circular references safely", () => {
 			const circular: Record<string, unknown> = { a: 1 };
 			circular.self = circular;
-			const result = serializeValue(circular);
+			const result = safeStringify(circular);
 			expect(result).toBeTruthy();
 			expect(result).toContain("a: 1");
 		});
@@ -91,7 +91,7 @@ describe("Logging utils", () => {
 			const deep = {
 				level1: { level2: { level3: { level4: { value: "deep" } } } },
 			};
-			const result = serializeValue(deep);
+			const result = safeStringify(deep);
 			expect(result).toContain("level4: { value: 'deep' }");
 		});
 	});
