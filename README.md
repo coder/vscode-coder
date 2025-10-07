@@ -1,6 +1,6 @@
 # Coder Remote
 
-[![Visual Studio Marketplace](https://vsmarketplacebadges.dev/version/coder.coder-remote.svg)](https://marketplace.visualstudio.com/items?itemName=coder.coder-remote)
+[![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/coder.coder-remote?label=Visual%20Studio%20Marketplace&color=%233fba11)](https://marketplace.visualstudio.com/items?itemName=coder.coder-remote)
 [![Open VSX Version](https://img.shields.io/open-vsx/v/coder/coder-remote)](https://open-vsx.org/extension/coder/coder-remote)
 [!["Join us on
 Discord"](https://badgen.net/discord/online-members/coder)](https://coder.com/chat?utm_source=github.com/coder/vscode-coder&utm_medium=github&utm_campaign=readme.md)
