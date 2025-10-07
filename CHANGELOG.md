@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [v1.11.2](https://github.com/coder/vscode-coder/releases/tag/v1.11.2) 2025-10-07
+
+### Changed
+
+- Updated Visual Studio Marketplace badge in README to use img.shields.io service instead of vsmarketplacebadges.
+
 ## [v1.11.1](https://github.com/coder/vscode-coder/releases/tag/v1.11.1) 2025-10-07
 
 ### Fixed
