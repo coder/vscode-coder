@@ -1,9 +1,10 @@
 import * as path from "path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, it, vi } from "vitest";
 
 import { PathResolver } from "@/core/pathResolver";
 
 import { MockConfigurationProvider } from "../../mocks/testHelpers";
+import { expectPathsEqual } from "../../utils/platform";
 
 describe("PathResolver", () => {
 	const basePath =
@@ -19,17 +20,19 @@ describe("PathResolver", () => {
 	});
 
 	it("should use base path for empty labels", () => {
-		expect(pathResolver.getGlobalConfigDir("")).toBe(basePath);
-		expect(pathResolver.getSessionTokenPath("")).toBe(
+		expectPathsEqual(pathResolver.getGlobalConfigDir(""), basePath);
+		expectPathsEqual(
+			pathResolver.getSessionTokenPath(""),
 			path.join(basePath, "session"),
 		);
-		expect(pathResolver.getUrlPath("")).toBe(path.join(basePath, "url"));
+		expectPathsEqual(pathResolver.getUrlPath(""), path.join(basePath, "url"));
 	});
 
 	describe("getBinaryCachePath", () => {
 		it("should use custom binary destination when configured", () => {
 			mockConfig.set("coder.binaryDestination", "/custom/binary/path");
-			expect(pathResolver.getBinaryCachePath("deployment")).toBe(
+			expectPathsEqual(
+				pathResolver.getBinaryCachePath("deployment"),
 				"/custom/binary/path",
 			);
 		});
@@ -37,14 +40,16 @@ describe("PathResolver", () => {
 		it("should use default path when custom destination is empty or whitespace", () => {
 			vi.stubEnv("CODER_BINARY_DESTINATION", "   ");
 			mockConfig.set("coder.binaryDestination", "   ");
-			expect(pathResolver.getBinaryCachePath("deployment")).toBe(
+			expectPathsEqual(
+				pathResolver.getBinaryCachePath("deployment"),
 				path.join(basePath, "deployment", "bin"),
 			);
 		});
 
 		it("should normalize custom paths", () => {
 			mockConfig.set("coder.binaryDestination", "/custom/../binary/./path");
-			expect(pathResolver.getBinaryCachePath("deployment")).toBe(
+			expectPathsEqual(
+				pathResolver.getBinaryCachePath("deployment"),
 				"/binary/path",
 			);
 		});
@@ -53,19 +58,22 @@ describe("PathResolver", () => {
 			// Use the global storage when the environment variable and setting are unset/blank
 			vi.stubEnv("CODER_BINARY_DESTINATION", "");
 			mockConfig.set("coder.binaryDestination", "");
-			expect(pathResolver.getBinaryCachePath("deployment")).toBe(
+			expectPathsEqual(
+				pathResolver.getBinaryCachePath("deployment"),
 				path.join(basePath, "deployment", "bin"),
 			);
 
 			// Test environment variable takes precedence over global storage
 			vi.stubEnv("CODER_BINARY_DESTINATION", "   /env/binary/path   ");
-			expect(pathResolver.getBinaryCachePath("deployment")).toBe(
+			expectPathsEqual(
+				pathResolver.getBinaryCachePath("deployment"),
 				"/env/binary/path",
 			);
 
 			// Test setting takes precedence over environment variable
 			mockConfig.set("coder.binaryDestination", "  /setting/path  ");
-			expect(pathResolver.getBinaryCachePath("deployment")).toBe(
+			expectPathsEqual(
+				pathResolver.getBinaryCachePath("deployment"),
 				"/setting/path",
 			);
 		});
