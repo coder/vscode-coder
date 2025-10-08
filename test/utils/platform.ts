@@ -1,4 +1,5 @@
 import os from "node:os";
+import path from "node:path";
 import { expect } from "vitest";
 
 export const isWindows = os.platform() === "win32";
@@ -44,7 +45,7 @@ export function quoteCommand(value: string): string {
 }
 
 function normalizePath(p: string): string {
-	return isWindows ? p.replace(/\\/g, "/") : p;
+	return p.replaceAll(path.sep, "/");
 }
 
 function getPlatformQuote(): string {
