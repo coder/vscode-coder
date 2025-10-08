@@ -18,7 +18,7 @@ import {
 	getEventValue,
 	formatEventLabel,
 	formatMetadataError,
-} from "../agentMetadataHelper";
+} from "../api/agentMetadataHelper";
 import { createWorkspaceIdentifier, extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
@@ -543,7 +543,7 @@ export class Remote {
 			}
 
 			// Watch the workspace for changes.
-			const monitor = new WorkspaceMonitor(
+			const monitor = await WorkspaceMonitor.create(
 				workspace,
 				workspaceClient,
 				this.logger,
@@ -556,7 +556,7 @@ export class Remote {
 			);
 
 			// Watch coder inbox for messages
-			const inbox = new Inbox(workspace, workspaceClient, this.logger);
+			const inbox = await Inbox.create(workspace, workspaceClient, this.logger);
 			disposables.push(inbox);
 
 			// Wait for the agent to connect.
@@ -668,7 +668,7 @@ export class Remote {
 						agent.name,
 					);
 				}),
-				...this.createAgentMetadataStatusBar(agent, workspaceClient),
+				...(await this.createAgentMetadataStatusBar(agent, workspaceClient)),
 			);
 		} catch (ex) {
 			// Whatever error happens, make sure we clean up the disposables in case of failure
@@ -858,8 +858,7 @@ export class Remote {
 			"UserKnownHostsFile",
 			"StrictHostKeyChecking",
 		];
-		for (let i = 0; i < keysToMatch.length; i++) {
-			const key = keysToMatch[i];
+		for (const key of keysToMatch) {
 			if (computedProperties[key] === sshValues[key]) {
 				continue;
 			}
@@ -1005,7 +1004,7 @@ export class Remote {
 			// this to find the SSH process that is powering this connection. That SSH
 			// process will be logging network information periodically to a file.
 			const text = await fs.readFile(logPath, "utf8");
-			const port = await findPort(text);
+			const port = findPort(text);
 			if (!port) {
 				return;
 			}
@@ -1064,16 +1063,16 @@ export class Remote {
 	 * The status bar item updates dynamically based on changes to the agent's metadata,
 	 * and hides itself if no metadata is available or an error occurs.
 	 */
-	private createAgentMetadataStatusBar(
+	private async createAgentMetadataStatusBar(
 		agent: WorkspaceAgent,
 		client: CoderApi,
-	): vscode.Disposable[] {
+	): Promise<vscode.Disposable[]> {
 		const statusBarItem = vscode.window.createStatusBarItem(
 			"agentMetadata",
 			vscode.StatusBarAlignment.Left,
 		);
 
-		const agentWatcher = createAgentMetadataWatcher(agent.id, client);
+		const agentWatcher = await createAgentMetadataWatcher(agent.id, client);
 
 		const onChangeDisposable = agentWatcher.onChange(() => {
 			if (agentWatcher.error) {

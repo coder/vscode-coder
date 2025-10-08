@@ -5,8 +5,8 @@ import {
 	type AgentMetadataEvent,
 	AgentMetadataEventSchemaArray,
 	errToStr,
-} from "./api/api-helper";
-import { type CoderApi } from "./api/coderApi";
+} from "./api-helper";
+import { type CoderApi } from "./coderApi";
 
 export type AgentMetadataWatcher = {
 	onChange: vscode.EventEmitter<null>["event"];
@@ -19,11 +19,11 @@ export type AgentMetadataWatcher = {
  * Opens a websocket connection to watch metadata for a given workspace agent.
  * Emits onChange when metadata updates or an error occurs.
  */
-export function createAgentMetadataWatcher(
+export async function createAgentMetadataWatcher(
 	agentId: WorkspaceAgent["id"],
 	client: CoderApi,
-): AgentMetadataWatcher {
-	const socket = client.watchAgentMetadata(agentId);
+): Promise<AgentMetadataWatcher> {
+	const socket = await client.watchAgentMetadata(agentId);
 
 	let disposed = false;
 	const onChange = new vscode.EventEmitter<null>();

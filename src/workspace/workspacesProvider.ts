@@ -11,7 +11,7 @@ import {
 	createAgentMetadataWatcher,
 	formatEventLabel,
 	formatMetadataError,
-} from "../agentMetadataHelper";
+} from "../api/agentMetadataHelper";
 import {
 	type AgentMetadataEvent,
 	extractAgents,
@@ -38,8 +38,10 @@ export class WorkspaceProvider
 {
 	// Undefined if we have never fetched workspaces before.
 	private workspaces: WorkspaceTreeItem[] | undefined;
-	private agentWatchers: Map<WorkspaceAgent["id"], AgentMetadataWatcher> =
-		new Map();
+	private readonly agentWatchers: Map<
+		WorkspaceAgent["id"],
+		AgentMetadataWatcher
+	> = new Map();
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
 	private visible = false;
@@ -130,14 +132,17 @@ export class WorkspaceProvider
 		const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine;
 		if (showMetadata) {
 			const agents = extractAllAgents(resp.workspaces);
-			agents.forEach((agent) => {
+			agents.forEach(async (agent) => {
 				// If we have an existing watcher, re-use it.
 				const oldWatcher = this.agentWatchers.get(agent.id);
 				if (oldWatcher) {
 					reusedWatcherIds.push(agent.id);
 				} else {
 					// Otherwise create a new watcher.
-					const watcher = createAgentMetadataWatcher(agent.id, this.client);
+					const watcher = await createAgentMetadataWatcher(
+						agent.id,
+						this.client,
+					);
 					watcher.onChange(() => this.refresh());
 					this.agentWatchers.set(agent.id, watcher);
 				}

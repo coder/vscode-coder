@@ -67,7 +67,7 @@ export class CoderApi extends Api {
 		return client;
 	}
 
-	watchInboxNotifications = (
+	watchInboxNotifications = async (
 		watchTemplates: string[],
 		watchTargets: string[],
 		options?: ClientOptions,
@@ -83,14 +83,14 @@ export class CoderApi extends Api {
 		});
 	};
 
-	watchWorkspace = (workspace: Workspace, options?: ClientOptions) => {
+	watchWorkspace = async (workspace: Workspace, options?: ClientOptions) => {
 		return this.createWebSocket<ServerSentEvent>({
 			apiRoute: `/api/v2/workspaces/${workspace.id}/watch-ws`,
 			options,
 		});
 	};
 
-	watchAgentMetadata = (
+	watchAgentMetadata = async (
 		agentId: WorkspaceAgent["id"],
 		options?: ClientOptions,
 	) => {
@@ -100,21 +100,22 @@ export class CoderApi extends Api {
 		});
 	};
 
-	watchBuildLogsByBuildId = (buildId: string, logs: ProvisionerJobLog[]) => {
+	watchBuildLogsByBuildId = async (
+		buildId: string,
+		logs: ProvisionerJobLog[],
+	) => {
 		const searchParams = new URLSearchParams({ follow: "true" });
 		if (logs.length) {
 			searchParams.append("after", logs[logs.length - 1].id.toString());
 		}
 
-		const socket = this.createWebSocket<ProvisionerJobLog>({
+		return this.createWebSocket<ProvisionerJobLog>({
 			apiRoute: `/api/v2/workspacebuilds/${buildId}/logs`,
 			searchParams,
 		});
-
-		return socket;
 	};
 
-	private createWebSocket<TData = unknown>(
+	private async createWebSocket<TData = unknown>(
 		configs: Omit<OneWayWebSocketInit, "location">,
 	) {
 		const baseUrlRaw = this.getAxiosInstance().defaults.baseURL;
@@ -127,7 +128,15 @@ export class CoderApi extends Api {
 			coderSessionTokenHeader
 		] as string | undefined;
 
-		const httpAgent = createHttpAgent(vscode.workspace.getConfiguration());
+		const headers = await getHeaders(
+			baseUrlRaw,
+			getHeaderCommand(vscode.workspace.getConfiguration()),
+			this.output,
+		);
+
+		const httpAgent = await createHttpAgent(
+			vscode.workspace.getConfiguration(),
+		);
 		const webSocket = new OneWayWebSocket<TData>({
 			location: baseUrl,
 			...configs,
@@ -135,6 +144,7 @@ export class CoderApi extends Api {
 				agent: httpAgent,
 				followRedirects: true,
 				headers: {
+					...headers,
 					...(token ? { [coderSessionTokenHeader]: token } : {}),
 					...configs.options?.headers,
 				},
@@ -191,7 +201,7 @@ function setupInterceptors(
 		// Configure proxy and TLS.
 		// Note that by default VS Code overrides the agent. To prevent this, set
 		// `http.proxySupport` to `on` or `off`.
-		const agent = createHttpAgent(vscode.workspace.getConfiguration());
+		const agent = await createHttpAgent(vscode.workspace.getConfiguration());
 		config.httpsAgent = agent;
 		config.httpAgent = agent;
 		config.proxy = false;

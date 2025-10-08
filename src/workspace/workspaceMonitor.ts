@@ -17,12 +17,12 @@ import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
  * workspace status is also shown in the status bar menu.
  */
 export class WorkspaceMonitor implements vscode.Disposable {
-	private socket: OneWayWebSocket<ServerSentEvent>;
+	private socket: OneWayWebSocket<ServerSentEvent> | undefined;
 	private disposed = false;
 
 	// How soon in advance to notify about autostop and deletion.
-	private autostopNotifyTime = 1000 * 60 * 30; // 30 minutes.
-	private deletionNotifyTime = 1000 * 60 * 60 * 24; // 24 hours.
+	private readonly autostopNotifyTime = 1000 * 60 * 30; // 30 minutes.
+	private readonly deletionNotifyTime = 1000 * 60 * 60 * 24; // 24 hours.
 
 	// Only notify once.
 	private notifiedAutostop = false;
@@ -36,7 +36,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	// For logging.
 	private readonly name: string;
 
-	constructor(
+	private constructor(
 		workspace: Workspace,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
@@ -45,30 +45,6 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		private readonly contextManager: ContextManager,
 	) {
 		this.name = createWorkspaceIdentifier(workspace);
-		const socket = this.client.watchWorkspace(workspace);
-
-		socket.addEventListener("open", () => {
-			this.logger.info(`Monitoring ${this.name}...`);
-		});
-
-		socket.addEventListener("message", (event) => {
-			try {
-				if (event.parseError) {
-					this.notifyError(event.parseError);
-					return;
-				}
-				// Perhaps we need to parse this and validate it.
-				const newWorkspaceData = event.parsedMessage.data as Workspace;
-				this.update(newWorkspaceData);
-				this.maybeNotify(newWorkspaceData);
-				this.onChange.fire(newWorkspaceData);
-			} catch (error) {
-				this.notifyError(error);
-			}
-		});
-
-		// Store so we can close in dispose().
-		this.socket = socket;
 
 		const statusBarItem = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
@@ -85,13 +61,61 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	/**
+	 * Factory method to create and initialize a WorkspaceMonitor.
+	 * Use this instead of the constructor to properly handle async websocket initialization.
+	 */
+	static async create(
+		workspace: Workspace,
+		client: CoderApi,
+		logger: Logger,
+		vscodeProposed: typeof vscode,
+		contextManager: ContextManager,
+	): Promise<WorkspaceMonitor> {
+		const monitor = new WorkspaceMonitor(
+			workspace,
+			client,
+			logger,
+			vscodeProposed,
+			contextManager,
+		);
+
+		// Initialize websocket connection
+		const socket = await client.watchWorkspace(workspace);
+
+		socket.addEventListener("open", () => {
+			logger.info(`Monitoring ${monitor.name}...`);
+		});
+
+		socket.addEventListener("message", (event) => {
+			try {
+				if (event.parseError) {
+					monitor.notifyError(event.parseError);
+					return;
+				}
+				// Perhaps we need to parse this and validate it.
+				const newWorkspaceData = event.parsedMessage.data as Workspace;
+				monitor.update(newWorkspaceData);
+				monitor.maybeNotify(newWorkspaceData);
+				monitor.onChange.fire(newWorkspaceData);
+			} catch (error) {
+				monitor.notifyError(error);
+			}
+		});
+
+		// Store so we can close in dispose().
+		monitor.socket = socket;
+
+		return monitor;
+	}
+
+	/**
 	 * Permanently close the websocket.
 	 */
 	dispose() {
 		if (!this.disposed) {
 			this.logger.info(`Unmonitoring ${this.name}...`);
 			this.statusBarItem.dispose();
-			this.socket.close();
+			this.socket?.close();
 			this.disposed = true;
 		}
 	}
