@@ -20,6 +20,7 @@ import {
 	MockProgressReporter,
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
+import { expectPathsEqual } from "../../utils/platform";
 
 vi.mock("os");
 vi.mock("axios");
@@ -213,7 +214,7 @@ describe("CliManager", () => {
 		it("accepts valid semver versions", async () => {
 			withExistingBinary(TEST_VERSION);
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 		});
 	});
 
@@ -226,7 +227,7 @@ describe("CliManager", () => {
 		it("reuses matching binary without downloading", async () => {
 			withExistingBinary(TEST_VERSION);
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(mockAxios.get).not.toHaveBeenCalled();
 			// Verify binary still exists
 			expect(memfs.existsSync(BINARY_PATH)).toBe(true);
@@ -236,7 +237,7 @@ describe("CliManager", () => {
 			withExistingBinary("1.0.0");
 			withSuccessfulDownload();
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(mockAxios.get).toHaveBeenCalled();
 			// Verify new binary exists
 			expect(memfs.existsSync(BINARY_PATH)).toBe(true);
@@ -249,7 +250,7 @@ describe("CliManager", () => {
 			mockConfig.set("coder.enableDownloads", false);
 			withExistingBinary("1.0.0");
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(mockAxios.get).not.toHaveBeenCalled();
 			// Should still have the old version
 			expect(memfs.existsSync(BINARY_PATH)).toBe(true);
@@ -262,7 +263,7 @@ describe("CliManager", () => {
 			withCorruptedBinary();
 			withSuccessfulDownload();
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(mockAxios.get).toHaveBeenCalled();
 			expect(memfs.existsSync(BINARY_PATH)).toBe(true);
 			expect(memfs.readFileSync(BINARY_PATH).toString()).toBe(
@@ -276,7 +277,7 @@ describe("CliManager", () => {
 
 			withSuccessfulDownload();
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(mockAxios.get).toHaveBeenCalled();
 
 			// Verify directory was created and binary exists
@@ -392,7 +393,7 @@ describe("CliManager", () => {
 			withExistingBinary("1.0.0");
 			withHttpResponse(304);
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			// No change
 			expect(memfs.readFileSync(BINARY_PATH).toString()).toBe(
 				mockBinaryContent("1.0.0"),
@@ -460,7 +461,7 @@ describe("CliManager", () => {
 		it("handles missing content-length", async () => {
 			withSuccessfulDownload({ headers: {} });
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(memfs.existsSync(BINARY_PATH)).toBe(true);
 		});
 	});
@@ -494,7 +495,7 @@ describe("CliManager", () => {
 			withSuccessfulDownload();
 			withSignatureResponses([200]);
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(pgp.verifySignature).toHaveBeenCalled();
 			const sigFile = expectFileInDir(BINARY_DIR, ".asc");
 			expect(sigFile).toBeDefined();
@@ -505,7 +506,7 @@ describe("CliManager", () => {
 			withSignatureResponses([404, 200]);
 			mockUI.setResponse("Signature not found", "Download signature");
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(mockAxios.get).toHaveBeenCalledTimes(3);
 			const sigFile = expectFileInDir(BINARY_DIR, ".asc");
 			expect(sigFile).toBeDefined();
@@ -519,7 +520,7 @@ describe("CliManager", () => {
 			);
 			mockUI.setResponse("Signature does not match", "Run anyway");
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(memfs.existsSync(BINARY_PATH)).toBe(true);
 		});
 
@@ -539,7 +540,7 @@ describe("CliManager", () => {
 			mockConfig.set("coder.disableSignatureVerification", true);
 			withSuccessfulDownload();
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(pgp.verifySignature).not.toHaveBeenCalled();
 			const files = readdir(BINARY_DIR);
 			expect(files.find((file) => file.includes(".asc"))).toBeUndefined();
@@ -553,7 +554,7 @@ describe("CliManager", () => {
 			withHttpResponse(status);
 			mockUI.setResponse(message, "Run without verification");
 			const result = await manager.fetchBinary(mockApi, "test");
-			expect(result).toBe(BINARY_PATH);
+			expectPathsEqual(result, BINARY_PATH);
 			expect(pgp.verifySignature).not.toHaveBeenCalled();
 		});
 
@@ -615,13 +616,16 @@ describe("CliManager", () => {
 
 			withSuccessfulDownload();
 			const result = await manager.fetchBinary(mockApi, "test label");
-			expect(result).toBe(`${pathWithSpaces}/test label/bin/${BINARY_NAME}`);
+			expectPathsEqual(
+				result,
+				`${pathWithSpaces}/test label/bin/${BINARY_NAME}`,
+			);
 		});
 
 		it("handles empty deployment label", async () => {
 			withExistingBinary(TEST_VERSION, "/path/base/bin");
 			const result = await manager.fetchBinary(mockApi, "");
-			expect(result).toBe(path.join(BASE_PATH, "bin", BINARY_NAME));
+			expectPathsEqual(result, path.join(BASE_PATH, "bin", BINARY_NAME));
 		});
 	});
 

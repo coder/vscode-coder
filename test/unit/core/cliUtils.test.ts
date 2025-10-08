@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import * as cliUtils from "@/core/cliUtils";
 
 import { getFixturePath } from "../../utils/fixtures";
+import { isWindows } from "../../utils/platform";
 
 describe("CliUtils", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests");
@@ -28,16 +29,23 @@ describe("CliUtils", () => {
 		expect((await cliUtils.stat(binPath))?.size).toBe(4);
 	});
 
-	// TODO: CI only runs on Linux but we should run it on Windows too.
 	it("version", async () => {
-		const binPath = path.join(tmp, "version");
+		const binPath = path.join(tmp, isWindows ? "version.cmd" : "version");
 		await expect(cliUtils.version(binPath)).rejects.toThrow("ENOENT");
 
-		const binTmpl = await fs.readFile(getFixturePath("bin.bash"), "utf8");
-		await fs.writeFile(binPath, binTmpl.replace("$ECHO", "hello"));
-		await expect(cliUtils.version(binPath)).rejects.toThrow("EACCES");
+		const binTmpl = await fs.readFile(
+			getFixturePath("scripts", isWindows ? "bin.cmd" : "bin.bash"),
+			"utf8",
+		);
 
-		await fs.chmod(binPath, "755");
+		await fs.writeFile(binPath, binTmpl.replace("$ECHO", "hello"));
+
+		if (!isWindows) {
+			// EACCES test only makes sense on Unix
+			await expect(cliUtils.version(binPath)).rejects.toThrow("EACCES");
+			await fs.chmod(binPath, "755");
+		}
+
 		await expect(cliUtils.version(binPath)).rejects.toThrow("Unexpected token");
 
 		await fs.writeFile(binPath, binTmpl.replace("$ECHO", "{}"));
@@ -56,7 +64,10 @@ describe("CliUtils", () => {
 		);
 		expect(await cliUtils.version(binPath)).toBe("v0.0.0");
 
-		const oldTmpl = await fs.readFile(getFixturePath("bin.old.bash"), "utf8");
+		const oldTmpl = await fs.readFile(
+			getFixturePath("scripts", isWindows ? "bin.old.cmd" : "bin.old.bash"),
+			"utf8",
+		);
 		const old = (stderr: string, stdout: string): string => {
 			return oldTmpl.replace("$STDERR", stderr).replace("$STDOUT", stdout);
 		};
