@@ -24,7 +24,7 @@ export function getHeaderCommand(
 		config.get<string>("coder.headerCommand")?.trim() ||
 		process.env.CODER_HEADER_COMMAND?.trim();
 
-	return cmd ? cmd : undefined;
+	return cmd || undefined;
 }
 
 export function getHeaderArgs(config: WorkspaceConfiguration): string[] {
@@ -44,16 +44,13 @@ export function getHeaderArgs(config: WorkspaceConfiguration): string[] {
 	return ["--header-command", escapeSubcommand(command)];
 }
 
-// TODO: getHeaders might make more sense to directly implement on Storage
-// but it is difficult to test Storage right now since we use vitest instead of
-// the standard extension testing framework which would give us access to vscode
-// APIs.  We should revert the testing framework then consider moving this.
-
-// getHeaders executes the header command and parses the headers from stdout.
-// Both stdout and stderr are logged on error but stderr is otherwise ignored.
-// Throws an error if the process exits with non-zero or the JSON is invalid.
-// Returns undefined if there is no header command set.  No effort is made to
-// validate the JSON other than making sure it can be parsed.
+/**
+ * getHeaders executes the header command and parses the headers from stdout.
+ * Both stdout and stderr are logged on error but stderr is otherwise ignored.
+ * Throws an error if the process exits with non-zero or the JSON is invalid.
+ * Returns undefined if there is no header command set. No effort is made to
+ * validate the JSON other than making sure it can be parsed.
+ */
 export async function getHeaders(
 	url: string | undefined,
 	command: string | undefined,
@@ -90,8 +87,8 @@ export async function getHeaders(
 			return headers;
 		}
 		const lines = result.stdout.replace(/\r?\n$/, "").split(/\r?\n/);
-		for (let i = 0; i < lines.length; ++i) {
-			const [key, value] = lines[i].split(/=(.*)/);
+		for (const line of lines) {
+			const [key, value] = line.split(/=(.*)/);
 			// Header names cannot be blank or contain whitespace and the Coder CLI
 			// requires that there be an equals sign (the value can be blank though).
 			if (
@@ -100,7 +97,7 @@ export async function getHeaders(
 				typeof value === "undefined"
 			) {
 				throw new Error(
-					`Malformed line from header command: [${lines[i]}] (out: ${result.stdout})`,
+					`Malformed line from header command: [${line}] (out: ${result.stdout})`,
 				);
 			}
 			headers[key] = value;

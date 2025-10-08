@@ -95,12 +95,12 @@ export async function waitForBuild(
 	const logs = await client.getWorkspaceBuildLogs(workspace.latest_build.id);
 	logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"));
 
-	await new Promise<void>((resolve, reject) => {
-		const socket = client.watchBuildLogsByBuildId(
-			workspace.latest_build.id,
-			logs,
-		);
+	const socket = await client.watchBuildLogsByBuildId(
+		workspace.latest_build.id,
+		logs,
+	);
 
+	await new Promise<void>((resolve, reject) => {
 		socket.addEventListener("message", (data) => {
 			if (data.parseError) {
 				writeEmitter.fire(
