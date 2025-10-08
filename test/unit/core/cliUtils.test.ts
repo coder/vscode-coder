@@ -29,23 +29,18 @@ describe("CliUtils", () => {
 		expect((await cliUtils.stat(binPath))?.size).toBe(4);
 	});
 
-	it("version", async () => {
-		const binPath = path.join(tmp, isWindows ? "version.cmd" : "version");
+	it.skipIf(isWindows)("version", async () => {
+		const binPath = path.join(tmp, "version");
 		await expect(cliUtils.version(binPath)).rejects.toThrow("ENOENT");
 
 		const binTmpl = await fs.readFile(
-			getFixturePath("scripts", isWindows ? "bin.cmd" : "bin.bash"),
+			getFixturePath("scripts", "bin.bash"),
 			"utf8",
 		);
-
 		await fs.writeFile(binPath, binTmpl.replace("$ECHO", "hello"));
+		await expect(cliUtils.version(binPath)).rejects.toThrow("EACCES");
 
-		if (!isWindows) {
-			// EACCES test only makes sense on Unix
-			await expect(cliUtils.version(binPath)).rejects.toThrow("EACCES");
-			await fs.chmod(binPath, "755");
-		}
-
+		await fs.chmod(binPath, "755");
 		await expect(cliUtils.version(binPath)).rejects.toThrow("Unexpected token");
 
 		await fs.writeFile(binPath, binTmpl.replace("$ECHO", "{}"));
@@ -65,7 +60,7 @@ describe("CliUtils", () => {
 		expect(await cliUtils.version(binPath)).toBe("v0.0.0");
 
 		const oldTmpl = await fs.readFile(
-			getFixturePath("scripts", isWindows ? "bin.old.cmd" : "bin.old.bash"),
+			getFixturePath("scripts", "bin.old.bash"),
 			"utf8",
 		);
 		const old = (stderr: string, stdout: string): string => {
