@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Fixed WebSocket connections not receiving headers from the configured header command
+  (`coder.headerCommand`), which could cause authentication failures with remote workspaces.
+
 ## [v1.11.2](https://github.com/coder/vscode-coder/releases/tag/v1.11.2) 2025-10-07
 
 ### Changed
