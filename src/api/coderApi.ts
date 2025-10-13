@@ -144,9 +144,9 @@ export class CoderApi extends Api {
 				agent: httpAgent,
 				followRedirects: true,
 				headers: {
-					...headers,
 					...(token ? { [coderSessionTokenHeader]: token } : {}),
 					...configs.options?.headers,
+					...headers,
 				},
 				...configs.options,
 			},
