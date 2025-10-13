@@ -1,19 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { WsLogger } from "@/logging/wsLogger";
+import { EventStreamLogger } from "@/logging/eventStreamLogger";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
-describe("WS Logger", () => {
+describe("EventStreamLogger", () => {
 	it("tracks message count and byte size", () => {
 		const logger = createMockLogger();
-		const wsLogger = new WsLogger(logger, "wss://example.com");
+		const eventStreamLogger = new EventStreamLogger(
+			logger,
+			"wss://example.com",
+			"WS",
+		);
 
-		wsLogger.logOpen();
-		wsLogger.logMessage("hello");
-		wsLogger.logMessage("world");
-		wsLogger.logMessage(Buffer.from("test"));
-		wsLogger.logClose();
+		eventStreamLogger.logOpen();
+		eventStreamLogger.logMessage("hello");
+		eventStreamLogger.logMessage("world");
+		eventStreamLogger.logMessage(Buffer.from("test"));
+		eventStreamLogger.logClose();
 
 		expect(logger.trace).toHaveBeenCalledWith(
 			expect.stringContaining("3 msgs"),
@@ -23,12 +27,16 @@ describe("WS Logger", () => {
 
 	it("handles unknown byte sizes with >= indicator", () => {
 		const logger = createMockLogger();
-		const wsLogger = new WsLogger(logger, "wss://example.com");
+		const eventStreamLogger = new EventStreamLogger(
+			logger,
+			"wss://example.com",
+			"WS",
+		);
 
-		wsLogger.logOpen();
-		wsLogger.logMessage({ complex: "object" }); // Unknown size - no estimation
-		wsLogger.logMessage("known");
-		wsLogger.logClose();
+		eventStreamLogger.logOpen();
+		eventStreamLogger.logMessage({ complex: "object" }); // Unknown size - no estimation
+		eventStreamLogger.logMessage("known");
+		eventStreamLogger.logClose();
 
 		expect(logger.trace).toHaveBeenLastCalledWith(
 			expect.stringContaining(">= 5 B"),
@@ -37,22 +45,30 @@ describe("WS Logger", () => {
 
 	it("handles close before open gracefully", () => {
 		const logger = createMockLogger();
-		const wsLogger = new WsLogger(logger, "wss://example.com");
+		const eventStreamLogger = new EventStreamLogger(
+			logger,
+			"wss://example.com",
+			"WS",
+		);
 
 		// Closing without opening should not throw
-		expect(() => wsLogger.logClose()).not.toThrow();
+		expect(() => eventStreamLogger.logClose()).not.toThrow();
 		expect(logger.trace).toHaveBeenCalled();
 	});
 
 	it("formats large message counts with compact notation", () => {
 		const logger = createMockLogger();
-		const wsLogger = new WsLogger(logger, "wss://example.com");
+		const eventStreamLogger = new EventStreamLogger(
+			logger,
+			"wss://example.com",
+			"WS",
+		);
 
-		wsLogger.logOpen();
+		eventStreamLogger.logOpen();
 		for (let i = 0; i < 1100; i++) {
-			wsLogger.logMessage("x");
+			eventStreamLogger.logMessage("x");
 		}
-		wsLogger.logClose();
+		eventStreamLogger.logClose();
 
 		expect(logger.trace).toHaveBeenLastCalledWith(
 			expect.stringMatching(/1[.,]1K\s*msgs/),
@@ -61,10 +77,14 @@ describe("WS Logger", () => {
 
 	it("logs errors with error object", () => {
 		const logger = createMockLogger();
-		const wsLogger = new WsLogger(logger, "wss://example.com");
+		const eventStreamLogger = new EventStreamLogger(
+			logger,
+			"wss://example.com",
+			"WS",
+		);
 		const error = new Error("Connection failed");
 
-		wsLogger.logError(error, "Failed to connect");
+		eventStreamLogger.logError(error, "Failed to connect");
 
 		expect(logger.error).toHaveBeenCalledWith(expect.any(String), error);
 	});
