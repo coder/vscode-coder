@@ -18,19 +18,14 @@ import {
 	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
 
+const CODER_URL = "https://coder.example.com";
+const AXIOS_TOKEN = "passed-token";
+const BUILD_ID = "build-123";
+const AGENT_ID = "agent-123";
+
 vi.mock("ws");
 vi.mock("eventsource");
 vi.mock("proxy-agent");
-
-const mockAdapterImpl = vi.hoisted(() => (config: Record<string, unknown>) => {
-	return Promise.resolve({
-		data: config.data || "{}",
-		status: 200,
-		statusText: "OK",
-		headers: {},
-		config,
-	});
-});
 
 vi.mock("axios", async () => {
 	const actual = await vi.importActual<typeof import("axios")>("axios");
@@ -72,6 +67,11 @@ describe("CoderApi", () => {
 	let mockLogger: ReturnType<typeof createMockLogger>;
 	let mockConfig: MockConfigurationProvider;
 	let mockAdapter: ReturnType<typeof vi.fn>;
+	let api: CoderApi;
+
+	const createApi = (url = CODER_URL, token = AXIOS_TOKEN) => {
+		return CoderApi.create(url, token, mockLogger);
+	};
 
 	beforeEach(() => {
 		vi.resetAllMocks();
@@ -97,12 +97,7 @@ describe("CoderApi", () => {
 				"X-Another-Header": "another-value",
 			});
 
-			const api = CoderApi.create(
-				"https://coder.example.com",
-				"token",
-				mockLogger,
-			);
-
+			const api = createApi();
 			const response = await api.getAxiosInstance().get("/api/v2/users/me");
 
 			expect(response.config.headers["X-Custom-Header"]).toBe("custom-value");
@@ -113,12 +108,7 @@ describe("CoderApi", () => {
 		});
 
 		it("wraps certificate errors in response interceptor", async () => {
-			const api = CoderApi.create(
-				"https://coder.example.com",
-				"token",
-				mockLogger,
-			);
-
+			const api = createApi();
 			const certError = new AxiosError(
 				"self signed certificate",
 				"DEPTH_ZERO_SELF_SIGNED_CERT",
@@ -135,39 +125,54 @@ describe("CoderApi", () => {
 			expect(thrownError.x509Err).toBeDefined();
 		});
 
-		it("applies headers in correct precedence order", async () => {
-			vi.mocked(getHeaders).mockResolvedValue({
-				"X-Custom-Header": "from-command",
-				"Coder-Session-Token": "from-header-command",
-			});
+		it("applies headers in correct precedence order (command > config > axios default)", async () => {
+			const api = createApi(CODER_URL, AXIOS_TOKEN);
 
-			const api = CoderApi.create(
-				"https://coder.example.com",
-				"passed-token",
-				mockLogger,
-			);
-
+			// Test 1: Headers from config, default token from API creation
 			const response = await api.getAxiosInstance().get("/api/v2/users/me", {
 				headers: new AxiosHeaders({
 					"X-Custom-Header": "from-config",
 					"X-Extra": "extra-value",
-					"Coder-Session-Token": "ignored-token",
 				}),
 			});
 
-			expect(response.config.headers["X-Custom-Header"]).toBe("from-command");
+			expect(response.config.headers["X-Custom-Header"]).toBe("from-config");
 			expect(response.config.headers["X-Extra"]).toBe("extra-value");
-			expect(response.config.headers["Coder-Session-Token"]).toBe(
-				"from-header-command",
+			expect(response.config.headers["Coder-Session-Token"]).toBe(AXIOS_TOKEN);
+
+			// Test 2: Token from request options overrides default
+			const responseWithToken = await api
+				.getAxiosInstance()
+				.get("/api/v2/users/me", {
+					headers: new AxiosHeaders({
+						"Coder-Session-Token": "from-options",
+					}),
+				});
+
+			expect(responseWithToken.config.headers["Coder-Session-Token"]).toBe(
+				"from-options",
 			);
+
+			// Test 3: Header command overrides everything
+			vi.mocked(getHeaders).mockResolvedValue({
+				"Coder-Session-Token": "from-header-command",
+			});
+
+			const responseWithHeaderCommand = await api
+				.getAxiosInstance()
+				.get("/api/v2/users/me", {
+					headers: new AxiosHeaders({
+						"Coder-Session-Token": "from-options",
+					}),
+				});
+
+			expect(
+				responseWithHeaderCommand.config.headers["Coder-Session-Token"],
+			).toBe("from-header-command");
 		});
 
 		it("logs requests and responses", async () => {
-			const api = CoderApi.create(
-				"https://coder.example.com",
-				"token",
-				mockLogger,
-			);
+			const api = createApi();
 
 			await api.getWorkspaces({});
 
@@ -177,12 +182,7 @@ describe("CoderApi", () => {
 		});
 
 		it("calculates request and response sizes in transforms", async () => {
-			const api = CoderApi.create(
-				"https://coder.example.com",
-				"token",
-				mockLogger,
-			);
-
+			const api = createApi();
 			const response = await api
 				.getAxiosInstance()
 				.post("/api/v2/workspaces", { name: "test" });
@@ -190,7 +190,7 @@ describe("CoderApi", () => {
 			expect((response.config as RequestConfigWithMeta).rawRequestSize).toBe(
 				15,
 			);
-			// We return the same data we sent in the mock adapter.
+			// We return the same data we sent in the mock adapter
 			expect((response.config as RequestConfigWithMeta).rawResponseSize).toBe(
 				15,
 			);
@@ -198,25 +198,12 @@ describe("CoderApi", () => {
 	});
 
 	describe("WebSocket Creation", () => {
-		const buildId = "build-123";
-		const wsUrl = `wss://coder.example.com/api/v2/workspacebuilds/${buildId}/logs?follow=true`;
-		let api: CoderApi;
+		const wsUrl = `wss://${CODER_URL.replace("https://", "")}/api/v2/workspacebuilds/${BUILD_ID}/logs?follow=true`;
 
 		beforeEach(() => {
-			api = CoderApi.create(
-				"https://coder.example.com",
-				"passed-token",
-				mockLogger,
-			);
-
-			// Mock all WS as "WatchBuildLogsByBuildId"
-			const mockWs = {
-				url: wsUrl,
-				on: vi.fn(),
-				off: vi.fn(),
-				close: vi.fn(),
-			} as Partial<Ws>;
-			vi.mocked(Ws).mockImplementation(() => mockWs as Ws);
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			const mockWs = createMockWebSocket(wsUrl);
+			setupWebSocketMock(mockWs);
 		});
 
 		it("creates WebSocket with proper headers and configuration", async () => {
@@ -226,41 +213,72 @@ describe("CoderApi", () => {
 			});
 			vi.mocked(createHttpAgent).mockResolvedValue(mockAgent);
 
-			await api.watchBuildLogsByBuildId(buildId, []);
+			await api.watchBuildLogsByBuildId(BUILD_ID, []);
 
 			expect(Ws).toHaveBeenCalledWith(wsUrl, undefined, {
 				agent: mockAgent,
 				followRedirects: true,
 				headers: {
 					"X-Custom-Header": "custom-value",
-					"Coder-Session-Token": "passed-token",
+					"Coder-Session-Token": AXIOS_TOKEN,
 				},
 			});
 		});
 
-		it("applies headers in correct precedence order", async () => {
-			vi.mocked(getHeaders).mockResolvedValue({
-				"X-Custom-Header": "from-command",
-				"Coder-Session-Token": "from-header-command",
-			});
-
-			await api.watchBuildLogsByBuildId(buildId, []);
+		it("applies headers in correct precedence order (command > config > axios default)", async () => {
+			// Test 1: Default token from API creation
+			await api.watchBuildLogsByBuildId(BUILD_ID, []);
 
 			expect(Ws).toHaveBeenCalledWith(wsUrl, undefined, {
 				agent: undefined,
 				followRedirects: true,
 				headers: {
-					"X-Custom-Header": "from-command",
-					"Coder-Session-Token": "passed-token",
+					"Coder-Session-Token": AXIOS_TOKEN,
+				},
+			});
+
+			// Test 2: Token from config options overrides default
+			await api.watchBuildLogsByBuildId(BUILD_ID, [], {
+				headers: {
+					"X-Config-Header": "config-value",
+					"Coder-Session-Token": "from-config",
+				},
+			});
+
+			expect(Ws).toHaveBeenCalledWith(wsUrl, undefined, {
+				agent: undefined,
+				followRedirects: true,
+				headers: {
+					"Coder-Session-Token": "from-config",
+					"X-Config-Header": "config-value",
+				},
+			});
+
+			// Test 3: Header command overrides everything
+			vi.mocked(getHeaders).mockResolvedValue({
+				"Coder-Session-Token": "from-header-command",
+			});
+
+			await api.watchBuildLogsByBuildId(BUILD_ID, [], {
+				headers: {
+					"Coder-Session-Token": "from-config",
+				},
+			});
+
+			expect(Ws).toHaveBeenCalledWith(wsUrl, undefined, {
+				agent: undefined,
+				followRedirects: true,
+				headers: {
+					"Coder-Session-Token": "from-header-command",
 				},
 			});
 		});
 
 		it("logs WebSocket connections", async () => {
-			await api.watchBuildLogsByBuildId(buildId, []);
+			await api.watchBuildLogsByBuildId(BUILD_ID, []);
 
 			expect(mockLogger.trace).toHaveBeenCalledWith(
-				expect.stringContaining(buildId),
+				expect.stringContaining(BUILD_ID),
 			);
 		});
 
@@ -273,12 +291,16 @@ describe("CoderApi", () => {
 				log_level: "info",
 				stage: "stage1",
 			};
-			const existingLogs = [jobLog, { ...jobLog, id: 20 }];
+			const existingLogs = [
+				jobLog,
+				{ ...jobLog, id: 20 },
+				{ ...jobLog, id: 5 },
+			];
 
-			await api.watchBuildLogsByBuildId(buildId, existingLogs);
+			await api.watchBuildLogsByBuildId(BUILD_ID, existingLogs);
 
 			expect(Ws).toHaveBeenCalledWith(
-				expect.stringContaining("after=20"),
+				expect.stringContaining("after=5"),
 				undefined,
 				expect.any(Object),
 			);
@@ -286,43 +308,29 @@ describe("CoderApi", () => {
 	});
 
 	describe("SSE Fallback", () => {
-		let api: CoderApi;
-
 		beforeEach(() => {
-			api = CoderApi.create("https://coder.example.com", "token", mockLogger);
-
-			const mockEventSource = {
-				url: "https://coder.example.com/api/v2/workspaces/123/watch",
-				readyState: EventSource.CONNECTING,
-				addEventListener: vi.fn((event, handler) => {
-					if (event === "open") {
-						setImmediate(() => handler(new Event("open")));
-					}
-				}),
-				removeEventListener: vi.fn(),
-				close: vi.fn(),
-			};
-
-			vi.mocked(EventSource).mockImplementation(
-				() => mockEventSource as unknown as EventSource,
+			api = createApi();
+			const mockEventSource = createMockEventSource(
+				`${CODER_URL}/api/v2/workspaces/123/watch`,
 			);
+			setupEventSourceMock(mockEventSource);
 		});
 
 		it("uses WebSocket when no errors occur", async () => {
-			const mockWs: Partial<Ws> = {
-				url: "wss://coder.example.com/api/v2/workspaceagents/agent-123/watch-metadata",
-				on: vi.fn((event, handler) => {
-					if (event === "open") {
-						setImmediate(() => handler());
-					}
-					return mockWs as Ws;
-				}),
-				off: vi.fn(),
-				close: vi.fn(),
-			};
-			vi.mocked(Ws).mockImplementation(() => mockWs as Ws);
+			const mockWs = createMockWebSocket(
+				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata`,
+				{
+					on: vi.fn((event, handler) => {
+						if (event === "open") {
+							setImmediate(() => handler());
+						}
+						return mockWs as Ws;
+					}),
+				},
+			);
+			setupWebSocketMock(mockWs);
 
-			const connection = await api.watchAgentMetadata("agent-123");
+			const connection = await api.watchAgentMetadata(AGENT_ID);
 
 			expect(connection).toBeInstanceOf(OneWayWebSocket);
 			expect(EventSource).not.toHaveBeenCalled();
@@ -333,32 +341,33 @@ describe("CoderApi", () => {
 				throw new Error("WebSocket creation failed");
 			});
 
-			const connection = await api.watchAgentMetadata("agent-123");
+			const connection = await api.watchAgentMetadata(AGENT_ID);
+
 			expect(connection).toBeInstanceOf(SseConnection);
 			expect(EventSource).toHaveBeenCalled();
 		});
 
 		it("falls back to SSE on 404 error from WebSocket", async () => {
-			const mockWs: Partial<Ws> = {
-				url: "wss://coder.example.com/api/v2/test",
-				on: vi.fn((event: string, handler: (e: unknown) => void) => {
-					if (event === "error") {
-						setImmediate(() => {
-							handler({
-								error: new Error("404 Not Found"),
-								message: "404 Not Found",
+			const mockWs = createMockWebSocket(
+				`wss://${CODER_URL.replace("https://", "")}/api/v2/test`,
+				{
+					on: vi.fn((event: string, handler: (e: unknown) => void) => {
+						if (event === "error") {
+							setImmediate(() => {
+								handler({
+									error: new Error("404 Not Found"),
+									message: "404 Not Found",
+								});
 							});
-						});
-					}
-					return mockWs as Ws;
-				}),
-				off: vi.fn(),
-				close: vi.fn(),
-			};
+						}
+						return mockWs as Ws;
+					}),
+				},
+			);
+			setupWebSocketMock(mockWs);
 
-			vi.mocked(Ws).mockImplementation(() => mockWs as Ws);
+			const connection = await api.watchAgentMetadata(AGENT_ID);
 
-			const connection = await api.watchAgentMetadata("agent-123");
 			expect(connection).toBeInstanceOf(SseConnection);
 			expect(EventSource).toHaveBeenCalled();
 		});
@@ -366,17 +375,57 @@ describe("CoderApi", () => {
 
 	describe("Error Handling", () => {
 		it("throws error when no base URL is set", async () => {
-			const api = CoderApi.create(
-				"https://coder.example.com",
-				"token",
-				mockLogger,
-			);
-
+			const api = createApi();
 			api.getAxiosInstance().defaults.baseURL = undefined;
 
-			await expect(
-				api.watchBuildLogsByBuildId("build-123", []),
-			).rejects.toThrow("No base URL set on REST client");
+			await expect(api.watchBuildLogsByBuildId(BUILD_ID, [])).rejects.toThrow(
+				"No base URL set on REST client",
+			);
 		});
 	});
 });
+
+const mockAdapterImpl = vi.hoisted(() => (config: Record<string, unknown>) => {
+	return Promise.resolve({
+		data: config.data || "{}",
+		status: 200,
+		statusText: "OK",
+		headers: {},
+		config,
+	});
+});
+
+function createMockWebSocket(
+	url: string,
+	overrides?: Partial<Ws>,
+): Partial<Ws> {
+	return {
+		url,
+		on: vi.fn(),
+		off: vi.fn(),
+		close: vi.fn(),
+		...overrides,
+	};
+}
+
+function createMockEventSource(url: string): Partial<EventSource> {
+	return {
+		url,
+		readyState: EventSource.CONNECTING,
+		addEventListener: vi.fn((event, handler) => {
+			if (event === "open") {
+				setImmediate(() => handler(new Event("open")));
+			}
+		}),
+		removeEventListener: vi.fn(),
+		close: vi.fn(),
+	};
+}
+
+function setupWebSocketMock(ws: Partial<Ws>): void {
+	vi.mocked(Ws).mockImplementation(() => ws as Ws);
+}
+
+function setupEventSourceMock(es: Partial<EventSource>): void {
+	vi.mocked(EventSource).mockImplementation(() => es as EventSource);
+}

@@ -107,6 +107,7 @@ export class CoderApi extends Api {
 	watchBuildLogsByBuildId = async (
 		buildId: string,
 		logs: ProvisionerJobLog[],
+		options?: ClientOptions,
 	) => {
 		const searchParams = new URLSearchParams({ follow: "true" });
 		if (logs.length) {
@@ -116,6 +117,7 @@ export class CoderApi extends Api {
 		return this.createWebSocket<ProvisionerJobLog>({
 			apiRoute: `/api/v2/workspacebuilds/${buildId}/logs`,
 			searchParams,
+			options,
 		});
 	};
 
@@ -132,7 +134,7 @@ export class CoderApi extends Api {
 			coderSessionTokenHeader
 		] as string | undefined;
 
-		const headers = await getHeaders(
+		const headersFromCommand = await getHeaders(
 			baseUrlRaw,
 			getHeaderCommand(vscode.workspace.getConfiguration()),
 			this.output,
@@ -142,18 +144,20 @@ export class CoderApi extends Api {
 			vscode.workspace.getConfiguration(),
 		);
 
+		const headers = {
+			...(token ? { [coderSessionTokenHeader]: token } : {}),
+			...configs.options?.headers,
+			...headersFromCommand,
+		};
+
 		const webSocket = new OneWayWebSocket<TData>({
 			location: baseUrl,
 			...configs,
 			options: {
+				...configs.options,
 				agent: httpAgent,
 				followRedirects: true,
-				headers: {
-					...(token ? { [coderSessionTokenHeader]: token } : {}),
-					...configs.options?.headers,
-					...headers,
-				},
-				...configs.options,
+				headers,
 			},
 		});
 
