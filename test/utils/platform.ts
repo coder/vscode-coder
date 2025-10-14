@@ -2,7 +2,9 @@ import os from "node:os";
 import path from "node:path";
 import { expect } from "vitest";
 
-export const isWindows = os.platform() === "win32";
+export function isWindows(): boolean {
+	return os.platform() === "win32";
+}
 
 /**
  * Returns a platform-independent command that outputs the given text.
@@ -39,15 +41,6 @@ export function expectPathsEqual(actual: string, expected: string) {
 	expect(normalizePath(actual)).toBe(normalizePath(expected));
 }
 
-export function quoteCommand(value: string): string {
-	const quote = getPlatformQuote();
-	return `${quote}${value}${quote}`;
-}
-
 function normalizePath(p: string): string {
-	return p.replaceAll(path.sep, "/");
-}
-
-function getPlatformQuote(): string {
-	return isWindows ? '"' : "'";
+	return p.replaceAll(path.sep, path.posix.sep);
 }

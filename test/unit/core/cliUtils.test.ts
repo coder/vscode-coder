@@ -29,7 +29,7 @@ describe("CliUtils", () => {
 		expect((await cliUtils.stat(binPath))?.size).toBe(4);
 	});
 
-	it.skipIf(isWindows)("version", async () => {
+	it.skipIf(isWindows())("version", async () => {
 		const binPath = path.join(tmp, "version");
 		await expect(cliUtils.version(binPath)).rejects.toThrow("ENOENT");
 

@@ -3,7 +3,7 @@ import { type WorkspaceConfiguration } from "vscode";
 
 import { getGlobalFlags } from "@/globalFlags";
 
-import { quoteCommand } from "../utils/platform";
+import { isWindows } from "../utils/platform";
 
 describe("Global flags suite", () => {
 	it("should return global-config and header args when no global flags configured", () => {
@@ -80,3 +80,9 @@ describe("Global flags suite", () => {
 		]);
 	});
 });
+
+function quoteCommand(value: string): string {
+	// Used to escape environment variables in commands. See `getHeaderArgs` in src/headers.ts
+	const quote = isWindows() ? '"' : "'";
+	return `${quote}${value}${quote}`;
+}
