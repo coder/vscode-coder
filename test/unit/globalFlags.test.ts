@@ -3,6 +3,8 @@ import { type WorkspaceConfiguration } from "vscode";
 
 import { getGlobalFlags } from "@/globalFlags";
 
+import { isWindows } from "../utils/platform";
+
 describe("Global flags suite", () => {
 	it("should return global-config and header args when no global flags configured", () => {
 		const config = {
@@ -53,10 +55,11 @@ describe("Global flags suite", () => {
 	});
 
 	it("should not filter header-command flags, header args appended at end", () => {
+		const headerCommand = "echo test";
 		const config = {
 			get: (key: string) => {
 				if (key === "coder.headerCommand") {
-					return "echo test";
+					return headerCommand;
 				}
 				if (key === "coder.globalFlags") {
 					return ["-v", "--header-command custom", "--no-feature-warning"];
@@ -73,7 +76,13 @@ describe("Global flags suite", () => {
 			"--global-config",
 			'"/config/dir"',
 			"--header-command",
-			"'echo test'",
+			quoteCommand(headerCommand),
 		]);
 	});
 });
+
+function quoteCommand(value: string): string {
+	// Used to escape environment variables in commands. See `getHeaderArgs` in src/headers.ts
+	const quote = isWindows() ? '"' : "'";
+	return `${quote}${value}${quote}`;
+}

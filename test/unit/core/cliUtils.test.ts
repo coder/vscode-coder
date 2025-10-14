@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import * as cliUtils from "@/core/cliUtils";
 
 import { getFixturePath } from "../../utils/fixtures";
+import { isWindows } from "../../utils/platform";
 
 describe("CliUtils", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests");
@@ -28,12 +29,14 @@ describe("CliUtils", () => {
 		expect((await cliUtils.stat(binPath))?.size).toBe(4);
 	});
 
-	// TODO: CI only runs on Linux but we should run it on Windows too.
-	it("version", async () => {
+	it.skipIf(isWindows())("version", async () => {
 		const binPath = path.join(tmp, "version");
 		await expect(cliUtils.version(binPath)).rejects.toThrow("ENOENT");
 
-		const binTmpl = await fs.readFile(getFixturePath("bin.bash"), "utf8");
+		const binTmpl = await fs.readFile(
+			getFixturePath("scripts", "bin.bash"),
+			"utf8",
+		);
 		await fs.writeFile(binPath, binTmpl.replace("$ECHO", "hello"));
 		await expect(cliUtils.version(binPath)).rejects.toThrow("EACCES");
 
@@ -56,7 +59,10 @@ describe("CliUtils", () => {
 		);
 		expect(await cliUtils.version(binPath)).toBe("v0.0.0");
 
-		const oldTmpl = await fs.readFile(getFixturePath("bin.old.bash"), "utf8");
+		const oldTmpl = await fs.readFile(
+			getFixturePath("scripts", "bin.old.bash"),
+			"utf8",
+		);
 		const old = (stderr: string, stdout: string): string => {
 			return oldTmpl.replace("$STDERR", stderr).replace("$STDOUT", stdout);
 		};

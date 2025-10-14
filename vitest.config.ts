@@ -5,13 +5,8 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: "node",
-		include: ["test/unit/**/*.test.ts", "test/integration/**/*.test.ts"],
-		exclude: [
-			"test/integration/**",
-			"**/node_modules/**",
-			"**/out/**",
-			"**/*.d.ts",
-		],
+		include: ["test/unit/**/*.test.ts", "test/utils/**/*.test.ts"],
+		exclude: ["**/node_modules/**", "**/out/**", "**/*.d.ts"],
 		pool: "threads",
 		fileParallelism: true,
 		coverage: {
