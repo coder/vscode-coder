@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           yarn
-          npm install -g @vscode/vsce ovsx
+          npm install -g @vscode/vsce
 
       - name: Extract version from tag
         id: version
@@ -48,56 +48,22 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: extension-release-${{ steps.version.outputs.version }}
+          name: extension-${{ steps.version.outputs.version }}
           path: ${{ steps.setup.outputs.packageName }}
           if-no-files-found: error
           retention-days: 30
 
-  publishMS:
-    name: Publish to VS Marketplace
-    runs-on: ubuntu-22.04
+  publish:
+    name: Publish to Marketplaces
     needs: package
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-
-      - name: Install vsce
-        run: npm install -g @vscode/vsce
-
-      - uses: actions/download-artifact@v5
-        with:
-          name: extension-release-${{ needs.package.outputs.version }}
-
-      - name: Publish to VS Marketplace
-        run: |
-          echo "Publishing version ${{ needs.package.outputs.version }} to VS Marketplace"
-          vsce publish --packagePath "./${{ needs.package.outputs.packageName }}" -p ${{ secrets.VSCE_PAT }}
-
-  publishOVSX:
-    name: Publish to Open VSX
-    runs-on: ubuntu-22.04
-    needs: package
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-
-      - name: Install ovsx
-        run: npm install -g ovsx
-
-      - uses: actions/download-artifact@v5
-        with:
-          name: extension-release-${{ needs.package.outputs.version }}
-
-      - name: Publish to Open VSX
-        run: |
-          echo "Publishing version ${{ needs.package.outputs.version }} to Open VSX"
-          ovsx publish "./${{ needs.package.outputs.packageName }}" -p ${{ secrets.OVSX_PAT }}
+    uses: ./.github/workflows/publish-extension.yaml
+    with:
+      version: ${{ needs.package.outputs.version }}
+      packageName: ${{ needs.package.outputs.packageName }}
+      isPreRelease: false
+    secrets:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
   publishGH:
     name: Create GitHub Release
@@ -110,7 +76,7 @@ jobs:
 
       - uses: actions/download-artifact@v5
         with:
-          name: extension-release-${{ needs.package.outputs.version }}
+          name: extension-${{ needs.package.outputs.version }}
 
       - name: Create Release
         uses: marvinpinto/action-automatic-releases@latest
