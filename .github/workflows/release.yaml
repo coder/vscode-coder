@@ -1,18 +1,21 @@
+name: Release
 on:
   push:
     tags:
       - "v*"
 
-name: release
-
 permissions:
   # Required to publish a release
   contents: write
-  pull-requests: "read"
+  pull-requests: read
 
 jobs:
   package:
+    name: Package
     runs-on: ubuntu-22.04
+    outputs:
+      packageName: ${{ steps.setup.outputs.packageName }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
 
@@ -20,14 +23,101 @@ jobs:
         with:
           node-version: "22"
 
-      - run: yarn
+      - name: Install dependencies
+        run: |
+          yarn
+          npm install -g @vscode/vsce ovsx
 
-      - run: npx @vscode/vsce package
+      - name: Extract version from tag
+        id: version
+        run: |
+          # Extract version from tag (remove 'v' prefix)
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
 
-      - uses: "marvinpinto/action-automatic-releases@latest"
+      - name: Setup package path
+        id: setup
+        run: |
+          PACKAGE_NAME="${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.vsix"
+          echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Package extension
+        run: vsce package --out "${{ steps.setup.outputs.packageName }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          name: extension-release-${{ steps.version.outputs.version }}
+          path: ${{ steps.setup.outputs.packageName }}
+          if-no-files-found: error
+          retention-days: 30
+
+  publishMS:
+    name: Publish to VS Marketplace
+    runs-on: ubuntu-22.04
+    needs: package
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-release-${{ needs.package.outputs.version }}
+
+      - name: Publish to VS Marketplace
+        run: |
+          echo "Publishing version ${{ needs.package.outputs.version }} to VS Marketplace"
+          vsce publish --packagePath "./${{ needs.package.outputs.packageName }}" -p ${{ secrets.VSCE_PAT }}
+
+  publishOVSX:
+    name: Publish to Open VSX
+    runs-on: ubuntu-22.04
+    needs: package
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install ovsx
+        run: npm install -g ovsx
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-release-${{ needs.package.outputs.version }}
+
+      - name: Publish to Open VSX
+        run: |
+          echo "Publishing version ${{ needs.package.outputs.version }} to Open VSX"
+          ovsx publish "./${{ needs.package.outputs.packageName }}" -p ${{ secrets.OVSX_PAT }}
+
+  publishGH:
+    name: Create GitHub Release
+    runs-on: ubuntu-22.04
+    needs: package
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-release-${{ needs.package.outputs.version }}
+
+      - name: Create Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: false
           draft: true
+          title: "Release v${{ needs.package.outputs.version }}"
           files: |
-            *.vsix
+            ${{ needs.package.outputs.packageName }}

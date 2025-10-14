@@ -1,0 +1,148 @@
+name: Pre-Release
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-22.04
+    outputs:
+      packageName: ${{ steps.setup.outputs.packageName }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          yarn
+          npm install -g @vscode/vsce ovsx
+
+      - name: Generate pre-release version
+        id: version
+        run: |
+          BASE_VERSION=$(node -e "console.log(require('./package.json').version)")
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+
+          PRE_MINOR=$((MINOR + 1))
+
+          DATE_PREFIX=$(date +%Y%m%d)
+          BUILD_SUFFIX=$(printf "%02d" $((GITHUB_RUN_NUMBER % 100)))
+          DATE_PATCH="${DATE_PREFIX}${BUILD_SUFFIX}"
+
+          # Final version: MAJOR.(MINOR+1).YYYYMMDDNN
+          NUMERIC_VERSION="${MAJOR}.${PRE_MINOR}.${DATE_PATCH}${{ github.run_number }}"
+
+          echo "version=$NUMERIC_VERSION" >> $GITHUB_OUTPUT
+
+          echo "Pre-release version: $NUMERIC_VERSION"
+
+          # Update package.json with the numeric version
+          npm version $NUMERIC_VERSION --no-git-tag-version
+
+      - name: Setup package path
+        id: setup
+        run: |
+          PACKAGE_NAME="${{ github.event.repository.name }}-pre-${{ steps.version.outputs.version }}.vsix"
+          echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Package extension
+        run: vsce package --pre-release --out "${{ steps.setup.outputs.packageName }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-build-${{ github.run_number }}
+          path: ${{ steps.setup.outputs.packageName }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publishMS:
+    name: Publish to VS Marketplace
+    runs-on: ubuntu-22.04
+    needs: package
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-build-${{ github.run_number }}
+
+      - name: Publish to VS Marketplace
+        run: |
+          echo "Publishing version ${{ needs.package.outputs.version }} to VS Marketplace"
+          vsce publish --pre-release --packagePath "./${{ needs.package.outputs.packageName }}" -p ${{ secrets.VSCE_PAT }}
+
+  publishOVSX:
+    name: Publish to Open VSX
+    runs-on: ubuntu-22.04
+    needs: package
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install ovsx
+        run: npm install -g ovsx
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-build-${{ github.run_number }}
+
+      - name: Publish to Open VSX
+        run: |
+          echo "Publishing version ${{ needs.package.outputs.version }} to Open VSX"
+          ovsx publish "./${{ needs.package.outputs.packageName }}" --pre-release -p ${{ secrets.OVSX_PAT }}
+
+  publishGH:
+    name: Update Latest Pre-Release
+    runs-on: ubuntu-22.04
+    needs: package
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-build-${{ github.run_number }}
+
+      - name: Update Rolling Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete old release and tag
+          gh release delete latest-pre-release --cleanup-tag -y || true
+
+          # Create new release with heredoc for formatting
+          cat << EOF | gh release create latest-pre-release \
+            --target ${{ github.sha }} \
+            --title "Latest Pre-Release Build" \
+            --notes-file - \
+            --prerelease \
+            --latest=false \
+            ${{ needs.package.outputs.packageName }}
+          ## Latest Pre-Release: v${{ needs.package.outputs.version }}
+
+          **Build:** #${{ github.run_number }} | **Commit:** ${{ github.sha }}
+
+          ## Changes
+          ${{ github.event.head_commit.message }}
+
+          ---
+          *This release is automatically updated with each push to main. The tag `latest-pre-release` always points to the most recent build.*
+          EOF
