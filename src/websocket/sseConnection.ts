@@ -61,7 +61,7 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 			this.callbacks.open.forEach((cb) => cb({} as WsEvent)),
 		);
 
-		this.eventSource.addEventListener("message", (event: MessageEvent) => {
+		this.eventSource.addEventListener("data", (event: MessageEvent) => {
 			[...this.messageWrappers.values()].forEach((wrapper) => wrapper(event));
 		});
 
