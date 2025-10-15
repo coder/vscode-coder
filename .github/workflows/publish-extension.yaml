@@ -74,3 +74,24 @@ jobs:
           else
             ovsx publish "./${{ inputs.packageName }}" -p ${{ secrets.OVSX_PAT }}
           fi
+
+  publishGH:
+    name: Create GitHub ${{ inputs.isPreRelease && 'Pre-' || '' }}Release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-${{ inputs.version }}
+
+      - name: Create ${{ inputs.isPreRelease && 'Pre-' || '' }}Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ inputs.isPreRelease }}
+          draft: true
+          title: "${{ inputs.isPreRelease && 'Pre-' || '' }}Release v${{ inputs.version }}"
+          files: ${{ inputs.packageName }}
