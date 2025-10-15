@@ -3,6 +3,7 @@ on:
   push:
     tags:
       - "v*"
+      - "!v*-pre"
 
 permissions:
   # Required to publish a release
@@ -52,10 +53,9 @@ jobs:
           name: extension-${{ steps.version.outputs.version }}
           path: ${{ steps.setup.outputs.packageName }}
           if-no-files-found: error
-          retention-days: 30
 
   publish:
-    name: Publish to Marketplaces
+    name: Publish Extension and Create Release
     needs: package
     uses: ./.github/workflows/publish-extension.yaml
     with:
@@ -65,25 +65,3 @@ jobs:
     secrets:
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
-
-  publishGH:
-    name: Create GitHub Release
-    runs-on: ubuntu-22.04
-    needs: package
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/download-artifact@v5
-        with:
-          name: extension-${{ needs.package.outputs.version }}
-
-      - name: Create Release
-        uses: marvinpinto/action-automatic-releases@latest
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: false
-          draft: true
-          title: "Release v${{ needs.package.outputs.version }}"
-          files: ${{ needs.package.outputs.packageName }}

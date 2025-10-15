@@ -41,3 +41,58 @@ jobs:
       - run: yarn
 
       - run: yarn test:ci
+
+  package:
+    name: Package
+    runs-on: ubuntu-22.04
+    needs: [lint, test]
+    outputs:
+      packageName: ${{ steps.setup.outputs.packageName }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          yarn
+          npm install -g @vscode/vsce
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -e "console.log(require('./package.json').version)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Setup package path
+        id: setup
+        run: |
+          EXTENSION_NAME=$(node -e "console.log(require('./package.json').name)")
+          # Add commit SHA for CI builds
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          PACKAGE_NAME="${EXTENSION_NAME}-${{ steps.version.outputs.version }}-${SHORT_SHA}.vsix"
+          echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Package extension
+        run: vsce package --out "${{ steps.setup.outputs.packageName }}"
+
+      - name: Upload artifact (PR)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-pr-${{ github.event.pull_request.number }}
+          path: ${{ steps.setup.outputs.packageName }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload artifact (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-main-${{ github.sha }}
+          path: ${{ steps.setup.outputs.packageName }}
+          if-no-files-found: error
