@@ -47,7 +47,8 @@ jobs:
       - name: Setup package path
         id: setup
         run: |
-          PACKAGE_NAME="${{ github.event.repository.name }}-pre-${{ steps.version.outputs.version }}.vsix"
+          EXTENSION_NAME=$(node -e "console.log(require('./package.json').name)")
+          PACKAGE_NAME="${EXTENSION_NAME}-${{ steps.version.outputs.version }}-pre.vsix"
           echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
 
       - name: Package extension
