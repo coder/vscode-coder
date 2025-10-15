@@ -4,6 +4,7 @@ import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import { EventSource } from "eventsource";
 
 import { createStreamingFetchAdapter } from "../api/streamingFetchAdapter";
+import { type Logger } from "../logging/logger";
 
 import { getQueryString } from "./utils";
 
@@ -24,11 +25,14 @@ export type SseConnectionInit = {
 	location: { protocol: string; host: string };
 	apiRoute: string;
 	searchParams?: Record<string, string> | URLSearchParams;
+	optionsHeaders?: Record<string, string>;
 	axiosInstance: AxiosInstance;
+	logger: Logger;
 };
 
 export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 	private readonly eventSource: EventSource;
+	private readonly logger: Logger;
 	private readonly callbacks = {
 		open: new Set<EventHandler<ServerSentEvent, "open">>(),
 		close: new Set<EventHandler<ServerSentEvent, "close">>(),
@@ -43,9 +47,13 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 	public readonly url: string;
 
 	public constructor(init: SseConnectionInit) {
+		this.logger = init.logger;
 		this.url = this.buildUrl(init);
 		this.eventSource = new EventSource(this.url, {
-			fetch: createStreamingFetchAdapter(init.axiosInstance),
+			fetch: createStreamingFetchAdapter(
+				init.axiosInstance,
+				init.optionsHeaders,
+			),
 		});
 		this.setupEventHandlers();
 	}
@@ -58,26 +66,46 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 
 	private setupEventHandlers(): void {
 		this.eventSource.addEventListener("open", () =>
-			this.callbacks.open.forEach((cb) => cb({} as WsEvent)),
+			this.invokeCallbacks(this.callbacks.open, {} as WsEvent, "open"),
 		);
 
 		this.eventSource.addEventListener("data", (event: MessageEvent) => {
-			[...this.messageWrappers.values()].forEach((wrapper) => wrapper(event));
+			this.invokeCallbacks(this.messageWrappers.values(), event, "message");
 		});
 
 		this.eventSource.addEventListener("error", (error: Event | ErrorEvent) => {
-			this.callbacks.error.forEach((cb) => cb(this.createErrorEvent(error)));
+			this.invokeCallbacks(
+				this.callbacks.error,
+				this.createErrorEvent(error),
+				"error",
+			);
 
 			if (this.eventSource.readyState === EventSource.CLOSED) {
-				this.callbacks.close.forEach((cb) =>
-					cb({
+				this.invokeCallbacks(
+					this.callbacks.close,
+					{
 						code: 1006,
 						reason: "Connection lost",
 						wasClean: false,
-					} as WsCloseEvent),
+					} as WsCloseEvent,
+					"close",
 				);
 			}
 		});
+	}
+
+	private invokeCallbacks<T>(
+		callbacks: Iterable<(event: T) => void>,
+		event: T,
+		eventType: string,
+	): void {
+		for (const cb of callbacks) {
+			try {
+				cb(event);
+			} catch (err) {
+				this.logger.error(`Error in SSE ${eventType} callback:`, err);
+			}
+		}
 	}
 
 	private createErrorEvent(event: Event | ErrorEvent): WsErrorEvent {
@@ -177,12 +205,14 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 
 	public close(code?: number, reason?: string): void {
 		this.eventSource.close();
-		this.callbacks.close.forEach((cb) =>
-			cb({
+		this.invokeCallbacks(
+			this.callbacks.close,
+			{
 				code: code ?? 1000,
 				reason: reason ?? "Normal closure",
 				wasClean: true,
-			} as WsCloseEvent),
+			} as WsCloseEvent,
+			"close",
 		);
 
 		Object.values(this.callbacks).forEach((callbackSet) => callbackSet.clear());

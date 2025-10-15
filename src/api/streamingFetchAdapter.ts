@@ -8,6 +8,7 @@ import { type IncomingMessage } from "http";
  */
 export function createStreamingFetchAdapter(
 	axiosInstance: AxiosInstance,
+	configHeaders?: Record<string, string>,
 ): (url: string | URL, init?: FetchLikeInit) => Promise<FetchLikeResponse> {
 	return async (
 		url: string | URL,
@@ -18,7 +19,7 @@ export function createStreamingFetchAdapter(
 		const response = await axiosInstance.request<IncomingMessage>({
 			url: urlStr,
 			signal: init?.signal,
-			headers: init?.headers,
+			headers: { ...init?.headers, ...configHeaders },
 			responseType: "stream",
 			validateStatus: () => true, // Don't throw on any status code
 		});
@@ -26,11 +27,19 @@ export function createStreamingFetchAdapter(
 		const stream = new ReadableStream({
 			start(controller) {
 				response.data.on("data", (chunk: Buffer) => {
-					controller.enqueue(chunk);
+					try {
+						controller.enqueue(chunk);
+					} catch {
+						// Stream already closed or errored, ignore
+					}
 				});
 
 				response.data.on("end", () => {
-					controller.close();
+					try {
+						controller.close();
+					} catch {
+						// Stream already closed, ignore
+					}
 				});
 
 				response.data.on("error", (err: Error) => {

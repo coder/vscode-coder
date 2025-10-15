@@ -144,6 +144,12 @@ export class CoderApi extends Api {
 			vscode.workspace.getConfiguration(),
 		);
 
+		/**
+		 * Similar to the REST client, we want to prioritize headers in this order (highest to lowest):
+		 * 1. Headers from the header command
+		 * 2. Any headers passed directly to this function
+		 * 3. Coder session token from the Api client (if set)
+		 */
 		const headers = {
 			...(token ? { [coderSessionTokenHeader]: token } : {}),
 			...configs.options?.headers,
@@ -189,7 +195,9 @@ export class CoderApi extends Api {
 	}
 
 	/**
-	 * Create a WebSocket connection with SSE fallback on 404
+	 * Create a WebSocket connection with SSE fallback on 404.
+	 *
+	 * Note: The fallback on SSE ignores all passed client options except the headers.
 	 */
 	private async createWebSocketWithFallback<TData = unknown>(configs: {
 		apiRoute: string;
@@ -209,6 +217,7 @@ export class CoderApi extends Api {
 			return this.createSseFallback<TData>(
 				configs.fallbackApiRoute,
 				configs.searchParams,
+				configs.options?.headers,
 			);
 		}
 
@@ -216,6 +225,7 @@ export class CoderApi extends Api {
 			this.createSseFallback<TData>(
 				configs.fallbackApiRoute,
 				configs.searchParams,
+				configs.options?.headers,
 			),
 		);
 	}
@@ -260,6 +270,7 @@ export class CoderApi extends Api {
 	private async createSseFallback<TData = unknown>(
 		apiRoute: string,
 		searchParams?: Record<string, string> | URLSearchParams,
+		optionsHeaders?: Record<string, string>,
 	): Promise<UnidirectionalStream<TData>> {
 		this.output.warn(`WebSocket failed, using SSE fallback: ${apiRoute}`);
 
@@ -274,6 +285,8 @@ export class CoderApi extends Api {
 			apiRoute,
 			searchParams,
 			axiosInstance: this.getAxiosInstance(),
+			optionsHeaders: optionsHeaders,
+			logger: this.output,
 		});
 
 		this.attachStreamLogger(sseConnection);
