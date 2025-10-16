@@ -23,11 +23,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install dependencies
-        run: |
-          yarn
-          npm install -g @vscode/vsce
-
       - name: Extract version from tag
         id: version
         run: |
@@ -36,6 +31,24 @@ jobs:
           VERSION=${TAG_NAME%-pre}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Pre-release version: $VERSION"
+
+      - name: Validate version matches package.json
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          PACKAGE_VERSION=$(node -e "console.log(require('./package.json').version)")
+
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Error: Tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION)"
+            echo "Please ensure the tag version matches the version in package.json"
+            exit 1
+          fi
+
+          echo "Version validation successful: $TAG_VERSION"
+
+      - name: Install dependencies
+        run: |
+          yarn
+          npm install -g @vscode/vsce
 
       - name: Setup package path
         id: setup

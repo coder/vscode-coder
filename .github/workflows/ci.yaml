@@ -46,9 +46,6 @@ jobs:
     name: Package
     runs-on: ubuntu-22.04
     needs: [lint, test]
-    outputs:
-      packageName: ${{ steps.setup.outputs.packageName }}
-      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
 
