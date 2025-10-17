@@ -8,51 +8,13 @@
  */
 
 import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
-import Ws, {
-	type ClientOptions,
-	type CloseEvent,
-	type ErrorEvent,
-	type Event,
-	type MessageEvent,
-	type RawData,
-} from "ws";
+import Ws, { type ClientOptions, type MessageEvent, type RawData } from "ws";
 
-export type OneWayMessageEvent<TData> = Readonly<
-	| {
-			sourceEvent: MessageEvent;
-			parsedMessage: TData;
-			parseError: undefined;
-	  }
-	| {
-			sourceEvent: MessageEvent;
-			parsedMessage: undefined;
-			parseError: Error;
-	  }
->;
-
-type OneWayEventPayloadMap<TData> = {
-	close: CloseEvent;
-	error: ErrorEvent;
-	message: OneWayMessageEvent<TData>;
-	open: Event;
-};
-
-type OneWayEventCallback<TData, TEvent extends WebSocketEventType> = (
-	payload: OneWayEventPayloadMap<TData>[TEvent],
-) => void;
-
-interface OneWayWebSocketApi<TData> {
-	get url(): string;
-	addEventListener<TEvent extends WebSocketEventType>(
-		eventType: TEvent,
-		callback: OneWayEventCallback<TData, TEvent>,
-	): void;
-	removeEventListener<TEvent extends WebSocketEventType>(
-		eventType: TEvent,
-		callback: OneWayEventCallback<TData, TEvent>,
-	): void;
-	close(code?: number, reason?: string): void;
-}
+import {
+	type UnidirectionalStream,
+	type EventHandler,
+} from "./eventStreamConnection";
+import { getQueryString } from "./utils";
 
 export type OneWayWebSocketInit = {
 	location: { protocol: string; host: string };
@@ -63,23 +25,18 @@ export type OneWayWebSocketInit = {
 };
 
 export class OneWayWebSocket<TData = unknown>
-	implements OneWayWebSocketApi<TData>
+	implements UnidirectionalStream<TData>
 {
 	readonly #socket: Ws;
 	readonly #messageCallbacks = new Map<
-		OneWayEventCallback<TData, "message">,
+		EventHandler<TData, "message">,
 		(data: RawData) => void
 	>();
 
 	constructor(init: OneWayWebSocketInit) {
 		const { location, apiRoute, protocols, options, searchParams } = init;
 
-		const formattedParams =
-			searchParams instanceof URLSearchParams
-				? searchParams
-				: new URLSearchParams(searchParams);
-		const paramsString = formattedParams.toString();
-		const paramsSuffix = paramsString ? `?${paramsString}` : "";
+		const paramsSuffix = getQueryString(searchParams);
 		const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 		const url = `${wsProtocol}//${location.host}${apiRoute}${paramsSuffix}`;
 
@@ -92,10 +49,10 @@ export class OneWayWebSocket<TData = unknown>
 
 	addEventListener<TEvent extends WebSocketEventType>(
 		event: TEvent,
-		callback: OneWayEventCallback<TData, TEvent>,
+		callback: EventHandler<TData, TEvent>,
 	): void {
 		if (event === "message") {
-			const messageCallback = callback as OneWayEventCallback<TData, "message">;
+			const messageCallback = callback as EventHandler<TData, "message">;
 
 			if (this.#messageCallbacks.has(messageCallback)) {
 				return;
@@ -128,10 +85,10 @@ export class OneWayWebSocket<TData = unknown>
 
 	removeEventListener<TEvent extends WebSocketEventType>(
 		event: TEvent,
-		callback: OneWayEventCallback<TData, TEvent>,
+		callback: EventHandler<TData, TEvent>,
 	): void {
 		if (event === "message") {
-			const messageCallback = callback as OneWayEventCallback<TData, "message">;
+			const messageCallback = callback as EventHandler<TData, "message">;
 			const wrapper = this.#messageCallbacks.get(messageCallback);
 
 			if (wrapper) {

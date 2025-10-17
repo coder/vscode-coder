@@ -9,7 +9,7 @@ import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
 import { type CoderApi } from "../api/coderApi";
 import { type ContextManager } from "../core/contextManager";
 import { type Logger } from "../logging/logger";
-import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
+import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 /**
  * Monitor a single workspace using a WebSocket for events like shutdown and deletion.
@@ -17,7 +17,7 @@ import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
  * workspace status is also shown in the status bar menu.
  */
 export class WorkspaceMonitor implements vscode.Disposable {
-	private socket: OneWayWebSocket<ServerSentEvent> | undefined;
+	private socket: UnidirectionalStream<ServerSentEvent> | undefined;
 	private disposed = false;
 
 	// How soon in advance to notify about autostop and deletion.
@@ -93,10 +93,12 @@ export class WorkspaceMonitor implements vscode.Disposable {
 					return;
 				}
 				// Perhaps we need to parse this and validate it.
-				const newWorkspaceData = event.parsedMessage.data as Workspace;
-				monitor.update(newWorkspaceData);
-				monitor.maybeNotify(newWorkspaceData);
-				monitor.onChange.fire(newWorkspaceData);
+				const newWorkspaceData = event.parsedMessage.data as Workspace | null;
+				if (newWorkspaceData) {
+					monitor.update(newWorkspaceData);
+					monitor.maybeNotify(newWorkspaceData);
+					monitor.onChange.fire(newWorkspaceData);
+				}
 			} catch (error) {
 				monitor.notifyError(error);
 			}

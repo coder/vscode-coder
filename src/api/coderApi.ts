@@ -6,17 +6,18 @@ import {
 } from "axios";
 import { Api } from "coder/site/src/api/api";
 import {
+	type ServerSentEvent,
 	type GetInboxNotificationResponse,
 	type ProvisionerJobLog,
-	type ServerSentEvent,
 	type Workspace,
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
-import { type ClientOptions } from "ws";
+import { type ClientOptions, type CloseEvent, type ErrorEvent } from "ws";
 
 import { CertificateError } from "../error";
 import { getHeaderCommand, getHeaders } from "../headers";
+import { EventStreamLogger } from "../logging/eventStreamLogger";
 import {
 	createRequestMeta,
 	logRequest,
@@ -29,11 +30,12 @@ import {
 	HttpClientLogLevel,
 } from "../logging/types";
 import { sizeOf } from "../logging/utils";
-import { WsLogger } from "../logging/wsLogger";
+import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
 import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
 } from "../websocket/oneWayWebSocket";
+import { SseConnection } from "../websocket/sseConnection";
 
 import { createHttpAgent } from "./utils";
 
@@ -84,8 +86,9 @@ export class CoderApi extends Api {
 	};
 
 	watchWorkspace = async (workspace: Workspace, options?: ClientOptions) => {
-		return this.createWebSocket<ServerSentEvent>({
+		return this.createWebSocketWithFallback<ServerSentEvent>({
 			apiRoute: `/api/v2/workspaces/${workspace.id}/watch-ws`,
+			fallbackApiRoute: `/api/v2/workspaces/${workspace.id}/watch`,
 			options,
 		});
 	};
@@ -94,8 +97,9 @@ export class CoderApi extends Api {
 		agentId: WorkspaceAgent["id"],
 		options?: ClientOptions,
 	) => {
-		return this.createWebSocket<ServerSentEvent>({
+		return this.createWebSocketWithFallback<ServerSentEvent>({
 			apiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata-ws`,
+			fallbackApiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata`,
 			options,
 		});
 	};
@@ -103,6 +107,7 @@ export class CoderApi extends Api {
 	watchBuildLogsByBuildId = async (
 		buildId: string,
 		logs: ProvisionerJobLog[],
+		options?: ClientOptions,
 	) => {
 		const searchParams = new URLSearchParams({ follow: "true" });
 		if (logs.length) {
@@ -112,6 +117,7 @@ export class CoderApi extends Api {
 		return this.createWebSocket<ProvisionerJobLog>({
 			apiRoute: `/api/v2/workspacebuilds/${buildId}/logs`,
 			searchParams,
+			options,
 		});
 	};
 
@@ -128,7 +134,7 @@ export class CoderApi extends Api {
 			coderSessionTokenHeader
 		] as string | undefined;
 
-		const headers = await getHeaders(
+		const headersFromCommand = await getHeaders(
 			baseUrlRaw,
 			getHeaderCommand(vscode.workspace.getConfiguration()),
 			this.output,
@@ -137,43 +143,154 @@ export class CoderApi extends Api {
 		const httpAgent = await createHttpAgent(
 			vscode.workspace.getConfiguration(),
 		);
+
+		/**
+		 * Similar to the REST client, we want to prioritize headers in this order (highest to lowest):
+		 * 1. Headers from the header command
+		 * 2. Any headers passed directly to this function
+		 * 3. Coder session token from the Api client (if set)
+		 */
+		const headers = {
+			...(token ? { [coderSessionTokenHeader]: token } : {}),
+			...configs.options?.headers,
+			...headersFromCommand,
+		};
+
 		const webSocket = new OneWayWebSocket<TData>({
 			location: baseUrl,
 			...configs,
 			options: {
+				...configs.options,
 				agent: httpAgent,
 				followRedirects: true,
-				headers: {
-					...(token ? { [coderSessionTokenHeader]: token } : {}),
-					...configs.options?.headers,
-					...headers,
-				},
-				...configs.options,
+				headers,
 			},
 		});
 
-		const wsUrl = new URL(webSocket.url);
-		const pathWithQuery = wsUrl.pathname + wsUrl.search;
-		const wsLogger = new WsLogger(this.output, pathWithQuery);
-		wsLogger.logConnecting();
-
-		webSocket.addEventListener("open", () => {
-			wsLogger.logOpen();
-		});
-
-		webSocket.addEventListener("message", (event) => {
-			wsLogger.logMessage(event.sourceEvent.data);
-		});
-
-		webSocket.addEventListener("close", (event) => {
-			wsLogger.logClose(event.code, event.reason);
-		});
-
-		webSocket.addEventListener("error", (event) => {
-			wsLogger.logError(event.error, event.message);
-		});
-
+		this.attachStreamLogger(webSocket);
 		return webSocket;
+	}
+
+	private attachStreamLogger<TData>(
+		connection: UnidirectionalStream<TData>,
+	): void {
+		const url = new URL(connection.url);
+		const logger = new EventStreamLogger(
+			this.output,
+			url.pathname + url.search,
+			url.protocol.startsWith("http") ? "SSE" : "WS",
+		);
+		logger.logConnecting();
+
+		connection.addEventListener("open", () => logger.logOpen());
+		connection.addEventListener("close", (event: CloseEvent) =>
+			logger.logClose(event.code, event.reason),
+		);
+		connection.addEventListener("error", (event: ErrorEvent) =>
+			logger.logError(event.error, event.message),
+		);
+		connection.addEventListener("message", (event) =>
+			logger.logMessage(event.sourceEvent.data),
+		);
+	}
+
+	/**
+	 * Create a WebSocket connection with SSE fallback on 404.
+	 *
+	 * Note: The fallback on SSE ignores all passed client options except the headers.
+	 */
+	private async createWebSocketWithFallback<TData = unknown>(configs: {
+		apiRoute: string;
+		fallbackApiRoute: string;
+		searchParams?: Record<string, string> | URLSearchParams;
+		options?: ClientOptions;
+	}): Promise<UnidirectionalStream<TData>> {
+		let webSocket: OneWayWebSocket<TData>;
+		try {
+			webSocket = await this.createWebSocket<TData>({
+				apiRoute: configs.apiRoute,
+				searchParams: configs.searchParams,
+				options: configs.options,
+			});
+		} catch {
+			// Failed to create WebSocket, use SSE fallback
+			return this.createSseFallback<TData>(
+				configs.fallbackApiRoute,
+				configs.searchParams,
+				configs.options?.headers,
+			);
+		}
+
+		return this.waitForConnection(webSocket, () =>
+			this.createSseFallback<TData>(
+				configs.fallbackApiRoute,
+				configs.searchParams,
+				configs.options?.headers,
+			),
+		);
+	}
+
+	private waitForConnection<TData>(
+		connection: UnidirectionalStream<TData>,
+		onNotFound?: () => Promise<UnidirectionalStream<TData>>,
+	): Promise<UnidirectionalStream<TData>> {
+		return new Promise((resolve, reject) => {
+			const cleanup = () => {
+				connection.removeEventListener("open", handleOpen);
+				connection.removeEventListener("error", handleError);
+			};
+
+			const handleOpen = () => {
+				cleanup();
+				resolve(connection);
+			};
+
+			const handleError = (event: ErrorEvent) => {
+				cleanup();
+				const is404 =
+					event.message?.includes("404") ||
+					event.error?.message?.includes("404");
+
+				if (is404 && onNotFound) {
+					connection.close();
+					onNotFound().then(resolve).catch(reject);
+				} else {
+					reject(event.error || new Error(event.message));
+				}
+			};
+
+			connection.addEventListener("open", handleOpen);
+			connection.addEventListener("error", handleError);
+		});
+	}
+
+	/**
+	 * Create SSE fallback connection
+	 */
+	private async createSseFallback<TData = unknown>(
+		apiRoute: string,
+		searchParams?: Record<string, string> | URLSearchParams,
+		optionsHeaders?: Record<string, string>,
+	): Promise<UnidirectionalStream<TData>> {
+		this.output.warn(`WebSocket failed, using SSE fallback: ${apiRoute}`);
+
+		const baseUrlRaw = this.getAxiosInstance().defaults.baseURL;
+		if (!baseUrlRaw) {
+			throw new Error("No base URL set on REST client");
+		}
+
+		const baseUrl = new URL(baseUrlRaw);
+		const sseConnection = new SseConnection({
+			location: baseUrl,
+			apiRoute,
+			searchParams,
+			axiosInstance: this.getAxiosInstance(),
+			optionsHeaders: optionsHeaders,
+			logger: this.output,
+		});
+
+		this.attachStreamLogger(sseConnection);
+		return this.waitForConnection(sseConnection);
 	}
 }
 
