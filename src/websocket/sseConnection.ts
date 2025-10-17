@@ -109,11 +109,10 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 	}
 
 	private createErrorEvent(event: Event | ErrorEvent): WsErrorEvent {
-		const errorMessage =
-			event instanceof ErrorEvent && event.message
-				? event.message
-				: "SSE connection error";
-		const error = event instanceof ErrorEvent ? event.error : undefined;
+		// Check for properties instead of instanceof to avoid browser-only ErrorEvent global
+		const eventWithMessage = event as { message?: string; error?: unknown };
+		const errorMessage = eventWithMessage.message || "SSE connection error";
+		const error = eventWithMessage.error;
 
 		return {
 			error: error,
