@@ -51,6 +51,7 @@ import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 export interface RemoteDetails extends vscode.Disposable {
 	url: string;
 	token: string;
+	startedWorkspace: boolean;
 }
 
 export class Remote {
@@ -415,6 +416,7 @@ export class Remote {
 			}
 		}
 
+		let startedWorkspace = false;
 		const disposables: vscode.Disposable[] = [];
 		try {
 			// Register before connection so the label still displays!
@@ -442,6 +444,7 @@ export class Remote {
 					await this.closeRemote();
 					return;
 				}
+				startedWorkspace = true;
 				workspace = updatedWorkspace;
 			}
 			this.commands.workspace = workspace;
@@ -681,6 +684,7 @@ export class Remote {
 		return {
 			url: baseUrlRaw,
 			token,
+			startedWorkspace,
 			dispose: () => {
 				disposables.forEach((d) => d.dispose());
 			},
