@@ -1,9 +1,11 @@
 import axios, { type AxiosInstance } from "axios";
 import { type ServerSentEvent } from "coder/site/src/api/typesGenerated";
+import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import { EventSource } from "eventsource";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { type CloseEvent, type ErrorEvent } from "ws";
 
+import { type Logger } from "@/logging/logger";
 import { type ParsedMessageEvent } from "@/websocket/eventStreamConnection";
 import { SseConnection } from "@/websocket/sseConnection";
 
@@ -20,17 +22,12 @@ vi.mock("@/api/streamingFetchAdapter", () => ({
 }));
 
 describe("SseConnection", () => {
-	let mockAxios: AxiosInstance;
-	let mockLogger: ReturnType<typeof createMockLogger>;
-
-	beforeEach(() => {
-		vi.resetAllMocks();
-		mockAxios = axios.create();
-		mockLogger = createMockLogger();
-	});
-
 	describe("URL Building", () => {
-		it.each([
+		type UrlBuildingTestCase = [
+			searchParams: Record<string, string> | URLSearchParams | undefined,
+			expectedUrl: string,
+		];
+		it.each<UrlBuildingTestCase>([
 			[undefined, `${TEST_URL}${API_ROUTE}`],
 			[
 				{ follow: "true", after: "123" },
@@ -38,6 +35,8 @@ describe("SseConnection", () => {
 			],
 			[new URLSearchParams({ foo: "bar" }), `${TEST_URL}${API_ROUTE}?foo=bar`],
 		])("constructs URL with %s search params", (searchParams, expectedUrl) => {
+			const mockAxios = axios.create();
+			const mockLogger = createMockLogger();
 			const mockES = createMockEventSource();
 			setupEventSourceMock(mockES);
 
@@ -63,9 +62,11 @@ describe("SseConnection", () => {
 			});
 			setupEventSourceMock(mockES);
 
-			const connection = createConnection();
-			const events1: unknown[] = [];
-			const events2: unknown[] = [];
+			const mockAxios = axios.create();
+			const mockLogger = createMockLogger();
+			const connection = createConnection(mockAxios, mockLogger);
+			const events1: object[] = [];
+			const events2: object[] = [];
 			connection.addEventListener("open", (event) => events1.push(event));
 			connection.addEventListener("open", (event) => events2.push(event));
 
@@ -92,7 +93,9 @@ describe("SseConnection", () => {
 			});
 			setupEventSourceMock(mockES);
 
-			const connection = createConnection();
+			const mockAxios = axios.create();
+			const mockLogger = createMockLogger();
+			const connection = createConnection(mockAxios, mockLogger);
 			const events: ParsedMessageEvent<ServerSentEvent>[] = [];
 			connection.addEventListener("message", (event) => events.push(event));
 
@@ -125,7 +128,9 @@ describe("SseConnection", () => {
 			});
 			setupEventSourceMock(mockES);
 
-			const connection = createConnection();
+			const mockAxios = axios.create();
+			const mockLogger = createMockLogger();
+			const connection = createConnection(mockAxios, mockLogger);
 			const events: ErrorEvent[] = [];
 			connection.addEventListener("error", (event) => events.push(event));
 
@@ -143,9 +148,10 @@ describe("SseConnection", () => {
 				addEventListener: vi.fn((event, handler) => {
 					if (event === "error") {
 						setImmediate(() => {
+							// A bit hacky but readyState is a readonly property so we have to override that here
+							const esWithReadyState = mockES as { readyState: number };
 							// Simulate EventSource behavior: state transitions to CLOSED when error occurs
-							(mockES as { readyState: number }).readyState =
-								EventSource.CLOSED;
+							esWithReadyState.readyState = EventSource.CLOSED;
 							handler(new Event("error"));
 						});
 					}
@@ -153,7 +159,9 @@ describe("SseConnection", () => {
 			});
 			setupEventSourceMock(mockES);
 
-			const connection = createConnection();
+			const mockAxios = axios.create();
+			const mockLogger = createMockLogger();
+			const connection = createConnection(mockAxios, mockLogger);
 			const events: CloseEvent[] = [];
 			connection.addEventListener("close", (event) => events.push(event));
 
@@ -170,18 +178,19 @@ describe("SseConnection", () => {
 
 	describe("Event Listener Management", () => {
 		it("removes event listener without affecting others", async () => {
+			const data = '{"test": true}';
 			const mockES = createMockEventSource({
 				addEventListener: vi.fn((event, handler) => {
 					if (event === "data") {
-						setImmediate(() =>
-							handler(new MessageEvent("data", { data: '{"test": true}' })),
-						);
+						setImmediate(() => handler(new MessageEvent("data", { data })));
 					}
 				}),
 			});
 			setupEventSourceMock(mockES);
 
-			const connection = createConnection();
+			const mockAxios = axios.create();
+			const mockLogger = createMockLogger();
+			const connection = createConnection(mockAxios, mockLogger);
 			const events: ParsedMessageEvent<ServerSentEvent>[] = [];
 
 			const removedHandler = () => {
@@ -195,13 +204,28 @@ describe("SseConnection", () => {
 			connection.removeEventListener("message", removedHandler);
 
 			await waitForNextTick();
-			expect(events).toHaveLength(1);
+			// One message event
+			expect(events).toEqual([
+				{
+					parseError: undefined,
+					parsedMessage: {
+						data: JSON.parse(data),
+						type: "data",
+					},
+					sourceEvent: { data },
+				},
+			]);
 			expect(mockLogger.error).not.toHaveBeenCalled();
 		});
 	});
 
 	describe("Close Handling", () => {
-		it.each([
+		type CloseHandlingTestCase = [
+			code: number | undefined,
+			reason: string | undefined,
+			closeEvent: Omit<CloseEvent, "type" | "target">,
+		];
+		it.each<CloseHandlingTestCase>([
 			[
 				undefined,
 				undefined,
@@ -218,7 +242,9 @@ describe("SseConnection", () => {
 				const mockES = createMockEventSource();
 				setupEventSourceMock(mockES);
 
-				const connection = createConnection();
+				const mockAxios = axios.create();
+				const mockLogger = createMockLogger();
+				const connection = createConnection(mockAxios, mockLogger);
 				const events: CloseEvent[] = [];
 				connection.addEventListener("close", (event) => events.push(event));
 				connection.addEventListener("open", () => {});
@@ -231,15 +257,20 @@ describe("SseConnection", () => {
 	});
 
 	describe("Callback Error Handling", () => {
-		it.each([
+		type CallbackErrorTestCase = [
+			sseEvent: WebSocketEventType,
+			eventData: Event | MessageEvent,
+		];
+		it.each<CallbackErrorTestCase>([
 			["open", new Event("open")],
 			["message", new MessageEvent("data", { data: '{"test": true}' })],
 			["error", new Event("error")],
-		] as const)(
+		])(
 			"logs error and continues when %s callback throws",
 			async (sseEvent, eventData) => {
 				const mockES = createMockEventSource({
 					addEventListener: vi.fn((event, handler) => {
+						// All SSE events are streaming data and attach a listener on the "data" type in the EventSource
 						const esEvent = sseEvent === "message" ? "data" : sseEvent;
 						if (event === esEvent) {
 							setImmediate(() => handler(eventData));
@@ -248,7 +279,9 @@ describe("SseConnection", () => {
 				});
 				setupEventSourceMock(mockES);
 
-				const connection = createConnection();
+				const mockAxios = axios.create();
+				const mockLogger = createMockLogger();
+				const connection = createConnection(mockAxios, mockLogger);
 				const events: unknown[] = [];
 
 				connection.addEventListener(sseEvent, () => {
@@ -271,7 +304,9 @@ describe("SseConnection", () => {
 			const mockES = createMockEventSource();
 			setupEventSourceMock(mockES);
 
-			const connection = createConnection();
+			const mockAxios = axios.create();
+			const mockLogger = createMockLogger();
+			const connection = createConnection(mockAxios, mockLogger);
 			connection.addEventListener("close", () => {
 				throw new Error("Handler error");
 			});
@@ -285,16 +320,19 @@ describe("SseConnection", () => {
 			);
 		});
 	});
-
-	function createConnection(): SseConnection {
-		return new SseConnection({
-			location: { protocol: "https:", host: "coder.example.com" },
-			apiRoute: API_ROUTE,
-			axiosInstance: mockAxios,
-			logger: mockLogger,
-		});
-	}
 });
+
+function createConnection(
+	mockAxios: AxiosInstance,
+	mockLogger: Logger,
+): SseConnection {
+	return new SseConnection({
+		location: { protocol: "https:", host: "coder.example.com" },
+		apiRoute: API_ROUTE,
+		axiosInstance: mockAxios,
+		logger: mockLogger,
+	});
+}
 
 function createMockEventSource(
 	overrides?: Partial<EventSource>,

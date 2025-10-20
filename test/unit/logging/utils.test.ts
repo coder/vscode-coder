@@ -23,7 +23,8 @@ describe("Logging utils", () => {
 	});
 
 	describe("sizeOf", () => {
-		it.each([
+		type SizeOfTestCase = [data: unknown, bytes: number | undefined];
+		it.each<SizeOfTestCase>([
 			// Primitives return a fixed value
 			[null, 0],
 			[undefined, 0],

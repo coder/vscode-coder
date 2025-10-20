@@ -1,25 +1,17 @@
-import { type AxiosInstance } from "axios";
-import { EventEmitter } from "events";
+import { type AxiosInstance, type AxiosResponse } from "axios";
 import { type ReaderLike } from "eventsource";
-import { type IncomingMessage } from "http";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EventEmitter } from "node:events";
+import { type IncomingMessage } from "node:http";
+import { describe, it, expect, vi } from "vitest";
 
 import { createStreamingFetchAdapter } from "@/api/streamingFetchAdapter";
 
 const TEST_URL = "https://example.com/api";
 
 describe("createStreamingFetchAdapter", () => {
-	let mockAxios: AxiosInstance;
-
-	beforeEach(() => {
-		vi.resetAllMocks();
-		mockAxios = {
-			request: vi.fn(),
-		} as unknown as AxiosInstance;
-	});
-
 	describe("Request Handling", () => {
 		it("passes URL, signal, and responseType to axios", async () => {
+			const mockAxios = createAxiosMock();
 			const mockStream = createMockStream();
 			setupAxiosResponse(mockAxios, 200, {}, mockStream);
 
@@ -37,7 +29,8 @@ describe("createStreamingFetchAdapter", () => {
 			});
 		});
 
-		it("applies headers in correct precedence order (config > init)", async () => {
+		it("applies headers in correct precedence order (config overrides init)", async () => {
+			const mockAxios = createAxiosMock();
 			const mockStream = createMockStream();
 			setupAxiosResponse(mockAxios, 200, {}, mockStream);
 
@@ -88,6 +81,7 @@ describe("createStreamingFetchAdapter", () => {
 
 	describe("Response Properties", () => {
 		it("returns response with correct properties", async () => {
+			const mockAxios = createAxiosMock();
 			const mockStream = createMockStream();
 			setupAxiosResponse(
 				mockAxios,
@@ -102,11 +96,13 @@ describe("createStreamingFetchAdapter", () => {
 			expect(response.url).toBe(TEST_URL);
 			expect(response.status).toBe(200);
 			expect(response.headers.get("content-type")).toBe("text/event-stream");
+			// Headers are lowercased when we retrieve them
 			expect(response.headers.get("CoNtEnT-TyPe")).toBe("text/event-stream");
 			expect(response.body?.getReader).toBeDefined();
 		});
 
 		it("detects redirected requests", async () => {
+			const mockAxios = createAxiosMock();
 			const mockStream = createMockStream();
 			const mockResponse = {
 				status: 200,
@@ -117,7 +113,7 @@ describe("createStreamingFetchAdapter", () => {
 						responseUrl: "https://redirect.com/api",
 					},
 				},
-			};
+			} as AxiosResponse<IncomingMessage>;
 			vi.mocked(mockAxios.request).mockResolvedValue(mockResponse);
 
 			const adapter = createStreamingFetchAdapter(mockAxios);
@@ -178,21 +174,13 @@ describe("createStreamingFetchAdapter", () => {
 			expect(mockStream.destroy).toHaveBeenCalled();
 		});
 	});
-
-	async function setupReaderTest(): Promise<{
-		mockStream: IncomingMessage;
-		reader: ReaderLike | ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>>;
-	}> {
-		const mockStream = createMockStream();
-		setupAxiosResponse(mockAxios, 200, {}, mockStream);
-
-		const adapter = createStreamingFetchAdapter(mockAxios);
-		const response = await adapter(TEST_URL);
-		const reader = response.body!.getReader();
-
-		return { mockStream, reader };
-	}
 });
+
+function createAxiosMock(): AxiosInstance {
+	return {
+		request: vi.fn(),
+	} as unknown as AxiosInstance;
+}
 
 function createMockStream(): IncomingMessage {
 	const stream = new EventEmitter() as IncomingMessage;
@@ -211,4 +199,22 @@ function setupAxiosResponse(
 		headers,
 		data: stream,
 	});
+}
+
+async function setupReaderTest(): Promise<{
+	mockStream: IncomingMessage;
+	reader: ReaderLike | ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>>;
+}> {
+	const mockAxios = createAxiosMock();
+	const mockStream = createMockStream();
+	setupAxiosResponse(mockAxios, 200, {}, mockStream);
+
+	const adapter = createStreamingFetchAdapter(mockAxios);
+	const response = await adapter(TEST_URL);
+	const reader = response.body?.getReader();
+	if (reader === undefined) {
+		throw new Error("Reader is undefined");
+	}
+
+	return { mockStream, reader };
 }
