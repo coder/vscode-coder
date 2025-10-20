@@ -15,7 +15,6 @@ jobs:
     name: Package
     runs-on: ubuntu-22.04
     outputs:
-      packageName: ${{ steps.setup.outputs.packageName }}
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
@@ -73,7 +72,6 @@ jobs:
     uses: ./.github/workflows/publish-extension.yaml
     with:
       version: ${{ needs.package.outputs.version }}
-      packageName: ${{ needs.package.outputs.packageName }}
       isPreRelease: false
     secrets:
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
