@@ -4,6 +4,8 @@ const SESSION_TOKEN_KEY = "sessionToken";
 
 const LOGIN_STATE_KEY = "loginState";
 
+const OAUTH_CLIENT_REGISTRATION_KEY = "oauthClientRegistration";
+
 export enum AuthAction {
 	LOGIN,
 	LOGOUT,
@@ -69,5 +71,29 @@ export class SecretsManager {
 				}
 			}
 		});
+	}
+
+	/**
+	 * Store OAuth client registration data.
+	 */
+	public async setOAuthClientRegistration(
+		registration: string | undefined,
+	): Promise<void> {
+		if (registration) {
+			await this.secrets.store(OAUTH_CLIENT_REGISTRATION_KEY, registration);
+		} else {
+			await this.secrets.delete(OAUTH_CLIENT_REGISTRATION_KEY);
+		}
+	}
+
+	/**
+	 * Get OAuth client registration data.
+	 */
+	public async getOAuthClientRegistration(): Promise<string | undefined> {
+		try {
+			return await this.secrets.get(OAUTH_CLIENT_REGISTRATION_KEY);
+		} catch {
+			return undefined;
+		}
 	}
 }
