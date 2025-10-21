@@ -1,3 +1,5 @@
+import { type ClientRegistrationResponse } from "../oauth/types";
+
 import type { SecretStorage, Disposable } from "vscode";
 
 const SESSION_TOKEN_KEY = "sessionToken";
@@ -19,10 +21,10 @@ export class SecretsManager {
 	 * Set or unset the last used token.
 	 */
 	public async setSessionToken(sessionToken?: string): Promise<void> {
-		if (!sessionToken) {
-			await this.secrets.delete(SESSION_TOKEN_KEY);
-		} else {
+		if (sessionToken) {
 			await this.secrets.store(SESSION_TOKEN_KEY, sessionToken);
+		} else {
+			await this.secrets.delete(SESSION_TOKEN_KEY);
 		}
 	}
 
@@ -77,10 +79,13 @@ export class SecretsManager {
 	 * Store OAuth client registration data.
 	 */
 	public async setOAuthClientRegistration(
-		registration: string | undefined,
+		registration: ClientRegistrationResponse | undefined,
 	): Promise<void> {
 		if (registration) {
-			await this.secrets.store(OAUTH_CLIENT_REGISTRATION_KEY, registration);
+			await this.secrets.store(
+				OAUTH_CLIENT_REGISTRATION_KEY,
+				JSON.stringify(registration),
+			);
 		} else {
 			await this.secrets.delete(OAUTH_CLIENT_REGISTRATION_KEY);
 		}
@@ -89,11 +94,19 @@ export class SecretsManager {
 	/**
 	 * Get OAuth client registration data.
 	 */
-	public async getOAuthClientRegistration(): Promise<string | undefined> {
+	public async getOAuthClientRegistration(): Promise<
+		ClientRegistrationResponse | undefined
+	> {
 		try {
-			return await this.secrets.get(OAUTH_CLIENT_REGISTRATION_KEY);
+			const stringifiedResponse = await this.secrets.get(
+				OAUTH_CLIENT_REGISTRATION_KEY,
+			);
+			if (stringifiedResponse) {
+				return JSON.parse(stringifiedResponse) as ClientRegistrationResponse;
+			}
 		} catch {
-			return undefined;
+			// Do nothing
 		}
+		return undefined;
 	}
 }

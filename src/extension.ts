@@ -13,7 +13,8 @@ import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { AuthAction } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
-import { activateCoderOAuth, CALLBACK_PATH } from "./oauth";
+import { activateCoderOAuth } from "./oauth/oauthHelper";
+import { CALLBACK_PATH } from "./oauth/utils";
 import { maybeAskUrl } from "./promptUtils";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
@@ -117,7 +118,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		ctx.subscriptions,
 	);
 
-	const oauthHelper = activateCoderOAuth(client, secretsManager, output, ctx);
+	const oauthHelper = await activateCoderOAuth(
+		client,
+		secretsManager,
+		output,
+		ctx,
+	);
 
 	// Handle vscode:// URIs.
 	const uriHandler = vscode.window.registerUriHandler({
