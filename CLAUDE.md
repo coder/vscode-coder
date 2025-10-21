@@ -51,14 +51,12 @@ Comments explain what code does or why it exists:
 ## Code Style
 
 - TypeScript with strict typing
-- Use semicolons
-- Trailing commas for all multi-line lists
-- 120 character line width
+- Use Prettier for code formatting and ESLint for code linting
 - Use ES6 features (arrow functions, destructuring, etc.)
 - Use `const` by default; `let` only when necessary
 - Never use `any`, and use exact types when you can
 - Prefix unused variables with underscore (e.g., `_unused`)
-- Sort imports alphabetically in groups (see `import/order` in `.eslintrc.json`): external → parent → sibling
 - Error handling: wrap and type errors appropriately
 - Use async/await for promises, avoid explicit Promise construction where possible
 - Unit test files must be named `*.test.ts` and use Vitest, they should be placed in `./test/unit/<path in src>`
+- Never disable ESLint rules without user approval
