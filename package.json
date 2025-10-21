@@ -255,6 +255,11 @@
 				"title": "Search",
 				"category": "Coder",
 				"icon": "$(search)"
+			},
+			{
+				"command": "coder.oauth.testAuth",
+				"title": "Test OAuth Auth",
+				"category": "Coder"
 			}
 		],
 		"menus": {

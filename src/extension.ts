@@ -13,6 +13,7 @@ import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { AuthAction } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
+import { activateCoderOAuth, CALLBACK_PATH } from "./oauth";
 import { maybeAskUrl } from "./promptUtils";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
@@ -116,11 +117,22 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		ctx.subscriptions,
 	);
 
+	const oauthHelper = activateCoderOAuth(client, secretsManager, output, ctx);
+
 	// Handle vscode:// URIs.
 	const uriHandler = vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
-			const cliManager = serviceContainer.getCliManager();
 			const params = new URLSearchParams(uri.query);
+
+			if (uri.path === CALLBACK_PATH) {
+				const code = params.get("code");
+				const state = params.get("state");
+				const error = params.get("error");
+				oauthHelper.handleCallback(code, state, error);
+				return;
+			}
+
+			const cliManager = serviceContainer.getCliManager();
 			if (uri.path === "/open") {
 				const owner = params.get("owner");
 				const workspace = params.get("workspace");
