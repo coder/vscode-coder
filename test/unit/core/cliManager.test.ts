@@ -546,7 +546,8 @@ describe("CliManager", () => {
 			expect(files.find((file) => file.includes(".asc"))).toBeUndefined();
 		});
 
-		it.each([
+		type SignatureErrorTestCase = [status: number, message: string];
+		it.each<SignatureErrorTestCase>([
 			[404, "Signature not found"],
 			[500, "Failed to download signature"],
 		])("allows skipping verification on %i", async (status, message) => {
@@ -558,7 +559,7 @@ describe("CliManager", () => {
 			expect(pgp.verifySignature).not.toHaveBeenCalled();
 		});
 
-		it.each([
+		it.each<SignatureErrorTestCase>([
 			[404, "Signature not found"],
 			[500, "Failed to download signature"],
 		])(

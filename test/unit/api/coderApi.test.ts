@@ -125,7 +125,7 @@ describe("CoderApi", () => {
 			expect(thrownError.x509Err).toBeDefined();
 		});
 
-		it("applies headers in correct precedence order (command > config > axios default)", async () => {
+		it("applies headers in correct precedence order (command overrides config overrides axios default)", async () => {
 			const api = createApi(CODER_URL, AXIOS_TOKEN);
 
 			// Test 1: Headers from config, default token from API creation
@@ -225,7 +225,7 @@ describe("CoderApi", () => {
 			});
 		});
 
-		it("applies headers in correct precedence order (command > config > axios default)", async () => {
+		it("applies headers in correct precedence order (command overrides config overrides axios default)", async () => {
 			// Test 1: Default token from API creation
 			await api.watchBuildLogsByBuildId(BUILD_ID, []);
 

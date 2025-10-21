@@ -1,6 +1,6 @@
 import { type AxiosInstance } from "axios";
 import { type FetchLikeInit, type FetchLikeResponse } from "eventsource";
-import { type IncomingMessage } from "http";
+import { type IncomingMessage } from "node:http";
 
 /**
  * Creates a fetch adapter using an Axios instance that returns streaming responses.

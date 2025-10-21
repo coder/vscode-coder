@@ -110,8 +110,9 @@ export class CoderApi extends Api {
 		options?: ClientOptions,
 	) => {
 		const searchParams = new URLSearchParams({ follow: "true" });
-		if (logs.length) {
-			searchParams.append("after", logs[logs.length - 1].id.toString());
+		const lastLog = logs.at(-1);
+		if (lastLog) {
+			searchParams.append("after", lastLog.id.toString());
 		}
 
 		return this.createWebSocket<ProvisionerJobLog>({
@@ -311,9 +312,9 @@ function setupInterceptors(
 			output,
 		);
 		// Add headers from the header command.
-		Object.entries(headers).forEach(([key, value]) => {
+		for (const [key, value] of Object.entries(headers)) {
 			config.headers[key] = value;
-		});
+		}
 
 		// Configure proxy and TLS.
 		// Note that by default VS Code overrides the agent. To prevent this, set
@@ -425,7 +426,7 @@ function wrapResponseTransform(
 function getSize(headers: AxiosHeaders, data: unknown): number | undefined {
 	const contentLength = headers["content-length"];
 	if (contentLength !== undefined) {
-		return parseInt(contentLength, 10);
+		return Number.parseInt(contentLength, 10);
 	}
 
 	return sizeOf(data);
