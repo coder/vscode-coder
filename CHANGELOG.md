@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.11.3](https://github.com/coder/vscode-coder/releases/tag/v1.11.3) 2025-10-22
+
 ### Fixed
 
 - Fixed WebSocket connections not receiving headers from the configured header command
