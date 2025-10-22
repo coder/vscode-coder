@@ -1,0 +1,125 @@
+name: Publish Extension
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+        description: "Version to publish"
+      isPreRelease:
+        required: false
+        type: boolean
+        default: false
+        description: "Whether this is a pre-release"
+    secrets:
+      VSCE_PAT:
+        required: false
+      OVSX_PAT:
+        required: false
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-22.04
+    outputs:
+      packageName: ${{ steps.package.outputs.packageName }}
+      hasVscePat: ${{ steps.check-secrets.outputs.hasVscePat }}
+      hasOvsxPat: ${{ steps.check-secrets.outputs.hasOvsxPat }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Construct package name
+        id: package
+        run: |
+          EXTENSION_NAME=$(node -e "console.log(require('./package.json').name)")
+          if [ "${{ inputs.isPreRelease }}" = "true" ]; then
+            PACKAGE_NAME="${EXTENSION_NAME}-${{ inputs.version }}-pre.vsix"
+          else
+            PACKAGE_NAME="${EXTENSION_NAME}-${{ inputs.version }}.vsix"
+          fi
+          echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "Package name: $PACKAGE_NAME"
+
+      - name: Check secrets
+        id: check-secrets
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          echo "hasVscePat=$([ -n "$VSCE_PAT" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "hasOvsxPat=$([ -n "$OVSX_PAT" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+
+  publishMS:
+    name: Publish to VS Marketplace
+    needs: setup
+    runs-on: ubuntu-22.04
+    if: ${{ needs.setup.outputs.hasVscePat == 'true' }}
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-${{ inputs.version }}
+
+      - name: Publish to VS Marketplace
+        run: |
+          echo "Publishing version ${{ inputs.version }} to VS Marketplace"
+          if [ "${{ inputs.isPreRelease }}" = "true" ]; then
+            vsce publish --pre-release --packagePath "./${{ needs.setup.outputs.packageName }}" -p ${{ secrets.VSCE_PAT }}
+          else
+            vsce publish --packagePath "./${{ needs.setup.outputs.packageName }}" -p ${{ secrets.VSCE_PAT }}
+          fi
+
+  publishOVSX:
+    name: Publish to Open VSX
+    needs: setup
+    runs-on: ubuntu-22.04
+    if: ${{ needs.setup.outputs.hasOvsxPat == 'true' }}
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install ovsx
+        run: npm install -g ovsx
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-${{ inputs.version }}
+
+      - name: Publish to Open VSX
+        run: |
+          echo "Publishing version ${{ inputs.version }} to Open VSX"
+          if [ "${{ inputs.isPreRelease }}" = "true" ]; then
+            ovsx publish "./${{ needs.setup.outputs.packageName }}" --pre-release -p ${{ secrets.OVSX_PAT }}
+          else
+            ovsx publish "./${{ needs.setup.outputs.packageName }}" -p ${{ secrets.OVSX_PAT }}
+          fi
+
+  publishGH:
+    name: Create GitHub ${{ inputs.isPreRelease && 'Pre-' || '' }}Release
+    needs: setup
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: extension-${{ inputs.version }}
+
+      - name: Create ${{ inputs.isPreRelease && 'Pre-' || '' }}Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ inputs.isPreRelease }}
+          draft: true
+          title: "${{ inputs.isPreRelease && 'Pre-' || '' }}Release v${{ inputs.version }}"
+          files: ${{ needs.setup.outputs.packageName }}

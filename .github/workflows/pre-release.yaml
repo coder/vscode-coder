@@ -1,9 +1,8 @@
-name: Release
+name: Pre-Release
 on:
   push:
     tags:
-      - "v*"
-      - "!v*-pre"
+      - "v*-pre"
 
 permissions:
   # Required to publish a release
@@ -26,10 +25,11 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          # Extract version from tag (remove 'v' prefix)
-          VERSION=${GITHUB_REF#refs/tags/v}
+          # Extract version from tag (remove 'v' prefix and '-pre' suffix)
+          TAG_NAME=${GITHUB_REF#refs/tags/v}
+          VERSION=${TAG_NAME%-pre}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Release version: $VERSION"
+          echo "Pre-release version: $VERSION"
 
       - name: Validate version matches package.json
         run: |
@@ -53,11 +53,11 @@ jobs:
         id: setup
         run: |
           EXTENSION_NAME=$(node -e "console.log(require('./package.json').name)")
-          PACKAGE_NAME="${EXTENSION_NAME}-${{ steps.version.outputs.version }}.vsix"
+          PACKAGE_NAME="${EXTENSION_NAME}-${{ steps.version.outputs.version }}-pre.vsix"
           echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
 
       - name: Package extension
-        run: vsce package --out "${{ steps.setup.outputs.packageName }}"
+        run: vsce package --pre-release --out "${{ steps.setup.outputs.packageName }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -67,12 +67,12 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish Extension and Create Release
+    name: Publish Extension and Create Pre-Release
     needs: package
     uses: ./.github/workflows/publish-extension.yaml
     with:
       version: ${{ needs.package.outputs.version }}
-      isPreRelease: false
+      isPreRelease: true
     secrets:
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
