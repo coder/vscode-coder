@@ -14,16 +14,18 @@ on:
         description: "Whether this is a pre-release"
     secrets:
       VSCE_PAT:
-        required: true
+        required: false
       OVSX_PAT:
-        required: true
+        required: false
 
 jobs:
   setup:
-    name: Setup Package Name
+    name: Setup
     runs-on: ubuntu-22.04
     outputs:
       packageName: ${{ steps.package.outputs.packageName }}
+      hasVscePat: ${{ steps.check-secrets.outputs.hasVscePat }}
+      hasOvsxPat: ${{ steps.check-secrets.outputs.hasOvsxPat }}
     steps:
       - uses: actions/checkout@v5
 
@@ -43,10 +45,20 @@ jobs:
           echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           echo "Package name: $PACKAGE_NAME"
 
+      - name: Check secrets
+        id: check-secrets
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          echo "hasVscePat=$([ -n "$VSCE_PAT" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "hasOvsxPat=$([ -n "$OVSX_PAT" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+
   publishMS:
     name: Publish to VS Marketplace
     needs: setup
     runs-on: ubuntu-22.04
+    if: ${{ needs.setup.outputs.hasVscePat == 'true' }}
     steps:
       - uses: actions/setup-node@v6
         with:
@@ -72,6 +84,7 @@ jobs:
     name: Publish to Open VSX
     needs: setup
     runs-on: ubuntu-22.04
+    if: ${{ needs.setup.outputs.hasOvsxPat == 'true' }}
     steps:
       - uses: actions/setup-node@v6
         with:
