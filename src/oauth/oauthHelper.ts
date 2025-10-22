@@ -16,11 +16,14 @@ import type {
 	TokenResponse,
 } from "./types";
 
-const OAUTH_GRANT_TYPE = "authorization_code" as const;
-const OAUTH_RESPONSE_TYPE = "code" as const;
-const OAUTH_AUTH_METHOD = "client_secret_post" as const;
+const AUTH_GRANT_TYPE = "authorization_code" as const;
+const REFRESH_GRANT_TYPE = "refresh_token" as const;
+const RESPONSE_TYPE = "code" as const;
+const OAUTH_METHOD = "client_secret_post" as const;
 const PKCE_CHALLENGE_METHOD = "S256" as const;
 const CLIENT_NAME = "VS Code Coder Extension";
+
+const REQUIRED_GRANT_TYPES = [AUTH_GRANT_TYPE, REFRESH_GRANT_TYPE] as const;
 
 export class CoderOAuthHelper {
 	private clientRegistration: ClientRegistrationResponse | undefined;
@@ -46,7 +49,7 @@ export class CoderOAuthHelper {
 			logger,
 			context,
 		);
-		await helper.loadRegistration();
+		await helper.loadClientRegistration();
 		return helper;
 	}
 	private constructor(
@@ -67,13 +70,7 @@ export class CoderOAuthHelper {
 
 		const response = await this.client
 			.getAxiosInstance()
-			.request<OAuthServerMetadata>({
-				url: "/.well-known/oauth-authorization-server",
-				method: "GET",
-				headers: {
-					Accept: "application/json",
-				},
-			});
+			.get<OAuthServerMetadata>("/.well-known/oauth-authorization-server");
 
 		const metadata = response.data;
 
@@ -89,33 +86,26 @@ export class CoderOAuthHelper {
 		}
 
 		if (
-			!includesAllTypes(metadata.grant_types_supported, [
-				OAUTH_GRANT_TYPE,
-				"refresh_token",
-			])
+			!includesAllTypes(metadata.grant_types_supported, REQUIRED_GRANT_TYPES)
 		) {
 			throw new Error(
-				`Server does not support required grant types: authorization_code, refresh_token. Supported: ${metadata.grant_types_supported?.join(", ") || "none"}`,
+				`Server does not support required grant types: ${REQUIRED_GRANT_TYPES.join(", ")}. Supported: ${metadata.grant_types_supported?.join(", ") || "none"}`,
 			);
 		}
 
-		if (
-			!includesAllTypes(metadata.response_types_supported, [
-				OAUTH_RESPONSE_TYPE,
-			])
-		) {
+		if (!includesAllTypes(metadata.response_types_supported, [RESPONSE_TYPE])) {
 			throw new Error(
-				`Server does not support required response type: code. Supported: ${metadata.response_types_supported?.join(", ") || "none"}`,
+				`Server does not support required response type: ${RESPONSE_TYPE}. Supported: ${metadata.response_types_supported?.join(", ") || "none"}`,
 			);
 		}
 
 		if (
 			!includesAllTypes(metadata.token_endpoint_auth_methods_supported, [
-				OAUTH_AUTH_METHOD,
+				OAUTH_METHOD,
 			])
 		) {
 			throw new Error(
-				`Server does not support required auth method: client_secret_post. Supported: ${metadata.token_endpoint_auth_methods_supported?.join(", ") || "none"}`,
+				`Server does not support required auth method: ${OAUTH_METHOD}. Supported: ${metadata.token_endpoint_auth_methods_supported?.join(", ") || "none"}`,
 			);
 		}
 
@@ -125,7 +115,7 @@ export class CoderOAuthHelper {
 			])
 		) {
 			throw new Error(
-				`Server does not support required PKCE method: S256. Supported: ${metadata.code_challenge_methods_supported?.join(", ") || "none"}`,
+				`Server does not support required PKCE method: ${PKCE_CHALLENGE_METHOD}. Supported: ${metadata.code_challenge_methods_supported?.join(", ") || "none"}`,
 			);
 		}
 
@@ -143,7 +133,7 @@ export class CoderOAuthHelper {
 		return `${vscode.env.uriScheme}://${this.extensionId}${CALLBACK_PATH}`;
 	}
 
-	private async loadRegistration(): Promise<void> {
+	private async loadClientRegistration(): Promise<void> {
 		const registration = await this.secretsManager.getOAuthClientRegistration();
 		if (registration) {
 			this.clientRegistration = registration;
@@ -151,7 +141,7 @@ export class CoderOAuthHelper {
 		}
 	}
 
-	private async saveRegistration(
+	private async saveClientRegistration(
 		registration: ClientRegistrationResponse,
 	): Promise<void> {
 		await this.secretsManager.setOAuthClientRegistration(registration);
@@ -191,25 +181,21 @@ export class CoderOAuthHelper {
 		const registrationRequest: ClientRegistrationRequest = {
 			redirect_uris: [redirectUri],
 			application_type: "native",
-			grant_types: [OAUTH_GRANT_TYPE],
-			response_types: [OAUTH_RESPONSE_TYPE],
+			grant_types: [AUTH_GRANT_TYPE],
+			response_types: [RESPONSE_TYPE],
 			client_name: CLIENT_NAME,
-			token_endpoint_auth_method: OAUTH_AUTH_METHOD,
+			token_endpoint_auth_method: OAUTH_METHOD,
 		};
 
 		const response = await this.client
 			.getAxiosInstance()
-			.request<ClientRegistrationResponse>({
-				url: metadata.registration_endpoint,
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Accept: "application/json",
-				},
-				data: registrationRequest,
-			});
+			.post<ClientRegistrationResponse>(
+				metadata.registration_endpoint,
+				registrationRequest,
+			);
 
-		await this.saveRegistration(response.data);
+		await this.saveClientRegistration(response.data);
+
 		return response.data.client_id;
 	}
 
@@ -232,7 +218,7 @@ export class CoderOAuthHelper {
 
 		const params: AuthorizationRequestParams = {
 			client_id: clientId,
-			response_type: OAUTH_RESPONSE_TYPE,
+			response_type: RESPONSE_TYPE,
 			redirect_uri: this.getRedirectUri(),
 			scope,
 			state,
@@ -268,12 +254,15 @@ export class CoderOAuthHelper {
 
 		return new Promise<{ code: string; verifier: string }>(
 			(resolve, reject) => {
+				const timeoutMins = 5;
 				const timeout = setTimeout(
 					() => {
 						this.clearPendingAuth();
-						reject(new Error("OAuth flow timed out after 5 minutes"));
+						reject(
+							new Error(`OAuth flow timed out after ${timeoutMins} minutes`),
+						);
 					},
-					5 * 60 * 1000,
+					timeoutMins * 60 * 1000,
 				);
 
 				const clearPromise = () => {
@@ -366,7 +355,7 @@ export class CoderOAuthHelper {
 		this.logger.info("Exchanging authorization code for token");
 
 		const params: TokenRequestParams = {
-			grant_type: OAUTH_GRANT_TYPE,
+			grant_type: AUTH_GRANT_TYPE,
 			code,
 			redirect_uri: this.getRedirectUri(),
 			client_id: this.clientRegistration.client_id,
@@ -383,14 +372,10 @@ export class CoderOAuthHelper {
 
 		const response = await this.client
 			.getAxiosInstance()
-			.request<TokenResponse>({
-				url: metadata.token_endpoint,
-				method: "POST",
+			.post<TokenResponse>(metadata.token_endpoint, tokenRequest.toString(), {
 				headers: {
 					"Content-Type": "application/x-www-form-urlencoded",
-					Accept: "application/json",
 				},
-				data: tokenRequest.toString(),
 			});
 
 		this.logger.info("Token exchange successful");
