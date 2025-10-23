@@ -353,7 +353,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		}),
 	);
 
-	let shouldShowSshOutput = false;
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
 	// resolved by the remote SSH extension.
@@ -371,7 +370,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			);
 			if (details) {
 				ctx.subscriptions.push(details);
-				shouldShowSshOutput = details.startedWorkspace;
 				// Authenticate the plugin client which is used in the sidebar to display
 				// workspaces belonging to this deployment.
 				client.setHost(details.url);
@@ -462,27 +460,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		}
 	}
-
-	if (shouldShowSshOutput) {
-		showSshOutput();
-	}
 }
 
 async function showTreeViewSearch(id: string): Promise<void> {
 	await vscode.commands.executeCommand(`${id}.focus`);
 	await vscode.commands.executeCommand("list.find");
-}
-
-function showSshOutput(): void {
-	for (const command of [
-		"opensshremotes.showLog",
-		"windsurf-remote-openssh.showLog",
-	]) {
-		/**
-		 * We must not await this command because
-		 * 1) it may not exist
-		 * 2) it might cause the Remote SSH extension to be loaded synchronously
-		 */
-		void vscode.commands.executeCommand(command);
-	}
 }
