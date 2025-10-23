@@ -25,6 +25,7 @@ import { needToken } from "../api/utils";
 import {
 	startWorkspaceIfStoppedOrFailed,
 	waitForBuild,
+	writeAgentLogs,
 } from "../api/workspace";
 import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
@@ -51,7 +52,6 @@ import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 export interface RemoteDetails extends vscode.Disposable {
 	url: string;
 	token: string;
-	startedWorkspace: boolean;
 }
 
 export class Remote {
@@ -131,29 +131,18 @@ export class Remote {
 		const workspaceName = createWorkspaceIdentifier(workspace);
 
 		// A terminal will be used to stream the build, if one is necessary.
-		let writeEmitter: undefined | vscode.EventEmitter<string>;
-		let terminal: undefined | vscode.Terminal;
+		let writeEmitter: vscode.EventEmitter<string> | undefined;
+		let terminal: vscode.Terminal | undefined;
 		let attempts = 0;
 
-		function initWriteEmitterAndTerminal(): vscode.EventEmitter<string> {
-			writeEmitter ??= new vscode.EventEmitter<string>();
-			if (!terminal) {
-				terminal = vscode.window.createTerminal({
-					name: "Build Log",
-					location: vscode.TerminalLocation.Panel,
-					// Spin makes this gear icon spin!
-					iconPath: new vscode.ThemeIcon("gear~spin"),
-					pty: {
-						onDidWrite: writeEmitter.event,
-						close: () => undefined,
-						open: () => undefined,
-						// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					} as Partial<vscode.Pseudoterminal> as any,
-				});
-				terminal.show(true);
+		const initBuildLogTerminal = () => {
+			if (!writeEmitter) {
+				const init = this.initWriteEmitterAndTerminal("Build Log");
+				writeEmitter = init.writeEmitter;
+				terminal = init.terminal;
 			}
 			return writeEmitter;
-		}
+		};
 
 		try {
 			// Show a notification while we wait.
@@ -171,7 +160,7 @@ export class Remote {
 							case "pending":
 							case "starting":
 							case "stopping":
-								writeEmitter = initWriteEmitterAndTerminal();
+								writeEmitter = initBuildLogTerminal();
 								this.logger.info(`Waiting for ${workspaceName}...`);
 								workspace = await waitForBuild(client, writeEmitter, workspace);
 								break;
@@ -182,7 +171,7 @@ export class Remote {
 								) {
 									return undefined;
 								}
-								writeEmitter = initWriteEmitterAndTerminal();
+								writeEmitter = initBuildLogTerminal();
 								this.logger.info(`Starting ${workspaceName}...`);
 								workspace = await startWorkspaceIfStoppedOrFailed(
 									client,
@@ -203,7 +192,7 @@ export class Remote {
 									) {
 										return undefined;
 									}
-									writeEmitter = initWriteEmitterAndTerminal();
+									writeEmitter = initBuildLogTerminal();
 									this.logger.info(`Starting ${workspaceName}...`);
 									workspace = await startWorkspaceIfStoppedOrFailed(
 										client,
@@ -244,6 +233,27 @@ export class Remote {
 				terminal.dispose();
 			}
 		}
+	}
+
+	private initWriteEmitterAndTerminal(name: string): {
+		writeEmitter: vscode.EventEmitter<string>;
+		terminal: vscode.Terminal;
+	} {
+		const writeEmitter = new vscode.EventEmitter<string>();
+		const terminal = vscode.window.createTerminal({
+			name,
+			location: vscode.TerminalLocation.Panel,
+			// Spin makes this gear icon spin!
+			iconPath: new vscode.ThemeIcon("gear~spin"),
+			pty: {
+				onDidWrite: writeEmitter.event,
+				close: () => undefined,
+				open: () => undefined,
+			},
+		});
+		terminal.show(true);
+
+		return { writeEmitter, terminal };
 	}
 
 	/**
@@ -416,7 +426,6 @@ export class Remote {
 			}
 		}
 
-		let startedWorkspace = false;
 		const disposables: vscode.Disposable[] = [];
 		try {
 			// Register before connection so the label still displays!
@@ -444,7 +453,6 @@ export class Remote {
 					await this.closeRemote();
 					return;
 				}
-				startedWorkspace = true;
 				workspace = updatedWorkspace;
 			}
 			this.commands.workspace = workspace;
@@ -593,7 +601,6 @@ export class Remote {
 			}
 
 			// Make sure the agent is connected.
-			// TODO: Should account for the lifecycle state as well?
 			if (agent.status !== "connected") {
 				const result = await this.vscodeProposed.window.showErrorMessage(
 					`${workspaceName}/${agent.name} ${agent.status}`,
@@ -609,6 +616,41 @@ export class Remote {
 				}
 				await this.reloadWindow();
 				return;
+			}
+
+			if (agent.lifecycle_state === "starting") {
+				const isBlocking = agent.scripts.some(
+					(script) => script.start_blocks_login,
+				);
+				if (isBlocking) {
+					const { writeEmitter, terminal } =
+						this.initWriteEmitterAndTerminal("Agent Log");
+					const socket = await writeAgentLogs(
+						workspaceClient,
+						writeEmitter,
+						agent.id,
+					);
+					await new Promise<void>((resolve) => {
+						const updateEvent = monitor.onChange.event((workspace) => {
+							const agents = extractAgents(workspace.latest_build.resources);
+							const found = agents.find((newAgent) => {
+								return newAgent.id === agent.id;
+							});
+							if (!found) {
+								return;
+							}
+							agent = found;
+							if (agent.lifecycle_state === "starting") {
+								return;
+							}
+							updateEvent.dispose();
+							resolve();
+						});
+					});
+					writeEmitter.dispose();
+					terminal.dispose();
+					socket.close();
+				}
 			}
 
 			const logDir = this.getLogDir(featureSet);
@@ -684,7 +726,6 @@ export class Remote {
 		return {
 			url: baseUrlRaw,
 			token,
-			startedWorkspace,
 			dispose: () => {
 				disposables.forEach((d) => d.dispose());
 			},

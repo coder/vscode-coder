@@ -1,11 +1,15 @@
 import { spawn } from "child_process";
 import { type Api } from "coder/site/src/api/api";
-import { type Workspace } from "coder/site/src/api/typesGenerated";
+import {
+	type WorkspaceAgentLog,
+	type Workspace,
+} from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
 
 import { type FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
 import { escapeCommandArg } from "../util";
+import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
 
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
 import { type CoderApi } from "./coderApi";
@@ -79,6 +83,43 @@ export async function startWorkspaceIfStoppedOrFailed(
 			}
 		});
 	});
+}
+
+/**
+ * Wait for the latest build to finish while streaming logs to the emitter.
+ *
+ * Once completed, fetch the workspace again and return it.
+ */
+export async function writeAgentLogs(
+	client: CoderApi,
+	writeEmitter: vscode.EventEmitter<string>,
+	agentId: string,
+): Promise<OneWayWebSocket<WorkspaceAgentLog[]>> {
+	// This fetches the initial bunch of logs.
+	const logs = await client.getWorkspaceAgentLogs(agentId);
+	logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"));
+
+	const socket = await client.watchWorkspaceAgentLogs(agentId, logs);
+
+	socket.addEventListener("message", (data) => {
+		if (data.parseError) {
+			writeEmitter.fire(
+				errToStr(data.parseError, "Failed to parse message") + "\r\n",
+			);
+		} else {
+			data.parsedMessage.forEach((message) =>
+				writeEmitter.fire(message.output + "\r\n"),
+			);
+		}
+	});
+
+	socket.addEventListener("error", (error) => {
+		const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
+		throw new Error(
+			`Failed to watch workspace build on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
+		);
+	});
+	return socket;
 }
 
 /**
