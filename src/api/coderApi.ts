@@ -11,6 +11,7 @@ import {
 	type ProvisionerJobLog,
 	type Workspace,
 	type WorkspaceAgent,
+	type WorkspaceAgentLog,
 } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
 import { type ClientOptions, type CloseEvent, type ErrorEvent } from "ws";
@@ -109,18 +110,42 @@ export class CoderApi extends Api {
 		logs: ProvisionerJobLog[],
 		options?: ClientOptions,
 	) => {
+		return this.watchLogs<ProvisionerJobLog>(
+			`/api/v2/workspacebuilds/${buildId}/logs`,
+			logs,
+			options,
+		);
+	};
+
+	watchWorkspaceAgentLogs = async (
+		agentId: string,
+		logs: WorkspaceAgentLog[],
+		options?: ClientOptions,
+	) => {
+		return this.watchLogs<WorkspaceAgentLog[]>(
+			`/api/v2/workspaceagents/${agentId}/logs`,
+			logs,
+			options,
+		);
+	};
+
+	private async watchLogs<TData>(
+		apiRoute: string,
+		logs: { id: number }[],
+		options?: ClientOptions,
+	) {
 		const searchParams = new URLSearchParams({ follow: "true" });
 		const lastLog = logs.at(-1);
 		if (lastLog) {
 			searchParams.append("after", lastLog.id.toString());
 		}
 
-		return this.createWebSocket<ProvisionerJobLog>({
-			apiRoute: `/api/v2/workspacebuilds/${buildId}/logs`,
+		return this.createWebSocket<TData>({
+			apiRoute,
 			searchParams,
 			options,
 		});
-	};
+	}
 
 	private async createWebSocket<TData = unknown>(
 		configs: Omit<OneWayWebSocketInit, "location">,

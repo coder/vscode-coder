@@ -1,11 +1,16 @@
-import { spawn } from "child_process";
 import { type Api } from "coder/site/src/api/api";
-import { type Workspace } from "coder/site/src/api/typesGenerated";
+import {
+	type WorkspaceAgentLog,
+	type Workspace,
+	type WorkspaceAgent,
+} from "coder/site/src/api/typesGenerated";
+import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 
 import { type FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
 import { escapeCommandArg } from "../util";
+import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
 
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
 import { type CoderApi } from "./coderApi";
@@ -36,7 +41,7 @@ export async function startWorkspaceIfStoppedOrFailed(
 			createWorkspaceIdentifier(workspace),
 		];
 		if (featureSet.buildReason) {
-			startArgs.push(...["--reason", "vscode_connection"]);
+			startArgs.push("--reason", "vscode_connection");
 		}
 
 		// { shell: true } requires one shell-safe command string, otherwise we lose all escaping
@@ -44,27 +49,25 @@ export async function startWorkspaceIfStoppedOrFailed(
 		const startProcess = spawn(cmd, { shell: true });
 
 		startProcess.stdout.on("data", (data: Buffer) => {
-			data
+			const lines = data
 				.toString()
 				.split(/\r*\n/)
-				.forEach((line: string) => {
-					if (line !== "") {
-						writeEmitter.fire(line.toString() + "\r\n");
-					}
-				});
+				.filter((line) => line !== "");
+			for (const line of lines) {
+				writeEmitter.fire(line.toString() + "\r\n");
+			}
 		});
 
 		let capturedStderr = "";
 		startProcess.stderr.on("data", (data: Buffer) => {
-			data
+			const lines = data
 				.toString()
 				.split(/\r*\n/)
-				.forEach((line: string) => {
-					if (line !== "") {
-						writeEmitter.fire(line.toString() + "\r\n");
-						capturedStderr += line.toString() + "\n";
-					}
-				});
+				.filter((line) => line !== "");
+			for (const line of lines) {
+				writeEmitter.fire(line.toString() + "\r\n");
+				capturedStderr += line.toString() + "\n";
+			}
 		});
 
 		startProcess.on("close", (code: number) => {
@@ -93,7 +96,9 @@ export async function waitForBuild(
 ): Promise<Workspace> {
 	// This fetches the initial bunch of logs.
 	const logs = await client.getWorkspaceBuildLogs(workspace.latest_build.id);
-	logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"));
+	for (const log of logs) {
+		writeEmitter.fire(log.output + "\r\n");
+	}
 
 	const socket = await client.watchBuildLogsByBuildId(
 		workspace.latest_build.id,
@@ -129,4 +134,56 @@ export async function waitForBuild(
 		`Workspace is now ${updatedWorkspace.latest_build.status}\r\n`,
 	);
 	return updatedWorkspace;
+}
+
+/**
+ * Streams agent logs to the emitter in real-time.
+ * Fetches existing logs and subscribes to new logs via websocket.
+ * Returns the websocket and a completion promise that rejects on error.
+ */
+export async function streamAgentLogs(
+	client: CoderApi,
+	writeEmitter: vscode.EventEmitter<string>,
+	agent: WorkspaceAgent,
+): Promise<{
+	socket: OneWayWebSocket<WorkspaceAgentLog[]>;
+	completion: Promise<void>;
+}> {
+	// This fetches the initial bunch of logs.
+	const logs = await client.getWorkspaceAgentLogs(agent.id);
+	for (const log of logs) {
+		writeEmitter.fire(log.output + "\r\n");
+	}
+
+	const socket = await client.watchWorkspaceAgentLogs(agent.id, logs);
+
+	const completion = new Promise<void>((resolve, reject) => {
+		socket.addEventListener("message", (data) => {
+			if (data.parseError) {
+				writeEmitter.fire(
+					errToStr(data.parseError, "Failed to parse message") + "\r\n",
+				);
+			} else {
+				for (const log of data.parsedMessage) {
+					writeEmitter.fire(log.output + "\r\n");
+				}
+			}
+		});
+
+		socket.addEventListener("error", (error) => {
+			const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
+			writeEmitter.fire(
+				`Error watching agent logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}\r\n`,
+			);
+			return reject(
+				new Error(
+					`Failed to watch agent logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
+				),
+			);
+		});
+
+		socket.addEventListener("close", () => resolve());
+	});
+
+	return { socket, completion };
 }
