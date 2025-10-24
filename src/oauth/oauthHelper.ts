@@ -30,8 +30,28 @@ const CLIENT_NAME = "VS Code Coder Extension";
 
 const REQUIRED_GRANT_TYPES = [AUTH_GRANT_TYPE, REFRESH_GRANT_TYPE] as const;
 
-// Token refresh timing constants
-const TOKEN_REFRESH_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes before expiry
+// Token refresh timing constants (5 minutes before expiry)
+const TOKEN_REFRESH_THRESHOLD_MS = 5 * 60 * 1000;
+
+/**
+ * Minimal scopes required by the VS Code extension:
+ * - workspace:read: List and read workspace details
+ * - workspace:update: Update workspace version
+ * - workspace:start: Start stopped workspaces
+ * - workspace:ssh: SSH configuration for remote connections
+ * - workspace:application_connect: Connect to workspace agents/apps
+ * - template:read: Read templates and versions
+ * - user:read_personal: Read authenticated user info
+ */
+const DEFAULT_OAUTH_SCOPES = [
+	"workspace:read",
+	"workspace:update",
+	"workspace:start",
+	"workspace:ssh",
+	"workspace:application_connect",
+	"template:read",
+	"user:read_personal",
+].join(" ");
 
 export class CoderOAuthHelper {
 	private clientRegistration: ClientRegistrationResponse | undefined;
@@ -156,15 +176,62 @@ export class CoderOAuthHelper {
 	private async loadTokens(): Promise<void> {
 		const tokens = await this.secretsManager.getOAuthTokens();
 		if (tokens) {
+			if (!this.hasRequiredScopes(tokens.scope)) {
+				this.logger.warn(
+					"Stored token missing required scopes, clearing tokens",
+					{
+						stored_scope: tokens.scope,
+						required_scopes: DEFAULT_OAUTH_SCOPES,
+					},
+				);
+				await this.secretsManager.clearOAuthTokens();
+				return;
+			}
+
 			this.storedTokens = tokens;
 			this.logger.info("Loaded stored OAuth tokens", {
 				expires_at: new Date(tokens.expiry_timestamp).toISOString(),
+				scope: tokens.scope,
 			});
 
 			if (tokens.refresh_token) {
 				this.startRefreshTimer();
 			}
 		}
+	}
+
+	/**
+	 * Check if granted scopes cover all required scopes.
+	 * Supports wildcard scopes like "workspace:*" which grant all "workspace:" prefixed scopes.
+	 */
+	private hasRequiredScopes(grantedScope: string | undefined): boolean {
+		if (!grantedScope) {
+			return false;
+		}
+
+		const grantedScopes = new Set(grantedScope.split(" "));
+		const requiredScopes = DEFAULT_OAUTH_SCOPES.split(" ");
+
+		for (const required of requiredScopes) {
+			// Check exact match
+			if (grantedScopes.has(required)) {
+				continue;
+			}
+
+			// Check wildcard match (e.g., "workspace:*" grants "workspace:read")
+			const colonIndex = required.indexOf(":");
+			if (colonIndex !== -1) {
+				const prefix = required.substring(0, colonIndex);
+				const wildcard = `${prefix}:*`;
+				if (grantedScopes.has(wildcard)) {
+					continue;
+				}
+			}
+
+			return false;
+		}
+
+		return true;
 	}
 
 	private async saveClientRegistration(
@@ -231,16 +298,19 @@ export class CoderOAuthHelper {
 		clientId: string,
 		state: string,
 		challenge: string,
-		scope = "all",
+		scope: string,
 	): string {
-		if (
-			metadata.scopes_supported &&
-			!metadata.scopes_supported.includes(scope)
-		) {
-			this.logger.warn(
-				`Requested scope "${scope}" not in server's supported scopes. Server may still accept it.`,
-				{ supported_scopes: metadata.scopes_supported },
+		if (metadata.scopes_supported) {
+			const requestedScopes = scope.split(" ");
+			const unsupportedScopes = requestedScopes.filter(
+				(s) => !metadata.scopes_supported?.includes(s),
 			);
+			if (unsupportedScopes.length > 0) {
+				this.logger.warn(
+					`Requested scopes not in server's supported scopes: ${unsupportedScopes.join(", ")}. Server may still accept them.`,
+					{ supported_scopes: metadata.scopes_supported },
+				);
+			}
 		}
 
 		const params: AuthorizationRequestParams = {
@@ -264,9 +334,7 @@ export class CoderOAuthHelper {
 		return url;
 	}
 
-	async startAuthorization(
-		scope = "all",
-	): Promise<{ code: string; verifier: string }> {
+	async startAuthorization(): Promise<{ code: string; verifier: string }> {
 		const metadata = await this.getMetadata();
 		const clientId = await this.registerClient();
 		const state = generateState();
@@ -277,7 +345,7 @@ export class CoderOAuthHelper {
 			clientId,
 			state,
 			challenge,
-			scope,
+			DEFAULT_OAUTH_SCOPES,
 		);
 
 		return new Promise<{ code: string; verifier: string }>(
