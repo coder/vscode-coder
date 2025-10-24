@@ -19,6 +19,7 @@ import { type SecretsManager } from "./core/secretsManager";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
 import { type Logger } from "./logging/logger";
+import { type CoderOAuthHelper } from "./oauth/oauthHelper";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
@@ -49,6 +50,7 @@ export class Commands {
 	public constructor(
 		serviceContainer: ServiceContainer,
 		private readonly restClient: Api,
+		private readonly oauthHelper: CoderOAuthHelper,
 	) {
 		this.vscodeProposed = serviceContainer.getVsCodeProposed();
 		this.logger = serviceContainer.getLogger();
@@ -57,6 +59,137 @@ export class Commands {
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.cliManager = serviceContainer.getCliManager();
 		this.contextManager = serviceContainer.getContextManager();
+	}
+
+	/**
+	 * Check if server supports OAuth by attempting to fetch the well-known endpoint.
+	 */
+	private async checkOAuthSupport(client: CoderApi): Promise<boolean> {
+		try {
+			await client
+				.getAxiosInstance()
+				.get("/.well-known/oauth-authorization-server");
+			this.logger.debug("Server supports OAuth");
+			return true;
+		} catch (error) {
+			this.logger.debug("Server does not support OAuth:", error);
+			return false;
+		}
+	}
+
+	/**
+	 * Ask user to choose between OAuth and legacy API token authentication.
+	 */
+	private async askAuthMethod(): Promise<"oauth" | "legacy" | undefined> {
+		const choice = await vscode.window.showQuickPick(
+			[
+				{
+					label: "$(key) OAuth (Recommended)",
+					detail: "Secure authentication with automatic token refresh",
+					value: "oauth",
+				},
+				{
+					label: "$(lock) API Token",
+					detail: "Use a manually created API key",
+					value: "legacy",
+				},
+			],
+			{
+				title: "Choose Authentication Method",
+				placeHolder: "How would you like to authenticate?",
+				ignoreFocusOut: true,
+			},
+		);
+
+		return choice?.value as "oauth" | "legacy" | undefined;
+	}
+
+	/**
+	 * Authenticate using OAuth flow.
+	 * Returns the access token and authenticated user, or null if failed/cancelled.
+	 */
+	private async loginWithOAuth(
+		url: string,
+	): Promise<{ user: User; token: string } | null> {
+		try {
+			this.logger.info("Starting OAuth authentication");
+
+			// Start OAuth authorization flow
+			const { code, verifier } = await this.oauthHelper.startAuthorization(url);
+
+			// Exchange authorization code for tokens
+			const tokenResponse = await this.oauthHelper.exchangeToken(
+				code,
+				verifier,
+			);
+
+			// Validate token by fetching user
+			const client = CoderApi.create(
+				url,
+				tokenResponse.access_token,
+				this.logger,
+			);
+			const user = await client.getAuthenticatedUser();
+
+			this.logger.info("OAuth authentication successful");
+
+			return {
+				token: tokenResponse.access_token,
+				user,
+			};
+		} catch (error) {
+			this.logger.error("OAuth authentication failed:", error);
+			vscode.window.showErrorMessage(
+				`OAuth authentication failed: ${getErrorMessage(error, "Unknown error")}`,
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Complete the login process by storing credentials and updating context.
+	 */
+	private async completeLogin(
+		url: string,
+		label: string,
+		token: string,
+		user: User,
+	): Promise<void> {
+		// Authorize the global client
+		this.restClient.setHost(url);
+		this.restClient.setSessionToken(token);
+
+		// Store for later sessions
+		await this.mementoManager.setUrl(url);
+		await this.secretsManager.setSessionToken(token);
+
+		// Store on disk for CLI
+		await this.cliManager.configure(label, url, token);
+
+		// Update contexts
+		this.contextManager.set("coder.authenticated", true);
+		if (user.roles.find((role) => role.name === "owner")) {
+			this.contextManager.set("coder.isOwner", true);
+		}
+
+		vscode.window
+			.showInformationMessage(
+				`Welcome to Coder, ${user.username}!`,
+				{
+					detail:
+						"You can now use the Coder extension to manage your Coder instance.",
+				},
+				"Open Workspace",
+			)
+			.then((action) => {
+				if (action === "Open Workspace") {
+					vscode.commands.executeCommand("coder.open");
+				}
+			});
+
+		await this.secretsManager.triggerLoginStateChange("login");
+		// Fetch workspaces for the new deployment.
+		vscode.commands.executeCommand("coder.refreshWorkspaces");
 	}
 
 	/**
@@ -80,54 +213,50 @@ export class Commands {
 			return; // The user aborted.
 		}
 
-		// It is possible that we are trying to log into an old-style host, in which
-		// case we want to write with the provided blank label instead of generating
-		// a host label.
-		const label = args?.label === undefined ? toSafeHost(url) : args.label;
-
-		// Try to get a token from the user, if we need one, and their user.
+		const label = args?.label ?? toSafeHost(url);
 		const autoLogin = args?.autoLogin === true;
+
+		// Check if we have an existing valid legacy token
+		const existingToken = await this.secretsManager.getSessionToken();
+		const client = CoderApi.create(url, existingToken, this.logger);
+		if (existingToken && !args?.token) {
+			try {
+				const user = await client.getAuthenticatedUser();
+				this.logger.info("Using existing valid session token");
+				await this.completeLogin(url, label, existingToken, user);
+				return;
+			} catch {
+				this.logger.debug("Existing token invalid, clearing it");
+				await this.secretsManager.setSessionToken();
+			}
+		}
+
+		// Check if server supports OAuth
+		const supportsOAuth = await this.checkOAuthSupport(client);
+
+		if (supportsOAuth && !autoLogin) {
+			const choice = await this.askAuthMethod();
+			if (!choice) {
+				return;
+			}
+
+			if (choice === "oauth") {
+				const res = await this.loginWithOAuth(url);
+				if (!res) {
+					return;
+				}
+				await this.completeLogin(url, label, res.token, res.user);
+				return;
+			}
+		}
+
+		// Use legacy token flow (existing behavior)
 		const res = await this.maybeAskToken(url, args?.token, autoLogin);
 		if (!res) {
-			return; // The user aborted, or unable to auth.
+			return;
 		}
 
-		// The URL is good and the token is either good or not required; authorize
-		// the global client.
-		this.restClient.setHost(url);
-		this.restClient.setSessionToken(res.token);
-
-		// Store these to be used in later sessions.
-		await this.mementoManager.setUrl(url);
-		await this.secretsManager.setSessionToken(res.token);
-
-		// Store on disk to be used by the cli.
-		await this.cliManager.configure(label, url, res.token);
-
-		// These contexts control various menu items and the sidebar.
-		this.contextManager.set("coder.authenticated", true);
-		if (res.user.roles.find((role) => role.name === "owner")) {
-			this.contextManager.set("coder.isOwner", true);
-		}
-
-		vscode.window
-			.showInformationMessage(
-				`Welcome to Coder, ${res.user.username}!`,
-				{
-					detail:
-						"You can now use the Coder extension to manage your Coder instance.",
-				},
-				"Open Workspace",
-			)
-			.then((action) => {
-				if (action === "Open Workspace") {
-					vscode.commands.executeCommand("coder.open");
-				}
-			});
-
-		await this.secretsManager.triggerLoginStateChange("login");
-		// Fetch workspaces for the new deployment.
-		vscode.commands.executeCommand("coder.refreshWorkspaces");
+		await this.completeLogin(url, label, res.token, res.user);
 	}
 
 	/**
@@ -255,6 +384,22 @@ export class Commands {
 			// Sanity check; command should not be available if no url.
 			throw new Error("You are not logged in");
 		}
+
+		// Check if using OAuth
+		const hasOAuthTokens = await this.secretsManager.getOAuthTokens();
+		if (hasOAuthTokens) {
+			this.logger.info("Logging out via OAuth");
+			try {
+				await this.oauthHelper.logout();
+			} catch (error) {
+				this.logger.warn(
+					"OAuth logout failed, continuing with cleanup:",
+					error,
+				);
+			}
+		}
+
+		// Continue with standard logout (clears sessionToken, contexts, etc)
 		await this.forceLogout();
 	}
 
