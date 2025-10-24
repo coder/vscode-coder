@@ -1,7 +1,10 @@
 import * as vscode from "vscode";
 
 import { type CoderApi } from "../api/coderApi";
-import { type SecretsManager } from "../core/secretsManager";
+import {
+	type StoredOAuthTokens,
+	type SecretsManager,
+} from "../core/secretsManager";
 
 import { CALLBACK_PATH, generatePKCE, generateState } from "./utils";
 
@@ -12,8 +15,10 @@ import type {
 	ClientRegistrationRequest,
 	ClientRegistrationResponse,
 	OAuthServerMetadata,
+	RefreshTokenRequestParams,
 	TokenRequestParams,
 	TokenResponse,
+	TokenRevocationRequest,
 } from "./types";
 
 const AUTH_GRANT_TYPE = "authorization_code" as const;
@@ -25,6 +30,9 @@ const CLIENT_NAME = "VS Code Coder Extension";
 
 const REQUIRED_GRANT_TYPES = [AUTH_GRANT_TYPE, REFRESH_GRANT_TYPE] as const;
 
+// Token refresh timing constants
+const TOKEN_REFRESH_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes before expiry
+
 export class CoderOAuthHelper {
 	private clientRegistration: ClientRegistrationResponse | undefined;
 	private cachedMetadata: OAuthServerMetadata | undefined;
@@ -34,6 +42,8 @@ export class CoderOAuthHelper {
 	private pendingAuthReject: ((reason: Error) => void) | undefined;
 	private expectedState: string | undefined;
 	private pendingVerifier: string | undefined;
+	private storedTokens: StoredOAuthTokens | undefined;
+	private refreshTimer: NodeJS.Timeout | undefined;
 
 	private readonly extensionId: string;
 
@@ -50,6 +60,7 @@ export class CoderOAuthHelper {
 			context,
 		);
 		await helper.loadClientRegistration();
+		await helper.loadTokens();
 		return helper;
 	}
 	private constructor(
@@ -120,10 +131,11 @@ export class CoderOAuthHelper {
 		}
 
 		this.cachedMetadata = metadata;
-		this.logger.info("OAuth endpoints discovered:", {
+		this.logger.debug("OAuth endpoints discovered:", {
 			authorization: metadata.authorization_endpoint,
 			token: metadata.token_endpoint,
 			registration: metadata.registration_endpoint,
+			revocation: metadata.revocation_endpoint,
 		});
 
 		return metadata;
@@ -138,6 +150,20 @@ export class CoderOAuthHelper {
 		if (registration) {
 			this.clientRegistration = registration;
 			this.logger.info("Loaded existing OAuth client:", registration.client_id);
+		}
+	}
+
+	private async loadTokens(): Promise<void> {
+		const tokens = await this.secretsManager.getOAuthTokens();
+		if (tokens) {
+			this.storedTokens = tokens;
+			this.logger.info("Loaded stored OAuth tokens", {
+				expires_at: new Date(tokens.expiry_timestamp).toISOString(),
+			});
+
+			if (tokens.refresh_token) {
+				this.startRefreshTimer();
+			}
 		}
 	}
 
@@ -178,9 +204,10 @@ export class CoderOAuthHelper {
 			);
 		}
 
+		// "web" type since VS Code Secrets API allows secure client_secret storage (confidential client).
 		const registrationRequest: ClientRegistrationRequest = {
 			redirect_uris: [redirectUri],
-			application_type: "native",
+			application_type: "web",
 			grant_types: [AUTH_GRANT_TYPE],
 			response_types: [RESPONSE_TYPE],
 			client_name: CLIENT_NAME,
@@ -228,10 +255,11 @@ export class CoderOAuthHelper {
 
 		const url = `${metadata.authorization_endpoint}?${new URLSearchParams(params as unknown as Record<string, string>).toString()}`;
 
-		this.logger.info("OAuth Authorization URL:", url);
-		this.logger.info("Client ID:", clientId);
-		this.logger.info("Redirect URI:", this.getRedirectUri());
-		this.logger.info("Scope:", scope);
+		this.logger.debug("Building OAuth authorization URL:", {
+			client_id: clientId,
+			redirect_uri: this.getRedirectUri(),
+			scope,
+		});
 
 		return url;
 	}
@@ -366,24 +394,233 @@ export class CoderOAuthHelper {
 			params.client_secret = this.clientRegistration.client_secret;
 		}
 
-		const tokenRequest = new URLSearchParams(
-			params as unknown as Record<string, string>,
-		);
+		const tokenRequest = toUrlSearchParams(params);
 
 		const response = await this.client
 			.getAxiosInstance()
-			.post<TokenResponse>(metadata.token_endpoint, tokenRequest.toString(), {
+			.post<TokenResponse>(metadata.token_endpoint, tokenRequest, {
 				headers: {
 					"Content-Type": "application/x-www-form-urlencoded",
 				},
 			});
 
 		this.logger.info("Token exchange successful");
+
+		await this.saveTokens(response.data);
+
 		return response.data;
 	}
 
 	getClientId(): string | undefined {
 		return this.clientRegistration?.client_id;
+	}
+
+	/**
+	 * Refresh the access token using the stored refresh token.
+	 */
+	private async refreshToken(): Promise<TokenResponse> {
+		if (!this.storedTokens?.refresh_token) {
+			throw new Error("No refresh token available");
+		}
+
+		if (!this.clientRegistration) {
+			throw new Error("No client registration found");
+		}
+
+		const metadata = await this.getMetadata();
+
+		this.logger.debug("Refreshing access token");
+
+		const params: RefreshTokenRequestParams = {
+			grant_type: REFRESH_GRANT_TYPE,
+			refresh_token: this.storedTokens.refresh_token,
+			client_id: this.clientRegistration.client_id,
+		};
+
+		if (this.clientRegistration.client_secret) {
+			params.client_secret = this.clientRegistration.client_secret;
+		}
+
+		const tokenRequest = toUrlSearchParams(params);
+
+		const response = await this.client
+			.getAxiosInstance()
+			.post<TokenResponse>(metadata.token_endpoint, tokenRequest, {
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded",
+				},
+			});
+
+		this.logger.debug("Token refresh successful");
+
+		await this.saveTokens(response.data);
+
+		return response.data;
+	}
+
+	/**
+	 * Save token response to secrets storage and restart the refresh timer.
+	 */
+	private async saveTokens(tokenResponse: TokenResponse): Promise<void> {
+		const expiryTimestamp = tokenResponse.expires_in
+			? Date.now() + tokenResponse.expires_in * 1000
+			: Date.now() + 3600 * 1000; // Default to 1 hour if not specified
+
+		const tokens: StoredOAuthTokens = {
+			...tokenResponse,
+			expiry_timestamp: expiryTimestamp,
+		};
+
+		this.storedTokens = tokens;
+		await this.secretsManager.setOAuthTokens(tokens);
+
+		this.logger.info("Tokens saved", {
+			expires_at: new Date(expiryTimestamp).toISOString(),
+		});
+
+		// Restart timer with new expiry (creates self-perpetuating refresh cycle)
+		this.startRefreshTimer();
+	}
+
+	/**
+	 * Start the background token refresh timer.
+	 * Sets a timeout to fire exactly when the token is 5 minutes from expiry.
+	 */
+	private startRefreshTimer(): void {
+		this.stopRefreshTimer();
+
+		if (!this.storedTokens?.refresh_token) {
+			this.logger.debug("No refresh token available, skipping timer setup");
+			return;
+		}
+
+		const now = Date.now();
+		const timeUntilRefresh =
+			this.storedTokens.expiry_timestamp - TOKEN_REFRESH_THRESHOLD_MS - now;
+
+		// If token is already expired or expires very soon, refresh immediately
+		if (timeUntilRefresh <= 0) {
+			this.logger.info("Token needs immediate refresh");
+			this.refreshToken().catch((error) => {
+				this.logger.error("Immediate token refresh failed:", error);
+			});
+			return;
+		}
+
+		// Set timeout to fire exactly when token is 5 minutes from expiry
+		this.refreshTimer = setTimeout(() => {
+			this.logger.debug("Token refresh timer fired, refreshing token...");
+			this.refreshToken().catch((error) => {
+				this.logger.error("Scheduled token refresh failed:", error);
+			});
+		}, timeUntilRefresh);
+
+		this.logger.debug("Token refresh timer scheduled", {
+			fires_at: new Date(now + timeUntilRefresh).toISOString(),
+			fires_in: timeUntilRefresh / 1000,
+		});
+	}
+
+	/**
+	 * Stop the background token refresh timer.
+	 */
+	private stopRefreshTimer(): void {
+		if (this.refreshTimer) {
+			clearTimeout(this.refreshTimer);
+			this.refreshTimer = undefined;
+			this.logger.debug("Background token refresh timer stopped");
+		}
+	}
+
+	/**
+	 * Revoke a token using the OAuth server's revocation endpoint.
+	 */
+	private async revokeToken(
+		token: string,
+		tokenTypeHint?: "access_token" | "refresh_token",
+	): Promise<void> {
+		if (!this.clientRegistration) {
+			throw new Error("No client registration found");
+		}
+
+		const metadata = await this.getMetadata();
+
+		if (!metadata.revocation_endpoint) {
+			this.logger.warn(
+				"Server does not support token revocation (no revocation_endpoint)",
+			);
+			return;
+		}
+
+		this.logger.info("Revoking token", { tokenTypeHint });
+
+		const params: TokenRevocationRequest = {
+			token,
+			client_id: this.clientRegistration.client_id,
+		};
+
+		if (tokenTypeHint) {
+			params.token_type_hint = tokenTypeHint;
+		}
+
+		if (this.clientRegistration.client_secret) {
+			params.client_secret = this.clientRegistration.client_secret;
+		}
+
+		const revocationRequest = toUrlSearchParams(params);
+
+		try {
+			await this.client
+				.getAxiosInstance()
+				.post(metadata.revocation_endpoint, revocationRequest, {
+					headers: {
+						"Content-Type": "application/x-www-form-urlencoded",
+					},
+				});
+
+			this.logger.info("Token revocation successful");
+		} catch (error) {
+			this.logger.error("Token revocation failed:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Logout by revoking tokens and clearing all OAuth data.
+	 */
+	async logout(): Promise<void> {
+		this.stopRefreshTimer();
+
+		// Revoke refresh token (which also invalidates access token per RFC 7009)
+		if (this.storedTokens?.refresh_token) {
+			try {
+				await this.revokeToken(
+					this.storedTokens.refresh_token,
+					"refresh_token",
+				);
+			} catch (error) {
+				this.logger.warn("Token revocation failed during logout:", error);
+			}
+		}
+
+		// Clear stored tokens
+		await this.secretsManager.clearOAuthTokens();
+		this.storedTokens = undefined;
+
+		// Clear client registration
+		await this.clearClientRegistration();
+
+		// Trigger logout state change for other windows
+		// await this.secretsManager.triggerLoginStateChange("logout");
+
+		this.logger.info("Logout complete");
+	}
+
+	/**
+	 * Cleanup method to be called when disposing the helper.
+	 */
+	dispose(): void {
+		this.stopRefreshTimer();
 	}
 }
 
@@ -397,6 +634,20 @@ function includesAllTypes(
 	}
 
 	return requiredTypes.every((type) => arr.includes(type));
+}
+
+/**
+ * Converts an object with string properties to Record<string, string>,
+ * filtering out undefined values for use with URLSearchParams.
+ */
+function toUrlSearchParams(obj: object): URLSearchParams {
+	const params = Object.fromEntries(
+		Object.entries(obj).filter(
+			([, value]) => value !== undefined && typeof value === "string",
+		),
+	) as Record<string, string>;
+
+	return new URLSearchParams(params);
 }
 
 /**
@@ -417,31 +668,38 @@ export async function activateCoderOAuth(
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("coder.oauth.testAuth", async () => {
+		vscode.commands.registerCommand("coder.oauth.login", async () => {
 			try {
 				const { code, verifier } = await oauthHelper.startAuthorization();
-				logger.info(
-					"Authorization code received:",
-					code.substring(0, 8) + "...",
-				);
 
 				const tokenResponse = await oauthHelper.exchangeToken(code, verifier);
 
-				vscode.window.showInformationMessage(
-					`OAuth flow completed! Access token received (expires in ${tokenResponse.expires_in}s)`,
-				);
 				logger.info("OAuth flow completed:", {
 					token_type: tokenResponse.token_type,
 					expires_in: tokenResponse.expires_in,
 					scope: tokenResponse.scope,
 				});
 
+				vscode.window.showInformationMessage(
+					`OAuth flow completed! Access token received (expires in ${tokenResponse.expires_in}s)`,
+				);
+
+				// Test API call to verify token works
 				client.setSessionToken(tokenResponse.access_token);
-				const response = await client.getWorkspaces({ q: "owner:me" });
-				logger.info(response.workspaces.map((w) => w.name).toString());
+				await client.getWorkspaces({ q: "owner:me" });
 			} catch (error) {
 				vscode.window.showErrorMessage(`OAuth flow failed: ${error}`);
 				logger.error("OAuth flow failed:", error);
+			}
+		}),
+		vscode.commands.registerCommand("coder.oauth.logout", async () => {
+			try {
+				await oauthHelper.logout();
+				vscode.window.showInformationMessage("Successfully logged out");
+				logger.info("User logged out via OAuth");
+			} catch (error) {
+				vscode.window.showErrorMessage(`Logout failed: ${error}`);
+				logger.error("OAuth logout failed:", error);
 			}
 		}),
 	);
