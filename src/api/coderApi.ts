@@ -110,17 +110,11 @@ export class CoderApi extends Api {
 		logs: ProvisionerJobLog[],
 		options?: ClientOptions,
 	) => {
-		const searchParams = new URLSearchParams({ follow: "true" });
-		const lastLog = logs.at(-1);
-		if (lastLog) {
-			searchParams.append("after", lastLog.id.toString());
-		}
-
-		return this.createWebSocket<ProvisionerJobLog>({
-			apiRoute: `/api/v2/workspacebuilds/${buildId}/logs`,
-			searchParams,
+		return this.watchLogs<ProvisionerJobLog>(
+			`/api/v2/workspacebuilds/${buildId}/logs`,
+			logs,
 			options,
-		});
+		);
 	};
 
 	watchWorkspaceAgentLogs = async (
@@ -128,18 +122,30 @@ export class CoderApi extends Api {
 		logs: WorkspaceAgentLog[],
 		options?: ClientOptions,
 	) => {
+		return this.watchLogs<WorkspaceAgentLog[]>(
+			`/api/v2/workspaceagents/${agentId}/logs`,
+			logs,
+			options,
+		);
+	};
+
+	private async watchLogs<TData>(
+		apiRoute: string,
+		logs: { id: number }[],
+		options?: ClientOptions,
+	) {
 		const searchParams = new URLSearchParams({ follow: "true" });
 		const lastLog = logs.at(-1);
 		if (lastLog) {
 			searchParams.append("after", lastLog.id.toString());
 		}
 
-		return this.createWebSocket<WorkspaceAgentLog[]>({
-			apiRoute: `/api/v2/workspaceagents/${agentId}/logs`,
+		return this.createWebSocket<TData>({
+			apiRoute,
 			searchParams,
 			options,
 		});
-	};
+	}
 
 	private async createWebSocket<TData = unknown>(
 		configs: Omit<OneWayWebSocketInit, "location">,
