@@ -1,4 +1,7 @@
-import { type ClientRegistrationResponse } from "../oauth/types";
+import {
+	type TokenResponse,
+	type ClientRegistrationResponse,
+} from "../oauth/types";
 
 import type { SecretStorage, Disposable } from "vscode";
 
@@ -7,6 +10,12 @@ const SESSION_TOKEN_KEY = "sessionToken";
 const LOGIN_STATE_KEY = "loginState";
 
 const OAUTH_CLIENT_REGISTRATION_KEY = "oauthClientRegistration";
+
+const OAUTH_TOKENS_KEY = "oauthTokens";
+
+export type StoredOAuthTokens = Omit<TokenResponse, "expires_in"> & {
+	expiry_timestamp: number;
+};
 
 export enum AuthAction {
 	LOGIN,
@@ -108,5 +117,40 @@ export class SecretsManager {
 			// Do nothing
 		}
 		return undefined;
+	}
+
+	/**
+	 * Store OAuth token data including expiry timestamp.
+	 */
+	public async setOAuthTokens(
+		tokens: StoredOAuthTokens | undefined,
+	): Promise<void> {
+		if (tokens) {
+			await this.secrets.store(OAUTH_TOKENS_KEY, JSON.stringify(tokens));
+		} else {
+			await this.secrets.delete(OAUTH_TOKENS_KEY);
+		}
+	}
+
+	/**
+	 * Get stored OAuth token data.
+	 */
+	public async getOAuthTokens(): Promise<StoredOAuthTokens | undefined> {
+		try {
+			const stringifiedTokens = await this.secrets.get(OAUTH_TOKENS_KEY);
+			if (stringifiedTokens) {
+				return JSON.parse(stringifiedTokens) as StoredOAuthTokens;
+			}
+		} catch {
+			// Do nothing
+		}
+		return undefined;
+	}
+
+	/**
+	 * Clear OAuth token data.
+	 */
+	public async clearOAuthTokens(): Promise<void> {
+		await this.secrets.delete(OAUTH_TOKENS_KEY);
 	}
 }
