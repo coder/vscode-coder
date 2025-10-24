@@ -119,10 +119,33 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	);
 
 	const oauthHelper = await activateCoderOAuth(
-		client,
+		url || "",
 		secretsManager,
 		output,
 		ctx,
+	);
+	ctx.subscriptions.push(oauthHelper);
+
+	// Listen for session token changes and sync state across all components
+	ctx.subscriptions.push(
+		secretsManager.onDidChangeSessionToken(async (token) => {
+			if (!token) {
+				output.debug("Session token cleared");
+				client.setSessionToken("");
+				return;
+			}
+
+			output.debug("Session token changed, syncing state");
+
+			client.setSessionToken(token);
+			const url = mementoManager.getUrl();
+			if (url) {
+				const cliManager = serviceContainer.getCliManager();
+				// TODO label might not match?
+				await cliManager.configure(toSafeHost(url), url, token);
+				output.debug("Updated CLI config with new token");
+			}
+		}),
 	);
 
 	// Handle vscode:// URIs.
@@ -290,7 +313,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(serviceContainer, client);
+	const commands = new Commands(serviceContainer, client, oauthHelper);
 	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.login",

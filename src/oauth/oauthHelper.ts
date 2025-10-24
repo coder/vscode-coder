@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { type CoderApi } from "../api/coderApi";
+import { CoderApi } from "../api/coderApi";
 import {
 	type StoredOAuthTokens,
 	type SecretsManager,
@@ -53,7 +53,9 @@ const DEFAULT_OAUTH_SCOPES = [
 	"user:read_personal",
 ].join(" ");
 
-export class CoderOAuthHelper {
+export class CoderOAuthHelper implements vscode.Disposable {
+	private readonly client: CoderApi;
+
 	private clientRegistration: ClientRegistrationResponse | undefined;
 	private cachedMetadata: OAuthServerMetadata | undefined;
 	private pendingAuthResolve:
@@ -68,13 +70,13 @@ export class CoderOAuthHelper {
 	private readonly extensionId: string;
 
 	static async create(
-		client: CoderApi,
+		baseUrl: string,
 		secretsManager: SecretsManager,
 		logger: Logger,
 		context: vscode.ExtensionContext,
 	): Promise<CoderOAuthHelper> {
 		const helper = new CoderOAuthHelper(
-			client,
+			baseUrl,
 			secretsManager,
 			logger,
 			context,
@@ -84,11 +86,12 @@ export class CoderOAuthHelper {
 		return helper;
 	}
 	private constructor(
-		private readonly client: CoderApi,
+		baseUrl: string,
 		private readonly secretsManager: SecretsManager,
 		private readonly logger: Logger,
 		context: vscode.ExtensionContext,
 	) {
+		this.client = CoderApi.create(baseUrl, undefined, logger);
 		this.extensionId = context.extension.id;
 	}
 
@@ -193,6 +196,7 @@ export class CoderOAuthHelper {
 				expires_at: new Date(tokens.expiry_timestamp).toISOString(),
 				scope: tokens.scope,
 			});
+			this.client.setSessionToken(tokens.access_token);
 
 			if (tokens.refresh_token) {
 				this.startRefreshTimer();
@@ -334,7 +338,11 @@ export class CoderOAuthHelper {
 		return url;
 	}
 
-	async startAuthorization(): Promise<{ code: string; verifier: string }> {
+	async startAuthorization(
+		url: string,
+	): Promise<{ code: string; verifier: string }> {
+		this.client.setHost(url);
+
 		const metadata = await this.getMetadata();
 		const clientId = await this.registerClient();
 		const state = generateState();
@@ -541,6 +549,8 @@ export class CoderOAuthHelper {
 
 		this.storedTokens = tokens;
 		await this.secretsManager.setOAuthTokens(tokens);
+		await this.secretsManager.setSessionToken(tokenResponse.access_token);
+		this.client.setSessionToken(tokens.access_token);
 
 		this.logger.info("Tokens saved", {
 			expires_at: new Date(expiryTimestamp).toISOString(),
@@ -552,7 +562,7 @@ export class CoderOAuthHelper {
 
 	/**
 	 * Start the background token refresh timer.
-	 * Sets a timeout to fire exactly when the token is 5 minutes from expiry.
+	 * Sets a timeout to fire when the token is close to expiry.
 	 */
 	private startRefreshTimer(): void {
 		this.stopRefreshTimer();
@@ -671,24 +681,29 @@ export class CoderOAuthHelper {
 			}
 		}
 
-		// Clear stored tokens
 		await this.secretsManager.clearOAuthTokens();
 		this.storedTokens = undefined;
-
-		// Clear client registration
 		await this.clearClientRegistration();
 
-		// Trigger logout state change for other windows
-		// await this.secretsManager.triggerLoginStateChange("logout");
-
-		this.logger.info("Logout complete");
+		this.logger.info("OAuth logout complete");
 	}
 
 	/**
-	 * Cleanup method to be called when disposing the helper.
+	 * Clears all in-memory state and rejects any pending operations.
 	 */
 	dispose(): void {
 		this.stopRefreshTimer();
+
+		if (this.pendingAuthReject) {
+			this.pendingAuthReject(new Error("OAuth helper disposed"));
+		}
+		this.clearPendingAuth();
+
+		this.storedTokens = undefined;
+		this.clientRegistration = undefined;
+		this.cachedMetadata = undefined;
+
+		this.logger.debug("OAuth helper disposed, all state cleared");
 	}
 }
 
@@ -720,57 +735,13 @@ function toUrlSearchParams(obj: object): URLSearchParams {
 
 /**
  * Activates OAuth support for the Coder extension.
- * Initializes the OAuth helper and registers the test auth command.
+ * Initializes and returns the OAuth helper.
  */
 export async function activateCoderOAuth(
-	client: CoderApi,
+	baseUrl: string,
 	secretsManager: SecretsManager,
 	logger: Logger,
 	context: vscode.ExtensionContext,
 ): Promise<CoderOAuthHelper> {
-	const oauthHelper = await CoderOAuthHelper.create(
-		client,
-		secretsManager,
-		logger,
-		context,
-	);
-
-	context.subscriptions.push(
-		vscode.commands.registerCommand("coder.oauth.login", async () => {
-			try {
-				const { code, verifier } = await oauthHelper.startAuthorization();
-
-				const tokenResponse = await oauthHelper.exchangeToken(code, verifier);
-
-				logger.info("OAuth flow completed:", {
-					token_type: tokenResponse.token_type,
-					expires_in: tokenResponse.expires_in,
-					scope: tokenResponse.scope,
-				});
-
-				vscode.window.showInformationMessage(
-					`OAuth flow completed! Access token received (expires in ${tokenResponse.expires_in}s)`,
-				);
-
-				// Test API call to verify token works
-				client.setSessionToken(tokenResponse.access_token);
-				await client.getWorkspaces({ q: "owner:me" });
-			} catch (error) {
-				vscode.window.showErrorMessage(`OAuth flow failed: ${error}`);
-				logger.error("OAuth flow failed:", error);
-			}
-		}),
-		vscode.commands.registerCommand("coder.oauth.logout", async () => {
-			try {
-				await oauthHelper.logout();
-				vscode.window.showInformationMessage("Successfully logged out");
-				logger.info("User logged out via OAuth");
-			} catch (error) {
-				vscode.window.showErrorMessage(`Logout failed: ${error}`);
-				logger.error("OAuth logout failed:", error);
-			}
-		}),
-	);
-
-	return oauthHelper;
+	return CoderOAuthHelper.create(baseUrl, secretsManager, logger, context);
 }

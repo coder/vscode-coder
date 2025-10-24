@@ -255,16 +255,6 @@
 				"title": "Search",
 				"category": "Coder",
 				"icon": "$(search)"
-			},
-			{
-				"command": "coder.oauth.login",
-				"title": "OAuth Login",
-				"category": "Coder"
-			},
-			{
-				"command": "coder.oauth.logout",
-				"title": "OAuth Logout",
-				"category": "Coder"
 			}
 		],
 		"menus": {

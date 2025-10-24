@@ -85,6 +85,20 @@ export class SecretsManager {
 	}
 
 	/**
+	 * Listens for session token changes.
+	 */
+	public onDidChangeSessionToken(
+		listener: (token: string | undefined) => Promise<void>,
+	): Disposable {
+		return this.secrets.onDidChange(async (e) => {
+			if (e.key === SESSION_TOKEN_KEY) {
+				const token = await this.getSessionToken();
+				await listener(token);
+			}
+		});
+	}
+
+	/**
 	 * Store OAuth client registration data.
 	 */
 	public async setOAuthClientRegistration(
