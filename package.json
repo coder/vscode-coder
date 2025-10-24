@@ -257,8 +257,13 @@
 				"icon": "$(search)"
 			},
 			{
-				"command": "coder.oauth.testAuth",
-				"title": "Test OAuth Auth",
+				"command": "coder.oauth.login",
+				"title": "OAuth Login",
+				"category": "Coder"
+			},
+			{
+				"command": "coder.oauth.logout",
+				"title": "OAuth Logout",
 				"category": "Coder"
 			}
 		],
