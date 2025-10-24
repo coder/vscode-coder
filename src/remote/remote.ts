@@ -1,14 +1,15 @@
 import { isAxiosError } from "axios";
 import { type Api } from "coder/site/src/api/api";
 import {
+	type WorkspaceAgentLog,
 	type Workspace,
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 import find from "find-process";
-import * as fs from "fs/promises";
 import * as jsonc from "jsonc-parser";
-import * as os from "os";
-import * as path from "path";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
@@ -24,8 +25,8 @@ import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import {
 	startWorkspaceIfStoppedOrFailed,
+	streamAgentLogs,
 	waitForBuild,
-	writeAgentLogs,
 } from "../api/workspace";
 import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
@@ -44,10 +45,12 @@ import {
 	findPort,
 	parseRemoteAuthority,
 } from "../util";
+import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 import { SSHConfig, type SSHValues, mergeSSHConfigValues } from "./sshConfig";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
+import { TerminalSession } from "./terminalSession";
 
 export interface RemoteDetails extends vscode.Disposable {
 	url: string;
@@ -131,17 +134,12 @@ export class Remote {
 		const workspaceName = createWorkspaceIdentifier(workspace);
 
 		// A terminal will be used to stream the build, if one is necessary.
-		let writeEmitter: vscode.EventEmitter<string> | undefined;
-		let terminal: vscode.Terminal | undefined;
+		let terminalSession: TerminalSession | undefined;
 		let attempts = 0;
 
-		const initBuildLogTerminal = () => {
-			if (!writeEmitter) {
-				const init = this.initWriteEmitterAndTerminal("Build Log");
-				writeEmitter = init.writeEmitter;
-				terminal = init.terminal;
-			}
-			return writeEmitter;
+		const getOrCreateTerminal = () => {
+			terminalSession ??= new TerminalSession("Build Log");
+			return terminalSession.writeEmitter;
 		};
 
 		try {
@@ -160,9 +158,12 @@ export class Remote {
 							case "pending":
 							case "starting":
 							case "stopping":
-								writeEmitter = initBuildLogTerminal();
 								this.logger.info(`Waiting for ${workspaceName}...`);
-								workspace = await waitForBuild(client, writeEmitter, workspace);
+								workspace = await waitForBuild(
+									client,
+									getOrCreateTerminal(),
+									workspace,
+								);
 								break;
 							case "stopped":
 								if (
@@ -171,14 +172,13 @@ export class Remote {
 								) {
 									return undefined;
 								}
-								writeEmitter = initBuildLogTerminal();
 								this.logger.info(`Starting ${workspaceName}...`);
 								workspace = await startWorkspaceIfStoppedOrFailed(
 									client,
 									globalConfigDir,
 									binPath,
 									workspace,
-									writeEmitter,
+									getOrCreateTerminal(),
 									featureSet,
 								);
 								break;
@@ -192,14 +192,13 @@ export class Remote {
 									) {
 										return undefined;
 									}
-									writeEmitter = initBuildLogTerminal();
 									this.logger.info(`Starting ${workspaceName}...`);
 									workspace = await startWorkspaceIfStoppedOrFailed(
 										client,
 										globalConfigDir,
 										binPath,
 										workspace,
-										writeEmitter,
+										getOrCreateTerminal(),
 										featureSet,
 									);
 									break;
@@ -226,34 +225,8 @@ export class Remote {
 				},
 			);
 		} finally {
-			if (writeEmitter) {
-				writeEmitter.dispose();
-			}
-			if (terminal) {
-				terminal.dispose();
-			}
+			terminalSession?.dispose();
 		}
-	}
-
-	private initWriteEmitterAndTerminal(name: string): {
-		writeEmitter: vscode.EventEmitter<string>;
-		terminal: vscode.Terminal;
-	} {
-		const writeEmitter = new vscode.EventEmitter<string>();
-		const terminal = vscode.window.createTerminal({
-			name,
-			location: vscode.TerminalLocation.Panel,
-			// Spin makes this gear icon spin!
-			iconPath: new vscode.ThemeIcon("gear~spin"),
-			pty: {
-				onDidWrite: writeEmitter.event,
-				close: () => undefined,
-				open: () => undefined,
-			},
-		});
-		terminal.show(true);
-
-		return { writeEmitter, terminal };
 	}
 
 	/**
@@ -569,34 +542,25 @@ export class Remote {
 			// Wait for the agent to connect.
 			if (agent.status === "connecting") {
 				this.logger.info(`Waiting for ${workspaceName}/${agent.name}...`);
-				await vscode.window.withProgress(
+				const updatedAgent = await this.waitForAgentWithProgress(
+					monitor,
+					agent,
 					{
-						title: "Waiting for the agent to connect...",
-						location: vscode.ProgressLocation.Notification,
+						progressTitle: "Waiting for the agent to connect...",
+						timeoutMs: 3 * 60 * 1000,
+						errorDialogTitle: `Failed to wait for ${agent.name} connection`,
 					},
-					async () => {
-						await new Promise<void>((resolve) => {
-							const updateEvent = monitor.onChange.event((workspace) => {
-								if (!agent) {
-									return;
-								}
-								const agents = extractAgents(workspace.latest_build.resources);
-								const found = agents.find((newAgent) => {
-									return newAgent.id === agent.id;
-								});
-								if (!found) {
-									return;
-								}
-								agent = found;
-								if (agent.status === "connecting") {
-									return;
-								}
-								updateEvent.dispose();
-								resolve();
-							});
-						});
+					(foundAgent) => {
+						if (foundAgent.status !== "connecting") {
+							return foundAgent;
+						}
+						return undefined;
 					},
 				);
+				if (!updatedAgent) {
+					return;
+				}
+				agent = updatedAgent;
 				this.logger.info(`Agent ${agent.name} status is now`, agent.status);
 			}
 
@@ -623,33 +587,56 @@ export class Remote {
 					(script) => script.start_blocks_login,
 				);
 				if (isBlocking) {
-					const { writeEmitter, terminal } =
-						this.initWriteEmitterAndTerminal("Agent Log");
-					const socket = await writeAgentLogs(
-						workspaceClient,
-						writeEmitter,
-						agent.id,
+					this.logger.info(
+						`Waiting for ${workspaceName}/${agent.name} startup...`,
 					);
-					await new Promise<void>((resolve) => {
-						const updateEvent = monitor.onChange.event((workspace) => {
-							const agents = extractAgents(workspace.latest_build.resources);
-							const found = agents.find((newAgent) => {
-								return newAgent.id === agent.id;
-							});
-							if (!found) {
-								return;
-							}
-							agent = found;
-							if (agent.lifecycle_state === "starting") {
-								return;
-							}
-							updateEvent.dispose();
-							resolve();
-						});
-					});
-					writeEmitter.dispose();
-					terminal.dispose();
-					socket.close();
+
+					let terminalSession: TerminalSession | undefined;
+					let socket: OneWayWebSocket<WorkspaceAgentLog[]> | undefined;
+					try {
+						terminalSession = new TerminalSession("Agent Log");
+						const { socket: agentSocket, completion: logsCompletion } =
+							await streamAgentLogs(
+								workspaceClient,
+								terminalSession.writeEmitter,
+								agent,
+							);
+						socket = agentSocket;
+
+						const agentStatePromise = this.waitForAgentWithProgress(
+							monitor,
+							agent,
+							{
+								progressTitle: "Waiting for agent startup scripts...",
+								timeoutMs: 5 * 60 * 1000,
+								errorDialogTitle: `Failed to wait for ${agent.name} startup`,
+							},
+							(foundAgent) => {
+								if (foundAgent.lifecycle_state !== "starting") {
+									return foundAgent;
+								}
+								return undefined;
+							},
+						);
+
+						// Race between logs completion (which fails on socket error) and agent state change
+						const updatedAgent = await Promise.race([
+							agentStatePromise,
+							logsCompletion.then(() => agentStatePromise),
+						]);
+
+						if (!updatedAgent) {
+							return;
+						}
+						agent = updatedAgent;
+						this.logger.info(
+							`Agent ${agent.name} lifecycle state is now`,
+							agent.lifecycle_state,
+						);
+					} finally {
+						terminalSession?.dispose();
+						socket?.close();
+					}
 				}
 			}
 
@@ -776,6 +763,95 @@ export class Remote {
 		await fs.mkdir(logDir, { recursive: true });
 		this.logger.info("SSH proxy diagnostics are being written to", logDir);
 		return ` --log-dir ${escapeCommandArg(logDir)} -v`;
+	}
+
+	/**
+	 * Waits for an agent condition with progress notification and error handling.
+	 * Returns the updated agent or undefined if the user chooses to close remote.
+	 */
+	private async waitForAgentWithProgress(
+		monitor: WorkspaceMonitor,
+		agent: WorkspaceAgent,
+		options: {
+			progressTitle: string;
+			timeoutMs: number;
+			errorDialogTitle: string;
+		},
+		checker: (agent: WorkspaceAgent) => WorkspaceAgent | undefined,
+	): Promise<WorkspaceAgent | undefined> {
+		try {
+			const foundAgent = await vscode.window.withProgress(
+				{
+					title: options.progressTitle,
+					location: vscode.ProgressLocation.Notification,
+				},
+				async () =>
+					this.waitForAgentCondition(
+						monitor,
+						agent,
+						checker,
+						options.timeoutMs,
+						`Timeout: ${options.errorDialogTitle}`,
+					),
+			);
+			return foundAgent;
+		} catch (error) {
+			this.logger.error(options.errorDialogTitle, error);
+			const result = await this.vscodeProposed.window.showErrorMessage(
+				options.errorDialogTitle,
+				{
+					useCustom: true,
+					modal: true,
+					detail: error instanceof Error ? error.message : String(error),
+				},
+				"Close Remote",
+			);
+			if (result === "Close Remote") {
+				await this.closeRemote();
+			}
+			return undefined;
+		}
+	}
+
+	/**
+	 * Waits for an agent condition to be met by monitoring workspace changes.
+	 * Returns the result when the condition is met or throws an error on timeout.
+	 */
+	private async waitForAgentCondition<T>(
+		monitor: WorkspaceMonitor,
+		agent: WorkspaceAgent,
+		checker: (agent: WorkspaceAgent) => T | undefined,
+		timeoutMs: number,
+		timeoutMessage: string,
+	): Promise<T> {
+		return new Promise<T>((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				updateEvent.dispose();
+				reject(new Error(timeoutMessage));
+			}, timeoutMs);
+
+			const updateEvent = monitor.onChange.event((workspace) => {
+				try {
+					const agents = extractAgents(workspace.latest_build.resources);
+					const foundAgent = agents.find((a) => a.id === agent.id);
+					if (!foundAgent) {
+						throw new Error(
+							`Agent ${agent.name} not found in workspace resources`,
+						);
+					}
+					const result = checker(foundAgent);
+					if (result !== undefined) {
+						clearTimeout(timeout);
+						updateEvent.dispose();
+						resolve(result);
+					}
+				} catch (error) {
+					clearTimeout(timeout);
+					updateEvent.dispose();
+					reject(error);
+				}
+			});
+		});
 	}
 
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles
