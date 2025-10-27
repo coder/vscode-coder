@@ -26,3 +26,17 @@ export function generatePKCE(): PKCEChallenge {
 export function generateState(): string {
 	return randomBytes(16).toString("base64url");
 }
+
+/**
+ * Converts an object with string properties to URLSearchParams,
+ * filtering out undefined values for use with OAuth requests.
+ */
+export function toUrlSearchParams(obj: object): URLSearchParams {
+	const params = Object.fromEntries(
+		Object.entries(obj).filter(
+			([, value]) => value !== undefined && typeof value === "string",
+		),
+	) as Record<string, string>;
+
+	return new URLSearchParams(params);
+}
