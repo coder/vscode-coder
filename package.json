@@ -355,7 +355,7 @@
 		"semver": "^7.7.3",
 		"ua-parser-js": "1.0.40",
 		"ws": "^8.18.3",
-		"zod": "^3.25.65"
+		"zod": "^4.1.12"
 	},
 	"devDependencies": {
 		"@types/eventsource": "^3.0.0",
