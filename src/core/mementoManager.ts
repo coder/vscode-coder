@@ -13,7 +13,7 @@ export class MementoManager {
 	 * If the URL is falsey, then remove it as the last used URL and do not touch
 	 * the history.
 	 */
-	public async setUrl(url?: string): Promise<void> {
+	public async setUrl(url: string | undefined): Promise<void> {
 		await this.memento.update("url", url);
 		if (url) {
 			const history = this.withUrlHistory(url);
