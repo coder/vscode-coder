@@ -19,7 +19,8 @@ import { type SecretsManager } from "./core/secretsManager";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
 import { type Logger } from "./logging/logger";
-import { type CoderOAuthHelper } from "./oauth/oauthHelper";
+import { OAuthMetadataClient } from "./oauth/metadataClient";
+import { type OAuthSessionManager } from "./oauth/sessionManager";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
@@ -27,6 +28,8 @@ import {
 	type OpenableTreeItem,
 	WorkspaceTreeItem,
 } from "./workspace/workspacesProvider";
+
+type AuthMethod = "oauth" | "legacy";
 
 export class Commands {
 	private readonly vscodeProposed: typeof vscode;
@@ -50,7 +53,7 @@ export class Commands {
 	public constructor(
 		serviceContainer: ServiceContainer,
 		private readonly restClient: Api,
-		private readonly oauthHelper: CoderOAuthHelper,
+		private readonly oauthSessionManager: OAuthSessionManager,
 	) {
 		this.vscodeProposed = serviceContainer.getVsCodeProposed();
 		this.logger = serviceContainer.getLogger();
@@ -59,137 +62,6 @@ export class Commands {
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.cliManager = serviceContainer.getCliManager();
 		this.contextManager = serviceContainer.getContextManager();
-	}
-
-	/**
-	 * Check if server supports OAuth by attempting to fetch the well-known endpoint.
-	 */
-	private async checkOAuthSupport(client: CoderApi): Promise<boolean> {
-		try {
-			await client
-				.getAxiosInstance()
-				.get("/.well-known/oauth-authorization-server");
-			this.logger.debug("Server supports OAuth");
-			return true;
-		} catch (error) {
-			this.logger.debug("Server does not support OAuth:", error);
-			return false;
-		}
-	}
-
-	/**
-	 * Ask user to choose between OAuth and legacy API token authentication.
-	 */
-	private async askAuthMethod(): Promise<"oauth" | "legacy" | undefined> {
-		const choice = await vscode.window.showQuickPick(
-			[
-				{
-					label: "$(key) OAuth (Recommended)",
-					detail: "Secure authentication with automatic token refresh",
-					value: "oauth",
-				},
-				{
-					label: "$(lock) API Token",
-					detail: "Use a manually created API key",
-					value: "legacy",
-				},
-			],
-			{
-				title: "Choose Authentication Method",
-				placeHolder: "How would you like to authenticate?",
-				ignoreFocusOut: true,
-			},
-		);
-
-		return choice?.value as "oauth" | "legacy" | undefined;
-	}
-
-	/**
-	 * Authenticate using OAuth flow.
-	 * Returns the access token and authenticated user, or null if failed/cancelled.
-	 */
-	private async loginWithOAuth(
-		url: string,
-	): Promise<{ user: User; token: string } | null> {
-		try {
-			this.logger.info("Starting OAuth authentication");
-
-			// Start OAuth authorization flow
-			const { code, verifier } = await this.oauthHelper.startAuthorization(url);
-
-			// Exchange authorization code for tokens
-			const tokenResponse = await this.oauthHelper.exchangeToken(
-				code,
-				verifier,
-			);
-
-			// Validate token by fetching user
-			const client = CoderApi.create(
-				url,
-				tokenResponse.access_token,
-				this.logger,
-			);
-			const user = await client.getAuthenticatedUser();
-
-			this.logger.info("OAuth authentication successful");
-
-			return {
-				token: tokenResponse.access_token,
-				user,
-			};
-		} catch (error) {
-			this.logger.error("OAuth authentication failed:", error);
-			vscode.window.showErrorMessage(
-				`OAuth authentication failed: ${getErrorMessage(error, "Unknown error")}`,
-			);
-			return null;
-		}
-	}
-
-	/**
-	 * Complete the login process by storing credentials and updating context.
-	 */
-	private async completeLogin(
-		url: string,
-		label: string,
-		token: string,
-		user: User,
-	): Promise<void> {
-		// Authorize the global client
-		this.restClient.setHost(url);
-		this.restClient.setSessionToken(token);
-
-		// Store for later sessions
-		await this.mementoManager.setUrl(url);
-		await this.secretsManager.setSessionToken(token);
-
-		// Store on disk for CLI
-		await this.cliManager.configure(label, url, token);
-
-		// Update contexts
-		this.contextManager.set("coder.authenticated", true);
-		if (user.roles.find((role) => role.name === "owner")) {
-			this.contextManager.set("coder.isOwner", true);
-		}
-
-		vscode.window
-			.showInformationMessage(
-				`Welcome to Coder, ${user.username}!`,
-				{
-					detail:
-						"You can now use the Coder extension to manage your Coder instance.",
-				},
-				"Open Workspace",
-			)
-			.then((action) => {
-				if (action === "Open Workspace") {
-					vscode.commands.executeCommand("coder.open");
-				}
-			});
-
-		await this.secretsManager.triggerLoginStateChange("login");
-		// Fetch workspaces for the new deployment.
-		vscode.commands.executeCommand("coder.refreshWorkspaces");
 	}
 
 	/**
@@ -213,50 +85,54 @@ export class Commands {
 			return; // The user aborted.
 		}
 
+		// It is possible that we are trying to log into an old-style host, in which
+		// case we want to write with the provided blank label instead of generating
+		// a host label.
 		const label = args?.label ?? toSafeHost(url);
+		// Try to get a token from the user, if we need one, and their user.
 		const autoLogin = args?.autoLogin === true;
 
-		// Check if we have an existing valid legacy token
-		const existingToken = await this.secretsManager.getSessionToken();
-		const client = CoderApi.create(url, existingToken, this.logger);
-		if (existingToken && !args?.token) {
-			try {
-				const user = await client.getAuthenticatedUser();
-				this.logger.info("Using existing valid session token");
-				await this.completeLogin(url, label, existingToken, user);
-				return;
-			} catch {
-				this.logger.debug("Existing token invalid, clearing it");
-				await this.secretsManager.setSessionToken();
-			}
-		}
-
-		// Check if server supports OAuth
-		const supportsOAuth = await this.checkOAuthSupport(client);
-
-		if (supportsOAuth && !autoLogin) {
-			const choice = await this.askAuthMethod();
-			if (!choice) {
-				return;
-			}
-
-			if (choice === "oauth") {
-				const res = await this.loginWithOAuth(url);
-				if (!res) {
-					return;
-				}
-				await this.completeLogin(url, label, res.token, res.user);
-				return;
-			}
-		}
-
-		// Use legacy token flow (existing behavior)
 		const res = await this.maybeAskToken(url, args?.token, autoLogin);
 		if (!res) {
-			return;
+			return; // The user aborted, or unable to auth.
 		}
 
-		await this.completeLogin(url, label, res.token, res.user);
+		// The URL is good and the token is either good or not required; authorize
+		// the global client.
+		this.restClient.setHost(url);
+		this.restClient.setSessionToken(res.token);
+
+		// Store these to be used in later sessions.
+		await this.mementoManager.setUrl(url);
+		await this.secretsManager.setSessionToken(res.token);
+
+		// Store on disk to be used by the cli.
+		await this.cliManager.configure(label, url, res.token);
+
+		// These contexts control various menu items and the sidebar.
+		this.contextManager.set("coder.authenticated", true);
+		if (res.user.roles.some((role) => role.name === "owner")) {
+			this.contextManager.set("coder.isOwner", true);
+		}
+
+		vscode.window
+			.showInformationMessage(
+				`Welcome to Coder, ${res.user.username}!`,
+				{
+					detail:
+						"You can now use the Coder extension to manage your Coder instance.",
+				},
+				"Open Workspace",
+			)
+			.then((action) => {
+				if (action === "Open Workspace") {
+					vscode.commands.executeCommand("coder.open");
+				}
+			});
+
+		await this.secretsManager.triggerLoginStateChange("login");
+		// Fetch workspaces for the new deployment.
+		vscode.commands.executeCommand("coder.refreshWorkspaces");
 	}
 
 	/**
@@ -298,6 +174,64 @@ export class Commands {
 			}
 		}
 
+		// Check if server supports OAuth
+		const supportsOAuth = await this.checkOAuthSupport(client);
+
+		let choice: AuthMethod | undefined = "legacy";
+		if (supportsOAuth) {
+			choice = await this.askAuthMethod();
+		}
+
+		if (choice === "oauth") {
+			return this.loginWithOAuth(url, client);
+		} else if (choice === "legacy") {
+			return this.loginWithToken(url, token, client);
+		}
+
+		// User aborted.
+		return null;
+	}
+
+	private async checkOAuthSupport(client: CoderApi): Promise<boolean> {
+		const metadataClient = new OAuthMetadataClient(
+			client.getAxiosInstance(),
+			this.logger,
+		);
+		return metadataClient.checkOAuthSupport();
+	}
+
+	/**
+	 * Ask user to choose between OAuth and legacy API token authentication.
+	 */
+	private async askAuthMethod(): Promise<AuthMethod | undefined> {
+		const choice = await vscode.window.showQuickPick(
+			[
+				{
+					label: "$(key) OAuth (Recommended)",
+					detail: "Secure authentication with automatic token refresh",
+					value: "oauth" as const,
+				},
+				{
+					label: "$(lock) API Token",
+					detail: "Use a manually created API key",
+					value: "legacy" as const,
+				},
+			],
+			{
+				title: "Choose Authentication Method",
+				placeHolder: "How would you like to authenticate?",
+				ignoreFocusOut: true,
+			},
+		);
+
+		return choice?.value;
+	}
+
+	private async loginWithToken(
+		url: string,
+		token: string | undefined,
+		client: CoderApi,
+	): Promise<{ user: User; token: string } | null> {
 		// This prompt is for convenience; do not error if they close it since
 		// they may already have a token or already have the page opened.
 		await vscode.env.openExternal(vscode.Uri.parse(`${url}/cli-auth`));
@@ -342,12 +276,52 @@ export class Commands {
 			},
 		});
 
-		if (validatedToken && user) {
-			return { token: validatedToken, user };
+		if (user === undefined || validatedToken === undefined) {
+			return null;
 		}
 
-		// User aborted.
-		return null;
+		return { user, token: validatedToken };
+	}
+
+	/**
+	 * Authenticate using OAuth flow.
+	 * Returns the access token and authenticated user, or null if failed/cancelled.
+	 */
+	private async loginWithOAuth(
+		url: string,
+		client: CoderApi,
+	): Promise<{ user: User; token: string } | null> {
+		try {
+			this.logger.info("Starting OAuth authentication");
+
+			// Start OAuth authorization flow
+			// TODO just pass the client here and do all the neccessary steps (If we are already logged in we'd have the right token and the OAuth client registration saved).
+			const { code, verifier } =
+				await this.oauthSessionManager.startAuthorization(url);
+
+			// Exchange authorization code for tokens
+			const tokenResponse = await this.oauthSessionManager.exchangeToken(
+				code,
+				verifier,
+			);
+
+			// Validate token by fetching user
+			client.setSessionToken(tokenResponse.access_token);
+			const user = await client.getAuthenticatedUser();
+
+			this.logger.info("OAuth authentication successful");
+
+			return {
+				token: tokenResponse.access_token,
+				user,
+			};
+		} catch (error) {
+			this.logger.error("OAuth authentication failed:", error);
+			vscode.window.showErrorMessage(
+				`OAuth authentication failed: ${getErrorMessage(error, "Unknown error")}`,
+			);
+			return null;
+		}
 	}
 
 	/**
@@ -390,7 +364,7 @@ export class Commands {
 		if (hasOAuthTokens) {
 			this.logger.info("Logging out via OAuth");
 			try {
-				await this.oauthHelper.logout();
+				await this.oauthSessionManager.logout();
 			} catch (error) {
 				this.logger.warn(
 					"OAuth logout failed, continuing with cleanup:",
@@ -524,7 +498,7 @@ export class Commands {
 					true,
 				);
 			} else {
-				throw new Error("Unable to open unknown sidebar item");
+				throw new TypeError("Unable to open unknown sidebar item");
 			}
 		} else {
 			// If there is no tree item, then the user manually ran this command.
@@ -570,7 +544,7 @@ export class Commands {
 						configDir,
 					);
 					terminal.sendText(
-						`${escapeCommandArg(binary)}${` ${globalFlags.join(" ")}`} ssh ${app.workspace_name}`,
+						`${escapeCommandArg(binary)} ${globalFlags.join(" ")} ssh ${app.workspace_name}`,
 					);
 					await new Promise((resolve) => setTimeout(resolve, 5000));
 					terminal.sendText(app.command ?? "");
@@ -669,7 +643,7 @@ export class Commands {
 			workspaceAgent,
 		);
 
-		const hostPath = localWorkspaceFolder ? localWorkspaceFolder : undefined;
+		const hostPath = localWorkspaceFolder || undefined;
 		const configFile =
 			hostPath && localConfigFile
 				? {
@@ -770,7 +744,6 @@ export class Commands {
 					if (ex instanceof CertificateError) {
 						ex.showNotification();
 					}
-					return;
 				});
 		});
 		quickPick.show();

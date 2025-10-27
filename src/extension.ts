@@ -13,7 +13,7 @@ import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { AuthAction } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
-import { activateCoderOAuth } from "./oauth/oauthHelper";
+import { OAuthSessionManager } from "./oauth/sessionManager";
 import { CALLBACK_PATH } from "./oauth/utils";
 import { maybeAskUrl } from "./promptUtils";
 import { Remote } from "./remote/remote";
@@ -118,13 +118,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		ctx.subscriptions,
 	);
 
-	const oauthHelper = await activateCoderOAuth(
+	const oauthSessionManager = await OAuthSessionManager.create(
 		url || "",
 		secretsManager,
 		output,
 		ctx,
 	);
-	ctx.subscriptions.push(oauthHelper);
+	ctx.subscriptions.push(oauthSessionManager);
 
 	// Listen for session token changes and sync state across all components
 	ctx.subscriptions.push(
@@ -157,7 +157,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const code = params.get("code");
 				const state = params.get("state");
 				const error = params.get("error");
-				oauthHelper.handleCallback(code, state, error);
+				oauthSessionManager.handleCallback(code, state, error);
 				return;
 			}
 
@@ -313,7 +313,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(serviceContainer, client, oauthHelper);
+	const commands = new Commands(serviceContainer, client, oauthSessionManager);
 	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.login",
