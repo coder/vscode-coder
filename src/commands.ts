@@ -183,13 +183,14 @@ export class Commands {
 		}
 
 		if (choice === "oauth") {
-			return this.loginWithOAuth(url, client);
+			return this.loginWithOAuth(client);
 		} else if (choice === "legacy") {
-			return this.loginWithToken(url, token, client);
+			const initialToken =
+				token || (await this.secretsManager.getSessionToken());
+			return this.loginWithToken(client, initialToken);
 		}
 
-		// User aborted.
-		return null;
+		return null; // User aborted.
 	}
 
 	private async checkOAuthSupport(client: CoderApi): Promise<boolean> {
@@ -228,10 +229,13 @@ export class Commands {
 	}
 
 	private async loginWithToken(
-		url: string,
-		token: string | undefined,
 		client: CoderApi,
+		initialToken: string | undefined,
 	): Promise<{ user: User; token: string } | null> {
+		const url = client.getAxiosInstance().defaults.baseURL;
+		if (!url) {
+			throw new Error("No base URL set on REST client");
+		}
 		// This prompt is for convenience; do not error if they close it since
 		// they may already have a token or already have the page opened.
 		await vscode.env.openExternal(vscode.Uri.parse(`${url}/cli-auth`));
@@ -244,7 +248,7 @@ export class Commands {
 			title: "Coder API Key",
 			password: true,
 			placeHolder: "Paste your API key.",
-			value: token || (await this.secretsManager.getSessionToken()),
+			value: initialToken,
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
 				if (!value) {
@@ -288,28 +292,16 @@ export class Commands {
 	 * Returns the access token and authenticated user, or null if failed/cancelled.
 	 */
 	private async loginWithOAuth(
-		url: string,
 		client: CoderApi,
 	): Promise<{ user: User; token: string } | null> {
 		try {
 			this.logger.info("Starting OAuth authentication");
 
-			// Start OAuth authorization flow
-			// TODO just pass the client here and do all the neccessary steps (If we are already logged in we'd have the right token and the OAuth client registration saved).
-			const { code, verifier } =
-				await this.oauthSessionManager.startAuthorization(url);
-
-			// Exchange authorization code for tokens
-			const tokenResponse = await this.oauthSessionManager.exchangeToken(
-				code,
-				verifier,
-			);
+			const tokenResponse = await this.oauthSessionManager.login(client);
 
 			// Validate token by fetching user
 			client.setSessionToken(tokenResponse.access_token);
 			const user = await client.getAuthenticatedUser();
-
-			this.logger.info("OAuth authentication successful");
 
 			return {
 				token: tokenResponse.access_token,
@@ -359,9 +351,19 @@ export class Commands {
 			throw new Error("You are not logged in");
 		}
 
+		await this.forceLogout();
+	}
+
+	public async forceLogout(): Promise<void> {
+		if (!this.contextManager.get("coder.authenticated")) {
+			return;
+		}
+		this.logger.info("Logging out");
+
 		// Check if using OAuth
-		const hasOAuthTokens = await this.secretsManager.getOAuthTokens();
-		if (hasOAuthTokens) {
+		const isOAuthLoggedIn =
+			await this.oauthSessionManager.isLoggedInWithOAuth();
+		if (isOAuthLoggedIn) {
 			this.logger.info("Logging out via OAuth");
 			try {
 				await this.oauthSessionManager.logout();
@@ -373,15 +375,6 @@ export class Commands {
 			}
 		}
 
-		// Continue with standard logout (clears sessionToken, contexts, etc)
-		await this.forceLogout();
-	}
-
-	public async forceLogout(): Promise<void> {
-		if (!this.contextManager.get("coder.authenticated")) {
-			return;
-		}
-		this.logger.info("Logging out");
 		// Clear from the REST client.  An empty url will indicate to other parts of
 		// the code that we are logged out.
 		this.restClient.setHost("");
