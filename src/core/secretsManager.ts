@@ -15,6 +15,7 @@ const OAUTH_TOKENS_KEY = "oauthTokens";
 
 export type StoredOAuthTokens = Omit<TokenResponse, "expires_in"> & {
 	expiry_timestamp: number;
+	deployment_url: string;
 };
 
 export enum AuthAction {
@@ -29,7 +30,9 @@ export class SecretsManager {
 	/**
 	 * Set or unset the last used token.
 	 */
-	public async setSessionToken(sessionToken?: string): Promise<void> {
+	public async setSessionToken(
+		sessionToken: string | undefined,
+	): Promise<void> {
 		if (sessionToken) {
 			await this.secrets.store(SESSION_TOKEN_KEY, sessionToken);
 		} else {
@@ -159,12 +162,5 @@ export class SecretsManager {
 			// Do nothing
 		}
 		return undefined;
-	}
-
-	/**
-	 * Clear OAuth token data.
-	 */
-	public async clearOAuthTokens(): Promise<void> {
-		await this.secrets.delete(OAUTH_TOKENS_KEY);
 	}
 }
