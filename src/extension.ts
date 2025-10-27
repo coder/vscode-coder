@@ -129,19 +129,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Listen for session token changes and sync state across all components
 	ctx.subscriptions.push(
 		secretsManager.onDidChangeSessionToken(async (token) => {
+			client.setSessionToken(token ?? "");
 			if (!token) {
 				output.debug("Session token cleared");
-				client.setSessionToken("");
 				return;
 			}
 
 			output.debug("Session token changed, syncing state");
 
-			client.setSessionToken(token);
 			const url = mementoManager.getUrl();
 			if (url) {
 				const cliManager = serviceContainer.getCliManager();
-				// TODO label might not match?
+				// TODO label might not match the one in remote?
 				await cliManager.configure(toSafeHost(url), url, token);
 				output.debug("Updated CLI config with new token");
 			}

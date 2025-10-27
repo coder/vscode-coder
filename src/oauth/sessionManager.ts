@@ -1,7 +1,8 @@
-import axios, { type AxiosInstance } from "axios";
+import { type AxiosInstance } from "axios";
 import * as vscode from "vscode";
 
-import { OAuthClientRegistry } from "./clientRegistry";
+import { CoderApi } from "../api/coderApi";
+
 import { OAuthMetadataClient } from "./metadataClient";
 import { OAuthTokenRefreshScheduler } from "./tokenRefreshScheduler";
 import {
@@ -15,6 +16,8 @@ import type { SecretsManager, StoredOAuthTokens } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
 
 import type {
+	ClientRegistrationRequest,
+	ClientRegistrationResponse,
 	OAuthServerMetadata,
 	RefreshTokenRequestParams,
 	TokenRequestParams,
@@ -48,10 +51,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private readonly extensionId: string;
 	private readonly refreshScheduler: OAuthTokenRefreshScheduler;
 
-	private metadataClient: OAuthMetadataClient;
-	private clientRegistry: OAuthClientRegistry;
-
-	private metadata: OAuthServerMetadata | undefined;
 	private storedTokens: StoredOAuthTokens | undefined;
 
 	// Pending authorization flow state
@@ -77,7 +76,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 			logger,
 			context,
 		);
-		await manager.initialize();
+		await manager.loadTokens();
 		return manager;
 	}
 
@@ -88,35 +87,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 		context: vscode.ExtensionContext,
 	) {
 		this.extensionId = context.extension.id;
-
-		const axiosInstance = this.createAxiosInstance();
-
-		this.metadataClient = new OAuthMetadataClient(axiosInstance, logger);
-		this.clientRegistry = new OAuthClientRegistry(
-			axiosInstance,
-			secretsManager,
-			logger,
-		);
 		this.refreshScheduler = new OAuthTokenRefreshScheduler(async () => {
 			await this.refreshToken();
 		}, logger);
-	}
-
-	/**
-	 * Create axios instance for the current deployment URL.
-	 */
-	private createAxiosInstance(): AxiosInstance {
-		return axios.create({
-			baseURL: this.deploymentUrl,
-		});
-	}
-
-	/**
-	 * Initialize the session manager by loading persisted state.
-	 */
-	private async initialize(): Promise<void> {
-		await this.clientRegistry.load();
-		await this.loadTokens();
 	}
 
 	/**
@@ -129,19 +102,15 @@ export class OAuthSessionManager implements vscode.Disposable {
 			return;
 		}
 
-		// Validate URL match (only if we have a deploymentUrl set)
-		if (
-			this.deploymentUrl &&
-			tokens.deployment_url &&
-			tokens.deployment_url !== this.deploymentUrl
-		) {
+		if (this.deploymentUrl && tokens.deployment_url !== this.deploymentUrl) {
 			this.logger.warn("Stored tokens for different deployment, clearing", {
 				stored: tokens.deployment_url,
 				current: this.deploymentUrl,
 			});
-			await this.clearStaleData();
+			await this.clearTokenState();
 			return;
 		}
+		this.deploymentUrl = tokens.deployment_url;
 
 		if (!this.hasRequiredScopes(tokens.scope)) {
 			this.logger.warn(
@@ -156,11 +125,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		}
 
 		this.storedTokens = tokens;
-		this.logger.info("Loaded stored OAuth tokens", {
-			expires_at: new Date(tokens.expiry_timestamp).toISOString(),
-			scope: tokens.scope,
-			deployment: tokens.deployment_url,
-		});
+		this.logger.info(`Loaded stored OAuth tokens for ${tokens.deployment_url}`);
 
 		if (tokens.refresh_token) {
 			this.refreshScheduler.schedule(tokens);
@@ -170,21 +135,11 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Clear stale data when tokens don't match current deployment.
 	 */
-	private async clearStaleData(): Promise<void> {
+	private async clearTokenState(): Promise<void> {
 		this.refreshScheduler.stop();
-		await this.secretsManager.setOAuthTokens(undefined);
-		await this.clientRegistry.clear();
-	}
-
-	/**
-	 * Clear all state when switching to a new deployment URL.
-	 */
-	private async clearForNewUrl(): Promise<void> {
-		this.refreshScheduler.stop();
-		this.metadata = undefined;
 		this.storedTokens = undefined;
 		await this.secretsManager.setOAuthTokens(undefined);
-		await this.clientRegistry.clear();
+		await this.secretsManager.setOAuthClientRegistration(undefined);
 	}
 
 	/**
@@ -193,7 +148,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 */
 	private hasRequiredScopes(grantedScope: string | undefined): boolean {
 		if (!grantedScope) {
-			return false;
+			// TODO server always returns empty scopes
+			return true;
 		}
 
 		const grantedScopes = new Set(grantedScope.split(" "));
@@ -228,11 +184,126 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Get OAuth server metadata, fetching if not already cached.
+	 * Prepare common OAuth operation setup: CoderApi, metadata, and registration.
+	 * Used by refresh and revoke operations to reduce duplication.
 	 */
-	private async getMetadata(): Promise<OAuthServerMetadata> {
-		this.metadata ??= await this.metadataClient.getMetadata();
-		return this.metadata;
+	private async prepareOAuthOperation(
+		deploymentUrl: string,
+		token?: string,
+	): Promise<{
+		axiosInstance: AxiosInstance;
+		metadata: OAuthServerMetadata;
+		registration: ClientRegistrationResponse;
+	}> {
+		const client = CoderApi.create(deploymentUrl, token, this.logger);
+		const axiosInstance = client.getAxiosInstance();
+
+		const metadataClient = new OAuthMetadataClient(axiosInstance, this.logger);
+		const metadata = await metadataClient.getMetadata();
+
+		const registration = await this.secretsManager.getOAuthClientRegistration();
+		if (!registration) {
+			throw new Error("No client registration found");
+		}
+
+		return { axiosInstance, metadata, registration };
+	}
+
+	/**
+	 * Register OAuth client or return existing if still valid.
+	 * Re-registers if redirect URI has changed.
+	 */
+	private async registerClient(
+		axiosInstance: AxiosInstance,
+		metadata: OAuthServerMetadata,
+	): Promise<ClientRegistrationResponse> {
+		const redirectUri = this.getRedirectUri();
+
+		const existing = await this.secretsManager.getOAuthClientRegistration();
+		if (existing?.client_id) {
+			if (existing.redirect_uris.includes(redirectUri)) {
+				this.logger.info(
+					"Using existing client registration:",
+					existing.client_id,
+				);
+				return existing;
+			}
+			this.logger.info("Redirect URI changed, re-registering client");
+		}
+
+		if (!metadata.registration_endpoint) {
+			throw new Error("Server does not support dynamic client registration");
+		}
+
+		const registrationRequest: ClientRegistrationRequest = {
+			redirect_uris: [redirectUri],
+			application_type: "web",
+			grant_types: ["authorization_code"],
+			response_types: ["code"],
+			client_name: "VS Code Coder Extension",
+			token_endpoint_auth_method: "client_secret_post",
+		};
+
+		const response = await axiosInstance.post<ClientRegistrationResponse>(
+			metadata.registration_endpoint,
+			registrationRequest,
+		);
+
+		await this.secretsManager.setOAuthClientRegistration(response.data);
+		this.logger.info(
+			"Saved OAuth client registration:",
+			response.data.client_id,
+		);
+
+		return response.data;
+	}
+
+	/**
+	 * Simplified OAuth login flow that handles the entire process.
+	 * Fetches metadata, registers client, starts authorization, and exchanges tokens.
+	 *
+	 * @param client CoderApi instance for the deployment to authenticate against
+	 * @returns TokenResponse containing access token and optional refresh token
+	 */
+	async login(client: CoderApi): Promise<TokenResponse> {
+		const baseUrl = client.getAxiosInstance().defaults.baseURL;
+		if (!baseUrl) {
+			throw new Error("CoderApi instance has no base URL set");
+		}
+		if (this.deploymentUrl !== baseUrl) {
+			this.logger.info("Deployment URL changed, clearing cached state", {
+				old: this.deploymentUrl,
+				new: baseUrl,
+			});
+			await this.clearTokenState();
+			this.deploymentUrl = baseUrl;
+		}
+
+		this.logger.info("Starting OAuth login flow");
+
+		const axiosInstance = client.getAxiosInstance();
+		const metadataClient = new OAuthMetadataClient(axiosInstance, this.logger);
+		const metadata = await metadataClient.getMetadata();
+
+		// Only register the client on login
+		const registration = await this.registerClient(axiosInstance, metadata);
+
+		const { code, verifier } = await this.startAuthorization(
+			metadata,
+			registration,
+		);
+
+		const tokenResponse = await this.exchangeToken(
+			code,
+			verifier,
+			axiosInstance,
+			metadata,
+			registration,
+		);
+
+		this.logger.info("OAuth login flow completed successfully");
+
+		return tokenResponse;
 	}
 
 	/**
@@ -282,38 +353,11 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Start OAuth authorization flow.
 	 * Opens browser for user authentication and waits for callback.
 	 * Returns authorization code and PKCE verifier on success.
-	 *
-	 * @param url Coder deployment URL to authenticate against
 	 */
-	async startAuthorization(
-		url: string,
+	private async startAuthorization(
+		metadata: OAuthServerMetadata,
+		registration: ClientRegistrationResponse,
 	): Promise<{ code: string; verifier: string }> {
-		if (this.deploymentUrl !== url) {
-			this.logger.info("Deployment URL changed, clearing cached state", {
-				old: this.deploymentUrl,
-				new: url,
-			});
-			await this.clearForNewUrl();
-			this.deploymentUrl = url;
-
-			// Recreate components with new axios instance for new URL
-			const axiosInstance = this.createAxiosInstance();
-			this.metadataClient = new OAuthMetadataClient(axiosInstance, this.logger);
-			this.clientRegistry = new OAuthClientRegistry(
-				axiosInstance,
-				this.secretsManager,
-				this.logger,
-			);
-		}
-
-		// Clear cached metadata (may be stale)
-		this.metadata = undefined;
-
-		const metadata = await this.getMetadata();
-		const registration = await this.clientRegistry.register(
-			metadata,
-			this.getRedirectUri(),
-		);
 		const state = generateState();
 		const { verifier, challenge } = generatePKCE();
 
@@ -382,6 +426,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Handle OAuth callback from browser redirect.
 	 * Validates state and resolves pending authorization promise.
+	 *
+	 * // TODO this has to work across windows!
 	 */
 	handleCallback(
 		code: string | null,
@@ -427,14 +473,13 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Exchange authorization code for access token.
 	 */
-	async exchangeToken(code: string, verifier: string): Promise<TokenResponse> {
-		const metadata = await this.getMetadata();
-		const registration = this.clientRegistry.get();
-
-		if (!registration) {
-			throw new Error("No client registration found");
-		}
-
+	private async exchangeToken(
+		code: string,
+		verifier: string,
+		axiosInstance: AxiosInstance,
+		metadata: OAuthServerMetadata,
+		registration: ClientRegistrationResponse,
+	): Promise<TokenResponse> {
 		this.logger.info("Exchanging authorization code for token");
 
 		const params: TokenRequestParams = {
@@ -448,7 +493,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		const tokenRequest = toUrlSearchParams(params);
 
-		const axiosInstance = this.createAxiosInstance();
 		const response = await axiosInstance.post<TokenResponse>(
 			metadata.token_endpoint,
 			tokenRequest,
@@ -474,12 +518,11 @@ export class OAuthSessionManager implements vscode.Disposable {
 			throw new Error("No refresh token available");
 		}
 
-		const registration = this.clientRegistry.get();
-		if (!registration) {
-			throw new Error("No client registration found");
-		}
-
-		const metadata = await this.getMetadata();
+		const { axiosInstance, metadata, registration } =
+			await this.prepareOAuthOperation(
+				this.deploymentUrl,
+				this.storedTokens.access_token,
+			);
 
 		this.logger.debug("Refreshing access token");
 
@@ -492,7 +535,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		const tokenRequest = toUrlSearchParams(params);
 
-		const axiosInstance = this.createAxiosInstance();
 		const response = await axiosInstance.post<TokenResponse>(
 			metadata.token_endpoint,
 			tokenRequest,
@@ -545,12 +587,11 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Revoke a token using the OAuth server's revocation endpoint.
 	 */
 	private async revokeToken(token: string): Promise<void> {
-		const registration = this.clientRegistry.get();
-		if (!registration) {
-			throw new Error("No client registration found");
-		}
-
-		const metadata = await this.getMetadata();
+		const { axiosInstance, metadata, registration } =
+			await this.prepareOAuthOperation(
+				this.deploymentUrl,
+				this.storedTokens?.access_token,
+			);
 
 		if (!metadata.revocation_endpoint) {
 			this.logger.warn(
@@ -571,7 +612,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 		const revocationRequest = toUrlSearchParams(params);
 
 		try {
-			const axiosInstance = this.createAxiosInstance();
 			await axiosInstance.post(
 				metadata.revocation_endpoint,
 				revocationRequest,
@@ -604,18 +644,22 @@ export class OAuthSessionManager implements vscode.Disposable {
 			}
 		}
 
-		await this.secretsManager.setOAuthTokens(undefined);
-		this.storedTokens = undefined;
-		await this.clientRegistry.clear();
+		await this.clearTokenState();
 
 		this.logger.info("OAuth logout complete");
 	}
 
 	/**
-	 * Get the client ID if registered.
+	 * Check if currently logged in with OAuth.
+	 * Returns true only if valid OAuth tokens exist for the current deployment.
 	 */
-	getClientId(): string | undefined {
-		return this.clientRegistry.get()?.client_id;
+	async isLoggedInWithOAuth(): Promise<boolean> {
+		const tokens = await this.secretsManager.getOAuthTokens();
+		if (!tokens) {
+			return false;
+		}
+
+		return this.deploymentUrl === tokens.deployment_url;
 	}
 
 	/**
@@ -629,7 +673,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 		}
 		this.clearPendingAuth();
 		this.storedTokens = undefined;
-		this.metadata = undefined;
 
 		this.logger.debug("OAuth session manager disposed");
 	}
