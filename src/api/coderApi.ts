@@ -3,6 +3,7 @@ import {
 	type AxiosInstance,
 	type AxiosHeaders,
 	type AxiosResponseTransformer,
+	isAxiosError,
 } from "axios";
 import { Api } from "coder/site/src/api/api";
 import {
@@ -31,6 +32,12 @@ import {
 	HttpClientLogLevel,
 } from "../logging/types";
 import { sizeOf } from "../logging/utils";
+import {
+	parseOAuthError,
+	requiresReAuthentication,
+	isNetworkError,
+} from "../oauth/errors";
+import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { HttpStatusCode } from "../websocket/codes";
 import {
 	type UnidirectionalStream,
@@ -72,6 +79,7 @@ export class CoderApi extends Api {
 		baseUrl: string,
 		token: string | undefined,
 		output: Logger,
+		oauthSessionManager?: OAuthSessionManager,
 	): CoderApi {
 		const client = new CoderApi(output);
 		client.setHost(baseUrl);
@@ -79,7 +87,7 @@ export class CoderApi extends Api {
 			client.setSessionToken(token);
 		}
 
-		setupInterceptors(client, output);
+		setupInterceptors(client, output, oauthSessionManager);
 		return client;
 	}
 
@@ -390,7 +398,11 @@ export class CoderApi extends Api {
 /**
  * Set up logging and request interceptors for the CoderApi instance.
  */
-function setupInterceptors(client: CoderApi, output: Logger): void {
+function setupInterceptors(
+	client: CoderApi,
+	output: Logger,
+	oauthSessionManager?: OAuthSessionManager,
+): void {
 	addLoggingInterceptors(client.getAxiosInstance(), output);
 
 	client.getAxiosInstance().interceptors.request.use(async (config) => {
@@ -428,6 +440,11 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 			}
 		},
 	);
+
+	// OAuth token refresh interceptors
+	if (oauthSessionManager) {
+		addOAuthInterceptors(client, output, oauthSessionManager);
+	}
 }
 
 function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
@@ -457,7 +474,7 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 		},
 		(error: unknown) => {
 			logError(logger, error, getLogLevel());
-			return Promise.reject(error);
+			throw error;
 		},
 	);
 
@@ -468,7 +485,80 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 		},
 		(error: unknown) => {
 			logError(logger, error, getLogLevel());
-			return Promise.reject(error);
+			throw error;
+		},
+	);
+}
+
+/**
+ * Add OAuth token refresh interceptors.
+ * Success interceptor: proactively refreshes token when approaching expiry.
+ * Error interceptor: reactively refreshes token on 401/403 responses.
+ */
+function addOAuthInterceptors(
+	client: CoderApi,
+	logger: Logger,
+	oauthSessionManager: OAuthSessionManager,
+) {
+	client.getAxiosInstance().interceptors.response.use(
+		// Success response interceptor: proactive token refresh
+		(response) => {
+			if (oauthSessionManager.shouldRefreshToken()) {
+				logger.debug(
+					"Token approaching expiry, triggering proactive refresh in background",
+				);
+
+				// Fire-and-forget: don't await, don't block response
+				oauthSessionManager.refreshToken().catch((error) => {
+					logger.warn("Background token refresh failed:", error);
+				});
+			}
+
+			return response;
+		},
+		// Error response interceptor: reactive token refresh on 401/403
+		async (error: unknown) => {
+			if (!isAxiosError(error)) {
+				throw error;
+			}
+
+			const status = error.response?.status;
+			if (status !== 401 && status !== 403) {
+				throw error;
+			}
+
+			if (!oauthSessionManager.isLoggedInWithOAuth()) {
+				throw error;
+			}
+
+			logger.info(`Received ${status} response, attempting token refresh`);
+
+			try {
+				const newTokens = await oauthSessionManager.refreshToken();
+				client.setSessionToken(newTokens.access_token);
+
+				logger.info("Token refresh successful, updated session token");
+			} catch (refreshError) {
+				logger.error("Token refresh failed:", refreshError);
+
+				const oauthError = parseOAuthError(refreshError);
+				if (oauthError && requiresReAuthentication(oauthError)) {
+					logger.error(
+						`OAuth error requires re-authentication: ${oauthError.errorCode}`,
+					);
+
+					oauthSessionManager
+						.showReAuthenticationModal(oauthError)
+						.catch((err) => {
+							logger.error("Failed to show re-auth modal:", err);
+						});
+				} else if (isNetworkError(refreshError)) {
+					logger.warn(
+						"Token refresh failed due to network error, will retry later",
+					);
+				}
+			}
+			throw error;
 		},
 	);
 }

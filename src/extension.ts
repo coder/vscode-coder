@@ -65,14 +65,24 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Try to clear this flag ASAP
 	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
 
+	const url = mementoManager.getUrl();
+
+	// Create OAuth session manager before the main client
+	const oauthSessionManager = await OAuthSessionManager.create(
+		url || "",
+		serviceContainer,
+		ctx,
+	);
+	ctx.subscriptions.push(oauthSessionManager);
+
 	// This client tracks the current login and will be used through the life of
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
-	const url = mementoManager.getUrl();
 	const client = CoderApi.create(
 		url || "",
 		await secretsManager.getSessionToken(),
 		output,
+		oauthSessionManager,
 	);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
@@ -117,14 +127,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		undefined,
 		ctx.subscriptions,
 	);
-
-	const oauthSessionManager = await OAuthSessionManager.create(
-		url || "",
-		secretsManager,
-		output,
-		ctx,
-	);
-	ctx.subscriptions.push(oauthSessionManager);
 
 	// Listen for session token changes and sync state across all components
 	ctx.subscriptions.push(
@@ -407,6 +409,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				remoteSshExtension.id,
 			);
 			if (details) {
+				// TODO if the URL is different then we need to update the OAuth session!!! (Centralize this logic)
 				ctx.subscriptions.push(details);
 				// Authenticate the plugin client which is used in the sidebar to display
 				// workspaces belonging to this deployment.
