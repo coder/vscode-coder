@@ -545,21 +545,9 @@ export class Remote {
 				const updatedAgent = await this.waitForAgentWithProgress(
 					monitor,
 					agent,
-					{
-						progressTitle: "Waiting for the agent to connect...",
-						timeoutMs: 3 * 60 * 1000,
-						errorDialogTitle: `Failed to wait for ${agent.name} connection`,
-					},
-					(foundAgent) => {
-						if (foundAgent.status !== "connecting") {
-							return foundAgent;
-						}
-						return undefined;
-					},
+					`Waiting for agent ${agent.name} to connect...`,
+					(foundAgent) => foundAgent.status !== "connecting",
 				);
-				if (!updatedAgent) {
-					return;
-				}
 				agent = updatedAgent;
 				this.logger.info(`Agent ${agent.name} status is now`, agent.status);
 			}
@@ -606,28 +594,15 @@ export class Remote {
 						const agentStatePromise = this.waitForAgentWithProgress(
 							monitor,
 							agent,
-							{
-								progressTitle: "Waiting for agent startup scripts...",
-								timeoutMs: 5 * 60 * 1000,
-								errorDialogTitle: `Failed to wait for ${agent.name} startup`,
-							},
-							(foundAgent) => {
-								if (foundAgent.lifecycle_state !== "starting") {
-									return foundAgent;
-								}
-								return undefined;
-							},
+							`Waiting for agent ${agent.name} startup scripts...`,
+							(foundAgent) => foundAgent.lifecycle_state !== "starting",
 						);
 
-						// Race between logs completion (which fails on socket error) and agent state change
+						// Race between logs completion and agent state change
 						const updatedAgent = await Promise.race([
 							agentStatePromise,
 							logsCompletion.then(() => agentStatePromise),
 						]);
-
-						if (!updatedAgent) {
-							return;
-						}
 						agent = updatedAgent;
 						this.logger.info(
 							`Agent ${agent.name} lifecycle state is now`,
@@ -766,70 +741,34 @@ export class Remote {
 	}
 
 	/**
-	 * Waits for an agent condition with progress notification and error handling.
-	 * Returns the updated agent or undefined if the user chooses to close remote.
+	 * Waits for an agent condition with progress notification.
 	 */
 	private async waitForAgentWithProgress(
 		monitor: WorkspaceMonitor,
 		agent: WorkspaceAgent,
-		options: {
-			progressTitle: string;
-			timeoutMs: number;
-			errorDialogTitle: string;
-		},
-		checker: (agent: WorkspaceAgent) => WorkspaceAgent | undefined,
-	): Promise<WorkspaceAgent | undefined> {
-		try {
-			const foundAgent = await vscode.window.withProgress(
-				{
-					title: options.progressTitle,
-					location: vscode.ProgressLocation.Notification,
-				},
-				async () =>
-					this.waitForAgentCondition(
-						monitor,
-						agent,
-						checker,
-						options.timeoutMs,
-						`Timeout: ${options.errorDialogTitle}`,
-					),
-			);
-			return foundAgent;
-		} catch (error) {
-			this.logger.error(options.errorDialogTitle, error);
-			const result = await this.vscodeProposed.window.showErrorMessage(
-				options.errorDialogTitle,
-				{
-					useCustom: true,
-					modal: true,
-					detail: error instanceof Error ? error.message : String(error),
-				},
-				"Close Remote",
-			);
-			if (result === "Close Remote") {
-				await this.closeRemote();
-			}
-			return undefined;
-		}
+		progressTitle: string,
+		checker: (agent: WorkspaceAgent) => boolean,
+	): Promise<WorkspaceAgent> {
+		const foundAgent = await vscode.window.withProgress(
+			{
+				title: progressTitle,
+				location: vscode.ProgressLocation.Notification,
+			},
+			async () => this.waitForAgentCondition(monitor, agent, checker),
+		);
+		return foundAgent;
 	}
 
 	/**
 	 * Waits for an agent condition to be met by monitoring workspace changes.
 	 * Returns the result when the condition is met or throws an error on timeout.
 	 */
-	private async waitForAgentCondition<T>(
+	private async waitForAgentCondition(
 		monitor: WorkspaceMonitor,
 		agent: WorkspaceAgent,
-		checker: (agent: WorkspaceAgent) => T | undefined,
-		timeoutMs: number,
-		timeoutMessage: string,
-	): Promise<T> {
-		return new Promise<T>((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				updateEvent.dispose();
-				reject(new Error(timeoutMessage));
-			}, timeoutMs);
-
+		checker: (agent: WorkspaceAgent) => boolean,
+	): Promise<WorkspaceAgent> {
+		return new Promise<WorkspaceAgent>((resolve, reject) => {
 			const updateEvent = monitor.onChange.event((workspace) => {
 				try {
 					const agents = extractAgents(workspace.latest_build.resources);
@@ -841,12 +780,10 @@ export class Remote {
 					}
 					const result = checker(foundAgent);
 					if (result !== undefined) {
-						clearTimeout(timeout);
 						updateEvent.dispose();
-						resolve(result);
+						resolve(foundAgent);
 					}
 				} catch (error) {
-					clearTimeout(timeout);
 					updateEvent.dispose();
 					reject(error);
 				}
