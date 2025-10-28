@@ -138,7 +138,6 @@ export async function waitForBuild(
 
 /**
  * Streams agent logs to the emitter in real-time.
- * Fetches existing logs and subscribes to new logs via websocket.
  * Returns the websocket and a completion promise that rejects on error.
  */
 export async function streamAgentLogs(

@@ -539,81 +539,13 @@ export class Remote {
 			const inbox = await Inbox.create(workspace, workspaceClient, this.logger);
 			disposables.push(inbox);
 
-			// Wait for the agent to connect.
-			if (agent.status === "connecting") {
-				this.logger.info(`Waiting for ${workspaceName}/${agent.name}...`);
-				const updatedAgent = await this.waitForAgentWithProgress(
-					monitor,
-					agent,
-					`Waiting for agent ${agent.name} to connect...`,
-					(foundAgent) => foundAgent.status !== "connecting",
-				);
-				agent = updatedAgent;
-				this.logger.info(`Agent ${agent.name} status is now`, agent.status);
-			}
-
-			// Make sure the agent is connected.
-			if (agent.status !== "connected") {
-				const result = await this.vscodeProposed.window.showErrorMessage(
-					`${workspaceName}/${agent.name} ${agent.status}`,
-					{
-						useCustom: true,
-						modal: true,
-						detail: `The ${agent.name} agent failed to connect. Try restarting your workspace.`,
-					},
-				);
-				if (!result) {
-					await this.closeRemote();
-					return;
-				}
-				await this.reloadWindow();
-				return;
-			}
-
-			if (agent.lifecycle_state === "starting") {
-				const isBlocking = agent.scripts.some(
-					(script) => script.start_blocks_login,
-				);
-				if (isBlocking) {
-					this.logger.info(
-						`Waiting for ${workspaceName}/${agent.name} startup...`,
-					);
-
-					let terminalSession: TerminalSession | undefined;
-					let socket: OneWayWebSocket<WorkspaceAgentLog[]> | undefined;
-					try {
-						terminalSession = new TerminalSession("Agent Log");
-						const { socket: agentSocket, completion: logsCompletion } =
-							await streamAgentLogs(
-								workspaceClient,
-								terminalSession.writeEmitter,
-								agent,
-							);
-						socket = agentSocket;
-
-						const agentStatePromise = this.waitForAgentWithProgress(
-							monitor,
-							agent,
-							`Waiting for agent ${agent.name} startup scripts...`,
-							(foundAgent) => foundAgent.lifecycle_state !== "starting",
-						);
-
-						// Race between logs completion and agent state change
-						const updatedAgent = await Promise.race([
-							agentStatePromise,
-							logsCompletion.then(() => agentStatePromise),
-						]);
-						agent = updatedAgent;
-						this.logger.info(
-							`Agent ${agent.name} lifecycle state is now`,
-							agent.lifecycle_state,
-						);
-					} finally {
-						terminalSession?.dispose();
-						socket?.close();
-					}
-				}
-			}
+			// Ensure agent is ready by handling all status and lifecycle states
+			agent = await this.ensureAgentReady(
+				monitor,
+				agent,
+				workspaceName,
+				workspaceClient,
+			);
 
 			const logDir = this.getLogDir(featureSet);
 
@@ -741,6 +673,139 @@ export class Remote {
 	}
 
 	/**
+	 * Ensures agent is ready to connect by handling all status and lifecycle states.
+	 * Throws an error if the agent cannot be made ready.
+	 */
+	private async ensureAgentReady(
+		monitor: WorkspaceMonitor,
+		agent: WorkspaceAgent,
+		workspaceName: string,
+		workspaceClient: CoderApi,
+	): Promise<WorkspaceAgent> {
+		let currentAgent = agent;
+
+		while (
+			currentAgent.status !== "connected" ||
+			currentAgent.lifecycle_state !== "ready"
+		) {
+			switch (currentAgent.status) {
+				case "connecting":
+					this.logger.info(`Waiting for agent ${currentAgent.name}...`);
+					currentAgent = await this.waitForAgentWithProgress(
+						monitor,
+						currentAgent,
+						`Waiting for agent ${currentAgent.name} to connect...`,
+						(foundAgent) => foundAgent.status !== "connecting",
+					);
+					this.logger.info(
+						`Agent ${currentAgent.name} status is now`,
+						currentAgent.status,
+					);
+					continue;
+
+				case "connected":
+					// Agent connected, now handle lifecycle state
+					break;
+
+				case "disconnected":
+				case "timeout":
+					throw new Error(
+						`${workspaceName}/${currentAgent.name} ${currentAgent.status}`,
+					);
+
+				default:
+					throw new Error(
+						`${workspaceName}/${currentAgent.name} unknown status: ${currentAgent.status}`,
+					);
+			}
+
+			// Handle agent lifecycle state (only when status is "connected")
+			switch (currentAgent.lifecycle_state) {
+				case "ready":
+					return currentAgent;
+
+				case "starting": {
+					const isBlocking = currentAgent.scripts.some(
+						(script) => script.start_blocks_login,
+					);
+					if (!isBlocking) {
+						return currentAgent;
+					}
+
+					const logMsg = `Waiting for agent ${currentAgent.name} startup scripts...`;
+					this.logger.info(logMsg);
+
+					let terminalSession: TerminalSession | undefined;
+					let socket: OneWayWebSocket<WorkspaceAgentLog[]> | undefined;
+					try {
+						terminalSession = new TerminalSession("Agent Log");
+						const { socket: agentSocket, completion: logsCompletion } =
+							await streamAgentLogs(
+								workspaceClient,
+								terminalSession.writeEmitter,
+								currentAgent,
+							);
+						socket = agentSocket;
+
+						const agentStatePromise = this.waitForAgentWithProgress(
+							monitor,
+							currentAgent,
+							logMsg,
+							(foundAgent) => foundAgent.lifecycle_state !== "starting",
+						);
+
+						// Race between logs completion and agent state change
+						currentAgent = await Promise.race([
+							agentStatePromise,
+							logsCompletion.then(() => agentStatePromise),
+						]);
+						this.logger.info(
+							`Agent ${currentAgent.name} lifecycle state is now`,
+							currentAgent.lifecycle_state,
+						);
+					} finally {
+						terminalSession?.dispose();
+						socket?.close();
+					}
+					continue;
+				}
+
+				case "created":
+					this.logger.info(
+						`Waiting for ${workspaceName}/${currentAgent.name} to start...`,
+					);
+					currentAgent = await this.waitForAgentWithProgress(
+						monitor,
+						currentAgent,
+						`Waiting for agent ${currentAgent.name} to start...`,
+						(foundAgent) => foundAgent.lifecycle_state !== "created",
+					);
+					this.logger.info(
+						`Agent ${currentAgent.name} lifecycle state is now`,
+						currentAgent.lifecycle_state,
+					);
+					continue;
+
+				case "off":
+				case "start_error":
+				case "start_timeout":
+				case "shutdown_error":
+				case "shutdown_timeout":
+				case "shutting_down":
+					throw new Error(
+						`${workspaceName}/${currentAgent.name} lifecycle state: ${currentAgent.lifecycle_state}`,
+					);
+
+				default:
+					throw new Error(
+						`${workspaceName}/${currentAgent.name} unknown lifecycle state: ${currentAgent.lifecycle_state}`,
+					);
+			}
+		}
+		return currentAgent;
+	}
+
+	/**
 	 * Waits for an agent condition with progress notification.
 	 */
 	private async waitForAgentWithProgress(
@@ -749,7 +814,7 @@ export class Remote {
 		progressTitle: string,
 		checker: (agent: WorkspaceAgent) => boolean,
 	): Promise<WorkspaceAgent> {
-		const foundAgent = await vscode.window.withProgress(
+		const foundAgent = await this.vscodeProposed.window.withProgress(
 			{
 				title: progressTitle,
 				location: vscode.ProgressLocation.Notification,
@@ -770,6 +835,10 @@ export class Remote {
 	): Promise<WorkspaceAgent> {
 		return new Promise<WorkspaceAgent>((resolve, reject) => {
 			const updateEvent = monitor.onChange.event((workspace) => {
+				if (workspace.latest_build.status !== "running") {
+					const workspaceName = createWorkspaceIdentifier(workspace);
+					reject(new Error(`Workspace ${workspaceName} is not running.`));
+				}
 				try {
 					const agents = extractAgents(workspace.latest_build.resources);
 					const foundAgent = agents.find((a) => a.id === agent.id);
@@ -778,8 +847,7 @@ export class Remote {
 							`Agent ${agent.name} not found in workspace resources`,
 						);
 					}
-					const result = checker(foundAgent);
-					if (result !== undefined) {
+					if (checker(foundAgent)) {
 						updateEvent.dispose();
 						resolve(foundAgent);
 					}
