@@ -1,10 +1,11 @@
 import { type AxiosInstance } from "axios";
 import * as vscode from "vscode";
 
+import { type ServiceContainer } from "src/core/container";
+
 import { CoderApi } from "../api/coderApi";
 
 import { OAuthMetadataClient } from "./metadataClient";
-import { OAuthTokenRefreshScheduler } from "./tokenRefreshScheduler";
 import {
 	CALLBACK_PATH,
 	generatePKCE,
@@ -15,6 +16,7 @@ import {
 import type { SecretsManager, StoredOAuthTokens } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
 
+import type { OAuthError } from "./errors";
 import type {
 	ClientRegistrationRequest,
 	ClientRegistrationResponse,
@@ -29,6 +31,16 @@ const AUTH_GRANT_TYPE = "authorization_code" as const;
 const REFRESH_GRANT_TYPE = "refresh_token" as const;
 const RESPONSE_TYPE = "code" as const;
 const PKCE_CHALLENGE_METHOD = "S256" as const;
+
+/**
+ * Token refresh threshold: refresh when token expires in less than this time
+ */
+const TOKEN_REFRESH_THRESHOLD_MS = 10 * 60 * 1000;
+
+/**
+ * Minimum time between refresh attempts to prevent thrashing
+ */
+const REFRESH_THROTTLE_MS = 30 * 1000;
 
 /**
  * Minimal scopes required by the VS Code extension.
@@ -48,10 +60,9 @@ const DEFAULT_OAUTH_SCOPES = [
  * Coordinates authorization flow, token management, and automatic refresh.
  */
 export class OAuthSessionManager implements vscode.Disposable {
-	private readonly extensionId: string;
-	private readonly refreshScheduler: OAuthTokenRefreshScheduler;
-
 	private storedTokens: StoredOAuthTokens | undefined;
+	private refreshInProgress = false;
+	private lastRefreshAttempt = 0;
 
 	// Pending authorization flow state
 	private pendingAuthResolve:
@@ -66,15 +77,15 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 */
 	static async create(
 		deploymentUrl: string,
-		secretsManager: SecretsManager,
-		logger: Logger,
+		container: ServiceContainer,
 		context: vscode.ExtensionContext,
 	): Promise<OAuthSessionManager> {
 		const manager = new OAuthSessionManager(
 			deploymentUrl,
-			secretsManager,
-			logger,
-			context,
+			container.getSecretsManager(),
+			container.getLogger(),
+			container.getVsCodeProposed(),
+			context.extension.id,
 		);
 		await manager.loadTokens();
 		return manager;
@@ -84,16 +95,12 @@ export class OAuthSessionManager implements vscode.Disposable {
 		private deploymentUrl: string,
 		private readonly secretsManager: SecretsManager,
 		private readonly logger: Logger,
-		context: vscode.ExtensionContext,
-	) {
-		this.extensionId = context.extension.id;
-		this.refreshScheduler = new OAuthTokenRefreshScheduler(async () => {
-			await this.refreshToken();
-		}, logger);
-	}
+		private readonly vscodeProposed: typeof vscode,
+		private readonly extensionId: string,
+	) {}
 
 	/**
-	 * Load stored tokens and start refresh timer if applicable.
+	 * Load stored tokens from storage.
 	 * Validates that tokens belong to the current deployment URL.
 	 */
 	private async loadTokens(): Promise<void> {
@@ -126,18 +133,15 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		this.storedTokens = tokens;
 		this.logger.info(`Loaded stored OAuth tokens for ${tokens.deployment_url}`);
-
-		if (tokens.refresh_token) {
-			this.refreshScheduler.schedule(tokens);
-		}
 	}
 
 	/**
 	 * Clear stale data when tokens don't match current deployment.
 	 */
 	private async clearTokenState(): Promise<void> {
-		this.refreshScheduler.stop();
 		this.storedTokens = undefined;
+		this.refreshInProgress = false;
+		this.lastRefreshAttempt = 0;
 		await this.secretsManager.setOAuthTokens(undefined);
 		await this.secretsManager.setOAuthClientRegistration(undefined);
 	}
@@ -270,7 +274,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		if (!baseUrl) {
 			throw new Error("CoderApi instance has no base URL set");
 		}
-		if (this.deploymentUrl !== baseUrl) {
+		if (this.deploymentUrl && this.deploymentUrl !== baseUrl) {
 			this.logger.info("Deployment URL changed, clearing cached state", {
 				old: this.deploymentUrl,
 				new: baseUrl,
@@ -278,8 +282,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 			await this.clearTokenState();
 			this.deploymentUrl = baseUrl;
 		}
-
-		this.logger.info("Starting OAuth login flow");
 
 		const axiosInstance = client.getAxiosInstance();
 		const metadataClient = new OAuthMetadataClient(axiosInstance, this.logger);
@@ -512,48 +514,60 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 	/**
 	 * Refresh the access token using the stored refresh token.
+	 * Uses a mutex to prevent concurrent refresh attempts.
 	 */
-	private async refreshToken(): Promise<TokenResponse> {
+	async refreshToken(): Promise<TokenResponse> {
+		if (this.refreshInProgress) {
+			throw new Error("Token refresh already in progress");
+		}
+
 		if (!this.storedTokens?.refresh_token) {
 			throw new Error("No refresh token available");
 		}
 
-		const { axiosInstance, metadata, registration } =
-			await this.prepareOAuthOperation(
-				this.deploymentUrl,
-				this.storedTokens.access_token,
+		this.refreshInProgress = true;
+		this.lastRefreshAttempt = Date.now();
+
+		try {
+			const { axiosInstance, metadata, registration } =
+				await this.prepareOAuthOperation(
+					this.deploymentUrl,
+					this.storedTokens.access_token,
+				);
+
+			this.logger.debug("Refreshing access token");
+
+			const params: RefreshTokenRequestParams = {
+				grant_type: REFRESH_GRANT_TYPE,
+				refresh_token: this.storedTokens.refresh_token,
+				client_id: registration.client_id,
+				client_secret: registration.client_secret,
+			};
+
+			const tokenRequest = toUrlSearchParams(params);
+
+			const response = await axiosInstance.post<TokenResponse>(
+				metadata.token_endpoint,
+				tokenRequest,
+				{
+					headers: {
+						"Content-Type": "application/x-www-form-urlencoded",
+					},
+				},
 			);
 
-		this.logger.debug("Refreshing access token");
+			this.logger.debug("Token refresh successful");
 
-		const params: RefreshTokenRequestParams = {
-			grant_type: REFRESH_GRANT_TYPE,
-			refresh_token: this.storedTokens.refresh_token,
-			client_id: registration.client_id,
-			client_secret: registration.client_secret,
-		};
+			await this.saveTokens(response.data);
 
-		const tokenRequest = toUrlSearchParams(params);
-
-		const response = await axiosInstance.post<TokenResponse>(
-			metadata.token_endpoint,
-			tokenRequest,
-			{
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
-				},
-			},
-		);
-
-		this.logger.debug("Token refresh successful");
-
-		await this.saveTokens(response.data);
-
-		return response.data;
+			return response.data;
+		} finally {
+			this.refreshInProgress = false;
+		}
 	}
 
 	/**
-	 * Save token response to storage and schedule automatic refresh.
+	 * Save token response to storage.
 	 * Also triggers event via secretsManager to update global client.
 	 */
 	private async saveTokens(tokenResponse: TokenResponse): Promise<void> {
@@ -571,34 +585,54 @@ export class OAuthSessionManager implements vscode.Disposable {
 		await this.secretsManager.setOAuthTokens(tokens);
 
 		// Trigger event to update global client (works for login & background refresh)
-		// TODO Add a setting to check if we have OAuth or token setup so we can start the background refresh
 		await this.secretsManager.setSessionToken(tokenResponse.access_token);
 
 		this.logger.info("Tokens saved", {
 			expires_at: new Date(expiryTimestamp).toISOString(),
 			deployment: this.deploymentUrl,
 		});
+	}
 
-		// Schedule automatic refresh
-		this.refreshScheduler.schedule(tokens);
+	/**
+	 * Check if token should be refreshed.
+	 * Returns true if:
+	 * 1. Token expires in less than TOKEN_REFRESH_THRESHOLD_MS
+	 * 2. Last refresh attempt was more than REFRESH_THROTTLE_MS ago
+	 * 3. No refresh is currently in progress
+	 */
+	shouldRefreshToken(): boolean {
+		if (
+			!this.isLoggedInWithOAuth() ||
+			!this.storedTokens?.refresh_token ||
+			this.refreshInProgress
+		) {
+			return false;
+		}
+
+		const now = Date.now();
+		if (now - this.lastRefreshAttempt < REFRESH_THROTTLE_MS) {
+			return false;
+		}
+
+		const timeUntilExpiry = this.storedTokens.expiry_timestamp - now;
+		return timeUntilExpiry < TOKEN_REFRESH_THRESHOLD_MS;
 	}
 
 	/**
 	 * Revoke a token using the OAuth server's revocation endpoint.
 	 */
-	private async revokeToken(token: string): Promise<void> {
+	private async revokeToken(
+		token: string,
+		tokenTypeHint: "access_token" | "refresh_token" = "refresh_token",
+	): Promise<void> {
 		const { axiosInstance, metadata, registration } =
 			await this.prepareOAuthOperation(
 				this.deploymentUrl,
 				this.storedTokens?.access_token,
 			);
 
-		if (!metadata.revocation_endpoint) {
-			this.logger.warn(
-				"Server does not support token revocation (no revocation_endpoint)",
-			);
-			return;
-		}
+		const revocationEndpoint =
+			metadata.revocation_endpoint || `${metadata.issuer}/oauth2/revoke`;
 
 		this.logger.info("Revoking refresh token");
 
@@ -606,21 +640,17 @@ export class OAuthSessionManager implements vscode.Disposable {
 			token,
 			client_id: registration.client_id,
 			client_secret: registration.client_secret,
-			token_type_hint: "refresh_token",
+			token_type_hint: tokenTypeHint,
 		};
 
 		const revocationRequest = toUrlSearchParams(params);
 
 		try {
-			await axiosInstance.post(
-				metadata.revocation_endpoint,
-				revocationRequest,
-				{
-					headers: {
-						"Content-Type": "application/x-www-form-urlencoded",
-					},
+			await axiosInstance.post(revocationEndpoint, revocationRequest, {
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded",
 				},
-			);
+			});
 
 			this.logger.info("Token revocation successful");
 		} catch (error) {
@@ -633,7 +663,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Logout by revoking tokens and clearing all OAuth data.
 	 */
 	async logout(): Promise<void> {
-		this.refreshScheduler.stop();
+		if (!this.isLoggedInWithOAuth()) {
+			return;
+		}
 
 		// Revoke refresh token (which also invalidates access token per RFC 7009)
 		if (this.storedTokens?.refresh_token) {
@@ -650,29 +682,46 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Check if currently logged in with OAuth.
-	 * Returns true only if valid OAuth tokens exist for the current deployment.
+	 * Returns true if (valid or invalid) OAuth tokens exist for the current deployment.
 	 */
-	async isLoggedInWithOAuth(): Promise<boolean> {
-		const tokens = await this.secretsManager.getOAuthTokens();
-		if (!tokens) {
-			return false;
-		}
+	isLoggedInWithOAuth(): boolean {
+		return this.storedTokens !== undefined;
+	}
 
-		return this.deploymentUrl === tokens.deployment_url;
+	/**
+	 * Show a modal dialog to the user when OAuth re-authentication is required.
+	 * This is called when the refresh token is invalid or the client credentials are invalid.
+	 */
+	async showReAuthenticationModal(error: OAuthError): Promise<void> {
+		const errorMessage =
+			error.description ||
+			"Your session is no longer valid. This could be due to token expiration or revocation.";
+
+		// Log out first to clear invalid tokens
+		await vscode.commands.executeCommand("coder.logout");
+
+		const action = await this.vscodeProposed.window.showErrorMessage(
+			`Authentication Error`,
+			{ modal: true, useCustom: true, detail: errorMessage },
+			"Log in again",
+		);
+
+		if (action === "Log in again") {
+			await vscode.commands.executeCommand("coder.login");
+		}
 	}
 
 	/**
 	 * Clears all in-memory state and rejects any pending operations.
 	 */
 	dispose(): void {
-		this.refreshScheduler.stop();
-
 		if (this.pendingAuthReject) {
 			this.pendingAuthReject(new Error("OAuth session manager disposed"));
 		}
 		this.clearPendingAuth();
 		this.storedTokens = undefined;
+		this.refreshInProgress = false;
+		this.lastRefreshAttempt = 0;
 
 		this.logger.debug("OAuth session manager disposed");
 	}
