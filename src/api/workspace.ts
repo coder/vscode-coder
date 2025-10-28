@@ -94,15 +94,9 @@ export async function waitForBuild(
 	writeEmitter: vscode.EventEmitter<string>,
 	workspace: Workspace,
 ): Promise<Workspace> {
-	// This fetches the initial bunch of logs.
-	const logs = await client.getWorkspaceBuildLogs(workspace.latest_build.id);
-	for (const log of logs) {
-		writeEmitter.fire(log.output + "\r\n");
-	}
-
 	const socket = await client.watchBuildLogsByBuildId(
 		workspace.latest_build.id,
-		logs,
+		[],
 	);
 
 	await new Promise<void>((resolve, reject) => {
@@ -148,13 +142,7 @@ export async function streamAgentLogs(
 	socket: OneWayWebSocket<WorkspaceAgentLog[]>;
 	completion: Promise<void>;
 }> {
-	// This fetches the initial bunch of logs.
-	const logs = await client.getWorkspaceAgentLogs(agent.id);
-	for (const log of logs) {
-		writeEmitter.fire(log.output + "\r\n");
-	}
-
-	const socket = await client.watchWorkspaceAgentLogs(agent.id, logs);
+	const socket = await client.watchWorkspaceAgentLogs(agent.id, []);
 
 	const completion = new Promise<void>((resolve, reject) => {
 		socket.addEventListener("message", (data) => {
