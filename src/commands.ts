@@ -360,20 +360,10 @@ export class Commands {
 		}
 		this.logger.info("Logging out");
 
-		// Check if using OAuth
-		const isOAuthLoggedIn =
-			await this.oauthSessionManager.isLoggedInWithOAuth();
-		if (isOAuthLoggedIn) {
-			this.logger.info("Logging out via OAuth");
-			try {
-				await this.oauthSessionManager.logout();
-			} catch (error) {
-				this.logger.warn(
-					"OAuth logout failed, continuing with cleanup:",
-					error,
-				);
-			}
-		}
+		// Fire and forget
+		this.oauthSessionManager.logout().catch((error) => {
+			this.logger.warn("OAuth logout failed, continuing with cleanup:", error);
+		});
 
 		// Clear from the REST client.  An empty url will indicate to other parts of
 		// the code that we are logged out.
@@ -542,19 +532,6 @@ export class Commands {
 					await new Promise((resolve) => setTimeout(resolve, 5000));
 					terminal.sendText(app.command ?? "");
 					terminal.show(false);
-				},
-			);
-		}
-		// Check if app has a URL to open
-		if (app.url) {
-			return vscode.window.withProgress(
-				{
-					location: vscode.ProgressLocation.Notification,
-					title: `Opening ${app.name || "application"} in browser...`,
-					cancellable: false,
-				},
-				async () => {
-					await vscode.env.openExternal(vscode.Uri.parse(app.url!));
 				},
 			);
 		}
