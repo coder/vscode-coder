@@ -42,7 +42,7 @@ export class OAuthMetadataClient {
 	 * Throws detailed errors if server doesn't meet OAuth 2.1 requirements.
 	 */
 	async getMetadata(): Promise<OAuthServerMetadata> {
-		this.logger.info("Discovering OAuth endpoints...");
+		this.logger.debug("Discovering OAuth endpoints...");
 
 		const response = await this.axiosInstance.get<OAuthServerMetadata>(
 			OAUTH_DISCOVERY_ENDPOINT,
