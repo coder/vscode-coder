@@ -380,7 +380,7 @@
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import": "^2.32.0",
 		"eslint-plugin-md": "^1.0.19",
-		"eslint-plugin-package-json": "^0.56.3",
+		"eslint-plugin-package-json": "^0.59.0",
 		"eslint-plugin-prettier": "^5.5.4",
 		"glob": "^10.4.2",
 		"jsonc-eslint-parser": "^2.4.0",
