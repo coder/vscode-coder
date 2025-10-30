@@ -13,10 +13,18 @@ const OAUTH_CLIENT_REGISTRATION_KEY = "oauthClientRegistration";
 
 const OAUTH_TOKENS_KEY = "oauthTokens";
 
+const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
+
 export type StoredOAuthTokens = Omit<TokenResponse, "expires_in"> & {
 	expiry_timestamp: number;
 	deployment_url: string;
 };
+
+interface OAuthCallbackData {
+	state: string;
+	code: string | null;
+	error: string | null;
+}
 
 export enum AuthAction {
 	LOGIN,
@@ -162,5 +170,37 @@ export class SecretsManager {
 			// Do nothing
 		}
 		return undefined;
+	}
+
+	/**
+	 * Write an OAuth callback result to secrets storage.
+	 * Used for cross-window communication when OAuth callback arrives in a different window.
+	 */
+	public async setOAuthCallback(data: OAuthCallbackData): Promise<void> {
+		await this.secrets.store(OAUTH_CALLBACK_KEY, JSON.stringify(data));
+	}
+
+	/**
+	 * Listen for OAuth callback results from any VS Code window.
+	 * The listener receives the state parameter, code (if success), and error (if failed).
+	 */
+	public onDidChangeOAuthCallback(
+		listener: (data: OAuthCallbackData) => void,
+	): Disposable {
+		return this.secrets.onDidChange(async (e) => {
+			if (e.key !== OAUTH_CALLBACK_KEY) {
+				return;
+			}
+
+			try {
+				const data = await this.secrets.get(OAUTH_CALLBACK_KEY);
+				if (data) {
+					const parsed = JSON.parse(data) as OAuthCallbackData;
+					listener(parsed);
+				}
+			} catch {
+				// Ignore parse errors
+			}
+		});
 	}
 }
