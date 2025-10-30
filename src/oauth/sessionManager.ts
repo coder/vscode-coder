@@ -64,13 +64,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private refreshInProgress = false;
 	private lastRefreshAttempt = 0;
 
-	// Pending authorization flow state
-	private pendingAuthResolve:
-		| ((value: { code: string; verifier: string }) => void)
-		| undefined;
 	private pendingAuthReject: ((reason: Error) => void) | undefined;
-	private expectedState: string | undefined;
-	private pendingVerifier: string | undefined;
 
 	/**
 	 * Create and initialize a new OAuth session manager.
@@ -370,12 +364,12 @@ export class OAuthSessionManager implements vscode.Disposable {
 			challenge,
 		);
 
-		return new Promise<{ code: string; verifier: string }>(
+		const callbackPromise = new Promise<{ code: string; verifier: string }>(
 			(resolve, reject) => {
 				const timeoutMins = 5;
-				const timeout = setTimeout(
+				const timeoutHandle = setTimeout(
 					() => {
-						this.clearPendingAuth();
+						cleanup();
 						reject(
 							new Error(`OAuth flow timed out after ${timeoutMins} minutes`),
 						);
@@ -383,93 +377,67 @@ export class OAuthSessionManager implements vscode.Disposable {
 					timeoutMins * 60 * 1000,
 				);
 
-				const clearPromise = () => {
-					clearTimeout(timeout);
-					this.clearPendingAuth();
-				};
+				const listener = this.secretsManager.onDidChangeOAuthCallback(
+					({ state: callbackState, code, error }) => {
+						if (callbackState !== state) {
+							return;
+						}
 
-				this.pendingAuthResolve = (result) => {
-					clearPromise();
-					resolve(result);
-				};
+						cleanup();
 
-				this.pendingAuthReject = (error) => {
-					clearPromise();
-					reject(error);
-				};
-
-				this.expectedState = state;
-				this.pendingVerifier = verifier;
-
-				vscode.env.openExternal(vscode.Uri.parse(authUrl)).then(
-					() => {},
-					(error) => {
-						if (error instanceof Error) {
-							this.pendingAuthReject?.(error);
+						if (error) {
+							reject(new Error(`OAuth error: ${error}`));
+						} else if (code) {
+							resolve({ code, verifier });
 						} else {
-							this.pendingAuthReject?.(new Error("Failed to open browser"));
+							reject(new Error("No authorization code received"));
 						}
 					},
 				);
+
+				const cleanup = () => {
+					clearTimeout(timeoutHandle);
+					listener.dispose();
+				};
+
+				this.pendingAuthReject = (error) => {
+					cleanup();
+					reject(error);
+				};
 			},
 		);
-	}
 
-	/**
-	 * Clear pending authorization flow state.
-	 */
-	private clearPendingAuth(): void {
-		this.pendingAuthResolve = undefined;
-		this.pendingAuthReject = undefined;
-		this.expectedState = undefined;
-		this.pendingVerifier = undefined;
+		try {
+			await vscode.env.openExternal(vscode.Uri.parse(authUrl));
+		} catch (error) {
+			throw error instanceof Error
+				? error
+				: new Error("Failed to open browser");
+		}
+
+		return callbackPromise;
 	}
 
 	/**
 	 * Handle OAuth callback from browser redirect.
-	 * Validates state and resolves pending authorization promise.
-	 *
-	 * // TODO this has to work across windows!
+	 * Writes the callback result to secrets storage, triggering the waiting window to proceed.
 	 */
-	handleCallback(
+	async handleCallback(
 		code: string | null,
 		state: string | null,
 		error: string | null,
-	): void {
-		if (!this.pendingAuthResolve || !this.pendingAuthReject) {
-			this.logger.warn("Received OAuth callback but no pending auth flow");
-			return;
-		}
-
-		if (error) {
-			this.pendingAuthReject(new Error(`OAuth error: ${error}`));
-			return;
-		}
-
-		if (!code) {
-			this.pendingAuthReject(new Error("No authorization code received"));
-			return;
-		}
-
+	): Promise<void> {
 		if (!state) {
-			this.pendingAuthReject(new Error("No state received"));
+			this.logger.warn("Received OAuth callback with no state parameter");
 			return;
 		}
 
-		if (state !== this.expectedState) {
-			this.pendingAuthReject(
-				new Error("State mismatch - possible CSRF attack"),
-			);
-			return;
+		try {
+			await this.secretsManager.setOAuthCallback({ state, code, error });
+			this.logger.debug("OAuth callback processed successfully");
+		} catch (err) {
+			this.logger.error("Failed to process OAuth callback:", err);
 		}
-
-		const verifier = this.pendingVerifier;
-		if (!verifier) {
-			this.pendingAuthReject(new Error("No PKCE verifier found"));
-			return;
-		}
-
-		this.pendingAuthResolve({ code, verifier });
 	}
 
 	/**
@@ -712,13 +680,13 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Clears all in-memory state and rejects any pending operations.
+	 * Clears all in-memory state.
 	 */
 	dispose(): void {
 		if (this.pendingAuthReject) {
 			this.pendingAuthReject(new Error("OAuth session manager disposed"));
 		}
-		this.clearPendingAuth();
+		this.pendingAuthReject = undefined;
 		this.storedTokens = undefined;
 		this.refreshInProgress = false;
 		this.lastRefreshAttempt = 0;

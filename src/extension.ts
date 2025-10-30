@@ -158,7 +158,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const code = params.get("code");
 				const state = params.get("state");
 				const error = params.get("error");
-				oauthSessionManager.handleCallback(code, state, error);
+				await oauthSessionManager.handleCallback(code, state, error);
 				return;
 			}
 
