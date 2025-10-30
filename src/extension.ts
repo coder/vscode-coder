@@ -12,6 +12,8 @@ import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { AuthAction } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
+import { OAuthSessionManager } from "./oauth/sessionManager";
+import { CALLBACK_PATH } from "./oauth/utils";
 import { Remote } from "./remote/remote";
 import { toSafeHost } from "./util";
 import {
@@ -68,14 +70,24 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Try to clear this flag ASAP
 	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
 
+	const url = mementoManager.getUrl();
+
+	// Create OAuth session manager before the main client
+	const oauthSessionManager = await OAuthSessionManager.create(
+		url || "",
+		serviceContainer,
+		ctx,
+	);
+	ctx.subscriptions.push(oauthSessionManager);
+
 	// This client tracks the current login and will be used through the life of
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
-	const url = mementoManager.getUrl();
 	const client = CoderApi.create(
 		url || "",
 		await secretsManager.getSessionToken(),
 		output,
+		oauthSessionManager,
 	);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
@@ -121,11 +133,41 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		ctx.subscriptions,
 	);
 
+	// Listen for session token changes and sync state across all components
+	ctx.subscriptions.push(
+		secretsManager.onDidChangeSessionToken(async (token) => {
+			client.setSessionToken(token ?? "");
+			if (!token) {
+				output.debug("Session token cleared");
+				return;
+			}
+
+			output.debug("Session token changed, syncing state");
+
+			const url = mementoManager.getUrl();
+			if (url) {
+				const cliManager = serviceContainer.getCliManager();
+				// TODO label might not match the one in remote?
+				await cliManager.configure(toSafeHost(url), url, token);
+				output.debug("Updated CLI config with new token");
+			}
+		}),
+	);
+
 	// Handle vscode:// URIs.
 	const uriHandler = vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
-			const cliManager = serviceContainer.getCliManager();
 			const params = new URLSearchParams(uri.query);
+
+			if (uri.path === CALLBACK_PATH) {
+				const code = params.get("code");
+				const state = params.get("state");
+				const error = params.get("error");
+				await oauthSessionManager.handleCallback(code, state, error);
+				return;
+			}
+
+			const cliManager = serviceContainer.getCliManager();
 			if (uri.path === "/open") {
 				const owner = params.get("owner");
 				const workspace = params.get("workspace");
@@ -275,7 +317,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(serviceContainer, client);
+	const commands = new Commands(serviceContainer, client, oauthSessionManager);
 	ctx.subscriptions.push(
 		vscode.commands.registerCommand(
 			"coder.login",
@@ -369,6 +411,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				isFirstConnect,
 			);
 			if (details) {
+				// TODO if the URL is different then we need to update the OAuth session!!! (Centralize this logic)
 				ctx.subscriptions.push(details);
 				// Authenticate the plugin client which is used in the sidebar to display
 				// workspaces belonging to this deployment.
