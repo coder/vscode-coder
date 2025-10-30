@@ -1,6 +1,7 @@
 import { type Api } from "coder/site/src/api/api";
 import {
 	type WorkspaceAgentLog,
+	type ProvisionerJobLog,
 	type Workspace,
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
@@ -85,92 +86,72 @@ export async function startWorkspaceIfStoppedOrFailed(
 }
 
 /**
- * Wait for the latest build to finish while streaming logs to the emitter.
- *
- * Once completed, fetch the workspace again and return it.
+ * Streams build logs to the emitter in real-time.
+ * Returns the websocket for lifecycle management.
  */
-export async function waitForBuild(
+export async function streamBuildLogs(
 	client: CoderApi,
 	writeEmitter: vscode.EventEmitter<string>,
 	workspace: Workspace,
-): Promise<Workspace> {
+): Promise<OneWayWebSocket<ProvisionerJobLog>> {
 	const socket = await client.watchBuildLogsByBuildId(
 		workspace.latest_build.id,
 		[],
 	);
 
-	await new Promise<void>((resolve, reject) => {
-		socket.addEventListener("message", (data) => {
-			if (data.parseError) {
-				writeEmitter.fire(
-					errToStr(data.parseError, "Failed to parse message") + "\r\n",
-				);
-			} else {
-				writeEmitter.fire(data.parsedMessage.output + "\r\n");
-			}
-		});
-
-		socket.addEventListener("error", (error) => {
-			const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
-			return reject(
-				new Error(
-					`Failed to watch workspace build on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
-				),
+	socket.addEventListener("message", (data) => {
+		if (data.parseError) {
+			writeEmitter.fire(
+				errToStr(data.parseError, "Failed to parse message") + "\r\n",
 			);
-		});
-
-		socket.addEventListener("close", () => resolve());
+		} else {
+			writeEmitter.fire(data.parsedMessage.output + "\r\n");
+		}
 	});
 
-	writeEmitter.fire("Build complete\r\n");
-	const updatedWorkspace = await client.getWorkspace(workspace.id);
-	writeEmitter.fire(
-		`Workspace is now ${updatedWorkspace.latest_build.status}\r\n`,
-	);
-	return updatedWorkspace;
+	socket.addEventListener("error", (error) => {
+		const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
+		writeEmitter.fire(
+			`Error watching workspace build logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}\r\n`,
+		);
+	});
+
+	socket.addEventListener("close", () => {
+		writeEmitter.fire("Build complete\r\n");
+	});
+
+	return socket;
 }
 
 /**
  * Streams agent logs to the emitter in real-time.
- * Returns the websocket and a completion promise that rejects on error.
+ * Returns the websocket for lifecycle management.
  */
 export async function streamAgentLogs(
 	client: CoderApi,
 	writeEmitter: vscode.EventEmitter<string>,
 	agent: WorkspaceAgent,
-): Promise<{
-	socket: OneWayWebSocket<WorkspaceAgentLog[]>;
-	completion: Promise<void>;
-}> {
+): Promise<OneWayWebSocket<WorkspaceAgentLog[]>> {
 	const socket = await client.watchWorkspaceAgentLogs(agent.id, []);
 
-	const completion = new Promise<void>((resolve, reject) => {
-		socket.addEventListener("message", (data) => {
-			if (data.parseError) {
-				writeEmitter.fire(
-					errToStr(data.parseError, "Failed to parse message") + "\r\n",
-				);
-			} else {
-				for (const log of data.parsedMessage) {
-					writeEmitter.fire(log.output + "\r\n");
-				}
-			}
-		});
-
-		socket.addEventListener("error", (error) => {
-			const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
+	socket.addEventListener("message", (data) => {
+		if (data.parseError) {
 			writeEmitter.fire(
-				`Error watching agent logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}\r\n`,
+				errToStr(data.parseError, "Failed to parse message") + "\r\n",
 			);
-			return reject(
-				new Error(
-					`Failed to watch agent logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
-				),
-			);
-		});
-
-		socket.addEventListener("close", () => resolve());
+		} else {
+			for (const log of data.parsedMessage) {
+				writeEmitter.fire(log.output + "\r\n");
+			}
+		}
 	});
 
-	return { socket, completion };
+	socket.addEventListener("error", (error) => {
+		const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
+		writeEmitter.fire(
+			`Error watching agent logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}\r\n`,
+		);
+	});
+
+	return socket;
 }

@@ -29,6 +29,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	private notifiedDeletion = false;
 	private notifiedOutdated = false;
 	private notifiedNotRunning = false;
+	private isReady = false;
 
 	readonly onChange = new vscode.EventEmitter<Workspace>();
 	private readonly statusBarItem: vscode.StatusBarItem;
@@ -123,6 +124,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private update(workspace: Workspace) {
+		this.updateReadyState(workspace);
 		this.updateContext(workspace);
 		this.updateStatusBar(workspace);
 	}
@@ -131,7 +133,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		this.maybeNotifyOutdated(workspace);
 		this.maybeNotifyAutostop(workspace);
 		this.maybeNotifyDeletion(workspace);
-		this.maybeNotifyNotRunning(workspace);
+		if (this.isReady) {
+			// This instance might be created before the workspace is running
+			this.maybeNotifyNotRunning(workspace);
+		}
 	}
 
 	private maybeNotifyAutostop(workspace: Workspace) {
@@ -242,6 +247,12 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			"Got empty error while monitoring workspace",
 		);
 		this.logger.error(message);
+	}
+
+	private updateReadyState(workspace: Workspace): void {
+		if (workspace.latest_build.status === "running") {
+			this.isReady = true;
+		}
 	}
 
 	private updateContext(workspace: Workspace) {
