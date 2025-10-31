@@ -1,11 +1,17 @@
-import { spawn } from "child_process";
 import { type Api } from "coder/site/src/api/api";
-import { type Workspace } from "coder/site/src/api/typesGenerated";
+import {
+	type WorkspaceAgentLog,
+	type ProvisionerJobLog,
+	type Workspace,
+	type WorkspaceAgent,
+} from "coder/site/src/api/typesGenerated";
+import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 
 import { type FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
 import { escapeCommandArg } from "../util";
+import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
 
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
 import { type CoderApi } from "./coderApi";
@@ -36,7 +42,7 @@ export async function startWorkspaceIfStoppedOrFailed(
 			createWorkspaceIdentifier(workspace),
 		];
 		if (featureSet.buildReason) {
-			startArgs.push(...["--reason", "vscode_connection"]);
+			startArgs.push("--reason", "vscode_connection");
 		}
 
 		// { shell: true } requires one shell-safe command string, otherwise we lose all escaping
@@ -44,27 +50,25 @@ export async function startWorkspaceIfStoppedOrFailed(
 		const startProcess = spawn(cmd, { shell: true });
 
 		startProcess.stdout.on("data", (data: Buffer) => {
-			data
+			const lines = data
 				.toString()
 				.split(/\r*\n/)
-				.forEach((line: string) => {
-					if (line !== "") {
-						writeEmitter.fire(line.toString() + "\r\n");
-					}
-				});
+				.filter((line) => line !== "");
+			for (const line of lines) {
+				writeEmitter.fire(line.toString() + "\r\n");
+			}
 		});
 
 		let capturedStderr = "";
 		startProcess.stderr.on("data", (data: Buffer) => {
-			data
+			const lines = data
 				.toString()
 				.split(/\r*\n/)
-				.forEach((line: string) => {
-					if (line !== "") {
-						writeEmitter.fire(line.toString() + "\r\n");
-						capturedStderr += line.toString() + "\n";
-					}
-				});
+				.filter((line) => line !== "");
+			for (const line of lines) {
+				writeEmitter.fire(line.toString() + "\r\n");
+				capturedStderr += line.toString() + "\n";
+			}
 		});
 
 		startProcess.on("close", (code: number) => {
@@ -82,51 +86,72 @@ export async function startWorkspaceIfStoppedOrFailed(
 }
 
 /**
- * Wait for the latest build to finish while streaming logs to the emitter.
- *
- * Once completed, fetch the workspace again and return it.
+ * Streams build logs to the emitter in real-time.
+ * Returns the websocket for lifecycle management.
  */
-export async function waitForBuild(
+export async function streamBuildLogs(
 	client: CoderApi,
 	writeEmitter: vscode.EventEmitter<string>,
 	workspace: Workspace,
-): Promise<Workspace> {
-	// This fetches the initial bunch of logs.
-	const logs = await client.getWorkspaceBuildLogs(workspace.latest_build.id);
-	logs.forEach((log) => writeEmitter.fire(log.output + "\r\n"));
-
+): Promise<OneWayWebSocket<ProvisionerJobLog>> {
 	const socket = await client.watchBuildLogsByBuildId(
 		workspace.latest_build.id,
-		logs,
+		[],
 	);
 
-	await new Promise<void>((resolve, reject) => {
-		socket.addEventListener("message", (data) => {
-			if (data.parseError) {
-				writeEmitter.fire(
-					errToStr(data.parseError, "Failed to parse message") + "\r\n",
-				);
-			} else {
-				writeEmitter.fire(data.parsedMessage.output + "\r\n");
-			}
-		});
-
-		socket.addEventListener("error", (error) => {
-			const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
-			return reject(
-				new Error(
-					`Failed to watch workspace build on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
-				),
+	socket.addEventListener("message", (data) => {
+		if (data.parseError) {
+			writeEmitter.fire(
+				errToStr(data.parseError, "Failed to parse message") + "\r\n",
 			);
-		});
-
-		socket.addEventListener("close", () => resolve());
+		} else {
+			writeEmitter.fire(data.parsedMessage.output + "\r\n");
+		}
 	});
 
-	writeEmitter.fire("Build complete\r\n");
-	const updatedWorkspace = await client.getWorkspace(workspace.id);
-	writeEmitter.fire(
-		`Workspace is now ${updatedWorkspace.latest_build.status}\r\n`,
-	);
-	return updatedWorkspace;
+	socket.addEventListener("error", (error) => {
+		const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
+		writeEmitter.fire(
+			`Error watching workspace build logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}\r\n`,
+		);
+	});
+
+	socket.addEventListener("close", () => {
+		writeEmitter.fire("Build complete\r\n");
+	});
+
+	return socket;
+}
+
+/**
+ * Streams agent logs to the emitter in real-time.
+ * Returns the websocket for lifecycle management.
+ */
+export async function streamAgentLogs(
+	client: CoderApi,
+	writeEmitter: vscode.EventEmitter<string>,
+	agent: WorkspaceAgent,
+): Promise<OneWayWebSocket<WorkspaceAgentLog[]>> {
+	const socket = await client.watchWorkspaceAgentLogs(agent.id, []);
+
+	socket.addEventListener("message", (data) => {
+		if (data.parseError) {
+			writeEmitter.fire(
+				errToStr(data.parseError, "Failed to parse message") + "\r\n",
+			);
+		} else {
+			for (const log of data.parsedMessage) {
+				writeEmitter.fire(log.output + "\r\n");
+			}
+		}
+	});
+
+	socket.addEventListener("error", (error) => {
+		const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
+		writeEmitter.fire(
+			`Error watching agent logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}\r\n`,
+		);
+	});
+
+	return socket;
 }

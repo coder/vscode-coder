@@ -12,6 +12,7 @@ import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { AuthAction } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
+import { maybeAskUrl } from "./promptUtils";
 import { Remote } from "./remote/remote";
 import { toSafeHost } from "./util";
 import {
@@ -147,7 +148,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// queries will default to localhost) so ask for it if missing.
 				// Pre-populate in case we do have the right URL so the user can just
 				// hit enter and move on.
-				const url = await commands.maybeAskUrl(
+				const url = await maybeAskUrl(
+					mementoManager,
 					params.get("url"),
 					mementoManager.getUrl(),
 				);
@@ -230,7 +232,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// queries will default to localhost) so ask for it if missing.
 				// Pre-populate in case we do have the right URL so the user can just
 				// hit enter and move on.
-				const url = await commands.maybeAskUrl(
+				const url = await maybeAskUrl(
+					mementoManager,
 					params.get("url"),
 					mementoManager.getUrl(),
 				);
