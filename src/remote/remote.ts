@@ -291,8 +291,8 @@ export class Remote {
 				this.vscodeProposed,
 				this.contextManager,
 			);
-			disposables.push(monitor);
 			disposables.push(
+				monitor,
 				monitor.onChange.event((w) => (this.commands.workspace = w)),
 			);
 
@@ -310,7 +310,7 @@ export class Remote {
 			disposables.push(stateMachine);
 
 			try {
-				await this.vscodeProposed.window.withProgress(
+				workspace = await this.vscodeProposed.window.withProgress(
 					{
 						location: vscode.ProgressLocation.Notification,
 						cancellable: false,
@@ -320,10 +320,8 @@ export class Remote {
 						let inProgress = false;
 						let pendingWorkspace: Workspace | null = null;
 
-						await new Promise<void>((resolve, reject) => {
+						return new Promise<Workspace>((resolve, reject) => {
 							const processWorkspace = async (w: Workspace) => {
-								workspace = w;
-
 								if (inProgress) {
 									// Process one workspace at a time, keeping only the last
 									pendingWorkspace = w;
@@ -340,25 +338,18 @@ export class Remote {
 									);
 									if (isReady) {
 										subscription.dispose();
-										resolve();
+										resolve(w);
 										return;
-									}
-
-									if (pendingWorkspace) {
-										const isReadyAfter = await stateMachine.processWorkspace(
-											pendingWorkspace,
-											progress,
-										);
-										if (isReadyAfter) {
-											subscription.dispose();
-											resolve();
-										}
 									}
 								} catch (error) {
 									subscription.dispose();
 									reject(error);
 								} finally {
 									inProgress = false;
+								}
+
+								if (pendingWorkspace) {
+									processWorkspace(pendingWorkspace);
 								}
 							};
 
@@ -372,6 +363,9 @@ export class Remote {
 			} finally {
 				stateMachine.dispose();
 			}
+
+			// Mark initial setup as complete so the monitor can start notifying about state changes
+			monitor.markInitialSetupComplete();
 
 			const agents = extractAgents(workspace.latest_build.resources);
 			const agent = agents.find(

@@ -95,6 +95,8 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "pending":
 			case "starting":
 			case "stopping":
+				// Clear the agent ID since it could change after a restart
+				this.agentId = undefined;
 				progress?.report({ message: "Waiting for workspace build..." });
 				this.logger.info(`Waiting for ${workspaceName}...`);
 
