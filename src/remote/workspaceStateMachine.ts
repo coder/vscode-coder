@@ -32,10 +32,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 	private agentId: string | undefined;
 
-	private buildLogSocket: {
-		socket: OneWayWebSocket<ProvisionerJobLog> | null;
-		buildId: string | null;
-	} = { socket: null, buildId: null };
+	private buildLogSocket: OneWayWebSocket<ProvisionerJobLog> | null = null;
 
 	private agentLogSocket: OneWayWebSocket<WorkspaceAgentLog[]> | null = null;
 
@@ -58,7 +55,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	 */
 	async processWorkspace(
 		workspace: Workspace,
-		progress?: vscode.Progress<{ message?: string }>,
+		progress: vscode.Progress<{ message?: string }>,
 	): Promise<boolean> {
 		const workspaceName = createWorkspaceIdentifier(workspace);
 
@@ -75,7 +72,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 					throw new Error(`User declined to start ${workspaceName}`);
 				}
 
-				progress?.report({ message: `Starting ${workspaceName}...` });
+				progress.report({ message: `Starting ${workspaceName}...` });
 				this.logger.info(`Starting ${workspaceName}...`);
 				const globalConfigDir = this.pathResolver.getGlobalConfigDir(
 					this.parts.label,
@@ -95,20 +92,19 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "pending":
 			case "starting":
 			case "stopping":
-				progress?.report({ message: "Waiting for workspace build..." });
+				// Clear the agent ID since it could change after a restart
+				this.agentId = undefined;
+				this.closeAgentLogSocket();
+				progress.report({
+					message: `Waiting for workspace build (${workspace.latest_build.status})...`,
+				});
 				this.logger.info(`Waiting for ${workspaceName}...`);
 
-				if (!this.buildLogSocket.socket) {
-					const socket = await streamBuildLogs(
-						this.workspaceClient,
-						this.terminal.writeEmitter,
-						workspace,
-					);
-					this.buildLogSocket = {
-						socket,
-						buildId: workspace.latest_build.id,
-					};
-				}
+				this.buildLogSocket ??= await streamBuildLogs(
+					this.workspaceClient,
+					this.terminal.writeEmitter,
+					workspace,
+				);
 				return false;
 
 			case "deleted":
@@ -117,12 +113,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "canceling":
 				this.closeBuildLogSocket();
 				throw new Error(`${workspaceName} is ${workspace.latest_build.status}`);
-
-			default:
-				this.closeBuildLogSocket();
-				throw new Error(
-					`${workspaceName} unknown status: ${workspace.latest_build.status}`,
-				);
 		}
 
 		const agents = extractAgents(workspace.latest_build.resources);
@@ -144,33 +134,30 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			throw new Error(`Agent not found in ${workspaceName} resources`);
 		}
 
+		const agentName = `${workspaceName}/${agent.name}`;
+
 		switch (agent.status) {
 			case "connecting":
-				progress?.report({
-					message: `Waiting for agent ${agent.name} to connect...`,
+				progress.report({
+					message: `Waiting for agent ${agentName} to connect...`,
 				});
-				this.logger.debug(`Waiting for agent ${agent.name}...`);
+				this.logger.debug(`Waiting for agent ${agentName}...`);
 				return false;
 
 			case "disconnected":
-				throw new Error(`${workspaceName}/${agent.name} disconnected`);
+				throw new Error(`${agentName} disconnected`);
 
 			case "timeout":
-				progress?.report({
-					message: `Agent ${agent.name} timed out, continuing to wait...`,
+				progress.report({
+					message: `Agent ${agentName} timed out, continuing to wait...`,
 				});
 				this.logger.debug(
-					`Agent ${agent.name} timed out, continuing to wait...`,
+					`Agent ${agentName} timed out, continuing to wait...`,
 				);
 				return false;
 
 			case "connected":
 				break;
-
-			default:
-				throw new Error(
-					`${workspaceName}/${agent.name} unknown status: ${agent.status}`,
-				);
 		}
 
 		switch (agent.lifecycle_state) {
@@ -186,10 +173,10 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 					return true;
 				}
 
-				progress?.report({
-					message: `Waiting for agent ${agent.name} startup scripts...`,
+				progress.report({
+					message: `Waiting for ${agentName} startup scripts...`,
 				});
-				this.logger.debug(`Waiting for agent ${agent.name} startup scripts...`);
+				this.logger.debug(`Waiting for ${agentName} startup scripts...`);
 
 				this.agentLogSocket ??= await streamAgentLogs(
 					this.workspaceClient,
@@ -200,44 +187,41 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			}
 
 			case "created":
-				progress?.report({
-					message: `Waiting for agent ${agent.name} to start...`,
+				progress.report({
+					message: `Waiting for ${agentName} to start...`,
 				});
-				this.logger.debug(
-					`Waiting for ${workspaceName}/${agent.name} to start...`,
-				);
+				this.logger.debug(`Waiting for ${agentName} to start...`);
 				return false;
 
 			case "start_error":
 				this.closeAgentLogSocket();
 				this.logger.info(
-					`Agent ${agent.name} startup script failed, but continuing...`,
+					`Agent ${agentName} startup script failed, but continuing...`,
 				);
 				return true;
 
 			case "start_timeout":
 				this.closeAgentLogSocket();
 				this.logger.info(
-					`Agent ${agent.name} startup script timed out, but continuing...`,
+					`Agent ${agentName} startup script timed out, but continuing...`,
 				);
 				return true;
 
+			case "shutting_down":
 			case "off":
-				this.closeAgentLogSocket();
-				throw new Error(`${workspaceName}/${agent.name} is off`);
-
-			default:
+			case "shutdown_error":
+			case "shutdown_timeout":
 				this.closeAgentLogSocket();
 				throw new Error(
-					`${workspaceName}/${agent.name} unknown lifecycle state: ${agent.lifecycle_state}`,
+					`Invalid lifecycle state '${agent.lifecycle_state}' for ${agentName}`,
 				);
 		}
 	}
 
 	private closeBuildLogSocket(): void {
-		if (this.buildLogSocket.socket) {
-			this.buildLogSocket.socket.close();
-			this.buildLogSocket = { socket: null, buildId: null };
+		if (this.buildLogSocket) {
+			this.buildLogSocket.close();
+			this.buildLogSocket = null;
 		}
 	}
 
