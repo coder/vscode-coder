@@ -24,16 +24,20 @@ When updating a patched package to a new version:
 Search for the pattern where `_navigator` is defined. This appears in multiple distribution files.
 
 **Pattern to find:**
+
+<!-- prettier-ignore -->
 ```javascript
 const _navigator = typeof navigator === 'object' && navigator || undefined;
 ```
 
 **Replace with:**
+
 ```javascript
 const _navigator = undefined; // PATCHED: Removed navigator check
 ```
 
 **Files typically modified:**
+
 - `node_modules/axios/dist/node/axios.cjs`
 - `node_modules/axios/dist/esm/axios.js`
 - `node_modules/axios/lib/platform/common/utils.js`
@@ -50,6 +54,8 @@ const _navigator = undefined; // PATCHED: Removed navigator check
 Search for the `allowsEval` function that checks for Cloudflare in the user agent.
 
 **Pattern to find:**
+
+<!-- prettier-ignore -->
 ```javascript
 if (typeof navigator !== "undefined" && navigator?.userAgent?.includes("Cloudflare")) {
     return false;
@@ -57,12 +63,14 @@ if (typeof navigator !== "undefined" && navigator?.userAgent?.includes("Cloudfla
 ```
 
 **Replace with:**
+
 ```javascript
 // PATCHED: Removed navigator check to avoid VS Code deprecation warning
 // We're not running in Cloudflare Workers in a VS Code extension
 ```
 
 **Files typically modified:**
+
 - `node_modules/zod/v4/core/util.js`
 - `node_modules/zod/v4/core/util.cjs`
 
@@ -78,6 +86,7 @@ if (typeof navigator !== "undefined" && navigator?.userAgent?.includes("Cloudfla
 Search for the `getHardwareConcurrency` function that checks for `navigator.hardwareConcurrency`.
 
 **Pattern to find:**
+
 ```javascript
 getHardwareConcurrency: function() {
     if (typeof navigator !== 'undefined') {
@@ -89,6 +98,7 @@ getHardwareConcurrency: function() {
 ```
 
 **Replace with:**
+
 ```javascript
 getHardwareConcurrency: function() {
     // PATCHED: Removed navigator check to avoid VS Code deprecation warning
@@ -98,6 +108,7 @@ getHardwareConcurrency: function() {
 ```
 
 **Files typically modified:**
+
 - `node_modules/openpgp/dist/openpgp.js`
 
 **Tip:** Search for `getHardwareConcurrency` in the openpgp directory.
@@ -114,6 +125,7 @@ getHardwareConcurrency: function() {
 A conditional block that checks `typeof(navigator)` and sets `BigInteger.prototype.am` based on browser type (Internet Explorer, Netscape, etc.).
 
 **Replace with:**
+
 ```javascript
 // PATCHED: Removed navigator check to avoid VS Code deprecation warning
 BigInteger.prototype.am = am3;
@@ -129,6 +141,7 @@ dbits = 28;
 **Pattern to find:**
 A block that iterates through `navigator` properties to collect entropy bytes.
 
+<!-- prettier-ignore -->
 ```javascript
 if(typeof(navigator) !== 'undefined') {
     var _navBytes = '';
@@ -139,6 +152,7 @@ if(typeof(navigator) !== 'undefined') {
 ```
 
 **Replace with:**
+
 ```javascript
 // PATCHED: Removed navigator entropy collection to avoid VS Code deprecation warning
 ```
@@ -152,6 +166,7 @@ if(typeof(navigator) !== 'undefined') {
 **Pattern to find:**
 In the `estimateCores` function, a check for `navigator.hardwareConcurrency`.
 
+<!-- prettier-ignore -->
 ```javascript
 if(typeof navigator !== 'undefined' &&
     'hardwareConcurrency' in navigator &&
@@ -162,6 +177,7 @@ if(typeof navigator !== 'undefined' &&
 ```
 
 **Replace with:**
+
 ```javascript
 // PATCHED: Removed navigator check to avoid VS Code deprecation warning
 ```
