@@ -1,0 +1,82 @@
+diff --git a/node_modules/node-forge/lib/jsbn.js b/node_modules/node-forge/lib/jsbn.js
+index 11f965c..9e5dfdc 100644
+--- a/node_modules/node-forge/lib/jsbn.js
++++ b/node_modules/node-forge/lib/jsbn.js
+@@ -116,21 +116,10 @@ function am3(i,x,w,j,c,n) {
+   return c;
+ }
+ 
+-// node.js (no browser)
+-if(typeof(navigator) === 'undefined')
+-{
+-   BigInteger.prototype.am = am3;
+-   dbits = 28;
+-} else if(j_lm && (navigator.appName == "Microsoft Internet Explorer")) {
+-  BigInteger.prototype.am = am2;
+-  dbits = 30;
+-} else if(j_lm && (navigator.appName != "Netscape")) {
+-  BigInteger.prototype.am = am1;
+-  dbits = 26;
+-} else { // Mozilla/Netscape seems to prefer am3
+-  BigInteger.prototype.am = am3;
+-  dbits = 28;
+-}
++// PATCHED: Removed navigator check to avoid VS Code deprecation warning
++// VS Code extensions run in Node.js, so use Node.js implementation directly
++BigInteger.prototype.am = am3;
++dbits = 28;
+ 
+ BigInteger.prototype.DB = dbits;
+ BigInteger.prototype.DM = ((1<<dbits)-1);
+diff --git a/node_modules/node-forge/lib/random.js b/node_modules/node-forge/lib/random.js
+index d4e4bea..b0b6bb2 100644
+--- a/node_modules/node-forge/lib/random.js
++++ b/node_modules/node-forge/lib/random.js
+@@ -134,26 +134,8 @@ if(forge.options.usePureJavaScript ||
+   // get load time entropy
+   _ctx.collectInt(+new Date(), 32);
+ 
+-  // add some entropy from navigator object
+-  if(typeof(navigator) !== 'undefined') {
+-    var _navBytes = '';
+-    for(var key in navigator) {
+-      try {
+-        if(typeof(navigator[key]) == 'string') {
+-          _navBytes += navigator[key];
+-        }
+-      } catch(e) {
+-        /* Some navigator keys might not be accessible, e.g. the geolocation
+-          attribute throws an exception if touched in Mozilla chrome://
+-          context.
+-
+-          Silently ignore this and just don't use this as a source of
+-          entropy. */
+-      }
+-    }
+-    _ctx.collect(_navBytes);
+-    _navBytes = null;
+-  }
++  // PATCHED: Removed navigator entropy collection to avoid VS Code deprecation warning
++  // VS Code extensions run in Node.js, not in a browser, so navigator is not available
+ 
+   // add mouse and keyboard collectors if jquery is available
+   if(jQuery) {
+diff --git a/node_modules/node-forge/lib/util.js b/node_modules/node-forge/lib/util.js
+index aaede5a..a11ad50 100644
+--- a/node_modules/node-forge/lib/util.js
++++ b/node_modules/node-forge/lib/util.js
+@@ -2555,12 +2555,8 @@ util.estimateCores = function(options, callback) {
+   if('cores' in util && !options.update) {
+     return callback(null, util.cores);
+   }
+-  if(typeof navigator !== 'undefined' &&
+-    'hardwareConcurrency' in navigator &&
+-    navigator.hardwareConcurrency > 0) {
+-    util.cores = navigator.hardwareConcurrency;
+-    return callback(null, util.cores);
+-  }
++  // PATCHED: Removed navigator check to avoid VS Code deprecation warning
++  // VS Code extensions run in Node.js, not in a browser
+   if(typeof Worker === 'undefined') {
+     // workers not available
+     util.cores = 1;

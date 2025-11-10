@@ -1,0 +1,19 @@
+diff --git a/node_modules/openpgp/dist/openpgp.js b/node_modules/openpgp/dist/openpgp.js
+index b990fa2..1106a18 100644
+--- a/node_modules/openpgp/dist/openpgp.js
++++ b/node_modules/openpgp/dist/openpgp.js
+@@ -2206,11 +2206,9 @@ var openpgp = (function (exports) {
+     },
+ 
+     getHardwareConcurrency: function() {
+-      if (typeof navigator !== 'undefined') {
+-        return navigator.hardwareConcurrency || 1;
+-      }
+-
+-      const os = this.nodeRequire('os'); // Assume we're on Node.js.
++      // PATCHED: Removed navigator check to avoid VS Code deprecation warning
++      // VS Code extensions run in Node.js, so use os.cpus() directly
++      const os = this.nodeRequire('os');
+       return os.cpus().length;
+     },
+ 

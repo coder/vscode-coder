@@ -20,6 +20,7 @@
 	"scripts": {
 		"build": "webpack",
 		"fmt": "prettier --write .",
+		"postinstall": "patch-package",
 		"lint": "eslint . --ext ts,md,json",
 		"lint:fix": "yarn lint --fix",
 		"package": "webpack --mode production --devtool hidden-source-map",
@@ -387,6 +388,7 @@
 		"markdown-eslint-parser": "^1.2.1",
 		"memfs": "^4.49.0",
 		"nyc": "^17.1.0",
+		"patch-package": "^8.0.1",
 		"prettier": "^3.5.3",
 		"ts-loader": "^9.5.1",
 		"typescript": "^5.9.3",
