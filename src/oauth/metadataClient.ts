@@ -26,13 +26,13 @@ export class OAuthMetadataClient {
 	/**
 	 * Check if a server supports OAuth by attempting to fetch the well-known endpoint.
 	 */
-	async checkOAuthSupport(): Promise<boolean> {
+	public static async checkOAuthSupport(
+		axiosInstance: AxiosInstance,
+	): Promise<boolean> {
 		try {
-			await this.axiosInstance.get(OAUTH_DISCOVERY_ENDPOINT);
-			this.logger.debug("Server supports OAuth");
+			await axiosInstance.get(OAUTH_DISCOVERY_ENDPOINT);
 			return true;
-		} catch (error) {
-			this.logger.debug("Server does not support OAuth:", error);
+		} catch {
 			return false;
 		}
 	}
