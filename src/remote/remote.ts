@@ -314,7 +314,7 @@ export class Remote {
 					{
 						location: vscode.ProgressLocation.Notification,
 						cancellable: false,
-						title: "Preparing workspace",
+						title: "Connecting to workspace",
 					},
 					async (progress) => {
 						let inProgress = false;

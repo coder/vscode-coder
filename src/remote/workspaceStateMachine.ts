@@ -30,7 +30,7 @@ import type { OneWayWebSocket } from "../websocket/oneWayWebSocket";
 export class WorkspaceStateMachine implements vscode.Disposable {
 	private readonly terminal: TerminalSession;
 
-	private agentId: string | undefined;
+	private agent: { id: string; name: string } | undefined;
 
 	private buildLogSocket: OneWayWebSocket<ProvisionerJobLog> | null = null;
 
@@ -46,7 +46,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		private readonly pathResolver: PathResolver,
 		private readonly vscodeProposed: typeof vscode,
 	) {
-		this.terminal = new TerminalSession("Agent Log");
+		this.terminal = new TerminalSession("Workspace Build");
 	}
 
 	/**
@@ -69,11 +69,11 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				this.closeBuildLogSocket();
 
 				if (!this.firstConnect && !(await this.confirmStart(workspaceName))) {
-					throw new Error(`User declined to start ${workspaceName}`);
+					throw new Error(`Workspace start cancelled`);
 				}
 
-				progress.report({ message: `Starting ${workspaceName}...` });
-				this.logger.info(`Starting ${workspaceName}...`);
+				progress.report({ message: `starting ${workspaceName}...` });
+				this.logger.info(`Starting ${workspaceName}`);
 				const globalConfigDir = this.pathResolver.getGlobalConfigDir(
 					this.parts.label,
 				);
@@ -92,13 +92,13 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "pending":
 			case "starting":
 			case "stopping":
-				// Clear the agent ID since it could change after a restart
-				this.agentId = undefined;
+				// Clear the agent since it's ID could change after a restart
+				this.agent = undefined;
 				this.closeAgentLogSocket();
 				progress.report({
-					message: `Waiting for workspace build (${workspace.latest_build.status})...`,
+					message: `building ${workspaceName} (${workspace.latest_build.status})...`,
 				});
-				this.logger.info(`Waiting for ${workspaceName}...`);
+				this.logger.info(`Waiting for ${workspaceName}`);
 
 				this.buildLogSocket ??= await streamBuildLogs(
 					this.workspaceClient,
@@ -116,44 +116,42 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		}
 
 		const agents = extractAgents(workspace.latest_build.resources);
-		if (this.agentId === undefined) {
-			this.logger.info(`Finding agent for ${workspaceName}...`);
+		if (this.agent === undefined) {
+			this.logger.info(`Finding agent for ${workspaceName}`);
 			const gotAgent = await maybeAskAgent(agents, this.parts.agent);
 			if (!gotAgent) {
 				// User declined to pick an agent.
-				throw new Error("User declined to pick an agent");
+				throw new Error("Agent selection cancelled");
 			}
-			this.agentId = gotAgent.id;
+			this.agent = { id: gotAgent.id, name: gotAgent.name };
 			this.logger.info(
 				`Found agent ${gotAgent.name} with status`,
 				gotAgent.status,
 			);
 		}
-		const agent = agents.find((a) => a.id === this.agentId);
+		const agent = agents.find((a) => a.id === this.agent?.id);
 		if (!agent) {
-			throw new Error(`Agent not found in ${workspaceName} resources`);
+			throw new Error(
+				`Agent ${this.agent.name} not found in ${workspaceName} resources`,
+			);
 		}
-
-		const agentName = `${workspaceName}/${agent.name}`;
 
 		switch (agent.status) {
 			case "connecting":
 				progress.report({
-					message: `Waiting for agent ${agentName} to connect...`,
+					message: `connecting to agent ${agent.name}...`,
 				});
-				this.logger.debug(`Waiting for agent ${agentName}...`);
+				this.logger.debug(`Connecting to agent ${agent.name}`);
 				return false;
 
 			case "disconnected":
-				throw new Error(`${agentName} disconnected`);
+				throw new Error(`Agent ${workspaceName}/${agent.name} disconnected`);
 
 			case "timeout":
 				progress.report({
-					message: `Agent ${agentName} timed out, continuing to wait...`,
+					message: `agent ${agent.name} timed out, retrying...`,
 				});
-				this.logger.debug(
-					`Agent ${agentName} timed out, continuing to wait...`,
-				);
+				this.logger.debug(`Agent ${agent.name} timed out, retrying`);
 				return false;
 
 			case "connected":
@@ -174,9 +172,9 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				}
 
 				progress.report({
-					message: `Waiting for ${agentName} startup scripts...`,
+					message: `running agent ${agent.name} startup scripts...`,
 				});
-				this.logger.debug(`Waiting for ${agentName} startup scripts...`);
+				this.logger.debug(`Running agent ${agent.name} startup scripts`);
 
 				this.agentLogSocket ??= await streamAgentLogs(
 					this.workspaceClient,
@@ -188,22 +186,22 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 			case "created":
 				progress.report({
-					message: `Waiting for ${agentName} to start...`,
+					message: `starting agent ${agent.name}...`,
 				});
-				this.logger.debug(`Waiting for ${agentName} to start...`);
+				this.logger.debug(`Starting agent ${agent.name}`);
 				return false;
 
 			case "start_error":
 				this.closeAgentLogSocket();
 				this.logger.info(
-					`Agent ${agentName} startup script failed, but continuing...`,
+					`Agent ${agent.name} startup scripts failed, but continuing`,
 				);
 				return true;
 
 			case "start_timeout":
 				this.closeAgentLogSocket();
 				this.logger.info(
-					`Agent ${agentName} startup script timed out, but continuing...`,
+					`Agent ${agent.name} startup scripts timed out, but continuing`,
 				);
 				return true;
 
@@ -213,7 +211,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "shutdown_timeout":
 				this.closeAgentLogSocket();
 				throw new Error(
-					`Invalid lifecycle state '${agent.lifecycle_state}' for ${agentName}`,
+					`Invalid lifecycle state '${agent.lifecycle_state}' for ${workspaceName}/${agent.name}`,
 				);
 		}
 	}
@@ -245,7 +243,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	}
 
 	public getAgentId(): string | undefined {
-		return this.agentId;
+		return this.agent?.id;
 	}
 
 	dispose(): void {
