@@ -29,6 +29,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	private notifiedDeletion = false;
 	private notifiedOutdated = false;
 	private notifiedNotRunning = false;
+	private completedInitialSetup = false;
 
 	readonly onChange = new vscode.EventEmitter<Workspace>();
 	private readonly statusBarItem: vscode.StatusBarItem;
@@ -110,6 +111,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		return monitor;
 	}
 
+	public markInitialSetupComplete(): void {
+		this.completedInitialSetup = true;
+	}
+
 	/**
 	 * Permanently close the websocket.
 	 */
@@ -130,8 +135,11 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	private maybeNotify(workspace: Workspace) {
 		this.maybeNotifyOutdated(workspace);
 		this.maybeNotifyAutostop(workspace);
-		this.maybeNotifyDeletion(workspace);
-		this.maybeNotifyNotRunning(workspace);
+		if (this.completedInitialSetup) {
+			// This instance might be created before the workspace is running
+			this.maybeNotifyDeletion(workspace);
+			this.maybeNotifyNotRunning(workspace);
+		}
 	}
 
 	private maybeNotifyAutostop(workspace: Workspace) {
@@ -193,7 +201,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private isImpending(target: string, notifyTime: number): boolean {
-		const nowTime = new Date().getTime();
+		const nowTime = Date.now();
 		const targetTime = new Date(target).getTime();
 		const timeLeft = targetTime - nowTime;
 		return timeLeft >= 0 && timeLeft <= notifyTime;
@@ -249,10 +257,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private updateStatusBar(workspace: Workspace) {
-		if (!workspace.outdated) {
-			this.statusBarItem.hide();
-		} else {
+		if (workspace.outdated) {
 			this.statusBarItem.show();
+		} else {
+			this.statusBarItem.hide();
 		}
 	}
 }

@@ -5,10 +5,10 @@ import {
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 import find from "find-process";
-import * as fs from "fs/promises";
 import * as jsonc from "jsonc-parser";
-import * as os from "os";
-import * as path from "path";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
@@ -19,13 +19,9 @@ import {
 	formatEventLabel,
 	formatMetadataError,
 } from "../api/agentMetadataHelper";
-import { createWorkspaceIdentifier, extractAgents } from "../api/api-helper";
+import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import {
-	startWorkspaceIfStoppedOrFailed,
-	waitForBuild,
-} from "../api/workspace";
 import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
 import * as cliUtils from "../core/cliUtils";
@@ -47,6 +43,7 @@ import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 import { SSHConfig, type SSHValues, mergeSSHConfigValues } from "./sshConfig";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
+import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 export interface RemoteDetails extends vscode.Disposable {
 	url: string;
@@ -101,147 +98,6 @@ export class Remote {
 			this.loginDetectedResolver();
 			this.loginDetectedResolver = undefined;
 			this.loginDetectedRejector = undefined;
-		}
-	}
-
-	private async confirmStart(workspaceName: string): Promise<boolean> {
-		const action = await this.vscodeProposed.window.showInformationMessage(
-			`Unable to connect to the workspace ${workspaceName} because it is not running. Start the workspace?`,
-			{
-				useCustom: true,
-				modal: true,
-			},
-			"Start",
-		);
-		return action === "Start";
-	}
-
-	/**
-	 * Try to get the workspace running.  Return undefined if the user canceled.
-	 */
-	private async maybeWaitForRunning(
-		client: CoderApi,
-		workspace: Workspace,
-		label: string,
-		binPath: string,
-		featureSet: FeatureSet,
-		firstConnect: boolean,
-	): Promise<Workspace | undefined> {
-		const workspaceName = createWorkspaceIdentifier(workspace);
-
-		// A terminal will be used to stream the build, if one is necessary.
-		let writeEmitter: undefined | vscode.EventEmitter<string>;
-		let terminal: undefined | vscode.Terminal;
-		let attempts = 0;
-
-		function initWriteEmitterAndTerminal(): vscode.EventEmitter<string> {
-			writeEmitter ??= new vscode.EventEmitter<string>();
-			if (!terminal) {
-				terminal = vscode.window.createTerminal({
-					name: "Build Log",
-					location: vscode.TerminalLocation.Panel,
-					// Spin makes this gear icon spin!
-					iconPath: new vscode.ThemeIcon("gear~spin"),
-					pty: {
-						onDidWrite: writeEmitter.event,
-						close: () => undefined,
-						open: () => undefined,
-						// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					} as Partial<vscode.Pseudoterminal> as any,
-				});
-				terminal.show(true);
-			}
-			return writeEmitter;
-		}
-
-		try {
-			// Show a notification while we wait.
-			return await this.vscodeProposed.window.withProgress(
-				{
-					location: vscode.ProgressLocation.Notification,
-					cancellable: false,
-					title: "Waiting for workspace build...",
-				},
-				async () => {
-					const globalConfigDir = this.pathResolver.getGlobalConfigDir(label);
-					while (workspace.latest_build.status !== "running") {
-						++attempts;
-						switch (workspace.latest_build.status) {
-							case "pending":
-							case "starting":
-							case "stopping":
-								writeEmitter = initWriteEmitterAndTerminal();
-								this.logger.info(`Waiting for ${workspaceName}...`);
-								workspace = await waitForBuild(client, writeEmitter, workspace);
-								break;
-							case "stopped":
-								if (
-									!firstConnect &&
-									!(await this.confirmStart(workspaceName))
-								) {
-									return undefined;
-								}
-								writeEmitter = initWriteEmitterAndTerminal();
-								this.logger.info(`Starting ${workspaceName}...`);
-								workspace = await startWorkspaceIfStoppedOrFailed(
-									client,
-									globalConfigDir,
-									binPath,
-									workspace,
-									writeEmitter,
-									featureSet,
-								);
-								break;
-							case "failed":
-								// On a first attempt, we will try starting a failed workspace
-								// (for example canceling a start seems to cause this state).
-								if (attempts === 1) {
-									if (
-										!firstConnect &&
-										!(await this.confirmStart(workspaceName))
-									) {
-										return undefined;
-									}
-									writeEmitter = initWriteEmitterAndTerminal();
-									this.logger.info(`Starting ${workspaceName}...`);
-									workspace = await startWorkspaceIfStoppedOrFailed(
-										client,
-										globalConfigDir,
-										binPath,
-										workspace,
-										writeEmitter,
-										featureSet,
-									);
-									break;
-								}
-							// Otherwise fall through and error.
-							case "canceled":
-							case "canceling":
-							case "deleted":
-							case "deleting":
-							default: {
-								const is =
-									workspace.latest_build.status === "failed" ? "has" : "is";
-								throw new Error(
-									`${workspaceName} ${is} ${workspace.latest_build.status}`,
-								);
-							}
-						}
-						this.logger.info(
-							`${workspaceName} status is now`,
-							workspace.latest_build.status,
-						);
-					}
-					return workspace;
-				},
-			);
-		} finally {
-			if (writeEmitter) {
-				writeEmitter.dispose();
-			}
-			if (terminal) {
-				terminal.dispose();
-			}
 		}
 	}
 
@@ -427,36 +283,104 @@ export class Remote {
 				dispose: () => labelFormatterDisposable.dispose(),
 			});
 
-			// If the workspace is not in a running state, try to get it running.
-			if (workspace.latest_build.status !== "running") {
-				const updatedWorkspace = await this.maybeWaitForRunning(
-					workspaceClient,
-					workspace,
-					parts.label,
-					binaryPath,
-					featureSet,
-					firstConnect,
+			// Watch the workspace for changes.
+			const monitor = await WorkspaceMonitor.create(
+				workspace,
+				workspaceClient,
+				this.logger,
+				this.vscodeProposed,
+				this.contextManager,
+			);
+			disposables.push(
+				monitor,
+				monitor.onChange.event((w) => (this.commands.workspace = w)),
+			);
+
+			// Wait for workspace to be running and agent to be ready
+			const stateMachine = new WorkspaceStateMachine(
+				parts,
+				workspaceClient,
+				firstConnect,
+				binaryPath,
+				featureSet,
+				this.logger,
+				this.pathResolver,
+				this.vscodeProposed,
+			);
+			disposables.push(stateMachine);
+
+			try {
+				workspace = await this.vscodeProposed.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						cancellable: false,
+						title: "Connecting to workspace",
+					},
+					async (progress) => {
+						let inProgress = false;
+						let pendingWorkspace: Workspace | null = null;
+
+						return new Promise<Workspace>((resolve, reject) => {
+							const processWorkspace = async (w: Workspace) => {
+								if (inProgress) {
+									// Process one workspace at a time, keeping only the last
+									pendingWorkspace = w;
+									return;
+								}
+
+								inProgress = true;
+								try {
+									pendingWorkspace = null;
+
+									const isReady = await stateMachine.processWorkspace(
+										w,
+										progress,
+									);
+									if (isReady) {
+										subscription.dispose();
+										resolve(w);
+										return;
+									}
+								} catch (error) {
+									subscription.dispose();
+									reject(error);
+								} finally {
+									inProgress = false;
+								}
+
+								if (pendingWorkspace) {
+									processWorkspace(pendingWorkspace);
+								}
+							};
+
+							processWorkspace(workspace);
+							const subscription = monitor.onChange.event(async (w) =>
+								processWorkspace(w),
+							);
+						});
+					},
 				);
-				if (!updatedWorkspace) {
-					// User declined to start the workspace.
-					await this.closeRemote();
-					return;
-				}
-				workspace = updatedWorkspace;
+			} finally {
+				stateMachine.dispose();
 			}
+
+			// Mark initial setup as complete so the monitor can start notifying about state changes
+			monitor.markInitialSetupComplete();
+
+			const agents = extractAgents(workspace.latest_build.resources);
+			const agent = agents.find(
+				(agent) => agent.id === stateMachine.getAgentId(),
+			);
+
+			if (!agent) {
+				throw new Error("Failed to get workspace or agent from state machine");
+			}
+
 			this.commands.workspace = workspace;
 
-			// Pick an agent.
-			this.logger.info(`Finding agent for ${workspaceName}...`);
-			const agents = extractAgents(workspace.latest_build.resources);
-			const gotAgent = await this.commands.maybeAskAgent(agents, parts.agent);
-			if (!gotAgent) {
-				// User declined to pick an agent.
-				await this.closeRemote();
-				return;
-			}
-			let agent = gotAgent; // Reassign so it cannot be undefined in callbacks.
-			this.logger.info(`Found agent ${agent.name} with status`, agent.status);
+			// Watch coder inbox for messages
+			const inbox = await Inbox.create(workspace, workspaceClient, this.logger);
+			disposables.push(inbox);
 
 			// Do some janky setting manipulation.
 			this.logger.info("Modifying settings...");
@@ -536,76 +460,6 @@ export class Remote {
 					mungedPlatforms = mungedConnTimeout = false;
 					this.logger.warn("Failed to configure settings", ex);
 				}
-			}
-
-			// Watch the workspace for changes.
-			const monitor = await WorkspaceMonitor.create(
-				workspace,
-				workspaceClient,
-				this.logger,
-				this.vscodeProposed,
-				this.contextManager,
-			);
-			disposables.push(monitor);
-			disposables.push(
-				monitor.onChange.event((w) => (this.commands.workspace = w)),
-			);
-
-			// Watch coder inbox for messages
-			const inbox = await Inbox.create(workspace, workspaceClient, this.logger);
-			disposables.push(inbox);
-
-			// Wait for the agent to connect.
-			if (agent.status === "connecting") {
-				this.logger.info(`Waiting for ${workspaceName}/${agent.name}...`);
-				await vscode.window.withProgress(
-					{
-						title: "Waiting for the agent to connect...",
-						location: vscode.ProgressLocation.Notification,
-					},
-					async () => {
-						await new Promise<void>((resolve) => {
-							const updateEvent = monitor.onChange.event((workspace) => {
-								if (!agent) {
-									return;
-								}
-								const agents = extractAgents(workspace.latest_build.resources);
-								const found = agents.find((newAgent) => {
-									return newAgent.id === agent.id;
-								});
-								if (!found) {
-									return;
-								}
-								agent = found;
-								if (agent.status === "connecting") {
-									return;
-								}
-								updateEvent.dispose();
-								resolve();
-							});
-						});
-					},
-				);
-				this.logger.info(`Agent ${agent.name} status is now`, agent.status);
-			}
-
-			// Make sure the agent is connected.
-			// TODO: Should account for the lifecycle state as well?
-			if (agent.status !== "connected") {
-				const result = await this.vscodeProposed.window.showErrorMessage(
-					`${workspaceName}/${agent.name} ${agent.status}`,
-					{
-						useCustom: true,
-						modal: true,
-						detail: `The ${agent.name} agent failed to connect. Try restarting your workspace.`,
-					},
-				);
-				if (!result) {
-					await this.closeRemote();
-					return;
-				}
-				await this.reloadWindow();
-				return;
 			}
 
 			const logDir = this.getLogDir(featureSet);
