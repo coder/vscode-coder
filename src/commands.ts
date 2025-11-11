@@ -19,17 +19,14 @@ import { type SecretsManager } from "./core/secretsManager";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
 import { type Logger } from "./logging/logger";
-import { OAuthMetadataClient } from "./oauth/metadataClient";
 import { type OAuthSessionManager } from "./oauth/sessionManager";
-import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
+import { maybeAskAgent, maybeAskUrl, maybeAskAuthMethod } from "./promptUtils";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
 	AgentTreeItem,
 	type OpenableTreeItem,
 	WorkspaceTreeItem,
 } from "./workspace/workspacesProvider";
-
-type AuthMethod = "oauth" | "legacy";
 
 export class Commands {
 	private readonly vscodeProposed: typeof vscode;
@@ -92,7 +89,7 @@ export class Commands {
 		// Try to get a token from the user, if we need one, and their user.
 		const autoLogin = args?.autoLogin === true;
 
-		const res = await this.maybeAskToken(url, args?.token, autoLogin);
+		const res = await this.attemptLogin(url, args?.token, autoLogin);
 		if (!res) {
 			return; // The user aborted, or unable to auth.
 		}
@@ -136,12 +133,12 @@ export class Commands {
 	}
 
 	/**
-	 * If necessary, ask for a token, and keep asking until the token has been
-	 * validated.  Return the token and user that was fetched to validate the
-	 * token.  Null means the user aborted or we were unable to authenticate with
-	 * mTLS (in the latter case, an error notification will have been displayed).
+	 * Attempt to authenticate using OAuth, token, or mTLS. If necessary, prompts
+	 * for authentication method and credentials. Returns the token and user upon
+	 * successful authentication. Null means the user aborted or authentication
+	 * failed (in which case an error notification will have been displayed).
 	 */
-	private async maybeAskToken(
+	private async attemptLogin(
 		url: string,
 		token: string | undefined,
 		isAutoLogin: boolean,
@@ -174,58 +171,18 @@ export class Commands {
 			}
 		}
 
-		// Check if server supports OAuth
-		const supportsOAuth = await this.checkOAuthSupport(client);
-
-		let choice: AuthMethod | undefined = "legacy";
-		if (supportsOAuth) {
-			choice = await this.askAuthMethod();
+		const authMethod = await maybeAskAuthMethod(client);
+		switch (authMethod) {
+			case "oauth":
+				return this.loginWithOAuth(client);
+			case "legacy": {
+				const initialToken =
+					token || (await this.secretsManager.getSessionToken());
+				return this.loginWithToken(client, initialToken);
+			}
+			case undefined:
+				return null; // User aborted
 		}
-
-		if (choice === "oauth") {
-			return this.loginWithOAuth(client);
-		} else if (choice === "legacy") {
-			const initialToken =
-				token || (await this.secretsManager.getSessionToken());
-			return this.loginWithToken(client, initialToken);
-		}
-
-		return null; // User aborted.
-	}
-
-	private async checkOAuthSupport(client: CoderApi): Promise<boolean> {
-		const metadataClient = new OAuthMetadataClient(
-			client.getAxiosInstance(),
-			this.logger,
-		);
-		return metadataClient.checkOAuthSupport();
-	}
-
-	/**
-	 * Ask user to choose between OAuth and legacy API token authentication.
-	 */
-	private async askAuthMethod(): Promise<AuthMethod | undefined> {
-		const choice = await vscode.window.showQuickPick(
-			[
-				{
-					label: "$(key) OAuth (Recommended)",
-					detail: "Secure authentication with automatic token refresh",
-					value: "oauth" as const,
-				},
-				{
-					label: "$(lock) API Token",
-					detail: "Use a manually created API key",
-					value: "legacy" as const,
-				},
-			],
-			{
-				title: "Choose Authentication Method",
-				placeHolder: "How would you like to authenticate?",
-				ignoreFocusOut: true,
-			},
-		);
-
-		return choice?.value;
 	}
 
 	private async loginWithToken(
@@ -297,7 +254,15 @@ export class Commands {
 		try {
 			this.logger.info("Starting OAuth authentication");
 
-			const tokenResponse = await this.oauthSessionManager.login(client);
+			const tokenResponse = await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: "Authenticating",
+					cancellable: false,
+				},
+				async (progress) =>
+					await this.oauthSessionManager.login(client, progress),
+			);
 
 			// Validate token by fetching user
 			client.setSessionToken(tokenResponse.access_token);
