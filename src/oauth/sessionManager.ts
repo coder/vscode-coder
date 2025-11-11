@@ -263,7 +263,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * @param client CoderApi instance for the deployment to authenticate against
 	 * @returns TokenResponse containing access token and optional refresh token
 	 */
-	async login(client: CoderApi): Promise<TokenResponse> {
+	async login(
+		client: CoderApi,
+		progress: vscode.Progress<{ message?: string; increment?: number }>,
+	): Promise<TokenResponse> {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("CoderApi instance has no base URL set");
@@ -282,13 +285,16 @@ export class OAuthSessionManager implements vscode.Disposable {
 		const metadata = await metadataClient.getMetadata();
 
 		// Only register the client on login
+		progress.report({ message: "registering client...", increment: 10 });
 		const registration = await this.registerClient(axiosInstance, metadata);
 
+		progress.report({ message: "waiting for authorization...", increment: 30 });
 		const { code, verifier } = await this.startAuthorization(
 			metadata,
 			registration,
 		);
 
+		progress.report({ message: "exchanging token...", increment: 30 });
 		const tokenResponse = await this.exchangeToken(
 			code,
 			verifier,
@@ -297,6 +303,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 			registration,
 		);
 
+		progress.report({ increment: 30 });
 		this.logger.info("OAuth login flow completed successfully");
 
 		return tokenResponse;
