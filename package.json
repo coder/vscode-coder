@@ -388,7 +388,7 @@
 		"memfs": "^4.49.0",
 		"nyc": "^17.1.0",
 		"prettier": "^3.6.2",
-		"ts-loader": "^9.5.1",
+		"ts-loader": "^9.5.4",
 		"typescript": "^5.9.3",
 		"utf-8-validate": "^6.0.5",
 		"vitest": "^3.2.4",
