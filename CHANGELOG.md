@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- Improved workspace connection progress messages and enhanced the workspace build terminal
+  with better log streaming. The extension now also waits for blocking startup scripts to
+  complete before connecting, providing clear progress indicators during the wait.
+
 ## [v1.11.3](https://github.com/coder/vscode-coder/releases/tag/v1.11.3) 2025-10-22
 
 ### Fixed
