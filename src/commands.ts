@@ -19,7 +19,8 @@ import { type SecretsManager } from "./core/secretsManager";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
 import { type Logger } from "./logging/logger";
-import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
+import { type OAuthSessionManager } from "./oauth/sessionManager";
+import { maybeAskAgent, maybeAskUrl, maybeAskAuthMethod } from "./promptUtils";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
 	AgentTreeItem,
@@ -49,6 +50,7 @@ export class Commands {
 	public constructor(
 		serviceContainer: ServiceContainer,
 		private readonly restClient: Api,
+		private readonly oauthSessionManager: OAuthSessionManager,
 	) {
 		this.vscodeProposed = serviceContainer.getVsCodeProposed();
 		this.logger = serviceContainer.getLogger();
@@ -83,11 +85,11 @@ export class Commands {
 		// It is possible that we are trying to log into an old-style host, in which
 		// case we want to write with the provided blank label instead of generating
 		// a host label.
-		const label = args?.label === undefined ? toSafeHost(url) : args.label;
-
+		const label = args?.label ?? toSafeHost(url);
 		// Try to get a token from the user, if we need one, and their user.
 		const autoLogin = args?.autoLogin === true;
-		const res = await this.maybeAskToken(url, args?.token, autoLogin);
+
+		const res = await this.attemptLogin(url, args?.token, autoLogin);
 		if (!res) {
 			return; // The user aborted, or unable to auth.
 		}
@@ -106,7 +108,7 @@ export class Commands {
 
 		// These contexts control various menu items and the sidebar.
 		this.contextManager.set("coder.authenticated", true);
-		if (res.user.roles.find((role) => role.name === "owner")) {
+		if (res.user.roles.some((role) => role.name === "owner")) {
 			this.contextManager.set("coder.isOwner", true);
 		}
 
@@ -131,12 +133,12 @@ export class Commands {
 	}
 
 	/**
-	 * If necessary, ask for a token, and keep asking until the token has been
-	 * validated.  Return the token and user that was fetched to validate the
-	 * token.  Null means the user aborted or we were unable to authenticate with
-	 * mTLS (in the latter case, an error notification will have been displayed).
+	 * Attempt to authenticate using OAuth, token, or mTLS. If necessary, prompts
+	 * for authentication method and credentials. Returns the token and user upon
+	 * successful authentication. Null means the user aborted or authentication
+	 * failed (in which case an error notification will have been displayed).
 	 */
-	private async maybeAskToken(
+	private async attemptLogin(
 		url: string,
 		token: string | undefined,
 		isAutoLogin: boolean,
@@ -169,6 +171,28 @@ export class Commands {
 			}
 		}
 
+		const authMethod = await maybeAskAuthMethod(client);
+		switch (authMethod) {
+			case "oauth":
+				return this.loginWithOAuth(client);
+			case "legacy": {
+				const initialToken =
+					token || (await this.secretsManager.getSessionToken());
+				return this.loginWithToken(client, initialToken);
+			}
+			case undefined:
+				return null; // User aborted
+		}
+	}
+
+	private async loginWithToken(
+		client: CoderApi,
+		initialToken: string | undefined,
+	): Promise<{ user: User; token: string } | null> {
+		const url = client.getAxiosInstance().defaults.baseURL;
+		if (!url) {
+			throw new Error("No base URL set on REST client");
+		}
 		// This prompt is for convenience; do not error if they close it since
 		// they may already have a token or already have the page opened.
 		await vscode.env.openExternal(vscode.Uri.parse(`${url}/cli-auth`));
@@ -181,7 +205,7 @@ export class Commands {
 			title: "Coder API Key",
 			password: true,
 			placeHolder: "Paste your API key.",
-			value: token || (await this.secretsManager.getSessionToken()),
+			value: initialToken,
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
 				if (!value) {
@@ -213,12 +237,48 @@ export class Commands {
 			},
 		});
 
-		if (validatedToken && user) {
-			return { token: validatedToken, user };
+		if (user === undefined || validatedToken === undefined) {
+			return null;
 		}
 
-		// User aborted.
-		return null;
+		return { user, token: validatedToken };
+	}
+
+	/**
+	 * Authenticate using OAuth flow.
+	 * Returns the access token and authenticated user, or null if failed/cancelled.
+	 */
+	private async loginWithOAuth(
+		client: CoderApi,
+	): Promise<{ user: User; token: string } | null> {
+		try {
+			this.logger.info("Starting OAuth authentication");
+
+			const tokenResponse = await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: "Authenticating",
+					cancellable: false,
+				},
+				async (progress) =>
+					await this.oauthSessionManager.login(client, progress),
+			);
+
+			// Validate token by fetching user
+			client.setSessionToken(tokenResponse.access_token);
+			const user = await client.getAuthenticatedUser();
+
+			return {
+				token: tokenResponse.access_token,
+				user,
+			};
+		} catch (error) {
+			this.logger.error("OAuth authentication failed:", error);
+			vscode.window.showErrorMessage(
+				`OAuth authentication failed: ${getErrorMessage(error, "Unknown error")}`,
+			);
+			return null;
+		}
 	}
 
 	/**
@@ -255,6 +315,7 @@ export class Commands {
 			// Sanity check; command should not be available if no url.
 			throw new Error("You are not logged in");
 		}
+
 		await this.forceLogout();
 	}
 
@@ -263,6 +324,12 @@ export class Commands {
 			return;
 		}
 		this.logger.info("Logging out");
+
+		// Fire and forget
+		this.oauthSessionManager.logout().catch((error) => {
+			this.logger.warn("OAuth logout failed, continuing with cleanup:", error);
+		});
+
 		// Clear from the REST client.  An empty url will indicate to other parts of
 		// the code that we are logged out.
 		this.restClient.setHost("");
@@ -379,7 +446,7 @@ export class Commands {
 					true,
 				);
 			} else {
-				throw new Error("Unable to open unknown sidebar item");
+				throw new TypeError("Unable to open unknown sidebar item");
 			}
 		} else {
 			// If there is no tree item, then the user manually ran this command.
@@ -425,24 +492,11 @@ export class Commands {
 						configDir,
 					);
 					terminal.sendText(
-						`${escapeCommandArg(binary)}${` ${globalFlags.join(" ")}`} ssh ${app.workspace_name}`,
+						`${escapeCommandArg(binary)} ${globalFlags.join(" ")} ssh ${app.workspace_name}`,
 					);
 					await new Promise((resolve) => setTimeout(resolve, 5000));
 					terminal.sendText(app.command ?? "");
 					terminal.show(false);
-				},
-			);
-		}
-		// Check if app has a URL to open
-		if (app.url) {
-			return vscode.window.withProgress(
-				{
-					location: vscode.ProgressLocation.Notification,
-					title: `Opening ${app.name || "application"} in browser...`,
-					cancellable: false,
-				},
-				async () => {
-					await vscode.env.openExternal(vscode.Uri.parse(app.url!));
 				},
 			);
 		}
@@ -524,7 +578,7 @@ export class Commands {
 			workspaceAgent,
 		);
 
-		const hostPath = localWorkspaceFolder ? localWorkspaceFolder : undefined;
+		const hostPath = localWorkspaceFolder || undefined;
 		const configFile =
 			hostPath && localConfigFile
 				? {
@@ -626,7 +680,6 @@ export class Commands {
 					if (ex instanceof CertificateError) {
 						ex.showNotification();
 					}
-					return;
 				});
 		});
 		quickPick.show();

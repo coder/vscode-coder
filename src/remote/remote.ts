@@ -149,14 +149,14 @@ export class Remote {
 
 			if (result.type === "login") {
 				return this.setup(remoteAuthority, firstConnect);
-			} else if (!result.userChoice) {
-				// User declined to log in.
-				await this.closeRemote();
-				return;
-			} else {
+			} else if (result.userChoice === "Log In") {
 				// Log in then try again.
 				await this.commands.login({ url: baseUrlRaw, label: parts.label });
 				return this.setup(remoteAuthority, firstConnect);
+			} else {
+				// User declined to log in.
+				await this.closeRemote();
+				return;
 			}
 		};
 
