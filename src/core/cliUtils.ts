@@ -1,10 +1,16 @@
-import { execFile, type ExecFileException } from "child_process";
-import * as crypto from "crypto";
-import { createReadStream, type Stats } from "fs";
-import fs from "fs/promises";
-import os from "os";
-import path from "path";
-import { promisify } from "util";
+import { execFile, type ExecFileException } from "node:child_process";
+import * as crypto from "node:crypto";
+import { createReadStream, type Stats } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+
+/**
+ * Minimum age in milliseconds before cleaning up temporary files.
+ * This prevents deleting files that are actively being created by another window.
+ */
+const MIN_TEMP_FILE_AGE_MS = 30 * 60 * 1000;
 
 /**
  * Stat the path or undefined if the path does not exist.  Throw if unable to
@@ -60,7 +66,11 @@ export async function version(binPath: string): Promise<string> {
 	return json.version;
 }
 
-export type RemovalResult = { fileName: string; error: unknown };
+export type RemovalResult = {
+	fileName: string;
+	error: unknown;
+	skipped?: boolean;
+};
 
 /**
  * Remove binaries in the same directory as the specified path that have a
@@ -72,6 +82,7 @@ export async function rmOld(binPath: string): Promise<RemovalResult[]> {
 	try {
 		const files = await fs.readdir(binDir);
 		const results: RemovalResult[] = [];
+		const now = Date.now();
 		for (const file of files) {
 			const fileName = path.basename(file);
 			if (
@@ -80,7 +91,17 @@ export async function rmOld(binPath: string): Promise<RemovalResult[]> {
 				fileName.endsWith(".asc")
 			) {
 				try {
-					await fs.rm(path.join(binDir, file), { force: true });
+					const filePath = path.join(binDir, file);
+					const stats = await fs.stat(filePath);
+					const fileAge = now - stats.mtimeMs;
+
+					// Do not delete recently created files, they could be downloads in-progress
+					if (fileAge < MIN_TEMP_FILE_AGE_MS) {
+						results.push({ fileName, error: undefined, skipped: true });
+						continue;
+					}
+
+					await fs.rm(filePath, { force: true });
 					results.push({ fileName, error: undefined });
 				} catch (error) {
 					results.push({ fileName, error });

@@ -3,10 +3,10 @@ import globalAxios, {
 	type AxiosRequestConfig,
 } from "axios";
 import { type Api } from "coder/site/src/api/api";
-import { createWriteStream, type WriteStream } from "fs";
-import fs from "fs/promises";
-import { type IncomingMessage } from "http";
-import path from "path";
+import { createWriteStream, type WriteStream } from "node:fs";
+import fs from "node:fs/promises";
+import { type IncomingMessage } from "node:http";
+import path from "node:path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
@@ -99,26 +99,26 @@ export class CliManager {
 
 		// Remove any left-over old or temporary binaries and signatures.
 		const removed = await cliUtils.rmOld(binPath);
-		removed.forEach(({ fileName, error }) => {
+		for (const { fileName, error, skipped } of removed) {
 			if (error) {
 				this.output.warn("Failed to remove", fileName, error);
+			} else if (skipped) {
+				this.output.debug("Skipped", fileName, "(file too new)");
 			} else {
 				this.output.info("Removed", fileName);
 			}
-		});
+		}
 
 		// Figure out where to get the binary.
 		const binName = cliUtils.name();
-		const configSource = cfg.get("binarySource");
+		const configSource = cfg.get<string>("binarySource") ?? "";
 		const binSource =
-			configSource && String(configSource).trim().length > 0
-				? String(configSource)
-				: "/bin/" + binName;
+			configSource.trim().length > 0 ? configSource : "/bin/" + binName;
 		this.output.info("Downloading binary from", binSource);
 
 		// Ideally we already caught that this was the right version and returned
 		// early, but just in case set the ETag.
-		const etag = stat !== undefined ? await cliUtils.eTag(binPath) : "";
+		const etag = stat === undefined ? "" : await cliUtils.eTag(binPath);
 		this.output.info("Using ETag", etag);
 
 		// Download the binary to a temporary file.
