@@ -350,10 +350,11 @@ describe("CliManager", () => {
 		it("cleans up old files before download", async () => {
 			// Create old temporary files and signature files
 			vol.mkdirSync(BINARY_DIR, { recursive: true });
-			memfs.writeFileSync(path.join(BINARY_DIR, "coder.old-xyz"), "old");
-			memfs.writeFileSync(path.join(BINARY_DIR, "coder.temp-abc"), "temp");
+			writeOldFile(path.join(BINARY_DIR, "coder.old-xyz"), "old");
+			writeOldFile(path.join(BINARY_DIR, "coder.temp-abc"), "temp");
+			writeOldFile(path.join(BINARY_DIR, "keeper.txt"), "keep");
+			// New files won't be deleted
 			memfs.writeFileSync(path.join(BINARY_DIR, "coder.asc"), "signature");
-			memfs.writeFileSync(path.join(BINARY_DIR, "keeper.txt"), "keep");
 
 			withSuccessfulDownload();
 			await manager.fetchBinary(mockApi, "test");
@@ -365,7 +366,7 @@ describe("CliManager", () => {
 			expect(memfs.existsSync(path.join(BINARY_DIR, "coder.temp-abc"))).toBe(
 				false,
 			);
-			expect(memfs.existsSync(path.join(BINARY_DIR, "coder.asc"))).toBe(false);
+			expect(memfs.existsSync(path.join(BINARY_DIR, "coder.asc"))).toBe(true);
 			expect(memfs.existsSync(path.join(BINARY_DIR, "keeper.txt"))).toBe(true);
 		});
 
@@ -783,17 +784,23 @@ describe("CliManager", () => {
 		vi.mocked(error.summary).mockReturnValue("Signature does not match");
 		return error;
 	}
-
-	function mockBinaryContent(version: string): string {
-		return `mock-binary-v${version}`;
-	}
-
-	function expectFileInDir(dir: string, pattern: string): string | undefined {
-		const files = readdir(dir);
-		return files.find((f) => f.includes(pattern));
-	}
-
-	function readdir(dir: string): string[] {
-		return memfs.readdirSync(dir) as string[];
-	}
 });
+
+function mockBinaryContent(version: string): string {
+	return `mock-binary-v${version}`;
+}
+
+function expectFileInDir(dir: string, pattern: string): string | undefined {
+	const files = readdir(dir);
+	return files.find((f) => f.includes(pattern));
+}
+
+function readdir(dir: string): string[] {
+	return memfs.readdirSync(dir) as string[];
+}
+
+function writeOldFile(filePath: string, content: string): void {
+	const oldTime = Date.now() - 60 * 60 * 1000; // 60 minutes ago
+	memfs.writeFileSync(filePath, content);
+	memfs.utimesSync(filePath, oldTime / 1000, oldTime / 1000);
+}
