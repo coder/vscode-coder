@@ -1,6 +1,6 @@
 import axios from "axios";
-import * as fs from "fs/promises";
-import https from "https";
+import * as fs from "node:fs/promises";
+import https from "node:https";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { CertificateError, X509_ERR, X509_ERR_CODE } from "@/error";
@@ -12,11 +12,8 @@ describe("Certificate errors", () => {
 	// Before each test we make a request to sanity check that we really get the
 	// error we are expecting, then we run it through CertificateError.
 
-	// TODO: These sanity checks need to be ran in an Electron environment to
-	// reflect real usage in VS Code.  We should either revert back to the standard
-	// extension testing framework which I believe runs in a headless VS Code
-	// instead of using vitest or at least run the tests through Electron running as
-	// Node (for now I do this manually by shimming Node).
+	// Some tests behave differently in Electron (BoringSSL) vs Node.js (OpenSSL).
+	// Run `yarn test:electron` to test Electron-specific behavior.
 	const isElectron =
 		(process.versions.electron || process.env.ELECTRON_RUN_AS_NODE) &&
 		!process.env.VSCODE_PID; // Running from the test explorer in VS Code
