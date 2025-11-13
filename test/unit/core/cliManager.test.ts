@@ -353,7 +353,7 @@ describe("CliManager", () => {
 			writeOldFile(path.join(BINARY_DIR, "coder.old-xyz"), "old");
 			writeOldFile(path.join(BINARY_DIR, "coder.temp-abc"), "temp");
 			writeOldFile(path.join(BINARY_DIR, "keeper.txt"), "keep");
-			// New files won't be deleted
+			// New files won't be deleted (could be another download in-progress)
 			memfs.writeFileSync(path.join(BINARY_DIR, "coder.asc"), "signature");
 
 			withSuccessfulDownload();

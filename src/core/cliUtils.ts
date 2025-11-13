@@ -104,7 +104,12 @@ export async function rmOld(binPath: string): Promise<RemovalResult[]> {
 					await fs.rm(filePath, { force: true });
 					results.push({ fileName, error: undefined });
 				} catch (error) {
-					results.push({ fileName, error });
+					// That's fine since we were trying to delete this file anyway
+					if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+						results.push({ fileName, error: undefined });
+					} else {
+						results.push({ fileName, error });
+					}
 				}
 			}
 		}

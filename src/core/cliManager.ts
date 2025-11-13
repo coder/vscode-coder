@@ -165,13 +165,57 @@ export class CliManager {
 						"Moving existing binary to",
 						path.basename(oldBinPath),
 					);
-					await fs.rename(binPath, oldBinPath);
+					try {
+						await fs.rename(binPath, oldBinPath);
+					} catch (error) {
+						// That's fine since we are trying to move the file anyway
+						if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+							throw error;
+						}
+						this.output.debug(
+							"Binary already moved by another process, continuing",
+						);
+					}
 				}
 
 				// Then move the temporary binary into the right place.
 				this.output.info("Moving downloaded file to", path.basename(binPath));
 				await fs.mkdir(path.dirname(binPath), { recursive: true });
-				await fs.rename(tempFile, binPath);
+				try {
+					await fs.rename(tempFile, binPath);
+				} catch (error) {
+					const errCode = (error as NodeJS.ErrnoException).code;
+					// On Windows, fs.rename fails if the target exists. On POSIX systems,
+					// it atomically replaces the target. If another process already wrote
+					// the binary and it's the correct version, we can consider this a
+					// success since both processes are installing the same version.
+					if (
+						errCode === "EPERM" ||
+						errCode === "EACCES" ||
+						errCode === "EBUSY"
+					) {
+						this.output.debug(
+							"Binary may be in use or already exists, verifying version",
+						);
+						const existingStat = await cliUtils.stat(binPath);
+						if (existingStat !== undefined) {
+							try {
+								const existingVersion = await cliUtils.version(binPath);
+								const expectedVersion = buildInfo.version;
+								if (existingVersion === expectedVersion) {
+									this.output.info(
+										"Binary already installed by another process with correct version, cleaning up temp file",
+									);
+									await fs.rm(tempFile, { force: true });
+									return binPath;
+								}
+							} catch {
+								// If we can't verify the version, fall through to throw original error
+							}
+						}
+					}
+					throw error;
+				}
 
 				// For debugging, to see if the binary only partially downloaded.
 				const newStat = await cliUtils.stat(binPath);
