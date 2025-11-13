@@ -3,10 +3,10 @@ import globalAxios, {
 	type AxiosRequestConfig,
 } from "axios";
 import { type Api } from "coder/site/src/api/api";
-import { createWriteStream, type WriteStream } from "fs";
-import fs from "fs/promises";
-import { type IncomingMessage } from "http";
-import path from "path";
+import { createWriteStream, type WriteStream } from "node:fs";
+import fs from "node:fs/promises";
+import { type IncomingMessage } from "node:http";
+import path from "node:path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
@@ -99,26 +99,26 @@ export class CliManager {
 
 		// Remove any left-over old or temporary binaries and signatures.
 		const removed = await cliUtils.rmOld(binPath);
-		removed.forEach(({ fileName, error }) => {
+		for (const { fileName, error, skipped } of removed) {
 			if (error) {
 				this.output.warn("Failed to remove", fileName, error);
+			} else if (skipped) {
+				this.output.debug("Skipped", fileName, "(file too new)");
 			} else {
 				this.output.info("Removed", fileName);
 			}
-		});
+		}
 
 		// Figure out where to get the binary.
 		const binName = cliUtils.name();
-		const configSource = cfg.get("binarySource");
+		const configSource = cfg.get<string>("binarySource") ?? "";
 		const binSource =
-			configSource && String(configSource).trim().length > 0
-				? String(configSource)
-				: "/bin/" + binName;
+			configSource.trim().length > 0 ? configSource : "/bin/" + binName;
 		this.output.info("Downloading binary from", binSource);
 
 		// Ideally we already caught that this was the right version and returned
 		// early, but just in case set the ETag.
-		const etag = stat !== undefined ? await cliUtils.eTag(binPath) : "";
+		const etag = stat === undefined ? "" : await cliUtils.eTag(binPath);
 		this.output.info("Using ETag", etag);
 
 		// Download the binary to a temporary file.
@@ -165,13 +165,57 @@ export class CliManager {
 						"Moving existing binary to",
 						path.basename(oldBinPath),
 					);
-					await fs.rename(binPath, oldBinPath);
+					try {
+						await fs.rename(binPath, oldBinPath);
+					} catch (error) {
+						// That's fine since we are trying to move the file anyway
+						if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+							throw error;
+						}
+						this.output.debug(
+							"Binary already moved by another process, continuing",
+						);
+					}
 				}
 
 				// Then move the temporary binary into the right place.
 				this.output.info("Moving downloaded file to", path.basename(binPath));
 				await fs.mkdir(path.dirname(binPath), { recursive: true });
-				await fs.rename(tempFile, binPath);
+				try {
+					await fs.rename(tempFile, binPath);
+				} catch (error) {
+					const errCode = (error as NodeJS.ErrnoException).code;
+					// On Windows, fs.rename fails if the target exists. On POSIX systems,
+					// it atomically replaces the target. If another process already wrote
+					// the binary and it's the correct version, we can consider this a
+					// success since both processes are installing the same version.
+					if (
+						errCode === "EPERM" ||
+						errCode === "EACCES" ||
+						errCode === "EBUSY"
+					) {
+						this.output.debug(
+							"Binary may be in use or already exists, verifying version",
+						);
+						const existingStat = await cliUtils.stat(binPath);
+						if (existingStat !== undefined) {
+							try {
+								const existingVersion = await cliUtils.version(binPath);
+								const expectedVersion = buildInfo.version;
+								if (existingVersion === expectedVersion) {
+									this.output.info(
+										"Binary already installed by another process with correct version, cleaning up temp file",
+									);
+									await fs.rm(tempFile, { force: true });
+									return binPath;
+								}
+							} catch {
+								// If we can't verify the version, fall through to throw original error
+							}
+						}
+					}
+					throw error;
+				}
 
 				// For debugging, to see if the binary only partially downloaded.
 				const newStat = await cliUtils.stat(binPath);
