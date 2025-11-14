@@ -46,6 +46,8 @@ jobs:
 
       - run: yarn test:ci
 
+      - run: yarn test:electron
+
   package:
     name: Package
     runs-on: ubuntu-22.04
