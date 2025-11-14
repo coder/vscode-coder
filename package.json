@@ -25,9 +25,8 @@
 		"package": "webpack --mode production --devtool hidden-source-map",
 		"package:prerelease": "npx vsce package --pre-release",
 		"pretest": "tsc -p . --outDir out && tsc -p test --outDir out && yarn run build && yarn run lint",
-		"test": "vitest",
+		"test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs",
 		"test:ci": "CI=true yarn test",
-		"test:electron": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs test/unit/error.test.ts",
 		"test:integration": "vscode-test",
 		"vscode:prepublish": "yarn package",
 		"watch": "webpack --watch"

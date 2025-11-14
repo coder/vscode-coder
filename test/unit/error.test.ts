@@ -12,11 +12,13 @@ describe("Certificate errors", () => {
 	// Before each test we make a request to sanity check that we really get the
 	// error we are expecting, then we run it through CertificateError.
 
-	// Some tests behave differently in Electron (BoringSSL) vs Node.js (OpenSSL).
-	// Run `yarn test:electron` to test Electron-specific behavior.
-	const isElectron =
-		(process.versions.electron || process.env.ELECTRON_RUN_AS_NODE) &&
-		!process.env.VSCODE_PID; // Running from the test explorer in VS Code
+	// These tests run in Electron (BoringSSL) for accurate certificate validation testing.
+
+	it("should run in Electron environment", () => {
+		const isElectron =
+			process.versions.electron || process.env.ELECTRON_RUN_AS_NODE;
+		expect(isElectron).toBeTruthy();
+	});
 
 	beforeAll(() => {
 		vi.mock("vscode", () => {
@@ -121,26 +123,16 @@ describe("Certificate errors", () => {
 				servername: "localhost",
 			}),
 		});
-		if (isElectron) {
-			await expect(request).rejects.toHaveProperty(
-				"code",
-				X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
-			);
-			try {
-				await request;
-			} catch (error) {
-				const wrapped = await CertificateError.maybeWrap(
-					error,
-					address,
-					logger,
-				);
-				expect(wrapped instanceof CertificateError).toBeTruthy();
-				expect((wrapped as CertificateError).x509Err).toBe(
-					X509_ERR.NON_SIGNING,
-				);
-			}
-		} else {
-			await expect(request).resolves.toHaveProperty("data", "foobar");
+		await expect(request).rejects.toHaveProperty(
+			"code",
+			X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+		);
+		try {
+			await request;
+		} catch (error) {
+			const wrapped = await CertificateError.maybeWrap(error, address, logger);
+			expect(wrapped instanceof CertificateError).toBeTruthy();
+			expect((wrapped as CertificateError).x509Err).toBe(X509_ERR.NON_SIGNING);
 		}
 	});
 
