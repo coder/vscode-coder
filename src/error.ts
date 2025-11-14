@@ -1,7 +1,11 @@
+import {
+	X509Certificate,
+	KeyUsagesExtension,
+	KeyUsageFlags,
+} from "@peculiar/x509";
 import { isAxiosError } from "axios";
 import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
-import * as forge from "node-forge";
-import * as tls from "tls";
+import * as tls from "node:tls";
 import * as vscode from "vscode";
 
 import { type Logger } from "./logging/logger";
@@ -21,10 +25,6 @@ export enum X509_ERR {
 	NON_SIGNING = "Your Coder deployment's certificate is not marked as being capable of signing. VS Code uses a version of Electron that does not support certificates like this even if they are self-issued. The certificate must be regenerated with the certificate signing capability.",
 	UNTRUSTED_LEAF = "Your Coder deployment's certificate does not appear to be trusted by this system. The certificate must be added to this system's trust store.",
 	UNTRUSTED_CHAIN = "Your Coder deployment's certificate chain does not appear to be trusted by this system. The root of the certificate chain must be added to this system's trust store. ",
-}
-
-interface KeyUsage {
-	keyCertSign: boolean;
 }
 
 export class CertificateError extends Error {
@@ -84,36 +84,44 @@ export class CertificateError extends Error {
 						host: url.hostname,
 						rejectUnauthorized: false,
 					},
-					() => {
+					async () => {
 						const x509 = socket.getPeerX509Certificate();
 						socket.destroy();
 						if (!x509) {
 							throw new Error("no peer certificate");
 						}
 
-						// We use node-forge for two reasons:
-						// 1. Node/Electron only provide extended key usage.
-						// 2. Electron's checkIssued() will fail because it suffers from same
-						//    the key usage bug that we are trying to work around here in the
-						//    first place.
-						const cert = forge.pki.certificateFromPem(x509.toString());
-						if (!cert.issued(cert)) {
+						/**
+						 * We use "@peculiar/x509" for two reasons:
+						 * 1. Node's x509 returns an undefined `keyUsage` in Electron environments.
+						 * 2. Electron's checkIssued() will fail because it suffers from same
+						 *    the key usage bug that we are trying to work around here in the first place.
+						 */
+						const cert = new X509Certificate(x509.toString());
+						let isSelfIssued: boolean;
+						try {
+							isSelfIssued = await cert.isSelfSigned();
+						} catch (err) {
+							return reject(err);
+						}
+						if (!isSelfIssued) {
 							return resolve(X509_ERR.PARTIAL_CHAIN);
 						}
 
 						// The key usage needs to exist but not have cert signing to fail.
-						const keyUsage = cert.getExtension({ name: "keyUsage" }) as
-							| KeyUsage
-							| undefined;
-						if (keyUsage && !keyUsage.keyCertSign) {
-							return resolve(X509_ERR.NON_SIGNING);
-						} else {
-							// This branch is currently untested; it does not appear possible to
-							// get the error "unable to verify" with a self-signed certificate
-							// unless the key usage was the issue since it would have errored
-							// with "self-signed certificate" instead.
-							return resolve(X509_ERR.UNTRUSTED_LEAF);
+						const extension = cert.getExtension(KeyUsagesExtension);
+						if (extension) {
+							const hasKeyCertSign =
+								extension.usages & KeyUsageFlags.keyCertSign;
+							if (!hasKeyCertSign) {
+								return resolve(X509_ERR.NON_SIGNING);
+							}
 						}
+						// This branch is currently untested; it does not appear possible to
+						// get the error "unable to verify" with a self-signed certificate
+						// unless the key usage was the issue since it would have errored
+						// with "self-signed certificate" instead.
+						return resolve(X509_ERR.UNTRUSTED_LEAF);
 					},
 				);
 				socket.on("error", reject);
