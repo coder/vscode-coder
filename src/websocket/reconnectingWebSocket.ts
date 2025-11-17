@@ -178,7 +178,7 @@ export class ReconnectingWebSocket<TData = unknown>
 
 				if (UNRECOVERABLE_CLOSE_CODES.has(event.code)) {
 					this.#logger.error(
-						`[ReconnectingWebSocket] Unrecoverable error (${event.code}) for ${this.#apiRoute}`,
+						`WebSocket connection closed with unrecoverable error code ${event.code}`,
 					);
 					this.#isDisposed = true;
 					return;
@@ -213,7 +213,7 @@ export class ReconnectingWebSocket<TData = unknown>
 		const delayMs = Math.max(0, this.#backoffMs + jitter);
 
 		this.#logger.debug(
-			`[ReconnectingWebSocket] Reconnecting in ${Math.round(delayMs)}ms for ${this.#apiRoute}`,
+			`Reconnecting WebSocket in ${Math.round(delayMs)}ms for ${this.#apiRoute}`,
 		);
 
 		this.#reconnectTimeoutId = setTimeout(() => {
@@ -222,7 +222,7 @@ export class ReconnectingWebSocket<TData = unknown>
 			this.#connect().catch((error) => {
 				if (!this.#isDisposed) {
 					this.#logger.warn(
-						`[ReconnectingWebSocket] Failed: ${error instanceof Error ? error.message : String(error)} for ${this.#apiRoute}`,
+						`WebSocket connection failed for ${this.#apiRoute}: ${error instanceof Error ? error.message : String(error)}`,
 					);
 					this.#scheduleReconnect();
 				}
