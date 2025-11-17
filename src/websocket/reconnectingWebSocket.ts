@@ -10,9 +10,9 @@ import type {
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
 export type ReconnectingWebSocketOptions = {
-	initialBackoffMs?: number; // Default: 250ms
-	maxBackoffMs?: number; // Default: 30s
-	jitterFactor?: number; // Default: 0.1 (±10%)
+	initialBackoffMs?: number;
+	maxBackoffMs?: number;
+	jitterFactor?: number;
 };
 
 // 403 Forbidden, 410 Gone, 426 Upgrade Required, 1002/1003 Protocol errors
@@ -147,7 +147,6 @@ export class ReconnectingWebSocket<TData = unknown>
 		}
 
 		this.#isConnecting = true;
-
 		try {
 			const socket = await this.#socketFactory();
 			this.#currentSocket = socket;
@@ -199,13 +198,6 @@ export class ReconnectingWebSocket<TData = unknown>
 				// Reconnect on abnormal closures (e.g., 1006) or other unexpected codes
 				this.#scheduleReconnect();
 			});
-		} catch (error) {
-			if (!this.#isDisposed) {
-				this.#logger.warn(
-					`[ReconnectingWebSocket] Failed: ${error instanceof Error ? error.message : String(error)} for ${this.#apiRoute}`,
-				);
-				this.#scheduleReconnect();
-			}
 		} finally {
 			this.#isConnecting = false;
 		}
@@ -227,7 +219,14 @@ export class ReconnectingWebSocket<TData = unknown>
 		this.#reconnectTimeoutId = setTimeout(() => {
 			this.#reconnectTimeoutId = null;
 			// Errors already handled in #connect
-			void this.#connect();
+			this.#connect().catch((error) => {
+				if (!this.#isDisposed) {
+					this.#logger.warn(
+						`[ReconnectingWebSocket] Failed: ${error instanceof Error ? error.message : String(error)} for ${this.#apiRoute}`,
+					);
+					this.#scheduleReconnect();
+				}
+			});
 		}, delayMs);
 
 		this.#backoffMs = Math.min(this.#backoffMs * 2, this.#options.maxBackoffMs);

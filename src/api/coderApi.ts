@@ -74,15 +74,14 @@ export class CoderApi extends Api {
 			client.setSessionToken(token);
 		}
 
-		setupInterceptors(client, baseUrl, output);
+		setupInterceptors(client, output);
 		return client;
 	}
 
 	setSessionToken = (token: string): void => {
-		const currentToken =
-			this.getAxiosInstance().defaults.headers.common[coderSessionTokenHeader];
-		this.getAxiosInstance().defaults.headers.common[coderSessionTokenHeader] =
-			token;
+		const defaultHeaders = this.getAxiosInstance().defaults.headers.common;
+		const currentToken = defaultHeaders[coderSessionTokenHeader];
+		defaultHeaders[coderSessionTokenHeader] = token;
 
 		if (currentToken !== token) {
 			for (const socket of this.reconnectingSockets) {
@@ -92,8 +91,9 @@ export class CoderApi extends Api {
 	};
 
 	setHost = (host: string | undefined): void => {
-		const currentHost = this.getAxiosInstance().defaults.baseURL;
-		this.getAxiosInstance().defaults.baseURL = host;
+		const defaults = this.getAxiosInstance().defaults;
+		const currentHost = defaults.baseURL;
+		defaults.baseURL = host;
 
 		if (currentHost !== host) {
 			for (const socket of this.reconnectingSockets) {
@@ -380,14 +380,11 @@ export class CoderApi extends Api {
 /**
  * Set up logging and request interceptors for the CoderApi instance.
  */
-function setupInterceptors(
-	client: CoderApi,
-	baseUrl: string,
-	output: Logger,
-): void {
+function setupInterceptors(client: CoderApi, output: Logger): void {
 	addLoggingInterceptors(client.getAxiosInstance(), output);
 
 	client.getAxiosInstance().interceptors.request.use(async (config) => {
+		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		const headers = await getHeaders(
 			baseUrl,
 			getHeaderCommand(vscode.workspace.getConfiguration()),
@@ -413,7 +410,12 @@ function setupInterceptors(
 	client.getAxiosInstance().interceptors.response.use(
 		(r) => r,
 		async (err) => {
-			throw await CertificateError.maybeWrap(err, baseUrl, output);
+			const baseUrl = client.getAxiosInstance().defaults.baseURL;
+			if (baseUrl) {
+				throw await CertificateError.maybeWrap(err, baseUrl, output);
+			} else {
+				throw err;
+			}
 		},
 	);
 }
