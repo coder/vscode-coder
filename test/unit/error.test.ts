@@ -1,6 +1,11 @@
+import {
+	KeyUsagesExtension,
+	X509Certificate as X509CertificatePeculiar,
+} from "@peculiar/x509";
 import axios from "axios";
-import * as fs from "fs/promises";
-import https from "https";
+import { X509Certificate as X509CertificateNode } from "node:crypto";
+import * as fs from "node:fs/promises";
+import https from "node:https";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { CertificateError, X509_ERR, X509_ERR_CODE } from "@/error";
@@ -12,14 +17,11 @@ describe("Certificate errors", () => {
 	// Before each test we make a request to sanity check that we really get the
 	// error we are expecting, then we run it through CertificateError.
 
-	// TODO: These sanity checks need to be ran in an Electron environment to
-	// reflect real usage in VS Code.  We should either revert back to the standard
-	// extension testing framework which I believe runs in a headless VS Code
-	// instead of using vitest or at least run the tests through Electron running as
-	// Node (for now I do this manually by shimming Node).
-	const isElectron =
-		(process.versions.electron || process.env.ELECTRON_RUN_AS_NODE) &&
-		!process.env.VSCODE_PID; // Running from the test explorer in VS Code
+	// These tests run in Electron (BoringSSL) for accurate certificate validation testing.
+
+	it("should run in Electron environment", () => {
+		expect(process.versions.electron).toBeTruthy();
+	});
 
 	beforeAll(() => {
 		vi.mock("vscode", () => {
@@ -114,8 +116,7 @@ describe("Certificate errors", () => {
 	});
 
 	// In Electron a self-issued certificate without the signing capability fails
-	// (again with the same "unable to verify" error) but in Node self-issued
-	// certificates are not required to have the signing capability.
+	// (again with the same "unable to verify" error)
 	it("detects self-signed certificates without signing capability", async () => {
 		const address = await startServer("no-signing");
 		const request = axios.get(address, {
@@ -124,26 +125,16 @@ describe("Certificate errors", () => {
 				servername: "localhost",
 			}),
 		});
-		if (isElectron) {
-			await expect(request).rejects.toHaveProperty(
-				"code",
-				X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
-			);
-			try {
-				await request;
-			} catch (error) {
-				const wrapped = await CertificateError.maybeWrap(
-					error,
-					address,
-					logger,
-				);
-				expect(wrapped instanceof CertificateError).toBeTruthy();
-				expect((wrapped as CertificateError).x509Err).toBe(
-					X509_ERR.NON_SIGNING,
-				);
-			}
-		} else {
-			await expect(request).resolves.toHaveProperty("data", "foobar");
+		await expect(request).rejects.toHaveProperty(
+			"code",
+			X509_ERR_CODE.UNABLE_TO_VERIFY_LEAF_SIGNATURE,
+		);
+		try {
+			await request;
+		} catch (error) {
+			const wrapped = await CertificateError.maybeWrap(error, address, logger);
+			expect(wrapped instanceof CertificateError).toBeTruthy();
+			expect((wrapped as CertificateError).x509Err).toBe(X509_ERR.NON_SIGNING);
 		}
 	});
 
@@ -155,6 +146,24 @@ describe("Certificate errors", () => {
 			}),
 		});
 		await expect(request).resolves.toHaveProperty("data", "foobar");
+	});
+
+	// Node's X509Certificate.keyUsage is unreliable, so use a third-party parser
+	it("parses no-signing cert keyUsage with third-party library", async () => {
+		const certPem = await fs.readFile(
+			getFixturePath("tls", "no-signing.crt"),
+			"utf-8",
+		);
+
+		// Node's implementation seems to always return `undefined`
+		const nodeCert = new X509CertificateNode(certPem);
+		expect(nodeCert.keyUsage).toBeUndefined();
+
+		// Here we can correctly get the KeyUsages
+		const peculiarCert = new X509CertificatePeculiar(certPem);
+		const extension = peculiarCert.getExtension(KeyUsagesExtension);
+		expect(extension).toBeDefined();
+		expect(extension?.usages).toBeTruthy();
 	});
 
 	// Both environments give the same error code when a self-issued certificate is
