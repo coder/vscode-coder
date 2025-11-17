@@ -7,7 +7,7 @@ import type {
 
 import type { CoderApi } from "./api/coderApi";
 import type { Logger } from "./logging/logger";
-import type { OneWayWebSocket } from "./websocket/oneWayWebSocket";
+import type { UnidirectionalStream } from "./websocket/eventStreamConnection";
 
 // These are the template IDs of our notifications.
 // Maybe in the future we should avoid hardcoding
@@ -16,7 +16,9 @@ const TEMPLATE_WORKSPACE_OUT_OF_MEMORY = "a9d027b4-ac49-4fb1-9f6d-45af15f64e7a";
 const TEMPLATE_WORKSPACE_OUT_OF_DISK = "f047f6a3-5713-40f7-85aa-0394cce9fa3a";
 
 export class Inbox implements vscode.Disposable {
-	private socket: OneWayWebSocket<GetInboxNotificationResponse> | undefined;
+	private socket:
+		| UnidirectionalStream<GetInboxNotificationResponse>
+		| undefined;
 	private disposed = false;
 
 	private constructor(private readonly logger: Logger) {}

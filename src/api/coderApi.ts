@@ -36,6 +36,10 @@ import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
 } from "../websocket/oneWayWebSocket";
+import {
+	ReconnectingWebSocket,
+	type SocketFactory,
+} from "../websocket/reconnectingWebSocket";
 import { SseConnection } from "../websocket/sseConnection";
 
 import { createHttpAgent } from "./utils";
@@ -47,6 +51,10 @@ const coderSessionTokenHeader = "Coder-Session-Token";
  * and WebSocket methods for real-time functionality.
  */
 export class CoderApi extends Api {
+	private readonly reconnectingSockets = new Set<
+		ReconnectingWebSocket<unknown>
+	>();
+
 	private constructor(private readonly output: Logger) {
 		super();
 	}
@@ -70,6 +78,30 @@ export class CoderApi extends Api {
 		return client;
 	}
 
+	setSessionToken = (token: string): void => {
+		const currentToken =
+			this.getAxiosInstance().defaults.headers.common[coderSessionTokenHeader];
+		this.getAxiosInstance().defaults.headers.common[coderSessionTokenHeader] =
+			token;
+
+		if (currentToken !== token) {
+			for (const socket of this.reconnectingSockets) {
+				socket.reconnect();
+			}
+		}
+	};
+
+	setHost = (host: string | undefined): void => {
+		const currentHost = this.getAxiosInstance().defaults.baseURL;
+		this.getAxiosInstance().defaults.baseURL = host;
+
+		if (currentHost !== host) {
+			for (const socket of this.reconnectingSockets) {
+				socket.reconnect();
+			}
+		}
+	};
+
 	watchInboxNotifications = async (
 		watchTemplates: string[],
 		watchTargets: string[],
@@ -83,6 +115,7 @@ export class CoderApi extends Api {
 				targets: watchTargets.join(","),
 			},
 			options,
+			enableRetry: true,
 		});
 	};
 
@@ -91,6 +124,7 @@ export class CoderApi extends Api {
 			apiRoute: `/api/v2/workspaces/${workspace.id}/watch-ws`,
 			fallbackApiRoute: `/api/v2/workspaces/${workspace.id}/watch`,
 			options,
+			enableRetry: true,
 		});
 	};
 
@@ -102,6 +136,7 @@ export class CoderApi extends Api {
 			apiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata-ws`,
 			fallbackApiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata`,
 			options,
+			enableRetry: true,
 		});
 	};
 
@@ -148,53 +183,73 @@ export class CoderApi extends Api {
 	}
 
 	private async createWebSocket<TData = unknown>(
-		configs: Omit<OneWayWebSocketInit, "location">,
-	) {
-		const baseUrlRaw = this.getAxiosInstance().defaults.baseURL;
-		if (!baseUrlRaw) {
-			throw new Error("No base URL set on REST client");
-		}
+		configs: Omit<OneWayWebSocketInit, "location"> & { enableRetry?: boolean },
+	): Promise<UnidirectionalStream<TData>> {
+		const { enableRetry, ...socketConfigs } = configs;
 
-		const baseUrl = new URL(baseUrlRaw);
-		const token = this.getAxiosInstance().defaults.headers.common[
-			coderSessionTokenHeader
-		] as string | undefined;
+		const socketFactory: SocketFactory<TData> = async () => {
+			const baseUrlRaw = this.getAxiosInstance().defaults.baseURL;
+			if (!baseUrlRaw) {
+				throw new Error("No base URL set on REST client");
+			}
 
-		const headersFromCommand = await getHeaders(
-			baseUrlRaw,
-			getHeaderCommand(vscode.workspace.getConfiguration()),
-			this.output,
-		);
+			const baseUrl = new URL(baseUrlRaw);
+			const token = this.getAxiosInstance().defaults.headers.common[
+				coderSessionTokenHeader
+			] as string | undefined;
 
-		const httpAgent = await createHttpAgent(
-			vscode.workspace.getConfiguration(),
-		);
+			const headersFromCommand = await getHeaders(
+				baseUrlRaw,
+				getHeaderCommand(vscode.workspace.getConfiguration()),
+				this.output,
+			);
 
-		/**
-		 * Similar to the REST client, we want to prioritize headers in this order (highest to lowest):
-		 * 1. Headers from the header command
-		 * 2. Any headers passed directly to this function
-		 * 3. Coder session token from the Api client (if set)
-		 */
-		const headers = {
-			...(token ? { [coderSessionTokenHeader]: token } : {}),
-			...configs.options?.headers,
-			...headersFromCommand,
+			const httpAgent = await createHttpAgent(
+				vscode.workspace.getConfiguration(),
+			);
+
+			/**
+			 * Similar to the REST client, we want to prioritize headers in this order (highest to lowest):
+			 * 1. Headers from the header command
+			 * 2. Any headers passed directly to this function
+			 * 3. Coder session token from the Api client (if set)
+			 */
+			const headers = {
+				...(token ? { [coderSessionTokenHeader]: token } : {}),
+				...configs.options?.headers,
+				...headersFromCommand,
+			};
+
+			const webSocket = new OneWayWebSocket<TData>({
+				location: baseUrl,
+				...socketConfigs,
+				options: {
+					...configs.options,
+					agent: httpAgent,
+					followRedirects: true,
+					headers,
+				},
+			});
+
+			this.attachStreamLogger(webSocket);
+			return webSocket;
 		};
 
-		const webSocket = new OneWayWebSocket<TData>({
-			location: baseUrl,
-			...configs,
-			options: {
-				...configs.options,
-				agent: httpAgent,
-				followRedirects: true,
-				headers,
-			},
-		});
+		if (enableRetry) {
+			const reconnectingSocket = await ReconnectingWebSocket.create<TData>(
+				socketFactory,
+				this.output,
+				configs.apiRoute,
+			);
 
-		this.attachStreamLogger(webSocket);
-		return webSocket;
+			this.reconnectingSockets.add(
+				reconnectingSocket as ReconnectingWebSocket<unknown>,
+			);
+
+			return reconnectingSocket;
+		} else {
+			return socketFactory();
+		}
 	}
 
 	private attachStreamLogger<TData>(
@@ -230,13 +285,15 @@ export class CoderApi extends Api {
 		fallbackApiRoute: string;
 		searchParams?: Record<string, string> | URLSearchParams;
 		options?: ClientOptions;
+		enableRetry?: boolean;
 	}): Promise<UnidirectionalStream<TData>> {
-		let webSocket: OneWayWebSocket<TData>;
+		let webSocket: UnidirectionalStream<TData>;
 		try {
 			webSocket = await this.createWebSocket<TData>({
 				apiRoute: configs.apiRoute,
 				searchParams: configs.searchParams,
 				options: configs.options,
+				enableRetry: configs.enableRetry,
 			});
 		} catch {
 			// Failed to create WebSocket, use SSE fallback

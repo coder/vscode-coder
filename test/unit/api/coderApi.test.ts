@@ -10,7 +10,7 @@ import { createHttpAgent } from "@/api/utils";
 import { CertificateError } from "@/error";
 import { getHeaders } from "@/headers";
 import { type RequestConfigWithMeta } from "@/logging/types";
-import { OneWayWebSocket } from "@/websocket/oneWayWebSocket";
+import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 import { SseConnection } from "@/websocket/sseConnection";
 
 import {
@@ -332,7 +332,7 @@ describe("CoderApi", () => {
 
 			const connection = await api.watchAgentMetadata(AGENT_ID);
 
-			expect(connection).toBeInstanceOf(OneWayWebSocket);
+			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
 			expect(EventSource).not.toHaveBeenCalled();
 		});
 
@@ -370,6 +370,100 @@ describe("CoderApi", () => {
 
 			expect(connection).toBeInstanceOf(SseConnection);
 			expect(EventSource).toHaveBeenCalled();
+		});
+	});
+
+	describe("Reconnection on Host/Token Changes", () => {
+		it("triggers reconnection when session token changes", async () => {
+			const mockWs = createMockWebSocket(
+				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
+				{
+					on: vi.fn((event, handler) => {
+						if (event === "open") {
+							setImmediate(() => handler());
+						}
+						return mockWs as Ws;
+					}),
+				},
+			);
+			setupWebSocketMock(mockWs);
+
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			const _ws = await api.watchAgentMetadata(AGENT_ID);
+
+			// Change token - should trigger reconnection
+			api.setSessionToken("new-token");
+
+			expect(mockWs.close).toHaveBeenCalledWith(4000, "Reconnecting");
+		});
+
+		it("triggers reconnection when host changes", async () => {
+			const mockWs = createMockWebSocket(
+				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
+				{
+					on: vi.fn((event, handler) => {
+						if (event === "open") {
+							setImmediate(() => handler());
+						}
+						return mockWs as Ws;
+					}),
+				},
+			);
+			setupWebSocketMock(mockWs);
+
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			const _ws = await api.watchAgentMetadata(AGENT_ID);
+
+			// Change host - should trigger reconnection
+			api.setHost("https://new-coder.example.com");
+
+			expect(mockWs.close).toHaveBeenCalledWith(4000, "Reconnecting");
+		});
+
+		it("does not reconnect when token is set to same value", async () => {
+			const mockWs = createMockWebSocket(
+				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
+				{
+					on: vi.fn((event, handler) => {
+						if (event === "open") {
+							setImmediate(() => handler());
+						}
+						return mockWs as Ws;
+					}),
+				},
+			);
+			setupWebSocketMock(mockWs);
+
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			const _ws = await api.watchAgentMetadata(AGENT_ID);
+
+			// Set same token - should NOT trigger reconnection
+			api.setSessionToken(AXIOS_TOKEN);
+
+			expect(mockWs.close).not.toHaveBeenCalled();
+		});
+
+		it("does not reconnect when host is set to same value", async () => {
+			const mockWs = createMockWebSocket(
+				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
+				{
+					on: vi.fn((event, handler) => {
+						if (event === "open") {
+							setImmediate(() => handler());
+						}
+						return mockWs as Ws;
+					}),
+				},
+			);
+			setupWebSocketMock(mockWs);
+
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			const _ws = await api.watchAgentMetadata(AGENT_ID);
+
+			// Set same host - should NOT trigger reconnection
+			api.setHost(CODER_URL);
+
+			expect(mockWs.close).not.toHaveBeenCalled();
 		});
 	});
 
