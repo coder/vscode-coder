@@ -344,6 +344,7 @@ export class Remote {
 								} catch (error) {
 									subscription.dispose();
 									reject(error);
+									return;
 								} finally {
 									inProgress = false;
 								}

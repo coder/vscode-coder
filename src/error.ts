@@ -80,30 +80,20 @@ export class CertificateError extends Error {
 				const url = new URL(address);
 				const socket = tls.connect(
 					{
-						port: parseInt(url.port, 10) || 443,
+						port: Number.parseInt(url.port, 10) || 443,
 						host: url.hostname,
 						rejectUnauthorized: false,
 					},
-					async () => {
+					() => {
 						const x509 = socket.getPeerX509Certificate();
 						socket.destroy();
 						if (!x509) {
 							throw new Error("no peer certificate");
 						}
 
-						/**
-						 * We use "@peculiar/x509" for two reasons:
-						 * 1. Node's x509 returns an undefined `keyUsage` in Electron environments.
-						 * 2. Electron's checkIssued() will fail because it suffers from same
-						 *    the key usage bug that we are trying to work around here in the first place.
-						 */
+						// We use "@peculiar/x509" because Node's x509 returns an undefined `keyUsage`.
 						const cert = new X509Certificate(x509.toString());
-						let isSelfIssued: boolean;
-						try {
-							isSelfIssued = await cert.isSelfSigned();
-						} catch (err) {
-							return reject(err);
-						}
+						const isSelfIssued = cert.subject === cert.issuer;
 						if (!isSelfIssued) {
 							return resolve(X509_ERR.PARTIAL_CHAIN);
 						}

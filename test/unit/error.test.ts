@@ -1,4 +1,9 @@
+import {
+	KeyUsagesExtension,
+	X509Certificate as X509CertificatePeculiar,
+} from "@peculiar/x509";
 import axios from "axios";
+import { X509Certificate as X509CertificateNode } from "node:crypto";
 import * as fs from "node:fs/promises";
 import https from "node:https";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -15,9 +20,7 @@ describe("Certificate errors", () => {
 	// These tests run in Electron (BoringSSL) for accurate certificate validation testing.
 
 	it("should run in Electron environment", () => {
-		const isElectron =
-			process.versions.electron || process.env.ELECTRON_RUN_AS_NODE;
-		expect(isElectron).toBeTruthy();
+		expect(process.versions.electron).toBeTruthy();
 	});
 
 	beforeAll(() => {
@@ -113,8 +116,7 @@ describe("Certificate errors", () => {
 	});
 
 	// In Electron a self-issued certificate without the signing capability fails
-	// (again with the same "unable to verify" error) but in Node self-issued
-	// certificates are not required to have the signing capability.
+	// (again with the same "unable to verify" error)
 	it("detects self-signed certificates without signing capability", async () => {
 		const address = await startServer("no-signing");
 		const request = axios.get(address, {
@@ -144,6 +146,24 @@ describe("Certificate errors", () => {
 			}),
 		});
 		await expect(request).resolves.toHaveProperty("data", "foobar");
+	});
+
+	// Node's X509Certificate.keyUsage is unreliable, so use a third-party parser
+	it("parses no-signing cert keyUsage with third-party library", async () => {
+		const certPem = await fs.readFile(
+			getFixturePath("tls", "no-signing.crt"),
+			"utf-8",
+		);
+
+		// Node's implementation seems to always return `undefined`
+		const nodeCert = new X509CertificateNode(certPem);
+		expect(nodeCert.keyUsage).toBeUndefined();
+
+		// Here we can correctly get the KeyUsages
+		const peculiarCert = new X509CertificatePeculiar(certPem);
+		const extension = peculiarCert.getExtension(KeyUsagesExtension);
+		expect(extension).toBeDefined();
+		expect(extension?.usages).toBeTruthy();
 	});
 
 	// Both environments give the same error code when a self-issued certificate is
