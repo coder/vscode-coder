@@ -53,7 +53,11 @@ export async function createAgentMetadataWatcher(
 				event.parsedMessage.data,
 			);
 
-			// Overwrite metadata if it changed.
+			if (watcher.error !== undefined) {
+				watcher.error = undefined;
+				onChange.fire(null);
+			}
+
 			if (JSON.stringify(watcher.metadata) !== JSON.stringify(metadata)) {
 				watcher.metadata = metadata;
 				onChange.fire(null);
