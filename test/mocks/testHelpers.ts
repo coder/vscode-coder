@@ -1,3 +1,4 @@
+import { type IncomingMessage } from "node:http";
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
@@ -8,7 +9,7 @@ import { type Logger } from "@/logging/logger";
  * Use this to set configuration values that will be returned by vscode.workspace.getConfiguration().
  */
 export class MockConfigurationProvider {
-	private config = new Map<string, unknown>();
+	private readonly config = new Map<string, unknown>();
 
 	constructor() {
 		this.setupVSCodeMock();
@@ -297,4 +298,45 @@ export function createMockLogger(): Logger {
 		warn: vi.fn(),
 		error: vi.fn(),
 	};
+}
+
+export function createMockStream(
+	content: string,
+	options: { chunkSize?: number; delay?: number } = {},
+): IncomingMessage {
+	const { chunkSize = 8, delay = 1 } = options;
+
+	const buffer = Buffer.from(content);
+	let position = 0;
+	let closeCallback: ((...args: unknown[]) => void) | null = null;
+
+	return {
+		on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
+			if (event === "data") {
+				const sendChunk = () => {
+					if (position < buffer.length) {
+						const chunk = buffer.subarray(
+							position,
+							Math.min(position + chunkSize, buffer.length),
+						);
+						position += chunkSize;
+						callback(chunk);
+						if (position < buffer.length) {
+							setTimeout(sendChunk, delay);
+						} else {
+							setImmediate(() => {
+								if (closeCallback) {
+									closeCallback();
+								}
+							});
+						}
+					}
+				};
+				setTimeout(sendChunk, delay);
+			} else if (event === "close") {
+				closeCallback = callback;
+			}
+		}),
+		destroy: vi.fn(),
+	} as unknown as IncomingMessage;
 }
