@@ -61,7 +61,7 @@ const DEFAULT_OAUTH_SCOPES = [
  */
 export class OAuthSessionManager implements vscode.Disposable {
 	private storedTokens: StoredOAuthTokens | undefined;
-	private refreshInProgress = false;
+	private refreshPromise: Promise<TokenResponse> | null = null;
 	private lastRefreshAttempt = 0;
 
 	private pendingAuthReject: ((reason: Error) => void) | undefined;
@@ -134,7 +134,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 */
 	private async clearTokenState(): Promise<void> {
 		this.storedTokens = undefined;
-		this.refreshInProgress = false;
+		this.refreshPromise = null;
 		this.lastRefreshAttempt = 0;
 		await this.secretsManager.setOAuthTokens(undefined);
 		await this.secretsManager.setOAuthClientRegistration(undefined);
@@ -489,56 +489,64 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 	/**
 	 * Refresh the access token using the stored refresh token.
-	 * Uses a mutex to prevent concurrent refresh attempts.
+	 * Uses a shared promise to handle concurrent refresh attempts.
 	 */
 	async refreshToken(): Promise<TokenResponse> {
-		if (this.refreshInProgress) {
-			throw new Error("Token refresh already in progress");
+		// If a refresh is already in progress, return the existing promise
+		if (this.refreshPromise) {
+			this.logger.debug(
+				"Token refresh already in progress, waiting for result",
+			);
+			return this.refreshPromise;
 		}
 
 		if (!this.storedTokens?.refresh_token) {
 			throw new Error("No refresh token available");
 		}
 
-		this.refreshInProgress = true;
+		const refreshToken = this.storedTokens.refresh_token;
+		const accessToken = this.storedTokens.access_token;
+
 		this.lastRefreshAttempt = Date.now();
 
-		try {
-			const { axiosInstance, metadata, registration } =
-				await this.prepareOAuthOperation(
-					this.deploymentUrl,
-					this.storedTokens.access_token,
+		// Create and store the refresh promise
+		this.refreshPromise = (async () => {
+			try {
+				const { axiosInstance, metadata, registration } =
+					await this.prepareOAuthOperation(this.deploymentUrl, accessToken);
+
+				this.logger.debug("Refreshing access token");
+
+				const params: RefreshTokenRequestParams = {
+					grant_type: REFRESH_GRANT_TYPE,
+					refresh_token: refreshToken,
+					client_id: registration.client_id,
+					client_secret: registration.client_secret,
+				};
+
+				const tokenRequest = toUrlSearchParams(params);
+
+				const response = await axiosInstance.post<TokenResponse>(
+					metadata.token_endpoint,
+					tokenRequest,
+					{
+						headers: {
+							"Content-Type": "application/x-www-form-urlencoded",
+						},
+					},
 				);
 
-			this.logger.debug("Refreshing access token");
+				this.logger.debug("Token refresh successful");
 
-			const params: RefreshTokenRequestParams = {
-				grant_type: REFRESH_GRANT_TYPE,
-				refresh_token: this.storedTokens.refresh_token,
-				client_id: registration.client_id,
-				client_secret: registration.client_secret,
-			};
+				await this.saveTokens(response.data);
 
-			const tokenRequest = toUrlSearchParams(params);
+				return response.data;
+			} finally {
+				this.refreshPromise = null;
+			}
+		})();
 
-			const response = await axiosInstance.post<TokenResponse>(
-				metadata.token_endpoint,
-				tokenRequest,
-				{
-					headers: {
-						"Content-Type": "application/x-www-form-urlencoded",
-					},
-				},
-			);
-
-			this.logger.debug("Token refresh successful");
-
-			await this.saveTokens(response.data);
-
-			return response.data;
-		} finally {
-			this.refreshInProgress = false;
-		}
+		return this.refreshPromise;
 	}
 
 	/**
@@ -579,7 +587,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		if (
 			!this.isLoggedInWithOAuth() ||
 			!this.storedTokens?.refresh_token ||
-			this.refreshInProgress
+			this.refreshPromise !== null
 		) {
 			return false;
 		}
@@ -695,7 +703,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		}
 		this.pendingAuthReject = undefined;
 		this.storedTokens = undefined;
-		this.refreshInProgress = false;
+		this.refreshPromise = null;
 		this.lastRefreshAttempt = 0;
 
 		this.logger.debug("OAuth session manager disposed");

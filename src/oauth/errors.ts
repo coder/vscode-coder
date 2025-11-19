@@ -164,10 +164,3 @@ export function requiresReAuthentication(error: OAuthError): boolean {
 		error instanceof InvalidGrantError || error instanceof InvalidClientError
 	);
 }
-
-/**
- * Checks if an error is a network/connectivity error
- */
-export function isNetworkError(error: unknown): boolean {
-	return isAxiosError(error) && !error.response && Boolean(error.request);
-}
