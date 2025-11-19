@@ -374,96 +374,66 @@ describe("CoderApi", () => {
 	});
 
 	describe("Reconnection on Host/Token Changes", () => {
-		it("triggers reconnection when session token changes", async () => {
-			const mockWs = createMockWebSocket(
-				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
-				{
+		const setupAutoOpeningWebSocket = () => {
+			const sockets: Array<Partial<Ws>> = [];
+			vi.mocked(Ws).mockImplementation((url: string | URL) => {
+				const mockWs = createMockWebSocket(String(url), {
 					on: vi.fn((event, handler) => {
 						if (event === "open") {
 							setImmediate(() => handler());
 						}
 						return mockWs as Ws;
 					}),
-				},
-			);
-			setupWebSocketMock(mockWs);
+				});
+				sockets.push(mockWs);
+				return mockWs as Ws;
+			});
+			return sockets;
+		};
 
+		it("triggers reconnection when session token changes", async () => {
+			const sockets = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
-			const _ws = await api.watchAgentMetadata(AGENT_ID);
+			await api.watchAgentMetadata(AGENT_ID);
 
-			// Change token - should trigger reconnection
 			api.setSessionToken("new-token");
+			await new Promise((resolve) => setImmediate(resolve));
 
-			expect(mockWs.close).toHaveBeenCalledWith(4000, "Reconnecting");
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				1000,
+				"Replacing connection",
+			);
+			expect(sockets).toHaveLength(2);
 		});
 
 		it("triggers reconnection when host changes", async () => {
-			const mockWs = createMockWebSocket(
-				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
-				{
-					on: vi.fn((event, handler) => {
-						if (event === "open") {
-							setImmediate(() => handler());
-						}
-						return mockWs as Ws;
-					}),
-				},
-			);
-			setupWebSocketMock(mockWs);
-
+			const sockets = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
-			const _ws = await api.watchAgentMetadata(AGENT_ID);
+			const wsWrap = await api.watchAgentMetadata(AGENT_ID);
+			expect(wsWrap.url).toContain(CODER_URL.replace("http", "ws"));
 
-			// Change host - should trigger reconnection
 			api.setHost("https://new-coder.example.com");
+			await new Promise((resolve) => setImmediate(resolve));
 
-			expect(mockWs.close).toHaveBeenCalledWith(4000, "Reconnecting");
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				1000,
+				"Replacing connection",
+			);
+			expect(sockets).toHaveLength(2);
+			expect(wsWrap.url).toContain("wss://new-coder.example.com");
 		});
 
-		it("does not reconnect when token is set to same value", async () => {
-			const mockWs = createMockWebSocket(
-				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
-				{
-					on: vi.fn((event, handler) => {
-						if (event === "open") {
-							setImmediate(() => handler());
-						}
-						return mockWs as Ws;
-					}),
-				},
-			);
-			setupWebSocketMock(mockWs);
-
+		it("does not reconnect when token or host are unchanged", async () => {
+			const sockets = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
-			const _ws = await api.watchAgentMetadata(AGENT_ID);
+			await api.watchAgentMetadata(AGENT_ID);
 
-			// Set same token - should NOT trigger reconnection
+			// Same values as before
 			api.setSessionToken(AXIOS_TOKEN);
-
-			expect(mockWs.close).not.toHaveBeenCalled();
-		});
-
-		it("does not reconnect when host is set to same value", async () => {
-			const mockWs = createMockWebSocket(
-				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
-				{
-					on: vi.fn((event, handler) => {
-						if (event === "open") {
-							setImmediate(() => handler());
-						}
-						return mockWs as Ws;
-					}),
-				},
-			);
-			setupWebSocketMock(mockWs);
-
-			api = createApi(CODER_URL, AXIOS_TOKEN);
-			const _ws = await api.watchAgentMetadata(AGENT_ID);
-
-			// Set same host - should NOT trigger reconnection
 			api.setHost(CODER_URL);
 
-			expect(mockWs.close).not.toHaveBeenCalled();
+			expect(sockets[0].close).not.toHaveBeenCalled();
+			expect(sockets).toHaveLength(1);
 		});
 	});
 
