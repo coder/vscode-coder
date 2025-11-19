@@ -240,6 +240,11 @@ export class CoderApi extends Api {
 				socketFactory,
 				this.output,
 				configs.apiRoute,
+				undefined,
+				() =>
+					this.reconnectingSockets.delete(
+						reconnectingSocket as ReconnectingWebSocket<unknown>,
+					),
 			);
 
 			this.reconnectingSockets.add(
