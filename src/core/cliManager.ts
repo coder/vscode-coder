@@ -197,9 +197,8 @@ export class CliManager {
 		reason: string,
 	): Promise<boolean> {
 		const choice = await this.vscodeProposed.window.showErrorMessage(
-			`${reason}. Use version ${version} anyway?`,
+			`${reason}. Run version ${version} anyway?`,
 			"Run",
-			"Exit",
 		);
 		return choice === "Run";
 	}
@@ -273,6 +272,7 @@ export class CliManager {
 			if (await this.promptUseExistingBinary(existingCheck.version, message)) {
 				return binPath;
 			}
+			throw error;
 		}
 
 		// Try .old-* binaries as fallback

@@ -1,8 +1,6 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 
-export const STALE_TIMEOUT_MS = 15000;
-
 export interface DownloadProgress {
 	bytesDownloaded: number;
 	totalBytes: number | null;
@@ -38,11 +36,5 @@ export async function readProgress(
 }
 
 export async function clearProgress(logPath: string): Promise<void> {
-	try {
-		await fs.rm(logPath, { force: true });
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-			throw error;
-		}
-	}
+	await fs.rm(logPath, { force: true });
 }

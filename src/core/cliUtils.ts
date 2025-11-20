@@ -122,11 +122,15 @@ export async function findOldBinaries(binPath: string): Promise<string[]> {
 			.map((f) => path.join(binDir, f));
 
 		// Sort by modification time, most recent first
-		const stats = await Promise.all(
+		const stats = await Promise.allSettled(
 			oldBinaries.map(async (f) => ({
 				path: f,
 				mtime: (await fs.stat(f)).mtime,
 			})),
+		).then((result) =>
+			result
+				.filter((promise) => promise.status === "fulfilled")
+				.map((promise) => promise.value),
 		);
 		stats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 		return stats.map((s) => s.path);
@@ -148,10 +152,6 @@ export function maybeWrapFileLockError(
 		return new FileLockError(binPath);
 	}
 	return error;
-}
-export function isFileLockError(error: unknown): boolean {
-	const code = (error as NodeJS.ErrnoException).code;
-	return code === "EBUSY" || code === "EPERM";
 }
 
 /**

@@ -65,7 +65,6 @@ describe("downloadProgress", () => {
 				bytesDownloaded: 1500,
 				totalBytes: 10000,
 				status: "downloading",
-				timestamp: Date.now(),
 			};
 
 			await fs.writeFile(testLogPath, JSON.stringify(expectedProgress) + "\n");

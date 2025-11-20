@@ -7,6 +7,16 @@ import { type Logger } from "../logging/logger";
 import * as downloadProgress from "./downloadProgress";
 
 /**
+ * Timeout to detect stale lock files and take over from stuck processes.
+ * This value is intentionally small so we can quickly takeover.
+ */
+const STALE_TIMEOUT_MS = 15000;
+
+const LOCK_POLL_INTERVAL_MS = 500;
+
+type LockRelease = () => Promise<void>;
+
+/**
  * Manages file locking for binary downloads to coordinate between multiple
  * VS Code windows downloading the same binary.
  */
@@ -23,7 +33,7 @@ export class BinaryLock {
 	async acquireLockOrWait(
 		binPath: string,
 		progressLogPath: string,
-	): Promise<{ release: () => Promise<void>; waited: boolean }> {
+	): Promise<{ release: LockRelease; waited: boolean }> {
 		const release = await this.safeAcquireLock(binPath);
 		if (release) {
 			return { release, waited: false };
@@ -43,12 +53,10 @@ export class BinaryLock {
 	 * Attempt to acquire a lock on the binary file.
 	 * Returns the release function if successful, null if lock is already held.
 	 */
-	private async safeAcquireLock(
-		path: string,
-	): Promise<(() => Promise<void>) | null> {
+	private async safeAcquireLock(path: string): Promise<LockRelease | null> {
 		try {
 			const release = await lockfile.lock(path, {
-				stale: downloadProgress.STALE_TIMEOUT_MS,
+				stale: STALE_TIMEOUT_MS,
 				retries: 0,
 				realpath: false,
 			});
@@ -69,7 +77,7 @@ export class BinaryLock {
 	private async monitorDownloadProgress(
 		binPath: string,
 		progressLogPath: string,
-	): Promise<() => Promise<void>> {
+	): Promise<LockRelease> {
 		return await this.vscodeProposed.window.withProgress(
 			{
 				location: vscode.ProgressLocation.Notification,
@@ -77,36 +85,42 @@ export class BinaryLock {
 				cancellable: false,
 			},
 			async (progress) => {
-				return new Promise<() => Promise<void>>((resolve, reject) => {
-					const interval = setInterval(async () => {
+				return new Promise<LockRelease>((resolve, reject) => {
+					const poll = async () => {
 						try {
-							const currentProgress =
-								await downloadProgress.readProgress(progressLogPath);
-							if (currentProgress) {
-								const totalBytesPretty =
-									currentProgress.totalBytes === null
-										? "unknown"
-										: prettyBytes(currentProgress.totalBytes);
-								const message =
-									currentProgress.status === "verifying"
-										? "Verifying signature..."
-										: `${prettyBytes(currentProgress.bytesDownloaded)} / ${totalBytesPretty}`;
-								progress.report({ message });
-							}
-
+							await this.updateProgressMonitor(progressLogPath, progress);
 							const release = await this.safeAcquireLock(binPath);
 							if (release) {
-								clearInterval(interval);
-								this.output.debug("Download completed by another process");
 								return resolve(release);
 							}
+							// Schedule next poll only after current one completes
+							setTimeout(poll, LOCK_POLL_INTERVAL_MS);
 						} catch (error) {
-							clearInterval(interval);
 							reject(error);
 						}
-					}, 500);
+					};
+					poll().catch((error) => reject(error));
 				});
 			},
 		);
+	}
+
+	private async updateProgressMonitor(
+		progressLogPath: string,
+		progress: vscode.Progress<{ message?: string }>,
+	): Promise<void> {
+		const currentProgress =
+			await downloadProgress.readProgress(progressLogPath);
+		if (currentProgress) {
+			const totalBytesPretty =
+				currentProgress.totalBytes === null
+					? "unknown"
+					: prettyBytes(currentProgress.totalBytes);
+			const message =
+				currentProgress.status === "verifying"
+					? "Verifying signature..."
+					: `${prettyBytes(currentProgress.bytesDownloaded)} / ${totalBytesPretty}`;
+			progress.report({ message });
+		}
 	}
 }
