@@ -1,8 +1,30 @@
+import {
+	type TokenResponse,
+	type ClientRegistrationResponse,
+} from "../oauth/types";
+
 import type { SecretStorage, Disposable } from "vscode";
 
 const SESSION_TOKEN_KEY = "sessionToken";
 
 const LOGIN_STATE_KEY = "loginState";
+
+const OAUTH_CLIENT_REGISTRATION_KEY = "oauthClientRegistration";
+
+const OAUTH_TOKENS_KEY = "oauthTokens";
+
+const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
+
+export type StoredOAuthTokens = Omit<TokenResponse, "expires_in"> & {
+	expiry_timestamp: number;
+	deployment_url: string;
+};
+
+interface OAuthCallbackData {
+	state: string;
+	code: string | null;
+	error: string | null;
+}
 
 export enum AuthAction {
 	LOGIN,
@@ -16,11 +38,13 @@ export class SecretsManager {
 	/**
 	 * Set or unset the last used token.
 	 */
-	public async setSessionToken(sessionToken?: string): Promise<void> {
-		if (!sessionToken) {
-			await this.secrets.delete(SESSION_TOKEN_KEY);
-		} else {
+	public async setSessionToken(
+		sessionToken: string | undefined,
+	): Promise<void> {
+		if (sessionToken) {
 			await this.secrets.store(SESSION_TOKEN_KEY, sessionToken);
+		} else {
+			await this.secrets.delete(SESSION_TOKEN_KEY);
 		}
 	}
 
@@ -67,6 +91,115 @@ export class SecretsManager {
 					// Secret was deleted or is invalid
 					listener(AuthAction.INVALID);
 				}
+			}
+		});
+	}
+
+	/**
+	 * Listens for session token changes.
+	 */
+	public onDidChangeSessionToken(
+		listener: (token: string | undefined) => Promise<void>,
+	): Disposable {
+		return this.secrets.onDidChange(async (e) => {
+			if (e.key === SESSION_TOKEN_KEY) {
+				const token = await this.getSessionToken();
+				await listener(token);
+			}
+		});
+	}
+
+	/**
+	 * Store OAuth client registration data.
+	 */
+	public async setOAuthClientRegistration(
+		registration: ClientRegistrationResponse | undefined,
+	): Promise<void> {
+		if (registration) {
+			await this.secrets.store(
+				OAUTH_CLIENT_REGISTRATION_KEY,
+				JSON.stringify(registration),
+			);
+		} else {
+			await this.secrets.delete(OAUTH_CLIENT_REGISTRATION_KEY);
+		}
+	}
+
+	/**
+	 * Get OAuth client registration data.
+	 */
+	public async getOAuthClientRegistration(): Promise<
+		ClientRegistrationResponse | undefined
+	> {
+		try {
+			const stringifiedResponse = await this.secrets.get(
+				OAUTH_CLIENT_REGISTRATION_KEY,
+			);
+			if (stringifiedResponse) {
+				return JSON.parse(stringifiedResponse) as ClientRegistrationResponse;
+			}
+		} catch {
+			// Do nothing
+		}
+		return undefined;
+	}
+
+	/**
+	 * Store OAuth token data including expiry timestamp.
+	 */
+	public async setOAuthTokens(
+		tokens: StoredOAuthTokens | undefined,
+	): Promise<void> {
+		if (tokens) {
+			await this.secrets.store(OAUTH_TOKENS_KEY, JSON.stringify(tokens));
+		} else {
+			await this.secrets.delete(OAUTH_TOKENS_KEY);
+		}
+	}
+
+	/**
+	 * Get stored OAuth token data.
+	 */
+	public async getOAuthTokens(): Promise<StoredOAuthTokens | undefined> {
+		try {
+			const stringifiedTokens = await this.secrets.get(OAUTH_TOKENS_KEY);
+			if (stringifiedTokens) {
+				return JSON.parse(stringifiedTokens) as StoredOAuthTokens;
+			}
+		} catch {
+			// Do nothing
+		}
+		return undefined;
+	}
+
+	/**
+	 * Write an OAuth callback result to secrets storage.
+	 * Used for cross-window communication when OAuth callback arrives in a different window.
+	 */
+	public async setOAuthCallback(data: OAuthCallbackData): Promise<void> {
+		await this.secrets.store(OAUTH_CALLBACK_KEY, JSON.stringify(data));
+	}
+
+	/**
+	 * Listen for OAuth callback results from any VS Code window.
+	 * The listener receives the state parameter, code (if success), and error (if failed).
+	 */
+	public onDidChangeOAuthCallback(
+		listener: (data: OAuthCallbackData) => void,
+	): Disposable {
+		return this.secrets.onDidChange(async (e) => {
+			if (e.key !== OAUTH_CALLBACK_KEY) {
+				return;
+			}
+
+			try {
+				const data = await this.secrets.get(OAUTH_CALLBACK_KEY);
+				if (data) {
+					const parsed = JSON.parse(data) as OAuthCallbackData;
+					listener(parsed);
+				}
+			} catch {
+				// Ignore parse errors
 			}
 		});
 	}
