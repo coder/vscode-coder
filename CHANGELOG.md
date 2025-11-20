@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Add support for `google.antigravity-remote-openssh` Remote SSH extension.
+
 ### Changed
 
 - Improved workspace connection progress messages and enhanced the workspace build terminal
