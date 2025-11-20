@@ -37,7 +37,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		vscode.extensions.getExtension("jeanp413.open-remote-ssh") ||
 		vscode.extensions.getExtension("codeium.windsurf-remote-openssh") ||
 		vscode.extensions.getExtension("anysphere.remote-ssh") ||
-		vscode.extensions.getExtension("ms-vscode-remote.remote-ssh");
+		vscode.extensions.getExtension("ms-vscode-remote.remote-ssh") ||
+		vscode.extensions.getExtension("google.antigravity-remote-openssh");
 
 	let vscodeProposed: typeof vscode = vscode;
 
