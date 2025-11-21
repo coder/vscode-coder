@@ -3,10 +3,14 @@ import { type ServerSentEvent } from "coder/site/src/api/typesGenerated";
 import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import { EventSource } from "eventsource";
 import { describe, it, expect, vi } from "vitest";
-import { type CloseEvent, type ErrorEvent } from "ws";
 
 import { type Logger } from "@/logging/logger";
-import { type ParsedMessageEvent } from "@/websocket/eventStreamConnection";
+import { WebSocketCloseCode } from "@/websocket/codes";
+import {
+	type ParsedMessageEvent,
+	type CloseEvent,
+	type ErrorEvent,
+} from "@/websocket/eventStreamConnection";
 import { SseConnection } from "@/websocket/sseConnection";
 
 import { createMockLogger } from "../../mocks/testHelpers";
@@ -168,7 +172,7 @@ describe("SseConnection", () => {
 			await waitForNextTick();
 			expect(events).toEqual([
 				{
-					code: 1006,
+					code: WebSocketCloseCode.ABNORMAL,
 					reason: "Connection lost",
 					wasClean: false,
 				},
@@ -223,13 +227,17 @@ describe("SseConnection", () => {
 		type CloseHandlingTestCase = [
 			code: number | undefined,
 			reason: string | undefined,
-			closeEvent: Omit<CloseEvent, "type" | "target">,
+			closeEvent: CloseEvent,
 		];
 		it.each<CloseHandlingTestCase>([
 			[
 				undefined,
 				undefined,
-				{ code: 1000, reason: "Normal closure", wasClean: true },
+				{
+					code: WebSocketCloseCode.NORMAL,
+					reason: "Normal closure",
+					wasClean: true,
+				},
 			],
 			[
 				4000,

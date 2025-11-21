@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+import { WebSocketCloseCode, HttpStatusCode } from "@/websocket/codes";
 import {
 	ReconnectingWebSocket,
 	type SocketFactory,
@@ -26,7 +27,10 @@ describe("ReconnectingWebSocket", () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 
 			sockets[0].fireOpen();
-			sockets[0].fireClose({ code: 1006, reason: "Network error" });
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Network error",
+			});
 
 			await vi.advanceTimersByTimeAsync(300);
 			expect(sockets).toHaveLength(2);
@@ -35,8 +39,8 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it.each([
-			{ code: 1000, name: "Normal Closure" },
-			{ code: 1001, name: "Going Away" },
+			{ code: WebSocketCloseCode.NORMAL, name: "Normal Closure" },
+			{ code: WebSocketCloseCode.GOING_AWAY, name: "Going Away" },
 		])(
 			"does not reconnect on normal closure: $name ($code)",
 			async ({ code }) => {
@@ -52,8 +56,11 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
-		it.each([403, 410, 426, 1002, 1003])(
-			"does not reconnect on unrecoverable error: %i",
+		it.each([
+			WebSocketCloseCode.PROTOCOL_ERROR,
+			WebSocketCloseCode.UNSUPPORTED_DATA,
+		])(
+			"does not reconnect on unrecoverable WebSocket close code: %i",
 			async (code) => {
 				const { ws, sockets } = await createReconnectingWebSocket();
 
@@ -67,11 +74,44 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
+		it.each([
+			HttpStatusCode.FORBIDDEN,
+			HttpStatusCode.GONE,
+			HttpStatusCode.UPGRADE_REQUIRED,
+		])(
+			"does not reconnect on unrecoverable HTTP error during creation: %i",
+			async (statusCode) => {
+				let socketCreationAttempts = 0;
+				const factory = vi.fn(() => {
+					socketCreationAttempts++;
+					// Simulate HTTP error during WebSocket handshake
+					return Promise.reject(
+						new Error(`Unexpected server response: ${statusCode}`),
+					);
+				});
+
+				await expect(
+					ReconnectingWebSocket.create(
+						factory,
+						createMockLogger(),
+						"/api/test",
+					),
+				).rejects.toThrow(`Unexpected server response: ${statusCode}`);
+
+				// Should not retry after unrecoverable HTTP error
+				await vi.advanceTimersByTimeAsync(10000);
+				expect(socketCreationAttempts).toBe(1);
+			},
+		);
+
 		it("reconnect() connects immediately and cancels pending reconnections", async () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 
 			sockets[0].fireOpen();
-			sockets[0].fireClose({ code: 1006, reason: "Connection lost" });
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Connection lost",
+			});
 
 			// Manual reconnect() should happen immediately and cancel the scheduled reconnect
 			ws.reconnect();
@@ -140,7 +180,10 @@ describe("ReconnectingWebSocket", () => {
 			expect(handler).toHaveBeenCalledTimes(1);
 
 			// Disconnect and reconnect
-			sockets[0].fireClose({ code: 1006, reason: "Network" });
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Network",
+			});
 			await vi.advanceTimersByTimeAsync(300);
 			expect(sockets).toHaveLength(2);
 			sockets[1].fireOpen();
@@ -180,7 +223,10 @@ describe("ReconnectingWebSocket", () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 
 			sockets[0].fireOpen();
-			sockets[0].fireClose({ code: 1006, reason: "Network" });
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Network",
+			});
 			ws.close();
 
 			await vi.advanceTimersByTimeAsync(10000);
@@ -193,9 +239,12 @@ describe("ReconnectingWebSocket", () => {
 			const ws = await fromFactory(factory);
 
 			socket.fireOpen();
-			ws.close(1000, "Test close");
+			ws.close(WebSocketCloseCode.NORMAL, "Test close");
 
-			expect(socket.close).toHaveBeenCalledWith(1000, "Test close");
+			expect(socket.close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Test close",
+			);
 		});
 
 		it("calls onDispose callback once, even with multiple close() calls", async () => {
@@ -209,14 +258,17 @@ describe("ReconnectingWebSocket", () => {
 			expect(disposeCount).toBe(1);
 		});
 
-		it("calls onDispose callback on unrecoverable error", async () => {
+		it("calls onDispose callback on unrecoverable WebSocket close code", async () => {
 			let disposeCount = 0;
 			const { sockets } = await createReconnectingWebSocket(
 				() => ++disposeCount,
 			);
 
 			sockets[0].fireOpen();
-			sockets[0].fireClose({ code: 403, reason: "Forbidden" });
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.PROTOCOL_ERROR,
+				reason: "Protocol error",
+			});
 
 			expect(disposeCount).toBe(1);
 		});
@@ -228,7 +280,10 @@ describe("ReconnectingWebSocket", () => {
 			);
 
 			sockets[0].fireOpen();
-			sockets[0].fireClose({ code: 1006, reason: "Network error" });
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Network error",
+			});
 
 			await vi.advanceTimersByTimeAsync(300);
 			expect(disposeCount).toBe(0);
@@ -249,7 +304,10 @@ describe("ReconnectingWebSocket", () => {
 			// Fail repeatedly
 			for (let i = 0; i < 4; i++) {
 				const currentSocket = sockets[i];
-				currentSocket.fireClose({ code: 1006, reason: "Fail" });
+				currentSocket.fireClose({
+					code: WebSocketCloseCode.ABNORMAL,
+					reason: "Fail",
+				});
 				const delay = backoffDelays[i];
 				await vi.advanceTimersByTimeAsync(delay);
 				const nextSocket = sockets[i + 1];
@@ -266,13 +324,13 @@ describe("ReconnectingWebSocket", () => {
 			socket1.fireOpen();
 
 			// First disconnect
-			socket1.fireClose({ code: 1006, reason: "Fail" });
+			socket1.fireClose({ code: WebSocketCloseCode.ABNORMAL, reason: "Fail" });
 			await vi.advanceTimersByTimeAsync(300);
 			const socket2 = sockets[1];
 			socket2.fireOpen();
 
 			// Second disconnect - should use initial backoff again
-			socket2.fireClose({ code: 1006, reason: "Fail" });
+			socket2.fireClose({ code: WebSocketCloseCode.ABNORMAL, reason: "Fail" });
 			await vi.advanceTimersByTimeAsync(300);
 
 			expect(sockets).toHaveLength(3);
@@ -297,7 +355,10 @@ describe("ReconnectingWebSocket", () => {
 			sockets[0].fireOpen();
 
 			shouldFail = true;
-			sockets[0].fireClose({ code: 1006, reason: "Network" });
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Network",
+			});
 
 			await vi.advanceTimersByTimeAsync(300);
 			expect(sockets).toHaveLength(1);
@@ -354,7 +415,7 @@ function createMockSocket(): MockSocket {
 				cb({
 					code: event.code,
 					reason: event.reason,
-					wasClean: event.code === 1000,
+					wasClean: event.code === WebSocketCloseCode.NORMAL,
 				} as CloseEvent);
 			}
 		},
