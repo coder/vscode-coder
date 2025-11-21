@@ -10,7 +10,7 @@ import { createHttpAgent } from "@/api/utils";
 import { CertificateError } from "@/error";
 import { getHeaders } from "@/headers";
 import { type RequestConfigWithMeta } from "@/logging/types";
-import { OneWayWebSocket } from "@/websocket/oneWayWebSocket";
+import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 import { SseConnection } from "@/websocket/sseConnection";
 
 import {
@@ -332,7 +332,7 @@ describe("CoderApi", () => {
 
 			const connection = await api.watchAgentMetadata(AGENT_ID);
 
-			expect(connection).toBeInstanceOf(OneWayWebSocket);
+			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
 			expect(EventSource).not.toHaveBeenCalled();
 		});
 
@@ -370,6 +370,70 @@ describe("CoderApi", () => {
 
 			expect(connection).toBeInstanceOf(SseConnection);
 			expect(EventSource).toHaveBeenCalled();
+		});
+	});
+
+	describe("Reconnection on Host/Token Changes", () => {
+		const setupAutoOpeningWebSocket = () => {
+			const sockets: Array<Partial<Ws>> = [];
+			vi.mocked(Ws).mockImplementation((url: string | URL) => {
+				const mockWs = createMockWebSocket(String(url), {
+					on: vi.fn((event, handler) => {
+						if (event === "open") {
+							setImmediate(() => handler());
+						}
+						return mockWs as Ws;
+					}),
+				});
+				sockets.push(mockWs);
+				return mockWs as Ws;
+			});
+			return sockets;
+		};
+
+		it("triggers reconnection when session token changes", async () => {
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			api.setSessionToken("new-token");
+			await new Promise((resolve) => setImmediate(resolve));
+
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				1000,
+				"Replacing connection",
+			);
+			expect(sockets).toHaveLength(2);
+		});
+
+		it("triggers reconnection when host changes", async () => {
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			const wsWrap = await api.watchAgentMetadata(AGENT_ID);
+			expect(wsWrap.url).toContain(CODER_URL.replace("http", "ws"));
+
+			api.setHost("https://new-coder.example.com");
+			await new Promise((resolve) => setImmediate(resolve));
+
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				1000,
+				"Replacing connection",
+			);
+			expect(sockets).toHaveLength(2);
+			expect(wsWrap.url).toContain("wss://new-coder.example.com");
+		});
+
+		it("does not reconnect when token or host are unchanged", async () => {
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			// Same values as before
+			api.setSessionToken(AXIOS_TOKEN);
+			api.setHost(CODER_URL);
+
+			expect(sockets[0].close).not.toHaveBeenCalled();
+			expect(sockets).toHaveLength(1);
 		});
 	});
 

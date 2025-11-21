@@ -11,7 +11,7 @@ import * as vscode from "vscode";
 import { type FeatureSet } from "../featureSet";
 import { getGlobalFlags } from "../globalFlags";
 import { escapeCommandArg } from "../util";
-import { type OneWayWebSocket } from "../websocket/oneWayWebSocket";
+import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
 import { type CoderApi } from "./coderApi";
@@ -93,7 +93,7 @@ export async function streamBuildLogs(
 	client: CoderApi,
 	writeEmitter: vscode.EventEmitter<string>,
 	workspace: Workspace,
-): Promise<OneWayWebSocket<ProvisionerJobLog>> {
+): Promise<UnidirectionalStream<ProvisionerJobLog>> {
 	const socket = await client.watchBuildLogsByBuildId(
 		workspace.latest_build.id,
 		[],
@@ -131,7 +131,7 @@ export async function streamAgentLogs(
 	client: CoderApi,
 	writeEmitter: vscode.EventEmitter<string>,
 	agent: WorkspaceAgent,
-): Promise<OneWayWebSocket<WorkspaceAgentLog[]>> {
+): Promise<UnidirectionalStream<WorkspaceAgentLog[]>> {
 	const socket = await client.watchWorkspaceAgentLogs(agent.id, []);
 
 	socket.addEventListener("message", (data) => {

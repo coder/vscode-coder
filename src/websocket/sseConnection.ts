@@ -6,19 +6,14 @@ import { EventSource } from "eventsource";
 import { createStreamingFetchAdapter } from "../api/streamingFetchAdapter";
 import { type Logger } from "../logging/logger";
 
+import { WebSocketCloseCode } from "./codes";
 import { getQueryString } from "./utils";
-
-import type {
-	CloseEvent as WsCloseEvent,
-	ErrorEvent as WsErrorEvent,
-	Event as WsEvent,
-	MessageEvent as WsMessageEvent,
-} from "ws";
 
 import type {
 	UnidirectionalStream,
 	ParsedMessageEvent,
 	EventHandler,
+	ErrorEvent as WsErrorEvent,
 } from "./eventStreamConnection";
 
 export type SseConnectionInit = {
@@ -66,7 +61,7 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 
 	private setupEventHandlers(): void {
 		this.eventSource.addEventListener("open", () =>
-			this.invokeCallbacks(this.callbacks.open, {} as WsEvent, "open"),
+			this.invokeCallbacks(this.callbacks.open, {}, "open"),
 		);
 
 		this.eventSource.addEventListener("data", (event: MessageEvent) => {
@@ -84,10 +79,10 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 				this.invokeCallbacks(
 					this.callbacks.close,
 					{
-						code: 1006,
+						code: WebSocketCloseCode.ABNORMAL,
 						reason: "Connection lost",
 						wasClean: false,
-					} as WsCloseEvent,
+					},
 					"close",
 				);
 			}
@@ -117,7 +112,7 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 		return {
 			error: error,
 			message: errorMessage,
-		} as WsErrorEvent;
+		};
 	}
 
 	public addEventListener<TEvent extends WebSocketEventType>(
@@ -158,7 +153,7 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 	private parseMessage(
 		event: MessageEvent,
 	): ParsedMessageEvent<ServerSentEvent> {
-		const wsEvent = { data: event.data } as WsMessageEvent;
+		const wsEvent = { data: event.data };
 		try {
 			return {
 				sourceEvent: wsEvent,
@@ -207,14 +202,16 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 		this.invokeCallbacks(
 			this.callbacks.close,
 			{
-				code: code ?? 1000,
+				code: code ?? WebSocketCloseCode.NORMAL,
 				reason: reason ?? "Normal closure",
 				wasClean: true,
-			} as WsCloseEvent,
+			},
 			"close",
 		);
 
-		Object.values(this.callbacks).forEach((callbackSet) => callbackSet.clear());
+		for (const callbackSet of Object.values(this.callbacks)) {
+			callbackSet.clear();
+		}
 		this.messageWrappers.clear();
 	}
 }
