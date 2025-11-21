@@ -14,7 +14,7 @@ import {
 	type WorkspaceAgentLog,
 } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
-import { type ClientOptions, type CloseEvent, type ErrorEvent } from "ws";
+import { type ClientOptions } from "ws";
 
 import { CertificateError } from "../error";
 import { getHeaderCommand, getHeaders } from "../headers";
@@ -31,7 +31,12 @@ import {
 	HttpClientLogLevel,
 } from "../logging/types";
 import { sizeOf } from "../logging/utils";
-import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
+import { HttpStatusCode } from "../websocket/codes";
+import {
+	type UnidirectionalStream,
+	type CloseEvent,
+	type ErrorEvent,
+} from "../websocket/eventStreamConnection";
 import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
@@ -336,8 +341,8 @@ export class CoderApi extends Api {
 			const handleError = (event: ErrorEvent) => {
 				cleanup();
 				const is404 =
-					event.message?.includes("404") ||
-					event.error?.message?.includes("404");
+					event.message?.includes(String(HttpStatusCode.NOT_FOUND)) ||
+					event.error?.message?.includes(String(HttpStatusCode.NOT_FOUND));
 
 				if (is404 && onNotFound) {
 					connection.close();

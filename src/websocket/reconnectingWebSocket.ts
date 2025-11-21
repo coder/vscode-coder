@@ -1,5 +1,11 @@
+import {
+	WebSocketCloseCode,
+	NORMAL_CLOSURE_CODES,
+	UNRECOVERABLE_WS_CLOSE_CODES,
+	UNRECOVERABLE_HTTP_CODES,
+} from "./codes";
+
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
-import type { CloseEvent } from "ws";
 
 import type { Logger } from "../logging/logger";
 
@@ -16,9 +22,6 @@ export type ReconnectingWebSocketOptions = {
 	jitterFactor?: number;
 };
 
-// 403 Forbidden, 410 Gone, 426 Upgrade Required, 1002/1003 Protocol errors
-const UNRECOVERABLE_CLOSE_CODES = new Set([403, 410, 426, 1002, 1003]);
-
 export class ReconnectingWebSocket<TData = unknown>
 	implements UnidirectionalStream<TData>
 {
@@ -26,7 +29,9 @@ export class ReconnectingWebSocket<TData = unknown>
 	readonly #logger: Logger;
 	readonly #apiRoute: string;
 	readonly #options: Required<ReconnectingWebSocketOptions>;
-	readonly #eventHandlers = {
+	readonly #eventHandlers: {
+		[K in WebSocketEventType]: Set<EventHandler<TData, K>>;
+	} = {
 		open: new Set<EventHandler<TData, "open">>(),
 		close: new Set<EventHandler<TData, "close">>(),
 		error: new Set<EventHandler<TData, "error">>(),
@@ -86,18 +91,14 @@ export class ReconnectingWebSocket<TData = unknown>
 		event: TEvent,
 		callback: EventHandler<TData, TEvent>,
 	): void {
-		(this.#eventHandlers[event] as Set<EventHandler<TData, TEvent>>).add(
-			callback,
-		);
+		this.#eventHandlers[event].add(callback);
 	}
 
 	removeEventListener<TEvent extends WebSocketEventType>(
 		event: TEvent,
 		callback: EventHandler<TData, TEvent>,
 	): void {
-		(this.#eventHandlers[event] as Set<EventHandler<TData, TEvent>>).delete(
-			callback,
-		);
+		this.#eventHandlers[event].delete(callback);
 	}
 
 	reconnect(): void {
@@ -117,14 +118,7 @@ export class ReconnectingWebSocket<TData = unknown>
 		}
 
 		// connect() will close any existing socket
-		this.connect().catch((error) => {
-			if (!this.#isDisposed) {
-				this.#logger.warn(
-					`Manual reconnection failed for ${this.#apiRoute}: ${error instanceof Error ? error.message : String(error)}`,
-				);
-				this.scheduleReconnect();
-			}
-		});
+		this.connect().catch((error) => this.handleConnectionError(error));
 	}
 
 	close(code?: number, reason?: string): void {
@@ -135,12 +129,10 @@ export class ReconnectingWebSocket<TData = unknown>
 		// Fire close handlers synchronously before disposing
 		if (this.#currentSocket) {
 			this.executeHandlers("close", {
-				code: code ?? 1000,
-				reason: reason ?? "",
+				code: code ?? WebSocketCloseCode.NORMAL,
+				reason: reason ?? "Normal closure",
 				wasClean: true,
-				type: "close",
-				target: this.#currentSocket,
-			} as CloseEvent);
+			});
 		}
 
 		this.dispose(code, reason);
@@ -155,7 +147,10 @@ export class ReconnectingWebSocket<TData = unknown>
 		try {
 			// Close any existing socket before creating a new one
 			if (this.#currentSocket) {
-				this.#currentSocket.close(1000, "Replacing connection");
+				this.#currentSocket.close(
+					WebSocketCloseCode.NORMAL,
+					"Replacing connection",
+				);
 				this.#currentSocket = null;
 			}
 
@@ -182,7 +177,7 @@ export class ReconnectingWebSocket<TData = unknown>
 
 				this.executeHandlers("close", event);
 
-				if (UNRECOVERABLE_CLOSE_CODES.has(event.code)) {
+				if (UNRECOVERABLE_WS_CLOSE_CODES.has(event.code)) {
 					this.#logger.error(
 						`WebSocket connection closed with unrecoverable error code ${event.code}`,
 					);
@@ -191,7 +186,7 @@ export class ReconnectingWebSocket<TData = unknown>
 				}
 
 				// Don't reconnect on normal closure
-				if (event.code === 1000 || event.code === 1001) {
+				if (NORMAL_CLOSURE_CODES.has(event.code)) {
 					return;
 				}
 
@@ -223,14 +218,7 @@ export class ReconnectingWebSocket<TData = unknown>
 
 		this.#reconnectTimeoutId = setTimeout(() => {
 			this.#reconnectTimeoutId = null;
-			this.connect().catch((error) => {
-				if (!this.#isDisposed) {
-					this.#logger.warn(
-						`WebSocket connection failed for ${this.#apiRoute}: ${error instanceof Error ? error.message : String(error)}`,
-					);
-					this.scheduleReconnect();
-				}
-			});
+			this.connect().catch((error) => this.handleConnectionError(error));
 		}, delayMs);
 
 		this.#backoffMs = Math.min(this.#backoffMs * 2, this.#options.maxBackoffMs);
@@ -240,18 +228,54 @@ export class ReconnectingWebSocket<TData = unknown>
 		event: TEvent,
 		eventData: Parameters<EventHandler<TData, TEvent>>[0],
 	): void {
-		const handlers = this.#eventHandlers[event] as Set<
-			EventHandler<TData, TEvent>
-		>;
-		for (const handler of handlers) {
+		for (const handler of this.#eventHandlers[event]) {
 			try {
 				handler(eventData);
 			} catch (error) {
 				this.#logger.error(
-					`Error in ${event} handler for ${this.#apiRoute}: ${error instanceof Error ? error.message : String(error)}`,
+					`Error in ${event} handler for ${this.#apiRoute}`,
+					error,
 				);
 			}
 		}
+	}
+
+	/**
+	 * Checks if the error is unrecoverable and disposes the connection,
+	 * otherwise schedules a reconnect.
+	 */
+	private handleConnectionError(error: unknown): void {
+		if (this.#isDisposed) {
+			return;
+		}
+
+		if (this.isUnrecoverableHttpError(error)) {
+			this.#logger.error(
+				`Unrecoverable HTTP error during connection for ${this.#apiRoute}`,
+				error,
+			);
+			this.dispose();
+			return;
+		}
+
+		this.#logger.warn(
+			`WebSocket connection failed for ${this.#apiRoute}`,
+			error,
+		);
+		this.scheduleReconnect();
+	}
+
+	/**
+	 * Check if an error contains an unrecoverable HTTP status code.
+	 */
+	private isUnrecoverableHttpError(error: unknown): boolean {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		for (const code of UNRECOVERABLE_HTTP_CODES) {
+			if (errorMessage.includes(String(code))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private dispose(code?: number, reason?: string): void {
