@@ -6,7 +6,7 @@
  */
 import { type AxiosInstance } from "axios";
 import { type Api } from "coder/site/src/api/api";
-import * as fsPromises from "node:fs/promises";
+import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,7 +46,11 @@ function setupCliUtilsMocks(version: string) {
 
 function createMockApi(
 	version: string,
-	options: { chunkSize?: number; delay?: number } = {},
+	options: {
+		chunkSize?: number;
+		delay?: number;
+		error?: NodeJS.ErrnoException;
+	} = {},
 ): Api {
 	const mockAxios = {
 		get: vi.fn().mockImplementation(() =>
@@ -66,7 +70,7 @@ function createMockApi(
 }
 
 function setupManager(testDir: string): CliManager {
-	const _progressReporter = new MockProgressReporter();
+	const _mockProgress = new MockProgressReporter();
 	const mockConfig = new MockConfigurationProvider();
 	mockConfig.set("coder.disableSignatureVerification", true);
 
@@ -81,13 +85,13 @@ describe("CliManager Concurrent Downloads", () => {
 	let testDir: string;
 
 	beforeEach(async () => {
-		testDir = await fsPromises.mkdtemp(
+		testDir = await fs.mkdtemp(
 			path.join(os.tmpdir(), "climanager-concurrent-"),
 		);
 	});
 
 	afterEach(async () => {
-		await fsPromises.rm(testDir, { recursive: true, force: true });
+		await fs.rm(testDir, { recursive: true, force: true });
 	});
 
 	it("handles multiple concurrent downloads without race conditions", async () => {
@@ -110,18 +114,16 @@ describe("CliManager Concurrent Downloads", () => {
 		}
 
 		// Verify binary exists and lock/progress files are cleaned up
-		await expect(fsPromises.access(binaryPath)).resolves.toBeUndefined();
-		await expect(fsPromises.access(binaryPath + ".lock")).rejects.toThrow();
-		await expect(
-			fsPromises.access(binaryPath + ".progress.log"),
-		).rejects.toThrow();
+		await expect(fs.access(binaryPath)).resolves.toBeUndefined();
+		await expect(fs.access(binaryPath + ".lock")).rejects.toThrow();
+		await expect(fs.access(binaryPath + ".progress.log")).rejects.toThrow();
 	});
 
 	it("redownloads when version mismatch is detected concurrently", async () => {
 		const manager = setupManager(testDir);
 		setupCliUtilsMocks("1.2.3");
 		vi.mocked(cliUtils.version).mockImplementation(async (binPath) => {
-			const fileContent = await fsPromises.readFile(binPath, {
+			const fileContent = await fs.readFile(binPath, {
 				encoding: "utf-8",
 			});
 			return fileContent.includes("1.2.3") ? "1.2.3" : "2.0.0";
@@ -151,12 +153,39 @@ describe("CliManager Concurrent Downloads", () => {
 		}
 
 		// Binary should be updated to 2.0.0, lock/progress files cleaned up
-		await expect(fsPromises.access(binaryPath)).resolves.toBeUndefined();
-		const finalContent = await fsPromises.readFile(binaryPath, "utf8");
+		await expect(fs.access(binaryPath)).resolves.toBeUndefined();
+		const finalContent = await fs.readFile(binaryPath, "utf8");
 		expect(finalContent).toContain("v2.0.0");
-		await expect(fsPromises.access(binaryPath + ".lock")).rejects.toThrow();
-		await expect(
-			fsPromises.access(binaryPath + ".progress.log"),
-		).rejects.toThrow();
+		await expect(fs.access(binaryPath + ".lock")).rejects.toThrow();
+		await expect(fs.access(binaryPath + ".progress.log")).rejects.toThrow();
+	});
+
+	it.each([
+		{
+			name: "disk storage insufficient",
+			code: "ENOSPC",
+			message: "no space left on device",
+		},
+		{
+			name: "connection timeout",
+			code: "ETIMEDOUT",
+			message: "connection timed out",
+		},
+	])("handles $name error during download", async ({ code, message }) => {
+		const manager = setupManager(testDir);
+		setupCliUtilsMocks("1.2.3");
+
+		const error = new Error(`${code}: ${message}`);
+		(error as NodeJS.ErrnoException).code = code;
+		const mockApi = createMockApi("1.2.3", { error });
+
+		const label = "test.coder.com";
+		const binaryPath = path.join(testDir, label, "bin", "coder-linux-amd64");
+
+		await expect(manager.fetchBinary(mockApi, label)).rejects.toThrow(
+			`Unable to download binary: ${code}: ${message}`,
+		);
+
+		await expect(fs.access(binaryPath + ".lock")).rejects.toThrow();
 	});
 });

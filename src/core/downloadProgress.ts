@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 export interface DownloadProgress {
@@ -36,5 +36,9 @@ export async function readProgress(
 }
 
 export async function clearProgress(logPath: string): Promise<void> {
-	await fs.rm(logPath, { force: true });
+	try {
+		await fs.rm(logPath, { force: true });
+	} catch {
+		// If we cannot remove it now then we'll do it in the next startup
+	}
 }

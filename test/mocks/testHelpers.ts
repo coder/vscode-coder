@@ -302,13 +302,19 @@ export function createMockLogger(): Logger {
 
 export function createMockStream(
 	content: string,
-	options: { chunkSize?: number; delay?: number } = {},
+	options: {
+		chunkSize?: number;
+		delay?: number;
+		// If defined will throw an error instead of closing normally
+		error?: NodeJS.ErrnoException;
+	} = {},
 ): IncomingMessage {
-	const { chunkSize = 8, delay = 1 } = options;
+	const { chunkSize = 8, delay = 1, error } = options;
 
 	const buffer = Buffer.from(content);
 	let position = 0;
 	let closeCallback: ((...args: unknown[]) => void) | null = null;
+	let errorCallback: ((error: Error) => void) | null = null;
 
 	return {
 		on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
@@ -325,7 +331,9 @@ export function createMockStream(
 							setTimeout(sendChunk, delay);
 						} else {
 							setImmediate(() => {
-								if (closeCallback) {
+								if (error && errorCallback) {
+									errorCallback(error);
+								} else if (closeCallback) {
 									closeCallback();
 								}
 							});
@@ -333,6 +341,8 @@ export function createMockStream(
 					}
 				};
 				setTimeout(sendChunk, delay);
+			} else if (event === "error") {
+				errorCallback = callback;
 			} else if (event === "close") {
 				closeCallback = callback;
 			}
