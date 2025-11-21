@@ -3,10 +3,10 @@ import globalAxios, {
 	type AxiosRequestConfig,
 } from "axios";
 import { type Api } from "coder/site/src/api/api";
-import { createWriteStream, type WriteStream } from "fs";
-import fs from "fs/promises";
-import { type IncomingMessage } from "http";
-import path from "path";
+import { createWriteStream, type WriteStream } from "node:fs";
+import fs from "node:fs/promises";
+import { type IncomingMessage } from "node:http";
+import path from "node:path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
@@ -15,15 +15,21 @@ import { errToStr } from "../api/api-helper";
 import { type Logger } from "../logging/logger";
 import * as pgp from "../pgp";
 
+import { BinaryLock } from "./binaryLock";
 import * as cliUtils from "./cliUtils";
+import * as downloadProgress from "./downloadProgress";
 import { type PathResolver } from "./pathResolver";
 
 export class CliManager {
+	private readonly binaryLock: BinaryLock;
+
 	constructor(
 		private readonly vscodeProposed: typeof vscode,
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
-	) {}
+	) {
+		this.binaryLock = new BinaryLock(vscodeProposed, output);
+	}
 
 	/**
 	 * Download and return the path to a working binary for the deployment with
@@ -97,143 +103,342 @@ export class CliManager {
 			throw new Error("Unable to download CLI because downloads are disabled");
 		}
 
-		// Remove any left-over old or temporary binaries and signatures.
-		const removed = await cliUtils.rmOld(binPath);
-		removed.forEach(({ fileName, error }) => {
-			if (error) {
-				this.output.warn("Failed to remove", fileName, error);
-			} else {
-				this.output.info("Removed", fileName);
-			}
-		});
-
-		// Figure out where to get the binary.
-		const binName = cliUtils.name();
-		const configSource = cfg.get("binarySource");
-		const binSource =
-			configSource && String(configSource).trim().length > 0
-				? String(configSource)
-				: "/bin/" + binName;
-		this.output.info("Downloading binary from", binSource);
-
-		// Ideally we already caught that this was the right version and returned
-		// early, but just in case set the ETag.
-		const etag = stat !== undefined ? await cliUtils.eTag(binPath) : "";
-		this.output.info("Using ETag", etag);
-
-		// Download the binary to a temporary file.
+		// Create the `bin` folder if it doesn't exist
 		await fs.mkdir(path.dirname(binPath), { recursive: true });
+		const progressLogPath = binPath + ".progress.log";
+
+		let lockResult:
+			| { release: () => Promise<void>; waited: boolean }
+			| undefined;
+		let latestVersion = parsedVersion;
+		try {
+			lockResult = await this.binaryLock.acquireLockOrWait(
+				binPath,
+				progressLogPath,
+			);
+			this.output.info("Acquired download lock");
+
+			// If we waited for another process, re-check if binary is now ready
+			if (lockResult.waited) {
+				const latestBuildInfo = await restClient.getBuildInfo();
+				this.output.info("Got latest server version", latestBuildInfo.version);
+
+				const recheckAfterWait = await this.checkBinaryVersion(
+					binPath,
+					latestBuildInfo.version,
+				);
+				if (recheckAfterWait.matches) {
+					this.output.info(
+						"Using existing binary since it matches the latest server version",
+					);
+					return binPath;
+				}
+
+				// Parse the latest version for download
+				const latestParsedVersion = semver.parse(latestBuildInfo.version);
+				if (!latestParsedVersion) {
+					throw new Error(
+						`Got invalid version from deployment: ${latestBuildInfo.version}`,
+					);
+				}
+				latestVersion = latestParsedVersion;
+			}
+
+			return await this.performBinaryDownload(
+				restClient,
+				latestVersion,
+				binPath,
+				progressLogPath,
+			);
+		} catch (error) {
+			// Unified error handling - check for fallback binaries and prompt user
+			return await this.handleAnyBinaryFailure(
+				error,
+				binPath,
+				buildInfo.version,
+			);
+		} finally {
+			if (lockResult) {
+				await lockResult.release();
+				this.output.info("Released download lock");
+			}
+		}
+	}
+
+	/**
+	 * Check if a binary exists and matches the expected version.
+	 */
+	private async checkBinaryVersion(
+		binPath: string,
+		expectedVersion: string,
+	): Promise<{ version: string | null; matches: boolean }> {
+		const stat = await cliUtils.stat(binPath);
+		if (!stat) {
+			return { version: null, matches: false };
+		}
+
+		try {
+			const version = await cliUtils.version(binPath);
+			return {
+				version,
+				matches: version === expectedVersion,
+			};
+		} catch (error) {
+			this.output.warn(`Unable to get version of binary: ${errToStr(error)}`);
+			return { version: null, matches: false };
+		}
+	}
+
+	/**
+	 * Prompt the user to use an existing binary version.
+	 */
+	private async promptUseExistingBinary(
+		version: string,
+		reason: string,
+	): Promise<boolean> {
+		const choice = await this.vscodeProposed.window.showErrorMessage(
+			`${reason}. Run version ${version} anyway?`,
+			"Run",
+		);
+		return choice === "Run";
+	}
+
+	/**
+	 * Replace the existing binary with the downloaded temp file.
+	 * Throws WindowsFileLockError if binary is in use.
+	 */
+	private async replaceExistingBinary(
+		binPath: string,
+		tempFile: string,
+	): Promise<void> {
+		const oldBinPath =
+			binPath + ".old-" + Math.random().toString(36).substring(8);
+
+		try {
+			// Step 1: Move existing binary to backup (if it exists)
+			const stat = await cliUtils.stat(binPath);
+			if (stat) {
+				this.output.info(
+					"Moving existing binary to",
+					path.basename(oldBinPath),
+				);
+				await fs.rename(binPath, oldBinPath);
+			}
+
+			// Step 2: Move temp to final location
+			this.output.info("Moving downloaded file to", path.basename(binPath));
+			await fs.rename(tempFile, binPath);
+		} catch (error) {
+			throw cliUtils.maybeWrapFileLockError(error, binPath);
+		}
+
+		// For debugging, to see if the binary only partially downloaded.
+		const newStat = await cliUtils.stat(binPath);
+		this.output.info(
+			"Downloaded binary size is",
+			prettyBytes(newStat?.size || 0),
+		);
+
+		// Make sure we can execute this new binary.
+		const version = await cliUtils.version(binPath);
+		this.output.info("Downloaded binary version is", version);
+	}
+
+	/**
+	 * Unified handler for any binary-related failure.
+	 * Checks for existing or old binaries and prompts user once.
+	 */
+	private async handleAnyBinaryFailure(
+		error: unknown,
+		binPath: string,
+		expectedVersion: string,
+	): Promise<string> {
+		const message =
+			error instanceof cliUtils.FileLockError
+				? "Unable to update the Coder CLI binary because it's in use"
+				: "Failed to update CLI binary";
+
+		// Try existing binary first
+		const existingCheck = await this.checkBinaryVersion(
+			binPath,
+			expectedVersion,
+		);
+		if (existingCheck.version) {
+			// Perfect match - use without prompting
+			if (existingCheck.matches) {
+				return binPath;
+			}
+			// Version mismatch - prompt user
+			if (await this.promptUseExistingBinary(existingCheck.version, message)) {
+				return binPath;
+			}
+			throw error;
+		}
+
+		// Try .old-* binaries as fallback
+		const oldBinaries = await cliUtils.findOldBinaries(binPath);
+		if (oldBinaries.length > 0) {
+			const oldCheck = await this.checkBinaryVersion(
+				oldBinaries[0],
+				expectedVersion,
+			);
+			if (
+				oldCheck.version &&
+				(oldCheck.matches ||
+					(await this.promptUseExistingBinary(oldCheck.version, message)))
+			) {
+				await fs.rename(oldBinaries[0], binPath);
+				return binPath;
+			}
+		}
+
+		// No fallback available or user declined - re-throw original error
+		throw error;
+	}
+
+	private async performBinaryDownload(
+		restClient: Api,
+		parsedVersion: semver.SemVer,
+		binPath: string,
+		progressLogPath: string,
+	): Promise<string> {
+		const cfg = vscode.workspace.getConfiguration("coder");
 		const tempFile =
 			binPath + ".temp-" + Math.random().toString(36).substring(8);
-		const writeStream = createWriteStream(tempFile, {
-			autoClose: true,
-			mode: 0o755,
-		});
-		const client = restClient.getAxiosInstance();
-		const status = await this.download(client, binSource, writeStream, {
-			"Accept-Encoding": "gzip",
-			"If-None-Match": `"${etag}"`,
-		});
 
-		switch (status) {
-			case 200: {
-				if (cfg.get("disableSignatureVerification")) {
-					this.output.info(
-						"Skipping binary signature verification due to settings",
-					);
+		try {
+			const removed = await cliUtils.rmOld(binPath);
+			for (const { fileName, error } of removed) {
+				if (error) {
+					this.output.warn("Failed to remove", fileName, error);
 				} else {
-					await this.verifyBinarySignatures(client, tempFile, [
-						// A signature placed at the same level as the binary.  It must be
-						// named exactly the same with an appended `.asc` (such as
-						// coder-windows-amd64.exe.asc or coder-linux-amd64.asc).
-						binSource + ".asc",
-						// The releases.coder.com bucket does not include the leading "v",
-						// and unlike what we get from buildinfo it uses a truncated version
-						// with only major.minor.patch.  The signature name follows the same
-						// rule as above.
-						`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.asc`,
-					]);
+					this.output.info("Removed", fileName);
 				}
+			}
 
-				// Move the old binary to a backup location first, just in case.  And,
-				// on Linux at least, you cannot write onto a binary that is in use so
-				// moving first works around that (delete would also work).
-				if (stat !== undefined) {
-					const oldBinPath =
-						binPath + ".old-" + Math.random().toString(36).substring(8);
-					this.output.info(
-						"Moving existing binary to",
-						path.basename(oldBinPath),
-					);
-					await fs.rename(binPath, oldBinPath);
+			// Figure out where to get the binary.
+			const binName = cliUtils.name();
+			const configSource = cfg.get<string>("binarySource");
+			const binSource = configSource?.trim() ? configSource : "/bin/" + binName;
+			this.output.info("Downloading binary from", binSource);
+
+			// Ideally we already caught that this was the right version and returned
+			// early, but just in case set the ETag.
+			const stat = await cliUtils.stat(binPath);
+			const etag = stat ? await cliUtils.eTag(binPath) : "";
+			this.output.info("Using ETag", etag || "<N/A>");
+
+			// Download the binary to a temporary file.
+			const writeStream = createWriteStream(tempFile, {
+				autoClose: true,
+				mode: 0o755,
+			});
+
+			const onProgress = async (
+				bytesDownloaded: number,
+				totalBytes: number | null,
+			) => {
+				await downloadProgress.writeProgress(progressLogPath, {
+					bytesDownloaded,
+					totalBytes,
+					status: "downloading",
+				});
+			};
+
+			const client = restClient.getAxiosInstance();
+			const status = await this.download(
+				client,
+				binSource,
+				writeStream,
+				{
+					"Accept-Encoding": "gzip",
+					"If-None-Match": `"${etag}"`,
+				},
+				onProgress,
+			);
+
+			switch (status) {
+				case 200: {
+					await downloadProgress.writeProgress(progressLogPath, {
+						bytesDownloaded: 0,
+						totalBytes: null,
+						status: "verifying",
+					});
+
+					if (cfg.get("disableSignatureVerification")) {
+						this.output.info(
+							"Skipping binary signature verification due to settings",
+						);
+					} else {
+						await this.verifyBinarySignatures(client, tempFile, [
+							// A signature placed at the same level as the binary.  It must be
+							// named exactly the same with an appended `.asc` (such as
+							// coder-windows-amd64.exe.asc or coder-linux-amd64.asc).
+							binSource + ".asc",
+							// The releases.coder.com bucket does not include the leading "v",
+							// and unlike what we get from buildinfo it uses a truncated version
+							// with only major.minor.patch.  The signature name follows the same
+							// rule as above.
+							`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.asc`,
+						]);
+					}
+
+					// Replace existing binary (handles both renames + Windows lock)
+					await this.replaceExistingBinary(binPath, tempFile);
+
+					return binPath;
 				}
-
-				// Then move the temporary binary into the right place.
-				this.output.info("Moving downloaded file to", path.basename(binPath));
-				await fs.mkdir(path.dirname(binPath), { recursive: true });
-				await fs.rename(tempFile, binPath);
-
-				// For debugging, to see if the binary only partially downloaded.
-				const newStat = await cliUtils.stat(binPath);
-				this.output.info(
-					"Downloaded binary size is",
-					prettyBytes(newStat?.size || 0),
-				);
-
-				// Make sure we can execute this new binary.
-				const version = await cliUtils.version(binPath);
-				this.output.info("Downloaded binary version is", version);
-
-				return binPath;
-			}
-			case 304: {
-				this.output.info("Using existing binary since server returned a 304");
-				return binPath;
-			}
-			case 404: {
-				vscode.window
-					.showErrorMessage(
-						"Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
-						"Open an Issue",
-					)
-					.then((value) => {
-						if (!value) {
-							return;
-						}
-						const os = cliUtils.goos();
-						const arch = cliUtils.goarch();
-						const params = new URLSearchParams({
-							title: `Support the \`${os}-${arch}\` platform`,
-							body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
+				case 304: {
+					this.output.info("Using existing binary since server returned a 304");
+					return binPath;
+				}
+				case 404: {
+					vscode.window
+						.showErrorMessage(
+							"Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
+							"Open an Issue",
+						)
+						.then((value) => {
+							if (!value) {
+								return;
+							}
+							const os = cliUtils.goos();
+							const arch = cliUtils.goarch();
+							const params = new URLSearchParams({
+								title: `Support the \`${os}-${arch}\` platform`,
+								body: `I'd like to use the \`${os}-${arch}\` architecture with the VS Code extension.`,
+							});
+							const uri = vscode.Uri.parse(
+								`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
+							);
+							vscode.env.openExternal(uri);
 						});
-						const uri = vscode.Uri.parse(
-							`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
-						);
-						vscode.env.openExternal(uri);
-					});
-				throw new Error("Platform not supported");
-			}
-			default: {
-				vscode.window
-					.showErrorMessage(
-						"Failed to download binary. Please open an issue.",
-						"Open an Issue",
-					)
-					.then((value) => {
-						if (!value) {
-							return;
-						}
-						const params = new URLSearchParams({
-							title: `Failed to download binary on \`${cliUtils.goos()}-${cliUtils.goarch()}\``,
-							body: `Received status code \`${status}\` when downloading the binary.`,
+					throw new Error("Platform not supported");
+				}
+				default: {
+					vscode.window
+						.showErrorMessage(
+							"Failed to download binary. Please open an issue.",
+							"Open an Issue",
+						)
+						.then((value) => {
+							if (!value) {
+								return;
+							}
+							const params = new URLSearchParams({
+								title: `Failed to download binary on \`${cliUtils.goos()}-${cliUtils.goarch()}\``,
+								body: `Received status code \`${status}\` when downloading the binary.`,
+							});
+							const uri = vscode.Uri.parse(
+								`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
+							);
+							vscode.env.openExternal(uri);
 						});
-						const uri = vscode.Uri.parse(
-							`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
-						);
-						vscode.env.openExternal(uri);
-					});
-				throw new Error("Failed to download binary");
+					throw new Error("Failed to download binary");
+				}
 			}
+		} finally {
+			await downloadProgress.clearProgress(progressLogPath);
 		}
 	}
 
@@ -246,6 +451,10 @@ export class CliManager {
 		source: string,
 		writeStream: WriteStream,
 		headers?: AxiosRequestConfig["headers"],
+		onProgress?: (
+			bytesDownloaded: number,
+			totalBytes: number | null,
+		) => Promise<void>,
 	): Promise<number> {
 		const baseUrl = client.defaults.baseURL;
 
@@ -306,6 +515,17 @@ export class CliManager {
 									? undefined
 									: (buffer.byteLength / contentLength) * 100,
 							});
+							if (onProgress) {
+								onProgress(
+									written,
+									Number.isNaN(contentLength) ? null : contentLength,
+								).catch((error) => {
+									this.output.warn(
+										"Failed to write progress log:",
+										errToStr(error),
+									);
+								});
+							}
 						});
 					});
 
