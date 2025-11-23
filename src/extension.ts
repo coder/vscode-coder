@@ -62,16 +62,21 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const secretsManager = serviceContainer.getSecretsManager();
 	const contextManager = serviceContainer.getContextManager();
 
+	// Migrate auth storage from old flat format to new label-based format
+	await migrateAuthStorage(serviceContainer);
+
 	// Try to clear this flag ASAP
 	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
 
 	const url = mementoManager.getUrl();
+	const label = url ? toSafeHost(url) : "";
 
-	// Create OAuth session manager before the main client
+	// Create OAuth session manager with login coordinator
 	const oauthSessionManager = await OAuthSessionManager.create(
 		url || "",
+		label,
 		serviceContainer,
-		ctx,
+		ctx.extension.id,
 	);
 	ctx.subscriptions.push(oauthSessionManager);
 
@@ -80,7 +85,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// in commands that operate on the current login.
 	const client = CoderApi.create(
 		url || "",
-		await secretsManager.getSessionToken(),
+		(await secretsManager.getSessionToken(label)) || "",
 		output,
 		oauthSessionManager,
 	);
@@ -128,26 +133,39 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		ctx.subscriptions,
 	);
 
-	// Listen for session token changes and sync state across all components
-	ctx.subscriptions.push(
-		secretsManager.onDidChangeSessionToken(async (token) => {
-			client.setSessionToken(token ?? "");
-			if (!token) {
-				output.debug("Session token cleared");
-				return;
-			}
+	// Listen for deployment auth changes and sync state across all components
+	// This listener is re-registered when the user logs into a different deployment
+	let authChangeDisposable: vscode.Disposable | undefined;
+	const registerAuthListener = (deploymentLabel: string) => {
+		authChangeDisposable?.dispose();
 
-			output.debug("Session token changed, syncing state");
+		if (!deploymentLabel) {
+			return;
+		}
 
-			const url = mementoManager.getUrl();
-			if (url) {
-				const cliManager = serviceContainer.getCliManager();
-				// TODO label might not match the one in remote?
-				await cliManager.configure(toSafeHost(url), url, token);
-				output.debug("Updated CLI config with new token");
-			}
-		}),
-	);
+		output.debug("Registering auth listener for deployment", deploymentLabel);
+		authChangeDisposable = secretsManager.onDidChangeDeploymentAuth(
+			deploymentLabel,
+			async (auth) => {
+				const token = auth?.sessionToken ?? "";
+				client.setSessionToken(token);
+
+				// Update authentication context for current deployment
+				contextManager.set("coder.authenticated", auth !== undefined);
+
+				output.debug("Session token changed, syncing state");
+
+				if (auth?.url) {
+					const cliManager = serviceContainer.getCliManager();
+					await cliManager.configure(deploymentLabel, auth.url, token);
+					output.debug("Updated CLI config with new token");
+				}
+			},
+		);
+	};
+
+	registerAuthListener(label);
+	ctx.subscriptions.push({ dispose: () => authChangeDisposable?.dispose() });
 
 	// Handle vscode:// URIs.
 	const uriHandler = vscode.window.registerUriHandler({
@@ -184,11 +202,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// queries will default to localhost) so ask for it if missing.
 				// Pre-populate in case we do have the right URL so the user can just
 				// hit enter and move on.
-				const url = await maybeAskUrl(
-					mementoManager,
-					params.get("url"),
-					mementoManager.getUrl(),
-				);
+				const url = await maybeAskUrl(mementoManager, params.get("url"));
 				if (url) {
 					client.setHost(url);
 					await mementoManager.setUrl(url);
@@ -208,9 +222,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					? params.get("token")
 					: (params.get("token") ?? "");
 
+				const label = toSafeHost(url);
 				if (token) {
 					client.setSessionToken(token);
-					await secretsManager.setSessionToken(token);
+					await secretsManager.setSessionToken(label, {
+						url,
+						sessionToken: token,
+					});
 				}
 
 				// Store on disk to be used by the cli.
@@ -268,11 +286,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// queries will default to localhost) so ask for it if missing.
 				// Pre-populate in case we do have the right URL so the user can just
 				// hit enter and move on.
-				const url = await maybeAskUrl(
-					mementoManager,
-					params.get("url"),
-					mementoManager.getUrl(),
-				);
+				const url = await maybeAskUrl(mementoManager, params.get("url"));
 				if (url) {
 					client.setHost(url);
 					await mementoManager.setUrl(url);
@@ -369,22 +383,32 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		),
 	);
 
-	const remote = new Remote(serviceContainer, commands, ctx.extensionMode);
+	const remote = new Remote(serviceContainer, commands, ctx);
 
 	ctx.subscriptions.push(
-		secretsManager.onDidChangeLoginState(async (state) => {
+		secretsManager.onDidChangeLoginState(async (state, label) => {
 			switch (state) {
 				case AuthAction.LOGIN: {
-					const token = await secretsManager.getSessionToken();
 					const url = mementoManager.getUrl();
+					const token = await secretsManager.getSessionToken(label);
 					// Should login the user directly if the URL+Token are valid
 					await commands.login({ url, token });
-					// Resolve any pending login detection promises
-					remote.resolveLoginDetected();
+
+					// Re-register auth listener for the new deployment
+					registerAuthListener(label);
+
+					// Update OAuth session manager to match the new deployment
+					if (url) {
+						await oauthSessionManager.setDeployment(label, url);
+					}
 					break;
 				}
 				case AuthAction.LOGOUT:
-					await commands.forceLogout();
+					await commands.forceLogout(label);
+
+					// Dispose auth listener when logged out
+					authChangeDisposable?.dispose();
+					authChangeDisposable = undefined;
 					break;
 				case AuthAction.INVALID:
 					break;
@@ -408,13 +432,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				isFirstConnect,
 				remoteSshExtension.id,
 			);
+			// TODO this is weird, why do we change the host here??
 			if (details) {
-				// TODO if the URL is different then we need to update the OAuth session!!! (Centralize this logic)
 				ctx.subscriptions.push(details);
 				// Authenticate the plugin client which is used in the sidebar to display
 				// workspaces belonging to this deployment.
 				client.setHost(details.url);
 				client.setSessionToken(details.token);
+				await oauthSessionManager.setDeployment(details.label, details.url);
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
@@ -500,6 +525,41 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				commands.login({ url: defaultUrl, autoLogin: true });
 			}
 		}
+	}
+}
+
+/**
+ * Migrates old flat storage (sessionToken) to new label-based map storage.
+ * This is a one-time operation that runs on extension activation.
+ */
+async function migrateAuthStorage(
+	serviceContainer: ServiceContainer,
+): Promise<void> {
+	const secretsManager = serviceContainer.getSecretsManager();
+	const mementoManager = serviceContainer.getMementoManager();
+	const output = serviceContainer.getLogger();
+
+	try {
+		// Get deployment URL from memento
+		const url = mementoManager.getUrl();
+		if (!url) {
+			output.info("No URL configured, skipping migration");
+			return;
+		}
+
+		// Perform migration using SecretsManager method
+		const migrated = await secretsManager.migrateFromLegacyStorage(url);
+
+		if (migrated) {
+			output.info(
+				`Successfully migrated auth storage to label-based format (label: ${toSafeHost(url)})`,
+			);
+		}
+	} catch (error) {
+		output.error(
+			`Auth storage migration failed: ${error}. You may need to log in again.`,
+		);
+		// Don't throw - allow extension to continue
 	}
 }
 

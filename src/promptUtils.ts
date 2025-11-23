@@ -65,7 +65,6 @@ export async function maybeAskAgent(
  */
 async function askURL(
 	mementoManager: MementoManager,
-	selection?: string,
 ): Promise<string | undefined> {
 	const defaultURL = vscode.workspace
 		.getConfiguration()
@@ -73,7 +72,10 @@ async function askURL(
 		?.trim();
 	const quickPick = vscode.window.createQuickPick();
 	quickPick.value =
-		selection || defaultURL || process.env.CODER_URL?.trim() || "";
+		mementoManager.getUrl() ||
+		defaultURL ||
+		process.env.CODER_URL?.trim() ||
+		"";
 	quickPick.placeholder = "https://example.coder.com";
 	quickPick.title = "Enter the URL of your Coder deployment.";
 
@@ -115,9 +117,8 @@ async function askURL(
 export async function maybeAskUrl(
 	mementoManager: MementoManager,
 	providedUrl: string | undefined | null,
-	lastUsedUrl?: string,
 ): Promise<string | undefined> {
-	let url = providedUrl || (await askURL(mementoManager, lastUsedUrl));
+	let url = providedUrl || (await askURL(mementoManager));
 	if (!url) {
 		// User aborted.
 		return undefined;

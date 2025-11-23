@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { type ServiceContainer } from "src/core/container";
 
 import { CoderApi } from "../api/coderApi";
+import { type LoginCoordinator } from "../login/loginCoordinator";
 
 import { OAuthMetadataClient } from "./metadataClient";
 import {
@@ -38,6 +39,11 @@ const PKCE_CHALLENGE_METHOD = "S256" as const;
 const TOKEN_REFRESH_THRESHOLD_MS = 10 * 60 * 1000;
 
 /**
+ * Default expiry time for OAuth access tokens when the server doesn't provide one.
+ */
+const ACCESS_TOKEN_DEFAULT_EXPIRY_MS = 60 * 60 * 1000;
+
+/**
  * Minimum time between refresh attempts to prevent thrashing
  */
 const REFRESH_THROTTLE_MS = 30 * 1000;
@@ -69,17 +75,19 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Create and initialize a new OAuth session manager.
 	 */
-	static async create(
+	public static async create(
 		deploymentUrl: string,
+		label: string,
 		container: ServiceContainer,
-		context: vscode.ExtensionContext,
+		extensionId: string,
 	): Promise<OAuthSessionManager> {
 		const manager = new OAuthSessionManager(
 			deploymentUrl,
+			label,
 			container.getSecretsManager(),
 			container.getLogger(),
-			container.getVsCodeProposed(),
-			context.extension.id,
+			container.getLoginCoordinator(),
+			extensionId,
 		);
 		await manager.loadTokens();
 		return manager;
@@ -87,9 +95,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 	private constructor(
 		private deploymentUrl: string,
+		private label: string,
 		private readonly secretsManager: SecretsManager,
 		private readonly logger: Logger,
-		private readonly vscodeProposed: typeof vscode,
+		private readonly loginCoordinator: LoginCoordinator,
 		private readonly extensionId: string,
 	) {}
 
@@ -98,7 +107,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Validates that tokens belong to the current deployment URL.
 	 */
 	private async loadTokens(): Promise<void> {
-		const tokens = await this.secretsManager.getOAuthTokens();
+		const tokens = await this.secretsManager.getOAuthTokens(this.label);
 		if (!tokens) {
 			return;
 		}
@@ -121,7 +130,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 					required_scopes: DEFAULT_OAUTH_SCOPES,
 				},
 			);
-			await this.secretsManager.setOAuthTokens(undefined);
+			await this.secretsManager.setOAuthTokens(this.label, undefined);
 			return;
 		}
 
@@ -129,15 +138,16 @@ export class OAuthSessionManager implements vscode.Disposable {
 		this.logger.info(`Loaded stored OAuth tokens for ${tokens.deployment_url}`);
 	}
 
-	/**
-	 * Clear stale data when tokens don't match current deployment.
-	 */
 	private async clearTokenState(): Promise<void> {
+		this.clearInMemoryTokens();
+		await this.secretsManager.setOAuthTokens(this.label, undefined);
+		await this.secretsManager.setOAuthClientRegistration(this.label, undefined);
+	}
+
+	private clearInMemoryTokens(): void {
 		this.storedTokens = undefined;
 		this.refreshPromise = null;
 		this.lastRefreshAttempt = 0;
-		await this.secretsManager.setOAuthTokens(undefined);
-		await this.secretsManager.setOAuthClientRegistration(undefined);
 	}
 
 	/**
@@ -199,7 +209,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 		const metadataClient = new OAuthMetadataClient(axiosInstance, this.logger);
 		const metadata = await metadataClient.getMetadata();
 
-		const registration = await this.secretsManager.getOAuthClientRegistration();
+		const registration = await this.secretsManager.getOAuthClientRegistration(
+			this.label,
+		);
 		if (!registration) {
 			throw new Error("No client registration found");
 		}
@@ -217,7 +229,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 	): Promise<ClientRegistrationResponse> {
 		const redirectUri = this.getRedirectUri();
 
-		const existing = await this.secretsManager.getOAuthClientRegistration();
+		const existing = await this.secretsManager.getOAuthClientRegistration(
+			this.label,
+		);
 		if (existing?.client_id) {
 			if (existing.redirect_uris.includes(redirectUri)) {
 				this.logger.info(
@@ -247,7 +261,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 			registrationRequest,
 		);
 
-		await this.secretsManager.setOAuthClientRegistration(response.data);
+		await this.secretsManager.setOAuthClientRegistration(
+			this.label,
+			response.data,
+		);
 		this.logger.info(
 			"Saved OAuth client registration:",
 			response.data.client_id,
@@ -256,15 +273,23 @@ export class OAuthSessionManager implements vscode.Disposable {
 		return response.data;
 	}
 
+	public async setDeployment(label: string, url: string): Promise<void> {
+		this.logger.debug("Switching OAuth deployment", { label, url });
+		this.label = label;
+		this.deploymentUrl = url;
+		this.clearInMemoryTokens();
+		await this.loadTokens();
+	}
+
 	/**
 	 * Simplified OAuth login flow that handles the entire process.
 	 * Fetches metadata, registers client, starts authorization, and exchanges tokens.
 	 *
-	 * @param client CoderApi instance for the deployment to authenticate against
 	 * @returns TokenResponse containing access token and optional refresh token
 	 */
-	async login(
+	public async login(
 		client: CoderApi,
+		label: string,
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
 	): Promise<TokenResponse> {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
@@ -276,8 +301,16 @@ export class OAuthSessionManager implements vscode.Disposable {
 				old: this.deploymentUrl,
 				new: baseUrl,
 			});
-			await this.clearTokenState();
+			this.clearInMemoryTokens();
 			this.deploymentUrl = baseUrl;
+		}
+		if (this.label && this.label !== label) {
+			this.logger.info("Deployment label changed, clearing cached state", {
+				old: this.label,
+				new: label,
+			});
+			this.clearInMemoryTokens();
+			this.label = label;
 		}
 
 		const axiosInstance = client.getAxiosInstance();
@@ -429,7 +462,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Handle OAuth callback from browser redirect.
 	 * Writes the callback result to secrets storage, triggering the waiting window to proceed.
 	 */
-	async handleCallback(
+	public async handleCallback(
 		code: string | null,
 		state: string | null,
 		error: string | null,
@@ -491,7 +524,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Refresh the access token using the stored refresh token.
 	 * Uses a shared promise to handle concurrent refresh attempts.
 	 */
-	async refreshToken(): Promise<TokenResponse> {
+	public async refreshToken(): Promise<TokenResponse> {
 		// If a refresh is already in progress, return the existing promise
 		if (this.refreshPromise) {
 			this.logger.debug(
@@ -556,7 +589,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private async saveTokens(tokenResponse: TokenResponse): Promise<void> {
 		const expiryTimestamp = tokenResponse.expires_in
 			? Date.now() + tokenResponse.expires_in * 1000
-			: Date.now() + 3600 * 1000; // TODO Default to 1 hour
+			: Date.now() + ACCESS_TOKEN_DEFAULT_EXPIRY_MS;
 
 		const tokens: StoredOAuthTokens = {
 			...tokenResponse,
@@ -565,10 +598,11 @@ export class OAuthSessionManager implements vscode.Disposable {
 		};
 
 		this.storedTokens = tokens;
-		await this.secretsManager.setOAuthTokens(tokens);
-
-		// Trigger event to update global client (works for login & background refresh)
-		await this.secretsManager.setSessionToken(tokenResponse.access_token);
+		await this.secretsManager.setOAuthTokens(this.label, tokens);
+		await this.secretsManager.setSessionToken(this.label, {
+			url: this.deploymentUrl,
+			sessionToken: tokenResponse.access_token,
+		});
 
 		this.logger.info("Tokens saved", {
 			expires_at: new Date(expiryTimestamp).toISOString(),
@@ -583,7 +617,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * 2. Last refresh attempt was more than REFRESH_THROTTLE_MS ago
 	 * 3. No refresh is currently in progress
 	 */
-	shouldRefreshToken(): boolean {
+	public shouldRefreshToken(): boolean {
 		if (
 			!this.isLoggedInWithOAuth() ||
 			!this.storedTokens?.refresh_token ||
@@ -645,7 +679,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Logout by revoking tokens and clearing all OAuth data.
 	 */
-	async logout(): Promise<void> {
+	public async logout(): Promise<void> {
 		if (!this.isLoggedInWithOAuth()) {
 			return;
 		}
@@ -667,37 +701,43 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Returns true if (valid or invalid) OAuth tokens exist for the current deployment.
 	 */
-	isLoggedInWithOAuth(): boolean {
+	public isLoggedInWithOAuth(): boolean {
 		return this.storedTokens !== undefined;
 	}
 
 	/**
 	 * Show a modal dialog to the user when OAuth re-authentication is required.
 	 * This is called when the refresh token is invalid or the client credentials are invalid.
+	 * Clears tokens directly and lets listeners handle updates.
 	 */
-	async showReAuthenticationModal(error: OAuthError): Promise<void> {
+	public async showReAuthenticationModal(error: OAuthError): Promise<void> {
 		const errorMessage =
 			error.description ||
 			"Your session is no longer valid. This could be due to token expiration or revocation.";
 
-		// Log out first to clear invalid tokens
-		await vscode.commands.executeCommand("coder.logout");
+		// Clear invalid tokens - listeners will handle updates automatically
+		await this.clearTokenState();
+		await this.secretsManager.setSessionToken(this.label, undefined);
 
-		const action = await this.vscodeProposed.window.showErrorMessage(
-			`Authentication Error`,
-			{ modal: true, useCustom: true, detail: errorMessage },
-			"Log in again",
-		);
+		const result = await this.loginCoordinator.promptForLoginWithDialog({
+			url: this.deploymentUrl,
+			label: this.label,
+			detailPrefix: errorMessage,
+			oauthSessionManager: this,
+		});
 
-		if (action === "Log in again") {
-			await vscode.commands.executeCommand("coder.login");
+		if (result.token) {
+			await this.secretsManager.setSessionToken(this.label, {
+				url: this.deploymentUrl,
+				sessionToken: result.token,
+			});
 		}
 	}
 
 	/**
 	 * Clears all in-memory state.
 	 */
-	dispose(): void {
+	public dispose(): void {
 		if (this.pendingAuthReject) {
 			this.pendingAuthReject(new Error("OAuth session manager disposed"));
 		}

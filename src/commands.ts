@@ -1,15 +1,11 @@
 import { type Api } from "coder/site/src/api/api";
-import { getErrorMessage } from "coder/site/src/api/errors";
 import {
-	type User,
 	type Workspace,
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
-import { CoderApi } from "./api/coderApi";
-import { needToken } from "./api/utils";
 import { type CliManager } from "./core/cliManager";
 import { type ServiceContainer } from "./core/container";
 import { type ContextManager } from "./core/contextManager";
@@ -19,8 +15,9 @@ import { type SecretsManager } from "./core/secretsManager";
 import { CertificateError } from "./error";
 import { getGlobalFlags } from "./globalFlags";
 import { type Logger } from "./logging/logger";
+import { type LoginCoordinator } from "./login/loginCoordinator";
 import { type OAuthSessionManager } from "./oauth/sessionManager";
-import { maybeAskAgent, maybeAskUrl, maybeAskAuthMethod } from "./promptUtils";
+import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import {
 	AgentTreeItem,
@@ -36,6 +33,8 @@ export class Commands {
 	private readonly secretsManager: SecretsManager;
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;
+	private readonly loginCoordinator: LoginCoordinator;
+
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
 	// possible to pass in arguments, so we have to store the current workspace
@@ -59,6 +58,7 @@ export class Commands {
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.cliManager = serviceContainer.getCliManager();
 		this.contextManager = serviceContainer.getContextManager();
+		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 	}
 
 	/**
@@ -79,42 +79,49 @@ export class Commands {
 
 		const url = await maybeAskUrl(this.mementoManager, args?.url);
 		if (!url) {
-			return; // The user aborted.
+			return;
 		}
 
 		// It is possible that we are trying to log into an old-style host, in which
 		// case we want to write with the provided blank label instead of generating
 		// a host label.
 		const label = args?.label ?? toSafeHost(url);
-		// Try to get a token from the user, if we need one, and their user.
-		const autoLogin = args?.autoLogin === true;
+		this.logger.info("Using deployment label", label);
 
-		const res = await this.attemptLogin(url, args?.token, autoLogin);
-		if (!res) {
-			return; // The user aborted, or unable to auth.
+		const result = await this.loginCoordinator.promptForLogin({
+			url,
+			label,
+			autoLogin: args?.autoLogin,
+			oauthSessionManager: this.oauthSessionManager,
+		});
+
+		if (!result.success || !result.user || !result.token) {
+			return;
 		}
 
-		// The URL is good and the token is either good or not required; authorize
-		// the global client.
+		// Authorize the global client
 		this.restClient.setHost(url);
-		this.restClient.setSessionToken(res.token);
+		this.restClient.setSessionToken(result.token);
 
-		// Store these to be used in later sessions.
+		// Store for later sessions
 		await this.mementoManager.setUrl(url);
-		await this.secretsManager.setSessionToken(res.token);
+		await this.secretsManager.setSessionToken(label, {
+			url,
+			sessionToken: result.token,
+		});
 
-		// Store on disk to be used by the cli.
-		await this.cliManager.configure(label, url, res.token);
+		// Store on disk for CLI
+		await this.cliManager.configure(label, url, result.token);
 
-		// These contexts control various menu items and the sidebar.
+		// Update contexts
 		this.contextManager.set("coder.authenticated", true);
-		if (res.user.roles.some((role) => role.name === "owner")) {
+		if (result.user.roles.some((role) => role.name === "owner")) {
 			this.contextManager.set("coder.isOwner", true);
 		}
 
 		vscode.window
 			.showInformationMessage(
-				`Welcome to Coder, ${res.user.username}!`,
+				`Welcome to Coder, ${result.user.username}!`,
 				{
 					detail:
 						"You can now use the Coder extension to manage your Coder instance.",
@@ -127,158 +134,8 @@ export class Commands {
 				}
 			});
 
-		await this.secretsManager.triggerLoginStateChange("login");
-		// Fetch workspaces for the new deployment.
+		await this.secretsManager.triggerLoginStateChange(label, "login");
 		vscode.commands.executeCommand("coder.refreshWorkspaces");
-	}
-
-	/**
-	 * Attempt to authenticate using OAuth, token, or mTLS. If necessary, prompts
-	 * for authentication method and credentials. Returns the token and user upon
-	 * successful authentication. Null means the user aborted or authentication
-	 * failed (in which case an error notification will have been displayed).
-	 */
-	private async attemptLogin(
-		url: string,
-		token: string | undefined,
-		isAutoLogin: boolean,
-	): Promise<{ user: User; token: string } | null> {
-		const client = CoderApi.create(url, token, this.logger);
-		const needsToken = needToken(vscode.workspace.getConfiguration());
-		if (!needsToken || token) {
-			try {
-				const user = await client.getAuthenticatedUser();
-				// For non-token auth, we write a blank token since the `vscodessh`
-				// command currently always requires a token file.
-				// For token auth, we have valid access so we can just return the user here
-				return { token: needsToken && token ? token : "", user };
-			} catch (err) {
-				const message = getErrorMessage(err, "no response from the server");
-				if (isAutoLogin) {
-					this.logger.warn("Failed to log in to Coder server:", message);
-				} else {
-					this.vscodeProposed.window.showErrorMessage(
-						"Failed to log in to Coder server",
-						{
-							detail: message,
-							modal: true,
-							useCustom: true,
-						},
-					);
-				}
-				// Invalid certificate, most likely.
-				return null;
-			}
-		}
-
-		const authMethod = await maybeAskAuthMethod(client);
-		switch (authMethod) {
-			case "oauth":
-				return this.loginWithOAuth(client);
-			case "legacy": {
-				const initialToken =
-					token || (await this.secretsManager.getSessionToken());
-				return this.loginWithToken(client, initialToken);
-			}
-			case undefined:
-				return null; // User aborted
-		}
-	}
-
-	private async loginWithToken(
-		client: CoderApi,
-		initialToken: string | undefined,
-	): Promise<{ user: User; token: string } | null> {
-		const url = client.getAxiosInstance().defaults.baseURL;
-		if (!url) {
-			throw new Error("No base URL set on REST client");
-		}
-		// This prompt is for convenience; do not error if they close it since
-		// they may already have a token or already have the page opened.
-		await vscode.env.openExternal(vscode.Uri.parse(`${url}/cli-auth`));
-
-		// For token auth, start with the existing token in the prompt or the last
-		// used token.  Once submitted, if there is a failure we will keep asking
-		// the user for a new token until they quit.
-		let user: User | undefined;
-		const validatedToken = await vscode.window.showInputBox({
-			title: "Coder API Key",
-			password: true,
-			placeHolder: "Paste your API key.",
-			value: initialToken,
-			ignoreFocusOut: true,
-			validateInput: async (value) => {
-				if (!value) {
-					return null;
-				}
-				client.setSessionToken(value);
-				try {
-					user = await client.getAuthenticatedUser();
-				} catch (err) {
-					// For certificate errors show both a notification and add to the
-					// text under the input box, since users sometimes miss the
-					// notification.
-					if (err instanceof CertificateError) {
-						err.showNotification();
-
-						return {
-							message: err.x509Err || err.message,
-							severity: vscode.InputBoxValidationSeverity.Error,
-						};
-					}
-					// This could be something like the header command erroring or an
-					// invalid session token.
-					const message = getErrorMessage(err, "no response from the server");
-					return {
-						message: "Failed to authenticate: " + message,
-						severity: vscode.InputBoxValidationSeverity.Error,
-					};
-				}
-			},
-		});
-
-		if (user === undefined || validatedToken === undefined) {
-			return null;
-		}
-
-		return { user, token: validatedToken };
-	}
-
-	/**
-	 * Authenticate using OAuth flow.
-	 * Returns the access token and authenticated user, or null if failed/cancelled.
-	 */
-	private async loginWithOAuth(
-		client: CoderApi,
-	): Promise<{ user: User; token: string } | null> {
-		try {
-			this.logger.info("Starting OAuth authentication");
-
-			const tokenResponse = await vscode.window.withProgress(
-				{
-					location: vscode.ProgressLocation.Notification,
-					title: "Authenticating",
-					cancellable: false,
-				},
-				async (progress) =>
-					await this.oauthSessionManager.login(client, progress),
-			);
-
-			// Validate token by fetching user
-			client.setSessionToken(tokenResponse.access_token);
-			const user = await client.getAuthenticatedUser();
-
-			return {
-				token: tokenResponse.access_token,
-				user,
-			};
-		} catch (error) {
-			this.logger.error("OAuth authentication failed:", error);
-			vscode.window.showErrorMessage(
-				`OAuth authentication failed: ${getErrorMessage(error, "Unknown error")}`,
-			);
-			return null;
-		}
 	}
 
 	/**
@@ -316,15 +173,16 @@ export class Commands {
 			throw new Error("You are not logged in");
 		}
 
-		await this.forceLogout();
+		await this.forceLogout(toSafeHost(url));
 	}
 
-	public async forceLogout(): Promise<void> {
+	public async forceLogout(label: string): Promise<void> {
 		if (!this.contextManager.get("coder.authenticated")) {
 			return;
 		}
-		this.logger.info("Logging out");
+		this.logger.info(`Logging out of deployment: ${label}`);
 
+		// Only clear REST client and UI context if logging out of current deployment
 		// Fire and forget
 		this.oauthSessionManager.logout().catch((error) => {
 			this.logger.warn("OAuth logout failed, continuing with cleanup:", error);
@@ -337,7 +195,7 @@ export class Commands {
 
 		// Clear from memory.
 		await this.mementoManager.setUrl(undefined);
-		await this.secretsManager.setSessionToken(undefined);
+		await this.secretsManager.setSessionToken(label, undefined);
 
 		this.contextManager.set("coder.authenticated", false);
 		vscode.window
@@ -348,9 +206,10 @@ export class Commands {
 				}
 			});
 
-		await this.secretsManager.triggerLoginStateChange("logout");
 		// This will result in clearing the workspace list.
 		vscode.commands.executeCommand("coder.refreshWorkspaces");
+
+		await this.secretsManager.triggerLoginStateChange(label, "logout");
 	}
 
 	/**
