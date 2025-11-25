@@ -384,7 +384,7 @@
 		"eslint-plugin-md": "^1.0.19",
 		"eslint-plugin-package-json": "^0.59.0",
 		"eslint-plugin-prettier": "^5.5.4",
-		"glob": "^11.0.3",
+		"glob": "^11.1.0",
 		"jsonc-eslint-parser": "^2.4.0",
 		"markdown-eslint-parser": "^1.2.1",
 		"memfs": "^4.49.0",
