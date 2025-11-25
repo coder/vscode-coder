@@ -1,10 +1,20 @@
-import { execFile, type ExecFileException } from "child_process";
-import * as crypto from "crypto";
-import { createReadStream, type Stats } from "fs";
-import fs from "fs/promises";
-import os from "os";
-import path from "path";
-import { promisify } from "util";
+import { execFile, type ExecFileException } from "node:child_process";
+import * as crypto from "node:crypto";
+import { createReadStream, type Stats } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+
+/**
+ * Custom error thrown when a binary file is locked (typically on Windows).
+ */
+export class FileLockError extends Error {
+	constructor(binPath: string) {
+		super(`Binary is in use: ${binPath}`);
+		this.name = "WindowsFileLockError";
+	}
+}
 
 /**
  * Stat the path or undefined if the path does not exist.  Throw if unable to
@@ -77,7 +87,8 @@ export async function rmOld(binPath: string): Promise<RemovalResult[]> {
 			if (
 				fileName.includes(".old-") ||
 				fileName.includes(".temp-") ||
-				fileName.endsWith(".asc")
+				fileName.endsWith(".asc") ||
+				fileName.endsWith(".progress.log")
 			) {
 				try {
 					await fs.rm(path.join(binDir, file), { force: true });
@@ -95,6 +106,52 @@ export async function rmOld(binPath: string): Promise<RemovalResult[]> {
 		}
 		throw error;
 	}
+}
+
+/**
+ * Find all .old-* binaries in the same directory as the given binary path.
+ * Returns paths sorted by modification time (most recent first).
+ */
+export async function findOldBinaries(binPath: string): Promise<string[]> {
+	const binDir = path.dirname(binPath);
+	const binName = path.basename(binPath);
+	try {
+		const files = await fs.readdir(binDir);
+		const oldBinaries = files
+			.filter((f) => f.startsWith(binName) && f.includes(".old-"))
+			.map((f) => path.join(binDir, f));
+
+		// Sort by modification time, most recent first
+		const stats = await Promise.allSettled(
+			oldBinaries.map(async (f) => ({
+				path: f,
+				mtime: (await fs.stat(f)).mtime,
+			})),
+		).then((result) =>
+			result
+				.filter((promise) => promise.status === "fulfilled")
+				.map((promise) => promise.value),
+		);
+		stats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+		return stats.map((s) => s.path);
+	} catch (error) {
+		// If directory doesn't exist, return empty array
+		if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+			return [];
+		}
+		throw error;
+	}
+}
+
+export function maybeWrapFileLockError(
+	error: unknown,
+	binPath: string,
+): unknown {
+	const code = (error as NodeJS.ErrnoException).code;
+	if (code === "EBUSY" || code === "EPERM") {
+		return new FileLockError(binPath);
+	}
+	return error;
 }
 
 /**

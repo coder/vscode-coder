@@ -1,11 +1,11 @@
 import globalAxios, { type AxiosInstance } from "axios";
 import { type Api } from "coder/site/src/api/api";
-import EventEmitter from "events";
-import * as fs from "fs";
-import { type IncomingMessage } from "http";
 import { fs as memfs, vol } from "memfs";
-import * as os from "os";
-import * as path from "path";
+import EventEmitter from "node:events";
+import * as fs from "node:fs";
+import { type IncomingMessage } from "node:http";
+import * as os from "node:os";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
@@ -16,6 +16,7 @@ import * as pgp from "@/pgp";
 
 import {
 	createMockLogger,
+	createMockStream,
 	MockConfigurationProvider,
 	MockProgressReporter,
 	MockUserInteraction,
@@ -24,7 +25,6 @@ import { expectPathsEqual } from "../../utils/platform";
 
 vi.mock("os");
 vi.mock("axios");
-vi.mock("@/pgp");
 
 vi.mock("fs", async () => {
 	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
@@ -41,6 +41,14 @@ vi.mock("fs/promises", async () => {
 		default: memfs.fs.promises,
 	};
 });
+
+// Mock lockfile to bypass file locking in tests
+vi.mock("proper-lockfile", () => ({
+	lock: () => Promise.resolve(() => Promise.resolve()),
+	check: () => Promise.resolve(false),
+}));
+
+vi.mock("@/pgp");
 
 vi.mock("@/core/cliUtils", async () => {
 	const actual =
@@ -676,11 +684,11 @@ describe("CliManager", () => {
 	}
 
 	function withSignatureResponses(statuses: number[]): void {
-		statuses.forEach((status) => {
+		for (const status of statuses) {
 			const data =
 				status === 200 ? createMockStream("mock-signature-content") : undefined;
 			withHttpResponse(status, {}, data);
-		});
+		}
 	}
 
 	function withHttpResponse(
@@ -730,70 +738,26 @@ describe("CliManager", () => {
 			withHttpResponse(200, { "content-length": "1024" }, errorStream);
 		}
 	}
-
-	function createMockStream(
-		content: string,
-		options: { chunkSize?: number; delay?: number } = {},
-	): IncomingMessage {
-		const { chunkSize = 8, delay = 1 } = options;
-
-		const buffer = Buffer.from(content);
-		let position = 0;
-		let closeCallback: ((...args: unknown[]) => void) | null = null;
-
-		return {
-			on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
-				if (event === "data") {
-					// Send data in chunks
-					const sendChunk = () => {
-						if (position < buffer.length) {
-							const chunk = buffer.subarray(
-								position,
-								Math.min(position + chunkSize, buffer.length),
-							);
-							position += chunkSize;
-							callback(chunk);
-							if (position < buffer.length) {
-								setTimeout(sendChunk, delay);
-							} else {
-								// All chunks sent - use setImmediate to ensure close happens
-								// after all synchronous operations and I/O callbacks complete
-								setImmediate(() => {
-									if (closeCallback) {
-										closeCallback();
-									}
-								});
-							}
-						}
-					};
-					setTimeout(sendChunk, delay);
-				} else if (event === "close") {
-					closeCallback = callback;
-				}
-			}),
-			destroy: vi.fn(),
-		} as unknown as IncomingMessage;
-	}
-
-	function createVerificationError(msg: string): pgp.VerificationError {
-		const error = new pgp.VerificationError(
-			pgp.VerificationErrorCode.Invalid,
-			msg,
-		);
-		vi.mocked(error.summary).mockReturnValue("Signature does not match");
-		return error;
-	}
-
-	function mockBinaryContent(version: string): string {
-		return `mock-binary-v${version}`;
-	}
-
-	function expectFileInDir(dir: string, pattern: string): string | undefined {
-		const files = readdir(dir);
-		return files.find((f) => f.includes(pattern));
-	}
-
-	function readdir(dir: string): string[] {
-		return memfs.readdirSync(dir) as string[];
-	}
 });
+
+function createVerificationError(msg: string): pgp.VerificationError {
+	const error = new pgp.VerificationError(
+		pgp.VerificationErrorCode.Invalid,
+		msg,
+	);
+	vi.mocked(error.summary).mockReturnValue("Signature does not match");
+	return error;
+}
+
+function mockBinaryContent(version: string): string {
+	return `mock-binary-v${version}`;
+}
+
+function expectFileInDir(dir: string, pattern: string): string | undefined {
+	const files = readdir(dir);
+	return files.find((f) => f.includes(pattern));
+}
+
+function readdir(dir: string): string[] {
+	return memfs.readdirSync(dir) as string[];
+}
