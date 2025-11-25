@@ -68,7 +68,6 @@ export class Commands {
 	 */
 	public async login(args?: {
 		url?: string;
-		token?: string;
 		label?: string;
 		autoLogin?: boolean;
 	}): Promise<void> {
@@ -89,8 +88,7 @@ export class Commands {
 		this.logger.info("Using deployment label", label);
 
 		const result = await this.loginCoordinator.promptForLogin({
-			url,
-			label,
+			deployment: { url, label },
 			autoLogin: args?.autoLogin,
 			oauthSessionManager: this.oauthSessionManager,
 		});
@@ -105,13 +103,10 @@ export class Commands {
 
 		// Store for later sessions
 		await this.mementoManager.setUrl(url);
-		await this.secretsManager.setSessionToken(label, {
+		await this.secretsManager.setSessionAuth(label, {
 			url,
-			sessionToken: result.token,
+			token: result.token,
 		});
-
-		// Store on disk for CLI
-		await this.cliManager.configure(label, url, result.token);
 
 		// Update contexts
 		this.contextManager.set("coder.authenticated", true);
@@ -195,7 +190,7 @@ export class Commands {
 
 		// Clear from memory.
 		await this.mementoManager.setUrl(undefined);
-		await this.secretsManager.setSessionToken(label, undefined);
+		await this.secretsManager.clearAllAuthData(label);
 
 		this.contextManager.set("coder.authenticated", false);
 		vscode.window

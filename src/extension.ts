@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 
 import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
+import { attachOAuthInterceptors } from "./api/oauthInterceptors";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
@@ -77,11 +78,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	const url = mementoManager.getUrl();
 	const label = url ? toSafeHost(url) : "";
+	const deployment = url ? { url, label } : undefined;
 
 	// Create OAuth session manager with login coordinator
 	const oauthSessionManager = await OAuthSessionManager.create(
-		url || "",
-		label,
+		deployment,
 		serviceContainer,
 		ctx.extension.id,
 	);
@@ -92,10 +93,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// in commands that operate on the current login.
 	const client = CoderApi.create(
 		url || "",
-		(await secretsManager.getSessionToken(label)) || "",
+		await secretsManager.getSessionToken(label),
 		output,
-		oauthSessionManager,
 	);
+	attachOAuthInterceptors(client, output, oauthSessionManager);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
@@ -153,20 +154,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output.debug("Registering auth listener for deployment", deploymentLabel);
 		authChangeDisposable = secretsManager.onDidChangeDeploymentAuth(
 			deploymentLabel,
-			async (auth) => {
-				const token = auth?.sessionToken ?? "";
-				client.setSessionToken(token);
+			(auth) => {
+				client.setHost(auth?.url);
+				client.setSessionToken(auth?.token ?? "");
 
 				// Update authentication context for current deployment
 				contextManager.set("coder.authenticated", auth !== undefined);
-
-				output.debug("Session token changed, syncing state");
-
-				if (auth?.url) {
-					const cliManager = serviceContainer.getCliManager();
-					await cliManager.configure(deploymentLabel, auth.url, token);
-					output.debug("Updated CLI config with new token");
-				}
 			},
 		);
 	};
@@ -187,7 +180,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				return;
 			}
 
-			const cliManager = serviceContainer.getCliManager();
 			if (uri.path === "/open") {
 				const owner = params.get("owner");
 				const workspace = params.get("workspace");
@@ -232,14 +224,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const label = toSafeHost(url);
 				if (token) {
 					client.setSessionToken(token);
-					await secretsManager.setSessionToken(label, {
-						url,
-						sessionToken: token,
-					});
+					await secretsManager.setSessionAuth(label, { url, token });
 				}
-
-				// Store on disk to be used by the cli.
-				await cliManager.configure(toSafeHost(url), url, token);
 
 				vscode.commands.executeCommand(
 					"coder.open",
@@ -313,8 +299,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					? params.get("token")
 					: (params.get("token") ?? "");
 
-				// Store on disk to be used by the cli.
-				await cliManager.configure(toSafeHost(url), url, token);
+				if (token) {
+					client.setSessionToken(token);
+					await secretsManager.setSessionAuth(label, { url, token });
+				}
 
 				vscode.commands.executeCommand(
 					"coder.openDevContainer",
@@ -397,16 +385,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			switch (state) {
 				case AuthAction.LOGIN: {
 					const url = mementoManager.getUrl();
-					const token = await secretsManager.getSessionToken(label);
 					// Should login the user directly if the URL+Token are valid
-					await commands.login({ url, token });
+					await commands.login({ url });
 
 					// Re-register auth listener for the new deployment
 					registerAuthListener(label);
 
 					// Update OAuth session manager to match the new deployment
 					if (url) {
-						await oauthSessionManager.setDeployment(label, url);
+						await oauthSessionManager.setDeployment({ label, url });
 					}
 					break;
 				}
@@ -445,7 +432,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// workspaces belonging to this deployment.
 				client.setHost(details.url);
 				client.setSessionToken(details.token);
-				await oauthSessionManager.setDeployment(details.label, details.url);
+				await oauthSessionManager.setDeployment({
+					label: details.label,
+					url: details.url,
+				});
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
@@ -554,11 +544,12 @@ async function migrateAuthStorage(
 		}
 
 		// Perform migration using SecretsManager method
-		const migrated = await secretsManager.migrateFromLegacyStorage(url);
+		const label = toSafeHost(url);
+		const migrated = await secretsManager.migrateFromLegacyStorage(url, label);
 
 		if (migrated) {
 			output.info(
-				`Successfully migrated auth storage to label-based format (label: ${toSafeHost(url)})`,
+				`Successfully migrated auth storage to label-based format (label: ${label})`,
 			);
 		}
 	} catch (error) {

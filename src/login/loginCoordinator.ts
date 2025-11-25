@@ -1,6 +1,8 @@
 import { getErrorMessage } from "coder/site/src/api/errors";
 import * as vscode from "vscode";
 
+import { type Deployment } from "src/core/deployment";
+
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { type SecretsManager } from "../core/secretsManager";
@@ -19,12 +21,11 @@ export interface LoginResult {
 }
 
 export interface LoginOptions {
-	url: string;
-	label: string;
+	deployment: Deployment;
 	oauthSessionManager: OAuthSessionManager;
+	autoLogin?: boolean;
 	message?: string;
 	detailPrefix?: string;
-	autoLogin?: boolean;
 }
 
 /**
@@ -45,13 +46,10 @@ export class LoginCoordinator {
 	public async promptForLogin(
 		options: Omit<LoginOptions, "message" | "detailPrefix">,
 	): Promise<LoginResult> {
-		return this.executeWithGuard(options.label, async () => {
-			const { url, label, oauthSessionManager } = options;
-			const existingToken = await this.secretsManager.getSessionToken(label);
+		const { deployment, oauthSessionManager } = options;
+		return this.executeWithGuard(options.deployment.label, async () => {
 			return this.attemptLogin(
-				label,
-				url,
-				existingToken,
+				deployment,
 				options.autoLogin ?? false,
 				oauthSessionManager,
 			);
@@ -64,15 +62,8 @@ export class LoginCoordinator {
 	public async promptForLoginWithDialog(
 		options: LoginOptions,
 	): Promise<LoginResult> {
-		return this.executeWithGuard(options.label, () => {
-			const {
-				url,
-				label,
-				detailPrefix: reason,
-				message,
-				oauthSessionManager,
-			} = options;
-
+		const { deployment, detailPrefix, message, oauthSessionManager } = options;
+		return this.executeWithGuard(deployment.label, () => {
 			// Show dialog promise
 			const dialogPromise = this.vscodeProposed.window
 				.showErrorMessage(
@@ -81,23 +72,29 @@ export class LoginCoordinator {
 						modal: true,
 						useCustom: true,
 						detail:
-							(reason || `Authentication needed for ${label}`) +
-							" If you've already logged in, you may close this dialog.",
+							(detailPrefix ||
+								`Authentication needed for ${deployment.label}.`) +
+							"\n\nIf you've already logged in, you may close this dialog.",
 					},
 					"Login",
 				)
 				.then(async (action) => {
 					if (action === "Login") {
 						// User clicked login - proceed with login flow
-						const existingToken =
-							await this.secretsManager.getSessionToken(label);
-						return this.attemptLogin(
-							label,
-							url,
-							existingToken,
+						const result = await this.attemptLogin(
+							deployment,
 							false,
 							oauthSessionManager,
 						);
+
+						if (result.success && result.token) {
+							await this.secretsManager.setSessionAuth(deployment.label, {
+								url: deployment.url,
+								token: result.token,
+							});
+						}
+
+						return result;
 					} else {
 						// User cancelled
 						return { success: false };
@@ -105,7 +102,10 @@ export class LoginCoordinator {
 				});
 
 			// Race between user clicking login and cross-window detection
-			return Promise.race([dialogPromise, this.waitForCrossWindowLogin(label)]);
+			return Promise.race([
+				dialogPromise,
+				this.waitForCrossWindowLogin(deployment.label),
+			]);
 		});
 	}
 
@@ -139,9 +139,9 @@ export class LoginCoordinator {
 			const disposable = this.secretsManager.onDidChangeDeploymentAuth(
 				label,
 				(auth) => {
-					if (auth?.sessionToken) {
+					if (auth?.token) {
 						disposable.dispose();
-						resolve({ success: true });
+						resolve({ success: true, token: auth.token });
 					}
 				},
 			);
@@ -155,13 +155,12 @@ export class LoginCoordinator {
 	 * failed (in which case an error notification will have been displayed).
 	 */
 	private async attemptLogin(
-		label: string,
-		url: string,
-		token: string | undefined,
+		deployment: Deployment,
 		isAutoLogin: boolean,
 		oauthSessionManager: OAuthSessionManager,
 	): Promise<LoginResult> {
-		const client = CoderApi.create(url, token, this.logger);
+		const token = await this.secretsManager.getSessionToken(deployment.label);
+		const client = CoderApi.create(deployment.url, token, this.logger);
 		const needsToken = needToken(vscode.workspace.getConfiguration());
 		if (!needsToken || token) {
 			try {
@@ -192,10 +191,11 @@ export class LoginCoordinator {
 		const authMethod = await maybeAskAuthMethod(client);
 		switch (authMethod) {
 			case "oauth":
-				return this.loginWithOAuth(client, oauthSessionManager, label);
+				return this.loginWithOAuth(client, oauthSessionManager, deployment);
 			case "legacy": {
 				const initialToken =
-					token || (await this.secretsManager.getSessionToken(label));
+					token ||
+					(await this.secretsManager.getSessionToken(deployment.label));
 				return this.loginWithToken(client, initialToken);
 			}
 			case undefined:
@@ -270,7 +270,7 @@ export class LoginCoordinator {
 	private async loginWithOAuth(
 		client: CoderApi,
 		oauthSessionManager: OAuthSessionManager,
-		label: string,
+		deployment: Deployment,
 	): Promise<LoginResult> {
 		try {
 			this.logger.info("Starting OAuth authentication");
@@ -282,7 +282,7 @@ export class LoginCoordinator {
 					cancellable: false,
 				},
 				async (progress) =>
-					await oauthSessionManager.login(client, label, progress),
+					await oauthSessionManager.login(client, deployment, progress),
 			);
 
 			// Validate token by fetching user
