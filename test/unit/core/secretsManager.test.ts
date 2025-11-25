@@ -2,42 +2,50 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthAction, SecretsManager } from "@/core/secretsManager";
 
-import { InMemorySecretStorage } from "../../mocks/testHelpers";
+import {
+	InMemoryMemento,
+	InMemorySecretStorage,
+} from "../../mocks/testHelpers";
 
 describe("SecretsManager", () => {
 	let secretStorage: InMemorySecretStorage;
+	let memento: InMemoryMemento;
 	let secretsManager: SecretsManager;
 
 	beforeEach(() => {
 		secretStorage = new InMemorySecretStorage();
-		secretsManager = new SecretsManager(secretStorage);
+		memento = new InMemoryMemento();
+		secretsManager = new SecretsManager(secretStorage, memento);
 	});
 
-	describe("session token", () => {
-		it("should store and retrieve tokens", async () => {
-			await secretsManager.setSessionToken("example-com", {
+	describe("session auth", () => {
+		it("should store and retrieve session auth", async () => {
+			await secretsManager.setSessionAuth("example-com", {
 				url: "https://example.com",
-				sessionToken: "test-token",
+				token: "test-token",
 			});
 			expect(await secretsManager.getSessionToken("example-com")).toBe(
 				"test-token",
 			);
+			expect(await secretsManager.getUrl("example-com")).toBe(
+				"https://example.com",
+			);
 
-			await secretsManager.setSessionToken("example-com", {
+			await secretsManager.setSessionAuth("example-com", {
 				url: "https://example.com",
-				sessionToken: "new-token",
+				token: "new-token",
 			});
 			expect(await secretsManager.getSessionToken("example-com")).toBe(
 				"new-token",
 			);
 		});
 
-		it("should delete token when undefined", async () => {
-			await secretsManager.setSessionToken("example-com", {
+		it("should clear session auth", async () => {
+			await secretsManager.setSessionAuth("example-com", {
 				url: "https://example.com",
-				sessionToken: "test-token",
+				token: "test-token",
 			});
-			await secretsManager.setSessionToken("example-com", undefined);
+			await secretsManager.clearSessionAuth("example-com");
 			expect(
 				await secretsManager.getSessionToken("example-com"),
 			).toBeUndefined();
@@ -45,12 +53,10 @@ describe("SecretsManager", () => {
 
 		it("should return undefined for corrupted storage", async () => {
 			await secretStorage.store(
-				"coder.sessionAuthMap",
+				"coder.session.example-com",
 				JSON.stringify({
-					"example-com": {
-						url: "https://example.com",
-						sessionToken: "valid-token",
-					},
+					url: "https://example.com",
+					token: "valid-token",
 				}),
 			);
 			secretStorage.corruptStorage();
@@ -58,6 +64,34 @@ describe("SecretsManager", () => {
 			expect(
 				await secretsManager.getSessionToken("example-com"),
 			).toBeUndefined();
+		});
+
+		it("should track known labels", async () => {
+			expect(secretsManager.getKnownLabels()).toEqual([]);
+
+			await secretsManager.setSessionAuth("example-com", {
+				url: "https://example.com",
+				token: "test-token",
+			});
+			expect(secretsManager.getKnownLabels()).toContain("example-com");
+
+			await secretsManager.setSessionAuth("other-com", {
+				url: "https://other.com",
+				token: "other-token",
+			});
+			expect(secretsManager.getKnownLabels()).toContain("example-com");
+			expect(secretsManager.getKnownLabels()).toContain("other-com");
+		});
+
+		it("should remove label on clearAllAuthData", async () => {
+			await secretsManager.setSessionAuth("example-com", {
+				url: "https://example.com",
+				token: "test-token",
+			});
+			expect(secretsManager.getKnownLabels()).toContain("example-com");
+
+			await secretsManager.clearAllAuthData("example-com");
+			expect(secretsManager.getKnownLabels()).not.toContain("example-com");
 		});
 	});
 
