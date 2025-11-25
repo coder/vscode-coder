@@ -21,7 +21,7 @@ import type { CoderApi } from "../api/coderApi";
 import type { PathResolver } from "../core/pathResolver";
 import type { FeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
-import type { OneWayWebSocket } from "../websocket/oneWayWebSocket";
+import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 /**
  * Manages workspace and agent state transitions until ready for SSH connection.
@@ -32,9 +32,10 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 	private agent: { id: string; name: string } | undefined;
 
-	private buildLogSocket: OneWayWebSocket<ProvisionerJobLog> | null = null;
+	private buildLogSocket: UnidirectionalStream<ProvisionerJobLog> | null = null;
 
-	private agentLogSocket: OneWayWebSocket<WorkspaceAgentLog[]> | null = null;
+	private agentLogSocket: UnidirectionalStream<WorkspaceAgentLog[]> | null =
+		null;
 
 	constructor(
 		private readonly parts: AuthorityParts,

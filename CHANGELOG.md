@@ -8,6 +8,11 @@
   Other windows now wait and display real-time progress instead of attempting concurrent downloads,
   preventing corruption and failures.
 
+### Changed
+
+- WebSocket connections now automatically reconnect on network failures, improving reliability when
+  communicating with Coder deployments.
+
 ## [v1.11.4](https://github.com/coder/vscode-coder/releases/tag/v1.11.4) 2025-11-20
 
 ### Fixed
