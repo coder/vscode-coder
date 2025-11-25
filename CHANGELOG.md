@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Fixed race condition when multiple VS Code windows download the Coder CLI binary simultaneously.
+  Other windows now wait and display real-time progress instead of attempting concurrent downloads,
+  preventing corruption and failures.
+
 ## [v1.11.4](https://github.com/coder/vscode-coder/releases/tag/v1.11.4) 2025-11-20
 
 ### Fixed
