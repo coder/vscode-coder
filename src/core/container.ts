@@ -32,7 +32,10 @@ export class ServiceContainer implements vscode.Disposable {
 			context.logUri.fsPath,
 		);
 		this.mementoManager = new MementoManager(context.globalState);
-		this.secretsManager = new SecretsManager(context.secrets);
+		this.secretsManager = new SecretsManager(
+			context.secrets,
+			context.globalState,
+		);
 		this.cliManager = new CliManager(
 			this.vscodeProposed,
 			this.logger,

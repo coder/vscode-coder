@@ -2,18 +2,19 @@ import {
 	type TokenResponse,
 	type ClientRegistrationResponse,
 } from "../oauth/types";
-import { toSafeHost } from "../util";
 
-import type { SecretStorage, Disposable } from "vscode";
+import type { Memento, SecretStorage, Disposable } from "vscode";
 
-const SESSION_TOKEN_KEY = "sessionToken";
+const SESSION_KEY_PREFIX = "coder.session.";
+const OAUTH_TOKENS_PREFIX = "coder.oauth.tokens.";
+const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
 
-const LOGIN_STATE_KEY = "loginState";
-
+const LOGIN_STATE_KEY = "coder.loginState";
 const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
 
-const SESSION_AUTH_MAP_KEY = "coder.sessionAuthMap";
-const OAUTH_DATA_MAP_KEY = "coder.oauthDataMap";
+const KNOWN_LABELS_KEY = "coder.knownLabels";
+
+const LEGACY_SESSION_TOKEN_KEY = "sessionToken";
 
 export type StoredOAuthTokens = Omit<TokenResponse, "expires_in"> & {
 	expiry_timestamp: number;
@@ -22,16 +23,8 @@ export type StoredOAuthTokens = Omit<TokenResponse, "expires_in"> & {
 
 export interface SessionAuth {
 	url: string;
-	sessionToken: string;
+	token: string;
 }
-
-export interface OAuthData {
-	oauthClientRegistration?: ClientRegistrationResponse;
-	oauthTokens?: StoredOAuthTokens;
-}
-
-export type SessionAuthMap = Record<string, SessionAuth>;
-export type OAuthDataMap = Record<string, OAuthData>;
 
 interface OAuthCallbackData {
 	state: string;
@@ -46,28 +39,13 @@ export enum AuthAction {
 }
 
 export class SecretsManager {
-	/**
-	 * Track previous session tokens to detect actual changes.
-	 * Maps label -> previous sessionToken value.
-	 */
-	private readonly previousSessionTokens = new Map<
-		string,
-		string | undefined
-	>();
-
-	constructor(private readonly secrets: SecretStorage) {
-		// Initialize previous session tokens
-		this.getSessionAuthMap().then((map) => {
-			for (const [label, auth] of Object.entries(map)) {
-				this.previousSessionTokens.set(label, auth.sessionToken);
-			}
-		});
-	}
+	constructor(
+		private readonly secrets: SecretStorage,
+		private readonly memento: Memento,
+	) {}
 
 	/**
 	 * Triggers a login/logout event that propagates across all VS Code windows.
-	 * Uses the secrets storage onDidChange event as a cross-window communication mechanism.
-	 * Stores JSON with action, label, and timestamp to ensure the value always changes.
 	 */
 	public async triggerLoginStateChange(
 		label: string,
@@ -83,38 +61,38 @@ export class SecretsManager {
 
 	/**
 	 * Listens for login/logout events from any VS Code window.
-	 * The secrets storage onDidChange event fires across all windows, enabling cross-window sync.
-	 * Parses JSON to extract action and label.
 	 */
 	public onDidChangeLoginState(
 		listener: (state: AuthAction, label: string) => Promise<void>,
 	): Disposable {
 		return this.secrets.onDidChange(async (e) => {
-			if (e.key === LOGIN_STATE_KEY) {
-				const stateStr = await this.secrets.get(LOGIN_STATE_KEY);
-				if (!stateStr) {
-					await listener(AuthAction.INVALID, "");
-					return;
-				}
+			if (e.key !== LOGIN_STATE_KEY) {
+				return;
+			}
 
-				try {
-					const parsed = JSON.parse(stateStr) as {
-						action: string;
-						label: string;
-						timestamp: string;
-					};
+			const stateStr = await this.secrets.get(LOGIN_STATE_KEY);
+			if (!stateStr) {
+				await listener(AuthAction.INVALID, "");
+				return;
+			}
 
-					if (parsed.action === "login") {
-						await listener(AuthAction.LOGIN, parsed.label);
-					} else if (parsed.action === "logout") {
-						await listener(AuthAction.LOGOUT, parsed.label);
-					} else {
-						await listener(AuthAction.INVALID, parsed.label);
-					}
-				} catch {
-					// Invalid JSON, treat as invalid state
-					await listener(AuthAction.INVALID, "");
+			try {
+				const parsed = JSON.parse(stateStr) as {
+					action: string;
+					label: string;
+					timestamp: string;
+				};
+
+				if (parsed.action === "login") {
+					await listener(AuthAction.LOGIN, parsed.label);
+				} else if (parsed.action === "logout") {
+					await listener(AuthAction.LOGOUT, parsed.label);
+				} else {
+					await listener(AuthAction.INVALID, parsed.label);
 				}
+			} catch {
+				// Invalid JSON, treat as invalid state
+				await listener(AuthAction.INVALID, "");
 			}
 		});
 	}
@@ -153,272 +131,179 @@ export class SecretsManager {
 
 	/**
 	 * Listen for changes to a specific deployment's session auth.
-	 * Only fires when the session token actually changes for this deployment.
-	 * OAuth token/registration changes will NOT trigger this listener.
 	 */
 	public onDidChangeDeploymentAuth(
 		label: string,
 		listener: (auth: SessionAuth | undefined) => void | Promise<void>,
 	): Disposable {
-		return this.onDidChangeSessionAuthMap(async (map) => {
-			const auth = map[label];
-			const newToken = auth?.sessionToken ?? "";
-			const previousToken = this.previousSessionTokens.get(label) ?? "";
-
-			// Only fire listener if session token actually changed
-			if (newToken !== previousToken) {
-				this.previousSessionTokens.set(label, newToken);
-				await listener(auth);
-			}
-		});
-	}
-
-	/**
-	 * Listen for changes to the session auth map across all deployments.
-	 * Fires whenever any deployment's session auth is updated.
-	 */
-	private onDidChangeSessionAuthMap(
-		listener: (map: SessionAuthMap) => void | Promise<void>,
-	): Disposable {
+		const key = `${SESSION_KEY_PREFIX}${label}`;
 		return this.secrets.onDidChange(async (e) => {
-			if (e.key !== SESSION_AUTH_MAP_KEY) {
+			if (e.key !== key) {
 				return;
 			}
-
-			try {
-				const map = await this.getSessionAuthMap();
-				await listener(map);
-			} catch {
-				// Ignore errors in listener
-			}
+			const auth = await this.getSessionAuth(label);
+			await listener(auth);
 		});
 	}
 
-	/**
-	 * Get session token for a specific deployment.
-	 */
+	public async getSessionAuth(label: string): Promise<SessionAuth | undefined> {
+		try {
+			const data = await this.secrets.get(`${SESSION_KEY_PREFIX}${label}`);
+			if (!data) {
+				return undefined;
+			}
+			return JSON.parse(data) as SessionAuth;
+		} catch {
+			return undefined;
+		}
+	}
+
 	public async getSessionToken(label: string): Promise<string | undefined> {
-		const map = await this.getSessionAuthMap();
-		return map[label]?.sessionToken;
+		const auth = await this.getSessionAuth(label);
+		return auth?.token;
 	}
 
-	/**
-	 * Set session token for a specific deployment.
-	 */
-	public async setSessionToken(
-		label: string,
-		auth: { url: string; sessionToken: string } | undefined,
-	): Promise<void> {
-		await this.updateSessionAuthMap((map) => {
-			if (auth === undefined) {
-				const newMap = { ...map };
-				delete newMap[label];
-				return newMap;
-			}
-
-			return {
-				...map,
-				[label]: auth,
-			};
-		});
+	public async getUrl(label: string): Promise<string | undefined> {
+		const auth = await this.getSessionAuth(label);
+		return auth?.url;
 	}
 
-	/**
-	 * Get OAuth tokens for a specific deployment.
-	 */
+	public async setSessionAuth(label: string, auth: SessionAuth): Promise<void> {
+		await this.secrets.store(
+			`${SESSION_KEY_PREFIX}${label}`,
+			JSON.stringify(auth),
+		);
+		await this.addKnownLabel(label);
+	}
+
+	public async clearSessionAuth(label: string): Promise<void> {
+		await this.secrets.delete(`${SESSION_KEY_PREFIX}${label}`);
+	}
+
 	public async getOAuthTokens(
 		label: string,
 	): Promise<StoredOAuthTokens | undefined> {
-		const map = await this.getOAuthDataMap();
-		return map[label]?.oauthTokens;
+		try {
+			const data = await this.secrets.get(`${OAUTH_TOKENS_PREFIX}${label}`);
+			if (!data) {
+				return undefined;
+			}
+			return JSON.parse(data) as StoredOAuthTokens;
+		} catch {
+			return undefined;
+		}
 	}
 
-	/**
-	 * Set OAuth tokens for a specific deployment.
-	 */
 	public async setOAuthTokens(
 		label: string,
-		tokens: StoredOAuthTokens | undefined,
+		tokens: StoredOAuthTokens,
 	): Promise<void> {
-		await this.updateOAuthDataMap((map) => {
-			const existing = map[label] || {};
-			return {
-				...map,
-				[label]: {
-					...existing,
-					oauthTokens: tokens,
-				},
-			};
-		});
+		await this.secrets.store(
+			`${OAUTH_TOKENS_PREFIX}${label}`,
+			JSON.stringify(tokens),
+		);
+		await this.addKnownLabel(label);
 	}
 
-	/**
-	 * Get OAuth client registration for a specific deployment.
-	 */
+	public async clearOAuthTokens(label: string): Promise<void> {
+		await this.secrets.delete(`${OAUTH_TOKENS_PREFIX}${label}`);
+	}
+
 	public async getOAuthClientRegistration(
 		label: string,
 	): Promise<ClientRegistrationResponse | undefined> {
-		const map = await this.getOAuthDataMap();
-		return map[label]?.oauthClientRegistration;
+		try {
+			const data = await this.secrets.get(`${OAUTH_CLIENT_PREFIX}${label}`);
+			if (!data) {
+				return undefined;
+			}
+			return JSON.parse(data) as ClientRegistrationResponse;
+		} catch {
+			return undefined;
+		}
 	}
 
-	/**
-	 * Set OAuth client registration for a specific deployment.
-	 * Creates the OAuth data entry if it doesn't exist.
-	 */
 	public async setOAuthClientRegistration(
 		label: string,
-		registration: ClientRegistrationResponse | undefined,
+		registration: ClientRegistrationResponse,
 	): Promise<void> {
-		await this.updateOAuthDataMap((map) => {
-			const existing = map[label] || {};
-			return {
-				...map,
-				[label]: {
-					...existing,
-					oauthClientRegistration: registration,
-				},
-			};
-		});
+		await this.secrets.store(
+			`${OAUTH_CLIENT_PREFIX}${label}`,
+			JSON.stringify(registration),
+		);
+		await this.addKnownLabel(label);
+	}
+
+	public async clearOAuthClientRegistration(label: string): Promise<void> {
+		await this.secrets.delete(`${OAUTH_CLIENT_PREFIX}${label}`);
 	}
 
 	public async clearOAuthData(label: string): Promise<void> {
-		await this.updateOAuthDataMap((map) => {
-			const newMap = { ...map };
-			delete newMap[label];
-			return newMap;
-		});
+		await Promise.all([
+			this.clearOAuthTokens(label),
+			this.clearOAuthClientRegistration(label),
+		]);
 	}
 
 	/**
-	 * Get the session auth map for all deployments.
-	 */
-	private async getSessionAuthMap(): Promise<SessionAuthMap> {
-		try {
-			const data = await this.secrets.get(SESSION_AUTH_MAP_KEY);
-			if (data) {
-				return JSON.parse(data) as SessionAuthMap;
-			}
-		} catch {
-			// Ignore parse errors
-		}
-		return {};
-	}
-
-	/**
-	 * Set the session auth map for all deployments.
-	 */
-	private async setSessionAuthMap(map: SessionAuthMap): Promise<void> {
-		await this.secrets.store(SESSION_AUTH_MAP_KEY, JSON.stringify(map));
-	}
-
-	/**
-	 * Get the OAuth data map for all deployments.
-	 */
-	private async getOAuthDataMap(): Promise<OAuthDataMap> {
-		try {
-			const data = await this.secrets.get(OAUTH_DATA_MAP_KEY);
-			if (data) {
-				return JSON.parse(data) as OAuthDataMap;
-			}
-		} catch {
-			// Ignore parse errors
-		}
-		return {};
-	}
-
-	/**
-	 * Set the OAuth data map for all deployments.
-	 */
-	private async setOAuthDataMap(map: OAuthDataMap): Promise<void> {
-		await this.secrets.store(OAUTH_DATA_MAP_KEY, JSON.stringify(map));
-	}
-
-	/**
-	 * Promise used for synchronizing session auth map updates.
-	 */
-	private sessionAuthUpdatePromise: Promise<void> = Promise.resolve();
-
-	/**
-	 * Promise used for synchronizing OAuth data map updates.
-	 */
-	private oauthDataUpdatePromise: Promise<void> = Promise.resolve();
-
-	/**
-	 * Atomically update the session auth map using a synchronized updater function.
-	 * All write operations should go through this method to prevent race conditions.
-	 */
-	private async updateSessionAuthMap(
-		updater: (map: SessionAuthMap) => SessionAuthMap,
-	): Promise<void> {
-		this.sessionAuthUpdatePromise = this.sessionAuthUpdatePromise.then(
-			async () => {
-				const currentMap = await this.getSessionAuthMap();
-				const newMap = updater(currentMap);
-				await this.setSessionAuthMap(newMap);
-			},
-		);
-
-		return this.sessionAuthUpdatePromise;
-	}
-
-	/**
-	 * Atomically update the OAuth data map using a synchronized updater function.
-	 * All write operations should go through this method to prevent race conditions.
-	 */
-	private async updateOAuthDataMap(
-		updater: (map: OAuthDataMap) => OAuthDataMap,
-	): Promise<void> {
-		this.oauthDataUpdatePromise = this.oauthDataUpdatePromise.then(async () => {
-			const currentMap = await this.getOAuthDataMap();
-			const newMap = updater(currentMap);
-			await this.setOAuthDataMap(newMap);
-		});
-
-		return this.oauthDataUpdatePromise;
-	}
-
-	/**
-	 * Migrate from old flat storage format to new label-based format.
-	 * This is a one-time operation that runs on extension activation.
+	 * TODO currently it might be used wrong because we can be connected to a remote deployment
+	 * and we log out from the sidebar causing the session to be removed and the auto-refresh disabled.
 	 *
-	 * @param url The deployment URL to use for generating the label
-	 * @returns true if migration was performed, false if already migrated or nothing to migrate
+	 * Potential solutions:
+	 * 1. Keep the last 10 auths and possibly remove entries not used in a while instead.
+	 * 	  We do not remove entries on logout!
+	 * 2. Show the user a warning that their remote deployment might be disconnected.
+	 *
+	 * Update all usages of this after arriving at a decision!
 	 */
-	public async migrateFromLegacyStorage(url: string): Promise<boolean> {
-		try {
-			// Check if already migrated (new map exists and has data)
-			const existingMap = await this.getSessionAuthMap();
-			if (Object.keys(existingMap).length > 0) {
-				return false; // Already migrated
-			}
+	public async clearAllAuthData(label: string): Promise<void> {
+		await Promise.all([
+			this.clearSessionAuth(label),
+			this.clearOAuthData(label),
+		]);
+		await this.removeKnownLabel(label);
+	}
 
-			// Directly access old session token from flat storage
-			const oldToken = await this.secrets.get(SESSION_TOKEN_KEY);
-			if (!oldToken) {
-				return false; // Nothing to migrate
-			}
+	public getKnownLabels(): string[] {
+		return this.memento.get<string[]>(KNOWN_LABELS_KEY) ?? [];
+	}
 
-			// Generate label from URL
-			const label = toSafeHost(url);
-
-			// Create new session auth map with migrated token
-			const sessionAuthMap: SessionAuthMap = {
-				[label]: {
-					url: url,
-					sessionToken: oldToken,
-				},
-			};
-
-			// Write new map to secrets
-			await this.setSessionAuthMap(sessionAuthMap);
-
-			// Delete old session token key
-			await this.secrets.delete(SESSION_TOKEN_KEY);
-
-			return true; // Migration successful
-		} catch (error) {
-			throw new Error(`Auth storage migration failed: ${error}`);
+	private async addKnownLabel(label: string): Promise<void> {
+		const labels = new Set(this.getKnownLabels());
+		if (!labels.has(label)) {
+			labels.add(label);
+			await this.memento.update(KNOWN_LABELS_KEY, Array.from(labels));
 		}
+	}
+
+	private async removeKnownLabel(label: string): Promise<void> {
+		const labels = new Set(this.getKnownLabels());
+		if (labels.has(label)) {
+			labels.delete(label);
+			await this.memento.update(KNOWN_LABELS_KEY, Array.from(labels));
+		}
+	}
+
+	/**
+	 * Migrate from legacy flat sessionToken storage to new format.
+	 */
+	public async migrateFromLegacyStorage(
+		url: string,
+		label: string,
+	): Promise<boolean> {
+		const existing = await this.getSessionAuth(label);
+		if (existing) {
+			return false;
+		}
+
+		const oldToken = await this.secrets.get(LEGACY_SESSION_TOKEN_KEY);
+		if (!oldToken) {
+			return false;
+		}
+
+		await this.setSessionAuth(label, { url, token: oldToken });
+		await this.secrets.delete(LEGACY_SESSION_TOKEN_KEY);
+
+		return true;
 	}
 }

@@ -19,6 +19,7 @@ import {
 } from "../api/agentMetadataHelper";
 import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
+import { attachOAuthInterceptors } from "../api/oauthInterceptors";
 import { needToken } from "../api/utils";
 import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
@@ -99,17 +100,38 @@ export class Remote {
 		await this.migrateSessionToken(parts.label);
 
 		// Get the URL and token belonging to this host.
-		const { url: baseUrlRaw, token } = await this.cliManager.readConfig(
-			parts.label,
-		);
+		const baseUrlRaw = (await this.secretsManager.getUrl(parts.label)) ?? "";
+		const token =
+			(await this.secretsManager.getSessionToken(parts.label)) ?? "";
+		if (baseUrlRaw && token) {
+			await this.cliManager.configure(parts.label, baseUrlRaw, token);
+		}
 
 		const disposables: vscode.Disposable[] = [];
 
 		try {
+			disposables.push(
+				this.secretsManager.onDidChangeDeploymentAuth(
+					parts.label,
+					async (auth) => {
+						if (auth?.token && auth.url) {
+							// Update CLI config with new token
+							await this.cliManager.configure(
+								parts.label,
+								auth.url,
+								auth.token,
+							);
+							this.logger.info(
+								"Updated CLI config with new token for remote deployment",
+							);
+						}
+					},
+				),
+			);
+
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = await OAuthSessionManager.create(
-				baseUrlRaw,
-				parts.label,
+				{ url: baseUrlRaw, label: parts.label },
 				this.serviceContainer,
 				this.extensionContext.extension.id,
 			);
@@ -117,8 +139,7 @@ export class Remote {
 
 			const promptForLoginAndRetry = async (message: string, url: string) => {
 				const result = await this.loginCoordinator.promptForLoginWithDialog({
-					url: url,
-					label: parts.label,
+					deployment: { url, label: parts.label },
 					message,
 					detailPrefix: `You must log in to access ${workspaceName}.`,
 					oauthSessionManager: remoteOAuthManager,
@@ -145,13 +166,14 @@ export class Remote {
 				const mementoManager = this.serviceContainer.getMementoManager();
 				const newUrl = await maybeAskUrl(
 					mementoManager,
-					baseUrlRaw || parts.label, // TODO can we assume that "https://<parts.label>" is always valid?
+					baseUrlRaw, // TODO can we assume that "https://<parts.label>" is always valid?
+					parts.label,
 				);
 				if (!newUrl) {
 					throw new Error("URL must be provided");
 				}
 
-				return promptForLoginAndRetry("You are not logged in...", baseUrlRaw);
+				return promptForLoginAndRetry("You are not logged in...", newUrl);
 			}
 
 			this.logger.info("Using deployment URL", baseUrlRaw);
@@ -162,40 +184,18 @@ export class Remote {
 			// break this connection.  We could force close the remote session or
 			// disallow logging out/in altogether, but for now just use a separate
 			// client to remain unaffected by whatever the plugin is doing.
-			const workspaceClient = CoderApi.create(
-				baseUrlRaw,
-				token,
-				this.logger,
-				remoteOAuthManager,
-			);
+			const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
+			attachOAuthInterceptors(workspaceClient, this.logger, remoteOAuthManager);
 			// Store for use in commands.
 			this.commands.workspaceRestClient = workspaceClient;
 
-			// Listen for token changes for this deployment and update CLI config
-			const authChangeDisposable =
-				this.secretsManager.onDidChangeDeploymentAuth(
-					parts.label,
-					async (auth) => {
-						const newToken = auth?.sessionToken;
-						if (newToken) {
-							// Update the client's token without breaking the connection
-							workspaceClient.setSessionToken(newToken);
-
-							// Update CLI config with new token
-							if (auth?.url) {
-								await this.cliManager.configure(
-									parts.label,
-									auth.url,
-									newToken,
-								);
-								this.logger.info(
-									"Updated CLI config with new token for remote deployment",
-								);
-							}
-						}
-					},
-				);
-			disposables.push(authChangeDisposable);
+			// Listen for token changes for this deployment
+			disposables.push(
+				this.secretsManager.onDidChangeDeploymentAuth(parts.label, (auth) => {
+					workspaceClient.setHost(auth?.url);
+					workspaceClient.setSessionToken(auth?.token ?? "");
+				}),
+			);
 
 			let binaryPath: string | undefined;
 			if (
