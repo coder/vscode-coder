@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AuthAction, SecretsManager } from "@/core/secretsManager";
+import {
+	type CurrentDeploymentState,
+	SecretsManager,
+} from "@/core/secretsManager";
 
 import {
 	InMemoryMemento,
@@ -13,6 +16,7 @@ describe("SecretsManager", () => {
 	let secretsManager: SecretsManager;
 
 	beforeEach(() => {
+		vi.useRealTimers();
 		secretStorage = new InMemorySecretStorage();
 		memento = new InMemoryMemento();
 		secretsManager = new SecretsManager(secretStorage, memento);
@@ -20,40 +24,40 @@ describe("SecretsManager", () => {
 
 	describe("session auth", () => {
 		it("should store and retrieve session auth", async () => {
-			await secretsManager.setSessionAuth("example-com", {
+			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			expect(await secretsManager.getSessionToken("example-com")).toBe(
+			expect(await secretsManager.getSessionToken("example.com")).toBe(
 				"test-token",
 			);
-			expect(await secretsManager.getUrl("example-com")).toBe(
+			expect(await secretsManager.getUrl("example.com")).toBe(
 				"https://example.com",
 			);
 
-			await secretsManager.setSessionAuth("example-com", {
+			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "new-token",
 			});
-			expect(await secretsManager.getSessionToken("example-com")).toBe(
+			expect(await secretsManager.getSessionToken("example.com")).toBe(
 				"new-token",
 			);
 		});
 
 		it("should clear session auth", async () => {
-			await secretsManager.setSessionAuth("example-com", {
+			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			await secretsManager.clearSessionAuth("example-com");
+			await secretsManager.clearSessionAuth("example.com");
 			expect(
-				await secretsManager.getSessionToken("example-com"),
+				await secretsManager.getSessionToken("example.com"),
 			).toBeUndefined();
 		});
 
 		it("should return undefined for corrupted storage", async () => {
 			await secretStorage.store(
-				"coder.session.example-com",
+				"coder.session.example.com",
 				JSON.stringify({
 					url: "https://example.com",
 					token: "valid-token",
@@ -62,83 +66,90 @@ describe("SecretsManager", () => {
 			secretStorage.corruptStorage();
 
 			expect(
-				await secretsManager.getSessionToken("example-com"),
+				await secretsManager.getSessionToken("example.com"),
 			).toBeUndefined();
 		});
 
 		it("should track known labels", async () => {
 			expect(secretsManager.getKnownLabels()).toEqual([]);
 
-			await secretsManager.setSessionAuth("example-com", {
+			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			expect(secretsManager.getKnownLabels()).toContain("example-com");
+			expect(secretsManager.getKnownLabels()).toContain("example.com");
 
 			await secretsManager.setSessionAuth("other-com", {
 				url: "https://other.com",
 				token: "other-token",
 			});
-			expect(secretsManager.getKnownLabels()).toContain("example-com");
+			expect(secretsManager.getKnownLabels()).toContain("example.com");
 			expect(secretsManager.getKnownLabels()).toContain("other-com");
 		});
 
 		it("should remove label on clearAllAuthData", async () => {
-			await secretsManager.setSessionAuth("example-com", {
+			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			expect(secretsManager.getKnownLabels()).toContain("example-com");
+			expect(secretsManager.getKnownLabels()).toContain("example.com");
 
-			await secretsManager.clearAllAuthData("example-com");
-			expect(secretsManager.getKnownLabels()).not.toContain("example-com");
+			await secretsManager.clearAllAuthData("example.com");
+			expect(secretsManager.getKnownLabels()).not.toContain("example.com");
 		});
 	});
 
-	describe("login state", () => {
-		it("should trigger login events", async () => {
-			const events: Array<{ state: AuthAction; label: string }> = [];
-			secretsManager.onDidChangeLoginState((state, label) => {
-				events.push({ state, label });
-				return Promise.resolve();
-			});
+	describe("current deployment", () => {
+		it("should store and retrieve current deployment", async () => {
+			const deployment = { url: "https://example.com", label: "example.com" };
+			await secretsManager.setCurrentDeployment(deployment);
 
-			await secretsManager.triggerLoginStateChange("example-com", "login");
-			expect(events).toEqual([
-				{ state: AuthAction.LOGIN, label: "example-com" },
-			]);
+			const result = await secretsManager.getCurrentDeployment();
+			expect(result).toEqual(deployment);
 		});
 
-		it("should trigger logout events", async () => {
-			const events: Array<{ state: AuthAction; label: string }> = [];
-			secretsManager.onDidChangeLoginState((state, label) => {
-				events.push({ state, label });
-				return Promise.resolve();
-			});
+		it("should clear current deployment with undefined", async () => {
+			const deployment = { url: "https://example.com", label: "example.com" };
+			await secretsManager.setCurrentDeployment(deployment);
+			await secretsManager.setCurrentDeployment(undefined);
 
-			await secretsManager.triggerLoginStateChange("example-com", "logout");
-			expect(events).toEqual([
-				{ state: AuthAction.LOGOUT, label: "example-com" },
-			]);
+			const result = await secretsManager.getCurrentDeployment();
+			expect(result).toBeUndefined();
 		});
 
-		it("should fire same event twice in a row", async () => {
+		it("should return undefined when no deployment set", async () => {
+			const result = await secretsManager.getCurrentDeployment();
+			expect(result).toBeUndefined();
+		});
+
+		it("should notify listeners on deployment change", async () => {
 			vi.useFakeTimers();
-			const events: Array<{ state: AuthAction; label: string }> = [];
-			secretsManager.onDidChangeLoginState((state, label) => {
-				events.push({ state, label });
-				return Promise.resolve();
+			const events: Array<CurrentDeploymentState> = [];
+			secretsManager.onDidChangeCurrentDeployment((state) => {
+				events.push(state);
 			});
 
-			await secretsManager.triggerLoginStateChange("example-com", "login");
+			const deployments = [
+				{ url: "https://example.com", label: "example.com" },
+				{ url: "https://another.org", label: "another.org" },
+				{ url: "https://another.org", label: "another.org" },
+			];
+			await secretsManager.setCurrentDeployment(deployments[0]);
 			vi.advanceTimersByTime(5);
-			await secretsManager.triggerLoginStateChange("example-com", "login");
+			await secretsManager.setCurrentDeployment(deployments[1]);
+			vi.advanceTimersByTime(5);
+			await secretsManager.setCurrentDeployment(deployments[2]);
+			vi.advanceTimersByTime(5);
 
-			expect(events).toEqual([
-				{ state: AuthAction.LOGIN, label: "example-com" },
-				{ state: AuthAction.LOGIN, label: "example-com" },
-			]);
-			vi.useRealTimers();
+			// Trigger an event even if the deployment did not change
+			expect(events).toEqual(deployments.map((deployment) => ({ deployment })));
+		});
+
+		it("should handle corrupted storage gracefully", async () => {
+			await secretStorage.store("coder.currentDeployment", "invalid-json{");
+
+			const result = await secretsManager.getCurrentDeployment();
+			expect(result).toBeUndefined();
 		});
 	});
 });
