@@ -710,10 +710,10 @@ export class CliManager {
 	}
 
 	/**
-	 * Update the URL for the deployment with the provided label on disk which can
-	 * be used by the CLI via --url-file.  If the URL is falsey, do nothing.
+	 * Update the URL for the deployment with the provided label on disk for
+	 * persistence.  If the URL is falsey, do nothing.
 	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
+	 * If the label is empty, use the old deployment-unaware path instead.
 	 */
 	private async updateUrlForCli(
 		label: string,
@@ -728,10 +728,9 @@ export class CliManager {
 
 	/**
 	 * Update the session token for a deployment with the provided label on disk
-	 * which can be used by the CLI via --session-token-file.  If the token is
-	 * null, do nothing.
+	 * for persistence.  If the token is null, do nothing.
 	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
+	 * If the label is empty, use the old deployment-unaware path instead.
 	 */
 	private async updateTokenForCli(
 		label: string,

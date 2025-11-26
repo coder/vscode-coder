@@ -479,6 +479,8 @@ export class Remote {
 					binaryPath,
 					logDir,
 					featureSet,
+					baseUrlRaw,
+					token,
 				);
 			} catch (error) {
 				this.logger.warn("Failed to configure SSH", error);
@@ -597,6 +599,8 @@ export class Remote {
 		binaryPath: string,
 		logDir: string,
 		featureSet: FeatureSet,
+		url: string,
+		token: string,
 	) {
 		let deploymentSSHConfig = {};
 		try {
@@ -677,9 +681,7 @@ export class Remote {
 			? `${escapeCommandArg(binaryPath)}${globalConfigs} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.pathResolver.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
 			: `${escapeCommandArg(binaryPath)}${globalConfigs} vscodessh --network-info-dir ${escapeCommandArg(
 					this.pathResolver.getNetworkInfoPath(),
-				)}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.pathResolver.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
-					this.pathResolver.getUrlPath(label),
-				)} %h`;
+				)}${await this.formatLogArg(logDir)} %h`;
 
 		const sshValues: SSHValues = {
 			Host: hostPrefix + `*`,
@@ -690,9 +692,9 @@ export class Remote {
 			LogLevel: "ERROR",
 		};
 		if (sshSupportsSetEnv()) {
-			// This allows for tracking the number of extension
-			// users connected to workspaces!
-			sshValues.SetEnv = " CODER_SSH_SESSION_TYPE=vscode";
+			// Pass Coder URL, session token, and session type via environment.
+			// The CLI reads CODER_URL and CODER_SESSION_TOKEN from the environment.
+			sshValues.SetEnv = ` CODER_URL=${url} CODER_SESSION_TOKEN=${token} CODER_SSH_SESSION_TYPE=vscode`;
 		}
 
 		await sshConfig.update(label, sshValues, sshConfigOverrides);
