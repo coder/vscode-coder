@@ -1,15 +1,16 @@
-import {
-	type TokenResponse,
-	type ClientRegistrationResponse,
-} from "../oauth/types";
+import { toSafeHost } from "../util";
 
 import type { Memento, SecretStorage, Disposable } from "vscode";
+
+import type { TokenResponse, ClientRegistrationResponse } from "../oauth/types";
+
+import type { Deployment } from "./deployment";
 
 const SESSION_KEY_PREFIX = "coder.session.";
 const OAUTH_TOKENS_PREFIX = "coder.oauth.tokens.";
 const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
 
-const LOGIN_STATE_KEY = "coder.loginState";
+const CURRENT_DEPLOYMENT_KEY = "coder.currentDeployment";
 const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
 
 const KNOWN_LABELS_KEY = "coder.knownLabels";
@@ -32,10 +33,8 @@ interface OAuthCallbackData {
 	error: string | null;
 }
 
-export enum AuthAction {
-	LOGIN,
-	LOGOUT,
-	INVALID,
+export interface CurrentDeploymentState {
+	deployment: Deployment | null;
 }
 
 export class SecretsManager {
@@ -45,54 +44,57 @@ export class SecretsManager {
 	) {}
 
 	/**
-	 * Triggers a login/logout event that propagates across all VS Code windows.
+	 * Sets the current deployment and triggers a cross-window sync event.
+	 * This is the single source of truth for which deployment is currently active.
 	 */
-	public async triggerLoginStateChange(
-		label: string,
-		action: "login" | "logout",
+	public async setCurrentDeployment(
+		deployment: Deployment | undefined,
 	): Promise<void> {
-		const loginState = {
-			action,
-			label,
+		const state = {
+			deployment: deployment ?? null,
 			timestamp: new Date().toISOString(),
 		};
-		await this.secrets.store(LOGIN_STATE_KEY, JSON.stringify(loginState));
+		await this.secrets.store(CURRENT_DEPLOYMENT_KEY, JSON.stringify(state));
 	}
 
 	/**
-	 * Listens for login/logout events from any VS Code window.
+	 * Gets the current deployment from storage.
 	 */
-	public onDidChangeLoginState(
-		listener: (state: AuthAction, label: string) => Promise<void>,
+	public async getCurrentDeployment(): Promise<Deployment | undefined> {
+		try {
+			const data = await this.secrets.get(CURRENT_DEPLOYMENT_KEY);
+			if (!data) {
+				return undefined;
+			}
+			const parsed = JSON.parse(data) as { deployment: Deployment | null };
+			return parsed.deployment ?? undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * Listens for deployment changes from any VS Code window.
+	 * Fires when login, logout, or deployment switch occurs.
+	 */
+	public onDidChangeCurrentDeployment(
+		listener: (state: CurrentDeploymentState) => void | Promise<void>,
 	): Disposable {
 		return this.secrets.onDidChange(async (e) => {
-			if (e.key !== LOGIN_STATE_KEY) {
-				return;
-			}
-
-			const stateStr = await this.secrets.get(LOGIN_STATE_KEY);
-			if (!stateStr) {
-				await listener(AuthAction.INVALID, "");
+			if (e.key !== CURRENT_DEPLOYMENT_KEY) {
 				return;
 			}
 
 			try {
-				const parsed = JSON.parse(stateStr) as {
-					action: string;
-					label: string;
-					timestamp: string;
-				};
-
-				if (parsed.action === "login") {
-					await listener(AuthAction.LOGIN, parsed.label);
-				} else if (parsed.action === "logout") {
-					await listener(AuthAction.LOGOUT, parsed.label);
-				} else {
-					await listener(AuthAction.INVALID, parsed.label);
+				const data = await this.secrets.get(CURRENT_DEPLOYMENT_KEY);
+				if (data) {
+					const parsed = JSON.parse(data) as {
+						deployment: Deployment | null;
+					};
+					await listener({ deployment: parsed.deployment });
 				}
 			} catch {
-				// Invalid JSON, treat as invalid state
-				await listener(AuthAction.INVALID, "");
+				// Ignore parse errors
 			}
 		});
 	}
@@ -132,7 +134,7 @@ export class SecretsManager {
 	/**
 	 * Listen for changes to a specific deployment's session auth.
 	 */
-	public onDidChangeDeploymentAuth(
+	public onDidChangeSessionAuth(
 		label: string,
 		listener: (auth: SessionAuth | undefined) => void | Promise<void>,
 	): Disposable {
@@ -147,6 +149,10 @@ export class SecretsManager {
 	}
 
 	public async getSessionAuth(label: string): Promise<SessionAuth | undefined> {
+		if (!label) {
+			return undefined;
+		}
+
 		try {
 			const data = await this.secrets.get(`${SESSION_KEY_PREFIX}${label}`);
 			if (!data) {
@@ -286,24 +292,35 @@ export class SecretsManager {
 
 	/**
 	 * Migrate from legacy flat sessionToken storage to new format.
+	 * Also sets the current deployment if none exists.
 	 */
-	public async migrateFromLegacyStorage(
-		url: string,
-		label: string,
-	): Promise<boolean> {
+	public async migrateFromLegacyStorage(): Promise<string | undefined> {
+		const legacyUrl = this.memento.get<string>("url");
+		if (!legacyUrl) {
+			return undefined;
+		}
+
+		const label = toSafeHost(legacyUrl);
+
 		const existing = await this.getSessionAuth(label);
 		if (existing) {
-			return false;
+			return undefined;
 		}
 
 		const oldToken = await this.secrets.get(LEGACY_SESSION_TOKEN_KEY);
 		if (!oldToken) {
-			return false;
+			return undefined;
 		}
 
-		await this.setSessionAuth(label, { url, token: oldToken });
+		await this.setSessionAuth(label, { url: legacyUrl, token: oldToken });
 		await this.secrets.delete(LEGACY_SESSION_TOKEN_KEY);
 
-		return true;
+		// Also set as current deployment if none exists
+		const currentDeployment = await this.getCurrentDeployment();
+		if (!currentDeployment) {
+			await this.setCurrentDeployment({ url: legacyUrl, label });
+		}
+
+		return label;
 	}
 }

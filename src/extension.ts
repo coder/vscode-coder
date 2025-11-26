@@ -12,7 +12,6 @@ import { attachOAuthInterceptors } from "./api/oauthInterceptors";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
-import { AuthAction } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { CALLBACK_PATH } from "./oauth/utils";
@@ -69,9 +68,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Try to clear this flag ASAP
 	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
 
-	const url = mementoManager.getUrl();
-	const label = url ? toSafeHost(url) : "";
-	const deployment = url ? { url, label } : undefined;
+	const deployment = await secretsManager.getCurrentDeployment();
 
 	// Create OAuth session manager with login coordinator
 	const oauthSessionManager = await OAuthSessionManager.create(
@@ -85,8 +82,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
 	const client = CoderApi.create(
-		url || "",
-		await secretsManager.getSessionToken(label),
+		deployment?.url || "",
+		await secretsManager.getSessionToken(deployment?.label ?? ""),
 		output,
 	);
 	attachOAuthInterceptors(client, output, oauthSessionManager);
@@ -134,10 +131,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		ctx.subscriptions,
 	);
 
-	// Listen for deployment auth changes and sync state across all components
+	// Listen for deployment auth changes (token updates) for the current deployment
 	// This listener is re-registered when the user logs into a different deployment
 	let authChangeDisposable: vscode.Disposable | undefined;
-	const registerAuthListener = (deploymentLabel: string) => {
+	const registerAuthListener = (deploymentLabel: string | undefined) => {
 		authChangeDisposable?.dispose();
 
 		if (!deploymentLabel) {
@@ -145,7 +142,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		}
 
 		output.debug("Registering auth listener for deployment", deploymentLabel);
-		authChangeDisposable = secretsManager.onDidChangeDeploymentAuth(
+		authChangeDisposable = secretsManager.onDidChangeSessionAuth(
 			deploymentLabel,
 			(auth) => {
 				client.setHost(auth?.url);
@@ -157,7 +154,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		);
 	};
 
-	registerAuthListener(label);
+	// Initialize auth listener for current deployment
+	registerAuthListener(deployment?.label);
 	ctx.subscriptions.push({ dispose: () => authChangeDisposable?.dispose() });
 
 	// Handle vscode:// URIs.
@@ -189,35 +187,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					throw new Error("workspace must be specified as a query parameter");
 				}
 
-				// We are not guaranteed that the URL we currently have is for the URL
-				// this workspace belongs to, or that we even have a URL at all (the
-				// queries will default to localhost) so ask for it if missing.
-				// Pre-populate in case we do have the right URL so the user can just
-				// hit enter and move on.
-				const url = await maybeAskUrl(mementoManager, params.get("url"));
-				if (url) {
-					client.setHost(url);
-					await mementoManager.setUrl(url);
-				} else {
+				const deployment = await setupDeploymentFromUri(
+					params,
+					client,
+					serviceContainer,
+				);
+				if (!deployment) {
 					throw new Error(
 						"url must be provided or specified as a query parameter",
 					);
-				}
-
-				// If the token is missing we will get a 401 later and the user will be
-				// prompted to sign in again, so we do not need to ensure it is set now.
-				// For non-token auth, we write a blank token since the `vscodessh`
-				// command currently always requires a token file.  However, if there is
-				// a query parameter for non-token auth go ahead and use it anyway; all
-				// that really matters is the file is created.
-				const token = needToken(vscode.workspace.getConfiguration())
-					? params.get("token")
-					: (params.get("token") ?? "");
-
-				const label = toSafeHost(url);
-				if (token) {
-					client.setSessionToken(token);
-					await secretsManager.setSessionAuth(label, { url, token });
 				}
 
 				vscode.commands.executeCommand(
@@ -267,34 +245,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					);
 				}
 
-				// We are not guaranteed that the URL we currently have is for the URL
-				// this workspace belongs to, or that we even have a URL at all (the
-				// queries will default to localhost) so ask for it if missing.
-				// Pre-populate in case we do have the right URL so the user can just
-				// hit enter and move on.
-				const url = await maybeAskUrl(mementoManager, params.get("url"));
-				if (url) {
-					client.setHost(url);
-					await mementoManager.setUrl(url);
-				} else {
+				const deployment = await setupDeploymentFromUri(
+					params,
+					client,
+					serviceContainer,
+				);
+				if (!deployment) {
 					throw new Error(
 						"url must be provided or specified as a query parameter",
 					);
-				}
-
-				// If the token is missing we will get a 401 later and the user will be
-				// prompted to sign in again, so we do not need to ensure it is set now.
-				// For non-token auth, we write a blank token since the `vscodessh`
-				// command currently always requires a token file.  However, if there is
-				// a query parameter for non-token auth go ahead and use it anyway; all
-				// that really matters is the file is created.
-				const token = needToken(vscode.workspace.getConfiguration())
-					? params.get("token")
-					: (params.get("token") ?? "");
-
-				if (token) {
-					client.setSessionToken(token);
-					await secretsManager.setSessionAuth(label, { url, token });
 				}
 
 				vscode.commands.executeCommand(
@@ -373,33 +332,29 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	const remote = new Remote(serviceContainer, commands, ctx);
 
+	// Listen for deployment changes from other windows (cross-window sync)
 	ctx.subscriptions.push(
-		secretsManager.onDidChangeLoginState(async (state, label) => {
-			switch (state) {
-				case AuthAction.LOGIN: {
-					const url = mementoManager.getUrl();
-					// Should login the user directly if the URL+Token are valid
-					await commands.login({ url });
+		secretsManager.onDidChangeCurrentDeployment(async ({ deployment }) => {
+			output.info("Deployment changed from another window");
 
-					// Re-register auth listener for the new deployment
-					registerAuthListener(label);
-
-					// Update OAuth session manager to match the new deployment
-					if (url) {
-						await oauthSessionManager.setDeployment({ label, url });
-					}
-					break;
-				}
-				case AuthAction.LOGOUT:
-					await commands.forceLogout(label);
-
-					// Dispose auth listener when logged out
-					authChangeDisposable?.dispose();
-					authChangeDisposable = undefined;
-					break;
-				case AuthAction.INVALID:
-					break;
+			// Update client
+			client.setHost(deployment?.url);
+			if (deployment) {
+				const token = await secretsManager.getSessionToken(deployment.label);
+				client.setSessionToken(token ?? "");
+				await oauthSessionManager.setDeployment(deployment);
+			} else {
+				client.setSessionToken("");
+				oauthSessionManager.clearDeployment();
 			}
+			registerAuthListener(deployment?.label);
+
+			// Update context
+			contextManager.set("coder.authenticated", deployment !== undefined);
+
+			// Refresh workspaces
+			myWorkspacesProvider.fetchAndRefresh();
+			allWorkspacesProvider.fetchAndRefresh();
 		}),
 	);
 
@@ -419,17 +374,19 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				isFirstConnect,
 				remoteSshExtension.id,
 			);
-			// TODO this is weird, why do we change the host here??
 			if (details) {
 				ctx.subscriptions.push(details);
-				// Authenticate the plugin client which is used in the sidebar to display
-				// workspaces belonging to this deployment.
+
+				// Set client host/token immediately for subsequent operations.
 				client.setHost(details.url);
 				client.setSessionToken(details.token);
-				await oauthSessionManager.setDeployment({
-					label: details.label,
+
+				// Persist and sync deployment across windows
+				await secretsManager.setCurrentDeployment({
 					url: details.url,
+					label: details.label,
 				});
+				await mementoManager.addToUrlHistory(details.url);
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
@@ -526,35 +483,83 @@ async function migrateAuthStorage(
 	serviceContainer: ServiceContainer,
 ): Promise<void> {
 	const secretsManager = serviceContainer.getSecretsManager();
-	const mementoManager = serviceContainer.getMementoManager();
 	const output = serviceContainer.getLogger();
 
 	try {
-		// Get deployment URL from memento
-		const url = mementoManager.getUrl();
-		if (!url) {
-			output.info("No URL configured, skipping migration");
-			return;
-		}
+		const migratedLabel = await secretsManager.migrateFromLegacyStorage();
 
-		// Perform migration using SecretsManager method
-		const label = toSafeHost(url);
-		const migrated = await secretsManager.migrateFromLegacyStorage(url, label);
-
-		if (migrated) {
+		if (migratedLabel) {
 			output.info(
-				`Successfully migrated auth storage to label-based format (label: ${label})`,
+				`Successfully migrated auth storage to label-based format (label: ${migratedLabel})`,
 			);
 		}
 	} catch (error) {
 		output.error(
 			`Auth storage migration failed: ${error}. You may need to log in again.`,
 		);
-		// Don't throw - allow extension to continue
 	}
 }
 
 async function showTreeViewSearch(id: string): Promise<void> {
 	await vscode.commands.executeCommand(`${id}.focus`);
 	await vscode.commands.executeCommand("list.find");
+}
+
+/**
+ * Sets up deployment from URI parameters. Handles URL prompting, client setup,
+ * and token storage. Throws if user cancels URL input.
+ *
+ * Sets client host/token immediately for subsequent operations.
+ * Other updates (auth listener, OAuth manager, context, workspaces) are handled
+ * asynchronously by the onDidChangeCurrentDeployment listener.
+ */
+async function setupDeploymentFromUri(
+	params: URLSearchParams,
+	client: CoderApi,
+	serviceContainer: ServiceContainer,
+): Promise<{ url: string; label: string }> {
+	const secretsManager = serviceContainer.getSecretsManager();
+	const mementoManager = serviceContainer.getMementoManager();
+	const currentDeployment = await secretsManager.getCurrentDeployment();
+
+	// We are not guaranteed that the URL we currently have is for the URL
+	// this workspace belongs to, or that we even have a URL at all (the
+	// queries will default to localhost) so ask for it if missing.
+	// Pre-populate in case we do have the right URL so the user can just
+	// hit enter and move on.
+	const url = await maybeAskUrl(
+		mementoManager,
+		params.get("url"),
+		currentDeployment?.url,
+	);
+	if (!url) {
+		throw new Error("url must be provided or specified as a query parameter");
+	}
+
+	const label = toSafeHost(url);
+
+	// Set client host immediately for subsequent operations.
+	client.setHost(url);
+
+	// If the token is missing we will get a 401 later and the user will be
+	// prompted to sign in again, so we do not need to ensure it is set now.
+	// For non-token auth, we write a blank token since the `vscodessh`
+	// command currently always requires a token file. However, if there is
+	// a query parameter for non-token auth go ahead and use it anyway; all
+	// that really matters is the file is created.
+	const token = needToken(vscode.workspace.getConfiguration())
+		? params.get("token")
+		: (params.get("token") ?? "");
+
+	if (token) {
+		// Set token immediately for subsequent operations
+		client.setSessionToken(token);
+		await secretsManager.setSessionAuth(label, { url, token });
+	}
+
+	// Persist and sync deployment across windows
+	await secretsManager.setCurrentDeployment({ url, label });
+	await mementoManager.addToUrlHistory(url);
+
+	return { url, label };
 }

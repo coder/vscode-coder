@@ -34,7 +34,6 @@ import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthSessionManager } from "../oauth/sessionManager";
-import { maybeAskUrl } from "../promptUtils";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,
@@ -111,7 +110,7 @@ export class Remote {
 
 		try {
 			disposables.push(
-				this.secretsManager.onDidChangeDeploymentAuth(
+				this.secretsManager.onDidChangeSessionAuth(
 					parts.label,
 					async (auth) => {
 						if (auth?.token && auth.url) {
@@ -137,9 +136,13 @@ export class Remote {
 			);
 			disposables.push(remoteOAuthManager);
 
-			const promptForLoginAndRetry = async (message: string, url: string) => {
+			const promptForLoginAndRetry = async (
+				message: string,
+				url: string | undefined,
+			) => {
 				const result = await this.loginCoordinator.promptForLoginWithDialog({
-					deployment: { url, label: parts.label },
+					label: parts.label,
+					url,
 					message,
 					detailPrefix: `You must log in to access ${workspaceName}.`,
 					oauthSessionManager: remoteOAuthManager,
@@ -163,17 +166,7 @@ export class Remote {
 				!baseUrlRaw ||
 				(!token && needToken(vscode.workspace.getConfiguration()))
 			) {
-				const mementoManager = this.serviceContainer.getMementoManager();
-				const newUrl = await maybeAskUrl(
-					mementoManager,
-					baseUrlRaw, // TODO can we assume that "https://<parts.label>" is always valid?
-					parts.label,
-				);
-				if (!newUrl) {
-					throw new Error("URL must be provided");
-				}
-
-				return promptForLoginAndRetry("You are not logged in...", newUrl);
+				return promptForLoginAndRetry("You are not logged in...", baseUrlRaw);
 			}
 
 			this.logger.info("Using deployment URL", baseUrlRaw);
@@ -191,7 +184,7 @@ export class Remote {
 
 			// Listen for token changes for this deployment
 			disposables.push(
-				this.secretsManager.onDidChangeDeploymentAuth(parts.label, (auth) => {
+				this.secretsManager.onDidChangeSessionAuth(parts.label, (auth) => {
 					workspaceClient.setHost(auth?.url);
 					workspaceClient.setSessionToken(auth?.token ?? "");
 				}),

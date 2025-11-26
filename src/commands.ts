@@ -9,6 +9,7 @@ import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { type CliManager } from "./core/cliManager";
 import { type ServiceContainer } from "./core/container";
 import { type ContextManager } from "./core/contextManager";
+import { type Deployment } from "./core/deployment";
 import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
 import { type SecretsManager } from "./core/secretsManager";
@@ -62,6 +63,17 @@ export class Commands {
 	}
 
 	/**
+	 * Get the current deployment, throwing if not logged in.
+	 */
+	private async requireDeployment(): Promise<Deployment> {
+		const deployment = await this.secretsManager.getCurrentDeployment();
+		if (!deployment) {
+			throw new Error("You are not logged in");
+		}
+		return deployment;
+	}
+
+	/**
 	 * Log into the provided deployment. If the deployment URL is not specified,
 	 * ask for it first with a menu showing recent URLs along with the default URL
 	 * and CODER_URL, if those are set.
@@ -76,7 +88,12 @@ export class Commands {
 		}
 		this.logger.info("Logging in");
 
-		const url = await maybeAskUrl(this.mementoManager, args?.url);
+		const currentDeployment = await this.secretsManager.getCurrentDeployment();
+		const url = await maybeAskUrl(
+			this.mementoManager,
+			args?.url,
+			currentDeployment?.url,
+		);
 		if (!url) {
 			return;
 		}
@@ -88,7 +105,8 @@ export class Commands {
 		this.logger.info("Using deployment label", label);
 
 		const result = await this.loginCoordinator.promptForLogin({
-			deployment: { url, label },
+			label,
+			url,
 			autoLogin: args?.autoLogin,
 			oauthSessionManager: this.oauthSessionManager,
 		});
@@ -97,16 +115,13 @@ export class Commands {
 			return;
 		}
 
-		// Authorize the global client
+		// Set client immediately so subsequent operations in this function have the correct host/token.
+		// The cross-window listener will also update the client, but that's async.
 		this.restClient.setHost(url);
 		this.restClient.setSessionToken(result.token);
 
-		// Store for later sessions
-		await this.mementoManager.setUrl(url);
-		await this.secretsManager.setSessionAuth(label, {
-			url,
-			token: result.token,
-		});
+		// Set as current deployment (triggers cross-window sync).
+		await this.secretsManager.setCurrentDeployment({ url, label });
 
 		// Update contexts
 		this.contextManager.set("coder.authenticated", true);
@@ -129,7 +144,6 @@ export class Commands {
 				}
 			});
 
-		await this.secretsManager.triggerLoginStateChange(label, "login");
 		vscode.commands.executeCommand("coder.refreshWorkspaces");
 	}
 
@@ -162,13 +176,8 @@ export class Commands {
 	 * Log out from the currently logged-in deployment.
 	 */
 	public async logout(): Promise<void> {
-		const url = this.mementoManager.getUrl();
-		if (!url) {
-			// Sanity check; command should not be available if no url.
-			throw new Error("You are not logged in");
-		}
-
-		await this.forceLogout(toSafeHost(url));
+		const deployment = await this.requireDeployment();
+		await this.forceLogout(deployment.label);
 	}
 
 	public async forceLogout(label: string): Promise<void> {
@@ -177,8 +186,7 @@ export class Commands {
 		}
 		this.logger.info(`Logging out of deployment: ${label}`);
 
-		// Only clear REST client and UI context if logging out of current deployment
-		// Fire and forget
+		// Fire and forget OAuth logout
 		this.oauthSessionManager.logout().catch((error) => {
 			this.logger.warn("OAuth logout failed, continuing with cleanup:", error);
 		});
@@ -188,8 +196,10 @@ export class Commands {
 		this.restClient.setHost("");
 		this.restClient.setSessionToken("");
 
-		// Clear from memory.
-		await this.mementoManager.setUrl(undefined);
+		// Clear current deployment (triggers cross-window sync)
+		await this.secretsManager.setCurrentDeployment(undefined);
+
+		// Clear all auth data for this deployment
 		await this.secretsManager.clearAllAuthData(label);
 
 		this.contextManager.set("coder.authenticated", false);
@@ -203,8 +213,6 @@ export class Commands {
 
 		// This will result in clearing the workspace list.
 		vscode.commands.executeCommand("coder.refreshWorkspaces");
-
-		await this.secretsManager.triggerLoginStateChange(label, "logout");
 	}
 
 	/**
@@ -213,7 +221,8 @@ export class Commands {
 	 * Must only be called if currently logged in.
 	 */
 	public async createWorkspace(): Promise<void> {
-		const uri = this.mementoManager.getUrl() + "/templates";
+		const deployment = await this.requireDeployment();
+		const uri = deployment.url + "/templates";
 		await vscode.commands.executeCommand("vscode.open", uri);
 	}
 
@@ -227,8 +236,9 @@ export class Commands {
 	 */
 	public async navigateToWorkspace(item: OpenableTreeItem) {
 		if (item) {
+			const deployment = await this.requireDeployment();
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			const uri = this.mementoManager.getUrl() + `/@${workspaceId}`;
+			const uri = deployment.url + `/@${workspaceId}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
@@ -250,8 +260,9 @@ export class Commands {
 	 */
 	public async navigateToWorkspaceSettings(item: OpenableTreeItem) {
 		if (item) {
+			const deployment = await this.requireDeployment();
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			const uri = this.mementoManager.getUrl() + `/@${workspaceId}/settings`;
+			const uri = deployment.url + `/@${workspaceId}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.workspaceRestClient) {
 			const baseUrl =
@@ -328,18 +339,14 @@ export class Commands {
 					const terminal = vscode.window.createTerminal(app.name);
 
 					// If workspace_name is provided, run coder ssh before the command
-
-					const url = this.mementoManager.getUrl();
-					if (!url) {
-						throw new Error("No coder url found for sidebar");
-					}
+					const deployment = await this.requireDeployment();
 					const binary = await this.cliManager.fetchBinary(
 						this.restClient,
-						toSafeHost(url),
+						deployment.label,
 					);
 
 					const configDir = this.pathResolver.getGlobalConfigDir(
-						toSafeHost(url),
+						deployment.label,
 					);
 					const globalFlags = getGlobalFlags(
 						vscode.workspace.getConfiguration(),

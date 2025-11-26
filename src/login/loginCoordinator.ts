@@ -1,31 +1,30 @@
 import { getErrorMessage } from "coder/site/src/api/errors";
 import * as vscode from "vscode";
 
-import { type Deployment } from "src/core/deployment";
-
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
+import { type Deployment } from "../core/deployment";
+import { type MementoManager } from "../core/mementoManager";
 import { type SecretsManager } from "../core/secretsManager";
 import { CertificateError } from "../error";
 import { type Logger } from "../logging/logger";
-import { maybeAskAuthMethod } from "../promptUtils";
+import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { OAuthSessionManager } from "../oauth/sessionManager";
 
-export interface LoginResult {
+interface LoginResult {
 	success: boolean;
 	user?: User;
 	token?: string;
 }
 
-export interface LoginOptions {
-	deployment: Deployment;
+interface LoginOptions {
+	label: string;
+	url: string | undefined;
 	oauthSessionManager: OAuthSessionManager;
 	autoLogin?: boolean;
-	message?: string;
-	detailPrefix?: string;
 }
 
 /**
@@ -36,23 +35,29 @@ export class LoginCoordinator {
 
 	constructor(
 		private readonly secretsManager: SecretsManager,
+		private readonly mementoManager: MementoManager,
 		private readonly vscodeProposed: typeof vscode,
 		private readonly logger: Logger,
 	) {}
 
 	/**
 	 * Direct login - for user-initiated login via commands.
+	 * Stores session auth and URL history on success.
 	 */
 	public async promptForLogin(
-		options: Omit<LoginOptions, "message" | "detailPrefix">,
+		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
-		const { deployment, oauthSessionManager } = options;
-		return this.executeWithGuard(options.deployment.label, async () => {
-			return this.attemptLogin(
-				deployment,
+		const { label, url, oauthSessionManager } = options;
+		return this.executeWithGuard(label, async () => {
+			const result = await this.attemptLogin(
+				{ label, url },
 				options.autoLogin ?? false,
 				oauthSessionManager,
 			);
+
+			await this.persistSessionAuth(result, label, url);
+
+			return result;
 		});
 	}
 
@@ -60,10 +65,10 @@ export class LoginCoordinator {
 	 * Shows dialog then login - for system-initiated auth (remote, OAuth refresh).
 	 */
 	public async promptForLoginWithDialog(
-		options: LoginOptions,
+		options: LoginOptions & { message?: string; detailPrefix?: string },
 	): Promise<LoginResult> {
-		const { deployment, detailPrefix, message, oauthSessionManager } = options;
-		return this.executeWithGuard(deployment.label, () => {
+		const { label, url, detailPrefix, message, oauthSessionManager } = options;
+		return this.executeWithGuard(label, () => {
 			// Show dialog promise
 			const dialogPromise = this.vscodeProposed.window
 				.showErrorMessage(
@@ -72,27 +77,31 @@ export class LoginCoordinator {
 						modal: true,
 						useCustom: true,
 						detail:
-							(detailPrefix ||
-								`Authentication needed for ${deployment.label}.`) +
+							(detailPrefix || `Authentication needed for ${label}.`) +
 							"\n\nIf you've already logged in, you may close this dialog.",
 					},
 					"Login",
 				)
 				.then(async (action) => {
 					if (action === "Login") {
-						// User clicked login - proceed with login flow
+						// Proceed with the login flow, handling logging in from another window
+						const storedUrl = await this.secretsManager.getUrl(label);
+						const newUrl = await maybeAskUrl(
+							this.mementoManager,
+							url,
+							storedUrl,
+						);
+						if (!newUrl) {
+							throw new Error("URL must be provided");
+						}
+
 						const result = await this.attemptLogin(
-							deployment,
+							{ url: newUrl, label },
 							false,
 							oauthSessionManager,
 						);
 
-						if (result.success && result.token) {
-							await this.secretsManager.setSessionAuth(deployment.label, {
-								url: deployment.url,
-								token: result.token,
-							});
-						}
+						await this.persistSessionAuth(result, label, newUrl);
 
 						return result;
 					} else {
@@ -102,11 +111,22 @@ export class LoginCoordinator {
 				});
 
 			// Race between user clicking login and cross-window detection
-			return Promise.race([
-				dialogPromise,
-				this.waitForCrossWindowLogin(deployment.label),
-			]);
+			return Promise.race([dialogPromise, this.waitForCrossWindowLogin(label)]);
 		});
+	}
+
+	private async persistSessionAuth(
+		result: LoginResult,
+		label: string,
+		url: string,
+	): Promise<void> {
+		if (result.success && result.token) {
+			await this.secretsManager.setSessionAuth(label, {
+				url,
+				token: result.token,
+			});
+			await this.mementoManager.addToUrlHistory(url);
+		}
 	}
 
 	/**
@@ -136,7 +156,7 @@ export class LoginCoordinator {
 	 */
 	private async waitForCrossWindowLogin(label: string): Promise<LoginResult> {
 		return new Promise((resolve) => {
-			const disposable = this.secretsManager.onDidChangeDeploymentAuth(
+			const disposable = this.secretsManager.onDidChangeSessionAuth(
 				label,
 				(auth) => {
 					if (auth?.token) {

@@ -149,7 +149,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		}
 
 		this.storedTokens = tokens;
-		this.logger.info(`Loaded stored OAuth tokens for ${tokens.deployment_url}`);
+		this.logger.info(`Loaded stored OAuth tokens for ${this.deployment.label}`);
 	}
 
 	private async clearOAuthState(): Promise<void> {
@@ -749,7 +749,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 		await this.secretsManager.clearAllAuthData(deployment.label);
 
 		await this.loginCoordinator.promptForLoginWithDialog({
-			deployment,
+			label: deployment.label,
+			url: deployment.url,
 			detailPrefix: errorMessage,
 			oauthSessionManager: this,
 		});
