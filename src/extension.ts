@@ -12,6 +12,8 @@ import { attachOAuthInterceptors } from "./api/oauthInterceptors";
 import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
+import { type Deployment } from "./core/deployment";
+import { type SecretsManager } from "./core/secretsManager";
 import { CertificateError, getErrorDetail } from "./error";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { CALLBACK_PATH } from "./oauth/utils";
@@ -86,6 +88,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		await secretsManager.getSessionToken(deployment?.label ?? ""),
 		output,
 	);
+	ctx.subscriptions.push(client);
 	attachOAuthInterceptors(client, output, oauthSessionManager);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
@@ -145,8 +148,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		authChangeDisposable = secretsManager.onDidChangeSessionAuth(
 			deploymentLabel,
 			(auth) => {
-				client.setHost(auth?.url);
-				client.setSessionToken(auth?.token ?? "");
+				client.setCredentials(auth?.url, auth?.token);
 
 				// Update authentication context for current deployment
 				contextManager.set("coder.authenticated", auth !== undefined);
@@ -187,16 +189,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					throw new Error("workspace must be specified as a query parameter");
 				}
 
-				const deployment = await setupDeploymentFromUri(
-					params,
-					client,
-					serviceContainer,
-				);
-				if (!deployment) {
-					throw new Error(
-						"url must be provided or specified as a query parameter",
-					);
-				}
+				await setupDeploymentFromUri(params, client, serviceContainer);
 
 				vscode.commands.executeCommand(
 					"coder.open",
@@ -245,16 +238,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					);
 				}
 
-				const deployment = await setupDeploymentFromUri(
-					params,
-					client,
-					serviceContainer,
-				);
-				if (!deployment) {
-					throw new Error(
-						"url must be provided or specified as a query parameter",
-					);
-				}
+				await setupDeploymentFromUri(params, client, serviceContainer);
 
 				vscode.commands.executeCommand(
 					"coder.openDevContainer",
@@ -338,13 +322,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			output.info("Deployment changed from another window");
 
 			// Update client
-			client.setHost(deployment?.url);
 			if (deployment) {
 				const token = await secretsManager.getSessionToken(deployment.label);
-				client.setSessionToken(token ?? "");
+				client.setCredentials(deployment.url, token);
 				await oauthSessionManager.setDeployment(deployment);
 			} else {
-				client.setSessionToken("");
+				client.setCredentials(undefined, undefined);
 				oauthSessionManager.clearDeployment();
 			}
 			registerAuthListener(deployment?.label);
@@ -378,8 +361,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				ctx.subscriptions.push(details);
 
 				// Set client host/token immediately for subsequent operations.
-				client.setHost(details.url);
-				client.setSessionToken(details.token);
+				client.setCredentials(details.url, details.token);
 
 				// Persist and sync deployment across windows
 				await secretsManager.setCurrentDeployment({
@@ -517,7 +499,7 @@ async function setupDeploymentFromUri(
 	params: URLSearchParams,
 	client: CoderApi,
 	serviceContainer: ServiceContainer,
-): Promise<{ url: string; label: string }> {
+): Promise<Deployment> {
 	const secretsManager = serviceContainer.getSecretsManager();
 	const mementoManager = serviceContainer.getMementoManager();
 	const currentDeployment = await secretsManager.getCurrentDeployment();
@@ -538,22 +520,14 @@ async function setupDeploymentFromUri(
 
 	const label = toSafeHost(url);
 
-	// Set client host immediately for subsequent operations.
-	client.setHost(url);
-
 	// If the token is missing we will get a 401 later and the user will be
 	// prompted to sign in again, so we do not need to ensure it is set now.
 	// For non-token auth, we write a blank token since the `vscodessh`
 	// command currently always requires a token file. However, if there is
-	// a query parameter for non-token auth go ahead and use it anyway; all
-	// that really matters is the file is created.
-	const token = needToken(vscode.workspace.getConfiguration())
-		? params.get("token")
-		: (params.get("token") ?? "");
-
+	// a query parameter for non-token auth go ahead and use it anyway;
+	const token = await getToken(params, label, secretsManager);
+	client.setCredentials(url, token);
 	if (token) {
-		// Set token immediately for subsequent operations
-		client.setSessionToken(token);
 		await secretsManager.setSessionAuth(label, { url, token });
 	}
 
@@ -562,4 +536,21 @@ async function setupDeploymentFromUri(
 	await mementoManager.addToUrlHistory(url);
 
 	return { url, label };
+}
+
+async function getToken(
+	params: URLSearchParams,
+	label: string,
+	secretsManager: SecretsManager,
+): Promise<string | undefined> {
+	const paramsToken = params.get("token");
+	if (paramsToken !== null) {
+		// Always prefer the passed token if set
+		return paramsToken;
+	}
+
+	if (needToken(vscode.workspace.getConfiguration())) {
+		return await secretsManager.getSessionToken(label);
+	}
+	return "";
 }

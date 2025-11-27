@@ -178,6 +178,7 @@ export class Remote {
 			// disallow logging out/in altogether, but for now just use a separate
 			// client to remain unaffected by whatever the plugin is doing.
 			const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
+			disposables.push(workspaceClient);
 			attachOAuthInterceptors(workspaceClient, this.logger, remoteOAuthManager);
 			// Store for use in commands.
 			this.commands.workspaceRestClient = workspaceClient;
@@ -185,8 +186,7 @@ export class Remote {
 			// Listen for token changes for this deployment
 			disposables.push(
 				this.secretsManager.onDidChangeSessionAuth(parts.label, (auth) => {
-					workspaceClient.setHost(auth?.url);
-					workspaceClient.setSessionToken(auth?.token ?? "");
+					workspaceClient.setCredentials(auth?.url, auth?.token);
 				}),
 			);
 

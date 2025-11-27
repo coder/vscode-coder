@@ -1,4 +1,3 @@
-import { type Api } from "coder/site/src/api/api";
 import {
 	type Workspace,
 	type WorkspaceAgent,
@@ -6,6 +5,7 @@ import {
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
+import { type CoderApi } from "./api/coderApi";
 import { type CliManager } from "./core/cliManager";
 import { type ServiceContainer } from "./core/container";
 import { type ContextManager } from "./core/contextManager";
@@ -45,11 +45,11 @@ export class Commands {
 	// if you use multiple deployments).
 	public workspace?: Workspace;
 	public workspaceLogPath?: string;
-	public workspaceRestClient?: Api;
+	public workspaceRestClient?: CoderApi;
 
 	public constructor(
 		serviceContainer: ServiceContainer,
-		private readonly restClient: Api,
+		private readonly restClient: CoderApi,
 		private readonly oauthSessionManager: OAuthSessionManager,
 	) {
 		this.vscodeProposed = serviceContainer.getVsCodeProposed();
@@ -117,8 +117,7 @@ export class Commands {
 
 		// Set client immediately so subsequent operations in this function have the correct host/token.
 		// The cross-window listener will also update the client, but that's async.
-		this.restClient.setHost(url);
-		this.restClient.setSessionToken(result.token);
+		this.restClient.setCredentials(url, result.token);
 
 		// Set as current deployment (triggers cross-window sync).
 		await this.secretsManager.setCurrentDeployment({ url, label });
@@ -143,8 +142,6 @@ export class Commands {
 					vscode.commands.executeCommand("coder.open");
 				}
 			});
-
-		vscode.commands.executeCommand("coder.refreshWorkspaces");
 	}
 
 	/**
@@ -193,14 +190,10 @@ export class Commands {
 
 		// Clear from the REST client.  An empty url will indicate to other parts of
 		// the code that we are logged out.
-		this.restClient.setHost("");
-		this.restClient.setSessionToken("");
+		this.restClient.setCredentials(undefined, undefined);
 
 		// Clear current deployment (triggers cross-window sync)
 		await this.secretsManager.setCurrentDeployment(undefined);
-
-		// Clear all auth data for this deployment
-		await this.secretsManager.clearAllAuthData(label);
 
 		this.contextManager.set("coder.authenticated", false);
 		vscode.window
@@ -210,9 +203,6 @@ export class Commands {
 					this.login();
 				}
 			});
-
-		// This will result in clearing the workspace list.
-		vscode.commands.executeCommand("coder.refreshWorkspaces");
 	}
 
 	/**
