@@ -579,7 +579,6 @@ export class Commands {
 				detail: `Update ${createWorkspaceIdentifier(this.workspace)} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
 			},
 			"Update",
-			"Cancel",
 		);
 		if (action === "Update") {
 			await this.workspaceRestClient.updateWorkspaceVersion(this.workspace);
