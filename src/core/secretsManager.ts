@@ -13,9 +13,15 @@ const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
 const CURRENT_DEPLOYMENT_KEY = "coder.currentDeployment";
 const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
 
-const KNOWN_LABELS_KEY = "coder.knownLabels";
+const DEPLOYMENT_USAGE_KEY = "coder.deploymentUsage";
+const DEFAULT_MAX_DEPLOYMENTS = 10;
 
 const LEGACY_SESSION_TOKEN_KEY = "sessionToken";
+
+export interface DeploymentUsage {
+	label: string;
+	lastAccessedAt: string;
+}
 
 export type StoredOAuthTokens = Omit<TokenResponse, "expires_in"> & {
 	expiry_timestamp: number;
@@ -179,7 +185,7 @@ export class SecretsManager {
 			`${SESSION_KEY_PREFIX}${label}`,
 			JSON.stringify(auth),
 		);
-		await this.addKnownLabel(label);
+		await this.recordDeploymentAccess(label);
 	}
 
 	public async clearSessionAuth(label: string): Promise<void> {
@@ -208,7 +214,7 @@ export class SecretsManager {
 			`${OAUTH_TOKENS_PREFIX}${label}`,
 			JSON.stringify(tokens),
 		);
-		await this.addKnownLabel(label);
+		await this.recordDeploymentAccess(label);
 	}
 
 	public async clearOAuthTokens(label: string): Promise<void> {
@@ -237,7 +243,7 @@ export class SecretsManager {
 			`${OAUTH_CLIENT_PREFIX}${label}`,
 			JSON.stringify(registration),
 		);
-		await this.addKnownLabel(label);
+		await this.recordDeploymentAccess(label);
 	}
 
 	public async clearOAuthClientRegistration(label: string): Promise<void> {
@@ -252,42 +258,48 @@ export class SecretsManager {
 	}
 
 	/**
-	 * TODO currently it might be used wrong because we can be connected to a remote deployment
-	 * and we log out from the sidebar causing the session to be removed and the auto-refresh disabled.
-	 *
-	 * Potential solutions:
-	 * 1. Keep the last 10 auths and possibly remove entries not used in a while instead.
-	 * 	  We do not remove entries on logout!
-	 * 2. Show the user a warning that their remote deployment might be disconnected.
-	 *
-	 * Update all usages of this after arriving at a decision!
+	 * Record that a deployment was accessed, moving it to the front of the LRU list.
+	 * Prunes deployments beyond maxCount, clearing their auth data.
+	 */
+	public async recordDeploymentAccess(
+		label: string,
+		maxCount = DEFAULT_MAX_DEPLOYMENTS,
+	): Promise<void> {
+		const usage = this.getDeploymentUsage();
+		const filtered = usage.filter((u) => u.label !== label);
+		filtered.unshift({ label, lastAccessedAt: new Date().toISOString() });
+
+		const toKeep = filtered.slice(0, maxCount);
+		const toRemove = filtered.slice(maxCount);
+
+		await Promise.all(toRemove.map((u) => this.clearAllAuthData(u.label)));
+		await this.memento.update(DEPLOYMENT_USAGE_KEY, toKeep);
+	}
+
+	/**
+	 * Clear all auth data for a deployment and remove it from the usage list.
 	 */
 	public async clearAllAuthData(label: string): Promise<void> {
 		await Promise.all([
 			this.clearSessionAuth(label),
 			this.clearOAuthData(label),
 		]);
-		await this.removeKnownLabel(label);
+		const usage = this.getDeploymentUsage().filter((u) => u.label !== label);
+		await this.memento.update(DEPLOYMENT_USAGE_KEY, usage);
 	}
 
+	/**
+	 * Get all known deployment labels, ordered by most recently accessed.
+	 */
 	public getKnownLabels(): string[] {
-		return this.memento.get<string[]>(KNOWN_LABELS_KEY) ?? [];
+		return this.getDeploymentUsage().map((u) => u.label);
 	}
 
-	private async addKnownLabel(label: string): Promise<void> {
-		const labels = new Set(this.getKnownLabels());
-		if (!labels.has(label)) {
-			labels.add(label);
-			await this.memento.update(KNOWN_LABELS_KEY, Array.from(labels));
-		}
-	}
-
-	private async removeKnownLabel(label: string): Promise<void> {
-		const labels = new Set(this.getKnownLabels());
-		if (labels.has(label)) {
-			labels.delete(label);
-			await this.memento.update(KNOWN_LABELS_KEY, Array.from(labels));
-		}
+	/**
+	 * Get the full deployment usage list with access timestamps.
+	 */
+	private getDeploymentUsage(): DeploymentUsage[] {
+		return this.memento.get<DeploymentUsage[]>(DEPLOYMENT_USAGE_KEY) ?? [];
 	}
 
 	/**
