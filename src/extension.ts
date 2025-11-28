@@ -312,6 +312,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		vscode.commands.registerCommand("coder.searchAllWorkspaces", async () =>
 			showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
 		),
+		vscode.commands.registerCommand("coder.debug.listDeployments", () =>
+			listStoredDeployments(secretsManager),
+		),
 	);
 
 	const remote = new Remote(serviceContainer, commands, ctx);
@@ -553,4 +556,26 @@ async function getToken(
 		return await secretsManager.getSessionToken(label);
 	}
 	return "";
+}
+
+async function listStoredDeployments(
+	secretsManager: SecretsManager,
+): Promise<void> {
+	const labels = secretsManager.getKnownLabels();
+	if (labels.length === 0) {
+		vscode.window.showInformationMessage("No deployments stored.");
+		return;
+	}
+
+	const selected = await vscode.window.showQuickPick(
+		labels.map((label) => ({ label, description: "Click to forget" })),
+		{ placeHolder: "Select a deployment to forget" },
+	);
+
+	if (selected) {
+		await secretsManager.clearAllAuthData(selected.label);
+		vscode.window.showInformationMessage(
+			`Cleared auth data for ${selected.label}`,
+		);
+	}
 }

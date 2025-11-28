@@ -97,6 +97,45 @@ describe("SecretsManager", () => {
 			await secretsManager.clearAllAuthData("example.com");
 			expect(secretsManager.getKnownLabels()).not.toContain("example.com");
 		});
+
+		it("should order labels by most recently accessed", async () => {
+			await secretsManager.setSessionAuth("first.com", {
+				url: "https://first.com",
+				token: "token1",
+			});
+			await secretsManager.setSessionAuth("second.com", {
+				url: "https://second.com",
+				token: "token2",
+			});
+			await secretsManager.setSessionAuth("first.com", {
+				url: "https://first.com",
+				token: "token1-updated",
+			});
+
+			expect(secretsManager.getKnownLabels()).toEqual([
+				"first.com",
+				"second.com",
+			]);
+		});
+
+		it("should prune old deployments when exceeding maxCount", async () => {
+			for (let i = 1; i <= 5; i++) {
+				await secretsManager.setSessionAuth(`host${i}.com`, {
+					url: `https://host${i}.com`,
+					token: `token${i}`,
+				});
+			}
+
+			await secretsManager.recordDeploymentAccess("new.com", 3);
+
+			expect(secretsManager.getKnownLabels()).toEqual([
+				"new.com",
+				"host5.com",
+				"host4.com",
+			]);
+			expect(await secretsManager.getSessionToken("host1.com")).toBeUndefined();
+			expect(await secretsManager.getSessionToken("host2.com")).toBeUndefined();
+		});
 	});
 
 	describe("current deployment", () => {
