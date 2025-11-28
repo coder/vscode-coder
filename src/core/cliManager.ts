@@ -721,8 +721,7 @@ export class CliManager {
 	): Promise<void> {
 		if (url) {
 			const urlPath = this.pathResolver.getUrlPath(label);
-			await fs.mkdir(path.dirname(urlPath), { recursive: true });
-			await fs.writeFile(urlPath, url);
+			await this.atomicWriteFile(urlPath, url);
 		}
 	}
 
@@ -739,30 +738,27 @@ export class CliManager {
 	) {
 		if (token !== null) {
 			const tokenPath = this.pathResolver.getSessionTokenPath(label);
-			await fs.mkdir(path.dirname(tokenPath), { recursive: true });
-			await fs.writeFile(tokenPath, token ?? "");
+			await this.atomicWriteFile(tokenPath, token ?? "");
 		}
 	}
 
 	/**
-	 * Read the CLI config for a deployment with the provided label.
-	 *
-	 * IF a config file does not exist, return an empty string.
-	 *
-	 * If the label is empty, read the old deployment-unaware config.
+	 * Atomically write content to a file by writing to a temporary file first,
+	 * then renaming it.
 	 */
-	public async readConfig(
-		label: string,
-	): Promise<{ url: string; token: string }> {
-		const urlPath = this.pathResolver.getUrlPath(label);
-		const tokenPath = this.pathResolver.getSessionTokenPath(label);
-		const [url, token] = await Promise.allSettled([
-			fs.readFile(urlPath, "utf8"),
-			fs.readFile(tokenPath, "utf8"),
-		]);
-		return {
-			url: url.status === "fulfilled" ? url.value.trim() : "",
-			token: token.status === "fulfilled" ? token.value.trim() : "",
-		};
+	private async atomicWriteFile(
+		filePath: string,
+		content: string,
+	): Promise<void> {
+		await fs.mkdir(path.dirname(filePath), { recursive: true });
+		const tempPath =
+			filePath + ".temp-" + Math.random().toString(36).substring(8);
+		try {
+			await fs.writeFile(tempPath, content);
+			await fs.rename(tempPath, filePath);
+		} catch (err) {
+			await fs.rm(tempPath, { force: true }).catch(() => {});
+			throw err;
+		}
 	}
 }
