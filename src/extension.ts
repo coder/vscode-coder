@@ -336,7 +336,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			registerAuthListener(deployment?.label);
 
 			// Update context
-			contextManager.set("coder.authenticated", deployment !== undefined);
+			contextManager.set("coder.authenticated", Boolean(deployment));
 
 			// Refresh workspaces
 			myWorkspacesProvider.fetchAndRefresh();

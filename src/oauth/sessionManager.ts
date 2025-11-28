@@ -132,7 +132,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 				stored: tokens.deployment_url,
 				current: this.deployment.url,
 			});
-			await this.clearOAuthState();
+			this.clearInMemoryTokens();
+			await this.secretsManager.clearOAuthData(this.deployment.label);
 			return;
 		}
 
@@ -144,19 +145,13 @@ export class OAuthSessionManager implements vscode.Disposable {
 					required_scopes: DEFAULT_OAUTH_SCOPES,
 				},
 			);
+			this.clearInMemoryTokens();
 			await this.secretsManager.clearOAuthTokens(this.deployment.label);
 			return;
 		}
 
 		this.storedTokens = tokens;
 		this.logger.info(`Loaded stored OAuth tokens for ${this.deployment.label}`);
-	}
-
-	private async clearOAuthState(): Promise<void> {
-		this.clearInMemoryTokens();
-		if (this.deployment) {
-			await this.secretsManager.clearOAuthData(this.deployment.label);
-		}
 	}
 
 	private clearInMemoryTokens(): void {
@@ -714,13 +709,15 @@ export class OAuthSessionManager implements vscode.Disposable {
 		// Revoke refresh token (which also invalidates access token per RFC 7009)
 		if (this.storedTokens?.refresh_token) {
 			try {
+				// TODO what if other windows are using this?
+				// We should only revoke if we are clearing the OAuth data
 				await this.revokeToken(this.storedTokens.refresh_token);
 			} catch (error) {
 				this.logger.warn("Token revocation failed during logout:", error);
 			}
 		}
 
-		await this.clearOAuthState();
+		this.clearInMemoryTokens();
 		this.deployment = undefined;
 
 		this.logger.info("OAuth logout complete");
