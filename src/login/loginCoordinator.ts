@@ -179,17 +179,28 @@ export class LoginCoordinator {
 		isAutoLogin: boolean,
 		oauthSessionManager: OAuthSessionManager,
 	): Promise<LoginResult> {
-		const token = await this.secretsManager.getSessionToken(deployment.label);
-		const client = CoderApi.create(deployment.url, token, this.logger);
 		const needsToken = needToken(vscode.workspace.getConfiguration());
-		if (!needsToken || token) {
-			try {
-				const user = await client.getAuthenticatedUser();
-				// For non-token auth, we write a blank token since the `vscodessh`
-				// command currently always requires a token file.
-				// For token auth, we have valid access so we can just return the user here
-				return { success: true, token: needsToken && token ? token : "", user };
-			} catch (err) {
+		const client = CoderApi.create(deployment.url, "", this.logger);
+
+		let storedToken: string | undefined;
+		if (needsToken) {
+			storedToken = await this.secretsManager.getSessionToken(deployment.label);
+			if (storedToken) {
+				client.setSessionToken(storedToken);
+			}
+		}
+
+		// Attempt authentication with current credentials (token or mTLS)
+		try {
+			const user = await client.getAuthenticatedUser();
+			// Return the token that was used (empty string for mTLS since
+			// the `vscodessh` command currently always requires a token file)
+			return { success: true, token: storedToken ?? "", user };
+		} catch (err) {
+			if (needsToken) {
+				// For token auth: silently continue to prompt for new credentials
+			} else {
+				// For mTLS: show error and abort (no credentials to prompt for)
 				const message = getErrorMessage(err, "no response from the server");
 				if (isAutoLogin) {
 					this.logger.warn("Failed to log in to Coder server:", message);
@@ -203,7 +214,6 @@ export class LoginCoordinator {
 						},
 					);
 				}
-				// Invalid certificate, most likely.
 				return { success: false };
 			}
 		}
@@ -212,12 +222,8 @@ export class LoginCoordinator {
 		switch (authMethod) {
 			case "oauth":
 				return this.loginWithOAuth(client, oauthSessionManager, deployment);
-			case "legacy": {
-				const initialToken =
-					token ||
-					(await this.secretsManager.getSessionToken(deployment.label));
-				return this.loginWithToken(client, initialToken);
-			}
+			case "legacy":
+				return this.loginWithToken(client);
 			case undefined:
 				return { success: false }; // User aborted
 		}
@@ -226,10 +232,7 @@ export class LoginCoordinator {
 	/**
 	 * Session token authentication flow.
 	 */
-	private async loginWithToken(
-		client: CoderApi,
-		initialToken: string | undefined,
-	): Promise<LoginResult> {
+	private async loginWithToken(client: CoderApi): Promise<LoginResult> {
 		const url = client.getAxiosInstance().defaults.baseURL;
 		if (!url) {
 			throw new Error("No base URL set on REST client");
@@ -246,7 +249,6 @@ export class LoginCoordinator {
 			title: "Coder API Key",
 			password: true,
 			placeHolder: "Paste your API key.",
-			value: initialToken,
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
 				if (!value) {
@@ -315,10 +317,15 @@ export class LoginCoordinator {
 				user,
 			};
 		} catch (error) {
-			this.logger.error("OAuth authentication failed:", error);
-			vscode.window.showErrorMessage(
-				`OAuth authentication failed: ${getErrorMessage(error, "Unknown error")}`,
-			);
+			const title = "OAuth authentication failed";
+			this.logger.error(title, error);
+			if (error instanceof CertificateError) {
+				error.showNotification(title);
+			} else {
+				vscode.window.showErrorMessage(
+					`${title}: ${getErrorMessage(error, "Unknown error")}`,
+				);
+			}
 			return { success: false };
 		}
 	}
