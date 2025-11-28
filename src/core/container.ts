@@ -41,7 +41,7 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 			this.pathResolver,
 		);
-		this.contextManager = new ContextManager();
+		this.contextManager = new ContextManager(context);
 		this.loginCoordinator = new LoginCoordinator(
 			this.secretsManager,
 			this.mementoManager,
