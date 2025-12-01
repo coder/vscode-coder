@@ -28,56 +28,13 @@ export interface SshProcessMonitorOptions {
 	networkInfoPath: string;
 	proxyLogDir?: string;
 	logger: Logger;
+	// Poll interval for SSH process and file discovery
 	pollInterval?: number;
+	// Poll interval for network info updates
 	networkPollInterval?: number;
 	// For port-based SSH process discovery
 	codeLogDir: string;
 	remoteSshExtensionId: string;
-}
-
-/**
- * Finds the Remote SSH extension's log file path.
- */
-async function findRemoteSshLogPath(
-	codeLogDir: string,
-	extensionId: string,
-): Promise<string | undefined> {
-	const logsParentDir = path.dirname(codeLogDir);
-
-	// Try extension-specific folder (for VS Code clones like Cursor, Windsurf)
-	try {
-		const extensionLogDir = path.join(logsParentDir, extensionId);
-		// Node returns these directories sorted already!
-		const files = await fs.readdir(extensionLogDir);
-		files.reverse();
-
-		const remoteSsh = files.find((file) => file.includes("Remote - SSH"));
-		if (remoteSsh) {
-			return path.join(extensionLogDir, remoteSsh);
-		}
-	} catch {
-		// Extension-specific folder doesn't exist, try fallback
-	}
-
-	try {
-		// Node returns these directories sorted already!
-		const dirs = await fs.readdir(logsParentDir);
-		dirs.reverse();
-		const outputDirs = dirs.filter((d) => d.startsWith("output_logging_"));
-
-		if (outputDirs.length > 0) {
-			const outputPath = path.join(logsParentDir, outputDirs[0]);
-			const files = await fs.readdir(outputPath);
-			const remoteSSHLog = files.find((f) => f.includes("Remote - SSH"));
-			if (remoteSSHLog) {
-				return path.join(outputPath, remoteSSHLog);
-			}
-		}
-	} catch {
-		// output_logging folder doesn't exist
-	}
-
-	return undefined;
 }
 
 /**
@@ -116,6 +73,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 			...options,
 			proxyLogDir: options.proxyLogDir,
 			pollInterval: options.pollInterval ?? 1000,
+			// Matches the SSH update interval
 			networkPollInterval: options.networkPollInterval ?? 3000,
 		};
 		this.statusBarItem = vscode.window.createStatusBarItem(
@@ -128,7 +86,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 	 * Creates and starts an SSH process monitor.
 	 * Begins searching for the SSH process in the background.
 	 */
-	static start(options: SshProcessMonitorOptions): SshProcessMonitor {
+	public static start(options: SshProcessMonitorOptions): SshProcessMonitor {
 		const monitor = new SshProcessMonitor(options);
 		monitor.searchForProcess().catch((err) => {
 			options.logger.error("Error in SSH process monitor", err);
@@ -187,16 +145,14 @@ export class SshProcessMonitor implements vscode.Disposable {
 		while (!this.disposed) {
 			attempt++;
 
-			if (attempt % 10 === 0) {
+			if (attempt === 1 || attempt % 10 === 0) {
 				logger.debug(
 					`SSH process search attempt ${attempt} for host: ${sshHost}`,
 				);
 			}
 
-			// Try port-based discovery first (unique per VS Code window)
 			const pidByPort = await this.findSshProcessByPort();
 			if (pidByPort !== undefined) {
-				logger.info(`Found SSH process by port (PID: ${pidByPort})`);
 				this.setCurrentPid(pidByPort);
 				this.startMonitoring();
 				return;
@@ -250,15 +206,15 @@ export class SshProcessMonitor implements vscode.Disposable {
 		const previousPid = this.currentPid;
 		this.currentPid = pid;
 
-		if (previousPid !== undefined && previousPid !== pid) {
+		if (previousPid === undefined) {
+			this.options.logger.info(`SSH connection established (PID: ${pid})`);
+			this._onPidChange.fire(pid);
+		} else if (previousPid !== pid) {
 			this.options.logger.info(
 				`SSH process changed from ${previousPid} to ${pid}`,
 			);
 			this.logFilePath = undefined;
 			this._onLogFilePathChange.fire(undefined);
-			this._onPidChange.fire(pid);
-		} else if (previousPid === undefined) {
-			this.options.logger.info(`SSH connection established (PID: ${pid})`);
 			this._onPidChange.fire(pid);
 		}
 	}
@@ -349,7 +305,8 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 				const content = await fs.readFile(networkInfoFile, "utf8");
 				const network = JSON.parse(content) as NetworkInfo;
-				this.updateStatusBar(network);
+				const isStale = ageMs > this.options.networkPollInterval * 2;
+				this.updateStatusBar(network, isStale);
 			} catch (error) {
 				logger.debug(
 					`Failed to read network info: ${(error as Error).message}`,
@@ -363,7 +320,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 	/**
 	 * Updates the status bar with network information.
 	 */
-	private updateStatusBar(network: NetworkInfo): void {
+	private updateStatusBar(network: NetworkInfo, isStale: boolean): void {
 		let statusText = "$(globe) ";
 
 		// Coder Connect doesn't populate any other stats
@@ -409,8 +366,56 @@ export class SshProcessMonitor implements vscode.Disposable {
 		}
 
 		this.statusBarItem.tooltip = tooltip;
-		statusText += "(" + network.latency.toFixed(2) + "ms)";
+		const latencyText = isStale
+			? `(~${network.latency.toFixed(2)}ms)`
+			: `(${network.latency.toFixed(2)}ms)`;
+		statusText += latencyText;
 		this.statusBarItem.text = statusText;
 		this.statusBarItem.show();
 	}
+}
+
+/**
+ * Finds the Remote SSH extension's log file path.
+ */
+async function findRemoteSshLogPath(
+	codeLogDir: string,
+	extensionId: string,
+): Promise<string | undefined> {
+	const logsParentDir = path.dirname(codeLogDir);
+
+	// Try extension-specific folder (for VS Code clones like Cursor, Windsurf)
+	try {
+		const extensionLogDir = path.join(logsParentDir, extensionId);
+		// Node returns these directories sorted already!
+		const files = await fs.readdir(extensionLogDir);
+		files.reverse();
+
+		const remoteSsh = files.find((file) => file.includes("Remote - SSH"));
+		if (remoteSsh) {
+			return path.join(extensionLogDir, remoteSsh);
+		}
+	} catch {
+		// Extension-specific folder doesn't exist, try fallback
+	}
+
+	try {
+		// Node returns these directories sorted already!
+		const dirs = await fs.readdir(logsParentDir);
+		dirs.reverse();
+		const outputDirs = dirs.filter((d) => d.startsWith("output_logging_"));
+
+		if (outputDirs.length > 0) {
+			const outputPath = path.join(logsParentDir, outputDirs[0]);
+			const files = await fs.readdir(outputPath);
+			const remoteSSHLog = files.find((f) => f.includes("Remote - SSH"));
+			if (remoteSSHLog) {
+				return path.join(outputPath, remoteSSHLog);
+			}
+		}
+	} catch {
+		// output_logging folder doesn't exist
+	}
+
+	return undefined;
 }
