@@ -29,7 +29,7 @@ export class MockConfigurationProvider {
 	get<T>(key: string, defaultValue: T): T;
 	get<T>(key: string, defaultValue?: T): T | undefined {
 		const value = this.config.get(key);
-		return value !== undefined ? (value as T) : defaultValue;
+		return value === undefined ? defaultValue : (value as T);
 	}
 
 	/**
@@ -53,7 +53,7 @@ export class MockConfigurationProvider {
 				return {
 					get: vi.fn((key: string, defaultValue?: unknown) => {
 						const value = snapshot.get(getFullKey(key));
-						return value !== undefined ? value : defaultValue;
+						return value === undefined ? defaultValue : value;
 					}),
 					has: vi.fn((key: string) => {
 						return snapshot.has(getFullKey(key));
@@ -141,7 +141,7 @@ export class MockProgressReporter {
  * Use this to control user responses in tests.
  */
 export class MockUserInteraction {
-	private responses = new Map<string, string | undefined>();
+	private readonly responses = new Map<string, string | undefined>();
 	private externalUrls: string[] = [];
 
 	constructor() {
@@ -211,7 +211,7 @@ export class MockUserInteraction {
 
 // Simple in-memory implementation of Memento
 export class InMemoryMemento implements vscode.Memento {
-	private storage = new Map<string, unknown>();
+	private readonly storage = new Map<string, unknown>();
 
 	get<T>(key: string): T | undefined;
 	get<T>(key: string, defaultValue: T): T;
@@ -235,9 +235,11 @@ export class InMemoryMemento implements vscode.Memento {
 
 // Simple in-memory implementation of SecretStorage
 export class InMemorySecretStorage implements vscode.SecretStorage {
-	private secrets = new Map<string, string>();
+	private readonly secrets = new Map<string, string>();
 	private isCorrupted = false;
-	private listeners: Array<(e: vscode.SecretStorageChangeEvent) => void> = [];
+	private readonly listeners: Array<
+		(e: vscode.SecretStorageChangeEvent) => void
+	> = [];
 
 	onDidChange: vscode.Event<vscode.SecretStorageChangeEvent> = (listener) => {
 		this.listeners.push(listener);
@@ -349,4 +351,51 @@ export function createMockStream(
 		}),
 		destroy: vi.fn(),
 	} as unknown as IncomingMessage;
+}
+
+/**
+ * Mock status bar that integrates with vscode.window.createStatusBarItem.
+ * Use this to inspect status bar state in tests.
+ */
+export class MockStatusBar {
+	text = "";
+	tooltip: string | vscode.MarkdownString = "";
+	backgroundColor: vscode.ThemeColor | undefined;
+	color: string | vscode.ThemeColor | undefined;
+	command: string | vscode.Command | undefined;
+	accessibilityInformation: vscode.AccessibilityInformation | undefined;
+	name: string | undefined;
+	priority: number | undefined;
+	alignment: vscode.StatusBarAlignment = vscode.StatusBarAlignment.Left;
+
+	readonly show = vi.fn();
+	readonly hide = vi.fn();
+	readonly dispose = vi.fn();
+
+	constructor() {
+		this.setupVSCodeMock();
+	}
+
+	/**
+	 * Reset all status bar state
+	 */
+	reset(): void {
+		this.text = "";
+		this.tooltip = "";
+		this.backgroundColor = undefined;
+		this.color = undefined;
+		this.command = undefined;
+		this.show.mockClear();
+		this.hide.mockClear();
+		this.dispose.mockClear();
+	}
+
+	/**
+	 * Setup the vscode.window.createStatusBarItem mock
+	 */
+	private setupVSCodeMock(): void {
+		vi.mocked(vscode.window.createStatusBarItem).mockReturnValue(
+			this as unknown as vscode.StatusBarItem,
+		);
+	}
 }

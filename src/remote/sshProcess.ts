@@ -21,15 +21,6 @@ export interface NetworkInfo {
 }
 
 /**
- * Process information from find-process.
- */
-interface ProcessInfo {
-	pid: number;
-	name: string;
-	cmd: string;
-}
-
-/**
  * Options for creating an SshProcessMonitor.
  */
 export interface SshProcessMonitorOptions {
@@ -42,27 +33,6 @@ export interface SshProcessMonitorOptions {
 	// For port-based SSH process discovery
 	codeLogDir: string;
 	remoteSshExtensionId: string;
-}
-
-/**
- * Checks if a process is an actual SSH process (not a shell wrapper).
- * Filters out processes like "sh -c ... | ssh ..." where ssh appears mid-command.
- */
-function isActualSshProcess(p: ProcessInfo): boolean {
-	// Process name is exactly "ssh" or "ssh.exe"
-	if (p.name === "ssh" || p.name === "ssh.exe") {
-		return true;
-	}
-	// Command starts with ssh binary (not piped through shell)
-	if (/^(ssh|ssh\.exe)\s/i.test(p.cmd)) {
-		return true;
-	}
-	// Command starts with full path to ssh (Unix or Windows)
-	// e.g., "/usr/bin/ssh " or "C:\Program Files\OpenSSH\ssh.exe "
-	if (/^[\w/\\:.-]+([/\\])ssh(\.exe)?\s/i.test(p.cmd)) {
-		return true;
-	}
-	return false;
 }
 
 /**
@@ -139,6 +109,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 	private currentPid: number | undefined;
 	private logFilePath: string | undefined;
 	private pendingTimeout: NodeJS.Timeout | undefined;
+	private lastStaleSearchTime = 0;
 
 	private constructor(options: SshProcessMonitorOptions) {
 		this.options = {
@@ -216,7 +187,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 		while (!this.disposed) {
 			attempt++;
 
-			if (attempt % 5 === 0) {
+			if (attempt % 10 === 0) {
 				logger.debug(
 					`SSH process search attempt ${attempt} for host: ${sshHost}`,
 				);
@@ -230,15 +201,6 @@ export class SshProcessMonitor implements vscode.Disposable {
 				this.startMonitoring();
 				return;
 			}
-
-			// Fall back to hostname-based search
-			// const pidByHost = await this.findSshProcessByHost();
-			// if (pidByHost !== undefined) {
-			// 	logger.info(`Found SSH process by hostname (PID: ${pidByHost})`);
-			// 	this.setCurrentPid(pidByHost);
-			// 	this.startMonitoring();
-			// 	return;
-			// }
 
 			await this.delay(pollInterval);
 		}
@@ -262,6 +224,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 			const logContent = await fs.readFile(logPath, "utf8");
 			this.options.logger.debug(`Read Remote SSH log file: ${logPath}`);
+
 			const port = findPort(logContent);
 			if (!port) {
 				return undefined;
@@ -276,45 +239,6 @@ export class SshProcessMonitor implements vscode.Disposable {
 			return processes[0].pid;
 		} catch (error) {
 			logger.debug(`Port-based SSH process search failed: ${error}`);
-			return undefined;
-		}
-	}
-
-	/**
-	 * Attempts to find an SSH process by hostname.
-	 * Less accurate than port-based as multiple windows may connect to same host.
-	 * Returns the PID if found, undefined otherwise.
-	 */
-	private async findSshProcessByHost(): Promise<number | undefined> {
-		const { sshHost, logger } = this.options;
-
-		try {
-			// Find all processes with "ssh" in name
-			const processes = await find("name", "ssh");
-			const matches = processes.filter(
-				(p) => p.cmd.includes(sshHost) && isActualSshProcess(p),
-			);
-
-			if (matches.length === 0) {
-				return undefined;
-			}
-
-			const preferred = matches.find(
-				(p) => p.name === "ssh" || p.name === "ssh.exe",
-			);
-			if (preferred) {
-				return preferred.pid;
-			}
-
-			if (matches.length > 1) {
-				logger.warn(
-					`Found ${matches.length} SSH processes for host, using first`,
-				);
-			}
-
-			return matches[0].pid;
-		} catch (error) {
-			logger.debug(`Error searching for SSH process: ${error}`);
 			return undefined;
 		}
 	}
@@ -406,15 +330,20 @@ export class SshProcessMonitor implements vscode.Disposable {
 				const ageMs = Date.now() - stats.mtime.getTime();
 
 				if (ageMs > staleThreshold) {
-					logger.info(
+					// Prevent tight loop: if we just searched due to stale, wait before searching again
+					const timeSinceLastSearch = Date.now() - this.lastStaleSearchTime;
+					if (timeSinceLastSearch < staleThreshold) {
+						await this.delay(staleThreshold - timeSinceLastSearch);
+						continue;
+					}
+
+					logger.debug(
 						`Network info stale (${Math.round(ageMs / 1000)}s old), searching for new SSH process`,
 					);
-					this.currentPid = undefined;
-					this.statusBarItem.hide();
-					this._onPidChange.fire(undefined);
-					this.searchForProcess().catch((err) => {
-						logger.error("Error restarting SSH process search", err);
-					});
+
+					// searchForProcess will update PID if a different process is found
+					this.lastStaleSearchTime = Date.now();
+					await this.searchForProcess();
 					return;
 				}
 
