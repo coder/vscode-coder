@@ -1,5 +1,5 @@
-import * as os from "os";
-import url from "url";
+import * as os from "node:os";
+import url from "node:url";
 
 export interface AuthorityParts {
 	agent: string | undefined;
@@ -13,27 +13,29 @@ export interface AuthorityParts {
 // they should be handled by this extension.
 export const AuthorityPrefix = "coder-vscode";
 
+// Regex patterns to find the SSH port from Remote SSH extension logs.
 // `ms-vscode-remote.remote-ssh`: `-> socksPort <port> ->`
-// `codeium.windsurf-remote-openssh`, `jeanp413.open-remote-ssh`: `=> <port>(socks) =>`
+// `codeium.windsurf-remote-openssh`, `jeanp413.open-remote-ssh`, `google.antigravity-remote-openssh`: `=> <port>(socks) =>`
 // Windows `ms-vscode-remote.remote-ssh`: `between local port <port>`
+// `anysphere.remote-ssh`: `Socks port: <port>`
 export const RemoteSSHLogPortRegex =
-	/(?:-> socksPort (\d+) ->|=> (\d+)\(socks\) =>|between local port (\d+))/;
+	/(?:-> socksPort (\d+) ->|=> (\d+)\(socks\) =>|between local port (\d+)|Socks port: (\d+))/g;
 
 /**
- * Given the contents of a Remote - SSH log file, find a port number used by the
- * SSH process. This is typically the socks port, but the local port works too.
+ * Given the contents of a Remote - SSH log file, find the most recent port
+ * number used by the SSH process. This is typically the socks port, but the
+ * local port works too.
  *
  * Returns null if no port is found.
  */
 export function findPort(text: string): number | null {
-	const matches = text.match(RemoteSSHLogPortRegex);
-	if (!matches) {
+	const allMatches = [...text.matchAll(RemoteSSHLogPortRegex)];
+	if (allMatches.length === 0) {
 		return null;
 	}
-	if (matches.length < 2) {
-		return null;
-	}
-	const portStr = matches[1] || matches[2] || matches[3];
+
+	const lastMatch = allMatches.at(-1)!;
+	const portStr = lastMatch[1] || lastMatch[2] || lastMatch[3] || lastMatch[4];
 	if (!portStr) {
 		return null;
 	}
