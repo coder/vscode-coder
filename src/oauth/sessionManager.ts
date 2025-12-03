@@ -34,7 +34,7 @@ const RESPONSE_TYPE = "code" as const;
 const PKCE_CHALLENGE_METHOD = "S256" as const;
 
 /**
- * Token refresh threshold: refresh when token expires in less than this time
+ * Token refresh threshold: refresh when token expires in less than this time.
  */
 const TOKEN_REFRESH_THRESHOLD_MS = 10 * 60 * 1000;
 
@@ -44,9 +44,14 @@ const TOKEN_REFRESH_THRESHOLD_MS = 10 * 60 * 1000;
 const ACCESS_TOKEN_DEFAULT_EXPIRY_MS = 60 * 60 * 1000;
 
 /**
- * Minimum time between refresh attempts to prevent thrashing
+ * Minimum time between refresh attempts to prevent thrashing.
  */
 const REFRESH_THROTTLE_MS = 30 * 1000;
+
+/**
+ * Background token refresh check interval.
+ */
+const BACKGROUND_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
  * Minimal scopes required by the VS Code extension.
@@ -69,6 +74,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private storedTokens: StoredOAuthTokens | undefined;
 	private refreshPromise: Promise<TokenResponse> | null = null;
 	private lastRefreshAttempt = 0;
+	private refreshTimer: NodeJS.Timeout | undefined;
 
 	private pendingAuthReject: ((reason: Error) => void) | undefined;
 
@@ -88,6 +94,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 			extensionId,
 		);
 		await manager.loadTokens();
+		manager.scheduleBackgroundRefresh();
 		return manager;
 	}
 
@@ -158,6 +165,25 @@ export class OAuthSessionManager implements vscode.Disposable {
 		this.storedTokens = undefined;
 		this.refreshPromise = null;
 		this.lastRefreshAttempt = 0;
+	}
+
+	/**
+	 * Schedule the next background token refresh check.
+	 * Only schedules the next check after the current one completes.
+	 */
+	private scheduleBackgroundRefresh(): void {
+		if (this.refreshTimer) {
+			clearTimeout(this.refreshTimer);
+		}
+
+		this.refreshTimer = setTimeout(async () => {
+			try {
+				await this.refreshIfAlmostExpired();
+			} catch (error) {
+				this.logger.warn("Background token refresh failed:", error);
+			}
+			this.scheduleBackgroundRefresh();
+		}, BACKGROUND_REFRESH_INTERVAL_MS);
 	}
 
 	/**
@@ -636,13 +662,23 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
+	 * Refreshes the token if it is approaching expiry.
+	 */
+	public async refreshIfAlmostExpired(): Promise<void> {
+		if (this.shouldRefreshToken()) {
+			this.logger.debug("Token approaching expiry, triggering refresh");
+			await this.refreshToken();
+		}
+	}
+
+	/**
 	 * Check if token should be refreshed.
 	 * Returns true if:
 	 * 1. Token expires in less than TOKEN_REFRESH_THRESHOLD_MS
 	 * 2. Last refresh attempt was more than REFRESH_THROTTLE_MS ago
 	 * 3. No refresh is currently in progress
 	 */
-	public shouldRefreshToken(): boolean {
+	private shouldRefreshToken(): boolean {
 		if (
 			!this.isLoggedInWithOAuth() ||
 			!this.storedTokens?.refresh_token ||
@@ -757,6 +793,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Clears all in-memory state.
 	 */
 	public dispose(): void {
+		if (this.refreshTimer) {
+			clearTimeout(this.refreshTimer);
+			this.refreshTimer = undefined;
+		}
 		if (this.pendingAuthReject) {
 			this.pendingAuthReject(new Error("OAuth session manager disposed"));
 		}

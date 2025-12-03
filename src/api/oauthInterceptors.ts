@@ -24,16 +24,10 @@ export function attachOAuthInterceptors(
 	client.getAxiosInstance().interceptors.response.use(
 		// Success response interceptor: proactive token refresh
 		(response) => {
-			if (oauthSessionManager.shouldRefreshToken()) {
-				logger.debug(
-					"Token approaching expiry, triggering proactive refresh in background",
-				);
-
-				// Fire-and-forget: don't await, don't block response
-				oauthSessionManager.refreshToken().catch((error) => {
-					logger.warn("Background token refresh failed:", error);
-				});
-			}
+			// Fire-and-forget: don't await, don't block response
+			oauthSessionManager.refreshIfAlmostExpired().catch((error) => {
+				logger.warn("Proactive background token refresh failed:", error);
+			});
 
 			return response;
 		},

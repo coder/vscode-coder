@@ -181,7 +181,7 @@ export class Remote {
 			disposables.push(workspaceClient);
 			attachOAuthInterceptors(workspaceClient, this.logger, remoteOAuthManager);
 			// Store for use in commands.
-			this.commands.workspaceRestClient = workspaceClient;
+			this.commands.remoteWorkspaceClient = workspaceClient;
 
 			// Listen for token changes for this deployment
 			disposables.push(

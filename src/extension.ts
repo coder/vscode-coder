@@ -151,6 +151,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				client.setCredentials(auth?.url, auth?.token);
 
 				// Update authentication context for current deployment
+				// TODO(ehab) this might never even happen :thinking:
 				contextManager.set("coder.authenticated", auth !== undefined);
 			},
 		);
@@ -159,6 +160,55 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Initialize auth listener for current deployment
 	registerAuthListener(deployment?.label);
 	ctx.subscriptions.push({ dispose: () => authChangeDisposable?.dispose() });
+
+	const changeDeployment = async (
+		deployment: Deployment | null,
+		sessionToken?: string,
+	) => {
+		// Update client
+		if (deployment) {
+			const token =
+				sessionToken ||
+				(await secretsManager.getSessionToken(deployment.label));
+			client.setCredentials(deployment.url, token);
+			await oauthSessionManager.setDeployment(deployment);
+		} else {
+			client.setCredentials(undefined, undefined);
+			oauthSessionManager.clearDeployment();
+		}
+		registerAuthListener(deployment?.label);
+
+		// Update context
+		contextManager.set("coder.authenticated", Boolean(deployment));
+
+		// Refresh workspaces
+		myWorkspacesProvider.fetchAndRefresh();
+		allWorkspacesProvider.fetchAndRefresh();
+	};
+
+	const changeDeploymentAndPersist = async (
+		deployment: Deployment | null,
+		sessionToken?: string,
+	) => {
+		await changeDeployment(deployment, sessionToken);
+		// Persist and sync deployment across windows
+		await secretsManager.setCurrentDeployment(deployment ?? undefined);
+		await mementoManager.addToUrlHistory(deployment?.url ?? "");
+	};
+
+	// Listen for deployment changes from other windows (cross-window sync)
+	ctx.subscriptions.push(
+		secretsManager.onDidChangeCurrentDeployment(async ({ deployment }) => {
+			const isLoggedIn = contextManager.get("coder.authenticated");
+			if (isLoggedIn) {
+				// We keep whatever deployment we have if we're logged in
+				return;
+			}
+
+			output.info("Deployment changed from another window");
+			return changeDeployment(deployment);
+		}),
+	);
 
 	// Handle vscode:// URIs.
 	const uriHandler = vscode.window.registerUriHandler({
@@ -189,7 +239,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					throw new Error("workspace must be specified as a query parameter");
 				}
 
-				await setupDeploymentFromUri(params, client, serviceContainer);
+				await setupDeploymentFromUri(
+					params,
+					serviceContainer,
+					changeDeploymentAndPersist,
+				);
 
 				vscode.commands.executeCommand(
 					"coder.open",
@@ -238,7 +292,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					);
 				}
 
-				await setupDeploymentFromUri(params, client, serviceContainer);
+				await setupDeploymentFromUri(
+					params,
+					serviceContainer,
+					changeDeploymentAndPersist,
+				);
 
 				vscode.commands.executeCommand(
 					"coder.openDevContainer",
@@ -319,31 +377,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	const remote = new Remote(serviceContainer, commands, ctx);
 
-	// Listen for deployment changes from other windows (cross-window sync)
-	ctx.subscriptions.push(
-		secretsManager.onDidChangeCurrentDeployment(async ({ deployment }) => {
-			output.info("Deployment changed from another window");
-
-			// Update client
-			if (deployment) {
-				const token = await secretsManager.getSessionToken(deployment.label);
-				client.setCredentials(deployment.url, token);
-				await oauthSessionManager.setDeployment(deployment);
-			} else {
-				client.setCredentials(undefined, undefined);
-				oauthSessionManager.clearDeployment();
-			}
-			registerAuthListener(deployment?.label);
-
-			// Update context
-			contextManager.set("coder.authenticated", Boolean(deployment));
-
-			// Refresh workspaces
-			myWorkspacesProvider.fetchAndRefresh();
-			allWorkspacesProvider.fetchAndRefresh();
-		}),
-	);
-
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
 	// resolved by the remote SSH extension.
@@ -363,15 +396,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			if (details) {
 				ctx.subscriptions.push(details);
 
-				// Set client host/token immediately for subsequent operations.
-				client.setCredentials(details.url, details.token);
-
-				// Persist and sync deployment across windows
-				await secretsManager.setCurrentDeployment({
-					url: details.url,
-					label: details.label,
-				});
-				await mementoManager.addToUrlHistory(details.url);
+				await changeDeploymentAndPersist(
+					{ label: details.label, url: details.url },
+					details.token,
+				);
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
@@ -494,15 +522,17 @@ async function showTreeViewSearch(id: string): Promise<void> {
  * Sets up deployment from URI parameters. Handles URL prompting, client setup,
  * and token storage. Throws if user cancels URL input.
  *
- * Sets client host/token immediately for subsequent operations.
- * Other updates (auth listener, OAuth manager, context, workspaces) are handled
- * asynchronously by the onDidChangeCurrentDeployment listener.
+ * Updates the client host/token, auth listener, OAuth manager, context, etc.
+ * through the `changeDeploymentAndPersist` callback.
  */
 async function setupDeploymentFromUri(
 	params: URLSearchParams,
-	client: CoderApi,
 	serviceContainer: ServiceContainer,
-): Promise<Deployment> {
+	changeDeploymentAndPersist: (
+		deployment: Deployment | null,
+		sessionToken?: string,
+	) => Promise<void>,
+): Promise<void> {
 	const secretsManager = serviceContainer.getSecretsManager();
 	const mementoManager = serviceContainer.getMementoManager();
 	const currentDeployment = await secretsManager.getCurrentDeployment();
@@ -529,16 +559,11 @@ async function setupDeploymentFromUri(
 	// command currently always requires a token file. However, if there is
 	// a query parameter for non-token auth go ahead and use it anyway;
 	const token = await getToken(params, label, secretsManager);
-	client.setCredentials(url, token);
 	if (token) {
 		await secretsManager.setSessionAuth(label, { url, token });
 	}
 
-	// Persist and sync deployment across windows
-	await secretsManager.setCurrentDeployment({ url, label });
-	await mementoManager.addToUrlHistory(url);
-
-	return { url, label };
+	await changeDeploymentAndPersist({ label, url }, token);
 }
 
 async function getToken(
