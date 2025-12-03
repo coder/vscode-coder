@@ -9,7 +9,6 @@ import { type CoderApi } from "./api/coderApi";
 import { type CliManager } from "./core/cliManager";
 import { type ServiceContainer } from "./core/container";
 import { type ContextManager } from "./core/contextManager";
-import { type Deployment } from "./core/deployment";
 import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
 import { type SecretsManager } from "./core/secretsManager";
@@ -45,11 +44,11 @@ export class Commands {
 	// if you use multiple deployments).
 	public workspace?: Workspace;
 	public workspaceLogPath?: string;
-	public workspaceRestClient?: CoderApi;
+	public remoteWorkspaceClient?: CoderApi;
 
 	public constructor(
 		serviceContainer: ServiceContainer,
-		private readonly restClient: CoderApi,
+		private readonly extensionClient: CoderApi,
 		private readonly oauthSessionManager: OAuthSessionManager,
 	) {
 		this.vscodeProposed = serviceContainer.getVsCodeProposed();
@@ -65,12 +64,12 @@ export class Commands {
 	/**
 	 * Get the current deployment, throwing if not logged in.
 	 */
-	private async requireDeployment(): Promise<Deployment> {
-		const deployment = await this.secretsManager.getCurrentDeployment();
-		if (!deployment) {
+	private requireExtensionBaseUrl(): string {
+		const url = this.extensionClient.getAxiosInstance().defaults.baseURL;
+		if (!url) {
 			throw new Error("You are not logged in");
 		}
-		return deployment;
+		return url;
 	}
 
 	/**
@@ -117,9 +116,9 @@ export class Commands {
 
 		// Set client immediately so subsequent operations in this function have the correct host/token.
 		// The cross-window listener will also update the client, but that's async.
-		this.restClient.setCredentials(url, result.token);
+		this.extensionClient.setCredentials(url, result.token);
 
-		// Set as current deployment (triggers cross-window sync).
+		// Set as current deployment
 		await this.secretsManager.setCurrentDeployment({ url, label });
 
 		// Update contexts
@@ -173,14 +172,12 @@ export class Commands {
 	 * Log out from the currently logged-in deployment.
 	 */
 	public async logout(): Promise<void> {
-		const deployment = await this.requireDeployment();
-		await this.forceLogout(deployment.label);
-	}
-
-	public async forceLogout(label: string): Promise<void> {
+		const baseUrl = this.requireExtensionBaseUrl();
 		if (!this.contextManager.get("coder.authenticated")) {
 			return;
 		}
+
+		const label = toSafeHost(baseUrl);
 		this.logger.info(`Logging out of deployment: ${label}`);
 
 		// Fire and forget OAuth logout
@@ -190,7 +187,7 @@ export class Commands {
 
 		// Clear from the REST client.  An empty url will indicate to other parts of
 		// the code that we are logged out.
-		this.restClient.setCredentials(undefined, undefined);
+		this.extensionClient.setCredentials(undefined, undefined);
 
 		// Clear current deployment (triggers cross-window sync)
 		await this.secretsManager.setCurrentDeployment(undefined);
@@ -211,8 +208,8 @@ export class Commands {
 	 * Must only be called if currently logged in.
 	 */
 	public async createWorkspace(): Promise<void> {
-		const deployment = await this.requireDeployment();
-		const uri = deployment.url + "/templates";
+		const baseUrl = this.requireExtensionBaseUrl();
+		const uri = baseUrl + "/templates";
 		await vscode.commands.executeCommand("vscode.open", uri);
 	}
 
@@ -226,13 +223,13 @@ export class Commands {
 	 */
 	public async navigateToWorkspace(item: OpenableTreeItem) {
 		if (item) {
-			const deployment = await this.requireDeployment();
+			const baseUrl = this.requireExtensionBaseUrl();
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			const uri = deployment.url + `/@${workspaceId}`;
+			const uri = baseUrl + `/@${workspaceId}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
-		} else if (this.workspace && this.workspaceRestClient) {
+		} else if (this.workspace && this.remoteWorkspaceClient) {
 			const baseUrl =
-				this.workspaceRestClient.getAxiosInstance().defaults.baseURL;
+				this.remoteWorkspaceClient.getAxiosInstance().defaults.baseURL;
 			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
@@ -250,13 +247,13 @@ export class Commands {
 	 */
 	public async navigateToWorkspaceSettings(item: OpenableTreeItem) {
 		if (item) {
-			const deployment = await this.requireDeployment();
+			const baseUrl = this.requireExtensionBaseUrl();
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			const uri = deployment.url + `/@${workspaceId}/settings`;
+			const uri = baseUrl + `/@${workspaceId}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
-		} else if (this.workspace && this.workspaceRestClient) {
+		} else if (this.workspace && this.remoteWorkspaceClient) {
 			const baseUrl =
-				this.workspaceRestClient.getAxiosInstance().defaults.baseURL;
+				this.remoteWorkspaceClient.getAxiosInstance().defaults.baseURL;
 			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
@@ -274,7 +271,7 @@ export class Commands {
 	 */
 	public async openFromSidebar(item: OpenableTreeItem) {
 		if (item) {
-			const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL;
+			const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
 			if (!baseUrl) {
 				throw new Error("You are not logged in");
 			}
@@ -329,15 +326,14 @@ export class Commands {
 					const terminal = vscode.window.createTerminal(app.name);
 
 					// If workspace_name is provided, run coder ssh before the command
-					const deployment = await this.requireDeployment();
+					const baseUrl = this.requireExtensionBaseUrl();
+					const label = toSafeHost(baseUrl);
 					const binary = await this.cliManager.fetchBinary(
-						this.restClient,
-						deployment.label,
+						this.extensionClient,
+						label,
 					);
 
-					const configDir = this.pathResolver.getGlobalConfigDir(
-						deployment.label,
-					);
+					const configDir = this.pathResolver.getGlobalConfigDir(label);
 					const globalFlags = getGlobalFlags(
 						vscode.workspace.getConfiguration(),
 						configDir,
@@ -374,14 +370,14 @@ export class Commands {
 		folderPath?: string,
 		openRecent?: boolean,
 	): Promise<void> {
-		const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL;
+		const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
 		}
 
 		let workspace: Workspace | undefined;
 		if (workspaceOwner && workspaceName) {
-			workspace = await this.restClient.getWorkspaceByOwnerAndName(
+			workspace = await this.extensionClient.getWorkspaceByOwnerAndName(
 				workspaceOwner,
 				workspaceName,
 			);
@@ -417,7 +413,7 @@ export class Commands {
 		localWorkspaceFolder: string = "",
 		localConfigFile: string = "",
 	): Promise<void> {
-		const baseUrl = this.restClient.getAxiosInstance().defaults.baseURL;
+		const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
 		}
@@ -473,7 +469,7 @@ export class Commands {
 	 * this is a no-op.
 	 */
 	public async updateWorkspace(): Promise<void> {
-		if (!this.workspace || !this.workspaceRestClient) {
+		if (!this.workspace || !this.remoteWorkspaceClient) {
 			return;
 		}
 		const action = await this.vscodeProposed.window.showWarningMessage(
@@ -486,7 +482,7 @@ export class Commands {
 			"Update",
 		);
 		if (action === "Update") {
-			await this.workspaceRestClient.updateWorkspaceVersion(this.workspace);
+			await this.remoteWorkspaceClient.updateWorkspaceVersion(this.workspace);
 		}
 	}
 
@@ -501,7 +497,7 @@ export class Commands {
 		let lastWorkspaces: readonly Workspace[];
 		quickPick.onDidChangeValue((value) => {
 			quickPick.busy = true;
-			this.restClient
+			this.extensionClient
 				.getWorkspaces({
 					q: value,
 				})
@@ -564,7 +560,7 @@ export class Commands {
 			// we need to fetch the agents through the resources API, as the
 			// workspaces query does not include agents when off.
 			this.logger.info("Fetching agents from template version");
-			const resources = await this.restClient.getTemplateVersionResources(
+			const resources = await this.extensionClient.getTemplateVersionResources(
 				workspace.latest_build.template_version_id,
 			);
 			return extractAgents(resources);
