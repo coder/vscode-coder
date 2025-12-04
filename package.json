@@ -120,6 +120,21 @@
 					"type": "boolean",
 					"default": false
 				},
+				"coder.disableAutostart": {
+					"markdownDescription": "Disable starting the workspace automatically when connecting via SSH.",
+					"type": "string",
+					"enum": [
+						"auto",
+						"always",
+						"never"
+					],
+					"markdownEnumDescriptions": [
+						"Disables autostart on macOS only (recommended to avoid sleep/wake issues)",
+						"Disables on all platforms",
+						"Keeps autostart enabled on all platforms"
+					],
+					"default": "auto"
+				},
 				"coder.globalFlags": {
 					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item; values are passed verbatim and in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nNote that for `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here. The `--global-config` flag is explicitly ignored.",
 					"type": "array",
