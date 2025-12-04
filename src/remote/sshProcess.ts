@@ -28,8 +28,10 @@ export interface SshProcessMonitorOptions {
 	networkInfoPath: string;
 	proxyLogDir?: string;
 	logger: Logger;
-	// Poll interval for SSH process and file discovery
-	pollInterval?: number;
+	// Initial poll interval for SSH process and file discovery (ms)
+	discoveryPollIntervalMs?: number;
+	// Maximum backoff interval for process and file discovery (ms)
+	maxDiscoveryBackoffMs?: number;
 	// Poll interval for network info updates
 	networkPollInterval?: number;
 	// For port-based SSH process discovery
@@ -72,7 +74,8 @@ export class SshProcessMonitor implements vscode.Disposable {
 		this.options = {
 			...options,
 			proxyLogDir: options.proxyLogDir,
-			pollInterval: options.pollInterval ?? 1000,
+			discoveryPollIntervalMs: options.discoveryPollIntervalMs ?? 1000,
+			maxDiscoveryBackoffMs: options.maxDiscoveryBackoffMs ?? 30_000,
 			// Matches the SSH update interval
 			networkPollInterval: options.networkPollInterval ?? 3000,
 		};
@@ -135,12 +138,13 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 	/**
 	 * Searches for the SSH process indefinitely until found or disposed.
-	 * Tries port-based discovery first (more accurate), falls back to hostname-based.
-	 * When found, starts monitoring.
+	 * Starts monitoring when it finds the process through the port.
 	 */
 	private async searchForProcess(): Promise<void> {
-		const { pollInterval, logger, sshHost } = this.options;
+		const { discoveryPollIntervalMs, maxDiscoveryBackoffMs, logger, sshHost } =
+			this.options;
 		let attempt = 0;
+		let currentBackoff = discoveryPollIntervalMs;
 
 		while (!this.disposed) {
 			attempt++;
@@ -158,7 +162,8 @@ export class SshProcessMonitor implements vscode.Disposable {
 				return;
 			}
 
-			await this.delay(pollInterval);
+			await this.delay(currentBackoff);
+			currentBackoff = Math.min(currentBackoff * 2, maxDiscoveryBackoffMs);
 		}
 	}
 
@@ -173,13 +178,14 @@ export class SshProcessMonitor implements vscode.Disposable {
 			const logPath = await findRemoteSshLogPath(
 				codeLogDir,
 				remoteSshExtensionId,
+				logger,
 			);
 			if (!logPath) {
 				return undefined;
 			}
 
 			const logContent = await fs.readFile(logPath, "utf8");
-			this.options.logger.debug(`Read Remote SSH log file: ${logPath}`);
+			this.options.logger.debug(`Read Remote SSH log file:`, logPath);
 
 			const port = findPort(logContent);
 			if (!port) {
@@ -235,10 +241,17 @@ export class SshProcessMonitor implements vscode.Disposable {
 	 * Polls until found or PID changes.
 	 */
 	private async searchForLogFile(): Promise<void> {
-		const { proxyLogDir: logDir, logger, pollInterval } = this.options;
+		const {
+			proxyLogDir: logDir,
+			logger,
+			discoveryPollIntervalMs,
+			maxDiscoveryBackoffMs,
+		} = this.options;
 		if (!logDir) {
 			return;
 		}
+
+		let currentBackoff = discoveryPollIntervalMs;
 
 		const targetPid = this.currentPid;
 		while (!this.disposed && this.currentPid === targetPid) {
@@ -263,7 +276,8 @@ export class SshProcessMonitor implements vscode.Disposable {
 				logger.debug(`Could not read log directory: ${logDir}`);
 			}
 
-			await this.delay(pollInterval);
+			await this.delay(currentBackoff);
+			currentBackoff = Math.min(currentBackoff * 2, maxDiscoveryBackoffMs);
 		}
 	}
 
@@ -377,10 +391,13 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 /**
  * Finds the Remote SSH extension's log file path.
+ * Tries extension-specific folder first (Cursor, Windsurf, Antigravity),
+ * then output_logging_ fallback (MS VS Code).
  */
 async function findRemoteSshLogPath(
 	codeLogDir: string,
 	extensionId: string,
+	logger: Logger,
 ): Promise<string | undefined> {
 	const logsParentDir = path.dirname(codeLogDir);
 
@@ -395,8 +412,12 @@ async function findRemoteSshLogPath(
 		if (remoteSsh) {
 			return path.join(extensionLogDir, remoteSsh);
 		}
+		// Folder exists but no Remote SSH log yet
+		logger.debug(
+			`Extension log folder exists but no Remote SSH log found: ${extensionLogDir}`,
+		);
 	} catch {
-		// Extension-specific folder doesn't exist, try fallback
+		// Extension-specific folder doesn't exist - expected for MS VS Code, try fallback
 	}
 
 	try {
@@ -412,9 +433,14 @@ async function findRemoteSshLogPath(
 			if (remoteSSHLog) {
 				return path.join(outputPath, remoteSSHLog);
 			}
+			logger.debug(
+				`Output logging folder exists but no Remote SSH log found: ${outputPath}`,
+			);
+		} else {
+			logger.debug(`No output_logging_ folders found in: ${logsParentDir}`);
 		}
 	} catch {
-		// output_logging folder doesn't exist
+		logger.debug(`Could not read logs parent directory: ${logsParentDir}`);
 	}
 
 	return undefined;

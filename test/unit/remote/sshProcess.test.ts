@@ -30,7 +30,7 @@ describe("SshProcessMonitor", () => {
 
 		// Default: process found immediately
 		vi.mocked(find).mockResolvedValue([
-			{ pid: 999, name: "ssh", cmd: "ssh host" },
+			{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh host" },
 		]);
 	});
 
@@ -66,7 +66,9 @@ describe("SshProcessMonitor", () => {
 			vi.mocked(find)
 				.mockResolvedValueOnce([])
 				.mockResolvedValueOnce([])
-				.mockResolvedValueOnce([{ pid: 888, name: "ssh", cmd: "ssh host" }]);
+				.mockResolvedValueOnce([
+					{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh host" },
+				]);
 
 			const monitor = createMonitor({ codeLogDir: "/logs/window1" });
 			const pid = await waitForEvent(monitor.onPidChange);
@@ -80,7 +82,7 @@ describe("SshProcessMonitor", () => {
 			vol.fromJSON({});
 
 			vi.mocked(find).mockResolvedValue([
-				{ pid: 777, name: "ssh", cmd: "ssh host" },
+				{ pid: 777, ppid: 1, name: "ssh", cmd: "ssh host" },
 			]);
 
 			const monitor = createMonitor({ codeLogDir: "/logs/window1" });
@@ -116,8 +118,8 @@ describe("SshProcessMonitor", () => {
 
 			// First search finds PID 999, after reconnect finds PID 888
 			vi.mocked(find)
-				.mockResolvedValueOnce([{ pid: 999, name: "ssh", cmd: "ssh" }])
-				.mockResolvedValue([{ pid: 888, name: "ssh", cmd: "ssh" }]);
+				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValue([{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh" }]);
 
 			const monitor = createMonitor({
 				codeLogDir: "/logs/window1",
@@ -158,7 +160,7 @@ describe("SshProcessMonitor", () => {
 
 			// Always returns the same PID
 			vi.mocked(find).mockResolvedValue([
-				{ pid: 999, name: "ssh", cmd: "ssh" },
+				{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" },
 			]);
 
 			const monitor = createMonitor({
@@ -395,7 +397,8 @@ describe("SshProcessMonitor", () => {
 			codeLogDir: "/logs/window1",
 			remoteSshExtensionId: "ms-vscode-remote.remote-ssh",
 			logger: createMockLogger(),
-			pollInterval: 10,
+			discoveryPollIntervalMs: 10,
+			maxDiscoveryBackoffMs: 100,
 			networkPollInterval: 10,
 			...overrides,
 		});
