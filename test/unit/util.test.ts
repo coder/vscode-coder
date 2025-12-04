@@ -1,6 +1,13 @@
+import os from "node:os";
 import { describe, it, expect } from "vitest";
 
-import { countSubstring, parseRemoteAuthority, toSafeHost } from "@/util";
+import {
+	countSubstring,
+	escapeCommandArg,
+	expandPath,
+	parseRemoteAuthority,
+	toSafeHost,
+} from "@/util";
 
 it("ignore unrelated authorities", () => {
 	const tests = [
@@ -122,5 +129,64 @@ describe("countSubstring", () => {
 		expect(countSubstring("aa", "aaaa")).toBe(2);
 		expect(countSubstring("aa", "aaaaa")).toBe(2);
 		expect(countSubstring("aa", "aaaaaa")).toBe(3);
+	});
+});
+
+describe("escapeCommandArg", () => {
+	it("wraps simple string in quotes", () => {
+		expect(escapeCommandArg("hello")).toBe('"hello"');
+	});
+
+	it("handles empty string", () => {
+		expect(escapeCommandArg("")).toBe('""');
+	});
+
+	it("escapes double quotes", () => {
+		expect(escapeCommandArg('say "hello"')).toBe(String.raw`"say \"hello\""`);
+	});
+
+	it("preserves backslashes", () => {
+		expect(escapeCommandArg(String.raw`path\to\file`)).toBe(
+			String.raw`"path\to\file"`,
+		);
+	});
+
+	it("handles string with spaces", () => {
+		expect(escapeCommandArg("hello world")).toBe('"hello world"');
+	});
+});
+
+describe("expandPath", () => {
+	const home = os.homedir();
+
+	it("expands tilde at start of path", () => {
+		expect(expandPath("~/foo/bar")).toBe(`${home}/foo/bar`);
+	});
+
+	it("expands standalone tilde", () => {
+		expect(expandPath("~")).toBe(home);
+	});
+
+	it("does not expand tilde in middle of path", () => {
+		expect(expandPath("/foo/~/bar")).toBe("/foo/~/bar");
+	});
+
+	it("expands ${userHome} variable", () => {
+		expect(expandPath("${userHome}/foo")).toBe(`${home}/foo`);
+	});
+
+	it("expands multiple ${userHome} variables", () => {
+		expect(expandPath("${userHome}/foo/${userHome}/bar")).toBe(
+			`${home}/foo/${home}/bar`,
+		);
+	});
+
+	it("leaves paths without tilde or variable unchanged", () => {
+		expect(expandPath("/absolute/path")).toBe("/absolute/path");
+		expect(expandPath("relative/path")).toBe("relative/path");
+	});
+
+	it("expands both tilde and ${userHome}", () => {
+		expect(expandPath("~/${userHome}/foo")).toBe(`${home}/${home}/foo`);
 	});
 });

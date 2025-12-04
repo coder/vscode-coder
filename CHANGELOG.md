@@ -2,11 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- Support for paths that begin with a tilde (`~`).
+
 ### Fixed
 
 - Fixed race condition when multiple VS Code windows download the Coder CLI binary simultaneously.
   Other windows now wait and display real-time progress instead of attempting concurrent downloads,
   preventing corruption and failures.
+- Remove duplicate "Cancel" buttons on the workspace update dialog.
 
 ### Changed
 
@@ -15,9 +20,9 @@
 
 ## [v1.11.4](https://github.com/coder/vscode-coder/releases/tag/v1.11.4) 2025-11-20
 
-### Fixed
+### Added
 
-- Add support for `google.antigravity-remote-openssh` Remote SSH extension.
+- Support for the `google.antigravity-remote-openssh` Remote SSH extension.
 
 ### Changed
 
@@ -55,7 +60,7 @@
 
 ### Changed
 
-- Always enable verbose (`-v`) flag when a log directory is configured (`coder.proxyLogDir`).
+- Always enable verbose (`-v`) flag when a log directory is configured (`coder.proxyLogDirectory`).
 - Automatically start a workspace without prompting if it is explicitly opened but not running.
 
 ### Added
@@ -134,7 +139,7 @@
 
 ### Added
 
-- Coder extension sidebar now displays available app statuses, and let's
+- Coder extension sidebar now displays available app statuses, and lets
   the user click them to drop into a session with a running AI Agent.
 
 ## [v1.7.1](https://github.com/coder/vscode-coder/releases/tag/v1.7.1) (2025-04-14)

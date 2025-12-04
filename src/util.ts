@@ -119,13 +119,14 @@ export function toSafeHost(rawUrl: string): string {
 }
 
 /**
- * Expand a path with ${userHome} in the input string
- * @param input string
- * @returns string
+ * Expand a path if it starts with tilde (~) or contains ${userHome}.
  */
 export function expandPath(input: string): string {
 	const userHome = os.homedir();
-	return input.replace(/\${userHome}/g, userHome);
+	if (input.startsWith("~")) {
+		input = userHome + input.substring("~".length);
+	}
+	return input.replaceAll("${userHome}", userHome);
 }
 
 /**
@@ -145,5 +146,6 @@ export function countSubstring(needle: string, haystack: string): number {
 }
 
 export function escapeCommandArg(arg: string): string {
-	return `"${arg.replace(/"/g, '\\"')}"`;
+	const escapedString = arg.replaceAll('"', String.raw`\"`);
+	return `"${escapedString}"`;
 }
