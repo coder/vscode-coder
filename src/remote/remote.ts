@@ -20,6 +20,7 @@ import {
 import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
+import { getGlobalFlags, shouldDisableAutostart } from "../cliConfig";
 import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
 import * as cliUtils from "../core/cliUtils";
@@ -27,7 +28,6 @@ import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
 import { type PathResolver } from "../core/pathResolver";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
-import { getGlobalFlags } from "../globalFlags";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import {
@@ -669,7 +669,7 @@ export class Remote {
 		const globalConfigs = this.globalConfigs(label);
 
 		const proxyCommand = featureSet.wildcardSSH
-			? `${escapeCommandArg(binaryPath)}${globalConfigs} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.pathResolver.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
+			? `${escapeCommandArg(binaryPath)}${globalConfigs} ssh --stdio --usage-app=vscode${this.disableAutostartConfig()} --network-info-dir ${escapeCommandArg(this.pathResolver.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
 			: `${escapeCommandArg(binaryPath)}${globalConfigs} vscodessh --network-info-dir ${escapeCommandArg(
 					this.pathResolver.getNetworkInfoPath(),
 				)}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.pathResolver.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
@@ -810,6 +810,13 @@ export class Remote {
 		});
 
 		return [statusBarItem, agentWatcher, onChangeDisposable];
+	}
+
+	private disableAutostartConfig(): string {
+		const configs = vscode.workspace.getConfiguration();
+		return shouldDisableAutostart(configs, process.platform)
+			? " --disable-autostart"
+			: "";
 	}
 
 	// closeRemote ends the current remote session.
