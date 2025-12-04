@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 
-import { countSubstring, parseRemoteAuthority, toSafeHost } from "@/util";
+import {
+	countSubstring,
+	findPort,
+	parseRemoteAuthority,
+	toSafeHost,
+} from "@/util";
 
 it("ignore unrelated authorities", () => {
 	const tests = [
@@ -122,5 +127,48 @@ describe("countSubstring", () => {
 		expect(countSubstring("aa", "aaaa")).toBe(2);
 		expect(countSubstring("aa", "aaaaa")).toBe(2);
 		expect(countSubstring("aa", "aaaaaa")).toBe(3);
+	});
+});
+
+describe("findPort", () => {
+	it.each([[""], ["some random log text without ports"]])(
+		"returns null for <%s>",
+		(input) => {
+			expect(findPort(input)).toBe(null);
+		},
+	);
+
+	it.each([
+		[
+			"ms-vscode-remote.remote-ssh",
+			"[10:30:45] SSH established -> socksPort 12345 -> ready",
+			12345,
+		],
+		[
+			"ms-vscode-remote.remote-ssh[2]",
+			"Forwarding between local port 54321 and remote",
+			54321,
+		],
+		[
+			"windsurf/open-remote-ssh/antigravity",
+			"[INFO] Connection => 9999(socks) => target",
+			9999,
+		],
+		[
+			"anysphere.remote-ssh",
+			"[DEBUG] Initialized Socks port: 8888 proxy",
+			8888,
+		],
+	])("finds port from %s log format", (_name, input, expected) => {
+		expect(findPort(input)).toBe(expected);
+	});
+
+	it("returns most recent port when multiple matches exist", () => {
+		const log = `
+[10:30:00] Starting connection -> socksPort 1111 -> initialized
+[10:30:05] Reconnecting => 2222(socks) => retry
+[10:30:10] Final connection Socks port: 3333 established
+		`;
+		expect(findPort(log)).toBe(3333);
 	});
 });

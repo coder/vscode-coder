@@ -55,18 +55,28 @@ export class Uri {
 	}
 }
 
-// mini event
-const makeEvent = <T>() => {
-	const listeners = new Set<(e: T) => void>();
-	const event = (listener: (e: T) => void) => {
-		listeners.add(listener);
-		return { dispose: () => listeners.delete(listener) };
-	};
-	return { event, fire: (e: T) => listeners.forEach((l) => l(e)) };
-};
+/**
+ * Mock EventEmitter that matches vscode.EventEmitter interface.
+ */
+export class EventEmitter<T> {
+	private readonly listeners = new Set<(e: T) => void>();
 
-const onDidChangeConfiguration = makeEvent<unknown>();
-const onDidChangeWorkspaceFolders = makeEvent<unknown>();
+	event = (listener: (e: T) => void) => {
+		this.listeners.add(listener);
+		return { dispose: () => this.listeners.delete(listener) };
+	};
+
+	fire(data: T): void {
+		this.listeners.forEach((l) => l(data));
+	}
+
+	dispose(): void {
+		this.listeners.clear();
+	}
+}
+
+const onDidChangeConfiguration = new EventEmitter<unknown>();
+const onDidChangeWorkspaceFolders = new EventEmitter<unknown>();
 
 export const window = {
 	showInformationMessage: vi.fn(),
@@ -83,6 +93,7 @@ export const window = {
 		dispose: vi.fn(),
 		clear: vi.fn(),
 	})),
+	createStatusBarItem: vi.fn(),
 };
 
 export const commands = {
@@ -132,6 +143,7 @@ const vscode = {
 	ExtensionMode,
 	UIKind,
 	Uri,
+	EventEmitter,
 	window,
 	commands,
 	workspace,
