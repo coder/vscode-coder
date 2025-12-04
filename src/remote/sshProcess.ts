@@ -135,8 +135,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 	/**
 	 * Searches for the SSH process indefinitely until found or disposed.
-	 * Tries port-based discovery first (more accurate), falls back to hostname-based.
-	 * When found, starts monitoring.
+	 * Starts monitoring when it finds the process through the port.
 	 */
 	private async searchForProcess(): Promise<void> {
 		const { pollInterval, logger, sshHost } = this.options;

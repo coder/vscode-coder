@@ -741,21 +741,24 @@ export class Remote {
 		featureSet: FeatureSet,
 	): vscode.Disposable {
 		return vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration("coder.proxyLogDirectory")) {
-				const newLogDir = this.getLogDir(featureSet);
-				if (newLogDir !== currentLogDir) {
-					vscode.window
-						.showInformationMessage(
-							"Log directory configuration changed. Reload window to apply.",
-							"Reload",
-						)
-						.then((action) => {
-							if (action === "Reload") {
-								vscode.commands.executeCommand("workbench.action.reloadWindow");
-							}
-						});
-				}
+			if (!e.affectsConfiguration("coder.proxyLogDirectory")) {
+				return;
 			}
+			const newLogDir = this.getLogDir(featureSet);
+			if (newLogDir === currentLogDir) {
+				return;
+			}
+
+			vscode.window
+				.showInformationMessage(
+					"Log directory configuration changed. Reload window to apply.",
+					"Reload",
+				)
+				.then((action) => {
+					if (action === "Reload") {
+						vscode.commands.executeCommand("workbench.action.reloadWindow");
+					}
+				});
 		});
 	}
 
