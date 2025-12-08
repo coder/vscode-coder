@@ -1,9 +1,8 @@
 import {
 	type Workspace,
 	type WorkspaceAgent,
-	type WorkspaceApp,
 } from "coder/site/src/api/typesGenerated";
-import * as path from "path";
+import * as path from "node:path";
 import * as vscode from "vscode";
 
 import {
@@ -132,7 +131,7 @@ export class WorkspaceProvider
 		const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine;
 		if (showMetadata) {
 			const agents = extractAllAgents(resp.workspaces);
-			agents.forEach(async (agent) => {
+			for (const agent of agents) {
 				// If we have an existing watcher, re-use it.
 				const oldWatcher = this.agentWatchers.get(agent.id);
 				if (oldWatcher) {
@@ -146,16 +145,16 @@ export class WorkspaceProvider
 					watcher.onChange(() => this.refresh());
 					this.agentWatchers.set(agent.id, watcher);
 				}
-			});
+			}
 		}
 
 		// Dispose of watchers we ended up not reusing.
-		oldWatcherIds.forEach((id) => {
+		for (const id of oldWatcherIds) {
 			if (!reusedWatcherIds.includes(id)) {
 				this.agentWatchers.get(id)?.dispose();
 				this.agentWatchers.delete(id);
 			}
-		});
+		}
 
 		// Create tree items for each workspace
 		const workspaceTreeItems = resp.workspaces.map((workspace: Workspace) => {
@@ -164,22 +163,6 @@ export class WorkspaceProvider
 				this.getWorkspacesQuery === WorkspaceQuery.All,
 				showMetadata,
 			);
-
-			// Get app status from the workspace agents
-			const agents = extractAgents(workspace.latest_build.resources);
-			agents.forEach((agent) => {
-				// Check if agent has apps property with status reporting
-				if (agent.apps && Array.isArray(agent.apps)) {
-					workspaceTreeItem.appStatus = agent.apps.map((app: WorkspaceApp) => ({
-						name: app.display_name,
-						url: app.url,
-						agent_id: agent.id,
-						agent_name: agent.name,
-						command: app.command,
-						workspace_name: workspace.name,
-					}));
-				}
-			});
 
 			return workspaceTreeItem;
 		});
@@ -196,10 +179,10 @@ export class WorkspaceProvider
 		this.visible = visible;
 		if (!visible) {
 			this.cancelPendingRefresh();
-		} else if (!this.workspaces) {
-			this.fetchAndRefresh();
-		} else {
+		} else if (this.workspaces) {
 			this.maybeScheduleRefresh();
+		} else {
+			this.fetchAndRefresh();
 		}
 	}
 
@@ -222,15 +205,15 @@ export class WorkspaceProvider
 		}
 	}
 
-	private _onDidChangeTreeData: vscode.EventEmitter<
-		vscode.TreeItem | undefined | null | void
-	> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
+	private readonly _onDidChangeTreeData: vscode.EventEmitter<
+		vscode.TreeItem | undefined
+	> = new vscode.EventEmitter<vscode.TreeItem | undefined>();
 	readonly onDidChangeTreeData: vscode.Event<
 		vscode.TreeItem | undefined | null | void
 	> = this._onDidChangeTreeData.event;
 
-	// refresh causes the tree to re-render.  It does not fetch fresh workspaces.
-	refresh(item: vscode.TreeItem | undefined | null | void): void {
+	// refresh causes the tree to re-render. It does not fetch fresh workspaces.
+	refresh(item?: vscode.TreeItem): void {
 		this._onDidChangeTreeData.fire(item);
 	}
 
@@ -279,9 +262,10 @@ export class WorkspaceProvider
 
 					// Show the section if it has any items
 					if (appStatuses.length > 0) {
+						appStatuses.reverse();
 						const appStatusSection = new SectionTreeItem(
 							"App Statuses",
-							appStatuses.reverse(),
+							appStatuses,
 						);
 						items.push(appStatusSection);
 					}
@@ -430,15 +414,6 @@ export class AgentTreeItem extends OpenableTreeItem {
 }
 
 export class WorkspaceTreeItem extends OpenableTreeItem {
-	public appStatus: {
-		name: string;
-		url?: string;
-		agent_id?: string;
-		agent_name?: string;
-		command?: string;
-		workspace_name?: string;
-	}[] = [];
-
 	constructor(
 		workspace: Workspace,
 		public readonly showOwner: boolean,
