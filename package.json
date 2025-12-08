@@ -376,7 +376,7 @@
 		"bufferutil": "^4.0.9",
 		"coder": "https://github.com/coder/coder#main",
 		"dayjs": "^1.11.19",
-		"electron": "^39.1.2",
+		"electron": "^39.2.6",
 		"eslint": "^8.57.1",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-import-resolver-typescript": "^4.4.4",
