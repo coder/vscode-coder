@@ -38,3 +38,10 @@ export function shouldDisableAutostart(
 	);
 	return setting === "always" || (setting === "auto" && platform === "darwin");
 }
+
+/**
+ * Returns SSH flags for the `coder ssh` command from user configuration.
+ */
+export function getSshFlags(configs: WorkspaceConfiguration): string[] {
+	return configs.get<string[]>("coder.sshFlags") || [];
+}

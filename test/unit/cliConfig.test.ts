@@ -1,7 +1,11 @@
 import { it, expect, describe } from "vitest";
 import { type WorkspaceConfiguration } from "vscode";
 
-import { getGlobalFlags, shouldDisableAutostart } from "@/cliConfig";
+import {
+	getGlobalFlags,
+	getSshFlags,
+	shouldDisableAutostart,
+} from "@/cliConfig";
 
 import { isWindows } from "../utils/platform";
 
@@ -121,6 +125,32 @@ describe("cliConfig", () => {
 			} as unknown as WorkspaceConfiguration;
 			expect(shouldDisableAutostart(config, "darwin")).toBe(true);
 			expect(shouldDisableAutostart(config, "linux")).toBe(false);
+		});
+	});
+
+	describe("getSshFlags", () => {
+		it("returns empty array when no SSH flags configured", () => {
+			const config = {
+				get: () => undefined,
+			} as unknown as WorkspaceConfiguration;
+
+			expect(getSshFlags(config)).toStrictEqual([]);
+		});
+
+		it("returns SSH flags from config", () => {
+			const config = {
+				get: (key: string) =>
+					key === "coder.sshFlags"
+						? ["--disable-autostart", "--wait=yes", "--ssh-host-prefix=custom"]
+						: undefined,
+			} as unknown as WorkspaceConfiguration;
+
+			expect(getSshFlags(config)).toStrictEqual([
+				"--disable-autostart",
+				"--wait=yes",
+				// No filtering and returned as-is (even though it'll be overridden later)
+				"--ssh-host-prefix=custom",
+			]);
 		});
 	});
 });

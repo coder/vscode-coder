@@ -20,7 +20,11 @@ import {
 import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { getGlobalFlags, shouldDisableAutostart } from "../cliConfig";
+import {
+	getGlobalFlags,
+	getSshFlags,
+	shouldDisableAutostart,
+} from "../cliConfig";
 import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
 import * as cliUtils from "../core/cliUtils";
@@ -571,16 +575,85 @@ export class Remote {
 	}
 
 	/**
-	 * Formats the --log-dir argument for the ProxyCommand after making sure it
+	 * Builds the ProxyCommand for SSH connections to Coder workspaces.
+	 * Uses `coder ssh` for modern deployments with wildcard support,
+	 * or falls back to `coder vscodessh` for older deployments.
+	 */
+	private async buildProxyCommand(
+		binaryPath: string,
+		label: string,
+		hostPrefix: string,
+		logDir: string,
+		useWildcardSSH: boolean,
+	): Promise<string> {
+		const vscodeConfig = vscode.workspace.getConfiguration();
+
+		const escapedBinaryPath = escapeCommandArg(binaryPath);
+		const globalConfig = getGlobalFlags(
+			vscodeConfig,
+			this.pathResolver.getGlobalConfigDir(label),
+		);
+		const logArgs = await this.getLogArgs(logDir);
+
+		if (useWildcardSSH) {
+			// User SSH flags are included first; internally-managed flags
+			// are appended last so they take precedence.
+			const userSSHFlags = getSshFlags(vscodeConfig);
+			const disableAutostart = shouldDisableAutostart(
+				vscodeConfig,
+				process.platform,
+			)
+				? ["--disable-autostart"]
+				: [];
+			const internalFlags = [
+				"--stdio",
+				"--usage-app=vscode",
+				"--network-info-dir",
+				escapeCommandArg(this.pathResolver.getNetworkInfoPath()),
+				...logArgs,
+				...disableAutostart,
+				"--ssh-host-prefix",
+				hostPrefix,
+				"%h",
+			];
+
+			const allFlags = [...userSSHFlags, ...internalFlags];
+			return `${escapedBinaryPath} ${globalConfig.join(" ")} ssh ${allFlags.join(" ")}`;
+		} else {
+			const networkInfoDir = escapeCommandArg(
+				this.pathResolver.getNetworkInfoPath(),
+			);
+			const sessionTokenFile = escapeCommandArg(
+				this.pathResolver.getSessionTokenPath(label),
+			);
+			const urlFile = escapeCommandArg(this.pathResolver.getUrlPath(label));
+
+			const sshFlags = [
+				"--network-info-dir",
+				networkInfoDir,
+				...logArgs,
+				"--session-token-file",
+				sessionTokenFile,
+				"--url-file",
+				urlFile,
+				"%h",
+			];
+
+			return `${escapedBinaryPath} ${globalConfig.join(" ")} vscodessh ${sshFlags.join(" ")}`;
+		}
+	}
+
+	/**
+	 * Returns the --log-dir argument for the ProxyCommand after making sure it
 	 * has been created.
 	 */
-	private async formatLogArg(logDir: string): Promise<string> {
+	private async getLogArgs(logDir: string): Promise<string[]> {
 		if (!logDir) {
-			return "";
+			return [];
 		}
 		await fs.mkdir(logDir, { recursive: true });
 		this.logger.info("SSH proxy diagnostics are being written to", logDir);
-		return ` --log-dir ${escapeCommandArg(logDir)} -v`;
+		return ["--log-dir", escapeCommandArg(logDir), "-v"];
 	}
 
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles
@@ -666,15 +739,13 @@ export class Remote {
 			? `${AuthorityPrefix}.${label}--`
 			: `${AuthorityPrefix}--`;
 
-		const globalConfigs = this.globalConfigs(label);
-
-		const proxyCommand = featureSet.wildcardSSH
-			? `${escapeCommandArg(binaryPath)}${globalConfigs} ssh --stdio --usage-app=vscode${this.disableAutostartConfig()} --network-info-dir ${escapeCommandArg(this.pathResolver.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
-			: `${escapeCommandArg(binaryPath)}${globalConfigs} vscodessh --network-info-dir ${escapeCommandArg(
-					this.pathResolver.getNetworkInfoPath(),
-				)}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.pathResolver.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
-					this.pathResolver.getUrlPath(label),
-				)} %h`;
+		const proxyCommand = await this.buildProxyCommand(
+			binaryPath,
+			label,
+			hostPrefix,
+			logDir,
+			featureSet.wildcardSSH,
+		);
 
 		const sshValues: SSHValues = {
 			Host: hostPrefix + `*`,
@@ -725,15 +796,6 @@ export class Remote {
 		}
 
 		return sshConfig.getRaw();
-	}
-
-	private globalConfigs(label: string): string {
-		const vscodeConfig = vscode.workspace.getConfiguration();
-		const args = getGlobalFlags(
-			vscodeConfig,
-			this.pathResolver.getGlobalConfigDir(label),
-		);
-		return ` ${args.join(" ")}`;
 	}
 
 	private watchLogDirSetting(
@@ -810,13 +872,6 @@ export class Remote {
 		});
 
 		return [statusBarItem, agentWatcher, onChangeDisposable];
-	}
-
-	private disableAutostartConfig(): string {
-		const configs = vscode.workspace.getConfiguration();
-		return shouldDisableAutostart(configs, process.platform)
-			? " --disable-autostart"
-			: "";
 	}
 
 	// closeRemote ends the current remote session.
