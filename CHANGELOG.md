@@ -17,6 +17,8 @@
 
 - WebSocket connections now automatically reconnect on network failures, improving reliability when
   communicating with Coder deployments.
+- Improved SSH process and log file discovery with better reconnect handling and support for
+  VS Code forks (Cursor, Windsurf, Antigravity).
 
 ## [v1.11.4](https://github.com/coder/vscode-coder/releases/tag/v1.11.4) 2025-11-20
 
