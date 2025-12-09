@@ -732,13 +732,10 @@ export class CliManager {
 	 *
 	 * If the label is empty, read the old deployment-unaware config instead.
 	 */
-	private async updateTokenForCli(
-		label: string,
-		token: string | undefined | null,
-	) {
+	private async updateTokenForCli(label: string, token: string | null) {
 		if (token !== null) {
 			const tokenPath = this.pathResolver.getSessionTokenPath(label);
-			await this.atomicWriteFile(tokenPath, token ?? "");
+			await this.atomicWriteFile(tokenPath, token);
 		}
 	}
 

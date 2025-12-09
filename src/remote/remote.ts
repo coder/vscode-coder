@@ -99,10 +99,10 @@ export class Remote {
 		await this.migrateSessionToken(parts.label);
 
 		// Get the URL and token belonging to this host.
-		const baseUrlRaw = (await this.secretsManager.getUrl(parts.label)) ?? "";
-		const token =
-			(await this.secretsManager.getSessionToken(parts.label)) ?? "";
-		if (baseUrlRaw && token) {
+		const auth = await this.secretsManager.getSessionAuth(parts.label);
+		const baseUrlRaw = auth?.url ?? "";
+		const token = auth?.token;
+		if (baseUrlRaw && token !== undefined) {
 			await this.cliManager.configure(parts.label, baseUrlRaw, token);
 		}
 
@@ -565,7 +565,7 @@ export class Remote {
 		return {
 			label: parts.label,
 			url: baseUrlRaw,
-			token,
+			token: token ?? "",
 			dispose: () => {
 				disposables.forEach((d) => d.dispose());
 			},

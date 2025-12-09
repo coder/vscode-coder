@@ -81,11 +81,11 @@ export class LoginCoordinator {
 				.then(async (action) => {
 					if (action === "Login") {
 						// Proceed with the login flow, handling logging in from another window
-						const storedUrl = await this.secretsManager.getUrl(label);
+						const storedAuth = await this.secretsManager.getSessionAuth(label);
 						const newUrl = await maybeAskUrl(
 							this.mementoManager,
 							url,
-							storedUrl,
+							storedAuth?.url,
 						);
 						if (!newUrl) {
 							throw new Error("URL must be provided");
@@ -178,7 +178,8 @@ export class LoginCoordinator {
 
 		let storedToken: string | undefined;
 		if (needsToken) {
-			storedToken = await this.secretsManager.getSessionToken(deployment.label);
+			const auth = await this.secretsManager.getSessionAuth(deployment.label);
+			storedToken = auth?.token;
 			if (storedToken) {
 				client.setSessionToken(storedToken);
 			}

@@ -1,9 +1,12 @@
+import { type Logger } from "../logging/logger";
 import { toSafeHost } from "../util";
 
 import type { Memento, SecretStorage, Disposable } from "vscode";
 
 import type { Deployment } from "../deployment";
 
+// Each deployment has its own key to ensure atomic operations (multiple windows
+// writing to a shared key could drop data) and to receive proper VS Code events.
 const SESSION_KEY_PREFIX = "coder.session.";
 
 const CURRENT_DEPLOYMENT_KEY = "coder.currentDeployment";
@@ -31,6 +34,7 @@ export class SecretsManager {
 	constructor(
 		private readonly secrets: SecretStorage,
 		private readonly memento: Memento,
+		private readonly logger: Logger,
 	) {}
 
 	/**
@@ -50,16 +54,16 @@ export class SecretsManager {
 	/**
 	 * Gets the current deployment from storage.
 	 */
-	public async getCurrentDeployment(): Promise<Deployment | undefined> {
+	public async getCurrentDeployment(): Promise<Deployment | null> {
 		try {
 			const data = await this.secrets.get(CURRENT_DEPLOYMENT_KEY);
 			if (!data) {
-				return undefined;
+				return null;
 			}
-			const parsed = JSON.parse(data) as { deployment: Deployment | null };
-			return parsed.deployment ?? undefined;
+			const parsed = JSON.parse(data) as CurrentDeploymentState;
+			return parsed.deployment;
 		} catch {
-			return undefined;
+			return null;
 		}
 	}
 
@@ -75,16 +79,14 @@ export class SecretsManager {
 				return;
 			}
 
+			const deployment = await this.getCurrentDeployment();
 			try {
-				const data = await this.secrets.get(CURRENT_DEPLOYMENT_KEY);
-				if (data) {
-					const parsed = JSON.parse(data) as {
-						deployment: Deployment | null;
-					};
-					await listener({ deployment: parsed.deployment });
-				}
-			} catch {
-				// Ignore parse errors
+				await listener({ deployment });
+			} catch (err) {
+				this.logger.error(
+					"Error in onDidChangeCurrentDeployment listener",
+					err,
+				);
 			}
 		});
 	}
@@ -102,7 +104,11 @@ export class SecretsManager {
 				return;
 			}
 			const auth = await this.getSessionAuth(label);
-			await listener(auth);
+			try {
+				await listener(auth);
+			} catch (err) {
+				this.logger.error("Error in onDidChangeSessionAuth listener", err);
+			}
 		});
 	}
 
@@ -120,16 +126,6 @@ export class SecretsManager {
 		} catch {
 			return undefined;
 		}
-	}
-
-	public async getSessionToken(label: string): Promise<string | undefined> {
-		const auth = await this.getSessionAuth(label);
-		return auth?.token;
-	}
-
-	public async getUrl(label: string): Promise<string | undefined> {
-		const auth = await this.getSessionAuth(label);
-		return auth?.url;
 	}
 
 	public async setSessionAuth(label: string, auth: SessionAuth): Promise<void> {
@@ -210,6 +206,7 @@ export class SecretsManager {
 
 		await this.setSessionAuth(label, { url: legacyUrl, token: oldToken });
 		await this.secrets.delete(LEGACY_SESSION_TOKEN_KEY);
+		await this.memento.update("url", undefined);
 
 		// Also set as current deployment if none exists
 		const currentDeployment = await this.getCurrentDeployment();
