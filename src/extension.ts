@@ -74,7 +74,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// in commands that operate on the current login.
 	const client = CoderApi.create(
 		deployment?.url || "",
-		await secretsManager.getSessionToken(deployment?.label ?? ""),
+		(await secretsManager.getSessionAuth(deployment?.label ?? ""))?.token,
 		output,
 	);
 	ctx.subscriptions.push(client);
@@ -362,9 +362,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		contextManager.set("coder.loaded", true);
 	} else if (deployment) {
 		output.info(`Initializing deployment: ${deployment.url}`);
-		const storedToken = await secretsManager.getSessionToken(deployment.label);
+		const auth = await secretsManager.getSessionAuth(deployment.label);
 		deploymentManager
-			.setDeploymentWithoutAuth({ ...deployment, token: storedToken })
+			.setDeploymentWithoutAuth({ ...deployment, token: auth?.token })
 			.then(() => {
 				if (deploymentManager.isAuthenticated()) {
 					output.info("Credentials are valid");
@@ -468,7 +468,7 @@ async function setupDeploymentFromUri(
 	let token: string | undefined = params.get("token") ?? undefined;
 	if (token === undefined) {
 		if (needToken(vscode.workspace.getConfiguration())) {
-			token = await secretsManager.getSessionToken(label);
+			token = (await secretsManager.getSessionAuth(label))?.token;
 		} else {
 			token = "";
 		}

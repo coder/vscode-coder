@@ -142,10 +142,13 @@ export class DeploymentManager implements vscode.Disposable {
 
 					this.logger.info("Deployment changed from another window");
 					if (deployment) {
-						const token = await this.secretsManager.getSessionToken(
+						const auth = await this.secretsManager.getSessionAuth(
 							deployment.label,
 						);
-						await this.setDeploymentWithoutAuth({ ...deployment, token });
+						await this.setDeploymentWithoutAuth({
+							...deployment,
+							token: auth?.token,
+						});
 					}
 				},
 			);
