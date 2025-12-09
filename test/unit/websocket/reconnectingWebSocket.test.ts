@@ -91,11 +91,7 @@ describe("ReconnectingWebSocket", () => {
 				});
 
 				await expect(
-					ReconnectingWebSocket.create(
-						factory,
-						createMockLogger(),
-						"/api/test",
-					),
+					ReconnectingWebSocket.create(factory, createMockLogger()),
 				).rejects.toThrow(`Unexpected server response: ${statusCode}`);
 
 				// Should not retry after unrecoverable HTTP error
@@ -598,7 +594,6 @@ async function fromFactory<T>(
 	return await ReconnectingWebSocket.create(
 		factory,
 		createMockLogger(),
-		"/random/api",
 		undefined,
 		onDispose,
 	);
