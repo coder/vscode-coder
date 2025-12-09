@@ -57,7 +57,7 @@ const coderSessionTokenHeader = "Coder-Session-Token";
  */
 export class CoderApi extends Api implements vscode.Disposable {
 	private readonly reconnectingSockets = new Set<
-		ReconnectingWebSocket<unknown>
+		ReconnectingWebSocket<never>
 	>();
 
 	private constructor(private readonly output: Logger) {
@@ -80,6 +80,16 @@ export class CoderApi extends Api implements vscode.Disposable {
 		return client;
 	}
 
+	getHost(): string | undefined {
+		return this.getAxiosInstance().defaults.baseURL;
+	}
+
+	getSessionToken(): string | undefined {
+		return this.getAxiosInstance().defaults.headers.common[
+			coderSessionTokenHeader
+		] as string | undefined;
+	}
+
 	/**
 	 * Set both host and token together. Useful for login/logout/switch to
 	 * avoid triggering multiple reconnection events.
@@ -88,14 +98,15 @@ export class CoderApi extends Api implements vscode.Disposable {
 		host: string | undefined,
 		token: string | undefined,
 	): void => {
-		const defaults = this.getAxiosInstance().defaults;
-		const currentHost = defaults.baseURL;
-		const currentToken = defaults.headers.common[coderSessionTokenHeader];
+		const currentHost = this.getHost();
+		const currentToken = this.getSessionToken();
 
+		// We cannot use the super.setHost/setSessionToken methods because they are shadowed here
+		const defaults = this.getAxiosInstance().defaults;
 		defaults.baseURL = host;
 		defaults.headers.common[coderSessionTokenHeader] = token;
 
-		const hostChanged = currentHost !== host;
+		const hostChanged = (currentHost || "") !== (host || "");
 		const tokenChanged = currentToken !== token;
 
 		if (hostChanged || tokenChanged) {
@@ -109,16 +120,12 @@ export class CoderApi extends Api implements vscode.Disposable {
 		}
 	};
 
-	setSessionToken = (token: string): void => {
-		const currentHost = this.getAxiosInstance().defaults.baseURL;
-		this.setCredentials(currentHost, token);
+	override setSessionToken = (token: string): void => {
+		this.setCredentials(this.getHost(), token);
 	};
 
-	setHost = (host: string | undefined): void => {
-		const currentToken = this.getAxiosInstance().defaults.headers.common[
-			coderSessionTokenHeader
-		] as string | undefined;
-		this.setCredentials(host, currentToken);
+	override setHost = (host: string | undefined): void => {
+		this.setCredentials(host, this.getSessionToken());
 	};
 
 	/**
@@ -137,37 +144,40 @@ export class CoderApi extends Api implements vscode.Disposable {
 		watchTargets: string[],
 		options?: ClientOptions,
 	) => {
-		return this.createWebSocket<GetInboxNotificationResponse>({
-			apiRoute: "/api/v2/notifications/inbox/watch",
-			searchParams: {
-				format: "plaintext",
-				templates: watchTemplates.join(","),
-				targets: watchTargets.join(","),
-			},
-			options,
-			enableRetry: true,
-		});
+		return this.createReconnectingSocket(() =>
+			this.createOneWayWebSocket<GetInboxNotificationResponse>({
+				apiRoute: "/api/v2/notifications/inbox/watch",
+				searchParams: {
+					format: "plaintext",
+					templates: watchTemplates.join(","),
+					targets: watchTargets.join(","),
+				},
+				options,
+			}),
+		);
 	};
 
 	watchWorkspace = async (workspace: Workspace, options?: ClientOptions) => {
-		return this.createWebSocketWithFallback({
-			apiRoute: `/api/v2/workspaces/${workspace.id}/watch-ws`,
-			fallbackApiRoute: `/api/v2/workspaces/${workspace.id}/watch`,
-			options,
-			enableRetry: true,
-		});
+		return this.createReconnectingSocket(() =>
+			this.createStreamWithSseFallback({
+				apiRoute: `/api/v2/workspaces/${workspace.id}/watch-ws`,
+				fallbackApiRoute: `/api/v2/workspaces/${workspace.id}/watch`,
+				options,
+			}),
+		);
 	};
 
 	watchAgentMetadata = async (
 		agentId: WorkspaceAgent["id"],
 		options?: ClientOptions,
 	) => {
-		return this.createWebSocketWithFallback({
-			apiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata-ws`,
-			fallbackApiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata`,
-			options,
-			enableRetry: true,
-		});
+		return this.createReconnectingSocket(() =>
+			this.createStreamWithSseFallback({
+				apiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata-ws`,
+				fallbackApiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata`,
+				options,
+			}),
+		);
 	};
 
 	watchBuildLogsByBuildId = async (
@@ -205,31 +215,11 @@ export class CoderApi extends Api implements vscode.Disposable {
 			searchParams.append("after", lastLog.id.toString());
 		}
 
-		return this.createWebSocket<TData>({
+		return this.createOneWayWebSocket<TData>({
 			apiRoute,
 			searchParams,
 			options,
 		});
-	}
-
-	private async createWebSocket<TData = unknown>(
-		configs: Omit<OneWayWebSocketInit, "location"> & { enableRetry?: boolean },
-	): Promise<UnidirectionalStream<TData>> {
-		const { enableRetry, ...socketConfigs } = configs;
-
-		const socketFactory: SocketFactory<TData> = async () => {
-			const baseUrlRaw = this.getAxiosInstance().defaults.baseURL;
-			if (!baseUrlRaw) {
-				throw new Error("No base URL set on REST client");
-			}
-
-			return this.createOneWayWebSocket<TData>(socketConfigs);
-		};
-
-		if (enableRetry) {
-			return this.createReconnectingSocket(socketFactory, configs.apiRoute);
-		}
-		return socketFactory();
 	}
 
 	private async createOneWayWebSocket<TData>(
@@ -307,46 +297,34 @@ export class CoderApi extends Api implements vscode.Disposable {
 	/**
 	 * Create a WebSocket connection with SSE fallback on 404.
 	 *
-	 * The factory tries WS first, falls back to SSE on 404. Since the factory
-	 * is called on every reconnect.
+	 * Tries WS first, falls back to SSE on 404.
 	 *
 	 * Note: The fallback on SSE ignores all passed client options except the headers.
 	 */
-	private async createWebSocketWithFallback(
+	private async createStreamWithSseFallback(
 		configs: Omit<OneWayWebSocketInit, "location"> & {
 			fallbackApiRoute: string;
-			enableRetry?: boolean;
 		},
 	): Promise<UnidirectionalStream<ServerSentEvent>> {
-		const { fallbackApiRoute, enableRetry, ...socketConfigs } = configs;
-		const socketFactory: SocketFactory<ServerSentEvent> = async () => {
-			try {
-				const ws =
-					await this.createOneWayWebSocket<ServerSentEvent>(socketConfigs);
-				return await this.waitForOpen(ws);
-			} catch (error) {
-				if (this.is404Error(error)) {
-					this.output.warn(
-						`WebSocket failed, using SSE fallback: ${socketConfigs.apiRoute}`,
-					);
-					const sse = this.createSseConnection(
-						fallbackApiRoute,
-						socketConfigs.searchParams,
-						socketConfigs.options?.headers,
-					);
-					return await this.waitForOpen(sse);
-				}
-				throw error;
+		const { fallbackApiRoute, ...socketConfigs } = configs;
+		try {
+			const ws =
+				await this.createOneWayWebSocket<ServerSentEvent>(socketConfigs);
+			return await this.waitForOpen(ws);
+		} catch (error) {
+			if (this.is404Error(error)) {
+				this.output.warn(
+					`WebSocket failed, using SSE fallback: ${socketConfigs.apiRoute}`,
+				);
+				const sse = this.createSseConnection(
+					fallbackApiRoute,
+					socketConfigs.searchParams,
+					socketConfigs.options?.headers,
+				);
+				return await this.waitForOpen(sse);
 			}
-		};
-
-		if (enableRetry) {
-			return this.createReconnectingSocket(
-				socketFactory,
-				socketConfigs.apiRoute,
-			);
+			throw error;
 		}
-		return socketFactory();
 	}
 
 	/**
@@ -416,22 +394,15 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 */
 	private async createReconnectingSocket<TData>(
 		socketFactory: SocketFactory<TData>,
-		apiRoute: string,
 	): Promise<ReconnectingWebSocket<TData>> {
 		const reconnectingSocket = await ReconnectingWebSocket.create<TData>(
 			socketFactory,
 			this.output,
-			apiRoute,
 			undefined,
-			() =>
-				this.reconnectingSockets.delete(
-					reconnectingSocket as ReconnectingWebSocket<unknown>,
-				),
+			() => this.reconnectingSockets.delete(reconnectingSocket),
 		);
 
-		this.reconnectingSockets.add(
-			reconnectingSocket as ReconnectingWebSocket<unknown>,
-		);
+		this.reconnectingSockets.add(reconnectingSocket);
 
 		return reconnectingSocket;
 	}
