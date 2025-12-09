@@ -122,7 +122,7 @@ export class DeploymentManager implements vscode.Disposable {
 		} else {
 			this.client.setCredentials(deployment.url, deployment.token);
 		}
-		this.registerAuthListener(deployment.label);
+		this.registerAuthListener(deployment.safeHostname);
 		this.currentDeployment = { ...deployment };
 		this.updateAuthContexts(deployment.user);
 	}
@@ -143,7 +143,7 @@ export class DeploymentManager implements vscode.Disposable {
 					this.logger.info("Deployment changed from another window");
 					if (deployment) {
 						const auth = await this.secretsManager.getSessionAuth(
-							deployment.label,
+							deployment.safeHostname,
 						);
 						await this.setDeploymentWithoutAuth({
 							...deployment,
@@ -155,18 +155,18 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Register auth listener for the given deployment label.
+	 * Register auth listener for the given deployment hostname.
 	 * Updates credentials when they change (token refresh, cross-window sync).
 	 */
-	private registerAuthListener(label: string): void {
+	private registerAuthListener(safeHost: string): void {
 		this.authListenerDisposable?.dispose();
 
-		this.logger.debug("Registering auth listener for deployment", label);
+		this.logger.debug("Registering auth listener for hostname", safeHost);
 		this.authListenerDisposable = this.secretsManager.onDidChangeSessionAuth(
-			label,
+			safeHost,
 			async (auth) => {
 				if (auth) {
-					if (this.currentDeployment?.label !== label) {
+					if (this.currentDeployment?.safeHostname !== safeHost) {
 						return;
 					}
 

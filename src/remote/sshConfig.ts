@@ -85,18 +85,18 @@ export function mergeSSHConfigValues(
 }
 
 export class SSHConfig {
-	private filePath: string;
-	private fileSystem: FileSystem;
+	private readonly filePath: string;
+	private readonly fileSystem: FileSystem;
 	private raw: string | undefined;
 
-	private startBlockComment(label: string): string {
-		return label
-			? `# --- START CODER VSCODE ${label} ---`
+	private startBlockComment(safeHostname: string): string {
+		return safeHostname
+			? `# --- START CODER VSCODE ${safeHostname} ---`
 			: `# --- START CODER VSCODE ---`;
 	}
-	private endBlockComment(label: string): string {
-		return label
-			? `# --- END CODER VSCODE ${label} ---`
+	private endBlockComment(safeHostname: string): string {
+		return safeHostname
+			? `# --- END CODER VSCODE ${safeHostname} ---`
 			: `# --- END CODER VSCODE ---`;
 	}
 
@@ -115,15 +115,15 @@ export class SSHConfig {
 	}
 
 	/**
-	 * Update the block for the deployment with the provided label.
+	 * Update the block for the deployment with the provided hostname.
 	 */
 	async update(
-		label: string,
+		safeHostname: string,
 		values: SSHValues,
 		overrides?: Record<string, string>,
 	) {
-		const block = this.getBlock(label);
-		const newBlock = this.buildBlock(label, values, overrides);
+		const block = this.getBlock(safeHostname);
+		const newBlock = this.buildBlock(safeHostname, values, overrides);
 		if (block) {
 			this.replaceBlock(block, newBlock);
 		} else {
@@ -133,24 +133,24 @@ export class SSHConfig {
 	}
 
 	/**
-	 * Get the block for the deployment with the provided label.
+	 * Get the block for the deployment with the provided hostname.
 	 */
-	private getBlock(label: string): Block | undefined {
+	private getBlock(safeHostname: string): Block | undefined {
 		const raw = this.getRaw();
-		const startBlock = this.startBlockComment(label);
-		const endBlock = this.endBlockComment(label);
+		const startBlock = this.startBlockComment(safeHostname);
+		const endBlock = this.endBlockComment(safeHostname);
 
 		const startBlockCount = countSubstring(startBlock, raw);
 		const endBlockCount = countSubstring(endBlock, raw);
 		if (startBlockCount !== endBlockCount) {
 			throw new SSHConfigBadFormat(
-				`Malformed config: ${this.filePath} has an unterminated START CODER VSCODE ${label ? label + " " : ""}block. Each START block must have an END block.`,
+				`Malformed config: ${this.filePath} has an unterminated START CODER VSCODE ${safeHostname ? safeHostname + " " : ""}block. Each START block must have an END block.`,
 			);
 		}
 
 		if (startBlockCount > 1 || endBlockCount > 1) {
 			throw new SSHConfigBadFormat(
-				`Malformed config: ${this.filePath} has ${startBlockCount} START CODER VSCODE ${label ? label + " " : ""}sections. Please remove all but one.`,
+				`Malformed config: ${this.filePath} has ${startBlockCount} START CODER VSCODE ${safeHostname ? safeHostname + " " : ""}sections. Please remove all but one.`,
 			);
 		}
 
@@ -185,22 +185,22 @@ export class SSHConfig {
 	 * the keys is determinstic based on the input.  Expected values are always in
 	 * a consistent order followed by any additional overrides in sorted order.
 	 *
-	 * @param label     - The label for the deployment (like the encoded URL).
-	 * @param values    - The expected SSH values for using ssh with Coder.
-	 * @param overrides - Overrides typically come from the deployment api and are
-	 *                    used to override the default values.  The overrides are
-	 *                    given as key:value pairs where the key is the ssh config
-	 *                    file key.  If the key matches an expected value, the
-	 *                    expected value is overridden. If it does not match an
-	 *                    expected value, it is appended to the end of the block.
+	 * @param safeHostname - The hostname for the deployment.
+	 * @param values       - The expected SSH values for using ssh with Coder.
+	 * @param overrides    - Overrides typically come from the deployment api and are
+	 *                       used to override the default values.  The overrides are
+	 *                       given as key:value pairs where the key is the ssh config
+	 *                       file key.  If the key matches an expected value, the
+	 *                       expected value is overridden. If it does not match an
+	 *                       expected value, it is appended to the end of the block.
 	 */
 	private buildBlock(
-		label: string,
+		safeHostname: string,
 		values: SSHValues,
 		overrides?: Record<string, string>,
 	) {
 		const { Host, ...otherValues } = values;
-		const lines = [this.startBlockComment(label), `Host ${Host}`];
+		const lines = [this.startBlockComment(safeHostname), `Host ${Host}`];
 
 		// configValues is the merged values of the defaults and the overrides.
 		const configValues = mergeSSHConfigValues(otherValues, overrides || {});
@@ -216,7 +216,7 @@ export class SSHConfig {
 			}
 		});
 
-		lines.push(this.endBlockComment(label));
+		lines.push(this.endBlockComment(safeHostname));
 		return {
 			raw: lines.join("\n"),
 		};

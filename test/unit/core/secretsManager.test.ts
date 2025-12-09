@@ -8,6 +8,7 @@ import {
 import {
 	InMemoryMemento,
 	InMemorySecretStorage,
+	createMockLogger,
 } from "../../mocks/testHelpers";
 
 describe("SecretsManager", () => {
@@ -19,7 +20,11 @@ describe("SecretsManager", () => {
 		vi.useRealTimers();
 		secretStorage = new InMemorySecretStorage();
 		memento = new InMemoryMemento();
-		secretsManager = new SecretsManager(secretStorage, memento);
+		secretsManager = new SecretsManager(
+			secretStorage,
+			memento,
+			createMockLogger(),
+		);
 	});
 
 	describe("session auth", () => {
@@ -28,20 +33,16 @@ describe("SecretsManager", () => {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			expect(await secretsManager.getSessionToken("example.com")).toBe(
-				"test-token",
-			);
-			expect(await secretsManager.getUrl("example.com")).toBe(
-				"https://example.com",
-			);
+			const auth = await secretsManager.getSessionAuth("example.com");
+			expect(auth?.token).toBe("test-token");
+			expect(auth?.url).toBe("https://example.com");
 
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "new-token",
 			});
-			expect(await secretsManager.getSessionToken("example.com")).toBe(
-				"new-token",
-			);
+			const newAuth = await secretsManager.getSessionAuth("example.com");
+			expect(newAuth?.token).toBe("new-token");
 		});
 
 		it("should clear session auth", async () => {
@@ -49,9 +50,9 @@ describe("SecretsManager", () => {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			await secretsManager.clearSessionAuth("example.com");
+			await secretsManager.clearAllAuthData("example.com");
 			expect(
-				await secretsManager.getSessionToken("example.com"),
+				await secretsManager.getSessionAuth("example.com"),
 			).toBeUndefined();
 		});
 
@@ -66,39 +67,41 @@ describe("SecretsManager", () => {
 			secretStorage.corruptStorage();
 
 			expect(
-				await secretsManager.getSessionToken("example.com"),
+				await secretsManager.getSessionAuth("example.com"),
 			).toBeUndefined();
 		});
 
-		it("should track known labels", async () => {
-			expect(secretsManager.getKnownLabels()).toEqual([]);
+		it("should track known safe hostnames", async () => {
+			expect(secretsManager.getKnownSafeHostnames()).toEqual([]);
 
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			expect(secretsManager.getKnownLabels()).toContain("example.com");
+			expect(secretsManager.getKnownSafeHostnames()).toContain("example.com");
 
 			await secretsManager.setSessionAuth("other-com", {
 				url: "https://other.com",
 				token: "other-token",
 			});
-			expect(secretsManager.getKnownLabels()).toContain("example.com");
-			expect(secretsManager.getKnownLabels()).toContain("other-com");
+			expect(secretsManager.getKnownSafeHostnames()).toContain("example.com");
+			expect(secretsManager.getKnownSafeHostnames()).toContain("other-com");
 		});
 
-		it("should remove label on clearAllAuthData", async () => {
+		it("should remove safe hostname on clearAllAuthData", async () => {
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			expect(secretsManager.getKnownLabels()).toContain("example.com");
+			expect(secretsManager.getKnownSafeHostnames()).toContain("example.com");
 
 			await secretsManager.clearAllAuthData("example.com");
-			expect(secretsManager.getKnownLabels()).not.toContain("example.com");
+			expect(secretsManager.getKnownSafeHostnames()).not.toContain(
+				"example.com",
+			);
 		});
 
-		it("should order labels by most recently accessed", async () => {
+		it("should order safe hostnames by most recently accessed", async () => {
 			await secretsManager.setSessionAuth("first.com", {
 				url: "https://first.com",
 				token: "token1",
@@ -112,7 +115,7 @@ describe("SecretsManager", () => {
 				token: "token1-updated",
 			});
 
-			expect(secretsManager.getKnownLabels()).toEqual([
+			expect(secretsManager.getKnownSafeHostnames()).toEqual([
 				"first.com",
 				"second.com",
 			]);
@@ -128,19 +131,22 @@ describe("SecretsManager", () => {
 
 			await secretsManager.recordDeploymentAccess("new.com", 3);
 
-			expect(secretsManager.getKnownLabels()).toEqual([
+			expect(secretsManager.getKnownSafeHostnames()).toEqual([
 				"new.com",
 				"host5.com",
 				"host4.com",
 			]);
-			expect(await secretsManager.getSessionToken("host1.com")).toBeUndefined();
-			expect(await secretsManager.getSessionToken("host2.com")).toBeUndefined();
+			expect(await secretsManager.getSessionAuth("host1.com")).toBeUndefined();
+			expect(await secretsManager.getSessionAuth("host2.com")).toBeUndefined();
 		});
 	});
 
 	describe("current deployment", () => {
 		it("should store and retrieve current deployment", async () => {
-			const deployment = { url: "https://example.com", label: "example.com" };
+			const deployment = {
+				url: "https://example.com",
+				safeHostname: "example.com",
+			};
 			await secretsManager.setCurrentDeployment(deployment);
 
 			const result = await secretsManager.getCurrentDeployment();
@@ -148,17 +154,20 @@ describe("SecretsManager", () => {
 		});
 
 		it("should clear current deployment with undefined", async () => {
-			const deployment = { url: "https://example.com", label: "example.com" };
+			const deployment = {
+				url: "https://example.com",
+				safeHostname: "example.com",
+			};
 			await secretsManager.setCurrentDeployment(deployment);
 			await secretsManager.setCurrentDeployment(undefined);
 
 			const result = await secretsManager.getCurrentDeployment();
-			expect(result).toBeUndefined();
+			expect(result).toBeNull();
 		});
 
-		it("should return undefined when no deployment set", async () => {
+		it("should return null when no deployment set", async () => {
 			const result = await secretsManager.getCurrentDeployment();
-			expect(result).toBeUndefined();
+			expect(result).toBeNull();
 		});
 
 		it("should notify listeners on deployment change", async () => {
@@ -169,9 +178,9 @@ describe("SecretsManager", () => {
 			});
 
 			const deployments = [
-				{ url: "https://example.com", label: "example.com" },
-				{ url: "https://another.org", label: "another.org" },
-				{ url: "https://another.org", label: "another.org" },
+				{ url: "https://example.com", safeHostname: "example.com" },
+				{ url: "https://another.org", safeHostname: "another.org" },
+				{ url: "https://another.org", safeHostname: "another.org" },
 			];
 			await secretsManager.setCurrentDeployment(deployments[0]);
 			vi.advanceTimersByTime(5);
@@ -188,7 +197,7 @@ describe("SecretsManager", () => {
 			await secretStorage.store("coder.currentDeployment", "invalid-json{");
 
 			const result = await secretsManager.getCurrentDeployment();
-			expect(result).toBeUndefined();
+			expect(result).toBeNull();
 		});
 	});
 });

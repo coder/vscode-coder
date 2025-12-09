@@ -46,7 +46,7 @@ import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 export interface RemoteDetails extends vscode.Disposable {
-	label: string;
+	safeHostname: string;
 	url: string;
 	token: string;
 }
@@ -94,14 +94,15 @@ export class Remote {
 		const workspaceName = `${parts.username}/${parts.workspace}`;
 
 		// Migrate "session_token" file to "session", if needed.
-		await this.migrateSessionToken(parts.label);
+		await this.migrateSessionToken(parts.safeHostname);
 
 		// Get the URL and token belonging to this host.
-		const auth = await this.secretsManager.getSessionAuth(parts.label);
+		const auth = await this.secretsManager.getSessionAuth(parts.safeHostname);
 		const baseUrlRaw = auth?.url ?? "";
 		const token = auth?.token;
+		// Empty token is valid for mTLS
 		if (baseUrlRaw && token !== undefined) {
-			await this.cliManager.configure(parts.label, baseUrlRaw, token);
+			await this.cliManager.configure(parts.safeHostname, baseUrlRaw, token);
 		}
 
 		const disposables: vscode.Disposable[] = [];
@@ -109,12 +110,12 @@ export class Remote {
 		try {
 			disposables.push(
 				this.secretsManager.onDidChangeSessionAuth(
-					parts.label,
+					parts.safeHostname,
 					async (auth) => {
-						if (auth?.token && auth.url) {
+						if (auth?.url) {
 							// Update CLI config with new token
 							await this.cliManager.configure(
-								parts.label,
+								parts.safeHostname,
 								auth.url,
 								auth.token,
 							);
@@ -131,7 +132,7 @@ export class Remote {
 				url: string | undefined,
 			) => {
 				const result = await this.loginCoordinator.promptForLoginWithDialog({
-					label: parts.label,
+					safeHostname: parts.safeHostname,
 					url,
 					message,
 					detailPrefix: `You must log in to access ${workspaceName}.`,
@@ -159,7 +160,7 @@ export class Remote {
 			}
 
 			this.logger.info("Using deployment URL", baseUrlRaw);
-			this.logger.info("Using deployment label", parts.label || "n/a");
+			this.logger.info("Using hostname", parts.safeHostname || "n/a");
 
 			// We could use the plugin client, but it is possible for the user to log
 			// out or log into a different deployment while still connected, which would
@@ -173,9 +174,12 @@ export class Remote {
 
 			// Listen for token changes for this deployment
 			disposables.push(
-				this.secretsManager.onDidChangeSessionAuth(parts.label, (auth) => {
-					workspaceClient.setCredentials(auth?.url, auth?.token);
-				}),
+				this.secretsManager.onDidChangeSessionAuth(
+					parts.safeHostname,
+					(auth) => {
+						workspaceClient.setCredentials(auth?.url, auth?.token);
+					},
+				),
 			);
 
 			let binaryPath: string | undefined;
@@ -184,7 +188,7 @@ export class Remote {
 			) {
 				binaryPath = await this.cliManager.fetchBinary(
 					workspaceClient,
-					parts.label,
+					parts.safeHostname,
 				);
 			} else {
 				try {
@@ -195,7 +199,7 @@ export class Remote {
 				} catch {
 					binaryPath = await this.cliManager.fetchBinary(
 						workspaceClient,
-						parts.label,
+						parts.safeHostname,
 					);
 				}
 			}
@@ -475,7 +479,7 @@ export class Remote {
 				this.logger.info("Updating SSH config...");
 				await this.updateSSHConfig(
 					workspaceClient,
-					parts.label,
+					parts.safeHostname,
 					parts.host,
 					binaryPath,
 					logDir,
@@ -541,7 +545,7 @@ export class Remote {
 		// deployment in the sidebar.  We use our own client in here for reasons
 		// explained above.
 		return {
-			label: parts.label,
+			safeHostname: parts.safeHostname,
 			url: baseUrlRaw,
 			token: token ?? "",
 			dispose: () => {
@@ -553,9 +557,10 @@ export class Remote {
 	/**
 	 * Migrate the session token file from "session_token" to "session", if needed.
 	 */
-	private async migrateSessionToken(label: string) {
-		const oldTokenPath = this.pathResolver.getLegacySessionTokenPath(label);
-		const newTokenPath = this.pathResolver.getSessionTokenPath(label);
+	private async migrateSessionToken(safeHostname: string) {
+		const oldTokenPath =
+			this.pathResolver.getLegacySessionTokenPath(safeHostname);
+		const newTokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
 		try {
 			await fs.rename(oldTokenPath, newTokenPath);
 		} catch (error) {
@@ -665,7 +670,7 @@ export class Remote {
 	// all Coder entries.
 	private async updateSSHConfig(
 		restClient: Api,
-		label: string,
+		safeHostname: string,
 		hostName: string,
 		binaryPath: string,
 		logDir: string,
@@ -740,13 +745,13 @@ export class Remote {
 		const sshConfig = new SSHConfig(sshConfigFile);
 		await sshConfig.load();
 
-		const hostPrefix = label
-			? `${AuthorityPrefix}.${label}--`
+		const hostPrefix = safeHostname
+			? `${AuthorityPrefix}.${safeHostname}--`
 			: `${AuthorityPrefix}--`;
 
 		const proxyCommand = await this.buildProxyCommand(
 			binaryPath,
-			label,
+			safeHostname,
 			hostPrefix,
 			logDir,
 			featureSet.wildcardSSH,
@@ -766,7 +771,7 @@ export class Remote {
 			sshValues.SetEnv = " CODER_SSH_SESSION_TYPE=vscode";
 		}
 
-		await sshConfig.update(label, sshValues, sshConfigOverrides);
+		await sshConfig.update(safeHostname, sshValues, sshConfigOverrides);
 
 		// A user can provide a "Host *" entry in their SSH config to add options
 		// to all hosts. We need to ensure that the options we set are not
