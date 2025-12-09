@@ -1,7 +1,11 @@
 import { type WorkspaceAgent } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
 
+import { type CoderApi } from "./api/coderApi";
 import { type MementoManager } from "./core/mementoManager";
+import { OAuthMetadataClient } from "./oauth/metadataClient";
+
+type AuthMethod = "oauth" | "legacy";
 
 /**
  * Find the requested agent if specified, otherwise return the agent if there
@@ -129,4 +133,55 @@ export async function maybeAskUrl(
 		url = url.substring(0, url.length - 1);
 	}
 	return url;
+}
+
+export async function maybeAskAuthMethod(
+	client: CoderApi,
+): Promise<AuthMethod | undefined> {
+	// Check if server supports OAuth with progress indication
+	const supportsOAuth = await vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: "Checking authentication methods",
+			cancellable: false,
+		},
+		async () => {
+			return await OAuthMetadataClient.checkOAuthSupport(
+				client.getAxiosInstance(),
+			);
+		},
+	);
+
+	if (supportsOAuth) {
+		return await askAuthMethod();
+	} else {
+		return "legacy";
+	}
+}
+
+/**
+ * Ask user to choose between OAuth and legacy API token authentication.
+ */
+async function askAuthMethod(): Promise<AuthMethod | undefined> {
+	const choice = await vscode.window.showQuickPick(
+		[
+			{
+				label: "OAuth (Recommended)",
+				description: "Secure authentication with automatic token refresh",
+				value: "oauth" as const,
+			},
+			{
+				label: "Session Token (Legacy)",
+				description: "Generate and paste a session token manually",
+				value: "legacy" as const,
+			},
+		],
+		{
+			title: "Select authentication method",
+			placeHolder: "How would you like to authenticate?",
+			ignoreFocusOut: true,
+		},
+	);
+
+	return choice?.value;
 }
