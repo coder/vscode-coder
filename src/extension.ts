@@ -74,7 +74,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// in commands that operate on the current login.
 	const client = CoderApi.create(
 		deployment?.url || "",
-		(await secretsManager.getSessionAuth(deployment?.label ?? ""))?.token,
+		(await secretsManager.getSessionAuth(deployment?.safeHostname ?? ""))
+			?.token,
 		output,
 	);
 	ctx.subscriptions.push(client);
@@ -313,7 +314,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 				// Will automatically fetch the user and upgrade the deployment
 				await deploymentManager.setDeploymentWithoutAuth({
-					label: details.label,
+					safeHostname: details.safeHostname,
 					url: details.url,
 					token: details.token,
 				});
@@ -362,7 +363,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		contextManager.set("coder.loaded", true);
 	} else if (deployment) {
 		output.info(`Initializing deployment: ${deployment.url}`);
-		const auth = await secretsManager.getSessionAuth(deployment.label);
+		const auth = await secretsManager.getSessionAuth(deployment.safeHostname);
 		deploymentManager
 			.setDeploymentWithoutAuth({ ...deployment, token: auth?.token })
 			.then(() => {
@@ -409,11 +410,11 @@ async function migrateAuthStorage(
 	const output = serviceContainer.getLogger();
 
 	try {
-		const migratedLabel = await secretsManager.migrateFromLegacyStorage();
+		const migratedHostname = await secretsManager.migrateFromLegacyStorage();
 
-		if (migratedLabel) {
+		if (migratedHostname) {
 			output.info(
-				`Successfully migrated auth storage to label-based format (label: ${migratedLabel})`,
+				`Successfully migrated auth storage (hostname: ${migratedHostname})`,
 			);
 		}
 	} catch (error) {
@@ -458,7 +459,7 @@ async function setupDeploymentFromUri(
 		throw new Error("url must be provided or specified as a query parameter");
 	}
 
-	const label = toSafeHost(url);
+	const safeHost = toSafeHost(url);
 
 	// If the token is missing we will get a 401 later and the user will be
 	// prompted to sign in again, so we do not need to ensure it is set now.
@@ -468,29 +469,36 @@ async function setupDeploymentFromUri(
 	let token: string | undefined = params.get("token") ?? undefined;
 	if (token === undefined) {
 		if (needToken(vscode.workspace.getConfiguration())) {
-			token = (await secretsManager.getSessionAuth(label))?.token;
+			token = (await secretsManager.getSessionAuth(safeHost))?.token;
 		} else {
 			token = "";
 		}
 	} else {
-		await secretsManager.setSessionAuth(label, { url, token });
+		await secretsManager.setSessionAuth(safeHost, { url, token });
 	}
 
 	// Will automatically fetch the user and upgrade the deployment
-	await deploymentManager.setDeploymentWithoutAuth({ label, url, token });
+	await deploymentManager.setDeploymentWithoutAuth({
+		safeHostname: safeHost,
+		url,
+		token,
+	});
 }
 
 async function listStoredDeployments(
 	secretsManager: SecretsManager,
 ): Promise<void> {
-	const labels = secretsManager.getKnownLabels();
-	if (labels.length === 0) {
+	const hostnames = secretsManager.getKnownSafeHostnames();
+	if (hostnames.length === 0) {
 		vscode.window.showInformationMessage("No deployments stored.");
 		return;
 	}
 
 	const selected = await vscode.window.showQuickPick(
-		labels.map((label) => ({ label, description: "Click to forget" })),
+		hostnames.map((hostname) => ({
+			label: hostname,
+			description: "Click to forget",
+		})),
 		{ placeHolder: "Select a deployment to forget" },
 	);
 

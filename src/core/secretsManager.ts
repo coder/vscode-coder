@@ -16,9 +16,8 @@ const DEFAULT_MAX_DEPLOYMENTS = 10;
 
 const LEGACY_SESSION_TOKEN_KEY = "sessionToken";
 
-export interface DeploymentUsage {
-	label: string;
-	lastAccessedAt: string;
+export interface CurrentDeploymentState {
+	deployment: Deployment | null;
 }
 
 export interface SessionAuth {
@@ -26,8 +25,10 @@ export interface SessionAuth {
 	token: string;
 }
 
-export interface CurrentDeploymentState {
-	deployment: Deployment | null;
+// Tracks when a deployment was last accessed for LRU pruning.
+interface DeploymentUsage {
+	safeHostname: string;
+	lastAccessedAt: string;
 }
 
 export class SecretsManager {
@@ -39,7 +40,6 @@ export class SecretsManager {
 
 	/**
 	 * Sets the current deployment and triggers a cross-window sync event.
-	 * This is the single source of truth for which deployment is currently active.
 	 */
 	public async setCurrentDeployment(
 		deployment: Deployment | undefined,
@@ -95,15 +95,15 @@ export class SecretsManager {
 	 * Listen for changes to a specific deployment's session auth.
 	 */
 	public onDidChangeSessionAuth(
-		label: string,
+		safeHostname: string,
 		listener: (auth: SessionAuth | undefined) => void | Promise<void>,
 	): Disposable {
-		const key = `${SESSION_KEY_PREFIX}${label}`;
+		const key = `${SESSION_KEY_PREFIX}${safeHostname}`;
 		return this.secrets.onDidChange(async (e) => {
 			if (e.key !== key) {
 				return;
 			}
-			const auth = await this.getSessionAuth(label);
+			const auth = await this.getSessionAuth(safeHostname);
 			try {
 				await listener(auth);
 			} catch (err) {
@@ -112,13 +112,17 @@ export class SecretsManager {
 		});
 	}
 
-	public async getSessionAuth(label: string): Promise<SessionAuth | undefined> {
-		if (!label) {
+	public async getSessionAuth(
+		safeHostname: string,
+	): Promise<SessionAuth | undefined> {
+		if (!safeHostname) {
 			return undefined;
 		}
 
 		try {
-			const data = await this.secrets.get(`${SESSION_KEY_PREFIX}${label}`);
+			const data = await this.secrets.get(
+				`${SESSION_KEY_PREFIX}${safeHostname}`,
+			);
 			if (!data) {
 				return undefined;
 			}
@@ -128,16 +132,26 @@ export class SecretsManager {
 		}
 	}
 
-	public async setSessionAuth(label: string, auth: SessionAuth): Promise<void> {
+	public async setSessionAuth(
+		safeHostname: string,
+		auth: SessionAuth,
+	): Promise<void> {
+		if (!safeHostname) {
+			return;
+		}
+
 		await this.secrets.store(
-			`${SESSION_KEY_PREFIX}${label}`,
+			`${SESSION_KEY_PREFIX}${safeHostname}`,
 			JSON.stringify(auth),
 		);
-		await this.recordDeploymentAccess(label);
+		await this.recordDeploymentAccess(safeHostname);
 	}
 
-	public async clearSessionAuth(label: string): Promise<void> {
-		await this.secrets.delete(`${SESSION_KEY_PREFIX}${label}`);
+	private async clearSessionAuth(safeHostname: string): Promise<void> {
+		if (!safeHostname) {
+			return;
+		}
+		await this.secrets.delete(`${SESSION_KEY_PREFIX}${safeHostname}`);
 	}
 
 	/**
@@ -145,34 +159,41 @@ export class SecretsManager {
 	 * Prunes deployments beyond maxCount, clearing their auth data.
 	 */
 	public async recordDeploymentAccess(
-		label: string,
+		safeHostname: string,
 		maxCount = DEFAULT_MAX_DEPLOYMENTS,
 	): Promise<void> {
 		const usage = this.getDeploymentUsage();
-		const filtered = usage.filter((u) => u.label !== label);
-		filtered.unshift({ label, lastAccessedAt: new Date().toISOString() });
+		const filtered = usage.filter((u) => u.safeHostname !== safeHostname);
+		filtered.unshift({
+			safeHostname,
+			lastAccessedAt: new Date().toISOString(),
+		});
 
 		const toKeep = filtered.slice(0, maxCount);
 		const toRemove = filtered.slice(maxCount);
 
-		await Promise.all(toRemove.map((u) => this.clearAllAuthData(u.label)));
+		await Promise.all(
+			toRemove.map((u) => this.clearAllAuthData(u.safeHostname)),
+		);
 		await this.memento.update(DEPLOYMENT_USAGE_KEY, toKeep);
 	}
 
 	/**
 	 * Clear all auth data for a deployment and remove it from the usage list.
 	 */
-	public async clearAllAuthData(label: string): Promise<void> {
-		await this.clearSessionAuth(label);
-		const usage = this.getDeploymentUsage().filter((u) => u.label !== label);
+	public async clearAllAuthData(safeHostname: string): Promise<void> {
+		await this.clearSessionAuth(safeHostname);
+		const usage = this.getDeploymentUsage().filter(
+			(u) => u.safeHostname !== safeHostname,
+		);
 		await this.memento.update(DEPLOYMENT_USAGE_KEY, usage);
 	}
 
 	/**
-	 * Get all known deployment labels, ordered by most recently accessed.
+	 * Get all known hostnames, ordered by most recently accessed.
 	 */
-	public getKnownLabels(): string[] {
-		return this.getDeploymentUsage().map((u) => u.label);
+	public getKnownSafeHostnames(): string[] {
+		return this.getDeploymentUsage().map((u) => u.safeHostname);
 	}
 
 	/**
@@ -192,28 +213,29 @@ export class SecretsManager {
 			return undefined;
 		}
 
-		const label = toSafeHost(legacyUrl);
-
-		const existing = await this.getSessionAuth(label);
-		if (existing) {
-			return undefined;
-		}
-
 		const oldToken = await this.secrets.get(LEGACY_SESSION_TOKEN_KEY);
-		if (!oldToken) {
+		if (oldToken === undefined) {
 			return undefined;
 		}
 
-		await this.setSessionAuth(label, { url: legacyUrl, token: oldToken });
 		await this.secrets.delete(LEGACY_SESSION_TOKEN_KEY);
 		await this.memento.update("url", undefined);
+
+		const safeHostname = toSafeHost(legacyUrl);
+		const existing = await this.getSessionAuth(safeHostname);
+		if (!existing) {
+			await this.setSessionAuth(safeHostname, {
+				url: legacyUrl,
+				token: oldToken,
+			});
+		}
 
 		// Also set as current deployment if none exists
 		const currentDeployment = await this.getCurrentDeployment();
 		if (!currentDeployment) {
-			await this.setCurrentDeployment({ url: legacyUrl, label });
+			await this.setCurrentDeployment({ url: legacyUrl, safeHostname });
 		}
 
-		return label;
+		return safeHostname;
 	}
 }

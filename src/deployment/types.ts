@@ -1,13 +1,13 @@
 import { type User } from "coder/site/src/api/typesGenerated";
 
 /**
- * Represents a Coder deployment with its URL and label.
- * The label is used as a unique identifier for storing credentials and configuration.
- * It may be derived from the URL hostname (via toSafeHost) or come from SSH host parsing.
+ * Represents a Coder deployment with its URL and hostname.
+ * The safeHostname is used as a unique identifier for storing credentials and configuration.
+ * It is derived from the URL hostname (via toSafeHost) or from SSH host parsing.
  */
 export interface Deployment {
 	readonly url: string;
-	readonly label: string;
+	readonly safeHostname: string;
 }
 
 /**

@@ -35,6 +35,7 @@ export class ServiceContainer implements vscode.Disposable {
 		this.secretsManager = new SecretsManager(
 			context.secrets,
 			context.globalState,
+			this.logger,
 		);
 		this.cliManager = new CliManager(
 			this.vscodeProposed,

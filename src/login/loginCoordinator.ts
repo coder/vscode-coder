@@ -19,7 +19,7 @@ interface LoginResult {
 }
 
 interface LoginOptions {
-	label: string;
+	safeHostname: string;
 	url: string | undefined;
 	autoLogin?: boolean;
 }
@@ -44,14 +44,14 @@ export class LoginCoordinator {
 	public async promptForLogin(
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
-		const { label, url } = options;
-		return this.executeWithGuard(label, async () => {
+		const { safeHostname, url } = options;
+		return this.executeWithGuard(safeHostname, async () => {
 			const result = await this.attemptLogin(
-				{ label, url },
+				{ safeHostname, url },
 				options.autoLogin ?? false,
 			);
 
-			await this.persistSessionAuth(result, label, url);
+			await this.persistSessionAuth(result, safeHostname, url);
 
 			return result;
 		});
@@ -63,8 +63,8 @@ export class LoginCoordinator {
 	public async promptForLoginWithDialog(
 		options: LoginOptions & { message?: string; detailPrefix?: string },
 	): Promise<LoginResult> {
-		const { label, url, detailPrefix, message } = options;
-		return this.executeWithGuard(label, () => {
+		const { safeHostname, url, detailPrefix, message } = options;
+		return this.executeWithGuard(safeHostname, () => {
 			// Show dialog promise
 			const dialogPromise = this.vscodeProposed.window
 				.showErrorMessage(
@@ -73,7 +73,7 @@ export class LoginCoordinator {
 						modal: true,
 						useCustom: true,
 						detail:
-							(detailPrefix || `Authentication needed for ${label}.`) +
+							(detailPrefix || `Authentication needed for ${safeHostname}.`) +
 							"\n\nIf you've already logged in, you may close this dialog.",
 					},
 					"Login",
@@ -81,7 +81,8 @@ export class LoginCoordinator {
 				.then(async (action) => {
 					if (action === "Login") {
 						// Proceed with the login flow, handling logging in from another window
-						const storedAuth = await this.secretsManager.getSessionAuth(label);
+						const storedAuth =
+							await this.secretsManager.getSessionAuth(safeHostname);
 						const newUrl = await maybeAskUrl(
 							this.mementoManager,
 							url,
@@ -92,11 +93,11 @@ export class LoginCoordinator {
 						}
 
 						const result = await this.attemptLogin(
-							{ url: newUrl, label },
+							{ url: newUrl, safeHostname },
 							false,
 						);
 
-						await this.persistSessionAuth(result, label, newUrl);
+						await this.persistSessionAuth(result, safeHostname, newUrl);
 
 						return result;
 					} else {
@@ -106,17 +107,21 @@ export class LoginCoordinator {
 				});
 
 			// Race between user clicking login and cross-window detection
-			return Promise.race([dialogPromise, this.waitForCrossWindowLogin(label)]);
+			return Promise.race([
+				dialogPromise,
+				this.waitForCrossWindowLogin(safeHostname),
+			]);
 		});
 	}
 
 	private async persistSessionAuth(
 		result: LoginResult,
-		label: string,
+		safeHostname: string,
 		url: string,
 	): Promise<void> {
-		if (result.success && result.token) {
-			await this.secretsManager.setSessionAuth(label, {
+		// Empty token is valid for mTLS
+		if (result.success && result.token !== undefined) {
+			await this.secretsManager.setSessionAuth(safeHostname, {
 				url,
 				token: result.token,
 			});
@@ -128,31 +133,33 @@ export class LoginCoordinator {
 	 * Same-window guard wrapper.
 	 */
 	private async executeWithGuard(
-		label: string,
+		safeHostname: string,
 		executeFn: () => Promise<LoginResult>,
 	): Promise<LoginResult> {
-		const existingLogin = this.inProgressLogins.get(label);
+		const existingLogin = this.inProgressLogins.get(safeHostname);
 		if (existingLogin) {
 			return existingLogin;
 		}
 
 		const loginPromise = executeFn();
-		this.inProgressLogins.set(label, loginPromise);
+		this.inProgressLogins.set(safeHostname, loginPromise);
 
 		try {
 			return await loginPromise;
 		} finally {
-			this.inProgressLogins.delete(label);
+			this.inProgressLogins.delete(safeHostname);
 		}
 	}
 
 	/**
 	 * Waits for login detected from another window.
 	 */
-	private async waitForCrossWindowLogin(label: string): Promise<LoginResult> {
+	private async waitForCrossWindowLogin(
+		safeHostname: string,
+	): Promise<LoginResult> {
 		return new Promise((resolve) => {
 			const disposable = this.secretsManager.onDidChangeSessionAuth(
-				label,
+				safeHostname,
 				(auth) => {
 					if (auth?.token) {
 						disposable.dispose();
@@ -178,7 +185,9 @@ export class LoginCoordinator {
 
 		let storedToken: string | undefined;
 		if (needsToken) {
-			const auth = await this.secretsManager.getSessionAuth(deployment.label);
+			const auth = await this.secretsManager.getSessionAuth(
+				deployment.safeHostname,
+			);
 			storedToken = auth?.token;
 			if (storedToken) {
 				client.setSessionToken(storedToken);

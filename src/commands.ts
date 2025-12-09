@@ -81,7 +81,7 @@ export class Commands {
 	 */
 	public async login(args?: {
 		url?: string;
-		label?: string;
+		safeHostname?: string;
 		autoLogin?: boolean;
 	}): Promise<void> {
 		if (this.deploymentManager.isAuthenticated()) {
@@ -100,13 +100,13 @@ export class Commands {
 		}
 
 		// It is possible that we are trying to log into an old-style host, in which
-		// case we want to write with the provided blank label instead of generating
-		// a host label.
-		const label = args?.label ?? toSafeHost(url);
-		this.logger.info("Using deployment label", label);
+		// case we want to write with the provided blank hostname instead of
+		// generating one.
+		const safeHostname = args?.safeHostname ?? toSafeHost(url);
+		this.logger.info("Using hostname", safeHostname);
 
 		const result = await this.loginCoordinator.promptForLogin({
-			label,
+			safeHostname,
 			url,
 			autoLogin: args?.autoLogin,
 		});
@@ -117,7 +117,7 @@ export class Commands {
 
 		await this.deploymentManager.changeDeployment({
 			url,
-			label,
+			safeHostname,
 			token: result.token,
 			user: result.user,
 		});
@@ -346,13 +346,13 @@ export class Commands {
 
 					// If workspace_name is provided, run coder ssh before the command
 					const baseUrl = this.requireExtensionBaseUrl();
-					const label = toSafeHost(baseUrl);
+					const safeHost = toSafeHost(baseUrl);
 					const binary = await this.cliManager.fetchBinary(
 						this.extensionClient,
-						label,
+						safeHost,
 					);
 
-					const configDir = this.pathResolver.getGlobalConfigDir(label);
+					const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
 					const globalFlags = getGlobalFlags(
 						vscode.workspace.getConfiguration(),
 						configDir,

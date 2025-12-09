@@ -4,7 +4,7 @@ import url from "node:url";
 export interface AuthorityParts {
 	agent: string | undefined;
 	host: string;
-	label: string;
+	safeHostname: string;
 	username: string;
 	workspace: string;
 }
@@ -94,7 +94,7 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	return {
 		agent: agent,
 		host: authorityParts[1],
-		label: parts[0].replace(/^coder-vscode\.?/, ""),
+		safeHostname: parts[0].replace(/^coder-vscode\.?/, ""),
 		username: parts[1],
 		workspace: workspace,
 	};

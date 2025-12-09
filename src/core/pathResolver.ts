@@ -1,4 +1,4 @@
-import * as path from "path";
+import * as path from "node:path";
 import * as vscode from "vscode";
 
 export class PathResolver {
@@ -8,26 +8,28 @@ export class PathResolver {
 	) {}
 
 	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * the global Coder configs are stored.
+	 * Return the directory for the deployment with the provided hostname to
+	 * where the global Coder configs are stored.
 	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
+	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 *
 	 * The caller must ensure this directory exists before use.
 	 */
-	public getGlobalConfigDir(label: string): string {
-		return label ? path.join(this.basePath, label) : this.basePath;
+	public getGlobalConfigDir(safeHostname: string): string {
+		return safeHostname
+			? path.join(this.basePath, safeHostname)
+			: this.basePath;
 	}
 
 	/**
-	 * Return the directory for a deployment with the provided label to where its
-	 * binary is cached.
+	 * Return the directory for a deployment with the provided hostname to where
+	 * its binary is cached.
 	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
+	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 *
 	 * The caller must ensure this directory exists before use.
 	 */
-	public getBinaryCachePath(label: string): string {
+	public getBinaryCachePath(safeHostname: string): string {
 		const settingPath = vscode.workspace
 			.getConfiguration()
 			.get<string>("coder.binaryDestination")
@@ -36,7 +38,7 @@ export class PathResolver {
 			settingPath || process.env.CODER_BINARY_DESTINATION?.trim();
 		return binaryPath
 			? path.normalize(binaryPath)
-			: path.join(this.getGlobalConfigDir(label), "bin");
+			: path.join(this.getGlobalConfigDir(safeHostname), "bin");
 	}
 
 	/**
@@ -69,39 +71,39 @@ export class PathResolver {
 	}
 
 	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * its session token is stored.
+	 * Return the directory for the deployment with the provided hostname to
+	 * where its session token is stored.
 	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
+	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 *
 	 * The caller must ensure this directory exists before use.
 	 */
-	public getSessionTokenPath(label: string): string {
-		return path.join(this.getGlobalConfigDir(label), "session");
+	public getSessionTokenPath(safeHostname: string): string {
+		return path.join(this.getGlobalConfigDir(safeHostname), "session");
 	}
 
 	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * its session token was stored by older code.
+	 * Return the directory for the deployment with the provided hostname to
+	 * where its session token was stored by older code.
 	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
+	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 *
 	 * The caller must ensure this directory exists before use.
 	 */
-	public getLegacySessionTokenPath(label: string): string {
-		return path.join(this.getGlobalConfigDir(label), "session_token");
+	public getLegacySessionTokenPath(safeHostname: string): string {
+		return path.join(this.getGlobalConfigDir(safeHostname), "session_token");
 	}
 
 	/**
-	 * Return the directory for the deployment with the provided label to where
-	 * its url is stored.
+	 * Return the directory for the deployment with the provided hostname to
+	 * where its url is stored.
 	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
+	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 *
 	 * The caller must ensure this directory exists before use.
 	 */
-	public getUrlPath(label: string): string {
-		return path.join(this.getGlobalConfigDir(label), "url");
+	public getUrlPath(safeHostname: string): string {
+		return path.join(this.getGlobalConfigDir(safeHostname), "url");
 	}
 
 	/**
