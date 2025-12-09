@@ -558,20 +558,30 @@ export class Remote {
 	}
 
 	/**
-	 * Return the --log-dir argument value for the ProxyCommand.  It may be an
+	 * Return the --log-dir argument value for the ProxyCommand. It may be an
 	 * empty string if the setting is not set or the cli does not support it.
 	 */
 	private getLogDir(featureSet: FeatureSet): string {
 		if (!featureSet.proxyLogDirectory) {
 			return "";
 		}
-		// If the proxyLogDirectory is not set in the extension settings we don't send one.
-		return expandPath(
-			String(
-				vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ??
-					"",
-			).trim(),
+
+		const vscodeConfig = vscode.workspace.getConfiguration();
+		const proxyLogDir = vscodeConfig
+			.get<string>("coder.proxyLogDirectory")
+			?.trim();
+		if (proxyLogDir) {
+			return expandPath(proxyLogDir);
+		}
+
+		const sshFlags = getSshFlags(vscodeConfig);
+		const logDirFlagIndex = sshFlags.findIndex(
+			(option) => option === "-l" || option === "--log-dir",
 		);
+		if (logDirFlagIndex !== -1 && logDirFlagIndex + 1 < sshFlags.length) {
+			return expandPath(sshFlags[logDirFlagIndex + 1].trim());
+		}
+		return "";
 	}
 
 	/**
@@ -605,6 +615,7 @@ export class Remote {
 			)
 				? ["--disable-autostart"]
 				: [];
+			// Make sure to update the `coder.sshFlags` description if we add more internal flags here!
 			const internalFlags = [
 				"--stdio",
 				"--usage-app=vscode",

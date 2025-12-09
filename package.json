@@ -136,7 +136,7 @@
 					"default": "auto"
 				},
 				"coder.sshFlags": {
-					"markdownDescription": "Additional flags to pass to the `coder ssh` command when establishing SSH connections. Enter each flag as a separate array item; values are passed verbatim and in order. See the [CLI ssh reference](https://coder.com/docs/reference/cli/ssh) for available flags.\n\nNote that the following flags are ignored because they are managed internally by the extension: `--network-info-dir`, `--log-dir`, `--ssh-host-prefix`. To manage the `--disable-autostart` flag, use the `coder.disableAutostart` setting.",
+					"markdownDescription": "Additional flags to pass to the `coder ssh` command when establishing SSH connections. Enter each flag as a separate array item; values are passed verbatim and in order. See the [CLI ssh reference](https://coder.com/docs/reference/cli/ssh) for available flags.\n\nNote: `--network-info-dir` and `--ssh-host-prefix` are ignored (managed internally). `--disable-autostart` and `--log-dir`/`-l` can be specified here, but prefer using `#coder.disableAutostart#` and `#coder.proxyLogDirectory#` settings respectively.",
 					"type": "array",
 					"items": {
 						"type": "string"
