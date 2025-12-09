@@ -19,6 +19,7 @@ import {
 } from "../api/agentMetadataHelper";
 import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
+import { attachOAuthInterceptors } from "../api/oauthInterceptors";
 import { needToken } from "../api/utils";
 import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "../cliConfig";
 import { type Commands } from "../commands";
@@ -35,6 +36,7 @@ import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
+import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,
@@ -70,7 +72,7 @@ export class Remote {
 	private readonly loginCoordinator: LoginCoordinator;
 
 	public constructor(
-		serviceContainer: ServiceContainer,
+		private readonly serviceContainer: ServiceContainer,
 		private readonly commands: Commands,
 		private readonly extensionContext: vscode.ExtensionContext,
 	) {
@@ -116,6 +118,14 @@ export class Remote {
 		const disposables: vscode.Disposable[] = [];
 
 		try {
+			// Create OAuth session manager for this remote deployment
+			const remoteOAuthManager = await OAuthSessionManager.create(
+				{ url: baseUrlRaw, safeHostname: parts.safeHostname },
+				this.serviceContainer,
+				this.extensionContext.extension.id,
+			);
+			disposables.push(remoteOAuthManager);
+
 			const ensureLoggedInAndRetry = async (
 				message: string,
 				url: string | undefined,
@@ -125,6 +135,7 @@ export class Remote {
 					url,
 					message,
 					detailPrefix: `You must log in to access ${workspaceName}.`,
+					oauthSessionManager: remoteOAuthManager,
 				});
 
 				// Dispose before retrying since setup will create new disposables
@@ -163,6 +174,7 @@ export class Remote {
 			// client to remain unaffected by whatever the plugin is doing.
 			const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
 			disposables.push(workspaceClient);
+			attachOAuthInterceptors(workspaceClient, this.logger, remoteOAuthManager);
 			// Store for use in commands.
 			this.commands.remoteWorkspaceClient = workspaceClient;
 

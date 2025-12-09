@@ -8,12 +8,14 @@ import * as vscode from "vscode";
 
 import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
+import { attachOAuthInterceptors } from "./api/oauthInterceptors";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { type SecretsManager } from "./core/secretsManager";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { getErrorDetail, toError } from "./error/errorUtils";
+import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
@@ -68,6 +70,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	const deployment = await secretsManager.getCurrentDeployment();
 
+	// Create OAuth session manager with login coordinator
+	const oauthSessionManager = await OAuthSessionManager.create(
+		deployment,
+		serviceContainer,
+		ctx.extension.id,
+	);
+	ctx.subscriptions.push(oauthSessionManager);
+
 	// This client tracks the current login and will be used through the life of
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
@@ -78,6 +88,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output,
 	);
 	ctx.subscriptions.push(client);
+	attachOAuthInterceptors(client, output, oauthSessionManager);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
@@ -123,21 +134,29 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	);
 
 	// Create deployment manager to centralize deployment state management
-	const deploymentManager = DeploymentManager.create(serviceContainer, client, [
-		myWorkspacesProvider,
-		allWorkspacesProvider,
-	]);
+	const deploymentManager = DeploymentManager.create(
+		serviceContainer,
+		client,
+		oauthSessionManager,
+		[myWorkspacesProvider, allWorkspacesProvider],
+	);
 	ctx.subscriptions.push(deploymentManager);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(serviceContainer, client, deploymentManager);
+	const commands = new Commands(
+		serviceContainer,
+		client,
+		oauthSessionManager,
+		deploymentManager,
+	);
 
 	ctx.subscriptions.push(
 		registerUriHandler(
 			serviceContainer,
 			deploymentManager,
 			commands,
+			oauthSessionManager,
 			vscodeProposed,
 		),
 		vscode.commands.registerCommand(

@@ -4,6 +4,7 @@ import { errToStr } from "../api/api-helper";
 import { type Commands } from "../commands";
 import { type ServiceContainer } from "../core/container";
 import { type DeploymentManager } from "../deployment/deploymentManager";
+import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { maybeAskUrl } from "../promptUtils";
 import { toSafeHost } from "../util";
 
@@ -11,6 +12,7 @@ interface UriRouteContext {
 	params: URLSearchParams;
 	serviceContainer: ServiceContainer;
 	deploymentManager: DeploymentManager;
+	extensionOAuthSessionManager: OAuthSessionManager;
 	commands: Commands;
 }
 
@@ -19,6 +21,7 @@ type UriRouteHandler = (ctx: UriRouteContext) => Promise<void>;
 const routes: Record<string, UriRouteHandler> = {
 	"/open": handleOpen,
 	"/openDevContainer": handleOpenDevContainer,
+	CALLBACK_PATH: handleOAuthCallback,
 };
 
 /**
@@ -28,6 +31,7 @@ export function registerUriHandler(
 	serviceContainer: ServiceContainer,
 	deploymentManager: DeploymentManager,
 	commands: Commands,
+	oauthSessionManager: OAuthSessionManager,
 	vscodeProposed: typeof vscode,
 ): vscode.Disposable {
 	const output = serviceContainer.getLogger();
@@ -35,7 +39,13 @@ export function registerUriHandler(
 	return vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
 			try {
-				await routeUri(uri, serviceContainer, deploymentManager, commands);
+				await routeUri(
+					uri,
+					serviceContainer,
+					deploymentManager,
+					commands,
+					oauthSessionManager,
+				);
 			} catch (error) {
 				const message = errToStr(error, "No error message was provided");
 				output.warn(`Failed to handle URI ${uri.toString()}: ${message}`);
@@ -54,6 +64,7 @@ async function routeUri(
 	serviceContainer: ServiceContainer,
 	deploymentManager: DeploymentManager,
 	commands: Commands,
+	oauthSessionManager: OAuthSessionManager,
 ): Promise<void> {
 	const handler = routes[uri.path];
 	if (!handler) {
@@ -65,6 +76,7 @@ async function routeUri(
 		serviceContainer,
 		deploymentManager,
 		commands,
+		extensionOAuthSessionManager: oauthSessionManager,
 	});
 }
 
@@ -77,7 +89,13 @@ function getRequiredParam(params: URLSearchParams, name: string): string {
 }
 
 async function handleOpen(ctx: UriRouteContext): Promise<void> {
-	const { params, serviceContainer, deploymentManager, commands } = ctx;
+	const {
+		params,
+		serviceContainer,
+		deploymentManager,
+		commands,
+		extensionOAuthSessionManager,
+	} = ctx;
 
 	const owner = getRequiredParam(params, "owner");
 	const workspace = getRequiredParam(params, "workspace");
@@ -87,7 +105,12 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		params.has("openRecent") &&
 		(!params.get("openRecent") || params.get("openRecent") === "true");
 
-	await setupDeployment(params, serviceContainer, deploymentManager);
+	await setupDeployment(
+		params,
+		serviceContainer,
+		deploymentManager,
+		extensionOAuthSessionManager,
+	);
 
 	await commands.open(
 		owner,
@@ -99,7 +122,13 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 }
 
 async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {
-	const { params, serviceContainer, deploymentManager, commands } = ctx;
+	const {
+		params,
+		serviceContainer,
+		deploymentManager,
+		commands,
+		extensionOAuthSessionManager,
+	} = ctx;
 
 	const owner = getRequiredParam(params, "owner");
 	const workspace = getRequiredParam(params, "workspace");
@@ -115,7 +144,12 @@ async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {
 		);
 	}
 
-	await setupDeployment(params, serviceContainer, deploymentManager);
+	await setupDeployment(
+		params,
+		serviceContainer,
+		deploymentManager,
+		extensionOAuthSessionManager,
+	);
 
 	await commands.openDevContainer(
 		owner,
@@ -136,6 +170,7 @@ async function setupDeployment(
 	params: URLSearchParams,
 	serviceContainer: ServiceContainer,
 	deploymentManager: DeploymentManager,
+	oauthSessionManager: OAuthSessionManager,
 ): Promise<void> {
 	const secretsManager = serviceContainer.getSecretsManager();
 	const mementoManager = serviceContainer.getMementoManager();
@@ -164,6 +199,7 @@ async function setupDeployment(
 		safeHostname,
 		url,
 		token,
+		oauthSessionManager,
 	});
 
 	if (!result.success) {
@@ -176,4 +212,26 @@ async function setupDeployment(
 		token: result.token,
 		user: result.user,
 	});
+}
+
+async function handleOAuthCallback(ctx: UriRouteContext): Promise<void> {
+	const { params, serviceContainer } = ctx;
+	const logger = serviceContainer.getLogger();
+	const secretsManager = serviceContainer.getSecretsManager();
+
+	const code = params.get("code");
+	const state = params.get("state");
+	const error = params.get("error");
+
+	if (!state) {
+		logger.warn("Received OAuth callback with no state parameter");
+		return;
+	}
+
+	try {
+		await secretsManager.setOAuthCallback({ state, code, error });
+		logger.debug("OAuth callback processed successfully");
+	} catch (err) {
+		logger.error("Failed to process OAuth callback:", err);
+	}
 }
