@@ -1,16 +1,16 @@
 import { CoderApi } from "../api/coderApi";
+import { type ServiceContainer } from "../core/container";
+import { type ContextManager } from "../core/contextManager";
+import { type MementoManager } from "../core/mementoManager";
+import { type SecretsManager } from "../core/secretsManager";
+import { type Logger } from "../logging/logger";
+import { type OAuthSessionManager } from "../oauth/sessionManager";
+import { type WorkspaceProvider } from "../workspace/workspacesProvider";
+
+import { type Deployment, type DeploymentWithAuth } from "./types";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 import type * as vscode from "vscode";
-
-import type { ServiceContainer } from "../core/container";
-import type { ContextManager } from "../core/contextManager";
-import type { MementoManager } from "../core/mementoManager";
-import type { SecretsManager } from "../core/secretsManager";
-import type { Logger } from "../logging/logger";
-import type { WorkspaceProvider } from "../workspace/workspacesProvider";
-
-import type { Deployment, DeploymentWithAuth } from "./types";
 
 /**
  * Internal state type that allows mutation of user property.
@@ -23,6 +23,7 @@ type DeploymentWithUser = Deployment & { user: User };
  * Centralizes:
  * - In-memory deployment state (url, label, token, user)
  * - Client credential updates
+ * - OAuth session management
  * - Auth listener registration
  * - Context updates (coder.authenticated, coder.isOwner)
  * - Workspace provider refresh
@@ -41,6 +42,7 @@ export class DeploymentManager implements vscode.Disposable {
 	private constructor(
 		serviceContainer: ServiceContainer,
 		private readonly client: CoderApi,
+		private readonly oauthSessionManager: OAuthSessionManager,
 		private readonly workspaceProviders: WorkspaceProvider[],
 	) {
 		this.secretsManager = serviceContainer.getSecretsManager();
@@ -52,11 +54,13 @@ export class DeploymentManager implements vscode.Disposable {
 	public static create(
 		serviceContainer: ServiceContainer,
 		client: CoderApi,
+		oauthSessionManager: OAuthSessionManager,
 		workspaceProviders: WorkspaceProvider[],
 	): DeploymentManager {
 		const manager = new DeploymentManager(
 			serviceContainer,
 			client,
+			oauthSessionManager,
 			workspaceProviders,
 		);
 		manager.subscribeToCrossWindowChanges();
@@ -85,6 +89,12 @@ export class DeploymentManager implements vscode.Disposable {
 	public async setDeploymentIfValid(
 		deployment: Deployment & { token?: string },
 	): Promise<boolean> {
+		// TODO used to trigger
+		/**
+		 * this.oauthSessionManager.refreshIfAlmostExpired().catch((error) => {
+			this.logger.warn("Setup token refresh failed:", error);
+		});
+		 */
 		const auth = await this.secretsManager.getSessionAuth(
 			deployment.safeHostname,
 		);
@@ -124,6 +134,7 @@ export class DeploymentManager implements vscode.Disposable {
 		} else {
 			this.client.setCredentials(deployment.url, deployment.token);
 		}
+		await this.oauthSessionManager.setDeployment(deployment);
 
 		this.registerAuthListener();
 		this.updateAuthContexts();
@@ -140,10 +151,18 @@ export class DeploymentManager implements vscode.Disposable {
 		this.#deployment = null;
 
 		this.client.setCredentials(undefined, undefined);
+		this.oauthSessionManager.clearDeployment();
 		this.updateAuthContexts();
 		this.refreshWorkspaces();
 
 		await this.secretsManager.setCurrentDeployment(undefined);
+	}
+
+	/**
+	 * Clear OAuth state for a deployment when switching to token auth.
+	 */
+	public async clearOAuthState(label: string): Promise<void> {
+		await this.oauthSessionManager.clearOAuthState(label);
 	}
 
 	public dispose(): void {

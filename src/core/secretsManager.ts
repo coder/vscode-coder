@@ -1,4 +1,8 @@
 import { type Logger } from "../logging/logger";
+import {
+	type ClientRegistrationResponse,
+	type TokenResponse,
+} from "../oauth/types";
 import { toSafeHost } from "../util";
 
 import type { Memento, SecretStorage, Disposable } from "vscode";
@@ -8,8 +12,11 @@ import type { Deployment } from "../deployment/types";
 // Each deployment has its own key to ensure atomic operations (multiple windows
 // writing to a shared key could drop data) and to receive proper VS Code events.
 const SESSION_KEY_PREFIX = "coder.session.";
+const OAUTH_TOKENS_PREFIX = "coder.oauth.tokens.";
+const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
 
 const CURRENT_DEPLOYMENT_KEY = "coder.currentDeployment";
+const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
 
 const DEPLOYMENT_USAGE_KEY = "coder.deploymentUsage";
 const DEFAULT_MAX_DEPLOYMENTS = 10;
@@ -29,6 +36,17 @@ export interface SessionAuth {
 interface DeploymentUsage {
 	safeHostname: string;
 	lastAccessedAt: string;
+}
+
+export type StoredOAuthTokens = Omit<TokenResponse, "expires_in"> & {
+	expiry_timestamp: number;
+	deployment_url: string;
+};
+
+interface OAuthCallbackData {
+	state: string;
+	code: string | null;
+	error: string | null;
 }
 
 export class SecretsManager {
@@ -98,6 +116,38 @@ export class SecretsManager {
 	}
 
 	/**
+	 * Write an OAuth callback result to secrets storage.
+	 * Used for cross-window communication when OAuth callback arrives in a different window.
+	 */
+	public async setOAuthCallback(data: OAuthCallbackData): Promise<void> {
+		await this.secrets.store(OAUTH_CALLBACK_KEY, JSON.stringify(data));
+	}
+
+	/**
+	 * Listen for OAuth callback results from any VS Code window.
+	 * The listener receives the state parameter, code (if success), and error (if failed).
+	 */
+	public onDidChangeOAuthCallback(
+		listener: (data: OAuthCallbackData) => void,
+	): Disposable {
+		return this.secrets.onDidChange(async (e) => {
+			if (e.key !== OAUTH_CALLBACK_KEY) {
+				return;
+			}
+
+			try {
+				const data = await this.secrets.get(OAUTH_CALLBACK_KEY);
+				if (data) {
+					const parsed = JSON.parse(data) as OAuthCallbackData;
+					listener(parsed);
+				}
+			} catch {
+				// Ignore parse errors
+			}
+		});
+	}
+
+	/**
 	 * Listen for changes to a specific deployment's session auth.
 	 */
 	public onDidChangeSessionAuth(
@@ -153,6 +203,77 @@ export class SecretsManager {
 		return `${SESSION_KEY_PREFIX}${safeHostname || "<legacy>"}`;
 	}
 
+	public async getOAuthTokens(
+		safeHostname: string,
+	): Promise<StoredOAuthTokens | undefined> {
+		try {
+			const data = await this.secrets.get(
+				`${OAUTH_TOKENS_PREFIX}${safeHostname}`,
+			);
+			if (!data) {
+				return undefined;
+			}
+			return JSON.parse(data) as StoredOAuthTokens;
+		} catch {
+			return undefined;
+		}
+	}
+
+	public async setOAuthTokens(
+		safeHostname: string,
+		tokens: StoredOAuthTokens,
+	): Promise<void> {
+		await this.secrets.store(
+			`${OAUTH_TOKENS_PREFIX}${safeHostname}`,
+			JSON.stringify(tokens),
+		);
+		await this.recordDeploymentAccess(safeHostname);
+	}
+
+	public async clearOAuthTokens(safeHostname: string): Promise<void> {
+		await this.secrets.delete(`${OAUTH_TOKENS_PREFIX}${safeHostname}`);
+	}
+
+	public async getOAuthClientRegistration(
+		safeHostname: string,
+	): Promise<ClientRegistrationResponse | undefined> {
+		try {
+			const data = await this.secrets.get(
+				`${OAUTH_CLIENT_PREFIX}${safeHostname}`,
+			);
+			if (!data) {
+				return undefined;
+			}
+			return JSON.parse(data) as ClientRegistrationResponse;
+		} catch {
+			return undefined;
+		}
+	}
+
+	public async setOAuthClientRegistration(
+		safeHostname: string,
+		registration: ClientRegistrationResponse,
+	): Promise<void> {
+		await this.secrets.store(
+			`${OAUTH_CLIENT_PREFIX}${safeHostname}`,
+			JSON.stringify(registration),
+		);
+		await this.recordDeploymentAccess(safeHostname);
+	}
+
+	public async clearOAuthClientRegistration(
+		safeHostname: string,
+	): Promise<void> {
+		await this.secrets.delete(`${OAUTH_CLIENT_PREFIX}${safeHostname}`);
+	}
+
+	public async clearOAuthData(safeHostname: string): Promise<void> {
+		await Promise.all([
+			this.clearOAuthTokens(safeHostname),
+			this.clearOAuthClientRegistration(safeHostname),
+		]);
+	}
+
 	/**
 	 * Record that a deployment was accessed, moving it to the front of the LRU list.
 	 * Prunes deployments beyond maxCount, clearing their auth data.
@@ -181,6 +302,10 @@ export class SecretsManager {
 	 * Clear all auth data for a deployment and remove it from the usage list.
 	 */
 	public async clearAllAuthData(safeHostname: string): Promise<void> {
+		await Promise.all([
+			this.clearSessionAuth(safeHostname),
+			this.clearOAuthData(safeHostname),
+		]);
 		await this.clearSessionAuth(safeHostname);
 		const usage = this.getDeploymentUsage().filter(
 			(u) => u.safeHostname !== safeHostname,
