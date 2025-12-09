@@ -7,25 +7,14 @@ export class MementoManager {
 	constructor(private readonly memento: Memento) {}
 
 	/**
-	 * Add the URL to the list of recently accessed URLs in global storage, then
-	 * set it as the last used URL.
-	 *
-	 * If the URL is falsey, then remove it as the last used URL and do not touch
-	 * the history.
+	 * Add a URL to the history of recently accessed URLs.
+	 * Used by the URL picker to show recent deployments.
 	 */
-	public async setUrl(url?: string): Promise<void> {
-		await this.memento.update("url", url);
+	public async addToUrlHistory(url: string): Promise<void> {
 		if (url) {
 			const history = this.withUrlHistory(url);
 			await this.memento.update("urlHistory", history);
 		}
-	}
-
-	/**
-	 * Get the last used URL.
-	 */
-	public getUrl(): string | undefined {
-		return this.memento.get("url");
 	}
 
 	/**

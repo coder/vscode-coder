@@ -12,10 +12,19 @@ type CoderContext = keyof typeof CONTEXT_DEFAULTS;
 export class ContextManager implements vscode.Disposable {
 	private readonly context = new Map<CoderContext, boolean>();
 
-	public constructor() {
-		(Object.keys(CONTEXT_DEFAULTS) as CoderContext[]).forEach((key) => {
+	public constructor(extensionContext: vscode.ExtensionContext) {
+		for (const key of Object.keys(CONTEXT_DEFAULTS) as CoderContext[]) {
 			this.set(key, CONTEXT_DEFAULTS[key]);
-		});
+		}
+		this.setInternalContexts(extensionContext);
+	}
+
+	private setInternalContexts(extensionContext: vscode.ExtensionContext): void {
+		vscode.commands.executeCommand(
+			"setContext",
+			"coder.devMode",
+			extensionContext.extensionMode === vscode.ExtensionMode.Development,
+		);
 	}
 
 	public set(key: CoderContext, value: boolean): void {

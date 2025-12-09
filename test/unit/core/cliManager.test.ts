@@ -165,52 +165,6 @@ describe("CliManager", () => {
 		});
 	});
 
-	describe("Read CLI Configuration", () => {
-		it("should read and trim stored configuration", async () => {
-			// Create directories and write files with whitespace
-			vol.mkdirSync("/path/base/deployment", { recursive: true });
-			memfs.writeFileSync(
-				"/path/base/deployment/url",
-				"  https://coder.example.com  \n",
-			);
-			memfs.writeFileSync(
-				"/path/base/deployment/session",
-				"\t test-token \r\n",
-			);
-
-			const result = await manager.readConfig("deployment");
-
-			expect(result).toEqual({
-				url: "https://coder.example.com",
-				token: "test-token",
-			});
-		});
-
-		it("should return empty strings for missing files", async () => {
-			const result = await manager.readConfig("deployment");
-
-			expect(result).toEqual({
-				url: "",
-				token: "",
-			});
-		});
-
-		it("should handle partial configuration", async () => {
-			vol.mkdirSync("/path/base/deployment", { recursive: true });
-			memfs.writeFileSync(
-				"/path/base/deployment/url",
-				"https://coder.example.com",
-			);
-
-			const result = await manager.readConfig("deployment");
-
-			expect(result).toEqual({
-				url: "https://coder.example.com",
-				token: "",
-			});
-		});
-	});
-
 	describe("Binary Version Validation", () => {
 		it("rejects invalid server versions", async () => {
 			mockApi.getBuildInfo = vi.fn().mockResolvedValue({ version: "invalid" });
