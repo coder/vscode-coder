@@ -15,7 +15,7 @@ import { type ContextManager } from "./core/contextManager";
 import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
 import { type SecretsManager } from "./core/secretsManager";
-import { type DeploymentManager } from "./deployment";
+import { type DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error";
 import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";

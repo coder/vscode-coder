@@ -17,13 +17,7 @@ export interface Deployment {
  * - Undefined token means that we should not override the existing token (if any).
  * - Undefined user means the deployment is set but not authenticated yet.
  */
-export type DeploymentWithAuth = Deployment & { token?: string; user?: User };
-
-/**
- * Type guard to check if a deployment has a valid authenticated user.
- */
-export function isAuthenticated(
-	deployment: DeploymentWithAuth | null,
-): deployment is Deployment & { user: User } {
-	return deployment?.user !== undefined;
-}
+export type DeploymentWithAuth = Deployment & {
+	readonly token?: string;
+	readonly user?: User;
+};

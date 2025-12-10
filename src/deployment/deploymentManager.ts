@@ -1,19 +1,15 @@
-import { type CoderApi } from "../api/coderApi";
-import { type ServiceContainer } from "../core/container";
-import { type ContextManager } from "../core/contextManager";
-import { type MementoManager } from "../core/mementoManager";
-import { type SecretsManager } from "../core/secretsManager";
-import { type Logger } from "../logging/logger";
-import { type WorkspaceProvider } from "../workspace/workspacesProvider";
-
-import {
-	type Deployment,
-	type DeploymentWithAuth,
-	isAuthenticated,
-} from "./types";
-
 import type { User } from "coder/site/src/api/typesGenerated";
 import type * as vscode from "vscode";
+
+import type { CoderApi } from "../api/coderApi";
+import type { ServiceContainer } from "../core/container";
+import type { ContextManager } from "../core/contextManager";
+import type { MementoManager } from "../core/mementoManager";
+import type { SecretsManager } from "../core/secretsManager";
+import type { Logger } from "../logging/logger";
+import type { WorkspaceProvider } from "../workspace/workspacesProvider";
+
+import type { Deployment, DeploymentWithAuth } from "./types";
 
 /**
  * Manages deployment state for the extension.
@@ -72,7 +68,7 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Check if we have an authenticated deployment (with a valid user).
 	 */
 	public isAuthenticated(): boolean {
-		return isAuthenticated(this.currentDeployment);
+		return this.currentDeployment?.user !== undefined;
 	}
 
 	/**
@@ -101,6 +97,17 @@ export class DeploymentManager implements vscode.Disposable {
 		await this.tryFetchAndUpgradeUser();
 	}
 
+	private setDeploymentCore(deployment: DeploymentWithAuth): void {
+		if (deployment.token === undefined) {
+			this.client.setHost(deployment.url);
+		} else {
+			this.client.setCredentials(deployment.url, deployment.token);
+		}
+		this.registerAuthListener(deployment.safeHostname);
+		this.currentDeployment = { ...deployment };
+		this.updateAuthContexts(deployment.user);
+	}
+
 	/**
 	 * Log out from the current deployment.
 	 */
@@ -116,17 +123,6 @@ export class DeploymentManager implements vscode.Disposable {
 		await this.secretsManager.setCurrentDeployment(undefined);
 	}
 
-	private setDeploymentCore(deployment: DeploymentWithAuth): void {
-		if (deployment.token === undefined) {
-			this.client.setHost(deployment.url);
-		} else {
-			this.client.setCredentials(deployment.url, deployment.token);
-		}
-		this.registerAuthListener(deployment.safeHostname);
-		this.currentDeployment = { ...deployment };
-		this.updateAuthContexts(deployment.user);
-	}
-
 	public dispose(): void {
 		this.authListenerDisposable?.dispose();
 		this.crossWindowSyncDisposable?.dispose();
@@ -137,6 +133,7 @@ export class DeploymentManager implements vscode.Disposable {
 			this.secretsManager.onDidChangeCurrentDeployment(
 				async ({ deployment }) => {
 					if (this.isAuthenticated()) {
+						// Ignore if we are already authenticated
 						return;
 					}
 
@@ -158,15 +155,15 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Register auth listener for the given deployment hostname.
 	 * Updates credentials when they change (token refresh, cross-window sync).
 	 */
-	private registerAuthListener(safeHost: string): void {
+	private registerAuthListener(safeHostname: string): void {
 		this.authListenerDisposable?.dispose();
 
-		this.logger.debug("Registering auth listener for hostname", safeHost);
+		this.logger.debug("Registering auth listener for hostname", safeHostname);
 		this.authListenerDisposable = this.secretsManager.onDidChangeSessionAuth(
-			safeHost,
+			safeHostname,
 			async (auth) => {
 				if (auth) {
-					if (this.currentDeployment?.safeHostname !== safeHost) {
+					if (this.currentDeployment?.safeHostname !== safeHostname) {
 						return;
 					}
 
@@ -212,7 +209,7 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Refresh all workspace providers.
+	 * Refresh all workspace providers asynchronously.
 	 */
 	private refreshWorkspaces(): void {
 		for (const provider of this.workspaceProviders) {

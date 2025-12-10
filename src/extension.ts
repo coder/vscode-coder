@@ -12,7 +12,7 @@ import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { type SecretsManager } from "./core/secretsManager";
-import { DeploymentManager } from "./deployment";
+import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError, getErrorDetail } from "./error";
 import { maybeAskUrl } from "./promptUtils";
 import { Remote } from "./remote/remote";
