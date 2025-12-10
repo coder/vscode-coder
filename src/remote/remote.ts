@@ -20,6 +20,7 @@ import {
 import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
+import { getGlobalFlags, getSshFlags } from "../cliConfig";
 import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
 import * as cliUtils from "../core/cliUtils";
@@ -27,7 +28,6 @@ import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
 import { type PathResolver } from "../core/pathResolver";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
-import { getGlobalFlags } from "../globalFlags";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import {
@@ -501,8 +501,6 @@ export class Remote {
 				sshMonitor.onLogFilePathChange((newPath) => {
 					this.commands.workspaceLogPath = newPath;
 				}),
-				// Watch for logDir configuration changes
-				this.watchLogDirSetting(logDir, featureSet),
 				// Register the label formatter again because SSH overrides it!
 				vscode.extensions.onDidChange(() => {
 					// Dispose previous label formatter
@@ -516,6 +514,18 @@ export class Remote {
 				}),
 				...(await this.createAgentMetadataStatusBar(agent, workspaceClient)),
 			);
+
+			const settingsToWatch = [
+				{ setting: "coder.globalFlags", title: "Global flags" },
+				{ setting: "coder.sshFlags", title: "SSH flags" },
+			];
+			if (featureSet.proxyLogDirectory) {
+				settingsToWatch.push({
+					setting: "coder.proxyLogDirectory",
+					title: "Proxy log directory",
+				});
+			}
+			disposables.push(this.watchSettings(settingsToWatch));
 		} catch (ex) {
 			// Whatever error happens, make sure we clean up the disposables in case of failure
 			disposables.forEach((d) => d.dispose());
@@ -554,8 +564,10 @@ export class Remote {
 	}
 
 	/**
-	 * Return the --log-dir argument value for the ProxyCommand.  It may be an
+	 * Return the --log-dir argument value for the ProxyCommand. It may be an
 	 * empty string if the setting is not set or the cli does not support it.
+	 *
+	 * Value defined in the "coder.sshFlags" setting is not considered.
 	 */
 	private getLogDir(featureSet: FeatureSet): string {
 		if (!featureSet.proxyLogDirectory) {
@@ -571,16 +583,79 @@ export class Remote {
 	}
 
 	/**
-	 * Formats the --log-dir argument for the ProxyCommand after making sure it
+	 * Builds the ProxyCommand for SSH connections to Coder workspaces.
+	 * Uses `coder ssh` for modern deployments with wildcard support,
+	 * or falls back to `coder vscodessh` for older deployments.
+	 */
+	private async buildProxyCommand(
+		binaryPath: string,
+		label: string,
+		hostPrefix: string,
+		logDir: string,
+		useWildcardSSH: boolean,
+	): Promise<string> {
+		const vscodeConfig = vscode.workspace.getConfiguration();
+
+		const escapedBinaryPath = escapeCommandArg(binaryPath);
+		const globalConfig = getGlobalFlags(
+			vscodeConfig,
+			this.pathResolver.getGlobalConfigDir(label),
+		);
+		const logArgs = await this.getLogArgs(logDir);
+
+		if (useWildcardSSH) {
+			// User SSH flags are included first; internally-managed flags
+			// are appended last so they take precedence.
+			const userSshFlags = getSshFlags(vscodeConfig);
+			// Make sure to update the `coder.sshFlags` description if we add more internal flags here!
+			const internalFlags = [
+				"--stdio",
+				"--usage-app=vscode",
+				"--network-info-dir",
+				escapeCommandArg(this.pathResolver.getNetworkInfoPath()),
+				...logArgs,
+				"--ssh-host-prefix",
+				hostPrefix,
+				"%h",
+			];
+
+			const allFlags = [...userSshFlags, ...internalFlags];
+			return `${escapedBinaryPath} ${globalConfig.join(" ")} ssh ${allFlags.join(" ")}`;
+		} else {
+			const networkInfoDir = escapeCommandArg(
+				this.pathResolver.getNetworkInfoPath(),
+			);
+			const sessionTokenFile = escapeCommandArg(
+				this.pathResolver.getSessionTokenPath(label),
+			);
+			const urlFile = escapeCommandArg(this.pathResolver.getUrlPath(label));
+
+			const sshFlags = [
+				"--network-info-dir",
+				networkInfoDir,
+				...logArgs,
+				"--session-token-file",
+				sessionTokenFile,
+				"--url-file",
+				urlFile,
+				"%h",
+			];
+
+			return `${escapedBinaryPath} ${globalConfig.join(" ")} vscodessh ${sshFlags.join(" ")}`;
+		}
+	}
+
+	/**
+	 * Returns the --log-dir argument for the ProxyCommand after making sure it
 	 * has been created.
 	 */
-	private async formatLogArg(logDir: string): Promise<string> {
+	private async getLogArgs(logDir: string): Promise<string[]> {
 		if (!logDir) {
-			return "";
+			return [];
 		}
 		await fs.mkdir(logDir, { recursive: true });
 		this.logger.info("SSH proxy diagnostics are being written to", logDir);
-		return ` --log-dir ${escapeCommandArg(logDir)} -v`;
+		return ["--log-dir", escapeCommandArg(logDir), "-v"];
 	}
 
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles
@@ -666,15 +741,13 @@ export class Remote {
 			? `${AuthorityPrefix}.${label}--`
 			: `${AuthorityPrefix}--`;
 
-		const globalConfigs = this.globalConfigs(label);
-
-		const proxyCommand = featureSet.wildcardSSH
-			? `${escapeCommandArg(binaryPath)}${globalConfigs} ssh --stdio --usage-app=vscode --disable-autostart --network-info-dir ${escapeCommandArg(this.pathResolver.getNetworkInfoPath())}${await this.formatLogArg(logDir)} --ssh-host-prefix ${hostPrefix} %h`
-			: `${escapeCommandArg(binaryPath)}${globalConfigs} vscodessh --network-info-dir ${escapeCommandArg(
-					this.pathResolver.getNetworkInfoPath(),
-				)}${await this.formatLogArg(logDir)} --session-token-file ${escapeCommandArg(this.pathResolver.getSessionTokenPath(label))} --url-file ${escapeCommandArg(
-					this.pathResolver.getUrlPath(label),
-				)} %h`;
+		const proxyCommand = await this.buildProxyCommand(
+			binaryPath,
+			label,
+			hostPrefix,
+			logDir,
+			featureSet.wildcardSSH,
+		);
 
 		const sshValues: SSHValues = {
 			Host: hostPrefix + `*`,
@@ -727,38 +800,26 @@ export class Remote {
 		return sshConfig.getRaw();
 	}
 
-	private globalConfigs(label: string): string {
-		const vscodeConfig = vscode.workspace.getConfiguration();
-		const args = getGlobalFlags(
-			vscodeConfig,
-			this.pathResolver.getGlobalConfigDir(label),
-		);
-		return ` ${args.join(" ")}`;
-	}
-
-	private watchLogDirSetting(
-		currentLogDir: string,
-		featureSet: FeatureSet,
+	private watchSettings(
+		settings: Array<{ setting: string; title: string }>,
 	): vscode.Disposable {
 		return vscode.workspace.onDidChangeConfiguration((e) => {
-			if (!e.affectsConfiguration("coder.proxyLogDirectory")) {
-				return;
+			for (const { setting, title } of settings) {
+				if (!e.affectsConfiguration(setting)) {
+					continue;
+				}
+				vscode.window
+					.showInformationMessage(
+						`${title} setting changed. Reload window to apply.`,
+						"Reload",
+					)
+					.then((action) => {
+						if (action === "Reload") {
+							vscode.commands.executeCommand("workbench.action.reloadWindow");
+						}
+					});
+				break;
 			}
-			const newLogDir = this.getLogDir(featureSet);
-			if (newLogDir === currentLogDir) {
-				return;
-			}
-
-			vscode.window
-				.showInformationMessage(
-					"Log directory configuration changed. Reload window to apply.",
-					"Reload",
-				)
-				.then((action) => {
-					if (action === "Reload") {
-						vscode.commands.executeCommand("workbench.action.reloadWindow");
-					}
-				});
 		});
 	}
 

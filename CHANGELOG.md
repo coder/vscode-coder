@@ -5,6 +5,7 @@
 ### Added
 
 - Support for paths that begin with a tilde (`~`).
+- Support for `coder ssh` flag configurations through the `coder.sshFlags` setting.
 
 ### Fixed
 

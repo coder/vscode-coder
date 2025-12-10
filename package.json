@@ -120,6 +120,16 @@
 					"type": "boolean",
 					"default": false
 				},
+				"coder.sshFlags": {
+					"markdownDescription": "Additional flags to pass to the `coder ssh` command when establishing SSH connections. Enter each flag as a separate array item; values are passed verbatim and in order. See the [CLI ssh reference](https://coder.com/docs/reference/cli/ssh) for available flags.\n\nNote: `--network-info-dir` and `--ssh-host-prefix` are ignored (managed internally). Prefer `#coder.proxyLogDirectory#` over `--log-dir`/`-l` for full functionality.",
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						"--disable-autostart"
+					]
+				},
 				"coder.globalFlags": {
 					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item; values are passed verbatim and in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nNote that for `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here. The `--global-config` flag is explicitly ignored.",
 					"type": "array",

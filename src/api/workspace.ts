@@ -8,8 +8,8 @@ import {
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 
+import { getGlobalFlags } from "../cliConfig";
 import { type FeatureSet } from "../featureSet";
-import { getGlobalFlags } from "../globalFlags";
 import { escapeCommandArg } from "../util";
 import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
 
