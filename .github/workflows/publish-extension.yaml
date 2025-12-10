@@ -121,5 +121,5 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: ${{ inputs.isPreRelease }}
           draft: true
-          title: "${{ inputs.isPreRelease && 'Pre-' || '' }}Release v${{ inputs.version }}"
+          title: "v${{ inputs.version }}${{ inputs.isPreRelease && '-pre' || '' }}"
           files: ${{ needs.setup.outputs.packageName }}

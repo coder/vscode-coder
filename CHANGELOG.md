@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.11.5](https://github.com/coder/vscode-coder/releases/tag/v1.11.5) 2025-12-10
+
 ### Added
 
 - Support for paths that begin with a tilde (`~`).
