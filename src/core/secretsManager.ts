@@ -3,7 +3,7 @@ import { toSafeHost } from "../util";
 
 import type { Memento, SecretStorage, Disposable } from "vscode";
 
-import type { Deployment } from "../deployment";
+import type { Deployment } from "../deployment/types";
 
 // Each deployment has its own key to ensure atomic operations (multiple windows
 // writing to a shared key could drop data) and to receive proper VS Code events.

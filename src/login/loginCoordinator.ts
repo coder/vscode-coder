@@ -3,14 +3,15 @@ import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { type MementoManager } from "../core/mementoManager";
-import { type SecretsManager } from "../core/secretsManager";
-import { type Deployment } from "../deployment";
 import { CertificateError } from "../error";
-import { type Logger } from "../logging/logger";
 import { maybeAskUrl } from "../promptUtils";
 
 import type { User } from "coder/site/src/api/typesGenerated";
+
+import type { MementoManager } from "../core/mementoManager";
+import type { SecretsManager } from "../core/secretsManager";
+import type { Deployment } from "../deployment/types";
+import type { Logger } from "../logging/logger";
 
 interface LoginResult {
 	success: boolean;
