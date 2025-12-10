@@ -501,8 +501,6 @@ export class Remote {
 				sshMonitor.onLogFilePathChange((newPath) => {
 					this.commands.workspaceLogPath = newPath;
 				}),
-				// Watch for logDir configuration changes
-				this.watchLogDirSetting(logDir, featureSet),
 				// Register the label formatter again because SSH overrides it!
 				vscode.extensions.onDidChange(() => {
 					// Dispose previous label formatter
@@ -516,6 +514,18 @@ export class Remote {
 				}),
 				...(await this.createAgentMetadataStatusBar(agent, workspaceClient)),
 			);
+
+			const settingsToWatch = [
+				{ setting: "coder.globalFlags", title: "Global flags" },
+				{ setting: "coder.sshFlags", title: "SSH flags" },
+			];
+			if (featureSet.proxyLogDirectory) {
+				settingsToWatch.push({
+					setting: "coder.proxyLogDirectory",
+					title: "Proxy log directory",
+				});
+			}
+			disposables.push(this.watchSettings(settingsToWatch));
 		} catch (ex) {
 			// Whatever error happens, make sure we clean up the disposables in case of failure
 			disposables.forEach((d) => d.dispose());
@@ -790,29 +800,26 @@ export class Remote {
 		return sshConfig.getRaw();
 	}
 
-	private watchLogDirSetting(
-		currentLogDir: string,
-		featureSet: FeatureSet,
+	private watchSettings(
+		settings: Array<{ setting: string; title: string }>,
 	): vscode.Disposable {
 		return vscode.workspace.onDidChangeConfiguration((e) => {
-			if (!e.affectsConfiguration("coder.proxyLogDirectory")) {
-				return;
+			for (const { setting, title } of settings) {
+				if (!e.affectsConfiguration(setting)) {
+					continue;
+				}
+				vscode.window
+					.showInformationMessage(
+						`${title} setting changed. Reload window to apply.`,
+						"Reload",
+					)
+					.then((action) => {
+						if (action === "Reload") {
+							vscode.commands.executeCommand("workbench.action.reloadWindow");
+						}
+					});
+				break;
 			}
-			const newLogDir = this.getLogDir(featureSet);
-			if (newLogDir === currentLogDir) {
-				return;
-			}
-
-			vscode.window
-				.showInformationMessage(
-					"Log directory configuration changed. Reload window to apply.",
-					"Reload",
-				)
-				.then((action) => {
-					if (action === "Reload") {
-						vscode.commands.executeCommand("workbench.action.reloadWindow");
-					}
-				});
 		});
 	}
 
