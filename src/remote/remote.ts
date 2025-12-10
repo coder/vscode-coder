@@ -596,7 +596,7 @@ export class Remote {
 		if (useWildcardSSH) {
 			// User SSH flags are included first; internally-managed flags
 			// are appended last so they take precedence.
-			const userSSHFlags = getSshFlags(vscodeConfig);
+			const userSshFlags = getSshFlags(vscodeConfig);
 			// Make sure to update the `coder.sshFlags` description if we add more internal flags here!
 			const internalFlags = [
 				"--stdio",
@@ -609,7 +609,7 @@ export class Remote {
 				"%h",
 			];
 
-			const allFlags = [...userSSHFlags, ...internalFlags];
+			const allFlags = [...userSshFlags, ...internalFlags];
 			return `${escapedBinaryPath} ${globalConfig.join(" ")} ssh ${allFlags.join(" ")}`;
 		} else {
 			const networkInfoDir = escapeCommandArg(

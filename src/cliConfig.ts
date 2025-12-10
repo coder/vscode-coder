@@ -24,5 +24,6 @@ export function getGlobalFlags(
  * Returns SSH flags for the `coder ssh` command from user configuration.
  */
 export function getSshFlags(configs: WorkspaceConfiguration): string[] {
-	return configs.get<string[]>("coder.sshFlags") || [];
+	// Make sure to match this default with the one in the package.json
+	return configs.get<string[]>("coder.sshFlags", ["--disable-autostart"]);
 }

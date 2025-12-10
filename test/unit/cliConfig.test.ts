@@ -83,12 +83,12 @@ describe("cliConfig", () => {
 	});
 
 	describe("getSshFlags", () => {
-		it("returns empty array when no SSH flags configured", () => {
+		it("returns default flags when no SSH flags configured", () => {
 			const config = {
-				get: () => undefined,
+				get: (_key: string, defaultValue: unknown) => defaultValue,
 			} as unknown as WorkspaceConfiguration;
 
-			expect(getSshFlags(config)).toStrictEqual([]);
+			expect(getSshFlags(config)).toStrictEqual(["--disable-autostart"]);
 		});
 
 		it("returns SSH flags from config", () => {
