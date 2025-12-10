@@ -1,11 +1,7 @@
 import { it, expect, describe } from "vitest";
 import { type WorkspaceConfiguration } from "vscode";
 
-import {
-	getGlobalFlags,
-	getSshFlags,
-	shouldDisableAutostart,
-} from "@/cliConfig";
+import { getGlobalFlags, getSshFlags } from "@/cliConfig";
 
 import { isWindows } from "../utils/platform";
 
@@ -83,48 +79,6 @@ describe("cliConfig", () => {
 				"--header-command",
 				quoteCommand(headerCommand),
 			]);
-		});
-	});
-
-	describe("shouldDisableAutostart", () => {
-		const mockConfig = (setting: string) =>
-			({
-				get: (key: string) =>
-					key === "coder.disableAutostart" ? setting : undefined,
-			}) as unknown as WorkspaceConfiguration;
-
-		it("returns true when setting is 'always' regardless of platform", () => {
-			const config = mockConfig("always");
-			expect(shouldDisableAutostart(config, "darwin")).toBe(true);
-			expect(shouldDisableAutostart(config, "linux")).toBe(true);
-			expect(shouldDisableAutostart(config, "win32")).toBe(true);
-		});
-
-		it("returns false when setting is 'never' regardless of platform", () => {
-			const config = mockConfig("never");
-			expect(shouldDisableAutostart(config, "darwin")).toBe(false);
-			expect(shouldDisableAutostart(config, "linux")).toBe(false);
-			expect(shouldDisableAutostart(config, "win32")).toBe(false);
-		});
-
-		it("returns true when setting is 'auto' and platform is darwin", () => {
-			const config = mockConfig("auto");
-			expect(shouldDisableAutostart(config, "darwin")).toBe(true);
-		});
-
-		it("returns false when setting is 'auto' and platform is not darwin", () => {
-			const config = mockConfig("auto");
-			expect(shouldDisableAutostart(config, "linux")).toBe(false);
-			expect(shouldDisableAutostart(config, "win32")).toBe(false);
-			expect(shouldDisableAutostart(config, "freebsd")).toBe(false);
-		});
-
-		it("defaults to 'auto' when setting is not configured", () => {
-			const config = {
-				get: (_key: string, defaultValue: unknown) => defaultValue,
-			} as unknown as WorkspaceConfiguration;
-			expect(shouldDisableAutostart(config, "darwin")).toBe(true);
-			expect(shouldDisableAutostart(config, "linux")).toBe(false);
 		});
 	});
 
