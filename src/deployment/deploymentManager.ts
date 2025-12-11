@@ -78,7 +78,7 @@ export class DeploymentManager implements vscode.Disposable {
 	public async changeDeployment(
 		deployment: DeploymentWithAuth & { user: User },
 	): Promise<void> {
-		this.setDeploymentCore(deployment);
+		this.setDeployment(deployment);
 
 		this.refreshWorkspaces();
 		await this.persistDeployment(deployment);
@@ -89,15 +89,15 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Immediately tries to fetch user and upgrade to authenticated state.
 	 * Use this for startup or when you don't have the user yet.
 	 */
-	public async setDeploymentWithoutAuth(
+	public async setDeploymentAndValidate(
 		deployment: Deployment & { token?: string },
 	): Promise<void> {
-		this.setDeploymentCore({ ...deployment });
+		this.setDeployment({ ...deployment });
 
 		await this.tryFetchAndUpgradeUser();
 	}
 
-	private setDeploymentCore(deployment: DeploymentWithAuth): void {
+	private setDeployment(deployment: DeploymentWithAuth): void {
 		if (deployment.token === undefined) {
 			this.client.setHost(deployment.url);
 		} else {
@@ -109,9 +109,9 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Log out from the current deployment.
+	 * Clears the current deployment.
 	 */
-	public async logout(): Promise<void> {
+	public async clearDeployment(): Promise<void> {
 		this.client.setCredentials(undefined, undefined);
 
 		this.authListenerDisposable?.dispose();
@@ -142,7 +142,7 @@ export class DeploymentManager implements vscode.Disposable {
 						const auth = await this.secretsManager.getSessionAuth(
 							deployment.safeHostname,
 						);
-						await this.setDeploymentWithoutAuth({
+						await this.setDeploymentAndValidate({
 							...deployment,
 							token: auth?.token,
 						});
@@ -162,17 +162,18 @@ export class DeploymentManager implements vscode.Disposable {
 		this.authListenerDisposable = this.secretsManager.onDidChangeSessionAuth(
 			safeHostname,
 			async (auth) => {
+				if (this.currentDeployment?.safeHostname !== safeHostname) {
+					return;
+				}
 				if (auth) {
-					if (this.currentDeployment?.safeHostname !== safeHostname) {
-						return;
-					}
-
-					this.client.setCredentials(this.currentDeployment.url, auth.token);
+					this.client.setCredentials(auth.url, auth.token);
 
 					// If we don't have a user yet, try to fetch one
 					if (!this.currentDeployment?.user) {
 						await this.tryFetchAndUpgradeUser();
 					}
+				} else {
+					await this.clearDeployment();
 				}
 			},
 		);
@@ -186,9 +187,20 @@ export class DeploymentManager implements vscode.Disposable {
 			return;
 		}
 
+		const safeHostname = this.currentDeployment.safeHostname;
+
 		try {
 			const user = await this.client.getAuthenticatedUser();
-			this.currentDeployment = { ...this.currentDeployment, user };
+
+			// Re-validate deployment hasn't changed during await
+			if (this.currentDeployment?.safeHostname !== safeHostname) {
+				this.logger.debug(
+					"Deployment changed during user fetch, discarding result",
+				);
+				return;
+			}
+
+			this.currentDeployment.user = user;
 			this.updateAuthContexts(user);
 			this.refreshWorkspaces();
 
