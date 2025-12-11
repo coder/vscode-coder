@@ -44,8 +44,14 @@ export class SecretsManager {
 	public async setCurrentDeployment(
 		deployment: Deployment | undefined,
 	): Promise<void> {
-		const state = {
-			deployment: deployment ?? null,
+		const state: CurrentDeploymentState & { timestamp: string } = {
+			// Extract the necessary fields before serializing
+			deployment: deployment
+				? {
+						url: deployment?.url,
+						safeHostname: deployment?.safeHostname,
+					}
+				: null,
 			timestamp: new Date().toISOString(),
 		};
 		await this.secrets.store(CURRENT_DEPLOYMENT_KEY, JSON.stringify(state));
@@ -132,7 +138,9 @@ export class SecretsManager {
 		auth: SessionAuth,
 	): Promise<void> {
 		const sessionKey = this.getSessionKey(safeHostname);
-		await this.secrets.store(sessionKey, JSON.stringify(auth));
+		// Extract only url and token before serializing
+		const state: SessionAuth = { url: auth.url, token: auth.token };
+		await this.secrets.store(sessionKey, JSON.stringify(state));
 		await this.recordDeploymentAccess(safeHostname);
 	}
 

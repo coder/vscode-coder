@@ -80,7 +80,6 @@ export class DeploymentManager implements vscode.Disposable {
 	): Promise<void> {
 		this.setDeployment(deployment);
 
-		this.refreshWorkspaces();
 		await this.persistDeployment(deployment);
 	}
 
@@ -98,14 +97,15 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	private setDeployment(deployment: DeploymentWithAuth): void {
+		this.currentDeployment = { ...deployment };
 		if (deployment.token === undefined) {
 			this.client.setHost(deployment.url);
 		} else {
 			this.client.setCredentials(deployment.url, deployment.token);
 		}
 		this.registerAuthListener(deployment.safeHostname);
-		this.currentDeployment = { ...deployment };
 		this.updateAuthContexts(deployment.user);
+		this.refreshWorkspaces();
 	}
 
 	/**
@@ -137,8 +137,8 @@ export class DeploymentManager implements vscode.Disposable {
 						return;
 					}
 
-					this.logger.info("Deployment changed from another window");
 					if (deployment) {
+						this.logger.info("Deployment changed from another window");
 						const auth = await this.secretsManager.getSessionAuth(
 							deployment.safeHostname,
 						);
