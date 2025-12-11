@@ -3,7 +3,7 @@ import url from "node:url";
 
 export interface AuthorityParts {
 	agent: string | undefined;
-	host: string;
+	sshHost: string;
 	safeHostname: string;
 	username: string;
 	workspace: string;
@@ -93,7 +93,7 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 
 	return {
 		agent: agent,
-		host: authorityParts[1],
+		sshHost: authorityParts[1],
 		safeHostname: parts[0].replace(/^coder-vscode\.?/, ""),
 		username: parts[1],
 		workspace: workspace,
