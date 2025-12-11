@@ -200,4 +200,74 @@ describe("SecretsManager", () => {
 			expect(result).toBeNull();
 		});
 	});
+
+	describe("migrateFromLegacyStorage", () => {
+		it("migrates legacy url/token to new format and sets current deployment", async () => {
+			// Set up legacy storage
+			await memento.update("url", "https://legacy.coder.com");
+			await secretStorage.store("sessionToken", "legacy-token");
+
+			const result = await secretsManager.migrateFromLegacyStorage();
+
+			// Should return the migrated hostname
+			expect(result).toBe("legacy.coder.com");
+
+			// Should have migrated to new format
+			const auth = await secretsManager.getSessionAuth("legacy.coder.com");
+			expect(auth?.url).toBe("https://legacy.coder.com");
+			expect(auth?.token).toBe("legacy-token");
+
+			// Should have set current deployment
+			const deployment = await secretsManager.getCurrentDeployment();
+			expect(deployment?.url).toBe("https://legacy.coder.com");
+			expect(deployment?.safeHostname).toBe("legacy.coder.com");
+
+			// Legacy keys should be cleared
+			expect(memento.get("url")).toBeUndefined();
+			expect(await secretStorage.get("sessionToken")).toBeUndefined();
+		});
+
+		it("does not overwrite existing session auth", async () => {
+			// Set up existing auth
+			await secretsManager.setSessionAuth("existing.coder.com", {
+				url: "https://existing.coder.com",
+				token: "existing-token",
+			});
+
+			// Set up legacy storage with same hostname
+			await memento.update("url", "https://existing.coder.com");
+			await secretStorage.store("sessionToken", "legacy-token");
+
+			await secretsManager.migrateFromLegacyStorage();
+
+			// Existing auth should not be overwritten
+			const auth = await secretsManager.getSessionAuth("existing.coder.com");
+			expect(auth?.token).toBe("existing-token");
+		});
+
+		it("returns undefined when no legacy data exists", async () => {
+			const result = await secretsManager.migrateFromLegacyStorage();
+			expect(result).toBeUndefined();
+		});
+
+		it("returns undefined when only URL exists (no token)", async () => {
+			await memento.update("url", "https://legacy.coder.com");
+
+			const result = await secretsManager.migrateFromLegacyStorage();
+			expect(result).toBeUndefined();
+		});
+	});
+
+	describe("session auth - empty token handling (mTLS)", () => {
+		it("stores and retrieves empty string token", async () => {
+			await secretsManager.setSessionAuth("mtls.coder.com", {
+				url: "https://mtls.coder.com",
+				token: "",
+			});
+
+			const auth = await secretsManager.getSessionAuth("mtls.coder.com");
+			expect(auth?.token).toBe("");
+			expect(auth?.url).toBe("https://mtls.coder.com");
+		});
+	});
 });

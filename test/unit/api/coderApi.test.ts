@@ -557,6 +557,42 @@ describe("CoderApi", () => {
 			);
 		});
 	});
+
+	describe("getHost/getSessionToken", () => {
+		it("returns current host and token", () => {
+			const api = createApi(CODER_URL, AXIOS_TOKEN);
+
+			expect(api.getHost()).toBe(CODER_URL);
+			expect(api.getSessionToken()).toBe(AXIOS_TOKEN);
+		});
+	});
+
+	describe("dispose", () => {
+		it("disposes all tracked reconnecting sockets", async () => {
+			const sockets: Array<Partial<Ws>> = [];
+			vi.mocked(Ws).mockImplementation((url: string | URL) => {
+				const mockWs = createMockWebSocket(String(url), {
+					on: vi.fn((event, handler) => {
+						if (event === "open") {
+							setImmediate(() => handler());
+						}
+						return mockWs as Ws;
+					}),
+				});
+				sockets.push(mockWs);
+				return mockWs as Ws;
+			});
+
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+			expect(sockets).toHaveLength(1);
+
+			api.dispose();
+
+			// Socket should be closed
+			expect(sockets[0].close).toHaveBeenCalled();
+		});
+	});
 });
 
 const mockAdapterImpl = vi.hoisted(() => (config: Record<string, unknown>) => {

@@ -28,6 +28,11 @@ export const TreeItemCollapsibleState = E({
 export const StatusBarAlignment = E({ Left: 1, Right: 2 });
 export const ExtensionMode = E({ Production: 1, Development: 2, Test: 3 });
 export const UIKind = E({ Desktop: 1, Web: 2 });
+export const InputBoxValidationSeverity = E({
+	Info: 1,
+	Warning: 2,
+	Error: 3,
+});
 
 export class Uri {
 	constructor(
@@ -142,6 +147,7 @@ const vscode = {
 	StatusBarAlignment,
 	ExtensionMode,
 	UIKind,
+	InputBoxValidationSeverity,
 	Uri,
 	EventEmitter,
 	window,
