@@ -757,7 +757,9 @@ export class CliManager {
 			await fs.writeFile(tempPath, content);
 			await fs.rename(tempPath, filePath);
 		} catch (err) {
-			await fs.rm(tempPath, { force: true }).catch(() => {});
+			await fs.rm(tempPath, { force: true }).catch((rmErr) => {
+				this.output.warn("Failed to delete temp file", tempPath, rmErr);
+			});
 			throw err;
 		}
 	}

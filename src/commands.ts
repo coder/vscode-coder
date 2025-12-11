@@ -81,7 +81,6 @@ export class Commands {
 	 */
 	public async login(args?: {
 		url?: string;
-		safeHostname?: string;
 		autoLogin?: boolean;
 	}): Promise<void> {
 		if (this.deploymentManager.isAuthenticated()) {
@@ -96,23 +95,25 @@ export class Commands {
 			currentDeployment?.url,
 		);
 		if (!url) {
-			return;
+			return; // The user aborted.
 		}
 
-		// It is possible that we are trying to log into an old-style host, in which
-		// case we want to write with the provided blank hostname instead of
-		// generating one.
-		const safeHostname = args?.safeHostname ?? toSafeHost(url);
+		const safeHostname = toSafeHost(url);
 		this.logger.info("Using hostname", safeHostname);
 
-		const result = await this.loginCoordinator.promptForLogin({
+		const result = await this.loginCoordinator.ensureLoggedIn({
 			safeHostname,
 			url,
 			autoLogin: args?.autoLogin,
 		});
 
-		if (!result.success || !result.user || result.token === undefined) {
+		if (!result.success) {
 			return;
+		}
+
+		if (!result.user) {
+			// Login might have happened in another process/window so we do not have the user yet.
+			result.user = await this.extensionClient.getAuthenticatedUser();
 		}
 
 		await this.deploymentManager.changeDeployment({
@@ -210,7 +211,7 @@ export class Commands {
 
 		this.logger.info("Logging out");
 
-		await this.deploymentManager.logout();
+		await this.deploymentManager.clearDeployment();
 
 		vscode.window
 			.showInformationMessage("You've been logged out of Coder!", "Login")

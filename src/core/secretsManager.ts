@@ -98,9 +98,9 @@ export class SecretsManager {
 		safeHostname: string,
 		listener: (auth: SessionAuth | undefined) => void | Promise<void>,
 	): Disposable {
-		const key = `${SESSION_KEY_PREFIX}${safeHostname}`;
+		const sessionKey = this.getSessionKey(safeHostname);
 		return this.secrets.onDidChange(async (e) => {
-			if (e.key !== key) {
+			if (e.key !== sessionKey) {
 				return;
 			}
 			const auth = await this.getSessionAuth(safeHostname);
@@ -115,14 +115,9 @@ export class SecretsManager {
 	public async getSessionAuth(
 		safeHostname: string,
 	): Promise<SessionAuth | undefined> {
-		if (!safeHostname) {
-			return undefined;
-		}
-
+		const sessionKey = this.getSessionKey(safeHostname);
 		try {
-			const data = await this.secrets.get(
-				`${SESSION_KEY_PREFIX}${safeHostname}`,
-			);
+			const data = await this.secrets.get(sessionKey);
 			if (!data) {
 				return undefined;
 			}
@@ -136,22 +131,18 @@ export class SecretsManager {
 		safeHostname: string,
 		auth: SessionAuth,
 	): Promise<void> {
-		if (!safeHostname) {
-			return;
-		}
-
-		await this.secrets.store(
-			`${SESSION_KEY_PREFIX}${safeHostname}`,
-			JSON.stringify(auth),
-		);
+		const sessionKey = this.getSessionKey(safeHostname);
+		await this.secrets.store(sessionKey, JSON.stringify(auth));
 		await this.recordDeploymentAccess(safeHostname);
 	}
 
 	private async clearSessionAuth(safeHostname: string): Promise<void> {
-		if (!safeHostname) {
-			return;
-		}
-		await this.secrets.delete(`${SESSION_KEY_PREFIX}${safeHostname}`);
+		const sessionKey = this.getSessionKey(safeHostname);
+		await this.secrets.delete(sessionKey);
+	}
+
+	private getSessionKey(safeHostname: string): string {
+		return `${SESSION_KEY_PREFIX}${safeHostname || "<legacy>"}`;
 	}
 
 	/**

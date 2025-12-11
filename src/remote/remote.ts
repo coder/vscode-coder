@@ -110,36 +110,19 @@ export class Remote {
 		const disposables: vscode.Disposable[] = [];
 
 		try {
-			disposables.push(
-				this.secretsManager.onDidChangeSessionAuth(
-					parts.safeHostname,
-					async (auth) => {
-						if (auth?.url) {
-							// Update CLI config with new token
-							await this.cliManager.configure(
-								parts.safeHostname,
-								auth.url,
-								auth.token,
-							);
-							this.logger.info(
-								"Updated CLI config with new token for remote deployment",
-							);
-						}
-					},
-				),
-			);
-
-			const promptForLoginAndRetry = async (
+			const ensureLoggedInAndRetry = async (
 				message: string,
 				url: string | undefined,
 			) => {
-				const result = await this.loginCoordinator.promptForLoginWithDialog({
+				const result = await this.loginCoordinator.ensureLoggedInWithDialog({
 					safeHostname: parts.safeHostname,
 					url,
 					message,
 					detailPrefix: `You must log in to access ${workspaceName}.`,
 				});
 
+				// Dispose before retrying since setup will create new disposables
+				disposables.forEach((d) => d.dispose());
 				if (result.success) {
 					// Login successful, retry setup
 					return this.setup(
@@ -158,7 +141,7 @@ export class Remote {
 				!baseUrlRaw ||
 				(!token && needToken(vscode.workspace.getConfiguration()))
 			) {
-				return promptForLoginAndRetry("You are not logged in...", baseUrlRaw);
+				return ensureLoggedInAndRetry("You are not logged in...", baseUrlRaw);
 			}
 
 			this.logger.info("Using deployment URL", baseUrlRaw);
@@ -178,8 +161,18 @@ export class Remote {
 			disposables.push(
 				this.secretsManager.onDidChangeSessionAuth(
 					parts.safeHostname,
-					(auth) => {
+					async (auth) => {
 						workspaceClient.setCredentials(auth?.url, auth?.token);
+						if (auth?.url) {
+							await this.cliManager.configure(
+								parts.safeHostname,
+								auth.url,
+								auth.token,
+							);
+							this.logger.info(
+								"Updated CLI config with new token for remote deployment",
+							);
+						}
 					},
 				),
 			);
@@ -230,6 +223,7 @@ export class Remote {
 					},
 					"Close Remote",
 				);
+				disposables.forEach((d) => d.dispose());
 				await this.closeRemote();
 				return;
 			}
@@ -263,6 +257,7 @@ export class Remote {
 								},
 								"Open Workspace",
 							);
+						disposables.forEach((d) => d.dispose());
 						if (!result) {
 							await this.closeRemote();
 						}
@@ -270,7 +265,8 @@ export class Remote {
 						return;
 					}
 					case 401: {
-						return promptForLoginAndRetry(
+						disposables.forEach((d) => d.dispose());
+						return ensureLoggedInAndRetry(
 							"Your session expired...",
 							baseUrlRaw,
 						);
@@ -825,6 +821,7 @@ export class Remote {
 				await this.reloadWindow();
 			}
 			await this.closeRemote();
+			throw new Error("SSH config mismatch, closing remote");
 		}
 
 		return sshConfig.getRaw();

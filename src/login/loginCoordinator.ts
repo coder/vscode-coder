@@ -1,3 +1,4 @@
+import { isAxiosError } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import * as vscode from "vscode";
 
@@ -13,11 +14,9 @@ import type { SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type { Logger } from "../logging/logger";
 
-interface LoginResult {
-	success: boolean;
-	user?: User;
-	token?: string;
-}
+type LoginResult =
+	| { success: false }
+	| { success: true; user?: User; token: string };
 
 interface LoginOptions {
 	safeHostname: string;
@@ -42,7 +41,7 @@ export class LoginCoordinator {
 	 * Direct login - for user-initiated login via commands.
 	 * Stores session auth and URL history on success.
 	 */
-	public async promptForLogin(
+	public async ensureLoggedIn(
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url } = options;
@@ -61,11 +60,11 @@ export class LoginCoordinator {
 	/**
 	 * Shows dialog then login - for system-initiated auth (remote).
 	 */
-	public async promptForLoginWithDialog(
+	public async ensureLoggedInWithDialog(
 		options: LoginOptions & { message?: string; detailPrefix?: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url, detailPrefix, message } = options;
-		return this.executeWithGuard(safeHostname, () => {
+		return this.executeWithGuard(safeHostname, async () => {
 			// Show dialog promise
 			const dialogPromise = this.vscodeProposed.window
 				.showErrorMessage(
@@ -103,15 +102,20 @@ export class LoginCoordinator {
 						return result;
 					} else {
 						// User cancelled
-						return { success: false };
+						return { success: false } as const;
 					}
 				});
 
 			// Race between user clicking login and cross-window detection
-			return Promise.race([
-				dialogPromise,
-				this.waitForCrossWindowLogin(safeHostname),
-			]);
+			const {
+				promise: crossWindowPromise,
+				dispose: disposeCrossWindowListener,
+			} = this.waitForCrossWindowLogin(safeHostname);
+			try {
+				return await Promise.race([dialogPromise, crossWindowPromise]);
+			} finally {
+				disposeCrossWindowListener();
+			}
 		});
 	}
 
@@ -121,7 +125,7 @@ export class LoginCoordinator {
 		url: string,
 	): Promise<void> {
 		// Empty token is valid for mTLS
-		if (result.success && result.token !== undefined) {
+		if (result.success) {
 			await this.secretsManager.setSessionAuth(safeHostname, {
 				url,
 				token: result.token,
@@ -154,21 +158,28 @@ export class LoginCoordinator {
 
 	/**
 	 * Waits for login detected from another window.
+	 * Returns a promise and a dispose function to clean up the listener.
 	 */
-	private async waitForCrossWindowLogin(
-		safeHostname: string,
-	): Promise<LoginResult> {
-		return new Promise((resolve) => {
-			const disposable = this.secretsManager.onDidChangeSessionAuth(
+	private waitForCrossWindowLogin(safeHostname: string): {
+		promise: Promise<LoginResult>;
+		dispose: () => void;
+	} {
+		let disposable: vscode.Disposable | undefined;
+		const promise = new Promise<LoginResult>((resolve) => {
+			disposable = this.secretsManager.onDidChangeSessionAuth(
 				safeHostname,
 				(auth) => {
 					if (auth?.token) {
-						disposable.dispose();
+						disposable?.dispose();
 						resolve({ success: true, token: auth.token });
 					}
 				},
 			);
 		});
+		return {
+			promise,
+			dispose: () => disposable?.dispose(),
+		};
 	}
 
 	/**
@@ -197,15 +208,18 @@ export class LoginCoordinator {
 
 		// Attempt authentication with current credentials (token or mTLS)
 		try {
-			const user = await client.getAuthenticatedUser();
-			// Return the token that was used (empty string for mTLS since
-			// the `vscodessh` command currently always requires a token file)
-			return { success: true, token: storedToken ?? "", user };
+			if (!needsToken || storedToken) {
+				const user = await client.getAuthenticatedUser();
+				// Return the token that was used (empty string for mTLS since
+				// the `vscodessh` command currently always requires a token file)
+				return { success: true, token: storedToken ?? "", user };
+			}
 		} catch (err) {
-			if (needsToken) {
-				// For token auth: silently continue to prompt for new credentials
+			const is401 = isAxiosError(err) && err.response?.status === 401;
+			if (needsToken && is401) {
+				// For token auth with 401: silently continue to prompt for new credentials
 			} else {
-				// For mTLS: show error and abort (no credentials to prompt for)
+				// For mTLS or non-401 errors: show error and abort
 				const message = getErrorMessage(err, "no response from the server");
 				if (isAutoLogin) {
 					this.logger.warn("Failed to log in to Coder server:", message);

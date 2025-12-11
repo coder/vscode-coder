@@ -313,7 +313,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				ctx.subscriptions.push(details);
 
 				// Will automatically fetch the user and upgrade the deployment
-				await deploymentManager.setDeploymentWithoutAuth({
+				await deploymentManager.setDeploymentAndValidate({
 					safeHostname: details.safeHostname,
 					url: details.url,
 					token: details.token,
@@ -365,7 +365,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output.info(`Initializing deployment: ${deployment.url}`);
 		const auth = await secretsManager.getSessionAuth(deployment.safeHostname);
 		deploymentManager
-			.setDeploymentWithoutAuth({ ...deployment, token: auth?.token })
+			.setDeploymentAndValidate({ ...deployment, token: auth?.token })
 			.then(() => {
 				if (deploymentManager.isAuthenticated()) {
 					output.info("Credentials are valid");
@@ -478,7 +478,7 @@ async function setupDeploymentFromUri(
 	}
 
 	// Will automatically fetch the user and upgrade the deployment
-	await deploymentManager.setDeploymentWithoutAuth({
+	await deploymentManager.setDeploymentAndValidate({
 		safeHostname: safeHost,
 		url,
 		token,
