@@ -64,7 +64,7 @@ export class Remote {
 	private readonly loginCoordinator: LoginCoordinator;
 
 	public constructor(
-		private readonly serviceContainer: ServiceContainer,
+		serviceContainer: ServiceContainer,
 		private readonly commands: Commands,
 		private readonly extensionContext: vscode.ExtensionContext,
 	) {
@@ -95,8 +95,8 @@ export class Remote {
 
 		const workspaceName = `${parts.username}/${parts.workspace}`;
 
-		// Migrate "session_token" file to "session", if needed.
-		await this.migrateSessionToken(parts.safeHostname);
+		// Migrate existing legacy file-based auth to secrets storage.
+		await this.migrateToSecretsStorage(parts.safeHostname);
 
 		// Get the URL and token belonging to this host.
 		const auth = await this.secretsManager.getSessionAuth(parts.safeHostname);
@@ -414,10 +414,10 @@ export class Remote {
 			// the user for the platform.
 			let mungedPlatforms = false;
 			if (
-				!remotePlatforms[parts.host] ||
-				remotePlatforms[parts.host] !== agent.operating_system
+				!remotePlatforms[parts.sshHost] ||
+				remotePlatforms[parts.sshHost] !== agent.operating_system
 			) {
-				remotePlatforms[parts.host] = agent.operating_system;
+				remotePlatforms[parts.sshHost] = agent.operating_system;
 				settingsContent = jsonc.applyEdits(
 					settingsContent,
 					jsonc.modify(
@@ -478,7 +478,7 @@ export class Remote {
 				await this.updateSSHConfig(
 					workspaceClient,
 					parts.safeHostname,
-					parts.host,
+					parts.sshHost,
 					binaryPath,
 					logDir,
 					featureSet,
@@ -490,7 +490,7 @@ export class Remote {
 
 			// Monitor SSH process and display network status
 			const sshMonitor = SshProcessMonitor.start({
-				sshHost: parts.host,
+				sshHost: parts.sshHost,
 				networkInfoPath: this.pathResolver.getNetworkInfoPath(),
 				proxyLogDir: logDir || undefined,
 				logger: this.logger,
@@ -573,19 +573,51 @@ export class Remote {
 	}
 
 	/**
-	 * Migrate the session token file from "session_token" to "session", if needed.
+	 * Migrate legacy file-based auth to secrets storage.
 	 */
-	private async migrateSessionToken(safeHostname: string) {
+	private async migrateToSecretsStorage(safeHostname: string) {
+		await this.migrateSessionTokenFile(safeHostname);
+		await this.migrateSessionAuthFromFiles(safeHostname);
+	}
+
+	/**
+	 * Migrate the session token file from "session_token" to "session".
+	 */
+	private async migrateSessionTokenFile(safeHostname: string) {
 		const oldTokenPath =
 			this.pathResolver.getLegacySessionTokenPath(safeHostname);
 		const newTokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
 		try {
 			await fs.rename(oldTokenPath, newTokenPath);
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-				return;
+			if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+				throw error;
 			}
-			throw error;
+		}
+	}
+
+	/**
+	 * Migrate URL and session token from files to the mutli-deployment secrets storage.
+	 */
+	private async migrateSessionAuthFromFiles(safeHostname: string) {
+		const existingAuth = await this.secretsManager.getSessionAuth(safeHostname);
+		if (existingAuth) {
+			return;
+		}
+
+		const urlPath = this.pathResolver.getUrlPath(safeHostname);
+		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
+		const [url, token] = await Promise.allSettled([
+			fs.readFile(urlPath, "utf8"),
+			fs.readFile(tokenPath, "utf8"),
+		]);
+
+		if (url.status === "fulfilled" && token.status === "fulfilled") {
+			this.logger.info("Migrating session auth from files for", safeHostname);
+			await this.secretsManager.setSessionAuth(safeHostname, {
+				url: url.value.trim(),
+				token: token.value.trim(),
+			});
 		}
 	}
 
