@@ -250,11 +250,15 @@ describe("SecretsManager", () => {
 			expect(result).toBeUndefined();
 		});
 
-		it("returns undefined when only URL exists (no token)", async () => {
+		it("migrates with empty token when only URL exists (mTLS)", async () => {
 			await memento.update("url", "https://legacy.coder.com");
 
 			const result = await secretsManager.migrateFromLegacyStorage();
-			expect(result).toBeUndefined();
+			expect(result).toBe("legacy.coder.com");
+
+			const auth = await secretsManager.getSessionAuth("legacy.coder.com");
+			expect(auth?.url).toBe("https://legacy.coder.com");
+			expect(auth?.token).toBe("");
 		});
 	});
 

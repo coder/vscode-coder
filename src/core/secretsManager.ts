@@ -213,9 +213,6 @@ export class SecretsManager {
 		}
 
 		const oldToken = await this.secrets.get(LEGACY_SESSION_TOKEN_KEY);
-		if (oldToken === undefined) {
-			return undefined;
-		}
 
 		await this.secrets.delete(LEGACY_SESSION_TOKEN_KEY);
 		await this.memento.update("url", undefined);
@@ -225,7 +222,7 @@ export class SecretsManager {
 		if (!existing) {
 			await this.setSessionAuth(safeHostname, {
 				url: legacyUrl,
-				token: oldToken,
+				token: oldToken ?? "",
 			});
 		}
 

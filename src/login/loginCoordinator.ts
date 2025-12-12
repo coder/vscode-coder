@@ -291,10 +291,10 @@ export class LoginCoordinator {
 			},
 		});
 
-		if (user === undefined || validatedToken === undefined) {
-			return { success: false };
+		if (user) {
+			return { success: true, user, token: validatedToken ?? "" };
 		}
 
-		return { success: true, user, token: validatedToken };
+		return { success: false };
 	}
 }

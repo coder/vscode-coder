@@ -114,7 +114,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 				if (host) {
 					socket.reconnect();
 				} else {
-					socket.suspend(WebSocketCloseCode.NORMAL, "Host cleared");
+					socket.disconnect(WebSocketCloseCode.NORMAL, "Host cleared");
 				}
 			}
 		}

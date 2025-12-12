@@ -175,7 +175,7 @@ describe("ReconnectingWebSocket", () => {
 			expect(sockets).toHaveLength(2);
 
 			// This should cancel the queued request
-			ws.suspend();
+			ws.disconnect();
 			failConnection(new Error("No base URL"));
 			await Promise.resolve();
 
@@ -247,7 +247,7 @@ describe("ReconnectingWebSocket", () => {
 			expect(handler).toHaveBeenCalledTimes(1);
 
 			// Suspend the socket
-			ws.suspend();
+			ws.disconnect();
 
 			// Reconnect (async operation)
 			ws.reconnect();
