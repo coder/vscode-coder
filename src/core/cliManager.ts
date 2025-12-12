@@ -33,8 +33,8 @@ export class CliManager {
 
 	/**
 	 * Download and return the path to a working binary for the deployment with
-	 * the provided label using the provided client.  If the label is empty, use
-	 * the old deployment-unaware path instead.
+	 * the provided hostname using the provided client.  If the hostname is empty,
+	 * use the old deployment-unaware path instead.
 	 *
 	 * If there is already a working binary and it matches the server version,
 	 * return that, skipping the download.  If it does not match but downloads are
@@ -42,7 +42,10 @@ export class CliManager {
 	 * unable to download a working binary, whether because of network issues or
 	 * downloads being disabled.
 	 */
-	public async fetchBinary(restClient: Api, label: string): Promise<string> {
+	public async fetchBinary(
+		restClient: Api,
+		safeHostname: string,
+	): Promise<string> {
 		const cfg = vscode.workspace.getConfiguration("coder");
 		// Settings can be undefined when set to their defaults (true in this case),
 		// so explicitly check against false.
@@ -64,7 +67,7 @@ export class CliManager {
 		// is valid and matches the server, or if it does not match the server but
 		// downloads are disabled, we can return early.
 		const binPath = path.join(
-			this.pathResolver.getBinaryCachePath(label),
+			this.pathResolver.getBinaryCachePath(safeHostname),
 			cliUtils.name(),
 		);
 		this.output.info("Using binary path", binPath);
@@ -693,76 +696,71 @@ export class CliManager {
 	}
 
 	/**
-	 * Configure the CLI for the deployment with the provided label.
+	 * Configure the CLI for the deployment with the provided hostname.
 	 *
 	 * Falsey URLs and null tokens are a no-op; we avoid unconfiguring the CLI to
 	 * avoid breaking existing connections.
 	 */
 	public async configure(
-		label: string,
+		safeHostname: string,
 		url: string | undefined,
 		token: string | null,
 	) {
 		await Promise.all([
-			this.updateUrlForCli(label, url),
-			this.updateTokenForCli(label, token),
+			this.updateUrlForCli(safeHostname, url),
+			this.updateTokenForCli(safeHostname, token),
 		]);
 	}
 
 	/**
-	 * Update the URL for the deployment with the provided label on disk which can
-	 * be used by the CLI via --url-file.  If the URL is falsey, do nothing.
+	 * Update the URL for the deployment with the provided hostname on disk which
+	 * can be used by the CLI via --url-file.  If the URL is falsey, do nothing.
 	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
+	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 */
 	private async updateUrlForCli(
-		label: string,
+		safeHostname: string,
 		url: string | undefined,
 	): Promise<void> {
 		if (url) {
-			const urlPath = this.pathResolver.getUrlPath(label);
-			await fs.mkdir(path.dirname(urlPath), { recursive: true });
-			await fs.writeFile(urlPath, url);
+			const urlPath = this.pathResolver.getUrlPath(safeHostname);
+			await this.atomicWriteFile(urlPath, url);
 		}
 	}
 
 	/**
-	 * Update the session token for a deployment with the provided label on disk
-	 * which can be used by the CLI via --session-token-file.  If the token is
-	 * null, do nothing.
+	 * Update the session token for a deployment with the provided hostname on
+	 * disk which can be used by the CLI via --session-token-file.  If the token
+	 * is null, do nothing.
 	 *
-	 * If the label is empty, read the old deployment-unaware config instead.
+	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 */
-	private async updateTokenForCli(
-		label: string,
-		token: string | undefined | null,
-	) {
+	private async updateTokenForCli(safeHostname: string, token: string | null) {
 		if (token !== null) {
-			const tokenPath = this.pathResolver.getSessionTokenPath(label);
-			await fs.mkdir(path.dirname(tokenPath), { recursive: true });
-			await fs.writeFile(tokenPath, token ?? "");
+			const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
+			await this.atomicWriteFile(tokenPath, token);
 		}
 	}
 
 	/**
-	 * Read the CLI config for a deployment with the provided label.
-	 *
-	 * IF a config file does not exist, return an empty string.
-	 *
-	 * If the label is empty, read the old deployment-unaware config.
+	 * Atomically write content to a file by writing to a temporary file first,
+	 * then renaming it.
 	 */
-	public async readConfig(
-		label: string,
-	): Promise<{ url: string; token: string }> {
-		const urlPath = this.pathResolver.getUrlPath(label);
-		const tokenPath = this.pathResolver.getSessionTokenPath(label);
-		const [url, token] = await Promise.allSettled([
-			fs.readFile(urlPath, "utf8"),
-			fs.readFile(tokenPath, "utf8"),
-		]);
-		return {
-			url: url.status === "fulfilled" ? url.value.trim() : "",
-			token: token.status === "fulfilled" ? token.value.trim() : "",
-		};
+	private async atomicWriteFile(
+		filePath: string,
+		content: string,
+	): Promise<void> {
+		await fs.mkdir(path.dirname(filePath), { recursive: true });
+		const tempPath =
+			filePath + ".temp-" + Math.random().toString(36).substring(8);
+		try {
+			await fs.writeFile(tempPath, content);
+			await fs.rename(tempPath, filePath);
+		} catch (err) {
+			await fs.rm(tempPath, { force: true }).catch((rmErr) => {
+				this.output.warn("Failed to delete temp file", tempPath, rmErr);
+			});
+			throw err;
+		}
 	}
 }

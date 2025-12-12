@@ -76,7 +76,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				progress.report({ message: `starting ${workspaceName}...` });
 				this.logger.info(`Starting ${workspaceName}`);
 				const globalConfigDir = this.pathResolver.getGlobalConfigDir(
-					this.parts.label,
+					this.parts.safeHostname,
 				);
 				await startWorkspaceIfStoppedOrFailed(
 					this.workspaceClient,
