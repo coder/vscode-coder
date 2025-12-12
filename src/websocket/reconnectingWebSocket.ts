@@ -41,7 +41,7 @@ export class ReconnectingWebSocket<TData = unknown>
 	#lastRoute = "unknown"; // Cached route for logging when socket is closed
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
-	#isSuspended = false; // Temporary pause, can be resumed via reconnect()
+	isDisconnected = false; // Temporary pause, can be resumed via reconnect()
 	#isDisposed = false; // Permanent disposal, cannot be resumed
 	#isConnecting = false;
 	#pendingReconnect = false;
@@ -111,9 +111,13 @@ export class ReconnectingWebSocket<TData = unknown>
 		this.#eventHandlers[event].delete(callback);
 	}
 
+	/**
+	 * Force an immediate reconnection attempt.
+	 * Resumes the socket if previously disconnected via disconnect().
+	 */
 	reconnect(): void {
-		if (this.#isSuspended) {
-			this.#isSuspended = false;
+		if (this.isDisconnected) {
+			this.isDisconnected = false;
 			this.#backoffMs = this.#options.initialBackoffMs;
 		}
 
@@ -137,14 +141,14 @@ export class ReconnectingWebSocket<TData = unknown>
 	}
 
 	/**
-	 * Temporarily suspend the socket. Can be resumed via reconnect().
+	 * Temporarily disconnect the socket. Can be resumed via reconnect().
 	 */
-	suspend(code?: number, reason?: string): void {
-		if (this.#isDisposed || this.#isSuspended) {
+	disconnect(code?: number, reason?: string): void {
+		if (this.#isDisposed || this.isDisconnected) {
 			return;
 		}
 
-		this.#isSuspended = true;
+		this.isDisconnected = true;
 		this.clearCurrentSocket(code, reason);
 	}
 
@@ -166,7 +170,7 @@ export class ReconnectingWebSocket<TData = unknown>
 	}
 
 	private async connect(): Promise<void> {
-		if (this.#isDisposed || this.#isSuspended || this.#isConnecting) {
+		if (this.#isDisposed || this.isDisconnected || this.#isConnecting) {
 			return;
 		}
 
@@ -205,12 +209,12 @@ export class ReconnectingWebSocket<TData = unknown>
 					this.#logger.error(
 						`Unrecoverable HTTP error for ${this.#route}: ${errorMessage}`,
 					);
-					this.suspend();
+					this.disconnect();
 				}
 			});
 
 			socket.addEventListener("close", (event) => {
-				if (this.#isDisposed || this.#isSuspended) {
+				if (this.#isDisposed || this.isDisconnected) {
 					return;
 				}
 
@@ -221,7 +225,7 @@ export class ReconnectingWebSocket<TData = unknown>
 						`WebSocket connection closed with unrecoverable error code ${event.code}`,
 					);
 					// Suspend instead of dispose - allows recovery when credentials change
-					this.suspend();
+					this.disconnect();
 					return;
 				}
 
@@ -246,7 +250,7 @@ export class ReconnectingWebSocket<TData = unknown>
 	private scheduleReconnect(): void {
 		if (
 			this.#isDisposed ||
-			this.#isSuspended ||
+			this.isDisconnected ||
 			this.#reconnectTimeoutId !== null
 		) {
 			return;
@@ -289,7 +293,7 @@ export class ReconnectingWebSocket<TData = unknown>
 	 * otherwise schedules a reconnect.
 	 */
 	private handleConnectionError(error: unknown): void {
-		if (this.#isDisposed || this.#isSuspended) {
+		if (this.#isDisposed || this.isDisconnected) {
 			return;
 		}
 
@@ -298,7 +302,7 @@ export class ReconnectingWebSocket<TData = unknown>
 				`Unrecoverable HTTP error during connection for ${this.#route}`,
 				error,
 			);
-			this.suspend();
+			this.disconnect();
 			return;
 		}
 

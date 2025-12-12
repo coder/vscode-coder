@@ -12,6 +12,11 @@ import type { WorkspaceProvider } from "../workspace/workspacesProvider";
 import type { Deployment, DeploymentWithAuth } from "./types";
 
 /**
+ * Internal state type that allows mutation of user property.
+ */
+type DeploymentWithUser = Deployment & { user?: User };
+
+/**
  * Manages deployment state for the extension.
  *
  * Centralizes:
@@ -28,9 +33,9 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly contextManager: ContextManager;
 	private readonly logger: Logger;
 
-	private currentDeployment: (Deployment & { user?: User }) | null = null;
-	private authListenerDisposable: vscode.Disposable | undefined;
-	private crossWindowSyncDisposable: vscode.Disposable | undefined;
+	#deployment: DeploymentWithUser | null = null;
+	#authListenerDisposable: vscode.Disposable | undefined;
+	#crossWindowSyncDisposable: vscode.Disposable | undefined;
 
 	private constructor(
 		serviceContainer: ServiceContainer,
@@ -61,14 +66,14 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Get the current deployment state.
 	 */
 	public getCurrentDeployment(): Deployment | null {
-		return this.currentDeployment;
+		return this.#deployment;
 	}
 
 	/**
 	 * Check if we have an authenticated deployment (with a valid user).
 	 */
 	public isAuthenticated(): boolean {
-		return this.currentDeployment?.user !== undefined;
+		return this.#deployment?.user !== undefined;
 	}
 
 	/**
@@ -78,8 +83,7 @@ export class DeploymentManager implements vscode.Disposable {
 	public async changeDeployment(
 		deployment: DeploymentWithAuth & { user: User },
 	): Promise<void> {
-		this.setDeployment(deployment);
-
+		this.setDeploymentInternal(deployment);
 		await this.persistDeployment(deployment);
 	}
 
@@ -91,45 +95,101 @@ export class DeploymentManager implements vscode.Disposable {
 	public async setDeploymentAndValidate(
 		deployment: Deployment & { token?: string },
 	): Promise<void> {
-		this.setDeployment({ ...deployment });
-
+		this.setDeploymentInternal(deployment);
 		await this.tryFetchAndUpgradeUser();
-	}
-
-	private setDeployment(deployment: DeploymentWithAuth): void {
-		this.currentDeployment = { ...deployment };
-		if (deployment.token === undefined) {
-			this.client.setHost(deployment.url);
-		} else {
-			this.client.setCredentials(deployment.url, deployment.token);
-		}
-		this.registerAuthListener(deployment.safeHostname);
-		this.updateAuthContexts(deployment.user);
-		this.refreshWorkspaces();
 	}
 
 	/**
 	 * Clears the current deployment.
 	 */
 	public async clearDeployment(): Promise<void> {
+		this.#authListenerDisposable?.dispose();
+		this.#authListenerDisposable = undefined;
+		this.#deployment = null;
+
 		this.client.setCredentials(undefined, undefined);
-
-		this.authListenerDisposable?.dispose();
-		this.authListenerDisposable = undefined;
-		this.currentDeployment = null;
-
-		this.updateAuthContexts(undefined);
+		this.updateAuthContexts();
 		this.refreshWorkspaces();
+
 		await this.secretsManager.setCurrentDeployment(undefined);
 	}
 
 	public dispose(): void {
-		this.authListenerDisposable?.dispose();
-		this.crossWindowSyncDisposable?.dispose();
+		this.#authListenerDisposable?.dispose();
+		this.#crossWindowSyncDisposable?.dispose();
+	}
+
+	/**
+	 * Internal method to set deployment state with all side effects.
+	 * - Updates client credentials
+	 * - Re-registers auth listener if hostname changed
+	 * - Updates auth contexts
+	 * - Refreshes workspaces
+	 */
+	private setDeploymentInternal(deployment: DeploymentWithAuth): void {
+		this.#deployment = { ...deployment };
+
+		// Update client credentials
+		if (deployment.token !== undefined) {
+			this.client.setCredentials(deployment.url, deployment.token);
+		} else {
+			this.client.setHost(deployment.url);
+		}
+
+		this.registerAuthListener();
+		this.updateAuthContexts();
+		this.refreshWorkspaces();
+	}
+
+	/**
+	 * Upgrade the current deployment with a user.
+	 * Use this when the user has been fetched after initial deployment setup.
+	 */
+	private upgradeWithUser(user: User): void {
+		if (!this.#deployment) {
+			return;
+		}
+
+		this.#deployment.user = user;
+		this.updateAuthContexts();
+		this.refreshWorkspaces();
+	}
+
+	/**
+	 * Register auth listener for the current deployment.
+	 * Updates credentials when they change (token refresh, cross-window sync).
+	 */
+	private registerAuthListener(): void {
+		if (!this.#deployment) {
+			return;
+		}
+
+		// Capture hostname at registration time for the guard clause
+		const safeHostname = this.#deployment.safeHostname;
+
+		this.#authListenerDisposable?.dispose();
+		this.logger.debug("Registering auth listener for hostname", safeHostname);
+		this.#authListenerDisposable = this.secretsManager.onDidChangeSessionAuth(
+			safeHostname,
+			async (auth) => {
+				if (this.#deployment?.safeHostname !== safeHostname) {
+					return;
+				}
+
+				if (auth) {
+					this.client.setCredentials(auth.url, auth.token);
+					if (!this.isAuthenticated()) {
+						await this.tryFetchAndUpgradeUser();
+					}
+				} else {
+					await this.clearDeployment();
+				}
+			},
+		);
 	}
 
 	private subscribeToCrossWindowChanges(): void {
-		this.crossWindowSyncDisposable =
+		this.#crossWindowSyncDisposable =
 			this.secretsManager.onDidChangeCurrentDeployment(
 				async ({ deployment }) => {
 					if (this.isAuthenticated()) {
@@ -152,60 +212,30 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Register auth listener for the given deployment hostname.
-	 * Updates credentials when they change (token refresh, cross-window sync).
-	 */
-	private registerAuthListener(safeHostname: string): void {
-		this.authListenerDisposable?.dispose();
-
-		this.logger.debug("Registering auth listener for hostname", safeHostname);
-		this.authListenerDisposable = this.secretsManager.onDidChangeSessionAuth(
-			safeHostname,
-			async (auth) => {
-				if (this.currentDeployment?.safeHostname !== safeHostname) {
-					return;
-				}
-				if (auth) {
-					this.client.setCredentials(auth.url, auth.token);
-
-					// If we don't have a user yet, try to fetch one
-					if (!this.currentDeployment?.user) {
-						await this.tryFetchAndUpgradeUser();
-					}
-				} else {
-					await this.clearDeployment();
-				}
-			},
-		);
-	}
-
-	/**
 	 * Try to fetch the authenticated user and upgrade the deployment state.
 	 */
 	private async tryFetchAndUpgradeUser(): Promise<void> {
-		if (!this.currentDeployment || this.currentDeployment.user) {
+		if (!this.#deployment || this.isAuthenticated()) {
 			return;
 		}
 
-		const safeHostname = this.currentDeployment.safeHostname;
+		const safeHostname = this.#deployment.safeHostname;
 
 		try {
 			const user = await this.client.getAuthenticatedUser();
 
 			// Re-validate deployment hasn't changed during await
-			if (this.currentDeployment?.safeHostname !== safeHostname) {
+			if (this.#deployment?.safeHostname !== safeHostname) {
 				this.logger.debug(
 					"Deployment changed during user fetch, discarding result",
 				);
 				return;
 			}
 
-			this.currentDeployment.user = user;
-			this.updateAuthContexts(user);
-			this.refreshWorkspaces();
+			this.upgradeWithUser(user);
 
 			// Persist with user
-			await this.persistDeployment(this.currentDeployment);
+			await this.persistDeployment(this.#deployment);
 		} catch (e) {
 			this.logger.warn("Failed to fetch user:", e);
 		}
@@ -214,7 +244,8 @@ export class DeploymentManager implements vscode.Disposable {
 	/**
 	 * Update authentication-related contexts.
 	 */
-	private updateAuthContexts(user: User | undefined): void {
+	private updateAuthContexts(): void {
+		const user = this.#deployment?.user;
 		this.contextManager.set("coder.authenticated", Boolean(user));
 		const isOwner = user?.roles.some((r) => r.name === "owner") ?? false;
 		this.contextManager.set("coder.isOwner", isOwner);
@@ -232,9 +263,7 @@ export class DeploymentManager implements vscode.Disposable {
 	/**
 	 * Persist deployment to storage for cross-window sync.
 	 */
-	private async persistDeployment(
-		deployment: DeploymentWithAuth,
-	): Promise<void> {
+	private async persistDeployment(deployment: Deployment): Promise<void> {
 		await this.secretsManager.setCurrentDeployment(deployment);
 		await this.mementoManager.addToUrlHistory(deployment.url);
 	}
