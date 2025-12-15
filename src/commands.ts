@@ -280,10 +280,9 @@ export class Commands {
 		}
 	}
 
-	private async openFile(path: string): Promise<void> {
-		const uri = vscode.Uri.file(path);
-		const doc = await vscode.workspace.openTextDocument(uri);
-		await vscode.window.showTextDocument(doc);
+	private async openFile(filePath: string): Promise<void> {
+		const uri = vscode.Uri.file(filePath);
+		await vscode.window.showTextDocument(uri);
 	}
 
 	/**
