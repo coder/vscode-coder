@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.11.6](https://github.com/coder/vscode-coder/releases/tag/v1.11.6) 2025-12-15
+
 ### Added
 
 - Log file picker when viewing logs without an active workspace connection.
