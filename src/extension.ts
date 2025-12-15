@@ -151,11 +151,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					throw new Error("workspace must be specified as a query parameter");
 				}
 
-				await setupDeploymentFromUri(
-					params,
-					serviceContainer,
-					deploymentManager,
-				);
+				await setupDeploymentFromUri(params, serviceContainer);
 
 				await commands.open(
 					owner,
@@ -209,11 +205,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					);
 				}
 
-				await setupDeploymentFromUri(
-					params,
-					serviceContainer,
-					deploymentManager,
-				);
+				await setupDeploymentFromUri(params, serviceContainer);
 
 				await commands.openDevContainer(
 					workspaceOwner,
@@ -312,8 +304,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			if (details) {
 				ctx.subscriptions.push(details);
 
-				// Will automatically fetch the user and upgrade the deployment
-				await deploymentManager.setDeploymentAndValidate({
+				await deploymentManager.setDeploymentIfValid({
 					safeHostname: details.safeHostname,
 					url: details.url,
 					token: details.token,
@@ -363,14 +354,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		contextManager.set("coder.loaded", true);
 	} else if (deployment) {
 		output.info(`Initializing deployment: ${deployment.url}`);
-		const auth = await secretsManager.getSessionAuth(deployment.safeHostname);
 		deploymentManager
-			.setDeploymentAndValidate({ ...deployment, token: auth?.token })
-			.then(() => {
-				if (deploymentManager.isAuthenticated()) {
-					output.info("Credentials are valid");
+			.setDeploymentIfValid(deployment)
+			.then((success) => {
+				if (success) {
+					output.info("Deployment authenticated and set");
 				} else {
-					output.info("Deployment set but not authenticated");
+					output.info("Failed to authenticate, deployment not set");
 				}
 			})
 			.catch((error) => {
@@ -432,14 +422,10 @@ async function showTreeViewSearch(id: string): Promise<void> {
 /**
  * Sets up deployment from URI parameters. Handles URL prompting, client setup,
  * and token storage. Throws if user cancels URL input.
- *
- * If authentication succeeds, uses changeDeployment with the user.
- * If authentication fails, uses setDeploymentWithoutAuth to let remote.setup handle 401.
  */
 async function setupDeploymentFromUri(
 	params: URLSearchParams,
 	serviceContainer: ServiceContainer,
-	deploymentManager: DeploymentManager,
 ): Promise<void> {
 	const secretsManager = serviceContainer.getSecretsManager();
 	const mementoManager = serviceContainer.getMementoManager();
@@ -476,13 +462,6 @@ async function setupDeploymentFromUri(
 	} else {
 		await secretsManager.setSessionAuth(safeHost, { url, token });
 	}
-
-	// Will automatically fetch the user and upgrade the deployment
-	await deploymentManager.setDeploymentAndValidate({
-		safeHostname: safeHost,
-		url,
-		token,
-	});
 }
 
 async function listStoredDeployments(

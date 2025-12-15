@@ -107,7 +107,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		defaults.headers.common[coderSessionTokenHeader] = token;
 
 		const hostChanged = (currentHost || "") !== (host || "");
-		const tokenChanged = currentToken !== token;
+		const tokenChanged = (currentToken || "") !== (token || "");
 
 		if (hostChanged || tokenChanged) {
 			for (const socket of this.reconnectingSockets) {

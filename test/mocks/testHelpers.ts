@@ -466,6 +466,7 @@ export class MockCoderApi
 {
 	private _host: string | undefined;
 	private _token: string | undefined;
+	private _disposed = false;
 	private authenticatedUser: User | Error | undefined;
 
 	readonly setHost = vi.fn((host: string | undefined) => {
@@ -493,7 +494,9 @@ export class MockCoderApi
 		return Promise.resolve(this.authenticatedUser);
 	});
 
-	readonly dispose = vi.fn();
+	readonly dispose = vi.fn(() => {
+		this._disposed = true;
+	});
 
 	/**
 	 * Get current host (for assertions)
@@ -507,6 +510,13 @@ export class MockCoderApi
 	 */
 	get token(): string | undefined {
 		return this._token;
+	}
+
+	/**
+	 * Check if dispose was called (for assertions)
+	 */
+	get disposed(): boolean {
+		return this._disposed;
 	}
 
 	/**

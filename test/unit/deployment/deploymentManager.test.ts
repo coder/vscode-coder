@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { CoderApi } from "@/api/coderApi";
 import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { DeploymentManager } from "@/deployment/deploymentManager";
@@ -12,10 +13,21 @@ import {
 	MockCoderApi,
 } from "../../mocks/testHelpers";
 
-import type { CoderApi } from "@/api/coderApi";
 import type { ServiceContainer } from "@/core/container";
 import type { ContextManager } from "@/core/contextManager";
 import type { WorkspaceProvider } from "@/workspace/workspacesProvider";
+
+// Mock CoderApi.create to return our mock client for validation
+vi.mock("@/api/coderApi", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@/api/coderApi")>();
+	return {
+		...original,
+		CoderApi: {
+			...original.CoderApi,
+			create: vi.fn(),
+		},
+	};
+});
 
 /**
  * Mock ContextManager for deployment tests.
@@ -49,6 +61,8 @@ function createTestContext() {
 	vi.resetAllMocks();
 
 	const mockClient = new MockCoderApi();
+	// For setDeploymentIfValid, we use a separate mock for validation
+	const validationMockClient = new MockCoderApi();
 	const mockWorkspaceProvider = new MockWorkspaceProvider();
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
@@ -56,6 +70,11 @@ function createTestContext() {
 	const secretsManager = new SecretsManager(secretStorage, memento, logger);
 	const mementoManager = new MementoManager(memento);
 	const contextManager = new MockContextManager();
+
+	// Configure CoderApi.create mock to return validation client
+	vi.mocked(CoderApi.create).mockReturnValue(
+		validationMockClient as unknown as CoderApi,
+	);
 
 	const container = {
 		getSecretsManager: () => secretsManager,
@@ -72,6 +91,7 @@ function createTestContext() {
 
 	return {
 		mockClient,
+		validationMockClient,
 		secretsManager,
 		contextManager,
 		manager,
@@ -87,11 +107,11 @@ describe("DeploymentManager", () => {
 			expect(manager.isAuthenticated()).toBe(false);
 		});
 
-		it("returns deployment and isAuthenticated=true after changeDeployment", async () => {
+		it("returns deployment and isAuthenticated=true after setDeployment", async () => {
 			const { manager } = createTestContext();
 			const user = createMockUser();
 
-			await manager.changeDeployment({
+			await manager.setDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -109,7 +129,7 @@ describe("DeploymentManager", () => {
 			const { manager } = createTestContext();
 			const user = createMockUser();
 
-			await manager.changeDeployment({
+			await manager.setDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -123,13 +143,13 @@ describe("DeploymentManager", () => {
 		});
 	});
 
-	describe("changeDeployment", () => {
+	describe("setDeployment", () => {
 		it("sets credentials, refreshes workspaces, persists deployment", async () => {
 			const { mockClient, secretsManager, contextManager, manager } =
 				createTestContext();
 			const user = createMockUser();
 
-			await manager.changeDeployment({
+			await manager.setDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -151,7 +171,7 @@ describe("DeploymentManager", () => {
 				roles: [{ name: "owner", display_name: "Owner", organization_id: "" }],
 			});
 
-			await manager.changeDeployment({
+			await manager.setDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -162,66 +182,91 @@ describe("DeploymentManager", () => {
 		});
 	});
 
-	describe("setDeploymentWithoutAuth", () => {
-		it("fetches user and upgrades to authenticated on success", async () => {
-			const { mockClient, manager } = createTestContext();
+	describe("setDeploymentIfValid", () => {
+		it("returns true and sets deployment on auth success", async () => {
+			const { mockClient, validationMockClient, manager } = createTestContext();
 			const user = createMockUser();
-			mockClient.setAuthenticatedUserResponse(user);
+			validationMockClient.setAuthenticatedUserResponse(user);
 
-			await manager.setDeploymentAndValidate({
+			const result = await manager.setDeploymentIfValid({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
 			});
 
+			expect(result).toBe(true);
 			expect(mockClient.host).toBe(TEST_URL);
 			expect(mockClient.token).toBe("test-token");
 			expect(manager.isAuthenticated()).toBe(true);
 		});
 
-		it("remains unauthenticated on user fetch failure", async () => {
-			const { mockClient, manager } = createTestContext();
-			mockClient.setAuthenticatedUserResponse(new Error("Auth failed"));
+		it("returns false and does not set deployment on auth failure", async () => {
+			const { validationMockClient, manager } = createTestContext();
+			validationMockClient.setAuthenticatedUserResponse(
+				new Error("Auth failed"),
+			);
 
-			await manager.setDeploymentAndValidate({
+			const result = await manager.setDeploymentIfValid({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
 			});
 
-			expect(manager.getCurrentDeployment()).not.toBeNull();
+			expect(result).toBe(false);
+			expect(manager.getCurrentDeployment()).toBeNull();
 			expect(manager.isAuthenticated()).toBe(false);
 		});
 
-		it("handles empty string token (mTLS) correctly (token='' is valid)", async () => {
-			const { mockClient, manager } = createTestContext();
+		it("handles empty string token (mTLS) correctly", async () => {
+			const { mockClient, validationMockClient, manager } = createTestContext();
 			const user = createMockUser();
-			mockClient.setAuthenticatedUserResponse(user);
+			validationMockClient.setAuthenticatedUserResponse(user);
 
-			await manager.setDeploymentAndValidate({
+			const result = await manager.setDeploymentIfValid({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "",
 			});
 
-			// Empty string token should be set
+			expect(result).toBe(true);
 			expect(mockClient.host).toBe(TEST_URL);
 			expect(mockClient.token).toBe("");
 			expect(manager.isAuthenticated()).toBe(true);
 		});
 
-		it("sets host without token when token is undefined", async () => {
-			const { mockClient, manager } = createTestContext();
-			mockClient.setAuthenticatedUserResponse(new Error("Auth failed"));
+		it("fetches token from secrets when not provided", async () => {
+			const { mockClient, validationMockClient, secretsManager, manager } =
+				createTestContext();
+			const user = createMockUser();
+			validationMockClient.setAuthenticatedUserResponse(user);
 
-			await manager.setDeploymentAndValidate({
+			// Store token in secrets
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "stored-token",
+			});
+
+			const result = await manager.setDeploymentIfValid({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			// Host should be set, token should remain undefined
-			expect(mockClient.host).toBe(TEST_URL);
-			expect(mockClient.token).toBeUndefined();
+			expect(result).toBe(true);
+			expect(mockClient.token).toBe("stored-token");
+		});
+
+		it("disposes validation client after use", async () => {
+			const { validationMockClient, manager } = createTestContext();
+			const user = createMockUser();
+			validationMockClient.setAuthenticatedUserResponse(user);
+
+			await manager.setDeploymentIfValid({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "test-token",
+			});
+
+			expect(validationMockClient.disposed).toBe(true);
 		});
 	});
 
@@ -230,7 +275,7 @@ describe("DeploymentManager", () => {
 			const { mockClient, secretsManager, manager } = createTestContext();
 			const user = createMockUser();
 
-			await manager.changeDeployment({
+			await manager.setDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -249,9 +294,10 @@ describe("DeploymentManager", () => {
 		});
 
 		it("picks up deployment when not authenticated", async () => {
-			const { mockClient, secretsManager } = createTestContext();
+			const { mockClient, validationMockClient, secretsManager } =
+				createTestContext();
 			const user = createMockUser();
-			mockClient.setAuthenticatedUserResponse(user);
+			validationMockClient.setAuthenticatedUserResponse(user);
 
 			// Set up auth in secrets before triggering cross-window sync
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
@@ -273,9 +319,10 @@ describe("DeploymentManager", () => {
 		});
 
 		it("handles mTLS deployment (empty token) from other window", async () => {
-			const { mockClient, secretsManager } = createTestContext();
+			const { mockClient, validationMockClient, secretsManager } =
+				createTestContext();
 			const user = createMockUser();
-			mockClient.setAuthenticatedUserResponse(user);
+			validationMockClient.setAuthenticatedUserResponse(user);
 
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
@@ -296,25 +343,20 @@ describe("DeploymentManager", () => {
 	});
 
 	describe("auth listener", () => {
-		it("updates credentials on token change and authenticates user", async () => {
+		it("updates credentials on token change", async () => {
 			const { mockClient, secretsManager, manager } = createTestContext();
 			const user = createMockUser();
 
-			// Initially fail auth (no valid token yet)
-			mockClient.setAuthenticatedUserResponse(new Error("Auth failed"));
-
-			// Set up initial deployment without user (will fail to authenticate)
-			await manager.setDeploymentAndValidate({
+			// Set up authenticated deployment
+			await manager.setDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "initial-token",
+				user,
 			});
 
 			expect(mockClient.token).toBe("initial-token");
-			expect(manager.isAuthenticated()).toBe(false);
-
-			// Now auth succeeds with the new token
-			mockClient.setAuthenticatedUserResponse(user);
+			expect(manager.isAuthenticated()).toBe(true);
 
 			// Simulate token refresh via secrets change
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
@@ -335,7 +377,7 @@ describe("DeploymentManager", () => {
 			const { mockClient, contextManager, manager } = createTestContext();
 			const user = createMockUser();
 
-			await manager.changeDeployment({
+			await manager.setDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",

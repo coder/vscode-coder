@@ -99,7 +99,7 @@ export class Commands {
 		}
 
 		const safeHostname = toSafeHost(url);
-		this.logger.info("Using hostname", safeHostname);
+		this.logger.debug("Using hostname", safeHostname);
 
 		const result = await this.loginCoordinator.ensureLoggedIn({
 			safeHostname,
@@ -116,7 +116,7 @@ export class Commands {
 			result.user = await this.extensionClient.getAuthenticatedUser();
 		}
 
-		await this.deploymentManager.changeDeployment({
+		await this.deploymentManager.setDeployment({
 			url,
 			safeHostname,
 			token: result.token,

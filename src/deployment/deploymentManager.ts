@@ -1,7 +1,8 @@
+import { CoderApi } from "../api/coderApi";
+
 import type { User } from "coder/site/src/api/typesGenerated";
 import type * as vscode from "vscode";
 
-import type { CoderApi } from "../api/coderApi";
 import type { ServiceContainer } from "../core/container";
 import type { ContextManager } from "../core/contextManager";
 import type { MementoManager } from "../core/mementoManager";
@@ -14,7 +15,7 @@ import type { Deployment, DeploymentWithAuth } from "./types";
 /**
  * Internal state type that allows mutation of user property.
  */
-type DeploymentWithUser = Deployment & { user?: User };
+type DeploymentWithUser = Deployment & { user: User };
 
 /**
  * Manages deployment state for the extension.
@@ -70,33 +71,64 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Check if we have an authenticated deployment (with a valid user).
+	 * Check if we have an authenticated deployment (does not guarantee that the current auth data is valid).
 	 */
 	public isAuthenticated(): boolean {
-		return this.#deployment?.user !== undefined;
+		return this.#deployment !== null;
+	}
+
+	/**
+	 * Attempt to change to a deployment after validating authentication.
+	 * Only changes deployment if authentication succeeds.
+	 * Returns true if deployment was changed, false otherwise.
+	 */
+	public async setDeploymentIfValid(
+		deployment: Deployment & { token?: string },
+	): Promise<boolean> {
+		const auth = await this.secretsManager.getSessionAuth(
+			deployment.safeHostname,
+		);
+		const token = deployment.token ?? auth?.token;
+		const tempClient = CoderApi.create(deployment.url, token, this.logger);
+
+		try {
+			const user = await tempClient.getAuthenticatedUser();
+
+			// Authentication succeeded - now change the deployment
+			await this.setDeployment({
+				...deployment,
+				token,
+				user,
+			});
+			return true;
+		} catch (e) {
+			this.logger.warn("Failed to authenticate with deployment:", e);
+			return false;
+		} finally {
+			tempClient.dispose();
+		}
 	}
 
 	/**
 	 * Change to a fully authenticated deployment (with user).
 	 * Use this when you already have the user from a successful login.
 	 */
-	public async changeDeployment(
+	public async setDeployment(
 		deployment: DeploymentWithAuth & { user: User },
 	): Promise<void> {
-		this.setDeploymentInternal(deployment);
-		await this.persistDeployment(deployment);
-	}
+		this.#deployment = { ...deployment };
 
-	/**
-	 * Set deployment without requiring authentication.
-	 * Immediately tries to fetch user and upgrade to authenticated state.
-	 * Use this for startup or when you don't have the user yet.
-	 */
-	public async setDeploymentAndValidate(
-		deployment: Deployment & { token?: string },
-	): Promise<void> {
-		this.setDeploymentInternal(deployment);
-		await this.tryFetchAndUpgradeUser();
+		// Updates client credentials
+		if (deployment.token !== undefined) {
+			this.client.setCredentials(deployment.url, deployment.token);
+		} else {
+			this.client.setHost(deployment.url);
+		}
+
+		this.registerAuthListener();
+		this.updateAuthContexts();
+		this.refreshWorkspaces();
+		await this.persistDeployment(deployment);
 	}
 
 	/**
@@ -117,42 +149,6 @@ export class DeploymentManager implements vscode.Disposable {
 	public dispose(): void {
 		this.#authListenerDisposable?.dispose();
 		this.#crossWindowSyncDisposable?.dispose();
-	}
-
-	/**
-	 * Internal method to set deployment state with all side effects.
-	 * - Updates client credentials
-	 * - Re-registers auth listener if hostname changed
-	 * - Updates auth contexts
-	 * - Refreshes workspaces
-	 */
-	private setDeploymentInternal(deployment: DeploymentWithAuth): void {
-		this.#deployment = { ...deployment };
-
-		// Update client credentials
-		if (deployment.token !== undefined) {
-			this.client.setCredentials(deployment.url, deployment.token);
-		} else {
-			this.client.setHost(deployment.url);
-		}
-
-		this.registerAuthListener();
-		this.updateAuthContexts();
-		this.refreshWorkspaces();
-	}
-
-	/**
-	 * Upgrade the current deployment with a user.
-	 * Use this when the user has been fetched after initial deployment setup.
-	 */
-	private upgradeWithUser(user: User): void {
-		if (!this.#deployment) {
-			return;
-		}
-
-		this.#deployment.user = user;
-		this.updateAuthContexts();
-		this.refreshWorkspaces();
 	}
 
 	/**
@@ -178,9 +174,6 @@ export class DeploymentManager implements vscode.Disposable {
 
 				if (auth) {
 					this.client.setCredentials(auth.url, auth.token);
-					if (!this.isAuthenticated()) {
-						await this.tryFetchAndUpgradeUser();
-					}
 				} else {
 					await this.clearDeployment();
 				}
@@ -199,46 +192,10 @@ export class DeploymentManager implements vscode.Disposable {
 
 					if (deployment) {
 						this.logger.info("Deployment changed from another window");
-						const auth = await this.secretsManager.getSessionAuth(
-							deployment.safeHostname,
-						);
-						await this.setDeploymentAndValidate({
-							...deployment,
-							token: auth?.token,
-						});
+						await this.setDeploymentIfValid(deployment);
 					}
 				},
 			);
-	}
-
-	/**
-	 * Try to fetch the authenticated user and upgrade the deployment state.
-	 */
-	private async tryFetchAndUpgradeUser(): Promise<void> {
-		if (!this.#deployment || this.isAuthenticated()) {
-			return;
-		}
-
-		const safeHostname = this.#deployment.safeHostname;
-
-		try {
-			const user = await this.client.getAuthenticatedUser();
-
-			// Re-validate deployment hasn't changed during await
-			if (this.#deployment?.safeHostname !== safeHostname) {
-				this.logger.debug(
-					"Deployment changed during user fetch, discarding result",
-				);
-				return;
-			}
-
-			this.upgradeWithUser(user);
-
-			// Persist with user
-			await this.persistDeployment(this.#deployment);
-		} catch (e) {
-			this.logger.warn("Failed to fetch user:", e);
-		}
 	}
 
 	/**

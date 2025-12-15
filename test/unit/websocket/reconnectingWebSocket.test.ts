@@ -185,6 +185,32 @@ describe("ReconnectingWebSocket", () => {
 
 			ws.close();
 		});
+
+		it("disconnect() during pending connection closes socket when factory resolves", async () => {
+			const { ws, sockets, completeConnection } =
+				await createBlockingReconnectingWebSocket();
+
+			// Start reconnect (will block on factory promise)
+			ws.reconnect();
+			expect(sockets).toHaveLength(2);
+
+			// Disconnect while factory is still pending
+			ws.disconnect();
+
+			completeConnection();
+			await Promise.resolve();
+
+			expect(sockets[1].close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Cancelled during connection",
+			);
+
+			// No reconnection should happen
+			await vi.advanceTimersByTimeAsync(10000);
+			expect(sockets).toHaveLength(2);
+
+			ws.close();
+		});
 	});
 
 	describe("Event Handlers", () => {

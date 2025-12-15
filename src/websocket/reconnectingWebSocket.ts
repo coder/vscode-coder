@@ -41,7 +41,7 @@ export class ReconnectingWebSocket<TData = unknown>
 	#lastRoute = "unknown"; // Cached route for logging when socket is closed
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
-	isDisconnected = false; // Temporary pause, can be resumed via reconnect()
+	#isDisconnected = false; // Temporary pause, can be resumed via reconnect()
 	#isDisposed = false; // Permanent disposal, cannot be resumed
 	#isConnecting = false;
 	#pendingReconnect = false;
@@ -116,8 +116,8 @@ export class ReconnectingWebSocket<TData = unknown>
 	 * Resumes the socket if previously disconnected via disconnect().
 	 */
 	reconnect(): void {
-		if (this.isDisconnected) {
-			this.isDisconnected = false;
+		if (this.#isDisconnected) {
+			this.#isDisconnected = false;
 			this.#backoffMs = this.#options.initialBackoffMs;
 		}
 
@@ -144,11 +144,11 @@ export class ReconnectingWebSocket<TData = unknown>
 	 * Temporarily disconnect the socket. Can be resumed via reconnect().
 	 */
 	disconnect(code?: number, reason?: string): void {
-		if (this.#isDisposed || this.isDisconnected) {
+		if (this.#isDisposed || this.#isDisconnected) {
 			return;
 		}
 
-		this.isDisconnected = true;
+		this.#isDisconnected = true;
 		this.clearCurrentSocket(code, reason);
 	}
 
@@ -170,7 +170,7 @@ export class ReconnectingWebSocket<TData = unknown>
 	}
 
 	private async connect(): Promise<void> {
-		if (this.#isDisposed || this.isDisconnected || this.#isConnecting) {
+		if (this.#isDisposed || this.#isDisconnected || this.#isConnecting) {
 			return;
 		}
 
@@ -186,6 +186,13 @@ export class ReconnectingWebSocket<TData = unknown>
 			}
 
 			const socket = await this.#socketFactory();
+
+			// Check if disconnected/disposed while waiting for factory
+			if (this.#isDisposed || this.#isDisconnected) {
+				socket.close(WebSocketCloseCode.NORMAL, "Cancelled during connection");
+				return;
+			}
+
 			this.#currentSocket = socket;
 			this.#lastRoute = this.#route;
 
@@ -214,7 +221,7 @@ export class ReconnectingWebSocket<TData = unknown>
 			});
 
 			socket.addEventListener("close", (event) => {
-				if (this.#isDisposed || this.isDisconnected) {
+				if (this.#isDisposed || this.#isDisconnected) {
 					return;
 				}
 
@@ -250,7 +257,7 @@ export class ReconnectingWebSocket<TData = unknown>
 	private scheduleReconnect(): void {
 		if (
 			this.#isDisposed ||
-			this.isDisconnected ||
+			this.#isDisconnected ||
 			this.#reconnectTimeoutId !== null
 		) {
 			return;
@@ -293,7 +300,7 @@ export class ReconnectingWebSocket<TData = unknown>
 	 * otherwise schedules a reconnect.
 	 */
 	private handleConnectionError(error: unknown): void {
-		if (this.#isDisposed || this.isDisconnected) {
+		if (this.#isDisposed || this.#isDisconnected) {
 			return;
 		}
 
