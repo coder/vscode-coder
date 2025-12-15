@@ -8,6 +8,7 @@ import * as jsonc from "jsonc-parser";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import * as semver from "semver";
 import * as vscode from "vscode";
 
@@ -842,10 +843,8 @@ export class Remote {
 				}
 
 				const newValue = getValue();
-				if (
-					JSON.stringify(newValue) !==
-					JSON.stringify(appliedValues.get(setting))
-				) {
+
+				if (!isDeepStrictEqual(newValue, appliedValues.get(setting))) {
 					changedTitles.push(title);
 				}
 			}
