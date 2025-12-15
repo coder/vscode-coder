@@ -353,7 +353,7 @@
 		"word-wrap": "1.2.5"
 	},
 	"dependencies": {
-		"@peculiar/x509": "^1.14.0",
+		"@peculiar/x509": "^1.14.2",
 		"axios": "1.12.2",
 		"date-fns": "^3.6.0",
 		"eventsource": "^3.0.6",
