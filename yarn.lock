@@ -5669,10 +5669,10 @@ json5@^2.2.2, json5@^2.2.3:
   resolved "https://registry.yarnpkg.com/json5/-/json5-2.2.3.tgz#78cd6f1a19bdc12b73db5ad0c61efd66c1e29283"
   integrity sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==
 
-jsonc-eslint-parser@^2.4.0:
-  version "2.4.1"
-  resolved "https://registry.yarnpkg.com/jsonc-eslint-parser/-/jsonc-eslint-parser-2.4.1.tgz#64a8ed77311d33ac450725c1a438132dd87b2b3b"
-  integrity sha512-uuPNLJkKN8NXAlZlQ6kmUF9qO+T6Kyd7oV4+/7yy8Jz6+MZNyhPq8EdLpdfnPVzUC8qSf1b4j1azKaGnFsjmsw==
+jsonc-eslint-parser@^2.4.2:
+  version "2.4.2"
+  resolved "https://registry.yarnpkg.com/jsonc-eslint-parser/-/jsonc-eslint-parser-2.4.2.tgz#f135454fd35784ecc1b848908f0d3e98a5be9433"
+  integrity sha512-1e4qoRgnn448pRuMvKGsFFymUCquZV0mpGgOyIKNgD3JVDTsVJyRBGH/Fm0tBb8WsWGgmB1mDe6/yJMQM37DUA==
   dependencies:
     acorn "^8.5.0"
     eslint-visitor-keys "^3.0.0"
