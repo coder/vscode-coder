@@ -8,6 +8,7 @@ import * as jsonc from "jsonc-parser";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import * as semver from "semver";
 import * as vscode from "vscode";
 
@@ -20,7 +21,7 @@ import {
 import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { getGlobalFlags, getSshFlags } from "../cliConfig";
+import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "../cliConfig";
 import { type Commands } from "../commands";
 import { type CliManager } from "../core/cliManager";
 import * as cliUtils from "../core/cliUtils";
@@ -28,6 +29,7 @@ import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
 import { type PathResolver } from "../core/pathResolver";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
+import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import {
@@ -515,14 +517,34 @@ export class Remote {
 				...(await this.createAgentMetadataStatusBar(agent, workspaceClient)),
 			);
 
-			const settingsToWatch = [
-				{ setting: "coder.globalFlags", title: "Global flags" },
-				{ setting: "coder.sshFlags", title: "SSH flags" },
+			const settingsToWatch: Array<{
+				setting: string;
+				title: string;
+				getValue: () => unknown;
+			}> = [
+				{
+					setting: "coder.globalFlags",
+					title: "Global Flags",
+					getValue: () =>
+						getGlobalFlagsRaw(vscode.workspace.getConfiguration()),
+				},
+				{
+					setting: "coder.headerCommand",
+					title: "Header Command",
+					getValue: () =>
+						getHeaderCommand(vscode.workspace.getConfiguration()) ?? "",
+				},
+				{
+					setting: "coder.sshFlags",
+					title: "SSH Flags",
+					getValue: () => getSshFlags(vscode.workspace.getConfiguration()),
+				},
 			];
 			if (featureSet.proxyLogDirectory) {
 				settingsToWatch.push({
 					setting: "coder.proxyLogDirectory",
-					title: "Proxy log directory",
+					title: "Proxy Log Directory",
+					getValue: () => this.getLogDir(featureSet),
 				});
 			}
 			disposables.push(this.watchSettings(settingsToWatch));
@@ -801,25 +823,46 @@ export class Remote {
 	}
 
 	private watchSettings(
-		settings: Array<{ setting: string; title: string }>,
+		settings: Array<{
+			setting: string;
+			title: string;
+			getValue: () => unknown;
+		}>,
 	): vscode.Disposable {
+		// Capture applied values at setup time
+		const appliedValues = new Map(
+			settings.map((s) => [s.setting, s.getValue()]),
+		);
+
 		return vscode.workspace.onDidChangeConfiguration((e) => {
-			for (const { setting, title } of settings) {
+			const changedTitles: string[] = [];
+
+			for (const { setting, title, getValue } of settings) {
 				if (!e.affectsConfiguration(setting)) {
 					continue;
 				}
-				vscode.window
-					.showInformationMessage(
-						`${title} setting changed. Reload window to apply.`,
-						"Reload",
-					)
-					.then((action) => {
-						if (action === "Reload") {
-							vscode.commands.executeCommand("workbench.action.reloadWindow");
-						}
-					});
-				break;
+
+				const newValue = getValue();
+
+				if (!isDeepStrictEqual(newValue, appliedValues.get(setting))) {
+					changedTitles.push(title);
+				}
 			}
+
+			if (changedTitles.length === 0) {
+				return;
+			}
+
+			const message =
+				changedTitles.length === 1
+					? `${changedTitles[0]} setting changed. Reload window to apply.`
+					: `${changedTitles.join(", ")} settings changed. Reload window to apply.`;
+
+			vscode.window.showInformationMessage(message, "Reload").then((action) => {
+				if (action === "Reload") {
+					vscode.commands.executeCommand("workbench.action.reloadWindow");
+				}
+			});
 		});
 	}
 

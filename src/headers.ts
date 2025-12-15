@@ -18,7 +18,7 @@ function isExecException(err: unknown): err is ExecException {
 }
 
 export function getHeaderCommand(
-	config: WorkspaceConfiguration,
+	config: Pick<WorkspaceConfiguration, "get">,
 ): string | undefined {
 	const cmd =
 		config.get<string>("coder.headerCommand")?.trim() ||
@@ -27,7 +27,9 @@ export function getHeaderCommand(
 	return cmd || undefined;
 }
 
-export function getHeaderArgs(config: WorkspaceConfiguration): string[] {
+export function getHeaderArgs(
+	config: Pick<WorkspaceConfiguration, "get">,
+): string[] {
 	// Escape a command line to be executed by the Coder binary, so ssh doesn't substitute variables.
 	const escapeSubcommand: (str: string) => string =
 		os.platform() === "win32"

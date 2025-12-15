@@ -6,6 +6,10 @@
 
 - Log file picker when viewing logs without an active workspace connection.
 
+### Fixed
+
+- Fixed false "setting changed" notifications appearing when connecting to a remote workspace.
+
 ## [v1.11.5](https://github.com/coder/vscode-coder/releases/tag/v1.11.5) 2025-12-10
 
 ### Added

@@ -1,16 +1,14 @@
 import { it, expect, describe } from "vitest";
-import { type WorkspaceConfiguration } from "vscode";
 
-import { getGlobalFlags, getSshFlags } from "@/cliConfig";
+import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "@/cliConfig";
 
+import { MockConfigurationProvider } from "../mocks/testHelpers";
 import { isWindows } from "../utils/platform";
 
 describe("cliConfig", () => {
 	describe("getGlobalFlags", () => {
 		it("should return global-config and header args when no global flags configured", () => {
-			const config = {
-				get: () => undefined,
-			} as unknown as WorkspaceConfiguration;
+			const config = new MockConfigurationProvider();
 
 			expect(getGlobalFlags(config, "/config/dir")).toStrictEqual([
 				"--global-config",
@@ -19,12 +17,11 @@ describe("cliConfig", () => {
 		});
 
 		it("should return global flags from config with global-config appended", () => {
-			const config = {
-				get: (key: string) =>
-					key === "coder.globalFlags"
-						? ["--verbose", "--disable-direct-connections"]
-						: undefined,
-			} as unknown as WorkspaceConfiguration;
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", [
+				"--verbose",
+				"--disable-direct-connections",
+			]);
 
 			expect(getGlobalFlags(config, "/config/dir")).toStrictEqual([
 				"--verbose",
@@ -35,16 +32,12 @@ describe("cliConfig", () => {
 		});
 
 		it("should not filter duplicate global-config flags, last takes precedence", () => {
-			const config = {
-				get: (key: string) =>
-					key === "coder.globalFlags"
-						? [
-								"-v",
-								"--global-config /path/to/ignored",
-								"--disable-direct-connections",
-							]
-						: undefined,
-			} as unknown as WorkspaceConfiguration;
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", [
+				"-v",
+				"--global-config /path/to/ignored",
+				"--disable-direct-connections",
+			]);
 
 			expect(getGlobalFlags(config, "/config/dir")).toStrictEqual([
 				"-v",
@@ -57,17 +50,13 @@ describe("cliConfig", () => {
 
 		it("should not filter header-command flags, header args appended at end", () => {
 			const headerCommand = "echo test";
-			const config = {
-				get: (key: string) => {
-					if (key === "coder.headerCommand") {
-						return headerCommand;
-					}
-					if (key === "coder.globalFlags") {
-						return ["-v", "--header-command custom", "--no-feature-warning"];
-					}
-					return undefined;
-				},
-			} as unknown as WorkspaceConfiguration;
+			const config = new MockConfigurationProvider();
+			config.set("coder.headerCommand", headerCommand);
+			config.set("coder.globalFlags", [
+				"-v",
+				"--header-command custom",
+				"--no-feature-warning",
+			]);
 
 			const result = getGlobalFlags(config, "/config/dir");
 			expect(result).toStrictEqual([
@@ -82,22 +71,41 @@ describe("cliConfig", () => {
 		});
 	});
 
+	describe("getGlobalFlagsRaw", () => {
+		it("returns empty array when no global flags configured", () => {
+			const config = new MockConfigurationProvider();
+
+			expect(getGlobalFlagsRaw(config)).toStrictEqual([]);
+		});
+
+		it("returns global flags from config", () => {
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", [
+				"--verbose",
+				"--disable-direct-connections",
+			]);
+
+			expect(getGlobalFlagsRaw(config)).toStrictEqual([
+				"--verbose",
+				"--disable-direct-connections",
+			]);
+		});
+	});
+
 	describe("getSshFlags", () => {
 		it("returns default flags when no SSH flags configured", () => {
-			const config = {
-				get: (_key: string, defaultValue: unknown) => defaultValue,
-			} as unknown as WorkspaceConfiguration;
+			const config = new MockConfigurationProvider();
 
 			expect(getSshFlags(config)).toStrictEqual(["--disable-autostart"]);
 		});
 
 		it("returns SSH flags from config", () => {
-			const config = {
-				get: (key: string) =>
-					key === "coder.sshFlags"
-						? ["--disable-autostart", "--wait=yes", "--ssh-host-prefix=custom"]
-						: undefined,
-			} as unknown as WorkspaceConfiguration;
+			const config = new MockConfigurationProvider();
+			config.set("coder.sshFlags", [
+				"--disable-autostart",
+				"--wait=yes",
+				"--ssh-host-prefix=custom",
+			]);
 
 			expect(getSshFlags(config)).toStrictEqual([
 				"--disable-autostart",
