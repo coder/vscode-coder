@@ -4,6 +4,13 @@ import { getHeaderArgs } from "./headers";
 import { escapeCommandArg } from "./util";
 
 /**
+ * Returns the raw global flags from user configuration.
+ */
+export function getGlobalFlagsRaw(configs: WorkspaceConfiguration): string[] {
+	return configs.get<string[]>("coder.globalFlags", []);
+}
+
+/**
  * Returns global configuration flags for Coder CLI commands.
  * Always includes the `--global-config` argument with the specified config directory.
  */
@@ -13,7 +20,7 @@ export function getGlobalFlags(
 ): string[] {
 	// Last takes precedence/overrides previous ones
 	return [
-		...(configs.get<string[]>("coder.globalFlags") || []),
+		...getGlobalFlagsRaw(configs),
 		"--global-config",
 		escapeCommandArg(configDir),
 		...getHeaderArgs(configs),

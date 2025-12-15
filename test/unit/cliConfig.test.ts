@@ -1,7 +1,7 @@
 import { it, expect, describe } from "vitest";
 import { type WorkspaceConfiguration } from "vscode";
 
-import { getGlobalFlags, getSshFlags } from "@/cliConfig";
+import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "@/cliConfig";
 
 import { isWindows } from "../utils/platform";
 
@@ -9,7 +9,7 @@ describe("cliConfig", () => {
 	describe("getGlobalFlags", () => {
 		it("should return global-config and header args when no global flags configured", () => {
 			const config = {
-				get: () => undefined,
+				get: (_key: string, defaultValue: unknown) => defaultValue,
 			} as unknown as WorkspaceConfiguration;
 
 			expect(getGlobalFlags(config, "/config/dir")).toStrictEqual([
@@ -78,6 +78,30 @@ describe("cliConfig", () => {
 				'"/config/dir"',
 				"--header-command",
 				quoteCommand(headerCommand),
+			]);
+		});
+	});
+
+	describe("getGlobalFlagsRaw", () => {
+		it("returns empty array when no global flags configured", () => {
+			const config = {
+				get: (_key: string, defaultValue: unknown) => defaultValue,
+			} as unknown as WorkspaceConfiguration;
+
+			expect(getGlobalFlagsRaw(config)).toStrictEqual([]);
+		});
+
+		it("returns global flags from config", () => {
+			const config = {
+				get: (key: string) =>
+					key === "coder.globalFlags"
+						? ["--verbose", "--disable-direct-connections"]
+						: undefined,
+			} as unknown as WorkspaceConfiguration;
+
+			expect(getGlobalFlagsRaw(config)).toStrictEqual([
+				"--verbose",
+				"--disable-direct-connections",
 			]);
 		});
 	});
