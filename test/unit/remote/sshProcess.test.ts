@@ -1,5 +1,6 @@
 import find from "find-process";
 import { vol } from "memfs";
+import * as fsPromises from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -23,7 +24,7 @@ describe("SshProcessMonitor", () => {
 	let statusBar: MockStatusBar;
 
 	beforeEach(() => {
-		vi.clearAllMocks();
+		vi.restoreAllMocks();
 		vol.reset();
 		activeMonitors = [];
 		statusBar = new MockStatusBar();
@@ -99,6 +100,45 @@ describe("SshProcessMonitor", () => {
 
 			expect(find).toHaveBeenCalledWith("port", 55555);
 			expect(pid).toBe(777);
+		});
+
+		it("uses newest output_logging_ directory when multiple exist", async () => {
+			// Reverse alphabetical order means highest number/newest first
+			vol.fromJSON({
+				"/logs/output_logging_20240101/1-Remote - SSH.log":
+					"-> socksPort 11111 ->",
+				"/logs/output_logging_20240102/1-Remote - SSH.log":
+					"-> socksPort 22222 ->",
+				"/logs/output_logging_20240103/1-Remote - SSH.log":
+					"-> socksPort 33333 ->",
+			});
+
+			// Mock readdir to return directories in unsorted order (simulating Windows fs)
+			mockReaddirOrder("/logs", [
+				"output_logging_20240103",
+				"output_logging_20240101",
+				"output_logging_20240102",
+				"window1",
+			]);
+
+			const monitor = createMonitor({ codeLogDir: "/logs/window1" });
+			await waitForEvent(monitor.onPidChange);
+
+			expect(find).toHaveBeenCalledWith("port", 33333);
+		});
+
+		it("falls back to output_logging_ when extension folder has no SSH log", async () => {
+			// Extension folder exists but doesn't have Remote SSH log
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/some-other-log.log": "",
+				"/logs/output_logging_20240101/1-Remote - SSH.log":
+					"-> socksPort 55555 ->",
+			});
+
+			const monitor = createMonitor({ codeLogDir: "/logs/window1" });
+			await waitForEvent(monitor.onPidChange);
+
+			expect(find).toHaveBeenCalledWith("port", 55555);
 		});
 
 		it("reconnects when network info becomes stale", async () => {
@@ -235,6 +275,31 @@ describe("SshProcessMonitor", () => {
 			await waitForEvent(monitor.onPidChange);
 
 			expect(monitor.getLogFilePath()).toBeUndefined();
+		});
+
+		it("checks log files in reverse alphabetical order", async () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+				"/proxy-logs/2024-01-01-999.log": "",
+				"/proxy-logs/2024-01-02-999.log": "",
+				"/proxy-logs/2024-01-03-999.log": "",
+			});
+
+			// Mock readdir to return files in unsorted order (simulating Windows fs)
+			mockReaddirOrder("/proxy-logs", [
+				"2024-01-03-999.log",
+				"2024-01-01-999.log",
+				"2024-01-02-999.log",
+			]);
+
+			const monitor = createMonitor({
+				codeLogDir: "/logs/window1",
+				proxyLogDir: "/proxy-logs",
+			});
+			const logPath = await waitForEvent(monitor.onLogFilePathChange);
+
+			expect(logPath).toBe("/proxy-logs/2024-01-03-999.log");
 		});
 	});
 
@@ -406,6 +471,24 @@ describe("SshProcessMonitor", () => {
 		return monitor;
 	}
 });
+
+/**
+ * Helper to mock readdir returning files in a specific unsorted order.
+ * This is needed because memfs returns files in sorted order, which masks
+ * bugs in sorting logic.
+ */
+function mockReaddirOrder(dirPath: string, files: string[]): void {
+	const originalReaddir = fsPromises.readdir;
+	const mockImpl = (path: fs.PathLike): Promise<string[]> => {
+		if (path === dirPath) {
+			return Promise.resolve(files);
+		}
+		return originalReaddir(path) as Promise<string[]>;
+	};
+	vi.spyOn(fsPromises, "readdir").mockImplementation(
+		mockImpl as typeof fsPromises.readdir,
+	);
+}
 
 /** Wait for a VS Code event to fire once */
 function waitForEvent<T>(

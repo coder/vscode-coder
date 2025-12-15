@@ -257,7 +257,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 		while (!this.disposed && this.currentPid === targetPid) {
 			try {
 				const logFiles = await fs.readdir(logDir);
-				logFiles.reverse();
+				logFiles.sort().reverse();
 				const logFileName = logFiles.find(
 					(file) =>
 						file === `${targetPid}.log` || file.endsWith(`-${targetPid}.log`),
@@ -404,15 +404,11 @@ async function findRemoteSshLogPath(
 	// Try extension-specific folder (for VS Code clones like Cursor, Windsurf)
 	try {
 		const extensionLogDir = path.join(logsParentDir, extensionId);
-		// Node returns these directories sorted already!
-		const files = await fs.readdir(extensionLogDir);
-		files.reverse();
-
-		const remoteSsh = files.find((file) => file.includes("Remote - SSH"));
-		if (remoteSsh) {
-			return path.join(extensionLogDir, remoteSsh);
+		const remoteSshLog = await findSshLogInDir(extensionLogDir);
+		if (remoteSshLog) {
+			return remoteSshLog;
 		}
-		// Folder exists but no Remote SSH log yet
+
 		logger.debug(
 			`Extension log folder exists but no Remote SSH log found: ${extensionLogDir}`,
 		);
@@ -421,18 +417,19 @@ async function findRemoteSshLogPath(
 	}
 
 	try {
-		// Node returns these directories sorted already!
 		const dirs = await fs.readdir(logsParentDir);
-		dirs.reverse();
-		const outputDirs = dirs.filter((d) => d.startsWith("output_logging_"));
+		const outputDirs = dirs
+			.filter((d) => d.startsWith("output_logging_"))
+			.sort()
+			.reverse();
 
 		if (outputDirs.length > 0) {
 			const outputPath = path.join(logsParentDir, outputDirs[0]);
-			const files = await fs.readdir(outputPath);
-			const remoteSSHLog = files.find((f) => f.includes("Remote - SSH"));
-			if (remoteSSHLog) {
-				return path.join(outputPath, remoteSSHLog);
+			const remoteSshLog = await findSshLogInDir(outputPath);
+			if (remoteSshLog) {
+				return remoteSshLog;
 			}
+
 			logger.debug(
 				`Output logging folder exists but no Remote SSH log found: ${outputPath}`,
 			);
@@ -444,4 +441,10 @@ async function findRemoteSshLogPath(
 	}
 
 	return undefined;
+}
+
+async function findSshLogInDir(dirPath: string): Promise<string | undefined> {
+	const files = await fs.readdir(dirPath);
+	const remoteSshLog = files.find((f) => f.includes("Remote - SSH"));
+	return remoteSshLog ? path.join(dirPath, remoteSshLog) : undefined;
 }

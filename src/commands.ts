@@ -5,6 +5,8 @@ import {
 	type Workspace,
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
@@ -225,7 +227,43 @@ export class Commands {
 	 * View the logs for the currently connected workspace.
 	 */
 	public async viewLogs(): Promise<void> {
-		if (!this.workspaceLogPath) {
+		if (this.workspaceLogPath) {
+			// Return the connected deployment's log file.
+			return this.openFile(this.workspaceLogPath);
+		}
+
+		const logDir = vscode.workspace
+			.getConfiguration()
+			.get<string>("coder.proxyLogDirectory");
+		if (logDir) {
+			try {
+				const files = await fs.readdir(logDir);
+				// Sort explicitly since fs.readdir order is platform-dependent
+				const logFiles = files
+					.filter((f) => f.endsWith(".log"))
+					.sort()
+					.reverse();
+
+				if (logFiles.length === 0) {
+					vscode.window.showInformationMessage(
+						"No log files found in the configured log directory.",
+					);
+					return;
+				}
+
+				const selected = await vscode.window.showQuickPick(logFiles, {
+					title: "Select a log file to view",
+				});
+
+				if (selected) {
+					await this.openFile(path.join(logDir, selected));
+				}
+			} catch (error) {
+				vscode.window.showErrorMessage(
+					`Failed to read log directory: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		} else {
 			vscode.window
 				.showInformationMessage(
 					"No logs available. Make sure to set coder.proxyLogDirectory to get logs.",
@@ -239,11 +277,12 @@ export class Commands {
 						);
 					}
 				});
-			return;
 		}
-		const uri = vscode.Uri.file(this.workspaceLogPath);
-		const doc = await vscode.workspace.openTextDocument(uri);
-		await vscode.window.showTextDocument(doc);
+	}
+
+	private async openFile(filePath: string): Promise<void> {
+		const uri = vscode.Uri.file(filePath);
+		await vscode.window.showTextDocument(uri);
 	}
 
 	/**
