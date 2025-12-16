@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import fs from "node:fs/promises";
 import { ProxyAgent } from "proxy-agent";
 import { type WorkspaceConfiguration } from "vscode";
 
