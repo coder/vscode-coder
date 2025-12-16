@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { type Logger } from "../logging/logger";
+import { LoginCoordinator } from "../login/loginCoordinator";
 
 import { CliManager } from "./cliManager";
 import { ContextManager } from "./contextManager";
@@ -19,6 +20,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly secretsManager: SecretsManager;
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;
+	private readonly loginCoordinator: LoginCoordinator;
 
 	constructor(
 		context: vscode.ExtensionContext,
@@ -30,13 +32,23 @@ export class ServiceContainer implements vscode.Disposable {
 			context.logUri.fsPath,
 		);
 		this.mementoManager = new MementoManager(context.globalState);
-		this.secretsManager = new SecretsManager(context.secrets);
+		this.secretsManager = new SecretsManager(
+			context.secrets,
+			context.globalState,
+			this.logger,
+		);
 		this.cliManager = new CliManager(
 			this.vscodeProposed,
 			this.logger,
 			this.pathResolver,
 		);
-		this.contextManager = new ContextManager();
+		this.contextManager = new ContextManager(context);
+		this.loginCoordinator = new LoginCoordinator(
+			this.secretsManager,
+			this.mementoManager,
+			this.vscodeProposed,
+			this.logger,
+		);
 	}
 
 	getVsCodeProposed(): typeof vscode {
@@ -65,6 +77,10 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getContextManager(): ContextManager {
 		return this.contextManager;
+	}
+
+	getLoginCoordinator(): LoginCoordinator {
+		return this.loginCoordinator;
 	}
 
 	/**

@@ -1,8 +1,11 @@
-import { type IncomingMessage } from "node:http";
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
-import { type Logger } from "@/logging/logger";
+import type { User } from "coder/site/src/api/typesGenerated";
+import type { IncomingMessage } from "node:http";
+
+import type { CoderApi } from "@/api/coderApi";
+import type { Logger } from "@/logging/logger";
 
 /**
  * Mock configuration provider that integrates with the vscode workspace configuration mock.
@@ -137,11 +140,13 @@ export class MockProgressReporter {
 }
 
 /**
- * Mock user interaction that integrates with vscode.window message dialogs.
+ * Mock user interaction that integrates with vscode.window message dialogs and input boxes.
  * Use this to control user responses in tests.
  */
 export class MockUserInteraction {
 	private readonly responses = new Map<string, string | undefined>();
+	private inputBoxValue: string | undefined;
+	private inputBoxValidateInput: ((value: string) => Promise<void>) | undefined;
 	private externalUrls: string[] = [];
 
 	constructor() {
@@ -149,10 +154,26 @@ export class MockUserInteraction {
 	}
 
 	/**
-	 * Set a response for a specific message
+	 * Set a response for a specific message dialog
 	 */
 	setResponse(message: string, response: string | undefined): void {
 		this.responses.set(message, response);
+	}
+
+	/**
+	 * Set the value to return from showInputBox.
+	 * Pass undefined to simulate user cancelling.
+	 */
+	setInputBoxValue(value: string | undefined): void {
+		this.inputBoxValue = value;
+	}
+
+	/**
+	 * Set a custom validateInput handler for showInputBox.
+	 * This allows tests to simulate the validation callback behavior.
+	 */
+	setInputBoxValidateInput(fn: (value: string) => Promise<void>): void {
+		this.inputBoxValidateInput = fn;
 	}
 
 	/**
@@ -170,10 +191,13 @@ export class MockUserInteraction {
 	}
 
 	/**
-	 * Clear all responses
+	 * Clear all responses and input box values
 	 */
-	clearResponses(): void {
+	clear(): void {
 		this.responses.clear();
+		this.inputBoxValue = undefined;
+		this.inputBoxValidateInput = undefined;
+		this.externalUrls = [];
 	}
 
 	/**
@@ -204,6 +228,32 @@ export class MockUserInteraction {
 			(target: vscode.Uri): Promise<boolean> => {
 				this.externalUrls.push(target.toString());
 				return Promise.resolve(true);
+			},
+		);
+
+		vi.mocked(vscode.window.showInputBox).mockImplementation(
+			async (options?: vscode.InputBoxOptions) => {
+				const value = this.inputBoxValue;
+				if (value === undefined) {
+					return undefined; // User cancelled
+				}
+
+				if (options?.validateInput) {
+					const validationResult = await options.validateInput(value);
+					if (validationResult) {
+						// Validation failed - in real VS Code this would show error
+						// For tests, we can use the custom handler or return undefined
+						if (this.inputBoxValidateInput) {
+							await this.inputBoxValidateInput(value);
+						}
+						return undefined;
+					}
+				} else if (this.inputBoxValidateInput) {
+					// Run custom validation handler even without options.validateInput
+					await this.inputBoxValidateInput(value);
+				}
+
+				return value;
 			},
 		);
 	}
@@ -398,4 +448,104 @@ export class MockStatusBar {
 			this as unknown as vscode.StatusBarItem,
 		);
 	}
+}
+
+/**
+ * Mock CoderApi for testing. Tracks method calls and allows controlling responses.
+ */
+export class MockCoderApi
+	implements
+		Pick<
+			CoderApi,
+			| "setHost"
+			| "setSessionToken"
+			| "setCredentials"
+			| "getAuthenticatedUser"
+			| "dispose"
+		>
+{
+	private _host: string | undefined;
+	private _token: string | undefined;
+	private _disposed = false;
+	private authenticatedUser: User | Error | undefined;
+
+	readonly setHost = vi.fn((host: string | undefined) => {
+		this._host = host;
+	});
+
+	readonly setSessionToken = vi.fn((token: string) => {
+		this._token = token;
+	});
+
+	readonly setCredentials = vi.fn(
+		(host: string | undefined, token: string | undefined) => {
+			this._host = host;
+			this._token = token;
+		},
+	);
+
+	readonly getAuthenticatedUser = vi.fn((): Promise<User> => {
+		if (this.authenticatedUser instanceof Error) {
+			return Promise.reject(this.authenticatedUser);
+		}
+		if (!this.authenticatedUser) {
+			return Promise.reject(new Error("Not authenticated"));
+		}
+		return Promise.resolve(this.authenticatedUser);
+	});
+
+	readonly dispose = vi.fn(() => {
+		this._disposed = true;
+	});
+
+	/**
+	 * Get current host (for assertions)
+	 */
+	get host(): string | undefined {
+		return this._host;
+	}
+
+	/**
+	 * Get current token (for assertions)
+	 */
+	get token(): string | undefined {
+		return this._token;
+	}
+
+	/**
+	 * Check if dispose was called (for assertions)
+	 */
+	get disposed(): boolean {
+		return this._disposed;
+	}
+
+	/**
+	 * Set the authenticated user that will be returned by getAuthenticatedUser.
+	 * Pass an Error to make getAuthenticatedUser reject.
+	 */
+	setAuthenticatedUserResponse(user: User | Error | undefined): void {
+		this.authenticatedUser = user;
+	}
+}
+
+/**
+ * Create a mock User for testing.
+ */
+export function createMockUser(overrides: Partial<User> = {}): User {
+	return {
+		id: "user-123",
+		username: "testuser",
+		email: "test@example.com",
+		name: "Test User",
+		created_at: new Date().toISOString(),
+		updated_at: new Date().toISOString(),
+		last_seen_at: new Date().toISOString(),
+		status: "active",
+		organization_ids: [],
+		roles: [],
+		avatar_url: "",
+		login_type: "password",
+		theme_preference: "",
+		...overrides,
+	};
 }

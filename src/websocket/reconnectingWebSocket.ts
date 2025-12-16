@@ -27,7 +27,6 @@ export class ReconnectingWebSocket<TData = unknown>
 {
 	readonly #socketFactory: SocketFactory<TData>;
 	readonly #logger: Logger;
-	readonly #apiRoute: string;
 	readonly #options: Required<ReconnectingWebSocketOptions>;
 	readonly #eventHandlers: {
 		[K in WebSocketEventType]: Set<EventHandler<TData, K>>;
@@ -39,9 +38,11 @@ export class ReconnectingWebSocket<TData = unknown>
 	};
 
 	#currentSocket: UnidirectionalStream<TData> | null = null;
+	#lastRoute = "unknown"; // Cached route for logging when socket is closed
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
-	#isDisposed = false;
+	#isDisconnected = false; // Temporary pause, can be resumed via reconnect()
+	#isDisposed = false; // Permanent disposal, cannot be resumed
 	#isConnecting = false;
 	#pendingReconnect = false;
 	readonly #onDispose?: () => void;
@@ -49,13 +50,11 @@ export class ReconnectingWebSocket<TData = unknown>
 	private constructor(
 		socketFactory: SocketFactory<TData>,
 		logger: Logger,
-		apiRoute: string,
 		options: ReconnectingWebSocketOptions = {},
 		onDispose?: () => void,
 	) {
 		this.#socketFactory = socketFactory;
 		this.#logger = logger;
-		this.#apiRoute = apiRoute;
 		this.#options = {
 			initialBackoffMs: options.initialBackoffMs ?? 250,
 			maxBackoffMs: options.maxBackoffMs ?? 30000,
@@ -68,14 +67,12 @@ export class ReconnectingWebSocket<TData = unknown>
 	static async create<TData>(
 		socketFactory: SocketFactory<TData>,
 		logger: Logger,
-		apiRoute: string,
 		options: ReconnectingWebSocketOptions = {},
 		onDispose?: () => void,
 	): Promise<ReconnectingWebSocket<TData>> {
 		const instance = new ReconnectingWebSocket<TData>(
 			socketFactory,
 			logger,
-			apiRoute,
 			options,
 			onDispose,
 		);
@@ -85,6 +82,19 @@ export class ReconnectingWebSocket<TData = unknown>
 
 	get url(): string {
 		return this.#currentSocket?.url ?? "";
+	}
+
+	/**
+	 * Extract the route (pathname + search) from the current socket URL for logging.
+	 * Falls back to the last known route when the socket is closed.
+	 */
+	get #route(): string {
+		const socketUrl = this.#currentSocket?.url;
+		if (!socketUrl) {
+			return this.#lastRoute;
+		}
+		const url = new URL(socketUrl);
+		return url.pathname + url.search;
 	}
 
 	addEventListener<TEvent extends WebSocketEventType>(
@@ -101,7 +111,16 @@ export class ReconnectingWebSocket<TData = unknown>
 		this.#eventHandlers[event].delete(callback);
 	}
 
+	/**
+	 * Force an immediate reconnection attempt.
+	 * Resumes the socket if previously disconnected via disconnect().
+	 */
 	reconnect(): void {
+		if (this.#isDisconnected) {
+			this.#isDisconnected = false;
+			this.#backoffMs = this.#options.initialBackoffMs;
+		}
+
 		if (this.#isDisposed) {
 			return;
 		}
@@ -119,6 +138,18 @@ export class ReconnectingWebSocket<TData = unknown>
 
 		// connect() will close any existing socket
 		this.connect().catch((error) => this.handleConnectionError(error));
+	}
+
+	/**
+	 * Temporarily disconnect the socket. Can be resumed via reconnect().
+	 */
+	disconnect(code?: number, reason?: string): void {
+		if (this.#isDisposed || this.#isDisconnected) {
+			return;
+		}
+
+		this.#isDisconnected = true;
+		this.clearCurrentSocket(code, reason);
 	}
 
 	close(code?: number, reason?: string): void {
@@ -139,7 +170,7 @@ export class ReconnectingWebSocket<TData = unknown>
 	}
 
 	private async connect(): Promise<void> {
-		if (this.#isDisposed || this.#isConnecting) {
+		if (this.#isDisposed || this.#isDisconnected || this.#isConnecting) {
 			return;
 		}
 
@@ -155,7 +186,15 @@ export class ReconnectingWebSocket<TData = unknown>
 			}
 
 			const socket = await this.#socketFactory();
+
+			// Check if disconnected/disposed while waiting for factory
+			if (this.#isDisposed || this.#isDisconnected) {
+				socket.close(WebSocketCloseCode.NORMAL, "Cancelled during connection");
+				return;
+			}
+
 			this.#currentSocket = socket;
+			this.#lastRoute = this.#route;
 
 			socket.addEventListener("open", (event) => {
 				this.#backoffMs = this.#options.initialBackoffMs;
@@ -168,10 +207,21 @@ export class ReconnectingWebSocket<TData = unknown>
 
 			socket.addEventListener("error", (event) => {
 				this.executeHandlers("error", event);
+
+				// Check for unrecoverable HTTP errors in the error event
+				// HTTP errors during handshake fire 'error' then 'close' with 1006
+				// We need to suspend here to prevent infinite reconnect loops
+				const errorMessage = event.error?.message ?? event.message ?? "";
+				if (this.isUnrecoverableHttpError(errorMessage)) {
+					this.#logger.error(
+						`Unrecoverable HTTP error for ${this.#route}: ${errorMessage}`,
+					);
+					this.disconnect();
+				}
 			});
 
 			socket.addEventListener("close", (event) => {
-				if (this.#isDisposed) {
+				if (this.#isDisposed || this.#isDisconnected) {
 					return;
 				}
 
@@ -181,7 +231,8 @@ export class ReconnectingWebSocket<TData = unknown>
 					this.#logger.error(
 						`WebSocket connection closed with unrecoverable error code ${event.code}`,
 					);
-					this.dispose();
+					// Suspend instead of dispose - allows recovery when credentials change
+					this.disconnect();
 					return;
 				}
 
@@ -204,7 +255,11 @@ export class ReconnectingWebSocket<TData = unknown>
 	}
 
 	private scheduleReconnect(): void {
-		if (this.#isDisposed || this.#reconnectTimeoutId !== null) {
+		if (
+			this.#isDisposed ||
+			this.#isDisconnected ||
+			this.#reconnectTimeoutId !== null
+		) {
 			return;
 		}
 
@@ -213,7 +268,7 @@ export class ReconnectingWebSocket<TData = unknown>
 		const delayMs = Math.max(0, this.#backoffMs + jitter);
 
 		this.#logger.debug(
-			`Reconnecting WebSocket in ${Math.round(delayMs)}ms for ${this.#apiRoute}`,
+			`Reconnecting WebSocket in ${Math.round(delayMs)}ms for ${this.#route}`,
 		);
 
 		this.#reconnectTimeoutId = setTimeout(() => {
@@ -233,7 +288,7 @@ export class ReconnectingWebSocket<TData = unknown>
 				handler(eventData);
 			} catch (error) {
 				this.#logger.error(
-					`Error in ${event} handler for ${this.#apiRoute}`,
+					`Error in ${event} handler for ${this.#route}`,
 					error,
 				);
 			}
@@ -241,37 +296,34 @@ export class ReconnectingWebSocket<TData = unknown>
 	}
 
 	/**
-	 * Checks if the error is unrecoverable and disposes the connection,
+	 * Checks if the error is unrecoverable and suspends the connection,
 	 * otherwise schedules a reconnect.
 	 */
 	private handleConnectionError(error: unknown): void {
-		if (this.#isDisposed) {
+		if (this.#isDisposed || this.#isDisconnected) {
 			return;
 		}
 
 		if (this.isUnrecoverableHttpError(error)) {
 			this.#logger.error(
-				`Unrecoverable HTTP error during connection for ${this.#apiRoute}`,
+				`Unrecoverable HTTP error during connection for ${this.#route}`,
 				error,
 			);
-			this.dispose();
+			this.disconnect();
 			return;
 		}
 
-		this.#logger.warn(
-			`WebSocket connection failed for ${this.#apiRoute}`,
-			error,
-		);
+		this.#logger.warn(`WebSocket connection failed for ${this.#route}`, error);
 		this.scheduleReconnect();
 	}
 
 	/**
-	 * Check if an error contains an unrecoverable HTTP status code.
+	 * Check if an error message contains an unrecoverable HTTP status code.
 	 */
 	private isUnrecoverableHttpError(error: unknown): boolean {
-		const errorMessage = error instanceof Error ? error.message : String(error);
+		const message = (error as { message?: string }).message || String(error);
 		for (const code of UNRECOVERABLE_HTTP_CODES) {
-			if (errorMessage.includes(String(code))) {
+			if (message.includes(String(code))) {
 				return true;
 			}
 		}
@@ -284,6 +336,18 @@ export class ReconnectingWebSocket<TData = unknown>
 		}
 
 		this.#isDisposed = true;
+		this.clearCurrentSocket(code, reason);
+
+		for (const set of Object.values(this.#eventHandlers)) {
+			set.clear();
+		}
+
+		this.#onDispose?.();
+	}
+
+	private clearCurrentSocket(code?: number, reason?: string): void {
+		// Clear pending reconnect to prevent resume
+		this.#pendingReconnect = false;
 
 		if (this.#reconnectTimeoutId !== null) {
 			clearTimeout(this.#reconnectTimeoutId);
@@ -294,11 +358,5 @@ export class ReconnectingWebSocket<TData = unknown>
 			this.#currentSocket.close(code, reason);
 			this.#currentSocket = null;
 		}
-
-		for (const set of Object.values(this.#eventHandlers)) {
-			set.clear();
-		}
-
-		this.#onDispose?.();
 	}
 }

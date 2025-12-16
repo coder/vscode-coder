@@ -11,7 +11,6 @@ import { CertificateError } from "@/error";
 import { getHeaders } from "@/headers";
 import { type RequestConfigWithMeta } from "@/logging/types";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
-import { SseConnection } from "@/websocket/sseConnection";
 
 import {
 	createMockLogger,
@@ -336,18 +335,20 @@ describe("CoderApi", () => {
 			expect(EventSource).not.toHaveBeenCalled();
 		});
 
-		it("falls back to SSE when WebSocket creation fails", async () => {
+		it("falls back to SSE when WebSocket creation fails with 404", async () => {
+			// Only 404 errors trigger SSE fallback - other errors are thrown
 			vi.mocked(Ws).mockImplementation(() => {
-				throw new Error("WebSocket creation failed");
+				throw new Error("Unexpected server response: 404");
 			});
 
 			const connection = await api.watchAgentMetadata(AGENT_ID);
 
-			expect(connection).toBeInstanceOf(SseConnection);
+			// Returns ReconnectingWebSocket (which wraps SSE internally)
+			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
 			expect(EventSource).toHaveBeenCalled();
 		});
 
-		it("falls back to SSE on 404 error from WebSocket", async () => {
+		it("falls back to SSE on 404 error from WebSocket open", async () => {
 			const mockWs = createMockWebSocket(
 				`wss://${CODER_URL.replace("https://", "")}/api/v2/test`,
 				{
@@ -368,8 +369,63 @@ describe("CoderApi", () => {
 
 			const connection = await api.watchAgentMetadata(AGENT_ID);
 
-			expect(connection).toBeInstanceOf(SseConnection);
+			// Returns ReconnectingWebSocket (which wraps SSE internally after WS 404)
+			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
 			expect(EventSource).toHaveBeenCalled();
+		});
+
+		it("throws non-404 errors without SSE fallback", async () => {
+			vi.mocked(Ws).mockImplementation(() => {
+				throw new Error("Network error");
+			});
+
+			await expect(api.watchAgentMetadata(AGENT_ID)).rejects.toThrow(
+				"Network error",
+			);
+			expect(EventSource).not.toHaveBeenCalled();
+		});
+
+		describe("reconnection after fallback", () => {
+			beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+			afterEach(() => vi.useRealTimers());
+
+			it("reconnects after SSE fallback and retries WS on each reconnect", async () => {
+				let wsAttempts = 0;
+				const mockEventSources: MockEventSource[] = [];
+
+				vi.mocked(Ws).mockImplementation(() => {
+					wsAttempts++;
+					const mockWs = createMockWebSocket("wss://test", {
+						on: vi.fn((event: string, handler: (e: unknown) => void) => {
+							if (event === "error") {
+								setImmediate(() =>
+									handler({ error: new Error("Something 404") }),
+								);
+							}
+							return mockWs as Ws;
+						}),
+					});
+					return mockWs as Ws;
+				});
+
+				vi.mocked(EventSource).mockImplementation(() => {
+					const es = createMockEventSource(`${CODER_URL}/api/v2/test`);
+					mockEventSources.push(es);
+					return es as unknown as EventSource;
+				});
+
+				const connection = await api.watchAgentMetadata(AGENT_ID);
+				expect(wsAttempts).toBe(1);
+				expect(EventSource).toHaveBeenCalledTimes(1);
+
+				mockEventSources[0].fireError();
+				await vi.advanceTimersByTimeAsync(300);
+
+				expect(wsAttempts).toBe(2);
+				expect(EventSource).toHaveBeenCalledTimes(2);
+
+				connection.close();
+			});
 		});
 	});
 
@@ -413,6 +469,7 @@ describe("CoderApi", () => {
 			expect(wsWrap.url).toContain(CODER_URL.replace("http", "ws"));
 
 			api.setHost("https://new-coder.example.com");
+			// Wait for the async reconnect to complete (factory is async)
 			await new Promise((resolve) => setImmediate(resolve));
 
 			expect(sockets[0].close).toHaveBeenCalledWith(
@@ -420,7 +477,8 @@ describe("CoderApi", () => {
 				"Replacing connection",
 			);
 			expect(sockets).toHaveLength(2);
-			expect(wsWrap.url).toContain("wss://new-coder.example.com");
+			// Verify the new socket was created with the correct URL
+			expect(sockets[1].url).toContain("wss://new-coder.example.com");
 		});
 
 		it("does not reconnect when token or host are unchanged", async () => {
@@ -435,6 +493,58 @@ describe("CoderApi", () => {
 			expect(sockets[0].close).not.toHaveBeenCalled();
 			expect(sockets).toHaveLength(1);
 		});
+
+		it("suspends sockets when host is set to empty string (logout)", async () => {
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			// Setting host to empty string (logout) should suspend (not permanently close)
+			api.setHost("");
+			await new Promise((resolve) => setImmediate(resolve));
+
+			expect(sockets[0].close).toHaveBeenCalledWith(1000, "Host cleared");
+			expect(sockets).toHaveLength(1);
+		});
+
+		it("does not reconnect when setting token after clearing host", async () => {
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			api.setHost("");
+			api.setSessionToken("new-token");
+			await new Promise((resolve) => setImmediate(resolve));
+
+			// Should only have the initial socket - no reconnection after token change
+			expect(sockets).toHaveLength(1);
+			expect(sockets[0].close).toHaveBeenCalledWith(1000, "Host cleared");
+		});
+
+		it("setCredentials sets both host and token together", async () => {
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			api.setCredentials("https://new-coder.example.com", "new-token");
+			await new Promise((resolve) => setImmediate(resolve));
+
+			// Should reconnect only once despite both values changing
+			expect(sockets).toHaveLength(2);
+			expect(sockets[1].url).toContain("wss://new-coder.example.com");
+		});
+
+		it("setCredentials suspends when host is cleared", async () => {
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			api.setCredentials(undefined, undefined);
+			await new Promise((resolve) => setImmediate(resolve));
+
+			expect(sockets).toHaveLength(1);
+			expect(sockets[0].close).toHaveBeenCalledWith(1000, "Host cleared");
+		});
 	});
 
 	describe("Error Handling", () => {
@@ -445,6 +555,42 @@ describe("CoderApi", () => {
 			await expect(api.watchBuildLogsByBuildId(BUILD_ID, [])).rejects.toThrow(
 				"No base URL set on REST client",
 			);
+		});
+	});
+
+	describe("getHost/getSessionToken", () => {
+		it("returns current host and token", () => {
+			const api = createApi(CODER_URL, AXIOS_TOKEN);
+
+			expect(api.getHost()).toBe(CODER_URL);
+			expect(api.getSessionToken()).toBe(AXIOS_TOKEN);
+		});
+	});
+
+	describe("dispose", () => {
+		it("disposes all tracked reconnecting sockets", async () => {
+			const sockets: Array<Partial<Ws>> = [];
+			vi.mocked(Ws).mockImplementation((url: string | URL) => {
+				const mockWs = createMockWebSocket(String(url), {
+					on: vi.fn((event, handler) => {
+						if (event === "open") {
+							setImmediate(() => handler());
+						}
+						return mockWs as Ws;
+					}),
+				});
+				sockets.push(mockWs);
+				return mockWs as Ws;
+			});
+
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+			expect(sockets).toHaveLength(1);
+
+			api.dispose();
+
+			// Socket should be closed
+			expect(sockets[0].close).toHaveBeenCalled();
 		});
 	});
 });
@@ -472,18 +618,32 @@ function createMockWebSocket(
 	};
 }
 
-function createMockEventSource(url: string): Partial<EventSource> {
-	return {
+type MockEventSource = Partial<EventSource> & {
+	readyState: number;
+	fireOpen: () => void;
+	fireError: () => void;
+};
+
+function createMockEventSource(url: string): MockEventSource {
+	const handlers: Record<string, ((e: Event) => void) | undefined> = {};
+	const mock: MockEventSource = {
 		url,
 		readyState: EventSource.CONNECTING,
-		addEventListener: vi.fn((event, handler) => {
+		addEventListener: vi.fn((event: string, handler: (e: Event) => void) => {
+			handlers[event] = handler;
 			if (event === "open") {
 				setImmediate(() => handler(new Event("open")));
 			}
 		}),
 		removeEventListener: vi.fn(),
 		close: vi.fn(),
+		fireOpen: () => handlers.open?.(new Event("open")),
+		fireError: () => {
+			mock.readyState = EventSource.CLOSED;
+			handlers.error?.(new Event("error"));
+		},
 	};
+	return mock;
 }
 
 function setupWebSocketMock(ws: Partial<Ws>): void {

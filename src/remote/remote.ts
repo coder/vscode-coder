@@ -28,10 +28,12 @@ import * as cliUtils from "../core/cliUtils";
 import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
 import { type PathResolver } from "../core/pathResolver";
+import { type SecretsManager } from "../core/secretsManager";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
+import { type LoginCoordinator } from "../login/loginCoordinator";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,
@@ -46,6 +48,7 @@ import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 export interface RemoteDetails extends vscode.Disposable {
+	safeHostname: string;
 	url: string;
 	token: string;
 }
@@ -57,48 +60,21 @@ export class Remote {
 	private readonly pathResolver: PathResolver;
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;
-
-	// Used to race between the login dialog and logging in from a different window
-	private loginDetectedResolver: (() => void) | undefined;
-	private loginDetectedRejector: ((reason?: Error) => void) | undefined;
-	private loginDetectedPromise: Promise<void> = Promise.resolve();
+	private readonly secretsManager: SecretsManager;
+	private readonly loginCoordinator: LoginCoordinator;
 
 	public constructor(
 		serviceContainer: ServiceContainer,
 		private readonly commands: Commands,
-		private readonly mode: vscode.ExtensionMode,
+		private readonly extensionContext: vscode.ExtensionContext,
 	) {
 		this.vscodeProposed = serviceContainer.getVsCodeProposed();
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.cliManager = serviceContainer.getCliManager();
 		this.contextManager = serviceContainer.getContextManager();
-	}
-
-	/**
-	 * Creates a new promise that will be resolved when login is detected in another window.
-	 */
-	private createLoginDetectionPromise(): void {
-		if (this.loginDetectedRejector) {
-			this.loginDetectedRejector(
-				new Error("Login detection cancelled - new login attempt started"),
-			);
-		}
-		this.loginDetectedPromise = new Promise<void>((resolve, reject) => {
-			this.loginDetectedResolver = resolve;
-			this.loginDetectedRejector = reject;
-		});
-	}
-
-	/**
-	 * Resolves the current login detection promise if one exists.
-	 */
-	public resolveLoginDetected(): void {
-		if (this.loginDetectedResolver) {
-			this.loginDetectedResolver();
-			this.loginDetectedResolver = undefined;
-			this.loginDetectedRejector = undefined;
-		}
+		this.secretsManager = serviceContainer.getSecretsManager();
+		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 	}
 
 	/**
@@ -119,161 +95,187 @@ export class Remote {
 
 		const workspaceName = `${parts.username}/${parts.workspace}`;
 
-		// Migrate "session_token" file to "session", if needed.
-		await this.migrateSessionToken(parts.label);
+		// Migrate existing legacy file-based auth to secrets storage.
+		await this.migrateToSecretsStorage(parts.safeHostname);
 
 		// Get the URL and token belonging to this host.
-		const { url: baseUrlRaw, token } = await this.cliManager.readConfig(
-			parts.label,
-		);
-
-		const showLoginDialog = async (message: string) => {
-			this.createLoginDetectionPromise();
-			const dialogPromise = this.vscodeProposed.window.showInformationMessage(
-				message,
-				{
-					useCustom: true,
-					modal: true,
-					detail: `You must log in to access ${workspaceName}. If you've already logged in, you may close this dialog.`,
-				},
-				"Log In",
-			);
-
-			// Race between dialog and login detection
-			const result = await Promise.race([
-				this.loginDetectedPromise.then(() => ({ type: "login" as const })),
-				dialogPromise.then((userChoice) => ({
-					type: "dialog" as const,
-					userChoice,
-				})),
-			]);
-
-			if (result.type === "login") {
-				return this.setup(remoteAuthority, firstConnect, remoteSshExtensionId);
-			} else if (!result.userChoice) {
-				// User declined to log in.
-				await this.closeRemote();
-				return;
-			} else {
-				// Log in then try again.
-				await this.commands.login({ url: baseUrlRaw, label: parts.label });
-				return this.setup(remoteAuthority, firstConnect, remoteSshExtensionId);
-			}
-		};
-
-		// It could be that the cli config was deleted.  If so, ask for the url.
-		if (
-			!baseUrlRaw ||
-			(!token && needToken(vscode.workspace.getConfiguration()))
-		) {
-			return showLoginDialog("You are not logged in...");
-		}
-
-		this.logger.info("Using deployment URL", baseUrlRaw);
-		this.logger.info("Using deployment label", parts.label || "n/a");
-
-		// We could use the plugin client, but it is possible for the user to log
-		// out or log into a different deployment while still connected, which would
-		// break this connection.  We could force close the remote session or
-		// disallow logging out/in altogether, but for now just use a separate
-		// client to remain unaffected by whatever the plugin is doing.
-		const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
-		// Store for use in commands.
-		this.commands.workspaceRestClient = workspaceClient;
-
-		let binaryPath: string | undefined;
-		if (this.mode === vscode.ExtensionMode.Production) {
-			binaryPath = await this.cliManager.fetchBinary(
-				workspaceClient,
-				parts.label,
-			);
-		} else {
-			try {
-				// In development, try to use `/tmp/coder` as the binary path.
-				// This is useful for debugging with a custom bin!
-				binaryPath = path.join(os.tmpdir(), "coder");
-				await fs.stat(binaryPath);
-			} catch {
-				binaryPath = await this.cliManager.fetchBinary(
-					workspaceClient,
-					parts.label,
-				);
-			}
-		}
-
-		// First thing is to check the version.
-		const buildInfo = await workspaceClient.getBuildInfo();
-
-		let version: semver.SemVer | null = null;
-		try {
-			version = semver.parse(await cliUtils.version(binaryPath));
-		} catch {
-			version = semver.parse(buildInfo.version);
-		}
-
-		const featureSet = featureSetForVersion(version);
-
-		// Server versions before v0.14.1 don't support the vscodessh command!
-		if (!featureSet.vscodessh) {
-			await this.vscodeProposed.window.showErrorMessage(
-				"Incompatible Server",
-				{
-					detail:
-						"Your Coder server is too old to support the Coder extension! Please upgrade to v0.14.1 or newer.",
-					modal: true,
-					useCustom: true,
-				},
-				"Close Remote",
-			);
-			await this.closeRemote();
-			return;
-		}
-
-		// Next is to find the workspace from the URI scheme provided.
-		let workspace: Workspace;
-		try {
-			this.logger.info(`Looking for workspace ${workspaceName}...`);
-			workspace = await workspaceClient.getWorkspaceByOwnerAndName(
-				parts.username,
-				parts.workspace,
-			);
-			this.logger.info(
-				`Found workspace ${workspaceName} with status`,
-				workspace.latest_build.status,
-			);
-			this.commands.workspace = workspace;
-		} catch (error) {
-			if (!isAxiosError(error)) {
-				throw error;
-			}
-			switch (error.response?.status) {
-				case 404: {
-					const result =
-						await this.vscodeProposed.window.showInformationMessage(
-							`That workspace doesn't exist!`,
-							{
-								modal: true,
-								detail: `${workspaceName} cannot be found on ${baseUrlRaw}. Maybe it was deleted...`,
-								useCustom: true,
-							},
-							"Open Workspace",
-						);
-					if (!result) {
-						await this.closeRemote();
-					}
-					await vscode.commands.executeCommand("coder.open");
-					return;
-				}
-				case 401: {
-					return showLoginDialog("Your session expired...");
-				}
-				default:
-					throw error;
-			}
+		const auth = await this.secretsManager.getSessionAuth(parts.safeHostname);
+		const baseUrlRaw = auth?.url ?? "";
+		const token = auth?.token;
+		// Empty token is valid for mTLS
+		if (baseUrlRaw && token !== undefined) {
+			await this.cliManager.configure(parts.safeHostname, baseUrlRaw, token);
 		}
 
 		const disposables: vscode.Disposable[] = [];
+
 		try {
+			const ensureLoggedInAndRetry = async (
+				message: string,
+				url: string | undefined,
+			) => {
+				const result = await this.loginCoordinator.ensureLoggedInWithDialog({
+					safeHostname: parts.safeHostname,
+					url,
+					message,
+					detailPrefix: `You must log in to access ${workspaceName}.`,
+				});
+
+				// Dispose before retrying since setup will create new disposables
+				disposables.forEach((d) => d.dispose());
+				if (result.success) {
+					// Login successful, retry setup
+					return this.setup(
+						remoteAuthority,
+						firstConnect,
+						remoteSshExtensionId,
+					);
+				} else {
+					// User cancelled or login failed
+					await this.closeRemote();
+				}
+			};
+
+			// It could be that the cli config was deleted.  If so, ask for the url.
+			if (
+				!baseUrlRaw ||
+				(!token && needToken(vscode.workspace.getConfiguration()))
+			) {
+				return ensureLoggedInAndRetry("You are not logged in...", baseUrlRaw);
+			}
+
+			this.logger.info("Using deployment URL", baseUrlRaw);
+			this.logger.info("Using hostname", parts.safeHostname || "n/a");
+
+			// We could use the plugin client, but it is possible for the user to log
+			// out or log into a different deployment while still connected, which would
+			// break this connection.  We could force close the remote session or
+			// disallow logging out/in altogether, but for now just use a separate
+			// client to remain unaffected by whatever the plugin is doing.
+			const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
+			disposables.push(workspaceClient);
+			// Store for use in commands.
+			this.commands.remoteWorkspaceClient = workspaceClient;
+
+			// Listen for token changes for this deployment
+			disposables.push(
+				this.secretsManager.onDidChangeSessionAuth(
+					parts.safeHostname,
+					async (auth) => {
+						workspaceClient.setCredentials(auth?.url, auth?.token);
+						if (auth?.url) {
+							await this.cliManager.configure(
+								parts.safeHostname,
+								auth.url,
+								auth.token,
+							);
+							this.logger.info(
+								"Updated CLI config with new token for remote deployment",
+							);
+						}
+					},
+				),
+			);
+
+			let binaryPath: string | undefined;
+			if (
+				this.extensionContext.extensionMode === vscode.ExtensionMode.Production
+			) {
+				binaryPath = await this.cliManager.fetchBinary(
+					workspaceClient,
+					parts.safeHostname,
+				);
+			} else {
+				try {
+					// In development, try to use `/tmp/coder` as the binary path.
+					// This is useful for debugging with a custom bin!
+					binaryPath = path.join(os.tmpdir(), "coder");
+					await fs.stat(binaryPath);
+				} catch {
+					binaryPath = await this.cliManager.fetchBinary(
+						workspaceClient,
+						parts.safeHostname,
+					);
+				}
+			}
+
+			// First thing is to check the version.
+			const buildInfo = await workspaceClient.getBuildInfo();
+
+			let version: semver.SemVer | null = null;
+			try {
+				version = semver.parse(await cliUtils.version(binaryPath));
+			} catch {
+				version = semver.parse(buildInfo.version);
+			}
+
+			const featureSet = featureSetForVersion(version);
+
+			// Server versions before v0.14.1 don't support the vscodessh command!
+			if (!featureSet.vscodessh) {
+				await this.vscodeProposed.window.showErrorMessage(
+					"Incompatible Server",
+					{
+						detail:
+							"Your Coder server is too old to support the Coder extension! Please upgrade to v0.14.1 or newer.",
+						modal: true,
+						useCustom: true,
+					},
+					"Close Remote",
+				);
+				disposables.forEach((d) => d.dispose());
+				await this.closeRemote();
+				return;
+			}
+
+			// Next is to find the workspace from the URI scheme provided.
+			let workspace: Workspace;
+			try {
+				this.logger.info(`Looking for workspace ${workspaceName}...`);
+				workspace = await workspaceClient.getWorkspaceByOwnerAndName(
+					parts.username,
+					parts.workspace,
+				);
+				this.logger.info(
+					`Found workspace ${workspaceName} with status`,
+					workspace.latest_build.status,
+				);
+				this.commands.workspace = workspace;
+			} catch (error) {
+				if (!isAxiosError(error)) {
+					throw error;
+				}
+				switch (error.response?.status) {
+					case 404: {
+						const result =
+							await this.vscodeProposed.window.showInformationMessage(
+								`That workspace doesn't exist!`,
+								{
+									modal: true,
+									detail: `${workspaceName} cannot be found on ${baseUrlRaw}. Maybe it was deleted...`,
+									useCustom: true,
+								},
+								"Open Workspace",
+							);
+						disposables.forEach((d) => d.dispose());
+						if (!result) {
+							await this.closeRemote();
+						}
+						await vscode.commands.executeCommand("coder.open");
+						return;
+					}
+					case 401: {
+						disposables.forEach((d) => d.dispose());
+						return ensureLoggedInAndRetry(
+							"Your session expired...",
+							baseUrlRaw,
+						);
+					}
+					default:
+						throw error;
+				}
+			}
+
 			// Register before connection so the label still displays!
 			let labelFormatterDisposable = this.registerLabelFormatter(
 				remoteAuthority,
@@ -412,10 +414,10 @@ export class Remote {
 			// the user for the platform.
 			let mungedPlatforms = false;
 			if (
-				!remotePlatforms[parts.host] ||
-				remotePlatforms[parts.host] !== agent.operating_system
+				!remotePlatforms[parts.sshHost] ||
+				remotePlatforms[parts.sshHost] !== agent.operating_system
 			) {
-				remotePlatforms[parts.host] = agent.operating_system;
+				remotePlatforms[parts.sshHost] = agent.operating_system;
 				settingsContent = jsonc.applyEdits(
 					settingsContent,
 					jsonc.modify(
@@ -475,8 +477,8 @@ export class Remote {
 				this.logger.info("Updating SSH config...");
 				await this.updateSSHConfig(
 					workspaceClient,
-					parts.label,
-					parts.host,
+					parts.safeHostname,
+					parts.sshHost,
 					binaryPath,
 					logDir,
 					featureSet,
@@ -488,7 +490,7 @@ export class Remote {
 
 			// Monitor SSH process and display network status
 			const sshMonitor = SshProcessMonitor.start({
-				sshHost: parts.host,
+				sshHost: parts.sshHost,
 				networkInfoPath: this.pathResolver.getNetworkInfoPath(),
 				proxyLogDir: logDir || undefined,
 				logger: this.logger,
@@ -561,8 +563,9 @@ export class Remote {
 		// deployment in the sidebar.  We use our own client in here for reasons
 		// explained above.
 		return {
+			safeHostname: parts.safeHostname,
 			url: baseUrlRaw,
-			token,
+			token: token ?? "",
 			dispose: () => {
 				disposables.forEach((d) => d.dispose());
 			},
@@ -570,18 +573,51 @@ export class Remote {
 	}
 
 	/**
-	 * Migrate the session token file from "session_token" to "session", if needed.
+	 * Migrate legacy file-based auth to secrets storage.
 	 */
-	private async migrateSessionToken(label: string) {
-		const oldTokenPath = this.pathResolver.getLegacySessionTokenPath(label);
-		const newTokenPath = this.pathResolver.getSessionTokenPath(label);
+	private async migrateToSecretsStorage(safeHostname: string) {
+		await this.migrateSessionTokenFile(safeHostname);
+		await this.migrateSessionAuthFromFiles(safeHostname);
+	}
+
+	/**
+	 * Migrate the session token file from "session_token" to "session".
+	 */
+	private async migrateSessionTokenFile(safeHostname: string) {
+		const oldTokenPath =
+			this.pathResolver.getLegacySessionTokenPath(safeHostname);
+		const newTokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
 		try {
 			await fs.rename(oldTokenPath, newTokenPath);
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-				return;
+			if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+				throw error;
 			}
-			throw error;
+		}
+	}
+
+	/**
+	 * Migrate URL and session token from files to the mutli-deployment secrets storage.
+	 */
+	private async migrateSessionAuthFromFiles(safeHostname: string) {
+		const existingAuth = await this.secretsManager.getSessionAuth(safeHostname);
+		if (existingAuth) {
+			return;
+		}
+
+		const urlPath = this.pathResolver.getUrlPath(safeHostname);
+		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
+		const [url, token] = await Promise.allSettled([
+			fs.readFile(urlPath, "utf8"),
+			fs.readFile(tokenPath, "utf8"),
+		]);
+
+		if (url.status === "fulfilled" && token.status === "fulfilled") {
+			this.logger.info("Migrating session auth from files for", safeHostname);
+			await this.secretsManager.setSessionAuth(safeHostname, {
+				url: url.value.trim(),
+				token: token.value.trim(),
+			});
 		}
 	}
 
@@ -684,7 +720,7 @@ export class Remote {
 	// all Coder entries.
 	private async updateSSHConfig(
 		restClient: Api,
-		label: string,
+		safeHostname: string,
 		hostName: string,
 		binaryPath: string,
 		logDir: string,
@@ -759,13 +795,13 @@ export class Remote {
 		const sshConfig = new SSHConfig(sshConfigFile);
 		await sshConfig.load();
 
-		const hostPrefix = label
-			? `${AuthorityPrefix}.${label}--`
+		const hostPrefix = safeHostname
+			? `${AuthorityPrefix}.${safeHostname}--`
 			: `${AuthorityPrefix}--`;
 
 		const proxyCommand = await this.buildProxyCommand(
 			binaryPath,
-			label,
+			safeHostname,
 			hostPrefix,
 			logDir,
 			featureSet.wildcardSSH,
@@ -785,7 +821,7 @@ export class Remote {
 			sshValues.SetEnv = " CODER_SSH_SESSION_TYPE=vscode";
 		}
 
-		await sshConfig.update(label, sshValues, sshConfigOverrides);
+		await sshConfig.update(safeHostname, sshValues, sshConfigOverrides);
 
 		// A user can provide a "Host *" entry in their SSH config to add options
 		// to all hosts. We need to ensure that the options we set are not
@@ -817,6 +853,7 @@ export class Remote {
 				await this.reloadWindow();
 			}
 			await this.closeRemote();
+			throw new Error("SSH config mismatch, closing remote");
 		}
 
 		return sshConfig.getRaw();

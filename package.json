@@ -265,10 +265,19 @@
 				"title": "Search",
 				"category": "Coder",
 				"icon": "$(search)"
+			},
+			{
+				"command": "coder.debug.listDeployments",
+				"title": "List Stored Deployments",
+				"category": "Coder Debug"
 			}
 		],
 		"menus": {
 			"commandPalette": [
+				{
+					"command": "coder.debug.listDeployments",
+					"when": "coder.devMode"
+				},
 				{
 					"command": "coder.openFromSidebar",
 					"when": "false"

@@ -19,7 +19,9 @@ export const WebSocketCloseCode = {
 
 /** HTTP status codes used for socket creation and connection logic */
 export const HttpStatusCode = {
-	/** Authentication or permission denied */
+	/** Authentication required */
+	UNAUTHORIZED: 401,
+	/** Permission denied */
 	FORBIDDEN: 403,
 	/** Endpoint not found */
 	NOT_FOUND: 404,
@@ -43,7 +45,9 @@ export const UNRECOVERABLE_WS_CLOSE_CODES = new Set<number>([
  * These appear during socket creation and should stop reconnection attempts.
  */
 export const UNRECOVERABLE_HTTP_CODES = new Set<number>([
+	HttpStatusCode.UNAUTHORIZED,
 	HttpStatusCode.FORBIDDEN,
+	HttpStatusCode.NOT_FOUND,
 	HttpStatusCode.GONE,
 	HttpStatusCode.UPGRADE_REQUIRED,
 ]);

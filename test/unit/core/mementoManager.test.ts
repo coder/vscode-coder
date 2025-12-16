@@ -13,28 +13,22 @@ describe("MementoManager", () => {
 		mementoManager = new MementoManager(memento);
 	});
 
-	describe("setUrl", () => {
-		it("should store URL and add to history", async () => {
-			await mementoManager.setUrl("https://coder.example.com");
+	describe("addToUrlHistory", () => {
+		it("should add URL to history", async () => {
+			await mementoManager.addToUrlHistory("https://coder.example.com");
 
-			expect(mementoManager.getUrl()).toBe("https://coder.example.com");
 			expect(memento.get("urlHistory")).toEqual(["https://coder.example.com"]);
 		});
 
 		it("should not update history for falsy values", async () => {
-			await mementoManager.setUrl(undefined);
-			expect(mementoManager.getUrl()).toBeUndefined();
-			expect(memento.get("urlHistory")).toBeUndefined();
-
-			await mementoManager.setUrl("");
-			expect(mementoManager.getUrl()).toBe("");
+			await mementoManager.addToUrlHistory("");
 			expect(memento.get("urlHistory")).toBeUndefined();
 		});
 
 		it("should deduplicate URLs in history", async () => {
-			await mementoManager.setUrl("url1");
-			await mementoManager.setUrl("url2");
-			await mementoManager.setUrl("url1"); // Re-add first URL
+			await mementoManager.addToUrlHistory("url1");
+			await mementoManager.addToUrlHistory("url2");
+			await mementoManager.addToUrlHistory("url1"); // Re-add first URL
 
 			expect(memento.get("urlHistory")).toEqual(["url2", "url1"]);
 		});

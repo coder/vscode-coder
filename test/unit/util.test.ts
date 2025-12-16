@@ -42,8 +42,8 @@ describe("parseRemoteAuthority", () => {
 			parseRemoteAuthority("vscode://ssh-remote+coder-vscode--foo--bar"),
 		).toStrictEqual({
 			agent: "",
-			host: "coder-vscode--foo--bar",
-			label: "",
+			sshHost: "coder-vscode--foo--bar",
+			safeHostname: "",
 			username: "foo",
 			workspace: "bar",
 		});
@@ -51,8 +51,8 @@ describe("parseRemoteAuthority", () => {
 			parseRemoteAuthority("vscode://ssh-remote+coder-vscode--foo--bar--baz"),
 		).toStrictEqual({
 			agent: "baz",
-			host: "coder-vscode--foo--bar--baz",
-			label: "",
+			sshHost: "coder-vscode--foo--bar--baz",
+			safeHostname: "",
 			username: "foo",
 			workspace: "bar",
 		});
@@ -62,8 +62,8 @@ describe("parseRemoteAuthority", () => {
 			),
 		).toStrictEqual({
 			agent: "",
-			host: "coder-vscode.dev.coder.com--foo--bar",
-			label: "dev.coder.com",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar",
+			safeHostname: "dev.coder.com",
 			username: "foo",
 			workspace: "bar",
 		});
@@ -73,8 +73,8 @@ describe("parseRemoteAuthority", () => {
 			),
 		).toStrictEqual({
 			agent: "baz",
-			host: "coder-vscode.dev.coder.com--foo--bar--baz",
-			label: "dev.coder.com",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar--baz",
+			safeHostname: "dev.coder.com",
 			username: "foo",
 			workspace: "bar",
 		});
@@ -84,8 +84,8 @@ describe("parseRemoteAuthority", () => {
 			),
 		).toStrictEqual({
 			agent: "baz",
-			host: "coder-vscode.dev.coder.com--foo--bar.baz",
-			label: "dev.coder.com",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar.baz",
+			safeHostname: "dev.coder.com",
 			username: "foo",
 			workspace: "bar",
 		});

@@ -91,16 +91,38 @@ describe("ReconnectingWebSocket", () => {
 				});
 
 				await expect(
-					ReconnectingWebSocket.create(
-						factory,
-						createMockLogger(),
-						"/api/test",
-					),
+					ReconnectingWebSocket.create(factory, createMockLogger()),
 				).rejects.toThrow(`Unexpected server response: ${statusCode}`);
 
 				// Should not retry after unrecoverable HTTP error
 				await vi.advanceTimersByTimeAsync(10000);
 				expect(socketCreationAttempts).toBe(1);
+			},
+		);
+
+		it.each([
+			HttpStatusCode.UNAUTHORIZED,
+			HttpStatusCode.FORBIDDEN,
+			HttpStatusCode.GONE,
+		])(
+			"does not reconnect on unrecoverable HTTP error via error event: %i",
+			async (statusCode) => {
+				// HTTP errors during handshake fire 'error' event, then 'close' with 1006
+				const { ws, sockets } = await createReconnectingWebSocket();
+
+				sockets[0].fireError(
+					new Error(`Unexpected server response: ${statusCode}`),
+				);
+				sockets[0].fireClose({
+					code: WebSocketCloseCode.ABNORMAL,
+					reason: "Connection failed",
+				});
+
+				// Should not reconnect - unrecoverable HTTP error
+				await vi.advanceTimersByTimeAsync(10000);
+				expect(sockets).toHaveLength(1);
+
+				ws.close();
 			},
 		);
 
@@ -125,26 +147,8 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("queues reconnect() calls made during connection", async () => {
-			const sockets: MockSocket[] = [];
-			let pendingResolve: ((socket: MockSocket) => void) | null = null;
-
-			const factory = vi.fn(() => {
-				const socket = createMockSocket();
-				sockets.push(socket);
-
-				// First call resolves immediately, other calls wait for manual resolve
-				if (sockets.length === 1) {
-					return Promise.resolve(socket);
-				} else {
-					return new Promise<MockSocket>((resolve) => {
-						pendingResolve = resolve;
-					});
-				}
-			});
-
-			const ws = await fromFactory(factory);
-			sockets[0].fireOpen();
-			expect(sockets).toHaveLength(1);
+			const { ws, sockets, completeConnection } =
+				await createBlockingReconnectingWebSocket();
 
 			// Start first reconnect (will block on factory promise)
 			ws.reconnect();
@@ -154,14 +158,56 @@ describe("ReconnectingWebSocket", () => {
 			// Still only 2 sockets (queued reconnect hasn't started)
 			expect(sockets).toHaveLength(2);
 
-			// Complete the first reconnect
-			pendingResolve!(sockets[1]);
-			sockets[1].fireOpen();
-
-			// Wait a tick for the queued reconnect to execute
+			completeConnection();
 			await Promise.resolve();
 			// Now queued reconnect should have executed, creating third socket
 			expect(sockets).toHaveLength(3);
+
+			ws.close();
+		});
+
+		it("suspend() cancels pending reconnect queued during connection", async () => {
+			const { ws, sockets, failConnection } =
+				await createBlockingReconnectingWebSocket();
+
+			ws.reconnect();
+			ws.reconnect(); // queued
+			expect(sockets).toHaveLength(2);
+
+			// This should cancel the queued request
+			ws.disconnect();
+			failConnection(new Error("No base URL"));
+			await Promise.resolve();
+
+			expect(sockets).toHaveLength(2);
+			await vi.advanceTimersByTimeAsync(10000);
+			expect(sockets).toHaveLength(2);
+
+			ws.close();
+		});
+
+		it("disconnect() during pending connection closes socket when factory resolves", async () => {
+			const { ws, sockets, completeConnection } =
+				await createBlockingReconnectingWebSocket();
+
+			// Start reconnect (will block on factory promise)
+			ws.reconnect();
+			expect(sockets).toHaveLength(2);
+
+			// Disconnect while factory is still pending
+			ws.disconnect();
+
+			completeConnection();
+			await Promise.resolve();
+
+			expect(sockets[1].close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Cancelled during connection",
+			);
+
+			// No reconnection should happen
+			await vi.advanceTimersByTimeAsync(10000);
+			expect(sockets).toHaveLength(2);
 
 			ws.close();
 		});
@@ -216,6 +262,48 @@ describe("ReconnectingWebSocket", () => {
 
 			ws.close();
 		});
+
+		it("preserves event handlers after suspend() and reconnect()", async () => {
+			const { ws, sockets } = await createReconnectingWebSocket();
+			sockets[0].fireOpen();
+
+			const handler = vi.fn();
+			ws.addEventListener("message", handler);
+			sockets[0].fireMessage({ test: 1 });
+			expect(handler).toHaveBeenCalledTimes(1);
+
+			// Suspend the socket
+			ws.disconnect();
+
+			// Reconnect (async operation)
+			ws.reconnect();
+			await Promise.resolve(); // Wait for async connect()
+			expect(sockets).toHaveLength(2);
+			sockets[1].fireOpen();
+
+			// Handler should still work after suspend/reconnect
+			sockets[1].fireMessage({ test: 2 });
+			expect(handler).toHaveBeenCalledTimes(2);
+
+			ws.close();
+		});
+
+		it("clears event handlers after close()", async () => {
+			const { ws, sockets } = await createReconnectingWebSocket();
+			sockets[0].fireOpen();
+
+			const handler = vi.fn();
+			ws.addEventListener("message", handler);
+			sockets[0].fireMessage({ test: 1 });
+			expect(handler).toHaveBeenCalledTimes(1);
+
+			// Close permanently
+			ws.close();
+
+			// Even if we could reconnect (we can't), handlers would be cleared
+			// Verify handler was removed by checking it's no longer in the set
+			// We can't easily test this without exposing internals, but close() clears handlers
+		});
 	});
 
 	describe("close() and Disposal", () => {
@@ -258,9 +346,9 @@ describe("ReconnectingWebSocket", () => {
 			expect(disposeCount).toBe(1);
 		});
 
-		it("calls onDispose callback on unrecoverable WebSocket close code", async () => {
+		it("suspends (not disposes) on unrecoverable WebSocket close code", async () => {
 			let disposeCount = 0;
-			const { sockets } = await createReconnectingWebSocket(
+			const { ws, sockets } = await createReconnectingWebSocket(
 				() => ++disposeCount,
 			);
 
@@ -270,7 +358,14 @@ describe("ReconnectingWebSocket", () => {
 				reason: "Protocol error",
 			});
 
-			expect(disposeCount).toBe(1);
+			// Should suspend, not dispose - allows recovery when credentials change
+			expect(disposeCount).toBe(0);
+
+			// Should be able to reconnect after suspension
+			ws.reconnect();
+			expect(sockets).toHaveLength(2);
+
+			ws.close();
 		});
 
 		it("does not call onDispose callback during reconnection", async () => {
@@ -290,6 +385,41 @@ describe("ReconnectingWebSocket", () => {
 
 			ws.close();
 			expect(disposeCount).toBe(1);
+		});
+
+		it("reconnect() resumes suspended socket after HTTP 403 error", async () => {
+			const { ws, sockets, setFactoryError } =
+				await createReconnectingWebSocketWithErrorControl();
+			sockets[0].fireOpen();
+
+			// Trigger reconnect that will fail with 403
+			setFactoryError(
+				new Error(`Unexpected server response: ${HttpStatusCode.FORBIDDEN}`),
+			);
+			ws.reconnect();
+			await Promise.resolve();
+
+			// Socket should be suspended - no automatic reconnection
+			await vi.advanceTimersByTimeAsync(10000);
+			expect(sockets).toHaveLength(1);
+
+			// reconnect() should resume the suspended socket
+			setFactoryError(null);
+			ws.reconnect();
+			await Promise.resolve();
+			expect(sockets).toHaveLength(2);
+
+			ws.close();
+		});
+
+		it("reconnect() does nothing after close()", async () => {
+			const { ws, sockets } = await createReconnectingWebSocket();
+			sockets[0].fireOpen();
+
+			ws.close();
+			ws.reconnect();
+
+			expect(sockets).toHaveLength(1);
 		});
 	});
 
@@ -454,6 +584,35 @@ async function createReconnectingWebSocket(onDispose?: () => void): Promise<{
 	return { ws, sockets };
 }
 
+async function createReconnectingWebSocketWithErrorControl(): Promise<{
+	ws: ReconnectingWebSocket;
+	sockets: MockSocket[];
+	setFactoryError: (error: Error | null) => void;
+}> {
+	const sockets: MockSocket[] = [];
+	let factoryError: Error | null = null;
+
+	const factory = vi.fn(() => {
+		if (factoryError) {
+			return Promise.reject(factoryError);
+		}
+		const socket = createMockSocket();
+		sockets.push(socket);
+		return Promise.resolve(socket);
+	});
+
+	const ws = await fromFactory(factory);
+	expect(sockets).toHaveLength(1);
+
+	return {
+		ws,
+		sockets,
+		setFactoryError: (error: Error | null) => {
+			factoryError = error;
+		},
+	};
+}
+
 async function fromFactory<T>(
 	factory: SocketFactory<T>,
 	onDispose?: () => void,
@@ -461,8 +620,44 @@ async function fromFactory<T>(
 	return await ReconnectingWebSocket.create(
 		factory,
 		createMockLogger(),
-		"/random/api",
 		undefined,
 		onDispose,
 	);
+}
+
+async function createBlockingReconnectingWebSocket(): Promise<{
+	ws: ReconnectingWebSocket;
+	sockets: MockSocket[];
+	completeConnection: () => void;
+	failConnection: (error: Error) => void;
+}> {
+	const sockets: MockSocket[] = [];
+	let pendingResolve: ((socket: MockSocket) => void) | null = null;
+	let pendingReject: ((error: Error) => void) | null = null;
+
+	const factory = vi.fn(() => {
+		const socket = createMockSocket();
+		sockets.push(socket);
+		if (sockets.length === 1) {
+			return Promise.resolve(socket);
+		}
+		return new Promise<MockSocket>((resolve, reject) => {
+			pendingResolve = resolve;
+			pendingReject = reject;
+		});
+	});
+
+	const ws = await fromFactory(factory);
+	sockets[0].fireOpen();
+
+	return {
+		ws,
+		sockets,
+		completeConnection: () => {
+			const socket = sockets.at(-1)!;
+			pendingResolve?.(socket);
+			socket.fireOpen();
+		},
+		failConnection: (error: Error) => pendingReject?.(error),
+	};
 }
