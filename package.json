@@ -288,11 +288,11 @@
 				},
 				{
 					"command": "coder.navigateToWorkspace",
-					"when": "coder.authenticated"
+					"when": "coder.workspace.connected"
 				},
 				{
 					"command": "coder.navigateToWorkspaceSettings",
-					"when": "coder.authenticated"
+					"when": "coder.workspace.connected"
 				},
 				{
 					"command": "coder.workspace.update",
