@@ -8,7 +8,6 @@ import * as vscode from "vscode";
 
 import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
-import { needToken } from "./api/utils";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { type SecretsManager } from "./core/secretsManager";
@@ -449,15 +448,14 @@ async function setupDeploymentFromUri(
 
 	// If the token is missing we will get a 401 later and the user will be
 	// prompted to sign in again, so we do not need to ensure it is set now.
-	// For non-token auth, we write a blank token since the `vscodessh`
-	// command currently always requires a token file. However, if there is
-	// a query parameter for non-token auth go ahead and use it anyway;
-	let token: string | undefined = params.get("token") ?? undefined;
-	if (token === undefined) {
-		if (needToken(vscode.workspace.getConfiguration())) {
-			token = (await secretsManager.getSessionAuth(safeHost))?.token;
-		} else {
-			token = "";
+	const token: string | null = params.get("token");
+	if (token === null) {
+		// We need to ensure there is at least an entry for this in storage
+		// so that we know what URL to prompt the user with when logging in.
+		const auth = await secretsManager.getSessionAuth(safeHost);
+		if (!auth) {
+			// Racy, we could accidentally overwrite the token that is written in the meantime.
+			await secretsManager.setSessionAuth(safeHost, { url, token: "" });
 		}
 	} else {
 		await secretsManager.setSessionAuth(safeHost, { url, token });

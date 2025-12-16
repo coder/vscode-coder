@@ -111,10 +111,8 @@ export class Commands {
 			return;
 		}
 
-		if (!result.user) {
-			// Login might have happened in another process/window so we do not have the user yet.
-			result.user = await this.extensionClient.getAuthenticatedUser();
-		}
+		// Login might have happened in another process/window so we do not have the user yet.
+		result.user ??= await this.extensionClient.getAuthenticatedUser();
 
 		await this.deploymentManager.setDeployment({
 			url,
@@ -137,6 +135,7 @@ export class Commands {
 					vscode.commands.executeCommand("coder.open");
 				}
 			});
+		this.logger.debug("Login complete to deployment:", url);
 	}
 
 	/**
@@ -157,7 +156,7 @@ export class Commands {
 				// Sort explicitly since fs.readdir order is platform-dependent
 				const logFiles = files
 					.filter((f) => f.endsWith(".log"))
-					.sort()
+					.sort((a, b) => a.localeCompare(b))
 					.reverse();
 
 				if (logFiles.length === 0) {
@@ -220,6 +219,8 @@ export class Commands {
 					this.login();
 				}
 			});
+
+		this.logger.debug("Logout complete");
 	}
 
 	/**

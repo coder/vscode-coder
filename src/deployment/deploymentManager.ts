@@ -119,10 +119,10 @@ export class DeploymentManager implements vscode.Disposable {
 		this.#deployment = { ...deployment };
 
 		// Updates client credentials
-		if (deployment.token !== undefined) {
-			this.client.setCredentials(deployment.url, deployment.token);
-		} else {
+		if (deployment.token === undefined) {
 			this.client.setHost(deployment.url);
+		} else {
+			this.client.setCredentials(deployment.url, deployment.token);
 		}
 
 		this.registerAuthListener();
