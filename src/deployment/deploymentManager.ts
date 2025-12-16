@@ -89,12 +89,6 @@ export class DeploymentManager implements vscode.Disposable {
 	public async setDeploymentIfValid(
 		deployment: Deployment & { token?: string },
 	): Promise<boolean> {
-		// TODO used to trigger
-		/**
-		 * this.oauthSessionManager.refreshIfAlmostExpired().catch((error) => {
-			this.logger.warn("Setup token refresh failed:", error);
-		});
-		 */
 		const auth = await this.secretsManager.getSessionAuth(
 			deployment.safeHostname,
 		);
@@ -134,11 +128,14 @@ export class DeploymentManager implements vscode.Disposable {
 		} else {
 			this.client.setCredentials(deployment.url, deployment.token);
 		}
-		await this.oauthSessionManager.setDeployment(deployment);
 
+		// Register auth listener before setDeployment so background token refresh
+		// can update client credentials via the listener
 		this.registerAuthListener();
 		this.updateAuthContexts();
 		this.refreshWorkspaces();
+
+		await this.oauthSessionManager.setDeployment(deployment);
 		await this.persistDeployment(deployment);
 	}
 
@@ -156,13 +153,6 @@ export class DeploymentManager implements vscode.Disposable {
 		this.refreshWorkspaces();
 
 		await this.secretsManager.setCurrentDeployment(undefined);
-	}
-
-	/**
-	 * Clear OAuth state for a deployment when switching to token auth.
-	 */
-	public async clearOAuthState(label: string): Promise<void> {
-		await this.oauthSessionManager.clearOAuthState(label);
 	}
 
 	public dispose(): void {

@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 
 import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
-import { attachOAuthInterceptors } from "./api/oauthInterceptors";
+import { OAuthInterceptor } from "./api/oauthInterceptor";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { type SecretsManager } from "./core/secretsManager";
@@ -71,7 +71,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const deployment = await secretsManager.getCurrentDeployment();
 
 	// Create OAuth session manager with login coordinator
-	const oauthSessionManager = await OAuthSessionManager.create(
+	const oauthSessionManager = OAuthSessionManager.create(
 		deployment,
 		serviceContainer,
 		ctx.extension.id,
@@ -88,7 +88,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output,
 	);
 	ctx.subscriptions.push(client);
-	attachOAuthInterceptors(client, output, oauthSessionManager);
+
+	// Create OAuth interceptor - auto attaches/detaches based on token state
+	const oauthInterceptor = await OAuthInterceptor.create(
+		client,
+		output,
+		oauthSessionManager,
+		secretsManager,
+		deployment?.safeHostname ?? "",
+	);
+	ctx.subscriptions.push(oauthInterceptor);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,

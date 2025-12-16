@@ -552,6 +552,26 @@ export class MockCoderApi implements Pick<
 }
 
 /**
+ * Mock OAuthSessionManager for testing.
+ * Provides no-op implementations of all public methods.
+ */
+export class MockOAuthSessionManager {
+	readonly setDeployment = vi.fn().mockResolvedValue(undefined);
+	readonly clearDeployment = vi.fn();
+	readonly login = vi.fn().mockResolvedValue({ access_token: "test-token" });
+	readonly handleCallback = vi.fn().mockResolvedValue(undefined);
+	readonly refreshToken = vi
+		.fn()
+		.mockResolvedValue({ access_token: "test-token" });
+	readonly refreshIfAlmostExpired = vi.fn().mockResolvedValue(undefined);
+	readonly revokeRefreshToken = vi.fn().mockResolvedValue(undefined);
+	readonly isLoggedInWithOAuth = vi.fn().mockReturnValue(false);
+	readonly clearOAuthState = vi.fn().mockResolvedValue(undefined);
+	readonly showReAuthenticationModal = vi.fn().mockResolvedValue(undefined);
+	readonly dispose = vi.fn();
+}
+
+/**
  * Create a mock User for testing.
  */
 export function createMockUser(overrides: Partial<User> = {}): User {
