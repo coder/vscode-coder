@@ -303,15 +303,16 @@
 					"when": "coder.authenticated"
 				},
 				{
-					"command": "coder.viewLogs"
+					"command": "coder.viewLogs",
+					"when": "true"
 				},
 				{
 					"command": "coder.openAppStatus",
-					"when": "coder.authenticated"
+					"when": "false"
 				},
 				{
-					"command": "coder.debug.listDeployments",
-					"when": "coder.devMode"
+					"command": "coder.open",
+					"when": "coder.authenticated"
 				},
 				{
 					"command": "coder.openFromSidebar",
@@ -324,6 +325,10 @@
 				{
 					"command": "coder.searchAllWorkspaces",
 					"when": "false"
+				},
+				{
+					"command": "coder.debug.listDeployments",
+					"when": "coder.devMode"
 				}
 			],
 			"view/title": [
