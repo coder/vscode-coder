@@ -738,17 +738,17 @@ describe("parseSshConfig", () => {
 		{
 			name: "SetEnv with space",
 			input: ["SetEnv MY_VAR=value OTHER_VAR=othervalue"],
-			expected: { SetEnv: " MY_VAR=value OTHER_VAR=othervalue" },
+			expected: { SetEnv: "MY_VAR=value OTHER_VAR=othervalue" },
 		},
 		{
 			name: "SetEnv with equals",
 			input: ["SetEnv=MY_VAR=value OTHER_VAR=othervalue"],
-			expected: { SetEnv: " MY_VAR=value OTHER_VAR=othervalue" },
+			expected: { SetEnv: "MY_VAR=value OTHER_VAR=othervalue" },
 		},
 		{
 			name: "accumulates SetEnv entries",
 			input: ["SetEnv A=1", "setenv B=2 C=3"],
-			expected: { SetEnv: " A=1 B=2 C=3" },
+			expected: { SetEnv: "A=1 B=2 C=3" },
 		},
 		{
 			name: "skips malformed lines",
@@ -763,12 +763,12 @@ describe("parseSshConfig", () => {
 		{
 			name: "quoted value with spaces",
 			input: ['SetEnv key="Hello world"'],
-			expected: { SetEnv: ' key="Hello world"' },
+			expected: { SetEnv: 'key="Hello world"' },
 		},
 		{
 			name: "multiple keys",
 			input: ["ConnectTimeout 10", "LogLevel=DEBUG", "SetEnv VAR=1"],
-			expected: { ConnectTimeout: "10", LogLevel: "DEBUG", SetEnv: " VAR=1" },
+			expected: { ConnectTimeout: "10", LogLevel: "DEBUG", SetEnv: "VAR=1" },
 		},
 		{
 			name: "ignores empty SetEnv",
@@ -815,39 +815,39 @@ describe("mergeSshConfigValues", () => {
 		},
 		{
 			name: "concatenates SetEnv values",
-			config: { SetEnv: " A=1" },
-			overrides: { SetEnv: " B=2" },
-			expected: { SetEnv: " A=1 B=2" },
+			config: { SetEnv: "A=1" },
+			overrides: { SetEnv: "B=2" },
+			expected: { SetEnv: "A=1 B=2" },
 		},
 		{
 			name: "concatenates SetEnv case-insensitively",
-			config: { SetEnv: " A=1" },
-			overrides: { setenv: " B=2" },
-			expected: { SetEnv: " A=1 B=2" },
+			config: { SetEnv: "A=1" },
+			overrides: { setenv: "B=2" },
+			expected: { SetEnv: "A=1 B=2" },
 		},
 		{
 			name: "SetEnv only in override",
 			config: {},
-			overrides: { SetEnv: " B=2" },
-			expected: { SetEnv: " B=2" },
+			overrides: { SetEnv: "B=2" },
+			expected: { SetEnv: "B=2" },
 		},
 		{
 			name: "SetEnv only in config",
-			config: { SetEnv: " A=1" },
+			config: { SetEnv: "A=1" },
 			overrides: {},
-			expected: { SetEnv: " A=1" },
+			expected: { SetEnv: "A=1" },
 		},
 		{
 			name: "SetEnv with other values",
-			config: { SetEnv: " A=1", LogLevel: "ERROR" },
-			overrides: { SetEnv: " B=2", Timeout: "10" },
-			expected: { SetEnv: " A=1 B=2", LogLevel: "ERROR", Timeout: "10" },
+			config: { SetEnv: "A=1", LogLevel: "ERROR" },
+			overrides: { SetEnv: "B=2", Timeout: "10" },
+			expected: { SetEnv: "A=1 B=2", LogLevel: "ERROR", Timeout: "10" },
 		},
 		{
 			name: "ignores empty SetEnv override",
-			config: { SetEnv: " A=1 B=2" },
+			config: { SetEnv: "A=1 B=2" },
 			overrides: { SetEnv: "" },
-			expected: { SetEnv: " A=1 B=2" },
+			expected: { SetEnv: "A=1 B=2" },
 		},
 	])("$name", ({ config, overrides, expected }) => {
 		expect(mergeSshConfigValues(config, overrides)).toEqual(expected);

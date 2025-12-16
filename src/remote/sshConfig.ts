@@ -51,7 +51,7 @@ export function parseSshConfig(lines: string[]): Record<string, string> {
 			}
 
 			const key = keyMatch[0];
-			const separator = line[key.length];
+			const separator = line.at(key.length);
 			if (separator !== "=" && separator !== " ") {
 				return acc; // Malformed line
 			}
@@ -63,7 +63,7 @@ export function parseSshConfig(lines: string[]): Record<string, string> {
 				// Ignore empty SetEnv values
 				if (value !== "") {
 					const existing = acc["SetEnv"];
-					acc["SetEnv"] = existing ? `${existing} ${value}` : ` ${value}`;
+					acc["SetEnv"] = existing ? `${existing} ${value}` : value;
 				}
 			} else {
 				acc[key] = value;
@@ -102,7 +102,11 @@ export function mergeSshConfigValues(
 
 			// Special handling for SetEnv - concatenate values instead of replacing.
 			if (lower === "setenv") {
-				merged["SetEnv"] = `${config[key]}${value}`;
+				if (value === "") {
+					merged["SetEnv"] = config[key];
+				} else {
+					merged["SetEnv"] = `${config[key]} ${value}`;
+				}
 				return;
 			}
 
@@ -126,7 +130,7 @@ export function mergeSshConfigValues(
 
 		// Special handling for SetEnv - concatenate if already exists
 		if (lower === "setenv" && merged["SetEnv"]) {
-			merged["SetEnv"] = `${merged["SetEnv"]}${value}`;
+			merged["SetEnv"] = `${merged["SetEnv"]} ${value}`;
 		} else {
 			merged[correctCaseKey] = value;
 		}

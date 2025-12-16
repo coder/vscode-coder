@@ -46,7 +46,7 @@ import {
 	SSHConfig,
 	type SSHValues,
 	mergeSshConfigValues,
-	parseSshConfig as parseSshConfig,
+	parseSshConfig,
 } from "./sshConfig";
 import { SshProcessMonitor } from "./sshProcess";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
@@ -806,7 +806,7 @@ export class Remote {
 		if (sshSupportsSetEnv()) {
 			// This allows for tracking the number of extension
 			// users connected to workspaces!
-			sshValues.SetEnv = " CODER_SSH_SESSION_TYPE=vscode";
+			sshValues.SetEnv = "CODER_SSH_SESSION_TYPE=vscode";
 		}
 
 		await sshConfig.update(safeHostname, sshValues, sshConfigOverrides);
