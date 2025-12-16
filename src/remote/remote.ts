@@ -19,7 +19,7 @@ import {
 } from "../api/agentMetadataHelper";
 import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
-import { attachOAuthInterceptors } from "../api/oauthInterceptors";
+import { OAuthInterceptor } from "../api/oauthInterceptor";
 import { needToken } from "../api/utils";
 import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "../cliConfig";
 import { type Commands } from "../commands";
@@ -119,7 +119,7 @@ export class Remote {
 
 		try {
 			// Create OAuth session manager for this remote deployment
-			const remoteOAuthManager = await OAuthSessionManager.create(
+			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrlRaw, safeHostname: parts.safeHostname },
 				this.serviceContainer,
 				this.extensionContext.extension.id,
@@ -174,7 +174,17 @@ export class Remote {
 			// client to remain unaffected by whatever the plugin is doing.
 			const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
 			disposables.push(workspaceClient);
-			attachOAuthInterceptors(workspaceClient, this.logger, remoteOAuthManager);
+
+			// Create OAuth interceptor - auto attaches/detaches based on token state
+			const oauthInterceptor = await OAuthInterceptor.create(
+				workspaceClient,
+				this.logger,
+				remoteOAuthManager,
+				this.secretsManager,
+				parts.safeHostname,
+			);
+			disposables.push(oauthInterceptor);
+
 			// Store for use in commands.
 			this.commands.remoteWorkspaceClient = workspaceClient;
 

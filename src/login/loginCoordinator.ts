@@ -31,7 +31,7 @@ export interface LoginOptions {
  * Coordinates login prompts across windows and prevents duplicate dialogs.
  */
 export class LoginCoordinator {
-	private readonly inProgressLogins = new Map<string, Promise<LoginResult>>();
+	private loginQueue: Promise<unknown> = Promise.resolve();
 
 	constructor(
 		private readonly secretsManager: SecretsManager,
@@ -48,7 +48,7 @@ export class LoginCoordinator {
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url, oauthSessionManager } = options;
-		return this.executeWithGuard(safeHostname, async () => {
+		return this.executeWithGuard(async () => {
 			const result = await this.attemptLogin(
 				{ safeHostname, url },
 				options.autoLogin ?? false,
@@ -70,7 +70,7 @@ export class LoginCoordinator {
 	): Promise<LoginResult> {
 		const { safeHostname, url, detailPrefix, message, oauthSessionManager } =
 			options;
-		return this.executeWithGuard(safeHostname, async () => {
+		return this.executeWithGuard(async () => {
 			// Show dialog promise
 			const dialogPromise = this.vscodeProposed.window
 				.showErrorMessage(
@@ -143,25 +143,14 @@ export class LoginCoordinator {
 	}
 
 	/**
-	 * Same-window guard wrapper.
+	 * Chains login attempts to prevent overlapping UI.
 	 */
-	private async executeWithGuard(
-		safeHostname: string,
+	private executeWithGuard(
 		executeFn: () => Promise<LoginResult>,
 	): Promise<LoginResult> {
-		const existingLogin = this.inProgressLogins.get(safeHostname);
-		if (existingLogin) {
-			return existingLogin;
-		}
-
-		const loginPromise = executeFn();
-		this.inProgressLogins.set(safeHostname, loginPromise);
-
-		try {
-			return await loginPromise;
-		} finally {
-			this.inProgressLogins.delete(safeHostname);
-		}
+		const result = this.loginQueue.then(executeFn);
+		this.loginQueue = result.catch(() => {}); // Keep chain going on error
+		return result;
 	}
 
 	/**
@@ -245,12 +234,12 @@ export class LoginCoordinator {
 		const authMethod = await maybeAskAuthMethod(client);
 		switch (authMethod) {
 			case "oauth":
-				return this.loginWithOAuth(client, oauthSessionManager, deployment);
+				return this.loginWithOAuth(oauthSessionManager, deployment);
 			case "legacy": {
 				const result = await this.loginWithToken(client);
 				if (result.success) {
 					// Clear OAuth state since user explicitly chose token auth
-					await oauthSessionManager.clearOAuthState(deployment.safeHostname);
+					await oauthSessionManager.clearOAuthState();
 				}
 				return result;
 			}
@@ -374,30 +363,25 @@ export class LoginCoordinator {
 	 * OAuth authentication flow.
 	 */
 	private async loginWithOAuth(
-		client: CoderApi,
 		oauthSessionManager: OAuthSessionManager,
 		deployment: Deployment,
 	): Promise<LoginResult> {
 		try {
 			this.logger.info("Starting OAuth authentication");
 
-			const tokenResponse = await vscode.window.withProgress(
+			const { token, user } = await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
 					title: "Authenticating",
-					cancellable: false,
+					cancellable: true,
 				},
-				async (progress) =>
-					await oauthSessionManager.login(client, deployment, progress),
+				async (progress, token) =>
+					await oauthSessionManager.login(deployment, progress, token),
 			);
-
-			// Validate token by fetching user
-			client.setSessionToken(tokenResponse.access_token);
-			const user = await client.getAuthenticatedUser();
 
 			return {
 				success: true,
-				token: tokenResponse.access_token,
+				token,
 				user,
 			};
 		} catch (error) {
