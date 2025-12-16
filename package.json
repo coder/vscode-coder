@@ -416,12 +416,12 @@
 		"vscode": "^1.73.0"
 	},
 	"icon": "media/logo.png",
-	"extensionKind": [
-		"ui"
-	],
 	"capabilities": {
 		"untrustedWorkspaces": {
 			"supported": true
 		}
-	}
+	},
+	"extensionKind": [
+		"ui"
+	]
 }
