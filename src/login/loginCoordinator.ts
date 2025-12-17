@@ -248,7 +248,7 @@ export class LoginCoordinator {
 				const result = await this.loginWithToken(client);
 				if (result.success) {
 					// Clear OAuth state since user explicitly chose token auth
-					await oauthSessionManager.clearOAuthState(deployment.safeHostname);
+					await oauthSessionManager.clearOAuthState();
 				}
 				return result;
 			}
