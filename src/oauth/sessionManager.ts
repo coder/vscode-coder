@@ -152,8 +152,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 					required_scopes: DEFAULT_OAUTH_SCOPES,
 				},
 			);
-			this.clearInMemoryTokens();
-			await this.secretsManager.clearOAuthTokens(this.deployment.safeHostname);
+			await this.clearOAuthState();
 			return;
 		}
 
@@ -322,6 +321,19 @@ export class OAuthSessionManager implements vscode.Disposable {
 		this.deployment = deployment;
 		this.clearInMemoryTokens();
 		await this.loadTokens();
+
+		// Refresh tokens if needed to prevent 401s
+		if (this.isTokenExpired()) {
+			try {
+				await this.refreshToken();
+			} catch (error) {
+				this.logger.warn("Token refresh failed (expired):", error);
+			}
+		} else {
+			this.refreshIfAlmostExpired().catch((error) => {
+				this.logger.warn("Background token refresh failed:", error);
+			});
+		}
 	}
 
 	public clearDeployment(): void {
@@ -695,6 +707,16 @@ export class OAuthSessionManager implements vscode.Disposable {
 		return timeUntilExpiry < TOKEN_REFRESH_THRESHOLD_MS;
 	}
 
+	/**
+	 * Check if token is expired.
+	 */
+	private isTokenExpired(): boolean {
+		if (!this.storedTokens) {
+			return false;
+		}
+		return Date.now() >= this.storedTokens.expiry_timestamp;
+	}
+
 	public async revokeRefreshToken(): Promise<void> {
 		if (!this.storedTokens?.refresh_token) {
 			this.logger.info("No refresh token to revoke");
@@ -754,9 +776,11 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Clears in-memory state and OAuth tokens from storage.
 	 * Preserves client registration for potential future OAuth use.
 	 */
-	public async clearOAuthState(label: string): Promise<void> {
+	public async clearOAuthState(): Promise<void> {
 		this.clearInMemoryTokens();
-		await this.secretsManager.clearOAuthTokens(label);
+		if (this.deployment) {
+			await this.secretsManager.clearOAuthTokens(this.deployment.safeHostname);
+		}
 	}
 
 	/**
