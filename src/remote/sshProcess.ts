@@ -256,8 +256,9 @@ export class SshProcessMonitor implements vscode.Disposable {
 		const targetPid = this.currentPid;
 		while (!this.disposed && this.currentPid === targetPid) {
 			try {
-				const logFiles = await fs.readdir(logDir);
-				logFiles.sort().reverse();
+				const logFiles = (await fs.readdir(logDir))
+					.sort((a, b) => a.localeCompare(b))
+					.reverse();
 				const logFileName = logFiles.find(
 					(file) =>
 						file === `${targetPid}.log` || file.endsWith(`-${targetPid}.log`),
@@ -420,7 +421,7 @@ async function findRemoteSshLogPath(
 		const dirs = await fs.readdir(logsParentDir);
 		const outputDirs = dirs
 			.filter((d) => d.startsWith("output_logging_"))
-			.sort()
+			.sort((a, b) => a.localeCompare(b))
 			.reverse();
 
 		if (outputDirs.length > 0) {

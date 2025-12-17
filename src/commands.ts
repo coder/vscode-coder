@@ -242,7 +242,7 @@ export class Commands {
 	 *
 	 * Otherwise, the currently connected workspace is used (if any).
 	 */
-	public async navigateToWorkspace(item: OpenableTreeItem) {
+	public async navigateToWorkspace(item?: OpenableTreeItem) {
 		if (item) {
 			const baseUrl = this.requireExtensionBaseUrl();
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
@@ -266,7 +266,7 @@ export class Commands {
 	 *
 	 * Otherwise, the currently connected workspace is used (if any).
 	 */
-	public async navigateToWorkspaceSettings(item: OpenableTreeItem) {
+	public async navigateToWorkspaceSettings(item?: OpenableTreeItem) {
 		if (item) {
 			const baseUrl = this.requireExtensionBaseUrl();
 			const workspaceId = createWorkspaceIdentifier(item.workspace);

@@ -127,6 +127,27 @@ describe("SshProcessMonitor", () => {
 			expect(find).toHaveBeenCalledWith("port", 33333);
 		});
 
+		it("sorts output_logging_ directories using localeCompare for consistent ordering", async () => {
+			// localeCompare differs from default sort() for mixed case
+			vol.fromJSON({
+				"/logs/output_logging_a/1-Remote - SSH.log": "-> socksPort 11111 ->",
+				"/logs/output_logging_Z/1-Remote - SSH.log": "-> socksPort 22222 ->",
+			});
+
+			mockReaddirOrder("/logs", [
+				"output_logging_a",
+				"output_logging_Z",
+				"window1",
+			]);
+
+			const monitor = createMonitor({ codeLogDir: "/logs/window1" });
+			await waitForEvent(monitor.onPidChange);
+
+			// With localeCompare: ["a", "Z"] -> reversed -> "Z" first (port 22222)
+			// With plain sort(): ["Z", "a"] -> reversed -> "a" first (port 11111)
+			expect(find).toHaveBeenCalledWith("port", 22222);
+		});
+
 		it("falls back to output_logging_ when extension folder has no SSH log", async () => {
 			// Extension folder exists but doesn't have Remote SSH log
 			vol.fromJSON({
@@ -300,6 +321,28 @@ describe("SshProcessMonitor", () => {
 			const logPath = await waitForEvent(monitor.onLogFilePathChange);
 
 			expect(logPath).toBe("/proxy-logs/2024-01-03-999.log");
+		});
+
+		it("sorts log files using localeCompare for consistent cross-platform ordering", async () => {
+			// localeCompare differs from default sort() for mixed case
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+				"/proxy-logs/a-999.log": "",
+				"/proxy-logs/Z-999.log": "",
+			});
+
+			mockReaddirOrder("/proxy-logs", ["a-999.log", "Z-999.log"]);
+
+			const monitor = createMonitor({
+				codeLogDir: "/logs/window1",
+				proxyLogDir: "/proxy-logs",
+			});
+			const logPath = await waitForEvent(monitor.onLogFilePathChange);
+
+			// With localeCompare: ["a", "Z"] -> reversed -> "Z" first
+			// With plain sort(): ["Z", "a"] -> reversed -> "a" first (WRONG)
+			expect(logPath).toBe("/proxy-logs/Z-999.log");
 		});
 	});
 
@@ -483,7 +526,7 @@ function mockReaddirOrder(dirPath: string, files: string[]): void {
 		if (path === dirPath) {
 			return Promise.resolve(files);
 		}
-		return originalReaddir(path) as Promise<string[]>;
+		return originalReaddir(path);
 	};
 	vi.spyOn(fsPromises, "readdir").mockImplementation(
 		mockImpl as typeof fsPromises.readdir,

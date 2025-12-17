@@ -192,67 +192,67 @@
 		"commands": [
 			{
 				"command": "coder.login",
-				"title": "Coder: Login"
+				"title": "Login",
+				"category": "Coder",
+				"icon": "$(sign-in)"
 			},
 			{
 				"command": "coder.logout",
-				"title": "Coder: Logout",
-				"when": "coder.authenticated",
+				"title": "Logout",
+				"category": "Coder",
 				"icon": "$(sign-out)"
 			},
 			{
 				"command": "coder.open",
 				"title": "Open Workspace",
-				"icon": "$(play)",
-				"category": "Coder"
+				"category": "Coder",
+				"icon": "$(play)"
 			},
 			{
 				"command": "coder.openFromSidebar",
-				"title": "Coder: Open Workspace",
+				"title": "Open Workspace",
+				"category": "Coder",
 				"icon": "$(play)"
 			},
 			{
 				"command": "coder.createWorkspace",
 				"title": "Create Workspace",
 				"category": "Coder",
-				"when": "coder.authenticated",
 				"icon": "$(add)"
 			},
 			{
 				"command": "coder.navigateToWorkspace",
 				"title": "Navigate to Workspace Page",
-				"when": "coder.authenticated",
+				"category": "Coder",
 				"icon": "$(link-external)"
 			},
 			{
 				"command": "coder.navigateToWorkspaceSettings",
 				"title": "Edit Workspace Settings",
-				"when": "coder.authenticated",
+				"category": "Coder",
 				"icon": "$(settings-gear)"
 			},
 			{
 				"command": "coder.workspace.update",
-				"title": "Coder: Update Workspace",
-				"when": "coder.workspace.updatable"
+				"title": "Update Workspace",
+				"category": "Coder"
 			},
 			{
 				"command": "coder.refreshWorkspaces",
 				"title": "Refresh Workspace",
 				"category": "Coder",
-				"icon": "$(refresh)",
-				"when": "coder.authenticated"
+				"icon": "$(refresh)"
 			},
 			{
 				"command": "coder.viewLogs",
 				"title": "Coder: View Logs",
-				"icon": "$(list-unordered)",
-				"when": "coder.authenticated"
+				"icon": "$(list-unordered)"
 			},
 			{
 				"command": "coder.openAppStatus",
-				"title": "Coder: Open App Status",
-				"icon": "$(robot)",
-				"when": "coder.authenticated"
+				"title": "Open App Status",
+				"category": "Coder",
+				"icon": "$(robot)"
 			},
 			{
 				"command": "coder.searchMyWorkspaces",
@@ -275,8 +275,44 @@
 		"menus": {
 			"commandPalette": [
 				{
-					"command": "coder.debug.listDeployments",
-					"when": "coder.devMode"
+					"command": "coder.login",
+					"when": "!coder.authenticated"
+				},
+				{
+					"command": "coder.logout",
+					"when": "coder.authenticated"
+				},
+				{
+					"command": "coder.createWorkspace",
+					"when": "coder.authenticated"
+				},
+				{
+					"command": "coder.navigateToWorkspace",
+					"when": "coder.workspace.connected"
+				},
+				{
+					"command": "coder.navigateToWorkspaceSettings",
+					"when": "coder.workspace.connected"
+				},
+				{
+					"command": "coder.workspace.update",
+					"when": "coder.workspace.updatable"
+				},
+				{
+					"command": "coder.refreshWorkspaces",
+					"when": "coder.authenticated"
+				},
+				{
+					"command": "coder.viewLogs",
+					"when": "true"
+				},
+				{
+					"command": "coder.openAppStatus",
+					"when": "false"
+				},
+				{
+					"command": "coder.open",
+					"when": "coder.authenticated"
 				},
 				{
 					"command": "coder.openFromSidebar",
@@ -289,6 +325,10 @@
 				{
 					"command": "coder.searchAllWorkspaces",
 					"when": "false"
+				},
+				{
+					"command": "coder.debug.listDeployments",
+					"when": "coder.devMode"
 				}
 			],
 			"view/title": [

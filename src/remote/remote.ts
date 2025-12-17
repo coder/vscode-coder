@@ -556,6 +556,7 @@ export class Remote {
 			throw ex;
 		}
 
+		this.contextManager.set("coder.workspace.connected", true);
 		this.logger.info("Remote setup complete");
 
 		// Returning the URL and token allows the plugin to authenticate its own
