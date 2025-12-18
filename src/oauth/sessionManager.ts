@@ -1,11 +1,22 @@
 import { type AxiosInstance } from "axios";
+import { type User } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { type ServiceContainer } from "../core/container";
+import {
+	type SecretsManager,
+	type StoredOAuthTokens,
+} from "../core/secretsManager";
 import { type Deployment } from "../deployment/types";
+import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
 
+import {
+	type OAuthError,
+	parseOAuthError,
+	requiresReAuthentication,
+} from "./errors";
 import { OAuthMetadataClient } from "./metadataClient";
 import {
 	CALLBACK_PATH,
@@ -14,10 +25,6 @@ import {
 	toUrlSearchParams,
 } from "./utils";
 
-import type { SecretsManager, StoredOAuthTokens } from "../core/secretsManager";
-import type { Logger } from "../logging/logger";
-
-import type { OAuthError } from "./errors";
 import type {
 	ClientRegistrationRequest,
 	ClientRegistrationResponse,
@@ -283,30 +290,35 @@ export class OAuthSessionManager implements vscode.Disposable {
 			throw new Error("Server does not support dynamic client registration");
 		}
 
-		const registrationRequest: ClientRegistrationRequest = {
-			redirect_uris: [redirectUri],
-			application_type: "web",
-			grant_types: ["authorization_code"],
-			response_types: ["code"],
-			client_name: "VS Code Coder Extension",
-			token_endpoint_auth_method: "client_secret_post",
-		};
+		try {
+			const registrationRequest: ClientRegistrationRequest = {
+				redirect_uris: [redirectUri],
+				application_type: "web",
+				grant_types: ["authorization_code"],
+				response_types: ["code"],
+				client_name: "VS Code Coder Extension",
+				token_endpoint_auth_method: "client_secret_post",
+			};
 
-		const response = await axiosInstance.post<ClientRegistrationResponse>(
-			metadata.registration_endpoint,
-			registrationRequest,
-		);
+			const response = await axiosInstance.post<ClientRegistrationResponse>(
+				metadata.registration_endpoint,
+				registrationRequest,
+			);
 
-		await this.secretsManager.setOAuthClientRegistration(
-			deployment.safeHostname,
-			response.data,
-		);
-		this.logger.info(
-			"Saved OAuth client registration:",
-			response.data.client_id,
-		);
+			await this.secretsManager.setOAuthClientRegistration(
+				deployment.safeHostname,
+				response.data,
+			);
+			this.logger.info(
+				"Saved OAuth client registration:",
+				response.data.client_id,
+			);
 
-		return response.data;
+			return response.data;
+		} catch (error) {
+			this.handleOAuthError(error);
+			throw error;
+		}
 	}
 
 	public async setDeployment(deployment: Deployment): Promise<void> {
@@ -345,27 +357,14 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * OAuth login flow that handles the entire process.
 	 * Fetches metadata, registers client, starts authorization, and exchanges tokens.
-	 *
-	 * @returns TokenResponse containing access token and optional refresh token
 	 */
 	public async login(
-		client: CoderApi,
 		deployment: Deployment,
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
-		token: vscode.CancellationToken,
-	): Promise<TokenResponse> {
-		const baseUrl = client.getAxiosInstance().defaults.baseURL;
-		if (!baseUrl) {
-			throw new Error("Client has no base URL set");
-		}
-		if (baseUrl !== deployment.url) {
-			throw new Error(
-				`Client base URL (${baseUrl}) does not match deployment URL (${deployment.url})`,
-			);
-		}
-
+		cancellationToken: vscode.CancellationToken,
+	): Promise<{ token: string; user: User }> {
 		const reportProgress = (message?: string, increment?: number): void => {
-			if (token.isCancellationRequested) {
+			if (cancellationToken.isCancellationRequested) {
 				throw new Error("OAuth login cancelled by user");
 			}
 			progress.report({ message, increment });
@@ -385,8 +384,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 			this.deployment = deployment;
 		}
 
-		reportProgress("fetching metadata...", 10);
+		const client = CoderApi.create(deployment.url, undefined, this.logger);
 		const axiosInstance = client.getAxiosInstance();
+
+		reportProgress("fetching metadata...", 10);
 		const metadataClient = new OAuthMetadataClient(axiosInstance, this.logger);
 		const metadata = await metadataClient.getMetadata();
 
@@ -398,7 +399,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		const { code, verifier } = await this.startAuthorization(
 			metadata,
 			registration,
-			token,
+			cancellationToken,
 		);
 
 		reportProgress("exchanging token...", 30);
@@ -410,9 +411,15 @@ export class OAuthSessionManager implements vscode.Disposable {
 			registration,
 		);
 
+		reportProgress("fetching user...", 20);
+		const user = await client.getAuthenticatedUser();
+
 		this.logger.info("OAuth login flow completed successfully");
 
-		return tokenResponse;
+		return {
+			token: tokenResponse.access_token,
+			user,
+		};
 	}
 
 	/**
@@ -574,32 +581,37 @@ export class OAuthSessionManager implements vscode.Disposable {
 	): Promise<TokenResponse> {
 		this.logger.info("Exchanging authorization code for token");
 
-		const params: TokenRequestParams = {
-			grant_type: AUTH_GRANT_TYPE,
-			code,
-			redirect_uri: this.getRedirectUri(),
-			client_id: registration.client_id,
-			client_secret: registration.client_secret,
-			code_verifier: verifier,
-		};
+		try {
+			const params: TokenRequestParams = {
+				grant_type: AUTH_GRANT_TYPE,
+				code,
+				redirect_uri: this.getRedirectUri(),
+				client_id: registration.client_id,
+				client_secret: registration.client_secret,
+				code_verifier: verifier,
+			};
 
-		const tokenRequest = toUrlSearchParams(params);
+			const tokenRequest = toUrlSearchParams(params);
 
-		const response = await axiosInstance.post<TokenResponse>(
-			metadata.token_endpoint,
-			tokenRequest,
-			{
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
+			const response = await axiosInstance.post<TokenResponse>(
+				metadata.token_endpoint,
+				tokenRequest,
+				{
+					headers: {
+						"Content-Type": "application/x-www-form-urlencoded",
+					},
 				},
-			},
-		);
+			);
 
-		this.logger.info("Token exchange successful");
+			this.logger.info("Token exchange successful");
 
-		await this.saveTokens(response.data);
+			await this.saveTokens(response.data);
 
-		return response.data;
+			return response.data;
+		} catch (error) {
+			this.handleOAuthError(error);
+			throw error;
+		}
 	}
 
 	/**
@@ -656,6 +668,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 				await this.saveTokens(response.data);
 
 				return response.data;
+			} catch (error) {
+				this.handleOAuthError(error);
+				throw error;
 			} finally {
 				this.refreshPromise = null;
 			}
@@ -798,6 +813,23 @@ export class OAuthSessionManager implements vscode.Disposable {
 		this.clearInMemoryTokens();
 		if (this.deployment) {
 			await this.secretsManager.clearOAuthTokens(this.deployment.safeHostname);
+		}
+	}
+
+	/**
+	 * Handle OAuth errors that may require re-authentication.
+	 * Parses the error and triggers re-authentication modal if needed.
+	 */
+	private handleOAuthError(error: unknown): void {
+		const oauthError = parseOAuthError(error);
+		if (oauthError && requiresReAuthentication(oauthError)) {
+			this.logger.error(
+				`OAuth operation failed with error: ${oauthError.errorCode}`,
+			);
+			// Fire and forget - don't block on showing the modal
+			this.showReAuthenticationModal(oauthError).catch((err) => {
+				this.logger.error("Failed to show re-auth modal:", err);
+			});
 		}
 	}
 

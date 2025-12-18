@@ -2,7 +2,6 @@ import { type AxiosError, isAxiosError } from "axios";
 
 import { type Logger } from "../logging/logger";
 import { type RequestConfigWithMeta } from "../logging/types";
-import { parseOAuthError, requiresReAuthentication } from "../oauth/errors";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
 
 import { type CoderApi } from "./coderApi";
@@ -39,34 +38,13 @@ export function attachOAuthInterceptors(
 
 			const status = error.response?.status;
 
-			// These could indicate permanent auth failures that won't be fixed by token refresh
-			if (status === 400 || status === 403) {
-				handlePossibleOAuthError(error, logger, oauthSessionManager);
-				throw error;
-			} else if (status === 401) {
+			if (status === 401) {
 				return handle401Error(error, client, logger, oauthSessionManager);
 			}
 
 			throw error;
 		},
 	);
-}
-
-function handlePossibleOAuthError(
-	error: unknown,
-	logger: Logger,
-	oauthSessionManager: OAuthSessionManager,
-): void {
-	const oauthError = parseOAuthError(error);
-	if (oauthError && requiresReAuthentication(oauthError)) {
-		logger.error(
-			`OAuth error requires re-authentication: ${oauthError.errorCode}`,
-		);
-
-		oauthSessionManager.showReAuthenticationModal(oauthError).catch((err) => {
-			logger.error("Failed to show re-auth modal:", err);
-		});
-	}
 }
 
 async function handle401Error(
@@ -100,8 +78,6 @@ async function handle401Error(
 		throw error;
 	} catch (refreshError) {
 		logger.error("Token refresh failed:", refreshError);
-
-		handlePossibleOAuthError(refreshError, logger, oauthSessionManager);
 		throw error;
 	}
 }

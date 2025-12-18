@@ -232,7 +232,7 @@ export class LoginCoordinator {
 		const authMethod = await maybeAskAuthMethod(client);
 		switch (authMethod) {
 			case "oauth":
-				return this.loginWithOAuth(client, oauthSessionManager, deployment);
+				return this.loginWithOAuth(oauthSessionManager, deployment);
 			case "legacy": {
 				const result = await this.loginWithToken(client);
 				if (result.success) {
@@ -360,30 +360,25 @@ export class LoginCoordinator {
 	 * OAuth authentication flow.
 	 */
 	private async loginWithOAuth(
-		client: CoderApi,
 		oauthSessionManager: OAuthSessionManager,
 		deployment: Deployment,
 	): Promise<LoginResult> {
 		try {
 			this.logger.info("Starting OAuth authentication");
 
-			const tokenResponse = await vscode.window.withProgress(
+			const { token, user } = await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
 					title: "Authenticating",
 					cancellable: true,
 				},
 				async (progress, token) =>
-					await oauthSessionManager.login(client, deployment, progress, token),
+					await oauthSessionManager.login(deployment, progress, token),
 			);
-
-			// Validate token by fetching user
-			client.setSessionToken(tokenResponse.access_token);
-			const user = await client.getAuthenticatedUser();
 
 			return {
 				success: true,
-				token: tokenResponse.access_token,
+				token,
 				user,
 			};
 		} catch (error) {
