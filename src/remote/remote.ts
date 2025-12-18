@@ -118,7 +118,7 @@ export class Remote {
 
 		try {
 			// Create OAuth session manager for this remote deployment
-			const remoteOAuthManager = await OAuthSessionManager.create(
+			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrlRaw, safeHostname: parts.safeHostname },
 				this.serviceContainer,
 				this.extensionContext.extension.id,

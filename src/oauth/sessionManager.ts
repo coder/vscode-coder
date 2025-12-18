@@ -78,7 +78,6 @@ const DEFAULT_OAUTH_SCOPES = [
  * Coordinates authorization flow, token management, and automatic refresh.
  */
 export class OAuthSessionManager implements vscode.Disposable {
-	private storedTokens: StoredOAuthTokens | undefined;
 	private refreshPromise: Promise<TokenResponse> | null = null;
 	private lastRefreshAttempt = 0;
 	private refreshTimer: NodeJS.Timeout | undefined;
@@ -88,11 +87,11 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Create and initialize a new OAuth session manager.
 	 */
-	public static async create(
+	public static create(
 		deployment: Deployment | null,
 		container: ServiceContainer,
 		extensionId: string,
-	): Promise<OAuthSessionManager> {
+	): OAuthSessionManager {
 		const manager = new OAuthSessionManager(
 			deployment,
 			container.getSecretsManager(),
@@ -100,7 +99,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 			container.getLoginCoordinator(),
 			extensionId,
 		);
-		await manager.loadTokens();
 		manager.scheduleBackgroundRefresh();
 		return manager;
 	}
@@ -125,52 +123,48 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Load stored tokens from storage.
-	 * No-op if deployment is not set.
-	 * Validates that tokens belong to the current deployment URL.
+	 * Get stored tokens fresh from secrets manager.
+	 * Always reads from storage to ensure cross-window synchronization.
+	 * Validates that tokens match current deployment URL and have required scopes.
+	 * Invalid tokens are cleared and undefined is returned.
 	 */
-	private async loadTokens(): Promise<void> {
+	private async getStoredTokens(): Promise<StoredOAuthTokens | undefined> {
 		if (!this.deployment) {
-			return;
+			return undefined;
 		}
 
 		const tokens = await this.secretsManager.getOAuthTokens(
 			this.deployment.safeHostname,
 		);
 		if (!tokens) {
-			return;
+			return undefined;
 		}
 
+		// Validate deployment URL matches
 		if (tokens.deployment_url !== this.deployment.url) {
-			this.logger.warn("Stored tokens for different deployment, clearing", {
-				stored: tokens.deployment_url,
-				current: this.deployment.url,
-			});
-			this.clearInMemoryTokens();
-			await this.secretsManager.clearOAuthData(this.deployment.safeHostname);
-			return;
+			this.logger.warn(
+				"Stored tokens have mismatched deployment URL, clearing",
+				{ stored: tokens.deployment_url, current: this.deployment.url },
+			);
+			await this.secretsManager.clearOAuthTokens(this.deployment.safeHostname);
+			return undefined;
 		}
 
 		if (!this.hasRequiredScopes(tokens.scope)) {
-			this.logger.warn(
-				"Stored token missing required scopes, clearing tokens",
-				{
-					stored_scope: tokens.scope,
-					required_scopes: DEFAULT_OAUTH_SCOPES,
-				},
-			);
-			await this.clearOAuthState();
-			return;
+			this.logger.warn("Stored tokens have insufficient scopes, clearing", {
+				scope: tokens.scope,
+			});
+			await this.secretsManager.clearOAuthTokens(this.deployment.safeHostname);
+			return undefined;
 		}
 
-		this.storedTokens = tokens;
-		this.logger.info(
-			`Loaded stored OAuth tokens for ${this.deployment.safeHostname}`,
-		);
+		return tokens;
 	}
 
-	private clearInMemoryTokens(): void {
-		this.storedTokens = undefined;
+	/**
+	 * Clear refresh-related state.
+	 */
+	private clearRefreshState(): void {
 		this.refreshPromise = null;
 		this.lastRefreshAttempt = 0;
 	}
@@ -331,11 +325,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 		}
 		this.logger.debug("Switching OAuth deployment", deployment);
 		this.deployment = deployment;
-		this.clearInMemoryTokens();
-		await this.loadTokens();
+		this.clearRefreshState();
 
 		// Refresh tokens if needed to prevent 401s
-		if (this.isTokenExpired()) {
+		if (await this.isTokenExpired()) {
 			try {
 				await this.refreshToken();
 			} catch (error) {
@@ -351,7 +344,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	public clearDeployment(): void {
 		this.logger.debug("Clearing OAuth deployment state");
 		this.deployment = null;
-		this.clearInMemoryTokens();
+		this.clearRefreshState();
 	}
 
 	/**
@@ -380,7 +373,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 				old: this.deployment,
 				new: deployment,
 			});
-			this.clearInMemoryTokens();
+			this.clearRefreshState();
 			this.deployment = deployment;
 		}
 
@@ -627,12 +620,14 @@ export class OAuthSessionManager implements vscode.Disposable {
 			return this.refreshPromise;
 		}
 
-		if (!this.storedTokens?.refresh_token) {
+		// Read fresh tokens from secrets
+		const storedTokens = await this.getStoredTokens();
+		if (!storedTokens?.refresh_token) {
 			throw new Error("No refresh token available");
 		}
 
-		const refreshToken = this.storedTokens.refresh_token;
-		const accessToken = this.storedTokens.access_token;
+		const refreshToken = storedTokens.refresh_token;
+		const accessToken = storedTokens.access_token;
 
 		this.lastRefreshAttempt = Date.now();
 
@@ -681,7 +676,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 	/**
 	 * Save token response to storage.
-	 * Also triggers event via secretsManager to update global client.
+	 * Writes to secrets manager only - no in-memory caching.
 	 */
 	private async saveTokens(tokenResponse: TokenResponse): Promise<void> {
 		const deployment = this.requireDeployment();
@@ -695,7 +690,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 			expiry_timestamp: expiryTimestamp,
 		};
 
-		this.storedTokens = tokens;
 		await this.secretsManager.setOAuthTokens(deployment.safeHostname, tokens);
 		await this.secretsManager.setSessionAuth(deployment.safeHostname, {
 			url: deployment.url,
@@ -712,7 +706,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Refreshes the token if it is approaching expiry.
 	 */
 	public async refreshIfAlmostExpired(): Promise<void> {
-		if (this.shouldRefreshToken()) {
+		if (await this.shouldRefreshToken()) {
 			this.logger.debug("Token approaching expiry, triggering refresh");
 			await this.refreshToken();
 		}
@@ -726,8 +720,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * 3. Last refresh attempt was more than REFRESH_THROTTLE_MS ago
 	 * 4. No refresh is currently in progress
 	 */
-	private shouldRefreshToken(): boolean {
-		if (!this.storedTokens?.refresh_token || this.refreshPromise !== null) {
+	private async shouldRefreshToken(): Promise<boolean> {
+		const storedTokens = await this.getStoredTokens();
+		if (!storedTokens?.refresh_token || this.refreshPromise !== null) {
 			return false;
 		}
 
@@ -736,38 +731,49 @@ export class OAuthSessionManager implements vscode.Disposable {
 			return false;
 		}
 
-		const timeUntilExpiry = this.storedTokens.expiry_timestamp - now;
+		const timeUntilExpiry = storedTokens.expiry_timestamp - now;
 		return timeUntilExpiry < TOKEN_REFRESH_THRESHOLD_MS;
 	}
 
 	/**
 	 * Check if token is expired.
 	 */
-	private isTokenExpired(): boolean {
-		if (!this.storedTokens) {
+	private async isTokenExpired(): Promise<boolean> {
+		const storedTokens = await this.getStoredTokens();
+		if (!storedTokens) {
 			return false;
 		}
-		return Date.now() >= this.storedTokens.expiry_timestamp;
+		return Date.now() >= storedTokens.expiry_timestamp;
 	}
 
 	public async revokeRefreshToken(): Promise<void> {
-		if (!this.storedTokens?.refresh_token) {
+		const storedTokens = await this.getStoredTokens();
+		if (!storedTokens?.refresh_token) {
 			this.logger.info("No refresh token to revoke");
 			return;
 		}
 
-		await this.revokeToken(this.storedTokens.refresh_token, "refresh_token");
+		await this.revokeToken(
+			storedTokens.access_token,
+			storedTokens.refresh_token,
+			"refresh_token",
+		);
 	}
 
 	/**
 	 * Revoke a token using the OAuth server's revocation endpoint.
+	 *
+	 * @param authToken - Token for authenticating the revocation request
+	 * @param tokenToRevoke - The token to be revoked
+	 * @param tokenTypeHint - Hint about the token type being revoked
 	 */
 	private async revokeToken(
-		token: string,
+		authToken: string,
+		tokenToRevoke: string,
 		tokenTypeHint: "access_token" | "refresh_token" = "refresh_token",
 	): Promise<void> {
 		const { axiosInstance, metadata, registration } =
-			await this.prepareOAuthOperation(this.storedTokens?.access_token);
+			await this.prepareOAuthOperation(authToken);
 
 		const revocationEndpoint =
 			metadata.revocation_endpoint || `${metadata.issuer}/oauth2/revoke`;
@@ -775,7 +781,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		this.logger.info("Revoking refresh token");
 
 		const params: TokenRevocationRequest = {
-			token,
+			token: tokenToRevoke,
 			client_id: registration.client_id,
 			client_secret: registration.client_secret,
 			token_type_hint: tokenTypeHint,
@@ -798,19 +804,21 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Returns true if (valid or invalid) OAuth tokens exist for the current deployment.
+	 * Returns true if OAuth tokens exist for the current deployment.
+	 * Always reads fresh from secrets to ensure cross-window synchronization.
 	 */
-	public isLoggedInWithOAuth(): boolean {
-		return this.storedTokens !== undefined;
+	public async isLoggedInWithOAuth(): Promise<boolean> {
+		const storedTokens = await this.getStoredTokens();
+		return storedTokens !== undefined;
 	}
 
 	/**
 	 * Clear OAuth state when switching to non-OAuth authentication.
-	 * Clears in-memory state and OAuth tokens from storage.
+	 * Clears tokens from storage.
 	 * Preserves client registration for potential future OAuth use.
 	 */
 	public async clearOAuthState(): Promise<void> {
-		this.clearInMemoryTokens();
+		this.clearRefreshState();
 		if (this.deployment) {
 			await this.secretsManager.clearOAuthTokens(this.deployment.safeHostname);
 		}
@@ -845,7 +853,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 			"Your session is no longer valid. This could be due to token expiration or revocation.";
 
 		// Clear invalid tokens - listeners will handle updates automatically
-		this.clearInMemoryTokens();
+		this.clearRefreshState();
 		await this.secretsManager.clearAllAuthData(deployment.safeHostname);
 
 		await this.loginCoordinator.ensureLoggedInWithDialog({
