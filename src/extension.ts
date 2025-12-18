@@ -70,7 +70,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const deployment = await secretsManager.getCurrentDeployment();
 
 	// Create OAuth session manager with login coordinator
-	const oauthSessionManager = await OAuthSessionManager.create(
+	const oauthSessionManager = OAuthSessionManager.create(
 		deployment,
 		serviceContainer,
 		ctx.extension.id,

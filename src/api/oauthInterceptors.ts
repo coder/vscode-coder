@@ -53,7 +53,7 @@ async function handle401Error(
 	logger: Logger,
 	oauthSessionManager: OAuthSessionManager,
 ): Promise<void> {
-	if (!oauthSessionManager.isLoggedInWithOAuth()) {
+	if (!(await oauthSessionManager.isLoggedInWithOAuth())) {
 		throw error;
 	}
 
