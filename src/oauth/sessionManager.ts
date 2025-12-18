@@ -28,10 +28,10 @@ import type {
 	TokenRevocationRequest,
 } from "./types";
 
-const AUTH_GRANT_TYPE = "authorization_code" as const;
-const REFRESH_GRANT_TYPE = "refresh_token" as const;
-const RESPONSE_TYPE = "code" as const;
-const PKCE_CHALLENGE_METHOD = "S256" as const;
+const AUTH_GRANT_TYPE = "authorization_code";
+const REFRESH_GRANT_TYPE = "refresh_token";
+const RESPONSE_TYPE = "code";
+const PKCE_CHALLENGE_METHOD = "S256";
 
 /**
  * Token refresh threshold: refresh when token expires in less than this time.
@@ -352,6 +352,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		client: CoderApi,
 		deployment: Deployment,
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
+		token: vscode.CancellationToken,
 	): Promise<TokenResponse> {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
@@ -362,6 +363,13 @@ export class OAuthSessionManager implements vscode.Disposable {
 				`Client base URL (${baseUrl}) does not match deployment URL (${deployment.url})`,
 			);
 		}
+
+		const reportProgress = (message?: string, increment?: number): void => {
+			if (token.isCancellationRequested) {
+				throw new Error("OAuth login cancelled by user");
+			}
+			progress.report({ message, increment });
+		};
 
 		// Update deployment if changed
 		if (
@@ -377,21 +385,23 @@ export class OAuthSessionManager implements vscode.Disposable {
 			this.deployment = deployment;
 		}
 
+		reportProgress("fetching metadata...", 10);
 		const axiosInstance = client.getAxiosInstance();
 		const metadataClient = new OAuthMetadataClient(axiosInstance, this.logger);
 		const metadata = await metadataClient.getMetadata();
 
 		// Only register the client on login
-		progress.report({ message: "registering client...", increment: 10 });
+		reportProgress("registering client...", 10);
 		const registration = await this.registerClient(axiosInstance, metadata);
 
-		progress.report({ message: "waiting for authorization...", increment: 30 });
+		reportProgress("waiting for authorization...", 30);
 		const { code, verifier } = await this.startAuthorization(
 			metadata,
 			registration,
+			token,
 		);
 
-		progress.report({ message: "exchanging token...", increment: 30 });
+		reportProgress("exchanging token...", 30);
 		const tokenResponse = await this.exchangeToken(
 			code,
 			verifier,
@@ -400,7 +410,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 			registration,
 		);
 
-		progress.report({ increment: 30 });
 		this.logger.info("OAuth login flow completed successfully");
 
 		return tokenResponse;
@@ -457,6 +466,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private async startAuthorization(
 		metadata: OAuthServerMetadata,
 		registration: ClientRegistrationResponse,
+		cancellationToken: vscode.CancellationToken,
 	): Promise<{ code: string; verifier: string }> {
 		const state = generateState();
 		const { verifier, challenge } = generatePKCE();
@@ -499,9 +509,17 @@ export class OAuthSessionManager implements vscode.Disposable {
 					},
 				);
 
+				const cancellationListener = cancellationToken.onCancellationRequested(
+					() => {
+						cleanup();
+						reject(new Error("OAuth flow cancelled by user"));
+					},
+				);
+
 				const cleanup = () => {
 					clearTimeout(timeoutHandle);
 					listener.dispose();
+					cancellationListener.dispose();
 				};
 
 				this.pendingAuthReject = (error) => {
@@ -818,7 +836,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 			this.pendingAuthReject(new Error("OAuth session manager disposed"));
 		}
 		this.pendingAuthReject = undefined;
-		this.clearInMemoryTokens();
+		this.clearDeployment();
 
 		this.logger.debug("OAuth session manager disposed");
 	}

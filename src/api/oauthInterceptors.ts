@@ -10,10 +10,9 @@ import { type CoderApi } from "./coderApi";
 const coderSessionTokenHeader = "Coder-Session-Token";
 
 /**
- * Attach OAuth token refresh interceptors to a CoderApi instance.
+ * Attach OAuth token refresh interceptor to a CoderApi instance.
  * This should be called after creating the CoderApi when OAuth authentication is being used.
  *
- * Success interceptor: proactively refreshes token when approaching expiry.
  * Error interceptor: reactively refreshes token on 401 responses.
  */
 export function attachOAuthInterceptors(
@@ -22,15 +21,7 @@ export function attachOAuthInterceptors(
 	oauthSessionManager: OAuthSessionManager,
 ): void {
 	client.getAxiosInstance().interceptors.response.use(
-		// Success response interceptor: proactive token refresh
-		(response) => {
-			// Fire-and-forget: don't await, don't block response
-			oauthSessionManager.refreshIfAlmostExpired().catch((error) => {
-				logger.warn("Proactive background token refresh failed:", error);
-			});
-
-			return response;
-		},
+		(r) => r,
 		// Error response interceptor: reactive token refresh on 401
 		async (error: unknown) => {
 			if (!isAxiosError(error)) {

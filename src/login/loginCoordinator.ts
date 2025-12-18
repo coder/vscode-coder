@@ -31,7 +31,7 @@ interface LoginOptions {
  * Coordinates login prompts across windows and prevents duplicate dialogs.
  */
 export class LoginCoordinator {
-	private readonly inProgressLogins = new Map<string, Promise<LoginResult>>();
+	private loginQueue: Promise<unknown> = Promise.resolve();
 
 	constructor(
 		private readonly secretsManager: SecretsManager,
@@ -48,7 +48,7 @@ export class LoginCoordinator {
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url, oauthSessionManager } = options;
-		return this.executeWithGuard(safeHostname, async () => {
+		return this.executeWithGuard(async () => {
 			const result = await this.attemptLogin(
 				{ safeHostname, url },
 				options.autoLogin ?? false,
@@ -70,7 +70,7 @@ export class LoginCoordinator {
 	): Promise<LoginResult> {
 		const { safeHostname, url, detailPrefix, message, oauthSessionManager } =
 			options;
-		return this.executeWithGuard(safeHostname, async () => {
+		return this.executeWithGuard(async () => {
 			// Show dialog promise
 			const dialogPromise = this.vscodeProposed.window
 				.showErrorMessage(
@@ -143,25 +143,14 @@ export class LoginCoordinator {
 	}
 
 	/**
-	 * Same-window guard wrapper.
+	 * Chains login attempts to prevent overlapping UI.
 	 */
-	private async executeWithGuard(
-		safeHostname: string,
+	private executeWithGuard(
 		executeFn: () => Promise<LoginResult>,
 	): Promise<LoginResult> {
-		const existingLogin = this.inProgressLogins.get(safeHostname);
-		if (existingLogin) {
-			return existingLogin;
-		}
-
-		const loginPromise = executeFn();
-		this.inProgressLogins.set(safeHostname, loginPromise);
-
-		try {
-			return await loginPromise;
-		} finally {
-			this.inProgressLogins.delete(safeHostname);
-		}
+		const result = this.loginQueue.then(executeFn);
+		this.loginQueue = result.catch(() => {}); // Keep chain going on error
+		return result;
 	}
 
 	/**
@@ -382,10 +371,10 @@ export class LoginCoordinator {
 				{
 					location: vscode.ProgressLocation.Notification,
 					title: "Authenticating",
-					cancellable: false,
+					cancellable: true,
 				},
-				async (progress) =>
-					await oauthSessionManager.login(client, deployment, progress),
+				async (progress, token) =>
+					await oauthSessionManager.login(client, deployment, progress, token),
 			);
 
 			// Validate token by fetching user

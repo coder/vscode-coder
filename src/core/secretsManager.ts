@@ -11,9 +11,14 @@ import type { Deployment } from "../deployment/types";
 
 // Each deployment has its own key to ensure atomic operations (multiple windows
 // writing to a shared key could drop data) and to receive proper VS Code events.
-const SESSION_KEY_PREFIX = "coder.session.";
-const OAUTH_TOKENS_PREFIX = "coder.oauth.tokens.";
-const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
+const SESSION_KEY_PREFIX = "coder.session." as const;
+const OAUTH_TOKENS_PREFIX = "coder.oauth.tokens." as const;
+const OAUTH_CLIENT_PREFIX = "coder.oauth.client." as const;
+
+type SecretKeyPrefix =
+	| typeof SESSION_KEY_PREFIX
+	| typeof OAUTH_TOKENS_PREFIX
+	| typeof OAUTH_CLIENT_PREFIX;
 
 const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
 
@@ -56,6 +61,44 @@ export class SecretsManager {
 		private readonly memento: Memento,
 		private readonly logger: Logger,
 	) {}
+
+	private buildKey(prefix: SecretKeyPrefix, safeHostname: string): string {
+		return `${prefix}${safeHostname || "<legacy>"}`;
+	}
+
+	private async getSecret<T>(
+		prefix: SecretKeyPrefix,
+		safeHostname: string,
+	): Promise<T | undefined> {
+		try {
+			const data = await this.secrets.get(this.buildKey(prefix, safeHostname));
+			if (!data) {
+				return undefined;
+			}
+			return JSON.parse(data) as T;
+		} catch {
+			return undefined;
+		}
+	}
+
+	private async setSecret<T>(
+		prefix: SecretKeyPrefix,
+		safeHostname: string,
+		value: T,
+	): Promise<void> {
+		await this.secrets.store(
+			this.buildKey(prefix, safeHostname),
+			JSON.stringify(value),
+		);
+		await this.recordDeploymentAccess(safeHostname);
+	}
+
+	private async clearSecret(
+		prefix: SecretKeyPrefix,
+		safeHostname: string,
+	): Promise<void> {
+		await this.secrets.delete(this.buildKey(prefix, safeHostname));
+	}
 
 	/**
 	 * Sets the current deployment and triggers a cross-window sync event.
@@ -123,7 +166,7 @@ export class SecretsManager {
 		safeHostname: string,
 		listener: (auth: SessionAuth | undefined) => void | Promise<void>,
 	): Disposable {
-		const sessionKey = this.getSessionKey(safeHostname);
+		const sessionKey = this.buildKey(SESSION_KEY_PREFIX, safeHostname);
 		return this.secrets.onDidChange(async (e) => {
 			if (e.key !== sessionKey) {
 				return;
@@ -137,39 +180,23 @@ export class SecretsManager {
 		});
 	}
 
-	public async getSessionAuth(
+	public getSessionAuth(
 		safeHostname: string,
 	): Promise<SessionAuth | undefined> {
-		const sessionKey = this.getSessionKey(safeHostname);
-		try {
-			const data = await this.secrets.get(sessionKey);
-			if (!data) {
-				return undefined;
-			}
-			return JSON.parse(data) as SessionAuth;
-		} catch {
-			return undefined;
-		}
+		return this.getSecret<SessionAuth>(SESSION_KEY_PREFIX, safeHostname);
 	}
 
 	public async setSessionAuth(
 		safeHostname: string,
 		auth: SessionAuth,
 	): Promise<void> {
-		const sessionKey = this.getSessionKey(safeHostname);
 		// Extract only url and token before serializing
 		const state: SessionAuth = { url: auth.url, token: auth.token };
-		await this.secrets.store(sessionKey, JSON.stringify(state));
-		await this.recordDeploymentAccess(safeHostname);
+		await this.setSecret(SESSION_KEY_PREFIX, safeHostname, state);
 	}
 
-	private async clearSessionAuth(safeHostname: string): Promise<void> {
-		const sessionKey = this.getSessionKey(safeHostname);
-		await this.secrets.delete(sessionKey);
-	}
-
-	private getSessionKey(safeHostname: string): string {
-		return `${SESSION_KEY_PREFIX}${safeHostname || "<legacy>"}`;
+	private clearSessionAuth(safeHostname: string): Promise<void> {
+		return this.clearSecret(SESSION_KEY_PREFIX, safeHostname);
 	}
 
 	/**
@@ -204,7 +231,6 @@ export class SecretsManager {
 			this.clearSessionAuth(safeHostname),
 			this.clearOAuthData(safeHostname),
 		]);
-		await this.clearSessionAuth(safeHostname);
 		const usage = this.getDeploymentUsage().filter(
 			(u) => u.safeHostname !== safeHostname,
 		);
@@ -290,68 +316,41 @@ export class SecretsManager {
 		});
 	}
 
-	public async getOAuthTokens(
+	public getOAuthTokens(
 		safeHostname: string,
 	): Promise<StoredOAuthTokens | undefined> {
-		try {
-			const data = await this.secrets.get(
-				`${OAUTH_TOKENS_PREFIX}${safeHostname}`,
-			);
-			if (!data) {
-				return undefined;
-			}
-			return JSON.parse(data) as StoredOAuthTokens;
-		} catch {
-			return undefined;
-		}
+		return this.getSecret<StoredOAuthTokens>(OAUTH_TOKENS_PREFIX, safeHostname);
 	}
 
-	public async setOAuthTokens(
+	public setOAuthTokens(
 		safeHostname: string,
 		tokens: StoredOAuthTokens,
 	): Promise<void> {
-		await this.secrets.store(
-			`${OAUTH_TOKENS_PREFIX}${safeHostname}`,
-			JSON.stringify(tokens),
-		);
-		await this.recordDeploymentAccess(safeHostname);
+		return this.setSecret(OAUTH_TOKENS_PREFIX, safeHostname, tokens);
 	}
 
-	public async clearOAuthTokens(safeHostname: string): Promise<void> {
-		await this.secrets.delete(`${OAUTH_TOKENS_PREFIX}${safeHostname}`);
+	public clearOAuthTokens(safeHostname: string): Promise<void> {
+		return this.clearSecret(OAUTH_TOKENS_PREFIX, safeHostname);
 	}
 
-	public async getOAuthClientRegistration(
+	public getOAuthClientRegistration(
 		safeHostname: string,
 	): Promise<ClientRegistrationResponse | undefined> {
-		try {
-			const data = await this.secrets.get(
-				`${OAUTH_CLIENT_PREFIX}${safeHostname}`,
-			);
-			if (!data) {
-				return undefined;
-			}
-			return JSON.parse(data) as ClientRegistrationResponse;
-		} catch {
-			return undefined;
-		}
+		return this.getSecret<ClientRegistrationResponse>(
+			OAUTH_CLIENT_PREFIX,
+			safeHostname,
+		);
 	}
 
-	public async setOAuthClientRegistration(
+	public setOAuthClientRegistration(
 		safeHostname: string,
 		registration: ClientRegistrationResponse,
 	): Promise<void> {
-		await this.secrets.store(
-			`${OAUTH_CLIENT_PREFIX}${safeHostname}`,
-			JSON.stringify(registration),
-		);
-		await this.recordDeploymentAccess(safeHostname);
+		return this.setSecret(OAUTH_CLIENT_PREFIX, safeHostname, registration);
 	}
 
-	public async clearOAuthClientRegistration(
-		safeHostname: string,
-	): Promise<void> {
-		await this.secrets.delete(`${OAUTH_CLIENT_PREFIX}${safeHostname}`);
+	public clearOAuthClientRegistration(safeHostname: string): Promise<void> {
+		return this.clearSecret(OAUTH_CLIENT_PREFIX, safeHostname);
 	}
 
 	public async clearOAuthData(safeHostname: string): Promise<void> {
