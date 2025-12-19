@@ -5,8 +5,9 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { type ServiceContainer } from "../core/container";
 import {
+	type OAuthTokenData,
 	type SecretsManager,
-	type StoredOAuthTokens,
+	type SessionAuth,
 } from "../core/secretsManager";
 import { type Deployment } from "../deployment/types";
 import { type Logger } from "../logging/logger";
@@ -74,6 +75,14 @@ const DEFAULT_OAUTH_SCOPES = [
 ].join(" ");
 
 /**
+ * Internal type combining access token with OAuth-specific data.
+ * Used by getStoredTokens() for token refresh and validation.
+ */
+type StoredTokens = OAuthTokenData & {
+	access_token: string;
+};
+
+/**
  * Manages OAuth session lifecycle for a Coder deployment.
  * Coordinates authorization flow, token management, and automatic refresh.
  */
@@ -130,37 +139,53 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Validates that tokens match current deployment URL and have required scopes.
 	 * Invalid tokens are cleared and undefined is returned.
 	 */
-	private async getStoredTokens(): Promise<StoredOAuthTokens | undefined> {
+	private async getStoredTokens(): Promise<StoredTokens | undefined> {
 		if (!this.deployment) {
 			return undefined;
 		}
 
-		const tokens = await this.secretsManager.getOAuthTokens(
+		const auth = await this.secretsManager.getSessionAuth(
 			this.deployment.safeHostname,
 		);
-		if (!tokens) {
+		if (!auth?.oauth) {
 			return undefined;
 		}
 
 		// Validate deployment URL matches
-		if (tokens.deployment_url !== this.deployment.url) {
+		if (auth.url !== this.deployment.url) {
 			this.logger.warn(
-				"Stored tokens have mismatched deployment URL, clearing",
-				{ stored: tokens.deployment_url, current: this.deployment.url },
+				"Stored tokens have mismatched deployment URL, clearing OAuth",
+				{ stored: auth.url, current: this.deployment.url },
 			);
-			await this.secretsManager.clearOAuthTokens(this.deployment.safeHostname);
+			await this.clearOAuthFromSessionAuth(auth);
 			return undefined;
 		}
 
-		if (!this.hasRequiredScopes(tokens.scope)) {
+		if (!this.hasRequiredScopes(auth.oauth.scope)) {
 			this.logger.warn("Stored tokens have insufficient scopes, clearing", {
-				scope: tokens.scope,
+				scope: auth.oauth.scope,
 			});
-			await this.secretsManager.clearOAuthTokens(this.deployment.safeHostname);
+			await this.clearOAuthFromSessionAuth(auth);
 			return undefined;
 		}
 
-		return tokens;
+		return {
+			access_token: auth.token,
+			...auth.oauth,
+		};
+	}
+
+	/**
+	 * Clear OAuth data from session auth while preserving the session token.
+	 */
+	private async clearOAuthFromSessionAuth(auth: SessionAuth): Promise<void> {
+		if (!this.deployment) {
+			return;
+		}
+		await this.secretsManager.setSessionAuth(this.deployment.safeHostname, {
+			url: auth.url,
+			token: auth.token,
+		});
 	}
 
 	/**
@@ -189,9 +214,13 @@ export class OAuthSessionManager implements vscode.Disposable {
 			return;
 		}
 
-		this.tokenChangeListener = this.secretsManager.onDidChangeOAuthTokens(
+		this.tokenChangeListener = this.secretsManager.onDidChangeSessionAuth(
 			this.deployment.safeHostname,
-			() => this.scheduleNextRefresh(),
+			(auth) => {
+				if (auth?.oauth) {
+					this.scheduleNextRefresh();
+				}
+			},
 		);
 	}
 
@@ -754,16 +783,17 @@ export class OAuthSessionManager implements vscode.Disposable {
 			? Date.now() + tokenResponse.expires_in * 1000
 			: Date.now() + ACCESS_TOKEN_DEFAULT_EXPIRY_MS;
 
-		const tokens: StoredOAuthTokens = {
-			...tokenResponse,
-			deployment_url: deployment.url,
+		const oauth: OAuthTokenData = {
+			token_type: tokenResponse.token_type,
+			refresh_token: tokenResponse.refresh_token,
+			scope: tokenResponse.scope,
 			expiry_timestamp: expiryTimestamp,
 		};
 
-		await this.secretsManager.setOAuthTokens(deployment.safeHostname, tokens);
 		await this.secretsManager.setSessionAuth(deployment.safeHostname, {
 			url: deployment.url,
 			token: tokenResponse.access_token,
+			oauth,
 		});
 
 		this.logger.info("Tokens saved", {
@@ -873,13 +903,18 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 	/**
 	 * Clear OAuth state when switching to non-OAuth authentication.
-	 * Clears tokens from storage.
+	 * Removes OAuth data from session auth while preserving the session token.
 	 * Preserves client registration for potential future OAuth use.
 	 */
 	public async clearOAuthState(): Promise<void> {
 		this.clearRefreshState();
 		if (this.deployment) {
-			await this.secretsManager.clearOAuthTokens(this.deployment.safeHostname);
+			const auth = await this.secretsManager.getSessionAuth(
+				this.deployment.safeHostname,
+			);
+			if (auth?.oauth) {
+				await this.clearOAuthFromSessionAuth(auth);
+			}
 		}
 	}
 
@@ -913,7 +948,13 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		this.clearRefreshState();
 		// Clear client registration and tokens to force full re-authentication
-		await this.secretsManager.clearOAuthData(deployment.safeHostname);
+		await this.secretsManager.clearOAuthClientRegistration(
+			deployment.safeHostname,
+		);
+		await this.secretsManager.setSessionAuth(deployment.safeHostname, {
+			url: deployment.url,
+			token: "",
+		});
 
 		await this.loginCoordinator.ensureLoggedInWithDialog({
 			safeHostname: deployment.safeHostname,

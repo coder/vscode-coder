@@ -37,7 +37,7 @@ export class OAuthInterceptor implements vscode.Disposable {
 	): Promise<OAuthInterceptor> {
 		// Create listener first, then wire up to instance after construction
 		let callback: () => Promise<void> = () => Promise.resolve();
-		const tokenListener = secretsManager.onDidChangeOAuthTokens(
+		const tokenListener = secretsManager.onDidChangeSessionAuth(
 			safeHostname,
 			() => callback(),
 		);
