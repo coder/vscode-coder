@@ -83,8 +83,13 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Returns true if deployment was changed, false otherwise.
 	 */
 	public async setDeploymentIfValid(
-		deployment: Deployment & { token?: string },
+		deployment: DeploymentWithAuth,
 	): Promise<boolean> {
+		if (deployment.user) {
+			await this.setDeployment({ ...deployment, user: deployment.user });
+			return true;
+		}
+
 		const auth = await this.secretsManager.getSessionAuth(
 			deployment.safeHostname,
 		);
