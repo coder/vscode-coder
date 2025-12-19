@@ -1,8 +1,5 @@
 import { type Logger } from "../logging/logger";
-import {
-	type ClientRegistrationResponse,
-	type TokenResponse,
-} from "../oauth/types";
+import { type ClientRegistrationResponse } from "../oauth/types";
 import { toSafeHost } from "../util";
 
 import type { Memento, SecretStorage, Disposable } from "vscode";
@@ -12,13 +9,9 @@ import type { Deployment } from "../deployment/types";
 // Each deployment has its own key to ensure atomic operations (multiple windows
 // writing to a shared key could drop data) and to receive proper VS Code events.
 const SESSION_KEY_PREFIX = "coder.session." as const;
-const OAUTH_TOKENS_PREFIX = "coder.oauth.tokens." as const;
 const OAUTH_CLIENT_PREFIX = "coder.oauth.client." as const;
 
-type SecretKeyPrefix =
-	| typeof SESSION_KEY_PREFIX
-	| typeof OAUTH_TOKENS_PREFIX
-	| typeof OAUTH_CLIENT_PREFIX;
+type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
 const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
 
@@ -33,9 +26,22 @@ export interface CurrentDeploymentState {
 	deployment: Deployment | null;
 }
 
+/**
+ * OAuth token data stored alongside session auth.
+ * When present, indicates the session is authenticated via OAuth.
+ */
+export interface OAuthTokenData {
+	token_type: "Bearer" | "DPoP";
+	refresh_token?: string;
+	scope?: string;
+	expiry_timestamp: number;
+}
+
 export interface SessionAuth {
 	url: string;
 	token: string;
+	/** If present, this session uses OAuth authentication */
+	oauth?: OAuthTokenData;
 }
 
 // Tracks when a deployment was last accessed for LRU pruning.
@@ -43,11 +49,6 @@ interface DeploymentUsage {
 	safeHostname: string;
 	lastAccessedAt: string;
 }
-
-export type StoredOAuthTokens = Omit<TokenResponse, "expires_in"> & {
-	expiry_timestamp: number;
-	deployment_url: string;
-};
 
 interface OAuthCallbackData {
 	state: string;
@@ -190,8 +191,12 @@ export class SecretsManager {
 		safeHostname: string,
 		auth: SessionAuth,
 	): Promise<void> {
-		// Extract only url and token before serializing
-		const state: SessionAuth = { url: auth.url, token: auth.token };
+		// Extract relevant fields before serializing
+		const state: SessionAuth = {
+			url: auth.url,
+			token: auth.token,
+			...(auth.oauth && { oauth: auth.oauth }),
+		};
 		await this.setSecret(SESSION_KEY_PREFIX, safeHostname, state);
 	}
 
@@ -229,7 +234,7 @@ export class SecretsManager {
 	public async clearAllAuthData(safeHostname: string): Promise<void> {
 		await Promise.all([
 			this.clearSessionAuth(safeHostname),
-			this.clearOAuthData(safeHostname),
+			this.clearOAuthClientRegistration(safeHostname),
 		]);
 		const usage = this.getDeploymentUsage().filter(
 			(u) => u.safeHostname !== safeHostname,
@@ -316,44 +321,6 @@ export class SecretsManager {
 		});
 	}
 
-	public getOAuthTokens(
-		safeHostname: string,
-	): Promise<StoredOAuthTokens | undefined> {
-		return this.getSecret<StoredOAuthTokens>(OAUTH_TOKENS_PREFIX, safeHostname);
-	}
-
-	public setOAuthTokens(
-		safeHostname: string,
-		tokens: StoredOAuthTokens,
-	): Promise<void> {
-		return this.setSecret(OAUTH_TOKENS_PREFIX, safeHostname, tokens);
-	}
-
-	public clearOAuthTokens(safeHostname: string): Promise<void> {
-		return this.clearSecret(OAUTH_TOKENS_PREFIX, safeHostname);
-	}
-
-	/**
-	 * Listen for changes to OAuth tokens for a specific deployment.
-	 */
-	public onDidChangeOAuthTokens(
-		safeHostname: string,
-		listener: (tokens: StoredOAuthTokens | undefined) => void | Promise<void>,
-	): Disposable {
-		const tokenKey = this.buildKey(OAUTH_TOKENS_PREFIX, safeHostname);
-		return this.secrets.onDidChange(async (e) => {
-			if (e.key !== tokenKey) {
-				return;
-			}
-			const tokens = await this.getOAuthTokens(safeHostname);
-			try {
-				await listener(tokens);
-			} catch (err) {
-				this.logger.error("Error in onDidChangeOAuthTokens listener", err);
-			}
-		});
-	}
-
 	public getOAuthClientRegistration(
 		safeHostname: string,
 	): Promise<ClientRegistrationResponse | undefined> {
@@ -372,12 +339,5 @@ export class SecretsManager {
 
 	public clearOAuthClientRegistration(safeHostname: string): Promise<void> {
 		return this.clearSecret(OAUTH_CLIENT_PREFIX, safeHostname);
-	}
-
-	public async clearOAuthData(safeHostname: string): Promise<void> {
-		await Promise.all([
-			this.clearOAuthTokens(safeHostname),
-			this.clearOAuthClientRegistration(safeHostname),
-		]);
 	}
 }
