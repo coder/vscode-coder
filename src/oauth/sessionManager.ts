@@ -852,9 +852,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 			error.description ||
 			"Your session is no longer valid. This could be due to token expiration or revocation.";
 
-		// Clear invalid tokens - listeners will handle updates automatically
 		this.clearRefreshState();
-		await this.secretsManager.clearAllAuthData(deployment.safeHostname);
+		// Clear client registration and tokens to force full re-authentication
+		await this.secretsManager.clearOAuthData(deployment.safeHostname);
 
 		await this.loginCoordinator.ensureLoggedInWithDialog({
 			safeHostname: deployment.safeHostname,

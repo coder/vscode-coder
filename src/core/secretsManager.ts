@@ -333,6 +333,27 @@ export class SecretsManager {
 		return this.clearSecret(OAUTH_TOKENS_PREFIX, safeHostname);
 	}
 
+	/**
+	 * Listen for changes to OAuth tokens for a specific deployment.
+	 */
+	public onDidChangeOAuthTokens(
+		safeHostname: string,
+		listener: (tokens: StoredOAuthTokens | undefined) => void | Promise<void>,
+	): Disposable {
+		const tokenKey = this.buildKey(OAUTH_TOKENS_PREFIX, safeHostname);
+		return this.secrets.onDidChange(async (e) => {
+			if (e.key !== tokenKey) {
+				return;
+			}
+			const tokens = await this.getOAuthTokens(safeHostname);
+			try {
+				await listener(tokens);
+			} catch (err) {
+				this.logger.error("Error in onDidChangeOAuthTokens listener", err);
+			}
+		});
+	}
+
 	public getOAuthClientRegistration(
 		safeHostname: string,
 	): Promise<ClientRegistrationResponse | undefined> {
