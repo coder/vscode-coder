@@ -81,6 +81,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private refreshPromise: Promise<TokenResponse> | null = null;
 	private lastRefreshAttempt = 0;
 	private refreshTimer: NodeJS.Timeout | undefined;
+	private tokenChangeListener: vscode.Disposable | undefined;
 
 	private pendingAuthReject: ((reason: Error) => void) | undefined;
 
@@ -99,7 +100,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 			container.getLoginCoordinator(),
 			extensionId,
 		);
-		manager.scheduleBackgroundRefresh();
+		manager.setupTokenListener();
+		manager.scheduleNextRefresh();
 		return manager;
 	}
 
@@ -162,30 +164,96 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Clear refresh-related state.
+	 * Clear all refresh-related state: in-flight promise, throttle, timer, and listener.
 	 */
 	private clearRefreshState(): void {
 		this.refreshPromise = null;
 		this.lastRefreshAttempt = 0;
+		if (this.refreshTimer) {
+			clearTimeout(this.refreshTimer);
+			this.refreshTimer = undefined;
+		}
+		this.tokenChangeListener?.dispose();
+		this.tokenChangeListener = undefined;
 	}
 
 	/**
-	 * Schedule the next background token refresh check.
-	 * Only schedules the next check after the current one completes.
+	 * Setup listener for token changes. Disposes existing listener first.
+	 * Reschedules refresh when tokens change (e.g., from another window).
 	 */
-	private scheduleBackgroundRefresh(): void {
-		if (this.refreshTimer) {
-			clearTimeout(this.refreshTimer);
+	private setupTokenListener(): void {
+		this.tokenChangeListener?.dispose();
+		this.tokenChangeListener = undefined;
+
+		if (!this.deployment) {
+			return;
 		}
 
-		this.refreshTimer = setTimeout(async () => {
-			try {
-				await this.refreshIfAlmostExpired();
-			} catch (error) {
-				this.logger.warn("Background token refresh failed:", error);
-			}
-			this.scheduleBackgroundRefresh();
-		}, BACKGROUND_REFRESH_INTERVAL_MS);
+		this.tokenChangeListener = this.secretsManager.onDidChangeOAuthTokens(
+			this.deployment.safeHostname,
+			() => this.scheduleNextRefresh(),
+		);
+	}
+
+	/**
+	 * Schedule the next token refresh based on expiry time.
+	 * - Far from expiry: schedule once at threshold
+	 * - Near/past expiry: attempt refresh immediately
+	 */
+	private scheduleNextRefresh(): void {
+		if (this.refreshTimer) {
+			clearTimeout(this.refreshTimer);
+			this.refreshTimer = undefined;
+		}
+
+		this.getStoredTokens()
+			.then((storedTokens) => {
+				if (!storedTokens?.refresh_token) {
+					return;
+				}
+
+				const now = Date.now();
+				const timeUntilExpiry = storedTokens.expiry_timestamp - now;
+
+				if (timeUntilExpiry <= TOKEN_REFRESH_THRESHOLD_MS) {
+					// Within threshold or expired, attempt refresh now
+					this.attemptRefreshWithRetry();
+				} else {
+					// Schedule for when we reach the threshold
+					const delay = timeUntilExpiry - TOKEN_REFRESH_THRESHOLD_MS;
+					this.logger.debug(
+						`Scheduling token refresh in ${Math.round(delay / 1000 / 60)} minutes`,
+					);
+					this.refreshTimer = setTimeout(
+						() => this.attemptRefreshWithRetry(),
+						delay,
+					);
+				}
+			})
+			.catch((error) => {
+				this.logger.warn("Failed to schedule token refresh:", error);
+			});
+	}
+
+	/**
+	 * Attempt refresh, falling back to polling on failure.
+	 */
+	private attemptRefreshWithRetry(): void {
+		this.refreshTimer = undefined;
+
+		this.refreshToken()
+			.then(() => {
+				// Success - scheduleNextRefresh will be triggered by token change listener
+				this.logger.debug("Background token refresh succeeded");
+			})
+			.catch((error) => {
+				this.logger.warn("Background token refresh failed, will retry:", error);
+				// Fall back to polling until successful
+				this.refreshTimer = setTimeout(
+					() => this.attemptRefreshWithRetry(),
+					BACKGROUND_REFRESH_INTERVAL_MS,
+				);
+			});
 	}
 
 	/**
@@ -327,18 +395,19 @@ export class OAuthSessionManager implements vscode.Disposable {
 		this.deployment = deployment;
 		this.clearRefreshState();
 
-		// Refresh tokens if needed to prevent 401s
-		if (await this.isTokenExpired()) {
+		// Block on refresh if token is expired to ensure valid state for callers
+		const storedTokens = await this.getStoredTokens();
+		if (storedTokens && Date.now() >= storedTokens.expiry_timestamp) {
 			try {
 				await this.refreshToken();
 			} catch (error) {
 				this.logger.warn("Token refresh failed (expired):", error);
 			}
-		} else {
-			this.refreshIfAlmostExpired().catch((error) => {
-				this.logger.warn("Background token refresh failed:", error);
-			});
 		}
+
+		// Schedule after blocking refresh to avoid concurrent attempts
+		this.setupTokenListener();
+		this.scheduleNextRefresh();
 	}
 
 	public clearDeployment(): void {
@@ -375,6 +444,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 			});
 			this.clearRefreshState();
 			this.deployment = deployment;
+			this.setupTokenListener();
 		}
 
 		const client = CoderApi.create(deployment.url, undefined, this.logger);
@@ -735,17 +805,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 		return timeUntilExpiry < TOKEN_REFRESH_THRESHOLD_MS;
 	}
 
-	/**
-	 * Check if token is expired.
-	 */
-	private async isTokenExpired(): Promise<boolean> {
-		const storedTokens = await this.getStoredTokens();
-		if (!storedTokens) {
-			return false;
-		}
-		return Date.now() >= storedTokens.expiry_timestamp;
-	}
-
 	public async revokeRefreshToken(): Promise<void> {
 		const storedTokens = await this.getStoredTokens();
 		if (!storedTokens?.refresh_token) {
@@ -868,10 +927,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Clears all in-memory state.
 	 */
 	public dispose(): void {
-		if (this.refreshTimer) {
-			clearTimeout(this.refreshTimer);
-			this.refreshTimer = undefined;
-		}
 		if (this.pendingAuthReject) {
 			this.pendingAuthReject(new Error("OAuth session manager disposed"));
 		}
