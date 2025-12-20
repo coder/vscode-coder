@@ -159,21 +159,18 @@ async function setupDeployment(
 
 	const safeHostname = toSafeHost(url);
 
-	const token: string | null = params.get("token");
-	if (token !== null) {
-		await secretsManager.setSessionAuth(safeHostname, { url, token });
-	}
-
+	const token: string | undefined = params.get("token") ?? undefined;
 	const result = await loginCoordinator.ensureLoggedIn({
 		safeHostname,
 		url,
+		token,
 	});
 
 	if (!result.success) {
 		throw new Error("Failed to login to deployment from URI");
 	}
 
-	await deploymentManager.setDeploymentIfValid({
+	await deploymentManager.setDeployment({
 		safeHostname,
 		url,
 		token: result.token,

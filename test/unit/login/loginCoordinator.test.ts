@@ -331,4 +331,142 @@ describe("LoginCoordinator", () => {
 			expect(result.success).toBe(false);
 		});
 	});
+
+	describe("token fallback order", () => {
+		it("uses provided token first when valid", async () => {
+			const { secretsManager, coordinator, mockSuccessfulAuth } =
+				createTestContext();
+			const user = mockSuccessfulAuth();
+
+			// Store a different token
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "stored-token",
+			});
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "provided-token",
+			});
+
+			expect(result).toEqual({ success: true, user, token: "provided-token" });
+		});
+
+		it("falls back to stored token when provided token is invalid", async () => {
+			const { mockAdapter, secretsManager, coordinator } = createTestContext();
+			const user = createMockUser();
+
+			mockAdapter
+				.mockRejectedValueOnce({
+					isAxiosError: true,
+					response: { status: 401 }, // Fail the provided token with 401
+					message: "Unauthorized",
+				})
+				.mockResolvedValueOnce({
+					data: user,
+					status: 200, // Succeed the stored token
+					headers: {},
+					config: {},
+				});
+
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "stored-token",
+			});
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "invalid-provided-token",
+			});
+
+			expect(result).toEqual({ success: true, user, token: "stored-token" });
+		});
+
+		it("prompts user when both provided and stored tokens are invalid", async () => {
+			const { mockAdapter, userInteraction, secretsManager, coordinator } =
+				createTestContext();
+			const user = createMockUser();
+
+			mockAdapter
+				.mockRejectedValueOnce({
+					isAxiosError: true,
+					response: { status: 401 }, // provided token
+					message: "Unauthorized",
+				})
+				.mockRejectedValueOnce({
+					isAxiosError: true,
+					response: { status: 401 }, // stored token
+					message: "Unauthorized",
+				})
+				.mockResolvedValueOnce({
+					data: user,
+					status: 200, // user-entered token
+					headers: {},
+					config: {},
+				});
+
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "stored-token",
+			});
+
+			userInteraction.setInputBoxValue("user-entered-token");
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "invalid-provided-token",
+			});
+
+			expect(result).toEqual({
+				success: true,
+				user,
+				token: "user-entered-token",
+			});
+			expect(vscode.window.showInputBox).toHaveBeenCalled();
+		});
+
+		it("skips stored token check when same as provided token", async () => {
+			const { mockAdapter, userInteraction, secretsManager, coordinator } =
+				createTestContext();
+			const user = createMockUser();
+
+			mockAdapter
+				.mockRejectedValueOnce({
+					isAxiosError: true,
+					response: { status: 401 }, // provided token
+					message: "Unauthorized",
+				})
+				.mockResolvedValueOnce({
+					data: user,
+					status: 200, // user-entered token
+					headers: {},
+					config: {},
+				});
+
+			// Store the SAME token as will be provided
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "same-token",
+			});
+
+			userInteraction.setInputBoxValue("user-entered-token");
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "same-token",
+			});
+
+			expect(result).toEqual({
+				success: true,
+				user,
+				token: "user-entered-token",
+			});
+			// Provided/stored token check only called once + user prompt
+			expect(mockAdapter).toHaveBeenCalledTimes(2);
+		});
+	});
 });

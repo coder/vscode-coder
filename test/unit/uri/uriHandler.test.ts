@@ -29,15 +29,25 @@ class MockCommands {
 }
 
 class MockDeploymentManager {
-	readonly setDeploymentIfValid = vi.fn().mockResolvedValue(true);
+	readonly setDeployment = vi.fn().mockResolvedValue(true);
 }
 
-class MockLoginCoordinator {
-	readonly ensureLoggedIn = vi.fn().mockResolvedValue({
-		success: true,
-		token: "test-token",
-		user: createMockUser(),
-	});
+function createMockLoginCoordinator(secretsManager: SecretsManager) {
+	return {
+		ensureLoggedIn: vi.fn().mockImplementation(async (options) => {
+			const token = options.token ?? "test-token";
+			// Simulate persistSessionAuth behavior
+			await secretsManager.setSessionAuth(options.safeHostname, {
+				url: options.url,
+				token,
+			});
+			return {
+				success: true,
+				token,
+				user: createMockUser(),
+			};
+		}),
+	};
 }
 
 function createMockUri(path: string, query: string): vscode.Uri {
@@ -54,8 +64,8 @@ function createTestContext() {
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
-	const loginCoordinator = new MockLoginCoordinator();
 	const secretsManager = new SecretsManager(secretStorage, memento, logger);
+	const loginCoordinator = createMockLoginCoordinator(secretsManager);
 	const mementoManager = new MementoManager(memento);
 	const commands = new MockCommands();
 	const deploymentManager = new MockDeploymentManager();
@@ -119,7 +129,7 @@ describe("uriHandler", () => {
 				),
 			);
 
-			expect(deploymentManager.setDeploymentIfValid).toHaveBeenCalled();
+			expect(deploymentManager.setDeployment).toHaveBeenCalled();
 			expect(commands.open).toHaveBeenCalledWith("o", "w", "a", "/f", true);
 		});
 
@@ -152,7 +162,7 @@ describe("uriHandler", () => {
 				),
 			);
 
-			expect(deploymentManager.setDeploymentIfValid).toHaveBeenCalled();
+			expect(deploymentManager.setDeployment).toHaveBeenCalled();
 			expect(commands.openDevContainer).toHaveBeenCalledWith(
 				"o",
 				"w",
