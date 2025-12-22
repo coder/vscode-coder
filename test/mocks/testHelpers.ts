@@ -1,3 +1,4 @@
+import { AxiosError, AxiosHeaders } from "axios";
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
@@ -6,6 +7,7 @@ import type { IncomingMessage } from "node:http";
 
 import type { CoderApi } from "@/api/coderApi";
 import type { Logger } from "@/logging/logger";
+import type { TokenResponse } from "@/oauth/types";
 
 /**
  * Mock configuration provider that integrates with the vscode workspace configuration mock.
@@ -568,4 +570,45 @@ export function createMockUser(overrides: Partial<User> = {}): User {
 		theme_preference: "",
 		...overrides,
 	};
+}
+
+/**
+ * Creates a mock OAuth token response for testing.
+ */
+export function createMockTokenResponse(
+	overrides: Partial<TokenResponse> = {},
+): TokenResponse {
+	return {
+		access_token: "test-access-token",
+		refresh_token: "test-refresh-token",
+		token_type: "Bearer",
+		expires_in: 3600,
+		scope: "workspace:read workspace:update",
+		...overrides,
+	};
+}
+
+/**
+ * Creates an AxiosError for testing.
+ */
+export function createAxiosError(
+	status: number,
+	message: string,
+	config: Record<string, unknown> = {},
+): AxiosError {
+	const error = new AxiosError(
+		message,
+		"ERR_BAD_REQUEST",
+		undefined,
+		undefined,
+		{
+			status,
+			statusText: message,
+			headers: {},
+			config: { headers: new AxiosHeaders() },
+			data: {},
+		},
+	);
+	error.config = { headers: new AxiosHeaders(), ...config };
+	return error;
 }
