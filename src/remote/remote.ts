@@ -19,7 +19,6 @@ import {
 } from "../api/agentMetadataHelper";
 import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
-import { OAuthInterceptor } from "../api/oauthInterceptor";
 import { needToken } from "../api/utils";
 import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "../cliConfig";
 import { type Commands } from "../commands";
@@ -36,6 +35,7 @@ import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
+import { OAuthInterceptor } from "../oauth/axiosInterceptor";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	AuthorityPrefix,
@@ -122,7 +122,6 @@ export class Remote {
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrlRaw, safeHostname: parts.safeHostname },
 				this.serviceContainer,
-				this.extensionContext.extension.id,
 			);
 			disposables.push(remoteOAuthManager);
 
@@ -135,7 +134,6 @@ export class Remote {
 					url,
 					message,
 					detailPrefix: `You must log in to access ${workspaceName}.`,
-					oauthSessionManager: remoteOAuthManager,
 				});
 
 				// Dispose before retrying since setup will create new disposables
