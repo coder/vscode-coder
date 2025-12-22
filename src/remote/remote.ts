@@ -42,7 +42,12 @@ import {
 } from "../util";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
-import { SSHConfig, type SSHValues, mergeSSHConfigValues } from "./sshConfig";
+import {
+	SSHConfig,
+	type SSHValues,
+	mergeSshConfigValues,
+	parseSshConfig,
+} from "./sshConfig";
 import { SshProcessMonitor } from "./sshProcess";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
@@ -754,29 +759,11 @@ export class Remote {
 
 		// deploymentConfig is now set from the remote coderd deployment.
 		// Now override with the user's config.
-		const userConfigSSH =
+		const userConfigSsh =
 			vscode.workspace.getConfiguration("coder").get<string[]>("sshConfig") ||
 			[];
-		// Parse the user's config into a Record<string, string>.
-		const userConfig = userConfigSSH.reduce(
-			(acc, line) => {
-				let i = line.indexOf("=");
-				if (i === -1) {
-					i = line.indexOf(" ");
-					if (i === -1) {
-						// This line is malformed. The setting is incorrect, and does not match
-						// the pattern regex in the settings schema.
-						return acc;
-					}
-				}
-				const key = line.slice(0, i);
-				const value = line.slice(i + 1);
-				acc[key] = value;
-				return acc;
-			},
-			{} as Record<string, string>,
-		);
-		const sshConfigOverrides = mergeSSHConfigValues(
+		const userConfig = parseSshConfig(userConfigSsh);
+		const sshConfigOverrides = mergeSshConfigValues(
 			deploymentSSHConfig,
 			userConfig,
 		);
@@ -819,7 +806,7 @@ export class Remote {
 		if (sshSupportsSetEnv()) {
 			// This allows for tracking the number of extension
 			// users connected to workspaces!
-			sshValues.SetEnv = " CODER_SSH_SESSION_TYPE=vscode";
+			sshValues.SetEnv = "CODER_SSH_SESSION_TYPE=vscode";
 		}
 
 		await sshConfig.update(safeHostname, sshValues, sshConfigOverrides);

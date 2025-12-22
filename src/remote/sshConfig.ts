@@ -36,10 +36,48 @@ const defaultFileSystem: FileSystem = {
 	writeFile,
 };
 
+/**
+ * Parse an array of SSH config lines into a Record.
+ * Handles both "Key value" and "Key=value" formats.
+ * Accumulates SetEnv values since SSH allows multiple environment variables.
+ */
+export function parseSshConfig(lines: string[]): Record<string, string> {
+	return lines.reduce(
+		(acc, line) => {
+			// Match key pattern (same as VS Code settings: ^[a-zA-Z0-9-]+)
+			const keyMatch = line.match(/^[a-zA-Z0-9-]+/);
+			if (!keyMatch) {
+				return acc; // Malformed line
+			}
+
+			const key = keyMatch[0];
+			const separator = line.at(key.length);
+			if (separator !== "=" && separator !== " ") {
+				return acc; // Malformed line
+			}
+
+			const value = line.slice(key.length + 1);
+
+			// Accumulate SetEnv values since there can be multiple.
+			if (key.toLowerCase() === "setenv") {
+				// Ignore empty SetEnv values
+				if (value !== "") {
+					const existing = acc["SetEnv"];
+					acc["SetEnv"] = existing ? `${existing} ${value}` : value;
+				}
+			} else {
+				acc[key] = value;
+			}
+			return acc;
+		},
+		{} as Record<string, string>,
+	);
+}
+
 // mergeSSHConfigValues will take a given ssh config and merge it with the overrides
 // provided. The merge handles key case insensitivity, so casing in the "key" does
 // not matter.
-export function mergeSSHConfigValues(
+export function mergeSshConfigValues(
 	config: Record<string, string>,
 	overrides: Record<string, string>,
 ): Record<string, string> {
@@ -62,11 +100,21 @@ export function mergeSSHConfigValues(
 			const value = overrides[correctCaseKey];
 			delete caseInsensitiveOverrides[lower];
 
-			// If the value is empty, do not add the key. It is being removed.
-			if (value === "") {
+			// Special handling for SetEnv - concatenate values instead of replacing.
+			if (lower === "setenv") {
+				if (value === "") {
+					merged["SetEnv"] = config[key];
+				} else {
+					merged["SetEnv"] = `${config[key]} ${value}`;
+				}
 				return;
 			}
-			merged[correctCaseKey] = value;
+
+			// If the value is empty, do not add the key. It is being removed.
+			if (value !== "") {
+				merged[correctCaseKey] = value;
+			}
+
 			return;
 		}
 		// If no override, take the original value.
@@ -78,7 +126,14 @@ export function mergeSSHConfigValues(
 	// Add remaining overrides.
 	Object.keys(caseInsensitiveOverrides).forEach((lower) => {
 		const correctCaseKey = caseInsensitiveOverrides[lower];
-		merged[correctCaseKey] = overrides[correctCaseKey];
+		const value = overrides[correctCaseKey];
+
+		// Special handling for SetEnv - concatenate if already exists
+		if (lower === "setenv" && merged["SetEnv"]) {
+			merged["SetEnv"] = `${merged["SetEnv"]} ${value}`;
+		} else {
+			merged[correctCaseKey] = value;
+		}
 	});
 
 	return merged;
@@ -203,7 +258,7 @@ export class SSHConfig {
 		const lines = [this.startBlockComment(safeHostname), `Host ${Host}`];
 
 		// configValues is the merged values of the defaults and the overrides.
-		const configValues = mergeSSHConfigValues(otherValues, overrides || {});
+		const configValues = mergeSshConfigValues(otherValues, overrides || {});
 
 		// keys is the sorted keys of the merged values.
 		const keys = (

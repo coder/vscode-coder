@@ -1,6 +1,10 @@
-import { it, afterEach, vi, expect } from "vitest";
+import { it, afterEach, vi, expect, describe } from "vitest";
 
-import { SSHConfig } from "@/remote/sshConfig";
+import {
+	SSHConfig,
+	parseSshConfig,
+	mergeSshConfigValues,
+} from "@/remote/sshConfig";
 
 // This is not the usual path to ~/.ssh/config, but
 // setting it to a different path makes it easier to test
@@ -711,4 +715,141 @@ it("fails if we are unable to rename the temporary file", async () => {
 			LogLevel: "ERROR",
 		}),
 	).rejects.toThrow(/Failed to rename temporary SSH config file.*EACCES/);
+});
+
+describe("parseSshConfig", () => {
+	type ParseTest = {
+		name: string;
+		input: string[];
+		expected: Record<string, string>;
+	};
+
+	it.each<ParseTest>([
+		{
+			name: "space separator",
+			input: ["Key value"],
+			expected: { Key: "value" },
+		},
+		{
+			name: "equals separator",
+			input: ["Key=value"],
+			expected: { Key: "value" },
+		},
+		{
+			name: "SetEnv with space",
+			input: ["SetEnv MY_VAR=value OTHER_VAR=othervalue"],
+			expected: { SetEnv: "MY_VAR=value OTHER_VAR=othervalue" },
+		},
+		{
+			name: "SetEnv with equals",
+			input: ["SetEnv=MY_VAR=value OTHER_VAR=othervalue"],
+			expected: { SetEnv: "MY_VAR=value OTHER_VAR=othervalue" },
+		},
+		{
+			name: "accumulates SetEnv entries",
+			input: ["SetEnv A=1", "setenv B=2 C=3"],
+			expected: { SetEnv: "A=1 B=2 C=3" },
+		},
+		{
+			name: "skips malformed lines",
+			input: ["malformed", "# comment", "key=value", "  indented"],
+			expected: { key: "value" },
+		},
+		{
+			name: "value with spaces",
+			input: ["ProxyCommand ssh -W %h:%p proxy"],
+			expected: { ProxyCommand: "ssh -W %h:%p proxy" },
+		},
+		{
+			name: "quoted value with spaces",
+			input: ['SetEnv key="Hello world"'],
+			expected: { SetEnv: 'key="Hello world"' },
+		},
+		{
+			name: "multiple keys",
+			input: ["ConnectTimeout 10", "LogLevel=DEBUG", "SetEnv VAR=1"],
+			expected: { ConnectTimeout: "10", LogLevel: "DEBUG", SetEnv: "VAR=1" },
+		},
+		{
+			name: "ignores empty SetEnv",
+			input: ["SetEnv=", "SetEnv "],
+			expected: {},
+		},
+	])("$name", ({ input, expected }) => {
+		expect(parseSshConfig(input)).toEqual(expected);
+	});
+});
+
+describe("mergeSshConfigValues", () => {
+	type MergeTest = {
+		name: string;
+		config: Record<string, string>;
+		overrides: Record<string, string>;
+		expected: Record<string, string>;
+	};
+
+	it.each<MergeTest>([
+		{
+			name: "overrides case-insensitively",
+			config: { LogLevel: "ERROR" },
+			overrides: { loglevel: "DEBUG" },
+			expected: { loglevel: "DEBUG" },
+		},
+		{
+			name: "removes keys with empty string",
+			config: { LogLevel: "ERROR", Foo: "bar" },
+			overrides: { LogLevel: "" },
+			expected: { Foo: "bar" },
+		},
+		{
+			name: "adds new keys from overrides",
+			config: { LogLevel: "ERROR" },
+			overrides: { NewKey: "value" },
+			expected: { LogLevel: "ERROR", NewKey: "value" },
+		},
+		{
+			name: "preserves keys not in overrides",
+			config: { A: "1", B: "2" },
+			overrides: { B: "3" },
+			expected: { A: "1", B: "3" },
+		},
+		{
+			name: "concatenates SetEnv values",
+			config: { SetEnv: "A=1" },
+			overrides: { SetEnv: "B=2" },
+			expected: { SetEnv: "A=1 B=2" },
+		},
+		{
+			name: "concatenates SetEnv case-insensitively",
+			config: { SetEnv: "A=1" },
+			overrides: { setenv: "B=2" },
+			expected: { SetEnv: "A=1 B=2" },
+		},
+		{
+			name: "SetEnv only in override",
+			config: {},
+			overrides: { SetEnv: "B=2" },
+			expected: { SetEnv: "B=2" },
+		},
+		{
+			name: "SetEnv only in config",
+			config: { SetEnv: "A=1" },
+			overrides: {},
+			expected: { SetEnv: "A=1" },
+		},
+		{
+			name: "SetEnv with other values",
+			config: { SetEnv: "A=1", LogLevel: "ERROR" },
+			overrides: { SetEnv: "B=2", Timeout: "10" },
+			expected: { SetEnv: "A=1 B=2", LogLevel: "ERROR", Timeout: "10" },
+		},
+		{
+			name: "ignores empty SetEnv override",
+			config: { SetEnv: "A=1 B=2" },
+			overrides: { SetEnv: "" },
+			expected: { SetEnv: "A=1 B=2" },
+		},
+	])("$name", ({ config, overrides, expected }) => {
+		expect(mergeSshConfigValues(config, overrides)).toEqual(expected);
+	});
 });

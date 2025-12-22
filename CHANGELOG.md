@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Fixed `SetEnv` SSH config parsing and accumulation with user-defined values.
+
 ## [v1.11.6](https://github.com/coder/vscode-coder/releases/tag/v1.11.6) 2025-12-15
 
 ### Added

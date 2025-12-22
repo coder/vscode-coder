@@ -36,7 +36,7 @@
 			"title": "Coder",
 			"properties": {
 				"coder.sshConfig": {
-					"markdownDescription": "These values will be included in the ssh config file. Eg: `'ConnectTimeout=10'` will set the timeout to 10 seconds. Any values included here will override anything provided by default or by the deployment. To unset a value that is written by default, set the value to the empty string, Eg: `'ConnectTimeout='` will unset it.",
+					"markdownDescription": "These values will be included in the ssh config file. Eg: `'ConnectTimeout=10'` will set the timeout to 10 seconds. Any values included here will override anything provided by default or by the deployment. To unset a value that is written by default, set the value to the empty string, Eg: `'ConnectTimeout='` will unset it.\n\nNote: `SetEnv` values are accumulated across multiple entries and cannot be unset.",
 					"type": "array",
 					"items": {
 						"title": "SSH Config Value",
