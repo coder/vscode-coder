@@ -1,0 +1,112 @@
+import { vi } from "vitest";
+
+import { SecretsManager } from "@/core/secretsManager";
+import { getHeaders } from "@/headers";
+
+import {
+	createMockLogger,
+	getAxiosMockAdapter,
+	InMemoryMemento,
+	InMemorySecretStorage,
+	MockConfigurationProvider,
+	setupAxiosMockRoutes,
+} from "../../mocks/testHelpers";
+
+import type { Deployment } from "@/deployment/types";
+import type {
+	ClientRegistrationResponse,
+	OAuthServerMetadata,
+	TokenResponse,
+} from "@/oauth/types";
+
+export const TEST_URL = "https://coder.example.com";
+export const TEST_HOSTNAME = "coder.example.com";
+
+export function createMockOAuthMetadata(
+	issuer: string,
+	overrides: Partial<OAuthServerMetadata> = {},
+): OAuthServerMetadata {
+	return {
+		issuer,
+		authorization_endpoint: `${issuer}/oauth2/authorize`,
+		token_endpoint: `${issuer}/oauth2/token`,
+		revocation_endpoint: `${issuer}/oauth2/revoke`,
+		registration_endpoint: `${issuer}/oauth2/register`,
+		scopes_supported: [
+			"workspace:read",
+			"workspace:update",
+			"workspace:start",
+			"workspace:ssh",
+			"workspace:application_connect",
+			"template:read",
+			"user:read_personal",
+		],
+		response_types_supported: ["code"],
+		grant_types_supported: ["authorization_code", "refresh_token"],
+		code_challenge_methods_supported: ["S256"],
+		...overrides,
+	};
+}
+
+export function createMockClientRegistration(
+	overrides: Partial<ClientRegistrationResponse> = {},
+): ClientRegistrationResponse {
+	return {
+		client_id: "test-client-id",
+		client_secret: "test-client-secret",
+		redirect_uris: ["vscode://coder.coder-remote/oauth/callback"],
+		token_endpoint_auth_method: "client_secret_post",
+		grant_types: ["authorization_code", "refresh_token"],
+		response_types: ["code"],
+		...overrides,
+	};
+}
+
+/**
+ * Creates a mock OAuth token response for testing.
+ */
+export function createMockTokenResponse(
+	overrides: Partial<TokenResponse> = {},
+): TokenResponse {
+	return {
+		access_token: "test-access-token",
+		refresh_token: "test-refresh-token",
+		token_type: "Bearer",
+		expires_in: 3600,
+		scope: "workspace:read workspace:update",
+		...overrides,
+	};
+}
+
+export function createTestDeployment(): Deployment {
+	return {
+		url: TEST_URL,
+		safeHostname: TEST_HOSTNAME,
+	};
+}
+
+export function createBaseTestContext() {
+	const mockAdapter = getAxiosMockAdapter();
+	vi.mocked(getHeaders).mockResolvedValue({});
+
+	// Constructor sets up vscode.workspace mock
+	new MockConfigurationProvider();
+
+	const secretStorage = new InMemorySecretStorage();
+	const memento = new InMemoryMemento();
+	const logger = createMockLogger();
+	const secretsManager = new SecretsManager(secretStorage, memento, logger);
+
+	/** Sets up default OAuth routes - use explicit routes when asserting on values */
+	const setupOAuthRoutes = () => {
+		setupAxiosMockRoutes(mockAdapter, {
+			"/.well-known/oauth-authorization-server":
+				createMockOAuthMetadata(TEST_URL),
+			"/oauth2/register": createMockClientRegistration(),
+			"/oauth2/token": createMockTokenResponse(),
+			"/api/v2/users/me": { username: "test-user" },
+		});
+	};
+
+	return { mockAdapter, secretsManager, logger, setupOAuthRoutes };
+}

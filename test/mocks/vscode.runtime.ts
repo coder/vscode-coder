@@ -134,6 +134,7 @@ export const env = {
 	sessionId: "test-session-id",
 	remoteName: undefined as string | undefined,
 	shell: "/bin/bash",
+	uriScheme: "vscode",
 	openExternal: vi.fn(),
 };
 

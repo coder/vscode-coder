@@ -48,6 +48,7 @@ export class ServiceContainer implements vscode.Disposable {
 			this.mementoManager,
 			this.vscodeProposed,
 			this.logger,
+			context.extension.id,
 		);
 	}
 
@@ -89,5 +90,6 @@ export class ServiceContainer implements vscode.Disposable {
 	dispose(): void {
 		this.contextManager.dispose();
 		this.logger.dispose();
+		this.loginCoordinator.dispose();
 	}
 }

@@ -5,24 +5,24 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { CertificateError } from "../error/certificateError";
+import { OAuthAuthorizer } from "../oauth/authorizer";
+import { buildOAuthTokenData } from "../oauth/utils";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { MementoManager } from "../core/mementoManager";
-import type { SecretsManager } from "../core/secretsManager";
+import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type { Logger } from "../logging/logger";
-import type { OAuthSessionManager } from "../oauth/sessionManager";
 
 type LoginResult =
 	| { success: false }
-	| { success: true; user: User; token: string };
+	| { success: true; user: User; token: string; oauth?: OAuthTokenData };
 
 export interface LoginOptions {
 	safeHostname: string;
 	url: string | undefined;
-	oauthSessionManager: OAuthSessionManager;
 	autoLogin?: boolean;
 	token?: string;
 }
@@ -30,15 +30,23 @@ export interface LoginOptions {
 /**
  * Coordinates login prompts across windows and prevents duplicate dialogs.
  */
-export class LoginCoordinator {
+export class LoginCoordinator implements vscode.Disposable {
 	private loginQueue: Promise<unknown> = Promise.resolve();
+	private readonly oauthAuthorizer: OAuthAuthorizer;
 
 	constructor(
 		private readonly secretsManager: SecretsManager,
 		private readonly mementoManager: MementoManager,
 		private readonly vscodeProposed: typeof vscode,
 		private readonly logger: Logger,
-	) {}
+		extensionId: string,
+	) {
+		this.oauthAuthorizer = new OAuthAuthorizer(
+			secretsManager,
+			logger,
+			extensionId,
+		);
+	}
 
 	/**
 	 * Direct login - for user-initiated login via commands.
@@ -47,12 +55,11 @@ export class LoginCoordinator {
 	public async ensureLoggedIn(
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
-		const { safeHostname, url, oauthSessionManager } = options;
+		const { safeHostname, url } = options;
 		return this.executeWithGuard(async () => {
 			const result = await this.attemptLogin(
 				{ safeHostname, url },
 				options.autoLogin ?? false,
-				oauthSessionManager,
 				options.token,
 			);
 
@@ -68,8 +75,7 @@ export class LoginCoordinator {
 	public async ensureLoggedInWithDialog(
 		options: LoginOptions & { message?: string; detailPrefix?: string },
 	): Promise<LoginResult> {
-		const { safeHostname, url, detailPrefix, message, oauthSessionManager } =
-			options;
+		const { safeHostname, url, detailPrefix, message } = options;
 		return this.executeWithGuard(async () => {
 			// Show dialog promise
 			const dialogPromise = this.vscodeProposed.window
@@ -101,7 +107,6 @@ export class LoginCoordinator {
 						const result = await this.attemptLogin(
 							{ url: newUrl, safeHostname },
 							false,
-							oauthSessionManager,
 							options.token,
 						);
 
@@ -137,6 +142,7 @@ export class LoginCoordinator {
 			await this.secretsManager.setSessionAuth(safeHostname, {
 				url,
 				token: result.token,
+				oauth: result.oauth, // undefined for non-OAuth logins
 			});
 			await this.mementoManager.addToUrlHistory(url);
 		}
@@ -197,7 +203,6 @@ export class LoginCoordinator {
 	private async attemptLogin(
 		deployment: Deployment,
 		isAutoLogin: boolean,
-		oauthSessionManager: OAuthSessionManager,
 		providedToken?: string,
 	): Promise<LoginResult> {
 		const client = CoderApi.create(deployment.url, "", this.logger);
@@ -234,15 +239,9 @@ export class LoginCoordinator {
 		const authMethod = await maybeAskAuthMethod(client);
 		switch (authMethod) {
 			case "oauth":
-				return this.loginWithOAuth(oauthSessionManager, deployment);
-			case "legacy": {
-				const result = await this.loginWithToken(client);
-				if (result.success) {
-					// Clear OAuth state since user explicitly chose token auth
-					await oauthSessionManager.clearOAuthState();
-				}
-				return result;
-			}
+				return this.loginWithOAuth(deployment);
+			case "legacy":
+				return this.loginWithToken(client);
 			case undefined:
 				return { success: false }; // User aborted
 		}
@@ -362,27 +361,29 @@ export class LoginCoordinator {
 	/**
 	 * OAuth authentication flow.
 	 */
-	private async loginWithOAuth(
-		oauthSessionManager: OAuthSessionManager,
-		deployment: Deployment,
-	): Promise<LoginResult> {
+	private async loginWithOAuth(deployment: Deployment): Promise<LoginResult> {
 		try {
 			this.logger.info("Starting OAuth authentication");
 
-			const { token, user } = await vscode.window.withProgress(
+			const { tokenResponse, user } = await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
 					title: "Authenticating",
 					cancellable: true,
 				},
-				async (progress, token) =>
-					await oauthSessionManager.login(deployment, progress, token),
+				async (progress, cancellationToken) =>
+					await this.oauthAuthorizer.login(
+						deployment,
+						progress,
+						cancellationToken,
+					),
 			);
 
 			return {
 				success: true,
-				token,
+				token: tokenResponse.access_token,
 				user,
+				oauth: buildOAuthTokenData(tokenResponse),
 			};
 		} catch (error) {
 			const title = "OAuth authentication failed";
@@ -396,5 +397,9 @@ export class LoginCoordinator {
 			}
 			return { success: false };
 		}
+	}
+
+	public dispose(): void {
+		this.oauthAuthorizer.dispose();
 	}
 }

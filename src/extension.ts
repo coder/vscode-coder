@@ -8,13 +8,13 @@ import * as vscode from "vscode";
 
 import { errToStr } from "./api/api-helper";
 import { CoderApi } from "./api/coderApi";
-import { OAuthInterceptor } from "./api/oauthInterceptor";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { type SecretsManager } from "./core/secretsManager";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { getErrorDetail, toError } from "./error/errorUtils";
+import { OAuthInterceptor } from "./oauth/axiosInterceptor";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
@@ -74,7 +74,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const oauthSessionManager = OAuthSessionManager.create(
 		deployment,
 		serviceContainer,
-		ctx.extension.id,
 	);
 	ctx.subscriptions.push(oauthSessionManager);
 
@@ -153,19 +152,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(
-		serviceContainer,
-		client,
-		oauthSessionManager,
-		deploymentManager,
-	);
+	const commands = new Commands(serviceContainer, client, deploymentManager);
 
 	ctx.subscriptions.push(
 		registerUriHandler(
 			serviceContainer,
 			deploymentManager,
 			commands,
-			oauthSessionManager,
 			vscodeProposed,
 		),
 		vscode.commands.registerCommand(

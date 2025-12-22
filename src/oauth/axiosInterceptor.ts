@@ -2,12 +2,12 @@ import { type AxiosError, isAxiosError } from "axios";
 
 import type * as vscode from "vscode";
 
+import type { CoderApi } from "../api/coderApi";
 import type { SecretsManager } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
 import type { RequestConfigWithMeta } from "../logging/types";
-import type { OAuthSessionManager } from "../oauth/sessionManager";
 
-import type { CoderApi } from "./coderApi";
+import type { OAuthSessionManager } from "./sessionManager";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
 

@@ -4,7 +4,6 @@ import { errToStr } from "../api/api-helper";
 import { type Commands } from "../commands";
 import { type ServiceContainer } from "../core/container";
 import { type DeploymentManager } from "../deployment/deploymentManager";
-import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { maybeAskUrl } from "../promptUtils";
 import { toSafeHost } from "../util";
 
@@ -12,7 +11,6 @@ interface UriRouteContext {
 	params: URLSearchParams;
 	serviceContainer: ServiceContainer;
 	deploymentManager: DeploymentManager;
-	extensionOAuthSessionManager: OAuthSessionManager;
 	commands: Commands;
 }
 
@@ -31,7 +29,6 @@ export function registerUriHandler(
 	serviceContainer: ServiceContainer,
 	deploymentManager: DeploymentManager,
 	commands: Commands,
-	oauthSessionManager: OAuthSessionManager,
 	vscodeProposed: typeof vscode,
 ): vscode.Disposable {
 	const output = serviceContainer.getLogger();
@@ -39,13 +36,7 @@ export function registerUriHandler(
 	return vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
 			try {
-				await routeUri(
-					uri,
-					serviceContainer,
-					deploymentManager,
-					commands,
-					oauthSessionManager,
-				);
+				await routeUri(uri, serviceContainer, deploymentManager, commands);
 			} catch (error) {
 				const message = errToStr(error, "No error message was provided");
 				output.warn(`Failed to handle URI ${uri.toString()}: ${message}`);
@@ -64,7 +55,6 @@ async function routeUri(
 	serviceContainer: ServiceContainer,
 	deploymentManager: DeploymentManager,
 	commands: Commands,
-	oauthSessionManager: OAuthSessionManager,
 ): Promise<void> {
 	const handler = routes[uri.path];
 	if (!handler) {
@@ -76,7 +66,6 @@ async function routeUri(
 		serviceContainer,
 		deploymentManager,
 		commands,
-		extensionOAuthSessionManager: oauthSessionManager,
 	});
 }
 
@@ -89,13 +78,7 @@ function getRequiredParam(params: URLSearchParams, name: string): string {
 }
 
 async function handleOpen(ctx: UriRouteContext): Promise<void> {
-	const {
-		params,
-		serviceContainer,
-		deploymentManager,
-		commands,
-		extensionOAuthSessionManager,
-	} = ctx;
+	const { params, serviceContainer, deploymentManager, commands } = ctx;
 
 	const owner = getRequiredParam(params, "owner");
 	const workspace = getRequiredParam(params, "workspace");
@@ -105,12 +88,7 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		params.has("openRecent") &&
 		(!params.get("openRecent") || params.get("openRecent") === "true");
 
-	await setupDeployment(
-		params,
-		serviceContainer,
-		deploymentManager,
-		extensionOAuthSessionManager,
-	);
+	await setupDeployment(params, serviceContainer, deploymentManager);
 
 	await commands.open(
 		owner,
@@ -122,13 +100,7 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 }
 
 async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {
-	const {
-		params,
-		serviceContainer,
-		deploymentManager,
-		commands,
-		extensionOAuthSessionManager,
-	} = ctx;
+	const { params, serviceContainer, deploymentManager, commands } = ctx;
 
 	const owner = getRequiredParam(params, "owner");
 	const workspace = getRequiredParam(params, "workspace");
@@ -144,12 +116,7 @@ async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {
 		);
 	}
 
-	await setupDeployment(
-		params,
-		serviceContainer,
-		deploymentManager,
-		extensionOAuthSessionManager,
-	);
+	await setupDeployment(params, serviceContainer, deploymentManager);
 
 	await commands.openDevContainer(
 		owner,
@@ -170,7 +137,6 @@ async function setupDeployment(
 	params: URLSearchParams,
 	serviceContainer: ServiceContainer,
 	deploymentManager: DeploymentManager,
-	oauthSessionManager: OAuthSessionManager,
 ): Promise<void> {
 	const secretsManager = serviceContainer.getSecretsManager();
 	const mementoManager = serviceContainer.getMementoManager();
@@ -199,7 +165,6 @@ async function setupDeployment(
 		safeHostname,
 		url,
 		token,
-		oauthSessionManager,
 	});
 
 	if (!result.success) {
