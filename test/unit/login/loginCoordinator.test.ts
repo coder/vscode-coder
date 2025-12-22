@@ -6,14 +6,17 @@ import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { LoginCoordinator } from "@/login/loginCoordinator";
+import { maybeAskAuthMethod } from "@/promptUtils";
 
 import {
+	createAxiosError,
 	createMockLogger,
 	createMockUser,
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockConfigurationProvider,
 	MockOAuthSessionManager,
+	MockProgressReporter,
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
 
@@ -101,7 +104,6 @@ function createTestContext() {
 	mockAdapter.mockImplementation(mockAxiosAdapterImpl);
 	vi.mocked(getHeaders).mockResolvedValue({});
 
-	// MockConfigurationProvider sets sensible defaults (httpClientLogLevel, tlsCertFile, tlsKeyFile)
 	const mockConfig = new MockConfigurationProvider();
 	// MockUserInteraction sets up vscode.window dialogs and input boxes
 	const userInteraction = new MockUserInteraction();
@@ -137,18 +139,13 @@ function createTestContext() {
 	};
 
 	const mockAuthFailure = (message = "Unauthorized") => {
-		mockAdapter.mockRejectedValue({
-			response: { status: 401, data: { message } },
-			message,
-		});
-		mockGetAuthenticatedUser.mockRejectedValue({
-			response: { status: 401, data: { message } },
-			message,
-		});
+		mockAdapter.mockRejectedValue(createAxiosError(401, message));
+		mockGetAuthenticatedUser.mockRejectedValue(createAxiosError(401, message));
 	};
 
 	return {
 		mockAdapter,
+		mockGetAuthenticatedUser,
 		mockConfig,
 		userInteraction,
 		secretsManager,
@@ -189,8 +186,7 @@ describe("LoginCoordinator", () => {
 			expect(auth?.token).toBe("stored-token");
 		});
 
-		// TODO: This test needs the CoderApi mock to work through the validateInput callback
-		it.skip("prompts for token when no stored auth exists", async () => {
+		it("prompts for token when no stored auth exists", async () => {
 			const {
 				userInteraction,
 				secretsManager,
@@ -201,6 +197,7 @@ describe("LoginCoordinator", () => {
 			const user = mockSuccessfulAuth();
 
 			// User enters a new token in the input box
+			vi.mocked(maybeAskAuthMethod).mockResolvedValue("legacy");
 			userInteraction.setInputBoxValue("new-token");
 
 			const result = await coordinator.ensureLoggedIn({
@@ -237,8 +234,7 @@ describe("LoginCoordinator", () => {
 	});
 
 	describe("same-window guard", () => {
-		// TODO: This test needs the CoderApi mock to work through the validateInput callback
-		it.skip("prevents duplicate login calls for same hostname", async () => {
+		it("prevents duplicate login calls for same hostname", async () => {
 			const {
 				userInteraction,
 				coordinator,
@@ -248,6 +244,7 @@ describe("LoginCoordinator", () => {
 			mockSuccessfulAuth();
 
 			// User enters a token in the input box
+			vi.mocked(maybeAskAuthMethod).mockResolvedValue("legacy");
 			userInteraction.setInputBoxValue("new-token");
 
 			// Start first login
@@ -385,8 +382,12 @@ describe("LoginCoordinator", () => {
 
 	describe("token fallback order", () => {
 		it("uses provided token first when valid", async () => {
-			const { secretsManager, coordinator, mockSuccessfulAuth } =
-				createTestContext();
+			const {
+				secretsManager,
+				coordinator,
+				mockSuccessfulAuth,
+				oauthSessionManager,
+			} = createTestContext();
 			const user = mockSuccessfulAuth();
 
 			// Store a different token
@@ -399,13 +400,15 @@ describe("LoginCoordinator", () => {
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "provided-token",
+				oauthSessionManager,
 			});
 
 			expect(result).toEqual({ success: true, user, token: "provided-token" });
 		});
 
 		it("falls back to stored token when provided token is invalid", async () => {
-			const { mockAdapter, secretsManager, coordinator } = createTestContext();
+			const { mockAdapter, secretsManager, coordinator, oauthSessionManager } =
+				createTestContext();
 			const user = createMockUser();
 
 			mockAdapter
@@ -430,14 +433,20 @@ describe("LoginCoordinator", () => {
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "invalid-provided-token",
+				oauthSessionManager,
 			});
 
 			expect(result).toEqual({ success: true, user, token: "stored-token" });
 		});
 
 		it("prompts user when both provided and stored tokens are invalid", async () => {
-			const { mockAdapter, userInteraction, secretsManager, coordinator } =
-				createTestContext();
+			const {
+				mockAdapter,
+				userInteraction,
+				secretsManager,
+				coordinator,
+				oauthSessionManager,
+			} = createTestContext();
 			const user = createMockUser();
 
 			mockAdapter
@@ -469,6 +478,7 @@ describe("LoginCoordinator", () => {
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "invalid-provided-token",
+				oauthSessionManager,
 			});
 
 			expect(result).toEqual({
@@ -480,8 +490,13 @@ describe("LoginCoordinator", () => {
 		});
 
 		it("skips stored token check when same as provided token", async () => {
-			const { mockAdapter, userInteraction, secretsManager, coordinator } =
-				createTestContext();
+			const {
+				mockAdapter,
+				userInteraction,
+				secretsManager,
+				coordinator,
+				oauthSessionManager,
+			} = createTestContext();
 			const user = createMockUser();
 
 			mockAdapter
@@ -509,6 +524,7 @@ describe("LoginCoordinator", () => {
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "same-token",
+				oauthSessionManager,
 			});
 
 			expect(result).toEqual({
@@ -518,6 +534,107 @@ describe("LoginCoordinator", () => {
 			});
 			// Provided/stored token check only called once + user prompt
 			expect(mockAdapter).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	describe("OAuth authentication", () => {
+		it("calls oauthSessionManager.login when OAuth method selected", async () => {
+			const { coordinator, mockAuthFailure } = createTestContext();
+
+			const oauthSessionManager = new MockOAuthSessionManager();
+			const user = createMockUser();
+			oauthSessionManager.login.mockResolvedValue({
+				token: "oauth-token",
+				user,
+			});
+
+			// Ensure no stored token - will prompt for auth method
+			mockAuthFailure();
+
+			// Select OAuth method
+			vi.mocked(maybeAskAuthMethod).mockResolvedValue("oauth");
+
+			// Setup progress reporter mock
+			const _progress = new MockProgressReporter();
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				oauthSessionManager:
+					oauthSessionManager as unknown as OAuthSessionManager,
+			});
+
+			expect(result.success).toBe(true);
+			if (result.success) {
+				expect(result.token).toBe("oauth-token");
+				expect(result.user).toEqual(user);
+			}
+		});
+
+		it("shows error message when OAuth fails", async () => {
+			const { coordinator, mockAuthFailure } = createTestContext();
+
+			const oauthSessionManager = new MockOAuthSessionManager();
+			oauthSessionManager.login.mockRejectedValue(new Error("OAuth failed"));
+
+			mockAuthFailure();
+			vi.mocked(maybeAskAuthMethod).mockResolvedValue("oauth");
+			const _progress = new MockProgressReporter();
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				oauthSessionManager:
+					oauthSessionManager as unknown as OAuthSessionManager,
+			});
+
+			expect(result.success).toBe(false);
+
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				expect.stringContaining("OAuth authentication failed"),
+			);
+		});
+
+		it("clears OAuth state when user switches to token auth", async () => {
+			const {
+				coordinator,
+				userInteraction,
+				secretsManager,
+				mockGetAuthenticatedUser,
+			} = createTestContext();
+
+			mockGetAuthenticatedUser
+				.mockRejectedValueOnce(createAxiosError(401, "Unauthorized"))
+				.mockResolvedValueOnce(createMockUser());
+			const oauthSessionManager = new MockOAuthSessionManager();
+			secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "old-oauth-token",
+				oauth: {
+					token_type: "Bearer",
+					refresh_token: "old-refresh-token",
+					expiry_timestamp: Date.now() + 3600 * 1000,
+				},
+			});
+
+			// User enters a token in the input box
+			vi.mocked(maybeAskAuthMethod).mockResolvedValue("legacy");
+			userInteraction.setInputBoxValue("new-token");
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				oauthSessionManager:
+					oauthSessionManager as unknown as OAuthSessionManager,
+			});
+
+			expect(result.success).toBe(true);
+
+			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
+			expect(auth).toEqual({
+				token: "new-token",
+				url: TEST_URL,
+			});
 		});
 	});
 });

@@ -20,7 +20,6 @@ import {
 } from "../api/agentMetadataHelper";
 import { extractAgents } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
-import { OAuthInterceptor } from "../api/oauthInterceptor";
 import { needToken } from "../api/utils";
 import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "../cliConfig";
 import { type Commands } from "../commands";
@@ -35,6 +34,7 @@ import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
+import { OAuthInterceptor } from "../oauth/oauthInterceptor";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	AuthorityPrefix,
