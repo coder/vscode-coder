@@ -217,7 +217,7 @@ export class LoginCoordinator {
 				providedToken,
 				isAutoLogin,
 			);
-			if (result !== "retry") {
+			if (result !== "unauthorized") {
 				return result;
 			}
 		}
@@ -228,7 +228,7 @@ export class LoginCoordinator {
 		);
 		if (auth?.token && auth.token !== providedToken) {
 			const result = await this.tryTokenAuth(client, auth.token, isAutoLogin);
-			if (result !== "retry") {
+			if (result !== "unauthorized") {
 				return result;
 			}
 		}
@@ -251,20 +251,20 @@ export class LoginCoordinator {
 	}
 
 	/**
-	 * Returns 'retry' on 401 to signal trying next token.
+	 * Returns 'unauthorized' on 401 to signal trying next token source.
 	 */
 	private async tryTokenAuth(
 		client: CoderApi,
 		token: string,
 		isAutoLogin: boolean,
-	): Promise<LoginResult | "retry"> {
+	): Promise<LoginResult | "unauthorized"> {
 		client.setSessionToken(token);
 		try {
 			const user = await client.getAuthenticatedUser();
 			return { success: true, token, user };
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 401) {
-				return "retry";
+				return "unauthorized";
 			}
 			this.showAuthError(err, isAutoLogin);
 			return { success: false };
