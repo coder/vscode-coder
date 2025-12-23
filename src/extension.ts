@@ -13,10 +13,9 @@ import { ServiceContainer } from "./core/container";
 import { type SecretsManager } from "./core/secretsManager";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError, getErrorDetail } from "./error";
-import { maybeAskUrl } from "./promptUtils";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
-import { toSafeHost } from "./util";
+import { registerUriHandler } from "./uri/uriHandler";
 import {
 	WorkspaceProvider,
 	WorkspaceQuery,
@@ -129,103 +128,17 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	]);
 	ctx.subscriptions.push(deploymentManager);
 
-	// Handle vscode:// URIs.
-	const uriHandler = vscode.window.registerUriHandler({
-		handleUri: async (uri) => {
-			const params = new URLSearchParams(uri.query);
-
-			if (uri.path === "/open") {
-				const owner = params.get("owner");
-				const workspace = params.get("workspace");
-				const agent = params.get("agent");
-				const folder = params.get("folder");
-				const openRecent =
-					params.has("openRecent") &&
-					(!params.get("openRecent") || params.get("openRecent") === "true");
-
-				if (!owner) {
-					throw new Error("owner must be specified as a query parameter");
-				}
-				if (!workspace) {
-					throw new Error("workspace must be specified as a query parameter");
-				}
-
-				await setupDeploymentFromUri(params, serviceContainer);
-
-				await commands.open(
-					owner,
-					workspace,
-					agent ?? undefined,
-					folder ?? undefined,
-					openRecent,
-				);
-			} else if (uri.path === "/openDevContainer") {
-				const workspaceOwner = params.get("owner");
-				const workspaceName = params.get("workspace");
-				const workspaceAgent = params.get("agent");
-				const devContainerName = params.get("devContainerName");
-				const devContainerFolder = params.get("devContainerFolder");
-				const localWorkspaceFolder = params.get("localWorkspaceFolder");
-				const localConfigFile = params.get("localConfigFile");
-
-				if (!workspaceOwner) {
-					throw new Error(
-						"workspace owner must be specified as a query parameter",
-					);
-				}
-
-				if (!workspaceName) {
-					throw new Error(
-						"workspace name must be specified as a query parameter",
-					);
-				}
-
-				if (!workspaceAgent) {
-					throw new Error(
-						"workspace agent must be specified as a query parameter",
-					);
-				}
-
-				if (!devContainerName) {
-					throw new Error(
-						"dev container name must be specified as a query parameter",
-					);
-				}
-
-				if (!devContainerFolder) {
-					throw new Error(
-						"dev container folder must be specified as a query parameter",
-					);
-				}
-
-				if (localConfigFile && !localWorkspaceFolder) {
-					throw new Error(
-						"local workspace folder must be specified as a query parameter if local config file is provided",
-					);
-				}
-
-				await setupDeploymentFromUri(params, serviceContainer);
-
-				await commands.openDevContainer(
-					workspaceOwner,
-					workspaceName,
-					workspaceAgent,
-					devContainerName,
-					devContainerFolder,
-					localWorkspaceFolder ?? "",
-					localConfigFile ?? "",
-				);
-			} else {
-				throw new Error(`Unknown path ${uri.path}`);
-			}
-		},
-	});
-	ctx.subscriptions.push(uriHandler);
-
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
 	const commands = new Commands(serviceContainer, client, deploymentManager);
+
 	ctx.subscriptions.push(
+		registerUriHandler(
+			serviceContainer,
+			deploymentManager,
+			commands,
+			vscodeProposed,
+		),
 		vscode.commands.registerCommand(
 			"coder.login",
 			commands.login.bind(commands),
@@ -416,50 +329,6 @@ async function migrateAuthStorage(
 async function showTreeViewSearch(id: string): Promise<void> {
 	await vscode.commands.executeCommand(`${id}.focus`);
 	await vscode.commands.executeCommand("list.find");
-}
-
-/**
- * Sets up deployment from URI parameters. Handles URL prompting, client setup,
- * and token storage. Throws if user cancels URL input.
- */
-async function setupDeploymentFromUri(
-	params: URLSearchParams,
-	serviceContainer: ServiceContainer,
-): Promise<void> {
-	const secretsManager = serviceContainer.getSecretsManager();
-	const mementoManager = serviceContainer.getMementoManager();
-	const currentDeployment = await secretsManager.getCurrentDeployment();
-
-	// We are not guaranteed that the URL we currently have is for the URL
-	// this workspace belongs to, or that we even have a URL at all (the
-	// queries will default to localhost) so ask for it if missing.
-	// Pre-populate in case we do have the right URL so the user can just
-	// hit enter and move on.
-	const url = await maybeAskUrl(
-		mementoManager,
-		params.get("url"),
-		currentDeployment?.url,
-	);
-	if (!url) {
-		throw new Error("url must be provided or specified as a query parameter");
-	}
-
-	const safeHost = toSafeHost(url);
-
-	// If the token is missing we will get a 401 later and the user will be
-	// prompted to sign in again, so we do not need to ensure it is set now.
-	const token: string | null = params.get("token");
-	if (token === null) {
-		// We need to ensure there is at least an entry for this in storage
-		// so that we know what URL to prompt the user with when logging in.
-		const auth = await secretsManager.getSessionAuth(safeHost);
-		if (!auth) {
-			// Racy, we could accidentally overwrite the token that is written in the meantime.
-			await secretsManager.setSessionAuth(safeHost, { url, token: "" });
-		}
-	} else {
-		await secretsManager.setSessionAuth(safeHost, { url, token });
-	}
 }
 
 async function listStoredDeployments(

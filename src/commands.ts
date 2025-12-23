@@ -111,9 +111,6 @@ export class Commands {
 			return;
 		}
 
-		// Login might have happened in another process/window so we do not have the user yet.
-		result.user ??= await this.extensionClient.getAuthenticatedUser();
-
 		await this.deploymentManager.setDeployment({
 			url,
 			safeHostname,

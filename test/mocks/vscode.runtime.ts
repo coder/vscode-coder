@@ -99,6 +99,7 @@ export const window = {
 		clear: vi.fn(),
 	})),
 	createStatusBarItem: vi.fn(),
+	registerUriHandler: vi.fn(() => ({ dispose: vi.fn() })),
 };
 
 export const commands = {

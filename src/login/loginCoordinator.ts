@@ -16,12 +16,13 @@ import type { Logger } from "../logging/logger";
 
 type LoginResult =
 	| { success: false }
-	| { success: true; user?: User; token: string };
+	| { success: true; user: User; token: string };
 
 interface LoginOptions {
 	safeHostname: string;
 	url: string | undefined;
 	autoLogin?: boolean;
+	token?: string;
 }
 
 /**
@@ -49,6 +50,7 @@ export class LoginCoordinator {
 			const result = await this.attemptLogin(
 				{ safeHostname, url },
 				options.autoLogin ?? false,
+				options.token,
 			);
 
 			await this.persistSessionAuth(result, safeHostname, url);
@@ -95,6 +97,7 @@ export class LoginCoordinator {
 						const result = await this.attemptLogin(
 							{ url: newUrl, safeHostname },
 							false,
+							options.token,
 						);
 
 						await this.persistSessionAuth(result, safeHostname, newUrl);
@@ -168,10 +171,17 @@ export class LoginCoordinator {
 		const promise = new Promise<LoginResult>((resolve) => {
 			disposable = this.secretsManager.onDidChangeSessionAuth(
 				safeHostname,
-				(auth) => {
+				async (auth) => {
 					if (auth?.token) {
 						disposable?.dispose();
-						resolve({ success: true, token: auth.token });
+						const client = CoderApi.create(auth.url, auth.token, this.logger);
+						try {
+							const user = await client.getAuthenticatedUser();
+							resolve({ success: true, token: auth.token, user });
+						} catch {
+							// Token from other window was invalid, ignore and keep waiting
+							// (or user can click Login/Cancel in the dialog)
+						}
 					}
 				},
 			);
@@ -191,54 +201,93 @@ export class LoginCoordinator {
 	private async attemptLogin(
 		deployment: Deployment,
 		isAutoLogin: boolean,
+		providedToken?: string,
 	): Promise<LoginResult> {
-		const needsToken = needToken(vscode.workspace.getConfiguration());
 		const client = CoderApi.create(deployment.url, "", this.logger);
 
-		let storedToken: string | undefined;
-		if (needsToken) {
-			const auth = await this.secretsManager.getSessionAuth(
-				deployment.safeHostname,
+		// mTLS authentication (no token needed)
+		if (!needToken(vscode.workspace.getConfiguration())) {
+			return this.tryMtlsAuth(client, isAutoLogin);
+		}
+
+		// Try provided token first
+		if (providedToken) {
+			const result = await this.tryTokenAuth(
+				client,
+				providedToken,
+				isAutoLogin,
 			);
-			storedToken = auth?.token;
-			if (storedToken) {
-				client.setSessionToken(storedToken);
+			if (result !== "unauthorized") {
+				return result;
 			}
 		}
 
-		// Attempt authentication with current credentials (token or mTLS)
+		// Try stored token (skip if same as provided)
+		const auth = await this.secretsManager.getSessionAuth(
+			deployment.safeHostname,
+		);
+		if (auth?.token && auth.token !== providedToken) {
+			const result = await this.tryTokenAuth(client, auth.token, isAutoLogin);
+			if (result !== "unauthorized") {
+				return result;
+			}
+		}
+
+		// Prompt user for token
+		return this.loginWithToken(client);
+	}
+
+	private async tryMtlsAuth(
+		client: CoderApi,
+		isAutoLogin: boolean,
+	): Promise<LoginResult> {
 		try {
-			if (!needsToken || storedToken) {
-				const user = await client.getAuthenticatedUser();
-				// Return the token that was used (empty string for mTLS since
-				// the `vscodessh` command currently always requires a token file)
-				return { success: true, token: storedToken ?? "", user };
-			}
+			const user = await client.getAuthenticatedUser();
+			return { success: true, token: "", user };
 		} catch (err) {
-			const is401 = isAxiosError(err) && err.response?.status === 401;
-			if (needsToken && is401) {
-				// For token auth with 401: silently continue to prompt for new credentials
-			} else {
-				// For mTLS or non-401 errors: show error and abort
-				const message = getErrorMessage(err, "no response from the server");
-				if (isAutoLogin) {
-					this.logger.warn("Failed to log in to Coder server:", message);
-				} else {
-					this.vscodeProposed.window.showErrorMessage(
-						"Failed to log in to Coder server",
-						{
-							detail: message,
-							modal: true,
-							useCustom: true,
-						},
-					);
-				}
-				return { success: false };
-			}
+			this.showAuthError(err, isAutoLogin);
+			return { success: false };
 		}
+	}
 
-		const result = await this.loginWithToken(client);
-		return result;
+	/**
+	 * Returns 'unauthorized' on 401 to signal trying next token source.
+	 */
+	private async tryTokenAuth(
+		client: CoderApi,
+		token: string,
+		isAutoLogin: boolean,
+	): Promise<LoginResult | "unauthorized"> {
+		client.setSessionToken(token);
+		try {
+			const user = await client.getAuthenticatedUser();
+			return { success: true, token, user };
+		} catch (err) {
+			if (isAxiosError(err) && err.response?.status === 401) {
+				return "unauthorized";
+			}
+			this.showAuthError(err, isAutoLogin);
+			return { success: false };
+		}
+	}
+
+	/**
+	 * Shows auth error via dialog or logs it for autoLogin.
+	 */
+	private showAuthError(err: unknown, isAutoLogin: boolean): void {
+		const message = getErrorMessage(err, "no response from the server");
+		if (isAutoLogin) {
+			this.logger.warn("Failed to log in to Coder server:", message);
+		} else {
+			this.vscodeProposed.window.showErrorMessage(
+				"Failed to log in to Coder server",
+				{
+					detail: message,
+					modal: true,
+					useCustom: true,
+				},
+			);
+		}
 	}
 
 	/**
