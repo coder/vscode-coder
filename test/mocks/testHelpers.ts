@@ -661,19 +661,20 @@ export function setupAxiosMockRoutes(
 	mockAdapter: MockAdapterFn,
 	routes: Record<string, unknown>,
 ): void {
-	mockAdapter.mockImplementation((config: { url?: string }) => {
+	mockAdapter.mockImplementation(async (config: { url?: string }) => {
 		for (const [pattern, value] of Object.entries(routes)) {
 			if (config.url?.includes(pattern)) {
 				if (value instanceof Error) {
-					return Promise.reject(value);
+					throw value;
 				}
-				return Promise.resolve({
-					data: value,
+				const data = typeof value === "function" ? await value() : value;
+				return {
+					data,
 					status: 200,
 					statusText: "OK",
 					headers: {},
 					config,
-				});
+				};
 			}
 		}
 		const error = new AxiosError(
@@ -692,7 +693,7 @@ export function setupAxiosMockRoutes(
 				},
 			},
 		);
-		return Promise.reject(error);
+		throw error;
 	});
 }
 
@@ -713,13 +714,6 @@ export class MockProgress<T = { message?: string; increment?: number }>
 	 */
 	getReports(): readonly T[] {
 		return this.reports;
-	}
-
-	/**
-	 * Get the most recent progress report, or undefined if none.
-	 */
-	getLastReport(): T | undefined {
-		return this.reports.at(-1);
 	}
 
 	/**
