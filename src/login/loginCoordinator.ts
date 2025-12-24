@@ -155,7 +155,9 @@ export class LoginCoordinator implements vscode.Disposable {
 		executeFn: () => Promise<LoginResult>,
 	): Promise<LoginResult> {
 		const result = this.loginQueue.then(executeFn);
-		this.loginQueue = result.catch(() => {}); // Keep chain going on error
+		this.loginQueue = result.catch(() => {
+			/* Keep chain going on error */
+		});
 		return result;
 	}
 
@@ -389,7 +391,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			const title = "OAuth authentication failed";
 			this.logger.error(title, error);
 			if (error instanceof CertificateError) {
-				error.showNotification(title);
+				void error.showNotification(title);
 			} else {
 				vscode.window.showErrorMessage(
 					`${title}: ${getErrorMessage(error, "Unknown error")}`,

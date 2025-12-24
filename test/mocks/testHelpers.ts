@@ -1,4 +1,10 @@
-import axios, { AxiosError, AxiosHeaders } from "axios";
+import axios, {
+	AxiosError,
+	AxiosHeaders,
+	type AxiosAdapter,
+	type AxiosResponse,
+	type InternalAxiosRequestConfig,
+} from "axios";
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
@@ -566,9 +572,15 @@ export class MockOAuthSessionManager {
 		.mockResolvedValue({ access_token: "test-token" });
 	readonly refreshIfAlmostExpired = vi.fn().mockResolvedValue(undefined);
 	readonly revokeRefreshToken = vi.fn().mockResolvedValue(undefined);
-	readonly isLoggedInWithOAuth = vi.fn().mockReturnValue(false);
+	readonly isLoggedInWithOAuth = vi.fn().mockResolvedValue(false);
 	readonly clearOAuthState = vi.fn().mockResolvedValue(undefined);
 	readonly showReAuthenticationModal = vi.fn().mockResolvedValue(undefined);
+	readonly dispose = vi.fn();
+}
+
+export class MockOAuthInterceptor {
+	readonly setDeployment = vi.fn().mockResolvedValue(undefined);
+	readonly clearDeployment = vi.fn();
 	readonly dispose = vi.fn();
 }
 
@@ -619,7 +631,7 @@ export function createAxiosError(
 	return error;
 }
 
-type MockAdapterFn = ReturnType<typeof vi.fn>;
+type MockAdapterFn = ReturnType<typeof vi.fn<AxiosAdapter>>;
 
 const AXIOS_MOCK_SETUP_EXAMPLE = `
 vi.mock("axios", async () => {
@@ -681,39 +693,44 @@ export function setupAxiosMockRoutes(
 	mockAdapter: MockAdapterFn,
 	routes: Record<string, unknown>,
 ): void {
-	mockAdapter.mockImplementation((config: { url?: string }) => {
-		for (const [pattern, value] of Object.entries(routes)) {
-			if (config.url?.includes(pattern)) {
-				if (value instanceof Error) {
-					return Promise.reject(value);
+	mockAdapter.mockImplementation(
+		async (
+			config: InternalAxiosRequestConfig,
+		): Promise<AxiosResponse<unknown>> => {
+			for (const [pattern, value] of Object.entries(routes)) {
+				if (config.url?.includes(pattern)) {
+					if (value instanceof Error) {
+						throw value;
+					}
+					const data = typeof value === "function" ? await value() : value;
+					return {
+						data,
+						status: 200,
+						statusText: "OK",
+						headers: new AxiosHeaders(),
+						config,
+					};
 				}
-				return Promise.resolve({
-					data: value,
-					status: 200,
-					statusText: "OK",
-					headers: {},
-					config,
-				});
 			}
-		}
-		const error = new AxiosError(
-			`Request failed with status code 404`,
-			"ERR_BAD_REQUEST",
-			undefined,
-			undefined,
-			{
-				status: 404,
-				statusText: "Not Found",
-				headers: {},
-				config: { headers: new AxiosHeaders() },
-				data: {
-					message: "Not found",
-					detail: `No route matched: ${config.url}`,
+			const error = new AxiosError(
+				`Request failed with status code 404`,
+				"ERR_BAD_REQUEST",
+				undefined,
+				undefined,
+				{
+					status: 404,
+					statusText: "Not Found",
+					headers: new AxiosHeaders(),
+					config,
+					data: {
+						message: "Not found",
+						detail: `No route matched: ${config.url}`,
+					},
 				},
-			},
-		);
-		return Promise.reject(error);
-	});
+			);
+			throw error;
+		},
+	);
 }
 
 /**
@@ -733,13 +750,6 @@ export class MockProgress<
 	 */
 	getReports(): readonly T[] {
 		return this.reports;
-	}
-
-	/**
-	 * Get the most recent progress report, or undefined if none.
-	 */
-	getLastReport(): T | undefined {
-		return this.reports.at(-1);
 	}
 
 	/**

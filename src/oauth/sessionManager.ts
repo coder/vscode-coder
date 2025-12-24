@@ -76,6 +76,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private lastRefreshAttempt = 0;
 	private refreshTimer: NodeJS.Timeout | undefined;
 	private tokenChangeListener: vscode.Disposable | undefined;
+	private disposed = false;
 
 	/**
 	 * Create and initialize a new OAuth session manager.
@@ -250,16 +251,21 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Attempt refresh, falling back to polling on failure.
 	 */
 	private attemptRefreshWithRetry(): void {
+		if (this.disposed) {
+			return;
+		}
+
 		this.refreshTimer = undefined;
 
 		this.refreshToken()
 			.then(() => {
-				// Success - scheduleNextRefresh will be triggered by token change listener
 				this.logger.debug("Background token refresh succeeded");
 			})
 			.catch((error) => {
+				if (this.disposed) {
+					return;
+				}
 				this.logger.warn("Background token refresh failed, will retry:", error);
-				// Fall back to polling until successful
 				this.refreshTimer = setTimeout(
 					() => this.attemptRefreshWithRetry(),
 					BACKGROUND_REFRESH_INTERVAL_MS,
@@ -364,7 +370,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Uses a shared promise to handle concurrent refresh attempts.
 	 */
 	public async refreshToken(): Promise<TokenResponse> {
-		// If a refresh is already in progress, return the existing promise
 		if (this.refreshPromise) {
 			this.logger.debug(
 				"Token refresh already in progress, waiting for result",
@@ -372,65 +377,66 @@ export class OAuthSessionManager implements vscode.Disposable {
 			return this.refreshPromise;
 		}
 
-		// Read fresh tokens from secrets
-		const storedTokens = await this.getStoredTokens();
-		if (!storedTokens?.refresh_token) {
-			throw new Error("No refresh token available");
-		}
-
-		// Capture deployment for async closure
 		const deployment = this.requireDeployment();
-		const refreshToken = storedTokens.refresh_token;
-		const accessToken = storedTokens.access_token;
-
-		this.lastRefreshAttempt = Date.now();
-
-		// Create and store the refresh promise
-		this.refreshPromise = (async () => {
-			try {
-				const { axiosInstance, metadata, registration } =
-					await this.prepareOAuthOperation(accessToken);
-
-				this.logger.debug("Refreshing access token");
-
-				const params: RefreshTokenRequestParams = {
-					grant_type: REFRESH_GRANT_TYPE,
-					refresh_token: refreshToken,
-					client_id: registration.client_id,
-					client_secret: registration.client_secret,
-				};
-
-				const tokenRequest = toUrlSearchParams(params);
-
-				const response = await axiosInstance.post<TokenResponse>(
-					metadata.token_endpoint,
-					tokenRequest,
-					{
-						headers: {
-							"Content-Type": "application/x-www-form-urlencoded",
-						},
-					},
-				);
-
-				this.logger.debug("Token refresh successful");
-
-				const oauthData = buildOAuthTokenData(response.data);
-				await this.secretsManager.setSessionAuth(deployment.safeHostname, {
-					url: deployment.url,
-					token: response.data.access_token,
-					oauth: oauthData,
-				});
-
-				return response.data;
-			} catch (error) {
-				this.handleOAuthError(error);
-				throw error;
-			} finally {
-				this.refreshPromise = null;
-			}
-		})();
-
+		// Assign synchronously before any async work to prevent race conditions
+		this.refreshPromise = this.executeTokenRefresh(deployment);
 		return this.refreshPromise;
+	}
+
+	private async executeTokenRefresh(
+		deployment: Deployment,
+	): Promise<TokenResponse> {
+		try {
+			const storedTokens = await this.getStoredTokens();
+			if (!storedTokens?.refresh_token) {
+				throw new Error("No refresh token available");
+			}
+
+			const refreshToken = storedTokens.refresh_token;
+			const accessToken = storedTokens.access_token;
+
+			this.lastRefreshAttempt = Date.now();
+
+			const { axiosInstance, metadata, registration } =
+				await this.prepareOAuthOperation(accessToken);
+
+			this.logger.debug("Refreshing access token");
+
+			const params: RefreshTokenRequestParams = {
+				grant_type: REFRESH_GRANT_TYPE,
+				refresh_token: refreshToken,
+				client_id: registration.client_id,
+				client_secret: registration.client_secret,
+			};
+
+			const tokenRequest = toUrlSearchParams(params);
+
+			const response = await axiosInstance.post<TokenResponse>(
+				metadata.token_endpoint,
+				tokenRequest,
+				{
+					headers: {
+						"Content-Type": "application/x-www-form-urlencoded",
+					},
+				},
+			);
+
+			this.logger.debug("Token refresh successful");
+
+			const oauthData = buildOAuthTokenData(response.data);
+			await this.secretsManager.setSessionAuth(deployment.safeHostname, {
+				url: deployment.url,
+				token: response.data.access_token,
+				oauth: oauthData,
+			});
+
+			return response.data;
+		} catch (error) {
+			this.handleOAuthError(error);
+			throw error;
+		} finally {
+			this.refreshPromise = null;
+		}
 	}
 
 	/**
@@ -495,8 +501,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 		const { axiosInstance, metadata, registration } =
 			await this.prepareOAuthOperation(authToken);
 
-		const revocationEndpoint =
-			metadata.revocation_endpoint || `${metadata.issuer}/oauth2/revoke`;
+		if (!metadata.revocation_endpoint) {
+			this.logger.info("No revocation endpoint available, skipping revocation");
+			return;
+		}
 
 		this.logger.info("Revoking refresh token");
 
@@ -510,11 +518,15 @@ export class OAuthSessionManager implements vscode.Disposable {
 		const revocationRequest = toUrlSearchParams(params);
 
 		try {
-			await axiosInstance.post(revocationEndpoint, revocationRequest, {
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
+			await axiosInstance.post(
+				metadata.revocation_endpoint,
+				revocationRequest,
+				{
+					headers: {
+						"Content-Type": "application/x-www-form-urlencoded",
+					},
 				},
-			});
+			);
 
 			this.logger.info("Token revocation successful");
 		} catch (error) {
@@ -581,6 +593,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Clears all in-memory state.
 	 */
 	public dispose(): void {
+		this.disposed = true;
 		this.clearDeployment();
 		this.logger.debug("OAuth session manager disposed");
 	}

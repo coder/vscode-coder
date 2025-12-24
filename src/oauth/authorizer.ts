@@ -155,7 +155,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			application_type: "web",
 			grant_types: ["authorization_code"],
 			response_types: ["code"],
-			client_name: "VS Code Coder Extension",
+			client_name: `Coder for ${vscode.env.appName}`,
 			token_endpoint_auth_method: "client_secret_post",
 		};
 

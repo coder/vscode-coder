@@ -32,7 +32,11 @@ function createMockAxiosInstance(): AxiosInstance & {
 	vi.spyOn(instance.interceptors.response, "use").mockImplementation(
 		(_onFulfilled, onRejected) => {
 			interceptorCount++;
-			lastRejectedHandler = onRejected ?? ((e) => Promise.reject(e));
+			lastRejectedHandler =
+				onRejected ??
+				((e): never => {
+					throw e;
+				});
 			return interceptorCount;
 		},
 	);
@@ -47,7 +51,7 @@ function createMockAxiosInstance(): AxiosInstance & {
 	return Object.assign(instance, {
 		triggerResponseError: (error: unknown): Promise<unknown> => {
 			if (!lastRejectedHandler) {
-				return Promise.reject(error);
+				return Promise.reject(new Error(String(error)));
 			}
 			return Promise.resolve(lastRejectedHandler(error));
 		},
@@ -81,12 +85,10 @@ function createTestContext() {
 	const mockOAuthManager = new MockOAuthSessionManager();
 
 	// Make isLoggedInWithOAuth check actual storage instead of returning a fixed value
-	vi.spyOn(mockOAuthManager, "isLoggedInWithOAuth").mockImplementation(
-		async () => {
-			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
-			return auth?.oauth !== undefined;
-		},
-	);
+	mockOAuthManager.isLoggedInWithOAuth.mockImplementation(async () => {
+		const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
+		return auth?.oauth !== undefined;
+	});
 
 	/** Sets up OAuth tokens and creates interceptor */
 	const setupOAuthInterceptor = async () => {

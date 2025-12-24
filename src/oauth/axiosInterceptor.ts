@@ -20,13 +20,18 @@ const coderSessionTokenHeader = "Coder-Session-Token";
  */
 export class OAuthInterceptor implements vscode.Disposable {
 	private interceptorId: number | null = null;
+	private tokenListener: vscode.Disposable | undefined;
+	private safeHostname: string;
 
 	private constructor(
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
 		private readonly oauthSessionManager: OAuthSessionManager,
-		private readonly tokenListener: vscode.Disposable,
-	) {}
+		private readonly secretsManager: SecretsManager,
+		safeHostname: string,
+	) {
+		this.safeHostname = safeHostname;
+	}
 
 	public static async create(
 		client: CoderApi,
@@ -35,26 +40,52 @@ export class OAuthInterceptor implements vscode.Disposable {
 		secretsManager: SecretsManager,
 		safeHostname: string,
 	): Promise<OAuthInterceptor> {
-		// Create listener first, then wire up to instance after construction
-		let callback: () => Promise<void> = () => Promise.resolve();
-		const tokenListener = secretsManager.onDidChangeSessionAuth(
-			safeHostname,
-			() => callback(),
-		);
-
 		const instance = new OAuthInterceptor(
 			client,
 			logger,
 			oauthSessionManager,
-			tokenListener,
+			secretsManager,
+			safeHostname,
 		);
 
-		callback = async () =>
-			instance.syncWithTokenState().catch((err) => {
-				logger.error("Error syncing OAuth interceptor state:", err);
-			});
+		instance.setupTokenListener();
 		await instance.syncWithTokenState();
 		return instance;
+	}
+
+	public async setDeployment(safeHostname: string): Promise<void> {
+		if (this.safeHostname === safeHostname) {
+			return;
+		}
+
+		this.safeHostname = safeHostname;
+		this.detach();
+		this.setupTokenListener();
+		await this.syncWithTokenState();
+	}
+
+	public clearDeployment(): void {
+		this.tokenListener?.dispose();
+		this.tokenListener = undefined;
+		this.detach();
+	}
+
+	private setupTokenListener(): void {
+		this.tokenListener?.dispose();
+
+		if (!this.safeHostname) {
+			this.tokenListener = undefined;
+			return;
+		}
+
+		this.tokenListener = this.secretsManager.onDidChangeSessionAuth(
+			this.safeHostname,
+			() => {
+				this.syncWithTokenState().catch((err) => {
+					this.logger.error("Error syncing OAuth interceptor state:", err);
+				});
+			},
+		);
 	}
 
 	/**
@@ -142,7 +173,7 @@ export class OAuthInterceptor implements vscode.Disposable {
 	}
 
 	public dispose(): void {
-		this.tokenListener.dispose();
+		this.tokenListener?.dispose();
 		this.detach();
 	}
 }

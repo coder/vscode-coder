@@ -57,8 +57,17 @@ export function toUrlSearchParams(obj: object): URLSearchParams {
 export function buildOAuthTokenData(
 	tokenResponse: TokenResponse,
 ): OAuthTokenData {
-	const expiryTimestamp = tokenResponse.expires_in
-		? Date.now() + tokenResponse.expires_in * 1000
+	if (tokenResponse.token_type !== "Bearer") {
+		throw new Error(
+			`Unsupported token type: ${tokenResponse.token_type}. Only Bearer tokens are supported.`,
+		);
+	}
+
+	const expiresIn = tokenResponse.expires_in;
+	const hasValidExpiry =
+		expiresIn && expiresIn > 0 && Number.isFinite(expiresIn);
+	const expiryTimestamp = hasValidExpiry
+		? Date.now() + expiresIn * 1000
 		: Date.now() + ACCESS_TOKEN_DEFAULT_EXPIRY_MS;
 
 	return {

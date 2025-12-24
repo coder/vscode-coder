@@ -19,6 +19,8 @@ import {
 	TEST_URL,
 } from "./testUtils";
 
+import type { AxiosRequestConfig } from "axios";
+
 import type { ServiceContainer } from "@/core/container";
 import type { Deployment } from "@/deployment/types";
 import type { LoginCoordinator } from "@/login/loginCoordinator";
@@ -30,7 +32,7 @@ vi.mock("axios", async () => {
 		...actual,
 		default: {
 			...actual.default,
-			create: vi.fn((config) =>
+			create: vi.fn((config?: AxiosRequestConfig) =>
 				actual.default.create({ ...config, adapter: mockAdapter }),
 			),
 			__mockAdapter: mockAdapter,
@@ -292,6 +294,81 @@ describe("OAuthSessionManager", () => {
 			expect(auth?.oauth).toBeUndefined();
 			expect(auth?.token).toBe("");
 			expect(loginCoordinator.ensureLoggedInWithDialog).toHaveBeenCalled();
+		});
+	});
+
+	describe("concurrent refresh", () => {
+		it("deduplicates concurrent calls", async () => {
+			const { secretsManager, mockAdapter, manager, setupOAuthSession } =
+				createTestContext();
+
+			await setupOAuthSession();
+			await secretsManager.setOAuthClientRegistration(
+				TEST_HOSTNAME,
+				createMockClientRegistration(),
+			);
+
+			let callCount = 0;
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server":
+					createMockOAuthMetadata(TEST_URL),
+				"/oauth2/token": () => {
+					callCount++;
+					return createMockTokenResponse({
+						access_token: `token-${callCount}`,
+					});
+				},
+			});
+
+			const results = await Promise.all([
+				manager.refreshToken(),
+				manager.refreshToken(),
+				manager.refreshToken(),
+			]);
+
+			expect(callCount).toBe(1);
+			expect(results[0]).toEqual(results[1]);
+			expect(results[1]).toEqual(results[2]);
+		});
+	});
+
+	describe("deployment switch during refresh", () => {
+		it("completes in-flight refresh after switch", async () => {
+			const { secretsManager, mockAdapter, manager, setupOAuthSession } =
+				createTestContext();
+
+			await setupOAuthSession();
+			await secretsManager.setOAuthClientRegistration(
+				TEST_HOSTNAME,
+				createMockClientRegistration(),
+			);
+
+			let resolveToken: (v: unknown) => void;
+			const tokenEndpointCalled = new Promise<void>((resolve) => {
+				setupAxiosMockRoutes(mockAdapter, {
+					"/.well-known/oauth-authorization-server":
+						createMockOAuthMetadata(TEST_URL),
+					"/oauth2/token": () =>
+						new Promise((r) => {
+							resolveToken = r;
+							resolve();
+						}),
+				});
+			});
+
+			const refreshPromise = manager.refreshToken();
+			await tokenEndpointCalled;
+
+			await manager.setDeployment({
+				url: "https://new.example.com",
+				safeHostname: "new.example.com",
+			});
+
+			resolveToken!(createMockTokenResponse({ access_token: "new-token" }));
+			const result = await refreshPromise;
+
+			expect(result.access_token).toBe("new-token");
+			expect(await manager.isLoggedInWithOAuth()).toBe(false);
 		});
 	});
 });

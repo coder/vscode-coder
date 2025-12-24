@@ -31,7 +31,7 @@ export interface CurrentDeploymentState {
  * When present, indicates the session is authenticated via OAuth.
  */
 export interface OAuthTokenData {
-	token_type: "Bearer" | "DPoP";
+	token_type: "Bearer";
 	refresh_token?: string;
 	scope?: string;
 	expiry_timestamp: number;

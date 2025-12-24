@@ -44,6 +44,7 @@ export function createMockOAuthMetadata(
 		response_types_supported: ["code"],
 		grant_types_supported: ["authorization_code", "refresh_token"],
 		code_challenge_methods_supported: ["S256"],
+		token_endpoint_auth_methods_supported: ["client_secret_post"],
 		...overrides,
 	};
 }
@@ -90,7 +91,7 @@ export function createBaseTestContext() {
 	vi.mocked(getHeaders).mockResolvedValue({});
 
 	// Constructor sets up vscode.workspace mock
-	new MockConfigurationProvider();
+	const _configurationProvider = new MockConfigurationProvider();
 
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
