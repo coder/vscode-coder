@@ -34,7 +34,7 @@ import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
-import { OAuthInterceptor } from "../oauth/oauthInterceptor";
+import { OAuthInterceptor } from "../oauth/axiosInterceptor";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	AuthorityPrefix,

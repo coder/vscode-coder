@@ -13,7 +13,7 @@ import { ServiceContainer } from "./core/container";
 import { type SecretsManager } from "./core/secretsManager";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError, getErrorDetail } from "./error";
-import { OAuthInterceptor } from "./oauth/oauthInterceptor";
+import { OAuthInterceptor } from "./oauth/axiosInterceptor";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";

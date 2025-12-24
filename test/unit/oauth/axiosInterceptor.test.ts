@@ -2,7 +2,7 @@ import axios, { type AxiosInstance } from "axios";
 import { describe, expect, it, vi } from "vitest";
 
 import { SecretsManager } from "@/core/secretsManager";
-import { OAuthInterceptor } from "@/oauth/oauthInterceptor";
+import { OAuthInterceptor } from "@/oauth/axiosInterceptor";
 
 import {
 	createAxiosError,
