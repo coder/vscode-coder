@@ -121,7 +121,6 @@ export class Remote {
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrlRaw, safeHostname: parts.safeHostname },
 				this.serviceContainer,
-				this.extensionContext.extension.id,
 			);
 			disposables.push(remoteOAuthManager);
 
@@ -134,7 +133,6 @@ export class Remote {
 					url,
 					message,
 					detailPrefix: `You must log in to access ${workspaceName}.`,
-					oauthSessionManager: remoteOAuthManager,
 				});
 
 				// Dispose before retrying since setup will create new disposables

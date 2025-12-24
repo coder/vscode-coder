@@ -73,7 +73,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const oauthSessionManager = OAuthSessionManager.create(
 		deployment,
 		serviceContainer,
-		ctx.extension.id,
 	);
 	ctx.subscriptions.push(oauthSessionManager);
 
@@ -152,19 +151,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(
-		serviceContainer,
-		client,
-		oauthSessionManager,
-		deploymentManager,
-	);
+	const commands = new Commands(serviceContainer, client, deploymentManager);
 
 	ctx.subscriptions.push(
 		registerUriHandler(
 			serviceContainer,
 			deploymentManager,
 			commands,
-			oauthSessionManager,
 			vscodeProposed,
 		),
 		vscode.commands.registerCommand(
