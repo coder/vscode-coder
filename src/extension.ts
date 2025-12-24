@@ -145,6 +145,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		serviceContainer,
 		client,
 		oauthSessionManager,
+		oauthInterceptor,
 		[myWorkspacesProvider, allWorkspacesProvider],
 	);
 	ctx.subscriptions.push(deploymentManager);
