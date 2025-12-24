@@ -546,6 +546,12 @@ export class MockOAuthSessionManager {
 	readonly dispose = vi.fn();
 }
 
+export class MockOAuthInterceptor {
+	readonly setDeployment = vi.fn().mockResolvedValue(undefined);
+	readonly clearDeployment = vi.fn();
+	readonly dispose = vi.fn();
+}
+
 /**
  * Create a mock User for testing.
  */
