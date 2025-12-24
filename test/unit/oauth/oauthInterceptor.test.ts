@@ -7,17 +7,15 @@ import { OAuthInterceptor } from "@/oauth/oauthInterceptor";
 import {
 	createAxiosError,
 	createMockLogger,
-	createMockTokenResponse,
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockOAuthSessionManager,
 } from "../../mocks/testHelpers";
 
+import { createMockTokenResponse, TEST_HOSTNAME, TEST_URL } from "./testUtils";
+
 import type { CoderApi } from "@/api/coderApi";
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
-
-const TEST_HOSTNAME = "coder.example.com";
-const TEST_URL = "https://coder.example.com";
 
 /**
  * Creates a mock axios instance with controllable interceptors.
@@ -68,6 +66,8 @@ function createMockCoderApi(axiosInstance: AxiosInstance): CoderApi {
 	} as unknown as CoderApi;
 }
 
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
 function createTestContext() {
 	vi.resetAllMocks();
 
@@ -88,6 +88,44 @@ function createTestContext() {
 		},
 	);
 
+	/** Sets up OAuth tokens and creates interceptor */
+	const setupOAuthInterceptor = async () => {
+		await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+			url: TEST_URL,
+			token: "access-token",
+			oauth: {
+				token_type: "Bearer",
+				refresh_token: "refresh-token",
+				expiry_timestamp: Date.now() + ONE_HOUR_MS,
+			},
+		});
+		return OAuthInterceptor.create(
+			mockCoderApi,
+			logger,
+			mockOAuthManager as unknown as OAuthSessionManager,
+			secretsManager,
+			TEST_HOSTNAME,
+		);
+	};
+
+	/** Sets up session token only (no OAuth) */
+	const setupSessionToken = async () => {
+		await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+			url: TEST_URL,
+			token: "session-token",
+		});
+	};
+
+	/** Creates interceptor without any pre-existing auth */
+	const createInterceptor = () =>
+		OAuthInterceptor.create(
+			mockCoderApi,
+			logger,
+			mockOAuthManager as unknown as OAuthSessionManager,
+			secretsManager,
+			TEST_HOSTNAME,
+		);
+
 	return {
 		secretsManager,
 		logger,
@@ -95,105 +133,40 @@ function createTestContext() {
 		mockCoderApi,
 		mockOAuthManager: mockOAuthManager as unknown as OAuthSessionManager &
 			MockOAuthSessionManager,
+		setupOAuthInterceptor,
+		setupSessionToken,
+		createInterceptor,
 	};
 }
 
 describe("OAuthInterceptor", () => {
 	describe("attach/detach based on token state", () => {
 		it("attaches when OAuth tokens stored", async () => {
-			const {
-				secretsManager,
-				logger,
-				mockCoderApi,
-				mockOAuthManager,
-				axiosInstance,
-			} = createTestContext();
+			const { axiosInstance, setupOAuthInterceptor } = createTestContext();
 
-			// Store OAuth tokens before creating interceptor
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "access-token",
-				oauth: {
-					token_type: "Bearer",
-					refresh_token: "refresh-token",
-					expiry_timestamp: Date.now() + 3600000,
-				},
-			});
-
-			await OAuthInterceptor.create(
-				mockCoderApi,
-				logger,
-				mockOAuthManager,
-				secretsManager,
-				TEST_HOSTNAME,
-			);
+			await setupOAuthInterceptor();
 
 			expect(axiosInstance.getInterceptorCount()).toBe(1);
 		});
 
 		it("does not attach when no OAuth tokens", async () => {
-			const {
-				secretsManager,
-				logger,
-				mockCoderApi,
-				mockOAuthManager,
-				axiosInstance,
-			} = createTestContext();
+			const { axiosInstance, setupSessionToken, createInterceptor } =
+				createTestContext();
 
-			// Store session token without OAuth
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "session-token",
-			});
-
-			await OAuthInterceptor.create(
-				mockCoderApi,
-				logger,
-				mockOAuthManager,
-				secretsManager,
-				TEST_HOSTNAME,
-			);
+			await setupSessionToken();
+			await createInterceptor();
 
 			expect(axiosInstance.getInterceptorCount()).toBe(0);
 		});
 
 		it("detaches when OAuth tokens cleared", async () => {
-			const {
-				secretsManager,
-				logger,
-				mockCoderApi,
-				mockOAuthManager,
-				axiosInstance,
-			} = createTestContext();
+			const { axiosInstance, setupOAuthInterceptor, setupSessionToken } =
+				createTestContext();
 
-			// Start with OAuth tokens
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "access-token",
-				oauth: {
-					token_type: "Bearer",
-					refresh_token: "refresh-token",
-					expiry_timestamp: Date.now() + 3600000,
-				},
-			});
-
-			await OAuthInterceptor.create(
-				mockCoderApi,
-				logger,
-				mockOAuthManager,
-				secretsManager,
-				TEST_HOSTNAME,
-			);
-
+			await setupOAuthInterceptor();
 			expect(axiosInstance.getInterceptorCount()).toBe(1);
 
-			// Clear OAuth by setting session token only
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "session-token",
-			});
-
-			// Wait for async handler to complete
+			await setupSessionToken();
 			await vi.waitFor(() => {
 				expect(axiosInstance.getInterceptorCount()).toBe(0);
 			});
@@ -202,26 +175,13 @@ describe("OAuthInterceptor", () => {
 		it("attaches when OAuth tokens added", async () => {
 			const {
 				secretsManager,
-				logger,
-				mockCoderApi,
-				mockOAuthManager,
 				axiosInstance,
+				setupSessionToken,
+				createInterceptor,
 			} = createTestContext();
 
-			// Start without OAuth
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "session-token",
-			});
-
-			await OAuthInterceptor.create(
-				mockCoderApi,
-				logger,
-				mockOAuthManager,
-				secretsManager,
-				TEST_HOSTNAME,
-			);
-
+			await setupSessionToken();
+			await createInterceptor();
 			expect(axiosInstance.getInterceptorCount()).toBe(0);
 
 			// Add OAuth tokens
@@ -231,7 +191,7 @@ describe("OAuthInterceptor", () => {
 				oauth: {
 					token_type: "Bearer",
 					refresh_token: "refresh-token",
-					expiry_timestamp: Date.now() + 3600000,
+					expiry_timestamp: Date.now() + ONE_HOUR_MS,
 				},
 			});
 
@@ -244,23 +204,11 @@ describe("OAuthInterceptor", () => {
 	describe("401 handling", () => {
 		it("refreshes token and retries request", async () => {
 			const {
-				secretsManager,
-				logger,
 				mockCoderApi,
 				mockOAuthManager,
 				axiosInstance,
+				setupOAuthInterceptor,
 			} = createTestContext();
-
-			// Setup OAuth tokens
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "access-token",
-				oauth: {
-					token_type: "Bearer",
-					refresh_token: "refresh-token",
-					expiry_timestamp: Date.now() + 3600000,
-				},
-			});
 
 			const newTokens = createMockTokenResponse({
 				access_token: "new-access-token",
@@ -270,13 +218,7 @@ describe("OAuthInterceptor", () => {
 			const retryResponse = { data: "success", status: 200 };
 			vi.spyOn(axiosInstance, "request").mockResolvedValue(retryResponse);
 
-			await OAuthInterceptor.create(
-				mockCoderApi,
-				logger,
-				mockOAuthManager,
-				secretsManager,
-				TEST_HOSTNAME,
-			);
+			await setupOAuthInterceptor();
 
 			const error = createAxiosError(401, "Unauthorized");
 			const result = await axiosInstance.triggerResponseError(error);
@@ -286,31 +228,10 @@ describe("OAuthInterceptor", () => {
 		});
 
 		it("does not retry if already retried", async () => {
-			const {
-				secretsManager,
-				logger,
-				mockCoderApi,
-				mockOAuthManager,
-				axiosInstance,
-			} = createTestContext();
+			const { mockOAuthManager, axiosInstance, setupOAuthInterceptor } =
+				createTestContext();
 
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "access-token",
-				oauth: {
-					token_type: "Bearer",
-					refresh_token: "refresh-token",
-					expiry_timestamp: Date.now() + 3600000,
-				},
-			});
-
-			await OAuthInterceptor.create(
-				mockCoderApi,
-				logger,
-				mockOAuthManager,
-				secretsManager,
-				TEST_HOSTNAME,
-			);
+			await setupOAuthInterceptor();
 
 			const error = createAxiosError(401, "Unauthorized", {
 				_oauthRetryAttempted: true,
@@ -321,35 +242,14 @@ describe("OAuthInterceptor", () => {
 		});
 
 		it("rethrows original error if refresh fails", async () => {
-			const {
-				secretsManager,
-				logger,
-				mockCoderApi,
-				mockOAuthManager,
-				axiosInstance,
-			} = createTestContext();
-
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "access-token",
-				oauth: {
-					token_type: "Bearer",
-					refresh_token: "refresh-token",
-					expiry_timestamp: Date.now() + 3600000,
-				},
-			});
+			const { mockOAuthManager, axiosInstance, setupOAuthInterceptor } =
+				createTestContext();
 
 			mockOAuthManager.refreshToken.mockRejectedValue(
 				new Error("Refresh failed"),
 			);
 
-			await OAuthInterceptor.create(
-				mockCoderApi,
-				logger,
-				mockOAuthManager,
-				secretsManager,
-				TEST_HOSTNAME,
-			);
+			await setupOAuthInterceptor();
 
 			const error = createAxiosError(401, "Unauthorized");
 
@@ -365,31 +265,10 @@ describe("OAuthInterceptor", () => {
 			},
 			{ name: "non-axios error", error: new Error("Network failure") },
 		])("ignores $name", async ({ error }) => {
-			const {
-				secretsManager,
-				logger,
-				mockCoderApi,
-				mockOAuthManager,
-				axiosInstance,
-			} = createTestContext();
+			const { mockOAuthManager, axiosInstance, setupOAuthInterceptor } =
+				createTestContext();
 
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "access-token",
-				oauth: {
-					token_type: "Bearer",
-					refresh_token: "refresh-token",
-					expiry_timestamp: Date.now() + 3600000,
-				},
-			});
-
-			await OAuthInterceptor.create(
-				mockCoderApi,
-				logger,
-				mockOAuthManager,
-				secretsManager,
-				TEST_HOSTNAME,
-			);
+			await setupOAuthInterceptor();
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 			expect(mockOAuthManager.refreshToken).not.toHaveBeenCalled();
