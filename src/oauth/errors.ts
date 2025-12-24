@@ -116,7 +116,7 @@ export function parseOAuthError(error: unknown): OAuthError | null {
 		return null;
 	}
 
-	const data = error.response?.data;
+	const data: unknown = error.response?.data;
 
 	if (!isOAuthErrorResponse(data)) {
 		return null;

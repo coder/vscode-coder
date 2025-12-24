@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 
 import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
+import { CALLBACK_PATH } from "@/oauth/utils";
 import { maybeAskUrl } from "@/promptUtils";
 import { registerUriHandler } from "@/uri/uriHandler";
 
@@ -318,6 +319,68 @@ describe("uriHandler", () => {
 					detail: expect.stringContaining("Connection failed"),
 				}),
 			);
+		});
+	});
+
+	describe(CALLBACK_PATH, () => {
+		interface CallbackData {
+			state: string;
+			code: string | null;
+			error: string | null;
+		}
+
+		it("stores OAuth callback with code and state", async () => {
+			const { handleUri, secretsManager } = createTestContext();
+
+			const callbackPromise = new Promise<CallbackData>((resolve) => {
+				secretsManager.onDidChangeOAuthCallback(resolve);
+			});
+
+			await handleUri(
+				createMockUri(CALLBACK_PATH, "code=auth-code&state=test-state"),
+			);
+
+			const callbackData = await callbackPromise;
+			expect(callbackData).toEqual({
+				state: "test-state",
+				code: "auth-code",
+				error: null,
+			});
+		});
+
+		it("stores OAuth callback with error", async () => {
+			const { handleUri, secretsManager } = createTestContext();
+
+			const callbackPromise = new Promise<CallbackData>((resolve) => {
+				secretsManager.onDidChangeOAuthCallback(resolve);
+			});
+
+			await handleUri(
+				createMockUri(CALLBACK_PATH, "state=test-state&error=access_denied"),
+			);
+
+			const callbackData = await callbackPromise;
+			expect(callbackData).toEqual({
+				state: "test-state",
+				code: null,
+				error: "access_denied",
+			});
+		});
+
+		it("does not store callback when state is missing", async () => {
+			const { handleUri, secretsManager } = createTestContext();
+
+			let callbackReceived = false;
+			secretsManager.onDidChangeOAuthCallback(() => {
+				callbackReceived = true;
+			});
+
+			await handleUri(createMockUri(CALLBACK_PATH, "code=auth-code"));
+
+			// Flush microtask queue to ensure any async callback would have fired
+			await Promise.resolve();
+
+			expect(callbackReceived).toBe(false);
 		});
 	});
 });

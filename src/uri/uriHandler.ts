@@ -4,6 +4,7 @@ import { errToStr } from "../api/api-helper";
 import { type Commands } from "../commands";
 import { type ServiceContainer } from "../core/container";
 import { type DeploymentManager } from "../deployment/deploymentManager";
+import { CALLBACK_PATH } from "../oauth/utils";
 import { maybeAskUrl } from "../promptUtils";
 import { toSafeHost } from "../util";
 
@@ -16,10 +17,10 @@ interface UriRouteContext {
 
 type UriRouteHandler = (ctx: UriRouteContext) => Promise<void>;
 
-const routes: Record<string, UriRouteHandler> = {
+const routes: Readonly<Record<string, UriRouteHandler>> = {
 	"/open": handleOpen,
 	"/openDevContainer": handleOpenDevContainer,
-	CALLBACK_PATH: handleOAuthCallback,
+	[CALLBACK_PATH]: handleOAuthCallback,
 };
 
 /**

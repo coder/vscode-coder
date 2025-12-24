@@ -20,6 +20,8 @@ import {
 	TEST_URL,
 } from "./testUtils";
 
+import type { CreateAxiosDefaults } from "axios";
+
 vi.mock("axios", async () => {
 	const actual = await vi.importActual<typeof import("axios")>("axios");
 	const mockAdapter = vi.fn();
@@ -27,7 +29,7 @@ vi.mock("axios", async () => {
 		...actual,
 		default: {
 			...actual.default,
-			create: vi.fn((config) =>
+			create: vi.fn((config?: CreateAxiosDefaults) =>
 				actual.default.create({ ...config, adapter: mockAdapter }),
 			),
 			__mockAdapter: mockAdapter,
