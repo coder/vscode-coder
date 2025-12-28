@@ -91,7 +91,7 @@ export function createBaseTestContext() {
 	vi.mocked(getHeaders).mockResolvedValue({});
 
 	// Constructor sets up vscode.workspace mock
-	new MockConfigurationProvider();
+	const _configurationProvider = new MockConfigurationProvider();
 
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
