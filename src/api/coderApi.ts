@@ -16,6 +16,7 @@ import {
 import * as vscode from "vscode";
 import { type ClientOptions } from "ws";
 
+import { watchConfigurationChanges } from "../configWatcher";
 import { CertificateError } from "../error";
 import { getHeaderCommand, getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
@@ -52,6 +53,21 @@ import { createHttpAgent } from "./utils";
 const coderSessionTokenHeader = "Coder-Session-Token";
 
 /**
+ * Configuration settings that affect WebSocket connections.
+ * Changes to these settings will trigger WebSocket reconnection.
+ */
+const webSocketConfigSettings = [
+	"coder.headerCommand",
+	"coder.insecure",
+	"coder.tlsCertFile",
+	"coder.tlsKeyFile",
+	"coder.tlsCaFile",
+	"coder.tlsAltHost",
+	"http.proxy",
+	"coder.proxyBypass",
+] as const;
+
+/**
  * Unified API class that includes both REST API methods from the base Api class
  * and WebSocket methods for real-time functionality.
  */
@@ -59,9 +75,11 @@ export class CoderApi extends Api implements vscode.Disposable {
 	private readonly reconnectingSockets = new Set<
 		ReconnectingWebSocket<never>
 	>();
+	private readonly configWatcher: vscode.Disposable;
 
 	private constructor(private readonly output: Logger) {
 		super();
+		this.configWatcher = this.watchConfigChanges();
 	}
 
 	/**
@@ -133,10 +151,32 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 * This clears handlers and prevents reconnection.
 	 */
 	dispose(): void {
+		this.configWatcher.dispose();
 		for (const socket of this.reconnectingSockets) {
 			socket.close();
 		}
 		this.reconnectingSockets.clear();
+	}
+
+	/**
+	 * Watch for configuration changes that affect WebSocket connections.
+	 * When any watched setting changes, all active WebSockets are reconnected.
+	 */
+	private watchConfigChanges(): vscode.Disposable {
+		const settings = webSocketConfigSettings.map((setting) => ({
+			setting,
+			getValue: () => vscode.workspace.getConfiguration().get(setting),
+		}));
+		return watchConfigurationChanges(settings, () => {
+			if (this.reconnectingSockets.size > 0) {
+				this.output.info(
+					`Configuration changed, reconnecting ${this.reconnectingSockets.size} WebSocket(s)`,
+				);
+				for (const socket of this.reconnectingSockets) {
+					socket.reconnect();
+				}
+			}
+		});
 	}
 
 	watchInboxNotifications = async (

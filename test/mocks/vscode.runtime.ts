@@ -120,8 +120,10 @@ export const workspace = {
 	onDidChangeWorkspaceFolders: onDidChangeWorkspaceFolders.event,
 
 	// test-only triggers:
-	__fireDidChangeConfiguration: onDidChangeConfiguration.fire,
-	__fireDidChangeWorkspaceFolders: onDidChangeWorkspaceFolders.fire,
+	__fireDidChangeConfiguration: (e: unknown) =>
+		onDidChangeConfiguration.fire(e),
+	__fireDidChangeWorkspaceFolders: (e: unknown) =>
+		onDidChangeWorkspaceFolders.fire(e),
 };
 
 export const env = {

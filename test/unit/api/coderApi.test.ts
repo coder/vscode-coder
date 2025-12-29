@@ -87,6 +87,11 @@ describe("CoderApi", () => {
 		mockConfig.set("coder.httpClientLogLevel", "BASIC");
 	});
 
+	afterEach(() => {
+		// Dispose any api created during the test to clean up config watchers
+		api?.dispose();
+	});
+
 	describe("HTTP Interceptors", () => {
 		it("adds custom headers and HTTP agent to requests", async () => {
 			const mockAgent = new ProxyAgent();
@@ -429,24 +434,24 @@ describe("CoderApi", () => {
 		});
 	});
 
-	describe("Reconnection on Host/Token Changes", () => {
-		const setupAutoOpeningWebSocket = () => {
-			const sockets: Array<Partial<Ws>> = [];
-			vi.mocked(Ws).mockImplementation((url: string | URL) => {
-				const mockWs = createMockWebSocket(String(url), {
-					on: vi.fn((event, handler) => {
-						if (event === "open") {
-							setImmediate(() => handler());
-						}
-						return mockWs as Ws;
-					}),
-				});
-				sockets.push(mockWs);
-				return mockWs as Ws;
+	const setupAutoOpeningWebSocket = () => {
+		const sockets: Array<Partial<Ws>> = [];
+		vi.mocked(Ws).mockImplementation((url: string | URL) => {
+			const mockWs = createMockWebSocket(String(url), {
+				on: vi.fn((event, handler) => {
+					if (event === "open") {
+						setImmediate(() => handler());
+					}
+					return mockWs as Ws;
+				}),
 			});
-			return sockets;
-		};
+			sockets.push(mockWs);
+			return mockWs as Ws;
+		});
+		return sockets;
+	};
 
+	describe("Reconnection on Host/Token Changes", () => {
 		it("triggers reconnection when session token changes", async () => {
 			const sockets = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
@@ -591,6 +596,55 @@ describe("CoderApi", () => {
 
 			// Socket should be closed
 			expect(sockets[0].close).toHaveBeenCalled();
+		});
+	});
+
+	describe("Configuration Change Reconnection", () => {
+		const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+		it("reconnects sockets when watched config value changes", async () => {
+			mockConfig.set("coder.insecure", false);
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			mockConfig.set("coder.insecure", true);
+			await tick();
+
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				1000,
+				"Replacing connection",
+			);
+			expect(sockets).toHaveLength(2);
+		});
+
+		it.each([
+			["unchanged value", "coder.insecure", false],
+			["unrelated setting", "unrelated.setting", "new-value"],
+		])("does not reconnect for %s", async (_desc, key, value) => {
+			mockConfig.set("coder.insecure", false);
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			mockConfig.set(key, value);
+			await tick();
+
+			expect(sockets[0].close).not.toHaveBeenCalled();
+			expect(sockets).toHaveLength(1);
+		});
+
+		it("stops watching after dispose", async () => {
+			mockConfig.set("coder.insecure", false);
+			const sockets = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			api.dispose();
+			mockConfig.set("coder.insecure", true);
+			await tick();
+
+			expect(sockets).toHaveLength(1);
 		});
 	});
 });
