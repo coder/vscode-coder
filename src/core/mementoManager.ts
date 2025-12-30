@@ -21,7 +21,7 @@ export class MementoManager {
 	 * Get the most recently accessed URLs (oldest to newest) with the provided
 	 * values appended. Duplicates will be removed.
 	 */
-	public withUrlHistory(...append: (string | undefined)[]): string[] {
+	public withUrlHistory(...append: Array<string | undefined>): string[] {
 		const val = this.memento.get("urlHistory");
 		const urls = Array.isArray(val) ? new Set(val) : new Set();
 		for (const url of append) {

@@ -25,12 +25,12 @@ export type ParsedMessageEvent<TData> = Readonly<
 	  }
 >;
 
-export type EventPayloadMap<TData> = {
+export interface EventPayloadMap<TData> {
 	close: CloseEvent;
 	error: ErrorEvent;
 	message: ParsedMessageEvent<TData>;
 	open: Event;
-};
+}
 
 export type EventHandler<TData, TEvent extends WebSocketEventType> = (
 	payload: EventPayloadMap<TData>[TEvent],

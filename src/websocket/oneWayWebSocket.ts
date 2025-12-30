@@ -16,13 +16,13 @@ import {
 } from "./eventStreamConnection";
 import { getQueryString } from "./utils";
 
-export type OneWayWebSocketInit = {
+export interface OneWayWebSocketInit {
 	location: { protocol: string; host: string };
 	apiRoute: string;
 	searchParams?: Record<string, string> | URLSearchParams;
 	protocols?: string | string[];
 	options?: ClientOptions;
-};
+}
 
 export class OneWayWebSocket<
 	TData = unknown,

@@ -14,7 +14,7 @@ export interface NetworkInfo {
 	p2p: boolean;
 	latency: number;
 	preferred_derp: string;
-	derp_latency: { [key: string]: number };
+	derp_latency: Record<string, number>;
 	upload_bytes_sec: number;
 	download_bytes_sec: number;
 	using_coder_connect: boolean;

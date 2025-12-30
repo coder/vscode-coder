@@ -428,8 +428,8 @@ export class Commands {
 		workspaceAgent: string,
 		devContainerName: string,
 		devContainerFolder: string,
-		localWorkspaceFolder: string = "",
-		localConfigFile: string = "",
+		localWorkspaceFolder = "",
+		localConfigFile = "",
 	): Promise<void> {
 		const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
@@ -599,7 +599,7 @@ export class Commands {
 		workspace: Workspace,
 		agent: WorkspaceAgent,
 		folderPath: string | undefined,
-		openRecent: boolean = false,
+		openRecent = false,
 	) {
 		const remoteAuthority = toRemoteAuthority(
 			baseUrl,
@@ -622,7 +622,7 @@ export class Commands {
 		// we can try to open a recently opened folder/workspace.
 		if (!folderPath || openRecent) {
 			const output: {
-				workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[];
+				workspaces: Array<{ folderUri: vscode.Uri; remoteAuthority: string }>;
 			} = await vscode.commands.executeCommand("_workbench.getRecentlyOpened");
 			const opened = output.workspaces.filter(
 				// Remove recents that do not belong to this connection.  The remote
