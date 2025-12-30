@@ -8,7 +8,9 @@
  */
 
 import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
-import Ws, { type ClientOptions, type MessageEvent, type RawData } from "ws";
+import Ws, { type ClientOptions, type RawData } from "ws";
+
+import { toError } from "../error/errorUtils";
 
 import {
 	type UnidirectionalStream,
@@ -60,16 +62,27 @@ export class OneWayWebSocket<
 
 			const wrapped = (data: RawData): void => {
 				try {
-					const message = JSON.parse(data.toString()) as TData;
+					// Convert RawData to string - ws library sends Buffer for text messages
+					let dataStr: string;
+					if (Buffer.isBuffer(data)) {
+						dataStr = data.toString("utf8");
+					} else if (data instanceof ArrayBuffer) {
+						dataStr = new TextDecoder().decode(data);
+					} else if (Array.isArray(data)) {
+						dataStr = Buffer.concat(data).toString("utf8");
+					} else {
+						dataStr = new TextDecoder().decode(data);
+					}
+					const message = JSON.parse(dataStr) as TData;
 					messageCallback({
-						sourceEvent: { data } as MessageEvent,
+						sourceEvent: { data },
 						parseError: undefined,
 						parsedMessage: message,
 					});
-				} catch (err) {
+				} catch (err: unknown) {
 					messageCallback({
-						sourceEvent: { data } as MessageEvent,
-						parseError: err as Error,
+						sourceEvent: { data },
+						parseError: toError(err),
 						parsedMessage: undefined,
 					});
 				}

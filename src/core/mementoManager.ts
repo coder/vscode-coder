@@ -22,8 +22,8 @@ export class MementoManager {
 	 * values appended. Duplicates will be removed.
 	 */
 	public withUrlHistory(...append: Array<string | undefined>): string[] {
-		const val = this.memento.get("urlHistory");
-		const urls = Array.isArray(val) ? new Set(val) : new Set();
+		const val = this.memento.get<string[]>("urlHistory");
+		const urls: Set<string> = Array.isArray(val) ? new Set(val) : new Set();
 		for (const url of append) {
 			if (url) {
 				// It might exist; delete first so it gets appended.

@@ -1,7 +1,8 @@
-import * as cp from "child_process";
-import * as os from "os";
-import * as util from "util";
+import * as cp from "node:child_process";
+import * as os from "node:os";
+import * as util from "node:util";
 
+import { toError } from "./error/errorUtils";
 import { type Logger } from "./logging/logger";
 import { escapeCommandArg } from "./util";
 
@@ -14,7 +15,7 @@ interface ExecException {
 }
 
 function isExecException(err: unknown): err is ExecException {
-	return typeof (err as ExecException).code !== "undefined";
+	return (err as ExecException).code !== undefined;
 }
 
 export function getHeaderCommand(
@@ -73,7 +74,7 @@ export async function getHeaders(
 					CODER_URL: url,
 				},
 			});
-		} catch (error) {
+		} catch (error: unknown) {
 			if (isExecException(error)) {
 				logger.warn("Header command exited unexpectedly with code", error.code);
 				logger.warn("stdout:", error.stdout);
@@ -82,7 +83,8 @@ export async function getHeaders(
 					`Header command exited unexpectedly with code ${error.code}`,
 				);
 			}
-			throw new Error(`Header command exited unexpectedly: ${error}`);
+			const message = toError(error).message;
+			throw new Error(`Header command exited unexpectedly: ${message}`);
 		}
 		if (!result.stdout) {
 			// Allow no output for parity with the Coder CLI.

@@ -73,7 +73,8 @@ export class WorkspaceProvider
 		let hadError = false;
 		try {
 			this.workspaces = await this.fetch();
-		} catch {
+		} catch (error) {
+			this.logger.error("Failed to fetch workspaces", error);
 			hadError = true;
 			this.workspaces = [];
 		}
@@ -182,7 +183,7 @@ export class WorkspaceProvider
 		} else if (this.workspaces) {
 			this.maybeScheduleRefresh();
 		} else {
-			this.fetchAndRefresh();
+			void this.fetchAndRefresh();
 		}
 	}
 
@@ -200,7 +201,7 @@ export class WorkspaceProvider
 	private maybeScheduleRefresh() {
 		if (this.timerSeconds && !this.timeout && !this.fetching) {
 			this.timeout = setTimeout(() => {
-				this.fetchAndRefresh();
+				void this.fetchAndRefresh();
 			}, this.timerSeconds * 1000);
 		}
 	}

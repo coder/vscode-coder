@@ -153,16 +153,23 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 	private parseMessage(
 		event: MessageEvent,
 	): ParsedMessageEvent<ServerSentEvent> {
-		const wsEvent = { data: event.data };
+		const data = event.data as unknown;
+		if (typeof data !== "string") {
+			return {
+				sourceEvent: { data },
+				parsedMessage: undefined,
+				parseError: new Error("SSE data is not a string"),
+			};
+		}
 		try {
 			return {
-				sourceEvent: wsEvent,
-				parsedMessage: { type: "data", data: JSON.parse(event.data) },
+				sourceEvent: { data },
+				parsedMessage: { type: "data", data: JSON.parse(data) as unknown },
 				parseError: undefined,
 			};
 		} catch (err) {
 			return {
-				sourceEvent: wsEvent,
+				sourceEvent: { data },
 				parsedMessage: undefined,
 				parseError: err as Error,
 			};

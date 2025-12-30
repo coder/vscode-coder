@@ -16,7 +16,7 @@ import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
 import { type SecretsManager } from "./core/secretsManager";
 import { type DeploymentManager } from "./deployment/deploymentManager";
-import { CertificateError } from "./error";
+import { CertificateError } from "./error/certificateError";
 import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
@@ -209,11 +209,13 @@ export class Commands {
 
 		await this.deploymentManager.clearDeployment();
 
-		vscode.window
+		void vscode.window
 			.showInformationMessage("You've been logged out of Coder!", "Login")
 			.then((action) => {
 				if (action === "Login") {
-					this.login();
+					this.login().catch((error) => {
+						this.logger.error("Failed to login", error);
+					});
 				}
 			});
 
@@ -541,8 +543,9 @@ export class Commands {
 					quickPick.busy = false;
 				})
 				.catch((ex) => {
+					this.logger.error("Failed to fetch workspaces", ex);
 					if (ex instanceof CertificateError) {
-						ex.showNotification();
+						void ex.showNotification();
 					}
 				});
 		});
