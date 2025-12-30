@@ -39,7 +39,7 @@ export interface SshProcessMonitorOptions {
 	remoteSshExtensionId: string;
 }
 
-// Cleanup threshold for old network info files
+// 1 hour cleanup threshold for old network info files
 const CLEANUP_MAX_AGE_MS = 60 * 60 * 1000;
 
 /**
@@ -100,8 +100,10 @@ export class SshProcessMonitor implements vscode.Disposable {
 						await fs.unlink(filePath);
 						deletedFiles.push(file);
 					}
-				} catch {
-					// File may have been deleted by another process or doesn't exist, ignore
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+						logger.debug(`Failed to clean up network info file ${file}`, error);
+					}
 				}
 			}
 
