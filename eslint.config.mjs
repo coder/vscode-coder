@@ -5,7 +5,8 @@ import markdown from "@eslint/markdown";
 import tseslint from "typescript-eslint";
 import prettierConfig from "eslint-config-prettier";
 import prettierPlugin from "eslint-plugin-prettier";
-import importPlugin from "eslint-plugin-import";
+import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
+import { flatConfigs as importXFlatConfigs } from "eslint-plugin-import-x";
 import packageJson from "eslint-plugin-package-json";
 import globals from "globals";
 
@@ -33,6 +34,7 @@ export default defineConfig(
 		extends: [
 			...tseslint.configs.recommendedTypeChecked,
 			...tseslint.configs.stylistic,
+			importXFlatConfigs.typescript,
 		],
 		languageOptions: {
 			parserOptions: {
@@ -42,13 +44,12 @@ export default defineConfig(
 		},
 		plugins: {
 			prettier: prettierPlugin,
-			import: importPlugin,
 		},
 		settings: {
-			"import/resolver": {
-				typescript: { project: "./tsconfig.json" },
-			},
-			"import/internal-regex": "^@/",
+			"import-x/resolver-next": [
+				createTypeScriptImportResolver({ project: "./tsconfig.json" }),
+			],
+			"import-x/internal-regex": "^@/",
 		},
 		rules: {
 			// Prettier integration
@@ -83,7 +84,7 @@ export default defineConfig(
 			"@typescript-eslint/array-type": ["error", { default: "array-simple" }],
 
 			// Import rules
-			"import/order": [
+			"import-x/order": [
 				"error",
 				{
 					groups: [
@@ -103,8 +104,8 @@ export default defineConfig(
 				},
 			],
 			"no-duplicate-imports": "off",
-			"import/no-duplicates": ["error", { "prefer-inline": true }],
-			"import/no-unresolved": ["error", { ignore: ["vscode"] }],
+			"import-x/no-duplicates": ["error", { "prefer-inline": true }],
+			"import-x/no-unresolved": ["error", { ignore: ["vscode"] }],
 
 			// Custom AST selector rule
 			"no-restricted-syntax": [
@@ -123,9 +124,9 @@ export default defineConfig(
 	{
 		files: ["test/**/*.ts", "**/*.test.ts", "**/*.spec.ts"],
 		settings: {
-			"import/resolver": {
-				typescript: { project: "test/tsconfig.json" },
-			},
+			"import-x/resolver-next": [
+				createTypeScriptImportResolver({ project: "test/tsconfig.json" }),
+			],
 		},
 		rules: {
 			// vitest mocks trigger false positives for unbound-method
