@@ -39,6 +39,9 @@ export interface SshProcessMonitorOptions {
 	remoteSshExtensionId: string;
 }
 
+// Cleanup threshold for old network info files (1 hour)
+const CLEANUP_MAX_AGE_MS = 60 * 60 * 1000;
+
 /**
  * Monitors the SSH process for a Coder workspace connection and displays
  * network status in the VS Code status bar.
@@ -70,6 +73,48 @@ export class SshProcessMonitor implements vscode.Disposable {
 	private pendingTimeout: NodeJS.Timeout | undefined;
 	private lastStaleSearchTime = 0;
 
+	/**
+	 * Cleans up network info files older than the specified age.
+	 */
+	private static async cleanupOldNetworkFiles(
+		networkInfoPath: string,
+		maxAgeMs: number,
+		logger: Logger,
+	): Promise<void> {
+		const deletedFiles: string[] = [];
+		try {
+			const files = await fs.readdir(networkInfoPath);
+			const now = Date.now();
+
+			for (const file of files) {
+				if (!file.endsWith(".json")) {
+					continue;
+				}
+
+				const filePath = path.join(networkInfoPath, file);
+				try {
+					const stats = await fs.stat(filePath);
+					const ageMs = now - stats.mtime.getTime();
+
+					if (ageMs > maxAgeMs) {
+						await fs.unlink(filePath);
+						deletedFiles.push(file);
+					}
+				} catch {
+					// File may have been deleted by another process or doesn't exist, ignore
+				}
+			}
+		} catch {
+			// Directory may not exist yet, that's fine
+		}
+
+		if (deletedFiles.length > 0) {
+			logger.debug(
+				`Cleaned up ${deletedFiles.length} old network info file(s): ${deletedFiles.join(", ")}`,
+			);
+		}
+	}
+
 	private constructor(options: SshProcessMonitorOptions) {
 		this.options = {
 			...options,
@@ -91,6 +136,16 @@ export class SshProcessMonitor implements vscode.Disposable {
 	 */
 	public static start(options: SshProcessMonitorOptions): SshProcessMonitor {
 		const monitor = new SshProcessMonitor(options);
+
+		// Clean up old network info files (non-blocking, fire-and-forget)
+		SshProcessMonitor.cleanupOldNetworkFiles(
+			options.networkInfoPath,
+			CLEANUP_MAX_AGE_MS,
+			options.logger,
+		).catch(() => {
+			// Ignore cleanup errors - they shouldn't affect monitoring
+		});
+
 		monitor.searchForProcess().catch((err) => {
 			options.logger.error("Error in SSH process monitor", err);
 		});
@@ -285,10 +340,13 @@ export class SshProcessMonitor implements vscode.Disposable {
 	/**
 	 * Monitors network info and updates the status bar.
 	 * Checks file mtime to detect stale connections and trigger reconnection search.
+	 * After consecutive failures to read the file, searches for a new process.
 	 */
 	private async monitorNetwork(): Promise<void> {
 		const { networkInfoPath, networkPollInterval, logger } = this.options;
 		const staleThreshold = networkPollInterval * 5;
+		const maxReadFailures = 5;
+		let consecutiveReadFailures = 0;
 
 		while (!this.disposed && this.currentPid !== undefined) {
 			const networkInfoFile = path.join(
@@ -296,36 +354,46 @@ export class SshProcessMonitor implements vscode.Disposable {
 				`${this.currentPid}.json`,
 			);
 
+			let searchReason = "";
+
 			try {
 				const stats = await fs.stat(networkInfoFile);
 				const ageMs = Date.now() - stats.mtime.getTime();
 
+				consecutiveReadFailures = 0;
+
 				if (ageMs > staleThreshold) {
-					// Prevent tight loop: if we just searched due to stale, wait before searching again
-					const timeSinceLastSearch = Date.now() - this.lastStaleSearchTime;
-					if (timeSinceLastSearch < staleThreshold) {
-						await this.delay(staleThreshold - timeSinceLastSearch);
-						continue;
-					}
+					searchReason = `Network info stale (${Math.round(ageMs / 1000)}s old)`;
+				} else {
+					const content = await fs.readFile(networkInfoFile, "utf8");
+					const network = JSON.parse(content) as NetworkInfo;
+					const isStale = ageMs > networkPollInterval * 2;
+					this.updateStatusBar(network, isStale);
+				}
+			} catch (error) {
+				consecutiveReadFailures++;
+				logger.debug(
+					`Failed to read network info (attempt ${consecutiveReadFailures}): ${(error as Error).message}`,
+				);
 
-					logger.debug(
-						`Network info stale (${Math.round(ageMs / 1000)}s old), searching for new SSH process`,
-					);
+				if (consecutiveReadFailures >= maxReadFailures) {
+					searchReason = `Network info missing for ${consecutiveReadFailures} attempts`;
+				}
+			}
 
-					// searchForProcess will update PID if a different process is found
-					this.lastStaleSearchTime = Date.now();
-					await this.searchForProcess();
-					return;
+			if (searchReason) {
+				// Throttle: don't search too frequently
+				const timeSinceLastSearch = Date.now() - this.lastStaleSearchTime;
+				if (timeSinceLastSearch < staleThreshold) {
+					await this.delay(staleThreshold - timeSinceLastSearch);
+					continue;
 				}
 
-				const content = await fs.readFile(networkInfoFile, "utf8");
-				const network = JSON.parse(content) as NetworkInfo;
-				const isStale = ageMs > this.options.networkPollInterval * 2;
-				this.updateStatusBar(network, isStale);
-			} catch (error) {
-				logger.debug(
-					`Failed to read network info: ${(error as Error).message}`,
-				);
+				logger.debug(`${searchReason}, searching for new SSH process`);
+				// searchForProcess will update PID if a different process is found
+				this.lastStaleSearchTime = Date.now();
+				await this.searchForProcess();
+				return;
 			}
 
 			await this.delay(networkPollInterval);

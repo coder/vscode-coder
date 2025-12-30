@@ -423,6 +423,94 @@ describe("SshProcessMonitor", () => {
 		});
 	});
 
+	describe("cleanup old network files", () => {
+		const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
+
+		function setOldMtime(filePath: string): void {
+			// Default cleanup is 1 hour; set mtime to 2 hours ago to mark as old
+			vol.utimesSync(filePath, TWO_HOURS_AGO / 1000, TWO_HOURS_AGO / 1000);
+		}
+
+		it("deletes old .json files but preserves recent and non-.json files", async () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+				"/network/old.json": "{}",
+				"/network/recent.json": "{}",
+				"/network/old.log": "{}",
+			});
+			setOldMtime("/network/old.json");
+			setOldMtime("/network/old.log");
+
+			createMonitor({
+				codeLogDir: "/logs/window1",
+				networkInfoPath: "/network",
+			});
+
+			await vi.waitFor(() => {
+				const files = vol.readdirSync("/network");
+				expect(files).toHaveLength(2);
+				expect(files).toContain("old.log");
+				expect(files).toContain("recent.json");
+			});
+		});
+
+		it("does not throw when network directory is missing or empty", () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+			});
+			vol.mkdirSync("/empty-network", { recursive: true });
+
+			expect(() =>
+				createMonitor({
+					codeLogDir: "/logs/window1",
+					networkInfoPath: "/nonexistent",
+				}),
+			).not.toThrow();
+
+			expect(() =>
+				createMonitor({
+					codeLogDir: "/logs/window1",
+					networkInfoPath: "/empty-network",
+				}),
+			).not.toThrow();
+		});
+	});
+
+	describe("missing file retry logic", () => {
+		beforeEach(() => vi.useFakeTimers());
+		afterEach(() => vi.useRealTimers());
+
+		it("searches for new process after consecutive file read failures", async () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+			});
+
+			vi.mocked(find)
+				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValue([{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh" }]);
+
+			const pollInterval = 10;
+			const monitor = createMonitor({
+				codeLogDir: "/logs/window1",
+				networkInfoPath: "/network",
+				networkPollInterval: pollInterval,
+			});
+
+			await vi.advanceTimersByTimeAsync(pollInterval);
+
+			const pids: (number | undefined)[] = [];
+			monitor.onPidChange((pid) => pids.push(pid));
+
+			// 5 failures at pollInterval each, then staleThreshold wait before search
+			await vi.advanceTimersByTimeAsync(pollInterval * 5 * 2);
+
+			expect(pids).toContain(888);
+		});
+	});
+
 	describe("dispose", () => {
 		it("disposes status bar", () => {
 			const monitor = createMonitor();
