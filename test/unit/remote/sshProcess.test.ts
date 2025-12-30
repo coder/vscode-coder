@@ -424,12 +424,11 @@ describe("SshProcessMonitor", () => {
 	});
 
 	describe("cleanup old network files", () => {
-		const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
-
-		function setOldMtime(filePath: string): void {
+		const setOldMtime = (filePath: string) => {
 			// Default cleanup is 1 hour; set mtime to 2 hours ago to mark as old
+			const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
 			vol.utimesSync(filePath, TWO_HOURS_AGO / 1000, TWO_HOURS_AGO / 1000);
-		}
+		};
 
 		it("deletes old .json files but preserves recent and non-.json files", async () => {
 			vol.fromJSON({
@@ -486,11 +485,22 @@ describe("SshProcessMonitor", () => {
 			vol.fromJSON({
 				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
 					"-> socksPort 12345 ->",
+				"/network/789.json": "{}",
 			});
+			// Set mtime far into the future so 789.json is always considered fresh
+			const FRESH_MTIME = Date.now() + 1_000_000;
+			vol.utimesSync(
+				"/network/789.json",
+				FRESH_MTIME / 1000,
+				FRESH_MTIME / 1000,
+			);
 
 			vi.mocked(find)
-				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
-				.mockResolvedValue([{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh" }]);
+				.mockResolvedValueOnce([{ pid: 123, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValueOnce([{ pid: 456, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValueOnce([{ pid: 789, ppid: 1, name: "ssh", cmd: "ssh" }])
+				// This will not be found since `789.json` is found and is not stale!
+				.mockResolvedValue([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }]);
 
 			const pollInterval = 10;
 			const monitor = createMonitor({
@@ -499,15 +509,13 @@ describe("SshProcessMonitor", () => {
 				networkPollInterval: pollInterval,
 			});
 
-			await vi.advanceTimersByTimeAsync(pollInterval);
-
 			const pids: (number | undefined)[] = [];
 			monitor.onPidChange((pid) => pids.push(pid));
 
-			// 5 failures at pollInterval each, then staleThreshold wait before search
-			await vi.advanceTimersByTimeAsync(pollInterval * 5 * 2);
+			// Advance enough time for the monitor to cycle through PIDs 123, 456, and find 789
+			await vi.advanceTimersByTimeAsync(pollInterval * 100);
 
-			expect(pids).toContain(888);
+			expect(pids).toEqual([123, 456, 789]);
 		});
 	});
 
