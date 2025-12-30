@@ -24,9 +24,9 @@ export type OneWayWebSocketInit = {
 	options?: ClientOptions;
 };
 
-export class OneWayWebSocket<TData = unknown>
-	implements UnidirectionalStream<TData>
-{
+export class OneWayWebSocket<
+	TData = unknown,
+> implements UnidirectionalStream<TData> {
 	readonly #socket: Ws;
 	readonly #messageCallbacks = new Map<
 		EventHandler<TData, "message">,

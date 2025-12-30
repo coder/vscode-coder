@@ -453,17 +453,14 @@ export class MockStatusBar {
 /**
  * Mock CoderApi for testing. Tracks method calls and allows controlling responses.
  */
-export class MockCoderApi
-	implements
-		Pick<
-			CoderApi,
-			| "setHost"
-			| "setSessionToken"
-			| "setCredentials"
-			| "getAuthenticatedUser"
-			| "dispose"
-		>
-{
+export class MockCoderApi implements Pick<
+	CoderApi,
+	| "setHost"
+	| "setSessionToken"
+	| "setCredentials"
+	| "getAuthenticatedUser"
+	| "dispose"
+> {
 	private _host: string | undefined;
 	private _token: string | undefined;
 	private _disposed = false;
