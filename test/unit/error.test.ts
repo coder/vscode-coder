@@ -41,7 +41,7 @@ describe("Certificate errors", () => {
 		error: throwingLog,
 	};
 
-	const disposers: (() => void)[] = [];
+	const disposers: Array<() => void> = [];
 	afterAll(() => {
 		disposers.forEach((d) => d());
 	});

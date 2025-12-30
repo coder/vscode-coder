@@ -70,7 +70,10 @@ export async function version(binPath: string): Promise<string> {
 	return json.version;
 }
 
-export type RemovalResult = { fileName: string; error: unknown };
+export interface RemovalResult {
+	fileName: string;
+	error: unknown;
+}
 
 /**
  * Remove binaries in the same directory as the specified path that have a

@@ -246,7 +246,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 
 	private async watchLogs<TData>(
 		apiRoute: string,
-		logs: { id: number }[],
+		logs: Array<{ id: number }>,
 		options?: ClientOptions,
 	) {
 		const searchParams = new URLSearchParams({ follow: "true" });

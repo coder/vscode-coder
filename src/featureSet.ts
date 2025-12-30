@@ -1,11 +1,11 @@
 import type * as semver from "semver";
 
-export type FeatureSet = {
+export interface FeatureSet {
 	vscodessh: boolean;
 	proxyLogDirectory: boolean;
 	wildcardSSH: boolean;
 	buildReason: boolean;
-};
+}
 
 /**
  * Builds and returns a FeatureSet object for a given coder version.

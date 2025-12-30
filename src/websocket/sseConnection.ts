@@ -16,14 +16,14 @@ import type {
 	ErrorEvent as WsErrorEvent,
 } from "./eventStreamConnection";
 
-export type SseConnectionInit = {
+export interface SseConnectionInit {
 	location: { protocol: string; host: string };
 	apiRoute: string;
 	searchParams?: Record<string, string> | URLSearchParams;
 	optionsHeaders?: Record<string, string>;
 	axiosInstance: AxiosInstance;
 	logger: Logger;
-};
+}
 
 export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 	private readonly eventSource: EventSource;

@@ -261,9 +261,7 @@ export class SSHConfig {
 		const configValues = mergeSshConfigValues(otherValues, overrides || {});
 
 		// keys is the sorted keys of the merged values.
-		const keys = (
-			Object.keys(configValues) as Array<keyof typeof configValues>
-		).sort();
+		const keys = Object.keys(configValues).sort();
 		keys.forEach((key) => {
 			const value = configValues[key];
 			if (value !== "") {

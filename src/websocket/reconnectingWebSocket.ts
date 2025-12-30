@@ -16,11 +16,11 @@ import type {
 
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
-export type ReconnectingWebSocketOptions = {
+export interface ReconnectingWebSocketOptions {
 	initialBackoffMs?: number;
 	maxBackoffMs?: number;
 	jitterFactor?: number;
-};
+}
 
 export class ReconnectingWebSocket<
 	TData = unknown,
