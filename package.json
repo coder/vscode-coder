@@ -446,7 +446,7 @@
 		"glob": "^13.0.0",
 		"jsonc-eslint-parser": "^2.4.2",
 		"markdown-eslint-parser": "^1.2.1",
-		"memfs": "^4.49.0",
+		"memfs": "^4.51.1",
 		"nyc": "^17.1.0",
 		"prettier": "^3.6.2",
 		"ts-loader": "^9.5.4",
