@@ -1,7 +1,7 @@
-import { isAxiosError, type AxiosError, type AxiosResponse } from "axios";
+import { isAxiosError, type AxiosResponse } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 
-import { getErrorDetail } from "../error";
+import { getErrorDetail } from "../error/errorUtils";
 
 import {
 	formatBody,
@@ -81,7 +81,7 @@ export function logResponse(
  */
 export function logError(
 	logger: Logger,
-	error: AxiosError | unknown,
+	error: unknown,
 	logLevel: HttpClientLogLevel,
 ): void {
 	if (isAxiosError(error)) {

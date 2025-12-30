@@ -257,7 +257,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 			return processes[0].pid;
 		} catch (error) {
-			logger.debug(`Port-based SSH process search failed: ${error}`);
+			logger.debug("SSH process search failed", error);
 			return undefined;
 		}
 	}
@@ -289,8 +289,13 @@ export class SshProcessMonitor implements vscode.Disposable {
 		if (this.disposed || this.currentPid === undefined) {
 			return;
 		}
-		this.searchForLogFile();
-		this.monitorNetwork();
+		const { logger } = this.options;
+		this.searchForLogFile().catch((error) => {
+			logger.error("Failed to search for log file", error);
+		});
+		this.monitorNetwork().catch((error) => {
+			logger.error("Failed to monitor network", error);
+		});
 	}
 
 	/**

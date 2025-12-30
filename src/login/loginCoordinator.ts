@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { CertificateError } from "../error";
+import { CertificateError } from "../error/certificateError";
 import { maybeAskUrl } from "../promptUtils";
 
 import type { User } from "coder/site/src/api/typesGenerated";
@@ -188,7 +188,9 @@ export class LoginCoordinator {
 		});
 		return {
 			promise,
-			dispose: () => disposable?.dispose(),
+			dispose: () => {
+				disposable?.dispose();
+			},
 		};
 	}
 
@@ -323,7 +325,7 @@ export class LoginCoordinator {
 					// text under the input box, since users sometimes miss the
 					// notification.
 					if (err instanceof CertificateError) {
-						err.showNotification();
+						void err.showNotification();
 						return {
 							message: err.x509Err || err.message,
 							severity: vscode.InputBoxValidationSeverity.Error,

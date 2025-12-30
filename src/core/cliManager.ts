@@ -96,7 +96,8 @@ export class CliManager {
 				);
 			} catch (error) {
 				this.output.warn(
-					`Unable to get version of existing binary: ${error}. Downloading new binary instead`,
+					"Unable to get version of existing binary. Downloading new binary instead",
+					error,
 				);
 			}
 		}
@@ -474,8 +475,10 @@ export class CliManager {
 		this.output.info("Got status code", resp.status);
 
 		if (resp.status === 200) {
-			const rawContentLength = resp.headers["content-length"];
-			const contentLength = Number.parseInt(rawContentLength);
+			const rawContentLength = resp.headers["content-length"] as unknown;
+			const contentLength = Number.parseInt(
+				typeof rawContentLength === "string" ? rawContentLength : "",
+			);
 			if (Number.isNaN(contentLength)) {
 				this.output.warn(
 					"Got invalid or missing content length",

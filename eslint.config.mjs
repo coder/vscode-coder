@@ -1,5 +1,6 @@
 // @ts-check
 import eslint from "@eslint/js";
+import { defineConfig } from "eslint/config";
 import markdown from "@eslint/markdown";
 import tseslint from "typescript-eslint";
 import prettierConfig from "eslint-config-prettier";
@@ -8,7 +9,7 @@ import importPlugin from "eslint-plugin-import";
 import packageJson from "eslint-plugin-package-json";
 import globals from "globals";
 
-export default tseslint.config(
+export default defineConfig(
   // Global ignores (replaces .eslintignore and ignorePatterns)
   {
     ignores: [
@@ -131,6 +132,12 @@ export default tseslint.config(
       "@typescript-eslint/unbound-method": "off",
       // Empty callbacks are common in test stubs
       "@typescript-eslint/no-empty-function": "off",
+      // Test mocks often have loose typing - relax unsafe rules
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
     },
   },
 

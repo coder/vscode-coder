@@ -63,7 +63,7 @@ export async function version(binPath: string): Promise<string> {
 		throw error;
 	}
 
-	const json = JSON.parse(stdout);
+	const json = JSON.parse(stdout) as { version?: string };
 	if (!json.version) {
 		throw new Error("No version found in output: ${stdout}");
 	}

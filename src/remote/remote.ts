@@ -29,6 +29,7 @@ import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
 import { type PathResolver } from "../core/pathResolver";
 import { type SecretsManager } from "../core/secretsManager";
+import { toError } from "../error/errorUtils";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
@@ -127,7 +128,9 @@ export class Remote {
 				});
 
 				// Dispose before retrying since setup will create new disposables
-				disposables.forEach((d) => d.dispose());
+				disposables.forEach((d) => {
+					d.dispose();
+				});
 				if (result.success) {
 					// Login successful, retry setup
 					return this.setup(
@@ -228,7 +231,9 @@ export class Remote {
 					},
 					"Close Remote",
 				);
-				disposables.forEach((d) => d.dispose());
+				disposables.forEach((d) => {
+					d.dispose();
+				});
 				await this.closeRemote();
 				return;
 			}
@@ -262,7 +267,9 @@ export class Remote {
 								},
 								"Open Workspace",
 							);
-						disposables.forEach((d) => d.dispose());
+						disposables.forEach((d) => {
+							d.dispose();
+						});
 						if (!result) {
 							await this.closeRemote();
 						}
@@ -270,7 +277,9 @@ export class Remote {
 						return;
 					}
 					case 401: {
-						disposables.forEach((d) => d.dispose());
+						disposables.forEach((d) => {
+							d.dispose();
+						});
 						return ensureLoggedInAndRetry(
 							"Your session expired...",
 							baseUrlRaw,
@@ -288,7 +297,9 @@ export class Remote {
 				workspace.name,
 			);
 			disposables.push({
-				dispose: () => labelFormatterDisposable.dispose(),
+				dispose: () => {
+					labelFormatterDisposable.dispose();
+				},
 			});
 
 			// Watch the workspace for changes.
@@ -349,23 +360,23 @@ export class Remote {
 										resolve(w);
 										return;
 									}
-								} catch (error) {
+								} catch (error: unknown) {
 									subscription.dispose();
-									reject(error);
+									reject(toError(error));
 									return;
 								} finally {
 									inProgress = false;
 								}
 
 								if (pendingWorkspace) {
-									processWorkspace(pendingWorkspace);
+									void processWorkspace(pendingWorkspace);
 								}
 							};
 
-							processWorkspace(workspace);
-							const subscription = monitor.onChange.event(async (w) =>
-								processWorkspace(w),
-							);
+							void processWorkspace(workspace);
+							const subscription = monitor.onChange.event((w) => {
+								void processWorkspace(w);
+							});
 						});
 					},
 				);
@@ -557,7 +568,9 @@ export class Remote {
 			disposables.push(this.watchSettings(settingsToWatch));
 		} catch (ex) {
 			// Whatever error happens, make sure we clean up the disposables in case of failure
-			disposables.forEach((d) => d.dispose());
+			disposables.forEach((d) => {
+				d.dispose();
+			});
 			throw ex;
 		}
 
@@ -573,7 +586,9 @@ export class Remote {
 			url: baseUrlRaw,
 			token: token ?? "",
 			dispose: () => {
-				disposables.forEach((d) => d.dispose());
+				disposables.forEach((d) => {
+					d.dispose();
+				});
 			},
 		};
 	}

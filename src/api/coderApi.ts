@@ -17,7 +17,8 @@ import * as vscode from "vscode";
 import { type ClientOptions } from "ws";
 
 import { watchConfigurationChanges } from "../configWatcher";
-import { CertificateError } from "../error";
+import { CertificateError } from "../error/certificateError";
+import { toError } from "../error/errorUtils";
 import { getHeaderCommand, getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
 import {
@@ -413,7 +414,8 @@ export class CoderApi extends Api implements vscode.Disposable {
 			const handleError = (event: ErrorEvent) => {
 				cleanup();
 				connection.close();
-				reject(event.error || new Error(event.message));
+				const error = toError(event.error, "WebSocket connection error");
+				reject(error);
 			};
 
 			connection.addEventListener("open", handleOpen);
@@ -502,7 +504,7 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 					config.transformRequest || client.defaults.transformRequest || [],
 					configWithMeta,
 				),
-				(data) => {
+				(data: unknown) => {
 					// Log after setting the raw request size
 					logRequest(logger, configWithMeta, getLogLevel());
 					return data;
@@ -579,11 +581,10 @@ function wrapResponseTransform(
 }
 
 function getSize(headers: AxiosHeaders, data: unknown): number | undefined {
-	const contentLength = headers["content-length"];
-	if (contentLength !== undefined) {
+	const contentLength = headers["content-length"] as unknown;
+	if (typeof contentLength === "string") {
 		return Number.parseInt(contentLength, 10);
 	}
-
 	return sizeOf(data);
 }
 

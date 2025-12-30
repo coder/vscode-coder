@@ -7,7 +7,7 @@ import Ws from "ws";
 
 import { CoderApi } from "@/api/coderApi";
 import { createHttpAgent } from "@/api/utils";
-import { CertificateError } from "@/error";
+import { CertificateError } from "@/error/certificateError";
 import { getHeaders } from "@/headers";
 import { type RequestConfigWithMeta } from "@/logging/types";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
