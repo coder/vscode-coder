@@ -701,9 +701,9 @@ export function setupAxiosMockRoutes(
  * A mock vscode.Progress implementation that tracks all reported progress.
  * Use this when testing code that accepts a Progress parameter directly.
  */
-export class MockProgress<T = { message?: string; increment?: number }>
-	implements vscode.Progress<T>
-{
+export class MockProgress<
+	T = { message?: string; increment?: number },
+> implements vscode.Progress<T> {
 	private readonly reports: T[] = [];
 	readonly report = vi.fn((value: T) => {
 		this.reports.push(value);
