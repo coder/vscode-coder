@@ -22,9 +22,9 @@ export type ReconnectingWebSocketOptions = {
 	jitterFactor?: number;
 };
 
-export class ReconnectingWebSocket<TData = unknown>
-	implements UnidirectionalStream<TData>
-{
+export class ReconnectingWebSocket<
+	TData = unknown,
+> implements UnidirectionalStream<TData> {
 	readonly #socketFactory: SocketFactory<TData>;
 	readonly #logger: Logger;
 	readonly #options: Required<ReconnectingWebSocketOptions>;
