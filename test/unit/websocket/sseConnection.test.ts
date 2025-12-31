@@ -356,7 +356,9 @@ function createMockEventSource(
 }
 
 function setupEventSourceMock(es: Partial<EventSource>): void {
-	vi.mocked(EventSource).mockImplementation(() => es as EventSource);
+	vi.mocked(EventSource).mockImplementation(function () {
+		return es as EventSource;
+	});
 }
 
 function waitForNextTick(): Promise<void> {

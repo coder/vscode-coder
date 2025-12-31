@@ -342,7 +342,7 @@ describe("CoderApi", () => {
 
 		it("falls back to SSE when WebSocket creation fails with 404", async () => {
 			// Only 404 errors trigger SSE fallback - other errors are thrown
-			vi.mocked(Ws).mockImplementation(() => {
+			vi.mocked(Ws).mockImplementation(function () {
 				throw new Error("Unexpected server response: 404");
 			});
 
@@ -380,7 +380,7 @@ describe("CoderApi", () => {
 		});
 
 		it("throws non-404 errors without SSE fallback", async () => {
-			vi.mocked(Ws).mockImplementation(() => {
+			vi.mocked(Ws).mockImplementation(function () {
 				throw new Error("Network error");
 			});
 
@@ -398,7 +398,7 @@ describe("CoderApi", () => {
 				let wsAttempts = 0;
 				const mockEventSources: MockEventSource[] = [];
 
-				vi.mocked(Ws).mockImplementation(() => {
+				vi.mocked(Ws).mockImplementation(function () {
 					wsAttempts++;
 					const mockWs = createMockWebSocket("wss://test", {
 						on: vi.fn((event: string, handler: (e: unknown) => void) => {
@@ -413,7 +413,7 @@ describe("CoderApi", () => {
 					return mockWs as Ws;
 				});
 
-				vi.mocked(EventSource).mockImplementation(() => {
+				vi.mocked(EventSource).mockImplementation(function () {
 					const es = createMockEventSource(`${CODER_URL}/api/v2/test`);
 					mockEventSources.push(es);
 					return es as unknown as EventSource;
@@ -436,7 +436,7 @@ describe("CoderApi", () => {
 
 	const setupAutoOpeningWebSocket = () => {
 		const sockets: Array<Partial<Ws>> = [];
-		vi.mocked(Ws).mockImplementation((url: string | URL) => {
+		vi.mocked(Ws).mockImplementation(function (url: string | URL) {
 			const mockWs = createMockWebSocket(String(url), {
 				on: vi.fn((event, handler) => {
 					if (event === "open") {
@@ -575,7 +575,7 @@ describe("CoderApi", () => {
 	describe("dispose", () => {
 		it("disposes all tracked reconnecting sockets", async () => {
 			const sockets: Array<Partial<Ws>> = [];
-			vi.mocked(Ws).mockImplementation((url: string | URL) => {
+			vi.mocked(Ws).mockImplementation(function (url: string | URL) {
 				const mockWs = createMockWebSocket(String(url), {
 					on: vi.fn((event, handler) => {
 						if (event === "open") {
@@ -701,9 +701,13 @@ function createMockEventSource(url: string): MockEventSource {
 }
 
 function setupWebSocketMock(ws: Partial<Ws>): void {
-	vi.mocked(Ws).mockImplementation(() => ws as Ws);
+	vi.mocked(Ws).mockImplementation(function () {
+		return ws as Ws;
+	});
 }
 
 function setupEventSourceMock(es: Partial<EventSource>): void {
-	vi.mocked(EventSource).mockImplementation(() => es as EventSource);
+	vi.mocked(EventSource).mockImplementation(function () {
+		return es as EventSource;
+	});
 }

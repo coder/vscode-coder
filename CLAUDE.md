@@ -28,6 +28,15 @@ Comments explain what code does or why it exists:
 - Never mock behavior in end-to-end tests - use real data
 - Mock as little as possible in unit tests - try to use real data
 - Find root causes, not symptoms. Read error messages carefully before attempting fixes.
+- When mocking constructors (classes) with `vi.mocked(...).mockImplementation()`, use regular functions, not arrow functions. Arrow functions can't be called with `new`.
+  ```typescript
+  // ✗ Wrong
+  vi.mocked(SomeClass).mockImplementation(() => mock);
+  // ✓ Correct
+  vi.mocked(SomeClass).mockImplementation(function () {
+  	return mock;
+  });
+  ```
 
 ## Version Control
 
