@@ -423,6 +423,102 @@ describe("SshProcessMonitor", () => {
 		});
 	});
 
+	describe("cleanup old network files", () => {
+		const setOldMtime = (filePath: string) => {
+			// Default cleanup is 1 hour; set mtime to 2 hours ago to mark as old
+			const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
+			vol.utimesSync(filePath, TWO_HOURS_AGO / 1000, TWO_HOURS_AGO / 1000);
+		};
+
+		it("deletes old .json files but preserves recent and non-.json files", async () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+				"/network/old.json": "{}",
+				"/network/recent.json": "{}",
+				"/network/old.log": "{}",
+			});
+			setOldMtime("/network/old.json");
+			setOldMtime("/network/old.log");
+
+			createMonitor({
+				codeLogDir: "/logs/window1",
+				networkInfoPath: "/network",
+			});
+
+			await vi.waitFor(() => {
+				const files = vol.readdirSync("/network");
+				expect(files).toHaveLength(2);
+				expect(files).toContain("old.log");
+				expect(files).toContain("recent.json");
+			});
+		});
+
+		it("does not throw when network directory is missing or empty", () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+			});
+			vol.mkdirSync("/empty-network", { recursive: true });
+
+			expect(() =>
+				createMonitor({
+					codeLogDir: "/logs/window1",
+					networkInfoPath: "/nonexistent",
+				}),
+			).not.toThrow();
+
+			expect(() =>
+				createMonitor({
+					codeLogDir: "/logs/window1",
+					networkInfoPath: "/empty-network",
+				}),
+			).not.toThrow();
+		});
+	});
+
+	describe("missing file retry logic", () => {
+		beforeEach(() => vi.useFakeTimers());
+		afterEach(() => vi.useRealTimers());
+
+		it("searches for new process after consecutive file read failures", async () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+				"/network/789.json": "{}",
+			});
+			// Set mtime far into the future so 789.json is always considered fresh
+			const FRESH_MTIME = Date.now() + 1_000_000;
+			vol.utimesSync(
+				"/network/789.json",
+				FRESH_MTIME / 1000,
+				FRESH_MTIME / 1000,
+			);
+
+			vi.mocked(find)
+				.mockResolvedValueOnce([{ pid: 123, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValueOnce([{ pid: 456, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValueOnce([{ pid: 789, ppid: 1, name: "ssh", cmd: "ssh" }])
+				// This will not be found since `789.json` is found and is not stale!
+				.mockResolvedValue([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }]);
+
+			const pollInterval = 10;
+			const monitor = createMonitor({
+				codeLogDir: "/logs/window1",
+				networkInfoPath: "/network",
+				networkPollInterval: pollInterval,
+			});
+
+			const pids: (number | undefined)[] = [];
+			monitor.onPidChange((pid) => pids.push(pid));
+
+			// Advance enough time for the monitor to cycle through PIDs 123, 456, and find 789
+			await vi.advanceTimersByTimeAsync(pollInterval * 100);
+
+			expect(pids).toEqual([123, 456, 789]);
+		});
+	});
+
 	describe("dispose", () => {
 		it("disposes status bar", () => {
 			const monitor = createMonitor();
