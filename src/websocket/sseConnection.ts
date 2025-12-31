@@ -4,6 +4,7 @@ import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import { EventSource } from "eventsource";
 
 import { createStreamingFetchAdapter } from "../api/streamingFetchAdapter";
+import { toError } from "../error/errorUtils";
 import { type Logger } from "../logging/logger";
 
 import { WebSocketCloseCode } from "./codes";
@@ -154,24 +155,20 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 		event: MessageEvent,
 	): ParsedMessageEvent<ServerSentEvent> {
 		const data = event.data as unknown;
-		if (typeof data !== "string") {
-			return {
-				sourceEvent: { data },
-				parsedMessage: undefined,
-				parseError: new Error("SSE data is not a string"),
-			};
-		}
 		try {
 			return {
 				sourceEvent: { data },
-				parsedMessage: { type: "data", data: JSON.parse(data) as unknown },
+				parsedMessage: {
+					type: "data",
+					data: JSON.parse(String(data)) as unknown,
+				},
 				parseError: undefined,
 			};
-		} catch (err) {
+		} catch (err: unknown) {
 			return {
 				sourceEvent: { data },
 				parsedMessage: undefined,
-				parseError: err as Error,
+				parseError: toError(err, "SSE data is not a valid JSON"),
 			};
 		}
 	}

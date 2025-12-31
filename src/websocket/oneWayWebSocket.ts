@@ -16,7 +16,7 @@ import {
 	type UnidirectionalStream,
 	type EventHandler,
 } from "./eventStreamConnection";
-import { getQueryString } from "./utils";
+import { getQueryString, rawDataToString } from "./utils";
 
 export interface OneWayWebSocketInit {
 	location: { protocol: string; host: string };
@@ -62,17 +62,7 @@ export class OneWayWebSocket<
 
 			const wrapped = (data: RawData): void => {
 				try {
-					// Convert RawData to string - ws library sends Buffer for text messages
-					let dataStr: string;
-					if (Buffer.isBuffer(data)) {
-						dataStr = data.toString("utf8");
-					} else if (data instanceof ArrayBuffer) {
-						dataStr = new TextDecoder().decode(data);
-					} else if (Array.isArray(data)) {
-						dataStr = Buffer.concat(data).toString("utf8");
-					} else {
-						dataStr = new TextDecoder().decode(data);
-					}
+					const dataStr = rawDataToString(data);
 					const message = JSON.parse(dataStr) as TData;
 					messageCallback({
 						sourceEvent: { data },

@@ -11,7 +11,7 @@ import packageJson from "eslint-plugin-package-json";
 import globals from "globals";
 
 export default defineConfig(
-	// Global ignores (replaces .eslintignore and ignorePatterns)
+	// Global ignores
 	{
 		ignores: [
 			"out/**",
@@ -64,14 +64,7 @@ export default defineConfig(
 			// TypeScript rules (extending/overriding presets)
 			"require-await": "off",
 			"@typescript-eslint/require-await": "error",
-			"@typescript-eslint/consistent-type-imports": [
-				"error",
-				{
-					disallowTypeAnnotations: false,
-					prefer: "type-imports",
-					fixStyle: "inline-type-imports",
-				},
-			],
+			"@typescript-eslint/consistent-type-imports": "error",
 			"@typescript-eslint/switch-exhaustiveness-check": [
 				"error",
 				{ considerDefaultExhaustiveForUnions: true },
@@ -80,7 +73,6 @@ export default defineConfig(
 				"error",
 				{ varsIgnorePattern: "^_" },
 			],
-			// Use T[] for simple types, Array<T> for complex types
 			"@typescript-eslint/array-type": ["error", { default: "array-simple" }],
 
 			// Import rules
@@ -129,16 +121,21 @@ export default defineConfig(
 			],
 		},
 		rules: {
+			// Allow type annotations in tests (e.g., for vi.fn<SomeType>())
+			"@typescript-eslint/consistent-type-imports": [
+				"error",
+				{
+					disallowTypeAnnotations: false,
+				},
+			],
 			// vitest mocks trigger false positives for unbound-method
 			"@typescript-eslint/unbound-method": "off",
 			// Empty callbacks are common in test stubs
 			"@typescript-eslint/no-empty-function": "off",
 			// Test mocks often have loose typing - relax unsafe rules
 			"@typescript-eslint/no-unsafe-assignment": "off",
-			"@typescript-eslint/no-unsafe-member-access": "off",
 			"@typescript-eslint/no-unsafe-call": "off",
 			"@typescript-eslint/no-unsafe-return": "off",
-			"@typescript-eslint/no-unsafe-argument": "off",
 		},
 	},
 
@@ -168,7 +165,6 @@ export default defineConfig(
 	{
 		files: ["**/*.md"],
 		rules: {
-			// GitHub admonitions like [!NOTE], [!WARNING] are valid
 			"markdown/no-missing-label-refs": [
 				"error",
 				{

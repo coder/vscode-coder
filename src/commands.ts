@@ -540,13 +540,15 @@ export class Commands {
 						},
 					);
 					quickPick.items = items;
-					quickPick.busy = false;
 				})
 				.catch((ex) => {
 					this.logger.error("Failed to fetch workspaces", ex);
 					if (ex instanceof CertificateError) {
 						void ex.showNotification();
 					}
+				})
+				.finally(() => {
+					quickPick.busy = false;
 				});
 		});
 		quickPick.show();
