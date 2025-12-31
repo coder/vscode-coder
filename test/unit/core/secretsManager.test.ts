@@ -172,7 +172,7 @@ describe("SecretsManager", () => {
 
 		it("should notify listeners on deployment change", async () => {
 			vi.useFakeTimers();
-			const events: Array<CurrentDeploymentState> = [];
+			const events: CurrentDeploymentState[] = [];
 			secretsManager.onDidChangeCurrentDeployment((state) => {
 				events.push(state);
 			});

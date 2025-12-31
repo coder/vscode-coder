@@ -8,10 +8,14 @@ import * as fs from "node:fs/promises";
 import https from "node:https";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { CertificateError, X509_ERR, X509_ERR_CODE } from "@/error";
+import {
+	CertificateError,
+	X509_ERR,
+	X509_ERR_CODE,
+} from "@/error/certificateError";
 import { type Logger } from "@/logging/logger";
 
-import { getFixturePath } from "../utils/fixtures";
+import { getFixturePath } from "../../utils/fixtures";
 
 describe("Certificate errors", () => {
 	// Before each test we make a request to sanity check that we really get the
@@ -41,7 +45,7 @@ describe("Certificate errors", () => {
 		error: throwingLog,
 	};
 
-	const disposers: (() => void)[] = [];
+	const disposers: Array<() => void> = [];
 	afterAll(() => {
 		disposers.forEach((d) => d());
 	});

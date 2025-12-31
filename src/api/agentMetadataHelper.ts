@@ -8,12 +8,12 @@ import {
 } from "./api-helper";
 import { type CoderApi } from "./coderApi";
 
-export type AgentMetadataWatcher = {
+export interface AgentMetadataWatcher {
 	onChange: vscode.EventEmitter<null>["event"];
 	dispose: () => void;
 	metadata?: AgentMetadataEvent[];
 	error?: unknown;
-};
+}
 
 /**
  * Opens a websocket connection to watch metadata for a given workspace agent.

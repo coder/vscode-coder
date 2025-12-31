@@ -718,11 +718,11 @@ it("fails if we are unable to rename the temporary file", async () => {
 });
 
 describe("parseSshConfig", () => {
-	type ParseTest = {
+	interface ParseTest {
 		name: string;
 		input: string[];
 		expected: Record<string, string>;
-	};
+	}
 
 	it.each<ParseTest>([
 		{
@@ -781,12 +781,12 @@ describe("parseSshConfig", () => {
 });
 
 describe("mergeSshConfigValues", () => {
-	type MergeTest = {
+	interface MergeTest {
 		name: string;
 		config: Record<string, string>;
 		overrides: Record<string, string>;
 		expected: Record<string, string>;
-	};
+	}
 
 	it.each<MergeTest>([
 		{

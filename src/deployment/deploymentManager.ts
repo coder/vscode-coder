@@ -213,7 +213,7 @@ export class DeploymentManager implements vscode.Disposable {
 	 */
 	private refreshWorkspaces(): void {
 		for (const provider of this.workspaceProviders) {
-			provider.fetchAndRefresh();
+			void provider.fetchAndRefresh();
 		}
 	}
 

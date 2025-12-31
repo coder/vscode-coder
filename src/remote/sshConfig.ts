@@ -261,9 +261,7 @@ export class SSHConfig {
 		const configValues = mergeSshConfigValues(otherValues, overrides || {});
 
 		// keys is the sorted keys of the merged values.
-		const keys = (
-			Object.keys(configValues) as Array<keyof typeof configValues>
-		).sort();
+		const keys = Object.keys(configValues).sort();
 		keys.forEach((key) => {
 			const value = configValues[key];
 			if (value !== "") {
@@ -300,8 +298,8 @@ export class SSHConfig {
 		const existingMode = await this.fileSystem
 			.stat(this.filePath)
 			.then((stat) => stat.mode)
-			.catch((ex) => {
-				if (ex.code && ex.code === "ENOENT") {
+			.catch((ex: NodeJS.ErrnoException) => {
+				if (ex.code === "ENOENT") {
 					return 0o600; // default to 0600 if file does not exist
 				}
 				throw ex; // Any other error is unexpected

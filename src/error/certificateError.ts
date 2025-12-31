@@ -4,11 +4,12 @@ import {
 	KeyUsageFlags,
 } from "@peculiar/x509";
 import { isAxiosError } from "axios";
-import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
 import * as tls from "node:tls";
 import * as vscode from "vscode";
 
-import { type Logger } from "./logging/logger";
+import { type Logger } from "../logging/logger";
+
+import { toError } from "./errorUtils";
 
 // X509_ERR_CODE represents error codes as returned from BoringSSL/OpenSSL.
 export enum X509_ERR_CODE {
@@ -28,9 +29,9 @@ export enum X509_ERR {
 }
 
 export class CertificateError extends Error {
-	public static ActionAllowInsecure = "Allow Insecure";
-	public static ActionOK = "OK";
-	public static InsecureMessage =
+	public static readonly ActionAllowInsecure = "Allow Insecure";
+	public static readonly ActionOK = "OK";
+	public static readonly InsecureMessage =
 		'The Coder extension will no longer verify TLS on HTTPS requests. You can change this at any time with the "coder.insecure" property in your VS Code settings.';
 
 	private constructor(
@@ -74,7 +75,9 @@ export class CertificateError extends Error {
 	// determineVerifyErrorCause fetches the certificate(s) from the specified
 	// address, parses the leaf, and returns the reason the certificate is giving
 	// an "unable to verify" error or throws if unable to figure it out.
-	static async determineVerifyErrorCause(address: string): Promise<X509_ERR> {
+	private static async determineVerifyErrorCause(
+		address: string,
+	): Promise<X509_ERR> {
 		return new Promise((resolve, reject) => {
 			try {
 				const url = new URL(address);
@@ -114,15 +117,15 @@ export class CertificateError extends Error {
 						return resolve(X509_ERR.UNTRUSTED_LEAF);
 					},
 				);
-				socket.on("error", reject);
-			} catch (error) {
-				reject(error);
+				socket.on("error", (err) => reject(toError(err)));
+			} catch (err) {
+				reject(toError(err));
 			}
 		});
 	}
 
 	// allowInsecure updates the value of the "coder.insecure" property.
-	allowInsecure(): void {
+	private allowInsecure(): void {
 		vscode.workspace
 			.getConfiguration()
 			.update("coder.insecure", true, vscode.ConfigurationTarget.Global);
@@ -156,20 +159,6 @@ export class CertificateError extends Error {
 			case CertificateError.ActionOK:
 			case undefined:
 				return;
-			case CertificateError.ActionAllowInsecure:
-				await this.allowInsecure();
-				return;
 		}
 	}
 }
-
-// getErrorDetail is copied from coder/site, but changes the default return.
-export const getErrorDetail = (error: unknown): string | undefined | null => {
-	if (isApiError(error)) {
-		return error.response.data.detail;
-	}
-	if (isApiErrorResponse(error)) {
-		return error.detail;
-	}
-	return null;
-};

@@ -4,6 +4,7 @@ import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import { EventSource } from "eventsource";
 
 import { createStreamingFetchAdapter } from "../api/streamingFetchAdapter";
+import { toError } from "../error/errorUtils";
 import { type Logger } from "../logging/logger";
 
 import { WebSocketCloseCode } from "./codes";
@@ -16,14 +17,14 @@ import type {
 	ErrorEvent as WsErrorEvent,
 } from "./eventStreamConnection";
 
-export type SseConnectionInit = {
+export interface SseConnectionInit {
 	location: { protocol: string; host: string };
 	apiRoute: string;
 	searchParams?: Record<string, string> | URLSearchParams;
 	optionsHeaders?: Record<string, string>;
 	axiosInstance: AxiosInstance;
 	logger: Logger;
-};
+}
 
 export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 	private readonly eventSource: EventSource;
@@ -153,18 +154,21 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 	private parseMessage(
 		event: MessageEvent,
 	): ParsedMessageEvent<ServerSentEvent> {
-		const wsEvent = { data: event.data };
+		const data = event.data as unknown;
 		try {
 			return {
-				sourceEvent: wsEvent,
-				parsedMessage: { type: "data", data: JSON.parse(event.data) },
+				sourceEvent: { data },
+				parsedMessage: {
+					type: "data",
+					data: JSON.parse(String(data)) as unknown,
+				},
 				parseError: undefined,
 			};
-		} catch (err) {
+		} catch (err: unknown) {
 			return {
-				sourceEvent: wsEvent,
+				sourceEvent: { data },
 				parsedMessage: undefined,
-				parseError: err as Error,
+				parseError: toError(err, "SSE data is not a valid JSON"),
 			};
 		}
 	}

@@ -16,7 +16,7 @@ import {
 import type { Commands } from "@/commands";
 import type { ServiceContainer } from "@/core/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
-import type { LoginCoordinator } from "@/login/loginCoordinator";
+import type { LoginCoordinator, LoginOptions } from "@/login/loginCoordinator";
 
 vi.mock("@/promptUtils", () => ({ maybeAskUrl: vi.fn() }));
 
@@ -34,19 +34,21 @@ class MockDeploymentManager {
 
 function createMockLoginCoordinator(secretsManager: SecretsManager) {
 	return {
-		ensureLoggedIn: vi.fn().mockImplementation(async (options) => {
-			const token = options.token ?? "test-token";
-			// Simulate persistSessionAuth behavior
-			await secretsManager.setSessionAuth(options.safeHostname, {
-				url: options.url,
-				token,
-			});
-			return {
-				success: true,
-				token,
-				user: createMockUser(),
-			};
-		}),
+		ensureLoggedIn: vi
+			.fn()
+			.mockImplementation(async (options: LoginOptions & { url: string }) => {
+				const token = options.token ?? "test-token";
+				// Simulate persistSessionAuth behavior
+				await secretsManager.setSessionAuth(options.safeHostname, {
+					url: options.url,
+					token,
+				});
+				return {
+					success: true,
+					token,
+					user: createMockUser(),
+				};
+			}),
 	};
 }
 

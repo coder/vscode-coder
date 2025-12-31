@@ -1,3 +1,5 @@
+import { toError } from "../error/errorUtils";
+
 import {
 	WebSocketCloseCode,
 	NORMAL_CLOSURE_CODES,
@@ -16,11 +18,11 @@ import type {
 
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
-export type ReconnectingWebSocketOptions = {
+export interface ReconnectingWebSocketOptions {
 	initialBackoffMs?: number;
 	maxBackoffMs?: number;
 	jitterFactor?: number;
-};
+}
 
 export class ReconnectingWebSocket<
 	TData = unknown,
@@ -211,7 +213,7 @@ export class ReconnectingWebSocket<
 				// Check for unrecoverable HTTP errors in the error event
 				// HTTP errors during handshake fire 'error' then 'close' with 1006
 				// We need to suspend here to prevent infinite reconnect loops
-				const errorMessage = event.error?.message ?? event.message ?? "";
+				const errorMessage = toError(event.error, event.message).message;
 				if (this.isUnrecoverableHttpError(errorMessage)) {
 					this.#logger.error(
 						`Unrecoverable HTTP error for ${this.#route}: ${errorMessage}`,

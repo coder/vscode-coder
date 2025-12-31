@@ -9,7 +9,9 @@ import {
 export type Event = Omit<WsEvent, "type" | "target">;
 export type CloseEvent = Omit<WsCloseEvent, "type" | "target">;
 export type ErrorEvent = Omit<WsErrorEvent, "type" | "target">;
-export type MessageEvent = Omit<WsMessageEvent, "type" | "target">;
+export type MessageEvent = Omit<WsMessageEvent, "type" | "target" | "data"> & {
+	data: unknown;
+};
 
 // Event payload types matching OneWayWebSocket
 export type ParsedMessageEvent<TData> = Readonly<
@@ -25,12 +27,12 @@ export type ParsedMessageEvent<TData> = Readonly<
 	  }
 >;
 
-export type EventPayloadMap<TData> = {
+export interface EventPayloadMap<TData> {
 	close: CloseEvent;
 	error: ErrorEvent;
 	message: ParsedMessageEvent<TData>;
 	open: Event;
-};
+}
 
 export type EventHandler<TData, TEvent extends WebSocketEventType> = (
 	payload: EventPayloadMap<TData>[TEvent],

@@ -10,10 +10,7 @@ import { z } from "zod";
 /**
  * Convert various error types to readable strings
  */
-export function errToStr(
-	error: unknown,
-	def: string = "No error message provided",
-) {
+export function errToStr(error: unknown, def = "No error message provided") {
 	if (error instanceof Error && error.message) {
 		return error.message;
 	} else if (isApiError(error)) {
