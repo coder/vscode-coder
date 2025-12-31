@@ -8,7 +8,6 @@ import * as jsonc from "jsonc-parser";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import * as semver from "semver";
 import * as vscode from "vscode";
 
@@ -23,6 +22,7 @@ import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "../cliConfig";
 import { type Commands } from "../commands";
+import { watchConfigurationChanges } from "../configWatcher";
 import { type CliManager } from "../core/cliManager";
 import * as cliUtils from "../core/cliUtils";
 import { type ServiceContainer } from "../core/container";
@@ -854,29 +854,10 @@ export class Remote {
 			getValue: () => unknown;
 		}>,
 	): vscode.Disposable {
-		// Capture applied values at setup time
-		const appliedValues = new Map(
-			settings.map((s) => [s.setting, s.getValue()]),
-		);
+		const titleMap = new Map(settings.map((s) => [s.setting, s.title]));
 
-		return vscode.workspace.onDidChangeConfiguration((e) => {
-			const changedTitles: string[] = [];
-
-			for (const { setting, title, getValue } of settings) {
-				if (!e.affectsConfiguration(setting)) {
-					continue;
-				}
-
-				const newValue = getValue();
-
-				if (!isDeepStrictEqual(newValue, appliedValues.get(setting))) {
-					changedTitles.push(title);
-				}
-			}
-
-			if (changedTitles.length === 0) {
-				return;
-			}
+		return watchConfigurationChanges(settings, (changedSettings) => {
+			const changedTitles = changedSettings.map((s) => titleMap.get(s)!);
 
 			const message =
 				changedTitles.length === 1

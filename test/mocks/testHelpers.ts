@@ -20,9 +20,11 @@ export class MockConfigurationProvider {
 
 	/**
 	 * Set a configuration value that will be returned by vscode.workspace.getConfiguration().get()
+	 * Automatically fires onDidChangeConfiguration event (emulating VS Code behavior).
 	 */
 	set(key: string, value: unknown): void {
 		this.config.set(key, value);
+		this.fireConfigChangeEvent(key);
 	}
 
 	/**
@@ -40,6 +42,23 @@ export class MockConfigurationProvider {
 	 */
 	clear(): void {
 		this.config.clear();
+	}
+
+	/**
+	 * Fire configuration change event for a specific setting.
+	 */
+	private fireConfigChangeEvent(setting: string): void {
+		const fireEvent = (
+			vscode.workspace as typeof vscode.workspace & {
+				__fireDidChangeConfiguration: (
+					e: vscode.ConfigurationChangeEvent,
+				) => void;
+			}
+		).__fireDidChangeConfiguration;
+
+		fireEvent({
+			affectsConfiguration: (section: string) => section === setting,
+		});
 	}
 
 	/**
@@ -63,7 +82,7 @@ export class MockConfigurationProvider {
 					}),
 					inspect: vi.fn(),
 					update: vi.fn((key: string, value: unknown) => {
-						this.config.set(getFullKey(key), value);
+						this.set(getFullKey(key), value);
 						return Promise.resolve();
 					}),
 				};
