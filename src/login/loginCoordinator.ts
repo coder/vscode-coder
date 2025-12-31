@@ -18,7 +18,7 @@ type LoginResult =
 	| { success: false }
 	| { success: true; user: User; token: string };
 
-interface LoginOptions {
+export interface LoginOptions {
 	safeHostname: string;
 	url: string | undefined;
 	autoLogin?: boolean;

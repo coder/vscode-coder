@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { type CreateAxiosDefaults } from "axios";
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
@@ -35,7 +35,7 @@ vi.mock("axios", async () => {
 		...actual,
 		default: {
 			...actual.default,
-			create: vi.fn((config) =>
+			create: vi.fn((config: CreateAxiosDefaults) =>
 				actual.default.create({ ...config, adapter: mockAdapter }),
 			),
 			__mockAdapter: mockAdapter,
