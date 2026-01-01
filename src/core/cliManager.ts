@@ -240,7 +240,7 @@ export class CliManager {
 		const newStat = await cliUtils.stat(binPath);
 		this.output.info(
 			"Downloaded binary size is",
-			prettyBytes(newStat?.size || 0),
+			prettyBytes(newStat?.size ?? 0),
 		);
 
 		// Make sure we can execute this new binary.

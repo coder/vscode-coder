@@ -501,7 +501,7 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 
 			config.transformRequest = [
 				...wrapRequestTransform(
-					config.transformRequest || client.defaults.transformRequest || [],
+					config.transformRequest ?? client.defaults.transformRequest ?? [],
 					configWithMeta,
 				),
 				(data: unknown) => {
@@ -512,7 +512,7 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 			];
 
 			config.transformResponse = wrapResponseTransform(
-				config.transformResponse || client.defaults.transformResponse || [],
+				config.transformResponse ?? client.defaults.transformResponse ?? [],
 				configWithMeta,
 			);
 

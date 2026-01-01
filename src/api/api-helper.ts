@@ -18,9 +18,8 @@ export function errToStr(error: unknown, def = "No error message provided") {
 	} else if (isApiErrorResponse(error)) {
 		return error.message;
 	} else if (error instanceof ErrorEvent) {
-		return error.code
-			? `${error.code}: ${error.message || def}`
-			: error.message || def;
+		const message = error.message || def;
+		return error.code ? `${error.code}: ${message}` : message;
 	} else if (typeof error === "string" && error.trim().length > 0) {
 		return error;
 	}
@@ -46,7 +45,7 @@ export function extractAgents(
 	resources: readonly WorkspaceResource[],
 ): WorkspaceAgent[] {
 	return resources.reduce((acc, resource) => {
-		return acc.concat(resource.agents || []);
+		return acc.concat(resource.agents ?? []);
 	}, [] as WorkspaceAgent[]);
 }
 

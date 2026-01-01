@@ -774,9 +774,9 @@ export class Remote {
 
 		// deploymentConfig is now set from the remote coderd deployment.
 		// Now override with the user's config.
-		const userConfigSsh =
-			vscode.workspace.getConfiguration("coder").get<string[]>("sshConfig") ||
-			[];
+		const userConfigSsh = vscode.workspace
+			.getConfiguration("coder")
+			.get<string[]>("sshConfig", []);
 		const userConfig = parseSshConfig(userConfigSsh);
 		const sshConfigOverrides = mergeSshConfigValues(
 			deploymentSSHConfig,

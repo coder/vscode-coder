@@ -272,7 +272,7 @@ export class WorkspaceProvider
 					}
 				}
 
-				const savedMetadata = watcher?.metadata || [];
+				const savedMetadata = watcher?.metadata ?? [];
 
 				// Add agent metadata section with collapsible header
 				if (savedMetadata.length > 0) {
@@ -293,7 +293,7 @@ export class WorkspaceProvider
 
 			return Promise.resolve([]);
 		}
-		return Promise.resolve(this.workspaces || []);
+		return Promise.resolve(this.workspaces ?? []);
 	}
 
 	dispose() {

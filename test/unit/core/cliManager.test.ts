@@ -340,7 +340,7 @@ describe("CliManager", () => {
 			// Verify the old binary was backed up
 			const files = readdir(BINARY_DIR);
 			const backupFile = files.find(
-				(f) => f.startsWith(BINARY_NAME) && f.match(/\.old-[a-z0-9]+$/),
+				(f) => f.startsWith(BINARY_NAME) && /\.old-[a-z0-9]+$/.exec(f),
 			);
 			expect(backupFile).toBeDefined();
 		});

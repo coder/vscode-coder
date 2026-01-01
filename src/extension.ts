@@ -232,7 +232,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const detail = getErrorDetail(ex) || "None";
 				const urlString = axios.getUri(ex.config);
 				const method = ex.config?.method?.toUpperCase() || "request";
-				const status = ex.response?.status || "None";
+				const status = ex.response?.status ?? "None";
 				const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
 				output.warn(message);
 				await vscodeProposed.window.showErrorMessage(

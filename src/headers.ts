@@ -95,11 +95,7 @@ export async function getHeaders(
 			const [key, value] = line.split(/=(.*)/);
 			// Header names cannot be blank or contain whitespace and the Coder CLI
 			// requires that there be an equals sign (the value can be blank though).
-			if (
-				key.length === 0 ||
-				key.indexOf(" ") !== -1 ||
-				typeof value === "undefined"
-			) {
+			if (key.length === 0 || key.includes(" ") || value === undefined) {
 				throw new Error(
 					`Malformed line from header command: [${line}] (out: ${result.stdout})`,
 				);

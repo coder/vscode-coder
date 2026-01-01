@@ -33,7 +33,7 @@ export default defineConfig(
 		files: ["**/*.ts"],
 		extends: [
 			...tseslint.configs.recommendedTypeChecked,
-			...tseslint.configs.stylistic,
+			...tseslint.configs.stylisticTypeChecked,
 			importXFlatConfigs.typescript,
 		],
 		languageOptions: {
@@ -74,6 +74,16 @@ export default defineConfig(
 				{ varsIgnorePattern: "^_" },
 			],
 			"@typescript-eslint/array-type": ["error", { default: "array-simple" }],
+			"@typescript-eslint/prefer-nullish-coalescing": [
+				"error",
+				// Allow || for strings where empty string should be treated as falsy
+				{ ignorePrimitives: { string: true } },
+			],
+			"@typescript-eslint/dot-notation": [
+				"error",
+				// Allow bracket notation for index signatures (e.g., Record<string, T>)
+				{ allowIndexSignaturePropertyAccess: true },
+			],
 
 			// Import rules
 			"import-x/order": [

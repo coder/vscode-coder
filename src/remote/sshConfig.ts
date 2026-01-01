@@ -1,5 +1,5 @@
-import { mkdir, readFile, rename, stat, writeFile } from "fs/promises";
-import path from "path";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { countSubstring } from "../util";
 
@@ -45,7 +45,7 @@ export function parseSshConfig(lines: string[]): Record<string, string> {
 	return lines.reduce(
 		(acc, line) => {
 			// Match key pattern (same as VS Code settings: ^[a-zA-Z0-9-]+)
-			const keyMatch = line.match(/^[a-zA-Z0-9-]+/);
+			const keyMatch = /^[a-zA-Z0-9-]+/.exec(line);
 			if (!keyMatch) {
 				return acc; // Malformed line
 			}
@@ -258,7 +258,7 @@ export class SSHConfig {
 		const lines = [this.startBlockComment(safeHostname), `Host ${Host}`];
 
 		// configValues is the merged values of the defaults and the overrides.
-		const configValues = mergeSshConfigValues(otherValues, overrides || {});
+		const configValues = mergeSshConfigValues(otherValues, overrides ?? {});
 
 		// keys is the sorted keys of the merged values.
 		const keys = Object.keys(configValues).sort();
