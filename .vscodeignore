@@ -14,10 +14,10 @@ test/**
 .vscode-test/**
 .vscode-test.mjs
 tsconfig.json
-.eslintrc.json
+eslint.config.mjs
+esbuild.mjs
 .editorconfig
 .prettierignore
-.eslintignore
 **/.gitignore
 **/.git-blame-ignore-revs
 

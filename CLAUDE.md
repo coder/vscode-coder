@@ -49,6 +49,8 @@ Comments explain what code does or why it exists:
 - Build: `yarn build`
 - Watch mode: `yarn watch`
 - Package: `yarn package`
+- Format: `yarn fmt`
+- Format check: `yarn fmt:check`
 - Lint: `yarn lint`
 - Lint with auto-fix: `yarn lint:fix`
 - Run all tests: `yarn test`

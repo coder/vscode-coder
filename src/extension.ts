@@ -52,6 +52,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		);
 	}
 
+	void vscodeProposed.window.showInformationMessage("A build triggered?");
+
 	const serviceContainer = new ServiceContainer(ctx, vscodeProposed);
 	ctx.subscriptions.push(serviceContainer);
 
