@@ -141,6 +141,7 @@ export class Remote {
 				} else {
 					// User cancelled or login failed
 					await this.closeRemote();
+					return undefined;
 				}
 			};
 

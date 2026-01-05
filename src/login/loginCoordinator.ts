@@ -320,6 +320,7 @@ export class LoginCoordinator {
 				client.setSessionToken(value);
 				try {
 					user = await client.getAuthenticatedUser();
+					return null;
 				} catch (err) {
 					// For certificate errors show both a notification and add to the
 					// text under the input box, since users sometimes miss the

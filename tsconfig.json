@@ -1,25 +1,18 @@
 {
 	"compilerOptions": {
 		"module": "commonjs",
-		"target": "ES2021",
+		"target": "ES2022",
 		"moduleResolution": "node",
 		"outDir": "out",
 		// "dom" is required for importing the API from coder/coder.
-		"lib": ["ES2021", "dom"],
+		"lib": ["ES2022", "dom"],
 		"sourceMap": true,
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": true,
-		"baseUrl": ".",
-		"paths": {
-			// axios contains both an index.d.ts and index.d.cts which apparently have
-			// conflicting types.  For some reason TypeScript is reading both and
-			// throwing errors about AxiosInstance not being compatible with
-			// AxiosInstance.  This ensures we use only index.d.ts.
-			"axios": ["./node_modules/axios/index.d.ts"]
-		}
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true
 	},
-	"exclude": ["node_modules"],
 	"include": ["src"]
 }
