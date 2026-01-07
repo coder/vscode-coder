@@ -7,7 +7,7 @@ import axios, {
 import { type ProvisionerJobLog } from "coder/site/src/api/typesGenerated";
 import { EventSource } from "eventsource";
 import { ProxyAgent } from "proxy-agent";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import Ws from "ws";
 
 import { CoderApi } from "@/api/coderApi";
@@ -70,7 +70,9 @@ vi.mock("@/api/streamingFetchAdapter", () => ({
 describe("CoderApi", () => {
 	let mockLogger: ReturnType<typeof createMockLogger>;
 	let mockConfig: MockConfigurationProvider;
-	let mockAdapter: ReturnType<typeof vi.fn>;
+	let mockAdapter: Mock<
+		(config: InternalAxiosRequestConfig) => Promise<unknown>
+	>;
 	let api: CoderApi;
 
 	const createApi = (url = CODER_URL, token = AXIOS_TOKEN) => {
@@ -81,7 +83,9 @@ describe("CoderApi", () => {
 		vi.resetAllMocks();
 
 		const axiosMock = axios as typeof axios & {
-			__mockAdapter: ReturnType<typeof vi.fn>;
+			__mockAdapter: Mock<
+				(config: InternalAxiosRequestConfig) => Promise<unknown>
+			>;
 		};
 		mockAdapter = axiosMock.__mockAdapter;
 		mockAdapter.mockImplementation(mockAdapterImpl);
