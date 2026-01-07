@@ -30,9 +30,14 @@ jobs:
 
       - run: yarn build
 
-  test:
-    name: Test
+  test-unit:
+    name: Unit Test (Electron ${{ matrix.electron-version }})
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Minimum supported version: VS Code 1.95  (Oct 2024) -> Electron 32 -> Node 20
+        electron-version: ["32", "latest"]
 
     steps:
       - uses: actions/checkout@v6
@@ -44,12 +49,38 @@ jobs:
 
       - run: yarn
 
-      - run: yarn test:ci
+      - name: Run tests with Electron ${{ matrix.electron-version }}
+        run: ./scripts/test-electron.sh ${{ matrix.electron-version }}
+        env:
+          CI: true
+
+  test-integration:
+    name: Integration Test (VS Code ${{ matrix.vscode-version }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        vscode-version: ["1.95.0", "stable"]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "yarn"
+
+      - run: yarn
+
+      - run: yarn build
+
+      - name: Run integration tests on VS Code ${{ matrix.vscode-version }}
+        run: xvfb-run -a yarn test:integration --label "VS Code ${{ matrix.vscode-version }}"
 
   package:
     name: Package
     runs-on: ubuntu-22.04
-    needs: [lint, test]
+    needs: [lint, test-unit, test-integration]
     steps:
       - uses: actions/checkout@v6
 
