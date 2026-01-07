@@ -430,7 +430,7 @@
 		"@vitest/coverage-v8": "^4.0.16",
 		"@vscode/test-cli": "^0.0.12",
 		"@vscode/vsce": "^3.7.1",
-		"bufferutil": "^4.0.9",
+		"bufferutil": "^4.1.0",
 		"coder": "https://github.com/coder/coder#main",
 		"dayjs": "^1.11.19",
 		"electron": "^39.2.6",
