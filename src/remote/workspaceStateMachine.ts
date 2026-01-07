@@ -1,5 +1,3 @@
-import { type AuthorityParts } from "src/util";
-
 import { createWorkspaceIdentifier, extractAgents } from "../api/api-helper";
 import {
 	startWorkspaceIfStoppedOrFailed,
@@ -7,6 +5,7 @@ import {
 	streamBuildLogs,
 } from "../api/workspace";
 import { maybeAskAgent } from "../promptUtils";
+import { type AuthorityParts } from "../util";
 
 import { TerminalSession } from "./terminalSession";
 

@@ -63,14 +63,17 @@ export async function version(binPath: string): Promise<string> {
 		throw error;
 	}
 
-	const json = JSON.parse(stdout);
+	const json = JSON.parse(stdout) as { version?: string };
 	if (!json.version) {
 		throw new Error("No version found in output: ${stdout}");
 	}
 	return json.version;
 }
 
-export type RemovalResult = { fileName: string; error: unknown };
+export interface RemovalResult {
+	fileName: string;
+	error: unknown;
+}
 
 /**
  * Remove binaries in the same directory as the specified path that have a

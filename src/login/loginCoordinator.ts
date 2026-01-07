@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { CertificateError } from "../error";
+import { CertificateError } from "../error/certificateError";
 import { maybeAskUrl } from "../promptUtils";
 
 import type { User } from "coder/site/src/api/typesGenerated";
@@ -18,7 +18,7 @@ type LoginResult =
 	| { success: false }
 	| { success: true; user: User; token: string };
 
-interface LoginOptions {
+export interface LoginOptions {
 	safeHostname: string;
 	url: string | undefined;
 	autoLogin?: boolean;
@@ -188,7 +188,9 @@ export class LoginCoordinator {
 		});
 		return {
 			promise,
-			dispose: () => disposable?.dispose(),
+			dispose: () => {
+				disposable?.dispose();
+			},
 		};
 	}
 
@@ -318,12 +320,13 @@ export class LoginCoordinator {
 				client.setSessionToken(value);
 				try {
 					user = await client.getAuthenticatedUser();
+					return null;
 				} catch (err) {
 					// For certificate errors show both a notification and add to the
 					// text under the input box, since users sometimes miss the
 					// notification.
 					if (err instanceof CertificateError) {
-						err.showNotification();
+						void err.showNotification();
 						return {
 							message: err.x509Err || err.message,
 							severity: vscode.InputBoxValidationSeverity.Error,

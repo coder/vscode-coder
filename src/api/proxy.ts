@@ -1,7 +1,7 @@
 // This file is copied from proxy-from-env with added support to use something
 // other than environment variables.
 
-import { parse as parseUrl } from "url";
+import { parse as parseUrl } from "node:url";
 
 const DEFAULT_PORTS: Record<string, number> = {
 	ftp: 21,
@@ -34,7 +34,8 @@ export function getProxyForUrl(
 	// Stripping ports in this way instead of using parsedUrl.hostname to make
 	// sure that the brackets around IPv6 addresses are kept.
 	hostname = hostname.replace(/:\d*$/, "");
-	const port = (portRaw && parseInt(portRaw)) || DEFAULT_PORTS[proto] || 0;
+	const port =
+		(portRaw && Number.parseInt(portRaw)) || DEFAULT_PORTS[proto] || 0;
 	if (!shouldProxy(hostname, port, noProxy)) {
 		return ""; // Don't proxy URLs that match NO_PROXY.
 	}
@@ -45,7 +46,7 @@ export function getProxyForUrl(
 		getEnv(proto + "_proxy") ||
 		getEnv("npm_config_proxy") ||
 		getEnv("all_proxy");
-	if (proxy && proxy.indexOf("://") === -1) {
+	if (proxy?.includes("://")) {
 		// Missing scheme in proxy, default to the requested URL's scheme.
 		proxy = proto + "://" + proxy;
 	}
@@ -81,9 +82,9 @@ function shouldProxy(
 		if (!proxy) {
 			return true; // Skip zero-length hosts.
 		}
-		const parsedProxy = proxy.match(/^(.+):(\d+)$/);
+		const parsedProxy = /^(.+):(\d+)$/.exec(proxy);
 		let parsedProxyHostname = parsedProxy ? parsedProxy[1] : proxy;
-		const parsedProxyPort = parsedProxy ? parseInt(parsedProxy[2]) : 0;
+		const parsedProxyPort = parsedProxy ? Number.parseInt(parsedProxy[2]) : 0;
 		if (parsedProxyPort && parsedProxyPort !== port) {
 			return true; // Skip if ports don't match.
 		}
@@ -93,7 +94,7 @@ function shouldProxy(
 			return hostname !== parsedProxyHostname;
 		}
 
-		if (parsedProxyHostname.charAt(0) === "*") {
+		if (parsedProxyHostname.startsWith("*")) {
 			// Remove leading wildcard.
 			parsedProxyHostname = parsedProxyHostname.slice(1);
 		}

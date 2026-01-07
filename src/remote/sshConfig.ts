@@ -1,5 +1,5 @@
-import { mkdir, readFile, rename, stat, writeFile } from "fs/promises";
-import path from "path";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { countSubstring } from "../util";
 
@@ -45,7 +45,7 @@ export function parseSshConfig(lines: string[]): Record<string, string> {
 	return lines.reduce(
 		(acc, line) => {
 			// Match key pattern (same as VS Code settings: ^[a-zA-Z0-9-]+)
-			const keyMatch = line.match(/^[a-zA-Z0-9-]+/);
+			const keyMatch = /^[a-zA-Z0-9-]+/.exec(line);
 			if (!keyMatch) {
 				return acc; // Malformed line
 			}
@@ -258,12 +258,10 @@ export class SSHConfig {
 		const lines = [this.startBlockComment(safeHostname), `Host ${Host}`];
 
 		// configValues is the merged values of the defaults and the overrides.
-		const configValues = mergeSshConfigValues(otherValues, overrides || {});
+		const configValues = mergeSshConfigValues(otherValues, overrides ?? {});
 
 		// keys is the sorted keys of the merged values.
-		const keys = (
-			Object.keys(configValues) as Array<keyof typeof configValues>
-		).sort();
+		const keys = Object.keys(configValues).sort();
 		keys.forEach((key) => {
 			const value = configValues[key];
 			if (value !== "") {
@@ -300,8 +298,8 @@ export class SSHConfig {
 		const existingMode = await this.fileSystem
 			.stat(this.filePath)
 			.then((stat) => stat.mode)
-			.catch((ex) => {
-				if (ex.code && ex.code === "ENOENT") {
+			.catch((ex: NodeJS.ErrnoException) => {
+				if (ex.code === "ENOENT") {
 					return 0o600; // default to 0600 if file does not exist
 				}
 				throw ex; // Any other error is unexpected

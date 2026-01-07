@@ -239,6 +239,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 								);
 							}
 						});
+				})
+				.catch((error) => {
+					this.logger.warn("Failed to check for workspace updates", error);
 				});
 		}
 	}

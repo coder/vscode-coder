@@ -1,5 +1,5 @@
-import axios from "axios";
-import { describe, expect, it, vi } from "vitest";
+import axios, { type CreateAxiosDefaults } from "axios";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
 import { MementoManager } from "@/core/mementoManager";
@@ -35,7 +35,7 @@ vi.mock("axios", async () => {
 		...actual,
 		default: {
 			...actual.default,
-			create: vi.fn((config) =>
+			create: vi.fn((config: CreateAxiosDefaults) =>
 				actual.default.create({ ...config, adapter: mockAdapter }),
 			),
 			__mockAdapter: mockAdapter,
@@ -61,7 +61,9 @@ vi.mock("@/api/streamingFetchAdapter", () => ({
 vi.mock("@/promptUtils");
 
 // Type for axios with our mock adapter
-type MockedAxios = typeof axios & { __mockAdapter: ReturnType<typeof vi.fn> };
+type MockedAxios = typeof axios & {
+	__mockAdapter: Mock<(config: Record<string, unknown>) => Promise<unknown>>;
+};
 
 const TEST_URL = "https://coder.example.com";
 const TEST_HOSTNAME = "coder.example.com";

@@ -4,7 +4,10 @@ import { safeStringify } from "./utils";
 
 import type { AxiosRequestConfig } from "axios";
 
-const SENSITIVE_HEADERS = ["Coder-Session-Token", "Proxy-Authorization"];
+const SENSITIVE_HEADERS = new Set([
+	"Coder-Session-Token",
+	"Proxy-Authorization",
+]);
 
 export function formatTime(ms: number): string {
 	if (ms < 1000) {
@@ -34,10 +37,11 @@ export function formatUri(config: AxiosRequestConfig | undefined): string {
 export function formatHeaders(headers: Record<string, unknown>): string {
 	const formattedHeaders = Object.entries(headers)
 		.map(([key, value]) => {
-			if (SENSITIVE_HEADERS.includes(key)) {
+			if (SENSITIVE_HEADERS.has(key)) {
 				return `${key}: <redacted>`;
 			}
-			return `${key}: ${value}`;
+			const strValue = typeof value === "string" ? value : safeStringify(value);
+			return `${key}: ${strValue}`;
 		})
 		.join("\n")
 		.trim();

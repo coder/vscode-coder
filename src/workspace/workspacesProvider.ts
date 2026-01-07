@@ -37,10 +37,10 @@ export class WorkspaceProvider
 {
 	// Undefined if we have never fetched workspaces before.
 	private workspaces: WorkspaceTreeItem[] | undefined;
-	private readonly agentWatchers: Map<
+	private readonly agentWatchers = new Map<
 		WorkspaceAgent["id"],
 		AgentMetadataWatcher
-	> = new Map();
+	>();
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
 	private visible = false;
@@ -73,7 +73,8 @@ export class WorkspaceProvider
 		let hadError = false;
 		try {
 			this.workspaces = await this.fetch();
-		} catch {
+		} catch (error) {
+			this.logger.error("Failed to fetch workspaces", error);
 			hadError = true;
 			this.workspaces = [];
 		}
@@ -182,7 +183,7 @@ export class WorkspaceProvider
 		} else if (this.workspaces) {
 			this.maybeScheduleRefresh();
 		} else {
-			this.fetchAndRefresh();
+			void this.fetchAndRefresh();
 		}
 	}
 
@@ -200,7 +201,7 @@ export class WorkspaceProvider
 	private maybeScheduleRefresh() {
 		if (this.timerSeconds && !this.timeout && !this.fetching) {
 			this.timeout = setTimeout(() => {
-				this.fetchAndRefresh();
+				void this.fetchAndRefresh();
 			}, this.timerSeconds * 1000);
 		}
 	}
@@ -271,7 +272,7 @@ export class WorkspaceProvider
 					}
 				}
 
-				const savedMetadata = watcher?.metadata || [];
+				const savedMetadata = watcher?.metadata ?? [];
 
 				// Add agent metadata section with collapsible header
 				if (savedMetadata.length > 0) {
@@ -292,7 +293,7 @@ export class WorkspaceProvider
 
 			return Promise.resolve([]);
 		}
-		return Promise.resolve(this.workspaces || []);
+		return Promise.resolve(this.workspaces ?? []);
 	}
 
 	dispose() {
@@ -387,7 +388,7 @@ export class OpenableTreeItem extends vscode.TreeItem {
 		this.description = description;
 	}
 
-	iconPath = {
+	override iconPath = {
 		light: path.join(__filename, "..", "..", "media", "logo-black.svg"),
 		dark: path.join(__filename, "..", "..", "media", "logo-white.svg"),
 	};

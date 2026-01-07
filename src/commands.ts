@@ -16,7 +16,7 @@ import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
 import { type SecretsManager } from "./core/secretsManager";
 import { type DeploymentManager } from "./deployment/deploymentManager";
-import { CertificateError } from "./error";
+import { CertificateError } from "./error/certificateError";
 import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
@@ -209,11 +209,13 @@ export class Commands {
 
 		await this.deploymentManager.clearDeployment();
 
-		vscode.window
+		void vscode.window
 			.showInformationMessage("You've been logged out of Coder!", "Login")
 			.then((action) => {
 				if (action === "Login") {
-					this.login();
+					this.login().catch((error) => {
+						this.logger.error("Failed to login", error);
+					});
 				}
 			});
 
@@ -428,8 +430,8 @@ export class Commands {
 		workspaceAgent: string,
 		devContainerName: string,
 		devContainerFolder: string,
-		localWorkspaceFolder: string = "",
-		localConfigFile: string = "",
+		localWorkspaceFolder = "",
+		localConfigFile = "",
 	): Promise<void> {
 		const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
@@ -538,12 +540,15 @@ export class Commands {
 						},
 					);
 					quickPick.items = items;
-					quickPick.busy = false;
 				})
 				.catch((ex) => {
+					this.logger.error("Failed to fetch workspaces", ex);
 					if (ex instanceof CertificateError) {
-						ex.showNotification();
+						void ex.showNotification();
 					}
+				})
+				.finally(() => {
+					quickPick.busy = false;
 				});
 		});
 		quickPick.show();
@@ -599,7 +604,7 @@ export class Commands {
 		workspace: Workspace,
 		agent: WorkspaceAgent,
 		folderPath: string | undefined,
-		openRecent: boolean = false,
+		openRecent = false,
 	) {
 		const remoteAuthority = toRemoteAuthority(
 			baseUrl,
@@ -622,7 +627,7 @@ export class Commands {
 		// we can try to open a recently opened folder/workspace.
 		if (!folderPath || openRecent) {
 			const output: {
-				workspaces: { folderUri: vscode.Uri; remoteAuthority: string }[];
+				workspaces: Array<{ folderUri: vscode.Uri; remoteAuthority: string }>;
 			} = await vscode.commands.executeCommand("_workbench.getRecentlyOpened");
 			const opened = output.workspaces.filter(
 				// Remove recents that do not belong to this connection.  The remote

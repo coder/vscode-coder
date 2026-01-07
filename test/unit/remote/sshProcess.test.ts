@@ -194,7 +194,7 @@ describe("SshProcessMonitor", () => {
 
 			// Network info will become stale after 50ms (5 * networkPollInterval)
 			// Monitor keeps showing last status, only fires when PID actually changes
-			const pids: (number | undefined)[] = [];
+			const pids: Array<number | undefined> = [];
 			monitor.onPidChange((pid) => pids.push(pid));
 
 			// Wait for reconnection to find new PID
@@ -234,7 +234,7 @@ describe("SshProcessMonitor", () => {
 			await waitForEvent(monitor.onPidChange);
 
 			// Track subsequent events
-			const pids: (number | undefined)[] = [];
+			const pids: Array<number | undefined> = [];
 			monitor.onPidChange((pid) => pids.push(pid));
 
 			// Wait long enough for stale check to trigger and re-find same process
@@ -509,7 +509,7 @@ describe("SshProcessMonitor", () => {
 				networkPollInterval: pollInterval,
 			});
 
-			const pids: (number | undefined)[] = [];
+			const pids: Array<number | undefined> = [];
 			monitor.onPidChange((pid) => pids.push(pid));
 
 			// Advance enough time for the monitor to cycle through PIDs 123, 456, and find 789

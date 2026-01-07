@@ -1,13 +1,18 @@
-import axios, { AxiosError, AxiosHeaders } from "axios";
+import axios, {
+	AxiosError,
+	AxiosHeaders,
+	type CreateAxiosDefaults,
+	type InternalAxiosRequestConfig,
+} from "axios";
 import { type ProvisionerJobLog } from "coder/site/src/api/typesGenerated";
 import { EventSource } from "eventsource";
 import { ProxyAgent } from "proxy-agent";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import Ws from "ws";
 
 import { CoderApi } from "@/api/coderApi";
 import { createHttpAgent } from "@/api/utils";
-import { CertificateError } from "@/error";
+import { CertificateError } from "@/error/certificateError";
 import { getHeaders } from "@/headers";
 import { type RequestConfigWithMeta } from "@/logging/types";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
@@ -33,7 +38,7 @@ vi.mock("axios", async () => {
 
 	const mockDefault = {
 		...actual.default,
-		create: vi.fn((config) => {
+		create: vi.fn((config: CreateAxiosDefaults) => {
 			const instance = actual.default.create({
 				...config,
 				adapter: mockAdapter,
@@ -65,7 +70,9 @@ vi.mock("@/api/streamingFetchAdapter", () => ({
 describe("CoderApi", () => {
 	let mockLogger: ReturnType<typeof createMockLogger>;
 	let mockConfig: MockConfigurationProvider;
-	let mockAdapter: ReturnType<typeof vi.fn>;
+	let mockAdapter: Mock<
+		(config: InternalAxiosRequestConfig) => Promise<unknown>
+	>;
 	let api: CoderApi;
 
 	const createApi = (url = CODER_URL, token = AXIOS_TOKEN) => {
@@ -76,7 +83,9 @@ describe("CoderApi", () => {
 		vi.resetAllMocks();
 
 		const axiosMock = axios as typeof axios & {
-			__mockAdapter: ReturnType<typeof vi.fn>;
+			__mockAdapter: Mock<
+				(config: InternalAxiosRequestConfig) => Promise<unknown>
+			>;
 		};
 		mockAdapter = axiosMock.__mockAdapter;
 		mockAdapter.mockImplementation(mockAdapterImpl);
@@ -125,8 +134,10 @@ describe("CoderApi", () => {
 				.catch((e) => e);
 
 			expect(thrownError).toBeInstanceOf(CertificateError);
-			expect(thrownError.message).toContain("Secure connection");
-			expect(thrownError.x509Err).toBeDefined();
+
+			const castError = thrownError as CertificateError;
+			expect(castError.message).toContain("Secure connection");
+			expect(castError.x509Err).toBeDefined();
 		});
 
 		it("applies headers in correct precedence order (command overrides config overrides axios default)", async () => {
@@ -649,15 +660,17 @@ describe("CoderApi", () => {
 	});
 });
 
-const mockAdapterImpl = vi.hoisted(() => (config: Record<string, unknown>) => {
-	return Promise.resolve({
-		data: config.data || "{}",
-		status: 200,
-		statusText: "OK",
-		headers: {},
-		config,
-	});
-});
+const mockAdapterImpl = vi.hoisted(
+	() => (config: InternalAxiosRequestConfig) => {
+		return Promise.resolve({
+			data: config.data || "{}",
+			status: 200,
+			statusText: "OK",
+			headers: {},
+			config,
+		});
+	},
+);
 
 function createMockWebSocket(
 	url: string,

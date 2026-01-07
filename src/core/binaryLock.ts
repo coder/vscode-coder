@@ -85,22 +85,14 @@ export class BinaryLock {
 				cancellable: false,
 			},
 			async (progress) => {
-				return new Promise<LockRelease>((resolve, reject) => {
-					const poll = async () => {
-						try {
-							await this.updateProgressMonitor(progressLogPath, progress);
-							const release = await this.safeAcquireLock(binPath);
-							if (release) {
-								return resolve(release);
-							}
-							// Schedule next poll only after current one completes
-							setTimeout(poll, LOCK_POLL_INTERVAL_MS);
-						} catch (error) {
-							reject(error);
-						}
-					};
-					poll().catch((error) => reject(error));
-				});
+				while (true) {
+					await this.updateProgressMonitor(progressLogPath, progress);
+					const release = await this.safeAcquireLock(binPath);
+					if (release) {
+						return release;
+					}
+					await new Promise((r) => setTimeout(r, LOCK_POLL_INTERVAL_MS));
+				}
 			},
 		);
 	}

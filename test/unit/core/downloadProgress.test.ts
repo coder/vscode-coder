@@ -33,7 +33,7 @@ describe("downloadProgress", () => {
 			});
 			const first = JSON.parse(
 				(await fs.readFile(testLogPath, "utf-8")).trim(),
-			);
+			) as downloadProgress.DownloadProgress;
 			expect(first.bytesDownloaded).toBe(1000);
 
 			await downloadProgress.writeProgress(testLogPath, {
@@ -43,7 +43,7 @@ describe("downloadProgress", () => {
 			});
 			const second = JSON.parse(
 				(await fs.readFile(testLogPath, "utf-8")).trim(),
-			);
+			) as downloadProgress.DownloadProgress;
 			expect(second.bytesDownloaded).toBe(2000);
 			expect(second.totalBytes).toBeNull();
 		});

@@ -1,11 +1,11 @@
 import type * as semver from "semver";
 
-export type FeatureSet = {
+export interface FeatureSet {
 	vscodessh: boolean;
 	proxyLogDirectory: boolean;
 	wildcardSSH: boolean;
 	buildReason: boolean;
-};
+}
 
 /**
  * Builds and returns a FeatureSet object for a given coder version.
@@ -25,7 +25,7 @@ export function featureSetForVersion(
 		// If this check didn't exist, VS Code connections would fail on
 		// older versions because of an unknown CLI argument.
 		proxyLogDirectory:
-			(version?.compare("2.3.3") || 0) > 0 ||
+			(version?.compare("2.3.3") ?? 0) > 0 ||
 			version?.prerelease[0] === "devel",
 		wildcardSSH:
 			(version ? version.compare("2.19.0") : -1) >= 0 ||
@@ -33,7 +33,7 @@ export function featureSetForVersion(
 
 		// The --reason flag was added to `coder start` in 2.25.0
 		buildReason:
-			(version?.compare("2.25.0") || 0) >= 0 ||
+			(version?.compare("2.25.0") ?? 0) >= 0 ||
 			version?.prerelease[0] === "devel",
 	};
 }

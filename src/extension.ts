@@ -12,7 +12,8 @@ import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
 import { type SecretsManager } from "./core/secretsManager";
 import { DeploymentManager } from "./deployment/deploymentManager";
-import { CertificateError, getErrorDetail } from "./error";
+import { CertificateError } from "./error/certificateError";
+import { getErrorDetail, toError } from "./error/errorUtils";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
@@ -42,7 +43,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		const extensionRequire = createRequire(
 			path.join(remoteSshExtension.extensionPath, "package.json"),
 		);
-		vscodeProposed = extensionRequire("vscode");
+		vscodeProposed = extensionRequire("vscode") as typeof vscode;
 	} else {
 		vscode.window.showErrorMessage(
 			"Remote SSH extension not found, this may not work as expected.\n" +
@@ -177,8 +178,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			commands.navigateToWorkspaceSettings.bind(commands),
 		),
 		vscode.commands.registerCommand("coder.refreshWorkspaces", () => {
-			myWorkspacesProvider.fetchAndRefresh();
-			allWorkspacesProvider.fetchAndRefresh();
+			void myWorkspacesProvider.fetchAndRefresh();
+			void allWorkspacesProvider.fetchAndRefresh();
 		}),
 		vscode.commands.registerCommand(
 			"coder.viewLogs",
@@ -231,7 +232,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				const detail = getErrorDetail(ex) || "None";
 				const urlString = axios.getUri(ex.config);
 				const method = ex.config?.method?.toUpperCase() || "request";
-				const status = ex.response?.status || "None";
+				const status = ex.response?.status ?? "None";
 				const message = `API ${method} to '${urlString}' failed.\nStatus code: ${status}\nMessage: ${msg}\nDetail: ${detail}`;
 				output.warn(message);
 				await vscodeProposed.window.showErrorMessage(
@@ -275,10 +276,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					output.info("Failed to authenticate, deployment not set");
 				}
 			})
-			.catch((error) => {
+			.catch((error: unknown) => {
 				output.warn("Failed to initialize deployment", error);
+				const message = toError(error).message;
 				vscode.window.showErrorMessage(
-					`Failed to check user authentication: ${error.message}`,
+					`Failed to check user authentication: ${message}`,
 				);
 			})
 			.finally(() => {
@@ -295,7 +297,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				cfg.get<string>("coder.defaultUrl")?.trim() ||
 				process.env.CODER_URL?.trim();
 			if (defaultUrl) {
-				commands.login({ url: defaultUrl, autoLogin: true });
+				commands.login({ url: defaultUrl, autoLogin: true }).catch((error) => {
+					output.error("Failed to auto-login", error);
+				});
 			}
 		}
 	}
@@ -319,9 +323,10 @@ async function migrateAuthStorage(
 				`Successfully migrated auth storage (hostname: ${migratedHostname})`,
 			);
 		}
-	} catch (error) {
+	} catch (error: unknown) {
 		output.error(
-			`Auth storage migration failed: ${error}. You may need to log in again.`,
+			`Auth storage migration failed. You may need to log in again.`,
+			error,
 		);
 	}
 }
