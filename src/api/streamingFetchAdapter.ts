@@ -1,5 +1,5 @@
 import { type AxiosInstance } from "axios";
-import { type FetchLikeInit, type FetchLikeResponse } from "eventsource";
+import { type EventSourceFetchInit, type FetchLikeResponse } from "eventsource";
 import { type IncomingMessage } from "node:http";
 
 /**
@@ -9,10 +9,13 @@ import { type IncomingMessage } from "node:http";
 export function createStreamingFetchAdapter(
 	axiosInstance: AxiosInstance,
 	configHeaders?: Record<string, string>,
-): (url: string | URL, init?: FetchLikeInit) => Promise<FetchLikeResponse> {
+): (
+	url: string | URL,
+	init?: EventSourceFetchInit,
+) => Promise<FetchLikeResponse> {
 	return async (
 		url: string | URL,
-		init?: FetchLikeInit,
+		init?: EventSourceFetchInit,
 	): Promise<FetchLikeResponse> => {
 		const urlStr = url.toString();
 

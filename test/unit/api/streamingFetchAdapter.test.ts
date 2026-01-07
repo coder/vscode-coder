@@ -1,5 +1,5 @@
 import { type AxiosInstance, type AxiosResponse } from "axios";
-import { type ReaderLike } from "eventsource";
+import { type EventSourceFetchInit, type ReaderLike } from "eventsource";
 import { EventEmitter } from "node:events";
 import { type IncomingMessage } from "node:http";
 import { describe, it, expect, vi } from "vitest";
@@ -7,6 +7,23 @@ import { describe, it, expect, vi } from "vitest";
 import { createStreamingFetchAdapter } from "@/api/streamingFetchAdapter";
 
 const TEST_URL = "https://example.com/api";
+
+/**
+ * Creates a valid EventSourceFetchInit object for testing.
+ * In production, EventSource always provides all required fields.
+ */
+function createFetchInit(
+	overrides: Partial<EventSourceFetchInit> = {},
+): EventSourceFetchInit {
+	return {
+		signal: new AbortController().signal,
+		headers: { Accept: "text/event-stream" },
+		mode: "cors",
+		cache: "no-store",
+		redirect: "follow",
+		...overrides,
+	};
+}
 
 describe("createStreamingFetchAdapter", () => {
 	describe("Request Handling", () => {
@@ -18,12 +35,12 @@ describe("createStreamingFetchAdapter", () => {
 			const adapter = createStreamingFetchAdapter(mockAxios);
 			const signal = new AbortController().signal;
 
-			await adapter(TEST_URL, { signal });
+			await adapter(TEST_URL, createFetchInit({ signal }));
 
 			expect(mockAxios.request).toHaveBeenCalledWith({
 				url: TEST_URL,
 				signal, // correctly passes signal
-				headers: {},
+				headers: { Accept: "text/event-stream" },
 				responseType: "stream",
 				validateStatus: expect.any(Function),
 			});
@@ -36,13 +53,16 @@ describe("createStreamingFetchAdapter", () => {
 
 			// Test 1: No config headers, only init headers
 			const adapter1 = createStreamingFetchAdapter(mockAxios);
-			await adapter1(TEST_URL, {
-				headers: { "X-Init": "init-value" },
-			});
+			await adapter1(
+				TEST_URL,
+				createFetchInit({
+					headers: { Accept: "text/event-stream", "X-Init": "init-value" },
+				}),
+			);
 
 			expect(mockAxios.request).toHaveBeenCalledWith(
 				expect.objectContaining({
-					headers: { "X-Init": "init-value" },
+					headers: { Accept: "text/event-stream", "X-Init": "init-value" },
 				}),
 			);
 
@@ -50,13 +70,17 @@ describe("createStreamingFetchAdapter", () => {
 			const adapter2 = createStreamingFetchAdapter(mockAxios, {
 				"X-Config": "config-value",
 			});
-			await adapter2(TEST_URL, {
-				headers: { "X-Init": "init-value" },
-			});
+			await adapter2(
+				TEST_URL,
+				createFetchInit({
+					headers: { Accept: "text/event-stream", "X-Init": "init-value" },
+				}),
+			);
 
 			expect(mockAxios.request).toHaveBeenCalledWith(
 				expect.objectContaining({
 					headers: {
+						Accept: "text/event-stream",
 						"X-Init": "init-value",
 						"X-Config": "config-value",
 					},
@@ -67,13 +91,16 @@ describe("createStreamingFetchAdapter", () => {
 			const adapter3 = createStreamingFetchAdapter(mockAxios, {
 				"X-Header": "config-value",
 			});
-			await adapter3(TEST_URL, {
-				headers: { "X-Header": "init-value" },
-			});
+			await adapter3(
+				TEST_URL,
+				createFetchInit({
+					headers: { Accept: "text/event-stream", "X-Header": "init-value" },
+				}),
+			);
 
 			expect(mockAxios.request).toHaveBeenCalledWith(
 				expect.objectContaining({
-					headers: { "X-Header": "config-value" },
+					headers: { Accept: "text/event-stream", "X-Header": "config-value" },
 				}),
 			);
 		});

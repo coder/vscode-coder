@@ -354,7 +354,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		} catch (error) {
 			if (this.is404Error(error)) {
 				this.output.warn(
-					`WebSocket failed, using SSE fallback: ${socketConfigs.apiRoute}`,
+					`WebSocket failed (${socketConfigs.apiRoute}), using SSE fallback: ${fallbackApiRoute}`,
 				);
 				const sse = this.createSseConnection(
 					fallbackApiRoute,
