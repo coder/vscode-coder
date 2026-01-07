@@ -6,6 +6,7 @@ coverage/**
 # Development files
 src/**
 test/**
+scripts/**
 **/*.ts
 **/*.map
 
@@ -15,6 +16,7 @@ test/**
 .vscode-test.mjs
 tsconfig.json
 eslint.config.mjs
+.eslintcache
 esbuild.mjs
 .editorconfig
 .prettierignore
