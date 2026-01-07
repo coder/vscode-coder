@@ -24,10 +24,15 @@ const buildOptions = {
 	bundle: true,
 	outfile: "dist/extension.js",
 	platform: "node",
-	target: "node22",
+	target: "node20",
 	format: "cjs",
 	mainFields: ["module", "main"],
-	external: ["vscode", "openpgp"],
+	// Force openpgp to use CJS. The ESM version uses import.meta.url which is
+	// undefined when bundled to CJS, causing runtime errors.
+	alias: {
+		openpgp: "./node_modules/openpgp/dist/node/openpgp.min.cjs",
+	},
+	external: ["vscode"],
 	sourcemap: production ? "external" : true,
 	minify: production,
 	plugins: watch ? [logRebuildPlugin] : [],
