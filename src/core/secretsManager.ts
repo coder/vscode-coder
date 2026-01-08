@@ -8,8 +8,8 @@ import type { Deployment } from "../deployment/types";
 
 // Each deployment has its own key to ensure atomic operations (multiple windows
 // writing to a shared key could drop data) and to receive proper VS Code events.
-const SESSION_KEY_PREFIX = "coder.session." as const;
-const OAUTH_CLIENT_PREFIX = "coder.oauth.client." as const;
+const SESSION_KEY_PREFIX = "coder.session.";
+const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
 
 type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
@@ -309,14 +309,22 @@ export class SecretsManager {
 				return;
 			}
 
+			let parsed: OAuthCallbackData;
 			try {
 				const data = await this.secrets.get(OAUTH_CALLBACK_KEY);
-				if (data) {
-					const parsed = JSON.parse(data) as OAuthCallbackData;
-					listener(parsed);
+				if (!data) {
+					return;
 				}
-			} catch {
-				// Ignore parse errors
+				parsed = JSON.parse(data) as OAuthCallbackData;
+			} catch (err) {
+				this.logger.error("Failed to parse OAuth callback data", err);
+				return;
+			}
+
+			try {
+				listener(parsed);
+			} catch (err) {
+				this.logger.error("Error in onDidChangeOAuthCallback listener", err);
 			}
 		});
 	}

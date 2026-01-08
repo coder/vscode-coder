@@ -1,3 +1,8 @@
+import {
+	type GenericAbortSignal,
+	type InternalAxiosRequestConfig,
+	type AxiosRequestConfig,
+} from "axios";
 import { describe, expect, it, vi } from "vitest";
 
 import { type SecretsManager, type SessionAuth } from "@/core/secretsManager";
@@ -18,8 +23,6 @@ import {
 	TEST_HOSTNAME,
 	TEST_URL,
 } from "./testUtils";
-
-import type { AxiosRequestConfig } from "axios";
 
 import type { ServiceContainer } from "@/core/container";
 import type { Deployment } from "@/deployment/types";
@@ -333,7 +336,7 @@ describe("OAuthSessionManager", () => {
 	});
 
 	describe("deployment switch during refresh", () => {
-		it("completes in-flight refresh after switch", async () => {
+		it("cancels in-flight refresh on deployment switch", async () => {
 			const { secretsManager, mockAdapter, manager, setupOAuthSession } =
 				createTestContext();
 
@@ -343,16 +346,23 @@ describe("OAuthSessionManager", () => {
 				createMockClientRegistration(),
 			);
 
-			let resolveToken: (v: unknown) => void;
+			// Track if token endpoint was called and capture the abort signal
+			let abortSignal: GenericAbortSignal | undefined;
 			const tokenEndpointCalled = new Promise<void>((resolve) => {
 				setupAxiosMockRoutes(mockAdapter, {
 					"/.well-known/oauth-authorization-server":
 						createMockOAuthMetadata(TEST_URL),
-					"/oauth2/token": () =>
-						new Promise((r) => {
-							resolveToken = r;
-							resolve();
-						}),
+					"/oauth2/token": (config: InternalAxiosRequestConfig) => {
+						abortSignal = config.signal;
+						resolve();
+						// Return a promise that rejects when aborted
+						return new Promise((_, reject) => {
+							const signal = config.signal as AbortSignal | undefined;
+							signal?.addEventListener("abort", () => {
+								reject(new Error("canceled"));
+							});
+						});
+					},
 				});
 			});
 
@@ -364,11 +374,8 @@ describe("OAuthSessionManager", () => {
 				safeHostname: "new.example.com",
 			});
 
-			resolveToken!(createMockTokenResponse({ access_token: "new-token" }));
-			const result = await refreshPromise;
-
-			expect(result.access_token).toBe("new-token");
-			expect(await manager.isLoggedInWithOAuth()).toBe(false);
+			expect(abortSignal?.aborted).toBe(true);
+			await expect(refreshPromise).rejects.toThrow("canceled");
 		});
 	});
 });

@@ -4,6 +4,7 @@ import type * as vscode from "vscode";
 
 import type { CoderApi } from "../api/coderApi";
 import type { SecretsManager } from "../core/secretsManager";
+import type { Deployment } from "../deployment/types";
 import type { Logger } from "../logging/logger";
 import type { RequestConfigWithMeta } from "../logging/types";
 
@@ -53,12 +54,12 @@ export class OAuthInterceptor implements vscode.Disposable {
 		return instance;
 	}
 
-	public async setDeployment(safeHostname: string): Promise<void> {
-		if (this.safeHostname === safeHostname) {
+	public async setDeployment(deployment: Deployment): Promise<void> {
+		if (this.safeHostname === deployment.safeHostname) {
 			return;
 		}
 
-		this.safeHostname = safeHostname;
+		this.safeHostname = deployment.safeHostname;
 		this.detach();
 		this.setupTokenListener();
 		await this.syncWithTokenState();
@@ -94,9 +95,9 @@ export class OAuthInterceptor implements vscode.Disposable {
 	 */
 	private async syncWithTokenState(): Promise<void> {
 		const isOAuth = await this.oauthSessionManager.isLoggedInWithOAuth();
-		if (isOAuth && this.interceptorId === null) {
+		if (isOAuth) {
 			this.attach();
-		} else if (!isOAuth && this.interceptorId !== null) {
+		} else {
 			this.detach();
 		}
 	}

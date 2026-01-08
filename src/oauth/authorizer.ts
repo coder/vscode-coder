@@ -7,6 +7,12 @@ import { type SecretsManager } from "../core/secretsManager";
 import { type Deployment } from "../deployment/types";
 import { type Logger } from "../logging/logger";
 
+import {
+	AUTH_GRANT_TYPE,
+	PKCE_CHALLENGE_METHOD,
+	RESPONSE_TYPE,
+	TOKEN_ENDPOINT_AUTH_METHOD,
+} from "./constants";
 import { OAuthMetadataClient } from "./metadataClient";
 import {
 	CALLBACK_PATH,
@@ -22,10 +28,6 @@ import type {
 	TokenRequestParams,
 	TokenResponse,
 } from "./types";
-
-const AUTH_GRANT_TYPE = "authorization_code";
-const RESPONSE_TYPE = "code";
-const PKCE_CHALLENGE_METHOD = "S256";
 
 /**
  * Minimal scopes required by the VS Code extension.
@@ -152,11 +154,10 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 		const registrationRequest: ClientRegistrationRequest = {
 			redirect_uris: [redirectUri],
-			application_type: "web",
-			grant_types: ["authorization_code"],
-			response_types: ["code"],
+			grant_types: [AUTH_GRANT_TYPE],
+			response_types: [RESPONSE_TYPE],
 			client_name: `Coder for ${vscode.env.appName}`,
-			token_endpoint_auth_method: "client_secret_post",
+			token_endpoint_auth_method: TOKEN_ENDPOINT_AUTH_METHOD,
 		};
 
 		const response = await axiosInstance.post<ClientRegistrationResponse>(
@@ -241,7 +242,10 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 		const callbackPromise = new Promise<{ code: string; verifier: string }>(
 			(resolve, reject) => {
-				// Track reject for disposal
+				// Reject any existing pending auth before starting a new one
+				if (this.pendingAuthReject) {
+					this.pendingAuthReject(new Error("New OAuth flow started"));
+				}
 				this.pendingAuthReject = reject;
 
 				const timeoutMins = 5;
@@ -258,6 +262,10 @@ export class OAuthAuthorizer implements vscode.Disposable {
 				const listener = this.secretsManager.onDidChangeOAuthCallback(
 					({ state: callbackState, code, error }) => {
 						if (callbackState !== state) {
+							this.logger.warn(
+								"Ignoring OAuth callback with mismatched state",
+								{ expected: state, received: callbackState },
+							);
 							return;
 						}
 

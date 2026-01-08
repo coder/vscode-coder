@@ -11,6 +11,7 @@ import { type Deployment } from "../deployment/types";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
 
+import { REFRESH_GRANT_TYPE } from "./constants";
 import {
 	type OAuthError,
 	parseOAuthError,
@@ -28,8 +29,6 @@ import type {
 	TokenResponse,
 	TokenRevocationRequest,
 } from "./types";
-
-const REFRESH_GRANT_TYPE = "refresh_token";
 
 /**
  * Token refresh threshold: refresh when token expires in less than this time.
@@ -73,6 +72,7 @@ type StoredTokens = OAuthTokenData & {
  */
 export class OAuthSessionManager implements vscode.Disposable {
 	private refreshPromise: Promise<TokenResponse> | null = null;
+	private refreshAbortController: AbortController | null = null;
 	private lastRefreshAttempt = 0;
 	private refreshTimer: NodeJS.Timeout | undefined;
 	private tokenChangeListener: vscode.Disposable | undefined;
@@ -171,8 +171,11 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 	/**
 	 * Clear all refresh-related state: in-flight promise, throttle, timer, and listener.
+	 * Aborts any in-flight refresh request to prevent stale token updates.
 	 */
 	private clearRefreshState(): void {
+		this.refreshAbortController?.abort();
+		this.refreshAbortController = null;
 		this.refreshPromise = null;
 		this.lastRefreshAttempt = 0;
 		if (this.refreshTimer) {
@@ -386,6 +389,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private async executeTokenRefresh(
 		deployment: Deployment,
 	): Promise<TokenResponse> {
+		const abortController = new AbortController();
+		this.refreshAbortController = abortController;
+
 		try {
 			const storedTokens = await this.getStoredTokens();
 			if (!storedTokens?.refresh_token) {
@@ -418,8 +424,14 @@ export class OAuthSessionManager implements vscode.Disposable {
 					headers: {
 						"Content-Type": "application/x-www-form-urlencoded",
 					},
+					signal: abortController.signal,
 				},
 			);
+
+			// Check if aborted between response and save
+			if (abortController.signal.aborted) {
+				throw new Error("Token refresh aborted");
+			}
 
 			this.logger.debug("Token refresh successful");
 
@@ -435,6 +447,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 			this.handleOAuthError(error);
 			throw error;
 		} finally {
+			if (this.refreshAbortController === abortController) {
+				this.refreshAbortController = null;
+			}
 			this.refreshPromise = null;
 		}
 	}
