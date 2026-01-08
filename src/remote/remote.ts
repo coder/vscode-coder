@@ -35,6 +35,8 @@ import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
+import { OAuthInterceptor } from "../oauth/axiosInterceptor";
+import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,
@@ -70,7 +72,7 @@ export class Remote {
 	private readonly loginCoordinator: LoginCoordinator;
 
 	public constructor(
-		serviceContainer: ServiceContainer,
+		private readonly serviceContainer: ServiceContainer,
 		private readonly commands: Commands,
 		private readonly extensionContext: vscode.ExtensionContext,
 	) {
@@ -116,6 +118,13 @@ export class Remote {
 		const disposables: vscode.Disposable[] = [];
 
 		try {
+			// Create OAuth session manager for this remote deployment
+			const remoteOAuthManager = OAuthSessionManager.create(
+				{ url: baseUrlRaw, safeHostname: parts.safeHostname },
+				this.serviceContainer,
+			);
+			disposables.push(remoteOAuthManager);
+
 			const ensureLoggedInAndRetry = async (
 				message: string,
 				url: string | undefined,
@@ -163,6 +172,17 @@ export class Remote {
 			// client to remain unaffected by whatever the plugin is doing.
 			const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
 			disposables.push(workspaceClient);
+
+			// Create OAuth interceptor - auto attaches/detaches based on token state
+			const oauthInterceptor = await OAuthInterceptor.create(
+				workspaceClient,
+				this.logger,
+				remoteOAuthManager,
+				this.secretsManager,
+				parts.safeHostname,
+			);
+			disposables.push(oauthInterceptor);
+
 			// Store for use in commands.
 			this.commands.remoteWorkspaceClient = workspaceClient;
 

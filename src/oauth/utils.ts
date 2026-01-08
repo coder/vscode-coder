@@ -1,0 +1,80 @@
+import { createHash, randomBytes } from "node:crypto";
+
+import type { OAuthTokenData } from "../core/secretsManager";
+
+import type { TokenResponse } from "./types";
+
+/**
+ * OAuth callback path for handling authorization responses (RFC 6749).
+ */
+export const CALLBACK_PATH = "/oauth/callback";
+
+/**
+ * Fallback expiry time for access tokens when the server omits expires_in.
+ * RFC 6749 recommends but doesn't require expires_in and specifies no default.
+ */
+const ACCESS_TOKEN_DEFAULT_EXPIRY_MS = 60 * 60 * 1000;
+
+export interface PKCEChallenge {
+	verifier: string;
+	challenge: string;
+}
+
+/**
+ * Generates a PKCE challenge pair (RFC 7636).
+ * Creates a code verifier and its SHA256 challenge for secure OAuth flows.
+ */
+export function generatePKCE(): PKCEChallenge {
+	const verifier = randomBytes(32).toString("base64url");
+	const challenge = createHash("sha256").update(verifier).digest("base64url");
+	return { verifier, challenge };
+}
+
+/**
+ * Generates a cryptographically secure state parameter to prevent CSRF attacks (RFC 6749).
+ */
+export function generateState(): string {
+	return randomBytes(16).toString("base64url");
+}
+
+/**
+ * Converts an object with string properties to URLSearchParams,
+ * filtering out undefined values for use with OAuth requests.
+ */
+export function toUrlSearchParams(obj: object): URLSearchParams {
+	const params = Object.fromEntries(
+		Object.entries(obj).filter(
+			([, value]) => value !== undefined && typeof value === "string",
+		),
+	) as Record<string, string>;
+
+	return new URLSearchParams(params);
+}
+
+/**
+ * Build OAuthTokenData from a token response.
+ * Used by LoginCoordinator (initial login) and OAuthSessionManager (refresh).
+ */
+export function buildOAuthTokenData(
+	tokenResponse: TokenResponse,
+): OAuthTokenData {
+	if (tokenResponse.token_type !== "Bearer") {
+		throw new Error(
+			`Unsupported token type: ${tokenResponse.token_type}. Only Bearer tokens are supported.`,
+		);
+	}
+
+	const expiresIn = tokenResponse.expires_in;
+	const hasValidExpiry =
+		expiresIn && expiresIn > 0 && Number.isFinite(expiresIn);
+	const expiryTimestamp = hasValidExpiry
+		? Date.now() + expiresIn * 1000
+		: Date.now() + ACCESS_TOKEN_DEFAULT_EXPIRY_MS;
+
+	return {
+		token_type: tokenResponse.token_type,
+		refresh_token: tokenResponse.refresh_token,
+		scope: tokenResponse.scope,
+		expiry_timestamp: expiryTimestamp,
+	};
+}
