@@ -13,9 +13,6 @@ export type TokenEndpointAuthMethod =
 	| "client_secret_basic"
 	| "none";
 
-// Application Types
-export type ApplicationType = "native" | "web";
-
 // PKCE Code Challenge Methods (OAuth 2.1 requires S256)
 export type CodeChallengeMethod = "S256";
 
@@ -26,7 +23,6 @@ export type TokenType = "Bearer" | "DPoP";
 export interface ClientRegistrationRequest {
 	redirect_uris: string[];
 	token_endpoint_auth_method: TokenEndpointAuthMethod;
-	application_type: ApplicationType;
 	grant_types: GrantType[];
 	response_types: ResponseType[];
 	client_name?: string;
@@ -49,7 +45,6 @@ export interface ClientRegistrationResponse {
 	client_secret_expires_at?: number;
 	redirect_uris: string[];
 	token_endpoint_auth_method: TokenEndpointAuthMethod;
-	application_type?: ApplicationType;
 	grant_types: GrantType[];
 	response_types: ResponseType[];
 	client_name?: string;

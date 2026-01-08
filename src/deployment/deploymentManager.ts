@@ -140,7 +140,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.refreshWorkspaces();
 
 		await this.oauthSessionManager.setDeployment(deployment);
-		await this.oauthInterceptor.setDeployment(deployment.safeHostname);
+		await this.oauthInterceptor.setDeployment(deployment);
 		await this.persistDeployment(deployment);
 	}
 

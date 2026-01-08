@@ -702,7 +702,8 @@ export function setupAxiosMockRoutes(
 					if (value instanceof Error) {
 						throw value;
 					}
-					const data = typeof value === "function" ? await value() : value;
+					const data =
+						typeof value === "function" ? await value(config) : value;
 					return {
 						data,
 						status: 200,

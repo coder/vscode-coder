@@ -1,3 +1,11 @@
+import {
+	AUTH_GRANT_TYPE,
+	PKCE_CHALLENGE_METHOD,
+	REFRESH_GRANT_TYPE,
+	RESPONSE_TYPE,
+	TOKEN_ENDPOINT_AUTH_METHOD,
+} from "./constants";
+
 import type { AxiosInstance } from "axios";
 
 import type { Logger } from "../logging/logger";
@@ -11,20 +19,17 @@ import type {
 
 const OAUTH_DISCOVERY_ENDPOINT = "/.well-known/oauth-authorization-server";
 
-const AUTH_GRANT_TYPE = "authorization_code" as const;
-const REFRESH_GRANT_TYPE = "refresh_token" as const;
-const RESPONSE_TYPE = "code" as const;
-const OAUTH_METHOD = "client_secret_post" as const;
-const PKCE_CHALLENGE_METHOD = "S256" as const;
-
-const REQUIRED_GRANT_TYPES = [AUTH_GRANT_TYPE, REFRESH_GRANT_TYPE] as const;
+const REQUIRED_GRANT_TYPES: readonly string[] = [
+	AUTH_GRANT_TYPE,
+	REFRESH_GRANT_TYPE,
+];
 
 // RFC 8414 defaults when fields are omitted
-const DEFAULT_GRANT_TYPES = [AUTH_GRANT_TYPE] as GrantType[];
-const DEFAULT_RESPONSE_TYPES = [RESPONSE_TYPE] as ResponseType[];
-const DEFAULT_AUTH_METHODS = [
+const DEFAULT_GRANT_TYPES: readonly GrantType[] = [AUTH_GRANT_TYPE];
+const DEFAULT_RESPONSE_TYPES: readonly ResponseType[] = [RESPONSE_TYPE];
+const DEFAULT_AUTH_METHODS: readonly TokenEndpointAuthMethod[] = [
 	"client_secret_basic",
-] as TokenEndpointAuthMethod[];
+];
 
 /**
  * Client for discovering and validating OAuth server metadata.
@@ -95,7 +100,7 @@ export class OAuthMetadataClient {
 		const supported = metadata.grant_types_supported ?? DEFAULT_GRANT_TYPES;
 		if (!includesAllTypes(supported, REQUIRED_GRANT_TYPES)) {
 			throw new Error(
-				`Server does not support required grant types: ${REQUIRED_GRANT_TYPES.join(", ")}. Supported: ${supported.join(", ")}`,
+				`Server does not support required grant types: ${REQUIRED_GRANT_TYPES.join(", ")}. Supported: ${formatSupported(supported)}`,
 			);
 		}
 	}
@@ -105,7 +110,7 @@ export class OAuthMetadataClient {
 			metadata.response_types_supported ?? DEFAULT_RESPONSE_TYPES;
 		if (!includesAllTypes(supported, [RESPONSE_TYPE])) {
 			throw new Error(
-				`Server does not support required response type: ${RESPONSE_TYPE}. Supported: ${supported.join(", ")}`,
+				`Server does not support required response type: ${RESPONSE_TYPE}. Supported: ${formatSupported(supported)}`,
 			);
 		}
 	}
@@ -113,9 +118,9 @@ export class OAuthMetadataClient {
 	private validateAuthMethods(metadata: OAuthServerMetadata): void {
 		const supported =
 			metadata.token_endpoint_auth_methods_supported ?? DEFAULT_AUTH_METHODS;
-		if (!includesAllTypes(supported, [OAUTH_METHOD])) {
+		if (!includesAllTypes(supported, [TOKEN_ENDPOINT_AUTH_METHOD])) {
 			throw new Error(
-				`Server does not support required auth method: ${OAUTH_METHOD}. Supported: ${supported.join(", ")}`,
+				`Server does not support required auth method: ${TOKEN_ENDPOINT_AUTH_METHOD}. Supported: ${formatSupported(supported)}`,
 			);
 		}
 	}
@@ -125,7 +130,7 @@ export class OAuthMetadataClient {
 		const supported = metadata.code_challenge_methods_supported ?? [];
 		if (!includesAllTypes(supported, [PKCE_CHALLENGE_METHOD])) {
 			throw new Error(
-				`Server does not support required PKCE method: ${PKCE_CHALLENGE_METHOD}. Supported: ${supported.length > 0 ? supported.join(", ") : "none"}`,
+				`Server does not support required PKCE method: ${PKCE_CHALLENGE_METHOD}. Supported: ${formatSupported(supported)}`,
 			);
 		}
 	}
@@ -139,4 +144,8 @@ function includesAllTypes(
 	requiredTypes: readonly string[],
 ): boolean {
 	return requiredTypes.every((type) => arr.includes(type));
+}
+
+function formatSupported(supported: readonly string[]): string {
+	return supported.length > 0 ? supported.join(", ") : "none";
 }

@@ -10,7 +10,8 @@ import type { TokenResponse } from "./types";
 export const CALLBACK_PATH = "/oauth/callback";
 
 /**
- * Default expiry time for OAuth access tokens when the server doesn't provide one.
+ * Fallback expiry time for access tokens when the server omits expires_in.
+ * RFC 6749 recommends but doesn't require expires_in and specifies no default.
  */
 const ACCESS_TOKEN_DEFAULT_EXPIRY_MS = 60 * 60 * 1000;
 
