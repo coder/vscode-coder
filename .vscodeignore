@@ -24,7 +24,8 @@ esbuild.mjs
 **/.git-blame-ignore-revs
 
 # Package manager files
-yarn.lock
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # Nix/flake files
 flake.nix

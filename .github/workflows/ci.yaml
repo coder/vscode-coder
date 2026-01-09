@@ -17,18 +17,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "yarn"
+          cache: "pnpm"
 
-      - run: yarn
+      - run: pnpm install
 
-      - run: yarn prettier --check .
+      - run: pnpm prettier --check .
 
-      - run: yarn lint
+      - run: pnpm lint
 
-      - run: yarn build
+      - run: pnpm build
 
   test-unit:
     name: Unit Test (Electron ${{ matrix.electron-version }})
@@ -42,12 +44,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "yarn"
+          cache: "pnpm"
 
-      - run: yarn
+      - run: pnpm install
 
       - name: Run tests with Electron ${{ matrix.electron-version }}
         run: ./scripts/test-electron.sh ${{ matrix.electron-version }}
@@ -65,17 +69,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "yarn"
+          cache: "pnpm"
 
-      - run: yarn
+      - run: pnpm install
 
-      - run: yarn build
+      - run: pnpm build
 
       - name: Run integration tests on VS Code ${{ matrix.vscode-version }}
-        run: xvfb-run -a yarn test:integration --label "VS Code ${{ matrix.vscode-version }}"
+        run: xvfb-run -a pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
 
   package:
     name: Package
@@ -84,15 +90,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "yarn"
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: |
-          yarn
-          npm install -g @vscode/vsce
+        run: pnpm install
 
       - name: Get version from package.json
         id: version
@@ -111,7 +117,7 @@ jobs:
           echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
 
       - name: Package extension
-        run: vsce package --out "${{ steps.setup.outputs.packageName }}"
+        run: pnpm vsce package --no-dependencies --out "${{ steps.setup.outputs.packageName }}"
 
       - name: Upload artifact (PR)
         if: github.event_name == 'pull_request'

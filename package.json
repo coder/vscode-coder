@@ -23,14 +23,14 @@
 		"fmt": "prettier --write --cache --cache-strategy content .",
 		"fmt:check": "prettier --check --cache --cache-strategy content .",
 		"lint": "eslint --cache --cache-strategy content .",
-		"lint:fix": "yarn lint --fix",
-		"package": "vsce package",
-		"package:prerelease": "vsce package --pre-release",
-		"pretest": "tsc -p test --noEmit && yarn fmt:check && yarn lint",
+		"lint:fix": "pnpm lint --fix",
+		"package": "vsce package --no-dependencies",
+		"package:prerelease": "vsce package --pre-release --no-dependencies",
+		"pretest": "tsc -p test --noEmit && pnpm fmt:check && pnpm lint",
 		"test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs",
-		"test:ci": "CI=true yarn test",
+		"test:ci": "CI=true pnpm test",
 		"test:integration": "tsc -p test --outDir out && node esbuild.mjs && vscode-test",
-		"vscode:prepublish": "yarn build:production",
+		"vscode:prepublish": "pnpm build:production",
 		"watch": "node esbuild.mjs --watch"
 	},
 	"contributes": {
@@ -423,6 +423,7 @@
 		"@eslint/js": "^9.39.2",
 		"@eslint/markdown": "^7.5.1",
 		"@tsconfig/node20": "^20.1.8",
+		"@types/mocha": "^10.0.10",
 		"@types/node": "^20",
 		"@types/proper-lockfile": "^4.1.4",
 		"@types/semver": "^7.7.1",
@@ -457,7 +458,7 @@
 	"extensionPack": [
 		"ms-vscode-remote.remote-ssh"
 	],
-	"packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+	"packageManager": "pnpm@10.27.0",
 	"engines": {
 		"vscode": "^1.95.0",
 		"node": ">= 20"
