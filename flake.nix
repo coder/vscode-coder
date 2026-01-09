@@ -7,12 +7,10 @@
     flake-utils.lib.eachDefaultSystem
       (system:
         let pkgs = nixpkgs.legacyPackages.${system};
-            nodejs = pkgs.nodejs;
-            yarn' = pkgs.yarn.override { inherit nodejs; };
         in {
           devShells.default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
-              nodejs yarn'
+              nodejs nodePackages.pnpm
             ];
           };
         }

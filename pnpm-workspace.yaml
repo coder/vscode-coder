@@ -1,0 +1,9 @@
+# Native modules allowed to run install scripts (pnpm blocks by default for security)
+onlyBuiltDependencies:
+  - "@vscode/vsce-sign" # vsce signing
+  - bufferutil # ws perf
+  - electron # tests
+  - esbuild # build
+  - keytar # vsce credentials
+  - unrs-resolver # eslint resolver
+  - utf-8-validate # ws validation
