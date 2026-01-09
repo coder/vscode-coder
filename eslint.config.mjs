@@ -4,7 +4,6 @@ import { defineConfig } from "eslint/config";
 import markdown from "@eslint/markdown";
 import tseslint from "typescript-eslint";
 import prettierConfig from "eslint-config-prettier";
-import prettierPlugin from "eslint-plugin-prettier";
 import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import { flatConfigs as importXFlatConfigs } from "eslint-plugin-import-x";
 import packageJson from "eslint-plugin-package-json";
@@ -42,9 +41,6 @@ export default defineConfig(
 				tsconfigRootDir: import.meta.dirname,
 			},
 		},
-		plugins: {
-			prettier: prettierPlugin,
-		},
 		settings: {
 			"import-x/resolver-next": [
 				createTypeScriptImportResolver({ project: "./tsconfig.json" }),
@@ -52,9 +48,6 @@ export default defineConfig(
 			"import-x/internal-regex": "^@/",
 		},
 		rules: {
-			// Prettier integration
-			"prettier/prettier": "error",
-
 			// Core ESLint rules
 			curly: "error",
 			eqeqeq: "error",
@@ -157,9 +150,9 @@ export default defineConfig(
 		},
 	},
 
-	// Webpack config - CommonJS with Node globals
+	// Build config - ESM with Node globals
 	{
-		files: ["webpack.config.js"],
+		files: ["esbuild.mjs"],
 		languageOptions: {
 			globals: {
 				...globals.node,

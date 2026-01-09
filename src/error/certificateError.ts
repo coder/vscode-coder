@@ -1,9 +1,5 @@
-import {
-	X509Certificate,
-	KeyUsagesExtension,
-	KeyUsageFlags,
-} from "@peculiar/x509";
 import { isAxiosError } from "axios";
+import * as forge from "node-forge";
 import * as tls from "node:tls";
 import * as vscode from "vscode";
 
@@ -26,6 +22,10 @@ export enum X509_ERR {
 	NON_SIGNING = "Your Coder deployment's certificate is not marked as being capable of signing. VS Code uses a version of Electron that does not support certificates like this even if they are self-issued. The certificate must be regenerated with the certificate signing capability.",
 	UNTRUSTED_LEAF = "Your Coder deployment's certificate does not appear to be trusted by this system. The certificate must be added to this system's trust store.",
 	UNTRUSTED_CHAIN = "Your Coder deployment's certificate chain does not appear to be trusted by this system. The root of the certificate chain must be added to this system's trust store. ",
+}
+
+interface KeyUsage {
+	keyCertSign: boolean;
 }
 
 export class CertificateError extends Error {
@@ -94,21 +94,22 @@ export class CertificateError extends Error {
 							throw new Error("no peer certificate");
 						}
 
-						// We use "@peculiar/x509" because Node's x509 returns an undefined `keyUsage`.
-						const cert = new X509Certificate(x509.toString());
-						const isSelfIssued = cert.subject === cert.issuer;
-						if (!isSelfIssued) {
+						// We use node-forge for two reasons:
+						// 1. Node/Electron only provide extended key usage.
+						// 2. Electron's checkIssued() will fail because it suffers from same
+						//    the key usage bug that we are trying to work around here in the
+						//    first place.
+						const cert = forge.pki.certificateFromPem(x509.toString());
+						if (!cert.issued(cert)) {
 							return resolve(X509_ERR.PARTIAL_CHAIN);
 						}
 
 						// The key usage needs to exist but not have cert signing to fail.
-						const extension = cert.getExtension(KeyUsagesExtension);
-						if (extension) {
-							const hasKeyCertSign =
-								extension.usages & KeyUsageFlags.keyCertSign;
-							if (!hasKeyCertSign) {
-								return resolve(X509_ERR.NON_SIGNING);
-							}
+						const keyUsage = cert.getExtension({ name: "keyUsage" }) as
+							| KeyUsage
+							| undefined;
+						if (keyUsage && !keyUsage.keyCertSign) {
+							return resolve(X509_ERR.NON_SIGNING);
 						}
 						// This branch is currently untested; it does not appear possible to
 						// get the error "unable to verify" with a self-signed certificate

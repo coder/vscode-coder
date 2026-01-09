@@ -17,51 +17,88 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "yarn"
+          cache: "pnpm"
 
-      - run: yarn
+      - run: pnpm install
 
-      - run: yarn prettier --check .
+      - run: pnpm prettier --check .
 
-      - run: yarn lint
+      - run: pnpm lint
 
-      - run: yarn build
+      - run: pnpm build
 
-  test:
-    name: Test
+  test-unit:
+    name: Unit Test (Electron ${{ matrix.electron-version }})
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Minimum supported version: VS Code 1.95  (Oct 2024) -> Electron 32 -> Node 20
+        electron-version: ["32", "latest"]
 
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "yarn"
+          cache: "pnpm"
 
-      - run: yarn
+      - run: pnpm install
 
-      - run: yarn test:ci
+      - name: Run tests with Electron ${{ matrix.electron-version }}
+        run: ./scripts/test-electron.sh ${{ matrix.electron-version }}
+        env:
+          CI: true
+
+  test-integration:
+    name: Integration Test (VS Code ${{ matrix.vscode-version }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        vscode-version: ["1.95.0", "stable"]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - run: pnpm install
+
+      - run: pnpm build
+
+      - name: Run integration tests on VS Code ${{ matrix.vscode-version }}
+        run: xvfb-run -a pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
 
   package:
     name: Package
     runs-on: ubuntu-22.04
-    needs: [lint, test]
+    needs: [lint, test-unit, test-integration]
     steps:
       - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "yarn"
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: |
-          yarn
-          npm install -g @vscode/vsce
+        run: pnpm install
 
       - name: Get version from package.json
         id: version
@@ -80,7 +117,7 @@ jobs:
           echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
 
       - name: Package extension
-        run: vsce package --out "${{ steps.setup.outputs.packageName }}"
+        run: pnpm vsce package --no-dependencies --out "${{ steps.setup.outputs.packageName }}"
 
       - name: Upload artifact (PR)
         if: github.event_name == 'pull_request'

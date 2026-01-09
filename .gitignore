@@ -5,4 +5,5 @@
 /.nyc_output/
 /coverage/
 *.vsix
-yarn-error.log
+pnpm-debug.log
+.eslintcache

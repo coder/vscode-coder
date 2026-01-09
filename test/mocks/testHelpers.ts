@@ -351,6 +351,13 @@ export class InMemorySecretStorage implements vscode.SecretStorage {
 		}
 	}
 
+	keys(): Promise<string[]> {
+		if (this.isCorrupted) {
+			return Promise.reject(new Error("Storage corrupted"));
+		}
+		return Promise.resolve(Array.from(this.secrets.keys()));
+	}
+
 	corruptStorage(): void {
 		this.isCorrupted = true;
 	}

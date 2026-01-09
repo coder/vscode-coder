@@ -46,16 +46,18 @@ Comments explain what code does or why it exists:
 
 ## Build and Test Commands
 
-- Build: `yarn build`
-- Watch mode: `yarn watch`
-- Package: `yarn package`
-- Lint: `yarn lint`
-- Lint with auto-fix: `yarn lint:fix`
-- Run all tests: `yarn test`
-- Unit tests: `yarn test:ci`
-- Integration tests: `yarn test:integration`
-- Run specific unit test: `yarn test:ci ./test/unit/filename.test.ts`
-- Run specific integration test: `yarn test:integration ./test/integration/filename.test.ts`
+- Build: `pnpm build`
+- Watch mode: `pnpm watch`
+- Package: `pnpm package`
+- Format: `pnpm fmt`
+- Format check: `pnpm fmt:check`
+- Lint: `pnpm lint`
+- Lint with auto-fix: `pnpm lint:fix`
+- Run all tests: `pnpm test`
+- Unit tests: `pnpm test:ci`
+- Integration tests: `pnpm test:integration`
+- Run specific unit test: `pnpm test:ci ./test/unit/filename.test.ts`
+- Run specific integration test: `pnpm test:integration ./test/integration/filename.test.ts`
 
 ## Code Style
 

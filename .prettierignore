@@ -6,4 +6,5 @@
 /coverage/
 *.vsix
 flake.lock
-yarn-error.log
+pnpm-debug.log
+pnpm-lock.yaml

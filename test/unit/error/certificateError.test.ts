@@ -1,8 +1,5 @@
-import {
-	KeyUsagesExtension,
-	X509Certificate as X509CertificatePeculiar,
-} from "@peculiar/x509";
 import axios from "axios";
+import * as forge from "node-forge";
 import { X509Certificate as X509CertificateNode } from "node:crypto";
 import * as fs from "node:fs/promises";
 import https from "node:https";
@@ -164,10 +161,14 @@ describe("Certificate errors", () => {
 		expect(nodeCert.keyUsage).toBeUndefined();
 
 		// Here we can correctly get the KeyUsages
-		const peculiarCert = new X509CertificatePeculiar(certPem);
-		const extension = peculiarCert.getExtension(KeyUsagesExtension);
+		const forgeCert = forge.pki.certificateFromPem(certPem);
+		const extension = forgeCert.getExtension({ name: "keyUsage" }) as
+			| {
+					keyCertSign: boolean;
+			  }
+			| undefined;
 		expect(extension).toBeDefined();
-		expect(extension?.usages).toBeTruthy();
+		expect(extension?.keyCertSign).toBe(false);
 	});
 
 	// Both environments give the same error code when a self-issued certificate is

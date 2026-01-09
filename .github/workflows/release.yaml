@@ -19,9 +19,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: "pnpm"
 
       - name: Extract version from tag
         id: version
@@ -45,9 +48,7 @@ jobs:
           echo "Version validation successful: $TAG_VERSION"
 
       - name: Install dependencies
-        run: |
-          yarn
-          npm install -g @vscode/vsce
+        run: pnpm install
 
       - name: Setup package path
         id: setup
@@ -57,7 +58,7 @@ jobs:
           echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
 
       - name: Package extension
-        run: vsce package --out "${{ steps.setup.outputs.packageName }}"
+        run: pnpm vsce package --no-dependencies --out "${{ steps.setup.outputs.packageName }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
