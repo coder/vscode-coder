@@ -402,7 +402,7 @@
 		"word-wrap": "1.2.5"
 	},
 	"dependencies": {
-		"@peculiar/x509": "^1.14.2",
+		"@peculiar/x509": "^1.14.3",
 		"axios": "1.13.2",
 		"date-fns": "^4.1.0",
 		"eventsource": "^4.1.0",
