@@ -11,9 +11,9 @@ import type { AxiosInstance } from "axios";
 import type { Logger } from "../logging/logger";
 
 import type {
-	GrantType,
-	OAuthServerMetadata,
-	ResponseType,
+	OAuth2AuthorizationServerMetadata,
+	OAuth2ProviderGrantType,
+	OAuth2ProviderResponseType,
 	TokenEndpointAuthMethod,
 } from "./types";
 
@@ -25,8 +25,12 @@ const REQUIRED_GRANT_TYPES: readonly string[] = [
 ];
 
 // RFC 8414 defaults when fields are omitted
-const DEFAULT_GRANT_TYPES: readonly GrantType[] = [AUTH_GRANT_TYPE];
-const DEFAULT_RESPONSE_TYPES: readonly ResponseType[] = [RESPONSE_TYPE];
+const DEFAULT_GRANT_TYPES: readonly OAuth2ProviderGrantType[] = [
+	AUTH_GRANT_TYPE,
+];
+const DEFAULT_RESPONSE_TYPES: readonly OAuth2ProviderResponseType[] = [
+	RESPONSE_TYPE,
+];
 const DEFAULT_AUTH_METHODS: readonly TokenEndpointAuthMethod[] = [
 	"client_secret_basic",
 ];
@@ -58,12 +62,13 @@ export class OAuthMetadataClient {
 	 * Fetch and validate OAuth server metadata.
 	 * Throws detailed errors if server doesn't meet OAuth 2.1 requirements.
 	 */
-	async getMetadata(): Promise<OAuthServerMetadata> {
+	async getMetadata(): Promise<OAuth2AuthorizationServerMetadata> {
 		this.logger.debug("Discovering OAuth endpoints...");
 
-		const response = await this.axiosInstance.get<OAuthServerMetadata>(
-			OAUTH_DISCOVERY_ENDPOINT,
-		);
+		const response =
+			await this.axiosInstance.get<OAuth2AuthorizationServerMetadata>(
+				OAUTH_DISCOVERY_ENDPOINT,
+			);
 
 		const metadata = response.data;
 
@@ -83,7 +88,9 @@ export class OAuthMetadataClient {
 		return metadata;
 	}
 
-	private validateRequiredEndpoints(metadata: OAuthServerMetadata): void {
+	private validateRequiredEndpoints(
+		metadata: OAuth2AuthorizationServerMetadata,
+	): void {
 		if (
 			!metadata.authorization_endpoint ||
 			!metadata.token_endpoint ||
@@ -96,7 +103,9 @@ export class OAuthMetadataClient {
 		}
 	}
 
-	private validateGrantTypes(metadata: OAuthServerMetadata): void {
+	private validateGrantTypes(
+		metadata: OAuth2AuthorizationServerMetadata,
+	): void {
 		const supported = metadata.grant_types_supported ?? DEFAULT_GRANT_TYPES;
 		if (!includesAllTypes(supported, REQUIRED_GRANT_TYPES)) {
 			throw new Error(
@@ -105,7 +114,9 @@ export class OAuthMetadataClient {
 		}
 	}
 
-	private validateResponseTypes(metadata: OAuthServerMetadata): void {
+	private validateResponseTypes(
+		metadata: OAuth2AuthorizationServerMetadata,
+	): void {
 		const supported =
 			metadata.response_types_supported ?? DEFAULT_RESPONSE_TYPES;
 		if (!includesAllTypes(supported, [RESPONSE_TYPE])) {
@@ -115,7 +126,9 @@ export class OAuthMetadataClient {
 		}
 	}
 
-	private validateAuthMethods(metadata: OAuthServerMetadata): void {
+	private validateAuthMethods(
+		metadata: OAuth2AuthorizationServerMetadata,
+	): void {
 		const supported =
 			metadata.token_endpoint_auth_methods_supported ?? DEFAULT_AUTH_METHODS;
 		if (!includesAllTypes(supported, [TOKEN_ENDPOINT_AUTH_METHOD])) {
@@ -125,7 +138,9 @@ export class OAuthMetadataClient {
 		}
 	}
 
-	private validatePKCEMethods(metadata: OAuthServerMetadata): void {
+	private validatePKCEMethods(
+		metadata: OAuth2AuthorizationServerMetadata,
+	): void {
 		// PKCE has no RFC 8414 default - if undefined, server doesn't advertise support
 		const supported = metadata.code_challenge_methods_supported ?? [];
 		if (!includesAllTypes(supported, [PKCE_CHALLENGE_METHOD])) {

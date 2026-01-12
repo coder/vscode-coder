@@ -23,8 +23,8 @@ import { buildOAuthTokenData, toUrlSearchParams } from "./utils";
 import type * as vscode from "vscode";
 
 import type {
-	ClientRegistrationResponse,
-	OAuthServerMetadata,
+	OAuth2AuthorizationServerMetadata,
+	OAuth2ClientRegistrationResponse,
 	RefreshTokenRequestParams,
 	TokenResponse,
 	TokenRevocationRequest,
@@ -316,8 +316,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 */
 	private async prepareOAuthOperation(token?: string): Promise<{
 		axiosInstance: AxiosInstance;
-		metadata: OAuthServerMetadata;
-		registration: ClientRegistrationResponse;
+		metadata: OAuth2AuthorizationServerMetadata;
+		registration: OAuth2ClientRegistrationResponse;
 	}> {
 		const deployment = this.requireDeployment();
 		const client = CoderApi.create(deployment.url, token, this.logger);

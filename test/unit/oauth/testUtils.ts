@@ -14,8 +14,8 @@ import {
 
 import type { Deployment } from "@/deployment/types";
 import type {
-	ClientRegistrationResponse,
-	OAuthServerMetadata,
+	OAuth2AuthorizationServerMetadata,
+	OAuth2ClientRegistrationResponse,
 	TokenResponse,
 } from "@/oauth/types";
 
@@ -24,8 +24,8 @@ export const TEST_HOSTNAME = "coder.example.com";
 
 export function createMockOAuthMetadata(
 	issuer: string,
-	overrides: Partial<OAuthServerMetadata> = {},
-): OAuthServerMetadata {
+	overrides: Partial<OAuth2AuthorizationServerMetadata> = {},
+): OAuth2AuthorizationServerMetadata {
 	return {
 		issuer,
 		authorization_endpoint: `${issuer}/oauth2/authorize`,
@@ -50,15 +50,18 @@ export function createMockOAuthMetadata(
 }
 
 export function createMockClientRegistration(
-	overrides: Partial<ClientRegistrationResponse> = {},
-): ClientRegistrationResponse {
+	overrides: Partial<OAuth2ClientRegistrationResponse> = {},
+): OAuth2ClientRegistrationResponse {
 	return {
 		client_id: "test-client-id",
 		client_secret: "test-client-secret",
+		client_id_issued_at: Math.floor(Date.now() / 1000),
 		redirect_uris: ["vscode://coder.coder-remote/oauth/callback"],
 		token_endpoint_auth_method: "client_secret_post",
 		grant_types: ["authorization_code", "refresh_token"],
 		response_types: ["code"],
+		registration_access_token: "test-registration-access-token",
+		registration_client_uri: `${TEST_URL}/oauth2/register/test-client-id`,
 		...overrides,
 	};
 }

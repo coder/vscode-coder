@@ -1,5 +1,5 @@
 import { type Logger } from "../logging/logger";
-import { type ClientRegistrationResponse } from "../oauth/types";
+import { type OAuth2ClientRegistrationResponse } from "../oauth/types";
 import { toSafeHost } from "../util";
 
 import type { Memento, SecretStorage, Disposable } from "vscode";
@@ -331,8 +331,8 @@ export class SecretsManager {
 
 	public getOAuthClientRegistration(
 		safeHostname: string,
-	): Promise<ClientRegistrationResponse | undefined> {
-		return this.getSecret<ClientRegistrationResponse>(
+	): Promise<OAuth2ClientRegistrationResponse | undefined> {
+		return this.getSecret<OAuth2ClientRegistrationResponse>(
 			OAUTH_CLIENT_PREFIX,
 			safeHostname,
 		);
@@ -340,7 +340,7 @@ export class SecretsManager {
 
 	public setOAuthClientRegistration(
 		safeHostname: string,
-		registration: ClientRegistrationResponse,
+		registration: OAuth2ClientRegistrationResponse,
 	): Promise<void> {
 		return this.setSecret(OAUTH_CLIENT_PREFIX, safeHostname, registration);
 	}

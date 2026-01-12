@@ -22,9 +22,9 @@ import {
 } from "./utils";
 
 import type {
-	ClientRegistrationRequest,
-	ClientRegistrationResponse,
-	OAuthServerMetadata,
+	OAuth2AuthorizationServerMetadata,
+	OAuth2ClientRegistrationRequest,
+	OAuth2ClientRegistrationResponse,
 	TokenRequestParams,
 	TokenResponse,
 } from "./types";
@@ -130,15 +130,15 @@ export class OAuthAuthorizer implements vscode.Disposable {
 	private async registerClient(
 		deployment: Deployment,
 		axiosInstance: AxiosInstance,
-		metadata: OAuthServerMetadata,
-	): Promise<ClientRegistrationResponse> {
+		metadata: OAuth2AuthorizationServerMetadata,
+	): Promise<OAuth2ClientRegistrationResponse> {
 		const redirectUri = this.getRedirectUri();
 
 		const existing = await this.secretsManager.getOAuthClientRegistration(
 			deployment.safeHostname,
 		);
 		if (existing?.client_id) {
-			if (existing.redirect_uris.includes(redirectUri)) {
+			if (existing.redirect_uris?.includes(redirectUri)) {
 				this.logger.debug(
 					"Using existing client registration:",
 					existing.client_id,
@@ -152,7 +152,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			throw new Error("Server does not support dynamic client registration");
 		}
 
-		const registrationRequest: ClientRegistrationRequest = {
+		const registrationRequest: OAuth2ClientRegistrationRequest = {
 			redirect_uris: [redirectUri],
 			grant_types: [AUTH_GRANT_TYPE],
 			response_types: [RESPONSE_TYPE],
@@ -160,7 +160,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			token_endpoint_auth_method: TOKEN_ENDPOINT_AUTH_METHOD,
 		};
 
-		const response = await axiosInstance.post<ClientRegistrationResponse>(
+		const response = await axiosInstance.post<OAuth2ClientRegistrationResponse>(
 			metadata.registration_endpoint,
 			registrationRequest,
 		);
@@ -181,7 +181,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 	 * Build authorization URL with all required OAuth 2.1 parameters.
 	 */
 	private buildAuthorizationUrl(
-		metadata: OAuthServerMetadata,
+		metadata: OAuth2AuthorizationServerMetadata,
 		clientId: string,
 		state: string,
 		challenge: string,
@@ -226,8 +226,8 @@ export class OAuthAuthorizer implements vscode.Disposable {
 	 * Returns authorization code and PKCE verifier on success.
 	 */
 	private async startAuthorization(
-		metadata: OAuthServerMetadata,
-		registration: ClientRegistrationResponse,
+		metadata: OAuth2AuthorizationServerMetadata,
+		registration: OAuth2ClientRegistrationResponse,
 		cancellationToken: vscode.CancellationToken,
 	): Promise<{ code: string; verifier: string }> {
 		const state = generateState();
@@ -315,8 +315,8 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		code: string,
 		verifier: string,
 		axiosInstance: AxiosInstance,
-		metadata: OAuthServerMetadata,
-		registration: ClientRegistrationResponse,
+		metadata: OAuth2AuthorizationServerMetadata,
+		registration: OAuth2ClientRegistrationResponse,
 	): Promise<TokenResponse> {
 		this.logger.debug("Exchanging authorization code for token");
 
