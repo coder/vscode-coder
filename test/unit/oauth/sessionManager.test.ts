@@ -335,8 +335,20 @@ describe("OAuthSessionManager", () => {
 		});
 	});
 
-	describe("deployment switch during refresh", () => {
-		it("cancels in-flight refresh on deployment switch", async () => {
+	describe("refresh abortion", () => {
+		it.each<{ name: string; abort: (m: OAuthSessionManager) => void }>([
+			{
+				name: "setDeployment",
+				abort: (m) => {
+					void m.setDeployment({
+						url: "https://new.example.com",
+						safeHostname: "new.example.com",
+					});
+				},
+			},
+			{ name: "clearDeployment", abort: (m) => m.clearDeployment() },
+			{ name: "dispose", abort: (m) => m.dispose() },
+		])("$name aborts in-flight refresh", async ({ abort }) => {
 			const { secretsManager, mockAdapter, manager, setupOAuthSession } =
 				createTestContext();
 
@@ -346,7 +358,6 @@ describe("OAuthSessionManager", () => {
 				createMockClientRegistration(),
 			);
 
-			// Track if token endpoint was called and capture the abort signal
 			let abortSignal: GenericAbortSignal | undefined;
 			const tokenEndpointCalled = new Promise<void>((resolve) => {
 				setupAxiosMockRoutes(mockAdapter, {
@@ -355,12 +366,10 @@ describe("OAuthSessionManager", () => {
 					"/oauth2/token": (config: InternalAxiosRequestConfig) => {
 						abortSignal = config.signal;
 						resolve();
-						// Return a promise that rejects when aborted
 						return new Promise((_, reject) => {
-							const signal = config.signal as AbortSignal | undefined;
-							signal?.addEventListener("abort", () => {
-								reject(new Error("canceled"));
-							});
+							(config.signal as AbortSignal)?.addEventListener("abort", () =>
+								reject(new Error("canceled")),
+							);
 						});
 					},
 				});
@@ -369,13 +378,24 @@ describe("OAuthSessionManager", () => {
 			const refreshPromise = manager.refreshToken();
 			await tokenEndpointCalled;
 
-			await manager.setDeployment({
-				url: "https://new.example.com",
-				safeHostname: "new.example.com",
-			});
+			abort(manager);
 
 			expect(abortSignal?.aborted).toBe(true);
 			await expect(refreshPromise).rejects.toThrow("canceled");
+		});
+
+		it.each<{ name: string; method: (m: OAuthSessionManager) => void }>([
+			{ name: "clearDeployment", method: (m) => m.clearDeployment() },
+			{ name: "dispose", method: (m) => m.dispose() },
+		])("$name can be called multiple times safely", async ({ method }) => {
+			const { manager, setupOAuthSession } = createTestContext();
+			await setupOAuthSession();
+
+			expect(() => {
+				method(manager);
+				method(manager);
+				method(manager);
+			}).not.toThrow();
 		});
 	});
 });

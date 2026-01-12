@@ -276,4 +276,166 @@ describe("OAuthInterceptor", () => {
 			expect(mockOAuthManager.refreshToken).not.toHaveBeenCalled();
 		});
 	});
+
+	describe("setDeployment", () => {
+		it("does nothing when switching to same deployment", async () => {
+			const { axiosInstance, setupOAuthInterceptor } = createTestContext();
+
+			const interceptor = await setupOAuthInterceptor();
+			expect(axiosInstance.getInterceptorCount()).toBe(1);
+
+			// Switch to same deployment - should be no-op
+			await interceptor.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			// Interceptor should still be attached (count unchanged)
+			expect(axiosInstance.getInterceptorCount()).toBe(1);
+		});
+
+		it("detaches and reattaches when switching to different deployment with OAuth", async () => {
+			const { secretsManager, axiosInstance, mockOAuthManager, mockCoderApi } =
+				createTestContext();
+
+			// Set up OAuth for first hostname
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "access-token",
+				oauth: {
+					token_type: "Bearer",
+					refresh_token: "refresh-token",
+					expiry_timestamp: Date.now() + ONE_HOUR_MS,
+				},
+			});
+
+			const logger = createMockLogger();
+			const interceptor = await OAuthInterceptor.create(
+				mockCoderApi,
+				logger,
+				mockOAuthManager as unknown as OAuthSessionManager,
+				secretsManager,
+				TEST_HOSTNAME,
+			);
+
+			expect(axiosInstance.getInterceptorCount()).toBe(1);
+
+			// Set up OAuth for new hostname
+			const newHostname = "new-coder.example.com";
+			const newUrl = "https://new-coder.example.com";
+			await secretsManager.setSessionAuth(newHostname, {
+				url: newUrl,
+				token: "new-access-token",
+				oauth: {
+					token_type: "Bearer",
+					refresh_token: "new-refresh-token",
+					expiry_timestamp: Date.now() + ONE_HOUR_MS,
+				},
+			});
+
+			// Update mock to check new hostname
+			mockOAuthManager.isLoggedInWithOAuth.mockImplementation(async () => {
+				const auth = await secretsManager.getSessionAuth(newHostname);
+				return auth?.oauth !== undefined;
+			});
+
+			// Switch to new deployment
+			await interceptor.setDeployment({
+				url: newUrl,
+				safeHostname: newHostname,
+			});
+
+			// Should still have one interceptor (detached old, attached new)
+			expect(axiosInstance.getInterceptorCount()).toBe(1);
+		});
+
+		it("detaches when switching to deployment without OAuth", async () => {
+			const { secretsManager, axiosInstance, mockOAuthManager, mockCoderApi } =
+				createTestContext();
+
+			// Set up OAuth for first hostname
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "access-token",
+				oauth: {
+					token_type: "Bearer",
+					refresh_token: "refresh-token",
+					expiry_timestamp: Date.now() + ONE_HOUR_MS,
+				},
+			});
+
+			const logger = createMockLogger();
+			const interceptor = await OAuthInterceptor.create(
+				mockCoderApi,
+				logger,
+				mockOAuthManager as unknown as OAuthSessionManager,
+				secretsManager,
+				TEST_HOSTNAME,
+			);
+
+			expect(axiosInstance.getInterceptorCount()).toBe(1);
+
+			// New hostname has no OAuth
+			const newHostname = "new-coder.example.com";
+			const newUrl = "https://new-coder.example.com";
+			await secretsManager.setSessionAuth(newHostname, {
+				url: newUrl,
+				token: "session-token",
+			});
+
+			// Update mock to check new hostname (no OAuth)
+			mockOAuthManager.isLoggedInWithOAuth.mockImplementation(async () => {
+				const auth = await secretsManager.getSessionAuth(newHostname);
+				return auth?.oauth !== undefined;
+			});
+
+			// Switch to new deployment
+			await interceptor.setDeployment({
+				url: newUrl,
+				safeHostname: newHostname,
+			});
+
+			// Should have no interceptor (new deployment has no OAuth)
+			expect(axiosInstance.getInterceptorCount()).toBe(0);
+		});
+	});
+
+	describe("clearDeployment", () => {
+		it("detaches interceptor", async () => {
+			const { axiosInstance, setupOAuthInterceptor } = createTestContext();
+
+			const interceptor = await setupOAuthInterceptor();
+			expect(axiosInstance.getInterceptorCount()).toBe(1);
+
+			interceptor.clearDeployment();
+
+			expect(axiosInstance.getInterceptorCount()).toBe(0);
+		});
+
+		it("can be called multiple times safely", async () => {
+			const { axiosInstance, setupOAuthInterceptor } = createTestContext();
+
+			const interceptor = await setupOAuthInterceptor();
+			expect(axiosInstance.getInterceptorCount()).toBe(1);
+
+			interceptor.clearDeployment();
+			interceptor.clearDeployment();
+			interceptor.clearDeployment();
+
+			expect(axiosInstance.getInterceptorCount()).toBe(0);
+		});
+	});
+
+	describe("dispose", () => {
+		it("cleans up interceptor and listener", async () => {
+			const { axiosInstance, setupOAuthInterceptor } = createTestContext();
+
+			const interceptor = await setupOAuthInterceptor();
+			expect(axiosInstance.getInterceptorCount()).toBe(1);
+
+			interceptor.dispose();
+
+			expect(axiosInstance.getInterceptorCount()).toBe(0);
+		});
+	});
 });
