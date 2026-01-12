@@ -7,6 +7,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { errToStr } from "./api/api-helper";
+import { AuthInterceptor } from "./api/authInterceptor";
 import { CoderApi } from "./api/coderApi";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
@@ -14,7 +15,6 @@ import { type SecretsManager } from "./core/secretsManager";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { getErrorDetail, toError } from "./error/errorUtils";
-import { OAuthInterceptor } from "./oauth/axiosInterceptor";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
@@ -88,15 +88,20 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	);
 	ctx.subscriptions.push(client);
 
-	// Create OAuth interceptor - auto attaches/detaches based on token state
-	const oauthInterceptor = await OAuthInterceptor.create(
+	// Handles 401 responses (OAuth and otherwise)
+	const authInterceptor = new AuthInterceptor(
 		client,
 		output,
 		oauthSessionManager,
 		secretsManager,
-		deployment?.safeHostname ?? "",
+		() => {
+			void vscode.window.showWarningMessage(
+				"Session expired. Please log in again using the Coder sidebar.",
+			);
+			return Promise.resolve(false);
+		},
 	);
-	ctx.subscriptions.push(oauthInterceptor);
+	ctx.subscriptions.push(authInterceptor);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
@@ -146,7 +151,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		serviceContainer,
 		client,
 		oauthSessionManager,
-		oauthInterceptor,
 		[myWorkspacesProvider, allWorkspacesProvider],
 	);
 	ctx.subscriptions.push(deploymentManager);

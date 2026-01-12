@@ -553,8 +553,14 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Returns true if OAuth tokens exist for the current deployment.
 	 * Always reads fresh from secrets to ensure cross-window synchronization.
+	 *
+	 * @param hostname Optional hostname to validate against current deployment.
+	 *                 If provided and doesn't match, returns false (race-safety).
 	 */
-	public async isLoggedInWithOAuth(): Promise<boolean> {
+	public async isLoggedInWithOAuth(hostname?: string): Promise<boolean> {
+		if (hostname && hostname !== this.deployment?.safeHostname) {
+			return false;
+		}
 		const storedTokens = await this.getStoredTokens();
 		return storedTokens !== undefined;
 	}

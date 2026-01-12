@@ -11,13 +11,11 @@ import {
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockCoderApi,
-	MockOAuthInterceptor,
 	MockOAuthSessionManager,
 } from "../../mocks/testHelpers";
 
 import type { ServiceContainer } from "@/core/container";
 import type { ContextManager } from "@/core/contextManager";
-import type { OAuthInterceptor } from "@/oauth/axiosInterceptor";
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
 import type { WorkspaceProvider } from "@/workspace/workspacesProvider";
 
@@ -69,7 +67,6 @@ function createTestContext() {
 	const validationMockClient = new MockCoderApi();
 	const mockWorkspaceProvider = new MockWorkspaceProvider();
 	const mockOAuthSessionManager = new MockOAuthSessionManager();
-	const mockOAuthInterceptor = new MockOAuthInterceptor();
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
@@ -93,7 +90,6 @@ function createTestContext() {
 		container as unknown as ServiceContainer,
 		mockClient as unknown as CoderApi,
 		mockOAuthSessionManager as unknown as OAuthSessionManager,
-		mockOAuthInterceptor as unknown as OAuthInterceptor,
 		[mockWorkspaceProvider as unknown as WorkspaceProvider],
 	);
 

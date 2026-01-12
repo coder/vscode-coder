@@ -4,7 +4,6 @@ import { type ContextManager } from "../core/contextManager";
 import { type MementoManager } from "../core/mementoManager";
 import { type SecretsManager } from "../core/secretsManager";
 import { type Logger } from "../logging/logger";
-import { type OAuthInterceptor } from "../oauth/axiosInterceptor";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { type WorkspaceProvider } from "../workspace/workspacesProvider";
 
@@ -44,7 +43,6 @@ export class DeploymentManager implements vscode.Disposable {
 		serviceContainer: ServiceContainer,
 		private readonly client: CoderApi,
 		private readonly oauthSessionManager: OAuthSessionManager,
-		private readonly oauthInterceptor: OAuthInterceptor,
 		private readonly workspaceProviders: WorkspaceProvider[],
 	) {
 		this.secretsManager = serviceContainer.getSecretsManager();
@@ -57,14 +55,12 @@ export class DeploymentManager implements vscode.Disposable {
 		serviceContainer: ServiceContainer,
 		client: CoderApi,
 		oauthSessionManager: OAuthSessionManager,
-		oauthInterceptor: OAuthInterceptor,
 		workspaceProviders: WorkspaceProvider[],
 	): DeploymentManager {
 		const manager = new DeploymentManager(
 			serviceContainer,
 			client,
 			oauthSessionManager,
-			oauthInterceptor,
 			workspaceProviders,
 		);
 		manager.subscribeToCrossWindowChanges();
@@ -140,7 +136,6 @@ export class DeploymentManager implements vscode.Disposable {
 		this.refreshWorkspaces();
 
 		await this.oauthSessionManager.setDeployment(deployment);
-		await this.oauthInterceptor.setDeployment(deployment);
 		await this.persistDeployment(deployment);
 	}
 
@@ -154,7 +149,6 @@ export class DeploymentManager implements vscode.Disposable {
 
 		this.client.setCredentials(undefined, undefined);
 		this.oauthSessionManager.clearDeployment();
-		this.oauthInterceptor.clearDeployment();
 		this.updateAuthContexts();
 		this.refreshWorkspaces();
 

@@ -18,6 +18,7 @@ import {
 	formatMetadataError,
 } from "../api/agentMetadataHelper";
 import { extractAgents } from "../api/api-helper";
+import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "../cliConfig";
@@ -35,7 +36,6 @@ import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
-import { OAuthInterceptor } from "../oauth/axiosInterceptor";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	AuthorityPrefix,
@@ -173,15 +173,23 @@ export class Remote {
 			const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
 			disposables.push(workspaceClient);
 
-			// Create OAuth interceptor - auto attaches/detaches based on token state
-			const oauthInterceptor = await OAuthInterceptor.create(
+			// Create 401 interceptor - handles auth failures with re-login dialog
+			const authInterceptor = new AuthInterceptor(
 				workspaceClient,
 				this.logger,
 				remoteOAuthManager,
 				this.secretsManager,
-				parts.safeHostname,
+				async (hostname) => {
+					const result = await this.loginCoordinator.ensureLoggedInWithDialog({
+						safeHostname: hostname,
+						url: baseUrlRaw,
+						message: "Your session expired...",
+						detailPrefix: `You must log in to access ${workspaceName}.`,
+					});
+					return result.success;
+				},
 			);
-			disposables.push(oauthInterceptor);
+			disposables.push(authInterceptor);
 
 			// Store for use in commands.
 			this.commands.remoteWorkspaceClient = workspaceClient;
@@ -296,15 +304,6 @@ export class Remote {
 						}
 						await vscode.commands.executeCommand("coder.open");
 						return;
-					}
-					case 401: {
-						disposables.forEach((d) => {
-							d.dispose();
-						});
-						return ensureLoggedInAndRetry(
-							"Your session expired...",
-							baseUrlRaw,
-						);
 					}
 					default:
 						throw error;
@@ -781,12 +780,6 @@ export class Remote {
 					// Deployment does not support overriding ssh config yet. Likely an
 					// older version, just use the default.
 					break;
-				}
-				case 401: {
-					await this.vscodeProposed.window.showErrorMessage(
-						"Your session expired...",
-					);
-					throw error;
 				}
 				default:
 					throw error;
