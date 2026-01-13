@@ -116,6 +116,22 @@ was but for now it means some things are difficult to test as you cannot import
 4. If your change is something users ought to be aware of, add an entry in the
    changelog.
 
+## Node.js Version
+
+This extension targets the Node.js version bundled with VS Code's Electron:
+
+| VS Code | Electron | Node.js | Status            |
+| ------- | -------- | ------- | ----------------- |
+| 1.95    | 32       | 20      | Minimum supported |
+| stable  | latest   | varies  | Also tested in CI |
+
+When updating the minimum Node.js version, update these files:
+
+- **package.json**: `engines.vscode`, `engines.node`, `@types/node`, `@tsconfig/nodeXX`
+- **tsconfig.json**: `extends` (the `@tsconfig/nodeXX` package), `lib` (match base ESNext version)
+- **esbuild.mjs**: `target`
+- **.github/workflows/ci.yaml**: `electron-version` and `vscode-version` matrices
+
 ## Dependencies
 
 Some dependencies are not directly used in the source but are required anyway.
