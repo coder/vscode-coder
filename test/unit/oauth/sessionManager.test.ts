@@ -101,7 +101,6 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 			url: TEST_URL,
 			token: overrides.token ?? "access-token",
 			oauth: {
-				token_type: "Bearer",
 				refresh_token: overrides.refreshToken ?? "refresh-token",
 				expiry_timestamp: Date.now() + (overrides.expiryMs ?? ONE_HOUR_MS),
 				scope: overrides.scope ?? "",
@@ -137,7 +136,6 @@ describe("OAuthSessionManager", () => {
 					url: TEST_URL,
 					token: "access-token",
 					oauth: {
-						token_type: "Bearer",
 						refresh_token: "refresh-token",
 						expiry_timestamp: Date.now() + ONE_HOUR_MS,
 					},
@@ -207,7 +205,6 @@ describe("OAuthSessionManager", () => {
 				url: "https://different-coder.example.com",
 				token: "access-token",
 				oauth: {
-					token_type: "Bearer",
 					refresh_token: "refresh-token",
 					expiry_timestamp: Date.now() + ONE_HOUR_MS,
 					scope: "",

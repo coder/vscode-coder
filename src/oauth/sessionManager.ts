@@ -5,7 +5,6 @@ import { type ServiceContainer } from "../core/container";
 import {
 	type OAuthTokenData,
 	type SecretsManager,
-	type SessionAuth,
 } from "../core/secretsManager";
 import { type Deployment } from "../deployment/types";
 import { type Logger } from "../logging/logger";
@@ -134,19 +133,17 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		// Validate deployment URL matches
 		if (auth.url !== this.deployment.url) {
-			this.logger.warn(
-				"Stored tokens have mismatched deployment URL, clearing OAuth",
-				{ stored: auth.url, current: this.deployment.url },
-			);
-			await this.clearOAuthFromSessionAuth(auth);
+			this.logger.warn("Stored tokens have mismatched deployment URL", {
+				stored: auth.url,
+				current: this.deployment.url,
+			});
 			return undefined;
 		}
 
 		if (!this.hasRequiredScopes(auth.oauth.scope)) {
-			this.logger.warn("Stored tokens have insufficient scopes, clearing", {
+			this.logger.warn("Stored tokens have insufficient scopes", {
 				scope: auth.oauth.scope,
 			});
-			await this.clearOAuthFromSessionAuth(auth);
 			return undefined;
 		}
 
@@ -154,19 +151,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 			access_token: auth.token,
 			...auth.oauth,
 		};
-	}
-
-	/**
-	 * Clear OAuth data from session auth while preserving the session token.
-	 */
-	private async clearOAuthFromSessionAuth(auth: SessionAuth): Promise<void> {
-		if (!this.deployment) {
-			return;
-		}
-		await this.secretsManager.setSessionAuth(this.deployment.safeHostname, {
-			url: auth.url,
-			token: auth.token,
-		});
 	}
 
 	/**

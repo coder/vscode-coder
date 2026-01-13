@@ -72,7 +72,6 @@ export function buildOAuthTokenData(
 		: Date.now() + ACCESS_TOKEN_DEFAULT_EXPIRY_MS;
 
 	return {
-		token_type: tokenResponse.token_type,
 		refresh_token: tokenResponse.refresh_token,
 		scope: tokenResponse.scope,
 		expiry_timestamp: expiryTimestamp,

@@ -1,14 +1,18 @@
-import { type User } from "coder/site/src/api/typesGenerated";
+import { z } from "zod";
+
+import type { User } from "coder/site/src/api/typesGenerated";
 
 /**
  * Represents a Coder deployment with its URL and hostname.
  * The safeHostname is used as a unique identifier for storing credentials and configuration.
  * It is derived from the URL hostname (via toSafeHost) or from SSH host parsing.
  */
-export interface Deployment {
-	readonly url: string;
-	readonly safeHostname: string;
-}
+export const DeploymentSchema = z.object({
+	url: z.string(),
+	safeHostname: z.string(),
+});
+
+export type Deployment = z.infer<typeof DeploymentSchema>;
 
 /**
  * Deployment info with authentication credentials.

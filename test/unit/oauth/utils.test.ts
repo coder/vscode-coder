@@ -75,26 +75,21 @@ describe("buildOAuthTokenData", () => {
 
 	describe("token_type validation", () => {
 		it("accepts Bearer tokens", () => {
-			const result = buildOAuthTokenData(
-				createTokenResponse({ token_type: "Bearer" }),
-			);
-			expect(result.token_type).toBe("Bearer");
+			// Should not throw for Bearer tokens
+			expect(() =>
+				buildOAuthTokenData(createTokenResponse({ token_type: "Bearer" })),
+			).not.toThrow();
 		});
 
-		it("rejects DPoP tokens", () => {
-			expect(() =>
-				buildOAuthTokenData(
-					createTokenResponse({ token_type: "DPoP" as "Bearer" }),
-				),
-			).toThrow("Unsupported token type: DPoP");
-		});
-
-		it("rejects unknown token types", () => {
-			expect(() =>
-				buildOAuthTokenData(
-					createTokenResponse({ token_type: "unknown" as "Bearer" }),
-				),
-			).toThrow("Unsupported token type: unknown");
-		});
+		it.each(["DPoP", "unknown", "bearer", "BEARER"])(
+			"rejects non-Bearer token type: %s",
+			(tokenType) => {
+				expect(() =>
+					buildOAuthTokenData(
+						createTokenResponse({ token_type: tokenType as "Bearer" }),
+					),
+				).toThrow(`Unsupported token type: ${tokenType}`);
+			},
+		);
 	});
 });

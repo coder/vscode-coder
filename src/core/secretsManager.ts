@@ -1,10 +1,11 @@
+import { z } from "zod";
+
+import { DeploymentSchema, type Deployment } from "../deployment/types";
 import { type Logger } from "../logging/logger";
 import { type OAuth2ClientRegistrationResponse } from "../oauth/types";
 import { toSafeHost } from "../util";
 
 import type { Memento, SecretStorage, Disposable } from "vscode";
-
-import type { Deployment } from "../deployment/types";
 
 // Each deployment has its own key to ensure atomic operations (multiple windows
 // writing to a shared key could drop data) and to receive proper VS Code events.
@@ -22,39 +23,50 @@ const DEFAULT_MAX_DEPLOYMENTS = 10;
 
 const LEGACY_SESSION_TOKEN_KEY = "sessionToken";
 
-export interface CurrentDeploymentState {
-	deployment: Deployment | null;
-}
+const CurrentDeploymentStateSchema = z.object({
+	deployment: DeploymentSchema.nullable(),
+});
+
+export type CurrentDeploymentState = z.infer<
+	typeof CurrentDeploymentStateSchema
+>;
 
 /**
  * OAuth token data stored alongside session auth.
  * When present, indicates the session is authenticated via OAuth.
  */
-export interface OAuthTokenData {
-	token_type: "Bearer";
-	refresh_token?: string;
-	scope?: string;
-	expiry_timestamp: number;
-}
+const OAuthTokenDataSchema = z.object({
+	refresh_token: z.string().optional(),
+	scope: z.string().optional(),
+	expiry_timestamp: z.number(),
+});
 
-export interface SessionAuth {
-	url: string;
-	token: string;
+export type OAuthTokenData = z.infer<typeof OAuthTokenDataSchema>;
+
+const SessionAuthSchema = z.object({
+	url: z.string(),
+	token: z.string(),
 	/** If present, this session uses OAuth authentication */
-	oauth?: OAuthTokenData;
-}
+	oauth: OAuthTokenDataSchema.optional(),
+});
+
+export type SessionAuth = z.infer<typeof SessionAuthSchema>;
 
 // Tracks when a deployment was last accessed for LRU pruning.
-interface DeploymentUsage {
-	safeHostname: string;
-	lastAccessedAt: string;
-}
+const DeploymentUsageSchema = z.object({
+	safeHostname: z.string(),
+	lastAccessedAt: z.string(),
+});
 
-interface OAuthCallbackData {
-	state: string;
-	code: string | null;
-	error: string | null;
-}
+type DeploymentUsage = z.infer<typeof DeploymentUsageSchema>;
+
+const OAuthCallbackDataSchema = z.object({
+	state: z.string(),
+	code: z.string().nullable(),
+	error: z.string().nullable(),
+});
+
+type OAuthCallbackData = z.infer<typeof OAuthCallbackDataSchema>;
 
 export class SecretsManager {
 	constructor(
@@ -107,17 +119,18 @@ export class SecretsManager {
 	public async setCurrentDeployment(
 		deployment: Deployment | undefined,
 	): Promise<void> {
-		const state: CurrentDeploymentState & { timestamp: string } = {
-			// Extract the necessary fields before serializing
-			deployment: deployment
-				? {
-						url: deployment?.url,
-						safeHostname: deployment?.safeHostname,
-					}
-				: null,
+		const state = CurrentDeploymentStateSchema.parse({
+			deployment: deployment ?? null,
+		});
+		// Add timestamp for cross-window change detection
+		const stateWithTimestamp = {
+			...state,
 			timestamp: new Date().toISOString(),
 		};
-		await this.secrets.store(CURRENT_DEPLOYMENT_KEY, JSON.stringify(state));
+		await this.secrets.store(
+			CURRENT_DEPLOYMENT_KEY,
+			JSON.stringify(stateWithTimestamp),
+		);
 	}
 
 	/**
@@ -129,8 +142,9 @@ export class SecretsManager {
 			if (!data) {
 				return null;
 			}
-			const parsed = JSON.parse(data) as CurrentDeploymentState;
-			return parsed.deployment;
+			const parsed: unknown = JSON.parse(data);
+			const result = CurrentDeploymentStateSchema.safeParse(parsed);
+			return result.success ? result.data.deployment : null;
 		} catch {
 			return null;
 		}
@@ -181,22 +195,26 @@ export class SecretsManager {
 		});
 	}
 
-	public getSessionAuth(
+	public async getSessionAuth(
 		safeHostname: string,
 	): Promise<SessionAuth | undefined> {
-		return this.getSecret<SessionAuth>(SESSION_KEY_PREFIX, safeHostname);
+		const data = await this.getSecret<unknown>(
+			SESSION_KEY_PREFIX,
+			safeHostname,
+		);
+		if (!data) {
+			return undefined;
+		}
+		const result = SessionAuthSchema.safeParse(data);
+		return result.success ? result.data : undefined;
 	}
 
 	public async setSessionAuth(
 		safeHostname: string,
 		auth: SessionAuth,
 	): Promise<void> {
-		// Extract relevant fields before serializing
-		const state: SessionAuth = {
-			url: auth.url,
-			token: auth.token,
-			...(auth.oauth && { oauth: auth.oauth }),
-		};
+		// Parse through schema to strip any extra fields
+		const state = SessionAuthSchema.parse(auth);
 		await this.setSecret(SESSION_KEY_PREFIX, safeHostname, state);
 	}
 
@@ -214,10 +232,11 @@ export class SecretsManager {
 	): Promise<void> {
 		const usage = this.getDeploymentUsage();
 		const filtered = usage.filter((u) => u.safeHostname !== safeHostname);
-		filtered.unshift({
+		const newEntry = DeploymentUsageSchema.parse({
 			safeHostname,
 			lastAccessedAt: new Date().toISOString(),
 		});
+		filtered.unshift(newEntry);
 
 		const toKeep = filtered.slice(0, maxCount);
 		const toRemove = filtered.slice(maxCount);
@@ -253,7 +272,12 @@ export class SecretsManager {
 	 * Get the full deployment usage list with access timestamps.
 	 */
 	private getDeploymentUsage(): DeploymentUsage[] {
-		return this.memento.get<DeploymentUsage[]>(DEPLOYMENT_USAGE_KEY) ?? [];
+		const data = this.memento.get<unknown>(DEPLOYMENT_USAGE_KEY);
+		if (!data) {
+			return [];
+		}
+		const result = z.array(DeploymentUsageSchema).safeParse(data);
+		return result.success ? result.data : [];
 	}
 
 	/**
@@ -294,7 +318,8 @@ export class SecretsManager {
 	 * Used for cross-window communication when OAuth callback arrives in a different window.
 	 */
 	public async setOAuthCallback(data: OAuthCallbackData): Promise<void> {
-		await this.secrets.store(OAUTH_CALLBACK_KEY, JSON.stringify(data));
+		const parsed = OAuthCallbackDataSchema.parse(data);
+		await this.secrets.store(OAUTH_CALLBACK_KEY, JSON.stringify(parsed));
 	}
 
 	/**
@@ -309,20 +334,27 @@ export class SecretsManager {
 				return;
 			}
 
-			let parsed: OAuthCallbackData;
+			const raw = await this.secrets.get(OAUTH_CALLBACK_KEY);
+			if (!raw) {
+				return;
+			}
+
+			let parsed: unknown;
 			try {
-				const data = await this.secrets.get(OAUTH_CALLBACK_KEY);
-				if (!data) {
-					return;
-				}
-				parsed = JSON.parse(data) as OAuthCallbackData;
+				parsed = JSON.parse(raw);
 			} catch (err) {
-				this.logger.error("Failed to parse OAuth callback data", err);
+				this.logger.error("Failed to parse OAuth callback JSON", err);
+				return;
+			}
+
+			const result = OAuthCallbackDataSchema.safeParse(parsed);
+			if (!result.success) {
+				this.logger.error("Invalid OAuth callback data shape", result.error);
 				return;
 			}
 
 			try {
-				listener(parsed);
+				listener(result.data);
 			} catch (err) {
 				this.logger.error("Error in onDidChangeOAuthCallback listener", err);
 			}

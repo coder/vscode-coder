@@ -103,7 +103,6 @@ function createTestContext() {
 			url: TEST_URL,
 			token: "access-token",
 			oauth: {
-				token_type: "Bearer",
 				refresh_token: "refresh-token",
 				expiry_timestamp: Date.now() + ONE_HOUR_MS,
 			},
