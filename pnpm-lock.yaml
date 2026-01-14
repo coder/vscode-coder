@@ -53,8 +53,8 @@ importers:
         specifier: ^8.19.0
         version: 8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod:
-        specifier: ^4.3.2
-        version: 4.3.2
+        specifier: ^4.3.5
+        version: 4.3.5
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.2
@@ -3372,8 +3372,8 @@ packages:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
 
-  zod@4.3.2:
-    resolution: {integrity: sha512-b8L8yn4rIVfiXyHAmnr52/ZEpDumlT0bmxiq3Ws1ybrinhflGpt12Hvv54kYnEsGPRs6o/Ka3/ppA2OWY21IVg==}
+  zod@4.3.5:
+    resolution: {integrity: sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -7007,6 +7007,6 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod@4.3.2: {}
+  zod@4.3.5: {}
 
   zwitch@2.0.4: {}
