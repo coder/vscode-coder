@@ -109,7 +109,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: https://github.com/coder/coder#main
-        version: https://codeload.github.com/coder/coder/tar.gz/61ae5b81ab76dc76eafa2dc7a1bef95c5ef5c7a5
+        version: https://codeload.github.com/coder/coder/tar.gz/b3a81be1aa18176540a5b9f2d0b8058633209df4
       dayjs:
         specifier: ^1.11.19
         version: 1.11.19
@@ -1358,8 +1358,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/61ae5b81ab76dc76eafa2dc7a1bef95c5ef5c7a5:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/61ae5b81ab76dc76eafa2dc7a1bef95c5ef5c7a5}
+  coder@https://codeload.github.com/coder/coder/tar.gz/b3a81be1aa18176540a5b9f2d0b8058633209df4:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/b3a81be1aa18176540a5b9f2d0b8058633209df4}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -4689,7 +4689,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/61ae5b81ab76dc76eafa2dc7a1bef95c5ef5c7a5: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/b3a81be1aa18176540a5b9f2d0b8058633209df4: {}
 
   color-convert@2.0.1:
     dependencies:
