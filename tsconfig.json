@@ -1,15 +1,12 @@
 {
+	"extends": "@tsconfig/node20/tsconfig.json",
 	"compilerOptions": {
-		"module": "commonjs",
-		"target": "ES2022",
-		"moduleResolution": "node",
+		"module": "CommonJS",
+		"moduleResolution": "Node10",
 		"outDir": "out",
 		// "dom" is required for importing the API from coder/coder.
-		"lib": ["ES2022", "dom"],
+		"lib": ["ES2023", "dom"],
 		"sourceMap": true,
-		"strict": true,
-		"esModuleInterop": true,
-		"skipLibCheck": true,
 		"noFallthroughCasesInSwitch": true,
 		"noImplicitOverride": true,
 		"noImplicitReturns": true

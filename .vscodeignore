@@ -6,6 +6,7 @@ coverage/**
 # Development files
 src/**
 test/**
+scripts/**
 **/*.ts
 **/*.map
 
@@ -14,15 +15,17 @@ test/**
 .vscode-test/**
 .vscode-test.mjs
 tsconfig.json
-.eslintrc.json
+eslint.config.mjs
+.eslintcache
+esbuild.mjs
 .editorconfig
 .prettierignore
-.eslintignore
 **/.gitignore
 **/.git-blame-ignore-revs
 
 # Package manager files
-yarn.lock
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # Nix/flake files
 flake.nix

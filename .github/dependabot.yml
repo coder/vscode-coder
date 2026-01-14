@@ -18,3 +18,6 @@ updates:
       # These versions must match the versions specified in coder/coder exactly.
       - dependency-name: "@types/ua-parser-js"
       - dependency-name: "ua-parser-js"
+      # @types/node major version must match our minimum Node.js version.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

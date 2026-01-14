@@ -80,16 +80,17 @@ The link format is `vscode://coder.coder-remote/open?${query}`. For example:
 code --open-url 'vscode://coder.coder-remote/open?url=dev.coder.com&owner=my-username&workspace=my-ws&agent=my-agent'
 ```
 
-There are some unit tests as well:
+There are unit tests using `vitest` with mocked VS Code APIs:
 
 ```bash
-yarn test
+pnpm test:ci
 ```
 
-Note that we have an unusual testing setup with `vitest`; this needs to be
-changed back to how using the standard testing framework for VS Code extensions
-was but for now it means some things are difficult to test as you cannot import
-`vscode` in tests or write any UI tests.
+There are also integration tests that run inside a real VS Code instance:
+
+```bash
+pnpm test:integration
+```
 
 ## Development
 
@@ -98,7 +99,7 @@ was but for now it means some things are difficult to test as you cannot import
 > this extension from a coder workspace. We currently recommend cloning the
 > repo locally
 
-1. Run `yarn watch` in the background.
+1. Run `pnpm watch` in the background.
 2. OPTIONAL: Compile the `coder` binary and place it in the equivalent of
    `os.tmpdir() + "/coder"`. If this is missing, it will download the binary
    from the Coder deployment, as it normally would. Reading from `/tmp/coder` is
@@ -116,6 +117,22 @@ was but for now it means some things are difficult to test as you cannot import
 4. If your change is something users ought to be aware of, add an entry in the
    changelog.
 
+## Node.js Version
+
+This extension targets the Node.js version bundled with VS Code's Electron:
+
+| VS Code | Electron | Node.js | Status            |
+| ------- | -------- | ------- | ----------------- |
+| 1.95    | 32       | 20      | Minimum supported |
+| stable  | latest   | varies  | Also tested in CI |
+
+When updating the minimum Node.js version, update these files:
+
+- **package.json**: `engines.vscode`, `engines.node`, `@types/node`, `@tsconfig/nodeXX`
+- **tsconfig.json**: `extends` (the `@tsconfig/nodeXX` package), `lib` (match base ESNext version)
+- **esbuild.mjs**: `target`
+- **.github/workflows/ci.yaml**: `electron-version` and `vscode-version` matrices
+
 ## Dependencies
 
 Some dependencies are not directly used in the source but are required anyway.
@@ -123,7 +140,7 @@ Some dependencies are not directly used in the source but are required anyway.
 - `bufferutil` and `utf-8-validate` are peer dependencies of `ws`.
 - `ua-parser-js` and `dayjs` are used by the Coder API client.
 
-The coder client is vendored from coder/coder. Every now and then, we should be running `yarn upgrade coder --latest`
+The coder client is vendored from coder/coder. Every now and then, we should be running `pnpm update coder`
 to make sure we're using up to date versions of the client.
 
 ## Releasing

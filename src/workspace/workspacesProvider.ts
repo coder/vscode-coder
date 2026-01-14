@@ -389,8 +389,12 @@ export class OpenableTreeItem extends vscode.TreeItem {
 	}
 
 	override iconPath = {
-		light: path.join(__filename, "..", "..", "media", "logo-black.svg"),
-		dark: path.join(__filename, "..", "..", "media", "logo-white.svg"),
+		light: vscode.Uri.file(
+			path.join(__filename, "..", "..", "media", "logo-black.svg"),
+		),
+		dark: vscode.Uri.file(
+			path.join(__filename, "..", "..", "media", "logo-white.svg"),
+		),
 	};
 }
 
