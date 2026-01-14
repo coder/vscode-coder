@@ -50,8 +50,8 @@ importers:
         specifier: ^1.0.41
         version: 1.0.41
       ws:
-        specifier: ^8.18.3
-        version: 8.18.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+        specifier: ^8.19.0
+        version: 8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod:
         specifier: ^4.3.2
         version: 4.3.2
@@ -109,7 +109,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: https://github.com/coder/coder#main
-        version: https://codeload.github.com/coder/coder/tar.gz/61ae5b81ab76dc76eafa2dc7a1bef95c5ef5c7a5
+        version: https://codeload.github.com/coder/coder/tar.gz/b3a81be1aa18176540a5b9f2d0b8058633209df4
       dayjs:
         specifier: ^1.11.19
         version: 1.11.19
@@ -1358,8 +1358,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/61ae5b81ab76dc76eafa2dc7a1bef95c5ef5c7a5:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/61ae5b81ab76dc76eafa2dc7a1bef95c5ef5c7a5}
+  coder@https://codeload.github.com/coder/coder/tar.gz/b3a81be1aa18176540a5b9f2d0b8058633209df4:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/b3a81be1aa18176540a5b9f2d0b8058633209df4}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -3311,8 +3311,8 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.18.3:
-    resolution: {integrity: sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==}
+  ws@8.19.0:
+    resolution: {integrity: sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -4689,7 +4689,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/61ae5b81ab76dc76eafa2dc7a1bef95c5ef5c7a5: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/b3a81be1aa18176540a5b9f2d0b8058633209df4: {}
 
   color-convert@2.0.1:
     dependencies:
@@ -6946,7 +6946,7 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  ws@8.18.3(bufferutil@4.1.0)(utf-8-validate@6.0.6):
+  ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     optionalDependencies:
       bufferutil: 4.1.0
       utf-8-validate: 6.0.6
