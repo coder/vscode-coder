@@ -7,15 +7,14 @@ import {
 } from "./constants";
 
 import type { AxiosInstance } from "axios";
-
-import type { Logger } from "../logging/logger";
-
 import type {
 	OAuth2AuthorizationServerMetadata,
 	OAuth2ProviderGrantType,
 	OAuth2ProviderResponseType,
-	TokenEndpointAuthMethod,
-} from "./types";
+	OAuth2TokenEndpointAuthMethod,
+} from "coder/site/src/api/typesGenerated";
+
+import type { Logger } from "../logging/logger";
 
 const OAUTH_DISCOVERY_ENDPOINT = "/.well-known/oauth-authorization-server";
 
@@ -31,7 +30,7 @@ const DEFAULT_GRANT_TYPES: readonly OAuth2ProviderGrantType[] = [
 const DEFAULT_RESPONSE_TYPES: readonly OAuth2ProviderResponseType[] = [
 	RESPONSE_TYPE,
 ];
-const DEFAULT_AUTH_METHODS: readonly TokenEndpointAuthMethod[] = [
+const DEFAULT_AUTH_METHODS: readonly OAuth2TokenEndpointAuthMethod[] = [
 	"client_secret_basic",
 ];
 

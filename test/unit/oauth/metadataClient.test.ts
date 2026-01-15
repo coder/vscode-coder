@@ -180,7 +180,11 @@ describe("OAuthMetadataClient", () => {
 		});
 
 		describe("auth method validation", () => {
-			it.each([
+			interface AuthMethodTestCase {
+				name: string;
+				value: readonly ["client_secret_basic"] | undefined;
+			}
+			it.each<AuthMethodTestCase>([
 				{ name: "unsupported method", value: ["client_secret_basic"] },
 				{ name: "RFC 8414 default", value: undefined },
 			])("throws for $name", async ({ value }) => {

@@ -6,7 +6,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { type SecretsManager, type SessionAuth } from "@/core/secretsManager";
-import { InvalidGrantError } from "@/oauth/errors";
+import { OAuthError } from "@/oauth/errors";
 import { OAuthSessionManager } from "@/oauth/sessionManager";
 
 import {
@@ -287,7 +287,7 @@ describe("OAuthSessionManager", () => {
 			);
 
 			await manager.showReAuthenticationModal(
-				new InvalidGrantError("Token expired"),
+				new OAuthError("invalid_grant", "Token expired"),
 			);
 
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);

@@ -1,14 +1,4 @@
-import { type AxiosInstance } from "axios";
-
 import { CoderApi } from "../api/coderApi";
-import { type ServiceContainer } from "../core/container";
-import {
-	type OAuthTokenData,
-	type SecretsManager,
-} from "../core/secretsManager";
-import { type Deployment } from "../deployment/types";
-import { type Logger } from "../logging/logger";
-import { type LoginCoordinator } from "../login/loginCoordinator";
 
 import { REFRESH_GRANT_TYPE } from "./constants";
 import {
@@ -19,15 +9,21 @@ import {
 import { OAuthMetadataClient } from "./metadataClient";
 import { buildOAuthTokenData, toUrlSearchParams } from "./utils";
 
-import type * as vscode from "vscode";
-
+import type { AxiosInstance } from "axios";
 import type {
 	OAuth2AuthorizationServerMetadata,
 	OAuth2ClientRegistrationResponse,
-	RefreshTokenRequestParams,
-	TokenResponse,
-	TokenRevocationRequest,
-} from "./types";
+	OAuth2TokenRequest,
+	OAuth2TokenResponse,
+	OAuth2TokenRevocationRequest,
+} from "coder/site/src/api/typesGenerated";
+import type * as vscode from "vscode";
+
+import type { ServiceContainer } from "../core/container";
+import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
+import type { Deployment } from "../deployment/types";
+import type { Logger } from "../logging/logger";
+import type { LoginCoordinator } from "../login/loginCoordinator";
 
 /**
  * Token refresh threshold: refresh when token expires in less than this time.
@@ -70,7 +66,7 @@ type StoredTokens = OAuthTokenData & {
  * Coordinates authorization flow, token management, and automatic refresh.
  */
 export class OAuthSessionManager implements vscode.Disposable {
-	private refreshPromise: Promise<TokenResponse> | null = null;
+	private refreshPromise: Promise<OAuth2TokenResponse> | null = null;
 	private refreshAbortController: AbortController | null = null;
 	private lastRefreshAttempt = 0;
 	private refreshTimer: NodeJS.Timeout | undefined;
@@ -356,7 +352,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Refresh the access token using the stored refresh token.
 	 * Uses a shared promise to handle concurrent refresh attempts.
 	 */
-	public async refreshToken(): Promise<TokenResponse> {
+	public async refreshToken(): Promise<OAuth2TokenResponse> {
 		if (this.refreshPromise) {
 			this.logger.debug(
 				"Token refresh already in progress, waiting for result",
@@ -372,7 +368,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 	private async executeTokenRefresh(
 		deployment: Deployment,
-	): Promise<TokenResponse> {
+	): Promise<OAuth2TokenResponse> {
 		const abortController = new AbortController();
 		this.refreshAbortController = abortController;
 
@@ -392,7 +388,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 			this.logger.debug("Refreshing access token");
 
-			const params: RefreshTokenRequestParams = {
+			const params: OAuth2TokenRequest = {
 				grant_type: REFRESH_GRANT_TYPE,
 				refresh_token: refreshToken,
 				client_id: registration.client_id,
@@ -401,7 +397,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 			const tokenRequest = toUrlSearchParams(params);
 
-			const response = await axiosInstance.post<TokenResponse>(
+			const response = await axiosInstance.post<OAuth2TokenResponse>(
 				metadata.token_endpoint,
 				tokenRequest,
 				{
@@ -507,7 +503,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		this.logger.info("Revoking refresh token");
 
-		const params: TokenRevocationRequest = {
+		const params: OAuth2TokenRevocationRequest = {
 			token: tokenToRevoke,
 			client_id: registration.client_id,
 			client_secret: registration.client_secret,
@@ -574,7 +570,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	public async showReAuthenticationModal(error: OAuthError): Promise<void> {
 		const deployment = this.requireDeployment();
 		const errorMessage =
-			error.description ||
+			error.message ||
 			"Your session is no longer valid. This could be due to token expiration or revocation.";
 
 		this.clearRefreshState();

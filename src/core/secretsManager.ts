@@ -1,11 +1,12 @@
 import { z } from "zod";
 
 import { DeploymentSchema, type Deployment } from "../deployment/types";
-import { type Logger } from "../logging/logger";
-import { type OAuth2ClientRegistrationResponse } from "../oauth/types";
 import { toSafeHost } from "../util";
 
+import type { OAuth2ClientRegistrationResponse } from "coder/site/src/api/typesGenerated";
 import type { Memento, SecretStorage, Disposable } from "vscode";
+
+import type { Logger } from "../logging/logger";
 
 // Each deployment has its own key to ensure atomic operations (multiple windows
 // writing to a shared key could drop data) and to receive proper VS Code events.

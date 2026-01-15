@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { OAuthTokenData } from "../core/secretsManager";
+import type { OAuth2TokenResponse } from "coder/site/src/api/typesGenerated";
 
-import type { TokenResponse } from "./types";
+import type { OAuthTokenData } from "../core/secretsManager";
 
 /**
  * OAuth callback path for handling authorization responses (RFC 6749).
@@ -53,10 +53,10 @@ export function toUrlSearchParams(obj: object): URLSearchParams {
 
 /**
  * Build OAuthTokenData from a token response.
- * Used by LoginCoordinator (initial login) and OAuthSessionManager (refresh).
+ * Prefers the `expiry` timestamp over calculating from `expires_in`.
  */
 export function buildOAuthTokenData(
-	tokenResponse: TokenResponse,
+	tokenResponse: OAuth2TokenResponse,
 ): OAuthTokenData {
 	if (tokenResponse.token_type !== "Bearer") {
 		throw new Error(
@@ -64,16 +64,29 @@ export function buildOAuthTokenData(
 		);
 	}
 
-	const expiresIn = tokenResponse.expires_in;
-	const hasValidExpiry =
-		expiresIn && expiresIn > 0 && Number.isFinite(expiresIn);
-	const expiryTimestamp = hasValidExpiry
-		? Date.now() + expiresIn * 1000
-		: Date.now() + ACCESS_TOKEN_DEFAULT_EXPIRY_MS;
-
 	return {
 		refresh_token: tokenResponse.refresh_token,
 		scope: tokenResponse.scope,
-		expiry_timestamp: expiryTimestamp,
+		expiry_timestamp: getExpiryTimestamp(tokenResponse),
 	};
+}
+
+function getExpiryTimestamp(response: OAuth2TokenResponse): number {
+	if (response.expiry) {
+		const expiryTime = new Date(response.expiry).getTime();
+		if (Number.isFinite(expiryTime) && expiryTime > Date.now()) {
+			return expiryTime;
+		}
+	}
+
+	if (
+		response.expires_in &&
+		response.expires_in > 0 &&
+		Number.isFinite(response.expires_in)
+	) {
+		return Date.now() + response.expires_in * 1000;
+	}
+
+	// Default if no expiry info is provided.
+	return Date.now() + ACCESS_TOKEN_DEFAULT_EXPIRY_MS;
 }

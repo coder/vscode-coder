@@ -12,12 +12,13 @@ import {
 	setupAxiosMockRoutes,
 } from "../../mocks/testHelpers";
 
-import type { Deployment } from "@/deployment/types";
 import type {
 	OAuth2AuthorizationServerMetadata,
 	OAuth2ClientRegistrationResponse,
-	TokenResponse,
-} from "@/oauth/types";
+	OAuth2TokenResponse,
+} from "coder/site/src/api/typesGenerated";
+
+import type { Deployment } from "@/deployment/types";
 
 export const TEST_URL = "https://coder.example.com";
 export const TEST_HOSTNAME = "coder.example.com";
@@ -70,8 +71,8 @@ export function createMockClientRegistration(
  * Creates a mock OAuth token response for testing.
  */
 export function createMockTokenResponse(
-	overrides: Partial<TokenResponse> = {},
-): TokenResponse {
+	overrides: Partial<OAuth2TokenResponse> = {},
+): OAuth2TokenResponse {
 	return {
 		access_token: "test-access-token",
 		refresh_token: "test-refresh-token",

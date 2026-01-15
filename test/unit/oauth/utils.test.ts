@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { buildOAuthTokenData } from "@/oauth/utils";
 
-import type { TokenResponse } from "@/oauth/types";
+import type { OAuth2TokenResponse } from "coder/site/src/api/typesGenerated";
 
 const ACCESS_TOKEN_DEFAULT_EXPIRY_MS = 60 * 60 * 1000;
 
 function createTokenResponse(
-	overrides: Partial<TokenResponse> = {},
-): TokenResponse {
+	overrides: Partial<OAuth2TokenResponse> = {},
+): OAuth2TokenResponse {
 	return {
 		access_token: "test-token",
 		token_type: "Bearer",
@@ -73,9 +73,82 @@ describe("buildOAuthTokenData", () => {
 		});
 	});
 
+	describe("expiry preference over expires_in", () => {
+		it("prefers expiry when valid and in the future", () => {
+			const futureExpiry = new Date(Date.now() + 2 * 60 * 60 * 1000);
+			const result = buildOAuthTokenData(
+				createTokenResponse({
+					expires_in: 3600,
+					expiry: futureExpiry.toISOString(),
+				}),
+			);
+			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
+				futureExpiry.getTime() - 100,
+			);
+			expect(result.expiry_timestamp).toBeLessThanOrEqual(
+				futureExpiry.getTime() + 100,
+			);
+		});
+
+		it("falls back to expires_in when expiry is in the past", () => {
+			const pastExpiry = new Date(Date.now() - 60 * 1000);
+			const result = buildOAuthTokenData(
+				createTokenResponse({
+					expires_in: 3600,
+					expiry: pastExpiry.toISOString(),
+				}),
+			);
+			const expectedExpiry = Date.now() + 3600 * 1000;
+			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
+				expectedExpiry - 100,
+			);
+			expect(result.expiry_timestamp).toBeLessThanOrEqual(expectedExpiry + 100);
+		});
+
+		it("falls back to expires_in when expiry is invalid", () => {
+			const result = buildOAuthTokenData(
+				createTokenResponse({
+					expires_in: 3600,
+					expiry: "not-a-valid-date",
+				}),
+			);
+			const expectedExpiry = Date.now() + 3600 * 1000;
+			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
+				expectedExpiry - 100,
+			);
+			expect(result.expiry_timestamp).toBeLessThanOrEqual(expectedExpiry + 100);
+		});
+
+		it("falls back to default when expiry is invalid and expires_in is missing", () => {
+			const before = Date.now();
+			const result = buildOAuthTokenData(
+				createTokenResponse({
+					expires_in: undefined,
+					expiry: "not-a-valid-date",
+				}),
+			);
+			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
+				before + ACCESS_TOKEN_DEFAULT_EXPIRY_MS,
+			);
+		});
+
+		it("uses expires_in when expiry is undefined", () => {
+			const result = buildOAuthTokenData(
+				createTokenResponse({
+					expires_in: 7200,
+					expiry: undefined,
+				}),
+			);
+			const expectedExpiry = Date.now() + 7200 * 1000;
+			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
+				expectedExpiry - 100,
+			);
+			expect(result.expiry_timestamp).toBeLessThanOrEqual(expectedExpiry + 100);
+		});
+	});
+
 	describe("token_type validation", () => {
 		it("accepts Bearer tokens", () => {
-			// Should not throw for Bearer tokens
 			expect(() =>
 				buildOAuthTokenData(createTokenResponse({ token_type: "Bearer" })),
 			).not.toThrow();

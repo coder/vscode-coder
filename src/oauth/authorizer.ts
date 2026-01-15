@@ -1,5 +1,4 @@
 import { type AxiosInstance } from "axios";
-import { type User } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
@@ -25,9 +24,10 @@ import type {
 	OAuth2AuthorizationServerMetadata,
 	OAuth2ClientRegistrationRequest,
 	OAuth2ClientRegistrationResponse,
-	TokenRequestParams,
-	TokenResponse,
-} from "./types";
+	OAuth2TokenRequest,
+	OAuth2TokenResponse,
+	User,
+} from "coder/site/src/api/typesGenerated";
 
 /**
  * Minimal scopes required by the VS Code extension.
@@ -64,7 +64,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		deployment: Deployment,
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
 		cancellationToken: vscode.CancellationToken,
-	): Promise<{ tokenResponse: TokenResponse; user: User }> {
+	): Promise<{ tokenResponse: OAuth2TokenResponse; user: User }> {
 		const reportProgress = (message?: string, increment?: number): void => {
 			if (cancellationToken.isCancellationRequested) {
 				throw new Error("OAuth login cancelled by user");
@@ -317,10 +317,10 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		axiosInstance: AxiosInstance,
 		metadata: OAuth2AuthorizationServerMetadata,
 		registration: OAuth2ClientRegistrationResponse,
-	): Promise<TokenResponse> {
+	): Promise<OAuth2TokenResponse> {
 		this.logger.debug("Exchanging authorization code for token");
 
-		const params: TokenRequestParams = {
+		const params: OAuth2TokenRequest = {
 			grant_type: AUTH_GRANT_TYPE,
 			code,
 			redirect_uri: this.getRedirectUri(),
@@ -331,7 +331,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 		const tokenRequest = toUrlSearchParams(params);
 
-		const response = await axiosInstance.post<TokenResponse>(
+		const response = await axiosInstance.post<OAuth2TokenResponse>(
 			metadata.token_endpoint,
 			tokenRequest,
 			{
