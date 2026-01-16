@@ -4,6 +4,7 @@ import { errToStr } from "../api/api-helper";
 import { type Commands } from "../commands";
 import { type ServiceContainer } from "../core/container";
 import { type DeploymentManager } from "../deployment/deploymentManager";
+import { CALLBACK_PATH } from "../oauth/utils";
 import { maybeAskUrl } from "../promptUtils";
 import { toSafeHost } from "../util";
 
@@ -16,9 +17,10 @@ interface UriRouteContext {
 
 type UriRouteHandler = (ctx: UriRouteContext) => Promise<void>;
 
-const routes: Record<string, UriRouteHandler> = {
+const routes: Readonly<Record<string, UriRouteHandler>> = {
 	"/open": handleOpen,
 	"/openDevContainer": handleOpenDevContainer,
+	[CALLBACK_PATH]: handleOAuthCallback,
 };
 
 /**
@@ -176,4 +178,26 @@ async function setupDeployment(
 		token: result.token,
 		user: result.user,
 	});
+}
+
+async function handleOAuthCallback(ctx: UriRouteContext): Promise<void> {
+	const { params, serviceContainer } = ctx;
+	const logger = serviceContainer.getLogger();
+	const secretsManager = serviceContainer.getSecretsManager();
+
+	const code = params.get("code");
+	const state = params.get("state");
+	const error = params.get("error");
+
+	if (!state) {
+		logger.warn("Received OAuth callback with no state parameter");
+		return;
+	}
+
+	try {
+		await secretsManager.setOAuthCallback({ state, code, error });
+		logger.debug("OAuth callback processed successfully");
+	} catch (err) {
+		logger.error("Failed to process OAuth callback:", err);
+	}
 }

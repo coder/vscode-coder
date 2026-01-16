@@ -6,8 +6,10 @@ import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { LoginCoordinator } from "@/login/loginCoordinator";
+import { maybeAskAuthMethod } from "@/promptUtils";
 
 import {
+	createAxiosError,
 	createMockLogger,
 	createMockUser,
 	InMemoryMemento,
@@ -58,7 +60,29 @@ vi.mock("@/api/streamingFetchAdapter", () => ({
 	createStreamingFetchAdapter: vi.fn(() => fetch),
 }));
 
-vi.mock("@/promptUtils");
+vi.mock("@/promptUtils", () => ({
+	maybeAskAuthMethod: vi.fn().mockResolvedValue("legacy"),
+	maybeAskUrl: vi.fn(),
+}));
+
+// Mock CoderApi to control getAuthenticatedUser behavior
+const mockGetAuthenticatedUser = vi.hoisted(() => vi.fn());
+vi.mock("@/api/coderApi", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@/api/coderApi")>();
+	return {
+		...original,
+		CoderApi: {
+			...original.CoderApi,
+			create: vi.fn(() => ({
+				getAxiosInstance: () => ({
+					defaults: { baseURL: "https://coder.example.com" },
+				}),
+				setSessionToken: vi.fn(),
+				getAuthenticatedUser: mockGetAuthenticatedUser,
+			})),
+		},
+	};
+});
 
 // Type for axios with our mock adapter
 type MockedAxios = typeof axios & {
@@ -77,8 +101,8 @@ function createTestContext() {
 	const mockAdapter = (axios as MockedAxios).__mockAdapter;
 	mockAdapter.mockImplementation(mockAxiosAdapterImpl);
 	vi.mocked(getHeaders).mockResolvedValue({});
+	vi.mocked(maybeAskAuthMethod).mockResolvedValue("legacy");
 
-	// MockConfigurationProvider sets sensible defaults (httpClientLogLevel, tlsCertFile, tlsKeyFile)
 	const mockConfig = new MockConfigurationProvider();
 	// MockUserInteraction sets up vscode.window dialogs and input boxes
 	const userInteraction = new MockUserInteraction();
@@ -94,9 +118,12 @@ function createTestContext() {
 		mementoManager,
 		vscode,
 		logger,
+		"coder.coder-remote",
 	);
 
 	const mockSuccessfulAuth = (user = createMockUser()) => {
+		// Configure both the axios adapter (for tests that bypass CoderApi mock)
+		// and mockGetAuthenticatedUser (for tests that use the CoderApi mock)
 		mockAdapter.mockResolvedValue({
 			data: user,
 			status: 200,
@@ -104,18 +131,18 @@ function createTestContext() {
 			headers: {},
 			config: {},
 		});
+		mockGetAuthenticatedUser.mockResolvedValue(user);
 		return user;
 	};
 
 	const mockAuthFailure = (message = "Unauthorized") => {
-		mockAdapter.mockRejectedValue({
-			response: { status: 401, data: { message } },
-			message,
-		});
+		mockAdapter.mockRejectedValue(createAxiosError(401, message));
+		mockGetAuthenticatedUser.mockRejectedValue(createAxiosError(401, message));
 	};
 
 	return {
 		mockAdapter,
+		mockGetAuthenticatedUser,
 		mockConfig,
 		userInteraction,
 		secretsManager,
@@ -151,21 +178,16 @@ describe("LoginCoordinator", () => {
 		});
 
 		it("prompts for token when no stored auth exists", async () => {
-			const { mockAdapter, userInteraction, secretsManager, coordinator } =
-				createTestContext();
-			const user = createMockUser();
-
-			// No stored token, so goes directly to input box flow
-			// Mock succeeds when validateInput calls getAuthenticatedUser
-			mockAdapter.mockResolvedValueOnce({
-				data: user,
-				status: 200,
-				statusText: "OK",
-				headers: {},
-				config: {},
-			});
+			const {
+				userInteraction,
+				secretsManager,
+				coordinator,
+				mockSuccessfulAuth,
+			} = createTestContext();
+			const user = mockSuccessfulAuth();
 
 			// User enters a new token in the input box
+			vi.mocked(maybeAskAuthMethod).mockResolvedValue("legacy");
 			userInteraction.setInputBoxValue("new-token");
 
 			const result = await coordinator.ensureLoggedIn({
@@ -197,18 +219,13 @@ describe("LoginCoordinator", () => {
 
 	describe("same-window guard", () => {
 		it("prevents duplicate login calls for same hostname", async () => {
-			const { mockAdapter, userInteraction, coordinator } = createTestContext();
-			const user = createMockUser();
+			const { userInteraction, coordinator, mockSuccessfulAuth } =
+				createTestContext();
+			mockSuccessfulAuth();
 
 			// User enters a token in the input box
+			vi.mocked(maybeAskAuthMethod).mockResolvedValue("legacy");
 			userInteraction.setInputBoxValue("new-token");
-
-			let resolveAuth: (value: unknown) => void;
-			mockAdapter.mockReturnValue(
-				new Promise((resolve) => {
-					resolveAuth = resolve;
-				}),
-			);
 
 			// Start first login
 			const login1 = coordinator.ensureLoggedIn({
@@ -220,15 +237,6 @@ describe("LoginCoordinator", () => {
 			const login2 = coordinator.ensureLoggedIn({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
-			});
-
-			// Resolve the auth (this validates the token from input box)
-			resolveAuth!({
-				data: user,
-				status: 200,
-				statusText: "OK",
-				headers: {},
-				config: {},
 			});
 
 			// Both should complete with the same result
@@ -299,6 +307,7 @@ describe("LoginCoordinator", () => {
 				mementoManager,
 				vscode,
 				logger,
+				"coder.coder-remote",
 			);
 
 			mockAuthFailure("Certificate error");
@@ -356,21 +365,14 @@ describe("LoginCoordinator", () => {
 		});
 
 		it("falls back to stored token when provided token is invalid", async () => {
-			const { mockAdapter, secretsManager, coordinator } = createTestContext();
+			const { mockGetAuthenticatedUser, secretsManager, coordinator } =
+				createTestContext();
 			const user = createMockUser();
 
-			mockAdapter
-				.mockRejectedValueOnce({
-					isAxiosError: true,
-					response: { status: 401 }, // Fail the provided token with 401
-					message: "Unauthorized",
-				})
-				.mockResolvedValueOnce({
-					data: user,
-					status: 200, // Succeed the stored token
-					headers: {},
-					config: {},
-				});
+			// First call (provided token) fails with 401, second call (stored token) succeeds
+			mockGetAuthenticatedUser
+				.mockRejectedValueOnce(createAxiosError(401, "Unauthorized"))
+				.mockResolvedValueOnce(user);
 
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
@@ -387,27 +389,20 @@ describe("LoginCoordinator", () => {
 		});
 
 		it("prompts user when both provided and stored tokens are invalid", async () => {
-			const { mockAdapter, userInteraction, secretsManager, coordinator } =
-				createTestContext();
+			const {
+				mockGetAuthenticatedUser,
+				userInteraction,
+				secretsManager,
+				coordinator,
+			} = createTestContext();
 			const user = createMockUser();
 
-			mockAdapter
-				.mockRejectedValueOnce({
-					isAxiosError: true,
-					response: { status: 401 }, // provided token
-					message: "Unauthorized",
-				})
-				.mockRejectedValueOnce({
-					isAxiosError: true,
-					response: { status: 401 }, // stored token
-					message: "Unauthorized",
-				})
-				.mockResolvedValueOnce({
-					data: user,
-					status: 200, // user-entered token
-					headers: {},
-					config: {},
-				});
+			// First call (provided token) fails, second call (stored token) fails,
+			// third call (user-entered token) succeeds
+			mockGetAuthenticatedUser
+				.mockRejectedValueOnce(createAxiosError(401, "Unauthorized"))
+				.mockRejectedValueOnce(createAxiosError(401, "Unauthorized"))
+				.mockResolvedValueOnce(user);
 
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
@@ -431,22 +426,19 @@ describe("LoginCoordinator", () => {
 		});
 
 		it("skips stored token check when same as provided token", async () => {
-			const { mockAdapter, userInteraction, secretsManager, coordinator } =
-				createTestContext();
+			const {
+				mockGetAuthenticatedUser,
+				userInteraction,
+				secretsManager,
+				coordinator,
+			} = createTestContext();
 			const user = createMockUser();
 
-			mockAdapter
-				.mockRejectedValueOnce({
-					isAxiosError: true,
-					response: { status: 401 }, // provided token
-					message: "Unauthorized",
-				})
-				.mockResolvedValueOnce({
-					data: user,
-					status: 200, // user-entered token
-					headers: {},
-					config: {},
-				});
+			// First call (provided token = stored token) fails with 401,
+			// second call (user-entered token) succeeds
+			mockGetAuthenticatedUser
+				.mockRejectedValueOnce(createAxiosError(401, "Unauthorized"))
+				.mockResolvedValueOnce(user);
 
 			// Store the SAME token as will be provided
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
@@ -468,7 +460,7 @@ describe("LoginCoordinator", () => {
 				token: "user-entered-token",
 			});
 			// Provided/stored token check only called once + user prompt
-			expect(mockAdapter).toHaveBeenCalledTimes(2);
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(2);
 		});
 	});
 });

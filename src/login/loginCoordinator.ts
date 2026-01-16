@@ -5,18 +5,20 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { CertificateError } from "../error/certificateError";
-import { maybeAskUrl } from "../promptUtils";
+import { OAuthAuthorizer } from "../oauth/authorizer";
+import { buildOAuthTokenData } from "../oauth/utils";
+import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { MementoManager } from "../core/mementoManager";
-import type { SecretsManager } from "../core/secretsManager";
+import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type { Logger } from "../logging/logger";
 
 type LoginResult =
 	| { success: false }
-	| { success: true; user: User; token: string };
+	| { success: true; user: User; token: string; oauth?: OAuthTokenData };
 
 export interface LoginOptions {
 	safeHostname: string;
@@ -28,15 +30,23 @@ export interface LoginOptions {
 /**
  * Coordinates login prompts across windows and prevents duplicate dialogs.
  */
-export class LoginCoordinator {
-	private readonly inProgressLogins = new Map<string, Promise<LoginResult>>();
+export class LoginCoordinator implements vscode.Disposable {
+	private loginQueue: Promise<unknown> = Promise.resolve();
+	private readonly oauthAuthorizer: OAuthAuthorizer;
 
 	constructor(
 		private readonly secretsManager: SecretsManager,
 		private readonly mementoManager: MementoManager,
 		private readonly vscodeProposed: typeof vscode,
 		private readonly logger: Logger,
-	) {}
+		extensionId: string,
+	) {
+		this.oauthAuthorizer = new OAuthAuthorizer(
+			secretsManager,
+			logger,
+			extensionId,
+		);
+	}
 
 	/**
 	 * Direct login - for user-initiated login via commands.
@@ -46,7 +56,7 @@ export class LoginCoordinator {
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url } = options;
-		return this.executeWithGuard(safeHostname, async () => {
+		return this.executeWithGuard(async () => {
 			const result = await this.attemptLogin(
 				{ safeHostname, url },
 				options.autoLogin ?? false,
@@ -60,13 +70,13 @@ export class LoginCoordinator {
 	}
 
 	/**
-	 * Shows dialog then login - for system-initiated auth (remote).
+	 * Shows dialog then login - for system-initiated auth (remote, OAuth refresh).
 	 */
 	public async ensureLoggedInWithDialog(
 		options: LoginOptions & { message?: string; detailPrefix?: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url, detailPrefix, message } = options;
-		return this.executeWithGuard(safeHostname, async () => {
+		return this.executeWithGuard(async () => {
 			// Show dialog promise
 			const dialogPromise = this.vscodeProposed.window
 				.showErrorMessage(
@@ -132,31 +142,23 @@ export class LoginCoordinator {
 			await this.secretsManager.setSessionAuth(safeHostname, {
 				url,
 				token: result.token,
+				oauth: result.oauth, // undefined for non-OAuth logins
 			});
 			await this.mementoManager.addToUrlHistory(url);
 		}
 	}
 
 	/**
-	 * Same-window guard wrapper.
+	 * Chains login attempts to prevent overlapping UI.
 	 */
-	private async executeWithGuard(
-		safeHostname: string,
+	private executeWithGuard(
 		executeFn: () => Promise<LoginResult>,
 	): Promise<LoginResult> {
-		const existingLogin = this.inProgressLogins.get(safeHostname);
-		if (existingLogin) {
-			return existingLogin;
-		}
-
-		const loginPromise = executeFn();
-		this.inProgressLogins.set(safeHostname, loginPromise);
-
-		try {
-			return await loginPromise;
-		} finally {
-			this.inProgressLogins.delete(safeHostname);
-		}
+		const result = this.loginQueue.then(executeFn);
+		this.loginQueue = result.catch(() => {
+			/* Keep chain going on error */
+		});
+		return result;
 	}
 
 	/**
@@ -195,7 +197,7 @@ export class LoginCoordinator {
 	}
 
 	/**
-	 * Attempt to authenticate using token, or mTLS. If necessary, prompts
+	 * Attempt to authenticate using OAuth, token, or mTLS. If necessary, prompts
 	 * for authentication method and credentials. Returns the token and user upon
 	 * successful authentication. Null means the user aborted or authentication
 	 * failed (in which case an error notification will have been displayed).
@@ -236,7 +238,15 @@ export class LoginCoordinator {
 		}
 
 		// Prompt user for token
-		return this.loginWithToken(client);
+		const authMethod = await maybeAskAuthMethod(client);
+		switch (authMethod) {
+			case "oauth":
+				return this.loginWithOAuth(deployment);
+			case "legacy":
+				return this.loginWithToken(client);
+			case undefined:
+				return { success: false }; // User aborted
+		}
 	}
 
 	private async tryMtlsAuth(
@@ -348,5 +358,50 @@ export class LoginCoordinator {
 		}
 
 		return { success: false };
+	}
+
+	/**
+	 * OAuth authentication flow.
+	 */
+	private async loginWithOAuth(deployment: Deployment): Promise<LoginResult> {
+		try {
+			this.logger.info("Starting OAuth authentication");
+
+			const { tokenResponse, user } = await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: "Authenticating",
+					cancellable: true,
+				},
+				async (progress, cancellationToken) =>
+					await this.oauthAuthorizer.login(
+						deployment,
+						progress,
+						cancellationToken,
+					),
+			);
+
+			return {
+				success: true,
+				token: tokenResponse.access_token,
+				user,
+				oauth: buildOAuthTokenData(tokenResponse),
+			};
+		} catch (error) {
+			const title = "OAuth authentication failed";
+			this.logger.error(title, error);
+			if (error instanceof CertificateError) {
+				void error.showNotification(title);
+			} else {
+				vscode.window.showErrorMessage(
+					`${title}: ${getErrorMessage(error, "Unknown error")}`,
+				);
+			}
+			return { success: false };
+		}
+	}
+
+	public dispose(): void {
+		this.oauthAuthorizer.dispose();
 	}
 }

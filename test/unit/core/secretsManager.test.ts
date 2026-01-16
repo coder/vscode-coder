@@ -274,4 +274,163 @@ describe("SecretsManager", () => {
 			expect(auth?.url).toBe("https://mtls.coder.com");
 		});
 	});
+
+	describe("schema validation", () => {
+		describe("write validation - strips extra fields", () => {
+			it("strips extra fields from SessionAuth", async () => {
+				const authWithExtra = {
+					url: "https://coder.example.com",
+					token: "test-token",
+					extraField: "should be stripped",
+				};
+
+				await secretsManager.setSessionAuth(
+					"example.com",
+					authWithExtra as Parameters<typeof secretsManager.setSessionAuth>[1],
+				);
+
+				const raw = await secretStorage.get("coder.session.example.com");
+				expect(JSON.parse(raw!)).toEqual({
+					url: "https://coder.example.com",
+					token: "test-token",
+				});
+			});
+
+			it("strips extra fields from nested OAuth data", async () => {
+				const authWithExtra = {
+					url: "https://coder.example.com",
+					token: "test-token",
+					oauth: { expiry_timestamp: 12345, extraOAuthField: "stripped" },
+				};
+
+				await secretsManager.setSessionAuth(
+					"example.com",
+					authWithExtra as Parameters<typeof secretsManager.setSessionAuth>[1],
+				);
+
+				const raw = await secretStorage.get("coder.session.example.com");
+				expect(JSON.parse(raw!)).toEqual({
+					url: "https://coder.example.com",
+					token: "test-token",
+					oauth: { expiry_timestamp: 12345 },
+				});
+			});
+
+			it("strips extra fields from current deployment", async () => {
+				const deploymentWithExtra = {
+					url: "https://coder.example.com",
+					safeHostname: "coder.example.com",
+					extraField: "should be stripped",
+				};
+
+				await secretsManager.setCurrentDeployment(
+					deploymentWithExtra as Parameters<
+						typeof secretsManager.setCurrentDeployment
+					>[0],
+				);
+
+				const raw = await secretStorage.get("coder.currentDeployment");
+				const parsed = JSON.parse(raw!) as { deployment: unknown };
+				expect(parsed.deployment).toEqual({
+					url: "https://coder.example.com",
+					safeHostname: "coder.example.com",
+				});
+			});
+		});
+
+		describe("read validation - returns fallback for invalid data", () => {
+			interface InvalidDataTestCase {
+				name: string;
+				key: string;
+				data: Record<string, unknown>;
+				expected: unknown;
+			}
+
+			const sessionAuthCases: InvalidDataTestCase[] = [
+				{
+					name: "wrong field type",
+					key: "coder.session.example.com",
+					data: { url: 123, token: "test-token" },
+					expected: undefined,
+				},
+				{
+					name: "missing required field",
+					key: "coder.session.example.com",
+					data: { url: "https://coder.example.com" },
+					expected: undefined,
+				},
+			];
+
+			it.each(sessionAuthCases)(
+				"returns undefined for SessionAuth with $name",
+				async ({ key, data, expected }) => {
+					await secretStorage.store(key, JSON.stringify(data));
+					const result = await secretsManager.getSessionAuth("example.com");
+					expect(result).toEqual(expected);
+				},
+			);
+
+			it("returns null for current deployment with invalid shape", async () => {
+				await secretStorage.store(
+					"coder.currentDeployment",
+					JSON.stringify({ deployment: { url: 123, safeHostname: "x" } }),
+				);
+				expect(await secretsManager.getCurrentDeployment()).toBeNull();
+			});
+
+			it("returns empty array for invalid deployment usage data", async () => {
+				await memento.update("coder.deploymentUsage", [{ safeHostname: 123 }]);
+				expect(secretsManager.getKnownSafeHostnames()).toEqual([]);
+			});
+		});
+
+		describe("backwards compatibility", () => {
+			interface BackwardsCompatTestCase {
+				name: string;
+				key: string;
+				data: Record<string, unknown>;
+				expected: unknown;
+			}
+
+			const sessionAuthCases: BackwardsCompatTestCase[] = [
+				{
+					name: "without optional oauth field",
+					key: "coder.session.example.com",
+					data: { url: "https://coder.example.com", token: "test-token" },
+					expected: { url: "https://coder.example.com", token: "test-token" },
+				},
+				{
+					name: "with OAuth without optional fields",
+					key: "coder.session.example.com",
+					data: {
+						url: "https://coder.example.com",
+						token: "test-token",
+						oauth: { expiry_timestamp: 12345 },
+					},
+					expected: {
+						url: "https://coder.example.com",
+						token: "test-token",
+						oauth: { expiry_timestamp: 12345 },
+					},
+				},
+			];
+
+			it.each(sessionAuthCases)(
+				"handles SessionAuth $name",
+				async ({ key, data, expected }) => {
+					await secretStorage.store(key, JSON.stringify(data));
+					const result = await secretsManager.getSessionAuth("example.com");
+					expect(result).toEqual(expected);
+				},
+			);
+
+			it("handles current deployment with null deployment", async () => {
+				await secretStorage.store(
+					"coder.currentDeployment",
+					JSON.stringify({ deployment: null, timestamp: "2024-01-01" }),
+				);
+				expect(await secretsManager.getCurrentDeployment()).toBeNull();
+			});
+		});
+	});
 });

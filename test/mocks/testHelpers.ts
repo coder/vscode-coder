@@ -1,3 +1,10 @@
+import axios, {
+	AxiosError,
+	AxiosHeaders,
+	type AxiosAdapter,
+	type AxiosResponse,
+	type InternalAxiosRequestConfig,
+} from "axios";
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
@@ -552,6 +559,32 @@ export class MockCoderApi implements Pick<
 }
 
 /**
+ * Mock OAuthSessionManager for testing.
+ * Provides no-op implementations of all public methods.
+ */
+export class MockOAuthSessionManager {
+	readonly setDeployment = vi.fn().mockResolvedValue(undefined);
+	readonly clearDeployment = vi.fn();
+	readonly login = vi.fn().mockResolvedValue({ access_token: "test-token" });
+	readonly handleCallback = vi.fn().mockResolvedValue(undefined);
+	readonly refreshToken = vi
+		.fn()
+		.mockResolvedValue({ access_token: "test-token" });
+	readonly refreshIfAlmostExpired = vi.fn().mockResolvedValue(undefined);
+	readonly revokeRefreshToken = vi.fn().mockResolvedValue(undefined);
+	readonly isLoggedInWithOAuth = vi.fn().mockResolvedValue(false);
+	readonly clearOAuthState = vi.fn().mockResolvedValue(undefined);
+	readonly showReAuthenticationModal = vi.fn().mockResolvedValue(undefined);
+	readonly dispose = vi.fn();
+}
+
+export class MockOAuthInterceptor {
+	readonly setDeployment = vi.fn().mockResolvedValue(undefined);
+	readonly clearDeployment = vi.fn();
+	readonly dispose = vi.fn();
+}
+
+/**
  * Create a mock User for testing.
  */
 export function createMockUser(overrides: Partial<User> = {}): User {
@@ -571,4 +604,217 @@ export function createMockUser(overrides: Partial<User> = {}): User {
 		theme_preference: "",
 		...overrides,
 	};
+}
+
+/**
+ * Creates an AxiosError for testing.
+ */
+export function createAxiosError(
+	status: number,
+	message: string,
+	config: Record<string, unknown> = {},
+): AxiosError {
+	const error = new AxiosError(
+		message,
+		"ERR_BAD_REQUEST",
+		undefined,
+		undefined,
+		{
+			status,
+			statusText: message,
+			headers: {},
+			config: { headers: new AxiosHeaders() },
+			data: {},
+		},
+	);
+	error.config = { headers: new AxiosHeaders(), ...config };
+	return error;
+}
+
+type MockAdapterFn = ReturnType<typeof vi.fn<AxiosAdapter>>;
+
+const AXIOS_MOCK_SETUP_EXAMPLE = `
+vi.mock("axios", async () => {
+  const actual = await vi.importActual<typeof import("axios")>("axios");
+  const mockAdapter = vi.fn();
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      create: vi.fn((config) =>
+        actual.default.create({ ...config, adapter: mockAdapter }),
+      ),
+      __mockAdapter: mockAdapter,
+    },
+  };
+});`;
+
+/**
+ * Gets the mock axios adapter from the mocked axios module.
+ * The axios module must be mocked with __mockAdapter exposed.
+ *
+ * @throws Error if axios mock is not set up correctly, with instructions on how to fix it
+ */
+export function getAxiosMockAdapter(): MockAdapterFn {
+	const axiosWithMock = axios as typeof axios & {
+		__mockAdapter?: MockAdapterFn;
+	};
+	const mockAdapter = axiosWithMock.__mockAdapter;
+
+	if (!mockAdapter) {
+		throw new Error(
+			"Axios mock adapter not found. Make sure to mock axios with __mockAdapter:\n" +
+				AXIOS_MOCK_SETUP_EXAMPLE,
+		);
+	}
+
+	return mockAdapter;
+}
+
+/**
+ * Sets up mock routes for the axios adapter.
+ *
+ * Route values can be:
+ * - Any data: Returns 200 OK with that data
+ * - Error instance: Rejects with that error
+ *
+ * If no route matches, rejects with a 404 AxiosError.
+ *
+ * @example
+ * ```ts
+ * setupAxiosMockRoutes(mockAdapter, {
+ *   "/.well-known/oauth": metadata,                       // Returns 200 with metadata
+ *   "/oauth2/register": new Error("Registration failed"), // Throws error
+ *   "/api/v2/users/me": user,                             // Returns 200 with user
+ * });
+ * ```
+ */
+export function setupAxiosMockRoutes(
+	mockAdapter: MockAdapterFn,
+	routes: Record<string, unknown>,
+): void {
+	mockAdapter.mockImplementation(
+		async (
+			config: InternalAxiosRequestConfig,
+		): Promise<AxiosResponse<unknown>> => {
+			for (const [pattern, value] of Object.entries(routes)) {
+				if (config.url?.includes(pattern)) {
+					if (value instanceof Error) {
+						throw value;
+					}
+					const data =
+						typeof value === "function" ? await value(config) : value;
+					return {
+						data,
+						status: 200,
+						statusText: "OK",
+						headers: new AxiosHeaders(),
+						config,
+					};
+				}
+			}
+			const error = new AxiosError(
+				`Request failed with status code 404`,
+				"ERR_BAD_REQUEST",
+				undefined,
+				undefined,
+				{
+					status: 404,
+					statusText: "Not Found",
+					headers: new AxiosHeaders(),
+					config,
+					data: {
+						message: "Not found",
+						detail: `No route matched: ${config.url}`,
+					},
+				},
+			);
+			throw error;
+		},
+	);
+}
+
+/**
+ * A mock vscode.Progress implementation that tracks all reported progress.
+ * Use this when testing code that accepts a Progress parameter directly.
+ */
+export class MockProgress<
+	T = { message?: string; increment?: number },
+> implements vscode.Progress<T> {
+	private readonly reports: T[] = [];
+	readonly report = vi.fn((value: T) => {
+		this.reports.push(value);
+	});
+
+	/**
+	 * Get all progress reports that have been made.
+	 */
+	getReports(): readonly T[] {
+		return this.reports;
+	}
+
+	/**
+	 * Clear all recorded reports.
+	 */
+	clear(): void {
+		this.reports.length = 0;
+		this.report.mockClear();
+	}
+}
+
+/**
+ * A mock vscode.CancellationToken that can be programmatically cancelled.
+ * Use this when testing code that accepts a CancellationToken parameter directly.
+ */
+export class MockCancellationToken implements vscode.CancellationToken {
+	private _isCancellationRequested: boolean;
+	private readonly listeners: Array<(e: unknown) => void> = [];
+
+	constructor(initialCancelled = false) {
+		this._isCancellationRequested = initialCancelled;
+	}
+
+	get isCancellationRequested(): boolean {
+		return this._isCancellationRequested;
+	}
+
+	onCancellationRequested: vscode.Event<unknown> = (
+		listener: (e: unknown) => void,
+	) => {
+		this.listeners.push(listener);
+		// If already cancelled, fire immediately (async to match VS Code behavior)
+		if (this._isCancellationRequested) {
+			setTimeout(() => listener(undefined), 0);
+		}
+		return {
+			dispose: () => {
+				const index = this.listeners.indexOf(listener);
+				if (index > -1) {
+					this.listeners.splice(index, 1);
+				}
+			},
+		};
+	};
+
+	/**
+	 * Trigger cancellation. This will:
+	 * - Set isCancellationRequested to true
+	 * - Fire all registered cancellation listeners
+	 */
+	cancel(): void {
+		if (this._isCancellationRequested) {
+			return; // Already cancelled
+		}
+		this._isCancellationRequested = true;
+		for (const listener of this.listeners) {
+			listener(undefined);
+		}
+	}
+
+	/**
+	 * Reset to uncancelled state. Useful for reusing the token across tests.
+	 */
+	reset(): void {
+		this._isCancellationRequested = false;
+	}
 }
