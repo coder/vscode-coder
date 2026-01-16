@@ -1,3 +1,4 @@
+import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
 
 import {
@@ -22,6 +23,8 @@ export interface ReconnectingWebSocketOptions {
 	initialBackoffMs?: number;
 	maxBackoffMs?: number;
 	jitterFactor?: number;
+	/** Callback invoked when certificate expiration is detected. Returns true if refresh succeeded. */
+	onCertificateExpired?: () => Promise<boolean>;
 }
 
 export class ReconnectingWebSocket<
@@ -29,7 +32,10 @@ export class ReconnectingWebSocket<
 > implements UnidirectionalStream<TData> {
 	readonly #socketFactory: SocketFactory<TData>;
 	readonly #logger: Logger;
-	readonly #options: Required<ReconnectingWebSocketOptions>;
+	readonly #options: Required<
+		Omit<ReconnectingWebSocketOptions, "onCertificateExpired">
+	> &
+		Pick<ReconnectingWebSocketOptions, "onCertificateExpired">;
 	readonly #eventHandlers: {
 		[K in WebSocketEventType]: Set<EventHandler<TData, K>>;
 	} = {
@@ -61,6 +67,7 @@ export class ReconnectingWebSocket<
 			initialBackoffMs: options.initialBackoffMs ?? 250,
 			maxBackoffMs: options.maxBackoffMs ?? 30000,
 			jitterFactor: options.jitterFactor ?? 0.1,
+			onCertificateExpired: options.onCertificateExpired,
 		};
 		this.#backoffMs = this.#options.initialBackoffMs;
 		this.#onDispose = onDispose;
@@ -78,7 +85,18 @@ export class ReconnectingWebSocket<
 			options,
 			onDispose,
 		);
-		await instance.connect();
+
+		try {
+			await instance.connect();
+		} catch (error) {
+			// If certificate expired, attempt refresh and retry once
+			if (await instance.handleCertificateExpiredError(error)) {
+				await instance.connect();
+				return instance;
+			}
+			throw error;
+		}
+
 		return instance;
 	}
 
@@ -281,6 +299,47 @@ export class ReconnectingWebSocket<
 		this.#backoffMs = Math.min(this.#backoffMs * 2, this.#options.maxBackoffMs);
 	}
 
+	/**
+	 * Attempt to refresh certificates and return true if refresh succeeded.
+	 * Returns false if no callback configured or refresh failed.
+	 */
+	private async attemptCertificateRefresh(): Promise<boolean> {
+		if (!this.#options.onCertificateExpired) {
+			return false;
+		}
+		try {
+			return await this.#options.onCertificateExpired();
+		} catch (refreshError) {
+			this.#logger.error("Error during certificate refresh:", refreshError);
+			return false;
+		}
+	}
+
+	/**
+	 * Handle certificate expired errors by attempting refresh.
+	 * @returns true if error was a certificate expiration and refresh succeeded, false otherwise
+	 */
+	private async handleCertificateExpiredError(
+		error: unknown,
+	): Promise<boolean> {
+		if (!ClientCertificateError.isExpiredError(error)) {
+			return false;
+		}
+
+		this.#logger.info(
+			`Certificate expired for ${this.#route}, attempting refresh...`,
+		);
+		const refreshed = await this.attemptCertificateRefresh();
+
+		if (refreshed) {
+			this.#logger.info("Certificate refresh succeeded, reconnecting...");
+			return true;
+		}
+
+		this.#logger.warn("Certificate refresh failed or not configured");
+		return false;
+	}
+
 	private executeHandlers<TEvent extends WebSocketEventType>(
 		event: TEvent,
 		eventData: Parameters<EventHandler<TData, TEvent>>[0],
@@ -301,7 +360,7 @@ export class ReconnectingWebSocket<
 	 * Checks if the error is unrecoverable and suspends the connection,
 	 * otherwise schedules a reconnect.
 	 */
-	private handleConnectionError(error: unknown): void {
+	private async handleConnectionError(error: unknown): Promise<void> {
 		if (this.#isDisposed || this.#isDisconnected) {
 			return;
 		}
@@ -312,6 +371,12 @@ export class ReconnectingWebSocket<
 				error,
 			);
 			this.disconnect();
+			return;
+		}
+
+		// Check for certificate expiration error and attempt refresh.
+		if (await this.handleCertificateExpiredError(error)) {
+			this.reconnect();
 			return;
 		}
 
