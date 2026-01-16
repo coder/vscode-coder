@@ -34,6 +34,15 @@ export class OAuthError extends Error {
 		);
 		this.name = "OAuthError";
 	}
+
+	/**
+	 * Returns true if this error indicates the user needs to re-authenticate.
+	 */
+	get requiresReAuth(): boolean {
+		return (
+			this.errorCode === "invalid_grant" || this.errorCode === "invalid_client"
+		);
+	}
 }
 
 export function parseOAuthError(error: unknown): OAuthError | null {
@@ -55,11 +64,5 @@ function isOAuth2Error(data: unknown): data is OAuth2Error {
 		typeof data === "object" &&
 		"error" in data &&
 		typeof data.error === "string"
-	);
-}
-
-export function requiresReAuthentication(error: OAuthError): boolean {
-	return (
-		error.errorCode === "invalid_grant" || error.errorCode === "invalid_client"
 	);
 }

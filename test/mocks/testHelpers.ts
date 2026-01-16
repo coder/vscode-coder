@@ -491,6 +491,7 @@ export class MockCoderApi implements Pick<
 	| "setHost"
 	| "setSessionToken"
 	| "setCredentials"
+	| "getHost"
 	| "getAuthenticatedUser"
 	| "dispose"
 > {
@@ -513,6 +514,8 @@ export class MockCoderApi implements Pick<
 			this._token = token;
 		},
 	);
+
+	readonly getHost = vi.fn(() => this._host);
 
 	readonly getAuthenticatedUser = vi.fn((): Promise<User> => {
 		if (this.authenticatedUser instanceof Error) {
@@ -570,11 +573,9 @@ export class MockOAuthSessionManager {
 	readonly refreshToken = vi
 		.fn()
 		.mockResolvedValue({ access_token: "test-token" });
-	readonly refreshIfAlmostExpired = vi.fn().mockResolvedValue(undefined);
 	readonly revokeRefreshToken = vi.fn().mockResolvedValue(undefined);
 	readonly isLoggedInWithOAuth = vi.fn().mockResolvedValue(false);
 	readonly clearOAuthState = vi.fn().mockResolvedValue(undefined);
-	readonly showReAuthenticationModal = vi.fn().mockResolvedValue(undefined);
 	readonly dispose = vi.fn();
 }
 

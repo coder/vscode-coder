@@ -70,10 +70,25 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	const deployment = await secretsManager.getCurrentDeployment();
 
-	// Create OAuth session manager with login coordinator
+	// Shared handler for auth failures (used by interceptor + session manager)
+	const handleAuthFailure = async (): Promise<void> => {
+		deploymentManager.suspendSession();
+		const action = await vscode.window.showWarningMessage(
+			"Session expired. You have been signed out.",
+			"Log In",
+		);
+		if (action === "Log In") {
+			await commands.login({
+				url: deploymentManager.getCurrentDeployment()?.url,
+			});
+		}
+	};
+
+	// Create OAuth session manager - callback handles background refresh failures
 	const oauthSessionManager = OAuthSessionManager.create(
 		deployment,
 		serviceContainer,
+		handleAuthFailure,
 	);
 	ctx.subscriptions.push(oauthSessionManager);
 
@@ -94,11 +109,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output,
 		oauthSessionManager,
 		secretsManager,
-		() => {
-			void vscode.window.showWarningMessage(
-				"Session expired. Please log in again using the Coder sidebar.",
-			);
-			return Promise.resolve(false);
+		async () => {
+			await handleAuthFailure();
+			return false;
 		},
 	);
 	ctx.subscriptions.push(authInterceptor);
@@ -324,7 +337,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				process.env.CODER_URL?.trim();
 			if (defaultUrl) {
 				commands.login({ url: defaultUrl, autoLogin: true }).catch((error) => {
-					output.error("Failed to auto-login", error);
+					output.error("Auto-login failed", error);
 				});
 			}
 		}
