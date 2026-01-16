@@ -118,10 +118,22 @@ export class Remote {
 		const disposables: vscode.Disposable[] = [];
 
 		try {
+			// Shared dialog for session expiry (used by interceptor + session manager)
+			const showSessionExpiredDialog = () =>
+				this.loginCoordinator.ensureLoggedInWithDialog({
+					safeHostname: parts.safeHostname,
+					url: baseUrlRaw,
+					message: "Your session expired...",
+					detailPrefix: `You must log in to access ${workspaceName}.`,
+				});
+
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrlRaw, safeHostname: parts.safeHostname },
 				this.serviceContainer,
+				async () => {
+					await showSessionExpiredDialog();
+				},
 			);
 			disposables.push(remoteOAuthManager);
 
@@ -179,13 +191,8 @@ export class Remote {
 				this.logger,
 				remoteOAuthManager,
 				this.secretsManager,
-				async (hostname) => {
-					const result = await this.loginCoordinator.ensureLoggedInWithDialog({
-						safeHostname: hostname,
-						url: baseUrlRaw,
-						message: "Your session expired...",
-						detailPrefix: `You must log in to access ${workspaceName}.`,
-					});
+				async () => {
+					const result = await showSessionExpiredDialog();
 					return result.success;
 				},
 			);

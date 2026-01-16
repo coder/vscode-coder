@@ -105,6 +105,7 @@ function createTestContext() {
 			oauth: {
 				refresh_token: "refresh-token",
 				expiry_timestamp: Date.now() + ONE_HOUR_MS,
+				scope: "workspace:read",
 			},
 		});
 		mockOAuthManager.isLoggedInWithOAuth.mockImplementation(

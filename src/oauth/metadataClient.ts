@@ -18,7 +18,7 @@ import type { Logger } from "../logging/logger";
 
 const OAUTH_DISCOVERY_ENDPOINT = "/.well-known/oauth-authorization-server";
 
-const REQUIRED_GRANT_TYPES: readonly string[] = [
+const REQUIRED_GRANT_TYPES: readonly OAuth2ProviderGrantType[] = [
 	AUTH_GRANT_TYPE,
 	REFRESH_GRANT_TYPE,
 ];
