@@ -1,5 +1,6 @@
 import { type AxiosError, isAxiosError } from "axios";
 
+import { OAuthError } from "../oauth/errors";
 import { toSafeHost } from "../util";
 
 import type * as vscode from "vscode";
@@ -27,6 +28,7 @@ export type AuthRequiredHandler = (hostname: string) => Promise<boolean>;
  */
 export class AuthInterceptor implements vscode.Disposable {
 	private readonly interceptorId: number;
+	private authRequiredPromise: Promise<boolean> | null = null;
 
 	constructor(
 		private readonly client: CoderApi,
@@ -82,13 +84,21 @@ export class AuthInterceptor implements vscode.Disposable {
 				this.logger.debug("Token refresh successful, retrying request");
 				return this.retryRequest(error, newTokens.access_token);
 			} catch (refreshError) {
-				this.logger.error("OAuth refresh failed:", refreshError);
+				if (refreshError instanceof OAuthError) {
+					const msg = `Token refresh failed: ${refreshError.message}`;
+					if (refreshError.requiresReAuth) {
+						this.logger.warn(msg);
+					} else {
+						this.logger.error(msg);
+					}
+				} else {
+					this.logger.error("Token refresh failed:", refreshError);
+				}
 			}
 		}
 
 		if (this.onAuthRequired) {
-			this.logger.debug("Triggering interactive re-authentication");
-			const success = await this.onAuthRequired(hostname);
+			const success = await this.executeAuthRequired(hostname);
 			if (success) {
 				const auth = await this.secretsManager.getSessionAuth(hostname);
 				if (auth) {
@@ -99,6 +109,28 @@ export class AuthInterceptor implements vscode.Disposable {
 		}
 
 		throw error;
+	}
+
+	/**
+	 * Execute auth required callback with deduplication.
+	 * Multiple concurrent 401s will share the same promise.
+	 */
+	private async executeAuthRequired(hostname: string): Promise<boolean> {
+		if (this.authRequiredPromise) {
+			this.logger.debug(
+				"Auth callback already in progress, waiting for result",
+			);
+			return this.authRequiredPromise;
+		}
+
+		this.logger.debug("Triggering re-authentication");
+		this.authRequiredPromise = this.onAuthRequired!(hostname);
+
+		try {
+			return await this.authRequiredPromise;
+		} finally {
+			this.authRequiredPromise = null;
+		}
 	}
 
 	private retryRequest(error: AxiosError, token: string): Promise<unknown> {

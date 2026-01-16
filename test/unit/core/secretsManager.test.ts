@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type CurrentDeploymentState,
 	SecretsManager,
+	type SessionAuth,
 } from "@/core/secretsManager";
 
 import {
@@ -10,6 +11,8 @@ import {
 	InMemorySecretStorage,
 	createMockLogger,
 } from "../../mocks/testHelpers";
+
+import type { Deployment } from "@/deployment/types";
 
 describe("SecretsManager", () => {
 	let secretStorage: InMemorySecretStorage;
@@ -286,7 +289,7 @@ describe("SecretsManager", () => {
 
 				await secretsManager.setSessionAuth(
 					"example.com",
-					authWithExtra as Parameters<typeof secretsManager.setSessionAuth>[1],
+					authWithExtra as SessionAuth,
 				);
 
 				const raw = await secretStorage.get("coder.session.example.com");
@@ -300,19 +303,23 @@ describe("SecretsManager", () => {
 				const authWithExtra = {
 					url: "https://coder.example.com",
 					token: "test-token",
-					oauth: { expiry_timestamp: 12345, extraOAuthField: "stripped" },
+					oauth: {
+						scope: "workspace:read",
+						expiry_timestamp: 12345,
+						extraOAuthField: "stripped",
+					},
 				};
 
 				await secretsManager.setSessionAuth(
 					"example.com",
-					authWithExtra as Parameters<typeof secretsManager.setSessionAuth>[1],
+					authWithExtra as SessionAuth,
 				);
 
 				const raw = await secretStorage.get("coder.session.example.com");
 				expect(JSON.parse(raw!)).toEqual({
 					url: "https://coder.example.com",
 					token: "test-token",
-					oauth: { expiry_timestamp: 12345 },
+					oauth: { scope: "workspace:read", expiry_timestamp: 12345 },
 				});
 			});
 
@@ -324,9 +331,7 @@ describe("SecretsManager", () => {
 				};
 
 				await secretsManager.setCurrentDeployment(
-					deploymentWithExtra as Parameters<
-						typeof secretsManager.setCurrentDeployment
-					>[0],
+					deploymentWithExtra as Deployment,
 				);
 
 				const raw = await secretStorage.get("coder.currentDeployment");
@@ -405,12 +410,12 @@ describe("SecretsManager", () => {
 					data: {
 						url: "https://coder.example.com",
 						token: "test-token",
-						oauth: { expiry_timestamp: 12345 },
+						oauth: { scope: "workspace:read", expiry_timestamp: 12345 },
 					},
 					expected: {
 						url: "https://coder.example.com",
 						token: "test-token",
-						oauth: { expiry_timestamp: 12345 },
+						oauth: { scope: "workspace:read", expiry_timestamp: 12345 },
 					},
 				},
 			];

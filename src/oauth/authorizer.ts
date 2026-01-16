@@ -8,6 +8,7 @@ import { type Logger } from "../logging/logger";
 
 import {
 	AUTH_GRANT_TYPE,
+	DEFAULT_OAUTH_SCOPES,
 	PKCE_CHALLENGE_METHOD,
 	RESPONSE_TYPE,
 	TOKEN_ENDPOINT_AUTH_METHOD,
@@ -28,19 +29,6 @@ import type {
 	OAuth2TokenResponse,
 	User,
 } from "coder/site/src/api/typesGenerated";
-
-/**
- * Minimal scopes required by the VS Code extension.
- */
-const DEFAULT_OAUTH_SCOPES = [
-	"workspace:read",
-	"workspace:update",
-	"workspace:start",
-	"workspace:ssh",
-	"workspace:application_connect",
-	"template:read",
-	"user:read_personal",
-].join(" ");
 
 /**
  * Handles the OAuth authorization code flow for authenticating with Coder deployments.

@@ -214,7 +214,7 @@ export class Commands {
 			.then((action) => {
 				if (action === "Login") {
 					this.login().catch((error) => {
-						this.logger.error("Failed to login", error);
+						this.logger.error("Login failed", error);
 					});
 				}
 			});

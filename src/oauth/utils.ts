@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import { DEFAULT_OAUTH_SCOPES } from "./constants";
+
 import type { OAuth2TokenResponse } from "coder/site/src/api/typesGenerated";
 
 import type { OAuthTokenData } from "../core/secretsManager";
@@ -66,7 +68,8 @@ export function buildOAuthTokenData(
 
 	return {
 		refresh_token: tokenResponse.refresh_token,
-		scope: tokenResponse.scope,
+		// Use default scopes when server returns empty, so scope changes can invalidate tokens
+		scope: tokenResponse.scope || DEFAULT_OAUTH_SCOPES,
 		expiry_timestamp: getExpiryTimestamp(tokenResponse),
 	};
 }

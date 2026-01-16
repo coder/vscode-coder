@@ -1,37 +1,11 @@
 import { AxiosError, AxiosHeaders } from "axios";
 import { describe, expect, it } from "vitest";
 
-import {
-	OAuthError,
-	parseOAuthError,
-	requiresReAuthentication,
-} from "@/oauth/errors";
+import { OAuthError, parseOAuthError } from "@/oauth/errors";
+
+import { createOAuthAxiosError } from "./testUtils";
 
 import type { OAuth2ErrorCode } from "coder/site/src/api/typesGenerated";
-
-function createOAuthAxiosError(
-	errorCode: string,
-	errorDescription?: string,
-): AxiosError {
-	const data: Record<string, string> = { error: errorCode };
-	if (errorDescription) {
-		data.error_description = errorDescription;
-	}
-
-	return new AxiosError(
-		"OAuth Error",
-		"ERR_BAD_REQUEST",
-		undefined,
-		undefined,
-		{
-			status: 400,
-			statusText: "Bad Request",
-			headers: {},
-			config: { headers: new AxiosHeaders() },
-			data,
-		},
-	);
-}
 
 describe("parseOAuthError", () => {
 	it.each<OAuth2ErrorCode>([
@@ -109,11 +83,11 @@ describe("parseOAuthError", () => {
 	});
 });
 
-describe("requiresReAuthentication", () => {
+describe("OAuthError.requiresReAuth", () => {
 	it.each<OAuth2ErrorCode>(["invalid_client", "invalid_grant"])(
 		"returns true for %s",
 		(code) => {
-			expect(requiresReAuthentication(new OAuthError(code))).toBe(true);
+			expect(new OAuthError(code).requiresReAuth).toBe(true);
 		},
 	);
 
@@ -125,7 +99,7 @@ describe("requiresReAuthentication", () => {
 		"access_denied",
 		"server_error",
 	])("returns false for %s", (code) => {
-		expect(requiresReAuthentication(new OAuthError(code))).toBe(false);
+		expect(new OAuthError(code).requiresReAuth).toBe(false);
 	});
 });
 

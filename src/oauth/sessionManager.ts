@@ -1,11 +1,7 @@
 import { CoderApi } from "../api/coderApi";
 
-import { REFRESH_GRANT_TYPE } from "./constants";
-import {
-	type OAuthError,
-	parseOAuthError,
-	requiresReAuthentication,
-} from "./errors";
+import { DEFAULT_OAUTH_SCOPES, REFRESH_GRANT_TYPE } from "./constants";
+import { OAuthError, parseOAuthError } from "./errors";
 import { OAuthMetadataClient } from "./metadataClient";
 import { buildOAuthTokenData, toUrlSearchParams } from "./utils";
 
@@ -23,7 +19,6 @@ import type { ServiceContainer } from "../core/container";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type { Logger } from "../logging/logger";
-import type { LoginCoordinator } from "../login/loginCoordinator";
 
 /**
  * Token refresh threshold: refresh when token expires in less than this time.
@@ -31,27 +26,9 @@ import type { LoginCoordinator } from "../login/loginCoordinator";
 const TOKEN_REFRESH_THRESHOLD_MS = 10 * 60 * 1000;
 
 /**
- * Minimum time between refresh attempts to prevent thrashing.
- */
-const REFRESH_THROTTLE_MS = 30 * 1000;
-
-/**
  * Background token refresh check interval.
  */
 const BACKGROUND_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-
-/**
- * Minimal scopes required by the VS Code extension.
- */
-const DEFAULT_OAUTH_SCOPES = [
-	"workspace:read",
-	"workspace:update",
-	"workspace:start",
-	"workspace:ssh",
-	"workspace:application_connect",
-	"template:read",
-	"user:read_personal",
-].join(" ");
 
 /**
  * Internal type combining access token with OAuth-specific data.
@@ -68,23 +45,25 @@ type StoredTokens = OAuthTokenData & {
 export class OAuthSessionManager implements vscode.Disposable {
 	private refreshPromise: Promise<OAuth2TokenResponse> | null = null;
 	private refreshAbortController: AbortController | null = null;
-	private lastRefreshAttempt = 0;
 	private refreshTimer: NodeJS.Timeout | undefined;
 	private tokenChangeListener: vscode.Disposable | undefined;
 	private disposed = false;
 
 	/**
 	 * Create and initialize a new OAuth session manager.
+	 *
+	 * @param onAuthRequired Called when background refresh fails with a re-auth error.
 	 */
 	public static create(
 		deployment: Deployment | null,
 		container: ServiceContainer,
+		onAuthRequired: () => Promise<void> = () => Promise.resolve(),
 	): OAuthSessionManager {
 		const manager = new OAuthSessionManager(
 			deployment,
 			container.getSecretsManager(),
 			container.getLogger(),
-			container.getLoginCoordinator(),
+			onAuthRequired,
 		);
 		manager.setupTokenListener();
 		manager.scheduleNextRefresh();
@@ -95,7 +74,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		private deployment: Deployment | null,
 		private readonly secretsManager: SecretsManager,
 		private readonly logger: Logger,
-		private readonly loginCoordinator: LoginCoordinator,
+		private readonly onAuthRequired: () => Promise<void>,
 	) {}
 
 	/**
@@ -150,14 +129,13 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Clear all refresh-related state: in-flight promise, throttle, timer, and listener.
+	 * Clear all refresh-related state: in-flight promise, timer, and listener.
 	 * Aborts any in-flight refresh request to prevent stale token updates.
 	 */
 	private clearRefreshState(): void {
 		this.refreshAbortController?.abort();
 		this.refreshAbortController = null;
 		this.refreshPromise = null;
-		this.lastRefreshAttempt = 0;
 		if (this.refreshTimer) {
 			clearTimeout(this.refreshTimer);
 			this.refreshTimer = undefined;
@@ -244,10 +222,25 @@ export class OAuthSessionManager implements vscode.Disposable {
 			.then(() => {
 				this.logger.debug("Background token refresh succeeded");
 			})
-			.catch((error) => {
+			.catch(async (error) => {
 				if (this.disposed) {
 					return;
 				}
+
+				// Re-auth errors: notify callback and stop retrying
+				if (error instanceof OAuthError && error.requiresReAuth) {
+					this.logger.warn(
+						"Background refresh requires re-auth:",
+						error.message,
+					);
+					try {
+						await this.onAuthRequired();
+					} catch (callbackError) {
+						this.logger.error("onAuthRequired callback failed:", callbackError);
+					}
+					return;
+				}
+
 				this.logger.warn("Background token refresh failed, will retry:", error);
 				this.refreshTimer = setTimeout(
 					() => this.attemptRefreshWithRetry(),
@@ -260,12 +253,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Check if granted scopes cover all required scopes.
 	 * Supports wildcard scopes like "workspace:*".
 	 */
-	private hasRequiredScopes(grantedScope: string | undefined): boolean {
-		if (!grantedScope) {
-			// TODO server always returns empty scopes
-			return true;
-		}
-
+	private hasRequiredScopes(grantedScope: string): boolean {
 		const grantedScopes = new Set(grantedScope.split(" "));
 		const requiredScopes = DEFAULT_OAUTH_SCOPES.split(" ");
 
@@ -381,8 +369,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 			const refreshToken = storedTokens.refresh_token;
 			const accessToken = storedTokens.access_token;
 
-			this.lastRefreshAttempt = Date.now();
-
 			const { axiosInstance, metadata, registration } =
 				await this.prepareOAuthOperation(accessToken);
 
@@ -424,47 +410,13 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 			return response.data;
 		} catch (error) {
-			this.handleOAuthError(error);
-			throw error;
+			throw parseOAuthError(error) ?? error;
 		} finally {
 			if (this.refreshAbortController === abortController) {
 				this.refreshAbortController = null;
 			}
 			this.refreshPromise = null;
 		}
-	}
-
-	/**
-	 * Refreshes the token if it is approaching expiry.
-	 */
-	public async refreshIfAlmostExpired(): Promise<void> {
-		if (await this.shouldRefreshToken()) {
-			this.logger.debug("Token approaching expiry, triggering refresh");
-			await this.refreshToken();
-		}
-	}
-
-	/**
-	 * Check if token should be refreshed.
-	 * Returns true if:
-	 * 1. Stored tokens exist with a refresh token
-	 * 2. Token expires in less than TOKEN_REFRESH_THRESHOLD_MS
-	 * 3. Last refresh attempt was more than REFRESH_THROTTLE_MS ago
-	 * 4. No refresh is currently in progress
-	 */
-	private async shouldRefreshToken(): Promise<boolean> {
-		const storedTokens = await this.getStoredTokens();
-		if (!storedTokens?.refresh_token || this.refreshPromise !== null) {
-			return false;
-		}
-
-		const now = Date.now();
-		if (now - this.lastRefreshAttempt < REFRESH_THROTTLE_MS) {
-			return false;
-		}
-
-		const timeUntilExpiry = storedTokens.expiry_timestamp - now;
-		return timeUntilExpiry < TOKEN_REFRESH_THRESHOLD_MS;
 	}
 
 	public async revokeRefreshToken(): Promise<void> {
@@ -543,51 +495,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 		}
 		const storedTokens = await this.getStoredTokens();
 		return storedTokens !== undefined;
-	}
-
-	/**
-	 * Handle OAuth errors that may require re-authentication.
-	 * Parses the error and triggers re-authentication modal if needed.
-	 */
-	private handleOAuthError(error: unknown): void {
-		const oauthError = parseOAuthError(error);
-		if (oauthError && requiresReAuthentication(oauthError)) {
-			this.logger.error(
-				`OAuth operation failed with error: ${oauthError.errorCode}`,
-			);
-			// Fire and forget - don't block on showing the modal
-			this.showReAuthenticationModal(oauthError).catch((err) => {
-				this.logger.error("Failed to show re-auth modal:", err);
-			});
-		}
-	}
-
-	/**
-	 * Show a modal dialog to the user when OAuth re-authentication is required.
-	 * This is called when the refresh token is invalid or the client credentials are invalid.
-	 * Clears tokens directly and lets listeners handle updates.
-	 */
-	public async showReAuthenticationModal(error: OAuthError): Promise<void> {
-		const deployment = this.requireDeployment();
-		const errorMessage =
-			error.message ||
-			"Your session is no longer valid. This could be due to token expiration or revocation.";
-
-		this.clearRefreshState();
-		// Clear client registration and tokens to force full re-authentication
-		await this.secretsManager.clearOAuthClientRegistration(
-			deployment.safeHostname,
-		);
-		await this.secretsManager.setSessionAuth(deployment.safeHostname, {
-			url: deployment.url,
-			token: "",
-		});
-
-		await this.loginCoordinator.ensureLoggedInWithDialog({
-			safeHostname: deployment.safeHostname,
-			url: deployment.url,
-			detailPrefix: errorMessage,
-		});
 	}
 
 	/**
