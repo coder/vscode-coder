@@ -338,7 +338,7 @@ export class LoginCoordinator implements vscode.Disposable {
 					if (err instanceof CertificateError) {
 						void err.showNotification();
 						return {
-							message: err.x509Err || err.message,
+							message: err.detail,
 							severity: vscode.InputBoxValidationSeverity.Error,
 						};
 					}

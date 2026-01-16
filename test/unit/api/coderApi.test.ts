@@ -12,7 +12,7 @@ import Ws from "ws";
 
 import { CoderApi } from "@/api/coderApi";
 import { createHttpAgent } from "@/api/utils";
-import { CertificateError } from "@/error/certificateError";
+import { ServerCertificateError } from "@/error/serverCertificateError";
 import { getHeaders } from "@/headers";
 import { type RequestConfigWithMeta } from "@/logging/types";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
@@ -133,9 +133,9 @@ describe("CoderApi", () => {
 				.get("/api/v2/users/me")
 				.catch((e) => e);
 
-			expect(thrownError).toBeInstanceOf(CertificateError);
+			expect(thrownError).toBeInstanceOf(ServerCertificateError);
 
-			const castError = thrownError as CertificateError;
+			const castError = thrownError as ServerCertificateError;
 			expect(castError.message).toContain("Secure connection");
 			expect(castError.x509Err).toBeDefined();
 		});

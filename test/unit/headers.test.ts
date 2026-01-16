@@ -2,17 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type WorkspaceConfiguration } from "vscode";
 
 import { getHeaderCommand, getHeaders } from "@/headers";
-import { type Logger } from "@/logging/logger";
 
+import { createMockLogger } from "../mocks/testHelpers";
 import { printCommand, exitCommand, printEnvCommand } from "../utils/platform";
 
-const logger: Logger = {
-	trace: () => {},
-	debug: () => {},
-	info: () => {},
-	warn: () => {},
-	error: () => {},
-};
+const logger = createMockLogger();
 
 describe("Headers", () => {
 	it("should return no headers", async () => {
