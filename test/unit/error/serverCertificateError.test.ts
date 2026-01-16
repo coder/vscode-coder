@@ -8,11 +8,12 @@ import * as fs from "node:fs/promises";
 import https from "node:https";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { CertificateError } from "@/error/certificateError";
 import {
-	CertificateError,
+	ServerCertificateError,
 	X509_ERR,
 	X509_ERR_CODE,
-} from "@/error/certificateError";
+} from "@/error/serverCertificateError";
 import { type Logger } from "@/logging/logger";
 
 import { getFixturePath } from "../../utils/fixtures";
@@ -101,9 +102,13 @@ describe("Certificate errors", () => {
 		try {
 			await request;
 		} catch (error) {
-			const wrapped = await CertificateError.maybeWrap(error, address, logger);
+			const wrapped = await ServerCertificateError.maybeWrap(
+				error,
+				address,
+				logger,
+			);
 			expect(wrapped instanceof CertificateError).toBeTruthy();
-			expect((wrapped as CertificateError).x509Err).toBe(
+			expect((wrapped as ServerCertificateError).x509Err).toBe(
 				X509_ERR.PARTIAL_CHAIN,
 			);
 		}
@@ -136,9 +141,15 @@ describe("Certificate errors", () => {
 		try {
 			await request;
 		} catch (error) {
-			const wrapped = await CertificateError.maybeWrap(error, address, logger);
+			const wrapped = await ServerCertificateError.maybeWrap(
+				error,
+				address,
+				logger,
+			);
 			expect(wrapped instanceof CertificateError).toBeTruthy();
-			expect((wrapped as CertificateError).x509Err).toBe(X509_ERR.NON_SIGNING);
+			expect((wrapped as ServerCertificateError).x509Err).toBe(
+				X509_ERR.NON_SIGNING,
+			);
 		}
 	});
 
@@ -182,9 +193,13 @@ describe("Certificate errors", () => {
 		try {
 			await request;
 		} catch (error) {
-			const wrapped = await CertificateError.maybeWrap(error, address, logger);
+			const wrapped = await ServerCertificateError.maybeWrap(
+				error,
+				address,
+				logger,
+			);
 			expect(wrapped instanceof CertificateError).toBeTruthy();
-			expect((wrapped as CertificateError).x509Err).toBe(
+			expect((wrapped as ServerCertificateError).x509Err).toBe(
 				X509_ERR.UNTRUSTED_LEAF,
 			);
 		}
@@ -225,9 +240,13 @@ describe("Certificate errors", () => {
 		try {
 			await request;
 		} catch (error) {
-			const wrapped = await CertificateError.maybeWrap(error, address, logger);
+			const wrapped = await ServerCertificateError.maybeWrap(
+				error,
+				address,
+				logger,
+			);
 			expect(wrapped instanceof CertificateError).toBeTruthy();
-			expect((wrapped as CertificateError).x509Err).toBe(
+			expect((wrapped as ServerCertificateError).x509Err).toBe(
 				X509_ERR.UNTRUSTED_CHAIN,
 			);
 		}
@@ -268,7 +287,11 @@ describe("Certificate errors", () => {
 		try {
 			await request;
 		} catch (error) {
-			const wrapped = await CertificateError.maybeWrap(error, "1", logger);
+			const wrapped = await ServerCertificateError.maybeWrap(
+				error,
+				"1",
+				logger,
+			);
 			expect(wrapped instanceof CertificateError).toBeFalsy();
 			expect((wrapped as Error).message).toMatch(/failed with status code 500/);
 		}

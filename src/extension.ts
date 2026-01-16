@@ -276,8 +276,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
-				output.warn(ex.x509Err || ex.message);
-				await ex.showModal("Failed to open workspace");
+				output.warn(ex.detail);
+				await ex.showNotification("Failed to open workspace", { modal: true });
 			} else if (isAxiosError(ex)) {
 				const msg = getErrorMessage(ex, "None");
 				const detail = getErrorDetail(ex) || "None";

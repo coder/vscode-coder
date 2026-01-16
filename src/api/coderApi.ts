@@ -17,8 +17,9 @@ import * as vscode from "vscode";
 import { type ClientOptions } from "ws";
 
 import { watchConfigurationChanges } from "../configWatcher";
-import { CertificateError } from "../error/certificateError";
+import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
+import { ServerCertificateError } from "../error/serverCertificateError";
 import { getHeaderCommand, getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
 import {
@@ -49,6 +50,7 @@ import {
 } from "../websocket/reconnectingWebSocket";
 import { SseConnection } from "../websocket/sseConnection";
 
+import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
 import { createHttpAgent } from "./utils";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
@@ -440,7 +442,15 @@ export class CoderApi extends Api implements vscode.Disposable {
 		const reconnectingSocket = await ReconnectingWebSocket.create<TData>(
 			socketFactory,
 			this.output,
-			undefined,
+			{
+				onCertificateExpired: async () => {
+					const refreshCommand = getRefreshCommand();
+					if (!refreshCommand) {
+						return false;
+					}
+					return refreshCertificates(refreshCommand, this.output);
+				},
+			},
 			() => this.reconnectingSockets.delete(reconnectingSocket),
 		);
 
@@ -479,16 +489,53 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 		return config;
 	});
 
-	// Wrap certificate errors.
+	// Wrap certificate errors and handle client certificate errors with refresh.
 	client.getAxiosInstance().interceptors.response.use(
 		(r) => r,
-		async (err) => {
+		async (err: unknown) => {
+			const refreshCommand = getRefreshCommand();
+			const certError = ClientCertificateError.fromError(err);
+			if (certError) {
+				if (certError.isRefreshable && refreshCommand) {
+					const config = (
+						err as {
+							config?: RequestConfigWithMeta & {
+								_certRetried?: boolean;
+							};
+						}
+					).config;
+
+					if (config && !config._certRetried) {
+						config._certRetried = true;
+
+						output.info(
+							`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
+						);
+						const success = await refreshCertificates(refreshCommand, output);
+						if (success) {
+							// Create new agent with refreshed certificates.
+							const agent = await createHttpAgent(
+								vscode.workspace.getConfiguration(),
+							);
+							config.httpsAgent = agent;
+							config.httpAgent = agent;
+
+							// Retry the request.
+							output.info("Retrying request with refreshed certificates...");
+							return client.getAxiosInstance().request(config);
+						}
+					}
+				}
+
+				throw certError;
+			}
+
+			// Handle other certificate errors.
 			const baseUrl = client.getAxiosInstance().defaults.baseURL;
 			if (baseUrl) {
-				throw await CertificateError.maybeWrap(err, baseUrl, output);
-			} else {
-				throw err;
+				throw await ServerCertificateError.maybeWrap(err, baseUrl, output);
 			}
+			throw err;
 		},
 	);
 }

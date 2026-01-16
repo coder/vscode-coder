@@ -1,3 +1,4 @@
+import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
 
 import {
@@ -22,6 +23,8 @@ export interface ReconnectingWebSocketOptions {
 	initialBackoffMs?: number;
 	maxBackoffMs?: number;
 	jitterFactor?: number;
+	/** Callback invoked when a refreshable certificate error is detected. Returns true if refresh succeeded. */
+	onCertificateExpired?: () => Promise<boolean>;
 }
 
 export class ReconnectingWebSocket<
@@ -29,7 +32,10 @@ export class ReconnectingWebSocket<
 > implements UnidirectionalStream<TData> {
 	readonly #socketFactory: SocketFactory<TData>;
 	readonly #logger: Logger;
-	readonly #options: Required<ReconnectingWebSocketOptions>;
+	readonly #options: Required<
+		Omit<ReconnectingWebSocketOptions, "onCertificateExpired">
+	> &
+		Pick<ReconnectingWebSocketOptions, "onCertificateExpired">;
 	readonly #eventHandlers: {
 		[K in WebSocketEventType]: Set<EventHandler<TData, K>>;
 	} = {
@@ -61,6 +67,7 @@ export class ReconnectingWebSocket<
 			initialBackoffMs: options.initialBackoffMs ?? 250,
 			maxBackoffMs: options.maxBackoffMs ?? 30000,
 			jitterFactor: options.jitterFactor ?? 0.1,
+			onCertificateExpired: options.onCertificateExpired,
 		};
 		this.#backoffMs = this.#options.initialBackoffMs;
 		this.#onDispose = onDispose;
@@ -78,7 +85,39 @@ export class ReconnectingWebSocket<
 			options,
 			onDispose,
 		);
-		await instance.connect();
+
+		try {
+			await instance.connect();
+		} catch (error) {
+			const certError = ClientCertificateError.fromError(error);
+			if (!certError) {
+				throw error;
+			}
+
+			const refreshed = await instance.handleClientCertificateError(certError);
+			if (refreshed) {
+				try {
+					await instance.connect();
+					return instance;
+				} catch (retryError) {
+					// Check if still a cert error after refresh
+					const retryCertError = ClientCertificateError.fromError(retryError);
+					if (retryCertError) {
+						void retryCertError.showNotification();
+					} else {
+						instance.#logger.error(
+							"Connection failed after certificate refresh",
+							retryError,
+						);
+					}
+				}
+			}
+
+			// Either refresh failed or retry failed - return disconnected instance
+			instance.disconnect();
+			return instance;
+		}
+
 		return instance;
 	}
 
@@ -281,6 +320,44 @@ export class ReconnectingWebSocket<
 		this.#backoffMs = Math.min(this.#backoffMs * 2, this.#options.maxBackoffMs);
 	}
 
+	/**
+	 * Attempt to refresh certificates and return true if refresh succeeded.
+	 * Returns false if no callback configured or refresh failed.
+	 */
+	private async attemptCertificateRefresh(): Promise<boolean> {
+		if (!this.#options.onCertificateExpired) {
+			return false;
+		}
+		try {
+			return await this.#options.onCertificateExpired();
+		} catch (refreshError) {
+			this.#logger.error("Error during certificate refresh:", refreshError);
+			return false;
+		}
+	}
+
+	/**
+	 * Handle client certificate errors by attempting refresh for refreshable errors.
+	 * @returns true if refresh succeeded.
+	 */
+	private async handleClientCertificateError(
+		certError: ClientCertificateError,
+	): Promise<boolean> {
+		if (certError.isRefreshable) {
+			this.#logger.info(
+				`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
+			);
+			if (await this.attemptCertificateRefresh()) {
+				this.#logger.info("Certificate refresh succeeded, reconnecting...");
+				return true;
+			}
+		}
+
+		// Show notification for failed/non-refreshable errors
+		void certError.showNotification();
+		return false;
+	}
+
 	private executeHandlers<TEvent extends WebSocketEventType>(
 		event: TEvent,
 		eventData: Parameters<EventHandler<TData, TEvent>>[0],
@@ -301,7 +378,7 @@ export class ReconnectingWebSocket<
 	 * Checks if the error is unrecoverable and suspends the connection,
 	 * otherwise schedules a reconnect.
 	 */
-	private handleConnectionError(error: unknown): void {
+	private async handleConnectionError(error: unknown): Promise<void> {
 		if (this.#isDisposed || this.#isDisconnected) {
 			return;
 		}
@@ -312,6 +389,17 @@ export class ReconnectingWebSocket<
 				error,
 			);
 			this.disconnect();
+			return;
+		}
+
+		// Check for certificate error and attempt refresh if possible.
+		const certError = ClientCertificateError.fromError(error);
+		if (certError) {
+			if (await this.handleClientCertificateError(certError)) {
+				this.reconnect();
+			} else {
+				this.disconnect();
+			}
 			return;
 		}
 
