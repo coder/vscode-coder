@@ -6,11 +6,31 @@
 
 - Automatic TLS client certificate refresh via new `coder.tlsCertRefreshCommand` setting. Detects
   certificate errors (expired, revoked, etc.) and automatically refreshes and retries.
+- OAuth 2.1 authentication support: When connecting to an OAuth-enabled Coder deployment, users can
+  now choose between OAuth (with automatic token refresh) or legacy session tokens. OAuth tokens
+  refresh automatically in the background, eliminating manual re-authentication.
+- Multi-deployment support: The extension now properly tracks per-deployment credentials, allowing
+  seamless switching between multiple Coder deployments. Credentials sync automatically across
+  VS Code windows.
+- WebSocket connections now automatically reconnect when proxy, TLS, or header settings change
+  (`coder.headerCommand`, `coder.insecure`, `coder.tlsCertFile`, `coder.tlsKeyFile`, `coder.tlsCaFile`,
+  `coder.tlsAltHost`, `http.proxy`, `coder.proxyBypass`).
 
 ### Fixed
 
 - Fixed `SetEnv` SSH config parsing and accumulation with user-defined values.
 - Improved WebSocket error handling for more consistent behavior across connection failures.
+- Commands now correctly appear/hide in the command palette based on login state and remote connection.
+- Opening a workspace via URI (`vscode://coder.coder-remote/open?...`) now properly prompts for login
+  when credentials are missing.
+- Network info files are now automatically cleaned up, and the SSH process is re-detected after
+  repeated failures to read network info.
+
+### Changed
+
+- **Breaking**: Minimum VS Code version is now 1.95.0.
+- Build tooling modernized: all dependencies updated, faster builds with esbuild (replaces webpack),
+  pnpm replaces yarn, and ESLint 9 with flat config.
 
 ## [v1.11.6](https://github.com/coder/vscode-coder/releases/tag/v1.11.6) 2025-12-15
 
