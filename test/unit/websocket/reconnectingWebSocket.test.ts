@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { WebSocketCloseCode, HttpStatusCode } from "@/websocket/codes";
 import {
+	ConnectionState,
 	ReconnectingWebSocket,
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
@@ -27,13 +28,17 @@ describe("ReconnectingWebSocket", () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+
 			sockets[0].fireClose({
 				code: WebSocketCloseCode.ABNORMAL,
 				reason: "Network error",
 			});
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
 
 			await vi.advanceTimersByTimeAsync(300);
 			expect(sockets).toHaveLength(2);
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
 		});
@@ -65,7 +70,10 @@ describe("ReconnectingWebSocket", () => {
 				const { ws, sockets } = await createReconnectingWebSocket();
 
 				sockets[0].fireOpen();
+				expect(ws.state).toBe(ConnectionState.CONNECTED);
+
 				sockets[0].fireClose({ code, reason: "Unrecoverable" });
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
 				await vi.advanceTimersByTimeAsync(10000);
 				expect(sockets).toHaveLength(1);
@@ -98,7 +106,7 @@ describe("ReconnectingWebSocket", () => {
 				);
 
 				// Should be disconnected after unrecoverable HTTP error
-				expect(ws.isDisconnected).toBe(true);
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
 				// Should not retry after unrecoverable HTTP error
 				await vi.advanceTimersByTimeAsync(10000);
@@ -121,6 +129,8 @@ describe("ReconnectingWebSocket", () => {
 				sockets[0].fireError(
 					new Error(`Unexpected server response: ${statusCode}`),
 				);
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+
 				sockets[0].fireClose({
 					code: WebSocketCloseCode.ABNORMAL,
 					reason: "Connection failed",
@@ -179,11 +189,13 @@ describe("ReconnectingWebSocket", () => {
 				await createBlockingReconnectingWebSocket();
 
 			ws.reconnect();
+			expect(ws.state).toBe(ConnectionState.CONNECTING);
 			ws.reconnect(); // queued
 			expect(sockets).toHaveLength(2);
 
 			// This should cancel the queued request
 			ws.disconnect();
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 			failConnection(new Error("No base URL"));
 			await Promise.resolve();
 
@@ -200,10 +212,12 @@ describe("ReconnectingWebSocket", () => {
 
 			// Start reconnect (will block on factory promise)
 			ws.reconnect();
+			expect(ws.state).toBe(ConnectionState.CONNECTING);
 			expect(sockets).toHaveLength(2);
 
 			// Disconnect while factory is still pending
 			ws.disconnect();
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
 			completeConnection();
 			await Promise.resolve();
@@ -274,6 +288,7 @@ describe("ReconnectingWebSocket", () => {
 		it("preserves event handlers after suspend() and reconnect()", async () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			const handler = vi.fn();
 			ws.addEventListener("message", handler);
@@ -282,12 +297,14 @@ describe("ReconnectingWebSocket", () => {
 
 			// Suspend the socket
 			ws.disconnect();
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
 			// Reconnect (async operation)
 			ws.reconnect();
 			await Promise.resolve(); // Wait for async connect()
 			expect(sockets).toHaveLength(2);
 			sockets[1].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			// Handler should still work after suspend/reconnect
 			sockets[1].fireMessage({ test: 2 });
@@ -361,19 +378,26 @@ describe("ReconnectingWebSocket", () => {
 			);
 
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+
 			sockets[0].fireClose({
 				code: WebSocketCloseCode.PROTOCOL_ERROR,
 				reason: "Protocol error",
 			});
 
 			// Should suspend, not dispose - allows recovery when credentials change
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 			expect(disposeCount).toBe(0);
 
 			// Should be able to reconnect after suspension
 			ws.reconnect();
+			await Promise.resolve();
 			expect(sockets).toHaveLength(2);
+			sockets[1].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
+			expect(ws.state).toBe(ConnectionState.DISPOSED);
 		});
 
 		it("does not call onDispose callback during reconnection", async () => {
@@ -399,6 +423,7 @@ describe("ReconnectingWebSocket", () => {
 			const { ws, sockets, setFactoryError } =
 				await createReconnectingWebSocketWithErrorControl();
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			// Trigger reconnect that will fail with 403
 			setFactoryError(
@@ -408,6 +433,7 @@ describe("ReconnectingWebSocket", () => {
 			await Promise.resolve();
 
 			// Socket should be suspended - no automatic reconnection
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 			await vi.advanceTimersByTimeAsync(10000);
 			expect(sockets).toHaveLength(1);
 
@@ -416,17 +442,23 @@ describe("ReconnectingWebSocket", () => {
 			ws.reconnect();
 			await Promise.resolve();
 			expect(sockets).toHaveLength(2);
+			sockets[1].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
+			expect(ws.state).toBe(ConnectionState.DISPOSED);
 		});
 
 		it("reconnect() does nothing after close()", async () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
-			ws.reconnect();
+			expect(ws.state).toBe(ConnectionState.DISPOSED);
 
+			ws.reconnect();
+			expect(ws.state).toBe(ConnectionState.DISPOSED);
 			expect(sockets).toHaveLength(1);
 		});
 	});
@@ -539,7 +571,9 @@ describe("ReconnectingWebSocket", () => {
 			);
 
 			sockets[0].fireError(new Error("ssl alert certificate_expired"));
-			await vi.waitFor(() => expect(ws.isDisconnected).toBe(true));
+			await vi.waitFor(() =>
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED),
+			);
 
 			expect(sockets).toHaveLength(1);
 			ws.close();
@@ -556,7 +590,9 @@ describe("ReconnectingWebSocket", () => {
 			await vi.waitFor(() => expect(sockets).toHaveLength(2));
 
 			sockets[1].fireError(new Error("ssl alert certificate_expired"));
-			await vi.waitFor(() => expect(ws.isDisconnected).toBe(true));
+			await vi.waitFor(() =>
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED),
+			);
 
 			expect(refreshCount).toBe(1);
 			ws.close();
@@ -583,7 +619,9 @@ describe("ReconnectingWebSocket", () => {
 			);
 
 			sockets[0].fireError(new Error("ssl alert unknown_ca"));
-			await vi.waitFor(() => expect(ws.isDisconnected).toBe(true));
+			await vi.waitFor(() =>
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED),
+			);
 
 			expect(refreshCallback).not.toHaveBeenCalled();
 			ws.close();
