@@ -21,7 +21,7 @@ export abstract class CertificateError extends Error {
 	): Promise<T | undefined> {
 		const modal = options?.modal ?? false;
 		const message =
-			!modal && title ? `${title}\n\n${this.detail}` : title || this.detail;
+			!modal && title ? `${title}: ${this.detail}` : title || this.detail;
 
 		return await vscode.window.showErrorMessage(
 			message,

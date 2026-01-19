@@ -311,7 +311,9 @@ export class CoderApi extends Api implements vscode.Disposable {
 		});
 
 		this.attachStreamLogger(ws);
-		return ws;
+
+		// Wait for connection to open before returning
+		return await this.waitForOpen(ws);
 	}
 
 	private attachStreamLogger<TData>(
@@ -351,9 +353,8 @@ export class CoderApi extends Api implements vscode.Disposable {
 	): Promise<UnidirectionalStream<ServerSentEvent>> {
 		const { fallbackApiRoute, ...socketConfigs } = configs;
 		try {
-			const ws =
-				await this.createOneWayWebSocket<ServerSentEvent>(socketConfigs);
-			return await this.waitForOpen(ws);
+			// createOneWayWebSocket already waits for open
+			return await this.createOneWayWebSocket<ServerSentEvent>(socketConfigs);
 		} catch (error) {
 			if (this.is404Error(error)) {
 				this.output.warn(
@@ -398,10 +399,11 @@ export class CoderApi extends Api implements vscode.Disposable {
 
 	/**
 	 * Wait for a connection to open. Rejects on error.
+	 * Preserves the specific connection type (e.g., OneWayWebSocket, SseConnection).
 	 */
-	private waitForOpen<TData>(
-		connection: UnidirectionalStream<TData>,
-	): Promise<UnidirectionalStream<TData>> {
+	private waitForOpen<T extends UnidirectionalStream<unknown>>(
+		connection: T,
+	): Promise<T> {
 		return new Promise((resolve, reject) => {
 			const cleanup = () => {
 				connection.removeEventListener("open", handleOpen);
@@ -416,7 +418,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 			const handleError = (event: ErrorEvent) => {
 				cleanup();
 				connection.close();
-				const error = toError(event.error, "WebSocket connection error");
+				const error = toError(
+					event.error,
+					event.message || "WebSocket connection error",
+				);
 				reject(error);
 			};
 

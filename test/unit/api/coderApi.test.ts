@@ -217,7 +217,15 @@ describe("CoderApi", () => {
 
 		beforeEach(() => {
 			api = createApi(CODER_URL, AXIOS_TOKEN);
-			const mockWs = createMockWebSocket(wsUrl);
+			// createOneWayWebSocket waits for open, so we need to fire it
+			const mockWs = createMockWebSocket(wsUrl, {
+				on: vi.fn((event, handler) => {
+					if (event === "open") {
+						setImmediate(() => handler());
+					}
+					return mockWs as Ws;
+				}),
+			});
 			setupWebSocketMock(mockWs);
 		});
 
@@ -390,15 +398,18 @@ describe("CoderApi", () => {
 			expect(EventSource).toHaveBeenCalled();
 		});
 
-		it("throws non-404 errors without SSE fallback", async () => {
+		it("handles non-404 errors without SSE fallback", async () => {
 			vi.mocked(Ws).mockImplementation(function () {
 				throw new Error("Network error");
 			});
 
-			await expect(api.watchAgentMetadata(AGENT_ID)).rejects.toThrow(
-				"Network error",
-			);
+			// Non-404 errors are handled by ReconnectingWebSocket internally
+			// (schedules reconnect with backoff) instead of being thrown
+			const connection = await api.watchAgentMetadata(AGENT_ID);
+			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
 			expect(EventSource).not.toHaveBeenCalled();
+
+			connection.close();
 		});
 
 		describe("reconnection after fallback", () => {
@@ -572,6 +583,45 @@ describe("CoderApi", () => {
 				"No base URL set on REST client",
 			);
 		});
+
+		interface WebSocketErrorConversionTestCase {
+			description: string;
+			eventMessage: string;
+			expectedMessage: string;
+		}
+
+		it.each<WebSocketErrorConversionTestCase>([
+			{
+				description: "event.message when available",
+				eventMessage: "Custom error message",
+				expectedMessage: "Custom error message",
+			},
+			{
+				description: "fallback when event.message is empty",
+				eventMessage: "",
+				expectedMessage: "WebSocket connection error",
+			},
+		])(
+			"uses $desc for WebSocket error",
+			async ({ eventMessage, expectedMessage }) => {
+				api = createApi();
+				const mockWs = createMockWebSocket("wss://test", {
+					on: vi.fn((event: string, handler: (e: unknown) => void) => {
+						if (event === "error") {
+							setImmediate(() =>
+								handler({ error: undefined, message: eventMessage }),
+							);
+						}
+						return mockWs as Ws;
+					}),
+				});
+				setupWebSocketMock(mockWs);
+
+				await expect(api.watchBuildLogsByBuildId(BUILD_ID, [])).rejects.toThrow(
+					expectedMessage,
+				);
+			},
+		);
 	});
 
 	describe("getHost/getSessionToken", () => {

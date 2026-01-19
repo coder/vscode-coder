@@ -90,13 +90,20 @@ describe("ReconnectingWebSocket", () => {
 					);
 				});
 
-				await expect(
-					ReconnectingWebSocket.create(factory, createMockLogger()),
-				).rejects.toThrow(`Unexpected server response: ${statusCode}`);
+				// create() returns a disconnected instance instead of throwing
+				const ws = await ReconnectingWebSocket.create(
+					factory,
+					createMockLogger(),
+				);
+
+				// Should be disconnected after unrecoverable HTTP error
+				expect(ws.isDisconnected).toBe(true);
 
 				// Should not retry after unrecoverable HTTP error
 				await vi.advanceTimersByTimeAsync(10000);
 				expect(socketCreationAttempts).toBe(1);
+
+				ws.close();
 			},
 		);
 

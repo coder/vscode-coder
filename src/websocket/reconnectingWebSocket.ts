@@ -53,6 +53,7 @@ export class ReconnectingWebSocket<
 	#isDisposed = false; // Permanent disposal, cannot be resumed
 	#isConnecting = false;
 	#pendingReconnect = false;
+	#certRefreshAttempted = false; // Tracks if cert refresh was already attempted this connection cycle
 	readonly #onDispose?: () => void;
 
 	private constructor(
@@ -86,43 +87,21 @@ export class ReconnectingWebSocket<
 			onDispose,
 		);
 
-		try {
-			await instance.connect();
-		} catch (error) {
-			const certError = ClientCertificateError.fromError(error);
-			if (!certError) {
-				throw error;
-			}
-
-			const refreshed = await instance.handleClientCertificateError(certError);
-			if (refreshed) {
-				try {
-					await instance.connect();
-					return instance;
-				} catch (retryError) {
-					// Check if still a cert error after refresh
-					const retryCertError = ClientCertificateError.fromError(retryError);
-					if (retryCertError) {
-						void retryCertError.showNotification();
-					} else {
-						instance.#logger.error(
-							"Connection failed after certificate refresh",
-							retryError,
-						);
-					}
-				}
-			}
-
-			// Either refresh failed or retry failed - return disconnected instance
-			instance.disconnect();
-			return instance;
-		}
-
+		// connect() handles all errors internally
+		await instance.connect();
 		return instance;
 	}
 
 	get url(): string {
 		return this.#currentSocket?.url ?? "";
+	}
+
+	/**
+	 * Returns true if the socket is temporarily disconnected and not attempting to reconnect.
+	 * Use reconnect() to resume.
+	 */
+	get isDisconnected(): boolean {
+		return this.#isDisconnected;
 	}
 
 	/**
@@ -160,6 +139,7 @@ export class ReconnectingWebSocket<
 		if (this.#isDisconnected) {
 			this.#isDisconnected = false;
 			this.#backoffMs = this.#options.initialBackoffMs;
+			this.#certRefreshAttempted = false; // User-initiated reconnect, allow retry
 		}
 
 		if (this.#isDisposed) {
@@ -171,14 +151,13 @@ export class ReconnectingWebSocket<
 			this.#reconnectTimeoutId = null;
 		}
 
-		// If already connecting, schedule reconnect after current attempt
 		if (this.#isConnecting) {
 			this.#pendingReconnect = true;
 			return;
 		}
 
-		// connect() will close any existing socket
-		this.connect().catch((error) => this.handleConnectionError(error));
+		// connect() handles all errors internally
+		void this.connect();
 	}
 
 	/**
@@ -239,6 +218,7 @@ export class ReconnectingWebSocket<
 
 			socket.addEventListener("open", (event) => {
 				this.#backoffMs = this.#options.initialBackoffMs;
+				this.#certRefreshAttempted = false; // Reset on successful connection
 				this.executeHandlers("open", event);
 			});
 
@@ -248,17 +228,11 @@ export class ReconnectingWebSocket<
 
 			socket.addEventListener("error", (event) => {
 				this.executeHandlers("error", event);
-
-				// Check for unrecoverable HTTP errors in the error event
-				// HTTP errors during handshake fire 'error' then 'close' with 1006
-				// We need to suspend here to prevent infinite reconnect loops
-				const errorMessage = toError(event.error, event.message).message;
-				if (this.isUnrecoverableHttpError(errorMessage)) {
-					this.#logger.error(
-						`Unrecoverable HTTP error for ${this.#route}: ${errorMessage}`,
-					);
-					this.disconnect();
-				}
+				// Errors during initial connection are caught by the factory (waitForOpen).
+				// This handler is for errors AFTER successful connection.
+				// Route through handleConnectionError for consistent handling.
+				const error = toError(event.error, event.message);
+				void this.handleConnectionError(error);
 			});
 
 			socket.addEventListener("close", (event) => {
@@ -272,19 +246,18 @@ export class ReconnectingWebSocket<
 					this.#logger.error(
 						`WebSocket connection closed with unrecoverable error code ${event.code}`,
 					);
-					// Suspend instead of dispose - allows recovery when credentials change
 					this.disconnect();
 					return;
 				}
 
-				// Don't reconnect on normal closure
 				if (NORMAL_CLOSURE_CODES.has(event.code)) {
 					return;
 				}
 
-				// Reconnect on abnormal closures (e.g., 1006) or other unexpected codes
 				this.scheduleReconnect();
 			});
+		} catch (error) {
+			await this.handleConnectionError(error);
 		} finally {
 			this.#isConnecting = false;
 
@@ -314,7 +287,8 @@ export class ReconnectingWebSocket<
 
 		this.#reconnectTimeoutId = setTimeout(() => {
 			this.#reconnectTimeoutId = null;
-			this.connect().catch((error) => this.handleConnectionError(error));
+			// connect() handles all errors internally
+			void this.connect();
 		}, delayMs);
 
 		this.#backoffMs = Math.min(this.#backoffMs * 2, this.#options.maxBackoffMs);
@@ -343,7 +317,15 @@ export class ReconnectingWebSocket<
 	private async handleClientCertificateError(
 		certError: ClientCertificateError,
 	): Promise<boolean> {
+		// Only attempt refresh once per connection cycle
+		if (this.#certRefreshAttempted) {
+			this.#logger.warn("Certificate refresh already attempted, not retrying");
+			void certError.showNotification();
+			return false;
+		}
+
 		if (certError.isRefreshable) {
+			this.#certRefreshAttempted = true; // Mark that we're attempting
 			this.#logger.info(
 				`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
 			);

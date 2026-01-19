@@ -93,7 +93,7 @@
 					"default": ""
 				},
 				"coder.tlsCertRefreshCommand": {
-					"markdownDescription": "Command to run when TLS client certificates expire (e.g., `metatron refresh`). If configured, the extension will automatically execute this command and retry failed requests. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
+					"markdownDescription": "Command to run when TLS client certificate errors occur (e.g., expired, revoked, or rejected certificates). If configured, the extension will automatically execute this command and retry failed requests. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
 					"type": "string",
 					"default": ""
 				},
