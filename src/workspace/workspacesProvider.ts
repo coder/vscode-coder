@@ -44,6 +44,7 @@ export class WorkspaceProvider
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
 	private visible = false;
+	private disposed = false;
 
 	constructor(
 		private readonly getWorkspacesQuery: WorkspaceQuery,
@@ -60,7 +61,7 @@ export class WorkspaceProvider
 	// Calling this while already refreshing or not visible is a no-op and will
 	// return immediately.
 	public async fetchAndRefresh() {
-		if (this.fetching || !this.visible) {
+		if (this.disposed || this.fetching || !this.visible) {
 			return;
 		}
 		this.fetching = true;
@@ -177,6 +178,9 @@ export class WorkspaceProvider
 	 * If we have never fetched workspaces and are visible, fetch immediately.
 	 */
 	public setVisibility(visible: boolean) {
+		if (this.disposed) {
+			return;
+		}
 		this.visible = visible;
 		if (!visible) {
 			this.cancelPendingRefresh();
@@ -214,7 +218,10 @@ export class WorkspaceProvider
 	> = this._onDidChangeTreeData.event;
 
 	// refresh causes the tree to re-render. It does not fetch fresh workspaces.
-	refresh(item?: vscode.TreeItem): void {
+	public refresh(item?: vscode.TreeItem): void {
+		if (this.disposed) {
+			return;
+		}
 		this._onDidChangeTreeData.fire(item);
 	}
 
@@ -305,11 +312,12 @@ export class WorkspaceProvider
 			watcher.dispose();
 		}
 		this.agentWatchers.clear();
-		this.workspaces = [];
+		this.workspaces = undefined;
 		this.refresh();
 	}
 
 	public dispose() {
+		this.disposed = true;
 		this.clear();
 	}
 }

@@ -194,7 +194,7 @@ export class DeploymentManager implements vscode.Disposable {
 				}
 
 				if (auth) {
-					if (this.contextManager.get("coder.authenticated")) {
+					if (this.isAuthenticated()) {
 						this.client.setCredentials(auth.url, auth.token);
 					} else {
 						this.logger.debug(
