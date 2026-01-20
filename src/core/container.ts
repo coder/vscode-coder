@@ -22,10 +22,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly contextManager: ContextManager;
 	private readonly loginCoordinator: LoginCoordinator;
 
-	constructor(
-		context: vscode.ExtensionContext,
-		private readonly vscodeProposed: typeof vscode = vscode,
-	) {
+	constructor(context: vscode.ExtensionContext) {
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
@@ -37,23 +34,14 @@ export class ServiceContainer implements vscode.Disposable {
 			context.globalState,
 			this.logger,
 		);
-		this.cliManager = new CliManager(
-			this.vscodeProposed,
-			this.logger,
-			this.pathResolver,
-		);
+		this.cliManager = new CliManager(this.logger, this.pathResolver);
 		this.contextManager = new ContextManager(context);
 		this.loginCoordinator = new LoginCoordinator(
 			this.secretsManager,
 			this.mementoManager,
-			this.vscodeProposed,
 			this.logger,
 			context.extension.id,
 		);
-	}
-
-	getVsCodeProposed(): typeof vscode {
-		return this.vscodeProposed;
 	}
 
 	getPathResolver(): PathResolver {

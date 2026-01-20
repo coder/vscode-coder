@@ -3,6 +3,7 @@ import * as lockfile from "proper-lockfile";
 import * as vscode from "vscode";
 
 import { type Logger } from "../logging/logger";
+import { vscodeProposed } from "../vscodeProposed";
 
 import * as downloadProgress from "./downloadProgress";
 
@@ -21,10 +22,7 @@ type LockRelease = () => Promise<void>;
  * VS Code windows downloading the same binary.
  */
 export class BinaryLock {
-	constructor(
-		private readonly vscodeProposed: typeof vscode,
-		private readonly output: Logger,
-	) {}
+	constructor(private readonly output: Logger) {}
 
 	/**
 	 * Acquire the lock, or wait for another process if the lock is held.
@@ -78,7 +76,7 @@ export class BinaryLock {
 		binPath: string,
 		progressLogPath: string,
 	): Promise<LockRelease> {
-		return await this.vscodeProposed.window.withProgress(
+		return await vscodeProposed.window.withProgress(
 			{
 				location: vscode.ProgressLocation.Notification,
 				title: "Another window is downloading the Coder CLI binary",

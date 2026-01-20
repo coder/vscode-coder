@@ -11,6 +11,10 @@ import {
 
 vi.mock("vscode");
 
+vi.mock("@/vscodeProposed", () => ({
+	vscodeProposed: vscode,
+}));
+
 // Mock proper-lockfile
 vi.mock("proper-lockfile", () => ({
 	lock: vi.fn(),
@@ -41,7 +45,7 @@ describe("BinaryLock", () => {
 		mockProgress = new MockProgressReporter();
 		mockRelease = vi.fn().mockResolvedValue(undefined);
 
-		binaryLock = new BinaryLock(vscode, mockLogger);
+		binaryLock = new BinaryLock(mockLogger);
 	});
 
 	describe("acquireLockOrWait", () => {

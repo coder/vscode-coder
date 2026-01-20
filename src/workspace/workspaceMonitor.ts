@@ -9,6 +9,7 @@ import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
 import { type CoderApi } from "../api/coderApi";
 import { type ContextManager } from "../core/contextManager";
 import { type Logger } from "../logging/logger";
+import { vscodeProposed } from "../vscodeProposed";
 import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 /**
@@ -41,8 +42,6 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		workspace: Workspace,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
-		// We use the proposed API to get access to useCustom in dialogs.
-		private readonly vscodeProposed: typeof vscode,
 		private readonly contextManager: ContextManager,
 	) {
 		this.name = createWorkspaceIdentifier(workspace);
@@ -69,14 +68,12 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		workspace: Workspace,
 		client: CoderApi,
 		logger: Logger,
-		vscodeProposed: typeof vscode,
 		contextManager: ContextManager,
 	): Promise<WorkspaceMonitor> {
 		const monitor = new WorkspaceMonitor(
 			workspace,
 			client,
 			logger,
-			vscodeProposed,
 			contextManager,
 		);
 
@@ -181,7 +178,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			workspace.latest_build.status !== "running"
 		) {
 			this.notifiedNotRunning = true;
-			this.vscodeProposed.window
+			vscodeProposed.window
 				.showInformationMessage(
 					`${this.name} is no longer running!`,
 					{

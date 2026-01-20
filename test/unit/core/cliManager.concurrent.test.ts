@@ -25,6 +25,11 @@ import {
 } from "../../mocks/testHelpers";
 
 vi.mock("@/pgp");
+
+vi.mock("@/vscodeProposed", () => ({
+	vscodeProposed: vscode,
+}));
+
 vi.mock("@/core/cliUtils", async () => {
 	const actual = await vi.importActual<typeof cliUtils>("@/core/cliUtils");
 	return {
@@ -75,7 +80,6 @@ function setupManager(testDir: string): CliManager {
 	mockConfig.set("coder.disableSignatureVerification", true);
 
 	return new CliManager(
-		vscode,
 		createMockLogger(),
 		new PathResolver(testDir, "/code/log"),
 	);

@@ -6,6 +6,7 @@ import {
 } from "../api/workspace";
 import { maybeAskAgent } from "../promptUtils";
 import { type AuthorityParts } from "../util";
+import { vscodeProposed } from "../vscodeProposed";
 
 import { TerminalSession } from "./terminalSession";
 
@@ -44,7 +45,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		private readonly featureSet: FeatureSet,
 		private readonly logger: Logger,
 		private readonly pathResolver: PathResolver,
-		private readonly vscodeProposed: typeof vscode,
 	) {
 		this.terminal = new TerminalSession("Workspace Build");
 	}
@@ -231,7 +231,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	}
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
-		const action = await this.vscodeProposed.window.showInformationMessage(
+		const action = await vscodeProposed.window.showInformationMessage(
 			`Unable to connect to the workspace ${workspaceName} because it is not running. Start the workspace?`,
 			{
 				useCustom: true,

@@ -43,6 +43,7 @@ import {
 	expandPath,
 	parseRemoteAuthority,
 } from "../util";
+import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 import {
@@ -62,8 +63,6 @@ export interface RemoteDetails extends vscode.Disposable {
 }
 
 export class Remote {
-	// We use the proposed API to get access to useCustom in dialogs.
-	private readonly vscodeProposed: typeof vscode;
 	private readonly logger: Logger;
 	private readonly pathResolver: PathResolver;
 	private readonly cliManager: CliManager;
@@ -76,7 +75,6 @@ export class Remote {
 		private readonly commands: Commands,
 		private readonly extensionContext: vscode.ExtensionContext,
 	) {
-		this.vscodeProposed = serviceContainer.getVsCodeProposed();
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.cliManager = serviceContainer.getCliManager();
@@ -257,7 +255,7 @@ export class Remote {
 
 			// Server versions before v0.14.1 don't support the vscodessh command!
 			if (!featureSet.vscodessh) {
-				await this.vscodeProposed.window.showErrorMessage(
+				await vscodeProposed.window.showErrorMessage(
 					"Incompatible Server",
 					{
 						detail:
@@ -293,16 +291,15 @@ export class Remote {
 				}
 				switch (error.response?.status) {
 					case 404: {
-						const result =
-							await this.vscodeProposed.window.showInformationMessage(
-								`That workspace doesn't exist!`,
-								{
-									modal: true,
-									detail: `${workspaceName} cannot be found on ${baseUrlRaw}. Maybe it was deleted...`,
-									useCustom: true,
-								},
-								"Open Workspace",
-							);
+						const result = await vscodeProposed.window.showInformationMessage(
+							`That workspace doesn't exist!`,
+							{
+								modal: true,
+								detail: `${workspaceName} cannot be found on ${baseUrlRaw}. Maybe it was deleted...`,
+								useCustom: true,
+							},
+							"Open Workspace",
+						);
 						disposables.forEach((d) => {
 							d.dispose();
 						});
@@ -334,7 +331,6 @@ export class Remote {
 				workspace,
 				workspaceClient,
 				this.logger,
-				this.vscodeProposed,
 				this.contextManager,
 			);
 			disposables.push(
@@ -351,12 +347,11 @@ export class Remote {
 				featureSet,
 				this.logger,
 				this.pathResolver,
-				this.vscodeProposed,
 			);
 			disposables.push(stateMachine);
 
 			try {
-				workspace = await this.vscodeProposed.window.withProgress(
+				workspace = await vscodeProposed.window.withProgress(
 					{
 						location: vscode.ProgressLocation.Notification,
 						cancellable: false,
@@ -431,10 +426,10 @@ export class Remote {
 
 			// Do some janky setting manipulation.
 			this.logger.info("Modifying settings...");
-			const remotePlatforms = this.vscodeProposed.workspace
+			const remotePlatforms = vscodeProposed.workspace
 				.getConfiguration()
 				.get<Record<string, string>>("remote.SSH.remotePlatform", {});
-			const connTimeout = this.vscodeProposed.workspace
+			const connTimeout = vscodeProposed.workspace
 				.getConfiguration()
 				.get<number | undefined>("remote.SSH.connectTimeout");
 
@@ -864,7 +859,7 @@ export class Remote {
 				continue;
 			}
 
-			const result = await this.vscodeProposed.window.showErrorMessage(
+			const result = await vscodeProposed.window.showErrorMessage(
 				"Unexpected SSH Config Option",
 				{
 					useCustom: true,
@@ -986,7 +981,7 @@ export class Remote {
 		}
 		// VS Code caches resource label formatters in it's global storage SQLite database
 		// under the key "memento/cachedResourceLabelFormatters2".
-		return this.vscodeProposed.workspace.registerResourceLabelFormatter({
+		return vscodeProposed.workspace.registerResourceLabelFormatter({
 			scheme: "vscode-remote",
 			// authority is optional but VS Code prefers formatters that most
 			// accurately match the requested authority, so we include it.

@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import { vscodeProposed } from "../vscodeProposed";
 
 /**
  * Base class for certificate-related errors that can display notifications to users.
@@ -23,7 +23,7 @@ export abstract class CertificateError extends Error {
 		const message =
 			!modal && title ? `${title}: ${this.detail}` : title || this.detail;
 
-		return await vscode.window.showErrorMessage(
+		return await vscodeProposed.window.showErrorMessage(
 			message,
 			{ modal, useCustom: modal, detail: this.detail },
 			...(items ?? []),
