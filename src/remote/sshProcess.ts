@@ -40,7 +40,11 @@ export interface SshProcessMonitorOptions {
 }
 
 // 1 hour cleanup threshold for old network info files
-const CLEANUP_MAX_AGE_MS = 60 * 60 * 1000;
+const CLEANUP_NETWORK_MAX_AGE_MS = 60 * 60 * 1000;
+// 7 day cleanup threshold for old proxy log files
+const CLEANUP_LOG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// Maximum number of proxy log files to keep during cleanup
+const CLEANUP_MAX_LOG_FILES = 20;
 
 /**
  * Monitors the SSH process for a Coder workspace connection and displays
@@ -117,6 +121,61 @@ export class SshProcessMonitor implements vscode.Disposable {
 		}
 	}
 
+	/**
+	 * Cleans up old proxy log files when there are too many.
+	 * Deletes oldest stale files (by mtime) until count <= maxFilesToKeep.
+	 */
+	private static async cleanupOldLogFiles(
+		logDir: string,
+		maxFilesToKeep: number,
+		maxAgeMs: number,
+		logger: Logger,
+	): Promise<void> {
+		try {
+			const now = Date.now();
+			const files = await fs.readdir(logDir);
+
+			const withStats = await Promise.all(
+				files
+					.filter((f) => f.startsWith("coder-ssh") && f.endsWith(".log"))
+					.map(async (name) => {
+						try {
+							const stats = await fs.stat(path.join(logDir, name));
+							return { name, mtime: stats.mtime.getTime() };
+						} catch {
+							return null;
+						}
+					}),
+			);
+
+			const toDelete = withStats
+				.filter((f) => f !== null)
+				.sort((a, b) => a.mtime - b.mtime) // oldest first
+				.slice(0, -maxFilesToKeep) // keep the newest maxFilesToKeep
+				.filter((f) => now - f.mtime > maxAgeMs); // only delete stale files
+
+			const deletedFiles: string[] = [];
+			for (const file of toDelete) {
+				try {
+					await fs.unlink(path.join(logDir, file.name));
+					deletedFiles.push(file.name);
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+						logger.debug(`Failed to clean up log file ${file.name}`, error);
+					}
+				}
+			}
+
+			if (deletedFiles.length > 0) {
+				logger.debug(
+					`Cleaned up ${deletedFiles.length} old log file(s): ${deletedFiles.join(", ")}`,
+				);
+			}
+		} catch {
+			// Directory may not exist yet, ignore
+		}
+	}
+
 	private constructor(options: SshProcessMonitorOptions) {
 		this.options = {
 			...options,
@@ -142,11 +201,23 @@ export class SshProcessMonitor implements vscode.Disposable {
 		// Clean up old network info files (non-blocking, fire-and-forget)
 		SshProcessMonitor.cleanupOldNetworkFiles(
 			options.networkInfoPath,
-			CLEANUP_MAX_AGE_MS,
+			CLEANUP_NETWORK_MAX_AGE_MS,
 			options.logger,
 		).catch(() => {
 			// Ignore cleanup errors - they shouldn't affect monitoring
 		});
+
+		// Clean up old proxy log files (combined: count + age threshold)
+		if (options.proxyLogDir) {
+			SshProcessMonitor.cleanupOldLogFiles(
+				options.proxyLogDir,
+				CLEANUP_MAX_LOG_FILES,
+				CLEANUP_LOG_MAX_AGE_MS,
+				options.logger,
+			).catch(() => {
+				// Ignore cleanup errors - they shouldn't affect monitoring
+			});
+		}
 
 		monitor.searchForProcess().catch((err) => {
 			options.logger.error("Error in SSH process monitor", err);

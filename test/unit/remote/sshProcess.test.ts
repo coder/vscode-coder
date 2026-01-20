@@ -424,10 +424,12 @@ describe("SshProcessMonitor", () => {
 	});
 
 	describe("cleanup old network files", () => {
-		const setOldMtime = (filePath: string) => {
-			// Default cleanup is 1 hour; set mtime to 2 hours ago to mark as old
-			const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
-			vol.utimesSync(filePath, TWO_HOURS_AGO / 1000, TWO_HOURS_AGO / 1000);
+		// Network cleanup: 1 hour threshold
+		const NETWORK_MAX_AGE_MS = 60 * 60 * 1000;
+
+		const setMtimeAgo = (filePath: string, ageMs: number) => {
+			const mtime = (Date.now() - ageMs) / 1000;
+			vol.utimesSync(filePath, mtime, mtime);
 		};
 
 		it("deletes old .json files but preserves recent and non-.json files", async () => {
@@ -438,8 +440,8 @@ describe("SshProcessMonitor", () => {
 				"/network/recent.json": "{}",
 				"/network/old.log": "{}",
 			});
-			setOldMtime("/network/old.json");
-			setOldMtime("/network/old.log");
+			setMtimeAgo("/network/old.json", NETWORK_MAX_AGE_MS * 2);
+			setMtimeAgo("/network/old.log", NETWORK_MAX_AGE_MS * 2);
 
 			createMonitor({
 				codeLogDir: "/logs/window1",
@@ -472,6 +474,122 @@ describe("SshProcessMonitor", () => {
 				createMonitor({
 					codeLogDir: "/logs/window1",
 					networkInfoPath: "/empty-network",
+				}),
+			).not.toThrow();
+		});
+	});
+
+	describe("cleanup proxy log files", () => {
+		// Proxy log cleanup: 7 day threshold, 20 files max
+		const LOG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+		const LOG_MAX_FILES = 20;
+
+		const setMtimeAgo = (filePath: string, ageMs: number) => {
+			const mtime = (Date.now() - ageMs) / 1000;
+			vol.utimesSync(filePath, mtime, mtime);
+		};
+
+		const logFileName = (i: number) =>
+			`coder-ssh-${i.toString().padStart(2, "0")}.log`;
+
+		const setupTest = (total: number, stale: number): string[] => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+			});
+			vol.mkdirSync("/proxy-logs", { recursive: true });
+
+			const files = Array.from({ length: total }, (_, i) => logFileName(i + 1));
+			for (const name of files) {
+				vol.writeFileSync(`/proxy-logs/${name}`, "");
+			}
+			for (let i = 0; i < stale; i++) {
+				setMtimeAgo(`/proxy-logs/${files[i]}`, LOG_MAX_AGE_MS * 2);
+			}
+			return files;
+		};
+
+		interface StaleLogTestCase {
+			total: number;
+			stale: number;
+			expected: number;
+			desc: string;
+		}
+
+		it.each<StaleLogTestCase>([
+			{ total: 25, stale: 8, expected: 20, desc: "Deletes until limit" },
+			{ total: 25, stale: 3, expected: 22, desc: "Only deletes stale" },
+			{ total: 25, stale: 0, expected: 25, desc: "Keeps recent files" },
+			{ total: 15, stale: 5, expected: 15, desc: "Keeps under limit" },
+		])(
+			"$desc: $total files, $stale stale → $expected remaining",
+			async ({ total, stale, expected }) => {
+				setupTest(total, stale);
+
+				createMonitor({
+					codeLogDir: "/logs/window1",
+					proxyLogDir: "/proxy-logs",
+				});
+
+				await vi.waitFor(() => {
+					expect(vol.readdirSync("/proxy-logs")).toHaveLength(expected);
+				});
+			},
+		);
+
+		it("only matches coder-ssh*.log files", async () => {
+			const files = setupTest(25, 25);
+			// Add non-matching files
+			const nonMatchingFiles = [
+				"other.log",
+				"coder-ssh-config.json",
+				"readme.txt",
+			];
+			for (const f of nonMatchingFiles) {
+				const filePath = `/proxy-logs/${f}`;
+				vol.writeFileSync(filePath, "");
+				setMtimeAgo(filePath, LOG_MAX_AGE_MS * 2);
+			}
+
+			createMonitor({
+				codeLogDir: "/logs/window1",
+				proxyLogDir: "/proxy-logs",
+			});
+
+			await vi.waitFor(() => {
+				expect(vol.readdirSync("/proxy-logs")).toHaveLength(
+					LOG_MAX_FILES + nonMatchingFiles.length,
+				);
+			});
+
+			const remaining = vol.readdirSync("/proxy-logs") as string[];
+			// Non-matching files preserved
+			expect(remaining).toContain("other.log");
+			expect(remaining).toContain("coder-ssh-config.json");
+			expect(remaining).toContain("readme.txt");
+			// Oldest matching files deleted
+			expect(remaining).not.toContain(files[0]);
+			expect(remaining).toContain(files[24]);
+		});
+
+		it("does not throw when proxy log directory is missing or empty", () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+			});
+			vol.mkdirSync("/empty-proxy-logs", { recursive: true });
+
+			expect(() =>
+				createMonitor({
+					codeLogDir: "/logs/window1",
+					proxyLogDir: "/nonexistent-proxy-logs",
+				}),
+			).not.toThrow();
+
+			expect(() =>
+				createMonitor({
+					codeLogDir: "/logs/window1",
+					proxyLogDir: "/empty-proxy-logs",
 				}),
 			).not.toThrow();
 		});
