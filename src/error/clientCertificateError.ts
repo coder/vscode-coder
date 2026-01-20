@@ -37,14 +37,20 @@ export const CLIENT_CERT_MESSAGES: Record<CLIENT_CERT_ALERT, string> = {
 };
 
 /**
+ * Type guard to filter out reverse mappings from TypeScript numeric enums.
+ */
+function isNumericEnumEntry(
+	entry: [string, string | CLIENT_CERT_ALERT],
+): entry is [string, CLIENT_CERT_ALERT] {
+	return typeof entry[1] === "number";
+}
+
+/**
  * Patterns to match SSL alert types in error messages (case-insensitive).
  */
 const ALERT_PATTERNS: ReadonlyArray<[string, CLIENT_CERT_ALERT]> =
 	Object.entries(CLIENT_CERT_ALERT)
-		.filter(
-			(entry): entry is [string, CLIENT_CERT_ALERT] =>
-				typeof entry[1] === "number",
-		)
+		.filter(isNumericEnumEntry)
 		.map(([name, code]) => [name.toLowerCase(), code]);
 
 /**

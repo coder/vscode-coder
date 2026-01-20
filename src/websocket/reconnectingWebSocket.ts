@@ -24,7 +24,7 @@ export interface ReconnectingWebSocketOptions {
 	maxBackoffMs?: number;
 	jitterFactor?: number;
 	/** Callback invoked when a refreshable certificate error is detected. Returns true if refresh succeeded. */
-	onCertificateExpired?: () => Promise<boolean>;
+	onCertificateRefreshNeeded: () => Promise<boolean>;
 }
 
 export class ReconnectingWebSocket<
@@ -32,10 +32,7 @@ export class ReconnectingWebSocket<
 > implements UnidirectionalStream<TData> {
 	readonly #socketFactory: SocketFactory<TData>;
 	readonly #logger: Logger;
-	readonly #options: Required<
-		Omit<ReconnectingWebSocketOptions, "onCertificateExpired">
-	> &
-		Pick<ReconnectingWebSocketOptions, "onCertificateExpired">;
+	readonly #options: Required<ReconnectingWebSocketOptions>;
 	readonly #eventHandlers: {
 		[K in WebSocketEventType]: Set<EventHandler<TData, K>>;
 	} = {
@@ -59,7 +56,7 @@ export class ReconnectingWebSocket<
 	private constructor(
 		socketFactory: SocketFactory<TData>,
 		logger: Logger,
-		options: ReconnectingWebSocketOptions = {},
+		options: ReconnectingWebSocketOptions,
 		onDispose?: () => void,
 	) {
 		this.#socketFactory = socketFactory;
@@ -68,7 +65,7 @@ export class ReconnectingWebSocket<
 			initialBackoffMs: options.initialBackoffMs ?? 250,
 			maxBackoffMs: options.maxBackoffMs ?? 30000,
 			jitterFactor: options.jitterFactor ?? 0.1,
-			onCertificateExpired: options.onCertificateExpired,
+			onCertificateRefreshNeeded: options.onCertificateRefreshNeeded,
 		};
 		this.#backoffMs = this.#options.initialBackoffMs;
 		this.#onDispose = onDispose;
@@ -77,7 +74,7 @@ export class ReconnectingWebSocket<
 	static async create<TData>(
 		socketFactory: SocketFactory<TData>,
 		logger: Logger,
-		options: ReconnectingWebSocketOptions = {},
+		options: ReconnectingWebSocketOptions,
 		onDispose?: () => void,
 	): Promise<ReconnectingWebSocket<TData>> {
 		const instance = new ReconnectingWebSocket<TData>(
@@ -296,14 +293,10 @@ export class ReconnectingWebSocket<
 
 	/**
 	 * Attempt to refresh certificates and return true if refresh succeeded.
-	 * Returns false if no callback configured or refresh failed.
 	 */
 	private async attemptCertificateRefresh(): Promise<boolean> {
-		if (!this.#options.onCertificateExpired) {
-			return false;
-		}
 		try {
-			return await this.#options.onCertificateExpired();
+			return await this.#options.onCertificateRefreshNeeded();
 		} catch (refreshError) {
 			this.#logger.error("Error during certificate refresh:", refreshError);
 			return false;

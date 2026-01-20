@@ -448,7 +448,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 			socketFactory,
 			this.output,
 			{
-				onCertificateExpired: async () => {
+				onCertificateRefreshNeeded: async () => {
 					const refreshCommand = getRefreshCommand();
 					if (!refreshCommand) {
 						return false;
@@ -500,35 +500,33 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 		async (err: unknown) => {
 			const refreshCommand = getRefreshCommand();
 			const certError = ClientCertificateError.fromError(err);
-			if (certError) {
-				if (certError.isRefreshable && refreshCommand) {
-					const config = (
-						err as {
-							config?: RequestConfigWithMeta & {
-								_certRetried?: boolean;
-							};
-						}
-					).config;
+			if (certError && certError.isRefreshable && refreshCommand) {
+				const config = (
+					err as {
+						config?: RequestConfigWithMeta & {
+							_certRetried?: boolean;
+						};
+					}
+				).config;
 
-					if (config && !config._certRetried) {
-						config._certRetried = true;
+				if (config && !config._certRetried) {
+					config._certRetried = true;
 
-						output.info(
-							`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
+					output.info(
+						`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
+					);
+					const success = await refreshCertificates(refreshCommand, output);
+					if (success) {
+						// Create new agent with refreshed certificates.
+						const agent = await createHttpAgent(
+							vscode.workspace.getConfiguration(),
 						);
-						const success = await refreshCertificates(refreshCommand, output);
-						if (success) {
-							// Create new agent with refreshed certificates.
-							const agent = await createHttpAgent(
-								vscode.workspace.getConfiguration(),
-							);
-							config.httpsAgent = agent;
-							config.httpAgent = agent;
+						config.httpsAgent = agent;
+						config.httpAgent = agent;
 
-							// Retry the request.
-							output.info("Retrying request with refreshed certificates...");
-							return client.getAxiosInstance().request(config);
-						}
+						// Retry the request.
+						output.info("Retrying request with refreshed certificates...");
+						return client.getAxiosInstance().request(config);
 					}
 				}
 

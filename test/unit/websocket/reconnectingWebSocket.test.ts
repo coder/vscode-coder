@@ -94,6 +94,7 @@ describe("ReconnectingWebSocket", () => {
 				const ws = await ReconnectingWebSocket.create(
 					factory,
 					createMockLogger(),
+					{ onCertificateRefreshNeeded: () => Promise.resolve(false) },
 				);
 
 				// Should be disconnected after unrecoverable HTTP error
@@ -627,7 +628,7 @@ async function fromFactory<T>(
 	return await ReconnectingWebSocket.create(
 		factory,
 		createMockLogger(),
-		undefined,
+		{ onCertificateRefreshNeeded: () => Promise.resolve(false) },
 		onDispose,
 	);
 }
