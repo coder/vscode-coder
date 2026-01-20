@@ -71,17 +71,25 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const deployment = await secretsManager.getCurrentDeployment();
 
 	// Shared handler for auth failures (used by interceptor + session manager)
-	const handleAuthFailure = async (): Promise<void> => {
+	const handleAuthFailure = (): Promise<void> => {
 		deploymentManager.suspendSession();
-		const action = await vscode.window.showWarningMessage(
-			"Session expired. You have been signed out.",
-			"Log In",
-		);
-		if (action === "Log In") {
-			await commands.login({
-				url: deploymentManager.getCurrentDeployment()?.url,
+		vscode.window
+			.showWarningMessage(
+				"Session expired. You have been signed out.",
+				"Log In",
+			)
+			.then(async (action) => {
+				if (action === "Log In") {
+					try {
+						await commands.login({
+							url: deploymentManager.getCurrentDeployment()?.url,
+						});
+					} catch (err) {
+						output.error("Login failed", err);
+					}
+				}
 			});
-		}
+		return Promise.resolve();
 	};
 
 	// Create OAuth session manager - callback handles background refresh failures
