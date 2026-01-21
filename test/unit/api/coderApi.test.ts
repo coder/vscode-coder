@@ -10,8 +10,13 @@ import { ProxyAgent } from "proxy-agent";
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import Ws from "ws";
 
+import {
+	getRefreshCommand,
+	refreshCertificates,
+} from "@/api/certificateRefresh";
 import { CoderApi } from "@/api/coderApi";
 import { createHttpAgent } from "@/api/utils";
+import { ClientCertificateError } from "@/error/clientCertificateError";
 import { ServerCertificateError } from "@/error/serverCertificateError";
 import { getHeaders } from "@/headers";
 import { type RequestConfigWithMeta } from "@/logging/types";
@@ -61,6 +66,11 @@ vi.mock("@/headers", () => ({
 
 vi.mock("@/api/utils", () => ({
 	createHttpAgent: vi.fn(),
+}));
+
+vi.mock("@/api/certificateRefresh", () => ({
+	getRefreshCommand: vi.fn(),
+	refreshCertificates: vi.fn(),
 }));
 
 vi.mock("@/api/streamingFetchAdapter", () => ({
@@ -209,6 +219,129 @@ describe("CoderApi", () => {
 			expect((response.config as RequestConfigWithMeta).rawResponseSize).toBe(
 				15,
 			);
+		});
+
+		describe("certificate refresh and retry", () => {
+			const rejectWithCertError = (
+				config: InternalAxiosRequestConfig,
+				alertType: string,
+			) => {
+				const error = new AxiosError(
+					`ssl alert ${alertType}`,
+					"ERR_TLS_CERT_ALTNAME_INVALID",
+					config,
+					{},
+					undefined,
+				);
+				error.config = config;
+				return Promise.reject(error);
+			};
+
+			const resolveWithData = (
+				config: InternalAxiosRequestConfig,
+				data: unknown,
+			) => {
+				return Promise.resolve({
+					data,
+					status: 200,
+					statusText: "OK",
+					headers: {},
+					config,
+				});
+			};
+
+			it("succeeds after certificate refresh", async () => {
+				let certState: "expired" | "valid" = "expired";
+
+				vi.mocked(getRefreshCommand).mockReturnValue("refresh-command");
+				vi.mocked(refreshCertificates).mockImplementation(() => {
+					certState = "valid";
+					return Promise.resolve(true);
+				});
+
+				mockAdapter.mockImplementation((config) => {
+					if (certState === "expired") {
+						return rejectWithCertError(config, "certificate_expired");
+					}
+					return resolveWithData(config, { user: "test" });
+				});
+
+				const api = createApi();
+				const response = await api.getAxiosInstance().get("/api/v2/users/me");
+
+				expect(response.data).toEqual({ user: "test" });
+			});
+
+			it("fails with ClientCertificateError when refresh fails", async () => {
+				vi.mocked(getRefreshCommand).mockReturnValue("refresh-command");
+				vi.mocked(refreshCertificates).mockResolvedValue(false);
+
+				mockAdapter.mockImplementation((config) =>
+					rejectWithCertError(config, "certificate_expired"),
+				);
+
+				const api = createApi();
+				const error = await api
+					.getAxiosInstance()
+					.get("/api/v2/users/me")
+					.catch((e) => e);
+
+				expect(error).toBeInstanceOf(ClientCertificateError);
+			});
+
+			it("fails with ClientCertificateError when no refresh command configured", async () => {
+				vi.mocked(getRefreshCommand).mockReturnValue(undefined);
+
+				mockAdapter.mockImplementation((config) =>
+					rejectWithCertError(config, "certificate_expired"),
+				);
+
+				const api = createApi();
+				const error = await api
+					.getAxiosInstance()
+					.get("/api/v2/users/me")
+					.catch((e) => e);
+
+				expect(error).toBeInstanceOf(ClientCertificateError);
+			});
+
+			it.each(["unknown_ca", "unsupported_certificate", "access_denied"])(
+				"fails with ClientCertificateError for non-refreshable error: %s",
+				async (alertType) => {
+					vi.mocked(getRefreshCommand).mockReturnValue("refresh-command");
+					vi.mocked(refreshCertificates).mockResolvedValue(true);
+
+					mockAdapter.mockImplementation((config) =>
+						rejectWithCertError(config, alertType),
+					);
+
+					const api = createApi();
+					const error = await api
+						.getAxiosInstance()
+						.get("/api/v2/users/me")
+						.catch((e) => e);
+
+					expect(error).toBeInstanceOf(ClientCertificateError);
+					expect(refreshCertificates).not.toHaveBeenCalled();
+				},
+			);
+
+			it("fails after single retry when certificate keeps expiring", async () => {
+				vi.mocked(getRefreshCommand).mockReturnValue("refresh-command");
+				vi.mocked(refreshCertificates).mockResolvedValue(true);
+
+				mockAdapter.mockImplementation((config) =>
+					rejectWithCertError(config, "certificate_expired"),
+				);
+
+				const api = createApi();
+				const error = await api
+					.getAxiosInstance()
+					.get("/api/v2/users/me")
+					.catch((e) => e);
+
+				expect(error).toBeInstanceOf(ClientCertificateError);
+			});
 		});
 	});
 

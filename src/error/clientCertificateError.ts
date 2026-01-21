@@ -55,6 +55,18 @@ const ALERT_PATTERNS: ReadonlyArray<[string, CLIENT_CERT_ALERT]> =
 
 /**
  * Alert codes that may be recoverable by refreshing the certificate.
+ *
+ * Refreshable alerts are those where obtaining/reloading a new certificate
+ * could resolve the issue:
+ * - CERTIFICATE_EXPIRED: Certificate validity period has passed
+ * - CERTIFICATE_REVOKED: Certificate was revoked but a new one may be valid
+ * - BAD_CERTIFICATE: Certificate may be corrupted; reloading may help
+ * - CERTIFICATE_UNKNOWN: Ambiguous rejection; refresh worth attempting
+ *
+ * Non-refreshable alerts require administrator intervention:
+ * - UNSUPPORTED_CERTIFICATE: Server doesn't support the certificate type
+ * - UNKNOWN_CA: CA not in server's trust store (config issue)
+ * - ACCESS_DENIED: Authorization denied (policy issue)
  */
 const REFRESHABLE_ALERTS: ReadonlySet<CLIENT_CERT_ALERT> = new Set([
 	CLIENT_CERT_ALERT.CERTIFICATE_EXPIRED,

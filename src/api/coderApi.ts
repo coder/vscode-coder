@@ -3,6 +3,7 @@ import {
 	type AxiosInstance,
 	type AxiosHeaders,
 	type AxiosResponseTransformer,
+	isAxiosError,
 } from "axios";
 import { Api } from "coder/site/src/api/api";
 import {
@@ -498,39 +499,13 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 	client.getAxiosInstance().interceptors.response.use(
 		(r) => r,
 		async (err: unknown) => {
-			const refreshCommand = getRefreshCommand();
-			const certError = ClientCertificateError.fromError(err);
-			if (certError && certError.isRefreshable && refreshCommand) {
-				const config = (
-					err as {
-						config?: RequestConfigWithMeta & {
-							_certRetried?: boolean;
-						};
-					}
-				).config;
-
-				if (config && !config._certRetried) {
-					config._certRetried = true;
-
-					output.info(
-						`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
-					);
-					const success = await refreshCertificates(refreshCommand, output);
-					if (success) {
-						// Create new agent with refreshed certificates.
-						const agent = await createHttpAgent(
-							vscode.workspace.getConfiguration(),
-						);
-						config.httpsAgent = agent;
-						config.httpAgent = agent;
-
-						// Retry the request.
-						output.info("Retrying request with refreshed certificates...");
-						return client.getAxiosInstance().request(config);
-					}
-				}
-
-				throw certError;
+			const retryResponse = await tryRefreshClientCertificate(
+				err,
+				client.getAxiosInstance(),
+				output,
+			);
+			if (retryResponse) {
+				return retryResponse;
 			}
 
 			// Handle other certificate errors.
@@ -584,6 +559,61 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 			throw error;
 		},
 	);
+}
+
+/**
+ * Attempts to refresh client certificates and retry the request if the error
+ * is a refreshable client certificate error.
+ *
+ * @returns The retry response if refresh succeeds, or undefined if the error
+ *          is not a client certificate error (caller should handle).
+ * @throws {ClientCertificateError} If this is a client certificate error.
+ */
+async function tryRefreshClientCertificate(
+	err: unknown,
+	axiosInstance: AxiosInstance,
+	output: Logger,
+): Promise<unknown> {
+	const certError = ClientCertificateError.fromError(err);
+	if (!certError) {
+		return undefined;
+	}
+
+	const refreshCommand = getRefreshCommand();
+	if (
+		!certError.isRefreshable ||
+		!refreshCommand ||
+		!isAxiosError(err) ||
+		!err.config
+	) {
+		throw certError;
+	}
+
+	// _certRetried is per-request (Axios creates fresh config per request).
+	const config = err.config as RequestConfigWithMeta & {
+		_certRetried?: boolean;
+	};
+	if (config._certRetried) {
+		throw certError;
+	}
+	config._certRetried = true;
+
+	output.info(
+		`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
+	);
+	const success = await refreshCertificates(refreshCommand, output);
+	if (!success) {
+		throw certError;
+	}
+
+	// Create new agent with refreshed certificates.
+	const agent = await createHttpAgent(vscode.workspace.getConfiguration());
+	config.httpsAgent = agent;
+	config.httpAgent = agent;
+
+	// Retry the request.
+	output.info("Retrying request with refreshed certificates...");
+	return axiosInstance.request(config);
 }
 
 function wrapRequestTransform(
