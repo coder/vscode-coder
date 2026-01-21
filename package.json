@@ -122,6 +122,14 @@
 					"type": "boolean",
 					"default": false
 				},
+				"coder.experimental.oauth": {
+					"markdownDescription": "Enable [OAuth 2.1](https://coder.com/docs/admin/integrations/oauth2-provider) authentication. When enabled, you'll be prompted to choose between OAuth and session token authentication during login. OAuth provides automatic token refresh, eliminating the need to manually re-authenticate when your session expires.",
+					"type": "boolean",
+					"default": false,
+					"tags": [
+						"experimental"
+					]
+				},
 				"coder.sshFlags": {
 					"markdownDescription": "Additional flags to pass to the `coder ssh` command when establishing SSH connections. Enter each flag as a separate array item; values are passed verbatim and in order. See the [CLI ssh reference](https://coder.com/docs/reference/cli/ssh) for available flags.\n\nNote: `--network-info-dir` and `--ssh-host-prefix` are ignored (managed internally). Prefer `#coder.proxyLogDirectory#` over `--log-dir`/`-l` for full functionality.",
 					"type": "array",

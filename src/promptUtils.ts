@@ -138,6 +138,14 @@ export async function maybeAskUrl(
 export async function maybeAskAuthMethod(
 	client: CoderApi,
 ): Promise<AuthMethod | undefined> {
+	const experimentalOAuthEnabled = vscode.workspace
+		.getConfiguration("coder")
+		.get<boolean>("experimental.oauth", false);
+
+	if (!experimentalOAuthEnabled) {
+		return "legacy";
+	}
+
 	// Check if server supports OAuth with progress indication
 	const supportsOAuth = await vscode.window.withProgress(
 		{
