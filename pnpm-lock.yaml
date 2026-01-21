@@ -109,7 +109,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: github:coder/coder#main
-        version: https://codeload.github.com/coder/coder/tar.gz/a14a22eb548c9bd1439ed3b178c4e8b999f14205
+        version: https://codeload.github.com/coder/coder/tar.gz/6683d807ac8a2ba372b32e2045f850e51b055cad
       dayjs:
         specifier: ^1.11.19
         version: 1.11.19
@@ -127,10 +127,10 @@ importers:
         version: 10.1.8(eslint@9.39.2)
       eslint-import-resolver-typescript:
         specifier: ^4.4.4
-        version: 4.4.4(eslint-plugin-import-x@4.16.1(@typescript-eslint/utils@8.53.0(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2))(eslint@9.39.2)
+        version: 4.4.4(eslint-plugin-import-x@4.16.1(@typescript-eslint/utils@8.53.1(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2))(eslint@9.39.2)
       eslint-plugin-import-x:
         specifier: ^4.16.1
-        version: 4.16.1(@typescript-eslint/utils@8.53.0(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)
+        version: 4.16.1(@typescript-eslint/utils@8.53.1(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)
       eslint-plugin-package-json:
         specifier: ^0.88.1
         version: 0.88.1(@types/estree@1.0.8)(eslint@9.39.2)(jsonc-eslint-parser@2.4.2)
@@ -142,7 +142,7 @@ importers:
         version: 2.4.2
       memfs:
         specifier: ^4.56.4
-        version: 4.56.4(tslib@2.8.1)
+        version: 4.56.9(tslib@2.8.1)
       prettier:
         specifier: ^3.7.4
         version: 3.7.4
@@ -150,8 +150,8 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.53.0
-        version: 8.53.0(eslint@9.39.2)(typescript@5.9.3)
+        specifier: ^8.53.1
+        version: 8.53.1(eslint@9.39.2)(typescript@5.9.3)
       utf-8-validate:
         specifier: ^6.0.6
         version: 6.0.6
@@ -508,8 +508,8 @@ packages:
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/buffers@1.2.1':
-    resolution: {integrity: sha512-12cdlDwX4RUM3QxmUbVJWqZ/mrK6dFQH4Zxq6+r1YXKXYBNgZXndx2qbCJwh3+WWkCSn67IjnlG3XYTvmvYtgA==}
+  '@jsonjoy.com/buffers@1.0.0':
+    resolution: {integrity: sha512-NDigYR3PHqCnQLXYyoLbnEdzMMvzeiCWo1KOut7Q0CoIqg9tUAPKJ1iq/2nFhc5kZtexzutNY0LFjdwWL3Dw3Q==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
@@ -532,56 +532,56 @@ packages:
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/fs-core@4.56.4':
-    resolution: {integrity: sha512-mgiAa7w0N0mlr7G3PUY/iRSYuJwyZmHBt+y7D9veiXfAqsIhEi9+FCu47tU+y/3KPqaTNJMsfgAGwUnLPnRdqA==}
+  '@jsonjoy.com/fs-core@4.56.9':
+    resolution: {integrity: sha512-BUkXXWL3I7VZ34cpmP7WSttmP5o+z+lxi3teYMnEcUOKBu7DhCFxCesOevw+UATUewMHRMUtsmFYxOxgV7SQwg==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/fs-fsa@4.56.4':
-    resolution: {integrity: sha512-D6tHSr8xMiZnV9pQcX0ysoEg1kTsTFK6fRV+TX+1uFcEiNKJR7hooGBq8iKnkZCXRxY8S4nZJ+rErpVF1XJ4vw==}
+  '@jsonjoy.com/fs-fsa@4.56.9':
+    resolution: {integrity: sha512-g15wwrvRRsy73p/b93XltxMkARyh3efxZNkrKbiocUNaPnHF+iDXQ1IlBwsTi5zxijdCYOsmVuyEdBX87tLqlw==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/fs-node-builtins@4.56.4':
-    resolution: {integrity: sha512-/HMj267Ygg/fa3kHuZL+L7rVXvZ7HT2Bm7d8CpKs6l7QpT4mzTnN4f2/E0u+LsrrJVbT+R34/nsBr2dIZSYIgg==}
+  '@jsonjoy.com/fs-node-builtins@4.56.9':
+    resolution: {integrity: sha512-q9MEsySAwyhgy1GT1FKfnKJ1a8bJmzbQnMGQA94F663C/wycrSgRrM33byzTAwn6FBRzMfTvABANkYvkOeYGhw==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/fs-node-to-fsa@4.56.4':
-    resolution: {integrity: sha512-Wewg2JlMkFpUt2Z+RrhdxLrbG6o4XAZB9UdGbpcQS+acvwytmhEjUCCodD3kqY5wPSNpnIbD614VeTA/5jPzvg==}
+  '@jsonjoy.com/fs-node-to-fsa@4.56.9':
+    resolution: {integrity: sha512-rOnn9FBLY+JWy0UDSXaYXY45j7FxfRJepRW5pZvNbdAzHYFZ0/M3OQ1+RfZsMYgWeMkaN9pGhOsIj/A7P9pAXA==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/fs-node-utils@4.56.4':
-    resolution: {integrity: sha512-7yvPBX+YUPvoljJ5ELmHrK7sLYzEVdLnILoNXLtsztN4Ag8UbS7DteWRiW3BFAUIvI4kDBJ8OymdxwLLCkX+AQ==}
+  '@jsonjoy.com/fs-node-utils@4.56.9':
+    resolution: {integrity: sha512-UMUirCu0jDPyJEsfllKX1SmK9E7ww2VltWiq2qBCy3ZcyHqDuHswPycrxLTwGrLJnGiHPW9f7LOniP7enl9jYQ==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/fs-node@4.56.4':
-    resolution: {integrity: sha512-4G7KBypcWy2BGPnuDCmUQWHasbNZnEqcb3DLODuH22J8fre7YK8MiyciIohkUTFMqR9qem84LK22T1FmUwiTSQ==}
+  '@jsonjoy.com/fs-node@4.56.9':
+    resolution: {integrity: sha512-YiI2iqVMi/Ro9BcqWWLQBv939gje748pC4t376M/goQoLaM0sItsj0bBTiQr4eXyLsLdGw10n/F/kH5/snBe7g==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/fs-print@4.56.4':
-    resolution: {integrity: sha512-GtTDri9Ot1l7XPe3ft+ViTqxFOqtKcM4RLyXEXWDvQEoqgmU/6bCNNjfSze9VlpfC8KfuUYAixuDLD1quzHdow==}
+  '@jsonjoy.com/fs-print@4.56.9':
+    resolution: {integrity: sha512-Op6rXFnmhHHAClNvHFGx9zALHgZfyPdPBd0WIf/MBr4DEoShhAj0MZxg0jMO7foqleq2YSNNCNBMFGkmY43wAQ==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/fs-snapshot@4.56.4':
-    resolution: {integrity: sha512-qQxl+GVp9gzT21/Ot8qa+pcNurpfTL/ruMODYmshpcTLXy6x06aP4/xdhBOJpBclhqbnQcMTVDCny98CtGvyzQ==}
+  '@jsonjoy.com/fs-snapshot@4.56.9':
+    resolution: {integrity: sha512-nMxEvDku2bCdCCNLkjd9hjPyUng8mLIfok8yAQ0zHNbZqeE44K5CSXnT0o3TGzv/zWynM49rUlF95ZjlNazFAQ==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
 
-  '@jsonjoy.com/json-pack@1.21.0':
-    resolution: {integrity: sha512-+AKG+R2cfZMShzrF2uQw34v3zbeDYUqnQ+jg7ORic3BGtfw9p/+N6RJbq/kkV8JmYZaINknaEQ2m0/f693ZPpg==}
+  '@jsonjoy.com/json-pack@1.14.0':
+    resolution: {integrity: sha512-LpWbYgVnKzphN5S6uss4M25jJ/9+m6q6UJoeN6zTkK4xAGhKsiBRPVeF7OYMWonn5repMQbE5vieRXcMUrKDKw==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
@@ -961,10 +961,11 @@ packages:
       eslint: ^8.57.0 || ^9.0.0
       typescript: '>=4.8.4 <6.0.0'
 
-  '@typescript-eslint/parser@8.53.0':
-    resolution: {integrity: sha512-npiaib8XzbjtzS2N4HlqPvlpxpmZ14FjSJrteZpPxGUaYPlvhzlzUZ4mZyABo0EFrOWnvyd0Xxroq//hKhtAWg==}
+  '@typescript-eslint/eslint-plugin@8.53.1':
+    resolution: {integrity: sha512-cFYYFZ+oQFi6hUnBTbLRXfTJiaQtYE3t4O692agbBl+2Zy+eqSKWtPjhPXJu1G7j4RLjKgeJPDdq3EqOwmX5Ag==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
+      '@typescript-eslint/parser': ^8.53.1
       eslint: ^8.57.0 || ^9.0.0
       typescript: '>=4.8.4 <6.0.0'
 
@@ -1014,6 +1015,13 @@ packages:
       eslint: ^8.57.0 || ^9.0.0
       typescript: '>=4.8.4 <6.0.0'
 
+  '@typescript-eslint/type-utils@8.53.1':
+    resolution: {integrity: sha512-MOrdtNvyhy0rHyv0ENzub1d4wQYKb2NmIqG7qEqPWFW7Mpy2jzFC3pQ2yKDvirZB7jypm5uGjF2Qqs6OIqu47w==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    peerDependencies:
+      eslint: ^8.57.0 || ^9.0.0
+      typescript: '>=4.8.4 <6.0.0'
+
   '@typescript-eslint/types@8.52.0':
     resolution: {integrity: sha512-LWQV1V4q9V4cT4H5JCIx3481iIFxH1UkVk+ZkGGAV1ZGcjGI9IoFOfg3O6ywz8QqCDEp7Inlg6kovMofsNRaGg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
@@ -1040,6 +1048,13 @@ packages:
 
   '@typescript-eslint/utils@8.53.0':
     resolution: {integrity: sha512-XDY4mXTez3Z1iRDI5mbRhH4DFSt46oaIFsLg+Zn97+sYrXACziXSQcSelMybnVZ5pa1P6xYkPr5cMJyunM1ZDA==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    peerDependencies:
+      eslint: ^8.57.0 || ^9.0.0
+      typescript: '>=4.8.4 <6.0.0'
+
+  '@typescript-eslint/utils@8.53.1':
+    resolution: {integrity: sha512-c4bMvGVWW4hv6JmDUEG7fSYlWOl3II2I4ylt0NM+seinYQlZMQIaKaXIIVJWt9Ofh6whrpM+EdDQXKXjNovvrg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       eslint: ^8.57.0 || ^9.0.0
@@ -1483,8 +1498,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/a14a22eb548c9bd1439ed3b178c4e8b999f14205:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/a14a22eb548c9bd1439ed3b178c4e8b999f14205}
+  coder@https://codeload.github.com/coder/coder/tar.gz/6683d807ac8a2ba372b32e2045f850e51b055cad:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/6683d807ac8a2ba372b32e2045f850e51b055cad}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -2003,8 +2018,8 @@ packages:
     resolution: {integrity: sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==}
     engines: {node: '>=10.13.0'}
 
-  glob-to-regex.js@1.2.0:
-    resolution: {integrity: sha512-QMwlOQKU/IzqMUOAZWubUOT8Qft+Y0KQWnX9nK3ch0CJg0tTp4TvGZsTfudYKv2NzoQSyPcnA6TYeIQ3jGichQ==}
+  glob-to-regex.js@1.0.1:
+    resolution: {integrity: sha512-CG/iEvgQqfzoVsMUbxSJcwbG2JwyZ3naEqPkeltwl0BSS8Bp83k3xlGms+0QdWFUAwV+uvo80wNswKF6FWEkKg==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
@@ -2455,8 +2470,8 @@ packages:
   mdurl@2.0.0:
     resolution: {integrity: sha512-Lf+9+2r+Tdp5wXDXC4PcIBjTDtq4UKjCPMQhKIuzpJNW0b96kVqSwW0bT7FhRSfmAiFYgP+SCRvdrDozfh0U5w==}
 
-  memfs@4.56.4:
-    resolution: {integrity: sha512-GKqmHEFyFwccco9NmTEY38AemzpNLs5tKKxGfNpnLI/5D92NAr7STItdzTMeUlKdd3FjkE5w18TPLyKTb6MDVA==}
+  memfs@4.56.9:
+    resolution: {integrity: sha512-Fo+xSG0MhtaPyEi7B2AEj4omBen3kb5RCeFKaM/YVsxgO8vkcpX0tkheRIoCGqXw9oAnFQRe1oWuR1xq4oE17A==}
     peerDependencies:
       tslib: '2'
 
@@ -3248,8 +3263,8 @@ packages:
   typed-rest-client@1.8.9:
     resolution: {integrity: sha512-uSmjE38B80wjL85UFX3sTYEUlvZ1JgCRhsWj/fJ4rZ0FqDUFoIuodtiVeE+cUqiVTOKPdKrp/sdftD15MDek6g==}
 
-  typescript-eslint@8.53.0:
-    resolution: {integrity: sha512-xHURCQNxZ1dsWn0sdOaOfCSQG0HKeqSj9OexIxrz6ypU6wHYOdX2I3D2b8s8wFSsSOYJb+6q283cLiLlkEsBYw==}
+  typescript-eslint@8.53.1:
+    resolution: {integrity: sha512-gB+EVQfP5RDElh9ittfXlhZJdjSU4jUSTyE2+ia8CYyNvet4ElfaLlAIqDvQV9JPknKx0jQH1racTYe/4LaLSg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       eslint: ^8.57.0 || ^9.0.0
@@ -3834,7 +3849,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@jsonjoy.com/buffers@1.2.1(tslib@2.8.1)':
+  '@jsonjoy.com/buffers@1.0.0(tslib@2.8.1)':
     dependencies:
       tslib: 2.8.1
 
@@ -3850,71 +3865,70 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@jsonjoy.com/fs-core@4.56.4(tslib@2.8.1)':
+  '@jsonjoy.com/fs-core@4.56.9(tslib@2.8.1)':
     dependencies:
-      '@jsonjoy.com/fs-node-builtins': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-utils': 4.56.4(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-builtins': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-utils': 4.56.9(tslib@2.8.1)
       thingies: 2.5.0(tslib@2.8.1)
       tslib: 2.8.1
 
-  '@jsonjoy.com/fs-fsa@4.56.4(tslib@2.8.1)':
+  '@jsonjoy.com/fs-fsa@4.56.9(tslib@2.8.1)':
     dependencies:
-      '@jsonjoy.com/fs-core': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-builtins': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-utils': 4.56.4(tslib@2.8.1)
+      '@jsonjoy.com/fs-core': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-builtins': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-utils': 4.56.9(tslib@2.8.1)
       thingies: 2.5.0(tslib@2.8.1)
       tslib: 2.8.1
 
-  '@jsonjoy.com/fs-node-builtins@4.56.4(tslib@2.8.1)':
+  '@jsonjoy.com/fs-node-builtins@4.56.9(tslib@2.8.1)':
     dependencies:
       tslib: 2.8.1
 
-  '@jsonjoy.com/fs-node-to-fsa@4.56.4(tslib@2.8.1)':
+  '@jsonjoy.com/fs-node-to-fsa@4.56.9(tslib@2.8.1)':
     dependencies:
-      '@jsonjoy.com/fs-fsa': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-builtins': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-utils': 4.56.4(tslib@2.8.1)
+      '@jsonjoy.com/fs-fsa': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-builtins': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-utils': 4.56.9(tslib@2.8.1)
       tslib: 2.8.1
 
-  '@jsonjoy.com/fs-node-utils@4.56.4(tslib@2.8.1)':
+  '@jsonjoy.com/fs-node-utils@4.56.9(tslib@2.8.1)':
     dependencies:
-      '@jsonjoy.com/fs-node-builtins': 4.56.4(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-builtins': 4.56.9(tslib@2.8.1)
       tslib: 2.8.1
 
-  '@jsonjoy.com/fs-node@4.56.4(tslib@2.8.1)':
+  '@jsonjoy.com/fs-node@4.56.9(tslib@2.8.1)':
     dependencies:
-      '@jsonjoy.com/fs-core': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-builtins': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-utils': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-print': 4.56.4(tslib@2.8.1)
-      glob-to-regex.js: 1.2.0(tslib@2.8.1)
+      '@jsonjoy.com/fs-core': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-builtins': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-utils': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-print': 4.56.9(tslib@2.8.1)
+      glob-to-regex.js: 1.0.1(tslib@2.8.1)
       thingies: 2.5.0(tslib@2.8.1)
       tslib: 2.8.1
 
-  '@jsonjoy.com/fs-print@4.56.4(tslib@2.8.1)':
+  '@jsonjoy.com/fs-print@4.56.9(tslib@2.8.1)':
     dependencies:
-      '@jsonjoy.com/fs-node-utils': 4.56.4(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-utils': 4.56.9(tslib@2.8.1)
       tree-dump: 1.1.0(tslib@2.8.1)
       tslib: 2.8.1
 
-  '@jsonjoy.com/fs-snapshot@4.56.4(tslib@2.8.1)':
+  '@jsonjoy.com/fs-snapshot@4.56.9(tslib@2.8.1)':
     dependencies:
       '@jsonjoy.com/buffers': 17.65.0(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-utils': 4.56.4(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-utils': 4.56.9(tslib@2.8.1)
       '@jsonjoy.com/json-pack': 17.65.0(tslib@2.8.1)
       '@jsonjoy.com/util': 17.65.0(tslib@2.8.1)
       tslib: 2.8.1
 
-  '@jsonjoy.com/json-pack@1.21.0(tslib@2.8.1)':
+  '@jsonjoy.com/json-pack@1.14.0(tslib@2.8.1)':
     dependencies:
       '@jsonjoy.com/base64': 1.1.2(tslib@2.8.1)
-      '@jsonjoy.com/buffers': 1.2.1(tslib@2.8.1)
+      '@jsonjoy.com/buffers': 1.0.0(tslib@2.8.1)
       '@jsonjoy.com/codegen': 1.0.0(tslib@2.8.1)
       '@jsonjoy.com/json-pointer': 1.0.2(tslib@2.8.1)
       '@jsonjoy.com/util': 1.9.0(tslib@2.8.1)
       hyperdyperid: 1.2.0
       thingies: 2.5.0(tslib@2.8.1)
-      tree-dump: 1.1.0(tslib@2.8.1)
       tslib: 2.8.1
 
   '@jsonjoy.com/json-pack@17.65.0(tslib@2.8.1)':
@@ -3942,7 +3956,7 @@ snapshots:
 
   '@jsonjoy.com/util@1.9.0(tslib@2.8.1)':
     dependencies:
-      '@jsonjoy.com/buffers': 1.2.1(tslib@2.8.1)
+      '@jsonjoy.com/buffers': 1.0.0(tslib@2.8.1)
       '@jsonjoy.com/codegen': 1.0.0(tslib@2.8.1)
       tslib: 2.8.1
 
@@ -4337,22 +4351,6 @@ snapshots:
       '@types/node': 20.19.29
     optional: true
 
-  '@typescript-eslint/eslint-plugin@8.53.0(@typescript-eslint/parser@8.53.0(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)(typescript@5.9.3)':
-    dependencies:
-      '@eslint-community/regexpp': 4.12.2
-      '@typescript-eslint/parser': 8.53.0(eslint@9.39.2)(typescript@5.9.3)
-      '@typescript-eslint/scope-manager': 8.53.0
-      '@typescript-eslint/type-utils': 8.53.0(eslint@9.39.2)(typescript@5.9.3)
-      '@typescript-eslint/utils': 8.53.0(eslint@9.39.2)(typescript@5.9.3)
-      '@typescript-eslint/visitor-keys': 8.53.0
-      eslint: 9.39.2
-      ignore: 7.0.5
-      natural-compare: 1.4.0
-      ts-api-utils: 2.4.0(typescript@5.9.3)
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - supports-color
-
   '@typescript-eslint/eslint-plugin@8.53.0(@typescript-eslint/parser@8.53.1(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)(typescript@5.9.3)':
     dependencies:
       '@eslint-community/regexpp': 4.12.2
@@ -4369,14 +4367,18 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/parser@8.53.0(eslint@9.39.2)(typescript@5.9.3)':
+  '@typescript-eslint/eslint-plugin@8.53.1(@typescript-eslint/parser@8.53.1(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/scope-manager': 8.53.0
-      '@typescript-eslint/types': 8.53.0
-      '@typescript-eslint/typescript-estree': 8.53.0(typescript@5.9.3)
-      '@typescript-eslint/visitor-keys': 8.53.0
-      debug: 4.4.3(supports-color@8.1.1)
+      '@eslint-community/regexpp': 4.12.2
+      '@typescript-eslint/parser': 8.53.1(eslint@9.39.2)(typescript@5.9.3)
+      '@typescript-eslint/scope-manager': 8.53.1
+      '@typescript-eslint/type-utils': 8.53.1(eslint@9.39.2)(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.53.1(eslint@9.39.2)(typescript@5.9.3)
+      '@typescript-eslint/visitor-keys': 8.53.1
       eslint: 9.39.2
+      ignore: 7.0.5
+      natural-compare: 1.4.0
+      ts-api-utils: 2.4.0(typescript@5.9.3)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
@@ -4395,8 +4397,8 @@ snapshots:
 
   '@typescript-eslint/project-service@8.53.0(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/tsconfig-utils': 8.53.1(typescript@5.9.3)
-      '@typescript-eslint/types': 8.53.1
+      '@typescript-eslint/tsconfig-utils': 8.53.0(typescript@5.9.3)
+      '@typescript-eslint/types': 8.53.0
       debug: 4.4.3(supports-color@8.1.1)
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -4434,6 +4436,18 @@ snapshots:
       '@typescript-eslint/types': 8.53.0
       '@typescript-eslint/typescript-estree': 8.53.0(typescript@5.9.3)
       '@typescript-eslint/utils': 8.53.0(eslint@9.39.2)(typescript@5.9.3)
+      debug: 4.4.3(supports-color@8.1.1)
+      eslint: 9.39.2
+      ts-api-utils: 2.4.0(typescript@5.9.3)
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - supports-color
+
+  '@typescript-eslint/type-utils@8.53.1(eslint@9.39.2)(typescript@5.9.3)':
+    dependencies:
+      '@typescript-eslint/types': 8.53.1
+      '@typescript-eslint/typescript-estree': 8.53.1(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.53.1(eslint@9.39.2)(typescript@5.9.3)
       debug: 4.4.3(supports-color@8.1.1)
       eslint: 9.39.2
       ts-api-utils: 2.4.0(typescript@5.9.3)
@@ -4483,6 +4497,17 @@ snapshots:
       '@typescript-eslint/scope-manager': 8.53.0
       '@typescript-eslint/types': 8.53.0
       '@typescript-eslint/typescript-estree': 8.53.0(typescript@5.9.3)
+      eslint: 9.39.2
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - supports-color
+
+  '@typescript-eslint/utils@8.53.1(eslint@9.39.2)(typescript@5.9.3)':
+    dependencies:
+      '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.2)
+      '@typescript-eslint/scope-manager': 8.53.1
+      '@typescript-eslint/types': 8.53.1
+      '@typescript-eslint/typescript-estree': 8.53.1(typescript@5.9.3)
       eslint: 9.39.2
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -4977,7 +5002,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/a14a22eb548c9bd1439ed3b178c4e8b999f14205: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/6683d807ac8a2ba372b32e2045f850e51b055cad: {}
 
   color-convert@2.0.1:
     dependencies:
@@ -5236,7 +5261,7 @@ snapshots:
     optionalDependencies:
       unrs-resolver: 1.11.1
 
-  eslint-import-resolver-typescript@4.4.4(eslint-plugin-import-x@4.16.1(@typescript-eslint/utils@8.53.0(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2))(eslint@9.39.2):
+  eslint-import-resolver-typescript@4.4.4(eslint-plugin-import-x@4.16.1(@typescript-eslint/utils@8.53.1(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2))(eslint@9.39.2):
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
       eslint: 9.39.2
@@ -5247,11 +5272,11 @@ snapshots:
       tinyglobby: 0.2.15
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import-x: 4.16.1(@typescript-eslint/utils@8.53.0(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)
+      eslint-plugin-import-x: 4.16.1(@typescript-eslint/utils@8.53.1(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import-x@4.16.1(@typescript-eslint/utils@8.53.0(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2):
+  eslint-plugin-import-x@4.16.1(@typescript-eslint/utils@8.53.1(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2):
     dependencies:
       '@typescript-eslint/types': 8.52.0
       comment-parser: 1.4.1
@@ -5264,7 +5289,7 @@ snapshots:
       stable-hash-x: 0.2.0
       unrs-resolver: 1.11.1
     optionalDependencies:
-      '@typescript-eslint/utils': 8.53.0(eslint@9.39.2)(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.53.1(eslint@9.39.2)(typescript@5.9.3)
     transitivePeerDependencies:
       - supports-color
 
@@ -5535,7 +5560,7 @@ snapshots:
     dependencies:
       is-glob: 4.0.3
 
-  glob-to-regex.js@1.2.0(tslib@2.8.1):
+  glob-to-regex.js@1.0.1(tslib@2.8.1):
     dependencies:
       tslib: 2.8.1
 
@@ -6074,19 +6099,19 @@ snapshots:
 
   mdurl@2.0.0: {}
 
-  memfs@4.56.4(tslib@2.8.1):
+  memfs@4.56.9(tslib@2.8.1):
     dependencies:
-      '@jsonjoy.com/fs-core': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-fsa': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-builtins': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-to-fsa': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-node-utils': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-print': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/fs-snapshot': 4.56.4(tslib@2.8.1)
-      '@jsonjoy.com/json-pack': 1.21.0(tslib@2.8.1)
+      '@jsonjoy.com/fs-core': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-fsa': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-builtins': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-to-fsa': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-node-utils': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-print': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/fs-snapshot': 4.56.9(tslib@2.8.1)
+      '@jsonjoy.com/json-pack': 1.14.0(tslib@2.8.1)
       '@jsonjoy.com/util': 1.9.0(tslib@2.8.1)
-      glob-to-regex.js: 1.2.0(tslib@2.8.1)
+      glob-to-regex.js: 1.0.1(tslib@2.8.1)
       thingies: 2.5.0(tslib@2.8.1)
       tree-dump: 1.1.0(tslib@2.8.1)
       tslib: 2.8.1
@@ -7061,12 +7086,12 @@ snapshots:
       tunnel: 0.0.6
       underscore: 1.13.6
 
-  typescript-eslint@8.53.0(eslint@9.39.2)(typescript@5.9.3):
+  typescript-eslint@8.53.1(eslint@9.39.2)(typescript@5.9.3):
     dependencies:
-      '@typescript-eslint/eslint-plugin': 8.53.0(@typescript-eslint/parser@8.53.0(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)(typescript@5.9.3)
-      '@typescript-eslint/parser': 8.53.0(eslint@9.39.2)(typescript@5.9.3)
-      '@typescript-eslint/typescript-estree': 8.53.0(typescript@5.9.3)
-      '@typescript-eslint/utils': 8.53.0(eslint@9.39.2)(typescript@5.9.3)
+      '@typescript-eslint/eslint-plugin': 8.53.1(@typescript-eslint/parser@8.53.1(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)(typescript@5.9.3)
+      '@typescript-eslint/parser': 8.53.1(eslint@9.39.2)(typescript@5.9.3)
+      '@typescript-eslint/typescript-estree': 8.53.1(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.53.1(eslint@9.39.2)(typescript@5.9.3)
       eslint: 9.39.2
       typescript: 5.9.3
     transitivePeerDependencies:
