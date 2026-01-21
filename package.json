@@ -464,7 +464,7 @@
 		"memfs": "^4.56.4",
 		"prettier": "^3.7.4",
 		"typescript": "^5.9.3",
-		"typescript-eslint": "^8.53.0",
+		"typescript-eslint": "^8.53.1",
 		"utf-8-validate": "^6.0.6",
 		"vitest": "^4.0.16"
 	},
