@@ -6,7 +6,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { type SecretsManager, type SessionAuth } from "@/core/secretsManager";
-import { OAuthError } from "@/oauth/errors";
+import { DEFAULT_OAUTH_SCOPES } from "@/oauth/constants";
 import { OAuthSessionManager } from "@/oauth/sessionManager";
 
 import {
@@ -19,6 +19,7 @@ import {
 	createMockClientRegistration,
 	createMockOAuthMetadata,
 	createMockTokenResponse,
+	createOAuthAxiosError,
 	createTestDeployment,
 	TEST_HOSTNAME,
 	TEST_URL,
@@ -26,7 +27,6 @@ import {
 
 import type { ServiceContainer } from "@/core/container";
 import type { Deployment } from "@/deployment/types";
-import type { LoginCoordinator } from "@/login/loginCoordinator";
 
 vi.mock("axios", async () => {
 	const actual = await vi.importActual<typeof import("axios")>("axios");
@@ -56,23 +56,15 @@ vi.mock("@/api/utils", async () => {
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000; // Tokens refresh 5 minutes before expiry
 const ONE_HOUR_MS = 60 * 60 * 1000;
-
-function createMockLoginCoordinator(): LoginCoordinator {
-	return {
-		ensureLoggedIn: vi.fn(),
-		ensureLoggedInWithDialog: vi.fn(),
-	} as unknown as LoginCoordinator;
-}
+const BACKGROUND_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 function createMockServiceContainer(
 	secretsManager: SecretsManager,
 	logger: ReturnType<typeof createMockLogger>,
-	loginCoordinator: LoginCoordinator,
 ): ServiceContainer {
 	return {
 		getSecretsManager: () => secretsManager,
 		getLogger: () => logger,
-		getLoginCoordinator: () => loginCoordinator,
 	} as ServiceContainer;
 }
 
@@ -80,11 +72,9 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 	vi.resetAllMocks();
 
 	const base = createBaseTestContext();
-	const loginCoordinator = createMockLoginCoordinator();
 	const container = createMockServiceContainer(
 		base.secretsManager,
 		base.logger,
-		loginCoordinator,
 	);
 	const manager = OAuthSessionManager.create(deployment, container);
 
@@ -103,20 +93,47 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 			oauth: {
 				refresh_token: overrides.refreshToken ?? "refresh-token",
 				expiry_timestamp: Date.now() + (overrides.expiryMs ?? ONE_HOUR_MS),
-				scope: overrides.scope ?? "",
+				scope: overrides.scope ?? DEFAULT_OAUTH_SCOPES,
 			},
 		});
 	};
 
 	/** Creates a new manager (for tests that need manager created after OAuth setup) */
-	const createManager = (d: Deployment = deployment) =>
-		OAuthSessionManager.create(d, container);
+	const createManager = (
+		d: Deployment = deployment,
+		onAuthRequired: () => Promise<void> = () => Promise.resolve(),
+	) => OAuthSessionManager.create(d, container, onAuthRequired);
+
+	/**
+	 * Sets up a complete OAuth operation test context.
+	 * Configures session, client registration, metadata, and custom routes.
+	 */
+	const setupForOAuthOperation = async (
+		routes: Record<string, unknown>,
+		sessionOverrides: {
+			token?: string;
+			refreshToken?: string;
+			expiryMs?: number;
+			scope?: string;
+		} = {},
+	) => {
+		await setupOAuthSession(sessionOverrides);
+		await base.secretsManager.setOAuthClientRegistration(
+			TEST_HOSTNAME,
+			createMockClientRegistration(),
+		);
+		setupAxiosMockRoutes(base.mockAdapter, {
+			"/.well-known/oauth-authorization-server":
+				createMockOAuthMetadata(TEST_URL),
+			...routes,
+		});
+	};
 
 	return {
 		...base,
-		loginCoordinator,
 		manager,
 		setupOAuthSession,
+		setupForOAuthOperation,
 		createManager,
 	};
 }
@@ -138,6 +155,7 @@ describe("OAuthSessionManager", () => {
 					oauth: {
 						refresh_token: "refresh-token",
 						expiry_timestamp: Date.now() + ONE_HOUR_MS,
+						scope: DEFAULT_OAUTH_SCOPES,
 					},
 				},
 				expected: true,
@@ -244,74 +262,86 @@ describe("OAuthSessionManager", () => {
 	});
 
 	describe("background refresh", () => {
-		it("schedules refresh before token expiry", async () => {
+		/** Common setup for background refresh tests with fake timers */
+		const setupBackgroundRefreshTest = async (
+			tokenEndpointResponse: unknown,
+		) => {
 			vi.useFakeTimers();
-
-			const { secretsManager, mockAdapter, setupOAuthSession, createManager } =
-				createTestContext();
-
-			await setupOAuthSession({ token: "original-token" });
-			await secretsManager.setOAuthClientRegistration(
-				TEST_HOSTNAME,
-				createMockClientRegistration(),
+			const ctx = createTestContext();
+			await ctx.setupForOAuthOperation(
+				{ "/oauth2/token": tokenEndpointResponse },
+				{ token: "original-token" },
 			);
+			return ctx;
+		};
 
-			setupAxiosMockRoutes(mockAdapter, {
-				"/.well-known/oauth-authorization-server":
-					createMockOAuthMetadata(TEST_URL),
-				"/oauth2/token": createMockTokenResponse({
-					access_token: "background-refreshed-token",
-				}),
-			});
+		it("schedules refresh before token expiry", async () => {
+			const { secretsManager, createManager } =
+				await setupBackgroundRefreshTest(
+					createMockTokenResponse({
+						access_token: "background-refreshed-token",
+					}),
+				);
 
-			// Create manager AFTER OAuth session is set up so it schedules refresh
 			createManager();
-
-			// Advance to when refresh should trigger
 			await vi.advanceTimersByTimeAsync(ONE_HOUR_MS - REFRESH_BUFFER_MS);
 
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
 			expect(auth?.token).toBe("background-refreshed-token");
 		});
-	});
 
-	describe("showReAuthenticationModal", () => {
-		it("clears OAuth state and prompts for re-login", async () => {
-			const { secretsManager, loginCoordinator, manager, setupOAuthSession } =
-				createTestContext();
-
-			await setupOAuthSession();
-			await secretsManager.setOAuthClientRegistration(
-				TEST_HOSTNAME,
-				createMockClientRegistration(),
+		it("calls onAuthRequired when refresh fails with re-auth error", async () => {
+			const { createManager } = await setupBackgroundRefreshTest(
+				createOAuthAxiosError("invalid_grant"),
 			);
 
-			await manager.showReAuthenticationModal(
-				new OAuthError("invalid_grant", "Token expired"),
+			const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+			createManager(createTestDeployment(), onAuthRequired);
+			await vi.advanceTimersByTimeAsync(ONE_HOUR_MS - REFRESH_BUFFER_MS);
+
+			expect(onAuthRequired).toHaveBeenCalledOnce();
+		});
+
+		it("does not call onAuthRequired for non-reauth errors", async () => {
+			const { createManager } = await setupBackgroundRefreshTest(
+				createOAuthAxiosError("server_error"),
 			);
 
-			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
-			expect(auth?.oauth).toBeUndefined();
-			expect(auth?.token).toBe("");
-			expect(loginCoordinator.ensureLoggedInWithDialog).toHaveBeenCalled();
+			const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+			createManager(createTestDeployment(), onAuthRequired);
+			await vi.advanceTimersByTimeAsync(ONE_HOUR_MS - REFRESH_BUFFER_MS);
+
+			expect(onAuthRequired).not.toHaveBeenCalled();
+
+			// Should schedule retry instead
+			await vi.advanceTimersByTimeAsync(BACKGROUND_REFRESH_INTERVAL_MS);
+			expect(onAuthRequired).not.toHaveBeenCalled();
+		});
+
+		it("continues gracefully when onAuthRequired callback throws", async () => {
+			const { logger, createManager } = await setupBackgroundRefreshTest(
+				createOAuthAxiosError("invalid_grant"),
+			);
+
+			const callbackError = new Error("Callback failed");
+			const onAuthRequired = vi.fn().mockRejectedValue(callbackError);
+			createManager(createTestDeployment(), onAuthRequired);
+			await vi.advanceTimersByTimeAsync(ONE_HOUR_MS - REFRESH_BUFFER_MS);
+
+			expect(onAuthRequired).toHaveBeenCalledOnce();
+			expect(logger.error).toHaveBeenCalledWith(
+				"onAuthRequired callback failed:",
+				callbackError,
+			);
 		});
 	});
 
 	describe("concurrent refresh", () => {
 		it("deduplicates concurrent calls", async () => {
-			const { secretsManager, mockAdapter, manager, setupOAuthSession } =
-				createTestContext();
-
-			await setupOAuthSession();
-			await secretsManager.setOAuthClientRegistration(
-				TEST_HOSTNAME,
-				createMockClientRegistration(),
-			);
+			const { manager, setupForOAuthOperation } = createTestContext();
 
 			let callCount = 0;
-			setupAxiosMockRoutes(mockAdapter, {
-				"/.well-known/oauth-authorization-server":
-					createMockOAuthMetadata(TEST_URL),
+			await setupForOAuthOperation({
 				"/oauth2/token": () => {
 					callCount++;
 					return createMockTokenResponse({
@@ -393,6 +423,62 @@ describe("OAuthSessionManager", () => {
 				method(manager);
 				method(manager);
 			}).not.toThrow();
+		});
+	});
+
+	describe("revokeRefreshToken", () => {
+		it("revokes token via revocation endpoint", async () => {
+			const { manager, setupForOAuthOperation } = createTestContext();
+
+			let revokedToken: string | undefined;
+			await setupForOAuthOperation({
+				"/oauth2/revoke": (config: InternalAxiosRequestConfig) => {
+					const params = new URLSearchParams(config.data as string);
+					revokedToken = params.get("token") ?? undefined;
+					return {};
+				},
+			});
+
+			await manager.revokeRefreshToken();
+
+			expect(revokedToken).toBe("refresh-token");
+		});
+	});
+
+	describe("scope validation", () => {
+		it("rejects tokens with insufficient scopes", async () => {
+			const { secretsManager, manager } = createTestContext();
+
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "access-token",
+				oauth: {
+					refresh_token: "refresh-token",
+					expiry_timestamp: Date.now() + ONE_HOUR_MS,
+					scope: "workspace:read", // Missing other required scopes
+				},
+			});
+
+			const result = await manager.isLoggedInWithOAuth();
+			expect(result).toBe(false);
+		});
+
+		it("accepts wildcard scopes", async () => {
+			const { secretsManager, manager } = createTestContext();
+
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "access-token",
+				oauth: {
+					refresh_token: "refresh-token",
+					expiry_timestamp: Date.now() + ONE_HOUR_MS,
+					// workspace:* covers workspace:read, workspace:update, etc.
+					scope: "workspace:* template:read user:read_personal",
+				},
+			});
+
+			const result = await manager.isLoggedInWithOAuth();
+			expect(result).toBe(true);
 		});
 	});
 });

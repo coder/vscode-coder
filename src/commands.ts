@@ -209,12 +209,12 @@ export class Commands {
 
 		await this.deploymentManager.clearDeployment();
 
-		void vscode.window
+		vscode.window
 			.showInformationMessage("You've been logged out of Coder!", "Login")
 			.then((action) => {
 				if (action === "Login") {
 					this.login().catch((error) => {
-						this.logger.error("Failed to login", error);
+						this.logger.error("Login failed", error);
 					});
 				}
 			});

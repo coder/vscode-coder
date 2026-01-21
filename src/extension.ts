@@ -70,10 +70,33 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	const deployment = await secretsManager.getCurrentDeployment();
 
-	// Create OAuth session manager with login coordinator
+	// Shared handler for auth failures (used by interceptor + session manager)
+	const handleAuthFailure = (): Promise<void> => {
+		deploymentManager.suspendSession();
+		vscode.window
+			.showWarningMessage(
+				"Session expired. You have been signed out.",
+				"Log In",
+			)
+			.then(async (action) => {
+				if (action === "Log In") {
+					try {
+						await commands.login({
+							url: deploymentManager.getCurrentDeployment()?.url,
+						});
+					} catch (err) {
+						output.error("Login failed", err);
+					}
+				}
+			});
+		return Promise.resolve();
+	};
+
+	// Create OAuth session manager - callback handles background refresh failures
 	const oauthSessionManager = OAuthSessionManager.create(
 		deployment,
 		serviceContainer,
+		handleAuthFailure,
 	);
 	ctx.subscriptions.push(oauthSessionManager);
 
@@ -94,19 +117,20 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output,
 		oauthSessionManager,
 		secretsManager,
-		() => {
-			void vscode.window.showWarningMessage(
-				"Session expired. Please log in again using the Coder sidebar.",
-			);
-			return Promise.resolve(false);
+		async () => {
+			await handleAuthFailure();
+			return false;
 		},
 	);
 	ctx.subscriptions.push(authInterceptor);
+
+	const isAuthenticated = () => contextManager.get("coder.authenticated");
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
 		client,
 		output,
+		isAuthenticated,
 		5,
 	);
 	ctx.subscriptions.push(myWorkspacesProvider);
@@ -115,6 +139,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		WorkspaceQuery.All,
 		client,
 		output,
+		isAuthenticated,
 	);
 	ctx.subscriptions.push(allWorkspacesProvider);
 
@@ -295,11 +320,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output.info(`Initializing deployment: ${deployment.url}`);
 		deploymentManager
 			.setDeploymentIfValid(deployment)
+			// Failure is logged internally
 			.then((success) => {
 				if (success) {
 					output.info("Deployment authenticated and set");
-				} else {
-					output.info("Failed to authenticate, deployment not set");
 				}
 			})
 			.catch((error: unknown) => {
@@ -324,7 +348,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				process.env.CODER_URL?.trim();
 			if (defaultUrl) {
 				commands.login({ url: defaultUrl, autoLogin: true }).catch((error) => {
-					output.error("Failed to auto-login", error);
+					output.error("Auto-login failed", error);
 				});
 			}
 		}

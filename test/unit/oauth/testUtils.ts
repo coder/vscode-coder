@@ -1,3 +1,4 @@
+import { AxiosError, AxiosHeaders } from "axios";
 import { vi } from "vitest";
 
 import { SecretsManager } from "@/core/secretsManager";
@@ -17,6 +18,32 @@ import type {
 	OAuth2ClientRegistrationResponse,
 	OAuth2TokenResponse,
 } from "coder/site/src/api/typesGenerated";
+
+/**
+ * Creates an AxiosError with OAuth error response data.
+ */
+export function createOAuthAxiosError(
+	errorCode: string,
+	description?: string,
+): AxiosError {
+	const data: Record<string, string> = { error: errorCode };
+	if (description) {
+		data.error_description = description;
+	}
+	return new AxiosError(
+		"OAuth Error",
+		"ERR_BAD_REQUEST",
+		undefined,
+		undefined,
+		{
+			status: 400,
+			statusText: "Bad Request",
+			headers: {},
+			config: { headers: new AxiosHeaders() },
+			data,
+		},
+	);
+}
 
 import type { Deployment } from "@/deployment/types";
 

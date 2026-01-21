@@ -2,6 +2,17 @@
 export const AUTH_GRANT_TYPE = "authorization_code";
 export const REFRESH_GRANT_TYPE = "refresh_token";
 
+// Minimal scopes required by the VS Code extension
+export const DEFAULT_OAUTH_SCOPES = [
+	"workspace:read",
+	"workspace:update",
+	"workspace:start",
+	"workspace:ssh",
+	"workspace:application_connect",
+	"template:read",
+	"user:read_personal",
+].join(" ");
+
 // OAuth 2.1 Response Types
 export const RESPONSE_TYPE = "code";
 

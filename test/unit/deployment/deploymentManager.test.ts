@@ -33,6 +33,7 @@ vi.mock("@/api/coderApi", async (importOriginal) => {
 
 /**
  * Mock ContextManager for deployment tests.
+ * Mimics real ContextManager which defaults to false for boolean contexts.
  */
 class MockContextManager {
 	private readonly contexts = new Map<string, boolean>();
@@ -41,8 +42,8 @@ class MockContextManager {
 		this.contexts.set(key, value);
 	});
 
-	get(key: string): boolean | undefined {
-		return this.contexts.get(key);
+	get(key: string): boolean {
+		return this.contexts.get(key) ?? false;
 	}
 }
 
@@ -51,6 +52,7 @@ class MockContextManager {
  */
 class MockWorkspaceProvider {
 	readonly fetchAndRefresh = vi.fn();
+	readonly clear = vi.fn();
 }
 
 const TEST_URL = "https://coder.example.com";
@@ -98,6 +100,8 @@ function createTestContext() {
 		validationMockClient,
 		secretsManager,
 		contextManager,
+		mockOAuthSessionManager,
+		mockWorkspaceProvider,
 		manager,
 	};
 }
@@ -394,6 +398,75 @@ describe("DeploymentManager", () => {
 			expect(mockClient.token).toBeUndefined();
 			expect(contextManager.get("coder.authenticated")).toBe(false);
 			expect(contextManager.get("coder.isOwner")).toBe(false);
+		});
+	});
+
+	describe("suspendSession", () => {
+		it("clears auth state but keeps deployment for re-login", async () => {
+			const {
+				mockClient,
+				contextManager,
+				mockOAuthSessionManager,
+				mockWorkspaceProvider,
+				manager,
+			} = createTestContext();
+
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "test-token",
+				user: createMockUser(),
+			});
+			expect(manager.isAuthenticated()).toBe(true);
+
+			manager.suspendSession();
+
+			// Auth state is cleared
+			expect(mockOAuthSessionManager.clearDeployment).toHaveBeenCalled();
+			expect(mockClient.host).toBeUndefined();
+			expect(mockClient.token).toBeUndefined();
+			expect(contextManager.get("coder.authenticated")).toBe(false);
+			expect(manager.isAuthenticated()).toBe(false);
+			expect(mockWorkspaceProvider.clear).toHaveBeenCalled();
+
+			// Deployment is retained for easy re-login
+			expect(manager.getCurrentDeployment()).toMatchObject({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+		});
+	});
+
+	describe("auth listener recovery", () => {
+		it("recovers from suspended state when tokens update", async () => {
+			const { mockClient, validationMockClient, secretsManager, manager } =
+				createTestContext();
+			const user = createMockUser();
+			validationMockClient.setAuthenticatedUserResponse(user);
+
+			// Set up authenticated deployment
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "initial-token",
+				user,
+			});
+
+			// Suspend session (simulates session expiry)
+			manager.suspendSession();
+			expect(manager.isAuthenticated()).toBe(false);
+
+			// Simulate token update (e.g., from another window or re-login)
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "recovered-token",
+			});
+
+			await new Promise((resolve) => setImmediate(resolve));
+
+			// Should recover and be authenticated again
+			expect(mockClient.token).toBe("recovered-token");
+			expect(manager.isAuthenticated()).toBe(true);
 		});
 	});
 });

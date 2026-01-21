@@ -38,7 +38,7 @@ export type CurrentDeploymentState = z.infer<
  */
 const OAuthTokenDataSchema = z.object({
 	refresh_token: z.string().optional(),
-	scope: z.string().optional(),
+	scope: z.string(),
 	expiry_timestamp: z.number(),
 });
 

@@ -44,11 +44,13 @@ export class WorkspaceProvider
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
 	private visible = false;
+	private disposed = false;
 
 	constructor(
 		private readonly getWorkspacesQuery: WorkspaceQuery,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
+		private readonly isAuthenticated: () => boolean,
 		private readonly timerSeconds?: number,
 	) {
 		// No initialization.
@@ -59,8 +61,13 @@ export class WorkspaceProvider
 	// still logged in and no errors were encountered fetching workspaces.
 	// Calling this while already refreshing or not visible is a no-op and will
 	// return immediately.
-	async fetchAndRefresh() {
-		if (this.fetching || !this.visible) {
+	public async fetchAndRefresh() {
+		if (
+			this.disposed ||
+			this.fetching ||
+			!this.visible ||
+			!this.isAuthenticated()
+		) {
 			return;
 		}
 		this.fetching = true;
@@ -74,7 +81,7 @@ export class WorkspaceProvider
 		try {
 			this.workspaces = await this.fetch();
 		} catch (error) {
-			this.logger.error("Failed to fetch workspaces", error);
+			this.logger.warn("Failed to fetch workspaces:", error);
 			hadError = true;
 			this.workspaces = [];
 		}
@@ -176,7 +183,10 @@ export class WorkspaceProvider
 	 *
 	 * If we have never fetched workspaces and are visible, fetch immediately.
 	 */
-	setVisibility(visible: boolean) {
+	public setVisibility(visible: boolean) {
+		if (this.disposed) {
+			return;
+		}
 		this.visible = visible;
 		if (!visible) {
 			this.cancelPendingRefresh();
@@ -214,15 +224,18 @@ export class WorkspaceProvider
 	> = this._onDidChangeTreeData.event;
 
 	// refresh causes the tree to re-render. It does not fetch fresh workspaces.
-	refresh(item?: vscode.TreeItem): void {
+	public refresh(item?: vscode.TreeItem): void {
+		if (this.disposed) {
+			return;
+		}
 		this._onDidChangeTreeData.fire(item);
 	}
 
-	getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
+	public getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
 		return element;
 	}
 
-	getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
+	public getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
 		if (element) {
 			if (element instanceof WorkspaceTreeItem) {
 				const agents = extractAgents(element.workspace.latest_build.resources);
@@ -296,12 +309,22 @@ export class WorkspaceProvider
 		return Promise.resolve(this.workspaces ?? []);
 	}
 
-	dispose() {
+	/**
+	 * Clear all workspaces from the tree without fetching.
+	 */
+	public clear(): void {
 		this.cancelPendingRefresh();
 		for (const watcher of this.agentWatchers.values()) {
 			watcher.dispose();
 		}
 		this.agentWatchers.clear();
+		this.workspaces = undefined;
+		this.refresh();
+	}
+
+	public dispose() {
+		this.disposed = true;
+		this.clear();
 	}
 }
 
