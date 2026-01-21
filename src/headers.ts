@@ -1,22 +1,10 @@
-import * as cp from "node:child_process";
 import * as os from "node:os";
-import * as util from "node:util";
 
-import { toError } from "./error/errorUtils";
+import { execCommand } from "./command/exec";
 import { type Logger } from "./logging/logger";
 import { escapeCommandArg } from "./util";
 
 import type { WorkspaceConfiguration } from "vscode";
-
-interface ExecException {
-	code?: number;
-	stderr?: string;
-	stdout?: string;
-}
-
-function isExecException(err: unknown): err is ExecException {
-	return (err as ExecException).code !== undefined;
-}
 
 export function getHeaderCommand(
 	config: Pick<WorkspaceConfiguration, "get">,
@@ -66,25 +54,20 @@ export async function getHeaders(
 		typeof command === "string" &&
 		command.trim().length > 0
 	) {
-		let result: { stdout: string; stderr: string };
-		try {
-			result = await util.promisify(cp.exec)(command, {
-				env: {
-					...process.env,
-					CODER_URL: url,
-				},
-			});
-		} catch (error: unknown) {
-			if (isExecException(error)) {
-				logger.warn("Header command exited unexpectedly with code", error.code);
-				logger.warn("stdout:", error.stdout);
-				logger.warn("stderr:", error.stderr);
-				throw new Error(
-					`Header command exited unexpectedly with code ${error.code}`,
-				);
-			}
-			const message = toError(error).message;
-			throw new Error(`Header command exited unexpectedly: ${message}`);
+		const result = await execCommand(command, logger, {
+			title: "Header command",
+			env: {
+				...process.env,
+				CODER_URL: url,
+			},
+		});
+
+		if (!result.success) {
+			throw new Error(
+				result.exitCode === undefined
+					? "Header command exited unexpectedly"
+					: `Header command exited unexpectedly with code ${result.exitCode}`,
+			);
 		}
 		if (!result.stdout) {
 			// Allow no output for parity with the Coder CLI.

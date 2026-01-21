@@ -3,6 +3,7 @@ import {
 	type AxiosInstance,
 	type AxiosHeaders,
 	type AxiosResponseTransformer,
+	isAxiosError,
 } from "axios";
 import { Api } from "coder/site/src/api/api";
 import {
@@ -17,8 +18,9 @@ import * as vscode from "vscode";
 import { type ClientOptions } from "ws";
 
 import { watchConfigurationChanges } from "../configWatcher";
-import { CertificateError } from "../error/certificateError";
+import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
+import { ServerCertificateError } from "../error/serverCertificateError";
 import { getHeaderCommand, getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
 import {
@@ -49,6 +51,7 @@ import {
 } from "../websocket/reconnectingWebSocket";
 import { SseConnection } from "../websocket/sseConnection";
 
+import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
 import { createHttpAgent } from "./utils";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
@@ -309,7 +312,9 @@ export class CoderApi extends Api implements vscode.Disposable {
 		});
 
 		this.attachStreamLogger(ws);
-		return ws;
+
+		// Wait for connection to open before returning
+		return await this.waitForOpen(ws);
 	}
 
 	private attachStreamLogger<TData>(
@@ -349,9 +354,8 @@ export class CoderApi extends Api implements vscode.Disposable {
 	): Promise<UnidirectionalStream<ServerSentEvent>> {
 		const { fallbackApiRoute, ...socketConfigs } = configs;
 		try {
-			const ws =
-				await this.createOneWayWebSocket<ServerSentEvent>(socketConfigs);
-			return await this.waitForOpen(ws);
+			// createOneWayWebSocket already waits for open
+			return await this.createOneWayWebSocket<ServerSentEvent>(socketConfigs);
 		} catch (error) {
 			if (this.is404Error(error)) {
 				this.output.warn(
@@ -396,10 +400,11 @@ export class CoderApi extends Api implements vscode.Disposable {
 
 	/**
 	 * Wait for a connection to open. Rejects on error.
+	 * Preserves the specific connection type (e.g., OneWayWebSocket, SseConnection).
 	 */
-	private waitForOpen<TData>(
-		connection: UnidirectionalStream<TData>,
-	): Promise<UnidirectionalStream<TData>> {
+	private waitForOpen<T extends UnidirectionalStream<unknown>>(
+		connection: T,
+	): Promise<T> {
 		return new Promise((resolve, reject) => {
 			const cleanup = () => {
 				connection.removeEventListener("open", handleOpen);
@@ -414,7 +419,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 			const handleError = (event: ErrorEvent) => {
 				cleanup();
 				connection.close();
-				const error = toError(event.error, "WebSocket connection error");
+				const error = toError(
+					event.error,
+					event.message || "WebSocket connection error",
+				);
 				reject(error);
 			};
 
@@ -440,7 +448,15 @@ export class CoderApi extends Api implements vscode.Disposable {
 		const reconnectingSocket = await ReconnectingWebSocket.create<TData>(
 			socketFactory,
 			this.output,
-			undefined,
+			{
+				onCertificateRefreshNeeded: async () => {
+					const refreshCommand = getRefreshCommand();
+					if (!refreshCommand) {
+						return false;
+					}
+					return refreshCertificates(refreshCommand, this.output);
+				},
+			},
 			() => this.reconnectingSockets.delete(reconnectingSocket),
 		);
 
@@ -479,16 +495,25 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 		return config;
 	});
 
-	// Wrap certificate errors.
+	// Wrap certificate errors and handle client certificate errors with refresh.
 	client.getAxiosInstance().interceptors.response.use(
 		(r) => r,
-		async (err) => {
+		async (err: unknown) => {
+			const retryResponse = await tryRefreshClientCertificate(
+				err,
+				client.getAxiosInstance(),
+				output,
+			);
+			if (retryResponse) {
+				return retryResponse;
+			}
+
+			// Handle other certificate errors.
 			const baseUrl = client.getAxiosInstance().defaults.baseURL;
 			if (baseUrl) {
-				throw await CertificateError.maybeWrap(err, baseUrl, output);
-			} else {
-				throw err;
+				throw await ServerCertificateError.maybeWrap(err, baseUrl, output);
 			}
+			throw err;
 		},
 	);
 }
@@ -534,6 +559,61 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 			throw error;
 		},
 	);
+}
+
+/**
+ * Attempts to refresh client certificates and retry the request if the error
+ * is a refreshable client certificate error.
+ *
+ * @returns The retry response if refresh succeeds, or undefined if the error
+ *          is not a client certificate error (caller should handle).
+ * @throws {ClientCertificateError} If this is a client certificate error.
+ */
+async function tryRefreshClientCertificate(
+	err: unknown,
+	axiosInstance: AxiosInstance,
+	output: Logger,
+): Promise<unknown> {
+	const certError = ClientCertificateError.fromError(err);
+	if (!certError) {
+		return undefined;
+	}
+
+	const refreshCommand = getRefreshCommand();
+	if (
+		!certError.isRefreshable ||
+		!refreshCommand ||
+		!isAxiosError(err) ||
+		!err.config
+	) {
+		throw certError;
+	}
+
+	// _certRetried is per-request (Axios creates fresh config per request).
+	const config = err.config as RequestConfigWithMeta & {
+		_certRetried?: boolean;
+	};
+	if (config._certRetried) {
+		throw certError;
+	}
+	config._certRetried = true;
+
+	output.info(
+		`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
+	);
+	const success = await refreshCertificates(refreshCommand, output);
+	if (!success) {
+		throw certError;
+	}
+
+	// Create new agent with refreshed certificates.
+	const agent = await createHttpAgent(vscode.workspace.getConfiguration());
+	config.httpsAgent = agent;
+	config.httpAgent = agent;
+
+	// Retry the request.
+	output.info("Retrying request with refreshed certificates...");
+	return axiosInstance.request(config);
 }
 
 function wrapRequestTransform(

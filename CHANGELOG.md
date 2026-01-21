@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- Automatic TLS client certificate refresh via new `coder.tlsCertRefreshCommand` setting. Detects
+  certificate errors (expired, revoked, etc.) and automatically refreshes and retries.
+
 ### Fixed
 
 - Fixed `SetEnv` SSH config parsing and accumulation with user-defined values.
+- Improved WebSocket error handling for more consistent behavior across connection failures.
 
 ## [v1.11.6](https://github.com/coder/vscode-coder/releases/tag/v1.11.6) 2025-12-15
 

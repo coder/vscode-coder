@@ -90,13 +90,21 @@ describe("ReconnectingWebSocket", () => {
 					);
 				});
 
-				await expect(
-					ReconnectingWebSocket.create(factory, createMockLogger()),
-				).rejects.toThrow(`Unexpected server response: ${statusCode}`);
+				// create() returns a disconnected instance instead of throwing
+				const ws = await ReconnectingWebSocket.create(
+					factory,
+					createMockLogger(),
+					{ onCertificateRefreshNeeded: () => Promise.resolve(false) },
+				);
+
+				// Should be disconnected after unrecoverable HTTP error
+				expect(ws.isDisconnected).toBe(true);
 
 				// Should not retry after unrecoverable HTTP error
 				await vi.advanceTimersByTimeAsync(10000);
 				expect(socketCreationAttempts).toBe(1);
+
+				ws.close();
 			},
 		);
 
@@ -496,6 +504,91 @@ describe("ReconnectingWebSocket", () => {
 			ws.close();
 		});
 	});
+
+	describe("Certificate Refresh", () => {
+		const setupRefreshTest = async (onRefresh: () => Promise<boolean>) => {
+			const sockets: MockSocket[] = [];
+			const refreshCallback = vi.fn().mockImplementation(onRefresh);
+			const factory = vi.fn(() => {
+				const socket = createMockSocket();
+				sockets.push(socket);
+				return Promise.resolve(socket);
+			});
+			const ws = await fromFactory(factory, undefined, refreshCallback);
+			sockets[0].fireOpen();
+			return { ws, sockets, refreshCallback };
+		};
+
+		it("reconnects after successful refresh", async () => {
+			let certState: "expired" | "valid" = "expired";
+			const { ws, sockets } = await setupRefreshTest(() => {
+				certState = "valid";
+				return Promise.resolve(true);
+			});
+
+			sockets[0].fireError(new Error("ssl alert certificate_expired"));
+			await vi.waitFor(() => expect(sockets).toHaveLength(2));
+
+			expect(certState).toBe("valid");
+			ws.close();
+		});
+
+		it("disconnects when refresh fails", async () => {
+			const { ws, sockets } = await setupRefreshTest(() =>
+				Promise.resolve(false),
+			);
+
+			sockets[0].fireError(new Error("ssl alert certificate_expired"));
+			await vi.waitFor(() => expect(ws.isDisconnected).toBe(true));
+
+			expect(sockets).toHaveLength(1);
+			ws.close();
+		});
+
+		it("only refreshes once per connection cycle (retry-once)", async () => {
+			let refreshCount = 0;
+			const { ws, sockets } = await setupRefreshTest(() => {
+				refreshCount++;
+				return Promise.resolve(true);
+			});
+
+			sockets[0].fireError(new Error("ssl alert certificate_expired"));
+			await vi.waitFor(() => expect(sockets).toHaveLength(2));
+
+			sockets[1].fireError(new Error("ssl alert certificate_expired"));
+			await vi.waitFor(() => expect(ws.isDisconnected).toBe(true));
+
+			expect(refreshCount).toBe(1);
+			ws.close();
+		});
+
+		it("resets refresh state after successful connection", async () => {
+			const { ws, sockets } = await setupRefreshTest(() =>
+				Promise.resolve(true),
+			);
+
+			sockets[0].fireError(new Error("ssl alert certificate_expired"));
+			await vi.waitFor(() => expect(sockets).toHaveLength(2));
+
+			sockets[1].fireOpen();
+			sockets[1].fireError(new Error("ssl alert certificate_expired"));
+			await vi.waitFor(() => expect(sockets).toHaveLength(3));
+
+			ws.close();
+		});
+
+		it("skips refresh for non-refreshable errors (unknown_ca)", async () => {
+			const { ws, sockets, refreshCallback } = await setupRefreshTest(() =>
+				Promise.resolve(true),
+			);
+
+			sockets[0].fireError(new Error("ssl alert unknown_ca"));
+			await vi.waitFor(() => expect(ws.isDisconnected).toBe(true));
+
+			expect(refreshCallback).not.toHaveBeenCalled();
+			ws.close();
+		});
+	});
 });
 
 type MockSocket = UnidirectionalStream<unknown> & {
@@ -616,11 +709,15 @@ async function createReconnectingWebSocketWithErrorControl(): Promise<{
 async function fromFactory<T>(
 	factory: SocketFactory<T>,
 	onDispose?: () => void,
+	onCertificateRefreshNeeded?: () => Promise<boolean>,
 ): Promise<ReconnectingWebSocket<T>> {
 	return await ReconnectingWebSocket.create(
 		factory,
 		createMockLogger(),
-		undefined,
+		{
+			onCertificateRefreshNeeded:
+				onCertificateRefreshNeeded ?? (() => Promise.resolve(false)),
+		},
 		onDispose,
 	);
 }
