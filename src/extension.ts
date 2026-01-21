@@ -124,10 +124,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	);
 	ctx.subscriptions.push(authInterceptor);
 
+	const isAuthenticated = () => contextManager.get("coder.authenticated");
+
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
 		client,
 		output,
+		isAuthenticated,
 		5,
 	);
 	ctx.subscriptions.push(myWorkspacesProvider);
@@ -136,6 +139,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		WorkspaceQuery.All,
 		client,
 		output,
+		isAuthenticated,
 	);
 	ctx.subscriptions.push(allWorkspacesProvider);
 
@@ -316,11 +320,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		output.info(`Initializing deployment: ${deployment.url}`);
 		deploymentManager
 			.setDeploymentIfValid(deployment)
+			// Failure is logged internally
 			.then((success) => {
 				if (success) {
 					output.info("Deployment authenticated and set");
-				} else {
-					output.info("Failed to authenticate, deployment not set");
 				}
 			})
 			.catch((error: unknown) => {

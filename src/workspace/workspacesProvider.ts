@@ -50,6 +50,7 @@ export class WorkspaceProvider
 		private readonly getWorkspacesQuery: WorkspaceQuery,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
+		private readonly isAuthenticated: () => boolean,
 		private readonly timerSeconds?: number,
 	) {
 		// No initialization.
@@ -61,7 +62,12 @@ export class WorkspaceProvider
 	// Calling this while already refreshing or not visible is a no-op and will
 	// return immediately.
 	public async fetchAndRefresh() {
-		if (this.disposed || this.fetching || !this.visible) {
+		if (
+			this.disposed ||
+			this.fetching ||
+			!this.visible ||
+			!this.isAuthenticated()
+		) {
 			return;
 		}
 		this.fetching = true;

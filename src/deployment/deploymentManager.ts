@@ -127,6 +127,7 @@ export class DeploymentManager implements vscode.Disposable {
 		// Register auth listener before setDeployment so background token refresh
 		// can update client credentials via the listener
 		this.registerAuthListener();
+		// Contexts must be set before refresh (providers check isAuthenticated)
 		this.updateAuthContexts(deployment.user);
 		this.refreshWorkspaces();
 
