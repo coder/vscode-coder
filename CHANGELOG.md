@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.12.0](https://github.com/coder/vscode-coder/releases/tag/v1.12.0) 2026-01-21
+
 ### Added
 
 - Automatic TLS client certificate refresh via new `coder.tlsCertRefreshCommand` setting. Detects
