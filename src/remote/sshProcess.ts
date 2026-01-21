@@ -78,42 +78,64 @@ export class SshProcessMonitor implements vscode.Disposable {
 	private lastStaleSearchTime = 0;
 
 	/**
-	 * Cleans up network info files older than the specified age.
+	 * Helper to clean up files in a directory.
+	 * Stats files in parallel, applies selection criteria, then deletes in parallel.
 	 */
-	private static async cleanupOldNetworkFiles(
-		networkInfoPath: string,
-		maxAgeMs: number,
+	private static async cleanupFiles(
+		dir: string,
+		fileType: string,
 		logger: Logger,
+		options: {
+			filter: (name: string) => boolean;
+			select: (
+				files: Array<{ name: string; mtime: number }>,
+				now: number,
+			) => Array<{ name: string }>;
+		},
 	): Promise<void> {
 		try {
-			const files = await fs.readdir(networkInfoPath);
 			const now = Date.now();
+			const files = await fs.readdir(dir);
 
-			const deletedFiles: string[] = [];
-			for (const file of files) {
-				if (!file.endsWith(".json")) {
-					continue;
-				}
-
-				const filePath = path.join(networkInfoPath, file);
-				try {
-					const stats = await fs.stat(filePath);
-					const ageMs = now - stats.mtime.getTime();
-
-					if (ageMs > maxAgeMs) {
-						await fs.unlink(filePath);
-						deletedFiles.push(file);
+			// Gather file stats in parallel
+			const withStats = await Promise.all(
+				files.filter(options.filter).map(async (name) => {
+					try {
+						const stats = await fs.stat(path.join(dir, name));
+						return { name, mtime: stats.mtime.getTime() };
+					} catch (error) {
+						if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+							logger.debug(`Failed to stat ${fileType} ${name}`, error);
+						}
+						return null;
 					}
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-						logger.debug(`Failed to clean up network info file ${file}`, error);
-					}
-				}
-			}
+				}),
+			);
 
+			const toDelete = options.select(
+				withStats.filter((f) => f !== null),
+				now,
+			);
+
+			// Delete files in parallel
+			const results = await Promise.all(
+				toDelete.map(async (file) => {
+					try {
+						await fs.unlink(path.join(dir, file.name));
+						return file.name;
+					} catch (error) {
+						if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+							logger.debug(`Failed to delete ${fileType} ${file.name}`, error);
+						}
+						return null;
+					}
+				}),
+			);
+
+			const deletedFiles = results.filter((name) => name !== null);
 			if (deletedFiles.length > 0) {
 				logger.debug(
-					`Cleaned up ${deletedFiles.length} old network info file(s): ${deletedFiles.join(", ")}`,
+					`Cleaned up ${deletedFiles.length} ${fileType}(s): ${deletedFiles.join(", ")}`,
 				);
 			}
 		} catch {
@@ -122,8 +144,27 @@ export class SshProcessMonitor implements vscode.Disposable {
 	}
 
 	/**
-	 * Cleans up old proxy log files when there are too many.
-	 * Deletes oldest stale files (by mtime) until count <= maxFilesToKeep.
+	 * Cleans up network info files older than the specified age.
+	 */
+	private static async cleanupOldNetworkFiles(
+		networkInfoPath: string,
+		maxAgeMs: number,
+		logger: Logger,
+	): Promise<void> {
+		await SshProcessMonitor.cleanupFiles(
+			networkInfoPath,
+			"network info file",
+			logger,
+			{
+				filter: (name) => name.endsWith(".json"),
+				select: (files, now) => files.filter((f) => now - f.mtime > maxAgeMs),
+			},
+		);
+	}
+
+	/**
+	 * Cleans up old proxy log files that exceed the retention limit.
+	 * Only deletes files older than maxAgeMs when file count exceeds maxFilesToKeep.
 	 */
 	private static async cleanupOldLogFiles(
 		logDir: string,
@@ -131,49 +172,14 @@ export class SshProcessMonitor implements vscode.Disposable {
 		maxAgeMs: number,
 		logger: Logger,
 	): Promise<void> {
-		try {
-			const now = Date.now();
-			const files = await fs.readdir(logDir);
-
-			const withStats = await Promise.all(
+		await SshProcessMonitor.cleanupFiles(logDir, "log file", logger, {
+			filter: (name) => name.startsWith("coder-ssh") && name.endsWith(".log"),
+			select: (files, now) =>
 				files
-					.filter((f) => f.startsWith("coder-ssh") && f.endsWith(".log"))
-					.map(async (name) => {
-						try {
-							const stats = await fs.stat(path.join(logDir, name));
-							return { name, mtime: stats.mtime.getTime() };
-						} catch {
-							return null;
-						}
-					}),
-			);
-
-			const toDelete = withStats
-				.filter((f) => f !== null)
-				.sort((a, b) => a.mtime - b.mtime) // oldest first
-				.slice(0, -maxFilesToKeep) // keep the newest maxFilesToKeep
-				.filter((f) => now - f.mtime > maxAgeMs); // only delete stale files
-
-			const deletedFiles: string[] = [];
-			for (const file of toDelete) {
-				try {
-					await fs.unlink(path.join(logDir, file.name));
-					deletedFiles.push(file.name);
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-						logger.debug(`Failed to clean up log file ${file.name}`, error);
-					}
-				}
-			}
-
-			if (deletedFiles.length > 0) {
-				logger.debug(
-					`Cleaned up ${deletedFiles.length} old log file(s): ${deletedFiles.join(", ")}`,
-				);
-			}
-		} catch {
-			// Directory may not exist yet, ignore
-		}
+					.toSorted((a, b) => a.mtime - b.mtime) // oldest first
+					.slice(0, -maxFilesToKeep) // keep the newest maxFilesToKeep
+					.filter((f) => now - f.mtime > maxAgeMs), // only delete stale files
+		});
 	}
 
 	private constructor(options: SshProcessMonitorOptions) {
