@@ -7,7 +7,11 @@ import { type Logger } from "../logging/logger";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { type WorkspaceProvider } from "../workspace/workspacesProvider";
 
-import { type Deployment, type DeploymentWithAuth } from "./types";
+import {
+	DeploymentSchema,
+	type Deployment,
+	type DeploymentWithAuth,
+} from "./types";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 import type * as vscode from "vscode";
@@ -115,6 +119,10 @@ export class DeploymentManager implements vscode.Disposable {
 	public async setDeployment(
 		deployment: DeploymentWithAuth & { user: User },
 	): Promise<void> {
+		this.logger.debug("Setting deployment", {
+			hostname: deployment.safeHostname,
+			user: deployment.user.username,
+		});
 		this.#deployment = { ...deployment };
 
 		// Updates client credentials
@@ -131,14 +139,17 @@ export class DeploymentManager implements vscode.Disposable {
 		this.updateAuthContexts(deployment.user);
 		this.refreshWorkspaces();
 
-		await this.oauthSessionManager.setDeployment(deployment);
-		await this.persistDeployment(deployment);
+		const deploymentWithoutAuth: Deployment =
+			DeploymentSchema.parse(deployment);
+		await this.oauthSessionManager.setDeployment(deploymentWithoutAuth);
+		await this.persistDeployment(deploymentWithoutAuth);
 	}
 
 	/**
 	 * Clears the current deployment.
 	 */
 	public async clearDeployment(): Promise<void> {
+		this.logger.debug("Clearing deployment", this.#deployment?.safeHostname);
 		this.suspendSession();
 		this.#authListenerDisposable?.dispose();
 		this.#authListenerDisposable = undefined;

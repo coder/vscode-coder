@@ -101,6 +101,12 @@ export class Remote {
 			return;
 		}
 
+		this.logger.debug("Setting up remote connection", {
+			hostname: parts.safeHostname,
+			workspace: `${parts.username}/${parts.workspace}`,
+			agent: parts.agent || "(default)",
+		});
+
 		const workspaceName = `${parts.username}/${parts.workspace}`;
 
 		// Migrate existing legacy file-based auth to secrets storage.
@@ -110,6 +116,11 @@ export class Remote {
 		const auth = await this.secretsManager.getSessionAuth(parts.safeHostname);
 		const baseUrlRaw = auth?.url ?? "";
 		const token = auth?.token;
+		this.logger.debug("Retrieved auth for hostname", {
+			hostname: parts.safeHostname,
+			hasUrl: Boolean(baseUrlRaw),
+			hasToken: token !== undefined,
+		});
 		// Empty token is valid for mTLS
 		if (baseUrlRaw && token !== undefined) {
 			await this.cliManager.configure(parts.safeHostname, baseUrlRaw, token);
@@ -343,6 +354,10 @@ export class Remote {
 			);
 
 			// Wait for workspace to be running and agent to be ready
+			this.logger.debug("Starting workspace state machine", {
+				workspace: workspaceName,
+				initialStatus: workspace.latest_build.status,
+			});
 			const stateMachine = new WorkspaceStateMachine(
 				parts,
 				workspaceClient,
@@ -422,6 +437,12 @@ export class Remote {
 			if (!agent) {
 				throw new Error("Failed to get workspace or agent from state machine");
 			}
+
+			this.logger.info("Workspace ready", {
+				workspace: workspaceName,
+				agent: agent.name,
+				status: workspace.latest_build.status,
+			});
 
 			this.commands.workspace = workspace;
 
