@@ -8,18 +8,16 @@ import type { Memento, SecretStorage, Disposable } from "vscode";
 
 import type { Logger } from "../logging/logger";
 
-// Each deployment has its own key to ensure atomic operations (multiple windows
-// writing to a shared key could drop data) and to receive proper VS Code events.
+// Per-deployment keys ensure atomic operations (multiple windows writing to a
+// shared key could drop data) and enable proper VS Code change events.
 const SESSION_KEY_PREFIX = "coder.session.";
 const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
+const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
 
 type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
 const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
-
 const CURRENT_DEPLOYMENT_KEY = "coder.currentDeployment";
-
-const DEPLOYMENT_USAGE_KEY = "coder.deploymentUsage";
 const DEFAULT_MAX_DEPLOYMENTS = 10;
 
 const LEGACY_SESSION_TOKEN_KEY = "sessionToken";
@@ -52,14 +50,6 @@ const SessionAuthSchema = z.object({
 });
 
 export type SessionAuth = z.infer<typeof SessionAuthSchema>;
-
-// Tracks when a deployment was last accessed for LRU pruning.
-const DeploymentUsageSchema = z.object({
-	safeHostname: z.string(),
-	lastAccessedAt: z.string(),
-});
-
-type DeploymentUsage = z.infer<typeof DeploymentUsageSchema>;
 
 const OAuthCallbackDataSchema = z.object({
 	state: z.string(),
@@ -224,61 +214,63 @@ export class SecretsManager {
 	}
 
 	/**
-	 * Record that a deployment was accessed, moving it to the front of the LRU list.
+	 * Record that a deployment was accessed by updating its timestamp.
 	 * Prunes deployments beyond maxCount, clearing their auth data.
 	 */
 	public async recordDeploymentAccess(
 		safeHostname: string,
 		maxCount = DEFAULT_MAX_DEPLOYMENTS,
 	): Promise<void> {
-		const usage = this.getDeploymentUsage();
-		const filtered = usage.filter((u) => u.safeHostname !== safeHostname);
-		const newEntry = DeploymentUsageSchema.parse({
-			safeHostname,
-			lastAccessedAt: new Date().toISOString(),
-		});
-		filtered.unshift(newEntry);
-
-		const toKeep = filtered.slice(0, maxCount);
-		const toRemove = filtered.slice(maxCount);
-
-		await Promise.all(
-			toRemove.map((u) => this.clearAllAuthData(u.safeHostname)),
+		// Update this deployment's access timestamp
+		await this.memento.update(
+			`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
+			new Date().toISOString(),
 		);
-		await this.memento.update(DEPLOYMENT_USAGE_KEY, toKeep);
+
+		// Prune if needed - errors here shouldn't block deployment access
+		try {
+			const allHostnames = await this.getKnownSafeHostnames();
+			const toRemove = allHostnames.slice(maxCount);
+			await Promise.all(toRemove.map((h) => this.clearAllAuthData(h)));
+		} catch {
+			this.logger.warn("Failed to prune old deployments");
+		}
 	}
 
 	/**
-	 * Clear all auth data for a deployment and remove it from the usage list.
+	 * Clear all auth data for a deployment, including the access timestamp.
 	 */
 	public async clearAllAuthData(safeHostname: string): Promise<void> {
 		await Promise.all([
 			this.clearSessionAuth(safeHostname),
 			this.clearOAuthClientRegistration(safeHostname),
+			this.memento.update(
+				`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
+				undefined,
+			),
 		]);
-		const usage = this.getDeploymentUsage().filter(
-			(u) => u.safeHostname !== safeHostname,
-		);
-		await this.memento.update(DEPLOYMENT_USAGE_KEY, usage);
 	}
 
 	/**
 	 * Get all known hostnames, ordered by most recently accessed.
+	 * Derives the list from actual session secrets stored.
 	 */
-	public getKnownSafeHostnames(): string[] {
-		return this.getDeploymentUsage().map((u) => u.safeHostname);
-	}
+	public async getKnownSafeHostnames(): Promise<string[]> {
+		const keys = await this.secrets.keys();
+		const sessionHostnames = keys
+			.filter((k) => k.startsWith(SESSION_KEY_PREFIX))
+			.map((k) => k.slice(SESSION_KEY_PREFIX.length));
 
-	/**
-	 * Get the full deployment usage list with access timestamps.
-	 */
-	private getDeploymentUsage(): DeploymentUsage[] {
-		const data = this.memento.get<unknown>(DEPLOYMENT_USAGE_KEY);
-		if (!data) {
-			return [];
-		}
-		const result = z.array(DeploymentUsageSchema).safeParse(data);
-		return result.success ? result.data : [];
+		// Sort by access timestamp (most recent first)
+		const withTimestamps = sessionHostnames.map((hostname) => ({
+			hostname,
+			accessedAt:
+				this.memento.get<string>(`${DEPLOYMENT_ACCESS_PREFIX}${hostname}`) ??
+				"",
+		}));
+
+		withTimestamps.sort((a, b) => b.accessedAt.localeCompare(a.accessedAt));
+		return withTimestamps.map((w) => w.hostname);
 	}
 
 	/**

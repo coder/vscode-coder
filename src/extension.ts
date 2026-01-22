@@ -11,7 +11,6 @@ import { AuthInterceptor } from "./api/authInterceptor";
 import { CoderApi } from "./api/coderApi";
 import { Commands } from "./commands";
 import { ServiceContainer } from "./core/container";
-import { type SecretsManager } from "./core/secretsManager";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { getErrorDetail, toError } from "./error/errorUtils";
@@ -243,7 +242,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
 		),
 		vscode.commands.registerCommand("coder.debug.listDeployments", () =>
-			listStoredDeployments(secretsManager),
+			listStoredDeployments(serviceContainer),
 		),
 	);
 
@@ -387,26 +386,36 @@ async function showTreeViewSearch(id: string): Promise<void> {
 }
 
 async function listStoredDeployments(
-	secretsManager: SecretsManager,
+	serviceContainer: ServiceContainer,
 ): Promise<void> {
-	const hostnames = secretsManager.getKnownSafeHostnames();
-	if (hostnames.length === 0) {
-		vscode.window.showInformationMessage("No deployments stored.");
-		return;
-	}
+	const secretsManager = serviceContainer.getSecretsManager();
+	const output = serviceContainer.getLogger();
 
-	const selected = await vscode.window.showQuickPick(
-		hostnames.map((hostname) => ({
-			label: hostname,
-			description: "Click to forget",
-		})),
-		{ placeHolder: "Select a deployment to forget" },
-	);
+	try {
+		const hostnames = await secretsManager.getKnownSafeHostnames();
+		if (hostnames.length === 0) {
+			vscode.window.showInformationMessage("No deployments stored.");
+			return;
+		}
 
-	if (selected) {
-		await secretsManager.clearAllAuthData(selected.label);
-		vscode.window.showInformationMessage(
-			`Cleared auth data for ${selected.label}`,
+		const selected = await vscode.window.showQuickPick(
+			hostnames.map((hostname) => ({
+				label: hostname,
+				description: "Click to forget",
+			})),
+			{ placeHolder: "Select a deployment to forget" },
+		);
+
+		if (selected) {
+			await secretsManager.clearAllAuthData(selected.label);
+			vscode.window.showInformationMessage(
+				`Cleared auth data for ${selected.label}`,
+			);
+		}
+	} catch (error: unknown) {
+		output.error("Failed to list stored deployments", error);
+		vscode.window.showErrorMessage(
+			"Failed to list stored deployments. Storage may be corrupted.",
 		);
 	}
 }

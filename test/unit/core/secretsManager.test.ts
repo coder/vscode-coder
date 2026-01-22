@@ -75,20 +75,26 @@ describe("SecretsManager", () => {
 		});
 
 		it("should track known safe hostnames", async () => {
-			expect(secretsManager.getKnownSafeHostnames()).toEqual([]);
+			expect(await secretsManager.getKnownSafeHostnames()).toEqual([]);
 
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			expect(secretsManager.getKnownSafeHostnames()).toContain("example.com");
+			expect(await secretsManager.getKnownSafeHostnames()).toContain(
+				"example.com",
+			);
 
 			await secretsManager.setSessionAuth("other-com", {
 				url: "https://other.com",
 				token: "other-token",
 			});
-			expect(secretsManager.getKnownSafeHostnames()).toContain("example.com");
-			expect(secretsManager.getKnownSafeHostnames()).toContain("other-com");
+			expect(await secretsManager.getKnownSafeHostnames()).toContain(
+				"example.com",
+			);
+			expect(await secretsManager.getKnownSafeHostnames()).toContain(
+				"other-com",
+			);
 		});
 
 		it("should remove safe hostname on clearAllAuthData", async () => {
@@ -96,51 +102,76 @@ describe("SecretsManager", () => {
 				url: "https://example.com",
 				token: "test-token",
 			});
-			expect(secretsManager.getKnownSafeHostnames()).toContain("example.com");
+			expect(await secretsManager.getKnownSafeHostnames()).toContain(
+				"example.com",
+			);
 
 			await secretsManager.clearAllAuthData("example.com");
-			expect(secretsManager.getKnownSafeHostnames()).not.toContain(
+			expect(await secretsManager.getKnownSafeHostnames()).not.toContain(
 				"example.com",
 			);
 		});
 
+		it("should throw when secrets storage is corrupted", async () => {
+			await secretsManager.setSessionAuth("example.com", {
+				url: "https://example.com",
+				token: "test-token",
+			});
+			secretStorage.corruptStorage();
+
+			await expect(secretsManager.getKnownSafeHostnames()).rejects.toThrow();
+		});
+
 		it("should order safe hostnames by most recently accessed", async () => {
+			vi.useFakeTimers();
+
 			await secretsManager.setSessionAuth("first.com", {
 				url: "https://first.com",
 				token: "token1",
 			});
+			vi.advanceTimersByTime(10);
 			await secretsManager.setSessionAuth("second.com", {
 				url: "https://second.com",
 				token: "token2",
 			});
+			vi.advanceTimersByTime(10);
 			await secretsManager.setSessionAuth("first.com", {
 				url: "https://first.com",
 				token: "token1-updated",
 			});
 
-			expect(secretsManager.getKnownSafeHostnames()).toEqual([
+			expect(await secretsManager.getKnownSafeHostnames()).toEqual([
 				"first.com",
 				"second.com",
 			]);
+
+			vi.useRealTimers();
 		});
 
 		it("should prune old deployments when exceeding maxCount", async () => {
+			// Use fake timers to ensure distinct timestamps for each host
+			vi.useFakeTimers();
+
 			for (let i = 1; i <= 5; i++) {
 				await secretsManager.setSessionAuth(`host${i}.com`, {
 					url: `https://host${i}.com`,
 					token: `token${i}`,
 				});
+				vi.advanceTimersByTime(10);
 			}
 
-			await secretsManager.recordDeploymentAccess("new.com", 3);
+			// With maxCount=3, only the 3 most recently accessed hosts should remain.
+			await secretsManager.recordDeploymentAccess("host5.com", 3);
 
-			expect(secretsManager.getKnownSafeHostnames()).toEqual([
-				"new.com",
+			expect(await secretsManager.getKnownSafeHostnames()).toEqual([
 				"host5.com",
 				"host4.com",
+				"host3.com",
 			]);
 			expect(await secretsManager.getSessionAuth("host1.com")).toBeUndefined();
 			expect(await secretsManager.getSessionAuth("host2.com")).toBeUndefined();
+
+			vi.useRealTimers();
 		});
 	});
 
@@ -381,11 +412,6 @@ describe("SecretsManager", () => {
 					JSON.stringify({ deployment: { url: 123, safeHostname: "x" } }),
 				);
 				expect(await secretsManager.getCurrentDeployment()).toBeNull();
-			});
-
-			it("returns empty array for invalid deployment usage data", async () => {
-				await memento.update("coder.deploymentUsage", [{ safeHostname: 123 }]);
-				expect(secretsManager.getKnownSafeHostnames()).toEqual([]);
 			});
 		});
 
