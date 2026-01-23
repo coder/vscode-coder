@@ -68,6 +68,9 @@ export async function verifySignature(
 			message,
 			signature,
 			verificationKeys: publicKeys,
+			config: {
+				allowInsecureVerificationWithReformattedKeys: true,
+			},
 		});
 		for await (const _ of verificationResult.data) {
 			// The docs indicate this data must be consumed; it triggers the
