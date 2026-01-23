@@ -65,6 +65,10 @@ vi.mock("@/promptUtils", () => ({
 	maybeAskUrl: vi.fn(),
 }));
 
+vi.mock("@/vscodeProposed", () => ({
+	vscodeProposed: vscode,
+}));
+
 // Mock CoderApi to control getAuthenticatedUser behavior
 const mockGetAuthenticatedUser = vi.hoisted(() => vi.fn());
 vi.mock("@/api/coderApi", async (importOriginal) => {
@@ -116,7 +120,6 @@ function createTestContext() {
 	const coordinator = new LoginCoordinator(
 		secretsManager,
 		mementoManager,
-		vscode,
 		logger,
 		"coder.coder-remote",
 	);
@@ -305,7 +308,6 @@ describe("LoginCoordinator", () => {
 			const coordinator = new LoginCoordinator(
 				secretsManager,
 				mementoManager,
-				vscode,
 				logger,
 				"coder.coder-remote",
 			);

@@ -18,6 +18,7 @@ import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
+import { initVscodeProposed } from "./vscodeProposed";
 import {
 	WorkspaceProvider,
 	WorkspaceQuery,
@@ -53,7 +54,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		);
 	}
 
-	const serviceContainer = new ServiceContainer(ctx, vscodeProposed);
+	// Initialize the global vscodeProposed module for use throughout the extension
+	initVscodeProposed(vscodeProposed);
+
+	const serviceContainer = new ServiceContainer(ctx);
 	ctx.subscriptions.push(serviceContainer);
 
 	const output = serviceContainer.getLogger();
@@ -184,12 +188,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const commands = new Commands(serviceContainer, client, deploymentManager);
 
 	ctx.subscriptions.push(
-		registerUriHandler(
-			serviceContainer,
-			deploymentManager,
-			commands,
-			vscodeProposed,
-		),
+		registerUriHandler(serviceContainer, deploymentManager, commands),
 		vscode.commands.registerCommand(
 			"coder.login",
 			commands.login.bind(commands),

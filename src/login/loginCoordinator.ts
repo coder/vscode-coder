@@ -8,6 +8,7 @@ import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
+import { vscodeProposed } from "../vscodeProposed";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 
@@ -37,7 +38,6 @@ export class LoginCoordinator implements vscode.Disposable {
 	constructor(
 		private readonly secretsManager: SecretsManager,
 		private readonly mementoManager: MementoManager,
-		private readonly vscodeProposed: typeof vscode,
 		private readonly logger: Logger,
 		extensionId: string,
 	) {
@@ -78,7 +78,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		const { safeHostname, url, detailPrefix, message } = options;
 		return this.executeWithGuard(async () => {
 			// Show dialog promise
-			const dialogPromise = this.vscodeProposed.window
+			const dialogPromise = vscodeProposed.window
 				.showErrorMessage(
 					message || "Authentication Required",
 					{
@@ -291,9 +291,11 @@ export class LoginCoordinator implements vscode.Disposable {
 		if (isAutoLogin) {
 			this.logger.warn("Failed to log in to Coder server:", message);
 		} else if (err instanceof CertificateError) {
-			void err.showNotification("Failed to log in to Coder server");
+			void err.showNotification("Failed to log in to Coder server", {
+				modal: true,
+			});
 		} else {
-			void this.vscodeProposed.window.showErrorMessage(
+			void vscodeProposed.window.showErrorMessage(
 				"Failed to log in to Coder server",
 				{
 					detail: message,

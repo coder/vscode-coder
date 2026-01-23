@@ -7,6 +7,7 @@ import { type DeploymentManager } from "../deployment/deploymentManager";
 import { CALLBACK_PATH } from "../oauth/utils";
 import { maybeAskUrl } from "../promptUtils";
 import { toSafeHost } from "../util";
+import { vscodeProposed } from "../vscodeProposed";
 
 interface UriRouteContext {
 	params: URLSearchParams;
@@ -30,7 +31,6 @@ export function registerUriHandler(
 	serviceContainer: ServiceContainer,
 	deploymentManager: DeploymentManager,
 	commands: Commands,
-	vscodeProposed: typeof vscode,
 ): vscode.Disposable {
 	const output = serviceContainer.getLogger();
 

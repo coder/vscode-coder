@@ -50,6 +50,10 @@ vi.mock("proper-lockfile", () => ({
 
 vi.mock("@/pgp");
 
+vi.mock("@/vscodeProposed", () => ({
+	vscodeProposed: vscode,
+}));
+
 vi.mock("@/core/cliUtils", async () => {
 	const actual =
 		await vi.importActual<typeof import("@/core/cliUtils")>("@/core/cliUtils");
@@ -89,7 +93,6 @@ describe("CliManager", () => {
 		mockProgress = new MockProgressReporter();
 		mockUI = new MockUserInteraction();
 		manager = new CliManager(
-			vscode,
 			createMockLogger(),
 			new PathResolver(BASE_PATH, "/code/log"),
 		);
@@ -575,7 +578,7 @@ describe("CliManager", () => {
 		it("handles binary with spaces in path", async () => {
 			const pathWithSpaces = "/path with spaces/bin";
 			const resolver = new PathResolver(pathWithSpaces, "/log");
-			const manager = new CliManager(vscode, createMockLogger(), resolver);
+			const manager = new CliManager(createMockLogger(), resolver);
 
 			withSuccessfulDownload();
 			const result = await manager.fetchBinary(mockApi, "test label");

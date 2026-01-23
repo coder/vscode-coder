@@ -14,6 +14,7 @@ import * as vscode from "vscode";
 import { errToStr } from "../api/api-helper";
 import { type Logger } from "../logging/logger";
 import * as pgp from "../pgp";
+import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";
 import * as cliUtils from "./cliUtils";
@@ -24,11 +25,10 @@ export class CliManager {
 	private readonly binaryLock: BinaryLock;
 
 	constructor(
-		private readonly vscodeProposed: typeof vscode,
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
 	) {
-		this.binaryLock = new BinaryLock(vscodeProposed, output);
+		this.binaryLock = new BinaryLock(output);
 	}
 
 	/**
@@ -200,7 +200,7 @@ export class CliManager {
 		version: string,
 		reason: string,
 	): Promise<boolean> {
-		const choice = await this.vscodeProposed.window.showErrorMessage(
+		const choice = await vscodeProposed.window.showErrorMessage(
 			`${reason}. Run version ${version} anyway?`,
 			"Run",
 		);
@@ -621,7 +621,7 @@ export class CliManager {
 				options.push("Download signature");
 			}
 			options.push("Run without verification");
-			const action = await this.vscodeProposed.window.showWarningMessage(
+			const action = await vscodeProposed.window.showWarningMessage(
 				status === 404 ? "Signature not found" : "Failed to download signature",
 				{
 					useCustom: true,
@@ -675,7 +675,7 @@ export class CliManager {
 					this.output,
 				);
 			} catch (error) {
-				const action = await this.vscodeProposed.window.showWarningMessage(
+				const action = await vscodeProposed.window.showWarningMessage(
 					// VerificationError should be the only thing that throws, but
 					// unfortunately caught errors are always type unknown.
 					error instanceof pgp.VerificationError

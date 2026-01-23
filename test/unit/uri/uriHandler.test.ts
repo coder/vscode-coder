@@ -21,6 +21,10 @@ import type { LoginCoordinator, LoginOptions } from "@/login/loginCoordinator";
 
 vi.mock("@/promptUtils", () => ({ maybeAskUrl: vi.fn() }));
 
+vi.mock("@/vscodeProposed", () => ({
+	vscodeProposed: vscode,
+}));
+
 const TEST_URL = "https://coder.example.com";
 const TEST_HOSTNAME = "coder.example.com";
 
@@ -90,17 +94,14 @@ function createTestContext() {
 		return { dispose: vi.fn() };
 	});
 
-	const showErrorMessage = vi.fn().mockResolvedValue(undefined);
-	const vscodeProposed = {
-		...vscode,
-		window: { ...vscode.window, showErrorMessage },
-	} as typeof vscode;
+	const showErrorMessage = vi
+		.mocked(vscode.window.showErrorMessage)
+		.mockResolvedValue(undefined);
 
 	registerUriHandler(
 		container,
 		deploymentManager as unknown as DeploymentManager,
 		commands as unknown as Commands,
-		vscodeProposed,
 	);
 
 	return {
