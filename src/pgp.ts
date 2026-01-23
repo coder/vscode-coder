@@ -69,6 +69,7 @@ export async function verifySignature(
 			signature,
 			verificationKeys: publicKeys,
 			config: {
+				// Rational https://github.com/coder/vscode-coder/pull/748#issuecomment-3789538490
 				allowInsecureVerificationWithReformattedKeys: true,
 			},
 		});
