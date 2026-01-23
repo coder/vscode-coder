@@ -68,6 +68,10 @@ export async function verifySignature(
 			message,
 			signature,
 			verificationKeys: publicKeys,
+			config: {
+				// Rational https://github.com/coder/vscode-coder/pull/748#issuecomment-3789538490
+				allowInsecureVerificationWithReformattedKeys: true,
+			},
 		});
 		for await (const _ of verificationResult.data) {
 			// The docs indicate this data must be consumed; it triggers the
