@@ -311,12 +311,15 @@ export class OAuthSessionManager implements vscode.Disposable {
 		) {
 			return;
 		}
-		this.logger.debug("Switching OAuth deployment", deployment);
 		this.deployment = deployment;
 		this.clearRefreshState();
 
-		// Block on refresh if token is expired to ensure valid state for callers
 		const storedTokens = await this.getStoredTokens();
+		if (storedTokens) {
+			this.logger.debug("Switching OAuth deployment", deployment);
+		}
+
+		// Block on refresh if token is expired to ensure valid state for callers
 		if (storedTokens && Date.now() >= storedTokens.expiry_timestamp) {
 			try {
 				await this.refreshToken();
@@ -331,7 +334,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	public clearDeployment(): void {
-		this.logger.debug("Clearing OAuth deployment state");
 		this.deployment = null;
 		this.clearRefreshState();
 	}
@@ -422,7 +424,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	public async revokeRefreshToken(): Promise<void> {
 		const storedTokens = await this.getStoredTokens();
 		if (!storedTokens?.refresh_token) {
-			this.logger.info("No refresh token to revoke");
+			this.logger.debug("No refresh token to revoke");
 			return;
 		}
 
@@ -449,11 +451,13 @@ export class OAuthSessionManager implements vscode.Disposable {
 			await this.prepareOAuthOperation(authToken);
 
 		if (!metadata.revocation_endpoint) {
-			this.logger.info("No revocation endpoint available, skipping revocation");
+			this.logger.debug(
+				"No revocation endpoint available, skipping revocation",
+			);
 			return;
 		}
 
-		this.logger.info("Revoking refresh token");
+		this.logger.debug("Revoking refresh token");
 
 		const params: OAuth2TokenRevocationRequest = {
 			token: tokenToRevoke,
@@ -475,7 +479,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 				},
 			);
 
-			this.logger.info("Token revocation successful");
+			this.logger.debug("Token revocation successful");
 		} catch (error) {
 			this.logger.error("Token revocation failed:", error);
 			throw error;
@@ -503,6 +507,5 @@ export class OAuthSessionManager implements vscode.Disposable {
 	public dispose(): void {
 		this.disposed = true;
 		this.clearDeployment();
-		this.logger.debug("OAuth session manager disposed");
 	}
 }

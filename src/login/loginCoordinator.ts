@@ -367,7 +367,7 @@ export class LoginCoordinator implements vscode.Disposable {
 	 */
 	private async loginWithOAuth(deployment: Deployment): Promise<LoginResult> {
 		try {
-			this.logger.info("Starting OAuth authentication");
+			this.logger.debug("Starting OAuth authentication");
 
 			const { tokenResponse, user } = await vscode.window.withProgress(
 				{

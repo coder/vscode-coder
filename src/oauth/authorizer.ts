@@ -96,7 +96,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		reportProgress("fetching user...", 20);
 		const user = await client.getAuthenticatedUser();
 
-		this.logger.info("OAuth login flow completed successfully");
+		this.logger.debug("OAuth login flow completed successfully");
 
 		return {
 			tokenResponse,
@@ -157,7 +157,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			deployment.safeHostname,
 			response.data,
 		);
-		this.logger.info(
+		this.logger.debug(
 			"Saved OAuth client registration:",
 			response.data.client_id,
 		);

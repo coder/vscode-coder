@@ -86,7 +86,7 @@ export class Commands {
 		if (this.deploymentManager.isAuthenticated()) {
 			return;
 		}
-		this.logger.info("Logging in");
+		this.logger.debug("Logging in");
 
 		const currentDeployment = await this.secretsManager.getCurrentDeployment();
 		const url = await maybeAskUrl(
@@ -205,7 +205,7 @@ export class Commands {
 			return;
 		}
 
-		this.logger.info("Logging out");
+		this.logger.debug("Logging out");
 
 		await this.deploymentManager.clearDeployment();
 
