@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## [v1.12.1](https://github.com/coder/vscode-coder/releases/tag/v1.12.1) 2026-01-23
+
+### Fixed
+
+- Fixed GPG signature verification failing when public keys have been reformatted.
+- Fixed race conditions when multiple VS Code windows access deployments simultaneously.
+
+### Changed
+
+- Refined logging with clearer messages and more accurate severity levels for easier troubleshooting.
+
 ## [v1.12.0](https://github.com/coder/vscode-coder/releases/tag/v1.12.0) 2026-01-21
 
 ### Added
