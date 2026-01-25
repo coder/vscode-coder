@@ -7,6 +7,8 @@ import prettierConfig from "eslint-config-prettier";
 import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import { flatConfigs as importXFlatConfigs } from "eslint-plugin-import-x";
 import packageJson from "eslint-plugin-package-json";
+import reactPlugin from "eslint-plugin-react";
+import reactHooksPlugin from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default defineConfig(
@@ -15,21 +17,24 @@ export default defineConfig(
 		ignores: [
 			"out/**",
 			"dist/**",
+			"packages/*/dist/**",
 			"**/*.d.ts",
 			"vitest.config.ts",
+			"vite.config.base.ts",
+			"packages/*/vite.config.ts",
 			".vscode-test/**",
 		],
 	},
 
-	// Base ESLint recommended rules (for JS/TS files only)
+	// Base ESLint recommended rules (for JS/TS/TSX files only)
 	{
-		files: ["**/*.ts", "**/*.js", "**/*.mjs"],
+		files: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs"],
 		...eslint.configs.recommended,
 	},
 
 	// TypeScript configuration with type-checked rules
 	{
-		files: ["**/*.ts"],
+		files: ["**/*.ts", "**/*.tsx"],
 		extends: [
 			...tseslint.configs.recommendedTypeChecked,
 			...tseslint.configs.stylisticTypeChecked,
@@ -64,7 +69,7 @@ export default defineConfig(
 			],
 			"@typescript-eslint/no-unused-vars": [
 				"error",
-				{ varsIgnorePattern: "^_" },
+				{ varsIgnorePattern: "^_", argsIgnorePattern: "^_" },
 			],
 			"@typescript-eslint/array-type": ["error", { default: "array-simple" }],
 			"@typescript-eslint/prefer-nullish-coalescing": [
@@ -157,6 +162,39 @@ export default defineConfig(
 			globals: {
 				...globals.node,
 			},
+		},
+	},
+
+	// Webview packages - browser globals and relaxed type rules
+	// ESLint's typescript project service has trouble resolving React types in monorepo
+	{
+		files: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
+		languageOptions: {
+			globals: {
+				...globals.browser,
+			},
+		},
+	},
+
+	// TSX files - React rules
+	{
+		files: ["**/*.tsx"],
+		plugins: {
+			react: reactPlugin,
+			"react-hooks": reactHooksPlugin,
+		},
+		settings: {
+			react: {
+				version: "detect",
+			},
+		},
+		rules: {
+			// TS rules already applied via **/*.ts config above
+			// Only add React-specific rules here
+			...reactPlugin.configs.recommended.rules,
+			...reactHooksPlugin.configs.recommended.rules,
+			"react/react-in-jsx-scope": "off", // Not needed with React 19
+			"react/prop-types": "off", // Using TypeScript
 		},
 	},
 

@@ -27,6 +27,12 @@ esbuild.mjs
 pnpm-lock.yaml
 pnpm-workspace.yaml
 
+# Webview packages (exclude everything except built output in dist/webviews)
+packages/**
+tsconfig.webview.json
+vite.config.base.ts
+!dist/webviews/**
+
 # Nix/flake files
 flake.nix
 flake.lock

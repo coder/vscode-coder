@@ -7,3 +7,8 @@
 *.vsix
 pnpm-debug.log
 .eslintcache
+
+# Webview packages build artifacts
+packages/*/node_modules/
+packages/*/dist/
+packages/*/*.tsbuildinfo
