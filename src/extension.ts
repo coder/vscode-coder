@@ -19,6 +19,7 @@ import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscodeProposed";
+import { TasksPanel } from "./webviews/tasks/TasksPanel";
 import {
 	WorkspaceProvider,
 	WorkspaceQuery,
@@ -186,6 +187,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
 	const commands = new Commands(serviceContainer, client, deploymentManager);
+
+	// Register Tasks webview panel
+	const tasksProvider = new TasksPanel(ctx.extensionUri);
+	ctx.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(
+			TasksPanel.viewType,
+			tasksProvider,
+		),
+	);
 
 	ctx.subscriptions.push(
 		registerUriHandler(serviceContainer, deploymentManager, commands),

@@ -1,0 +1,40 @@
+import react from "@vitejs/plugin-react-swc";
+import { resolve } from "node:path";
+import { defineConfig, type UserConfig } from "vite";
+
+/**
+ * Create a Vite config for a webview package
+ * @param webviewName - Name of the webview (used for output path)
+ * @param dirname - __dirname of the calling config file
+ */
+export function createWebviewConfig(
+	webviewName: string,
+	dirname: string,
+): UserConfig {
+	const production = process.env.NODE_ENV === "production";
+
+	return defineConfig({
+		plugins: [react()],
+		build: {
+			outDir: resolve(dirname, `../../dist/webviews/${webviewName}`),
+			emptyOutDir: true,
+			// Target modern browsers (VS Code webview uses Chromium from Electron)
+			target: "esnext",
+			// Skip gzip size calculation for faster builds
+			reportCompressedSize: false,
+			rollupOptions: {
+				output: {
+					entryFileNames: "index.js",
+					assetFileNames: "index.[ext]",
+				},
+			},
+			// No sourcemaps in production (not needed in packaged extension)
+			sourcemap: !production,
+		},
+		resolve: {
+			alias: {
+				"@coder/shared": resolve(dirname, "../shared/src"),
+			},
+		},
+	});
+}

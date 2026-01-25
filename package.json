@@ -18,8 +18,9 @@
 	"type": "commonjs",
 	"main": "./dist/extension.js",
 	"scripts": {
-		"build": "tsc --noEmit && node esbuild.mjs",
-		"build:production": "tsc --noEmit && node esbuild.mjs --production",
+		"build": "pnpm -r --filter \"./packages/*\" build && tsc --noEmit && node esbuild.mjs",
+		"build:production": "NODE_ENV=production pnpm -r --filter \"./packages/*\" build && tsc --noEmit && node esbuild.mjs --production",
+		"dev:webviews": "pnpm -r --filter \"./packages/*\" --parallel --if-present dev",
 		"fmt": "prettier --write --cache --cache-strategy content .",
 		"fmt:check": "prettier --check --cache --cache-strategy content .",
 		"lint": "eslint --cache --cache-strategy content .",
@@ -194,6 +195,12 @@
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
 					"when": "coder.authenticated && coder.isOwner"
+				},
+				{
+					"type": "webview",
+					"id": "coder.tasksPanel",
+					"name": "Tasks",
+					"icon": "media/logo-white.svg"
 				}
 			]
 		},
@@ -458,6 +465,7 @@
 		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^8.53.0",
 		"@typescript-eslint/parser": "^8.53.1",
+		"@vitejs/plugin-react-swc": "^3.8.0",
 		"@vitest/coverage-v8": "^4.0.16",
 		"@vscode/test-cli": "^0.0.12",
 		"@vscode/test-electron": "^2.5.2",
@@ -472,6 +480,8 @@
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import-x": "^4.16.1",
 		"eslint-plugin-package-json": "^0.88.1",
+		"eslint-plugin-react": "^7.37.0",
+		"eslint-plugin-react-hooks": "^5.0.0",
 		"globals": "^17.0.0",
 		"jsonc-eslint-parser": "^2.4.2",
 		"memfs": "^4.56.4",
@@ -479,6 +489,7 @@
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.53.1",
 		"utf-8-validate": "^6.0.6",
+		"vite": "^6.0.0",
 		"vitest": "^4.0.16"
 	},
 	"extensionPack": [

@@ -66,6 +66,162 @@ workspaces if the user has the required permissions.
 There are also notifications for an outdated workspace and for workspaces that
 are close to shutting down.
 
+## Webviews
+
+The extension uses React-based webviews for rich UI panels. Webviews are built
+with Vite and live in `packages/` as a pnpm workspace.
+
+### Project Structure
+
+```text
+packages/
+├── shared/                  # Shared utilities (no build step)
+│   └── src/
+│       ├── index.ts         # WebviewMessage type
+│       └── react/           # VS Code API hooks
+│           ├── api.ts       # postMessage, getState, setState
+│           └── hooks.ts     # useMessage, useVsCodeState
+└── tasks/                   # Task panel webview
+    ├── src/
+    │   ├── index.tsx        # Entry point
+    │   └── App.tsx          # Root component
+    ├── package.json
+    ├── tsconfig.json
+    └── vite.config.ts
+
+src/webviews/
+├── util.ts                  # getWebviewHtml() - generates HTML with CSP
+└── tasks/
+    └── TasksPanel.ts        # WebviewViewProvider implementation
+```
+
+### How It Works
+
+**Extension side** (`src/webviews/`):
+
+- Implements `WebviewViewProvider` to create the panel
+- Uses `getWebviewHtml()` to generate secure HTML with nonce-based CSP
+- Communicates via `webview.postMessage()` and `onDidReceiveMessage`
+
+**React side** (`packages/`):
+
+- Uses `@coder/shared/react` hooks for message passing
+- `postMessage()` sends messages to the extension
+- `useMessage()` listens for messages from the extension
+- `useVsCodeState()` persists state across panel visibility changes
+
+### Development
+
+Run these in separate terminals:
+
+```bash
+pnpm watch         # Rebuild extension on changes
+pnpm dev:webviews  # Rebuild webviews on changes
+```
+
+Then press F5 to launch the Extension Development Host. When you edit webview
+code, use "Developer: Reload Webviews" or close/reopen the panel to see updates.
+
+### Adding a New Webview
+
+1. **Create the package:**
+
+   ```bash
+   cp -r packages/tasks packages/<name>
+   ```
+
+   Update `packages/<name>/package.json`:
+
+   ```json
+   { "name": "@coder/<name>-webview" }
+   ```
+
+   Update `packages/<name>/vite.config.ts`:
+
+   ```typescript
+   export default createWebviewConfig("<name>", __dirname);
+   ```
+
+2. **Create the provider** in `src/webviews/<name>/<Name>Panel.ts`:
+
+   ```typescript
+   import * as vscode from "vscode";
+   import { getWebviewHtml } from "../util";
+
+   export class MyPanel implements vscode.WebviewViewProvider {
+   	public static readonly viewType = "coder.myPanel";
+
+   	constructor(private readonly extensionUri: vscode.Uri) {}
+
+   	resolveWebviewView(webviewView: vscode.WebviewView): void {
+   		webviewView.webview.options = {
+   			enableScripts: true,
+   			localResourceRoots: [
+   				vscode.Uri.joinPath(this.extensionUri, "dist", "webviews"),
+   			],
+   		};
+   		webviewView.webview.html = getWebviewHtml(
+   			webviewView.webview,
+   			this.extensionUri,
+   			"<name>",
+   		);
+   	}
+   }
+   ```
+
+3. **Register in `package.json`** under `contributes.views.coder`:
+
+   ```json
+   {
+   	"type": "webview",
+   	"id": "coder.myPanel",
+   	"name": "My Panel",
+   	"icon": "media/logo-white.svg"
+   }
+   ```
+
+4. **Register in `src/extension.ts`:**
+
+   ```typescript
+   import { MyPanel } from "./webviews/<name>/<Name>Panel";
+
+   // In activate():
+   context.subscriptions.push(
+   	vscode.window.registerWebviewViewProvider(
+   		MyPanel.viewType,
+   		new MyPanel(context.extensionUri),
+   	),
+   );
+   ```
+
+### Shared Package (`@coder/shared`)
+
+Type-safe message passing between extension and webview:
+
+```typescript
+// In React component
+import { postMessage, useMessage } from "@coder/shared/react";
+
+// Send message to extension
+postMessage({ type: "refresh" });
+
+// Listen for messages from extension
+useMessage((msg) => {
+	if (msg.type === "data") {
+		setData(msg.data);
+	}
+});
+
+// Persist state across visibility changes
+const [count, setCount] = useVsCodeState(0);
+```
+
+### Stack
+
+- **React 19** with TypeScript
+- **Vite** with SWC for fast builds
+- **@vscode-elements/react-elements** for native VS Code styling
+
 ## Testing
 
 There are a few ways you can test the "Open in VS Code" flow:
