@@ -70,6 +70,9 @@ const webSocketConfigSettings = [
 	"coder.tlsAltHost",
 	"http.proxy",
 	"coder.proxyBypass",
+	"http.noProxy",
+	"http.proxyAuthorization",
+	"http.proxyStrictSSL",
 ] as const;
 
 /**

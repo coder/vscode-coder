@@ -14,6 +14,9 @@ const DEFAULT_PORTS: Record<string, number> = {
 
 /**
  * @param {string|object} url - The URL, or the result from url.parse.
+ * @param {string} httpProxy - The proxy URL to use.
+ * @param {string} noProxy - Primary no-proxy list (e.g., coder.proxyBypass).
+ * @param {string} noProxyFallback - Fallback no-proxy list (e.g., http.noProxy).
  * @return {string} The URL of the proxy that should handle the request to the
  *  given URL. If no proxy is set, this will be an empty string.
  */
@@ -21,6 +24,7 @@ export function getProxyForUrl(
 	url: string,
 	httpProxy: string | null | undefined,
 	noProxy: string | null | undefined,
+	noProxyFallback?: string | null,
 ): string {
 	const parsedUrl = typeof url === "string" ? parseUrl(url) : url || {};
 	let proto = parsedUrl.protocol;
@@ -36,7 +40,7 @@ export function getProxyForUrl(
 	hostname = hostname.replace(/:\d*$/, "");
 	const port =
 		(portRaw && Number.parseInt(portRaw)) || DEFAULT_PORTS[proto] || 0;
-	if (!shouldProxy(hostname, port, noProxy)) {
+	if (!shouldProxy(hostname, port, noProxy, noProxyFallback)) {
 		return ""; // Don't proxy URLs that match NO_PROXY.
 	}
 
@@ -46,7 +50,7 @@ export function getProxyForUrl(
 		getEnv(proto + "_proxy") ||
 		getEnv("npm_config_proxy") ||
 		getEnv("all_proxy");
-	if (proxy?.includes("://")) {
+	if (proxy && !proxy.includes("://")) {
 		// Missing scheme in proxy, default to the requested URL's scheme.
 		proxy = proto + "://" + proxy;
 	}
@@ -58,6 +62,8 @@ export function getProxyForUrl(
  *
  * @param {string} hostname - The host name of the URL.
  * @param {number} port - The effective port of the URL.
+ * @param {string} noProxy - Primary no-proxy list (e.g., coder.proxyBypass).
+ * @param {string} noProxyFallback - Fallback no-proxy list (e.g., http.noProxy).
  * @returns {boolean} Whether the given URL should be proxied.
  * @private
  */
@@ -65,9 +71,11 @@ function shouldProxy(
 	hostname: string,
 	port: number,
 	noProxy: string | null | undefined,
+	noProxyFallback?: string | null,
 ): boolean {
 	const NO_PROXY = (
 		noProxy ||
+		noProxyFallback ||
 		getEnv("npm_config_no_proxy") ||
 		getEnv("no_proxy")
 	).toLowerCase();
