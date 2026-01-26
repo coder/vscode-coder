@@ -801,6 +801,7 @@ describe("CoderApi", () => {
 			const sockets = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
+			await tick(); // Wait for open event to fire (socket becomes CONNECTED)
 
 			mockConfig.set("coder.insecure", true);
 			await tick();
@@ -820,6 +821,7 @@ describe("CoderApi", () => {
 			const sockets = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
+			await tick(); // Wait for open event to fire (socket becomes CONNECTED)
 
 			mockConfig.set(key, value);
 			await tick();
@@ -833,6 +835,7 @@ describe("CoderApi", () => {
 			const sockets = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
+			await tick(); // Wait for open event to fire (socket becomes CONNECTED)
 
 			api.dispose();
 			mockConfig.set("coder.insecure", true);

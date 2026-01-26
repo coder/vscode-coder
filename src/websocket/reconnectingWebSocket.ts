@@ -35,6 +35,73 @@ export enum ConnectionState {
 	DISPOSED = "DISPOSED",
 }
 
+/**
+ * Actions that trigger state transitions.
+ */
+type StateAction =
+	| { readonly type: "CONNECT" }
+	| { readonly type: "OPEN" }
+	| { readonly type: "SCHEDULE_RETRY" }
+	| { readonly type: "DISCONNECT" }
+	| { readonly type: "DISPOSE" };
+
+/**
+ * Pure reducer function for state transitions.
+ */
+function reduceState(
+	state: ConnectionState,
+	action: StateAction,
+): ConnectionState {
+	switch (action.type) {
+		case "CONNECT":
+			switch (state) {
+				case ConnectionState.IDLE:
+				case ConnectionState.CONNECTED:
+				case ConnectionState.AWAITING_RETRY:
+				case ConnectionState.DISCONNECTED:
+					return ConnectionState.CONNECTING;
+				default:
+					return state;
+			}
+
+		case "OPEN":
+			switch (state) {
+				case ConnectionState.CONNECTING:
+					return ConnectionState.CONNECTED;
+				default:
+					return state;
+			}
+
+		case "SCHEDULE_RETRY":
+			switch (state) {
+				case ConnectionState.CONNECTING:
+				case ConnectionState.CONNECTED:
+					return ConnectionState.AWAITING_RETRY;
+				default:
+					return state;
+			}
+
+		case "DISCONNECT":
+			switch (state) {
+				case ConnectionState.IDLE:
+				case ConnectionState.CONNECTING:
+				case ConnectionState.CONNECTED:
+				case ConnectionState.AWAITING_RETRY:
+					return ConnectionState.DISCONNECTED;
+				default:
+					return state;
+			}
+
+		case "DISPOSE":
+			switch (state) {
+				case ConnectionState.DISPOSED:
+					return state;
+				default:
+					return ConnectionState.DISPOSED;
+			}
+	}
+}
+
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
 export interface ReconnectingWebSocketOptions {
@@ -65,9 +132,27 @@ export class ReconnectingWebSocket<
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
 	#state: ConnectionState = ConnectionState.IDLE;
-	#pendingReconnect = false; // Queue reconnect during CONNECTING state
 	#certRefreshAttempted = false; // Tracks if cert refresh was already attempted this connection cycle
 	readonly #onDispose?: () => void;
+
+	/**
+	 * Dispatch an action to transition state. Returns true if transition is allowed.
+	 */
+	#dispatch(action: StateAction): boolean {
+		const newState = reduceState(this.#state, action);
+		if (newState === this.#state) {
+			// Allow CONNECT from CONNECTING as a "restart" operation
+			if (
+				action.type === "CONNECT" &&
+				this.#state === ConnectionState.CONNECTING
+			) {
+				return true;
+			}
+			return false;
+		}
+		this.#state = newState;
+		return true;
+	}
 
 	private constructor(
 		socketFactory: SocketFactory<TData>,
@@ -153,7 +238,6 @@ export class ReconnectingWebSocket<
 		}
 
 		if (this.#state === ConnectionState.DISCONNECTED) {
-			this.#state = ConnectionState.IDLE;
 			this.#backoffMs = this.#options.initialBackoffMs;
 			this.#certRefreshAttempted = false; // User-initiated reconnect, allow retry
 		}
@@ -161,11 +245,6 @@ export class ReconnectingWebSocket<
 		if (this.#reconnectTimeoutId !== null) {
 			clearTimeout(this.#reconnectTimeoutId);
 			this.#reconnectTimeoutId = null;
-		}
-
-		if (this.#state === ConnectionState.CONNECTING) {
-			this.#pendingReconnect = true;
-			return;
 		}
 
 		// connect() handles all errors internally
@@ -176,14 +255,9 @@ export class ReconnectingWebSocket<
 	 * Temporarily disconnect the socket. Can be resumed via reconnect().
 	 */
 	disconnect(code?: number, reason?: string): void {
-		if (
-			this.#state === ConnectionState.DISPOSED ||
-			this.#state === ConnectionState.DISCONNECTED
-		) {
+		if (!this.#dispatch({ type: "DISCONNECT" })) {
 			return;
 		}
-
-		this.#state = ConnectionState.DISCONNECTED;
 		this.clearCurrentSocket(code, reason);
 	}
 
@@ -205,15 +279,9 @@ export class ReconnectingWebSocket<
 	}
 
 	private async connect(): Promise<void> {
-		if (
-			this.#state !== ConnectionState.IDLE &&
-			this.#state !== ConnectionState.CONNECTED &&
-			this.#state !== ConnectionState.AWAITING_RETRY
-		) {
+		if (!this.#dispatch({ type: "CONNECT" })) {
 			return;
 		}
-
-		this.#state = ConnectionState.CONNECTING;
 		try {
 			// Close any existing socket before creating a new one
 			if (this.#currentSocket) {
@@ -240,7 +308,9 @@ export class ReconnectingWebSocket<
 					return;
 				}
 
-				this.#state = ConnectionState.CONNECTED;
+				if (!this.#dispatch({ type: "OPEN" })) {
+					return;
+				}
 				// Reset backoff on successful connection
 				this.#backoffMs = this.#options.initialBackoffMs;
 				this.#certRefreshAttempted = false;
@@ -298,24 +368,13 @@ export class ReconnectingWebSocket<
 			});
 		} catch (error) {
 			await this.handleConnectionError(error);
-		} finally {
-			if (this.#pendingReconnect) {
-				this.#pendingReconnect = false;
-				this.reconnect();
-			}
 		}
 	}
 
 	private scheduleReconnect(): void {
-		if (
-			this.#state === ConnectionState.DISPOSED ||
-			this.#state === ConnectionState.DISCONNECTED ||
-			this.#state === ConnectionState.AWAITING_RETRY
-		) {
+		if (!this.#dispatch({ type: "SCHEDULE_RETRY" })) {
 			return;
 		}
-
-		this.#state = ConnectionState.AWAITING_RETRY;
 
 		const jitter =
 			this.#backoffMs * this.#options.jitterFactor * (Math.random() * 2 - 1);
@@ -401,6 +460,10 @@ export class ReconnectingWebSocket<
 			this.#state === ConnectionState.DISPOSED ||
 			this.#state === ConnectionState.DISCONNECTED
 		) {
+			this.#logger.debug(
+				`Ignoring connection error in ${this.#state} state for ${this.#route}`,
+				error,
+			);
 			return;
 		}
 
@@ -442,11 +505,9 @@ export class ReconnectingWebSocket<
 	}
 
 	private dispose(code?: number, reason?: string): void {
-		if (this.#state === ConnectionState.DISPOSED) {
+		if (!this.#dispatch({ type: "DISPOSE" })) {
 			return;
 		}
-
-		this.#state = ConnectionState.DISPOSED;
 		this.clearCurrentSocket(code, reason);
 
 		for (const set of Object.values(this.#eventHandlers)) {
@@ -457,9 +518,6 @@ export class ReconnectingWebSocket<
 	}
 
 	private clearCurrentSocket(code?: number, reason?: string): void {
-		// Clear pending reconnect to prevent resume
-		this.#pendingReconnect = false;
-
 		if (this.#reconnectTimeoutId !== null) {
 			clearTimeout(this.#reconnectTimeoutId);
 			this.#reconnectTimeoutId = null;

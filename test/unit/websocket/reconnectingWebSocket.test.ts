@@ -38,6 +38,7 @@ describe("ReconnectingWebSocket", () => {
 
 			await vi.advanceTimersByTimeAsync(300);
 			expect(sockets).toHaveLength(2);
+			sockets[1].fireOpen();
 			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
@@ -164,7 +165,7 @@ describe("ReconnectingWebSocket", () => {
 			ws.close();
 		});
 
-		it("queues reconnect() calls made during connection", async () => {
+		it("reconnect() during CONNECTING immediately restarts connection", async () => {
 			const { ws, sockets, completeConnection } =
 				await createBlockingReconnectingWebSocket();
 
@@ -172,33 +173,33 @@ describe("ReconnectingWebSocket", () => {
 			ws.reconnect();
 			expect(sockets).toHaveLength(2);
 			// Call reconnect again while first reconnect is in progress
+			// This immediately restarts (creates a new socket)
 			ws.reconnect();
-			// Still only 2 sockets (queued reconnect hasn't started)
-			expect(sockets).toHaveLength(2);
+			expect(sockets).toHaveLength(3);
 
+			// Complete the third socket's connection
 			completeConnection();
 			await Promise.resolve();
-			// Now queued reconnect should have executed, creating third socket
-			expect(sockets).toHaveLength(3);
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
 		});
 
-		it("suspend() cancels pending reconnect queued during connection", async () => {
+		it("disconnect() cancels in-progress reconnect and prevents new connections", async () => {
 			const { ws, sockets, failConnection } =
 				await createBlockingReconnectingWebSocket();
 
 			ws.reconnect();
 			expect(ws.state).toBe(ConnectionState.CONNECTING);
-			ws.reconnect(); // queued
 			expect(sockets).toHaveLength(2);
 
-			// This should cancel the queued request
+			// Disconnect while reconnect is in progress
 			ws.disconnect();
 			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 			failConnection(new Error("No base URL"));
 			await Promise.resolve();
 
+			// No new socket should be created after disconnect
 			expect(sockets).toHaveLength(2);
 			await vi.advanceTimersByTimeAsync(10000);
 			expect(sockets).toHaveLength(2);
@@ -791,7 +792,8 @@ async function createBlockingReconnectingWebSocket(): Promise<{
 		completeConnection: () => {
 			const socket = sockets.at(-1)!;
 			pendingResolve?.(socket);
-			socket.fireOpen();
+			// Fire open after microtask so event listener is attached
+			queueMicrotask(() => socket.fireOpen());
 		},
 		failConnection: (error: Error) => pendingReject?.(error),
 	};
