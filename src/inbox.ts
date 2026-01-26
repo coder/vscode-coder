@@ -50,11 +50,6 @@ export class Inbox implements vscode.Disposable {
 			logger.info("Listening to Coder Inbox");
 		});
 
-		socket.addEventListener("error", () => {
-			// Errors are already logged internally
-			inbox.dispose();
-		});
-
 		socket.addEventListener("message", (data) => {
 			if (data.parseError) {
 				logger.error("Failed to parse inbox message", data.parseError);

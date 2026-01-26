@@ -101,10 +101,6 @@ export class WorkspaceProvider
 	 * logged in or the query fails.
 	 */
 	private async fetch(): Promise<WorkspaceTreeItem[]> {
-		this.logger.debug(
-			`Fetching workspaces: ${this.getWorkspacesQuery || "no filter"}...`,
-		);
-
 		// If there is no URL configured, assume we are logged out.
 		const url = this.client.getAxiosInstance().defaults.baseURL;
 		if (!url) {

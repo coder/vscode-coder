@@ -177,11 +177,14 @@ export class CoderApi extends Api implements vscode.Disposable {
 			const socketsToReconnect = [...this.reconnectingSockets].filter(
 				(socket) => socket.state === ConnectionState.DISCONNECTED,
 			);
-			this.output.debug(
-				`Configuration changed, ${socketsToReconnect.length}/${this.reconnectingSockets.size} socket(s) in DISCONNECTED state`,
-			);
-			for (const socket of socketsToReconnect) {
-				socket.reconnect();
+			if (socketsToReconnect.length) {
+				this.output.debug(
+					`Configuration changed, ${socketsToReconnect.length}/${this.reconnectingSockets.size} socket(s) in DISCONNECTED state`,
+				);
+				for (const socket of socketsToReconnect) {
+					this.output.debug(`Reconnecting WebSocket: ${socket.url}`);
+					socket.reconnect();
+				}
 			}
 		});
 	}

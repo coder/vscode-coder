@@ -93,12 +93,7 @@ function reduceState(
 			}
 
 		case "DISPOSE":
-			switch (state) {
-				case ConnectionState.DISPOSED:
-					return state;
-				default:
-					return ConnectionState.DISPOSED;
-			}
+			return ConnectionState.DISPOSED;
 	}
 }
 
@@ -172,7 +167,7 @@ export class ReconnectingWebSocket<
 		this.#onDispose = onDispose;
 	}
 
-	static async create<TData>(
+	public static async create<TData>(
 		socketFactory: SocketFactory<TData>,
 		logger: Logger,
 		options: ReconnectingWebSocketOptions,
@@ -190,14 +185,14 @@ export class ReconnectingWebSocket<
 		return instance;
 	}
 
-	get url(): string {
+	public get url(): string {
 		return this.#currentSocket?.url ?? "";
 	}
 
 	/**
 	 * Returns the current connection state.
 	 */
-	get state(): ConnectionState {
+	public get state(): ConnectionState {
 		return this.#state;
 	}
 
@@ -214,14 +209,14 @@ export class ReconnectingWebSocket<
 		return url.pathname + url.search;
 	}
 
-	addEventListener<TEvent extends WebSocketEventType>(
+	public addEventListener<TEvent extends WebSocketEventType>(
 		event: TEvent,
 		callback: EventHandler<TData, TEvent>,
 	): void {
 		this.#eventHandlers[event].add(callback);
 	}
 
-	removeEventListener<TEvent extends WebSocketEventType>(
+	public removeEventListener<TEvent extends WebSocketEventType>(
 		event: TEvent,
 		callback: EventHandler<TData, TEvent>,
 	): void {
@@ -232,7 +227,7 @@ export class ReconnectingWebSocket<
 	 * Force an immediate reconnection attempt.
 	 * Resumes the socket if previously disconnected via disconnect().
 	 */
-	reconnect(): void {
+	public reconnect(): void {
 		if (this.#state === ConnectionState.DISPOSED) {
 			return;
 		}
@@ -254,14 +249,14 @@ export class ReconnectingWebSocket<
 	/**
 	 * Temporarily disconnect the socket. Can be resumed via reconnect().
 	 */
-	disconnect(code?: number, reason?: string): void {
+	public disconnect(code?: number, reason?: string): void {
 		if (!this.#dispatch({ type: "DISCONNECT" })) {
 			return;
 		}
 		this.clearCurrentSocket(code, reason);
 	}
 
-	close(code?: number, reason?: string): void {
+	public close(code?: number, reason?: string): void {
 		if (this.#state === ConnectionState.DISPOSED) {
 			return;
 		}
