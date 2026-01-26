@@ -205,11 +205,10 @@ export class ReconnectingWebSocket<
 	}
 
 	private async connect(): Promise<void> {
-		// Only allow connecting from IDLE, CONNECTED (reconnect), or AWAITING_RETRY states
 		if (
-			this.#state === ConnectionState.DISPOSED ||
-			this.#state === ConnectionState.DISCONNECTED ||
-			this.#state === ConnectionState.CONNECTING
+			this.#state !== ConnectionState.IDLE &&
+			this.#state !== ConnectionState.CONNECTED &&
+			this.#state !== ConnectionState.AWAITING_RETRY
 		) {
 			return;
 		}
@@ -235,9 +234,13 @@ export class ReconnectingWebSocket<
 
 			this.#currentSocket = socket;
 			this.#lastRoute = this.#route;
-			this.#state = ConnectionState.CONNECTED;
 
 			socket.addEventListener("open", (event) => {
+				if (this.#currentSocket !== socket) {
+					return;
+				}
+
+				this.#state = ConnectionState.CONNECTED;
 				// Reset backoff on successful connection
 				this.#backoffMs = this.#options.initialBackoffMs;
 				this.#certRefreshAttempted = false;
@@ -245,10 +248,18 @@ export class ReconnectingWebSocket<
 			});
 
 			socket.addEventListener("message", (event) => {
+				if (this.#currentSocket !== socket) {
+					return;
+				}
+
 				this.executeHandlers("message", event);
 			});
 
 			socket.addEventListener("error", (event) => {
+				if (this.#currentSocket !== socket) {
+					return;
+				}
+
 				this.executeHandlers("error", event);
 				// Errors during initial connection are caught by the factory (waitForOpen).
 				// This handler is for errors AFTER successful connection.
@@ -258,6 +269,10 @@ export class ReconnectingWebSocket<
 			});
 
 			socket.addEventListener("close", (event) => {
+				if (this.#currentSocket !== socket) {
+					return;
+				}
+
 				if (
 					this.#state === ConnectionState.DISPOSED ||
 					this.#state === ConnectionState.DISCONNECTED
