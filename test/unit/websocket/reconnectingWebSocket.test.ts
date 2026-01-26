@@ -510,6 +510,55 @@ describe("ReconnectingWebSocket", () => {
 	});
 
 	describe("Error Handling", () => {
+		it("error event when CONNECTED schedules retry", async () => {
+			const { ws, sockets } = await createReconnectingWebSocket();
+
+			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+
+			sockets[0].fireError(new Error("Connection lost"));
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
+
+			await vi.advanceTimersByTimeAsync(300);
+			expect(sockets).toHaveLength(2);
+
+			ws.close();
+		});
+
+		it("error event when DISCONNECTED is ignored", async () => {
+			const { ws, sockets } = await createReconnectingWebSocket();
+
+			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+
+			ws.disconnect();
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+
+			// Error after disconnect should be ignored
+			sockets[0].fireError(new Error("Connection lost"));
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+
+			// No reconnection should be scheduled
+			await vi.advanceTimersByTimeAsync(10000);
+			expect(sockets).toHaveLength(1);
+
+			ws.close();
+		});
+
+		it("multiple errors while AWAITING_RETRY only creates one reconnection", async () => {
+			const { ws, sockets } = await createReconnectingWebSocket();
+			sockets[0].fireOpen();
+
+			sockets[0].fireError(new Error("First error"));
+			sockets[0].fireError(new Error("Second error"));
+			sockets[0].fireError(new Error("Third error"));
+
+			await vi.advanceTimersByTimeAsync(300);
+			expect(sockets).toHaveLength(2);
+
+			ws.close();
+		});
+
 		it("schedules retry when socket factory throws error", async () => {
 			const sockets: MockSocket[] = [];
 			let shouldFail = false;

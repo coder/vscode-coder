@@ -197,7 +197,7 @@ export class ReconnectingWebSocket<
 	/**
 	 * Returns the current connection state.
 	 */
-	get state(): string {
+	get state(): ConnectionState {
 		return this.#state;
 	}
 
