@@ -95,13 +95,14 @@ describe("watchConfigurationChanges", () => {
 		dispose();
 	});
 
-	it("treats undefined, null, and empty string as equivalent", () => {
+	it("treats undefined, null, empty string, and empty array as equivalent", () => {
 		const config = new MockConfigurationProvider();
 		config.set("test.setting", undefined);
 		const { changes, dispose } = createWatcher("test.setting");
 
 		config.set("test.setting", null);
 		config.set("test.setting", "");
+		config.set("test.setting", []);
 		config.set("test.setting", undefined);
 
 		expect(changes).toEqual([]);
@@ -119,9 +120,9 @@ describe("watchConfigurationChanges", () => {
 		{ name: "value to empty string", from: "value", to: "" },
 		{ name: "undefined to false", from: undefined, to: false },
 		{ name: "undefined to zero", from: undefined, to: 0 },
-		{ name: "undefined to empty array", from: undefined, to: [] },
 		{ name: "null to value", from: null, to: "value" },
 		{ name: "empty string to value", from: "", to: "value" },
+		{ name: "empty array to non-empty array", from: [], to: ["item"] },
 		{ name: "value to different value", from: "old", to: "new" },
 	])("detects change: $name", ({ from, to }) => {
 		const config = new MockConfigurationProvider();

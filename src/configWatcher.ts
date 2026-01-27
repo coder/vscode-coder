@@ -43,10 +43,15 @@ function configValuesEqual(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Normalize "empty" string values to a canonical form for comparison.
+ * Normalize empty values (undefined, null, "", []) to a canonical form for comparison.
  */
 function normalizeEmptyValue(value: unknown): unknown {
-	if (value === undefined || value === null || value === "") {
+	if (
+		value === undefined ||
+		value === null ||
+		value === "" ||
+		(Array.isArray(value) && value.length === 0)
+	) {
 		return undefined;
 	}
 	return value;
