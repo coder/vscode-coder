@@ -201,7 +201,7 @@ describe("createHttpAgent", () => {
 		it("uses http.noProxy as fallback when coder.proxyBypass is not set", async () => {
 			const cfg = new MockConfigurationProvider();
 			cfg.set("http.proxy", proxy);
-			cfg.set("http.noProxy", "internal.example.com");
+			cfg.set("http.noProxy", ["internal.example.com"]);
 
 			const agent = await createHttpAgent(cfg);
 
@@ -214,7 +214,7 @@ describe("createHttpAgent", () => {
 			const cfg = new MockConfigurationProvider();
 			cfg.set("http.proxy", proxy);
 			cfg.set("coder.proxyBypass", "primary.example.com");
-			cfg.set("http.noProxy", "fallback.example.com");
+			cfg.set("http.noProxy", ["fallback.example.com"]);
 
 			const agent = await createHttpAgent(cfg);
 
@@ -223,6 +223,24 @@ describe("createHttpAgent", () => {
 			).toBe("");
 			expect(
 				await agent.getProxyForUrl("https://fallback.example.com", mockRequest),
+			).toBe(proxy);
+		});
+
+		it("trims and joins multiple http.noProxy entries", async () => {
+			const cfg = new MockConfigurationProvider();
+			cfg.set("http.proxy", proxy);
+			cfg.set("http.noProxy", [" first.example.com ", "second.example.com "]);
+
+			const agent = await createHttpAgent(cfg);
+
+			expect(
+				await agent.getProxyForUrl("https://first.example.com", mockRequest),
+			).toBe("");
+			expect(
+				await agent.getProxyForUrl("https://second.example.com", mockRequest),
+			).toBe("");
+			expect(
+				await agent.getProxyForUrl("https://other.example.com", mockRequest),
 			).toBe(proxy);
 		});
 	});
