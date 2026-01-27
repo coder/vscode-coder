@@ -26,7 +26,7 @@ export function watchConfigurationChanges(
 
 			const newValue = getValue();
 
-			if (!isDeepStrictEqual(newValue, appliedValues.get(setting))) {
+			if (!configValuesEqual(newValue, appliedValues.get(setting))) {
 				changedSettings.push(setting);
 				appliedValues.set(setting, newValue);
 			}
@@ -36,4 +36,23 @@ export function watchConfigurationChanges(
 			onChange(changedSettings);
 		}
 	});
+}
+
+function configValuesEqual(a: unknown, b: unknown): boolean {
+	return isDeepStrictEqual(normalizeEmptyValue(a), normalizeEmptyValue(b));
+}
+
+/**
+ * Normalize empty values (undefined, null, "", []) to a canonical form for comparison.
+ */
+function normalizeEmptyValue(value: unknown): unknown {
+	if (
+		value === undefined ||
+		value === null ||
+		value === "" ||
+		(Array.isArray(value) && value.length === 0)
+	) {
+		return undefined;
+	}
+	return value;
 }

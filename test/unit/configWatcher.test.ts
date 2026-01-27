@@ -94,4 +94,44 @@ describe("watchConfigurationChanges", () => {
 		expect(changes).toEqual([["test.setting"]]);
 		dispose();
 	});
+
+	it("treats undefined, null, empty string, and empty array as equivalent", () => {
+		const config = new MockConfigurationProvider();
+		config.set("test.setting", undefined);
+		const { changes, dispose } = createWatcher("test.setting");
+
+		config.set("test.setting", null);
+		config.set("test.setting", "");
+		config.set("test.setting", []);
+		config.set("test.setting", undefined);
+
+		expect(changes).toEqual([]);
+		dispose();
+	});
+
+	interface ValueChangeTestCase {
+		name: string;
+		from: unknown;
+		to: unknown;
+	}
+
+	it.each<ValueChangeTestCase>([
+		{ name: "undefined to value", from: undefined, to: "value" },
+		{ name: "value to empty string", from: "value", to: "" },
+		{ name: "undefined to false", from: undefined, to: false },
+		{ name: "undefined to zero", from: undefined, to: 0 },
+		{ name: "null to value", from: null, to: "value" },
+		{ name: "empty string to value", from: "", to: "value" },
+		{ name: "empty array to non-empty array", from: [], to: ["item"] },
+		{ name: "value to different value", from: "old", to: "new" },
+	])("detects change: $name", ({ from, to }) => {
+		const config = new MockConfigurationProvider();
+		config.set("test.setting", from);
+		const { changes, dispose } = createWatcher("test.setting");
+
+		config.set("test.setting", to);
+
+		expect(changes).toEqual([["test.setting"]]);
+		dispose();
+	});
 });
