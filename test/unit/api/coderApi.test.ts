@@ -591,9 +591,11 @@ describe("CoderApi", () => {
 
 	const setupAutoOpeningWebSocket = () => {
 		const sockets: Array<Partial<Ws>> = [];
+		const handlers: Record<string, (...args: unknown[]) => void> = {};
 		vi.mocked(Ws).mockImplementation(function (url: string | URL) {
 			const mockWs = createMockWebSocket(String(url), {
-				on: vi.fn((event, handler) => {
+				on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+					handlers[event] = handler;
 					if (event === "open") {
 						setImmediate(() => handler());
 					}
@@ -603,12 +605,12 @@ describe("CoderApi", () => {
 			sockets.push(mockWs);
 			return mockWs as Ws;
 		});
-		return sockets;
+		return { sockets, handlers };
 	};
 
 	describe("Reconnection on Host/Token Changes", () => {
 		it("triggers reconnection when session token changes", async () => {
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
 
@@ -623,7 +625,7 @@ describe("CoderApi", () => {
 		});
 
 		it("triggers reconnection when host changes", async () => {
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			const wsWrap = await api.watchAgentMetadata(AGENT_ID);
 			expect(wsWrap.url).toContain(CODER_URL.replace("http", "ws"));
@@ -642,7 +644,7 @@ describe("CoderApi", () => {
 		});
 
 		it("does not reconnect when token or host are unchanged", async () => {
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
 
@@ -655,7 +657,7 @@ describe("CoderApi", () => {
 		});
 
 		it("suspends sockets when host is set to empty string (logout)", async () => {
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
 
@@ -668,7 +670,7 @@ describe("CoderApi", () => {
 		});
 
 		it("does not reconnect when setting token after clearing host", async () => {
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
 
@@ -682,7 +684,7 @@ describe("CoderApi", () => {
 		});
 
 		it("setCredentials sets both host and token together", async () => {
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
 
@@ -695,7 +697,7 @@ describe("CoderApi", () => {
 		});
 
 		it("setCredentials suspends when host is cleared", async () => {
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
 
@@ -796,20 +798,18 @@ describe("CoderApi", () => {
 	describe("Configuration Change Reconnection", () => {
 		const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-		it("reconnects sockets when watched config value changes", async () => {
+		it("does not reconnect connected sockets when config value changes", async () => {
 			mockConfig.set("coder.insecure", false);
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
+			await tick(); // Wait for open event to fire (socket becomes CONNECTED)
 
 			mockConfig.set("coder.insecure", true);
 			await tick();
 
-			expect(sockets[0].close).toHaveBeenCalledWith(
-				1000,
-				"Replacing connection",
-			);
-			expect(sockets).toHaveLength(2);
+			expect(sockets[0].close).not.toHaveBeenCalled();
+			expect(sockets).toHaveLength(1);
 		});
 
 		it.each([
@@ -817,9 +817,10 @@ describe("CoderApi", () => {
 			["unrelated setting", "unrelated.setting", "new-value"],
 		])("does not reconnect for %s", async (_desc, key, value) => {
 			mockConfig.set("coder.insecure", false);
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
+			await tick(); // Wait for open event to fire (socket becomes CONNECTED)
 
 			mockConfig.set(key, value);
 			await tick();
@@ -830,15 +831,51 @@ describe("CoderApi", () => {
 
 		it("stops watching after dispose", async () => {
 			mockConfig.set("coder.insecure", false);
-			const sockets = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
+			await tick(); // Wait for open event to fire (socket becomes CONNECTED)
 
 			api.dispose();
 			mockConfig.set("coder.insecure", true);
 			await tick();
 
 			expect(sockets).toHaveLength(1);
+		});
+
+		it("does not reconnect sockets in AWAITING_RETRY state when config changes", async () => {
+			mockConfig.set("coder.insecure", false);
+			const { sockets, handlers } = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+
+			// Trigger close with abnormal code to put socket in AWAITING_RETRY
+			handlers["close"]?.({ code: 1006, reason: "Abnormal closure" });
+			await tick();
+
+			mockConfig.set("coder.insecure", true);
+			await tick();
+
+			// AWAITING_RETRY will naturally retry, so no config-triggered reconnect needed
+			expect(sockets).toHaveLength(1);
+		});
+
+		it("reconnects sockets in DISCONNECTED state when config changes", async () => {
+			mockConfig.set("coder.insecure", false);
+			const { sockets, handlers } = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+			await tick();
+
+			// Trigger close with unrecoverable code to put socket in DISCONNECTED
+			handlers["close"]?.({ code: 1002, reason: "Protocol error" });
+			await tick();
+
+			mockConfig.set("coder.insecure", true);
+			await tick();
+
+			// Only DISCONNECTED sockets get reconnected by config changes
+			expect(sockets).toHaveLength(2);
 		});
 	});
 });

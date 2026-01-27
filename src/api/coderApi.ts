@@ -46,6 +46,7 @@ import {
 	type OneWayWebSocketInit,
 } from "../websocket/oneWayWebSocket";
 import {
+	ConnectionState,
 	ReconnectingWebSocket,
 	type SocketFactory,
 } from "../websocket/reconnectingWebSocket";
@@ -164,7 +165,8 @@ export class CoderApi extends Api implements vscode.Disposable {
 
 	/**
 	 * Watch for configuration changes that affect WebSocket connections.
-	 * When any watched setting changes, all active WebSockets are reconnected.
+	 * Only reconnects DISCONNECTED sockets since they require an explicit reconnect() call.
+	 * Other states will pick up settings naturally.
 	 */
 	private watchConfigChanges(): vscode.Disposable {
 		const settings = webSocketConfigSettings.map((setting) => ({
@@ -172,11 +174,15 @@ export class CoderApi extends Api implements vscode.Disposable {
 			getValue: () => vscode.workspace.getConfiguration().get(setting),
 		}));
 		return watchConfigurationChanges(settings, () => {
-			if (this.reconnectingSockets.size > 0) {
-				this.output.info(
-					`Configuration changed, reconnecting ${this.reconnectingSockets.size} WebSocket(s)`,
+			const socketsToReconnect = [...this.reconnectingSockets].filter(
+				(socket) => socket.state === ConnectionState.DISCONNECTED,
+			);
+			if (socketsToReconnect.length) {
+				this.output.debug(
+					`Configuration changed, ${socketsToReconnect.length}/${this.reconnectingSockets.size} socket(s) in DISCONNECTED state`,
 				);
-				for (const socket of this.reconnectingSockets) {
+				for (const socket of socketsToReconnect) {
+					this.output.debug(`Reconnecting WebSocket: ${socket.url}`);
 					socket.reconnect();
 				}
 			}

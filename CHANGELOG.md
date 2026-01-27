@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- WebSocket connections are now more robust and reconnect less frequently, only when truly
+  necessary, reducing unnecessary disconnections and improving stability.
+
 ## [v1.12.1](https://github.com/coder/vscode-coder/releases/tag/v1.12.1) 2026-01-23
 
 ### Fixed

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { WebSocketCloseCode, HttpStatusCode } from "@/websocket/codes";
 import {
+	ConnectionState,
 	ReconnectingWebSocket,
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
@@ -27,13 +28,18 @@ describe("ReconnectingWebSocket", () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+
 			sockets[0].fireClose({
 				code: WebSocketCloseCode.ABNORMAL,
 				reason: "Network error",
 			});
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
 
 			await vi.advanceTimersByTimeAsync(300);
 			expect(sockets).toHaveLength(2);
+			sockets[1].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
 		});
@@ -65,7 +71,10 @@ describe("ReconnectingWebSocket", () => {
 				const { ws, sockets } = await createReconnectingWebSocket();
 
 				sockets[0].fireOpen();
+				expect(ws.state).toBe(ConnectionState.CONNECTED);
+
 				sockets[0].fireClose({ code, reason: "Unrecoverable" });
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
 				await vi.advanceTimersByTimeAsync(10000);
 				expect(sockets).toHaveLength(1);
@@ -98,7 +107,7 @@ describe("ReconnectingWebSocket", () => {
 				);
 
 				// Should be disconnected after unrecoverable HTTP error
-				expect(ws.isDisconnected).toBe(true);
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
 				// Should not retry after unrecoverable HTTP error
 				await vi.advanceTimersByTimeAsync(10000);
@@ -121,6 +130,8 @@ describe("ReconnectingWebSocket", () => {
 				sockets[0].fireError(
 					new Error(`Unexpected server response: ${statusCode}`),
 				);
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+
 				sockets[0].fireClose({
 					code: WebSocketCloseCode.ABNORMAL,
 					reason: "Connection failed",
@@ -154,7 +165,7 @@ describe("ReconnectingWebSocket", () => {
 			ws.close();
 		});
 
-		it("queues reconnect() calls made during connection", async () => {
+		it("reconnect() during CONNECTING immediately restarts connection", async () => {
 			const { ws, sockets, completeConnection } =
 				await createBlockingReconnectingWebSocket();
 
@@ -162,31 +173,33 @@ describe("ReconnectingWebSocket", () => {
 			ws.reconnect();
 			expect(sockets).toHaveLength(2);
 			// Call reconnect again while first reconnect is in progress
+			// This immediately restarts (creates a new socket)
 			ws.reconnect();
-			// Still only 2 sockets (queued reconnect hasn't started)
-			expect(sockets).toHaveLength(2);
+			expect(sockets).toHaveLength(3);
 
+			// Complete the third socket's connection
 			completeConnection();
 			await Promise.resolve();
-			// Now queued reconnect should have executed, creating third socket
-			expect(sockets).toHaveLength(3);
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
 		});
 
-		it("suspend() cancels pending reconnect queued during connection", async () => {
+		it("disconnect() cancels in-progress reconnect and prevents new connections", async () => {
 			const { ws, sockets, failConnection } =
 				await createBlockingReconnectingWebSocket();
 
 			ws.reconnect();
-			ws.reconnect(); // queued
+			expect(ws.state).toBe(ConnectionState.CONNECTING);
 			expect(sockets).toHaveLength(2);
 
-			// This should cancel the queued request
+			// Disconnect while reconnect is in progress
 			ws.disconnect();
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 			failConnection(new Error("No base URL"));
 			await Promise.resolve();
 
+			// No new socket should be created after disconnect
 			expect(sockets).toHaveLength(2);
 			await vi.advanceTimersByTimeAsync(10000);
 			expect(sockets).toHaveLength(2);
@@ -200,10 +213,12 @@ describe("ReconnectingWebSocket", () => {
 
 			// Start reconnect (will block on factory promise)
 			ws.reconnect();
+			expect(ws.state).toBe(ConnectionState.CONNECTING);
 			expect(sockets).toHaveLength(2);
 
 			// Disconnect while factory is still pending
 			ws.disconnect();
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
 			completeConnection();
 			await Promise.resolve();
@@ -274,6 +289,7 @@ describe("ReconnectingWebSocket", () => {
 		it("preserves event handlers after suspend() and reconnect()", async () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			const handler = vi.fn();
 			ws.addEventListener("message", handler);
@@ -282,12 +298,14 @@ describe("ReconnectingWebSocket", () => {
 
 			// Suspend the socket
 			ws.disconnect();
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
 			// Reconnect (async operation)
 			ws.reconnect();
 			await Promise.resolve(); // Wait for async connect()
 			expect(sockets).toHaveLength(2);
 			sockets[1].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			// Handler should still work after suspend/reconnect
 			sockets[1].fireMessage({ test: 2 });
@@ -361,19 +379,26 @@ describe("ReconnectingWebSocket", () => {
 			);
 
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+
 			sockets[0].fireClose({
 				code: WebSocketCloseCode.PROTOCOL_ERROR,
 				reason: "Protocol error",
 			});
 
 			// Should suspend, not dispose - allows recovery when credentials change
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 			expect(disposeCount).toBe(0);
 
 			// Should be able to reconnect after suspension
 			ws.reconnect();
+			await Promise.resolve();
 			expect(sockets).toHaveLength(2);
+			sockets[1].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
+			expect(ws.state).toBe(ConnectionState.DISPOSED);
 		});
 
 		it("does not call onDispose callback during reconnection", async () => {
@@ -399,6 +424,7 @@ describe("ReconnectingWebSocket", () => {
 			const { ws, sockets, setFactoryError } =
 				await createReconnectingWebSocketWithErrorControl();
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			// Trigger reconnect that will fail with 403
 			setFactoryError(
@@ -408,6 +434,7 @@ describe("ReconnectingWebSocket", () => {
 			await Promise.resolve();
 
 			// Socket should be suspended - no automatic reconnection
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 			await vi.advanceTimersByTimeAsync(10000);
 			expect(sockets).toHaveLength(1);
 
@@ -416,17 +443,23 @@ describe("ReconnectingWebSocket", () => {
 			ws.reconnect();
 			await Promise.resolve();
 			expect(sockets).toHaveLength(2);
+			sockets[1].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
+			expect(ws.state).toBe(ConnectionState.DISPOSED);
 		});
 
 		it("reconnect() does nothing after close()", async () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			ws.close();
-			ws.reconnect();
+			expect(ws.state).toBe(ConnectionState.DISPOSED);
 
+			ws.reconnect();
+			expect(ws.state).toBe(ConnectionState.DISPOSED);
 			expect(sockets).toHaveLength(1);
 		});
 	});
@@ -477,6 +510,55 @@ describe("ReconnectingWebSocket", () => {
 	});
 
 	describe("Error Handling", () => {
+		it("error event when CONNECTED schedules retry", async () => {
+			const { ws, sockets } = await createReconnectingWebSocket();
+
+			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+
+			sockets[0].fireError(new Error("Connection lost"));
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
+
+			await vi.advanceTimersByTimeAsync(300);
+			expect(sockets).toHaveLength(2);
+
+			ws.close();
+		});
+
+		it("error event when DISCONNECTED is ignored", async () => {
+			const { ws, sockets } = await createReconnectingWebSocket();
+
+			sockets[0].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+
+			ws.disconnect();
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+
+			// Error after disconnect should be ignored
+			sockets[0].fireError(new Error("Connection lost"));
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+
+			// No reconnection should be scheduled
+			await vi.advanceTimersByTimeAsync(10000);
+			expect(sockets).toHaveLength(1);
+
+			ws.close();
+		});
+
+		it("multiple errors while AWAITING_RETRY only creates one reconnection", async () => {
+			const { ws, sockets } = await createReconnectingWebSocket();
+			sockets[0].fireOpen();
+
+			sockets[0].fireError(new Error("First error"));
+			sockets[0].fireError(new Error("Second error"));
+			sockets[0].fireError(new Error("Third error"));
+
+			await vi.advanceTimersByTimeAsync(300);
+			expect(sockets).toHaveLength(2);
+
+			ws.close();
+		});
+
 		it("schedules retry when socket factory throws error", async () => {
 			const sockets: MockSocket[] = [];
 			let shouldFail = false;
@@ -539,7 +621,9 @@ describe("ReconnectingWebSocket", () => {
 			);
 
 			sockets[0].fireError(new Error("ssl alert certificate_expired"));
-			await vi.waitFor(() => expect(ws.isDisconnected).toBe(true));
+			await vi.waitFor(() =>
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED),
+			);
 
 			expect(sockets).toHaveLength(1);
 			ws.close();
@@ -556,7 +640,9 @@ describe("ReconnectingWebSocket", () => {
 			await vi.waitFor(() => expect(sockets).toHaveLength(2));
 
 			sockets[1].fireError(new Error("ssl alert certificate_expired"));
-			await vi.waitFor(() => expect(ws.isDisconnected).toBe(true));
+			await vi.waitFor(() =>
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED),
+			);
 
 			expect(refreshCount).toBe(1);
 			ws.close();
@@ -583,7 +669,9 @@ describe("ReconnectingWebSocket", () => {
 			);
 
 			sockets[0].fireError(new Error("ssl alert unknown_ca"));
-			await vi.waitFor(() => expect(ws.isDisconnected).toBe(true));
+			await vi.waitFor(() =>
+				expect(ws.state).toBe(ConnectionState.DISCONNECTED),
+			);
 
 			expect(refreshCallback).not.toHaveBeenCalled();
 			ws.close();
@@ -753,7 +841,8 @@ async function createBlockingReconnectingWebSocket(): Promise<{
 		completeConnection: () => {
 			const socket = sockets.at(-1)!;
 			pendingResolve?.(socket);
-			socket.fireOpen();
+			// Fire open after microtask so event listener is attached
+			queueMicrotask(() => socket.fireOpen());
 		},
 		failConnection: (error: Error) => pendingReject?.(error),
 	};
