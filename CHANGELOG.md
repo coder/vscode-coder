@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.12.2](https://github.com/coder/vscode-coder/releases/tag/v1.12.2) 2026-01-27
+
 ### Added
 
 - Support for VS Code's built-in proxy settings: `http.noProxy` (as fallback when `coder.proxyBypass`
