@@ -11,7 +11,7 @@ import { getProxyForUrl } from "./proxy";
  * If mTLS is in use (as specified by the cert or key files being set) then
  * token authorization is disabled. Otherwise, it is enabled.
  */
-export function needToken(cfg: WorkspaceConfiguration): boolean {
+export function needToken(cfg: Pick<WorkspaceConfiguration, "get">): boolean {
 	const certFile = expandPath(
 		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
 	);
@@ -24,9 +24,13 @@ export function needToken(cfg: WorkspaceConfiguration): boolean {
  * Configures proxy, TLS certificates, and security options.
  */
 export async function createHttpAgent(
-	cfg: WorkspaceConfiguration,
+	cfg: Pick<WorkspaceConfiguration, "get">,
 ): Promise<ProxyAgent> {
-	const insecure = Boolean(cfg.get("coder.insecure"));
+	const insecure = cfg.get<boolean>("coder.insecure", false);
+	const proxyStrictSSL = cfg.get<boolean>("http.proxyStrictSSL", true);
+	const proxyAuthorization = cfg.get<string>("http.proxyAuthorization");
+	const httpNoProxy = cfg.get<string>("http.noProxy");
+
 	const certFile = expandPath(
 		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
 	);
@@ -40,6 +44,11 @@ export async function createHttpAgent(
 		caFile === "" ? Promise.resolve(undefined) : fs.readFile(caFile),
 	]);
 
+	// Build proxy authorization header if configured.
+	const headers: Record<string, string> | undefined = proxyAuthorization
+		? { "Proxy-Authorization": proxyAuthorization }
+		: undefined;
+
 	return new ProxyAgent({
 		// Called each time a request is made.
 		getProxyForUrl: (url: string) => {
@@ -47,14 +56,17 @@ export async function createHttpAgent(
 				url,
 				cfg.get("http.proxy"),
 				cfg.get("coder.proxyBypass"),
+				httpNoProxy,
 			);
 		},
+		headers,
 		cert,
 		key,
 		ca,
 		servername: altHost === "" ? undefined : altHost,
-		// rejectUnauthorized defaults to true, so we need to explicitly set it to
-		// false if we want to allow self-signed certificates.
-		rejectUnauthorized: !insecure,
+		// TLS verification is disabled if either:
+		// - http.proxyStrictSSL is false (VS Code's proxy SSL setting)
+		// - coder.insecure is true (backward compatible override for Coder server)
+		rejectUnauthorized: proxyStrictSSL && !insecure,
 	});
 }
