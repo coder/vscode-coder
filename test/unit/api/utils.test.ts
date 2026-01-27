@@ -243,5 +243,24 @@ describe("createHttpAgent", () => {
 				await agent.getProxyForUrl("https://other.example.com", mockRequest),
 			).toBe(proxy);
 		});
+
+		interface NoProxyTestCase {
+			name: string;
+			noProxy: string[] | undefined;
+		}
+		it.each<NoProxyTestCase>([
+			{ name: "undefined", noProxy: undefined },
+			{ name: "empty array", noProxy: [] },
+		])("uses proxy when http.noProxy is $name", async ({ noProxy }) => {
+			const cfg = new MockConfigurationProvider();
+			cfg.set("http.proxy", proxy);
+			cfg.set("http.noProxy", noProxy);
+
+			const agent = await createHttpAgent(cfg);
+
+			expect(
+				await agent.getProxyForUrl("https://example.com", mockRequest),
+			).toBe(proxy);
+		});
 	});
 });
