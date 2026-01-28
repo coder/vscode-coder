@@ -430,7 +430,7 @@
 		"semver": "^7.7.3",
 		"ua-parser-js": "^1.0.41",
 		"ws": "^8.19.0",
-		"zod": "^4.3.5"
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.39.2",

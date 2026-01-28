@@ -53,8 +53,8 @@ importers:
         specifier: ^8.19.0
         version: 8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod:
-        specifier: ^4.3.5
-        version: 4.3.5
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.2
@@ -109,7 +109,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: github:coder/coder#main
-        version: https://codeload.github.com/coder/coder/tar.gz/33988339190e32978eedc887cf99a7c4b55333bf
+        version: https://codeload.github.com/coder/coder/tar.gz/d06b21df45a5beb4d06bd4964d15bb5b2982d2f6
       dayjs:
         specifier: ^1.11.19
         version: 1.11.19
@@ -1498,8 +1498,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/33988339190e32978eedc887cf99a7c4b55333bf:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/33988339190e32978eedc887cf99a7c4b55333bf}
+  coder@https://codeload.github.com/coder/coder/tar.gz/d06b21df45a5beb4d06bd4964d15bb5b2982d2f6:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/d06b21df45a5beb4d06bd4964d15bb5b2982d2f6}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -3523,8 +3523,8 @@ packages:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
 
-  zod@4.3.5:
-    resolution: {integrity: sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g==}
+  zod@4.3.6:
+    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -5011,7 +5011,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/33988339190e32978eedc887cf99a7c4b55333bf: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/d06b21df45a5beb4d06bd4964d15bb5b2982d2f6: {}
 
   color-convert@2.0.1:
     dependencies:
@@ -7350,6 +7350,6 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod@4.3.5: {}
+  zod@4.3.6: {}
 
   zwitch@2.0.4: {}
