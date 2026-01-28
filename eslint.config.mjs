@@ -20,8 +20,7 @@ export default defineConfig(
 			"packages/*/dist/**",
 			"**/*.d.ts",
 			"vitest.config.ts",
-			"vite.config.base.ts",
-			"packages/*/vite.config.ts",
+			"**/vite.config*.ts",
 			".vscode-test/**",
 		],
 	},
@@ -165,8 +164,7 @@ export default defineConfig(
 		},
 	},
 
-	// Webview packages - browser globals and relaxed type rules
-	// ESLint's typescript project service has trouble resolving React types in monorepo
+	// Webview packages - browser globals
 	{
 		files: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
 		languageOptions: {
@@ -189,11 +187,10 @@ export default defineConfig(
 			},
 		},
 		rules: {
-			// TS rules already applied via **/*.ts config above
-			// Only add React-specific rules here
+			// Only add React-specific rules, TS rules already applied via **/*.ts config above
 			...reactPlugin.configs.recommended.rules,
+			...reactPlugin.configs["jsx-runtime"].rules, // React 17+ JSX transform
 			...reactHooksPlugin.configs.recommended.rules,
-			"react/react-in-jsx-scope": "off", // Not needed with React 19
 			"react/prop-types": "off", // Using TypeScript
 		},
 	},

@@ -75,19 +75,22 @@ with Vite and live in `packages/` as a pnpm workspace.
 
 ```text
 packages/
-├── shared/                  # Shared utilities (no build step)
-│   └── src/
-│       ├── index.ts         # WebviewMessage type
-│       └── react/           # VS Code API hooks
-│           ├── api.ts       # postMessage, getState, setState
-│           └── hooks.ts     # useMessage, useVsCodeState
+├── shared/                  # Shared utilities and config
+│   ├── src/
+│   │   ├── index.ts         # WebviewMessage type
+│   │   └── react/           # VS Code API hooks
+│   │       ├── api.ts       # postMessage, getState, setState
+│   │       └── hooks.ts     # useMessage, useVsCodeState
+│   ├── tsconfig.json
+│   ├── tsconfig.webview.json    # Base tsconfig for all webviews
+│   └── vite.config.base.ts      # Shared Vite config factory
 └── tasks/                   # Task panel webview
     ├── src/
     │   ├── index.tsx        # Entry point
     │   └── App.tsx          # Root component
     ├── package.json
-    ├── tsconfig.json
-    └── vite.config.ts
+    ├── tsconfig.json        # Extends ../shared/tsconfig.webview.json
+    └── vite.config.ts       # Uses createWebviewConfig from shared
 
 src/webviews/
 ├── util.ts                  # getWebviewHtml() - generates HTML with CSP
@@ -139,6 +142,8 @@ code, use "Developer: Reload Webviews" or close/reopen the panel to see updates.
    Update `packages/<name>/vite.config.ts`:
 
    ```typescript
+   import { createWebviewConfig } from "../shared/vite.config.base";
+
    export default createWebviewConfig("<name>", __dirname);
    ```
 

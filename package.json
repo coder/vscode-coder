@@ -18,9 +18,10 @@
 	"type": "commonjs",
 	"main": "./dist/extension.js",
 	"scripts": {
-		"build": "pnpm -r --filter \"./packages/*\" build && tsc --noEmit && node esbuild.mjs",
-		"build:production": "NODE_ENV=production pnpm -r --filter \"./packages/*\" build && tsc --noEmit && node esbuild.mjs --production",
-		"dev:webviews": "pnpm -r --filter \"./packages/*\" --parallel --if-present dev",
+		"build": "pnpm build:webviews && tsc --noEmit && node esbuild.mjs",
+		"build:production": "NODE_ENV=production pnpm build:webviews && tsc --noEmit && node esbuild.mjs --production",
+		"build:webviews": "pnpm -r --filter \"./packages/*\" build",
+		"dev:webviews": "pnpm -r --filter \"./packages/*\" --parallel dev",
 		"fmt": "prettier --write --cache --cache-strategy content .",
 		"fmt:check": "prettier --check --cache --cache-strategy content .",
 		"lint": "eslint --cache --cache-strategy content .",
@@ -200,7 +201,8 @@
 					"type": "webview",
 					"id": "coder.tasksPanel",
 					"name": "Tasks",
-					"icon": "media/logo-white.svg"
+					"icon": "media/logo-white.svg",
+					"when": "coder.authenticated && coder.devMode"
 				}
 			]
 		},
@@ -208,6 +210,11 @@
 			{
 				"view": "myWorkspaces",
 				"contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
+				"when": "!coder.authenticated && coder.loaded"
+			},
+			{
+				"view": "coder.tasksPanel",
+				"contents": "[Login](command:coder.login) to view tasks.",
 				"when": "!coder.authenticated && coder.loaded"
 			}
 		],

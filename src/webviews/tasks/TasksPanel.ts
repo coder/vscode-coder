@@ -6,6 +6,7 @@ export class TasksPanel implements vscode.WebviewViewProvider {
 	public static readonly viewType = "coder.tasksPanel";
 
 	private view?: vscode.WebviewView;
+	private disposables: vscode.Disposable[] = [];
 
 	constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -23,26 +24,49 @@ export class TasksPanel implements vscode.WebviewViewProvider {
 			],
 		};
 
+		// Set up message handling before loading HTML to avoid race conditions
+		this.disposables.forEach((d) => {
+			d.dispose();
+		});
+		this.disposables = [];
+		this.disposables.push(
+			webviewView.webview.onDidReceiveMessage((message: WebviewMessage) => {
+				this.handleMessage(message);
+			}),
+		);
+
 		webviewView.webview.html = getWebviewHtml(
 			webviewView.webview,
 			this.extensionUri,
 			"tasks",
 		);
 
-		this.setupMessageHandling(webviewView.webview);
+		// Re-initialize when visibility changes (webview may have been restored)
+		this.disposables.push(
+			webviewView.onDidChangeVisibility(() => {
+				if (webviewView.visible) {
+					this.sendMessage({ type: "init" });
+				}
+			}),
+		);
+
+		webviewView.onDidDispose(() => {
+			this.disposables.forEach((d) => {
+				d.dispose();
+			});
+			this.disposables = [];
+		});
 	}
 
-	private setupMessageHandling(webview: vscode.Webview): void {
-		webview.onDidReceiveMessage((message: WebviewMessage) => {
-			switch (message.type) {
-				case "ready":
-					this.sendMessage({ type: "init" });
-					break;
-				case "refresh":
-					// Handle refresh
-					break;
-			}
-		});
+	private handleMessage(message: WebviewMessage): void {
+		switch (message.type) {
+			case "ready":
+				this.sendMessage({ type: "init" });
+				break;
+			case "refresh":
+				// Handle refresh
+				break;
+		}
 	}
 
 	private sendMessage(message: WebviewMessage): void {
