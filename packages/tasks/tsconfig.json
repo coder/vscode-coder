@@ -1,5 +1,5 @@
 {
-	"extends": "../../tsconfig.webview.json",
+	"extends": "../shared/tsconfig.webview.json",
 	"compilerOptions": {
 		"paths": {
 			"@coder/shared": ["../shared/src"],
