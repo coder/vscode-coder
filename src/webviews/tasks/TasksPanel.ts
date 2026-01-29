@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 
-import { getWebviewHtml, type WebviewMessage } from "../util";
+import { getWebviewHtml } from "../util";
+
+import type { WebviewMessage } from "@coder/shared";
 
 export class TasksPanel implements vscode.WebviewViewProvider {
 	public static readonly viewType = "coder.tasksPanel";

@@ -201,6 +201,10 @@ code, use "Developer: Reload Webviews" or close/reopen the panel to see updates.
 
 ### Shared Package (`@coder/shared`)
 
+The extension can import types from `@coder/shared` via path mapping in `tsconfig.json`.
+The mapping points to `extension.d.ts`, which re-exports only the types meant for
+extension use (excluding `@coder/shared/react` which is webview-only).
+
 Type-safe message passing between extension and webview:
 
 ```typescript

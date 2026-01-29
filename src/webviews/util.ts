@@ -2,23 +2,7 @@ import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 
 /**
- * Message type for webview communication.
- * Matches @coder/shared WebviewMessage for consistency.
- */
-export interface WebviewMessage<T = unknown> {
-	type: string;
-	data?: T;
-}
-
-/**
- * Generate a cryptographically secure nonce for CSP
- */
-export function getNonce(): string {
-	return randomBytes(16).toString("base64");
-}
-
-/**
- * Get the HTML content for a webview
+ * Get the HTML content for a webview.
  */
 export function getWebviewHtml(
 	webview: vscode.Webview,
@@ -26,25 +10,17 @@ export function getWebviewHtml(
 	webviewName: string,
 ): string {
 	const nonce = getNonce();
-
-	const scriptUri = webview.asWebviewUri(
-		vscode.Uri.joinPath(
-			extensionUri,
-			"dist",
-			"webviews",
-			webviewName,
-			"index.js",
-		),
+	const baseUri = vscode.Uri.joinPath(
+		extensionUri,
+		"dist",
+		"webviews",
+		webviewName,
 	);
-
+	const scriptUri = webview.asWebviewUri(
+		vscode.Uri.joinPath(baseUri, "index.js"),
+	);
 	const styleUri = webview.asWebviewUri(
-		vscode.Uri.joinPath(
-			extensionUri,
-			"dist",
-			"webviews",
-			webviewName,
-			"index.css",
-		),
+		vscode.Uri.joinPath(baseUri, "index.css"),
 	);
 
 	return `<!DOCTYPE html>
@@ -60,4 +36,8 @@ export function getWebviewHtml(
   <script nonce="${nonce}" type="module" src="${scriptUri.toString()}"></script>
 </body>
 </html>`;
+}
+
+function getNonce(): string {
+	return randomBytes(16).toString("base64");
 }

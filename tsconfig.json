@@ -9,7 +9,10 @@
 		"sourceMap": true,
 		"noFallthroughCasesInSwitch": true,
 		"noImplicitOverride": true,
-		"noImplicitReturns": true
+		"noImplicitReturns": true,
+		"paths": {
+			"@coder/shared": ["./packages/shared/extension.d.ts"]
+		}
 	},
 	"include": ["src"]
 }
