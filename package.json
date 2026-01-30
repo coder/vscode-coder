@@ -418,7 +418,7 @@
 	},
 	"dependencies": {
 		"@peculiar/x509": "^1.14.3",
-		"axios": "1.13.2",
+		"axios": "1.13.4",
 		"date-fns": "^4.1.0",
 		"eventsource": "^4.1.0",
 		"find-process": "^2.0.0",
