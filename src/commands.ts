@@ -244,6 +244,78 @@ export class Commands {
 	}
 
 	/**
+	 * Manage stored credentials for all deployments.
+	 * Shows a list of deployments with options to remove individual or all credentials.
+	 */
+	public async manageCredentials(): Promise<void> {
+		try {
+			const hostnames = await this.secretsManager.getKnownSafeHostnames();
+			if (hostnames.length === 0) {
+				vscode.window.showInformationMessage("No stored credentials.");
+				return;
+			}
+
+			const items: Array<{
+				label: string;
+				description: string;
+				hostname: string | undefined;
+			}> = hostnames.map((hostname) => ({
+				label: `$(key) ${hostname}`,
+				description: "Remove stored credentials",
+				hostname,
+			}));
+
+			// Only show "Remove All" when there are multiple deployments
+			if (hostnames.length > 1) {
+				items.push({
+					label: "$(trash) Remove All",
+					description: `Remove credentials for all ${hostnames.length} deployments`,
+					hostname: undefined,
+				});
+			}
+
+			const selected = await vscode.window.showQuickPick(items, {
+				title: "Manage Stored Credentials",
+				placeHolder: "Select a deployment to remove",
+			});
+
+			if (!selected) {
+				return;
+			}
+
+			if (selected.hostname) {
+				await this.secretsManager.clearAllAuthData(selected.hostname);
+				vscode.window.showInformationMessage(
+					`Removed credentials for ${selected.hostname}`,
+				);
+			} else {
+				const confirm = await vscodeProposed.window.showWarningMessage(
+					`Remove ${hostnames.length} Credentials`,
+					{
+						useCustom: true,
+						modal: true,
+						detail: `This will remove credentials for: ${hostnames.join(", ")}\n\nYou'll need to log in again to access them.`,
+					},
+					"Remove All",
+				);
+				if (confirm === "Remove All") {
+					await Promise.all(
+						hostnames.map((h) => this.secretsManager.clearAllAuthData(h)),
+					);
+					vscode.window.showInformationMessage(
+						"Removed credentials for all deployments",
+					);
+				}
+			}
+		} catch (error: unknown) {
+			this.logger.error("Failed to manage stored credentials", error);
+			vscode.window.showErrorMessage(
+				"Failed to manage stored credentials. Storage may be corrupted.",
+			);
+		}
+	}
+
+	/**
 	 * Create a new workspace for the currently logged-in deployment.
 	 *
 	 * Must only be called if currently logged in.

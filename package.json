@@ -288,9 +288,9 @@
 				"icon": "$(search)"
 			},
 			{
-				"command": "coder.debug.listDeployments",
-				"title": "List Stored Deployments",
-				"category": "Coder Debug"
+				"command": "coder.manageCredentials",
+				"title": "Manage Stored Credentials",
+				"category": "Coder"
 			}
 		],
 		"menus": {
@@ -352,8 +352,7 @@
 					"when": "false"
 				},
 				{
-					"command": "coder.debug.listDeployments",
-					"when": "coder.devMode"
+					"command": "coder.manageCredentials"
 				}
 			],
 			"view/title": [
