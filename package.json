@@ -289,7 +289,7 @@
 			},
 			{
 				"command": "coder.manageCredentials",
-				"title": "Manage Stored Credentials",
+				"title": "Manage Credentials",
 				"category": "Coder"
 			}
 		],

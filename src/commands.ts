@@ -11,12 +11,12 @@ import { type CoderApi } from "./api/coderApi";
 import { getGlobalFlags } from "./cliConfig";
 import { type CliManager } from "./core/cliManager";
 import { type ServiceContainer } from "./core/container";
-import { type ContextManager } from "./core/contextManager";
 import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
 import { type SecretsManager } from "./core/secretsManager";
 import { type DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
+import { toError } from "./error/errorUtils";
 import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
@@ -34,7 +34,6 @@ export class Commands {
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
 	private readonly cliManager: CliManager;
-	private readonly contextManager: ContextManager;
 	private readonly loginCoordinator: LoginCoordinator;
 
 	// These will only be populated when actively connected to a workspace and are
@@ -58,7 +57,6 @@ export class Commands {
 		this.mementoManager = serviceContainer.getMementoManager();
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.cliManager = serviceContainer.getCliManager();
-		this.contextManager = serviceContainer.getContextManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 	}
 
@@ -258,11 +256,11 @@ export class Commands {
 			const items: Array<{
 				label: string;
 				description: string;
-				hostname: string | undefined;
+				hostnames: string[];
 			}> = hostnames.map((hostname) => ({
 				label: `$(key) ${hostname}`,
 				description: "Remove stored credentials",
-				hostname,
+				hostnames: [hostname],
 			}));
 
 			// Only show "Remove All" when there are multiple deployments
@@ -270,7 +268,7 @@ export class Commands {
 				items.push({
 					label: "$(trash) Remove All",
 					description: `Remove credentials for all ${hostnames.length} deployments`,
-					hostname: undefined,
+					hostnames,
 				});
 			}
 
@@ -283,24 +281,32 @@ export class Commands {
 				return;
 			}
 
-			if (selected.hostname) {
-				await this.secretsManager.clearAllAuthData(selected.hostname);
+			if (selected.hostnames.length === 1) {
+				const selectedHostname = selected.hostnames[0];
+				await this.secretsManager.clearAllAuthData(selectedHostname);
+				this.logger.info("Removed credentials for", selectedHostname);
 				vscode.window.showInformationMessage(
-					`Removed credentials for ${selected.hostname}`,
+					`Removed credentials for ${selectedHostname}`,
 				);
 			} else {
 				const confirm = await vscodeProposed.window.showWarningMessage(
-					`Remove ${hostnames.length} Credentials`,
+					`Remove ${selected.hostnames.length} Credentials`,
 					{
 						useCustom: true,
 						modal: true,
-						detail: `This will remove credentials for: ${hostnames.join(", ")}\n\nYou'll need to log in again to access them.`,
+						detail: `This will remove credentials for: ${selected.hostnames.join(", ")}\n\nYou'll need to log in again to access them.`,
 					},
 					"Remove All",
 				);
 				if (confirm === "Remove All") {
 					await Promise.all(
-						hostnames.map((h) => this.secretsManager.clearAllAuthData(h)),
+						selected.hostnames.map((h) =>
+							this.secretsManager.clearAllAuthData(h),
+						),
+					);
+					this.logger.info(
+						"Removed credentials for all deployments:",
+						selected.hostnames.join(", "),
 					);
 					vscode.window.showInformationMessage(
 						"Removed credentials for all deployments",
@@ -310,7 +316,7 @@ export class Commands {
 		} catch (error: unknown) {
 			this.logger.error("Failed to manage stored credentials", error);
 			vscode.window.showErrorMessage(
-				"Failed to manage stored credentials. Storage may be corrupted.",
+				`Failed to manage stored credentials: ${toError(error).message}`,
 			);
 		}
 	}
