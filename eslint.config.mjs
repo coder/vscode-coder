@@ -7,6 +7,8 @@ import prettierConfig from "eslint-config-prettier";
 import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import { flatConfigs as importXFlatConfigs } from "eslint-plugin-import-x";
 import packageJson from "eslint-plugin-package-json";
+import reactPlugin from "eslint-plugin-react";
+import reactHooksPlugin from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default defineConfig(
@@ -15,21 +17,24 @@ export default defineConfig(
 		ignores: [
 			"out/**",
 			"dist/**",
+			"packages/*/dist/**",
 			"**/*.d.ts",
 			"vitest.config.ts",
+			"**/vite.config*.ts",
+			"**/createWebviewConfig.ts",
 			".vscode-test/**",
 		],
 	},
 
-	// Base ESLint recommended rules (for JS/TS files only)
+	// Base ESLint recommended rules (for JS/TS/TSX files only)
 	{
-		files: ["**/*.ts", "**/*.js", "**/*.mjs"],
+		files: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs"],
 		...eslint.configs.recommended,
 	},
 
 	// TypeScript configuration with type-checked rules
 	{
-		files: ["**/*.ts"],
+		files: ["**/*.ts", "**/*.tsx"],
 		extends: [
 			...tseslint.configs.recommendedTypeChecked,
 			...tseslint.configs.stylisticTypeChecked,
@@ -64,7 +69,7 @@ export default defineConfig(
 			],
 			"@typescript-eslint/no-unused-vars": [
 				"error",
-				{ varsIgnorePattern: "^_" },
+				{ varsIgnorePattern: "^_", argsIgnorePattern: "^_" },
 			],
 			"@typescript-eslint/array-type": ["error", { default: "array-simple" }],
 			"@typescript-eslint/prefer-nullish-coalescing": [
@@ -96,6 +101,7 @@ export default defineConfig(
 					"newlines-between": "always",
 					alphabetize: { order: "asc", caseInsensitive: true },
 					sortTypesGroup: true,
+					warnOnUnassignedImports: true,
 				},
 			],
 			"no-duplicate-imports": "off",
@@ -157,6 +163,37 @@ export default defineConfig(
 			globals: {
 				...globals.node,
 			},
+		},
+	},
+
+	// Webview packages - browser globals
+	{
+		files: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
+		languageOptions: {
+			globals: {
+				...globals.browser,
+			},
+		},
+	},
+
+	// TSX files - React rules
+	{
+		files: ["**/*.tsx"],
+		plugins: {
+			react: reactPlugin,
+			"react-hooks": reactHooksPlugin,
+		},
+		settings: {
+			react: {
+				version: "detect",
+			},
+		},
+		rules: {
+			// TS rules already applied above; add React-specific rules
+			...reactPlugin.configs.recommended.rules,
+			...reactPlugin.configs["jsx-runtime"].rules, // React 17+ JSX transform
+			...reactHooksPlugin.configs.recommended.rules,
+			"react/prop-types": "off", // Using TypeScript
 		},
 	},
 

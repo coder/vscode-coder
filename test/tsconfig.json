@@ -3,7 +3,8 @@
 	"compilerOptions": {
 		"baseUrl": "..",
 		"paths": {
-			"@/*": ["src/*"]
+			"@/*": ["src/*"],
+			"@repo/webview-shared": ["packages/webview-shared/extension.d.ts"]
 		}
 	},
 	"include": [".", "../src"]
