@@ -74,9 +74,8 @@ export class Commands {
 	}
 
 	/**
-	 * Log into the provided deployment. If the deployment URL is not specified,
-	 * ask for it first with a menu showing recent URLs along with the default URL
-	 * and CODER_URL, if those are set.
+	 * Log into a deployment. If already authenticated, this is a no-op.
+	 * If no URL is provided, shows a menu of recent URLs plus defaults.
 	 */
 	public async login(args?: {
 		url?: string;
@@ -85,6 +84,13 @@ export class Commands {
 		if (this.deploymentManager.isAuthenticated()) {
 			return;
 		}
+		await this.performLogin(args);
+	}
+
+	private async performLogin(args?: {
+		url?: string;
+		autoLogin?: boolean;
+	}): Promise<void> {
 		this.logger.debug("Logging in");
 
 		const currentDeployment = await this.secretsManager.getCurrentDeployment();
@@ -197,7 +203,7 @@ export class Commands {
 	}
 
 	/**
-	 * Log out from the currently logged-in deployment.
+	 * Log out and clear stored credentials, requiring re-authentication on next login.
 	 */
 	public async logout(): Promise<void> {
 		if (!this.deploymentManager.isAuthenticated()) {
@@ -206,7 +212,14 @@ export class Commands {
 
 		this.logger.debug("Logging out");
 
+		const safeHostname =
+			this.deploymentManager.getCurrentDeployment()?.safeHostname;
+
 		await this.deploymentManager.clearDeployment();
+
+		if (safeHostname) {
+			await this.secretsManager.clearAllAuthData(safeHostname);
+		}
 
 		vscode.window
 			.showInformationMessage("You've been logged out of Coder!", "Login")
@@ -219,6 +232,15 @@ export class Commands {
 			});
 
 		this.logger.debug("Logout complete");
+	}
+
+	/**
+	 * Switch to a different deployment without clearing credentials.
+	 * If login fails or user cancels, stays on current deployment.
+	 */
+	public async switchDeployment(): Promise<void> {
+		this.logger.debug("Switching deployment");
+		await this.performLogin();
 	}
 
 	/**

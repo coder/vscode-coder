@@ -218,6 +218,12 @@
 				"icon": "$(sign-out)"
 			},
 			{
+				"command": "coder.switchDeployment",
+				"title": "Switch Deployment",
+				"category": "Coder",
+				"icon": "$(arrow-swap)"
+			},
+			{
 				"command": "coder.open",
 				"title": "Open Workspace",
 				"category": "Coder",
@@ -298,6 +304,10 @@
 					"when": "coder.authenticated"
 				},
 				{
+					"command": "coder.switchDeployment",
+					"when": "coder.authenticated"
+				},
+				{
 					"command": "coder.createWorkspace",
 					"when": "coder.authenticated"
 				},
@@ -349,6 +359,10 @@
 			"view/title": [
 				{
 					"command": "coder.logout",
+					"when": "coder.authenticated && view == myWorkspaces"
+				},
+				{
+					"command": "coder.switchDeployment",
 					"when": "coder.authenticated && view == myWorkspaces"
 				},
 				{

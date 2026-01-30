@@ -197,6 +197,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			"coder.logout",
 			commands.logout.bind(commands),
 		),
+		vscode.commands.registerCommand(
+			"coder.switchDeployment",
+			commands.switchDeployment.bind(commands),
+		),
 		vscode.commands.registerCommand("coder.open", commands.open.bind(commands)),
 		vscode.commands.registerCommand(
 			"coder.openDevContainer",
