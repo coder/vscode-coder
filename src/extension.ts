@@ -197,6 +197,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			"coder.logout",
 			commands.logout.bind(commands),
 		),
+		vscode.commands.registerCommand(
+			"coder.switchDeployment",
+			commands.switchDeployment.bind(commands),
+		),
 		vscode.commands.registerCommand("coder.open", commands.open.bind(commands)),
 		vscode.commands.registerCommand(
 			"coder.openDevContainer",
@@ -240,8 +244,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		vscode.commands.registerCommand("coder.searchAllWorkspaces", async () =>
 			showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
 		),
-		vscode.commands.registerCommand("coder.debug.listDeployments", () =>
-			listStoredDeployments(serviceContainer),
+		vscode.commands.registerCommand(
+			"coder.manageCredentials",
+			commands.manageCredentials.bind(commands),
 		),
 	);
 
@@ -382,39 +387,4 @@ async function migrateAuthStorage(
 async function showTreeViewSearch(id: string): Promise<void> {
 	await vscode.commands.executeCommand(`${id}.focus`);
 	await vscode.commands.executeCommand("list.find");
-}
-
-async function listStoredDeployments(
-	serviceContainer: ServiceContainer,
-): Promise<void> {
-	const secretsManager = serviceContainer.getSecretsManager();
-	const output = serviceContainer.getLogger();
-
-	try {
-		const hostnames = await secretsManager.getKnownSafeHostnames();
-		if (hostnames.length === 0) {
-			vscode.window.showInformationMessage("No deployments stored.");
-			return;
-		}
-
-		const selected = await vscode.window.showQuickPick(
-			hostnames.map((hostname) => ({
-				label: hostname,
-				description: "Click to forget",
-			})),
-			{ placeHolder: "Select a deployment to forget" },
-		);
-
-		if (selected) {
-			await secretsManager.clearAllAuthData(selected.label);
-			vscode.window.showInformationMessage(
-				`Cleared auth data for ${selected.label}`,
-			);
-		}
-	} catch (error: unknown) {
-		output.error("Failed to list stored deployments", error);
-		vscode.window.showErrorMessage(
-			"Failed to list stored deployments. Storage may be corrupted.",
-		);
-	}
 }

@@ -218,6 +218,12 @@
 				"icon": "$(sign-out)"
 			},
 			{
+				"command": "coder.switchDeployment",
+				"title": "Switch Deployment",
+				"category": "Coder",
+				"icon": "$(arrow-swap)"
+			},
+			{
 				"command": "coder.open",
 				"title": "Open Workspace",
 				"category": "Coder",
@@ -282,9 +288,9 @@
 				"icon": "$(search)"
 			},
 			{
-				"command": "coder.debug.listDeployments",
-				"title": "List Stored Deployments",
-				"category": "Coder Debug"
+				"command": "coder.manageCredentials",
+				"title": "Manage Credentials",
+				"category": "Coder"
 			}
 		],
 		"menus": {
@@ -295,6 +301,10 @@
 				},
 				{
 					"command": "coder.logout",
+					"when": "coder.authenticated"
+				},
+				{
+					"command": "coder.switchDeployment",
 					"when": "coder.authenticated"
 				},
 				{
@@ -342,13 +352,16 @@
 					"when": "false"
 				},
 				{
-					"command": "coder.debug.listDeployments",
-					"when": "coder.devMode"
+					"command": "coder.manageCredentials"
 				}
 			],
 			"view/title": [
 				{
 					"command": "coder.logout",
+					"when": "coder.authenticated && view == myWorkspaces"
+				},
+				{
+					"command": "coder.switchDeployment",
 					"when": "coder.authenticated && view == myWorkspaces"
 				},
 				{
