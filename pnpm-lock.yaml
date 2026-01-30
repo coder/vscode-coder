@@ -112,7 +112,10 @@ importers:
         version: 4.1.0
       coder:
         specifier: github:coder/coder#main
-        version: https://codeload.github.com/coder/coder/tar.gz/d06b21df45a5beb4d06bd4964d15bb5b2982d2f6
+        version: https://codeload.github.com/coder/coder/tar.gz/536bca7ea9041b7370326c477140c3f14ec5e4ce
+      concurrently:
+        specifier: ^9.2.1
+        version: 9.2.1
       dayjs:
         specifier: ^1.11.19
         version: 1.11.19
@@ -171,26 +174,11 @@ importers:
         specifier: ^4.0.16
         version: 4.0.16(@types/node@20.19.30)
 
-  packages/shared:
-    devDependencies:
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.9
-      '@types/vscode-webview':
-        specifier: ^1.57.5
-        version: 1.57.5
-      react:
-        specifier: ^19.0.0
-        version: 19.2.3
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
-
   packages/tasks:
     dependencies:
-      '@coder/shared':
+      '@repo/webview-shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../webview-shared
       '@vscode-elements/react-elements':
         specifier: ^2.4.0
         version: 2.4.0(@types/react@19.2.9)(@vscode/codicons@0.0.44)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -216,6 +204,21 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.1(@types/node@24.10.9)
+
+  packages/webview-shared:
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.9
+      '@types/vscode-webview':
+        specifier: ^1.57.5
+        version: 1.57.5
+      react:
+        specifier: ^19.0.0
+        version: 19.2.3
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
 
 packages:
 
@@ -1877,8 +1880,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/d06b21df45a5beb4d06bd4964d15bb5b2982d2f6:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/d06b21df45a5beb4d06bd4964d15bb5b2982d2f6}
+  coder@https://codeload.github.com/coder/coder/tar.gz/536bca7ea9041b7370326c477140c3f14ec5e4ce:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/536bca7ea9041b7370326c477140c3f14ec5e4ce}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -1902,6 +1905,11 @@ packages:
 
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
+
+  concurrently@9.2.1:
+    resolution: {integrity: sha512-fsfrO0MxV64Znoy8/l1vVIjjHa29SZyyqPgQBwhiDcaW8wJc2W3XWVOGx4M3oJBnv/zdUZIIp1gDeS98GzP8Ng==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
@@ -3602,6 +3610,9 @@ packages:
   run-parallel@1.2.0:
     resolution: {integrity: sha512-5l4VyZR86LZ/lDxZTR6jqL8AFE2S0IFLMP26AbjsLVADxHdhB/c0GUsH+y39UfCi3dzz8OlQuPmnaJOMoDHQBA==}
 
+  rxjs@7.8.2:
+    resolution: {integrity: sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==}
+
   safe-array-concat@1.1.3:
     resolution: {integrity: sha512-AURm5f0jYEOydBj7VQlVvDrjeFgthDdEF5H1dP+6mNpoXOMo1quQqJ4wvJDyRZ9+pO3kGWoOdmV08cSv2aJV6Q==}
     engines: {node: '>=0.4'}
@@ -3668,6 +3679,10 @@ packages:
   shebang-regex@3.0.0:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
+
+  shell-quote@1.8.3:
+    resolution: {integrity: sha512-ObmnIF4hXNg1BqhnHmgbDETF8dLPCggZWBjkQfhZpbszZnYur5DUljTcCHii5LC3J5E0yeO/1LIMyH+UvHQgyw==}
+    engines: {node: '>= 0.4'}
 
   side-channel-list@1.0.0:
     resolution: {integrity: sha512-FCLHtRD/gnpCiCHEiJLOwdmFP+wzCmDEkc9y7NsYxeF4u7Btsn1ZuwgwJGxImImHicJArLP4R0yX4c2KCrMrTA==}
@@ -3920,6 +3935,10 @@ packages:
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
+
+  tree-kill@1.2.2:
+    resolution: {integrity: sha512-L0Orpi8qGpRG//Nd+H90vFB+3iHnue1zSSGmNOOCh1GLJ7rUKVwV2HvijphGQS2UmhUZewS9VgvxYIdgr+fG1A==}
+    hasBin: true
 
   ts-api-utils@2.4.0:
     resolution: {integrity: sha512-3TaVTaAv2gTiMB35i3FiGJaRfwb3Pyn/j3m/bfAvGe8FB7CF6u+LMYqYlDh7reQf7UNvoTvdfAqHGmPGOSsPmA==}
@@ -5999,7 +6018,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/d06b21df45a5beb4d06bd4964d15bb5b2982d2f6: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/536bca7ea9041b7370326c477140c3f14ec5e4ce: {}
 
   color-convert@2.0.1:
     dependencies:
@@ -6016,6 +6035,15 @@ snapshots:
   comment-parser@1.4.1: {}
 
   concat-map@0.0.1: {}
+
+  concurrently@9.2.1:
+    dependencies:
+      chalk: 4.1.2
+      rxjs: 7.8.2
+      shell-quote: 1.8.3
+      supports-color: 8.1.1
+      tree-kill: 1.2.2
+      yargs: 17.7.2
 
   convert-source-map@2.0.0: {}
 
@@ -8198,6 +8226,10 @@ snapshots:
     dependencies:
       queue-microtask: 1.2.3
 
+  rxjs@7.8.2:
+    dependencies:
+      tslib: 2.8.1
+
   safe-array-concat@1.1.3:
     dependencies:
       call-bind: 1.0.8
@@ -8280,6 +8312,8 @@ snapshots:
       shebang-regex: 3.0.0
 
   shebang-regex@3.0.0: {}
+
+  shell-quote@1.8.3: {}
 
   side-channel-list@1.0.0:
     dependencies:
@@ -8577,6 +8611,8 @@ snapshots:
   tree-dump@1.1.0(tslib@2.8.1):
     dependencies:
       tslib: 2.8.1
+
+  tree-kill@1.2.2: {}
 
   ts-api-utils@2.4.0(typescript@5.9.3):
     dependencies:

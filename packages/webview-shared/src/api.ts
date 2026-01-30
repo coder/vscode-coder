@@ -1,13 +1,11 @@
 import type { WebviewApi } from "vscode-webview";
 
-import type { WebviewMessage } from "../index";
+import type { WebviewMessage } from "./index";
 
-// Singleton - acquireVsCodeApi can only be called once
+// Singleton because acquireVsCodeApi() throws if called more than once
 let vscodeApi: WebviewApi<unknown> | undefined;
 
-declare function acquireVsCodeApi(): WebviewApi<unknown>;
-
-export function getVsCodeApi(): WebviewApi<unknown> {
+function getVsCodeApi(): WebviewApi<unknown> {
 	vscodeApi ??= acquireVsCodeApi();
 	return vscodeApi;
 }

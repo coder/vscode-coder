@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 
 import { getWebviewHtml } from "../util";
 
-import type { WebviewMessage } from "@coder/shared";
+import type { WebviewMessage } from "@repo/webview-shared";
 
 export class TasksPanel implements vscode.WebviewViewProvider {
 	public static readonly viewType = "coder.tasksPanel";
@@ -41,15 +41,7 @@ export class TasksPanel implements vscode.WebviewViewProvider {
 			webviewView.webview,
 			this.extensionUri,
 			"tasks",
-		);
-
-		// Re-initialize when visibility changes (webview may have been restored)
-		this.disposables.push(
-			webviewView.onDidChangeVisibility(() => {
-				if (webviewView.visible) {
-					this.sendMessage({ type: "init" });
-				}
-			}),
+			"Coder Tasks",
 		);
 
 		webviewView.onDidDispose(() => {

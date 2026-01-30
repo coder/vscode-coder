@@ -1,11 +1,11 @@
-import { postMessage, useMessage } from "@coder/shared/react";
+import { postMessage, useMessage } from "@repo/webview-shared/react";
 import {
 	VscodeButton,
 	VscodeProgressRing,
 } from "@vscode-elements/react-elements";
 import { useCallback, useEffect, useState } from "react";
 
-import type { WebviewMessage } from "@coder/shared";
+import type { WebviewMessage } from "@repo/webview-shared";
 
 export default function App() {
 	const [ready, setReady] = useState(false);

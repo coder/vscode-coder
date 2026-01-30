@@ -1,3 +1,3 @@
-import { createWebviewConfig } from "../shared/vite.config.base";
+import { createWebviewConfig } from "../webview-shared/createWebviewConfig";
 
 export default createWebviewConfig("tasks", __dirname);

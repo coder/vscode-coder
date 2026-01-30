@@ -21,6 +21,7 @@ export default defineConfig(
 			"**/*.d.ts",
 			"vitest.config.ts",
 			"**/vite.config*.ts",
+			"**/createWebviewConfig.ts",
 			".vscode-test/**",
 		],
 	},
@@ -100,6 +101,7 @@ export default defineConfig(
 					"newlines-between": "always",
 					alphabetize: { order: "asc", caseInsensitive: true },
 					sortTypesGroup: true,
+					warnOnUnassignedImports: true,
 				},
 			],
 			"no-duplicate-imports": "off",
@@ -187,7 +189,7 @@ export default defineConfig(
 			},
 		},
 		rules: {
-			// Only add React-specific rules, TS rules already applied via **/*.ts config above
+			// TS rules already applied above; add React-specific rules
 			...reactPlugin.configs.recommended.rules,
 			...reactPlugin.configs["jsx-runtime"].rules, // React 17+ JSX transform
 			...reactHooksPlugin.configs.recommended.rules,

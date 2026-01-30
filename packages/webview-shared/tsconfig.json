@@ -1,11 +1,12 @@
 {
-	"extends": "./tsconfig.webview.json",
+	"extends": "../tsconfig.webview.json",
 	"compilerOptions": {
 		"composite": true,
 		"declaration": true,
 		"noEmit": false,
 		"outDir": "dist",
-		"rootDir": "src"
+		"rootDir": "src",
+		"tsBuildInfoFile": "dist/.tsbuildinfo"
 	},
 	"include": ["src"]
 }

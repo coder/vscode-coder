@@ -1,7 +1,7 @@
 {
-	"name": "@coder/shared",
+	"name": "@repo/webview-shared",
 	"version": "1.0.0",
-	"description": "Shared types and utilities for Coder webviews",
+	"description": "Types and utilities for Coder webviews",
 	"private": true,
 	"type": "module",
 	"exports": {

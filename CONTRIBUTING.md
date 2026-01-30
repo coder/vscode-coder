@@ -75,9 +75,9 @@ organized as a pnpm workspace in `packages/`.
 
 ```text
 packages/
-├── shared/          # Shared types, React hooks, and Vite config
+├── webview-shared/      # Shared types, React hooks, and Vite config
 │   └── extension.d.ts   # Types exposed to extension (excludes React)
-└── tasks/           # Example webview (copy this for new webviews)
+└── tasks/               # Example webview (copy this for new webviews)
 
 src/webviews/
 ├── util.ts          # getWebviewHtml() helper
@@ -86,16 +86,15 @@ src/webviews/
 
 Key patterns:
 
-- **Type sharing**: Extension imports types from `@coder/shared` via path mapping
-  to `extension.d.ts`. Webviews import directly from `@coder/shared/react`.
+- **Type sharing**: Extension imports types from `@repo/webview-shared` via path mapping
+  to `extension.d.ts`. Webviews import directly from `@repo/webview-shared/react`.
 - **Message passing**: Use `postMessage()`/`useMessage()` hooks for communication.
 - **Lifecycle**: Dispose event listeners properly (see `TasksPanel.ts` for example).
 
 ### Development
 
 ```bash
-pnpm watch         # Rebuild extension on changes
-pnpm dev:webviews  # Rebuild webviews on changes (run in separate terminal)
+pnpm watch:all  # Rebuild extension and webviews on changes
 ```
 
 Press F5 to launch the Extension Development Host. Use "Developer: Reload Webviews"

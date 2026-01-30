@@ -21,7 +21,6 @@
 		"build": "pnpm build:webviews && tsc --noEmit && node esbuild.mjs",
 		"build:production": "NODE_ENV=production pnpm build:webviews && tsc --noEmit && node esbuild.mjs --production",
 		"build:webviews": "pnpm -r --filter \"./packages/*\" build",
-		"dev:webviews": "pnpm -r --filter \"./packages/*\" --parallel dev",
 		"fmt": "prettier --write --cache --cache-strategy content .",
 		"fmt:check": "prettier --check --cache --cache-strategy content .",
 		"lint": "eslint --cache --cache-strategy content .",
@@ -33,7 +32,9 @@
 		"test:ci": "CI=true pnpm test",
 		"test:integration": "tsc -p test --outDir out && node esbuild.mjs && vscode-test",
 		"vscode:prepublish": "pnpm build:production",
-		"watch": "node esbuild.mjs --watch"
+		"watch:all": "concurrently -n extension,webviews \"pnpm watch:extension\" \"pnpm watch:webviews\"",
+		"watch:extension": "node esbuild.mjs --watch",
+		"watch:webviews": "pnpm -r --filter \"./packages/*\" --parallel dev"
 	},
 	"contributes": {
 		"configuration": {
@@ -479,6 +480,7 @@
 		"@vscode/vsce": "^3.7.1",
 		"bufferutil": "^4.1.0",
 		"coder": "github:coder/coder#main",
+		"concurrently": "^9.2.1",
 		"dayjs": "^1.11.19",
 		"electron": "^40.0.0",
 		"esbuild": "^0.27.2",

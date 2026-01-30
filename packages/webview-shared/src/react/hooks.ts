@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getState, setState } from "./api";
+import { getState, setState } from "../api";
 
 import type { WebviewMessage } from "../index";
 

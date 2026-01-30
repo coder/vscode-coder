@@ -11,7 +11,7 @@
 		"noImplicitOverride": true,
 		"noImplicitReturns": true,
 		"paths": {
-			"@coder/shared": ["./packages/shared/extension.d.ts"]
+			"@repo/webview-shared": ["./packages/webview-shared/extension.d.ts"]
 		}
 	},
 	"include": ["src"]

@@ -1,5 +1,5 @@
 {
-	"name": "@coder/tasks-webview",
+	"name": "@repo/tasks",
 	"version": "1.0.0",
 	"description": "Coder Tasks webview panel",
 	"private": true,
@@ -9,7 +9,7 @@
 		"dev": "vite build --watch"
 	},
 	"dependencies": {
-		"@coder/shared": "workspace:*",
+		"@repo/webview-shared": "workspace:*",
 		"@vscode-elements/react-elements": "^2.4.0",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0"
