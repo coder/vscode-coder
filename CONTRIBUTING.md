@@ -66,6 +66,47 @@ workspaces if the user has the required permissions.
 There are also notifications for an outdated workspace and for workspaces that
 are close to shutting down.
 
+## Webviews
+
+The extension uses React-based webviews for rich UI panels, built with Vite and
+organized as a pnpm workspace in `packages/`.
+
+### Project Structure
+
+```text
+packages/
+├── webview-shared/      # Shared types, React hooks, and Vite config
+│   └── extension.d.ts   # Types exposed to extension (excludes React)
+└── tasks/               # Example webview (copy this for new webviews)
+
+src/webviews/
+├── util.ts          # getWebviewHtml() helper
+└── tasks/           # Extension-side provider for tasks panel
+```
+
+Key patterns:
+
+- **Type sharing**: Extension imports types from `@repo/webview-shared` via path mapping
+  to `extension.d.ts`. Webviews import directly from `@repo/webview-shared/react`.
+- **Message passing**: Use `postMessage()`/`useMessage()` hooks for communication.
+- **Lifecycle**: Dispose event listeners properly (see `TasksPanel.ts` for example).
+
+### Development
+
+```bash
+pnpm watch:all  # Rebuild extension and webviews on changes
+```
+
+Press F5 to launch the Extension Development Host. Use "Developer: Reload Webviews"
+to see webview changes.
+
+### Adding a New Webview
+
+1. Copy `packages/tasks` to `packages/<name>` and update the package name
+2. Create a provider in `src/webviews/<name>/` (see `TasksPanel.ts` for reference)
+3. Register the view in `package.json` under `contributes.views`
+4. Register the provider in `src/extension.ts`
+
 ## Testing
 
 There are a few ways you can test the "Open in VS Code" flow:

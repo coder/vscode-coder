@@ -9,7 +9,10 @@
 		"sourceMap": true,
 		"noFallthroughCasesInSwitch": true,
 		"noImplicitOverride": true,
-		"noImplicitReturns": true
+		"noImplicitReturns": true,
+		"paths": {
+			"@repo/webview-shared": ["./packages/webview-shared/extension.d.ts"]
+		}
 	},
 	"include": ["src"]
 }
