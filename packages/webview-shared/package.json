@@ -9,23 +9,36 @@
 			"types": "./src/index.ts",
 			"default": "./src/index.ts"
 		},
+		"./api": {
+			"types": "./src/api.ts",
+			"default": "./src/api.ts"
+		},
+		"./logger": {
+			"types": "./src/logger.ts",
+			"default": "./src/logger.ts"
+		},
 		"./react": {
 			"types": "./src/react/index.ts",
 			"default": "./src/react/index.ts"
 		}
 	},
 	"peerDependencies": {
-		"react": "^19.0.0"
+		"@vscode-elements/react-elements": "catalog:",
+		"react": "catalog:"
 	},
 	"peerDependenciesMeta": {
+		"@vscode-elements/react-elements": {
+			"optional": true
+		},
 		"react": {
 			"optional": true
 		}
 	},
 	"devDependencies": {
-		"@types/react": "^19.0.0",
+		"@types/react": "catalog:",
 		"@types/vscode-webview": "^1.57.5",
-		"react": "^19.0.0",
-		"typescript": "^5.7.3"
+		"@vscode-elements/react-elements": "catalog:",
+		"react": "catalog:",
+		"typescript": "catalog:"
 	}
 }

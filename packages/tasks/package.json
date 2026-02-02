@@ -10,15 +10,15 @@
 	},
 	"dependencies": {
 		"@repo/webview-shared": "workspace:*",
-		"@vscode-elements/react-elements": "^2.4.0",
-		"react": "^19.0.0",
-		"react-dom": "^19.0.0"
+		"@vscode-elements/react-elements": "catalog:",
+		"react": "catalog:",
+		"react-dom": "catalog:"
 	},
 	"devDependencies": {
-		"@types/react": "^19.0.0",
-		"@types/react-dom": "^19.0.0",
-		"@vitejs/plugin-react-swc": "^3.8.0",
-		"typescript": "^5.7.3",
-		"vite": "^6.0.0"
+		"@types/react": "catalog:",
+		"@types/react-dom": "catalog:",
+		"@vitejs/plugin-react-swc": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:"
 	}
 }

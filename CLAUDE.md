@@ -47,17 +47,30 @@ Comments explain what code does or why it exists:
 ## Build and Test Commands
 
 - Build: `pnpm build`
-- Watch mode: `pnpm watch`
+- Watch mode: `pnpm watch` (or `pnpm watch:all`)
 - Package: `pnpm package`
 - Format: `pnpm fmt`
 - Format check: `pnpm fmt:check`
 - Lint: `pnpm lint`
 - Lint with auto-fix: `pnpm lint:fix`
-- Run all tests: `pnpm test`
-- Unit tests: `pnpm test:ci`
+- All unit tests: `pnpm test` (or `pnpm test:all`)
+- Extension tests: `pnpm test:extension`
+- Webview tests: `pnpm test:webview`
+- CI mode: `pnpm test:ci`
 - Integration tests: `pnpm test:integration`
-- Run specific unit test: `pnpm test:ci ./test/unit/filename.test.ts`
-- Run specific integration test: `pnpm test:integration ./test/integration/filename.test.ts`
+- Run specific extension test: `pnpm test:extension ./test/unit/filename.test.ts`
+- Run specific webview test: `pnpm test:webview ./test/webview/filename.test.ts`
+
+## Test File Organization
+
+```text
+test/
+├── unit/           # Extension unit tests (mirrors src/ structure)
+├── webview/        # Webview unit tests (by package name)
+├── integration/    # VS Code integration tests (uses Mocha, not Vitest)
+├── utils/          # Test utilities that are also tested
+└── mocks/          # Shared test mocks
+```
 
 ## Code Style
 
@@ -69,5 +82,7 @@ Comments explain what code does or why it exists:
 - Prefix unused variables with underscore (e.g., `_unused`)
 - Error handling: wrap and type errors appropriately
 - Use async/await for promises, avoid explicit Promise construction where possible
-- Unit test files must be named `*.test.ts` and use Vitest, they should be placed in `./test/unit/<path in src>`
+- Unit test files must be named `*.test.ts` and use Vitest
+- Extension tests go in `./test/unit/<path in src>`
+- Webview tests go in `./test/webview/<package name>/`
 - Never disable ESLint rules without user approval

@@ -2,7 +2,10 @@ import * as vscode from "vscode";
 
 import { getWebviewHtml } from "../util";
 
-import type { WebviewMessage } from "@repo/webview-shared";
+import type {
+	TasksExtensionMessage,
+	TasksWebviewMessage,
+} from "@repo/webview-shared";
 
 export class TasksPanel implements vscode.WebviewViewProvider {
 	public static readonly viewType = "coder.tasksPanel";
@@ -32,9 +35,11 @@ export class TasksPanel implements vscode.WebviewViewProvider {
 		});
 		this.disposables = [];
 		this.disposables.push(
-			webviewView.webview.onDidReceiveMessage((message: WebviewMessage) => {
-				this.handleMessage(message);
-			}),
+			webviewView.webview.onDidReceiveMessage(
+				(message: TasksWebviewMessage) => {
+					this.handleMessage(message);
+				},
+			),
 		);
 
 		webviewView.webview.html = getWebviewHtml(
@@ -52,7 +57,7 @@ export class TasksPanel implements vscode.WebviewViewProvider {
 		});
 	}
 
-	private handleMessage(message: WebviewMessage): void {
+	private handleMessage(message: TasksWebviewMessage): void {
 		switch (message.type) {
 			case "ready":
 				this.sendMessage({ type: "init" });
@@ -63,7 +68,7 @@ export class TasksPanel implements vscode.WebviewViewProvider {
 		}
 	}
 
-	private sendMessage(message: WebviewMessage): void {
+	private sendMessage(message: TasksExtensionMessage): void {
 		void this.view?.webview.postMessage(message);
 	}
 }

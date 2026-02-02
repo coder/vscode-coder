@@ -1,27 +1,31 @@
-import { postMessage, useMessage } from "@repo/webview-shared/react";
+import { logger } from "@repo/webview-shared/logger";
+import { useMessage } from "@repo/webview-shared/react";
 import {
 	VscodeButton,
 	VscodeProgressRing,
 } from "@vscode-elements/react-elements";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-import type { WebviewMessage } from "@repo/webview-shared";
+import { sendReady, sendRefresh } from "./messages";
+
+import type { TasksExtensionMessage } from "@repo/webview-shared";
 
 export default function App() {
 	const [ready, setReady] = useState(false);
 
-	const handleMessage = useCallback((message: WebviewMessage) => {
+	useMessage<TasksExtensionMessage>((message) => {
 		switch (message.type) {
 			case "init":
 				setReady(true);
 				break;
+			case "error":
+				logger.error("Tasks panel error:", message.data);
+				break;
 		}
-	}, []);
-
-	useMessage(handleMessage);
+	});
 
 	useEffect(() => {
-		postMessage({ type: "ready" });
+		sendReady();
 	}, []);
 
 	if (!ready) {
@@ -31,9 +35,7 @@ export default function App() {
 	return (
 		<div>
 			<h2>Coder Tasks</h2>
-			<VscodeButton onClick={() => postMessage({ type: "refresh" })}>
-				Refresh
-			</VscodeButton>
+			<VscodeButton onClick={sendRefresh}>Refresh</VscodeButton>
 		</div>
 	);
 }

@@ -1,24 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { getState, setState } from "../api";
 
-import type { WebviewMessage } from "../index";
-
 /**
- * Hook to listen for messages from the extension
+ * Listen for messages from the extension. No need to memoize the handler.
  */
-export function useMessage<T = unknown>(
-	handler: (message: WebviewMessage<T>) => void,
-): void {
+export function useMessage<T>(handler: (message: T) => void): void {
+	const onMessage = useEffectEvent((event: MessageEvent<T>): void => {
+		handler(event.data);
+	});
+
 	useEffect((): (() => void) => {
-		const listener = (event: MessageEvent<WebviewMessage<T>>): void => {
-			handler(event.data);
-		};
-		window.addEventListener("message", listener);
+		window.addEventListener("message", onMessage);
 		return (): void => {
-			window.removeEventListener("message", listener);
+			window.removeEventListener("message", onMessage);
 		};
-	}, [handler]);
+	}, []);
 }
 
 /**

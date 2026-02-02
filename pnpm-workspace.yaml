@@ -1,6 +1,20 @@
 packages:
   - packages/*
 
+# Enforce all shared deps come from catalog to prevent version drift
+catalogMode: strict
+
+# Shared dependency versions (use "catalog:" in package.json to reference)
+catalog:
+  typescript: ^5.9.3
+  vite: ^7.3.1
+  "@vitejs/plugin-react-swc": ^4.2.2
+  react: ^19.2.4
+  react-dom: ^19.2.4
+  "@types/react": ^19.2.10
+  "@types/react-dom": ^19.2.3
+  "@vscode-elements/react-elements": ^2.4.0
+
 # Native modules allowed to run install scripts (pnpm blocks by default for security)
 onlyBuiltDependencies:
   - "@swc/core" # vite
