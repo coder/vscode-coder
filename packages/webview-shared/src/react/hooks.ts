@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { getState, setState } from "../api";
 
@@ -6,16 +6,14 @@ import { getState, setState } from "../api";
  * Listen for messages from the extension. No need to memoize the handler.
  */
 export function useMessage<T>(handler: (message: T) => void): void {
-	const handlerRef = useRef(handler);
-	handlerRef.current = handler;
+	const onMessage = useEffectEvent((event: MessageEvent<T>): void => {
+		handler(event.data);
+	});
 
 	useEffect((): (() => void) => {
-		const listener = (event: MessageEvent<T>): void => {
-			handlerRef.current(event.data);
-		};
-		window.addEventListener("message", listener);
+		window.addEventListener("message", onMessage);
 		return (): void => {
-			window.removeEventListener("message", listener);
+			window.removeEventListener("message", onMessage);
 		};
 	}, []);
 }
