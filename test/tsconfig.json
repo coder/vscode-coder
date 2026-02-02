@@ -2,9 +2,12 @@
 	"extends": "../tsconfig.json",
 	"compilerOptions": {
 		"baseUrl": "..",
+		"jsx": "react-jsx",
+		// Both mappings needed: exact match for root, wildcard for subpaths
 		"paths": {
 			"@/*": ["src/*"],
-			"@repo/webview-shared": ["packages/webview-shared/extension.d.ts"]
+			"@repo/webview-shared": ["packages/webview-shared/src/index.ts"],
+			"@repo/webview-shared/*": ["packages/webview-shared/src/*"]
 		}
 	},
 	"include": [".", "../src"]

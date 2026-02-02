@@ -121,17 +121,41 @@ The link format is `vscode://coder.coder-remote/open?${query}`. For example:
 code --open-url 'vscode://coder.coder-remote/open?url=dev.coder.com&owner=my-username&workspace=my-ws&agent=my-agent'
 ```
 
-There are unit tests using `vitest` with mocked VS Code APIs:
+### Unit Tests
+
+The project uses Vitest with separate test configurations for extension and webview code:
 
 ```bash
-pnpm test:ci
+pnpm test:extension  # Extension tests (runs in Electron with mocked VS Code APIs)
+pnpm test:webview    # Webview tests (runs in jsdom)
+pnpm test:all        # Both extension and webview tests
+pnpm test:ci         # CI mode (same as test:all with CI=true)
 ```
 
-There are also integration tests that run inside a real VS Code instance:
+Test files are organized by type:
+
+```text
+test/
+├── unit/           # Extension unit tests
+├── webview/        # Webview unit tests (jsdom environment)
+├── integration/    # Integration tests (real VS Code)
+└── mocks/          # Shared test mocks
+```
+
+### Integration Tests
+
+Integration tests run inside a real VS Code instance:
 
 ```bash
 pnpm test:integration
 ```
+
+**Limitations:**
+
+- Must use Mocha (VS Code test runner requirement), not Vitest
+- Cannot run while another VS Code instance is open (they share state)
+- Requires closing VS Code or running in a clean environment
+- Test files in `test/integration/` are compiled to `out/` before running
 
 ## Development
 

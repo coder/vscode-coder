@@ -123,7 +123,7 @@ export default defineConfig(
 
 	// Test files - use test tsconfig and relax some rules
 	{
-		files: ["test/**/*.ts", "**/*.test.ts", "**/*.spec.ts"],
+		files: ["test/**/*.{ts,tsx}", "**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
 		settings: {
 			"import-x/resolver-next": [
 				createTypeScriptImportResolver({ project: "test/tsconfig.json" }),

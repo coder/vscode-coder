@@ -4,6 +4,7 @@
 /.vscode-test/
 /.nyc_output/
 /coverage/
+/.claude/
 *.vsix
 flake.lock
 pnpm-debug.log
