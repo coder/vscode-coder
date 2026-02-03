@@ -1,11 +1,16 @@
 export { ActionMenu } from "./ActionMenu";
 export type { ActionMenuItem } from "./ActionMenu";
+export { AgentChatHistory } from "./AgentChatHistory";
 export { CollapsibleSection } from "./CollapsibleSection";
 export { CreateTaskSection } from "./CreateTaskSection";
+export { ErrorBanner } from "./ErrorBanner";
 export { ErrorState } from "./ErrorState";
 export { NoTemplateState } from "./NoTemplateState";
 export { NotSupportedState } from "./NotSupportedState";
 export { StatusIndicator } from "./StatusIndicator";
+export { TaskDetailHeader } from "./TaskDetailHeader";
+export { TaskDetailView } from "./TaskDetailView";
+export { TaskInput } from "./TaskInput";
 export { TaskItem } from "./TaskItem";
 export { TaskList } from "./TaskList";
 export { useTaskMenuItems } from "./useTaskMenuItems";

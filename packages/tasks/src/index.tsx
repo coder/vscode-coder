@@ -1,4 +1,5 @@
 import { ErrorBoundary } from "@repo/webview-shared/react";
+import "@vscode/codicons/dist/codicon.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
