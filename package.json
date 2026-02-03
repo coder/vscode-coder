@@ -182,6 +182,11 @@
 					"id": "coder",
 					"title": "Coder Remote",
 					"icon": "media/logo-white.svg"
+				},
+				{
+					"id": "coderTasks",
+					"title": "Coder Tasks",
+					"icon": "media/tasks-logo.svg"
 				}
 			]
 		},
@@ -199,13 +204,15 @@
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
 					"when": "coder.authenticated && coder.isOwner"
-				},
+				}
+			],
+			"coderTasks": [
 				{
 					"type": "webview",
 					"id": "coder.tasksPanel",
-					"name": "Tasks",
-					"icon": "media/logo-white.svg",
-					"when": "coder.authenticated && coder.devMode"
+					"name": "Coder Tasks",
+					"icon": "media/tasks-logo.svg",
+					"when": "coder.authenticated"
 				}
 			]
 		},
@@ -308,6 +315,12 @@
 				"command": "coder.manageCredentials",
 				"title": "Manage Credentials",
 				"category": "Coder"
+			},
+			{
+				"command": "coder.tasks.refresh",
+				"title": "Refresh Tasks",
+				"category": "Coder",
+				"icon": "$(refresh)"
 			}
 		],
 		"menus": {
@@ -370,6 +383,10 @@
 				},
 				{
 					"command": "coder.manageCredentials"
+				},
+				{
+					"command": "coder.tasks.refresh",
+					"when": "false"
 				}
 			],
 			"view/title": [
@@ -404,6 +421,11 @@
 					"command": "coder.searchAllWorkspaces",
 					"when": "coder.authenticated && view == allWorkspaces",
 					"group": "navigation@3"
+				},
+				{
+					"command": "coder.tasks.refresh",
+					"when": "coder.authenticated && view == coder.tasksPanel",
+					"group": "navigation@1"
 				}
 			],
 			"view/item/context": [
@@ -478,11 +500,12 @@
 		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^8.54.0",
 		"@typescript-eslint/parser": "^8.54.0",
-		"@vitejs/plugin-react-swc": "catalog:",
+		"@vitejs/plugin-react": "catalog:",
 		"@vitest/coverage-v8": "^4.0.18",
 		"@vscode/test-cli": "^0.0.12",
 		"@vscode/test-electron": "^2.5.2",
 		"@vscode/vsce": "^3.7.1",
+		"babel-plugin-react-compiler": "catalog:",
 		"bufferutil": "^4.1.0",
 		"coder": "github:coder/coder#main",
 		"concurrently": "^9.2.1",
@@ -495,6 +518,7 @@
 		"eslint-plugin-import-x": "^4.16.1",
 		"eslint-plugin-package-json": "^0.88.2",
 		"eslint-plugin-react": "^7.37.5",
+		"eslint-plugin-react-compiler": "catalog:",
 		"eslint-plugin-react-hooks": "^7.0.1",
 		"globals": "^17.3.0",
 		"jsdom": "^28.0.0",

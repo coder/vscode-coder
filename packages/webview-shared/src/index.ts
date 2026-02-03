@@ -2,12 +2,13 @@
 export interface WebviewMessage<T = unknown> {
 	type: string;
 	data?: T;
+	// Request-response pattern support
+	requestId?: string;
+	payload?: unknown;
 }
 
-/** Messages sent from the extension to the Tasks webview */
-export type TasksExtensionMessage =
-	| { type: "init" }
-	| { type: "error"; data: string };
+// VS Code state API
+export { getState, setState, postMessage } from "./api";
 
-/** Messages sent from the Tasks webview to the extension */
-export type TasksWebviewMessage = { type: "ready" } | { type: "refresh" };
+// Tasks types - re-exported from tasks submodule
+export * from "./tasks";

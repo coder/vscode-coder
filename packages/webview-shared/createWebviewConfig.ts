@@ -1,4 +1,4 @@
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 import { defineConfig, type UserConfig } from "vite";
 
@@ -14,7 +14,15 @@ export function createWebviewConfig(
 	const production = process.env.NODE_ENV === "production";
 
 	return defineConfig({
-		plugins: [react()],
+		plugins: [
+			react({
+				babel: {
+					plugins: [["babel-plugin-react-compiler", {}]],
+				},
+			}),
+		],
+		// Use relative paths for assets (required for VS Code webviews)
+		base: "./",
 		build: {
 			outDir: resolve(dirname, `../../dist/webviews/${webviewName}`),
 			emptyOutDir: true,
