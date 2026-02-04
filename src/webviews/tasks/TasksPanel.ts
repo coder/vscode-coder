@@ -2,13 +2,21 @@ import { isAxiosError } from "axios";
 import * as vscode from "vscode";
 
 import {
+	commandHandler,
 	getTaskActions,
 	getTaskUIState,
+	requestHandler,
+	TasksApi,
+	type CreateTaskParams,
+	type InitResponse,
+	type IpcNotification,
+	type IpcRequest,
+	type IpcResponse,
 	type LogsStatus,
 	type TaskDetails,
 	type TaskTemplate,
 	type TaskUIState,
-} from "@repo/webview-shared";
+} from "@repo/shared";
 
 import { type CoderApi } from "../../api/coderApi";
 import { toError } from "../../error/errorUtils";
@@ -22,33 +30,15 @@ import type {
 	Template,
 } from "coder/site/src/api/typesGenerated";
 
-// =============================================================================
-// IPC Message Types
-// =============================================================================
-
-/** Request from webview expecting a response */
-interface IpcRequest {
-	requestId: string;
-	method: string;
-	params?: unknown;
+/** Build URL to view task build logs in Coder dashboard */
+function getTaskBuildUrl(baseUrl: string, task: Task): string {
+	if (task.workspace_name && task.workspace_build_number) {
+		return `${baseUrl}/@${task.owner_name}/${task.workspace_name}/builds/${task.workspace_build_number}`;
+	}
+	return `${baseUrl}/tasks/${task.owner_name}/${task.id}`;
 }
 
-/** Response sent back to webview */
-interface IpcResponse {
-	requestId: string;
-	method: string;
-	success: boolean;
-	data?: unknown;
-	error?: string;
-}
-
-/** Push notification to webview (no requestId) */
-interface IpcNotification {
-	type: string;
-	data?: unknown;
-}
-
-/** Check if message is a request (has requestId and method) */
+/** Check if message is a request (has requestId) */
 function isIpcRequest(msg: unknown): msg is IpcRequest {
 	return (
 		typeof msg === "object" &&
@@ -73,6 +63,13 @@ function isIpcCommand(
 	);
 }
 
+/** UI states where task logs won't change */
+const STABLE_UI_STATES: readonly TaskUIState[] = [
+	"complete",
+	"error",
+	"paused",
+];
+
 export class TasksPanel
 	implements vscode.WebviewViewProvider, vscode.Disposable
 {
@@ -81,42 +78,84 @@ export class TasksPanel
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
 
-	// State (extension owns this)
-	private tasks: Task[] = [];
-	private templates: TaskTemplate[] = [];
-	private tasksSupported = true;
-
-	// Template cache
+	// Template cache with TTL
 	private templatesCache: TaskTemplate[] = [];
 	private templatesCacheTime = 0;
 	private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-	// Log cache - stores logs per task to avoid refetching for stable states
-	private logCache = new Map<
+	// Cache logs for last viewed task in stable state
+	private cachedLogs?: {
+		taskId: string;
+		logs: TaskLogEntry[];
+		status: LogsStatus;
+		uiState: TaskUIState;
+	};
+
+	private readonly requestHandlers = {
+		[TasksApi.init.method]: requestHandler(TasksApi.init, () =>
+			this.handleInit(),
+		),
+		[TasksApi.getTasks.method]: requestHandler(TasksApi.getTasks, async () => {
+			const result = await this.fetchTasksWithStatus();
+			return [...result.tasks];
+		}),
+		[TasksApi.getTemplates.method]: requestHandler(TasksApi.getTemplates, () =>
+			this.fetchTemplates(),
+		),
+		[TasksApi.getTask.method]: requestHandler(TasksApi.getTask, (p) =>
+			this.client.getTask("me", p.taskId),
+		),
+		[TasksApi.getTaskDetails.method]: requestHandler(
+			TasksApi.getTaskDetails,
+			(p) => this.handleGetTaskDetails(p.taskId),
+		),
+		[TasksApi.createTask.method]: requestHandler(TasksApi.createTask, (p) =>
+			this.handleCreateTask(p),
+		),
+		[TasksApi.deleteTask.method]: requestHandler(TasksApi.deleteTask, (p) =>
+			this.handleDeleteTask(p.taskId),
+		),
+		[TasksApi.pauseTask.method]: requestHandler(TasksApi.pauseTask, (p) =>
+			this.handlePauseTask(p.taskId),
+		),
+		[TasksApi.resumeTask.method]: requestHandler(TasksApi.resumeTask, (p) =>
+			this.handleResumeTask(p.taskId),
+		),
+	} as const;
+
+	private readonly commandHandlers: Record<
 		string,
-		{
-			logs: TaskLogEntry[];
-			status: LogsStatus;
-			lastLogId: number | null;
-			taskUIState: TaskUIState;
-		}
-	>();
+		(params: unknown) => void | Promise<void>
+	> = {
+		[TasksApi.viewInCoder.method]: commandHandler(TasksApi.viewInCoder, (p) =>
+			this.handleViewInCoder(p.taskId),
+		),
+		[TasksApi.viewLogs.method]: commandHandler(TasksApi.viewLogs, (p) =>
+			this.handleViewLogs(p.taskId),
+		),
+		[TasksApi.downloadLogs.method]: commandHandler(TasksApi.downloadLogs, (p) =>
+			this.handleDownloadLogs(p.taskId),
+		),
+		[TasksApi.sendTaskMessage.method]: commandHandler(
+			TasksApi.sendTaskMessage,
+			(p) => this.handleSendMessage(p.taskId, p.message),
+		),
+	};
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
-		private readonly getBaseUrl: () => string | undefined,
 	) {}
 
 	public showCreateForm(): void {
-		this.sendNotification({ type: "showCreateForm" });
+		this.sendNotification({ type: TasksApi.showCreateForm.method });
 	}
 
 	public refresh(): void {
 		this.templatesCacheTime = 0;
-		this.logCache.clear();
-		this.sendNotification({ type: "refresh" });
+		this.cachedLogs = undefined;
+		this.sendNotification({ type: TasksApi.refresh.method });
 	}
 
 	resolveWebviewView(
@@ -133,13 +172,11 @@ export class TasksPanel
 			],
 		};
 
-		// Clean up old disposables
 		for (const d of this.disposables) {
 			d.dispose();
 		}
 		this.disposables = [];
 
-		// Set up message handling
 		this.disposables.push(
 			webviewView.webview.onDidReceiveMessage((message: unknown) => {
 				void this.handleMessage(message);
@@ -167,14 +204,18 @@ export class TasksPanel
 		} else if (isIpcCommand(message)) {
 			await this.handleCommand(message);
 		}
-		// Other messages are ignored
 	}
 
 	private async handleRequest(message: IpcRequest): Promise<void> {
 		const { requestId, method, params } = message;
 
 		try {
-			const data = await this.executeMethod(method, params);
+			const handler =
+				this.requestHandlers[method] ?? this.commandHandlers[method];
+			if (!handler) {
+				throw new Error(`Unknown method: ${method}`);
+			}
+			const data = await handler(params);
 			this.sendResponse({ requestId, method, success: true, data });
 		} catch (err) {
 			this.logger.warn(`Request ${method} failed`, err);
@@ -192,167 +233,188 @@ export class TasksPanel
 		params?: unknown;
 	}): Promise<void> {
 		const { method, params } = message;
+
 		try {
-			await this.executeMethod(method, params);
+			const handler =
+				this.commandHandlers[method] ?? this.requestHandlers[method];
+			if (!handler) {
+				throw new Error(`Unknown method: ${method}`);
+			}
+			await handler(params);
 		} catch (err) {
 			this.logger.warn(`Command ${method} failed`, err);
 		}
 	}
 
-	private async executeMethod(
-		method: string,
-		params: unknown,
-	): Promise<unknown> {
-		switch (method) {
-			case "init":
-				await Promise.all([this.fetchTasks(), this.fetchTemplates()]);
-				return {
-					tasks: this.tasks,
-					templates: this.templates,
-					baseUrl: this.getBaseUrl() || "",
-					tasksSupported: this.tasksSupported,
-				};
+	private async handleInit(): Promise<InitResponse> {
+		const [tasksResult, templates] = await Promise.all([
+			this.fetchTasksWithStatus(),
+			this.fetchTemplates(),
+		]);
+		return {
+			tasks: [...tasksResult.tasks],
+			templates,
+			baseUrl: this.client.getHost() ?? "",
+			tasksSupported: tasksResult.supported,
+		};
+	}
 
-			case "getTasks":
-				await this.fetchTasks();
-				return this.tasks;
+	private async handleGetTaskDetails(taskId: string): Promise<TaskDetails> {
+		const task = await this.client.getTask("me", taskId);
+		const { logs, logsStatus } = await this.getLogsWithCache(task);
+		return { task, logs, logsStatus, ...getTaskActions(task) };
+	}
 
-			case "getTemplates":
-				await this.fetchTemplates();
-				return this.templates;
+	private async handleCreateTask(params: CreateTaskParams): Promise<Task> {
+		const task = await this.client.createTask("me", {
+			template_version_id: params.templateVersionId,
+			template_version_preset_id: params.presetId,
+			input: params.prompt,
+		});
 
-			case "getTask": {
-				const { taskId } = params as { taskId: string };
-				return await this.client.getTask("me", taskId);
-			}
+		await this.refreshAndNotifyTasks();
+		vscode.window.showInformationMessage("Task created successfully");
+		return task;
+	}
 
-			case "getTaskDetails": {
-				const { taskId } = params as { taskId: string };
-				return await this.getTaskDetails(taskId);
-			}
+	private async handleDeleteTask(taskId: string): Promise<void> {
+		await this.client.deleteTask("me", taskId);
 
-			case "createTask": {
-				const { templateVersionId, prompt, presetId } = params as {
-					templateVersionId: string;
-					prompt: string;
-					presetId?: string;
-				};
-				return await this.createTask(templateVersionId, prompt, presetId);
-			}
+		if (this.cachedLogs?.taskId === taskId) {
+			this.cachedLogs = undefined;
+		}
 
-			case "deleteTask": {
-				const { taskId } = params as { taskId: string };
-				await this.deleteTask(taskId);
-				return;
-			}
+		await this.refreshAndNotifyTasks();
+		vscode.window.showInformationMessage("Task deleted successfully");
+	}
 
-			case "pauseTask": {
-				const { taskId } = params as { taskId: string };
-				await this.pauseTask(taskId);
-				return;
-			}
+	private async handlePauseTask(taskId: string): Promise<void> {
+		const task = await this.client.getTask("me", taskId);
+		if (!task.workspace_id) {
+			throw new Error("Task has no workspace");
+		}
 
-			case "resumeTask": {
-				const { taskId } = params as { taskId: string };
-				await this.resumeTask(taskId);
-				return;
-			}
+		await this.client.stopWorkspace(task.workspace_id);
 
-			case "viewInCoder": {
-				const { taskId } = params as { taskId: string };
-				this.viewInCoder(taskId);
-				return;
-			}
+		await this.refreshAndNotifyTasks();
+		vscode.window.showInformationMessage("Task paused");
+	}
 
-			case "downloadLogs": {
-				const { taskId } = params as { taskId: string };
-				await this.downloadLogs(taskId);
-				return;
-			}
+	private async handleResumeTask(taskId: string): Promise<void> {
+		const task = await this.client.getTask("me", taskId);
+		if (!task.workspace_id) {
+			throw new Error("Task has no workspace");
+		}
 
-			case "sendTaskMessage": {
-				const { taskId, message } = params as {
-					taskId: string;
-					message: string;
-				};
-				this.sendTaskMessage(taskId, message);
-				return;
-			}
+		await this.client.startWorkspace(
+			task.workspace_id,
+			task.template_version_id,
+		);
 
-			case "viewLogs": {
-				const { taskId } = params as { taskId: string };
-				this.viewTaskLogs(taskId);
-				return;
-			}
+		await this.refreshAndNotifyTasks();
+		vscode.window.showInformationMessage("Task resumed");
+	}
 
-			default:
-				throw new Error(`Unknown method: ${method}`);
+	private async handleViewInCoder(taskId: string): Promise<void> {
+		const baseUrl = this.client.getHost();
+		if (!baseUrl) return;
+
+		const task = await this.client.getTask("me", taskId);
+		vscode.env.openExternal(
+			vscode.Uri.parse(`${baseUrl}/tasks/${task.owner_name}/${task.id}`),
+		);
+	}
+
+	private async handleViewLogs(taskId: string): Promise<void> {
+		const baseUrl = this.client.getHost();
+		if (!baseUrl) return;
+
+		const task = await this.client.getTask("me", taskId);
+		vscode.env.openExternal(vscode.Uri.parse(getTaskBuildUrl(baseUrl, task)));
+	}
+
+	private async handleDownloadLogs(taskId: string): Promise<void> {
+		const result = await this.fetchTaskLogs(taskId);
+		if (result.logs.length === 0) {
+			vscode.window.showWarningMessage("No logs available to download");
+			return;
+		}
+
+		const content = result.logs
+			.map((log) => `[${log.time}] [${log.type}] ${log.content}`)
+			.join("\n");
+
+		const uri = await vscode.window.showSaveDialog({
+			defaultUri: vscode.Uri.file(`task-${taskId}-logs.txt`),
+			filters: { "Text files": ["txt"], "All files": ["*"] },
+		});
+
+		if (uri) {
+			await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf-8"));
+			vscode.window.showInformationMessage(`Logs saved to ${uri.fsPath}`);
 		}
 	}
 
-	private async fetchTasks(): Promise<void> {
-		const baseUrl = this.getBaseUrl();
-		if (!baseUrl) {
-			this.tasks = [];
-			return;
+	private handleSendMessage(taskId: string, message: string): void {
+		this.logger.info(`Sending message to task ${taskId}: ${message}`);
+		vscode.window.showInformationMessage(
+			"Follow-up messages are not yet supported by the API",
+		);
+	}
+
+	private async fetchTasksWithStatus(): Promise<{
+		tasks: readonly Task[];
+		supported: boolean;
+	}> {
+		if (!this.client.getHost()) {
+			return { tasks: [], supported: true };
 		}
 
 		try {
 			const tasks = await this.client.getTasks({ owner: "me" });
-			this.tasks = [...tasks];
-			this.tasksSupported = true;
-			this.cleanupStaleCache();
+			return { tasks, supported: true };
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 404) {
-				this.tasksSupported = false;
-				this.tasks = [];
-				return;
+				return { tasks: [], supported: false };
 			}
 			throw err;
 		}
 	}
 
-	private cleanupStaleCache(): void {
-		const activeTaskIds = new Set(this.tasks.map((t) => t.id));
-		for (const taskId of this.logCache.keys()) {
-			if (!activeTaskIds.has(taskId)) {
-				this.logCache.delete(taskId);
-			}
-		}
+	private async refreshAndNotifyTasks(): Promise<void> {
+		const tasks = await this.fetchTasksWithStatus();
+		this.sendNotification({
+			type: TasksApi.tasksUpdated.method,
+			data: tasks.tasks,
+		});
 	}
 
-	private async fetchTemplates(forceRefresh = false): Promise<void> {
-		const baseUrl = this.getBaseUrl();
-		if (!baseUrl) {
-			this.templates = [];
-			return;
+	private async fetchTemplates(): Promise<TaskTemplate[]> {
+		if (!this.client.getHost()) {
+			return [];
 		}
 
-		// Use cache if valid and not forcing refresh
 		const now = Date.now();
 		if (
-			!forceRefresh &&
 			this.templatesCache.length > 0 &&
 			now - this.templatesCacheTime < this.CACHE_TTL_MS
 		) {
-			this.templates = this.templatesCache;
-			return;
+			return this.templatesCache;
 		}
 
 		try {
 			const templates = await this.client.getTemplates({});
 
-			// Fetch presets for each template in parallel
-			const templatesWithPresets = await Promise.all(
+			const result = await Promise.all(
 				templates.map(async (template: Template): Promise<TaskTemplate> => {
 					let presets: Preset[] = [];
 					try {
-						const fetchedPresets = await this.client.getTemplateVersionPresets(
-							template.active_version_id,
-						);
-						presets = fetchedPresets ?? [];
+						presets =
+							(await this.client.getTemplateVersionPresets(
+								template.active_version_id,
+							)) ?? [];
 					} catch {
-						// Presets may not be available for all templates
+						// Presets may not be available
 					}
 
 					return {
@@ -370,29 +432,50 @@ export class TasksPanel
 				}),
 			);
 
-			this.templates = templatesWithPresets;
-			this.templatesCache = templatesWithPresets;
+			this.templatesCache = result;
 			this.templatesCacheTime = now;
+			return result;
 		} catch (err) {
 			this.logger.warn("Failed to fetch templates", err);
-			this.templates = [];
+			return [];
 		}
 	}
 
+	/**
+	 * Get logs for a task, using cache for stable states (complete/error/paused).
+	 */
+	private async getLogsWithCache(
+		task: Task,
+	): Promise<{ logs: TaskLogEntry[]; logsStatus: LogsStatus }> {
+		const uiState = getTaskUIState(task);
+		const isStable = STABLE_UI_STATES.includes(uiState);
+
+		// Use cache if same task in same stable state
+		if (
+			this.cachedLogs?.taskId === task.id &&
+			isStable &&
+			this.cachedLogs.uiState === uiState
+		) {
+			return { logs: this.cachedLogs.logs, logsStatus: this.cachedLogs.status };
+		}
+
+		const { logs, status } = await this.fetchTaskLogs(task.id);
+
+		// Cache only for stable states
+		if (isStable) {
+			this.cachedLogs = { taskId: task.id, logs, status, uiState };
+		}
+
+		return { logs, logsStatus: status };
+	}
+
 	private async fetchTaskLogs(
-		user: string,
 		taskId: string,
-	): Promise<{
-		logs: TaskLogEntry[];
-		status: "ok" | "not_available" | "error";
-	}> {
+	): Promise<{ logs: TaskLogEntry[]; status: LogsStatus }> {
 		try {
-			const response = await this.client
-				.getAxiosInstance()
-				.get<{ logs: TaskLogEntry[] }>(`/api/v2/tasks/${user}/${taskId}/logs`);
-			return { logs: response.data.logs ?? [], status: "ok" };
+			const logs = await this.client.getTaskLogs("me", taskId);
+			return { logs: [...logs], status: "ok" };
 		} catch (err) {
-			// 400 means logs not available for this task state
 			if (isAxiosError(err) && err.response?.status === 400) {
 				return { logs: [], status: "not_available" };
 			}
@@ -401,178 +484,12 @@ export class TasksPanel
 		}
 	}
 
-	private async getTaskDetails(taskId: string): Promise<TaskDetails> {
-		// Always fetch task to get current state
-		const task = await this.client.getTask("me", taskId);
-		const uiState = getTaskUIState(task);
-		const cached = this.logCache.get(taskId);
-
-		// Stable states where logs won't change: complete, error, paused
-		const isStableState =
-			uiState === "complete" || uiState === "error" || uiState === "paused";
-
-		// Use cached logs if:
-		// 1. We have a cache entry for this task
-		// 2. Task is in a stable state
-		// 3. Cache was captured in the same stable state (logs won't change)
-		const canUseCache =
-			cached && isStableState && cached.taskUIState === uiState;
-
-		let logs: TaskLogEntry[];
-		let logsStatus: LogsStatus;
-
-		if (canUseCache) {
-			logs = cached.logs;
-			logsStatus = cached.status;
-		} else {
-			const logsResult = await this.fetchTaskLogs("me", taskId);
-			logs = logsResult.logs;
-			logsStatus = logsResult.status;
-
-			// Update cache
-			const lastLogId = logs.length > 0 ? logs[logs.length - 1].id : null;
-			this.logCache.set(taskId, {
-				logs,
-				status: logsStatus,
-				lastLogId,
-				taskUIState: uiState,
-			});
-		}
-
-		const actions = getTaskActions(task);
-		return {
-			task,
-			logs,
-			logsStatus,
-			...actions,
-		};
-	}
-
-	private async createTask(
-		templateVersionId: string,
-		prompt: string,
-		presetId?: string,
-	): Promise<Task> {
-		const task = await this.client.createTask("me", {
-			template_version_id: templateVersionId,
-			template_version_preset_id: presetId,
-			input: prompt,
-		});
-
-		await this.fetchTasks();
-		this.sendNotification({ type: "tasksUpdated", data: this.tasks });
-		void vscode.window.showInformationMessage("Task created successfully");
-
-		return task;
-	}
-
-	private async deleteTask(taskId: string): Promise<void> {
-		await this.client.deleteTask("me", taskId);
-		this.logCache.delete(taskId);
-		await this.fetchTasks();
-		this.sendNotification({ type: "tasksUpdated", data: this.tasks });
-		void vscode.window.showInformationMessage("Task deleted successfully");
-	}
-
-	private async pauseTask(taskId: string): Promise<void> {
-		const task = this.tasks.find((t) => t.id === taskId);
-		if (!task?.workspace_id) {
-			throw new Error("Task has no workspace");
-		}
-
-		await this.client.stopWorkspace(task.workspace_id);
-
-		await this.fetchTasks();
-		this.sendNotification({ type: "tasksUpdated", data: this.tasks });
-		void vscode.window.showInformationMessage("Task paused");
-	}
-
-	private async resumeTask(taskId: string): Promise<void> {
-		const task = this.tasks.find((t) => t.id === taskId);
-		if (!task?.workspace_id) {
-			throw new Error("Task has no workspace");
-		}
-
-		await this.client.startWorkspace(
-			task.workspace_id,
-			task.template_version_id,
-		);
-
-		await this.fetchTasks();
-		this.sendNotification({ type: "tasksUpdated", data: this.tasks });
-		void vscode.window.showInformationMessage("Task resumed");
-	}
-
-	private viewInCoder(taskId: string): void {
-		const baseUrl = this.getBaseUrl();
-		if (!baseUrl) {
-			return;
-		}
-
-		const task = this.tasks.find((t) => t.id === taskId);
-		if (!task) {
-			return;
-		}
-
-		const url = `${baseUrl}/tasks/${task.owner_name}/${task.id}`;
-		void vscode.env.openExternal(vscode.Uri.parse(url));
-	}
-
-	private sendTaskMessage(taskId: string, message: string): void {
-		this.logger.info(`Sending message to task ${taskId}: ${message}`);
-		void vscode.window.showInformationMessage(
-			"Follow-up messages are not yet supported by the API",
-		);
-	}
-
-	private viewTaskLogs(taskId: string): void {
-		const baseUrl = this.getBaseUrl();
-		if (!baseUrl) {
-			return;
-		}
-
-		const task = this.tasks.find((t) => t.id === taskId);
-		if (!task) {
-			return;
-		}
-
-		if (task.workspace_name && task.workspace_build_number) {
-			const url = `${baseUrl}/@${task.owner_name}/${task.workspace_name}/builds/${task.workspace_build_number}`;
-			void vscode.env.openExternal(vscode.Uri.parse(url));
-		} else {
-			const url = `${baseUrl}/tasks/${task.owner_name}/${task.id}`;
-			void vscode.env.openExternal(vscode.Uri.parse(url));
-		}
-	}
-
-	private async downloadLogs(taskId: string): Promise<void> {
-		const logsResult = await this.fetchTaskLogs("me", taskId);
-		if (logsResult.logs.length === 0) {
-			void vscode.window.showWarningMessage("No logs available to download");
-			return;
-		}
-
-		const content = logsResult.logs
-			.map((log) => `[${log.time}] [${log.type}] ${log.content}`)
-			.join("\n");
-
-		const uri = await vscode.window.showSaveDialog({
-			defaultUri: vscode.Uri.file(`task-${taskId}-logs.txt`),
-			filters: { "Text files": ["txt"], "All files": ["*"] },
-		});
-
-		if (uri) {
-			await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf-8"));
-			void vscode.window.showInformationMessage(`Logs saved to ${uri.fsPath}`);
-		}
-	}
-
 	private sendResponse(response: IpcResponse): void {
-		void this.view?.webview.postMessage(response);
+		this.view?.webview.postMessage(response);
 	}
 
 	private sendNotification(notification: IpcNotification): void {
-		void this.view?.webview.postMessage(notification);
+		this.view?.webview.postMessage(notification);
 	}
 
 	dispose(): void {
@@ -580,6 +497,6 @@ export class TasksPanel
 			d.dispose();
 		}
 		this.disposables = [];
-		this.logCache.clear();
+		this.cachedLogs = undefined;
 	}
 }

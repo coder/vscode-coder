@@ -1,1 +1,4 @@
+/* Import codicons font for vscode-elements icons */
+@import "@vscode/codicons/dist/codicon.css";
+
 /* Webview styles */

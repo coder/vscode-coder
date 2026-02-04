@@ -14,6 +14,8 @@ export function createWebviewConfig(
 	const production = process.env.NODE_ENV === "production";
 
 	return defineConfig({
+		// Use relative URLs for assets (fonts, etc.) in CSS
+		base: "./",
 		plugins: [
 			react({
 				babel: {
@@ -21,8 +23,6 @@ export function createWebviewConfig(
 				},
 			}),
 		],
-		// Use relative paths for assets (required for VS Code webviews)
-		base: "./",
 		build: {
 			outDir: resolve(dirname, `../../dist/webviews/${webviewName}`),
 			emptyOutDir: true,
@@ -35,7 +35,13 @@ export function createWebviewConfig(
 				input: resolve(dirname, "src/index.tsx"),
 				output: {
 					entryFileNames: "index.js",
-					assetFileNames: "index.[ext]",
+					// Keep fonts with original names for proper CSS references
+					assetFileNames: (assetInfo) => {
+						if (assetInfo.names?.[0]?.endsWith(".ttf")) {
+							return "codicon.ttf";
+						}
+						return "index.[ext]";
+					},
 				},
 			},
 			// Keeps extension size down; build locally to map stack traces

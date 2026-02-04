@@ -189,18 +189,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const commands = new Commands(serviceContainer, client, deploymentManager);
 
 	// Register Tasks webview panel with dependencies
-	const tasksPanel = new TasksPanel(
-		ctx.extensionUri,
-		client,
-		output,
-		() => client.getAxiosInstance().defaults.baseURL,
-	);
+	const tasksPanel = new TasksPanel(ctx.extensionUri, client, output);
 	ctx.subscriptions.push(
 		tasksPanel,
 		vscode.window.registerWebviewViewProvider(TasksPanel.viewType, tasksPanel),
 		vscode.commands.registerCommand("coder.tasks.refresh", () =>
 			tasksPanel.refresh(),
 		),
+		// Refresh tasks panel when deployment changes (login/logout/switch)
+		secretsManager.onDidChangeCurrentDeployment(() => tasksPanel.refresh()),
 	);
 
 	ctx.subscriptions.push(

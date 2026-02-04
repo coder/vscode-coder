@@ -12,11 +12,8 @@ function getVsCodeApi(): WebviewApi<unknown> {
 
 /**
  * Post a message to the extension.
- * Accepts legacy WebviewMessage format or any object for the new IPC protocol.
  */
-export function postMessage(
-	message: WebviewMessage | Record<string, unknown>,
-): void {
+export function postMessage(message: WebviewMessage): void {
 	getVsCodeApi().postMessage(message);
 }
 

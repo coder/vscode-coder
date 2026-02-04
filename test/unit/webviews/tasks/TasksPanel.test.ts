@@ -3,120 +3,49 @@ import * as vscode from "vscode";
 
 import { TasksPanel } from "@/webviews/tasks/TasksPanel";
 
-import { createMockLogger } from "../../../mocks/testHelpers";
+import {
+	createAxiosError,
+	createMockLogger,
+	MockUserInteraction,
+} from "../../../mocks/testHelpers";
 
-import type { Task, Template, Preset } from "coder/site/src/api/typesGenerated";
+import type {
+	Task,
+	TaskLogEntry,
+	Template,
+	Preset,
+} from "coder/site/src/api/typesGenerated";
 
-// Mock vscode
-vi.mock("vscode", () => {
-	const EventEmitter = class {
-		event = vi.fn();
-		fire = vi.fn();
-		dispose = vi.fn();
-	};
-
-	return {
-		Uri: {
-			joinPath: vi.fn((_base, ...pathSegments: string[]) => ({
-				fsPath: `/mock/path/${pathSegments.join("/")}`,
-				toString: () => `/mock/path/${pathSegments.join("/")}`,
-			})),
-			parse: vi.fn((str: string) => ({ toString: () => str })),
-			file: vi.fn((path: string) => ({
-				fsPath: path,
-				toString: () => path,
-			})),
-		},
-		EventEmitter,
-		window: {
-			showInformationMessage: vi.fn(),
-			showWarningMessage: vi.fn(),
-			showSaveDialog: vi.fn(),
-		},
-		env: {
-			clipboard: {
-				writeText: vi.fn(),
-			},
-			openExternal: vi.fn(),
-		},
-		workspace: {
-			fs: {
-				writeFile: vi.fn(),
-			},
-		},
-	};
+// Use vscode.runtime.ts for the vscode mock
+vi.mock("vscode", async () => {
+	return await import("../../../mocks/vscode.runtime");
 });
 
-interface MockWebview {
-	options: { enableScripts: boolean; localResourceRoots: unknown[] };
-	html: string;
-	postMessage: ReturnType<typeof vi.fn>;
-	onDidReceiveMessage: ReturnType<typeof vi.fn>;
-	asWebviewUri: ReturnType<typeof vi.fn>;
-}
-
-interface MockWebviewView {
-	webview: MockWebview;
-	visible: boolean;
-	onDidChangeVisibility: ReturnType<typeof vi.fn>;
-	onDidDispose: ReturnType<typeof vi.fn>;
-}
-
-function createMockWebviewView(): MockWebviewView {
-	const view: MockWebviewView = {
-		webview: {
-			options: { enableScripts: false, localResourceRoots: [] },
-			html: "",
-			postMessage: vi.fn().mockResolvedValue(true),
-			onDidReceiveMessage: vi.fn(),
-			asWebviewUri: vi.fn((uri: { fsPath: string }) => ({
-				toString: () => uri.fsPath,
-			})),
-		},
-		visible: true,
-		onDidChangeVisibility: vi.fn(),
-		onDidDispose: vi.fn(),
-	};
-	return view;
-}
-
-interface MockCoderApiForTasks {
+interface MockClient {
 	getTasks: ReturnType<typeof vi.fn>;
 	getTask: ReturnType<typeof vi.fn>;
+	getTaskLogs: ReturnType<typeof vi.fn>;
 	createTask: ReturnType<typeof vi.fn>;
 	deleteTask: ReturnType<typeof vi.fn>;
 	getTemplates: ReturnType<typeof vi.fn>;
 	getTemplateVersionPresets: ReturnType<typeof vi.fn>;
 	startWorkspace: ReturnType<typeof vi.fn>;
 	stopWorkspace: ReturnType<typeof vi.fn>;
-	getAxiosInstance: () => {
-		defaults: { baseURL: string | undefined };
-		get: ReturnType<typeof vi.fn>;
-	};
+	getHost: ReturnType<typeof vi.fn>;
 }
 
-function createMockClient(): MockCoderApiForTasks {
-	let baseURL: string | undefined = "https://coder.example.com";
+function createMockClient(baseUrl = "https://coder.example.com"): MockClient {
 	return {
 		getTasks: vi.fn().mockResolvedValue([]),
 		getTask: vi.fn(),
+		getTaskLogs: vi.fn().mockResolvedValue([]),
 		createTask: vi.fn(),
-		deleteTask: vi.fn(),
+		deleteTask: vi.fn().mockResolvedValue(undefined),
 		getTemplates: vi.fn().mockResolvedValue([]),
 		getTemplateVersionPresets: vi.fn().mockResolvedValue([]),
-		startWorkspace: vi.fn(),
-		stopWorkspace: vi.fn(),
-		getAxiosInstance: () => ({
-			defaults: {
-				get baseURL() {
-					return baseURL;
-				},
-				set baseURL(value: string | undefined) {
-					baseURL = value;
-				},
-			},
-			get: vi.fn().mockResolvedValue({ data: { logs: [] } }),
-		}),
+		startWorkspace: vi.fn().mockResolvedValue(undefined),
+		stopWorkspace: vi.fn().mockResolvedValue(undefined),
+		getHost: vi.fn().mockReturnValue(baseUrl),
 	};
 }
 
@@ -136,6 +65,7 @@ function createMockTask(overrides: Partial<Task> = {}): Task {
 		workspace_id: "workspace-1",
 		workspace_name: "test-workspace",
 		workspace_status: "running",
+		workspace_build_number: 5,
 		workspace_agent_id: null,
 		workspace_agent_lifecycle: null,
 		workspace_agent_health: null,
@@ -179,13 +109,8 @@ function createMockTemplate(overrides: Partial<Template> = {}): Template {
 		icon: "/icon.svg",
 		default_ttl_ms: 0,
 		activity_bump_ms: 0,
-		autostop_requirement: {
-			days_of_week: [],
-			weeks: 0,
-		},
-		autostart_requirement: {
-			days_of_week: [],
-		},
+		autostop_requirement: { days_of_week: [], weeks: 0 },
+		autostart_requirement: { days_of_week: [] },
 		created_by_id: "user-1",
 		created_by_name: "testuser",
 		allow_user_autostart: true,
@@ -215,422 +140,535 @@ function createMockPreset(overrides: Partial<Preset> = {}): Preset {
 	};
 }
 
-// Helper to create a request message with a requestId
-function createRequest(
-	method: string,
-	params?: unknown,
-): { requestId: string; method: string; params?: unknown } {
+function createMockLogEntry(
+	overrides: Partial<TaskLogEntry> = {},
+): TaskLogEntry {
 	return {
-		requestId: `req-${Date.now()}-${Math.random()}`,
-		method,
-		params,
+		id: 1,
+		time: "2024-01-01T00:00:00Z",
+		type: "output", // Valid TaskLogType: "input" | "output"
+		content: "Test log entry",
+		...overrides,
+	};
+}
+
+interface TestHarness {
+	panel: TasksPanel;
+	client: MockClient;
+	userInteraction: MockUserInteraction;
+	sendRequest: <T>(
+		method: string,
+		params?: unknown,
+	) => Promise<{
+		success: boolean;
+		data?: T;
+		error?: string;
+	}>;
+	sendCommand: (method: string, params?: unknown) => Promise<void>;
+	getPostedMessages: () => unknown[];
+}
+
+function createTestHarness(): TestHarness {
+	const client = createMockClient();
+	const logger = createMockLogger();
+	const extensionUri = vscode.Uri.file("/test/extension");
+	const userInteraction = new MockUserInteraction();
+
+	const panel = new TasksPanel(
+		extensionUri,
+		client as unknown as ConstructorParameters<typeof TasksPanel>[1],
+		logger,
+	);
+
+	// Track posted messages
+	const postedMessages: unknown[] = [];
+	let messageHandler: ((msg: unknown) => void) | null = null;
+
+	const mockWebviewView = {
+		webview: {
+			options: { enableScripts: false, localResourceRoots: [] },
+			html: "",
+			postMessage: vi.fn((msg: unknown) => {
+				postedMessages.push(msg);
+				return Promise.resolve(true);
+			}),
+			onDidReceiveMessage: vi.fn((handler) => {
+				messageHandler = handler;
+				return { dispose: vi.fn() };
+			}),
+			asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
+		},
+		visible: true,
+		onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
+		onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+	};
+
+	panel.resolveWebviewView(
+		mockWebviewView as unknown as vscode.WebviewView,
+		{} as vscode.WebviewViewResolveContext,
+		{} as vscode.CancellationToken,
+	);
+
+	const sendRequest = async <T>(method: string, params?: unknown) => {
+		const requestId = `req-${Date.now()}-${Math.random()}`;
+
+		// messageHandler returns void, but we need to wait for async processing
+		messageHandler?.({ requestId, method, params });
+
+		// Wait for the response to appear in posted messages
+		await vi.waitFor(
+			() => {
+				const found = postedMessages.some(
+					(m) => (m as { requestId?: string }).requestId === requestId,
+				);
+				if (!found) {
+					throw new Error("Response not yet received");
+				}
+			},
+			{ timeout: 1000 },
+		);
+
+		const response = postedMessages.find(
+			(m) => (m as { requestId?: string }).requestId === requestId,
+		) as { success: boolean; data?: T; error?: string };
+
+		return response;
+	};
+
+	const sendCommand = async (method: string, params?: unknown) => {
+		messageHandler?.({ method, params });
+		// Commands don't return responses, just wait for side effects
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	};
+
+	return {
+		panel,
+		client,
+		userInteraction,
+		sendRequest,
+		sendCommand,
+		getPostedMessages: () => [...postedMessages],
 	};
 }
 
 describe("TasksPanel", () => {
-	let panel: TasksPanel;
-	let mockClient: MockCoderApiForTasks;
-	let mockView: MockWebviewView;
-	let messageHandler: ((message: unknown) => Promise<void>) | null = null;
-	let visibilityHandler: (() => void) | null = null;
+	let harness: TestHarness;
 
 	beforeEach(() => {
 		vi.resetAllMocks();
-		mockClient = createMockClient();
-		mockView = createMockWebviewView();
-
-		// Capture message handler when onDidReceiveMessage is called
-		mockView.webview.onDidReceiveMessage.mockImplementation((handler) => {
-			messageHandler = handler;
-			return { dispose: vi.fn() };
-		});
-
-		// Capture visibility handler
-		mockView.onDidChangeVisibility.mockImplementation((handler) => {
-			visibilityHandler = handler;
-			return { dispose: vi.fn() };
-		});
-
-		// Mock onDidDispose
-		mockView.onDidDispose.mockImplementation(() => ({ dispose: vi.fn() }));
-
-		const extensionUri = { fsPath: "/test/extension" } as vscode.Uri;
-		const logger = createMockLogger();
-		const getBaseUrl = () => mockClient.getAxiosInstance().defaults.baseURL;
-
-		panel = new TasksPanel(
-			extensionUri,
-			mockClient as unknown as ConstructorParameters<typeof TasksPanel>[1],
-			logger,
-			getBaseUrl,
-		);
+		harness = createTestHarness();
 	});
 
-	describe("resolveWebviewView", () => {
-		it("sets up webview options correctly", () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
+	describe("init", () => {
+		it("returns tasks, templates, and baseUrl", async () => {
+			const task = createMockTask();
+			const template = createMockTemplate();
+			const preset = createMockPreset();
 
-			expect(mockView.webview.options.enableScripts).toBe(true);
-			expect(mockView.webview.options.localResourceRoots).toHaveLength(1);
+			harness.client.getTasks.mockResolvedValue([task]);
+			harness.client.getTemplates.mockResolvedValue([template]);
+			harness.client.getTemplateVersionPresets.mockResolvedValue([preset]);
+
+			const response = await harness.sendRequest<{
+				tasks: Task[];
+				templates: unknown[];
+				baseUrl: string;
+				tasksSupported: boolean;
+			}>("init");
+
+			expect(response.success).toBe(true);
+			expect(response.data?.tasks).toHaveLength(1);
+			expect(response.data?.tasks[0].id).toBe("task-1");
+			expect(response.data?.templates).toHaveLength(1);
+			expect(response.data?.templates[0]).toMatchObject({
+				id: "template-1",
+				name: "test-template",
+				presets: [{ id: "preset-1", name: "Test Preset" }],
+			});
+			expect(response.data?.baseUrl).toBe("https://coder.example.com");
+			expect(response.data?.tasksSupported).toBe(true);
 		});
 
-		it("sets up message handler", () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
+		it("returns empty when not logged in", async () => {
+			harness.client.getHost.mockReturnValue(undefined);
+
+			const response = await harness.sendRequest<{
+				tasks: Task[];
+				templates: unknown[];
+			}>("init");
+
+			expect(response.success).toBe(true);
+			expect(response.data?.tasks).toEqual([]);
+			expect(response.data?.templates).toEqual([]);
+		});
+
+		it("returns tasksSupported=false on 404", async () => {
+			harness.client.getTasks.mockRejectedValue(
+				createAxiosError(404, "Not found"),
 			);
 
-			expect(mockView.webview.onDidReceiveMessage).toHaveBeenCalled();
-			expect(messageHandler).toBeDefined();
+			const response = await harness.sendRequest<{
+				tasks: Task[];
+				tasksSupported: boolean;
+			}>("init");
+
+			expect(response.success).toBe(true);
+			expect(response.data?.tasks).toEqual([]);
+			expect(response.data?.tasksSupported).toBe(false);
 		});
 	});
 
-	describe("message handling", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
+	describe("getTasks", () => {
+		it("returns list of tasks", async () => {
+			const tasks = [
+				createMockTask({ id: "t1" }),
+				createMockTask({ id: "t2" }),
+			];
+			harness.client.getTasks.mockResolvedValue(tasks);
+
+			const response = await harness.sendRequest<Task[]>("getTasks");
+
+			expect(response.success).toBe(true);
+			expect(response.data).toHaveLength(2);
+		});
+	});
+
+	describe("getTask", () => {
+		it("returns single task by id", async () => {
+			const task = createMockTask({ id: "task-123" });
+			harness.client.getTask.mockResolvedValue(task);
+
+			const response = await harness.sendRequest<Task>("getTask", {
+				taskId: "task-123",
+			});
+
+			expect(response.success).toBe(true);
+			expect(response.data?.id).toBe("task-123");
+		});
+	});
+
+	describe("getTemplates", () => {
+		it("returns templates with presets", async () => {
+			const template = createMockTemplate();
+			const presets = [
+				createMockPreset({ ID: "p1", Name: "Default", Default: true }),
+				createMockPreset({ ID: "p2", Name: "Custom" }),
+			];
+			harness.client.getTemplates.mockResolvedValue([template]);
+			harness.client.getTemplateVersionPresets.mockResolvedValue(presets);
+
+			const response = await harness.sendRequest<unknown[]>("getTemplates");
+
+			expect(response.success).toBe(true);
+			expect(response.data?.[0]).toMatchObject({
+				id: "template-1",
+				presets: [
+					{ id: "p1", name: "Default", isDefault: true },
+					{ id: "p2", name: "Custom", isDefault: false },
+				],
+			});
 		});
 
-		it("responds to init request with tasks and templates", async () => {
-			const mockTasks = [createMockTask()];
-			const mockTemplates = [createMockTemplate()];
-			const mockPresets = [createMockPreset()];
+		it("caches templates on subsequent calls", async () => {
+			harness.client.getTemplates.mockResolvedValue([createMockTemplate()]);
+			harness.client.getTemplateVersionPresets.mockResolvedValue([]);
 
-			mockClient.getTasks.mockResolvedValue(mockTasks);
-			mockClient.getTemplates.mockResolvedValue(mockTemplates);
-			mockClient.getTemplateVersionPresets.mockResolvedValue(mockPresets);
+			await harness.sendRequest("getTemplates");
+			await harness.sendRequest("getTemplates");
 
-			const request = createRequest("init");
-			await messageHandler?.(request);
+			// Should only fetch once due to caching
+			expect(harness.client.getTemplates).toHaveBeenCalledTimes(1);
+		});
+	});
 
-			// Wait for async operations
-			await new Promise((resolve) => setTimeout(resolve, 0));
+	describe("getTaskDetails", () => {
+		it("returns task with logs and actions", async () => {
+			const task = createMockTask();
+			const logs = [createMockLogEntry({ content: "Starting..." })];
+			harness.client.getTask.mockResolvedValue(task);
+			harness.client.getTaskLogs.mockResolvedValue(logs);
 
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "init",
-					success: true,
-					data: expect.objectContaining({
-						tasks: expect.any(Array),
-						templates: expect.any(Array),
-						baseUrl: expect.any(String),
-						tasksSupported: true,
-					}),
-				}),
-			);
+			const response = await harness.sendRequest<{
+				task: Task;
+				logs: TaskLogEntry[];
+				logsStatus: string;
+			}>("getTaskDetails", { taskId: "task-1" });
+
+			expect(response.success).toBe(true);
+			expect(response.data?.task.id).toBe("task-1");
+			expect(response.data?.logs).toHaveLength(1);
+			expect(response.data?.logsStatus).toBe("ok");
 		});
 
-		it("handles getTaskDetails request", async () => {
-			const mockTask = createMockTask();
-			mockClient.getTask.mockResolvedValue(mockTask);
+		it("caches logs for completed tasks", async () => {
+			// Task with state "complete" should cache logs
+			// Use valid TaskStatus "pending" and TaskState "complete"
+			const completedTask = createMockTask({
+				status: "pending",
+				current_state: {
+					timestamp: "",
+					state: "complete",
+					message: "",
+					uri: "",
+				},
+			});
+			harness.client.getTask.mockResolvedValue(completedTask);
+			harness.client.getTaskLogs.mockResolvedValue([createMockLogEntry()]);
 
-			const request = createRequest("getTaskDetails", { taskId: "task-1" });
-			await messageHandler?.(request);
+			await harness.sendRequest("getTaskDetails", { taskId: "task-1" });
+			await harness.sendRequest("getTaskDetails", { taskId: "task-1" });
 
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockClient.getTask).toHaveBeenCalledWith("me", "task-1");
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "getTaskDetails",
-					success: true,
-				}),
-			);
+			// Logs should only be fetched once for stable state
+			expect(harness.client.getTaskLogs).toHaveBeenCalledTimes(1);
 		});
 
-		it("handles createTask request", async () => {
-			mockClient.createTask.mockResolvedValue(createMockTask());
-			mockClient.getTasks.mockResolvedValue([]);
+		it("does not cache logs for running tasks", async () => {
+			const runningTask = createMockTask({ status: "active" });
+			harness.client.getTask.mockResolvedValue(runningTask);
+			harness.client.getTaskLogs.mockResolvedValue([createMockLogEntry()]);
 
-			const request = createRequest("createTask", {
-				templateVersionId: "version-1",
-				prompt: "Test prompt",
+			await harness.sendRequest("getTaskDetails", { taskId: "task-1" });
+			await harness.sendRequest("getTaskDetails", { taskId: "task-1" });
+
+			// Logs fetched each time for active tasks
+			expect(harness.client.getTaskLogs).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	describe("createTask", () => {
+		it("creates task and notifies webview", async () => {
+			const newTask = createMockTask({ id: "new-task" });
+			harness.client.createTask.mockResolvedValue(newTask);
+			harness.client.getTasks.mockResolvedValue([newTask]);
+
+			const response = await harness.sendRequest<Task>("createTask", {
+				templateVersionId: "v1",
+				prompt: "Build a feature",
 				presetId: "preset-1",
 			});
-			await messageHandler?.(request);
 
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(response.success).toBe(true);
+			expect(response.data?.id).toBe("new-task");
 
-			expect(mockClient.createTask).toHaveBeenCalledWith("me", {
-				template_version_id: "version-1",
-				template_version_preset_id: "preset-1",
-				input: "Test prompt",
-			});
-		});
-
-		it("handles viewInCoder request", async () => {
-			const mockTask = createMockTask({ id: "task-123" });
-			mockClient.getTasks.mockResolvedValue([mockTask]);
-			mockClient.getTemplates.mockResolvedValue([]);
-
-			// First initialize to get tasks
-			const initRequest = createRequest("init");
-			await messageHandler?.(initRequest);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			// Then test viewInCoder using request pattern
-			const viewRequest = createRequest("viewInCoder", { taskId: "task-123" });
-			await messageHandler?.(viewRequest);
-
-			expect(vscode.env.openExternal).toHaveBeenCalled();
-		});
-	});
-
-	describe("resumeTask and pauseTask", () => {
-		beforeEach(async () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
-
-			const mockTask = createMockTask({
-				id: "task-1",
-				workspace_id: "workspace-1",
-				workspace_status: "stopped",
-			});
-			mockClient.getTasks.mockResolvedValue([mockTask]);
-			mockClient.getTemplates.mockResolvedValue([]);
-
-			// Initialize first
-			const initRequest = createRequest("init");
-			await messageHandler?.(initRequest);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		});
-
-		it("calls startWorkspace on resumeTask request", async () => {
-			mockClient.startWorkspace.mockResolvedValue({});
-			mockClient.getTasks.mockResolvedValue([]);
-
-			const request = createRequest("resumeTask", { taskId: "task-1" });
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockClient.startWorkspace).toHaveBeenCalledWith(
-				"workspace-1",
-				"version-1",
-			);
-		});
-
-		it("calls stopWorkspace on pauseTask request", async () => {
-			// Update mock task to be running so it can be paused
-			const mockTask = createMockTask({
-				id: "task-1",
-				workspace_id: "workspace-1",
-				workspace_status: "running",
-			});
-			mockClient.getTasks.mockResolvedValue([mockTask]);
-			mockClient.stopWorkspace.mockResolvedValue({});
-
-			// Re-initialize with running task
-			const initRequest = createRequest("init");
-			await messageHandler?.(initRequest);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			const request = createRequest("pauseTask", { taskId: "task-1" });
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockClient.stopWorkspace).toHaveBeenCalledWith("workspace-1");
+			// Check notification was sent
+			const notifications = harness
+				.getPostedMessages()
+				.filter((m) => (m as { type?: string }).type === "tasksUpdated");
+			expect(notifications).toHaveLength(1);
 		});
 	});
 
 	describe("deleteTask", () => {
-		beforeEach(async () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
+		it("deletes task and notifies webview", async () => {
+			harness.client.getTasks.mockResolvedValue([]);
 
-			mockClient.getTasks.mockResolvedValue([createMockTask()]);
-			mockClient.getTemplates.mockResolvedValue([]);
+			const response = await harness.sendRequest("deleteTask", {
+				taskId: "task-1",
+			});
 
-			const initRequest = createRequest("init");
-			await messageHandler?.(initRequest);
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(response.success).toBe(true);
+			expect(harness.client.deleteTask).toHaveBeenCalledWith("me", "task-1");
+
+			const notifications = harness
+				.getPostedMessages()
+				.filter((m) => (m as { type?: string }).type === "tasksUpdated");
+			expect(notifications).toHaveLength(1);
+		});
+	});
+
+	describe("pauseTask", () => {
+		it("stops workspace for task", async () => {
+			const task = createMockTask({ workspace_id: "ws-1" });
+			harness.client.getTask.mockResolvedValue(task);
+			harness.client.getTasks.mockResolvedValue([task]);
+
+			const response = await harness.sendRequest("pauseTask", {
+				taskId: "task-1",
+			});
+
+			expect(response.success).toBe(true);
+			expect(harness.client.stopWorkspace).toHaveBeenCalledWith("ws-1");
 		});
 
-		it("calls deleteTask API", async () => {
-			mockClient.deleteTask.mockResolvedValue(undefined);
-			mockClient.getTasks.mockResolvedValue([]);
+		it("fails when task has no workspace", async () => {
+			const task = createMockTask({ workspace_id: null });
+			harness.client.getTask.mockResolvedValue(task);
 
-			const request = createRequest("deleteTask", { taskId: "task-1" });
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			const response = await harness.sendRequest("pauseTask", {
+				taskId: "task-1",
+			});
 
-			expect(mockClient.deleteTask).toHaveBeenCalledWith("me", "task-1");
+			expect(response.success).toBe(false);
+			expect(response.error).toContain("no workspace");
+		});
+	});
+
+	describe("resumeTask", () => {
+		it("starts workspace for task", async () => {
+			const task = createMockTask({
+				workspace_id: "ws-1",
+				template_version_id: "tv-1",
+			});
+			harness.client.getTask.mockResolvedValue(task);
+			harness.client.getTasks.mockResolvedValue([task]);
+
+			const response = await harness.sendRequest("resumeTask", {
+				taskId: "task-1",
+			});
+
+			expect(response.success).toBe(true);
+			expect(harness.client.startWorkspace).toHaveBeenCalledWith(
+				"ws-1",
+				"tv-1",
+			);
+		});
+	});
+
+	describe("viewInCoder", () => {
+		it("opens task URL in browser", async () => {
+			const task = createMockTask({ id: "task-123", owner_name: "alice" });
+			harness.client.getTask.mockResolvedValue(task);
+
+			await harness.sendCommand("viewInCoder", { taskId: "task-123" });
+
+			expect(harness.userInteraction.getExternalUrls()).toContain(
+				"https://coder.example.com/tasks/alice/task-123",
+			);
+		});
+
+		it("does nothing when not logged in", async () => {
+			harness.client.getHost.mockReturnValue(undefined);
+
+			await harness.sendCommand("viewInCoder", { taskId: "task-123" });
+
+			expect(harness.userInteraction.getExternalUrls()).toHaveLength(0);
+		});
+	});
+
+	describe("viewLogs", () => {
+		it("opens build logs URL when workspace exists", async () => {
+			const task = createMockTask({
+				owner_name: "alice",
+				workspace_name: "my-workspace",
+				workspace_build_number: 42,
+			});
+			harness.client.getTask.mockResolvedValue(task);
+
+			await harness.sendCommand("viewLogs", { taskId: "task-1" });
+
+			expect(harness.userInteraction.getExternalUrls()).toContain(
+				"https://coder.example.com/@alice/my-workspace/builds/42",
+			);
+		});
+
+		it("opens task URL when no workspace name", async () => {
+			const task = createMockTask({
+				id: "task-1",
+				owner_name: "alice",
+				workspace_name: "", // Empty string, not null
+				workspace_build_number: undefined,
+			});
+			harness.client.getTask.mockResolvedValue(task);
+
+			await harness.sendCommand("viewLogs", { taskId: "task-1" });
+
+			expect(harness.userInteraction.getExternalUrls()).toContain(
+				"https://coder.example.com/tasks/alice/task-1",
+			);
+		});
+	});
+
+	describe("downloadLogs", () => {
+		it("saves logs to file when user selects location", async () => {
+			const logs = [
+				createMockLogEntry({
+					time: "2024-01-01T00:00:00Z",
+					type: "input",
+					content: "Starting",
+				}),
+				createMockLogEntry({
+					time: "2024-01-01T00:01:00Z",
+					type: "output",
+					content: "Completed",
+				}),
+			];
+			harness.client.getTaskLogs.mockResolvedValue(logs);
+
+			const saveUri = vscode.Uri.file("/downloads/logs.txt");
+			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(saveUri);
+
+			await harness.sendCommand("downloadLogs", { taskId: "task-1" });
+
+			expect(vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
+				saveUri,
+				expect.any(Buffer),
+			);
+		});
+
+		it("shows warning when no logs available", async () => {
+			harness.client.getTaskLogs.mockResolvedValue([]);
+
+			await harness.sendCommand("downloadLogs", { taskId: "task-1" });
+
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				"No logs available to download",
+			);
+		});
+
+		it("does nothing when user cancels save dialog", async () => {
+			harness.client.getTaskLogs.mockResolvedValue([createMockLogEntry()]);
+			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(undefined);
+
+			await harness.sendCommand("downloadLogs", { taskId: "task-1" });
+
+			expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("sendTaskMessage", () => {
+		it("shows not supported message", async () => {
+			await harness.sendCommand("sendTaskMessage", {
+				taskId: "task-1",
+				message: "hello",
+			});
+
+			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+				expect.stringContaining("not yet supported"),
+			);
 		});
 	});
 
 	describe("public methods", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
+		it("showCreateForm sends notification", () => {
+			harness.panel.showCreateForm();
+
+			const messages = harness.getPostedMessages();
+			expect(messages).toContainEqual({ type: "showCreateForm" });
 		});
 
-		it("showCreateForm sends push message", () => {
-			panel.showCreateForm();
+		it("refresh clears caches and sends notification", () => {
+			harness.panel.refresh();
 
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith({
-				type: "showCreateForm",
-			});
-		});
-
-		it("refresh sends refresh push message", () => {
-			panel.refresh();
-
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith({
-				type: "refresh",
-			});
-		});
-	});
-
-	describe("dispose", () => {
-		it("cleans up resources", () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
-
-			panel.dispose();
-
-			// After dispose, refresh should not post messages
-			mockView.webview.postMessage.mockClear();
-			panel.refresh();
-			// refresh still posts the message even when disposed
-			// (the visibility check prevents fetching, not sending)
-		});
-	});
-
-	describe("visibility handling", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
-		});
-
-		it("stops polling when not visible", async () => {
-			mockClient.getTasks.mockResolvedValue([]);
-
-			// Simulate becoming invisible
-			mockView.visible = false;
-			visibilityHandler?.();
-
-			// Wait a bit
-			await new Promise((resolve) => setTimeout(resolve, 100));
-
-			// Clear call count
-			mockClient.getTasks.mockClear();
-
-			// Refresh should still send the message
-			panel.refresh();
-
-			// The refresh only sends a push message, doesn't fetch
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith({
-				type: "refresh",
-			});
+			const messages = harness.getPostedMessages();
+			expect(messages).toContainEqual({ type: "refresh" });
 		});
 	});
 
 	describe("error handling", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
+		it("returns error response on request failure", async () => {
+			harness.client.getTasks.mockRejectedValue(new Error("Network error"));
+
+			const response = await harness.sendRequest("init");
+
+			expect(response.success).toBe(false);
+			expect(response.error).toBe("Network error");
 		});
 
-		it("sends error response when init request fails", async () => {
-			mockClient.getTasks.mockRejectedValue(new Error("Network error"));
-			mockClient.getTemplates.mockResolvedValue([]);
+		it("handles unknown methods gracefully", async () => {
+			const response = await harness.sendRequest("unknownMethod");
 
-			const request = createRequest("init");
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "init",
-					success: false,
-					error: "Network error",
-				}),
-			);
-		});
-
-		it("sends error response when createTask request fails", async () => {
-			mockClient.createTask.mockRejectedValue(new Error("Creation failed"));
-
-			const request = createRequest("createTask", {
-				templateVersionId: "v1",
-				prompt: "test",
-			});
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "createTask",
-					success: false,
-					error: "Creation failed",
-				}),
-			);
-		});
-	});
-
-	describe("404 handling", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
-		});
-
-		it("sets tasksSupported to false on 404", async () => {
-			const error = new Error("Not found") as Error & {
-				isAxiosError: boolean;
-				response: { status: number };
-			};
-			error.isAxiosError = true;
-			error.response = { status: 404 };
-			mockClient.getTasks.mockRejectedValue(error);
-			mockClient.getTemplates.mockResolvedValue([]);
-
-			const request = createRequest("init");
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "init",
-					success: true,
-					data: expect.objectContaining({
-						tasksSupported: false,
-						tasks: [],
-					}),
-				}),
-			);
+			expect(response.success).toBe(false);
+			expect(response.error).toContain("Unknown method");
 		});
 	});
 });

@@ -17,9 +17,7 @@ import {
 
 import type { Task, TaskDetails, TaskLogEntry, TaskTemplate } from "./types";
 
-// =============================================================================
-// Requests (expect response)
-// =============================================================================
+// --- Requests ---
 
 export interface InitResponse {
 	tasks: Task[];
@@ -47,9 +45,7 @@ export const deleteTask = defineRequest<{ taskId: string }, void>("deleteTask");
 export const pauseTask = defineRequest<{ taskId: string }, void>("pauseTask");
 export const resumeTask = defineRequest<{ taskId: string }, void>("resumeTask");
 
-// =============================================================================
-// Commands (fire-and-forget)
-// =============================================================================
+// --- Commands ---
 
 export const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
 export const viewLogs = defineCommand<{ taskId: string }>("viewLogs");
@@ -59,9 +55,7 @@ export const sendTaskMessage = defineCommand<{
 	message: string;
 }>("sendTaskMessage");
 
-// =============================================================================
-// Notifications (extension → webview push)
-// =============================================================================
+// --- Notifications ---
 
 export const taskUpdated = defineNotification<Task>("taskUpdated");
 export const tasksUpdated = defineNotification<Task[]>("tasksUpdated");
@@ -69,9 +63,7 @@ export const logsAppend = defineNotification<TaskLogEntry[]>("logsAppend");
 export const refresh = defineNotification<void>("refresh");
 export const showCreateForm = defineNotification<void>("showCreateForm");
 
-// =============================================================================
-// Grouped export
-// =============================================================================
+// --- Grouped export ---
 
 export const TasksApi = {
 	// Requests

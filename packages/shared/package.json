@@ -1,0 +1,16 @@
+{
+	"name": "@repo/shared",
+	"version": "1.0.0",
+	"description": "Shared types and utilities for extension and webviews",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"default": "./src/index.ts"
+		}
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}
