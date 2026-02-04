@@ -57,15 +57,29 @@ export interface TaskActions {
 	canResume: boolean;
 }
 
+const RESUMABLE_STATUSES: readonly WorkspaceStatus[] = [
+	"stopped",
+	"failed",
+	"canceled",
+];
+
+const PAUSED_STATUSES: readonly WorkspaceStatus[] = [
+	"stopped",
+	"stopping",
+	"canceled",
+];
+
+const INITIALIZING_STATUSES: readonly WorkspaceStatus[] = [
+	"starting",
+	"pending",
+];
+
 export function getTaskActions(task: Task): TaskActions {
 	const hasWorkspace = task.workspace_id !== null;
+	const status = task.workspace_status;
 	return {
-		canPause: hasWorkspace && task.workspace_status === "running",
-		canResume:
-			hasWorkspace &&
-			(task.workspace_status === "stopped" ||
-				task.workspace_status === "failed" ||
-				task.workspace_status === "canceled"),
+		canPause: hasWorkspace && status === "running",
+		canResume: hasWorkspace && !!status && RESUMABLE_STATUSES.includes(status),
 	};
 }
 
@@ -81,36 +95,27 @@ export type TaskUIState =
 /** Compute the UI state from a Task object */
 export function getTaskUIState(task: Task): TaskUIState {
 	const taskState = task.current_state?.state;
+	const workspaceStatus = task.workspace_status;
 
-	// Error takes priority
 	if (task.status === "error" || taskState === "failed") {
 		return "error";
 	}
 
-	// Check workspace status for paused/initializing
-	if (
-		task.workspace_status === "stopped" ||
-		task.workspace_status === "stopping" ||
-		task.workspace_status === "canceled"
-	) {
+	if (workspaceStatus && PAUSED_STATUSES.includes(workspaceStatus)) {
 		return "paused";
 	}
-	if (
-		task.workspace_status === "starting" ||
-		task.workspace_status === "pending"
-	) {
+
+	if (workspaceStatus && INITIALIZING_STATUSES.includes(workspaceStatus)) {
 		return "initializing";
 	}
 
-	// Active task states
-	if (task.status === "active" && task.workspace_status === "running") {
-		if (taskState === "working") return "working";
-		if (taskState === "idle") return "idle";
-		if (taskState === "complete") return "complete";
+	if (task.status === "active" && workspaceStatus === "running" && taskState) {
+		return taskState;
 	}
 
-	// Completed without running workspace
-	if (taskState === "complete") return "complete";
+	if (taskState === "complete") {
+		return "complete";
+	}
 
-	return "idle"; // default fallback
+	return "idle";
 }

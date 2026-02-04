@@ -191,12 +191,11 @@ export default defineConfig(
 			},
 		},
 		rules: {
-			// TS rules already applied above; add React-specific rules
+			...reactCompilerPlugin.configs.recommended.rules,
 			...reactPlugin.configs.recommended.rules,
 			...reactPlugin.configs["jsx-runtime"].rules, // React 17+ JSX transform
 			...reactHooksPlugin.configs.recommended.rules,
 			"react/prop-types": "off", // Using TypeScript
-			"react-compiler/react-compiler": "error",
 		},
 	},
 

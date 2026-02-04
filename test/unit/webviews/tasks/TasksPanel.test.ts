@@ -3,124 +3,20 @@ import * as vscode from "vscode";
 
 import { TasksPanel } from "@/webviews/tasks/TasksPanel";
 
-import { createMockLogger } from "../../../mocks/testHelpers";
+import { createAxiosError, createMockLogger } from "../../../mocks/testHelpers";
 
-import type { Task, Template, Preset } from "coder/site/src/api/typesGenerated";
+import type {
+	Task,
+	TaskLogEntry,
+	Template,
+	Preset,
+} from "coder/site/src/api/typesGenerated";
 
-// Mock vscode
-vi.mock("vscode", () => {
-	const EventEmitter = class {
-		event = vi.fn();
-		fire = vi.fn();
-		dispose = vi.fn();
-	};
-
-	return {
-		Uri: {
-			joinPath: vi.fn((_base, ...pathSegments: string[]) => ({
-				fsPath: `/mock/path/${pathSegments.join("/")}`,
-				toString: () => `/mock/path/${pathSegments.join("/")}`,
-			})),
-			parse: vi.fn((str: string) => ({ toString: () => str })),
-			file: vi.fn((path: string) => ({
-				fsPath: path,
-				toString: () => path,
-			})),
-		},
-		EventEmitter,
-		window: {
-			showInformationMessage: vi.fn(),
-			showWarningMessage: vi.fn(),
-			showSaveDialog: vi.fn(),
-		},
-		env: {
-			clipboard: {
-				writeText: vi.fn(),
-			},
-			openExternal: vi.fn(),
-		},
-		workspace: {
-			fs: {
-				writeFile: vi.fn(),
-			},
-		},
-	};
+vi.mock("vscode", async () => {
+	return await import("../../../mocks/vscode.runtime");
 });
 
-interface MockWebview {
-	options: { enableScripts: boolean; localResourceRoots: unknown[] };
-	html: string;
-	postMessage: ReturnType<typeof vi.fn>;
-	onDidReceiveMessage: ReturnType<typeof vi.fn>;
-	asWebviewUri: ReturnType<typeof vi.fn>;
-}
-
-interface MockWebviewView {
-	webview: MockWebview;
-	visible: boolean;
-	onDidChangeVisibility: ReturnType<typeof vi.fn>;
-	onDidDispose: ReturnType<typeof vi.fn>;
-}
-
-function createMockWebviewView(): MockWebviewView {
-	const view: MockWebviewView = {
-		webview: {
-			options: { enableScripts: false, localResourceRoots: [] },
-			html: "",
-			postMessage: vi.fn().mockResolvedValue(true),
-			onDidReceiveMessage: vi.fn(),
-			asWebviewUri: vi.fn((uri: { fsPath: string }) => ({
-				toString: () => uri.fsPath,
-			})),
-		},
-		visible: true,
-		onDidChangeVisibility: vi.fn(),
-		onDidDispose: vi.fn(),
-	};
-	return view;
-}
-
-interface MockCoderApiForTasks {
-	getTasks: ReturnType<typeof vi.fn>;
-	getTask: ReturnType<typeof vi.fn>;
-	createTask: ReturnType<typeof vi.fn>;
-	deleteTask: ReturnType<typeof vi.fn>;
-	getTemplates: ReturnType<typeof vi.fn>;
-	getTemplateVersionPresets: ReturnType<typeof vi.fn>;
-	startWorkspace: ReturnType<typeof vi.fn>;
-	stopWorkspace: ReturnType<typeof vi.fn>;
-	getAxiosInstance: () => {
-		defaults: { baseURL: string | undefined };
-		get: ReturnType<typeof vi.fn>;
-	};
-}
-
-function createMockClient(): MockCoderApiForTasks {
-	let baseURL: string | undefined = "https://coder.example.com";
-	return {
-		getTasks: vi.fn().mockResolvedValue([]),
-		getTask: vi.fn(),
-		createTask: vi.fn(),
-		deleteTask: vi.fn(),
-		getTemplates: vi.fn().mockResolvedValue([]),
-		getTemplateVersionPresets: vi.fn().mockResolvedValue([]),
-		startWorkspace: vi.fn(),
-		stopWorkspace: vi.fn(),
-		getAxiosInstance: () => ({
-			defaults: {
-				get baseURL() {
-					return baseURL;
-				},
-				set baseURL(value: string | undefined) {
-					baseURL = value;
-				},
-			},
-			get: vi.fn().mockResolvedValue({ data: { logs: [] } }),
-		}),
-	};
-}
-
-function createMockTask(overrides: Partial<Task> = {}): Task {
+function task(overrides: Partial<Task> = {}): Task {
 	return {
 		id: "task-1",
 		organization_id: "org-1",
@@ -136,6 +32,7 @@ function createMockTask(overrides: Partial<Task> = {}): Task {
 		workspace_id: "workspace-1",
 		workspace_name: "test-workspace",
 		workspace_status: "running",
+		workspace_build_number: 5,
 		workspace_agent_id: null,
 		workspace_agent_lifecycle: null,
 		workspace_agent_health: null,
@@ -154,7 +51,7 @@ function createMockTask(overrides: Partial<Task> = {}): Task {
 	};
 }
 
-function createMockTemplate(overrides: Partial<Template> = {}): Template {
+function template(overrides: Partial<Template> = {}): Template {
 	return {
 		id: "template-1",
 		created_at: "2024-01-01T00:00:00Z",
@@ -179,13 +76,8 @@ function createMockTemplate(overrides: Partial<Template> = {}): Template {
 		icon: "/icon.svg",
 		default_ttl_ms: 0,
 		activity_bump_ms: 0,
-		autostop_requirement: {
-			days_of_week: [],
-			weeks: 0,
-		},
-		autostart_requirement: {
-			days_of_week: [],
-		},
+		autostop_requirement: { days_of_week: [], weeks: 0 },
+		autostart_requirement: { days_of_week: [] },
 		created_by_id: "user-1",
 		created_by_name: "testuser",
 		allow_user_autostart: true,
@@ -202,7 +94,7 @@ function createMockTemplate(overrides: Partial<Template> = {}): Template {
 	};
 }
 
-function createMockPreset(overrides: Partial<Preset> = {}): Preset {
+function preset(overrides: Partial<Preset> = {}): Preset {
 	return {
 		ID: "preset-1",
 		Name: "Test Preset",
@@ -215,422 +107,489 @@ function createMockPreset(overrides: Partial<Preset> = {}): Preset {
 	};
 }
 
-// Helper to create a request message with a requestId
-function createRequest(
-	method: string,
-	params?: unknown,
-): { requestId: string; method: string; params?: unknown } {
+function logEntry(overrides: Partial<TaskLogEntry> = {}): TaskLogEntry {
 	return {
-		requestId: `req-${Date.now()}-${Math.random()}`,
-		method,
-		params,
+		id: 1,
+		time: "2024-01-01T00:00:00Z",
+		type: "output",
+		content: "Test log entry",
+		...overrides,
 	};
 }
 
+interface MockClient {
+	getTasks: ReturnType<typeof vi.fn>;
+	getTask: ReturnType<typeof vi.fn>;
+	getTaskLogs: ReturnType<typeof vi.fn>;
+	createTask: ReturnType<typeof vi.fn>;
+	deleteTask: ReturnType<typeof vi.fn>;
+	getTemplates: ReturnType<typeof vi.fn>;
+	getTemplateVersionPresets: ReturnType<typeof vi.fn>;
+	startWorkspace: ReturnType<typeof vi.fn>;
+	stopWorkspace: ReturnType<typeof vi.fn>;
+	getHost: ReturnType<typeof vi.fn>;
+}
+
+function createClient(baseUrl = "https://coder.example.com"): MockClient {
+	return {
+		getTasks: vi.fn().mockResolvedValue([]),
+		getTask: vi.fn(),
+		getTaskLogs: vi.fn().mockResolvedValue([]),
+		createTask: vi.fn(),
+		deleteTask: vi.fn().mockResolvedValue(undefined),
+		getTemplates: vi.fn().mockResolvedValue([]),
+		getTemplateVersionPresets: vi.fn().mockResolvedValue([]),
+		startWorkspace: vi.fn().mockResolvedValue(undefined),
+		stopWorkspace: vi.fn().mockResolvedValue(undefined),
+		getHost: vi.fn().mockReturnValue(baseUrl),
+	};
+}
+
+interface Harness {
+	panel: TasksPanel;
+	client: MockClient;
+	request: <T>(
+		method: string,
+		params?: unknown,
+	) => Promise<{
+		success: boolean;
+		data?: T;
+		error?: string;
+	}>;
+	command: (method: string, params?: unknown) => Promise<void>;
+	messages: () => unknown[];
+}
+
+function createHarness(): Harness {
+	const client = createClient();
+	const panel = new TasksPanel(
+		vscode.Uri.file("/test/extension"),
+		client as unknown as ConstructorParameters<typeof TasksPanel>[1],
+		createMockLogger(),
+	);
+
+	const posted: unknown[] = [];
+	let handler: ((msg: unknown) => void) | null = null;
+
+	const webview = {
+		webview: {
+			options: { enableScripts: false, localResourceRoots: [] },
+			html: "",
+			postMessage: vi.fn((msg: unknown) => {
+				posted.push(msg);
+				return Promise.resolve(true);
+			}),
+			onDidReceiveMessage: vi.fn((h) => {
+				handler = h;
+				return { dispose: vi.fn() };
+			}),
+			asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
+		},
+		visible: true,
+		onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
+		onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+	};
+
+	panel.resolveWebviewView(
+		webview as unknown as vscode.WebviewView,
+		{} as vscode.WebviewViewResolveContext,
+		{} as vscode.CancellationToken,
+	);
+
+	return {
+		panel,
+		client,
+		messages: () => [...posted],
+		request: async <T>(method: string, params?: unknown) => {
+			const requestId = `req-${Date.now()}-${Math.random()}`;
+			handler?.({ requestId, method, params });
+
+			await vi.waitFor(
+				() => {
+					if (
+						!posted.some(
+							(m) => (m as { requestId?: string }).requestId === requestId,
+						)
+					) {
+						throw new Error("waiting");
+					}
+				},
+				{ timeout: 1000 },
+			);
+
+			return posted.find(
+				(m) => (m as { requestId?: string }).requestId === requestId,
+			) as { success: boolean; data?: T; error?: string };
+		},
+		command: async (method: string, params?: unknown) => {
+			handler?.({ method, params });
+			await new Promise((r) => setTimeout(r, 10));
+		},
+	};
+}
+
+// --- Tests ---
+
 describe("TasksPanel", () => {
-	let panel: TasksPanel;
-	let mockClient: MockCoderApiForTasks;
-	let mockView: MockWebviewView;
-	let messageHandler: ((message: unknown) => Promise<void>) | null = null;
-	let visibilityHandler: (() => void) | null = null;
+	let h: Harness;
 
 	beforeEach(() => {
 		vi.resetAllMocks();
-		mockClient = createMockClient();
-		mockView = createMockWebviewView();
-
-		// Capture message handler when onDidReceiveMessage is called
-		mockView.webview.onDidReceiveMessage.mockImplementation((handler) => {
-			messageHandler = handler;
-			return { dispose: vi.fn() };
-		});
-
-		// Capture visibility handler
-		mockView.onDidChangeVisibility.mockImplementation((handler) => {
-			visibilityHandler = handler;
-			return { dispose: vi.fn() };
-		});
-
-		// Mock onDidDispose
-		mockView.onDidDispose.mockImplementation(() => ({ dispose: vi.fn() }));
-
-		const extensionUri = { fsPath: "/test/extension" } as vscode.Uri;
-		const logger = createMockLogger();
-		const getBaseUrl = () => mockClient.getAxiosInstance().defaults.baseURL;
-
-		panel = new TasksPanel(
-			extensionUri,
-			mockClient as unknown as ConstructorParameters<typeof TasksPanel>[1],
-			logger,
-			getBaseUrl,
-		);
+		h = createHarness();
 	});
 
-	describe("resolveWebviewView", () => {
-		it("sets up webview options correctly", () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
+	describe("init", () => {
+		it("returns tasks, templates, and baseUrl when logged in", async () => {
+			h.client.getTasks.mockResolvedValue([task()]);
+			h.client.getTemplates.mockResolvedValue([template()]);
+			h.client.getTemplateVersionPresets.mockResolvedValue([preset()]);
 
-			expect(mockView.webview.options.enableScripts).toBe(true);
-			expect(mockView.webview.options.localResourceRoots).toHaveLength(1);
+			const res = await h.request<{
+				tasks: Task[];
+				templates: Array<{ id: string; presets: Array<{ id: string }> }>;
+				baseUrl: string;
+				tasksSupported: boolean;
+			}>("init");
+
+			expect(res).toMatchObject({
+				success: true,
+				data: {
+					tasksSupported: true,
+					baseUrl: "https://coder.example.com",
+					tasks: [{ id: "task-1" }],
+					templates: [{ id: "template-1", presets: [{ id: "preset-1" }] }],
+				},
+			});
 		});
 
-		it("sets up message handler", () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
+		it("returns empty when not logged in", async () => {
+			h.client.getHost.mockReturnValue(undefined);
+
+			const res = await h.request<{ tasks: Task[]; templates: unknown[] }>(
+				"init",
 			);
 
-			expect(mockView.webview.onDidReceiveMessage).toHaveBeenCalled();
-			expect(messageHandler).toBeDefined();
+			expect(res.success).toBe(true);
+			expect(res.data).toMatchObject({ tasks: [], templates: [] });
+		});
+
+		it("returns tasksSupported=false on 404", async () => {
+			h.client.getTasks.mockRejectedValue(createAxiosError(404, "Not found"));
+
+			const res = await h.request<{ tasksSupported: boolean }>("init");
+
+			expect(res).toMatchObject({
+				success: true,
+				data: { tasksSupported: false },
+			});
 		});
 	});
 
-	describe("message handling", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
+	describe("getTasks", () => {
+		it("returns list of tasks", async () => {
+			h.client.getTasks.mockResolvedValue([
+				task({ id: "t1" }),
+				task({ id: "t2" }),
+			]);
+
+			const res = await h.request<Task[]>("getTasks");
+
+			expect(res.success).toBe(true);
+			expect(res.data).toHaveLength(2);
+		});
+	});
+
+	describe("getTask", () => {
+		it("returns task by id", async () => {
+			h.client.getTask.mockResolvedValue(task({ id: "task-123" }));
+
+			const res = await h.request<Task>("getTask", { taskId: "task-123" });
+
+			expect(res).toMatchObject({ success: true, data: { id: "task-123" } });
+		});
+	});
+
+	describe("getTemplates", () => {
+		it("returns templates with presets", async () => {
+			h.client.getTemplates.mockResolvedValue([template()]);
+			h.client.getTemplateVersionPresets.mockResolvedValue([
+				preset({ ID: "p1", Name: "Default", Default: true }),
+				preset({ ID: "p2", Name: "Custom" }),
+			]);
+
+			const res =
+				await h.request<
+					Array<{ presets: Array<{ id: string; isDefault: boolean }> }>
+				>("getTemplates");
+
+			expect(res.data?.[0].presets).toEqual([
+				{ id: "p1", name: "Default", isDefault: true },
+				{ id: "p2", name: "Custom", isDefault: false },
+			]);
 		});
 
-		it("responds to init request with tasks and templates", async () => {
-			const mockTasks = [createMockTask()];
-			const mockTemplates = [createMockTemplate()];
-			const mockPresets = [createMockPreset()];
+		it("caches templates", async () => {
+			h.client.getTemplates.mockResolvedValue([template()]);
+			h.client.getTemplateVersionPresets.mockResolvedValue([]);
 
-			mockClient.getTasks.mockResolvedValue(mockTasks);
-			mockClient.getTemplates.mockResolvedValue(mockTemplates);
-			mockClient.getTemplateVersionPresets.mockResolvedValue(mockPresets);
+			await h.request("getTemplates");
+			await h.request("getTemplates");
 
-			const request = createRequest("init");
-			await messageHandler?.(request);
+			expect(h.client.getTemplates).toHaveBeenCalledTimes(1);
+		});
+	});
 
-			// Wait for async operations
-			await new Promise((resolve) => setTimeout(resolve, 0));
+	describe("getTaskDetails", () => {
+		it("returns task with logs", async () => {
+			h.client.getTask.mockResolvedValue(task());
+			h.client.getTaskLogs.mockResolvedValue([
+				logEntry({ content: "Starting" }),
+			]);
 
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "init",
-					success: true,
-					data: expect.objectContaining({
-						tasks: expect.any(Array),
-						templates: expect.any(Array),
-						baseUrl: expect.any(String),
-						tasksSupported: true,
-					}),
-				}),
-			);
+			const res = await h.request<{
+				task: Task;
+				logs: TaskLogEntry[];
+				logsStatus: string;
+			}>("getTaskDetails", { taskId: "task-1" });
+
+			expect(res).toMatchObject({
+				success: true,
+				data: { task: { id: "task-1" }, logsStatus: "ok" },
+			});
+			expect(res.data?.logs).toHaveLength(1);
 		});
 
-		it("handles getTaskDetails request", async () => {
-			const mockTask = createMockTask();
-			mockClient.getTask.mockResolvedValue(mockTask);
-
-			const request = createRequest("getTaskDetails", { taskId: "task-1" });
-			await messageHandler?.(request);
-
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockClient.getTask).toHaveBeenCalledWith("me", "task-1");
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "getTaskDetails",
-					success: true,
-				}),
+		interface LogCachingTestCase {
+			name: string;
+			state: "complete" | "working";
+			expectedCalls: number;
+		}
+		it.each<LogCachingTestCase>([
+			{
+				name: "caches logs for completed tasks",
+				state: "complete",
+				expectedCalls: 1,
+			},
+			{
+				name: "refetches logs for active tasks",
+				state: "working",
+				expectedCalls: 2,
+			},
+		])("$name", async ({ state, expectedCalls }) => {
+			h.client.getTask.mockResolvedValue(
+				task({ current_state: { timestamp: "", state, message: "", uri: "" } }),
 			);
+			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
+
+			await h.request("getTaskDetails", { taskId: "task-1" });
+			await h.request("getTaskDetails", { taskId: "task-1" });
+
+			expect(h.client.getTaskLogs).toHaveBeenCalledTimes(expectedCalls);
 		});
+	});
 
-		it("handles createTask request", async () => {
-			mockClient.createTask.mockResolvedValue(createMockTask());
-			mockClient.getTasks.mockResolvedValue([]);
+	describe("createTask", () => {
+		it("creates task and notifies", async () => {
+			const newTask = task({ id: "new-task" });
+			h.client.createTask.mockResolvedValue(newTask);
+			h.client.getTasks.mockResolvedValue([newTask]);
 
-			const request = createRequest("createTask", {
-				templateVersionId: "version-1",
-				prompt: "Test prompt",
+			const res = await h.request<Task>("createTask", {
+				templateVersionId: "v1",
+				prompt: "Build a feature",
 				presetId: "preset-1",
 			});
-			await messageHandler?.(request);
 
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockClient.createTask).toHaveBeenCalledWith("me", {
-				template_version_id: "version-1",
-				template_version_preset_id: "preset-1",
-				input: "Test prompt",
-			});
-		});
-
-		it("handles viewInCoder request", async () => {
-			const mockTask = createMockTask({ id: "task-123" });
-			mockClient.getTasks.mockResolvedValue([mockTask]);
-			mockClient.getTemplates.mockResolvedValue([]);
-
-			// First initialize to get tasks
-			const initRequest = createRequest("init");
-			await messageHandler?.(initRequest);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			// Then test viewInCoder using request pattern
-			const viewRequest = createRequest("viewInCoder", { taskId: "task-123" });
-			await messageHandler?.(viewRequest);
-
-			expect(vscode.env.openExternal).toHaveBeenCalled();
-		});
-	});
-
-	describe("resumeTask and pauseTask", () => {
-		beforeEach(async () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
+			expect(res).toMatchObject({ success: true, data: { id: "new-task" } });
+			expect(h.messages()).toContainEqual(
+				expect.objectContaining({ type: "tasksUpdated" }),
 			);
-
-			const mockTask = createMockTask({
-				id: "task-1",
-				workspace_id: "workspace-1",
-				workspace_status: "stopped",
-			});
-			mockClient.getTasks.mockResolvedValue([mockTask]);
-			mockClient.getTemplates.mockResolvedValue([]);
-
-			// Initialize first
-			const initRequest = createRequest("init");
-			await messageHandler?.(initRequest);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		});
-
-		it("calls startWorkspace on resumeTask request", async () => {
-			mockClient.startWorkspace.mockResolvedValue({});
-			mockClient.getTasks.mockResolvedValue([]);
-
-			const request = createRequest("resumeTask", { taskId: "task-1" });
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockClient.startWorkspace).toHaveBeenCalledWith(
-				"workspace-1",
-				"version-1",
-			);
-		});
-
-		it("calls stopWorkspace on pauseTask request", async () => {
-			// Update mock task to be running so it can be paused
-			const mockTask = createMockTask({
-				id: "task-1",
-				workspace_id: "workspace-1",
-				workspace_status: "running",
-			});
-			mockClient.getTasks.mockResolvedValue([mockTask]);
-			mockClient.stopWorkspace.mockResolvedValue({});
-
-			// Re-initialize with running task
-			const initRequest = createRequest("init");
-			await messageHandler?.(initRequest);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			const request = createRequest("pauseTask", { taskId: "task-1" });
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockClient.stopWorkspace).toHaveBeenCalledWith("workspace-1");
 		});
 	});
 
 	describe("deleteTask", () => {
-		beforeEach(async () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
+		it("deletes task and notifies", async () => {
+			h.client.getTasks.mockResolvedValue([]);
+
+			const res = await h.request("deleteTask", { taskId: "task-1" });
+
+			expect(res.success).toBe(true);
+			expect(h.client.deleteTask).toHaveBeenCalledWith("me", "task-1");
+			expect(h.messages()).toContainEqual(
+				expect.objectContaining({ type: "tasksUpdated" }),
 			);
+		});
+	});
 
-			mockClient.getTasks.mockResolvedValue([createMockTask()]);
-			mockClient.getTemplates.mockResolvedValue([]);
+	describe("pauseTask / resumeTask", () => {
+		interface WorkspaceControlTestCase {
+			method: string;
+			clientMethod: keyof MockClient;
+			taskOverrides: Partial<Task>;
+		}
+		it.each<WorkspaceControlTestCase>([
+			{
+				method: "pauseTask",
+				clientMethod: "stopWorkspace",
+				taskOverrides: { workspace_id: "ws-1" },
+			},
+			{
+				method: "resumeTask",
+				clientMethod: "startWorkspace",
+				taskOverrides: { workspace_id: "ws-1", template_version_id: "tv-1" },
+			},
+		])(
+			"$method calls $clientMethod",
+			async ({ method, clientMethod, taskOverrides }) => {
+				h.client.getTask.mockResolvedValue(task(taskOverrides));
+				h.client.getTasks.mockResolvedValue([]);
 
-			const initRequest = createRequest("init");
-			await messageHandler?.(initRequest);
-			await new Promise((resolve) => setTimeout(resolve, 0));
+				const res = await h.request(method, { taskId: "task-1" });
+
+				expect(res.success).toBe(true);
+				expect(h.client[clientMethod]).toHaveBeenCalled();
+			},
+		);
+
+		it("pauseTask fails when no workspace", async () => {
+			h.client.getTask.mockResolvedValue(task({ workspace_id: null }));
+
+			const res = await h.request("pauseTask", { taskId: "task-1" });
+
+			expect(res.success).toBe(false);
+			expect(res.error).toContain("no workspace");
+		});
+	});
+
+	describe("viewInCoder / viewLogs", () => {
+		interface OpenExternalTestCase {
+			name: string;
+			method: string;
+			taskOverrides: Partial<Task>;
+			expectedUrl: string;
+		}
+		it.each<OpenExternalTestCase>([
+			{
+				name: "viewInCoder opens task URL",
+				method: "viewInCoder",
+				taskOverrides: { id: "task-123", owner_name: "alice" },
+				expectedUrl: "https://coder.example.com/tasks/alice/task-123",
+			},
+			{
+				name: "viewLogs opens build URL when workspace exists",
+				method: "viewLogs",
+				taskOverrides: {
+					owner_name: "alice",
+					workspace_name: "my-ws",
+					workspace_build_number: 42,
+				},
+				expectedUrl: "https://coder.example.com/@alice/my-ws/builds/42",
+			},
+			{
+				name: "viewLogs opens task URL when no workspace",
+				method: "viewLogs",
+				taskOverrides: {
+					id: "task-1",
+					owner_name: "alice",
+					workspace_name: "",
+				},
+				expectedUrl: "https://coder.example.com/tasks/alice/task-1",
+			},
+		])("$name", async ({ method, taskOverrides, expectedUrl }) => {
+			h.client.getTask.mockResolvedValue(task(taskOverrides));
+
+			await h.command(method, { taskId: "task-1" });
+
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				vscode.Uri.parse(expectedUrl),
+			);
 		});
 
-		it("calls deleteTask API", async () => {
-			mockClient.deleteTask.mockResolvedValue(undefined);
-			mockClient.getTasks.mockResolvedValue([]);
+		it("viewInCoder does nothing when not logged in", async () => {
+			h.client.getHost.mockReturnValue(undefined);
 
-			const request = createRequest("deleteTask", { taskId: "task-1" });
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await h.command("viewInCoder", { taskId: "task-123" });
 
-			expect(mockClient.deleteTask).toHaveBeenCalledWith("me", "task-1");
+			expect(vscode.env.openExternal).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("downloadLogs", () => {
+		it("saves logs to file", async () => {
+			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
+			const saveUri = vscode.Uri.file("/downloads/logs.txt");
+			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(saveUri);
+
+			await h.command("downloadLogs", { taskId: "task-1" });
+
+			expect(vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
+				saveUri,
+				expect.any(Buffer),
+			);
+		});
+
+		it("shows warning when no logs", async () => {
+			h.client.getTaskLogs.mockResolvedValue([]);
+
+			await h.command("downloadLogs", { taskId: "task-1" });
+
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				"No logs available to download",
+			);
+		});
+
+		it("does nothing when user cancels", async () => {
+			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
+			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(undefined);
+
+			await h.command("downloadLogs", { taskId: "task-1" });
+
+			expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("sendTaskMessage", () => {
+		it("shows not supported message", async () => {
+			await h.command("sendTaskMessage", {
+				taskId: "task-1",
+				message: "hello",
+			});
+
+			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+				expect.stringContaining("not yet supported"),
+			);
 		});
 	});
 
 	describe("public methods", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
-		});
+		interface PublicMethodTestCase {
+			method: string;
+			expectedType: string;
+		}
+		it.each<PublicMethodTestCase>([
+			{ method: "showCreateForm", expectedType: "showCreateForm" },
+			{ method: "refresh", expectedType: "refresh" },
+		])("$method sends notification", ({ method, expectedType }) => {
+			(h.panel as unknown as Record<string, () => void>)[method]();
 
-		it("showCreateForm sends push message", () => {
-			panel.showCreateForm();
-
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith({
-				type: "showCreateForm",
-			});
-		});
-
-		it("refresh sends refresh push message", () => {
-			panel.refresh();
-
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith({
-				type: "refresh",
-			});
-		});
-	});
-
-	describe("dispose", () => {
-		it("cleans up resources", () => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
-
-			panel.dispose();
-
-			// After dispose, refresh should not post messages
-			mockView.webview.postMessage.mockClear();
-			panel.refresh();
-			// refresh still posts the message even when disposed
-			// (the visibility check prevents fetching, not sending)
-		});
-	});
-
-	describe("visibility handling", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
-		});
-
-		it("stops polling when not visible", async () => {
-			mockClient.getTasks.mockResolvedValue([]);
-
-			// Simulate becoming invisible
-			mockView.visible = false;
-			visibilityHandler?.();
-
-			// Wait a bit
-			await new Promise((resolve) => setTimeout(resolve, 100));
-
-			// Clear call count
-			mockClient.getTasks.mockClear();
-
-			// Refresh should still send the message
-			panel.refresh();
-
-			// The refresh only sends a push message, doesn't fetch
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith({
-				type: "refresh",
-			});
+			expect(h.messages()).toContainEqual({ type: expectedType });
 		});
 	});
 
 	describe("error handling", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
+		it("returns error on request failure", async () => {
+			h.client.getTasks.mockRejectedValue(new Error("Network error"));
+
+			const res = await h.request("init");
+
+			expect(res).toMatchObject({ success: false, error: "Network error" });
 		});
 
-		it("sends error response when init request fails", async () => {
-			mockClient.getTasks.mockRejectedValue(new Error("Network error"));
-			mockClient.getTemplates.mockResolvedValue([]);
+		it("handles unknown methods", async () => {
+			const res = await h.request("unknownMethod");
 
-			const request = createRequest("init");
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "init",
-					success: false,
-					error: "Network error",
-				}),
-			);
-		});
-
-		it("sends error response when createTask request fails", async () => {
-			mockClient.createTask.mockRejectedValue(new Error("Creation failed"));
-
-			const request = createRequest("createTask", {
-				templateVersionId: "v1",
-				prompt: "test",
-			});
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "createTask",
-					success: false,
-					error: "Creation failed",
-				}),
-			);
-		});
-	});
-
-	describe("404 handling", () => {
-		beforeEach(() => {
-			panel.resolveWebviewView(
-				mockView as unknown as vscode.WebviewView,
-				{} as vscode.WebviewViewResolveContext,
-				{} as vscode.CancellationToken,
-			);
-		});
-
-		it("sets tasksSupported to false on 404", async () => {
-			const error = new Error("Not found") as Error & {
-				isAxiosError: boolean;
-				response: { status: number };
-			};
-			error.isAxiosError = true;
-			error.response = { status: 404 };
-			mockClient.getTasks.mockRejectedValue(error);
-			mockClient.getTemplates.mockResolvedValue([]);
-
-			const request = createRequest("init");
-			await messageHandler?.(request);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockView.webview.postMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requestId: request.requestId,
-					method: "init",
-					success: true,
-					data: expect.objectContaining({
-						tasksSupported: false,
-						tasks: [],
-					}),
-				}),
-			);
+			expect(res.success).toBe(false);
+			expect(res.error).toContain("Unknown method");
 		});
 	});
 });

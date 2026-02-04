@@ -10,6 +10,7 @@ import {
 	type ServerSentEvent,
 	type GetInboxNotificationResponse,
 	type ProvisionerJobLog,
+	type TaskLogEntry,
 	type Workspace,
 	type WorkspaceAgent,
 	type WorkspaceAgentLog,
@@ -191,6 +192,13 @@ export class CoderApi extends Api implements vscode.Disposable {
 			}
 		});
 	}
+
+	getTaskLogs = async (user: string, taskId: string) => {
+		const response = await this.getAxiosInstance().get<{
+			logs: TaskLogEntry[];
+		}>(`/api/v2/tasks/${user}/${taskId}/logs`);
+		return response.data.logs ?? [];
+	};
 
 	watchInboxNotifications = async (
 		watchTemplates: string[],

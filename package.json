@@ -470,6 +470,7 @@
 	},
 	"dependencies": {
 		"@peculiar/x509": "^1.14.3",
+		"@repo/shared": "workspace:*",
 		"axios": "1.13.5",
 		"date-fns": "^4.1.0",
 		"eventsource": "^4.1.0",

@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@tanstack/react-query':
+      specifier: ^5.90.20
+      version: 5.90.20
     '@types/react':
       specifier: ^19.2.13
       version: 19.2.13
@@ -52,6 +55,9 @@ importers:
       '@peculiar/x509':
         specifier: ^1.14.3
         version: 1.14.3
+      '@repo/shared':
+        specifier: workspace:*
+        version: link:packages/shared
       axios:
         specifier: 1.13.5
         version: 1.13.5
@@ -234,11 +240,23 @@ importers:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@20.19.33)(jsdom@28.0.0)
 
+  packages/shared:
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   packages/tasks:
     dependencies:
+      '@repo/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@repo/webview-shared':
         specifier: workspace:*
         version: link:../webview-shared
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.20(react@19.2.4)
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
         version: 2.4.0(@types/react@19.2.13)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -272,6 +290,10 @@ importers:
         version: 7.3.1(@types/node@24.10.12)
 
   packages/webview-shared:
+    dependencies:
+      '@repo/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
@@ -1185,6 +1207,14 @@ packages:
   '@szmarczak/http-timer@4.0.6':
     resolution: {integrity: sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w==}
     engines: {node: '>=10'}
+
+  '@tanstack/query-core@5.90.20':
+    resolution: {integrity: sha512-OMD2HLpNouXEfZJWcKeVKUgQ5n+n3A2JFmBaScpNDUqSrQSjiveC7dKMe53uJUg1nDG16ttFPz2xfilz6i2uVg==}
+
+  '@tanstack/react-query@5.90.20':
+    resolution: {integrity: sha512-vXBxa+qeyveVO7OA0jX1z+DeyCA4JKnThKv411jd5SORpBKgkcVnYKCiBgECvADvniBX7tobwBmg01qq9JmMJw==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -5429,6 +5459,13 @@ snapshots:
   '@szmarczak/http-timer@4.0.6':
     dependencies:
       defer-to-connect: 2.0.1
+
+  '@tanstack/query-core@5.90.20': {}
+
+  '@tanstack/react-query@5.90.20(react@19.2.4)':
+    dependencies:
+      '@tanstack/query-core': 5.90.20
+      react: 19.2.4
 
   '@testing-library/dom@10.4.1':
     dependencies:

@@ -1,14 +1,10 @@
-// Message passing types - simple generic interface
-export interface WebviewMessage<T = unknown> {
-	type: string;
-	data?: T;
-	// Request-response pattern support
+// Webview → Extension message (request or command)
+export interface WebviewMessage {
+	method: string;
+	params?: unknown;
 	requestId?: string;
-	payload?: unknown;
+	scope?: string;
 }
 
 // VS Code state API
 export { getState, setState, postMessage } from "./api";
-
-// Tasks types - re-exported from tasks submodule
-export * from "./tasks";

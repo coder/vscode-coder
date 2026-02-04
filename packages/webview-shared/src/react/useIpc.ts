@@ -3,11 +3,11 @@
  * Handles request correlation, timeouts, and cleanup automatically.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { postMessage } from "../api";
 
-import type { IpcResponse } from "./protocol";
+import type { IpcResponse } from "@repo/shared";
 
 interface PendingRequest {
 	resolve: (value: unknown) => void;
@@ -29,24 +29,19 @@ export interface UseIpcOptions {
  *
  * @example
  * ```tsx
- * // In your API definitions:
- * const GetTasks = defineRequest<void, Task[]>("getTasks");
- * const ViewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
- *
- * // In your component:
  * const ipc = useIpc();
- * const tasks = await ipc.request(GetTasks);  // Type: Task[]
- * ipc.command(ViewInCoder, { taskId: "123" }); // Fire-and-forget
+ * const tasks = await ipc.request(getTasks);  // Type: Task[]
+ * ipc.command(viewInCoder, { taskId: "123" }); // Fire-and-forget
  * ```
  */
 export function useIpc(options: UseIpcOptions = {}) {
 	const { timeoutMs = DEFAULT_TIMEOUT_MS, scope } = options;
 	const pendingRequests = useRef<Map<string, PendingRequest>>(new Map());
 
-	// Cleanup pending requests on unmount
+	// Cleanup on unmount
 	useEffect(() => {
 		return () => {
-			for (const [, req] of pendingRequests.current) {
+			for (const req of pendingRequests.current.values()) {
 				clearTimeout(req.timeout);
 				req.reject(new Error("Component unmounted"));
 			}
@@ -54,7 +49,7 @@ export function useIpc(options: UseIpcOptions = {}) {
 		};
 	}, []);
 
-	// Handle responses from extension
+	// Handle responses
 	useEffect(() => {
 		const handler = (event: MessageEvent) => {
 			const msg = event.data as IpcResponse | undefined;
@@ -80,59 +75,51 @@ export function useIpc(options: UseIpcOptions = {}) {
 	}, []);
 
 	/** Send request and await typed response */
-	const request = useCallback(
-		<P, R>(
-			definition: {
-				method: string;
-				scope?: string;
-				_params?: P;
-				_response?: R;
-			},
-			...args: P extends void ? [] : [params: P]
-		): Promise<R> => {
-			const requestId = crypto.randomUUID();
-			const params = args[0];
-
-			return new Promise((resolve, reject) => {
-				const timeout = setTimeout(() => {
-					if (pendingRequests.current.has(requestId)) {
-						pendingRequests.current.delete(requestId);
-						reject(new Error(`Request timeout: ${definition.method}`));
-					}
-				}, timeoutMs);
-
-				pendingRequests.current.set(requestId, {
-					resolve: resolve as (value: unknown) => void,
-					reject,
-					timeout,
-				});
-
-				postMessage({
-					method: definition.method,
-					scope: scope ?? definition.scope,
-					requestId,
-					params,
-				});
-			});
+	function request<P, R>(
+		definition: {
+			method: string;
+			scope?: string;
+			_types?: { params: P; response: R };
 		},
-		[scope, timeoutMs],
-	);
+		...args: P extends void ? [] : [params: P]
+	): Promise<R> {
+		const requestId = crypto.randomUUID();
+		const params = args[0];
 
-	/** Send command without waiting (fire-and-forget) */
-	const command = useCallback(
-		<P>(
-			definition: { method: string; scope?: string; _params?: P },
-			...args: P extends void ? [] : [params: P]
-		): void => {
-			const params = args[0];
+		return new Promise((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				if (pendingRequests.current.has(requestId)) {
+					pendingRequests.current.delete(requestId);
+					reject(new Error(`Request timeout: ${definition.method}`));
+				}
+			}, timeoutMs);
+
+			pendingRequests.current.set(requestId, {
+				resolve: resolve as (value: unknown) => void,
+				reject,
+				timeout,
+			});
+
 			postMessage({
 				method: definition.method,
 				scope: scope ?? definition.scope,
+				requestId,
 				params,
 			});
-		},
-		[scope],
-	);
+		});
+	}
+
+	/** Send command without waiting (fire-and-forget) */
+	function command<P>(
+		definition: { method: string; scope?: string; _types?: { params: P } },
+		...args: P extends void ? [] : [params: P]
+	): void {
+		postMessage({
+			method: definition.method,
+			scope: scope ?? definition.scope,
+			params: args[0],
+		});
+	}
 
 	return { request, command };
 }
