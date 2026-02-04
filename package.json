@@ -32,6 +32,7 @@
 		"test:extension": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs --project extension",
 		"test:integration": "tsc -p test --outDir out && node esbuild.mjs && vscode-test",
 		"test:webview": "vitest --project webview",
+		"typecheck": "tsc --noEmit",
 		"vscode:prepublish": "pnpm build:production",
 		"watch": "pnpm watch:all",
 		"watch:all": "concurrently -n extension,webviews \"pnpm watch:extension\" \"pnpm watch:webviews\"",
@@ -537,7 +538,7 @@
 	"extensionPack": [
 		"ms-vscode-remote.remote-ssh"
 	],
-	"packageManager": "pnpm@10.27.0",
+	"packageManager": "pnpm@10.28.2",
 	"engines": {
 		"vscode": "^1.95.0",
 		"node": ">= 20"

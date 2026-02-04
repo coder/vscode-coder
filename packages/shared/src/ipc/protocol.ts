@@ -10,7 +10,6 @@
 /** Request definition: params P, response R */
 export interface RequestDef<P = void, R = void> {
 	readonly method: string;
-	readonly scope?: string;
 	/** @internal Phantom types for inference - not present at runtime */
 	readonly _types?: { params: P; response: R };
 }
@@ -18,7 +17,6 @@ export interface RequestDef<P = void, R = void> {
 /** Command definition: params P, no response */
 export interface CommandDef<P = void> {
 	readonly method: string;
-	readonly scope?: string;
 	/** @internal Phantom type for inference - not present at runtime */
 	readonly _types?: { params: P };
 }
@@ -26,7 +24,6 @@ export interface CommandDef<P = void> {
 /** Notification definition: data D (extension to webview) */
 export interface NotificationDef<D = void> {
 	readonly method: string;
-	readonly scope?: string;
 	/** @internal Phantom type for inference - not present at runtime */
 	readonly _types?: { data: D };
 }
@@ -36,25 +33,20 @@ export interface NotificationDef<D = void> {
 /** Define a request with typed params and response */
 export function defineRequest<P = void, R = void>(
 	method: string,
-	scope?: string,
 ): RequestDef<P, R> {
-	return { method, scope } as RequestDef<P, R>;
+	return { method } as RequestDef<P, R>;
 }
 
 /** Define a fire-and-forget command */
-export function defineCommand<P = void>(
-	method: string,
-	scope?: string,
-): CommandDef<P> {
-	return { method, scope } as CommandDef<P>;
+export function defineCommand<P = void>(method: string): CommandDef<P> {
+	return { method } as CommandDef<P>;
 }
 
 /** Define a push notification (extension to webview) */
 export function defineNotification<D = void>(
 	method: string,
-	scope?: string,
 ): NotificationDef<D> {
-	return { method, scope } as NotificationDef<D>;
+	return { method } as NotificationDef<D>;
 }
 
 // --- Wire format ---
@@ -63,7 +55,6 @@ export function defineNotification<D = void>(
 export interface IpcRequest<P = unknown> {
 	readonly requestId: string;
 	readonly method: string;
-	readonly scope?: string;
 	readonly params?: P;
 }
 

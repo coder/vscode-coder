@@ -91,13 +91,20 @@ export class TasksPanel
 		uiState: TaskUIState;
 	};
 
-	private readonly requestHandlers = {
+	/**
+	 * Request handlers indexed by method name.
+	 * Type safety is ensured at definition time via requestHandler().
+	 */
+	private readonly requestHandlers: Record<
+		string,
+		(params: unknown) => Promise<unknown>
+	> = {
 		[TasksApi.init.method]: requestHandler(TasksApi.init, () =>
 			this.handleInit(),
 		),
 		[TasksApi.getTasks.method]: requestHandler(TasksApi.getTasks, async () => {
 			const result = await this.fetchTasksWithStatus();
-			return [...result.tasks];
+			return result.tasks;
 		}),
 		[TasksApi.getTemplates.method]: requestHandler(TasksApi.getTemplates, () =>
 			this.fetchTemplates(),
@@ -121,8 +128,12 @@ export class TasksPanel
 		[TasksApi.resumeTask.method]: requestHandler(TasksApi.resumeTask, (p) =>
 			this.handleResumeTask(p.taskId),
 		),
-	} as const;
+	};
 
+	/**
+	 * Command handlers indexed by method name.
+	 * Type safety is ensured at definition time via commandHandler().
+	 */
 	private readonly commandHandlers: Record<
 		string,
 		(params: unknown) => void | Promise<void>
@@ -179,7 +190,9 @@ export class TasksPanel
 
 		this.disposables.push(
 			webviewView.webview.onDidReceiveMessage((message: unknown) => {
-				void this.handleMessage(message);
+				this.handleMessage(message).catch((err: unknown) => {
+					this.logger.error("Unhandled error in message handler", err);
+				});
 			}),
 		);
 
@@ -210,8 +223,7 @@ export class TasksPanel
 		const { requestId, method, params } = message;
 
 		try {
-			const handler =
-				this.requestHandlers[method] ?? this.commandHandlers[method];
+			const handler = this.requestHandlers[method];
 			if (!handler) {
 				throw new Error(`Unknown method: ${method}`);
 			}
@@ -235,10 +247,9 @@ export class TasksPanel
 		const { method, params } = message;
 
 		try {
-			const handler =
-				this.commandHandlers[method] ?? this.requestHandlers[method];
+			const handler = this.commandHandlers[method];
 			if (!handler) {
-				throw new Error(`Unknown method: ${method}`);
+				throw new Error(`Unknown command: ${method}`);
 			}
 			await handler(params);
 		} catch (err) {
@@ -252,7 +263,7 @@ export class TasksPanel
 			this.fetchTemplates(),
 		]);
 		return {
-			tasks: [...tasksResult.tasks],
+			tasks: tasksResult.tasks,
 			templates,
 			baseUrl: this.client.getHost() ?? "",
 			tasksSupported: tasksResult.supported,
@@ -355,6 +366,10 @@ export class TasksPanel
 		}
 	}
 
+	/**
+	 * Placeholder handler for sending follow-up messages to a task.
+	 * The Coder API does not yet support this feature.
+	 */
 	private handleSendMessage(taskId: string, message: string): void {
 		this.logger.info(`Sending message to task ${taskId}: ${message}`);
 		vscode.window.showInformationMessage(
@@ -363,7 +378,7 @@ export class TasksPanel
 	}
 
 	private async fetchTasksWithStatus(): Promise<{
-		tasks: readonly Task[];
+		tasks: Task[];
 		supported: boolean;
 	}> {
 		if (!this.client.getHost()) {
@@ -372,7 +387,8 @@ export class TasksPanel
 
 		try {
 			const tasks = await this.client.getTasks({ owner: "me" });
-			return { tasks, supported: true };
+			// SDK returns readonly array, but we need mutable for IPC types
+			return { tasks: tasks as Task[], supported: true };
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 404) {
 				return { tasks: [], supported: false };
@@ -474,7 +490,7 @@ export class TasksPanel
 	): Promise<{ logs: TaskLogEntry[]; status: LogsStatus }> {
 		try {
 			const logs = await this.client.getTaskLogs("me", taskId);
-			return { logs: [...logs], status: "ok" };
+			return { logs, status: "ok" };
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 400) {
 				return { logs: [], status: "not_available" };

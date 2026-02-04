@@ -3,7 +3,6 @@ export interface WebviewMessage {
 	method: string;
 	params?: unknown;
 	requestId?: string;
-	scope?: string;
 }
 
 // VS Code state API

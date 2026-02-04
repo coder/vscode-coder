@@ -1,8 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { defineCommand, defineRequest } from "@repo/shared";
-import { useIpc } from "@repo/webview-shared/react";
+import { defineCommand, defineNotification, defineRequest } from "@repo/shared";
+import { useIpc, type UseIpcOptions } from "@repo/webview-shared/react";
 
 const sent: unknown[] = [];
 
@@ -15,48 +15,78 @@ vi.stubGlobal(
 	})),
 );
 
-function simulateResponse(response: {
-	requestId: string;
-	success: boolean;
-	data?: unknown;
-	error?: string;
-}) {
-	window.dispatchEvent(new MessageEvent("message", { data: response }));
+/** Get requestId from the last sent message */
+const lastRequestId = () =>
+	(sent[sent.length - 1] as { requestId: string }).requestId;
+
+/** Simulate a successful response */
+async function respond<T>(requestId: string, data?: T) {
+	await act(async () => {
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				data: { requestId, success: true, data },
+			}),
+		);
+		await Promise.resolve();
+	});
 }
 
-const flush = () => Promise.resolve();
+/** Simulate a failed response */
+async function respondError(requestId: string, error: string) {
+	await act(async () => {
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				data: { requestId, success: false, error },
+			}),
+		);
+		await Promise.resolve();
+	});
+}
 
-beforeEach(() => {
-	sent.length = 0;
-});
+/** Simulate a notification from the extension */
+function notify<T>(type: string, data?: T) {
+	act(() => {
+		window.dispatchEvent(new MessageEvent("message", { data: { type, data } }));
+	});
+}
 
 describe("useIpc", () => {
+	let unmount: () => void;
+
+	beforeEach(() => {
+		sent.length = 0;
+	});
+
+	afterEach(() => {
+		unmount?.();
+	});
+
+	/** Render the hook and register unmount for automatic cleanup */
+	function renderIpc(options?: UseIpcOptions) {
+		const hook = renderHook(() => useIpc(options));
+		unmount = hook.unmount;
+		return hook.result;
+	}
+
 	describe("request", () => {
-		it("sends message with method, scope, params, and requestId", () => {
-			const { result, unmount } = renderHook(() => useIpc());
-			const req = defineRequest<{ id: string }, string>("getItem", "test");
+		it("sends message with method, params, and requestId", async () => {
+			const result = renderIpc();
+			const req = defineRequest<{ id: string }, string>("getItem");
 
 			act(() => {
 				void result.current.request(req, { id: "123" });
 			});
 
 			const msg = sent[0] as Record<string, unknown>;
-			expect(msg).toMatchObject({
-				method: "getItem",
-				scope: "test",
-				params: { id: "123" },
-			});
+			expect(msg).toMatchObject({ method: "getItem", params: { id: "123" } });
 			expect(typeof msg.requestId).toBe("string");
 
-			// Cleanup
-			act(() =>
-				simulateResponse({ requestId: msg.requestId as string, success: true }),
-			);
-			unmount();
+			// Resolve pending request to avoid unhandled rejection on unmount
+			await respond(msg.requestId as string);
 		});
 
 		it("resolves when response.success is true", async () => {
-			const { result, unmount } = renderHook(() => useIpc());
+			const result = renderIpc();
 			const req = defineRequest<void, { value: number }>("getValue");
 
 			let resolved: { value: number } | undefined;
@@ -64,18 +94,14 @@ describe("useIpc", () => {
 				void result.current.request(req).then((v) => (resolved = v));
 			});
 
-			const requestId = (sent[0] as { requestId: string }).requestId;
-			await act(async () => {
-				simulateResponse({ requestId, success: true, data: { value: 42 } });
-				await flush();
-			});
+			// Simulate extension sending success response
+			await respond(lastRequestId(), { value: 42 });
 
 			expect(resolved).toEqual({ value: 42 });
-			unmount();
 		});
 
 		it("rejects when response.success is false", async () => {
-			const { result, unmount } = renderHook(() => useIpc());
+			const result = renderIpc();
 			const req = defineRequest<void, string>("fail");
 
 			let error: Error | undefined;
@@ -83,18 +109,14 @@ describe("useIpc", () => {
 				void result.current.request(req).catch((e) => (error = e));
 			});
 
-			const requestId = (sent[0] as { requestId: string }).requestId;
-			await act(async () => {
-				simulateResponse({ requestId, success: false, error: "Bad request" });
-				await flush();
-			});
+			// Simulate extension sending error response
+			await respondError(lastRequestId(), "Bad request");
 
 			expect(error?.message).toBe("Bad request");
-			unmount();
 		});
 
 		it("rejects with default message when error is empty", async () => {
-			const { result, unmount } = renderHook(() => useIpc());
+			const result = renderIpc();
 			const req = defineRequest<void, void>("empty");
 
 			let error: Error | undefined;
@@ -102,18 +124,13 @@ describe("useIpc", () => {
 				void result.current.request(req).catch((e) => (error = e));
 			});
 
-			const requestId = (sent[0] as { requestId: string }).requestId;
-			await act(async () => {
-				simulateResponse({ requestId, success: false });
-				await flush();
-			});
+			await respondError(lastRequestId(), "");
 
 			expect(error?.message).toBe("Request failed");
-			unmount();
 		});
 
 		it("ignores responses with unknown requestId", async () => {
-			const { result, unmount } = renderHook(() => useIpc());
+			const result = renderIpc();
 			const req = defineRequest<void, number>("test");
 
 			let resolved = false;
@@ -121,17 +138,12 @@ describe("useIpc", () => {
 				void result.current.request(req).then(() => (resolved = true));
 			});
 
-			await act(async () => {
-				simulateResponse({ requestId: "unknown", success: true, data: 1 });
-				await flush();
-			});
-
+			// Response with wrong requestId should be ignored
+			await respond("unknown-id", 1);
 			expect(resolved).toBe(false);
 
-			// Cleanup
-			const requestId = (sent[0] as { requestId: string }).requestId;
-			act(() => simulateResponse({ requestId, success: true, data: 0 }));
-			unmount();
+			// Resolve the actual pending request before unmount
+			await respond(lastRequestId(), 0);
 		});
 	});
 
@@ -140,7 +152,7 @@ describe("useIpc", () => {
 		afterEach(() => vi.useRealTimers());
 
 		it("rejects after timeout", async () => {
-			const { result, unmount } = renderHook(() => useIpc({ timeoutMs: 100 }));
+			const result = renderIpc({ timeoutMs: 100 });
 			const req = defineRequest<void, void>("slow");
 
 			let error: Error | undefined;
@@ -150,15 +162,14 @@ describe("useIpc", () => {
 
 			await act(async () => {
 				vi.advanceTimersByTime(100);
-				await flush();
+				await Promise.resolve();
 			});
 
 			expect(error?.message).toBe("Request timeout: slow");
-			unmount();
 		});
 
 		it("defaults to 30 second timeout", async () => {
-			const { result, unmount } = renderHook(() => useIpc());
+			const result = renderIpc();
 			const req = defineRequest<void, void>("default");
 
 			let rejected = false;
@@ -168,23 +179,22 @@ describe("useIpc", () => {
 
 			await act(async () => {
 				vi.advanceTimersByTime(29999);
-				await flush();
+				await Promise.resolve();
 			});
 			expect(rejected).toBe(false);
 
 			await act(async () => {
 				vi.advanceTimersByTime(1);
-				await flush();
+				await Promise.resolve();
 			});
 			expect(rejected).toBe(true);
-			unmount();
 		});
 	});
 
 	describe("command", () => {
 		it("sends message without requestId", () => {
-			const { result, unmount } = renderHook(() => useIpc());
-			const cmd = defineCommand<{ action: string }>("doAction", "scope");
+			const result = renderIpc();
+			const cmd = defineCommand<{ action: string }>("doAction");
 
 			act(() => {
 				result.current.command(cmd, { action: "save" });
@@ -192,55 +202,81 @@ describe("useIpc", () => {
 
 			expect(sent[0]).toMatchObject({
 				method: "doAction",
-				scope: "scope",
 				params: { action: "save" },
 			});
-			unmount();
+			expect(sent[0]).not.toHaveProperty("requestId");
 		});
 	});
 
-	describe("scope", () => {
-		interface ScopeTestCase {
-			name: string;
-			hookScope: string | undefined;
-			definitionScope: string;
-			expected: string;
-		}
-		it.each<ScopeTestCase>([
-			{
-				name: "hook scope overrides definition",
-				hookScope: "h",
-				definitionScope: "d",
-				expected: "h",
-			},
-			{
-				name: "falls back to definition scope",
-				hookScope: undefined,
-				definitionScope: "d",
-				expected: "d",
-			},
-		])("$name", ({ hookScope, definitionScope, expected }) => {
-			const { result, unmount } = renderHook(() =>
-				useIpc({ scope: hookScope }),
-			);
-			const req = defineRequest<void, void>("test", definitionScope);
+	describe("onNotification", () => {
+		it("calls handler when notification is received", () => {
+			const result = renderIpc();
+			const notification = defineNotification<{ count: number }>("update");
+			const handler = vi.fn();
 
 			act(() => {
-				void result.current.request(req);
+				result.current.onNotification(notification, handler);
 			});
 
-			expect((sent[0] as { scope: string }).scope).toBe(expected);
+			notify("update", { count: 5 });
 
-			// Cleanup
-			const requestId = (sent[0] as { requestId: string }).requestId;
-			act(() => simulateResponse({ requestId, success: true }));
-			unmount();
+			expect(handler).toHaveBeenCalledWith({ count: 5 });
+		});
+
+		it("supports multiple handlers for same notification", () => {
+			const result = renderIpc();
+			const notification = defineNotification<string>("event");
+			const handler1 = vi.fn();
+			const handler2 = vi.fn();
+
+			act(() => {
+				result.current.onNotification(notification, handler1);
+				result.current.onNotification(notification, handler2);
+			});
+
+			notify("event", "hello");
+
+			expect(handler1).toHaveBeenCalledWith("hello");
+			expect(handler2).toHaveBeenCalledWith("hello");
+		});
+
+		it("unsubscribe stops handler from being called", () => {
+			const result = renderIpc();
+			const notification = defineNotification<number>("tick");
+			const handler = vi.fn();
+
+			let unsubscribe: () => void;
+			act(() => {
+				unsubscribe = result.current.onNotification(notification, handler);
+			});
+
+			notify("tick", 1);
+			expect(handler).toHaveBeenCalledTimes(1);
+
+			act(() => unsubscribe());
+
+			notify("tick", 2);
+			expect(handler).toHaveBeenCalledTimes(1);
+		});
+
+		it("ignores notifications for unsubscribed types", () => {
+			const result = renderIpc();
+			const notification = defineNotification<void>("specific");
+			const handler = vi.fn();
+
+			act(() => {
+				result.current.onNotification(notification, handler);
+			});
+
+			notify("other", null);
+
+			expect(handler).not.toHaveBeenCalled();
 		});
 	});
 
 	describe("cleanup", () => {
 		it("rejects pending requests on unmount", async () => {
-			const { result, unmount } = renderHook(() => useIpc());
+			const result = renderIpc();
 			const req = defineRequest<void, void>("pending");
 
 			let error: Error | undefined;
@@ -250,7 +286,7 @@ describe("useIpc", () => {
 
 			await act(async () => {
 				unmount();
-				await flush();
+				await Promise.resolve();
 			});
 
 			expect(error?.message).toBe("Component unmounted");
@@ -258,7 +294,7 @@ describe("useIpc", () => {
 
 		it("removes message listener on unmount", () => {
 			const spy = vi.spyOn(window, "removeEventListener");
-			const { unmount } = renderHook(() => useIpc());
+			renderIpc();
 
 			act(() => unmount());
 

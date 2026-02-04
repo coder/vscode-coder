@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
 
 import { postMessage } from "../api";
 
-import type { IpcResponse } from "@repo/shared";
+import type { IpcNotification, IpcResponse } from "@repo/shared";
 
 interface PendingRequest {
 	resolve: (value: unknown) => void;
@@ -20,9 +20,9 @@ const DEFAULT_TIMEOUT_MS = 30000;
 export interface UseIpcOptions {
 	/** Request timeout in ms (default: 30000) */
 	timeoutMs?: number;
-	/** Scope for message routing */
-	scope?: string;
 }
+
+type NotificationHandler = (data: unknown) => void;
 
 /**
  * Hook for type-safe IPC with the extension.
@@ -32,11 +32,21 @@ export interface UseIpcOptions {
  * const ipc = useIpc();
  * const tasks = await ipc.request(getTasks);  // Type: Task[]
  * ipc.command(viewInCoder, { taskId: "123" }); // Fire-and-forget
+ *
+ * // Subscribe to notifications
+ * useEffect(() => {
+ *   return ipc.onNotification(tasksUpdated, (tasks) => {
+ *     setTasks(tasks);  // tasks is typed as Task[]
+ *   });
+ * }, []);
  * ```
  */
 export function useIpc(options: UseIpcOptions = {}) {
-	const { timeoutMs = DEFAULT_TIMEOUT_MS, scope } = options;
+	const { timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 	const pendingRequests = useRef<Map<string, PendingRequest>>(new Map());
+	const notificationHandlers = useRef<Map<string, Set<NotificationHandler>>>(
+		new Map(),
+	);
 
 	// Cleanup on unmount
 	useEffect(() => {
@@ -46,27 +56,43 @@ export function useIpc(options: UseIpcOptions = {}) {
 				req.reject(new Error("Component unmounted"));
 			}
 			pendingRequests.current.clear();
+			notificationHandlers.current.clear();
 		};
 	}, []);
 
-	// Handle responses
+	// Handle responses and notifications
 	useEffect(() => {
 		const handler = (event: MessageEvent) => {
-			const msg = event.data as IpcResponse | undefined;
-			if (!msg || typeof msg.requestId !== "string" || !("success" in msg)) {
+			const msg = event.data as IpcResponse | IpcNotification | undefined;
+
+			if (!msg || typeof msg !== "object") {
 				return;
 			}
 
-			const pending = pendingRequests.current.get(msg.requestId);
-			if (!pending) return;
+			// Response handling (has requestId + success)
+			if ("requestId" in msg && "success" in msg) {
+				const pending = pendingRequests.current.get(msg.requestId);
+				if (!pending) return;
 
-			clearTimeout(pending.timeout);
-			pendingRequests.current.delete(msg.requestId);
+				clearTimeout(pending.timeout);
+				pendingRequests.current.delete(msg.requestId);
 
-			if (msg.success) {
-				pending.resolve(msg.data);
-			} else {
-				pending.reject(new Error(msg.error || "Request failed"));
+				if (msg.success) {
+					pending.resolve(msg.data);
+				} else {
+					pending.reject(new Error(msg.error || "Request failed"));
+				}
+				return;
+			}
+
+			// Notification handling (has type, no requestId)
+			if ("type" in msg && !("requestId" in msg)) {
+				const handlers = notificationHandlers.current.get(msg.type);
+				if (handlers) {
+					for (const h of handlers) {
+						h(msg.data);
+					}
+				}
 			}
 		};
 
@@ -78,7 +104,6 @@ export function useIpc(options: UseIpcOptions = {}) {
 	function request<P, R>(
 		definition: {
 			method: string;
-			scope?: string;
 			_types?: { params: P; response: R };
 		},
 		...args: P extends void ? [] : [params: P]
@@ -102,7 +127,6 @@ export function useIpc(options: UseIpcOptions = {}) {
 
 			postMessage({
 				method: definition.method,
-				scope: scope ?? definition.scope,
 				requestId,
 				params,
 			});
@@ -111,15 +135,51 @@ export function useIpc(options: UseIpcOptions = {}) {
 
 	/** Send command without waiting (fire-and-forget) */
 	function command<P>(
-		definition: { method: string; scope?: string; _types?: { params: P } },
+		definition: { method: string; _types?: { params: P } },
 		...args: P extends void ? [] : [params: P]
 	): void {
 		postMessage({
 			method: definition.method,
-			scope: scope ?? definition.scope,
 			params: args[0],
 		});
 	}
 
-	return { request, command };
+	/**
+	 * Subscribe to push notifications from the extension.
+	 * Returns an unsubscribe function that should be called on cleanup.
+	 *
+	 * @example
+	 * ```tsx
+	 * useEffect(() => {
+	 *   return ipc.onNotification(tasksUpdated, (tasks) => {
+	 *     setTasks(tasks);
+	 *   });
+	 * }, []);
+	 * ```
+	 */
+	function onNotification<D>(
+		definition: { method: string; _types?: { data: D } },
+		callback: (data: D) => void,
+	): () => void {
+		const method = definition.method;
+		let handlers = notificationHandlers.current.get(method);
+		if (!handlers) {
+			handlers = new Set();
+			notificationHandlers.current.set(method, handlers);
+		}
+		handlers.add(callback as NotificationHandler);
+
+		// Return unsubscribe function
+		return () => {
+			const h = notificationHandlers.current.get(method);
+			if (h) {
+				h.delete(callback as NotificationHandler);
+				if (h.size === 0) {
+					notificationHandlers.current.delete(method);
+				}
+			}
+		};
+	}
+
+	return { request, command, onNotification };
 }

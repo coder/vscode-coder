@@ -5,43 +5,10 @@ import {
 	getTaskUIState,
 	type Task,
 	type TaskActions,
-	type TaskState,
 	type TaskUIState,
 } from "@repo/shared";
 
-// Minimal task factory
-function task(overrides: Partial<Task> = {}): Task {
-	return {
-		id: "task-1",
-		name: "test",
-		display_name: "Test",
-		initial_prompt: "",
-		status: "active",
-		template_id: "t1",
-		template_version_id: "v1",
-		template_name: "tmpl",
-		template_display_name: "Template",
-		template_icon: "",
-		organization_id: "org-1",
-		owner_id: "user-1",
-		owner_name: "user",
-		created_at: "",
-		updated_at: "",
-		workspace_id: null,
-		workspace_status: undefined,
-		workspace_name: "",
-		workspace_agent_id: null,
-		workspace_agent_lifecycle: null,
-		workspace_agent_health: null,
-		workspace_app_id: null,
-		current_state: null,
-		...overrides,
-	} as Task;
-}
-
-function state(s: TaskState): Task["current_state"] {
-	return { state: s, message: "", timestamp: "", uri: "" };
-}
+import { minimalTask as task, taskState as state } from "../../../mocks/tasks";
 
 describe("getTaskActions", () => {
 	interface TaskActionsTestCase {
@@ -148,7 +115,7 @@ describe("getTaskUIState", () => {
 			expected: "initializing",
 		},
 
-		// Active states (status=active, workspace=running, has state)
+		// Active states
 		{
 			name: "working state",
 			overrides: {
