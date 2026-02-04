@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     '@types/react':
-      specifier: ^19.2.10
-      version: 19.2.10
+      specifier: ^19.2.11
+      version: 19.2.11
     '@types/react-dom':
       specifier: ^19.2.3
       version: 19.2.3
@@ -91,7 +91,7 @@ importers:
         version: 7.5.1
       '@testing-library/react':
         specifier: ^16.3.2
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.10))(@types/react@19.2.10)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.11))(@types/react@19.2.11)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tsconfig/node20':
         specifier: ^20.1.8
         version: 20.1.8
@@ -106,10 +106,10 @@ importers:
         version: 4.1.4
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.10
+        version: 19.2.11
       '@types/react-dom':
         specifier: 'catalog:'
-        version: 19.2.3(@types/react@19.2.10)
+        version: 19.2.3(@types/react@19.2.11)
       '@types/semver':
         specifier: ^7.7.1
         version: 7.7.1
@@ -148,7 +148,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: github:coder/coder#main
-        version: https://codeload.github.com/coder/coder/tar.gz/37aecda165d8697766fd42399416afce6ad41dcb
+        version: https://codeload.github.com/coder/coder/tar.gz/9d887f2aac1776cacc732b302cefdfdeb22f141f
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
@@ -226,7 +226,7 @@ importers:
         version: link:../webview-shared
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
-        version: 2.4.0(@types/react@19.2.10)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 2.4.0(@types/react@19.2.11)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react:
         specifier: 'catalog:'
         version: 19.2.4
@@ -236,10 +236,10 @@ importers:
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.10
+        version: 19.2.11
       '@types/react-dom':
         specifier: 'catalog:'
-        version: 19.2.3(@types/react@19.2.10)
+        version: 19.2.3(@types/react@19.2.11)
       '@vitejs/plugin-react-swc':
         specifier: 'catalog:'
         version: 4.2.2(vite@7.3.1(@types/node@24.10.9))
@@ -254,13 +254,13 @@ importers:
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.10
+        version: 19.2.11
       '@types/vscode-webview':
         specifier: ^1.57.5
         version: 1.57.5
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
-        version: 2.4.0(@types/react@19.2.10)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 2.4.0(@types/react@19.2.11)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react:
         specifier: 'catalog:'
         version: 19.2.4
@@ -1214,8 +1214,8 @@ packages:
     peerDependencies:
       '@types/react': ^19.2.0
 
-  '@types/react@19.2.10':
-    resolution: {integrity: sha512-WPigyYuGhgZ/cTPRXB2EwUw+XvsRA3GqHlsP4qteqrnnjDrApbS7MxcGr/hke5iUoeB7E/gQtrs9I37zAJ0Vjw==}
+  '@types/react@19.2.11':
+    resolution: {integrity: sha512-tORuanb01iEzWvMGVGv2ZDhYZVeRMrw453DCSAIn/5yvcSVnMoUMTyf33nQJLahYEnv9xqrTNbgz4qY5EfSh0g==}
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
@@ -1821,8 +1821,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/37aecda165d8697766fd42399416afce6ad41dcb:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/37aecda165d8697766fd42399416afce6ad41dcb}
+  coder@https://codeload.github.com/coder/coder/tar.gz/9d887f2aac1776cacc732b302cefdfdeb22f141f:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/9d887f2aac1776cacc732b302cefdfdeb22f141f}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -2449,11 +2449,13 @@ packages:
 
   glob@10.4.5:
     resolution: {integrity: sha512-7Bv8RF0k6xjo7d4A/PxYLbUCfb6c+Vpd2/mB2yRDlew7Jb5hEXiCD9ibfO7wpk8i4sevK6DFny9h7EYbM3/sHg==}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@11.1.0:
     resolution: {integrity: sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==}
     engines: {node: 20 || >=22}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   global-agent@3.0.0:
@@ -4829,9 +4831,9 @@ snapshots:
     dependencies:
       '@lit/reactive-element': 2.1.2
 
-  '@lit/react@1.0.8(@types/react@19.2.10)':
+  '@lit/react@1.0.8(@types/react@19.2.11)':
     dependencies:
-      '@types/react': 19.2.10
+      '@types/react': 19.2.11
 
   '@lit/reactive-element@2.1.2':
     dependencies:
@@ -5173,15 +5175,15 @@ snapshots:
       picocolors: 1.1.1
       pretty-format: 27.5.1
 
-  '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.10))(@types/react@19.2.10)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.11))(@types/react@19.2.11)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@babel/runtime': 7.28.6
       '@testing-library/dom': 10.4.1
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
     optionalDependencies:
-      '@types/react': 19.2.10
-      '@types/react-dom': 19.2.3(@types/react@19.2.10)
+      '@types/react': 19.2.11
+      '@types/react-dom': 19.2.3(@types/react@19.2.11)
 
   '@textlint/ast-node-types@15.2.1': {}
 
@@ -5274,11 +5276,11 @@ snapshots:
     dependencies:
       '@types/retry': 0.12.5
 
-  '@types/react-dom@19.2.3(@types/react@19.2.10)':
+  '@types/react-dom@19.2.3(@types/react@19.2.11)':
     dependencies:
-      '@types/react': 19.2.10
+      '@types/react': 19.2.11
 
-  '@types/react@19.2.10':
+  '@types/react@19.2.11':
     dependencies:
       csstype: 3.2.3
 
@@ -5549,9 +5551,9 @@ snapshots:
       '@vscode/codicons': 0.0.44
       lit: 3.3.2
 
-  '@vscode-elements/react-elements@2.4.0(@types/react@19.2.10)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@vscode-elements/react-elements@2.4.0(@types/react@19.2.11)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
-      '@lit/react': 1.0.8(@types/react@19.2.10)
+      '@lit/react': 1.0.8(@types/react@19.2.11)
       '@vscode-elements/elements': 2.4.0(@vscode/codicons@0.0.44)
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
@@ -6001,7 +6003,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/37aecda165d8697766fd42399416afce6ad41dcb: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/9d887f2aac1776cacc732b302cefdfdeb22f141f: {}
 
   color-convert@2.0.1:
     dependencies:
