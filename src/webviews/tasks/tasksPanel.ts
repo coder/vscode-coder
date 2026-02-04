@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import {
 	commandHandler,
 	getTaskActions,
-	getTaskUIState,
+	isStableTask,
 	requestHandler,
 	TasksApi,
 	type CreateTaskParams,
@@ -15,7 +15,6 @@ import {
 	type LogsStatus,
 	type TaskDetails,
 	type TaskTemplate,
-	type TaskUIState,
 } from "@repo/shared";
 
 import { type CoderApi } from "../../api/coderApi";
@@ -63,13 +62,6 @@ function isIpcCommand(
 	);
 }
 
-/** UI states where task logs won't change */
-const STABLE_UI_STATES: readonly TaskUIState[] = [
-	"complete",
-	"error",
-	"paused",
-];
-
 export class TasksPanel
 	implements vscode.WebviewViewProvider, vscode.Disposable
 {
@@ -88,16 +80,22 @@ export class TasksPanel
 		taskId: string;
 		logs: TaskLogEntry[];
 		status: LogsStatus;
-		uiState: TaskUIState;
 	};
 
-	private readonly requestHandlers = {
+	/**
+	 * Request handlers indexed by method name.
+	 * Type safety is ensured at definition time via requestHandler().
+	 */
+	private readonly requestHandlers: Record<
+		string,
+		(params: unknown) => Promise<unknown>
+	> = {
 		[TasksApi.init.method]: requestHandler(TasksApi.init, () =>
 			this.handleInit(),
 		),
 		[TasksApi.getTasks.method]: requestHandler(TasksApi.getTasks, async () => {
 			const result = await this.fetchTasksWithStatus();
-			return [...result.tasks];
+			return result.tasks;
 		}),
 		[TasksApi.getTemplates.method]: requestHandler(TasksApi.getTemplates, () =>
 			this.fetchTemplates(),
@@ -121,8 +119,12 @@ export class TasksPanel
 		[TasksApi.resumeTask.method]: requestHandler(TasksApi.resumeTask, (p) =>
 			this.handleResumeTask(p.taskId),
 		),
-	} as const;
+	};
 
+	/**
+	 * Command handlers indexed by method name.
+	 * Type safety is ensured at definition time via commandHandler().
+	 */
 	private readonly commandHandlers: Record<
 		string,
 		(params: unknown) => void | Promise<void>
@@ -179,7 +181,9 @@ export class TasksPanel
 
 		this.disposables.push(
 			webviewView.webview.onDidReceiveMessage((message: unknown) => {
-				void this.handleMessage(message);
+				this.handleMessage(message).catch((err: unknown) => {
+					this.logger.error("Unhandled error in message handler", err);
+				});
 			}),
 		);
 
@@ -210,8 +214,7 @@ export class TasksPanel
 		const { requestId, method, params } = message;
 
 		try {
-			const handler =
-				this.requestHandlers[method] ?? this.commandHandlers[method];
+			const handler = this.requestHandlers[method];
 			if (!handler) {
 				throw new Error(`Unknown method: ${method}`);
 			}
@@ -235,10 +238,9 @@ export class TasksPanel
 		const { method, params } = message;
 
 		try {
-			const handler =
-				this.commandHandlers[method] ?? this.requestHandlers[method];
+			const handler = this.commandHandlers[method];
 			if (!handler) {
-				throw new Error(`Unknown method: ${method}`);
+				throw new Error(`Unknown command: ${method}`);
 			}
 			await handler(params);
 		} catch (err) {
@@ -252,7 +254,7 @@ export class TasksPanel
 			this.fetchTemplates(),
 		]);
 		return {
-			tasks: [...tasksResult.tasks],
+			tasks: tasksResult.tasks,
 			templates,
 			baseUrl: this.client.getHost() ?? "",
 			tasksSupported: tasksResult.supported,
@@ -355,6 +357,10 @@ export class TasksPanel
 		}
 	}
 
+	/**
+	 * Placeholder handler for sending follow-up messages to a task.
+	 * The Coder API does not yet support this feature.
+	 */
 	private handleSendMessage(taskId: string, message: string): void {
 		this.logger.info(`Sending message to task ${taskId}: ${message}`);
 		vscode.window.showInformationMessage(
@@ -447,23 +453,18 @@ export class TasksPanel
 	private async getLogsWithCache(
 		task: Task,
 	): Promise<{ logs: TaskLogEntry[]; logsStatus: LogsStatus }> {
-		const uiState = getTaskUIState(task);
-		const isStable = STABLE_UI_STATES.includes(uiState);
+		const stable = isStableTask(task);
 
-		// Use cache if same task in same stable state
-		if (
-			this.cachedLogs?.taskId === task.id &&
-			isStable &&
-			this.cachedLogs.uiState === uiState
-		) {
+		// Use cache if same task in stable state
+		if (this.cachedLogs?.taskId === task.id && stable) {
 			return { logs: this.cachedLogs.logs, logsStatus: this.cachedLogs.status };
 		}
 
 		const { logs, status } = await this.fetchTaskLogs(task.id);
 
 		// Cache only for stable states
-		if (isStable) {
-			this.cachedLogs = { taskId: task.id, logs, status, uiState };
+		if (stable) {
+			this.cachedLogs = { taskId: task.id, logs, status };
 		}
 
 		return { logs, logsStatus: status };
@@ -474,7 +475,7 @@ export class TasksPanel
 	): Promise<{ logs: TaskLogEntry[]; status: LogsStatus }> {
 		try {
 			const logs = await this.client.getTaskLogs("me", taskId);
-			return { logs: [...logs], status: "ok" };
+			return { logs, status: "ok" };
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 400) {
 				return { logs: [], status: "not_available" };

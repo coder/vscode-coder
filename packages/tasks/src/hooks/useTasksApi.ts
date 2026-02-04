@@ -9,22 +9,7 @@
  * ```
  */
 
-import {
-	createTask as createTaskDef,
-	deleteTask as deleteTaskDef,
-	downloadLogs as downloadLogsDef,
-	getTask as getTaskDef,
-	getTaskDetails as getTaskDetailsDef,
-	getTasks as getTasksDef,
-	getTemplates as getTemplatesDef,
-	init as initDef,
-	pauseTask as pauseTaskDef,
-	resumeTask as resumeTaskDef,
-	sendTaskMessage as sendTaskMessageDef,
-	viewInCoder as viewInCoderDef,
-	viewLogs as viewLogsDef,
-	type CreateTaskParams,
-} from "@repo/shared";
+import { TasksApi, type CreateTaskParams } from "@repo/shared";
 import { useIpc } from "@repo/webview-shared/react";
 
 export function useTasksApi() {
@@ -32,21 +17,24 @@ export function useTasksApi() {
 
 	return {
 		// Requests
-		init: () => request(initDef),
-		getTasks: () => request(getTasksDef),
-		getTemplates: () => request(getTemplatesDef),
-		getTask: (taskId: string) => request(getTaskDef, { taskId }),
-		getTaskDetails: (taskId: string) => request(getTaskDetailsDef, { taskId }),
-		createTask: (params: CreateTaskParams) => request(createTaskDef, params),
-		deleteTask: (taskId: string) => request(deleteTaskDef, { taskId }),
-		pauseTask: (taskId: string) => request(pauseTaskDef, { taskId }),
-		resumeTask: (taskId: string) => request(resumeTaskDef, { taskId }),
+		init: () => request(TasksApi.init),
+		getTasks: () => request(TasksApi.getTasks),
+		getTemplates: () => request(TasksApi.getTemplates),
+		getTask: (taskId: string) => request(TasksApi.getTask, { taskId }),
+		getTaskDetails: (taskId: string) =>
+			request(TasksApi.getTaskDetails, { taskId }),
+		createTask: (params: CreateTaskParams) =>
+			request(TasksApi.createTask, params),
+		deleteTask: (taskId: string) => request(TasksApi.deleteTask, { taskId }),
+		pauseTask: (taskId: string) => request(TasksApi.pauseTask, { taskId }),
+		resumeTask: (taskId: string) => request(TasksApi.resumeTask, { taskId }),
 
 		// Commands
-		viewInCoder: (taskId: string) => command(viewInCoderDef, { taskId }),
-		viewLogs: (taskId: string) => command(viewLogsDef, { taskId }),
-		downloadLogs: (taskId: string) => command(downloadLogsDef, { taskId }),
+		viewInCoder: (taskId: string) => command(TasksApi.viewInCoder, { taskId }),
+		viewLogs: (taskId: string) => command(TasksApi.viewLogs, { taskId }),
+		downloadLogs: (taskId: string) =>
+			command(TasksApi.downloadLogs, { taskId }),
 		sendTaskMessage: (taskId: string, message: string) =>
-			command(sendTaskMessageDef, { taskId, message }),
+			command(TasksApi.sendTaskMessage, { taskId, message }),
 	};
 }

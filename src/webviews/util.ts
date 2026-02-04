@@ -24,8 +24,8 @@ export function getWebviewHtml(
 		vscode.Uri.joinPath(baseUri, "index.css"),
 	);
 
-	// The vscode-elements library looks for a link element with this specific ID
-	// to load the codicons font inside its shadow DOM components
+	// The vscode-elements library looks for a link element with "vscode-codicon-stylesheet"
+	// ID to load the codicons font inside its shadow DOM components
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>

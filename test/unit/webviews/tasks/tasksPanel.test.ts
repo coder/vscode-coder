@@ -1,134 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { TasksPanel } from "@/webviews/tasks/TasksPanel";
+import { TasksPanel } from "@/webviews/tasks/tasksPanel";
 
+import { TasksApi, type ParamsOf, type ResponseOf } from "@repo/shared";
+
+import { logEntry, preset, task, template } from "../../../mocks/tasks";
 import { createAxiosError, createMockLogger } from "../../../mocks/testHelpers";
 
-import type {
-	Task,
-	TaskLogEntry,
-	Template,
-	Preset,
-} from "coder/site/src/api/typesGenerated";
+import type { Task } from "coder/site/src/api/typesGenerated";
 
-vi.mock("vscode", async () => {
-	return await import("../../../mocks/vscode.runtime");
-});
+import type { CoderApi } from "@/api/coderApi";
 
-function task(overrides: Partial<Task> = {}): Task {
-	return {
-		id: "task-1",
-		organization_id: "org-1",
-		owner_id: "owner-1",
-		owner_name: "testuser",
-		name: "test-task",
-		display_name: "Test Task",
-		template_id: "template-1",
-		template_version_id: "version-1",
-		template_name: "test-template",
-		template_display_name: "Test Template",
-		template_icon: "/icon.svg",
-		workspace_id: "workspace-1",
-		workspace_name: "test-workspace",
-		workspace_status: "running",
-		workspace_build_number: 5,
-		workspace_agent_id: null,
-		workspace_agent_lifecycle: null,
-		workspace_agent_health: null,
-		workspace_app_id: null,
-		initial_prompt: "Test prompt",
-		status: "active",
-		current_state: {
-			timestamp: "2024-01-01T00:00:00Z",
-			state: "working",
-			message: "Processing",
-			uri: "",
-		},
-		created_at: "2024-01-01T00:00:00Z",
-		updated_at: "2024-01-01T00:00:00Z",
-		...overrides,
-	};
-}
+/** Subset of CoderApi used by TasksPanel */
+type TasksPanelClient = Pick<
+	CoderApi,
+	| "getTasks"
+	| "getTask"
+	| "getTaskLogs"
+	| "createTask"
+	| "deleteTask"
+	| "getTemplates"
+	| "getTemplateVersionPresets"
+	| "startWorkspace"
+	| "stopWorkspace"
+	| "getHost"
+>;
 
-function template(overrides: Partial<Template> = {}): Template {
-	return {
-		id: "template-1",
-		created_at: "2024-01-01T00:00:00Z",
-		updated_at: "2024-01-01T00:00:00Z",
-		organization_id: "org-1",
-		organization_name: "test-org",
-		organization_display_name: "Test Org",
-		organization_icon: "",
-		name: "test-template",
-		display_name: "Test Template",
-		provisioner: "terraform",
-		active_version_id: "version-1",
-		active_user_count: 0,
-		build_time_stats: {
-			delete: { P50: null, P95: null },
-			start: { P50: null, P95: null },
-			stop: { P50: null, P95: null },
-		},
-		description: "Test template",
-		deprecated: false,
-		deprecation_message: "",
-		icon: "/icon.svg",
-		default_ttl_ms: 0,
-		activity_bump_ms: 0,
-		autostop_requirement: { days_of_week: [], weeks: 0 },
-		autostart_requirement: { days_of_week: [] },
-		created_by_id: "user-1",
-		created_by_name: "testuser",
-		allow_user_autostart: true,
-		allow_user_autostop: true,
-		allow_user_cancel_workspace_jobs: true,
-		failure_ttl_ms: 0,
-		time_til_dormant_ms: 0,
-		time_til_dormant_autodelete_ms: 0,
-		require_active_version: false,
-		max_port_share_level: "public",
-		cors_behavior: "passthru",
-		use_classic_parameter_flow: false,
-		...overrides,
-	};
-}
-
-function preset(overrides: Partial<Preset> = {}): Preset {
-	return {
-		ID: "preset-1",
-		Name: "Test Preset",
-		Parameters: [],
-		Default: false,
-		DesiredPrebuildInstances: null,
-		Description: "Test preset",
-		Icon: "",
-		...overrides,
-	};
-}
-
-function logEntry(overrides: Partial<TaskLogEntry> = {}): TaskLogEntry {
-	return {
-		id: 1,
-		time: "2024-01-01T00:00:00Z",
-		type: "output",
-		content: "Test log entry",
-		...overrides,
-	};
-}
-
-interface MockClient {
-	getTasks: ReturnType<typeof vi.fn>;
-	getTask: ReturnType<typeof vi.fn>;
-	getTaskLogs: ReturnType<typeof vi.fn>;
-	createTask: ReturnType<typeof vi.fn>;
-	deleteTask: ReturnType<typeof vi.fn>;
-	getTemplates: ReturnType<typeof vi.fn>;
-	getTemplateVersionPresets: ReturnType<typeof vi.fn>;
-	startWorkspace: ReturnType<typeof vi.fn>;
-	stopWorkspace: ReturnType<typeof vi.fn>;
-	getHost: ReturnType<typeof vi.fn>;
-}
+type MockClient = { [K in keyof TasksPanelClient]: ReturnType<typeof vi.fn> };
 
 function createClient(baseUrl = "https://coder.example.com"): MockClient {
 	return {
@@ -145,17 +44,18 @@ function createClient(baseUrl = "https://coder.example.com"): MockClient {
 	};
 }
 
+interface ApiDef {
+	method: string;
+}
+
 interface Harness {
 	panel: TasksPanel;
 	client: MockClient;
-	request: <T>(
-		method: string,
-		params?: unknown,
-	) => Promise<{
-		success: boolean;
-		data?: T;
-		error?: string;
-	}>;
+	/** Type-safe request using TasksApi definitions */
+	request: <T extends ApiDef>(
+		def: T,
+		params?: ParamsOf<T>,
+	) => Promise<{ success: boolean; data?: ResponseOf<T>; error?: string }>;
 	command: (method: string, params?: unknown) => Promise<void>;
 	messages: () => unknown[];
 }
@@ -164,17 +64,20 @@ function createHarness(): Harness {
 	const client = createClient();
 	const panel = new TasksPanel(
 		vscode.Uri.file("/test/extension"),
-		client as unknown as ConstructorParameters<typeof TasksPanel>[1],
+		// Cast needed: mock only implements the subset of CoderApi methods used by TasksPanel
+		client as unknown as CoderApi,
 		createMockLogger(),
 	);
 
 	const posted: unknown[] = [];
 	let handler: ((msg: unknown) => void) | null = null;
 
-	const webview = {
+	const webview: vscode.WebviewView = {
+		viewType: "coder.tasksPanel",
 		webview: {
 			options: { enableScripts: false, localResourceRoots: [] },
 			html: "",
+			cspSource: "",
 			postMessage: vi.fn((msg: unknown) => {
 				posted.push(msg);
 				return Promise.resolve(true);
@@ -186,12 +89,13 @@ function createHarness(): Harness {
 			asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
 		},
 		visible: true,
+		show: vi.fn(),
 		onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
 		onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
 	};
 
 	panel.resolveWebviewView(
-		webview as unknown as vscode.WebviewView,
+		webview,
 		{} as vscode.WebviewViewResolveContext,
 		{} as vscode.CancellationToken,
 	);
@@ -200,9 +104,9 @@ function createHarness(): Harness {
 		panel,
 		client,
 		messages: () => [...posted],
-		request: async <T>(method: string, params?: unknown) => {
+		request: async <T extends ApiDef>(def: T, params?: ParamsOf<T>) => {
 			const requestId = `req-${Date.now()}-${Math.random()}`;
-			handler?.({ requestId, method, params });
+			handler?.({ requestId, method: def.method, params });
 
 			await vi.waitFor(
 				() => {
@@ -219,7 +123,7 @@ function createHarness(): Harness {
 
 			return posted.find(
 				(m) => (m as { requestId?: string }).requestId === requestId,
-			) as { success: boolean; data?: T; error?: string };
+			) as { success: boolean; data?: ResponseOf<T>; error?: string };
 		},
 		command: async (method: string, params?: unknown) => {
 			handler?.({ method, params });
@@ -228,28 +132,20 @@ function createHarness(): Harness {
 	};
 }
 
-// --- Tests ---
-
 describe("TasksPanel", () => {
-	let h: Harness;
-
 	beforeEach(() => {
+		// Reset shared vscode mocks between tests
 		vi.resetAllMocks();
-		h = createHarness();
 	});
 
 	describe("init", () => {
 		it("returns tasks, templates, and baseUrl when logged in", async () => {
+			const h = createHarness();
 			h.client.getTasks.mockResolvedValue([task()]);
 			h.client.getTemplates.mockResolvedValue([template()]);
 			h.client.getTemplateVersionPresets.mockResolvedValue([preset()]);
 
-			const res = await h.request<{
-				tasks: Task[];
-				templates: Array<{ id: string; presets: Array<{ id: string }> }>;
-				baseUrl: string;
-				tasksSupported: boolean;
-			}>("init");
+			const res = await h.request(TasksApi.init);
 
 			expect(res).toMatchObject({
 				success: true,
@@ -263,20 +159,20 @@ describe("TasksPanel", () => {
 		});
 
 		it("returns empty when not logged in", async () => {
+			const h = createHarness();
 			h.client.getHost.mockReturnValue(undefined);
 
-			const res = await h.request<{ tasks: Task[]; templates: unknown[] }>(
-				"init",
-			);
+			const res = await h.request(TasksApi.init);
 
 			expect(res.success).toBe(true);
 			expect(res.data).toMatchObject({ tasks: [], templates: [] });
 		});
 
 		it("returns tasksSupported=false on 404", async () => {
+			const h = createHarness();
 			h.client.getTasks.mockRejectedValue(createAxiosError(404, "Not found"));
 
-			const res = await h.request<{ tasksSupported: boolean }>("init");
+			const res = await h.request(TasksApi.init);
 
 			expect(res).toMatchObject({
 				success: true,
@@ -287,12 +183,13 @@ describe("TasksPanel", () => {
 
 	describe("getTasks", () => {
 		it("returns list of tasks", async () => {
+			const h = createHarness();
 			h.client.getTasks.mockResolvedValue([
 				task({ id: "t1" }),
 				task({ id: "t2" }),
 			]);
 
-			const res = await h.request<Task[]>("getTasks");
+			const res = await h.request(TasksApi.getTasks);
 
 			expect(res.success).toBe(true);
 			expect(res.data).toHaveLength(2);
@@ -301,9 +198,10 @@ describe("TasksPanel", () => {
 
 	describe("getTask", () => {
 		it("returns task by id", async () => {
+			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task({ id: "task-123" }));
 
-			const res = await h.request<Task>("getTask", { taskId: "task-123" });
+			const res = await h.request(TasksApi.getTask, { taskId: "task-123" });
 
 			expect(res).toMatchObject({ success: true, data: { id: "task-123" } });
 		});
@@ -311,16 +209,14 @@ describe("TasksPanel", () => {
 
 	describe("getTemplates", () => {
 		it("returns templates with presets", async () => {
+			const h = createHarness();
 			h.client.getTemplates.mockResolvedValue([template()]);
 			h.client.getTemplateVersionPresets.mockResolvedValue([
 				preset({ ID: "p1", Name: "Default", Default: true }),
 				preset({ ID: "p2", Name: "Custom" }),
 			]);
 
-			const res =
-				await h.request<
-					Array<{ presets: Array<{ id: string; isDefault: boolean }> }>
-				>("getTemplates");
+			const res = await h.request(TasksApi.getTemplates);
 
 			expect(res.data?.[0].presets).toEqual([
 				{ id: "p1", name: "Default", isDefault: true },
@@ -329,11 +225,12 @@ describe("TasksPanel", () => {
 		});
 
 		it("caches templates", async () => {
+			const h = createHarness();
 			h.client.getTemplates.mockResolvedValue([template()]);
 			h.client.getTemplateVersionPresets.mockResolvedValue([]);
 
-			await h.request("getTemplates");
-			await h.request("getTemplates");
+			await h.request(TasksApi.getTemplates);
+			await h.request(TasksApi.getTemplates);
 
 			expect(h.client.getTemplates).toHaveBeenCalledTimes(1);
 		});
@@ -341,16 +238,15 @@ describe("TasksPanel", () => {
 
 	describe("getTaskDetails", () => {
 		it("returns task with logs", async () => {
+			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task());
 			h.client.getTaskLogs.mockResolvedValue([
 				logEntry({ content: "Starting" }),
 			]);
 
-			const res = await h.request<{
-				task: Task;
-				logs: TaskLogEntry[];
-				logsStatus: string;
-			}>("getTaskDetails", { taskId: "task-1" });
+			const res = await h.request(TasksApi.getTaskDetails, {
+				taskId: "task-1",
+			});
 
 			expect(res).toMatchObject({
 				success: true,
@@ -376,13 +272,14 @@ describe("TasksPanel", () => {
 				expectedCalls: 2,
 			},
 		])("$name", async ({ state, expectedCalls }) => {
+			const h = createHarness();
 			h.client.getTask.mockResolvedValue(
 				task({ current_state: { timestamp: "", state, message: "", uri: "" } }),
 			);
 			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
 
-			await h.request("getTaskDetails", { taskId: "task-1" });
-			await h.request("getTaskDetails", { taskId: "task-1" });
+			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
 
 			expect(h.client.getTaskLogs).toHaveBeenCalledTimes(expectedCalls);
 		});
@@ -390,11 +287,12 @@ describe("TasksPanel", () => {
 
 	describe("createTask", () => {
 		it("creates task and notifies", async () => {
+			const h = createHarness();
 			const newTask = task({ id: "new-task" });
 			h.client.createTask.mockResolvedValue(newTask);
 			h.client.getTasks.mockResolvedValue([newTask]);
 
-			const res = await h.request<Task>("createTask", {
+			const res = await h.request(TasksApi.createTask, {
 				templateVersionId: "v1",
 				prompt: "Build a feature",
 				presetId: "preset-1",
@@ -409,9 +307,10 @@ describe("TasksPanel", () => {
 
 	describe("deleteTask", () => {
 		it("deletes task and notifies", async () => {
+			const h = createHarness();
 			h.client.getTasks.mockResolvedValue([]);
 
-			const res = await h.request("deleteTask", { taskId: "task-1" });
+			const res = await h.request(TasksApi.deleteTask, { taskId: "task-1" });
 
 			expect(res.success).toBe(true);
 			expect(h.client.deleteTask).toHaveBeenCalledWith("me", "task-1");
@@ -423,24 +322,25 @@ describe("TasksPanel", () => {
 
 	describe("pauseTask / resumeTask", () => {
 		interface WorkspaceControlTestCase {
-			method: string;
+			method: typeof TasksApi.pauseTask | typeof TasksApi.resumeTask;
 			clientMethod: keyof MockClient;
 			taskOverrides: Partial<Task>;
 		}
 		it.each<WorkspaceControlTestCase>([
 			{
-				method: "pauseTask",
+				method: TasksApi.pauseTask,
 				clientMethod: "stopWorkspace",
 				taskOverrides: { workspace_id: "ws-1" },
 			},
 			{
-				method: "resumeTask",
+				method: TasksApi.resumeTask,
 				clientMethod: "startWorkspace",
 				taskOverrides: { workspace_id: "ws-1", template_version_id: "tv-1" },
 			},
 		])(
-			"$method calls $clientMethod",
+			"$method.method calls $clientMethod",
 			async ({ method, clientMethod, taskOverrides }) => {
+				const h = createHarness();
 				h.client.getTask.mockResolvedValue(task(taskOverrides));
 				h.client.getTasks.mockResolvedValue([]);
 
@@ -452,9 +352,10 @@ describe("TasksPanel", () => {
 		);
 
 		it("pauseTask fails when no workspace", async () => {
+			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task({ workspace_id: null }));
 
-			const res = await h.request("pauseTask", { taskId: "task-1" });
+			const res = await h.request(TasksApi.pauseTask, { taskId: "task-1" });
 
 			expect(res.success).toBe(false);
 			expect(res.error).toContain("no workspace");
@@ -464,7 +365,7 @@ describe("TasksPanel", () => {
 	describe("viewInCoder / viewLogs", () => {
 		interface OpenExternalTestCase {
 			name: string;
-			method: string;
+			method: "viewInCoder" | "viewLogs";
 			taskOverrides: Partial<Task>;
 			expectedUrl: string;
 		}
@@ -496,6 +397,7 @@ describe("TasksPanel", () => {
 				expectedUrl: "https://coder.example.com/tasks/alice/task-1",
 			},
 		])("$name", async ({ method, taskOverrides, expectedUrl }) => {
+			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task(taskOverrides));
 
 			await h.command(method, { taskId: "task-1" });
@@ -506,6 +408,7 @@ describe("TasksPanel", () => {
 		});
 
 		it("viewInCoder does nothing when not logged in", async () => {
+			const h = createHarness();
 			h.client.getHost.mockReturnValue(undefined);
 
 			await h.command("viewInCoder", { taskId: "task-123" });
@@ -516,6 +419,7 @@ describe("TasksPanel", () => {
 
 	describe("downloadLogs", () => {
 		it("saves logs to file", async () => {
+			const h = createHarness();
 			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
 			const saveUri = vscode.Uri.file("/downloads/logs.txt");
 			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(saveUri);
@@ -529,6 +433,7 @@ describe("TasksPanel", () => {
 		});
 
 		it("shows warning when no logs", async () => {
+			const h = createHarness();
 			h.client.getTaskLogs.mockResolvedValue([]);
 
 			await h.command("downloadLogs", { taskId: "task-1" });
@@ -539,6 +444,7 @@ describe("TasksPanel", () => {
 		});
 
 		it("does nothing when user cancels", async () => {
+			const h = createHarness();
 			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
 			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(undefined);
 
@@ -550,6 +456,7 @@ describe("TasksPanel", () => {
 
 	describe("sendTaskMessage", () => {
 		it("shows not supported message", async () => {
+			const h = createHarness();
 			await h.command("sendTaskMessage", {
 				taskId: "task-1",
 				message: "hello",
@@ -562,31 +469,32 @@ describe("TasksPanel", () => {
 	});
 
 	describe("public methods", () => {
-		interface PublicMethodTestCase {
-			method: string;
-			expectedType: string;
-		}
-		it.each<PublicMethodTestCase>([
-			{ method: "showCreateForm", expectedType: "showCreateForm" },
-			{ method: "refresh", expectedType: "refresh" },
-		])("$method sends notification", ({ method, expectedType }) => {
-			(h.panel as unknown as Record<string, () => void>)[method]();
+		it("showCreateForm sends notification", () => {
+			const h = createHarness();
+			h.panel.showCreateForm();
+			expect(h.messages()).toContainEqual({ type: "showCreateForm" });
+		});
 
-			expect(h.messages()).toContainEqual({ type: expectedType });
+		it("refresh sends notification", () => {
+			const h = createHarness();
+			h.panel.refresh();
+			expect(h.messages()).toContainEqual({ type: "refresh" });
 		});
 	});
 
 	describe("error handling", () => {
 		it("returns error on request failure", async () => {
+			const h = createHarness();
 			h.client.getTasks.mockRejectedValue(new Error("Network error"));
 
-			const res = await h.request("init");
+			const res = await h.request(TasksApi.init);
 
 			expect(res).toMatchObject({ success: false, error: "Network error" });
 		});
 
 		it("handles unknown methods", async () => {
-			const res = await h.request("unknownMethod");
+			const h = createHarness();
+			const res = await h.request({ method: "unknownMethod" });
 
 			expect(res.success).toBe(false);
 			expect(res.error).toContain("Unknown method");

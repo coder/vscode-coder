@@ -5,19 +5,10 @@ import type {
 	TaskState,
 	TaskStatus,
 	Template,
-	WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 
 // Re-export SDK types for convenience
-export type {
-	Preset,
-	Task,
-	TaskLogEntry,
-	TaskState,
-	TaskStatus,
-	Template,
-	WorkspaceStatus,
-};
+export type { Preset, Task, TaskLogEntry, TaskState, TaskStatus, Template };
 
 /**
  * Combined template and preset information for the create task form.
@@ -44,78 +35,57 @@ export type LogsStatus = "ok" | "not_available" | "error";
 /**
  * Full details for a selected task, including logs and action availability.
  */
-export interface TaskDetails {
+export interface TaskDetails extends TaskActions {
 	task: Task;
 	logs: TaskLogEntry[];
 	logsStatus: LogsStatus;
-	canResume: boolean;
-	canPause: boolean;
 }
 
 export interface TaskActions {
 	canPause: boolean;
+	pauseDisabled: boolean;
 	canResume: boolean;
 }
 
-const RESUMABLE_STATUSES: readonly WorkspaceStatus[] = [
-	"stopped",
-	"failed",
-	"canceled",
-];
-
-const PAUSED_STATUSES: readonly WorkspaceStatus[] = [
-	"stopped",
-	"stopping",
-	"canceled",
-];
-
-const INITIALIZING_STATUSES: readonly WorkspaceStatus[] = [
-	"starting",
+const PAUSABLE_STATUSES: readonly TaskStatus[] = [
+	"active",
+	"initializing",
 	"pending",
+	"error",
+	"unknown",
+];
+
+const PAUSE_DISABLED_STATUSES: readonly TaskStatus[] = [
+	"pending",
+	"initializing",
+];
+
+const RESUMABLE_STATUSES: readonly TaskStatus[] = [
+	"paused",
+	"error",
+	"unknown",
 ];
 
 export function getTaskActions(task: Task): TaskActions {
 	const hasWorkspace = task.workspace_id !== null;
-	const status = task.workspace_status;
+	const status = task.status;
 	return {
-		canPause: hasWorkspace && status === "running",
-		canResume: hasWorkspace && !!status && RESUMABLE_STATUSES.includes(status),
+		canPause: hasWorkspace && PAUSABLE_STATUSES.includes(status),
+		pauseDisabled: PAUSE_DISABLED_STATUSES.includes(status),
+		canResume: hasWorkspace && RESUMABLE_STATUSES.includes(status),
 	};
 }
 
-/** UI state derived from task status, state, and workspace status */
-export type TaskUIState =
-	| "working"
-	| "idle"
-	| "complete"
-	| "error"
-	| "paused"
-	| "initializing";
+/**
+ * Task statuses where logs won't change (stable/terminal states).
+ * "complete" is a TaskState (sub-state of active), checked separately.
+ */
+const STABLE_STATUSES: readonly TaskStatus[] = ["error", "paused"];
 
-/** Compute the UI state from a Task object */
-export function getTaskUIState(task: Task): TaskUIState {
-	const taskState = task.current_state?.state;
-	const workspaceStatus = task.workspace_status;
-
-	if (task.status === "error" || taskState === "failed") {
-		return "error";
-	}
-
-	if (workspaceStatus && PAUSED_STATUSES.includes(workspaceStatus)) {
-		return "paused";
-	}
-
-	if (workspaceStatus && INITIALIZING_STATUSES.includes(workspaceStatus)) {
-		return "initializing";
-	}
-
-	if (task.status === "active" && workspaceStatus === "running" && taskState) {
-		return taskState;
-	}
-
-	if (taskState === "complete") {
-		return "complete";
-	}
-
-	return "idle";
+/** Whether a task is in a stable state where its logs won't change. */
+export function isStableTask(task: Task): boolean {
+	return (
+		STABLE_STATUSES.includes(task.status) ||
+		(task.current_state !== null && task.current_state.state !== "working")
+	);
 }

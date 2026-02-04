@@ -19,7 +19,7 @@ import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscodeProposed";
-import { TasksPanel } from "./webviews/tasks/TasksPanel";
+import { TasksPanel } from "./webviews/tasks/tasksPanel";
 import {
 	WorkspaceProvider,
 	WorkspaceQuery,

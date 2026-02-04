@@ -17,20 +17,18 @@ import {
 
 import type { Task, TaskDetails, TaskLogEntry, TaskTemplate } from "./types";
 
-// --- Requests ---
-
 export interface InitResponse {
-	tasks: Task[];
-	templates: TaskTemplate[];
+	tasks: readonly Task[];
+	templates: readonly TaskTemplate[];
 	baseUrl: string;
 	tasksSupported: boolean;
 }
 
-export const init = defineRequest<void, InitResponse>("init");
-export const getTasks = defineRequest<void, Task[]>("getTasks");
-export const getTemplates = defineRequest<void, TaskTemplate[]>("getTemplates");
-export const getTask = defineRequest<{ taskId: string }, Task>("getTask");
-export const getTaskDetails = defineRequest<{ taskId: string }, TaskDetails>(
+const init = defineRequest<void, InitResponse>("init");
+const getTasks = defineRequest<void, Task[]>("getTasks");
+const getTemplates = defineRequest<void, TaskTemplate[]>("getTemplates");
+const getTask = defineRequest<{ taskId: string }, Task>("getTask");
+const getTaskDetails = defineRequest<{ taskId: string }, TaskDetails>(
 	"getTaskDetails",
 );
 
@@ -39,31 +37,25 @@ export interface CreateTaskParams {
 	prompt: string;
 	presetId?: string;
 }
-export const createTask = defineRequest<CreateTaskParams, Task>("createTask");
+const createTask = defineRequest<CreateTaskParams, Task>("createTask");
 
-export const deleteTask = defineRequest<{ taskId: string }, void>("deleteTask");
-export const pauseTask = defineRequest<{ taskId: string }, void>("pauseTask");
-export const resumeTask = defineRequest<{ taskId: string }, void>("resumeTask");
+const deleteTask = defineRequest<{ taskId: string }, void>("deleteTask");
+const pauseTask = defineRequest<{ taskId: string }, void>("pauseTask");
+const resumeTask = defineRequest<{ taskId: string }, void>("resumeTask");
 
-// --- Commands ---
-
-export const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
-export const viewLogs = defineCommand<{ taskId: string }>("viewLogs");
-export const downloadLogs = defineCommand<{ taskId: string }>("downloadLogs");
-export const sendTaskMessage = defineCommand<{
+const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
+const viewLogs = defineCommand<{ taskId: string }>("viewLogs");
+const downloadLogs = defineCommand<{ taskId: string }>("downloadLogs");
+const sendTaskMessage = defineCommand<{
 	taskId: string;
 	message: string;
 }>("sendTaskMessage");
 
-// --- Notifications ---
-
-export const taskUpdated = defineNotification<Task>("taskUpdated");
-export const tasksUpdated = defineNotification<Task[]>("tasksUpdated");
-export const logsAppend = defineNotification<TaskLogEntry[]>("logsAppend");
-export const refresh = defineNotification<void>("refresh");
-export const showCreateForm = defineNotification<void>("showCreateForm");
-
-// --- Grouped export ---
+const taskUpdated = defineNotification<Task>("taskUpdated");
+const tasksUpdated = defineNotification<Task[]>("tasksUpdated");
+const logsAppend = defineNotification<TaskLogEntry[]>("logsAppend");
+const refresh = defineNotification<void>("refresh");
+const showCreateForm = defineNotification<void>("showCreateForm");
 
 export const TasksApi = {
 	// Requests
