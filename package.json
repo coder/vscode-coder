@@ -32,6 +32,7 @@
 		"test:extension": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs --project extension",
 		"test:integration": "tsc -p test --outDir out && node esbuild.mjs && vscode-test",
 		"test:webview": "vitest --project webview",
+		"typecheck": "concurrently -g \"tsc --noEmit\" \"tsc --noEmit -p test\"",
 		"vscode:prepublish": "pnpm build:production",
 		"watch": "pnpm watch:all",
 		"watch:all": "concurrently -n extension,webviews \"pnpm watch:extension\" \"pnpm watch:webviews\"",
@@ -182,6 +183,11 @@
 					"id": "coder",
 					"title": "Coder Remote",
 					"icon": "media/logo-white.svg"
+				},
+				{
+					"id": "coderTasks",
+					"title": "Coder Tasks",
+					"icon": "media/tasks-logo.svg"
 				}
 			]
 		},
@@ -199,13 +205,15 @@
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
 					"when": "coder.authenticated && coder.isOwner"
-				},
+				}
+			],
+			"coderTasks": [
 				{
 					"type": "webview",
 					"id": "coder.tasksPanel",
-					"name": "Tasks",
-					"icon": "media/logo-white.svg",
-					"when": "coder.authenticated && coder.devMode"
+					"name": "Coder Tasks",
+					"icon": "media/tasks-logo.svg",
+					"when": "coder.authenticated"
 				}
 			]
 		},
@@ -308,6 +316,12 @@
 				"command": "coder.manageCredentials",
 				"title": "Manage Credentials",
 				"category": "Coder"
+			},
+			{
+				"command": "coder.tasks.refresh",
+				"title": "Refresh Tasks",
+				"category": "Coder",
+				"icon": "$(refresh)"
 			}
 		],
 		"menus": {
@@ -370,6 +384,10 @@
 				},
 				{
 					"command": "coder.manageCredentials"
+				},
+				{
+					"command": "coder.tasks.refresh",
+					"when": "false"
 				}
 			],
 			"view/title": [
@@ -404,6 +422,11 @@
 					"command": "coder.searchAllWorkspaces",
 					"when": "coder.authenticated && view == allWorkspaces",
 					"group": "navigation@3"
+				},
+				{
+					"command": "coder.tasks.refresh",
+					"when": "coder.authenticated && view == coder.tasksPanel",
+					"group": "navigation@1"
 				}
 			],
 			"view/item/context": [
@@ -448,6 +471,7 @@
 	},
 	"dependencies": {
 		"@peculiar/x509": "^1.14.3",
+		"@repo/shared": "workspace:*",
 		"axios": "1.13.4",
 		"date-fns": "^4.1.0",
 		"eventsource": "^4.1.0",
@@ -478,11 +502,12 @@
 		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^8.53.1",
 		"@typescript-eslint/parser": "^8.53.1",
-		"@vitejs/plugin-react-swc": "catalog:",
+		"@vitejs/plugin-react": "catalog:",
 		"@vitest/coverage-v8": "^4.0.16",
 		"@vscode/test-cli": "^0.0.12",
 		"@vscode/test-electron": "^2.5.2",
 		"@vscode/vsce": "^3.7.1",
+		"babel-plugin-react-compiler": "catalog:",
 		"bufferutil": "^4.1.0",
 		"coder": "github:coder/coder#main",
 		"concurrently": "^9.2.1",
@@ -495,6 +520,7 @@
 		"eslint-plugin-import-x": "^4.16.1",
 		"eslint-plugin-package-json": "^0.88.2",
 		"eslint-plugin-react": "^7.37.0",
+		"eslint-plugin-react-compiler": "catalog:",
 		"eslint-plugin-react-hooks": "^5.0.0",
 		"globals": "^17.0.0",
 		"jsdom": "^27.4.0",
@@ -512,7 +538,7 @@
 	"extensionPack": [
 		"ms-vscode-remote.remote-ssh"
 	],
-	"packageManager": "pnpm@10.27.0",
+	"packageManager": "pnpm@10.28.2",
 	"engines": {
 		"vscode": "^1.95.0",
 		"node": ">= 20"

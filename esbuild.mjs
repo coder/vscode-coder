@@ -27,9 +27,9 @@ const buildOptions = {
 	target: "node20",
 	format: "cjs",
 	mainFields: ["module", "main"],
-	// Force openpgp to use CJS. The ESM version uses import.meta.url which is
-	// undefined when bundled to CJS, causing runtime errors.
 	alias: {
+		// Force openpgp to use CJS. The ESM version uses import.meta.url which is
+		// undefined when bundled to CJS, causing runtime errors.
 		openpgp: "./node_modules/openpgp/dist/node/openpgp.min.cjs",
 	},
 	external: ["vscode"],

@@ -1,4 +1,4 @@
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 import { defineConfig, type UserConfig } from "vite";
 
@@ -14,7 +14,15 @@ export function createWebviewConfig(
 	const production = process.env.NODE_ENV === "production";
 
 	return defineConfig({
-		plugins: [react()],
+		// Use relative URLs for assets (fonts, etc.) in CSS
+		base: "./",
+		plugins: [
+			react({
+				babel: {
+					plugins: [["babel-plugin-react-compiler", {}]],
+				},
+			}),
+		],
 		build: {
 			outDir: resolve(dirname, `../../dist/webviews/${webviewName}`),
 			emptyOutDir: true,
@@ -27,7 +35,13 @@ export function createWebviewConfig(
 				input: resolve(dirname, "src/index.tsx"),
 				output: {
 					entryFileNames: "index.js",
-					assetFileNames: "index.[ext]",
+					// Keep fonts with original names for proper CSS references
+					assetFileNames: (assetInfo) => {
+						if (assetInfo.names?.[0]?.endsWith(".ttf")) {
+							return "codicon.ttf";
+						}
+						return "index.[ext]";
+					},
 				},
 			},
 			// Keeps extension size down; build locally to map stack traces

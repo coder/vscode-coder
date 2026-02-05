@@ -9,15 +9,19 @@
 		"dev": "vite build --watch"
 	},
 	"dependencies": {
+		"@repo/shared": "workspace:*",
 		"@repo/webview-shared": "workspace:*",
+		"@tanstack/react-query": "catalog:",
 		"@vscode-elements/react-elements": "catalog:",
+		"@vscode/codicons": "catalog:",
 		"react": "catalog:",
 		"react-dom": "catalog:"
 	},
 	"devDependencies": {
 		"@types/react": "catalog:",
 		"@types/react-dom": "catalog:",
-		"@vitejs/plugin-react-swc": "catalog:",
+		"@vitejs/plugin-react": "catalog:",
+		"babel-plugin-react-compiler": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:"
 	}

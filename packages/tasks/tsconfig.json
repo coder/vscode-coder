@@ -1,10 +1,11 @@
 {
-	"extends": "../tsconfig.webview.json",
+	"extends": "../tsconfig.packages.json",
 	"compilerOptions": {
 		"paths": {
+			"@repo/shared": ["../shared/src"],
 			"@repo/webview-shared": ["../webview-shared/src"]
 		}
 	},
 	"include": ["src"],
-	"references": [{ "path": "../webview-shared" }]
+	"references": [{ "path": "../shared" }, { "path": "../webview-shared" }]
 }

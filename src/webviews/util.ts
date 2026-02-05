@@ -24,6 +24,8 @@ export function getWebviewHtml(
 		vscode.Uri.joinPath(baseUri, "index.css"),
 	);
 
+	// The vscode-elements library looks for a link element with "vscode-codicon-stylesheet"
+	// ID to load the codicons font inside its shadow DOM components
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -31,7 +33,7 @@ export function getWebviewHtml(
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
-  <link rel="stylesheet" href="${styleUri.toString()}">
+  <link id="vscode-codicon-stylesheet" rel="stylesheet" href="${styleUri.toString()}" nonce="${nonce}">
 </head>
 <body>
   <div id="root"></div>

@@ -6,6 +6,8 @@
 		// Both mappings needed: exact match for root, wildcard for subpaths
 		"paths": {
 			"@/*": ["src/*"],
+			"@repo/shared": ["packages/shared/src/index.ts"],
+			"@repo/shared/*": ["packages/shared/src/*"],
 			"@repo/webview-shared": ["packages/webview-shared/src/index.ts"],
 			"@repo/webview-shared/*": ["packages/webview-shared/src/*"]
 		}
