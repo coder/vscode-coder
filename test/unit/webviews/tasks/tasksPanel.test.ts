@@ -10,7 +10,11 @@ import { createAxiosError, createMockLogger } from "../../../mocks/testHelpers";
 
 import type { Task } from "coder/site/src/api/typesGenerated";
 
-type TasksPanelClientMethods =
+import type { CoderApi } from "@/api/coderApi";
+
+/** Subset of CoderApi used by TasksPanel */
+type TasksPanelClient = Pick<
+	CoderApi,
 	| "getTasks"
 	| "getTask"
 	| "getTaskLogs"
@@ -20,9 +24,10 @@ type TasksPanelClientMethods =
 	| "getTemplateVersionPresets"
 	| "startWorkspace"
 	| "stopWorkspace"
-	| "getHost";
+	| "getHost"
+>;
 
-type MockClient = Record<TasksPanelClientMethods, ReturnType<typeof vi.fn>>;
+type MockClient = { [K in keyof TasksPanelClient]: ReturnType<typeof vi.fn> };
 
 function createClient(baseUrl = "https://coder.example.com"): MockClient {
 	return {
@@ -59,17 +64,20 @@ function createHarness(): Harness {
 	const client = createClient();
 	const panel = new TasksPanel(
 		vscode.Uri.file("/test/extension"),
-		client as unknown as ConstructorParameters<typeof TasksPanel>[1],
+		// Cast needed: mock only implements the subset of CoderApi methods used by TasksPanel
+		client as unknown as CoderApi,
 		createMockLogger(),
 	);
 
 	const posted: unknown[] = [];
 	let handler: ((msg: unknown) => void) | null = null;
 
-	const webview = {
+	const webview: vscode.WebviewView = {
+		viewType: "coder.tasksPanel",
 		webview: {
 			options: { enableScripts: false, localResourceRoots: [] },
 			html: "",
+			cspSource: "",
 			postMessage: vi.fn((msg: unknown) => {
 				posted.push(msg);
 				return Promise.resolve(true);
@@ -81,12 +89,13 @@ function createHarness(): Harness {
 			asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
 		},
 		visible: true,
+		show: vi.fn(),
 		onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
 		onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
 	};
 
 	panel.resolveWebviewView(
-		webview as unknown as vscode.WebviewView,
+		webview,
 		{} as vscode.WebviewViewResolveContext,
 		{} as vscode.CancellationToken,
 	);
@@ -460,18 +469,16 @@ describe("TasksPanel", () => {
 	});
 
 	describe("public methods", () => {
-		interface PublicMethodTestCase {
-			method: string;
-			expectedType: string;
-		}
-		it.each<PublicMethodTestCase>([
-			{ method: "showCreateForm", expectedType: "showCreateForm" },
-			{ method: "refresh", expectedType: "refresh" },
-		])("$method sends notification", ({ method, expectedType }) => {
+		it("showCreateForm sends notification", () => {
 			const h = createHarness();
-			(h.panel as unknown as Record<string, () => void>)[method]();
+			h.panel.showCreateForm();
+			expect(h.messages()).toContainEqual({ type: "showCreateForm" });
+		});
 
-			expect(h.messages()).toContainEqual({ type: expectedType });
+		it("refresh sends notification", () => {
+			const h = createHarness();
+			h.panel.refresh();
+			expect(h.messages()).toContainEqual({ type: "refresh" });
 		});
 	});
 

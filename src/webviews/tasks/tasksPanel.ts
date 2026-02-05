@@ -378,7 +378,7 @@ export class TasksPanel
 	}
 
 	private async fetchTasksWithStatus(): Promise<{
-		tasks: Task[];
+		tasks: readonly Task[];
 		supported: boolean;
 	}> {
 		if (!this.client.getHost()) {
@@ -387,8 +387,7 @@ export class TasksPanel
 
 		try {
 			const tasks = await this.client.getTasks({ owner: "me" });
-			// SDK returns readonly array, but we need mutable for IPC types
-			return { tasks: tasks as Task[], supported: true };
+			return { tasks, supported: true };
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 404) {
 				return { tasks: [], supported: false };

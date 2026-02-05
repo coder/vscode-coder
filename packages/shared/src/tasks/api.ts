@@ -18,8 +18,8 @@ import {
 import type { Task, TaskDetails, TaskLogEntry, TaskTemplate } from "./types";
 
 export interface InitResponse {
-	tasks: Task[];
-	templates: TaskTemplate[];
+	tasks: readonly Task[];
+	templates: readonly TaskTemplate[];
 	baseUrl: string;
 	tasksSupported: boolean;
 }
