@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
+import { logger } from "@repo/webview-shared/logger";
+import { useRef, useState } from "react";
 
 import { useTasksApi } from "../hooks/useTasksApi";
 
@@ -28,95 +29,99 @@ export function useTaskMenuItems({
 	onDeleted,
 }: UseTaskMenuItemsOptions): UseTaskMenuItemsResult {
 	const api = useTasksApi();
-	const [isDeleting, setIsDeleting] = useState(false);
 	const [isPausing, setIsPausing] = useState(false);
 	const [isResuming, setIsResuming] = useState(false);
+	const [isDeleting, setIsDeleting] = useState(false);
 
-	const handlePause = useCallback(async () => {
-		if (isPausing) return;
+	// Refs guard against double-clicks while an action is in-flight
+	const isPausingRef = useRef(false);
+	const isResumingRef = useRef(false);
+	const isDeletingRef = useRef(false);
+
+	const handlePause = async () => {
+		if (isPausingRef.current) return;
+		isPausingRef.current = true;
 		setIsPausing(true);
 		try {
 			await api.pauseTask(task.id);
+		} catch (err) {
+			logger.error("Failed to pause task:", err);
 		} finally {
+			isPausingRef.current = false;
 			setIsPausing(false);
 		}
-	}, [api, task.id, isPausing]);
+	};
 
-	const handleResume = useCallback(async () => {
-		if (isResuming) return;
+	const handleResume = async () => {
+		if (isResumingRef.current) return;
+		isResumingRef.current = true;
 		setIsResuming(true);
 		try {
 			await api.resumeTask(task.id);
+		} catch (err) {
+			logger.error("Failed to resume task:", err);
 		} finally {
+			isResumingRef.current = false;
 			setIsResuming(false);
 		}
-	}, [api, task.id, isResuming]);
+	};
 
-	const handleDelete = useCallback(async () => {
-		if (isDeleting) return;
+	const handleDelete = async () => {
+		if (isDeletingRef.current) return;
+		isDeletingRef.current = true;
 		setIsDeleting(true);
 		try {
 			await api.deleteTask(task.id);
 			onDeleted?.();
+		} catch (err) {
+			logger.error("Failed to delete task:", err);
 		} finally {
+			isDeletingRef.current = false;
 			setIsDeleting(false);
 		}
-	}, [api, task.id, isDeleting, onDeleted]);
+	};
 
-	const menuItems = useMemo<ActionMenuItem[]>(() => {
-		const items: ActionMenuItem[] = [];
+	const menuItems: ActionMenuItem[] = [];
 
-		if (canPause) {
-			items.push({
-				label: "Pause Task",
-				icon: "debug-pause",
-				onClick: () => void handlePause(),
-				loading: isPausing,
-			});
-		}
-
-		if (canResume) {
-			items.push({
-				label: "Resume Task",
-				icon: "debug-start",
-				onClick: () => void handleResume(),
-				loading: isResuming,
-			});
-		}
-
-		items.push({
-			label: "View in Coder",
-			icon: "link-external",
-			onClick: () => void api.viewInCoder(task.id),
+	if (canPause) {
+		menuItems.push({
+			label: "Pause Task",
+			icon: "debug-pause",
+			onClick: () => void handlePause(),
+			loading: isPausing,
 		});
+	}
 
-		items.push({
-			label: "Download Logs",
-			icon: "cloud-download",
-			onClick: () => void api.downloadLogs(task.id),
+	if (canResume) {
+		menuItems.push({
+			label: "Resume Task",
+			icon: "debug-start",
+			onClick: () => void handleResume(),
+			loading: isResuming,
 		});
+	}
 
-		items.push({
-			label: "Delete",
-			icon: "trash",
-			onClick: () => void handleDelete(),
-			danger: true,
-			loading: isDeleting,
-		});
+	menuItems.push({
+		label: "View in Coder",
+		icon: "link-external",
+		onClick: () => void api.viewInCoder(task.id),
+	});
 
-		return items;
-	}, [
-		api,
-		canPause,
-		canResume,
-		handlePause,
-		handleResume,
-		handleDelete,
-		isPausing,
-		isResuming,
-		isDeleting,
-		task.id,
-	]);
+	menuItems.push({
+		label: "Download Logs",
+		icon: "cloud-download",
+		onClick: () => void api.downloadLogs(task.id),
+	});
+
+	menuItems.push({ separator: true });
+
+	menuItems.push({
+		label: "Delete",
+		icon: "trash",
+		onClick: () => void handleDelete(),
+		danger: true,
+		loading: isDeleting,
+	});
 
 	const isLoading = isDeleting || isPausing || isResuming;
 

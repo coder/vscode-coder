@@ -7,8 +7,7 @@ import {
 	TaskItem,
 	TaskList,
 } from "../../../packages/tasks/src/components";
-
-import type { Task } from "@repo/shared";
+import { task } from "../../mocks/tasks";
 
 vi.stubGlobal(
 	"acquireVsCodeApi",
@@ -19,44 +18,10 @@ vi.stubGlobal(
 	})),
 );
 
-function createMockTask(overrides: Partial<Task> = {}): Task {
-	return {
-		id: "task-1",
-		organization_id: "org-1",
-		owner_id: "owner-1",
-		owner_name: "testuser",
-		name: "test-task",
-		display_name: "Test Task",
-		template_id: "template-1",
-		template_version_id: "version-1",
-		template_name: "test-template",
-		template_display_name: "Test Template",
-		template_icon: "/icon.svg",
-		workspace_id: "workspace-1",
-		workspace_name: "test-workspace",
-		workspace_status: "running",
-		workspace_agent_id: null,
-		workspace_agent_lifecycle: null,
-		workspace_agent_health: null,
-		workspace_app_id: null,
-		initial_prompt: "Test prompt",
-		status: "active",
-		current_state: {
-			timestamp: "2024-01-01T00:00:00Z",
-			state: "working",
-			message: "Processing",
-			uri: "",
-		},
-		created_at: "2024-01-01T00:00:00Z",
-		updated_at: "2024-01-01T00:00:00Z",
-		...overrides,
-	};
-}
-
 describe("StatusIndicator", () => {
-	it("renders with active status", () => {
+	it("renders with active/working status", () => {
 		const { container } = render(
-			<StatusIndicator status="active" state={null} />,
+			<StatusIndicator task={task({ status: "active" })} />,
 		);
 		const dot = container.querySelector(".status-dot");
 		expect(dot).toBeTruthy();
@@ -65,16 +30,18 @@ describe("StatusIndicator", () => {
 
 	it("renders with error status", () => {
 		const { container } = render(
-			<StatusIndicator status="error" state={null} />,
+			<StatusIndicator task={task({ status: "error", current_state: null })} />,
 		);
 		const dot = container.querySelector(".status-dot");
 		expect(dot).toBeTruthy();
 		expect(dot?.classList.contains("error")).toBe(true);
 	});
 
-	it("renders with paused status", () => {
+	it("renders with paused workspace", () => {
 		const { container } = render(
-			<StatusIndicator status="paused" state={null} />,
+			<StatusIndicator
+				task={task({ workspace_status: "stopped", current_state: null })}
+			/>,
 		);
 		const dot = container.querySelector(".status-dot");
 		expect(dot).toBeTruthy();
@@ -83,16 +50,29 @@ describe("StatusIndicator", () => {
 
 	it("renders with pending status", () => {
 		const { container } = render(
-			<StatusIndicator status="pending" state={null} />,
+			<StatusIndicator
+				task={task({ workspace_status: "pending", current_state: null })}
+			/>,
 		);
 		const dot = container.querySelector(".status-dot");
 		expect(dot).toBeTruthy();
 		expect(dot?.classList.contains("initializing")).toBe(true);
 	});
 
-	it("uses task state over task status when available", () => {
+	it("uses task state when workspace is running", () => {
 		const { container } = render(
-			<StatusIndicator status="active" state="complete" />,
+			<StatusIndicator
+				task={task({
+					status: "active",
+					workspace_status: "running",
+					current_state: {
+						state: "complete",
+						message: "",
+						timestamp: "",
+						uri: "",
+					},
+				})}
+			/>,
 		);
 		const dot = container.querySelector(".status-dot");
 		expect(dot).toBeTruthy();
@@ -101,11 +81,19 @@ describe("StatusIndicator", () => {
 
 	it("renders failed state", () => {
 		const { container } = render(
-			<StatusIndicator status="active" state="failed" />,
+			<StatusIndicator
+				task={task({
+					current_state: {
+						state: "failed",
+						message: "",
+						timestamp: "",
+						uri: "",
+					},
+				})}
+			/>,
 		);
 		const dot = container.querySelector(".status-dot");
 		expect(dot).toBeTruthy();
-		// Failed maps to error class
 		expect(dot?.classList.contains("error")).toBe(true);
 	});
 });
@@ -130,32 +118,36 @@ describe("TaskItem", () => {
 	const onSelect = vi.fn();
 
 	it("renders task name", () => {
-		const task = createMockTask({ display_name: "My Task" });
-		render(<TaskItem task={task} onSelect={onSelect} />);
+		render(
+			<TaskItem task={task({ display_name: "My Task" })} onSelect={onSelect} />,
+		);
 
 		expect(screen.getByText("My Task")).toBeTruthy();
 	});
 
 	it("renders status indicator", () => {
-		const task = createMockTask();
-		const { container } = render(<TaskItem task={task} onSelect={onSelect} />);
+		const { container } = render(
+			<TaskItem task={task()} onSelect={onSelect} />,
+		);
 
 		expect(container.querySelector(".status-dot")).toBeTruthy();
 	});
 
 	it("renders action menu", () => {
-		const task = createMockTask();
-		const { container } = render(<TaskItem task={task} onSelect={onSelect} />);
+		const { container } = render(
+			<TaskItem task={task()} onSelect={onSelect} />,
+		);
 
 		expect(container.querySelector(".action-menu")).toBeTruthy();
 	});
 
 	it("uses task.name as fallback when display_name is empty", () => {
-		const task = createMockTask({
-			display_name: "",
-			name: "fallback-name",
-		});
-		render(<TaskItem task={task} onSelect={onSelect} />);
+		render(
+			<TaskItem
+				task={task({ display_name: "", name: "fallback-name" })}
+				onSelect={onSelect}
+			/>,
+		);
 
 		expect(screen.getByText("fallback-name")).toBeTruthy();
 	});
@@ -172,8 +164,8 @@ describe("TaskList", () => {
 
 	it("renders task list", () => {
 		const tasks = [
-			createMockTask({ id: "task-1", display_name: "Task 1" }),
-			createMockTask({ id: "task-2", display_name: "Task 2" }),
+			task({ id: "task-1", display_name: "Task 1" }),
+			task({ id: "task-2", display_name: "Task 2" }),
 		];
 		render(<TaskList tasks={tasks} onSelectTask={onSelectTask} />);
 

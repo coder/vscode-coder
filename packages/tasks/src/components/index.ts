@@ -1,7 +1,7 @@
 export { ActionMenu } from "./ActionMenu";
 export type { ActionMenuItem } from "./ActionMenu";
-export { CollapsibleSection } from "./CollapsibleSection";
 export { CreateTaskSection } from "./CreateTaskSection";
+export { StatePanel } from "./StatePanel";
 export { ErrorState } from "./ErrorState";
 export { NoTemplateState } from "./NoTemplateState";
 export { NotSupportedState } from "./NotSupportedState";

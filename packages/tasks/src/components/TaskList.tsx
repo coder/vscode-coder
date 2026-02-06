@@ -3,7 +3,7 @@ import { TaskItem } from "./TaskItem";
 import type { Task } from "@repo/shared";
 
 interface TaskListProps {
-	tasks: Task[];
+	tasks: readonly Task[];
 	onSelectTask: (taskId: string) => void;
 }
 

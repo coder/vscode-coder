@@ -11,7 +11,7 @@ import { useTasksApi } from "../hooks/useTasksApi";
 import type { TaskTemplate } from "@repo/shared";
 
 interface CreateTaskSectionProps {
-	templates: TaskTemplate[];
+	templates: readonly TaskTemplate[];
 }
 
 export function CreateTaskSection({ templates }: CreateTaskSectionProps) {

@@ -1,6 +1,5 @@
 import { getTaskActions, type Task } from "@repo/shared";
 import { VscodeProgressRing } from "@vscode-elements/react-elements";
-import { useCallback } from "react";
 
 import { ActionMenu } from "./ActionMenu";
 import { StatusIndicator } from "./StatusIndicator";
@@ -22,9 +21,7 @@ export function TaskItem({ task, onSelect }: TaskItemProps) {
 	const actionLabel = getLoadingLabel(isPausing, isResuming, isDeleting);
 	const subtitle = task.current_state?.message || "No message available";
 
-	const handleSelect = useCallback(() => {
-		onSelect(task.id);
-	}, [task.id, onSelect]);
+	const handleSelect = () => onSelect(task.id);
 
 	return (
 		<div
@@ -43,11 +40,7 @@ export function TaskItem({ task, onSelect }: TaskItemProps) {
 				{isLoading ? (
 					<VscodeProgressRing className="task-item-spinner" />
 				) : (
-					<StatusIndicator
-						status={task.status}
-						state={task.current_state?.state}
-						workspaceStatus={task.workspace_status}
-					/>
+					<StatusIndicator task={task} />
 				)}
 			</div>
 			<div className="task-item-content">
@@ -57,11 +50,9 @@ export function TaskItem({ task, onSelect }: TaskItemProps) {
 						<span className="task-action-label">{actionLabel}</span>
 					)}
 				</span>
-				{subtitle && (
-					<span className="task-subtitle" title={task.current_state?.message}>
-						{subtitle}
-					</span>
-				)}
+				<span className="task-subtitle" title={subtitle}>
+					{subtitle}
+				</span>
 			</div>
 			<div
 				className="task-item-menu"

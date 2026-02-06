@@ -1,76 +1,31 @@
-import type { TaskState, TaskStatus, WorkspaceStatus } from "@repo/shared";
+import { getTaskUIState, type Task, type TaskUIState } from "@repo/shared";
 
-interface StatusInfo {
-	className: string;
-	title: string;
-}
-
-const STATUS_MAP: Record<string, StatusInfo> = {
-	error: { className: "error", title: "Error" },
-	initializing: { className: "initializing", title: "Initializing" },
-	running: { className: "running", title: "Running" },
-	ready: { className: "ready", title: "Ready" },
-	paused: { className: "paused", title: "Paused" },
-	unknown: { className: "unknown", title: "Unknown" },
+const UI_STATE_TO_CLASS: Record<TaskUIState, string> = {
+	working: "running",
+	idle: "ready",
+	complete: "ready",
+	error: "error",
+	paused: "paused",
+	initializing: "initializing",
 };
 
-function getStatusKey(
-	status: TaskStatus,
-	state?: TaskState | null,
-	workspaceStatus?: WorkspaceStatus | null,
-): string {
-	if (
-		state === "failed" ||
-		status === "error" ||
-		workspaceStatus === "failed"
-	) {
-		return "error";
-	}
-
-	if (
-		status === "initializing" ||
-		status === "pending" ||
-		workspaceStatus === "starting" ||
-		workspaceStatus === "pending"
-	) {
-		return "initializing";
-	}
-
-	if (workspaceStatus === "running") {
-		if (state === "working") return "running";
-		if (state === "complete" || state === "idle") return "ready";
-		return "running";
-	}
-
-	if (
-		workspaceStatus === "stopped" ||
-		workspaceStatus === "stopping" ||
-		workspaceStatus === "canceled"
-	) {
-		return "paused";
-	}
-
-	if (state === "complete" || state === "idle") return "ready";
-	if (state === "working") return "running";
-	if (status === "active") return "running";
-	if (status === "paused") return "paused";
-
-	return "unknown";
-}
+const UI_STATE_TO_TITLE: Record<TaskUIState, string> = {
+	working: "Running",
+	idle: "Ready",
+	complete: "Ready",
+	error: "Error",
+	paused: "Paused",
+	initializing: "Initializing",
+};
 
 interface StatusIndicatorProps {
-	status: TaskStatus;
-	state?: TaskState | null;
-	workspaceStatus?: WorkspaceStatus | null;
+	task: Task;
 }
 
-export function StatusIndicator({
-	status,
-	state,
-	workspaceStatus,
-}: StatusIndicatorProps) {
-	const key = getStatusKey(status, state, workspaceStatus);
-	const { className, title } = STATUS_MAP[key];
+export function StatusIndicator({ task }: StatusIndicatorProps) {
+	const uiState = getTaskUIState(task);
+	const className = UI_STATE_TO_CLASS[uiState];
+	const title = UI_STATE_TO_TITLE[uiState];
 
 	return <span className={`status-dot ${className}`} title={title} />;
 }
