@@ -1,17 +1,18 @@
+import { useMutation } from "@tanstack/react-query";
 import {
 	VscodeIcon,
 	VscodeOption,
 	VscodeProgressRing,
 	VscodeSingleSelect,
 } from "@vscode-elements/react-elements";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useTasksApi } from "../hooks/useTasksApi";
 
-import type { TaskTemplate } from "@repo/shared";
+import type { CreateTaskParams, TaskTemplate } from "@repo/shared";
 
 interface CreateTaskSectionProps {
-	templates: TaskTemplate[];
+	templates: readonly TaskTemplate[];
 }
 
 export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
@@ -19,60 +20,32 @@ export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
 	const [prompt, setPrompt] = useState("");
 	const [templateId, setTemplateId] = useState(templates[0]?.id || "");
 	const [presetId, setPresetId] = useState("");
-	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+
+	const { mutate, isPending, error } = useMutation({
+		mutationFn: (vars: CreateTaskParams) => api.createTask(vars),
+		onSuccess: () => setPrompt(""),
+	});
 
 	const selectedTemplate = templates.find((t) => t.id === templateId);
 	const presets = selectedTemplate?.presets ?? [];
+	const canSubmit = prompt.trim().length > 0 && selectedTemplate && !isPending;
 
-	// Sync templateId when templates prop changes
-	useEffect(() => {
-		if (templates.length > 0 && !templates.find((t) => t.id === templateId)) {
-			setTemplateId(templates[0].id);
-			setPresetId("");
-		}
-	}, [templates, templateId]);
-
-	const handleTemplateChange = (e: Event) => {
-		const target = e.target as HTMLSelectElement;
-		const newTemplateId = target.value;
-		setTemplateId(newTemplateId);
-		setPresetId("");
-	};
-
-	const handlePresetChange = (e: Event) => {
-		const target = e.target as HTMLSelectElement;
-		setPresetId(target.value);
-	};
-
-	const handleSubmit = async () => {
-		if (!prompt.trim() || !selectedTemplate || isSubmitting) return;
-
-		setIsSubmitting(true);
-		setError(null);
-		try {
-			await api.createTask({
+	const handleSubmit = () => {
+		if (canSubmit) {
+			mutate({
 				templateVersionId: selectedTemplate.activeVersionId,
 				prompt: prompt.trim(),
 				presetId: presetId || undefined,
 			});
-			setPrompt("");
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to create task");
-		} finally {
-			setIsSubmitting(false);
 		}
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !isSubmitting) {
+		if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
 			e.preventDefault();
-			void handleSubmit();
+			handleSubmit();
 		}
 	};
-
-	const canSubmit =
-		prompt.trim().length > 0 && selectedTemplate && !isSubmitting;
 
 	return (
 		<div className="create-task-section">
@@ -83,31 +56,34 @@ export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
 					value={prompt}
 					onChange={(e) => setPrompt(e.target.value)}
 					onKeyDown={handleKeyDown}
-					disabled={isSubmitting}
+					disabled={isPending}
 				/>
 				<div className="prompt-send-button">
-					{isSubmitting ? (
+					{isPending ? (
 						<VscodeProgressRing />
 					) : (
 						<VscodeIcon
 							actionIcon
 							name="send"
 							label="Send"
-							onClick={canSubmit ? () => void handleSubmit() : undefined}
-							className={!canSubmit ? "disabled" : ""}
+							onClick={() => void handleSubmit()}
+							className={canSubmit ? "" : "disabled"}
 						/>
 					)}
 				</div>
 			</div>
-			{error && <div className="create-task-error">{error}</div>}
+			{error && <div className="create-task-error">{error.message}</div>}
 			<div className="create-task-options">
 				<div className="option-row">
 					<span className="option-label">Template:</span>
 					<VscodeSingleSelect
 						className="option-select"
 						value={templateId}
-						onChange={handleTemplateChange}
-						disabled={isSubmitting}
+						onChange={(e) => {
+							setTemplateId((e.target as HTMLSelectElement).value);
+							setPresetId("");
+						}}
+						disabled={isPending}
 					>
 						{templates.map((template) => (
 							<VscodeOption key={template.id} value={template.id}>
@@ -122,8 +98,10 @@ export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
 						<VscodeSingleSelect
 							className="option-select"
 							value={presetId}
-							onChange={handlePresetChange}
-							disabled={isSubmitting}
+							onChange={(e) =>
+								setPresetId((e.target as HTMLSelectElement).value)
+							}
+							disabled={isPending}
 						>
 							<VscodeOption value="">No preset</VscodeOption>
 							{presets.map((preset) => (

@@ -1,23 +1,20 @@
 import { VscodeIcon } from "@vscode-elements/react-elements";
 
+import { StatePanel } from "./StatePanel";
+
 const DOCS_URL = "https://coder.com/docs/tasks";
 
 export function NotSupportedState() {
 	return (
-		<div className="centered-state">
-			<VscodeIcon name="warning" />
-			<p className="centered-state-title">Tasks not available</p>
-			<p className="centered-state-description">
-				This Coder server does not support tasks.
-			</p>
-			<a
-				href={DOCS_URL}
-				target="_blank"
-				rel="noopener noreferrer"
-				className="text-link"
-			>
-				Learn more <VscodeIcon name="link-external" />
-			</a>
-		</div>
+		<StatePanel
+			icon={<VscodeIcon name="warning" />}
+			title="Tasks not available"
+			description="This Coder server does not support tasks."
+			action={
+				<a href={DOCS_URL} className="text-link">
+					Learn more <VscodeIcon name="link-external" />
+				</a>
+			}
+		/>
 	);
 }

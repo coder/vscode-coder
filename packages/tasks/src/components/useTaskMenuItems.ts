@@ -1,124 +1,106 @@
-import { useCallback, useMemo, useState } from "react";
+import { getTaskActions, type Task } from "@repo/shared";
+import { logger } from "@repo/webview-shared/logger";
+import { useRef, useState } from "react";
 
 import { useTasksApi } from "../hooks/useTasksApi";
 
-import type { Task } from "@repo/shared";
-
 import type { ActionMenuItem } from "./ActionMenu";
+
+export type TaskAction = "pausing" | "resuming" | "deleting" | null;
 
 interface UseTaskMenuItemsOptions {
 	task: Task;
-	canPause?: boolean;
-	canResume?: boolean;
-	onDeleted?: () => void;
 }
 
 interface UseTaskMenuItemsResult {
 	menuItems: ActionMenuItem[];
-	isDeleting: boolean;
-	isPausing: boolean;
-	isResuming: boolean;
-	isLoading: boolean;
+	action: TaskAction;
 }
 
 export function useTaskMenuItems({
 	task,
-	canPause = false,
-	canResume = false,
-	onDeleted,
 }: UseTaskMenuItemsOptions): UseTaskMenuItemsResult {
 	const api = useTasksApi();
-	const [isDeleting, setIsDeleting] = useState(false);
-	const [isPausing, setIsPausing] = useState(false);
-	const [isResuming, setIsResuming] = useState(false);
+	const { canPause, canResume } = getTaskActions(task);
+	const [action, setAction] = useState<TaskAction>(null);
+	const busyRef = useRef(false);
 
-	const handlePause = useCallback(async () => {
-		if (isPausing) return;
-		setIsPausing(true);
+	const run = async (
+		name: TaskAction,
+		fn: () => Promise<void>,
+		errorMsg: string,
+	) => {
+		if (busyRef.current) {
+			return;
+		}
+		busyRef.current = true;
+		setAction(name);
 		try {
-			await api.pauseTask(task.id);
+			await fn();
+		} catch (err) {
+			logger.error(errorMsg, err);
 		} finally {
-			setIsPausing(false);
+			busyRef.current = false;
+			setAction(null);
 		}
-	}, [api, task.id, isPausing]);
+	};
 
-	const handleResume = useCallback(async () => {
-		if (isResuming) return;
-		setIsResuming(true);
-		try {
-			await api.resumeTask(task.id);
-		} finally {
-			setIsResuming(false);
-		}
-	}, [api, task.id, isResuming]);
+	const menuItems: ActionMenuItem[] = [];
 
-	const handleDelete = useCallback(async () => {
-		if (isDeleting) return;
-		setIsDeleting(true);
-		try {
-			await api.deleteTask(task.id);
-			onDeleted?.();
-		} finally {
-			setIsDeleting(false);
-		}
-	}, [api, task.id, isDeleting, onDeleted]);
-
-	const menuItems = useMemo<ActionMenuItem[]>(() => {
-		const items: ActionMenuItem[] = [];
-
-		if (canPause) {
-			items.push({
-				label: "Pause Task",
-				icon: "debug-pause",
-				onClick: () => void handlePause(),
-				loading: isPausing,
-			});
-		}
-
-		if (canResume) {
-			items.push({
-				label: "Resume Task",
-				icon: "debug-start",
-				onClick: () => void handleResume(),
-				loading: isResuming,
-			});
-		}
-
-		items.push({
-			label: "View in Coder",
-			icon: "link-external",
-			onClick: () => void api.viewInCoder(task.id),
+	if (canPause) {
+		menuItems.push({
+			label: "Pause Task",
+			icon: "debug-pause",
+			onClick: () =>
+				void run(
+					"pausing",
+					() => api.pauseTask(task.id),
+					"Failed to pause task",
+				),
+			loading: action === "pausing",
 		});
+	}
 
-		items.push({
-			label: "Download Logs",
-			icon: "cloud-download",
-			onClick: () => void api.downloadLogs(task.id),
+	if (canResume) {
+		menuItems.push({
+			label: "Resume Task",
+			icon: "debug-start",
+			onClick: () =>
+				void run(
+					"resuming",
+					() => api.resumeTask(task.id),
+					"Failed to resume task",
+				),
+			loading: action === "resuming",
 		});
+	}
 
-		items.push({
-			label: "Delete",
-			icon: "trash",
-			onClick: () => void handleDelete(),
-			danger: true,
-			loading: isDeleting,
-		});
+	menuItems.push({
+		label: "View in Coder",
+		icon: "link-external",
+		onClick: () => api.viewInCoder(task.id),
+	});
 
-		return items;
-	}, [
-		api,
-		canPause,
-		canResume,
-		handlePause,
-		handleResume,
-		handleDelete,
-		isPausing,
-		isResuming,
-		isDeleting,
-		task.id,
-	]);
+	menuItems.push({
+		label: "Download Logs",
+		icon: "cloud-download",
+		onClick: () => api.downloadLogs(task.id),
+	});
 
-	const isLoading = isDeleting || isPausing || isResuming;
+	menuItems.push({ separator: true });
 
-	return { menuItems, isDeleting, isPausing, isResuming, isLoading };
+	menuItems.push({
+		label: "Delete",
+		icon: "trash",
+		onClick: () =>
+			void run(
+				"deleting",
+				() => api.deleteTask(task.id),
+				"Failed to delete task",
+			),
+		danger: true,
+		loading: action === "deleting",
+	});
+
+	return { menuItems, action };
 }

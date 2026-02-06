@@ -1,11 +1,16 @@
-import { getTaskActions, type Task } from "@repo/shared";
 import { VscodeProgressRing } from "@vscode-elements/react-elements";
-import { useCallback } from "react";
 
 import { ActionMenu } from "./ActionMenu";
 import { StatusIndicator } from "./StatusIndicator";
-import { useTaskMenuItems } from "./useTaskMenuItems";
-import { getDisplayName, getLoadingLabel } from "./utils";
+import { useTaskMenuItems, type TaskAction } from "./useTaskMenuItems";
+
+import type { Task } from "@repo/shared";
+
+const actionLabels: Record<NonNullable<TaskAction>, string> = {
+	pausing: "Pausing...",
+	resuming: "Resuming...",
+	deleting: "Deleting...",
+};
 
 interface TaskItemProps {
 	task: Task;
@@ -13,22 +18,17 @@ interface TaskItemProps {
 }
 
 export function TaskItem({ task, onSelect }: TaskItemProps) {
-	const displayName = getDisplayName(task);
-	const { canPause, canResume } = getTaskActions(task);
+	const { menuItems, action } = useTaskMenuItems({ task });
 
-	const { menuItems, isLoading, isPausing, isResuming, isDeleting } =
-		useTaskMenuItems({ task, canPause, canResume });
-
-	const actionLabel = getLoadingLabel(isPausing, isResuming, isDeleting);
+	const displayName = task.display_name || task.name || "Unnamed task";
 	const subtitle = task.current_state?.message || "No message available";
-
-	const handleSelect = useCallback(() => {
-		onSelect(task.id);
-	}, [task.id, onSelect]);
+	const handleSelect = () => onSelect(task.id);
 
 	return (
 		<div
-			className={`task-item ${isLoading ? "task-item-loading" : ""}`}
+			className={["task-item", action && "task-item-loading"]
+				.filter(Boolean)
+				.join(" ")}
 			onClick={handleSelect}
 			role="button"
 			tabIndex={0}
@@ -40,28 +40,22 @@ export function TaskItem({ task, onSelect }: TaskItemProps) {
 			}}
 		>
 			<div className="task-item-status">
-				{isLoading ? (
+				{action ? (
 					<VscodeProgressRing className="task-item-spinner" />
 				) : (
-					<StatusIndicator
-						status={task.status}
-						state={task.current_state?.state}
-						workspaceStatus={task.workspace_status}
-					/>
+					<StatusIndicator task={task} />
 				)}
 			</div>
 			<div className="task-item-content">
 				<span className="task-title" title={displayName}>
 					{displayName}
-					{actionLabel && (
-						<span className="task-action-label">{actionLabel}</span>
+					{action && (
+						<span className="task-action-label">{actionLabels[action]}</span>
 					)}
 				</span>
-				{subtitle && (
-					<span className="task-subtitle" title={task.current_state?.message}>
-						{subtitle}
-					</span>
-				)}
+				<span className="task-subtitle" title={subtitle}>
+					{subtitle}
+				</span>
 			</div>
 			<div
 				className="task-item-menu"

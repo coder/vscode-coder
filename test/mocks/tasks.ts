@@ -11,6 +11,8 @@ import type {
 	TaskState,
 } from "coder/site/src/api/typesGenerated";
 
+import type { TaskTemplate } from "@repo/shared";
+
 /**
  * Create a Task with sensible defaults.
  * The defaults represent a typical active task with a running workspace.
@@ -136,6 +138,21 @@ export function logEntry(overrides: Partial<TaskLogEntry> = {}): TaskLogEntry {
 		time: "2024-01-01T00:00:00Z",
 		type: "output",
 		content: "Test log entry",
+		...overrides,
+	};
+}
+
+/** Create a TaskTemplate with sensible defaults */
+export function taskTemplate(
+	overrides: Partial<TaskTemplate> = {},
+): TaskTemplate {
+	return {
+		id: "template-1",
+		name: "test-template",
+		displayName: "Test Template",
+		icon: "/icon.svg",
+		activeVersionId: "version-1",
+		presets: [],
 		...overrides,
 	};
 }
