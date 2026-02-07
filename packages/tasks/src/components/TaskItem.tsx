@@ -3,8 +3,13 @@ import { VscodeProgressRing } from "@vscode-elements/react-elements";
 
 import { ActionMenu } from "./ActionMenu";
 import { StatusIndicator } from "./StatusIndicator";
-import { useTaskMenuItems } from "./useTaskMenuItems";
-import { getDisplayName, getLoadingLabel } from "./utils";
+import { useTaskMenuItems, type TaskAction } from "./useTaskMenuItems";
+
+const actionLabels: Record<NonNullable<TaskAction>, string> = {
+	pausing: "Pausing...",
+	resuming: "Resuming...",
+	deleting: "Deleting...",
+};
 
 interface TaskItemProps {
 	task: Task;
@@ -12,20 +17,15 @@ interface TaskItemProps {
 }
 
 export function TaskItem({ task, onSelect }: TaskItemProps) {
-	const displayName = getDisplayName(task);
+	const displayName = task.display_name || task.name || "Unnamed task";
 	const { canPause, canResume } = getTaskActions(task);
-
-	const { menuItems, isLoading, isPausing, isResuming, isDeleting } =
-		useTaskMenuItems({ task, canPause, canResume });
-
-	const actionLabel = getLoadingLabel(isPausing, isResuming, isDeleting);
+	const { menuItems, action } = useTaskMenuItems({ task, canPause, canResume });
 	const subtitle = task.current_state?.message || "No message available";
-
 	const handleSelect = () => onSelect(task.id);
 
 	return (
 		<div
-			className={`task-item ${isLoading ? "task-item-loading" : ""}`}
+			className={`task-item ${action ? "task-item-loading" : ""}`}
 			onClick={handleSelect}
 			role="button"
 			tabIndex={0}
@@ -37,7 +37,7 @@ export function TaskItem({ task, onSelect }: TaskItemProps) {
 			}}
 		>
 			<div className="task-item-status">
-				{isLoading ? (
+				{action ? (
 					<VscodeProgressRing className="task-item-spinner" />
 				) : (
 					<StatusIndicator task={task} />
@@ -46,8 +46,8 @@ export function TaskItem({ task, onSelect }: TaskItemProps) {
 			<div className="task-item-content">
 				<span className="task-title" title={displayName}>
 					{displayName}
-					{actionLabel && (
-						<span className="task-action-label">{actionLabel}</span>
+					{action && (
+						<span className="task-action-label">{actionLabels[action]}</span>
 					)}
 				</span>
 				<span className="task-subtitle" title={subtitle}>

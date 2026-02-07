@@ -43,10 +43,7 @@ export default defineConfig({
 				resolve: {
 					alias: {
 						"@repo/webview-shared": webviewSharedAlias,
-						"@repo/tasks/components": path.resolve(
-							__dirname,
-							"packages/tasks/src/components",
-						),
+						"@repo/tasks": path.resolve(__dirname, "packages/tasks/src"),
 					},
 				},
 			},

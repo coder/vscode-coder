@@ -7,6 +7,8 @@ import type { Task } from "@repo/shared";
 
 import type { ActionMenuItem } from "./ActionMenu";
 
+export type TaskAction = "pausing" | "resuming" | "deleting" | null;
+
 interface UseTaskMenuItemsOptions {
 	task: Task;
 	canPause?: boolean;
@@ -16,10 +18,7 @@ interface UseTaskMenuItemsOptions {
 
 interface UseTaskMenuItemsResult {
 	menuItems: ActionMenuItem[];
-	isDeleting: boolean;
-	isPausing: boolean;
-	isResuming: boolean;
-	isLoading: boolean;
+	action: TaskAction;
 }
 
 export function useTaskMenuItems({
@@ -29,55 +28,24 @@ export function useTaskMenuItems({
 	onDeleted,
 }: UseTaskMenuItemsOptions): UseTaskMenuItemsResult {
 	const api = useTasksApi();
-	const [isPausing, setIsPausing] = useState(false);
-	const [isResuming, setIsResuming] = useState(false);
-	const [isDeleting, setIsDeleting] = useState(false);
+	const [action, setAction] = useState<TaskAction>(null);
+	const busyRef = useRef(false);
 
-	// Refs guard against double-clicks while an action is in-flight
-	const isPausingRef = useRef(false);
-	const isResumingRef = useRef(false);
-	const isDeletingRef = useRef(false);
-
-	const handlePause = async () => {
-		if (isPausingRef.current) return;
-		isPausingRef.current = true;
-		setIsPausing(true);
+	const run = async (
+		name: TaskAction,
+		fn: () => Promise<void>,
+		errorMsg: string,
+	) => {
+		if (busyRef.current) return;
+		busyRef.current = true;
+		setAction(name);
 		try {
-			await api.pauseTask(task.id);
+			await fn();
 		} catch (err) {
-			logger.error("Failed to pause task:", err);
+			logger.error(errorMsg, err);
 		} finally {
-			isPausingRef.current = false;
-			setIsPausing(false);
-		}
-	};
-
-	const handleResume = async () => {
-		if (isResumingRef.current) return;
-		isResumingRef.current = true;
-		setIsResuming(true);
-		try {
-			await api.resumeTask(task.id);
-		} catch (err) {
-			logger.error("Failed to resume task:", err);
-		} finally {
-			isResumingRef.current = false;
-			setIsResuming(false);
-		}
-	};
-
-	const handleDelete = async () => {
-		if (isDeletingRef.current) return;
-		isDeletingRef.current = true;
-		setIsDeleting(true);
-		try {
-			await api.deleteTask(task.id);
-			onDeleted?.();
-		} catch (err) {
-			logger.error("Failed to delete task:", err);
-		} finally {
-			isDeletingRef.current = false;
-			setIsDeleting(false);
+			busyRef.current = false;
+			setAction(null);
 		}
 	};
 
@@ -87,8 +55,13 @@ export function useTaskMenuItems({
 		menuItems.push({
 			label: "Pause Task",
 			icon: "debug-pause",
-			onClick: () => void handlePause(),
-			loading: isPausing,
+			onClick: () =>
+				void run(
+					"pausing",
+					() => api.pauseTask(task.id),
+					"Failed to pause task:",
+				),
+			loading: action === "pausing",
 		});
 	}
 
@@ -96,8 +69,13 @@ export function useTaskMenuItems({
 		menuItems.push({
 			label: "Resume Task",
 			icon: "debug-start",
-			onClick: () => void handleResume(),
-			loading: isResuming,
+			onClick: () =>
+				void run(
+					"resuming",
+					() => api.resumeTask(task.id),
+					"Failed to resume task:",
+				),
+			loading: action === "resuming",
 		});
 	}
 
@@ -118,12 +96,18 @@ export function useTaskMenuItems({
 	menuItems.push({
 		label: "Delete",
 		icon: "trash",
-		onClick: () => void handleDelete(),
+		onClick: () =>
+			void run(
+				"deleting",
+				async () => {
+					await api.deleteTask(task.id);
+					onDeleted?.();
+				},
+				"Failed to delete task:",
+			),
 		danger: true,
-		loading: isDeleting,
+		loading: action === "deleting",
 	});
 
-	const isLoading = isDeleting || isPausing || isResuming;
-
-	return { menuItems, isDeleting, isPausing, isResuming, isLoading };
+	return { menuItems, action };
 }
