@@ -12,7 +12,9 @@ export function useCollapsibleToggle<T extends HTMLElement & { open: boolean }>(
 
 	useEffect(() => {
 		const el = ref.current;
-		if (!el) return undefined;
+		if (!el) {
+			return undefined;
+		}
 
 		function handleToggle(e: Event) {
 			setOpen((e as CustomEvent<{ open: boolean }>).detail.open);

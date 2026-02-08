@@ -11,55 +11,47 @@ describe("StatusIndicator", () => {
 	interface StatusTestCase {
 		name: string;
 		task: Task;
-		cssClass: string;
 		title: string;
 	}
 	it.each<StatusTestCase>([
 		{
 			name: "error task status",
 			task: task({ status: "error", current_state: null }),
-			cssClass: "error",
 			title: "Error",
 		},
 		{
 			name: "failed task state",
 			task: task({ current_state: taskState("failed") }),
-			cssClass: "error",
 			title: "Error",
 		},
 		{
 			name: "stopped workspace",
 			task: task({ workspace_status: "stopped", current_state: null }),
-			cssClass: "paused",
 			title: "Paused",
 		},
 		{
 			name: "pending workspace",
 			task: task({ workspace_status: "pending", current_state: null }),
-			cssClass: "initializing",
 			title: "Initializing",
 		},
 		{
 			name: "working state",
 			task: task({ current_state: taskState("working") }),
-			cssClass: "running",
-			title: "Running",
+			title: "Working",
 		},
 		{
 			name: "complete state",
 			task: task({ current_state: taskState("complete") }),
-			cssClass: "ready",
-			title: "Ready",
+			title: "Complete",
 		},
 		{
 			name: "no workspace or state (idle)",
 			task: minimalTask(),
-			cssClass: "ready",
-			title: "Ready",
+			title: "Idle",
 		},
-	])("$name", ({ task, cssClass, title }) => {
+	])("$name", ({ task, title }) => {
 		render(<StatusIndicator task={task} />);
 		const dot = screen.getByTitle(title);
-		expect(dot.classList).toContain(cssClass);
+		expect(dot.classList).toContain(title.toLowerCase());
 	});
 });

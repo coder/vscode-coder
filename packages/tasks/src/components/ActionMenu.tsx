@@ -1,16 +1,15 @@
 // VscodeContextMenu is data-driven with { label, value, separator }[] and lacks
-// support for icons, per-item danger styling, loading spinners, and disabled
-// states. We keep a custom implementation.
+// support for icons, per-item danger styling, loading spinners, and disabled states.
 import {
 	VscodeIcon,
 	VscodeProgressRing,
 } from "@vscode-elements/react-elements";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 interface ActionMenuAction {
 	separator?: false;
 	label: string;
-	icon?: string;
+	icon: string;
 	onClick: () => void;
 	disabled?: boolean;
 	danger?: boolean;
@@ -34,42 +33,51 @@ export function ActionMenu({ items }: ActionMenuProps) {
 	} | null>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
 	const buttonRef = useRef<HTMLDivElement>(null);
+	const dropdownRef = useRef<HTMLDivElement>(null);
+
+	function toggle() {
+		setPosition((prev) => {
+			if (prev) {
+				return null;
+			}
+			const rect = buttonRef.current?.getBoundingClientRect();
+			if (!rect) {
+				return null;
+			}
+			return { top: rect.bottom, right: window.innerWidth - rect.right };
+		});
+	}
 
 	const isOpen = position !== null;
 
-	function open() {
-		if (buttonRef.current) {
-			const rect = buttonRef.current.getBoundingClientRect();
-			setPosition({
-				top: rect.bottom + 4,
-				right: window.innerWidth - rect.right,
-			});
+	const dropdownRefCallback = useCallback((node: HTMLDivElement | null) => {
+		dropdownRef.current = node;
+		node?.focus();
+	}, []);
+
+	function onKeyDown(event: React.KeyboardEvent) {
+		if (event.key === "Escape") {
+			setPosition(null);
 		}
 	}
 
-	function close() {
-		setPosition(null);
-	}
-
 	useEffect(() => {
-		if (!isOpen) return undefined;
+		if (!isOpen) return;
 
-		function handleClickOutside(event: MouseEvent) {
+		const close = () => setPosition(null);
+
+		function onMouseDown(event: MouseEvent) {
 			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
 				close();
 			}
 		}
 
-		function handleScroll() {
-			close();
-		}
-
-		document.addEventListener("mousedown", handleClickOutside);
-		window.addEventListener("scroll", handleScroll, true);
+		document.addEventListener("mousedown", onMouseDown);
+		window.addEventListener("scroll", close, true);
 
 		return () => {
-			document.removeEventListener("mousedown", handleClickOutside);
-			window.removeEventListener("scroll", handleScroll, true);
+			document.removeEventListener("mousedown", onMouseDown);
+			window.removeEventListener("scroll", close, true);
 		};
 	}, [isOpen]);
 
@@ -80,14 +88,17 @@ export function ActionMenu({ items }: ActionMenuProps) {
 					actionIcon
 					name="ellipsis"
 					label="More actions"
-					onClick={() => (isOpen ? close() : open())}
+					onClick={toggle}
 				/>
 			</div>
 			{position && (
 				<div
-					className="action-menu-dropdown"
-					style={{ top: position.top, right: position.right }}
-				>
+				ref={dropdownRefCallback}
+				className="action-menu-dropdown"
+				style={position}
+				tabIndex={-1}
+				onKeyDown={onKeyDown}
+			>
 					{items.map((item, index) =>
 						item.separator ? (
 							<div
@@ -99,20 +110,24 @@ export function ActionMenu({ items }: ActionMenuProps) {
 							<button
 								key={`${item.label}-${index}`}
 								type="button"
-								className={`action-menu-item ${item.danger ? "danger" : ""} ${item.loading ? "loading" : ""}`}
+								className={[
+									"action-menu-item",
+									item.danger && "danger",
+									item.loading && "loading",
+								]
+									.filter(Boolean)
+									.join(" ")}
 								onClick={() => {
-									if (!item.loading) {
-										item.onClick();
-										close();
-									}
+									item.onClick();
+									setPosition(null);
 								}}
-								disabled={item.disabled ?? item.loading}
+								disabled={item.disabled === true || item.loading === true}
 							>
 								{item.loading ? (
 									<VscodeProgressRing className="action-menu-spinner" />
-								) : item.icon ? (
+								) : (
 									<VscodeIcon name={item.icon} className="action-menu-icon" />
-								) : null}
+								)}
 								<span>{item.label}</span>
 							</button>
 						),

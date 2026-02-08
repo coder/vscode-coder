@@ -16,7 +16,7 @@ export function StatePanel({
 	action,
 }: StatePanelProps) {
 	return (
-		<div className={`centered-state ${className ?? ""}`}>
+		<div className={["centered-state", className].filter(Boolean).join(" ")}>
 			{icon}
 			{title && <p className="centered-state-title">{title}</p>}
 			{description && (

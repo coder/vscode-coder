@@ -193,8 +193,9 @@ vscode-collapsible::part(body) {
 	background: var(--status-color);
 }
 
-.status-dot.running,
-.status-dot.ready {
+.status-dot.working,
+.status-dot.idle,
+.status-dot.complete {
 	--status-color: var(--vscode-testing-iconPassed);
 }
 
@@ -204,6 +205,10 @@ vscode-collapsible::part(body) {
 
 .status-dot.initializing {
 	--status-color: var(--vscode-progressBar-background);
+}
+
+.status-dot.paused {
+	--status-color: var(--vscode-testing-iconSkipped);
 }
 
 .text-link {
@@ -254,6 +259,7 @@ vscode-collapsible::part(body) {
 .action-menu-dropdown {
 	position: fixed;
 	z-index: 1000;
+	margin-top: 4px;
 	display: flex;
 	flex-direction: column;
 	min-width: 140px;
@@ -298,7 +304,6 @@ vscode-collapsible::part(body) {
 	font-size: 12px;
 	line-height: 1;
 	font-family: var(--vscode-font-family);
-	text-transform: capitalize;
 }
 
 .action-menu-icon {

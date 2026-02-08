@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
 	act,
 	fireEvent,
@@ -13,6 +14,8 @@ import { CreateTaskSection } from "@repo/tasks/components";
 import { taskTemplate } from "../../mocks/tasks";
 import { qs } from "../helpers";
 
+import type { ReactNode } from "react";
+
 import type { TaskTemplate } from "@repo/shared";
 
 const { mockApi } = vi.hoisted(() => ({
@@ -25,9 +28,18 @@ vi.mock("@repo/tasks/hooks/useTasksApi", () => ({
 	useTasksApi: () => mockApi,
 }));
 
+function WithQueryClient({ children }: { children: ReactNode }) {
+	return (
+		<QueryClientProvider client={new QueryClient()}>
+			{children}
+		</QueryClientProvider>
+	);
+}
+
 function renderSection(templates?: TaskTemplate[]): RenderResult {
 	return render(
 		<CreateTaskSection templates={templates ?? [taskTemplate()]} />,
+		{ wrapper: WithQueryClient },
 	);
 }
 
@@ -179,7 +191,9 @@ describe("CreateTaskSection", () => {
 		const templates1 = [taskTemplate({ id: "t1", displayName: "Old" })];
 		const templates2 = [taskTemplate({ id: "t2", displayName: "New" })];
 
-		const { rerender } = render(<CreateTaskSection templates={templates1} />);
+		const { rerender } = render(<CreateTaskSection templates={templates1} />, {
+			wrapper: WithQueryClient,
+		});
 		expect(screen.getByText("Old")).not.toBeNull();
 
 		rerender(<CreateTaskSection templates={templates2} />);

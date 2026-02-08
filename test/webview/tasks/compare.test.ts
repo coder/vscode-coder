@@ -122,6 +122,33 @@ describe("templateArraysEqual", () => {
 				presets: [{ id: "p1", name: "Preset 1", isDefault: false }],
 			},
 		},
+		{
+			name: "preset name",
+			a: {
+				presets: [{ id: "p1", name: "Preset A", isDefault: false }],
+			},
+			b: {
+				presets: [{ id: "p1", name: "Preset B", isDefault: false }],
+			},
+		},
+		{
+			name: "preset isDefault",
+			a: {
+				presets: [{ id: "p1", name: "Preset 1", isDefault: false }],
+			},
+			b: {
+				presets: [{ id: "p1", name: "Preset 1", isDefault: true }],
+			},
+		},
+		{
+			name: "preset id",
+			a: {
+				presets: [{ id: "p1", name: "Preset 1", isDefault: false }],
+			},
+			b: {
+				presets: [{ id: "p2", name: "Preset 1", isDefault: false }],
+			},
+		},
 	])("returns false when $name differs", ({ a, b }) => {
 		expect(templateArraysEqual([taskTemplate(a)], [taskTemplate(b)])).toBe(
 			false,

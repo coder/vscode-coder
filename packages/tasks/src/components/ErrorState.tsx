@@ -1,4 +1,4 @@
-import { VscodeButton } from "@vscode-elements/react-elements";
+import { VscodeButton, VscodeIcon } from "@vscode-elements/react-elements";
 
 import { StatePanel } from "./StatePanel";
 
@@ -11,7 +11,7 @@ export function ErrorState({ message, onRetry }: ErrorStateProps) {
 	return (
 		<StatePanel
 			className="error-state"
-			icon={<span className="codicon codicon-error error-icon" />}
+			icon={<VscodeIcon name="error" className="error-icon" />}
 			description={message}
 			action={<VscodeButton onClick={onRetry}>Retry</VscodeButton>}
 		/>

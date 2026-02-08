@@ -10,7 +10,7 @@ type ActionMenuAction = Exclude<ActionMenuItem, { separator: true }>;
 function items(): ActionMenuItem[] {
 	return [
 		{ label: "Edit", icon: "edit", onClick: vi.fn() },
-		{ label: "Copy", onClick: vi.fn() },
+		{ label: "Copy", icon: "copy", onClick: vi.fn() },
 		{ separator: true },
 		{ label: "Delete", icon: "trash", onClick: vi.fn(), danger: true },
 	];
@@ -65,7 +65,9 @@ describe("ActionMenu", () => {
 	it("shows spinner instead of icon when loading", () => {
 		const { container } = render(
 			<ActionMenu
-				items={[{ label: "Saving", onClick: vi.fn(), loading: true }]}
+				items={[
+					{ label: "Saving", icon: "save", onClick: vi.fn(), loading: true },
+				]}
 			/>,
 		);
 		openMenu(container);
@@ -82,11 +84,16 @@ describe("ActionMenu", () => {
 	it.each<DisabledItemTestCase>([
 		{
 			name: "loading",
-			item: { label: "Saving", onClick: vi.fn(), loading: true },
+			item: {
+				label: "Saving",
+				icon: "saving",
+				onClick: vi.fn(),
+				loading: true,
+			},
 		},
 		{
 			name: "disabled",
-			item: { label: "Noop", onClick: vi.fn(), disabled: true },
+			item: { label: "Noop", icon: "noop", onClick: vi.fn(), disabled: true },
 		},
 	])("disables $name item", ({ item }) => {
 		const { container } = render(<ActionMenu items={[item]} />);
@@ -119,10 +126,20 @@ describe("ActionMenu", () => {
 		expect(getDropdown(container)).toBeNull();
 	});
 
+	it("closes on Escape key", () => {
+		const { container } = render(<ActionMenu items={items()} />);
+		openMenu(container);
+		const dropdown = getDropdown(container)!;
+		fireEvent.keyDown(dropdown, { key: "Escape" });
+		expect(getDropdown(container)).toBeNull();
+	});
+
 	it("does not fire onClick on loading item click", () => {
 		const onClick = vi.fn();
 		const { container } = render(
-			<ActionMenu items={[{ label: "Saving", onClick, loading: true }]} />,
+			<ActionMenu
+				items={[{ label: "Saving", icon: "saving", onClick, loading: true }]}
+			/>,
 		);
 		openMenu(container);
 		fireEvent.click(screen.getByText("Saving"));

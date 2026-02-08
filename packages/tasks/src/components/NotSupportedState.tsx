@@ -11,12 +11,7 @@ export function NotSupportedState() {
 			title="Tasks not available"
 			description="This Coder server does not support tasks."
 			action={
-				<a
-					href={DOCS_URL}
-					target="_blank"
-					rel="noopener noreferrer"
-					className="text-link"
-				>
+				<a href={DOCS_URL} className="text-link">
 					Learn more <VscodeIcon name="link-external" />
 				</a>
 			}

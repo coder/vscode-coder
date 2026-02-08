@@ -1,22 +1,4 @@
-import { getTaskUIState, type Task, type TaskUIState } from "@repo/shared";
-
-const UI_STATE_TO_CLASS: Record<TaskUIState, string> = {
-	working: "running",
-	idle: "ready",
-	complete: "ready",
-	error: "error",
-	paused: "paused",
-	initializing: "initializing",
-};
-
-const UI_STATE_TO_TITLE: Record<TaskUIState, string> = {
-	working: "Running",
-	idle: "Ready",
-	complete: "Ready",
-	error: "Error",
-	paused: "Paused",
-	initializing: "Initializing",
-};
+import { getTaskUIState, type Task } from "@repo/shared";
 
 interface StatusIndicatorProps {
 	task: Task;
@@ -24,8 +6,7 @@ interface StatusIndicatorProps {
 
 export function StatusIndicator({ task }: StatusIndicatorProps) {
 	const uiState = getTaskUIState(task);
-	const className = UI_STATE_TO_CLASS[uiState];
-	const title = UI_STATE_TO_TITLE[uiState];
+	const title = uiState.charAt(0).toUpperCase() + uiState.slice(1);
 
-	return <span className={`status-dot ${className}`} title={title} />;
+	return <span className={`status-dot ${uiState}`} title={title} />;
 }

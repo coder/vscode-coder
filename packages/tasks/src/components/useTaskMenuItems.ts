@@ -1,9 +1,8 @@
+import { getTaskActions, type Task } from "@repo/shared";
 import { logger } from "@repo/webview-shared/logger";
 import { useRef, useState } from "react";
 
 import { useTasksApi } from "../hooks/useTasksApi";
-
-import type { Task } from "@repo/shared";
 
 import type { ActionMenuItem } from "./ActionMenu";
 
@@ -11,9 +10,6 @@ export type TaskAction = "pausing" | "resuming" | "deleting" | null;
 
 interface UseTaskMenuItemsOptions {
 	task: Task;
-	canPause?: boolean;
-	canResume?: boolean;
-	onDeleted?: () => void;
 }
 
 interface UseTaskMenuItemsResult {
@@ -23,11 +19,9 @@ interface UseTaskMenuItemsResult {
 
 export function useTaskMenuItems({
 	task,
-	canPause = false,
-	canResume = false,
-	onDeleted,
 }: UseTaskMenuItemsOptions): UseTaskMenuItemsResult {
 	const api = useTasksApi();
+	const { canPause, canResume } = getTaskActions(task);
 	const [action, setAction] = useState<TaskAction>(null);
 	const busyRef = useRef(false);
 
@@ -36,7 +30,9 @@ export function useTaskMenuItems({
 		fn: () => Promise<void>,
 		errorMsg: string,
 	) => {
-		if (busyRef.current) return;
+		if (busyRef.current) {
+			return;
+		}
 		busyRef.current = true;
 		setAction(name);
 		try {
@@ -59,7 +55,7 @@ export function useTaskMenuItems({
 				void run(
 					"pausing",
 					() => api.pauseTask(task.id),
-					"Failed to pause task:",
+					"Failed to pause task",
 				),
 			loading: action === "pausing",
 		});
@@ -73,7 +69,7 @@ export function useTaskMenuItems({
 				void run(
 					"resuming",
 					() => api.resumeTask(task.id),
-					"Failed to resume task:",
+					"Failed to resume task",
 				),
 			loading: action === "resuming",
 		});
@@ -82,13 +78,13 @@ export function useTaskMenuItems({
 	menuItems.push({
 		label: "View in Coder",
 		icon: "link-external",
-		onClick: () => void api.viewInCoder(task.id),
+		onClick: () => api.viewInCoder(task.id),
 	});
 
 	menuItems.push({
 		label: "Download Logs",
 		icon: "cloud-download",
-		onClick: () => void api.downloadLogs(task.id),
+		onClick: () => api.downloadLogs(task.id),
 	});
 
 	menuItems.push({ separator: true });
@@ -99,11 +95,8 @@ export function useTaskMenuItems({
 		onClick: () =>
 			void run(
 				"deleting",
-				async () => {
-					await api.deleteTask(task.id);
-					onDeleted?.();
-				},
-				"Failed to delete task:",
+				() => api.deleteTask(task.id),
+				"Failed to delete task",
 			),
 		danger: true,
 		loading: action === "deleting",

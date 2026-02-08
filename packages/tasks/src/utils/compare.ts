@@ -1,9 +1,9 @@
-import type { Task, TaskTemplate } from "@repo/shared";
+import type { Task, TaskPreset, TaskTemplate } from "@repo/shared";
 
-/**
- * Compare two tasks by their key fields to determine if they've changed.
- * Returns true if tasks are equal (no update needed).
- */
+function presetsEqual(a: TaskPreset, b: TaskPreset): boolean {
+	return a.id === b.id && a.name === b.name && a.isDefault === b.isDefault;
+}
+
 function tasksEqual(a: Task, b: Task): boolean {
 	return (
 		a.id === b.id &&
@@ -41,6 +41,7 @@ export function templateArraysEqual(
 		(template, index) =>
 			template.id === b[index].id &&
 			template.activeVersionId === b[index].activeVersionId &&
-			template.presets.length === b[index].presets.length,
+			template.presets.length === b[index].presets.length &&
+			template.presets.every((p, i) => presetsEqual(p, b[index].presets[i])),
 	);
 }

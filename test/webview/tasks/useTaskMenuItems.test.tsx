@@ -5,6 +5,7 @@ import { useTaskMenuItems } from "@repo/tasks/components/useTaskMenuItems";
 
 import { task } from "../../mocks/tasks";
 
+import type { Task } from "@repo/shared";
 import type { ActionMenuItem } from "@repo/tasks/components";
 
 const { mockApi, mockLogger } = vi.hoisted(() => ({
@@ -45,6 +46,9 @@ function clickItem(items: ActionMenuItem[], label: string): void {
 	});
 }
 
+const pausableTask = () => task({ workspace_status: "running" });
+const resumableTask = () => task({ workspace_status: "stopped" });
+
 function deferPause() {
 	let resolve: () => void = () => {};
 	mockApi.pauseTask.mockReturnValue(
@@ -53,7 +57,7 @@ function deferPause() {
 		}),
 	);
 	const { result } = renderHook(() =>
-		useTaskMenuItems({ task: task(), canPause: true }),
+		useTaskMenuItems({ task: pausableTask() }),
 	);
 	return { result, resolve };
 }
@@ -82,81 +86,55 @@ describe("useTaskMenuItems", () => {
 	});
 
 	interface ConditionalItemTestCase {
-		name: string;
 		label: string;
-		opts: { canPause?: boolean; canResume?: boolean };
+		testTask: Task;
 	}
 
 	it.each<ConditionalItemTestCase>([
-		{
-			name: "Pause when canPause",
-			label: "Pause Task",
-			opts: { canPause: true },
-		},
-		{
-			name: "Resume when canResume",
-			label: "Resume Task",
-			opts: { canResume: true },
-		},
-	])("includes $name", ({ label, opts }) => {
-		const { result } = renderHook(() =>
-			useTaskMenuItems({ task: task(), ...opts }),
-		);
+		{ label: "Pause Task", testTask: pausableTask() },
+		{ label: "Resume Task", testTask: resumableTask() },
+	])("includes $label when action is available", ({ label, testTask }) => {
+		const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
 		expect(findByLabel(result.current.menuItems, label)).toBeTruthy();
 	});
 
 	it.each<ConditionalItemTestCase>([
-		{
-			name: "Pause when !canPause",
-			label: "Pause Task",
-			opts: { canPause: false },
-		},
-		{
-			name: "Resume when !canResume",
-			label: "Resume Task",
-			opts: { canResume: false },
-		},
-	])("excludes $name", ({ label, opts }) => {
-		const { result } = renderHook(() =>
-			useTaskMenuItems({ task: task(), ...opts }),
-		);
+		{ label: "Pause Task", testTask: resumableTask() },
+		{ label: "Resume Task", testTask: pausableTask() },
+	])("excludes $label when action is unavailable", ({ label, testTask }) => {
+		const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
 		expect(findByLabel(result.current.menuItems, label)).toBeUndefined();
 	});
 
 	interface ApiCallTestCase {
 		label: string;
 		apiMethod: keyof typeof mockApi;
-		opts?: { canPause?: boolean; canResume?: boolean };
+		testTask: Task;
 	}
 
 	it.each<ApiCallTestCase>([
-		{ label: "Pause Task", apiMethod: "pauseTask", opts: { canPause: true } },
+		{
+			label: "Pause Task",
+			apiMethod: "pauseTask",
+			testTask: pausableTask(),
+		},
 		{
 			label: "Resume Task",
 			apiMethod: "resumeTask",
-			opts: { canResume: true },
+			testTask: resumableTask(),
 		},
-		{ label: "Delete", apiMethod: "deleteTask" },
-		{ label: "View in Coder", apiMethod: "viewInCoder" },
-		{ label: "Download Logs", apiMethod: "downloadLogs" },
-	])("$label calls api.$apiMethod", async ({ label, apiMethod, opts }) => {
-		const { result } = renderHook(() =>
-			useTaskMenuItems({ task: task({ id: "t-1" }), ...opts }),
-		);
+		{ label: "Delete", apiMethod: "deleteTask", testTask: task() },
+		{ label: "View in Coder", apiMethod: "viewInCoder", testTask: task() },
+		{
+			label: "Download Logs",
+			apiMethod: "downloadLogs",
+			testTask: task(),
+		},
+	])("$label calls api.$apiMethod", async ({ label, apiMethod, testTask }) => {
+		const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
 		clickItem(result.current.menuItems, label);
 		await waitFor(() => {
-			expect(mockApi[apiMethod]).toHaveBeenCalledWith("t-1");
-		});
-	});
-
-	it("delete calls onDeleted callback", async () => {
-		const onDeleted = vi.fn();
-		const { result } = renderHook(() =>
-			useTaskMenuItems({ task: task({ id: "t-4" }), onDeleted }),
-		);
-		clickItem(result.current.menuItems, "Delete");
-		await waitFor(() => {
-			expect(onDeleted).toHaveBeenCalled();
+			expect(mockApi[apiMethod]).toHaveBeenCalledWith(testTask.id);
 		});
 	});
 
@@ -187,7 +165,7 @@ describe("useTaskMenuItems", () => {
 	interface ErrorLogTestCase {
 		label: string;
 		apiMethod: keyof typeof mockApi;
-		opts: { canPause?: boolean; canResume?: boolean };
+		testTask: Task;
 		errorMsg: string;
 	}
 
@@ -195,28 +173,26 @@ describe("useTaskMenuItems", () => {
 		{
 			label: "Pause Task",
 			apiMethod: "pauseTask",
-			opts: { canPause: true },
-			errorMsg: "Failed to pause task:",
+			testTask: pausableTask(),
+			errorMsg: "Failed to pause task",
 		},
 		{
 			label: "Resume Task",
 			apiMethod: "resumeTask",
-			opts: { canResume: true },
-			errorMsg: "Failed to resume task:",
+			testTask: resumableTask(),
+			errorMsg: "Failed to resume task",
 		},
 		{
 			label: "Delete",
 			apiMethod: "deleteTask",
-			opts: {},
-			errorMsg: "Failed to delete task:",
+			testTask: task(),
+			errorMsg: "Failed to delete task",
 		},
 	])(
 		"logs error on failed $label",
-		async ({ apiMethod, opts, label, errorMsg }) => {
+		async ({ apiMethod, testTask, label, errorMsg }) => {
 			mockApi[apiMethod].mockRejectedValueOnce(new Error("Boom"));
-			const { result } = renderHook(() =>
-				useTaskMenuItems({ task: task(), ...opts }),
-			);
+			const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
 			clickItem(result.current.menuItems, label);
 			await waitFor(() => {
 				expect(mockLogger.error).toHaveBeenCalledWith(

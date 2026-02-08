@@ -8,7 +8,7 @@ import { getState, setState } from "@repo/webview-shared";
 import { logger } from "@repo/webview-shared/logger";
 import { useIpc } from "@repo/webview-shared/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { TASK_LIST_POLL_INTERVAL_MS } from "../config";
 import { taskArraysEqual, templateArraysEqual } from "../utils";
@@ -24,7 +24,7 @@ interface PersistedState {
 }
 
 export function useTasksData() {
-	const restored = useRef(getState<PersistedState>()).current;
+	const [restored] = useState(() => getState<PersistedState>());
 	const api = useTasksApi();
 	const { onNotification } = useIpc();
 	const queryClient = useQueryClient();
@@ -48,10 +48,11 @@ export function useTasksData() {
 
 	// Refs for reading current values inside async callbacks without stale closures
 	const tasksRef = useRef<readonly Task[]>(tasks);
-	tasksRef.current = tasks;
-
 	const templatesRef = useRef<readonly TaskTemplate[]>(templates);
-	templatesRef.current = templates;
+	useEffect(() => {
+		tasksRef.current = tasks;
+		templatesRef.current = templates;
+	}, [tasks, templates]);
 
 	function setTasks(updater: (tasks: readonly Task[]) => readonly Task[]) {
 		queryClient.setQueryData<InitResponse>(
@@ -67,35 +68,39 @@ export function useTasksData() {
 		);
 	}
 
-	function refreshTasks() {
-		api
-			.getTasks()
-			.then((updated) => {
-				if (!taskArraysEqual(tasksRef.current, updated)) {
-					setTasks(() => updated);
-				}
-			})
-			.catch((err) => logger.error("Failed to refresh tasks:", err));
+	async function refreshTasks() {
+		try {
+			const updated = await api.getTasks();
+			if (!taskArraysEqual(tasksRef.current, updated)) {
+				setTasks(() => updated);
+			}
+		} catch (err) {
+			logger.error("Failed to refresh tasks:", err);
+		}
 	}
 
-	function refreshTemplates() {
-		api
-			.getTemplates()
-			.then((updated) => {
-				if (!templateArraysEqual(templatesRef.current, updated)) {
-					setTemplates(updated);
-				}
-			})
-			.catch((err) => logger.error("Failed to refresh templates:", err));
+	async function refreshTemplates() {
+		try {
+			const updated = await api.getTemplates();
+			if (!templateArraysEqual(templatesRef.current, updated)) {
+				setTemplates(updated);
+			}
+		} catch (err) {
+			logger.error("Failed to refresh templates:", err);
+		}
 	}
 
 	// Poll for task list updates
+	const hasData = data !== undefined;
 	useEffect(() => {
-		if (!data) return;
+		if (!hasData) return;
 
-		const pollInterval = setInterval(refreshTasks, TASK_LIST_POLL_INTERVAL_MS);
+		const pollInterval = setInterval(
+			() => void refreshTasks(),
+			TASK_LIST_POLL_INTERVAL_MS,
+		);
 		return () => clearInterval(pollInterval);
-	});
+	}, [hasData, refreshTasks]);
 
 	// Subscribe to push notifications
 	useEffect(() => {
@@ -111,13 +116,13 @@ export function useTasksData() {
 			}),
 
 			onNotification(TasksApi.refresh, () => {
-				refreshTasks();
-				refreshTemplates();
+				void refreshTasks();
+				void refreshTemplates();
 			}),
 		];
 
 		return () => unsubs.forEach((fn) => fn());
-	});
+	}, [onNotification, refreshTasks, refreshTemplates, setTasks]);
 
 	function persistUiState(uiState: {
 		createExpanded: boolean;

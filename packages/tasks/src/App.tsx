@@ -47,14 +47,14 @@ export default function App() {
 	const { onNotification } = useIpc();
 	useEffect(() => {
 		return onNotification(TasksApi.showCreateForm, () => setCreateOpen(true));
-	});
+	}, [onNotification, setCreateOpen]);
 
 	useEffect(() => {
 		persistUiState({
 			createExpanded: createOpen,
 			historyExpanded: historyOpen,
 		});
-	});
+	}, [createOpen, historyOpen, persistUiState]);
 
 	if (isLoading) {
 		return (

@@ -9,12 +9,7 @@ export function NoTemplateState() {
 		<StatePanel
 			title="No Task template found"
 			action={
-				<a
-					href={DOCS_URL}
-					target="_blank"
-					rel="noopener noreferrer"
-					className="text-link"
-				>
+				<a href={DOCS_URL} className="text-link">
 					Learn how to create a template <VscodeIcon name="link-external" />
 				</a>
 			}
