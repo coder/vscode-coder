@@ -9,7 +9,8 @@
 			"@repo/shared": ["packages/shared/src/index.ts"],
 			"@repo/shared/*": ["packages/shared/src/*"],
 			"@repo/webview-shared": ["packages/webview-shared/src/index.ts"],
-			"@repo/webview-shared/*": ["packages/webview-shared/src/*"]
+			"@repo/webview-shared/*": ["packages/webview-shared/src/*"],
+			"@repo/tasks/*": ["packages/tasks/src/*"]
 		}
 	},
 	"include": [".", "../src"]
