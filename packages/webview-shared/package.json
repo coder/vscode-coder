@@ -1,7 +1,7 @@
 {
 	"name": "@repo/webview-shared",
 	"version": "1.0.0",
-	"description": "Types and utilities for Coder webviews",
+	"description": "Webview-specific utilities (React hooks, VS Code API wrappers)",
 	"private": true,
 	"type": "module",
 	"exports": {
@@ -21,6 +21,9 @@
 			"types": "./src/react/index.ts",
 			"default": "./src/react/index.ts"
 		}
+	},
+	"dependencies": {
+		"@repo/shared": "workspace:*"
 	},
 	"peerDependencies": {
 		"@vscode-elements/react-elements": "catalog:",

@@ -1,41 +1,46 @@
-import { logger } from "@repo/webview-shared/logger";
-import { useMessage } from "@repo/webview-shared/react";
+import { useQuery } from "@tanstack/react-query";
 import {
 	VscodeButton,
+	VscodeIcon,
 	VscodeProgressRing,
 } from "@vscode-elements/react-elements";
-import { useEffect, useState } from "react";
 
-import { sendReady, sendRefresh } from "./messages";
-
-import type { TasksExtensionMessage } from "@repo/webview-shared";
+import { useTasksApi } from "./hooks/useTasksApi";
 
 export default function App() {
-	const [ready, setReady] = useState(false);
+	const api = useTasksApi();
 
-	useMessage<TasksExtensionMessage>((message) => {
-		switch (message.type) {
-			case "init":
-				setReady(true);
-				break;
-			case "error":
-				logger.error("Tasks panel error:", message.data);
-				break;
-		}
+	const { data, isLoading, error, refetch } = useQuery({
+		queryKey: ["tasks-init"],
+		queryFn: () => api.init(),
 	});
 
-	useEffect(() => {
-		sendReady();
-	}, []);
-
-	if (!ready) {
+	if (isLoading) {
 		return <VscodeProgressRing />;
+	}
+
+	if (error) {
+		return <p>Error: {error.message}</p>;
+	}
+
+	if (!data?.tasksSupported) {
+		return (
+			<p>
+				<VscodeIcon name="warning" /> Tasks not supported
+			</p>
+		);
 	}
 
 	return (
 		<div>
-			<h2>Coder Tasks</h2>
-			<VscodeButton onClick={sendRefresh}>Refresh</VscodeButton>
+			<p>
+				<VscodeIcon name="check" /> Connected to {data.baseUrl}
+			</p>
+			<p>Templates: {data.templates.length}</p>
+			<p>Tasks: {data.tasks.length}</p>
+			<VscodeButton icon="refresh" onClick={() => void refetch()}>
+				Refresh
+			</VscodeButton>
 		</div>
 	);
 }

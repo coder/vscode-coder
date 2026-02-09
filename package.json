@@ -140,6 +140,14 @@
 						"experimental"
 					]
 				},
+				"coder.experimental.tasks": {
+					"markdownDescription": "Enable the experimental [Tasks](https://coder.com/docs/ai-coder/tasks) panel in VS Code. When enabled, a sidebar panel lets you run and manage AI coding agents in Coder workspaces. This feature is under active development and may change. Requires a Coder deployment with Tasks support.",
+					"type": "boolean",
+					"default": false,
+					"tags": [
+						"experimental"
+					]
+				},
 				"coder.sshFlags": {
 					"markdownDescription": "Additional flags to pass to the `coder ssh` command when establishing SSH connections. Enter each flag as a separate array item; values are passed verbatim and in order. See the [CLI ssh reference](https://coder.com/docs/reference/cli/ssh) for available flags.\n\nNote: `--network-info-dir` and `--ssh-host-prefix` are ignored (managed internally). Prefer `#coder.proxyLogDirectory#` over `--log-dir`/`-l` for full functionality.",
 					"type": "array",
@@ -182,6 +190,11 @@
 					"id": "coder",
 					"title": "Coder Remote",
 					"icon": "media/logo-white.svg"
+				},
+				{
+					"id": "coderTasks",
+					"title": "Coder Tasks",
+					"icon": "media/tasks-logo.svg"
 				}
 			]
 		},
@@ -199,13 +212,15 @@
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
 					"when": "coder.authenticated && coder.isOwner"
-				},
+				}
+			],
+			"coderTasks": [
 				{
 					"type": "webview",
 					"id": "coder.tasksPanel",
-					"name": "Tasks",
-					"icon": "media/logo-white.svg",
-					"when": "coder.authenticated && coder.devMode"
+					"name": "Coder Tasks",
+					"icon": "media/tasks-logo.svg",
+					"when": "coder.authenticated && coder.tasksEnabled"
 				}
 			]
 		},
@@ -218,7 +233,7 @@
 			{
 				"view": "coder.tasksPanel",
 				"contents": "[Login](command:coder.login) to view tasks.",
-				"when": "!coder.authenticated && coder.loaded"
+				"when": "!coder.authenticated && coder.loaded && coder.tasksEnabled"
 			}
 		],
 		"commands": [
@@ -308,6 +323,12 @@
 				"command": "coder.manageCredentials",
 				"title": "Manage Credentials",
 				"category": "Coder"
+			},
+			{
+				"command": "coder.tasks.refresh",
+				"title": "Refresh Tasks",
+				"category": "Coder",
+				"icon": "$(refresh)"
 			}
 		],
 		"menus": {
@@ -370,6 +391,10 @@
 				},
 				{
 					"command": "coder.manageCredentials"
+				},
+				{
+					"command": "coder.tasks.refresh",
+					"when": "false"
 				}
 			],
 			"view/title": [
@@ -404,6 +429,11 @@
 					"command": "coder.searchAllWorkspaces",
 					"when": "coder.authenticated && view == allWorkspaces",
 					"group": "navigation@3"
+				},
+				{
+					"command": "coder.tasks.refresh",
+					"when": "coder.authenticated && coder.tasksEnabled && view == coder.tasksPanel",
+					"group": "navigation@1"
 				}
 			],
 			"view/item/context": [
@@ -448,6 +478,7 @@
 	},
 	"dependencies": {
 		"@peculiar/x509": "^1.14.3",
+		"@repo/shared": "workspace:*",
 		"axios": "1.13.5",
 		"date-fns": "^4.1.0",
 		"eventsource": "^4.1.0",
@@ -478,11 +509,12 @@
 		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^8.54.0",
 		"@typescript-eslint/parser": "^8.54.0",
-		"@vitejs/plugin-react-swc": "catalog:",
+		"@vitejs/plugin-react": "catalog:",
 		"@vitest/coverage-v8": "^4.0.18",
 		"@vscode/test-cli": "^0.0.12",
 		"@vscode/test-electron": "^2.5.2",
 		"@vscode/vsce": "^3.7.1",
+		"babel-plugin-react-compiler": "catalog:",
 		"bufferutil": "^4.1.0",
 		"coder": "github:coder/coder#main",
 		"concurrently": "^9.2.1",
@@ -495,6 +527,7 @@
 		"eslint-plugin-import-x": "^4.16.1",
 		"eslint-plugin-package-json": "^0.88.2",
 		"eslint-plugin-react": "^7.37.5",
+		"eslint-plugin-react-compiler": "catalog:",
 		"eslint-plugin-react-hooks": "^7.0.1",
 		"globals": "^17.3.0",
 		"jsdom": "^28.0.0",

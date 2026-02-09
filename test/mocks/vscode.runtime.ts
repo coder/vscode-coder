@@ -89,6 +89,7 @@ export const window = {
 	showErrorMessage: vi.fn(),
 	showQuickPick: vi.fn(),
 	showInputBox: vi.fn(),
+	showSaveDialog: vi.fn(),
 	withProgress: vi.fn(),
 	createOutputChannel: vi.fn(() => ({
 		appendLine: vi.fn(),

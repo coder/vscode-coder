@@ -10,6 +10,9 @@ function getVsCodeApi(): WebviewApi<unknown> {
 	return vscodeApi;
 }
 
+/**
+ * Post a message to the extension.
+ */
 export function postMessage(message: WebviewMessage): void {
 	getVsCodeApi().postMessage(message);
 }

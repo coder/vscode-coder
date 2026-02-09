@@ -21,12 +21,12 @@ beforeEach(() => {
 
 describe("postMessage", () => {
 	it("sends messages to the extension", () => {
-		postMessage({ type: "ready" });
-		postMessage({ type: "refresh", data: { id: 1 } });
+		postMessage({ method: "ready" });
+		postMessage({ method: "refresh", params: { id: 1 } });
 
 		expect(sent).toEqual([
-			{ type: "ready" },
-			{ type: "refresh", data: { id: 1 } },
+			{ method: "ready" },
+			{ method: "refresh", params: { id: 1 } },
 		]);
 	});
 });
