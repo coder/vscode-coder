@@ -57,7 +57,6 @@ Comments explain what code does or why it exists:
 - All unit tests: `pnpm test`
 - Extension tests: `pnpm test:extension`
 - Webview tests: `pnpm test:webview`
-- CI mode: `pnpm test:ci`
 - Integration tests: `pnpm test:integration`
 - Run specific extension test: `pnpm test:extension ./test/unit/filename.test.ts`
 - Run specific webview test: `pnpm test:webview ./test/webview/filename.test.ts`

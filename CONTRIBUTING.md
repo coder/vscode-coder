@@ -128,8 +128,7 @@ The project uses Vitest with separate test configurations for extension and webv
 ```bash
 pnpm test:extension  # Extension tests (runs in Electron with mocked VS Code APIs)
 pnpm test:webview    # Webview tests (runs in jsdom)
-pnpm test            # Both extension and webview tests
-pnpm test:ci         # CI mode (same as test with CI=true)
+pnpm test            # Both extension and webview tests (CI mode)
 ```
 
 Test files are organized by type:

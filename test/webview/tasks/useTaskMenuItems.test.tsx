@@ -46,8 +46,8 @@ function clickItem(items: ActionMenuItem[], label: string): void {
 	});
 }
 
-const pausableTask = () => task({ workspace_status: "running" });
-const resumableTask = () => task({ workspace_status: "stopped" });
+const pausableTask = () => task({ status: "active" });
+const resumableTask = () => task({ status: "paused" });
 
 function deferPause() {
 	let resolve: () => void = () => {};

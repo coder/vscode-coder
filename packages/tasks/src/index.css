@@ -193,9 +193,7 @@ vscode-collapsible::part(body) {
 	background: var(--status-color);
 }
 
-.status-dot.working,
-.status-dot.idle,
-.status-dot.complete {
+.status-dot.active {
 	--status-color: var(--vscode-testing-iconPassed);
 }
 
@@ -203,12 +201,17 @@ vscode-collapsible::part(body) {
 	--status-color: var(--vscode-testing-iconFailed);
 }
 
-.status-dot.initializing {
-	--status-color: var(--vscode-testing-iconQueued);
+.status-dot.initializing,
+.status-dot.pending {
+	--status-color: var(--vscode-testing-messagePeekBorder);
 }
 
 .status-dot.paused {
 	--status-color: var(--vscode-testing-iconSkipped);
+}
+
+.status-dot.unknown {
+	--status-color: var(--vscode-testing-iconQueued);
 }
 
 .text-link {

@@ -1,57 +1,32 @@
 import { render, screen } from "@testing-library/react";
+import { TaskStatuses } from "coder/site/src/api/typesGenerated";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { StatusIndicator } from "@repo/tasks/components";
 
-import { minimalTask, task, taskState } from "../../mocks/tasks";
+import { task } from "../../mocks/tasks";
 
-import type { Task } from "@repo/shared";
+import type { TaskStatus } from "@repo/shared";
+
+const css = readFileSync(resolve("packages/tasks/src/index.css"), "utf-8");
 
 describe("StatusIndicator", () => {
-	interface StatusTestCase {
-		name: string;
-		task: Task;
-		title: string;
-	}
-	it.each<StatusTestCase>([
-		{
-			name: "error task status",
-			task: task({ status: "error", current_state: null }),
-			title: "Error",
+	it.each<TaskStatus>(TaskStatuses)(
+		"renders status '%s' with matching class and title",
+		(status) => {
+			const expectedTitle = status.charAt(0).toUpperCase() + status.slice(1);
+			render(<StatusIndicator task={task({ status })} />);
+			const dot = screen.getByTitle(expectedTitle);
+			expect(dot.classList).toContain(status);
 		},
-		{
-			name: "failed task state",
-			task: task({ current_state: taskState("failed") }),
-			title: "Error",
+	);
+
+	it.each<TaskStatus>(TaskStatuses)(
+		"has a CSS rule for status '%s'",
+		(status) => {
+			expect(css).toMatch(new RegExp(`\\.status-dot\\.${status}\\b`));
 		},
-		{
-			name: "stopped workspace",
-			task: task({ workspace_status: "stopped", current_state: null }),
-			title: "Paused",
-		},
-		{
-			name: "pending workspace",
-			task: task({ workspace_status: "pending", current_state: null }),
-			title: "Initializing",
-		},
-		{
-			name: "working state",
-			task: task({ current_state: taskState("working") }),
-			title: "Working",
-		},
-		{
-			name: "complete state",
-			task: task({ current_state: taskState("complete") }),
-			title: "Complete",
-		},
-		{
-			name: "no workspace or state (idle)",
-			task: minimalTask(),
-			title: "Idle",
-		},
-	])("$name", ({ task, title }) => {
-		render(<StatusIndicator task={task} />);
-		const dot = screen.getByTitle(title);
-		expect(dot.classList).toContain(title.toLowerCase());
-	});
+	);
 });
