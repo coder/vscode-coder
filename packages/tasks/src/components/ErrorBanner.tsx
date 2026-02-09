@@ -1,5 +1,4 @@
 import { VscodeIcon } from "@vscode-elements/react-elements";
-import { useCallback } from "react";
 
 import { useTasksApi } from "../hooks/useTasksApi";
 
@@ -11,17 +10,17 @@ interface ErrorBannerProps {
 
 export function ErrorBanner({ task }: ErrorBannerProps) {
 	const api = useTasksApi();
-	const message = task.current_state?.message || "Build failed";
-
-	const handleViewLogs = useCallback(() => {
-		void api.viewLogs(task.id);
-	}, [api, task.id]);
+	const message = task.current_state?.message || "Task failed";
 
 	return (
 		<div className="error-banner">
 			<VscodeIcon name="warning" />
-			<span className="error-banner-message">{message}.</span>
-			<button type="button" className="text-link" onClick={handleViewLogs}>
+			<span>{message}</span>
+			<button
+				type="button"
+				className="text-link"
+				onClick={() => api.viewLogs(task.id)}
+			>
 				View logs <VscodeIcon name="link-external" />
 			</button>
 		</div>

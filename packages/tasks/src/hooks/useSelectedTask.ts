@@ -6,7 +6,7 @@ import {
 } from "@repo/shared";
 import { useIpc } from "@repo/webview-shared/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
 	TASK_ACTIVE_INTERVAL_MS,
@@ -69,19 +69,15 @@ export function useSelectedTask(tasks: readonly Task[]) {
 		});
 	}, [onNotification, selectedTaskId, queryClient]);
 
-	const selectTask = useCallback((taskId: string) => {
-		setSelectedTaskId(taskId);
-	}, []);
-
-	const deselectTask = useCallback(() => {
+	const deselectTask = () => {
 		setSelectedTaskId(null);
 		queryClient.removeQueries({ queryKey: [QUERY_KEY] });
-	}, [queryClient]);
+	};
 
 	return {
 		selectedTask: selectedTask ?? null,
 		isLoadingDetails,
-		selectTask,
+		selectTask: setSelectedTaskId,
 		deselectTask,
 	};
 }

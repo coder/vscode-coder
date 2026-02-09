@@ -3,7 +3,12 @@ import * as vscode from "vscode";
 
 import { TasksPanel } from "@/webviews/tasks/tasksPanel";
 
-import { TasksApi, type ParamsOf, type ResponseOf } from "@repo/shared";
+import {
+	TasksApi,
+	type CommandDef,
+	type RequestDef,
+	defineRequest,
+} from "@repo/shared";
 
 import { logEntry, preset, task, template } from "../../../mocks/tasks";
 import {
@@ -48,20 +53,20 @@ function createClient(baseUrl = "https://coder.example.com"): MockClient {
 	};
 }
 
-interface ApiDef {
-	method: string;
-}
-
 interface Harness {
 	panel: TasksPanel;
 	client: MockClient;
 	ui: MockUserInteraction;
-	/** Type-safe request using TasksApi definitions */
-	request: <T extends ApiDef>(
-		def: T,
-		params?: ParamsOf<T>,
-	) => Promise<{ success: boolean; data?: ResponseOf<T>; error?: string }>;
-	command: (method: string, params?: unknown) => Promise<void>;
+	/** Send a request and wait for the response */
+	request: <P, R>(
+		def: RequestDef<P, R>,
+		...args: P extends void ? [] : [params: P]
+	) => Promise<{ success: boolean; data?: R; error?: string }>;
+	/** Send a fire-and-forget command */
+	command: <P>(
+		def: CommandDef<P>,
+		...args: P extends void ? [] : [params: P]
+	) => Promise<void>;
 	messages: () => unknown[];
 }
 
@@ -111,7 +116,11 @@ function createHarness(): Harness {
 		client,
 		ui,
 		messages: () => [...posted],
-		request: async <T extends ApiDef>(def: T, params?: ParamsOf<T>) => {
+		request: async <P, R>(
+			def: RequestDef<P, R>,
+			...args: P extends void ? [] : [params: P]
+		) => {
+			const params = args[0];
 			const requestId = `req-${Date.now()}-${Math.random()}`;
 			handler?.({ requestId, method: def.method, params });
 
@@ -130,10 +139,13 @@ function createHarness(): Harness {
 
 			return posted.find(
 				(m) => (m as { requestId?: string }).requestId === requestId,
-			) as { success: boolean; data?: ResponseOf<T>; error?: string };
+			) as { success: boolean; data?: R; error?: string };
 		},
-		command: async (method: string, params?: unknown) => {
-			handler?.({ method, params });
+		command: async <P>(
+			def: CommandDef<P>,
+			...args: P extends void ? [] : [params: P]
+		) => {
+			handler?.({ method: def.method, params: args[0] });
 			await new Promise((r) => setTimeout(r, 10));
 		},
 	};
@@ -330,7 +342,7 @@ describe("TasksPanel", () => {
 
 			expect(res).toMatchObject({ success: true, data: { id: "new-task" } });
 			expect(h.messages()).toContainEqual(
-				expect.objectContaining({ type: "tasksUpdated" }),
+				expect.objectContaining({ type: TasksApi.tasksUpdated.method }),
 			);
 		});
 	});
@@ -351,7 +363,7 @@ describe("TasksPanel", () => {
 			expect(res.success).toBe(true);
 			expect(h.client.deleteTask).toHaveBeenCalledWith("me", "task-1");
 			expect(h.messages()).toContainEqual(
-				expect.objectContaining({ type: "tasksUpdated" }),
+				expect.objectContaining({ type: TasksApi.tasksUpdated.method }),
 			);
 		});
 
@@ -420,20 +432,20 @@ describe("TasksPanel", () => {
 	describe("viewInCoder / viewLogs", () => {
 		interface OpenExternalTestCase {
 			name: string;
-			method: "viewInCoder" | "viewLogs";
+			method: typeof TasksApi.viewInCoder | typeof TasksApi.viewLogs;
 			taskOverrides: Partial<Task>;
 			expectedUrl: string;
 		}
 		it.each<OpenExternalTestCase>([
 			{
 				name: "viewInCoder opens task URL",
-				method: "viewInCoder",
+				method: TasksApi.viewInCoder,
 				taskOverrides: { id: "task-123", owner_name: "alice" },
 				expectedUrl: "https://coder.example.com/tasks/alice/task-123",
 			},
 			{
 				name: "viewLogs opens build URL when workspace exists",
-				method: "viewLogs",
+				method: TasksApi.viewLogs,
 				taskOverrides: {
 					owner_name: "alice",
 					workspace_name: "my-ws",
@@ -443,7 +455,7 @@ describe("TasksPanel", () => {
 			},
 			{
 				name: "viewLogs opens task URL when no workspace",
-				method: "viewLogs",
+				method: TasksApi.viewLogs,
 				taskOverrides: {
 					id: "task-1",
 					owner_name: "alice",
@@ -466,7 +478,7 @@ describe("TasksPanel", () => {
 			const h = createHarness();
 			h.client.getHost.mockReturnValue(undefined);
 
-			await h.command("viewInCoder", { taskId: "task-123" });
+			await h.command(TasksApi.viewInCoder, { taskId: "task-123" });
 
 			expect(vscode.env.openExternal).not.toHaveBeenCalled();
 		});
@@ -560,7 +572,7 @@ describe("TasksPanel", () => {
 	describe("sendTaskMessage", () => {
 		it("shows not supported message", async () => {
 			const h = createHarness();
-			await h.command("sendTaskMessage", {
+			await h.request(TasksApi.sendTaskMessage, {
 				taskId: "task-1",
 				message: "hello",
 			});
@@ -575,13 +587,15 @@ describe("TasksPanel", () => {
 		it("showCreateForm sends notification", () => {
 			const h = createHarness();
 			h.panel.showCreateForm();
-			expect(h.messages()).toContainEqual({ type: "showCreateForm" });
+			expect(h.messages()).toContainEqual({
+				type: TasksApi.showCreateForm.method,
+			});
 		});
 
 		it("refresh sends notification", () => {
 			const h = createHarness();
 			h.panel.refresh();
-			expect(h.messages()).toContainEqual({ type: "refresh" });
+			expect(h.messages()).toContainEqual({ type: TasksApi.refresh.method });
 		});
 	});
 
@@ -597,7 +611,7 @@ describe("TasksPanel", () => {
 
 		it("handles unknown methods", async () => {
 			const h = createHarness();
-			const res = await h.request({ method: "unknownMethod" });
+			const res = await h.request(defineRequest("unknownMethod"));
 
 			expect(res.success).toBe(false);
 			expect(res.error).toContain("Unknown method");
@@ -652,7 +666,7 @@ describe("TasksPanel", () => {
 			const h = createHarness();
 			h.client.getTask.mockRejectedValue(new Error("Task not found"));
 
-			await h.command("viewInCoder", { taskId: "task-1" });
+			await h.command(TasksApi.viewInCoder, { taskId: "task-1" });
 
 			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
 				"Command failed: Task not found",

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 
 import type { LogsStatus, TaskLogEntry } from "@repo/shared";
 
@@ -26,34 +26,20 @@ export function AgentChatHistory({
 }: AgentChatHistoryProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const isAtBottomRef = useRef(true);
-	const isInitialMountRef = useRef(true);
 
-	const checkIfAtBottom = useCallback(() => {
+	const handleScroll = () => {
 		const container = containerRef.current;
-		if (!container) return true;
+		if (!container) return;
 		const distanceFromBottom =
 			container.scrollHeight - container.scrollTop - container.clientHeight;
-		return distanceFromBottom <= 50;
-	}, []);
-
-	const handleScroll = useCallback(() => {
-		isAtBottomRef.current = checkIfAtBottom();
-	}, [checkIfAtBottom]);
-
-	useEffect(() => {
-		if (isInitialMountRef.current && containerRef.current) {
-			containerRef.current.scrollTop = containerRef.current.scrollHeight;
-			isInitialMountRef.current = false;
-		}
-	}, []);
+		isAtBottomRef.current = distanceFromBottom <= 50;
+	};
 
 	useEffect(() => {
 		if (containerRef.current && isAtBottomRef.current) {
 			containerRef.current.scrollTop = containerRef.current.scrollHeight;
 		}
-	}, [logs]);
-
-	const emptyMessage = getEmptyMessage(logsStatus);
+	}, [logs, isThinking]);
 
 	return (
 		<div className="agent-chat-history">
@@ -65,21 +51,24 @@ export function AgentChatHistory({
 			>
 				{logs.length === 0 ? (
 					<div
-						className={`chat-history-empty ${logsStatus === "error" ? "chat-history-error" : ""}`}
+						className={[
+							"chat-history-empty",
+							logsStatus === "error" && "chat-history-error",
+						]
+							.filter(Boolean)
+							.join(" ")}
 					>
-						{emptyMessage}
+						{getEmptyMessage(logsStatus)}
 					</div>
 				) : (
 					logs.map((log) => (
-						<div key={log.id} className={`log-entry log-entry-${log.type}`}>
+						<div key={log.id} className="log-entry">
 							{log.content}
 						</div>
 					))
 				)}
 				{isThinking && (
-					<div className="log-entry log-entry-thinking">
-						<span className="log-content">*Thinking...</span>
-					</div>
+					<div className="log-entry log-entry-thinking">Thinking...</div>
 				)}
 			</div>
 		</div>

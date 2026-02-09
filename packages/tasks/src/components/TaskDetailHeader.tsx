@@ -1,23 +1,21 @@
 import { getTaskLabel, type Task } from "@repo/shared";
 import { VscodeIcon } from "@vscode-elements/react-elements";
 
-import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
+import { getActionLabel } from "../utils/taskLoadingState";
+
+import { ActionMenu } from "./ActionMenu";
 import { StatusIndicator } from "./StatusIndicator";
+import { useTaskMenuItems } from "./useTaskMenuItems";
 
 interface TaskDetailHeaderProps {
 	task: Task;
-	menuItems: ActionMenuItem[];
 	onBack: () => void;
-	loadingAction?: string | null;
 }
 
-export function TaskDetailHeader({
-	task,
-	menuItems,
-	onBack,
-	loadingAction,
-}: TaskDetailHeaderProps) {
-	const displayName = getTaskLabel(task);
+export function TaskDetailHeader({ task, onBack }: TaskDetailHeaderProps) {
+	const label = getTaskLabel(task);
+	const { menuItems, action } = useTaskMenuItems({ task });
+	const loadingAction = getActionLabel(action);
 
 	return (
 		<div className="task-detail-header">
@@ -28,8 +26,8 @@ export function TaskDetailHeader({
 				onClick={onBack}
 			/>
 			<StatusIndicator task={task} />
-			<span className="task-detail-title" title={displayName}>
-				{displayName}
+			<span className="task-detail-title" title={label}>
+				{label}
 				{loadingAction && (
 					<span className="task-action-label">{loadingAction}</span>
 				)}

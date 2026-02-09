@@ -50,6 +50,9 @@ export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
 				onChange={setPrompt}
 				onSubmit={handleSubmit}
 				loading={isPending}
+				actionIcon="send"
+				actionLabel="Send"
+				actionDisabled={!canSubmit}
 			/>
 			{error && <div className="create-task-error">{error.message}</div>}
 			<div className="create-task-options">

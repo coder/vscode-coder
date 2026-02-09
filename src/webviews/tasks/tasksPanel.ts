@@ -131,6 +131,10 @@ export class TasksPanel
 		[TasksApi.downloadLogs.method]: requestHandler(TasksApi.downloadLogs, (p) =>
 			this.handleDownloadLogs(p.taskId),
 		),
+		[TasksApi.sendTaskMessage.method]: requestHandler(
+			TasksApi.sendTaskMessage,
+			(p) => this.handleSendMessage(p.taskId, p.message),
+		),
 	};
 
 	/**
@@ -146,10 +150,6 @@ export class TasksPanel
 		),
 		[TasksApi.viewLogs.method]: commandHandler(TasksApi.viewLogs, (p) =>
 			this.handleViewLogs(p.taskId),
-		),
-		[TasksApi.sendTaskMessage.method]: commandHandler(
-			TasksApi.sendTaskMessage,
-			(p) => this.handleSendMessage(p.taskId, p.message),
 		),
 	};
 
@@ -413,11 +413,12 @@ export class TasksPanel
 	 * Placeholder handler for sending follow-up messages to a task.
 	 * The Coder API does not yet support this feature.
 	 */
-	private handleSendMessage(taskId: string, message: string): void {
+	private handleSendMessage(taskId: string, message: string): Promise<void> {
 		this.logger.info(`Sending message to task ${taskId}: ${message}`);
 		vscode.window.showInformationMessage(
 			"Follow-up messages are not yet supported by the API",
 		);
+		return Promise.resolve();
 	}
 
 	private async fetchTasksWithStatus(): Promise<{

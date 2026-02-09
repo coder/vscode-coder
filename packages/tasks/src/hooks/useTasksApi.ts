@@ -37,11 +37,11 @@ export function useTasksApi() {
 			request(TasksApi.resumeTask, params),
 		downloadLogs: (taskId: string) =>
 			request(TasksApi.downloadLogs, { taskId }),
+		sendTaskMessage: (taskId: string, message: string) =>
+			request(TasksApi.sendTaskMessage, { taskId, message }),
 
 		// Commands
 		viewInCoder: (taskId: string) => command(TasksApi.viewInCoder, { taskId }),
 		viewLogs: (taskId: string) => command(TasksApi.viewLogs, { taskId }),
-		sendTaskMessage: (taskId: string, message: string) =>
-			command(TasksApi.sendTaskMessage, { taskId, message }),
 	};
 }
