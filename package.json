@@ -140,6 +140,14 @@
 						"experimental"
 					]
 				},
+				"coder.experimental.tasks": {
+					"markdownDescription": "Enable the experimental [Tasks](https://coder.com/docs/ai-coder/tasks) panel in VS Code. When enabled, a sidebar panel lets you run and manage AI coding agents in Coder workspaces. This feature is under active development and may change. Requires a Coder deployment with Tasks support.",
+					"type": "boolean",
+					"default": false,
+					"tags": [
+						"experimental"
+					]
+				},
 				"coder.sshFlags": {
 					"markdownDescription": "Additional flags to pass to the `coder ssh` command when establishing SSH connections. Enter each flag as a separate array item; values are passed verbatim and in order. See the [CLI ssh reference](https://coder.com/docs/reference/cli/ssh) for available flags.\n\nNote: `--network-info-dir` and `--ssh-host-prefix` are ignored (managed internally). Prefer `#coder.proxyLogDirectory#` over `--log-dir`/`-l` for full functionality.",
 					"type": "array",
@@ -212,7 +220,7 @@
 					"id": "coder.tasksPanel",
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
-					"when": "coder.authenticated"
+					"when": "coder.authenticated && coder.tasksEnabled"
 				}
 			]
 		},
@@ -225,7 +233,7 @@
 			{
 				"view": "coder.tasksPanel",
 				"contents": "[Login](command:coder.login) to view tasks.",
-				"when": "!coder.authenticated && coder.loaded"
+				"when": "!coder.authenticated && coder.loaded && coder.tasksEnabled"
 			}
 		],
 		"commands": [
@@ -424,7 +432,7 @@
 				},
 				{
 					"command": "coder.tasks.refresh",
-					"when": "coder.authenticated && view == coder.tasksPanel",
+					"when": "coder.authenticated && coder.tasksEnabled && view == coder.tasksPanel",
 					"group": "navigation@1"
 				}
 			],

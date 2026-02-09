@@ -66,6 +66,22 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const secretsManager = serviceContainer.getSecretsManager();
 	const contextManager = serviceContainer.getContextManager();
 
+	const syncTasksFlag = () => {
+		const enabled =
+			vscode.workspace
+				.getConfiguration()
+				.get<boolean>("coder.experimental.tasks") === true;
+		contextManager.set("coder.tasksEnabled", enabled);
+	};
+	syncTasksFlag();
+	ctx.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration("coder.experimental.tasks")) {
+				syncTasksFlag();
+			}
+		}),
+	);
+
 	// Migrate auth storage from old flat format to new label-based format
 	await migrateAuthStorage(serviceContainer);
 
