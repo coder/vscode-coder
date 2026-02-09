@@ -26,7 +26,9 @@ jobs:
 
       - run: pnpm install
 
-      - run: pnpm prettier --check .
+      - run: pnpm typecheck
+
+      - run: pnpm format:check
 
       - run: pnpm lint
 

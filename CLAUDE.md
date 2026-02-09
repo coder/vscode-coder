@@ -47,13 +47,14 @@ Comments explain what code does or why it exists:
 ## Build and Test Commands
 
 - Build: `pnpm build`
-- Watch mode: `pnpm watch` (or `pnpm watch:all`)
+- Watch mode: `pnpm watch`
 - Package: `pnpm package`
-- Format: `pnpm fmt`
-- Format check: `pnpm fmt:check`
+- Type check: `pnpm typecheck`
+- Format: `pnpm format`
+- Format check: `pnpm format:check`
 - Lint: `pnpm lint`
 - Lint with auto-fix: `pnpm lint:fix`
-- All unit tests: `pnpm test` (or `pnpm test:all`)
+- All unit tests: `pnpm test`
 - Extension tests: `pnpm test:extension`
 - Webview tests: `pnpm test:webview`
 - CI mode: `pnpm test:ci`
