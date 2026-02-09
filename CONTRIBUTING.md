@@ -94,7 +94,7 @@ Key patterns:
 ### Development
 
 ```bash
-pnpm watch:all  # Rebuild extension and webviews on changes
+pnpm watch  # Rebuild extension and webviews on changes
 ```
 
 Press F5 to launch the Extension Development Host. Use "Developer: Reload Webviews"
@@ -128,8 +128,8 @@ The project uses Vitest with separate test configurations for extension and webv
 ```bash
 pnpm test:extension  # Extension tests (runs in Electron with mocked VS Code APIs)
 pnpm test:webview    # Webview tests (runs in jsdom)
-pnpm test:all        # Both extension and webview tests
-pnpm test:ci         # CI mode (same as test:all with CI=true)
+pnpm test            # Both extension and webview tests
+pnpm test:ci         # CI mode (same as test with CI=true)
 ```
 
 Test files are organized by type:
