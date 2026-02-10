@@ -267,6 +267,29 @@ describe("TasksPanel", () => {
 			state: "complete" | "working";
 			expectedCalls: number;
 		}
+		it.each([
+			{ status: 400, statusText: "Bad Request" },
+			{ status: 409, statusText: "Conflict" },
+		])(
+			"returns logsStatus not_available on $status",
+			async ({ status, statusText }) => {
+				const h = createHarness();
+				h.client.getTask.mockResolvedValue(task());
+				h.client.getTaskLogs.mockRejectedValue(
+					createAxiosError(status, statusText),
+				);
+
+				const res = await h.request(TasksApi.getTaskDetails, {
+					taskId: "task-1",
+				});
+
+				expect(res).toMatchObject({
+					success: true,
+					data: { logsStatus: "not_available", logs: [] },
+				});
+			},
+		);
+
 		it.each<LogCachingTestCase>([
 			{
 				name: "caches logs for completed tasks",
@@ -455,24 +478,69 @@ describe("TasksPanel", () => {
 			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
 			const saveUri = vscode.Uri.file("/downloads/logs.txt");
 			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(saveUri);
+			h.ui.setResponse(`Logs saved to ${saveUri.fsPath}`, "Open File");
 
-			await h.command("downloadLogs", { taskId: "task-1" });
+			const res = await h.request(TasksApi.downloadLogs, {
+				taskId: "task-1",
+			});
 
+			expect(res.success).toBe(true);
 			expect(vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
 				saveUri,
 				expect.any(Buffer),
 			);
+			expect(vscode.window.showTextDocument).toHaveBeenCalledWith(saveUri);
+		});
+
+		it("does not open file when notification is dismissed", async () => {
+			const h = createHarness();
+			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
+			const saveUri = vscode.Uri.file("/downloads/logs.txt");
+			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(saveUri);
+			h.ui.setResponse(`Logs saved to ${saveUri.fsPath}`, undefined);
+
+			const res = await h.request(TasksApi.downloadLogs, {
+				taskId: "task-1",
+			});
+
+			expect(res.success).toBe(true);
+			expect(vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
+				saveUri,
+				expect.any(Buffer),
+			);
+			expect(vscode.window.showTextDocument).not.toHaveBeenCalled();
 		});
 
 		it("shows warning when no logs", async () => {
 			const h = createHarness();
 			h.client.getTaskLogs.mockResolvedValue([]);
 
-			await h.command("downloadLogs", { taskId: "task-1" });
+			const res = await h.request(TasksApi.downloadLogs, {
+				taskId: "task-1",
+			});
 
+			expect(res.success).toBe(true);
 			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
 				"No logs available to download",
 			);
+		});
+
+		it("propagates server errors instead of masking them", async () => {
+			const h = createHarness();
+			h.client.getTaskLogs.mockRejectedValue(
+				createAxiosError(500, "Internal server error"),
+			);
+
+			const res = await h.request(TasksApi.downloadLogs, {
+				taskId: "task-1",
+			});
+
+			expect(res.success).toBe(false);
+			expect(res.error).toBe("Failed to fetch logs for download");
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				"Failed to fetch logs for download",
+			);
+			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 		});
 
 		it("does nothing when user cancels", async () => {
@@ -480,8 +548,11 @@ describe("TasksPanel", () => {
 			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
 			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(undefined);
 
-			await h.command("downloadLogs", { taskId: "task-1" });
+			const res = await h.request(TasksApi.downloadLogs, {
+				taskId: "task-1",
+			});
 
+			expect(res.success).toBe(true);
 			expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
 		});
 	});
@@ -530,6 +601,62 @@ describe("TasksPanel", () => {
 
 			expect(res.success).toBe(false);
 			expect(res.error).toContain("Unknown method");
+		});
+
+		it("propagates template fetch errors during init", async () => {
+			const h = createHarness();
+			h.client.getTasks.mockResolvedValue([task()]);
+			h.client.getTemplates.mockRejectedValue(
+				new Error("Template service unavailable"),
+			);
+
+			const res = await h.request(TasksApi.init);
+
+			expect(res.success).toBe(false);
+			expect(res.error).toContain("Template service unavailable");
+		});
+
+		it("createTask succeeds even when refreshing the task list fails", async () => {
+			const h = createHarness();
+			const newTask = task({ id: "new-task" });
+			h.client.createTask.mockResolvedValue(newTask);
+			// First call succeeds for init tasks, second fails during refreshAndNotifyTasks
+			h.client.getTasks
+				.mockResolvedValueOnce([])
+				.mockRejectedValueOnce(new Error("Refresh failed"));
+
+			const res = await h.request(TasksApi.createTask, {
+				templateVersionId: "v1",
+				prompt: "Build a feature",
+			});
+
+			expect(res).toMatchObject({ success: true, data: { id: "new-task" } });
+		});
+
+		it("shows error notification for user action failures", async () => {
+			const h = createHarness();
+			h.client.getTask.mockRejectedValue(new Error("Workspace unavailable"));
+
+			const res = await h.request(TasksApi.pauseTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
+
+			expect(res.success).toBe(false);
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				"Workspace unavailable",
+			);
+		});
+
+		it("shows error message when command fails", async () => {
+			const h = createHarness();
+			h.client.getTask.mockRejectedValue(new Error("Task not found"));
+
+			await h.command("viewInCoder", { taskId: "task-1" });
+
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				"Command failed: Task not found",
+			);
 		});
 	});
 });

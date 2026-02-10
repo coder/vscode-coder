@@ -35,12 +35,12 @@ export function useTasksApi() {
 			request(TasksApi.pauseTask, params),
 		resumeTask: (params: TaskActionParams) =>
 			request(TasksApi.resumeTask, params),
+		downloadLogs: (taskId: string) =>
+			request(TasksApi.downloadLogs, { taskId }),
 
 		// Commands
 		viewInCoder: (taskId: string) => command(TasksApi.viewInCoder, { taskId }),
 		viewLogs: (taskId: string) => command(TasksApi.viewLogs, { taskId }),
-		downloadLogs: (taskId: string) =>
-			command(TasksApi.downloadLogs, { taskId }),
 		sendTaskMessage: (taskId: string, message: string) =>
 			command(TasksApi.sendTaskMessage, { taskId, message }),
 	};

@@ -69,6 +69,13 @@ export class TasksPanel
 {
 	public static readonly viewType = "coder.tasksPanel";
 
+	private static readonly USER_ACTION_METHODS = new Set([
+		TasksApi.pauseTask.method,
+		TasksApi.resumeTask.method,
+		TasksApi.deleteTask.method,
+		TasksApi.downloadLogs.method,
+	]);
+
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
 
@@ -121,6 +128,9 @@ export class TasksPanel
 		[TasksApi.resumeTask.method]: requestHandler(TasksApi.resumeTask, (p) =>
 			this.handleResumeTask(p.taskId, p.taskName),
 		),
+		[TasksApi.downloadLogs.method]: requestHandler(TasksApi.downloadLogs, (p) =>
+			this.handleDownloadLogs(p.taskId),
+		),
 	};
 
 	/**
@@ -136,9 +146,6 @@ export class TasksPanel
 		),
 		[TasksApi.viewLogs.method]: commandHandler(TasksApi.viewLogs, (p) =>
 			this.handleViewLogs(p.taskId),
-		),
-		[TasksApi.downloadLogs.method]: commandHandler(TasksApi.downloadLogs, (p) =>
-			this.handleDownloadLogs(p.taskId),
 		),
 		[TasksApi.sendTaskMessage.method]: commandHandler(
 			TasksApi.sendTaskMessage,
@@ -223,13 +230,17 @@ export class TasksPanel
 			const data = await handler(params);
 			this.sendResponse({ requestId, method, success: true, data });
 		} catch (err) {
+			const errorMessage = toError(err).message;
 			this.logger.warn(`Request ${method} failed`, err);
 			this.sendResponse({
 				requestId,
 				method,
 				success: false,
-				error: toError(err).message,
+				error: errorMessage,
 			});
+			if (TasksPanel.USER_ACTION_METHODS.has(method)) {
+				vscode.window.showErrorMessage(errorMessage);
+			}
 		}
 	}
 
@@ -246,7 +257,9 @@ export class TasksPanel
 			}
 			await handler(params);
 		} catch (err) {
+			const errorMessage = toError(err).message;
 			this.logger.warn(`Command ${method} failed`, err);
+			vscode.window.showErrorMessage(`Command failed: ${errorMessage}`);
 		}
 	}
 
@@ -366,13 +379,16 @@ export class TasksPanel
 
 	private async handleDownloadLogs(taskId: string): Promise<void> {
 		const result = await this.fetchTaskLogs(taskId);
+		if (result.status === "error") {
+			throw new Error("Failed to fetch logs for download");
+		}
 		if (result.logs.length === 0) {
 			vscode.window.showWarningMessage("No logs available to download");
 			return;
 		}
 
 		const content = result.logs
-			.map((log) => `[${log.time}] [${log.type}] ${log.content}`)
+			.map((log) => `[${log.time}] [${log.type}]\n${log.content}`)
 			.join("\n");
 
 		const uri = await vscode.window.showSaveDialog({
@@ -382,7 +398,14 @@ export class TasksPanel
 
 		if (uri) {
 			await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf-8"));
-			vscode.window.showInformationMessage(`Logs saved to ${uri.fsPath}`);
+
+			vscode.window
+				.showInformationMessage(`Logs saved to ${uri.fsPath}`, "Open File")
+				.then(async (open) => {
+					if (open) {
+						await vscode.window.showTextDocument(uri);
+					}
+				});
 		}
 	}
 
@@ -417,11 +440,15 @@ export class TasksPanel
 	}
 
 	private async refreshAndNotifyTasks(): Promise<void> {
-		const tasks = await this.fetchTasksWithStatus();
-		this.sendNotification({
-			type: TasksApi.tasksUpdated.method,
-			data: tasks.tasks,
-		});
+		try {
+			const tasks = await this.fetchTasksWithStatus();
+			this.sendNotification({
+				type: TasksApi.tasksUpdated.method,
+				data: tasks.tasks,
+			});
+		} catch (err) {
+			this.logger.warn("Failed to refresh tasks after action", err);
+		}
 	}
 
 	private async fetchTemplates(): Promise<TaskTemplate[]> {
@@ -437,43 +464,38 @@ export class TasksPanel
 			return this.templatesCache;
 		}
 
-		try {
-			const templates = await this.client.getTemplates({});
+		const templates = await this.client.getTemplates({});
 
-			const result = await Promise.all(
-				templates.map(async (template: Template): Promise<TaskTemplate> => {
-					let presets: Preset[] = [];
-					try {
-						presets =
-							(await this.client.getTemplateVersionPresets(
-								template.active_version_id,
-							)) ?? [];
-					} catch {
-						// Presets may not be available
-					}
+		const result = await Promise.all(
+			templates.map(async (template: Template): Promise<TaskTemplate> => {
+				let presets: Preset[] = [];
+				try {
+					presets =
+						(await this.client.getTemplateVersionPresets(
+							template.active_version_id,
+						)) ?? [];
+				} catch {
+					// Presets may not be available
+				}
 
-					return {
-						id: template.id,
-						name: template.name,
-						displayName: template.display_name || template.name,
-						icon: template.icon,
-						activeVersionId: template.active_version_id,
-						presets: presets.map((p) => ({
-							id: p.ID,
-							name: p.Name,
-							isDefault: p.Default,
-						})),
-					};
-				}),
-			);
+				return {
+					id: template.id,
+					name: template.name,
+					displayName: template.display_name || template.name,
+					icon: template.icon,
+					activeVersionId: template.active_version_id,
+					presets: presets.map((p) => ({
+						id: p.ID,
+						name: p.Name,
+						isDefault: p.Default,
+					})),
+				};
+			}),
+		);
 
-			this.templatesCache = result;
-			this.templatesCacheTime = now;
-			return result;
-		} catch (err) {
-			this.logger.warn("Failed to fetch templates", err);
-			return [];
-		}
+		this.templatesCache = result;
+		this.templatesCacheTime = now;
+		return result;
 	}
 
 	/**
@@ -506,7 +528,10 @@ export class TasksPanel
 			const logs = await this.client.getTaskLogs("me", taskId);
 			return { logs, status: "ok" };
 		} catch (err) {
-			if (isAxiosError(err) && err.response?.status === 400) {
+			if (
+				isAxiosError(err) &&
+				(err.response?.status === 400 || err.response?.status === 409)
+			) {
 				return { logs: [], status: "not_available" };
 			}
 			this.logger.warn("Failed to fetch task logs", err);

@@ -49,7 +49,7 @@ const resumeTask = defineRequest<TaskActionParams, void>("resumeTask");
 
 const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
 const viewLogs = defineCommand<{ taskId: string }>("viewLogs");
-const downloadLogs = defineCommand<{ taskId: string }>("downloadLogs");
+const downloadLogs = defineRequest<{ taskId: string }, void>("downloadLogs");
 const sendTaskMessage = defineCommand<{
 	taskId: string;
 	message: string;
@@ -72,10 +72,10 @@ export const TasksApi = {
 	deleteTask,
 	pauseTask,
 	resumeTask,
+	downloadLogs,
 	// Commands
 	viewInCoder,
 	viewLogs,
-	downloadLogs,
 	sendTaskMessage,
 	// Notifications
 	taskUpdated,

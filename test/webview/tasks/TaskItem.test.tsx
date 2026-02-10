@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -5,6 +6,8 @@ import { TaskItem } from "@repo/tasks/components";
 
 import { task } from "../../mocks/tasks";
 import { qs } from "../helpers";
+
+import type { ReactNode } from "react";
 
 import type { Task } from "@repo/shared";
 
@@ -17,6 +20,16 @@ vi.mock("@repo/tasks/hooks/useTasksApi", () => ({
 		downloadLogs: vi.fn(),
 	}),
 }));
+
+function renderWithQuery(ui: ReactNode) {
+	return render(ui, {
+		wrapper: ({ children }) => (
+			<QueryClientProvider client={new QueryClient()}>
+				{children}
+			</QueryClientProvider>
+		),
+	});
+}
 
 describe("TaskItem", () => {
 	const onSelect = vi.fn();
@@ -44,7 +57,7 @@ describe("TaskItem", () => {
 			expected: "task-1",
 		},
 	])("renders $name", ({ overrides, expected }) => {
-		render(<TaskItem task={task(overrides)} onSelect={onSelect} />);
+		renderWithQuery(<TaskItem task={task(overrides)} onSelect={onSelect} />);
 		expect(screen.getByText(expected)).not.toBeNull();
 	});
 
@@ -65,7 +78,9 @@ describe("TaskItem", () => {
 		},
 	])("calls onSelect on $name", ({ trigger }) => {
 		const handleSelect = vi.fn();
-		render(<TaskItem task={task({ id: "task-1" })} onSelect={handleSelect} />);
+		renderWithQuery(
+			<TaskItem task={task({ id: "task-1" })} onSelect={handleSelect} />,
+		);
 		trigger(screen.getByRole("button"));
 		expect(handleSelect).toHaveBeenCalledWith("task-1");
 	});
@@ -95,13 +110,13 @@ describe("TaskItem", () => {
 			expected: "No message available",
 		},
 	])("shows subtitle from $name", ({ overrides, expected }) => {
-		render(<TaskItem task={task(overrides)} onSelect={onSelect} />);
+		renderWithQuery(<TaskItem task={task(overrides)} onSelect={onSelect} />);
 		expect(screen.getByText(expected)).not.toBeNull();
 	});
 
 	it("menu click does not bubble to onSelect", () => {
 		const handleSelect = vi.fn();
-		const { container } = render(
+		const { container } = renderWithQuery(
 			<TaskItem task={task()} onSelect={handleSelect} />,
 		);
 		// The menu wrapper uses stopPropagation — click on the action menu area

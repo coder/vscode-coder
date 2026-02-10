@@ -9,6 +9,7 @@ const actionLabels: Record<NonNullable<TaskAction>, string> = {
 	pausing: "Pausing...",
 	resuming: "Resuming...",
 	deleting: "Deleting...",
+	downloading: "Downloading...",
 };
 
 interface TaskItemProps {

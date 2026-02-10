@@ -1,5 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { getTaskLabel, type Task } from "@repo/shared";
 import { useTaskMenuItems } from "@repo/tasks/components/useTaskMenuItems";
@@ -46,6 +47,20 @@ function clickItem(items: ActionMenuItem[], label: string): void {
 	});
 }
 
+function renderTask(testTask: Task) {
+	return renderHook(() => useTaskMenuItems({ task: testTask }), {
+		wrapper: ({ children }) => (
+			<QueryClientProvider
+				client={
+					new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+				}
+			>
+				{children}
+			</QueryClientProvider>
+		),
+	});
+}
+
 const pausableTask = () => task({ status: "active" });
 const resumableTask = () => task({ status: "paused" });
 
@@ -56,27 +71,21 @@ function deferPause() {
 			resolve = r;
 		}),
 	);
-	const { result } = renderHook(() =>
-		useTaskMenuItems({ task: pausableTask() }),
-	);
+	const { result } = renderTask(pausableTask());
 	return { result, resolve };
 }
 
 describe("useTaskMenuItems", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-	});
-
 	it.each(["View in Coder", "Download Logs", "Delete"])(
 		'always includes "%s"',
 		(label) => {
-			const { result } = renderHook(() => useTaskMenuItems({ task: task() }));
+			const { result } = renderTask(task());
 			expect(findByLabel(result.current.menuItems, label)).toBeTruthy();
 		},
 	);
 
 	it("marks Delete as danger with a separator before it", () => {
-		const { result } = renderHook(() => useTaskMenuItems({ task: task() }));
+		const { result } = renderTask(task());
 		const items = result.current.menuItems;
 		const deleteIdx = items.findIndex(
 			(item) => !item.separator && item.label === "Delete",
@@ -85,25 +94,14 @@ describe("useTaskMenuItems", () => {
 		expect(items[deleteIdx - 1]).toMatchObject({ separator: true });
 	});
 
-	interface ConditionalItemTestCase {
-		label: string;
-		testTask: Task;
-	}
+	it("shows Pause for active and Resume for paused tasks", () => {
+		const activeItems = renderTask(pausableTask()).result.current.menuItems;
+		expect(findByLabel(activeItems, "Pause Task")).toBeTruthy();
+		expect(findByLabel(activeItems, "Resume Task")).toBeUndefined();
 
-	it.each<ConditionalItemTestCase>([
-		{ label: "Pause Task", testTask: pausableTask() },
-		{ label: "Resume Task", testTask: resumableTask() },
-	])("includes $label when action is available", ({ label, testTask }) => {
-		const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
-		expect(findByLabel(result.current.menuItems, label)).toBeTruthy();
-	});
-
-	it.each<ConditionalItemTestCase>([
-		{ label: "Pause Task", testTask: resumableTask() },
-		{ label: "Resume Task", testTask: pausableTask() },
-	])("excludes $label when action is unavailable", ({ label, testTask }) => {
-		const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
-		expect(findByLabel(result.current.menuItems, label)).toBeUndefined();
+		const pausedItems = renderTask(resumableTask()).result.current.menuItems;
+		expect(findByLabel(pausedItems, "Resume Task")).toBeTruthy();
+		expect(findByLabel(pausedItems, "Pause Task")).toBeUndefined();
 	});
 
 	interface ActionCallTestCase {
@@ -121,7 +119,7 @@ describe("useTaskMenuItems", () => {
 		},
 		{ label: "Delete", apiMethod: "deleteTask", testTask: task() },
 	])("$label calls api.$apiMethod", async ({ label, apiMethod, testTask }) => {
-		const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
+		const { result } = renderTask(testTask);
 		clickItem(result.current.menuItems, label);
 		await waitFor(() => {
 			expect(mockApi[apiMethod]).toHaveBeenCalledWith({
@@ -131,17 +129,16 @@ describe("useTaskMenuItems", () => {
 		});
 	});
 
-	interface CommandCallTestCase {
+	interface CallApiMethodCase {
 		label: string;
-		apiMethod: "viewInCoder" | "downloadLogs";
+		apiMethod: keyof typeof mockApi;
 	}
-
-	it.each<CommandCallTestCase>([
+	it.each<CallApiMethodCase>([
 		{ label: "View in Coder", apiMethod: "viewInCoder" },
 		{ label: "Download Logs", apiMethod: "downloadLogs" },
 	])("$label calls api.$apiMethod", async ({ label, apiMethod }) => {
 		const testTask = task();
-		const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
+		const { result } = renderTask(testTask);
 		clickItem(result.current.menuItems, label);
 		await waitFor(() => {
 			expect(mockApi[apiMethod]).toHaveBeenCalledWith(testTask.id);
@@ -151,24 +148,31 @@ describe("useTaskMenuItems", () => {
 	it("sets action during in-flight request", async () => {
 		const { result, resolve } = deferPause();
 		clickItem(result.current.menuItems, "Pause Task");
-		expect(result.current.action).toBe("pausing");
-
-		await act(async () => {
-			resolve();
-			await Promise.resolve();
+		await waitFor(() => {
+			expect(result.current.action).toBe("pausing");
 		});
-		expect(result.current.action).toBeNull();
+
+		resolve();
+		await waitFor(() => {
+			expect(result.current.action).toBeNull();
+		});
 	});
 
 	it("ignores duplicate clicks while action is in-flight", async () => {
 		const { result, resolve } = deferPause();
 		clickItem(result.current.menuItems, "Pause Task");
-		clickItem(result.current.menuItems, "Pause Task");
-		expect(mockApi.pauseTask).toHaveBeenCalledTimes(1);
 
-		await act(async () => {
+		await waitFor(() => {
+			expect(result.current.action).toBe("pausing");
+		});
+		const callsAfterFirst = mockApi.pauseTask.mock.calls.length;
+
+		clickItem(result.current.menuItems, "Pause Task");
+		clickItem(result.current.menuItems, "Pause Task");
+		expect(mockApi.pauseTask.mock.calls.length).toBe(callsAfterFirst);
+
+		act(() => {
 			resolve();
-			await Promise.resolve();
 		});
 	});
 
@@ -184,25 +188,31 @@ describe("useTaskMenuItems", () => {
 			label: "Pause Task",
 			apiMethod: "pauseTask",
 			testTask: pausableTask(),
-			errorMsg: "Failed to pause task",
+			errorMsg: "Failed while pausing task",
 		},
 		{
 			label: "Resume Task",
 			apiMethod: "resumeTask",
 			testTask: resumableTask(),
-			errorMsg: "Failed to resume task",
+			errorMsg: "Failed while resuming task",
 		},
 		{
 			label: "Delete",
 			apiMethod: "deleteTask",
 			testTask: task(),
-			errorMsg: "Failed to delete task",
+			errorMsg: "Failed while deleting task",
+		},
+		{
+			label: "Download Logs",
+			apiMethod: "downloadLogs",
+			testTask: task(),
+			errorMsg: "Failed while downloading task",
 		},
 	])(
 		"logs error on failed $label",
 		async ({ apiMethod, testTask, label, errorMsg }) => {
 			mockApi[apiMethod].mockRejectedValueOnce(new Error("Boom"));
-			const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
+			const { result } = renderTask(testTask);
 			clickItem(result.current.menuItems, label);
 			await waitFor(() => {
 				expect(mockLogger.error).toHaveBeenCalledWith(
