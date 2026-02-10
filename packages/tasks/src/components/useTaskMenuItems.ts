@@ -1,4 +1,4 @@
-import { getTaskActions, type Task } from "@repo/shared";
+import { getTaskActions, getTaskLabel, type Task } from "@repo/shared";
 import { logger } from "@repo/webview-shared/logger";
 import { useRef, useState } from "react";
 
@@ -45,6 +45,7 @@ export function useTaskMenuItems({
 		}
 	};
 
+	const taskName = getTaskLabel(task);
 	const menuItems: ActionMenuItem[] = [];
 
 	if (canPause) {
@@ -54,7 +55,7 @@ export function useTaskMenuItems({
 			onClick: () =>
 				void run(
 					"pausing",
-					() => api.pauseTask(task.id),
+					() => api.pauseTask({ taskId: task.id, taskName }),
 					"Failed to pause task",
 				),
 			loading: action === "pausing",
@@ -68,7 +69,7 @@ export function useTaskMenuItems({
 			onClick: () =>
 				void run(
 					"resuming",
-					() => api.resumeTask(task.id),
+					() => api.resumeTask({ taskId: task.id, taskName }),
 					"Failed to resume task",
 				),
 			loading: action === "resuming",
@@ -95,7 +96,7 @@ export function useTaskMenuItems({
 		onClick: () =>
 			void run(
 				"deleting",
-				() => api.deleteTask(task.id),
+				() => api.deleteTask({ taskId: task.id, taskName }),
 				"Failed to delete task",
 			),
 		danger: true,

@@ -1,11 +1,11 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getTaskLabel, type Task } from "@repo/shared";
 import { useTaskMenuItems } from "@repo/tasks/components/useTaskMenuItems";
 
 import { task } from "../../mocks/tasks";
 
-import type { Task } from "@repo/shared";
 import type { ActionMenuItem } from "@repo/tasks/components";
 
 const { mockApi, mockLogger } = vi.hoisted(() => ({
@@ -106,31 +106,41 @@ describe("useTaskMenuItems", () => {
 		expect(findByLabel(result.current.menuItems, label)).toBeUndefined();
 	});
 
-	interface ApiCallTestCase {
+	interface ActionCallTestCase {
 		label: string;
-		apiMethod: keyof typeof mockApi;
+		apiMethod: "pauseTask" | "resumeTask" | "deleteTask";
 		testTask: Task;
 	}
 
-	it.each<ApiCallTestCase>([
-		{
-			label: "Pause Task",
-			apiMethod: "pauseTask",
-			testTask: pausableTask(),
-		},
+	it.each<ActionCallTestCase>([
+		{ label: "Pause Task", apiMethod: "pauseTask", testTask: pausableTask() },
 		{
 			label: "Resume Task",
 			apiMethod: "resumeTask",
 			testTask: resumableTask(),
 		},
 		{ label: "Delete", apiMethod: "deleteTask", testTask: task() },
-		{ label: "View in Coder", apiMethod: "viewInCoder", testTask: task() },
-		{
-			label: "Download Logs",
-			apiMethod: "downloadLogs",
-			testTask: task(),
-		},
 	])("$label calls api.$apiMethod", async ({ label, apiMethod, testTask }) => {
+		const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
+		clickItem(result.current.menuItems, label);
+		await waitFor(() => {
+			expect(mockApi[apiMethod]).toHaveBeenCalledWith({
+				taskId: testTask.id,
+				taskName: getTaskLabel(testTask),
+			});
+		});
+	});
+
+	interface CommandCallTestCase {
+		label: string;
+		apiMethod: "viewInCoder" | "downloadLogs";
+	}
+
+	it.each<CommandCallTestCase>([
+		{ label: "View in Coder", apiMethod: "viewInCoder" },
+		{ label: "Download Logs", apiMethod: "downloadLogs" },
+	])("$label calls api.$apiMethod", async ({ label, apiMethod }) => {
+		const testTask = task();
 		const { result } = renderHook(() => useTaskMenuItems({ task: testTask }));
 		clickItem(result.current.menuItems, label);
 		await waitFor(() => {

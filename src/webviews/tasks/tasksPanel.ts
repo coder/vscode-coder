@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import {
 	commandHandler,
 	getTaskActions,
+	getTaskLabel,
 	isStableTask,
 	requestHandler,
 	TasksApi,
@@ -20,6 +21,7 @@ import {
 import { type CoderApi } from "../../api/coderApi";
 import { toError } from "../../error/errorUtils";
 import { type Logger } from "../../logging/logger";
+import { vscodeProposed } from "../../vscodeProposed";
 import { getWebviewHtml } from "../util";
 
 import type {
@@ -111,13 +113,13 @@ export class TasksPanel
 			this.handleCreateTask(p),
 		),
 		[TasksApi.deleteTask.method]: requestHandler(TasksApi.deleteTask, (p) =>
-			this.handleDeleteTask(p.taskId),
+			this.handleDeleteTask(p.taskId, p.taskName),
 		),
 		[TasksApi.pauseTask.method]: requestHandler(TasksApi.pauseTask, (p) =>
-			this.handlePauseTask(p.taskId),
+			this.handlePauseTask(p.taskId, p.taskName),
 		),
 		[TasksApi.resumeTask.method]: requestHandler(TasksApi.resumeTask, (p) =>
-			this.handleResumeTask(p.taskId),
+			this.handleResumeTask(p.taskId, p.taskName),
 		),
 	};
 
@@ -275,11 +277,30 @@ export class TasksPanel
 		});
 
 		await this.refreshAndNotifyTasks();
-		vscode.window.showInformationMessage("Task created successfully");
+		vscode.window.showInformationMessage(
+			`Task "${getTaskLabel(task)}" created successfully`,
+		);
 		return task;
 	}
 
-	private async handleDeleteTask(taskId: string): Promise<void> {
+	private async handleDeleteTask(
+		taskId: string,
+		taskName: string,
+	): Promise<void> {
+		const confirmed = await vscodeProposed.window.showWarningMessage(
+			`Delete task "${taskName}"`,
+			{
+				modal: true,
+				useCustom: true,
+				detail:
+					"This action is irreversible and removes all workspace resources and data.",
+			},
+			"Delete",
+		);
+		if (confirmed !== "Delete") {
+			return;
+		}
+
 		await this.client.deleteTask("me", taskId);
 
 		if (this.cachedLogs?.taskId === taskId) {
@@ -287,10 +308,15 @@ export class TasksPanel
 		}
 
 		await this.refreshAndNotifyTasks();
-		vscode.window.showInformationMessage("Task deleted successfully");
+		vscode.window.showInformationMessage(
+			`Task "${taskName}" deleted successfully`,
+		);
 	}
 
-	private async handlePauseTask(taskId: string): Promise<void> {
+	private async handlePauseTask(
+		taskId: string,
+		taskName: string,
+	): Promise<void> {
 		const task = await this.client.getTask("me", taskId);
 		if (!task.workspace_id) {
 			throw new Error("Task has no workspace");
@@ -299,10 +325,13 @@ export class TasksPanel
 		await this.client.stopWorkspace(task.workspace_id);
 
 		await this.refreshAndNotifyTasks();
-		vscode.window.showInformationMessage("Task paused");
+		vscode.window.showInformationMessage(`Task "${taskName}" paused`);
 	}
 
-	private async handleResumeTask(taskId: string): Promise<void> {
+	private async handleResumeTask(
+		taskId: string,
+		taskName: string,
+	): Promise<void> {
 		const task = await this.client.getTask("me", taskId);
 		if (!task.workspace_id) {
 			throw new Error("Task has no workspace");
@@ -314,7 +343,7 @@ export class TasksPanel
 		);
 
 		await this.refreshAndNotifyTasks();
-		vscode.window.showInformationMessage("Task resumed");
+		vscode.window.showInformationMessage(`Task "${taskName}" resumed`);
 	}
 
 	private async handleViewInCoder(taskId: string): Promise<void> {

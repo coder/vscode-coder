@@ -9,7 +9,11 @@
  * ```
  */
 
-import { TasksApi, type CreateTaskParams } from "@repo/shared";
+import {
+	TasksApi,
+	type CreateTaskParams,
+	type TaskActionParams,
+} from "@repo/shared";
 import { useIpc } from "@repo/webview-shared/react";
 
 export function useTasksApi() {
@@ -25,9 +29,12 @@ export function useTasksApi() {
 			request(TasksApi.getTaskDetails, { taskId }),
 		createTask: (params: CreateTaskParams) =>
 			request(TasksApi.createTask, params),
-		deleteTask: (taskId: string) => request(TasksApi.deleteTask, { taskId }),
-		pauseTask: (taskId: string) => request(TasksApi.pauseTask, { taskId }),
-		resumeTask: (taskId: string) => request(TasksApi.resumeTask, { taskId }),
+		deleteTask: (params: TaskActionParams) =>
+			request(TasksApi.deleteTask, params),
+		pauseTask: (params: TaskActionParams) =>
+			request(TasksApi.pauseTask, params),
+		resumeTask: (params: TaskActionParams) =>
+			request(TasksApi.resumeTask, params),
 
 		// Commands
 		viewInCoder: (taskId: string) => command(TasksApi.viewInCoder, { taskId }),

@@ -39,9 +39,9 @@ describe("TaskItem", () => {
 			expected: "fallback",
 		},
 		{
-			name: "Unnamed task fallback",
+			name: "id fallback",
 			overrides: { display_name: "", name: "" },
-			expected: "Unnamed task",
+			expected: "task-1",
 		},
 	])("renders $name", ({ overrides, expected }) => {
 		render(<TaskItem task={task(overrides)} onSelect={onSelect} />);

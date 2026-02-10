@@ -39,9 +39,13 @@ export interface CreateTaskParams {
 }
 const createTask = defineRequest<CreateTaskParams, Task>("createTask");
 
-const deleteTask = defineRequest<{ taskId: string }, void>("deleteTask");
-const pauseTask = defineRequest<{ taskId: string }, void>("pauseTask");
-const resumeTask = defineRequest<{ taskId: string }, void>("resumeTask");
+export interface TaskActionParams {
+	taskId: string;
+	taskName: string;
+}
+const deleteTask = defineRequest<TaskActionParams, void>("deleteTask");
+const pauseTask = defineRequest<TaskActionParams, void>("pauseTask");
+const resumeTask = defineRequest<TaskActionParams, void>("resumeTask");
 
 const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
 const viewLogs = defineCommand<{ taskId: string }>("viewLogs");

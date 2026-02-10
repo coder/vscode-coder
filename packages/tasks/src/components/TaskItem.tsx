@@ -1,10 +1,9 @@
+import { getTaskLabel, type Task } from "@repo/shared";
 import { VscodeProgressRing } from "@vscode-elements/react-elements";
 
 import { ActionMenu } from "./ActionMenu";
 import { StatusIndicator } from "./StatusIndicator";
 import { useTaskMenuItems, type TaskAction } from "./useTaskMenuItems";
-
-import type { Task } from "@repo/shared";
 
 const actionLabels: Record<NonNullable<TaskAction>, string> = {
 	pausing: "Pausing...",
@@ -20,7 +19,7 @@ interface TaskItemProps {
 export function TaskItem({ task, onSelect }: TaskItemProps) {
 	const { menuItems, action } = useTaskMenuItems({ task });
 
-	const displayName = task.display_name || task.name || "Unnamed task";
+	const displayName = getTaskLabel(task);
 	const subtitle = task.current_state?.message || "No message available";
 	const handleSelect = () => onSelect(task.id);
 

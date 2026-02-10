@@ -6,7 +6,11 @@ import { TasksPanel } from "@/webviews/tasks/tasksPanel";
 import { TasksApi, type ParamsOf, type ResponseOf } from "@repo/shared";
 
 import { logEntry, preset, task, template } from "../../../mocks/tasks";
-import { createAxiosError, createMockLogger } from "../../../mocks/testHelpers";
+import {
+	createAxiosError,
+	createMockLogger,
+	MockUserInteraction,
+} from "../../../mocks/testHelpers";
 
 import type { Task } from "coder/site/src/api/typesGenerated";
 
@@ -51,6 +55,7 @@ interface ApiDef {
 interface Harness {
 	panel: TasksPanel;
 	client: MockClient;
+	ui: MockUserInteraction;
 	/** Type-safe request using TasksApi definitions */
 	request: <T extends ApiDef>(
 		def: T,
@@ -61,6 +66,7 @@ interface Harness {
 }
 
 function createHarness(): Harness {
+	const ui = new MockUserInteraction();
 	const client = createClient();
 	const panel = new TasksPanel(
 		vscode.Uri.file("/test/extension"),
@@ -103,6 +109,7 @@ function createHarness(): Harness {
 	return {
 		panel,
 		client,
+		ui,
 		messages: () => [...posted],
 		request: async <T extends ApiDef>(def: T, params?: ParamsOf<T>) => {
 			const requestId = `req-${Date.now()}-${Math.random()}`;
@@ -306,11 +313,17 @@ describe("TasksPanel", () => {
 	});
 
 	describe("deleteTask", () => {
-		it("deletes task and notifies", async () => {
+		const deleteMessage = 'Delete task "Test Task"';
+
+		it("deletes task after confirmation", async () => {
 			const h = createHarness();
 			h.client.getTasks.mockResolvedValue([]);
+			h.ui.setResponse(deleteMessage, "Delete");
 
-			const res = await h.request(TasksApi.deleteTask, { taskId: "task-1" });
+			const res = await h.request(TasksApi.deleteTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
 
 			expect(res.success).toBe(true);
 			expect(h.client.deleteTask).toHaveBeenCalledWith("me", "task-1");
@@ -318,11 +331,24 @@ describe("TasksPanel", () => {
 				expect.objectContaining({ type: "tasksUpdated" }),
 			);
 		});
+
+		it("does not delete when user cancels", async () => {
+			const h = createHarness();
+			h.ui.setResponse(deleteMessage, undefined);
+
+			const res = await h.request(TasksApi.deleteTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
+
+			expect(res.success).toBe(true);
+			expect(h.client.deleteTask).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("pauseTask / resumeTask", () => {
 		interface WorkspaceControlTestCase {
-			method: typeof TasksApi.pauseTask | typeof TasksApi.resumeTask;
+			method: typeof TasksApi.pauseTask;
 			clientMethod: keyof MockClient;
 			taskOverrides: Partial<Task>;
 		}
@@ -344,7 +370,10 @@ describe("TasksPanel", () => {
 				h.client.getTask.mockResolvedValue(task(taskOverrides));
 				h.client.getTasks.mockResolvedValue([]);
 
-				const res = await h.request(method, { taskId: "task-1" });
+				const res = await h.request(method, {
+					taskId: "task-1",
+					taskName: "Test Task",
+				});
 
 				expect(res.success).toBe(true);
 				expect(h.client[clientMethod]).toHaveBeenCalled();
@@ -355,7 +384,10 @@ describe("TasksPanel", () => {
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task({ workspace_id: null }));
 
-			const res = await h.request(TasksApi.pauseTask, { taskId: "task-1" });
+			const res = await h.request(TasksApi.pauseTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
 
 			expect(res.success).toBe(false);
 			expect(res.error).toContain("no workspace");
