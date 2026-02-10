@@ -1,41 +1,39 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-	ErrorState,
-	NoTemplateState,
-	NotSupportedState,
-	StatePanel,
-} from "@repo/tasks/components";
+import { ErrorState } from "@repo/tasks/components/ErrorState";
+import { NoTemplateState } from "@repo/tasks/components/NoTemplateState";
+import { NotSupportedState } from "@repo/tasks/components/NotSupportedState";
+import { StatePanel } from "@repo/tasks/components/StatePanel";
 
 import type { ReactElement } from "react";
 
 describe("StatePanel", () => {
 	it("renders title when provided", () => {
 		render(<StatePanel title="Hello" />);
-		expect(screen.getByText("Hello")).not.toBeNull();
+		expect(screen.queryByText("Hello")).toBeInTheDocument();
 	});
 
 	it("renders description when provided", () => {
 		render(<StatePanel description="Some description" />);
-		expect(screen.getByText("Some description")).not.toBeNull();
+		expect(screen.queryByText("Some description")).toBeInTheDocument();
 	});
 
 	it("renders icon when provided", () => {
 		render(<StatePanel icon={<span data-testid="icon" />} />);
-		expect(screen.getByTestId("icon")).not.toBeNull();
+		expect(screen.queryByTestId("icon")).toBeInTheDocument();
 	});
 
 	it("renders action when provided", () => {
 		render(<StatePanel action={<button type="button">Click me</button>} />);
-		expect(screen.getByText("Click me")).not.toBeNull();
+		expect(screen.queryByText("Click me")).toBeInTheDocument();
 	});
 });
 
 describe("ErrorState", () => {
 	it("renders error message", () => {
 		render(<ErrorState message="Something went wrong" onRetry={vi.fn()} />);
-		expect(screen.getByText("Something went wrong")).not.toBeNull();
+		expect(screen.queryByText("Something went wrong")).toBeInTheDocument();
 	});
 
 	it("calls onRetry when Retry button is clicked", () => {
@@ -52,6 +50,7 @@ interface InfoStateTestCase {
 	expectedTexts: string[];
 	href: string;
 }
+
 describe.each<InfoStateTestCase>([
 	{
 		name: "NoTemplateState",
@@ -72,12 +71,12 @@ describe.each<InfoStateTestCase>([
 	it("renders text content", () => {
 		render(element);
 		for (const text of expectedTexts) {
-			expect(screen.getByText(text)).not.toBeNull();
+			expect(screen.queryByText(text)).toBeInTheDocument();
 		}
 	});
 
 	it("renders docs link with correct href", () => {
 		render(element);
-		expect(screen.getByRole("link").getAttribute("href")).toBe(href);
+		expect(screen.getByRole("link")).toHaveAttribute("href", href);
 	});
 });

@@ -1,13 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { TaskItem } from "@repo/tasks/components";
+import { TaskItem } from "@repo/tasks/components/TaskItem";
 
 import { task } from "../../mocks/tasks";
-import { qs } from "../helpers";
-
-import type { ReactNode } from "react";
+import { renderWithQuery } from "../render";
 
 import type { Task } from "@repo/shared";
 
@@ -20,16 +17,6 @@ vi.mock("@repo/tasks/hooks/useTasksApi", () => ({
 		downloadLogs: vi.fn(),
 	}),
 }));
-
-function renderWithQuery(ui: ReactNode) {
-	return render(ui, {
-		wrapper: ({ children }) => (
-			<QueryClientProvider client={new QueryClient()}>
-				{children}
-			</QueryClientProvider>
-		),
-	});
-}
 
 describe("TaskItem", () => {
 	const onSelect = vi.fn();
@@ -58,7 +45,7 @@ describe("TaskItem", () => {
 		},
 	])("renders $name", ({ overrides, expected }) => {
 		renderWithQuery(<TaskItem task={task(overrides)} onSelect={onSelect} />);
-		expect(screen.getByText(expected)).not.toBeNull();
+		expect(screen.queryByText(expected)).toBeInTheDocument();
 	});
 
 	interface SelectTestCase {
@@ -111,7 +98,7 @@ describe("TaskItem", () => {
 		},
 	])("shows subtitle from $name", ({ overrides, expected }) => {
 		renderWithQuery(<TaskItem task={task(overrides)} onSelect={onSelect} />);
-		expect(screen.getByText(expected)).not.toBeNull();
+		expect(screen.queryByText(expected)).toBeInTheDocument();
 	});
 
 	it("menu click does not bubble to onSelect", () => {
@@ -119,8 +106,7 @@ describe("TaskItem", () => {
 		const { container } = renderWithQuery(
 			<TaskItem task={task()} onSelect={handleSelect} />,
 		);
-		// The menu wrapper uses stopPropagation — click on the action menu area
-		fireEvent.click(qs(container, ".task-item-menu"));
+		fireEvent.click(container.querySelector(".task-item-menu")!);
 		expect(handleSelect).not.toHaveBeenCalled();
 	});
 });

@@ -1,22 +1,12 @@
-import { getTaskActions, getTaskLabel, type Task } from "@repo/shared";
+import { getTaskPermissions, getTaskLabel, type Task } from "@repo/shared";
 import { logger } from "@repo/webview-shared/logger";
 import { useMutation } from "@tanstack/react-query";
 
 import { useTasksApi } from "../hooks/useTasksApi";
 
+import type { TaskLoadingState } from "../utils/taskLoadingState";
+
 import type { ActionMenuItem } from "./ActionMenu";
-
-export type TaskAction =
-	| "pausing"
-	| "resuming"
-	| "deleting"
-	| "downloading"
-	| null;
-
-interface ActionRequest {
-	action: NonNullable<TaskAction>;
-	fn: () => Promise<void>;
-}
 
 interface UseTaskMenuItemsOptions {
 	task: Task;
@@ -24,38 +14,48 @@ interface UseTaskMenuItemsOptions {
 
 interface UseTaskMenuItemsResult {
 	menuItems: ActionMenuItem[];
-	action: TaskAction;
+	action: TaskLoadingState;
 }
 
 export function useTaskMenuItems({
 	task,
 }: UseTaskMenuItemsOptions): UseTaskMenuItemsResult {
 	const api = useTasksApi();
-	const { canPause, canResume } = getTaskActions(task);
+	const { canPause, canResume } = getTaskPermissions(task);
+	const taskName = getTaskLabel(task);
 
-	const { mutate, isPending, variables } = useMutation({
-		mutationFn: (req: ActionRequest) => req.fn(),
+	const mutation = useMutation({
+		mutationFn: ({
+			fn,
+		}: {
+			action: NonNullable<TaskLoadingState>;
+			fn: () => Promise<void>;
+		}) => fn(),
 		onError: (err, { action }) =>
 			logger.error(`Failed while ${action} task`, err),
 	});
 
-	const action: TaskAction = isPending ? (variables?.action ?? null) : null;
+	const action: TaskLoadingState = mutation.isPending
+		? mutation.variables.action
+		: null;
 
-	const taskName = getTaskLabel(task);
+	function run(
+		actionName: NonNullable<TaskLoadingState>,
+		fn: () => Promise<void>,
+	) {
+		if (!mutation.isPending) {
+			mutation.mutate({ action: actionName, fn });
+		}
+	}
+
 	const menuItems: ActionMenuItem[] = [];
 
 	if (canPause) {
 		menuItems.push({
 			label: "Pause Task",
 			icon: "debug-pause",
-			onClick: () => {
-				if (!isPending) {
-					mutate({
-						action: "pausing",
-						fn: () => api.pauseTask({ taskId: task.id, taskName }),
-					});
-				}
-			},
+			onClick: () =>
+				run("pausing", () => api.pauseTask({ taskId: task.id, taskName })),
 			loading: action === "pausing",
 		});
 	}
@@ -64,14 +64,8 @@ export function useTaskMenuItems({
 		menuItems.push({
 			label: "Resume Task",
 			icon: "debug-start",
-			onClick: () => {
-				if (!isPending) {
-					mutate({
-						action: "resuming",
-						fn: () => api.resumeTask({ taskId: task.id, taskName }),
-					});
-				}
-			},
+			onClick: () =>
+				run("resuming", () => api.resumeTask({ taskId: task.id, taskName })),
 			loading: action === "resuming",
 		});
 	}
@@ -85,14 +79,7 @@ export function useTaskMenuItems({
 	menuItems.push({
 		label: "Download Logs",
 		icon: "cloud-download",
-		onClick: () => {
-			if (!isPending) {
-				mutate({
-					action: "downloading",
-					fn: () => api.downloadLogs(task.id),
-				});
-			}
-		},
+		onClick: () => run("downloading", () => api.downloadLogs(task.id)),
 		loading: action === "downloading",
 	});
 
@@ -101,14 +88,8 @@ export function useTaskMenuItems({
 	menuItems.push({
 		label: "Delete",
 		icon: "trash",
-		onClick: () => {
-			if (!isPending) {
-				mutate({
-					action: "deleting",
-					fn: () => api.deleteTask({ taskId: task.id, taskName }),
-				});
-			}
-		},
+		onClick: () =>
+			run("deleting", () => api.deleteTask({ taskId: task.id, taskName })),
 		danger: true,
 		loading: action === "deleting",
 	});

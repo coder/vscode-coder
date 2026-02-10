@@ -46,10 +46,10 @@ export interface TaskActionParams {
 const deleteTask = defineRequest<TaskActionParams, void>("deleteTask");
 const pauseTask = defineRequest<TaskActionParams, void>("pauseTask");
 const resumeTask = defineRequest<TaskActionParams, void>("resumeTask");
+const downloadLogs = defineRequest<{ taskId: string }, void>("downloadLogs");
 
 const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
 const viewLogs = defineCommand<{ taskId: string }>("viewLogs");
-const downloadLogs = defineRequest<{ taskId: string }, void>("downloadLogs");
 const sendTaskMessage = defineCommand<{
 	taskId: string;
 	message: string;

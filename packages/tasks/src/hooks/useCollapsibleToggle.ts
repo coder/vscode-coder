@@ -24,11 +24,5 @@ export function useCollapsibleToggle<T extends HTMLElement & { open: boolean }>(
 		return () => el.removeEventListener("vsc-collapsible-toggle", handleToggle);
 	}, []);
 
-	useEffect(() => {
-		if (ref.current && ref.current.open !== open) {
-			ref.current.open = open;
-		}
-	}, [open]);
-
 	return [ref, open, setOpen];
 }

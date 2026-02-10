@@ -1,16 +1,12 @@
 import { getTaskLabel, type Task } from "@repo/shared";
 import { VscodeProgressRing } from "@vscode-elements/react-elements";
 
+import { isActivate } from "../utils/keys";
+import { getActionLabel } from "../utils/taskLoadingState";
+
 import { ActionMenu } from "./ActionMenu";
 import { StatusIndicator } from "./StatusIndicator";
-import { useTaskMenuItems, type TaskAction } from "./useTaskMenuItems";
-
-const actionLabels: Record<NonNullable<TaskAction>, string> = {
-	pausing: "Pausing...",
-	resuming: "Resuming...",
-	deleting: "Deleting...",
-	downloading: "Downloading...",
-};
+import { useTaskMenuItems } from "./useTaskMenuItems";
 
 interface TaskItemProps {
 	task: Task;
@@ -33,7 +29,7 @@ export function TaskItem({ task, onSelect }: TaskItemProps) {
 			role="button"
 			tabIndex={0}
 			onKeyDown={(e) => {
-				if (e.key === "Enter" || e.key === " ") {
+				if (isActivate(e)) {
 					e.preventDefault();
 					handleSelect();
 				}
@@ -50,7 +46,7 @@ export function TaskItem({ task, onSelect }: TaskItemProps) {
 				<span className="task-title" title={displayName}>
 					{displayName}
 					{action && (
-						<span className="task-action-label">{actionLabels[action]}</span>
+						<span className="task-action-label">{getActionLabel(action)}</span>
 					)}
 				</span>
 				<span className="task-subtitle" title={subtitle}>

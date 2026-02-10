@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -6,8 +5,9 @@ import { getTaskLabel, type Task } from "@repo/shared";
 import { useTaskMenuItems } from "@repo/tasks/components/useTaskMenuItems";
 
 import { task } from "../../mocks/tasks";
+import { QueryWrapper } from "../render";
 
-import type { ActionMenuItem } from "@repo/tasks/components";
+import type { ActionMenuItem } from "@repo/tasks/components/ActionMenu";
 
 const { mockApi, mockLogger } = vi.hoisted(() => ({
 	mockApi: {
@@ -49,15 +49,7 @@ function clickItem(items: ActionMenuItem[], label: string): void {
 
 function renderTask(testTask: Task) {
 	return renderHook(() => useTaskMenuItems({ task: testTask }), {
-		wrapper: ({ children }) => (
-			<QueryClientProvider
-				client={
-					new QueryClient({ defaultOptions: { mutations: { retry: false } } })
-				}
-			>
-				{children}
-			</QueryClientProvider>
-		),
+		wrapper: QueryWrapper,
 	});
 }
 
@@ -133,6 +125,7 @@ describe("useTaskMenuItems", () => {
 		label: string;
 		apiMethod: keyof typeof mockApi;
 	}
+
 	it.each<CallApiMethodCase>([
 		{ label: "View in Coder", apiMethod: "viewInCoder" },
 		{ label: "Download Logs", apiMethod: "downloadLogs" },

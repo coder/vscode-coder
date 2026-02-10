@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 
 import {
 	commandHandler,
-	getTaskActions,
+	getTaskPermissions,
 	getTaskLabel,
 	isStableTask,
 	requestHandler,
@@ -279,7 +279,7 @@ export class TasksPanel
 	private async handleGetTaskDetails(taskId: string): Promise<TaskDetails> {
 		const task = await this.client.getTask("me", taskId);
 		const { logs, logsStatus } = await this.getLogsWithCache(task);
-		return { task, logs, logsStatus, ...getTaskActions(task) };
+		return { task, logs, logsStatus, ...getTaskPermissions(task) };
 	}
 
 	private async handleCreateTask(params: CreateTaskParams): Promise<Task> {

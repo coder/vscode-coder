@@ -1,43 +1,40 @@
-import { TasksApi } from "@repo/shared";
+import { TasksApi, type InitResponse } from "@repo/shared";
+import { getState, setState } from "@repo/webview-shared";
 import { useIpc } from "@repo/webview-shared/react";
 import {
 	VscodeCollapsible,
 	VscodeProgressRing,
 	VscodeScrollable,
 } from "@vscode-elements/react-elements";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import {
-	CreateTaskSection,
-	ErrorState,
-	NoTemplateState,
-	NotSupportedState,
-	TaskList,
-} from "./components";
+import { CreateTaskSection } from "./components/CreateTaskSection";
+import { ErrorState } from "./components/ErrorState";
+import { NoTemplateState } from "./components/NoTemplateState";
+import { NotSupportedState } from "./components/NotSupportedState";
+import { TaskList } from "./components/TaskList";
 import { useCollapsibleToggle } from "./hooks/useCollapsibleToggle";
 import { useScrollableHeight } from "./hooks/useScrollableHeight";
-import { useTasksData } from "./hooks/useTasksData";
+import { useTasksQuery } from "./hooks/useTasksQuery";
+
+interface PersistedState extends InitResponse {
+	createExpanded: boolean;
+	historyExpanded: boolean;
+}
 
 type CollapsibleElement = React.ComponentRef<typeof VscodeCollapsible>;
 type ScrollableElement = React.ComponentRef<typeof VscodeScrollable>;
 
 export default function App() {
-	const {
-		tasks,
-		templates,
-		tasksSupported,
-		isLoading,
-		error,
-		refetch,
-		initialCreateExpanded,
-		initialHistoryExpanded,
-		persistUiState,
-	} = useTasksData();
+	const [restored] = useState(() => getState<PersistedState>());
+	const { tasks, templates, tasksSupported, data, isLoading, error, refetch } =
+		useTasksQuery(restored);
 
 	const [createRef, createOpen, setCreateOpen] =
-		useCollapsibleToggle<CollapsibleElement>(initialCreateExpanded);
-	const [historyRef, historyOpen, _setHistoryOpen] =
-		useCollapsibleToggle<CollapsibleElement>(initialHistoryExpanded);
+		useCollapsibleToggle<CollapsibleElement>(restored?.createExpanded ?? true);
+	const [historyRef, historyOpen] = useCollapsibleToggle<CollapsibleElement>(
+		restored?.historyExpanded ?? true,
+	);
 
 	const createScrollRef = useRef<ScrollableElement>(null);
 	const historyScrollRef = useRef<ScrollableElement>(null);
@@ -50,11 +47,14 @@ export default function App() {
 	}, [onNotification, setCreateOpen]);
 
 	useEffect(() => {
-		persistUiState({
-			createExpanded: createOpen,
-			historyExpanded: historyOpen,
-		});
-	}, [createOpen, historyOpen, persistUiState]);
+		if (data) {
+			setState<PersistedState>({
+				...data,
+				createExpanded: createOpen,
+				historyExpanded: historyOpen,
+			});
+		}
+	}, [data, createOpen, historyOpen]);
 
 	if (isLoading) {
 		return (

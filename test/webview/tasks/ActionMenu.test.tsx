@@ -1,7 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ActionMenu, type ActionMenuItem } from "@repo/tasks/components";
+import {
+	ActionMenu,
+	type ActionMenuItem,
+} from "@repo/tasks/components/ActionMenu";
 
 import { qs } from "../helpers";
 
@@ -27,29 +30,29 @@ function getDropdown(container: HTMLElement): Element | null {
 describe("ActionMenu", () => {
 	it("is closed by default", () => {
 		const { container } = render(<ActionMenu items={items()} />);
-		expect(getDropdown(container)).toBeNull();
+		expect(getDropdown(container)).not.toBeInTheDocument();
 	});
 
 	it("opens on trigger click", () => {
 		const { container } = render(<ActionMenu items={items()} />);
 		openMenu(container);
-		expect(getDropdown(container)).not.toBeNull();
+		expect(getDropdown(container)).toBeInTheDocument();
 	});
 
 	it("toggles closed on second trigger click", () => {
 		const { container } = render(<ActionMenu items={items()} />);
 		openMenu(container);
 		openMenu(container);
-		expect(getDropdown(container)).toBeNull();
+		expect(getDropdown(container)).not.toBeInTheDocument();
 	});
 
 	it("renders items and separators", () => {
 		const { container } = render(<ActionMenu items={items()} />);
 		openMenu(container);
-		expect(screen.getByText("Edit")).not.toBeNull();
-		expect(screen.getByText("Copy")).not.toBeNull();
-		expect(screen.getByText("Delete")).not.toBeNull();
-		expect(screen.getByRole("separator")).not.toBeNull();
+		expect(screen.queryByText("Edit")).toBeInTheDocument();
+		expect(screen.queryByText("Copy")).toBeInTheDocument();
+		expect(screen.queryByText("Delete")).toBeInTheDocument();
+		expect(screen.queryByRole("separator")).toBeInTheDocument();
 	});
 
 	it("calls onClick and closes on item click", () => {
@@ -59,7 +62,7 @@ describe("ActionMenu", () => {
 		fireEvent.click(screen.getByText("Edit"));
 		const editItem = menuItems[0] as ActionMenuAction;
 		expect(editItem.onClick).toHaveBeenCalled();
-		expect(getDropdown(container)).toBeNull();
+		expect(getDropdown(container)).not.toBeInTheDocument();
 	});
 
 	it("shows spinner instead of icon when loading", () => {
@@ -72,8 +75,8 @@ describe("ActionMenu", () => {
 		);
 		openMenu(container);
 		const dropdown = qs(container, ".action-menu-dropdown");
-		expect(dropdown.querySelector("vscode-progress-ring")).not.toBeNull();
-		expect(dropdown.querySelector("vscode-icon")).toBeNull();
+		expect(dropdown.querySelector("vscode-progress-ring")).toBeInTheDocument();
+		expect(dropdown.querySelector("vscode-icon")).not.toBeInTheDocument();
 	});
 
 	interface DisabledItemTestCase {
@@ -101,14 +104,14 @@ describe("ActionMenu", () => {
 		const button = screen.getByRole<HTMLButtonElement>("button", {
 			name: (item as ActionMenuAction).label,
 		});
-		expect(button.disabled).toBe(true);
+		expect(button).toBeDisabled();
 	});
 
 	it("applies danger class to danger items", () => {
 		const { container } = render(<ActionMenu items={items()} />);
 		openMenu(container);
 		const deleteButton = screen.getByRole("button", { name: "Delete" });
-		expect(deleteButton.classList).toContain("danger");
+		expect(deleteButton).toHaveClass("danger");
 	});
 
 	interface CloseTriggerTestCase {
@@ -123,7 +126,7 @@ describe("ActionMenu", () => {
 		const { container } = render(<ActionMenu items={items()} />);
 		openMenu(container);
 		trigger();
-		expect(getDropdown(container)).toBeNull();
+		expect(getDropdown(container)).not.toBeInTheDocument();
 	});
 
 	it("closes on Escape key", () => {
@@ -131,7 +134,7 @@ describe("ActionMenu", () => {
 		openMenu(container);
 		const dropdown = getDropdown(container)!;
 		fireEvent.keyDown(dropdown, { key: "Escape" });
-		expect(getDropdown(container)).toBeNull();
+		expect(getDropdown(container)).not.toBeInTheDocument();
 	});
 
 	it("does not fire onClick on loading item click", () => {

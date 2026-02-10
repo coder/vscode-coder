@@ -15,15 +15,16 @@ export function useScrollableHeight(
 	useEffect(() => {
 		const host = hostRef.current;
 		const scroll = scrollRef.current;
-		if (!host || !scroll) return;
+		if (!host || !scroll) {
+			return;
+		}
 
-		function update() {
-			if (!host || !scroll) return;
-
+		const observer = new ResizeObserver(() => {
 			if (!scroll.offsetParent) {
 				scroll.style.height = "";
 				return;
 			}
+
 			const hostRect = host.getBoundingClientRect();
 			const scrollTop = scroll.getBoundingClientRect().top;
 			const available = hostRect.bottom - scrollTop;
@@ -42,16 +43,11 @@ export function useScrollableHeight(
 					(ratio / (1 - ratio)).toFixed(3),
 				);
 			}
-		}
+		});
 
-		const observer = new ResizeObserver(update);
 		observer.observe(host);
 		observer.observe(scroll);
-		window.addEventListener("resize", update);
 
-		return () => {
-			observer.disconnect();
-			window.removeEventListener("resize", update);
-		};
+		return () => observer.disconnect();
 	}, [hostRef, scrollRef]);
 }

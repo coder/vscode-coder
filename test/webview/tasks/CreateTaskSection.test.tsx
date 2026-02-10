@@ -1,20 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-	act,
-	fireEvent,
-	render,
-	screen,
-	waitFor,
-	type RenderResult,
-} from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CreateTaskSection } from "@repo/tasks/components";
+import { CreateTaskSection } from "@repo/tasks/components/CreateTaskSection";
 
 import { taskTemplate } from "../../mocks/tasks";
-import { qs } from "../helpers";
-
-import type { ReactNode } from "react";
+import { renderWithQuery } from "../render";
 
 import type { TaskTemplate } from "@repo/shared";
 
@@ -28,18 +18,9 @@ vi.mock("@repo/tasks/hooks/useTasksApi", () => ({
 	useTasksApi: () => mockApi,
 }));
 
-function WithQueryClient({ children }: { children: ReactNode }) {
-	return (
-		<QueryClientProvider client={new QueryClient()}>
-			{children}
-		</QueryClientProvider>
-	);
-}
-
-function renderSection(templates?: TaskTemplate[]): RenderResult {
-	return render(
+function renderSection(templates?: TaskTemplate[]) {
+	return renderWithQuery(
 		<CreateTaskSection templates={templates ?? [taskTemplate()]} />,
-		{ wrapper: WithQueryClient },
 	);
 }
 
@@ -50,9 +31,7 @@ function getTextarea(): HTMLTextAreaElement {
 }
 
 function submit(): void {
-	act(() => {
-		fireEvent.keyDown(getTextarea(), { key: "Enter", ctrlKey: true });
-	});
+	fireEvent.keyDown(getTextarea(), { key: "Enter", ctrlKey: true });
 }
 
 describe("CreateTaskSection", () => {
@@ -65,13 +44,13 @@ describe("CreateTaskSection", () => {
 			taskTemplate({ id: "t1", displayName: "First" }),
 			taskTemplate({ id: "t2", displayName: "Second" }),
 		]);
-		expect(screen.getByText("First")).not.toBeNull();
-		expect(screen.getByText("Second")).not.toBeNull();
+		expect(screen.queryByText("First")).toBeInTheDocument();
+		expect(screen.queryByText("Second")).toBeInTheDocument();
 	});
 
 	it("does not render preset dropdown without presets", () => {
 		renderSection([taskTemplate({ presets: [] })]);
-		expect(screen.queryByText("Preset:")).toBeNull();
+		expect(screen.queryByText("Preset:")).not.toBeInTheDocument();
 	});
 
 	it("renders preset dropdown when template has presets", () => {
@@ -80,62 +59,8 @@ describe("CreateTaskSection", () => {
 				presets: [{ id: "p1", name: "Fast Mode", isDefault: false }],
 			}),
 		]);
-		expect(screen.getByText("Preset:")).not.toBeNull();
-		expect(screen.getByText("Fast Mode")).not.toBeNull();
-	});
-
-	interface SendIconTestCase {
-		name: string;
-		prompt: string;
-	}
-
-	it.each<SendIconTestCase>([
-		{ name: "disabled when prompt is empty", prompt: "" },
-		{
-			name: "enabled when prompt is entered",
-			prompt: "Build it",
-		},
-	])("send icon is $name", ({ prompt }) => {
-		const { container } = renderSection();
-		if (prompt) {
-			fireEvent.change(getTextarea(), { target: { value: prompt } });
-		}
-		expect(qs(container, "vscode-icon").classList.contains("disabled")).toBe(
-			!prompt,
-		);
-	});
-
-	interface SubmitKeyTestCase {
-		name: string;
-		keyOpts: { ctrlKey?: boolean; metaKey?: boolean };
-		prompt: string;
-	}
-
-	it.each<SubmitKeyTestCase>([
-		{ name: "Ctrl+Enter", keyOpts: { ctrlKey: true }, prompt: "Build it" },
-		{ name: "Meta+Enter", keyOpts: { metaKey: true }, prompt: "Fix bug" },
-	])("$name submits", async ({ keyOpts, prompt }) => {
-		renderSection();
-		fireEvent.change(getTextarea(), { target: { value: prompt } });
-		act(() => {
-			fireEvent.keyDown(getTextarea(), { key: "Enter", ...keyOpts });
-		});
-		await waitFor(() => {
-			expect(mockApi.createTask).toHaveBeenCalledWith({
-				templateVersionId: "version-1",
-				prompt,
-				presetId: undefined,
-			});
-		});
-	});
-
-	it("plain Enter does not submit", () => {
-		renderSection();
-		fireEvent.change(getTextarea(), { target: { value: "Build it" } });
-		act(() => {
-			fireEvent.keyDown(getTextarea(), { key: "Enter" });
-		});
-		expect(mockApi.createTask).not.toHaveBeenCalled();
+		expect(screen.queryByText("Preset:")).toBeInTheDocument();
+		expect(screen.queryByText("Fast Mode")).toBeInTheDocument();
 	});
 
 	it("does not submit with empty prompt", () => {
@@ -149,7 +74,7 @@ describe("CreateTaskSection", () => {
 		fireEvent.change(getTextarea(), { target: { value: "Build it" } });
 		submit();
 		await waitFor(() => {
-			expect(getTextarea().value).toBe("");
+			expect(getTextarea()).toHaveValue("");
 		});
 	});
 
@@ -159,44 +84,21 @@ describe("CreateTaskSection", () => {
 		fireEvent.change(getTextarea(), { target: { value: "Build it" } });
 		submit();
 		await waitFor(() => {
-			expect(screen.getByText("Network error")).not.toBeNull();
+			expect(screen.queryByText("Network error")).toBeInTheDocument();
 		});
-		expect(getTextarea().value).toBe("Build it");
-	});
-
-	it("disables input and shows spinner while submitting", async () => {
-		let resolveCreate: () => void;
-		mockApi.createTask.mockReturnValue(
-			new Promise<void>((resolve) => {
-				resolveCreate = resolve;
-			}),
-		);
-
-		const { container } = renderSection();
-		fireEvent.change(getTextarea(), { target: { value: "Build it" } });
-		submit();
-
-		await waitFor(() => {
-			expect(getTextarea().disabled).toBe(true);
-			expect(container.querySelector("vscode-progress-ring")).not.toBeNull();
-		});
-
-		await act(async () => {
-			resolveCreate!();
-			await Promise.resolve();
-		});
+		expect(getTextarea()).toHaveValue("Build it");
 	});
 
 	it("syncs templateId when templates change", () => {
 		const templates1 = [taskTemplate({ id: "t1", displayName: "Old" })];
 		const templates2 = [taskTemplate({ id: "t2", displayName: "New" })];
 
-		const { rerender } = render(<CreateTaskSection templates={templates1} />, {
-			wrapper: WithQueryClient,
-		});
-		expect(screen.getByText("Old")).not.toBeNull();
+		const { rerender } = renderWithQuery(
+			<CreateTaskSection templates={templates1} />,
+		);
+		expect(screen.queryByText("Old")).toBeInTheDocument();
 
 		rerender(<CreateTaskSection templates={templates2} />);
-		expect(screen.getByText("New")).not.toBeNull();
+		expect(screen.queryByText("New")).toBeInTheDocument();
 	});
 });

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { StatusIndicator } from "@repo/tasks/components";
+import { StatusIndicator } from "@repo/tasks/components/StatusIndicator";
 
 import { task } from "../../mocks/tasks";
 
@@ -19,7 +19,7 @@ describe("StatusIndicator", () => {
 			const expectedTitle = status.charAt(0).toUpperCase() + status.slice(1);
 			render(<StatusIndicator task={task({ status })} />);
 			const dot = screen.getByTitle(expectedTitle);
-			expect(dot.classList).toContain(status);
+			expect(dot).toHaveClass(status);
 		},
 	);
 

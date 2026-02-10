@@ -1,4 +1,4 @@
-import type { Task, TaskActions, TaskStatus } from "./types";
+import type { Task, TaskPermissions, TaskStatus } from "./types";
 
 export function getTaskLabel(task: Task): string {
 	return task.display_name || task.name || task.id;
@@ -23,7 +23,7 @@ const RESUMABLE_STATUSES: readonly TaskStatus[] = [
 	"unknown",
 ];
 
-export function getTaskActions(task: Task): TaskActions {
+export function getTaskPermissions(task: Task): TaskPermissions {
 	const hasWorkspace = task.workspace_id !== null;
 	const status = task.status;
 	return {

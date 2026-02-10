@@ -39,7 +39,7 @@
 	},
 	"devDependencies": {
 		"@types/react": "catalog:",
-		"@types/vscode-webview": "^1.57.5",
+		"@types/vscode-webview": "catalog:",
 		"@vscode-elements/react-elements": "catalog:",
 		"react": "catalog:",
 		"typescript": "catalog:"

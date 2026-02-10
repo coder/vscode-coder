@@ -1,13 +1,14 @@
+import { logger } from "@repo/webview-shared/logger";
 import { useMutation } from "@tanstack/react-query";
 import {
-	VscodeIcon,
 	VscodeOption,
-	VscodeProgressRing,
 	VscodeSingleSelect,
 } from "@vscode-elements/react-elements";
 import { useState } from "react";
 
 import { useTasksApi } from "../hooks/useTasksApi";
+
+import { PromptInput } from "./PromptInput";
 
 import type { CreateTaskParams, TaskTemplate } from "@repo/shared";
 
@@ -22,7 +23,7 @@ export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
 	const [presetId, setPresetId] = useState("");
 
 	const { mutate, isPending, error } = useMutation({
-		mutationFn: (vars: CreateTaskParams) => api.createTask(vars),
+		mutationFn: (params: CreateTaskParams) => api.createTask(params),
 		onSuccess: () => setPrompt(""),
 	});
 
@@ -31,47 +32,25 @@ export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
 	const canSubmit = prompt.trim().length > 0 && selectedTemplate && !isPending;
 
 	const handleSubmit = () => {
-		if (canSubmit) {
-			mutate({
-				templateVersionId: selectedTemplate.activeVersionId,
-				prompt: prompt.trim(),
-				presetId: presetId || undefined,
-			});
+		if (!canSubmit) {
+			logger.warn("handleSubmit called while submission is disabled");
+			return;
 		}
-	};
-
-	const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-			e.preventDefault();
-			handleSubmit();
-		}
+		mutate({
+			templateVersionId: selectedTemplate.activeVersionId,
+			prompt: prompt.trim(),
+			presetId: presetId || undefined,
+		});
 	};
 
 	return (
 		<div className="create-task-section">
-			<div className="prompt-input-container">
-				<textarea
-					className="prompt-input"
-					placeholder="Prompt your AI agent to start a task..."
-					value={prompt}
-					onChange={(e) => setPrompt(e.target.value)}
-					onKeyDown={handleKeyDown}
-					disabled={isPending}
-				/>
-				<div className="prompt-send-button">
-					{isPending ? (
-						<VscodeProgressRing />
-					) : (
-						<VscodeIcon
-							actionIcon
-							name="send"
-							label="Send"
-							onClick={() => void handleSubmit()}
-							className={canSubmit ? "" : "disabled"}
-						/>
-					)}
-				</div>
-			</div>
+			<PromptInput
+				value={prompt}
+				onChange={setPrompt}
+				onSubmit={handleSubmit}
+				loading={isPending}
+			/>
 			{error && <div className="create-task-error">{error.message}</div>}
 			<div className="create-task-options">
 				<div className="option-row">

@@ -35,13 +35,13 @@ export type LogsStatus = "ok" | "not_available" | "error";
 /**
  * Full details for a selected task, including logs and action availability.
  */
-export interface TaskDetails extends TaskActions {
+export interface TaskDetails extends TaskPermissions {
 	task: Task;
 	logs: TaskLogEntry[];
 	logsStatus: LogsStatus;
 }
 
-export interface TaskActions {
+export interface TaskPermissions {
 	canPause: boolean;
 	pauseDisabled: boolean;
 	canResume: boolean;

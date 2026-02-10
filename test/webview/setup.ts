@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 
 // Lit's dev build emits warnings we can't avoid (resolve.conditions is
