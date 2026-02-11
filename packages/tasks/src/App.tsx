@@ -48,9 +48,7 @@ export default function App() {
 
 	const { onNotification } = useIpc();
 	useEffect(() => {
-		return onNotification(TasksApi.showCreateForm, () => {
-			setCreateOpen(true);
-		});
+		return onNotification(TasksApi.showCreateForm, () => setCreateOpen(true));
 	}, [onNotification, setCreateOpen]);
 
 	useEffect(() => {

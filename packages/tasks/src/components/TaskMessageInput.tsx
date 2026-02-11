@@ -6,56 +6,29 @@ import { useTasksApi } from "../hooks/useTasksApi";
 
 import { PromptInput } from "./PromptInput";
 
-interface InputState {
-	placeholder: string;
-	canSend: boolean;
-}
-
-function getInputState(task: Task): InputState {
-	const state = task.current_state?.state;
-
+function getPlaceholder(task: Task): string {
 	switch (task.status) {
 		case "paused":
-			return {
-				placeholder: "Send a message to resume the task...",
-				canSend: true,
-			};
+			return "Send a message to resume the task...";
 		case "initializing":
 		case "pending":
-			return {
-				placeholder: "Waiting for the agent to start...",
-				canSend: false,
-			};
-		case "active":
-			switch (state) {
-				case "working":
-					return {
-						placeholder:
-							"Agent is working — you can pause or wait for it to finish...",
-						canSend: false,
-					};
-				case "complete":
-					return {
-						placeholder: "Task completed — send a follow-up to continue...",
-						canSend: true,
-					};
-				case "failed":
-					return {
-						placeholder: "Task failed — send a message to retry...",
-						canSend: true,
-					};
-				default:
-					return {
-						placeholder: "Send a message to the agent...",
-						canSend: true,
-					};
-			}
+			return "Waiting for the agent to start...";
 		case "error":
 		case "unknown":
-			return {
-				placeholder: "Task is in an error state and cannot receive messages",
-				canSend: false,
-			};
+			return "Task is in an error state and cannot receive messages";
+		case "active":
+			break;
+	}
+
+	switch (task.current_state?.state) {
+		case "working":
+			return "Agent is working — you can pause or wait for it to finish...";
+		case "complete":
+			return "Task completed — send a follow-up to continue...";
+		case "failed":
+			return "Task failed — send a message to retry...";
+		default:
+			return "Send a message to the agent...";
 	}
 }
 
@@ -67,9 +40,10 @@ export function TaskMessageInput({ task }: TaskMessageInputProps) {
 	const api = useTasksApi();
 	const [message, setMessage] = useState("");
 
-	const { canPause } = getTaskPermissions(task);
-	const { placeholder, canSend } = getInputState(task);
+	const { canPause, canSendMessage } = getTaskPermissions(task);
+	const placeholder = getPlaceholder(task);
 	const showPauseButton = task.current_state?.state === "working" && canPause;
+	const canSubmitMessage = canSendMessage && message.trim().length > 0;
 
 	const { mutate: pauseTask, isPending: isPausing } = useMutation({
 		mutationFn: () =>
@@ -77,19 +51,17 @@ export function TaskMessageInput({ task }: TaskMessageInputProps) {
 	});
 
 	const { mutate: sendMessage, isPending: isSending } = useMutation({
-		mutationFn: () => api.sendTaskMessage(task.id, message),
+		mutationFn: (msg: string) => api.sendTaskMessage(task.id, msg),
 		onSuccess: () => setMessage(""),
 	});
-
-	const canSubmitMessage = canSend && message.trim().length > 0;
 
 	return (
 		<PromptInput
 			placeholder={placeholder}
 			value={message}
 			onChange={setMessage}
-			onSubmit={showPauseButton ? pauseTask : sendMessage}
-			disabled={!canSend && !showPauseButton}
+			onSubmit={showPauseButton ? pauseTask : () => sendMessage(message)}
+			disabled={!canSendMessage && !showPauseButton}
 			loading={showPauseButton ? isPausing : isSending}
 			actionIcon={showPauseButton ? "debug-pause" : "send"}
 			actionLabel={showPauseButton ? "Pause task" : "Send message"}

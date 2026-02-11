@@ -10,17 +10,6 @@ interface AgentChatHistoryProps {
 	isThinking: boolean;
 }
 
-function getEmptyMessage(logsStatus: LogsStatus): string {
-	switch (logsStatus) {
-		case "not_available":
-			return "Logs not available in current task state";
-		case "error":
-			return "Failed to load logs";
-		default:
-			return "No messages yet";
-	}
-}
-
 function LogEntry({
 	log,
 	isGroupStart,
@@ -66,7 +55,7 @@ export function AgentChatHistory({
 						<LogEntry
 							key={log.id}
 							log={log}
-							isGroupStart={isGroupStart(logs, index)}
+							isGroupStart={index === 0 || log.type !== logs[index - 1].type}
 						/>
 					))
 				)}
@@ -79,6 +68,13 @@ export function AgentChatHistory({
 	);
 }
 
-function isGroupStart(logs: TaskLogEntry[], index: number): boolean {
-	return index === 0 || logs[index].type !== logs[index - 1].type;
+function getEmptyMessage(logsStatus: LogsStatus): string {
+	switch (logsStatus) {
+		case "not_available":
+			return "Logs not available in current task state";
+		case "error":
+			return "Failed to load logs";
+		default:
+			return "No messages yet";
+	}
 }

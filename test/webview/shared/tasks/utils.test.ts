@@ -23,42 +23,82 @@ describe("getTaskPermissions", () => {
 		{
 			name: "no workspace",
 			overrides: {},
-			expected: { canPause: false, pauseDisabled: false, canResume: false },
+			expected: {
+				canPause: false,
+				pauseDisabled: false,
+				canResume: false,
+				canSendMessage: true,
+			},
 		},
 		{
 			name: "active task",
 			overrides: { workspace_id: "ws", status: "active" },
-			expected: { canPause: true, pauseDisabled: false, canResume: false },
+			expected: {
+				canPause: true,
+				pauseDisabled: false,
+				canResume: false,
+				canSendMessage: true,
+			},
 		},
 		{
 			name: "paused task",
 			overrides: { workspace_id: "ws", status: "paused" },
-			expected: { canPause: false, pauseDisabled: false, canResume: true },
+			expected: {
+				canPause: false,
+				pauseDisabled: false,
+				canResume: true,
+				canSendMessage: true,
+			},
 		},
 		{
 			name: "error task (both actions available)",
 			overrides: { workspace_id: "ws", status: "error" },
-			expected: { canPause: true, pauseDisabled: false, canResume: true },
+			expected: {
+				canPause: true,
+				pauseDisabled: false,
+				canResume: true,
+				canSendMessage: false,
+			},
 		},
 		{
 			name: "unknown task (both actions available)",
 			overrides: { workspace_id: "ws", status: "unknown" },
-			expected: { canPause: true, pauseDisabled: false, canResume: true },
+			expected: {
+				canPause: true,
+				pauseDisabled: false,
+				canResume: true,
+				canSendMessage: false,
+			},
 		},
 		{
 			name: "initializing task (pause disabled)",
 			overrides: { workspace_id: "ws", status: "initializing" },
-			expected: { canPause: true, pauseDisabled: true, canResume: false },
+			expected: {
+				canPause: true,
+				pauseDisabled: true,
+				canResume: false,
+				canSendMessage: false,
+			},
 		},
 		{
 			name: "pending task (pause disabled)",
 			overrides: { workspace_id: "ws", status: "pending" },
-			expected: { canPause: true, pauseDisabled: true, canResume: false },
+			expected: {
+				canPause: true,
+				pauseDisabled: true,
+				canResume: false,
+				canSendMessage: false,
+			},
 		},
 		{
 			name: "no workspace ignores task status",
 			overrides: { workspace_id: null, status: "active" },
-			expected: { canPause: false, pauseDisabled: false, canResume: false },
+			expected: {
+				canPause: false,
+				pauseDisabled: false,
+				canResume: false,
+				canSendMessage: true,
+			},
 		},
 	])("$name", ({ overrides, expected }) => {
 		expect(getTaskPermissions(task(overrides))).toEqual(expected);

@@ -485,13 +485,13 @@ vscode-icon.disabled {
 }
 
 .log-entry-input {
-	border-left: 2px solid var(--vscode-textLink-foreground);
-	padding-left: 6px;
+	border-inline-start: 2px solid var(--vscode-textLink-foreground);
+	padding-inline-start: 6px;
 }
 
 .log-entry-output {
-	border-left: 2px solid var(--vscode-descriptionForeground);
-	padding-left: 6px;
+	border-inline-start: 2px solid var(--vscode-descriptionForeground);
+	padding-inline-start: 6px;
 }
 
 .log-entry-role {

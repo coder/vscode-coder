@@ -5,7 +5,7 @@ import {
 	type TaskDetails,
 } from "@repo/shared";
 import { useIpc } from "@repo/webview-shared/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import {
@@ -35,30 +35,18 @@ export function useSelectedTask(tasks: readonly Task[]) {
 
 	const { data: selectedTask, isLoading: isLoadingDetails } = useQuery({
 		queryKey: [QUERY_KEY, selectedTaskId],
-		queryFn: () => api.getTaskDetails(selectedTaskId!),
-		enabled: !!selectedTaskId,
+		queryFn: selectedTaskId
+			? () => api.getTaskDetails(selectedTaskId)
+			: skipToken,
 		refetchInterval: (query) => {
 			const task = query.state.data?.task;
-			if (!task) return TASK_ACTIVE_INTERVAL_MS;
-			return isStableTask(task)
+			return task && isStableTask(task)
 				? TASK_IDLE_INTERVAL_MS
 				: TASK_ACTIVE_INTERVAL_MS;
 		},
 	});
 
-	// Append logs from push notifications without waiting for next poll
-	useEffect(() => {
-		return onNotification(TasksApi.logsAppend, (logs) => {
-			if (!selectedTaskId) return;
-			queryClient.setQueryData<TaskDetails>(
-				[QUERY_KEY, selectedTaskId],
-				(prev) =>
-					prev ? { ...prev, logs: [...prev.logs, ...logs] } : undefined,
-			);
-		});
-	}, [onNotification, selectedTaskId, queryClient]);
-
-	// Keep selected task in sync with task-level push updates
+	// Keep selected task in sync with push updates between polls
 	useEffect(() => {
 		return onNotification(TasksApi.taskUpdated, (updatedTask) => {
 			if (updatedTask.id !== selectedTaskId) return;

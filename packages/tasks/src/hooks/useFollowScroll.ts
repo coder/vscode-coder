@@ -4,23 +4,16 @@ const BOTTOM_THRESHOLD = 8;
 
 /**
  * VscodeScrollable exposes these properties on its DOM element,
- * but they aren't in the TypeScript definitions.
+ * but they aren't in the TypeScript definitions for this package.
  */
 interface ScrollableElement extends HTMLElement {
 	scrollPos: number;
 	scrollMax: number;
 }
 
-function isScrollableElement(el: Element): el is ScrollableElement {
-	return el.tagName === "VSCODE-SCROLLABLE";
-}
-
 /**
- * Keeps a scroll container following new content at the bottom.
+ * Keeps a VscodeScrollable container following new content at the bottom.
  * Attach the returned ref to a sentinel div at the end of scrollable content.
- *
- * Works with both VscodeScrollable (using its scrollPos/scrollMax API and
- * vsc-scrollable-scroll event) and plain scrollable divs.
  */
 export function useFollowScroll(): RefObject<HTMLDivElement | null> {
 	const ref = useRef<HTMLDivElement>(null);
@@ -28,42 +21,25 @@ export function useFollowScroll(): RefObject<HTMLDivElement | null> {
 
 	useEffect(() => {
 		const sentinel = ref.current;
-		const container = sentinel?.parentElement;
-		if (!sentinel || !container) return;
+		const parent = sentinel?.parentElement;
+		if (!sentinel || parent?.tagName !== "VSCODE-SCROLLABLE") {
+			return;
+		}
+		const container = parent as ScrollableElement;
 
-		const isVscodeScrollable = isScrollableElement(container);
-
-		function isNearBottom(): boolean {
-			if (isVscodeScrollable) {
-				const el = container;
-				return el.scrollMax - el.scrollPos <= BOTTOM_THRESHOLD;
-			}
-			return (
-				container!.scrollHeight -
-					container!.scrollTop -
-					container!.clientHeight <=
-				BOTTOM_THRESHOLD
-			);
+		function onScroll() {
+			atBottom.current =
+				container.scrollMax - container.scrollPos <= BOTTOM_THRESHOLD;
 		}
 
 		function scrollToBottom() {
-			if (isVscodeScrollable) {
-				const el = container;
-				el.scrollPos = el.scrollMax;
-			} else {
-				container!.scrollTop = container!.scrollHeight;
-			}
+			container.scrollPos = container.scrollMax;
 		}
 
-		function onScroll() {
-			atBottom.current = isNearBottom();
-		}
+		container.addEventListener("vsc-scrollable-scroll", onScroll, {
+			passive: true,
+		});
 
-		// VscodeScrollable emits a custom event; plain divs use native scroll.
-		const scrollEvent = isVscodeScrollable ? "vsc-scrollable-scroll" : "scroll";
-		container.addEventListener(scrollEvent, onScroll, { passive: true });
-
-		// Auto-scroll when new children are added and the user was at the bottom.
 		const mo = new MutationObserver(() => {
 			if (atBottom.current) {
 				scrollToBottom();
@@ -71,7 +47,8 @@ export function useFollowScroll(): RefObject<HTMLDivElement | null> {
 		});
 		mo.observe(container, { childList: true });
 
-		// Initial scroll: wait until the container has layout, then scroll to bottom.
+		// VscodeScrollable computes scrollMax asynchronously, so we wait
+		// for layout before performing the initial scroll.
 		const ro = new ResizeObserver(() => {
 			if (container.clientHeight > 0) {
 				scrollToBottom();
@@ -81,7 +58,7 @@ export function useFollowScroll(): RefObject<HTMLDivElement | null> {
 		ro.observe(container);
 
 		return () => {
-			container.removeEventListener(scrollEvent, onScroll);
+			container.removeEventListener("vsc-scrollable-scroll", onScroll);
 			mo.disconnect();
 			ro.disconnect();
 		};
