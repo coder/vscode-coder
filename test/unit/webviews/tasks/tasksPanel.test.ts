@@ -10,7 +10,13 @@ import {
 	defineRequest,
 } from "@repo/shared";
 
-import { logEntry, preset, task, template } from "../../../mocks/tasks";
+import {
+	logEntry,
+	preset,
+	task,
+	taskState,
+	template,
+} from "../../../mocks/tasks";
 import {
 	createAxiosError,
 	createMockLogger,
@@ -33,6 +39,7 @@ type TasksPanelClient = Pick<
 	| "getTemplateVersionPresets"
 	| "startWorkspace"
 	| "stopWorkspace"
+	| "sendTaskInput"
 	| "getHost"
 >;
 
@@ -49,6 +56,7 @@ function createClient(baseUrl = "https://coder.example.com"): MockClient {
 		getTemplateVersionPresets: vi.fn().mockResolvedValue([]),
 		startWorkspace: vi.fn().mockResolvedValue(undefined),
 		stopWorkspace: vi.fn().mockResolvedValue(undefined),
+		sendTaskInput: vi.fn().mockResolvedValue(undefined),
 		getHost: vi.fn().mockReturnValue(baseUrl),
 	};
 }
@@ -279,28 +287,20 @@ describe("TasksPanel", () => {
 			state: "complete" | "working";
 			expectedCalls: number;
 		}
-		it.each([
-			{ status: 400, statusText: "Bad Request" },
-			{ status: 409, statusText: "Conflict" },
-		])(
-			"returns logsStatus not_available on $status",
-			async ({ status, statusText }) => {
-				const h = createHarness();
-				h.client.getTask.mockResolvedValue(task());
-				h.client.getTaskLogs.mockRejectedValue(
-					createAxiosError(status, statusText),
-				);
+		it("returns logsStatus not_available on 409", async () => {
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(task());
+			h.client.getTaskLogs.mockRejectedValue(createAxiosError(409, "Conflict"));
 
-				const res = await h.request(TasksApi.getTaskDetails, {
-					taskId: "task-1",
-				});
+			const res = await h.request(TasksApi.getTaskDetails, {
+				taskId: "task-1",
+			});
 
-				expect(res).toMatchObject({
-					success: true,
-					data: { logsStatus: "not_available", logs: [] },
-				});
-			},
-		);
+			expect(res).toMatchObject({
+				success: true,
+				data: { logsStatus: "not_available", logs: [] },
+			});
+		});
 
 		it.each<LogCachingTestCase>([
 			{
@@ -403,7 +403,6 @@ describe("TasksPanel", () => {
 			async ({ method, clientMethod, taskOverrides }) => {
 				const h = createHarness();
 				h.client.getTask.mockResolvedValue(task(taskOverrides));
-				h.client.getTasks.mockResolvedValue([]);
 
 				const res = await h.request(method, {
 					taskId: "task-1",
@@ -427,6 +426,93 @@ describe("TasksPanel", () => {
 			expect(res.success).toBe(false);
 			expect(res.error).toContain("no workspace");
 		});
+	});
+
+	describe("sendTaskMessage", () => {
+		interface SendTestCase {
+			name: string;
+			taskOverrides: Partial<Task>;
+			resumesWorkspace: boolean;
+		}
+		it.each<SendTestCase>([
+			{
+				name: "active task with idle state",
+				taskOverrides: { status: "active", current_state: taskState("idle") },
+				resumesWorkspace: false,
+			},
+			{
+				name: "paused task (resumes first)",
+				taskOverrides: {
+					status: "paused",
+					workspace_id: "ws-1",
+					template_version_id: "tv-1",
+				},
+				resumesWorkspace: true,
+			},
+		])("sends input for $name", async ({ taskOverrides, resumesWorkspace }) => {
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(task(taskOverrides));
+
+			const res = await h.request(TasksApi.sendTaskMessage, {
+				taskId: "task-1",
+				message: "Hello",
+			});
+
+			expect(res.success).toBe(true);
+			expect(h.client.sendTaskInput).toHaveBeenCalledWith(
+				"me",
+				"task-1",
+				"Hello",
+			);
+			if (resumesWorkspace) {
+				expect(h.client.startWorkspace).toHaveBeenCalledWith("ws-1", "tv-1");
+			} else {
+				expect(h.client.startWorkspace).not.toHaveBeenCalled();
+			}
+		});
+
+		interface SendErrorTestCase {
+			name: string;
+			taskOverrides: Partial<Task>;
+			sendError?: ReturnType<typeof createAxiosError>;
+			expectedError: string;
+		}
+		it.each<SendErrorTestCase>([
+			{
+				name: "409 conflict (task pending/paused)",
+				taskOverrides: { status: "active", current_state: taskState("idle") },
+				sendError: createAxiosError(409, "Conflict"),
+				expectedError: "Task is not ready to receive messages",
+			},
+			{
+				name: "400 bad request (task error/unknown)",
+				taskOverrides: { status: "active", current_state: taskState("idle") },
+				sendError: createAxiosError(400, "Bad Request"),
+				expectedError: "Task is not ready to receive messages",
+			},
+			{
+				name: "paused task with no workspace",
+				taskOverrides: { status: "paused", workspace_id: null },
+				expectedError: "no workspace",
+			},
+		])(
+			"fails on $name",
+			async ({ taskOverrides, sendError, expectedError }) => {
+				const h = createHarness();
+				h.client.getTask.mockResolvedValue(task(taskOverrides));
+				if (sendError) {
+					h.client.sendTaskInput.mockRejectedValue(sendError);
+				}
+
+				const res = await h.request(TasksApi.sendTaskMessage, {
+					taskId: "task-1",
+					message: "Hello",
+				});
+
+				expect(res.success).toBe(false);
+				expect(res.error).toContain(expectedError);
+			},
+		);
 	});
 
 	describe("viewInCoder / viewLogs", () => {
@@ -566,20 +652,6 @@ describe("TasksPanel", () => {
 
 			expect(res.success).toBe(true);
 			expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
-		});
-	});
-
-	describe("sendTaskMessage", () => {
-		it("shows not supported message", async () => {
-			const h = createHarness();
-			await h.request(TasksApi.sendTaskMessage, {
-				taskId: "task-1",
-				message: "hello",
-			});
-
-			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-				expect.stringContaining("not yet supported"),
-			);
 		});
 	});
 
