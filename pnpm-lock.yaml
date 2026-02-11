@@ -7,11 +7,11 @@ settings:
 catalogs:
   default:
     '@tanstack/react-query':
-      specifier: ^5.90.20
-      version: 5.90.20
+      specifier: ^5.90.21
+      version: 5.90.21
     '@types/react':
-      specifier: ^19.2.13
-      version: 19.2.13
+      specifier: ^19.2.14
+      version: 19.2.14
     '@types/react-dom':
       specifier: ^19.2.3
       version: 19.2.3
@@ -106,13 +106,13 @@ importers:
         version: 7.5.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.90.20(react@19.2.4)
+        version: 5.90.21(react@19.2.4)
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1
       '@testing-library/react':
         specifier: ^16.3.2
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tsconfig/node20':
         specifier: ^20.1.9
         version: 20.1.9
@@ -127,10 +127,10 @@ importers:
         version: 4.1.4
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.13
+        version: 19.2.14
       '@types/react-dom':
         specifier: 'catalog:'
-        version: 19.2.3(@types/react@19.2.13)
+        version: 19.2.3(@types/react@19.2.14)
       '@types/semver':
         specifier: ^7.7.1
         version: 7.7.1
@@ -259,10 +259,10 @@ importers:
         version: link:../webview-shared
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.90.20(react@19.2.4)
+        version: 5.90.21(react@19.2.4)
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
-        version: 2.4.0(@types/react@19.2.13)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 2.4.0(@types/react@19.2.14)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@vscode/codicons':
         specifier: 'catalog:'
         version: 0.0.44
@@ -275,10 +275,10 @@ importers:
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.13
+        version: 19.2.14
       '@types/react-dom':
         specifier: 'catalog:'
-        version: 19.2.3(@types/react@19.2.13)
+        version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 5.1.4(vite@7.3.1(@types/node@24.10.12))
@@ -300,13 +300,13 @@ importers:
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.13
+        version: 19.2.14
       '@types/vscode-webview':
         specifier: 'catalog:'
         version: 1.57.5
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
-        version: 2.4.0(@types/react@19.2.13)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 2.4.0(@types/react@19.2.14)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react:
         specifier: 'catalog:'
         version: 19.2.4
@@ -1182,8 +1182,8 @@ packages:
   '@tanstack/query-core@5.90.20':
     resolution: {integrity: sha512-OMD2HLpNouXEfZJWcKeVKUgQ5n+n3A2JFmBaScpNDUqSrQSjiveC7dKMe53uJUg1nDG16ttFPz2xfilz6i2uVg==}
 
-  '@tanstack/react-query@5.90.20':
-    resolution: {integrity: sha512-vXBxa+qeyveVO7OA0jX1z+DeyCA4JKnThKv411jd5SORpBKgkcVnYKCiBgECvADvniBX7tobwBmg01qq9JmMJw==}
+  '@tanstack/react-query@5.90.21':
+    resolution: {integrity: sha512-0Lu6y5t+tvlTJMTO7oh5NSpJfpg/5D41LlThfepTixPYkJ0sE2Jj0m0f6yYqujBwIXlId87e234+MxG3D3g7kg==}
     peerDependencies:
       react: ^18 || ^19
 
@@ -1302,8 +1302,8 @@ packages:
     peerDependencies:
       '@types/react': ^19.2.0
 
-  '@types/react@19.2.13':
-    resolution: {integrity: sha512-KkiJeU6VbYbUOp5ITMIc7kBfqlYkKA5KhEHVrGMmUUMt7NeaZg65ojdPk+FtNrBAOXNVM5QM72jnADjM+XVRAQ==}
+  '@types/react@19.2.14':
+    resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
@@ -5111,9 +5111,9 @@ snapshots:
     dependencies:
       '@lit/reactive-element': 2.1.2
 
-  '@lit/react@1.0.8(@types/react@19.2.13)':
+  '@lit/react@1.0.8(@types/react@19.2.14)':
     dependencies:
-      '@types/react': 19.2.13
+      '@types/react': 19.2.14
 
   '@lit/reactive-element@2.1.2':
     dependencies:
@@ -5394,7 +5394,7 @@ snapshots:
 
   '@tanstack/query-core@5.90.20': {}
 
-  '@tanstack/react-query@5.90.20(react@19.2.4)':
+  '@tanstack/react-query@5.90.21(react@19.2.4)':
     dependencies:
       '@tanstack/query-core': 5.90.20
       react: 19.2.4
@@ -5419,15 +5419,15 @@ snapshots:
       picocolors: 1.1.1
       redent: 3.0.0
 
-  '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@babel/runtime': 7.28.6
       '@testing-library/dom': 10.4.1
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
     optionalDependencies:
-      '@types/react': 19.2.13
-      '@types/react-dom': 19.2.3(@types/react@19.2.13)
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
 
   '@textlint/ast-node-types@15.2.1': {}
 
@@ -5541,11 +5541,11 @@ snapshots:
     dependencies:
       '@types/retry': 0.12.5
 
-  '@types/react-dom@19.2.3(@types/react@19.2.13)':
+  '@types/react-dom@19.2.3(@types/react@19.2.14)':
     dependencies:
-      '@types/react': 19.2.13
+      '@types/react': 19.2.14
 
-  '@types/react@19.2.13':
+  '@types/react@19.2.14':
     dependencies:
       csstype: 3.2.3
 
@@ -5821,9 +5821,9 @@ snapshots:
       '@vscode/codicons': 0.0.44
       lit: 3.3.2
 
-  '@vscode-elements/react-elements@2.4.0(@types/react@19.2.13)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@vscode-elements/react-elements@2.4.0(@types/react@19.2.14)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
-      '@lit/react': 1.0.8(@types/react@19.2.13)
+      '@lit/react': 1.0.8(@types/react@19.2.14)
       '@vscode-elements/elements': 2.4.0(@vscode/codicons@0.0.44)
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
