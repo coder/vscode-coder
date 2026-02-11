@@ -11,7 +11,7 @@ import type {
 	TaskState,
 } from "coder/site/src/api/typesGenerated";
 
-import type { TaskTemplate } from "@repo/shared";
+import type { TaskDetails, TaskTemplate } from "@repo/shared";
 
 /**
  * Create a Task with sensible defaults.
@@ -139,6 +139,25 @@ export function logEntry(overrides: Partial<TaskLogEntry> = {}): TaskLogEntry {
 		type: "output",
 		content: "Test log entry",
 		...overrides,
+	};
+}
+
+/** Create a TaskDetails object with sensible defaults */
+export function taskDetails(
+	overrides: Omit<Partial<TaskDetails>, "task"> & {
+		task?: Partial<Task>;
+	} = {},
+): TaskDetails {
+	const { task: taskOverrides, ...rest } = overrides;
+	return {
+		task: task(taskOverrides ?? {}),
+		logs: [],
+		logsStatus: "ok",
+		canPause: true,
+		pauseDisabled: false,
+		canResume: false,
+		canSendMessage: true,
+		...rest,
 	};
 }
 
