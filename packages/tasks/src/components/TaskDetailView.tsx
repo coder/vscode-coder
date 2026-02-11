@@ -14,9 +14,7 @@ export function TaskDetailView({ details, onBack }: TaskDetailViewProps) {
 	const { task, logs, logsStatus } = details;
 
 	const isThinking =
-		task.status === "active" &&
-		task.current_state?.state === "working" &&
-		task.workspace_agent_lifecycle === "ready";
+		task.status === "active" && task.current_state?.state === "working";
 
 	return (
 		<div className="task-detail-view">

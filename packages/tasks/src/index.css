@@ -1,5 +1,7 @@
 @import "@vscode/codicons/dist/codicon.css";
 
+/* Base */
+
 body {
 	margin: 0;
 	padding: 0;
@@ -10,19 +12,21 @@ body {
 	overflow: hidden;
 }
 
-.tasks-panel {
-	display: flex;
-	flex-direction: column;
-	height: 100vh;
-	overflow: hidden;
-}
-
 .loading-container {
 	display: flex;
 	justify-content: center;
 	align-items: center;
 	padding: 24px;
 	min-height: 100px;
+}
+
+/* Panel layout */
+
+.tasks-panel {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	overflow: hidden;
 }
 
 .tasks-panel > vscode-collapsible {
@@ -50,6 +54,12 @@ body {
 vscode-collapsible::part(body) {
 	overflow: hidden;
 }
+
+.collapsible-content {
+	overflow-y: auto;
+}
+
+/* Create task */
 
 .create-task-section {
 	padding: 12px;
@@ -124,6 +134,8 @@ vscode-collapsible::part(body) {
 	margin-top: 8px;
 }
 
+/* Task list */
+
 .empty-task-list {
 	padding: 16px 12px;
 	color: var(--vscode-descriptionForeground);
@@ -184,6 +196,24 @@ vscode-collapsible::part(body) {
 	opacity: 1;
 }
 
+.task-item-loading {
+	opacity: 0.7;
+}
+
+.task-item-spinner {
+	width: 1em;
+	height: 1em;
+}
+
+.task-action-label {
+	margin-inline-start: 8px;
+	font-size: 0.8em;
+	color: var(--vscode-descriptionForeground);
+	font-style: italic;
+}
+
+/* Status dots */
+
 .status-dot {
 	--status-color: var(--vscode-descriptionForeground);
 	width: 0.55em;
@@ -213,6 +243,8 @@ vscode-collapsible::part(body) {
 .status-dot.unknown {
 	--status-color: var(--vscode-testing-iconQueued);
 }
+
+/* Shared components */
 
 .text-link {
 	color: var(--vscode-textLink-foreground);
@@ -259,6 +291,13 @@ vscode-collapsible::part(body) {
 .error-state .centered-state-description {
 	color: var(--vscode-errorForeground);
 }
+
+vscode-icon.disabled {
+	opacity: 0.5;
+	pointer-events: none;
+}
+
+/* Action menu */
 
 .action-menu {
 	flex-shrink: 0;
@@ -349,27 +388,6 @@ vscode-collapsible::part(body) {
 	margin-inline-end: 4px;
 }
 
-vscode-icon.disabled {
-	opacity: 0.5;
-	pointer-events: none;
-}
-
-.task-item-loading {
-	opacity: 0.7;
-}
-
-.task-item-spinner {
-	width: 1em;
-	height: 1em;
-}
-
-.task-action-label {
-	margin-inline-start: 8px;
-	font-size: 0.8em;
-	color: var(--vscode-descriptionForeground);
-	font-style: italic;
-}
-
 /* Task detail view */
 
 .task-detail-view {
@@ -377,15 +395,15 @@ vscode-icon.disabled {
 	flex-direction: column;
 	gap: 8px;
 	height: 100%;
-	padding: 8px 0;
+	padding: 4px 0 8px;
+	box-sizing: border-box;
 }
 
 .task-detail-header {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 6px 12px;
-	background: var(--vscode-sideBarSectionHeader-background);
+	gap: 6px;
+	padding: 2px 12px;
 	border-bottom: 1px solid
 		var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border));
 }
@@ -411,6 +429,8 @@ vscode-icon.disabled {
 	gap: 6px;
 	margin: 0 12px;
 	padding: 6px 8px;
+	border: 1px solid
+		color-mix(in srgb, var(--vscode-errorForeground) 40%, transparent);
 	border-radius: 4px;
 	background: color-mix(
 		in srgb,
@@ -420,6 +440,8 @@ vscode-icon.disabled {
 	color: var(--vscode-errorForeground);
 	font-size: 0.85em;
 }
+
+/* Chat history */
 
 .agent-chat-history {
 	flex: 1;
@@ -440,7 +462,7 @@ vscode-icon.disabled {
 
 .chat-history-content {
 	flex: 1;
-	overflow-y: auto;
+	min-height: 0;
 	padding: 4px 8px;
 	font-family: var(--vscode-editor-font-family, monospace);
 	font-size: 0.85em;
@@ -462,15 +484,47 @@ vscode-icon.disabled {
 	word-break: break-word;
 }
 
+.log-entry-input {
+	border-left: 2px solid var(--vscode-textLink-foreground);
+	padding-left: 6px;
+}
+
+.log-entry-output {
+	border-left: 2px solid var(--vscode-descriptionForeground);
+	padding-left: 6px;
+}
+
+.log-entry-role {
+	font-size: 0.75em;
+	font-weight: 500;
+	color: var(--vscode-descriptionForeground);
+	font-family: var(--vscode-font-family);
+	padding-bottom: 2px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.log-entry-input .log-entry-role {
+	color: var(--vscode-textLink-foreground);
+}
+
+.log-entry-input + .log-entry-output,
+.log-entry-output + .log-entry-input {
+	margin-top: 8px;
+}
+
 .log-entry-thinking {
 	color: var(--vscode-descriptionForeground);
 	font-style: italic;
 }
+
+/* Detail view message input */
 
 .task-detail-view > .prompt-input-container {
 	margin: 0 12px;
 }
 
 .task-detail-view > .prompt-input-container .prompt-input {
-	min-height: 60px;
+	min-height: 36px;
+	padding-bottom: 8px;
 }

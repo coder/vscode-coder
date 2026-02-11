@@ -42,7 +42,7 @@ export default function App() {
 	);
 
 	const createScrollRef = useRef<ScrollableElement>(null);
-	const historyScrollRef = useRef<ScrollableElement>(null);
+	const historyScrollRef = useRef<HTMLDivElement>(null);
 	useScrollableHeight(createRef, createScrollRef);
 	useScrollableHeight(historyRef, historyScrollRef);
 
@@ -102,7 +102,7 @@ export default function App() {
 				heading="Task History"
 				open={historyOpen}
 			>
-				<VscodeScrollable ref={historyScrollRef}>
+				<div ref={historyScrollRef} className="collapsible-content">
 					{selectedTask ? (
 						<TaskDetailView details={selectedTask} onBack={deselectTask} />
 					) : isLoadingDetails ? (
@@ -112,7 +112,7 @@ export default function App() {
 					) : (
 						<TaskList tasks={tasks} onSelectTask={selectTask} />
 					)}
-				</VscodeScrollable>
+				</div>
 			</VscodeCollapsible>
 		</div>
 	);

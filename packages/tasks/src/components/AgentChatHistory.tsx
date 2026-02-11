@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { VscodeScrollable } from "@vscode-elements/react-elements";
+
+import { useFollowScroll } from "../hooks/useFollowScroll";
 
 import type { LogsStatus, TaskLogEntry } from "@repo/shared";
 
@@ -19,58 +21,64 @@ function getEmptyMessage(logsStatus: LogsStatus): string {
 	}
 }
 
+function LogEntry({
+	log,
+	isGroupStart,
+}: {
+	log: TaskLogEntry;
+	isGroupStart: boolean;
+}) {
+	return (
+		<div className={`log-entry log-entry-${log.type}`}>
+			{isGroupStart && (
+				<div className="log-entry-role">
+					{log.type === "input" ? "You" : "Agent"}
+				</div>
+			)}
+			{log.content}
+		</div>
+	);
+}
+
 export function AgentChatHistory({
 	logs,
 	logsStatus,
 	isThinking,
 }: AgentChatHistoryProps) {
-	const containerRef = useRef<HTMLDivElement>(null);
-	const isAtBottomRef = useRef(true);
-
-	const handleScroll = () => {
-		const container = containerRef.current;
-		if (!container) return;
-		const distanceFromBottom =
-			container.scrollHeight - container.scrollTop - container.clientHeight;
-		isAtBottomRef.current = distanceFromBottom <= 50;
-	};
-
-	useEffect(() => {
-		if (containerRef.current && isAtBottomRef.current) {
-			containerRef.current.scrollTop = containerRef.current.scrollHeight;
-		}
-	}, [logs, isThinking]);
+	const bottomRef = useFollowScroll();
 
 	return (
 		<div className="agent-chat-history">
 			<div className="chat-history-header">Agent chat history</div>
-			<div
-				className="chat-history-content"
-				ref={containerRef}
-				onScroll={handleScroll}
-			>
+			<VscodeScrollable className="chat-history-content">
 				{logs.length === 0 ? (
 					<div
-						className={[
-							"chat-history-empty",
-							logsStatus === "error" && "chat-history-error",
-						]
-							.filter(Boolean)
-							.join(" ")}
+						className={
+							logsStatus === "error"
+								? "chat-history-empty chat-history-error"
+								: "chat-history-empty"
+						}
 					>
 						{getEmptyMessage(logsStatus)}
 					</div>
 				) : (
-					logs.map((log) => (
-						<div key={log.id} className="log-entry">
-							{log.content}
-						</div>
+					logs.map((log, index) => (
+						<LogEntry
+							key={log.id}
+							log={log}
+							isGroupStart={isGroupStart(logs, index)}
+						/>
 					))
 				)}
 				{isThinking && (
 					<div className="log-entry log-entry-thinking">Thinking...</div>
 				)}
-			</div>
+				<div ref={bottomRef} />
+			</VscodeScrollable>
 		</div>
 	);
+}
+
+function isGroupStart(logs: TaskLogEntry[], index: number): boolean {
+	return index === 0 || logs[index].type !== logs[index - 1].type;
 }
