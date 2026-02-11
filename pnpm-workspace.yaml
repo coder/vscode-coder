@@ -8,7 +8,7 @@ catalogMode: strict
 catalog:
   typescript: ^5.9.3
   vite: ^7.3.1
-  "@vitejs/plugin-react": ^4.5.2
+  "@vitejs/plugin-react": ^5.1.4
   babel-plugin-react-compiler: ^19.1.0-rc.2
   eslint-plugin-react-compiler: ^19.1.0-rc.2
   react: ^19.2.4
