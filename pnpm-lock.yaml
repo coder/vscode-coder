@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     '@tanstack/react-query':
-      specifier: ^5.90.20
-      version: 5.90.20
+      specifier: ^5.90.21
+      version: 5.90.21
     '@types/react':
       specifier: ^19.2.13
       version: 19.2.13
@@ -166,7 +166,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: github:coder/coder#main
-        version: https://codeload.github.com/coder/coder/tar.gz/95b3bc9c7a50f37948e5b7eb5a230a76095960d2
+        version: https://codeload.github.com/coder/coder/tar.gz/fcf431c1d7b24eaf66e97718f9f8955ec0cbd84e
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
@@ -256,7 +256,7 @@ importers:
         version: link:../webview-shared
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.90.20(react@19.2.4)
+        version: 5.90.21(react@19.2.4)
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
         version: 2.4.0(@types/react@19.2.13)(@vscode/codicons@0.0.44)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1211,8 +1211,8 @@ packages:
   '@tanstack/query-core@5.90.20':
     resolution: {integrity: sha512-OMD2HLpNouXEfZJWcKeVKUgQ5n+n3A2JFmBaScpNDUqSrQSjiveC7dKMe53uJUg1nDG16ttFPz2xfilz6i2uVg==}
 
-  '@tanstack/react-query@5.90.20':
-    resolution: {integrity: sha512-vXBxa+qeyveVO7OA0jX1z+DeyCA4JKnThKv411jd5SORpBKgkcVnYKCiBgECvADvniBX7tobwBmg01qq9JmMJw==}
+  '@tanstack/react-query@5.90.21':
+    resolution: {integrity: sha512-0Lu6y5t+tvlTJMTO7oh5NSpJfpg/5D41LlThfepTixPYkJ0sE2Jj0m0f6yYqujBwIXlId87e234+MxG3D3g7kg==}
     peerDependencies:
       react: ^18 || ^19
 
@@ -1957,8 +1957,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/95b3bc9c7a50f37948e5b7eb5a230a76095960d2:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/95b3bc9c7a50f37948e5b7eb5a230a76095960d2}
+  coder@https://codeload.github.com/coder/coder/tar.gz/fcf431c1d7b24eaf66e97718f9f8955ec0cbd84e:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/fcf431c1d7b24eaf66e97718f9f8955ec0cbd84e}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -5462,7 +5462,7 @@ snapshots:
 
   '@tanstack/query-core@5.90.20': {}
 
-  '@tanstack/react-query@5.90.20(react@19.2.4)':
+  '@tanstack/react-query@5.90.21(react@19.2.4)':
     dependencies:
       '@tanstack/query-core': 5.90.20
       react: 19.2.4
@@ -6348,7 +6348,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/95b3bc9c7a50f37948e5b7eb5a230a76095960d2: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/fcf431c1d7b24eaf66e97718f9f8955ec0cbd84e: {}
 
   color-convert@2.0.1:
     dependencies:
