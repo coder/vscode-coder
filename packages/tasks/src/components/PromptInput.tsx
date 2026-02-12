@@ -12,6 +12,9 @@ interface PromptInputProps {
 	disabled?: boolean;
 	loading?: boolean;
 	placeholder?: string;
+	actionIcon: "send" | "debug-pause";
+	actionLabel: string;
+	actionDisabled: boolean;
 }
 
 export function PromptInput({
@@ -21,9 +24,10 @@ export function PromptInput({
 	disabled = false,
 	loading = false,
 	placeholder = "Prompt your AI agent to start a task...",
+	actionIcon,
+	actionLabel,
+	actionDisabled,
 }: PromptInputProps) {
-	const canSubmit = value.trim().length > 0 && !disabled && !loading;
-
 	return (
 		<div className="prompt-input-container">
 			<textarea
@@ -34,7 +38,7 @@ export function PromptInput({
 				onKeyDown={(e) => {
 					if (isSubmit(e)) {
 						e.preventDefault();
-						if (canSubmit) {
+						if (!actionDisabled) {
 							onSubmit();
 						}
 					}
@@ -47,10 +51,10 @@ export function PromptInput({
 				) : (
 					<VscodeIcon
 						actionIcon
-						name="send"
-						label="Send"
-						onClick={() => canSubmit && onSubmit()}
-						className={canSubmit ? "" : "disabled"}
+						name={actionIcon}
+						label={actionLabel}
+						onClick={() => !actionDisabled && onSubmit()}
+						className={actionDisabled ? "disabled" : ""}
 					/>
 				)}
 			</div>

@@ -12,9 +12,11 @@ import { CreateTaskSection } from "./components/CreateTaskSection";
 import { ErrorState } from "./components/ErrorState";
 import { NoTemplateState } from "./components/NoTemplateState";
 import { NotSupportedState } from "./components/NotSupportedState";
+import { TaskDetailView } from "./components/TaskDetailView";
 import { TaskList } from "./components/TaskList";
 import { useCollapsibleToggle } from "./hooks/useCollapsibleToggle";
 import { useScrollableHeight } from "./hooks/useScrollableHeight";
+import { useSelectedTask } from "./hooks/useSelectedTask";
 import { useTasksQuery } from "./hooks/useTasksQuery";
 
 interface PersistedState extends InitResponse {
@@ -30,6 +32,9 @@ export default function App() {
 	const { tasks, templates, tasksSupported, data, isLoading, error, refetch } =
 		useTasksQuery(restored);
 
+	const { selectedTask, isLoadingDetails, selectTask, deselectTask } =
+		useSelectedTask(tasks);
+
 	const [createRef, createOpen, setCreateOpen] =
 		useCollapsibleToggle<CollapsibleElement>(restored?.createExpanded ?? true);
 	const [historyRef, historyOpen] = useCollapsibleToggle<CollapsibleElement>(
@@ -37,7 +42,7 @@ export default function App() {
 	);
 
 	const createScrollRef = useRef<ScrollableElement>(null);
-	const historyScrollRef = useRef<ScrollableElement>(null);
+	const historyScrollRef = useRef<HTMLDivElement>(null);
 	useScrollableHeight(createRef, createScrollRef);
 	useScrollableHeight(historyRef, historyScrollRef);
 
@@ -95,14 +100,17 @@ export default function App() {
 				heading="Task History"
 				open={historyOpen}
 			>
-				<VscodeScrollable ref={historyScrollRef}>
-					<TaskList
-						tasks={tasks}
-						onSelectTask={(_taskId: string) => {
-							// Task detail view will be added in next PR
-						}}
-					/>
-				</VscodeScrollable>
+				<div ref={historyScrollRef} className="collapsible-content">
+					{selectedTask ? (
+						<TaskDetailView details={selectedTask} onBack={deselectTask} />
+					) : isLoadingDetails ? (
+						<div className="loading-container">
+							<VscodeProgressRing />
+						</div>
+					) : (
+						<TaskList tasks={tasks} onSelectTask={selectTask} />
+					)}
+				</div>
 			</VscodeCollapsible>
 		</div>
 	);

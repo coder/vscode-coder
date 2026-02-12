@@ -200,6 +200,16 @@ export class CoderApi extends Api implements vscode.Disposable {
 		return response.data.logs ?? [];
 	};
 
+	sendTaskInput = async (
+		user: string,
+		taskId: string,
+		input: string,
+	): Promise<void> => {
+		await this.getAxiosInstance().post(`/api/v2/tasks/${user}/${taskId}/send`, {
+			input,
+		});
+	};
+
 	watchInboxNotifications = async (
 		watchTemplates: string[],
 		watchTargets: string[],

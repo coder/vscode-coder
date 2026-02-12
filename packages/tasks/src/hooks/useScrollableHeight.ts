@@ -4,9 +4,9 @@ import { useEffect, type RefObject } from "react";
 const MAX_FLEX_RATIO = 0.5;
 
 /**
- * Sets an explicit pixel height on a scrollable so VscodeScrollable can
- * compute scroll metrics, and writes a --section-flex-grow CSS custom
- * property on the host for content-adaptive sizing.
+ * Sets an explicit pixel height on a wrapper element inside a VscodeCollapsible
+ * so it can scroll, and writes a --section-flex-grow CSS custom property on the
+ * host for content-adaptive sizing.
  */
 export function useScrollableHeight(
 	hostRef: RefObject<HTMLElement | null>,

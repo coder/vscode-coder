@@ -219,7 +219,7 @@
 					"id": "coder.tasksPanel",
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
-					"when": "coder.authenticated && coder.tasksEnabled"
+					"when": "coder.tasksEnabled"
 				}
 			]
 		},

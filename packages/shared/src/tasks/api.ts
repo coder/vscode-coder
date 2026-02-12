@@ -47,13 +47,13 @@ const deleteTask = defineRequest<TaskActionParams, void>("deleteTask");
 const pauseTask = defineRequest<TaskActionParams, void>("pauseTask");
 const resumeTask = defineRequest<TaskActionParams, void>("resumeTask");
 const downloadLogs = defineRequest<{ taskId: string }, void>("downloadLogs");
+const sendTaskMessage = defineRequest<
+	{ taskId: string; message: string },
+	void
+>("sendTaskMessage");
 
 const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
 const viewLogs = defineCommand<{ taskId: string }>("viewLogs");
-const sendTaskMessage = defineCommand<{
-	taskId: string;
-	message: string;
-}>("sendTaskMessage");
 
 const taskUpdated = defineNotification<Task>("taskUpdated");
 const tasksUpdated = defineNotification<Task[]>("tasksUpdated");
@@ -73,10 +73,10 @@ export const TasksApi = {
 	pauseTask,
 	resumeTask,
 	downloadLogs,
+	sendTaskMessage,
 	// Commands
 	viewInCoder,
 	viewLogs,
-	sendTaskMessage,
 	// Notifications
 	taskUpdated,
 	tasksUpdated,

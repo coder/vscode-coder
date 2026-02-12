@@ -74,6 +74,7 @@ export class TasksPanel
 		TasksApi.resumeTask.method,
 		TasksApi.deleteTask.method,
 		TasksApi.downloadLogs.method,
+		TasksApi.sendTaskMessage.method,
 	]);
 
 	private view?: vscode.WebviewView;
@@ -131,6 +132,10 @@ export class TasksPanel
 		[TasksApi.downloadLogs.method]: requestHandler(TasksApi.downloadLogs, (p) =>
 			this.handleDownloadLogs(p.taskId),
 		),
+		[TasksApi.sendTaskMessage.method]: requestHandler(
+			TasksApi.sendTaskMessage,
+			(p) => this.handleSendMessage(p.taskId, p.message),
+		),
 	};
 
 	/**
@@ -146,10 +151,6 @@ export class TasksPanel
 		),
 		[TasksApi.viewLogs.method]: commandHandler(TasksApi.viewLogs, (p) =>
 			this.handleViewLogs(p.taskId),
-		),
-		[TasksApi.sendTaskMessage.method]: commandHandler(
-			TasksApi.sendTaskMessage,
-			(p) => this.handleSendMessage(p.taskId, p.message),
 		),
 	};
 
@@ -337,7 +338,7 @@ export class TasksPanel
 
 		await this.client.stopWorkspace(task.workspace_id);
 
-		await this.refreshAndNotifyTasks();
+		await this.refreshAndNotifyTask(taskId);
 		vscode.window.showInformationMessage(`Task "${taskName}" paused`);
 	}
 
@@ -355,8 +356,42 @@ export class TasksPanel
 			task.template_version_id,
 		);
 
-		await this.refreshAndNotifyTasks();
+		await this.refreshAndNotifyTask(taskId);
 		vscode.window.showInformationMessage(`Task "${taskName}" resumed`);
+	}
+
+	private async handleSendMessage(
+		taskId: string,
+		message: string,
+	): Promise<void> {
+		const task = await this.client.getTask("me", taskId);
+
+		if (task.status === "paused") {
+			if (!task.workspace_id) {
+				throw new Error("Task has no workspace");
+			}
+			await this.client.startWorkspace(
+				task.workspace_id,
+				task.template_version_id,
+			);
+		}
+
+		try {
+			await this.client.sendTaskInput("me", taskId, message);
+		} catch (err) {
+			if (
+				isAxiosError(err) &&
+				(err.response?.status === 409 || err.response?.status === 400)
+			) {
+				throw new Error("Task is not ready to receive messages");
+			}
+			throw err;
+		}
+
+		await this.refreshAndNotifyTask(taskId);
+		vscode.window.showInformationMessage(
+			`Message sent to "${getTaskLabel(task)}"`,
+		);
 	}
 
 	private async handleViewInCoder(taskId: string): Promise<void> {
@@ -409,17 +444,6 @@ export class TasksPanel
 		}
 	}
 
-	/**
-	 * Placeholder handler for sending follow-up messages to a task.
-	 * The Coder API does not yet support this feature.
-	 */
-	private handleSendMessage(taskId: string, message: string): void {
-		this.logger.info(`Sending message to task ${taskId}: ${message}`);
-		vscode.window.showInformationMessage(
-			"Follow-up messages are not yet supported by the API",
-		);
-	}
-
 	private async fetchTasksWithStatus(): Promise<{
 		tasks: readonly Task[];
 		supported: boolean;
@@ -448,6 +472,18 @@ export class TasksPanel
 			});
 		} catch (err) {
 			this.logger.warn("Failed to refresh tasks after action", err);
+		}
+	}
+
+	private async refreshAndNotifyTask(taskId: string): Promise<void> {
+		try {
+			const task = await this.client.getTask("me", taskId);
+			this.sendNotification({
+				type: TasksApi.taskUpdated.method,
+				data: task,
+			});
+		} catch (err) {
+			this.logger.warn("Failed to refresh task after action", err);
 		}
 	}
 
@@ -528,10 +564,7 @@ export class TasksPanel
 			const logs = await this.client.getTaskLogs("me", taskId);
 			return { logs, status: "ok" };
 		} catch (err) {
-			if (
-				isAxiosError(err) &&
-				(err.response?.status === 400 || err.response?.status === 409)
-			) {
+			if (isAxiosError(err) && err.response?.status === 409) {
 				return { logs: [], status: "not_available" };
 			}
 			this.logger.warn("Failed to fetch task logs", err);
