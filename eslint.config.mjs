@@ -8,7 +8,6 @@ import { createTypeScriptImportResolver } from "eslint-import-resolver-typescrip
 import { flatConfigs as importXFlatConfigs } from "eslint-plugin-import-x";
 import packageJson from "eslint-plugin-package-json";
 import reactPlugin from "eslint-plugin-react";
-import reactCompilerPlugin from "eslint-plugin-react-compiler";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
 import globals from "globals";
 
@@ -177,13 +176,22 @@ export default defineConfig(
 		},
 	},
 
-	// TSX files - React rules
+	// React hooks and compiler rules (covers .ts hook files too)
+	{
+		files: ["packages/**/*.{ts,tsx}"],
+		...reactHooksPlugin.configs.flat.recommended,
+		rules: {
+			...reactHooksPlugin.configs.flat.recommended.rules,
+			// React Compiler auto-memoizes; exhaustive-deps false-positives on useCallback
+			"react-hooks/exhaustive-deps": "off",
+		},
+	},
+
+	// TSX files - React JSX rules
 	{
 		files: ["**/*.tsx"],
 		plugins: {
 			react: reactPlugin,
-			"react-compiler": reactCompilerPlugin,
-			"react-hooks": reactHooksPlugin,
 		},
 		settings: {
 			react: {
@@ -191,10 +199,8 @@ export default defineConfig(
 			},
 		},
 		rules: {
-			...reactCompilerPlugin.configs.recommended.rules,
 			...reactPlugin.configs.recommended.rules,
 			...reactPlugin.configs["jsx-runtime"].rules, // React 17+ JSX transform
-			...reactHooksPlugin.configs.recommended.rules,
 			"react/prop-types": "off", // Using TypeScript
 		},
 	},

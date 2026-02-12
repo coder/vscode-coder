@@ -38,7 +38,7 @@ describe("ErrorBoundary", () => {
 				<div>Hello World</div>
 			</ErrorBoundary>,
 		);
-		expect(screen.getByText("Hello World")).toBeTruthy();
+		expect(screen.queryByText("Hello World")).toBeInTheDocument();
 	});
 
 	it("renders default fallback on error", () => {
@@ -47,8 +47,8 @@ describe("ErrorBoundary", () => {
 				<ThrowingComponent />
 			</ErrorBoundary>,
 		);
-		expect(screen.getByText("Something went wrong")).toBeTruthy();
-		expect(screen.getByText(TEST_ERROR)).toBeTruthy();
+		expect(screen.queryByText("Something went wrong")).toBeInTheDocument();
+		expect(screen.queryByText(TEST_ERROR)).toBeInTheDocument();
 	});
 
 	it("renders custom fallback on error", () => {
@@ -57,8 +57,8 @@ describe("ErrorBoundary", () => {
 				<ThrowingComponent />
 			</ErrorBoundary>,
 		);
-		expect(screen.getByText("Custom error UI")).toBeTruthy();
-		expect(screen.queryByText("Something went wrong")).toBeNull();
+		expect(screen.queryByText("Custom error UI")).toBeInTheDocument();
+		expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
 	});
 
 	it("logs error via componentDidCatch", () => {

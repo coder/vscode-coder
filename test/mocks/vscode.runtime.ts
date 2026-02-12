@@ -90,6 +90,7 @@ export const window = {
 	showQuickPick: vi.fn(),
 	showInputBox: vi.fn(),
 	showSaveDialog: vi.fn(),
+	showTextDocument: vi.fn(),
 	withProgress: vi.fn(),
 	createOutputChannel: vi.fn(() => ({
 		appendLine: vi.fn(),

@@ -28,7 +28,6 @@
 		"package": "vsce package --no-dependencies",
 		"package:prerelease": "vsce package --pre-release --no-dependencies",
 		"test": "CI=true pnpm test:extension && CI=true pnpm test:webview",
-		"test:ci": "pnpm test",
 		"test:extension": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs --project extension",
 		"test:integration": "tsc -p test --outDir out --noCheck && node esbuild.mjs && vscode-test",
 		"test:webview": "vitest --project webview",
@@ -496,6 +495,8 @@
 	"devDependencies": {
 		"@eslint/js": "^9.39.2",
 		"@eslint/markdown": "^7.5.1",
+		"@tanstack/react-query": "catalog:",
+		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",
 		"@tsconfig/node20": "^20.1.9",
 		"@types/mocha": "^10.0.10",
@@ -527,7 +528,6 @@
 		"eslint-plugin-import-x": "^4.16.1",
 		"eslint-plugin-package-json": "^0.88.2",
 		"eslint-plugin-react": "^7.37.5",
-		"eslint-plugin-react-compiler": "catalog:",
 		"eslint-plugin-react-hooks": "^7.0.1",
 		"globals": "^17.3.0",
 		"jsdom": "^28.0.0",
@@ -545,7 +545,7 @@
 	"extensionPack": [
 		"ms-vscode-remote.remote-ssh"
 	],
-	"packageManager": "pnpm@10.28.2",
+	"packageManager": "pnpm@10.29.2",
 	"engines": {
 		"vscode": "^1.95.0",
 		"node": ">= 20"

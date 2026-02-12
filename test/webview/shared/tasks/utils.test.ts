@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	getTaskActions,
+	getTaskPermissions,
 	isStableTask,
 	type Task,
-	type TaskActions,
+	type TaskPermissions,
 } from "@repo/shared";
 
 import {
@@ -13,13 +13,13 @@ import {
 	taskState as state,
 } from "../../../mocks/tasks";
 
-describe("getTaskActions", () => {
-	interface TaskActionsTestCase {
+describe("getTaskPermissions", () => {
+	interface TaskPermissionsTestCase {
 		name: string;
 		overrides: Partial<Task>;
-		expected: TaskActions;
+		expected: TaskPermissions;
 	}
-	it.each<TaskActionsTestCase>([
+	it.each<TaskPermissionsTestCase>([
 		{
 			name: "no workspace",
 			overrides: {},
@@ -61,7 +61,7 @@ describe("getTaskActions", () => {
 			expected: { canPause: false, pauseDisabled: false, canResume: false },
 		},
 	])("$name", ({ overrides, expected }) => {
-		expect(getTaskActions(task(overrides))).toEqual(expected);
+		expect(getTaskPermissions(task(overrides))).toEqual(expected);
 	});
 });
 
