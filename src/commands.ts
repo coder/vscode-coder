@@ -598,9 +598,9 @@ export class Commands {
 				modal: true,
 				detail: `Update ${createWorkspaceIdentifier(this.workspace)} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
 			},
-			"Update",
+			"Update and Restart",
 		);
-		if (action === "Update") {
+		if (action === "Update and Restart") {
 			await this.remoteWorkspaceClient.updateWorkspaceVersion(this.workspace);
 		}
 	}
