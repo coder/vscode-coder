@@ -596,7 +596,7 @@ export class Commands {
 			{
 				useCustom: true,
 				modal: true,
-				detail: `Updating ${createWorkspaceIdentifier(this.workspace)} to the latest template version will restart your workspace. Running processes will be stopped and unsaved work may be lost.`,
+				detail: `Update ${createWorkspaceIdentifier(this.workspace)} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
 			},
 			"Update and Restart",
 		);
