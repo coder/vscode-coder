@@ -520,7 +520,7 @@
 		"coder": "github:coder/coder#main",
 		"concurrently": "^9.2.1",
 		"dayjs": "^1.11.19",
-		"electron": "^40.2.1",
+		"electron": "^40.4.0",
 		"esbuild": "^0.27.3",
 		"eslint": "^9.39.2",
 		"eslint-config-prettier": "^10.1.8",
