@@ -509,7 +509,7 @@
 		"@types/vscode": "^1.95.0",
 		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^8.54.0",
-		"@typescript-eslint/parser": "^8.54.0",
+		"@typescript-eslint/parser": "^8.55.0",
 		"@vitejs/plugin-react": "catalog:",
 		"@vitest/coverage-v8": "^4.0.18",
 		"@vscode/test-cli": "^0.0.12",
