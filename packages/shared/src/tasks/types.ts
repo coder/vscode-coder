@@ -37,7 +37,7 @@ export type LogsStatus = "ok" | "not_available" | "error";
  */
 export interface TaskDetails extends TaskPermissions {
 	task: Task;
-	logs: TaskLogEntry[];
+	logs: readonly TaskLogEntry[];
 	logsStatus: LogsStatus;
 }
 

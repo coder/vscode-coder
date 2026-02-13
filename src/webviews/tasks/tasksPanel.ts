@@ -87,7 +87,7 @@ export class TasksPanel
 	// Cache logs for last viewed task in stable state
 	private cachedLogs?: {
 		taskId: string;
-		logs: TaskLogEntry[];
+		logs: readonly TaskLogEntry[];
 		status: LogsStatus;
 	};
 
@@ -503,7 +503,7 @@ export class TasksPanel
 	 */
 	private async getLogsWithCache(
 		task: Task,
-	): Promise<{ logs: TaskLogEntry[]; logsStatus: LogsStatus }> {
+	): Promise<{ logs: readonly TaskLogEntry[]; logsStatus: LogsStatus }> {
 		const stable = isStableTask(task);
 
 		// Use cache if same task in stable state
@@ -523,10 +523,10 @@ export class TasksPanel
 
 	private async fetchTaskLogs(
 		taskId: string,
-	): Promise<{ logs: TaskLogEntry[]; status: LogsStatus }> {
+	): Promise<{ logs: readonly TaskLogEntry[]; status: LogsStatus }> {
 		try {
-			const logs = await this.client.getTaskLogs("me", taskId);
-			return { logs, status: "ok" };
+			const response = await this.client.getTaskLogs("me", taskId);
+			return { logs: response.logs, status: "ok" };
 		} catch (err) {
 			if (
 				isAxiosError(err) &&
