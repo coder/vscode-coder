@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
 import { TasksPanel } from "@/webviews/tasks/tasksPanel";
@@ -44,13 +44,13 @@ type TasksPanelClient = Pick<
 	| "getHost"
 >;
 
-type MockClient = { [K in keyof TasksPanelClient]: ReturnType<typeof vi.fn> };
+type MockClient = { [K in keyof TasksPanelClient]: Mock<TasksPanelClient[K]> };
 
 function createClient(baseUrl = "https://coder.example.com"): MockClient {
 	return {
 		getTasks: vi.fn().mockResolvedValue([]),
 		getTask: vi.fn(),
-		getTaskLogs: vi.fn().mockResolvedValue([]),
+		getTaskLogs: vi.fn().mockResolvedValue({ logs: [] }),
 		createTask: vi.fn(),
 		deleteTask: vi.fn().mockResolvedValue(undefined),
 		getTemplates: vi.fn().mockResolvedValue([]),
@@ -59,7 +59,7 @@ function createClient(baseUrl = "https://coder.example.com"): MockClient {
 		stopWorkspace: vi.fn().mockResolvedValue(undefined),
 		sendTaskInput: vi.fn().mockResolvedValue(undefined),
 		getHost: vi.fn().mockReturnValue(baseUrl),
-	};
+	} as MockClient;
 }
 
 interface Harness {
@@ -268,9 +268,9 @@ describe("TasksPanel", () => {
 		it("returns task with logs", async () => {
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task());
-			h.client.getTaskLogs.mockResolvedValue([
-				logEntry({ content: "Starting" }),
-			]);
+			h.client.getTaskLogs.mockResolvedValue({
+				logs: [logEntry({ content: "Starting" })],
+			});
 
 			const res = await h.request(TasksApi.getTaskDetails, {
 				taskId: "task-1",
@@ -319,7 +319,7 @@ describe("TasksPanel", () => {
 			h.client.getTask.mockResolvedValue(
 				task({ current_state: { timestamp: "", state, message: "", uri: "" } }),
 			);
-			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
+			h.client.getTaskLogs.mockResolvedValue({ logs: [logEntry()] });
 
 			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
 			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
@@ -574,7 +574,7 @@ describe("TasksPanel", () => {
 	describe("downloadLogs", () => {
 		it("saves logs to file", async () => {
 			const h = createHarness();
-			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
+			h.client.getTaskLogs.mockResolvedValue({ logs: [logEntry()] });
 			const saveUri = vscode.Uri.file("/downloads/logs.txt");
 			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(saveUri);
 			h.ui.setResponse(`Logs saved to ${saveUri.fsPath}`, "Open File");
@@ -593,7 +593,7 @@ describe("TasksPanel", () => {
 
 		it("does not open file when notification is dismissed", async () => {
 			const h = createHarness();
-			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
+			h.client.getTaskLogs.mockResolvedValue({ logs: [logEntry()] });
 			const saveUri = vscode.Uri.file("/downloads/logs.txt");
 			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(saveUri);
 			h.ui.setResponse(`Logs saved to ${saveUri.fsPath}`, undefined);
@@ -612,7 +612,7 @@ describe("TasksPanel", () => {
 
 		it("shows warning when no logs", async () => {
 			const h = createHarness();
-			h.client.getTaskLogs.mockResolvedValue([]);
+			h.client.getTaskLogs.mockResolvedValue({ logs: [] });
 
 			const res = await h.request(TasksApi.downloadLogs, {
 				taskId: "task-1",
@@ -644,7 +644,7 @@ describe("TasksPanel", () => {
 
 		it("does nothing when user cancels", async () => {
 			const h = createHarness();
-			h.client.getTaskLogs.mockResolvedValue([logEntry()]);
+			h.client.getTaskLogs.mockResolvedValue({ logs: [logEntry()] });
 			vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(undefined);
 
 			const res = await h.request(TasksApi.downloadLogs, {
