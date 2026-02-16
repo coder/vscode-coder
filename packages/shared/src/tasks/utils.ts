@@ -55,3 +55,21 @@ export function isStableTask(task: Task): boolean {
 		(task.current_state !== null && task.current_state.state !== "working")
 	);
 }
+
+/** Whether the task's workspace is building (provisioner running). */
+export function isBuildingWorkspace(task: Task): boolean {
+	const ws = task.workspace_status;
+	return ws === "pending" || ws === "starting";
+}
+
+/** Whether the workspace is running but the agent hasn't reached "ready" yet. */
+export function isAgentStarting(task: Task): boolean {
+	if (task.workspace_status !== "running") return false;
+	const lc = task.workspace_agent_lifecycle;
+	return lc === "created" || lc === "starting";
+}
+
+/** Whether the task's workspace is still starting up (building or agent initializing). */
+export function isWorkspaceStarting(task: Task): boolean {
+	return isBuildingWorkspace(task) || isAgentStarting(task);
+}

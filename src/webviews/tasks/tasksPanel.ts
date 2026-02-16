@@ -1,8 +1,12 @@
 import { isAxiosError } from "axios";
+import stripAnsi from "strip-ansi";
 import * as vscode from "vscode";
 
 import {
 	commandHandler,
+	isBuildingWorkspace,
+	isAgentStarting,
+	isWorkspaceStarting,
 	getTaskPermissions,
 	getTaskLabel,
 	isStableTask,
@@ -20,6 +24,11 @@ import {
 
 import { errToStr } from "../../api/api-helper";
 import { type CoderApi } from "../../api/coderApi";
+import {
+	LazyStream,
+	streamAgentLogs,
+	streamBuildLogs,
+} from "../../api/workspace";
 import { toError } from "../../error/errorUtils";
 import { type Logger } from "../../logging/logger";
 import { vscodeProposed } from "../../vscodeProposed";
@@ -27,9 +36,11 @@ import { getWebviewHtml } from "../util";
 
 import type {
 	Preset,
+	ProvisionerJobLog,
 	Task,
 	TaskLogEntry,
 	Template,
+	WorkspaceAgentLog,
 } from "coder/site/src/api/typesGenerated";
 
 /** Build URL to view task build logs in Coder dashboard */
@@ -80,6 +91,11 @@ export class TasksPanel
 
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
+
+	// Workspace log streaming
+	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
+	private readonly agentLogStream = new LazyStream<WorkspaceAgentLog[]>();
+	private streamingTaskId: string | null = null;
 
 	// Template cache with TTL
 	private templatesCache: TaskTemplate[] = [];
@@ -152,6 +168,14 @@ export class TasksPanel
 		),
 		[TasksApi.viewLogs.method]: commandHandler(TasksApi.viewLogs, (p) =>
 			this.handleViewLogs(p.taskId),
+		),
+		[TasksApi.closeWorkspaceLogs.method]: commandHandler(
+			TasksApi.closeWorkspaceLogs,
+			() => {
+				this.buildLogStream.close();
+				this.agentLogStream.close();
+				this.streamingTaskId = null;
+			},
 		),
 	};
 
@@ -280,6 +304,9 @@ export class TasksPanel
 
 	private async handleGetTaskDetails(taskId: string): Promise<TaskDetails> {
 		const task = await this.client.getTask("me", taskId);
+		this.streamWorkspaceLogs(task).catch((err: unknown) => {
+			this.logger.warn("Failed to stream workspace logs", err);
+		});
 		const { logs, logsStatus } = await this.getLogsWithCache(task);
 		return { task, logs, logsStatus, ...getTaskPermissions(task) };
 	}
@@ -447,6 +474,42 @@ export class TasksPanel
 		}
 	}
 
+	private async streamWorkspaceLogs(task: Task): Promise<void> {
+		if (task.id !== this.streamingTaskId) {
+			this.buildLogStream.close();
+			this.agentLogStream.close();
+			this.streamingTaskId = task.id;
+		}
+
+		if (!isWorkspaceStarting(task)) {
+			this.buildLogStream.close();
+			this.agentLogStream.close();
+			return;
+		}
+
+		const onOutput = (line: string) => {
+			const clean = stripAnsi(line);
+			if (clean.length === 0) return;
+			this.sendNotification({
+				type: TasksApi.workspaceLogsAppend.method,
+				data: [clean],
+			});
+		};
+
+		if (isBuildingWorkspace(task) && task.workspace_id) {
+			this.agentLogStream.close();
+			const workspace = await this.client.getWorkspace(task.workspace_id);
+			await this.buildLogStream.open(() =>
+				streamBuildLogs(this.client, onOutput, workspace.latest_build.id),
+			);
+		} else if (isAgentStarting(task) && task.workspace_agent_id) {
+			this.buildLogStream.close();
+			await this.agentLogStream.open(() =>
+				streamAgentLogs(this.client, onOutput, task.workspace_agent_id!),
+			);
+		}
+	}
+
 	private async fetchTasksWithStatus(): Promise<{
 		tasks: readonly Task[];
 		supported: boolean;
@@ -584,6 +647,8 @@ export class TasksPanel
 	}
 
 	dispose(): void {
+		this.buildLogStream.close();
+		this.agentLogStream.close();
 		for (const d of this.disposables) {
 			d.dispose();
 		}

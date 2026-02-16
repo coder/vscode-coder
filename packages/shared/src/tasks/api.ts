@@ -54,11 +54,13 @@ const sendTaskMessage = defineRequest<TaskIdParams & { message: string }, void>(
 	"sendTaskMessage",
 );
 
-const viewInCoder = defineCommand<TaskIdParams>("viewInCoder");
-const viewLogs = defineCommand<TaskIdParams>("viewLogs");
+const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
+const viewLogs = defineCommand<{ taskId: string }>("viewLogs");
+const closeWorkspaceLogs = defineCommand("closeWorkspaceLogs");
 
 const taskUpdated = defineNotification<Task>("taskUpdated");
 const tasksUpdated = defineNotification<Task[]>("tasksUpdated");
+const workspaceLogsAppend = defineNotification<string[]>("workspaceLogsAppend");
 const refresh = defineNotification<void>("refresh");
 const showCreateForm = defineNotification<void>("showCreateForm");
 
@@ -78,9 +80,11 @@ export const TasksApi = {
 	// Commands
 	viewInCoder,
 	viewLogs,
+	closeWorkspaceLogs,
 	// Notifications
 	taskUpdated,
 	tasksUpdated,
+	workspaceLogsAppend,
 	refresh,
 	showCreateForm,
 } as const;

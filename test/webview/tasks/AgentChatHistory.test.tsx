@@ -34,7 +34,7 @@ describe("AgentChatHistory", () => {
 			);
 			const el = screen.getByText("Failed to load logs");
 			expect(el).toBeInTheDocument();
-			expect(el).toHaveClass("chat-history-error");
+			expect(el).toHaveClass("log-viewer-error");
 		});
 	});
 

@@ -488,6 +488,7 @@
 		"proper-lockfile": "^4.1.2",
 		"proxy-agent": "^6.5.0",
 		"semver": "^7.7.4",
+		"strip-ansi": "^7.1.2",
 		"ua-parser-js": "^1.0.41",
 		"ws": "^8.19.0",
 		"zod": "^4.3.6"

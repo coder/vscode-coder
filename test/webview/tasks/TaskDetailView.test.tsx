@@ -13,6 +13,10 @@ vi.mock("@repo/tasks/hooks/useTasksApi", () => ({
 	useTasksApi: () => new Proxy({}, { get: () => vi.fn() }),
 }));
 
+vi.mock("@repo/tasks/hooks/useWorkspaceLogs", () => ({
+	useWorkspaceLogs: (active: boolean) => (active ? ["Building image..."] : []),
+}));
+
 describe("TaskDetailView", () => {
 	it("passes onBack to header", () => {
 		const onBack = vi.fn();
@@ -117,5 +121,45 @@ describe("TaskDetailView", () => {
 		const details = taskDetails({ logsStatus: "error" });
 		renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
 		expect(screen.getByText("Failed to load logs")).toBeInTheDocument();
+	});
+
+	describe("workspace startup rendering", () => {
+		it("shows WorkspaceLogs when workspace is building", () => {
+			const details = taskDetails({
+				task: { workspace_status: "starting" },
+			});
+			renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
+			expect(screen.getByText("Building workspace...")).toBeInTheDocument();
+			expect(screen.getByText("Building image...")).toBeInTheDocument();
+			expect(screen.queryByText("Agent chat history")).not.toBeInTheDocument();
+		});
+
+		it("shows WorkspaceLogs when agent is starting", () => {
+			const details = taskDetails({
+				task: {
+					workspace_status: "running",
+					workspace_agent_lifecycle: "created",
+				},
+			});
+			renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
+			expect(
+				screen.getByText("Running startup scripts..."),
+			).toBeInTheDocument();
+			expect(screen.queryByText("Agent chat history")).not.toBeInTheDocument();
+		});
+
+		it("shows AgentChatHistory when workspace is running and agent is ready", () => {
+			const details = taskDetails({
+				task: {
+					workspace_status: "running",
+					workspace_agent_lifecycle: "ready",
+				},
+			});
+			renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
+			expect(screen.getByText("Agent chat history")).toBeInTheDocument();
+			expect(
+				screen.queryByText("Building workspace..."),
+			).not.toBeInTheDocument();
+		});
 	});
 });

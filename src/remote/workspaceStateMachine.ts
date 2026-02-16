@@ -1,5 +1,6 @@
 import { createWorkspaceIdentifier, extractAgents } from "../api/api-helper";
 import {
+	LazyStream,
 	startWorkspaceIfStoppedOrFailed,
 	streamAgentLogs,
 	streamBuildLogs,
@@ -21,7 +22,6 @@ import type { CoderApi } from "../api/coderApi";
 import type { PathResolver } from "../core/pathResolver";
 import type { FeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
-import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 /**
  * Manages workspace and agent state transitions until ready for SSH connection.
@@ -29,13 +29,10 @@ import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
  */
 export class WorkspaceStateMachine implements vscode.Disposable {
 	private readonly terminal: TerminalSession;
+	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
+	private readonly agentLogStream = new LazyStream<WorkspaceAgentLog[]>();
 
 	private agent: { id: string; name: string } | undefined;
-
-	private buildLogSocket: UnidirectionalStream<ProvisionerJobLog> | null = null;
-
-	private agentLogSocket: UnidirectionalStream<WorkspaceAgentLog[]> | null =
-		null;
 
 	constructor(
 		private readonly parts: AuthorityParts,
@@ -61,12 +58,12 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 		switch (workspace.latest_build.status) {
 			case "running":
-				this.closeBuildLogSocket();
+				this.buildLogStream.close();
 				break;
 
 			case "stopped":
 			case "failed": {
-				this.closeBuildLogSocket();
+				this.buildLogStream.close();
 
 				if (!this.firstConnect && !(await this.confirmStart(workspaceName))) {
 					throw new Error(`Workspace start cancelled`);
@@ -91,27 +88,32 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 			case "pending":
 			case "starting":
-			case "stopping":
+			case "stopping": {
 				// Clear the agent since it's ID could change after a restart
 				this.agent = undefined;
-				this.closeAgentLogSocket();
+				this.agentLogStream.close();
 				progress.report({
 					message: `building ${workspaceName} (${workspace.latest_build.status})...`,
 				});
 				this.logger.info(`Waiting for ${workspaceName}`);
 
-				this.buildLogSocket ??= await streamBuildLogs(
-					this.workspaceClient,
-					this.terminal.writeEmitter,
-					workspace,
+				const write = (line: string) =>
+					this.terminal.writeEmitter.fire(line + "\r\n");
+				await this.buildLogStream.open(() =>
+					streamBuildLogs(
+						this.workspaceClient,
+						write,
+						workspace.latest_build.id,
+					),
 				);
 				return false;
+			}
 
 			case "deleted":
 			case "deleting":
 			case "canceled":
 			case "canceling":
-				this.closeBuildLogSocket();
+				this.buildLogStream.close();
 				throw new Error(`${workspaceName} is ${workspace.latest_build.status}`);
 		}
 
@@ -160,7 +162,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 		switch (agent.lifecycle_state) {
 			case "ready":
-				this.closeAgentLogSocket();
+				this.agentLogStream.close();
 				return true;
 
 			case "starting": {
@@ -176,10 +178,10 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				});
 				this.logger.debug(`Running agent ${agent.name} startup scripts`);
 
-				this.agentLogSocket ??= await streamAgentLogs(
-					this.workspaceClient,
-					this.terminal.writeEmitter,
-					agent,
+				const writeAgent = (line: string) =>
+					this.terminal.writeEmitter.fire(line + "\r\n");
+				await this.agentLogStream.open(() =>
+					streamAgentLogs(this.workspaceClient, writeAgent, agent.id),
 				);
 				return false;
 			}
@@ -192,14 +194,14 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				return false;
 
 			case "start_error":
-				this.closeAgentLogSocket();
+				this.agentLogStream.close();
 				this.logger.info(
 					`Agent ${agent.name} startup scripts failed, but continuing`,
 				);
 				return true;
 
 			case "start_timeout":
-				this.closeAgentLogSocket();
+				this.agentLogStream.close();
 				this.logger.info(
 					`Agent ${agent.name} startup scripts timed out, but continuing`,
 				);
@@ -209,24 +211,10 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "off":
 			case "shutdown_error":
 			case "shutdown_timeout":
-				this.closeAgentLogSocket();
+				this.agentLogStream.close();
 				throw new Error(
 					`Invalid lifecycle state '${agent.lifecycle_state}' for ${workspaceName}/${agent.name}`,
 				);
-		}
-	}
-
-	private closeBuildLogSocket(): void {
-		if (this.buildLogSocket) {
-			this.buildLogSocket.close();
-			this.buildLogSocket = null;
-		}
-	}
-
-	private closeAgentLogSocket(): void {
-		if (this.agentLogSocket) {
-			this.agentLogSocket.close();
-			this.agentLogSocket = null;
 		}
 	}
 
@@ -247,8 +235,8 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		this.closeBuildLogSocket();
-		this.closeAgentLogSocket();
+		this.buildLogStream.close();
+		this.agentLogStream.close();
 		this.terminal.dispose();
 	}
 }

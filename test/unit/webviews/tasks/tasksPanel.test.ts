@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
+import { streamAgentLogs, streamBuildLogs } from "@/api/workspace";
 import { TasksPanel } from "@/webviews/tasks/tasksPanel";
 
 import {
@@ -23,10 +24,20 @@ import {
 	createMockLogger,
 	MockUserInteraction,
 } from "../../../mocks/testHelpers";
+import { workspace } from "../../../mocks/workspace";
 
 import type { Task } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
+
+vi.mock("@/api/workspace", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/api/workspace")>();
+	return {
+		...actual,
+		streamBuildLogs: vi.fn().mockResolvedValue({ close: vi.fn() }),
+		streamAgentLogs: vi.fn().mockResolvedValue({ close: vi.fn() }),
+	};
+});
 
 /** Subset of CoderApi used by TasksPanel */
 type TasksPanelClient = Pick<
@@ -42,6 +53,7 @@ type TasksPanelClient = Pick<
 	| "stopWorkspace"
 	| "sendTaskInput"
 	| "getHost"
+	| "getWorkspace"
 >;
 
 type MockClient = { [K in keyof TasksPanelClient]: Mock<TasksPanelClient[K]> };
@@ -59,7 +71,8 @@ function createClient(baseUrl = "https://coder.example.com"): MockClient {
 		stopWorkspace: vi.fn().mockResolvedValue(undefined),
 		sendTaskInput: vi.fn().mockResolvedValue(undefined),
 		getHost: vi.fn().mockReturnValue(baseUrl),
-	} as MockClient;
+		getWorkspace: vi.fn().mockResolvedValue(workspace()),
+	};
 }
 
 interface Harness {
@@ -744,6 +757,103 @@ describe("TasksPanel", () => {
 			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
 				"Command failed: Task not found",
 			);
+		});
+	});
+
+	describe("workspace log streaming", () => {
+		it("opens build stream for building task", async () => {
+			const ws = workspace({ latest_build: { id: "build-42" } });
+			const h = createHarness();
+			h.client.getWorkspace.mockResolvedValue(ws);
+			h.client.getTask.mockResolvedValue(
+				task({ workspace_status: "starting", workspace_id: "ws-1" }),
+			);
+
+			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+
+			expect(streamBuildLogs).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.any(Function),
+				"build-42",
+			);
+		});
+
+		it("opens agent stream for agent-starting task", async () => {
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(
+				task({
+					workspace_status: "running",
+					workspace_agent_lifecycle: "starting",
+					workspace_agent_id: "agent-1",
+				}),
+			);
+
+			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+
+			expect(streamAgentLogs).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.any(Function),
+				"agent-1",
+			);
+		});
+
+		it("does not open streams for ready task", async () => {
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(
+				task({
+					workspace_status: "running",
+					workspace_agent_lifecycle: "ready",
+				}),
+			);
+
+			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+
+			expect(streamBuildLogs).not.toHaveBeenCalled();
+			expect(streamAgentLogs).not.toHaveBeenCalled();
+		});
+
+		it("closes streams when switching to a different task", async () => {
+			const mockClose = vi.fn();
+			vi.mocked(streamBuildLogs).mockResolvedValue({
+				close: mockClose,
+			} as never);
+
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(
+				task({
+					id: "task-1",
+					workspace_status: "starting",
+					workspace_id: "ws-1",
+				}),
+			);
+
+			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+
+			h.client.getTask.mockResolvedValue(
+				task({ id: "task-2", workspace_status: "running" }),
+			);
+
+			await h.request(TasksApi.getTaskDetails, { taskId: "task-2" });
+
+			expect(mockClose).toHaveBeenCalled();
+		});
+
+		it("closes streams on closeWorkspaceLogs command", async () => {
+			const mockClose = vi.fn();
+			vi.mocked(streamBuildLogs).mockResolvedValue({
+				close: mockClose,
+			} as never);
+
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(
+				task({ workspace_status: "starting", workspace_id: "ws-1" }),
+			);
+
+			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+
+			await h.command(TasksApi.closeWorkspaceLogs);
+
+			expect(mockClose).toHaveBeenCalled();
 		});
 	});
 });

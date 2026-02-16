@@ -1,6 +1,4 @@
-import { VscodeScrollable } from "@vscode-elements/react-elements";
-
-import { useFollowScroll } from "../hooks/useFollowScroll";
+import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
 import type { LogsStatus, TaskLogEntry } from "@repo/shared";
 
@@ -34,37 +32,29 @@ export function AgentChatHistory({
 	logsStatus,
 	isThinking,
 }: AgentChatHistoryProps) {
-	const bottomRef = useFollowScroll();
+	const isEmpty = logs.length === 0 && (logsStatus !== "ok" || !isThinking);
 
 	return (
-		<div className="agent-chat-history">
-			<div className="chat-history-header">Agent chat history</div>
-			<VscodeScrollable className="chat-history-content">
-				{logs.length === 0 ? (
-					<div
-						className={
-							logsStatus === "error"
-								? "chat-history-empty chat-history-error"
-								: "chat-history-empty"
-						}
-					>
-						{getEmptyMessage(logsStatus)}
-					</div>
-				) : (
-					logs.map((log, index) => (
+		<LogViewer header="Agent chat history">
+			{isEmpty ? (
+				<LogViewerPlaceholder error={logsStatus === "error"}>
+					{getEmptyMessage(logsStatus)}
+				</LogViewerPlaceholder>
+			) : (
+				<>
+					{logs.map((log, index) => (
 						<LogEntry
 							key={log.id}
 							log={log}
 							isGroupStart={index === 0 || log.type !== logs[index - 1].type}
 						/>
-					))
-				)}
-				{isThinking && (
-					<div className="log-entry log-entry-thinking">Thinking...</div>
-				)}
-				<div ref={bottomRef} />
-			</VscodeScrollable>
-		</div>
+					))}
+					{isThinking && (
+						<div className="log-entry log-entry-thinking">Thinking...</div>
+					)}
+				</>
+			)}
+		</LogViewer>
 	);
 }
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
 	getTaskPermissions,
+	isAgentStarting,
+	isBuildingWorkspace,
 	isStableTask,
 	isTaskWorking,
 	type Task,
@@ -13,6 +15,11 @@ import {
 	task as fullTask,
 	taskState as state,
 } from "../../../mocks/tasks";
+
+import type {
+	WorkspaceAgentLifecycle,
+	WorkspaceStatus,
+} from "coder/site/src/api/typesGenerated";
 
 describe("getTaskPermissions", () => {
 	interface TaskPermissionsTestCase {
@@ -191,5 +198,42 @@ describe("isStableTask", () => {
 		},
 	])("$name → $expected", ({ overrides, expected }) => {
 		expect(isStableTask(fullTask(overrides))).toBe(expected);
+	});
+});
+
+describe("isBuildingWorkspace", () => {
+	interface BuildingTestCase {
+		ws: WorkspaceStatus;
+		expected: boolean;
+	}
+	it.each<BuildingTestCase>([
+		{ ws: "pending", expected: true },
+		{ ws: "starting", expected: true },
+		{ ws: "stopping", expected: false },
+		{ ws: "running", expected: false },
+		{ ws: "stopped", expected: false },
+	])("workspace_status=$ws → $expected", ({ ws, expected }) => {
+		expect(isBuildingWorkspace(task({ workspace_status: ws }))).toBe(expected);
+	});
+});
+
+describe("isAgentStarting", () => {
+	interface AgentStartingTestCase {
+		ws: WorkspaceStatus;
+		lc: WorkspaceAgentLifecycle | null;
+		expected: boolean;
+	}
+	it.each<AgentStartingTestCase>([
+		{ ws: "running", lc: "created", expected: true },
+		{ ws: "running", lc: "starting", expected: true },
+		{ ws: "running", lc: "ready", expected: false },
+		{ ws: "running", lc: null, expected: false },
+		{ ws: "starting", lc: "created", expected: false },
+	])("ws=$ws lc=$lc → $expected", ({ ws, lc, expected }) => {
+		expect(
+			isAgentStarting(
+				task({ workspace_status: ws, workspace_agent_lifecycle: lc }),
+			),
+		).toBe(expected);
 	});
 });
