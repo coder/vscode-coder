@@ -4,11 +4,6 @@ export function getTaskLabel(task: Task): string {
 	return task.display_name || task.name || task.id;
 }
 
-/** Whether the agent is actively working (status is active and state is working). */
-export function isTaskWorking(task: Task): boolean {
-	return task.status === "active" && task.current_state?.state === "working";
-}
-
 const PAUSABLE_STATUSES: readonly TaskStatus[] = [
 	"active",
 	"initializing",
@@ -42,6 +37,11 @@ export function getTaskPermissions(task: Task): TaskPermissions {
 	};
 }
 
+/** Whether the agent is actively working (status is active and state is working). */
+export function isTaskWorking(task: Task): boolean {
+	return task.status === "active" && task.current_state?.state === "working";
+}
+
 /**
  * Task statuses where logs won't change (stable/terminal states).
  * "complete" is a TaskState (sub-state of active), checked separately.
@@ -64,7 +64,9 @@ export function isBuildingWorkspace(task: Task): boolean {
 
 /** Whether the workspace is running but the agent hasn't reached "ready" yet. */
 export function isAgentStarting(task: Task): boolean {
-	if (task.workspace_status !== "running") return false;
+	if (task.workspace_status !== "running") {
+		return false;
+	}
 	const lc = task.workspace_agent_lifecycle;
 	return lc === "created" || lc === "starting";
 }

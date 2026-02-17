@@ -54,9 +54,9 @@ const sendTaskMessage = defineRequest<TaskIdParams & { message: string }, void>(
 	"sendTaskMessage",
 );
 
-const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
-const viewLogs = defineCommand<{ taskId: string }>("viewLogs");
-const closeWorkspaceLogs = defineCommand("closeWorkspaceLogs");
+const viewInCoder = defineCommand<TaskIdParams>("viewInCoder");
+const viewLogs = defineCommand<TaskIdParams>("viewLogs");
+const closeWorkspaceLogs = defineCommand<void>("closeWorkspaceLogs");
 
 const taskUpdated = defineNotification<Task>("taskUpdated");
 const tasksUpdated = defineNotification<Task[]>("tasksUpdated");

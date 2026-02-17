@@ -27,15 +27,11 @@ export function LogViewerPlaceholder({
 	children,
 	error,
 }: {
-	children: ReactNode;
+	children: string;
 	error?: boolean;
 }) {
 	return (
-		<div
-			className={
-				error ? "log-viewer-empty log-viewer-error" : "log-viewer-empty"
-			}
-		>
+		<div className={`log-viewer-empty${error ? " log-viewer-error" : ""}`}>
 			{children}
 		</div>
 	);

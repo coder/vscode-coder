@@ -6,7 +6,6 @@ import {
 	commandHandler,
 	isBuildingWorkspace,
 	isAgentStarting,
-	isWorkspaceStarting,
 	getTaskPermissions,
 	getTaskLabel,
 	isStableTask,
@@ -17,8 +16,8 @@ import {
 	type IpcNotification,
 	type IpcRequest,
 	type IpcResponse,
-	type LogsStatus,
 	type TaskDetails,
+	type TaskLogs,
 	type TaskTemplate,
 } from "@repo/shared";
 
@@ -38,7 +37,6 @@ import type {
 	Preset,
 	ProvisionerJobLog,
 	Task,
-	TaskLogEntry,
 	Template,
 	WorkspaceAgentLog,
 } from "coder/site/src/api/typesGenerated";
@@ -105,8 +103,7 @@ export class TasksPanel
 	// Cache logs for last viewed task in stable state
 	private cachedLogs?: {
 		taskId: string;
-		logs: readonly TaskLogEntry[];
-		status: LogsStatus;
+		logs: TaskLogs;
 	};
 
 	/**
@@ -307,8 +304,8 @@ export class TasksPanel
 		this.streamWorkspaceLogs(task).catch((err: unknown) => {
 			this.logger.warn("Failed to stream workspace logs", err);
 		});
-		const { logs, logsStatus } = await this.getLogsWithCache(task);
-		return { task, logs, logsStatus, ...getTaskPermissions(task) };
+		const logs = await this.getLogsWithCache(task);
+		return { task, logs, ...getTaskPermissions(task) };
 	}
 
 	private async handleCreateTask(params: CreateTaskParams): Promise<Task> {
@@ -444,7 +441,7 @@ export class TasksPanel
 
 	private async handleDownloadLogs(taskId: string): Promise<void> {
 		const result = await this.fetchTaskLogs(taskId);
-		if (result.status === "error") {
+		if (result.status !== "ok") {
 			throw new Error("Failed to fetch logs for download");
 		}
 		if (result.logs.length === 0) {
@@ -481,12 +478,6 @@ export class TasksPanel
 			this.streamingTaskId = task.id;
 		}
 
-		if (!isWorkspaceStarting(task)) {
-			this.buildLogStream.close();
-			this.agentLogStream.close();
-			return;
-		}
-
 		const onOutput = (line: string) => {
 			const clean = stripAnsi(line);
 			if (clean.length === 0) return;
@@ -502,12 +493,20 @@ export class TasksPanel
 			await this.buildLogStream.open(() =>
 				streamBuildLogs(this.client, onOutput, workspace.latest_build.id),
 			);
-		} else if (isAgentStarting(task) && task.workspace_agent_id) {
+			return;
+		}
+
+		if (isAgentStarting(task) && task.workspace_agent_id) {
+			const agentId = task.workspace_agent_id;
 			this.buildLogStream.close();
 			await this.agentLogStream.open(() =>
-				streamAgentLogs(this.client, onOutput, task.workspace_agent_id!),
+				streamAgentLogs(this.client, onOutput, agentId),
 			);
+			return;
 		}
+
+		this.buildLogStream.close();
+		this.agentLogStream.close();
 	}
 
 	private async fetchTasksWithStatus(): Promise<{
@@ -603,38 +602,34 @@ export class TasksPanel
 	/**
 	 * Get logs for a task, using cache for stable states (complete/error/paused).
 	 */
-	private async getLogsWithCache(
-		task: Task,
-	): Promise<{ logs: readonly TaskLogEntry[]; logsStatus: LogsStatus }> {
+	private async getLogsWithCache(task: Task): Promise<TaskLogs> {
 		const stable = isStableTask(task);
 
 		// Use cache if same task in stable state
 		if (this.cachedLogs?.taskId === task.id && stable) {
-			return { logs: this.cachedLogs.logs, logsStatus: this.cachedLogs.status };
+			return this.cachedLogs.logs;
 		}
 
-		const { logs, status } = await this.fetchTaskLogs(task.id);
+		const logs = await this.fetchTaskLogs(task.id);
 
 		// Cache only for stable states
 		if (stable) {
-			this.cachedLogs = { taskId: task.id, logs, status };
+			this.cachedLogs = { taskId: task.id, logs };
 		}
 
-		return { logs, logsStatus: status };
+		return logs;
 	}
 
-	private async fetchTaskLogs(
-		taskId: string,
-	): Promise<{ logs: readonly TaskLogEntry[]; status: LogsStatus }> {
+	private async fetchTaskLogs(taskId: string): Promise<TaskLogs> {
 		try {
 			const response = await this.client.getTaskLogs("me", taskId);
-			return { logs: response.logs, status: "ok" };
+			return { status: "ok", logs: response.logs };
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 409) {
-				return { logs: [], status: "not_available" };
+				return { status: "not_available" };
 			}
 			this.logger.warn("Failed to fetch task logs", err);
-			return { logs: [], status: "error" };
+			return { status: "error" };
 		}
 	}
 

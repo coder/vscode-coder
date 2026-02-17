@@ -1,6 +1,5 @@
-import { TasksApi, type InitResponse } from "@repo/shared";
+import { type InitResponse } from "@repo/shared";
 import { getState, setState } from "@repo/webview-shared";
-import { useIpc } from "@repo/webview-shared/react";
 import {
 	VscodeCollapsible,
 	VscodeProgressRing,
@@ -17,6 +16,7 @@ import { TaskList } from "./components/TaskList";
 import { useCollapsibleToggle } from "./hooks/useCollapsibleToggle";
 import { useScrollableHeight } from "./hooks/useScrollableHeight";
 import { useSelectedTask } from "./hooks/useSelectedTask";
+import { useTasksApi } from "./hooks/useTasksApi";
 import { useTasksQuery } from "./hooks/useTasksQuery";
 
 interface PersistedState extends InitResponse {
@@ -46,10 +46,10 @@ export default function App() {
 	useScrollableHeight(createRef, createScrollRef);
 	useScrollableHeight(historyRef, historyScrollRef);
 
-	const { onNotification } = useIpc();
+	const { onShowCreateForm } = useTasksApi();
 	useEffect(() => {
-		return onNotification(TasksApi.showCreateForm, () => setCreateOpen(true));
-	}, [onNotification, setCreateOpen]);
+		return onShowCreateForm(() => setCreateOpen(true));
+	}, [onShowCreateForm, setCreateOpen]);
 
 	useEffect(() => {
 		if (data) {

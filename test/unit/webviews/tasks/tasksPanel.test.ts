@@ -26,16 +26,30 @@ import {
 } from "../../../mocks/testHelpers";
 import { workspace } from "../../../mocks/workspace";
 
-import type { Task } from "coder/site/src/api/typesGenerated";
+import type {
+	ProvisionerJobLog,
+	Task,
+	WorkspaceAgentLog,
+} from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
+import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
+
+function mockStream<T>(): UnidirectionalStream<T> {
+	return {
+		url: "",
+		addEventListener: vi.fn(),
+		removeEventListener: vi.fn(),
+		close: vi.fn(),
+	} as UnidirectionalStream<T>;
+}
 
 vi.mock("@/api/workspace", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@/api/workspace")>();
 	return {
 		...actual,
-		streamBuildLogs: vi.fn().mockResolvedValue({ close: vi.fn() }),
-		streamAgentLogs: vi.fn().mockResolvedValue({ close: vi.fn() }),
+		streamBuildLogs: vi.fn(),
+		streamAgentLogs: vi.fn(),
 	};
 });
 
@@ -291,9 +305,11 @@ describe("TasksPanel", () => {
 
 			expect(res).toMatchObject({
 				success: true,
-				data: { task: { id: "task-1" }, logsStatus: "ok" },
+				data: {
+					task: { id: "task-1" },
+					logs: { status: "ok", logs: [{ content: "Starting" }] },
+				},
 			});
-			expect(res.data?.logs).toHaveLength(1);
 		});
 
 		interface LogCachingTestCase {
@@ -312,7 +328,7 @@ describe("TasksPanel", () => {
 
 			expect(res).toMatchObject({
 				success: true,
-				data: { logsStatus: "not_available", logs: [] },
+				data: { logs: { status: "not_available" } },
 			});
 		});
 
@@ -761,25 +777,27 @@ describe("TasksPanel", () => {
 	});
 
 	describe("workspace log streaming", () => {
-		it("opens build stream for building task", async () => {
-			const ws = workspace({ latest_build: { id: "build-42" } });
-			const h = createHarness();
-			h.client.getWorkspace.mockResolvedValue(ws);
+		async function openBuildStream(h: ReturnType<typeof createHarness>) {
+			const stream = mockStream<ProvisionerJobLog>();
+			let onOutput!: (line: string) => void;
+			vi.mocked(streamBuildLogs).mockImplementation((_client, cb, _buildId) => {
+				onOutput = cb;
+				return Promise.resolve(stream);
+			});
 			h.client.getTask.mockResolvedValue(
 				task({ workspace_status: "starting", workspace_id: "ws-1" }),
 			);
-
 			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+			return { stream, onOutput };
+		}
 
-			expect(streamBuildLogs).toHaveBeenCalledWith(
-				expect.anything(),
-				expect.any(Function),
-				"build-42",
-			);
-		});
-
-		it("opens agent stream for agent-starting task", async () => {
-			const h = createHarness();
+		async function openAgentStream(h: ReturnType<typeof createHarness>) {
+			const stream = mockStream<WorkspaceAgentLog[]>();
+			let onOutput!: (line: string) => void;
+			vi.mocked(streamAgentLogs).mockImplementation((_client, cb, _agentId) => {
+				onOutput = cb;
+				return Promise.resolve(stream);
+			});
 			h.client.getTask.mockResolvedValue(
 				task({
 					workspace_status: "running",
@@ -787,9 +805,37 @@ describe("TasksPanel", () => {
 					workspace_agent_id: "agent-1",
 				}),
 			);
-
 			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+			return { stream, onOutput };
+		}
 
+		it("forwards build logs to webview", async () => {
+			const h = createHarness();
+			const { onOutput } = await openBuildStream(h);
+
+			onOutput("Building image...");
+
+			expect(h.messages()).toContainEqual({
+				type: TasksApi.workspaceLogsAppend.method,
+				data: ["Building image..."],
+			});
+			expect(streamBuildLogs).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.any(Function),
+				"build-1",
+			);
+		});
+
+		it("forwards agent logs to webview", async () => {
+			const h = createHarness();
+			const { onOutput } = await openAgentStream(h);
+
+			onOutput("Running startup script...");
+
+			expect(h.messages()).toContainEqual({
+				type: TasksApi.workspaceLogsAppend.method,
+				data: ["Running startup script..."],
+			});
 			expect(streamAgentLogs).toHaveBeenCalledWith(
 				expect.anything(),
 				expect.any(Function),
@@ -797,7 +843,7 @@ describe("TasksPanel", () => {
 			);
 		});
 
-		it("does not open streams for ready task", async () => {
+		it("does not stream for ready task", async () => {
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(
 				task({
@@ -813,47 +859,24 @@ describe("TasksPanel", () => {
 		});
 
 		it("closes streams when switching to a different task", async () => {
-			const mockClose = vi.fn();
-			vi.mocked(streamBuildLogs).mockResolvedValue({
-				close: mockClose,
-			} as never);
-
 			const h = createHarness();
-			h.client.getTask.mockResolvedValue(
-				task({
-					id: "task-1",
-					workspace_status: "starting",
-					workspace_id: "ws-1",
-				}),
-			);
-
-			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+			const { stream } = await openBuildStream(h);
 
 			h.client.getTask.mockResolvedValue(
 				task({ id: "task-2", workspace_status: "running" }),
 			);
-
 			await h.request(TasksApi.getTaskDetails, { taskId: "task-2" });
 
-			expect(mockClose).toHaveBeenCalled();
+			expect(stream.close).toHaveBeenCalled();
 		});
 
 		it("closes streams on closeWorkspaceLogs command", async () => {
-			const mockClose = vi.fn();
-			vi.mocked(streamBuildLogs).mockResolvedValue({
-				close: mockClose,
-			} as never);
-
 			const h = createHarness();
-			h.client.getTask.mockResolvedValue(
-				task({ workspace_status: "starting", workspace_id: "ws-1" }),
-			);
-
-			await h.request(TasksApi.getTaskDetails, { taskId: "task-1" });
+			const { stream } = await openBuildStream(h);
 
 			await h.command(TasksApi.closeWorkspaceLogs);
 
-			expect(mockClose).toHaveBeenCalled();
+			expect(stream.close).toHaveBeenCalled();
 		});
 	});
 });

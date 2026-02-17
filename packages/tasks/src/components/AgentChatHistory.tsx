@@ -1,10 +1,9 @@
 import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
-import type { LogsStatus, TaskLogEntry } from "@repo/shared";
+import type { TaskLogEntry, TaskLogs } from "@repo/shared";
 
 interface AgentChatHistoryProps {
-	logs: readonly TaskLogEntry[];
-	logsStatus: LogsStatus;
+	taskLogs: TaskLogs;
 	isThinking: boolean;
 }
 
@@ -28,38 +27,35 @@ function LogEntry({
 }
 
 export function AgentChatHistory({
-	logs,
-	logsStatus,
+	taskLogs,
 	isThinking,
 }: AgentChatHistoryProps) {
-	const isEmpty = logs.length === 0 && (logsStatus !== "ok" || !isThinking);
+	const logs = taskLogs.status === "ok" ? taskLogs.logs : [];
 
 	return (
 		<LogViewer header="Agent chat history">
-			{isEmpty ? (
-				<LogViewerPlaceholder error={logsStatus === "error"}>
-					{getEmptyMessage(logsStatus)}
+			{logs.length === 0 ? (
+				<LogViewerPlaceholder error={taskLogs.status === "error"}>
+					{getEmptyMessage(taskLogs.status)}
 				</LogViewerPlaceholder>
 			) : (
-				<>
-					{logs.map((log, index) => (
-						<LogEntry
-							key={log.id}
-							log={log}
-							isGroupStart={index === 0 || log.type !== logs[index - 1].type}
-						/>
-					))}
-					{isThinking && (
-						<div className="log-entry log-entry-thinking">Thinking...</div>
-					)}
-				</>
+				logs.map((log, index) => (
+					<LogEntry
+						key={log.id}
+						log={log}
+						isGroupStart={index === 0 || log.type !== logs[index - 1].type}
+					/>
+				))
+			)}
+			{isThinking && (
+				<div className="log-entry log-entry-thinking">Thinking...</div>
 			)}
 		</LogViewer>
 	);
 }
 
-function getEmptyMessage(logsStatus: LogsStatus): string {
-	switch (logsStatus) {
+function getEmptyMessage(status: TaskLogs["status"]): string {
+	switch (status) {
 		case "not_available":
 			return "Logs not available in current task state";
 		case "error":

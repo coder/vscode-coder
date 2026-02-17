@@ -1,14 +1,15 @@
 import { isBuildingWorkspace, type Task } from "@repo/shared";
 
+import { useWorkspaceLogs } from "../hooks/useWorkspaceLogs";
+
 import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
-export function WorkspaceLogs({
-	task,
-	lines,
-}: {
-	task: Task;
-	lines: string[];
-}) {
+function LogLine({ children }: { children: string }) {
+	return <div className="log-entry">{children}</div>;
+}
+
+export function WorkspaceLogs({ task }: { task: Task }) {
+	const lines = useWorkspaceLogs();
 	const header = isBuildingWorkspace(task)
 		? "Building workspace..."
 		: "Running startup scripts...";
@@ -18,11 +19,7 @@ export function WorkspaceLogs({
 			{lines.length === 0 ? (
 				<LogViewerPlaceholder>Waiting for logs...</LogViewerPlaceholder>
 			) : (
-				lines.map((line, i) => (
-					<div key={i} className="log-entry">
-						{line}
-					</div>
-				))
+				lines.map((line, i) => <LogLine key={i}>{line}</LogLine>)
 			)}
 		</LogViewer>
 	);

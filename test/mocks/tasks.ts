@@ -152,8 +152,7 @@ export function taskDetails(
 	const { task: taskOverrides, ...rest } = overrides;
 	return {
 		task: task(taskOverrides ?? {}),
-		logs: [],
-		logsStatus: "ok",
+		logs: { status: "ok", logs: [] },
 		canPause: true,
 		pauseDisabled: false,
 		canResume: false,

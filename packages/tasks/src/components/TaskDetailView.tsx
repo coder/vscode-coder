@@ -4,8 +4,6 @@ import {
 	type TaskDetails,
 } from "@repo/shared";
 
-import { useWorkspaceLogs } from "../hooks/useWorkspaceLogs";
-
 import { AgentChatHistory } from "./AgentChatHistory";
 import { ErrorBanner } from "./ErrorBanner";
 import { TaskDetailHeader } from "./TaskDetailHeader";
@@ -18,10 +16,9 @@ interface TaskDetailViewProps {
 }
 
 export function TaskDetailView({ details, onBack }: TaskDetailViewProps) {
-	const { task, logs, logsStatus } = details;
+	const { task, logs } = details;
 
 	const starting = isWorkspaceStarting(task);
-	const workspaceLines = useWorkspaceLogs(starting);
 	const isThinking = isTaskWorking(task);
 
 	return (
@@ -29,13 +26,9 @@ export function TaskDetailView({ details, onBack }: TaskDetailViewProps) {
 			<TaskDetailHeader task={task} onBack={onBack} />
 			{task.status === "error" && <ErrorBanner task={task} />}
 			{starting ? (
-				<WorkspaceLogs task={task} lines={workspaceLines} />
+				<WorkspaceLogs task={task} />
 			) : (
-				<AgentChatHistory
-					logs={logs}
-					logsStatus={logsStatus}
-					isThinking={isThinking}
-				/>
+				<AgentChatHistory taskLogs={logs} isThinking={isThinking} />
 			)}
 			<TaskMessageInput task={task} />
 		</div>

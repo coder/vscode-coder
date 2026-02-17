@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { TasksApi } from "@repo/shared";
 import { useWorkspaceLogs } from "@repo/tasks/hooks/useWorkspaceLogs";
@@ -15,64 +15,52 @@ vi.stubGlobal(
 	})),
 );
 
-function notify(lines: string[]) {
-	act(() => {
-		window.dispatchEvent(
-			new MessageEvent("message", {
-				data: { type: TasksApi.workspaceLogsAppend.method, data: lines },
-			}),
-		);
-	});
+function renderLogs() {
+	sent.length = 0;
+	const hook = renderHook(() => useWorkspaceLogs());
+
+	return {
+		get lines() {
+			return hook.result.current;
+		},
+		notify(lines: string[]) {
+			act(() => {
+				window.dispatchEvent(
+					new MessageEvent("message", {
+						data: {
+							type: TasksApi.workspaceLogsAppend.method,
+							data: lines,
+						},
+					}),
+				);
+			});
+		},
+		unmount() {
+			hook.unmount();
+			return [...sent];
+		},
+	};
 }
 
 describe("useWorkspaceLogs", () => {
-	afterEach(() => {
-		sent.length = 0;
-	});
-
-	it("returns empty array when inactive", () => {
-		const { result, unmount } = renderHook(() => useWorkspaceLogs(false));
-		expect(result.current).toEqual([]);
-		unmount();
+	it("returns empty array initially", () => {
+		const h = renderLogs();
+		expect(h.lines).toEqual([]);
 	});
 
 	it("accumulates lines from notifications", () => {
-		const { result, unmount } = renderHook(() => useWorkspaceLogs(true));
+		const h = renderLogs();
 
-		notify(["line 1", "line 2"]);
-		expect(result.current).toEqual(["line 1", "line 2"]);
+		h.notify(["line 1", "line 2"]);
+		expect(h.lines).toEqual(["line 1", "line 2"]);
 
-		notify(["line 3"]);
-		expect(result.current).toEqual(["line 1", "line 2", "line 3"]);
-		unmount();
+		h.notify(["line 3"]);
+		expect(h.lines).toEqual(["line 1", "line 2", "line 3"]);
 	});
 
-	it("ignores notifications when inactive", () => {
-		const { result, unmount } = renderHook(() => useWorkspaceLogs(false));
-
-		notify(["ignored"]);
-		expect(result.current).toEqual([]);
-		unmount();
-	});
-
-	it("resets lines when deactivated", () => {
-		const { result, rerender, unmount } = renderHook(
-			({ active }) => useWorkspaceLogs(active),
-			{ initialProps: { active: true } },
-		);
-
-		notify(["old line"]);
-		expect(result.current).toEqual(["old line"]);
-
-		rerender({ active: false });
-		expect(result.current).toEqual([]);
-		unmount();
-	});
-
-	it("sends closeWorkspaceLogs on cleanup", () => {
-		const { unmount } = renderHook(() => useWorkspaceLogs(true));
-
-		unmount();
+	it("sends closeWorkspaceLogs on unmount", () => {
+		const h = renderLogs();
+		const sent = h.unmount();
 
 		expect(sent).toContainEqual(
 			expect.objectContaining({

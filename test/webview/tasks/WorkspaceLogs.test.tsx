@@ -1,18 +1,20 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { WorkspaceLogs } from "@repo/tasks/components/WorkspaceLogs";
+import * as hookModule from "@repo/tasks/hooks/useWorkspaceLogs";
 
 import { task } from "../../mocks/tasks";
 import { renderWithQuery } from "../render";
 
+vi.mock("@repo/tasks/hooks/useWorkspaceLogs", () => ({
+	useWorkspaceLogs: () => [] as string[],
+}));
+
 describe("WorkspaceLogs", () => {
 	it("shows building header when workspace is building", () => {
 		renderWithQuery(
-			<WorkspaceLogs
-				task={task({ workspace_status: "starting" })}
-				lines={[]}
-			/>,
+			<WorkspaceLogs task={task({ workspace_status: "starting" })} />,
 		);
 		expect(screen.getByText("Building workspace...")).toBeInTheDocument();
 	});
@@ -24,7 +26,6 @@ describe("WorkspaceLogs", () => {
 					workspace_status: "running",
 					workspace_agent_lifecycle: "starting",
 				})}
-				lines={[]}
 			/>,
 		);
 		expect(screen.getByText("Running startup scripts...")).toBeInTheDocument();
@@ -32,26 +33,21 @@ describe("WorkspaceLogs", () => {
 
 	it("shows waiting message when no lines", () => {
 		renderWithQuery(
-			<WorkspaceLogs
-				task={task({ workspace_status: "starting" })}
-				lines={[]}
-			/>,
+			<WorkspaceLogs task={task({ workspace_status: "starting" })} />,
 		);
 		expect(screen.getByText("Waiting for logs...")).toBeInTheDocument();
 	});
 
-	it("renders log lines", () => {
-		const lines = ["Pulling image...", "Starting container...", "Ready"];
+	it("renders log lines instead of placeholder", () => {
+		vi.spyOn(hookModule, "useWorkspaceLogs").mockReturnValue(["Ready"]);
+
 		renderWithQuery(
-			<WorkspaceLogs
-				task={task({ workspace_status: "starting" })}
-				lines={lines}
-			/>,
+			<WorkspaceLogs task={task({ workspace_status: "starting" })} />,
 		);
 
-		for (const line of lines) {
-			expect(screen.getByText(line)).toBeInTheDocument();
-		}
+		expect(screen.getByText("Ready")).toBeInTheDocument();
 		expect(screen.queryByText("Waiting for logs...")).not.toBeInTheDocument();
+
+		vi.mocked(hookModule.useWorkspaceLogs).mockReturnValue([]);
 	});
 });
