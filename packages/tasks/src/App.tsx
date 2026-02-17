@@ -61,6 +61,20 @@ export default function App() {
 		}
 	}, [data, createOpen, historyOpen]);
 
+	function renderHistory() {
+		if (selectedTask) {
+			return <TaskDetailView details={selectedTask} onBack={deselectTask} />;
+		}
+		if (isLoadingDetails) {
+			return (
+				<div className="loading-container">
+					<VscodeProgressRing />
+				</div>
+			);
+		}
+		return <TaskList tasks={tasks} onSelectTask={selectTask} />;
+	}
+
 	if (isLoading) {
 		return (
 			<div className="loading-container">
@@ -101,15 +115,7 @@ export default function App() {
 				open={historyOpen}
 			>
 				<div ref={historyScrollRef} className="collapsible-content">
-					{selectedTask ? (
-						<TaskDetailView details={selectedTask} onBack={deselectTask} />
-					) : isLoadingDetails ? (
-						<div className="loading-container">
-							<VscodeProgressRing />
-						</div>
-					) : (
-						<TaskList tasks={tasks} onSelectTask={selectTask} />
-					)}
+					{renderHistory()}
 				</div>
 			</VscodeCollapsible>
 		</div>

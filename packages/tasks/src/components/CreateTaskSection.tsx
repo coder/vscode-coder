@@ -25,6 +25,7 @@ export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
 	const { mutate, isPending, error } = useMutation({
 		mutationFn: (params: CreateTaskParams) => api.createTask(params),
 		onSuccess: () => setPrompt(""),
+		onError: (err) => logger.error("Failed to create task", err),
 	});
 
 	const selectedTemplate = templates.find((t) => t.id === templateId);
@@ -52,7 +53,7 @@ export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
 				loading={isPending}
 				actionIcon="send"
 				actionLabel="Send"
-				actionDisabled={!canSubmit}
+				actionEnabled={canSubmit === true}
 			/>
 			{error && <div className="create-task-error">{error.message}</div>}
 			<div className="create-task-options">

@@ -1,9 +1,9 @@
+import { isTaskWorking, type TaskDetails } from "@repo/shared";
+
 import { AgentChatHistory } from "./AgentChatHistory";
 import { ErrorBanner } from "./ErrorBanner";
 import { TaskDetailHeader } from "./TaskDetailHeader";
 import { TaskMessageInput } from "./TaskMessageInput";
-
-import type { TaskDetails } from "@repo/shared";
 
 interface TaskDetailViewProps {
 	details: TaskDetails;
@@ -13,8 +13,7 @@ interface TaskDetailViewProps {
 export function TaskDetailView({ details, onBack }: TaskDetailViewProps) {
 	const { task, logs, logsStatus } = details;
 
-	const isThinking =
-		task.status === "active" && task.current_state?.state === "working";
+	const isThinking = isTaskWorking(task);
 
 	return (
 		<div className="task-detail-view">

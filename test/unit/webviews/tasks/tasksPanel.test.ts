@@ -5,9 +5,10 @@ import { TasksPanel } from "@/webviews/tasks/tasksPanel";
 
 import {
 	TasksApi,
+	defineRequest,
 	type CommandDef,
 	type RequestDef,
-	defineRequest,
+	type TaskIdParams,
 } from "@repo/shared";
 
 import {
@@ -518,7 +519,7 @@ describe("TasksPanel", () => {
 	describe("viewInCoder / viewLogs", () => {
 		interface OpenExternalTestCase {
 			name: string;
-			method: typeof TasksApi.viewInCoder | typeof TasksApi.viewLogs;
+			method: CommandDef<TaskIdParams>;
 			taskOverrides: Partial<Task>;
 			expectedUrl: string;
 		}

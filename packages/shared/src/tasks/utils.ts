@@ -4,6 +4,11 @@ export function getTaskLabel(task: Task): string {
 	return task.display_name || task.name || task.id;
 }
 
+/** Whether the agent is actively working (status is active and state is working). */
+export function isTaskWorking(task: Task): boolean {
+	return task.status === "active" && task.current_state?.state === "working";
+}
+
 const PAUSABLE_STATUSES: readonly TaskStatus[] = [
 	"active",
 	"initializing",

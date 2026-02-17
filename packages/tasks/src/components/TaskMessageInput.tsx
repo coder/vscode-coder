@@ -1,4 +1,10 @@
-import { getTaskLabel, type Task, getTaskPermissions } from "@repo/shared";
+import {
+	getTaskLabel,
+	isTaskWorking,
+	type Task,
+	getTaskPermissions,
+} from "@repo/shared";
+import { logger } from "@repo/webview-shared/logger";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -42,17 +48,19 @@ export function TaskMessageInput({ task }: TaskMessageInputProps) {
 
 	const { canPause, canSendMessage } = getTaskPermissions(task);
 	const placeholder = getPlaceholder(task);
-	const showPauseButton = task.current_state?.state === "working" && canPause;
+	const showPauseButton = isTaskWorking(task) && canPause;
 	const canSubmitMessage = canSendMessage && message.trim().length > 0;
 
 	const { mutate: pauseTask, isPending: isPausing } = useMutation({
 		mutationFn: () =>
 			api.pauseTask({ taskId: task.id, taskName: getTaskLabel(task) }),
+		onError: (err) => logger.error("Failed to pause task", err),
 	});
 
 	const { mutate: sendMessage, isPending: isSending } = useMutation({
 		mutationFn: (msg: string) => api.sendTaskMessage(task.id, msg),
 		onSuccess: () => setMessage(""),
+		onError: (err) => logger.error("Failed to send message", err),
 	});
 
 	return (
@@ -65,7 +73,7 @@ export function TaskMessageInput({ task }: TaskMessageInputProps) {
 			loading={showPauseButton ? isPausing : isSending}
 			actionIcon={showPauseButton ? "debug-pause" : "send"}
 			actionLabel={showPauseButton ? "Pause task" : "Send message"}
-			actionDisabled={showPauseButton ? false : !canSubmitMessage}
+			actionEnabled={showPauseButton ? true : canSubmitMessage}
 		/>
 	);
 }

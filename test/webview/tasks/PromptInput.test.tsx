@@ -10,7 +10,7 @@ const defaults = {
 	onSubmit: vi.fn(),
 	actionIcon: "send",
 	actionLabel: "Send",
-	actionDisabled: false,
+	actionEnabled: true,
 } as const;
 
 function getTextarea(): HTMLTextAreaElement {
@@ -20,14 +20,14 @@ function getTextarea(): HTMLTextAreaElement {
 }
 
 describe("PromptInput", () => {
-	it("send icon disabled when actionDisabled is true", () => {
+	it("send icon disabled when actionEnabled is false", () => {
 		const { container } = render(
-			<PromptInput {...defaults} value="" actionDisabled />,
+			<PromptInput {...defaults} value="" actionEnabled={false} />,
 		);
 		expect(qs(container, "vscode-icon")).toHaveClass("disabled");
 	});
 
-	it("send icon enabled when actionDisabled is false", () => {
+	it("send icon enabled when actionEnabled is true", () => {
 		const { container } = render(<PromptInput {...defaults} value="hello" />);
 		expect(qs(container, "vscode-icon")).not.toHaveClass("disabled");
 	});
@@ -53,10 +53,15 @@ describe("PromptInput", () => {
 		expect(onSubmit).not.toHaveBeenCalled();
 	});
 
-	it("does not call onSubmit when actionDisabled is true", () => {
+	it("does not call onSubmit when actionEnabled is false", () => {
 		const onSubmit = vi.fn();
 		render(
-			<PromptInput {...defaults} value="" onSubmit={onSubmit} actionDisabled />,
+			<PromptInput
+				{...defaults}
+				value=""
+				onSubmit={onSubmit}
+				actionEnabled={false}
+			/>,
 		);
 		fireEvent.keyDown(getTextarea(), { key: "Enter", ctrlKey: true });
 		expect(onSubmit).not.toHaveBeenCalled();

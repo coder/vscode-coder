@@ -14,7 +14,7 @@ interface PromptInputProps {
 	placeholder?: string;
 	actionIcon: "send" | "debug-pause";
 	actionLabel: string;
-	actionDisabled: boolean;
+	actionEnabled: boolean;
 }
 
 export function PromptInput({
@@ -26,7 +26,7 @@ export function PromptInput({
 	placeholder = "Prompt your AI agent to start a task...",
 	actionIcon,
 	actionLabel,
-	actionDisabled,
+	actionEnabled,
 }: PromptInputProps) {
 	return (
 		<div className="prompt-input-container">
@@ -38,7 +38,7 @@ export function PromptInput({
 				onKeyDown={(e) => {
 					if (isSubmit(e)) {
 						e.preventDefault();
-						if (!actionDisabled) {
+						if (actionEnabled) {
 							onSubmit();
 						}
 					}
@@ -53,8 +53,8 @@ export function PromptInput({
 						actionIcon
 						name={actionIcon}
 						label={actionLabel}
-						onClick={() => !actionDisabled && onSubmit()}
-						className={actionDisabled ? "disabled" : ""}
+						onClick={() => actionEnabled && onSubmit()}
+						className={actionEnabled ? "" : "disabled"}
 					/>
 				)}
 			</div>

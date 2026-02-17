@@ -18,6 +18,7 @@ import {
 	type TaskTemplate,
 } from "@repo/shared";
 
+import { errToStr } from "../../api/api-helper";
 import { type CoderApi } from "../../api/coderApi";
 import { toError } from "../../error/errorUtils";
 import { type Logger } from "../../logging/logger";
@@ -383,7 +384,9 @@ export class TasksPanel
 				isAxiosError(err) &&
 				(err.response?.status === 409 || err.response?.status === 400)
 			) {
-				throw new Error("Task is not ready to receive messages");
+				throw new Error(
+					`Task is not ready to receive messages (${errToStr(err)})`,
+				);
 			}
 			throw err;
 		}

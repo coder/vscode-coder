@@ -74,7 +74,7 @@ function getEmptyMessage(logsStatus: LogsStatus): string {
 			return "Logs not available in current task state";
 		case "error":
 			return "Failed to load logs";
-		default:
+		case "ok":
 			return "No messages yet";
 	}
 }
