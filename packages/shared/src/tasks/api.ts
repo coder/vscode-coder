@@ -15,7 +15,7 @@ import {
 	defineRequest,
 } from "../ipc/protocol";
 
-import type { Task, TaskDetails, TaskLogEntry, TaskTemplate } from "./types";
+import type { Task, TaskDetails, TaskTemplate } from "./types";
 
 export interface InitResponse {
 	tasks: readonly Task[];
@@ -24,11 +24,15 @@ export interface InitResponse {
 	tasksSupported: boolean;
 }
 
+export interface TaskIdParams {
+	taskId: string;
+}
+
 const init = defineRequest<void, InitResponse>("init");
 const getTasks = defineRequest<void, Task[]>("getTasks");
 const getTemplates = defineRequest<void, TaskTemplate[]>("getTemplates");
-const getTask = defineRequest<{ taskId: string }, Task>("getTask");
-const getTaskDetails = defineRequest<{ taskId: string }, TaskDetails>(
+const getTask = defineRequest<TaskIdParams, Task>("getTask");
+const getTaskDetails = defineRequest<TaskIdParams, TaskDetails>(
 	"getTaskDetails",
 );
 
@@ -39,25 +43,22 @@ export interface CreateTaskParams {
 }
 const createTask = defineRequest<CreateTaskParams, Task>("createTask");
 
-export interface TaskActionParams {
-	taskId: string;
+export interface TaskActionParams extends TaskIdParams {
 	taskName: string;
 }
 const deleteTask = defineRequest<TaskActionParams, void>("deleteTask");
 const pauseTask = defineRequest<TaskActionParams, void>("pauseTask");
 const resumeTask = defineRequest<TaskActionParams, void>("resumeTask");
-const downloadLogs = defineRequest<{ taskId: string }, void>("downloadLogs");
+const downloadLogs = defineRequest<TaskIdParams, void>("downloadLogs");
+const sendTaskMessage = defineRequest<TaskIdParams & { message: string }, void>(
+	"sendTaskMessage",
+);
 
-const viewInCoder = defineCommand<{ taskId: string }>("viewInCoder");
-const viewLogs = defineCommand<{ taskId: string }>("viewLogs");
-const sendTaskMessage = defineCommand<{
-	taskId: string;
-	message: string;
-}>("sendTaskMessage");
+const viewInCoder = defineCommand<TaskIdParams>("viewInCoder");
+const viewLogs = defineCommand<TaskIdParams>("viewLogs");
 
 const taskUpdated = defineNotification<Task>("taskUpdated");
 const tasksUpdated = defineNotification<Task[]>("tasksUpdated");
-const logsAppend = defineNotification<TaskLogEntry[]>("logsAppend");
 const refresh = defineNotification<void>("refresh");
 const showCreateForm = defineNotification<void>("showCreateForm");
 
@@ -73,14 +74,13 @@ export const TasksApi = {
 	pauseTask,
 	resumeTask,
 	downloadLogs,
+	sendTaskMessage,
 	// Commands
 	viewInCoder,
 	viewLogs,
-	sendTaskMessage,
 	// Notifications
 	taskUpdated,
 	tasksUpdated,
-	logsAppend,
 	refresh,
 	showCreateForm,
 } as const;

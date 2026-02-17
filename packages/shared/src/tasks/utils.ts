@@ -4,6 +4,11 @@ export function getTaskLabel(task: Task): string {
 	return task.display_name || task.name || task.id;
 }
 
+/** Whether the agent is actively working (status is active and state is working). */
+export function isTaskWorking(task: Task): boolean {
+	return task.status === "active" && task.current_state?.state === "working";
+}
+
 const PAUSABLE_STATUSES: readonly TaskStatus[] = [
 	"active",
 	"initializing",
@@ -26,10 +31,14 @@ const RESUMABLE_STATUSES: readonly TaskStatus[] = [
 export function getTaskPermissions(task: Task): TaskPermissions {
 	const hasWorkspace = task.workspace_id !== null;
 	const status = task.status;
+	const canSendMessage =
+		task.status === "paused" ||
+		(task.status === "active" && task.current_state?.state !== "working");
 	return {
 		canPause: hasWorkspace && PAUSABLE_STATUSES.includes(status),
 		pauseDisabled: PAUSE_DISABLED_STATUSES.includes(status),
 		canResume: hasWorkspace && RESUMABLE_STATUSES.includes(status),
+		canSendMessage,
 	};
 }
 

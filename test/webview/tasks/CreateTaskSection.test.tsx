@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateTaskSection } from "@repo/tasks/components/CreateTaskSection";
+import { logger } from "@repo/webview-shared/logger";
 
 import { taskTemplate } from "../../mocks/tasks";
 import { renderWithQuery } from "../render";
@@ -79,6 +80,7 @@ describe("CreateTaskSection", () => {
 	});
 
 	it("shows error on failed submit", async () => {
+		const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
 		mockApi.createTask.mockRejectedValueOnce(new Error("Network error"));
 		renderSection();
 		fireEvent.change(getTextarea(), { target: { value: "Build it" } });
@@ -87,6 +89,8 @@ describe("CreateTaskSection", () => {
 			expect(screen.queryByText("Network error")).toBeInTheDocument();
 		});
 		expect(getTextarea()).toHaveValue("Build it");
+		expect(errorSpy).toHaveBeenCalled();
+		errorSpy.mockRestore();
 	});
 
 	it("syncs templateId when templates change", () => {

@@ -9,13 +9,7 @@ import { renderWithQuery } from "../render";
 import type { Task } from "@repo/shared";
 
 vi.mock("@repo/tasks/hooks/useTasksApi", () => ({
-	useTasksApi: () => ({
-		pauseTask: vi.fn(),
-		resumeTask: vi.fn(),
-		deleteTask: vi.fn(),
-		viewInCoder: vi.fn(),
-		downloadLogs: vi.fn(),
-	}),
+	useTasksApi: () => new Proxy({}, { get: () => vi.fn() }),
 }));
 
 describe("TaskItem", () => {

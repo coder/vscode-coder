@@ -45,4 +45,5 @@ export interface TaskPermissions {
 	canPause: boolean;
 	pauseDisabled: boolean;
 	canResume: boolean;
+	canSendMessage: boolean;
 }

@@ -14,10 +14,22 @@ import {
 	type CreateTaskParams,
 	type TaskActionParams,
 } from "@repo/shared";
+import { logger } from "@repo/webview-shared/logger";
 import { useIpc } from "@repo/webview-shared/react";
 
 export function useTasksApi() {
 	const { request, command } = useIpc();
+
+	function safeCommand<P>(
+		definition: { method: string; _types?: { params: P } },
+		...args: P extends void ? [] : [params: P]
+	): void {
+		try {
+			command(definition, ...args);
+		} catch (err) {
+			logger.error(`Command ${definition.method} failed`, err);
+		}
+	}
 
 	return {
 		// Requests
@@ -37,11 +49,12 @@ export function useTasksApi() {
 			request(TasksApi.resumeTask, params),
 		downloadLogs: (taskId: string) =>
 			request(TasksApi.downloadLogs, { taskId }),
+		sendTaskMessage: (taskId: string, message: string) =>
+			request(TasksApi.sendTaskMessage, { taskId, message }),
 
 		// Commands
-		viewInCoder: (taskId: string) => command(TasksApi.viewInCoder, { taskId }),
-		viewLogs: (taskId: string) => command(TasksApi.viewLogs, { taskId }),
-		sendTaskMessage: (taskId: string, message: string) =>
-			command(TasksApi.sendTaskMessage, { taskId, message }),
+		viewInCoder: (taskId: string) =>
+			safeCommand(TasksApi.viewInCoder, { taskId }),
+		viewLogs: (taskId: string) => safeCommand(TasksApi.viewLogs, { taskId }),
 	};
 }
