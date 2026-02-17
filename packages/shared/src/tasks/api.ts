@@ -15,7 +15,7 @@ import {
 	defineRequest,
 } from "../ipc/protocol";
 
-import type { Task, TaskDetails, TaskLogEntry, TaskTemplate } from "./types";
+import type { Task, TaskDetails, TaskTemplate } from "./types";
 
 export interface InitResponse {
 	tasks: readonly Task[];
@@ -59,7 +59,6 @@ const viewLogs = defineCommand<TaskIdParams>("viewLogs");
 
 const taskUpdated = defineNotification<Task>("taskUpdated");
 const tasksUpdated = defineNotification<Task[]>("tasksUpdated");
-const logsAppend = defineNotification<TaskLogEntry[]>("logsAppend");
 const refresh = defineNotification<void>("refresh");
 const showCreateForm = defineNotification<void>("showCreateForm");
 
@@ -82,7 +81,6 @@ export const TasksApi = {
 	// Notifications
 	taskUpdated,
 	tasksUpdated,
-	logsAppend,
 	refresh,
 	showCreateForm,
 } as const;
