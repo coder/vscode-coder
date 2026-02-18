@@ -537,7 +537,7 @@
 		"react": "catalog:",
 		"react-dom": "catalog:",
 		"typescript": "catalog:",
-		"typescript-eslint": "^8.54.0",
+		"typescript-eslint": "^8.56.0",
 		"utf-8-validate": "^6.0.6",
 		"vite": "catalog:",
 		"vitest": "^4.0.18"
