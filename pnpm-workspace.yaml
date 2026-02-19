@@ -1,30 +1,28 @@
 packages:
   - packages/*
 
-# Shared dependency versions (use "catalog:" in package.json to reference)
 catalog:
   "@tanstack/react-query": ^5.90.21
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
+  "@types/vscode-webview": ^1.57.5
   "@vitejs/plugin-react": ^5.1.4
   "@vscode-elements/react-elements": ^2.4.0
-  "@types/vscode-webview": ^1.57.5
   "@vscode/codicons": ^0.0.44
   babel-plugin-react-compiler: ^1.0.0
+  coder: github:coder/coder#main
   react: ^19.2.4
   react-dom: ^19.2.4
   typescript: ^5.9.3
   vite: ^7.3.1
 
-# Enforce all shared deps come from catalog to prevent version drift
 catalogMode: strict
 
-# Native modules allowed to run install scripts (pnpm blocks by default for security)
 onlyBuiltDependencies:
-  - "@vscode/vsce-sign" # vsce signing
-  - bufferutil # ws perf
-  - electron # tests
-  - esbuild # build
-  - keytar # vsce credentials
-  - unrs-resolver # eslint resolver
-  - utf-8-validate # ws validation
+  - "@vscode/vsce-sign"
+  - bufferutil
+  - electron
+  - esbuild
+  - keytar
+  - unrs-resolver
+  - utf-8-validate

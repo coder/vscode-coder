@@ -5,7 +5,7 @@ import { useFollowScroll } from "../hooks/useFollowScroll";
 import type { LogsStatus, TaskLogEntry } from "@repo/shared";
 
 interface AgentChatHistoryProps {
-	logs: TaskLogEntry[];
+	logs: readonly TaskLogEntry[];
 	logsStatus: LogsStatus;
 	isThinking: boolean;
 }
