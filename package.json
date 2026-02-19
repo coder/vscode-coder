@@ -471,7 +471,7 @@
 		"onUri"
 	],
 	"resolutions": {
-		"semver": "7.7.3",
+		"semver": "7.7.4",
 		"trim": "0.0.3",
 		"word-wrap": "1.2.5"
 	},
@@ -487,7 +487,7 @@
 		"pretty-bytes": "^7.1.0",
 		"proper-lockfile": "^4.1.2",
 		"proxy-agent": "^6.5.0",
-		"semver": "^7.7.3",
+		"semver": "^7.7.4",
 		"ua-parser-js": "^1.0.41",
 		"ws": "^8.19.0",
 		"zod": "^4.3.6"
