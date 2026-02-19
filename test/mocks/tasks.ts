@@ -92,6 +92,7 @@ export function template(overrides: Partial<Template> = {}): Template {
 			start: { P50: null, P95: null },
 			stop: { P50: null, P95: null },
 		},
+		deleted: false,
 		description: "Test template",
 		deprecated: false,
 		deprecation_message: "",
