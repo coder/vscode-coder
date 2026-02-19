@@ -480,7 +480,8 @@ export class TasksPanel
 
 		const onOutput = (line: string) => {
 			const clean = stripAnsi(line);
-			if (clean.length === 0) return;
+			// Skip lines that were purely ANSI codes, but keep intentional blank lines.
+			if (line.length > 0 && clean.length === 0) return;
 			this.sendNotification({
 				type: TasksApi.workspaceLogsAppend.method,
 				data: [clean],
@@ -644,6 +645,7 @@ export class TasksPanel
 	dispose(): void {
 		this.buildLogStream.close();
 		this.agentLogStream.close();
+		this.streamingTaskId = null;
 		for (const d of this.disposables) {
 			d.dispose();
 		}

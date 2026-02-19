@@ -18,14 +18,30 @@ import { type CoderApi } from "./coderApi";
 /** Opens a stream once; subsequent open() calls are no-ops until closed. */
 export class LazyStream<T> {
 	private stream: UnidirectionalStream<T> | null = null;
+	private opening: Promise<void> | null = null;
 
 	async open(factory: () => Promise<UnidirectionalStream<T>>): Promise<void> {
-		this.stream ??= await factory();
+		if (this.stream) return;
+
+		// Deduplicate concurrent calls; close() clears the reference to cancel.
+		if (!this.opening) {
+			const promise = factory().then((s) => {
+				if (this.opening === promise) {
+					this.stream = s;
+					this.opening = null;
+				} else {
+					s.close();
+				}
+			});
+			this.opening = promise;
+		}
+		await this.opening;
 	}
 
 	close(): void {
 		this.stream?.close();
 		this.stream = null;
+		this.opening = null;
 	}
 }
 
