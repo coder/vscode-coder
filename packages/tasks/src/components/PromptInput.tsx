@@ -5,14 +5,14 @@ import {
 
 import { isSubmit } from "../utils/keys";
 
-interface PromptInputProps {
+export interface PromptInputProps {
 	value: string;
 	onChange: (value: string) => void;
 	onSubmit: () => void;
 	disabled?: boolean;
 	loading?: boolean;
 	placeholder?: string;
-	actionIcon: "send" | "debug-pause";
+	actionIcon: "send" | "debug-pause" | "debug-start";
 	actionLabel: string;
 	actionEnabled: boolean;
 }

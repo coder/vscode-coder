@@ -12,7 +12,6 @@ import {
 	requestHandler,
 	TasksApi,
 	type CreateTaskParams,
-	type InitResponse,
 	type IpcNotification,
 	type IpcRequest,
 	type IpcResponse,
@@ -74,7 +73,7 @@ function isIpcCommand(
 	);
 }
 
-export class TasksPanel
+export class TasksPanelProvider
 	implements vscode.WebviewViewProvider, vscode.Disposable
 {
 	public static readonly viewType = "coder.tasksPanel";
@@ -95,11 +94,6 @@ export class TasksPanel
 	private readonly agentLogStream = new LazyStream<WorkspaceAgentLog[]>();
 	private streamingTaskId: string | null = null;
 
-	// Template cache with TTL
-	private templatesCache: TaskTemplate[] = [];
-	private templatesCacheTime = 0;
-	private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
 	// Cache logs for last viewed task in stable state
 	private cachedLogs?: {
 		taskId: string;
@@ -114,13 +108,9 @@ export class TasksPanel
 		string,
 		(params: unknown) => Promise<unknown>
 	> = {
-		[TasksApi.init.method]: requestHandler(TasksApi.init, () =>
-			this.handleInit(),
+		[TasksApi.getTasks.method]: requestHandler(TasksApi.getTasks, () =>
+			this.fetchTasks(),
 		),
-		[TasksApi.getTasks.method]: requestHandler(TasksApi.getTasks, async () => {
-			const result = await this.fetchTasksWithStatus();
-			return result.tasks;
-		}),
 		[TasksApi.getTemplates.method]: requestHandler(TasksApi.getTemplates, () =>
 			this.fetchTemplates(),
 		),
@@ -166,12 +156,12 @@ export class TasksPanel
 		[TasksApi.viewLogs.method]: commandHandler(TasksApi.viewLogs, (p) =>
 			this.handleViewLogs(p.taskId),
 		),
-		[TasksApi.closeWorkspaceLogs.method]: commandHandler(
-			TasksApi.closeWorkspaceLogs,
+		[TasksApi.stopStreamingWorkspaceLogs.method]: commandHandler(
+			TasksApi.stopStreamingWorkspaceLogs,
 			() => {
+				this.streamingTaskId = null;
 				this.buildLogStream.close();
 				this.agentLogStream.close();
-				this.streamingTaskId = null;
 			},
 		),
 	};
@@ -187,7 +177,6 @@ export class TasksPanel
 	}
 
 	public refresh(): void {
-		this.templatesCacheTime = 0;
 		this.cachedLogs = undefined;
 		this.sendNotification({ type: TasksApi.refresh.method });
 	}
@@ -261,7 +250,7 @@ export class TasksPanel
 				success: false,
 				error: errorMessage,
 			});
-			if (TasksPanel.USER_ACTION_METHODS.has(method)) {
+			if (TasksPanelProvider.USER_ACTION_METHODS.has(method)) {
 				vscode.window.showErrorMessage(errorMessage);
 			}
 		}
@@ -284,19 +273,6 @@ export class TasksPanel
 			this.logger.warn(`Command ${method} failed`, err);
 			vscode.window.showErrorMessage(`Command failed: ${errorMessage}`);
 		}
-	}
-
-	private async handleInit(): Promise<InitResponse> {
-		const [tasksResult, templates] = await Promise.all([
-			this.fetchTasksWithStatus(),
-			this.fetchTemplates(),
-		]);
-		return {
-			tasks: tasksResult.tasks,
-			templates,
-			baseUrl: this.client.getHost() ?? "",
-			tasksSupported: tasksResult.supported,
-		};
 	}
 
 	private async handleGetTaskDetails(taskId: string): Promise<TaskDetails> {
@@ -392,13 +368,7 @@ export class TasksPanel
 		const task = await this.client.getTask("me", taskId);
 
 		if (task.status === "paused") {
-			if (!task.workspace_id) {
-				throw new Error("Task has no workspace");
-			}
-			await this.client.startWorkspace(
-				task.workspace_id,
-				task.template_version_id,
-			);
+			throw new Error("Resume the task before sending a message");
 		}
 
 		try {
@@ -473,9 +443,9 @@ export class TasksPanel
 
 	private async streamWorkspaceLogs(task: Task): Promise<void> {
 		if (task.id !== this.streamingTaskId) {
+			this.streamingTaskId = task.id;
 			this.buildLogStream.close();
 			this.agentLogStream.close();
-			this.streamingTaskId = task.id;
 		}
 
 		const onOutput = (line: string) => {
@@ -488,21 +458,36 @@ export class TasksPanel
 			});
 		};
 
+		const onStreamClose = () => {
+			if (this.streamingTaskId !== task.id) return;
+			this.refreshAndNotifyTask(task.id).catch((err: unknown) => {
+				this.logger.warn("Failed to refresh task after stream close", err);
+			});
+		};
+
 		if (isBuildingWorkspace(task) && task.workspace_id) {
 			this.agentLogStream.close();
 			const workspace = await this.client.getWorkspace(task.workspace_id);
-			await this.buildLogStream.open(() =>
-				streamBuildLogs(this.client, onOutput, workspace.latest_build.id),
-			);
+			await this.buildLogStream.open(async () => {
+				const stream = await streamBuildLogs(
+					this.client,
+					onOutput,
+					workspace.latest_build.id,
+				);
+				stream.addEventListener("close", onStreamClose);
+				return stream;
+			});
 			return;
 		}
 
 		if (isAgentStarting(task) && task.workspace_agent_id) {
 			const agentId = task.workspace_agent_id;
 			this.buildLogStream.close();
-			await this.agentLogStream.open(() =>
-				streamAgentLogs(this.client, onOutput, agentId),
-			);
+			await this.agentLogStream.open(async () => {
+				const stream = await streamAgentLogs(this.client, onOutput, agentId);
+				stream.addEventListener("close", onStreamClose);
+				return stream;
+			});
 			return;
 		}
 
@@ -510,20 +495,16 @@ export class TasksPanel
 		this.agentLogStream.close();
 	}
 
-	private async fetchTasksWithStatus(): Promise<{
-		tasks: readonly Task[];
-		supported: boolean;
-	}> {
+	private async fetchTasks(): Promise<readonly Task[] | null> {
 		if (!this.client.getHost()) {
-			return { tasks: [], supported: true };
+			return [];
 		}
 
 		try {
-			const tasks = await this.client.getTasks({ owner: "me" });
-			return { tasks, supported: true };
+			return await this.client.getTasks({ owner: "me" });
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 404) {
-				return { tasks: [], supported: false };
+				return null;
 			}
 			throw err;
 		}
@@ -531,11 +512,13 @@ export class TasksPanel
 
 	private async refreshAndNotifyTasks(): Promise<void> {
 		try {
-			const tasks = await this.fetchTasksWithStatus();
-			this.sendNotification({
-				type: TasksApi.tasksUpdated.method,
-				data: tasks.tasks,
-			});
+			const tasks = await this.fetchTasks();
+			if (tasks !== null) {
+				this.sendNotification({
+					type: TasksApi.tasksUpdated.method,
+					data: tasks,
+				});
+			}
 		} catch (err) {
 			this.logger.warn("Failed to refresh tasks after action", err);
 		}
@@ -553,51 +536,46 @@ export class TasksPanel
 		}
 	}
 
-	private async fetchTemplates(): Promise<TaskTemplate[]> {
+	private async fetchTemplates(): Promise<TaskTemplate[] | null> {
 		if (!this.client.getHost()) {
 			return [];
 		}
 
-		const now = Date.now();
-		if (
-			this.templatesCache.length > 0 &&
-			now - this.templatesCacheTime < this.CACHE_TTL_MS
-		) {
-			return this.templatesCache;
+		try {
+			const templates = await this.client.getTemplates({});
+
+			return await Promise.all(
+				templates.map(async (template: Template): Promise<TaskTemplate> => {
+					let presets: Preset[] = [];
+					try {
+						presets =
+							(await this.client.getTemplateVersionPresets(
+								template.active_version_id,
+							)) ?? [];
+					} catch {
+						// Presets may not be available
+					}
+
+					return {
+						id: template.id,
+						name: template.name,
+						displayName: template.display_name || template.name,
+						icon: template.icon,
+						activeVersionId: template.active_version_id,
+						presets: presets.map((p) => ({
+							id: p.ID,
+							name: p.Name,
+							isDefault: p.Default,
+						})),
+					};
+				}),
+			);
+		} catch (err) {
+			if (isAxiosError(err) && err.response?.status === 404) {
+				return null;
+			}
+			throw err;
 		}
-
-		const templates = await this.client.getTemplates({});
-
-		const result = await Promise.all(
-			templates.map(async (template: Template): Promise<TaskTemplate> => {
-				let presets: Preset[] = [];
-				try {
-					presets =
-						(await this.client.getTemplateVersionPresets(
-							template.active_version_id,
-						)) ?? [];
-				} catch {
-					// Presets may not be available
-				}
-
-				return {
-					id: template.id,
-					name: template.name,
-					displayName: template.display_name || template.name,
-					icon: template.icon,
-					activeVersionId: template.active_version_id,
-					presets: presets.map((p) => ({
-						id: p.ID,
-						name: p.Name,
-						isDefault: p.Default,
-					})),
-				};
-			}),
-		);
-
-		this.templatesCache = result;
-		this.templatesCacheTime = now;
-		return result;
 	}
 
 	/**
