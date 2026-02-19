@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TasksApi } from "@repo/shared";
 import { useWorkspaceLogs } from "@repo/tasks/hooks/useWorkspaceLogs";
@@ -33,6 +33,8 @@ function renderLogs() {
 						},
 					}),
 				);
+				// Flush the requestAnimationFrame batch used by useWorkspaceLogs.
+				vi.runAllTimers();
 			});
 		},
 		unmount() {
@@ -43,6 +45,9 @@ function renderLogs() {
 }
 
 describe("useWorkspaceLogs", () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
 	it("returns empty array initially", () => {
 		const h = renderLogs();
 		expect(h.lines).toEqual([]);
