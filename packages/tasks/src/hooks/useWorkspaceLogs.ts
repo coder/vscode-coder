@@ -8,7 +8,7 @@ import { useTasksApi } from "./useTasksApi";
  * when many lines arrive in quick succession.
  */
 export function useWorkspaceLogs(): string[] {
-	const { onWorkspaceLogsAppend, closeWorkspaceLogs } = useTasksApi();
+	const { onWorkspaceLogsAppend, stopStreamingWorkspaceLogs } = useTasksApi();
 	const [lines, setLines] = useState<string[]>([]);
 
 	useEffect(() => {
@@ -30,9 +30,9 @@ export function useWorkspaceLogs(): string[] {
 		return () => {
 			unsubscribe();
 			cancelAnimationFrame(frame);
-			closeWorkspaceLogs();
+			stopStreamingWorkspaceLogs();
 		};
-	}, [closeWorkspaceLogs, onWorkspaceLogsAppend]);
+	}, [stopStreamingWorkspaceLogs, onWorkspaceLogsAppend]);
 
 	return lines;
 }

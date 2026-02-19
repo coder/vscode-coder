@@ -55,7 +55,7 @@ describe("getTaskPermissions", () => {
 				canPause: false,
 				pauseDisabled: false,
 				canResume: true,
-				canSendMessage: true,
+				canSendMessage: false,
 			},
 		},
 		{

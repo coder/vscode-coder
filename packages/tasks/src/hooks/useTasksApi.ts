@@ -22,7 +22,6 @@ export function useTasksApi() {
 
 	return {
 		// Requests
-		init: () => request(TasksApi.init),
 		getTasks: () => request(TasksApi.getTasks),
 		getTemplates: () => request(TasksApi.getTemplates),
 		getTask: (taskId: string) => request(TasksApi.getTask, { taskId }),
@@ -44,7 +43,8 @@ export function useTasksApi() {
 		// Commands
 		viewInCoder: (taskId: string) => command(TasksApi.viewInCoder, { taskId }),
 		viewLogs: (taskId: string) => command(TasksApi.viewLogs, { taskId }),
-		closeWorkspaceLogs: () => command(TasksApi.closeWorkspaceLogs),
+		stopStreamingWorkspaceLogs: () =>
+			command(TasksApi.stopStreamingWorkspaceLogs),
 
 		// Notifications
 		onTaskUpdated: (cb: (task: Task) => void) =>

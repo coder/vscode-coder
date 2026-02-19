@@ -5,11 +5,10 @@ import { useEffect, useState } from "react";
 import {
 	TASK_ACTIVE_INTERVAL_MS,
 	TASK_IDLE_INTERVAL_MS,
+	queryKeys,
 } from "../utils/config";
 
 import { useTasksApi } from "./useTasksApi";
-
-const QUERY_KEY = "task-details";
 
 export function useSelectedTask(tasks: readonly Task[]) {
 	const api = useTasksApi();
@@ -27,7 +26,9 @@ export function useSelectedTask(tasks: readonly Task[]) {
 	}
 
 	const { data: selectedTask, isLoading: isLoadingDetails } = useQuery({
-		queryKey: [QUERY_KEY, selectedTaskId],
+		queryKey: selectedTaskId
+			? queryKeys.taskDetail(selectedTaskId)
+			: queryKeys.details,
 		queryFn: selectedTaskId
 			? () => api.getTaskDetails(selectedTaskId)
 			: skipToken,
@@ -44,7 +45,7 @@ export function useSelectedTask(tasks: readonly Task[]) {
 		return api.onTaskUpdated((updatedTask) => {
 			if (updatedTask.id !== selectedTaskId) return;
 			queryClient.setQueryData<TaskDetails>(
-				[QUERY_KEY, selectedTaskId],
+				queryKeys.taskDetail(selectedTaskId),
 				(prev) => (prev ? { ...prev, task: updatedTask } : undefined),
 			);
 		});
@@ -52,7 +53,7 @@ export function useSelectedTask(tasks: readonly Task[]) {
 
 	const deselectTask = () => {
 		setSelectedTaskId(null);
-		queryClient.removeQueries({ queryKey: [QUERY_KEY] });
+		queryClient.removeQueries({ queryKey: queryKeys.details });
 	};
 
 	return {

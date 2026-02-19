@@ -27,8 +27,7 @@ export function getTaskPermissions(task: Task): TaskPermissions {
 	const hasWorkspace = task.workspace_id !== null;
 	const status = task.status;
 	const canSendMessage =
-		task.status === "paused" ||
-		(task.status === "active" && task.current_state?.state !== "working");
+		task.status === "active" && task.current_state?.state !== "working";
 	return {
 		canPause: hasWorkspace && PAUSABLE_STATUSES.includes(status),
 		pauseDisabled: PAUSE_DISABLED_STATUSES.includes(status),

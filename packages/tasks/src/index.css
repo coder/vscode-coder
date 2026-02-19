@@ -20,6 +20,36 @@ body {
 	min-height: 100px;
 }
 
+/* Refresh indicator */
+
+.refresh-bar {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 1px;
+	overflow: hidden;
+	z-index: 1;
+}
+
+.refresh-bar::after {
+	content: "";
+	display: block;
+	height: 100%;
+	width: 30%;
+	background: var(--vscode-progressBar-background);
+	animation: refreshSlide 1.2s ease-in-out infinite;
+}
+
+@keyframes refreshSlide {
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(433%);
+	}
+}
+
 /* Panel layout */
 
 .tasks-panel {

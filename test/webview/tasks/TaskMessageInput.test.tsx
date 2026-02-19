@@ -12,6 +12,7 @@ import type { Task } from "@repo/shared";
 const { mockApi } = vi.hoisted(() => ({
 	mockApi: {
 		pauseTask: vi.fn(),
+		resumeTask: vi.fn(),
 		sendTaskMessage: vi.fn(),
 	},
 }));
@@ -39,7 +40,7 @@ describe("TaskMessageInput", () => {
 		{
 			name: "paused",
 			overrides: { status: "paused" },
-			expected: "Send a message to resume the task...",
+			expected: "Resume the task to send messages",
 		},
 		{
 			name: "pending",
@@ -141,7 +142,10 @@ describe("TaskMessageInput", () => {
 	});
 
 	it("keeps input enabled when canSendMessage is true", () => {
-		const t = task({ status: "paused" });
+		const t = task({
+			status: "active",
+			current_state: taskState("complete"),
+		});
 		renderWithQuery(<TaskMessageInput task={t} />);
 		expect(getTextarea()).not.toBeDisabled();
 	});
@@ -165,6 +169,41 @@ describe("TaskMessageInput", () => {
 		});
 		await waitFor(() => {
 			expect(getTextarea()).toHaveValue("");
+		});
+	});
+
+	it("shows enabled action button for paused task with workspace", () => {
+		const t = task({
+			status: "paused",
+			workspace_id: "ws-1",
+		});
+		const { container } = renderWithQuery(<TaskMessageInput task={t} />);
+		const icon = qs(container, "vscode-icon");
+		expect(icon).not.toHaveClass("disabled");
+	});
+
+	it("disables input for paused task", () => {
+		const t = task({
+			status: "paused",
+			workspace_id: "ws-1",
+		});
+		renderWithQuery(<TaskMessageInput task={t} />);
+		expect(getTextarea()).toBeDisabled();
+	});
+
+	it("calls resumeTask on Ctrl+Enter when resume button is showing", async () => {
+		mockApi.resumeTask.mockResolvedValueOnce(undefined);
+		const t = task({
+			status: "paused",
+			workspace_id: "ws-1",
+		});
+		renderWithQuery(<TaskMessageInput task={t} />);
+		fireEvent.keyDown(getTextarea(), { key: "Enter", ctrlKey: true });
+		await waitFor(() => {
+			expect(mockApi.resumeTask).toHaveBeenCalledWith({
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
 		});
 	});
 

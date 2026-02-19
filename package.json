@@ -219,7 +219,7 @@
 					"id": "coder.tasksPanel",
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
-					"when": "coder.tasksEnabled"
+					"when": "coder.authenticated && coder.tasksEnabled"
 				}
 			]
 		},
@@ -228,11 +228,6 @@
 				"view": "myWorkspaces",
 				"contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
 				"when": "!coder.authenticated && coder.loaded"
-			},
-			{
-				"view": "coder.tasksPanel",
-				"contents": "[Login](command:coder.login) to view tasks.",
-				"when": "!coder.authenticated && coder.loaded && coder.tasksEnabled"
 			}
 		],
 		"commands": [
