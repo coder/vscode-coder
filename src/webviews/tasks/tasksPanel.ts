@@ -1,8 +1,11 @@
 import { isAxiosError } from "axios";
+import stripAnsi from "strip-ansi";
 import * as vscode from "vscode";
 
 import {
 	commandHandler,
+	isBuildingWorkspace,
+	isAgentStarting,
 	getTaskPermissions,
 	getTaskLabel,
 	isStableTask,
@@ -13,13 +16,18 @@ import {
 	type IpcNotification,
 	type IpcRequest,
 	type IpcResponse,
-	type LogsStatus,
 	type TaskDetails,
+	type TaskLogs,
 	type TaskTemplate,
 } from "@repo/shared";
 
 import { errToStr } from "../../api/api-helper";
 import { type CoderApi } from "../../api/coderApi";
+import {
+	LazyStream,
+	streamAgentLogs,
+	streamBuildLogs,
+} from "../../api/workspace";
 import { toError } from "../../error/errorUtils";
 import { type Logger } from "../../logging/logger";
 import { vscodeProposed } from "../../vscodeProposed";
@@ -27,9 +35,10 @@ import { getWebviewHtml } from "../util";
 
 import type {
 	Preset,
+	ProvisionerJobLog,
 	Task,
-	TaskLogEntry,
 	Template,
+	WorkspaceAgentLog,
 } from "coder/site/src/api/typesGenerated";
 
 /** Build URL to view task build logs in Coder dashboard */
@@ -81,6 +90,11 @@ export class TasksPanel
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
 
+	// Workspace log streaming
+	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
+	private readonly agentLogStream = new LazyStream<WorkspaceAgentLog[]>();
+	private streamingTaskId: string | null = null;
+
 	// Template cache with TTL
 	private templatesCache: TaskTemplate[] = [];
 	private templatesCacheTime = 0;
@@ -89,8 +103,7 @@ export class TasksPanel
 	// Cache logs for last viewed task in stable state
 	private cachedLogs?: {
 		taskId: string;
-		logs: readonly TaskLogEntry[];
-		status: LogsStatus;
+		logs: TaskLogs;
 	};
 
 	/**
@@ -152,6 +165,14 @@ export class TasksPanel
 		),
 		[TasksApi.viewLogs.method]: commandHandler(TasksApi.viewLogs, (p) =>
 			this.handleViewLogs(p.taskId),
+		),
+		[TasksApi.closeWorkspaceLogs.method]: commandHandler(
+			TasksApi.closeWorkspaceLogs,
+			() => {
+				this.buildLogStream.close();
+				this.agentLogStream.close();
+				this.streamingTaskId = null;
+			},
 		),
 	};
 
@@ -280,8 +301,11 @@ export class TasksPanel
 
 	private async handleGetTaskDetails(taskId: string): Promise<TaskDetails> {
 		const task = await this.client.getTask("me", taskId);
-		const { logs, logsStatus } = await this.getLogsWithCache(task);
-		return { task, logs, logsStatus, ...getTaskPermissions(task) };
+		this.streamWorkspaceLogs(task).catch((err: unknown) => {
+			this.logger.warn("Failed to stream workspace logs", err);
+		});
+		const logs = await this.getLogsWithCache(task);
+		return { task, logs, ...getTaskPermissions(task) };
 	}
 
 	private async handleCreateTask(params: CreateTaskParams): Promise<Task> {
@@ -417,7 +441,7 @@ export class TasksPanel
 
 	private async handleDownloadLogs(taskId: string): Promise<void> {
 		const result = await this.fetchTaskLogs(taskId);
-		if (result.status === "error") {
+		if (result.status !== "ok") {
 			throw new Error("Failed to fetch logs for download");
 		}
 		if (result.logs.length === 0) {
@@ -445,6 +469,45 @@ export class TasksPanel
 					}
 				});
 		}
+	}
+
+	private async streamWorkspaceLogs(task: Task): Promise<void> {
+		if (task.id !== this.streamingTaskId) {
+			this.buildLogStream.close();
+			this.agentLogStream.close();
+			this.streamingTaskId = task.id;
+		}
+
+		const onOutput = (line: string) => {
+			const clean = stripAnsi(line);
+			// Skip lines that were purely ANSI codes, but keep intentional blank lines.
+			if (line.length > 0 && clean.length === 0) return;
+			this.sendNotification({
+				type: TasksApi.workspaceLogsAppend.method,
+				data: [clean],
+			});
+		};
+
+		if (isBuildingWorkspace(task) && task.workspace_id) {
+			this.agentLogStream.close();
+			const workspace = await this.client.getWorkspace(task.workspace_id);
+			await this.buildLogStream.open(() =>
+				streamBuildLogs(this.client, onOutput, workspace.latest_build.id),
+			);
+			return;
+		}
+
+		if (isAgentStarting(task) && task.workspace_agent_id) {
+			const agentId = task.workspace_agent_id;
+			this.buildLogStream.close();
+			await this.agentLogStream.open(() =>
+				streamAgentLogs(this.client, onOutput, agentId),
+			);
+			return;
+		}
+
+		this.buildLogStream.close();
+		this.agentLogStream.close();
 	}
 
 	private async fetchTasksWithStatus(): Promise<{
@@ -540,38 +603,34 @@ export class TasksPanel
 	/**
 	 * Get logs for a task, using cache for stable states (complete/error/paused).
 	 */
-	private async getLogsWithCache(
-		task: Task,
-	): Promise<{ logs: readonly TaskLogEntry[]; logsStatus: LogsStatus }> {
+	private async getLogsWithCache(task: Task): Promise<TaskLogs> {
 		const stable = isStableTask(task);
 
 		// Use cache if same task in stable state
 		if (this.cachedLogs?.taskId === task.id && stable) {
-			return { logs: this.cachedLogs.logs, logsStatus: this.cachedLogs.status };
+			return this.cachedLogs.logs;
 		}
 
-		const { logs, status } = await this.fetchTaskLogs(task.id);
+		const logs = await this.fetchTaskLogs(task.id);
 
 		// Cache only for stable states
 		if (stable) {
-			this.cachedLogs = { taskId: task.id, logs, status };
+			this.cachedLogs = { taskId: task.id, logs };
 		}
 
-		return { logs, logsStatus: status };
+		return logs;
 	}
 
-	private async fetchTaskLogs(
-		taskId: string,
-	): Promise<{ logs: readonly TaskLogEntry[]; status: LogsStatus }> {
+	private async fetchTaskLogs(taskId: string): Promise<TaskLogs> {
 		try {
 			const response = await this.client.getTaskLogs("me", taskId);
-			return { logs: response.logs, status: "ok" };
+			return { status: "ok", logs: response.logs };
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 409) {
-				return { logs: [], status: "not_available" };
+				return { status: "not_available" };
 			}
 			this.logger.warn("Failed to fetch task logs", err);
-			return { logs: [], status: "error" };
+			return { status: "error" };
 		}
 	}
 
@@ -584,6 +643,9 @@ export class TasksPanel
 	}
 
 	dispose(): void {
+		this.buildLogStream.close();
+		this.agentLogStream.close();
+		this.streamingTaskId = null;
 		for (const d of this.disposables) {
 			d.dispose();
 		}

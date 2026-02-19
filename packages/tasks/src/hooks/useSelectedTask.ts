@@ -1,10 +1,4 @@
-import {
-	TasksApi,
-	isStableTask,
-	type Task,
-	type TaskDetails,
-} from "@repo/shared";
-import { useIpc } from "@repo/webview-shared/react";
+import { isStableTask, type Task, type TaskDetails } from "@repo/shared";
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
@@ -20,7 +14,6 @@ const QUERY_KEY = "task-details";
 export function useSelectedTask(tasks: readonly Task[]) {
 	const api = useTasksApi();
 	const queryClient = useQueryClient();
-	const { onNotification } = useIpc();
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
 	// Auto-deselect when the selected task disappears from the list
@@ -48,14 +41,14 @@ export function useSelectedTask(tasks: readonly Task[]) {
 
 	// Keep selected task in sync with push updates between polls
 	useEffect(() => {
-		return onNotification(TasksApi.taskUpdated, (updatedTask) => {
+		return api.onTaskUpdated((updatedTask) => {
 			if (updatedTask.id !== selectedTaskId) return;
 			queryClient.setQueryData<TaskDetails>(
 				[QUERY_KEY, selectedTaskId],
 				(prev) => (prev ? { ...prev, task: updatedTask } : undefined),
 			);
 		});
-	}, [onNotification, selectedTaskId, queryClient]);
+	}, [api.onTaskUpdated, selectedTaskId, queryClient]);
 
 	const deselectTask = () => {
 		setSelectedTaskId(null);

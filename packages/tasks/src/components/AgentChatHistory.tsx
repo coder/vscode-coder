@@ -1,12 +1,9 @@
-import { VscodeScrollable } from "@vscode-elements/react-elements";
+import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
-import { useFollowScroll } from "../hooks/useFollowScroll";
-
-import type { LogsStatus, TaskLogEntry } from "@repo/shared";
+import type { TaskLogEntry, TaskLogs } from "@repo/shared";
 
 interface AgentChatHistoryProps {
-	logs: readonly TaskLogEntry[];
-	logsStatus: LogsStatus;
+	taskLogs: TaskLogs;
 	isThinking: boolean;
 }
 
@@ -30,46 +27,35 @@ function LogEntry({
 }
 
 export function AgentChatHistory({
-	logs,
-	logsStatus,
+	taskLogs,
 	isThinking,
 }: AgentChatHistoryProps) {
-	const bottomRef = useFollowScroll();
+	const logs = taskLogs.status === "ok" ? taskLogs.logs : [];
 
 	return (
-		<div className="agent-chat-history">
-			<div className="chat-history-header">Agent chat history</div>
-			<VscodeScrollable className="chat-history-content">
-				{logs.length === 0 ? (
-					<div
-						className={
-							logsStatus === "error"
-								? "chat-history-empty chat-history-error"
-								: "chat-history-empty"
-						}
-					>
-						{getEmptyMessage(logsStatus)}
-					</div>
-				) : (
-					logs.map((log, index) => (
-						<LogEntry
-							key={log.id}
-							log={log}
-							isGroupStart={index === 0 || log.type !== logs[index - 1].type}
-						/>
-					))
-				)}
-				{isThinking && (
-					<div className="log-entry log-entry-thinking">Thinking...</div>
-				)}
-				<div ref={bottomRef} />
-			</VscodeScrollable>
-		</div>
+		<LogViewer header="Agent chat history">
+			{logs.length === 0 ? (
+				<LogViewerPlaceholder error={taskLogs.status === "error"}>
+					{getEmptyMessage(taskLogs.status)}
+				</LogViewerPlaceholder>
+			) : (
+				logs.map((log, index) => (
+					<LogEntry
+						key={log.id}
+						log={log}
+						isGroupStart={index === 0 || log.type !== logs[index - 1].type}
+					/>
+				))
+			)}
+			{isThinking && (
+				<div className="log-entry log-entry-thinking">Thinking...</div>
+			)}
+		</LogViewer>
 	);
 }
 
-function getEmptyMessage(logsStatus: LogsStatus): string {
-	switch (logsStatus) {
+function getEmptyMessage(status: TaskLogs["status"]): string {
+	switch (status) {
 		case "not_available":
 			return "Logs not available in current task state";
 		case "error":

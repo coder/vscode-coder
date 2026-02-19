@@ -10,7 +10,10 @@ describe("AgentChatHistory", () => {
 	describe("empty states", () => {
 		it("shows default empty message when no logs", () => {
 			renderWithQuery(
-				<AgentChatHistory logs={[]} logsStatus="ok" isThinking={false} />,
+				<AgentChatHistory
+					taskLogs={{ status: "ok", logs: [] }}
+					isThinking={false}
+				/>,
 			);
 			expect(screen.getByText("No messages yet")).toBeInTheDocument();
 		});
@@ -18,8 +21,7 @@ describe("AgentChatHistory", () => {
 		it("shows not-available message", () => {
 			renderWithQuery(
 				<AgentChatHistory
-					logs={[]}
-					logsStatus="not_available"
+					taskLogs={{ status: "not_available" }}
 					isThinking={false}
 				/>,
 			);
@@ -30,11 +32,11 @@ describe("AgentChatHistory", () => {
 
 		it("shows error message with error styling", () => {
 			renderWithQuery(
-				<AgentChatHistory logs={[]} logsStatus="error" isThinking={false} />,
+				<AgentChatHistory taskLogs={{ status: "error" }} isThinking={false} />,
 			);
 			const el = screen.getByText("Failed to load logs");
 			expect(el).toBeInTheDocument();
-			expect(el).toHaveClass("chat-history-error");
+			expect(el).toHaveClass("log-viewer-error");
 		});
 	});
 
@@ -45,7 +47,10 @@ describe("AgentChatHistory", () => {
 				logEntry({ id: 2, type: "output", content: "Hi there" }),
 			];
 			renderWithQuery(
-				<AgentChatHistory logs={logs} logsStatus="ok" isThinking={false} />,
+				<AgentChatHistory
+					taskLogs={{ status: "ok", logs }}
+					isThinking={false}
+				/>,
 			);
 
 			const input = screen.getByText("Hello").closest(".log-entry");
@@ -62,7 +67,10 @@ describe("AgentChatHistory", () => {
 				logEntry({ id: 3, type: "output", content: "msg3" }),
 			];
 			renderWithQuery(
-				<AgentChatHistory logs={logs} logsStatus="ok" isThinking={false} />,
+				<AgentChatHistory
+					taskLogs={{ status: "ok", logs }}
+					isThinking={false}
+				/>,
 			);
 
 			// "You" label at first input, "Agent" label at first output
@@ -80,7 +88,10 @@ describe("AgentChatHistory", () => {
 				logEntry({ id: 3, type: "input", content: "q2" }),
 			];
 			renderWithQuery(
-				<AgentChatHistory logs={logs} logsStatus="ok" isThinking={false} />,
+				<AgentChatHistory
+					taskLogs={{ status: "ok", logs }}
+					isThinking={false}
+				/>,
 			);
 
 			// Two "You" labels: one for first input group, one for the second
@@ -92,14 +103,20 @@ describe("AgentChatHistory", () => {
 	describe("thinking indicator", () => {
 		it("shows thinking indicator when isThinking is true", () => {
 			renderWithQuery(
-				<AgentChatHistory logs={[]} logsStatus="ok" isThinking={true} />,
+				<AgentChatHistory
+					taskLogs={{ status: "ok", logs: [] }}
+					isThinking={true}
+				/>,
 			);
 			expect(screen.getByText("Thinking...")).toBeInTheDocument();
 		});
 
 		it("does not show thinking indicator when isThinking is false", () => {
 			renderWithQuery(
-				<AgentChatHistory logs={[]} logsStatus="ok" isThinking={false} />,
+				<AgentChatHistory
+					taskLogs={{ status: "ok", logs: [] }}
+					isThinking={false}
+				/>,
 			);
 			expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
 		});

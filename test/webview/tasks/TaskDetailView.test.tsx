@@ -13,6 +13,12 @@ vi.mock("@repo/tasks/hooks/useTasksApi", () => ({
 	useTasksApi: () => new Proxy({}, { get: () => vi.fn() }),
 }));
 
+const WORKSPACE_LOG_LINE = "mock workspace log line";
+
+vi.mock("@repo/tasks/hooks/useWorkspaceLogs", () => ({
+	useWorkspaceLogs: () => [WORKSPACE_LOG_LINE],
+}));
+
 describe("TaskDetailView", () => {
 	it("passes onBack to header", () => {
 		const onBack = vi.fn();
@@ -25,10 +31,13 @@ describe("TaskDetailView", () => {
 
 	it("passes logs to chat history", () => {
 		const details = taskDetails({
-			logs: [
-				logEntry({ id: 1, content: "Starting build..." }),
-				logEntry({ id: 2, content: "Build complete." }),
-			],
+			logs: {
+				status: "ok",
+				logs: [
+					logEntry({ id: 1, content: "Starting build..." }),
+					logEntry({ id: 2, content: "Build complete." }),
+				],
+			},
 		});
 		renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
 		expect(screen.getByText("Starting build...")).toBeInTheDocument();
@@ -114,8 +123,47 @@ describe("TaskDetailView", () => {
 	});
 
 	it("shows logsStatus error in chat history", () => {
-		const details = taskDetails({ logsStatus: "error" });
+		const details = taskDetails({ logs: { status: "error" } });
 		renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
 		expect(screen.getByText("Failed to load logs")).toBeInTheDocument();
+	});
+
+	describe("workspace startup rendering", () => {
+		// WORKSPACE_LOG_LINE comes from the mocked useWorkspaceLogs hook,
+		// so its presence indicates WorkspaceLogs is rendered.
+
+		interface StartupCase {
+			name: string;
+			taskOverrides: Partial<Task>;
+		}
+
+		it.each<StartupCase>([
+			{
+				name: "building",
+				taskOverrides: { workspace_status: "starting" },
+			},
+			{
+				name: "agent starting",
+				taskOverrides: {
+					workspace_status: "running",
+					workspace_agent_lifecycle: "created",
+				},
+			},
+		])("$name → shows workspace logs", ({ taskOverrides }) => {
+			const details = taskDetails({ task: taskOverrides });
+			renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
+			expect(screen.getByText(WORKSPACE_LOG_LINE)).toBeInTheDocument();
+		});
+
+		it("ready → shows chat history", () => {
+			const details = taskDetails({
+				task: {
+					workspace_status: "running",
+					workspace_agent_lifecycle: "ready",
+				},
+			});
+			renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
+			expect(screen.queryByText(WORKSPACE_LOG_LINE)).not.toBeInTheDocument();
+		});
 	});
 });

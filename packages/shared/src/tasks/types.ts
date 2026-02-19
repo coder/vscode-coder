@@ -29,16 +29,18 @@ export interface TaskPreset {
 	isDefault: boolean;
 }
 
-/** Status of log fetching */
-export type LogsStatus = "ok" | "not_available" | "error";
+/** Result of fetching task logs: either logs or an error/unavailable state. */
+export type TaskLogs =
+	| { status: "ok"; logs: readonly TaskLogEntry[] }
+	| { status: "not_available" }
+	| { status: "error" };
 
 /**
  * Full details for a selected task, including logs and action availability.
  */
 export interface TaskDetails extends TaskPermissions {
 	task: Task;
-	logs: readonly TaskLogEntry[];
-	logsStatus: LogsStatus;
+	logs: TaskLogs;
 }
 
 export interface TaskPermissions {

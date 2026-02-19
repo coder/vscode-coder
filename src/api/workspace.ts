@@ -3,7 +3,6 @@ import {
 	type WorkspaceAgentLog,
 	type ProvisionerJobLog,
 	type Workspace,
-	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
@@ -15,6 +14,36 @@ import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
 import { type CoderApi } from "./coderApi";
+
+/** Opens a stream once; subsequent open() calls are no-ops until closed. */
+export class LazyStream<T> {
+	private stream: UnidirectionalStream<T> | null = null;
+	private opening: Promise<void> | null = null;
+
+	async open(factory: () => Promise<UnidirectionalStream<T>>): Promise<void> {
+		if (this.stream) return;
+
+		// Deduplicate concurrent calls; close() clears the reference to cancel.
+		if (!this.opening) {
+			const promise = factory().then((s) => {
+				if (this.opening === promise) {
+					this.stream = s;
+					this.opening = null;
+				} else {
+					s.close();
+				}
+			});
+			this.opening = promise;
+		}
+		await this.opening;
+	}
+
+	close(): void {
+		this.stream?.close();
+		this.stream = null;
+		this.opening = null;
+	}
+}
 
 /**
  * Start or update a workspace and return the updated workspace.
@@ -86,70 +115,63 @@ export async function startWorkspaceIfStoppedOrFailed(
 }
 
 /**
- * Streams build logs to the emitter in real-time.
+ * Streams build logs in real-time via a callback.
  * Returns the websocket for lifecycle management.
  */
 export async function streamBuildLogs(
 	client: CoderApi,
-	writeEmitter: vscode.EventEmitter<string>,
-	workspace: Workspace,
+	onOutput: (line: string) => void,
+	buildId: string,
 ): Promise<UnidirectionalStream<ProvisionerJobLog>> {
-	const socket = await client.watchBuildLogsByBuildId(
-		workspace.latest_build.id,
-		[],
-	);
+	const socket = await client.watchBuildLogsByBuildId(buildId, []);
 
 	socket.addEventListener("message", (data) => {
 		if (data.parseError) {
-			writeEmitter.fire(
-				errToStr(data.parseError, "Failed to parse message") + "\r\n",
-			);
+			onOutput(errToStr(data.parseError, "Failed to parse message"));
 		} else {
-			writeEmitter.fire(data.parsedMessage.output + "\r\n");
+			onOutput(data.parsedMessage.output);
 		}
 	});
 
 	socket.addEventListener("error", (error) => {
 		const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
-		writeEmitter.fire(
-			`Error watching workspace build logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}\r\n`,
+		onOutput(
+			`Error watching workspace build logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
 		);
 	});
 
 	socket.addEventListener("close", () => {
-		writeEmitter.fire("Build complete\r\n");
+		onOutput("Build complete");
 	});
 
 	return socket;
 }
 
 /**
- * Streams agent logs to the emitter in real-time.
+ * Streams agent logs in real-time via a callback.
  * Returns the websocket for lifecycle management.
  */
 export async function streamAgentLogs(
 	client: CoderApi,
-	writeEmitter: vscode.EventEmitter<string>,
-	agent: WorkspaceAgent,
+	onOutput: (line: string) => void,
+	agentId: string,
 ): Promise<UnidirectionalStream<WorkspaceAgentLog[]>> {
-	const socket = await client.watchWorkspaceAgentLogs(agent.id, []);
+	const socket = await client.watchWorkspaceAgentLogs(agentId, []);
 
 	socket.addEventListener("message", (data) => {
 		if (data.parseError) {
-			writeEmitter.fire(
-				errToStr(data.parseError, "Failed to parse message") + "\r\n",
-			);
+			onOutput(errToStr(data.parseError, "Failed to parse message"));
 		} else {
 			for (const log of data.parsedMessage) {
-				writeEmitter.fire(log.output + "\r\n");
+				onOutput(log.output);
 			}
 		}
 	});
 
 	socket.addEventListener("error", (error) => {
 		const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
-		writeEmitter.fire(
-			`Error watching agent logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}\r\n`,
+		onOutput(
+			`Error watching agent logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
 		);
 	});
 

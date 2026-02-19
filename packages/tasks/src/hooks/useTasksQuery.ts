@@ -1,5 +1,4 @@
-import { TasksApi, type InitResponse, type Task } from "@repo/shared";
-import { useIpc } from "@repo/webview-shared/react";
+import { type InitResponse, type Task } from "@repo/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
@@ -11,7 +10,6 @@ const QUERY_KEY = ["tasks-init"] as const;
 
 export function useTasksQuery(initialData?: InitResponse) {
 	const api = useTasksApi();
-	const { onNotification } = useIpc();
 	const queryClient = useQueryClient();
 
 	function updateTasks(updater: (tasks: readonly Task[]) => readonly Task[]) {
@@ -35,23 +33,23 @@ export function useTasksQuery(initialData?: InitResponse) {
 	// Subscribe to push notifications
 	useEffect(() => {
 		const unsubs = [
-			onNotification(TasksApi.tasksUpdated, (updatedTasks) => {
+			api.onTasksUpdated((updatedTasks) => {
 				updateTasks(() => updatedTasks);
 			}),
 
-			onNotification(TasksApi.taskUpdated, (updatedTask) => {
+			api.onTaskUpdated((updatedTask) => {
 				updateTasks((tasks) =>
 					tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t)),
 				);
 			}),
 
-			onNotification(TasksApi.refresh, () => {
+			api.onRefresh(() => {
 				void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
 			}),
 		];
 
 		return () => unsubs.forEach((fn) => fn());
-	}, [onNotification, queryClient]);
+	}, [api.onTasksUpdated, api.onTaskUpdated, api.onRefresh, queryClient]);
 
 	return { tasks, templates, tasksSupported, data, isLoading, error, refetch };
 }

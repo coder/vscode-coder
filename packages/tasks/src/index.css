@@ -443,7 +443,7 @@ vscode-icon.disabled {
 
 /* Chat history */
 
-.agent-chat-history {
+.log-viewer {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
@@ -453,14 +453,14 @@ vscode-icon.disabled {
 	border-radius: 4px;
 }
 
-.chat-history-header {
+.log-viewer-header {
 	padding: 6px 8px;
 	font-size: 0.8em;
 	color: var(--vscode-descriptionForeground);
 	border-bottom: 1px solid var(--vscode-input-border);
 }
 
-.chat-history-content {
+.log-viewer-content {
 	flex: 1;
 	min-height: 0;
 	padding: 4px 8px;
@@ -468,13 +468,13 @@ vscode-icon.disabled {
 	font-size: 0.85em;
 }
 
-.chat-history-empty {
+.log-viewer-empty {
 	padding: 16px 0;
 	color: var(--vscode-descriptionForeground);
 	text-align: center;
 }
 
-.chat-history-error {
+.log-viewer-error {
 	color: var(--vscode-errorForeground);
 }
 

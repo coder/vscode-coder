@@ -12,24 +12,13 @@
 import {
 	TasksApi,
 	type CreateTaskParams,
+	type Task,
 	type TaskActionParams,
 } from "@repo/shared";
-import { logger } from "@repo/webview-shared/logger";
 import { useIpc } from "@repo/webview-shared/react";
 
 export function useTasksApi() {
-	const { request, command } = useIpc();
-
-	function safeCommand<P>(
-		definition: { method: string; _types?: { params: P } },
-		...args: P extends void ? [] : [params: P]
-	): void {
-		try {
-			command(definition, ...args);
-		} catch (err) {
-			logger.error(`Command ${definition.method} failed`, err);
-		}
-	}
+	const { request, command, onNotification } = useIpc();
 
 	return {
 		// Requests
@@ -53,8 +42,19 @@ export function useTasksApi() {
 			request(TasksApi.sendTaskMessage, { taskId, message }),
 
 		// Commands
-		viewInCoder: (taskId: string) =>
-			safeCommand(TasksApi.viewInCoder, { taskId }),
-		viewLogs: (taskId: string) => safeCommand(TasksApi.viewLogs, { taskId }),
+		viewInCoder: (taskId: string) => command(TasksApi.viewInCoder, { taskId }),
+		viewLogs: (taskId: string) => command(TasksApi.viewLogs, { taskId }),
+		closeWorkspaceLogs: () => command(TasksApi.closeWorkspaceLogs),
+
+		// Notifications
+		onTaskUpdated: (cb: (task: Task) => void) =>
+			onNotification(TasksApi.taskUpdated, cb),
+		onTasksUpdated: (cb: (tasks: Task[]) => void) =>
+			onNotification(TasksApi.tasksUpdated, cb),
+		onWorkspaceLogsAppend: (cb: (lines: string[]) => void) =>
+			onNotification(TasksApi.workspaceLogsAppend, cb),
+		onRefresh: (cb: () => void) => onNotification(TasksApi.refresh, cb),
+		onShowCreateForm: (cb: () => void) =>
+			onNotification(TasksApi.showCreateForm, cb),
 	};
 }
