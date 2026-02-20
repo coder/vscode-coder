@@ -58,6 +58,6 @@ describe("ErrorBanner", () => {
 		const t = task({ id: "task-42", status: "error" });
 		renderWithQuery(<ErrorBanner task={t} />);
 		fireEvent.click(screen.getByText("View logs"));
-		expect(mockApi.viewLogs).toHaveBeenCalledWith("task-42");
+		expect(mockApi.viewLogs).toHaveBeenCalledWith({ taskId: "task-42" });
 	});
 });

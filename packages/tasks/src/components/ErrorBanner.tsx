@@ -19,7 +19,7 @@ export function ErrorBanner({ task }: ErrorBannerProps) {
 			<button
 				type="button"
 				className="text-link"
-				onClick={() => api.viewLogs(task.id)}
+				onClick={() => api.viewLogs({ taskId: task.id })}
 			>
 				View logs <VscodeIcon name="link-external" />
 			</button>

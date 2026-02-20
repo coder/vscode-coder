@@ -162,10 +162,10 @@ describe("TaskMessageInput", () => {
 		fireEvent.keyDown(getTextarea(), { key: "Enter", ctrlKey: true });
 
 		await waitFor(() => {
-			expect(mockApi.sendTaskMessage).toHaveBeenCalledWith(
-				"task-1",
-				"Hello agent",
-			);
+			expect(mockApi.sendTaskMessage).toHaveBeenCalledWith({
+				taskId: "task-1",
+				message: "Hello agent",
+			});
 		});
 		await waitFor(() => {
 			expect(getTextarea()).toHaveValue("");
