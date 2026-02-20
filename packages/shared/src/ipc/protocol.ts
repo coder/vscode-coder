@@ -76,16 +76,6 @@ export interface IpcNotification<D = unknown> {
 	readonly data?: D;
 }
 
-// --- Handler utilities ---
-
-/** Extract params type from a request/command definition */
-export type ParamsOf<T> = T extends { _types?: { params: infer P } } ? P : void;
-
-/** Extract response type from a request definition */
-export type ResponseOf<T> = T extends { _types?: { response: infer R } }
-	? R
-	: void;
-
 // --- Mapped types for handler completeness ---
 
 /** Requires a handler for every RequestDef in Api. Compile error if one is missing. */
@@ -103,6 +93,31 @@ export type CommandHandlerMap<Api> = {
 		? K
 		: never]: Api[K] extends CommandDef<infer P>
 		? (params: P) => void | Promise<void>
+		: never;
+};
+
+// --- API hook type ---
+
+/** Derives a fully typed hook interface from an API definition object. */
+export type ApiHook<Api> = {
+	[K in keyof Api as Api[K] extends { kind: "request" }
+		? K
+		: never]: Api[K] extends RequestDef<infer P, infer R>
+		? (...args: P extends void ? [] : [params: P]) => Promise<R>
+		: never;
+} & {
+	[K in keyof Api as Api[K] extends { kind: "command" }
+		? K
+		: never]: Api[K] extends CommandDef<infer P>
+		? (...args: P extends void ? [] : [params: P]) => void
+		: never;
+} & {
+	[K in keyof Api as Api[K] extends { kind: "notification" }
+		? `on${Capitalize<K & string>}`
+		: never]: Api[K] extends NotificationDef<infer D>
+		? D extends void
+			? (cb: () => void) => () => void
+			: (cb: (data: D) => void) => () => void
 		: never;
 };
 
@@ -140,6 +155,56 @@ export function buildCommandHandlers(
 	const result: Record<string, (params: unknown) => void | Promise<void>> = {};
 	for (const key of Object.keys(handlers)) {
 		result[api[key].method] = handlers[key];
+	}
+	return result;
+}
+
+/** Build a typed API hook from an API definition and IPC primitives. */
+export function buildApiHook<
+	Api extends Record<string, { kind: string; method: string }>,
+>(
+	api: Api,
+	ipc: {
+		request: <P, R>(
+			def: { method: string; _types?: { params: P; response: R } },
+			...args: P extends void ? [] : [params: P]
+		) => Promise<R>;
+		command: <P>(
+			def: { method: string; _types?: { params: P } },
+			...args: P extends void ? [] : [params: P]
+		) => void;
+		onNotification: <D>(
+			def: { method: string; _types?: { data: D } },
+			cb: (data: D) => void,
+		) => () => void;
+	},
+): ApiHook<Api>;
+export function buildApiHook(
+	api: Record<string, { kind: string; method: string }>,
+	ipc: {
+		request: (def: { method: string }, params: unknown) => Promise<unknown>;
+		command: (def: { method: string }, params: unknown) => void;
+		onNotification: (
+			def: { method: string },
+			cb: (data: unknown) => void,
+		) => () => void;
+	},
+) {
+	const result: Record<string, unknown> = {};
+	for (const [key, def] of Object.entries(api)) {
+		switch (def.kind) {
+			case "request":
+				result[key] = (params: unknown) => ipc.request(def, params);
+				break;
+			case "command":
+				result[key] = (params: unknown) => ipc.command(def, params);
+				break;
+			case "notification":
+				result[`on${key[0].toUpperCase()}${key.slice(1)}`] = (
+					cb: (data: unknown) => void,
+				) => ipc.onNotification(def, cb);
+				break;
+		}
 	}
 	return result;
 }
