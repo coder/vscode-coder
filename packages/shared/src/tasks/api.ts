@@ -21,65 +21,40 @@ export interface TaskIdParams {
 	taskId: string;
 }
 
-const getTasks = defineRequest<void, readonly Task[] | null>("getTasks");
-const getTemplates = defineRequest<void, readonly TaskTemplate[] | null>(
-	"getTemplates",
-);
-const getTask = defineRequest<TaskIdParams, Task>("getTask");
-const getTaskDetails = defineRequest<TaskIdParams, TaskDetails>(
-	"getTaskDetails",
-);
-
 export interface CreateTaskParams {
 	templateVersionId: string;
 	prompt: string;
 	presetId?: string;
 }
-const createTask = defineRequest<CreateTaskParams, Task>("createTask");
 
 export interface TaskActionParams extends TaskIdParams {
 	taskName: string;
 }
-const deleteTask = defineRequest<TaskActionParams, void>("deleteTask");
-const pauseTask = defineRequest<TaskActionParams, void>("pauseTask");
-const resumeTask = defineRequest<TaskActionParams, void>("resumeTask");
-const downloadLogs = defineRequest<TaskIdParams, void>("downloadLogs");
-const sendTaskMessage = defineRequest<TaskIdParams & { message: string }, void>(
-	"sendTaskMessage",
-);
-
-const viewInCoder = defineCommand<TaskIdParams>("viewInCoder");
-const viewLogs = defineCommand<TaskIdParams>("viewLogs");
-const stopStreamingWorkspaceLogs = defineCommand<void>(
-	"stopStreamingWorkspaceLogs",
-);
-
-const taskUpdated = defineNotification<Task>("taskUpdated");
-const tasksUpdated = defineNotification<Task[]>("tasksUpdated");
-const workspaceLogsAppend = defineNotification<string[]>("workspaceLogsAppend");
-const refresh = defineNotification<void>("refresh");
-const showCreateForm = defineNotification<void>("showCreateForm");
 
 export const TasksApi = {
 	// Requests
-	getTasks,
-	getTemplates,
-	getTask,
-	getTaskDetails,
-	createTask,
-	deleteTask,
-	pauseTask,
-	resumeTask,
-	downloadLogs,
-	sendTaskMessage,
+	getTasks: defineRequest<void, readonly Task[] | null>("getTasks"),
+	getTemplates: defineRequest<void, readonly TaskTemplate[] | null>(
+		"getTemplates",
+	),
+	getTask: defineRequest<TaskIdParams, Task>("getTask"),
+	getTaskDetails: defineRequest<TaskIdParams, TaskDetails>("getTaskDetails"),
+	createTask: defineRequest<CreateTaskParams, Task>("createTask"),
+	deleteTask: defineRequest<TaskActionParams, void>("deleteTask"),
+	pauseTask: defineRequest<TaskActionParams, void>("pauseTask"),
+	resumeTask: defineRequest<TaskActionParams, void>("resumeTask"),
+	downloadLogs: defineRequest<TaskIdParams, void>("downloadLogs"),
+	sendTaskMessage: defineRequest<TaskIdParams & { message: string }, void>(
+		"sendTaskMessage",
+	),
 	// Commands
-	viewInCoder,
-	viewLogs,
-	stopStreamingWorkspaceLogs,
+	viewInCoder: defineCommand<TaskIdParams>("viewInCoder"),
+	viewLogs: defineCommand<TaskIdParams>("viewLogs"),
+	stopStreamingWorkspaceLogs: defineCommand<void>("stopStreamingWorkspaceLogs"),
 	// Notifications
-	taskUpdated,
-	tasksUpdated,
-	workspaceLogsAppend,
-	refresh,
-	showCreateForm,
+	taskUpdated: defineNotification<Task>("taskUpdated"),
+	tasksUpdated: defineNotification<Task[]>("tasksUpdated"),
+	workspaceLogsAppend: defineNotification<string[]>("workspaceLogsAppend"),
+	refresh: defineNotification<void>("refresh"),
+	showCreateForm: defineNotification<void>("showCreateForm"),
 } as const;
