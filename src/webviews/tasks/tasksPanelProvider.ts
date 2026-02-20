@@ -3,18 +3,18 @@ import stripAnsi from "strip-ansi";
 import * as vscode from "vscode";
 
 import {
-	commandHandler,
+	buildCommandHandlers,
+	buildRequestHandlers,
 	isBuildingWorkspace,
 	isAgentStarting,
 	getTaskPermissions,
 	getTaskLabel,
 	isStableTask,
-	requestHandler,
 	TasksApi,
 	type CreateTaskParams,
-	type IpcNotification,
 	type IpcRequest,
 	type IpcResponse,
+	type NotificationDef,
 	type TaskDetails,
 	type TaskLogs,
 	type TaskTemplate,
@@ -100,71 +100,28 @@ export class TasksPanelProvider
 		logs: TaskLogs;
 	};
 
-	/**
-	 * Request handlers indexed by method name.
-	 * Type safety is ensured at definition time via requestHandler().
-	 */
-	private readonly requestHandlers: Record<
-		string,
-		(params: unknown) => Promise<unknown>
-	> = {
-		[TasksApi.getTasks.method]: requestHandler(TasksApi.getTasks, () =>
-			this.fetchTasks(),
-		),
-		[TasksApi.getTemplates.method]: requestHandler(TasksApi.getTemplates, () =>
-			this.fetchTemplates(),
-		),
-		[TasksApi.getTask.method]: requestHandler(TasksApi.getTask, (p) =>
-			this.client.getTask("me", p.taskId),
-		),
-		[TasksApi.getTaskDetails.method]: requestHandler(
-			TasksApi.getTaskDetails,
-			(p) => this.handleGetTaskDetails(p.taskId),
-		),
-		[TasksApi.createTask.method]: requestHandler(TasksApi.createTask, (p) =>
-			this.handleCreateTask(p),
-		),
-		[TasksApi.deleteTask.method]: requestHandler(TasksApi.deleteTask, (p) =>
-			this.handleDeleteTask(p.taskId, p.taskName),
-		),
-		[TasksApi.pauseTask.method]: requestHandler(TasksApi.pauseTask, (p) =>
-			this.handlePauseTask(p.taskId, p.taskName),
-		),
-		[TasksApi.resumeTask.method]: requestHandler(TasksApi.resumeTask, (p) =>
-			this.handleResumeTask(p.taskId, p.taskName),
-		),
-		[TasksApi.downloadLogs.method]: requestHandler(TasksApi.downloadLogs, (p) =>
-			this.handleDownloadLogs(p.taskId),
-		),
-		[TasksApi.sendTaskMessage.method]: requestHandler(
-			TasksApi.sendTaskMessage,
-			(p) => this.handleSendMessage(p.taskId, p.message),
-		),
-	};
+	private readonly requestHandlers = buildRequestHandlers(TasksApi, {
+		getTasks: () => this.fetchTasks(),
+		getTemplates: () => this.fetchTemplates(),
+		getTask: (p) => this.client.getTask("me", p.taskId),
+		getTaskDetails: (p) => this.handleGetTaskDetails(p.taskId),
+		createTask: (p) => this.handleCreateTask(p),
+		deleteTask: (p) => this.handleDeleteTask(p.taskId, p.taskName),
+		pauseTask: (p) => this.handlePauseTask(p.taskId, p.taskName),
+		resumeTask: (p) => this.handleResumeTask(p.taskId, p.taskName),
+		downloadLogs: (p) => this.handleDownloadLogs(p.taskId),
+		sendTaskMessage: (p) => this.handleSendMessage(p.taskId, p.message),
+	});
 
-	/**
-	 * Command handlers indexed by method name.
-	 * Type safety is ensured at definition time via commandHandler().
-	 */
-	private readonly commandHandlers: Record<
-		string,
-		(params: unknown) => void | Promise<void>
-	> = {
-		[TasksApi.viewInCoder.method]: commandHandler(TasksApi.viewInCoder, (p) =>
-			this.handleViewInCoder(p.taskId),
-		),
-		[TasksApi.viewLogs.method]: commandHandler(TasksApi.viewLogs, (p) =>
-			this.handleViewLogs(p.taskId),
-		),
-		[TasksApi.stopStreamingWorkspaceLogs.method]: commandHandler(
-			TasksApi.stopStreamingWorkspaceLogs,
-			() => {
-				this.streamingTaskId = null;
-				this.buildLogStream.close();
-				this.agentLogStream.close();
-			},
-		),
-	};
+	private readonly commandHandlers = buildCommandHandlers(TasksApi, {
+		viewInCoder: (p) => this.handleViewInCoder(p.taskId),
+		viewLogs: (p) => this.handleViewLogs(p.taskId),
+		stopStreamingWorkspaceLogs: () => {
+			this.streamingTaskId = null;
+			this.buildLogStream.close();
+			this.agentLogStream.close();
+		},
+	});
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -173,12 +130,12 @@ export class TasksPanelProvider
 	) {}
 
 	public showCreateForm(): void {
-		this.sendNotification({ type: TasksApi.showCreateForm.method });
+		this.notify(TasksApi.showCreateForm);
 	}
 
 	public refresh(): void {
 		this.cachedLogs = undefined;
-		this.sendNotification({ type: TasksApi.refresh.method });
+		this.notify(TasksApi.refresh);
 	}
 
 	resolveWebviewView(
@@ -452,10 +409,7 @@ export class TasksPanelProvider
 			const clean = stripAnsi(line);
 			// Skip lines that were purely ANSI codes, but keep intentional blank lines.
 			if (line.length > 0 && clean.length === 0) return;
-			this.sendNotification({
-				type: TasksApi.workspaceLogsAppend.method,
-				data: [clean],
-			});
+			this.notify(TasksApi.workspaceLogsAppend, [clean]);
 		};
 
 		const onStreamClose = () => {
@@ -514,10 +468,7 @@ export class TasksPanelProvider
 		try {
 			const tasks = await this.fetchTasks();
 			if (tasks !== null) {
-				this.sendNotification({
-					type: TasksApi.tasksUpdated.method,
-					data: tasks,
-				});
+				this.notify(TasksApi.tasksUpdated, [...tasks]);
 			}
 		} catch (err) {
 			this.logger.warn("Failed to refresh tasks after action", err);
@@ -527,10 +478,7 @@ export class TasksPanelProvider
 	private async refreshAndNotifyTask(taskId: string): Promise<void> {
 		try {
 			const task = await this.client.getTask("me", taskId);
-			this.sendNotification({
-				type: TasksApi.taskUpdated.method,
-				data: task,
-			});
+			this.notify(TasksApi.taskUpdated, task);
 		} catch (err) {
 			this.logger.warn("Failed to refresh task after action", err);
 		}
@@ -616,8 +564,14 @@ export class TasksPanelProvider
 		this.view?.webview.postMessage(response);
 	}
 
-	private sendNotification(notification: IpcNotification): void {
-		this.view?.webview.postMessage(notification);
+	private notify<D>(
+		def: NotificationDef<D>,
+		...args: D extends void ? [] : [data: D]
+	): void {
+		this.view?.webview.postMessage({
+			type: def.method,
+			...(args.length > 0 ? { data: args[0] } : {}),
+		});
 	}
 
 	dispose(): void {
