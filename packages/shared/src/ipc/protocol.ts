@@ -9,6 +9,7 @@
 
 /** Request definition: params P, response R */
 export interface RequestDef<P = void, R = void> {
+	readonly kind: "request";
 	readonly method: string;
 	/** @internal Phantom types for inference - not present at runtime */
 	readonly _types?: { params: P; response: R };
@@ -16,6 +17,7 @@ export interface RequestDef<P = void, R = void> {
 
 /** Command definition: params P, no response */
 export interface CommandDef<P = void> {
+	readonly kind: "command";
 	readonly method: string;
 	/** @internal Phantom type for inference - not present at runtime */
 	readonly _types?: { params: P };
@@ -23,6 +25,7 @@ export interface CommandDef<P = void> {
 
 /** Notification definition: data D (extension to webview) */
 export interface NotificationDef<D = void> {
+	readonly kind: "notification";
 	readonly method: string;
 	/** @internal Phantom type for inference - not present at runtime */
 	readonly _types?: { data: D };
@@ -34,19 +37,19 @@ export interface NotificationDef<D = void> {
 export function defineRequest<P = void, R = void>(
 	method: string,
 ): RequestDef<P, R> {
-	return { method } as RequestDef<P, R>;
+	return { kind: "request", method } as RequestDef<P, R>;
 }
 
 /** Define a fire-and-forget command */
 export function defineCommand<P = void>(method: string): CommandDef<P> {
-	return { method } as CommandDef<P>;
+	return { kind: "command", method } as CommandDef<P>;
 }
 
 /** Define a push notification (extension to webview) */
 export function defineNotification<D = void>(
 	method: string,
 ): NotificationDef<D> {
-	return { method } as NotificationDef<D>;
+	return { kind: "notification", method } as NotificationDef<D>;
 }
 
 // --- Wire format ---
@@ -83,18 +86,60 @@ export type ResponseOf<T> = T extends { _types?: { response: infer R } }
 	? R
 	: void;
 
-/** Type-safe request handler - infers params and return type from definition */
-export function requestHandler<P, R>(
-	_def: RequestDef<P, R>,
-	fn: (params: P) => Promise<R>,
-): (params: unknown) => Promise<unknown> {
-	return fn as (params: unknown) => Promise<unknown>;
+// --- Mapped types for handler completeness ---
+
+/** Requires a handler for every RequestDef in Api. Compile error if one is missing. */
+export type RequestHandlerMap<Api> = {
+	[K in keyof Api as Api[K] extends { kind: "request" }
+		? K
+		: never]: Api[K] extends RequestDef<infer P, infer R>
+		? (params: P) => Promise<R>
+		: never;
+};
+
+/** Requires a handler for every CommandDef in Api. Compile error if one is missing. */
+export type CommandHandlerMap<Api> = {
+	[K in keyof Api as Api[K] extends { kind: "command" }
+		? K
+		: never]: Api[K] extends CommandDef<infer P>
+		? (params: P) => void | Promise<void>
+		: never;
+};
+
+// --- Builder functions ---
+
+/** Build a method-indexed map of request handlers with compile-time completeness. */
+export function buildRequestHandlers<
+	Api extends Record<string, { method: string }>,
+>(
+	api: Api,
+	handlers: RequestHandlerMap<Api>,
+): Record<string, (params: unknown) => Promise<unknown>>;
+export function buildRequestHandlers(
+	api: Record<string, { method: string }>,
+	handlers: Record<string, (params: unknown) => Promise<unknown>>,
+) {
+	const result: Record<string, (params: unknown) => Promise<unknown>> = {};
+	for (const key of Object.keys(handlers)) {
+		result[api[key].method] = handlers[key];
+	}
+	return result;
 }
 
-/** Type-safe command handler - infers params type from definition */
-export function commandHandler<P>(
-	_def: CommandDef<P>,
-	fn: (params: P) => void | Promise<void>,
-): (params: unknown) => void | Promise<void> {
-	return fn as (params: unknown) => void | Promise<void>;
+/** Build a method-indexed map of command handlers with compile-time completeness. */
+export function buildCommandHandlers<
+	Api extends Record<string, { method: string }>,
+>(
+	api: Api,
+	handlers: CommandHandlerMap<Api>,
+): Record<string, (params: unknown) => void | Promise<void>>;
+export function buildCommandHandlers(
+	api: Record<string, { method: string }>,
+	handlers: Record<string, (params: unknown) => void | Promise<void>>,
+) {
+	const result: Record<string, (params: unknown) => void | Promise<void>> = {};
+	for (const key of Object.keys(handlers)) {
+		result[api[key].method] = handlers[key];
+	}
+	return result;
 }
