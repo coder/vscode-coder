@@ -30,7 +30,7 @@ export function useSelectedTask(tasks: readonly Task[]) {
 			? queryKeys.taskDetail(selectedTaskId)
 			: queryKeys.details,
 		queryFn: selectedTaskId
-			? () => api.getTaskDetails(selectedTaskId)
+			? () => api.getTaskDetails({ taskId: selectedTaskId })
 			: skipToken,
 		refetchInterval: (query) => {
 			const task = query.state.data?.task;

@@ -134,7 +134,7 @@ describe("useTaskMenuItems", () => {
 		const { result } = renderTask(testTask);
 		clickItem(result.current.menuItems, label);
 		await waitFor(() => {
-			expect(mockApi[apiMethod]).toHaveBeenCalledWith(testTask.id);
+			expect(mockApi[apiMethod]).toHaveBeenCalledWith({ taskId: testTask.id });
 		});
 	});
 

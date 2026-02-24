@@ -69,7 +69,8 @@ export function TaskMessageInput({ task }: TaskMessageInputProps) {
 	});
 
 	const { mutate: sendMessage, isPending: isSending } = useMutation({
-		mutationFn: (msg: string) => api.sendTaskMessage(task.id, msg),
+		mutationFn: (msg: string) =>
+			api.sendTaskMessage({ taskId: task.id, message: msg }),
 		onSuccess: () => setMessage(""),
 		onError: (err) => logger.error("Failed to send message", err),
 	});
