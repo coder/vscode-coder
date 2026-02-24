@@ -255,9 +255,22 @@ describe("TasksPanelProvider", () => {
 
 			const res = await h.request(TasksApi.getTemplates);
 
+			expect(h.client.getTemplates).toHaveBeenCalledWith({
+				q: "has-ai-task:true",
+			});
 			expect(res.data?.[0].presets).toEqual([
-				{ id: "p1", name: "Default", isDefault: true },
-				{ id: "p2", name: "Custom", isDefault: false },
+				{
+					id: "p1",
+					name: "Default",
+					description: "Test preset",
+					isDefault: true,
+				},
+				{
+					id: "p2",
+					name: "Custom",
+					description: "Test preset",
+					isDefault: false,
+				},
 			]);
 		});
 

@@ -479,7 +479,9 @@ export class TasksPanelProvider
 		}
 
 		try {
-			const templates = await this.client.getTemplates({});
+			const templates = await this.client.getTemplates({
+				q: "has-ai-task:true",
+			});
 
 			return await Promise.all(
 				templates.map(async (template: Template): Promise<TaskTemplate> => {
@@ -495,13 +497,13 @@ export class TasksPanelProvider
 
 					return {
 						id: template.id,
-						name: template.name,
-						displayName: template.display_name || template.name,
-						icon: template.icon,
+						name: template.display_name || template.name,
+						description: template.description,
 						activeVersionId: template.active_version_id,
 						presets: presets.map((p) => ({
 							id: p.ID,
 							name: p.Name,
+							description: p.Description,
 							isDefault: p.Default,
 						})),
 					};

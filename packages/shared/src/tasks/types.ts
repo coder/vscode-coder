@@ -17,8 +17,7 @@ export type { Preset, Task, TaskLogEntry, TaskState, TaskStatus, Template };
 export interface TaskTemplate {
 	id: string;
 	name: string;
-	displayName: string;
-	icon: string;
+	description: string;
 	activeVersionId: string;
 	presets: TaskPreset[];
 }
@@ -26,6 +25,7 @@ export interface TaskTemplate {
 export interface TaskPreset {
 	id: string;
 	name: string;
+	description: string;
 	isDefault: boolean;
 }
 

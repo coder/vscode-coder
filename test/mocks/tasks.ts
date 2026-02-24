@@ -167,9 +167,8 @@ export function taskTemplate(
 ): TaskTemplate {
 	return {
 		id: "template-1",
-		name: "test-template",
-		displayName: "Test Template",
-		icon: "/icon.svg",
+		name: "Test Template",
+		description: "A test template",
 		activeVersionId: "version-1",
 		presets: [],
 		...overrides,

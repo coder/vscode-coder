@@ -40,10 +40,10 @@ describe("CreateTaskSection", () => {
 		vi.clearAllMocks();
 	});
 
-	it("renders template options by displayName", () => {
+	it("renders template options by name", () => {
 		renderSection([
-			taskTemplate({ id: "t1", displayName: "First" }),
-			taskTemplate({ id: "t2", displayName: "Second" }),
+			taskTemplate({ id: "t1", name: "First" }),
+			taskTemplate({ id: "t2", name: "Second" }),
 		]);
 		expect(screen.queryByText("First")).toBeInTheDocument();
 		expect(screen.queryByText("Second")).toBeInTheDocument();
@@ -57,7 +57,14 @@ describe("CreateTaskSection", () => {
 	it("renders preset dropdown when template has presets", () => {
 		renderSection([
 			taskTemplate({
-				presets: [{ id: "p1", name: "Fast Mode", isDefault: false }],
+				presets: [
+					{
+						id: "p1",
+						name: "Fast Mode",
+						description: "A fast preset",
+						isDefault: false,
+					},
+				],
 			}),
 		]);
 		expect(screen.queryByText("Preset:")).toBeInTheDocument();
@@ -94,8 +101,8 @@ describe("CreateTaskSection", () => {
 	});
 
 	it("syncs templateId when templates change", () => {
-		const templates1 = [taskTemplate({ id: "t1", displayName: "Old" })];
-		const templates2 = [taskTemplate({ id: "t2", displayName: "New" })];
+		const templates1 = [taskTemplate({ id: "t1", name: "Old" })];
+		const templates2 = [taskTemplate({ id: "t2", name: "New" })];
 
 		const { rerender } = renderWithQuery(
 			<CreateTaskSection templates={templates1} />,
