@@ -118,7 +118,7 @@ describe("TaskDetailView", () => {
 		renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
 		expect(screen.getByRole("textbox")).toHaveAttribute(
 			"placeholder",
-			"Send a message to resume the task...",
+			"Resume the task to send messages",
 		);
 	});
 

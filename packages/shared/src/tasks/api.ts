@@ -17,20 +17,14 @@ import {
 
 import type { Task, TaskDetails, TaskTemplate } from "./types";
 
-export interface InitResponse {
-	tasks: readonly Task[];
-	templates: readonly TaskTemplate[];
-	baseUrl: string;
-	tasksSupported: boolean;
-}
-
 export interface TaskIdParams {
 	taskId: string;
 }
 
-const init = defineRequest<void, InitResponse>("init");
-const getTasks = defineRequest<void, Task[]>("getTasks");
-const getTemplates = defineRequest<void, TaskTemplate[]>("getTemplates");
+const getTasks = defineRequest<void, readonly Task[] | null>("getTasks");
+const getTemplates = defineRequest<void, readonly TaskTemplate[] | null>(
+	"getTemplates",
+);
 const getTask = defineRequest<TaskIdParams, Task>("getTask");
 const getTaskDetails = defineRequest<TaskIdParams, TaskDetails>(
 	"getTaskDetails",
@@ -56,7 +50,9 @@ const sendTaskMessage = defineRequest<TaskIdParams & { message: string }, void>(
 
 const viewInCoder = defineCommand<TaskIdParams>("viewInCoder");
 const viewLogs = defineCommand<TaskIdParams>("viewLogs");
-const closeWorkspaceLogs = defineCommand<void>("closeWorkspaceLogs");
+const stopStreamingWorkspaceLogs = defineCommand<void>(
+	"stopStreamingWorkspaceLogs",
+);
 
 const taskUpdated = defineNotification<Task>("taskUpdated");
 const tasksUpdated = defineNotification<Task[]>("tasksUpdated");
@@ -66,7 +62,6 @@ const showCreateForm = defineNotification<void>("showCreateForm");
 
 export const TasksApi = {
 	// Requests
-	init,
 	getTasks,
 	getTemplates,
 	getTask,
@@ -80,7 +75,7 @@ export const TasksApi = {
 	// Commands
 	viewInCoder,
 	viewLogs,
-	closeWorkspaceLogs,
+	stopStreamingWorkspaceLogs,
 	// Notifications
 	taskUpdated,
 	tasksUpdated,
