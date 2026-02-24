@@ -32,14 +32,18 @@ interface TasksPanelProps {
 	};
 }
 
-export function TasksPanel({ tasks, templates, persisted }: TasksPanelProps) {
+export function TasksPanel({
+	tasks,
+	templates,
+	persisted: { initialCreateExpanded, initialHistoryExpanded, save },
+}: TasksPanelProps) {
 	const { selectedTask, isLoadingDetails, selectTask, deselectTask } =
 		useSelectedTask(tasks);
 
 	const [createRef, createOpen, setCreateOpen] =
-		useCollapsibleToggle<CollapsibleElement>(persisted.initialCreateExpanded);
+		useCollapsibleToggle<CollapsibleElement>(initialCreateExpanded);
 	const [historyRef, historyOpen] = useCollapsibleToggle<CollapsibleElement>(
-		persisted.initialHistoryExpanded,
+		initialHistoryExpanded,
 	);
 
 	const createScrollRef = useRef<ScrollableElement>(null);
@@ -53,13 +57,13 @@ export function TasksPanel({ tasks, templates, persisted }: TasksPanelProps) {
 	}, [onShowCreateForm, setCreateOpen]);
 
 	useEffect(() => {
-		persisted.save({
+		save({
 			tasks,
 			templates,
 			createExpanded: createOpen,
 			historyExpanded: historyOpen,
 		});
-	}, [persisted, tasks, templates, createOpen, historyOpen]);
+	}, [save, tasks, templates, createOpen, historyOpen]);
 
 	function renderHistory() {
 		if (selectedTask) {
