@@ -182,8 +182,8 @@ export function buildApiHook<
 export function buildApiHook(
 	api: Record<string, { kind: string; method: string }>,
 	ipc: {
-		request: (def: { method: string }, params: unknown) => Promise<unknown>;
-		command: (def: { method: string }, params: unknown) => void;
+		request: (def: { method: string }, params?: unknown) => Promise<unknown>;
+		command: (def: { method: string }, params?: unknown) => void;
 		onNotification: (
 			def: { method: string },
 			cb: (data: unknown) => void,

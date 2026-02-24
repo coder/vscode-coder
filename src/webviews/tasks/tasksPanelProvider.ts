@@ -468,7 +468,7 @@ export class TasksPanelProvider
 		try {
 			const tasks = await this.fetchTasks();
 			if (tasks !== null) {
-				this.notify(TasksApi.tasksUpdated, [...tasks]);
+				this.notify(TasksApi.tasksUpdated, tasks);
 			}
 		} catch (err) {
 			this.logger.warn("Failed to refresh tasks after action", err);
