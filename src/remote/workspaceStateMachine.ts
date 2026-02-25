@@ -19,7 +19,7 @@ import type {
 import type * as vscode from "vscode";
 
 import type { CoderApi } from "../api/coderApi";
-import type { PathResolver } from "../core/pathResolver";
+import type { CliAuth } from "../cliConfig";
 import type { FeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
 
@@ -41,7 +41,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		private readonly binaryPath: string,
 		private readonly featureSet: FeatureSet,
 		private readonly logger: Logger,
-		private readonly pathResolver: PathResolver,
+		private readonly cliAuth: CliAuth,
 	) {
 		this.terminal = new TerminalSession("Workspace Build");
 	}
@@ -71,12 +71,9 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 				progress.report({ message: `starting ${workspaceName}...` });
 				this.logger.info(`Starting ${workspaceName}`);
-				const globalConfigDir = this.pathResolver.getGlobalConfigDir(
-					this.parts.safeHostname,
-				);
 				await startWorkspaceIfStoppedOrFailed(
 					this.workspaceClient,
-					globalConfigDir,
+					this.cliAuth,
 					this.binaryPath,
 					workspace,
 					this.terminal.writeEmitter,

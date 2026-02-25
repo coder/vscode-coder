@@ -12,6 +12,7 @@ import type { User } from "coder/site/src/api/typesGenerated";
 import type { IncomingMessage } from "node:http";
 
 import type { CoderApi } from "@/api/coderApi";
+import type { KeyringStore } from "@/keyringStore";
 import type { Logger } from "@/logging/logger";
 
 /**
@@ -373,6 +374,14 @@ export class InMemorySecretStorage implements vscode.SecretStorage {
 		const event: vscode.SecretStorageChangeEvent = { key };
 		this.listeners.forEach((listener) => listener(event));
 	}
+}
+
+export function createMockKeyringStore(): KeyringStore {
+	return {
+		setToken: vi.fn(),
+		getToken: vi.fn().mockReturnValue(undefined),
+		deleteToken: vi.fn(),
+	} as unknown as KeyringStore;
 }
 
 export function createMockLogger(): Logger {

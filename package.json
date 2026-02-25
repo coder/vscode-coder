@@ -32,7 +32,7 @@
 		"test:integration": "tsc -p test --outDir out --noCheck && node esbuild.mjs && vscode-test",
 		"test:webview": "vitest --project webview",
 		"typecheck": "concurrently -g \"tsc --noEmit\" \"tsc --noEmit -p test\"",
-		"vscode:prepublish": "pnpm build:production",
+		"vscode:prepublish": "pnpm build:production && node scripts/vendor-keyring.mjs",
 		"watch": "concurrently -n extension,webviews \"pnpm watch:extension\" \"pnpm watch:webviews\"",
 		"watch:extension": "node esbuild.mjs --watch",
 		"watch:webviews": "pnpm -r --filter \"./packages/*\" --parallel dev"
@@ -163,6 +163,11 @@
 					"items": {
 						"type": "string"
 					}
+				},
+				"coder.useKeyring": {
+					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of plaintext files. Requires CLI >= 2.29.0. Has no effect on Linux.",
+					"type": "boolean",
+					"default": true
 				},
 				"coder.httpClientLogLevel": {
 					"markdownDescription": "Controls the verbosity of HTTP client logging. This affects what details are logged for each HTTP request and response.",
@@ -471,6 +476,7 @@
 		"word-wrap": "1.2.5"
 	},
 	"dependencies": {
+		"@napi-rs/keyring": "^1.2.0",
 		"@peculiar/x509": "^1.14.3",
 		"@repo/shared": "workspace:*",
 		"axios": "1.13.5",
