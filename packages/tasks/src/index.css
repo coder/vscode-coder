@@ -205,7 +205,8 @@ vscode-collapsible::part(body) {
 }
 
 .task-title,
-.task-subtitle {
+.task-subtitle,
+.task-detail-title {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -230,7 +231,8 @@ vscode-collapsible::part(body) {
 	opacity: 0.7;
 }
 
-.task-item-spinner {
+.task-item-spinner,
+.action-menu-spinner {
 	width: 1em;
 	height: 1em;
 }
@@ -251,6 +253,8 @@ vscode-collapsible::part(body) {
 	border-radius: 50%;
 	flex-shrink: 0;
 	background: var(--status-color);
+	box-shadow: 0 0 0 0.2em
+		color-mix(in srgb, var(--status-color) 25%, transparent);
 }
 
 .status-dot.active {
@@ -413,8 +417,6 @@ vscode-icon.disabled {
 }
 
 .action-menu-spinner {
-	width: 1em;
-	height: 1em;
 	margin-inline-end: 4px;
 }
 
@@ -438,19 +440,11 @@ vscode-icon.disabled {
 		var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border));
 }
 
-.task-detail-header .status-dot {
-	width: 0.7em;
-	height: 0.7em;
-}
-
 .task-detail-title {
 	flex: 1;
 	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 	font-weight: 500;
-	font-size: 1.05em;
+	margin-inline-start: 0.25em;
 }
 
 .error-banner {
@@ -514,14 +508,17 @@ vscode-icon.disabled {
 	word-break: break-word;
 }
 
+.log-entry-input,
+.log-entry-output {
+	padding-inline-start: 6px;
+}
+
 .log-entry-input {
 	border-inline-start: 2px solid var(--vscode-textLink-foreground);
-	padding-inline-start: 6px;
 }
 
 .log-entry-output {
 	border-inline-start: 2px solid var(--vscode-descriptionForeground);
-	padding-inline-start: 6px;
 }
 
 .log-entry-role {

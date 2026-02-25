@@ -107,8 +107,8 @@ export class TasksPanelProvider
 		getTaskDetails: (p) => this.handleGetTaskDetails(p.taskId),
 		createTask: (p) => this.handleCreateTask(p),
 		deleteTask: (p) => this.handleDeleteTask(p.taskId, p.taskName),
-		pauseTask: (p) => this.handlePauseTask(p.taskId, p.taskName),
-		resumeTask: (p) => this.handleResumeTask(p.taskId, p.taskName),
+		pauseTask: (p) => this.handlePauseTask(p.taskId),
+		resumeTask: (p) => this.handleResumeTask(p.taskId),
 		downloadLogs: (p) => this.handleDownloadLogs(p.taskId),
 		sendTaskMessage: (p) => this.handleSendMessage(p.taskId, p.message),
 	});
@@ -285,10 +285,7 @@ export class TasksPanelProvider
 		);
 	}
 
-	private async handlePauseTask(
-		taskId: string,
-		taskName: string,
-	): Promise<void> {
+	private async handlePauseTask(taskId: string): Promise<void> {
 		const task = await this.client.getTask("me", taskId);
 		if (!task.workspace_id) {
 			throw new Error("Task has no workspace");
@@ -297,13 +294,9 @@ export class TasksPanelProvider
 		await this.client.stopWorkspace(task.workspace_id);
 
 		await this.refreshAndNotifyTask(taskId);
-		vscode.window.showInformationMessage(`Task "${taskName}" paused`);
 	}
 
-	private async handleResumeTask(
-		taskId: string,
-		taskName: string,
-	): Promise<void> {
+	private async handleResumeTask(taskId: string): Promise<void> {
 		const task = await this.client.getTask("me", taskId);
 		if (!task.workspace_id) {
 			throw new Error("Task has no workspace");
@@ -315,7 +308,6 @@ export class TasksPanelProvider
 		);
 
 		await this.refreshAndNotifyTask(taskId);
-		vscode.window.showInformationMessage(`Task "${taskName}" resumed`);
 	}
 
 	private async handleSendMessage(
@@ -343,9 +335,6 @@ export class TasksPanelProvider
 		}
 
 		await this.refreshAndNotifyTask(taskId);
-		vscode.window.showInformationMessage(
-			`Message sent to "${getTaskLabel(task)}"`,
-		);
 	}
 
 	private async handleViewInCoder(taskId: string): Promise<void> {
@@ -490,7 +479,9 @@ export class TasksPanelProvider
 		}
 
 		try {
-			const templates = await this.client.getTemplates({});
+			const templates = await this.client.getTemplates({
+				q: "has-ai-task:true",
+			});
 
 			return await Promise.all(
 				templates.map(async (template: Template): Promise<TaskTemplate> => {
@@ -506,13 +497,13 @@ export class TasksPanelProvider
 
 					return {
 						id: template.id,
-						name: template.name,
-						displayName: template.display_name || template.name,
-						icon: template.icon,
+						name: template.display_name || template.name,
+						description: template.description,
 						activeVersionId: template.active_version_id,
 						presets: presets.map((p) => ({
 							id: p.ID,
 							name: p.Name,
+							description: p.Description,
 							isDefault: p.Default,
 						})),
 					};

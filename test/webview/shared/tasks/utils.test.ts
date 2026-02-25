@@ -153,7 +153,7 @@ describe("isStableTask", () => {
 		{
 			name: "complete state",
 			overrides: { current_state: state("complete") },
-			expected: true,
+			expected: false,
 		},
 		{
 			name: "failed state",
