@@ -15,6 +15,7 @@ import type { User } from "coder/site/src/api/typesGenerated";
 import type { MementoManager } from "../core/mementoManager";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
+import type { KeyringStore } from "../keyringStore";
 import type { Logger } from "../logging/logger";
 
 type LoginResult =
@@ -39,6 +40,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		private readonly secretsManager: SecretsManager,
 		private readonly mementoManager: MementoManager,
 		private readonly logger: Logger,
+		private readonly keyringStore: KeyringStore,
 		extensionId: string,
 	) {
 		this.oauthAuthorizer = new OAuthAuthorizer(
@@ -235,6 +237,27 @@ export class LoginCoordinator implements vscode.Disposable {
 			if (result !== "unauthorized") {
 				return result;
 			}
+		}
+
+		// Try keyring token (picks up tokens written by `coder login` in the terminal)
+		try {
+			const keyringToken = this.keyringStore.getToken(deployment.safeHostname);
+			if (
+				keyringToken &&
+				keyringToken !== providedToken &&
+				keyringToken !== auth?.token
+			) {
+				const result = await this.tryTokenAuth(
+					client,
+					keyringToken,
+					isAutoLogin,
+				);
+				if (result !== "unauthorized") {
+					return result;
+				}
+			}
+		} catch (error) {
+			this.logger.warn("Failed to read token from keyring", error);
 		}
 
 		// Prompt user for token

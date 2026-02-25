@@ -12,6 +12,9 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
+import { shouldUseKeyring } from "../cliConfig";
+import { type FeatureSet } from "../featureSet";
+import { type KeyringStore } from "../keyringStore";
 import { type Logger } from "../logging/logger";
 import * as pgp from "../pgp";
 import { vscodeProposed } from "../vscodeProposed";
@@ -27,6 +30,7 @@ export class CliManager {
 	constructor(
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
+		private readonly keyringStore: KeyringStore,
 	) {
 		this.binaryLock = new BinaryLock(output);
 	}
@@ -708,10 +712,46 @@ export class CliManager {
 		safeHostname: string,
 		url: string | undefined,
 		token: string | null,
+		featureSet?: FeatureSet,
 	) {
+		if (featureSet && shouldUseKeyring(featureSet) && url && token !== null) {
+			try {
+				this.keyringStore.setToken(url, token);
+				this.output.info("Stored token in OS keyring for", url);
+				return;
+			} catch (error) {
+				this.output.warn(
+					"Keyring write failed, falling back to file storage",
+					error,
+				);
+			}
+		}
 		await Promise.all([
 			this.updateUrlForCli(safeHostname, url),
 			this.updateTokenForCli(safeHostname, token),
+		]);
+	}
+
+	/**
+	 * Remove credentials for a deployment from both keyring and file storage.
+	 */
+	public async clearCredentials(safeHostname: string): Promise<void> {
+		try {
+			this.keyringStore.deleteToken(safeHostname);
+			this.output.info("Removed keyring token for", safeHostname);
+		} catch (error) {
+			this.output.warn("Failed to remove keyring token", error);
+		}
+
+		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
+		const urlPath = this.pathResolver.getUrlPath(safeHostname);
+		await Promise.all([
+			fs.rm(tokenPath, { force: true }).catch((error) => {
+				this.output.warn("Failed to remove token file", tokenPath, error);
+			}),
+			fs.rm(urlPath, { force: true }).catch((error) => {
+				this.output.warn("Failed to remove URL file", urlPath, error);
+			}),
 		]);
 	}
 
@@ -757,7 +797,7 @@ export class CliManager {
 		const tempPath =
 			filePath + ".temp-" + Math.random().toString(36).substring(8);
 		try {
-			await fs.writeFile(tempPath, content);
+			await fs.writeFile(tempPath, content, { mode: 0o600 });
 			await fs.rename(tempPath, filePath);
 		} catch (err) {
 			await fs.rm(tempPath, { force: true }).catch((rmErr) => {

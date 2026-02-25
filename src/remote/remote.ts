@@ -21,7 +21,13 @@ import { extractAgents } from "../api/api-helper";
 import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { getGlobalFlags, getGlobalFlagsRaw, getSshFlags } from "../cliConfig";
+import {
+	type CliAuth,
+	getGlobalFlags,
+	getGlobalFlagsRaw,
+	getSshFlags,
+	resolveCliAuth,
+} from "../cliConfig";
 import { type Commands } from "../commands";
 import { watchConfigurationChanges } from "../configWatcher";
 import { type CliManager } from "../core/cliManager";
@@ -119,11 +125,6 @@ export class Remote {
 			hasUrl: Boolean(baseUrlRaw),
 			hasToken: token !== undefined,
 		});
-		// Empty token is valid for mTLS
-		if (baseUrlRaw && token !== undefined) {
-			await this.cliManager.configure(parts.safeHostname, baseUrlRaw, token);
-		}
-
 		const disposables: vscode.Disposable[] = [];
 
 		try {
@@ -210,26 +211,6 @@ export class Remote {
 			// Store for use in commands.
 			this.commands.remoteWorkspaceClient = workspaceClient;
 
-			// Listen for token changes for this deployment
-			disposables.push(
-				this.secretsManager.onDidChangeSessionAuth(
-					parts.safeHostname,
-					async (auth) => {
-						workspaceClient.setCredentials(auth?.url, auth?.token);
-						if (auth?.url) {
-							await this.cliManager.configure(
-								parts.safeHostname,
-								auth.url,
-								auth.token,
-							);
-							this.logger.info(
-								"Updated CLI config with new token for remote deployment",
-							);
-						}
-					},
-				),
-			);
-
 			let binaryPath: string | undefined;
 			if (
 				this.extensionContext.extensionMode === vscode.ExtensionMode.Production
@@ -263,6 +244,42 @@ export class Remote {
 			}
 
 			const featureSet = featureSetForVersion(version);
+
+			// Write token to keyring or file (after CLI version is known)
+			if (baseUrlRaw && token !== undefined) {
+				await this.cliManager.configure(
+					parts.safeHostname,
+					baseUrlRaw,
+					token,
+					featureSet,
+				);
+			}
+
+			// Listen for token changes for this deployment
+			disposables.push(
+				this.secretsManager.onDidChangeSessionAuth(
+					parts.safeHostname,
+					async (auth) => {
+						workspaceClient.setCredentials(auth?.url, auth?.token);
+						if (auth?.url) {
+							await this.cliManager.configure(
+								parts.safeHostname,
+								auth.url,
+								auth.token,
+								featureSet,
+							);
+							this.logger.info(
+								"Updated CLI config with new token for remote deployment",
+							);
+						}
+					},
+				),
+			);
+
+			const configDir = this.pathResolver.getGlobalConfigDir(
+				parts.safeHostname,
+			);
+			const cliAuth = resolveCliAuth(featureSet, baseUrlRaw, configDir);
 
 			// Server versions before v0.14.1 don't support the vscodessh command!
 			if (!featureSet.vscodessh) {
@@ -361,7 +378,7 @@ export class Remote {
 				binaryPath,
 				featureSet,
 				this.logger,
-				this.pathResolver,
+				cliAuth,
 			);
 			disposables.push(stateMachine);
 
@@ -541,6 +558,7 @@ export class Remote {
 					binaryPath,
 					logDir,
 					featureSet,
+					cliAuth,
 				);
 			} catch (error) {
 				this.logger.warn("Failed to configure SSH", error);
@@ -715,14 +733,12 @@ export class Remote {
 		hostPrefix: string,
 		logDir: string,
 		useWildcardSSH: boolean,
+		cliAuth: CliAuth,
 	): Promise<string> {
 		const vscodeConfig = vscode.workspace.getConfiguration();
 
 		const escapedBinaryPath = escapeCommandArg(binaryPath);
-		const globalConfig = getGlobalFlags(
-			vscodeConfig,
-			this.pathResolver.getGlobalConfigDir(label),
-		);
+		const globalConfig = getGlobalFlags(vscodeConfig, cliAuth);
 		const logArgs = await this.getLogArgs(logDir);
 
 		if (useWildcardSSH) {
@@ -789,6 +805,7 @@ export class Remote {
 		binaryPath: string,
 		logDir: string,
 		featureSet: FeatureSet,
+		cliAuth: CliAuth,
 	) {
 		let deploymentSSHConfig = {};
 		try {
@@ -845,6 +862,7 @@ export class Remote {
 			hostPrefix,
 			logDir,
 			featureSet.wildcardSSH,
+			cliAuth,
 		);
 
 		const sshValues: SSHValues = {

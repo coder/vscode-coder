@@ -32,7 +32,7 @@ const buildOptions = {
 		// undefined when bundled to CJS, causing runtime errors.
 		openpgp: "./node_modules/openpgp/dist/node/openpgp.min.cjs",
 	},
-	external: ["vscode"],
+	external: ["vscode", "@napi-rs/keyring"],
 	sourcemap: production ? "external" : true,
 	minify: production,
 	plugins: watch ? [logRebuildPlugin] : [],
