@@ -29,6 +29,7 @@ import { workspace } from "../../../mocks/workspace";
 import type {
 	ProvisionerJobLog,
 	Task,
+	TaskState,
 	WorkspaceAgentLog,
 } from "coder/site/src/api/typesGenerated";
 
@@ -307,11 +308,6 @@ describe("TasksPanelProvider", () => {
 			});
 		});
 
-		interface LogCachingTestCase {
-			name: string;
-			state: "complete" | "working";
-			expectedCalls: number;
-		}
 		it("returns logsStatus not_available on 409", async () => {
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task());
@@ -327,15 +323,25 @@ describe("TasksPanelProvider", () => {
 			});
 		});
 
+		interface LogCachingTestCase {
+			name: string;
+			state: TaskState;
+			expectedCalls: number;
+		}
 		it.each<LogCachingTestCase>([
 			{
-				name: "caches logs for completed tasks",
-				state: "complete",
+				name: "caches logs for idle tasks",
+				state: "idle",
 				expectedCalls: 1,
 			},
 			{
 				name: "refetches logs for active tasks",
 				state: "working",
+				expectedCalls: 2,
+			},
+			{
+				name: "refetches logs for completed tasks",
+				state: "complete",
 				expectedCalls: 2,
 			},
 		])("$name", async ({ state, expectedCalls }) => {
