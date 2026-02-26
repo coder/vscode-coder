@@ -43,18 +43,6 @@ function stubPlatform(platform: string) {
 	vi.stubGlobal("process", { ...process, platform });
 }
 
-function decodeBase64Json(raw: string): unknown {
-	return JSON.parse(Buffer.from(raw, "base64").toString("utf-8"));
-}
-
-function decodeSecretJson(raw: Uint8Array): unknown {
-	return JSON.parse(Buffer.from(raw).toString("utf-8"));
-}
-
-function expectedEntry(host: string, token: string) {
-	return { coder_url: host, api_token: token };
-}
-
 describe("isKeyringSupported", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
@@ -142,13 +130,11 @@ describe("KeyringStore", () => {
 			expect(store.getToken("dev.coder.com")).toBe("my-token");
 		});
 
-		it("finds token by safeHostname when map key has port", () => {
+		it("matches safeHostname to map key with port", () => {
 			store.setToken("https://dev.coder.com:3000", "my-token");
+			// safeHostname (port stripped) finds the entry stored with port
 			expect(store.getToken("dev.coder.com")).toBe("my-token");
-		});
 
-		it("deletes token by safeHostname when map key has port", () => {
-			store.setToken("https://dev.coder.com:3000", "my-token");
 			store.deleteToken("dev.coder.com");
 			expect(store.getToken("dev.coder.com")).toBeUndefined();
 			expect(mockEntry.hasCredential()).toBe(false);
@@ -159,8 +145,11 @@ describe("KeyringStore", () => {
 		it("macOS: base64-encoded JSON via password", () => {
 			stubPlatform("darwin");
 			store.setToken("https://dev.coder.com", "token");
-			expect(decodeBase64Json(mockEntry.getRawPassword()!)).toEqual({
-				"dev.coder.com": expectedEntry("dev.coder.com", "token"),
+			const decoded = JSON.parse(
+				Buffer.from(mockEntry.getRawPassword()!, "base64").toString("utf-8"),
+			);
+			expect(decoded).toEqual({
+				"dev.coder.com": { coder_url: "dev.coder.com", api_token: "token" },
 			});
 		});
 
@@ -176,10 +165,13 @@ describe("KeyringStore", () => {
 		it("Windows: raw UTF-8 JSON via secret", () => {
 			stubPlatform("win32");
 			store.setToken("https://dev.coder.com", "token");
-			expect(decodeSecretJson(mockEntry.getRawSecret()!)).toEqual({
-				"dev.coder.com": expectedEntry("dev.coder.com", "token"),
+			const decoded = JSON.parse(
+				Buffer.from(mockEntry.getRawSecret()!).toString("utf-8"),
+			);
+			expect(decoded).toEqual({
+				"dev.coder.com": { coder_url: "dev.coder.com", api_token: "token" },
 			});
-			// Verify the win32 read path also works
+			// Also verify the win32 read path round-trips
 			expect(store.getToken("dev.coder.com")).toBe("token");
 		});
 
@@ -193,8 +185,14 @@ describe("KeyringStore", () => {
 		it("preserves port in map key for CLI compatibility", () => {
 			stubPlatform("darwin");
 			store.setToken("https://dev.coder.com:8080", "my-token");
-			expect(decodeBase64Json(mockEntry.getRawPassword()!)).toEqual({
-				"dev.coder.com:8080": expectedEntry("dev.coder.com:8080", "my-token"),
+			const decoded = JSON.parse(
+				Buffer.from(mockEntry.getRawPassword()!, "base64").toString("utf-8"),
+			);
+			expect(decoded).toEqual({
+				"dev.coder.com:8080": {
+					coder_url: "dev.coder.com:8080",
+					api_token: "my-token",
+				},
 			});
 		});
 

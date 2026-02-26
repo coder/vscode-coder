@@ -2,10 +2,8 @@ import globalAxios, {
 	type AxiosInstance,
 	type AxiosRequestConfig,
 } from "axios";
-import { type Api } from "coder/site/src/api/api";
 import { createWriteStream, type WriteStream } from "node:fs";
 import fs from "node:fs/promises";
-import { type IncomingMessage } from "node:http";
 import path from "node:path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
@@ -13,16 +11,21 @@ import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
 import { shouldUseKeyring } from "../cliConfig";
-import { type FeatureSet } from "../featureSet";
-import { type KeyringStore } from "../keyringStore";
-import { type Logger } from "../logging/logger";
+import { isKeyringSupported, type KeyringStore } from "../keyringStore";
 import * as pgp from "../pgp";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";
 import * as cliUtils from "./cliUtils";
 import * as downloadProgress from "./downloadProgress";
-import { type PathResolver } from "./pathResolver";
+
+import type { Api } from "coder/site/src/api/api";
+import type { IncomingMessage } from "node:http";
+
+import type { FeatureSet } from "../featureSet";
+import type { Logger } from "../logging/logger";
+
+import type { PathResolver } from "./pathResolver";
 
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
@@ -712,9 +715,9 @@ export class CliManager {
 		safeHostname: string,
 		url: string | undefined,
 		token: string | null,
-		featureSet?: FeatureSet,
+		featureSet: FeatureSet,
 	) {
-		if (featureSet && shouldUseKeyring(featureSet) && url && token !== null) {
+		if (shouldUseKeyring(featureSet) && url && token !== null) {
 			try {
 				this.keyringStore.setToken(url, token);
 				this.output.info("Stored token in OS keyring for", url);
@@ -736,11 +739,13 @@ export class CliManager {
 	 * Remove credentials for a deployment from both keyring and file storage.
 	 */
 	public async clearCredentials(safeHostname: string): Promise<void> {
-		try {
-			this.keyringStore.deleteToken(safeHostname);
-			this.output.info("Removed keyring token for", safeHostname);
-		} catch (error) {
-			this.output.warn("Failed to remove keyring token", error);
+		if (isKeyringSupported()) {
+			try {
+				this.keyringStore.deleteToken(safeHostname);
+				this.output.info("Removed keyring token for", safeHostname);
+			} catch (error) {
+				this.output.warn("Failed to remove keyring token", error);
+			}
 		}
 
 		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);

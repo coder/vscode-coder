@@ -176,7 +176,7 @@ export class Remote {
 				}
 			};
 
-			// It could be that the cli config was deleted.  If so, ask for the url.
+			// It could be that the cli config was deleted. If so, ask for the url.
 			if (
 				!baseUrlRaw ||
 				(!token && needToken(vscode.workspace.getConfiguration()))

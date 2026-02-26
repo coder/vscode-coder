@@ -55,8 +55,10 @@ function toHost(deploymentUrl: string): string {
 }
 
 /**
- * Finds the map key matching a safeHostname (ports stripped). Map keys use
- * `new URL().host` which preserves ports, so the fallback strips ports to match.
+ * Finds the map key matching a safeHostname. VS Code identifies deployments by
+ * safeHostname (port stripped), while the CLI stores map keys via `toHost`
+ * which preserves ports. The fallback strips ports from map keys so VS Code's
+ * port-less hostname still matches a CLI-written entry with a port.
  */
 function findMapKey(
 	map: CredentialMap,
@@ -90,12 +92,12 @@ export function isKeyringSupported(): boolean {
  *   Windows: raw UTF-8 JSON bytes via setSecret/getSecret
  */
 export class KeyringStore {
-	constructor(
+	public constructor(
 		private readonly logger: Logger,
 		private readonly entryFactory: () => KeyringEntry = createDefaultEntry,
 	) {}
 
-	setToken(deploymentUrl: string, token: string): void {
+	public setToken(deploymentUrl: string, token: string): void {
 		this.assertSupported();
 		const entry = this.entryFactory();
 		const map = this.readMap(entry);
@@ -104,7 +106,7 @@ export class KeyringStore {
 		this.writeMap(entry, map);
 	}
 
-	getToken(safeHostname: string): string | undefined {
+	public getToken(safeHostname: string): string | undefined {
 		this.assertSupported();
 		const entry = this.entryFactory();
 		const map = this.readMap(entry);
@@ -112,7 +114,7 @@ export class KeyringStore {
 		return key !== undefined ? map[key].api_token : undefined;
 	}
 
-	deleteToken(safeHostname: string): void {
+	public deleteToken(safeHostname: string): void {
 		this.assertSupported();
 		const entry = this.entryFactory();
 		const map = this.readMap(entry);

@@ -175,48 +175,48 @@ describe("cliConfig", () => {
 
 		it("returns true when all conditions are met (macOS, keyringAuth, setting enabled)", () => {
 			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const _config = new MockConfigurationProvider();
-			_config.set("coder.useKeyring", true);
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			expect(shouldUseKeyring(featureSet)).toBe(true);
 		});
 
 		it("returns true when all conditions are met (Windows)", () => {
 			vi.stubGlobal("process", { ...process, platform: "win32" });
-			const _config = new MockConfigurationProvider();
-			_config.set("coder.useKeyring", true);
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			expect(shouldUseKeyring(featureSet)).toBe(true);
 		});
 
 		it("returns false on Linux", () => {
 			vi.stubGlobal("process", { ...process, platform: "linux" });
-			const _config = new MockConfigurationProvider();
-			_config.set("coder.useKeyring", true);
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			expect(shouldUseKeyring(featureSet)).toBe(false);
 		});
 
 		it("returns false when CLI version is too old", () => {
 			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const _config = new MockConfigurationProvider();
-			_config.set("coder.useKeyring", true);
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.28.0"));
 			expect(shouldUseKeyring(featureSet)).toBe(false);
 		});
 
 		it("returns false when setting is disabled", () => {
 			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const _config = new MockConfigurationProvider();
-			_config.set("coder.useKeyring", false);
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", false);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			expect(shouldUseKeyring(featureSet)).toBe(false);
 		});
 
 		it("returns true for devel prerelease on macOS", () => {
 			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const _config = new MockConfigurationProvider();
-			_config.set("coder.useKeyring", true);
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(
 				semver.parse("0.0.0-devel+abc123"),
 			);
@@ -238,8 +238,8 @@ describe("cliConfig", () => {
 
 		it("returns url mode when keyring should be used", () => {
 			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const _config = new MockConfigurationProvider();
-			_config.set("coder.useKeyring", true);
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			const auth = resolveCliAuth(
 				featureSet,
@@ -254,7 +254,7 @@ describe("cliConfig", () => {
 
 		it("returns global-config mode when keyring should not be used", () => {
 			vi.stubGlobal("process", { ...process, platform: "linux" });
-			const _config = new MockConfigurationProvider();
+			new MockConfigurationProvider();
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			const auth = resolveCliAuth(
 				featureSet,
@@ -269,8 +269,8 @@ describe("cliConfig", () => {
 
 		it("returns global-config mode when url is undefined", () => {
 			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const _config = new MockConfigurationProvider();
-			_config.set("coder.useKeyring", true);
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			const auth = resolveCliAuth(featureSet, undefined, "/config/dir");
 			expect(auth).toEqual({

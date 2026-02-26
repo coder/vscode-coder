@@ -1,52 +1,61 @@
 /**
  * Vendor @napi-rs/keyring into dist/node_modules/ for VSIX packaging.
  *
- * pnpm uses symlinks that vsce can't follow.  This script resolves them and
+ * pnpm uses symlinks that vsce can't follow. This script resolves them and
  * copies the JS wrapper plus macOS/Windows .node binaries into dist/, where
  * Node's require() resolution finds them from dist/extension.js.
  */
-import { cpSync, existsSync, mkdirSync, realpathSync, rmSync } from "node:fs";
-import { join, resolve, basename } from "node:path";
+import {
+	cpSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	realpathSync,
+	rmSync,
+} from "node:fs";
+import { join, resolve } from "node:path";
 
-const outputDir = resolve("dist/node_modules/@napi-rs/keyring");
 const keyringPkg = resolve("node_modules/@napi-rs/keyring");
+const outputDir = resolve("dist/node_modules/@napi-rs/keyring");
 
 if (!existsSync(keyringPkg)) {
-	console.log("@napi-rs/keyring not found, skipping");
-	process.exit(0);
+	console.error("@napi-rs/keyring not found — run pnpm install first");
+	process.exit(1);
 }
 
+// Copy the JS wrapper package (resolving pnpm symlinks)
 const resolvedPkg = realpathSync(keyringPkg);
-
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
 cpSync(resolvedPkg, outputDir, { recursive: true });
 
-// Platform packages are siblings of the resolved keyring package in pnpm's layout.
-// Exact file names so the build fails loudly if the native module renames anything.
+// Native binary packages live as siblings of the resolved keyring package in
+// pnpm's content-addressable store (they aren't hoisted to node_modules).
 const siblingsDir = resolve(resolvedPkg, "..");
-const binaries = [
-	"keyring-darwin-arm64/keyring.darwin-arm64.node",
-	"keyring-darwin-x64/keyring.darwin-x64.node",
-	"keyring-win32-arm64-msvc/keyring.win32-arm64-msvc.node",
-	"keyring-win32-x64-msvc/keyring.win32-x64-msvc.node",
+const nativePackages = [
+	"keyring-darwin-arm64",
+	"keyring-darwin-x64",
+	"keyring-win32-arm64-msvc",
+	"keyring-win32-x64-msvc",
 ];
 
-for (const binary of binaries) {
-	const symlink = join(siblingsDir, binary);
-	if (!existsSync(symlink)) {
+for (const pkg of nativePackages) {
+	const pkgDir = join(siblingsDir, pkg);
+	if (!existsSync(pkgDir)) {
 		console.error(
-			`Missing native binary: ${binary}\n` +
-				"Ensure .npmrc includes supportedArchitectures for all target OS/CPU combinations.",
+			`Missing native package: ${pkg}\n` +
+				"Ensure supportedArchitectures in pnpm-workspace.yaml includes all target platforms.",
 		);
 		process.exit(1);
 	}
-	const src = realpathSync(symlink);
-	const filename = basename(binary);
-	const dest = join(outputDir, filename);
-	cpSync(src, dest);
+	const nodeFile = readdirSync(pkgDir).find((f) => f.endsWith(".node"));
+	if (!nodeFile) {
+		console.error(`No .node binary found in ${pkg}`);
+		process.exit(1);
+	}
+	cpSync(join(pkgDir, nodeFile), join(outputDir, nodeFile));
 }
 
 console.log(
-	`Vendored @napi-rs/keyring with ${binaries.length} platform binaries into dist/`,
+	`Vendored @napi-rs/keyring with ${nativePackages.length} platform binaries into dist/`,
 );
