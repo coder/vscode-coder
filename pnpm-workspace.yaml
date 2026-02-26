@@ -26,3 +26,16 @@ onlyBuiltDependencies:
   - keytar
   - unrs-resolver
   - utf-8-validate
+
+# Install @napi-rs/keyring native binaries for macOS and Windows so they're
+# available when building the universal VSIX (even on Linux CI).
+# Only macOS and Windows use the keyring; Linux falls back to file storage.
+supportedArchitectures:
+  os:
+    - current
+    - darwin
+    - win32
+  cpu:
+    - current
+    - x64
+    - arm64

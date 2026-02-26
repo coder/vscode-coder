@@ -28,4 +28,16 @@ describe("check version support", () => {
 			},
 		);
 	});
+	it("keyring auth", () => {
+		["v2.28.0", "v2.28.9", "v1.0.0", "v2.3.3+e491217"].forEach((v: string) => {
+			expect(featureSetForVersion(semver.parse(v)).keyringAuth).toBeFalsy();
+		});
+		["v2.29.0", "v2.29.1", "v2.30.0", "v3.0.0"].forEach((v: string) => {
+			expect(featureSetForVersion(semver.parse(v)).keyringAuth).toBeTruthy();
+		});
+		// devel prerelease should enable keyring
+		expect(
+			featureSetForVersion(semver.parse("0.0.0-devel+abc123")).keyringAuth,
+		).toBeTruthy();
+	});
 });
