@@ -13,6 +13,7 @@ import * as cliConfig from "@/cliConfig";
 import { CliManager } from "@/core/cliManager";
 import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
+import { isKeyringSupported } from "@/keyringStore";
 import * as pgp from "@/pgp";
 
 import {
@@ -56,6 +57,12 @@ vi.mock("@/cliConfig", async () => {
 	const actual =
 		await vi.importActual<typeof import("@/cliConfig")>("@/cliConfig");
 	return { ...actual, shouldUseKeyring: vi.fn() };
+});
+
+vi.mock("@/keyringStore", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/keyringStore")>("@/keyringStore");
+	return { ...actual, isKeyringSupported: vi.fn().mockReturnValue(true) };
 });
 
 vi.mock("@/pgp");
@@ -121,6 +128,7 @@ describe("CliManager", () => {
 		vi.mocked(os.platform).mockReturnValue(PLATFORM);
 		vi.mocked(os.arch).mockReturnValue(ARCH);
 		vi.mocked(pgp.readPublicKeys).mockResolvedValue([]);
+		vi.mocked(isKeyringSupported).mockReturnValue(true);
 	});
 
 	afterEach(async () => {
@@ -137,6 +145,7 @@ describe("CliManager", () => {
 				"deployment",
 				"https://coder.example.com",
 				"test-token",
+				MOCK_FEATURE_SET,
 			);
 
 			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
@@ -148,7 +157,12 @@ describe("CliManager", () => {
 		});
 
 		it("should skip URL when undefined but write token", async () => {
-			await manager.configure("deployment", undefined, "test-token");
+			await manager.configure(
+				"deployment",
+				undefined,
+				"test-token",
+				MOCK_FEATURE_SET,
+			);
 
 			// No entry for the url
 			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
@@ -158,7 +172,12 @@ describe("CliManager", () => {
 		});
 
 		it("should skip token when null but write URL", async () => {
-			await manager.configure("deployment", "https://coder.example.com", null);
+			await manager.configure(
+				"deployment",
+				"https://coder.example.com",
+				null,
+				MOCK_FEATURE_SET,
+			);
 
 			// No entry for the session
 			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
@@ -168,7 +187,12 @@ describe("CliManager", () => {
 		});
 
 		it("should write empty string for token when provided", async () => {
-			await manager.configure("deployment", "https://coder.example.com", "");
+			await manager.configure(
+				"deployment",
+				"https://coder.example.com",
+				"",
+				MOCK_FEATURE_SET,
+			);
 
 			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
 				"https://coder.example.com",
@@ -179,7 +203,12 @@ describe("CliManager", () => {
 		});
 
 		it("should use base path directly when label is empty", async () => {
-			await manager.configure("", "https://coder.example.com", "token");
+			await manager.configure(
+				"",
+				"https://coder.example.com",
+				"token",
+				MOCK_FEATURE_SET,
+			);
 
 			expect(memfs.readFileSync("/path/base/url", "utf8")).toBe(
 				"https://coder.example.com",
@@ -295,6 +324,19 @@ describe("CliManager", () => {
 			).resolves.not.toThrow();
 
 			expect(mockKeyring.deleteToken).toHaveBeenCalledWith("deployment");
+		});
+
+		it("should skip keyring delete on unsupported platforms", async () => {
+			vi.mocked(isKeyringSupported).mockReturnValue(false);
+			memfs.mkdirSync("/path/base/deployment", { recursive: true });
+			memfs.writeFileSync("/path/base/deployment/session", "old-token");
+			memfs.writeFileSync("/path/base/deployment/url", "https://example.com");
+
+			await manager.clearCredentials("deployment");
+
+			expect(mockKeyring.deleteToken).not.toHaveBeenCalled();
+			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
+			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
 		});
 	});
 
