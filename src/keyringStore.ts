@@ -1,4 +1,4 @@
-import { type Logger } from "./logging/logger";
+import type { Logger } from "./logging/logger";
 
 /** A single entry in the CLI's keyring credential map. */
 interface CredentialEntry {
@@ -90,6 +90,9 @@ export function isKeyringSupported(): boolean {
  * Encoding (must match CLI):
  *   macOS: base64-encoded JSON via setPassword/getPassword
  *   Windows: raw UTF-8 JSON bytes via setSecret/getSecret
+ *
+ * Concurrency: setToken does read-modify-write on a shared entry, so concurrent
+ * writes can clobber each other. Callers recover by re-writing on reconnection.
  */
 export class KeyringStore {
 	public constructor(
@@ -97,6 +100,10 @@ export class KeyringStore {
 		private readonly entryFactory: () => KeyringEntry = createDefaultEntry,
 	) {}
 
+	/**
+	 * Store a token under the host extracted from deploymentUrl (includes port).
+	 * The CLI stores map keys as host+port, so we must write in the same format.
+	 */
 	public setToken(deploymentUrl: string, token: string): void {
 		this.assertSupported();
 		const entry = this.entryFactory();
@@ -106,6 +113,10 @@ export class KeyringStore {
 		this.writeMap(entry, map);
 	}
 
+	/**
+	 * Look up a token by safeHostname (hostname without port). VS Code identifies
+	 * deployments by safeHostname, so findMapKey bridges to the CLI's host+port keys.
+	 */
 	public getToken(safeHostname: string): string | undefined {
 		this.assertSupported();
 		const entry = this.entryFactory();
@@ -114,6 +125,7 @@ export class KeyringStore {
 		return key !== undefined ? map[key].api_token : undefined;
 	}
 
+	/** Remove a token by safeHostname, matching the same way as getToken. */
 	public deleteToken(safeHostname: string): void {
 		this.assertSupported();
 		const entry = this.entryFactory();

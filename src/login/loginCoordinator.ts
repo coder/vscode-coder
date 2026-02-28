@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
+import { isKeyringEnabled } from "../cliConfig";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
@@ -243,12 +244,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		}
 
 		// Try keyring token (picks up tokens written by `coder login` in the terminal)
-		let keyringToken: string | undefined;
-		try {
-			keyringToken = this.keyringStore.getToken(deployment.safeHostname);
-		} catch (error) {
-			this.logger.warn("Failed to read token from keyring", error);
-		}
+		const keyringToken = this.getKeyringToken(deployment.safeHostname);
 		if (
 			keyringToken &&
 			keyringToken !== providedToken &&
@@ -304,6 +300,18 @@ export class LoginCoordinator implements vscode.Disposable {
 			}
 			this.showAuthError(err, isAutoLogin);
 			return { success: false };
+		}
+	}
+
+	private getKeyringToken(safeHostname: string): string | undefined {
+		if (!isKeyringEnabled(vscode.workspace.getConfiguration())) {
+			return undefined;
+		}
+		try {
+			return this.keyringStore.getToken(safeHostname);
+		} catch (error) {
+			this.logger.warn("Failed to read token from keyring", error);
+			return undefined;
 		}
 	}
 

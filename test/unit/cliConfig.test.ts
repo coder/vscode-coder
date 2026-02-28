@@ -6,6 +6,7 @@ import {
 	getGlobalFlags,
 	getGlobalFlagsRaw,
 	getSshFlags,
+	isKeyringEnabled,
 	resolveCliAuth,
 	shouldUseKeyring,
 } from "@/cliConfig";
@@ -161,6 +162,47 @@ describe("cliConfig", () => {
 		});
 	});
 
+	describe("isKeyringEnabled", () => {
+		let originalPlatform: NodeJS.Platform;
+
+		beforeEach(() => {
+			originalPlatform = process.platform;
+		});
+
+		afterEach(() => {
+			vi.stubGlobal("process", { ...process, platform: originalPlatform });
+			vi.unstubAllGlobals();
+		});
+
+		it("returns true on macOS with setting enabled", () => {
+			vi.stubGlobal("process", { ...process, platform: "darwin" });
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
+			expect(isKeyringEnabled(config)).toBe(true);
+		});
+
+		it("returns true on Windows with setting enabled", () => {
+			vi.stubGlobal("process", { ...process, platform: "win32" });
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
+			expect(isKeyringEnabled(config)).toBe(true);
+		});
+
+		it("returns false on Linux", () => {
+			vi.stubGlobal("process", { ...process, platform: "linux" });
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
+			expect(isKeyringEnabled(config)).toBe(false);
+		});
+
+		it("returns false when setting is disabled", () => {
+			vi.stubGlobal("process", { ...process, platform: "darwin" });
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", false);
+			expect(isKeyringEnabled(config)).toBe(false);
+		});
+	});
+
 	describe("shouldUseKeyring", () => {
 		let originalPlatform: NodeJS.Platform;
 
@@ -178,7 +220,7 @@ describe("cliConfig", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			expect(shouldUseKeyring(featureSet)).toBe(true);
+			expect(shouldUseKeyring(config, featureSet)).toBe(true);
 		});
 
 		it("returns true when all conditions are met (Windows)", () => {
@@ -186,7 +228,7 @@ describe("cliConfig", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			expect(shouldUseKeyring(featureSet)).toBe(true);
+			expect(shouldUseKeyring(config, featureSet)).toBe(true);
 		});
 
 		it("returns false on Linux", () => {
@@ -194,7 +236,7 @@ describe("cliConfig", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			expect(shouldUseKeyring(featureSet)).toBe(false);
+			expect(shouldUseKeyring(config, featureSet)).toBe(false);
 		});
 
 		it("returns false when CLI version is too old", () => {
@@ -202,7 +244,7 @@ describe("cliConfig", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.28.0"));
-			expect(shouldUseKeyring(featureSet)).toBe(false);
+			expect(shouldUseKeyring(config, featureSet)).toBe(false);
 		});
 
 		it("returns false when setting is disabled", () => {
@@ -210,7 +252,7 @@ describe("cliConfig", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.useKeyring", false);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			expect(shouldUseKeyring(featureSet)).toBe(false);
+			expect(shouldUseKeyring(config, featureSet)).toBe(false);
 		});
 
 		it("returns true for devel prerelease on macOS", () => {
@@ -220,7 +262,7 @@ describe("cliConfig", () => {
 			const featureSet = featureSetForVersion(
 				semver.parse("0.0.0-devel+abc123"),
 			);
-			expect(shouldUseKeyring(featureSet)).toBe(true);
+			expect(shouldUseKeyring(config, featureSet)).toBe(true);
 		});
 	});
 
@@ -242,6 +284,7 @@ describe("cliConfig", () => {
 			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			const auth = resolveCliAuth(
+				config,
 				featureSet,
 				"https://dev.coder.com",
 				"/config/dir",
@@ -254,9 +297,10 @@ describe("cliConfig", () => {
 
 		it("returns global-config mode when keyring should not be used", () => {
 			vi.stubGlobal("process", { ...process, platform: "linux" });
-			new MockConfigurationProvider();
+			const config = new MockConfigurationProvider();
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			const auth = resolveCliAuth(
+				config,
 				featureSet,
 				"https://dev.coder.com",
 				"/config/dir",
@@ -272,7 +316,7 @@ describe("cliConfig", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			const auth = resolveCliAuth(featureSet, undefined, "/config/dir");
+			const auth = resolveCliAuth(config, featureSet, undefined, "/config/dir");
 			expect(auth).toEqual({
 				mode: "global-config",
 				configDir: "/config/dir",

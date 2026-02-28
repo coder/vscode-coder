@@ -13,7 +13,6 @@ import * as cliConfig from "@/cliConfig";
 import { CliManager } from "@/core/cliManager";
 import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
-import { isKeyringSupported } from "@/keyringStore";
 import * as pgp from "@/pgp";
 
 import {
@@ -56,13 +55,11 @@ vi.mock("proper-lockfile", () => ({
 vi.mock("@/cliConfig", async () => {
 	const actual =
 		await vi.importActual<typeof import("@/cliConfig")>("@/cliConfig");
-	return { ...actual, shouldUseKeyring: vi.fn() };
-});
-
-vi.mock("@/keyringStore", async () => {
-	const actual =
-		await vi.importActual<typeof import("@/keyringStore")>("@/keyringStore");
-	return { ...actual, isKeyringSupported: vi.fn().mockReturnValue(true) };
+	return {
+		...actual,
+		shouldUseKeyring: vi.fn(),
+		isKeyringEnabled: vi.fn().mockReturnValue(true),
+	};
 });
 
 vi.mock("@/pgp");
@@ -128,7 +125,7 @@ describe("CliManager", () => {
 		vi.mocked(os.platform).mockReturnValue(PLATFORM);
 		vi.mocked(os.arch).mockReturnValue(ARCH);
 		vi.mocked(pgp.readPublicKeys).mockResolvedValue([]);
-		vi.mocked(isKeyringSupported).mockReturnValue(true);
+		vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(true);
 	});
 
 	afterEach(async () => {
@@ -234,25 +231,27 @@ describe("CliManager", () => {
 			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
 		});
 
-		it("should fall back to files when keyring write fails", async () => {
+		it("should throw and show error when keyring write fails", async () => {
 			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
 			vi.mocked(mockKeyring.setToken).mockImplementation(() => {
 				throw new Error("keyring unavailable");
 			});
 
-			await manager.configure(
-				"deployment",
-				"https://coder.example.com",
-				"test-token",
-				MOCK_FEATURE_SET,
-			);
+			await expect(
+				manager.configure(
+					"deployment",
+					"https://coder.example.com",
+					"test-token",
+					MOCK_FEATURE_SET,
+				),
+			).rejects.toThrow("keyring unavailable");
 
-			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
-				"https://coder.example.com",
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				expect.stringContaining("keyring unavailable"),
+				"Open Settings",
 			);
-			expect(memfs.readFileSync("/path/base/deployment/session", "utf8")).toBe(
-				"test-token",
-			);
+			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
+			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
 		});
 
 		it("should fall back to files when url is undefined even with featureSet", async () => {
@@ -326,8 +325,8 @@ describe("CliManager", () => {
 			expect(mockKeyring.deleteToken).toHaveBeenCalledWith("deployment");
 		});
 
-		it("should skip keyring delete on unsupported platforms", async () => {
-			vi.mocked(isKeyringSupported).mockReturnValue(false);
+		it("should skip keyring delete when keyring is disabled", async () => {
+			vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(false);
 			memfs.mkdirSync("/path/base/deployment", { recursive: true });
 			memfs.writeFileSync("/path/base/deployment/session", "old-token");
 			memfs.writeFileSync("/path/base/deployment/url", "https://example.com");

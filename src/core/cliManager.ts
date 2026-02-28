@@ -10,8 +10,7 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { shouldUseKeyring } from "../cliConfig";
-import { isKeyringSupported, type KeyringStore } from "../keyringStore";
+import { isKeyringEnabled, shouldUseKeyring } from "../cliConfig";
 import * as pgp from "../pgp";
 import { vscodeProposed } from "../vscodeProposed";
 
@@ -23,6 +22,7 @@ import type { Api } from "coder/site/src/api/api";
 import type { IncomingMessage } from "node:http";
 
 import type { FeatureSet } from "../featureSet";
+import type { KeyringStore } from "../keyringStore";
 import type { Logger } from "../logging/logger";
 
 import type { PathResolver } from "./pathResolver";
@@ -717,16 +717,29 @@ export class CliManager {
 		token: string | null,
 		featureSet: FeatureSet,
 	) {
-		if (shouldUseKeyring(featureSet) && url && token !== null) {
+		const configs = vscode.workspace.getConfiguration();
+		if (shouldUseKeyring(configs, featureSet) && url && token !== null) {
 			try {
 				this.keyringStore.setToken(url, token);
 				this.output.info("Stored token in OS keyring for", url);
 				return;
 			} catch (error) {
-				this.output.warn(
-					"Keyring write failed, falling back to file storage",
-					error,
-				);
+				this.output.error("Failed to store token in OS keyring:", error);
+				vscode.window
+					.showErrorMessage(
+						`Failed to store session token in OS keyring: ${errToStr(error)}. ` +
+							"Disable keyring storage in settings to use plaintext files instead.",
+						"Open Settings",
+					)
+					.then((action) => {
+						if (action === "Open Settings") {
+							vscode.commands.executeCommand(
+								"workbench.action.openSettings",
+								"coder.useKeyring",
+							);
+						}
+					});
+				throw error;
 			}
 		}
 		await Promise.all([
@@ -739,7 +752,7 @@ export class CliManager {
 	 * Remove credentials for a deployment from both keyring and file storage.
 	 */
 	public async clearCredentials(safeHostname: string): Promise<void> {
-		if (isKeyringSupported()) {
+		if (isKeyringEnabled(vscode.workspace.getConfiguration())) {
 			try {
 				this.keyringStore.deleteToken(safeHostname);
 				this.output.info("Removed keyring token for", safeHostname);

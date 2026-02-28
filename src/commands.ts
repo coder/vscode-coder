@@ -461,11 +461,9 @@ export class Commands {
 					const version = semver.parse(await cliUtils.version(binary));
 					const featureSet = featureSetForVersion(version);
 					const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
-					const auth = resolveCliAuth(featureSet, baseUrl, configDir);
-					const globalFlags = getGlobalFlags(
-						vscode.workspace.getConfiguration(),
-						auth,
-					);
+					const configs = vscode.workspace.getConfiguration();
+					const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
+					const globalFlags = getGlobalFlags(configs, auth);
 					terminal.sendText(
 						`${escapeCommandArg(binary)} ${globalFlags.join(" ")} ssh ${app.workspace_name}`,
 					);

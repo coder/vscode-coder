@@ -262,15 +262,22 @@ export class Remote {
 					async (auth) => {
 						workspaceClient.setCredentials(auth?.url, auth?.token);
 						if (auth?.url) {
-							await this.cliManager.configure(
-								parts.safeHostname,
-								auth.url,
-								auth.token,
-								featureSet,
-							);
-							this.logger.info(
-								"Updated CLI config with new token for remote deployment",
-							);
+							try {
+								await this.cliManager.configure(
+									parts.safeHostname,
+									auth.url,
+									auth.token,
+									featureSet,
+								);
+								this.logger.info(
+									"Updated CLI config with new token for remote deployment",
+								);
+							} catch (error) {
+								this.logger.error(
+									"Failed to update CLI config for remote deployment",
+									error,
+								);
+							}
 						}
 					},
 				),
@@ -279,7 +286,12 @@ export class Remote {
 			const configDir = this.pathResolver.getGlobalConfigDir(
 				parts.safeHostname,
 			);
-			const cliAuth = resolveCliAuth(featureSet, baseUrlRaw, configDir);
+			const cliAuth = resolveCliAuth(
+				vscode.workspace.getConfiguration(),
+				featureSet,
+				baseUrlRaw,
+				configDir,
+			);
 
 			// Server versions before v0.14.1 don't support the vscodessh command!
 			if (!featureSet.vscodessh) {
