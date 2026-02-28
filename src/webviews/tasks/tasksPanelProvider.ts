@@ -88,6 +88,7 @@ export class TasksPanelProvider
 
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
+	private useLegacyPauseResume = false;
 
 	// Workspace log streaming
 	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
@@ -285,28 +286,50 @@ export class TasksPanelProvider
 		);
 	}
 
-	private async handlePauseTask(taskId: string): Promise<void> {
-		const task = await this.client.getTask("me", taskId);
-		if (!task.workspace_id) {
-			throw new Error("Task has no workspace");
-		}
-
-		await this.client.stopWorkspace(task.workspace_id);
-
-		await this.refreshAndNotifyTask(taskId);
+	private handlePauseTask(taskId: string): Promise<void> {
+		return this.pauseOrResumeTask(
+			taskId,
+			() => this.client.pauseTask("me", taskId),
+			(task) => this.client.stopWorkspace(task.workspace_id!),
+		);
 	}
 
-	private async handleResumeTask(taskId: string): Promise<void> {
+	private handleResumeTask(taskId: string): Promise<void> {
+		return this.pauseOrResumeTask(
+			taskId,
+			() => this.client.resumeTask("me", taskId),
+			(task) =>
+				this.client.startWorkspace(
+					task.workspace_id!,
+					task.template_version_id,
+				),
+		);
+	}
+
+	private async pauseOrResumeTask(
+		taskId: string,
+		taskApiCall: () => Promise<unknown>,
+		legacyCall: (task: Task) => Promise<unknown>,
+	): Promise<void> {
+		if (!this.useLegacyPauseResume) {
+			try {
+				await taskApiCall();
+				await this.refreshAndNotifyTask(taskId);
+				return;
+			} catch (err) {
+				if (isAxiosError(err) && err.response?.status === 404) {
+					this.useLegacyPauseResume = true;
+				} else {
+					throw err;
+				}
+			}
+		}
+
 		const task = await this.client.getTask("me", taskId);
 		if (!task.workspace_id) {
 			throw new Error("Task has no workspace");
 		}
-
-		await this.client.startWorkspace(
-			task.workspace_id,
-			task.template_version_id,
-		);
-
+		await legacyCall(task);
 		await this.refreshAndNotifyTask(taskId);
 	}
 

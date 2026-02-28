@@ -73,6 +73,8 @@ type TasksPanelClient = Pick<
 	| "getTemplateVersionPresets"
 	| "startWorkspace"
 	| "stopWorkspace"
+	| "pauseTask"
+	| "resumeTask"
 	| "sendTaskInput"
 	| "getHost"
 	| "getWorkspace"
@@ -91,6 +93,8 @@ function createClient(baseUrl = "https://coder.example.com"): MockClient {
 		getTemplateVersionPresets: vi.fn().mockResolvedValue([]),
 		startWorkspace: vi.fn().mockResolvedValue(undefined),
 		stopWorkspace: vi.fn().mockResolvedValue(undefined),
+		pauseTask: vi.fn().mockResolvedValue(undefined),
+		resumeTask: vi.fn().mockResolvedValue(undefined),
 		sendTaskInput: vi.fn().mockResolvedValue(undefined),
 		getHost: vi.fn().mockReturnValue(baseUrl),
 		getWorkspace: vi.fn().mockResolvedValue(workspace()),
@@ -413,40 +417,102 @@ describe("TasksPanelProvider", () => {
 	});
 
 	describe("pauseTask / resumeTask", () => {
-		interface WorkspaceControlTestCase {
-			method: typeof TasksApi.pauseTask;
-			clientMethod: keyof MockClient;
-			taskOverrides: Partial<Task>;
-		}
-		it.each<WorkspaceControlTestCase>([
-			{
-				method: TasksApi.pauseTask,
-				clientMethod: "stopWorkspace",
-				taskOverrides: { workspace_id: "ws-1" },
-			},
-			{
-				method: TasksApi.resumeTask,
-				clientMethod: "startWorkspace",
-				taskOverrides: { workspace_id: "ws-1", template_version_id: "tv-1" },
-			},
-		])(
-			"$method.method calls $clientMethod",
-			async ({ method, clientMethod, taskOverrides }) => {
-				const h = createHarness();
-				h.client.getTask.mockResolvedValue(task(taskOverrides));
-
-				const res = await h.request(method, {
-					taskId: "task-1",
-					taskName: "Test Task",
-				});
-
-				expect(res.success).toBe(true);
-				expect(h.client[clientMethod]).toHaveBeenCalled();
-			},
-		);
-
-		it("pauseTask fails when no workspace", async () => {
+		it("pauseTask calls client.pauseTask", async () => {
 			const h = createHarness();
+			h.client.getTask.mockResolvedValue(task({ workspace_id: "ws-1" }));
+
+			const res = await h.request(TasksApi.pauseTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
+
+			expect(res.success).toBe(true);
+			expect(h.client.pauseTask).toHaveBeenCalledWith("me", "task-1");
+			expect(h.client.stopWorkspace).not.toHaveBeenCalled();
+		});
+
+		it("resumeTask calls client.resumeTask", async () => {
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(task({ workspace_id: "ws-1" }));
+
+			const res = await h.request(TasksApi.resumeTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
+
+			expect(res.success).toBe(true);
+			expect(h.client.resumeTask).toHaveBeenCalledWith("me", "task-1");
+			expect(h.client.startWorkspace).not.toHaveBeenCalled();
+		});
+
+		it("pauseTask falls back to stopWorkspace on 404", async () => {
+			const h = createHarness();
+			h.client.pauseTask.mockRejectedValue(createAxiosError(404, "Not found"));
+			h.client.getTask.mockResolvedValue(task({ workspace_id: "ws-1" }));
+
+			const res = await h.request(TasksApi.pauseTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
+
+			expect(res.success).toBe(true);
+			expect(h.client.stopWorkspace).toHaveBeenCalledWith("ws-1");
+		});
+
+		it("resumeTask falls back to startWorkspace on 404", async () => {
+			const h = createHarness();
+			h.client.resumeTask.mockRejectedValue(createAxiosError(404, "Not found"));
+			h.client.getTask.mockResolvedValue(
+				task({ workspace_id: "ws-1", template_version_id: "tv-1" }),
+			);
+
+			const res = await h.request(TasksApi.resumeTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
+
+			expect(res.success).toBe(true);
+			expect(h.client.startWorkspace).toHaveBeenCalledWith("ws-1", "tv-1");
+		});
+
+		it("caches legacy fallback after first 404", async () => {
+			const h = createHarness();
+			h.client.pauseTask.mockRejectedValue(createAxiosError(404, "Not found"));
+			h.client.getTask.mockResolvedValue(task({ workspace_id: "ws-1" }));
+
+			await h.request(TasksApi.pauseTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
+			h.client.pauseTask.mockClear();
+
+			await h.request(TasksApi.pauseTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
+
+			expect(h.client.pauseTask).not.toHaveBeenCalled();
+			expect(h.client.stopWorkspace).toHaveBeenCalledTimes(2);
+		});
+
+		it("propagates non-404 errors without fallback", async () => {
+			const h = createHarness();
+			h.client.pauseTask.mockRejectedValue(
+				createAxiosError(500, "Internal server error"),
+			);
+
+			const res = await h.request(TasksApi.pauseTask, {
+				taskId: "task-1",
+				taskName: "Test Task",
+			});
+
+			expect(res.success).toBe(false);
+			expect(h.client.stopWorkspace).not.toHaveBeenCalled();
+		});
+
+		it("legacy pause fails when task has no workspace", async () => {
+			const h = createHarness();
+			h.client.pauseTask.mockRejectedValue(createAxiosError(404, "Not found"));
 			h.client.getTask.mockResolvedValue(task({ workspace_id: null }));
 
 			const res = await h.request(TasksApi.pauseTask, {
@@ -719,7 +785,7 @@ describe("TasksPanelProvider", () => {
 
 		it("shows error notification for user action failures", async () => {
 			const h = createHarness();
-			h.client.getTask.mockRejectedValue(new Error("Workspace unavailable"));
+			h.client.pauseTask.mockRejectedValue(new Error("Workspace unavailable"));
 
 			const res = await h.request(TasksApi.pauseTask, {
 				taskId: "task-1",
