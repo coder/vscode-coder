@@ -67,7 +67,7 @@ export function shouldUseKeyring(
 export function resolveCliAuth(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	featureSet: FeatureSet,
-	deploymentUrl: string | undefined,
+	deploymentUrl: string,
 	configDir: string,
 ): CliAuth {
 	if (shouldUseKeyring(configs, featureSet)) {

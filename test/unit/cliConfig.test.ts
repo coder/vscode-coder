@@ -1,5 +1,5 @@
 import * as semver from "semver";
-import { afterEach, beforeEach, it, expect, describe, vi } from "vitest";
+import { afterEach, it, expect, describe, vi } from "vitest";
 
 import {
 	type CliAuth,
@@ -21,30 +21,39 @@ const globalConfigAuth: CliAuth = {
 };
 
 describe("cliConfig", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	describe("getGlobalFlags", () => {
-		it("should return global-config and header args when no global flags configured", () => {
-			const config = new MockConfigurationProvider();
+		const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
 
-			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
-				"--global-config",
-				'"/config/dir"',
-			]);
-		});
+		interface AuthFlagsCase {
+			scenario: string;
+			auth: CliAuth;
+			expectedAuthFlags: string[];
+		}
 
-		it("should return --url when auth mode is url", () => {
-			const config = new MockConfigurationProvider();
-			const urlAuth: CliAuth = {
-				mode: "url",
-				url: "https://dev.coder.com",
-			};
+		it.each<AuthFlagsCase>([
+			{
+				scenario: "global-config mode",
+				auth: globalConfigAuth,
+				expectedAuthFlags: ["--global-config", '"/config/dir"'],
+			},
+			{
+				scenario: "url mode",
+				auth: urlAuth,
+				expectedAuthFlags: ["--url", '"https://dev.coder.com"'],
+			},
+		])(
+			"should return auth flags for $scenario",
+			({ auth, expectedAuthFlags }) => {
+				const config = new MockConfigurationProvider();
+				expect(getGlobalFlags(config, auth)).toStrictEqual(expectedAuthFlags);
+			},
+		);
 
-			expect(getGlobalFlags(config, urlAuth)).toStrictEqual([
-				"--url",
-				'"https://dev.coder.com"',
-			]);
-		});
-
-		it("should return global flags from config with global-config appended", () => {
+		it("should return global flags from config with auth flags appended", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.globalFlags", [
 				"--verbose",
@@ -76,45 +85,39 @@ describe("cliConfig", () => {
 			]);
 		});
 
-		it("should not filter header-command flags, header args appended at end", () => {
-			const headerCommand = "echo test";
-			const config = new MockConfigurationProvider();
-			config.set("coder.headerCommand", headerCommand);
-			config.set("coder.globalFlags", [
-				"-v",
-				"--header-command custom",
-				"--no-feature-warning",
-			]);
+		it.each<AuthFlagsCase>([
+			{
+				scenario: "global-config mode",
+				auth: globalConfigAuth,
+				expectedAuthFlags: ["--global-config", '"/config/dir"'],
+			},
+			{
+				scenario: "url mode",
+				auth: urlAuth,
+				expectedAuthFlags: ["--url", '"https://dev.coder.com"'],
+			},
+		])(
+			"should not filter header-command flags ($scenario)",
+			({ auth, expectedAuthFlags }) => {
+				const headerCommand = "echo test";
+				const config = new MockConfigurationProvider();
+				config.set("coder.headerCommand", headerCommand);
+				config.set("coder.globalFlags", [
+					"-v",
+					"--header-command custom",
+					"--no-feature-warning",
+				]);
 
-			const result = getGlobalFlags(config, globalConfigAuth);
-			expect(result).toStrictEqual([
-				"-v",
-				"--header-command custom", // ignored by CLI
-				"--no-feature-warning",
-				"--global-config",
-				'"/config/dir"',
-				"--header-command",
-				quoteCommand(headerCommand),
-			]);
-		});
-
-		it("should include --url with header args when using url mode", () => {
-			const headerCommand = "echo test";
-			const config = new MockConfigurationProvider();
-			config.set("coder.headerCommand", headerCommand);
-			const urlAuth: CliAuth = {
-				mode: "url",
-				url: "https://dev.coder.com",
-			};
-
-			const result = getGlobalFlags(config, urlAuth);
-			expect(result).toStrictEqual([
-				"--url",
-				'"https://dev.coder.com"',
-				"--header-command",
-				quoteCommand(headerCommand),
-			]);
-		});
+				expect(getGlobalFlags(config, auth)).toStrictEqual([
+					"-v",
+					"--header-command custom", // ignored by CLI
+					"--no-feature-warning",
+					...expectedAuthFlags,
+					"--header-command",
+					quoteCommand(headerCommand),
+				]);
+			},
+		);
 	});
 
 	describe("getGlobalFlagsRaw", () => {
@@ -163,121 +166,84 @@ describe("cliConfig", () => {
 	});
 
 	describe("isKeyringEnabled", () => {
-		let originalPlatform: NodeJS.Platform;
-
-		beforeEach(() => {
-			originalPlatform = process.platform;
-		});
-
-		afterEach(() => {
-			vi.stubGlobal("process", { ...process, platform: originalPlatform });
-			vi.unstubAllGlobals();
-		});
-
-		it("returns true on macOS with setting enabled", () => {
-			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			expect(isKeyringEnabled(config)).toBe(true);
-		});
-
-		it("returns true on Windows with setting enabled", () => {
-			vi.stubGlobal("process", { ...process, platform: "win32" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			expect(isKeyringEnabled(config)).toBe(true);
-		});
-
-		it("returns false on Linux", () => {
-			vi.stubGlobal("process", { ...process, platform: "linux" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			expect(isKeyringEnabled(config)).toBe(false);
-		});
-
-		it("returns false when setting is disabled", () => {
-			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", false);
-			expect(isKeyringEnabled(config)).toBe(false);
-		});
+		interface KeyringEnabledCase {
+			platform: NodeJS.Platform;
+			useKeyring: boolean;
+			expected: boolean;
+		}
+		it.each<KeyringEnabledCase>([
+			{ platform: "darwin", useKeyring: true, expected: true },
+			{ platform: "win32", useKeyring: true, expected: true },
+			{ platform: "linux", useKeyring: true, expected: false },
+			{ platform: "darwin", useKeyring: false, expected: false },
+		])(
+			"returns $expected on $platform with useKeyring=$useKeyring",
+			({ platform, useKeyring, expected }) => {
+				vi.stubGlobal("process", { ...process, platform });
+				const config = new MockConfigurationProvider();
+				config.set("coder.useKeyring", useKeyring);
+				expect(isKeyringEnabled(config)).toBe(expected);
+			},
+		);
 	});
 
 	describe("shouldUseKeyring", () => {
-		let originalPlatform: NodeJS.Platform;
-
-		beforeEach(() => {
-			originalPlatform = process.platform;
-		});
-
-		afterEach(() => {
-			vi.stubGlobal("process", { ...process, platform: originalPlatform });
-			vi.unstubAllGlobals();
-		});
-
-		it("returns true when all conditions are met (macOS, keyringAuth, setting enabled)", () => {
-			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			expect(shouldUseKeyring(config, featureSet)).toBe(true);
-		});
-
-		it("returns true when all conditions are met (Windows)", () => {
-			vi.stubGlobal("process", { ...process, platform: "win32" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			expect(shouldUseKeyring(config, featureSet)).toBe(true);
-		});
-
-		it("returns false on Linux", () => {
-			vi.stubGlobal("process", { ...process, platform: "linux" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			expect(shouldUseKeyring(config, featureSet)).toBe(false);
-		});
-
-		it("returns false when CLI version is too old", () => {
-			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			const featureSet = featureSetForVersion(semver.parse("2.28.0"));
-			expect(shouldUseKeyring(config, featureSet)).toBe(false);
-		});
-
-		it("returns false when setting is disabled", () => {
-			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", false);
-			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			expect(shouldUseKeyring(config, featureSet)).toBe(false);
-		});
-
-		it("returns true for devel prerelease on macOS", () => {
-			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			const featureSet = featureSetForVersion(
-				semver.parse("0.0.0-devel+abc123"),
-			);
-			expect(shouldUseKeyring(config, featureSet)).toBe(true);
-		});
+		interface ShouldUseKeyringCase {
+			platform: NodeJS.Platform;
+			useKeyring: boolean;
+			version: string;
+			expected: boolean;
+		}
+		it.each<ShouldUseKeyringCase>([
+			{
+				platform: "darwin",
+				useKeyring: true,
+				version: "2.29.0",
+				expected: true,
+			},
+			{
+				platform: "win32",
+				useKeyring: true,
+				version: "2.29.0",
+				expected: true,
+			},
+			{
+				platform: "linux",
+				useKeyring: true,
+				version: "2.29.0",
+				expected: false,
+			},
+			{
+				platform: "darwin",
+				useKeyring: true,
+				version: "2.28.0",
+				expected: false,
+			},
+			{
+				platform: "darwin",
+				useKeyring: false,
+				version: "2.29.0",
+				expected: false,
+			},
+			{
+				platform: "darwin",
+				useKeyring: true,
+				version: "0.0.0-devel+abc123",
+				expected: true,
+			},
+		])(
+			"returns $expected on $platform with useKeyring=$useKeyring and version $version",
+			({ platform, useKeyring, version, expected }) => {
+				vi.stubGlobal("process", { ...process, platform });
+				const config = new MockConfigurationProvider();
+				config.set("coder.useKeyring", useKeyring);
+				const featureSet = featureSetForVersion(semver.parse(version));
+				expect(shouldUseKeyring(config, featureSet)).toBe(expected);
+			},
+		);
 	});
 
 	describe("resolveCliAuth", () => {
-		let originalPlatform: NodeJS.Platform;
-
-		beforeEach(() => {
-			originalPlatform = process.platform;
-		});
-
-		afterEach(() => {
-			vi.stubGlobal("process", { ...process, platform: originalPlatform });
-			vi.unstubAllGlobals();
-		});
-
 		it("returns url mode when keyring should be used", () => {
 			vi.stubGlobal("process", { ...process, platform: "darwin" });
 			const config = new MockConfigurationProvider();
@@ -305,18 +271,6 @@ describe("cliConfig", () => {
 				"https://dev.coder.com",
 				"/config/dir",
 			);
-			expect(auth).toEqual({
-				mode: "global-config",
-				configDir: "/config/dir",
-			});
-		});
-
-		it("returns global-config mode when url is undefined", () => {
-			vi.stubGlobal("process", { ...process, platform: "darwin" });
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			const auth = resolveCliAuth(config, featureSet, undefined, "/config/dir");
 			expect(auth).toEqual({
 				mode: "global-config",
 				configDir: "/config/dir",

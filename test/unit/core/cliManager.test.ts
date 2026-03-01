@@ -26,6 +26,7 @@ import {
 import { expectPathsEqual } from "../../utils/platform";
 
 import type { FeatureSet } from "@/featureSet";
+import type { KeyringStore } from "@/keyringStore";
 
 vi.mock("os");
 vi.mock("axios");
@@ -58,7 +59,7 @@ vi.mock("@/cliConfig", async () => {
 	return {
 		...actual,
 		shouldUseKeyring: vi.fn(),
-		isKeyringEnabled: vi.fn().mockReturnValue(true),
+		isKeyringEnabled: vi.fn(),
 	};
 });
 
@@ -85,7 +86,7 @@ describe("CliManager", () => {
 	let mockUI: MockUserInteraction;
 	let mockApi: Api;
 	let mockAxios: AxiosInstance;
-	let mockKeyring: ReturnType<typeof createMockKeyringStore>;
+	let mockKeyring: KeyringStore;
 
 	const TEST_VERSION = "1.2.3";
 	const TEST_URL = "https://test.coder.com";
@@ -137,66 +138,41 @@ describe("CliManager", () => {
 	});
 
 	describe("Configure CLI", () => {
+		function configure(token = "test-token") {
+			return manager.configure(
+				"dev.coder.com",
+				"https://coder.example.com",
+				token,
+				MOCK_FEATURE_SET,
+			);
+		}
+
 		it("should write both url and token to correct paths", async () => {
-			await manager.configure(
-				"deployment",
-				"https://coder.example.com",
-				"test-token",
-				MOCK_FEATURE_SET,
-			);
+			await configure("test-token");
 
-			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
+			expect(memfs.readFileSync("/path/base/dev.coder.com/url", "utf8")).toBe(
 				"https://coder.example.com",
 			);
-			expect(memfs.readFileSync("/path/base/deployment/session", "utf8")).toBe(
-				"test-token",
-			);
+			expect(
+				memfs.readFileSync("/path/base/dev.coder.com/session", "utf8"),
+			).toBe("test-token");
 		});
 
-		it("should skip URL when undefined but write token", async () => {
-			await manager.configure(
-				"deployment",
-				undefined,
-				"test-token",
-				MOCK_FEATURE_SET,
-			);
-
-			// No entry for the url
-			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
-			expect(memfs.readFileSync("/path/base/deployment/session", "utf8")).toBe(
-				"test-token",
-			);
-		});
-
-		it("should skip token when null but write URL", async () => {
-			await manager.configure(
-				"deployment",
-				"https://coder.example.com",
-				null,
-				MOCK_FEATURE_SET,
-			);
-
-			// No entry for the session
-			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
-				"https://coder.example.com",
-			);
-			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
+		it("should throw when URL is empty", async () => {
+			await expect(
+				manager.configure("dev.coder.com", "", "test-token", MOCK_FEATURE_SET),
+			).rejects.toThrow("URL is required to configure the CLI");
 		});
 
 		it("should write empty string for token when provided", async () => {
-			await manager.configure(
-				"deployment",
-				"https://coder.example.com",
-				"",
-				MOCK_FEATURE_SET,
-			);
+			await configure("");
 
-			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
+			expect(memfs.readFileSync("/path/base/dev.coder.com/url", "utf8")).toBe(
 				"https://coder.example.com",
 			);
-			expect(memfs.readFileSync("/path/base/deployment/session", "utf8")).toBe(
-				"",
-			);
+			expect(
+				memfs.readFileSync("/path/base/dev.coder.com/session", "utf8"),
+			).toBe("");
 		});
 
 		it("should use base path directly when label is empty", async () => {
@@ -216,19 +192,14 @@ describe("CliManager", () => {
 		it("should write to keyring and skip files when featureSet enables keyring", async () => {
 			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
 
-			await manager.configure(
-				"deployment",
-				"https://coder.example.com",
-				"test-token",
-				MOCK_FEATURE_SET,
-			);
+			await configure("test-token");
 
 			expect(mockKeyring.setToken).toHaveBeenCalledWith(
 				"https://coder.example.com",
 				"test-token",
 			);
-			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
-			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
+			expect(memfs.existsSync("/path/base/dev.coder.com/url")).toBe(false);
+			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
 		});
 
 		it("should throw and show error when keyring write fails", async () => {
@@ -237,105 +208,66 @@ describe("CliManager", () => {
 				throw new Error("keyring unavailable");
 			});
 
-			await expect(
-				manager.configure(
-					"deployment",
-					"https://coder.example.com",
-					"test-token",
-					MOCK_FEATURE_SET,
-				),
-			).rejects.toThrow("keyring unavailable");
+			await expect(configure("test-token")).rejects.toThrow(
+				"keyring unavailable",
+			);
 
 			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
 				expect.stringContaining("keyring unavailable"),
 				"Open Settings",
 			);
-			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
-			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
-		});
-
-		it("should fall back to files when url is undefined even with featureSet", async () => {
-			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
-
-			await manager.configure(
-				"deployment",
-				undefined,
-				"test-token",
-				MOCK_FEATURE_SET,
-			);
-
-			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
-			expect(memfs.readFileSync("/path/base/deployment/session", "utf8")).toBe(
-				"test-token",
-			);
-		});
-
-		it("should fall back to files when token is null even with featureSet", async () => {
-			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
-
-			await manager.configure(
-				"deployment",
-				"https://coder.example.com",
-				null,
-				MOCK_FEATURE_SET,
-			);
-
-			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
-				"https://coder.example.com",
-			);
-			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
+			expect(memfs.existsSync("/path/base/dev.coder.com/url")).toBe(false);
+			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
 		});
 	});
 
 	describe("Clear Credentials", () => {
-		it("should delete keyring token and remove files", async () => {
-			// Pre-create credential files
-			memfs.mkdirSync("/path/base/deployment", { recursive: true });
-			memfs.writeFileSync("/path/base/deployment/session", "old-token");
-			memfs.writeFileSync("/path/base/deployment/url", "https://example.com");
+		function seedCredentialFiles() {
+			memfs.mkdirSync("/path/base/dev.coder.com", { recursive: true });
+			memfs.writeFileSync("/path/base/dev.coder.com/session", "old-token");
+			memfs.writeFileSync(
+				"/path/base/dev.coder.com/url",
+				"https://example.com",
+			);
+		}
 
-			await manager.clearCredentials("deployment");
-
-			expect(mockKeyring.deleteToken).toHaveBeenCalledWith("deployment");
-			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
-			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
+		interface RemoveCredentialsCase {
+			scenario: string;
+			setup: () => void;
+		}
+		it.each<RemoveCredentialsCase>([
+			{ scenario: "normally", setup: () => {} },
+			{
+				scenario: "when keyring delete fails",
+				setup: () =>
+					vi.mocked(mockKeyring.deleteToken).mockImplementation(() => {
+						throw new Error("keyring unavailable");
+					}),
+			},
+			{
+				scenario: "when keyring is disabled",
+				setup: () =>
+					vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(false),
+			},
+		])("should remove credential files $scenario", async ({ setup }) => {
+			seedCredentialFiles();
+			setup();
+			await manager.clearCredentials("dev.coder.com");
+			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
+			expect(memfs.existsSync("/path/base/dev.coder.com/url")).toBe(false);
 		});
 
-		it("should continue file cleanup even when keyring delete fails", async () => {
-			memfs.mkdirSync("/path/base/deployment", { recursive: true });
-			memfs.writeFileSync("/path/base/deployment/session", "old-token");
-			memfs.writeFileSync("/path/base/deployment/url", "https://example.com");
-
-			vi.mocked(mockKeyring.deleteToken).mockImplementation(() => {
-				throw new Error("keyring unavailable");
-			});
-
-			await manager.clearCredentials("deployment");
-
-			// Files should still be cleaned up despite keyring failure
-			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
-			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
-		});
-
-		it("should not throw when files don't exist", async () => {
+		it("should not throw when credential files don't exist", async () => {
 			await expect(
-				manager.clearCredentials("deployment"),
+				manager.clearCredentials("dev.coder.com"),
 			).resolves.not.toThrow();
-
-			expect(mockKeyring.deleteToken).toHaveBeenCalledWith("deployment");
+			expect(mockKeyring.deleteToken).toHaveBeenCalledWith("dev.coder.com");
 		});
 
 		it("should skip keyring delete when keyring is disabled", async () => {
 			vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(false);
-			memfs.mkdirSync("/path/base/deployment", { recursive: true });
-			memfs.writeFileSync("/path/base/deployment/session", "old-token");
-			memfs.writeFileSync("/path/base/deployment/url", "https://example.com");
-
-			await manager.clearCredentials("deployment");
-
+			await manager.clearCredentials("dev.coder.com");
 			expect(mockKeyring.deleteToken).not.toHaveBeenCalled();
-			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
-			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
 		});
 	});
 

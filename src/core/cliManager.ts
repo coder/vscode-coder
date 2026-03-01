@@ -708,21 +708,27 @@ export class CliManager {
 	/**
 	 * Configure the CLI for the deployment with the provided hostname.
 	 *
-	 * Falsey URLs and null tokens are a no-op; we avoid unconfiguring the CLI to
-	 * avoid breaking existing connections.
+	 * Stores credentials in the OS keyring when available, otherwise falls back
+	 * to writing plaintext files under --global-config for the CLI.
+	 *
+	 * Both URL and token are required. Empty tokens are allowed (e.g. mTLS
+	 * authentication) but the URL must be a non-empty string.
 	 */
 	public async configure(
 		safeHostname: string,
-		url: string | undefined,
-		token: string | null,
+		url: string,
+		token: string,
 		featureSet: FeatureSet,
 	) {
+		if (!url) {
+			throw new Error("URL is required to configure the CLI");
+		}
+
 		const configs = vscode.workspace.getConfiguration();
-		if (shouldUseKeyring(configs, featureSet) && url && token !== null) {
+		if (shouldUseKeyring(configs, featureSet)) {
 			try {
 				this.keyringStore.setToken(url, token);
 				this.output.info("Stored token in OS keyring for", url);
-				return;
 			} catch (error) {
 				this.output.error("Failed to store token in OS keyring:", error);
 				vscode.window
@@ -741,11 +747,12 @@ export class CliManager {
 					});
 				throw error;
 			}
+		} else {
+			await Promise.all([
+				this.writeUrlToGlobalConfig(safeHostname, url),
+				this.writeTokenToGlobalConfig(safeHostname, token),
+			]);
 		}
-		await Promise.all([
-			this.updateUrlForCli(safeHostname, url),
-			this.updateTokenForCli(safeHostname, token),
-		]);
 	}
 
 	/**
@@ -774,33 +781,22 @@ export class CliManager {
 	}
 
 	/**
-	 * Update the URL for the deployment with the provided hostname on disk which
-	 * can be used by the CLI via --url-file.  If the URL is falsey, do nothing.
-	 *
-	 * If the hostname is empty, read the old deployment-unaware config instead.
+	 * Write the URL to the --global-config directory for the CLI.
 	 */
-	private async updateUrlForCli(
+	private async writeUrlToGlobalConfig(
 		safeHostname: string,
-		url: string | undefined,
+		url: string,
 	): Promise<void> {
-		if (url) {
-			const urlPath = this.pathResolver.getUrlPath(safeHostname);
-			await this.atomicWriteFile(urlPath, url);
-		}
+		const urlPath = this.pathResolver.getUrlPath(safeHostname);
+		await this.atomicWriteFile(urlPath, url);
 	}
 
 	/**
-	 * Update the session token for a deployment with the provided hostname on
-	 * disk which can be used by the CLI via --session-token-file.  If the token
-	 * is null, do nothing.
-	 *
-	 * If the hostname is empty, read the old deployment-unaware config instead.
+	 * Write the session token to the --global-config directory for the CLI.
 	 */
-	private async updateTokenForCli(safeHostname: string, token: string | null) {
-		if (token !== null) {
-			const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
-			await this.atomicWriteFile(tokenPath, token);
-		}
+	private async writeTokenToGlobalConfig(safeHostname: string, token: string) {
+		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
+		await this.atomicWriteFile(tokenPath, token);
 	}
 
 	/**
