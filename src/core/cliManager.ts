@@ -362,7 +362,6 @@ export class CliManager {
 				binSource,
 				writeStream,
 				{
-					"Accept-Encoding": "gzip",
 					"If-None-Match": `"${etag}"`,
 				},
 				onProgress,
@@ -474,15 +473,19 @@ export class CliManager {
 			signal: controller.signal,
 			baseURL: baseUrl,
 			responseType: "stream",
-			headers,
-			decompress: true,
+			headers: {
+				"Accept-Encoding": "identity",
+				...headers,
+			},
+			decompress: false,
 			// Ignore all errors so we can catch a 404!
 			validateStatus: () => true,
 		});
 		this.output.info("Got status code", resp.status);
 
 		if (resp.status === 200) {
-			const rawContentLength = resp.headers["content-length"] as unknown;
+			const rawContentLength = (resp.headers["content-length"] ??
+				resp.headers["x-original-content-length"]) as unknown;
 			const contentLength = Number.parseInt(
 				typeof rawContentLength === "string" ? rawContentLength : "",
 			);

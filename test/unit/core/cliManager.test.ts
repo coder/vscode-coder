@@ -378,7 +378,7 @@ describe("CliManager", () => {
 				expect.objectContaining({
 					responseType: "stream",
 					headers: expect.objectContaining({
-						"Accept-Encoding": "gzip",
+						"Accept-Encoding": "identity",
 						"If-None-Match": '""',
 					}),
 				}),
@@ -393,7 +393,7 @@ describe("CliManager", () => {
 				"/custom/path",
 				expect.objectContaining({
 					responseType: "stream",
-					decompress: true,
+					decompress: false,
 					validateStatus: expect.any(Function),
 				}),
 			);
@@ -528,10 +528,33 @@ describe("CliManager", () => {
 
 		it("handles missing content-length", async () => {
 			withSuccessfulDownload({ headers: {} });
+			mockProgress.clearProgressReports();
 			const result = await manager.fetchBinary(mockApi, "test");
 			expectPathsEqual(result, BINARY_PATH);
 			expect(memfs.existsSync(BINARY_PATH)).toBe(true);
+			// Without any content-length header, increment should be undefined.
+			const reports = mockProgress.getProgressReports();
+			expect(reports).not.toHaveLength(0);
+			for (const report of reports) {
+				expect(report).toMatchObject({ increment: undefined });
+			}
 		});
+
+		it.each(["content-length", "x-original-content-length"])(
+			"reports progress with %s header",
+			async (header) => {
+				withSuccessfulDownload({ headers: { [header]: "1024" } });
+				mockProgress.clearProgressReports();
+				const result = await manager.fetchBinary(mockApi, "test");
+				expectPathsEqual(result, BINARY_PATH);
+				expect(memfs.existsSync(BINARY_PATH)).toBe(true);
+				const reports = mockProgress.getProgressReports();
+				expect(reports).not.toHaveLength(0);
+				for (const report of reports) {
+					expect(report).toMatchObject({ increment: expect.any(Number) });
+				}
+			},
+		);
 	});
 
 	describe("Download Progress Tracking", () => {
