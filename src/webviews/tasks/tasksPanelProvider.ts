@@ -88,6 +88,7 @@ export class TasksPanelProvider
 
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
+	private useLegacyPauseResume = false;
 
 	// Workspace log streaming
 	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
@@ -285,28 +286,54 @@ export class TasksPanelProvider
 		);
 	}
 
-	private async handlePauseTask(taskId: string): Promise<void> {
-		const task = await this.client.getTask("me", taskId);
-		if (!task.workspace_id) {
-			throw new Error("Task has no workspace");
-		}
-
-		await this.client.stopWorkspace(task.workspace_id);
-
-		await this.refreshAndNotifyTask(taskId);
+	private handlePauseTask(taskId: string): Promise<void> {
+		return this.pauseOrResumeTask(
+			taskId,
+			() => this.client.pauseTask("me", taskId),
+			(workspaceId) => this.client.stopWorkspace(workspaceId),
+		);
 	}
 
-	private async handleResumeTask(taskId: string): Promise<void> {
-		const task = await this.client.getTask("me", taskId);
-		if (!task.workspace_id) {
-			throw new Error("Task has no workspace");
+	private handleResumeTask(taskId: string): Promise<void> {
+		return this.pauseOrResumeTask(
+			taskId,
+			() => this.client.resumeTask("me", taskId),
+			(workspaceId, task) =>
+				this.client.startWorkspace(workspaceId, task.template_version_id),
+		);
+	}
+
+	private async pauseOrResumeTask(
+		taskId: string,
+		taskApiCall: () => Promise<unknown>,
+		legacyCall: (workspaceId: string, task: Task) => Promise<unknown>,
+	): Promise<void> {
+		if (this.useLegacyPauseResume) {
+			return this.legacyPauseOrResume(taskId, legacyCall);
 		}
 
-		await this.client.startWorkspace(
-			task.workspace_id,
-			task.template_version_id,
-		);
+		try {
+			await taskApiCall();
+			await this.refreshAndNotifyTask(taskId);
+		} catch (err) {
+			if (isAxiosError(err) && err.response?.status === 404) {
+				this.useLegacyPauseResume = true;
+				return this.legacyPauseOrResume(taskId, legacyCall);
+			}
+			throw err;
+		}
+	}
 
+	private async legacyPauseOrResume(
+		taskId: string,
+		legacyCall: (workspaceId: string, task: Task) => Promise<unknown>,
+	): Promise<void> {
+		const task = await this.client.getTask("me", taskId);
+		const { workspace_id } = task;
+		if (!workspace_id) {
+			throw new Error("Task has no workspace");
+		}
+		await legacyCall(workspace_id, task);
 		await this.refreshAndNotifyTask(taskId);
 	}
 
