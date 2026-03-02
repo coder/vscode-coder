@@ -55,7 +55,9 @@ export async function version(binPath: string): Promise<string> {
 			if (result.stdout?.startsWith("Coder")) {
 				const v = result.stdout.split(" ")[1]?.trim();
 				if (!v) {
-					throw new Error("No version found in output: ${result.stdout}");
+					throw new Error(`No version found in output: ${result.stdout}`, {
+						cause: error,
+					});
 				}
 				return v;
 			}

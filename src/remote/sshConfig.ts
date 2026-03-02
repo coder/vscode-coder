@@ -321,6 +321,7 @@ export class SSHConfig {
 			throw new Error(
 				`Failed to write temporary SSH config file at ${tempFilePath}: ${err instanceof Error ? err.message : String(err)}. ` +
 					`Please check your disk space, permissions, and that the directory exists.`,
+				{ cause: err },
 			);
 		}
 
@@ -331,6 +332,7 @@ export class SSHConfig {
 				`Failed to rename temporary SSH config file at ${tempFilePath} to ${this.filePath}: ${
 					err instanceof Error ? err.message : String(err)
 				}. Please check your disk space, permissions, and that the directory exists.`,
+				{ cause: err },
 			);
 		}
 	}

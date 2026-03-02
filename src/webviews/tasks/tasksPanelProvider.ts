@@ -329,6 +329,7 @@ export class TasksPanelProvider
 			) {
 				throw new Error(
 					`Task is not ready to receive messages (${errToStr(err)})`,
+					{ cause: err },
 				);
 			}
 			throw err;

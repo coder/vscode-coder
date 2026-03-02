@@ -43,20 +43,20 @@ type NotificationHandler = (data: unknown) => void;
  */
 export function useIpc(options: UseIpcOptions = {}) {
 	const { timeoutMs = DEFAULT_TIMEOUT_MS } = options;
-	const pendingRequests = useRef<Map<string, PendingRequest>>(new Map());
-	const notificationHandlers = useRef<Map<string, Set<NotificationHandler>>>(
+	const pendingRequestsRef = useRef<Map<string, PendingRequest>>(new Map());
+	const notificationHandlersRef = useRef<Map<string, Set<NotificationHandler>>>(
 		new Map(),
 	);
 
 	// Cleanup on unmount
 	useEffect(() => {
 		return () => {
-			for (const req of pendingRequests.current.values()) {
+			for (const req of pendingRequestsRef.current.values()) {
 				clearTimeout(req.timeout);
 				req.reject(new Error("Component unmounted"));
 			}
-			pendingRequests.current.clear();
-			notificationHandlers.current.clear();
+			pendingRequestsRef.current.clear();
+			notificationHandlersRef.current.clear();
 		};
 	}, []);
 
@@ -71,11 +71,11 @@ export function useIpc(options: UseIpcOptions = {}) {
 
 			// Response handling (has requestId + success)
 			if ("requestId" in msg && "success" in msg) {
-				const pending = pendingRequests.current.get(msg.requestId);
+				const pending = pendingRequestsRef.current.get(msg.requestId);
 				if (!pending) return;
 
 				clearTimeout(pending.timeout);
-				pendingRequests.current.delete(msg.requestId);
+				pendingRequestsRef.current.delete(msg.requestId);
 
 				if (msg.success) {
 					pending.resolve(msg.data);
@@ -87,7 +87,7 @@ export function useIpc(options: UseIpcOptions = {}) {
 
 			// Notification handling (has type, no requestId)
 			if ("type" in msg && !("requestId" in msg)) {
-				const handlers = notificationHandlers.current.get(msg.type);
+				const handlers = notificationHandlersRef.current.get(msg.type);
 				if (handlers) {
 					for (const h of handlers) {
 						h(msg.data);
@@ -113,13 +113,13 @@ export function useIpc(options: UseIpcOptions = {}) {
 
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
-				if (pendingRequests.current.has(requestId)) {
-					pendingRequests.current.delete(requestId);
+				if (pendingRequestsRef.current.has(requestId)) {
+					pendingRequestsRef.current.delete(requestId);
 					reject(new Error(`Request timeout: ${definition.method}`));
 				}
 			}, timeoutMs);
 
-			pendingRequests.current.set(requestId, {
+			pendingRequestsRef.current.set(requestId, {
 				resolve: resolve as (value: unknown) => void,
 				reject,
 				timeout,
@@ -162,20 +162,20 @@ export function useIpc(options: UseIpcOptions = {}) {
 		callback: (data: D) => void,
 	): () => void {
 		const method = definition.method;
-		let handlers = notificationHandlers.current.get(method);
+		let handlers = notificationHandlersRef.current.get(method);
 		if (!handlers) {
 			handlers = new Set();
-			notificationHandlers.current.set(method, handlers);
+			notificationHandlersRef.current.set(method, handlers);
 		}
 		handlers.add(callback as NotificationHandler);
 
 		// Return unsubscribe function
 		return () => {
-			const h = notificationHandlers.current.get(method);
+			const h = notificationHandlersRef.current.get(method);
 			if (h) {
 				h.delete(callback as NotificationHandler);
 				if (h.size === 0) {
-					notificationHandlers.current.delete(method);
+					notificationHandlersRef.current.delete(method);
 				}
 			}
 		};

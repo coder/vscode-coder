@@ -1,30 +1,26 @@
 // @ts-check
 import eslint from "@eslint/js";
-import { defineConfig } from "eslint/config";
+import { defineConfig, globalIgnores } from "eslint/config";
 import markdown from "@eslint/markdown";
 import tseslint from "typescript-eslint";
 import prettierConfig from "eslint-config-prettier";
 import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import { flatConfigs as importXFlatConfigs } from "eslint-plugin-import-x";
 import packageJson from "eslint-plugin-package-json";
-import reactPlugin from "eslint-plugin-react";
-import reactHooksPlugin from "eslint-plugin-react-hooks";
+import eslintReact from "@eslint-react/eslint-plugin";
 import globals from "globals";
 
 export default defineConfig(
-	// Global ignores
-	{
-		ignores: [
-			"out/**",
-			"dist/**",
-			"packages/*/dist/**",
-			"**/*.d.ts",
-			"vitest.config.ts",
-			"**/vite.config*.ts",
-			"**/createWebviewConfig.ts",
-			".vscode-test/**",
-		],
-	},
+	globalIgnores([
+		"out/**",
+		"dist/**",
+		"packages/*/dist/**",
+		"**/*.d.ts",
+		"vitest.config.ts",
+		"**/vite.config*.ts",
+		"**/createWebviewConfig.ts",
+		".vscode-test/**",
+	]),
 
 	// Base ESLint recommended rules (for JS/TS/TSX files only)
 	{
@@ -176,37 +172,30 @@ export default defineConfig(
 		},
 	},
 
-	// React hooks and compiler rules (covers .ts hook files too)
+	// React rules with type-checked analysis (covers hooks, JSX, DOM)
 	{
 		files: ["packages/**/*.{ts,tsx}"],
-		...reactHooksPlugin.configs.flat.recommended,
+		extends: [eslintReact.configs["recommended-type-checked"]],
 		rules: {
-			...reactHooksPlugin.configs.flat.recommended.rules,
 			// React Compiler auto-memoizes; exhaustive-deps false-positives on useCallback
-			"react-hooks/exhaustive-deps": "off",
-		},
-	},
-
-	// TSX files - React JSX rules
-	{
-		files: ["**/*.tsx"],
-		plugins: {
-			react: reactPlugin,
-		},
-		settings: {
-			react: {
-				version: "detect",
-			},
-		},
-		rules: {
-			...reactPlugin.configs.recommended.rules,
-			...reactPlugin.configs["jsx-runtime"].rules, // React 17+ JSX transform
-			"react/prop-types": "off", // Using TypeScript
+			"@eslint-react/exhaustive-deps": "off",
 		},
 	},
 
 	// Package.json linting
 	packageJson.configs.recommended,
+	{
+		// The root package.json is a VS Code extension (not an npm package),
+		// so these publishing-oriented rules don't apply.
+		files: ["package.json"],
+		ignores: ["packages/**/package.json"],
+		rules: {
+			"package-json/require-exports": "off",
+			"package-json/require-files": "off",
+			"package-json/require-sideEffects": "off",
+			"package-json/require-attribution": "off",
+		},
+	},
 
 	// Markdown linting with GitHub-flavored admonitions allowed
 	...markdown.configs.recommended,

@@ -2,14 +2,19 @@ import { useEffect, useState } from "react";
 
 import { useTasksApi } from "./useTasksApi";
 
+export interface LogEntry {
+	id: number;
+	text: string;
+}
+
 /**
  * Subscribes to workspace log lines pushed from the extension.
  * Batches updates per animation frame to avoid excessive re-renders
  * when many lines arrive in quick succession.
  */
-export function useWorkspaceLogs(): string[] {
+export function useWorkspaceLogs(): LogEntry[] {
 	const { onWorkspaceLogsAppend, stopStreamingWorkspaceLogs } = useTasksApi();
-	const [lines, setLines] = useState<string[]>([]);
+	const [lines, setLines] = useState<LogEntry[]>([]);
 
 	useEffect(() => {
 		let pending: string[] = [];
@@ -22,7 +27,13 @@ export function useWorkspaceLogs(): string[] {
 					const batch = pending;
 					pending = [];
 					frame = 0;
-					setLines((prev) => prev.concat(batch));
+					setLines((prev) => {
+						const entries = batch.map((text, i) => ({
+							id: prev.length + i,
+							text,
+						}));
+						return prev.concat(entries);
+					});
 				});
 			}
 		});

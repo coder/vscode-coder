@@ -16,7 +16,7 @@ vi.mock("@repo/tasks/hooks/useTasksApi", () => ({
 const WORKSPACE_LOG_LINE = "mock workspace log line";
 
 vi.mock("@repo/tasks/hooks/useWorkspaceLogs", () => ({
-	useWorkspaceLogs: () => [WORKSPACE_LOG_LINE],
+	useWorkspaceLogs: () => [{ id: 0, text: WORKSPACE_LOG_LINE }],
 }));
 
 describe("TaskDetailView", () => {
