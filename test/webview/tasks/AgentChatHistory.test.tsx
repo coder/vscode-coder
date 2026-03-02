@@ -26,7 +26,7 @@ describe("AgentChatHistory", () => {
 				/>,
 			);
 			expect(
-				screen.getByText("Logs not available in current task state"),
+				screen.getByText("Messages are not available yet"),
 			).toBeInTheDocument();
 		});
 
@@ -34,7 +34,7 @@ describe("AgentChatHistory", () => {
 			renderWithQuery(
 				<AgentChatHistory taskLogs={{ status: "error" }} isThinking={false} />,
 			);
-			const el = screen.getByText("Failed to load logs");
+			const el = screen.getByText("Failed to load messages");
 			expect(el).toBeInTheDocument();
 			expect(el).toHaveClass("log-viewer-error");
 		});
@@ -73,12 +73,12 @@ describe("AgentChatHistory", () => {
 				/>,
 			);
 
-			// "You" label at first input, "Agent" label at first output
-			expect(screen.getByText("You")).toBeInTheDocument();
-			expect(screen.getByText("Agent")).toBeInTheDocument();
+			// "User" label at first input, "Agent" label at first output
+			expect(screen.getByText("[User]")).toBeInTheDocument();
+			expect(screen.getByText("[Agent]")).toBeInTheDocument();
 
-			// Only one "You" label for the two consecutive input messages
-			expect(screen.getAllByText("You")).toHaveLength(1);
+			// Only one "User" label for the two consecutive input messages
+			expect(screen.getAllByText("[User]")).toHaveLength(1);
 		});
 
 		it("shows role label again when sender changes back", () => {
@@ -94,9 +94,9 @@ describe("AgentChatHistory", () => {
 				/>,
 			);
 
-			// Two "You" labels: one for first input group, one for the second
-			expect(screen.getAllByText("You")).toHaveLength(2);
-			expect(screen.getAllByText("Agent")).toHaveLength(1);
+			// Two "User" labels: one for first input group, one for the second
+			expect(screen.getAllByText("[User]")).toHaveLength(2);
+			expect(screen.getAllByText("[Agent]")).toHaveLength(1);
 		});
 	});
 

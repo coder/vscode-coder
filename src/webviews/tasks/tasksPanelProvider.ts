@@ -229,7 +229,7 @@ export class TasksPanelProvider
 		} catch (err) {
 			const errorMessage = toError(err).message;
 			this.logger.warn(`Command ${method} failed`, err);
-			vscode.window.showErrorMessage(`Command failed: ${errorMessage}`);
+			vscode.window.showErrorMessage(errorMessage);
 		}
 	}
 
@@ -251,7 +251,7 @@ export class TasksPanelProvider
 
 		await this.refreshAndNotifyTasks();
 		vscode.window.showInformationMessage(
-			`Task "${getTaskLabel(task)}" created successfully`,
+			`Task "${getTaskLabel(task)}" created`,
 		);
 		return task;
 	}
@@ -261,12 +261,12 @@ export class TasksPanelProvider
 		taskName: string,
 	): Promise<void> {
 		const confirmed = await vscodeProposed.window.showWarningMessage(
-			`Delete task "${taskName}"`,
+			`Delete task "${taskName}"?`,
 			{
 				modal: true,
 				useCustom: true,
 				detail:
-					"This action is irreversible and removes all workspace resources and data.",
+					"This will permanently delete the workspace and all associated data.",
 			},
 			"Delete",
 		);
@@ -282,7 +282,7 @@ export class TasksPanelProvider
 
 		await this.refreshAndNotifyTasks();
 		vscode.window.showInformationMessage(
-			`Task "${taskName}" deleted successfully`,
+			`Task "${taskName}" deleted`,
 		);
 	}
 
@@ -331,7 +331,7 @@ export class TasksPanelProvider
 		const task = await this.client.getTask("me", taskId);
 		const { workspace_id } = task;
 		if (!workspace_id) {
-			throw new Error("Task has no workspace");
+			throw new Error("Task has no workspace yet");
 		}
 		await legacyCall(workspace_id, task);
 		await this.refreshAndNotifyTask(taskId);
@@ -355,7 +355,7 @@ export class TasksPanelProvider
 				(err.response?.status === 409 || err.response?.status === 400)
 			) {
 				throw new Error(
-					`Task is not ready to receive messages (${errToStr(err)})`,
+					`Agent is not ready for messages (${errToStr(err)})`,
 					{ cause: err },
 				);
 			}
@@ -386,7 +386,7 @@ export class TasksPanelProvider
 	private async handleDownloadLogs(taskId: string): Promise<void> {
 		const result = await this.fetchTaskLogs(taskId);
 		if (result.status !== "ok") {
-			throw new Error("Failed to fetch logs for download");
+			throw new Error("Unable to download logs");
 		}
 		if (result.logs.length === 0) {
 			vscode.window.showWarningMessage("No logs available to download");

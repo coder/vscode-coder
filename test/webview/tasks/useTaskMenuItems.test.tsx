@@ -68,7 +68,7 @@ function deferPause() {
 }
 
 describe("useTaskMenuItems", () => {
-	it.each(["View in Coder", "Download Logs", "Delete"])(
+	it.each(["View in Coder", "Download Logs", "Delete Task"])(
 		'always includes "%s"',
 		(label) => {
 			const { result } = renderTask(task());
@@ -80,9 +80,12 @@ describe("useTaskMenuItems", () => {
 		const { result } = renderTask(task());
 		const items = result.current.menuItems;
 		const deleteIdx = items.findIndex(
-			(item) => !item.separator && item.label === "Delete",
+			(item) => !item.separator && item.label === "Delete Task",
 		);
-		expect(items[deleteIdx]).toMatchObject({ label: "Delete", danger: true });
+		expect(items[deleteIdx]).toMatchObject({
+			label: "Delete Task",
+			danger: true,
+		});
 		expect(items[deleteIdx - 1]).toMatchObject({ separator: true });
 	});
 
@@ -109,7 +112,7 @@ describe("useTaskMenuItems", () => {
 			apiMethod: "resumeTask",
 			testTask: resumableTask(),
 		},
-		{ label: "Delete", apiMethod: "deleteTask", testTask: task() },
+		{ label: "Delete Task", apiMethod: "deleteTask", testTask: task() },
 	])("$label calls api.$apiMethod", async ({ label, apiMethod, testTask }) => {
 		const { result } = renderTask(testTask);
 		clickItem(result.current.menuItems, label);
@@ -190,7 +193,7 @@ describe("useTaskMenuItems", () => {
 			errorMsg: "Failed while resuming task",
 		},
 		{
-			label: "Delete",
+			label: "Delete Task",
 			apiMethod: "deleteTask",
 			testTask: task(),
 			errorMsg: "Failed while deleting task",

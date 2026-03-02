@@ -125,7 +125,7 @@ describe("TaskDetailView", () => {
 	it("shows logsStatus error in chat history", () => {
 		const details = taskDetails({ logs: { status: "error" } });
 		renderWithQuery(<TaskDetailView details={details} onBack={() => {}} />);
-		expect(screen.getByText("Failed to load logs")).toBeInTheDocument();
+		expect(screen.getByText("Failed to load messages")).toBeInTheDocument();
 	});
 
 	describe("workspace startup rendering", () => {
