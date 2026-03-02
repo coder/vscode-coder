@@ -290,7 +290,7 @@ export class TasksPanelProvider
 		return this.pauseOrResumeTask(
 			taskId,
 			() => this.client.pauseTask("me", taskId),
-			(task) => this.client.stopWorkspace(task.workspace_id!),
+			(workspaceId) => this.client.stopWorkspace(workspaceId),
 		);
 	}
 
@@ -298,38 +298,42 @@ export class TasksPanelProvider
 		return this.pauseOrResumeTask(
 			taskId,
 			() => this.client.resumeTask("me", taskId),
-			(task) =>
-				this.client.startWorkspace(
-					task.workspace_id!,
-					task.template_version_id,
-				),
+			(workspaceId, task) =>
+				this.client.startWorkspace(workspaceId, task.template_version_id),
 		);
 	}
 
 	private async pauseOrResumeTask(
 		taskId: string,
 		taskApiCall: () => Promise<unknown>,
-		legacyCall: (task: Task) => Promise<unknown>,
+		legacyCall: (workspaceId: string, task: Task) => Promise<unknown>,
 	): Promise<void> {
-		if (!this.useLegacyPauseResume) {
-			try {
-				await taskApiCall();
-				await this.refreshAndNotifyTask(taskId);
-				return;
-			} catch (err) {
-				if (isAxiosError(err) && err.response?.status === 404) {
-					this.useLegacyPauseResume = true;
-				} else {
-					throw err;
-				}
-			}
+		if (this.useLegacyPauseResume) {
+			return this.legacyPauseOrResume(taskId, legacyCall);
 		}
 
+		try {
+			await taskApiCall();
+			await this.refreshAndNotifyTask(taskId);
+		} catch (err) {
+			if (isAxiosError(err) && err.response?.status === 404) {
+				this.useLegacyPauseResume = true;
+				return this.legacyPauseOrResume(taskId, legacyCall);
+			}
+			throw err;
+		}
+	}
+
+	private async legacyPauseOrResume(
+		taskId: string,
+		legacyCall: (workspaceId: string, task: Task) => Promise<unknown>,
+	): Promise<void> {
 		const task = await this.client.getTask("me", taskId);
-		if (!task.workspace_id) {
+		const { workspace_id } = task;
+		if (!workspace_id) {
 			throw new Error("Task has no workspace");
 		}
-		await legacyCall(task);
+		await legacyCall(workspace_id, task);
 		await this.refreshAndNotifyTask(taskId);
 	}
 
