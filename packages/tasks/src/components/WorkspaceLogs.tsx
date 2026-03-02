@@ -19,7 +19,7 @@ export function WorkspaceLogs({ task }: { task: Task }) {
 			{lines.length === 0 ? (
 				<LogViewerPlaceholder>Waiting for logs...</LogViewerPlaceholder>
 			) : (
-				lines.map((line, i) => <LogLine key={i}>{line}</LogLine>)
+				lines.map((entry) => <LogLine key={entry.id}>{entry.text}</LogLine>)
 			)}
 		</LogViewer>
 	);

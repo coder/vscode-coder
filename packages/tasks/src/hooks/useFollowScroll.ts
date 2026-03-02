@@ -17,7 +17,7 @@ interface ScrollableElement extends HTMLElement {
  */
 export function useFollowScroll(): RefObject<HTMLDivElement | null> {
 	const ref = useRef<HTMLDivElement>(null);
-	const atBottom = useRef(true);
+	const atBottomRef = useRef(true);
 
 	useEffect(() => {
 		const sentinel = ref.current;
@@ -28,7 +28,7 @@ export function useFollowScroll(): RefObject<HTMLDivElement | null> {
 		const container = parent as ScrollableElement;
 
 		function onScroll() {
-			atBottom.current =
+			atBottomRef.current =
 				container.scrollMax - container.scrollPos <= BOTTOM_THRESHOLD;
 		}
 
@@ -41,7 +41,7 @@ export function useFollowScroll(): RefObject<HTMLDivElement | null> {
 		});
 
 		const mo = new MutationObserver(() => {
-			if (atBottom.current) {
+			if (atBottomRef.current) {
 				scrollToBottom();
 			}
 		});

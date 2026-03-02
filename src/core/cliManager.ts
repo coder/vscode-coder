@@ -690,7 +690,7 @@ export class CliManager {
 				);
 				if (!action) {
 					this.output.info("Binary was rejected at user request");
-					throw new Error("Signature verification aborted");
+					throw new Error("Signature verification aborted", { cause: error });
 				}
 				this.output.info("Binary will be ran anyway at user request");
 			}

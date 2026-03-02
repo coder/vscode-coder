@@ -74,39 +74,44 @@ export function ActionMenu({ items }: ActionMenuProps) {
 					tabIndex={-1}
 					onKeyDown={(e) => isEscape(e) && close()}
 				>
-					{items.map((item, index) =>
-						item.separator ? (
-							<div
-								key={`sep-${index}`}
-								className="action-menu-separator"
-								role="separator"
-							/>
-						) : (
-							<button
-								key={`${item.label}-${index}`}
-								type="button"
-								className={[
-									"action-menu-item",
-									item.danger && "danger",
-									item.loading && "loading",
-								]
-									.filter(Boolean)
-									.join(" ")}
-								onClick={() => {
-									item.onClick();
-									close();
-								}}
-								disabled={item.disabled === true || item.loading === true}
-							>
-								{item.loading ? (
-									<VscodeProgressRing className="action-menu-spinner" />
-								) : (
-									<VscodeIcon name={item.icon} className="action-menu-icon" />
-								)}
-								<span>{item.label}</span>
-							</button>
-						),
-					)}
+					{items
+						.map((item, i) => ({
+							item,
+							key: item.separator ? `separator-${i}` : `${item.label}-${i}`,
+						}))
+						.map(({ item, key }) =>
+							item.separator ? (
+								<div
+									key={key}
+									className="action-menu-separator"
+									role="separator"
+								/>
+							) : (
+								<button
+									key={key}
+									type="button"
+									className={[
+										"action-menu-item",
+										item.danger && "danger",
+										item.loading && "loading",
+									]
+										.filter(Boolean)
+										.join(" ")}
+									onClick={() => {
+										item.onClick();
+										close();
+									}}
+									disabled={item.disabled === true || item.loading === true}
+								>
+									{item.loading ? (
+										<VscodeProgressRing className="action-menu-spinner" />
+									) : (
+										<VscodeIcon name={item.icon} className="action-menu-icon" />
+									)}
+									<span>{item.label}</span>
+								</button>
+							),
+						)}
 				</div>
 			)}
 		</div>

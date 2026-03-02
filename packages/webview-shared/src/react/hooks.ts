@@ -22,7 +22,7 @@ export function useMessage<T>(handler: (message: T) => void): void {
  * Hook to manage webview state with VS Code's state API
  */
 export function useVsCodeState<T>(initialState: T): [T, (state: T) => void] {
-	const [state, setLocalState] = useState<T>((): T => {
+	const [localState, setLocalState] = useState<T>((): T => {
 		const saved = getState<T>();
 		return saved ?? initialState;
 	});
@@ -32,5 +32,5 @@ export function useVsCodeState<T>(initialState: T): [T, (state: T) => void] {
 		setState(newState);
 	}, []);
 
-	return [state, setVsCodeState];
+	return [localState, setVsCodeState];
 }

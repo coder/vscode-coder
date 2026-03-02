@@ -8,7 +8,7 @@ import { task } from "../../mocks/tasks";
 import { renderWithQuery } from "../render";
 
 vi.mock("@repo/tasks/hooks/useWorkspaceLogs", () => ({
-	useWorkspaceLogs: () => [] as string[],
+	useWorkspaceLogs: () => [],
 }));
 
 describe("WorkspaceLogs", () => {
@@ -39,7 +39,9 @@ describe("WorkspaceLogs", () => {
 	});
 
 	it("renders log lines instead of placeholder", () => {
-		vi.spyOn(hookModule, "useWorkspaceLogs").mockReturnValue(["Ready"]);
+		vi.spyOn(hookModule, "useWorkspaceLogs").mockReturnValue([
+			{ id: 0, text: "Ready" },
+		]);
 
 		renderWithQuery(
 			<WorkspaceLogs task={task({ workspace_status: "starting" })} />,
