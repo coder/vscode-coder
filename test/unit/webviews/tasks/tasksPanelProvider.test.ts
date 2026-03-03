@@ -312,6 +312,31 @@ describe("TasksPanelProvider", () => {
 			});
 		});
 
+		it("passes snapshot and snapshotAt from API response", async () => {
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(task());
+			h.client.getTaskLogs.mockResolvedValue({
+				logs: [logEntry({ content: "Paused message" })],
+				snapshot: true,
+				snapshot_at: "2024-06-15T10:30:00Z",
+			});
+
+			const res = await h.request(TasksApi.getTaskDetails, {
+				taskId: "task-1",
+			});
+
+			expect(res).toMatchObject({
+				success: true,
+				data: {
+					logs: {
+						status: "ok",
+						snapshot: true,
+						snapshotAt: "2024-06-15T10:30:00Z",
+					},
+				},
+			});
+		});
+
 		it("returns logsStatus not_available on 409", async () => {
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task());
@@ -383,7 +408,7 @@ describe("TasksPanelProvider", () => {
 	});
 
 	describe("deleteTask", () => {
-		const deleteMessage = 'Delete task "Test Task"';
+		const deleteMessage = 'Delete task "Test Task"?';
 
 		it("deletes task after confirmation", async () => {
 			const h = createHarness();
@@ -574,13 +599,13 @@ describe("TasksPanelProvider", () => {
 				name: "409 conflict (task pending/paused)",
 				taskOverrides: { status: "active", current_state: taskState("idle") },
 				sendError: createAxiosError(409, "Conflict"),
-				expectedError: "Task is not ready to receive messages",
+				expectedError: "Agent is not ready for messages",
 			},
 			{
 				name: "400 bad request (task error/unknown)",
 				taskOverrides: { status: "active", current_state: taskState("idle") },
 				sendError: createAxiosError(400, "Bad Request"),
-				expectedError: "Task is not ready to receive messages",
+				expectedError: "Agent is not ready for messages",
 			},
 		])(
 			"fails on $name",
@@ -711,9 +736,9 @@ describe("TasksPanelProvider", () => {
 			});
 
 			expect(res.success).toBe(false);
-			expect(res.error).toBe("Failed to fetch logs for download");
+			expect(res.error).toBe("Unable to download logs");
 			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-				"Failed to fetch logs for download",
+				"Unable to download logs",
 			);
 			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 		});
@@ -805,7 +830,7 @@ describe("TasksPanelProvider", () => {
 			await h.command(TasksApi.viewInCoder, { taskId: "task-1" });
 
 			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-				"Command failed: Task not found",
+				"Task not found",
 			);
 		});
 	});

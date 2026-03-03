@@ -6,6 +6,8 @@ import { AgentChatHistory } from "@repo/tasks/components/AgentChatHistory";
 import { logEntry } from "../../mocks/tasks";
 import { renderWithQuery } from "../render";
 
+import type { TaskLogs } from "@repo/shared";
+
 describe("AgentChatHistory", () => {
 	describe("empty states", () => {
 		it("shows default empty message when no logs", () => {
@@ -26,7 +28,7 @@ describe("AgentChatHistory", () => {
 				/>,
 			);
 			expect(
-				screen.getByText("Logs not available in current task state"),
+				screen.getByText("Messages are not available yet"),
 			).toBeInTheDocument();
 		});
 
@@ -34,7 +36,7 @@ describe("AgentChatHistory", () => {
 			renderWithQuery(
 				<AgentChatHistory taskLogs={{ status: "error" }} isThinking={false} />,
 			);
-			const el = screen.getByText("Failed to load logs");
+			const el = screen.getByText("Failed to load messages");
 			expect(el).toBeInTheDocument();
 			expect(el).toHaveClass("log-viewer-error");
 		});
@@ -73,12 +75,12 @@ describe("AgentChatHistory", () => {
 				/>,
 			);
 
-			// "You" label at first input, "Agent" label at first output
-			expect(screen.getByText("You")).toBeInTheDocument();
-			expect(screen.getByText("Agent")).toBeInTheDocument();
+			// "User" label at first input, "Agent" label at first output
+			expect(screen.getByText("[User]")).toBeInTheDocument();
+			expect(screen.getByText("[Agent]")).toBeInTheDocument();
 
-			// Only one "You" label for the two consecutive input messages
-			expect(screen.getAllByText("You")).toHaveLength(1);
+			// Only one "User" label for the two consecutive input messages
+			expect(screen.getAllByText("[User]")).toHaveLength(1);
 		});
 
 		it("shows role label again when sender changes back", () => {
@@ -94,9 +96,101 @@ describe("AgentChatHistory", () => {
 				/>,
 			);
 
-			// Two "You" labels: one for first input group, one for the second
-			expect(screen.getAllByText("You")).toHaveLength(2);
-			expect(screen.getAllByText("Agent")).toHaveLength(1);
+			// Two "User" labels: one for first input group, one for the second
+			expect(screen.getAllByText("[User]")).toHaveLength(2);
+			expect(screen.getAllByText("[Agent]")).toHaveLength(1);
+		});
+	});
+
+	describe("snapshot header", () => {
+		interface SnapshotHeaderTestCase {
+			name: string;
+			taskLogs: TaskLogs;
+			expectedHeader: string;
+			hasInfoIcon: boolean;
+		}
+		it.each<SnapshotHeaderTestCase>([
+			{
+				name: "snapshot=false → Chat history",
+				taskLogs: {
+					status: "ok",
+					logs: [logEntry({ id: 1 })],
+					snapshot: false,
+				},
+				expectedHeader: "Chat history",
+				hasInfoIcon: false,
+			},
+			{
+				name: "snapshot=undefined → Chat history",
+				taskLogs: { status: "ok", logs: [logEntry({ id: 1 })] },
+				expectedHeader: "Chat history",
+				hasInfoIcon: false,
+			},
+			{
+				name: "snapshot=true, 0 logs → AI chat logs",
+				taskLogs: { status: "ok", logs: [], snapshot: true },
+				expectedHeader: "AI chat messages",
+				hasInfoIcon: false,
+			},
+			{
+				name: "snapshot=true, 3 logs → Last 3 messages",
+				taskLogs: {
+					status: "ok",
+					logs: [logEntry({ id: 1 }), logEntry({ id: 2 }), logEntry({ id: 3 })],
+					snapshot: true,
+				},
+				expectedHeader: "Last 3 messages of AI chat",
+				hasInfoIcon: false,
+			},
+			{
+				name: "snapshot=true with snapshotAt → info icon",
+				taskLogs: {
+					status: "ok",
+					logs: [logEntry({ id: 1 })],
+					snapshot: true,
+					snapshotAt: "2024-06-15T10:30:00Z",
+				},
+				expectedHeader: "Last message of AI chat",
+				hasInfoIcon: true,
+			},
+			{
+				name: "snapshot=false with snapshotAt → no info icon",
+				taskLogs: {
+					status: "ok",
+					logs: [logEntry({ id: 1 })],
+					snapshot: false,
+					snapshotAt: "2024-06-15T10:30:00Z",
+				},
+				expectedHeader: "Chat history",
+				hasInfoIcon: false,
+			},
+		])("$name", ({ taskLogs, expectedHeader, hasInfoIcon }) => {
+			renderWithQuery(
+				<AgentChatHistory taskLogs={taskLogs} isThinking={false} />,
+			);
+			expect(screen.getByText(expectedHeader)).toBeInTheDocument();
+			if (hasInfoIcon) {
+				expect(document.querySelector(".codicon-info")).toBeInTheDocument();
+			} else {
+				expect(document.querySelector(".codicon-info")).not.toBeInTheDocument();
+			}
+		});
+
+		it("tooltip shows relative time", () => {
+			renderWithQuery(
+				<AgentChatHistory
+					taskLogs={{
+						status: "ok",
+						logs: [logEntry({ id: 1 })],
+						snapshot: true,
+						snapshotAt: "2024-06-15T10:30:00Z",
+					}}
+					isThinking={false}
+				/>,
+			);
+			const tooltip = document.querySelector(".snapshot-info-tooltip");
+			expect(tooltip?.textContent).toContain("Snapshot taken");
+			expect(tooltip?.textContent).toContain("ago");
 		});
 	});
 

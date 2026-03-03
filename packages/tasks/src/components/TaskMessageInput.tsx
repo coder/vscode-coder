@@ -31,20 +31,20 @@ function getPlaceholder(task: Task): string {
 			return "Waiting for the agent to start...";
 		case "error":
 		case "unknown":
-			return "Task is in an error state and cannot receive messages";
+			return "This task encountered an error";
 		case "active":
 			break;
 	}
 
 	switch (task.current_state?.state) {
 		case "working":
-			return "Agent is working — you can pause or wait for it to finish...";
+			return "Agent is working...";
 		case "complete":
-			return "Task completed — send a follow-up to continue...";
+			return "Send a follow-up to continue...";
 		case "failed":
-			return "Task failed — send a message to retry...";
+			return "Send a message to retry...";
 		default:
-			return "Send a message to the agent...";
+			return "Send a message...";
 	}
 }
 

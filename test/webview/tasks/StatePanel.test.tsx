@@ -55,7 +55,7 @@ describe.each<InfoStateTestCase>([
 	{
 		name: "NoTemplateState",
 		element: <NoTemplateState />,
-		expectedTexts: ["No Task template found"],
+		expectedTexts: ["No task templates found"],
 		href: "https://coder.com/docs/admin/templates",
 	},
 	{

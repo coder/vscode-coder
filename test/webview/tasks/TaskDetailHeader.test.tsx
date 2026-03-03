@@ -86,7 +86,7 @@ describe("TaskDetailHeader", () => {
 			name: "Delete",
 			taskOverrides: {},
 			apiMethod: "deleteTask",
-			menuLabel: "Delete",
+			menuLabel: "Delete Task",
 			expectedLabel: "Deleting...",
 		},
 		{

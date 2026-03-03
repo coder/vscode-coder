@@ -45,9 +45,24 @@ export function useScrollableHeight(
 			}
 		});
 
+		// Observe content child so the layout recalculates when
+		// the content is replaced (e.g. loading state -> form).
+		function observeContent() {
+			if (scroll?.firstElementChild) {
+				observer.observe(scroll.firstElementChild);
+			}
+		}
+
 		observer.observe(host);
 		observer.observe(scroll);
+		observeContent();
 
-		return () => observer.disconnect();
+		const mutations = new MutationObserver(observeContent);
+		mutations.observe(scroll, { childList: true });
+
+		return () => {
+			observer.disconnect();
+			mutations.disconnect();
+		};
 	}, [hostRef, scrollRef]);
 }

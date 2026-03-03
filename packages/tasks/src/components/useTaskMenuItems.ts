@@ -87,7 +87,7 @@ export function useTaskMenuItems({
 	menuItems.push({ separator: true });
 
 	menuItems.push({
-		label: "Delete",
+		label: "Delete Task",
 		icon: "trash",
 		onClick: () =>
 			run("deleting", () => api.deleteTask({ taskId: task.id, taskName })),

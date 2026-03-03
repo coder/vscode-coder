@@ -1,6 +1,13 @@
+import {
+	logPreviewLabel,
+	type TaskLogEntry,
+	type TaskLogs,
+} from "@repo/shared";
+import { formatDistanceToNowStrict } from "date-fns";
+
 import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
-import type { TaskLogEntry, TaskLogs } from "@repo/shared";
+import type { ReactNode } from "react";
 
 interface AgentChatHistoryProps {
 	taskLogs: TaskLogs;
@@ -18,11 +25,36 @@ function LogEntry({
 		<div className={`log-entry log-entry-${log.type}`}>
 			{isGroupStart && (
 				<div className="log-entry-role">
-					{log.type === "input" ? "You" : "Agent"}
+					{log.type === "input" ? "[User]" : "[Agent]"}
 				</div>
 			)}
 			{log.content}
 		</div>
+	);
+}
+
+function chatHistoryHeader(taskLogs: TaskLogs): ReactNode {
+	if (taskLogs.status !== "ok" || taskLogs.snapshot !== true) {
+		return "Chat history";
+	}
+	const label = logPreviewLabel(taskLogs.logs.length);
+	if (taskLogs.snapshotAt === undefined) {
+		return label;
+	}
+	const relativeTime = formatDistanceToNowStrict(
+		new Date(taskLogs.snapshotAt),
+		{ addSuffix: true },
+	);
+	return (
+		<>
+			{label}{" "}
+			<span className="snapshot-info">
+				<span className="codicon codicon-info" />
+				<span className="snapshot-info-tooltip">
+					Snapshot taken {relativeTime}
+				</span>
+			</span>
+		</>
 	);
 }
 
@@ -33,7 +65,7 @@ export function AgentChatHistory({
 	const logs = taskLogs.status === "ok" ? taskLogs.logs : [];
 
 	return (
-		<LogViewer header="Agent chat history">
+		<LogViewer header={chatHistoryHeader(taskLogs)}>
 			{logs.length === 0 ? (
 				<LogViewerPlaceholder error={taskLogs.status === "error"}>
 					{getEmptyMessage(taskLogs.status)}
@@ -57,9 +89,9 @@ export function AgentChatHistory({
 function getEmptyMessage(status: TaskLogs["status"]): string {
 	switch (status) {
 		case "not_available":
-			return "Logs not available in current task state";
+			return "Messages are not available yet";
 		case "error":
-			return "Failed to load logs";
+			return "Failed to load messages";
 		case "ok":
 			return "No messages yet";
 	}

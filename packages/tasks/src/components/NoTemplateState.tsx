@@ -7,7 +7,7 @@ const DOCS_URL = "https://coder.com/docs/admin/templates";
 export function NoTemplateState() {
 	return (
 		<StatePanel
-			title="No Task template found"
+			title="No task templates found"
 			action={
 				<a href={DOCS_URL} className="text-link">
 					Learn how to create a template <VscodeIcon name="link-external" />

@@ -55,32 +55,32 @@ describe("TaskMessageInput", () => {
 		{
 			name: "error",
 			overrides: { status: "error" },
-			expected: "Task is in an error state and cannot receive messages",
+			expected: "This task encountered an error",
 		},
 		{
 			name: "unknown",
 			overrides: { status: "unknown" },
-			expected: "Task is in an error state and cannot receive messages",
+			expected: "This task encountered an error",
 		},
 		{
 			name: "active+working",
 			overrides: { status: "active", current_state: taskState("working") },
-			expected: "Agent is working — you can pause or wait for it to finish...",
+			expected: "Agent is working...",
 		},
 		{
 			name: "active+complete",
 			overrides: { status: "active", current_state: taskState("complete") },
-			expected: "Task completed — send a follow-up to continue...",
+			expected: "Send a follow-up to continue...",
 		},
 		{
 			name: "active+failed",
 			overrides: { status: "active", current_state: taskState("failed") },
-			expected: "Task failed — send a message to retry...",
+			expected: "Send a message to retry...",
 		},
 		{
 			name: "active with no current_state",
 			overrides: { status: "active", current_state: null },
-			expected: "Send a message to the agent...",
+			expected: "Send a message...",
 		},
 	])("shows placeholder for $name", ({ overrides, expected }) => {
 		renderWithQuery(<TaskMessageInput task={task(overrides)} />);

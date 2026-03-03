@@ -5,7 +5,7 @@ import { useFollowScroll } from "../hooks/useFollowScroll";
 import type { ReactNode } from "react";
 
 interface LogViewerProps {
-	header: string;
+	header: ReactNode;
 	children: ReactNode;
 }
 
