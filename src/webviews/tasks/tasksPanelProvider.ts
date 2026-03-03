@@ -281,9 +281,7 @@ export class TasksPanelProvider
 		}
 
 		await this.refreshAndNotifyTasks();
-		vscode.window.showInformationMessage(
-			`Task "${taskName}" deleted`,
-		);
+		vscode.window.showInformationMessage(`Task "${taskName}" deleted`);
 	}
 
 	private handlePauseTask(taskId: string): Promise<void> {
@@ -354,10 +352,9 @@ export class TasksPanelProvider
 				isAxiosError(err) &&
 				(err.response?.status === 409 || err.response?.status === 400)
 			) {
-				throw new Error(
-					`Agent is not ready for messages (${errToStr(err)})`,
-					{ cause: err },
-				);
+				throw new Error(`Agent is not ready for messages (${errToStr(err)})`, {
+					cause: err,
+				});
 			}
 			throw err;
 		}
@@ -569,7 +566,12 @@ export class TasksPanelProvider
 	private async fetchTaskLogs(taskId: string): Promise<TaskLogs> {
 		try {
 			const response = await this.client.getTaskLogs("me", taskId);
-			return { status: "ok", logs: response.logs };
+			return {
+				status: "ok",
+				logs: response.logs,
+				snapshot: response.snapshot,
+				snapshotAt: response.snapshot_at,
+			};
 		} catch (err) {
 			if (isAxiosError(err) && err.response?.status === 409) {
 				return { status: "not_available" };

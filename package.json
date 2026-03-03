@@ -474,7 +474,7 @@
 		"@peculiar/x509": "^1.14.3",
 		"@repo/shared": "workspace:*",
 		"axios": "1.13.6",
-		"date-fns": "^4.1.0",
+		"date-fns": "catalog:",
 		"eventsource": "^4.1.0",
 		"find-process": "^2.1.0",
 		"jsonc-parser": "^3.3.1",

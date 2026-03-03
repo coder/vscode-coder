@@ -1,6 +1,13 @@
+import {
+	logPreviewLabel,
+	type TaskLogEntry,
+	type TaskLogs,
+} from "@repo/shared";
+import { formatDistanceToNowStrict } from "date-fns";
+
 import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
-import type { TaskLogEntry, TaskLogs } from "@repo/shared";
+import type { ReactNode } from "react";
 
 interface AgentChatHistoryProps {
 	taskLogs: TaskLogs;
@@ -26,6 +33,31 @@ function LogEntry({
 	);
 }
 
+function chatHistoryHeader(taskLogs: TaskLogs): ReactNode {
+	if (taskLogs.status !== "ok" || taskLogs.snapshot !== true) {
+		return "Chat history";
+	}
+	const label = logPreviewLabel(taskLogs.logs.length);
+	if (taskLogs.snapshotAt === undefined) {
+		return label;
+	}
+	const relativeTime = formatDistanceToNowStrict(
+		new Date(taskLogs.snapshotAt),
+		{ addSuffix: true },
+	);
+	return (
+		<>
+			{label}{" "}
+			<span className="snapshot-info">
+				<span className="codicon codicon-info" />
+				<span className="snapshot-info-tooltip">
+					Snapshot taken {relativeTime}
+				</span>
+			</span>
+		</>
+	);
+}
+
 export function AgentChatHistory({
 	taskLogs,
 	isThinking,
@@ -33,7 +65,7 @@ export function AgentChatHistory({
 	const logs = taskLogs.status === "ok" ? taskLogs.logs : [];
 
 	return (
-		<LogViewer header="Chat History">
+		<LogViewer header={chatHistoryHeader(taskLogs)}>
 			{logs.length === 0 ? (
 				<LogViewerPlaceholder error={taskLogs.status === "error"}>
 					{getEmptyMessage(taskLogs.status)}

@@ -33,6 +33,9 @@ catalogs:
     coder:
       specifier: github:coder/coder#main
       version: 0.0.0
+    date-fns:
+      specifier: ^4.1.0
+      version: 4.1.0
     react:
       specifier: ^19.2.4
       version: 19.2.4
@@ -65,7 +68,7 @@ importers:
         specifier: 1.13.6
         version: 1.13.6
       date-fns:
-        specifier: ^4.1.0
+        specifier: 'catalog:'
         version: 4.1.0
       eventsource:
         specifier: ^4.1.0
@@ -181,7 +184,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: 'catalog:'
-        version: https://codeload.github.com/coder/coder/tar.gz/cfdbd5251a79ca1d88f46c20b9cc7c66fd167ae0
+        version: https://codeload.github.com/coder/coder/tar.gz/b80dbd2d4eb3e61a8419852647bb078f0845ad6e
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
@@ -269,6 +272,9 @@ importers:
       '@vscode/codicons':
         specifier: 'catalog:'
         version: 0.0.44
+      date-fns:
+        specifier: 'catalog:'
+        version: 4.1.0
       react:
         specifier: 'catalog:'
         version: 19.2.4
@@ -1950,8 +1956,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/cfdbd5251a79ca1d88f46c20b9cc7c66fd167ae0:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/cfdbd5251a79ca1d88f46c20b9cc7c66fd167ae0}
+  coder@https://codeload.github.com/coder/coder/tar.gz/b80dbd2d4eb3e61a8419852647bb078f0845ad6e:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/b80dbd2d4eb3e61a8419852647bb078f0845ad6e}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -6016,7 +6022,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/cfdbd5251a79ca1d88f46c20b9cc7c66fd167ae0: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/b80dbd2d4eb3e61a8419852647bb078f0845ad6e: {}
 
   color-convert@2.0.1:
     dependencies:

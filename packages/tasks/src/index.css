@@ -478,10 +478,44 @@ vscode-icon.disabled {
 }
 
 .log-viewer-header {
+	position: relative;
 	padding: 6px 8px;
-	font-size: 0.8em;
+	font-size: 0.9em;
 	color: var(--vscode-descriptionForeground);
 	border-bottom: 1px solid var(--vscode-input-border);
+}
+
+.snapshot-info {
+	margin-left: 3px;
+}
+
+.snapshot-info .codicon-info {
+	font-size: 1em;
+	color: var(--vscode-descriptionForeground);
+	vertical-align: middle;
+	cursor: pointer;
+}
+
+.snapshot-info-tooltip {
+	display: none;
+	position: absolute;
+	bottom: calc(100% + 4px);
+	left: 8px;
+	right: 8px;
+	width: fit-content;
+	padding: 6px 10px;
+	white-space: nowrap;
+	font-size: 1em;
+	color: var(--vscode-editorHoverWidget-foreground);
+	background: var(--vscode-editorHoverWidget-background);
+	border: 1px solid var(--vscode-editorHoverWidget-border);
+	border-radius: 3px;
+	z-index: 10;
+	pointer-events: none;
+}
+
+.snapshot-info:hover .snapshot-info-tooltip {
+	display: block;
 }
 
 .log-viewer-content {

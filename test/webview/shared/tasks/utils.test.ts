@@ -6,6 +6,7 @@ import {
 	isBuildingWorkspace,
 	isStableTask,
 	isTaskWorking,
+	logPreviewLabel,
 	type Task,
 	type TaskPermissions,
 } from "@repo/shared";
@@ -235,5 +236,16 @@ describe("isAgentStarting", () => {
 				task({ workspace_status: ws, workspace_agent_lifecycle: lc }),
 			),
 		).toBe(expected);
+	});
+});
+
+describe("logPreviewLabel", () => {
+	it.each([
+		{ count: 0, expected: "AI chat logs" },
+		{ count: 1, expected: "Last message of AI chat logs" },
+		{ count: 5, expected: "Last 5 messages of AI chat logs" },
+		{ count: 100, expected: "Last 100 messages of AI chat logs" },
+	])("count=$count → $expected", ({ count, expected }) => {
+		expect(logPreviewLabel(count)).toBe(expected);
 	});
 });

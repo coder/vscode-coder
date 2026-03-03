@@ -79,3 +79,14 @@ export function isAgentStarting(task: Task): boolean {
 export function isWorkspaceStarting(task: Task): boolean {
 	return isBuildingWorkspace(task) || isAgentStarting(task);
 }
+
+/** Label for the log preview header, matching the Coder dashboard pattern. */
+export function logPreviewLabel(count: number): string {
+	if (count === 0) {
+		return "AI chat logs";
+	}
+	if (count === 1) {
+		return "Last message of AI chat logs";
+	}
+	return `Last ${count} messages of AI chat logs`;
+}

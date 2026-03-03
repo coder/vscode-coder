@@ -312,6 +312,31 @@ describe("TasksPanelProvider", () => {
 			});
 		});
 
+		it("passes snapshot and snapshotAt from API response", async () => {
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(task());
+			h.client.getTaskLogs.mockResolvedValue({
+				logs: [logEntry({ content: "Paused message" })],
+				snapshot: true,
+				snapshot_at: "2024-06-15T10:30:00Z",
+			});
+
+			const res = await h.request(TasksApi.getTaskDetails, {
+				taskId: "task-1",
+			});
+
+			expect(res).toMatchObject({
+				success: true,
+				data: {
+					logs: {
+						status: "ok",
+						snapshot: true,
+						snapshotAt: "2024-06-15T10:30:00Z",
+					},
+				},
+			});
+		});
+
 		it("returns logsStatus not_available on 409", async () => {
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task());
