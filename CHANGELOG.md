@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## [v1.13.0](https://github.com/coder/vscode-coder/releases/tag/v1.13.0) 2026-03-03
+
+### Added
+
+- Tasks panel: a new sidebar panel to create, view, and manage AI tasks directly from VS Code.
+  Includes a task list with status indicators, a detail view with chat-style log streaming and
+  real-time workspace build logs, and the ability to send messages or pause the agent without
+  leaving the editor.
+- New "Switch Deployment" command to change deployments without clearing credentials.
+- New "Manage Credentials" command to view and remove stored credentials for individual deployments.
+
+### Changed
+
+- Logout now clears stored credentials for the current deployment.
+- The workspace update confirmation button now reads "Update and Restart" to clarify that updating
+  will restart the workspace.
+
 ## [v1.12.2](https://github.com/coder/vscode-coder/releases/tag/v1.12.2) 2026-01-27
 
 ### Added

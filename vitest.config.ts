@@ -17,8 +17,6 @@ export default defineConfig({
 					exclude: ["**/node_modules/**", "**/out/**", "**/*.d.ts"],
 					environment: "node",
 					globals: true,
-					pool: "threads",
-					fileParallelism: true,
 				},
 				resolve: {
 					alias: {
@@ -36,8 +34,6 @@ export default defineConfig({
 					exclude: ["**/node_modules/**", "**/out/**", "**/*.d.ts"],
 					environment: "jsdom",
 					globals: true,
-					pool: "threads",
-					fileParallelism: true,
 					setupFiles: ["test/webview/setup.ts"],
 				},
 				resolve: {
