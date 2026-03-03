@@ -10,8 +10,9 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { shouldUseKeyring } from "../cliConfig";
+import { isKeyringEnabled, shouldUseKeyring } from "../cliConfig";
 import * as pgp from "../pgp";
+import { toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";
@@ -49,10 +50,12 @@ export class CliManager {
 	 * unable to download a working binary, whether because of network issues or
 	 * downloads being disabled.
 	 */
-	public async fetchBinary(
-		restClient: Api,
-		safeHostname: string,
-	): Promise<string> {
+	public async fetchBinary(restClient: Api): Promise<string> {
+		const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
+		if (!baseUrl) {
+			throw new Error("REST client has no base URL configured");
+		}
+		const safeHostname = toSafeHost(baseUrl);
 		const cfg = vscode.workspace.getConfiguration("coder");
 		// Settings can be undefined when set to their defaults (true in this case),
 		// so explicitly check against false.
@@ -719,7 +722,6 @@ export class CliManager {
 	 * authentication) but the URL must be a non-empty string.
 	 */
 	public async configure(
-		safeHostname: string,
 		url: string,
 		token: string,
 		featureSet: FeatureSet,
@@ -728,6 +730,7 @@ export class CliManager {
 		if (!url) {
 			throw new Error("URL is required to configure the CLI");
 		}
+		const safeHostname = toSafeHost(url);
 
 		const configs = vscode.workspace.getConfiguration();
 		if (shouldUseKeyring(configs, featureSet)) {
@@ -765,12 +768,17 @@ export class CliManager {
 	}
 
 	/**
-	 * Remove file-based credentials for a deployment. Keyring entries are not
-	 * removed here because deleting requires the CLI binary, which may not be
-	 * available at logout time. This is fine: stale keyring entries are harmless
-	 * since the CLI overwrites them on next `coder login`.
+	 * Remove credentials for a deployment. Clears both file-based credentials
+	 * and keyring entries (via `coder logout`). Keyring deletion is best-effort:
+	 * if it fails, file cleanup still runs.
 	 */
-	public async clearCredentials(safeHostname: string): Promise<void> {
+	public async clearCredentials(url: string): Promise<void> {
+		const safeHostname = toSafeHost(url);
+		const configs = vscode.workspace.getConfiguration();
+		if (isKeyringEnabled(configs)) {
+			await this.cliCredentialManager.deleteToken(url, configs);
+		}
+
 		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
 		const urlPath = this.pathResolver.getUrlPath(safeHostname);
 		await Promise.all([

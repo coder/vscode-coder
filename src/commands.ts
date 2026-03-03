@@ -214,13 +214,12 @@ export class Commands {
 		this.logger.debug("Logging out");
 
 		const deployment = this.deploymentManager.getCurrentDeployment();
-		const safeHostname = deployment?.safeHostname;
 
 		await this.deploymentManager.clearDeployment();
 
-		if (safeHostname) {
-			await this.cliManager.clearCredentials(safeHostname);
-			await this.secretsManager.clearAllAuthData(safeHostname);
+		if (deployment) {
+			await this.cliManager.clearCredentials(deployment.url);
+			await this.secretsManager.clearAllAuthData(deployment.safeHostname);
 		}
 
 		vscode.window
@@ -287,7 +286,10 @@ export class Commands {
 
 			if (selected.hostnames.length === 1) {
 				const selectedHostname = selected.hostnames[0];
-				await this.cliManager.clearCredentials(selectedHostname);
+				const auth = await this.secretsManager.getSessionAuth(selectedHostname);
+				if (auth?.url) {
+					await this.cliManager.clearCredentials(auth.url);
+				}
 				await this.secretsManager.clearAllAuthData(selectedHostname);
 				this.logger.info("Removed credentials for", selectedHostname);
 				vscode.window.showInformationMessage(
@@ -306,7 +308,10 @@ export class Commands {
 				if (confirm === "Remove All") {
 					await Promise.all(
 						selected.hostnames.map(async (h) => {
-							await this.cliManager.clearCredentials(h);
+							const auth = await this.secretsManager.getSessionAuth(h);
+							if (auth?.url) {
+								await this.cliManager.clearCredentials(auth.url);
+							}
 							await this.secretsManager.clearAllAuthData(h);
 						}),
 					);
@@ -455,7 +460,6 @@ export class Commands {
 					const safeHost = toSafeHost(baseUrl);
 					const binary = await this.cliManager.fetchBinary(
 						this.extensionClient,
-						safeHost,
 					);
 
 					const version = semver.parse(await cliUtils.version(binary));

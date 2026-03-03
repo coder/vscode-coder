@@ -215,10 +215,7 @@ export class Remote {
 			if (
 				this.extensionContext.extensionMode === vscode.ExtensionMode.Production
 			) {
-				binaryPath = await this.cliManager.fetchBinary(
-					workspaceClient,
-					parts.safeHostname,
-				);
+				binaryPath = await this.cliManager.fetchBinary(workspaceClient);
 			} else {
 				try {
 					// In development, try to use `/tmp/coder` as the binary path.
@@ -226,10 +223,7 @@ export class Remote {
 					binaryPath = path.join(os.tmpdir(), "coder");
 					await fs.stat(binaryPath);
 				} catch {
-					binaryPath = await this.cliManager.fetchBinary(
-						workspaceClient,
-						parts.safeHostname,
-					);
+					binaryPath = await this.cliManager.fetchBinary(workspaceClient);
 				}
 			}
 
@@ -248,7 +242,6 @@ export class Remote {
 			// Write token to keyring or file (after CLI version is known)
 			if (baseUrlRaw && token !== undefined) {
 				await this.cliManager.configure(
-					parts.safeHostname,
 					baseUrlRaw,
 					token,
 					featureSet,
@@ -265,7 +258,6 @@ export class Remote {
 						if (auth?.url) {
 							try {
 								await this.cliManager.configure(
-									parts.safeHostname,
 									auth.url,
 									auth.token,
 									featureSet,

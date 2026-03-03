@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { CoderApi } from "../api/coderApi";
 import { type Logger } from "../logging/logger";
 import { LoginCoordinator } from "../login/loginCoordinator";
 
@@ -36,7 +37,13 @@ export class ServiceContainer implements vscode.Disposable {
 			context.globalState,
 			this.logger,
 		);
-		this.cliCredentialManager = new CliCredentialManager(this.logger);
+		this.cliCredentialManager = new CliCredentialManager(
+			this.logger,
+			async (url) => {
+				const client = CoderApi.create(url, "", this.logger);
+				return this.cliManager.fetchBinary(client);
+			},
+		);
 		this.cliManager = new CliManager(
 			this.logger,
 			this.pathResolver,
@@ -48,7 +55,6 @@ export class ServiceContainer implements vscode.Disposable {
 			this.mementoManager,
 			this.logger,
 			this.cliCredentialManager,
-			this.cliManager,
 			context.extension.id,
 		);
 	}

@@ -380,6 +380,7 @@ export function createMockCliCredentialManager(): CliCredentialManager {
 	return {
 		storeToken: vi.fn().mockResolvedValue(undefined),
 		readToken: vi.fn().mockResolvedValue(undefined),
+		deleteToken: vi.fn().mockResolvedValue(undefined),
 	} as unknown as CliCredentialManager;
 }
 

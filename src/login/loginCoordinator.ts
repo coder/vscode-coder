@@ -4,7 +4,6 @@ import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { isKeyringEnabled } from "../cliConfig";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
@@ -14,7 +13,6 @@ import { vscodeProposed } from "../vscodeProposed";
 import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { CliCredentialManager } from "../core/cliCredentialManager";
-import type { CliManager } from "../core/cliManager";
 import type { MementoManager } from "../core/mementoManager";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
@@ -43,7 +41,6 @@ export class LoginCoordinator implements vscode.Disposable {
 		private readonly mementoManager: MementoManager,
 		private readonly logger: Logger,
 		private readonly cliCredentialManager: CliCredentialManager,
-		private readonly cliManager: CliManager,
 		extensionId: string,
 	) {
 		this.oauthAuthorizer = new OAuthAuthorizer(
@@ -306,52 +303,15 @@ export class LoginCoordinator implements vscode.Disposable {
 	}
 
 	/**
-	 * Read a token from the CLI keyring. Fetches the CLI binary first (using
-	 * an unauthenticated client) so the binary is available for keyring reads.
-	 * Returns undefined if the keyring is disabled, the binary can't be fetched,
-	 * or the CLI returns no token.
+	 * Read a token from the CLI keyring.
 	 */
 	private async getCliKeyringToken(
 		deployment: Deployment,
 	): Promise<string | undefined> {
-		if (!isKeyringEnabled(vscode.workspace.getConfiguration())) {
-			return undefined;
-		}
-		try {
-			const binPath = await this.ensureBinaryForKeyring(
-				deployment.url,
-				deployment.safeHostname,
-			);
-			if (!binPath) {
-				return undefined;
-			}
-			return await this.cliCredentialManager.readToken(
-				binPath,
-				deployment.url,
-				vscode.workspace.getConfiguration(),
-			);
-		} catch (error) {
-			this.logger.warn("Failed to read token from CLI keyring", error);
-			return undefined;
-		}
-	}
-
-	/**
-	 * Fetch or locate a CLI binary for the given deployment. Uses an
-	 * unauthenticated client since getBuildInfo and binary downloads
-	 * don't require auth.
-	 */
-	private async ensureBinaryForKeyring(
-		url: string,
-		safeHostname: string,
-	): Promise<string | undefined> {
-		try {
-			const client = CoderApi.create(url, "", this.logger);
-			return await this.cliManager.fetchBinary(client, safeHostname);
-		} catch (error) {
-			this.logger.warn("Could not fetch CLI binary for keyring read:", error);
-			return undefined;
-		}
+		return this.cliCredentialManager.readToken(
+			deployment.url,
+			vscode.workspace.getConfiguration(),
+		);
 	}
 
 	/**
