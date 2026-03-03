@@ -252,6 +252,7 @@ export class Remote {
 					baseUrlRaw,
 					token,
 					featureSet,
+					binaryPath,
 				);
 			}
 
@@ -268,6 +269,7 @@ export class Remote {
 									auth.url,
 									auth.token,
 									featureSet,
+									binaryPath,
 								);
 								this.logger.info(
 									"Updated CLI config with new token for remote deployment",

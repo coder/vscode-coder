@@ -10,7 +10,7 @@ import { maybeAskAuthMethod } from "@/promptUtils";
 
 import {
 	createAxiosError,
-	createMockKeyringStore,
+	createMockCliCredentialManager,
 	createMockLogger,
 	createMockUser,
 	InMemoryMemento,
@@ -118,11 +118,15 @@ function createTestContext() {
 	const secretsManager = new SecretsManager(secretStorage, memento, logger);
 	const mementoManager = new MementoManager(memento);
 
+	const mockCliManager = {
+		fetchBinary: vi.fn().mockRejectedValue(new Error("no binary")),
+	};
 	const coordinator = new LoginCoordinator(
 		secretsManager,
 		mementoManager,
 		logger,
-		createMockKeyringStore(),
+		createMockCliCredentialManager(),
+		mockCliManager as unknown as import("@/core/cliManager").CliManager,
 		"coder.coder-remote",
 	);
 
@@ -307,11 +311,15 @@ describe("LoginCoordinator", () => {
 			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
 
 			const logger = createMockLogger();
+			const mockCliManager2 = {
+				fetchBinary: vi.fn().mockRejectedValue(new Error("no binary")),
+			};
 			const coordinator = new LoginCoordinator(
 				secretsManager,
 				mementoManager,
 				logger,
-				createMockKeyringStore(),
+				createMockCliCredentialManager(),
+				mockCliManager2 as unknown as import("@/core/cliManager").CliManager,
 				"coder.coder-remote",
 			);
 

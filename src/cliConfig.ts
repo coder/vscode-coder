@@ -1,5 +1,5 @@
+import { isKeyringSupported } from "./core/cliCredentialManager";
 import { getHeaderArgs } from "./headers";
-import { isKeyringSupported } from "./keyringStore";
 import { escapeCommandArg } from "./util";
 
 import type { WorkspaceConfiguration } from "vscode";

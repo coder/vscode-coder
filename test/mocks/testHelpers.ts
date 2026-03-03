@@ -12,7 +12,7 @@ import type { User } from "coder/site/src/api/typesGenerated";
 import type { IncomingMessage } from "node:http";
 
 import type { CoderApi } from "@/api/coderApi";
-import type { KeyringStore } from "@/keyringStore";
+import type { CliCredentialManager } from "@/core/cliCredentialManager";
 import type { Logger } from "@/logging/logger";
 
 /**
@@ -376,12 +376,11 @@ export class InMemorySecretStorage implements vscode.SecretStorage {
 	}
 }
 
-export function createMockKeyringStore(): KeyringStore {
+export function createMockCliCredentialManager(): CliCredentialManager {
 	return {
-		setToken: vi.fn(),
-		getToken: vi.fn().mockReturnValue(undefined),
-		deleteToken: vi.fn(),
-	} as unknown as KeyringStore;
+		storeToken: vi.fn().mockResolvedValue(undefined),
+		readToken: vi.fn().mockResolvedValue(undefined),
+	} as unknown as CliCredentialManager;
 }
 
 export function createMockLogger(): Logger {

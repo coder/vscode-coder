@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 
-import { KeyringStore } from "../keyringStore";
 import { type Logger } from "../logging/logger";
 import { LoginCoordinator } from "../login/loginCoordinator";
 
+import { CliCredentialManager } from "./cliCredentialManager";
 import { CliManager } from "./cliManager";
 import { ContextManager } from "./contextManager";
 import { MementoManager } from "./mementoManager";
@@ -19,7 +19,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
-	private readonly keyringStore: KeyringStore;
+	private readonly cliCredentialManager: CliCredentialManager;
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;
 	private readonly loginCoordinator: LoginCoordinator;
@@ -36,18 +36,19 @@ export class ServiceContainer implements vscode.Disposable {
 			context.globalState,
 			this.logger,
 		);
-		this.keyringStore = new KeyringStore(this.logger);
+		this.cliCredentialManager = new CliCredentialManager(this.logger);
 		this.cliManager = new CliManager(
 			this.logger,
 			this.pathResolver,
-			this.keyringStore,
+			this.cliCredentialManager,
 		);
 		this.contextManager = new ContextManager(context);
 		this.loginCoordinator = new LoginCoordinator(
 			this.secretsManager,
 			this.mementoManager,
 			this.logger,
-			this.keyringStore,
+			this.cliCredentialManager,
+			this.cliManager,
 			context.extension.id,
 		);
 	}
@@ -76,8 +77,8 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.contextManager;
 	}
 
-	getKeyringStore(): KeyringStore {
-		return this.keyringStore;
+	getCliCredentialManager(): CliCredentialManager {
+		return this.cliCredentialManager;
 	}
 
 	getLoginCoordinator(): LoginCoordinator {

@@ -16,7 +16,7 @@ import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
 
 import {
-	createMockKeyringStore,
+	createMockCliCredentialManager,
 	createMockLogger,
 	createMockStream,
 	MockConfigurationProvider,
@@ -25,8 +25,8 @@ import {
 } from "../../mocks/testHelpers";
 import { expectPathsEqual } from "../../utils/platform";
 
+import type { CliCredentialManager } from "@/core/cliCredentialManager";
 import type { FeatureSet } from "@/featureSet";
-import type { KeyringStore } from "@/keyringStore";
 
 vi.mock("os");
 vi.mock("axios");
@@ -59,7 +59,6 @@ vi.mock("@/cliConfig", async () => {
 	return {
 		...actual,
 		shouldUseKeyring: vi.fn(),
-		isKeyringEnabled: vi.fn(),
 	};
 });
 
@@ -86,7 +85,7 @@ describe("CliManager", () => {
 	let mockUI: MockUserInteraction;
 	let mockApi: Api;
 	let mockAxios: AxiosInstance;
-	let mockKeyring: KeyringStore;
+	let mockCredManager: CliCredentialManager;
 
 	const TEST_VERSION = "1.2.3";
 	const TEST_URL = "https://test.coder.com";
@@ -115,18 +114,17 @@ describe("CliManager", () => {
 		mockConfig = new MockConfigurationProvider();
 		mockProgress = new MockProgressReporter();
 		mockUI = new MockUserInteraction();
-		mockKeyring = createMockKeyringStore();
+		mockCredManager = createMockCliCredentialManager();
 		manager = new CliManager(
 			createMockLogger(),
 			new PathResolver(BASE_PATH, "/code/log"),
-			mockKeyring,
+			mockCredManager,
 		);
 
 		// Mock only what's necessary
 		vi.mocked(os.platform).mockReturnValue(PLATFORM);
 		vi.mocked(os.arch).mockReturnValue(ARCH);
 		vi.mocked(pgp.readPublicKeys).mockResolvedValue([]);
-		vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(true);
 	});
 
 	afterEach(async () => {
@@ -138,12 +136,15 @@ describe("CliManager", () => {
 	});
 
 	describe("Configure CLI", () => {
+		const TEST_BIN = "/usr/bin/coder";
+
 		function configure(token = "test-token") {
 			return manager.configure(
 				"dev.coder.com",
 				"https://coder.example.com",
 				token,
 				MOCK_FEATURE_SET,
+				TEST_BIN,
 			);
 		}
 
@@ -160,7 +161,13 @@ describe("CliManager", () => {
 
 		it("should throw when URL is empty", async () => {
 			await expect(
-				manager.configure("dev.coder.com", "", "test-token", MOCK_FEATURE_SET),
+				manager.configure(
+					"dev.coder.com",
+					"",
+					"test-token",
+					MOCK_FEATURE_SET,
+					TEST_BIN,
+				),
 			).rejects.toThrow("URL is required to configure the CLI");
 		});
 
@@ -181,6 +188,7 @@ describe("CliManager", () => {
 				"https://coder.example.com",
 				"token",
 				MOCK_FEATURE_SET,
+				TEST_BIN,
 			);
 
 			expect(memfs.readFileSync("/path/base/url", "utf8")).toBe(
@@ -189,24 +197,26 @@ describe("CliManager", () => {
 			expect(memfs.readFileSync("/path/base/session", "utf8")).toBe("token");
 		});
 
-		it("should write to keyring and skip files when featureSet enables keyring", async () => {
+		it("should store via CLI credential manager when keyring enabled", async () => {
 			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
 
 			await configure("test-token");
 
-			expect(mockKeyring.setToken).toHaveBeenCalledWith(
+			expect(mockCredManager.storeToken).toHaveBeenCalledWith(
+				TEST_BIN,
 				"https://coder.example.com",
 				"test-token",
+				expect.anything(),
 			);
 			expect(memfs.existsSync("/path/base/dev.coder.com/url")).toBe(false);
 			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
 		});
 
-		it("should throw and show error when keyring write fails", async () => {
+		it("should throw and show error when CLI keyring store fails", async () => {
 			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
-			vi.mocked(mockKeyring.setToken).mockImplementation(() => {
-				throw new Error("keyring unavailable");
-			});
+			vi.mocked(mockCredManager.storeToken).mockRejectedValueOnce(
+				new Error("keyring unavailable"),
+			);
 
 			await expect(configure("test-token")).rejects.toThrow(
 				"keyring unavailable",
@@ -231,27 +241,8 @@ describe("CliManager", () => {
 			);
 		}
 
-		interface RemoveCredentialsCase {
-			scenario: string;
-			setup: () => void;
-		}
-		it.each<RemoveCredentialsCase>([
-			{ scenario: "normally", setup: () => {} },
-			{
-				scenario: "when keyring delete fails",
-				setup: () =>
-					vi.mocked(mockKeyring.deleteToken).mockImplementation(() => {
-						throw new Error("keyring unavailable");
-					}),
-			},
-			{
-				scenario: "when keyring is disabled",
-				setup: () =>
-					vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(false),
-			},
-		])("should remove credential files $scenario", async ({ setup }) => {
+		it("should remove credential files", async () => {
 			seedCredentialFiles();
-			setup();
 			await manager.clearCredentials("dev.coder.com");
 			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
 			expect(memfs.existsSync("/path/base/dev.coder.com/url")).toBe(false);
@@ -261,13 +252,6 @@ describe("CliManager", () => {
 			await expect(
 				manager.clearCredentials("dev.coder.com"),
 			).resolves.not.toThrow();
-			expect(mockKeyring.deleteToken).toHaveBeenCalledWith("dev.coder.com");
-		});
-
-		it("should skip keyring delete when keyring is disabled", async () => {
-			vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(false);
-			await manager.clearCredentials("dev.coder.com");
-			expect(mockKeyring.deleteToken).not.toHaveBeenCalled();
 		});
 	});
 
@@ -709,7 +693,7 @@ describe("CliManager", () => {
 			const manager = new CliManager(
 				createMockLogger(),
 				resolver,
-				createMockKeyringStore(),
+				createMockCliCredentialManager(),
 			);
 
 			withSuccessfulDownload();

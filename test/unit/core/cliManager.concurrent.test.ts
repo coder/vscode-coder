@@ -18,7 +18,7 @@ import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
 
 import {
-	createMockKeyringStore,
+	createMockCliCredentialManager,
 	createMockLogger,
 	createMockStream,
 	MockConfigurationProvider,
@@ -83,7 +83,7 @@ function setupManager(testDir: string): CliManager {
 	return new CliManager(
 		createMockLogger(),
 		new PathResolver(testDir, "/code/log"),
-		createMockKeyringStore(),
+		createMockCliCredentialManager(),
 	);
 }
 

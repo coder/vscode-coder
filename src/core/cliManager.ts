@@ -10,7 +10,7 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { isKeyringEnabled, shouldUseKeyring } from "../cliConfig";
+import { shouldUseKeyring } from "../cliConfig";
 import * as pgp from "../pgp";
 import { vscodeProposed } from "../vscodeProposed";
 
@@ -22,9 +22,9 @@ import type { Api } from "coder/site/src/api/api";
 import type { IncomingMessage } from "node:http";
 
 import type { FeatureSet } from "../featureSet";
-import type { KeyringStore } from "../keyringStore";
 import type { Logger } from "../logging/logger";
 
+import type { CliCredentialManager } from "./cliCredentialManager";
 import type { PathResolver } from "./pathResolver";
 
 export class CliManager {
@@ -33,7 +33,7 @@ export class CliManager {
 	constructor(
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
-		private readonly keyringStore: KeyringStore,
+		private readonly cliCredentialManager: CliCredentialManager,
 	) {
 		this.binaryLock = new BinaryLock(output);
 	}
@@ -723,6 +723,7 @@ export class CliManager {
 		url: string,
 		token: string,
 		featureSet: FeatureSet,
+		binPath: string,
 	) {
 		if (!url) {
 			throw new Error("URL is required to configure the CLI");
@@ -731,10 +732,14 @@ export class CliManager {
 		const configs = vscode.workspace.getConfiguration();
 		if (shouldUseKeyring(configs, featureSet)) {
 			try {
-				this.keyringStore.setToken(url, token);
-				this.output.info("Stored token in OS keyring for", url);
+				await this.cliCredentialManager.storeToken(
+					binPath,
+					url,
+					token,
+					configs,
+				);
 			} catch (error) {
-				this.output.error("Failed to store token in OS keyring:", error);
+				this.output.error("Failed to store token via CLI keyring:", error);
 				vscode.window
 					.showErrorMessage(
 						`Failed to store session token in OS keyring: ${errToStr(error)}. ` +
@@ -760,18 +765,12 @@ export class CliManager {
 	}
 
 	/**
-	 * Remove credentials for a deployment from both keyring and file storage.
+	 * Remove file-based credentials for a deployment. Keyring entries are not
+	 * removed here because deleting requires the CLI binary, which may not be
+	 * available at logout time. This is fine: stale keyring entries are harmless
+	 * since the CLI overwrites them on next `coder login`.
 	 */
 	public async clearCredentials(safeHostname: string): Promise<void> {
-		if (isKeyringEnabled(vscode.workspace.getConfiguration())) {
-			try {
-				this.keyringStore.deleteToken(safeHostname);
-				this.output.info("Removed keyring token for", safeHostname);
-			} catch (error) {
-				this.output.warn("Failed to remove keyring token", error);
-			}
-		}
-
 		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
 		const urlPath = this.pathResolver.getUrlPath(safeHostname);
 		await Promise.all([
