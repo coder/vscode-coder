@@ -83,10 +83,10 @@ export function isWorkspaceStarting(task: Task): boolean {
 /** Label for the log preview header, matching the Coder dashboard pattern. */
 export function logPreviewLabel(count: number): string {
 	if (count === 0) {
-		return "AI chat logs";
+		return "AI chat messages";
 	}
 	if (count === 1) {
-		return "Last message of AI chat logs";
+		return "Last message of AI chat";
 	}
-	return `Last ${count} messages of AI chat logs`;
+	return `Last ${count} messages of AI chat`;
 }

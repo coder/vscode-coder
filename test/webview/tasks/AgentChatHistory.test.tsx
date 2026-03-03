@@ -129,7 +129,7 @@ describe("AgentChatHistory", () => {
 			{
 				name: "snapshot=true, 0 logs → AI chat logs",
 				taskLogs: { status: "ok", logs: [], snapshot: true },
-				expectedHeader: "AI chat logs",
+				expectedHeader: "AI chat messages",
 				hasInfoIcon: false,
 			},
 			{
@@ -139,7 +139,7 @@ describe("AgentChatHistory", () => {
 					logs: [logEntry({ id: 1 }), logEntry({ id: 2 }), logEntry({ id: 3 })],
 					snapshot: true,
 				},
-				expectedHeader: "Last 3 messages of AI chat logs",
+				expectedHeader: "Last 3 messages of AI chat",
 				hasInfoIcon: false,
 			},
 			{
@@ -150,7 +150,7 @@ describe("AgentChatHistory", () => {
 					snapshot: true,
 					snapshotAt: "2024-06-15T10:30:00Z",
 				},
-				expectedHeader: "Last message of AI chat logs",
+				expectedHeader: "Last message of AI chat",
 				hasInfoIcon: true,
 			},
 			{
