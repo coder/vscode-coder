@@ -362,7 +362,6 @@ export class CliManager {
 				binSource,
 				writeStream,
 				{
-					"Accept-Encoding": "gzip",
 					"If-None-Match": `"${etag}"`,
 				},
 				onProgress,
@@ -474,17 +473,22 @@ export class CliManager {
 			signal: controller.signal,
 			baseURL: baseUrl,
 			responseType: "stream",
-			headers,
-			decompress: true,
+			headers: {
+				...headers,
+				"Accept-Encoding": "identity",
+			},
+			decompress: false,
 			// Ignore all errors so we can catch a 404!
 			validateStatus: () => true,
 		});
 		this.output.info("Got status code", resp.status);
 
 		if (resp.status === 200) {
-			const rawContentLength = resp.headers["content-length"] as unknown;
+			const rawContentLength = (resp.headers["content-length"] ??
+				resp.headers["x-original-content-length"]) as unknown;
 			const contentLength = Number.parseInt(
 				typeof rawContentLength === "string" ? rawContentLength : "",
+				10,
 			);
 			if (Number.isNaN(contentLength)) {
 				this.output.warn(
@@ -501,7 +505,7 @@ export class CliManager {
 			const completed = await vscode.window.withProgress<boolean>(
 				{
 					location: vscode.ProgressLocation.Notification,
-					title: `Downloading ${baseUrl}`,
+					title: `Downloading Coder CLI for ${baseUrl}`,
 					cancellable: true,
 				},
 				async (progress, token) => {
