@@ -123,17 +123,19 @@ jobs:
 
       - name: Upload artifact (PR)
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: extension-pr-${{ github.event.pull_request.number }}
           path: ${{ steps.setup.outputs.packageName }}
           if-no-files-found: error
           retention-days: 7
+          archive: false
 
       - name: Upload artifact (main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: extension-main-${{ github.sha }}
           path: ${{ steps.setup.outputs.packageName }}
           if-no-files-found: error
+          archive: false
