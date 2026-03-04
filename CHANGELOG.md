@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- Session tokens are now stored in the OS keyring (Keychain on macOS, Credential Manager on
+  Windows) instead of plaintext files, when using CLI >= 2.29.0. Falls back to file storage on
+  Linux, older CLIs, or if the keyring write fails. Controlled via the `coder.useKeyring` setting.
+
 ## [v1.13.0](https://github.com/coder/vscode-coder/releases/tag/v1.13.0) 2026-03-03
 
 ### Added
