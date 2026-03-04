@@ -474,8 +474,8 @@ export class CliManager {
 			baseURL: baseUrl,
 			responseType: "stream",
 			headers: {
-				"Accept-Encoding": "identity",
 				...headers,
+				"Accept-Encoding": "identity",
 			},
 			decompress: false,
 			// Ignore all errors so we can catch a 404!
@@ -488,6 +488,7 @@ export class CliManager {
 				resp.headers["x-original-content-length"]) as unknown;
 			const contentLength = Number.parseInt(
 				typeof rawContentLength === "string" ? rawContentLength : "",
+				10,
 			);
 			if (Number.isNaN(contentLength)) {
 				this.output.warn(
