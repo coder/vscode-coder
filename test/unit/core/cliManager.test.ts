@@ -566,7 +566,9 @@ describe("CliManager", () => {
 			withSuccessfulDownload();
 			await manager.fetchBinary(mockApi, "test");
 			expect(vscode.window.withProgress).toHaveBeenCalledWith(
-				expect.objectContaining({ title: `Downloading ${TEST_URL}` }),
+				expect.objectContaining({
+					title: `Downloading Coder CLI for ${TEST_URL}`,
+				}),
 				expect.any(Function),
 			);
 		});

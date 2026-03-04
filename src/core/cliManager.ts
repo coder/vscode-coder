@@ -504,7 +504,7 @@ export class CliManager {
 			const completed = await vscode.window.withProgress<boolean>(
 				{
 					location: vscode.ProgressLocation.Notification,
-					title: `Downloading ${baseUrl}`,
+					title: `Downloading Coder CLI for ${baseUrl}`,
 					cancellable: true,
 				},
 				async (progress, token) => {
