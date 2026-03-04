@@ -129,6 +129,7 @@ jobs:
           path: ${{ steps.setup.outputs.packageName }}
           if-no-files-found: error
           retention-days: 7
+          archive: false
 
       - name: Upload artifact (main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -137,3 +138,4 @@ jobs:
           name: extension-main-${{ github.sha }}
           path: ${{ steps.setup.outputs.packageName }}
           if-no-files-found: error
+          archive: false
