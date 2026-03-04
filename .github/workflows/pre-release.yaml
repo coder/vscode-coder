@@ -61,7 +61,7 @@ jobs:
         run: pnpm vsce package --no-dependencies --pre-release --out "${{ steps.setup.outputs.packageName }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: extension-${{ steps.version.outputs.version }}
           path: ${{ steps.setup.outputs.packageName }}
