@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
+import { isKeyringEnabled } from "../cliConfig";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
@@ -15,6 +16,7 @@ import type { User } from "coder/site/src/api/typesGenerated";
 import type { MementoManager } from "../core/mementoManager";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
+import type { KeyringStore } from "../keyringStore";
 import type { Logger } from "../logging/logger";
 
 type LoginResult =
@@ -39,6 +41,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		private readonly secretsManager: SecretsManager,
 		private readonly mementoManager: MementoManager,
 		private readonly logger: Logger,
+		private readonly keyringStore: KeyringStore,
 		extensionId: string,
 	) {
 		this.oauthAuthorizer = new OAuthAuthorizer(
@@ -211,11 +214,13 @@ export class LoginCoordinator implements vscode.Disposable {
 
 		// mTLS authentication (no token needed)
 		if (!needToken(vscode.workspace.getConfiguration())) {
+			this.logger.debug("Attempting mTLS authentication (no token required)");
 			return this.tryMtlsAuth(client, isAutoLogin);
 		}
 
 		// Try provided token first
 		if (providedToken) {
+			this.logger.debug("Trying provided token");
 			const result = await this.tryTokenAuth(
 				client,
 				providedToken,
@@ -231,7 +236,22 @@ export class LoginCoordinator implements vscode.Disposable {
 			deployment.safeHostname,
 		);
 		if (auth?.token && auth.token !== providedToken) {
+			this.logger.debug("Trying stored session token");
 			const result = await this.tryTokenAuth(client, auth.token, isAutoLogin);
+			if (result !== "unauthorized") {
+				return result;
+			}
+		}
+
+		// Try keyring token (picks up tokens written by `coder login` in the terminal)
+		const keyringToken = this.getKeyringToken(deployment.safeHostname);
+		if (
+			keyringToken &&
+			keyringToken !== providedToken &&
+			keyringToken !== auth?.token
+		) {
+			this.logger.debug("Trying token from OS keyring");
+			const result = await this.tryTokenAuth(client, keyringToken, isAutoLogin);
 			if (result !== "unauthorized") {
 				return result;
 			}
@@ -280,6 +300,18 @@ export class LoginCoordinator implements vscode.Disposable {
 			}
 			this.showAuthError(err, isAutoLogin);
 			return { success: false };
+		}
+	}
+
+	private getKeyringToken(safeHostname: string): string | undefined {
+		if (!isKeyringEnabled(vscode.workspace.getConfiguration())) {
+			return undefined;
+		}
+		try {
+			return this.keyringStore.getToken(safeHostname);
+		} catch (error) {
+			this.logger.warn("Failed to read token from keyring", error);
+			return undefined;
 		}
 	}
 

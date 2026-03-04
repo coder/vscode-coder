@@ -9,12 +9,14 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import * as cliConfig from "@/cliConfig";
 import { CliManager } from "@/core/cliManager";
 import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
 
 import {
+	createMockKeyringStore,
 	createMockLogger,
 	createMockStream,
 	MockConfigurationProvider,
@@ -22,6 +24,9 @@ import {
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
 import { expectPathsEqual } from "../../utils/platform";
+
+import type { FeatureSet } from "@/featureSet";
+import type { KeyringStore } from "@/keyringStore";
 
 vi.mock("os");
 vi.mock("axios");
@@ -48,6 +53,16 @@ vi.mock("proper-lockfile", () => ({
 	check: () => Promise.resolve(false),
 }));
 
+vi.mock("@/cliConfig", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/cliConfig")>("@/cliConfig");
+	return {
+		...actual,
+		shouldUseKeyring: vi.fn(),
+		isKeyringEnabled: vi.fn(),
+	};
+});
+
 vi.mock("@/pgp");
 
 vi.mock("@/vscodeProposed", () => ({
@@ -71,6 +86,7 @@ describe("CliManager", () => {
 	let mockUI: MockUserInteraction;
 	let mockApi: Api;
 	let mockAxios: AxiosInstance;
+	let mockKeyring: KeyringStore;
 
 	const TEST_VERSION = "1.2.3";
 	const TEST_URL = "https://test.coder.com";
@@ -80,6 +96,13 @@ describe("CliManager", () => {
 	const ARCH = "amd64";
 	const BINARY_NAME = `coder-${PLATFORM}-${ARCH}`;
 	const BINARY_PATH = `${BINARY_DIR}/${BINARY_NAME}`;
+	const MOCK_FEATURE_SET: FeatureSet = {
+		vscodessh: true,
+		proxyLogDirectory: true,
+		wildcardSSH: true,
+		buildReason: true,
+		keyringAuth: true,
+	};
 
 	beforeEach(() => {
 		vi.resetAllMocks();
@@ -92,15 +115,18 @@ describe("CliManager", () => {
 		mockConfig = new MockConfigurationProvider();
 		mockProgress = new MockProgressReporter();
 		mockUI = new MockUserInteraction();
+		mockKeyring = createMockKeyringStore();
 		manager = new CliManager(
 			createMockLogger(),
 			new PathResolver(BASE_PATH, "/code/log"),
+			mockKeyring,
 		);
 
 		// Mock only what's necessary
 		vi.mocked(os.platform).mockReturnValue(PLATFORM);
 		vi.mocked(os.arch).mockReturnValue(ARCH);
 		vi.mocked(pgp.readPublicKeys).mockResolvedValue([]);
+		vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(true);
 	});
 
 	afterEach(async () => {
@@ -112,59 +138,136 @@ describe("CliManager", () => {
 	});
 
 	describe("Configure CLI", () => {
+		function configure(token = "test-token") {
+			return manager.configure(
+				"dev.coder.com",
+				"https://coder.example.com",
+				token,
+				MOCK_FEATURE_SET,
+			);
+		}
+
 		it("should write both url and token to correct paths", async () => {
-			await manager.configure(
-				"deployment",
-				"https://coder.example.com",
-				"test-token",
-			);
+			await configure("test-token");
 
-			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
+			expect(memfs.readFileSync("/path/base/dev.coder.com/url", "utf8")).toBe(
 				"https://coder.example.com",
 			);
-			expect(memfs.readFileSync("/path/base/deployment/session", "utf8")).toBe(
-				"test-token",
-			);
+			expect(
+				memfs.readFileSync("/path/base/dev.coder.com/session", "utf8"),
+			).toBe("test-token");
 		});
 
-		it("should skip URL when undefined but write token", async () => {
-			await manager.configure("deployment", undefined, "test-token");
-
-			// No entry for the url
-			expect(memfs.existsSync("/path/base/deployment/url")).toBe(false);
-			expect(memfs.readFileSync("/path/base/deployment/session", "utf8")).toBe(
-				"test-token",
-			);
-		});
-
-		it("should skip token when null but write URL", async () => {
-			await manager.configure("deployment", "https://coder.example.com", null);
-
-			// No entry for the session
-			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
-				"https://coder.example.com",
-			);
-			expect(memfs.existsSync("/path/base/deployment/session")).toBe(false);
+		it("should throw when URL is empty", async () => {
+			await expect(
+				manager.configure("dev.coder.com", "", "test-token", MOCK_FEATURE_SET),
+			).rejects.toThrow("URL is required to configure the CLI");
 		});
 
 		it("should write empty string for token when provided", async () => {
-			await manager.configure("deployment", "https://coder.example.com", "");
+			await configure("");
 
-			expect(memfs.readFileSync("/path/base/deployment/url", "utf8")).toBe(
+			expect(memfs.readFileSync("/path/base/dev.coder.com/url", "utf8")).toBe(
 				"https://coder.example.com",
 			);
-			expect(memfs.readFileSync("/path/base/deployment/session", "utf8")).toBe(
-				"",
-			);
+			expect(
+				memfs.readFileSync("/path/base/dev.coder.com/session", "utf8"),
+			).toBe("");
 		});
 
 		it("should use base path directly when label is empty", async () => {
-			await manager.configure("", "https://coder.example.com", "token");
+			await manager.configure(
+				"",
+				"https://coder.example.com",
+				"token",
+				MOCK_FEATURE_SET,
+			);
 
 			expect(memfs.readFileSync("/path/base/url", "utf8")).toBe(
 				"https://coder.example.com",
 			);
 			expect(memfs.readFileSync("/path/base/session", "utf8")).toBe("token");
+		});
+
+		it("should write to keyring and skip files when featureSet enables keyring", async () => {
+			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
+
+			await configure("test-token");
+
+			expect(mockKeyring.setToken).toHaveBeenCalledWith(
+				"https://coder.example.com",
+				"test-token",
+			);
+			expect(memfs.existsSync("/path/base/dev.coder.com/url")).toBe(false);
+			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
+		});
+
+		it("should throw and show error when keyring write fails", async () => {
+			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
+			vi.mocked(mockKeyring.setToken).mockImplementation(() => {
+				throw new Error("keyring unavailable");
+			});
+
+			await expect(configure("test-token")).rejects.toThrow(
+				"keyring unavailable",
+			);
+
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				expect.stringContaining("keyring unavailable"),
+				"Open Settings",
+			);
+			expect(memfs.existsSync("/path/base/dev.coder.com/url")).toBe(false);
+			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
+		});
+	});
+
+	describe("Clear Credentials", () => {
+		function seedCredentialFiles() {
+			memfs.mkdirSync("/path/base/dev.coder.com", { recursive: true });
+			memfs.writeFileSync("/path/base/dev.coder.com/session", "old-token");
+			memfs.writeFileSync(
+				"/path/base/dev.coder.com/url",
+				"https://example.com",
+			);
+		}
+
+		interface RemoveCredentialsCase {
+			scenario: string;
+			setup: () => void;
+		}
+		it.each<RemoveCredentialsCase>([
+			{ scenario: "normally", setup: () => {} },
+			{
+				scenario: "when keyring delete fails",
+				setup: () =>
+					vi.mocked(mockKeyring.deleteToken).mockImplementation(() => {
+						throw new Error("keyring unavailable");
+					}),
+			},
+			{
+				scenario: "when keyring is disabled",
+				setup: () =>
+					vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(false),
+			},
+		])("should remove credential files $scenario", async ({ setup }) => {
+			seedCredentialFiles();
+			setup();
+			await manager.clearCredentials("dev.coder.com");
+			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
+			expect(memfs.existsSync("/path/base/dev.coder.com/url")).toBe(false);
+		});
+
+		it("should not throw when credential files don't exist", async () => {
+			await expect(
+				manager.clearCredentials("dev.coder.com"),
+			).resolves.not.toThrow();
+			expect(mockKeyring.deleteToken).toHaveBeenCalledWith("dev.coder.com");
+		});
+
+		it("should skip keyring delete when keyring is disabled", async () => {
+			vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(false);
+			await manager.clearCredentials("dev.coder.com");
+			expect(mockKeyring.deleteToken).not.toHaveBeenCalled();
 		});
 	});
 
@@ -578,7 +681,11 @@ describe("CliManager", () => {
 		it("handles binary with spaces in path", async () => {
 			const pathWithSpaces = "/path with spaces/bin";
 			const resolver = new PathResolver(pathWithSpaces, "/log");
-			const manager = new CliManager(createMockLogger(), resolver);
+			const manager = new CliManager(
+				createMockLogger(),
+				resolver,
+				createMockKeyringStore(),
+			);
 
 			withSuccessfulDownload();
 			const result = await manager.fetchBinary(mockApi, "test label");
