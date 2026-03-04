@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.13.1](https://github.com/coder/vscode-coder/releases/tag/v1.13.1) 2026-03-04
+
 ### Added
 
 - Session tokens are now stored in the OS keyring (Keychain on macOS, Credential Manager on
