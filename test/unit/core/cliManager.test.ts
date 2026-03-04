@@ -59,7 +59,6 @@ vi.mock("@/cliConfig", async () => {
 	return {
 		...actual,
 		shouldUseKeyring: vi.fn(),
-		isKeyringEnabled: vi.fn(),
 	};
 });
 
@@ -137,14 +136,11 @@ describe("CliManager", () => {
 	});
 
 	describe("Configure CLI", () => {
-		const TEST_BIN = "/usr/bin/coder";
-
 		function configure(token = "test-token") {
 			return manager.configure(
 				"https://coder.example.com",
 				token,
 				MOCK_FEATURE_SET,
-				TEST_BIN,
 			);
 		}
 
@@ -161,7 +157,7 @@ describe("CliManager", () => {
 
 		it("should throw when URL is empty", async () => {
 			await expect(
-				manager.configure("", "test-token", MOCK_FEATURE_SET, TEST_BIN),
+				manager.configure("", "test-token", MOCK_FEATURE_SET),
 			).rejects.toThrow("URL is required to configure the CLI");
 		});
 
@@ -181,7 +177,6 @@ describe("CliManager", () => {
 				"https://coder.example.com",
 				"token",
 				MOCK_FEATURE_SET,
-				TEST_BIN,
 			);
 
 			expect(
@@ -198,7 +193,6 @@ describe("CliManager", () => {
 			await configure("test-token");
 
 			expect(mockCredManager.storeToken).toHaveBeenCalledWith(
-				TEST_BIN,
 				"https://coder.example.com",
 				"test-token",
 				expect.anything(),
@@ -230,6 +224,20 @@ describe("CliManager", () => {
 		});
 	});
 
+	describe("Locate Binary", () => {
+		it("returns path when binary exists", async () => {
+			withExistingBinary(TEST_VERSION);
+			const result = await manager.locateBinary(TEST_URL);
+			expectPathsEqual(result, BINARY_PATH);
+		});
+
+		it("throws when binary does not exist", async () => {
+			await expect(manager.locateBinary(TEST_URL)).rejects.toThrow(
+				"No CLI binary found at",
+			);
+		});
+	});
+
 	describe("Clear Credentials", () => {
 		function seedCredentialFiles() {
 			memfs.mkdirSync("/path/base/dev.coder.com", { recursive: true });
@@ -253,8 +261,7 @@ describe("CliManager", () => {
 			).resolves.not.toThrow();
 		});
 
-		it("should call deleteToken when keyring is enabled", async () => {
-			vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(true);
+		it("should always call deleteToken (gating is internal)", async () => {
 			seedCredentialFiles();
 			await manager.clearCredentials("https://dev.coder.com");
 			expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
@@ -263,13 +270,6 @@ describe("CliManager", () => {
 			);
 			// File cleanup still runs
 			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
-		});
-
-		it("should skip deleteToken when keyring is disabled", async () => {
-			vi.mocked(cliConfig.isKeyringEnabled).mockReturnValue(false);
-			seedCredentialFiles();
-			await manager.clearCredentials("https://dev.coder.com");
-			expect(mockCredManager.deleteToken).not.toHaveBeenCalled();
 		});
 	});
 

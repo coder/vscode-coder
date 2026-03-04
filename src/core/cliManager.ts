@@ -10,7 +10,7 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { isKeyringEnabled, shouldUseKeyring } from "../cliConfig";
+import { shouldUseKeyring } from "../cliConfig";
 import * as pgp from "../pgp";
 import { toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
@@ -40,6 +40,23 @@ export class CliManager {
 	}
 
 	/**
+	 * Return the path to a cached CLI binary for a deployment URL.
+	 * Stat check only — no network, no subprocess. Throws if absent.
+	 */
+	public async locateBinary(url: string): Promise<string> {
+		const safeHostname = toSafeHost(url);
+		const binPath = path.join(
+			this.pathResolver.getBinaryCachePath(safeHostname),
+			cliUtils.name(),
+		);
+		const stat = await cliUtils.stat(binPath);
+		if (!stat) {
+			throw new Error(`No CLI binary found at ${binPath}`);
+		}
+		return binPath;
+	}
+
+	/**
 	 * Download and return the path to a working binary for the deployment with
 	 * the provided hostname using the provided client.  If the hostname is empty,
 	 * use the old deployment-unaware path instead.
@@ -60,7 +77,10 @@ export class CliManager {
 		// Settings can be undefined when set to their defaults (true in this case),
 		// so explicitly check against false.
 		const enableDownloads = cfg.get("enableDownloads") !== false;
-		this.output.info("Downloads are", enableDownloads ? "enabled" : "disabled");
+		this.output.debug(
+			"Downloads are",
+			enableDownloads ? "enabled" : "disabled",
+		);
 
 		// Get the build info to compare with the existing binary version, if any,
 		// and to log for debugging.
@@ -80,18 +100,18 @@ export class CliManager {
 			this.pathResolver.getBinaryCachePath(safeHostname),
 			cliUtils.name(),
 		);
-		this.output.info("Using binary path", binPath);
+		this.output.debug("Using binary path", binPath);
 		const stat = await cliUtils.stat(binPath);
 		if (stat === undefined) {
 			this.output.info("No existing binary found, starting download");
 		} else {
-			this.output.info("Existing binary size is", prettyBytes(stat.size));
+			this.output.debug("Existing binary size is", prettyBytes(stat.size));
 			try {
 				const version = await cliUtils.version(binPath);
-				this.output.info("Existing binary version is", version);
+				this.output.debug("Existing binary version is", version);
 				// If we have the right version we can avoid the request entirely.
 				if (version === buildInfo.version) {
-					this.output.info(
+					this.output.debug(
 						"Using existing binary since it matches the server version",
 					);
 					return binPath;
@@ -130,19 +150,19 @@ export class CliManager {
 				binPath,
 				progressLogPath,
 			);
-			this.output.info("Acquired download lock");
+			this.output.debug("Acquired download lock");
 
 			// If we waited for another process, re-check if binary is now ready
 			if (lockResult.waited) {
 				const latestBuildInfo = await restClient.getBuildInfo();
-				this.output.info("Got latest server version", latestBuildInfo.version);
+				this.output.debug("Got latest server version", latestBuildInfo.version);
 
 				const recheckAfterWait = await this.checkBinaryVersion(
 					binPath,
 					latestBuildInfo.version,
 				);
 				if (recheckAfterWait.matches) {
-					this.output.info(
+					this.output.debug(
 						"Using existing binary since it matches the latest server version",
 					);
 					return binPath;
@@ -174,7 +194,7 @@ export class CliManager {
 		} finally {
 			if (lockResult) {
 				await lockResult.release();
-				this.output.info("Released download lock");
+				this.output.debug("Released download lock");
 			}
 		}
 	}
@@ -721,12 +741,7 @@ export class CliManager {
 	 * Both URL and token are required. Empty tokens are allowed (e.g. mTLS
 	 * authentication) but the URL must be a non-empty string.
 	 */
-	public async configure(
-		url: string,
-		token: string,
-		featureSet: FeatureSet,
-		binPath: string,
-	) {
+	public async configure(url: string, token: string, featureSet: FeatureSet) {
 		if (!url) {
 			throw new Error("URL is required to configure the CLI");
 		}
@@ -735,12 +750,7 @@ export class CliManager {
 		const configs = vscode.workspace.getConfiguration();
 		if (shouldUseKeyring(configs, featureSet)) {
 			try {
-				await this.cliCredentialManager.storeToken(
-					binPath,
-					url,
-					token,
-					configs,
-				);
+				await this.cliCredentialManager.storeToken(url, token, configs);
 			} catch (error) {
 				this.output.error("Failed to store token via CLI keyring:", error);
 				vscode.window
@@ -775,9 +785,7 @@ export class CliManager {
 	public async clearCredentials(url: string): Promise<void> {
 		const safeHostname = toSafeHost(url);
 		const configs = vscode.workspace.getConfiguration();
-		if (isKeyringEnabled(configs)) {
-			await this.cliCredentialManager.deleteToken(url, configs);
-		}
+		await this.cliCredentialManager.deleteToken(url, configs);
 
 		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
 		const urlPath = this.pathResolver.getUrlPath(safeHostname);

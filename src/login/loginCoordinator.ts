@@ -243,7 +243,10 @@ export class LoginCoordinator implements vscode.Disposable {
 		}
 
 		// Try keyring token (picks up tokens written by `coder login` in the terminal)
-		const keyringToken = await this.getCliKeyringToken(deployment);
+		const keyringToken = await this.cliCredentialManager.readToken(
+			deployment.url,
+			vscode.workspace.getConfiguration(),
+		);
 		if (
 			keyringToken &&
 			keyringToken !== providedToken &&
@@ -300,18 +303,6 @@ export class LoginCoordinator implements vscode.Disposable {
 			this.showAuthError(err, isAutoLogin);
 			return { success: false };
 		}
-	}
-
-	/**
-	 * Read a token from the CLI keyring.
-	 */
-	private async getCliKeyringToken(
-		deployment: Deployment,
-	): Promise<string | undefined> {
-		return this.cliCredentialManager.readToken(
-			deployment.url,
-			vscode.workspace.getConfiguration(),
-		);
 	}
 
 	/**

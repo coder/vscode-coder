@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+import { isKeyringEnabled } from "../cliConfig";
 import { getHeaderArgs } from "../headers";
 
 import type { WorkspaceConfiguration } from "vscode";
@@ -23,10 +24,8 @@ export function isKeyringSupported(): boolean {
 }
 
 /**
- * Delegates credential storage to the Coder CLI to keep the credentials in sync.
- *
- * For operations that don't have a binary path available (readToken, deleteToken),
- * uses the injected BinaryResolver to fetch/locate the CLI binary.
+ * Delegates credential storage to the Coder CLI. All operations resolve the
+ * binary via the injected BinaryResolver before invoking it.
  */
 export class CliCredentialManager {
 	constructor(
@@ -35,18 +34,22 @@ export class CliCredentialManager {
 	) {}
 
 	/**
-	 * Store a token by running:
-	 *   CODER_SESSION_TOKEN=<token> <bin> login --use-token-as-session <url>
-	 *
-	 * The token is passed via environment variable so it never appears in
-	 * process argument lists.
+	 * Store a token via `coder login --use-token-as-session`.
+	 * Token is passed via CODER_SESSION_TOKEN env var, never in args.
 	 */
 	public async storeToken(
-		binPath: string,
 		url: string,
 		token: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 	): Promise<void> {
+		let binPath: string;
+		try {
+			binPath = await this.resolveBinary(url);
+		} catch (error) {
+			this.logger.debug("Could not resolve CLI binary for token store:", error);
+			throw error;
+		}
+
 		const args = [
 			...getHeaderArgs(configs),
 			"login",
@@ -59,27 +62,28 @@ export class CliCredentialManager {
 			});
 			this.logger.info("Stored token via CLI for", url);
 		} catch (error) {
-			this.logger.error("Failed to store token via CLI:", error);
+			this.logger.debug("Failed to store token via CLI:", error);
 			throw error;
 		}
 	}
 
 	/**
-	 * Read a token by running:
-	 *   <bin> login token --url <url>
-	 *
-	 * Resolves the CLI binary automatically. Returns trimmed stdout,
-	 * or undefined if the binary can't be resolved or the CLI returns no token.
+	 * Read a token via `coder login token --url`. Returns trimmed stdout,
+	 * or undefined on any failure (resolver, CLI, empty output).
 	 */
 	public async readToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 	): Promise<string | undefined> {
+		if (!isKeyringEnabled(configs)) {
+			return undefined;
+		}
+
 		let binPath: string;
 		try {
 			binPath = await this.resolveBinary(url);
 		} catch (error) {
-			this.logger.warn("Could not resolve CLI binary for token read:", error);
+			this.logger.debug("Could not resolve CLI binary for token read:", error);
 			return undefined;
 		}
 
@@ -89,27 +93,30 @@ export class CliCredentialManager {
 			const token = stdout.trim();
 			return token || undefined;
 		} catch (error) {
-			this.logger.warn("Failed to read token via CLI:", error);
+			this.logger.debug("Failed to read token via CLI:", error);
 			return undefined;
 		}
 	}
 
 	/**
-	 * Delete a token by running:
-	 *   <bin> logout --url <url>
-	 *
-	 * Resolves the CLI binary automatically. Best-effort: logs warnings
-	 * on failure but never throws.
+	 * Delete a token via `coder logout --url`. Best-effort: never throws.
 	 */
-	async deleteToken(
+	public async deleteToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 	): Promise<void> {
+		if (!isKeyringEnabled(configs)) {
+			return;
+		}
+
 		let binPath: string;
 		try {
 			binPath = await this.resolveBinary(url);
 		} catch (error) {
-			this.logger.warn("Could not resolve CLI binary for token delete:", error);
+			this.logger.debug(
+				"Could not resolve CLI binary for token delete:",
+				error,
+			);
 			return;
 		}
 
@@ -118,7 +125,7 @@ export class CliCredentialManager {
 			await execFileAsync(binPath, args);
 			this.logger.info("Deleted token via CLI for", url);
 		} catch (error) {
-			this.logger.warn("Failed to delete token via CLI:", error);
+			this.logger.debug("Failed to delete token via CLI:", error);
 		}
 	}
 }

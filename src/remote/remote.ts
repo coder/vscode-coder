@@ -241,12 +241,7 @@ export class Remote {
 
 			// Write token to keyring or file (after CLI version is known)
 			if (baseUrlRaw && token !== undefined) {
-				await this.cliManager.configure(
-					baseUrlRaw,
-					token,
-					featureSet,
-					binaryPath,
-				);
+				await this.cliManager.configure(baseUrlRaw, token, featureSet);
 			}
 
 			// Listen for token changes for this deployment
@@ -261,7 +256,6 @@ export class Remote {
 									auth.url,
 									auth.token,
 									featureSet,
-									binaryPath,
 								);
 								this.logger.info(
 									"Updated CLI config with new token for remote deployment",

@@ -37,11 +37,17 @@ export class ServiceContainer implements vscode.Disposable {
 			context.globalState,
 			this.logger,
 		);
+		// Circular ref: cliCredentialManager ↔ cliManager. Safe because
+		// the resolver is only called after construction.
 		this.cliCredentialManager = new CliCredentialManager(
 			this.logger,
 			async (url) => {
-				const client = CoderApi.create(url, "", this.logger);
-				return this.cliManager.fetchBinary(client);
+				try {
+					return await this.cliManager.locateBinary(url);
+				} catch {
+					const client = CoderApi.create(url, "", this.logger);
+					return this.cliManager.fetchBinary(client);
+				}
 			},
 		);
 		this.cliManager = new CliManager(
