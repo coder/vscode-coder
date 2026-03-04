@@ -5,6 +5,7 @@ export interface FeatureSet {
 	proxyLogDirectory: boolean;
 	wildcardSSH: boolean;
 	buildReason: boolean;
+	keyringAuth: boolean;
 }
 
 /**
@@ -34,6 +35,11 @@ export function featureSetForVersion(
 		// The --reason flag was added to `coder start` in 2.25.0
 		buildReason:
 			(version?.compare("2.25.0") ?? 0) >= 0 ||
+			version?.prerelease[0] === "devel",
+
+		// Keyring-backed token storage was added in CLI 2.29.0
+		keyringAuth:
+			(version?.compare("2.29.0") ?? 0) >= 0 ||
 			version?.prerelease[0] === "devel",
 	};
 }
