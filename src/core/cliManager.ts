@@ -2,30 +2,24 @@ import globalAxios, {
 	type AxiosInstance,
 	type AxiosRequestConfig,
 } from "axios";
+import { type Api } from "coder/site/src/api/api";
 import { createWriteStream, type WriteStream } from "node:fs";
 import fs from "node:fs/promises";
+import { type IncomingMessage } from "node:http";
 import path from "node:path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { isKeyringEnabled, shouldUseKeyring } from "../cliConfig";
+import { type Logger } from "../logging/logger";
 import * as pgp from "../pgp";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";
 import * as cliUtils from "./cliUtils";
 import * as downloadProgress from "./downloadProgress";
-
-import type { Api } from "coder/site/src/api/api";
-import type { IncomingMessage } from "node:http";
-
-import type { FeatureSet } from "../featureSet";
-import type { KeyringStore } from "../keyringStore";
-import type { Logger } from "../logging/logger";
-
-import type { PathResolver } from "./pathResolver";
+import { type PathResolver } from "./pathResolver";
 
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
@@ -33,7 +27,6 @@ export class CliManager {
 	constructor(
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
-		private readonly keyringStore: KeyringStore,
 	) {
 		this.binaryLock = new BinaryLock(output);
 	}
@@ -712,95 +705,48 @@ export class CliManager {
 	/**
 	 * Configure the CLI for the deployment with the provided hostname.
 	 *
-	 * Stores credentials in the OS keyring when available, otherwise falls back
-	 * to writing plaintext files under --global-config for the CLI.
-	 *
-	 * Both URL and token are required. Empty tokens are allowed (e.g. mTLS
-	 * authentication) but the URL must be a non-empty string.
+	 * Falsey URLs and null tokens are a no-op; we avoid unconfiguring the CLI to
+	 * avoid breaking existing connections.
 	 */
 	public async configure(
 		safeHostname: string,
-		url: string,
-		token: string,
-		featureSet: FeatureSet,
+		url: string | undefined,
+		token: string | null,
 	) {
-		if (!url) {
-			throw new Error("URL is required to configure the CLI");
-		}
-
-		const configs = vscode.workspace.getConfiguration();
-		if (shouldUseKeyring(configs, featureSet)) {
-			try {
-				this.keyringStore.setToken(url, token);
-				this.output.info("Stored token in OS keyring for", url);
-			} catch (error) {
-				this.output.error("Failed to store token in OS keyring:", error);
-				vscode.window
-					.showErrorMessage(
-						`Failed to store session token in OS keyring: ${errToStr(error)}. ` +
-							"Disable keyring storage in settings to use plaintext files instead.",
-						"Open Settings",
-					)
-					.then((action) => {
-						if (action === "Open Settings") {
-							vscode.commands.executeCommand(
-								"workbench.action.openSettings",
-								"coder.useKeyring",
-							);
-						}
-					});
-				throw error;
-			}
-		} else {
-			await Promise.all([
-				this.writeUrlToGlobalConfig(safeHostname, url),
-				this.writeTokenToGlobalConfig(safeHostname, token),
-			]);
-		}
-	}
-
-	/**
-	 * Remove credentials for a deployment from both keyring and file storage.
-	 */
-	public async clearCredentials(safeHostname: string): Promise<void> {
-		if (isKeyringEnabled(vscode.workspace.getConfiguration())) {
-			try {
-				this.keyringStore.deleteToken(safeHostname);
-				this.output.info("Removed keyring token for", safeHostname);
-			} catch (error) {
-				this.output.warn("Failed to remove keyring token", error);
-			}
-		}
-
-		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
-		const urlPath = this.pathResolver.getUrlPath(safeHostname);
 		await Promise.all([
-			fs.rm(tokenPath, { force: true }).catch((error) => {
-				this.output.warn("Failed to remove token file", tokenPath, error);
-			}),
-			fs.rm(urlPath, { force: true }).catch((error) => {
-				this.output.warn("Failed to remove URL file", urlPath, error);
-			}),
+			this.updateUrlForCli(safeHostname, url),
+			this.updateTokenForCli(safeHostname, token),
 		]);
 	}
 
 	/**
-	 * Write the URL to the --global-config directory for the CLI.
+	 * Update the URL for the deployment with the provided hostname on disk which
+	 * can be used by the CLI via --url-file.  If the URL is falsey, do nothing.
+	 *
+	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 */
-	private async writeUrlToGlobalConfig(
+	private async updateUrlForCli(
 		safeHostname: string,
-		url: string,
+		url: string | undefined,
 	): Promise<void> {
-		const urlPath = this.pathResolver.getUrlPath(safeHostname);
-		await this.atomicWriteFile(urlPath, url);
+		if (url) {
+			const urlPath = this.pathResolver.getUrlPath(safeHostname);
+			await this.atomicWriteFile(urlPath, url);
+		}
 	}
 
 	/**
-	 * Write the session token to the --global-config directory for the CLI.
+	 * Update the session token for a deployment with the provided hostname on
+	 * disk which can be used by the CLI via --session-token-file.  If the token
+	 * is null, do nothing.
+	 *
+	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 */
-	private async writeTokenToGlobalConfig(safeHostname: string, token: string) {
-		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
-		await this.atomicWriteFile(tokenPath, token);
+	private async updateTokenForCli(safeHostname: string, token: string | null) {
+		if (token !== null) {
+			const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
+			await this.atomicWriteFile(tokenPath, token);
+		}
 	}
 
 	/**
@@ -815,7 +761,7 @@ export class CliManager {
 		const tempPath =
 			filePath + ".temp-" + Math.random().toString(36).substring(8);
 		try {
-			await fs.writeFile(tempPath, content, { mode: 0o600 });
+			await fs.writeFile(tempPath, content);
 			await fs.rename(tempPath, filePath);
 		} catch (err) {
 			await fs.rm(tempPath, { force: true }).catch((rmErr) => {

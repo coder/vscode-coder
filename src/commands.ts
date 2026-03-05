@@ -4,14 +4,12 @@ import {
 } from "coder/site/src/api/typesGenerated";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { type CoderApi } from "./api/coderApi";
-import { getGlobalFlags, resolveCliAuth } from "./cliConfig";
+import { getGlobalFlags } from "./cliConfig";
 import { type CliManager } from "./core/cliManager";
-import * as cliUtils from "./core/cliUtils";
 import { type ServiceContainer } from "./core/container";
 import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
@@ -19,7 +17,6 @@ import { type SecretsManager } from "./core/secretsManager";
 import { type DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
-import { featureSetForVersion } from "./featureSet";
 import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
@@ -213,13 +210,12 @@ export class Commands {
 
 		this.logger.debug("Logging out");
 
-		const deployment = this.deploymentManager.getCurrentDeployment();
-		const safeHostname = deployment?.safeHostname;
+		const safeHostname =
+			this.deploymentManager.getCurrentDeployment()?.safeHostname;
 
 		await this.deploymentManager.clearDeployment();
 
 		if (safeHostname) {
-			await this.cliManager.clearCredentials(safeHostname);
 			await this.secretsManager.clearAllAuthData(safeHostname);
 		}
 
@@ -287,7 +283,6 @@ export class Commands {
 
 			if (selected.hostnames.length === 1) {
 				const selectedHostname = selected.hostnames[0];
-				await this.cliManager.clearCredentials(selectedHostname);
 				await this.secretsManager.clearAllAuthData(selectedHostname);
 				this.logger.info("Removed credentials for", selectedHostname);
 				vscode.window.showInformationMessage(
@@ -305,10 +300,9 @@ export class Commands {
 				);
 				if (confirm === "Remove All") {
 					await Promise.all(
-						selected.hostnames.map(async (h) => {
-							await this.cliManager.clearCredentials(h);
-							await this.secretsManager.clearAllAuthData(h);
-						}),
+						selected.hostnames.map((h) =>
+							this.secretsManager.clearAllAuthData(h),
+						),
 					);
 					this.logger.info(
 						"Removed credentials for all deployments:",
@@ -458,12 +452,11 @@ export class Commands {
 						safeHost,
 					);
 
-					const version = semver.parse(await cliUtils.version(binary));
-					const featureSet = featureSetForVersion(version);
 					const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
-					const configs = vscode.workspace.getConfiguration();
-					const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
-					const globalFlags = getGlobalFlags(configs, auth);
+					const globalFlags = getGlobalFlags(
+						vscode.workspace.getConfiguration(),
+						configDir,
+					);
 					terminal.sendText(
 						`${escapeCommandArg(binary)} ${globalFlags.join(" ")} ssh ${app.workspace_name}`,
 					);

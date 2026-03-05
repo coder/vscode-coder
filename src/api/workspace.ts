@@ -7,7 +7,7 @@ import {
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 
-import { type CliAuth, getGlobalFlags } from "../cliConfig";
+import { getGlobalFlags } from "../cliConfig";
 import { type FeatureSet } from "../featureSet";
 import { escapeCommandArg } from "../util";
 import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
@@ -50,7 +50,7 @@ export class LazyStream<T> {
  */
 export async function startWorkspaceIfStoppedOrFailed(
 	restClient: Api,
-	auth: CliAuth,
+	globalConfigDir: string,
 	binPath: string,
 	workspace: Workspace,
 	writeEmitter: vscode.EventEmitter<string>,
@@ -65,7 +65,7 @@ export async function startWorkspaceIfStoppedOrFailed(
 
 	return new Promise((resolve, reject) => {
 		const startArgs = [
-			...getGlobalFlags(vscode.workspace.getConfiguration(), auth),
+			...getGlobalFlags(vscode.workspace.getConfiguration(), globalConfigDir),
 			"start",
 			"--yes",
 			createWorkspaceIdentifier(workspace),
