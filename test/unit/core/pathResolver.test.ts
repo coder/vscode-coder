@@ -1,5 +1,5 @@
 import * as path from "path";
-import { beforeEach, describe, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PathResolver } from "@/core/pathResolver";
 
@@ -26,6 +26,32 @@ describe("PathResolver", () => {
 			path.join(basePath, "session"),
 		);
 		expectPathsEqual(pathResolver.getUrlPath(""), path.join(basePath, "url"));
+	});
+
+	describe("getProxyLogPath", () => {
+		const defaultLogPath = path.join(basePath, "log");
+
+		it.each([
+			{ setting: "/custom/log/dir", expected: "/custom/log/dir" },
+			{ setting: "", expected: defaultLogPath },
+			{ setting: "   ", expected: defaultLogPath },
+			{ setting: undefined, expected: defaultLogPath },
+		])(
+			"should return $expected when setting is '$setting'",
+			({ setting, expected }) => {
+				if (setting !== undefined) {
+					mockConfig.set("coder.proxyLogDirectory", setting);
+				}
+				expectPathsEqual(pathResolver.getProxyLogPath(), expected);
+			},
+		);
+
+		it("should expand tilde in configured path", () => {
+			mockConfig.set("coder.proxyLogDirectory", "~/logs");
+			const result = pathResolver.getProxyLogPath();
+			expect(result).not.toContain("~");
+			expect(result).toContain("logs");
+		});
 	});
 
 	describe("getBinaryCachePath", () => {
