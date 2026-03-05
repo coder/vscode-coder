@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- Removed OS Keyring behavior changes 
+- Removed OS Keyring behavior changes
 
 ## [v1.13.1](https://github.com/coder/vscode-coder/releases/tag/v1.13.1) 2026-03-04
 
