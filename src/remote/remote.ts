@@ -4,7 +4,6 @@ import {
 	type Workspace,
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
-import * as jsonc from "jsonc-parser";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -60,6 +59,7 @@ import {
 } from "./sshConfig";
 import { SshProcessMonitor } from "./sshProcess";
 import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
+import { type SettingOverride, applySettingOverrides } from "./userSettings";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -474,7 +474,6 @@ export class Remote {
 			const inbox = await Inbox.create(workspace, workspaceClient, this.logger);
 			disposables.push(inbox);
 
-			// Do some janky setting manipulation.
 			this.logger.info("Modifying settings...");
 			const remotePlatforms = vscodeProposed.workspace
 				.getConfiguration()
@@ -482,77 +481,48 @@ export class Remote {
 			const connTimeout = vscodeProposed.workspace
 				.getConfiguration()
 				.get<number | undefined>("remote.SSH.connectTimeout");
+			const reconnGraceTime = vscodeProposed.workspace
+				.getConfiguration()
+				.get<number | undefined>("remote.SSH.reconnectionGraceTime");
 
-			// We have to directly munge the settings file with jsonc because trying to
-			// update properly through the extension API hangs indefinitely.  Possibly
-			// VS Code is trying to update configuration on the remote, which cannot
-			// connect until we finish here leading to a deadlock.  We need to update it
-			// locally, anyway, and it does not seem possible to force that via API.
-			let settingsContent = "{}";
-			try {
-				settingsContent = await fs.readFile(
-					this.pathResolver.getUserSettingsPath(),
-					"utf8",
-				);
-			} catch {
-				// Ignore! It's probably because the file doesn't exist.
+			const overrides: SettingOverride[] = [];
+
+			// Bypass the platform prompt by setting the remote platform for this host.
+			if (remotePlatforms[parts.sshHost] !== agent.operating_system) {
+				overrides.push({
+					key: "remote.SSH.remotePlatform",
+					value: {
+						...remotePlatforms,
+						[parts.sshHost]: agent.operating_system,
+					},
+				});
 			}
 
-			// Add the remote platform for this host to bypass a step where VS Code asks
-			// the user for the platform.
-			let mungedPlatforms = false;
-			if (
-				!remotePlatforms[parts.sshHost] ||
-				remotePlatforms[parts.sshHost] !== agent.operating_system
-			) {
-				remotePlatforms[parts.sshHost] = agent.operating_system;
-				settingsContent = jsonc.applyEdits(
-					settingsContent,
-					jsonc.modify(
-						settingsContent,
-						["remote.SSH.remotePlatform"],
-						remotePlatforms,
-						{},
-					),
-				);
-				mungedPlatforms = true;
-			}
-
-			// VS Code ignores the connect timeout in the SSH config and uses a default
-			// of 15 seconds, which can be too short in the case where we wait for
-			// startup scripts.  For now we hardcode a longer value.  Because this is
-			// potentially overwriting user configuration, it feels a bit sketchy.  If
-			// microsoft/vscode-remote-release#8519 is resolved we can remove this.
+			// VS Code's default connect timeout of 15s is too short when waiting for
+			// startup scripts. Enforce a minimum.
 			const minConnTimeout = 1800;
-			let mungedConnTimeout = false;
 			if (!connTimeout || connTimeout < minConnTimeout) {
-				settingsContent = jsonc.applyEdits(
-					settingsContent,
-					jsonc.modify(
-						settingsContent,
-						["remote.SSH.connectTimeout"],
-						minConnTimeout,
-						{},
-					),
-				);
-				mungedConnTimeout = true;
+				overrides.push({
+					key: "remote.SSH.connectTimeout",
+					value: minConnTimeout,
+				});
 			}
 
-			if (mungedPlatforms || mungedConnTimeout) {
-				try {
-					await fs.writeFile(
-						this.pathResolver.getUserSettingsPath(),
-						settingsContent,
-					);
-				} catch (ex) {
-					// This could be because the user's settings.json is read-only.  This is
-					// the case when using home-manager on NixOS, for example.  Failure to
-					// write here is not necessarily catastrophic since the user will be
-					// asked for the platform and the default timeout might be sufficient.
-					mungedPlatforms = mungedConnTimeout = false;
-					this.logger.warn("Failed to configure settings", ex);
-				}
+			// VS Code's default reconnection grace time (ProtocolConstants.ReconnectionGraceTime)
+			// is 3 hours (10800s). Coder workspaces commonly go offline overnight, so we
+			// bump to 8 hours. See https://github.com/microsoft/vscode/blob/main/src/vs/base/parts/ipc/common/ipc.net.ts
+			if (reconnGraceTime === undefined) {
+				overrides.push({
+					key: "remote.SSH.reconnectionGraceTime",
+					value: 28800, // 8 hours in seconds
+				});
 			}
+
+			await applySettingOverrides(
+				this.pathResolver.getUserSettingsPath(),
+				overrides,
+				this.logger,
+			);
 
 			const logDir = this.getLogDir(featureSet);
 
