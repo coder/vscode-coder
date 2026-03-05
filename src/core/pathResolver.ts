@@ -1,6 +1,8 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+import { expandPath } from "../util";
+
 export class PathResolver {
 	constructor(
 		private readonly basePath: string,
@@ -51,14 +53,26 @@ export class PathResolver {
 	}
 
 	/**
-	 * Return the path where log data from the connection is stored.
+	 * Return the default path where log data from the connection is stored.
 	 *
 	 * The CLI will write files here named after the process PID.
-	 *
-	 * Note: This directory is not currently used.
 	 */
 	public getLogPath(): string {
 		return path.join(this.basePath, "log");
+	}
+
+	/**
+	 * Return the proxy log directory from user settings, falling back to the
+	 * default log path in extension storage.
+	 */
+	public getProxyLogPath(): string {
+		const configured = expandPath(
+			String(
+				vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ??
+					"",
+			).trim(),
+		);
+		return configured || this.getLogPath();
 	}
 
 	/**
