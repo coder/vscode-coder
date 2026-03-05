@@ -1,6 +1,10 @@
 # Change Log
 
-## Unreleased
+## [v1.13.2](https://github.com/coder/vscode-coder/releases/tag/v1.13.2) 2026-03-05
+
+### Fixed
+
+- Removed OS Keyring behavior changes
 
 ## [v1.13.1](https://github.com/coder/vscode-coder/releases/tag/v1.13.1) 2026-03-04
 

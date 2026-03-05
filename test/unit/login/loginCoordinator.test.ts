@@ -10,7 +10,6 @@ import { maybeAskAuthMethod } from "@/promptUtils";
 
 import {
 	createAxiosError,
-	createMockKeyringStore,
 	createMockLogger,
 	createMockUser,
 	InMemoryMemento,
@@ -122,7 +121,6 @@ function createTestContext() {
 		secretsManager,
 		mementoManager,
 		logger,
-		createMockKeyringStore(),
 		"coder.coder-remote",
 	);
 
@@ -311,7 +309,6 @@ describe("LoginCoordinator", () => {
 				secretsManager,
 				mementoManager,
 				logger,
-				createMockKeyringStore(),
 				"coder.coder-remote",
 			);
 
