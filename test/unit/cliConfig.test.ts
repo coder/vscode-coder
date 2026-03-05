@@ -68,18 +68,72 @@ describe("cliConfig", () => {
 			]);
 		});
 
-		it("should not filter duplicate global-config flags, last takes precedence", () => {
+		it.each(["--use-keyring", "--use-keyring=false", "--use-keyring=true"])(
+			"should filter %s from global flags",
+			(managedFlag) => {
+				const config = new MockConfigurationProvider();
+				config.set("coder.globalFlags", [
+					"--verbose",
+					managedFlag,
+					"--disable-direct-connections",
+				]);
+
+				expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+					"--verbose",
+					"--disable-direct-connections",
+					"--global-config",
+					'"/config/dir"',
+				]);
+			},
+		);
+
+		interface GlobalConfigCase {
+			scenario: string;
+			flags: string[];
+		}
+		it.each<GlobalConfigCase>([
+			{
+				scenario: "space-separated in one item",
+				flags: ["-v", "--global-config /path/to/ignored"],
+			},
+			{
+				scenario: "equals form",
+				flags: ["-v", "--global-config=/path/to/ignored"],
+			},
+			{
+				scenario: "separate items",
+				flags: ["-v", "--global-config", "/path/to/ignored"],
+			},
+		])(
+			"should filter --global-config ($scenario) in both auth modes",
+			({ flags }) => {
+				const urlAuth: CliAuth = {
+					mode: "url",
+					url: "https://dev.coder.com",
+				};
+				const config = new MockConfigurationProvider();
+				config.set("coder.globalFlags", flags);
+
+				expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+					"-v",
+					"--global-config",
+					'"/config/dir"',
+				]);
+				expect(getGlobalFlags(config, urlAuth)).toStrictEqual([
+					"-v",
+					"--url",
+					'"https://dev.coder.com"',
+				]);
+			},
+		);
+
+		it("should not filter flags with similar prefixes", () => {
 			const config = new MockConfigurationProvider();
-			config.set("coder.globalFlags", [
-				"-v",
-				"--global-config /path/to/ignored",
-				"--disable-direct-connections",
-			]);
+			config.set("coder.globalFlags", ["--global-configs", "--use-keyrings"]);
 
 			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
-				"-v",
-				"--global-config /path/to/ignored",
-				"--disable-direct-connections",
+				"--global-configs",
+				"--use-keyrings",
 				"--global-config",
 				'"/config/dir"',
 			]);

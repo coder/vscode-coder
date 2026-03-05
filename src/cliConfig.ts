@@ -32,12 +32,29 @@ export function getGlobalFlags(
 			? ["--url", escapeCommandArg(auth.url)]
 			: ["--global-config", escapeCommandArg(auth.configDir)];
 
-	// Last takes precedence/overrides previous ones
-	return [
-		...getGlobalFlagsRaw(configs),
-		...authFlags,
-		...getHeaderArgs(configs),
-	];
+	const raw = getGlobalFlagsRaw(configs);
+	const filtered: string[] = [];
+	for (let i = 0; i < raw.length; i++) {
+		if (isFlag(raw[i], "--use-keyring")) {
+			continue;
+		}
+		if (isFlag(raw[i], "--global-config")) {
+			// Skip the next item too when the value is a separate entry.
+			if (raw[i] === "--global-config") {
+				i++;
+			}
+			continue;
+		}
+		filtered.push(raw[i]);
+	}
+
+	return [...filtered, ...authFlags, ...getHeaderArgs(configs)];
+}
+
+function isFlag(item: string, name: string): boolean {
+	return (
+		item === name || item.startsWith(`${name}=`) || item.startsWith(`${name} `)
+	);
 }
 
 /**
