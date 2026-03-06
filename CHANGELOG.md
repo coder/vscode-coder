@@ -1,5 +1,20 @@
 # Change Log
 
+## Unreleased
+
+## [v1.14.0-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.0-pre) 2026-03-06
+
+### Added
+
+- Re-introduced OS keyring support for session tokens (reverted in v1.13.2), now delegating
+  to the Coder CLI instead of native `@napi-rs/keyring` binaries. This keeps the credential
+  format in sync with the CLI automatically.
+
+### Fixed
+
+- `--use-keyring` and `--global-config` are now explicitly filtered from user-configured
+  global CLI flags to prevent conflicts with the extension's auth mode.
+
 ## [v1.13.2](https://github.com/coder/vscode-coder/releases/tag/v1.13.2) 2026-03-05
 
 ### Fixed
@@ -18,12 +33,6 @@
 
 - Fixed CLI binary downloads failing when servers or proxies compress responses unexpectedly.
 - Clarified CLI download progress notification wording.
-
-### Added
-
-- Session tokens are now stored in the OS keyring (Keychain on macOS, Credential Manager on
-  Windows) instead of plaintext files, when using CLI >= 2.29.0. Falls back to file storage on
-  Linux, older CLIs, or if the keyring write fails. Controlled via the `coder.useKeyring` setting.
 
 ## [v1.13.0](https://github.com/coder/vscode-coder/releases/tag/v1.13.0) 2026-03-03
 
