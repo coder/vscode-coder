@@ -12,6 +12,7 @@ import type { User } from "coder/site/src/api/typesGenerated";
 import type { IncomingMessage } from "node:http";
 
 import type { CoderApi } from "@/api/coderApi";
+import type { CliCredentialManager } from "@/core/cliCredentialManager";
 import type { Logger } from "@/logging/logger";
 
 /**
@@ -373,6 +374,14 @@ export class InMemorySecretStorage implements vscode.SecretStorage {
 		const event: vscode.SecretStorageChangeEvent = { key };
 		this.listeners.forEach((listener) => listener(event));
 	}
+}
+
+export function createMockCliCredentialManager(): CliCredentialManager {
+	return {
+		storeToken: vi.fn().mockResolvedValue(undefined),
+		readToken: vi.fn().mockResolvedValue(undefined),
+		deleteToken: vi.fn().mockResolvedValue(undefined),
+	} as unknown as CliCredentialManager;
 }
 
 export function createMockLogger(): Logger {

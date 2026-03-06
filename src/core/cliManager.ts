@@ -2,24 +2,30 @@ import globalAxios, {
 	type AxiosInstance,
 	type AxiosRequestConfig,
 } from "axios";
-import { type Api } from "coder/site/src/api/api";
 import { createWriteStream, type WriteStream } from "node:fs";
 import fs from "node:fs/promises";
-import { type IncomingMessage } from "node:http";
 import path from "node:path";
 import prettyBytes from "pretty-bytes";
 import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { type Logger } from "../logging/logger";
 import * as pgp from "../pgp";
+import { withCancellableProgress } from "../progress";
+import { toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";
 import * as cliUtils from "./cliUtils";
 import * as downloadProgress from "./downloadProgress";
-import { type PathResolver } from "./pathResolver";
+
+import type { Api } from "coder/site/src/api/api";
+import type { IncomingMessage } from "node:http";
+
+import type { Logger } from "../logging/logger";
+
+import type { CliCredentialManager } from "./cliCredentialManager";
+import type { PathResolver } from "./pathResolver";
 
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
@@ -27,8 +33,26 @@ export class CliManager {
 	constructor(
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
+		private readonly cliCredentialManager: CliCredentialManager,
 	) {
 		this.binaryLock = new BinaryLock(output);
+	}
+
+	/**
+	 * Return the path to a cached CLI binary for a deployment URL.
+	 * Stat check only — no network, no subprocess. Throws if absent.
+	 */
+	public async locateBinary(url: string): Promise<string> {
+		const safeHostname = toSafeHost(url);
+		const binPath = path.join(
+			this.pathResolver.getBinaryCachePath(safeHostname),
+			cliUtils.name(),
+		);
+		const stat = await cliUtils.stat(binPath);
+		if (!stat) {
+			throw new Error(`No CLI binary found at ${binPath}`);
+		}
+		return binPath;
 	}
 
 	/**
@@ -42,15 +66,20 @@ export class CliManager {
 	 * unable to download a working binary, whether because of network issues or
 	 * downloads being disabled.
 	 */
-	public async fetchBinary(
-		restClient: Api,
-		safeHostname: string,
-	): Promise<string> {
+	public async fetchBinary(restClient: Api): Promise<string> {
+		const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
+		if (!baseUrl) {
+			throw new Error("REST client has no base URL configured");
+		}
+		const safeHostname = toSafeHost(baseUrl);
 		const cfg = vscode.workspace.getConfiguration("coder");
 		// Settings can be undefined when set to their defaults (true in this case),
 		// so explicitly check against false.
 		const enableDownloads = cfg.get("enableDownloads") !== false;
-		this.output.info("Downloads are", enableDownloads ? "enabled" : "disabled");
+		this.output.debug(
+			"Downloads are",
+			enableDownloads ? "enabled" : "disabled",
+		);
 
 		// Get the build info to compare with the existing binary version, if any,
 		// and to log for debugging.
@@ -70,18 +99,18 @@ export class CliManager {
 			this.pathResolver.getBinaryCachePath(safeHostname),
 			cliUtils.name(),
 		);
-		this.output.info("Using binary path", binPath);
+		this.output.debug("Using binary path", binPath);
 		const stat = await cliUtils.stat(binPath);
 		if (stat === undefined) {
 			this.output.info("No existing binary found, starting download");
 		} else {
-			this.output.info("Existing binary size is", prettyBytes(stat.size));
+			this.output.debug("Existing binary size is", prettyBytes(stat.size));
 			try {
 				const version = await cliUtils.version(binPath);
-				this.output.info("Existing binary version is", version);
+				this.output.debug("Existing binary version is", version);
 				// If we have the right version we can avoid the request entirely.
 				if (version === buildInfo.version) {
-					this.output.info(
+					this.output.debug(
 						"Using existing binary since it matches the server version",
 					);
 					return binPath;
@@ -120,19 +149,19 @@ export class CliManager {
 				binPath,
 				progressLogPath,
 			);
-			this.output.info("Acquired download lock");
+			this.output.debug("Acquired download lock");
 
 			// If we waited for another process, re-check if binary is now ready
 			if (lockResult.waited) {
 				const latestBuildInfo = await restClient.getBuildInfo();
-				this.output.info("Got latest server version", latestBuildInfo.version);
+				this.output.debug("Got latest server version", latestBuildInfo.version);
 
 				const recheckAfterWait = await this.checkBinaryVersion(
 					binPath,
 					latestBuildInfo.version,
 				);
 				if (recheckAfterWait.matches) {
-					this.output.info(
+					this.output.debug(
 						"Using existing binary since it matches the latest server version",
 					);
 					return binPath;
@@ -164,7 +193,7 @@ export class CliManager {
 		} finally {
 			if (lockResult) {
 				await lockResult.release();
-				this.output.info("Released download lock");
+				this.output.debug("Released download lock");
 			}
 		}
 	}
@@ -705,69 +734,91 @@ export class CliManager {
 	/**
 	 * Configure the CLI for the deployment with the provided hostname.
 	 *
-	 * Falsey URLs and null tokens are a no-op; we avoid unconfiguring the CLI to
-	 * avoid breaking existing connections.
+	 * Stores credentials in the OS keyring when the setting is enabled and the
+	 * CLI supports it, otherwise writes plaintext files under --global-config.
+	 *
+	 * Both URL and token are required. Empty tokens are allowed (e.g. mTLS
+	 * authentication) but the URL must be a non-empty string.
 	 */
 	public async configure(
-		safeHostname: string,
-		url: string | undefined,
-		token: string | null,
-	) {
-		await Promise.all([
-			this.updateUrlForCli(safeHostname, url),
-			this.updateTokenForCli(safeHostname, token),
-		]);
+		url: string,
+		token: string,
+		options?: { silent?: boolean },
+	): Promise<void> {
+		if (!url) {
+			throw new Error("URL is required to configure the CLI");
+		}
+
+		const configs = vscode.workspace.getConfiguration();
+
+		if (options?.silent) {
+			try {
+				await this.cliCredentialManager.storeToken(url, token, configs);
+			} catch (error) {
+				this.handleStoreError(error);
+			}
+			return;
+		}
+
+		const result = await withCancellableProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Storing credentials for ${url}`,
+				cancellable: true,
+			},
+			({ signal }) =>
+				this.cliCredentialManager.storeToken(url, token, configs, signal),
+		);
+		if (result.ok) {
+			return;
+		}
+		if (result.cancelled) {
+			this.output.info("Credential storage cancelled by user");
+			return;
+		}
+		this.handleStoreError(result.error);
 	}
 
 	/**
-	 * Update the URL for the deployment with the provided hostname on disk which
-	 * can be used by the CLI via --url-file.  If the URL is falsey, do nothing.
-	 *
-	 * If the hostname is empty, read the old deployment-unaware config instead.
+	 * Remove credentials for a deployment. Clears both file-based credentials
+	 * and keyring entries (via `coder logout`). All cleanup is best-effort.
 	 */
-	private async updateUrlForCli(
-		safeHostname: string,
-		url: string | undefined,
-	): Promise<void> {
-		if (url) {
-			const urlPath = this.pathResolver.getUrlPath(safeHostname);
-			await this.atomicWriteFile(urlPath, url);
+	public async clearCredentials(url: string): Promise<void> {
+		const configs = vscode.workspace.getConfiguration();
+		const result = await withCancellableProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Removing credentials for ${url}`,
+				cancellable: true,
+			},
+			({ signal }) =>
+				this.cliCredentialManager.deleteToken(url, configs, signal),
+		);
+		if (result.ok) {
+			return;
+		}
+		if (result.cancelled) {
+			this.output.info("Credential removal cancelled by user");
+		} else {
+			this.output.warn("Failed to remove credentials:", result.error);
 		}
 	}
 
-	/**
-	 * Update the session token for a deployment with the provided hostname on
-	 * disk which can be used by the CLI via --session-token-file.  If the token
-	 * is null, do nothing.
-	 *
-	 * If the hostname is empty, read the old deployment-unaware config instead.
-	 */
-	private async updateTokenForCli(safeHostname: string, token: string | null) {
-		if (token !== null) {
-			const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
-			await this.atomicWriteFile(tokenPath, token);
-		}
-	}
-
-	/**
-	 * Atomically write content to a file by writing to a temporary file first,
-	 * then renaming it.
-	 */
-	private async atomicWriteFile(
-		filePath: string,
-		content: string,
-	): Promise<void> {
-		await fs.mkdir(path.dirname(filePath), { recursive: true });
-		const tempPath =
-			filePath + ".temp-" + Math.random().toString(36).substring(8);
-		try {
-			await fs.writeFile(tempPath, content);
-			await fs.rename(tempPath, filePath);
-		} catch (err) {
-			await fs.rm(tempPath, { force: true }).catch((rmErr) => {
-				this.output.warn("Failed to delete temp file", tempPath, rmErr);
+	private handleStoreError(error: unknown): void {
+		this.output.error("Failed to store credentials:", error);
+		vscode.window
+			.showErrorMessage(
+				`Failed to store credentials: ${errToStr(error)}.`,
+				"Open Settings",
+			)
+			.then((action) => {
+				if (action === "Open Settings") {
+					vscode.commands.executeCommand(
+						"workbench.action.openSettings",
+						"coder.useKeyring",
+					);
+				}
 			});
-			throw err;
-		}
+		throw error;
 	}
 }

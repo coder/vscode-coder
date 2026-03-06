@@ -18,6 +18,7 @@ import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
 
 import {
+	createMockCliCredentialManager,
 	createMockLogger,
 	createMockStream,
 	MockConfigurationProvider,
@@ -82,6 +83,7 @@ function setupManager(testDir: string): CliManager {
 	return new CliManager(
 		createMockLogger(),
 		new PathResolver(testDir, "/code/log"),
+		createMockCliCredentialManager(),
 	);
 }
 
@@ -107,9 +109,9 @@ describe("CliManager Concurrent Downloads", () => {
 		const binaryPath = path.join(testDir, label, "bin", "coder-linux-amd64");
 
 		const downloads = await Promise.all([
-			manager.fetchBinary(mockApi, label),
-			manager.fetchBinary(mockApi, label),
-			manager.fetchBinary(mockApi, label),
+			manager.fetchBinary(mockApi),
+			manager.fetchBinary(mockApi),
+			manager.fetchBinary(mockApi),
 		]);
 
 		expect(downloads).toHaveLength(3);
@@ -141,14 +143,14 @@ describe("CliManager Concurrent Downloads", () => {
 		const binaryPath = path.join(testDir, label, "bin", "coder-linux-amd64");
 
 		// Start first call and give it time to acquire the lock
-		const firstDownload = manager.fetchBinary(mockApi1, label);
+		const firstDownload = manager.fetchBinary(mockApi1);
 		// Wait for the lock to be acquired before starting concurrent calls
 		await new Promise((resolve) => setTimeout(resolve, 50));
 
 		const downloads = await Promise.all([
 			firstDownload,
-			manager.fetchBinary(mockApi2, label),
-			manager.fetchBinary(mockApi2, label),
+			manager.fetchBinary(mockApi2),
+			manager.fetchBinary(mockApi2),
 		]);
 
 		expect(downloads).toHaveLength(3);
@@ -186,7 +188,7 @@ describe("CliManager Concurrent Downloads", () => {
 		const label = "test.coder.com";
 		const binaryPath = path.join(testDir, label, "bin", "coder-linux-amd64");
 
-		await expect(manager.fetchBinary(mockApi, label)).rejects.toThrow(
+		await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
 			`Unable to download binary: ${code}: ${message}`,
 		);
 

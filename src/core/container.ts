@@ -1,8 +1,10 @@
 import * as vscode from "vscode";
 
+import { CoderApi } from "../api/coderApi";
 import { type Logger } from "../logging/logger";
 import { LoginCoordinator } from "../login/loginCoordinator";
 
+import { CliCredentialManager } from "./cliCredentialManager";
 import { CliManager } from "./cliManager";
 import { ContextManager } from "./contextManager";
 import { MementoManager } from "./mementoManager";
@@ -18,6 +20,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
+	private readonly cliCredentialManager: CliCredentialManager;
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;
 	private readonly loginCoordinator: LoginCoordinator;
@@ -34,12 +37,31 @@ export class ServiceContainer implements vscode.Disposable {
 			context.globalState,
 			this.logger,
 		);
-		this.cliManager = new CliManager(this.logger, this.pathResolver);
+		// Circular ref: cliCredentialManager ↔ cliManager. Safe because
+		// the resolver is only called after construction.
+		this.cliCredentialManager = new CliCredentialManager(
+			this.logger,
+			async (url) => {
+				try {
+					return await this.cliManager.locateBinary(url);
+				} catch {
+					const client = CoderApi.create(url, "", this.logger);
+					return this.cliManager.fetchBinary(client);
+				}
+			},
+			this.pathResolver,
+		);
+		this.cliManager = new CliManager(
+			this.logger,
+			this.pathResolver,
+			this.cliCredentialManager,
+		);
 		this.contextManager = new ContextManager(context);
 		this.loginCoordinator = new LoginCoordinator(
 			this.secretsManager,
 			this.mementoManager,
 			this.logger,
+			this.cliCredentialManager,
 			context.extension.id,
 		);
 	}
@@ -66,6 +88,10 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getContextManager(): ContextManager {
 		return this.contextManager;
+	}
+
+	getCliCredentialManager(): CliCredentialManager {
+		return this.cliCredentialManager;
 	}
 
 	getLoginCoordinator(): LoginCoordinator {

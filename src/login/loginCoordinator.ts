@@ -12,6 +12,7 @@ import { vscodeProposed } from "../vscodeProposed";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 
+import type { CliCredentialManager } from "../core/cliCredentialManager";
 import type { MementoManager } from "../core/mementoManager";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
@@ -39,6 +40,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		private readonly secretsManager: SecretsManager,
 		private readonly mementoManager: MementoManager,
 		private readonly logger: Logger,
+		private readonly cliCredentialManager: CliCredentialManager,
 		extensionId: string,
 	) {
 		this.oauthAuthorizer = new OAuthAuthorizer(
@@ -211,11 +213,13 @@ export class LoginCoordinator implements vscode.Disposable {
 
 		// mTLS authentication (no token needed)
 		if (!needToken(vscode.workspace.getConfiguration())) {
+			this.logger.debug("Attempting mTLS authentication (no token required)");
 			return this.tryMtlsAuth(client, isAutoLogin);
 		}
 
 		// Try provided token first
 		if (providedToken) {
+			this.logger.debug("Trying provided token");
 			const result = await this.tryTokenAuth(
 				client,
 				providedToken,
@@ -231,7 +235,25 @@ export class LoginCoordinator implements vscode.Disposable {
 			deployment.safeHostname,
 		);
 		if (auth?.token && auth.token !== providedToken) {
+			this.logger.debug("Trying stored session token");
 			const result = await this.tryTokenAuth(client, auth.token, isAutoLogin);
+			if (result !== "unauthorized") {
+				return result;
+			}
+		}
+
+		// Try keyring token (picks up tokens written by `coder login` in the terminal)
+		const keyringToken = await this.cliCredentialManager.readToken(
+			deployment.url,
+			vscode.workspace.getConfiguration(),
+		);
+		if (
+			keyringToken &&
+			keyringToken !== providedToken &&
+			keyringToken !== auth?.token
+		) {
+			this.logger.debug("Trying token from OS keyring");
+			const result = await this.tryTokenAuth(client, keyringToken, isAutoLogin);
 			if (result !== "unauthorized") {
 				return result;
 			}
