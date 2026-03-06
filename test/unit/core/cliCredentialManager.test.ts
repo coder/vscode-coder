@@ -1,5 +1,6 @@
+import { fs as memfs, vol } from "memfs";
 import { execFile } from "node:child_process";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isKeyringEnabled } from "@/cliConfig";
 import {
@@ -7,8 +8,12 @@ import {
 	isKeyringSupported,
 	type BinaryResolver,
 } from "@/core/cliCredentialManager";
+import * as cliUtils from "@/core/cliUtils";
+import { PathResolver } from "@/core/pathResolver";
 
 import { createMockLogger } from "../../mocks/testHelpers";
+
+import type * as nodeFs from "node:fs";
 
 vi.mock("node:child_process", () => ({
 	execFile: vi.fn(),
@@ -18,40 +23,81 @@ vi.mock("@/cliConfig", () => ({
 	isKeyringEnabled: vi.fn().mockReturnValue(false),
 }));
 
+vi.mock("@/core/cliUtils", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/core/cliUtils")>("@/core/cliUtils");
+	return {
+		...actual,
+		version: vi.fn().mockResolvedValue("2.29.0"),
+	};
+});
+
+vi.mock("fs/promises", async () => {
+	const memfs: { fs: typeof nodeFs } = await vi.importActual("memfs");
+	return {
+		...memfs.fs.promises,
+		default: memfs.fs.promises,
+	};
+});
+
 const TEST_BIN = "/usr/bin/coder";
 const TEST_URL = "https://dev.coder.com";
 
-function stubExecFile(result: { stdout?: string } | { error: string }) {
-	vi.mocked(execFile).mockImplementation(
-		(_cmd, _args, _opts, callback?: unknown) => {
-			const cb =
-				typeof _opts === "function"
-					? (_opts as (err: Error | null, result?: { stdout: string }) => void)
-					: (callback as
-							| ((err: Error | null, result?: { stdout: string }) => void)
-							| undefined);
-			if (cb) {
-				if ("error" in result) {
-					cb(new Error(result.error));
-				} else {
-					cb(null, { stdout: result.stdout ?? "" });
-				}
-			}
-			return {} as ReturnType<typeof execFile>;
-		},
-	);
+// promisify(execFile) always calls execFile(bin, args, opts, callback).
+// We extract the options from the third positional argument.
+interface ExecFileOptions {
+	env?: NodeJS.ProcessEnv;
+	timeout?: number;
+	signal?: AbortSignal;
 }
 
-function lastExecArgs(): {
-	bin: string;
-	args: string[];
-	env: NodeJS.ProcessEnv;
-} {
-	const call = vi.mocked(execFile).mock.calls[0];
+type ExecFileCallback = (
+	err: Error | null,
+	result?: { stdout: string },
+) => void;
+
+function stubExecFile(result: { stdout?: string } | { error: string }) {
+	vi.mocked(execFile).mockImplementation(((
+		_bin: string,
+		_args: string[],
+		_opts: ExecFileOptions,
+		cb: ExecFileCallback,
+	) => {
+		if ("error" in result) {
+			cb(new Error(result.error));
+		} else {
+			cb(null, { stdout: result.stdout ?? "" });
+		}
+	}) as unknown as typeof execFile);
+}
+
+function stubExecFileAbortable() {
+	vi.mocked(execFile).mockImplementation(((
+		_bin: string,
+		_args: string[],
+		opts: ExecFileOptions,
+	) => {
+		if (opts.signal?.aborted) {
+			const err = new Error("The operation was aborted");
+			err.name = "AbortError";
+			throw err;
+		}
+	}) as unknown as typeof execFile);
+}
+
+function lastExecArgs() {
+	const [bin, args, opts] = vi.mocked(execFile).mock.calls[0] as [
+		string,
+		readonly string[],
+		ExecFileOptions,
+		...unknown[],
+	];
 	return {
-		bin: call[0],
-		args: call[1] as string[],
-		env: (call[2] as { env: NodeJS.ProcessEnv }).env,
+		bin,
+		args,
+		env: opts.env ?? process.env,
+		timeout: opts.timeout,
+		signal: opts.signal,
 	};
 }
 
@@ -73,11 +119,26 @@ const configWithHeaders = {
 	),
 };
 
+const TEST_PATH_RESOLVER = new PathResolver("/mock/base", "/mock/log");
+const CRED_DIR = "/mock/base/dev.coder.com";
+const URL_FILE = `${CRED_DIR}/url`;
+const SESSION_FILE = `${CRED_DIR}/session`;
+
+function writeCredentialFiles(url: string, token: string) {
+	vol.mkdirSync(CRED_DIR, { recursive: true });
+	memfs.writeFileSync(URL_FILE, url);
+	memfs.writeFileSync(SESSION_FILE, token);
+}
+
 function setup(resolver?: BinaryResolver) {
 	const r = resolver ?? successResolver();
 	return {
 		resolver: r,
-		manager: new CliCredentialManager(createMockLogger(), r),
+		manager: new CliCredentialManager(
+			createMockLogger(),
+			r,
+			TEST_PATH_RESOLVER,
+		),
 	};
 }
 
@@ -98,12 +159,26 @@ describe("isKeyringSupported", () => {
 });
 
 describe("CliCredentialManager", () => {
-	afterEach(() => {
-		vi.resetAllMocks();
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vol.reset();
+		vi.mocked(isKeyringEnabled).mockReturnValue(false);
+		vi.mocked(cliUtils.version).mockResolvedValue("2.29.0");
 	});
 
 	describe("storeToken", () => {
-		it("resolves binary and invokes coder login", async () => {
+		it("writes files when keyring is disabled", async () => {
+			const { manager } = setup();
+
+			await manager.storeToken(TEST_URL, "my-token", configs);
+
+			expect(execFile).not.toHaveBeenCalled();
+			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
+			expect(memfs.readFileSync(SESSION_FILE, "utf8")).toBe("my-token");
+		});
+
+		it("resolves binary and invokes coder login when keyring enabled", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFile({ stdout: "" });
 			const { manager, resolver } = setup();
 
@@ -118,7 +193,20 @@ describe("CliCredentialManager", () => {
 			expect(exec.args).not.toContain("my-secret-token");
 		});
 
+		it("falls back to files when CLI version too old", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			vi.mocked(cliUtils.version).mockResolvedValueOnce("2.28.0");
+			const { manager } = setup();
+
+			await manager.storeToken(TEST_URL, "token", configs);
+
+			expect(execFile).not.toHaveBeenCalled();
+			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
+			expect(memfs.readFileSync(SESSION_FILE, "utf8")).toBe("token");
+		});
+
 		it("throws when CLI exec fails", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFile({ error: "login failed" });
 			const { manager } = setup();
 
@@ -127,7 +215,8 @@ describe("CliCredentialManager", () => {
 			).rejects.toThrow("login failed");
 		});
 
-		it("throws when binary resolver fails", async () => {
+		it("throws when binary resolver fails and keyring enabled", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			const { manager } = setup(failingResolver());
 
 			await expect(
@@ -137,12 +226,44 @@ describe("CliCredentialManager", () => {
 		});
 
 		it("forwards header command args", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFile({ stdout: "" });
 			const { manager } = setup();
 
 			await manager.storeToken(TEST_URL, "token", configWithHeaders);
 
 			expect(lastExecArgs().args).toContain("--header-command");
+		});
+
+		it("passes timeout to execFile", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			stubExecFile({ stdout: "" });
+			const { manager } = setup();
+
+			await manager.storeToken(TEST_URL, "token", configs);
+
+			expect(lastExecArgs().timeout).toBe(60_000);
+		});
+
+		it("passes signal through to execFile", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			stubExecFile({ stdout: "" });
+			const { manager } = setup();
+			const ac = new AbortController();
+
+			await manager.storeToken(TEST_URL, "token", configs, ac.signal);
+
+			expect(lastExecArgs().signal).toBe(ac.signal);
+		});
+
+		it("rejects with AbortError when signal is pre-aborted", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			stubExecFileAbortable();
+			const { manager } = setup();
+
+			await expect(
+				manager.storeToken(TEST_URL, "token", configs, AbortSignal.abort()),
+			).rejects.toThrow("The operation was aborted");
 		});
 	});
 
@@ -193,12 +314,23 @@ describe("CliCredentialManager", () => {
 			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
 			expect(execFile).not.toHaveBeenCalled();
 		});
+
+		it("passes timeout to execFile", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			stubExecFile({ stdout: "token" });
+			const { manager } = setup();
+
+			await manager.readToken(TEST_URL, configs);
+
+			expect(lastExecArgs().timeout).toBe(60_000);
+		});
 	});
 
 	describe("deleteToken", () => {
-		it("resolves binary and invokes coder logout", async () => {
+		it("deletes files and invokes coder logout when keyring enabled", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFile({ stdout: "" });
+			writeCredentialFiles(TEST_URL, "old-token");
 			const { manager, resolver } = setup();
 
 			await manager.deleteToken(TEST_URL, configs);
@@ -207,6 +339,19 @@ describe("CliCredentialManager", () => {
 			const exec = lastExecArgs();
 			expect(exec.bin).toBe(TEST_BIN);
 			expect(exec.args).toEqual(["logout", "--url", TEST_URL, "--yes"]);
+			expect(memfs.existsSync(URL_FILE)).toBe(false);
+			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
+		});
+
+		it("deletes files even when keyring is disabled", async () => {
+			writeCredentialFiles(TEST_URL, "old-token");
+			const { manager } = setup();
+
+			await manager.deleteToken(TEST_URL, configs);
+
+			expect(execFile).not.toHaveBeenCalled();
+			expect(memfs.existsSync(URL_FILE)).toBe(false);
+			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
 		});
 
 		it("never throws on CLI error", async () => {
@@ -239,13 +384,39 @@ describe("CliCredentialManager", () => {
 			expect(lastExecArgs().args).toContain("--header-command");
 		});
 
-		it("skips CLI when keyring is disabled", async () => {
+		it("skips keyring when CLI version too old", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			vi.mocked(cliUtils.version).mockResolvedValueOnce("2.28.0");
 			stubExecFile({ stdout: "" });
+			writeCredentialFiles(TEST_URL, "old-token");
 			const { manager } = setup();
 
 			await manager.deleteToken(TEST_URL, configs);
 
 			expect(execFile).not.toHaveBeenCalled();
+			expect(memfs.existsSync(URL_FILE)).toBe(false);
+			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
+		});
+
+		it("passes signal through to execFile", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			stubExecFile({ stdout: "" });
+			const { manager } = setup();
+			const ac = new AbortController();
+
+			await manager.deleteToken(TEST_URL, configs, ac.signal);
+
+			expect(lastExecArgs().signal).toBe(ac.signal);
+		});
+
+		it("does not throw when signal is aborted", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			stubExecFileAbortable();
+			const { manager } = setup();
+
+			await expect(
+				manager.deleteToken(TEST_URL, configs, AbortSignal.abort()),
+			).resolves.not.toThrow();
 		});
 	});
 });

@@ -227,21 +227,9 @@ export class Remote {
 				}
 			}
 
-			// First thing is to check the version.
-			const buildInfo = await workspaceClient.getBuildInfo();
-
-			let version: semver.SemVer | null = null;
-			try {
-				version = semver.parse(await cliUtils.version(binaryPath));
-			} catch {
-				version = semver.parse(buildInfo.version);
-			}
-
-			const featureSet = featureSetForVersion(version);
-
-			// Write token to keyring or file (after CLI version is known)
+			// Write token to keyring or file
 			if (baseUrlRaw && token !== undefined) {
-				await this.cliManager.configure(baseUrlRaw, token, featureSet);
+				await this.cliManager.configure(baseUrlRaw, token);
 			}
 
 			// Listen for token changes for this deployment
@@ -252,11 +240,9 @@ export class Remote {
 						workspaceClient.setCredentials(auth?.url, auth?.token);
 						if (auth?.url) {
 							try {
-								await this.cliManager.configure(
-									auth.url,
-									auth.token,
-									featureSet,
-								);
+								await this.cliManager.configure(auth.url, auth.token, {
+									silent: true,
+								});
 								this.logger.info(
 									"Updated CLI config with new token for remote deployment",
 								);
@@ -271,6 +257,17 @@ export class Remote {
 				),
 			);
 
+			// First thing is to check the version.
+			const buildInfo = await workspaceClient.getBuildInfo();
+
+			let version: semver.SemVer | null = null;
+			try {
+				version = semver.parse(await cliUtils.version(binaryPath));
+			} catch {
+				version = semver.parse(buildInfo.version);
+			}
+
+			const featureSet = featureSetForVersion(version);
 			const configDir = this.pathResolver.getGlobalConfigDir(
 				parts.safeHostname,
 			);

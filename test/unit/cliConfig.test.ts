@@ -8,7 +8,6 @@ import {
 	getSshFlags,
 	isKeyringEnabled,
 	resolveCliAuth,
-	shouldUseKeyring,
 } from "@/cliConfig";
 import { featureSetForVersion } from "@/featureSet";
 
@@ -237,62 +236,6 @@ describe("cliConfig", () => {
 				const config = new MockConfigurationProvider();
 				config.set("coder.useKeyring", useKeyring);
 				expect(isKeyringEnabled(config)).toBe(expected);
-			},
-		);
-	});
-
-	describe("shouldUseKeyring", () => {
-		interface ShouldUseKeyringCase {
-			platform: NodeJS.Platform;
-			useKeyring: boolean;
-			version: string;
-			expected: boolean;
-		}
-		it.each<ShouldUseKeyringCase>([
-			{
-				platform: "darwin",
-				useKeyring: true,
-				version: "2.29.0",
-				expected: true,
-			},
-			{
-				platform: "win32",
-				useKeyring: true,
-				version: "2.29.0",
-				expected: true,
-			},
-			{
-				platform: "linux",
-				useKeyring: true,
-				version: "2.29.0",
-				expected: false,
-			},
-			{
-				platform: "darwin",
-				useKeyring: true,
-				version: "2.28.0",
-				expected: false,
-			},
-			{
-				platform: "darwin",
-				useKeyring: false,
-				version: "2.29.0",
-				expected: false,
-			},
-			{
-				platform: "darwin",
-				useKeyring: true,
-				version: "0.0.0-devel+abc123",
-				expected: true,
-			},
-		])(
-			"returns $expected on $platform with useKeyring=$useKeyring and version $version",
-			({ platform, useKeyring, version, expected }) => {
-				vi.stubGlobal("process", { ...process, platform });
-				const config = new MockConfigurationProvider();
-				config.set("coder.useKeyring", useKeyring);
-				const featureSet = featureSetForVersion(semver.parse(version));
-				expect(shouldUseKeyring(config, featureSet)).toBe(expected);
 			},
 		);
 	});

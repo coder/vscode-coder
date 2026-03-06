@@ -10,8 +10,8 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { shouldUseKeyring } from "../cliConfig";
 import * as pgp from "../pgp";
+import { withCancellableProgress } from "../progress";
 import { toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 
@@ -22,7 +22,6 @@ import * as downloadProgress from "./downloadProgress";
 import type { Api } from "coder/site/src/api/api";
 import type { IncomingMessage } from "node:http";
 
-import type { FeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
 
 import type { CliCredentialManager } from "./cliCredentialManager";
@@ -735,108 +734,91 @@ export class CliManager {
 	/**
 	 * Configure the CLI for the deployment with the provided hostname.
 	 *
-	 * Stores credentials in the OS keyring when available, otherwise falls back
-	 * to writing plaintext files under --global-config for the CLI.
+	 * Stores credentials in the OS keyring when the setting is enabled and the
+	 * CLI supports it, otherwise writes plaintext files under --global-config.
 	 *
 	 * Both URL and token are required. Empty tokens are allowed (e.g. mTLS
 	 * authentication) but the URL must be a non-empty string.
 	 */
-	public async configure(url: string, token: string, featureSet: FeatureSet) {
+	public async configure(
+		url: string,
+		token: string,
+		options?: { silent?: boolean },
+	): Promise<void> {
 		if (!url) {
 			throw new Error("URL is required to configure the CLI");
 		}
-		const safeHostname = toSafeHost(url);
 
 		const configs = vscode.workspace.getConfiguration();
-		if (shouldUseKeyring(configs, featureSet)) {
+
+		if (options?.silent) {
 			try {
 				await this.cliCredentialManager.storeToken(url, token, configs);
 			} catch (error) {
-				this.output.error("Failed to store token via CLI keyring:", error);
-				vscode.window
-					.showErrorMessage(
-						`Failed to store session token in OS keyring: ${errToStr(error)}. ` +
-							"Disable keyring storage in settings to use plaintext files instead.",
-						"Open Settings",
-					)
-					.then((action) => {
-						if (action === "Open Settings") {
-							vscode.commands.executeCommand(
-								"workbench.action.openSettings",
-								"coder.useKeyring",
-							);
-						}
-					});
-				throw error;
+				this.handleStoreError(error);
 			}
-		} else {
-			await Promise.all([
-				this.writeUrlToGlobalConfig(safeHostname, url),
-				this.writeTokenToGlobalConfig(safeHostname, token),
-			]);
+			return;
 		}
+
+		const result = await withCancellableProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Storing credentials for ${url}`,
+				cancellable: true,
+			},
+			({ signal }) =>
+				this.cliCredentialManager.storeToken(url, token, configs, signal),
+		);
+		if (result.ok) {
+			return;
+		}
+		if (result.cancelled) {
+			this.output.info("Credential storage cancelled by user");
+			return;
+		}
+		this.handleStoreError(result.error);
 	}
 
 	/**
 	 * Remove credentials for a deployment. Clears both file-based credentials
-	 * and keyring entries (via `coder logout`). Keyring deletion is best-effort:
-	 * if it fails, file cleanup still runs.
+	 * and keyring entries (via `coder logout`). All cleanup is best-effort.
 	 */
 	public async clearCredentials(url: string): Promise<void> {
-		const safeHostname = toSafeHost(url);
 		const configs = vscode.workspace.getConfiguration();
-		await this.cliCredentialManager.deleteToken(url, configs);
-
-		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
-		const urlPath = this.pathResolver.getUrlPath(safeHostname);
-		await Promise.all([
-			fs.rm(tokenPath, { force: true }).catch((error) => {
-				this.output.warn("Failed to remove token file", tokenPath, error);
-			}),
-			fs.rm(urlPath, { force: true }).catch((error) => {
-				this.output.warn("Failed to remove URL file", urlPath, error);
-			}),
-		]);
-	}
-
-	/**
-	 * Write the URL to the --global-config directory for the CLI.
-	 */
-	private async writeUrlToGlobalConfig(
-		safeHostname: string,
-		url: string,
-	): Promise<void> {
-		const urlPath = this.pathResolver.getUrlPath(safeHostname);
-		await this.atomicWriteFile(urlPath, url);
-	}
-
-	/**
-	 * Write the session token to the --global-config directory for the CLI.
-	 */
-	private async writeTokenToGlobalConfig(safeHostname: string, token: string) {
-		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
-		await this.atomicWriteFile(tokenPath, token);
-	}
-
-	/**
-	 * Atomically write content to a file by writing to a temporary file first,
-	 * then renaming it.
-	 */
-	private async atomicWriteFile(
-		filePath: string,
-		content: string,
-	): Promise<void> {
-		await fs.mkdir(path.dirname(filePath), { recursive: true });
-		const tempPath =
-			filePath + ".temp-" + Math.random().toString(36).substring(8);
-		try {
-			await fs.writeFile(tempPath, content, { mode: 0o600 });
-			await fs.rename(tempPath, filePath);
-		} catch (err) {
-			await fs.rm(tempPath, { force: true }).catch((rmErr) => {
-				this.output.warn("Failed to delete temp file", tempPath, rmErr);
-			});
-			throw err;
+		const result = await withCancellableProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Removing credentials for ${url}`,
+				cancellable: true,
+			},
+			({ signal }) =>
+				this.cliCredentialManager.deleteToken(url, configs, signal),
+		);
+		if (result.ok) {
+			return;
 		}
+		if (result.cancelled) {
+			this.output.info("Credential removal cancelled by user");
+		} else {
+			this.output.warn("Failed to remove credentials:", result.error);
+		}
+	}
+
+	private handleStoreError(error: unknown): void {
+		this.output.error("Failed to store credentials:", error);
+		vscode.window
+			.showErrorMessage(
+				`Failed to store credentials: ${errToStr(error)}.`,
+				"Open Settings",
+			)
+			.then((action) => {
+				if (action === "Open Settings") {
+					vscode.commands.executeCommand(
+						"workbench.action.openSettings",
+						"coder.useKeyring",
+					);
+				}
+			});
+		throw error;
 	}
 }

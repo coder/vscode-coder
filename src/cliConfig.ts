@@ -33,22 +33,27 @@ export function getGlobalFlags(
 			: ["--global-config", escapeCommandArg(auth.configDir)];
 
 	const raw = getGlobalFlagsRaw(configs);
+	const filtered = stripManagedFlags(raw);
+
+	return [...filtered, ...authFlags, ...getHeaderArgs(configs)];
+}
+
+function stripManagedFlags(rawFlags: string[]): string[] {
 	const filtered: string[] = [];
-	for (let i = 0; i < raw.length; i++) {
-		if (isFlag(raw[i], "--use-keyring")) {
+	for (let i = 0; i < rawFlags.length; i++) {
+		if (isFlag(rawFlags[i], "--use-keyring")) {
 			continue;
 		}
-		if (isFlag(raw[i], "--global-config")) {
+		if (isFlag(rawFlags[i], "--global-config")) {
 			// Skip the next item too when the value is a separate entry.
-			if (raw[i] === "--global-config") {
+			if (rawFlags[i] === "--global-config") {
 				i++;
 			}
 			continue;
 		}
-		filtered.push(raw[i]);
+		filtered.push(rawFlags[i]);
 	}
-
-	return [...filtered, ...authFlags, ...getHeaderArgs(configs)];
+	return filtered;
 }
 
 function isFlag(item: string, name: string): boolean {
@@ -67,17 +72,6 @@ export function isKeyringEnabled(
 }
 
 /**
- * Single source of truth: should the extension use the OS keyring for this session?
- * Requires CLI >= 2.29.0, macOS or Windows, and the coder.useKeyring setting enabled.
- */
-export function shouldUseKeyring(
-	configs: Pick<WorkspaceConfiguration, "get">,
-	featureSet: FeatureSet,
-): boolean {
-	return isKeyringEnabled(configs) && featureSet.keyringAuth;
-}
-
-/**
  * Resolves how the CLI should authenticate: via the keyring (`--url`) or via
  * the global config directory (`--global-config`).
  */
@@ -87,7 +81,7 @@ export function resolveCliAuth(
 	deploymentUrl: string,
 	configDir: string,
 ): CliAuth {
-	if (shouldUseKeyring(configs, featureSet)) {
+	if (isKeyringEnabled(configs) && featureSet.keyringAuth) {
 		return { mode: "url", url: deploymentUrl };
 	}
 	return { mode: "global-config", configDir };

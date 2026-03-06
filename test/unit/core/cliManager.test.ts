@@ -9,7 +9,6 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import * as cliConfig from "@/cliConfig";
 import { CliManager } from "@/core/cliManager";
 import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
@@ -26,7 +25,6 @@ import {
 import { expectPathsEqual } from "../../utils/platform";
 
 import type { CliCredentialManager } from "@/core/cliCredentialManager";
-import type { FeatureSet } from "@/featureSet";
 
 vi.mock("os");
 vi.mock("axios");
@@ -52,15 +50,6 @@ vi.mock("proper-lockfile", () => ({
 	lock: () => Promise.resolve(() => Promise.resolve()),
 	check: () => Promise.resolve(false),
 }));
-
-vi.mock("@/cliConfig", async () => {
-	const actual =
-		await vi.importActual<typeof import("@/cliConfig")>("@/cliConfig");
-	return {
-		...actual,
-		shouldUseKeyring: vi.fn(),
-	};
-});
 
 vi.mock("@/pgp");
 
@@ -95,14 +84,6 @@ describe("CliManager", () => {
 	const ARCH = "amd64";
 	const BINARY_NAME = `coder-${PLATFORM}-${ARCH}`;
 	const BINARY_PATH = `${BINARY_DIR}/${BINARY_NAME}`;
-	const MOCK_FEATURE_SET: FeatureSet = {
-		vscodessh: true,
-		proxyLogDirectory: true,
-		wildcardSSH: true,
-		buildReason: true,
-		keyringAuth: true,
-	};
-
 	beforeEach(() => {
 		vi.resetAllMocks();
 		vol.reset();
@@ -136,91 +117,71 @@ describe("CliManager", () => {
 	});
 
 	describe("Configure CLI", () => {
-		function configure(token = "test-token") {
-			return manager.configure(
-				"https://coder.example.com",
-				token,
-				MOCK_FEATURE_SET,
-			);
+		const CONFIGURE_URL = "https://coder.example.com";
+		const TOKEN = "test-token";
+
+		function configure(options?: { silent?: boolean }) {
+			return manager.configure(CONFIGURE_URL, TOKEN, options);
 		}
 
-		it("should write both url and token to correct paths", async () => {
-			await configure("test-token");
+		it("should store credentials with progress notification", async () => {
+			await configure();
 
-			expect(
-				memfs.readFileSync("/path/base/coder.example.com/url", "utf8"),
-			).toBe("https://coder.example.com");
-			expect(
-				memfs.readFileSync("/path/base/coder.example.com/session", "utf8"),
-			).toBe("test-token");
+			expect(vscode.window.withProgress).toHaveBeenCalledWith(
+				expect.objectContaining({
+					location: vscode.ProgressLocation.Notification,
+					title: `Storing credentials for ${CONFIGURE_URL}`,
+					cancellable: true,
+				}),
+				expect.any(Function),
+			);
+			expect(mockCredManager.storeToken).toHaveBeenCalledWith(
+				CONFIGURE_URL,
+				TOKEN,
+				expect.anything(),
+				expect.any(AbortSignal),
+			);
+		});
+
+		it("should skip progress when silent", async () => {
+			await configure({ silent: true });
+
+			expect(vscode.window.withProgress).not.toHaveBeenCalled();
+			expect(mockCredManager.storeToken).toHaveBeenCalledWith(
+				CONFIGURE_URL,
+				TOKEN,
+				expect.anything(),
+			);
 		});
 
 		it("should throw when URL is empty", async () => {
-			await expect(
-				manager.configure("", "test-token", MOCK_FEATURE_SET),
-			).rejects.toThrow("URL is required to configure the CLI");
-		});
-
-		it("should write empty string for token when provided", async () => {
-			await configure("");
-
-			expect(
-				memfs.readFileSync("/path/base/coder.example.com/url", "utf8"),
-			).toBe("https://coder.example.com");
-			expect(
-				memfs.readFileSync("/path/base/coder.example.com/session", "utf8"),
-			).toBe("");
-		});
-
-		it("should use hostname-specific path for URL", async () => {
-			await manager.configure(
-				"https://coder.example.com",
-				"token",
-				MOCK_FEATURE_SET,
-			);
-
-			expect(
-				memfs.readFileSync("/path/base/coder.example.com/url", "utf8"),
-			).toBe("https://coder.example.com");
-			expect(
-				memfs.readFileSync("/path/base/coder.example.com/session", "utf8"),
-			).toBe("token");
-		});
-
-		it("should store via CLI credential manager when keyring enabled", async () => {
-			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
-
-			await configure("test-token");
-
-			expect(mockCredManager.storeToken).toHaveBeenCalledWith(
-				"https://coder.example.com",
-				"test-token",
-				expect.anything(),
-			);
-			expect(memfs.existsSync("/path/base/coder.example.com/url")).toBe(false);
-			expect(memfs.existsSync("/path/base/coder.example.com/session")).toBe(
-				false,
+			await expect(manager.configure("", TOKEN)).rejects.toThrow(
+				"URL is required to configure the CLI",
 			);
 		});
 
-		it("should throw and show error when CLI keyring store fails", async () => {
-			vi.mocked(cliConfig.shouldUseKeyring).mockReturnValue(true);
+		it.each([{ silent: false }, { silent: true }])(
+			"should throw and show error on failure (silent=$silent)",
+			async (options) => {
+				vi.mocked(mockCredManager.storeToken).mockRejectedValueOnce(
+					new Error("keyring unavailable"),
+				);
+
+				await expect(configure(options)).rejects.toThrow("keyring unavailable");
+				expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+					expect.stringContaining("keyring unavailable"),
+					"Open Settings",
+				);
+			},
+		);
+
+		it("should swallow AbortError when user cancels", async () => {
 			vi.mocked(mockCredManager.storeToken).mockRejectedValueOnce(
-				new Error("keyring unavailable"),
+				makeAbortError(),
 			);
 
-			await expect(configure("test-token")).rejects.toThrow(
-				"keyring unavailable",
-			);
-
-			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-				expect.stringContaining("keyring unavailable"),
-				"Open Settings",
-			);
-			expect(memfs.existsSync("/path/base/coder.example.com/url")).toBe(false);
-			expect(memfs.existsSync("/path/base/coder.example.com/session")).toBe(
-				false,
-			);
+			await expect(configure()).resolves.not.toThrow();
+			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 		});
 	});
 
@@ -239,37 +200,35 @@ describe("CliManager", () => {
 	});
 
 	describe("Clear Credentials", () => {
-		function seedCredentialFiles() {
-			memfs.mkdirSync("/path/base/dev.coder.com", { recursive: true });
-			memfs.writeFileSync("/path/base/dev.coder.com/session", "old-token");
-			memfs.writeFileSync(
-				"/path/base/dev.coder.com/url",
-				"https://example.com",
+		const CLEAR_URL = "https://dev.coder.com";
+
+		it("should delete credentials with progress notification", async () => {
+			await manager.clearCredentials(CLEAR_URL);
+
+			expect(vscode.window.withProgress).toHaveBeenCalledWith(
+				expect.objectContaining({
+					location: vscode.ProgressLocation.Notification,
+					title: `Removing credentials for ${CLEAR_URL}`,
+					cancellable: true,
+				}),
+				expect.any(Function),
 			);
-		}
-
-		it("should remove credential files", async () => {
-			seedCredentialFiles();
-			await manager.clearCredentials("https://dev.coder.com");
-			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
-			expect(memfs.existsSync("/path/base/dev.coder.com/url")).toBe(false);
-		});
-
-		it("should not throw when credential files don't exist", async () => {
-			await expect(
-				manager.clearCredentials("https://dev.coder.com"),
-			).resolves.not.toThrow();
-		});
-
-		it("should always call deleteToken (gating is internal)", async () => {
-			seedCredentialFiles();
-			await manager.clearCredentials("https://dev.coder.com");
 			expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
-				"https://dev.coder.com",
+				CLEAR_URL,
 				expect.anything(),
+				expect.any(AbortSignal),
 			);
-			// File cleanup still runs
-			expect(memfs.existsSync("/path/base/dev.coder.com/session")).toBe(false);
+		});
+
+		it.each([
+			{ scenario: "succeeds", error: undefined },
+			{ scenario: "fails", error: new Error("unexpected failure") },
+			{ scenario: "is cancelled", error: makeAbortError() },
+		])("should not throw when deleteToken $scenario", async ({ error }) => {
+			if (error) {
+				vi.mocked(mockCredManager.deleteToken).mockRejectedValueOnce(error);
+			}
+			await expect(manager.clearCredentials(CLEAR_URL)).resolves.not.toThrow();
 		});
 	});
 
@@ -822,6 +781,12 @@ describe("CliManager", () => {
 		}
 	}
 });
+
+function makeAbortError(): Error {
+	const error = new Error("The operation was aborted");
+	error.name = "AbortError";
+	return error;
+}
 
 function createVerificationError(msg: string): pgp.VerificationError {
 	const error = new pgp.VerificationError(

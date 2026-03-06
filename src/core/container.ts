@@ -49,6 +49,7 @@ export class ServiceContainer implements vscode.Disposable {
 					return this.cliManager.fetchBinary(client);
 				}
 			},
+			this.pathResolver,
 		);
 		this.cliManager = new CliManager(
 			this.logger,
