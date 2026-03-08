@@ -10,7 +10,8 @@ import {
 // setting it to a different path makes it easier to test
 // and makes mistakes abundantly clear.
 const sshFilePath = "/Path/To/UserHomeDir/.sshConfigDir/sshConfigFile";
-const sshTempFilePathExpr = `^/Path/To/UserHomeDir/\\.sshConfigDir/\\.sshConfigFile\\.vscode-coder-tmp\\.[a-z0-9]+$`;
+const sshTempFilePrefix =
+	"/Path/To/UserHomeDir/.sshConfigDir/.sshConfigFile.vscode-coder-tmp-";
 
 const mockFileSystem = {
 	mkdir: vi.fn(),
@@ -53,7 +54,7 @@ Host coder-vscode--*
 		expect.anything(),
 	);
 	expect(mockFileSystem.writeFile).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		expect.objectContaining({
 			encoding: "utf-8",
@@ -61,7 +62,7 @@ Host coder-vscode--*
 		}),
 	);
 	expect(mockFileSystem.rename).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
 });
@@ -95,7 +96,7 @@ Host coder-vscode.dev.coder.com--*
 		expect.anything(),
 	);
 	expect(mockFileSystem.writeFile).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		expect.objectContaining({
 			encoding: "utf-8",
@@ -103,7 +104,7 @@ Host coder-vscode.dev.coder.com--*
 		}),
 	);
 	expect(mockFileSystem.rename).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
 });
@@ -142,7 +143,7 @@ Host coder-vscode.dev.coder.com--*
 # --- END CODER VSCODE dev.coder.com ---`;
 
 	expect(mockFileSystem.writeFile).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
 			encoding: "utf-8",
@@ -150,7 +151,7 @@ Host coder-vscode.dev.coder.com--*
 		},
 	);
 	expect(mockFileSystem.rename).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
 });
@@ -215,7 +216,7 @@ Host *
   SetEnv TEST=1`;
 
 	expect(mockFileSystem.writeFile).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
 			encoding: "utf-8",
@@ -223,7 +224,7 @@ Host *
 		},
 	);
 	expect(mockFileSystem.rename).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
 });
@@ -269,7 +270,7 @@ Host coder-vscode.dev.coder.com--*
 # --- END CODER VSCODE dev.coder.com ---`;
 
 	expect(mockFileSystem.writeFile).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
 			encoding: "utf-8",
@@ -277,7 +278,7 @@ Host coder-vscode.dev.coder.com--*
 		},
 	);
 	expect(mockFileSystem.rename).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
 });
@@ -312,7 +313,7 @@ Host coder-vscode.dev.coder.com--*
 # --- END CODER VSCODE dev.coder.com ---`;
 
 	expect(mockFileSystem.writeFile).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
 			encoding: "utf-8",
@@ -320,7 +321,7 @@ Host coder-vscode.dev.coder.com--*
 		},
 	);
 	expect(mockFileSystem.rename).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
 });
@@ -595,7 +596,7 @@ Host afterconfig
 	});
 
 	expect(mockFileSystem.writeFile).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
 			encoding: "utf-8",
@@ -603,7 +604,7 @@ Host afterconfig
 		},
 	);
 	expect(mockFileSystem.rename).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
 });
@@ -652,7 +653,7 @@ Host coder-vscode.dev.coder.com--*
 		expect.anything(),
 	);
 	expect(mockFileSystem.writeFile).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		expect.objectContaining({
 			encoding: "utf-8",
@@ -660,7 +661,7 @@ Host coder-vscode.dev.coder.com--*
 		}),
 	);
 	expect(mockFileSystem.rename).toBeCalledWith(
-		expect.stringMatching(sshTempFilePathExpr),
+		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
 });

@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { withCancellableProgress, type ProgressContext } from "@/progress";
+import {
+	withCancellableProgress,
+	withProgress,
+	type ProgressContext,
+} from "@/progress";
 
 function mockWithProgress(opts?: { cancelImmediately?: boolean }) {
 	const dispose = vi.fn();
@@ -115,5 +119,43 @@ describe("withCancellableProgress", () => {
 			options,
 			expect.any(Function),
 		);
+	});
+});
+
+describe("withProgress", () => {
+	beforeEach(() => {
+		mockWithProgress();
+	});
+
+	it("returns the resolved value", async () => {
+		const result = await withProgress(
+			{ location: vscode.ProgressLocation.Notification, title: "test" },
+			() => Promise.resolve(42),
+		);
+
+		expect(result).toBe(42);
+	});
+
+	it("passes progress reporter to callback", async () => {
+		let hasReport = false;
+
+		await withProgress(
+			{ location: vscode.ProgressLocation.Notification, title: "test" },
+			(progress) => {
+				hasReport = typeof progress.report === "function";
+				return Promise.resolve();
+			},
+		);
+
+		expect(hasReport).toBe(true);
+	});
+
+	it("propagates errors to the caller", async () => {
+		await expect(
+			withProgress(
+				{ location: vscode.ProgressLocation.Notification, title: "test" },
+				() => Promise.reject(new Error("boom")),
+			),
+		).rejects.toThrow("boom");
 	});
 });

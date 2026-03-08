@@ -6,6 +6,7 @@ export interface FeatureSet {
 	wildcardSSH: boolean;
 	buildReason: boolean;
 	keyringAuth: boolean;
+	keyringTokenRead: boolean;
 }
 
 /**
@@ -40,6 +41,11 @@ export function featureSetForVersion(
 		// Keyring-backed token storage was added in CLI 2.29.0
 		keyringAuth:
 			(version?.compare("2.29.0") ?? 0) >= 0 ||
+			version?.prerelease[0] === "devel",
+
+		// `coder login token` for reading tokens from the keyring was added in 2.31.0
+		keyringTokenRead:
+			(version?.compare("2.31.0") ?? 0) >= 0 ||
 			version?.prerelease[0] === "devel",
 	};
 }

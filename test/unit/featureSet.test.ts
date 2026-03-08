@@ -40,4 +40,19 @@ describe("check version support", () => {
 			featureSetForVersion(semver.parse("0.0.0-devel+abc123")).keyringAuth,
 		).toBeTruthy();
 	});
+	it("keyring token read", () => {
+		["v2.30.0", "v2.29.0", "v2.28.0", "v1.0.0"].forEach((v: string) => {
+			expect(
+				featureSetForVersion(semver.parse(v)).keyringTokenRead,
+			).toBeFalsy();
+		});
+		["v2.31.0", "v2.31.1", "v2.32.0", "v3.0.0"].forEach((v: string) => {
+			expect(
+				featureSetForVersion(semver.parse(v)).keyringTokenRead,
+			).toBeTruthy();
+		});
+		expect(
+			featureSetForVersion(semver.parse("0.0.0-devel+abc123")).keyringTokenRead,
+		).toBeTruthy();
+	});
 });

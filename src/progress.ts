@@ -39,3 +39,17 @@ export function withCancellableProgress<T>(
 		},
 	);
 }
+
+/**
+ * Run a task inside a VS Code progress notification (no cancellation).
+ * A thin wrapper over `vscode.window.withProgress` that passes only the
+ * progress reporter, hiding the unused cancellation token.
+ */
+export function withProgress<T>(
+	options: vscode.ProgressOptions,
+	fn: (
+		progress: vscode.Progress<{ message?: string; increment?: number }>,
+	) => Promise<T>,
+): Thenable<T> {
+	return vscode.window.withProgress(options, (progress) => fn(progress));
+}

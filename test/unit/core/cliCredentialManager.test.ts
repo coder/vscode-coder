@@ -76,11 +76,14 @@ function stubExecFileAbortable() {
 		_bin: string,
 		_args: string[],
 		opts: ExecFileOptions,
+		cb: ExecFileCallback,
 	) => {
+		const err = new Error("The operation was aborted");
+		err.name = "AbortError";
 		if (opts.signal?.aborted) {
-			const err = new Error("The operation was aborted");
-			err.name = "AbortError";
-			throw err;
+			cb(err);
+		} else {
+			opts.signal?.addEventListener("abort", () => cb(err));
 		}
 	}) as unknown as typeof execFile);
 }
@@ -163,7 +166,7 @@ describe("CliCredentialManager", () => {
 		vi.clearAllMocks();
 		vol.reset();
 		vi.mocked(isKeyringEnabled).mockReturnValue(false);
-		vi.mocked(cliUtils.version).mockResolvedValue("2.29.0");
+		vi.mocked(cliUtils.version).mockResolvedValue("2.31.0");
 	});
 
 	describe("storeToken", () => {
@@ -308,6 +311,17 @@ describe("CliCredentialManager", () => {
 		});
 
 		it("skips CLI when keyring is disabled", async () => {
+			stubExecFile({ stdout: "my-token" });
+			const { manager } = setup();
+
+			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
+			expect(execFile).not.toHaveBeenCalled();
+		});
+
+		it("returns undefined when CLI version too old for token read", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			// 2.30 supports keyringAuth but not keyringTokenRead (requires 2.31+)
+			vi.mocked(cliUtils.version).mockResolvedValueOnce("2.30.0");
 			stubExecFile({ stdout: "my-token" });
 			const { manager } = setup();
 

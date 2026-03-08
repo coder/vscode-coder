@@ -12,7 +12,7 @@ import * as vscode from "vscode";
 import { errToStr } from "../api/api-helper";
 import * as pgp from "../pgp";
 import { withCancellableProgress } from "../progress";
-import { toSafeHost } from "../util";
+import { tempFilePath, toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";
@@ -40,7 +40,7 @@ export class CliManager {
 
 	/**
 	 * Return the path to a cached CLI binary for a deployment URL.
-	 * Stat check only — no network, no subprocess. Throws if absent.
+	 * Stat check only, no network, no subprocess. Throws if absent.
 	 */
 	public async locateBinary(url: string): Promise<string> {
 		const safeHostname = toSafeHost(url);
@@ -244,8 +244,7 @@ export class CliManager {
 		binPath: string,
 		tempFile: string,
 	): Promise<void> {
-		const oldBinPath =
-			binPath + ".old-" + Math.random().toString(36).substring(8);
+		const oldBinPath = tempFilePath(binPath, "old");
 
 		try {
 			// Step 1: Move existing binary to backup (if it exists)
@@ -336,8 +335,7 @@ export class CliManager {
 		progressLogPath: string,
 	): Promise<string> {
 		const cfg = vscode.workspace.getConfiguration("coder");
-		const tempFile =
-			binPath + ".temp-" + Math.random().toString(36).substring(8);
+		const tempFile = tempFilePath(binPath, "temp");
 
 		try {
 			const removed = await cliUtils.rmOld(binPath);
