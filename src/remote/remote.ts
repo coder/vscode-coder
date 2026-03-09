@@ -55,10 +55,11 @@ import {
 	SSHConfig,
 	type SSHValues,
 	mergeSshConfigValues,
+	parseCoderSshOptions,
 	parseSshConfig,
 } from "./sshConfig";
 import { SshProcessMonitor } from "./sshProcess";
-import { computeSSHProperties, sshSupportsSetEnv } from "./sshSupport";
+import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -816,17 +817,6 @@ export class Remote {
 			}
 		}
 
-		// deploymentConfig is now set from the remote coderd deployment.
-		// Now override with the user's config.
-		const userConfigSsh = vscode.workspace
-			.getConfiguration("coder")
-			.get<string[]>("sshConfig", []);
-		const userConfig = parseSshConfig(userConfigSsh);
-		const sshConfigOverrides = mergeSshConfigValues(
-			deploymentSSHConfig,
-			userConfig,
-		);
-
 		let sshConfigFile = vscode.workspace
 			.getConfiguration()
 			.get<string>("remote.SSH.configFile");
@@ -841,6 +831,20 @@ export class Remote {
 
 		const sshConfig = new SSHConfig(sshConfigFile);
 		await sshConfig.load();
+
+		// Merge SSH config from three sources (lowest to highest priority):
+		// 1. coder config-ssh --ssh-option flags from the CLI block
+		// 2. Deployment SSH config from the coderd API
+		// 3. User's VS Code coder.sshConfig setting
+		const configSshOptions = parseCoderSshOptions(sshConfig.getRaw());
+		const userConfigSsh = vscode.workspace
+			.getConfiguration("coder")
+			.get<string[]>("sshConfig", []);
+		const userConfig = parseSshConfig(userConfigSsh);
+		const sshConfigOverrides = mergeSshConfigValues(
+			mergeSshConfigValues(configSshOptions, deploymentSSHConfig),
+			userConfig,
+		);
 
 		const hostPrefix = safeHostname
 			? `${AuthorityPrefix}.${safeHostname}--`
@@ -874,7 +878,7 @@ export class Remote {
 		// A user can provide a "Host *" entry in their SSH config to add options
 		// to all hosts. We need to ensure that the options we set are not
 		// overridden by the user's config.
-		const computedProperties = computeSSHProperties(
+		const computedProperties = computeSshProperties(
 			hostName,
 			sshConfig.getRaw(),
 		);

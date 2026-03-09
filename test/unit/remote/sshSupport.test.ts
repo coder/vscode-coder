@@ -1,7 +1,7 @@
 import { it, expect } from "vitest";
 
 import {
-	computeSSHProperties,
+	computeSshProperties,
 	sshSupportsSetEnv,
 	sshVersionSupportsSetEnv,
 } from "@/remote/sshSupport";
@@ -25,7 +25,7 @@ it("current shell supports ssh", () => {
 });
 
 it("computes the config for a host", () => {
-	const properties = computeSSHProperties(
+	const properties = computeSshProperties(
 		"coder-vscode--testing",
 		`Host *
   StrictHostKeyChecking yes
@@ -47,7 +47,7 @@ Host coder-vscode--*
 });
 
 it("handles ? wildcards", () => {
-	const properties = computeSSHProperties(
+	const properties = computeSshProperties(
 		"coder-vscode--testing",
 		`Host *
   StrictHostKeyChecking yes
@@ -75,7 +75,7 @@ Host coder-v?code--*
 });
 
 it("properly escapes meaningful regex characters", () => {
-	const properties = computeSSHProperties(
+	const properties = computeSshProperties(
 		"coder-vscode.dev.coder.com--matalfi--dogfood",
 		`Host *
   StrictHostKeyChecking yes

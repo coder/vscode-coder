@@ -1,5 +1,6 @@
 import * as childProcess from "child_process";
 
+/** Check if the local SSH installation supports the `SetEnv` directive. */
 export function sshSupportsSetEnv(): boolean {
 	try {
 		// Run `ssh -V` to get the version string.
@@ -11,10 +12,10 @@ export function sshSupportsSetEnv(): boolean {
 	}
 }
 
-// sshVersionSupportsSetEnv ensures that the version string from the SSH
-// command line supports the `SetEnv` directive.
-//
-// It was introduced in SSH 7.8 and not all versions support it.
+/**
+ * Check if an SSH version string supports the `SetEnv` directive.
+ * Requires OpenSSH 7.8 or later.
+ */
 export function sshVersionSupportsSetEnv(sshVersionString: string): boolean {
 	const match = /OpenSSH.*_([\d.]+)[^,]*/.exec(sshVersionString);
 	if (match?.[1]) {
@@ -37,9 +38,11 @@ export function sshVersionSupportsSetEnv(sshVersionString: string): boolean {
 	return false;
 }
 
-// computeSSHProperties accepts an SSH config and a host name and returns
-// the properties that should be set for that host.
-export function computeSSHProperties(
+/**
+ * Compute the effective SSH properties for a given host by evaluating
+ * all matching Host blocks in the provided SSH config.
+ */
+export function computeSshProperties(
 	host: string,
 	config: string,
 ): Record<string, string> {

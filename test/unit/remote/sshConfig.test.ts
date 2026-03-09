@@ -2,6 +2,7 @@ import { it, afterEach, vi, expect, describe } from "vitest";
 
 import {
 	SSHConfig,
+	parseCoderSshOptions,
 	parseSshConfig,
 	mergeSshConfigValues,
 } from "@/remote/sshConfig";
@@ -12,6 +13,8 @@ import {
 const sshFilePath = "/Path/To/UserHomeDir/.sshConfigDir/sshConfigFile";
 const sshTempFilePrefix =
 	"/Path/To/UserHomeDir/.sshConfigDir/.sshConfigFile.vscode-coder-tmp-";
+const managedHeader = `# This section is managed by the Coder VS Code extension.
+# Changes will be overwritten on the next workspace connection.`;
 
 const mockFileSystem = {
 	mkdir: vi.fn(),
@@ -41,6 +44,7 @@ it("creates a new file and adds config with empty label", async () => {
 	});
 
 	const expectedOutput = `# --- START CODER VSCODE ---
+${managedHeader}
 Host coder-vscode--*
   ConnectTimeout 0
   LogLevel ERROR
@@ -83,6 +87,7 @@ it("creates a new file and adds the config", async () => {
 	});
 
 	const expectedOutput = `# --- START CODER VSCODE dev.coder.com ---
+${managedHeader}
 Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
@@ -134,6 +139,7 @@ it("adds a new coder config in an existent SSH configuration", async () => {
 	const expectedOutput = `${existentSSHConfig}
 
 # --- START CODER VSCODE dev.coder.com ---
+${managedHeader}
 Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
@@ -204,6 +210,7 @@ Host *
 	const expectedOutput = `${keepSSHConfig}
 
 # --- START CODER VSCODE dev.coder.com ---
+${managedHeader}
 Host coder-vscode.dev-updated.coder.com--*
   ConnectTimeout 1
   LogLevel ERROR
@@ -261,6 +268,7 @@ Host coder-vscode--*
 	const expectedOutput = `${existentSSHConfig}
 
 # --- START CODER VSCODE dev.coder.com ---
+${managedHeader}
 Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
@@ -304,6 +312,7 @@ it("it does not remove a user-added block that only matches the host of an old c
   ForwardAgent=yes
 
 # --- START CODER VSCODE dev.coder.com ---
+${managedHeader}
 Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
@@ -574,6 +583,7 @@ Host donotdelete
   User please
 
 # --- START CODER VSCODE dev.coder.com ---
+${managedHeader}
 Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
@@ -638,6 +648,7 @@ it("override values", async () => {
 	);
 
 	const expectedOutput = `# --- START CODER VSCODE dev.coder.com ---
+${managedHeader}
 Host coder-vscode.dev.coder.com--*
   Buzz baz
   ConnectTimeout 500
@@ -852,5 +863,100 @@ describe("mergeSshConfigValues", () => {
 		},
 	])("$name", ({ config, overrides, expected }) => {
 		expect(mergeSshConfigValues(config, overrides)).toEqual(expected);
+	});
+});
+
+describe("parseCoderSshOptions", () => {
+	const coderBlock = (...lines: string[]) =>
+		`# ------------START-CODER-----------\n${lines.join("\n")}\n# ------------END-CODER------------`;
+
+	interface SshOptionTestCase {
+		name: string;
+		raw: string;
+		expected: Record<string, string>;
+	}
+	it.each<SshOptionTestCase>([
+		{
+			name: "empty string",
+			raw: "",
+			expected: {},
+		},
+		{
+			name: "no CLI block",
+			raw: "Host myhost\n  HostName example.com",
+			expected: {},
+		},
+		{
+			name: "single option",
+			raw: coderBlock("# :ssh-option=ForwardX11=yes"),
+			expected: { ForwardX11: "yes" },
+		},
+		{
+			name: "multiple options",
+			raw: coderBlock(
+				"# :ssh-option=ForwardX11=yes",
+				"# :ssh-option=ForwardX11Trusted=yes",
+			),
+			expected: { ForwardX11: "yes", ForwardX11Trusted: "yes" },
+		},
+		{
+			name: "ignores non-ssh-option keys",
+			raw: coderBlock(
+				"# :wait=yes",
+				"# :disable-autostart=true",
+				"# :ssh-option=ForwardX11=yes",
+			),
+			expected: { ForwardX11: "yes" },
+		},
+		{
+			name: "accumulates SetEnv across lines",
+			raw: coderBlock(
+				"# :ssh-option=SetEnv=FOO=1",
+				"# :ssh-option=SetEnv=BAR=2",
+			),
+			expected: { SetEnv: "FOO=1 BAR=2" },
+		},
+		{
+			name: "tolerates different dash counts in markers",
+			raw: `# ---START-CODER---\n# :ssh-option=ForwardX11=yes\n# ---END-CODER---`,
+			expected: { ForwardX11: "yes" },
+		},
+	])("$name", ({ raw, expected }) => {
+		expect(parseCoderSshOptions(raw)).toEqual(expected);
+	});
+
+	it("extracts only ssh-options from a full config", () => {
+		const raw = `Host personal-server
+  HostName 10.0.0.1
+  User admin
+
+# ------------START-CODER-----------
+# This file is managed by coder. DO NOT EDIT.
+#
+# You should not hand-edit this file, changes may be overwritten.
+# For more information, see https://coder.com/docs
+#
+# :wait=yes
+# :disable-autostart=true
+# :ssh-option=ForwardX11=yes
+# :ssh-option=ForwardX11Trusted=yes
+
+Host coder.mydeployment--*
+  ConnectTimeout 0
+  ForwardX11 yes
+  ForwardX11Trusted yes
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  LogLevel ERROR
+  ProxyCommand /usr/bin/coder ssh --stdio --ssh-host-prefix coder.mydeployment-- %h
+# ------------END-CODER------------
+
+Host work-server
+  HostName 10.0.0.2
+  User work`;
+		expect(parseCoderSshOptions(raw)).toEqual({
+			ForwardX11: "yes",
+			ForwardX11Trusted: "yes",
+		});
 	});
 });

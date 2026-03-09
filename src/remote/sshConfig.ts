@@ -36,6 +36,12 @@ const defaultFileSystem: FileSystem = {
 	writeFile,
 };
 
+// Matches an SSH config key at the start of a line (e.g. "ConnectTimeout", "LogLevel").
+const sshKeyRegex = /^[a-zA-Z0-9-]+/;
+
+// Matches the Coder CLI's START-CODER / END-CODER block, flexible on dash count.
+const coderBlockRegex = /^# -+START-CODER-+$(.*?)^# -+END-CODER-+$/ms;
+
 /**
  * Parse an array of SSH config lines into a Record.
  * Handles both "Key value" and "Key=value" formats.
@@ -44,8 +50,7 @@ const defaultFileSystem: FileSystem = {
 export function parseSshConfig(lines: string[]): Record<string, string> {
 	return lines.reduce(
 		(acc, line) => {
-			// Match key pattern (same as VS Code settings: ^[a-zA-Z0-9-]+)
-			const keyMatch = /^[a-zA-Z0-9-]+/.exec(line);
+			const keyMatch = sshKeyRegex.exec(line);
 			if (!keyMatch) {
 				return acc; // Malformed line
 			}
@@ -72,6 +77,25 @@ export function parseSshConfig(lines: string[]): Record<string, string> {
 		},
 		{} as Record<string, string>,
 	);
+}
+
+/**
+ * Extract `# :ssh-option=` values from the Coder CLI's config block.
+ * Returns `{}` if no CLI block is found.
+ */
+export function parseCoderSshOptions(raw: string): Record<string, string> {
+	const blockMatch = coderBlockRegex.exec(raw);
+	const block = blockMatch?.[1];
+	if (!block) {
+		return {};
+	}
+	const prefix = "# :ssh-option=";
+	const sshOptionLines = block
+		.split(/\r?\n/)
+		.filter((line) => line.startsWith(prefix))
+		.map((line) => line.slice(prefix.length));
+
+	return parseSshConfig(sshOptionLines);
 }
 
 // mergeSSHConfigValues will take a given ssh config and merge it with the overrides
@@ -255,7 +279,12 @@ export class SSHConfig {
 		overrides?: Record<string, string>,
 	) {
 		const { Host, ...otherValues } = values;
-		const lines = [this.startBlockComment(safeHostname), `Host ${Host}`];
+		const lines = [
+			this.startBlockComment(safeHostname),
+			"# This section is managed by the Coder VS Code extension.",
+			"# Changes will be overwritten on the next workspace connection.",
+			`Host ${Host}`,
+		];
 
 		// configValues is the merged values of the defaults and the overrides.
 		const configValues = mergeSshConfigValues(otherValues, overrides ?? {});
