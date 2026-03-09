@@ -700,9 +700,8 @@ export class Remote {
 	}
 
 	/**
-	 * Return the --log-dir argument value for the ProxyCommand. It may be an
-	 * empty string if the CLI does not support it. Falls back to extension
-	 * storage when the user setting is not configured.
+	 * Return the --log-dir argument value for the ProxyCommand, or an empty
+	 * string when the CLI does not support it.
 	 *
 	 * Value defined in the "coder.sshFlags" setting is not considered.
 	 */

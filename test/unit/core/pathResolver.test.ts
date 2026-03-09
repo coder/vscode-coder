@@ -46,8 +46,36 @@ describe("PathResolver", () => {
 			},
 		);
 
-		it("should expand tilde in configured path", () => {
+		it("should expand tilde and ${userHome} in configured path", () => {
 			mockConfig.set("coder.proxyLogDirectory", "~/logs");
+			expect(pathResolver.getProxyLogPath()).not.toContain("~");
+
+			mockConfig.set("coder.proxyLogDirectory", "${userHome}/logs");
+			expect(pathResolver.getProxyLogPath()).not.toContain("${userHome}");
+		});
+
+		it("should normalize configured path", () => {
+			mockConfig.set("coder.proxyLogDirectory", "/custom/../log/./dir");
+			expectPathsEqual(pathResolver.getProxyLogPath(), "/log/dir");
+		});
+
+		it("should use CODER_SSH_LOG_DIR environment variable with proper precedence", () => {
+			// Use the global storage when the environment variable and setting are unset/blank
+			vi.stubEnv("CODER_SSH_LOG_DIR", "");
+			mockConfig.set("coder.proxyLogDirectory", "");
+			expectPathsEqual(pathResolver.getProxyLogPath(), defaultLogPath);
+
+			// Test environment variable takes precedence over global storage
+			vi.stubEnv("CODER_SSH_LOG_DIR", "   /env/log/path   ");
+			expectPathsEqual(pathResolver.getProxyLogPath(), "/env/log/path");
+
+			// Test setting takes precedence over environment variable
+			mockConfig.set("coder.proxyLogDirectory", "  /setting/log/path  ");
+			expectPathsEqual(pathResolver.getProxyLogPath(), "/setting/log/path");
+		});
+
+		it("should expand tilde in CODER_SSH_LOG_DIR", () => {
+			vi.stubEnv("CODER_SSH_LOG_DIR", "~/logs");
 			const result = pathResolver.getProxyLogPath();
 			expect(result).not.toContain("~");
 			expect(result).toContain("logs");
@@ -78,6 +106,20 @@ describe("PathResolver", () => {
 				pathResolver.getBinaryCachePath("deployment"),
 				"/binary/path",
 			);
+		});
+
+		it("should expand tilde in configured path", () => {
+			mockConfig.set("coder.binaryDestination", "~/bin");
+			const result = pathResolver.getBinaryCachePath("deployment");
+			expect(result).not.toContain("~");
+			expect(result).toContain("bin");
+		});
+
+		it("should expand tilde in CODER_BINARY_DESTINATION", () => {
+			vi.stubEnv("CODER_BINARY_DESTINATION", "~/bin");
+			const result = pathResolver.getBinaryCachePath("deployment");
+			expect(result).not.toContain("~");
+			expect(result).toContain("bin");
 		});
 
 		it("should use CODER_BINARY_DESTINATION environment variable with proper precedence", () => {
