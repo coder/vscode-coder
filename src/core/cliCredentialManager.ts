@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import * as semver from "semver";
 
 import { isKeyringEnabled } from "../cliConfig";
-import { type FeatureSet, featureSetForVersion } from "../featureSet";
+import { featureSetForVersion } from "../featureSet";
 import { getHeaderArgs } from "../headers";
 import { tempFilePath, toSafeHost } from "../util";
 
@@ -18,6 +18,8 @@ import type { Logger } from "../logging/logger";
 import type { PathResolver } from "./pathResolver";
 
 const execFileAsync = promisify(execFile);
+
+type KeyringFeature = "keyringAuth" | "keyringTokenRead";
 
 const EXEC_TIMEOUT_MS = 60_000;
 const EXEC_LOG_INTERVAL_MS = 5_000;
@@ -147,7 +149,7 @@ export class CliCredentialManager {
 	private async resolveKeyringBinary(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		feature: keyof Pick<FeatureSet, "keyringAuth" | "keyringTokenRead">,
+		feature: KeyringFeature,
 	): Promise<string | undefined> {
 		if (!isKeyringEnabled(configs)) {
 			return undefined;

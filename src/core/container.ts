@@ -38,24 +38,21 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 		);
 		// Circular ref: cliCredentialManager ↔ cliManager. The resolver
-		// closure captures `ref` which starts undefined, so it must only
-		// be called after construction completes.
-		const cliManagerRef: { current: CliManager | undefined } = {
-			current: undefined,
-		};
+		// closure captures `this` by reference, so `this.cliManager` is
+		// available when the closure is called (after construction).
 		this.cliCredentialManager = new CliCredentialManager(
 			this.logger,
 			async (url) => {
-				if (!cliManagerRef.current) {
+				if (!this.cliManager) {
 					throw new Error(
 						"BinaryResolver called before CliManager was initialised",
 					);
 				}
 				try {
-					return await cliManagerRef.current.locateBinary(url);
+					return await this.cliManager.locateBinary(url);
 				} catch {
 					const client = CoderApi.create(url, "", this.logger);
-					return cliManagerRef.current.fetchBinary(client);
+					return this.cliManager.fetchBinary(client);
 				}
 			},
 			this.pathResolver,
@@ -65,7 +62,6 @@ export class ServiceContainer implements vscode.Disposable {
 			this.pathResolver,
 			this.cliCredentialManager,
 		);
-		cliManagerRef.current = this.cliManager;
 		this.contextManager = new ContextManager(context);
 		this.loginCoordinator = new LoginCoordinator(
 			this.secretsManager,
