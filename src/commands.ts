@@ -148,12 +148,12 @@ export class Commands {
 	public async viewLogs(): Promise<void> {
 		if (this.workspaceLogPath) {
 			// Return the connected deployment's log file.
-			return this.openFile(this.workspaceLogPath);
+			return openFile(this.workspaceLogPath);
 		}
 
 		const logDir = this.pathResolver.getProxyLogPath();
 		try {
-			const files = await fs.readdir(logDir);
+			const files = await readdirOrEmpty(logDir);
 			// Sort explicitly since fs.readdir order is platform-dependent
 			const logFiles = files
 				.filter((f) => f.endsWith(".log"))
@@ -172,18 +172,13 @@ export class Commands {
 			});
 
 			if (selected) {
-				await this.openFile(path.join(logDir, selected));
+				await openFile(path.join(logDir, selected));
 			}
 		} catch (error) {
 			vscode.window.showErrorMessage(
 				`Failed to read log directory: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
-	}
-
-	private async openFile(filePath: string): Promise<void> {
-		const uri = vscode.Uri.file(filePath);
-		await vscode.window.showTextDocument(uri);
 	}
 
 	/**
@@ -766,5 +761,24 @@ export class Commands {
 			remoteAuthority: remoteAuthority,
 			reuseWindow: !newWindow,
 		});
+	}
+}
+
+async function openFile(filePath: string): Promise<void> {
+	const uri = vscode.Uri.file(filePath);
+	await vscode.window.showTextDocument(uri);
+}
+
+/**
+ * Read a directory's entries, returning an empty array if it does not exist.
+ */
+async function readdirOrEmpty(dirPath: string): Promise<string[]> {
+	try {
+		return await fs.readdir(dirPath);
+	} catch (err) {
+		if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+			return [];
+		}
+		throw err;
 	}
 }
