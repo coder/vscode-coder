@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { type CoderApi } from "./api/coderApi";
 import { type MementoManager } from "./core/mementoManager";
 import { OAuthMetadataClient } from "./oauth/metadataClient";
+import { withProgress } from "./progress";
 
 type AuthMethod = "oauth" | "legacy";
 
@@ -147,17 +148,12 @@ export async function maybeAskAuthMethod(
 	}
 
 	// Check if server supports OAuth with progress indication
-	const supportsOAuth = await vscode.window.withProgress(
+	const supportsOAuth = await withProgress(
 		{
 			location: vscode.ProgressLocation.Notification,
 			title: "Checking authentication methods",
-			cancellable: false,
 		},
-		async () => {
-			return await OAuthMetadataClient.checkOAuthSupport(
-				client.getAxiosInstance(),
-			);
-		},
+		() => OAuthMetadataClient.checkOAuthSupport(client.getAxiosInstance()),
 	);
 
 	if (supportsOAuth) {

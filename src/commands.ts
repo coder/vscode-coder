@@ -22,6 +22,7 @@ import { toError } from "./error/errorUtils";
 import { featureSetForVersion } from "./featureSet";
 import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
+import { withProgress } from "./progress";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
@@ -446,11 +447,10 @@ export class Commands {
 	}): Promise<void> {
 		// Launch and run command in terminal if command is provided
 		if (app.command) {
-			return vscode.window.withProgress(
+			return withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
 					title: `Connecting to AI Agent...`,
-					cancellable: false,
 				},
 				async () => {
 					const terminal = vscode.window.createTerminal(app.name);

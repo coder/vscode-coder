@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { countSubstring } from "../util";
+import { countSubstring, tempFilePath } from "../util";
 
 class SSHConfigBadFormat extends Error {}
 
@@ -308,28 +308,30 @@ export class SSHConfig {
 			mode: 0o700, // only owner has rwx permission, not group or everyone.
 			recursive: true,
 		});
-		const randSuffix = Math.random().toString(36).substring(8);
 		const fileName = path.basename(this.filePath);
 		const dirName = path.dirname(this.filePath);
-		const tempFilePath = `${dirName}/.${fileName}.vscode-coder-tmp.${randSuffix}`;
+		const tempPath = tempFilePath(
+			`${dirName}/.${fileName}`,
+			"vscode-coder-tmp",
+		);
 		try {
-			await this.fileSystem.writeFile(tempFilePath, this.getRaw(), {
+			await this.fileSystem.writeFile(tempPath, this.getRaw(), {
 				mode: existingMode,
 				encoding: "utf-8",
 			});
 		} catch (err) {
 			throw new Error(
-				`Failed to write temporary SSH config file at ${tempFilePath}: ${err instanceof Error ? err.message : String(err)}. ` +
+				`Failed to write temporary SSH config file at ${tempPath}: ${err instanceof Error ? err.message : String(err)}. ` +
 					`Please check your disk space, permissions, and that the directory exists.`,
 				{ cause: err },
 			);
 		}
 
 		try {
-			await this.fileSystem.rename(tempFilePath, this.filePath);
+			await this.fileSystem.rename(tempPath, this.filePath);
 		} catch (err) {
 			throw new Error(
-				`Failed to rename temporary SSH config file at ${tempFilePath} to ${this.filePath}: ${
+				`Failed to rename temporary SSH config file at ${tempPath} to ${this.filePath}: ${
 					err instanceof Error ? err.message : String(err)
 				}. Please check your disk space, permissions, and that the directory exists.`,
 				{ cause: err },

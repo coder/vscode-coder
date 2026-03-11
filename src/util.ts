@@ -154,3 +154,12 @@ export function escapeCommandArg(arg: string): string {
 	const escapedString = arg.replaceAll('"', String.raw`\"`);
 	return `"${escapedString}"`;
 }
+
+/**
+ * Generate a temporary file path by appending a suffix with a random component.
+ * The suffix describes the purpose of the temp file (e.g. "temp", "old").
+ * Example: tempFilePath("/a/b", "temp") → "/a/b.temp-k7x3f9qw"
+ */
+export function tempFilePath(basePath: string, suffix: string): string {
+	return `${basePath}.${suffix}-${crypto.randomUUID().substring(0, 8)}`;
+}

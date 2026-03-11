@@ -7,6 +7,7 @@ import {
 	expandPath,
 	findPort,
 	parseRemoteAuthority,
+	tempFilePath,
 	toSafeHost,
 } from "@/util";
 
@@ -236,5 +237,26 @@ describe("findPort", () => {
 [10:30:10] Final connection Socks port: 3333 established
 		`;
 		expect(findPort(log)).toBe(3333);
+	});
+});
+
+describe("tempFilePath", () => {
+	it("prepends basePath and suffix before the random part", () => {
+		const result = tempFilePath("/a/b/file", "temp");
+		const prefix = "/a/b/file.temp-";
+		expect(result.startsWith(prefix)).toBe(true);
+		// prefix(15) + uuid(8) = 23
+		expect(result).toHaveLength(prefix.length + 8);
+	});
+
+	it("generates different paths on each call", () => {
+		const a = tempFilePath("/x", "tmp");
+		const b = tempFilePath("/x", "tmp");
+		expect(a).not.toBe(b);
+	});
+
+	it("uses the provided suffix", () => {
+		const result = tempFilePath("/base", "old");
+		expect(result.startsWith("/base.old-")).toBe(true);
 	});
 });

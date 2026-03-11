@@ -7,7 +7,7 @@ import * as semver from "semver";
 import { isKeyringEnabled } from "../cliConfig";
 import { featureSetForVersion } from "../featureSet";
 import { getHeaderArgs } from "../headers";
-import { toSafeHost } from "../util";
+import { tempFilePath, toSafeHost } from "../util";
 
 import * as cliUtils from "./cliUtils";
 
@@ -18,6 +18,8 @@ import type { Logger } from "../logging/logger";
 import type { PathResolver } from "./pathResolver";
 
 const execFileAsync = promisify(execFile);
+
+type KeyringFeature = "keyringAuth" | "keyringTokenRead";
 
 const EXEC_TIMEOUT_MS = 60_000;
 const EXEC_LOG_INTERVAL_MS = 5_000;
@@ -59,7 +61,11 @@ export class CliCredentialManager {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		signal?: AbortSignal,
 	): Promise<void> {
-		const binPath = await this.resolveKeyringBinary(url, configs);
+		const binPath = await this.resolveKeyringBinary(
+			url,
+			configs,
+			"keyringAuth",
+		);
 		if (!binPath) {
 			await this.writeCredentialFiles(url, token);
 			return;
@@ -91,15 +97,18 @@ export class CliCredentialManager {
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 	): Promise<string | undefined> {
-		if (!isKeyringEnabled(configs)) {
-			return undefined;
-		}
-
-		let binPath: string;
+		let binPath: string | undefined;
 		try {
-			binPath = await this.resolveBinary(url);
+			binPath = await this.resolveKeyringBinary(
+				url,
+				configs,
+				"keyringTokenRead",
+			);
 		} catch (error) {
 			this.logger.warn("Could not resolve CLI binary for token read:", error);
+			return undefined;
+		}
+		if (!binPath) {
 			return undefined;
 		}
 
@@ -131,8 +140,8 @@ export class CliCredentialManager {
 
 	/**
 	 * Resolve a CLI binary for keyring operations. Returns the binary path
-	 * when keyring is enabled in settings and the CLI version supports it,
-	 * or undefined to fall back to file-based storage.
+	 * when keyring is enabled in settings and the CLI version supports the
+	 * requested feature, or undefined to fall back to file-based storage.
 	 *
 	 * Throws on binary resolution or version-check failure (caller decides
 	 * whether to catch or propagate).
@@ -140,13 +149,14 @@ export class CliCredentialManager {
 	private async resolveKeyringBinary(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
+		feature: KeyringFeature,
 	): Promise<string | undefined> {
 		if (!isKeyringEnabled(configs)) {
 			return undefined;
 		}
 		const binPath = await this.resolveBinary(url);
 		const version = semver.parse(await cliUtils.version(binPath));
-		return featureSetForVersion(version).keyringAuth ? binPath : undefined;
+		return featureSetForVersion(version)[feature] ? binPath : undefined;
 	}
 
 	/**
@@ -217,7 +227,7 @@ export class CliCredentialManager {
 	): Promise<void> {
 		let binPath: string | undefined;
 		try {
-			binPath = await this.resolveKeyringBinary(url, configs);
+			binPath = await this.resolveKeyringBinary(url, configs, "keyringAuth");
 		} catch (error) {
 			this.logger.warn("Could not resolve keyring binary for delete:", error);
 			return;
@@ -243,8 +253,7 @@ export class CliCredentialManager {
 		content: string,
 	): Promise<void> {
 		await fs.mkdir(path.dirname(filePath), { recursive: true });
-		const tempPath =
-			filePath + ".temp-" + Math.random().toString(36).substring(8);
+		const tempPath = tempFilePath(filePath, "temp");
 		try {
 			await fs.writeFile(tempPath, content, { mode: 0o600 });
 			await fs.rename(tempPath, filePath);
