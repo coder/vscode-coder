@@ -46,7 +46,6 @@ import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,
-	expandPath,
 	parseRemoteAuthority,
 } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
@@ -701,8 +700,8 @@ export class Remote {
 	}
 
 	/**
-	 * Return the --log-dir argument value for the ProxyCommand. It may be an
-	 * empty string if the setting is not set or the cli does not support it.
+	 * Return the --log-dir argument value for the ProxyCommand, or an empty
+	 * string when the CLI does not support it.
 	 *
 	 * Value defined in the "coder.sshFlags" setting is not considered.
 	 */
@@ -710,13 +709,7 @@ export class Remote {
 		if (!featureSet.proxyLogDirectory) {
 			return "";
 		}
-		// If the proxyLogDirectory is not set in the extension settings we don't send one.
-		return expandPath(
-			String(
-				vscode.workspace.getConfiguration().get("coder.proxyLogDirectory") ??
-					"",
-			).trim(),
-		);
+		return this.pathResolver.getProxyLogPath();
 	}
 
 	/**

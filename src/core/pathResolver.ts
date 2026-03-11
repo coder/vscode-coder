@@ -1,6 +1,8 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+import { expandPath } from "../util";
+
 export class PathResolver {
 	constructor(
 		private readonly basePath: string,
@@ -30,15 +32,12 @@ export class PathResolver {
 	 * The caller must ensure this directory exists before use.
 	 */
 	public getBinaryCachePath(safeHostname: string): string {
-		const settingPath = vscode.workspace
-			.getConfiguration()
-			.get<string>("coder.binaryDestination")
-			?.trim();
-		const binaryPath =
-			settingPath || process.env.CODER_BINARY_DESTINATION?.trim();
-		return binaryPath
-			? path.normalize(binaryPath)
-			: path.join(this.getGlobalConfigDir(safeHostname), "bin");
+		return (
+			PathResolver.resolveOverride(
+				"coder.binaryDestination",
+				"CODER_BINARY_DESTINATION",
+			) || path.join(this.getGlobalConfigDir(safeHostname), "bin")
+		);
 	}
 
 	/**
@@ -51,14 +50,19 @@ export class PathResolver {
 	}
 
 	/**
-	 * Return the path where log data from the connection is stored.
+	 * Return the proxy log directory from the `coder.proxyLogDirectory` setting
+	 * or the `CODER_SSH_LOG_DIR` environment variable, falling back to the `log`
+	 * subdirectory inside the extension's global storage path.
 	 *
 	 * The CLI will write files here named after the process PID.
-	 *
-	 * Note: This directory is not currently used.
 	 */
-	public getLogPath(): string {
-		return path.join(this.basePath, "log");
+	public getProxyLogPath(): string {
+		return (
+			PathResolver.resolveOverride(
+				"coder.proxyLogDirectory",
+				"CODER_SSH_LOG_DIR",
+			) || path.join(this.basePath, "log")
+		);
 	}
 
 	/**
@@ -116,5 +120,19 @@ export class PathResolver {
 	 */
 	public getCodeLogDir(): string {
 		return this.codeLogPath;
+	}
+
+	/**
+	 * Read a path from a VS Code setting then an environment variable, returning
+	 * the first non-empty value after trimming, tilde/variable expansion, and
+	 * normalization. Returns an empty string when neither source provides a path.
+	 */
+	private static resolveOverride(setting: string, envVar: string): string {
+		const fromSetting = expandPath(
+			vscode.workspace.getConfiguration().get<string>(setting)?.trim() ?? "",
+		);
+		const resolved =
+			fromSetting || expandPath(process.env[envVar]?.trim() ?? "");
+		return resolved ? path.normalize(resolved) : "";
 	}
 }

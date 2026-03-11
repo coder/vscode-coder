@@ -148,60 +148,37 @@ export class Commands {
 	public async viewLogs(): Promise<void> {
 		if (this.workspaceLogPath) {
 			// Return the connected deployment's log file.
-			return this.openFile(this.workspaceLogPath);
+			return openFile(this.workspaceLogPath);
 		}
 
-		const logDir = vscode.workspace
-			.getConfiguration()
-			.get<string>("coder.proxyLogDirectory");
-		if (logDir) {
-			try {
-				const files = await fs.readdir(logDir);
-				// Sort explicitly since fs.readdir order is platform-dependent
-				const logFiles = files
-					.filter((f) => f.endsWith(".log"))
-					.sort((a, b) => a.localeCompare(b))
-					.reverse();
+		const logDir = this.pathResolver.getProxyLogPath();
+		try {
+			const files = await readdirOrEmpty(logDir);
+			// Sort explicitly since fs.readdir order is platform-dependent
+			const logFiles = files
+				.filter((f) => f.endsWith(".log"))
+				.sort((a, b) => a.localeCompare(b))
+				.reverse();
 
-				if (logFiles.length === 0) {
-					vscode.window.showInformationMessage(
-						"No log files found in the configured log directory.",
-					);
-					return;
-				}
-
-				const selected = await vscode.window.showQuickPick(logFiles, {
-					title: "Select a log file to view",
-				});
-
-				if (selected) {
-					await this.openFile(path.join(logDir, selected));
-				}
-			} catch (error) {
-				vscode.window.showErrorMessage(
-					`Failed to read log directory: ${error instanceof Error ? error.message : String(error)}`,
+			if (logFiles.length === 0) {
+				vscode.window.showInformationMessage(
+					"No log files found in the log directory.",
 				);
+				return;
 			}
-		} else {
-			vscode.window
-				.showInformationMessage(
-					"No logs available. Make sure to set coder.proxyLogDirectory to get logs.",
-					"Open Settings",
-				)
-				.then((action) => {
-					if (action === "Open Settings") {
-						vscode.commands.executeCommand(
-							"workbench.action.openSettings",
-							"coder.proxyLogDirectory",
-						);
-					}
-				});
-		}
-	}
 
-	private async openFile(filePath: string): Promise<void> {
-		const uri = vscode.Uri.file(filePath);
-		await vscode.window.showTextDocument(uri);
+			const selected = await vscode.window.showQuickPick(logFiles, {
+				title: "Select a log file to view",
+			});
+
+			if (selected) {
+				await openFile(path.join(logDir, selected));
+			}
+		} catch (error) {
+			vscode.window.showErrorMessage(
+				`Failed to read log directory: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 	}
 
 	/**
@@ -784,5 +761,24 @@ export class Commands {
 			remoteAuthority: remoteAuthority,
 			reuseWindow: !newWindow,
 		});
+	}
+}
+
+async function openFile(filePath: string): Promise<void> {
+	const uri = vscode.Uri.file(filePath);
+	await vscode.window.showTextDocument(uri);
+}
+
+/**
+ * Read a directory's entries, returning an empty array if it does not exist.
+ */
+async function readdirOrEmpty(dirPath: string): Promise<string[]> {
+	try {
+		return await fs.readdir(dirPath);
+	} catch (err) {
+		if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+			return [];
+		}
+		throw err;
 	}
 }

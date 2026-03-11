@@ -102,7 +102,7 @@
 					"default": ""
 				},
 				"coder.proxyLogDirectory": {
-					"markdownDescription": "If set, the Coder CLI will output extra SSH information into this directory, which can be helpful for debugging connectivity issues.",
+					"markdownDescription": "Directory where the Coder CLI outputs SSH connection logs for debugging. Defaults to the value of `CODER_SSH_LOG_DIR` if not set, otherwise the extension's global storage directory.",
 					"type": "string",
 					"default": ""
 				},

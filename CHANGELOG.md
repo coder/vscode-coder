@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- Proxy log directory now defaults to the extension's global storage when `coder.proxyLogDirectory`
+  is not set, so SSH connection logs are always captured without manual configuration. Also respects
+  the `CODER_SSH_LOG_DIR` environment variable as a fallback.
+
 ## [v1.14.0-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.0-pre) 2026-03-06
 
 ### Added
