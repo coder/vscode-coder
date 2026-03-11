@@ -1,5 +1,9 @@
 import * as childProcess from "child_process";
 
+// Matches the OpenSSH version number from `ssh -V` output.
+// [^,]* prevents greedy matching across comma-separated components
+const openSSHVersionRegex = /OpenSSH[^,]*_([\d.]+)/;
+
 /** Check if the local SSH installation supports the `SetEnv` directive. */
 export function sshSupportsSetEnv(): boolean {
 	try {
@@ -17,7 +21,7 @@ export function sshSupportsSetEnv(): boolean {
  * Requires OpenSSH 7.8 or later.
  */
 export function sshVersionSupportsSetEnv(sshVersionString: string): boolean {
-	const match = /OpenSSH.*_([\d.]+)[^,]*/.exec(sshVersionString);
+	const match = openSSHVersionRegex.exec(sshVersionString);
 	if (match?.[1]) {
 		const installedVersion = match[1];
 		const parts = installedVersion.split(".");

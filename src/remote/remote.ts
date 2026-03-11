@@ -832,17 +832,17 @@ export class Remote {
 		const sshConfig = new SSHConfig(sshConfigFile);
 		await sshConfig.load();
 
-		// Merge SSH config from three sources (lowest to highest priority):
-		// 1. coder config-ssh --ssh-option flags from the CLI block
-		// 2. Deployment SSH config from the coderd API
-		// 3. User's VS Code coder.sshConfig setting
+		// Merge SSH config from three sources (highest to lowest priority):
+		// 1. User's VS Code coder.sshConfig setting
+		// 2. coder config-ssh --ssh-option flags from the CLI block
+		// 3. Deployment SSH config from the coderd API
 		const configSshOptions = parseCoderSshOptions(sshConfig.getRaw());
 		const userConfigSsh = vscode.workspace
 			.getConfiguration("coder")
 			.get<string[]>("sshConfig", []);
 		const userConfig = parseSshConfig(userConfigSsh);
 		const sshConfigOverrides = mergeSshConfigValues(
-			mergeSshConfigValues(configSshOptions, deploymentSSHConfig),
+			mergeSshConfigValues(deploymentSSHConfig, configSshOptions),
 			userConfig,
 		);
 
