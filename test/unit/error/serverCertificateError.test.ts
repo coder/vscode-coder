@@ -6,7 +6,7 @@ import axios from "axios";
 import { X509Certificate as X509CertificateNode } from "node:crypto";
 import * as fs from "node:fs/promises";
 import https from "node:https";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { CertificateError } from "@/error/certificateError";
 import {
@@ -18,6 +18,8 @@ import { type Logger } from "@/logging/logger";
 
 import { getFixturePath } from "../../utils/fixtures";
 
+vi.mock("vscode");
+
 describe("Certificate errors", () => {
 	// Before each test we make a request to sanity check that we really get the
 	// error we are expecting, then we run it through CertificateError.
@@ -26,12 +28,6 @@ describe("Certificate errors", () => {
 
 	it("should run in Electron environment", () => {
 		expect(process.versions.electron).toBeTruthy();
-	});
-
-	beforeAll(() => {
-		vi.mock("vscode", () => {
-			return {};
-		});
 	});
 
 	const throwingLog = (message: string) => {

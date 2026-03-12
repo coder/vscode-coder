@@ -1,7 +1,7 @@
 // @ts-check
 import { context, build } from "esbuild";
 
-const production = process.argv.includes("--production");
+const production = process.env.NODE_ENV === "production";
 const watch = process.argv.includes("--watch");
 
 /** @type {import("esbuild").Plugin} */

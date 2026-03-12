@@ -14,7 +14,6 @@ export default defineConfig(
 	globalIgnores([
 		"out/**",
 		"dist/**",
-		"packages/*/dist/**",
 		"**/*.d.ts",
 		"vitest.config.ts",
 		"**/vite.config*.ts",
