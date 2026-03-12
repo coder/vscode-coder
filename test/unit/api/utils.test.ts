@@ -71,26 +71,28 @@ describe("createHttpAgent", () => {
 			cfg.set("coder.tlsCaFile", "/ca.pem");
 
 			const agent = await createHttpAgent(cfg);
-			const opts = agent.connectOpts as AgentOpts;
+			const opts = agent.connectOpts as AgentOpts | undefined;
 
-			expect(Buffer.isBuffer(opts.cert) && opts.cert.toString()).toBe(
+			expect(Buffer.isBuffer(opts?.cert) && opts.cert.toString()).toBe(
 				"cert-content",
 			);
-			expect(Buffer.isBuffer(opts.key) && opts.key.toString()).toBe(
+			expect(Buffer.isBuffer(opts?.key) && opts.key.toString()).toBe(
 				"key-content",
 			);
-			expect(Buffer.isBuffer(opts.ca) && opts.ca.toString()).toBe("ca-content");
+			expect(Buffer.isBuffer(opts?.ca) && opts.ca.toString()).toBe(
+				"ca-content",
+			);
 		});
 
 		it("leaves cert options undefined when files not configured", async () => {
 			const cfg = new MockConfigurationProvider();
 
 			const agent = await createHttpAgent(cfg);
-			const opts = agent.connectOpts as AgentOpts;
+			const opts = agent.connectOpts as AgentOpts | undefined;
 
-			expect(opts.cert).toBeUndefined();
-			expect(opts.key).toBeUndefined();
-			expect(opts.ca).toBeUndefined();
+			expect(opts?.cert).toBeUndefined();
+			expect(opts?.key).toBeUndefined();
+			expect(opts?.ca).toBeUndefined();
 		});
 
 		it("sets servername from tlsAltHost", async () => {
@@ -98,9 +100,9 @@ describe("createHttpAgent", () => {
 			cfg.set("coder.tlsAltHost", "alt.example.com");
 
 			const agent = await createHttpAgent(cfg);
-			const opts = agent.connectOpts as AgentOpts;
+			const opts = agent.connectOpts as AgentOpts | undefined;
 
-			expect(opts.servername).toBe("alt.example.com");
+			expect(opts?.servername).toBe("alt.example.com");
 		});
 	});
 
@@ -138,9 +140,9 @@ describe("createHttpAgent", () => {
 			Object.entries(config).forEach(([k, v]) => cfg.set(k, v));
 
 			const agent = await createHttpAgent(cfg);
-			const opts = agent.connectOpts as AgentOpts;
+			const opts = agent.connectOpts as AgentOpts | undefined;
 
-			expect(opts.rejectUnauthorized).toBe(expected);
+			expect(opts?.rejectUnauthorized).toBe(expected);
 		});
 	});
 

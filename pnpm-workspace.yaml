@@ -6,7 +6,7 @@ catalog:
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
   "@types/vscode-webview": ^1.57.5
-  "@vitejs/plugin-react": ^5.1.4
+  "@vitejs/plugin-react": ^6.0.0
   "@vscode-elements/react-elements": ^2.4.0
   "@vscode/codicons": ^0.0.44
   babel-plugin-react-compiler: ^1.0.0
@@ -15,7 +15,7 @@ catalog:
   react: ^19.2.4
   react-dom: ^19.2.4
   typescript: ^5.9.3
-  vite: ^7.3.1
+  vite: ^8.0.0
 
 catalogMode: strict
 
