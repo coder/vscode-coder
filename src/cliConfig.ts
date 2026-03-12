@@ -68,7 +68,9 @@ function isFlag(item: string, name: string): boolean {
 export function isKeyringEnabled(
 	configs: Pick<WorkspaceConfiguration, "get">,
 ): boolean {
-	return isKeyringSupported() && configs.get<boolean>("coder.useKeyring", true);
+	return (
+		isKeyringSupported() && configs.get<boolean>("coder.useKeyring", false)
+	);
 }
 
 /**

@@ -2,11 +2,6 @@
 
 ## Unreleased
 
-### Fixed
-
-- Fixed SSH config writes failing on Windows when antivirus, cloud sync software,
-  or another process briefly locks the file.
-
 ### Added
 
 - Automatically set `reconnectionGraceTime`, `serverShutdownTimeout`, and `maxReconnectionAttempts`
@@ -17,6 +12,18 @@
   the `CODER_SSH_LOG_DIR` environment variable as a fallback.
 - SSH options from `coder config-ssh --ssh-option` are now applied to VS Code connections,
   with priority order: VS Code setting > `coder config-ssh` options > deployment config.
+
+### Fixed
+
+- Fixed SSH config writes failing on Windows when antivirus, cloud sync software,
+  or another process briefly locks the file.
+
+### Changed
+
+- `coder.useKeyring` is now opt-in (default: false). Keyring storage requires CLI >= 2.29.0 for
+  storage and logout sync, and >= 2.31.0 for syncing login from CLI to VS Code.
+- Session tokens are now saved to the OS keyring at login time (when enabled and CLI >= 2.29.0),
+  not only when connecting to a workspace.
 
 ## [v1.14.0-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.0-pre) 2026-03-06
 

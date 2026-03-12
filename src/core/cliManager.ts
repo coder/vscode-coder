@@ -10,8 +10,9 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
+import { isKeyringEnabled } from "../cliConfig";
 import * as pgp from "../pgp";
-import { withCancellableProgress } from "../progress";
+import { withCancellableProgress, withOptionalProgress } from "../progress";
 import { tempFilePath, toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 
@@ -759,13 +760,13 @@ export class CliManager {
 		}
 
 		const result = await withCancellableProgress(
+			({ signal }) =>
+				this.cliCredentialManager.storeToken(url, token, configs, { signal }),
 			{
 				location: vscode.ProgressLocation.Notification,
 				title: `Storing credentials for ${url}`,
 				cancellable: true,
 			},
-			({ signal }) =>
-				this.cliCredentialManager.storeToken(url, token, configs, signal),
 		);
 		if (result.ok) {
 			return;
@@ -783,14 +784,15 @@ export class CliManager {
 	 */
 	public async clearCredentials(url: string): Promise<void> {
 		const configs = vscode.workspace.getConfiguration();
-		const result = await withCancellableProgress(
+		const result = await withOptionalProgress(
+			({ signal }) =>
+				this.cliCredentialManager.deleteToken(url, configs, { signal }),
 			{
+				enabled: isKeyringEnabled(configs),
 				location: vscode.ProgressLocation.Notification,
 				title: `Removing credentials for ${url}`,
 				cancellable: true,
 			},
-			({ signal }) =>
-				this.cliCredentialManager.deleteToken(url, configs, signal),
 		);
 		if (result.ok) {
 			return;

@@ -1,5 +1,6 @@
+import * as os from "node:os";
 import * as semver from "semver";
-import { afterEach, it, expect, describe, vi } from "vitest";
+import { it, expect, describe, vi } from "vitest";
 
 import {
 	type CliAuth,
@@ -14,16 +15,14 @@ import { featureSetForVersion } from "@/featureSet";
 import { MockConfigurationProvider } from "../mocks/testHelpers";
 import { isWindows } from "../utils/platform";
 
+vi.mock("node:os");
+
 const globalConfigAuth: CliAuth = {
 	mode: "global-config",
 	configDir: "/config/dir",
 };
 
 describe("cliConfig", () => {
-	afterEach(() => {
-		vi.unstubAllGlobals();
-	});
-
 	describe("getGlobalFlags", () => {
 		const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
 
@@ -224,6 +223,12 @@ describe("cliConfig", () => {
 			useKeyring: boolean;
 			expected: boolean;
 		}
+		it("returns false on darwin when setting is unset (default)", () => {
+			vi.mocked(os.platform).mockReturnValue("darwin");
+			const config = new MockConfigurationProvider();
+			expect(isKeyringEnabled(config)).toBe(false);
+		});
+
 		it.each<KeyringEnabledCase>([
 			{ platform: "darwin", useKeyring: true, expected: true },
 			{ platform: "win32", useKeyring: true, expected: true },
@@ -232,7 +237,7 @@ describe("cliConfig", () => {
 		])(
 			"returns $expected on $platform with useKeyring=$useKeyring",
 			({ platform, useKeyring, expected }) => {
-				vi.stubGlobal("process", { ...process, platform });
+				vi.mocked(os.platform).mockReturnValue(platform);
 				const config = new MockConfigurationProvider();
 				config.set("coder.useKeyring", useKeyring);
 				expect(isKeyringEnabled(config)).toBe(expected);
@@ -242,7 +247,7 @@ describe("cliConfig", () => {
 
 	describe("resolveCliAuth", () => {
 		it("returns url mode when keyring should be used", () => {
-			vi.stubGlobal("process", { ...process, platform: "darwin" });
+			vi.mocked(os.platform).mockReturnValue("darwin");
 			const config = new MockConfigurationProvider();
 			config.set("coder.useKeyring", true);
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
@@ -259,7 +264,7 @@ describe("cliConfig", () => {
 		});
 
 		it("returns global-config mode when keyring should not be used", () => {
-			vi.stubGlobal("process", { ...process, platform: "linux" });
+			vi.mocked(os.platform).mockReturnValue("linux");
 			const config = new MockConfigurationProvider();
 			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
 			const auth = resolveCliAuth(

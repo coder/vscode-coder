@@ -16,6 +16,7 @@ import {
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockConfigurationProvider,
+	MockProgressReporter,
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
 
@@ -111,6 +112,8 @@ function createTestContext() {
 	const mockConfig = new MockConfigurationProvider();
 	// MockUserInteraction sets up vscode.window dialogs and input boxes
 	const userInteraction = new MockUserInteraction();
+	// MockProgressReporter sets up vscode.window.withProgress to execute callbacks
+	new MockProgressReporter();
 
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
@@ -118,11 +121,12 @@ function createTestContext() {
 	const secretsManager = new SecretsManager(secretStorage, memento, logger);
 	const mementoManager = new MementoManager(memento);
 
+	const mockCredentialManager = createMockCliCredentialManager();
 	const coordinator = new LoginCoordinator(
 		secretsManager,
 		mementoManager,
 		logger,
-		createMockCliCredentialManager(),
+		mockCredentialManager,
 		"coder.coder-remote",
 	);
 
@@ -152,6 +156,7 @@ function createTestContext() {
 		userInteraction,
 		secretsManager,
 		mementoManager,
+		mockCredentialManager,
 		coordinator,
 		mockSuccessfulAuth,
 		mockAuthFailure,
@@ -466,6 +471,72 @@ describe("LoginCoordinator", () => {
 			});
 			// Provided/stored token check only called once + user prompt
 			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	describe("keyring storage at login", () => {
+		async function loginWithStoredToken() {
+			const ctx = createTestContext();
+			const user = ctx.mockSuccessfulAuth();
+			await ctx.secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "stored-token",
+			});
+			const login = async () => {
+				const result = await ctx.coordinator.ensureLoggedIn({
+					url: TEST_URL,
+					safeHostname: TEST_HOSTNAME,
+				});
+				// Flush the fire-and-forget storeToken promise
+				await Promise.resolve();
+				return result;
+			};
+			return { ...ctx, user, login };
+		}
+
+		it("calls storeToken with keyringOnly after successful login", async () => {
+			const { mockCredentialManager, login } = await loginWithStoredToken();
+
+			await login();
+
+			expect(mockCredentialManager.storeToken).toHaveBeenCalledWith(
+				TEST_URL,
+				"stored-token",
+				expect.anything(),
+				{ keyringOnly: true },
+			);
+		});
+
+		it("does not call storeToken for mTLS (empty token)", async () => {
+			const {
+				mockConfig,
+				coordinator,
+				mockCredentialManager,
+				mockSuccessfulAuth,
+			} = createTestContext();
+			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
+			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
+			mockSuccessfulAuth();
+
+			await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(mockCredentialManager.storeToken).not.toHaveBeenCalled();
+		});
+
+		it("login succeeds even when keyring storage throws", async () => {
+			const { mockCredentialManager, user, login } =
+				await loginWithStoredToken();
+
+			vi.mocked(mockCredentialManager.storeToken).mockRejectedValueOnce(
+				new Error("keyring unavailable"),
+			);
+
+			const result = await login();
+
+			expect(result).toEqual({ success: true, user, token: "stored-token" });
 		});
 	});
 });
