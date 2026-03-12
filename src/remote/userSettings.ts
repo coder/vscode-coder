@@ -10,6 +10,30 @@ export interface SettingOverride {
 	value: unknown;
 }
 
+interface RecommendedSetting {
+	readonly value: number | null;
+	readonly label: string;
+}
+
+export const RECOMMENDED_SSH_SETTINGS = {
+	"remote.SSH.connectTimeout": {
+		value: 1800,
+		label: "Connect Timeout: 1800s (30 min)",
+	},
+	"remote.SSH.reconnectionGraceTime": {
+		value: 28800,
+		label: "Reconnection Grace Time: 28800s (8 hours)",
+	},
+	"remote.SSH.serverShutdownTimeout": {
+		value: 28800,
+		label: "Server Shutdown Timeout: 28800s (8 hours)",
+	},
+	"remote.SSH.maxReconnectionAttempts": {
+		value: null,
+		label: "Max Reconnection Attempts: max allowed",
+	},
+} as const satisfies Record<string, RecommendedSetting>;
+
 /**
  * Build the list of VS Code setting overrides needed for a remote SSH
  * connection to a Coder workspace.
@@ -21,7 +45,7 @@ export function buildSshOverrides(
 ): SettingOverride[] {
 	const overrides: SettingOverride[] = [];
 
-	// Bypass the platform prompt by setting the remote platform for this host.
+	// Set the remote platform for this host to bypass the platform prompt.
 	const remotePlatforms = config.get<Record<string, string>>(
 		"remote.SSH.remotePlatform",
 		{},
@@ -33,9 +57,9 @@ export function buildSshOverrides(
 		});
 	}
 
-	// VS Code's default connect timeout of 15s is too short when waiting for
-	// startup scripts. Enforce a minimum.
-	const minConnTimeout = 1800;
+	// Default 15s is too short for startup scripts; enforce a minimum.
+	const minConnTimeout =
+		RECOMMENDED_SSH_SETTINGS["remote.SSH.connectTimeout"].value;
 	const connTimeout = config.get<number>("remote.SSH.connectTimeout");
 	if (!connTimeout || connTimeout < minConnTimeout) {
 		overrides.push({
@@ -44,14 +68,16 @@ export function buildSshOverrides(
 		});
 	}
 
-	// VS Code's default reconnection grace time (ProtocolConstants.ReconnectionGraceTime)
-	// is 3 hours (10800s). Coder workspaces commonly go offline overnight, so we
-	// bump to 8 hours. See https://github.com/microsoft/vscode/blob/main/src/vs/base/parts/ipc/common/ipc.net.ts
-	if (config.get<number>("remote.SSH.reconnectionGraceTime") === undefined) {
-		overrides.push({
-			key: "remote.SSH.reconnectionGraceTime",
-			value: 28800, // 8 hours in seconds
-		});
+	// Set recommended defaults for settings the user hasn't configured.
+	const setIfUndefined = [
+		"remote.SSH.reconnectionGraceTime",
+		"remote.SSH.serverShutdownTimeout",
+		"remote.SSH.maxReconnectionAttempts",
+	] as const;
+	for (const key of setIfUndefined) {
+		if (config.get(key) === undefined) {
+			overrides.push({ key, value: RECOMMENDED_SSH_SETTINGS[key].value });
+		}
 	}
 
 	return overrides;

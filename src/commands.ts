@@ -24,6 +24,7 @@ import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
 import { withProgress } from "./progress";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
+import { RECOMMENDED_SSH_SETTINGS } from "./remote/userSettings";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import {
@@ -308,6 +309,25 @@ export class Commands {
 				`Failed to manage stored credentials: ${toError(error).message}`,
 			);
 		}
+	}
+
+	/**
+	 * Apply recommended SSH settings for reliable Coder workspace connections.
+	 */
+	public async applyRecommendedSettings(): Promise<void> {
+		const config = vscode.workspace.getConfiguration();
+		const entries = Object.entries(RECOMMENDED_SSH_SETTINGS);
+		for (const [key, setting] of entries) {
+			await config.update(
+				key,
+				setting.value,
+				vscode.ConfigurationTarget.Global,
+			);
+		}
+		const summary = entries.map(([, s]) => s.label).join(", ");
+		vscode.window.showInformationMessage(
+			`Applied recommended SSH settings: ${summary}`,
+		);
 	}
 
 	/**

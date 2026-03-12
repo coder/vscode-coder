@@ -271,6 +271,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			"coder.manageCredentials",
 			commands.manageCredentials.bind(commands),
 		),
+		vscode.commands.registerCommand(
+			"coder.applyRecommendedSettings",
+			commands.applyRecommendedSettings.bind(commands),
+		),
 	);
 
 	const remote = new Remote(serviceContainer, commands, ctx);

@@ -124,11 +124,25 @@ describe("buildSshOverrides", () => {
 		});
 	});
 
+	it.each([
+		{ key: "remote.SSH.serverShutdownTimeout", expected: 28800 },
+		{ key: "remote.SSH.maxReconnectionAttempts", expected: null },
+	])("defaults $key when not configured", ({ key, expected }) => {
+		const overrides = buildSshOverrides(
+			new MockConfigurationProvider(),
+			"host",
+			"linux",
+		);
+		expect(findOverride(overrides, key)).toBe(expected);
+	});
+
 	it("produces no overrides when all settings are already correct", () => {
 		const config = new MockConfigurationProvider();
 		config.set("remote.SSH.remotePlatform", { "my-host": "linux" });
 		config.set("remote.SSH.connectTimeout", 3600);
 		config.set("remote.SSH.reconnectionGraceTime", 7200);
+		config.set("remote.SSH.serverShutdownTimeout", 600);
+		config.set("remote.SSH.maxReconnectionAttempts", 4);
 		expect(buildSshOverrides(config, "my-host", "linux")).toHaveLength(0);
 	});
 });
