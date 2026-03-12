@@ -1,7 +1,7 @@
 import { it, expect } from "vitest";
 
 import {
-	computeSSHProperties,
+	computeSshProperties,
 	sshSupportsSetEnv,
 	sshVersionSupportsSetEnv,
 } from "@/remote/sshSupport";
@@ -10,6 +10,8 @@ const supports = {
 	"OpenSSH_8.9p1 Ubuntu-3ubuntu0.1, OpenSSL 3.0.2 15 Mar 2022": true,
 	"OpenSSH_for_Windows_8.1p1, LibreSSL 3.0.2": true,
 	"OpenSSH_9.0p1, LibreSSL 3.3.6": true,
+	// Version extracted from OpenSSH, not from LibreSSL after the comma
+	"OpenSSH_7.4p1, LibreSSL_8.1.0": false,
 	"OpenSSH_7.6p1 Ubuntu-4ubuntu0.7, OpenSSL 1.0.2n 7 Dec 2017": false,
 	"OpenSSH_7.4p1, OpenSSL 1.0.2k-fips  26 Jan 2017": false,
 };
@@ -25,7 +27,7 @@ it("current shell supports ssh", () => {
 });
 
 it("computes the config for a host", () => {
-	const properties = computeSSHProperties(
+	const properties = computeSshProperties(
 		"coder-vscode--testing",
 		`Host *
   StrictHostKeyChecking yes
@@ -47,7 +49,7 @@ Host coder-vscode--*
 });
 
 it("handles ? wildcards", () => {
-	const properties = computeSSHProperties(
+	const properties = computeSshProperties(
 		"coder-vscode--testing",
 		`Host *
   StrictHostKeyChecking yes
@@ -75,7 +77,7 @@ Host coder-v?code--*
 });
 
 it("properly escapes meaningful regex characters", () => {
-	const properties = computeSSHProperties(
+	const properties = computeSshProperties(
 		"coder-vscode.dev.coder.com--matalfi--dogfood",
 		`Host *
   StrictHostKeyChecking yes
