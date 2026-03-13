@@ -14,7 +14,8 @@ vi.mock("node:fs/promises", async () => {
 	return { default: memfs.fs.promises, ...memfs.fs.promises };
 });
 
-// ProxyAgentOptions extends TLS options but TypeScript doesn't resolve the intersection.
+// ProxyAgentOptions uses '' as the URI type parameter, which makes ConnectOpts
+// resolve to `never` and drops TLS fields. Re-add them for test assertions.
 type AgentOpts = ProxyAgentOptions & ConnectionOptions;
 
 describe("needToken", () => {
