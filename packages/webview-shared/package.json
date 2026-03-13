@@ -22,6 +22,9 @@
 			"default": "./src/react/index.ts"
 		}
 	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
 	"dependencies": {
 		"@repo/shared": "workspace:*"
 	},
@@ -38,6 +41,7 @@
 		}
 	},
 	"devDependencies": {
+		"@types/babel__core": "^7.20.5",
 		"@types/react": "catalog:",
 		"@types/vscode-webview": "catalog:",
 		"@vscode-elements/react-elements": "catalog:",

@@ -57,6 +57,9 @@ jobs:
           PACKAGE_NAME="${EXTENSION_NAME}-${{ steps.version.outputs.version }}-pre.vsix"
           echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
 
+      - name: Build extension
+        run: pnpm build:production
+
       - name: Package extension
         run: pnpm vsce package --no-dependencies --pre-release --out "${{ steps.setup.outputs.packageName }}"
 

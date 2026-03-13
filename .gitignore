@@ -8,7 +8,5 @@
 pnpm-debug.log
 .eslintcache
 
-# Webview packages build artifacts
+# Workspace packages
 packages/*/node_modules/
-packages/*/dist/
-packages/*/*.tsbuildinfo

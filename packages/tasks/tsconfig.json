@@ -6,6 +6,5 @@
 			"@repo/webview-shared": ["../webview-shared/src"]
 		}
 	},
-	"include": ["src"],
-	"references": [{ "path": "../shared" }, { "path": "../webview-shared" }]
+	"include": ["src"]
 }

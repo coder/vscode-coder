@@ -1,4 +1,5 @@
-import react from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 import { defineConfig, type UserConfig } from "vite";
 
@@ -16,13 +17,7 @@ export function createWebviewConfig(
 	return defineConfig({
 		// Use relative URLs for assets (fonts, etc.) in CSS
 		base: "./",
-		plugins: [
-			react({
-				babel: {
-					plugins: [["babel-plugin-react-compiler", {}]],
-				},
-			}),
-		],
+		plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
 		build: {
 			outDir: resolve(dirname, `../../dist/webviews/${webviewName}`),
 			emptyOutDir: true,
