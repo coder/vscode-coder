@@ -188,6 +188,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// controlled by contexts, see `when` in the package.json.
 	const commands = new Commands(serviceContainer, client, deploymentManager);
 
+	// Placeholder tree view for the coderTasks container when not authenticated.
+	// Works around a Cursor bug where containers with all views hidden via `when`
+	// clauses never re-appear after the context changes.
+	ctx.subscriptions.push(
+		vscode.window.createTreeView("coder.tasksLogin", {
+			treeDataProvider: {
+				getTreeItem: () => new vscode.TreeItem(""),
+				getChildren: () => [],
+			},
+		}),
+	);
+
 	// Register Tasks webview panel with dependencies
 	const tasksPanelProvider = new TasksPanelProvider(
 		ctx.extensionUri,

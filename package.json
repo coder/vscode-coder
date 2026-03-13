@@ -212,6 +212,12 @@
 			],
 			"coderTasks": [
 				{
+					"id": "coder.tasksLogin",
+					"name": "Coder Tasks",
+					"icon": "media/tasks-logo.svg",
+					"when": "!coder.authenticated"
+				},
+				{
 					"type": "webview",
 					"id": "coder.tasksPanel",
 					"name": "Coder Tasks",
@@ -224,6 +230,11 @@
 			{
 				"view": "myWorkspaces",
 				"contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
+				"when": "!coder.authenticated && coder.loaded"
+			},
+			{
+				"view": "coder.tasksLogin",
+				"contents": "Sign in to view and manage Coder tasks.\n[Login](command:coder.login)",
 				"when": "!coder.authenticated && coder.loaded"
 			}
 		],
