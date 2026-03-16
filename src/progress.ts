@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import { isAbortError } from "./error/errorUtils";
+
 export type ProgressResult<T> =
 	| { ok: true; value: T }
 	| { ok: false; cancelled: true }
@@ -29,7 +31,7 @@ export function withCancellableProgress<T>(
 				const value = await fn({ progress, signal: ac.signal });
 				return { ok: true, value };
 			} catch (error) {
-				if ((error as Error).name === "AbortError") {
+				if (isAbortError(error)) {
 					return { ok: false, cancelled: true };
 				}
 				return { ok: false, cancelled: false, error };
@@ -62,6 +64,9 @@ export async function withOptionalProgress<T>(
 		});
 		return { ok: true, value };
 	} catch (error) {
+		if (isAbortError(error)) {
+			return { ok: false, cancelled: true };
+		}
 		return { ok: false, cancelled: false, error };
 	}
 }

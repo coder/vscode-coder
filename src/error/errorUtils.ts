@@ -1,6 +1,13 @@
 import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
 import util from "node:util";
 
+/**
+ * Check whether an unknown thrown value is an AbortError (signal cancellation).
+ */
+export function isAbortError(error: unknown): boolean {
+	return error instanceof Error && error.name === "AbortError";
+}
+
 // getErrorDetail is copied from coder/site, but changes the default return.
 export const getErrorDetail = (error: unknown): string | undefined | null => {
 	if (isApiError(error)) {

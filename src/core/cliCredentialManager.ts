@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import * as semver from "semver";
 
 import { isKeyringEnabled } from "../cliConfig";
+import { isAbortError } from "../error/errorUtils";
 import { featureSetForVersion } from "../featureSet";
 import { getHeaderArgs } from "../headers";
 import { renameWithRetry, tempFilePath, toSafeHost } from "../util";
@@ -100,6 +101,7 @@ export class CliCredentialManager {
 	/**
 	 * Read a token via `coder login token --url`. Returns trimmed stdout,
 	 * or undefined on any failure (resolver, CLI, empty output).
+	 * Throws AbortError when the signal is aborted.
 	 */
 	public async readToken(
 		url: string,
@@ -129,7 +131,7 @@ export class CliCredentialManager {
 			const token = stdout.trim();
 			return token || undefined;
 		} catch (error) {
-			if ((error as Error).name === "AbortError") {
+			if (isAbortError(error)) {
 				throw error;
 			}
 			this.logger.warn("Failed to read token via CLI:", error);
@@ -139,7 +141,8 @@ export class CliCredentialManager {
 
 	/**
 	 * Delete credentials for a deployment. Runs file deletion and keyring
-	 * deletion in parallel, both best-effort (never throws).
+	 * deletion in parallel, both best-effort. Throws AbortError when the
+	 * signal is aborted.
 	 */
 	public async deleteToken(
 		url: string,
@@ -255,6 +258,9 @@ export class CliCredentialManager {
 			await this.execWithTimeout(binPath, args, { signal });
 			this.logger.info("Deleted token via CLI for", url);
 		} catch (error) {
+			if (isAbortError(error)) {
+				throw error;
+			}
 			this.logger.warn("Failed to delete token via CLI:", error);
 		}
 	}

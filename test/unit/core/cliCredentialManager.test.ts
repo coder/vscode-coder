@@ -485,7 +485,7 @@ describe("CliCredentialManager", () => {
 			expect(lastExecArgs().signal).toBe(ac.signal);
 		});
 
-		it("does not throw when signal is aborted", async () => {
+		it("throws AbortError when signal is aborted", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFileAbortable();
 			const { manager } = setup();
@@ -494,7 +494,7 @@ describe("CliCredentialManager", () => {
 				manager.deleteToken(TEST_URL, configs, {
 					signal: AbortSignal.abort(),
 				}),
-			).resolves.not.toThrow();
+			).rejects.toThrow("The operation was aborted");
 		});
 	});
 });
