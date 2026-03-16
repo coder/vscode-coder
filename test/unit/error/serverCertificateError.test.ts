@@ -40,6 +40,7 @@ describe("Certificate errors", () => {
 		info: throwingLog,
 		warn: throwingLog,
 		error: throwingLog,
+		show: () => {},
 	};
 
 	const disposers: Array<() => void> = [];

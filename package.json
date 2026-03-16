@@ -320,6 +320,11 @@
 				"title": "Refresh Tasks",
 				"category": "Coder",
 				"icon": "$(refresh)"
+			},
+			{
+				"command": "coder.applyRecommendedSettings",
+				"title": "Apply Recommended SSH Settings",
+				"category": "Coder"
 			}
 		],
 		"menus": {
@@ -386,6 +391,9 @@
 				{
 					"command": "coder.tasks.refresh",
 					"when": "false"
+				},
+				{
+					"command": "coder.applyRecommendedSettings"
 				}
 			],
 			"view/title": [

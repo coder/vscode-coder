@@ -24,6 +24,10 @@ import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
 import { withProgress } from "./progress";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
+import {
+	RECOMMENDED_SSH_SETTINGS,
+	applySettingOverrides,
+} from "./remote/userSettings";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import {
@@ -307,6 +311,55 @@ export class Commands {
 			vscode.window.showErrorMessage(
 				`Failed to manage stored credentials: ${toError(error).message}`,
 			);
+		}
+	}
+
+	/**
+	 * Apply recommended SSH settings for reliable Coder workspace connections.
+	 */
+	public async applyRecommendedSettings(): Promise<void> {
+		const entries = Object.entries(RECOMMENDED_SSH_SETTINGS);
+		const summary = entries.map(([, s]) => s.label).join("\n");
+		const confirm = await vscodeProposed.window.showWarningMessage(
+			"Apply Recommended SSH Settings",
+			{
+				useCustom: true,
+				modal: true,
+				detail: summary,
+			},
+			"Apply",
+		);
+		if (confirm !== "Apply") {
+			return;
+		}
+
+		const overrides = entries.map(([key, setting]) => ({
+			key,
+			value: setting.value,
+		}));
+		const ok = await applySettingOverrides(
+			this.pathResolver.getUserSettingsPath(),
+			overrides,
+			this.logger,
+		);
+		if (!ok) {
+			const action = await vscode.window.showErrorMessage(
+				"Failed to write SSH settings. Check the Coder output for details.",
+				"Show Output",
+			);
+			if (action === "Show Output") {
+				this.logger.show();
+			}
+		} else if (this.remoteWorkspaceClient) {
+			const action = await vscode.window.showInformationMessage(
+				"Applied recommended SSH settings. Reload the window for changes to take effect.",
+				"Reload Window",
+			);
+			if (action === "Reload Window") {
+				await vscode.commands.executeCommand("workbench.action.reloadWindow");
+			}
+		} else {
+			vscode.window.showInformationMessage("Applied recommended SSH settings.");
 		}
 	}
 
