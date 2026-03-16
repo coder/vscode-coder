@@ -1,11 +1,13 @@
-import { it, afterEach, vi, expect, describe } from "vitest";
+import { it, afterEach, vi, expect, describe, beforeEach } from "vitest";
 
 import {
-	SSHConfig,
+	SshConfig,
 	parseCoderSshOptions,
 	parseSshConfig,
 	mergeSshConfigValues,
 } from "@/remote/sshConfig";
+
+import { createMockLogger } from "../../mocks/testHelpers";
 
 // This is not the usual path to ~/.ssh/config, but
 // setting it to a different path makes it easier to test
@@ -25,6 +27,8 @@ const mockFileSystem = {
 	writeFile: vi.fn(),
 };
 
+const mockLogger = createMockLogger();
+
 afterEach(() => {
 	vi.clearAllMocks();
 });
@@ -33,7 +37,7 @@ it("creates a new file and adds config with empty label", async () => {
 	mockFileSystem.readFile.mockRejectedValueOnce("No file found");
 	mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" });
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
 	await sshConfig.update("", {
 		Host: "coder-vscode--*",
@@ -76,7 +80,7 @@ it("creates a new file and adds the config", async () => {
 	mockFileSystem.readFile.mockRejectedValueOnce("No file found");
 	mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" });
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
 	await sshConfig.update("dev.coder.com", {
 		Host: "coder-vscode.dev.coder.com--*",
@@ -126,7 +130,7 @@ it("adds a new coder config in an existent SSH configuration", async () => {
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
 	await sshConfig.update("dev.coder.com", {
 		Host: "coder-vscode.dev.coder.com--*",
@@ -197,7 +201,7 @@ Host *
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
 	await sshConfig.update("dev.coder.com", {
 		Host: "coder-vscode.dev-updated.coder.com--*",
@@ -255,7 +259,7 @@ Host coder-vscode--*
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
 	await sshConfig.update("dev.coder.com", {
 		Host: "coder-vscode.dev.coder.com--*",
@@ -298,7 +302,7 @@ it("it does not remove a user-added block that only matches the host of an old c
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
 	await sshConfig.update("dev.coder.com", {
 		Host: "coder-vscode.dev.coder.com--*",
@@ -355,7 +359,7 @@ Host afterconfig
   HostName after.config.tld
   User after`;
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	await sshConfig.load();
 
@@ -410,7 +414,7 @@ Host afterconfig
   HostName after.config.tld
   User after`;
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	await sshConfig.load();
 
@@ -461,7 +465,7 @@ Host afterconfig
   HostName after.config.tld
   User after`;
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	await sshConfig.load();
 
@@ -511,7 +515,7 @@ Host afterconfig
   HostName after.config.tld
   User after`;
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	await sshConfig.load();
 
@@ -561,7 +565,7 @@ Host afterconfig
   HostName after.config.tld
   User after`;
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
 	await sshConfig.load();
@@ -624,7 +628,7 @@ it("override values", async () => {
 	mockFileSystem.readFile.mockRejectedValueOnce("No file found");
 	mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" });
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
 	await sshConfig.update(
 		"dev.coder.com",
@@ -683,7 +687,7 @@ it("fails if we are unable to write the temporary file", async () => {
   HostName before.config.tld
   User before`;
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
 	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 });
 	mockFileSystem.writeFile.mockRejectedValueOnce(new Error("EACCES"));
@@ -714,7 +718,7 @@ it("cleans up temp file when rename fails", async () => {
 	(err as NodeJS.ErrnoException).code = "EXDEV";
 	mockFileSystem.rename.mockRejectedValueOnce(err);
 
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
 	await expect(
 		sshConfig.update("dev.coder.com", {
@@ -755,7 +759,7 @@ describe("rename retry on Windows", () => {
 			.mockRejectedValueOnce(err)
 			.mockResolvedValueOnce(undefined);
 
-		const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+		const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 		await sshConfig.load();
 		const promise = sshConfig.update("dev.coder.com", {
 			Host: "coder-vscode.dev.coder.com--*",
