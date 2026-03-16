@@ -1,90 +1,14 @@
-import * as http from "node:http";
 import { randomBytes } from "node:crypto";
-import { URL } from "node:url";
 import * as vscode from "vscode";
 
 import { type CoderApi } from "../../api/coderApi";
 import { type Logger } from "../../logging/logger";
 
 /**
- * A local reverse proxy that forwards requests to the Coder server.
- * This exists solely to work around VS Code's webview sandbox which
- * blocks script execution in nested cross-origin iframes. By serving
- * through a local proxy the iframe gets its own browsing context and
- * scripts execute normally.
+ * Provides a webview that embeds the Coder agent chat UI.
+ * Authentication flows through postMessage:
  *
- * The proxy does NOT inject auth headers — authentication is handled
- * entirely via the postMessage bootstrap flow.
- */
-class EmbedProxy implements vscode.Disposable {
-	private server?: http.Server;
-	private _port = 0;
-
-	constructor(
-		private readonly coderUrl: string,
-		private readonly logger: Logger,
-	) {}
-
-	get port(): number {
-		return this._port;
-	}
-
-	async start(): Promise<number> {
-		const target = new URL(this.coderUrl);
-
-		this.server = http.createServer((req, res) => {
-			const options: http.RequestOptions = {
-				hostname: target.hostname,
-				port: target.port || 80,
-				path: req.url,
-				method: req.method,
-				headers: {
-					...req.headers,
-					host: target.host,
-				},
-			};
-
-			const proxyReq = http.request(options, (proxyRes) => {
-				res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
-				proxyRes.pipe(res, { end: true });
-			});
-
-			proxyReq.on("error", (err) => {
-				this.logger.warn("Embed proxy request error", err);
-				res.writeHead(502);
-				res.end("Bad Gateway");
-			});
-
-			req.pipe(proxyReq, { end: true });
-		});
-
-		return new Promise<number>((resolve, reject) => {
-			this.server!.listen(0, "127.0.0.1", () => {
-				const addr = this.server!.address();
-				if (typeof addr === "object" && addr !== null) {
-					this._port = addr.port;
-					this.logger.info(
-						`Embed proxy listening on 127.0.0.1:${this._port}`,
-					);
-					resolve(this._port);
-				} else {
-					reject(new Error("Failed to bind embed proxy"));
-				}
-			});
-			this.server!.on("error", reject);
-		});
-	}
-
-	dispose(): void {
-		this.server?.close();
-	}
-}
-
-/**
- * Provides a webview that embeds the Coder agent chat UI via a local
- * proxy. Authentication flows through postMessage:
- *
- *   1. The iframe loads /agents/{id}/embed through the proxy.
+ *   1. The iframe loads /agents/{id}/embed on the Coder server.
  *   2. The embed page detects the user is signed out and sends
  *      { type: "coder:vscode-ready" } to window.parent.
  *   3. Our webview relays this to the extension host.
@@ -101,7 +25,6 @@ export class ChatPanelProvider
 
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
-	private proxy?: EmbedProxy;
 	private agentId: string | undefined;
 
 	constructor(
@@ -150,23 +73,8 @@ export class ChatPanelProvider
 			}),
 		);
 
-		this.proxy = new EmbedProxy(coderUrl, this.logger);
-		this.disposables.push(this.proxy);
-
-		try {
-			const port = await this.proxy.start();
-			const proxyOrigin = `http://127.0.0.1:${port}`;
-			const embedUrl = `${proxyOrigin}/agents/${this.agentId}/embed`;
-			webviewView.webview.html = this.getIframeHtml(
-				embedUrl,
-				proxyOrigin,
-			);
-		} catch (err) {
-			this.logger.error("Failed to start embed proxy", err);
-			webviewView.webview.html = this.getErrorHtml(
-				"Failed to start embed proxy.",
-			);
-		}
+		const embedUrl = `${coderUrl}/agents/${this.agentId}/embed`;
+		webviewView.webview.html = this.getIframeHtml(embedUrl, coderUrl);
 
 		webviewView.onDidDispose(() => this.disposeInternals());
 	}
@@ -189,36 +97,15 @@ export class ChatPanelProvider
 
 		this.disposeInternals();
 
-		this.proxy = new EmbedProxy(coderUrl, this.logger);
-		this.disposables.push(this.proxy);
-
 		this.disposables.push(
 			this.view.webview.onDidReceiveMessage((msg: unknown) => {
 				this.handleMessage(msg);
 			}),
 		);
 
-		this.proxy
-			.start()
-			.then((port) => {
-				const proxyOrigin = `http://127.0.0.1:${port}`;
-				const embedUrl = `${proxyOrigin}/agents/${this.agentId}/embed`;
-				if (this.view) {
-					this.view.webview.options = { enableScripts: true };
-					this.view.webview.html = this.getIframeHtml(
-						embedUrl,
-						proxyOrigin,
-					);
-				}
-			})
-			.catch((err) => {
-				this.logger.error("Failed to restart embed proxy", err);
-				if (this.view) {
-					this.view.webview.html = this.getErrorHtml(
-						"Failed to start embed proxy.",
-					);
-				}
-			});
+		this.view.webview.options = { enableScripts: true };
+		const embedUrl = `${coderUrl}/agents/${this.agentId}/embed`;
+		this.view.webview.html = this.getIframeHtml(embedUrl, coderUrl);
 	}
 
 	private handleMessage(message: unknown): void {
@@ -242,7 +129,7 @@ export class ChatPanelProvider
 		}
 	}
 
-	private getIframeHtml(embedUrl: string, proxyOrigin: string): string {
+	private getIframeHtml(embedUrl: string, allowedOrigin: string): string {
 		const nonce = randomBytes(16).toString("base64");
 
 		return /* html */ `<!DOCTYPE html>
@@ -251,7 +138,7 @@ export class ChatPanelProvider
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none';
-                 frame-src ${proxyOrigin};
+                 frame-src ${allowedOrigin};
                  script-src 'nonce-${nonce}';
                  style-src 'unsafe-inline';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
