@@ -1,9 +1,18 @@
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	readFile,
+	rename,
+	stat,
+	unlink,
+	writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 
-import { countSubstring, tempFilePath } from "../util";
+import { countSubstring, renameWithRetry, tempFilePath } from "../util";
 
-class SSHConfigBadFormat extends Error {}
+import type { Logger } from "../logging/logger";
+
+class SshConfigBadFormat extends Error {}
 
 interface Block {
 	raw: string;
@@ -25,6 +34,7 @@ export interface FileSystem {
 	readFile: typeof readFile;
 	rename: typeof rename;
 	stat: typeof stat;
+	unlink: typeof unlink;
 	writeFile: typeof writeFile;
 }
 
@@ -33,6 +43,7 @@ const defaultFileSystem: FileSystem = {
 	readFile,
 	rename,
 	stat,
+	unlink,
 	writeFile,
 };
 
@@ -163,9 +174,10 @@ export function mergeSshConfigValues(
 	return merged;
 }
 
-export class SSHConfig {
+export class SshConfig {
 	private readonly filePath: string;
 	private readonly fileSystem: FileSystem;
+	private readonly logger: Logger;
 	private raw: string | undefined;
 
 	private startBlockComment(safeHostname: string): string {
@@ -179,16 +191,25 @@ export class SSHConfig {
 			: `# --- END CODER VSCODE ---`;
 	}
 
-	constructor(filePath: string, fileSystem: FileSystem = defaultFileSystem) {
+	constructor(
+		filePath: string,
+		logger: Logger,
+		fileSystem: FileSystem = defaultFileSystem,
+	) {
 		this.filePath = filePath;
+		this.logger = logger;
 		this.fileSystem = fileSystem;
 	}
 
 	async load() {
 		try {
 			this.raw = await this.fileSystem.readFile(this.filePath, "utf-8");
+			this.logger.debug("Loaded SSH config", this.filePath);
 		} catch {
-			// Probably just doesn't exist!
+			this.logger.debug(
+				"SSH config file not found, starting fresh",
+				this.filePath,
+			);
 			this.raw = "";
 		}
 	}
@@ -204,8 +225,10 @@ export class SSHConfig {
 		const block = this.getBlock(safeHostname);
 		const newBlock = this.buildBlock(safeHostname, values, overrides);
 		if (block) {
+			this.logger.debug("Replacing SSH config block", safeHostname);
 			this.replaceBlock(block, newBlock);
 		} else {
+			this.logger.debug("Appending new SSH config block", safeHostname);
 			this.appendBlock(newBlock);
 		}
 		await this.save();
@@ -222,13 +245,13 @@ export class SSHConfig {
 		const startBlockCount = countSubstring(startBlock, raw);
 		const endBlockCount = countSubstring(endBlock, raw);
 		if (startBlockCount !== endBlockCount) {
-			throw new SSHConfigBadFormat(
+			throw new SshConfigBadFormat(
 				`Malformed config: ${this.filePath} has an unterminated START CODER VSCODE ${safeHostname ? safeHostname + " " : ""}block. Each START block must have an END block.`,
 			);
 		}
 
 		if (startBlockCount > 1 || endBlockCount > 1) {
-			throw new SSHConfigBadFormat(
+			throw new SshConfigBadFormat(
 				`Malformed config: ${this.filePath} has ${startBlockCount} START CODER VSCODE ${safeHostname ? safeHostname + " " : ""}sections. Please remove all but one.`,
 			);
 		}
@@ -241,15 +264,15 @@ export class SSHConfig {
 		}
 
 		if (startBlockIndex === -1) {
-			throw new SSHConfigBadFormat("Start block not found");
+			throw new SshConfigBadFormat("Start block not found");
 		}
 
 		if (startBlockIndex === -1) {
-			throw new SSHConfigBadFormat("End block not found");
+			throw new SshConfigBadFormat("End block not found");
 		}
 
 		if (endBlockIndex < startBlockIndex) {
-			throw new SSHConfigBadFormat(
+			throw new SshConfigBadFormat(
 				"Malformed config, end block is before start block",
 			);
 		}
@@ -357,8 +380,20 @@ export class SSHConfig {
 		}
 
 		try {
-			await this.fileSystem.rename(tempPath, this.filePath);
+			await renameWithRetry(
+				(src, dest) => this.fileSystem.rename(src, dest),
+				tempPath,
+				this.filePath,
+			);
+			this.logger.debug("Saved SSH config", this.filePath);
 		} catch (err) {
+			await this.fileSystem.unlink(tempPath).catch((unlinkErr: unknown) => {
+				this.logger.warn(
+					"Failed to clean up temp SSH config file",
+					tempPath,
+					unlinkErr,
+				);
+			});
 			throw new Error(
 				`Failed to rename temporary SSH config file at ${tempPath} to ${this.filePath}: ${
 					err instanceof Error ? err.message : String(err)
@@ -370,7 +405,7 @@ export class SSHConfig {
 
 	public getRaw() {
 		if (this.raw === undefined) {
-			throw new Error("SSHConfig is not loaded. Try sshConfig.load()");
+			throw new Error("SshConfig is not loaded. Try sshConfig.load()");
 		}
 
 		return this.raw;

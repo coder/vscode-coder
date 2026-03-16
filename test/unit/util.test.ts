@@ -1,5 +1,5 @@
 import os from "node:os";
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 
 import {
 	countSubstring,
@@ -7,6 +7,7 @@ import {
 	expandPath,
 	findPort,
 	parseRemoteAuthority,
+	renameWithRetry,
 	tempFilePath,
 	toSafeHost,
 } from "@/util";
@@ -258,5 +259,85 @@ describe("tempFilePath", () => {
 	it("uses the provided suffix", () => {
 		const result = tempFilePath("/base", "old");
 		expect(result.startsWith("/base.old-")).toBe(true);
+	});
+});
+
+describe("renameWithRetry", () => {
+	const realPlatform = process.platform;
+
+	function makeErrno(code: string): NodeJS.ErrnoException {
+		const err = new Error(code);
+		(err as NodeJS.ErrnoException).code = code;
+		return err as NodeJS.ErrnoException;
+	}
+
+	function setPlatform(value: string) {
+		Object.defineProperty(process, "platform", { value });
+	}
+
+	afterEach(() => {
+		setPlatform(realPlatform);
+		vi.useRealTimers();
+	});
+
+	it("succeeds on first attempt", async () => {
+		const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
+		renameFn.mockResolvedValueOnce(undefined);
+		await renameWithRetry(renameFn, "/a", "/b");
+		expect(renameFn).toHaveBeenCalledTimes(1);
+		expect(renameFn).toHaveBeenCalledWith("/a", "/b");
+	});
+
+	it("skips retry logic on non-Windows platforms", async () => {
+		setPlatform("linux");
+		const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
+		renameFn.mockRejectedValueOnce(makeErrno("EPERM"));
+
+		await expect(renameWithRetry(renameFn, "/a", "/b")).rejects.toThrow(
+			"EPERM",
+		);
+		expect(renameFn).toHaveBeenCalledTimes(1);
+	});
+
+	describe("on Windows", () => {
+		beforeEach(() => setPlatform("win32"));
+
+		it.each(["EPERM", "EACCES", "EBUSY"])(
+			"retries on transient %s and succeeds",
+			async (code) => {
+				const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
+				renameFn
+					.mockRejectedValueOnce(makeErrno(code))
+					.mockResolvedValueOnce(undefined);
+
+				await renameWithRetry(renameFn, "/a", "/b", 60_000, 10);
+				expect(renameFn).toHaveBeenCalledTimes(2);
+			},
+		);
+
+		it("throws after timeout is exceeded", async () => {
+			vi.useFakeTimers();
+			const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
+			const epermError = makeErrno("EPERM");
+			renameFn.mockImplementation(() => Promise.reject(epermError));
+
+			const promise = renameWithRetry(renameFn, "/a", "/b", 5);
+			const assertion = expect(promise).rejects.toThrow(epermError);
+			await vi.advanceTimersByTimeAsync(100);
+			await assertion;
+		});
+
+		it.each(["EXDEV", "ENOENT", "EISDIR"])(
+			"does not retry non-transient %s",
+			async (code) => {
+				const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
+				renameFn.mockRejectedValueOnce(makeErrno(code));
+
+				await expect(renameWithRetry(renameFn, "/a", "/b")).rejects.toThrow(
+					code,
+				);
+				expect(renameFn).toHaveBeenCalledTimes(1);
+			},
+		);
 	});
 });

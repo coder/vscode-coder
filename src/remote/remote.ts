@@ -51,7 +51,7 @@ import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 import {
-	SSHConfig,
+	SshConfig,
 	type SSHValues,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
@@ -766,7 +766,7 @@ export class Remote {
 			sshConfigFile = path.join(os.homedir(), sshConfigFile.slice(1));
 		}
 
-		const sshConfig = new SSHConfig(sshConfigFile);
+		const sshConfig = new SshConfig(sshConfigFile, this.logger);
 		await sshConfig.load();
 
 		// Merge SSH config from three sources (highest to lowest priority):

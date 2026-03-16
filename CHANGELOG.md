@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Fixed SSH config writes failing on Windows when antivirus, cloud sync software,
+  or another process briefly locks the file.
+
 ### Added
 
 - Automatically set `reconnectionGraceTime`, `serverShutdownTimeout`, and `maxReconnectionAttempts`
