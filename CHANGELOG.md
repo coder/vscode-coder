@@ -17,6 +17,7 @@
 
 - Fixed SSH config writes failing on Windows when antivirus, cloud sync software,
   or another process briefly locks the file.
+- Fixed Tasks view container not showing in Cursor when not authenticated.
 
 ### Changed
 
