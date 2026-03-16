@@ -337,12 +337,20 @@ export class Commands {
 			key,
 			value: setting.value,
 		}));
-		await applySettingOverrides(
+		const ok = await applySettingOverrides(
 			this.pathResolver.getUserSettingsPath(),
 			overrides,
 			this.logger,
 		);
-		if (this.remoteWorkspaceClient) {
+		if (!ok) {
+			const action = await vscode.window.showErrorMessage(
+				"Failed to write SSH settings. Check the Coder output for details.",
+				"Show Output",
+			);
+			if (action === "Show Output") {
+				this.logger.show();
+			}
+		} else if (this.remoteWorkspaceClient) {
 			const action = await vscode.window.showInformationMessage(
 				"Applied recommended SSH settings. Reload the window for changes to take effect.",
 				"Reload Window",

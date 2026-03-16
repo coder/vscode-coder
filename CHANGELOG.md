@@ -4,6 +4,9 @@
 
 ### Added
 
+- Automatically set `reconnectionGraceTime`, `serverShutdownTimeout`, and `maxReconnectionAttempts`
+  on first connection to prevent disconnects during overnight workspace sleep.
+- New **Coder: Apply Recommended SSH Settings** command to overwrite all recommended SSH settings at once.
 - Proxy log directory now defaults to the extension's global storage when `coder.proxyLogDirectory`
   is not set, so SSH connection logs are always captured without manual configuration. Also respects
   the `CODER_SSH_LOG_DIR` environment variable as a fallback.

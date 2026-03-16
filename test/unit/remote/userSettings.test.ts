@@ -160,8 +160,8 @@ describe("applySettingOverrides", () => {
 		return JSON.parse(raw) as Record<string, unknown>;
 	}
 
-	it("returns false when overrides list is empty", async () => {
-		expect(await applySettingOverrides(settingsPath, [], logger)).toBe(false);
+	it("returns true when overrides list is empty", async () => {
+		expect(await applySettingOverrides(settingsPath, [], logger)).toBe(true);
 	});
 
 	it("creates file and applies overrides when file does not exist", async () => {

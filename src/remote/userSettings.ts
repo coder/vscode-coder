@@ -29,7 +29,11 @@ function recommended(
 	return { value, label: `${shortName}: ${humanized}` };
 }
 
-/** Applied by the "Apply Recommended SSH Settings" command. */
+/**
+ * Applied by the "Apply Recommended SSH Settings" command.
+ * These are more aggressive (24h) than AUTO_SETUP_DEFAULTS (8h) because the
+ * user is explicitly opting in via the command palette.
+ */
 export const RECOMMENDED_SSH_SETTINGS = {
 	"remote.SSH.connectTimeout": recommended("Connect Timeout", 1800),
 	"remote.SSH.reconnectionGraceTime": recommended(
@@ -109,7 +113,7 @@ export async function applySettingOverrides(
 	logger: Logger,
 ): Promise<boolean> {
 	if (overrides.length === 0) {
-		return false;
+		return true;
 	}
 
 	let settingsContent = "{}";

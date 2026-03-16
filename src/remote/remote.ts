@@ -465,11 +465,16 @@ export class Remote {
 				parts.sshHost,
 				agent.operating_system,
 			);
-			await applySettingOverrides(
-				this.pathResolver.getUserSettingsPath(),
-				overrides,
-				this.logger,
-			);
+			if (overrides.length > 0) {
+				const ok = await applySettingOverrides(
+					this.pathResolver.getUserSettingsPath(),
+					overrides,
+					this.logger,
+				);
+				if (ok) {
+					this.logger.info("Settings modified successfully");
+				}
+			}
 
 			const logDir = this.getLogDir(featureSet);
 
