@@ -180,64 +180,77 @@
 				}
 			}
 		},
-		"viewsContainers": {
-			"activitybar": [
-				{
-					"id": "coder",
-					"title": "Coder Remote",
-					"icon": "media/shorthand-logo.svg"
-				},
-				{
-					"id": "coderTasks",
-					"title": "Coder Tasks",
-					"icon": "media/tasks-logo.svg"
-				}
-			]
-		},
-		"views": {
-			"coder": [
-				{
-					"id": "myWorkspaces",
-					"name": "My Workspaces",
-					"visibility": "visible",
-					"icon": "media/logo-white.svg"
-				},
-				{
-					"id": "allWorkspaces",
-					"name": "All Workspaces",
-					"visibility": "visible",
-					"icon": "media/logo-white.svg",
-					"when": "coder.authenticated && coder.isOwner"
-				}
-			],
-			"coderTasks": [
-				{
-					"id": "coder.tasksLogin",
-					"name": "Coder Tasks",
-					"icon": "media/tasks-logo.svg",
-					"when": "!coder.authenticated"
-				},
-				{
-					"type": "webview",
-					"id": "coder.tasksPanel",
-					"name": "Coder Tasks",
-					"icon": "media/tasks-logo.svg",
-					"when": "coder.authenticated"
-				}
-			]
-		},
-		"viewsWelcome": [
-			{
-				"view": "myWorkspaces",
-				"contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
-				"when": "!coder.authenticated && coder.loaded"
+			"viewsContainers": {
+				"activitybar": [
+					{
+						"id": "coder",
+						"title": "Coder Remote",
+						"icon": "media/shorthand-logo.svg"
+					},
+					{
+						"id": "coderTasks",
+						"title": "Coder Tasks",
+						"icon": "media/tasks-logo.svg"
+					}
+				],
+				"panel": [
+					{
+						"id": "coderChat",
+						"title": "Coder Chat",
+						"icon": "media/shorthand-logo.svg"
+					}
+				]
 			},
-			{
-				"view": "coder.tasksLogin",
-				"contents": "Sign in to view and manage Coder tasks.\n[Login](command:coder.login)",
-				"when": "!coder.authenticated && coder.loaded"
-			}
-		],
+			"views": {
+				"coder": [
+					{
+						"id": "myWorkspaces",
+						"name": "My Workspaces",
+						"visibility": "visible",
+						"icon": "media/logo-white.svg"
+					},
+					{
+						"id": "allWorkspaces",
+						"name": "All Workspaces",
+						"visibility": "visible",
+						"icon": "media/logo-white.svg",
+						"when": "coder.authenticated && coder.isOwner"
+					}
+				],
+				"coderTasks": [
+					{
+						"id": "coder.tasksLogin",
+						"name": "Coder Tasks",
+						"icon": "media/tasks-logo.svg",
+						"when": "!coder.authenticated"
+					},
+					{
+						"type": "webview",
+						"id": "coder.tasksPanel",
+						"name": "Coder Tasks",
+						"icon": "media/tasks-logo.svg",
+						"when": "coder.authenticated"
+					}
+				],
+				"coderChat": [
+					{
+						"type": "webview",
+						"id": "coder.chatPanel",
+						"name": "Coder Chat"
+					}
+				]
+			},
+			"viewsWelcome": [
+				{
+					"view": "myWorkspaces",
+					"contents": "Coder is a platform that provisions remote development environments. \n[Login](command:coder.login)",
+					"when": "!coder.authenticated && coder.loaded"
+				},
+				{
+					"view": "coder.tasksLogin",
+					"contents": "Sign in to view and manage Coder tasks.\n[Login](command:coder.login)",
+					"when": "!coder.authenticated && coder.loaded"
+				}		],
 		"commands": [
 			{
 				"command": "coder.login",
