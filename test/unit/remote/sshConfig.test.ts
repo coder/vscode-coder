@@ -21,6 +21,7 @@ const mockFileSystem = {
 	readFile: vi.fn(),
 	rename: vi.fn(),
 	stat: vi.fn(),
+	unlink: vi.fn().mockResolvedValue(undefined),
 	writeFile: vi.fn(),
 };
 
@@ -53,11 +54,11 @@ Host coder-vscode--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE ---`;
 
-	expect(mockFileSystem.readFile).toBeCalledWith(
+	expect(mockFileSystem.readFile).toHaveBeenCalledWith(
 		sshFilePath,
 		expect.anything(),
 	);
-	expect(mockFileSystem.writeFile).toBeCalledWith(
+	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		expect.objectContaining({
@@ -65,7 +66,7 @@ Host coder-vscode--*
 			mode: 0o600, // Default mode for new files.
 		}),
 	);
-	expect(mockFileSystem.rename).toBeCalledWith(
+	expect(mockFileSystem.rename).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
@@ -96,11 +97,11 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`;
 
-	expect(mockFileSystem.readFile).toBeCalledWith(
+	expect(mockFileSystem.readFile).toHaveBeenCalledWith(
 		sshFilePath,
 		expect.anything(),
 	);
-	expect(mockFileSystem.writeFile).toBeCalledWith(
+	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		expect.objectContaining({
@@ -108,7 +109,7 @@ Host coder-vscode.dev.coder.com--*
 			mode: 0o600, // Default mode for new files.
 		}),
 	);
-	expect(mockFileSystem.rename).toBeCalledWith(
+	expect(mockFileSystem.rename).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
@@ -148,7 +149,7 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`;
 
-	expect(mockFileSystem.writeFile).toBeCalledWith(
+	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
@@ -156,7 +157,7 @@ Host coder-vscode.dev.coder.com--*
 			mode: 0o644,
 		},
 	);
-	expect(mockFileSystem.rename).toBeCalledWith(
+	expect(mockFileSystem.rename).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
@@ -222,7 +223,7 @@ Host coder-vscode.dev-updated.coder.com--*
 Host *
   SetEnv TEST=1`;
 
-	expect(mockFileSystem.writeFile).toBeCalledWith(
+	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
@@ -230,7 +231,7 @@ Host *
 			mode: 0o644,
 		},
 	);
-	expect(mockFileSystem.rename).toBeCalledWith(
+	expect(mockFileSystem.rename).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
@@ -277,7 +278,7 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`;
 
-	expect(mockFileSystem.writeFile).toBeCalledWith(
+	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
@@ -285,7 +286,7 @@ Host coder-vscode.dev.coder.com--*
 			mode: 0o644,
 		},
 	);
-	expect(mockFileSystem.rename).toBeCalledWith(
+	expect(mockFileSystem.rename).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
@@ -321,7 +322,7 @@ Host coder-vscode.dev.coder.com--*
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`;
 
-	expect(mockFileSystem.writeFile).toBeCalledWith(
+	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
@@ -329,7 +330,7 @@ Host coder-vscode.dev.coder.com--*
 			mode: 0o644,
 		},
 	);
-	expect(mockFileSystem.rename).toBeCalledWith(
+	expect(mockFileSystem.rename).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
@@ -605,7 +606,7 @@ Host afterconfig
 		LogLevel: "ERROR",
 	});
 
-	expect(mockFileSystem.writeFile).toBeCalledWith(
+	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		{
@@ -613,7 +614,7 @@ Host afterconfig
 			mode: 0o644,
 		},
 	);
-	expect(mockFileSystem.rename).toBeCalledWith(
+	expect(mockFileSystem.rename).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
@@ -659,11 +660,11 @@ Host coder-vscode.dev.coder.com--*
   loglevel DEBUG
 # --- END CODER VSCODE dev.coder.com ---`;
 
-	expect(mockFileSystem.readFile).toBeCalledWith(
+	expect(mockFileSystem.readFile).toHaveBeenCalledWith(
 		sshFilePath,
 		expect.anything(),
 	);
-	expect(mockFileSystem.writeFile).toBeCalledWith(
+	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		expectedOutput,
 		expect.objectContaining({
@@ -671,7 +672,7 @@ Host coder-vscode.dev.coder.com--*
 			mode: 0o600, // Default mode for new files.
 		}),
 	);
-	expect(mockFileSystem.rename).toBeCalledWith(
+	expect(mockFileSystem.rename).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
@@ -689,7 +690,7 @@ it("fails if we are unable to write the temporary file", async () => {
 
 	await sshConfig.load();
 
-	expect(mockFileSystem.readFile).toBeCalledWith(
+	expect(mockFileSystem.readFile).toHaveBeenCalledWith(
 		sshFilePath,
 		expect.anything(),
 	);
@@ -705,28 +706,72 @@ it("fails if we are unable to write the temporary file", async () => {
 	).rejects.toThrow(/Failed to write temporary SSH config file.*EACCES/);
 });
 
-it("fails if we are unable to rename the temporary file", async () => {
-	const existentSSHConfig = `Host beforeconfig
-  HostName before.config.tld
-  User before`;
-
-	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
+it("cleans up temp file when rename fails", async () => {
+	mockFileSystem.readFile.mockResolvedValueOnce("Host existing\n  HostName x");
 	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 });
 	mockFileSystem.writeFile.mockResolvedValueOnce("");
-	mockFileSystem.rename.mockRejectedValueOnce(new Error("EACCES"));
+	const err = new Error("EXDEV");
+	(err as NodeJS.ErrnoException).code = "EXDEV";
+	mockFileSystem.rename.mockRejectedValueOnce(err);
 
+	const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
 	await sshConfig.load();
 	await expect(
 		sshConfig.update("dev.coder.com", {
 			Host: "coder-vscode.dev.coder.com--*",
-			ProxyCommand: "some-command-here",
+			ProxyCommand: "cmd",
 			ConnectTimeout: "0",
 			StrictHostKeyChecking: "no",
 			UserKnownHostsFile: "/dev/null",
 			LogLevel: "ERROR",
 		}),
-	).rejects.toThrow(/Failed to rename temporary SSH config file.*EACCES/);
+	).rejects.toThrow(/Failed to rename temporary SSH config file/);
+	expect(mockFileSystem.unlink).toHaveBeenCalledWith(
+		expect.stringContaining(sshTempFilePrefix),
+	);
+});
+
+describe("rename retry on Windows", () => {
+	const realPlatform = process.platform;
+
+	beforeEach(() => {
+		Object.defineProperty(process, "platform", { value: "win32" });
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+		Object.defineProperty(process, "platform", { value: realPlatform });
+	});
+
+	it("retries on transient EPERM and succeeds", async () => {
+		mockFileSystem.readFile.mockResolvedValueOnce(
+			"Host existing\n  HostName x",
+		);
+		mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 });
+		mockFileSystem.writeFile.mockResolvedValueOnce("");
+		const err = new Error("EPERM");
+		(err as NodeJS.ErrnoException).code = "EPERM";
+		mockFileSystem.rename
+			.mockRejectedValueOnce(err)
+			.mockResolvedValueOnce(undefined);
+
+		const sshConfig = new SSHConfig(sshFilePath, mockFileSystem);
+		await sshConfig.load();
+		const promise = sshConfig.update("dev.coder.com", {
+			Host: "coder-vscode.dev.coder.com--*",
+			ProxyCommand: "cmd",
+			ConnectTimeout: "0",
+			StrictHostKeyChecking: "no",
+			UserKnownHostsFile: "/dev/null",
+			LogLevel: "ERROR",
+		});
+
+		await vi.advanceTimersByTimeAsync(100);
+		await promise;
+
+		expect(mockFileSystem.rename).toHaveBeenCalledTimes(2);
+		expect(mockFileSystem.unlink).not.toHaveBeenCalled();
+	});
 });
 
 describe("parseSshConfig", () => {

@@ -7,7 +7,7 @@ import * as semver from "semver";
 import { isKeyringEnabled } from "../cliConfig";
 import { featureSetForVersion } from "../featureSet";
 import { getHeaderArgs } from "../headers";
-import { tempFilePath, toSafeHost } from "../util";
+import { renameWithRetry, tempFilePath, toSafeHost } from "../util";
 
 import * as cliUtils from "./cliUtils";
 
@@ -256,7 +256,7 @@ export class CliCredentialManager {
 		const tempPath = tempFilePath(filePath, "temp");
 		try {
 			await fs.writeFile(tempPath, content, { mode: 0o600 });
-			await fs.rename(tempPath, filePath);
+			await renameWithRetry(fs.rename, tempPath, filePath);
 		} catch (err) {
 			await fs.rm(tempPath, { force: true }).catch((rmErr) => {
 				this.logger.warn("Failed to delete temp file", tempPath, rmErr);

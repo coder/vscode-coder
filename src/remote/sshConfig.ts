@@ -1,7 +1,14 @@
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	readFile,
+	rename,
+	stat,
+	unlink,
+	writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 
-import { countSubstring, tempFilePath } from "../util";
+import { countSubstring, renameWithRetry, tempFilePath } from "../util";
 
 class SSHConfigBadFormat extends Error {}
 
@@ -25,6 +32,7 @@ export interface FileSystem {
 	readFile: typeof readFile;
 	rename: typeof rename;
 	stat: typeof stat;
+	unlink: typeof unlink;
 	writeFile: typeof writeFile;
 }
 
@@ -33,6 +41,7 @@ const defaultFileSystem: FileSystem = {
 	readFile,
 	rename,
 	stat,
+	unlink,
 	writeFile,
 };
 
@@ -357,8 +366,13 @@ export class SSHConfig {
 		}
 
 		try {
-			await this.fileSystem.rename(tempPath, this.filePath);
+			await renameWithRetry(
+				(src, dest) => this.fileSystem.rename(src, dest),
+				tempPath,
+				this.filePath,
+			);
 		} catch (err) {
+			await this.fileSystem.unlink(tempPath).catch(() => undefined);
 			throw new Error(
 				`Failed to rename temporary SSH config file at ${tempPath} to ${this.filePath}: ${
 					err instanceof Error ? err.message : String(err)
