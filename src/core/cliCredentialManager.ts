@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import * as semver from "semver";
 
 import { isKeyringEnabled } from "../cliConfig";
+import { isAbortError } from "../error/errorUtils";
 import { featureSetForVersion } from "../featureSet";
 import { getHeaderArgs } from "../headers";
 import { renameWithRetry, tempFilePath, toSafeHost } from "../util";
@@ -34,7 +36,8 @@ export type BinaryResolver = (deploymentUrl: string) => Promise<string>;
  * Returns true on platforms where the OS keyring is supported (macOS, Windows).
  */
 export function isKeyringSupported(): boolean {
-	return process.platform === "darwin" || process.platform === "win32";
+	const platform = os.platform();
+	return platform === "darwin" || platform === "win32";
 }
 
 /**
@@ -54,12 +57,15 @@ export class CliCredentialManager {
 	 * files under --global-config.
 	 *
 	 * Keyring and files are mutually exclusive — never both.
+	 *
+	 * When `keyringOnly` is set, silently returns if the keyring is unavailable
+	 * instead of falling back to file storage.
 	 */
 	public async storeToken(
 		url: string,
 		token: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		signal?: AbortSignal,
+		options?: { signal?: AbortSignal; keyringOnly?: boolean },
 	): Promise<void> {
 		const binPath = await this.resolveKeyringBinary(
 			url,
@@ -67,6 +73,9 @@ export class CliCredentialManager {
 			"keyringAuth",
 		);
 		if (!binPath) {
+			if (options?.keyringOnly) {
+				return;
+			}
 			await this.writeCredentialFiles(url, token);
 			return;
 		}
@@ -80,7 +89,7 @@ export class CliCredentialManager {
 		try {
 			await this.execWithTimeout(binPath, args, {
 				env: { ...process.env, CODER_SESSION_TOKEN: token },
-				signal,
+				signal: options?.signal,
 			});
 			this.logger.info("Stored token via CLI for", url);
 		} catch (error) {
@@ -92,10 +101,12 @@ export class CliCredentialManager {
 	/**
 	 * Read a token via `coder login token --url`. Returns trimmed stdout,
 	 * or undefined on any failure (resolver, CLI, empty output).
+	 * Throws AbortError when the signal is aborted.
 	 */
 	public async readToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
+		options?: { signal?: AbortSignal },
 	): Promise<string | undefined> {
 		let binPath: string | undefined;
 		try {
@@ -114,10 +125,15 @@ export class CliCredentialManager {
 
 		const args = [...getHeaderArgs(configs), "login", "token", "--url", url];
 		try {
-			const { stdout } = await this.execWithTimeout(binPath, args);
+			const { stdout } = await this.execWithTimeout(binPath, args, {
+				signal: options?.signal,
+			});
 			const token = stdout.trim();
 			return token || undefined;
 		} catch (error) {
+			if (isAbortError(error)) {
+				throw error;
+			}
 			this.logger.warn("Failed to read token via CLI:", error);
 			return undefined;
 		}
@@ -125,16 +141,17 @@ export class CliCredentialManager {
 
 	/**
 	 * Delete credentials for a deployment. Runs file deletion and keyring
-	 * deletion in parallel, both best-effort (never throws).
+	 * deletion in parallel, both best-effort. Throws AbortError when the
+	 * signal is aborted.
 	 */
 	public async deleteToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		signal?: AbortSignal,
+		options?: { signal?: AbortSignal },
 	): Promise<void> {
 		await Promise.all([
 			this.deleteCredentialFiles(url),
-			this.deleteKeyringToken(url, configs, signal),
+			this.deleteKeyringToken(url, configs, options?.signal),
 		]);
 	}
 
@@ -241,6 +258,9 @@ export class CliCredentialManager {
 			await this.execWithTimeout(binPath, args, { signal });
 			this.logger.info("Deleted token via CLI for", url);
 		} catch (error) {
+			if (isAbortError(error)) {
+				throw error;
+			}
 			this.logger.warn("Failed to delete token via CLI:", error);
 		}
 	}

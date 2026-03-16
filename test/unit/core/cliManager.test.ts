@@ -9,6 +9,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { isKeyringEnabled } from "@/cliConfig";
 import { CliManager } from "@/core/cliManager";
 import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
@@ -28,6 +29,11 @@ import type { CliCredentialManager } from "@/core/cliCredentialManager";
 
 vi.mock("os");
 vi.mock("axios");
+vi.mock("@/cliConfig", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/cliConfig")>("@/cliConfig");
+	return { ...actual, isKeyringEnabled: vi.fn().mockReturnValue(false) };
+});
 
 vi.mock("fs", async () => {
 	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
@@ -139,7 +145,7 @@ describe("CliManager", () => {
 				CONFIGURE_URL,
 				TOKEN,
 				expect.anything(),
-				expect.any(AbortSignal),
+				{ signal: expect.any(AbortSignal) },
 			);
 		});
 
@@ -202,7 +208,20 @@ describe("CliManager", () => {
 	describe("Clear Credentials", () => {
 		const CLEAR_URL = "https://dev.coder.com";
 
-		it("should delete credentials with progress notification", async () => {
+		it("should skip progress notification when keyring is disabled", async () => {
+			await manager.clearCredentials(CLEAR_URL);
+
+			expect(vscode.window.withProgress).not.toHaveBeenCalled();
+			expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
+				CLEAR_URL,
+				expect.anything(),
+				{ signal: expect.any(AbortSignal) },
+			);
+		});
+
+		it("should show progress notification when keyring is enabled", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+
 			await manager.clearCredentials(CLEAR_URL);
 
 			expect(vscode.window.withProgress).toHaveBeenCalledWith(
@@ -212,11 +231,6 @@ describe("CliManager", () => {
 					cancellable: true,
 				}),
 				expect.any(Function),
-			);
-			expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
-				CLEAR_URL,
-				expect.anything(),
-				expect.any(AbortSignal),
 			);
 		});
 

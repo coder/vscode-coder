@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import { isAbortError } from "./error/errorUtils";
+
 export type ProgressResult<T> =
 	| { ok: true; value: T }
 	| { ok: false; cancelled: true }
@@ -17,8 +19,8 @@ export interface ProgressContext {
  * `{ cancelled: true }`.
  */
 export function withCancellableProgress<T>(
-	options: vscode.ProgressOptions & { cancellable: true },
 	fn: (ctx: ProgressContext) => Promise<T>,
+	options: vscode.ProgressOptions & { cancellable: true },
 ): Thenable<ProgressResult<T>> {
 	return vscode.window.withProgress(
 		options,
@@ -29,7 +31,7 @@ export function withCancellableProgress<T>(
 				const value = await fn({ progress, signal: ac.signal });
 				return { ok: true, value };
 			} catch (error) {
-				if ((error as Error).name === "AbortError") {
+				if (isAbortError(error)) {
 					return { ok: false, cancelled: true };
 				}
 				return { ok: false, cancelled: false, error };
@@ -38,6 +40,35 @@ export function withCancellableProgress<T>(
 			}
 		},
 	);
+}
+
+/**
+ * Like withCancellableProgress, but only shows the progress notification when
+ * `enabled` is true. When false, runs the function directly without UI.
+ * Returns ProgressResult<T> in both cases for uniform call-site handling.
+ */
+export async function withOptionalProgress<T>(
+	fn: (ctx: ProgressContext) => Promise<T>,
+	options: vscode.ProgressOptions & { cancellable: true; enabled: boolean },
+): Promise<ProgressResult<T>> {
+	if (options.enabled) {
+		return withCancellableProgress(fn, options);
+	}
+	try {
+		const noop = () => {
+			// No-op: progress reporting is disabled.
+		};
+		const value = await fn({
+			progress: { report: noop },
+			signal: new AbortController().signal,
+		});
+		return { ok: true, value };
+	} catch (error) {
+		if (isAbortError(error)) {
+			return { ok: false, cancelled: true };
+		}
+		return { ok: false, cancelled: false, error };
+	}
 }
 
 /**

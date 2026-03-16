@@ -1,6 +1,7 @@
 import { fs as memfs, vol } from "memfs";
 import { execFile } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as os from "node:os";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isKeyringEnabled } from "@/cliConfig";
 import {
@@ -18,6 +19,8 @@ import type * as nodeFs from "node:fs";
 vi.mock("node:child_process", () => ({
 	execFile: vi.fn(),
 }));
+
+vi.mock("node:os");
 
 vi.mock("@/cliConfig", () => ({
 	isKeyringEnabled: vi.fn().mockReturnValue(false),
@@ -146,17 +149,13 @@ function setup(resolver?: BinaryResolver) {
 }
 
 describe("isKeyringSupported", () => {
-	afterEach(() => {
-		vi.unstubAllGlobals();
-	});
-
 	it.each([
 		{ platform: "darwin", expected: true },
 		{ platform: "win32", expected: true },
 		{ platform: "linux", expected: false },
 		{ platform: "freebsd", expected: false },
 	])("returns $expected for $platform", ({ platform, expected }) => {
-		vi.stubGlobal("process", { ...process, platform });
+		vi.mocked(os.platform).mockReturnValue(platform as NodeJS.Platform);
 		expect(isKeyringSupported()).toBe(expected);
 	});
 });
@@ -254,7 +253,9 @@ describe("CliCredentialManager", () => {
 			const { manager } = setup();
 			const ac = new AbortController();
 
-			await manager.storeToken(TEST_URL, "token", configs, ac.signal);
+			await manager.storeToken(TEST_URL, "token", configs, {
+				signal: ac.signal,
+			});
 
 			expect(lastExecArgs().signal).toBe(ac.signal);
 		});
@@ -265,8 +266,46 @@ describe("CliCredentialManager", () => {
 			const { manager } = setup();
 
 			await expect(
-				manager.storeToken(TEST_URL, "token", configs, AbortSignal.abort()),
+				manager.storeToken(TEST_URL, "token", configs, {
+					signal: AbortSignal.abort(),
+				}),
 			).rejects.toThrow("The operation was aborted");
+		});
+
+		it.each([
+			{ scenario: "keyring disabled", keyringEnabled: false },
+			{ scenario: "CLI version too old", keyringEnabled: true },
+		])(
+			"never writes files when keyringOnly and $scenario",
+			async ({ keyringEnabled }) => {
+				vi.mocked(isKeyringEnabled).mockReturnValue(keyringEnabled);
+				if (keyringEnabled) {
+					vi.mocked(cliUtils.version).mockResolvedValueOnce("2.28.0");
+				}
+				const { manager } = setup();
+
+				await manager.storeToken(TEST_URL, "token", configs, {
+					keyringOnly: true,
+				});
+
+				expect(execFile).not.toHaveBeenCalled();
+				expect(memfs.existsSync(URL_FILE)).toBe(false);
+				expect(memfs.existsSync(SESSION_FILE)).toBe(false);
+			},
+		);
+
+		it("uses keyring without writing files when keyringOnly and keyring available", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			stubExecFile({ stdout: "" });
+			const { manager } = setup();
+
+			await manager.storeToken(TEST_URL, "my-token", configs, {
+				keyringOnly: true,
+			});
+
+			expect(execFile).toHaveBeenCalled();
+			expect(memfs.existsSync(URL_FILE)).toBe(false);
+			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
 		});
 	});
 
@@ -337,6 +376,29 @@ describe("CliCredentialManager", () => {
 			await manager.readToken(TEST_URL, configs);
 
 			expect(lastExecArgs().timeout).toBe(60_000);
+		});
+
+		it("passes signal through to execFile", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			stubExecFile({ stdout: "token" });
+			const { manager } = setup();
+			const ac = new AbortController();
+
+			await manager.readToken(TEST_URL, configs, { signal: ac.signal });
+
+			expect(lastExecArgs().signal).toBe(ac.signal);
+		});
+
+		it("throws AbortError when signal is aborted", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			stubExecFileAbortable();
+			const { manager } = setup();
+
+			await expect(
+				manager.readToken(TEST_URL, configs, {
+					signal: AbortSignal.abort(),
+				}),
+			).rejects.toThrow("The operation was aborted");
 		});
 	});
 
@@ -418,19 +480,21 @@ describe("CliCredentialManager", () => {
 			const { manager } = setup();
 			const ac = new AbortController();
 
-			await manager.deleteToken(TEST_URL, configs, ac.signal);
+			await manager.deleteToken(TEST_URL, configs, { signal: ac.signal });
 
 			expect(lastExecArgs().signal).toBe(ac.signal);
 		});
 
-		it("does not throw when signal is aborted", async () => {
+		it("throws AbortError when signal is aborted", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFileAbortable();
 			const { manager } = setup();
 
 			await expect(
-				manager.deleteToken(TEST_URL, configs, AbortSignal.abort()),
-			).resolves.not.toThrow();
+				manager.deleteToken(TEST_URL, configs, {
+					signal: AbortSignal.abort(),
+				}),
+			).rejects.toThrow("The operation was aborted");
 		});
 	});
 });

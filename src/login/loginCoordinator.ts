@@ -4,9 +4,11 @@ import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
+import { isKeyringEnabled } from "../cliConfig";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
+import { withOptionalProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 import { vscodeProposed } from "../vscodeProposed";
 
@@ -147,6 +149,20 @@ export class LoginCoordinator implements vscode.Disposable {
 				oauth: result.oauth, // undefined for non-OAuth logins
 			});
 			await this.mementoManager.addToUrlHistory(url);
+
+			// Fire-and-forget: sync token to OS keyring for the CLI.
+			if (result.token) {
+				this.cliCredentialManager
+					.storeToken(url, result.token, vscode.workspace.getConfiguration(), {
+						keyringOnly: true,
+					})
+					.catch((error) => {
+						this.logger.warn(
+							"Failed to store token in keyring at login:",
+							error,
+						);
+					});
+			}
 		}
 	}
 
@@ -243,10 +259,20 @@ export class LoginCoordinator implements vscode.Disposable {
 		}
 
 		// Try keyring token (picks up tokens written by `coder login` in the terminal)
-		const keyringToken = await this.cliCredentialManager.readToken(
-			deployment.url,
-			vscode.workspace.getConfiguration(),
+		const configs = vscode.workspace.getConfiguration();
+		const keyringResult = await withOptionalProgress(
+			({ signal }) =>
+				this.cliCredentialManager.readToken(deployment.url, configs, {
+					signal,
+				}),
+			{
+				enabled: isKeyringEnabled(configs),
+				location: vscode.ProgressLocation.Notification,
+				title: "Reading token from OS keyring...",
+				cancellable: true,
+			},
 		);
+		const keyringToken = keyringResult.ok ? keyringResult.value : undefined;
 		if (
 			keyringToken &&
 			keyringToken !== providedToken &&
