@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.14.1-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.1-pre) 2026-03-16
+
 ### Added
 
 - Automatically set `reconnectionGraceTime`, `serverShutdownTimeout`, and `maxReconnectionAttempts`
