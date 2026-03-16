@@ -1,3 +1,4 @@
+import { formatDuration, intervalToDuration } from "date-fns";
 import * as jsonc from "jsonc-parser";
 import * as fs from "node:fs/promises";
 
@@ -15,24 +16,44 @@ interface RecommendedSetting {
 	readonly label: string;
 }
 
+function recommended(
+	shortName: string,
+	value: number | null,
+): RecommendedSetting {
+	if (value === null) {
+		return { value, label: `${shortName}: max allowed` };
+	}
+	const humanized = formatDuration(
+		intervalToDuration({ start: 0, end: value * 1000 }),
+	);
+	return { value, label: `${shortName}: ${humanized}` };
+}
+
+/** Applied by the "Apply Recommended SSH Settings" command. */
 export const RECOMMENDED_SSH_SETTINGS = {
-	"remote.SSH.connectTimeout": {
-		value: 1800,
-		label: "Connect Timeout: 1800s (30 min)",
-	},
-	"remote.SSH.reconnectionGraceTime": {
-		value: 28800,
-		label: "Reconnection Grace Time: 28800s (8 hours)",
-	},
-	"remote.SSH.serverShutdownTimeout": {
-		value: 28800,
-		label: "Server Shutdown Timeout: 28800s (8 hours)",
-	},
-	"remote.SSH.maxReconnectionAttempts": {
-		value: null,
-		label: "Max Reconnection Attempts: max allowed",
-	},
+	"remote.SSH.connectTimeout": recommended("Connect Timeout", 1800),
+	"remote.SSH.reconnectionGraceTime": recommended(
+		"Reconnection Grace Time",
+		86400,
+	),
+	"remote.SSH.serverShutdownTimeout": recommended(
+		"Server Shutdown Timeout",
+		86400,
+	),
+	"remote.SSH.maxReconnectionAttempts": recommended(
+		"Max Reconnection Attempts",
+		null,
+	),
 } as const satisfies Record<string, RecommendedSetting>;
+
+type SshSettingKey = keyof typeof RECOMMENDED_SSH_SETTINGS;
+
+/** Defaults set during connection when the user hasn't configured a value. */
+const AUTO_SETUP_DEFAULTS = {
+	"remote.SSH.reconnectionGraceTime": 28800, // 8h
+	"remote.SSH.serverShutdownTimeout": 28800, // 8h
+	"remote.SSH.maxReconnectionAttempts": null, // max allowed
+} as const satisfies Partial<Record<SshSettingKey, number | null>>;
 
 /**
  * Build the list of VS Code setting overrides needed for a remote SSH
@@ -58,25 +79,17 @@ export function buildSshOverrides(
 	}
 
 	// Default 15s is too short for startup scripts; enforce a minimum.
-	const minConnTimeout =
-		RECOMMENDED_SSH_SETTINGS["remote.SSH.connectTimeout"].value;
-	const connTimeout = config.get<number>("remote.SSH.connectTimeout");
-	if (!connTimeout || connTimeout < minConnTimeout) {
-		overrides.push({
-			key: "remote.SSH.connectTimeout",
-			value: minConnTimeout,
-		});
+	const connTimeoutKey: SshSettingKey = "remote.SSH.connectTimeout";
+	const { value: minConnTimeout } = RECOMMENDED_SSH_SETTINGS[connTimeoutKey];
+	const connTimeout = config.get<number>(connTimeoutKey);
+	if (minConnTimeout && (!connTimeout || connTimeout < minConnTimeout)) {
+		overrides.push({ key: connTimeoutKey, value: minConnTimeout });
 	}
 
-	// Set recommended defaults for settings the user hasn't configured.
-	const setIfUndefined = [
-		"remote.SSH.reconnectionGraceTime",
-		"remote.SSH.serverShutdownTimeout",
-		"remote.SSH.maxReconnectionAttempts",
-	] as const;
-	for (const key of setIfUndefined) {
+	// Set conservative defaults for settings the user hasn't configured.
+	for (const [key, value] of Object.entries(AUTO_SETUP_DEFAULTS)) {
 		if (config.get(key) === undefined) {
-			overrides.push({ key, value: RECOMMENDED_SSH_SETTINGS[key].value });
+			overrides.push({ key, value });
 		}
 	}
 

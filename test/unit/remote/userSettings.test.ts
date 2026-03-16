@@ -229,6 +229,18 @@ describe("applySettingOverrides", () => {
 		expect(raw).toContain('"remote.SSH.remotePlatform"');
 	});
 
+	it("writes null values literally instead of deleting the key", async () => {
+		const ok = await applySettingOverrides(
+			settingsPath,
+			[{ key: "remote.SSH.maxReconnectionAttempts", value: null }],
+			logger,
+		);
+
+		expect(ok).toBe(true);
+		const raw = await fsPromises.readFile(settingsPath, "utf8");
+		expect(raw).toContain('"remote.SSH.maxReconnectionAttempts": null');
+	});
+
 	it("returns false and logs warning when write fails", async () => {
 		vol.fromJSON({ [settingsPath]: "{}" });
 		const writeSpy = vi

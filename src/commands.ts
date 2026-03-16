@@ -24,7 +24,10 @@ import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
 import { withProgress } from "./progress";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
-import { RECOMMENDED_SSH_SETTINGS } from "./remote/userSettings";
+import {
+	RECOMMENDED_SSH_SETTINGS,
+	applySettingOverrides,
+} from "./remote/userSettings";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import {
@@ -315,19 +318,41 @@ export class Commands {
 	 * Apply recommended SSH settings for reliable Coder workspace connections.
 	 */
 	public async applyRecommendedSettings(): Promise<void> {
-		const config = vscode.workspace.getConfiguration();
 		const entries = Object.entries(RECOMMENDED_SSH_SETTINGS);
-		for (const [key, setting] of entries) {
-			await config.update(
-				key,
-				setting.value,
-				vscode.ConfigurationTarget.Global,
-			);
-		}
-		const summary = entries.map(([, s]) => s.label).join(", ");
-		vscode.window.showInformationMessage(
-			`Applied recommended SSH settings: ${summary}`,
+		const summary = entries.map(([, s]) => s.label).join("\n");
+		const confirm = await vscodeProposed.window.showWarningMessage(
+			"Apply Recommended SSH Settings",
+			{
+				useCustom: true,
+				modal: true,
+				detail: summary,
+			},
+			"Apply",
 		);
+		if (confirm !== "Apply") {
+			return;
+		}
+
+		const overrides = entries.map(([key, setting]) => ({
+			key,
+			value: setting.value,
+		}));
+		await applySettingOverrides(
+			this.pathResolver.getUserSettingsPath(),
+			overrides,
+			this.logger,
+		);
+		if (this.remoteWorkspaceClient) {
+			const action = await vscode.window.showInformationMessage(
+				"Applied recommended SSH settings. Reload the window for changes to take effect.",
+				"Reload Window",
+			);
+			if (action === "Reload Window") {
+				await vscode.commands.executeCommand("workbench.action.reloadWindow");
+			}
+		} else {
+			vscode.window.showInformationMessage("Applied recommended SSH settings.");
+		}
 	}
 
 	/**
