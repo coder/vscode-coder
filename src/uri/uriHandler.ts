@@ -41,7 +41,13 @@ export function registerUriHandler(
 	return vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
 			try {
-				await routeUri(uri, serviceContainer, deploymentManager, commands, chatPanelProvider);
+				await routeUri(
+					uri,
+					serviceContainer,
+					deploymentManager,
+					commands,
+					chatPanelProvider,
+				);
 			} catch (error) {
 				const message = errToStr(error, "No error message was provided");
 				output.warn(`Failed to handle URI ${uri.toString()}: ${message}`);
@@ -187,7 +193,8 @@ async function setupDeployment(
 }
 
 async function handleOpenChat(ctx: UriRouteContext): Promise<void> {
-	const { params, serviceContainer, deploymentManager, chatPanelProvider } = ctx;
+	const { params, serviceContainer, deploymentManager, chatPanelProvider } =
+		ctx;
 
 	const agentId = getRequiredParam(params, "agentId");
 

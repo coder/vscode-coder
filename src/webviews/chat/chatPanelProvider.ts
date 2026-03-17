@@ -41,11 +41,11 @@ export class ChatPanelProvider
 		void vscode.commands.executeCommand("coder.chatPanel.focus");
 	}
 
-	async resolveWebviewView(
+	resolveWebviewView(
 		webviewView: vscode.WebviewView,
 		_context: vscode.WebviewViewResolveContext,
 		_token: vscode.CancellationToken,
-	): Promise<void> {
+	): void {
 		this.view = webviewView;
 		webviewView.webview.options = { enableScripts: true };
 		this.disposables.push(

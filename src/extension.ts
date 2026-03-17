@@ -19,8 +19,8 @@ import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscodeProposed";
-import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
 import { ChatPanelProvider } from "./webviews/chat/chatPanelProvider";
+import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
 import {
 	WorkspaceProvider,
 	WorkspaceQuery,
@@ -224,10 +224,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	);
 
 	// Register Chat embed panel with dependencies
-	const chatPanelProvider = new ChatPanelProvider(
-		client,
-		output,
-	);
+	const chatPanelProvider = new ChatPanelProvider(client, output);
 	ctx.subscriptions.push(
 		chatPanelProvider,
 		vscode.window.registerWebviewViewProvider(
