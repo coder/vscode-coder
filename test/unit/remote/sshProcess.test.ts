@@ -204,6 +204,109 @@ describe("SshProcessMonitor", () => {
 			expect(pids).toContain(888);
 		});
 
+		it("resets backoff when port changes in log file", async () => {
+			// Start with port 11111, no process on it
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 11111 ->",
+			});
+
+			// No process found initially, then process found after port change
+			vi.mocked(find).mockResolvedValue([]);
+
+			const logger = createMockLogger();
+			const monitor = createMonitor({
+				codeLogDir: "/logs/window1",
+				discoveryPollIntervalMs: 10,
+				maxDiscoveryBackoffMs: 5000,
+				logger,
+			});
+
+			// Wait for several search attempts with backoff growing
+			await new Promise((r) => setTimeout(r, 80));
+
+			// Now change the port in the log — simulates VS Code reconnection
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 22222 ->",
+			});
+
+			// After port change, make find return a process
+			vi.mocked(find).mockResolvedValue([
+				{ pid: 555, ppid: 1, name: "ssh", cmd: "ssh" },
+			]);
+
+			// The process should be found quickly since backoff resets on port change
+			const pid = await waitForEvent(monitor.onPidChange, 2000);
+			expect(pid).toBe(555);
+
+			// Verify port change was logged
+			expect(logger.debug).toHaveBeenCalledWith(
+				"SSH port changed in log file: 11111 -> 22222",
+			);
+		});
+
+		it("logs when port found but no process listening", async () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+			});
+
+			vi.mocked(find).mockResolvedValue([]);
+
+			const logger = createMockLogger();
+			const monitor = createMonitor({
+				codeLogDir: "/logs/window1",
+				logger,
+			});
+
+			// Wait for at least one search attempt
+			await new Promise((r) => setTimeout(r, 30));
+			monitor.dispose();
+
+			expect(logger.debug).toHaveBeenCalledWith(
+				"No process found listening on port 12345",
+			);
+		});
+
+		it("detects port change across search attempts", async () => {
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 11111 ->",
+			});
+
+			// First attempt: port 11111 with no process
+			// After port changes: port 22222 with process
+			let callCount = 0;
+			vi.mocked(find).mockImplementation(() => {
+				callCount++;
+				if (callCount >= 3) {
+					return Promise.resolve([
+						{ pid: 777, ppid: 1, name: "ssh", cmd: "ssh" },
+					]);
+				}
+				return Promise.resolve([]);
+			});
+
+			const logger = createMockLogger();
+			const monitor = createMonitor({
+				codeLogDir: "/logs/window1",
+				logger,
+			});
+
+			// Wait for first attempts with port 11111
+			await new Promise((r) => setTimeout(r, 30));
+
+			// Change port
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 22222 ->",
+			});
+
+			const pid = await waitForEvent(monitor.onPidChange, 2000);
+			expect(pid).toBe(777);
+		});
+
 		it("does not fire event when same process is found after stale check", async () => {
 			vol.fromJSON({
 				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":

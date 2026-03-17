@@ -512,20 +512,29 @@ export class Remote {
 
 			this.commands.workspaceLogPath = sshMonitor.getLogFilePath();
 
+			const reregisterLabelFormatter = () => {
+				labelFormatterDisposable.dispose();
+				labelFormatterDisposable = this.registerLabelFormatter(
+					remoteAuthority,
+					workspace.owner_name,
+					workspace.name,
+					agent.name,
+				);
+			};
+
 			disposables.push(
 				sshMonitor.onLogFilePathChange((newPath) => {
 					this.commands.workspaceLogPath = newPath;
 				}),
+				// Re-register label formatter when SSH process reconnects after sleep/wake
+				sshMonitor.onPidChange(() => {
+					reregisterLabelFormatter();
+					// Reconnect WebSockets that may be in TCP half-open state
+					workspaceClient.reconnectAllConnected("SSH process changed");
+				}),
 				// Register the label formatter again because SSH overrides it!
 				vscode.extensions.onDidChange(() => {
-					// Dispose previous label formatter
-					labelFormatterDisposable.dispose();
-					labelFormatterDisposable = this.registerLabelFormatter(
-						remoteAuthority,
-						workspace.owner_name,
-						workspace.name,
-						agent.name,
-					);
+					reregisterLabelFormatter();
 				}),
 				...(await this.createAgentMetadataStatusBar(agent, workspaceClient)),
 			);
