@@ -38,11 +38,7 @@ export class ChatPanelProvider
 	public openChat(agentId: string): void {
 		this.agentId = agentId;
 		this.refresh();
-		vscode.commands
-			.executeCommand("workbench.action.focusAuxiliaryBar")
-			.then(() =>
-				vscode.commands.executeCommand("coder.chatPanel.focus"),
-			);
+		void vscode.commands.executeCommand("coder.chatPanel.focus");
 	}
 
 	async resolveWebviewView(
@@ -51,6 +47,12 @@ export class ChatPanelProvider
 		_token: vscode.CancellationToken,
 	): Promise<void> {
 		this.view = webviewView;
+		webviewView.webview.options = { enableScripts: true };
+		this.disposables.push(
+			webviewView.webview.onDidReceiveMessage((msg: unknown) => {
+				this.handleMessage(msg);
+			}),
+		);
 		this.renderView();
 		webviewView.onDidDispose(() => this.disposeInternals());
 	}
@@ -75,16 +77,6 @@ export class ChatPanelProvider
 			webview.html = this.getNoAgentHtml();
 			return;
 		}
-
-		this.disposeInternals();
-
-		webview.options = { enableScripts: true };
-
-		this.disposables.push(
-			webview.onDidReceiveMessage((msg: unknown) => {
-				this.handleMessage(msg);
-			}),
-		);
 
 		const embedUrl = `${coderUrl}/agents/${this.agentId}/embed`;
 		webview.html = this.getIframeHtml(embedUrl, coderUrl);
@@ -150,12 +142,7 @@ export class ChatPanelProvider
       const iframe = document.getElementById('chat-frame');
       const status = document.getElementById('status');
 
-      function log(msg) { console.log('[CoderChat] ' + msg); }
-
-      log('Webview loaded, iframe src: ' + iframe.src);
-
       iframe.addEventListener('load', () => {
-        log('iframe load event');
         iframe.style.display = 'block';
         status.style.display = 'none';
       });
@@ -165,9 +152,7 @@ export class ChatPanelProvider
         if (!data || typeof data !== 'object') return;
 
         if (event.source === iframe.contentWindow) {
-          log('From iframe: ' + JSON.stringify(data.type));
           if (data.type === 'coder:vscode-ready') {
-            log('Requesting token from extension host');
             status.textContent = 'Authenticating…';
             vscode.postMessage({ type: 'coder:vscode-ready' });
           }
@@ -175,7 +160,6 @@ export class ChatPanelProvider
         }
 
         if (data.type === 'coder:auth-bootstrap-token') {
-          log('Forwarding token to iframe');
           status.textContent = 'Signing in…';
           iframe.contentWindow.postMessage({
             type: 'coder:vscode-auth-bootstrap',
