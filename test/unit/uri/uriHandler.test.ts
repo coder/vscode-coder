@@ -6,6 +6,7 @@ import { SecretsManager } from "@/core/secretsManager";
 import { CALLBACK_PATH } from "@/oauth/utils";
 import { maybeAskUrl } from "@/promptUtils";
 import { registerUriHandler } from "@/uri/uriHandler";
+import { type ChatPanelProvider } from "@/webviews/chat/chatPanelProvider";
 
 import {
 	createMockLogger,
@@ -98,10 +99,13 @@ function createTestContext() {
 		.mocked(vscode.window.showErrorMessage)
 		.mockResolvedValue(undefined);
 
+	const chatPanelProvider = {} as unknown as ChatPanelProvider;
+
 	registerUriHandler(
 		container,
 		deploymentManager as unknown as DeploymentManager,
 		commands as unknown as Commands,
+		chatPanelProvider,
 	);
 
 	return {
