@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- SSH connections now recover faster after laptop sleep/wake by detecting port changes,
+  re-registering the label formatter, and refreshing WebSockets automatically.
+- SSH process discovery now uses `ss` -> `netstat` -> `lsof` on Linux
+  and `netstat` -> `lsof` on macOS, fixing systems where `netstat` was unavailable
+  and the SSH PID could not be resolved, which broke network info display and log viewing.
+
 ## [v1.14.1-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.1-pre) 2026-03-16
 
 ### Added
