@@ -54,7 +54,7 @@ export class ChatPanelProvider
 			}),
 		);
 		this.renderView();
-		webviewView.onDidDispose(() => this.disposeInternals());
+		webviewView.onDidDispose(() => this.dispose());
 	}
 
 	public refresh(): void {
@@ -183,14 +183,10 @@ text-align:center;}</style></head>
 <body><p>No active chat session. Open a chat from the Agents tab on your Coder deployment.</p></body></html>`;
 	}
 
-	private disposeInternals(): void {
+	dispose(): void {
 		for (const d of this.disposables) {
 			d.dispose();
 		}
 		this.disposables = [];
-	}
-
-	dispose(): void {
-		this.disposeInternals();
 	}
 }
