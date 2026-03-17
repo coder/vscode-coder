@@ -91,13 +91,7 @@ function getRequiredParam(params: URLSearchParams, name: string): string {
 }
 
 async function handleOpen(ctx: UriRouteContext): Promise<void> {
-	const {
-		params,
-		serviceContainer,
-		deploymentManager,
-		commands,
-		chatPanelProvider,
-	} = ctx;
+	const { params, serviceContainer, deploymentManager, commands } = ctx;
 
 	const owner = getRequiredParam(params, "owner");
 	const workspace = getRequiredParam(params, "workspace");
@@ -107,10 +101,14 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		params.has("openRecent") &&
 		(!params.get("openRecent") || params.get("openRecent") === "true");
 
-	// Optional: if agentId is present, also open the embedded chat
-	// panel. Old extensions silently ignore this unknown param,
-	// giving backwards compatibility.
+	// Persist the chat agent ID before commands.open() triggers
+	// a remote-authority reload that wipes in-memory state.
+	// The extension picks this up after the reload in activate().
 	const agentId = params.get("agentId");
+	if (agentId) {
+		const mementoManager = serviceContainer.getMementoManager();
+		await mementoManager.setPendingChatAgentId(agentId);
+	}
 
 	await setupDeployment(params, serviceContainer, deploymentManager);
 
@@ -121,10 +119,6 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		folder ?? undefined,
 		openRecent,
 	);
-
-	if (agentId) {
-		chatPanelProvider.openChat(agentId);
-	}
 }
 
 async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {

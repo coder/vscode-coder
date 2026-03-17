@@ -336,6 +336,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					url: details.url,
 					token: details.token,
 				});
+
+				// If a deep link stored a chat agent ID before the
+				// remote-authority reload, open it now that the
+				// deployment is configured.
+				const pendingAgentId =
+					await mementoManager.getAndClearPendingChatAgentId();
+				if (pendingAgentId) {
+					chatPanelProvider.openChat(pendingAgentId);
+				}
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
