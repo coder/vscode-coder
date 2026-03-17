@@ -235,6 +235,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	);
 
 	ctx.subscriptions.push(
+		registerUriHandler(
+			serviceContainer,
+			deploymentManager,
+			commands,
+			chatPanelProvider,
+		),
 		vscode.commands.registerCommand(
 			"coder.login",
 			commands.login.bind(commands),
@@ -301,16 +307,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	);
 
 	const remote = new Remote(serviceContainer, commands, ctx);
-
-	// Register the URI handler so deep links (e.g. /openChat) work.
-	ctx.subscriptions.push(
-		registerUriHandler(
-			serviceContainer,
-			deploymentManager,
-			commands,
-			chatPanelProvider,
-		),
-	);
 
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
