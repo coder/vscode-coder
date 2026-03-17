@@ -51,31 +51,7 @@ export class ChatPanelProvider
 		_token: vscode.CancellationToken,
 	): Promise<void> {
 		this.view = webviewView;
-
-		if (!this.agentId) {
-			webviewView.webview.html = this.getNoAgentHtml();
-			return;
-		}
-
-		const coderUrl = this.client.getHost();
-		if (!coderUrl) {
-			webviewView.webview.html = this.getNoAgentHtml();
-			return;
-		}
-
-		webviewView.webview.options = { enableScripts: true };
-
-		this.disposeInternals();
-
-		this.disposables.push(
-			webviewView.webview.onDidReceiveMessage((msg: unknown) => {
-				this.handleMessage(msg);
-			}),
-		);
-
-		const embedUrl = `${coderUrl}/agents/${this.agentId}/embed`;
-		webviewView.webview.html = this.getIframeHtml(embedUrl, coderUrl);
-
+		this.renderView();
 		webviewView.onDidDispose(() => this.disposeInternals());
 	}
 
@@ -83,29 +59,35 @@ export class ChatPanelProvider
 		if (!this.view) {
 			return;
 		}
+		this.renderView();
+	}
+
+	private renderView(): void {
+		const webview = this.view!.webview;
 
 		if (!this.agentId) {
-			this.view.webview.html = this.getNoAgentHtml();
+			webview.html = this.getNoAgentHtml();
 			return;
 		}
 
 		const coderUrl = this.client.getHost();
 		if (!coderUrl) {
-			this.view.webview.html = this.getNoAgentHtml();
+			webview.html = this.getNoAgentHtml();
 			return;
 		}
 
 		this.disposeInternals();
 
+		webview.options = { enableScripts: true };
+
 		this.disposables.push(
-			this.view.webview.onDidReceiveMessage((msg: unknown) => {
+			webview.onDidReceiveMessage((msg: unknown) => {
 				this.handleMessage(msg);
 			}),
 		);
 
-		this.view.webview.options = { enableScripts: true };
 		const embedUrl = `${coderUrl}/agents/${this.agentId}/embed`;
-		this.view.webview.html = this.getIframeHtml(embedUrl, coderUrl);
+		webview.html = this.getIframeHtml(embedUrl, coderUrl);
 	}
 
 	private handleMessage(message: unknown): void {
@@ -215,15 +197,6 @@ height:100vh;margin:0;padding:16px;box-sizing:border-box;
 font-family:var(--vscode-font-family);color:var(--vscode-foreground);
 text-align:center;}</style></head>
 <body><p>No active chat session. Open a chat from the Agents tab on your Coder deployment.</p></body></html>`;
-	}
-
-	private getErrorHtml(message: string): string {
-		return /* html */ `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8">
-<style>body{display:flex;align-items:center;justify-content:center;
-height:100vh;margin:0;font-family:var(--vscode-font-family);
-color:var(--vscode-errorForeground,#f44);}</style></head>
-<body><p>${message}</p></body></html>`;
 	}
 
 	private disposeInternals(): void {
