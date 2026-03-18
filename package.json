@@ -196,7 +196,7 @@
 			"panel": [
 				{
 					"id": "coderChat",
-					"title": "Coder Chat",
+					"title": "Coder Chat (Experimental)",
 					"icon": "media/shorthand-logo.svg"
 				}
 			]
@@ -236,7 +236,7 @@
 				{
 					"type": "webview",
 					"id": "coder.chatPanel",
-					"name": "Coder Chat",
+					"name": "Coder Chat (Experimental)",
 					"icon": "media/shorthand-logo.svg"
 				}
 			]
