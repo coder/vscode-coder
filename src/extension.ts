@@ -235,12 +235,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	);
 
 	ctx.subscriptions.push(
-		registerUriHandler(
-			serviceContainer,
-			deploymentManager,
-			commands,
-			chatPanelProvider,
-		),
+		registerUriHandler(serviceContainer, deploymentManager, commands),
 		vscode.commands.registerCommand(
 			"coder.login",
 			commands.login.bind(commands),

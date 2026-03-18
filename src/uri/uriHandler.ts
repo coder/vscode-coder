@@ -8,14 +8,12 @@ import { CALLBACK_PATH } from "../oauth/utils";
 import { maybeAskUrl } from "../promptUtils";
 import { toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
-import { type ChatPanelProvider } from "../webviews/chat/chatPanelProvider";
 
 interface UriRouteContext {
 	params: URLSearchParams;
 	serviceContainer: ServiceContainer;
 	deploymentManager: DeploymentManager;
 	commands: Commands;
-	chatPanelProvider: ChatPanelProvider;
 }
 
 type UriRouteHandler = (ctx: UriRouteContext) => Promise<void>;
@@ -23,7 +21,6 @@ type UriRouteHandler = (ctx: UriRouteContext) => Promise<void>;
 const routes: Readonly<Record<string, UriRouteHandler>> = {
 	"/open": handleOpen,
 	"/openDevContainer": handleOpenDevContainer,
-	"/openChat": handleOpenChat,
 	[CALLBACK_PATH]: handleOAuthCallback,
 };
 
@@ -34,20 +31,13 @@ export function registerUriHandler(
 	serviceContainer: ServiceContainer,
 	deploymentManager: DeploymentManager,
 	commands: Commands,
-	chatPanelProvider: ChatPanelProvider,
 ): vscode.Disposable {
 	const output = serviceContainer.getLogger();
 
 	return vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
 			try {
-				await routeUri(
-					uri,
-					serviceContainer,
-					deploymentManager,
-					commands,
-					chatPanelProvider,
-				);
+				await routeUri(uri, serviceContainer, deploymentManager, commands);
 			} catch (error) {
 				const message = errToStr(error, "No error message was provided");
 				output.warn(`Failed to handle URI ${uri.toString()}: ${message}`);
@@ -66,7 +56,6 @@ async function routeUri(
 	serviceContainer: ServiceContainer,
 	deploymentManager: DeploymentManager,
 	commands: Commands,
-	chatPanelProvider: ChatPanelProvider,
 ): Promise<void> {
 	const handler = routes[uri.path];
 	if (!handler) {
@@ -78,7 +67,6 @@ async function routeUri(
 		serviceContainer,
 		deploymentManager,
 		commands,
-		chatPanelProvider,
 	});
 }
 
@@ -199,17 +187,6 @@ async function setupDeployment(
 		token: result.token,
 		user: result.user,
 	});
-}
-
-async function handleOpenChat(ctx: UriRouteContext): Promise<void> {
-	const { params, serviceContainer, deploymentManager, chatPanelProvider } =
-		ctx;
-
-	const agentId = getRequiredParam(params, "agentId");
-
-	await setupDeployment(params, serviceContainer, deploymentManager);
-
-	chatPanelProvider.openChat(agentId);
 }
 
 async function handleOAuthCallback(ctx: UriRouteContext): Promise<void> {
