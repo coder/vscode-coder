@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
-import * as vscode from "vscode";
 
 import { type CoderApi } from "../../api/coderApi";
 import { type Logger } from "../../logging/logger";
+
+import type * as vscode from "vscode";
 
 /**
  * Provides a webview that embeds the Coder agent chat UI.
@@ -33,12 +34,14 @@ export class ChatPanelProvider
 	) {}
 
 	/**
-	 * Called by the `/openChat` URI handler.
+	 * Opens the chat panel for the given chat ID.
+	 * Called after a deep link reload via the persisted
+	 * pendingChatId, or directly for testing.
 	 */
 	public openChat(chatId: string): void {
 		this.chatId = chatId;
 		this.refresh();
-		void vscode.commands.executeCommand("coder.chatPanel.focus");
+		this.view?.show(true);
 	}
 
 	resolveWebviewView(
@@ -167,7 +170,7 @@ export class ChatPanelProvider
           iframe.contentWindow.postMessage({
             type: 'coder:vscode-auth-bootstrap',
             payload: { token: data.token },
-          }, '*');
+	          }, '${allowedOrigin}');
         }
       });
     })();

@@ -236,7 +236,8 @@
 				{
 					"type": "webview",
 					"id": "coder.chatPanel",
-					"name": "Coder Chat"
+					"name": "Coder Chat",
+					"icon": "media/shorthand-logo.svg"
 				}
 			]
 		},
