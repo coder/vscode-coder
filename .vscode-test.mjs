@@ -1,8 +1,9 @@
 import { defineConfig } from "@vscode/test-cli";
 
 // VS Code to Electron/Node version mapping:
-//   VS Code 1.95  (Oct 2024) -> Node 20 - Minimum supported
+//   VS Code 1.95  (Oct 2024) -> Electron 32, Node 20 - Minimum supported
 //   VS Code stable           -> Latest
+// See https://github.com/ewanharris/vscode-versions for version mapping
 const versions = ["1.95.0", "stable"];
 
 const baseConfig = {

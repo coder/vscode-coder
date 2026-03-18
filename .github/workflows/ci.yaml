@@ -34,13 +34,14 @@ jobs:
 
       - run: pnpm build
 
-  test-unit:
-    name: Unit Test (Electron ${{ matrix.electron-version }})
+  test-extension:
+    name: Extension Test (Electron ${{ matrix.electron-version }})
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
-        # Minimum supported version: VS Code 1.95  (Oct 2024) -> Electron 32 -> Node 20
+        # Minimum supported version: VS Code 1.95 (Oct 2024) -> Electron 32 -> Node 20
+        # See https://github.com/ewanharris/vscode-versions for version mapping
         electron-version: ["32", "latest"]
 
     steps:
@@ -55,8 +56,29 @@ jobs:
 
       - run: pnpm install
 
-      - name: Run tests with Electron ${{ matrix.electron-version }}
+      - name: Run extension tests with Electron ${{ matrix.electron-version }}
         run: ./scripts/test-electron.sh ${{ matrix.electron-version }}
+        env:
+          CI: true
+
+  test-webview:
+    name: Webview Test
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - run: pnpm install
+
+      - name: Run webview tests
+        run: pnpm test:webview
         env:
           CI: true
 
@@ -88,7 +110,7 @@ jobs:
   package:
     name: Package
     runs-on: ubuntu-22.04
-    needs: [lint, test-unit, test-integration]
+    needs: [lint, test-extension, test-webview, test-integration]
     steps:
       - uses: actions/checkout@v6
 
