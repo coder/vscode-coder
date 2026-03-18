@@ -155,23 +155,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 	};
 
 	/**
-	 * Force-reconnect all sockets in CONNECTED state, which may be in a TCP
-	 * half-open state after sleep/wake. Sockets in other states (AWAITING_RETRY,
-	 * DISCONNECTED) are left alone as they already have their own retry logic.
-	 */
-	reconnectAllConnected(reason: string): void {
-		const stale = [...this.reconnectingSockets].filter(
-			(s) => s.state === ConnectionState.CONNECTED,
-		);
-		if (stale.length > 0) {
-			this.output.info(`Reconnecting ${stale.length} WebSocket(s): ${reason}`);
-			for (const socket of stale) {
-				socket.reconnect();
-			}
-		}
-	}
-
-	/**
 	 * Permanently dispose all WebSocket connections.
 	 * This clears handlers and prevents reconnection.
 	 */

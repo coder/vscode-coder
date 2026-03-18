@@ -529,8 +529,6 @@ export class Remote {
 				// Re-register label formatter when SSH process reconnects after sleep/wake
 				sshMonitor.onPidChange(() => {
 					reregisterLabelFormatter();
-					// Reconnect WebSockets that may be in TCP half-open state
-					workspaceClient.reconnectAllConnected("SSH process changed");
 				}),
 				// Register the label formatter again because SSH overrides it!
 				vscode.extensions.onDidChange(() => {

@@ -4,8 +4,8 @@
 
 ### Fixed
 
-- SSH connections now recover faster after laptop sleep/wake by detecting port changes,
-  re-registering the label formatter, and refreshing WebSockets automatically.
+- SSH connections now recover faster after laptop sleep/wake by detecting port changes
+  and re-registering the label formatter.
 - SSH process discovery now uses `ss` -> `netstat` -> `lsof` on Linux
   and `netstat` -> `lsof` on macOS, fixing systems where `netstat` was unavailable
   and the SSH PID could not be resolved, which broke network info display and log viewing.
