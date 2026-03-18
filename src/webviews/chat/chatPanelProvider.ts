@@ -65,7 +65,10 @@ export class ChatPanelProvider
 	}
 
 	private renderView(): void {
-		const webview = this.view!.webview;
+		if (!this.view) {
+			throw new Error("renderView called before resolveWebviewView");
+		}
+		const webview = this.view.webview;
 
 		if (!this.agentId) {
 			webview.html = this.getNoAgentHtml();
