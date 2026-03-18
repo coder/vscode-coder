@@ -89,6 +89,15 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		params.has("openRecent") &&
 		(!params.get("openRecent") || params.get("openRecent") === "true");
 
+	// Persist the chat ID before commands.open() triggers
+	// a remote-authority reload that wipes in-memory state.
+	// The extension picks this up after the reload in activate().
+	const chatId = params.get("chatId");
+	if (chatId) {
+		const mementoManager = serviceContainer.getMementoManager();
+		await mementoManager.setPendingChatId(chatId);
+	}
+
 	await setupDeployment(params, serviceContainer, deploymentManager);
 
 	await commands.open(

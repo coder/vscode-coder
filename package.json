@@ -192,6 +192,13 @@
 					"title": "Coder Tasks",
 					"icon": "media/tasks-logo.svg"
 				}
+			],
+			"panel": [
+				{
+					"id": "coderChat",
+					"title": "Coder Chat (Experimental)",
+					"icon": "media/shorthand-logo.svg"
+				}
 			]
 		},
 		"views": {
@@ -223,6 +230,14 @@
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
 					"when": "coder.authenticated"
+				}
+			],
+			"coderChat": [
+				{
+					"type": "webview",
+					"id": "coder.chatPanel",
+					"name": "Coder Chat (Experimental)",
+					"icon": "media/shorthand-logo.svg"
 				}
 			]
 		},

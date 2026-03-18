@@ -19,6 +19,7 @@ import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscodeProposed";
+import { ChatPanelProvider } from "./webviews/chat/chatPanelProvider";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
 import {
 	WorkspaceProvider,
@@ -222,6 +223,17 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		),
 	);
 
+	// Register Chat embed panel with dependencies
+	const chatPanelProvider = new ChatPanelProvider(client, output);
+	ctx.subscriptions.push(
+		chatPanelProvider,
+		vscode.window.registerWebviewViewProvider(
+			ChatPanelProvider.viewType,
+			chatPanelProvider,
+			{ webviewOptions: { retainContextWhenHidden: true } },
+		),
+	);
+
 	ctx.subscriptions.push(
 		registerUriHandler(serviceContainer, deploymentManager, commands),
 		vscode.commands.registerCommand(
@@ -315,6 +327,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 					url: details.url,
 					token: details.token,
 				});
+
+				// If a deep link stored a chat agent ID before the
+				// remote-authority reload, open it now that the
+				// deployment is configured.
+				const pendingChatId = await mementoManager.getAndClearPendingChatId();
+				if (pendingChatId) {
+					chatPanelProvider.openChat(pendingChatId);
+				}
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
