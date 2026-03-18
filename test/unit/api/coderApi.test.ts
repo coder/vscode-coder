@@ -795,6 +795,44 @@ describe("CoderApi", () => {
 		});
 	});
 
+	describe("reconnectAllConnected", () => {
+		const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+		it("reconnects sockets in CONNECTED state", async () => {
+			const { sockets } = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+			await tick();
+
+			api.reconnectAllConnected("sleep/wake recovery");
+			await tick();
+
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				1000,
+				"Replacing connection",
+			);
+			expect(sockets).toHaveLength(2);
+		});
+
+		it.each([
+			["AWAITING_RETRY", 1006, "Abnormal closure"],
+			["DISCONNECTED", 1002, "Protocol error"],
+		])("does not reconnect %s sockets", async (_state, code, reason) => {
+			const { sockets, handlers } = setupAutoOpeningWebSocket();
+			api = createApi(CODER_URL, AXIOS_TOKEN);
+			await api.watchAgentMetadata(AGENT_ID);
+			await tick();
+
+			handlers["close"]?.({ code, reason });
+			await tick();
+
+			api.reconnectAllConnected("sleep/wake recovery");
+			await tick();
+
+			expect(sockets).toHaveLength(1);
+		});
+	});
+
 	describe("Configuration Change Reconnection", () => {
 		const tick = () => new Promise((resolve) => setImmediate(resolve));
 
