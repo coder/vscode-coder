@@ -25,7 +25,7 @@ export class ChatPanelProvider
 
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
-	private agentId: string | undefined;
+	private chatId: string | undefined;
 
 	constructor(
 		private readonly client: CoderApi,
@@ -35,8 +35,8 @@ export class ChatPanelProvider
 	/**
 	 * Called by the `/openChat` URI handler.
 	 */
-	public openChat(agentId: string): void {
-		this.agentId = agentId;
+	public openChat(chatId: string): void {
+		this.chatId = chatId;
 		this.refresh();
 		void vscode.commands.executeCommand("coder.chatPanel.focus");
 	}
@@ -70,7 +70,7 @@ export class ChatPanelProvider
 		}
 		const webview = this.view.webview;
 
-		if (!this.agentId) {
+		if (!this.chatId) {
 			webview.html = this.getNoAgentHtml();
 			return;
 		}
@@ -81,7 +81,7 @@ export class ChatPanelProvider
 			return;
 		}
 
-		const embedUrl = `${coderUrl}/agents/${this.agentId}/embed`;
+		const embedUrl = `${coderUrl}/agents/${this.chatId}/embed`;
 		webview.html = this.getIframeHtml(embedUrl, coderUrl);
 	}
 

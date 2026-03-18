@@ -59,26 +59,26 @@ export class MementoManager {
 	}
 
 	/**
-	 * Store a chat agent ID to open after a window reload.
+	 * Store a chat ID to open after a window reload.
 	 * Used by the /open deep link handler: it must call
 	 * commands.open() which triggers a remote-authority
-	 * reload, wiping in-memory state.  The agent ID is
+	 * reload, wiping in-memory state.  The chat ID is
 	 * persisted here so the extension can pick it up on
 	 * the other side of the reload.
 	 */
-	public async setPendingChatAgentId(agentId: string): Promise<void> {
-		await this.memento.update("pendingChatAgentId", agentId);
+	public async setPendingChatId(chatId: string): Promise<void> {
+		await this.memento.update("pendingChatId", chatId);
 	}
 
 	/**
-	 * Read and clear the pending chat agent ID.  Returns
+	 * Read and clear the pending chat ID.  Returns
 	 * undefined if none was stored.
 	 */
-	public async getAndClearPendingChatAgentId(): Promise<string | undefined> {
-		const agentId = this.memento.get<string>("pendingChatAgentId");
-		if (agentId !== undefined) {
-			await this.memento.update("pendingChatAgentId", undefined);
+	public async getAndClearPendingChatId(): Promise<string | undefined> {
+		const chatId = this.memento.get<string>("pendingChatId");
+		if (chatId !== undefined) {
+			await this.memento.update("pendingChatId", undefined);
 		}
-		return agentId;
+		return chatId;
 	}
 }
