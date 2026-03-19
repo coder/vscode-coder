@@ -3,21 +3,17 @@ import { randomBytes } from "node:crypto";
 import { type CoderApi } from "../../api/coderApi";
 import { type Logger } from "../../logging/logger";
 
+import { ChatProxy } from "./chatProxy";
+
 import type * as vscode from "vscode";
 
 /**
  * Provides a webview that embeds the Coder agent chat UI.
- * Authentication flows through postMessage:
  *
- *   1. The iframe loads /agents/{id}/embed on the Coder server.
- *   2. The embed page detects the user is signed out and sends
- *      { type: "coder:vscode-ready" } to window.parent.
- *   3. Our webview relays this to the extension host.
- *   4. The extension host replies with the session token.
- *   5. The webview forwards { type: "coder:vscode-auth-bootstrap" }
- *      with the token back into the iframe.
- *   6. The embed page calls API.setSessionToken(token), re-fetches
- *      the authenticated user, and renders the chat UI.
+ * Authentication uses a local reverse proxy that injects the
+ * session token header into every HTTP and WebSocket request.
+ * The iframe loads from the proxy (http://127.0.0.1:PORT/SECRET/...)
+ * so the Coder frontend works exactly as in a normal browser.
  */
 export class ChatPanelProvider
 	implements vscode.WebviewViewProvider, vscode.Disposable
@@ -27,7 +23,7 @@ export class ChatPanelProvider
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
 	private chatId: string | undefined;
-	private authRetryTimer: ReturnType<typeof setTimeout> | undefined;
+	private proxy: ChatProxy | undefined;
 
 	constructor(
 		private readonly client: CoderApi,
@@ -52,11 +48,6 @@ export class ChatPanelProvider
 	): void {
 		this.view = webviewView;
 		webviewView.webview.options = { enableScripts: true };
-		this.disposables.push(
-			webviewView.webview.onDidReceiveMessage((msg: unknown) => {
-				this.handleMessage(msg);
-			}),
-		);
 		this.renderView();
 		webviewView.onDidDispose(() => this.dispose());
 	}
@@ -80,64 +71,43 @@ export class ChatPanelProvider
 		}
 
 		const coderUrl = this.client.getHost();
-		if (!coderUrl) {
+		const token = this.client.getSessionToken();
+		if (!coderUrl || !token) {
 			webview.html = this.getNoAgentHtml();
 			return;
 		}
 
-		const embedUrl = `${coderUrl}/agents/${this.chatId}/embed`;
-		webview.html = this.getIframeHtml(embedUrl, coderUrl);
+		// Start the proxy and render the iframe once it's ready.
+		void this.startProxyAndRender(coderUrl, token, this.chatId);
 	}
 
-	private handleMessage(message: unknown): void {
-		if (typeof message !== "object" || message === null) {
-			return;
-		}
-		const msg = message as { type?: string };
-		if (msg.type === "coder:vscode-ready") {
-			this.sendAuthToken();
-		}
-	}
+	private async startProxyAndRender(
+		coderUrl: string,
+		token: string,
+		chatId: string,
+	): Promise<void> {
+		// Dispose any existing proxy before starting a new one.
+		this.proxy?.dispose();
 
-	/**
-	 * Attempt to forward the session token to the chat iframe.
-	 * The token may not be available immediately after a reload
-	 * (e.g. deployment setup is still in progress), so we retry
-	 * with exponential backoff before giving up.
-	 */
-	private static readonly MAX_AUTH_RETRIES = 5;
-	private static readonly AUTH_RETRY_BASE_MS = 500;
+		try {
+			this.proxy = new ChatProxy(coderUrl, token, this.logger);
+			const proxyBaseUrl = await this.proxy.listen();
 
-	private sendAuthToken(attempt = 0): void {
-		const token = this.client.getSessionToken();
-		if (!token) {
-			if (attempt < ChatPanelProvider.MAX_AUTH_RETRIES) {
-				const delay = ChatPanelProvider.AUTH_RETRY_BASE_MS * 2 ** attempt;
-				this.logger.info(
-					`Chat: no session token yet, retrying in ${delay}ms ` +
-						`(attempt ${attempt + 1}/${ChatPanelProvider.MAX_AUTH_RETRIES})`,
-				);
-				this.authRetryTimer = setTimeout(
-					() => this.sendAuthToken(attempt + 1),
-					delay,
-				);
+			if (!this.view) {
+				this.proxy.dispose();
 				return;
 			}
-			this.logger.warn(
-				"Chat iframe requested auth but no session token available " +
-					"after all retries",
-			);
-			this.view?.webview.postMessage({
-				type: "coder:auth-error",
-				error: "No session token available. Please sign in and retry.",
-			});
-			return;
+
+			const embedUrl = `${proxyBaseUrl}/agents/${chatId}/embed`;
+			this.view.webview.html = this.getIframeHtml(embedUrl, proxyBaseUrl);
+		} catch (err) {
+			this.logger.warn("Failed to start chat proxy", err);
+			if (this.view) {
+				this.view.webview.html = this.getErrorHtml(
+					"Failed to start authentication proxy.",
+				);
+			}
 		}
-		this.logger.info("Chat: forwarding token to iframe");
-		this.view?.webview.postMessage({
-			type: "coder:auth-bootstrap-token",
-			token,
-		});
 	}
 
 	private getIframeHtml(embedUrl: string, allowedOrigin: string): string {
@@ -167,17 +137,6 @@ export class ChatPanelProvider
       font-family: var(--vscode-font-family, sans-serif);
       font-size: 13px; padding: 16px; text-align: center;
     }
-    #retry-btn {
-      margin-top: 12px; padding: 6px 16px;
-      background: var(--vscode-button-background, #0e639c);
-      color: var(--vscode-button-foreground, #fff);
-      border: none; border-radius: 2px; cursor: pointer;
-      font-family: var(--vscode-font-family, sans-serif);
-      font-size: 13px;
-    }
-    #retry-btn:hover {
-      background: var(--vscode-button-hoverBackground, #1177bb);
-    }
   </style>
 </head>
 <body>
@@ -186,50 +145,12 @@ export class ChatPanelProvider
           style="display:none;"></iframe>
   <script nonce="${nonce}">
     (function () {
-      const vscode = acquireVsCodeApi();
       const iframe = document.getElementById('chat-frame');
       const status = document.getElementById('status');
 
       iframe.addEventListener('load', () => {
         iframe.style.display = 'block';
         status.style.display = 'none';
-      });
-
-      window.addEventListener('message', (event) => {
-        const data = event.data;
-        if (!data || typeof data !== 'object') return;
-
-        if (event.source === iframe.contentWindow) {
-          if (data.type === 'coder:vscode-ready') {
-            status.textContent = 'Authenticating…';
-            vscode.postMessage({ type: 'coder:vscode-ready' });
-          }
-          return;
-        }
-
-        if (data.type === 'coder:auth-bootstrap-token') {
-          status.textContent = 'Signing in…';
-          iframe.contentWindow.postMessage({
-            type: 'coder:vscode-auth-bootstrap',
-            payload: { token: data.token },
-	          }, '${allowedOrigin}');
-        }
-
-        if (data.type === 'coder:auth-error') {
-          status.textContent = '';
-          status.appendChild(document.createTextNode(data.error || 'Authentication failed.'));
-          const btn = document.createElement('button');
-          btn.id = 'retry-btn';
-          btn.textContent = 'Retry';
-          btn.addEventListener('click', () => {
-            status.textContent = 'Authenticating…';
-            vscode.postMessage({ type: 'coder:vscode-ready' });
-          });
-          status.appendChild(document.createElement('br'));
-          status.appendChild(btn);
-          status.style.display = 'block';
-          iframe.style.display = 'none';
-        }
       });
     })();
   </script>
@@ -247,8 +168,18 @@ text-align:center;}</style></head>
 <body><p>No active chat session. Open a chat from the Agents tab on your Coder deployment.</p></body></html>`;
 	}
 
+	private getErrorHtml(message: string): string {
+		return /* html */ `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<style>body{display:flex;align-items:center;justify-content:center;
+height:100vh;margin:0;padding:16px;box-sizing:border-box;
+font-family:var(--vscode-font-family);color:var(--vscode-errorForeground, #f44);
+text-align:center;}</style></head>
+<body><p>${message}</p></body></html>`;
+	}
+
 	dispose(): void {
-		clearTimeout(this.authRetryTimer);
+		this.proxy?.dispose();
 		for (const d of this.disposables) {
 			d.dispose();
 		}
