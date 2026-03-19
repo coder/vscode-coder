@@ -544,9 +544,12 @@ export class MockCoderApi implements Pick<
 	});
 
 	// Minimal axios-like stub for getAxiosInstance().
-	readonly getAxiosInstance = vi.fn(() => ({
-		get: vi.fn().mockResolvedValue({ data: [] }),
-	}) as unknown as AxiosInstance);
+	readonly getAxiosInstance = vi.fn(
+		() =>
+			({
+				get: vi.fn().mockResolvedValue({ data: [] }),
+			}) as unknown as AxiosInstance,
+	);
 
 	/**
 	 * Get current host (for assertions)

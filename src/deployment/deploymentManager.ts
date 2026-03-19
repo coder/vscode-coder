@@ -258,7 +258,9 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Runs in the background so it does not block login.
 	 */
 	private updateExperimentContexts(): void {
-		this.client.getAxiosInstance().get("/api/v2/experiments")
+		this.client
+			.getAxiosInstance()
+			.get("/api/v2/experiments")
 			.then((resp) => {
 				const experiments: string[] = resp.data ?? [];
 				this.contextManager.set(
