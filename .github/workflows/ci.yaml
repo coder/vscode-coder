@@ -66,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vscode-version: ["1.95.0", "stable"]
+        vscode-version: ["1.106.0", "stable"]
 
     steps:
       - uses: actions/checkout@v6
