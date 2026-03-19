@@ -193,7 +193,7 @@
 					"icon": "media/tasks-logo.svg"
 				}
 			],
-			"panel": [
+			"secondarySidebar": [
 				{
 					"id": "coderChat",
 					"title": "Coder Chat (Experimental)",
@@ -237,7 +237,8 @@
 					"type": "webview",
 					"id": "coder.chatPanel",
 					"name": "Coder Chat (Experimental)",
-					"icon": "media/shorthand-logo.svg"
+					"icon": "media/shorthand-logo.svg",
+					"when": "coder.agentsEnabled"
 				}
 			]
 		},

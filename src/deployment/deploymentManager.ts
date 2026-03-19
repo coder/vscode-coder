@@ -137,6 +137,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.registerAuthListener();
 		// Contexts must be set before refresh (providers check isAuthenticated)
 		this.updateAuthContexts(deployment.user);
+		this.updateExperimentContexts();
 		this.refreshWorkspaces();
 
 		const deploymentWithoutAuth: Deployment =
@@ -166,6 +167,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.oauthSessionManager.clearDeployment();
 		this.client.setCredentials(undefined, undefined);
 		this.updateAuthContexts(undefined);
+		this.contextManager.set("coder.agentsEnabled", false);
 		this.clearWorkspaces();
 	}
 
@@ -249,6 +251,26 @@ export class DeploymentManager implements vscode.Disposable {
 		this.contextManager.set("coder.authenticated", Boolean(user));
 		const isOwner = user?.roles.some((r) => r.name === "owner") ?? false;
 		this.contextManager.set("coder.isOwner", isOwner);
+	}
+
+	/**
+	 * Fetch enabled experiments and update context keys.
+	 * Runs in the background so it does not block login.
+	 */
+	private updateExperimentContexts(): void {
+		this.client
+			.getExperiments()
+			.then((experiments) => {
+				this.contextManager.set(
+					"coder.agentsEnabled",
+					experiments.includes("agents"),
+				);
+			})
+			.catch((err) => {
+				this.logger.warn("Failed to fetch experiments", err);
+				// Default to hidden when we cannot determine.
+				this.contextManager.set("coder.agentsEnabled", false);
+			});
 	}
 
 	/**
