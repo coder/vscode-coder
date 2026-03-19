@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
       - uses: actions/setup-node@v6
         with:
@@ -40,13 +40,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Minimum supported version: VS Code 1.95  (Oct 2024) -> Electron 32 -> Node 20
-        electron-version: ["32", "latest"]
+        # Minimum supported version: VS Code 1.106 (Oct 2025) -> Electron 37 -> Node 22
+        # See https://github.com/ewanharris/vscode-versions for version mapping
+        electron-version: ["37", "latest"]
 
     steps:
       - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
       - uses: actions/setup-node@v6
         with:
@@ -66,12 +67,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vscode-version: ["1.95.0", "stable"]
+        vscode-version: ["1.106.0", "stable"]
 
     steps:
       - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
       - uses: actions/setup-node@v6
         with:
@@ -92,7 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
       - uses: actions/setup-node@v6
         with:

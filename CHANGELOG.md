@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- **Breaking**: Minimum VS Code version is now 1.106.0.
+
 ### Fixed
 
 - SSH connections now recover faster after laptop sleep/wake by detecting port changes
