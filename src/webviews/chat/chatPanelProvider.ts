@@ -27,6 +27,7 @@ export class ChatPanelProvider
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
 	private chatId: string | undefined;
+	private authRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
 		private readonly client: CoderApi,
@@ -116,7 +117,10 @@ export class ChatPanelProvider
 					`Chat: no session token yet, retrying in ${delay}ms ` +
 						`(attempt ${attempt + 1}/${ChatPanelProvider.MAX_AUTH_RETRIES})`,
 				);
-				setTimeout(() => this.sendAuthToken(attempt + 1), delay);
+				this.authRetryTimer = setTimeout(
+					() => this.sendAuthToken(attempt + 1),
+					delay,
+				);
 				return;
 			}
 			this.logger.warn(
@@ -212,7 +216,7 @@ export class ChatPanelProvider
         }
 
         if (data.type === 'coder:auth-error') {
-          status.innerHTML = '';
+          status.textContent = '';
           status.appendChild(document.createTextNode(data.error || 'Authentication failed.'));
           const btn = document.createElement('button');
           btn.id = 'retry-btn';
@@ -244,6 +248,7 @@ text-align:center;}</style></head>
 	}
 
 	dispose(): void {
+		clearTimeout(this.authRetryTimer);
 		for (const d of this.disposables) {
 			d.dispose();
 		}

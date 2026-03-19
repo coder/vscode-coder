@@ -100,19 +100,21 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 
 	await setupDeployment(params, serviceContainer, deploymentManager);
 
-	const opened = await commands.open(
-		owner,
-		workspace,
-		agent ?? undefined,
-		folder ?? undefined,
-		openRecent,
-	);
-
-	// If commands.open() returned without opening a window (e.g. the
-	// user cancelled a prompt), clear the pending chat ID so it does
-	// not leak into a future, unrelated reload.
-	if (!opened && chatId) {
-		await mementoManager.clearPendingChatId();
+	let opened = false;
+	try {
+		opened = await commands.open(
+			owner,
+			workspace,
+			agent ?? undefined,
+			folder ?? undefined,
+			openRecent,
+		);
+	} finally {
+		// Clear the pending chat ID if commands.open() did not
+		// actually open a window (user cancelled, or it threw).
+		if (!opened && chatId) {
+			await mementoManager.clearPendingChatId();
+		}
 	}
 }
 
