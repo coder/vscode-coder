@@ -430,7 +430,7 @@ export class Commands {
 
 	 * Throw if not logged into a deployment.
 	 */
-	public async openFromSidebar(item: OpenableTreeItem) {
+	public async openFromSidebar(item: OpenableTreeItem): Promise<void> {
 		if (item) {
 			const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
 			if (!baseUrl) {
@@ -464,7 +464,7 @@ export class Commands {
 		} else {
 			// If there is no tree item, then the user manually ran this command.
 			// Default to the regular open instead.
-			return this.open();
+			await this.open();
 		}
 	}
 
@@ -529,7 +529,7 @@ export class Commands {
 		agentName?: string,
 		folderPath?: string,
 		openRecent?: boolean,
-	): Promise<void> {
+	): Promise<boolean> {
 		const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
@@ -545,7 +545,7 @@ export class Commands {
 			workspace = await this.pickWorkspace();
 			if (!workspace) {
 				// User declined to pick a workspace.
-				return;
+				return false;
 			}
 		}
 
@@ -553,10 +553,16 @@ export class Commands {
 		const agent = await maybeAskAgent(agents, agentName);
 		if (!agent) {
 			// User declined to pick an agent.
-			return;
+			return false;
 		}
 
-		await this.openWorkspace(baseUrl, workspace, agent, folderPath, openRecent);
+		return this.openWorkspace(
+			baseUrl,
+			workspace,
+			agent,
+			folderPath,
+			openRecent,
+		);
 	}
 
 	/**
@@ -745,7 +751,7 @@ export class Commands {
 		agent: WorkspaceAgent,
 		folderPath: string | undefined,
 		openRecent = false,
-	) {
+	): Promise<boolean> {
 		const remoteAuthority = toRemoteAuthority(
 			baseUrl,
 			workspace.owner_name,
@@ -788,7 +794,7 @@ export class Commands {
 				});
 				if (!folderPath) {
 					// User aborted.
-					return;
+					return false;
 				}
 			}
 		}
@@ -806,7 +812,7 @@ export class Commands {
 				// Open this in a new window!
 				newWindow,
 			);
-			return;
+			return true;
 		}
 
 		// This opens the workspace without an active folder opened.
@@ -814,6 +820,7 @@ export class Commands {
 			remoteAuthority: remoteAuthority,
 			reuseWindow: !newWindow,
 		});
+		return true;
 	}
 }
 
