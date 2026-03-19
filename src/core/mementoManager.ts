@@ -81,4 +81,13 @@ export class MementoManager {
 		}
 		return chatId;
 	}
+
+	/**
+	 * Clear the pending chat ID without reading it.  Used when
+	 * the open flow is abandoned (e.g. user cancels a prompt)
+	 * so the stale ID does not leak into a future reload.
+	 */
+	public async clearPendingChatId(): Promise<void> {
+		await this.memento.update("pendingChatId", undefined);
+	}
 }

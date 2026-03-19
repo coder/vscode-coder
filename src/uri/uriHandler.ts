@@ -93,20 +93,27 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 	// a remote-authority reload that wipes in-memory state.
 	// The extension picks this up after the reload in activate().
 	const chatId = params.get("chatId");
+	const mementoManager = serviceContainer.getMementoManager();
 	if (chatId) {
-		const mementoManager = serviceContainer.getMementoManager();
 		await mementoManager.setPendingChatId(chatId);
 	}
 
 	await setupDeployment(params, serviceContainer, deploymentManager);
 
-	await commands.open(
+	const opened = await commands.open(
 		owner,
 		workspace,
 		agent ?? undefined,
 		folder ?? undefined,
 		openRecent,
 	);
+
+	// If commands.open() returned without opening a window (e.g. the
+	// user cancelled a prompt), clear the pending chat ID so it does
+	// not leak into a future, unrelated reload.
+	if (!opened && chatId) {
+		await mementoManager.clearPendingChatId();
+	}
 }
 
 async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {
