@@ -37,7 +37,14 @@ export class ChatPanelProvider
 	public openChat(chatId: string): void {
 		this.chatId = chatId;
 		this.refresh();
-		this.view?.show(true);
+		// If the view is already resolved, show it directly.
+		// Otherwise, reveal it via the VS Code command which
+		// triggers resolveWebviewView.
+		if (this.view) {
+			this.view.show(true);
+		} else {
+			void vscode.commands.executeCommand("coder.chatPanel.focus");
+		}
 	}
 
 	resolveWebviewView(

@@ -333,6 +333,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// deployment is configured.
 				const pendingChatId = await mementoManager.getAndClearPendingChatId();
 				if (pendingChatId) {
+					// Ensure the chat view is visible by enabling
+					// the agents context before revealing it. The
+					// experiments fetch in setDeployment is async
+					// and may not have completed yet.
+					contextManager.set("coder.agentsEnabled", true);
 					chatPanelProvider.openChat(pendingChatId);
 				}
 			}
