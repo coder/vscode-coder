@@ -27,6 +27,7 @@ export class ChatPanelProvider
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
 	private chatId: string | undefined;
+	private authRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
 		private readonly client: CoderApi,
@@ -94,19 +95,49 @@ export class ChatPanelProvider
 		}
 		const msg = message as { type?: string };
 		if (msg.type === "coder:vscode-ready") {
-			const token = this.client.getSessionToken();
-			if (!token) {
-				this.logger.warn(
-					"Chat iframe requested auth but no session token available",
+			this.sendAuthToken();
+		}
+	}
+
+	/**
+	 * Attempt to forward the session token to the chat iframe.
+	 * The token may not be available immediately after a reload
+	 * (e.g. deployment setup is still in progress), so we retry
+	 * with exponential backoff before giving up.
+	 */
+	private static readonly MAX_AUTH_RETRIES = 5;
+	private static readonly AUTH_RETRY_BASE_MS = 500;
+
+	private sendAuthToken(attempt = 0): void {
+		const token = this.client.getSessionToken();
+		if (!token) {
+			if (attempt < ChatPanelProvider.MAX_AUTH_RETRIES) {
+				const delay = ChatPanelProvider.AUTH_RETRY_BASE_MS * 2 ** attempt;
+				this.logger.info(
+					`Chat: no session token yet, retrying in ${delay}ms ` +
+						`(attempt ${attempt + 1}/${ChatPanelProvider.MAX_AUTH_RETRIES})`,
+				);
+				this.authRetryTimer = setTimeout(
+					() => this.sendAuthToken(attempt + 1),
+					delay,
 				);
 				return;
 			}
-			this.logger.info("Chat: forwarding token to iframe");
+			this.logger.warn(
+				"Chat iframe requested auth but no session token available " +
+					"after all retries",
+			);
 			this.view?.webview.postMessage({
-				type: "coder:auth-bootstrap-token",
-				token,
+				type: "coder:auth-error",
+				error: "No session token available. Please sign in and retry.",
 			});
+			return;
 		}
+		this.logger.info("Chat: forwarding token to iframe");
+		this.view?.webview.postMessage({
+			type: "coder:auth-bootstrap-token",
+			token,
+		});
 	}
 
 	private getIframeHtml(embedUrl: string, allowedOrigin: string): string {
@@ -135,6 +166,17 @@ export class ChatPanelProvider
       color: var(--vscode-foreground, #ccc);
       font-family: var(--vscode-font-family, sans-serif);
       font-size: 13px; padding: 16px; text-align: center;
+    }
+    #retry-btn {
+      margin-top: 12px; padding: 6px 16px;
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #fff);
+      border: none; border-radius: 2px; cursor: pointer;
+      font-family: var(--vscode-font-family, sans-serif);
+      font-size: 13px;
+    }
+    #retry-btn:hover {
+      background: var(--vscode-button-hoverBackground, #1177bb);
     }
   </style>
 </head>
@@ -172,6 +214,22 @@ export class ChatPanelProvider
             payload: { token: data.token },
 	          }, '${allowedOrigin}');
         }
+
+        if (data.type === 'coder:auth-error') {
+          status.textContent = '';
+          status.appendChild(document.createTextNode(data.error || 'Authentication failed.'));
+          const btn = document.createElement('button');
+          btn.id = 'retry-btn';
+          btn.textContent = 'Retry';
+          btn.addEventListener('click', () => {
+            status.textContent = 'Authenticating…';
+            vscode.postMessage({ type: 'coder:vscode-ready' });
+          });
+          status.appendChild(document.createElement('br'));
+          status.appendChild(btn);
+          status.style.display = 'block';
+          iframe.style.display = 'none';
+        }
       });
     })();
   </script>
@@ -190,6 +248,7 @@ text-align:center;}</style></head>
 	}
 
 	dispose(): void {
+		clearTimeout(this.authRetryTimer);
 		for (const d of this.disposables) {
 			d.dispose();
 		}
