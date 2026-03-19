@@ -1,11 +1,10 @@
 import { randomBytes } from "node:crypto";
+import * as vscode from "vscode";
 
 import { type CoderApi } from "../../api/coderApi";
 import { type Logger } from "../../logging/logger";
 
 import { ChatProxy } from "./chatProxy";
-
-import type * as vscode from "vscode";
 
 /**
  * Provides a webview that embeds the Coder agent chat UI.
@@ -98,8 +97,20 @@ export class ChatPanelProvider
 				return;
 			}
 
-			const embedUrl = `${proxyBaseUrl}/agents/${chatId}/embed`;
-			this.view.webview.html = this.getIframeHtml(embedUrl, proxyBaseUrl);
+			// asExternalUri tunnels the port when connected via
+			// Remote SSH so the local webview can reach the proxy
+			// running on the remote machine.
+			const externalUri = await vscode.env.asExternalUri(
+				vscode.Uri.parse(proxyBaseUrl),
+			);
+			const externalBase = externalUri.toString().replace(/\/$/, "");
+
+			this.logger.info(
+				`Chat proxy: local=${proxyBaseUrl} external=${externalBase}`,
+			);
+
+			const embedUrl = `${externalBase}/agents/${chatId}/embed`;
+			this.view.webview.html = this.getIframeHtml(embedUrl, externalBase);
 		} catch (err) {
 			this.logger.warn("Failed to start chat proxy", err);
 			if (this.view) {
