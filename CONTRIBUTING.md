@@ -126,8 +126,8 @@ code --open-url 'vscode://coder.coder-remote/open?url=dev.coder.com&owner=my-use
 The project uses Vitest with separate test configurations for extension and webview code:
 
 ```bash
-pnpm test:extension  # Extension tests (runs in Electron with mocked VS Code APIs)
-pnpm test:webview    # Webview tests (runs in jsdom)
+pnpm test:extension  # Extension tests (runs in Electron)
+pnpm test:webview    # Webview tests (runs in Electron with jsdom)
 pnpm test            # Both extension and webview tests (CI mode)
 ```
 
@@ -187,7 +187,7 @@ This extension targets the Node.js version bundled with VS Code's Electron:
 
 | VS Code | Electron | Node.js | Status            |
 | ------- | -------- | ------- | ----------------- |
-| 1.95    | 32       | 20      | Minimum supported |
+| 1.106   | 37       | 22      | Minimum supported |
 | stable  | latest   | varies  | Also tested in CI |
 
 When updating the minimum Node.js version, update these files:
@@ -209,9 +209,23 @@ to make sure we're using up to date versions of the client.
 
 ## Releasing
 
+For both stable and pre-releases:
+
 1. Check that the changelog lists all the important changes.
 2. Update the package.json version and add a version heading to the changelog.
-3. Push a tag matching the new package.json version.
-4. Update the resulting draft release with the changelog contents.
-5. Publish the draft release.
-6. Download the `.vsix` file from the release and upload to both the [official VS Code Extension Marketplace](https://code.visualstudio.com/api/working-with-extensions/publishing-extension), and the [open-source VSX Registry](https://open-vsx.org/).
+
+### Stable Release
+
+1. Push a tag `v<version>` (e.g. `v1.15.0`) from the `main` branch. The release
+   pipeline will only run for tags on `main`.
+2. The pipeline builds, publishes to the VS Code Marketplace and Open VSX, and
+   creates a draft GitHub release.
+3. Update the draft release with the changelog contents and publish it.
+
+### Pre-Release
+
+1. Push a tag `v<version>-pre` (e.g. `v1.15.0-pre`) from any branch. The version
+   in the tag must match package.json (the `-pre` suffix is stripped during
+   validation). Pre-release tags are not restricted to `main`.
+2. The pipeline builds with `--pre-release`, publishes to both marketplaces, and
+   creates a draft pre-release on GitHub.

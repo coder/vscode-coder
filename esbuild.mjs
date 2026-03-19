@@ -24,7 +24,7 @@ const buildOptions = {
 	bundle: true,
 	outfile: "dist/extension.js",
 	platform: "node",
-	target: "node20",
+	target: "node22",
 	format: "cjs",
 	mainFields: ["module", "main"],
 	alias: {

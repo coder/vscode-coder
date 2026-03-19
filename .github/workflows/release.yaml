@@ -18,6 +18,15 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Error: Release tags must be pushed from the main branch"
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@v5
 
