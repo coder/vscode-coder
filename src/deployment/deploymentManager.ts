@@ -260,9 +260,9 @@ export class DeploymentManager implements vscode.Disposable {
 	private updateExperimentContexts(): void {
 		this.client
 			.getAxiosInstance()
-			.get("/api/v2/experiments")
+			.get<string[]>("/api/v2/experiments")
 			.then((resp) => {
-				const experiments: string[] = resp.data ?? [];
+				const experiments = resp.data ?? [];
 				this.contextManager.set(
 					"coder.agentsEnabled",
 					experiments.includes("agents"),
