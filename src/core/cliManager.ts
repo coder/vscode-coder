@@ -232,6 +232,7 @@ export class CliManager {
 	): Promise<boolean> {
 		const choice = await vscodeProposed.window.showErrorMessage(
 			`${reason}. Run version ${version} anyway?`,
+			{ modal: true, useCustom: true },
 			"Run",
 		);
 		return choice === "Run";

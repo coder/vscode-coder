@@ -279,6 +279,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 			this.options;
 		let attempt = 0;
 		let currentBackoff = discoveryPollIntervalMs;
+		let lastFoundPort: number | undefined;
 
 		while (!this.disposed) {
 			attempt++;
@@ -289,9 +290,25 @@ export class SshProcessMonitor implements vscode.Disposable {
 				);
 			}
 
-			const pidByPort = await this.findSshProcessByPort();
-			if (pidByPort !== undefined) {
-				this.setCurrentPid(pidByPort);
+			const { pid, port } = await this.findSshProcessByPort();
+
+			// Track port changes to reset backoff after VS Code reconnection
+			const portChanged =
+				lastFoundPort !== undefined &&
+				port !== undefined &&
+				port !== lastFoundPort;
+			if (portChanged) {
+				logger.debug(
+					`SSH port changed in log file: ${lastFoundPort} -> ${port}`,
+				);
+				currentBackoff = discoveryPollIntervalMs;
+			}
+			if (port !== undefined) {
+				lastFoundPort = port;
+			}
+
+			if (pid !== undefined) {
+				this.setCurrentPid(pid);
 				this.startMonitoring();
 				return;
 			}
@@ -305,7 +322,10 @@ export class SshProcessMonitor implements vscode.Disposable {
 	 * Finds SSH process by parsing the Remote SSH extension's log to get the port.
 	 * This is more accurate as each VS Code window has a unique port.
 	 */
-	private async findSshProcessByPort(): Promise<number | undefined> {
+	private async findSshProcessByPort(): Promise<{
+		pid?: number;
+		port?: number;
+	}> {
 		const { codeLogDir, remoteSshExtensionId, logger } = this.options;
 
 		try {
@@ -315,27 +335,31 @@ export class SshProcessMonitor implements vscode.Disposable {
 				logger,
 			);
 			if (!logPath) {
-				return undefined;
+				logger.debug("No Remote SSH log file found");
+				return {};
 			}
 
 			const logContent = await fs.readFile(logPath, "utf8");
-			this.options.logger.debug(`Read Remote SSH log file:`, logPath);
+			logger.debug(`Read Remote SSH log file:`, logPath);
 
 			const port = findPort(logContent);
 			if (!port) {
-				return undefined;
+				logger.debug(`No SSH port found in log file: ${logPath}`);
+				return {};
 			}
-			this.options.logger.debug(`Found SSH port ${port} in log file`);
+
+			logger.debug(`Found SSH port ${port} in log file`);
 
 			const processes = await find("port", port);
 			if (processes.length === 0) {
-				return undefined;
+				logger.debug(`No process found listening on port ${port}`);
+				return { port };
 			}
 
-			return processes[0].pid;
+			return { pid: processes[0].pid, port };
 		} catch (error) {
 			logger.debug("SSH process search failed", error);
-			return undefined;
+			return {};
 		}
 	}
 
@@ -579,6 +603,7 @@ async function findRemoteSshLogPath(
 
 		if (outputDirs.length > 0) {
 			const outputPath = path.join(logsParentDir, outputDirs[0]);
+			logger.debug(`Using Remote SSH log directory: ${outputPath}`);
 			const remoteSshLog = await findSshLogInDir(outputPath);
 			if (remoteSshLog) {
 				return remoteSshLog;

@@ -36,6 +36,7 @@ describe("SshProcessMonitor", () => {
 	});
 
 	afterEach(() => {
+		vi.useRealTimers();
 		for (const m of activeMonitors) {
 			m.dispose();
 		}
@@ -202,6 +203,58 @@ describe("SshProcessMonitor", () => {
 
 			// Should NOT fire undefined - we keep showing last status while searching
 			expect(pids).toContain(888);
+		});
+
+		it("resets backoff when port changes in log file", async () => {
+			vi.useFakeTimers();
+
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 11111 ->",
+			});
+			vi.mocked(find).mockResolvedValue([]);
+
+			const pollInterval = 100;
+			const logger = createMockLogger();
+			const monitor = createMonitor({
+				codeLogDir: "/logs/window1",
+				discoveryPollIntervalMs: pollInterval,
+				maxDiscoveryBackoffMs: 10_000,
+				logger,
+			});
+
+			const pids: Array<number | undefined> = [];
+			monitor.onPidChange((pid) => pids.push(pid));
+
+			// Backoff doubles each iteration: 100, 200, 400, 800, 1600, ...
+			// Total after 5 iterations = pollInterval * (2^5 - 1) = 3100ms
+			const fiveIterationsMs = pollInterval * (2 ** 5 - 1);
+			await vi.advanceTimersByTimeAsync(fiveIterationsMs - 1);
+			expect(logger.debug).toHaveBeenCalledWith(
+				"No process found listening on port 11111",
+			);
+
+			// Change port, simulates VS Code reconnection after sleep/wake
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 22222 ->",
+			});
+
+			// Trigger next iteration: detects port change, resets backoff, no pid
+			await vi.advanceTimersByTimeAsync(1);
+			expect(logger.debug).toHaveBeenCalledWith(
+				"SSH port changed in log file: 11111 -> 22222",
+			);
+
+			// Process becomes available
+			vi.mocked(find).mockResolvedValue([
+				{ pid: 555, ppid: 1, name: "ssh", cmd: "ssh" },
+			]);
+
+			// With reset backoff, process found within 2 poll intervals.
+			// Without reset, backoff would be pollInterval * 2^5 = 3200ms.
+			await vi.advanceTimersByTimeAsync(pollInterval * 2);
+			expect(pids).toContain(555);
 		});
 
 		it("does not fire event when same process is found after stale check", async () => {

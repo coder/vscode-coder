@@ -507,7 +507,7 @@
 		"axios": "1.13.6",
 		"date-fns": "catalog:",
 		"eventsource": "^4.1.0",
-		"find-process": "^2.1.0",
+		"find-process": "^2.1.1",
 		"jsonc-parser": "^3.3.1",
 		"openpgp": "^6.3.0",
 		"pretty-bytes": "^7.1.0",
