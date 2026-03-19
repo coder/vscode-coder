@@ -193,7 +193,7 @@
 					"icon": "media/tasks-logo.svg"
 				}
 			],
-			"panel": [
+			"secondarySidebar": [
 				{
 					"id": "coderChat",
 					"title": "Coder Chat (Experimental)",
@@ -237,7 +237,8 @@
 					"type": "webview",
 					"id": "coder.chatPanel",
 					"name": "Coder Chat (Experimental)",
-					"icon": "media/shorthand-logo.svg"
+					"icon": "media/shorthand-logo.svg",
+					"when": "coder.agentsEnabled"
 				}
 			]
 		},
@@ -574,7 +575,7 @@
 	],
 	"packageManager": "pnpm@10.32.1",
 	"engines": {
-		"vscode": "^1.95.0",
+		"vscode": "^1.106.0",
 		"node": ">= 20"
 	},
 	"icon": "media/logo.png",
