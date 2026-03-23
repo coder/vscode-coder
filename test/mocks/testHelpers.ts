@@ -9,6 +9,7 @@ import { vi } from "vitest";
 import * as vscode from "vscode";
 
 import type { Experiment, User } from "coder/site/src/api/typesGenerated";
+import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import type { IncomingMessage } from "node:http";
 
 import type { CoderApi } from "@/api/coderApi";
@@ -16,6 +17,7 @@ import type { CliCredentialManager } from "@/core/cliCredentialManager";
 import type { Logger } from "@/logging/logger";
 import type {
 	EventHandler,
+	EventPayloadMap,
 	ParsedMessageEvent,
 	UnidirectionalStream,
 } from "@/websocket/eventStreamConnection";
@@ -841,50 +843,63 @@ export class MockCancellationToken implements vscode.CancellationToken {
 }
 
 /**
- * Mock event stream for testing UnidirectionalStream consumers.
+ * Mock event stream that implements UnidirectionalStream directly.
+ * Use pushMessage/pushError for common cases, or emit() for any event type.
  */
-export class MockEventStream<T> {
+export class MockEventStream<T> implements UnidirectionalStream<T> {
+	readonly url = "ws://test/mock-stream";
+	readonly close = vi.fn();
+
 	private readonly handlers = new Map<
 		string,
-		Array<(...args: unknown[]) => void>
+		Set<(...args: unknown[]) => void>
 	>();
 
-	readonly stream: UnidirectionalStream<T> = {
-		url: "ws://test/mock-stream",
-		addEventListener: vi.fn(
-			(event: string, callback: (...args: unknown[]) => void) => {
-				if (!this.handlers.has(event)) {
-					this.handlers.set(event, []);
-				}
-				this.handlers.get(event)!.push(callback);
-			},
-		),
-		removeEventListener: vi.fn(),
-		close: vi.fn(),
-	};
+	addEventListener<E extends WebSocketEventType>(
+		event: E,
+		callback: EventHandler<T, E>,
+	): void {
+		if (!this.handlers.has(event)) {
+			this.handlers.set(event, new Set());
+		}
+		this.handlers.get(event)!.add(callback as (...args: unknown[]) => void);
+	}
+
+	removeEventListener<E extends WebSocketEventType>(
+		event: E,
+		callback: EventHandler<T, E>,
+	): void {
+		this.handlers.get(event)?.delete(callback as (...args: unknown[]) => void);
+	}
+
+	emit<E extends WebSocketEventType>(
+		event: E,
+		payload: EventPayloadMap<T>[E],
+	): void {
+		const handlers = this.handlers.get(event);
+		if (handlers) {
+			for (const handler of handlers) {
+				handler(payload);
+			}
+		}
+	}
 
 	pushMessage(parsedMessage: T): void {
-		const event: ParsedMessageEvent<T> = {
+		const payload: ParsedMessageEvent<T> = {
 			sourceEvent: { data: undefined },
 			parsedMessage,
 			parseError: undefined,
 		};
-		this.fire("message", event);
+		this.emit("message", payload);
 	}
 
 	pushError(error: Error): void {
-		const event: ParsedMessageEvent<T> = {
+		const payload: ParsedMessageEvent<T> = {
 			sourceEvent: { data: undefined },
 			parsedMessage: undefined,
 			parseError: error,
 		};
-		this.fire("message", event);
-	}
-
-	private fire(event: string, payload: unknown): void {
-		for (const handler of this.handlers.get(event) ?? []) {
-			(handler as EventHandler<T, "message">)(payload as ParsedMessageEvent<T>);
-		}
+		this.emit("message", payload);
 	}
 }
 

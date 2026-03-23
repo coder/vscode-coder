@@ -32,85 +32,76 @@ function createNotification(title: string): GetInboxNotificationResponse {
 	};
 }
 
-function createMockClient(
-	stream: MockEventStream<GetInboxNotificationResponse>,
-) {
-	return {
-		watchInboxNotifications: vi.fn().mockResolvedValue(stream.stream),
-	} as unknown as CoderApi;
-}
-
 describe("Inbox", () => {
-	let config: MockConfigurationProvider;
-
 	beforeEach(() => {
 		vi.resetAllMocks();
-		config = new MockConfigurationProvider();
 	});
 
-	async function createInbox(
+	async function setup(
 		stream = new MockEventStream<GetInboxNotificationResponse>(),
 	) {
-		const ws = createWorkspace();
-		const client = createMockClient(stream);
-		const inbox = await Inbox.create(ws, client, createMockLogger());
-		return { inbox, stream };
+		const config = new MockConfigurationProvider();
+		const inbox = await Inbox.create(
+			createWorkspace(),
+			{
+				watchInboxNotifications: () => Promise.resolve(stream),
+			} as unknown as CoderApi,
+			createMockLogger(),
+		);
+		return { inbox, stream, config };
 	}
 
 	describe("message handling", () => {
-		it("shows notification when a message arrives", async () => {
-			const { inbox, stream } = await createInbox();
+		it("shows notification with the message title", async () => {
+			const { stream } = await setup();
 
 			stream.pushMessage(createNotification("Out of memory"));
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				"Out of memory",
 			);
-			inbox.dispose();
 		});
 
-		it("shows multiple notifications for successive messages", async () => {
-			const { inbox, stream } = await createInbox();
+		it("shows each notification independently (no dedup)", async () => {
+			const { stream } = await setup();
 
 			stream.pushMessage(createNotification("First alert"));
 			stream.pushMessage(createNotification("Second alert"));
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(2);
-			inbox.dispose();
 		});
 
 		it("logs parse errors without showing notifications", async () => {
-			const { inbox, stream } = await createInbox();
+			const { stream } = await setup();
 
 			stream.pushError(new Error("bad json"));
 
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
-			inbox.dispose();
 		});
 
 		it("closes the socket on dispose", async () => {
 			const stream = new MockEventStream<GetInboxNotificationResponse>();
-			const { inbox } = await createInbox(stream);
+			const { inbox } = await setup(stream);
+
 			inbox.dispose();
 
-			expect(stream.stream.close).toHaveBeenCalled();
+			expect(stream.close).toHaveBeenCalled();
 		});
 	});
 
 	describe("disableNotifications", () => {
 		it("suppresses notifications when enabled", async () => {
+			const { stream, config } = await setup();
 			config.set("coder.disableNotifications", true);
-			const { inbox, stream } = await createInbox();
 
 			stream.pushMessage(createNotification("Out of memory"));
 
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
-			inbox.dispose();
 		});
 
 		it("shows notifications after re-enabling", async () => {
+			const { stream, config } = await setup();
 			config.set("coder.disableNotifications", true);
-			const { inbox, stream } = await createInbox();
 
 			stream.pushMessage(createNotification("suppressed"));
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
@@ -121,7 +112,6 @@ describe("Inbox", () => {
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				"visible",
 			);
-			inbox.dispose();
 		});
 	});
 });

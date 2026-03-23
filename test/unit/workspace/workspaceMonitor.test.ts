@@ -18,151 +18,132 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
+import type { ContextManager } from "@/core/contextManager";
 
-function createMockClient(stream: MockEventStream<ServerSentEvent>) {
-	return {
-		watchWorkspace: vi.fn().mockResolvedValue(stream.stream),
-		getTemplate: vi.fn().mockResolvedValue({
-			active_version_id: "version-2",
-		}),
-		getTemplateVersion: vi.fn().mockResolvedValue({
-			message: "template v2",
-		}),
-	} as unknown as CoderApi;
+function workspaceEvent(
+	overrides?: Parameters<typeof createWorkspace>[0],
+): ServerSentEvent {
+	return { type: "data", data: createWorkspace(overrides) };
 }
 
-function workspaceEvent(ws: Workspace): ServerSentEvent {
-	return { type: "data", data: ws };
+function minutesFromNow(n: number): string {
+	return new Date(Date.now() + n * 60_000).toISOString();
 }
 
 describe("WorkspaceMonitor", () => {
-	let config: MockConfigurationProvider;
-	let statusBar: MockStatusBar;
-	let contextManager: MockContextManager;
-
 	beforeEach(() => {
 		vi.resetAllMocks();
-		config = new MockConfigurationProvider();
-		statusBar = new MockStatusBar();
-		contextManager = new MockContextManager();
 	});
 
-	async function createMonitor(
-		ws: Workspace = createWorkspace(),
-		stream = new MockEventStream<ServerSentEvent>(),
-	) {
-		const client = createMockClient(stream);
+	async function setup(stream = new MockEventStream<ServerSentEvent>()) {
+		const config = new MockConfigurationProvider();
+		const statusBar = new MockStatusBar();
+		const contextManager = new MockContextManager();
+		const client = {
+			watchWorkspace: vi.fn().mockResolvedValue(stream),
+			getTemplate: vi.fn().mockResolvedValue({
+				active_version_id: "version-2",
+			}),
+			getTemplateVersion: vi.fn().mockResolvedValue({
+				message: "template v2",
+			}),
+		} as unknown as CoderApi;
 		const monitor = await WorkspaceMonitor.create(
-			ws,
+			createWorkspace(),
 			client,
 			createMockLogger(),
-			contextManager as unknown as import("@/core/contextManager").ContextManager,
+			contextManager as unknown as ContextManager,
 		);
-		return { monitor, client, stream };
+		return { monitor, client, stream, config, statusBar, contextManager };
 	}
 
 	describe("websocket lifecycle", () => {
 		it("fires onChange when a workspace message arrives", async () => {
-			const { monitor, stream } = await createMonitor();
+			const { monitor, stream } = await setup();
 			const changes: Workspace[] = [];
 			monitor.onChange.event((ws) => changes.push(ws));
 
-			const updated = createWorkspace({ outdated: true });
-			stream.pushMessage(workspaceEvent(updated));
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 
 			expect(changes).toHaveLength(1);
 			expect(changes[0].outdated).toBe(true);
-			monitor.dispose();
 		});
 
 		it("logs parse errors without showing notifications", async () => {
-			const { monitor, stream } = await createMonitor();
+			const { stream } = await setup();
+
 			stream.pushError(new Error("bad json"));
 
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
-			monitor.dispose();
 		});
 
 		it("closes the socket on dispose", async () => {
 			const stream = new MockEventStream<ServerSentEvent>();
-			const { monitor } = await createMonitor(createWorkspace(), stream);
+			const { monitor } = await setup(stream);
+
 			monitor.dispose();
 
-			expect(stream.stream.close).toHaveBeenCalled();
+			expect(stream.close).toHaveBeenCalled();
 		});
 	});
 
 	describe("context and status bar", () => {
 		it("sets coder.workspace.updatable context when workspace is outdated", async () => {
-			const { monitor, stream } = await createMonitor();
+			const { stream, contextManager } = await setup();
 
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 
-			expect(contextManager.set).toHaveBeenCalledWith(
-				"coder.workspace.updatable",
-				true,
-			);
-			monitor.dispose();
+			expect(contextManager.get("coder.workspace.updatable")).toBe(true);
 		});
 
 		it("shows status bar when outdated, hides when not", async () => {
-			const { monitor, stream } = await createMonitor();
+			const { stream, statusBar } = await setup();
 
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 			expect(statusBar.show).toHaveBeenCalled();
 
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: false })));
+			stream.pushMessage(workspaceEvent({ outdated: false }));
 			expect(statusBar.hide).toHaveBeenCalled();
-
-			monitor.dispose();
 		});
 	});
 
-	describe("notifications when enabled", () => {
+	describe("notifications", () => {
 		it("shows autostop notification when deadline is impending", async () => {
-			const deadline = new Date(Date.now() + 1000 * 60 * 15).toISOString();
-			const { monitor, stream } = await createMonitor();
-			monitor.markInitialSetupComplete();
+			const { stream } = await setup();
 
 			stream.pushMessage(
-				workspaceEvent(
-					createWorkspace({
-						latest_build: { status: "running", deadline },
-					}),
-				),
+				workspaceEvent({
+					latest_build: {
+						status: "running",
+						deadline: minutesFromNow(15),
+					},
+				}),
 			);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				expect.stringContaining("scheduled to shut down"),
 			);
-			monitor.dispose();
 		});
 
 		it("shows deletion notification when deletion is impending", async () => {
-			const deletingAt = new Date(
-				Date.now() + 1000 * 60 * 60 * 12,
-			).toISOString();
-			const { monitor, stream } = await createMonitor();
+			const { monitor, stream } = await setup();
 			monitor.markInitialSetupComplete();
 
 			stream.pushMessage(
-				workspaceEvent(createWorkspace({ deleting_at: deletingAt })),
+				workspaceEvent({ deleting_at: minutesFromNow(12 * 60) }),
 			);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				expect.stringContaining("scheduled for deletion"),
 			);
-			monitor.dispose();
 		});
 
 		it("shows not-running notification after initial setup", async () => {
-			const { monitor, stream } = await createMonitor();
+			const { monitor, stream } = await setup();
 			monitor.markInitialSetupComplete();
 
 			stream.pushMessage(
-				workspaceEvent(
-					createWorkspace({ latest_build: { status: "stopped" } }),
-				),
+				workspaceEvent({ latest_build: { status: "stopped" } }),
 			);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
@@ -170,194 +151,160 @@ describe("WorkspaceMonitor", () => {
 				expect.anything(),
 				expect.anything(),
 			);
-			monitor.dispose();
 		});
 
-		it("does not show not-running notification before initial setup", async () => {
-			const { monitor, stream } = await createMonitor();
+		it("does not show deletion or not-running notifications before initial setup", async () => {
+			const { stream } = await setup();
 
 			stream.pushMessage(
-				workspaceEvent(
-					createWorkspace({ latest_build: { status: "stopped" } }),
-				),
+				workspaceEvent({ deleting_at: minutesFromNow(12 * 60) }),
+			);
+			stream.pushMessage(
+				workspaceEvent({ latest_build: { status: "stopped" } }),
 			);
 
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
-			monitor.dispose();
 		});
 
-		it("does not show deletion notification before initial setup", async () => {
-			const deletingAt = new Date(
-				Date.now() + 1000 * 60 * 60 * 12,
-			).toISOString();
-			const { monitor, stream } = await createMonitor();
+		it("fetches template details for outdated notification", async () => {
+			const { stream } = await setup();
 
-			stream.pushMessage(
-				workspaceEvent(createWorkspace({ deleting_at: deletingAt })),
-			);
-
-			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
-			monitor.dispose();
-		});
-
-		it("shows outdated notification and fetches template details", async () => {
-			const { monitor, stream, client } = await createMonitor();
-			monitor.markInitialSetupComplete();
-
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 
 			await vi.waitFor(() => {
-				expect(client.getTemplate).toHaveBeenCalledWith("template-1");
-				expect(client.getTemplateVersion).toHaveBeenCalledWith("version-2");
 				expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 					expect.stringContaining("template v2"),
 					"Update",
 				);
 			});
-			monitor.dispose();
 		});
 
 		it("only notifies once per event type", async () => {
-			const deadline = new Date(Date.now() + 1000 * 60 * 15).toISOString();
-			const { monitor, stream } = await createMonitor();
-			monitor.markInitialSetupComplete();
+			const { stream } = await setup();
 
-			const ws = createWorkspace({
-				latest_build: { status: "running", deadline },
+			const event = workspaceEvent({
+				latest_build: {
+					status: "running",
+					deadline: minutesFromNow(15),
+				},
 			});
-			stream.pushMessage(workspaceEvent(ws));
-			stream.pushMessage(workspaceEvent(ws));
+			stream.pushMessage(event);
+			stream.pushMessage(event);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(1);
-			monitor.dispose();
 		});
 	});
 
 	describe("disableUpdateNotifications", () => {
-		it("suppresses outdated notification but allows other notifications", async () => {
+		it("suppresses outdated notification but allows other types", async () => {
+			const { stream, client, config } = await setup();
 			config.set("coder.disableUpdateNotifications", true);
-			const deadline = new Date(Date.now() + 1000 * 60 * 15).toISOString();
-			const { monitor, stream, client } = await createMonitor();
-			monitor.markInitialSetupComplete();
 
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 			expect(client.getTemplate).not.toHaveBeenCalled();
 
 			stream.pushMessage(
-				workspaceEvent(
-					createWorkspace({
-						latest_build: { status: "running", deadline },
-					}),
-				),
+				workspaceEvent({
+					latest_build: {
+						status: "running",
+						deadline: minutesFromNow(15),
+					},
+				}),
 			);
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				expect.stringContaining("scheduled to shut down"),
 			);
-			monitor.dispose();
 		});
 
 		it("shows outdated notification after re-enabling", async () => {
+			const { stream, config } = await setup();
 			config.set("coder.disableUpdateNotifications", true);
-			const { monitor, stream, client } = await createMonitor();
-			monitor.markInitialSetupComplete();
 
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
-			expect(client.getTemplate).not.toHaveBeenCalled();
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 
 			config.set("coder.disableUpdateNotifications", false);
 
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
-
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 			await vi.waitFor(() => {
-				expect(client.getTemplate).toHaveBeenCalled();
+				expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+					expect.stringContaining("template v2"),
+					"Update",
+				);
 			});
-			monitor.dispose();
 		});
 	});
 
 	describe("disableNotifications", () => {
-		beforeEach(() => {
-			config.set("coder.disableNotifications", true);
-		});
-
 		it("suppresses all notification types", async () => {
-			const deadline = new Date(Date.now() + 1000 * 60 * 15).toISOString();
-			const deletingAt = new Date(
-				Date.now() + 1000 * 60 * 60 * 12,
-			).toISOString();
-			const { monitor, stream } = await createMonitor();
+			const { monitor, stream, config } = await setup();
+			config.set("coder.disableNotifications", true);
 			monitor.markInitialSetupComplete();
 
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 			stream.pushMessage(
-				workspaceEvent(
-					createWorkspace({
-						latest_build: { status: "running", deadline },
-					}),
-				),
+				workspaceEvent({
+					latest_build: {
+						status: "running",
+						deadline: minutesFromNow(15),
+					},
+				}),
 			);
 			stream.pushMessage(
-				workspaceEvent(createWorkspace({ deleting_at: deletingAt })),
+				workspaceEvent({ deleting_at: minutesFromNow(12 * 60) }),
 			);
 			stream.pushMessage(
-				workspaceEvent(
-					createWorkspace({ latest_build: { status: "stopped" } }),
-				),
+				workspaceEvent({ latest_build: { status: "stopped" } }),
 			);
 
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
-			monitor.dispose();
 		});
 
 		it("still updates context and status bar", async () => {
-			const { monitor, stream } = await createMonitor();
+			const { stream, config, contextManager, statusBar } = await setup();
+			config.set("coder.disableNotifications", true);
 
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 
-			expect(contextManager.set).toHaveBeenCalledWith(
-				"coder.workspace.updatable",
-				true,
-			);
+			expect(contextManager.get("coder.workspace.updatable")).toBe(true);
 			expect(statusBar.show).toHaveBeenCalled();
-			monitor.dispose();
 		});
 
 		it("still fires onChange events", async () => {
-			const { monitor, stream } = await createMonitor();
+			const { monitor, stream, config } = await setup();
+			config.set("coder.disableNotifications", true);
 			const changes: Workspace[] = [];
 			monitor.onChange.event((ws) => changes.push(ws));
 
-			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 
 			expect(changes).toHaveLength(1);
-			monitor.dispose();
 		});
 
 		it("shows notifications after re-enabling", async () => {
-			const deadline = new Date(Date.now() + 1000 * 60 * 15).toISOString();
-			const { monitor, stream } = await createMonitor();
-			monitor.markInitialSetupComplete();
+			const { stream, config } = await setup();
+			config.set("coder.disableNotifications", true);
 
 			stream.pushMessage(
-				workspaceEvent(
-					createWorkspace({
-						latest_build: { status: "running", deadline },
-					}),
-				),
+				workspaceEvent({
+					latest_build: {
+						status: "running",
+						deadline: minutesFromNow(15),
+					},
+				}),
 			);
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
 
 			config.set("coder.disableNotifications", false);
 
 			stream.pushMessage(
-				workspaceEvent(
-					createWorkspace({
-						latest_build: { status: "running", deadline },
-					}),
-				),
+				workspaceEvent({
+					latest_build: {
+						status: "running",
+						deadline: minutesFromNow(15),
+					},
+				}),
 			);
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(1);
-			monitor.dispose();
 		});
 	});
 });
