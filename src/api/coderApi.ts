@@ -21,7 +21,7 @@ import { watchConfigurationChanges } from "../configWatcher";
 import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
 import { ServerCertificateError } from "../error/serverCertificateError";
-import { getHeaderCommand, getHeaders } from "../headers";
+import { getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
 import {
 	createRequestMeta,
@@ -35,6 +35,7 @@ import {
 	HttpClientLogLevel,
 } from "../logging/types";
 import { sizeOf } from "../logging/utils";
+import { getHeaderCommand } from "../settings/headers";
 import { HttpStatusCode, WebSocketCloseCode } from "../websocket/codes";
 import {
 	type UnidirectionalStream,

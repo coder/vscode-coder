@@ -5,10 +5,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 import * as semver from "semver";
 
-import { isKeyringEnabled } from "../cliConfig";
 import { isAbortError } from "../error/errorUtils";
 import { featureSetForVersion } from "../featureSet";
-import { getHeaderArgs } from "../headers";
+import { isKeyringEnabled } from "../settings/cli";
+import { getHeaderArgs } from "../settings/headers";
 import { renameWithRetry, tempFilePath, toSafeHost } from "../util";
 
 import * as cliUtils from "./cliUtils";

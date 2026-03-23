@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import { areNotificationsDisabled } from "./settings/notifications";
+
 import type {
 	Workspace,
 	GetInboxNotificationResponse,
@@ -53,7 +55,9 @@ export class Inbox implements vscode.Disposable {
 		socket.addEventListener("message", (data) => {
 			if (data.parseError) {
 				logger.error("Failed to parse inbox message", data.parseError);
-			} else {
+			} else if (
+				!areNotificationsDisabled(vscode.workspace.getConfiguration())
+			) {
 				vscode.window.showInformationMessage(
 					data.parsedMessage.notification.title,
 				);

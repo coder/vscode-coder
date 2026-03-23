@@ -20,13 +20,6 @@ import { extractAgents } from "../api/api-helper";
 import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import {
-	type CliAuth,
-	getGlobalFlags,
-	getGlobalFlagsRaw,
-	getSshFlags,
-	resolveCliAuth,
-} from "../cliConfig";
 import { type Commands } from "../commands";
 import { watchConfigurationChanges } from "../configWatcher";
 import { type CliManager } from "../core/cliManager";
@@ -37,11 +30,18 @@ import { type PathResolver } from "../core/pathResolver";
 import { type SecretsManager } from "../core/secretsManager";
 import { toError } from "../error/errorUtils";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
-import { getHeaderCommand } from "../headers";
 import { Inbox } from "../inbox";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthSessionManager } from "../oauth/sessionManager";
+import {
+	type CliAuth,
+	getGlobalFlags,
+	getGlobalFlagsRaw,
+	getSshFlags,
+	resolveCliAuth,
+} from "../settings/cli";
+import { getHeaderCommand } from "../settings/headers";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,

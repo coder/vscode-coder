@@ -19,9 +19,9 @@ import type {
 import type * as vscode from "vscode";
 
 import type { CoderApi } from "../api/coderApi";
-import type { CliAuth } from "../cliConfig";
 import type { FeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
+import type { CliAuth } from "../settings/cli";
 
 /**
  * Manages workspace and agent state transitions until ready for SSH connection.

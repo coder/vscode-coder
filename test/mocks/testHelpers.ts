@@ -14,6 +14,11 @@ import type { IncomingMessage } from "node:http";
 import type { CoderApi } from "@/api/coderApi";
 import type { CliCredentialManager } from "@/core/cliCredentialManager";
 import type { Logger } from "@/logging/logger";
+import type {
+	EventHandler,
+	ParsedMessageEvent,
+	UnidirectionalStream,
+} from "@/websocket/eventStreamConnection";
 
 /**
  * Mock configuration provider that integrates with the vscode workspace configuration mock.
@@ -833,4 +838,69 @@ export class MockCancellationToken implements vscode.CancellationToken {
 	reset(): void {
 		this._isCancellationRequested = false;
 	}
+}
+
+/**
+ * Mock event stream for testing UnidirectionalStream consumers.
+ */
+export class MockEventStream<T> {
+	private readonly handlers = new Map<
+		string,
+		Array<(...args: unknown[]) => void>
+	>();
+
+	readonly stream: UnidirectionalStream<T> = {
+		url: "ws://test/mock-stream",
+		addEventListener: vi.fn(
+			(event: string, callback: (...args: unknown[]) => void) => {
+				if (!this.handlers.has(event)) {
+					this.handlers.set(event, []);
+				}
+				this.handlers.get(event)!.push(callback);
+			},
+		),
+		removeEventListener: vi.fn(),
+		close: vi.fn(),
+	};
+
+	pushMessage(parsedMessage: T): void {
+		const event: ParsedMessageEvent<T> = {
+			sourceEvent: { data: undefined },
+			parsedMessage,
+			parseError: undefined,
+		};
+		this.fire("message", event);
+	}
+
+	pushError(error: Error): void {
+		const event: ParsedMessageEvent<T> = {
+			sourceEvent: { data: undefined },
+			parsedMessage: undefined,
+			parseError: error,
+		};
+		this.fire("message", event);
+	}
+
+	private fire(event: string, payload: unknown): void {
+		for (const handler of this.handlers.get(event) ?? []) {
+			(handler as EventHandler<T, "message">)(payload as ParsedMessageEvent<T>);
+		}
+	}
+}
+
+/**
+ * Mock ContextManager that stores values and tracks `set` calls.
+ */
+export class MockContextManager {
+	private readonly contexts = new Map<string, boolean>();
+
+	readonly set = vi.fn((key: string, value: boolean) => {
+		this.contexts.set(key, value);
+	});
+
+	get(key: string): boolean {
+		return this.contexts.get(key) ?? false;
+	}
+
+	readonly dispose = vi.fn();
 }

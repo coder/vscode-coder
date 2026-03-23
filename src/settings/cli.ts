@@ -1,10 +1,11 @@
-import { isKeyringSupported } from "./core/cliCredentialManager";
+import { isKeyringSupported } from "../core/cliCredentialManager";
+import { escapeCommandArg } from "../util";
+
 import { getHeaderArgs } from "./headers";
-import { escapeCommandArg } from "./util";
 
 import type { WorkspaceConfiguration } from "vscode";
 
-import type { FeatureSet } from "./featureSet";
+import type { FeatureSet } from "../featureSet";
 
 export type CliAuth =
 	| { mode: "global-config"; configDir: string }

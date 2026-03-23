@@ -1,46 +1,10 @@
-import * as os from "node:os";
-
 import { execCommand } from "./command/exec";
 import { type Logger } from "./logging/logger";
-import { escapeCommandArg } from "./util";
-
-import type { WorkspaceConfiguration } from "vscode";
-
-export function getHeaderCommand(
-	config: Pick<WorkspaceConfiguration, "get">,
-): string | undefined {
-	const cmd =
-		config.get<string>("coder.headerCommand")?.trim() ||
-		process.env.CODER_HEADER_COMMAND?.trim();
-
-	return cmd || undefined;
-}
-
-export function getHeaderArgs(
-	config: Pick<WorkspaceConfiguration, "get">,
-): string[] {
-	// Escape a command line to be executed by the Coder binary, so ssh doesn't substitute variables.
-	const escapeSubcommand: (str: string) => string =
-		os.platform() === "win32"
-			? // On Windows variables are %VAR%, and we need to use double quotes.
-				(str) => escapeCommandArg(str).replace(/%/g, "%%")
-			: // On *nix we can use single quotes to escape $VARS.
-				// Note single quotes cannot be escaped inside single quotes.
-				(str) => `'${str.replace(/'/g, "'\\''")}'`;
-
-	const command = getHeaderCommand(config);
-	if (!command) {
-		return [];
-	}
-	return ["--header-command", escapeSubcommand(command)];
-}
 
 /**
- * getHeaders executes the header command and parses the headers from stdout.
- * Both stdout and stderr are logged on error but stderr is otherwise ignored.
- * Throws an error if the process exits with non-zero or the JSON is invalid.
- * Returns undefined if there is no header command set. No effort is made to
- * validate the JSON other than making sure it can be parsed.
+ * Executes the header command and parses headers from stdout.
+ * Throws on non-zero exit or malformed output. Returns empty headers if no
+ * command is set.
  */
 export async function getHeaders(
 	url: string | undefined,

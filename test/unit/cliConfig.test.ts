@@ -2,6 +2,7 @@ import * as os from "node:os";
 import * as semver from "semver";
 import { it, expect, describe, vi } from "vitest";
 
+import { featureSetForVersion } from "@/featureSet";
 import {
 	type CliAuth,
 	getGlobalFlags,
@@ -9,8 +10,7 @@ import {
 	getSshFlags,
 	isKeyringEnabled,
 	resolveCliAuth,
-} from "@/cliConfig";
-import { featureSetForVersion } from "@/featureSet";
+} from "@/settings/cli";
 
 import { MockConfigurationProvider } from "../mocks/testHelpers";
 import { isWindows } from "../utils/platform";
