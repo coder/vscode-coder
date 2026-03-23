@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applySettingOverrides,
 	buildSshOverrides,
+	isActiveRemoteCommand,
 } from "@/remote/userSettings";
 
 import {
@@ -31,6 +32,18 @@ interface TimeoutCase {
 	timeout: number | undefined;
 	label: string;
 }
+
+describe("isActiveRemoteCommand", () => {
+	it.each(["exec bash -l", "exec /bin/zsh", "/usr/bin/tmux"])(
+		"returns true for %j",
+		(cmd) => expect(isActiveRemoteCommand(cmd)).toBe(true),
+	);
+
+	it.each([undefined, "", "none", "None", "NONE"])(
+		"returns false for %j",
+		(cmd) => expect(isActiveRemoteCommand(cmd)).toBe(false),
+	);
+});
 
 describe("buildSshOverrides", () => {
 	describe("remote platform", () => {
@@ -65,6 +78,62 @@ describe("buildSshOverrides", () => {
 					"remote.SSH.remotePlatform",
 				),
 			).toBeUndefined();
+		});
+
+		describe("RemoteCommand compatibility", () => {
+			it("removes host from remotePlatform when enableRemoteCommand is true", () => {
+				const config = new MockConfigurationProvider();
+				config.set("remote.SSH.enableRemoteCommand", true);
+				config.set("remote.SSH.remotePlatform", {
+					"my-host": "linux",
+					"other-host": "darwin",
+				});
+				expect(
+					findOverride(
+						buildSshOverrides(config, "my-host", "linux", "exec bash -l"),
+						"remote.SSH.remotePlatform",
+					),
+				).toEqual({ "other-host": "darwin" });
+			});
+
+			it("produces no override when host has no stale remotePlatform entry", () => {
+				const config = new MockConfigurationProvider();
+				config.set("remote.SSH.enableRemoteCommand", true);
+				config.set("remote.SSH.remotePlatform", {});
+				expect(
+					findOverride(
+						buildSshOverrides(config, "my-host", "linux", "exec bash -l"),
+						"remote.SSH.remotePlatform",
+					),
+				).toBeUndefined();
+			});
+
+			it("sets platform normally when enableRemoteCommand is false", () => {
+				const config = new MockConfigurationProvider();
+				config.set("remote.SSH.enableRemoteCommand", false);
+				config.set("remote.SSH.remotePlatform", {});
+				expect(
+					findOverride(
+						buildSshOverrides(config, "my-host", "linux", "exec bash -l"),
+						"remote.SSH.remotePlatform",
+					),
+				).toEqual({ "my-host": "linux" });
+			});
+
+			it.each(["none", "None", "NONE", "", undefined])(
+				"sets platform normally when remoteCommand is %j",
+				(cmd) => {
+					const config = new MockConfigurationProvider();
+					config.set("remote.SSH.enableRemoteCommand", true);
+					config.set("remote.SSH.remotePlatform", {});
+					expect(
+						findOverride(
+							buildSshOverrides(config, "my-host", "linux", cmd),
+							"remote.SSH.remotePlatform",
+						),
+					).toEqual({ "my-host": "linux" });
+				},
+			);
 		});
 	});
 

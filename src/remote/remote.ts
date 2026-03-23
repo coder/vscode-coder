@@ -45,6 +45,7 @@ import { getHeaderCommand } from "../settings/headers";
 import {
 	AuthorityPrefix,
 	escapeCommandArg,
+	expandPath,
 	parseRemoteAuthority,
 } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
@@ -59,7 +60,11 @@ import {
 } from "./sshConfig";
 import { SshProcessMonitor } from "./sshProcess";
 import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
-import { applySettingOverrides, buildSshOverrides } from "./userSettings";
+import {
+	applySettingOverrides,
+	buildSshOverrides,
+	isActiveRemoteCommand,
+} from "./userSettings";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -459,33 +464,12 @@ export class Remote {
 			const inbox = await Inbox.create(workspace, workspaceClient, this.logger);
 			disposables.push(inbox);
 
-			this.logger.info("Modifying settings...");
-			const overrides = buildSshOverrides(
-				vscodeProposed.workspace.getConfiguration(),
-				parts.sshHost,
-				agent.operating_system,
-			);
-			if (overrides.length > 0) {
-				const ok = await applySettingOverrides(
-					this.pathResolver.getUserSettingsPath(),
-					overrides,
-					this.logger,
-				);
-				if (ok) {
-					this.logger.info("Settings modified successfully");
-				}
-			}
-
 			const logDir = this.getLogDir(featureSet);
 
-			// This ensures the Remote SSH extension resolves the host to execute the
-			// Coder binary properly.
-			//
-			// If we didn't write to the SSH config file, connecting would fail with
-			// "Host not found".
+			let computedSshProperties: Record<string, string> = {};
 			try {
 				this.logger.info("Updating SSH config...");
-				await this.updateSSHConfig(
+				computedSshProperties = await this.updateSSHConfig(
 					workspaceClient,
 					parts.safeHostname,
 					parts.sshHost,
@@ -497,6 +481,29 @@ export class Remote {
 			} catch (error) {
 				this.logger.warn("Failed to configure SSH", error);
 				throw error;
+			}
+
+			const remoteCommand = computedSshProperties.RemoteCommand;
+			if (isActiveRemoteCommand(remoteCommand)) {
+				this.logger.info("RemoteCommand detected in SSH config");
+			}
+
+			this.logger.info("Modifying settings...");
+			const overrides = buildSshOverrides(
+				vscodeProposed.workspace.getConfiguration(),
+				parts.sshHost,
+				agent.operating_system,
+				remoteCommand,
+			);
+			if (overrides.length > 0) {
+				const ok = await applySettingOverrides(
+					this.pathResolver.getUserSettingsPath(),
+					overrides,
+					this.logger,
+				);
+				if (ok) {
+					this.logger.info("Settings modified successfully");
+				}
 			}
 
 			// Monitor SSH process and display network status
@@ -731,6 +738,13 @@ export class Remote {
 		return ["--log-dir", escapeCommandArg(logDir), "-v"];
 	}
 
+	private getSshConfigPath(): string {
+		const configured = vscode.workspace
+			.getConfiguration()
+			.get<string>("remote.SSH.configFile");
+		return expandPath(configured || path.join("~", ".ssh", "config"));
+	}
+
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles
 	// all Coder entries.
 	private async updateSSHConfig(
@@ -761,17 +775,7 @@ export class Remote {
 			}
 		}
 
-		let sshConfigFile = vscode.workspace
-			.getConfiguration()
-			.get<string>("remote.SSH.configFile");
-		if (!sshConfigFile) {
-			sshConfigFile = path.join(os.homedir(), ".ssh", "config");
-		}
-		// VS Code Remote resolves ~ to the home directory.
-		// This is required for the tilde to work on Windows.
-		if (sshConfigFile.startsWith("~")) {
-			sshConfigFile = path.join(os.homedir(), sshConfigFile.slice(1));
-		}
+		const sshConfigFile = this.getSshConfigPath();
 
 		const sshConfig = new SshConfig(sshConfigFile, this.logger);
 		await sshConfig.load();
@@ -852,7 +856,7 @@ export class Remote {
 			throw new Error("SSH config mismatch, closing remote");
 		}
 
-		return sshConfig.getRaw();
+		return computedProperties;
 	}
 
 	private watchSettings(

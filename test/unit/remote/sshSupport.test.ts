@@ -76,6 +76,57 @@ Host coder-v?code--*
 	});
 });
 
+it("picks up RemoteCommand from a user Host block alongside a Coder block", () => {
+	const props = computeSshProperties(
+		"coder-vscode.example.com--user--ws",
+		`# --- START CODER VSCODE example.com ---
+Host coder-vscode.example.com--*
+  ProxyCommand /path/to/coder ssh --stdio %h
+  StrictHostKeyChecking no
+# --- END CODER VSCODE example.com ---
+
+Host coder-vscode.example.com--*
+  RequestTTY yes
+  RemoteCommand exec /bin/bash -l
+`,
+	);
+	expect(props.RemoteCommand).toBe("exec /bin/bash -l");
+	expect(props.ProxyCommand).toBe("/path/to/coder ssh --stdio %h");
+});
+
+it("returns RemoteCommand none literally", () => {
+	const props = computeSshProperties(
+		"coder-vscode.example.com--user--ws",
+		`Host coder-vscode.example.com--*
+  RemoteCommand none
+`,
+	);
+	expect(props.RemoteCommand).toBe("none");
+});
+
+it("inherits RemoteCommand from a Host * block", () => {
+	const props = computeSshProperties(
+		"coder-vscode.example.com--user--ws",
+		`Host *
+  RemoteCommand exec /bin/zsh -l
+
+Host coder-vscode.example.com--*
+  ProxyCommand /path/to/coder ssh --stdio %h
+`,
+	);
+	expect(props.RemoteCommand).toBe("exec /bin/zsh -l");
+});
+
+it("handles RemoteCommand with = delimiter", () => {
+	const props = computeSshProperties(
+		"coder-vscode.example.com--user--ws",
+		`Host coder-vscode.example.com--*
+  RemoteCommand=exec /bin/bash -l
+`,
+	);
+	expect(props.RemoteCommand).toBe("exec /bin/bash -l");
+});
+
 it("properly escapes meaningful regex characters", () => {
 	const properties = computeSshProperties(
 		"coder-vscode.dev.coder.com--matalfi--dogfood",
