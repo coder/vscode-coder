@@ -59,10 +59,6 @@ vi.mock("proper-lockfile", () => ({
 
 vi.mock("@/pgp");
 
-vi.mock("@/vscodeProposed", () => ({
-	vscodeProposed: vscode,
-}));
-
 vi.mock("@/core/cliUtils", async () => {
 	const actual =
 		await vi.importActual<typeof import("@/core/cliUtils")>("@/core/cliUtils");

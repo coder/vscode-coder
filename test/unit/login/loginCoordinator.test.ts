@@ -67,10 +67,6 @@ vi.mock("@/promptUtils", () => ({
 	maybeAskUrl: vi.fn(),
 }));
 
-vi.mock("@/vscodeProposed", () => ({
-	vscodeProposed: vscode,
-}));
-
 // Mock CoderApi to control getAuthenticatedUser behavior
 const mockGetAuthenticatedUser = vi.hoisted(() => vi.fn());
 vi.mock("@/api/coderApi", async (importOriginal) => {

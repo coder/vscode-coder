@@ -255,6 +255,24 @@ describe("WorkspaceMonitor", () => {
 			);
 			monitor.dispose();
 		});
+
+		it("shows outdated notification after re-enabling", async () => {
+			config.set("coder.disableUpdateNotifications", true);
+			const { monitor, stream, client } = await createMonitor();
+			monitor.markInitialSetupComplete();
+
+			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
+			expect(client.getTemplate).not.toHaveBeenCalled();
+
+			config.set("coder.disableUpdateNotifications", false);
+
+			stream.pushMessage(workspaceEvent(createWorkspace({ outdated: true })));
+
+			await vi.waitFor(() => {
+				expect(client.getTemplate).toHaveBeenCalled();
+			});
+			monitor.dispose();
+		});
 	});
 
 	describe("disableNotifications", () => {

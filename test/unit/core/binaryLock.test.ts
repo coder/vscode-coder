@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as vscode from "vscode";
 
 import { BinaryLock } from "@/core/binaryLock";
 import * as downloadProgress from "@/core/downloadProgress";
@@ -10,10 +9,6 @@ import {
 } from "../../mocks/testHelpers";
 
 vi.mock("vscode");
-
-vi.mock("@/vscodeProposed", () => ({
-	vscodeProposed: vscode,
-}));
 
 // Mock proper-lockfile
 vi.mock("proper-lockfile", () => ({

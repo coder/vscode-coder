@@ -10,7 +10,6 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as vscode from "vscode";
 
 import { CliManager } from "@/core/cliManager";
 import * as cliUtils from "@/core/cliUtils";
@@ -26,10 +25,6 @@ import {
 } from "../../mocks/testHelpers";
 
 vi.mock("@/pgp");
-
-vi.mock("@/vscodeProposed", () => ({
-	vscodeProposed: vscode,
-}));
 
 vi.mock("@/core/cliUtils", async () => {
 	const actual = await vi.importActual<typeof cliUtils>("@/core/cliUtils");
