@@ -8,7 +8,7 @@ import axios, {
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
-import type { User } from "coder/site/src/api/typesGenerated";
+import type { Experiment, User } from "coder/site/src/api/typesGenerated";
 import type { IncomingMessage } from "node:http";
 
 import type { CoderApi } from "@/api/coderApi";
@@ -504,6 +504,7 @@ export class MockCoderApi implements Pick<
 	| "getHost"
 	| "getAuthenticatedUser"
 	| "dispose"
+	| "getExperiments"
 > {
 	private _host: string | undefined;
 	private _token: string | undefined;
@@ -540,6 +541,10 @@ export class MockCoderApi implements Pick<
 	readonly dispose = vi.fn(() => {
 		this._disposed = true;
 	});
+
+	readonly getExperiments = vi.fn(
+		(): Promise<Experiment[]> => Promise.resolve([]),
+	);
 
 	/**
 	 * Get current host (for assertions)
