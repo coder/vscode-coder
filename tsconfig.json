@@ -1,11 +1,11 @@
 {
-	"extends": "@tsconfig/node20/tsconfig.json",
+	"extends": "@tsconfig/node22/tsconfig.json",
 	"compilerOptions": {
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
 		"outDir": "out",
 		// "dom" is required for importing the API from coder/coder.
-		"lib": ["ES2023", "dom"],
+		"lib": ["ES2024", "dom"],
 		"sourceMap": true,
 		"noFallthroughCasesInSwitch": true,
 		"noImplicitOverride": true,

@@ -2,21 +2,21 @@ packages:
   - packages/*
 
 catalog:
-  "@rolldown/plugin-babel": ^0.2.1
-  "@tanstack/react-query": ^5.90.21
+  "@rolldown/plugin-babel": ^0.2.2
+  "@tanstack/react-query": ^5.95.2
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
   "@types/vscode-webview": ^1.57.5
-  "@vitejs/plugin-react": ^6.0.0
+  "@vitejs/plugin-react": ^6.0.1
   "@vscode-elements/react-elements": ^2.4.0
-  "@vscode/codicons": ^0.0.44
+  "@vscode/codicons": ^0.0.45
   babel-plugin-react-compiler: ^1.0.0
   coder: github:coder/coder#main
   date-fns: ^4.1.0
   react: ^19.2.4
   react-dom: ^19.2.4
   typescript: ^5.9.3
-  vite: ^8.0.0
+  vite: ^8.0.2
 
 catalogMode: strict
 

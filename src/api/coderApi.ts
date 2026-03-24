@@ -110,12 +110,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 		return this.getAxiosInstance().defaults.baseURL;
 	}
 
-	getSessionToken(): string | undefined {
-		return this.getAxiosInstance().defaults.headers.common[
-			coderSessionTokenHeader
-		] as string | undefined;
-	}
-
 	/**
 	 * Set both host and token together. Useful for login/logout/switch to
 	 * avoid triggering multiple reconnection events.
