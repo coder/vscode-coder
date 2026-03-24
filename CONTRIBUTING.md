@@ -207,6 +207,11 @@ Some dependencies are not directly used in the source but are required anyway.
 The coder client is vendored from coder/coder. Every now and then, we should be running `pnpm update coder`
 to make sure we're using up to date versions of the client.
 
+After running `pnpm update`, always run `pnpm dedupe` to consolidate duplicate
+package versions across the workspace. Without this, workspace packages can
+resolve to different versions of the same dependency, causing issues like broken
+React context propagation when two copies of a library are loaded.
+
 ## Releasing
 
 For both stable and pre-releases:
