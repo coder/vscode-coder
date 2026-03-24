@@ -2,7 +2,6 @@ import axios, {
 	AxiosError,
 	AxiosHeaders,
 	type AxiosAdapter,
-	type AxiosInstance,
 	type AxiosResponse,
 	type InternalAxiosRequestConfig,
 } from "axios";
@@ -542,14 +541,6 @@ export class MockCoderApi implements Pick<
 	readonly dispose = vi.fn(() => {
 		this._disposed = true;
 	});
-
-	// Minimal axios-like stub for getAxiosInstance().
-	readonly getAxiosInstance = vi.fn(
-		() =>
-			({
-				get: vi.fn().mockResolvedValue({ data: [] }),
-			}) as unknown as AxiosInstance,
-	);
 
 	readonly getExperiments = vi.fn(
 		(): Promise<Experiment[]> => Promise.resolve([]),

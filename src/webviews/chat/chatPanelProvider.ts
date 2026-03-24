@@ -109,6 +109,7 @@ export class ChatPanelProvider
 	private static readonly AUTH_RETRY_BASE_MS = 500;
 
 	private sendAuthToken(attempt = 0): void {
+		clearTimeout(this.authRetryTimer);
 		const token = this.client.getSessionToken();
 		if (!token) {
 			if (attempt < ChatPanelProvider.MAX_AUTH_RETRIES) {
@@ -212,7 +213,7 @@ export class ChatPanelProvider
           iframe.contentWindow.postMessage({
             type: 'coder:vscode-auth-bootstrap',
             payload: { token: data.token },
-	          }, '${allowedOrigin}');
+          }, '${allowedOrigin}');
         }
 
         if (data.type === 'coder:auth-error') {

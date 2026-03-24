@@ -261,6 +261,9 @@ export class DeploymentManager implements vscode.Disposable {
 		this.client
 			.getExperiments()
 			.then((experiments) => {
+				if (!this.isAuthenticated()) {
+					return;
+				}
 				this.contextManager.set(
 					"coder.agentsEnabled",
 					experiments.includes("agents"),
@@ -268,7 +271,6 @@ export class DeploymentManager implements vscode.Disposable {
 			})
 			.catch((err) => {
 				this.logger.warn("Failed to fetch experiments", err);
-				// Default to hidden when we cannot determine.
 				this.contextManager.set("coder.agentsEnabled", false);
 			});
 	}
