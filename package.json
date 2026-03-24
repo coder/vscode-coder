@@ -502,7 +502,7 @@
 		"word-wrap": "1.2.5"
 	},
 	"dependencies": {
-		"@peculiar/x509": "^1.14.3",
+		"@peculiar/x509": "^2.0.0",
 		"@repo/shared": "workspace:*",
 		"axios": "1.13.6",
 		"date-fns": "catalog:",

@@ -62,8 +62,8 @@ importers:
   .:
     dependencies:
       '@peculiar/x509':
-        specifier: ^1.14.3
-        version: 1.14.3
+        specifier: ^2.0.0
+        version: 2.0.0
       '@repo/shared':
         specifier: workspace:*
         version: link:packages/shared
@@ -190,7 +190,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: 'catalog:'
-        version: https://codeload.github.com/coder/coder/tar.gz/19e86628dad0d2fdc2c0137ccabfb43fc43ba7c7
+        version: https://codeload.github.com/coder/coder/tar.gz/fd1e2f0dd9a54d52589ae4dbf048c96dcb0ad379
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
@@ -1015,8 +1015,8 @@ packages:
   '@peculiar/asn1-x509@2.6.1':
     resolution: {integrity: sha512-O9jT5F1A2+t3r7C4VT7LYGXqkGLK7Kj1xFpz7U0isPrubwU5PbDoyYtx6MiGst29yq7pXN5vZbQFKRCP+lLZlA==}
 
-  '@peculiar/x509@1.14.3':
-    resolution: {integrity: sha512-C2Xj8FZ0uHWeCXXqX5B4/gVFQmtSkiuOolzAgutjTfseNOHT3pUjljDZsTSxXFGgio54bCzVFqmEOUrIVk8RDA==}
+  '@peculiar/x509@2.0.0':
+    resolution: {integrity: sha512-r10lkuy6BNfRmyYdRAfgu6dq0HOmyIV2OLhXWE3gDEPBdX1b8miztJVyX/UxWhLwemNyDP3CLZHpDxDwSY0xaA==}
     engines: {node: '>=20.0.0'}
 
   '@pkgjs/parseargs@0.11.0':
@@ -1922,8 +1922,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/19e86628dad0d2fdc2c0137ccabfb43fc43ba7c7:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/19e86628dad0d2fdc2c0137ccabfb43fc43ba7c7}
+  coder@https://codeload.github.com/coder/coder/tar.gz/fd1e2f0dd9a54d52589ae4dbf048c96dcb0ad379:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/fd1e2f0dd9a54d52589ae4dbf048c96dcb0ad379}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -3561,9 +3561,6 @@ packages:
     resolution: {integrity: sha512-6tDA8g98We0zd0GvVeMT9arEOnTw9qM03L9cJXaCjrip1OO764RDBLBfrB4cwzNGDj5OA5ioymC9GkizgWJDUg==}
     engines: {node: '>=8'}
 
-  reflect-metadata@0.2.2:
-    resolution: {integrity: sha512-urBwgfrvVP/eAyXx4hluJivBKzuEbSQs9rKWCrCkbSxNv8mxPcUZKeuoF3Uy4mJl3Lwprp6yy5/39VWigZ4K6Q==}
-
   require-directory@2.1.1:
     resolution: {integrity: sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==}
     engines: {node: '>=0.10.0'}
@@ -5025,7 +5022,7 @@ snapshots:
       pvtsutils: 1.3.6
       tslib: 2.8.1
 
-  '@peculiar/x509@1.14.3':
+  '@peculiar/x509@2.0.0':
     dependencies:
       '@peculiar/asn1-cms': 2.6.1
       '@peculiar/asn1-csr': 2.6.1
@@ -5035,7 +5032,6 @@ snapshots:
       '@peculiar/asn1-schema': 2.6.0
       '@peculiar/asn1-x509': 2.6.1
       pvtsutils: 1.3.6
-      reflect-metadata: 0.2.2
       tslib: 2.8.1
       tsyringe: 4.10.0
 
@@ -6018,7 +6014,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/19e86628dad0d2fdc2c0137ccabfb43fc43ba7c7: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/fd1e2f0dd9a54d52589ae4dbf048c96dcb0ad379: {}
 
   color-convert@2.0.1:
     dependencies:
@@ -7964,8 +7960,6 @@ snapshots:
     dependencies:
       indent-string: 4.0.0
       strip-indent: 3.0.0
-
-  reflect-metadata@0.2.2: {}
 
   require-directory@2.1.1: {}
 
