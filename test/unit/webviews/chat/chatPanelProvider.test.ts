@@ -16,21 +16,11 @@ function setMockTheme(kind: number): void {
 	(vscode.window as WindowMock).activeColorTheme = { kind };
 }
 
-function findMessage(messages: unknown[], type: string): unknown {
-	return messages.find(
-		(m) =>
-			typeof m === "object" &&
-			m !== null &&
-			(m as { type?: string }).type === type,
-	);
-}
-
 interface Harness {
 	provider: ChatPanelProvider;
-	client: MockCoderApi;
 	postMessage: ReturnType<typeof vi.fn>;
 	sendFromWebview: (msg: unknown) => void;
-	messages: () => unknown[];
+	html: () => string;
 }
 
 function createHarness(): Harness {
@@ -42,7 +32,6 @@ function createHarness(): Harness {
 		createMockLogger(),
 	);
 
-	const posted: unknown[] = [];
 	let handler: ((msg: unknown) => void) | null = null;
 
 	const webview: vscode.WebviewView = {
@@ -51,10 +40,7 @@ function createHarness(): Harness {
 			options: { enableScripts: false },
 			html: "",
 			cspSource: "",
-			postMessage: vi.fn((msg: unknown) => {
-				posted.push(msg);
-				return Promise.resolve(true);
-			}),
+			postMessage: vi.fn().mockResolvedValue(true),
 			onDidReceiveMessage: vi.fn((h) => {
 				handler = h;
 				return { dispose: vi.fn() };
@@ -76,13 +62,28 @@ function createHarness(): Harness {
 		{} as vscode.CancellationToken,
 	);
 
+	const postMessage = webview.webview.postMessage as ReturnType<typeof vi.fn>;
+
 	return {
 		provider,
-		client,
-		postMessage: webview.webview.postMessage as ReturnType<typeof vi.fn>,
+		postMessage,
 		sendFromWebview: (msg: unknown) => handler?.(msg),
-		messages: () => [...posted],
+		html: () => webview.webview.html,
 	};
+}
+
+function findPostedMessage(
+	postMessage: ReturnType<typeof vi.fn>,
+	type: string,
+): unknown {
+	return postMessage.mock.calls
+		.map((c: unknown[]) => c[0])
+		.find(
+			(m: unknown) =>
+				typeof m === "object" &&
+				m !== null &&
+				(m as { type?: string }).type === type,
+		);
 }
 
 describe("ChatPanelProvider", () => {
@@ -92,60 +93,30 @@ describe("ChatPanelProvider", () => {
 	});
 
 	describe("theme sync", () => {
-		it("sends dark theme on coder:chat-ready", () => {
-			const { sendFromWebview, messages } = createHarness();
+		it.each([
+			[vscode.ColorThemeKind.Dark, "dark"],
+			[vscode.ColorThemeKind.Light, "light"],
+			[vscode.ColorThemeKind.HighContrast, "dark"],
+			[vscode.ColorThemeKind.HighContrastLight, "light"],
+		])("maps ColorThemeKind %i to %s on chat-ready", (kind, expected) => {
+			setMockTheme(kind);
+			const { sendFromWebview, postMessage } = createHarness();
 
 			sendFromWebview({ type: "coder:chat-ready" });
 
-			expect(findMessage(messages(), "coder:set-theme")).toEqual({
+			expect(findPostedMessage(postMessage, "coder:set-theme")).toEqual({
 				type: "coder:set-theme",
-				theme: "dark",
+				theme: expected,
 			});
 		});
 
-		it("sends scroll-to-bottom on coder:chat-ready", () => {
-			const { sendFromWebview, messages } = createHarness();
+		it("sends scroll-to-bottom on chat-ready", () => {
+			const { sendFromWebview, postMessage } = createHarness();
 
 			sendFromWebview({ type: "coder:chat-ready" });
 
-			expect(findMessage(messages(), "coder:scroll-to-bottom")).toEqual({
+			expect(findPostedMessage(postMessage, "coder:scroll-to-bottom")).toEqual({
 				type: "coder:scroll-to-bottom",
-			});
-		});
-
-		it("sends light theme on coder:chat-ready", () => {
-			setMockTheme(vscode.ColorThemeKind.Light);
-			const { sendFromWebview, messages } = createHarness();
-
-			sendFromWebview({ type: "coder:chat-ready" });
-
-			expect(findMessage(messages(), "coder:set-theme")).toEqual({
-				type: "coder:set-theme",
-				theme: "light",
-			});
-		});
-
-		it("detects HighContrastLight as light theme", () => {
-			setMockTheme(vscode.ColorThemeKind.HighContrastLight);
-			const { sendFromWebview, messages } = createHarness();
-
-			sendFromWebview({ type: "coder:chat-ready" });
-
-			expect(findMessage(messages(), "coder:set-theme")).toEqual({
-				type: "coder:set-theme",
-				theme: "light",
-			});
-		});
-
-		it("detects HighContrast as dark theme", () => {
-			setMockTheme(vscode.ColorThemeKind.HighContrast);
-			const { sendFromWebview, messages } = createHarness();
-
-			sendFromWebview({ type: "coder:chat-ready" });
-
-			expect(findMessage(messages(), "coder:set-theme")).toEqual({
-				type: "coder:set-theme",
-				theme: "dark",
 			});
 		});
 
@@ -167,11 +138,13 @@ describe("ChatPanelProvider", () => {
 
 	describe("auth flow", () => {
 		it("sends auth token on coder:vscode-ready", () => {
-			const { sendFromWebview, messages } = createHarness();
+			const { sendFromWebview, postMessage } = createHarness();
 
 			sendFromWebview({ type: "coder:vscode-ready" });
 
-			expect(findMessage(messages(), "coder:auth-bootstrap-token")).toEqual({
+			expect(
+				findPostedMessage(postMessage, "coder:auth-bootstrap-token"),
+			).toEqual({
 				type: "coder:auth-bootstrap-token",
 				token: "test-token",
 			});
@@ -201,8 +174,18 @@ describe("ChatPanelProvider", () => {
 		});
 	});
 
-	describe("iframe HTML", () => {
-		it("generates HTML with iframe when chat ID is set", () => {
+	describe("openChat", () => {
+		it("renders embed iframe for the given chat ID", () => {
+			const { provider, html } = createHarness();
+
+			provider.openChat("test-agent-123");
+
+			expect(html()).toContain(
+				"https://coder.example.com/agents/test-agent-123/embed",
+			);
+		});
+
+		it("focuses the chat panel", () => {
 			const { provider } = createHarness();
 
 			provider.openChat("test-agent-123");
@@ -212,25 +195,22 @@ describe("ChatPanelProvider", () => {
 			);
 		});
 
-		it("shows no-agent message when no chat ID is set", () => {
-			const harness = createHarness();
+		it("shows placeholder when no chat ID is set", () => {
+			const { html } = createHarness();
 
-			const webview = (
-				harness.provider as unknown as { view: vscode.WebviewView }
-			).view;
-			expect(webview.webview.html).toContain("No active chat session");
+			expect(html()).toContain("No active chat session");
 		});
 	});
 
 	describe("message filtering", () => {
 		it("ignores non-object messages", () => {
-			const { sendFromWebview, messages } = createHarness();
+			const { sendFromWebview, postMessage } = createHarness();
 
 			sendFromWebview(null);
 			sendFromWebview("string");
 			sendFromWebview(42);
 
-			expect(findMessage(messages(), "coder:set-theme")).toBeUndefined();
+			expect(findPostedMessage(postMessage, "coder:set-theme")).toBeUndefined();
 		});
 	});
 });

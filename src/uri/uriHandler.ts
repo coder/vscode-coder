@@ -1,19 +1,25 @@
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { type Commands } from "../commands";
-import { type ServiceContainer } from "../core/container";
-import { type DeploymentManager } from "../deployment/deploymentManager";
 import { CALLBACK_PATH } from "../oauth/utils";
 import { maybeAskUrl } from "../promptUtils";
 import { toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 
-interface UriRouteContext {
-	params: URLSearchParams;
+import type { Commands } from "../commands";
+import type { ServiceContainer } from "../core/container";
+import type { DeploymentManager } from "../deployment/deploymentManager";
+import type { ChatPanelProvider } from "../webviews/chat/chatPanelProvider";
+
+interface UriHandlerDeps {
 	serviceContainer: ServiceContainer;
 	deploymentManager: DeploymentManager;
 	commands: Commands;
+	chatPanelProvider: ChatPanelProvider;
+}
+
+interface UriRouteContext extends UriHandlerDeps {
+	params: URLSearchParams;
 }
 
 type UriRouteHandler = (ctx: UriRouteContext) => Promise<void>;
@@ -27,17 +33,20 @@ const routes: Readonly<Record<string, UriRouteHandler>> = {
 /**
  * Registers the URI handler for `{vscode.env.uriScheme}://coder.coder-remote`... URIs.
  */
-export function registerUriHandler(
-	serviceContainer: ServiceContainer,
-	deploymentManager: DeploymentManager,
-	commands: Commands,
-): vscode.Disposable {
-	const output = serviceContainer.getLogger();
+export function registerUriHandler(deps: UriHandlerDeps): vscode.Disposable {
+	const output = deps.serviceContainer.getLogger();
 
 	return vscode.window.registerUriHandler({
 		handleUri: async (uri) => {
 			try {
-				await routeUri(uri, serviceContainer, deploymentManager, commands);
+				const handler = routes[uri.path];
+				if (!handler) {
+					throw new Error(`Unknown path ${uri.path}`);
+				}
+				await handler({
+					...deps,
+					params: new URLSearchParams(uri.query),
+				});
 			} catch (error) {
 				const message = errToStr(error, "No error message was provided");
 				output.warn(`Failed to handle URI ${uri.toString()}: ${message}`);
@@ -48,25 +57,6 @@ export function registerUriHandler(
 				});
 			}
 		},
-	});
-}
-
-async function routeUri(
-	uri: vscode.Uri,
-	serviceContainer: ServiceContainer,
-	deploymentManager: DeploymentManager,
-	commands: Commands,
-): Promise<void> {
-	const handler = routes[uri.path];
-	if (!handler) {
-		throw new Error(`Unknown path ${uri.path}`);
-	}
-
-	await handler({
-		params: new URLSearchParams(uri.query),
-		serviceContainer,
-		deploymentManager,
-		commands,
 	});
 }
 
@@ -115,6 +105,13 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		if (!opened && chatId) {
 			await mementoManager.clearPendingChatId();
 		}
+	}
+
+	// When the workspace is already open VS Code refocuses without
+	// reloading, so activate() won't consume the pending chatId.
+	if (opened && chatId) {
+		serviceContainer.getContextManager().set("coder.agentsEnabled", true);
+		ctx.chatPanelProvider.openChat(chatId);
 	}
 }
 
