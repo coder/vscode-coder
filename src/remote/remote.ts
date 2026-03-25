@@ -58,13 +58,13 @@ import {
 	parseCoderSshOptions,
 	parseSshConfig,
 } from "./sshConfig";
-import { SshProcessMonitor } from "./sshProcess";
-import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
 import {
 	applySettingOverrides,
 	buildSshOverrides,
 	isActiveRemoteCommand,
-} from "./userSettings";
+} from "./sshOverrides";
+import { SshProcessMonitor } from "./sshProcess";
+import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -485,7 +485,9 @@ export class Remote {
 
 			const remoteCommand = computedSshProperties.RemoteCommand;
 			if (isActiveRemoteCommand(remoteCommand)) {
-				this.logger.info("RemoteCommand detected in SSH config");
+				this.logger.info(
+					"RemoteCommand detected, skipping remotePlatform override",
+				);
 			}
 
 			this.logger.info("Modifying settings...");
@@ -755,7 +757,7 @@ export class Remote {
 		logDir: string,
 		featureSet: FeatureSet,
 		cliAuth: CliAuth,
-	) {
+	): Promise<Record<string, string>> {
 		let deploymentSSHConfig = {};
 		try {
 			const deploymentConfig = await restClient.getDeploymentSSHConfig();

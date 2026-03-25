@@ -75,7 +75,7 @@ export function buildSshOverrides(
 	config: Pick<WorkspaceConfiguration, "get">,
 	sshHost: string,
 	agentOS: string,
-	remoteCommand?: string,
+	remoteCommand: string | undefined,
 ): SettingOverride[] {
 	const overrides: SettingOverride[] = [];
 

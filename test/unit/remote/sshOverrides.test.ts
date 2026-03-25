@@ -6,7 +6,7 @@ import {
 	applySettingOverrides,
 	buildSshOverrides,
 	isActiveRemoteCommand,
-} from "@/remote/userSettings";
+} from "@/remote/sshOverrides";
 
 import {
 	MockConfigurationProvider,
@@ -54,7 +54,7 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.remotePlatform", { "other-host": "darwin" });
 			expect(
 				findOverride(
-					buildSshOverrides(config, "new-host", "linux"),
+					buildSshOverrides(config, "new-host", "linux", undefined),
 					"remote.SSH.remotePlatform",
 				),
 			).toEqual({ "other-host": "darwin", "new-host": "linux" });
@@ -63,7 +63,7 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.remotePlatform", { "my-host": "windows" });
 			expect(
 				findOverride(
-					buildSshOverrides(config, "my-host", "linux"),
+					buildSshOverrides(config, "my-host", "linux", undefined),
 					"remote.SSH.remotePlatform",
 				),
 			).toEqual({ "my-host": "linux" });
@@ -74,7 +74,7 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.remotePlatform", { "my-host": "linux" });
 			expect(
 				findOverride(
-					buildSshOverrides(config, "my-host", "linux"),
+					buildSshOverrides(config, "my-host", "linux", undefined),
 					"remote.SSH.remotePlatform",
 				),
 			).toBeUndefined();
@@ -150,7 +150,7 @@ describe("buildSshOverrides", () => {
 			}
 			expect(
 				findOverride(
-					buildSshOverrides(config, "host", "linux"),
+					buildSshOverrides(config, "host", "linux", undefined),
 					"remote.SSH.connectTimeout",
 				),
 			).toBe(1800);
@@ -164,7 +164,7 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.connectTimeout", timeout);
 			expect(
 				findOverride(
-					buildSshOverrides(config, "host", "linux"),
+					buildSshOverrides(config, "host", "linux", undefined),
 					"remote.SSH.connectTimeout",
 				),
 			).toBeUndefined();
@@ -175,7 +175,12 @@ describe("buildSshOverrides", () => {
 		it("defaults to 8 hours when not configured", () => {
 			expect(
 				findOverride(
-					buildSshOverrides(new MockConfigurationProvider(), "host", "linux"),
+					buildSshOverrides(
+						new MockConfigurationProvider(),
+						"host",
+						"linux",
+						undefined,
+					),
 					"remote.SSH.reconnectionGraceTime",
 				),
 			).toBe(28800);
@@ -186,7 +191,7 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.reconnectionGraceTime", 3600);
 			expect(
 				findOverride(
-					buildSshOverrides(config, "host", "linux"),
+					buildSshOverrides(config, "host", "linux", undefined),
 					"remote.SSH.reconnectionGraceTime",
 				),
 			).toBeUndefined();
@@ -201,6 +206,7 @@ describe("buildSshOverrides", () => {
 			new MockConfigurationProvider(),
 			"host",
 			"linux",
+			undefined,
 		);
 		expect(findOverride(overrides, key)).toBe(expected);
 	});
@@ -212,7 +218,9 @@ describe("buildSshOverrides", () => {
 		config.set("remote.SSH.reconnectionGraceTime", 7200);
 		config.set("remote.SSH.serverShutdownTimeout", 600);
 		config.set("remote.SSH.maxReconnectionAttempts", 4);
-		expect(buildSshOverrides(config, "my-host", "linux")).toHaveLength(0);
+		expect(
+			buildSshOverrides(config, "my-host", "linux", undefined),
+		).toHaveLength(0);
 	});
 });
 

@@ -1,4 +1,4 @@
-import { it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 
 import {
 	computeSshProperties,
@@ -26,10 +26,11 @@ it("current shell supports ssh", () => {
 	expect(sshSupportsSetEnv()).toBeTruthy();
 });
 
-it("computes the config for a host", () => {
-	const properties = computeSshProperties(
-		"coder-vscode--testing",
-		`Host *
+describe("computeSshProperties", () => {
+	it("computes the config for a host", () => {
+		const properties = computeSshProperties(
+			"coder-vscode--testing",
+			`Host *
   StrictHostKeyChecking yes
 
 # --- START CODER VSCODE ---
@@ -39,19 +40,19 @@ Host coder-vscode--*
   ProxyCommand=/tmp/coder --header="X-FOO=bar" coder.dev
 # --- END CODER VSCODE ---
 `,
-	);
+		);
 
-	expect(properties).toEqual({
-		Another: "true",
-		StrictHostKeyChecking: "yes",
-		ProxyCommand: '/tmp/coder --header="X-FOO=bar" coder.dev',
+		expect(properties).toEqual({
+			Another: "true",
+			StrictHostKeyChecking: "yes",
+			ProxyCommand: '/tmp/coder --header="X-FOO=bar" coder.dev',
+		});
 	});
-});
 
-it("handles ? wildcards", () => {
-	const properties = computeSshProperties(
-		"coder-vscode--testing",
-		`Host *
+	it("handles ? wildcards", () => {
+		const properties = computeSshProperties(
+			"coder-vscode--testing",
+			`Host *
   StrictHostKeyChecking yes
 
 Host i-???????? i-?????????????????
@@ -67,19 +68,19 @@ Host coder-v?code--*
   ProxyCommand=/tmp/coder --header="X-BAR=foo" coder.dev
 # --- END CODER VSCODE ---
 `,
-	);
+		);
 
-	expect(properties).toEqual({
-		Another: "true",
-		StrictHostKeyChecking: "yes",
-		ProxyCommand: '/tmp/coder --header="X-BAR=foo" coder.dev',
+		expect(properties).toEqual({
+			Another: "true",
+			StrictHostKeyChecking: "yes",
+			ProxyCommand: '/tmp/coder --header="X-BAR=foo" coder.dev',
+		});
 	});
-});
 
-it("picks up RemoteCommand from a user Host block alongside a Coder block", () => {
-	const props = computeSshProperties(
-		"coder-vscode.example.com--user--ws",
-		`# --- START CODER VSCODE example.com ---
+	it("picks up RemoteCommand from a user Host block alongside a Coder block", () => {
+		const props = computeSshProperties(
+			"coder-vscode.example.com--user--ws",
+			`# --- START CODER VSCODE example.com ---
 Host coder-vscode.example.com--*
   ProxyCommand /path/to/coder ssh --stdio %h
   StrictHostKeyChecking no
@@ -89,48 +90,48 @@ Host coder-vscode.example.com--*
   RequestTTY yes
   RemoteCommand exec /bin/bash -l
 `,
-	);
-	expect(props.RemoteCommand).toBe("exec /bin/bash -l");
-	expect(props.ProxyCommand).toBe("/path/to/coder ssh --stdio %h");
-});
+		);
+		expect(props.RemoteCommand).toBe("exec /bin/bash -l");
+		expect(props.ProxyCommand).toBe("/path/to/coder ssh --stdio %h");
+	});
 
-it("returns RemoteCommand none literally", () => {
-	const props = computeSshProperties(
-		"coder-vscode.example.com--user--ws",
-		`Host coder-vscode.example.com--*
+	it("returns RemoteCommand none literally", () => {
+		const props = computeSshProperties(
+			"coder-vscode.example.com--user--ws",
+			`Host coder-vscode.example.com--*
   RemoteCommand none
 `,
-	);
-	expect(props.RemoteCommand).toBe("none");
-});
+		);
+		expect(props.RemoteCommand).toBe("none");
+	});
 
-it("inherits RemoteCommand from a Host * block", () => {
-	const props = computeSshProperties(
-		"coder-vscode.example.com--user--ws",
-		`Host *
+	it("inherits RemoteCommand from a Host * block", () => {
+		const props = computeSshProperties(
+			"coder-vscode.example.com--user--ws",
+			`Host *
   RemoteCommand exec /bin/zsh -l
 
 Host coder-vscode.example.com--*
   ProxyCommand /path/to/coder ssh --stdio %h
 `,
-	);
-	expect(props.RemoteCommand).toBe("exec /bin/zsh -l");
-});
+		);
+		expect(props.RemoteCommand).toBe("exec /bin/zsh -l");
+	});
 
-it("handles RemoteCommand with = delimiter", () => {
-	const props = computeSshProperties(
-		"coder-vscode.example.com--user--ws",
-		`Host coder-vscode.example.com--*
+	it("handles RemoteCommand with = delimiter", () => {
+		const props = computeSshProperties(
+			"coder-vscode.example.com--user--ws",
+			`Host coder-vscode.example.com--*
   RemoteCommand=exec /bin/bash -l
 `,
-	);
-	expect(props.RemoteCommand).toBe("exec /bin/bash -l");
-});
+		);
+		expect(props.RemoteCommand).toBe("exec /bin/bash -l");
+	});
 
-it("properly escapes meaningful regex characters", () => {
-	const properties = computeSshProperties(
-		"coder-vscode.dev.coder.com--matalfi--dogfood",
-		`Host *
+	it("properly escapes meaningful regex characters", () => {
+		const properties = computeSshProperties(
+			"coder-vscode.dev.coder.com--matalfi--dogfood",
+			`Host *
   StrictHostKeyChecking yes
 
 # ------------START-CODER-----------
@@ -153,12 +154,13 @@ Host coder-vscode.dev.coder.com--*
 # --- END CODER VSCODE dev.coder.com ---%
 
 `,
-	);
+		);
 
-	expect(properties).toEqual({
-		StrictHostKeyChecking: "yes",
-		ProxyCommand:
-			'"/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/bin/coder-darwin-arm64" vscodessh --network-info-dir "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/net" --session-token-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/session" --url-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/url" %h',
-		UserKnownHostsFile: "/dev/null",
+		expect(properties).toEqual({
+			StrictHostKeyChecking: "yes",
+			ProxyCommand:
+				'"/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/bin/coder-darwin-arm64" vscodessh --network-info-dir "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/net" --session-token-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/session" --url-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/url" %h',
+			UserKnownHostsFile: "/dev/null",
+		});
 	});
 });

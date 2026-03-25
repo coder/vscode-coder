@@ -26,7 +26,7 @@ import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import {
 	RECOMMENDED_SSH_SETTINGS,
 	applySettingOverrides,
-} from "./remote/userSettings";
+} from "./remote/sshOverrides";
 import { getGlobalFlags, resolveCliAuth } from "./settings/cli";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
