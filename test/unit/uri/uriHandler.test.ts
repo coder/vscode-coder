@@ -21,10 +21,6 @@ import type { LoginCoordinator, LoginOptions } from "@/login/loginCoordinator";
 
 vi.mock("@/promptUtils", () => ({ maybeAskUrl: vi.fn() }));
 
-vi.mock("@/vscodeProposed", () => ({
-	vscodeProposed: vscode,
-}));
-
 const TEST_URL = "https://coder.example.com";
 const TEST_HOSTNAME = "coder.example.com";
 

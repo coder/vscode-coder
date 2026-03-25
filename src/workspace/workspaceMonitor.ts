@@ -6,11 +6,16 @@ import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
-import { type CoderApi } from "../api/coderApi";
-import { type ContextManager } from "../core/contextManager";
-import { type Logger } from "../logging/logger";
+import {
+	areNotificationsDisabled,
+	areUpdateNotificationsDisabled,
+} from "../settings/notifications";
 import { vscodeProposed } from "../vscodeProposed";
-import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
+
+import type { CoderApi } from "../api/coderApi";
+import type { ContextManager } from "../core/contextManager";
+import type { Logger } from "../logging/logger";
+import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 /**
  * Monitor a single workspace using a WebSocket for events like shutdown and deletion.
@@ -130,7 +135,11 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private maybeNotify(workspace: Workspace) {
-		this.maybeNotifyOutdated(workspace);
+		const cfg = vscode.workspace.getConfiguration();
+		if (areNotificationsDisabled(cfg)) {
+			return;
+		}
+		this.maybeNotifyOutdated(workspace, cfg);
 		this.maybeNotifyAutostop(workspace);
 		if (this.completedInitialSetup) {
 			// This instance might be created before the workspace is running
@@ -204,13 +213,12 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		return timeLeft >= 0 && timeLeft <= notifyTime;
 	}
 
-	private maybeNotifyOutdated(workspace: Workspace) {
+	private maybeNotifyOutdated(
+		workspace: Workspace,
+		cfg: Pick<vscode.WorkspaceConfiguration, "get">,
+	) {
 		if (!this.notifiedOutdated && workspace.outdated) {
-			// Check if update notifications are disabled
-			const disableNotifications = vscode.workspace
-				.getConfiguration("coder")
-				.get<boolean>("disableUpdateNotifications", false);
-			if (disableNotifications) {
+			if (areUpdateNotificationsDisabled(cfg)) {
 				return;
 			}
 

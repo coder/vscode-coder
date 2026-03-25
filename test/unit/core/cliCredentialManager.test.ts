@@ -3,7 +3,6 @@ import { execFile } from "node:child_process";
 import * as os from "node:os";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isKeyringEnabled } from "@/cliConfig";
 import {
 	CliCredentialManager,
 	isKeyringSupported,
@@ -11,6 +10,7 @@ import {
 } from "@/core/cliCredentialManager";
 import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
+import { isKeyringEnabled } from "@/settings/cli";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
@@ -22,7 +22,7 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("node:os");
 
-vi.mock("@/cliConfig", () => ({
+vi.mock("@/settings/cli", () => ({
 	isKeyringEnabled: vi.fn().mockReturnValue(false),
 }));
 

@@ -11,6 +11,7 @@ import {
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockCoderApi,
+	MockContextManager,
 	MockOAuthSessionManager,
 } from "../../mocks/testHelpers";
 
@@ -30,22 +31,6 @@ vi.mock("@/api/coderApi", async (importOriginal) => {
 		},
 	};
 });
-
-/**
- * Mock ContextManager for deployment tests.
- * Mimics real ContextManager which defaults to false for boolean contexts.
- */
-class MockContextManager {
-	private readonly contexts = new Map<string, boolean>();
-
-	readonly set = vi.fn((key: string, value: boolean) => {
-		this.contexts.set(key, value);
-	});
-
-	get(key: string): boolean {
-		return this.contexts.get(key) ?? false;
-	}
-}
 
 /**
  * Mock WorkspaceProvider for deployment tests.

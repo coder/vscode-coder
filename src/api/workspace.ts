@@ -7,8 +7,8 @@ import {
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 
-import { type CliAuth, getGlobalFlags } from "../cliConfig";
 import { type FeatureSet } from "../featureSet";
+import { type CliAuth, getGlobalFlags } from "../settings/cli";
 import { escapeCommandArg } from "../util";
 import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
 

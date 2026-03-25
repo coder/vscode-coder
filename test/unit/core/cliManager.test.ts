@@ -9,11 +9,11 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { isKeyringEnabled } from "@/cliConfig";
 import { CliManager } from "@/core/cliManager";
 import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
+import { isKeyringEnabled } from "@/settings/cli";
 
 import {
 	createMockCliCredentialManager,
@@ -29,9 +29,9 @@ import type { CliCredentialManager } from "@/core/cliCredentialManager";
 
 vi.mock("os");
 vi.mock("axios");
-vi.mock("@/cliConfig", async () => {
+vi.mock("@/settings/cli", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/cliConfig")>("@/cliConfig");
+		await vi.importActual<typeof import("@/settings/cli")>("@/settings/cli");
 	return { ...actual, isKeyringEnabled: vi.fn().mockReturnValue(false) };
 });
 
@@ -58,10 +58,6 @@ vi.mock("proper-lockfile", () => ({
 }));
 
 vi.mock("@/pgp");
-
-vi.mock("@/vscodeProposed", () => ({
-	vscodeProposed: vscode,
-}));
 
 vi.mock("@/core/cliUtils", async () => {
 	const actual =

@@ -9,7 +9,6 @@ import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
 import { type CoderApi } from "./api/coderApi";
-import { getGlobalFlags, resolveCliAuth } from "./cliConfig";
 import { type CliManager } from "./core/cliManager";
 import * as cliUtils from "./core/cliUtils";
 import { type ServiceContainer } from "./core/container";
@@ -28,6 +27,7 @@ import {
 	RECOMMENDED_SSH_SETTINGS,
 	applySettingOverrides,
 } from "./remote/userSettings";
+import { getGlobalFlags, resolveCliAuth } from "./settings/cli";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import {

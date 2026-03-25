@@ -4,12 +4,12 @@ import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { isKeyringEnabled } from "../cliConfig";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
 import { withOptionalProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
+import { isKeyringEnabled } from "../settings/cli";
 import { vscodeProposed } from "../vscodeProposed";
 
 import type { User } from "coder/site/src/api/typesGenerated";

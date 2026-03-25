@@ -10,9 +10,9 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { isKeyringEnabled } from "../cliConfig";
 import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
+import { isKeyringEnabled } from "../settings/cli";
 import { tempFilePath, toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 

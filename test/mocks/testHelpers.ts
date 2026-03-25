@@ -9,11 +9,18 @@ import { vi } from "vitest";
 import * as vscode from "vscode";
 
 import type { Experiment, User } from "coder/site/src/api/typesGenerated";
+import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import type { IncomingMessage } from "node:http";
 
 import type { CoderApi } from "@/api/coderApi";
 import type { CliCredentialManager } from "@/core/cliCredentialManager";
 import type { Logger } from "@/logging/logger";
+import type {
+	EventHandler,
+	EventPayloadMap,
+	ParsedMessageEvent,
+	UnidirectionalStream,
+} from "@/websocket/eventStreamConnection";
 
 /**
  * Mock configuration provider that integrates with the vscode workspace configuration mock.
@@ -833,4 +840,82 @@ export class MockCancellationToken implements vscode.CancellationToken {
 	reset(): void {
 		this._isCancellationRequested = false;
 	}
+}
+
+/**
+ * Mock event stream that implements UnidirectionalStream directly.
+ * Use pushMessage/pushError for common cases, or emit() for any event type.
+ */
+export class MockEventStream<T> implements UnidirectionalStream<T> {
+	readonly url = "ws://test/mock-stream";
+	readonly close = vi.fn();
+
+	private readonly handlers = new Map<
+		string,
+		Set<(...args: unknown[]) => void>
+	>();
+
+	addEventListener<E extends WebSocketEventType>(
+		event: E,
+		callback: EventHandler<T, E>,
+	): void {
+		if (!this.handlers.has(event)) {
+			this.handlers.set(event, new Set());
+		}
+		this.handlers.get(event)!.add(callback as (...args: unknown[]) => void);
+	}
+
+	removeEventListener<E extends WebSocketEventType>(
+		event: E,
+		callback: EventHandler<T, E>,
+	): void {
+		this.handlers.get(event)?.delete(callback as (...args: unknown[]) => void);
+	}
+
+	emit<E extends WebSocketEventType>(
+		event: E,
+		payload: EventPayloadMap<T>[E],
+	): void {
+		const handlers = this.handlers.get(event);
+		if (handlers) {
+			for (const handler of handlers) {
+				handler(payload);
+			}
+		}
+	}
+
+	pushMessage(parsedMessage: T): void {
+		const payload: ParsedMessageEvent<T> = {
+			sourceEvent: { data: undefined },
+			parsedMessage,
+			parseError: undefined,
+		};
+		this.emit("message", payload);
+	}
+
+	pushError(error: Error): void {
+		const payload: ParsedMessageEvent<T> = {
+			sourceEvent: { data: undefined },
+			parsedMessage: undefined,
+			parseError: error,
+		};
+		this.emit("message", payload);
+	}
+}
+
+/**
+ * Mock ContextManager that stores values and tracks `set` calls.
+ */
+export class MockContextManager {
+	private readonly contexts = new Map<string, boolean>();
+
+	readonly set = vi.fn((key: string, value: boolean) => {
+		this.contexts.set(key, value);
+	});
+
+	get(key: string): boolean {
+		return this.contexts.get(key) ?? false;
+	}
+
+	readonly dispose = vi.fn();
 }
