@@ -16,6 +16,7 @@ updates:
     ignore:
       # Pinned to engines.vscode minimum; bump manually with engine updates.
       - dependency-name: "@types/vscode"
+      - dependency-name: "electron"
       # These versions must match the versions specified in coder/coder exactly.
       - dependency-name: "@types/ua-parser-js"
       - dependency-name: "ua-parser-js"

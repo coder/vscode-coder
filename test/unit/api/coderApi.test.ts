@@ -7,7 +7,15 @@ import axios, {
 import { type ProvisionerJobLog } from "coder/site/src/api/typesGenerated";
 import { EventSource } from "eventsource";
 import { ProxyAgent } from "proxy-agent";
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	type Mock,
+	vi,
+} from "vitest";
 import Ws from "ws";
 
 import {
