@@ -1,9 +1,8 @@
-import { randomBytes } from "node:crypto";
+import * as vscode from "vscode";
 
 import { type CoderApi } from "../../api/coderApi";
 import { type Logger } from "../../logging/logger";
-
-import type * as vscode from "vscode";
+import { getNonce } from "../util";
 
 /**
  * Provides a webview that embeds the Coder agent chat UI.
@@ -34,15 +33,38 @@ export class ChatPanelProvider
 		private readonly logger: Logger,
 	) {}
 
+	private getTheme(): "light" | "dark" {
+		const kind = vscode.window.activeColorTheme.kind;
+		return kind === vscode.ColorThemeKind.Light ||
+			kind === vscode.ColorThemeKind.HighContrastLight
+			? "light"
+			: "dark";
+	}
+
+	private sendScrollToBottom(): void {
+		this.view?.webview.postMessage({ type: "coder:scroll-to-bottom" });
+	}
+
+	private sendTheme(): void {
+		this.view?.webview.postMessage({
+			type: "coder:set-theme",
+			theme: this.getTheme(),
+		});
+	}
+
 	/**
 	 * Opens the chat panel for the given chat ID.
 	 * Called after a deep link reload via the persisted
 	 * pendingChatId, or directly for testing.
 	 */
 	public openChat(chatId: string): void {
+		if (this.chatId === chatId && this.view) {
+			this.view.show(true);
+			return;
+		}
 		this.chatId = chatId;
 		this.refresh();
-		this.view?.show(true);
+		void vscode.commands.executeCommand(`${ChatPanelProvider.viewType}.focus`);
 	}
 
 	resolveWebviewView(
@@ -56,9 +78,12 @@ export class ChatPanelProvider
 			webviewView.webview.onDidReceiveMessage((msg: unknown) => {
 				this.handleMessage(msg);
 			}),
+			vscode.window.onDidChangeActiveColorTheme(() => {
+				this.sendTheme();
+			}),
 		);
 		this.renderView();
-		webviewView.onDidDispose(() => this.dispose());
+		this.disposables.push(webviewView.onDidDispose(() => this.dispose()));
 	}
 
 	public refresh(): void {
@@ -85,7 +110,7 @@ export class ChatPanelProvider
 			return;
 		}
 
-		const embedUrl = `${coderUrl}/agents/${this.chatId}/embed`;
+		const embedUrl = `${coderUrl}/agents/${this.chatId}/embed?theme=${this.getTheme()}`;
 		webview.html = this.getIframeHtml(embedUrl, coderUrl);
 	}
 
@@ -93,9 +118,25 @@ export class ChatPanelProvider
 		if (typeof message !== "object" || message === null) {
 			return;
 		}
-		const msg = message as { type?: string };
-		if (msg.type === "coder:vscode-ready") {
-			this.sendAuthToken();
+		const msg = message as { type?: string; payload?: { url?: string } };
+		switch (msg.type) {
+			case "coder:vscode-ready":
+				this.sendAuthToken();
+				break;
+			case "coder:chat-ready":
+				this.sendTheme();
+				this.sendScrollToBottom();
+				break;
+			case "coder:navigate": {
+				const url = msg.payload?.url;
+				const coderUrl = this.client.getHost();
+				if (url && coderUrl) {
+					void vscode.env.openExternal(vscode.Uri.parse(coderUrl + url));
+				}
+				break;
+			}
+			default:
+				break;
 		}
 	}
 
@@ -142,7 +183,7 @@ export class ChatPanelProvider
 	}
 
 	private getIframeHtml(embedUrl: string, allowedOrigin: string): string {
-		const nonce = randomBytes(16).toString("base64");
+		const nonce = getNonce();
 
 		return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -205,6 +246,12 @@ export class ChatPanelProvider
             status.textContent = 'Authenticating…';
             vscode.postMessage({ type: 'coder:vscode-ready' });
           }
+          if (data.type === 'coder:chat-ready') {
+            vscode.postMessage({ type: 'coder:chat-ready' });
+          }
+          if (data.type === 'coder:navigate') {
+            vscode.postMessage(data);
+          }
           return;
         }
 
@@ -214,6 +261,18 @@ export class ChatPanelProvider
             type: 'coder:vscode-auth-bootstrap',
             payload: { token: data.token },
           }, '${allowedOrigin}');
+        }
+
+        if (data.type === 'coder:set-theme') {
+          iframe.contentWindow.postMessage({
+            type: 'coder:set-theme',
+            payload: { theme: data.theme },
+          }, '${allowedOrigin}');
+        }
+
+        if (data.type === 'coder:scroll-to-bottom') {
+          iframe.contentWindow.postMessage(
+            { type: 'coder:scroll-to-bottom' }, '${allowedOrigin}');
         }
 
         if (data.type === 'coder:auth-error') {

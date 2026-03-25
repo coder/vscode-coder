@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MementoManager } from "@/core/mementoManager";
 
@@ -9,8 +9,13 @@ describe("MementoManager", () => {
 	let mementoManager: MementoManager;
 
 	beforeEach(() => {
+		vi.useFakeTimers();
 		memento = new InMemoryMemento();
 		mementoManager = new MementoManager(memento);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
 	});
 
 	describe("addToUrlHistory", () => {
@@ -69,9 +74,45 @@ describe("MementoManager", () => {
 			expect(await mementoManager.getAndClearFirstConnect()).toBe(false);
 		});
 
-		it("should return false for non-boolean values", async () => {
-			await memento.update("firstConnect", "truthy-string");
+		it("should treat legacy bare values as expired", async () => {
+			await memento.update("firstConnect", true);
 			expect(await mementoManager.getAndClearFirstConnect()).toBe(false);
+		});
+
+		it("should expire after 5 minutes", async () => {
+			await mementoManager.setFirstConnect();
+			vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+			expect(await mementoManager.getAndClearFirstConnect()).toBe(false);
+		});
+	});
+
+	describe("pendingChatId", () => {
+		it("should store, retrieve, and clear in one call", async () => {
+			await mementoManager.setPendingChatId("chat-123");
+
+			expect(await mementoManager.getAndClearPendingChatId()).toBe("chat-123");
+			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
+		});
+
+		it("should return undefined when nothing is set", async () => {
+			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
+		});
+
+		it("should support explicit clear", async () => {
+			await mementoManager.setPendingChatId("chat-123");
+			await mementoManager.clearPendingChatId();
+			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
+		});
+
+		it("should expire after 5 minutes", async () => {
+			await mementoManager.setPendingChatId("chat-123");
+			vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
+		});
+
+		it("should treat legacy bare values as expired", async () => {
+			await memento.update("pendingChatId", "bare-chat-id");
+			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
 		});
 	});
 });

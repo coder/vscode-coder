@@ -42,6 +42,6 @@ export function getWebviewHtml(
 </html>`;
 }
 
-function getNonce(): string {
+export function getNonce(): string {
 	return randomBytes(16).toString("base64");
 }

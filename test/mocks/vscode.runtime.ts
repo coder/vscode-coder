@@ -26,6 +26,12 @@ export const TreeItemCollapsibleState = E({
 	Expanded: 2,
 });
 export const StatusBarAlignment = E({ Left: 1, Right: 2 });
+export const ColorThemeKind = E({
+	Light: 1,
+	Dark: 2,
+	HighContrast: 3,
+	HighContrastLight: 4,
+});
 export const ExtensionMode = E({ Production: 1, Development: 2, Test: 3 });
 export const UIKind = E({ Desktop: 1, Web: 2 });
 export const InputBoxValidationSeverity = E({
@@ -82,8 +88,13 @@ export class EventEmitter<T> {
 
 const onDidChangeConfiguration = new EventEmitter<unknown>();
 const onDidChangeWorkspaceFolders = new EventEmitter<unknown>();
+const onDidChangeActiveColorTheme = new EventEmitter<unknown>();
 
 export const window = {
+	activeColorTheme: { kind: ColorThemeKind.Dark } as { kind: number },
+	onDidChangeActiveColorTheme: onDidChangeActiveColorTheme.event,
+	__fireDidChangeActiveColorTheme: (e: unknown) =>
+		onDidChangeActiveColorTheme.fire(e),
 	showInformationMessage: vi.fn(),
 	showWarningMessage: vi.fn(),
 	showErrorMessage: vi.fn(),
@@ -151,6 +162,7 @@ const vscode = {
 	ConfigurationTarget,
 	TreeItemCollapsibleState,
 	StatusBarAlignment,
+	ColorThemeKind,
 	ExtensionMode,
 	UIKind,
 	InputBoxValidationSeverity,
