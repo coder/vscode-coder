@@ -5,16 +5,9 @@ import { ChatPanelProvider } from "@/webviews/chat/chatPanelProvider";
 
 import { createMockLogger, MockCoderApi } from "../../../mocks/testHelpers";
 
-import type { CoderApi } from "@/api/coderApi";
-
-type WindowMock = typeof vscode.window & {
-	activeColorTheme: { kind: number };
-	__fireDidChangeActiveColorTheme: (e: unknown) => void;
+const windowMock = vscode.window as typeof vscode.window & {
+	__setActiveColorThemeKind: (kind: number) => void;
 };
-
-function setMockTheme(kind: number): void {
-	(vscode.window as WindowMock).activeColorTheme = { kind };
-}
 
 interface Harness {
 	provider: ChatPanelProvider;
@@ -27,10 +20,7 @@ function createHarness(): Harness {
 	const client = new MockCoderApi();
 	client.setCredentials("https://coder.example.com", "test-token");
 
-	const provider = new ChatPanelProvider(
-		client as unknown as CoderApi,
-		createMockLogger(),
-	);
+	const provider = new ChatPanelProvider(client, createMockLogger());
 
 	let handler: ((msg: unknown) => void) | null = null;
 
@@ -89,7 +79,7 @@ function findPostedMessage(
 describe("ChatPanelProvider", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
-		setMockTheme(vscode.ColorThemeKind.Dark);
+		windowMock.__setActiveColorThemeKind(vscode.ColorThemeKind.Dark);
 	});
 
 	describe("theme sync", () => {
@@ -99,7 +89,7 @@ describe("ChatPanelProvider", () => {
 			[vscode.ColorThemeKind.HighContrast, "dark"],
 			[vscode.ColorThemeKind.HighContrastLight, "light"],
 		])("maps ColorThemeKind %i to %s on chat-ready", (kind, expected) => {
-			setMockTheme(kind);
+			windowMock.__setActiveColorThemeKind(kind);
 			const { sendFromWebview, postMessage } = createHarness();
 
 			sendFromWebview({ type: "coder:chat-ready" });
@@ -124,10 +114,7 @@ describe("ChatPanelProvider", () => {
 			const { postMessage } = createHarness();
 			postMessage.mockClear();
 
-			setMockTheme(vscode.ColorThemeKind.Light);
-			(vscode.window as WindowMock).__fireDidChangeActiveColorTheme({
-				kind: vscode.ColorThemeKind.Light,
-			});
+			windowMock.__setActiveColorThemeKind(vscode.ColorThemeKind.Light);
 
 			expect(postMessage).toHaveBeenCalledWith({
 				type: "coder:set-theme",
@@ -169,6 +156,17 @@ describe("ChatPanelProvider", () => {
 			const { sendFromWebview } = createHarness();
 
 			sendFromWebview({ type: "coder:navigate" });
+
+			expect(vscode.env.openExternal).not.toHaveBeenCalled();
+		});
+
+		it("blocks cross-origin navigate URLs", () => {
+			const { sendFromWebview } = createHarness();
+
+			sendFromWebview({
+				type: "coder:navigate",
+				payload: { url: "https://evil.com/steal" },
+			});
 
 			expect(vscode.env.openExternal).not.toHaveBeenCalled();
 		});

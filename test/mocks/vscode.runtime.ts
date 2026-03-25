@@ -91,10 +91,12 @@ const onDidChangeWorkspaceFolders = new EventEmitter<unknown>();
 const onDidChangeActiveColorTheme = new EventEmitter<unknown>();
 
 export const window = {
-	activeColorTheme: { kind: ColorThemeKind.Dark } as { kind: number },
+	activeColorTheme: { kind: ColorThemeKind.Dark },
 	onDidChangeActiveColorTheme: onDidChangeActiveColorTheme.event,
-	__fireDidChangeActiveColorTheme: (e: unknown) =>
-		onDidChangeActiveColorTheme.fire(e),
+	__setActiveColorThemeKind: (kind: number) => {
+		window.activeColorTheme = { kind };
+		onDidChangeActiveColorTheme.fire({ kind });
+	},
 	showInformationMessage: vi.fn(),
 	showWarningMessage: vi.fn(),
 	showErrorMessage: vi.fn(),

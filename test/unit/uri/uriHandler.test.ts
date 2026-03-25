@@ -15,11 +15,8 @@ import {
 	MockContextManager,
 } from "../../mocks/testHelpers";
 
-import type { Commands } from "@/commands";
 import type { ServiceContainer } from "@/core/container";
-import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { LoginCoordinator, LoginOptions } from "@/login/loginCoordinator";
-import type { ChatPanelProvider } from "@/webviews/chat/chatPanelProvider";
 
 vi.mock("@/promptUtils", () => ({ maybeAskUrl: vi.fn() }));
 
@@ -97,14 +94,12 @@ function createTestContext() {
 		.mocked(vscode.window.showErrorMessage)
 		.mockResolvedValue(undefined);
 
-	const chatPanelProvider = {
-		openChat: vi.fn(),
-	} as unknown as ChatPanelProvider;
+	const chatPanelProvider = { openChat: vi.fn() };
 
 	registerUriHandler({
 		serviceContainer: container,
-		deploymentManager: deploymentManager as unknown as DeploymentManager,
-		commands: commands as unknown as Commands,
+		deploymentManager,
+		commands,
 		chatPanelProvider,
 	});
 

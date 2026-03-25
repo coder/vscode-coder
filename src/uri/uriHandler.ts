@@ -13,9 +13,9 @@ import type { ChatPanelProvider } from "../webviews/chat/chatPanelProvider";
 
 interface UriHandlerDeps {
 	serviceContainer: ServiceContainer;
-	deploymentManager: DeploymentManager;
-	commands: Commands;
-	chatPanelProvider: ChatPanelProvider;
+	deploymentManager: Pick<DeploymentManager, "setDeployment">;
+	commands: Pick<Commands, "open" | "openDevContainer">;
+	chatPanelProvider: Pick<ChatPanelProvider, "openChat">;
 }
 
 interface UriRouteContext extends UriHandlerDeps {
@@ -107,8 +107,8 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		}
 	}
 
-	// When the workspace is already open VS Code refocuses without
-	// reloading, so activate() won't consume the pending chatId.
+	// Already-open workspace: VS Code refocuses without reloading,
+	// so activate() won't run. openChat is idempotent if both fire.
 	if (opened && chatId) {
 		serviceContainer.getContextManager().set("coder.agentsEnabled", true);
 		ctx.chatPanelProvider.openChat(chatId);
@@ -152,7 +152,7 @@ async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {
 async function setupDeployment(
 	params: URLSearchParams,
 	serviceContainer: ServiceContainer,
-	deploymentManager: DeploymentManager,
+	deploymentManager: Pick<DeploymentManager, "setDeployment">,
 ): Promise<void> {
 	const secretsManager = serviceContainer.getSecretsManager();
 	const mementoManager = serviceContainer.getMementoManager();

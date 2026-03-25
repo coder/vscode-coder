@@ -29,7 +29,7 @@ export class ChatPanelProvider
 	private authRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
-		private readonly client: CoderApi,
+		private readonly client: Pick<CoderApi, "getHost" | "getSessionToken">,
 		private readonly logger: Logger,
 	) {}
 
@@ -63,6 +63,7 @@ export class ChatPanelProvider
 			return;
 		}
 		this.chatId = chatId;
+		// No-op if unresolved; the focus command triggers resolveWebviewView().
 		this.refresh();
 		void vscode.commands.executeCommand(`${ChatPanelProvider.viewType}.focus`);
 	}
@@ -72,6 +73,9 @@ export class ChatPanelProvider
 		_context: vscode.WebviewViewResolveContext,
 		_token: vscode.CancellationToken,
 	): void {
+		// Clean up state from a previous view instance to avoid
+		// duplicates if VS Code re-resolves the view.
+		this.disposeView();
 		this.view = webviewView;
 		webviewView.webview.options = { enableScripts: true };
 		this.disposables.push(
@@ -83,7 +87,7 @@ export class ChatPanelProvider
 			}),
 		);
 		this.renderView();
-		this.disposables.push(webviewView.onDidDispose(() => this.dispose()));
+		this.disposables.push(webviewView.onDidDispose(() => this.disposeView()));
 	}
 
 	public refresh(): void {
@@ -131,7 +135,17 @@ export class ChatPanelProvider
 				const url = msg.payload?.url;
 				const coderUrl = this.client.getHost();
 				if (url && coderUrl) {
-					void vscode.env.openExternal(vscode.Uri.parse(coderUrl + url));
+					try {
+						const resolved = new URL(url, coderUrl);
+						const expected = new URL(coderUrl);
+						if (resolved.origin === expected.origin) {
+							void vscode.env.openExternal(
+								vscode.Uri.parse(resolved.toString()),
+							);
+						}
+					} catch {
+						this.logger.warn(`Chat: invalid navigate URL: ${url}`);
+					}
 				}
 				break;
 			}
@@ -307,11 +321,15 @@ text-align:center;}</style></head>
 <body><p>No active chat session. Open a chat from the Agents tab on your Coder deployment.</p></body></html>`;
 	}
 
-	dispose(): void {
+	private disposeView(): void {
 		clearTimeout(this.authRetryTimer);
 		for (const d of this.disposables) {
 			d.dispose();
 		}
 		this.disposables = [];
+	}
+
+	dispose(): void {
+		this.disposeView();
 	}
 }
