@@ -354,6 +354,12 @@
 				"icon": "$(refresh)"
 			},
 			{
+				"command": "coder.chat.refresh",
+				"title": "Refresh Chat",
+				"category": "Coder",
+				"icon": "$(refresh)"
+			},
+			{
 				"command": "coder.applyRecommendedSettings",
 				"title": "Apply Recommended SSH Settings",
 				"category": "Coder"
@@ -425,6 +431,10 @@
 					"when": "false"
 				},
 				{
+					"command": "coder.chat.refresh",
+					"when": "false"
+				},
+				{
 					"command": "coder.applyRecommendedSettings"
 				}
 			],
@@ -464,6 +474,11 @@
 				{
 					"command": "coder.tasks.refresh",
 					"when": "coder.authenticated && view == coder.tasksPanel",
+					"group": "navigation@1"
+				},
+				{
+					"command": "coder.chat.refresh",
+					"when": "view == coder.chatPanel",
 					"group": "navigation@1"
 				}
 			],
@@ -579,7 +594,7 @@
 	"extensionPack": [
 		"ms-vscode-remote.remote-ssh"
 	],
-	"packageManager": "pnpm@10.32.1",
+	"packageManager": "pnpm@10.33.0",
 	"engines": {
 		"vscode": "^1.106.0",
 		"node": ">= 22"

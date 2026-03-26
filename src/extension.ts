@@ -232,10 +232,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			chatPanelProvider,
 			{ webviewOptions: { retainContextWhenHidden: true } },
 		),
+		vscode.commands.registerCommand("coder.chat.refresh", () =>
+			chatPanelProvider.refresh(),
+		),
 	);
 
 	ctx.subscriptions.push(
-		registerUriHandler(serviceContainer, deploymentManager, commands),
+		registerUriHandler({
+			serviceContainer,
+			deploymentManager,
+			commands,
+			chatPanelProvider,
+		}),
 		vscode.commands.registerCommand(
 			"coder.login",
 			commands.login.bind(commands),
@@ -333,6 +341,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 				// deployment is configured.
 				const pendingChatId = await mementoManager.getAndClearPendingChatId();
 				if (pendingChatId) {
+					// Enable eagerly so the view is visible before focus.
+					contextManager.set("coder.agentsEnabled", true);
 					chatPanelProvider.openChat(pendingChatId);
 				}
 			}

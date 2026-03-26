@@ -12,11 +12,10 @@ import {
 	createMockUser,
 	InMemoryMemento,
 	InMemorySecretStorage,
+	MockContextManager,
 } from "../../mocks/testHelpers";
 
-import type { Commands } from "@/commands";
 import type { ServiceContainer } from "@/core/container";
-import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { LoginCoordinator, LoginOptions } from "@/login/loginCoordinator";
 
 vi.mock("@/promptUtils", () => ({ maybeAskUrl: vi.fn() }));
@@ -77,6 +76,7 @@ function createTestContext() {
 		getSecretsManager: () => secretsManager,
 		getMementoManager: () => mementoManager,
 		getLoginCoordinator: () => loginCoordinator as unknown as LoginCoordinator,
+		getContextManager: () => new MockContextManager(),
 		getLogger: () => logger,
 	} as unknown as ServiceContainer;
 
@@ -94,11 +94,14 @@ function createTestContext() {
 		.mocked(vscode.window.showErrorMessage)
 		.mockResolvedValue(undefined);
 
-	registerUriHandler(
-		container,
-		deploymentManager as unknown as DeploymentManager,
-		commands as unknown as Commands,
-	);
+	const chatPanelProvider = { openChat: vi.fn() };
+
+	registerUriHandler({
+		serviceContainer: container,
+		deploymentManager,
+		commands,
+		chatPanelProvider,
+	});
 
 	return {
 		commands,
@@ -107,6 +110,7 @@ function createTestContext() {
 		secretsManager,
 		logger,
 		showErrorMessage,
+		chatPanelProvider,
 		handleUri: registeredHandler!,
 	};
 }
@@ -149,6 +153,25 @@ describe("uriHandler", () => {
 				undefined,
 				expected,
 			);
+		});
+
+		it("opens chat when chatId is present and open succeeds", async () => {
+			const { handleUri, commands, chatPanelProvider } = createTestContext();
+			commands.open.mockResolvedValue(true);
+			const query = `owner=o&workspace=w&chatId=chat-123&url=${encodeURIComponent(TEST_URL)}`;
+			await handleUri(createMockUri("/open", query));
+			expect(chatPanelProvider.openChat).toHaveBeenCalledWith("chat-123");
+		});
+
+		it.each([
+			["no chatId", "owner=o&workspace=w", true],
+			["open returns false", "owner=o&workspace=w&chatId=chat-123", false],
+		])("does not open chat when %s", async (_label, params, openResult) => {
+			const { handleUri, commands, chatPanelProvider } = createTestContext();
+			commands.open.mockResolvedValue(openResult);
+			const query = `${params}&url=${encodeURIComponent(TEST_URL)}`;
+			await handleUri(createMockUri("/open", query));
+			expect(chatPanelProvider.openChat).not.toHaveBeenCalled();
 		});
 	});
 
