@@ -60,6 +60,14 @@ const AUTO_SETUP_DEFAULTS = {
 } as const satisfies Partial<Record<SshSettingKey, number | null>>;
 
 /**
+ * Whether the given RemoteCommand value represents an active command
+ * (i.e. present, non-empty, and not the SSH default "none").
+ */
+function isActiveRemoteCommand(cmd: string | undefined): boolean {
+	return !!cmd && cmd.toLowerCase() !== "none";
+}
+
+/**
  * Build the list of VS Code setting overrides needed for a remote SSH
  * connection to a Coder workspace.
  */
@@ -67,19 +75,45 @@ export function buildSshOverrides(
 	config: Pick<WorkspaceConfiguration, "get">,
 	sshHost: string,
 	agentOS: string,
+	remoteCommand: string | undefined,
+	logger: Logger,
 ): SettingOverride[] {
 	const overrides: SettingOverride[] = [];
 
-	// Set the remote platform for this host to bypass the platform prompt.
+	// When enableRemoteCommand is true and the host has an active
+	// RemoteCommand, we must not set remotePlatform: it causes VS Code
+	// to append 'bash', which conflicts with RemoteCommand. We gate on
+	// enableRemoteCommand so users who haven't opted in don't get an
+	// unexpected platform prompt.
+	const enableRemoteCommand = config.get<boolean>(
+		"remote.SSH.enableRemoteCommand",
+		false,
+	);
+	const skipRemotePlatform =
+		enableRemoteCommand && isActiveRemoteCommand(remoteCommand);
+
 	const remotePlatforms = config.get<Record<string, string>>(
 		"remote.SSH.remotePlatform",
 		{},
 	);
-	if (remotePlatforms[sshHost] !== agentOS) {
-		overrides.push({
-			key: "remote.SSH.remotePlatform",
-			value: { ...remotePlatforms, [sshHost]: agentOS },
-		});
+	if (skipRemotePlatform) {
+		logger.info("RemoteCommand detected, skipping remotePlatform override");
+		// Remove any stale entry so it doesn't block RemoteCommand.
+		if (sshHost in remotePlatforms) {
+			const { [sshHost]: _removed, ...rest } = remotePlatforms;
+			overrides.push({
+				key: "remote.SSH.remotePlatform",
+				value: rest,
+			});
+		}
+	} else {
+		// Set the remote platform to bypass the platform prompt.
+		if (remotePlatforms[sshHost] !== agentOS) {
+			overrides.push({
+				key: "remote.SSH.remotePlatform",
+				value: { ...remotePlatforms, [sshHost]: agentOS },
+			});
+		}
 	}
 
 	// Default 15s is too short for startup scripts; enforce a minimum.
