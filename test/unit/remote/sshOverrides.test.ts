@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applySettingOverrides,
 	buildSshOverrides,
-	isActiveRemoteCommand,
 } from "@/remote/sshOverrides";
 
 import {
@@ -33,19 +32,8 @@ interface TimeoutCase {
 	label: string;
 }
 
-describe("isActiveRemoteCommand", () => {
-	it.each(["exec bash -l", "exec /bin/zsh", "/usr/bin/tmux"])(
-		"returns true for %j",
-		(cmd) => expect(isActiveRemoteCommand(cmd)).toBe(true),
-	);
-
-	it.each([undefined, "", "none", "None", "NONE"])(
-		"returns false for %j",
-		(cmd) => expect(isActiveRemoteCommand(cmd)).toBe(false),
-	);
-});
-
 describe("buildSshOverrides", () => {
+	const buildLogger = createMockLogger();
 	describe("remote platform", () => {
 		it("adds host when missing or OS differs", () => {
 			const config = new MockConfigurationProvider();
@@ -54,7 +42,13 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.remotePlatform", { "other-host": "darwin" });
 			expect(
 				findOverride(
-					buildSshOverrides(config, "new-host", "linux", undefined),
+					buildSshOverrides(
+						config,
+						"new-host",
+						"linux",
+						undefined,
+						buildLogger,
+					),
 					"remote.SSH.remotePlatform",
 				),
 			).toEqual({ "other-host": "darwin", "new-host": "linux" });
@@ -63,7 +57,7 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.remotePlatform", { "my-host": "windows" });
 			expect(
 				findOverride(
-					buildSshOverrides(config, "my-host", "linux", undefined),
+					buildSshOverrides(config, "my-host", "linux", undefined, buildLogger),
 					"remote.SSH.remotePlatform",
 				),
 			).toEqual({ "my-host": "linux" });
@@ -74,7 +68,7 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.remotePlatform", { "my-host": "linux" });
 			expect(
 				findOverride(
-					buildSshOverrides(config, "my-host", "linux", undefined),
+					buildSshOverrides(config, "my-host", "linux", undefined, buildLogger),
 					"remote.SSH.remotePlatform",
 				),
 			).toBeUndefined();
@@ -90,7 +84,13 @@ describe("buildSshOverrides", () => {
 				});
 				expect(
 					findOverride(
-						buildSshOverrides(config, "my-host", "linux", "exec bash -l"),
+						buildSshOverrides(
+							config,
+							"my-host",
+							"linux",
+							"exec bash -l",
+							buildLogger,
+						),
 						"remote.SSH.remotePlatform",
 					),
 				).toEqual({ "other-host": "darwin" });
@@ -102,7 +102,13 @@ describe("buildSshOverrides", () => {
 				config.set("remote.SSH.remotePlatform", {});
 				expect(
 					findOverride(
-						buildSshOverrides(config, "my-host", "linux", "exec bash -l"),
+						buildSshOverrides(
+							config,
+							"my-host",
+							"linux",
+							"exec bash -l",
+							buildLogger,
+						),
 						"remote.SSH.remotePlatform",
 					),
 				).toBeUndefined();
@@ -114,7 +120,13 @@ describe("buildSshOverrides", () => {
 				config.set("remote.SSH.remotePlatform", {});
 				expect(
 					findOverride(
-						buildSshOverrides(config, "my-host", "linux", "exec bash -l"),
+						buildSshOverrides(
+							config,
+							"my-host",
+							"linux",
+							"exec bash -l",
+							buildLogger,
+						),
 						"remote.SSH.remotePlatform",
 					),
 				).toEqual({ "my-host": "linux" });
@@ -128,7 +140,7 @@ describe("buildSshOverrides", () => {
 					config.set("remote.SSH.remotePlatform", {});
 					expect(
 						findOverride(
-							buildSshOverrides(config, "my-host", "linux", cmd),
+							buildSshOverrides(config, "my-host", "linux", cmd, buildLogger),
 							"remote.SSH.remotePlatform",
 						),
 					).toEqual({ "my-host": "linux" });
@@ -150,7 +162,7 @@ describe("buildSshOverrides", () => {
 			}
 			expect(
 				findOverride(
-					buildSshOverrides(config, "host", "linux", undefined),
+					buildSshOverrides(config, "host", "linux", undefined, buildLogger),
 					"remote.SSH.connectTimeout",
 				),
 			).toBe(1800);
@@ -164,7 +176,7 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.connectTimeout", timeout);
 			expect(
 				findOverride(
-					buildSshOverrides(config, "host", "linux", undefined),
+					buildSshOverrides(config, "host", "linux", undefined, buildLogger),
 					"remote.SSH.connectTimeout",
 				),
 			).toBeUndefined();
@@ -180,6 +192,7 @@ describe("buildSshOverrides", () => {
 						"host",
 						"linux",
 						undefined,
+						buildLogger,
 					),
 					"remote.SSH.reconnectionGraceTime",
 				),
@@ -191,7 +204,7 @@ describe("buildSshOverrides", () => {
 			config.set("remote.SSH.reconnectionGraceTime", 3600);
 			expect(
 				findOverride(
-					buildSshOverrides(config, "host", "linux", undefined),
+					buildSshOverrides(config, "host", "linux", undefined, buildLogger),
 					"remote.SSH.reconnectionGraceTime",
 				),
 			).toBeUndefined();
@@ -207,6 +220,7 @@ describe("buildSshOverrides", () => {
 			"host",
 			"linux",
 			undefined,
+			buildLogger,
 		);
 		expect(findOverride(overrides, key)).toBe(expected);
 	});
@@ -219,7 +233,7 @@ describe("buildSshOverrides", () => {
 		config.set("remote.SSH.serverShutdownTimeout", 600);
 		config.set("remote.SSH.maxReconnectionAttempts", 4);
 		expect(
-			buildSshOverrides(config, "my-host", "linux", undefined),
+			buildSshOverrides(config, "my-host", "linux", undefined, buildLogger),
 		).toHaveLength(0);
 	});
 });

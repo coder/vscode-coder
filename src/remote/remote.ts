@@ -58,11 +58,7 @@ import {
 	parseCoderSshOptions,
 	parseSshConfig,
 } from "./sshConfig";
-import {
-	applySettingOverrides,
-	buildSshOverrides,
-	isActiveRemoteCommand,
-} from "./sshOverrides";
+import { applySettingOverrides, buildSshOverrides } from "./sshOverrides";
 import { SshProcessMonitor } from "./sshProcess";
 import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
@@ -484,11 +480,6 @@ export class Remote {
 			}
 
 			const remoteCommand = computedSshProperties.RemoteCommand;
-			if (isActiveRemoteCommand(remoteCommand)) {
-				this.logger.info(
-					"RemoteCommand detected, skipping remotePlatform override",
-				);
-			}
 
 			this.logger.info("Modifying settings...");
 			const overrides = buildSshOverrides(
@@ -496,6 +487,7 @@ export class Remote {
 				parts.sshHost,
 				agent.operating_system,
 				remoteCommand,
+				this.logger,
 			);
 			if (overrides.length > 0) {
 				const ok = await applySettingOverrides(

@@ -63,7 +63,7 @@ const AUTO_SETUP_DEFAULTS = {
  * Whether the given RemoteCommand value represents an active command
  * (i.e. present, non-empty, and not the SSH default "none").
  */
-export function isActiveRemoteCommand(cmd: string | undefined): boolean {
+function isActiveRemoteCommand(cmd: string | undefined): boolean {
 	return !!cmd && cmd.toLowerCase() !== "none";
 }
 
@@ -76,6 +76,7 @@ export function buildSshOverrides(
 	sshHost: string,
 	agentOS: string,
 	remoteCommand: string | undefined,
+	logger: Logger,
 ): SettingOverride[] {
 	const overrides: SettingOverride[] = [];
 
@@ -96,6 +97,7 @@ export function buildSshOverrides(
 		{},
 	);
 	if (skipRemotePlatform) {
+		logger.info("RemoteCommand detected, skipping remotePlatform override");
 		// Remove any stale entry so it doesn't block RemoteCommand.
 		if (sshHost in remotePlatforms) {
 			const { [sshHost]: _removed, ...rest } = remotePlatforms;
