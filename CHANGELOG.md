@@ -1,18 +1,28 @@
 # Change Log
 
-## Unreleased
+## [v1.14.2-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.2-pre) 2026-03-26
 
-### Changed
+### Added
 
-- **Breaking**: Minimum VS Code version is now 1.106.0.
+- Coder Chat panel: delegate development tasks to AI coding agents directly from VS Code's
+  sidebar. Describe a task and the agent handles workspace provisioning and execution
+  automatically. Requires [Coder Agents](https://coder.com/docs/ai-coder/agents) (Early
+  Access) to be enabled on your deployment.
+- New `coder.disableNotifications` setting to suppress all notification prompts from the
+  Coder deployment, including workspace update reminders and scheduling alerts.
 
 ### Fixed
 
+- Fixed SSH connections failing when a custom `RemoteCommand` is configured in SSH config.
 - SSH connections now recover faster after laptop sleep/wake by detecting port changes
   and re-registering the label formatter.
 - SSH process discovery now uses `ss` -> `netstat` -> `lsof` on Linux
   and `netstat` -> `lsof` on macOS, fixing systems where `netstat` was unavailable
   and the SSH PID could not be resolved, which broke network info display and log viewing.
+
+### Changed
+
+- **Breaking**: Minimum VS Code version is now 1.106.0.
 
 ## [v1.14.1-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.1-pre) 2026-03-16
 
