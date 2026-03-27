@@ -41,10 +41,6 @@ export class ChatPanelProvider
 			: "dark";
 	}
 
-	private sendScrollToBottom(): void {
-		this.view?.webview.postMessage({ type: "coder:scroll-to-bottom" });
-	}
-
 	private sendTheme(): void {
 		this.view?.webview.postMessage({
 			type: "coder:set-theme",
@@ -129,7 +125,6 @@ export class ChatPanelProvider
 				break;
 			case "coder:chat-ready":
 				this.sendTheme();
-				this.sendScrollToBottom();
 				break;
 			case "coder:navigate": {
 				const url = msg.payload?.url;
@@ -282,11 +277,6 @@ export class ChatPanelProvider
             type: 'coder:set-theme',
             payload: { theme: data.theme },
           }, '${allowedOrigin}');
-        }
-
-        if (data.type === 'coder:scroll-to-bottom') {
-          iframe.contentWindow.postMessage(
-            { type: 'coder:scroll-to-bottom' }, '${allowedOrigin}');
         }
 
         if (data.type === 'coder:auth-error') {

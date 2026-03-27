@@ -100,16 +100,6 @@ describe("ChatPanelProvider", () => {
 			});
 		});
 
-		it("sends scroll-to-bottom on chat-ready", () => {
-			const { sendFromWebview, postMessage } = createHarness();
-
-			sendFromWebview({ type: "coder:chat-ready" });
-
-			expect(findPostedMessage(postMessage, "coder:scroll-to-bottom")).toEqual({
-				type: "coder:scroll-to-bottom",
-			});
-		});
-
 		it("sends theme when VS Code theme changes", () => {
 			const { postMessage } = createHarness();
 			postMessage.mockClear();
