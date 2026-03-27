@@ -147,6 +147,53 @@ export class Commands {
 	}
 
 	/**
+	 * Run a speed test against the currently connected workspace and display the
+	 * results in a new editor document.
+	 */
+	public async speedTest(): Promise<void> {
+		if (!this.workspace) {
+			vscode.window.showInformationMessage("No workspace connected.");
+			return;
+		}
+
+		await withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: "Running speed test...",
+			},
+			async () => {
+				const baseUrl = this.requireExtensionBaseUrl();
+				const safeHost = toSafeHost(baseUrl);
+				const binary = await this.cliManager.fetchBinary(this.extensionClient);
+				const version = semver.parse(await cliUtils.version(binary));
+				const featureSet = featureSetForVersion(version);
+				const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
+				const configs = vscode.workspace.getConfiguration();
+				const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
+				const workspaceName = createWorkspaceIdentifier(this.workspace!);
+
+				try {
+					const stdout = await cliUtils.speedtest(
+						binary,
+						auth,
+						workspaceName,
+					);
+					const doc = await vscode.workspace.openTextDocument({
+						content: stdout,
+						language: "json",
+					});
+					await vscode.window.showTextDocument(doc);
+				} catch (error) {
+					this.logger.error("Speed test failed", error);
+					vscode.window.showErrorMessage(
+						`Speed test failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			},
+		);
+	}
+
+	/**
 	 * View the logs for the currently connected workspace.
 	 */
 	public async viewLogs(): Promise<void> {
