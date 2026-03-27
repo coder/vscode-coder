@@ -60,11 +60,17 @@ file to display network information.
 
 ## Other features
 
-There is a sidebar that shows all the user's workspaces, and all users'
-workspaces if the user has the required permissions.
+The extension provides several sidebar panels:
 
-There are also notifications for an outdated workspace and for workspaces that
-are close to shutting down.
+- **My Workspaces / All Workspaces** - tree views showing workspaces with status
+  indicators, quick actions, and search.
+- **Coder Tasks** - a React webview for creating, monitoring, and managing AI
+  agent tasks with real-time log streaming.
+- **Coder Chat** - an embedded chat UI for delegating tasks to AI coding agents
+  (gated behind the `coder.agentsEnabled` context flag).
+
+There are also notifications for outdated workspace templates and for workspaces
+that are close to shutting down.
 
 ## Webviews
 
