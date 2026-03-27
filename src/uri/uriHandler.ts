@@ -92,13 +92,14 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 
 	let opened = false;
 	try {
-		opened = await commands.open(
-			owner,
-			workspace,
-			agent ?? undefined,
-			folder ?? undefined,
+		opened = await commands.open({
+			workspaceOwner: owner,
+			workspaceName: workspace,
+			agentName: agent ?? undefined,
+			folderPath: folder ?? undefined,
 			openRecent,
-		);
+			useDefaultDirectory: false,
+		});
 	} finally {
 		// Clear the pending chat ID if commands.open() did not
 		// actually open a window (user cancelled, or it threw).

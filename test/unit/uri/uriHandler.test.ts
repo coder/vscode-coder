@@ -134,7 +134,14 @@ describe("uriHandler", () => {
 			);
 
 			expect(deploymentManager.setDeployment).toHaveBeenCalled();
-			expect(commands.open).toHaveBeenCalledWith("o", "w", "a", "/f", true);
+			expect(commands.open).toHaveBeenCalledWith({
+				workspaceOwner: "o",
+				workspaceName: "w",
+				agentName: "a",
+				folderPath: "/f",
+				openRecent: true,
+				useDefaultDirectory: false,
+			});
 		});
 
 		it.each([
@@ -146,13 +153,14 @@ describe("uriHandler", () => {
 			const { handleUri, commands } = createTestContext();
 			const query = `owner=o&workspace=w&${param}&url=${encodeURIComponent(TEST_URL)}`;
 			await handleUri(createMockUri("/open", query));
-			expect(commands.open).toHaveBeenCalledWith(
-				"o",
-				"w",
-				undefined,
-				undefined,
-				expected,
-			);
+			expect(commands.open).toHaveBeenCalledWith({
+				workspaceOwner: "o",
+				workspaceName: "w",
+				agentName: undefined,
+				folderPath: undefined,
+				openRecent: expected,
+				useDefaultDirectory: false,
+			});
 		});
 
 		it("opens chat when chatId is present and open succeeds", async () => {
