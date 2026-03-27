@@ -142,6 +142,63 @@ describe("CliUtils", () => {
 		]);
 	});
 
+	describe("speedtest", () => {
+		const echoArgsBin = path.join(tmp, "echo-args");
+
+		beforeAll(async () => {
+			const tmpl = await fs.readFile(
+				getFixturePath("scripts", "echo-args.bash"),
+				"utf8",
+			);
+			await fs.writeFile(echoArgsBin, tmpl);
+			await fs.chmod(echoArgsBin, "755");
+		});
+
+		it("passes global-config auth flags", async () => {
+			const result = await cliUtils.speedtest(
+				echoArgsBin,
+				{ mode: "global-config", configDir: "/tmp/test-config" },
+				"owner/workspace",
+			);
+			const args = result.trim().split("\n");
+			expect(args).toEqual([
+				"--global-config",
+				"/tmp/test-config",
+				"speedtest",
+				"owner/workspace",
+				"--output",
+				"json",
+			]);
+		});
+
+		it("passes url auth flags", async () => {
+			const result = await cliUtils.speedtest(
+				echoArgsBin,
+				{ mode: "url", url: "http://localhost:3000" },
+				"owner/workspace",
+			);
+			const args = result.trim().split("\n");
+			expect(args).toEqual([
+				"--url",
+				"http://localhost:3000",
+				"speedtest",
+				"owner/workspace",
+				"--output",
+				"json",
+			]);
+		});
+
+		it("throws when binary does not exist", async () => {
+			await expect(
+				cliUtils.speedtest(
+					"/nonexistent/binary",
+					{ mode: "global-config", configDir: "/tmp" },
+					"owner/workspace",
+				),
+			).rejects.toThrow("ENOENT");
+		});
+	});
+
 	it("ETag", async () => {
 		const binPath = path.join(tmp, "hash");
 

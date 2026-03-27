@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import type { CliAuth } from "../cliConfig";
+
 /**
  * Custom error thrown when a binary file is locked (typically on Windows).
  */
@@ -70,6 +72,34 @@ export async function version(binPath: string): Promise<string> {
 		throw new Error("No version found in output: ${stdout}");
 	}
 	return json.version;
+}
+
+/**
+ * Run a speed test against the specified workspace and return the JSON output.
+ * Throw if unable to execute the binary or parse the output.
+ */
+export async function speedtest(
+	binPath: string,
+	auth: CliAuth,
+	workspaceName: string,
+): Promise<string> {
+	const result = await promisify(execFile)(binPath, [
+		...authArgs(auth),
+		"speedtest",
+		workspaceName,
+		"--output",
+		"json",
+	]);
+	return result.stdout;
+}
+
+/**
+ * Build CLI auth flags for execFile (no shell escaping).
+ */
+function authArgs(auth: CliAuth): string[] {
+	return auth.mode === "url"
+		? ["--url", auth.url]
+		: ["--global-config", auth.configDir];
 }
 
 export interface RemovalResult {
