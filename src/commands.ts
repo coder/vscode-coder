@@ -36,6 +36,22 @@ import {
 	WorkspaceTreeItem,
 } from "./workspace/workspacesProvider";
 
+interface OpenOptions {
+	workspaceOwner?: string;
+	workspaceName?: string;
+	agentName?: string;
+	folderPath?: string;
+	openRecent?: boolean;
+	/** When false, an absent folderPath opens a bare remote window instead of
+	 *  falling back to the agent's expanded_directory. Defaults to true. */
+	useDefaultDirectory?: boolean;
+}
+
+const openDefaults = {
+	openRecent: false,
+	useDefaultDirectory: true,
+} as const satisfies Partial<OpenOptions>;
+
 export class Commands {
 	private readonly logger: Logger;
 	private readonly pathResolver: PathResolver;
@@ -437,13 +453,9 @@ export class Commands {
 				throw new Error("You are not logged in");
 			}
 			if (item instanceof AgentTreeItem) {
-				await this.openWorkspace(
-					baseUrl,
-					item.workspace,
-					item.agent,
-					undefined,
-					true,
-				);
+				await this.openWorkspace(baseUrl, item.workspace, item.agent, {
+					openRecent: true,
+				});
 			} else if (item instanceof WorkspaceTreeItem) {
 				const agents = await this.extractAgentsWithFallback(item.workspace);
 				const agent = await maybeAskAgent(agents);
@@ -451,13 +463,9 @@ export class Commands {
 					// User declined to pick an agent.
 					return;
 				}
-				await this.openWorkspace(
-					baseUrl,
-					item.workspace,
-					agent,
-					undefined,
-					true,
-				);
+				await this.openWorkspace(baseUrl, item.workspace, agent, {
+					openRecent: true,
+				});
 			} else {
 				throw new TypeError("Unable to open unknown sidebar item");
 			}
@@ -523,13 +531,16 @@ export class Commands {
 	 * Throw if not logged into a deployment or if a matching workspace or agent
 	 * cannot be found.
 	 */
-	public async open(
-		workspaceOwner?: string,
-		workspaceName?: string,
-		agentName?: string,
-		folderPath?: string,
-		openRecent?: boolean,
-	): Promise<boolean> {
+	public async open(options: OpenOptions = {}): Promise<boolean> {
+		const {
+			workspaceOwner,
+			workspaceName,
+			agentName,
+			folderPath,
+			openRecent,
+			useDefaultDirectory,
+		} = { ...openDefaults, ...options };
+
 		const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
@@ -556,13 +567,11 @@ export class Commands {
 			return false;
 		}
 
-		return this.openWorkspace(
-			baseUrl,
-			workspace,
-			agent,
+		return this.openWorkspace(baseUrl, workspace, agent, {
 			folderPath,
 			openRecent,
-		);
+			useDefaultDirectory,
+		});
 	}
 
 	/**
@@ -749,9 +758,16 @@ export class Commands {
 		baseUrl: string,
 		workspace: Workspace,
 		agent: WorkspaceAgent,
-		folderPath: string | undefined,
-		openRecent = false,
+		options: Pick<
+			OpenOptions,
+			"folderPath" | "openRecent" | "useDefaultDirectory"
+		> = {},
 	): Promise<boolean> {
+		const { openRecent, useDefaultDirectory } = {
+			...openDefaults,
+			...options,
+		};
+		let { folderPath } = options;
 		const remoteAuthority = toRemoteAuthority(
 			baseUrl,
 			workspace.owner_name,
@@ -765,7 +781,7 @@ export class Commands {
 			newWindow = false;
 		}
 
-		if (!folderPath) {
+		if (!folderPath && useDefaultDirectory) {
 			folderPath = agent.expanded_directory;
 		}
 

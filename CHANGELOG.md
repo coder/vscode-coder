@@ -1,5 +1,13 @@
 # Change Log
 
+## Unreleased
+
+### Fixed
+
+- URI handler no longer falls back to the agent's `expanded_directory` when the `folder`
+  query parameter is absent. An absent `folder` now opens a bare remote window, restoring
+  pre-v1.10.0 behavior.
+
 ## [v1.14.2-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.2-pre) 2026-03-26
 
 ### Added
