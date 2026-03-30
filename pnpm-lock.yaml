@@ -52,11 +52,6 @@ catalogs:
       specifier: ^8.0.3
       version: 8.0.3
 
-overrides:
-  semver: 7.7.4
-  trim: 0.0.3
-  word-wrap: 1.2.5
-
 importers:
 
   .:
@@ -98,7 +93,7 @@ importers:
         specifier: ^7.0.0
         version: 7.0.0
       semver:
-        specifier: 7.7.4
+        specifier: ^7.7.4
         version: 7.7.4
       strip-ansi:
         specifier: ^7.2.0
@@ -3643,6 +3638,14 @@ packages:
   semver-compare@1.0.0:
     resolution: {integrity: sha512-YM3/ITh2MJ5MtzaM429anh+x2jiLVjqILF4m4oyQB18W7Ggea7BfqdH/wGMK7dDiMghv/6WG7znWMwUDzJiXow==}
 
+  semver@5.7.2:
+    resolution: {integrity: sha512-cBznnQ9KjJqU67B52RMC65CMarK2600WFnbkcaiwWq3xy/5haFJlshgnpjovMVJ+Hff49d8GEn0b87C5pDQ10g==}
+    hasBin: true
+
+  semver@6.3.1:
+    resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
+    hasBin: true
+
   semver@7.7.4:
     resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
     engines: {node: '>=10'}
@@ -4399,7 +4402,7 @@ snapshots:
       debug: 4.4.3(supports-color@8.1.1)
       gensync: 1.0.0-beta.2
       json5: 2.2.3
-      semver: 7.7.4
+      semver: 6.3.1
     transitivePeerDependencies:
       - supports-color
 
@@ -4417,7 +4420,7 @@ snapshots:
       '@babel/helper-validator-option': 7.27.1
       browserslist: 4.28.1
       lru-cache: 5.1.1
-      semver: 7.7.4
+      semver: 6.3.1
 
   '@babel/helper-globals@7.28.0': {}
 
@@ -4514,7 +4517,7 @@ snapshots:
       fs-extra: 8.1.0
       got: 11.8.6
       progress: 2.0.3
-      semver: 7.7.4
+      semver: 6.3.1
       sumchecker: 3.0.1
     optionalDependencies:
       global-agent: 3.0.0
@@ -7766,7 +7769,7 @@ snapshots:
 
   parse-semver@1.1.1:
     dependencies:
-      semver: 7.7.4
+      semver: 5.7.2
 
   parse5-htmlparser2-tree-adapter@7.1.0:
     dependencies:
@@ -8059,6 +8062,10 @@ snapshots:
 
   semver-compare@1.0.0:
     optional: true
+
+  semver@5.7.2: {}
+
+  semver@6.3.1: {}
 
   semver@7.7.4: {}
 

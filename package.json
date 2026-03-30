@@ -517,11 +517,6 @@
 		"onCommand:coder.connect",
 		"onUri"
 	],
-	"resolutions": {
-		"semver": "7.7.4",
-		"trim": "0.0.3",
-		"word-wrap": "1.2.5"
-	},
 	"dependencies": {
 		"@abraham/reflection": "^0.13.0",
 		"@peculiar/x509": "^2.0.0",
