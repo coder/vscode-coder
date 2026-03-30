@@ -627,6 +627,7 @@ export function createMockUser(overrides: Partial<User> = {}): User {
 		avatar_url: "",
 		login_type: "password",
 		theme_preference: "",
+		has_ai_seat: false,
 		...overrides,
 	};
 }
