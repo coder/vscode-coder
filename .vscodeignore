@@ -45,5 +45,5 @@ node_modules/**
 
 # Documentation and media
 usage.md
-CLAUDE.md
+AGENTS.md
 *.gif
