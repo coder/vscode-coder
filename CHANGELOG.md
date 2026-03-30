@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [v1.14.3](https://github.com/coder/vscode-coder/releases/tag/v1.14.3) 2026-03-30
+
 ### Fixed
 
 - URI handler no longer falls back to the agent's `expanded_directory` when the `folder`
