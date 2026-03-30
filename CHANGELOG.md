@@ -1,16 +1,11 @@
 # Change Log
 
-## Unreleased
+<!-- When cutting a stable release, consolidate all pre-release entries into a
+     single release section and remove them. The "Unreleased" header is omitted
+     from published versions since it shows up in the VS Code extension changelog
+     tab and is confusing to users. Add it back between releases if needed. -->
 
 ## [v1.14.3](https://github.com/coder/vscode-coder/releases/tag/v1.14.3) 2026-03-30
-
-### Fixed
-
-- URI handler no longer falls back to the agent's `expanded_directory` when the `folder`
-  query parameter is absent. An absent `folder` now opens a bare remote window, restoring
-  pre-v1.10.0 behavior.
-
-## [v1.14.2-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.2-pre) 2026-03-26
 
 ### Added
 
@@ -20,24 +15,6 @@
   Access) to be enabled on your deployment.
 - New `coder.disableNotifications` setting to suppress all notification prompts from the
   Coder deployment, including workspace update reminders and scheduling alerts.
-
-### Fixed
-
-- Fixed SSH connections failing when a custom `RemoteCommand` is configured in SSH config.
-- SSH connections now recover faster after laptop sleep/wake by detecting port changes
-  and re-registering the label formatter.
-- SSH process discovery now uses `ss` -> `netstat` -> `lsof` on Linux
-  and `netstat` -> `lsof` on macOS, fixing systems where `netstat` was unavailable
-  and the SSH PID could not be resolved, which broke network info display and log viewing.
-
-### Changed
-
-- **Breaking**: Minimum VS Code version is now 1.106.0.
-
-## [v1.14.1-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.1-pre) 2026-03-16
-
-### Added
-
 - Automatically set `reconnectionGraceTime`, `serverShutdownTimeout`, and `maxReconnectionAttempts`
   on first connection to prevent disconnects during overnight workspace sleep.
 - New **Coder: Apply Recommended SSH Settings** command to overwrite all recommended SSH settings at once.
@@ -46,32 +23,34 @@
   the `CODER_SSH_LOG_DIR` environment variable as a fallback.
 - SSH options from `coder config-ssh --ssh-option` are now applied to VS Code connections,
   with priority order: VS Code setting > `coder config-ssh` options > deployment config.
-
-### Fixed
-
-- Fixed SSH config writes failing on Windows when antivirus, cloud sync software,
-  or another process briefly locks the file.
-- Fixed Tasks view container not showing in Cursor when not authenticated.
-
-### Changed
-
-- `coder.useKeyring` is now opt-in (default: false). Keyring storage requires CLI >= 2.29.0 for
-  storage and logout sync, and >= 2.31.0 for syncing login from CLI to VS Code.
-- Session tokens are now saved to the OS keyring at login time (when enabled and CLI >= 2.29.0),
-  not only when connecting to a workspace.
-
-## [v1.14.0-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.0-pre) 2026-03-06
-
-### Added
-
 - Re-introduced OS keyring support for session tokens (reverted in v1.13.2), now delegating
   to the Coder CLI instead of native `@napi-rs/keyring` binaries. This keeps the credential
   format in sync with the CLI automatically.
 
 ### Fixed
 
+- URI handler no longer falls back to the agent's `expanded_directory` when the `folder`
+  query parameter is absent. An absent `folder` now opens a bare remote window, restoring
+  pre-v1.10.0 behavior.
+- Fixed SSH connections failing when a custom `RemoteCommand` is configured in SSH config.
+- SSH connections now recover faster after laptop sleep/wake by detecting port changes
+  and re-registering the label formatter.
+- SSH process discovery now uses `ss` -> `netstat` -> `lsof` on Linux
+  and `netstat` -> `lsof` on macOS, fixing systems where `netstat` was unavailable
+  and the SSH PID could not be resolved, which broke network info display and log viewing.
+- Fixed SSH config writes failing on Windows when antivirus, cloud sync software,
+  or another process briefly locks the file.
+- Fixed Tasks view container not showing in Cursor when not authenticated.
 - `--use-keyring` and `--global-config` are now explicitly filtered from user-configured
   global CLI flags to prevent conflicts with the extension's auth mode.
+
+### Changed
+
+- **Breaking**: Minimum VS Code version is now 1.106.0.
+- `coder.useKeyring` is now opt-in (default: false). Keyring storage requires CLI >= 2.29.0 for
+  storage and logout sync, and >= 2.31.0 for syncing login from CLI to VS Code.
+- Session tokens are now saved to the OS keyring at login time (when enabled and CLI >= 2.29.0),
+  not only when connecting to a workspace.
 
 ## [v1.13.2](https://github.com/coder/vscode-coder/releases/tag/v1.13.2) 2026-03-05
 
