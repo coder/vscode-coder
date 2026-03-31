@@ -20,11 +20,13 @@ catalog:
 
 catalogMode: strict
 
+ignoredBuiltDependencies:
+  - keytar
+
 onlyBuiltDependencies:
   - "@vscode/vsce-sign"
   - bufferutil
   - electron
   - esbuild
-  - keytar
   - unrs-resolver
   - utf-8-validate
