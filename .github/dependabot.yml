@@ -9,10 +9,14 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     ignore:
       # Pinned to engines.vscode minimum; bump manually with engine updates.
       - dependency-name: "@types/vscode"
