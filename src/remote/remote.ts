@@ -51,6 +51,7 @@ import {
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
+import { ensureRetryScript } from "./proxyCommandRetry";
 import {
 	SshConfig,
 	type SSHValues,
@@ -660,10 +661,45 @@ export class Remote {
 
 	/**
 	 * Builds the ProxyCommand for SSH connections to Coder workspaces.
-	 * Uses `coder ssh` for modern deployments with wildcard support,
-	 * or falls back to `coder vscodessh` for older deployments.
+	 * On macOS/Linux, wraps with a retry script to survive transient DNS
+	 * failures after sleep/wake (see proxyCommandRetry.ts).
 	 */
 	private async buildProxyCommand(
+		binaryPath: string,
+		label: string,
+		hostPrefix: string,
+		logDir: string,
+		useWildcardSSH: boolean,
+		cliAuth: CliAuth,
+	): Promise<string> {
+		const coderCommand = await this.buildCoderCommand(
+			binaryPath,
+			label,
+			hostPrefix,
+			logDir,
+			useWildcardSSH,
+			cliAuth,
+		);
+
+		if (os.platform() === "win32") {
+			return coderCommand;
+		}
+		try {
+			const retryScript = await ensureRetryScript(
+				this.pathResolver.getGlobalConfigDir(""),
+				this.logger,
+			);
+			return `${escapeCommandArg(retryScript)} ${coderCommand}`;
+		} catch (error) {
+			this.logger.warn("Failed to write retry wrapper, skipping", error);
+			return coderCommand;
+		}
+	}
+
+	/**
+	 * Builds the raw `coder ssh` or `coder vscodessh` command string.
+	 */
+	private async buildCoderCommand(
 		binaryPath: string,
 		label: string,
 		hostPrefix: string,
@@ -678,8 +714,7 @@ export class Remote {
 		const logArgs = await this.getLogArgs(logDir);
 
 		if (useWildcardSSH) {
-			// User SSH flags are included first; internally-managed flags
-			// are appended last so they take precedence.
+			// User SSH flags first; internal flags last so they take precedence.
 			const userSshFlags = getSshFlags(vscodeConfig);
 			// Make sure to update the `coder.sshFlags` description if we add more internal flags here!
 			const internalFlags = [
@@ -695,28 +730,28 @@ export class Remote {
 
 			const allFlags = [...userSshFlags, ...internalFlags];
 			return `${escapedBinaryPath} ${globalConfig.join(" ")} ssh ${allFlags.join(" ")}`;
-		} else {
-			const networkInfoDir = escapeCommandArg(
-				this.pathResolver.getNetworkInfoPath(),
-			);
-			const sessionTokenFile = escapeCommandArg(
-				this.pathResolver.getSessionTokenPath(label),
-			);
-			const urlFile = escapeCommandArg(this.pathResolver.getUrlPath(label));
-
-			const sshFlags = [
-				"--network-info-dir",
-				networkInfoDir,
-				...logArgs,
-				"--session-token-file",
-				sessionTokenFile,
-				"--url-file",
-				urlFile,
-				"%h",
-			];
-
-			return `${escapedBinaryPath} ${globalConfig.join(" ")} vscodessh ${sshFlags.join(" ")}`;
 		}
+
+		const networkInfoDir = escapeCommandArg(
+			this.pathResolver.getNetworkInfoPath(),
+		);
+		const sessionTokenFile = escapeCommandArg(
+			this.pathResolver.getSessionTokenPath(label),
+		);
+		const urlFile = escapeCommandArg(this.pathResolver.getUrlPath(label));
+
+		const sshFlags = [
+			"--network-info-dir",
+			networkInfoDir,
+			...logArgs,
+			"--session-token-file",
+			sessionTokenFile,
+			"--url-file",
+			urlFile,
+			"%h",
+		];
+
+		return `${escapedBinaryPath} ${globalConfig.join(" ")} vscodessh ${sshFlags.join(" ")}`;
 	}
 
 	/**
