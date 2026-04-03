@@ -396,13 +396,18 @@ export class OpenableTreeItem extends vscode.TreeItem {
 
 		public readonly workspace: Workspace,
 
-		contextValue: CoderOpenableTreeItemType,
+		baseContextValue: CoderOpenableTreeItemType,
 	) {
 		super(label, collapsibleState);
 		this.id = id;
-		this.contextValue = contextValue;
 		this.tooltip = tooltip;
 		this.description = description;
+
+		const tags: string[] = [baseContextValue];
+		if (workspace.latest_build.status === "running") {
+			tags.push("running");
+		}
+		this.contextValue = tags.join("+");
 	}
 
 	override iconPath = {

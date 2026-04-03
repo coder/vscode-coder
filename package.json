@@ -259,6 +259,12 @@
 				"when": "!coder.authenticated && coder.loaded"
 			}
 		],
+		"submenus": [
+			{
+				"id": "coder.diagnostics",
+				"label": "Diagnostics"
+			}
+		],
 		"commands": [
 			{
 				"command": "coder.login",
@@ -368,6 +374,11 @@
 				"command": "coder.applyRecommendedSettings",
 				"title": "Apply Recommended SSH Settings",
 				"category": "Coder"
+			},
+			{
+				"command": "coder.pingWorkspace",
+				"title": "Ping Workspace",
+				"category": "Coder"
 			}
 		],
 		"menus": {
@@ -399,6 +410,10 @@
 				{
 					"command": "coder.navigateToWorkspaceSettings",
 					"when": "coder.workspace.connected"
+				},
+				{
+					"command": "coder.pingWorkspace",
+					"when": "coder.authenticated"
 				},
 				{
 					"command": "coder.workspace.update",
@@ -494,18 +509,28 @@
 			"view/item/context": [
 				{
 					"command": "coder.openFromSidebar",
-					"when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderAgent",
+					"when": "coder.authenticated && viewItem =~ /^coderWorkspaceSingleAgent/ || coder.authenticated && viewItem =~ /^coderAgent/",
 					"group": "inline"
 				},
 				{
 					"command": "coder.navigateToWorkspace",
-					"when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderWorkspaceMultipleAgents",
+					"when": "coder.authenticated && viewItem =~ /^coderWorkspaceSingleAgent/ || coder.authenticated && viewItem =~ /^coderWorkspaceMultipleAgents/",
 					"group": "inline"
 				},
 				{
 					"command": "coder.navigateToWorkspaceSettings",
-					"when": "coder.authenticated && viewItem == coderWorkspaceSingleAgent || coder.authenticated && viewItem == coderWorkspaceMultipleAgents",
+					"when": "coder.authenticated && viewItem =~ /^coderWorkspaceSingleAgent/ || coder.authenticated && viewItem =~ /^coderWorkspaceMultipleAgents/",
 					"group": "inline"
+				},
+				{
+					"submenu": "coder.diagnostics",
+					"when": "coder.authenticated && viewItem =~ /\\+running/",
+					"group": "navigation"
+				}
+			],
+			"coder.diagnostics": [
+				{
+					"command": "coder.pingWorkspace"
 				}
 			],
 			"statusBar/remoteIndicator": [
