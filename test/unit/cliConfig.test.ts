@@ -7,6 +7,7 @@ import {
 	type CliAuth,
 	getGlobalFlags,
 	getGlobalFlagsRaw,
+	getGlobalShellFlags,
 	getSshFlags,
 	isKeyringEnabled,
 	resolveCliAuth,
@@ -23,7 +24,7 @@ const globalConfigAuth: CliAuth = {
 };
 
 describe("cliConfig", () => {
-	describe("getGlobalFlags", () => {
+	describe("getGlobalShellFlags", () => {
 		const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
 
 		interface AuthFlagsCase {
@@ -47,7 +48,9 @@ describe("cliConfig", () => {
 			"should return auth flags for $scenario",
 			({ auth, expectedAuthFlags }) => {
 				const config = new MockConfigurationProvider();
-				expect(getGlobalFlags(config, auth)).toStrictEqual(expectedAuthFlags);
+				expect(getGlobalShellFlags(config, auth)).toStrictEqual(
+					expectedAuthFlags,
+				);
 			},
 		);
 
@@ -58,7 +61,7 @@ describe("cliConfig", () => {
 				"--disable-direct-connections",
 			]);
 
-			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+			expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual([
 				"--verbose",
 				"--disable-direct-connections",
 				"--global-config",
@@ -76,7 +79,7 @@ describe("cliConfig", () => {
 					"--disable-direct-connections",
 				]);
 
-				expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+				expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual([
 					"--verbose",
 					"--disable-direct-connections",
 					"--global-config",
@@ -112,12 +115,12 @@ describe("cliConfig", () => {
 				const config = new MockConfigurationProvider();
 				config.set("coder.globalFlags", flags);
 
-				expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+				expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual([
 					"-v",
 					"--global-config",
 					'"/config/dir"',
 				]);
-				expect(getGlobalFlags(config, urlAuth)).toStrictEqual([
+				expect(getGlobalShellFlags(config, urlAuth)).toStrictEqual([
 					"-v",
 					"--url",
 					'"https://dev.coder.com"',
@@ -129,7 +132,7 @@ describe("cliConfig", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.globalFlags", ["--global-configs", "--use-keyrings"]);
 
-			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+			expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual([
 				"--global-configs",
 				"--use-keyrings",
 				"--global-config",
@@ -160,7 +163,7 @@ describe("cliConfig", () => {
 					"--no-feature-warning",
 				]);
 
-				expect(getGlobalFlags(config, auth)).toStrictEqual([
+				expect(getGlobalShellFlags(config, auth)).toStrictEqual([
 					"-v",
 					"--header-command custom", // ignored by CLI
 					"--no-feature-warning",
@@ -170,6 +173,43 @@ describe("cliConfig", () => {
 				]);
 			},
 		);
+	});
+
+	describe("getGlobalFlags", () => {
+		const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
+
+		it("should not escape auth flags", () => {
+			const config = new MockConfigurationProvider();
+			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+				"--global-config",
+				"/config/dir",
+			]);
+			expect(getGlobalFlags(config, urlAuth)).toStrictEqual([
+				"--url",
+				"https://dev.coder.com",
+			]);
+		});
+
+		it("should still escape header-command flags", () => {
+			const config = new MockConfigurationProvider();
+			config.set("coder.headerCommand", "echo test");
+			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+				"--global-config",
+				"/config/dir",
+				"--header-command",
+				quoteCommand("echo test"),
+			]);
+		});
+
+		it("should include user global flags", () => {
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", ["--verbose"]);
+			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+				"--verbose",
+				"--global-config",
+				"/config/dir",
+			]);
+		});
 	});
 
 	describe("getGlobalFlagsRaw", () => {

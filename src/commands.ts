@@ -21,13 +21,17 @@ import { toError } from "./error/errorUtils";
 import { featureSetForVersion } from "./featureSet";
 import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
-import { withProgress } from "./progress";
+import { withCancellableProgress, withProgress } from "./progress";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import {
 	RECOMMENDED_SSH_SETTINGS,
 	applySettingOverrides,
 } from "./remote/sshOverrides";
-import { getGlobalFlags, resolveCliAuth } from "./settings/cli";
+import {
+	getGlobalFlags,
+	getGlobalShellFlags,
+	resolveCliAuth,
+} from "./settings/cli";
 import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import {
@@ -160,6 +164,73 @@ export class Commands {
 				}
 			});
 		this.logger.debug("Login complete to deployment:", url);
+	}
+
+	/**
+	 * Run a speed test against the currently connected workspace and display the
+	 * results in a new editor document.
+	 */
+	public async speedTest(): Promise<void> {
+		const workspace = this.workspace;
+		if (!workspace) {
+			vscode.window.showInformationMessage("No workspace connected.");
+			return;
+		}
+
+		const duration = await vscode.window.showInputBox({
+			title: "Speed Test Duration",
+			prompt: "Duration for the speed test (e.g., 5s, 10s, 1m)",
+			value: "5s",
+			validateInput: (v) => {
+				return /^\d+[smh]$/.test(v.trim())
+					? null
+					: "Enter a duration like 5s, 10s, or 1m";
+			},
+		});
+		if (duration === undefined) {
+			return;
+		}
+
+		const result = await withCancellableProgress(
+			async ({ signal }) => {
+				const baseUrl = this.requireExtensionBaseUrl();
+				const safeHost = toSafeHost(baseUrl);
+				const binary = await this.cliManager.fetchBinary(this.extensionClient);
+				const version = semver.parse(await cliUtils.version(binary));
+				const featureSet = featureSetForVersion(version);
+				const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
+				const configs = vscode.workspace.getConfiguration();
+				const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
+				const globalFlags = getGlobalFlags(configs, auth);
+				const workspaceName = createWorkspaceIdentifier(workspace);
+
+				return cliUtils.speedtest(binary, globalFlags, workspaceName, {
+					signal,
+					duration: duration.trim(),
+				});
+			},
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Running ${duration.trim()} speed test...`,
+				cancellable: true,
+			},
+		);
+
+		if (!result.ok) {
+			if (!result.cancelled) {
+				this.logger.error("Speed test failed", result.error);
+				vscode.window.showErrorMessage(
+					`Speed test failed: ${result.error instanceof Error ? result.error.message : String(result.error)}`,
+				);
+			}
+			return;
+		}
+
+		const doc = await vscode.workspace.openTextDocument({
+			content: result.value,
+			language: "json",
+		});
+		vscode.window.showTextDocument(doc);
 	}
 
 	/**
@@ -505,7 +576,7 @@ export class Commands {
 					const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
 					const configs = vscode.workspace.getConfiguration();
 					const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
-					const globalFlags = getGlobalFlags(configs, auth);
+					const globalFlags = getGlobalShellFlags(configs, auth);
 					terminal.sendText(
 						`${escapeCommandArg(binary)} ${globalFlags.join(" ")} ssh ${app.workspace_name}`,
 					);

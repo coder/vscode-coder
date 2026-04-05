@@ -72,6 +72,26 @@ export async function version(binPath: string): Promise<string> {
 	return json.version;
 }
 
+/**
+ * Run a speed test against the specified workspace and return the raw output.
+ * Throw if unable to execute the binary.
+ */
+export async function speedtest(
+	binPath: string,
+	globalFlags: string[],
+	workspaceName: string,
+	options: { signal?: AbortSignal; duration?: string },
+): Promise<string> {
+	const args = [...globalFlags, "speedtest", workspaceName, "--output", "json"];
+	if (options.duration) {
+		args.push("-t", options.duration);
+	}
+	const result = await promisify(execFile)(binPath, args, {
+		signal: options.signal,
+	});
+	return result.stdout;
+}
+
 export interface RemovalResult {
 	fileName: string;
 	error: unknown;

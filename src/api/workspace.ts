@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 
 import { type FeatureSet } from "../featureSet";
-import { type CliAuth, getGlobalFlags } from "../settings/cli";
+import { getGlobalShellFlags, type CliAuth } from "../settings/cli";
 import { escapeCommandArg } from "../util";
 import { type UnidirectionalStream } from "../websocket/eventStreamConnection";
 
@@ -65,7 +65,7 @@ export async function startWorkspaceIfStoppedOrFailed(
 
 	return new Promise((resolve, reject) => {
 		const startArgs = [
-			...getGlobalFlags(vscode.workspace.getConfiguration(), auth),
+			...getGlobalShellFlags(vscode.workspace.getConfiguration(), auth),
 			"start",
 			"--yes",
 			createWorkspaceIdentifier(workspace),

@@ -142,6 +142,90 @@ describe("CliUtils", () => {
 		]);
 	});
 
+	describe("speedtest", () => {
+		const echoArgsBin = isWindows()
+			? path.join(tmp, "echo-args.cmd")
+			: path.join(tmp, "echo-args");
+
+		beforeAll(async () => {
+			const scriptPath = getFixturePath("scripts", "echo-args.js");
+			if (isWindows()) {
+				await fs.writeFile(echoArgsBin, `@node "${scriptPath}" %*\r\n`);
+			} else {
+				const content = await fs.readFile(scriptPath, "utf8");
+				await fs.writeFile(echoArgsBin, `#!/usr/bin/env node\n${content}`);
+				await fs.chmod(echoArgsBin, "755");
+			}
+		});
+
+		it("passes global flags", async () => {
+			const result = await cliUtils.speedtest(
+				echoArgsBin,
+				["--global-config", "/tmp/test-config"],
+				"owner/workspace",
+				{},
+			);
+			const args = result.trim().split("\n");
+			expect(args).toEqual([
+				"--global-config",
+				"/tmp/test-config",
+				"speedtest",
+				"owner/workspace",
+				"--output",
+				"json",
+			]);
+		});
+
+		it("passes url flags", async () => {
+			const result = await cliUtils.speedtest(
+				echoArgsBin,
+				["--url", "http://localhost:3000"],
+				"owner/workspace",
+				{},
+			);
+			const args = result.trim().split("\n");
+			expect(args).toEqual([
+				"--url",
+				"http://localhost:3000",
+				"speedtest",
+				"owner/workspace",
+				"--output",
+				"json",
+			]);
+		});
+
+		it("passes duration flag", async () => {
+			const result = await cliUtils.speedtest(
+				echoArgsBin,
+				["--url", "http://localhost:3000"],
+				"owner/workspace",
+				{ duration: "10s" },
+			);
+			const args = result.trim().split("\n");
+			expect(args).toEqual([
+				"--url",
+				"http://localhost:3000",
+				"speedtest",
+				"owner/workspace",
+				"--output",
+				"json",
+				"-t",
+				"10s",
+			]);
+		});
+
+		it("throws when binary does not exist", async () => {
+			await expect(
+				cliUtils.speedtest(
+					"/nonexistent/binary",
+					["--global-config", "/tmp"],
+					"owner/workspace",
+					{},
+				),
+			).rejects.toThrow("ENOENT");
+		});
+	});
+
 	it("ETag", async () => {
 		const binPath = path.join(tmp, "hash");
 

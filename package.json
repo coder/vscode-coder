@@ -320,6 +320,11 @@
 				"icon": "$(refresh)"
 			},
 			{
+				"command": "coder.speedTest",
+				"title": "Run Speed Test",
+				"category": "Coder"
+			},
+			{
 				"command": "coder.viewLogs",
 				"title": "Coder: View Logs",
 				"icon": "$(list-unordered)"
@@ -382,6 +387,10 @@
 				{
 					"command": "coder.createWorkspace",
 					"when": "coder.authenticated"
+				},
+				{
+					"command": "coder.speedTest",
+					"when": "coder.workspace.connected"
 				},
 				{
 					"command": "coder.navigateToWorkspace",
