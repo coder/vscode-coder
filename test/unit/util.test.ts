@@ -91,6 +91,17 @@ describe("parseRemoteAuthority", () => {
 			username: "foo",
 			workspace: "bar",
 		});
+		expect(
+			parseRemoteAuthority(
+				"vscode://ssh-remote+coder-vscode.dev.coder.xn--eckwd4c7cu47r2wf.jp--foo--bar",
+			),
+		).toStrictEqual({
+			agent: "",
+			sshHost: "coder-vscode.dev.coder.xn--eckwd4c7cu47r2wf.jp--foo--bar",
+			safeHostname: "dev.coder.xn--eckwd4c7cu47r2wf.jp",
+			username: "foo",
+			workspace: "bar",
+		});
 	});
 });
 

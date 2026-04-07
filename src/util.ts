@@ -61,14 +61,30 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	// coder-vscode(--|.)<username>--<workspace>(--|.)<agent?>
 	// The agent can be omitted; the user will be prompted for it instead.
 	// Anything else is unrelated to Coder and can be ignored.
-	const parts = authorityParts[1].split("--");
+	const rawParts = authorityParts[1].split("--");
 	if (
-		parts.length <= 1 ||
-		(parts[0] !== AuthorityPrefix &&
-			!parts[0].startsWith(`${AuthorityPrefix}.`))
+		rawParts.length <= 1 ||
+		(rawParts[0] !== AuthorityPrefix &&
+			!rawParts[0].startsWith(`${AuthorityPrefix}.`))
 	) {
 		return null;
 	}
+
+	// DNS labels may legally contain "--" (Punycode labels like "xn--{encoded}"
+	// are a common example), which breaks a naive split.  Coder usernames and
+	// workspace names follow a slug pattern that never contains dots, so a
+	// dot-bearing segment after splitting on "--" must be a hostname fragment
+	// rather than a username.  We reassemble from the front: while the next
+	// segment contains a dot, merge it back into the accumulated prefix.
+	let reassemblingParts = rawParts;
+	while (reassemblingParts.length >= 2) {
+		if (reassemblingParts[1].includes(".")) {
+			reassemblingParts = [reassemblingParts.slice(0, 2).join("--"), ...reassemblingParts.slice(2)];
+		} else {
+			break;
+		}
+	}
+	const parts = reassemblingParts;
 
 	// It has the proper prefix, so this is probably a Coder host name.
 	// Validate the SSH host name.  Including the prefix, we expect at least
