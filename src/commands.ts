@@ -8,7 +8,11 @@ import * as path from "node:path";
 import * as semver from "semver";
 import * as vscode from "vscode";
 
-import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
+import {
+	createWorkspaceIdentifier,
+	extractAgents,
+	workspaceStatusLabel,
+} from "./api/api-helper";
 import { type CoderApi } from "./api/coderApi";
 import { type CliManager } from "./core/cliManager";
 import * as cliUtils from "./core/cliUtils";
@@ -938,9 +942,9 @@ export class Commands {
 								if (workspace.latest_build.status !== "running") {
 									icon = "$(debug-stop)";
 								}
-								const status =
-									workspace.latest_build.status.substring(0, 1).toUpperCase() +
-									workspace.latest_build.status.substring(1);
+								const status = workspaceStatusLabel(
+									workspace.latest_build.status,
+								);
 								return {
 									alwaysShow: true,
 									label: `${icon} ${workspace.owner_name} / ${workspace.name}`,
@@ -953,6 +957,10 @@ export class Commands {
 						this.logger.error("Failed to fetch workspaces", ex);
 						if (ex instanceof CertificateError) {
 							void ex.showNotification();
+						} else {
+							void vscode.window.showErrorMessage(
+								`Failed to fetch workspaces: ${toError(ex).message}`,
+							);
 						}
 					})
 					.finally(() => {

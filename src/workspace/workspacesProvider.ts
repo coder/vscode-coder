@@ -13,6 +13,7 @@ import {
 } from "../api/agentMetadataHelper";
 import {
 	type AgentMetadataEvent,
+	workspaceStatusLabel,
 	extractAgents,
 	extractAllAgents,
 } from "../api/api-helper";
@@ -446,9 +447,7 @@ export class WorkspaceTreeItem extends OpenableTreeItem {
 		public readonly showOwner: boolean,
 		public readonly watchMetadata = false,
 	) {
-		const status =
-			workspace.latest_build.status.substring(0, 1).toUpperCase() +
-			workspace.latest_build.status.substring(1);
+		const status = workspaceStatusLabel(workspace.latest_build.status);
 
 		const label = showOwner
 			? `${workspace.owner_name} / ${workspace.name}`
