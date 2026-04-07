@@ -2,12 +2,17 @@ import {
 	type Workspace,
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
+import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as semver from "semver";
 import * as vscode from "vscode";
 
-import { createWorkspaceIdentifier, extractAgents } from "./api/api-helper";
+import {
+	createWorkspaceIdentifier,
+	extractAgents,
+	workspaceStatusLabel,
+} from "./api/api-helper";
 import { type CoderApi } from "./api/coderApi";
 import { type CliManager } from "./core/cliManager";
 import * as cliUtils from "./core/cliUtils";
@@ -563,21 +568,11 @@ export class Commands {
 					title: `Connecting to AI Agent...`,
 				},
 				async () => {
-					const terminal = vscode.window.createTerminal(app.name);
-
-					// If workspace_name is provided, run coder ssh before the command
-					const baseUrl = this.requireExtensionBaseUrl();
-					const safeHost = toSafeHost(baseUrl);
-					const binary = await this.cliManager.fetchBinary(
+					const { binary, globalFlags } = await this.resolveCliEnv(
 						this.extensionClient,
 					);
 
-					const version = semver.parse(await cliUtils.version(binary));
-					const featureSet = featureSetForVersion(version);
-					const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
-					const configs = vscode.workspace.getConfiguration();
-					const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
-					const globalFlags = getGlobalShellFlags(configs, auth);
+					const terminal = vscode.window.createTerminal(app.name);
 					terminal.sendText(
 						`${escapeCommandArg(binary)} ${globalFlags.join(" ")} ssh ${app.workspace_name}`,
 					);
@@ -733,63 +728,267 @@ export class Commands {
 		}
 	}
 
+	public async pingWorkspace(item?: OpenableTreeItem): Promise<void> {
+		let client: CoderApi;
+		let workspaceId: string;
+
+		if (item) {
+			client = this.extensionClient;
+			workspaceId = createWorkspaceIdentifier(item.workspace);
+		} else if (this.workspace && this.remoteWorkspaceClient) {
+			client = this.remoteWorkspaceClient;
+			workspaceId = createWorkspaceIdentifier(this.workspace);
+		} else {
+			client = this.extensionClient;
+			const workspace = await this.pickWorkspace({
+				title: "Ping a running workspace",
+				initialValue: "owner:me status:running ",
+				placeholder: "Search running workspaces...",
+				filter: (w) => w.latest_build.status === "running",
+			});
+			if (!workspace) {
+				return;
+			}
+			workspaceId = createWorkspaceIdentifier(workspace);
+		}
+
+		return this.spawnPing(client, workspaceId);
+	}
+
+	private spawnPing(client: CoderApi, workspaceId: string): Thenable<void> {
+		return withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Starting ping for ${workspaceId}...`,
+			},
+			async () => {
+				const { binary, globalFlags } = await this.resolveCliEnv(client);
+
+				const writeEmitter = new vscode.EventEmitter<string>();
+				const closeEmitter = new vscode.EventEmitter<number | void>();
+
+				const args = [...globalFlags, "ping", escapeCommandArg(workspaceId)];
+				const cmd = `${escapeCommandArg(binary)} ${args.join(" ")}`;
+				// On Unix, spawn in a new process group so we can signal the
+				// entire group (shell + coder binary) on Ctrl+C. On Windows,
+				// detached opens a visible console window and negative-PID kill
+				// is unsupported, so we fall back to proc.kill().
+				const useProcessGroup = process.platform !== "win32";
+				const proc = spawn(cmd, {
+					shell: true,
+					detached: useProcessGroup,
+				});
+
+				let closed = false;
+				let exited = false;
+				let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+
+				const sendSignal = (sig: "SIGINT" | "SIGKILL") => {
+					try {
+						if (useProcessGroup && proc.pid) {
+							process.kill(-proc.pid, sig);
+						} else {
+							proc.kill(sig);
+						}
+					} catch {
+						// Process already exited.
+					}
+				};
+
+				const gracefulKill = () => {
+					sendSignal("SIGINT");
+					// Escalate to SIGKILL if the process doesn't exit promptly.
+					forceKillTimer = setTimeout(() => sendSignal("SIGKILL"), 5000);
+				};
+
+				const terminal = vscode.window.createTerminal({
+					name: `Coder Ping: ${workspaceId}`,
+					pty: {
+						onDidWrite: writeEmitter.event,
+						onDidClose: closeEmitter.event,
+						open: () => {
+							writeEmitter.fire("Press Ctrl+C (^C) to stop.\r\n");
+							writeEmitter.fire("─".repeat(40) + "\r\n");
+						},
+						close: () => {
+							closed = true;
+							clearTimeout(forceKillTimer);
+							sendSignal("SIGKILL");
+							writeEmitter.dispose();
+							closeEmitter.dispose();
+						},
+						handleInput: (data: string) => {
+							if (exited) {
+								closeEmitter.fire();
+							} else if (data === "\x03") {
+								if (forceKillTimer) {
+									// Second Ctrl+C: force kill immediately.
+									clearTimeout(forceKillTimer);
+									sendSignal("SIGKILL");
+								} else {
+									if (!closed) {
+										writeEmitter.fire("\r\nStopping...\r\n");
+									}
+									gracefulKill();
+								}
+							}
+						},
+					},
+				});
+
+				const fireLines = (data: Buffer) => {
+					if (closed) {
+						return;
+					}
+					const lines = data
+						.toString()
+						.split(/\r*\n/)
+						.filter((line) => line !== "");
+					for (const line of lines) {
+						writeEmitter.fire(line + "\r\n");
+					}
+				};
+
+				proc.stdout?.on("data", fireLines);
+				proc.stderr?.on("data", fireLines);
+				proc.on("error", (err) => {
+					exited = true;
+					clearTimeout(forceKillTimer);
+					if (closed) {
+						return;
+					}
+					writeEmitter.fire(`\r\nFailed to start: ${err.message}\r\n`);
+					writeEmitter.fire("Press any key to close.\r\n");
+				});
+				proc.on("close", (code, signal) => {
+					exited = true;
+					clearTimeout(forceKillTimer);
+					if (closed) {
+						return;
+					}
+					let reason: string;
+					if (signal === "SIGKILL") {
+						reason = "Ping force killed (SIGKILL)";
+					} else if (signal) {
+						reason = "Ping stopped";
+					} else {
+						reason = `Process exited with code ${code}`;
+					}
+					writeEmitter.fire(`\r\n${reason}. Press any key to close.\r\n`);
+				});
+
+				terminal.show(false);
+			},
+		);
+	}
+
+	private async resolveCliEnv(
+		client: CoderApi,
+	): Promise<{ binary: string; globalFlags: string[] }> {
+		const baseUrl = client.getAxiosInstance().defaults.baseURL;
+		if (!baseUrl) {
+			throw new Error("You are not logged in");
+		}
+		const safeHost = toSafeHost(baseUrl);
+		const binary = await this.cliManager.fetchBinary(client);
+		const version = semver.parse(await cliUtils.version(binary));
+		const featureSet = featureSetForVersion(version);
+		const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
+		const configs = vscode.workspace.getConfiguration();
+		const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
+		const globalFlags = getGlobalShellFlags(configs, auth);
+		return { binary, globalFlags };
+	}
+
 	/**
 	 * Ask the user to select a workspace.  Return undefined if canceled.
 	 */
-	private async pickWorkspace(): Promise<Workspace | undefined> {
+	private async pickWorkspace(options?: {
+		title?: string;
+		initialValue?: string;
+		placeholder?: string;
+		filter?: (w: Workspace) => boolean;
+	}): Promise<Workspace | undefined> {
 		const quickPick = vscode.window.createQuickPick();
-		quickPick.value = "owner:me ";
-		quickPick.placeholder = "owner:me template:go";
-		quickPick.title = `Connect to a workspace`;
+		quickPick.value = options?.initialValue ?? "owner:me ";
+		quickPick.placeholder = options?.placeholder ?? "owner:me template:go";
+		quickPick.title = options?.title ?? "Connect to a workspace";
+		const filter = options?.filter;
+
 		let lastWorkspaces: readonly Workspace[];
-		quickPick.onDidChangeValue((value) => {
-			quickPick.busy = true;
-			this.extensionClient
-				.getWorkspaces({
-					q: value,
-				})
-				.then((workspaces) => {
-					lastWorkspaces = workspaces.workspaces;
-					const items: vscode.QuickPickItem[] = workspaces.workspaces.map(
-						(workspace) => {
-							let icon = "$(debug-start)";
-							if (workspace.latest_build.status !== "running") {
-								icon = "$(debug-stop)";
-							}
-							const status =
-								workspace.latest_build.status.substring(0, 1).toUpperCase() +
-								workspace.latest_build.status.substring(1);
-							return {
-								alwaysShow: true,
-								label: `${icon} ${workspace.owner_name} / ${workspace.name}`,
-								detail: `Template: ${workspace.template_display_name || workspace.template_name} • Status: ${status}`,
-							};
-						},
-					);
-					quickPick.items = items;
-				})
-				.catch((ex) => {
-					this.logger.error("Failed to fetch workspaces", ex);
-					if (ex instanceof CertificateError) {
-						void ex.showNotification();
-					}
-				})
-				.finally(() => {
-					quickPick.busy = false;
-				});
-		});
+		const disposables: vscode.Disposable[] = [];
+		disposables.push(
+			quickPick.onDidChangeValue((value) => {
+				quickPick.busy = true;
+				this.extensionClient
+					.getWorkspaces({
+						q: value,
+					})
+					.then((workspaces) => {
+						const filtered = filter
+							? workspaces.workspaces.filter(filter)
+							: workspaces.workspaces;
+						lastWorkspaces = filtered;
+						if (filtered.length === 0) {
+							quickPick.items = [
+								{
+									label: "$(info) No matching workspaces found",
+									alwaysShow: true,
+								},
+							];
+						} else {
+							quickPick.items = filtered.map((workspace) => {
+								let icon = "$(debug-start)";
+								if (workspace.latest_build.status !== "running") {
+									icon = "$(debug-stop)";
+								}
+								const status = workspaceStatusLabel(
+									workspace.latest_build.status,
+								);
+								return {
+									alwaysShow: true,
+									label: `${icon} ${workspace.owner_name} / ${workspace.name}`,
+									detail: `Template: ${workspace.template_display_name || workspace.template_name} • Status: ${status}`,
+								};
+							});
+						}
+					})
+					.catch((ex) => {
+						this.logger.error("Failed to fetch workspaces", ex);
+						if (ex instanceof CertificateError) {
+							void ex.showNotification();
+						} else {
+							void vscode.window.showErrorMessage(
+								`Failed to fetch workspaces: ${toError(ex).message}`,
+							);
+						}
+					})
+					.finally(() => {
+						quickPick.busy = false;
+					});
+			}),
+		);
+
 		quickPick.show();
 		return new Promise<Workspace | undefined>((resolve) => {
-			quickPick.onDidHide(() => {
-				resolve(undefined);
-			});
-			quickPick.onDidChangeSelection((selected) => {
-				if (selected.length < 1) {
-					return resolve(undefined);
-				}
-				const workspace = lastWorkspaces[quickPick.items.indexOf(selected[0])];
-				resolve(workspace);
-			});
+			disposables.push(
+				quickPick.onDidHide(() => {
+					resolve(undefined);
+				}),
+				quickPick.onDidChangeSelection((selected) => {
+					if (selected.length < 1) {
+						return resolve(undefined);
+					}
+					const workspace =
+						lastWorkspaces[quickPick.items.indexOf(selected[0])];
+					resolve(workspace);
+				}),
+			);
+		}).finally(() => {
+			for (const d of disposables) {
+				d.dispose();
+			}
+			quickPick.dispose();
 		});
 	}
 

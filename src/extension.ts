@@ -311,6 +311,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			"coder.applyRecommendedSettings",
 			commands.applyRecommendedSettings.bind(commands),
 		),
+		vscode.commands.registerCommand(
+			"coder.pingWorkspace",
+			commands.pingWorkspace.bind(commands),
+		),
 	);
 
 	const remote = new Remote(serviceContainer, commands, ctx);

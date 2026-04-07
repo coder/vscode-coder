@@ -3,6 +3,7 @@ import {
 	type Workspace,
 	type WorkspaceAgent,
 	type WorkspaceResource,
+	type WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 import { ErrorEvent } from "eventsource";
 import { z } from "zod";
@@ -47,6 +48,26 @@ export function extractAgents(
 	return resources.reduce((acc, resource) => {
 		return acc.concat(resource.agents ?? []);
 	}, [] as WorkspaceAgent[]);
+}
+
+const WORKSPACE_STATUS_LABEL: Readonly<Record<WorkspaceStatus, string>> = {
+	canceled: "Canceled",
+	canceling: "Canceling",
+	deleted: "Deleted",
+	deleting: "Deleting",
+	failed: "Failed",
+	pending: "Pending",
+	running: "Running",
+	starting: "Starting",
+	stopped: "Stopped",
+	stopping: "Stopping",
+};
+
+export function workspaceStatusLabel(status: WorkspaceStatus): string {
+	return (
+		WORKSPACE_STATUS_LABEL[status] ??
+		status.charAt(0).toUpperCase() + status.slice(1)
+	);
 }
 
 export const AgentMetadataEventSchema = z.object({
