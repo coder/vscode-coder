@@ -124,7 +124,7 @@ export class AuthInterceptor implements vscode.Disposable {
 		}
 
 		if (!this.onAuthRequired) {
-			return false;
+			throw new Error("No auth handler registered");
 		}
 
 		this.logger.debug("Triggering re-authentication");

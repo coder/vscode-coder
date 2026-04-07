@@ -172,7 +172,8 @@ export class Commands {
 	 */
 	public async speedTest(): Promise<void> {
 		const workspace = this.workspace;
-		if (!workspace) {
+		const client = this.remoteWorkspaceClient;
+		if (!workspace || !client) {
 			vscode.window.showInformationMessage("No workspace connected.");
 			return;
 		}
@@ -181,11 +182,6 @@ export class Commands {
 			title: "Speed Test Duration",
 			prompt: "Duration for the speed test (e.g., 5s, 10s, 1m)",
 			value: "5s",
-			validateInput: (v) => {
-				return /^\d+[smh]$/.test(v.trim())
-					? null
-					: "Enter a duration like 5s, 10s, or 1m";
-			},
 		});
 		if (duration === undefined) {
 			return;
@@ -193,9 +189,12 @@ export class Commands {
 
 		const result = await withCancellableProgress(
 			async ({ signal }) => {
-				const baseUrl = this.requireExtensionBaseUrl();
+				const baseUrl = client.getAxiosInstance().defaults.baseURL;
+				if (!baseUrl) {
+					throw new Error("No deployment URL for the connected workspace");
+				}
 				const safeHost = toSafeHost(baseUrl);
-				const binary = await this.cliManager.fetchBinary(this.extensionClient);
+				const binary = await this.cliManager.fetchBinary(client);
 				const version = semver.parse(await cliUtils.version(binary));
 				const featureSet = featureSetForVersion(version);
 				const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
@@ -216,21 +215,23 @@ export class Commands {
 			},
 		);
 
-		if (!result.ok) {
-			if (!result.cancelled) {
-				this.logger.error("Speed test failed", result.error);
-				vscode.window.showErrorMessage(
-					`Speed test failed: ${result.error instanceof Error ? result.error.message : String(result.error)}`,
-				);
-			}
+		if (result.ok) {
+			const doc = await vscode.workspace.openTextDocument({
+				content: result.value,
+				language: "json",
+			});
+			await vscode.window.showTextDocument(doc);
 			return;
 		}
 
-		const doc = await vscode.workspace.openTextDocument({
-			content: result.value,
-			language: "json",
-		});
-		vscode.window.showTextDocument(doc);
+		if (result.cancelled) {
+			return;
+		}
+
+		this.logger.error("Speed test failed", result.error);
+		vscode.window.showErrorMessage(
+			`Speed test failed: ${toError(result.error).message}`,
+		);
 	}
 
 	/**
