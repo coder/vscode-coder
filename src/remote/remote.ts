@@ -36,8 +36,8 @@ import { type LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	type CliAuth,
-	getGlobalFlags,
 	getGlobalFlagsRaw,
+	getGlobalShellFlags,
 	getSshFlags,
 	resolveCliAuth,
 } from "../settings/cli";
@@ -674,7 +674,7 @@ export class Remote {
 		const vscodeConfig = vscode.workspace.getConfiguration();
 
 		const escapedBinaryPath = escapeCommandArg(binaryPath);
-		const globalConfig = getGlobalFlags(vscodeConfig, cliAuth);
+		const globalConfig = getGlobalShellFlags(vscodeConfig, cliAuth);
 		const logArgs = await this.getLogArgs(logDir);
 
 		if (useWildcardSSH) {
@@ -863,7 +863,9 @@ export class Remote {
 		const titleMap = new Map(settings.map((s) => [s.setting, s.title]));
 
 		return watchConfigurationChanges(settings, (changedSettings) => {
-			const changedTitles = changedSettings.map((s) => titleMap.get(s)!);
+			const changedTitles = changedSettings
+				.map((s) => titleMap.get(s))
+				.filter((t) => t !== undefined);
 
 			const message =
 				changedTitles.length === 1

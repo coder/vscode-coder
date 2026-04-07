@@ -34,7 +34,7 @@ export function findPort(text: string): number | null {
 	}
 
 	// Get the last match, which is the most recent port.
-	const lastMatch = allMatches.at(-1)!;
+	const lastMatch = allMatches[allMatches.length - 1];
 	// Each capture group corresponds to a different Remote SSH extension log format:
 	// [0] full match, [1] and [2] ms-vscode-remote.remote-ssh,
 	// [3] windsurf/open-remote-ssh/antigravity, [4] anysphere.remote-ssh

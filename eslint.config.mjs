@@ -19,6 +19,7 @@ export default defineConfig(
 		"**/vite.config*.ts",
 		"**/createWebviewConfig.ts",
 		".vscode-test/**",
+		"test/fixtures/scripts/**",
 	]),
 
 	// Base ESLint recommended rules (for JS/TS/TSX files only)
@@ -62,6 +63,7 @@ export default defineConfig(
 				"error",
 				{ considerDefaultExhaustiveForUnions: true },
 			],
+			"@typescript-eslint/no-non-null-assertion": "error",
 			"@typescript-eslint/no-unused-vars": [
 				"error",
 				{ varsIgnorePattern: "^_", argsIgnorePattern: "^_" },
@@ -136,6 +138,8 @@ export default defineConfig(
 			"@typescript-eslint/unbound-method": "off",
 			// Empty callbacks are common in test stubs
 			"@typescript-eslint/no-empty-function": "off",
+			// Test assertions often use non-null assertions for brevity
+			"@typescript-eslint/no-non-null-assertion": "off",
 			// Test mocks often have loose typing - relax unsafe rules
 			"@typescript-eslint/no-unsafe-assignment": "off",
 			"@typescript-eslint/no-unsafe-call": "off",

@@ -21,17 +21,36 @@ export function getGlobalFlagsRaw(
 }
 
 /**
- * Returns global configuration flags for Coder CLI commands.
- * Includes either `--global-config` or `--url` depending on the auth mode.
+ * Returns global configuration flags for Coder CLI commands with auth values
+ * escaped for shell use (e.g., `terminal.sendText`, `spawn({ shell: true })`).
+ */
+export function getGlobalShellFlags(
+	configs: Pick<WorkspaceConfiguration, "get">,
+	auth: CliAuth,
+): string[] {
+	return buildGlobalFlags(configs, auth, escapeCommandArg);
+}
+
+/**
+ * Returns global configuration flags for Coder CLI commands with raw auth
+ * values suitable for `execFile` (no shell escaping).
  */
 export function getGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
 ): string[] {
+	return buildGlobalFlags(configs, auth, (s) => s);
+}
+
+function buildGlobalFlags(
+	configs: Pick<WorkspaceConfiguration, "get">,
+	auth: CliAuth,
+	esc: (s: string) => string,
+): string[] {
 	const authFlags =
 		auth.mode === "url"
-			? ["--url", escapeCommandArg(auth.url)]
-			: ["--global-config", escapeCommandArg(auth.configDir)];
+			? ["--url", esc(auth.url)]
+			: ["--global-config", esc(auth.configDir)];
 
 	const raw = getGlobalFlagsRaw(configs);
 	const filtered = stripManagedFlags(raw);

@@ -123,8 +123,12 @@ export class AuthInterceptor implements vscode.Disposable {
 			return this.authRequiredPromise;
 		}
 
+		if (!this.onAuthRequired) {
+			throw new Error("No auth handler registered");
+		}
+
 		this.logger.debug("Triggering re-authentication");
-		this.authRequiredPromise = this.onAuthRequired!(hostname);
+		this.authRequiredPromise = this.onAuthRequired(hostname);
 
 		try {
 			return await this.authRequiredPromise;

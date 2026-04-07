@@ -290,6 +290,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			void allWorkspacesProvider.fetchAndRefresh();
 		}),
 		vscode.commands.registerCommand(
+			"coder.speedTest",
+			commands.speedTest.bind(commands),
+		),
+		vscode.commands.registerCommand(
 			"coder.viewLogs",
 			commands.viewLogs.bind(commands),
 		),
