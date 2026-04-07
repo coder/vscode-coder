@@ -17,6 +17,7 @@ import { tempFilePath, toSafeHost } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";
+import { version as cliVersion } from "./cliExec";
 import * as cliUtils from "./cliUtils";
 import * as downloadProgress from "./downloadProgress";
 
@@ -107,7 +108,7 @@ export class CliManager {
 		} else {
 			this.output.debug("Existing binary size is", prettyBytes(stat.size));
 			try {
-				const version = await cliUtils.version(binPath);
+				const version = await cliVersion(binPath);
 				this.output.debug("Existing binary version is", version);
 				// If we have the right version we can avoid the request entirely.
 				if (version === buildInfo.version) {
@@ -212,7 +213,7 @@ export class CliManager {
 		}
 
 		try {
-			const version = await cliUtils.version(binPath);
+			const version = await cliVersion(binPath);
 			return {
 				version,
 				matches: version === expectedVersion,
@@ -274,7 +275,7 @@ export class CliManager {
 		);
 
 		// Make sure we can execute this new binary.
-		const version = await cliUtils.version(binPath);
+		const version = await cliVersion(binPath);
 		this.output.info("Downloaded binary version is", version);
 	}
 

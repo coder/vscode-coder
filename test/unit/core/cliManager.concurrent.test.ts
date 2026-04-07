@@ -11,6 +11,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as cliExec from "@/core/cliExec";
 import { CliManager } from "@/core/cliManager";
 import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
@@ -33,6 +34,13 @@ vi.mock("@/core/cliUtils", async () => {
 		goos: vi.fn(),
 		goarch: vi.fn(),
 		name: vi.fn(),
+	};
+});
+
+vi.mock("@/core/cliExec", async () => {
+	const actual = await vi.importActual<typeof cliExec>("@/core/cliExec");
+	return {
+		...actual,
 		version: vi.fn(),
 	};
 });
@@ -41,7 +49,7 @@ function setupCliUtilsMocks(version: string) {
 	vi.mocked(cliUtils.goos).mockReturnValue("linux");
 	vi.mocked(cliUtils.goarch).mockReturnValue("amd64");
 	vi.mocked(cliUtils.name).mockReturnValue("coder-linux-amd64");
-	vi.mocked(cliUtils.version).mockResolvedValue(version);
+	vi.mocked(cliExec.version).mockResolvedValue(version);
 	vi.mocked(pgp.readPublicKeys).mockResolvedValue([]);
 }
 
@@ -123,7 +131,7 @@ describe("CliManager Concurrent Downloads", () => {
 	it("redownloads when version mismatch is detected concurrently", async () => {
 		const manager = setupManager(testDir);
 		setupCliUtilsMocks("1.2.3");
-		vi.mocked(cliUtils.version).mockImplementation(async (binPath) => {
+		vi.mocked(cliExec.version).mockImplementation(async (binPath) => {
 			const fileContent = await fs.readFile(binPath, {
 				encoding: "utf-8",
 			});

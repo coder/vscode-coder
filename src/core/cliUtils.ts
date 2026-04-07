@@ -1,10 +1,8 @@
-import { execFile, type ExecFileException } from "node:child_process";
 import * as crypto from "node:crypto";
 import { createReadStream, type Stats } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 
 /**
  * Custom error thrown when a binary file is locked (typically on Windows).
@@ -29,67 +27,6 @@ export async function stat(binPath: string): Promise<Stats | undefined> {
 		}
 		throw error;
 	}
-}
-
-// util.promisify types are dynamic so there is no concrete type we can import
-// and we have to make our own.
-type ExecException = ExecFileException & { stdout?: string; stderr?: string };
-
-/**
- * Return the version from the binary.  Throw if unable to execute the binary or
- * find the version for any reason.
- */
-export async function version(binPath: string): Promise<string> {
-	let stdout: string;
-	try {
-		const result = await promisify(execFile)(binPath, [
-			"version",
-			"--output",
-			"json",
-		]);
-		stdout = result.stdout;
-	} catch (error) {
-		// It could be an old version without support for --output.
-		if ((error as ExecException)?.stderr?.includes("unknown flag: --output")) {
-			const result = await promisify(execFile)(binPath, ["version"]);
-			if (result.stdout?.startsWith("Coder")) {
-				const v = result.stdout.split(" ")[1]?.trim();
-				if (!v) {
-					throw new Error(`No version found in output: ${result.stdout}`, {
-						cause: error,
-					});
-				}
-				return v;
-			}
-		}
-		throw error;
-	}
-
-	const json = JSON.parse(stdout) as { version?: string };
-	if (!json.version) {
-		throw new Error("No version found in output: ${stdout}");
-	}
-	return json.version;
-}
-
-/**
- * Run a speed test against the specified workspace and return the raw output.
- * Throw if unable to execute the binary.
- */
-export async function speedtest(
-	binPath: string,
-	globalFlags: string[],
-	workspaceName: string,
-	options: { signal?: AbortSignal; duration?: string },
-): Promise<string> {
-	const args = [...globalFlags, "speedtest", workspaceName, "--output", "json"];
-	if (options.duration) {
-		args.push("-t", options.duration);
-	}
-	const result = await promisify(execFile)(binPath, args, {
-		signal: options.signal,
-	});
-	return result.stdout;
 }
 
 export interface RemovalResult {

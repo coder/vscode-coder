@@ -401,7 +401,7 @@
 				},
 				{
 					"command": "coder.speedTest",
-					"when": "coder.workspace.connected"
+					"when": "coder.authenticated"
 				},
 				{
 					"command": "coder.navigateToWorkspace",
@@ -531,6 +531,9 @@
 			"coder.diagnostics": [
 				{
 					"command": "coder.pingWorkspace"
+				},
+				{
+					"command": "coder.speedTest"
 				}
 			],
 			"statusBar/remoteIndicator": [

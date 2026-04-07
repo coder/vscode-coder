@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect } from "vitest";
@@ -35,6 +36,30 @@ export function exitCommand(code: number): string {
  */
 export function printEnvCommand(key: string, varName: string): string {
 	return `node -e "process.stdout.write('${key}=' + process.env.${varName})"`;
+}
+
+/**
+ * Write a cross-platform executable that runs the given JS code.
+ * On Unix creates a shebang script; on Windows creates a .cmd wrapper.
+ * Returns the path to the executable.
+ */
+export async function writeExecutable(
+	dir: string,
+	name: string,
+	code: string,
+): Promise<string> {
+	if (isWindows()) {
+		const jsPath = path.join(dir, `${name}.js`);
+		const cmdPath = path.join(dir, `${name}.cmd`);
+		await fs.writeFile(jsPath, code);
+		await fs.writeFile(cmdPath, `@node "${jsPath}" %*\r\n`);
+		return cmdPath;
+	}
+
+	const binPath = path.join(dir, name);
+	await fs.writeFile(binPath, `#!/usr/bin/env node\n${code}`);
+	await fs.chmod(binPath, "755");
+	return binPath;
 }
 
 export function expectPathsEqual(actual: string, expected: string) {

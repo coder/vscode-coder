@@ -22,8 +22,8 @@ import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { type Commands } from "../commands";
 import { watchConfigurationChanges } from "../configWatcher";
+import { version as cliVersion } from "../core/cliExec";
 import { type CliManager } from "../core/cliManager";
-import * as cliUtils from "../core/cliUtils";
 import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
 import { type PathResolver } from "../core/pathResolver";
@@ -263,7 +263,7 @@ export class Remote {
 
 			let version: semver.SemVer | null = null;
 			try {
-				version = semver.parse(await cliUtils.version(binaryPath));
+				version = semver.parse(await cliVersion(binaryPath));
 			} catch {
 				version = semver.parse(buildInfo.version);
 			}

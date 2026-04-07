@@ -9,8 +9,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import * as cliExec from "@/core/cliExec";
 import { CliManager } from "@/core/cliManager";
-import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
 import { isKeyringEnabled } from "@/settings/cli";
@@ -59,12 +59,11 @@ vi.mock("proper-lockfile", () => ({
 
 vi.mock("@/pgp");
 
-vi.mock("@/core/cliUtils", async () => {
+vi.mock("@/core/cliExec", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/core/cliUtils")>("@/core/cliUtils");
+		await vi.importActual<typeof import("@/core/cliExec")>("@/core/cliExec");
 	return {
 		...actual,
-		// No need to test script execution here
 		version: vi.fn(),
 	};
 });
@@ -708,7 +707,7 @@ describe("CliManager", () => {
 		});
 
 		// Mock version to return the specified version
-		vi.mocked(cliUtils.version).mockResolvedValueOnce(version);
+		vi.mocked(cliExec.version).mockResolvedValueOnce(version);
 	}
 
 	function withCorruptedBinary() {
@@ -718,7 +717,7 @@ describe("CliManager", () => {
 		});
 
 		// Mock version to fail
-		vi.mocked(cliUtils.version).mockRejectedValueOnce(new Error("corrupted"));
+		vi.mocked(cliExec.version).mockRejectedValueOnce(new Error("corrupted"));
 	}
 
 	function withSuccessfulDownload(opts?: {
@@ -732,7 +731,7 @@ describe("CliManager", () => {
 		);
 
 		// Mock version to return TEST_VERSION after download
-		vi.mocked(cliUtils.version).mockResolvedValue(TEST_VERSION);
+		vi.mocked(cliExec.version).mockResolvedValue(TEST_VERSION);
 	}
 
 	function withSignatureResponses(statuses: number[]): void {
