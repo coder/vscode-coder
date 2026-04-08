@@ -1,14 +1,21 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { beforeAll, describe, expect, it } from "vitest";
-
-import * as cliExec from "@/core/cliExec";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { MockConfigurationProvider } from "../../mocks/testHelpers";
 import { isWindows, writeExecutable } from "../../utils/platform";
 
 import type { CliEnv } from "@/core/cliExec";
+
+// Shim execFile so .js test scripts are run through node cross-platform.
+vi.mock("node:child_process", async (importOriginal) => {
+	const { shimExecFile } = await import("../../utils/platform");
+	return shimExecFile(await importOriginal());
+});
+
+// Import after mock so the module picks up the shimmed execFile.
+const cliExec = await import("@/core/cliExec");
 
 describe("cliExec", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests-cliExec");

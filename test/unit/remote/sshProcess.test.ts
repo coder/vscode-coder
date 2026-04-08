@@ -1,6 +1,7 @@
 import find from "find-process";
 import { vol } from "memfs";
 import * as fsPromises from "node:fs/promises";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -313,8 +314,10 @@ describe("SshProcessMonitor", () => {
 			});
 			const logPath = await waitForEvent(monitor.onLogFilePathChange);
 
-			expect(logPath).toBe("/proxy-logs/999.log");
-			expect(monitor.getLogFilePath()).toBe("/proxy-logs/999.log");
+			expect(logPath).toBe(path.join("/proxy-logs", "999.log"));
+			expect(monitor.getLogFilePath()).toBe(
+				path.join("/proxy-logs", "999.log"),
+			);
 		});
 
 		it("finds log file with prefix pattern", async () => {
@@ -330,7 +333,7 @@ describe("SshProcessMonitor", () => {
 			});
 			const logPath = await waitForEvent(monitor.onLogFilePathChange);
 
-			expect(logPath).toBe("/proxy-logs/coder-ssh-999.log");
+			expect(logPath).toBe(path.join("/proxy-logs", "coder-ssh-999.log"));
 		});
 
 		it("returns undefined when no proxyLogDir set", async () => {
@@ -373,7 +376,7 @@ describe("SshProcessMonitor", () => {
 			});
 			const logPath = await waitForEvent(monitor.onLogFilePathChange);
 
-			expect(logPath).toBe("/proxy-logs/2024-01-03-999.log");
+			expect(logPath).toBe(path.join("/proxy-logs", "2024-01-03-999.log"));
 		});
 
 		it("sorts log files using localeCompare for consistent cross-platform ordering", async () => {
@@ -395,7 +398,7 @@ describe("SshProcessMonitor", () => {
 
 			// With localeCompare: ["a", "Z"] -> reversed -> "Z" first
 			// With plain sort(): ["Z", "a"] -> reversed -> "a" first (WRONG)
-			expect(logPath).toBe("/proxy-logs/Z-999.log");
+			expect(logPath).toBe(path.join("/proxy-logs", "Z-999.log"));
 		});
 	});
 
