@@ -188,16 +188,19 @@ importers:
         version: 4.1.0
       coder:
         specifier: 'catalog:'
-        version: https://codeload.github.com/coder/coder/tar.gz/beb99c17de2864974620782e1b68c4a6f6fad135
+        version: https://codeload.github.com/coder/coder/tar.gz/983819860f6c189e568934ecadbe546959a526f9
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
+      cross-env:
+        specifier: ^10.1.0
+        version: 10.1.0
       dayjs:
         specifier: ^1.11.20
         version: 1.11.20
       electron:
-        specifier: 39.8.1
-        version: 39.8.1
+        specifier: 39.8.5
+        version: 39.8.5
       esbuild:
         specifier: ^0.28.0
         version: 0.28.0
@@ -532,6 +535,9 @@ packages:
 
   '@emnapi/wasi-threads@1.2.1':
     resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
+
+  '@epic-web/invariant@1.0.0':
+    resolution: {integrity: sha512-lrTPqgvfFQtR/eY/qkIzp98OGdNJu0m5ji3q/nJI8v3SXkRKEnWiOxMmbvcSoAIzv/cGiuvRy57k4suKQSAdwA==}
 
   '@esbuild/aix-ppc64@0.28.0':
     resolution: {integrity: sha512-lhRUCeuOyJQURhTxl4WkpFTjIsbDayJHih5kZC1giwE+MhIzAb7mEsQMqMf18rHLsrb5qI1tafG20mLxEWcWlA==}
@@ -1762,8 +1768,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  basic-ftp@5.2.0:
-    resolution: {integrity: sha512-VoMINM2rqJwJgfdHq6RiUudKt2BV+FY5ZFezP/ypmwayk68+NzzAQy4XXLlqsGD4MCzq3DrmNFD/uUmBJuGoXw==}
+  basic-ftp@5.2.1:
+    resolution: {integrity: sha512-0yaL8JdxTknKDILitVpfYfV2Ob6yb3udX/hK97M7I3jOeznBNxQPtVvTUtnhUkyHlxFWyr5Lvknmgzoc7jf+1Q==}
     engines: {node: '>=10.0.0'}
 
   bidi-js@1.0.3:
@@ -1923,8 +1929,8 @@ packages:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
     engines: {node: '>=16'}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/beb99c17de2864974620782e1b68c4a6f6fad135:
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/beb99c17de2864974620782e1b68c4a6f6fad135}
+  coder@https://codeload.github.com/coder/coder/tar.gz/983819860f6c189e568934ecadbe546959a526f9:
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/983819860f6c189e568934ecadbe546959a526f9}
     version: 0.0.0
 
   color-convert@2.0.1:
@@ -1966,6 +1972,11 @@ packages:
 
   core-util-is@1.0.3:
     resolution: {integrity: sha512-ZQBvi1DcpJ4GDqanjucZ2Hj3wEO5pZDS89BWbkcrvdxksJorwUDDZamX9ldFkp9aw2lmBDLgkObEA4DWNJ9FYQ==}
+
+  cross-env@10.1.0:
+    resolution: {integrity: sha512-GsYosgnACZTADcmEyJctkJIoqAhHjttw7RsFrVoJNXbsWWqaq6Ym+7kZjq6mS45O0jij6vtiReppKQEtqWy6Dw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -2128,8 +2139,8 @@ packages:
   electron-to-chromium@1.5.332:
     resolution: {integrity: sha512-7OOtytmh/rINMLwaFTbcMVvYXO3AUm029X0LcyfYk0B557RlPkdpTpnH9+htMlfu5dKwOmT0+Zs2Aw+lnn6TeQ==}
 
-  electron@39.8.1:
-    resolution: {integrity: sha512-8gHotB8Adb+f8d+xkHk6om32j4McOF7D6X8J2kwZoSNciAXHd84kqVwwr6mi/x43LAmdqkM13RXbPy3Jfq2wnQ==}
+  electron@39.8.5:
+    resolution: {integrity: sha512-q6+LiQIcTadSyvtPgLDQkCtVA9jQJXQVMrQcctfOJILh6OFMN+UJJLRkuUTy8CZDYeCIBn1ZycqsL1dAXugxZA==}
     engines: {node: '>= 12.20.55'}
     hasBin: true
 
@@ -4544,6 +4555,8 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@epic-web/invariant@1.0.0': {}
+
   '@esbuild/aix-ppc64@0.28.0':
     optional: true
 
@@ -5841,7 +5854,7 @@ snapshots:
 
   baseline-browser-mapping@2.10.16: {}
 
-  basic-ftp@5.2.0: {}
+  basic-ftp@5.2.1: {}
 
   bidi-js@1.0.3:
     dependencies:
@@ -6029,7 +6042,7 @@ snapshots:
 
   cockatiel@3.2.1: {}
 
-  coder@https://codeload.github.com/coder/coder/tar.gz/beb99c17de2864974620782e1b68c4a6f6fad135: {}
+  coder@https://codeload.github.com/coder/coder/tar.gz/983819860f6c189e568934ecadbe546959a526f9: {}
 
   color-convert@2.0.1:
     dependencies:
@@ -6063,6 +6076,11 @@ snapshots:
   convert-source-map@2.0.0: {}
 
   core-util-is@1.0.3: {}
+
+  cross-env@10.1.0:
+    dependencies:
+      '@epic-web/invariant': 1.0.0
+      cross-spawn: 7.0.6
 
   cross-spawn@7.0.6:
     dependencies:
@@ -6216,7 +6234,7 @@ snapshots:
 
   electron-to-chromium@1.5.332: {}
 
-  electron@39.8.1:
+  electron@39.8.5:
     dependencies:
       '@electron/get': 2.0.3
       '@types/node': 22.19.17
@@ -6690,7 +6708,7 @@ snapshots:
 
   get-uri@7.0.0:
     dependencies:
-      basic-ftp: 5.2.0
+      basic-ftp: 5.2.1
       data-uri-to-buffer: 7.0.0
       debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
