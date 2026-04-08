@@ -259,12 +259,6 @@
 				"when": "!coder.authenticated && coder.loaded"
 			}
 		],
-		"submenus": [
-			{
-				"id": "coder.diagnostics",
-				"label": "Diagnostics"
-			}
-		],
 		"commands": [
 			{
 				"command": "coder.login",
@@ -327,7 +321,7 @@
 			},
 			{
 				"command": "coder.speedTest",
-				"title": "Run Speed Test",
+				"title": "Speed Test Workspace",
 				"category": "Coder"
 			},
 			{
@@ -379,6 +373,14 @@
 				"command": "coder.pingWorkspace",
 				"title": "Ping Workspace",
 				"category": "Coder"
+			},
+			{
+				"command": "coder.speedTest:views",
+				"title": "Speed Test"
+			},
+			{
+				"command": "coder.pingWorkspace:views",
+				"title": "Ping"
 			}
 		],
 		"menus": {
@@ -414,6 +416,14 @@
 				{
 					"command": "coder.pingWorkspace",
 					"when": "coder.authenticated"
+				},
+				{
+					"command": "coder.speedTest:views",
+					"when": "false"
+				},
+				{
+					"command": "coder.pingWorkspace:views",
+					"when": "false"
 				},
 				{
 					"command": "coder.workspace.update",
@@ -523,17 +533,14 @@
 					"group": "inline"
 				},
 				{
-					"submenu": "coder.diagnostics",
+					"command": "coder.pingWorkspace:views",
 					"when": "coder.authenticated && viewItem =~ /\\+running/",
 					"group": "navigation"
-				}
-			],
-			"coder.diagnostics": [
-				{
-					"command": "coder.pingWorkspace"
 				},
 				{
-					"command": "coder.speedTest"
+					"command": "coder.speedTest:views",
+					"when": "coder.authenticated && viewItem =~ /\\+running/",
+					"group": "navigation"
 				}
 			],
 			"statusBar/remoteIndicator": [

@@ -2,6 +2,7 @@ import { type ExecFileException, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 
+import { toError } from "../error/errorUtils";
 import {
 	type CliAuth,
 	getGlobalFlags,
@@ -21,6 +22,23 @@ const execFileAsync = promisify(execFile);
 // util.promisify types are dynamic so there is no concrete type we can import
 // and we have to make our own.
 type ExecException = ExecFileException & { stdout?: string; stderr?: string };
+
+/** Prefer stderr over the default message which includes the full command line. */
+function cliError(error: unknown): Error {
+	const stderr = (error as ExecException)?.stderr?.trim();
+	if (stderr) {
+		return new Error(stderr, { cause: error });
+	}
+	return toError(error);
+}
+
+/** Go duration regex: one or more {number}{unit} segments (e.g. 5s, 1h30m). */
+const GO_DURATION_RE = /^(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))+$/;
+
+/** Returns true if the string is a valid Go duration. */
+export function isGoDuration(value: string): boolean {
+	return GO_DURATION_RE.test(value);
+}
 
 /**
  * Return the version from the binary.  Throw if unable to execute the binary or
@@ -49,7 +67,7 @@ export async function version(binPath: string): Promise<string> {
 				return v;
 			}
 		}
-		throw error;
+		throw cliError(error);
 	}
 
 	const json = JSON.parse(stdout) as { version?: string };
@@ -73,8 +91,12 @@ export async function speedtest(
 	if (duration) {
 		args.push("-t", duration);
 	}
-	const result = await execFileAsync(env.binary, args, { signal });
-	return result.stdout;
+	try {
+		const result = await execFileAsync(env.binary, args, { signal });
+		return result.stdout;
+	} catch (error) {
+		throw cliError(error);
+	}
 }
 
 /**
@@ -232,7 +254,7 @@ export async function openAppStatusTerminal(
 	const globalFlags = getGlobalShellFlags(env.configs, env.auth);
 	const terminal = vscode.window.createTerminal(app.name);
 	terminal.sendText(
-		`${escapeCommandArg(env.binary)} ${globalFlags.join(" ")} ssh ${app.workspace_name}`,
+		`${escapeCommandArg(env.binary)} ${globalFlags.join(" ")} ssh ${escapeCommandArg(app.workspace_name)}`,
 	);
 	await new Promise((resolve) => setTimeout(resolve, 5000));
 	terminal.sendText(app.command ?? "");

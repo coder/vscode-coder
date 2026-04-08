@@ -180,21 +180,31 @@ export class Commands {
 
 		const duration = await vscode.window.showInputBox({
 			title: "Speed Test Duration",
-			prompt: "Duration for the speed test (e.g., 5s, 10s, 1m)",
+			prompt: "Duration for the speed test",
 			value: "5s",
+			validateInput: (value) => {
+				const v = value.trim();
+				if (v && !cliExec.isGoDuration(v)) {
+					return "Invalid Go duration (e.g., 5s, 10s, 1m, 1m30s)";
+				}
+				return undefined;
+			},
 		});
 		if (duration === undefined) {
 			return;
 		}
+		const trimmedDuration = duration.trim();
 
 		const result = await withCancellableProgress(
 			async ({ signal }) => {
 				const env = await this.resolveCliEnv(client);
-				return cliExec.speedtest(env, workspaceId, duration.trim(), signal);
+				return cliExec.speedtest(env, workspaceId, trimmedDuration, signal);
 			},
 			{
 				location: vscode.ProgressLocation.Notification,
-				title: `Running ${duration.trim()} speed test...`,
+				title: trimmedDuration
+					? `Running speed test (${trimmedDuration})...`
+					: "Running speed test...",
 				cancellable: true,
 			},
 		);
@@ -752,13 +762,19 @@ export class Commands {
 		};
 	}
 
+	/** Resolve a CliEnv, preferring a locally cached binary over a network fetch. */
 	private async resolveCliEnv(client: CoderApi): Promise<cliExec.CliEnv> {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
 		}
 		const safeHost = toSafeHost(baseUrl);
-		const binary = await this.cliManager.fetchBinary(client);
+		let binary: string;
+		try {
+			binary = await this.cliManager.locateBinary(baseUrl);
+		} catch {
+			binary = await this.cliManager.fetchBinary(client);
+		}
 		const version = semver.parse(await cliExec.version(binary));
 		const featureSet = featureSetForVersion(version);
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHost);

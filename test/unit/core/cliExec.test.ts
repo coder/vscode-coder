@@ -207,5 +207,37 @@ describe("cliExec", () => {
 				"ENOENT",
 			);
 		});
+
+		it("surfaces stderr instead of full command line on failure", async () => {
+			const code = [
+				`process.stderr.write("invalid argument for -t flag\\n");`,
+				`process.exitCode = 1;`,
+			].join("\n");
+			const bin = await writeExecutable(tmp, "speedtest-err", code);
+			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			await expect(
+				cliExec.speedtest(env, "owner/workspace", "bad"),
+			).rejects.toThrow("invalid argument for -t flag");
+		});
+	});
+
+	describe("isGoDuration", () => {
+		it.each([
+			"5s",
+			"10m",
+			"1h",
+			"1h30m",
+			"500ms",
+			"1.5s",
+			"2h45m10s",
+			"100ns",
+			"50us",
+			"50µs",
+		])("accepts %s", (v) => expect(cliExec.isGoDuration(v)).toBe(true));
+
+		it.each(["", "bjbmn", "5", "s", "5x", "1h 30m", "-5s", "5S"])(
+			"rejects %s",
+			(v) => expect(cliExec.isGoDuration(v)).toBe(false),
+		);
 	});
 });
