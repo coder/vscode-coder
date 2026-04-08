@@ -14,5 +14,5 @@
 	"vitest.nodeEnv": {
 		"ELECTRON_RUN_AS_NODE": "1"
 	},
-	"vitest.nodeExecutable": "node_modules/.bin/electron"
+	"vitest.nodeExecutable": "node_modules/electron/dist/electron"
 }
