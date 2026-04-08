@@ -19,15 +19,17 @@ export interface CliEnv {
 
 const execFileAsync = promisify(execFile);
 
-// util.promisify types are dynamic so there is no concrete type we can import
-// and we have to make our own.
-type ExecException = ExecFileException & { stdout?: string; stderr?: string };
+function isExecFileException(error: unknown): error is ExecFileException {
+	return error instanceof Error && "code" in error;
+}
 
 /** Prefer stderr over the default message which includes the full command line. */
 function cliError(error: unknown): Error {
-	const stderr = (error as ExecException)?.stderr?.trim();
-	if (stderr) {
-		return new Error(stderr, { cause: error });
+	if (isExecFileException(error)) {
+		const stderr = error.stderr?.trim();
+		if (stderr) {
+			return new Error(stderr, { cause: error });
+		}
 	}
 	return toError(error);
 }
@@ -55,7 +57,10 @@ export async function version(binPath: string): Promise<string> {
 		stdout = result.stdout;
 	} catch (error) {
 		// It could be an old version without support for --output.
-		if ((error as ExecException)?.stderr?.includes("unknown flag: --output")) {
+		if (
+			isExecFileException(error) &&
+			error.stderr?.includes("unknown flag: --output")
+		) {
 			const result = await execFileAsync(binPath, ["version"]);
 			if (result.stdout?.startsWith("Coder")) {
 				const v = result.stdout.split(" ")[1]?.trim();
