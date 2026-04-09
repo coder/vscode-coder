@@ -325,6 +325,11 @@
 				"category": "Coder"
 			},
 			{
+				"command": "coder.supportBundle",
+				"title": "Create Support Bundle",
+				"category": "Coder"
+			},
+			{
 				"command": "coder.viewLogs",
 				"title": "Coder: View Logs",
 				"icon": "$(list-unordered)"
@@ -381,6 +386,10 @@
 			{
 				"command": "coder.pingWorkspace:views",
 				"title": "Ping"
+			},
+			{
+				"command": "coder.supportBundle:views",
+				"title": "Support Bundle"
 			}
 		],
 		"menus": {
@@ -406,6 +415,10 @@
 					"when": "coder.authenticated"
 				},
 				{
+					"command": "coder.supportBundle",
+					"when": "coder.authenticated"
+				},
+				{
 					"command": "coder.navigateToWorkspace",
 					"when": "coder.workspace.connected"
 				},
@@ -423,6 +436,10 @@
 				},
 				{
 					"command": "coder.pingWorkspace:views",
+					"when": "false"
+				},
+				{
+					"command": "coder.supportBundle:views",
 					"when": "false"
 				},
 				{
@@ -535,12 +552,17 @@
 				{
 					"command": "coder.pingWorkspace:views",
 					"when": "coder.authenticated && viewItem =~ /\\+running/",
-					"group": "navigation"
+					"group": "navigation@1"
 				},
 				{
 					"command": "coder.speedTest:views",
 					"when": "coder.authenticated && viewItem =~ /\\+running/",
-					"group": "navigation"
+					"group": "navigation@2"
+				},
+				{
+					"command": "coder.supportBundle:views",
+					"when": "coder.authenticated && viewItem =~ /\\+running/",
+					"group": "navigation@3"
 				}
 			],
 			"statusBar/remoteIndicator": [

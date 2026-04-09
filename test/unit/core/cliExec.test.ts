@@ -12,11 +12,20 @@ import type { CliEnv } from "@/core/cliExec";
 
 describe("cliExec", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests-cliExec");
+	let echoArgsBin: string;
 
 	beforeAll(async () => {
 		await fs.rm(tmp, { recursive: true, force: true });
 		await fs.mkdir(tmp, { recursive: true });
+		const code = `process.argv.slice(2).forEach(a => console.log(a));`;
+		echoArgsBin = await writeExecutable(tmp, "echo-args", code);
 	});
+
+	function setup(auth: CliEnv["auth"], binary = echoArgsBin) {
+		const configs = new MockConfigurationProvider();
+		const env: CliEnv = { binary, auth, configs };
+		return { configs, env };
+	}
 
 	/** JS code for a fake CLI that writes a fixed string to stdout. */
 	function echoBin(output: string): string {
@@ -118,63 +127,20 @@ describe("cliExec", () => {
 	});
 
 	describe("speedtest", () => {
-		let echoArgsBin: string;
-
-		beforeAll(async () => {
-			const code = `process.argv.slice(2).forEach(a => console.log(a));`;
-			echoArgsBin = await writeExecutable(tmp, "echo-args", code);
-		});
-
-		function setup(auth: CliEnv["auth"], binary = echoArgsBin) {
-			const configs = new MockConfigurationProvider();
-			const env: CliEnv = { binary, auth, configs };
-			return { configs, env };
-		}
-
-		it("passes global-config auth flags", async () => {
-			const { env } = setup({
-				mode: "global-config",
-				configDir: "/tmp/test-config",
-			});
-			const result = await cliExec.speedtest(env, "owner/workspace");
-			const args = result.trim().split("\n");
-			expect(args).toEqual([
-				"--global-config",
-				"/tmp/test-config",
-				"speedtest",
-				"owner/workspace",
-				"--output",
-				"json",
-			]);
-		});
-
-		it("passes url auth flags", async () => {
-			const { env } = setup({
+		it("passes global, header, and command-specific flags", async () => {
+			const { configs, env } = setup({
 				mode: "url",
 				url: "http://localhost:3000",
 			});
-			const result = await cliExec.speedtest(env, "owner/workspace");
-			const args = result.trim().split("\n");
+			configs.set("coder.headerCommand", "my-header-cmd");
+			const args = (await cliExec.speedtest(env, "owner/workspace", "10s"))
+				.trim()
+				.split("\n");
 			expect(args).toEqual([
 				"--url",
 				"http://localhost:3000",
-				"speedtest",
-				"owner/workspace",
-				"--output",
-				"json",
-			]);
-		});
-
-		it("passes duration flag", async () => {
-			const { env } = setup({
-				mode: "url",
-				url: "http://localhost:3000",
-			});
-			const result = await cliExec.speedtest(env, "owner/workspace", "10s");
-			const args = result.trim().split("\n");
-			expect(args).toEqual([
-				"--url",
-				"http://localhost:3000",
+				"--header-command",
+				"'my-header-cmd'",
 				"speedtest",
 				"owner/workspace",
 				"--output",
@@ -182,30 +148,6 @@ describe("cliExec", () => {
 				"-t",
 				"10s",
 			]);
-		});
-
-		it("passes header command", async () => {
-			const { configs, env } = setup({
-				mode: "url",
-				url: "http://localhost:3000",
-			});
-			configs.set("coder.headerCommand", "my-header-cmd");
-			const result = await cliExec.speedtest(env, "owner/workspace");
-			const args = result.trim().split("\n");
-			expect(args).toContain("--header-command");
-		});
-
-		it("throws when binary does not exist", async () => {
-			const { env } = setup(
-				{
-					mode: "global-config",
-					configDir: "/tmp",
-				},
-				"/nonexistent/binary",
-			);
-			await expect(cliExec.speedtest(env, "owner/workspace")).rejects.toThrow(
-				"ENOENT",
-			);
 		});
 
 		it("surfaces stderr instead of full command line on failure", async () => {
@@ -218,6 +160,51 @@ describe("cliExec", () => {
 			await expect(
 				cliExec.speedtest(env, "owner/workspace", "bad"),
 			).rejects.toThrow("invalid argument for -t flag");
+		});
+	});
+
+	describe("supportBundle", () => {
+		it("passes global, header, and command-specific flags", async () => {
+			// Use a binary that writes args to the --output-file path
+			// so we can verify them after the void-returning function completes.
+			const code = [
+				`const args = process.argv.slice(2);`,
+				`const idx = args.indexOf("--output-file");`,
+				`if (idx !== -1) { require("fs").writeFileSync(args[idx+1], args.join("\\n")); }`,
+			].join("\n");
+			const bin = await writeExecutable(tmp, "sb-echo-args", code);
+			const outputPath = path.join(tmp, "sb-args-output.zip");
+			const { configs, env } = setup(
+				{ mode: "url", url: "http://localhost:3000" },
+				bin,
+			);
+			configs.set("coder.headerCommand", "my-header-cmd");
+			await cliExec.supportBundle(env, "owner/workspace", outputPath);
+			const args = (await fs.readFile(outputPath, "utf-8")).trim().split("\n");
+			expect(args).toEqual([
+				"--url",
+				"http://localhost:3000",
+				"--header-command",
+				"'my-header-cmd'",
+				"support",
+				"bundle",
+				"owner/workspace",
+				"--output-file",
+				outputPath,
+				"--yes",
+			]);
+		});
+
+		it("surfaces stderr on failure", async () => {
+			const code = [
+				`process.stderr.write("workspace not found\\n");`,
+				`process.exitCode = 1;`,
+			].join("\n");
+			const bin = await writeExecutable(tmp, "sb-err", code);
+			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			await expect(
+				cliExec.supportBundle(env, "owner/workspace", "/tmp/bundle.zip"),
+			).rejects.toThrow("workspace not found");
 		});
 	});
 
