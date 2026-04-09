@@ -14,8 +14,8 @@ describe("CliUtils", () => {
 		await fs.mkdir(tmp, { recursive: true });
 	});
 
-	it("name", () => {
-		expect(cliUtils.name().startsWith("coder-")).toBeTruthy();
+	it("fullName", () => {
+		expect(cliUtils.fullName().startsWith("coder-")).toBeTruthy();
 	});
 
 	it("simpleName", () => {
@@ -40,50 +40,56 @@ describe("CliUtils", () => {
 		expect(await cliUtils.rmOld(path.join(binDir, "bin1"))).toStrictEqual([]);
 
 		await fs.mkdir(binDir, { recursive: true });
-		await fs.writeFile(path.join(binDir, "bin.old-1"), "echo hello");
-		await fs.writeFile(path.join(binDir, "bin.old-2"), "echo hello");
-		await fs.writeFile(path.join(binDir, "bin.temp-1"), "echo hello");
-		await fs.writeFile(path.join(binDir, "bin.temp-2"), "echo hello");
-		await fs.writeFile(path.join(binDir, "bin1"), "echo hello");
-		await fs.writeFile(path.join(binDir, "bin2"), "echo hello");
-		await fs.writeFile(path.join(binDir, "bin.asc"), "echo hello");
-		await fs.writeFile(path.join(binDir, "bin.old-1.asc"), "echo hello");
-		await fs.writeFile(path.join(binDir, "bin.temp-2.asc"), "echo hello");
+		await fs.writeFile(path.join(binDir, "coder.old-1"), "echo hello");
+		await fs.writeFile(path.join(binDir, "coder.old-2"), "echo hello");
+		await fs.writeFile(path.join(binDir, "coder.temp-1"), "echo hello");
+		await fs.writeFile(path.join(binDir, "coder.temp-2"), "echo hello");
+		await fs.writeFile(path.join(binDir, "coder"), "echo hello");
+		await fs.writeFile(path.join(binDir, "other-bin"), "echo hello");
+		await fs.writeFile(path.join(binDir, "coder.asc"), "echo hello");
+		await fs.writeFile(path.join(binDir, "coder.old-1.asc"), "echo hello");
+		await fs.writeFile(path.join(binDir, "coder.temp-2.asc"), "echo hello");
+		// Unrelated files with matching patterns should not be removed.
+		await fs.writeFile(path.join(binDir, "unrelated.old-1"), "echo hello");
+		await fs.writeFile(path.join(binDir, "unrelated.temp-1"), "echo hello");
 
-		expect(await cliUtils.rmOld(path.join(binDir, "bin1"))).toStrictEqual([
+		expect(await cliUtils.rmOld(path.join(binDir, "coder"))).toStrictEqual([
 			{
-				fileName: "bin.asc",
+				fileName: "coder.asc",
 				error: undefined,
 			},
 			{
-				fileName: "bin.old-1",
+				fileName: "coder.old-1",
 				error: undefined,
 			},
 			{
-				fileName: "bin.old-1.asc",
+				fileName: "coder.old-1.asc",
 				error: undefined,
 			},
 			{
-				fileName: "bin.old-2",
+				fileName: "coder.old-2",
 				error: undefined,
 			},
 			{
-				fileName: "bin.temp-1",
+				fileName: "coder.temp-1",
 				error: undefined,
 			},
 			{
-				fileName: "bin.temp-2",
+				fileName: "coder.temp-2",
 				error: undefined,
 			},
 			{
-				fileName: "bin.temp-2.asc",
+				fileName: "coder.temp-2.asc",
 				error: undefined,
 			},
 		]);
 
-		expect(await fs.readdir(path.join(tmp, "bins"))).toStrictEqual([
-			"bin1",
-			"bin2",
+		// Only the binary and unrelated files should remain.
+		expect((await fs.readdir(binDir)).sort()).toStrictEqual([
+			"coder",
+			"other-bin",
+			"unrelated.old-1",
+			"unrelated.temp-1",
 		]);
 	});
 

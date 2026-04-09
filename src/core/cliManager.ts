@@ -30,8 +30,8 @@ import type { CliCredentialManager } from "./cliCredentialManager";
 import type { PathResolver } from "./pathResolver";
 
 type ResolvedBinary =
-	| { binPath: string; kind: "file" | "dir"; stat: Stats }
-	| { binPath: string; kind: "not-found" };
+	| { binPath: string; stat: Stats; source: "file-path" | "directory" }
+	| { binPath: string; source: "not-found" };
 
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
@@ -51,7 +51,7 @@ export class CliManager {
 	public async locateBinary(url: string): Promise<string> {
 		const safeHostname = toSafeHost(url);
 		const resolved = await this.resolveBinaryPath(safeHostname);
-		if (resolved.kind === "not-found") {
+		if (resolved.source === "not-found") {
 			throw new Error(`No CLI binary found at ${resolved.binPath}`);
 		}
 		return resolved.binPath;
@@ -60,9 +60,10 @@ export class CliManager {
 	/**
 	 * Resolve the CLI binary path from the configured cache path.
 	 *
-	 * Returns "file" when the cache path is an existing file (use as-is),
-	 * "dir" when a binary was found inside the directory, or "not-found"
-	 * with the platform-specific path for the caller to download into.
+	 * Returns "file-path" when the cache path is an existing file (checked for
+	 * version match and updated if needed), "directory" when a binary was found
+	 * inside the directory, or "not-found" with the platform-specific path for
+	 * the caller to download into.
 	 */
 	private async resolveBinaryPath(
 		safeHostname: string,
@@ -71,29 +72,29 @@ export class CliManager {
 		const cacheStat = await cliUtils.stat(cachePath);
 
 		if (cacheStat?.isFile()) {
-			return { binPath: cachePath, kind: "file", stat: cacheStat };
+			return { binPath: cachePath, stat: cacheStat, source: "file-path" };
 		}
 
-		const fullNamePath = path.join(cachePath, cliUtils.name());
+		const fullNamePath = path.join(cachePath, cliUtils.fullName());
 
 		// Path does not exist yet; return the platform-specific path to download.
 		if (!cacheStat) {
-			return { binPath: fullNamePath, kind: "not-found" };
+			return { binPath: fullNamePath, source: "not-found" };
 		}
 
 		// Directory exists; check platform-specific name, then simple name.
 		const fullStat = await cliUtils.stat(fullNamePath);
 		if (fullStat) {
-			return { binPath: fullNamePath, kind: "dir", stat: fullStat };
+			return { binPath: fullNamePath, stat: fullStat, source: "directory" };
 		}
 
 		const simpleNamePath = path.join(cachePath, cliUtils.simpleName());
 		const simpleStat = await cliUtils.stat(simpleNamePath);
 		if (simpleStat) {
-			return { binPath: simpleNamePath, kind: "dir", stat: simpleStat };
+			return { binPath: simpleNamePath, stat: simpleStat, source: "directory" };
 		}
 
-		return { binPath: fullNamePath, kind: "not-found" };
+		return { binPath: fullNamePath, source: "not-found" };
 	}
 
 	/**
@@ -134,10 +135,12 @@ export class CliManager {
 		}
 
 		const resolved = await this.resolveBinaryPath(safeHostname);
-		this.output.debug("Resolved binary path", resolved.binPath, resolved.kind);
+		this.output.debug(
+			`Resolved binary: ${resolved.binPath} (${resolved.source})`,
+		);
 
 		// Check existing binary version when one was found.
-		if (resolved.kind !== "not-found") {
+		if (resolved.source !== "not-found") {
 			this.output.debug(
 				"Existing binary size is",
 				prettyBytes(resolved.stat.size),
@@ -164,7 +167,7 @@ export class CliManager {
 				);
 			}
 		} else {
-			this.output.info("No existing binary found");
+			this.output.info("No existing binary found, starting download");
 		}
 
 		if (!enableDownloads) {
@@ -172,12 +175,11 @@ export class CliManager {
 			throw new Error("Unable to download CLI because downloads are disabled");
 		}
 
-		// File destinations download to the same path. Directory destinations
-		// always use the platform-specific binary name.
-		const downloadBinPath =
-			resolved.kind === "file"
-				? resolved.binPath
-				: path.join(path.dirname(resolved.binPath), cliUtils.name());
+		// Always download using the platform-specific name.
+		const downloadBinPath = path.join(
+			path.dirname(resolved.binPath),
+			cliUtils.fullName(),
+		);
 
 		// Create the `bin` folder if it doesn't exist
 		await fs.mkdir(path.dirname(downloadBinPath), { recursive: true });
@@ -195,6 +197,7 @@ export class CliManager {
 			this.output.debug("Acquired download lock");
 
 			// If we waited for another process, re-check if binary is now ready
+			let needsDownload = true;
 			if (lockResult.waited) {
 				const latestBuildInfo = await restClient.getBuildInfo();
 				this.output.debug("Got latest server version", latestBuildInfo.version);
@@ -207,32 +210,52 @@ export class CliManager {
 					this.output.debug(
 						"Using existing binary since it matches the latest server version",
 					);
-					return downloadBinPath;
+					needsDownload = false;
+				} else {
+					const latestParsedVersion = semver.parse(latestBuildInfo.version);
+					if (!latestParsedVersion) {
+						throw new Error(
+							`Got invalid version from deployment: ${latestBuildInfo.version}`,
+						);
+					}
+					latestVersion = latestParsedVersion;
 				}
-
-				// Parse the latest version for download
-				const latestParsedVersion = semver.parse(latestBuildInfo.version);
-				if (!latestParsedVersion) {
-					throw new Error(
-						`Got invalid version from deployment: ${latestBuildInfo.version}`,
-					);
-				}
-				latestVersion = latestParsedVersion;
 			}
 
-			return await this.performBinaryDownload(
-				restClient,
-				latestVersion,
-				downloadBinPath,
-				progressLogPath,
-			);
+			if (needsDownload) {
+				await this.performBinaryDownload(
+					restClient,
+					latestVersion,
+					downloadBinPath,
+					progressLogPath,
+				);
+			}
+
+			// Rename to user-configured file path while we hold the lock.
+			if (
+				resolved.source === "file-path" &&
+				downloadBinPath !== resolved.binPath
+			) {
+				this.output.info(
+					"Renaming downloaded binary to",
+					path.basename(resolved.binPath),
+				);
+				await fs.rename(downloadBinPath, resolved.binPath);
+				return resolved.binPath;
+			}
+			return downloadBinPath;
 		} catch (error) {
-			// Unified error handling - check for fallback binaries and prompt user
-			return await this.handleAnyBinaryFailure(
+			const fallback = await this.handleAnyBinaryFailure(
 				error,
 				downloadBinPath,
 				buildInfo.version,
+				resolved.binPath !== downloadBinPath ? resolved.binPath : undefined,
 			);
+			// Move the fallback to the expected path if needed.
+			if (fallback !== resolved.binPath) {
+				await fs.rename(fallback, resolved.binPath);
+			}
+			return resolved.binPath;
 		} finally {
 			if (lockResult) {
 				await lockResult.release();
@@ -321,54 +344,59 @@ export class CliManager {
 	}
 
 	/**
-	 * Unified handler for any binary-related failure.
-	 * Checks for existing or old binaries and prompts user once.
+	 * Try fallback binaries after a download failure, prompting the user once
+	 * if the best candidate is a version mismatch.
 	 */
 	private async handleAnyBinaryFailure(
 		error: unknown,
 		binPath: string,
 		expectedVersion: string,
+		fallbackBinPath?: string,
 	): Promise<string> {
 		const message =
 			error instanceof cliUtils.FileLockError
 				? "Unable to update the Coder CLI binary because it's in use"
 				: "Failed to update CLI binary";
 
-		// Try existing binary first
-		const existingCheck = await this.checkBinaryVersion(
-			binPath,
-			expectedVersion,
-		);
-		if (existingCheck.version) {
-			// Perfect match - use without prompting
-			if (existingCheck.matches) {
-				return binPath;
+		// Returns the path if usable, undefined if not found.
+		// Throws the original error if the user declines a mismatch.
+		const tryCandidate = async (
+			candidate: string,
+		): Promise<string | undefined> => {
+			const check = await this.checkBinaryVersion(candidate, expectedVersion);
+			if (!check.version) {
+				return undefined;
 			}
-			// Version mismatch - prompt user
-			if (await this.promptUseExistingBinary(existingCheck.version, message)) {
-				return binPath;
+			if (
+				!check.matches &&
+				!(await this.promptUseExistingBinary(check.version, message))
+			) {
+				throw error;
 			}
-			throw error;
+			return candidate;
+		};
+
+		const primary = await tryCandidate(binPath);
+		if (primary) {
+			return primary;
 		}
 
-		// Try .old-* binaries as fallback
+		if (fallbackBinPath) {
+			const fallback = await tryCandidate(fallbackBinPath);
+			if (fallback) {
+				return fallback;
+			}
+		}
+
+		// Last resort: try the most recent .old-* backup.
 		const oldBinaries = await cliUtils.findOldBinaries(binPath);
 		if (oldBinaries.length > 0) {
-			const oldCheck = await this.checkBinaryVersion(
-				oldBinaries[0],
-				expectedVersion,
-			);
-			if (
-				oldCheck.version &&
-				(oldCheck.matches ||
-					(await this.promptUseExistingBinary(oldCheck.version, message)))
-			) {
-				await fs.rename(oldBinaries[0], binPath);
-				return binPath;
+			const old = await tryCandidate(oldBinaries[0]);
+			if (old) {
+				return old;
 			}
 		}
 
-		// No fallback available or user declined - re-throw original error
 		throw error;
 	}
 
@@ -392,7 +420,7 @@ export class CliManager {
 			}
 
 			// Figure out where to get the binary.
-			const binName = cliUtils.name();
+			const binName = cliUtils.fullName();
 			const configSource = cfg.get<string>("binarySource");
 			const binSource = configSource?.trim() ? configSource : "/bin/" + binName;
 			this.output.info("Downloading binary from", binSource);

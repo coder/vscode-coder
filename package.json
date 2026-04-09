@@ -62,7 +62,7 @@
 					"default": ""
 				},
 				"coder.binaryDestination": {
-					"markdownDescription": "The path to the Coder CLI binary or the directory containing it. When set to a file path (e.g., `/usr/bin/coder`), the extension uses it directly without downloading. When set to a directory, the extension looks for the CLI inside it (downloading if enabled). Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.",
+					"markdownDescription": "The path to the Coder CLI binary or the directory containing it. When set to a file path (e.g., `/usr/bin/coder`), the extension checks its version and downloads a replacement if it does not match the server (and downloads are enabled). When set to a directory, the extension looks for the CLI inside it (downloading if enabled). Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.",
 					"type": "string",
 					"default": ""
 				},
