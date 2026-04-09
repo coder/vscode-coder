@@ -200,6 +200,94 @@ describe("CliManager", () => {
 		});
 	});
 
+	describe("File Destination", () => {
+		const FILE_PATH = "/usr/local/bin/coder";
+
+		beforeEach(() => {
+			mockConfig.set("coder.disableSignatureVerification", true);
+		});
+
+		function withFileBinary(filePath: string, version: string) {
+			mockConfig.set("coder.binaryDestination", filePath);
+			vol.mkdirSync(path.dirname(filePath), { recursive: true });
+			memfs.writeFileSync(filePath, mockBinaryContent(version), {
+				mode: 0o755,
+			});
+			vi.mocked(cliExec.version).mockResolvedValueOnce(version);
+		}
+
+		it("locateBinary returns file path directly", async () => {
+			withFileBinary(FILE_PATH, TEST_VERSION);
+			expectPathsEqual(await manager.locateBinary(TEST_URL), FILE_PATH);
+		});
+
+		it("locateBinary throws when file does not exist", async () => {
+			mockConfig.set("coder.binaryDestination", "/nonexistent/coder");
+			await expect(manager.locateBinary(TEST_URL)).rejects.toThrow(
+				"No CLI binary found at",
+			);
+		});
+
+		it("fetchBinary uses file when version matches", async () => {
+			withFileBinary(FILE_PATH, TEST_VERSION);
+			expectPathsEqual(await manager.fetchBinary(mockApi), FILE_PATH);
+			expect(mockAxios.get).not.toHaveBeenCalled();
+		});
+
+		it("fetchBinary downloads to same path when version mismatches", async () => {
+			withFileBinary(FILE_PATH, "0.0.1");
+			withSuccessfulDownload();
+			expectPathsEqual(await manager.fetchBinary(mockApi), FILE_PATH);
+			expect(mockAxios.get).toHaveBeenCalled();
+		});
+
+		it("fetchBinary keeps mismatched file when downloads disabled", async () => {
+			mockConfig.set("coder.enableDownloads", false);
+			withFileBinary(FILE_PATH, "0.0.1");
+			expectPathsEqual(await manager.fetchBinary(mockApi), FILE_PATH);
+			expect(mockAxios.get).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("Simple Name Fallback", () => {
+		const SIMPLE_PATH = `${BINARY_DIR}/coder`;
+
+		function withSimpleBinary(version: string) {
+			vol.mkdirSync(BINARY_DIR, { recursive: true });
+			memfs.writeFileSync(SIMPLE_PATH, mockBinaryContent(version), {
+				mode: 0o755,
+			});
+			vi.mocked(cliExec.version).mockResolvedValueOnce(version);
+		}
+
+		it("locateBinary falls back to simple name", async () => {
+			withSimpleBinary(TEST_VERSION);
+			expectPathsEqual(await manager.locateBinary(TEST_URL), SIMPLE_PATH);
+		});
+
+		it("locateBinary prefers platform-specific name", async () => {
+			withSimpleBinary(TEST_VERSION);
+			memfs.writeFileSync(BINARY_PATH, mockBinaryContent(TEST_VERSION), {
+				mode: 0o755,
+			});
+			expectPathsEqual(await manager.locateBinary(TEST_URL), BINARY_PATH);
+		});
+
+		it("fetchBinary uses simple-named binary", async () => {
+			withSimpleBinary(TEST_VERSION);
+			expectPathsEqual(await manager.fetchBinary(mockApi), SIMPLE_PATH);
+			expect(mockAxios.get).not.toHaveBeenCalled();
+		});
+
+		it("fetchBinary downloads when simple name has wrong version", async () => {
+			mockConfig.set("coder.disableSignatureVerification", true);
+			withSimpleBinary("0.0.1");
+			withSuccessfulDownload();
+			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
+			expect(mockAxios.get).toHaveBeenCalled();
+		});
+	});
+
 	describe("Clear Credentials", () => {
 		const CLEAR_URL = "https://dev.coder.com";
 

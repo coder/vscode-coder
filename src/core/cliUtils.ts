@@ -137,7 +137,7 @@ export async function eTag(binPath: string): Promise<string> {
 }
 
 /**
- * Return the binary name for the current platform.
+ * Return the platform-specific binary name (e.g. "coder-linux-amd64").
  */
 export function name(): string {
 	const os = goos();
@@ -148,6 +148,15 @@ export function name(): string {
 		binName += ".exe";
 	}
 	return binName;
+}
+
+/**
+ * Return the simple binary name ("coder" or "coder.exe" on Windows).
+ * This is the name used by package managers, as opposed to the
+ * platform-specific name returned by name().
+ */
+export function simpleName(): string {
+	return goos() === "windows" ? "coder.exe" : "coder";
 }
 
 /**

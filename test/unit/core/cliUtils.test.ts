@@ -18,6 +18,15 @@ describe("CliUtils", () => {
 		expect(cliUtils.name().startsWith("coder-")).toBeTruthy();
 	});
 
+	it("simpleName", () => {
+		const simple = cliUtils.simpleName();
+		if (process.platform === "win32") {
+			expect(simple).toBe("coder.exe");
+		} else {
+			expect(simple).toBe("coder");
+		}
+	});
+
 	it("stat", async () => {
 		const binPath = path.join(tmp, "stat");
 		expect(await cliUtils.stat(binPath)).toBeUndefined();
