@@ -8,7 +8,7 @@ import {
 	isKeyringSupported,
 	type BinaryResolver,
 } from "@/core/cliCredentialManager";
-import * as cliUtils from "@/core/cliUtils";
+import * as cliExec from "@/core/cliExec";
 import { PathResolver } from "@/core/pathResolver";
 import { isKeyringEnabled } from "@/settings/cli";
 
@@ -26,9 +26,9 @@ vi.mock("@/settings/cli", () => ({
 	isKeyringEnabled: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock("@/core/cliUtils", async () => {
+vi.mock("@/core/cliExec", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/core/cliUtils")>("@/core/cliUtils");
+		await vi.importActual<typeof import("@/core/cliExec")>("@/core/cliExec");
 	return {
 		...actual,
 		version: vi.fn().mockResolvedValue("2.29.0"),
@@ -165,7 +165,7 @@ describe("CliCredentialManager", () => {
 		vi.clearAllMocks();
 		vol.reset();
 		vi.mocked(isKeyringEnabled).mockReturnValue(false);
-		vi.mocked(cliUtils.version).mockResolvedValue("2.31.0");
+		vi.mocked(cliExec.version).mockResolvedValue("2.31.0");
 	});
 
 	describe("storeToken", () => {
@@ -197,7 +197,7 @@ describe("CliCredentialManager", () => {
 
 		it("falls back to files when CLI version too old", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			vi.mocked(cliUtils.version).mockResolvedValueOnce("2.28.0");
+			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
 			const { manager } = setup();
 
 			await manager.storeToken(TEST_URL, "token", configs);
@@ -280,7 +280,7 @@ describe("CliCredentialManager", () => {
 			async ({ keyringEnabled }) => {
 				vi.mocked(isKeyringEnabled).mockReturnValue(keyringEnabled);
 				if (keyringEnabled) {
-					vi.mocked(cliUtils.version).mockResolvedValueOnce("2.28.0");
+					vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
 				}
 				const { manager } = setup();
 
@@ -360,7 +360,7 @@ describe("CliCredentialManager", () => {
 		it("returns undefined when CLI version too old for token read", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			// 2.30 supports keyringAuth but not keyringTokenRead (requires 2.31+)
-			vi.mocked(cliUtils.version).mockResolvedValueOnce("2.30.0");
+			vi.mocked(cliExec.version).mockResolvedValueOnce("2.30.0");
 			stubExecFile({ stdout: "my-token" });
 			const { manager } = setup();
 
@@ -462,7 +462,7 @@ describe("CliCredentialManager", () => {
 
 		it("skips keyring when CLI version too old", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			vi.mocked(cliUtils.version).mockResolvedValueOnce("2.28.0");
+			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
 			stubExecFile({ stdout: "" });
 			writeCredentialFiles(TEST_URL, "old-token");
 			const { manager } = setup();

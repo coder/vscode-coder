@@ -5,9 +5,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import * as cliUtils from "@/core/cliUtils";
 
-import { getFixturePath } from "../../utils/fixtures";
-import { isWindows } from "../../utils/platform";
-
 describe("CliUtils", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests");
 
@@ -27,67 +24,6 @@ describe("CliUtils", () => {
 
 		await fs.writeFile(binPath, "test");
 		expect((await cliUtils.stat(binPath))?.size).toBe(4);
-	});
-
-	it.skipIf(isWindows())("version", async () => {
-		const binPath = path.join(tmp, "version");
-		await expect(cliUtils.version(binPath)).rejects.toThrow("ENOENT");
-
-		const binTmpl = await fs.readFile(
-			getFixturePath("scripts", "bin.bash"),
-			"utf8",
-		);
-		await fs.writeFile(binPath, binTmpl.replace("$ECHO", "hello"));
-		await expect(cliUtils.version(binPath)).rejects.toThrow("EACCES");
-
-		await fs.chmod(binPath, "755");
-		await expect(cliUtils.version(binPath)).rejects.toThrow("Unexpected token");
-
-		await fs.writeFile(binPath, binTmpl.replace("$ECHO", "{}"));
-		await expect(cliUtils.version(binPath)).rejects.toThrow(
-			"No version found in output",
-		);
-
-		await fs.writeFile(
-			binPath,
-			binTmpl.replace(
-				"$ECHO",
-				JSON.stringify({
-					version: "v0.0.0",
-				}),
-			),
-		);
-		expect(await cliUtils.version(binPath)).toBe("v0.0.0");
-
-		const oldTmpl = await fs.readFile(
-			getFixturePath("scripts", "bin.old.bash"),
-			"utf8",
-		);
-		const old = (stderr: string, stdout: string): string => {
-			return oldTmpl.replace("$STDERR", stderr).replace("$STDOUT", stdout);
-		};
-
-		// Should fall back only if it says "unknown flag".
-		await fs.writeFile(binPath, old("foobar", "Coder v1.1.1"));
-		await expect(cliUtils.version(binPath)).rejects.toThrow("foobar");
-
-		await fs.writeFile(binPath, old("unknown flag: --output", "Coder v1.1.1"));
-		expect(await cliUtils.version(binPath)).toBe("v1.1.1");
-
-		// Should trim off the newline if necessary.
-		await fs.writeFile(
-			binPath,
-			old("unknown flag: --output\n", "Coder v1.1.1\n"),
-		);
-		expect(await cliUtils.version(binPath)).toBe("v1.1.1");
-
-		// Error with original error if it does not begin with "Coder".
-		await fs.writeFile(binPath, old("unknown flag: --output", "Unrelated"));
-		await expect(cliUtils.version(binPath)).rejects.toThrow("unknown flag");
-
-		// Error if no version.
-		await fs.writeFile(binPath, old("unknown flag: --output", "Coder"));
-		await expect(cliUtils.version(binPath)).rejects.toThrow("No version found");
 	});
 
 	it("rmOld", async () => {
@@ -140,90 +76,6 @@ describe("CliUtils", () => {
 			"bin1",
 			"bin2",
 		]);
-	});
-
-	describe("speedtest", () => {
-		const echoArgsBin = isWindows()
-			? path.join(tmp, "echo-args.cmd")
-			: path.join(tmp, "echo-args");
-
-		beforeAll(async () => {
-			const scriptPath = getFixturePath("scripts", "echo-args.js");
-			if (isWindows()) {
-				await fs.writeFile(echoArgsBin, `@node "${scriptPath}" %*\r\n`);
-			} else {
-				const content = await fs.readFile(scriptPath, "utf8");
-				await fs.writeFile(echoArgsBin, `#!/usr/bin/env node\n${content}`);
-				await fs.chmod(echoArgsBin, "755");
-			}
-		});
-
-		it("passes global flags", async () => {
-			const result = await cliUtils.speedtest(
-				echoArgsBin,
-				["--global-config", "/tmp/test-config"],
-				"owner/workspace",
-				{},
-			);
-			const args = result.trim().split("\n");
-			expect(args).toEqual([
-				"--global-config",
-				"/tmp/test-config",
-				"speedtest",
-				"owner/workspace",
-				"--output",
-				"json",
-			]);
-		});
-
-		it("passes url flags", async () => {
-			const result = await cliUtils.speedtest(
-				echoArgsBin,
-				["--url", "http://localhost:3000"],
-				"owner/workspace",
-				{},
-			);
-			const args = result.trim().split("\n");
-			expect(args).toEqual([
-				"--url",
-				"http://localhost:3000",
-				"speedtest",
-				"owner/workspace",
-				"--output",
-				"json",
-			]);
-		});
-
-		it("passes duration flag", async () => {
-			const result = await cliUtils.speedtest(
-				echoArgsBin,
-				["--url", "http://localhost:3000"],
-				"owner/workspace",
-				{ duration: "10s" },
-			);
-			const args = result.trim().split("\n");
-			expect(args).toEqual([
-				"--url",
-				"http://localhost:3000",
-				"speedtest",
-				"owner/workspace",
-				"--output",
-				"json",
-				"-t",
-				"10s",
-			]);
-		});
-
-		it("throws when binary does not exist", async () => {
-			await expect(
-				cliUtils.speedtest(
-					"/nonexistent/binary",
-					["--global-config", "/tmp"],
-					"owner/workspace",
-					{},
-				),
-			).rejects.toThrow("ENOENT");
-		});
 	});
 
 	it("ETag", async () => {

@@ -2,7 +2,6 @@ import {
 	type Workspace,
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
-import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as semver from "semver";
@@ -14,8 +13,8 @@ import {
 	workspaceStatusLabel,
 } from "./api/api-helper";
 import { type CoderApi } from "./api/coderApi";
+import * as cliExec from "./core/cliExec";
 import { type CliManager } from "./core/cliManager";
-import * as cliUtils from "./core/cliUtils";
 import { type ServiceContainer } from "./core/container";
 import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
@@ -32,12 +31,8 @@ import {
 	RECOMMENDED_SSH_SETTINGS,
 	applySettingOverrides,
 } from "./remote/sshOverrides";
-import {
-	getGlobalFlags,
-	getGlobalShellFlags,
-	resolveCliAuth,
-} from "./settings/cli";
-import { escapeCommandArg, toRemoteAuthority, toSafeHost } from "./util";
+import { resolveCliAuth } from "./settings/cli";
+import { toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import {
 	AgentTreeItem,
@@ -172,50 +167,44 @@ export class Commands {
 	}
 
 	/**
-	 * Run a speed test against the currently connected workspace and display the
-	 * results in a new editor document.
+	 * Run a speed test against a workspace and display the results in a new
+	 * editor document.  Can be triggered from the sidebar or command palette.
 	 */
-	public async speedTest(): Promise<void> {
-		const workspace = this.workspace;
-		const client = this.remoteWorkspaceClient;
-		if (!workspace || !client) {
-			vscode.window.showInformationMessage("No workspace connected.");
+	public async speedTest(item?: OpenableTreeItem): Promise<void> {
+		const resolved = await this.resolveClientAndWorkspace(item);
+		if (!resolved) {
 			return;
 		}
 
+		const { client, workspaceId } = resolved;
+
 		const duration = await vscode.window.showInputBox({
 			title: "Speed Test Duration",
-			prompt: "Duration for the speed test (e.g., 5s, 10s, 1m)",
+			prompt: "Duration for the speed test",
 			value: "5s",
+			validateInput: (value) => {
+				const v = value.trim();
+				if (v && !cliExec.isGoDuration(v)) {
+					return "Invalid Go duration (e.g., 5s, 10s, 1m, 1m30s)";
+				}
+				return undefined;
+			},
 		});
 		if (duration === undefined) {
 			return;
 		}
+		const trimmedDuration = duration.trim();
 
 		const result = await withCancellableProgress(
 			async ({ signal }) => {
-				const baseUrl = client.getAxiosInstance().defaults.baseURL;
-				if (!baseUrl) {
-					throw new Error("No deployment URL for the connected workspace");
-				}
-				const safeHost = toSafeHost(baseUrl);
-				const binary = await this.cliManager.fetchBinary(client);
-				const version = semver.parse(await cliUtils.version(binary));
-				const featureSet = featureSetForVersion(version);
-				const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
-				const configs = vscode.workspace.getConfiguration();
-				const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
-				const globalFlags = getGlobalFlags(configs, auth);
-				const workspaceName = createWorkspaceIdentifier(workspace);
-
-				return cliUtils.speedtest(binary, globalFlags, workspaceName, {
-					signal,
-					duration: duration.trim(),
-				});
+				const env = await this.resolveCliEnv(client);
+				return cliExec.speedtest(env, workspaceId, trimmedDuration, signal);
 			},
 			{
 				location: vscode.ProgressLocation.Notification,
-				title: `Running ${duration.trim()} speed test...`,
+				title: trimmedDuration
+					? `Running speed test (${trimmedDuration})...`
+					: "Running speed test...",
 				cancellable: true,
 			},
 		);
@@ -568,17 +557,8 @@ export class Commands {
 					title: `Connecting to AI Agent...`,
 				},
 				async () => {
-					const { binary, globalFlags } = await this.resolveCliEnv(
-						this.extensionClient,
-					);
-
-					const terminal = vscode.window.createTerminal(app.name);
-					terminal.sendText(
-						`${escapeCommandArg(binary)} ${globalFlags.join(" ")} ssh ${app.workspace_name}`,
-					);
-					await new Promise((resolve) => setTimeout(resolve, 5000));
-					terminal.sendText(app.command ?? "");
-					terminal.show(false);
+					const env = await this.resolveCliEnv(this.extensionClient);
+					await cliExec.openAppStatusTerminal(env, app);
 				},
 			);
 		}
@@ -729,175 +709,78 @@ export class Commands {
 	}
 
 	public async pingWorkspace(item?: OpenableTreeItem): Promise<void> {
-		let client: CoderApi;
-		let workspaceId: string;
-
-		if (item) {
-			client = this.extensionClient;
-			workspaceId = createWorkspaceIdentifier(item.workspace);
-		} else if (this.workspace && this.remoteWorkspaceClient) {
-			client = this.remoteWorkspaceClient;
-			workspaceId = createWorkspaceIdentifier(this.workspace);
-		} else {
-			client = this.extensionClient;
-			const workspace = await this.pickWorkspace({
-				title: "Ping a running workspace",
-				initialValue: "owner:me status:running ",
-				placeholder: "Search running workspaces...",
-				filter: (w) => w.latest_build.status === "running",
-			});
-			if (!workspace) {
-				return;
-			}
-			workspaceId = createWorkspaceIdentifier(workspace);
+		const resolved = await this.resolveClientAndWorkspace(item);
+		if (!resolved) {
+			return;
 		}
 
-		return this.spawnPing(client, workspaceId);
-	}
-
-	private spawnPing(client: CoderApi, workspaceId: string): Thenable<void> {
+		const { client, workspaceId } = resolved;
 		return withProgress(
 			{
 				location: vscode.ProgressLocation.Notification,
 				title: `Starting ping for ${workspaceId}...`,
 			},
 			async () => {
-				const { binary, globalFlags } = await this.resolveCliEnv(client);
-
-				const writeEmitter = new vscode.EventEmitter<string>();
-				const closeEmitter = new vscode.EventEmitter<number | void>();
-
-				const args = [...globalFlags, "ping", escapeCommandArg(workspaceId)];
-				const cmd = `${escapeCommandArg(binary)} ${args.join(" ")}`;
-				// On Unix, spawn in a new process group so we can signal the
-				// entire group (shell + coder binary) on Ctrl+C. On Windows,
-				// detached opens a visible console window and negative-PID kill
-				// is unsupported, so we fall back to proc.kill().
-				const useProcessGroup = process.platform !== "win32";
-				const proc = spawn(cmd, {
-					shell: true,
-					detached: useProcessGroup,
-				});
-
-				let closed = false;
-				let exited = false;
-				let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
-
-				const sendSignal = (sig: "SIGINT" | "SIGKILL") => {
-					try {
-						if (useProcessGroup && proc.pid) {
-							process.kill(-proc.pid, sig);
-						} else {
-							proc.kill(sig);
-						}
-					} catch {
-						// Process already exited.
-					}
-				};
-
-				const gracefulKill = () => {
-					sendSignal("SIGINT");
-					// Escalate to SIGKILL if the process doesn't exit promptly.
-					forceKillTimer = setTimeout(() => sendSignal("SIGKILL"), 5000);
-				};
-
-				const terminal = vscode.window.createTerminal({
-					name: `Coder Ping: ${workspaceId}`,
-					pty: {
-						onDidWrite: writeEmitter.event,
-						onDidClose: closeEmitter.event,
-						open: () => {
-							writeEmitter.fire("Press Ctrl+C (^C) to stop.\r\n");
-							writeEmitter.fire("─".repeat(40) + "\r\n");
-						},
-						close: () => {
-							closed = true;
-							clearTimeout(forceKillTimer);
-							sendSignal("SIGKILL");
-							writeEmitter.dispose();
-							closeEmitter.dispose();
-						},
-						handleInput: (data: string) => {
-							if (exited) {
-								closeEmitter.fire();
-							} else if (data === "\x03") {
-								if (forceKillTimer) {
-									// Second Ctrl+C: force kill immediately.
-									clearTimeout(forceKillTimer);
-									sendSignal("SIGKILL");
-								} else {
-									if (!closed) {
-										writeEmitter.fire("\r\nStopping...\r\n");
-									}
-									gracefulKill();
-								}
-							}
-						},
-					},
-				});
-
-				const fireLines = (data: Buffer) => {
-					if (closed) {
-						return;
-					}
-					const lines = data
-						.toString()
-						.split(/\r*\n/)
-						.filter((line) => line !== "");
-					for (const line of lines) {
-						writeEmitter.fire(line + "\r\n");
-					}
-				};
-
-				proc.stdout?.on("data", fireLines);
-				proc.stderr?.on("data", fireLines);
-				proc.on("error", (err) => {
-					exited = true;
-					clearTimeout(forceKillTimer);
-					if (closed) {
-						return;
-					}
-					writeEmitter.fire(`\r\nFailed to start: ${err.message}\r\n`);
-					writeEmitter.fire("Press any key to close.\r\n");
-				});
-				proc.on("close", (code, signal) => {
-					exited = true;
-					clearTimeout(forceKillTimer);
-					if (closed) {
-						return;
-					}
-					let reason: string;
-					if (signal === "SIGKILL") {
-						reason = "Ping force killed (SIGKILL)";
-					} else if (signal) {
-						reason = "Ping stopped";
-					} else {
-						reason = `Process exited with code ${code}`;
-					}
-					writeEmitter.fire(`\r\n${reason}. Press any key to close.\r\n`);
-				});
-
-				terminal.show(false);
+				const env = await this.resolveCliEnv(client);
+				cliExec.ping(env, workspaceId);
 			},
 		);
 	}
 
-	private async resolveCliEnv(
-		client: CoderApi,
-	): Promise<{ binary: string; globalFlags: string[] }> {
+	/**
+	 * Resolve the API client and workspace identifier from a sidebar item,
+	 * the currently connected workspace, or by prompting the user to pick one.
+	 * Returns undefined if the user cancels the picker.
+	 */
+	private async resolveClientAndWorkspace(
+		item?: OpenableTreeItem,
+	): Promise<{ client: CoderApi; workspaceId: string } | undefined> {
+		if (item) {
+			return {
+				client: this.extensionClient,
+				workspaceId: createWorkspaceIdentifier(item.workspace),
+			};
+		}
+		if (this.workspace && this.remoteWorkspaceClient) {
+			return {
+				client: this.remoteWorkspaceClient,
+				workspaceId: createWorkspaceIdentifier(this.workspace),
+			};
+		}
+		const workspace = await this.pickWorkspace({
+			title: "Select a running workspace",
+			initialValue: "owner:me status:running ",
+			placeholder: "Search running workspaces...",
+			filter: (w) => w.latest_build.status === "running",
+		});
+		if (!workspace) {
+			return undefined;
+		}
+		return {
+			client: this.extensionClient,
+			workspaceId: createWorkspaceIdentifier(workspace),
+		};
+	}
+
+	/** Resolve a CliEnv, preferring a locally cached binary over a network fetch. */
+	private async resolveCliEnv(client: CoderApi): Promise<cliExec.CliEnv> {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
 		}
 		const safeHost = toSafeHost(baseUrl);
-		const binary = await this.cliManager.fetchBinary(client);
-		const version = semver.parse(await cliUtils.version(binary));
+		let binary: string;
+		try {
+			binary = await this.cliManager.locateBinary(baseUrl);
+		} catch {
+			binary = await this.cliManager.fetchBinary(client);
+		}
+		const version = semver.parse(await cliExec.version(binary));
 		const featureSet = featureSetForVersion(version);
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
 		const configs = vscode.workspace.getConfiguration();
 		const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
-		const globalFlags = getGlobalShellFlags(configs, auth);
-		return { binary, globalFlags };
+		return { binary, configs, auth };
 	}
 
 	/**

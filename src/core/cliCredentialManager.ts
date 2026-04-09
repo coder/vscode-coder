@@ -11,7 +11,7 @@ import { isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
 import { renameWithRetry, tempFilePath, toSafeHost } from "../util";
 
-import * as cliUtils from "./cliUtils";
+import { version } from "./cliExec";
 
 import type { WorkspaceConfiguration } from "vscode";
 
@@ -172,8 +172,8 @@ export class CliCredentialManager {
 			return undefined;
 		}
 		const binPath = await this.resolveBinary(url);
-		const version = semver.parse(await cliUtils.version(binPath));
-		return featureSetForVersion(version)[feature] ? binPath : undefined;
+		const cliVersion = semver.parse(await version(binPath));
+		return featureSetForVersion(cliVersion)[feature] ? binPath : undefined;
 	}
 
 	/**
