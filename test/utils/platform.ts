@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect } from "vitest";
 
-import type { ChildProcess } from "node:child_process";
+import type * as cp from "node:child_process";
 
 export function isWindows(): boolean {
 	return os.platform() === "win32";
@@ -79,23 +79,26 @@ function prepend(file: string, rest: unknown[]): [string, ...unknown[]] {
  * });
  * ```
  */
-type ChildProcessModule = typeof import("node:child_process");
-type Callable = (...args: unknown[]) => unknown;
+export function shimExecFile<
+	M extends { execFile: (...args: never[]) => unknown },
+>(mod: M): M {
+	const { execFile: original } = mod;
 
-export function shimExecFile(mod: ChildProcessModule): ChildProcessModule {
-	const { execFile: original, ...rest } = mod;
-
-	const execFile = (file: string, ...args: unknown[]): ChildProcess =>
-		(original as unknown as Callable)(...prepend(file, args)) as ChildProcess;
+	function execFile(file: string, ...rest: unknown[]): cp.ChildProcess {
+		return Reflect.apply(original, undefined, prepend(file, rest));
+	}
 
 	const sym = Symbol.for("nodejs.util.promisify.custom");
-	const originalCustom = (original as unknown as Record<symbol, Callable>)[sym];
-	(execFile as unknown as Record<symbol, unknown>)[sym] = (
-		file: string,
-		...args: unknown[]
-	): unknown => originalCustom(...prepend(file, args));
+	const customPromisify = Reflect.get(original, sym) as
+		| ((...args: unknown[]) => unknown)
+		| undefined;
+	if (customPromisify) {
+		Reflect.set(execFile, sym, (file: string, ...rest: unknown[]) =>
+			Reflect.apply(customPromisify, undefined, prepend(file, rest)),
+		);
+	}
 
-	return { ...rest, execFile } as ChildProcessModule;
+	return Object.assign({}, mod, { execFile });
 }
 
 export function expectPathsEqual(actual: string, expected: string) {

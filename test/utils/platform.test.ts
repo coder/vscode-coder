@@ -115,7 +115,7 @@ describe("platform utils", () => {
 	describe("shimExecFile", () => {
 		const tmp = path.join(os.tmpdir(), "vscode-coder-tests-shim");
 		const mod = shimExecFile(cp);
-		const shimmedExecFile = promisify(mod.execFile);
+		const execFileAsync = promisify(mod.execFile);
 
 		beforeAll(async () => {
 			await fs.rm(tmp, { recursive: true, force: true });
@@ -128,7 +128,7 @@ describe("platform utils", () => {
 				"echo",
 				'process.stdout.write("ok");',
 			);
-			const { stdout } = await shimmedExecFile(script);
+			const { stdout } = await execFileAsync(script);
 			expect(stdout).toBe("ok");
 		});
 
@@ -138,24 +138,28 @@ describe("platform utils", () => {
 				"echo-args",
 				"process.stdout.write(process.argv.slice(2).join(','));",
 			);
-			const { stdout } = await shimmedExecFile(script, ["a", "b", "c"]);
+			const { stdout } = await execFileAsync(script, ["a", "b", "c"]);
 			expect(stdout).toBe("a,b,c");
 		});
 
 		it("does not rewrite non-.js files", async () => {
-			await expect(shimmedExecFile("/nonexistent/binary")).rejects.toThrow(
+			await expect(execFileAsync("/nonexistent/binary")).rejects.toThrow(
 				"ENOENT",
 			);
 		});
 
 		it("preserves the callback form", async () => {
-			const script = path.join(tmp, "echo.js");
+			const script = await writeExecutable(
+				tmp,
+				"cb-echo",
+				'process.stdout.write("cb");',
+			);
 			const stdout = await new Promise<string>((resolve, reject) => {
 				mod.execFile(script, (err, out) =>
 					err ? reject(new Error(err.message)) : resolve(out),
 				);
 			});
-			expect(stdout).toBe("ok");
+			expect(stdout).toBe("cb");
 		});
 
 		it("does not touch spawn", () => {
