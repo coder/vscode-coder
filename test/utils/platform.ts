@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { expect } from "vitest";
+import {expect} from "vitest";
 
-import type { ChildProcess } from "node:child_process";
+import type * as cp from "node:child_process";
 
 export function isWindows(): boolean {
 	return os.platform() === "win32";
@@ -62,10 +62,10 @@ export async function writeExecutable(
  */
 function prepend(file: string, rest: unknown[]): [string, ...unknown[]] {
 	if (!file.endsWith(".js")) return [file, ...rest];
-	const hasArgs = Array.isArray(rest[0]);
-	const cliArgs = hasArgs ? (rest[0] as string[]) : [];
-	const remaining = hasArgs ? rest.slice(1) : rest;
-	return [process.execPath, [file, ...cliArgs], ...remaining];
+	if (Array.isArray(rest[0])) {
+		return [process.execPath, [file, ...rest[0]], ...rest.slice(1)];
+	}
+	return [process.execPath, [file], ...rest];
 }
 
 /**
@@ -79,23 +79,14 @@ function prepend(file: string, rest: unknown[]): [string, ...unknown[]] {
  * });
  * ```
  */
-type ChildProcessModule = typeof import("node:child_process");
-type Callable = (...args: unknown[]) => unknown;
+export function shimExecFile<M extends {execFile: (...args: never[]) => unknown}>(mod: M): M {
+	const {execFile: original} = mod;
 
-export function shimExecFile(mod: ChildProcessModule): ChildProcessModule {
-	const { execFile: original, ...rest } = mod;
+	function execFile(file: string, ...rest: unknown[]): cp.ChildProcess {
+		return Reflect.apply(original, undefined, prepend(file, rest));
+	}
 
-	const execFile = (file: string, ...args: unknown[]): ChildProcess =>
-		(original as unknown as Callable)(...prepend(file, args)) as ChildProcess;
-
-	const sym = Symbol.for("nodejs.util.promisify.custom");
-	const originalCustom = (original as unknown as Record<symbol, Callable>)[sym];
-	(execFile as unknown as Record<symbol, unknown>)[sym] = (
-		file: string,
-		...args: unknown[]
-	): unknown => originalCustom(...prepend(file, args));
-
-	return { ...rest, execFile } as ChildProcessModule;
+	return Object.assign({}, mod, {execFile});
 }
 
 export function expectPathsEqual(actual: string, expected: string) {

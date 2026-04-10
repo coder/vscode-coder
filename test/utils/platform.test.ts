@@ -2,8 +2,7 @@ import * as cp from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
-import { beforeAll, describe, expect, it } from "vitest";
+import {beforeAll, describe, expect, it} from "vitest";
 
 import {
 	expectPathsEqual,
@@ -95,8 +94,8 @@ describe("platform utils", () => {
 		const tmp = path.join(os.tmpdir(), "vscode-coder-tests-platform");
 
 		beforeAll(async () => {
-			await fs.rm(tmp, { recursive: true, force: true });
-			await fs.mkdir(tmp, { recursive: true });
+			await fs.rm(tmp, {recursive: true, force: true});
+			await fs.mkdir(tmp, {recursive: true});
 		});
 
 		it("writes a .js file and returns its path", async () => {
@@ -115,11 +114,10 @@ describe("platform utils", () => {
 	describe("shimExecFile", () => {
 		const tmp = path.join(os.tmpdir(), "vscode-coder-tests-shim");
 		const mod = shimExecFile(cp);
-		const shimmedExecFile = promisify(mod.execFile);
 
 		beforeAll(async () => {
-			await fs.rm(tmp, { recursive: true, force: true });
-			await fs.mkdir(tmp, { recursive: true });
+			await fs.rm(tmp, {recursive: true, force: true});
+			await fs.mkdir(tmp, {recursive: true});
 		});
 
 		it("runs .js files through node", async () => {
@@ -128,7 +126,11 @@ describe("platform utils", () => {
 				"echo",
 				'process.stdout.write("ok");',
 			);
-			const { stdout } = await shimmedExecFile(script);
+			const stdout = await new Promise<string>((resolve, reject) => {
+				mod.execFile(script, (err, out) =>
+					err ? reject(new Error(err.message)) : resolve(out),
+				);
+			});
 			expect(stdout).toBe("ok");
 		});
 
@@ -138,24 +140,22 @@ describe("platform utils", () => {
 				"echo-args",
 				"process.stdout.write(process.argv.slice(2).join(','));",
 			);
-			const { stdout } = await shimmedExecFile(script, ["a", "b", "c"]);
+			const stdout = await new Promise<string>((resolve, reject) => {
+				mod.execFile(script, ["a", "b", "c"], (err, out) =>
+					err ? reject(new Error(err.message)) : resolve(out),
+				);
+			});
 			expect(stdout).toBe("a,b,c");
 		});
 
 		it("does not rewrite non-.js files", async () => {
-			await expect(shimmedExecFile("/nonexistent/binary")).rejects.toThrow(
-				"ENOENT",
-			);
-		});
-
-		it("preserves the callback form", async () => {
-			const script = path.join(tmp, "echo.js");
-			const stdout = await new Promise<string>((resolve, reject) => {
-				mod.execFile(script, (err, out) =>
-					err ? reject(new Error(err.message)) : resolve(out),
-				);
-			});
-			expect(stdout).toBe("ok");
+			await expect(
+				new Promise((resolve, reject) => {
+					mod.execFile("/nonexistent/binary", (err, out) =>
+						err ? reject(new Error(err.message)) : resolve(out),
+					);
+				}),
+			).rejects.toThrow("ENOENT");
 		});
 
 		it("does not touch spawn", () => {
