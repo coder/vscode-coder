@@ -587,7 +587,7 @@
 		"@abraham/reflection": "^0.13.0",
 		"@peculiar/x509": "^2.0.0",
 		"@repo/shared": "workspace:*",
-		"axios": "1.13.6",
+		"axios": "1.15.0",
 		"date-fns": "catalog:",
 		"eventsource": "^4.1.0",
 		"find-process": "^2.1.1",
