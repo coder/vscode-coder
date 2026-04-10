@@ -41,16 +41,18 @@ export interface RemovalResult {
  */
 export async function rmOld(binPath: string): Promise<RemovalResult[]> {
 	const binDir = path.dirname(binPath);
+	const binBase = path.basename(binPath);
 	try {
 		const files = await fs.readdir(binDir);
 		const results: RemovalResult[] = [];
 		for (const file of files) {
 			const fileName = path.basename(file);
 			if (
-				fileName.includes(".old-") ||
-				fileName.includes(".temp-") ||
-				fileName.endsWith(".asc") ||
-				fileName.endsWith(".progress.log")
+				fileName.startsWith(binBase) &&
+				(fileName.includes(".old-") ||
+					fileName.includes(".temp-") ||
+					fileName.endsWith(".asc") ||
+					fileName.endsWith(".progress.log"))
 			) {
 				try {
 					await fs.rm(path.join(binDir, file), { force: true });
@@ -137,9 +139,9 @@ export async function eTag(binPath: string): Promise<string> {
 }
 
 /**
- * Return the binary name for the current platform.
+ * Return the platform-specific binary name (e.g. "coder-linux-amd64").
  */
-export function name(): string {
+export function fullName(): string {
 	const os = goos();
 	const arch = goarch();
 	let binName = `coder-${os}-${arch}`;
@@ -148,6 +150,15 @@ export function name(): string {
 		binName += ".exe";
 	}
 	return binName;
+}
+
+/**
+ * Return the simple binary name ("coder" or "coder.exe" on Windows).
+ * This is the name used by package managers, as opposed to the
+ * platform-specific name returned by fullName().
+ */
+export function simpleName(): string {
+	return goos() === "windows" ? "coder.exe" : "coder";
 }
 
 /**

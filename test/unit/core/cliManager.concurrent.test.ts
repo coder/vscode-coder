@@ -33,7 +33,7 @@ vi.mock("@/core/cliUtils", async () => {
 		...actual,
 		goos: vi.fn(),
 		goarch: vi.fn(),
-		name: vi.fn(),
+		fullName: vi.fn(),
 	};
 });
 
@@ -48,7 +48,7 @@ vi.mock("@/core/cliExec", async () => {
 function setupCliUtilsMocks(version: string) {
 	vi.mocked(cliUtils.goos).mockReturnValue("linux");
 	vi.mocked(cliUtils.goarch).mockReturnValue("amd64");
-	vi.mocked(cliUtils.name).mockReturnValue("coder-linux-amd64");
+	vi.mocked(cliUtils.fullName).mockReturnValue("coder-linux-amd64");
 	vi.mocked(cliExec.version).mockResolvedValue(version);
 	vi.mocked(pgp.readPublicKeys).mockResolvedValue([]);
 }
@@ -122,7 +122,7 @@ describe("CliManager Concurrent Downloads", () => {
 			expect(result).toBe(binaryPath);
 		}
 
-		// Verify binary exists and lock/progress files are cleaned up
+		// Verify binary exists, and lock/progress files are cleaned up
 		await expect(fs.access(binaryPath)).resolves.toBeUndefined();
 		await expect(fs.access(binaryPath + ".lock")).rejects.toThrow();
 		await expect(fs.access(binaryPath + ".progress.log")).rejects.toThrow();
@@ -161,7 +161,7 @@ describe("CliManager Concurrent Downloads", () => {
 			expect(result).toBe(binaryPath);
 		}
 
-		// Binary should be updated to 2.0.0, lock/progress files cleaned up
+		// Binary should be updated to 2.0.0, and lock/progress files are cleaned up
 		await expect(fs.access(binaryPath)).resolves.toBeUndefined();
 		const finalContent = await fs.readFile(binaryPath, "utf8");
 		expect(finalContent).toContain("v2.0.0");

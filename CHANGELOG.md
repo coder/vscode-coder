@@ -5,6 +5,21 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- `coder.binaryDestination` now accepts a full file path (e.g. `/usr/bin/coder`) in addition
+  to a directory. The extension checks the binary's version against the server and downloads a
+  replacement when needed. When set to a directory, the simple name (`coder` / `coder.exe`) is
+  tried as a fallback after the platform-specific name, so package-manager-installed CLIs work
+  without symlinking.
+
+### Fixed
+
+- Cleanup of old/temp files in shared directories like `/usr/bin` is now scoped to the binary's
+  own basename, preventing accidental removal of unrelated files.
+
 ## [v1.14.3](https://github.com/coder/vscode-coder/releases/tag/v1.14.3) 2026-03-30
 
 ### Added
