@@ -3,6 +3,7 @@ import {
 	type WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as semver from "semver";
 import * as vscode from "vscode";
@@ -22,7 +23,7 @@ import { type SecretsManager } from "./core/secretsManager";
 import { type DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
-import { featureSetForVersion } from "./featureSet";
+import { type FeatureSet, featureSetForVersion } from "./featureSet";
 import { type Logger } from "./logging/logger";
 import { type LoginCoordinator } from "./login/loginCoordinator";
 import { withCancellableProgress, withProgress } from "./progress";
@@ -196,15 +197,17 @@ export class Commands {
 		const trimmedDuration = duration.trim();
 
 		const result = await withCancellableProgress(
-			async ({ signal }) => {
+			async ({ signal, progress }) => {
+				progress.report({ message: "Resolving CLI..." });
 				const env = await this.resolveCliEnv(client);
+				progress.report({ message: "Running..." });
 				return cliExec.speedtest(env, workspaceId, trimmedDuration, signal);
 			},
 			{
 				location: vscode.ProgressLocation.Notification,
 				title: trimmedDuration
-					? `Running speed test (${trimmedDuration})...`
-					: "Running speed test...",
+					? `Speed test for ${workspaceId} (${trimmedDuration})`
+					: `Speed test for ${workspaceId}`,
 				cancellable: true,
 			},
 		);
@@ -226,6 +229,70 @@ export class Commands {
 		vscode.window.showErrorMessage(
 			`Speed test failed: ${toError(result.error).message}`,
 		);
+	}
+
+	public async supportBundle(item?: OpenableTreeItem): Promise<void> {
+		const resolved = await this.resolveClientAndWorkspace(item);
+		if (!resolved) {
+			return;
+		}
+
+		const { client, workspaceId } = resolved;
+
+		const outputUri = await this.promptSupportBundlePath();
+		if (!outputUri) {
+			return;
+		}
+
+		const result = await withCancellableProgress(
+			async ({ signal, progress }) => {
+				progress.report({ message: "Resolving CLI..." });
+				const env = await this.resolveCliEnv(client);
+				if (!env.featureSet.supportBundle) {
+					throw new Error(
+						"Support bundles require Coder CLI v2.10.0 or later. Please update your Coder deployment.",
+					);
+				}
+
+				progress.report({ message: "Collecting diagnostics..." });
+				await cliExec.supportBundle(env, workspaceId, outputUri.fsPath, signal);
+				return outputUri;
+			},
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Creating support bundle for ${workspaceId}`,
+				cancellable: true,
+			},
+		);
+
+		if (result.ok) {
+			const action = await vscode.window.showInformationMessage(
+				`Support bundle saved to ${result.value.fsPath}`,
+				"Reveal in File Explorer",
+			);
+			if (action === "Reveal in File Explorer") {
+				await vscode.commands.executeCommand("revealFileInOS", result.value);
+			}
+			return;
+		}
+
+		if (result.cancelled) {
+			return;
+		}
+
+		this.logger.error("Support bundle failed", result.error);
+		vscode.window.showErrorMessage(
+			`Support bundle failed: ${toError(result.error).message}`,
+		);
+	}
+
+	private promptSupportBundlePath(): Thenable<vscode.Uri | undefined> {
+		const defaultName = `coder-support-${Math.floor(Date.now() / 1000)}.zip`;
+		return vscode.window.showSaveDialog({
+			defaultUri: vscode.Uri.file(path.join(os.homedir(), defaultName)),
+			filters: { "Zip files": ["zip"] },
+			title: "Save Support Bundle",
+		});
 	}
 
 	/**
@@ -720,8 +787,10 @@ export class Commands {
 				location: vscode.ProgressLocation.Notification,
 				title: `Starting ping for ${workspaceId}...`,
 			},
-			async () => {
+			async (progress) => {
+				progress.report({ message: "Resolving CLI..." });
 				const env = await this.resolveCliEnv(client);
+				progress.report({ message: "Starting..." });
 				cliExec.ping(env, workspaceId);
 			},
 		);
@@ -763,7 +832,9 @@ export class Commands {
 	}
 
 	/** Resolve a CliEnv, preferring a locally cached binary over a network fetch. */
-	private async resolveCliEnv(client: CoderApi): Promise<cliExec.CliEnv> {
+	private async resolveCliEnv(
+		client: CoderApi,
+	): Promise<cliExec.CliEnv & { featureSet: FeatureSet }> {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
@@ -780,7 +851,7 @@ export class Commands {
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
 		const configs = vscode.workspace.getConfiguration();
 		const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
-		return { binary, configs, auth };
+		return { binary, configs, auth, featureSet };
 	}
 
 	/**

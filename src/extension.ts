@@ -323,6 +323,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			"coder.speedTest:views",
 			commands.speedTest.bind(commands),
 		),
+		vscode.commands.registerCommand(
+			"coder.supportBundle",
+			commands.supportBundle.bind(commands),
+		),
+		vscode.commands.registerCommand(
+			"coder.supportBundle:views",
+			commands.supportBundle.bind(commands),
+		),
 	);
 
 	const remote = new Remote(serviceContainer, commands, ctx);

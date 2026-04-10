@@ -105,6 +105,32 @@ export async function speedtest(
 }
 
 /**
+ * Run `coder support bundle` and save the output zip to the given path.
+ */
+export async function supportBundle(
+	env: CliEnv,
+	workspaceName: string,
+	outputPath: string,
+	signal?: AbortSignal,
+): Promise<void> {
+	const globalFlags = getGlobalFlags(env.configs, env.auth);
+	const args = [
+		...globalFlags,
+		"support",
+		"bundle",
+		workspaceName,
+		"--output-file",
+		outputPath,
+		"--yes",
+	];
+	try {
+		await execFileAsync(env.binary, args, { signal });
+	} catch (error) {
+		throw cliError(error);
+	}
+}
+
+/**
  * Run `coder ping` in a PTY terminal with Ctrl+C support.
  */
 export function ping(env: CliEnv, workspaceName: string): vscode.Terminal {

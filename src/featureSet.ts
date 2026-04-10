@@ -7,6 +7,7 @@ export interface FeatureSet {
 	buildReason: boolean;
 	keyringAuth: boolean;
 	keyringTokenRead: boolean;
+	supportBundle: boolean;
 }
 
 /**
@@ -47,5 +48,7 @@ export function featureSetForVersion(
 		keyringAuth: versionAtLeast(version, "2.29.0"),
 		// `coder login token` for reading tokens from the keyring
 		keyringTokenRead: versionAtLeast(version, "2.31.0"),
+		// `coder support bundle` (officially released/unhidden in 2.10.0)
+		supportBundle: versionAtLeast(version, "2.10.0"),
 	};
 }
