@@ -14,7 +14,7 @@ import {
 } from "@/settings/cli";
 
 import { MockConfigurationProvider } from "../mocks/testHelpers";
-import { isWindows } from "../utils/platform";
+import { quoteCommand } from "../utils/platform";
 
 vi.mock("node:os");
 
@@ -320,9 +320,3 @@ describe("cliConfig", () => {
 		});
 	});
 });
-
-function quoteCommand(value: string): string {
-	// Used to escape environment variables in commands. See `getHeaderArgs` in src/headers.ts
-	const quote = isWindows() ? '"' : "'";
-	return `${quote}${value}${quote}`;
-}

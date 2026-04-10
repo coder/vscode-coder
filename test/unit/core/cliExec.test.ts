@@ -4,7 +4,7 @@ import path from "path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { MockConfigurationProvider } from "../../mocks/testHelpers";
-import { isWindows, writeExecutable } from "../../utils/platform";
+import { isWindows, quoteCommand, writeExecutable } from "../../utils/platform";
 
 import type { CliEnv } from "@/core/cliExec";
 
@@ -147,7 +147,7 @@ describe("cliExec", () => {
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
-				"'my-header-cmd'",
+				quoteCommand("my-header-cmd"),
 				"speedtest",
 				"owner/workspace",
 				"--output",
@@ -192,7 +192,7 @@ describe("cliExec", () => {
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
-				"'my-header-cmd'",
+				quoteCommand("my-header-cmd"),
 				"support",
 				"bundle",
 				"owner/workspace",
