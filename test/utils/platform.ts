@@ -1,12 +1,12 @@
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import {expect} from "vitest";
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import { expect } from "vitest"
 
-import type * as cp from "node:child_process";
+import type * as cp from "node:child_process"
 
 export function isWindows(): boolean {
-	return os.platform() === "win32";
+	return os.platform() === "win32"
 }
 
 /**
@@ -19,16 +19,16 @@ export function printCommand(output: string): string {
 		.replace(/'/g, "\\'") // Escape single quotes
 		.replace(/"/g, '\\"') // Escape double quotes
 		.replace(/\r/g, "\\r") // Preserve carriage returns
-		.replace(/\n/g, "\\n"); // Preserve newlines
+		.replace(/\n/g, "\\n") // Preserve newlines
 
-	return `node -e "process.stdout.write('${escaped}')"`;
+	return `node -e "process.stdout.write('${escaped}')"`
 }
 
 /**
  * Returns a platform-independent command that exits with the given code.
  */
 export function exitCommand(code: number): string {
-	return `node -e "process.exit(${code})"`;
+	return `node -e "process.exit(${code})"`
 }
 
 /**
@@ -37,7 +37,7 @@ export function exitCommand(code: number): string {
  * @param varName The environment variable name to access
  */
 export function printEnvCommand(key: string, varName: string): string {
-	return `node -e "process.stdout.write('${key}=' + process.env.${varName})"`;
+	return `node -e "process.stdout.write('${key}=' + process.env.${varName})"`
 }
 
 /**
@@ -50,9 +50,9 @@ export async function writeExecutable(
 	name: string,
 	code: string,
 ): Promise<string> {
-	const jsPath = path.join(dir, `${name}.js`);
-	await fs.writeFile(jsPath, code);
-	return jsPath;
+	const jsPath = path.join(dir, `${name}.js`)
+	await fs.writeFile(jsPath, code)
+	return jsPath
 }
 
 /**
@@ -61,11 +61,11 @@ export async function writeExecutable(
  * (Windows cannot `execFile` script wrappers).
  */
 function prepend(file: string, rest: unknown[]): [string, ...unknown[]] {
-	if (!file.endsWith(".js")) return [file, ...rest];
+	if (!file.endsWith(".js")) return [file, ...rest]
 	if (Array.isArray(rest[0])) {
-		return [process.execPath, [file, ...rest[0]], ...rest.slice(1)];
+		return [process.execPath, [file, ...rest[0]], ...rest.slice(1)]
 	}
-	return [process.execPath, [file], ...rest];
+	return [process.execPath, [file], ...rest]
 }
 
 /**
@@ -79,20 +79,22 @@ function prepend(file: string, rest: unknown[]): [string, ...unknown[]] {
  * });
  * ```
  */
-export function shimExecFile<M extends {execFile: (...args: never[]) => unknown}>(mod: M): M {
-	const {execFile: original} = mod;
+export function shimExecFile<
+	M extends { execFile: (...args: never[]) => unknown },
+>(mod: M): M {
+	const { execFile: original } = mod
 
 	function execFile(file: string, ...rest: unknown[]): cp.ChildProcess {
-		return Reflect.apply(original, undefined, prepend(file, rest));
+		return Reflect.apply(original, undefined, prepend(file, rest))
 	}
 
-	return Object.assign({}, mod, {execFile});
+	return Object.assign({}, mod, { execFile })
 }
 
 export function expectPathsEqual(actual: string, expected: string) {
-	expect(normalizePath(actual)).toBe(normalizePath(expected));
+	expect(normalizePath(actual)).toBe(normalizePath(expected))
 }
 
 function normalizePath(p: string): string {
-	return p.replaceAll(path.sep, path.posix.sep);
+	return p.replaceAll(path.sep, path.posix.sep)
 }
