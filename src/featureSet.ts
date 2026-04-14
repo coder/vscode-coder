@@ -5,6 +5,7 @@ export interface FeatureSet {
 	proxyLogDirectory: boolean;
 	wildcardSSH: boolean;
 	buildReason: boolean;
+	cliUpdate: boolean;
 	keyringAuth: boolean;
 	keyringTokenRead: boolean;
 	supportBundle: boolean;
@@ -44,6 +45,8 @@ export function featureSetForVersion(
 		wildcardSSH: versionAtLeast(version, "2.19.0"),
 		// --reason flag for `coder start`
 		buildReason: versionAtLeast(version, "2.25.0"),
+		// `coder update` subcommand
+		cliUpdate: versionAtLeast(version, "2.25.0"),
 		// Keyring-backed token storage via `coder login`
 		keyringAuth: versionAtLeast(version, "2.29.0"),
 		// `coder login token` for reading tokens from the keyring

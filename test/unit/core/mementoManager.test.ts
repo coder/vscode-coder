@@ -66,23 +66,31 @@ describe("MementoManager", () => {
 		});
 	});
 
-	describe("firstConnect", () => {
-		it("should return true only once", async () => {
-			await mementoManager.setFirstConnect();
+	describe("startupMode", () => {
+		it("should return the set mode and clear after read", async () => {
+			await mementoManager.setStartupMode("start");
+			expect(await mementoManager.getAndClearStartupMode()).toBe("start");
+			expect(await mementoManager.getAndClearStartupMode()).toBe("prompt");
+		});
 
-			expect(await mementoManager.getAndClearFirstConnect()).toBe(true);
-			expect(await mementoManager.getAndClearFirstConnect()).toBe(false);
+		it("should return 'prompt' when nothing is set", async () => {
+			expect(await mementoManager.getAndClearStartupMode()).toBe("prompt");
+		});
+
+		it("should support 'update' mode", async () => {
+			await mementoManager.setStartupMode("update");
+			expect(await mementoManager.getAndClearStartupMode()).toBe("update");
 		});
 
 		it("should treat legacy bare values as expired", async () => {
-			await memento.update("firstConnect", true);
-			expect(await mementoManager.getAndClearFirstConnect()).toBe(false);
+			await memento.update("startupMode", "start");
+			expect(await mementoManager.getAndClearStartupMode()).toBe("prompt");
 		});
 
 		it("should expire after 5 minutes", async () => {
-			await mementoManager.setFirstConnect();
+			await mementoManager.setStartupMode("update");
 			vi.advanceTimersByTime(5 * 60 * 1000 + 1);
-			expect(await mementoManager.getAndClearFirstConnect()).toBe(false);
+			expect(await mementoManager.getAndClearStartupMode()).toBe("prompt");
 		});
 	});
 

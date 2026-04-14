@@ -1,12 +1,12 @@
 import { createWorkspaceIdentifier, extractAgents } from "../api/api-helper";
 import {
 	LazyStream,
-	startWorkspaceIfStoppedOrFailed,
+	startWorkspace,
+	updateWorkspace,
 	streamAgentLogs,
 	streamBuildLogs,
 } from "../api/workspace";
 import { maybeAskAgent } from "../promptUtils";
-import { type AuthorityParts } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { TerminalSession } from "./terminalSession";
@@ -19,9 +19,11 @@ import type {
 import type * as vscode from "vscode";
 
 import type { CoderApi } from "../api/coderApi";
+import type { StartupMode } from "../core/mementoManager";
 import type { FeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
 import type { CliAuth } from "../settings/cli";
+import type { AuthorityParts } from "../util";
 
 /**
  * Manages workspace and agent state transitions until ready for SSH connection.
@@ -37,7 +39,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	constructor(
 		private readonly parts: AuthorityParts,
 		private readonly workspaceClient: CoderApi,
-		private readonly firstConnect: boolean,
+		private startupMode: StartupMode,
 		private readonly binaryPath: string,
 		private readonly featureSet: FeatureSet,
 		private readonly logger: Logger,
@@ -59,27 +61,29 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		switch (workspace.latest_build.status) {
 			case "running":
 				this.buildLogStream.close();
+				if (this.wantsUpdate) {
+					await this.triggerUpdate(workspace, workspaceName, progress);
+					// Agent IDs may have changed after an update.
+					this.agent = undefined;
+				}
 				break;
 
 			case "stopped":
 			case "failed": {
 				this.buildLogStream.close();
 
-				if (!this.firstConnect && !(await this.confirmStart(workspaceName))) {
+				if (
+					this.startupMode === "prompt" &&
+					!(await this.confirmStart(workspaceName))
+				) {
 					throw new Error(`Workspace start cancelled`);
 				}
 
-				progress.report({ message: `starting ${workspaceName}...` });
-				this.logger.info(`Starting ${workspaceName}`);
-				await startWorkspaceIfStoppedOrFailed(
-					this.workspaceClient,
-					this.cliAuth,
-					this.binaryPath,
-					workspace,
-					this.terminal.writeEmitter,
-					this.featureSet,
-				);
-				this.logger.info(`${workspaceName} status is now running`);
+				if (this.wantsUpdate) {
+					await this.triggerUpdate(workspace, workspaceName, progress);
+				} else {
+					await this.triggerStart(workspace, workspaceName, progress);
+				}
 				return false;
 			}
 
@@ -213,6 +217,56 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 					`Invalid lifecycle state '${agent.lifecycle_state}' for ${workspaceName}/${agent.name}`,
 				);
 		}
+	}
+
+	private get wantsUpdate(): boolean {
+		return this.startupMode === "update";
+	}
+
+	private get cliContext() {
+		return {
+			auth: this.cliAuth,
+			binPath: this.binaryPath,
+			writeEmitter: this.terminal.writeEmitter,
+		};
+	}
+
+	private async triggerStart(
+		workspace: Workspace,
+		workspaceName: string,
+		progress: vscode.Progress<{ message?: string }>,
+	): Promise<void> {
+		progress.report({ message: `starting ${workspaceName}...` });
+		this.logger.info(`Starting ${workspaceName}`, {
+			mode: this.startupMode,
+			status: workspace.latest_build.status,
+		});
+		await startWorkspace(
+			this.workspaceClient,
+			{ ...this.cliContext, workspace },
+			this.featureSet,
+		);
+		this.logger.info(`${workspaceName} start initiated`);
+	}
+
+	private async triggerUpdate(
+		workspace: Workspace,
+		workspaceName: string,
+		progress: vscode.Progress<{ message?: string }>,
+	): Promise<void> {
+		progress.report({ message: `updating ${workspaceName}...` });
+		this.logger.info(`Updating ${workspaceName}`, {
+			mode: this.startupMode,
+			status: workspace.latest_build.status,
+		});
+		await updateWorkspace(
+			this.workspaceClient,
+			{ ...this.cliContext, workspace },
+			this.featureSet,
+		);
+		// Downgrade so subsequent transitions don't re-trigger the update.
+		this.startupMode = "start";
+		this.logger.info(`${workspaceName} update initiated`);
 	}
 
 	private async confirmStart(workspaceName: string): Promise<boolean> {
