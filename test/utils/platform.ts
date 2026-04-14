@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { expect } from "vitest";
 
+import type * as cp from "node:child_process";
+
 export function isWindows(): boolean {
 	return os.platform() === "win32";
 }
@@ -39,27 +41,73 @@ export function printEnvCommand(key: string, varName: string): string {
 }
 
 /**
- * Write a cross-platform executable that runs the given JS code.
- * On Unix creates a shebang script; on Windows creates a .cmd wrapper.
- * Returns the path to the executable.
+ * Write a JS file that can be executed cross-platform.
+ * Tests that use `execFile` on the returned path should apply
+ * {@link shimExecFile} so `.js` files are run through `process.execPath`.
  */
 export async function writeExecutable(
 	dir: string,
 	name: string,
 	code: string,
 ): Promise<string> {
-	if (isWindows()) {
-		const jsPath = path.join(dir, `${name}.js`);
-		const cmdPath = path.join(dir, `${name}.cmd`);
-		await fs.writeFile(jsPath, code);
-		await fs.writeFile(cmdPath, `@node "${jsPath}" %*\r\n`);
-		return cmdPath;
+	const jsPath = path.join(dir, `${name}.js`);
+	await fs.writeFile(jsPath, code);
+	return jsPath;
+}
+
+/**
+ * If `file` is a `.js` path, prepend it into the args array and swap the
+ * binary to `process.execPath` so `execFile` works on every platform
+ * (Windows cannot `execFile` script wrappers).
+ */
+function prepend(file: string, rest: unknown[]): [string, ...unknown[]] {
+	if (!file.endsWith(".js")) return [file, ...rest];
+	const hasArgs = Array.isArray(rest[0]);
+	const cliArgs = hasArgs ? (rest[0] as string[]) : [];
+	const remaining = hasArgs ? rest.slice(1) : rest;
+	return [process.execPath, [file, ...cliArgs], ...remaining];
+}
+
+/**
+ * Shim `child_process.execFile` so `.js` files are launched through node.
+ * Use with `vi.mock`:
+ *
+ * ```ts
+ * vi.mock("node:child_process", async (importOriginal) => {
+ *   const { shimExecFile } = await import("../../utils/platform");
+ *   return shimExecFile(await importOriginal());
+ * });
+ * ```
+ */
+export function shimExecFile<
+	M extends { execFile: (...args: never[]) => unknown },
+>(mod: M): M {
+	const { execFile: original } = mod;
+
+	function execFile(file: string, ...rest: unknown[]): cp.ChildProcess {
+		return Reflect.apply(original, undefined, prepend(file, rest));
 	}
 
-	const binPath = path.join(dir, name);
-	await fs.writeFile(binPath, `#!/usr/bin/env node\n${code}`);
-	await fs.chmod(binPath, "755");
-	return binPath;
+	const sym = Symbol.for("nodejs.util.promisify.custom");
+	const customPromisify = Reflect.get(original, sym) as
+		| ((...args: unknown[]) => unknown)
+		| undefined;
+	if (customPromisify) {
+		Reflect.set(execFile, sym, (file: string, ...rest: unknown[]) =>
+			Reflect.apply(customPromisify, undefined, prepend(file, rest)),
+		);
+	}
+
+	return Object.assign({}, mod, { execFile });
+}
+
+/**
+ * Wraps a value in the platform-appropriate quote character,
+ * matching the escaping in {@link getHeaderArgs} from src/settings/headers.ts.
+ */
+export function quoteCommand(value: string): string {
+	const quote = isWindows() ? '"' : "'";
+	return `${quote}${value}${quote}`;
 }
 
 export function expectPathsEqual(actual: string, expected: string) {
