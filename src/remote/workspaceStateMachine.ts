@@ -61,7 +61,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		switch (workspace.latest_build.status) {
 			case "running":
 				this.buildLogStream.close();
-				if (this.wantsUpdate) {
+				if (this.startupMode === "update") {
 					await this.triggerUpdate(workspace, workspaceName, progress);
 					// Agent IDs may have changed after an update.
 					this.agent = undefined;
@@ -72,14 +72,18 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "failed": {
 				this.buildLogStream.close();
 
-				if (
-					this.startupMode === "none" &&
-					!(await this.confirmStart(workspaceName))
-				) {
-					throw new Error(`Workspace start cancelled`);
+				if (this.startupMode === "none") {
+					const choice = await this.confirmStartOrUpdate(
+						workspaceName,
+						workspace.outdated,
+					);
+					if (!choice) {
+						throw new Error(`Workspace start cancelled`);
+					}
+					this.startupMode = choice;
 				}
 
-				if (this.wantsUpdate) {
+				if (this.startupMode === "update") {
 					await this.triggerUpdate(workspace, workspaceName, progress);
 				} else {
 					await this.triggerStart(workspace, workspaceName, progress);
@@ -90,7 +94,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "pending":
 			case "starting":
 			case "stopping": {
-				// Clear the agent since it's ID could change after a restart
+				// Clear the agent since its ID could change after a restart
 				this.agent = undefined;
 				this.agentLogStream.close();
 				progress.report({
@@ -219,10 +223,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		}
 	}
 
-	private get wantsUpdate(): boolean {
-		return this.startupMode === "update";
-	}
-
 	private buildCliContext(workspace: Workspace) {
 		return {
 			restClient: this.workspaceClient,
@@ -264,16 +264,22 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		this.logger.info(`${workspaceName} update initiated`);
 	}
 
-	private async confirmStart(workspaceName: string): Promise<boolean> {
+	private async confirmStartOrUpdate(
+		workspaceName: string,
+		outdated: boolean,
+	): Promise<"start" | "update" | undefined> {
+		const buttons = outdated ? ["Start", "Update and Start"] : ["Start"];
 		const action = await vscodeProposed.window.showInformationMessage(
-			`Unable to connect to the workspace ${workspaceName} because it is not running. Start the workspace?`,
+			`The workspace ${workspaceName} is not running. How would you like to proceed?`,
 			{
 				useCustom: true,
 				modal: true,
 			},
-			"Start",
+			...buttons,
 		);
-		return action === "Start";
+		if (action === "Start") return "start";
+		if (action === "Update and Start") return "update";
+		return undefined;
 	}
 
 	public getAgentId(): string | undefined {
