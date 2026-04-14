@@ -5,6 +5,7 @@ import {
 	parseCoderSshOptions,
 	parseSshConfig,
 	mergeSshConfigValues,
+	type SshValues,
 } from "@/remote/sshConfig";
 
 import { createMockLogger } from "../../mocks/testHelpers";
@@ -29,6 +30,17 @@ const mockFileSystem = {
 
 const mockLogger = createMockLogger();
 
+const BASE_SSH_VALUES = {
+	Host: "coder-vscode.dev.coder.com--*",
+	ProxyCommand: "some-command-here",
+	ConnectTimeout: "0",
+	StrictHostKeyChecking: "no",
+	UserKnownHostsFile: "/dev/null",
+	LogLevel: "ERROR",
+	ServerAliveInterval: "10",
+	ServerAliveCountMax: "3",
+} as const satisfies SshValues;
+
 afterEach(() => {
 	vi.clearAllMocks();
 });
@@ -39,14 +51,7 @@ it("creates a new file and adds config with empty label", async () => {
 
 	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
-	await sshConfig.update("", {
-		Host: "coder-vscode--*",
-		ProxyCommand: "some-command-here",
-		ConnectTimeout: "0",
-		StrictHostKeyChecking: "no",
-		UserKnownHostsFile: "/dev/null",
-		LogLevel: "ERROR",
-	});
+	await sshConfig.update("", { ...BASE_SSH_VALUES, Host: "coder-vscode--*" });
 
 	const expectedOutput = `# --- START CODER VSCODE ---
 ${managedHeader}
@@ -54,6 +59,8 @@ Host coder-vscode--*
   ConnectTimeout 0
   LogLevel ERROR
   ProxyCommand some-command-here
+  ServerAliveCountMax 3
+  ServerAliveInterval 10
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE ---`;
@@ -82,14 +89,7 @@ it("creates a new file and adds the config", async () => {
 
 	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", {
-		Host: "coder-vscode.dev.coder.com--*",
-		ProxyCommand: "some-command-here",
-		ConnectTimeout: "0",
-		StrictHostKeyChecking: "no",
-		UserKnownHostsFile: "/dev/null",
-		LogLevel: "ERROR",
-	});
+	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
 
 	const expectedOutput = `# --- START CODER VSCODE dev.coder.com ---
 ${managedHeader}
@@ -97,6 +97,8 @@ Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
   ProxyCommand some-command-here
+  ServerAliveCountMax 3
+  ServerAliveInterval 10
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`;
@@ -132,14 +134,7 @@ it("adds a new coder config in an existent SSH configuration", async () => {
 
 	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", {
-		Host: "coder-vscode.dev.coder.com--*",
-		ProxyCommand: "some-command-here",
-		ConnectTimeout: "0",
-		StrictHostKeyChecking: "no",
-		UserKnownHostsFile: "/dev/null",
-		LogLevel: "ERROR",
-	});
+	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
 
 	const expectedOutput = `${existentSSHConfig}
 
@@ -149,6 +144,8 @@ Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
   ProxyCommand some-command-here
+  ServerAliveCountMax 3
+  ServerAliveInterval 10
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`;
@@ -204,12 +201,11 @@ Host *
 	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
 	await sshConfig.update("dev.coder.com", {
+		...BASE_SSH_VALUES,
 		Host: "coder-vscode.dev-updated.coder.com--*",
 		ProxyCommand: "some-updated-command-here",
 		ConnectTimeout: "1",
 		StrictHostKeyChecking: "yes",
-		UserKnownHostsFile: "/dev/null",
-		LogLevel: "ERROR",
 	});
 
 	const expectedOutput = `${keepSSHConfig}
@@ -220,6 +216,8 @@ Host coder-vscode.dev-updated.coder.com--*
   ConnectTimeout 1
   LogLevel ERROR
   ProxyCommand some-updated-command-here
+  ServerAliveCountMax 3
+  ServerAliveInterval 10
   StrictHostKeyChecking yes
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---
@@ -261,14 +259,7 @@ Host coder-vscode--*
 
 	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", {
-		Host: "coder-vscode.dev.coder.com--*",
-		ProxyCommand: "some-command-here",
-		ConnectTimeout: "0",
-		StrictHostKeyChecking: "no",
-		UserKnownHostsFile: "/dev/null",
-		LogLevel: "ERROR",
-	});
+	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
 
 	const expectedOutput = `${existentSSHConfig}
 
@@ -278,6 +269,8 @@ Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
   ProxyCommand some-command-here
+  ServerAliveCountMax 3
+  ServerAliveInterval 10
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`;
@@ -304,14 +297,7 @@ it("it does not remove a user-added block that only matches the host of an old c
 
 	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", {
-		Host: "coder-vscode.dev.coder.com--*",
-		ProxyCommand: "some-command-here",
-		ConnectTimeout: "0",
-		StrictHostKeyChecking: "no",
-		UserKnownHostsFile: "/dev/null",
-		LogLevel: "ERROR",
-	});
+	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
 
 	const expectedOutput = `Host coder-vscode--*
   ForwardAgent=yes
@@ -322,6 +308,8 @@ Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
   ProxyCommand some-command-here
+  ServerAliveCountMax 3
+  ServerAliveInterval 10
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---`;
@@ -365,14 +353,7 @@ Host afterconfig
 
 	// When we try to update the config, it should throw an error.
 	await expect(
-		sshConfig.update("dev.coder.com", {
-			Host: "coder-vscode.dev.coder.com--*",
-			ProxyCommand: "some-command-here",
-			ConnectTimeout: "0",
-			StrictHostKeyChecking: "no",
-			UserKnownHostsFile: "/dev/null",
-			LogLevel: "ERROR",
-		}),
+		sshConfig.update("dev.coder.com", BASE_SSH_VALUES),
 	).rejects.toThrow(
 		`Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE dev.coder.com block. Each START block must have an END block.`,
 	);
@@ -420,14 +401,7 @@ Host afterconfig
 
 	// When we try to update the config, it should throw an error.
 	await expect(
-		sshConfig.update("dev.coder.com", {
-			Host: "coder-vscode.dev.coder.com--*",
-			ProxyCommand: "some-command-here",
-			ConnectTimeout: "0",
-			StrictHostKeyChecking: "no",
-			UserKnownHostsFile: "/dev/null",
-			LogLevel: "ERROR",
-		}),
+		sshConfig.update("dev.coder.com", BASE_SSH_VALUES),
 	).rejects.toThrow(
 		`Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE dev.coder.com block. Each START block must have an END block.`,
 	);
@@ -470,16 +444,7 @@ Host afterconfig
 	await sshConfig.load();
 
 	// When we try to update the config, it should throw an error.
-	await expect(
-		sshConfig.update("", {
-			Host: "coder-vscode.dev.coder.com--*",
-			ProxyCommand: "some-command-here",
-			ConnectTimeout: "0",
-			StrictHostKeyChecking: "no",
-			UserKnownHostsFile: "/dev/null",
-			LogLevel: "ERROR",
-		}),
-	).rejects.toThrow(
+	await expect(sshConfig.update("", BASE_SSH_VALUES)).rejects.toThrow(
 		`Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE block. Each START block must have an END block.`,
 	);
 });
@@ -521,14 +486,7 @@ Host afterconfig
 
 	// When we try to update the config, it should throw an error.
 	await expect(
-		sshConfig.update("dev.coder.com", {
-			Host: "coder-vscode.dev.coder.com--*",
-			ProxyCommand: "some-command-here",
-			ConnectTimeout: "0",
-			StrictHostKeyChecking: "no",
-			UserKnownHostsFile: "/dev/null",
-			LogLevel: "ERROR",
-		}),
+		sshConfig.update("dev.coder.com", BASE_SSH_VALUES),
 	).rejects.toThrow(
 		`Malformed config: ${sshFilePath} has 2 START CODER VSCODE dev.coder.com sections. Please remove all but one.`,
 	);
@@ -593,6 +551,8 @@ Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
   ProxyCommand some-command-here
+  ServerAliveCountMax 3
+  ServerAliveInterval 10
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 # --- END CODER VSCODE dev.coder.com ---
@@ -601,14 +561,7 @@ Host afterconfig
   HostName after.config.tld
   User after`;
 
-	await sshConfig.update("dev.coder.com", {
-		Host: "coder-vscode.dev.coder.com--*",
-		ProxyCommand: "some-command-here",
-		ConnectTimeout: "0",
-		StrictHostKeyChecking: "no",
-		UserKnownHostsFile: "/dev/null",
-		LogLevel: "ERROR",
-	});
+	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
 
 	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
 		expect.stringContaining(sshTempFilePrefix),
@@ -630,27 +583,16 @@ it("override values", async () => {
 
 	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 	await sshConfig.load();
-	await sshConfig.update(
-		"dev.coder.com",
-		{
-			Host: "coder-vscode.dev.coder.com--*",
-			ProxyCommand: "some-command-here",
-			ConnectTimeout: "0",
-			StrictHostKeyChecking: "no",
-			UserKnownHostsFile: "/dev/null",
-			LogLevel: "ERROR",
-		},
-		{
-			loglevel: "DEBUG", // This tests case insensitive
-			ConnectTimeout: "500",
-			ExtraKey: "ExtraValue",
-			Foo: "bar",
-			Buzz: "baz",
-			// Remove this key
-			StrictHostKeyChecking: "",
-			ExtraRemove: "",
-		},
-	);
+	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES, {
+		loglevel: "DEBUG", // This tests case insensitive
+		ConnectTimeout: "500",
+		ExtraKey: "ExtraValue",
+		Foo: "bar",
+		Buzz: "baz",
+		// Remove this key
+		StrictHostKeyChecking: "",
+		ExtraRemove: "",
+	});
 
 	const expectedOutput = `# --- START CODER VSCODE dev.coder.com ---
 ${managedHeader}
@@ -660,6 +602,8 @@ Host coder-vscode.dev.coder.com--*
   ExtraKey ExtraValue
   Foo bar
   ProxyCommand some-command-here
+  ServerAliveCountMax 3
+  ServerAliveInterval 10
   UserKnownHostsFile /dev/null
   loglevel DEBUG
 # --- END CODER VSCODE dev.coder.com ---`;
@@ -699,14 +643,7 @@ it("fails if we are unable to write the temporary file", async () => {
 		expect.anything(),
 	);
 	await expect(
-		sshConfig.update("dev.coder.com", {
-			Host: "coder-vscode.dev.coder.com--*",
-			ProxyCommand: "some-command-here",
-			ConnectTimeout: "0",
-			StrictHostKeyChecking: "no",
-			UserKnownHostsFile: "/dev/null",
-			LogLevel: "ERROR",
-		}),
+		sshConfig.update("dev.coder.com", BASE_SSH_VALUES),
 	).rejects.toThrow(/Failed to write temporary SSH config file.*EACCES/);
 });
 
@@ -722,12 +659,8 @@ it("cleans up temp file when rename fails", async () => {
 	await sshConfig.load();
 	await expect(
 		sshConfig.update("dev.coder.com", {
-			Host: "coder-vscode.dev.coder.com--*",
+			...BASE_SSH_VALUES,
 			ProxyCommand: "cmd",
-			ConnectTimeout: "0",
-			StrictHostKeyChecking: "no",
-			UserKnownHostsFile: "/dev/null",
-			LogLevel: "ERROR",
 		}),
 	).rejects.toThrow(/Failed to rename temporary SSH config file/);
 	expect(mockFileSystem.unlink).toHaveBeenCalledWith(
@@ -762,12 +695,8 @@ describe("rename retry on Windows", () => {
 		const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
 		await sshConfig.load();
 		const promise = sshConfig.update("dev.coder.com", {
-			Host: "coder-vscode.dev.coder.com--*",
+			...BASE_SSH_VALUES,
 			ProxyCommand: "cmd",
-			ConnectTimeout: "0",
-			StrictHostKeyChecking: "no",
-			UserKnownHostsFile: "/dev/null",
-			LogLevel: "ERROR",
 		});
 
 		await vi.advanceTimersByTimeAsync(100);

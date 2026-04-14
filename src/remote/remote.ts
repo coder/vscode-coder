@@ -53,7 +53,7 @@ import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 import {
 	SshConfig,
-	type SSHValues,
+	type SshValues,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
@@ -801,13 +801,15 @@ export class Remote {
 			cliAuth,
 		);
 
-		const sshValues: SSHValues = {
+		const sshValues: SshValues = {
 			Host: hostPrefix + `*`,
 			ProxyCommand: proxyCommand,
 			ConnectTimeout: "0",
 			StrictHostKeyChecking: "no",
 			UserKnownHostsFile: "/dev/null",
 			LogLevel: "ERROR",
+			ServerAliveInterval: "10",
+			ServerAliveCountMax: "3",
 		};
 		if (sshSupportsSetEnv()) {
 			// This allows for tracking the number of extension
@@ -824,7 +826,7 @@ export class Remote {
 			hostName,
 			sshConfig.getRaw(),
 		);
-		const keysToMatch: Array<keyof SSHValues> = [
+		const keysToMatch: Array<keyof SshValues> = [
 			"ProxyCommand",
 			"UserKnownHostsFile",
 			"StrictHostKeyChecking",

@@ -18,13 +18,15 @@ interface Block {
 	raw: string;
 }
 
-export interface SSHValues {
+export interface SshValues {
 	Host: string;
 	ProxyCommand: string;
 	ConnectTimeout: string;
 	StrictHostKeyChecking: string;
 	UserKnownHostsFile: string;
 	LogLevel: string;
+	ServerAliveInterval: string;
+	ServerAliveCountMax: string;
 	SetEnv?: string;
 }
 
@@ -219,7 +221,7 @@ export class SshConfig {
 	 */
 	async update(
 		safeHostname: string,
-		values: SSHValues,
+		values: SshValues,
 		overrides?: Record<string, string>,
 	) {
 		const block = this.getBlock(safeHostname);
@@ -298,7 +300,7 @@ export class SshConfig {
 	 */
 	private buildBlock(
 		safeHostname: string,
-		values: SSHValues,
+		values: SshValues,
 		overrides?: Record<string, string>,
 	) {
 		const { Host, ...otherValues } = values;
