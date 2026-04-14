@@ -79,7 +79,7 @@ function runningWorkspace(
 }
 
 function createStateMachine(
-	startupMode: "prompt" | "start" | "update" = "start",
+	startupMode: "none" | "start" | "update" = "start",
 ) {
 	return new WorkspaceStateMachine(
 		{ agent: "main" } as unknown as AuthorityParts,
@@ -184,7 +184,7 @@ describe("WorkspaceStateMachine", () => {
 			vi.mocked(vscodeProposed.window.showInformationMessage).mockResolvedValue(
 				"Start" as never,
 			);
-			const sm = createStateMachine("prompt");
+			const sm = createStateMachine("none");
 			const ws = createWorkspace({ latest_build: { status: "stopped" } });
 
 			expect(await sm.processWorkspace(ws, progress)).toBe(false);
@@ -195,7 +195,7 @@ describe("WorkspaceStateMachine", () => {
 			vi.mocked(vscodeProposed.window.showInformationMessage).mockResolvedValue(
 				undefined as never,
 			);
-			const sm = createStateMachine("prompt");
+			const sm = createStateMachine("none");
 			const ws = createWorkspace({ latest_build: { status: "stopped" } });
 
 			await expect(sm.processWorkspace(ws, progress)).rejects.toThrow(

@@ -73,7 +73,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				this.buildLogStream.close();
 
 				if (
-					this.startupMode === "prompt" &&
+					this.startupMode === "none" &&
 					!(await this.confirmStart(workspaceName))
 				) {
 					throw new Error(`Workspace start cancelled`);
@@ -223,11 +223,14 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		return this.startupMode === "update";
 	}
 
-	private get cliContext() {
+	private buildCliContext(workspace: Workspace) {
 		return {
+			restClient: this.workspaceClient,
 			auth: this.cliAuth,
 			binPath: this.binaryPath,
+			workspace,
 			writeEmitter: this.terminal.writeEmitter,
+			featureSet: this.featureSet,
 		};
 	}
 
@@ -241,11 +244,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			mode: this.startupMode,
 			status: workspace.latest_build.status,
 		});
-		await startWorkspace(
-			this.workspaceClient,
-			{ ...this.cliContext, workspace },
-			this.featureSet,
-		);
+		await startWorkspace(this.buildCliContext(workspace));
 		this.logger.info(`${workspaceName} start initiated`);
 	}
 
@@ -259,11 +258,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			mode: this.startupMode,
 			status: workspace.latest_build.status,
 		});
-		await updateWorkspace(
-			this.workspaceClient,
-			{ ...this.cliContext, workspace },
-			this.featureSet,
-		);
+		await updateWorkspace(this.buildCliContext(workspace));
 		// Downgrade so subsequent transitions don't re-trigger the update.
 		this.startupMode = "start";
 		this.logger.info(`${workspaceName} update initiated`);

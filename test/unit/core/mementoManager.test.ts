@@ -70,11 +70,11 @@ describe("MementoManager", () => {
 		it("should return the set mode and clear after read", async () => {
 			await mementoManager.setStartupMode("start");
 			expect(await mementoManager.getAndClearStartupMode()).toBe("start");
-			expect(await mementoManager.getAndClearStartupMode()).toBe("prompt");
+			expect(await mementoManager.getAndClearStartupMode()).toBe("none");
 		});
 
-		it("should return 'prompt' when nothing is set", async () => {
-			expect(await mementoManager.getAndClearStartupMode()).toBe("prompt");
+		it("should return 'none' when nothing is set", async () => {
+			expect(await mementoManager.getAndClearStartupMode()).toBe("none");
 		});
 
 		it("should support 'update' mode", async () => {
@@ -84,13 +84,13 @@ describe("MementoManager", () => {
 
 		it("should treat legacy bare values as expired", async () => {
 			await memento.update("startupMode", "start");
-			expect(await mementoManager.getAndClearStartupMode()).toBe("prompt");
+			expect(await mementoManager.getAndClearStartupMode()).toBe("none");
 		});
 
 		it("should expire after 5 minutes", async () => {
 			await mementoManager.setStartupMode("update");
 			vi.advanceTimersByTime(5 * 60 * 1000 + 1);
-			expect(await mementoManager.getAndClearStartupMode()).toBe("prompt");
+			expect(await mementoManager.getAndClearStartupMode()).toBe("none");
 		});
 	});
 

@@ -9,12 +9,12 @@ const PENDING_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Describes the startup intent when the extension connects to a workspace.
- * - "prompt":  Normal reconnection; ask before starting a stopped workspace.
+ * - "none":    No explicit intent; ask before starting a stopped workspace.
  * - "start":   User-initiated open/restart; auto-start without prompting.
  * - "update":  User-initiated restart + update; use `coder update` to apply
  *              the latest template version, auto-starting without prompting.
  */
-export type StartupMode = "prompt" | "start" | "update";
+export type StartupMode = "none" | "start" | "update";
 
 interface Stamped<T> {
 	value: T;
@@ -62,14 +62,14 @@ export class MementoManager {
 
 	/**
 	 * Read and clear the startup mode.
-	 * Returns "prompt" (the default) when no mode was explicitly set.
+	 * Returns "none" (the default) when no mode was explicitly set.
 	 */
 	public async getAndClearStartupMode(): Promise<StartupMode> {
 		const value = this.getStamped<StartupMode>("startupMode");
 		if (value !== undefined) {
 			await this.memento.update("startupMode", undefined);
 		}
-		return value ?? "prompt";
+		return value ?? "none";
 	}
 
 	/** Store a chat ID to open after a remote-authority reload. */

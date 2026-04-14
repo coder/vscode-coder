@@ -46,10 +46,12 @@ export class LazyStream<T> {
 }
 
 interface CliContext {
+	restClient: Api;
 	auth: CliAuth;
 	binPath: string;
 	workspace: Workspace;
 	writeEmitter: vscode.EventEmitter<string>;
+	featureSet: FeatureSet;
 }
 
 /**
@@ -106,55 +108,45 @@ function splitLines(data: Buffer): string[] {
  * Start a stopped or failed workspace using `coder start`.
  * No-ops if the workspace is already running.
  */
-export async function startWorkspace(
-	restClient: Api,
-	ctx: CliContext,
-	featureSet: FeatureSet,
-): Promise<Workspace> {
-	const current = await restClient.getWorkspace(ctx.workspace.id);
-	if (!["stopped", "failed"].includes(current.latest_build.status)) {
-		return current;
+export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
+	if (!["stopped", "failed"].includes(ctx.workspace.latest_build.status)) {
+		return ctx.workspace;
 	}
 
 	const args = ["start", "--yes"];
-	if (featureSet.buildReason) {
+	if (ctx.featureSet.buildReason) {
 		args.push("--reason", "vscode_connection");
 	}
 
 	await runCliCommand(ctx, args);
-	return restClient.getWorkspace(ctx.workspace.id);
+	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }
 
 /**
  * Update a workspace to the latest template version.
  *
  * Uses `coder update` when the CLI supports it (>= 2.25).
- * Falls back to the REST API: stop → wait → updateWorkspaceVersion.
+ * Falls back to the REST API: stop, wait, then updateWorkspaceVersion.
  */
-export async function updateWorkspace(
-	restClient: Api,
-	ctx: CliContext,
-	featureSet: FeatureSet,
-): Promise<Workspace> {
-	if (featureSet.cliUpdate) {
+export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
+	if (ctx.featureSet.cliUpdate) {
 		await runCliCommand(ctx, ["update"]);
-		return restClient.getWorkspace(ctx.workspace.id);
+		return ctx.restClient.getWorkspace(ctx.workspace.id);
 	}
 
 	// REST API fallback for older CLIs.
-	const workspace = await restClient.getWorkspace(ctx.workspace.id);
-	if (workspace.latest_build.status === "running") {
+	if (ctx.workspace.latest_build.status === "running") {
 		ctx.writeEmitter.fire("Stopping workspace for update...\r\n");
-		const stopBuild = await restClient.stopWorkspace(workspace.id);
-		const stoppedJob = await restClient.waitForBuild(stopBuild);
+		const stopBuild = await ctx.restClient.stopWorkspace(ctx.workspace.id);
+		const stoppedJob = await ctx.restClient.waitForBuild(stopBuild);
 		if (stoppedJob?.status === "canceled") {
 			throw new Error("Workspace update canceled during stop");
 		}
 	}
 
 	ctx.writeEmitter.fire("Starting workspace with updated template...\r\n");
-	await restClient.updateWorkspaceVersion(workspace);
-	return restClient.getWorkspace(ctx.workspace.id);
+	await ctx.restClient.updateWorkspaceVersion(ctx.workspace);
+	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }
 
 /**
