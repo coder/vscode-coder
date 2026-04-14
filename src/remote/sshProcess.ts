@@ -1,11 +1,13 @@
 import find from "find-process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import prettyBytes from "pretty-bytes";
 import * as vscode from "vscode";
 
-import { type Logger } from "../logging/logger";
 import { findPort } from "../util";
+
+import { NetworkStatusReporter } from "./networkStatus";
+
+import type { Logger } from "../logging/logger";
 
 /**
  * Network information from the Coder CLI.
@@ -76,6 +78,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 	private logFilePath: string | undefined;
 	private pendingTimeout: NodeJS.Timeout | undefined;
 	private lastStaleSearchTime = 0;
+	private readonly reporter: NetworkStatusReporter;
 
 	/**
 	 * Helper to clean up files in a directory.
@@ -195,6 +198,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 			vscode.StatusBarAlignment.Left,
 			1000,
 		);
+		this.reporter = new NetworkStatusReporter(this.statusBarItem);
 	}
 
 	/**
@@ -251,6 +255,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 			this.pendingTimeout = undefined;
 		}
 		this.statusBarItem.dispose();
+		this.reporter.dispose();
 		this._onLogFilePathChange.dispose();
 		this._onPidChange.dispose();
 	}
@@ -475,7 +480,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 					const content = await fs.readFile(filePath, "utf8");
 					const network = JSON.parse(content) as NetworkInfo;
 					const isStale = ageMs > networkPollInterval * 2;
-					this.updateStatusBar(network, isStale);
+					this.reporter.update(network, isStale);
 				}
 			} catch (error) {
 				readFailures++;
@@ -507,63 +512,6 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 			await this.delay(networkPollInterval);
 		}
-	}
-
-	/**
-	 * Updates the status bar with network information.
-	 */
-	private updateStatusBar(network: NetworkInfo, isStale: boolean): void {
-		let statusText = "$(globe) ";
-
-		// Coder Connect doesn't populate any other stats
-		if (network.using_coder_connect) {
-			this.statusBarItem.text = statusText + "Coder Connect ";
-			this.statusBarItem.tooltip = "You're connected using Coder Connect.";
-			this.statusBarItem.show();
-			return;
-		}
-
-		if (network.p2p) {
-			statusText += "Direct ";
-			this.statusBarItem.tooltip = "You're connected peer-to-peer ✨.";
-		} else {
-			statusText += network.preferred_derp + " ";
-			this.statusBarItem.tooltip =
-				"You're connected through a relay 🕵.\nWe'll switch over to peer-to-peer when available.";
-		}
-
-		let tooltip = this.statusBarItem.tooltip;
-		tooltip +=
-			"\n\nDownload ↓ " +
-			prettyBytes(network.download_bytes_sec, { bits: true }) +
-			"/s • Upload ↑ " +
-			prettyBytes(network.upload_bytes_sec, { bits: true }) +
-			"/s\n";
-
-		if (!network.p2p) {
-			const derpLatency = network.derp_latency[network.preferred_derp];
-			tooltip += `You ↔ ${derpLatency.toFixed(2)}ms ↔ ${network.preferred_derp} ↔ ${(network.latency - derpLatency).toFixed(2)}ms ↔ Workspace`;
-
-			let first = true;
-			for (const region of Object.keys(network.derp_latency)) {
-				if (region === network.preferred_derp) {
-					continue;
-				}
-				if (first) {
-					tooltip += `\n\nOther regions:`;
-					first = false;
-				}
-				tooltip += `\n${region}: ${Math.round(network.derp_latency[region] * 100) / 100}ms`;
-			}
-		}
-
-		this.statusBarItem.tooltip = tooltip;
-		const latencyText = isStale
-			? `(~${network.latency.toFixed(2)}ms)`
-			: `(${network.latency.toFixed(2)}ms)`;
-		statusText += latencyText;
-		this.statusBarItem.text = statusText;
-		this.statusBarItem.show();
 	}
 }
 
