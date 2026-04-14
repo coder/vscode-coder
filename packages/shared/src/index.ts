@@ -5,3 +5,6 @@ export * from "./ipc/protocol";
 export * from "./tasks/types";
 export * from "./tasks/utils";
 export * from "./tasks/api";
+
+// Speedtest API
+export { SpeedtestApi } from "./speedtest/api";

@@ -268,6 +268,22 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/speedtest:
+    dependencies:
+      '@repo/webview-shared':
+        specifier: workspace:*
+        version: link:../webview-shared
+    devDependencies:
+      '@types/vscode-webview':
+        specifier: 'catalog:'
+        version: 1.57.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite:
+        specifier: 'catalog:'
+        version: 8.0.8(@types/node@24.10.12)(esbuild@0.28.0)
+
   packages/tasks:
     dependencies:
       '@repo/shared':

@@ -19,6 +19,7 @@ import type { Logger } from "../logging/logger";
  * Centralizes the creation and management of all core services.
  */
 export class ServiceContainer implements vscode.Disposable {
+	private readonly extensionUri: vscode.Uri;
 	private readonly logger: vscode.LogOutputChannel;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
@@ -31,6 +32,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly oauthCallback: OAuthCallback;
 
 	constructor(context: vscode.ExtensionContext) {
+		this.extensionUri = context.extensionUri;
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
@@ -121,6 +123,10 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getOAuthCallback(): OAuthCallback {
 		return this.oauthCallback;
+	}
+
+	getExtensionUri(): vscode.Uri {
+		return this.extensionUri;
 	}
 
 	/**

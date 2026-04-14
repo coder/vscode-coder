@@ -1,0 +1,20 @@
+{
+	"name": "@repo/speedtest",
+	"version": "1.0.0",
+	"description": "Coder Speedtest visualization webview",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vite build",
+		"dev": "vite build --watch",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@repo/webview-shared": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/vscode-webview": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:"
+	}
+}

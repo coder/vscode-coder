@@ -23,6 +23,7 @@ import {
 import { resolveCliAuth } from "./settings/cli";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
+import { showSpeedtestChart } from "./webviews/speedtest/speedtestPanel";
 import {
 	AgentTreeItem,
 	type OpenableTreeItem,
@@ -72,6 +73,7 @@ export class Commands {
 	private readonly cliManager: CliManager;
 	private readonly loginCoordinator: LoginCoordinator;
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
+	private readonly extensionUri: vscode.Uri;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -96,6 +98,7 @@ export class Commands {
 		this.cliManager = serviceContainer.getCliManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 		this.duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
+		this.extensionUri = serviceContainer.getExtensionUri();
 	}
 
 	/**
@@ -188,45 +191,72 @@ export class Commands {
 
 		const { client, workspaceId } = resolved;
 
-		const duration = await vscode.window.showInputBox({
+		const input = await vscode.window.showInputBox({
 			title: "Speed Test Duration",
-			prompt: "Duration for the speed test",
-			value: "5s",
+			prompt: "How long should the test run? (seconds)",
+			value: "5",
 			validateInput: (value) => {
-				const v = value.trim();
-				if (v && !cliExec.isGoDuration(v)) {
-					return "Invalid Go duration (e.g., 5s, 10s, 1m, 1m30s)";
+				const n = Number(value.trim());
+				if (!value.trim() || isNaN(n) || n <= 0) {
+					return "Please enter a positive number";
 				}
 				return undefined;
 			},
 		});
-		if (duration === undefined) {
+		if (input === undefined) {
 			return;
 		}
-		const trimmedDuration = duration.trim();
+		const seconds = Number(input.trim());
+		const totalMs = seconds * 1000;
 
 		const result = await withCancellableProgress(
 			async ({ signal, progress }) => {
-				progress.report({ message: "Resolving CLI..." });
+				progress.report({ message: "Connecting..." });
 				const env = await this.resolveCliEnv(client);
-				progress.report({ message: "Running..." });
-				return cliExec.speedtest(env, workspaceId, trimmedDuration, signal);
+
+				// Report progress based on elapsed time
+				const startTime = Date.now();
+				let lastPercent = 0;
+				const timer = setInterval(() => {
+					const elapsed = Date.now() - startTime;
+					const elapsedSec = Math.floor(elapsed / 1000);
+					const remaining = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
+
+					if (remaining > 0) {
+						const percent = Math.min(Math.round((elapsed / totalMs) * 100), 95);
+						const increment = percent - lastPercent;
+						if (increment > 0) {
+							progress.report({
+								message: `${elapsedSec}s / ${seconds}s`,
+								increment,
+							});
+							lastPercent = percent;
+						}
+					} else {
+						progress.report({ message: "Collecting results..." });
+					}
+				}, 100);
+
+				try {
+					return await cliExec.speedtest(
+						env,
+						workspaceId,
+						`${seconds}s`,
+						signal,
+					);
+				} finally {
+					clearInterval(timer);
+				}
 			},
 			{
 				location: vscode.ProgressLocation.Notification,
-				title: trimmedDuration
-					? `Speed test for ${workspaceId} (${trimmedDuration})`
-					: `Speed test for ${workspaceId}`,
+				title: `Running speed test for ${workspaceId}`,
 				cancellable: true,
 			},
 		);
 
 		if (result.ok) {
-			const doc = await vscode.workspace.openTextDocument({
-				content: result.value,
-				language: "json",
-			});
-			await vscode.window.showTextDocument(doc);
+			showSpeedtestChart(this.extensionUri, result.value);
 			return;
 		}
 

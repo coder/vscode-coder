@@ -1,0 +1,9 @@
+{
+	"extends": "../tsconfig.packages.json",
+	"compilerOptions": {
+		"paths": {
+			"@repo/webview-shared": ["../webview-shared/src"]
+		}
+	},
+	"include": ["src"]
+}
