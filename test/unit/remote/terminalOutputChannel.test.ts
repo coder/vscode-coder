@@ -31,6 +31,12 @@ describe("TerminalOutputChannel", () => {
 		expect(mockAppend).toHaveBeenCalledWith("progress50%100%\n");
 	});
 
+	it("strips ANSI escape sequences", () => {
+		const channel = new TerminalOutputChannel("test");
+		channel.write("\x1b[0;1mBold text\x1b[0m normal\r\n");
+		expect(mockAppend).toHaveBeenCalledWith("Bold text normal\n");
+	});
+
 	it("passes plain text through unchanged", () => {
 		const channel = new TerminalOutputChannel("test");
 		channel.write("no special chars");
