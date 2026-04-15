@@ -70,17 +70,14 @@ function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 		const proc = spawn(cmd, { shell: true });
 
 		proc.stdout.on("data", (data: Buffer) => {
-			for (const line of splitLines(data)) {
-				ctx.writeEmitter.fire(line + "\r\n");
-			}
+			ctx.writeEmitter.fire(data.toString().replace(/\r?\n/g, "\r\n"));
 		});
 
 		let capturedStderr = "";
 		proc.stderr.on("data", (data: Buffer) => {
-			for (const line of splitLines(data)) {
-				ctx.writeEmitter.fire(line + "\r\n");
-				capturedStderr += line + "\n";
-			}
+			const text = data.toString();
+			ctx.writeEmitter.fire(text.replace(/\r?\n/g, "\r\n"));
+			capturedStderr += text;
 		});
 
 		proc.on("close", (code: number) => {
@@ -95,13 +92,6 @@ function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 			}
 		});
 	});
-}
-
-function splitLines(data: Buffer): string[] {
-	return data
-		.toString()
-		.split(/\r*\n/)
-		.filter((line) => line !== "");
 }
 
 /**
@@ -125,7 +115,7 @@ export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
 /**
  * Update a workspace to the latest template version.
  *
- * Uses `coder update` when the CLI supports it (>= 2.25).
+ * Uses `coder update` when the CLI supports it (>= 2.24).
  * Falls back to the REST API: stop, wait, then updateWorkspaceVersion.
  */
 export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
