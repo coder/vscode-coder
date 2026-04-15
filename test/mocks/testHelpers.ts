@@ -946,6 +946,42 @@ export class MockContextManager {
 	readonly dispose = vi.fn();
 }
 
+/** Mock VS Code OutputChannel that captures all appended content. */
+export class MockOutputChannel implements vscode.LogOutputChannel {
+	readonly name: string;
+	readonly logLevel = vscode.LogLevel.Info;
+	readonly onDidChangeLogLevel: vscode.Event<vscode.LogLevel> = vi.fn();
+
+	private _content: string[] = [];
+
+	constructor(name = "mock") {
+		this.name = name;
+	}
+
+	get content(): string[] {
+		return this._content;
+	}
+
+	append = vi.fn((value: string) => this._content.push(value));
+	appendLine = vi.fn((value: string) => this._content.push(value + "\n"));
+	replace = vi.fn((value: string) => {
+		this._content = [value];
+	});
+	clear = vi.fn(() => {
+		this._content = [];
+	});
+	dispose = vi.fn(() => {
+		this._content = [];
+	});
+	show = vi.fn();
+	hide = vi.fn();
+	trace = vi.fn();
+	debug = vi.fn();
+	info = vi.fn();
+	warn = vi.fn();
+	error = vi.fn();
+}
+
 /**
  * Mock TerminalOutputChannel that captures all written content.
  * Use `lastInstance` to get the most recently created instance (set in the constructor),

@@ -1,45 +1,30 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
 
 import { TerminalOutputChannel } from "@/remote/terminalOutputChannel";
 
-const mockAppend = vi.fn();
+import { MockOutputChannel } from "../../mocks/testHelpers";
 
-vi.mock("vscode", () => ({
-	window: {
-		createOutputChannel: vi.fn(() => ({
-			append: mockAppend,
-			show: vi.fn(),
-			dispose: vi.fn(),
-		})),
-	},
-}));
+vi.mocked(vscode.window.createOutputChannel).mockImplementation(
+	(name: string) => new MockOutputChannel(name),
+);
+
+function setup(input: string): MockOutputChannel {
+	const channel = new TerminalOutputChannel("test");
+	channel.write(input);
+	return vi.mocked(vscode.window.createOutputChannel).mock.results.at(-1)!
+		.value as MockOutputChannel;
+}
 
 describe("TerminalOutputChannel", () => {
-	beforeEach(() => {
-		mockAppend.mockClear();
-	});
-
-	it("strips \\r from \\r\\n line endings", () => {
-		const channel = new TerminalOutputChannel("test");
-		channel.write("hello\r\nworld\r\n");
-		expect(mockAppend).toHaveBeenCalledWith("hello\nworld\n");
-	});
-
-	it("strips bare \\r characters", () => {
-		const channel = new TerminalOutputChannel("test");
-		channel.write("progress\r50%\r100%\n");
-		expect(mockAppend).toHaveBeenCalledWith("progress50%100%\n");
-	});
-
-	it("strips ANSI escape sequences", () => {
-		const channel = new TerminalOutputChannel("test");
-		channel.write("\x1b[0;1mBold text\x1b[0m normal\r\n");
-		expect(mockAppend).toHaveBeenCalledWith("Bold text normal\n");
-	});
-
-	it("passes plain text through unchanged", () => {
-		const channel = new TerminalOutputChannel("test");
-		channel.write("no special chars");
-		expect(mockAppend).toHaveBeenCalledWith("no special chars");
+	it.each([
+		["converts \\r\\n to \\n", "hello\r\nworld\r\n", "hello\nworld\n"],
+		["strips bare \\r", "progress\r50%\r100%\n", "progress50%100%\n"],
+		["strips ANSI escape sequences", "\x1b[0;1mBold\x1b[0m text", "Bold text"],
+		["strips ANSI color codes", "\x1b[32m✔ Success\x1b[0m\r\n", "✔ Success\n"],
+		["passes plain text unchanged", "hello world", "hello world"],
+		["handles empty string", "", ""],
+	])("%s", (_label, input, expected) => {
+		expect(setup(input).content.join("")).toBe(expected);
 	});
 });
