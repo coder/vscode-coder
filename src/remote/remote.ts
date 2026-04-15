@@ -26,6 +26,7 @@ import { version as cliVersion } from "../core/cliExec";
 import { type CliManager } from "../core/cliManager";
 import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
+import { type StartupMode } from "../core/mementoManager";
 import { type PathResolver } from "../core/pathResolver";
 import { type SecretsManager } from "../core/secretsManager";
 import { toError } from "../error/errorUtils";
@@ -97,7 +98,7 @@ export class Remote {
 	 */
 	public async setup(
 		remoteAuthority: string,
-		firstConnect: boolean,
+		startupMode: StartupMode,
 		remoteSshExtensionId: string,
 	): Promise<RemoteDetails | undefined> {
 		const parts = parseRemoteAuthority(remoteAuthority);
@@ -165,11 +166,7 @@ export class Remote {
 				});
 				if (result.success) {
 					// Login successful, retry setup
-					return this.setup(
-						remoteAuthority,
-						firstConnect,
-						remoteSshExtensionId,
-					);
+					return this.setup(remoteAuthority, startupMode, remoteSshExtensionId);
 				} else {
 					// User cancelled or login failed
 					await this.closeRemote();
@@ -372,7 +369,7 @@ export class Remote {
 			const stateMachine = new WorkspaceStateMachine(
 				parts,
 				workspaceClient,
-				firstConnect,
+				startupMode,
 				binaryPath,
 				featureSet,
 				this.logger,

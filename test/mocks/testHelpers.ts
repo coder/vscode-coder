@@ -173,12 +173,20 @@ export class MockProgressReporter {
 	}
 }
 
+/** A recorded call to one of the vscode.window.show*Message methods. */
+export interface MessageCall {
+	level: "information" | "warning" | "error";
+	message: string;
+	items: string[];
+}
+
 /**
  * Mock user interaction that integrates with vscode.window message dialogs and input boxes.
- * Use this to control user responses in tests.
+ * Use this to control user responses and inspect dialog calls in tests.
  */
 export class MockUserInteraction {
 	private readonly responses = new Map<string, string | undefined>();
+	private readonly _messageCalls: MessageCall[] = [];
 	private inputBoxValue: string | undefined;
 	private inputBoxValidateInput: ((value: string) => Promise<void>) | undefined;
 	private externalUrls: string[] = [];
@@ -192,6 +200,13 @@ export class MockUserInteraction {
 	 */
 	setResponse(message: string, response: string | undefined): void {
 		this.responses.set(message, response);
+	}
+
+	/**
+	 * Get all message dialog calls that were made (across all levels).
+	 */
+	getMessageCalls(): readonly MessageCall[] {
+		return this._messageCalls;
 	}
 
 	/**
@@ -229,6 +244,7 @@ export class MockUserInteraction {
 	 */
 	clear(): void {
 		this.responses.clear();
+		this._messageCalls.length = 0;
 		this.inputBoxValue = undefined;
 		this.inputBoxValidateInput = undefined;
 		this.externalUrls = [];
@@ -242,20 +258,27 @@ export class MockUserInteraction {
 			return this.responses.get(message);
 		};
 
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const handleMessage = (message: string): Thenable<any> => {
-			const response = getResponse(message);
-			return Promise.resolve(response);
-		};
+		const handleMessage =
+			(level: MessageCall["level"]) =>
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- serves all show*Message overloads
+			(message: string, ...rest: unknown[]): Thenable<any> => {
+				const items = rest.filter(
+					(arg): arg is string => typeof arg === "string",
+				);
+				this._messageCalls.push({ level, message, items });
+				return Promise.resolve(getResponse(message));
+			};
 
-		vi.mocked(vscode.window.showErrorMessage).mockImplementation(handleMessage);
+		vi.mocked(vscode.window.showErrorMessage).mockImplementation(
+			handleMessage("error"),
+		);
 
 		vi.mocked(vscode.window.showWarningMessage).mockImplementation(
-			handleMessage,
+			handleMessage("warning"),
 		);
 
 		vi.mocked(vscode.window.showInformationMessage).mockImplementation(
-			handleMessage,
+			handleMessage("information"),
 		);
 
 		vi.mocked(vscode.env.openExternal).mockImplementation(
@@ -921,4 +944,45 @@ export class MockContextManager {
 	}
 
 	readonly dispose = vi.fn();
+}
+
+/**
+ * Mock TerminalSession that captures all content written to the terminal.
+ * Use `lastInstance` to get the most recently created instance (set in the constructor),
+ * which is useful when the real TerminalSession is created inside the class under test.
+ */
+export class MockTerminalSession {
+	static lastInstance: MockTerminalSession | undefined;
+
+	private readonly _lines: string[] = [];
+
+	readonly writeEmitter = {
+		fire: vi.fn((data: string) => {
+			this._lines.push(data);
+		}),
+		event: vi.fn(),
+		dispose: vi.fn(),
+	};
+	readonly terminal = { show: vi.fn(), dispose: vi.fn() };
+	readonly dispose = vi.fn();
+
+	constructor(_name?: string) {
+		MockTerminalSession.lastInstance = this;
+	}
+
+	/** All lines written via writeEmitter.fire(). */
+	get lines(): readonly string[] {
+		return this._lines;
+	}
+
+	/** Concatenated terminal content. */
+	get content(): string {
+		return this._lines.join("");
+	}
+
+	/** Reset captured content and mock call history. */
+	clear(): void {
+		this._lines.length = 0;
+		this.writeEmitter.fire.mockClear();
+	}
 }

@@ -741,7 +741,7 @@ export class Commands {
 		}
 
 		// Only set the memento when opening a new folder
-		await this.mementoManager.setFirstConnect();
+		await this.mementoManager.setStartupMode("start");
 		await vscode.commands.executeCommand(
 			"vscode.openFolder",
 			vscode.Uri.from({
@@ -770,9 +770,15 @@ export class Commands {
 			},
 			"Update and Restart",
 		);
-		if (action === "Update and Restart") {
-			await this.remoteWorkspaceClient.updateWorkspaceVersion(this.workspace);
+		if (action !== "Update and Restart") {
+			return;
 		}
+
+		this.logger.info(
+			`Updating workspace ${createWorkspaceIdentifier(this.workspace)}`,
+		);
+		await this.mementoManager.setStartupMode("update");
+		await vscode.commands.executeCommand("workbench.action.reloadWindow");
 	}
 
 	public async pingWorkspace(item?: OpenableTreeItem): Promise<void> {
@@ -1041,7 +1047,7 @@ export class Commands {
 		}
 
 		// Only set the memento when opening a new folder/window
-		await this.mementoManager.setFirstConnect();
+		await this.mementoManager.setStartupMode("start");
 		if (folderPath) {
 			await vscode.commands.executeCommand(
 				"vscode.openFolder",

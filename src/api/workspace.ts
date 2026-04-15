@@ -45,66 +45,46 @@ export class LazyStream<T> {
 	}
 }
 
+interface CliContext {
+	restClient: Api;
+	auth: CliAuth;
+	binPath: string;
+	workspace: Workspace;
+	writeEmitter: vscode.EventEmitter<string>;
+	featureSet: FeatureSet;
+}
+
 /**
- * Start or update a workspace and return the updated workspace.
+ * Spawn a Coder CLI subcommand and stream its output.
+ * Resolves when the process exits successfully; rejects on non-zero exit.
  */
-export async function startWorkspaceIfStoppedOrFailed(
-	restClient: Api,
-	auth: CliAuth,
-	binPath: string,
-	workspace: Workspace,
-	writeEmitter: vscode.EventEmitter<string>,
-	featureSet: FeatureSet,
-): Promise<Workspace> {
-	// Before we start a workspace, we make an initial request to check it's not already started
-	const updatedWorkspace = await restClient.getWorkspace(workspace.id);
-
-	if (!["stopped", "failed"].includes(updatedWorkspace.latest_build.status)) {
-		return updatedWorkspace;
-	}
-
+function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const startArgs = [
-			...getGlobalShellFlags(vscode.workspace.getConfiguration(), auth),
-			"start",
-			"--yes",
-			createWorkspaceIdentifier(workspace),
+		const fullArgs = [
+			...getGlobalShellFlags(vscode.workspace.getConfiguration(), ctx.auth),
+			...args,
+			createWorkspaceIdentifier(ctx.workspace),
 		];
-		if (featureSet.buildReason) {
-			startArgs.push("--reason", "vscode_connection");
-		}
 
-		// { shell: true } requires one shell-safe command string, otherwise we lose all escaping
-		const cmd = `${escapeCommandArg(binPath)} ${startArgs.join(" ")}`;
-		const startProcess = spawn(cmd, { shell: true });
+		const cmd = `${escapeCommandArg(ctx.binPath)} ${fullArgs.join(" ")}`;
+		const proc = spawn(cmd, { shell: true });
 
-		startProcess.stdout.on("data", (data: Buffer) => {
-			const lines = data
-				.toString()
-				.split(/\r*\n/)
-				.filter((line) => line !== "");
-			for (const line of lines) {
-				writeEmitter.fire(line.toString() + "\r\n");
-			}
+		proc.stdout.on("data", (data: Buffer) => {
+			ctx.writeEmitter.fire(data.toString().replace(/\r?\n/g, "\r\n"));
 		});
 
 		let capturedStderr = "";
-		startProcess.stderr.on("data", (data: Buffer) => {
-			const lines = data
-				.toString()
-				.split(/\r*\n/)
-				.filter((line) => line !== "");
-			for (const line of lines) {
-				writeEmitter.fire(line.toString() + "\r\n");
-				capturedStderr += line.toString() + "\n";
-			}
+		proc.stderr.on("data", (data: Buffer) => {
+			const text = data.toString();
+			ctx.writeEmitter.fire(text.replace(/\r?\n/g, "\r\n"));
+			capturedStderr += text;
 		});
 
-		startProcess.on("close", (code: number) => {
+		proc.on("close", (code: number) => {
 			if (code === 0) {
-				resolve(restClient.getWorkspace(workspace.id));
+				resolve();
 			} else {
-				let errorText = `"${startArgs.join(" ")}" exited with code ${code}`;
+				let errorText = `"${fullArgs.join(" ")}" exited with code ${code}`;
 				if (capturedStderr !== "") {
 					errorText += `: ${capturedStderr}`;
 				}
@@ -112,6 +92,51 @@ export async function startWorkspaceIfStoppedOrFailed(
 			}
 		});
 	});
+}
+
+/**
+ * Start a stopped or failed workspace using `coder start`.
+ * No-ops if the workspace is already running.
+ */
+export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
+	if (!["stopped", "failed"].includes(ctx.workspace.latest_build.status)) {
+		return ctx.workspace;
+	}
+
+	const args = ["start", "--yes"];
+	if (ctx.featureSet.buildReason) {
+		args.push("--reason", "vscode_connection");
+	}
+
+	await runCliCommand(ctx, args);
+	return ctx.restClient.getWorkspace(ctx.workspace.id);
+}
+
+/**
+ * Update a workspace to the latest template version.
+ *
+ * Uses `coder update` when the CLI supports it (>= 2.24).
+ * Falls back to the REST API: stop, wait, then updateWorkspaceVersion.
+ */
+export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
+	if (ctx.featureSet.cliUpdate) {
+		await runCliCommand(ctx, ["update"]);
+		return ctx.restClient.getWorkspace(ctx.workspace.id);
+	}
+
+	// REST API fallback for older CLIs.
+	if (ctx.workspace.latest_build.status === "running") {
+		ctx.writeEmitter.fire("Stopping workspace for update...\r\n");
+		const stopBuild = await ctx.restClient.stopWorkspace(ctx.workspace.id);
+		const stoppedJob = await ctx.restClient.waitForBuild(stopBuild);
+		if (stoppedJob?.status === "canceled") {
+			throw new Error("Workspace update canceled during stop");
+		}
+	}
+
+	ctx.writeEmitter.fire("Starting workspace with updated template...\r\n");
+	await ctx.restClient.updateWorkspaceVersion(ctx.workspace);
+	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }
 
 /**

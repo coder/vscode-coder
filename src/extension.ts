@@ -70,8 +70,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Migrate auth storage from old flat format to new label-based format
 	await migrateAuthStorage(serviceContainer);
 
-	// Try to clear this flag ASAP
-	const isFirstConnect = await mementoManager.getAndClearFirstConnect();
+	// Clear and capture the startup mode before anything else.
+	const startupMode = await mementoManager.getAndClearStartupMode();
 
 	const deployment = await secretsManager.getCurrentDeployment();
 
@@ -348,7 +348,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		try {
 			const details = await remote.setup(
 				vscodeProposed.env.remoteAuthority,
-				isFirstConnect,
+				startupMode,
 				remoteSshExtension.id,
 			);
 			if (details) {

@@ -7,6 +7,15 @@ const MAX_URLS = 10;
 // state from crashes or interrupted reloads.
 const PENDING_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * Describes the startup intent when the extension connects to a workspace.
+ * - "none":    No explicit intent; ask before starting a stopped workspace.
+ * - "start":   User-initiated open/restart; auto-start without prompting.
+ * - "update":  User-initiated restart + update; use `coder update` to apply
+ *              the latest template version, auto-starting without prompting.
+ */
+export type StartupMode = "none" | "start" | "update";
+
 interface Stamped<T> {
 	value: T;
 	setAt: number;
@@ -46,25 +55,21 @@ export class MementoManager {
 			: Array.from(urls);
 	}
 
-	/**
-	 * Mark this as the first connection to a workspace, which influences whether
-	 * the workspace startup confirmation is shown to the user.
-	 */
-	public async setFirstConnect(): Promise<void> {
-		return this.setStamped("firstConnect", true);
+	/** Set the startup mode for the next workspace connection. */
+	public async setStartupMode(mode: StartupMode): Promise<void> {
+		await this.setStamped("startupMode", mode);
 	}
 
 	/**
-	 * Check if this is the first connection to a workspace and clear the flag.
-	 * Used to determine whether to automatically start workspaces without
-	 * prompting the user for confirmation.
+	 * Read and clear the startup mode.
+	 * Returns "none" (the default) when no mode was explicitly set.
 	 */
-	public async getAndClearFirstConnect(): Promise<boolean> {
-		const value = this.getStamped<boolean>("firstConnect");
+	public async getAndClearStartupMode(): Promise<StartupMode> {
+		const value = this.getStamped<StartupMode>("startupMode");
 		if (value !== undefined) {
-			await this.memento.update("firstConnect", undefined);
+			await this.memento.update("startupMode", undefined);
 		}
-		return value === true;
+		return value ?? "none";
 	}
 
 	/** Store a chat ID to open after a remote-authority reload. */
