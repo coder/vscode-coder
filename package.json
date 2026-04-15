@@ -649,7 +649,7 @@
 		"react": "catalog:",
 		"react-dom": "catalog:",
 		"typescript": "catalog:",
-		"typescript-eslint": "^8.58.0",
+		"typescript-eslint": "^8.58.1",
 		"utf-8-validate": "^6.0.6",
 		"vite": "catalog:",
 		"vitest": "^4.1.3"
