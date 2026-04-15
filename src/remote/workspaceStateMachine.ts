@@ -9,7 +9,7 @@ import {
 import { maybeAskAgent } from "../promptUtils";
 import { vscodeProposed } from "../vscodeProposed";
 
-import { TerminalSession } from "./terminalSession";
+import { TerminalOutputChannel } from "./terminalOutputChannel";
 
 import type {
 	ProvisionerJobLog,
@@ -30,7 +30,7 @@ import type { AuthorityParts } from "../util";
  * Streams build and agent logs, and handles socket lifecycle.
  */
 export class WorkspaceStateMachine implements vscode.Disposable {
-	private readonly terminal: TerminalSession;
+	private readonly terminal: TerminalOutputChannel;
 	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
 	private readonly agentLogStream = new LazyStream<WorkspaceAgentLog[]>();
 
@@ -45,7 +45,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		private readonly logger: Logger,
 		private readonly cliAuth: CliAuth,
 	) {
-		this.terminal = new TerminalSession("Workspace Build");
+		this.terminal = new TerminalOutputChannel("Coder: Workspace Build");
 	}
 
 	/**
@@ -102,12 +102,10 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				});
 				this.logger.info(`Waiting for ${workspaceName}`);
 
-				const write = (line: string) =>
-					this.terminal.writeEmitter.fire(line + "\r\n");
 				await this.buildLogStream.open(() =>
 					streamBuildLogs(
 						this.workspaceClient,
-						write,
+						(line) => this.terminal.write(line + "\r\n"),
 						workspace.latest_build.id,
 					),
 				);
@@ -183,10 +181,12 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				});
 				this.logger.debug(`Running agent ${agent.name} startup scripts`);
 
-				const writeAgent = (line: string) =>
-					this.terminal.writeEmitter.fire(line + "\r\n");
 				await this.agentLogStream.open(() =>
-					streamAgentLogs(this.workspaceClient, writeAgent, agent.id),
+					streamAgentLogs(
+						this.workspaceClient,
+						(line) => this.terminal.write(line + "\r\n"),
+						agent.id,
+					),
 				);
 				return false;
 			}
@@ -229,7 +229,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			auth: this.cliAuth,
 			binPath: this.binaryPath,
 			workspace,
-			writeEmitter: this.terminal.writeEmitter,
+			write: (data: string) => this.terminal.write(data),
 			featureSet: this.featureSet,
 		};
 	}

@@ -50,7 +50,7 @@ interface CliContext {
 	auth: CliAuth;
 	binPath: string;
 	workspace: Workspace;
-	writeEmitter: vscode.EventEmitter<string>;
+	write: (data: string) => void;
 	featureSet: FeatureSet;
 }
 
@@ -70,13 +70,13 @@ function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 		const proc = spawn(cmd, { shell: true });
 
 		proc.stdout.on("data", (data: Buffer) => {
-			ctx.writeEmitter.fire(data.toString().replace(/\r?\n/g, "\r\n"));
+			ctx.write(data.toString().replace(/\r?\n/g, "\r\n"));
 		});
 
 		let capturedStderr = "";
 		proc.stderr.on("data", (data: Buffer) => {
 			const text = data.toString();
-			ctx.writeEmitter.fire(text.replace(/\r?\n/g, "\r\n"));
+			ctx.write(text.replace(/\r?\n/g, "\r\n"));
 			capturedStderr += text;
 		});
 
@@ -126,7 +126,7 @@ export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
 
 	// REST API fallback for older CLIs.
 	if (ctx.workspace.latest_build.status === "running") {
-		ctx.writeEmitter.fire("Stopping workspace for update...\r\n");
+		ctx.write("Stopping workspace for update...\r\n");
 		const stopBuild = await ctx.restClient.stopWorkspace(ctx.workspace.id);
 		const stoppedJob = await ctx.restClient.waitForBuild(stopBuild);
 		if (stoppedJob?.status === "canceled") {
@@ -134,7 +134,7 @@ export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
 		}
 	}
 
-	ctx.writeEmitter.fire("Starting workspace with updated template...\r\n");
+	ctx.write("Starting workspace with updated template...\r\n");
 	await ctx.restClient.updateWorkspaceVersion(ctx.workspace);
 	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }

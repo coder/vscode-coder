@@ -12,7 +12,7 @@ import { WorkspaceStateMachine } from "@/remote/workspaceStateMachine";
 import {
 	createMockLogger,
 	MockProgress,
-	MockTerminalSession,
+	MockTerminalOutputChannel,
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
 import {
@@ -46,9 +46,9 @@ vi.mock("@/promptUtils", () => ({
 	maybeAskAgent: vi.fn(),
 }));
 
-vi.mock("@/remote/terminalSession", async () => {
+vi.mock("@/remote/terminalOutputChannel", async () => {
 	const helpers = await import("../../mocks/testHelpers");
-	return { TerminalSession: helpers.MockTerminalSession };
+	return { TerminalOutputChannel: helpers.MockTerminalOutputChannel };
 });
 
 const DEFAULT_PARTS: Readonly<AuthorityParts> = {
@@ -92,7 +92,7 @@ function setup(startupMode: StartupMode = "start") {
 describe("WorkspaceStateMachine", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		MockTerminalSession.lastInstance = undefined;
+		MockTerminalOutputChannel.lastInstance = undefined;
 		vi.mocked(maybeAskAgent).mockImplementation((agents) =>
 			Promise.resolve(agents.length > 0 ? agents[0] : undefined),
 		);

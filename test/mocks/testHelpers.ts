@@ -947,35 +947,30 @@ export class MockContextManager {
 }
 
 /**
- * Mock TerminalSession that captures all content written to the terminal.
+ * Mock TerminalOutputChannel that captures all written content.
  * Use `lastInstance` to get the most recently created instance (set in the constructor),
- * which is useful when the real TerminalSession is created inside the class under test.
+ * which is useful when the real class is created inside the class under test.
  */
-export class MockTerminalSession {
-	static lastInstance: MockTerminalSession | undefined;
+export class MockTerminalOutputChannel {
+	static lastInstance: MockTerminalOutputChannel | undefined;
 
 	private readonly _lines: string[] = [];
 
-	readonly writeEmitter = {
-		fire: vi.fn((data: string) => {
-			this._lines.push(data);
-		}),
-		event: vi.fn(),
-		dispose: vi.fn(),
-	};
-	readonly terminal = { show: vi.fn(), dispose: vi.fn() };
+	readonly write = vi.fn((data: string) => {
+		this._lines.push(data);
+	});
 	readonly dispose = vi.fn();
 
 	constructor(_name?: string) {
-		MockTerminalSession.lastInstance = this;
+		MockTerminalOutputChannel.lastInstance = this;
 	}
 
-	/** All lines written via writeEmitter.fire(). */
+	/** All lines written via write(). */
 	get lines(): readonly string[] {
 		return this._lines;
 	}
 
-	/** Concatenated terminal content. */
+	/** Concatenated content. */
 	get content(): string {
 		return this._lines.join("");
 	}
@@ -983,6 +978,6 @@ export class MockTerminalSession {
 	/** Reset captured content and mock call history. */
 	clear(): void {
 		this._lines.length = 0;
-		this.writeEmitter.fire.mockClear();
+		this.write.mockClear();
 	}
 }
