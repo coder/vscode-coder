@@ -15,7 +15,7 @@ catalog:
   date-fns: ^4.1.0
   react: ^19.2.5
   react-dom: ^19.2.5
-  typescript: ^6.0.2
+  typescript: ^6.0.3
   vite: ^8.0.8
 
 catalogMode: strict

@@ -12,19 +12,12 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v6
-
-      - uses: pnpm/action-setup@v5
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: "pnpm"
-
-      - run: pnpm install
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/setup
 
       - run: pnpm typecheck
 
@@ -36,7 +29,7 @@ jobs:
 
   test-unit:
     name: Unit Test (Electron ${{ matrix.electron-version }})
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -46,15 +39,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-
-      - uses: pnpm/action-setup@v5
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: "pnpm"
-
-      - run: pnpm install
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/setup
 
       - name: Run tests with Electron ${{ matrix.electron-version }}
         run: ./scripts/test-electron.sh ${{ matrix.electron-version }}
@@ -63,7 +49,7 @@ jobs:
 
   test-integration:
     name: Integration Test (VS Code ${{ matrix.vscode-version }})
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -71,15 +57,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-
-      - uses: pnpm/action-setup@v5
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: "pnpm"
-
-      - run: pnpm install
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/setup
 
       - run: pnpm build
 
@@ -88,20 +67,11 @@ jobs:
 
   package:
     name: Package
-    runs-on: ubuntu-22.04
-    needs: [lint, test-unit, test-integration]
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-
-      - uses: pnpm/action-setup@v5
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/setup
 
       - name: Get version from package.json
         id: version
