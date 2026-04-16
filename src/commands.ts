@@ -761,6 +761,15 @@ export class Commands {
 		if (!this.workspace || !this.remoteWorkspaceClient) {
 			return;
 		}
+		const showUpToDate = () =>
+			vscode.window.showInformationMessage(
+				"The workspace is already up to date.",
+			);
+
+		if (!this.workspace.outdated) {
+			showUpToDate();
+			return;
+		}
 		const action = await vscodeProposed.window.showWarningMessage(
 			"Update Workspace",
 			{
@@ -771,6 +780,15 @@ export class Commands {
 			"Update and Restart",
 		);
 		if (action !== "Update and Restart") {
+			return;
+		}
+
+		// Re-check; workspace may have been updated or disconnected while the modal was open.
+		if (!this.workspace) {
+			return;
+		}
+		if (!this.workspace.outdated) {
+			showUpToDate();
 			return;
 		}
 

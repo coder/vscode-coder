@@ -43,6 +43,8 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	// For logging.
 	private readonly name: string;
 
+	private latestWorkspace: Workspace;
+
 	private constructor(
 		workspace: Workspace,
 		private readonly client: CoderApi,
@@ -50,6 +52,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		private readonly contextManager: ContextManager,
 	) {
 		this.name = createWorkspaceIdentifier(workspace);
+		this.latestWorkspace = workspace;
 
 		const statusBarItem = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
@@ -115,6 +118,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	public markInitialSetupComplete(): void {
 		this.completedInitialSetup = true;
+		this.maybeNotify(this.latestWorkspace);
 	}
 
 	/**
@@ -130,6 +134,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private update(workspace: Workspace) {
+		this.latestWorkspace = workspace;
 		this.updateContext(workspace);
 		this.updateStatusBar(workspace);
 	}
@@ -139,10 +144,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		if (areNotificationsDisabled(cfg)) {
 			return;
 		}
-		this.maybeNotifyOutdated(workspace, cfg);
 		this.maybeNotifyAutostop(workspace);
 		if (this.completedInitialSetup) {
-			// This instance might be created before the workspace is running
+			this.maybeNotifyOutdated(workspace, cfg);
 			this.maybeNotifyDeletion(workspace);
 			this.maybeNotifyNotRunning(workspace);
 		}
@@ -239,7 +243,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 							if (action === "Update") {
 								vscode.commands.executeCommand(
 									"coder.workspace.update",
-									workspace,
+									this.latestWorkspace,
 									this.client,
 								);
 							}
