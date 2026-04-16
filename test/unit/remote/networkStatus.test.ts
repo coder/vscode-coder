@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { ThemeColor } from "vscode";
 
 import {
 	buildNetworkTooltip,
-	checkThresholdViolations,
-	getWarningCommand,
-	hasAnyViolation,
-	type ThresholdViolations,
+	isLatencySlow,
+	NetworkStatusReporter,
+	type NetworkThresholds,
 } from "@/remote/networkStatus";
+
+import {
+	MockConfigurationProvider,
+	MockStatusBar,
+} from "../../mocks/testHelpers";
 
 import type { NetworkInfo } from "@/remote/sshProcess";
 
@@ -16,208 +21,73 @@ function makeNetwork(overrides: Partial<NetworkInfo> = {}): NetworkInfo {
 		latency: 50,
 		preferred_derp: "NYC",
 		derp_latency: { NYC: 10 },
-		upload_bytes_sec: 1_250_000, // 10 Mbps
-		download_bytes_sec: 6_250_000, // 50 Mbps
+		upload_bytes_sec: 1_250_000,
+		download_bytes_sec: 6_250_000,
 		using_coder_connect: false,
 		...overrides,
 	};
 }
 
-const defaultThresholds = { latencyMs: 200, downloadMbps: 5, uploadMbps: 0 };
-
-const noViolations: ThresholdViolations = {
-	latency: false,
-	download: false,
-	upload: false,
-};
+const defaultThresholds: NetworkThresholds = { latencyMs: 200 };
 
 function tooltip(
 	overrides: Partial<NetworkInfo> = {},
 	options: {
-		violations?: ThresholdViolations;
-		thresholds?: {
-			latencyMs: number;
-			downloadMbps: number;
-			uploadMbps: number;
-		};
+		latencySlow?: boolean;
+		thresholds?: NetworkThresholds;
 	} = {},
 ) {
 	return buildNetworkTooltip(
 		makeNetwork(overrides),
-		options.violations ?? noViolations,
+		options.latencySlow ?? false,
 		options.thresholds ?? defaultThresholds,
 	);
 }
 
-describe("checkThresholdViolations", () => {
-	interface TestCase {
-		desc: string;
-		network: Partial<NetworkInfo>;
-		thresholds?: typeof defaultThresholds;
-		expected: ThresholdViolations;
-	}
+describe("isLatencySlow", () => {
+	it("returns false when latency is within threshold", () => {
+		expect(isLatencySlow(makeNetwork({ latency: 50 }), defaultThresholds)).toBe(
+			false,
+		);
+	});
 
-	it.each<TestCase>([
-		{
-			desc: "no violations when within thresholds",
-			network: {},
-			expected: { latency: false, download: false, upload: false },
-		},
-		{
-			desc: "detects high latency",
-			network: { latency: 250 },
-			expected: { latency: true, download: false, upload: false },
-		},
-		{
-			desc: "detects low download (4 Mbps < 5 Mbps threshold)",
-			network: { download_bytes_sec: 500_000 },
-			expected: { latency: false, download: true, upload: false },
-		},
-		{
-			desc: "detects low upload when threshold enabled",
-			network: { upload_bytes_sec: 100_000 },
-			thresholds: { ...defaultThresholds, uploadMbps: 1 },
-			expected: { latency: false, download: false, upload: true },
-		},
-		{
-			desc: "ignores upload when threshold is 0",
-			network: { upload_bytes_sec: 0 },
-			expected: { latency: false, download: false, upload: false },
-		},
-		{
-			desc: "ignores latency when threshold is 0",
-			network: { latency: 9999 },
-			thresholds: { ...defaultThresholds, latencyMs: 0 },
-			expected: { latency: false, download: false, upload: false },
-		},
-		{
-			desc: "detects multiple simultaneous violations",
-			network: { latency: 300, download_bytes_sec: 100_000 },
-			expected: { latency: true, download: true, upload: false },
-		},
-	])("$desc", ({ network, thresholds, expected }) => {
+	it("returns true when latency exceeds threshold", () => {
 		expect(
-			checkThresholdViolations(
-				makeNetwork(network),
-				thresholds ?? defaultThresholds,
-			),
-		).toEqual(expected);
+			isLatencySlow(makeNetwork({ latency: 250 }), defaultThresholds),
+		).toBe(true);
 	});
 
-	it("handles exact boundary (5 Mbps = 625,000 bytes/sec)", () => {
-		const at = checkThresholdViolations(
-			makeNetwork({ download_bytes_sec: 625_000 }),
-			defaultThresholds,
-		);
-		expect(at.download).toBe(false);
-
-		const below = checkThresholdViolations(
-			makeNetwork({ download_bytes_sec: 624_999 }),
-			defaultThresholds,
-		);
-		expect(below.download).toBe(true);
-	});
-});
-
-describe("hasAnyViolation", () => {
-	it.each<{ violations: ThresholdViolations; expected: boolean }>([
-		{
-			violations: { latency: false, download: false, upload: false },
-			expected: false,
-		},
-		{
-			violations: { latency: true, download: false, upload: false },
-			expected: true,
-		},
-		{
-			violations: { latency: false, download: true, upload: false },
-			expected: true,
-		},
-		{
-			violations: { latency: false, download: false, upload: true },
-			expected: true,
-		},
-	])("returns $expected for %j", ({ violations, expected }) => {
-		expect(hasAnyViolation(violations)).toBe(expected);
-	});
-});
-
-describe("getWarningCommand", () => {
-	it.each<{ desc: string; violations: ThresholdViolations; expected: string }>([
-		{
-			desc: "ping for latency only",
-			violations: { latency: true, download: false, upload: false },
-			expected: "coder.pingWorkspace",
-		},
-		{
-			desc: "speedtest for download only",
-			violations: { latency: false, download: true, upload: false },
-			expected: "coder.speedTest",
-		},
-		{
-			desc: "speedtest for upload only",
-			violations: { latency: false, download: false, upload: true },
-			expected: "coder.speedTest",
-		},
-		{
-			desc: "speedtest for download + upload",
-			violations: { latency: false, download: true, upload: true },
-			expected: "coder.speedTest",
-		},
-		{
-			desc: "diagnostics for latency + throughput",
-			violations: { latency: true, download: true, upload: false },
-			expected: "coder.showNetworkDiagnostics",
-		},
-		{
-			desc: "diagnostics for all violations",
-			violations: { latency: true, download: true, upload: true },
-			expected: "coder.showNetworkDiagnostics",
-		},
-	])("returns $expected for $desc", ({ violations, expected }) => {
-		expect(getWarningCommand(violations)).toBe(expected);
+	it("ignores latency when threshold is 0", () => {
+		expect(
+			isLatencySlow(makeNetwork({ latency: 9999 }), { latencyMs: 0 }),
+		).toBe(false);
 	});
 });
 
 describe("buildNetworkTooltip", () => {
-	it("shows all metrics without warnings in normal state", () => {
+	it("shows all metrics without warning or actions in normal state", () => {
 		const t = tooltip();
 		expect(t.value).toContain("Latency: 50.00ms");
 		expect(t.value).toContain("Download: 50 Mbit/s");
 		expect(t.value).toContain("Upload: 10 Mbit/s");
 		expect(t.value).not.toContain("$(warning)");
-		expect(t.value).not.toContain("Click for diagnostics");
-		expect(t.value).not.toContain("Configure thresholds");
+		expect(t.value).not.toContain("Slow connection");
+		expect(t.value).not.toContain("command:coder.pingWorkspace");
 	});
 
-	it("shows warning markers and actions when thresholds violated", () => {
-		const violations: ThresholdViolations = {
-			latency: true,
-			download: false,
-			upload: false,
-		};
-		const t = tooltip({ latency: 350 }, { violations });
-		expect(t.value).toContain(
-			"Latency: 350.00ms $(warning) (threshold: 200ms)",
-		);
-		expect(t.value).not.toContain("Download:$(warning)");
-		expect(t.value).toContain("Click for diagnostics");
-		expect(t.value).toContain("Configure thresholds");
+	it("shows warning header, threshold, and action links when latency is slow", () => {
+		const t = tooltip({ latency: 350 }, { latencySlow: true });
+		expect(t.value).toContain("$(warning) **Slow connection detected**");
+		expect(t.value).toContain("Latency: 350.00ms (threshold: 200ms)");
+		expect(t.value).toContain("command:coder.pingWorkspace");
+		expect(t.value).toContain("command:workbench.action.openSettings");
+		expect(t.value).toContain("Ping workspace");
+		expect(t.value).toContain("Configure threshold");
 	});
 
-	it("shows multiple warning markers when multiple thresholds crossed", () => {
-		const violations: ThresholdViolations = {
-			latency: true,
-			download: true,
-			upload: false,
-		};
-		const t = tooltip(
-			{ latency: 300, download_bytes_sec: 100_000 },
-			{ violations },
-		);
-		expect(t.value).toContain("Latency: 300.00ms $(warning)");
-		expect(t.value).toContain("Download: 800 kbit/s $(warning)");
-		expect(t.value).toContain("Click for diagnostics");
+	it("does not mark throughput lines with warnings", () => {
+		const t = tooltip({ download_bytes_sec: 100_000 }, { latencySlow: true });
+		expect(t.value).not.toContain("Download: 800 kbit/s $(warning)");
 	});
 
 	it.each<{ desc: string; overrides: Partial<NetworkInfo>; expected: string }>([
@@ -238,5 +108,56 @@ describe("buildNetworkTooltip", () => {
 		},
 	])("shows $desc connection type", ({ overrides, expected }) => {
 		expect(tooltip(overrides).value).toContain(expected);
+	});
+});
+
+describe("NetworkStatusReporter hysteresis", () => {
+	function setup(latencyMs: number) {
+		const cfg = new MockConfigurationProvider();
+		cfg.set("coder.networkThreshold.latencyMs", latencyMs);
+		const bar = new MockStatusBar();
+		const reporter = new NetworkStatusReporter(
+			bar as unknown as import("vscode").StatusBarItem,
+		);
+		return { bar, reporter };
+	}
+
+	const slow = makeNetwork({ latency: 500 });
+	const healthy = makeNetwork({ latency: 50 });
+
+	it("does not warn if slow polls never reach the debounce threshold", () => {
+		const { bar, reporter } = setup(100);
+		reporter.update(slow, false);
+		reporter.update(slow, false);
+		reporter.update(healthy, false);
+		reporter.update(healthy, false);
+		expect(bar.backgroundColor).toBeUndefined();
+		expect(bar.command).toBeUndefined();
+	});
+
+	it("stays warning if a single healthy poll appears mid-streak", () => {
+		const { bar, reporter } = setup(100);
+		for (let i = 0; i < 3; i++) {
+			reporter.update(slow, false);
+		}
+		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
+
+		reporter.update(healthy, false);
+		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
+
+		reporter.update(slow, false);
+		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
+	});
+
+	it("clears immediately when Coder Connect takes over", () => {
+		const { bar, reporter } = setup(100);
+		for (let i = 0; i < 3; i++) {
+			reporter.update(slow, false);
+		}
+		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
+
+		reporter.update(makeNetwork({ using_coder_connect: true }), false);
+		expect(bar.backgroundColor).toBeUndefined();
+		expect(bar.command).toBeUndefined();
 	});
 });

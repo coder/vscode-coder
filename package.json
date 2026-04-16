@@ -172,16 +172,6 @@
 					"type": "number",
 					"default": 200
 				},
-				"coder.networkThreshold.downloadMbps": {
-					"markdownDescription": "Download speed threshold in Mbps. A warning indicator appears in the status bar when download speed drops below this value. Set to `0` to disable.",
-					"type": "number",
-					"default": 5
-				},
-				"coder.networkThreshold.uploadMbps": {
-					"markdownDescription": "Upload speed threshold in Mbps. A warning indicator appears in the status bar when upload speed drops below this value. Set to `0` to disable.",
-					"type": "number",
-					"default": 0
-				},
 				"coder.httpClientLogLevel": {
 					"markdownDescription": "Controls the verbosity of HTTP client logging. This affects what details are logged for each HTTP request and response.",
 					"type": "string",

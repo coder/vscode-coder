@@ -255,7 +255,6 @@ export class SshProcessMonitor implements vscode.Disposable {
 			this.pendingTimeout = undefined;
 		}
 		this.statusBarItem.dispose();
-		this.reporter.dispose();
 		this._onLogFilePathChange.dispose();
 		this._onPidChange.dispose();
 	}
@@ -462,9 +461,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 		while (!this.disposed && this.currentPid !== undefined) {
 			const filePath = path.join(networkInfoPath, `${this.currentPid}.json`);
-			let search: { needed: true; reason: string } | { needed: false } = {
-				needed: false,
-			};
+			let searchReason: string | undefined;
 
 			try {
 				const stats = await fs.stat(filePath);
@@ -472,10 +469,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 				readFailures = 0;
 
 				if (ageMs > staleThreshold) {
-					search = {
-						needed: true,
-						reason: `Network info stale (${Math.round(ageMs / 1000)}s old)`,
-					};
+					searchReason = `Network info stale (${Math.round(ageMs / 1000)}s old)`;
 				} else {
 					const content = await fs.readFile(filePath, "utf8");
 					const network = JSON.parse(content) as NetworkInfo;
@@ -488,22 +482,18 @@ export class SshProcessMonitor implements vscode.Disposable {
 					`Failed to read network info (attempt ${readFailures}): ${(error as Error).message}`,
 				);
 				if (readFailures >= maxReadFailures) {
-					search = {
-						needed: true,
-						reason: `Network info missing for ${readFailures} attempts`,
-					};
+					searchReason = `Network info missing for ${readFailures} attempts`;
 				}
 			}
 
-			// Search for new process if needed (with throttling)
-			if (search.needed) {
+			if (searchReason !== undefined) {
 				const timeSinceLastSearch = Date.now() - this.lastStaleSearchTime;
 				if (timeSinceLastSearch < staleThreshold) {
 					await this.delay(staleThreshold - timeSinceLastSearch);
 					continue;
 				}
 
-				logger.debug(`${search.reason}, searching for new SSH process`);
+				logger.debug(`${searchReason}, searching for new SSH process`);
 				// searchForProcess will update PID if a different process is found
 				this.lastStaleSearchTime = Date.now();
 				await this.searchForProcess();

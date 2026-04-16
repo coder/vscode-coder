@@ -783,15 +783,9 @@ describe("SshProcessMonitor", () => {
 				"-> socksPort 12345 ->",
 		};
 
-		function setThresholds(
-			latencyMs: number,
-			downloadMbps = 0,
-			uploadMbps = 0,
-		) {
+		function setThresholds(latencyMs: number) {
 			const mockConfig = new MockConfigurationProvider();
 			mockConfig.set("coder.networkThreshold.latencyMs", latencyMs);
-			mockConfig.set("coder.networkThreshold.downloadMbps", downloadMbps);
-			mockConfig.set("coder.networkThreshold.uploadMbps", uploadMbps);
 		}
 
 		function startWithNetwork(networkOverrides: Partial<NetworkInfo> = {}) {
@@ -835,31 +829,12 @@ describe("SshProcessMonitor", () => {
 			expect(statusBar.backgroundColor).toBeUndefined();
 		});
 
-		it("sets ping command when only latency is slow", async () => {
+		it("sets ping command when latency is slow", async () => {
 			setThresholds(100);
 			startWithNetwork({ latency: 200 });
 
 			await waitFor(() => statusBar.command === "coder.pingWorkspace", 2000);
 			expect(statusBar.command).toBe("coder.pingWorkspace");
-		});
-
-		it("sets speedtest command when only download is slow", async () => {
-			setThresholds(0, 10);
-			startWithNetwork({ download_bytes_sec: 500_000 }); // 4 Mbps < 10
-
-			await waitFor(() => statusBar.command === "coder.speedTest", 2000);
-			expect(statusBar.command).toBe("coder.speedTest");
-		});
-
-		it("sets diagnostics command when multiple thresholds are crossed", async () => {
-			setThresholds(100, 10);
-			startWithNetwork({ latency: 200, download_bytes_sec: 500_000 });
-
-			await waitFor(
-				() => statusBar.command === "coder.showNetworkDiagnostics",
-				2000,
-			);
-			expect(statusBar.command).toBe("coder.showNetworkDiagnostics");
 		});
 
 		it("does not show warning for Coder Connect connections", async () => {
@@ -880,7 +855,7 @@ describe("SshProcessMonitor", () => {
 				2000,
 			);
 			expect(tooltipText()).toContain("threshold: 100ms");
-			expect(tooltipText()).toContain("Click for diagnostics");
+			expect(tooltipText()).toContain("Ping workspace");
 		});
 	});
 
