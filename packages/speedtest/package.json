@@ -10,6 +10,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@repo/shared": "workspace:*",
 		"@repo/webview-shared": "workspace:*"
 	},
 	"devDependencies": {

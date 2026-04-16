@@ -4,9 +4,6 @@ import { buildCommandHandlers, SpeedtestApi } from "@repo/shared";
 
 import { getWebviewHtml } from "../util";
 
-/**
- * Opens a webview panel to visualize speedtest results as a chart.
- */
 export function showSpeedtestChart(
 	extensionUri: vscode.Uri,
 	json: string,
@@ -35,14 +32,14 @@ export function showSpeedtestChart(
 		"Speed Test Results",
 	);
 
+	// Webview context is discarded when hidden (no retainContextWhenHidden),
+	// so re-send on visibility change to re-hydrate the chart.
 	const sendData = () => {
 		panel.webview.postMessage({
 			type: SpeedtestApi.data.method,
 			data: json,
 		});
 	};
-
-	// Send data now, and re-send whenever the panel becomes visible again
 	sendData();
 	panel.onDidChangeViewState(() => {
 		if (panel.visible) {
@@ -61,10 +58,10 @@ export function showSpeedtestChart(
 	});
 
 	panel.webview.onDidReceiveMessage(
-		async (message: { method: string; params?: unknown }) => {
+		(message: { method: string; params?: unknown }) => {
 			const handler = commandHandlers[message.method];
 			if (handler) {
-				await handler(message.params);
+				Promise.resolve(handler(message.params)).catch(() => undefined);
 			}
 		},
 	);

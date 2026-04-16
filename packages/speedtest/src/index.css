@@ -1,6 +1,13 @@
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
 body {
 	margin: 0;
 	padding: 24px;
+	min-width: 360px;
 	background: var(--vscode-editor-background);
 	color: var(--vscode-editor-foreground);
 	font-family: var(--vscode-font-family);
@@ -9,12 +16,11 @@ body {
 
 .summary {
 	display: flex;
+	flex-wrap: wrap;
 	justify-content: center;
-	gap: 48px;
+	gap: 16px 48px;
 	margin-bottom: 24px;
 	text-align: center;
-	/* Offset to align with the chart plot area (matches canvas left padding) */
-	padding-left: 48px;
 }
 
 .stat-label {
@@ -39,7 +45,6 @@ body {
 
 .chart-container {
 	position: relative;
-	min-width: 400px;
 	height: 320px;
 	margin-bottom: 20px;
 }
@@ -52,7 +57,6 @@ body {
 .actions {
 	display: flex;
 	justify-content: center;
-	padding-left: 48px;
 }
 
 button {
@@ -79,7 +83,6 @@ button:hover {
 	font-size: 0.9em;
 	white-space: nowrap;
 	pointer-events: none;
-	transform: translateX(-50%);
 	opacity: 0;
 	transition: opacity 0.1s;
 }

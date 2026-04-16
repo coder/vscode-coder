@@ -197,7 +197,7 @@ export class Commands {
 			value: "5",
 			validateInput: (value) => {
 				const n = Number(value.trim());
-				if (!value.trim() || isNaN(n) || n <= 0) {
+				if (!value.trim() || !Number.isFinite(n) || n <= 0) {
 					return "Please enter a positive number";
 				}
 				return undefined;
@@ -207,33 +207,30 @@ export class Commands {
 			return;
 		}
 		const seconds = Number(input.trim());
-		const totalMs = seconds * 1000;
 
 		const result = await withCancellableProgress(
 			async ({ signal, progress }) => {
 				progress.report({ message: "Connecting..." });
 				const env = await this.resolveCliEnv(client);
 
-				// Report progress based on elapsed time
 				const startTime = Date.now();
-				let lastPercent = 0;
+				let reported = 0;
 				const timer = setInterval(() => {
 					const elapsed = Date.now() - startTime;
-					const elapsedSec = Math.floor(elapsed / 1000);
-					const remaining = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
-
-					if (remaining > 0) {
-						const percent = Math.min(Math.round((elapsed / totalMs) * 100), 95);
-						const increment = percent - lastPercent;
-						if (increment > 0) {
-							progress.report({
-								message: `${elapsedSec}s / ${seconds}s`,
-								increment,
-							});
-							lastPercent = percent;
-						}
-					} else {
-						progress.report({ message: "Collecting results..." });
+					const pct = Math.min(
+						Math.round((elapsed / (seconds * 1000)) * 100),
+						100,
+					);
+					const increment = pct - reported;
+					if (increment > 0) {
+						progress.report({
+							message:
+								pct >= 100
+									? "Collecting results..."
+									: `${Math.floor(elapsed / 1000)}s / ${seconds}s`,
+							increment,
+						});
+						reported = pct;
 					}
 				}, 100);
 

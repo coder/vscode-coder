@@ -270,6 +270,9 @@ importers:
 
   packages/speedtest:
     dependencies:
+      '@repo/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@repo/webview-shared':
         specifier: workspace:*
         version: link:../webview-shared

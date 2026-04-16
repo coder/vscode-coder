@@ -1,7 +1,12 @@
 import { SpeedtestApi } from "@repo/shared";
 import { postMessage } from "@repo/webview-shared";
 
-import { type ChartPoint, renderLineChart } from "./chart";
+import {
+	DOT_THRESHOLD,
+	type ChartData,
+	type ChartPoint,
+	renderLineChart,
+} from "./chart";
 import "./index.css";
 
 interface SpeedtestInterval {
@@ -15,38 +20,54 @@ interface SpeedtestResult {
 	intervals: SpeedtestInterval[];
 }
 
+const HIT_RADIUS = 12;
+
 let cleanup: (() => void) | undefined;
 
 window.addEventListener(
 	"message",
 	(event: MessageEvent<{ type: string; data?: string }>) => {
-		if (event.data.type === SpeedtestApi.data.method) {
-			const json = event.data.data ?? "";
-			try {
-				const data = JSON.parse(json) as SpeedtestResult;
-				renderPage(data, () =>
-					postMessage({
-						method: SpeedtestApi.viewJson.method,
-						params: json,
-					}),
-				);
-			} catch {
-				showError("Failed to parse speedtest data.");
-			}
+		if (event.data.type !== SpeedtestApi.data.method) {
+			return;
+		}
+		const json = event.data.data ?? "";
+		try {
+			const data = JSON.parse(json) as SpeedtestResult;
+			cleanup?.();
+			cleanup = renderPage(data, () =>
+				postMessage({
+					method: SpeedtestApi.viewJson.method,
+					params: json,
+				}),
+			);
+		} catch {
+			showError("Failed to parse speedtest data.");
 		}
 	},
 );
 
-function renderPage(data: SpeedtestResult, onViewJson: () => void): void {
+function prepareChartData(intervals: SpeedtestInterval[]): ChartData {
+	const xValues: number[] = [];
+	const values: number[] = [];
+	const pointLabels: string[] = [];
+	for (const iv of intervals) {
+		xValues.push(iv.end_time_seconds);
+		values.push(iv.throughput_mbits);
+		pointLabels.push(
+			`${iv.throughput_mbits.toFixed(2)} Mbps (${iv.start_time_seconds.toFixed(0)}\u2013${iv.end_time_seconds.toFixed(0)}s)`,
+		);
+	}
+	return { xValues, values, pointLabels };
+}
+
+function renderPage(data: SpeedtestResult, onViewJson: () => void): () => void {
 	const root = document.getElementById("root");
 	if (!root) {
-		return;
+		return () => undefined;
 	}
 
-	cleanup?.();
 	root.innerHTML = "";
 
-	// Summary
 	const summary = document.createElement("div");
 	summary.className = "summary";
 	summary.innerHTML = `
@@ -65,7 +86,6 @@ function renderPage(data: SpeedtestResult, onViewJson: () => void): void {
 	`;
 	root.appendChild(summary);
 
-	// Chart with tooltip and resize handling
 	const container = document.createElement("div");
 	container.className = "chart-container";
 	const canvas = document.createElement("canvas");
@@ -74,34 +94,38 @@ function renderPage(data: SpeedtestResult, onViewJson: () => void): void {
 	container.append(canvas, tooltip);
 	root.appendChild(container);
 
-	const chartData = {
-		labels: data.intervals.map((iv) => `${iv.end_time_seconds.toFixed(0)}s`),
-		values: data.intervals.map((iv) => iv.throughput_mbits),
-		pointLabels: data.intervals.map(
-			(iv) =>
-				`${iv.throughput_mbits.toFixed(2)} Mbps (${iv.start_time_seconds.toFixed(0)}\u2013${iv.end_time_seconds.toFixed(0)}s)`,
-		),
-	};
+	const chartData = prepareChartData(data.intervals);
+	const hasDots = chartData.values.length <= DOT_THRESHOLD;
 
 	let points: ChartPoint[] = [];
+	let canvasRect = canvas.getBoundingClientRect();
 	const draw = () => {
 		points = renderLineChart(canvas, chartData);
+		canvasRect = canvas.getBoundingClientRect();
 	};
 	draw();
 
-	const observer = new ResizeObserver(draw);
+	let rafId = 0;
+	const observer = new ResizeObserver(() => {
+		cancelAnimationFrame(rafId);
+		rafId = requestAnimationFrame(draw);
+	});
 	observer.observe(container);
 
+	const findNearest = hasDots ? findNearestDot : findNearestOnLine;
 	const onMouseMove = (e: MouseEvent) => {
-		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left;
-		const my = e.clientY - rect.top;
-		const hit = points.find(
-			(p) => Math.abs(p.x - mx) < 12 && Math.abs(p.y - my) < 12,
-		);
+		const mx = e.clientX - canvasRect.left;
+		const my = e.clientY - canvasRect.top;
+		const hit = findNearest(points, mx, my);
+
 		if (hit) {
 			tooltip.textContent = hit.label;
-			tooltip.style.left = `${hit.x}px`;
+			const tw = tooltip.offsetWidth;
+			const left = Math.max(
+				0,
+				Math.min(hit.x - tw / 2, container.offsetWidth - tw),
+			);
+			tooltip.style.left = `${left}px`;
 			tooltip.style.top = `${hit.y - 32}px`;
 			tooltip.classList.add("visible");
 		} else {
@@ -112,13 +136,6 @@ function renderPage(data: SpeedtestResult, onViewJson: () => void): void {
 	canvas.addEventListener("mousemove", onMouseMove);
 	canvas.addEventListener("mouseleave", onMouseLeave);
 
-	cleanup = () => {
-		observer.disconnect();
-		canvas.removeEventListener("mousemove", onMouseMove);
-		canvas.removeEventListener("mouseleave", onMouseLeave);
-	};
-
-	// Actions
 	const actions = document.createElement("div");
 	actions.className = "actions";
 	const viewBtn = document.createElement("button");
@@ -126,11 +143,77 @@ function renderPage(data: SpeedtestResult, onViewJson: () => void): void {
 	viewBtn.addEventListener("click", onViewJson);
 	actions.appendChild(viewBtn);
 	root.appendChild(actions);
+
+	return () => {
+		cancelAnimationFrame(rafId);
+		observer.disconnect();
+		canvas.removeEventListener("mousemove", onMouseMove);
+		canvas.removeEventListener("mouseleave", onMouseLeave);
+	};
 }
 
 function showError(message: string): void {
 	const root = document.getElementById("root");
-	if (root) {
-		root.innerHTML = `<p class="error">${message}</p>`;
+	if (!root) {
+		return;
 	}
+	const p = document.createElement("p");
+	p.className = "error";
+	p.textContent = message;
+	root.replaceChildren(p);
+}
+
+function findNearestByX(
+	points: ChartPoint[],
+	mx: number,
+): ChartPoint | undefined {
+	if (points.length === 0) {
+		return undefined;
+	}
+	let lo = 0;
+	let hi = points.length - 1;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if (points[mid].x < mx) {
+			lo = mid + 1;
+		} else {
+			hi = mid;
+		}
+	}
+	let best = points[lo];
+	if (lo > 0 && Math.abs(points[lo - 1].x - mx) < Math.abs(best.x - mx)) {
+		best = points[lo - 1];
+	}
+	return best;
+}
+
+function findNearestDot(
+	points: ChartPoint[],
+	mx: number,
+	my: number,
+): ChartPoint | null {
+	const best = findNearestByX(points, mx);
+	if (!best) {
+		return null;
+	}
+	return Math.abs(best.x - mx) < HIT_RADIUS &&
+		Math.abs(best.y - my) < HIT_RADIUS
+		? best
+		: null;
+}
+
+function findNearestOnLine(
+	points: ChartPoint[],
+	mx: number,
+	_my: number,
+): ChartPoint | null {
+	const best = findNearestByX(points, mx);
+	if (!best) {
+		return null;
+	}
+	const avgGap =
+		points.length > 1
+			? (points[points.length - 1].x - points[0].x) / (points.length - 1)
+			: HIT_RADIUS;
+	return Math.abs(best.x - mx) < avgGap ? best : null;
 }

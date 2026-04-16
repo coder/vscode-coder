@@ -4,13 +4,7 @@ import { resolve } from "node:path";
 import { defineConfig, type Plugin, type UserConfig } from "vite";
 
 /**
- * Create a base Vite config for any webview package.
- * Use this for lightweight webviews that don't need React.
- *
- * @param webviewName - Name of the webview (used for output path)
- * @param dirname - __dirname of the calling config file
- * @param options.entry - Entry file relative to package root (default: "src/index.ts")
- * @param options.plugins - Additional Vite plugins to include
+ * Create a base Vite config for a webview package (no framework).
  */
 export function createBaseWebviewConfig(
 	webviewName: string,
@@ -60,10 +54,6 @@ export function createBaseWebviewConfig(
 
 /**
  * Create a Vite config for a React-based webview package.
- * Extends the base config with React and Babel plugins.
- *
- * @param webviewName - Name of the webview (used for output path)
- * @param dirname - __dirname of the calling config file
  */
 export function createWebviewConfig(
 	webviewName: string,
