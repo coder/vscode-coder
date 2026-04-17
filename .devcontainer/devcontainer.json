@@ -3,14 +3,14 @@
 	"build": {
 		"dockerfile": "Dockerfile"
 	},
+	"remoteUser": "node",
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"esbenp.prettier-vscode",
 				"dbaeumer.vscode-eslint",
 				"vitest.explorer",
-				"ms-vscode.extension-test-runner",
-				"christian-kohler.npm-intellisense"
+				"ms-vscode.extension-test-runner"
 			]
 		}
 	},

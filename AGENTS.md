@@ -38,7 +38,7 @@ doesn't make sense. Honesty over agreeableness.
 | **All unit tests**        | `pnpm test`                                         |
 | **Extension tests**       | `pnpm test:extension`                               |
 | **Webview tests**         | `pnpm test:webview`                                 |
-| **Integration tests**     | `pnpm test:integration`                             |
+| **Integration tests**     | `pnpm test:integration` (see note on headless)      |
 | **Single extension test** | `pnpm test:extension ./test/unit/filename.test.ts`  |
 | **Single webview test**   | `pnpm test:webview ./test/webview/filename.test.ts` |
 
