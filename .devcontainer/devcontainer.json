@@ -1,0 +1,18 @@
+{
+	"name": "vscode-coder",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"esbenp.prettier-vscode",
+				"dbaeumer.vscode-eslint",
+				"vitest.explorer",
+				"ms-vscode.extension-test-runner",
+				"christian-kohler.npm-intellisense"
+			]
+		}
+	},
+	"postCreateCommand": "CI=true pnpm install"
+}
