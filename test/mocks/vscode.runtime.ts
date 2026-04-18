@@ -33,6 +33,14 @@ export const ColorThemeKind = E({
 	HighContrastLight: 4,
 });
 export const ExtensionMode = E({ Production: 1, Development: 2, Test: 3 });
+export const LogLevel = E({
+	Off: 0,
+	Trace: 1,
+	Debug: 2,
+	Info: 3,
+	Warning: 4,
+	Error: 5,
+});
 export const UIKind = E({ Desktop: 1, Web: 2 });
 export const InputBoxValidationSeverity = E({
 	Info: 1,
