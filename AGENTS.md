@@ -38,13 +38,12 @@ doesn't make sense. Honesty over agreeableness.
 | **All unit tests**        | `pnpm test`                                         |
 | **Extension tests**       | `pnpm test:extension`                               |
 | **Webview tests**         | `pnpm test:webview`                                 |
-| **Integration tests**     | `pnpm test:integration` (see note on headless)      |
+| **Integration tests**     | `pnpm test:integration`                             |
 | **Single extension test** | `pnpm test:extension ./test/unit/filename.test.ts`  |
 | **Single webview test**   | `pnpm test:webview ./test/webview/filename.test.ts` |
 
 Integration tests launch VS Code and need a display. On headless
-environments (CI, devcontainers, SSH) prefix the command with
-`xvfb-run -a` (requires the `xvfb` package):
+environments (CI, devcontainers) prefix with `xvfb-run -a`:
 
 ```sh
 xvfb-run -a pnpm test:integration

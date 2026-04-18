@@ -1,9 +1,9 @@
-FROM mcr.microsoft.com/devcontainers/typescript-node:24-bookworm@sha256:7958dd7e6fe4242fce6ba4f57b9de561ea82233d5542921b5335d435c2c78791
+FROM mcr.microsoft.com/devcontainers/typescript-node:22-bookworm@sha256:7653612ebf9384fa1cbd32413d8f4fbf7daaf24e39e8664d9fc030de8c0c0af2
 
-# Electron and VS Code need the same native libraries as Chromium to run
-# integration tests. Playwright's install-deps maintains that list upstream.
-# xvfb provides a virtual X display for headless test execution.
+# VS Code/Electron share Chromium's native library requirements; playwright
+# install-deps tracks that list upstream. xvfb enables headless test runs.
 RUN npx --yes playwright install-deps chromium && \
+	apt-get update && \
 	apt-get install --yes --no-install-recommends xvfb && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/* /root/.npm

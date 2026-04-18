@@ -14,5 +14,5 @@
 			]
 		}
 	},
-	"postCreateCommand": "CI=true pnpm install"
+	"postCreateCommand": "pnpm install --frozen-lockfile"
 }
