@@ -153,9 +153,10 @@ describe("WorkspaceMonitor", () => {
 			);
 		});
 
-		it("does not show deletion or not-running notifications before initial setup", async () => {
+		it("does not show deletion, outdated, or not-running notifications before initial setup", async () => {
 			const { stream } = await setup();
 
+			stream.pushMessage(workspaceEvent({ outdated: true }));
 			stream.pushMessage(
 				workspaceEvent({ deleting_at: minutesFromNow(12 * 60) }),
 			);
@@ -167,9 +168,26 @@ describe("WorkspaceMonitor", () => {
 		});
 
 		it("fetches template details for outdated notification", async () => {
-			const { stream } = await setup();
+			const { monitor, stream } = await setup();
+			monitor.markInitialSetupComplete();
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
+
+			await vi.waitFor(() => {
+				expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+					expect.stringContaining("template v2"),
+					"Update",
+				);
+			});
+		});
+
+		it("fires outdated notification on markInitialSetupComplete", async () => {
+			const { monitor, stream } = await setup();
+
+			stream.pushMessage(workspaceEvent({ outdated: true }));
+			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+			monitor.markInitialSetupComplete();
 
 			await vi.waitFor(() => {
 				expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
@@ -197,11 +215,12 @@ describe("WorkspaceMonitor", () => {
 
 	describe("disableUpdateNotifications", () => {
 		it("suppresses outdated notification but allows other types", async () => {
-			const { stream, client, config } = await setup();
+			const { monitor, stream, config } = await setup();
+			monitor.markInitialSetupComplete();
 			config.set("coder.disableUpdateNotifications", true);
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
-			expect(client.getTemplate).not.toHaveBeenCalled();
+			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
 
 			stream.pushMessage(
 				workspaceEvent({
@@ -217,7 +236,8 @@ describe("WorkspaceMonitor", () => {
 		});
 
 		it("shows outdated notification after re-enabling", async () => {
-			const { stream, config } = await setup();
+			const { monitor, stream, config } = await setup();
+			monitor.markInitialSetupComplete();
 			config.set("coder.disableUpdateNotifications", true);
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
