@@ -7,7 +7,7 @@ import {
 	MockConfigurationProvider,
 	MockContextManager,
 	MockEventStream,
-	MockStatusBar,
+	MockStatusBarItem,
 	createMockLogger,
 } from "../../mocks/testHelpers";
 import { workspace as createWorkspace } from "../../mocks/workspace";
@@ -37,7 +37,7 @@ describe("WorkspaceMonitor", () => {
 
 	async function setup(stream = new MockEventStream<ServerSentEvent>()) {
 		const config = new MockConfigurationProvider();
-		const statusBar = new MockStatusBar();
+		const statusBar = new MockStatusBarItem();
 		const contextManager = new MockContextManager();
 		const client = {
 			watchWorkspace: vi.fn().mockResolvedValue(stream),

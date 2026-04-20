@@ -48,6 +48,23 @@ export const InputBoxValidationSeverity = E({
 	Error: 3,
 });
 
+export class MarkdownString {
+	value: string;
+	isTrusted = false;
+	supportThemeIcons = false;
+
+	constructor(value = "") {
+		this.value = value;
+	}
+}
+
+export class ThemeColor {
+	id: string;
+	constructor(id: string) {
+		this.id = id;
+	}
+}
+
 export class Uri {
 	constructor(
 		public scheme: string,
@@ -126,7 +143,7 @@ export const window = {
 };
 
 export const commands = {
-	registerCommand: vi.fn(),
+	registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
 	executeCommand: vi.fn(),
 };
 
@@ -178,6 +195,8 @@ const vscode = {
 	InputBoxValidationSeverity,
 	Uri,
 	EventEmitter,
+	MarkdownString,
+	ThemeColor,
 	window,
 	commands,
 	workspace,

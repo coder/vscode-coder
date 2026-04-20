@@ -3,15 +3,26 @@ import { vol } from "memfs";
 import * as fsPromises from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ThemeColor } from "vscode";
 
 import {
 	SshProcessMonitor,
+	type NetworkInfo,
 	type SshProcessMonitorOptions,
 } from "@/remote/sshProcess";
 
-import { createMockLogger, MockStatusBar } from "../../mocks/testHelpers";
+import {
+	createMockLogger,
+	makeNetworkInfo,
+	MockConfigurationProvider,
+	MockStatusBarItem,
+} from "../../mocks/testHelpers";
 
 import type * as fs from "node:fs";
+
+function makeNetworkJson(overrides: Partial<NetworkInfo> = {}): string {
+	return JSON.stringify(makeNetworkInfo(overrides));
+}
 
 vi.mock("find-process", () => ({ default: vi.fn() }));
 
@@ -22,13 +33,15 @@ vi.mock("node:fs/promises", async () => {
 
 describe("SshProcessMonitor", () => {
 	let activeMonitors: SshProcessMonitor[] = [];
-	let statusBar: MockStatusBar;
+	let statusBar: MockStatusBarItem;
 
 	beforeEach(() => {
 		vi.restoreAllMocks();
 		vol.reset();
 		activeMonitors = [];
-		statusBar = new MockStatusBar();
+		statusBar = new MockStatusBarItem();
+		// Provide default threshold config so getThresholdConfig() works
+		new MockConfigurationProvider();
 
 		// Default: process found immediately
 		vi.mocked(find).mockResolvedValue([
@@ -402,20 +415,20 @@ describe("SshProcessMonitor", () => {
 		});
 	});
 
+	function tooltipText(): string {
+		const t = statusBar.tooltip;
+		if (typeof t === "string") {
+			return t;
+		}
+		return t?.value ?? "";
+	}
+
 	describe("network status", () => {
 		it("shows P2P connection in status bar", async () => {
 			vol.fromJSON({
 				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
 					"-> socksPort 12345 ->",
-				"/network/999.json": JSON.stringify({
-					p2p: true,
-					latency: 25.5,
-					preferred_derp: "NYC",
-					derp_latency: { NYC: 10 },
-					upload_bytes_sec: 1024,
-					download_bytes_sec: 2048,
-					using_coder_connect: false,
-				}),
+				"/network/999.json": makeNetworkJson({ latency: 25.5 }),
 			});
 
 			createMonitor({
@@ -426,21 +439,17 @@ describe("SshProcessMonitor", () => {
 
 			expect(statusBar.text).toContain("Direct");
 			expect(statusBar.text).toContain("25.50ms");
-			expect(statusBar.tooltip).toContain("peer-to-peer");
+			expect(tooltipText()).toContain("Directly connected peer-to-peer");
 		});
 
 		it("shows relay connection with DERP region", async () => {
 			vol.fromJSON({
 				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
 					"-> socksPort 12345 ->",
-				"/network/999.json": JSON.stringify({
+				"/network/999.json": makeNetworkJson({
 					p2p: false,
-					latency: 50,
 					preferred_derp: "SFO",
 					derp_latency: { SFO: 20, NYC: 40 },
-					upload_bytes_sec: 512,
-					download_bytes_sec: 1024,
-					using_coder_connect: false,
 				}),
 			});
 
@@ -451,22 +460,14 @@ describe("SshProcessMonitor", () => {
 			await waitFor(() => statusBar.text.includes("SFO"));
 
 			expect(statusBar.text).toContain("SFO");
-			expect(statusBar.tooltip).toContain("relay");
+			expect(tooltipText()).toContain("relay");
 		});
 
 		it("shows Coder Connect status", async () => {
 			vol.fromJSON({
 				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
 					"-> socksPort 12345 ->",
-				"/network/999.json": JSON.stringify({
-					p2p: false,
-					latency: 0,
-					preferred_derp: "",
-					derp_latency: {},
-					upload_bytes_sec: 0,
-					download_bytes_sec: 0,
-					using_coder_connect: true,
-				}),
+				"/network/999.json": makeNetworkJson({ using_coder_connect: true }),
 			});
 
 			createMonitor({
@@ -765,6 +766,39 @@ describe("SshProcessMonitor", () => {
 
 			// Should not throw, and dispose should only be called once on status bar
 			expect(statusBar.dispose).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("slowness detection wiring", () => {
+		const sshLog = {
+			"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+				"-> socksPort 12345 ->",
+		};
+
+		function startWithNetwork(networkOverrides: Partial<NetworkInfo> = {}) {
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson(networkOverrides),
+			});
+			return createMonitor({
+				codeLogDir: "/logs/window1",
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+			});
+		}
+
+		it("surfaces a warning on the status bar when latency exceeds the configured threshold", async () => {
+			new MockConfigurationProvider().set(
+				"coder.networkThreshold.latencyMs",
+				100,
+			);
+			startWithNetwork({ latency: 200 });
+
+			await waitFor(
+				() => statusBar.backgroundColor instanceof ThemeColor,
+				2000,
+			);
+			expect(statusBar.command).toBe("coder.pingWorkspace");
 		});
 	});
 
