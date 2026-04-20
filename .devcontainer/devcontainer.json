@@ -1,0 +1,18 @@
+{
+	"name": "vscode-coder",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"remoteUser": "node",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"esbenp.prettier-vscode",
+				"dbaeumer.vscode-eslint",
+				"vitest.explorer",
+				"ms-vscode.extension-test-runner"
+			]
+		}
+	},
+	"postCreateCommand": "pnpm install --frozen-lockfile"
+}
