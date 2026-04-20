@@ -214,24 +214,4 @@ describe("cliExec", () => {
 			).rejects.toThrow("workspace not found");
 		});
 	});
-
-	describe("isGoDuration", () => {
-		it.each([
-			"5s",
-			"10m",
-			"1h",
-			"1h30m",
-			"500ms",
-			"1.5s",
-			"2h45m10s",
-			"100ns",
-			"50us",
-			"50µs",
-		])("accepts %s", (v) => expect(cliExec.isGoDuration(v)).toBe(true));
-
-		it.each(["", "bjbmn", "5", "s", "5x", "1h 30m", "-5s", "5S"])(
-			"rejects %s",
-			(v) => expect(cliExec.isGoDuration(v)).toBe(false),
-		);
-	});
 });

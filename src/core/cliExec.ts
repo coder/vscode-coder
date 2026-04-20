@@ -34,14 +34,6 @@ function cliError(error: unknown): Error {
 	return toError(error);
 }
 
-/** Go duration regex: one or more {number}{unit} segments (e.g. 5s, 1h30m). */
-const GO_DURATION_RE = /^(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))+$/;
-
-/** Returns true if the string is a valid Go duration. */
-export function isGoDuration(value: string): boolean {
-	return GO_DURATION_RE.test(value);
-}
-
 /**
  * Return the version from the binary.  Throw if unable to execute the binary or
  * find the version for any reason.

@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
+import { SpeedtestPanelFactory } from "../webviews/speedtest/speedtestPanelFactory";
 import { DuplicateWorkspaceIpc } from "../workspace/duplicateWorkspaceIpc";
 
 import { CliCredentialManager } from "./cliCredentialManager";
@@ -19,7 +20,6 @@ import type { Logger } from "../logging/logger";
  * Centralizes the creation and management of all core services.
  */
 export class ServiceContainer implements vscode.Disposable {
-	private readonly extensionUri: vscode.Uri;
 	private readonly logger: vscode.LogOutputChannel;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
@@ -30,9 +30,9 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly loginCoordinator: LoginCoordinator;
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly oauthCallback: OAuthCallback;
+	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 
 	constructor(context: vscode.ExtensionContext) {
-		this.extensionUri = context.extensionUri;
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
@@ -81,6 +81,11 @@ export class ServiceContainer implements vscode.Disposable {
 		);
 		this.duplicateWorkspaceIpc = new DuplicateWorkspaceIpc(
 			context.secrets,
+
+			this.logger,
+		);
+		this.speedtestPanelFactory = new SpeedtestPanelFactory(
+			context.extensionUri,
 			this.logger,
 		);
 	}
@@ -125,8 +130,8 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.oauthCallback;
 	}
 
-	getExtensionUri(): vscode.Uri {
-		return this.extensionUri;
+	getSpeedtestPanelFactory(): SpeedtestPanelFactory {
+		return this.speedtestPanelFactory;
 	}
 
 	/**

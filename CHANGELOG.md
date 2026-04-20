@@ -18,6 +18,12 @@
 - The **Coder: Workspace Build** output channel is no longer created when reconnecting to an
   already-running workspace, so the Output panel doesn't pop open empty.
 
+### Changed
+
+- **Coder: Speed Test Workspace** results now render in an interactive throughput chart with
+  hover tooltips, a summary header, and a real-time progress bar while the CLI runs. A View JSON
+  action exposes the raw output.
+
 ## [v1.14.4-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.4-pre) 2026-04-20
 
 ### Added

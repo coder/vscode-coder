@@ -139,6 +139,7 @@ export const window = {
 		clear: vi.fn(),
 	})),
 	createStatusBarItem: vi.fn(),
+	createWebviewPanel: vi.fn(),
 	registerUriHandler: vi.fn(() => ({ dispose: vi.fn() })),
 };
 
@@ -156,6 +157,7 @@ export const workspace = {
 		stat: vi.fn(),
 		readDirectory: vi.fn(),
 	},
+	openTextDocument: vi.fn(),
 	onDidChangeConfiguration: onDidChangeConfiguration.event,
 	onDidChangeWorkspaceFolders: onDidChangeWorkspaceFolders.event,
 

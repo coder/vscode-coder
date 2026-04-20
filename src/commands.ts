@@ -14,7 +14,11 @@ import { appendVsCodeLogs } from "./core/supportBundleLogs";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
 import { type FeatureSet, featureSetForVersion } from "./featureSet";
-import { withCancellableProgress, withProgress } from "./progress";
+import {
+	reportElapsedProgress,
+	withCancellableProgress,
+	withProgress,
+} from "./progress";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import {
 	RECOMMENDED_SSH_SETTINGS,
@@ -23,7 +27,8 @@ import {
 import { resolveCliAuth } from "./settings/cli";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
-import { showSpeedtestChart } from "./webviews/speedtest/speedtestPanel";
+import { type SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
+import { parseSpeedtestResult } from "./webviews/speedtest/types";
 import {
 	AgentTreeItem,
 	type OpenableTreeItem,
@@ -73,7 +78,7 @@ export class Commands {
 	private readonly cliManager: CliManager;
 	private readonly loginCoordinator: LoginCoordinator;
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
-	private readonly extensionUri: vscode.Uri;
+	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -98,7 +103,7 @@ export class Commands {
 		this.cliManager = serviceContainer.getCliManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 		this.duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
-		this.extensionUri = serviceContainer.getExtensionUri();
+		this.speedtestPanelFactory = serviceContainer.getSpeedtestPanelFactory();
 	}
 
 	/**
@@ -213,27 +218,14 @@ export class Commands {
 				progress.report({ message: "Connecting..." });
 				const env = await this.resolveCliEnv(client);
 
-				const startTime = Date.now();
-				let reported = 0;
-				const timer = setInterval(() => {
-					const elapsed = Date.now() - startTime;
-					const pct = Math.min(
-						Math.round((elapsed / (seconds * 1000)) * 100),
-						100,
-					);
-					const increment = pct - reported;
-					if (increment > 0) {
-						progress.report({
-							message:
-								pct >= 100
-									? "Collecting results..."
-									: `${Math.floor(elapsed / 1000)}s / ${seconds}s`,
-							increment,
-						});
-						reported = pct;
-					}
-				}, 100);
-
+				const stopProgress = reportElapsedProgress({
+					progress,
+					totalMs: seconds * 1000,
+					format: (pct, elapsedMs) =>
+						pct >= 100
+							? "Collecting results..."
+							: `${Math.floor(elapsedMs / 1000)}s / ${seconds}s`,
+				});
 				try {
 					return await cliExec.speedtest(
 						env,
@@ -242,7 +234,7 @@ export class Commands {
 						signal,
 					);
 				} finally {
-					clearInterval(timer);
+					stopProgress();
 				}
 			},
 			{
@@ -253,7 +245,19 @@ export class Commands {
 		);
 
 		if (result.ok) {
-			showSpeedtestChart(this.extensionUri, result.value, workspaceId);
+			try {
+				const parsed = parseSpeedtestResult(result.value);
+				this.speedtestPanelFactory.show({
+					result: parsed,
+					rawJson: result.value,
+					workspaceName: workspaceId,
+				});
+			} catch (err) {
+				this.logger.error("Failed to parse speedtest output", err);
+				vscode.window.showErrorMessage(
+					`Speed test returned unexpected output: ${toError(err).message}`,
+				);
+			}
 			return;
 		}
 

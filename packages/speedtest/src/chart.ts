@@ -1,36 +1,20 @@
-export interface ChartPoint {
-	x: number;
-	y: number;
-	label: string;
-}
+import { type ChartPoint, formatTick, niceStep } from "./chartUtils";
 
-const MIN_TICK_SPACING_PX = 48;
+const MIN_TICK_SPACING_EM = 4;
 const Y_GRID_LINES = 5;
-/** 10% padding above the max value so the line doesn't hug the top edge. */
+/** 10% headroom above the max so the line doesn't hug the top edge. */
 const Y_HEADROOM = 1.1;
+const DOT_RADIUS_PX = 4;
+const LINE_WIDTH_PX = 2;
 
-/** Candidate x-axis tick step sizes in seconds (1s, 2s, 5s, ..., 30m, 1h). */
-const TICK_STEP_SECONDS = [
-	1, 2, 5, 10, 15, 20, 30, 60, 120, 300, 600, 900, 1800, 3600,
-];
-
-export function niceStep(raw: number): number {
-	return (
-		TICK_STEP_SECONDS.find((s) => s >= raw) ?? Math.ceil(raw / 3600) * 3600
-	);
-}
-
-export function formatTick(t: number, step: number): string {
-	if (step >= 3600) {
-		const h = t / 3600;
-		return `${Number.isInteger(h) ? h : h.toFixed(1)}h`;
-	}
-	if (step >= 60) {
-		const m = t / 60;
-		return `${Number.isInteger(m) ? m : m.toFixed(1)}m`;
-	}
-	return `${t}s`;
-}
+const PLOT_PAD_EM = { top: 2, right: 2, bottom: 3.5 };
+const Y_LABEL_GAP_EM = 1;
+const X_LABEL_GAP_EM = 1.5;
+const X_AXIS_TITLE_GAP_EM = 0.25;
+const Y_AXIS_TITLE_GAP_EM = 1;
+/** Room reserved for the rotated "Mbps" title. */
+const Y_AXIS_TITLE_ROOM_EM = 1.5;
+const LEFT_PAD_EM = Y_AXIS_TITLE_GAP_EM + Y_AXIS_TITLE_ROOM_EM + Y_LABEL_GAP_EM;
 
 interface Theme {
 	fg: string;
@@ -39,27 +23,27 @@ interface Theme {
 	family: string;
 }
 
-/**
- * Read VS Code theme colors from CSS custom properties on <html>. Canvas
- * pixels don't inherit CSS vars, so we re-read on each render to pick up
- * theme switches.
- */
+/** Canvas pixels don't inherit CSS vars, so re-read on every render. */
 function readTheme(): Theme {
 	const s = getComputedStyle(document.documentElement);
 	const css = (prop: string) => s.getPropertyValue(prop).trim();
 	return {
 		fg:
+			css("--vscode-charts-foreground") ||
 			css("--vscode-descriptionForeground") ||
 			css("--vscode-editor-foreground") ||
 			"#888",
-		// Use the button color so the accent tracks the theme; charts-* vars
-		// are fixed hues by design.
+		// focusBorder tracks the theme's accent; charts.blue is a fixed hue
+		// kept as a late fallback.
 		accent:
-			css("--vscode-button-background") ||
+			css("--vscode-chart-line") ||
 			css("--vscode-focusBorder") ||
 			css("--vscode-charts-blue") ||
 			"#3794ff",
-		grid: css("--vscode-editorWidget-border") || "rgba(128,128,128,0.15)",
+		grid:
+			css("--vscode-chart-guide") ||
+			css("--vscode-charts-lines") ||
+			"rgba(127, 127, 127, 0.35)",
 		family: css("--vscode-font-family") || "sans-serif",
 	};
 }
@@ -69,18 +53,21 @@ function layoutChart(
 	samples: ChartPoint[],
 	width: number,
 	height: number,
+	pxPerEm: number,
 	family: string,
 ) {
 	const maxVal = samples.reduce((m, s) => Math.max(m, s.y), 1) * Y_HEADROOM;
 	const maxX = samples.at(-1)?.x ?? 1;
-	const xRange = maxX || 1;
 	ctx.font = `1em ${family}`;
 	const yLabelWidth = ctx.measureText(maxVal.toFixed(0)).width;
 	const pad = {
-		top: 24,
-		right: 24,
-		bottom: 52,
-		left: Math.max(48, yLabelWidth + 24),
+		top: PLOT_PAD_EM.top * pxPerEm,
+		right: PLOT_PAD_EM.right * pxPerEm,
+		bottom: PLOT_PAD_EM.bottom * pxPerEm,
+		left: Math.max(
+			PLOT_PAD_EM.right * pxPerEm,
+			yLabelWidth + LEFT_PAD_EM * pxPerEm,
+		),
 	};
 	const plotW = width - pad.left - pad.right;
 	const plotH = height - pad.top - pad.bottom;
@@ -90,9 +77,8 @@ function layoutChart(
 		plotH,
 		maxVal,
 		maxX,
-		xRange,
 		height,
-		tAt: (t: number) => pad.left + (t / xRange) * plotW,
+		tAt: (t: number) => pad.left + (t / maxX) * plotW,
 		yAt: (v: number) => pad.top + plotH - (v / maxVal) * plotH,
 	};
 }
@@ -103,8 +89,9 @@ function drawAxes(
 	ctx: CanvasRenderingContext2D,
 	layout: Layout,
 	theme: Theme,
+	pxPerEm: number,
 ): void {
-	const { pad, plotW, plotH, maxVal, maxX, xRange, height, tAt, yAt } = layout;
+	const { pad, plotW, plotH, maxVal, maxX, height, tAt, yAt } = layout;
 
 	ctx.strokeStyle = theme.grid;
 	ctx.lineWidth = 1;
@@ -117,7 +104,11 @@ function drawAxes(
 		ctx.moveTo(pad.left, y);
 		ctx.lineTo(pad.left + plotW, y);
 		ctx.stroke();
-		ctx.fillText(v.toFixed(0), pad.left - 12, y + 5);
+		ctx.fillText(
+			v.toFixed(0),
+			pad.left - Y_LABEL_GAP_EM * pxPerEm,
+			y + pxPerEm / 3,
+		);
 	}
 
 	ctx.strokeStyle = theme.fg;
@@ -128,16 +119,24 @@ function drawAxes(
 
 	ctx.textAlign = "center";
 	const step = niceStep(
-		xRange / Math.max(1, Math.floor(plotW / MIN_TICK_SPACING_PX)),
+		maxX / Math.max(1, Math.floor(plotW / (MIN_TICK_SPACING_EM * pxPerEm))),
 	);
 	for (let t = 0; t <= maxX; t += step) {
-		ctx.fillText(formatTick(t, step), tAt(t), height - pad.bottom + 24);
+		ctx.fillText(
+			formatTick(t, step),
+			tAt(t),
+			height - pad.bottom + X_LABEL_GAP_EM * pxPerEm,
+		);
 	}
 
 	ctx.font = `0.95em ${theme.family}`;
-	ctx.fillText("Time", pad.left + plotW / 2, height - 4);
+	ctx.fillText(
+		"Time",
+		pad.left + plotW / 2,
+		height - X_AXIS_TITLE_GAP_EM * pxPerEm,
+	);
 	ctx.save();
-	ctx.translate(14, pad.top + plotH / 2);
+	ctx.translate(Y_AXIS_TITLE_GAP_EM * pxPerEm, pad.top + plotH / 2);
 	ctx.rotate(-Math.PI / 2);
 	ctx.fillText("Mbps", 0, 0);
 	ctx.restore();
@@ -187,7 +186,7 @@ function drawSeries(
 		ctx.lineTo(tAt(samples[i].x), yAt(samples[i].y));
 	}
 	ctx.strokeStyle = theme.accent;
-	ctx.lineWidth = 2;
+	ctx.lineWidth = LINE_WIDTH_PX;
 	ctx.stroke();
 
 	return samples.map((s) => {
@@ -195,7 +194,7 @@ function drawSeries(
 		const y = yAt(s.y);
 		if (showDots) {
 			ctx.beginPath();
-			ctx.arc(x, y, 4, 0, Math.PI * 2);
+			ctx.arc(x, y, DOT_RADIUS_PX, 0, Math.PI * 2);
 			ctx.fillStyle = theme.accent;
 			ctx.fill();
 		}
@@ -203,16 +202,15 @@ function drawSeries(
 	});
 }
 
+/** Render the speedtest chart. Caller must ensure `samples` is non-empty. */
 export function renderLineChart(
 	canvas: HTMLCanvasElement,
 	samples: ChartPoint[],
 	showDots: boolean,
 ): ChartPoint[] {
-	// Scale the backing store by DPR for crisp rendering on high-DPI
-	// displays. ctx.scale lets draw calls keep using CSS pixels.
-	const { width, height } = (
-		canvas.parentElement ?? canvas
-	).getBoundingClientRect();
+	// Scale backing store by DPR so drawing stays crisp on high-DPI screens.
+	const parent = canvas.parentElement ?? canvas;
+	const { width, height } = parent.getBoundingClientRect();
 	const dpr = window.devicePixelRatio || 1;
 	canvas.width = width * dpr;
 	canvas.height = height * dpr;
@@ -222,10 +220,16 @@ export function renderLineChart(
 	}
 	ctx.scale(dpr, dpr);
 
+	const pxPerEm = parseFloat(getComputedStyle(parent).fontSize) || 14;
 	const theme = readTheme();
-	const layout = layoutChart(ctx, samples, width, height, theme.family);
-	drawAxes(ctx, layout, theme);
-	return samples.length > 0
-		? drawSeries(ctx, samples, layout, theme, showDots)
-		: [];
+	const layout = layoutChart(
+		ctx,
+		samples,
+		width,
+		height,
+		pxPerEm,
+		theme.family,
+	);
+	drawAxes(ctx, layout, theme, pxPerEm);
+	return drawSeries(ctx, samples, layout, theme, showDots);
 }

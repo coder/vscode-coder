@@ -166,26 +166,34 @@ export function buildApiHook<
 	api: Api,
 	ipc: {
 		request: <P, R>(
-			def: { method: string; _types?: { params: P; response: R } },
+			def: RequestDef<P, R>,
 			...args: P extends void ? [] : [params: P]
 		) => Promise<R>;
 		command: <P>(
-			def: { method: string; _types?: { params: P } },
+			def: CommandDef<P>,
 			...args: P extends void ? [] : [params: P]
 		) => void;
 		onNotification: <D>(
-			def: { method: string; _types?: { data: D } },
+			def: NotificationDef<D>,
 			cb: (data: D) => void,
 		) => () => void;
 	},
 ): ApiHook<Api>;
 export function buildApiHook(
-	api: Record<string, { kind: string; method: string }>,
+	api: Record<
+		string,
+		| RequestDef<unknown, unknown>
+		| CommandDef<unknown>
+		| NotificationDef<unknown>
+	>,
 	ipc: {
-		request: (def: { method: string }, params?: unknown) => Promise<unknown>;
-		command: (def: { method: string }, params?: unknown) => void;
+		request: (
+			def: RequestDef<unknown, unknown>,
+			params?: unknown,
+		) => Promise<unknown>;
+		command: (def: CommandDef<unknown>, params?: unknown) => void;
 		onNotification: (
-			def: { method: string },
+			def: NotificationDef<unknown>,
 			cb: (data: unknown) => void,
 		) => () => void;
 	},

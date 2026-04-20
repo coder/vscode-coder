@@ -1,15 +1,13 @@
 import babel from "@rolldown/plugin-babel";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { resolve } from "node:path";
-import { defineConfig, type Plugin, type UserConfig } from "vite";
+import { defineConfig, type PluginOption, type UserConfig } from "vite";
 
-/**
- * Create a base Vite config for a webview package (no framework).
- */
-export function createBaseWebviewConfig(
+/** Create a Vite config for a non-framework webview package. */
+export function createWebviewConfig(
 	webviewName: string,
 	dirname: string,
-	options?: { entry?: string; plugins?: Plugin[] },
+	options?: { entry?: string; plugins?: PluginOption[] },
 ): UserConfig {
 	const production = process.env.NODE_ENV === "production";
 	const entry = options?.entry ?? "src/index.ts";
@@ -52,14 +50,12 @@ export function createBaseWebviewConfig(
 	});
 }
 
-/**
- * Create a Vite config for a React-based webview package.
- */
-export function createWebviewConfig(
+/** Create a Vite config for a React-based webview package. */
+export function createReactWebviewConfig(
 	webviewName: string,
 	dirname: string,
 ): UserConfig {
-	return createBaseWebviewConfig(webviewName, dirname, {
+	return createWebviewConfig(webviewName, dirname, {
 		entry: "src/index.tsx",
 		plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
 	});

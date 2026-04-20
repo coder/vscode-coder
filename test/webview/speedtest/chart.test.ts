@@ -1,42 +1,107 @@
 import { describe, expect, it } from "vitest";
 
-import { formatTick, niceStep } from "@repo/speedtest/chart";
+import { renderLineChart } from "@repo/speedtest/chart";
 
-describe("niceStep", () => {
-	it("rounds up to the next candidate for sub-hour ranges", () => {
-		expect(niceStep(0.3)).toBe(1);
-		expect(niceStep(1)).toBe(1);
-		expect(niceStep(1.5)).toBe(2);
-		expect(niceStep(3)).toBe(5);
-		expect(niceStep(7)).toBe(10);
-		expect(niceStep(45)).toBe(60);
-		expect(niceStep(200)).toBe(300);
+function makeCanvas(width: number, height: number): HTMLCanvasElement {
+	const parent = document.createElement("div");
+	Object.defineProperty(parent, "getBoundingClientRect", {
+		value: () => ({
+			width,
+			height,
+			top: 0,
+			left: 0,
+			right: width,
+			bottom: height,
+			x: 0,
+			y: 0,
+			toJSON: () => ({}),
+		}),
+	});
+	parent.style.fontSize = "16px";
+	const canvas = document.createElement("canvas");
+	parent.appendChild(canvas);
+	return canvas;
+}
+
+describe("renderLineChart", () => {
+	it("scales the canvas backing store by devicePixelRatio", () => {
+		Object.defineProperty(window, "devicePixelRatio", {
+			value: 2,
+			configurable: true,
+		});
+		const canvas = makeCanvas(600, 300);
+
+		renderLineChart(
+			canvas,
+			[
+				{ x: 0, y: 10, label: "a" },
+				{ x: 1, y: 20, label: "b" },
+			],
+			true,
+		);
+
+		expect(canvas.width).toBe(1200);
+		expect(canvas.height).toBe(600);
 	});
 
-	it("rounds up to whole hours past the longest candidate", () => {
-		expect(niceStep(3600)).toBe(3600);
-		expect(niceStep(4000)).toBe(7200);
-		expect(niceStep(10000)).toBe(10800);
-	});
-});
+	it("returns one point per sample, preserving input order and labels", () => {
+		const canvas = makeCanvas(600, 300);
 
-describe("formatTick", () => {
-	it("uses seconds below a minute", () => {
-		expect(formatTick(0, 1)).toBe("0s");
-		expect(formatTick(5, 5)).toBe("5s");
-		expect(formatTick(30, 15)).toBe("30s");
-	});
+		const points = renderLineChart(
+			canvas,
+			[
+				{ x: 0, y: 10, label: "alpha" },
+				{ x: 5, y: 20, label: "beta" },
+				{ x: 10, y: 5, label: "gamma" },
+			],
+			true,
+		);
 
-	it("uses minutes between 1m and 1h", () => {
-		expect(formatTick(60, 60)).toBe("1m");
-		expect(formatTick(120, 60)).toBe("2m");
-		expect(formatTick(90, 60)).toBe("1.5m");
-		expect(formatTick(300, 300)).toBe("5m");
+		expect(points.map((p) => p.label)).toEqual(["alpha", "beta", "gamma"]);
 	});
 
-	it("uses hours at or above 1h", () => {
-		expect(formatTick(3600, 3600)).toBe("1h");
-		expect(formatTick(7200, 3600)).toBe("2h");
-		expect(formatTick(5400, 3600)).toBe("1.5h");
+	it("places returned points inside the canvas bounds, left-to-right", () => {
+		const canvas = makeCanvas(600, 300);
+
+		const points = renderLineChart(
+			canvas,
+			[
+				{ x: 0, y: 10, label: "a" },
+				{ x: 5, y: 20, label: "b" },
+				{ x: 10, y: 5, label: "c" },
+			],
+			true,
+		);
+
+		for (const p of points) {
+			expect(p.x).toBeGreaterThanOrEqual(0);
+			expect(p.x).toBeLessThanOrEqual(600);
+			expect(p.y).toBeGreaterThanOrEqual(0);
+			expect(p.y).toBeLessThanOrEqual(300);
+		}
+		expect(points[0].x).toBeLessThan(points[1].x);
+		expect(points[1].x).toBeLessThan(points[2].x);
+	});
+
+	it("maps the higher sample to a smaller y (pixel y grows downward)", () => {
+		const canvas = makeCanvas(600, 300);
+
+		const points = renderLineChart(
+			canvas,
+			[
+				{ x: 0, y: 10, label: "low" },
+				{ x: 1, y: 100, label: "high" },
+			],
+			true,
+		);
+
+		expect(points[1].y).toBeLessThan(points[0].y);
+	});
+
+	it("renders a single sample without throwing", () => {
+		const canvas = makeCanvas(600, 300);
+		expect(() =>
+			renderLineChart(canvas, [{ x: 0, y: 10, label: "solo" }], true),
+		).not.toThrow();
 	});
 });

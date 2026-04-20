@@ -6,8 +6,14 @@
 import { useEffect, useRef } from "react";
 
 import { postMessage } from "../api";
+import { subscribeNotification } from "../notifications";
 
-import type { IpcNotification, IpcResponse } from "@repo/shared";
+import type {
+	CommandDef,
+	IpcResponse,
+	NotificationDef,
+	RequestDef,
+} from "@repo/shared";
 
 interface PendingRequest {
 	resolve: (value: unknown) => void;
@@ -21,8 +27,6 @@ export interface UseIpcOptions {
 	/** Request timeout in ms (default: 30000) */
 	timeoutMs?: number;
 }
-
-type NotificationHandler = (data: unknown) => void;
 
 /**
  * Hook for type-safe IPC with the extension.
@@ -44,11 +48,8 @@ type NotificationHandler = (data: unknown) => void;
 export function useIpc(options: UseIpcOptions = {}) {
 	const { timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 	const pendingRequestsRef = useRef<Map<string, PendingRequest>>(new Map());
-	const notificationHandlersRef = useRef<Map<string, Set<NotificationHandler>>>(
-		new Map(),
-	);
 
-	// Cleanup on unmount
+	// Cleanup pending requests on unmount
 	useEffect(() => {
 		return () => {
 			for (const req of pendingRequestsRef.current.values()) {
@@ -56,43 +57,27 @@ export function useIpc(options: UseIpcOptions = {}) {
 				req.reject(new Error("Component unmounted"));
 			}
 			pendingRequestsRef.current.clear();
-			notificationHandlersRef.current.clear();
 		};
 	}, []);
 
-	// Handle responses and notifications
+	// Request/response correlation lives here. Notifications are routed via
+	// the shared subscribeNotification helper (see onNotification below).
 	useEffect(() => {
 		const handler = (event: MessageEvent) => {
-			const msg = event.data as IpcResponse | IpcNotification | undefined;
+			const msg = event.data as IpcResponse | undefined;
+			if (!msg || typeof msg !== "object") return;
+			if (!("requestId" in msg) || !("success" in msg)) return;
 
-			if (!msg || typeof msg !== "object") {
-				return;
-			}
+			const pending = pendingRequestsRef.current.get(msg.requestId);
+			if (!pending) return;
 
-			// Response handling (has requestId + success)
-			if ("requestId" in msg && "success" in msg) {
-				const pending = pendingRequestsRef.current.get(msg.requestId);
-				if (!pending) return;
+			clearTimeout(pending.timeout);
+			pendingRequestsRef.current.delete(msg.requestId);
 
-				clearTimeout(pending.timeout);
-				pendingRequestsRef.current.delete(msg.requestId);
-
-				if (msg.success) {
-					pending.resolve(msg.data);
-				} else {
-					pending.reject(new Error(msg.error || "Request failed"));
-				}
-				return;
-			}
-
-			// Notification handling (has type, no requestId)
-			if ("type" in msg && !("requestId" in msg)) {
-				const handlers = notificationHandlersRef.current.get(msg.type);
-				if (handlers) {
-					for (const h of handlers) {
-						h(msg.data);
-					}
-				}
+			if (msg.success) {
+				pending.resolve(msg.data);
+			} else {
+				pending.reject(new Error(msg.error || "Request failed"));
 			}
 		};
 
@@ -102,10 +87,7 @@ export function useIpc(options: UseIpcOptions = {}) {
 
 	/** Send request and await typed response */
 	function request<P, R>(
-		definition: {
-			method: string;
-			_types?: { params: P; response: R };
-		},
+		definition: RequestDef<P, R>,
 		...args: P extends void ? [] : [params: P]
 	): Promise<R> {
 		const requestId = crypto.randomUUID();
@@ -135,7 +117,7 @@ export function useIpc(options: UseIpcOptions = {}) {
 
 	/** Send command without waiting (fire-and-forget) */
 	function command<P>(
-		definition: { method: string; _types?: { params: P } },
+		definition: CommandDef<P>,
 		...args: P extends void ? [] : [params: P]
 	): void {
 		postMessage({
@@ -158,27 +140,10 @@ export function useIpc(options: UseIpcOptions = {}) {
 	 * ```
 	 */
 	function onNotification<D>(
-		definition: { method: string; _types?: { data: D } },
+		definition: NotificationDef<D>,
 		callback: (data: D) => void,
 	): () => void {
-		const method = definition.method;
-		let handlers = notificationHandlersRef.current.get(method);
-		if (!handlers) {
-			handlers = new Set();
-			notificationHandlersRef.current.set(method, handlers);
-		}
-		handlers.add(callback as NotificationHandler);
-
-		// Return unsubscribe function
-		return () => {
-			const h = notificationHandlersRef.current.get(method);
-			if (h) {
-				h.delete(callback as NotificationHandler);
-				if (h.size === 0) {
-					notificationHandlersRef.current.delete(method);
-				}
-			}
-		};
+		return subscribeNotification(definition, callback);
 	}
 
 	return { request, command, onNotification };

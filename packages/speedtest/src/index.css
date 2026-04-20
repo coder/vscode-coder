@@ -6,8 +6,8 @@
 
 body {
 	margin: 0;
-	padding: 24px;
-	min-width: 360px;
+	padding: 1.5em;
+	min-width: 22em;
 	background: var(--vscode-editor-background);
 	color: var(--vscode-editor-foreground);
 	font-family: var(--vscode-font-family);
@@ -15,7 +15,7 @@ body {
 }
 
 .workspace-name {
-	margin: 0 0 32px;
+	margin: 0 0 2em;
 	font-size: 1.8em;
 	font-weight: 600;
 	text-align: center;
@@ -26,8 +26,8 @@ body {
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: center;
-	gap: 16px 48px;
-	margin-bottom: 24px;
+	gap: 1em 3em;
+	margin-bottom: 1.5em;
 	text-align: center;
 }
 
@@ -37,7 +37,7 @@ body {
 	opacity: 0.6;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
-	margin-bottom: 4px;
+	margin-bottom: 0.25em;
 }
 
 .stat-value {
@@ -53,8 +53,8 @@ body {
 
 .chart-container {
 	position: relative;
-	height: 320px;
-	margin-bottom: 20px;
+	height: 20em;
+	margin-bottom: 1.25em;
 }
 
 .chart-container canvas {
@@ -68,7 +68,7 @@ body {
 }
 
 button {
-	padding: 6px 16px;
+	padding: 0.4em 1em;
 	border: 1px solid var(--vscode-button-border, transparent);
 	border-radius: 2px;
 	background: var(--vscode-button-secondaryBackground);
@@ -83,7 +83,7 @@ button:hover {
 
 .tooltip {
 	position: absolute;
-	padding: 4px 8px;
+	padding: 0.25em 0.5em;
 	border-radius: 3px;
 	background: var(--vscode-editorHoverWidget-background);
 	border: 1px solid var(--vscode-editorHoverWidget-border);
@@ -99,7 +99,16 @@ button:hover {
 	opacity: 1;
 }
 
+.error,
+.empty {
+	text-align: center;
+	margin: 2em 0;
+}
+
 .error {
 	color: var(--vscode-errorForeground);
-	text-align: center;
+}
+
+.empty {
+	opacity: 0.7;
 }

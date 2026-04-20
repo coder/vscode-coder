@@ -285,7 +285,7 @@ importers:
         version: 6.0.3
       vite:
         specifier: 'catalog:'
-        version: 8.0.8(@types/node@24.10.12)(esbuild@0.28.0)
+        version: 8.0.10(@types/node@24.10.12)(esbuild@0.28.0)
 
   packages/tasks:
     dependencies:

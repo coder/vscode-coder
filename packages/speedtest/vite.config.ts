@@ -1,3 +1,3 @@
-import { createBaseWebviewConfig } from "../webview-shared/createWebviewConfig";
+import { createWebviewConfig } from "../webview-shared/createWebviewConfig";
 
-export default createBaseWebviewConfig("speedtest", __dirname);
+export default createWebviewConfig("speedtest", __dirname);
