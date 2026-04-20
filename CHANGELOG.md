@@ -5,7 +5,7 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.14.4-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.4-pre) 2026-04-20
 
 ### Added
 
@@ -14,11 +14,35 @@
   replacement when needed. When set to a directory, the simple name (`coder` / `coder.exe`) is
   tried as a fallback after the platform-specific name, so package-manager-installed CLIs work
   without symlinking.
+- New **Coder: Speed Test Workspace** command to run
+  [`coder speedtest`](https://coder.com/docs/reference/cli/speedtest) from the command palette or
+  workspace sidebar. Choose a running workspace, optionally set the test duration, and open the
+  JSON results directly in VS Code.
+- New **Coder: Ping Workspace** command to run
+  [`coder ping`](https://coder.com/docs/reference/cli/ping) from the command palette or workspace
+  sidebar, with live connectivity diagnostics in a terminal.
+- New **Coder: Create Support Bundle** command to run
+  [`coder support bundle`](https://coder.com/docs/reference/cli/support_bundle) from VS Code and
+  save the resulting diagnostics zip for troubleshooting. Available when your deployment supports
+  support bundles.
+- Coder SSH connections now default to `ServerAliveInterval=10` and `ServerAliveCountMax=3`,
+  helping keep sessions alive through NATs and firewalls while detecting dead connections within
+  about 30 seconds.
+- New `coder.networkThreshold.latencyMs` setting (default: 250ms, set to `0` to disable) to warn
+  when workspace latency stays high. The network status bar indicator turns yellow and offers quick
+  actions to run **Coder: Ping Workspace** or open the setting.
 
 ### Fixed
 
 - Cleanup of old/temp files in shared directories like `/usr/bin` is now scoped to the binary's
   own basename, preventing accidental removal of unrelated files.
+- The **Coder: Update Workspace** flow now goes through the normal startup path for more reliable
+  updates and restarts, and reconnecting to a stopped outdated workspace now offers **Start** or
+  **Update and Start**.
+- Outdated workspace notifications are now deferred until setup completes, so they no longer appear
+  during an in-progress update.
+- Workspace build logs now reliably appear in the **Coder: Workspace Build** output channel during
+  startup.
 
 ## [v1.14.3](https://github.com/coder/vscode-coder/releases/tag/v1.14.3) 2026-03-30
 
