@@ -170,6 +170,7 @@
 				"coder.networkThreshold.latencyMs": {
 					"markdownDescription": "Latency threshold in milliseconds. A warning indicator appears in the status bar when latency exceeds this value. Set to `0` to disable.",
 					"type": "number",
+					"minimum": 0,
 					"default": 250
 				},
 				"coder.httpClientLogLevel": {

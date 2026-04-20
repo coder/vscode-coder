@@ -10,18 +10,13 @@ const WARNING_BACKGROUND = new vscode.ThemeColor(
 	"statusBarItem.warningBackground",
 );
 
+const CODER_CONNECT_TEXT = "$(globe) Coder Connect";
+const CODER_CONNECT_TOOLTIP = markdown(
+	"$(cloud) Connected using Coder Connect. Detailed network stats aren't collected for this connection type.",
+);
+
 interface NetworkThresholds {
 	latencyMs: number;
-}
-
-function connectionLabel(network: NetworkInfo): string {
-	if (network.using_coder_connect) {
-		return "Coder Connect";
-	}
-	if (network.p2p) {
-		return "Direct";
-	}
-	return network.preferred_derp;
 }
 
 function connectionSummary(network: NetworkInfo): string {
@@ -31,20 +26,10 @@ function connectionSummary(network: NetworkInfo): string {
 	return `$(broadcast) Connected via ${network.preferred_derp} relay. Will switch to peer-to-peer when available.`;
 }
 
-function formatLatency(latency: number, isStale: boolean): string | undefined {
-	if (latency <= 0) {
-		return undefined;
-	}
-	return isStale ? `(~${latency.toFixed(2)}ms)` : `(${latency.toFixed(2)}ms)`;
-}
-
 function buildStatusText(network: NetworkInfo, isStale: boolean): string {
-	const parts = ["$(globe)", connectionLabel(network)];
-	const latency = formatLatency(network.latency, isStale);
-	if (latency) {
-		parts.push(latency);
-	}
-	return parts.join(" ");
+	const label = network.p2p ? "Direct" : network.preferred_derp;
+	const staleMarker = isStale ? "~" : "";
+	return `$(globe) ${label} (${staleMarker}${network.latency.toFixed(2)}ms)`;
 }
 
 /**
@@ -58,15 +43,26 @@ export class NetworkStatusReporter {
 	constructor(private readonly statusBarItem: vscode.StatusBarItem) {}
 
 	update(network: NetworkInfo, isStale: boolean): void {
+		// Coder Connect doesn't populate latency/throughput, so we show a dedicated
+		// message and skip the slowness machinery entirely.
+		if (network.using_coder_connect) {
+			this.warningCounter = 0;
+			this.isWarningActive = false;
+			this.statusBarItem.text = CODER_CONNECT_TEXT;
+			this.statusBarItem.tooltip = CODER_CONNECT_TOOLTIP;
+			this.statusBarItem.backgroundColor = undefined;
+			this.statusBarItem.command = undefined;
+			this.statusBarItem.show();
+			return;
+		}
+
 		const thresholds: NetworkThresholds = {
 			latencyMs: vscode.workspace
 				.getConfiguration("coder")
 				.get<number>("networkThreshold.latencyMs", 250),
 		};
 		const isSlow =
-			!network.using_coder_connect &&
-			thresholds.latencyMs > 0 &&
-			network.latency > thresholds.latencyMs;
+			thresholds.latencyMs > 0 && network.latency > thresholds.latencyMs;
 		this.updateWarningState(isSlow);
 
 		this.statusBarItem.text = buildStatusText(network, isStale);
@@ -106,15 +102,6 @@ export class NetworkStatusReporter {
 		thresholds: NetworkThresholds,
 		isStale: boolean,
 	): vscode.MarkdownString {
-		// The Coder CLI only populates `using_coder_connect: true` for this path
-		// and leaves latency/throughput at zero, so we show a dedicated message
-		// instead of rendering empty metric lines.
-		if (network.using_coder_connect) {
-			return markdown(
-				"$(cloud) Connected using Coder Connect. Detailed network stats aren't collected for this connection type.",
-			);
-		}
-
 		const fmt = (bytesPerSec: number) =>
 			prettyBytes(bytesPerSec * 8, { bits: true }) + "/s";
 
@@ -124,16 +111,13 @@ export class NetworkStatusReporter {
 		}
 		sections.push(connectionSummary(network));
 
-		const metrics: string[] = [];
-		if (network.latency > 0) {
-			metrics.push(
-				thresholds.latencyMs > 0
-					? `Latency: ${network.latency.toFixed(2)}ms (threshold: ${thresholds.latencyMs}ms)`
-					: `Latency: ${network.latency.toFixed(2)}ms`,
-			);
-		}
-		metrics.push(`Download: ${fmt(network.download_bytes_sec)}`);
-		metrics.push(`Upload: ${fmt(network.upload_bytes_sec)}`);
+		const thresholdSuffix =
+			thresholds.latencyMs > 0 ? ` (threshold: ${thresholds.latencyMs}ms)` : "";
+		const metrics = [
+			`Latency: ${network.latency.toFixed(2)}ms${thresholdSuffix}`,
+			`Download: ${fmt(network.download_bytes_sec)}`,
+			`Upload: ${fmt(network.upload_bytes_sec)}`,
+		];
 		// Two trailing spaces + \n = hard line break (tight rows within a section).
 		sections.push(metrics.join("  \n"));
 

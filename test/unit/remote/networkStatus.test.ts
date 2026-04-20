@@ -40,28 +40,19 @@ describe("NetworkStatusReporter status bar text", () => {
 		expect(bar.text).toBe("$(globe) SFO (40.00ms)");
 	});
 
-	it("shows the Coder Connect label alongside latency", () => {
+	it("shows just the Coder Connect label, ignoring any reported latency", () => {
 		const { bar, reporter } = setup();
 		reporter.update(
 			makeNetworkInfo({ using_coder_connect: true, latency: 30 }),
 			false,
 		);
-		expect(bar.text).toBe("$(globe) Coder Connect (30.00ms)");
+		expect(bar.text).toBe("$(globe) Coder Connect");
 	});
 
 	it("marks stale readings with a leading tilde", () => {
 		const { bar, reporter } = setup();
 		reporter.update(makeNetworkInfo({ latency: 100 }), true);
 		expect(bar.text).toContain("(~100.00ms)");
-	});
-
-	it("omits latency when the reading is 0", () => {
-		const { bar, reporter } = setup();
-		reporter.update(
-			makeNetworkInfo({ using_coder_connect: true, latency: 0 }),
-			false,
-		);
-		expect(bar.text).toBe("$(globe) Coder Connect");
 	});
 });
 
@@ -129,14 +120,6 @@ describe("NetworkStatusReporter tooltip", () => {
 		expect(t).not.toContain("Download:");
 		expect(t).not.toContain("Upload:");
 		expect(t).not.toContain("Latency:");
-	});
-
-	it("omits the latency line when the reading is 0 on an SSH connection", () => {
-		const { bar, reporter } = setup(200);
-		reporter.update(makeNetworkInfo({ latency: 0 }), false);
-		const t = tooltipOf(bar);
-		expect(t).not.toContain("Latency:");
-		expect(t).toContain("Download:");
 	});
 });
 
