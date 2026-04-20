@@ -4,9 +4,6 @@
 		"dockerfile": "Dockerfile"
 	},
 	"remoteUser": "node",
-	"containerEnv": {
-		"DBUS_SESSION_BUS_ADDRESS": "disabled:"
-	},
 	"customizations": {
 		"vscode": {
 			"extensions": [
