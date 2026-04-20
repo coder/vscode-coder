@@ -12,8 +12,6 @@ import {
 	isStableTask,
 	TasksApi,
 	type CreateTaskParams,
-	type IpcRequest,
-	type IpcResponse,
 	type NotificationDef,
 	type TaskDetails,
 	type TaskLogs,
@@ -27,10 +25,16 @@ import {
 	streamAgentLogs,
 	streamBuildLogs,
 } from "../../api/workspace";
-import { toError } from "../../error/errorUtils";
 import { type Logger } from "../../logging/logger";
 import { vscodeProposed } from "../../vscodeProposed";
-import { getWebviewHtml } from "../util";
+import {
+	dispatchCommand,
+	dispatchRequest,
+	getWebviewHtml,
+	isIpcCommand,
+	isIpcRequest,
+	notifyWebview,
+} from "../util";
 
 import type {
 	Preset,
@@ -46,31 +50,6 @@ function getTaskBuildUrl(baseUrl: string, task: Task): string {
 		return `${baseUrl}/@${task.owner_name}/${task.workspace_name}/builds/${task.workspace_build_number}`;
 	}
 	return `${baseUrl}/tasks/${task.owner_name}/${task.id}`;
-}
-
-/** Check if message is a request (has requestId) */
-function isIpcRequest(msg: unknown): msg is IpcRequest {
-	return (
-		typeof msg === "object" &&
-		msg !== null &&
-		"requestId" in msg &&
-		typeof (msg as IpcRequest).requestId === "string" &&
-		"method" in msg &&
-		typeof (msg as IpcRequest).method === "string"
-	);
-}
-
-/** Check if message is a command (has method but no requestId) */
-function isIpcCommand(
-	msg: unknown,
-): msg is { method: string; params?: unknown } {
-	return (
-		typeof msg === "object" &&
-		msg !== null &&
-		!("requestId" in msg) &&
-		"method" in msg &&
-		typeof (msg as { method: string }).method === "string"
-	);
 }
 
 export class TasksPanelProvider
@@ -183,53 +162,15 @@ export class TasksPanelProvider
 
 	private async handleMessage(message: unknown): Promise<void> {
 		if (isIpcRequest(message)) {
-			await this.handleRequest(message);
-		} else if (isIpcCommand(message)) {
-			await this.handleCommand(message);
-		}
-	}
-
-	private async handleRequest(message: IpcRequest): Promise<void> {
-		const { requestId, method, params } = message;
-
-		try {
-			const handler = this.requestHandlers[method];
-			if (!handler) {
-				throw new Error(`Unknown method: ${method}`);
-			}
-			const data = await handler(params);
-			this.sendResponse({ requestId, method, success: true, data });
-		} catch (err) {
-			const errorMessage = toError(err).message;
-			this.logger.warn(`Request ${method} failed`, err);
-			this.sendResponse({
-				requestId,
-				method,
-				success: false,
-				error: errorMessage,
+			await dispatchRequest(message, this.requestHandlers, this.view?.webview, {
+				logger: this.logger,
+				showErrorToUser: (method) =>
+					TasksPanelProvider.USER_ACTION_METHODS.has(method),
 			});
-			if (TasksPanelProvider.USER_ACTION_METHODS.has(method)) {
-				vscode.window.showErrorMessage(errorMessage);
-			}
-		}
-	}
-
-	private async handleCommand(message: {
-		method: string;
-		params?: unknown;
-	}): Promise<void> {
-		const { method, params } = message;
-
-		try {
-			const handler = this.commandHandlers[method];
-			if (!handler) {
-				throw new Error(`Unknown command: ${method}`);
-			}
-			await handler(params);
-		} catch (err) {
-			const errorMessage = toError(err).message;
-			this.logger.warn(`Command ${method} failed`, err);
-			vscode.window.showErrorMessage(errorMessage);
+		} else if (isIpcCommand(message)) {
+			await dispatchCommand(message, this.commandHandlers, {
+				logger: this.logger,
+			});
 		}
 	}
 
@@ -581,18 +522,13 @@ export class TasksPanelProvider
 		}
 	}
 
-	private sendResponse(response: IpcResponse): void {
-		this.view?.webview.postMessage(response);
-	}
-
 	private notify<D>(
 		def: NotificationDef<D>,
 		...args: D extends void ? [] : [data: D]
 	): void {
-		this.view?.webview.postMessage({
-			type: def.method,
-			...(args.length > 0 ? { data: args[0] } : {}),
-		});
+		if (this.view) {
+			notifyWebview(this.view.webview, def, ...args);
+		}
 	}
 
 	dispose(): void {

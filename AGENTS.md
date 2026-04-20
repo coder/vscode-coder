@@ -79,6 +79,21 @@ test/
 └── mocks/          # Shared test mocks
 ```
 
+## Webviews
+
+When adding or modifying a panel, follow `packages/webview-shared/README.md`.
+It is the single source of truth for the IPC contract, exhaustive handler
+maps, and the visibility/theme re-send guarantee.
+
+Non-negotiables:
+
+- Never hand-roll `window.addEventListener("message", ...)` or
+  `postMessage({ method, params })`. Use `onNotification` / `sendCommand`
+  (vanilla) or `useIpc` (React) from `@repo/webview-shared`.
+- Extension panels must call **both** `buildCommandHandlers` and
+  `buildRequestHandlers` (empty `{}` is fine). This gives a compile error
+  when anyone adds an action to the API without a matching handler.
+
 ## Code Style
 
 - TypeScript with strict typing

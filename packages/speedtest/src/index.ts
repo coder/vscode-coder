@@ -1,5 +1,5 @@
 import { SpeedtestApi, type SpeedtestResult, toError } from "@repo/shared";
-import { postMessage, subscribeNotification } from "@repo/webview-shared";
+import { onNotification, sendCommand } from "@repo/webview-shared";
 
 import { renderLineChart } from "./chart";
 import {
@@ -20,11 +20,11 @@ const TOOLTIP_GAP_PX = 32;
 let cleanup: (() => void) | undefined;
 
 function main(): void {
-	subscribeNotification(SpeedtestApi.data, ({ workspaceId, result }) => {
+	onNotification(SpeedtestApi.data, ({ workspaceId, result }) => {
 		try {
 			cleanup?.();
 			cleanup = renderPage(result, workspaceId, () =>
-				postMessage({ method: SpeedtestApi.viewJson.method }),
+				sendCommand(SpeedtestApi.viewJson),
 			);
 		} catch (err) {
 			showError(`Failed to render speedtest: ${toError(err).message}`);

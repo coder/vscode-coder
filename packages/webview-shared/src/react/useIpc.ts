@@ -6,7 +6,7 @@
 import { useEffect, useRef } from "react";
 
 import { postMessage } from "../api";
-import { subscribeNotification } from "../notifications";
+import { onNotification as subscribe } from "../ipc";
 
 import type {
 	CommandDef,
@@ -61,7 +61,7 @@ export function useIpc(options: UseIpcOptions = {}) {
 	}, []);
 
 	// Request/response correlation lives here. Notifications are routed via
-	// the shared subscribeNotification helper (see onNotification below).
+	// the shared onNotification helper (see the method below).
 	useEffect(() => {
 		const handler = (event: MessageEvent) => {
 			const msg = event.data as IpcResponse | undefined;
@@ -143,7 +143,7 @@ export function useIpc(options: UseIpcOptions = {}) {
 		definition: NotificationDef<D>,
 		callback: (data: D) => void,
 	): () => void {
-		return subscribeNotification(definition, callback);
+		return subscribe(definition, callback);
 	}
 
 	return { request, command, onNotification };

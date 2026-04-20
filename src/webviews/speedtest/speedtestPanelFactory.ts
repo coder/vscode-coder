@@ -2,12 +2,21 @@ import * as vscode from "vscode";
 
 import {
 	buildCommandHandlers,
-	type SpeedtestData,
+	buildRequestHandlers,
 	SpeedtestApi,
+	type SpeedtestData,
 	type SpeedtestResult,
 } from "@repo/shared";
 
-import { getWebviewHtml } from "../util";
+import {
+	dispatchCommand,
+	dispatchRequest,
+	getWebviewHtml,
+	isIpcCommand,
+	isIpcRequest,
+	notifyWebview,
+	onWhileVisible,
+} from "../util";
 
 import type { Logger } from "../../logging/logger";
 
@@ -60,16 +69,10 @@ export class SpeedtestPanelFactory {
 		// or theme change to rehydrate and redraw.
 		const payload: SpeedtestData = { workspaceId, result };
 		const sendData = () =>
-			panel.webview.postMessage({
-				type: SpeedtestApi.data.method,
-				data: payload,
-			});
-		const sendIfVisible = () => {
-			if (panel.visible) {
-				sendData();
-			}
-		};
+			notifyWebview(panel.webview, SpeedtestApi.data, payload);
 
+		// Both builders emit a compile error if any command or request in the
+		// API lacks a handler here; the empty `{}` below is still load-bearing.
 		const commandHandlers = buildCommandHandlers(SpeedtestApi, {
 			// Webview signals it's subscribed; safe to push the payload now.
 			ready: () => {
@@ -90,23 +93,30 @@ export class SpeedtestPanelFactory {
 				}
 			},
 		});
+		const requestHandlers = buildRequestHandlers(SpeedtestApi, {});
 
+		const logger = this.logger;
 		const disposables: vscode.Disposable[] = [
-			panel.onDidChangeViewState(sendIfVisible),
-			vscode.window.onDidChangeActiveColorTheme(sendIfVisible),
-			panel.webview.onDidReceiveMessage(
-				(message: { method: string; params?: unknown }) => {
-					const handler = commandHandlers[message.method];
-					if (handler) {
-						Promise.resolve(handler(message.params)).catch((err: unknown) => {
-							this.logger.error(
-								`Unhandled error in speedtest handler for '${message.method}'`,
-								err,
-							);
-						});
-					}
-				},
+			onWhileVisible(panel, panel.onDidChangeViewState, sendData),
+			onWhileVisible(
+				panel,
+				vscode.window.onDidChangeActiveColorTheme,
+				sendData,
 			),
+			panel.webview.onDidReceiveMessage((message: unknown) => {
+				if (isIpcRequest(message)) {
+					void dispatchRequest(message, requestHandlers, panel.webview, {
+						logger,
+					});
+				} else if (isIpcCommand(message)) {
+					void dispatchCommand(message, commandHandlers, { logger });
+				} else {
+					logger.warn(
+						"Ignoring unrecognized speedtest webview message",
+						message,
+					);
+				}
+			}),
 		];
 		panel.onDidDispose(() => {
 			for (const d of disposables) {
