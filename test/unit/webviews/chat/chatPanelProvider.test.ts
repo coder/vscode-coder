@@ -92,11 +92,11 @@ describe("ChatPanelProvider", () => {
 			windowMock.__setActiveColorThemeKind(kind);
 			const { sendFromWebview, postMessage } = createHarness();
 
-			sendFromWebview({ type: "coder:chat-ready" });
+			sendFromWebview({ method: "coder:chat-ready" });
 
 			expect(findPostedMessage(postMessage, "coder:set-theme")).toEqual({
 				type: "coder:set-theme",
-				theme: expected,
+				data: { theme: expected },
 			});
 		});
 
@@ -108,7 +108,7 @@ describe("ChatPanelProvider", () => {
 
 			expect(postMessage).toHaveBeenCalledWith({
 				type: "coder:set-theme",
-				theme: "light",
+				data: { theme: "light" },
 			});
 		});
 	});
@@ -117,13 +117,13 @@ describe("ChatPanelProvider", () => {
 		it("sends auth token on coder:vscode-ready", () => {
 			const { sendFromWebview, postMessage } = createHarness();
 
-			sendFromWebview({ type: "coder:vscode-ready" });
+			sendFromWebview({ method: "coder:vscode-ready" });
 
 			expect(
 				findPostedMessage(postMessage, "coder:auth-bootstrap-token"),
 			).toEqual({
 				type: "coder:auth-bootstrap-token",
-				token: "test-token",
+				data: { token: "test-token" },
 			});
 		});
 	});
@@ -133,8 +133,8 @@ describe("ChatPanelProvider", () => {
 			const { sendFromWebview } = createHarness();
 
 			sendFromWebview({
-				type: "coder:navigate",
-				payload: { url: "/templates" },
+				method: "coder:navigate",
+				params: { url: "/templates" },
 			});
 
 			expect(vscode.env.openExternal).toHaveBeenCalledWith(
@@ -145,7 +145,7 @@ describe("ChatPanelProvider", () => {
 		it("ignores navigate without url payload", () => {
 			const { sendFromWebview } = createHarness();
 
-			sendFromWebview({ type: "coder:navigate" });
+			sendFromWebview({ method: "coder:navigate", params: {} });
 
 			expect(vscode.env.openExternal).not.toHaveBeenCalled();
 		});
@@ -154,8 +154,8 @@ describe("ChatPanelProvider", () => {
 			const { sendFromWebview } = createHarness();
 
 			sendFromWebview({
-				type: "coder:navigate",
-				payload: { url: "https://evil.com/steal" },
+				method: "coder:navigate",
+				params: { url: "https://evil.com/steal" },
 			});
 
 			expect(vscode.env.openExternal).not.toHaveBeenCalled();
