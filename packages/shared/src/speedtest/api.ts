@@ -1,11 +1,13 @@
 import { defineCommand, defineNotification } from "../ipc/protocol";
 
-/**
- * Speedtest webview IPC API.
- */
+export interface SpeedtestData {
+	json: string;
+	workspaceName: string;
+}
+
 export const SpeedtestApi = {
-	/** Extension pushes JSON results to the webview */
-	data: defineNotification<string>("speedtest/data"),
+	/** Extension pushes results to the webview */
+	data: defineNotification<SpeedtestData>("speedtest/data"),
 	/** Webview requests to open raw JSON in a text editor */
 	viewJson: defineCommand<string>("speedtest/viewJson"),
 } as const;

@@ -1,16 +1,22 @@
 import * as vscode from "vscode";
 
-import { buildCommandHandlers, SpeedtestApi } from "@repo/shared";
+import {
+	buildCommandHandlers,
+	type SpeedtestData,
+	SpeedtestApi,
+} from "@repo/shared";
 
 import { getWebviewHtml } from "../util";
 
 export function showSpeedtestChart(
 	extensionUri: vscode.Uri,
 	json: string,
+	workspaceName: string,
 ): void {
+	const title = `Speed Test: ${workspaceName}`;
 	const panel = vscode.window.createWebviewPanel(
-		"coderSpeedtest",
-		"Speed Test Results",
+		"coder.speedtestPanel",
+		title,
 		vscode.ViewColumn.One,
 		{
 			enableScripts: true,
@@ -29,21 +35,36 @@ export function showSpeedtestChart(
 		panel.webview,
 		extensionUri,
 		"speedtest",
-		"Speed Test Results",
+		title,
 	);
 
 	// Webview context is discarded when hidden (no retainContextWhenHidden),
-	// so re-send on visibility change to re-hydrate the chart.
+	// so re-send on visibility change to re-hydrate the chart. Also re-send on
+	// theme change so the canvas (which caches theme colors into pixels) redraws.
+	const payload: SpeedtestData = { json, workspaceName };
 	const sendData = () => {
 		panel.webview.postMessage({
 			type: SpeedtestApi.data.method,
-			data: json,
+			data: payload,
 		});
 	};
 	sendData();
-	panel.onDidChangeViewState(() => {
-		if (panel.visible) {
-			sendData();
+
+	const disposables: vscode.Disposable[] = [
+		panel.onDidChangeViewState(() => {
+			if (panel.visible) {
+				sendData();
+			}
+		}),
+		vscode.window.onDidChangeActiveColorTheme(() => {
+			if (panel.visible) {
+				sendData();
+			}
+		}),
+	];
+	panel.onDidDispose(() => {
+		for (const d of disposables) {
+			d.dispose();
 		}
 	});
 

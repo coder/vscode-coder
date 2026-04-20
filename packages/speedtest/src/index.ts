@@ -1,12 +1,7 @@
-import { SpeedtestApi } from "@repo/shared";
+import { type SpeedtestData, SpeedtestApi } from "@repo/shared";
 import { postMessage } from "@repo/webview-shared";
 
-import {
-	DOT_THRESHOLD,
-	type ChartData,
-	type ChartPoint,
-	renderLineChart,
-} from "./chart";
+import { type ChartPoint, renderLineChart } from "./chart";
 import "./index.css";
 
 interface SpeedtestInterval {
@@ -20,53 +15,59 @@ interface SpeedtestResult {
 	intervals: SpeedtestInterval[];
 }
 
-const HIT_RADIUS = 12;
+const HIT_RADIUS_PX = 12;
+/** Above this sample count, render the line alone (no per-point dots). */
+const DOT_THRESHOLD = 20;
 
 let cleanup: (() => void) | undefined;
 
 window.addEventListener(
 	"message",
-	(event: MessageEvent<{ type: string; data?: string }>) => {
-		if (event.data.type !== SpeedtestApi.data.method) {
+	(event: MessageEvent<{ type: string; data?: SpeedtestData }>) => {
+		if (event.data.type !== SpeedtestApi.data.method || !event.data.data) {
 			return;
 		}
-		const json = event.data.data ?? "";
+		const { json, workspaceName } = event.data.data;
 		try {
-			const data = JSON.parse(json) as SpeedtestResult;
+			const result = JSON.parse(json) as SpeedtestResult;
 			cleanup?.();
-			cleanup = renderPage(data, () =>
+			cleanup = renderPage(result, workspaceName, () =>
 				postMessage({
 					method: SpeedtestApi.viewJson.method,
 					params: json,
 				}),
 			);
-		} catch {
-			showError("Failed to parse speedtest data.");
+		} catch (err) {
+			const detail = err instanceof Error ? err.message : String(err);
+			showError(`Failed to parse speedtest data: ${detail}`);
 		}
 	},
 );
 
-function prepareChartData(intervals: SpeedtestInterval[]): ChartData {
-	const xValues: number[] = [];
-	const values: number[] = [];
-	const pointLabels: string[] = [];
-	for (const iv of intervals) {
-		xValues.push(iv.end_time_seconds);
-		values.push(iv.throughput_mbits);
-		pointLabels.push(
-			`${iv.throughput_mbits.toFixed(2)} Mbps (${iv.start_time_seconds.toFixed(0)}\u2013${iv.end_time_seconds.toFixed(0)}s)`,
-		);
-	}
-	return { xValues, values, pointLabels };
+function toChartSamples(intervals: SpeedtestInterval[]): ChartPoint[] {
+	return intervals.map((iv) => ({
+		x: iv.end_time_seconds,
+		y: iv.throughput_mbits,
+		label: `${iv.throughput_mbits.toFixed(2)} Mbps (${iv.start_time_seconds.toFixed(0)}\u2013${iv.end_time_seconds.toFixed(0)}s)`,
+	}));
 }
 
-function renderPage(data: SpeedtestResult, onViewJson: () => void): () => void {
+function renderPage(
+	data: SpeedtestResult,
+	workspaceName: string,
+	onViewJson: () => void,
+): () => void {
 	const root = document.getElementById("root");
 	if (!root) {
 		return () => undefined;
 	}
 
 	root.innerHTML = "";
+
+	const heading = document.createElement("h1");
+	heading.className = "workspace-name";
+	heading.textContent = workspaceName;
+	root.appendChild(heading);
 
 	const summary = document.createElement("div");
 	summary.className = "summary";
@@ -94,13 +95,13 @@ function renderPage(data: SpeedtestResult, onViewJson: () => void): () => void {
 	container.append(canvas, tooltip);
 	root.appendChild(container);
 
-	const chartData = prepareChartData(data.intervals);
-	const hasDots = chartData.values.length <= DOT_THRESHOLD;
+	const samples = toChartSamples(data.intervals);
+	const showDots = samples.length <= DOT_THRESHOLD;
 
 	let points: ChartPoint[] = [];
-	let canvasRect = canvas.getBoundingClientRect();
+	let canvasRect: DOMRect;
 	const draw = () => {
-		points = renderLineChart(canvas, chartData);
+		points = renderLineChart(canvas, samples, showDots);
 		canvasRect = canvas.getBoundingClientRect();
 	};
 	draw();
@@ -112,11 +113,12 @@ function renderPage(data: SpeedtestResult, onViewJson: () => void): () => void {
 	});
 	observer.observe(container);
 
-	const findNearest = hasDots ? findNearestDot : findNearestOnLine;
 	const onMouseMove = (e: MouseEvent) => {
 		const mx = e.clientX - canvasRect.left;
 		const my = e.clientY - canvasRect.top;
-		const hit = findNearest(points, mx, my);
+		const hit = showDots
+			? findNearestDot(points, mx, my)
+			: findNearestOnLine(points, mx);
 
 		if (hit) {
 			tooltip.textContent = hit.label;
@@ -196,8 +198,8 @@ function findNearestDot(
 	if (!best) {
 		return null;
 	}
-	return Math.abs(best.x - mx) < HIT_RADIUS &&
-		Math.abs(best.y - my) < HIT_RADIUS
+	return Math.abs(best.x - mx) < HIT_RADIUS_PX &&
+		Math.abs(best.y - my) < HIT_RADIUS_PX
 		? best
 		: null;
 }
@@ -205,15 +207,15 @@ function findNearestDot(
 function findNearestOnLine(
 	points: ChartPoint[],
 	mx: number,
-	_my: number,
 ): ChartPoint | null {
 	const best = findNearestByX(points, mx);
 	if (!best) {
 		return null;
 	}
+	const last = points.at(-1) ?? best;
 	const avgGap =
 		points.length > 1
-			? (points[points.length - 1].x - points[0].x) / (points.length - 1)
-			: HIT_RADIUS;
+			? (last.x - points[0].x) / (points.length - 1)
+			: HIT_RADIUS_PX;
 	return Math.abs(best.x - mx) < avgGap ? best : null;
 }

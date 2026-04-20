@@ -193,7 +193,7 @@ export class Commands {
 
 		const input = await vscode.window.showInputBox({
 			title: "Speed Test Duration",
-			prompt: "How long should the test run? (seconds)",
+			prompt: "Duration in seconds",
 			value: "5",
 			validateInput: (value) => {
 				const n = Number(value.trim());
@@ -253,7 +253,7 @@ export class Commands {
 		);
 
 		if (result.ok) {
-			showSpeedtestChart(this.extensionUri, result.value);
+			showSpeedtestChart(this.extensionUri, result.value, workspaceId);
 			return;
 		}
 

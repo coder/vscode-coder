@@ -14,6 +14,14 @@ body {
 	font-size: var(--vscode-font-size);
 }
 
+.workspace-name {
+	margin: 0 0 32px;
+	font-size: 1.8em;
+	font-weight: 600;
+	text-align: center;
+	word-break: break-all;
+}
+
 .summary {
 	display: flex;
 	flex-wrap: wrap;

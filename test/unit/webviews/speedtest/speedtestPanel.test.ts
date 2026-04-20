@@ -12,10 +12,8 @@ describe("SpeedtestApi", () => {
 			},
 		});
 
-		// Handler is keyed by the wire method name
 		expect(handlers[SpeedtestApi.viewJson.method]).toBeDefined();
 
-		// Dispatching through the handler passes the data correctly
 		await handlers[SpeedtestApi.viewJson.method]('{"test": true}');
 		expect(receivedData).toBe('{"test": true}');
 	});
