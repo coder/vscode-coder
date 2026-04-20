@@ -13,23 +13,15 @@ import {
 
 import {
 	createMockLogger,
+	makeNetworkInfo,
 	MockConfigurationProvider,
-	MockStatusBar,
+	MockStatusBarItem,
 } from "../../mocks/testHelpers";
 
 import type * as fs from "node:fs";
 
 function makeNetworkJson(overrides: Partial<NetworkInfo> = {}): string {
-	return JSON.stringify({
-		p2p: true,
-		latency: 50,
-		preferred_derp: "NYC",
-		derp_latency: { NYC: 10 },
-		upload_bytes_sec: 1_000_000,
-		download_bytes_sec: 5_000_000,
-		using_coder_connect: false,
-		...overrides,
-	});
+	return JSON.stringify(makeNetworkInfo(overrides));
 }
 
 vi.mock("find-process", () => ({ default: vi.fn() }));
@@ -41,13 +33,13 @@ vi.mock("node:fs/promises", async () => {
 
 describe("SshProcessMonitor", () => {
 	let activeMonitors: SshProcessMonitor[] = [];
-	let statusBar: MockStatusBar;
+	let statusBar: MockStatusBarItem;
 
 	beforeEach(() => {
 		vi.restoreAllMocks();
 		vol.reset();
 		activeMonitors = [];
-		statusBar = new MockStatusBar();
+		statusBar = new MockStatusBarItem();
 		// Provide default threshold config so getThresholdConfig() works
 		new MockConfigurationProvider();
 
@@ -447,7 +439,7 @@ describe("SshProcessMonitor", () => {
 
 			expect(statusBar.text).toContain("Direct");
 			expect(statusBar.text).toContain("25.50ms");
-			expect(tooltipText()).toContain("Direct (P2P)");
+			expect(tooltipText()).toContain("Directly connected peer-to-peer");
 		});
 
 		it("shows relay connection with DERP region", async () => {
@@ -777,16 +769,11 @@ describe("SshProcessMonitor", () => {
 		});
 	});
 
-	describe("slowness detection", () => {
+	describe("slowness detection wiring", () => {
 		const sshLog = {
 			"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
 				"-> socksPort 12345 ->",
 		};
-
-		function setThresholds(latencyMs: number) {
-			const mockConfig = new MockConfigurationProvider();
-			mockConfig.set("coder.networkThreshold.latencyMs", latencyMs);
-		}
 
 		function startWithNetwork(networkOverrides: Partial<NetworkInfo> = {}) {
 			vol.fromJSON({
@@ -800,62 +787,18 @@ describe("SshProcessMonitor", () => {
 			});
 		}
 
-		it("shows warning background after 3 consecutive slow polls", async () => {
-			setThresholds(100);
+		it("surfaces a warning on the status bar when latency exceeds the configured threshold", async () => {
+			new MockConfigurationProvider().set(
+				"coder.networkThreshold.latencyMs",
+				100,
+			);
 			startWithNetwork({ latency: 200 });
 
 			await waitFor(
 				() => statusBar.backgroundColor instanceof ThemeColor,
 				2000,
 			);
-			expect(statusBar.backgroundColor).toBeInstanceOf(ThemeColor);
-		});
-
-		it("clears warning after 3 consecutive healthy polls", async () => {
-			setThresholds(100);
-			startWithNetwork({ latency: 200 });
-
-			await waitFor(
-				() => statusBar.backgroundColor instanceof ThemeColor,
-				2000,
-			);
-
-			// Improve latency — warning should clear after 3 healthy polls
-			vol.fromJSON({
-				...sshLog,
-				"/network/999.json": makeNetworkJson({ latency: 50 }),
-			});
-			await waitFor(() => statusBar.backgroundColor === undefined, 2000);
-			expect(statusBar.backgroundColor).toBeUndefined();
-		});
-
-		it("sets ping command when latency is slow", async () => {
-			setThresholds(100);
-			startWithNetwork({ latency: 200 });
-
-			await waitFor(() => statusBar.command === "coder.pingWorkspace", 2000);
 			expect(statusBar.command).toBe("coder.pingWorkspace");
-		});
-
-		it("does not show warning for Coder Connect connections", async () => {
-			setThresholds(100);
-			startWithNetwork({ using_coder_connect: true });
-
-			await waitFor(() => statusBar.text.includes("Coder Connect"), 2000);
-			expect(statusBar.backgroundColor).toBeUndefined();
-			expect(statusBar.command).toBeUndefined();
-		});
-
-		it("includes threshold info in tooltip when warning is active", async () => {
-			setThresholds(100);
-			startWithNetwork({ latency: 200 });
-
-			await waitFor(
-				() => statusBar.backgroundColor instanceof ThemeColor,
-				2000,
-			);
-			expect(tooltipText()).toContain("threshold: 100ms");
-			expect(tooltipText()).toContain("Ping workspace");
 		});
 	});
 

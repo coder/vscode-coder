@@ -15,12 +15,28 @@ import type { IncomingMessage } from "node:http";
 import type { CoderApi } from "@/api/coderApi";
 import type { CliCredentialManager } from "@/core/cliCredentialManager";
 import type { Logger } from "@/logging/logger";
+import type { NetworkInfo } from "@/remote/sshProcess";
 import type {
 	EventHandler,
 	EventPayloadMap,
 	ParsedMessageEvent,
 	UnidirectionalStream,
 } from "@/websocket/eventStreamConnection";
+
+export function makeNetworkInfo(
+	overrides: Partial<NetworkInfo> = {},
+): NetworkInfo {
+	return {
+		p2p: true,
+		latency: 50,
+		preferred_derp: "NYC",
+		derp_latency: { NYC: 10 },
+		upload_bytes_sec: 1_250_000,
+		download_bytes_sec: 6_250_000,
+		using_coder_connect: false,
+		...overrides,
+	};
+}
 
 /**
  * Mock configuration provider that integrates with the vscode workspace configuration mock.
@@ -480,23 +496,25 @@ export function createMockStream(
  * Mock status bar that integrates with vscode.window.createStatusBarItem.
  * Use this to inspect status bar state in tests.
  */
-export class MockStatusBar {
+export class MockStatusBarItem implements vscode.StatusBarItem {
+	readonly id = "mock-status-bar";
 	text = "";
-	tooltip: string | vscode.MarkdownString = "";
+	tooltip: string | vscode.MarkdownString | undefined = "";
 	backgroundColor: vscode.ThemeColor | undefined;
 	color: string | vscode.ThemeColor | undefined;
 	command: string | vscode.Command | undefined;
 	accessibilityInformation: vscode.AccessibilityInformation | undefined;
 	name: string | undefined;
-	priority: number | undefined;
-	alignment: vscode.StatusBarAlignment = vscode.StatusBarAlignment.Left;
+	readonly priority: number | undefined = undefined;
+	readonly alignment: vscode.StatusBarAlignment =
+		vscode.StatusBarAlignment.Left;
 
 	readonly show = vi.fn();
 	readonly hide = vi.fn();
 	readonly dispose = vi.fn();
 
 	constructor() {
-		this.setupVSCodeMock();
+		vi.mocked(vscode.window.createStatusBarItem).mockReturnValue(this);
 	}
 
 	/**
@@ -511,15 +529,6 @@ export class MockStatusBar {
 		this.show.mockClear();
 		this.hide.mockClear();
 		this.dispose.mockClear();
-	}
-
-	/**
-	 * Setup the vscode.window.createStatusBarItem mock
-	 */
-	private setupVSCodeMock(): void {
-		vi.mocked(vscode.window.createStatusBarItem).mockReturnValue(
-			this as unknown as vscode.StatusBarItem,
-		);
 	}
 }
 

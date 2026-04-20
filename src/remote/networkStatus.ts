@@ -4,81 +4,52 @@ import * as vscode from "vscode";
 import type { NetworkInfo } from "./sshProcess";
 
 /** Number of consecutive polls required to trigger or clear a warning */
-const WARNING_DEBOUNCE_THRESHOLD = 3;
+const WARNING_DEBOUNCE_THRESHOLD = 2;
 
 const WARNING_BACKGROUND = new vscode.ThemeColor(
 	"statusBarItem.warningBackground",
 );
 
-export interface NetworkThresholds {
+interface NetworkThresholds {
 	latencyMs: number;
 }
 
-function getThresholdConfig(): NetworkThresholds {
-	const cfg = vscode.workspace.getConfiguration("coder");
-	return {
-		latencyMs: cfg.get<number>("networkThreshold.latencyMs", 200),
-	};
-}
-
-export function isLatencySlow(
-	network: NetworkInfo,
-	thresholds: NetworkThresholds,
-): boolean {
-	return thresholds.latencyMs > 0 && network.latency > thresholds.latencyMs;
-}
-
-export function buildNetworkTooltip(
-	network: NetworkInfo,
-	latencySlow: boolean,
-	thresholds: NetworkThresholds,
-): vscode.MarkdownString {
-	const fmt = (bytesPerSec: number) =>
-		prettyBytes(bytesPerSec * 8, { bits: true }) + "/s";
-
-	const sections: string[] = [];
-
-	if (latencySlow) {
-		sections.push("$(warning) **Slow connection detected**");
-	}
-
-	const metrics: string[] = [];
-	metrics.push(
-		latencySlow
-			? `Latency: ${network.latency.toFixed(2)}ms (threshold: ${thresholds.latencyMs}ms)`
-			: `Latency: ${network.latency.toFixed(2)}ms`,
-	);
-	metrics.push(`Download: ${fmt(network.download_bytes_sec)}`);
-	metrics.push(`Upload: ${fmt(network.upload_bytes_sec)}`);
-
+function connectionLabel(network: NetworkInfo): string {
 	if (network.using_coder_connect) {
-		metrics.push("Connection: Coder Connect");
-	} else if (network.p2p) {
-		metrics.push("Connection: Direct (P2P)");
-	} else {
-		metrics.push(`Connection: ${network.preferred_derp} (relay)`);
+		return "Coder Connect";
 	}
-
-	// Two trailing spaces + \n = hard line break (tight rows within a section).
-	sections.push(metrics.join("  \n"));
-
-	if (latencySlow) {
-		sections.push(
-			"[$(pulse) Ping workspace](command:coder.pingWorkspace) · " +
-				"[$(gear) Configure threshold](command:workbench.action.openSettings?%22coder.networkThreshold%22)",
-		);
+	if (network.p2p) {
+		return "Direct";
 	}
+	return network.preferred_derp;
+}
 
-	// Blank line between sections = paragraph break.
-	const md = new vscode.MarkdownString(sections.join("\n\n"));
-	md.isTrusted = true;
-	md.supportThemeIcons = true;
-	return md;
+function connectionSummary(network: NetworkInfo): string {
+	if (network.p2p) {
+		return "$(zap) Directly connected peer-to-peer.";
+	}
+	return `$(broadcast) Connected via ${network.preferred_derp} relay. Will switch to peer-to-peer when available.`;
+}
+
+function formatLatency(latency: number, isStale: boolean): string | undefined {
+	if (latency <= 0) {
+		return undefined;
+	}
+	return isStale ? `(~${latency.toFixed(2)}ms)` : `(${latency.toFixed(2)}ms)`;
+}
+
+function buildStatusText(network: NetworkInfo, isStale: boolean): string {
+	const parts = ["$(globe)", connectionLabel(network)];
+	const latency = formatLatency(network.latency, isStale);
+	if (latency) {
+		parts.push(latency);
+	}
+	return parts.join(" ");
 }
 
 /**
- * Manages network status bar presentation and slowness warning state.
- * Owns the warning debounce logic and status bar updates.
+ * Manages network status bar presentation.
+ * Warning state is debounced over consecutive polls to avoid flicker.
  */
 export class NetworkStatusReporter {
 	private warningCounter = 0;
@@ -87,55 +58,34 @@ export class NetworkStatusReporter {
 	constructor(private readonly statusBarItem: vscode.StatusBarItem) {}
 
 	update(network: NetworkInfo, isStale: boolean): void {
-		let statusText = "$(globe) ";
+		const thresholds: NetworkThresholds = {
+			latencyMs: vscode.workspace
+				.getConfiguration("coder")
+				.get<number>("networkThreshold.latencyMs", 250),
+		};
+		const isSlow =
+			!network.using_coder_connect &&
+			thresholds.latencyMs > 0 &&
+			network.latency > thresholds.latencyMs;
+		this.updateWarningState(isSlow);
 
-		// Coder Connect doesn't populate any other stats
-		if (network.using_coder_connect) {
-			this.warningCounter = 0;
-			this.isWarningActive = false;
-			this.statusBarItem.text = statusText + "Coder Connect ";
-			this.statusBarItem.tooltip = "You're connected using Coder Connect.";
-			this.statusBarItem.backgroundColor = undefined;
-			this.statusBarItem.command = undefined;
-			this.statusBarItem.show();
-			return;
-		}
-
-		const thresholds = getThresholdConfig();
-		const latencySlow = isLatencySlow(network, thresholds);
-		this.updateWarningState(latencySlow);
-
-		if (network.p2p) {
-			statusText += "Direct ";
-		} else {
-			statusText += network.preferred_derp + " ";
-		}
-
-		const latencyText = isStale
-			? `(~${network.latency.toFixed(2)}ms)`
-			: `(${network.latency.toFixed(2)}ms)`;
-		statusText += latencyText;
-		this.statusBarItem.text = statusText;
-
-		if (this.isWarningActive) {
-			this.statusBarItem.backgroundColor = WARNING_BACKGROUND;
-			this.statusBarItem.command = "coder.pingWorkspace";
-		} else {
-			this.statusBarItem.backgroundColor = undefined;
-			this.statusBarItem.command = undefined;
-		}
-
-		this.statusBarItem.tooltip = buildNetworkTooltip(
+		this.statusBarItem.text = buildStatusText(network, isStale);
+		this.statusBarItem.tooltip = this.buildTooltip(
 			network,
-			this.isWarningActive,
 			thresholds,
+			isStale,
 		);
-
+		this.statusBarItem.backgroundColor = this.isWarningActive
+			? WARNING_BACKGROUND
+			: undefined;
+		this.statusBarItem.command = this.isWarningActive
+			? "coder.pingWorkspace"
+			: undefined;
 		this.statusBarItem.show();
 	}
 
-	private updateWarningState(latencySlow: boolean): void {
-		if (latencySlow) {
+	private updateWarningState(isSlow: boolean): void {
+		if (isSlow) {
 			this.warningCounter = Math.min(
 				this.warningCounter + 1,
 				WARNING_DEBOUNCE_THRESHOLD,
@@ -150,4 +100,64 @@ export class NetworkStatusReporter {
 			this.isWarningActive = false;
 		}
 	}
+
+	private buildTooltip(
+		network: NetworkInfo,
+		thresholds: NetworkThresholds,
+		isStale: boolean,
+	): vscode.MarkdownString {
+		// The Coder CLI only populates `using_coder_connect: true` for this path
+		// and leaves latency/throughput at zero, so we show a dedicated message
+		// instead of rendering empty metric lines.
+		if (network.using_coder_connect) {
+			return markdown(
+				"$(cloud) Connected using Coder Connect. Detailed network stats aren't collected for this connection type.",
+			);
+		}
+
+		const fmt = (bytesPerSec: number) =>
+			prettyBytes(bytesPerSec * 8, { bits: true }) + "/s";
+
+		const sections: string[] = [];
+		if (this.isWarningActive) {
+			sections.push("$(warning) **Slow connection detected**");
+		}
+		sections.push(connectionSummary(network));
+
+		const metrics: string[] = [];
+		if (network.latency > 0) {
+			metrics.push(
+				thresholds.latencyMs > 0
+					? `Latency: ${network.latency.toFixed(2)}ms (threshold: ${thresholds.latencyMs}ms)`
+					: `Latency: ${network.latency.toFixed(2)}ms`,
+			);
+		}
+		metrics.push(`Download: ${fmt(network.download_bytes_sec)}`);
+		metrics.push(`Upload: ${fmt(network.upload_bytes_sec)}`);
+		// Two trailing spaces + \n = hard line break (tight rows within a section).
+		sections.push(metrics.join("  \n"));
+
+		if (this.isWarningActive) {
+			sections.push(
+				"[$(pulse) Run latency test](command:coder.pingWorkspace) · " +
+					"[$(gear) Configure threshold](command:workbench.action.openSettings?%22coder.networkThreshold%22)",
+			);
+		}
+
+		if (isStale) {
+			sections.push(
+				"$(history) Readings are stale; waiting for a fresh sample.",
+			);
+		}
+
+		// Blank line between sections = paragraph break.
+		return markdown(sections.join("\n\n"));
+	}
+}
+
+function markdown(value: string): vscode.MarkdownString {
+	const md = new vscode.MarkdownString(value);
+	md.isTrusted = true;
+	md.supportThemeIcons = true;
+	return md;
 }

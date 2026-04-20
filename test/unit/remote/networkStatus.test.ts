@@ -1,131 +1,173 @@
 import { describe, expect, it } from "vitest";
 import { ThemeColor } from "vscode";
 
-import {
-	buildNetworkTooltip,
-	isLatencySlow,
-	NetworkStatusReporter,
-	type NetworkThresholds,
-} from "@/remote/networkStatus";
+import { NetworkStatusReporter } from "@/remote/networkStatus";
 
 import {
+	makeNetworkInfo,
 	MockConfigurationProvider,
-	MockStatusBar,
+	MockStatusBarItem,
 } from "../../mocks/testHelpers";
 
-import type { NetworkInfo } from "@/remote/sshProcess";
-
-function makeNetwork(overrides: Partial<NetworkInfo> = {}): NetworkInfo {
-	return {
-		p2p: true,
-		latency: 50,
-		preferred_derp: "NYC",
-		derp_latency: { NYC: 10 },
-		upload_bytes_sec: 1_250_000,
-		download_bytes_sec: 6_250_000,
-		using_coder_connect: false,
-		...overrides,
-	};
+function setup(latencyMs?: number) {
+	const cfg = new MockConfigurationProvider();
+	if (latencyMs !== undefined) {
+		cfg.set("coder.networkThreshold.latencyMs", latencyMs);
+	}
+	const bar = new MockStatusBarItem();
+	const reporter = new NetworkStatusReporter(bar);
+	return { bar, reporter };
 }
 
-const defaultThresholds: NetworkThresholds = { latencyMs: 200 };
-
-function tooltip(
-	overrides: Partial<NetworkInfo> = {},
-	options: {
-		latencySlow?: boolean;
-		thresholds?: NetworkThresholds;
-	} = {},
-) {
-	return buildNetworkTooltip(
-		makeNetwork(overrides),
-		options.latencySlow ?? false,
-		options.thresholds ?? defaultThresholds,
-	);
+function tooltipOf(bar: MockStatusBarItem): string {
+	const t = bar.tooltip;
+	return typeof t === "string" ? t : (t?.value ?? "");
 }
 
-describe("isLatencySlow", () => {
-	it("returns false when latency is within threshold", () => {
-		expect(isLatencySlow(makeNetwork({ latency: 50 }), defaultThresholds)).toBe(
+describe("NetworkStatusReporter status bar text", () => {
+	it("shows Direct prefix for P2P connections", () => {
+		const { bar, reporter } = setup();
+		reporter.update(makeNetworkInfo({ p2p: true, latency: 25.5 }), false);
+		expect(bar.text).toBe("$(globe) Direct (25.50ms)");
+	});
+
+	it("shows the DERP region for relay connections", () => {
+		const { bar, reporter } = setup();
+		reporter.update(
+			makeNetworkInfo({ p2p: false, preferred_derp: "SFO", latency: 40 }),
 			false,
 		);
+		expect(bar.text).toBe("$(globe) SFO (40.00ms)");
 	});
 
-	it("returns true when latency exceeds threshold", () => {
-		expect(
-			isLatencySlow(makeNetwork({ latency: 250 }), defaultThresholds),
-		).toBe(true);
-	});
-
-	it("ignores latency when threshold is 0", () => {
-		expect(
-			isLatencySlow(makeNetwork({ latency: 9999 }), { latencyMs: 0 }),
-		).toBe(false);
-	});
-});
-
-describe("buildNetworkTooltip", () => {
-	it("shows all metrics without warning or actions in normal state", () => {
-		const t = tooltip();
-		expect(t.value).toContain("Latency: 50.00ms");
-		expect(t.value).toContain("Download: 50 Mbit/s");
-		expect(t.value).toContain("Upload: 10 Mbit/s");
-		expect(t.value).not.toContain("$(warning)");
-		expect(t.value).not.toContain("Slow connection");
-		expect(t.value).not.toContain("command:coder.pingWorkspace");
-	});
-
-	it("shows warning header, threshold, and action links when latency is slow", () => {
-		const t = tooltip({ latency: 350 }, { latencySlow: true });
-		expect(t.value).toContain("$(warning) **Slow connection detected**");
-		expect(t.value).toContain("Latency: 350.00ms (threshold: 200ms)");
-		expect(t.value).toContain("command:coder.pingWorkspace");
-		expect(t.value).toContain("command:workbench.action.openSettings");
-		expect(t.value).toContain("Ping workspace");
-		expect(t.value).toContain("Configure threshold");
-	});
-
-	it("does not mark throughput lines with warnings", () => {
-		const t = tooltip({ download_bytes_sec: 100_000 }, { latencySlow: true });
-		expect(t.value).not.toContain("Download: 800 kbit/s $(warning)");
-	});
-
-	it.each<{ desc: string; overrides: Partial<NetworkInfo>; expected: string }>([
-		{
-			desc: "P2P",
-			overrides: { p2p: true },
-			expected: "Connection: Direct (P2P)",
-		},
-		{
-			desc: "relay",
-			overrides: { p2p: false, preferred_derp: "SFO" },
-			expected: "Connection: SFO (relay)",
-		},
-		{
-			desc: "Coder Connect",
-			overrides: { using_coder_connect: true },
-			expected: "Connection: Coder Connect",
-		},
-	])("shows $desc connection type", ({ overrides, expected }) => {
-		expect(tooltip(overrides).value).toContain(expected);
-	});
-});
-
-describe("NetworkStatusReporter hysteresis", () => {
-	function setup(latencyMs: number) {
-		const cfg = new MockConfigurationProvider();
-		cfg.set("coder.networkThreshold.latencyMs", latencyMs);
-		const bar = new MockStatusBar();
-		const reporter = new NetworkStatusReporter(
-			bar as unknown as import("vscode").StatusBarItem,
+	it("shows the Coder Connect label alongside latency", () => {
+		const { bar, reporter } = setup();
+		reporter.update(
+			makeNetworkInfo({ using_coder_connect: true, latency: 30 }),
+			false,
 		);
-		return { bar, reporter };
-	}
+		expect(bar.text).toBe("$(globe) Coder Connect (30.00ms)");
+	});
 
-	const slow = makeNetwork({ latency: 500 });
-	const healthy = makeNetwork({ latency: 50 });
+	it("marks stale readings with a leading tilde", () => {
+		const { bar, reporter } = setup();
+		reporter.update(makeNetworkInfo({ latency: 100 }), true);
+		expect(bar.text).toContain("(~100.00ms)");
+	});
 
-	it("does not warn if slow polls never reach the debounce threshold", () => {
+	it("omits latency when the reading is 0", () => {
+		const { bar, reporter } = setup();
+		reporter.update(
+			makeNetworkInfo({ using_coder_connect: true, latency: 0 }),
+			false,
+		);
+		expect(bar.text).toBe("$(globe) Coder Connect");
+	});
+});
+
+describe("NetworkStatusReporter tooltip", () => {
+	it("leads with a friendly P2P summary and omits action links when healthy", () => {
+		const { bar, reporter } = setup(200);
+		reporter.update(makeNetworkInfo({ p2p: true, latency: 50 }), false);
+		const t = tooltipOf(bar);
+		expect(t).toContain("Directly connected peer-to-peer");
+		expect(t).toContain("Latency: 50.00ms (threshold: 200ms)");
+		expect(t).toContain("Download: 50 Mbit/s");
+		expect(t).toContain("Upload: 10 Mbit/s");
+		expect(t).not.toContain("Slow connection detected");
+		expect(t).not.toContain("Run latency test");
+		expect(t).not.toContain("Configure threshold");
+	});
+
+	it("leads with a relay explainer mentioning the DERP region", () => {
+		const { bar, reporter } = setup(200);
+		reporter.update(
+			makeNetworkInfo({ p2p: false, preferred_derp: "SFO", latency: 40 }),
+			false,
+		);
+		const t = tooltipOf(bar);
+		expect(t).toContain("Connected via SFO relay");
+		expect(t).toContain("Will switch to peer-to-peer when available");
+	});
+
+	it("keeps the connection summary and adds warning header + action links when slow", () => {
+		const { bar, reporter } = setup(100);
+		reporter.update(makeNetworkInfo({ p2p: true, latency: 350 }), false);
+		reporter.update(makeNetworkInfo({ p2p: true, latency: 350 }), false);
+		const t = tooltipOf(bar);
+		expect(t).toContain("$(warning) **Slow connection detected**");
+		expect(t).toContain("Directly connected peer-to-peer");
+		expect(t).toContain("Latency: 350.00ms (threshold: 100ms)");
+		expect(t).toContain("Run latency test");
+		expect(t).toContain("Configure threshold");
+	});
+
+	it("appends a stale footer at the bottom of the tooltip", () => {
+		const { bar, reporter } = setup(200);
+		reporter.update(makeNetworkInfo({ latency: 50 }), true);
+		const t = tooltipOf(bar);
+		expect(t).toContain("Readings are stale");
+		// Footer placement: stale banner should come after the metrics.
+		expect(t.indexOf("Upload:")).toBeLessThan(t.indexOf("Readings are stale"));
+	});
+
+	it("omits threshold annotation and warning when disabled", () => {
+		const { bar, reporter } = setup(0);
+		reporter.update(makeNetworkInfo({ latency: 9999 }), false);
+		const t = tooltipOf(bar);
+		expect(t).toContain("Latency: 9999.00ms");
+		expect(t).not.toContain("threshold:");
+		expect(t).not.toContain("Slow connection detected");
+	});
+
+	it("shows a dedicated message for Coder Connect instead of empty metrics", () => {
+		const { bar, reporter } = setup(200);
+		reporter.update(makeNetworkInfo({ using_coder_connect: true }), false);
+		const t = tooltipOf(bar);
+		expect(t).toContain("Connected using Coder Connect");
+		expect(t).toContain("Detailed network stats aren't collected");
+		expect(t).not.toContain("Download:");
+		expect(t).not.toContain("Upload:");
+		expect(t).not.toContain("Latency:");
+	});
+
+	it("omits the latency line when the reading is 0 on an SSH connection", () => {
+		const { bar, reporter } = setup(200);
+		reporter.update(makeNetworkInfo({ latency: 0 }), false);
+		const t = tooltipOf(bar);
+		expect(t).not.toContain("Latency:");
+		expect(t).toContain("Download:");
+	});
+});
+
+describe("NetworkStatusReporter warning state", () => {
+	const slow = makeNetworkInfo({ latency: 500 });
+	const healthy = makeNetworkInfo({ latency: 50 });
+
+	it("does not warn on a single slow poll", () => {
+		const { bar, reporter } = setup(100);
+		reporter.update(slow, false);
+		expect(bar.backgroundColor).toBeUndefined();
+		expect(bar.command).toBeUndefined();
+	});
+
+	it("warns after two consecutive slow polls", () => {
+		const { bar, reporter } = setup(100);
+		reporter.update(slow, false);
+		reporter.update(slow, false);
+		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
+		expect(bar.command).toBe("coder.pingWorkspace");
+	});
+
+	it("stays warning across a single healthy poll mid-streak", () => {
+		const { bar, reporter } = setup(100);
+		reporter.update(slow, false);
+		reporter.update(slow, false);
+		reporter.update(healthy, false);
+		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
+	});
+
+	it("clears after enough healthy polls to drain the counter", () => {
 		const { bar, reporter } = setup(100);
 		reporter.update(slow, false);
 		reporter.update(slow, false);
@@ -135,29 +177,23 @@ describe("NetworkStatusReporter hysteresis", () => {
 		expect(bar.command).toBeUndefined();
 	});
 
-	it("stays warning if a single healthy poll appears mid-streak", () => {
+	it("never warns for Coder Connect, even if the CLI reports high latency", () => {
 		const { bar, reporter } = setup(100);
-		for (let i = 0; i < 3; i++) {
-			reporter.update(slow, false);
-		}
-		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
-
-		reporter.update(healthy, false);
-		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
-
-		reporter.update(slow, false);
-		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
-	});
-
-	it("clears immediately when Coder Connect takes over", () => {
-		const { bar, reporter } = setup(100);
-		for (let i = 0; i < 3; i++) {
-			reporter.update(slow, false);
-		}
-		expect(bar.backgroundColor).toBeInstanceOf(ThemeColor);
-
-		reporter.update(makeNetwork({ using_coder_connect: true }), false);
+		const slowCoderConnect = makeNetworkInfo({
+			using_coder_connect: true,
+			latency: 500,
+		});
+		reporter.update(slowCoderConnect, false);
+		reporter.update(slowCoderConnect, false);
 		expect(bar.backgroundColor).toBeUndefined();
 		expect(bar.command).toBeUndefined();
+	});
+
+	it("never warns when the threshold is 0", () => {
+		const { bar, reporter } = setup(0);
+		for (let i = 0; i < 5; i++) {
+			reporter.update(makeNetworkInfo({ latency: 9999 }), false);
+		}
+		expect(bar.backgroundColor).toBeUndefined();
 	});
 });

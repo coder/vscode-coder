@@ -461,6 +461,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 		while (!this.disposed && this.currentPid !== undefined) {
 			const filePath = path.join(networkInfoPath, `${this.currentPid}.json`);
+			// undefined = file read OK; string = reason to trigger a new process search
 			let searchReason: string | undefined;
 
 			try {
