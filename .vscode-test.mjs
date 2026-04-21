@@ -10,7 +10,7 @@ const baseConfig = {
 	files: "out/test/integration/**/*.test.js",
 	extensionDevelopmentPath: ".",
 	extensionTestsPath: "./out/test",
-	launchArgs: ["--enable-proposed-api", "coder.coder-remote"],
+	launchArgs: ["--enable-proposed-api", "coder.coder-remote", "--disable-gpu"],
 	mocha: {
 		ui: "tdd",
 		timeout: 20000,
