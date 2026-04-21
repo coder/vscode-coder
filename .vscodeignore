@@ -26,6 +26,8 @@ esbuild.mjs
 # Package manager files
 pnpm-lock.yaml
 pnpm-workspace.yaml
+pnpm-debug.log
+.pnpm-store/**
 
 # Webview packages (exclude everything except built output in dist/webviews)
 packages/**
@@ -40,6 +42,7 @@ flake.lock
 node_modules/**
 
 # Development tools and CI
+.devcontainer/**
 .github/**
 .claude/**
 
@@ -47,3 +50,6 @@ node_modules/**
 usage.md
 AGENTS.md
 *.gif
+
+# Build artifacts
+*.vsix
