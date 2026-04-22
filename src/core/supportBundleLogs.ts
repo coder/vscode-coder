@@ -12,35 +12,17 @@ export interface LogSources {
 	extensionLogDir?: string;
 }
 
-// Matches proxy log filenames: coder-ssh-YYYYMMDD-HHMMSS-<nonce>.log
-const PROXY_LOG_DATE_RE =
-	/^coder-ssh-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-/;
 const PROXY_LOG_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
-
-function isProxyLogRecent(filename: string, now: Date): boolean {
-	const match = PROXY_LOG_DATE_RE.exec(filename);
-	if (!match) {
-		return true;
-	}
-	const fileDate = new Date(
-		Number(match[1]),
-		Number(match[2]) - 1,
-		Number(match[3]),
-		Number(match[4]),
-		Number(match[5]),
-		Number(match[6]),
-	);
-	return now.getTime() - fileDate.getTime() <= PROXY_LOG_MAX_AGE_MS;
-}
 
 /** Collect regular files from a directory into zip-ready entries. */
 async function collectDirFiles(
 	dirPath: string,
 	zipPrefix: string,
 	logger: Logger,
-	filter?: (filename: string) => boolean,
+	maxAgeMs?: number,
 ): Promise<Record<string, Uint8Array>> {
 	const files: Record<string, Uint8Array> = {};
+	const now = Date.now();
 
 	let entries: string[];
 	try {
@@ -53,13 +35,13 @@ async function collectDirFiles(
 	}
 
 	for (const entry of entries) {
-		if (filter && !filter(entry)) {
-			continue;
-		}
 		const filePath = path.join(dirPath, entry);
 		try {
 			const stat = await fs.stat(filePath);
 			if (!stat.isFile()) {
+				continue;
+			}
+			if (maxAgeMs !== undefined && now - stat.mtimeMs > maxAgeMs) {
 				continue;
 			}
 			const content = await fs.readFile(filePath);
@@ -95,14 +77,13 @@ export async function collectLogFiles(
 	}
 
 	if (sources.proxyLogDir) {
-		const now = new Date();
 		Object.assign(
 			files,
 			await collectDirFiles(
 				sources.proxyLogDir,
 				"vscode-logs/proxy",
 				logger,
-				(name) => isProxyLogRecent(name, now),
+				PROXY_LOG_MAX_AGE_MS,
 			),
 		);
 	}
