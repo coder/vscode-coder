@@ -1,8 +1,8 @@
-import { unzipSync, zipSync } from "fflate";
+import { unzip, zip } from "fflate";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { promisify } from "node:util";
 
-import { toError } from "../error/errorUtils";
 import { type Logger } from "../logging/logger";
 import { renameWithRetry } from "../util";
 
@@ -12,99 +12,85 @@ export interface LogSources {
 	extensionLogDir?: string;
 }
 
-const PROXY_LOG_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+const LOG_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
-/** Collect regular files from a directory into zip-ready entries. */
+const unzipAsync = promisify(unzip);
+const zipAsync = promisify(zip);
+
 async function collectDirFiles(
 	dirPath: string,
-	zipPrefix: string,
 	logger: Logger,
-	maxAgeMs?: number,
-): Promise<Record<string, Uint8Array>> {
-	const files: Record<string, Uint8Array> = {};
-	const now = Date.now();
+): Promise<Map<string, Uint8Array>> {
+	const results = new Map<string, Uint8Array>();
 
 	let entries: string[];
 	try {
 		entries = await fs.readdir(dirPath);
 	} catch (error) {
-		logger.warn(
-			`Could not read log directory ${dirPath}: ${toError(error).message}`,
-		);
-		return files;
+		logger.warn(`Could not read log directory ${dirPath}`, error);
+		return results;
 	}
 
-	for (const entry of entries) {
-		const filePath = path.join(dirPath, entry);
-		try {
-			const stat = await fs.stat(filePath);
-			if (!stat.isFile()) {
-				continue;
-			}
-			if (maxAgeMs !== undefined && now - stat.mtimeMs > maxAgeMs) {
-				continue;
-			}
-			const content = await fs.readFile(filePath);
-			files[`${zipPrefix}/${entry}`] = new Uint8Array(content);
-		} catch (error) {
-			logger.warn(
-				`Could not read log file ${filePath}: ${toError(error).message}`,
-			);
-		}
-	}
+	const cutoff = Date.now() - LOG_MAX_AGE_MS;
 
-	return files;
+	await Promise.all(
+		entries.map(async (entry) => {
+			const filePath = path.join(dirPath, entry);
+			try {
+				const stat = await fs.stat(filePath);
+				if (!stat.isFile() || stat.mtimeMs < cutoff) {
+					return;
+				}
+				results.set(entry, await fs.readFile(filePath));
+			} catch (error) {
+				logger.warn(`Could not read log file ${filePath}`, error);
+			}
+		}),
+	);
+
+	return results;
 }
 
 /**
  * Gather log files from each source independently so a failure in one
  * does not affect the others.
  */
-export async function collectLogFiles(
+async function collectLogFiles(
 	sources: LogSources,
 	logger: Logger,
-): Promise<Record<string, Uint8Array>> {
-	const files: Record<string, Uint8Array> = {};
+): Promise<Map<string, Uint8Array>> {
+	const files = new Map<string, Uint8Array>();
 
 	if (sources.remoteSshLogPath) {
 		try {
-			const content = await fs.readFile(sources.remoteSshLogPath);
-			const name = path.basename(sources.remoteSshLogPath);
-			files[`vscode-logs/remote-ssh/${name}`] = new Uint8Array(content);
+			files.set(
+				`vscode-logs/remote-ssh/${path.basename(sources.remoteSshLogPath)}`,
+				await fs.readFile(sources.remoteSshLogPath),
+			);
 		} catch (error) {
-			logger.warn(`Could not read Remote SSH log: ${toError(error).message}`);
+			logger.warn("Could not read Remote SSH log", error);
 		}
 	}
 
 	if (sources.proxyLogDir) {
-		Object.assign(
-			files,
-			await collectDirFiles(
-				sources.proxyLogDir,
-				"vscode-logs/proxy",
-				logger,
-				PROXY_LOG_MAX_AGE_MS,
-			),
-		);
+		for (const [name, data] of await collectDirFiles(
+			sources.proxyLogDir,
+			logger,
+		)) {
+			files.set(`vscode-logs/proxy/${name}`, data);
+		}
 	}
 
 	if (sources.extensionLogDir) {
-		Object.assign(
-			files,
-			await collectDirFiles(
-				sources.extensionLogDir,
-				"vscode-logs/extension",
-				logger,
-			),
-		);
+		for (const [name, data] of await collectDirFiles(
+			sources.extensionLogDir,
+			logger,
+		)) {
+			files.set(`vscode-logs/extension/${name}`, data);
+		}
 	}
 
 	return files;
-}
-
-function vscodeBundlePath(zipPath: string): string {
-	const { dir, name, ext } = path.parse(zipPath);
-	return path.join(dir, `${name}-vscode${ext}`);
 }
 
 /**
@@ -117,44 +103,47 @@ export async function appendVsCodeLogs(
 	logger: Logger,
 ): Promise<void> {
 	const logFiles = await collectLogFiles(sources, logger);
-	const count = Object.keys(logFiles).length;
-	if (count === 0) {
+	if (logFiles.size === 0) {
 		logger.info("No VS Code logs found to add to support bundle");
 		return;
 	}
 
-	logger.info(`Adding ${count} VS Code log file(s) to support bundle`);
+	logger.info(`Adding ${logFiles.size} VS Code log file(s) to support bundle`);
 
-	let updatedData: Uint8Array;
+	// Write to a named temporary path first so a failure at the rename step
+	// leaves the user with a properly named file containing VS Code logs.
+	const parsed = path.parse(zipPath);
+	const vscodeBundlePath = path.join(
+		parsed.dir,
+		`${parsed.name}-vscode${parsed.ext}`,
+	);
+
 	try {
-		const existingData = new Uint8Array(await fs.readFile(zipPath));
-		const entries = unzipSync(existingData);
-		Object.assign(entries, logFiles);
-		updatedData = zipSync(entries);
+		const entries = await unzipAsync(await fs.readFile(zipPath));
+		for (const [name, data] of logFiles) {
+			entries[name] = data;
+		}
+		const updated = await zipAsync(entries);
+		await fs.writeFile(vscodeBundlePath, updated);
 	} catch (error) {
-		logger.error(
-			`Failed to add VS Code logs to support bundle: ${toError(error).message}`,
-		);
+		logger.error("Failed to add VS Code logs to support bundle", error);
+		try {
+			await fs.rm(vscodeBundlePath, { force: true });
+		} catch (cleanupError) {
+			logger.warn(
+				`Could not clean up partial bundle at ${vscodeBundlePath}`,
+				cleanupError,
+			);
+		}
 		return;
 	}
 
-	// Write to a named temporary path first so a failure mid-write leaves
-	// the user with a properly named file containing VS Code logs.
-	const tmpPath = vscodeBundlePath(zipPath);
 	try {
-		await fs.writeFile(tmpPath, updatedData);
-	} catch (error) {
-		logger.error(
-			`Failed to write updated support bundle: ${toError(error).message}`,
-		);
-		return;
-	}
-
-	try {
-		await renameWithRetry(fs.rename, tmpPath, zipPath);
+		await renameWithRetry(fs.rename, vscodeBundlePath, zipPath);
 	} catch (error) {
 		logger.warn(
-			`Could not replace original bundle, VS Code logs saved separately: ${toError(error).message}`,
+			`Could not replace original bundle; VS Code logs saved separately at ${vscodeBundlePath}`,
+			error,
 		);
 	}
 }
