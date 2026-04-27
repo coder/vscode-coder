@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { type Logger } from "../logging/logger";
 import { LoginCoordinator } from "../login/loginCoordinator";
+import { WindowIpc } from "../windowIpc";
 
 import { CliCredentialManager } from "./cliCredentialManager";
 import { CliManager } from "./cliManager";
@@ -24,6 +25,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;
 	private readonly loginCoordinator: LoginCoordinator;
+	private readonly windowIpc: WindowIpc;
 
 	constructor(context: vscode.ExtensionContext) {
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
@@ -70,6 +72,7 @@ export class ServiceContainer implements vscode.Disposable {
 			this.cliCredentialManager,
 			context.extension.id,
 		);
+		this.windowIpc = new WindowIpc(context.secrets, this.logger);
 	}
 
 	getPathResolver(): PathResolver {
@@ -102,6 +105,10 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getLoginCoordinator(): LoginCoordinator {
 		return this.loginCoordinator;
+	}
+
+	getWindowIpc(): WindowIpc {
+		return this.windowIpc;
 	}
 
 	/**

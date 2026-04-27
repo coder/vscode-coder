@@ -335,6 +335,33 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
 	const remote = new Remote(serviceContainer, commands, ctx);
 
+	// Respond to PINGs and DUPLICATE commands from other windows.
+	const windowIpc = serviceContainer.getWindowIpc();
+	ctx.subscriptions.push(
+		windowIpc.onRequest(async (msg) => {
+			const currentAuthority = vscodeProposed.env.remoteAuthority;
+			if (!currentAuthority) {
+				return;
+			}
+
+			if (msg.type === "ping" && msg.authority === currentAuthority) {
+				// Only the first folder matters for dedup; multi-root
+				// workspaces use a different URI scheme.
+				const folder = vscode.workspace.workspaceFolders?.[0]?.uri.path ?? "";
+				await windowIpc.sendPong(msg.id, vscode.env.sessionId, folder);
+			}
+
+			if (
+				msg.type === "duplicate" &&
+				msg.targetSessionId === vscode.env.sessionId
+			) {
+				await vscode.commands.executeCommand(
+					"workbench.action.duplicateWorkspaceInNewWindow",
+				);
+			}
+		}),
+	);
+
 	// Since the "onResolveRemoteAuthority:ssh-remote" activation event exists
 	// in package.json we're able to perform actions before the authority is
 	// resolved by the remote SSH extension.

@@ -36,6 +36,7 @@ import {
 import { resolveCliAuth } from "./settings/cli";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
+import { type PongMessage, type WindowIpc } from "./windowIpc";
 import {
 	AgentTreeItem,
 	type OpenableTreeItem,
@@ -65,6 +66,7 @@ export class Commands {
 	private readonly secretsManager: SecretsManager;
 	private readonly cliManager: CliManager;
 	private readonly loginCoordinator: LoginCoordinator;
+	private readonly windowIpc: WindowIpc;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -88,6 +90,7 @@ export class Commands {
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.cliManager = serviceContainer.getCliManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
+		this.windowIpc = serviceContainer.getWindowIpc();
 	}
 
 	/**
@@ -1079,6 +1082,19 @@ export class Commands {
 
 		// Only set the memento when opening a new folder/window
 		await this.mementoManager.setStartupMode("start");
+
+		// Best-effort: detect other connected windows in the background.
+		this.windowIpc
+			.sendPing(remoteAuthority)
+			.then((pong) => {
+				if (pong) {
+					this.showMultiWindowNotification(pong, remoteAuthority);
+				}
+			})
+			.catch((err: unknown) => {
+				this.logger.error(`IPC ping failed for ${remoteAuthority}`, err);
+			});
+
 		if (folderPath) {
 			await vscode.commands.executeCommand(
 				"vscode.openFolder",
@@ -1099,6 +1115,40 @@ export class Commands {
 			reuseWindow: !newWindow,
 		});
 		return true;
+	}
+
+	/**
+	 * Non-blocking notification — VS Code may dismiss it at any time,
+	 * so this must not be awaited.
+	 */
+	private showMultiWindowNotification(
+		pong: PongMessage,
+		remoteAuthority: string,
+	): void {
+		const duplicateAction = "Duplicate Window";
+		const openEmptyAction = "Open Without Folder";
+		vscode.window
+			.showInformationMessage(
+				`A window is already connected to this workspace (${pong.folder}).`,
+				duplicateAction,
+				openEmptyAction,
+			)
+			.then(async (choice) => {
+				if (choice === duplicateAction) {
+					await this.windowIpc.sendDuplicate(pong.sessionId);
+				} else if (choice === openEmptyAction) {
+					await vscode.commands.executeCommand("vscode.newWindow", {
+						remoteAuthority,
+						reuseWindow: false,
+					});
+				}
+			})
+			.then(undefined, (err: unknown) => {
+				this.logger.error(
+					`Multi-window notification failed for ${remoteAuthority}`,
+					err,
+				);
+			});
 	}
 }
 
