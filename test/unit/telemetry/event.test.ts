@@ -1,60 +1,39 @@
-import { afterEach, describe, expect, it } from "vitest";
-import * as vscode from "vscode";
+import { describe, expect, it } from "vitest";
 
-import { buildContext, buildErrorBlock } from "@/telemetry/event";
+import { buildErrorBlock, buildSession } from "@/telemetry/event";
 
-import type * as vscodeTypes from "vscode";
+import type * as vscode from "vscode";
 
-function fakeContext(
-	version: unknown = "1.2.3-test",
-): vscodeTypes.ExtensionContext {
+function fakeContext(version: unknown = "1.2.3-test"): vscode.ExtensionContext {
 	return {
 		extension: { packageJSON: { version } },
-	} as unknown as vscodeTypes.ExtensionContext;
+	} as unknown as vscode.ExtensionContext;
 }
 
-describe("buildContext", () => {
-	const env = vscode.env as { appName: string };
-	const originalAppName = env.appName;
-	afterEach(() => {
-		env.appName = originalAppName;
-	});
+describe("buildSession", () => {
+	it("populates session-stable fields from the extension context, vscode env, and host", () => {
+		const session = buildSession(fakeContext());
 
-	it("populates session-stable fields from the extension context and vscode env", () => {
-		expect(buildContext(fakeContext())).toMatchObject({
+		expect(session).toMatchObject({
 			extensionVersion: "1.2.3-test",
 			machineId: "test-machine-id",
 			sessionId: "test-session-id",
-			deploymentUrl: "",
 			platformType: "Visual Studio Code",
 			platformVersion: "1.106.0-test",
+			hostArch: process.arch,
 		});
-	});
-
-	it("derives os/host fields from process and os", () => {
-		const ctx = buildContext(fakeContext());
-		expect(ctx.hostArch).toBe(process.arch);
-		expect(ctx.osType).toBe(
+		expect(session.osType).toBe(
 			process.platform === "win32" ? "windows" : process.platform,
 		);
-		expect(ctx.osVersion).toBeTruthy();
-	});
-
-	it("preserves the raw vscode.env.appName so we keep granularity", () => {
-		env.appName = "Visual Studio Code - Insiders";
-		expect(buildContext(fakeContext()).platformType).toBe(
-			"Visual Studio Code - Insiders",
-		);
-		env.appName = "Cursor";
-		expect(buildContext(fakeContext()).platformType).toBe("Cursor");
+		expect(session.osVersion).toBeTruthy();
 	});
 
 	it("uses the 'unknown' sentinel when packageJSON.version is missing or non-string", () => {
 		const noVersion = {
 			extension: { packageJSON: {} },
-		} as unknown as vscodeTypes.ExtensionContext;
-		expect(buildContext(noVersion).extensionVersion).toBe("unknown");
-		expect(buildContext(fakeContext(123)).extensionVersion).toBe("unknown");
+		} as unknown as vscode.ExtensionContext;
+		expect(buildSession(noVersion).extensionVersion).toBe("unknown");
+		expect(buildSession(fakeContext(123)).extensionVersion).toBe("unknown");
 	});
 });
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { type EmitFn, Trace } from "@/telemetry/trace";
+import { Trace } from "@/telemetry/trace";
+
+import type { EmitFn } from "@/telemetry/emit";
 
 interface RecordedCall {
 	eventName: string;

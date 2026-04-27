@@ -191,15 +191,15 @@
 					"default": "basic"
 				},
 				"coder.telemetry.level": {
-					"markdownDescription": "Controls Coder-owned telemetry collection. Local telemetry never leaves your machine and is used to diagnose issues with the extension.",
+					"markdownDescription": "Controls Coder extension telemetry collection. Used to diagnose extension issues.",
 					"type": "string",
 					"enum": [
 						"off",
 						"local"
 					],
 					"markdownEnumDescriptions": [
-						"Disables telemetry collection entirely. No events are recorded and no files are written.",
-						"Records telemetry events to a local file under the extension's storage directory. Nothing is transmitted off the machine."
+						"Disable telemetry collection.",
+						"Record events on this machine only."
 					],
 					"default": "local"
 				}

@@ -3,14 +3,15 @@ import * as vscode from "vscode";
 import { watchConfigurationChanges } from "../configWatcher";
 import { type Logger } from "../logging/logger";
 
+import { emitTimed, type EmitFn } from "./emit";
 import {
-	buildContext,
+	buildSession,
 	buildErrorBlock,
-	type TelemetryContext,
+	type SessionContext,
 	type TelemetryEvent,
 	type TelemetrySink,
 } from "./event";
-import { emitTimed, Trace, type EmitFn } from "./trace";
+import { Trace } from "./trace";
 
 type TelemetryLevel = "off" | "local";
 
@@ -21,20 +22,15 @@ const NOOP_TRACE = new Trace("", "", () => {
 });
 
 /**
- * Emits structured telemetry events to a fan-out of sinks.
- *
- * Phase A ships with no real sinks; this service is the spine that future
- * sinks (`LocalJsonlSink`, `CoderServerSink`, external services) plug into.
- * Each sink owns its own gating beyond the service-level
- * `coder.telemetry.level` kill switch.
- *
- * `dispose()` returns `Promise<void>` for explicit awaits; VS Code does not
- * await deactivation, so flushes during shutdown are best-effort.
+ * Emits structured telemetry events to a fan-out of sinks. Sinks self-gate;
+ * `dispose` flushes are best-effort during deactivation since VS Code does
+ * not await it.
  */
 export class TelemetryService implements vscode.Disposable {
 	#level: TelemetryLevel;
 	#nextSequence = 0;
-	#context: TelemetryContext;
+	#deploymentUrl = "";
+	readonly #session: SessionContext;
 	readonly #configWatcher: vscode.Disposable;
 	readonly #emitter: EmitFn = (n, p, m, t, e) => this.#emit(n, p, m, t, e);
 
@@ -43,20 +39,12 @@ export class TelemetryService implements vscode.Disposable {
 		private readonly sinks: readonly TelemetrySink[],
 		private readonly logger: Logger,
 	) {
-		this.#context = buildContext(ctx);
+		this.#session = buildSession(ctx);
 		this.#level = readLevel();
 		this.#configWatcher = watchConfigurationChanges(
-			[
-				{
-					setting: TELEMETRY_LEVEL_SETTING,
-					getValue: () =>
-						vscode.workspace
-							.getConfiguration()
-							.get<string>(TELEMETRY_LEVEL_SETTING),
-				},
-			],
+			[{ setting: TELEMETRY_LEVEL_SETTING, getValue: readLevel }],
 			(changes) => {
-				const newLevel = coerceLevel(changes.get(TELEMETRY_LEVEL_SETTING));
+				const newLevel = changes.get(TELEMETRY_LEVEL_SETTING) as TelemetryLevel;
 				this.#applyLevelChange(newLevel).catch((err) => {
 					this.logger.warn("Telemetry level change failed", err);
 				});
@@ -65,10 +53,7 @@ export class TelemetryService implements vscode.Disposable {
 	}
 
 	setDeploymentUrl(url: string): void {
-		if (url === this.#context.deploymentUrl) {
-			return;
-		}
-		this.#context = { ...this.#context, deploymentUrl: url };
+		this.#deploymentUrl = url;
 	}
 
 	log(
@@ -150,7 +135,7 @@ export class TelemetryService implements vscode.Disposable {
 			eventName,
 			timestamp: new Date().toISOString(),
 			eventSequence: this.#nextSequence++,
-			context: { ...this.#context },
+			context: { ...this.#session, deploymentUrl: this.#deploymentUrl },
 			properties,
 			measurements,
 		};
@@ -197,13 +182,9 @@ export class TelemetryService implements vscode.Disposable {
 }
 
 function readLevel(): TelemetryLevel {
-	return coerceLevel(
-		vscode.workspace.getConfiguration().get<string>(TELEMETRY_LEVEL_SETTING),
-	);
-}
-
-function coerceLevel(value: unknown): TelemetryLevel {
-	switch (value) {
+	switch (
+		vscode.workspace.getConfiguration().get<string>(TELEMETRY_LEVEL_SETTING)
+	) {
 		case "off":
 			return "off";
 		default:

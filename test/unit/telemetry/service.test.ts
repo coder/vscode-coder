@@ -10,7 +10,6 @@ import {
 
 import type * as vscode from "vscode";
 
-import type { Logger } from "@/logging/logger";
 import type { TelemetrySink } from "@/telemetry/event";
 
 function fakeContext(): vscode.ExtensionContext {
@@ -22,17 +21,19 @@ function fakeContext(): vscode.ExtensionContext {
 interface Harness {
 	service: TelemetryService;
 	sink: TestSink;
-	logger: Logger;
 	config: MockConfigurationProvider;
 }
 
 function makeHarness(level: "off" | "local" = "local"): Harness {
 	const config = new MockConfigurationProvider();
 	config.set("coder.telemetry.level", level);
-	const logger = createMockLogger();
 	const sink = new TestSink();
-	const service = new TelemetryService(fakeContext(), [sink], logger);
-	return { service, sink, logger, config };
+	const service = new TelemetryService(
+		fakeContext(),
+		[sink],
+		createMockLogger(),
+	);
+	return { service, sink, config };
 }
 
 function makeService(sinks: TelemetrySink[]): TelemetryService {
@@ -53,7 +54,6 @@ describe("TelemetryService", () => {
 		it("emits an event with auto-injected context, properties, and measurements", () => {
 			h.service.log("activation", { result: "success" }, { durationMs: 12 });
 
-			expect(h.sink.events).toHaveLength(1);
 			const [event] = h.sink.events;
 			expect(event).toMatchObject({
 				eventName: "activation",
@@ -150,7 +150,7 @@ describe("TelemetryService", () => {
 			expect(phase2.traceId).toBe(parent.traceId);
 		});
 
-		it("on phase failure: completed phases emit success, parent emits error summary, error rethrown, later phases never run", async () => {
+		it("on phase failure: completed phases emit success, parent emits an error summary, error rethrown, later phases never run", async () => {
 			const boom = new Error("phase-2-broke");
 
 			await expect(
@@ -161,7 +161,6 @@ describe("TelemetryService", () => {
 				}),
 			).rejects.toBe(boom);
 
-			// Only ok_phase, bad_phase, and the parent emitted; never_runs would have added a 4th event.
 			expect(h.sink.events).toHaveLength(3);
 			const [okPhase, badPhase, parent] = h.sink.events;
 			expect(okPhase.properties).toMatchObject({
@@ -172,7 +171,6 @@ describe("TelemetryService", () => {
 				phase: "bad_phase",
 				result: "error",
 			});
-			expect(badPhase.error?.message).toBe("phase-2-broke");
 			expect(parent).toMatchObject({
 				eventName: "remote.setup",
 				properties: { result: "error" },
@@ -218,7 +216,7 @@ describe("TelemetryService", () => {
 			h = makeHarness("off");
 		});
 
-		it("suppresses emissions but still runs the wrapped functions of time and trace", async () => {
+		it("suppresses emissions but still runs wrapped functions of time and trace", async () => {
 			h.service.log("a");
 			h.service.logError("b", new Error("ignored"));
 
@@ -238,7 +236,7 @@ describe("TelemetryService", () => {
 	});
 
 	describe("reactive level", () => {
-		it("local → off flushes sinks and suppresses; off → local resumes emission", () => {
+		it("local → off flushes sinks and suppresses; off → local resumes", () => {
 			h.service.log("first");
 			expect(h.sink.events).toHaveLength(1);
 

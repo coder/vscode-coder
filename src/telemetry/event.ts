@@ -3,21 +3,21 @@ import * as vscode from "vscode";
 
 import { toError } from "../error/errorUtils";
 
-/**
- * Session-stable resource attributes carried by every event. Field names
- * follow OpenTelemetry semantic conventions (`os.type`, `os.version`,
- * `host.arch`) so a future OTel collector translation is a rename.
- */
-export interface TelemetryContext {
-	extensionVersion: string;
-	machineId: string;
-	sessionId: string;
+/** Session-stable resource attributes. Field names follow OTel conventions. */
+export interface SessionContext {
+	readonly extensionVersion: string;
+	readonly machineId: string;
+	readonly sessionId: string;
+	readonly osType: string;
+	readonly osVersion: string;
+	readonly hostArch: string;
+	readonly platformType: string;
+	readonly platformVersion: string;
+}
+
+/** Per-event context: session attributes plus the current deployment URL. */
+export interface TelemetryContext extends SessionContext {
 	deploymentUrl: string;
-	osType: string;
-	osVersion: string;
-	hostArch: string;
-	platformType: string;
-	platformVersion: string;
 }
 
 export interface TelemetryEvent {
@@ -41,10 +41,8 @@ export interface TelemetryEvent {
 }
 
 /**
- * Destination for telemetry events. `write` runs on the hot path and must
- * buffer in memory; I/O happens in `flush`/`dispose`. Sinks own their own
- * gating beyond the service-level kill switch (e.g. a server sink emits only
- * when the user opts into deployment telemetry).
+ * Sink for telemetry events. `write` is sync and must buffer in memory; I/O
+ * happens in `flush`/`dispose`. Sinks self-gate beyond the service kill switch.
  */
 export interface TelemetrySink {
 	readonly name: string;
@@ -53,13 +51,8 @@ export interface TelemetrySink {
 	dispose(): Promise<void>;
 }
 
-/**
- * Build the session-stable context attached to every event. `deploymentUrl`
- * starts empty per the RFC and is updated once the deployment is known.
- * `extensionVersion` falls back to `"unknown"` if the package.json is missing
- * a version (should not happen in practice).
- */
-export function buildContext(ctx: vscode.ExtensionContext): TelemetryContext {
+/** Build session attributes. `extensionVersion` falls back to `"unknown"`. */
+export function buildSession(ctx: vscode.ExtensionContext): SessionContext {
 	const packageJson = ctx.extension.packageJSON as { version?: unknown };
 	const extensionVersion =
 		typeof packageJson.version === "string" ? packageJson.version : "unknown";
@@ -68,7 +61,6 @@ export function buildContext(ctx: vscode.ExtensionContext): TelemetryContext {
 		extensionVersion,
 		machineId: vscode.env.machineId,
 		sessionId: vscode.env.sessionId,
-		deploymentUrl: "",
 		osType: detectOsType(),
 		osVersion: os.release(),
 		hostArch: process.arch,
@@ -77,11 +69,7 @@ export function buildContext(ctx: vscode.ExtensionContext): TelemetryContext {
 	};
 }
 
-/**
- * Normalize any thrown value into the structured `error` block of an event.
- * `type` comes from `Error.name` (skipped when generic). `code` captures
- * Node's `error.code` for system errors and HTTP statuses for API errors.
- */
+/** Normalize a thrown value into the event's `error` block. */
 export function buildErrorBlock(
 	value: unknown,
 ): NonNullable<TelemetryEvent["error"]> {
@@ -97,13 +85,7 @@ export function buildErrorBlock(
 	return block;
 }
 
-/**
- * Node returns `"win32"` on Windows; OTel's `os.type` semantic convention
- * uses `"windows"`. Other Node values (`"linux"`, `"darwin"`) already match.
- */
+// Node uses "win32" on Windows; OTel's os.type is "windows".
 function detectOsType(): string {
-	if (process.platform === "win32") {
-		return "windows";
-	}
-	return process.platform;
+	return process.platform === "win32" ? "windows" : process.platform;
 }
