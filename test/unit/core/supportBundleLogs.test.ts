@@ -102,11 +102,46 @@ describe("appendVsCodeLogs", () => {
 
 	it("does not touch the zip when no logs are found", async () => {
 		const zipPath = await makeBundle();
-		const before = await fs.stat(zipPath);
+		const beforeStat = await fs.stat(zipPath);
+		const beforeBytes = await fs.readFile(zipPath);
 
 		await appendVsCodeLogs(zipPath, {}, logger);
 
-		expect((await fs.stat(zipPath)).mtimeMs).toBe(before.mtimeMs);
+		expect((await fs.stat(zipPath)).mtimeMs).toBe(beforeStat.mtimeMs);
+		expect(Buffer.compare(beforeBytes, await fs.readFile(zipPath))).toBe(0);
+	});
+
+	it("merges a large number of files without dropping any", async () => {
+		const zipPath = await makeBundle();
+
+		const proxyDir = path.join(tmpDir, "proxy");
+		const extDir = path.join(tmpDir, "ext");
+		await fs.mkdir(proxyDir);
+		await fs.mkdir(extDir);
+
+		const fileCount = 60;
+		await Promise.all(
+			Array.from({ length: fileCount }, (_, i) =>
+				Promise.all([
+					fs.writeFile(path.join(proxyDir, `proxy-${i}.log`), `proxy-${i}`),
+					fs.writeFile(path.join(extDir, `ext-${i}.log`), `ext-${i}`),
+				]),
+			),
+		);
+
+		await appendVsCodeLogs(
+			zipPath,
+			{ proxyLogDir: proxyDir, extensionLogDir: extDir },
+			logger,
+		);
+
+		const entries = await readZip(zipPath);
+		const keys = vsCodeLogKeys(entries);
+		expect(keys).toHaveLength(fileCount * 2);
+		for (let i = 0; i < fileCount; i++) {
+			expect(entries[`vscode-logs/proxy/proxy-${i}.log`]).toBe(`proxy-${i}`);
+			expect(entries[`vscode-logs/extension/ext-${i}.log`]).toBe(`ext-${i}`);
+		}
 	});
 
 	it("filters proxy logs older than 3 days by mtime", async () => {
@@ -175,7 +210,8 @@ describe("appendVsCodeLogs", () => {
 
 	it("keeps the -vscode.zip sibling when rename fails", async () => {
 		const zipPath = await makeBundle();
-		const before = await fs.stat(zipPath);
+		const beforeStat = await fs.stat(zipPath);
+		const beforeBytes = await fs.readFile(zipPath);
 
 		const sshLog = path.join(tmpDir, "ssh.log");
 		await fs.writeFile(sshLog, "ssh content");
@@ -186,7 +222,8 @@ describe("appendVsCodeLogs", () => {
 
 		await appendVsCodeLogs(zipPath, { remoteSshLogPath: sshLog }, logger);
 
-		expect((await fs.stat(zipPath)).mtimeMs).toBe(before.mtimeMs);
+		expect((await fs.stat(zipPath)).mtimeMs).toBe(beforeStat.mtimeMs);
+		expect(Buffer.compare(beforeBytes, await fs.readFile(zipPath))).toBe(0);
 
 		const siblingPath = path.join(tmpDir, "coder-support-123-vscode.zip");
 		const entries = await readZip(siblingPath);
@@ -200,14 +237,16 @@ describe("appendVsCodeLogs", () => {
 	it("leaves the original zip intact and cleans up the partial sibling when corrupted", async () => {
 		const zipPath = path.join(tmpDir, "coder-support-123.zip");
 		await fs.writeFile(zipPath, "not a zip");
-		const before = await fs.stat(zipPath);
+		const beforeStat = await fs.stat(zipPath);
+		const beforeBytes = await fs.readFile(zipPath);
 
 		const logPath = path.join(tmpDir, "ssh.log");
 		await fs.writeFile(logPath, "content");
 
 		await appendVsCodeLogs(zipPath, { remoteSshLogPath: logPath }, logger);
 
-		expect((await fs.stat(zipPath)).mtimeMs).toBe(before.mtimeMs);
+		expect((await fs.stat(zipPath)).mtimeMs).toBe(beforeStat.mtimeMs);
+		expect(Buffer.compare(beforeBytes, await fs.readFile(zipPath))).toBe(0);
 		expect(await fs.readdir(tmpDir)).not.toContain(
 			"coder-support-123-vscode.zip",
 		);

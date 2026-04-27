@@ -12,6 +12,8 @@ export interface LogSources {
 	extensionLogDir?: string;
 }
 
+// 3 days is enough context for recent issues; matching the 7-day
+// rotation would bloat the bundle.
 const LOG_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
 const unzipAsync = promisify(unzip);
@@ -102,48 +104,55 @@ export async function appendVsCodeLogs(
 	sources: LogSources,
 	logger: Logger,
 ): Promise<void> {
-	const logFiles = await collectLogFiles(sources, logger);
-	if (logFiles.size === 0) {
-		logger.info("No VS Code logs found to add to support bundle");
-		return;
-	}
-
-	logger.info(`Adding ${logFiles.size} VS Code log file(s) to support bundle`);
-
-	// Write to a named temporary path first so a failure at the rename step
-	// leaves the user with a properly named file containing VS Code logs.
-	const parsed = path.parse(zipPath);
-	const vscodeBundlePath = path.join(
-		parsed.dir,
-		`${parsed.name}-vscode${parsed.ext}`,
-	);
-
 	try {
-		const entries = await unzipAsync(await fs.readFile(zipPath));
-		for (const [name, data] of logFiles) {
-			entries[name] = data;
+		const logFiles = await collectLogFiles(sources, logger);
+		if (logFiles.size === 0) {
+			logger.info("No VS Code logs found to add to support bundle");
+			return;
 		}
-		const updated = await zipAsync(entries);
-		await fs.writeFile(vscodeBundlePath, updated);
-	} catch (error) {
-		logger.error("Failed to add VS Code logs to support bundle", error);
+
+		logger.info(
+			`Adding ${logFiles.size} VS Code log file(s) to support bundle`,
+		);
+
+		// Write to a named temporary path first so a failure at the rename step
+		// leaves the user with a properly named file containing VS Code logs.
+		const parsed = path.parse(zipPath);
+		const vscodeBundlePath = path.join(
+			parsed.dir,
+			`${parsed.name}-vscode${parsed.ext}`,
+		);
+
 		try {
-			await fs.rm(vscodeBundlePath, { force: true });
-		} catch (cleanupError) {
+			const entries = await unzipAsync(await fs.readFile(zipPath));
+			for (const [name, data] of logFiles) {
+				entries[name] = data;
+			}
+			const updated = await zipAsync(entries);
+			await fs.writeFile(vscodeBundlePath, updated);
+		} catch (error) {
+			logger.error("Failed to add VS Code logs to support bundle", error);
+			try {
+				await fs.rm(vscodeBundlePath, { force: true });
+			} catch (cleanupError) {
+				logger.warn(
+					`Could not clean up partial bundle at ${vscodeBundlePath}`,
+					cleanupError,
+				);
+			}
+			return;
+		}
+
+		try {
+			await renameWithRetry(fs.rename, vscodeBundlePath, zipPath);
+		} catch (error) {
 			logger.warn(
-				`Could not clean up partial bundle at ${vscodeBundlePath}`,
-				cleanupError,
+				`Could not replace original bundle; VS Code logs saved separately at ${vscodeBundlePath}`,
+				error,
 			);
 		}
-		return;
-	}
-
-	try {
-		await renameWithRetry(fs.rename, vscodeBundlePath, zipPath);
 	} catch (error) {
-		logger.warn(
-			`Could not replace original bundle; VS Code logs saved separately at ${vscodeBundlePath}`,
-			error,
-		);
+		// Best-effort: never let a failure here lose the user's bundle.
+		logger.error("Unexpected error appending VS Code logs", error);
 	}
 }
