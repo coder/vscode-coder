@@ -20,6 +20,7 @@ import { type ServiceContainer } from "./core/container";
 import { type MementoManager } from "./core/mementoManager";
 import { type PathResolver } from "./core/pathResolver";
 import { type SecretsManager } from "./core/secretsManager";
+import { appendVsCodeLogs } from "./core/supportBundleLogs";
 import { type DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
@@ -256,6 +257,18 @@ export class Commands {
 
 				progress.report({ message: "Collecting diagnostics..." });
 				await cliExec.supportBundle(env, workspaceId, outputUri.fsPath, signal);
+
+				progress.report({ message: "Adding VS Code logs..." });
+				await appendVsCodeLogs(
+					outputUri.fsPath,
+					{
+						remoteSshLogPath: this.workspaceLogPath,
+						proxyLogDir: this.pathResolver.getProxyLogPath(),
+						extensionLogDir: this.pathResolver.getCodeLogDir(),
+					},
+					this.logger,
+				);
+
 				return outputUri;
 			},
 			{
