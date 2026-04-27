@@ -23,23 +23,20 @@ export async function emitTimed<T>(
 	traceId?: string,
 ): Promise<T> {
 	const start = performance.now();
+	const send = (result: "success" | "error", error?: unknown): void =>
+		emit(
+			eventName,
+			{ ...properties, result },
+			{ durationMs: performance.now() - start },
+			traceId,
+			error,
+		);
 	try {
-		const result = await fn();
-		emit(
-			eventName,
-			{ ...properties, result: "success" },
-			{ durationMs: performance.now() - start },
-			traceId,
-		);
-		return result;
+		const value = await fn();
+		send("success");
+		return value;
 	} catch (err) {
-		emit(
-			eventName,
-			{ ...properties, result: "error" },
-			{ durationMs: performance.now() - start },
-			traceId,
-			err,
-		);
+		send("error", err);
 		throw err;
 	}
 }

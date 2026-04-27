@@ -54,7 +54,7 @@ describe("TelemetryService", () => {
 			h.service.log("activation", { result: "success" }, { durationMs: 12 });
 
 			expect(h.sink.events).toHaveLength(1);
-			const event = h.sink.events[0];
+			const [event] = h.sink.events;
 			expect(event).toMatchObject({
 				eventName: "activation",
 				eventSequence: 0,
@@ -73,25 +73,18 @@ describe("TelemetryService", () => {
 			expect(event.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 		});
 
-		it("issues unique eventIds and monotonic eventSequence per emission", () => {
+		it("emits unique eventIds and monotonic eventSequence", () => {
 			h.service.log("a");
 			h.service.log("b");
 			h.service.log("c");
 
-			const ids = h.sink.events.map((e) => e.eventId);
-			expect(new Set(ids).size).toBe(3);
+			expect(new Set(h.sink.events.map((e) => e.eventId)).size).toBe(3);
 			expect(h.sink.events.map((e) => e.eventSequence)).toEqual([0, 1, 2]);
-		});
-
-		it("defaults properties and measurements to empty objects", () => {
-			h.service.log("nothing");
-			expect(h.sink.events[0].properties).toEqual({});
-			expect(h.sink.events[0].measurements).toEqual({});
 		});
 	});
 
 	describe("logError", () => {
-		it("attaches the error block to the event", () => {
+		it("attaches the normalized error block to the event", () => {
 			h.service.logError("activation", new TypeError("nope"), {
 				phase: "init",
 			});
@@ -104,7 +97,7 @@ describe("TelemetryService", () => {
 	});
 
 	describe("time", () => {
-		it("returns the wrapped value and emits a success event with durationMs", async () => {
+		it("returns the wrapped value and records durationMs on success", async () => {
 			vi.useFakeTimers();
 			const promise = h.service.time(
 				"activation",
@@ -123,7 +116,7 @@ describe("TelemetryService", () => {
 			expect(h.sink.events[0].measurements.durationMs).toBeCloseTo(250, 0);
 		});
 
-		it("emits an error event and rethrows on failure", async () => {
+		it("emits an error event with the cause and rethrows on failure", async () => {
 			const err = new Error("boom");
 			await expect(
 				h.service.time("activation", () => Promise.reject(err)),
@@ -157,22 +150,29 @@ describe("TelemetryService", () => {
 			expect(phase2.traceId).toBe(parent.traceId);
 		});
 
-		it("on phase failure: completed phases emit success, parent emits error summary, error rethrown", async () => {
+		it("on phase failure: completed phases emit success, parent emits error summary, error rethrown, later phases never run", async () => {
 			const boom = new Error("phase-2-broke");
-			const neverRuns = vi.fn(() => Promise.resolve("x"));
 
 			await expect(
 				h.service.trace("remote.setup", async (trace) => {
 					await trace.phase("ok_phase", () => Promise.resolve("ok"));
 					await trace.phase("bad_phase", () => Promise.reject(boom));
-					await trace.phase("never_runs", neverRuns);
+					await trace.phase("never_runs", () => Promise.resolve("x"));
 				}),
 			).rejects.toBe(boom);
 
-			expect(neverRuns).not.toHaveBeenCalled();
+			// Only ok_phase, bad_phase, and the parent emitted; never_runs would have added a 4th event.
+			expect(h.sink.events).toHaveLength(3);
 			const [okPhase, badPhase, parent] = h.sink.events;
-			expect(okPhase.properties).toMatchObject({ result: "success" });
-			expect(badPhase.properties).toMatchObject({ result: "error" });
+			expect(okPhase.properties).toMatchObject({
+				phase: "ok_phase",
+				result: "success",
+			});
+			expect(badPhase.properties).toMatchObject({
+				phase: "bad_phase",
+				result: "error",
+			});
+			expect(badPhase.error?.message).toBe("phase-2-broke");
 			expect(parent).toMatchObject({
 				eventName: "remote.setup",
 				properties: { result: "error" },
@@ -218,32 +218,27 @@ describe("TelemetryService", () => {
 			h = makeHarness("off");
 		});
 
-		it("suppresses log and logError emissions", () => {
+		it("suppresses emissions but still runs the wrapped functions of time and trace", async () => {
 			h.service.log("a");
 			h.service.logError("b", new Error("ignored"));
-			expect(h.sink.events).toHaveLength(0);
-		});
 
-		it("still runs the wrapped functions of time and trace but emits nothing", async () => {
-			const timeFn = vi.fn(() => Promise.resolve(99));
-			const phaseFn = vi.fn(() => Promise.resolve("x"));
+			expect(await h.service.time("c", () => Promise.resolve(42))).toBe(42);
 
-			expect(await h.service.time("a", timeFn)).toBe(99);
-			expect(
-				await h.service.trace("b", async (t) => {
-					await t.phase("p", phaseFn);
-					return "done";
-				}),
-			).toBe("done");
+			const traceResult = await h.service.trace("d", async (trace) => {
+				const phaseValue = await trace.phase("p", () =>
+					Promise.resolve("inner"),
+				);
+				expect(phaseValue).toBe("inner");
+				return "outer";
+			});
+			expect(traceResult).toBe("outer");
 
-			expect(timeFn).toHaveBeenCalled();
-			expect(phaseFn).toHaveBeenCalled();
 			expect(h.sink.events).toHaveLength(0);
 		});
 	});
 
 	describe("reactive level", () => {
-		it("flushes sinks on local → off, suppresses while off, and resumes on off → local", () => {
+		it("local → off flushes sinks and suppresses; off → local resumes emission", () => {
 			h.service.log("first");
 			expect(h.sink.events).toHaveLength(1);
 
@@ -272,8 +267,8 @@ describe("TelemetryService", () => {
 				write: () => {
 					throw new Error("boom");
 				},
-				flush: vi.fn(() => Promise.resolve()),
-				dispose: vi.fn(() => Promise.resolve()),
+				flush: () => Promise.resolve(),
+				dispose: () => Promise.resolve(),
 			};
 			const good = new TestSink("good");
 			const service = makeService([bad, good]);

@@ -55,14 +55,14 @@ export interface TelemetrySink {
 
 /**
  * Build the session-stable context attached to every event. `deploymentUrl`
- * starts empty and is updated once the deployment is known.
+ * starts empty per the RFC and is updated once the deployment is known.
+ * `extensionVersion` falls back to `"unknown"` if the package.json is missing
+ * a version (should not happen in practice).
  */
 export function buildContext(ctx: vscode.ExtensionContext): TelemetryContext {
-	const packageJson = ctx.extension.packageJSON as
-		| { version?: unknown }
-		| undefined;
-	const rawVersion = packageJson?.version;
-	const extensionVersion = typeof rawVersion === "string" ? rawVersion : "";
+	const packageJson = ctx.extension.packageJSON as { version?: unknown };
+	const extensionVersion =
+		typeof packageJson.version === "string" ? packageJson.version : "unknown";
 
 	return {
 		extensionVersion,
@@ -72,8 +72,8 @@ export function buildContext(ctx: vscode.ExtensionContext): TelemetryContext {
 		osType: detectOsType(),
 		osVersion: os.release(),
 		hostArch: process.arch,
-		platformType: detectPlatformType(vscode.env.appName ?? ""),
-		platformVersion: vscode.version ?? "",
+		platformType: vscode.env.appName,
+		platformVersion: vscode.version,
 	};
 }
 
@@ -97,26 +97,13 @@ export function buildErrorBlock(
 	return block;
 }
 
-function detectPlatformType(appName: string): string {
-	const lower = appName.toLowerCase();
-	if (lower.includes("cursor")) {
-		return "cursor";
-	}
-	if (lower.includes("vscodium")) {
-		return "vscodium";
-	}
-	return "vscode";
-}
-
+/**
+ * Node returns `"win32"` on Windows; OTel's `os.type` semantic convention
+ * uses `"windows"`. Other Node values (`"linux"`, `"darwin"`) already match.
+ */
 function detectOsType(): string {
-	switch (process.platform) {
-		case "linux":
-			return "linux";
-		case "darwin":
-			return "darwin";
-		case "win32":
-			return "windows";
-		default:
-			return process.platform;
+	if (process.platform === "win32") {
+		return "windows";
 	}
+	return process.platform;
 }

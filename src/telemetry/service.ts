@@ -12,14 +12,13 @@ import {
 } from "./event";
 import { emitTimed, Trace, type EmitFn } from "./trace";
 
-const noopEmit: EmitFn = () => {
-	// Intentionally empty: used by NOOP_TRACE when telemetry is off.
-};
-const NOOP_TRACE = new Trace("", "", noopEmit);
-
 type TelemetryLevel = "off" | "local";
 
 const TELEMETRY_LEVEL_SETTING = "coder.telemetry.level";
+
+const NOOP_TRACE = new Trace("", "", () => {
+	// Off-mode tracer; no events are emitted.
+});
 
 /**
  * Emits structured telemetry events to a fan-out of sinks.
@@ -45,7 +44,7 @@ export class TelemetryService implements vscode.Disposable {
 		private readonly logger: Logger,
 	) {
 		this.#context = buildContext(ctx);
-		this.#level = readTelemetryLevel();
+		this.#level = readLevel();
 		this.#configWatcher = watchConfigurationChanges(
 			[
 				{
@@ -57,11 +56,10 @@ export class TelemetryService implements vscode.Disposable {
 				},
 			],
 			(changes) => {
-				this.#applyLevelChange(changes.get(TELEMETRY_LEVEL_SETTING)).catch(
-					(err) => {
-						this.logger.warn("Telemetry level change failed", err);
-					},
-				);
+				const newLevel = coerceLevel(changes.get(TELEMETRY_LEVEL_SETTING));
+				this.#applyLevelChange(newLevel).catch((err) => {
+					this.logger.warn("Telemetry level change failed", err);
+				});
 			},
 		);
 	}
@@ -130,19 +128,8 @@ export class TelemetryService implements vscode.Disposable {
 		this.#configWatcher.dispose();
 		await Promise.allSettled(
 			this.sinks.map(async (sink) => {
-				try {
-					await sink.flush();
-				} catch (err) {
-					this.logger.warn(
-						`Telemetry sink '${sink.name}' flush failed during dispose`,
-						err,
-					);
-				}
-				try {
-					await sink.dispose();
-				} catch (err) {
-					this.logger.warn(`Telemetry sink '${sink.name}' dispose failed`, err);
-				}
+				await this.#safeCall(sink, "flush");
+				await this.#safeCall(sink, "dispose");
 			}),
 		);
 	}
@@ -185,32 +172,41 @@ export class TelemetryService implements vscode.Disposable {
 		this.logger.trace(`[telemetry] ${eventName}`, event);
 	}
 
-	async #applyLevelChange(rawValue: unknown): Promise<void> {
-		const newLevel = coerceLevel(rawValue);
+	async #applyLevelChange(newLevel: TelemetryLevel): Promise<void> {
 		if (newLevel === this.#level) {
 			return;
 		}
 		this.#level = newLevel;
 		if (newLevel === "off") {
 			await Promise.allSettled(
-				this.sinks.map((sink) =>
-					sink.flush().catch((err) => {
-						this.logger.warn(`Telemetry sink '${sink.name}' flush failed`, err);
-					}),
-				),
+				this.sinks.map((sink) => this.#safeCall(sink, "flush")),
 			);
+		}
+	}
+
+	async #safeCall(
+		sink: TelemetrySink,
+		action: "flush" | "dispose",
+	): Promise<void> {
+		try {
+			await sink[action]();
+		} catch (err) {
+			this.logger.warn(`Telemetry sink '${sink.name}' ${action} failed`, err);
 		}
 	}
 }
 
-function readTelemetryLevel(): TelemetryLevel {
+function readLevel(): TelemetryLevel {
 	return coerceLevel(
-		vscode.workspace
-			.getConfiguration()
-			.get<string>(TELEMETRY_LEVEL_SETTING, "local"),
+		vscode.workspace.getConfiguration().get<string>(TELEMETRY_LEVEL_SETTING),
 	);
 }
 
 function coerceLevel(value: unknown): TelemetryLevel {
-	return value === "off" ? "off" : "local";
+	switch (value) {
+		case "off":
+			return "off";
+		default:
+			return "local";
+	}
 }

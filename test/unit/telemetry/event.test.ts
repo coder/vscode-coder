@@ -26,34 +26,35 @@ describe("buildContext", () => {
 			machineId: "test-machine-id",
 			sessionId: "test-session-id",
 			deploymentUrl: "",
-			platformType: "vscode",
+			platformType: "Visual Studio Code",
 			platformVersion: "1.106.0-test",
 		});
 	});
 
-	it("returns truthy values for runtime os/host fields", () => {
+	it("derives os/host fields from process and os", () => {
 		const ctx = buildContext(fakeContext());
-		expect(ctx.osType).toBeTruthy();
+		expect(ctx.hostArch).toBe(process.arch);
+		expect(ctx.osType).toBe(
+			process.platform === "win32" ? "windows" : process.platform,
+		);
 		expect(ctx.osVersion).toBeTruthy();
-		expect(ctx.hostArch).toBeTruthy();
 	});
 
-	it.each([
-		["Cursor", "cursor"],
-		["VSCodium", "vscodium"],
-		["Visual Studio Code", "vscode"],
-		["Some Unknown Fork", "vscode"],
-	])("derives platformType %s -> %s", (appName, expected) => {
-		env.appName = appName;
-		expect(buildContext(fakeContext()).platformType).toBe(expected);
+	it("preserves the raw vscode.env.appName so we keep granularity", () => {
+		env.appName = "Visual Studio Code - Insiders";
+		expect(buildContext(fakeContext()).platformType).toBe(
+			"Visual Studio Code - Insiders",
+		);
+		env.appName = "Cursor";
+		expect(buildContext(fakeContext()).platformType).toBe("Cursor");
 	});
 
-	it("falls back to empty string when packageJSON.version is missing or not a string", () => {
+	it("uses the 'unknown' sentinel when packageJSON.version is missing or non-string", () => {
 		const noVersion = {
 			extension: { packageJSON: {} },
 		} as unknown as vscodeTypes.ExtensionContext;
-		expect(buildContext(noVersion).extensionVersion).toBe("");
-		expect(buildContext(fakeContext(123)).extensionVersion).toBe("");
+		expect(buildContext(noVersion).extensionVersion).toBe("unknown");
+		expect(buildContext(fakeContext(123)).extensionVersion).toBe("unknown");
 	});
 });
 
@@ -75,15 +76,12 @@ describe("buildErrorBlock", () => {
 		expect(buildErrorBlock(input)).toEqual(expected);
 	});
 
-	it("captures Node-style error.code as a string", () => {
+	it("captures Node-style and HTTP-style codes as strings", () => {
 		expect(
 			buildErrorBlock(
 				Object.assign(new Error("connect failed"), { code: "ECONNREFUSED" }),
-			),
-		).toEqual({ message: "connect failed", code: "ECONNREFUSED" });
-	});
-
-	it("stringifies numeric codes (HTTP status)", () => {
+			).code,
+		).toBe("ECONNREFUSED");
 		expect(
 			buildErrorBlock(Object.assign(new Error("bad"), { code: 401 })).code,
 		).toBe("401");

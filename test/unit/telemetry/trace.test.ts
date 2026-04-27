@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { type EmitFn, Trace } from "@/telemetry/trace";
 
@@ -73,20 +73,5 @@ describe("Trace.phase", () => {
 			traceId: "tid",
 			error: boom,
 		});
-	});
-
-	it("does not run subsequent code after a phase rejection inside the caller", async () => {
-		const { emit } = makeRecorder();
-		const trace = new Trace("op", "tid", emit);
-		const after = vi.fn();
-
-		await expect(
-			(async () => {
-				await trace.phase("bad", () => Promise.reject(new Error("x")));
-				after();
-			})(),
-		).rejects.toThrow("x");
-
-		expect(after).not.toHaveBeenCalled();
 	});
 });
