@@ -66,11 +66,16 @@ function createTestContext() {
 		validationMockClient as unknown as CoderApi,
 	);
 
+	const telemetryService = {
+		setDeploymentUrl: vi.fn(),
+	};
+
 	const container = {
 		getSecretsManager: () => secretsManager,
 		getMementoManager: () => mementoManager,
 		getContextManager: () => contextManager as unknown as ContextManager,
 		getLogger: () => logger,
+		getTelemetryService: () => telemetryService,
 	};
 
 	const manager = DeploymentManager.create(

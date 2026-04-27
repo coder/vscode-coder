@@ -185,6 +185,8 @@ export const extensions = {
 	all: [] as unknown[],
 };
 
+export const version = "1.106.0-test";
+
 const vscode = {
 	ProgressLocation,
 	ViewColumn,
@@ -204,6 +206,7 @@ const vscode = {
 	workspace,
 	env,
 	extensions,
+	version,
 };
 
 export default vscode;

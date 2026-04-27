@@ -8,16 +8,18 @@ export interface WatchedSetting {
 
 /**
  * Watch for configuration changes and invoke a callback when values change.
+ * The callback receives a map of changed settings to their new values, so
+ * consumers can act on the new value without re-reading the configuration.
  * Only fires when actual values change, not just when settings are touched.
  */
 export function watchConfigurationChanges(
 	settings: WatchedSetting[],
-	onChange: (changedSettings: string[]) => void,
+	onChange: (changes: ReadonlyMap<string, unknown>) => void,
 ): vscode.Disposable {
 	const appliedValues = new Map(settings.map((s) => [s.setting, s.getValue()]));
 
 	return vscode.workspace.onDidChangeConfiguration((e) => {
-		const changedSettings: string[] = [];
+		const changes = new Map<string, unknown>();
 
 		for (const { setting, getValue } of settings) {
 			if (!e.affectsConfiguration(setting)) {
@@ -27,13 +29,13 @@ export function watchConfigurationChanges(
 			const newValue = getValue();
 
 			if (!configValuesEqual(newValue, appliedValues.get(setting))) {
-				changedSettings.push(setting);
+				changes.set(setting, newValue);
 				appliedValues.set(setting, newValue);
 			}
 		}
 
-		if (changedSettings.length > 0) {
-			onChange(changedSettings);
+		if (changes.size > 0) {
+			onChange(changes);
 		}
 	});
 }

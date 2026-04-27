@@ -189,6 +189,19 @@
 						"Logs everything from *headers* plus request and response bodies (may include sensitive data)"
 					],
 					"default": "basic"
+				},
+				"coder.telemetry.level": {
+					"markdownDescription": "Controls Coder-owned telemetry collection. Local telemetry never leaves your machine and is used to diagnose issues with the extension.",
+					"type": "string",
+					"enum": [
+						"off",
+						"local"
+					],
+					"markdownEnumDescriptions": [
+						"Disables telemetry collection entirely. No events are recorded and no files are written.",
+						"Records telemetry events to a local file under the extension's storage directory. Nothing is transmitted off the machine."
+					],
+					"default": "local"
 				}
 			}
 		},

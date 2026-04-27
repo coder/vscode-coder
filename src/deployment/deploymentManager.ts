@@ -5,6 +5,7 @@ import { type MementoManager } from "../core/mementoManager";
 import { type SecretsManager } from "../core/secretsManager";
 import { type Logger } from "../logging/logger";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
+import { type TelemetryService } from "../telemetry/service";
 import { type WorkspaceProvider } from "../workspace/workspacesProvider";
 
 import {
@@ -33,6 +34,7 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly mementoManager: MementoManager;
 	private readonly contextManager: ContextManager;
 	private readonly logger: Logger;
+	private readonly telemetryService: TelemetryService;
 
 	#deployment: Deployment | null = null;
 	#authListenerDisposable: vscode.Disposable | undefined;
@@ -48,6 +50,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.mementoManager = serviceContainer.getMementoManager();
 		this.contextManager = serviceContainer.getContextManager();
 		this.logger = serviceContainer.getLogger();
+		this.telemetryService = serviceContainer.getTelemetryService();
 	}
 
 	public static create(
@@ -124,6 +127,7 @@ export class DeploymentManager implements vscode.Disposable {
 			user: deployment.user.username,
 		});
 		this.#deployment = { ...deployment };
+		this.telemetryService.setDeploymentUrl(deployment.url);
 
 		// Updates client credentials
 		if (deployment.token === undefined) {
@@ -155,6 +159,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.#authListenerDisposable?.dispose();
 		this.#authListenerDisposable = undefined;
 		this.#deployment = null;
+		this.telemetryService.setDeploymentUrl("");
 
 		await this.secretsManager.setCurrentDeployment(undefined);
 	}
