@@ -5,6 +5,13 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- The **Coder: Workspace Build** output channel is no longer created when reconnecting to an
+  already-running workspace, so the Output panel doesn't pop open empty.
+
 ## [v1.14.4-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.4-pre) 2026-04-20
 
 ### Added
