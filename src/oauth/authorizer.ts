@@ -247,7 +247,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 					timeoutMins * 60 * 1000,
 				);
 
-				const listener = this.secretsManager.onDidChangeOAuthCallback(
+				const listener = this.secretsManager.oauthCallback.onReceive(
 					({ state: callbackState, code, error }) => {
 						if (callbackState !== state) {
 							this.logger.warn(

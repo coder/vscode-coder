@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { DeploymentSchema, type Deployment } from "../deployment/types";
 import { toSafeHost } from "../util";
+import { WindowBroadcast } from "../windowBroadcast";
 
 import type { OAuth2ClientRegistrationResponse } from "coder/site/src/api/typesGenerated";
 import type { Memento, SecretStorage, Disposable } from "vscode";
@@ -57,14 +58,24 @@ const OAuthCallbackDataSchema = z.object({
 	error: z.string().nullable(),
 });
 
-type OAuthCallbackData = z.infer<typeof OAuthCallbackDataSchema>;
+export type OAuthCallbackData = z.infer<typeof OAuthCallbackDataSchema>;
 
 export class SecretsManager {
+	public readonly oauthCallback: WindowBroadcast<OAuthCallbackData>;
+
 	constructor(
 		private readonly secrets: SecretStorage,
 		private readonly memento: Memento,
 		private readonly logger: Logger,
-	) {}
+	) {
+		this.oauthCallback = new WindowBroadcast(
+			secrets,
+			OAUTH_CALLBACK_KEY,
+			(v: unknown): v is OAuthCallbackData =>
+				OAuthCallbackDataSchema.safeParse(v).success,
+			logger,
+		);
+	}
 
 	private buildKey(prefix: SecretKeyPrefix, safeHostname: string): string {
 		return `${prefix}${safeHostname || "<legacy>"}`;
@@ -304,54 +315,6 @@ export class SecretsManager {
 		}
 
 		return safeHostname;
-	}
-
-	/**
-	 * Write an OAuth callback result to secrets storage.
-	 * Used for cross-window communication when OAuth callback arrives in a different window.
-	 */
-	public async setOAuthCallback(data: OAuthCallbackData): Promise<void> {
-		const parsed = OAuthCallbackDataSchema.parse(data);
-		await this.secrets.store(OAUTH_CALLBACK_KEY, JSON.stringify(parsed));
-	}
-
-	/**
-	 * Listen for OAuth callback results from any VS Code window.
-	 * The listener receives the state parameter, code (if success), and error (if failed).
-	 */
-	public onDidChangeOAuthCallback(
-		listener: (data: OAuthCallbackData) => void,
-	): Disposable {
-		return this.secrets.onDidChange(async (e) => {
-			if (e.key !== OAUTH_CALLBACK_KEY) {
-				return;
-			}
-
-			const raw = await this.secrets.get(OAUTH_CALLBACK_KEY);
-			if (!raw) {
-				return;
-			}
-
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(raw);
-			} catch (err) {
-				this.logger.error("Failed to parse OAuth callback JSON", err);
-				return;
-			}
-
-			const result = OAuthCallbackDataSchema.safeParse(parsed);
-			if (!result.success) {
-				this.logger.error("Invalid OAuth callback data shape", result.error);
-				return;
-			}
-
-			try {
-				listener(result.data);
-			} catch (err) {
-				this.logger.error("Error in onDidChangeOAuthCallback listener", err);
-			}
-		});
 	}
 
 	public getOAuthClientRegistration(

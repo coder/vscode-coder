@@ -83,7 +83,7 @@ function createTestContext() {
 
 	/** Completes login by sending successful OAuth callback */
 	const completeLogin = async (state: string) => {
-		await base.secretsManager.setOAuthCallback({
+		await base.secretsManager.oauthCallback.send({
 			state,
 			code: "code",
 			error: null,
@@ -138,7 +138,7 @@ describe("OAuthAuthorizer", () => {
 			const { state } = await waitForBrowserToOpen();
 
 			// Set the callback with the correct state (simulate user clicking authorize)
-			await secretsManager.setOAuthCallback({
+			await secretsManager.oauthCallback.send({
 				state,
 				code: "auth-code-123",
 				error: null,
@@ -185,7 +185,7 @@ describe("OAuthAuthorizer", () => {
 			const { authUrl, state } = await waitForBrowserToOpen();
 			expect(authUrl.searchParams.get("client_id")).toBe("existing-client-id");
 
-			await secretsManager.setOAuthCallback({
+			await secretsManager.oauthCallback.send({
 				state,
 				code: "code",
 				error: null,
@@ -225,7 +225,7 @@ describe("OAuthAuthorizer", () => {
 			const { authUrl, state } = await waitForBrowserToOpen();
 			expect(authUrl.searchParams.get("client_id")).toBe("new-client-id");
 
-			await secretsManager.setOAuthCallback({
+			await secretsManager.oauthCallback.send({
 				state,
 				code: "code",
 				error: null,
@@ -267,7 +267,7 @@ describe("OAuthAuthorizer", () => {
 			const { loginPromise, state } = await startLogin();
 
 			// Send callback with wrong state - should be ignored
-			await secretsManager.setOAuthCallback({
+			await secretsManager.oauthCallback.send({
 				state: "wrong-state",
 				code: "code",
 				error: null,
@@ -292,7 +292,7 @@ describe("OAuthAuthorizer", () => {
 			setupOAuthRoutes();
 
 			const { loginPromise, state } = await startLogin();
-			await secretsManager.setOAuthCallback({
+			await secretsManager.oauthCallback.send({
 				state,
 				code: null,
 				error: "access_denied",
@@ -307,7 +307,11 @@ describe("OAuthAuthorizer", () => {
 			setupOAuthRoutes();
 
 			const { loginPromise, state } = await startLogin();
-			await secretsManager.setOAuthCallback({ state, code: null, error: null });
+			await secretsManager.oauthCallback.send({
+				state,
+				code: null,
+				error: null,
+			});
 
 			await expect(loginPromise).rejects.toThrow(
 				"No authorization code received",

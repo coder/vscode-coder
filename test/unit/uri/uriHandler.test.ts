@@ -361,7 +361,7 @@ describe("uriHandler", () => {
 			const { handleUri, secretsManager } = createTestContext();
 
 			const callbackPromise = new Promise<CallbackData>((resolve) => {
-				secretsManager.onDidChangeOAuthCallback(resolve);
+				secretsManager.oauthCallback.onReceive(resolve);
 			});
 
 			await handleUri(
@@ -380,7 +380,7 @@ describe("uriHandler", () => {
 			const { handleUri, secretsManager } = createTestContext();
 
 			const callbackPromise = new Promise<CallbackData>((resolve) => {
-				secretsManager.onDidChangeOAuthCallback(resolve);
+				secretsManager.oauthCallback.onReceive(resolve);
 			});
 
 			await handleUri(
@@ -399,7 +399,7 @@ describe("uriHandler", () => {
 			const { handleUri, secretsManager } = createTestContext();
 
 			let callbackReceived = false;
-			secretsManager.onDidChangeOAuthCallback(() => {
+			secretsManager.oauthCallback.onReceive(() => {
 				callbackReceived = true;
 			});
 

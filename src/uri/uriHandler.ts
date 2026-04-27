@@ -211,7 +211,7 @@ async function handleOAuthCallback(ctx: UriRouteContext): Promise<void> {
 	}
 
 	try {
-		await secretsManager.setOAuthCallback({ state, code, error });
+		await secretsManager.oauthCallback.send({ state, code, error });
 		logger.debug("OAuth callback processed successfully");
 	} catch (err) {
 		logger.error("Failed to process OAuth callback:", err);
