@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type CurrentDeploymentState,
 	SecretsManager,
-	type SessionAuth,
 } from "@/core/secretsManager";
 
 import {
@@ -11,8 +10,6 @@ import {
 	InMemorySecretStorage,
 	createMockLogger,
 } from "../../mocks/testHelpers";
-
-import type { Deployment } from "@/deployment/types";
 
 describe("SecretsManager", () => {
 	let secretStorage: InMemorySecretStorage;
@@ -318,10 +315,7 @@ describe("SecretsManager", () => {
 					extraField: "should be stripped",
 				};
 
-				await secretsManager.setSessionAuth(
-					"example.com",
-					authWithExtra as SessionAuth,
-				);
+				await secretsManager.setSessionAuth("example.com", authWithExtra);
 
 				const raw = await secretStorage.get("coder.session.example.com");
 				expect(JSON.parse(raw!)).toEqual({
@@ -341,10 +335,7 @@ describe("SecretsManager", () => {
 					},
 				};
 
-				await secretsManager.setSessionAuth(
-					"example.com",
-					authWithExtra as SessionAuth,
-				);
+				await secretsManager.setSessionAuth("example.com", authWithExtra);
 
 				const raw = await secretStorage.get("coder.session.example.com");
 				expect(JSON.parse(raw!)).toEqual({
@@ -361,9 +352,7 @@ describe("SecretsManager", () => {
 					extraField: "should be stripped",
 				};
 
-				await secretsManager.setCurrentDeployment(
-					deploymentWithExtra as Deployment,
-				);
+				await secretsManager.setCurrentDeployment(deploymentWithExtra);
 
 				const raw = await secretStorage.get("coder.currentDeployment");
 				const parsed = JSON.parse(raw!) as { deployment: unknown };

@@ -37,19 +37,19 @@ export interface NotificationDef<D = void> {
 export function defineRequest<P = void, R = void>(
 	method: string,
 ): RequestDef<P, R> {
-	return { kind: "request", method } as RequestDef<P, R>;
+	return { kind: "request", method };
 }
 
 /** Define a fire-and-forget command */
 export function defineCommand<P = void>(method: string): CommandDef<P> {
-	return { kind: "command", method } as CommandDef<P>;
+	return { kind: "command", method };
 }
 
 /** Define a push notification (extension to webview) */
 export function defineNotification<D = void>(
 	method: string,
 ): NotificationDef<D> {
-	return { kind: "notification", method } as NotificationDef<D>;
+	return { kind: "notification", method };
 }
 
 // --- Wire format ---
