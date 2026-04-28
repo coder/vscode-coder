@@ -3,6 +3,7 @@ import { vi } from "vitest";
 
 import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
+import { OAuthCallback } from "@/oauth/oauthCallback";
 
 import {
 	createMockLogger,
@@ -128,6 +129,7 @@ export function createBaseTestContext() {
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
 	const secretsManager = new SecretsManager(secretStorage, memento, logger);
+	const oauthCallback = new OAuthCallback(secretStorage, logger);
 
 	/** Sets up default OAuth routes - use explicit routes when asserting on values */
 	const setupOAuthRoutes = () => {
@@ -140,5 +142,11 @@ export function createBaseTestContext() {
 		});
 	};
 
-	return { mockAdapter, secretsManager, logger, setupOAuthRoutes };
+	return {
+		mockAdapter,
+		secretsManager,
+		oauthCallback,
+		logger,
+		setupOAuthRoutes,
+	};
 }

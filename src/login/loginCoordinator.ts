@@ -19,6 +19,7 @@ import type { MementoManager } from "../core/mementoManager";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type { Logger } from "../logging/logger";
+import type { OAuthCallback } from "../oauth/oauthCallback";
 
 type LoginResult =
 	| { success: false }
@@ -43,10 +44,12 @@ export class LoginCoordinator implements vscode.Disposable {
 		private readonly mementoManager: MementoManager,
 		private readonly logger: Logger,
 		private readonly cliCredentialManager: CliCredentialManager,
+		oauthCallback: OAuthCallback,
 		extensionId: string,
 	) {
 		this.oauthAuthorizer = new OAuthAuthorizer(
 			secretsManager,
+			oauthCallback,
 			logger,
 			extensionId,
 		);

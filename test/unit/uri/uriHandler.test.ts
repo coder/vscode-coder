@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 
 import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
+import { OAuthCallback } from "@/oauth/oauthCallback";
 import { CALLBACK_PATH } from "@/oauth/utils";
 import { maybeAskUrl } from "@/promptUtils";
 import { registerUriHandler } from "@/uri/uriHandler";
@@ -67,6 +68,7 @@ function createTestContext() {
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
 	const secretsManager = new SecretsManager(secretStorage, memento, logger);
+	const oauthCallback = new OAuthCallback(secretStorage, logger);
 	const loginCoordinator = createMockLoginCoordinator(secretsManager);
 	const mementoManager = new MementoManager(memento);
 	const commands = new MockCommands();
@@ -77,6 +79,7 @@ function createTestContext() {
 		getMementoManager: () => mementoManager,
 		getLoginCoordinator: () => loginCoordinator as unknown as LoginCoordinator,
 		getContextManager: () => new MockContextManager(),
+		getOAuthCallback: () => oauthCallback,
 		getLogger: () => logger,
 	} as unknown as ServiceContainer;
 
@@ -108,6 +111,7 @@ function createTestContext() {
 		deploymentManager,
 		loginCoordinator,
 		secretsManager,
+		oauthCallback,
 		logger,
 		showErrorMessage,
 		chatPanelProvider,
@@ -358,10 +362,10 @@ describe("uriHandler", () => {
 		}
 
 		it("stores OAuth callback with code and state", async () => {
-			const { handleUri, secretsManager } = createTestContext();
+			const { handleUri, oauthCallback } = createTestContext();
 
 			const callbackPromise = new Promise<CallbackData>((resolve) => {
-				secretsManager.onDidChangeOAuthCallback(resolve);
+				oauthCallback.onReceive(resolve);
 			});
 
 			await handleUri(
@@ -377,10 +381,10 @@ describe("uriHandler", () => {
 		});
 
 		it("stores OAuth callback with error", async () => {
-			const { handleUri, secretsManager } = createTestContext();
+			const { handleUri, oauthCallback } = createTestContext();
 
 			const callbackPromise = new Promise<CallbackData>((resolve) => {
-				secretsManager.onDidChangeOAuthCallback(resolve);
+				oauthCallback.onReceive(resolve);
 			});
 
 			await handleUri(
@@ -396,10 +400,10 @@ describe("uriHandler", () => {
 		});
 
 		it("does not store callback when state is missing", async () => {
-			const { handleUri, secretsManager } = createTestContext();
+			const { handleUri, oauthCallback } = createTestContext();
 
 			let callbackReceived = false;
-			secretsManager.onDidChangeOAuthCallback(() => {
+			oauthCallback.onReceive(() => {
 				callbackReceived = true;
 			});
 

@@ -16,7 +16,6 @@ const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
 
 type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
-const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
 const CURRENT_DEPLOYMENT_KEY = "coder.currentDeployment";
 const DEFAULT_MAX_DEPLOYMENTS = 10;
 
@@ -50,14 +49,6 @@ const SessionAuthSchema = z.object({
 });
 
 export type SessionAuth = z.infer<typeof SessionAuthSchema>;
-
-const OAuthCallbackDataSchema = z.object({
-	state: z.string(),
-	code: z.string().nullable(),
-	error: z.string().nullable(),
-});
-
-type OAuthCallbackData = z.infer<typeof OAuthCallbackDataSchema>;
 
 export class SecretsManager {
 	constructor(
@@ -304,54 +295,6 @@ export class SecretsManager {
 		}
 
 		return safeHostname;
-	}
-
-	/**
-	 * Write an OAuth callback result to secrets storage.
-	 * Used for cross-window communication when OAuth callback arrives in a different window.
-	 */
-	public async setOAuthCallback(data: OAuthCallbackData): Promise<void> {
-		const parsed = OAuthCallbackDataSchema.parse(data);
-		await this.secrets.store(OAUTH_CALLBACK_KEY, JSON.stringify(parsed));
-	}
-
-	/**
-	 * Listen for OAuth callback results from any VS Code window.
-	 * The listener receives the state parameter, code (if success), and error (if failed).
-	 */
-	public onDidChangeOAuthCallback(
-		listener: (data: OAuthCallbackData) => void,
-	): Disposable {
-		return this.secrets.onDidChange(async (e) => {
-			if (e.key !== OAUTH_CALLBACK_KEY) {
-				return;
-			}
-
-			const raw = await this.secrets.get(OAUTH_CALLBACK_KEY);
-			if (!raw) {
-				return;
-			}
-
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(raw);
-			} catch (err) {
-				this.logger.error("Failed to parse OAuth callback JSON", err);
-				return;
-			}
-
-			const result = OAuthCallbackDataSchema.safeParse(parsed);
-			if (!result.success) {
-				this.logger.error("Invalid OAuth callback data shape", result.error);
-				return;
-			}
-
-			try {
-				listener(result.data);
-			} catch (err) {
-				this.logger.error("Error in onDidChangeOAuthCallback listener", err);
-			}
-		});
 	}
 
 	public getOAuthClientRegistration(

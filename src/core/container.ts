@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { type Logger } from "../logging/logger";
 import { LoginCoordinator } from "../login/loginCoordinator";
+import { OAuthCallback } from "../oauth/oauthCallback";
+import { DuplicateWorkspaceIpc } from "../workspace/duplicateWorkspaceIpc";
 
 import { CliCredentialManager } from "./cliCredentialManager";
 import { CliManager } from "./cliManager";
@@ -10,6 +11,8 @@ import { ContextManager } from "./contextManager";
 import { MementoManager } from "./mementoManager";
 import { PathResolver } from "./pathResolver";
 import { SecretsManager } from "./secretsManager";
+
+import type { Logger } from "../logging/logger";
 
 /**
  * Service container for dependency injection.
@@ -24,6 +27,8 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;
 	private readonly loginCoordinator: LoginCoordinator;
+	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
+	private readonly oauthCallback: OAuthCallback;
 
 	constructor(context: vscode.ExtensionContext) {
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
@@ -63,12 +68,18 @@ export class ServiceContainer implements vscode.Disposable {
 			this.cliCredentialManager,
 		);
 		this.contextManager = new ContextManager(context);
+		this.oauthCallback = new OAuthCallback(context.secrets, this.logger);
 		this.loginCoordinator = new LoginCoordinator(
 			this.secretsManager,
 			this.mementoManager,
 			this.logger,
 			this.cliCredentialManager,
+			this.oauthCallback,
 			context.extension.id,
+		);
+		this.duplicateWorkspaceIpc = new DuplicateWorkspaceIpc(
+			context.secrets,
+			this.logger,
 		);
 	}
 
@@ -102,6 +113,14 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getLoginCoordinator(): LoginCoordinator {
 		return this.loginCoordinator;
+	}
+
+	getDuplicateWorkspaceIpc(): DuplicateWorkspaceIpc {
+		return this.duplicateWorkspaceIpc;
+	}
+
+	getOAuthCallback(): OAuthCallback {
+		return this.oauthCallback;
 	}
 
 	/**

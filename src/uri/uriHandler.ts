@@ -199,7 +199,7 @@ async function setupDeployment(
 async function handleOAuthCallback(ctx: UriRouteContext): Promise<void> {
 	const { params, serviceContainer } = ctx;
 	const logger = serviceContainer.getLogger();
-	const secretsManager = serviceContainer.getSecretsManager();
+	const oauthCallback = serviceContainer.getOAuthCallback();
 
 	const code = params.get("code");
 	const state = params.get("state");
@@ -211,7 +211,7 @@ async function handleOAuthCallback(ctx: UriRouteContext): Promise<void> {
 	}
 
 	try {
-		await secretsManager.setOAuthCallback({ state, code, error });
+		await oauthCallback.send({ state, code, error });
 		logger.debug("OAuth callback processed successfully");
 	} catch (err) {
 		logger.error("Failed to process OAuth callback:", err);

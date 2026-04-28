@@ -6,6 +6,7 @@ import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { LoginCoordinator } from "@/login/loginCoordinator";
+import { OAuthCallback } from "@/oauth/oauthCallback";
 import { maybeAskAuthMethod } from "@/promptUtils";
 
 import {
@@ -115,6 +116,7 @@ function createTestContext() {
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
 	const secretsManager = new SecretsManager(secretStorage, memento, logger);
+	const oauthCallback = new OAuthCallback(secretStorage, logger);
 	const mementoManager = new MementoManager(memento);
 
 	const mockCredentialManager = createMockCliCredentialManager();
@@ -123,6 +125,7 @@ function createTestContext() {
 		mementoManager,
 		logger,
 		mockCredentialManager,
+		oauthCallback,
 		"coder.coder-remote",
 	);
 
@@ -151,6 +154,7 @@ function createTestContext() {
 		mockConfig,
 		userInteraction,
 		secretsManager,
+		oauthCallback,
 		mementoManager,
 		mockCredentialManager,
 		coordinator,
@@ -302,8 +306,13 @@ describe("LoginCoordinator", () => {
 		});
 
 		it("logs warning instead of showing dialog for autoLogin", async () => {
-			const { mockConfig, secretsManager, mementoManager, mockAuthFailure } =
-				createTestContext();
+			const {
+				mockConfig,
+				secretsManager,
+				oauthCallback,
+				mementoManager,
+				mockAuthFailure,
+			} = createTestContext();
 			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
 			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
 
@@ -313,6 +322,7 @@ describe("LoginCoordinator", () => {
 				mementoManager,
 				logger,
 				createMockCliCredentialManager(),
+				oauthCallback,
 				"coder.coder-remote",
 			);
 
