@@ -1,19 +1,18 @@
 import type { Disposable, SecretStorage } from "vscode";
+import type { ZodType } from "zod";
 
-import type { Logger } from "./logging/logger";
+import type { Logger } from "../logging/logger";
 
 /**
- * Typed pub/sub over a single SecretStorage key.
- *
- * SecretStorage.onDidChange fires across all VS Code windows, so each
- * WindowBroadcast instance acts as a cross-window channel for messages
- * of type T.
+ * Typed pub/sub over a single SecretStorage key. SecretStorage.onDidChange
+ * fires across all VS Code windows, so each instance is a cross-window
+ * channel for messages of type T.
  */
 export class WindowBroadcast<T> {
 	constructor(
 		private readonly secrets: SecretStorage,
 		private readonly key: string,
-		private readonly validate: (value: unknown) => value is T,
+		private readonly schema: ZodType<T>,
 		private readonly logger: Logger,
 	) {}
 
@@ -31,11 +30,11 @@ export class WindowBroadcast<T> {
 				if (!raw) {
 					return;
 				}
-				const parsed: unknown = JSON.parse(raw);
-				if (!this.validate(parsed)) {
+				const parsed = this.schema.safeParse(JSON.parse(raw));
+				if (!parsed.success) {
 					return;
 				}
-				await handler(parsed);
+				await handler(parsed.data);
 			} catch (err) {
 				this.logger.error(`Error handling broadcast on ${this.key}`, err);
 			}

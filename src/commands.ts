@@ -1,7 +1,3 @@
-import {
-	type Workspace,
-	type WorkspaceAgent,
-} from "coder/site/src/api/typesGenerated";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -13,20 +9,11 @@ import {
 	extractAgents,
 	workspaceStatusLabel,
 } from "./api/api-helper";
-import { type CoderApi } from "./api/coderApi";
 import * as cliExec from "./core/cliExec";
-import { type CliManager } from "./core/cliManager";
-import { type ServiceContainer } from "./core/container";
-import { type MementoManager } from "./core/mementoManager";
-import { type PathResolver } from "./core/pathResolver";
-import { type SecretsManager } from "./core/secretsManager";
 import { appendVsCodeLogs } from "./core/supportBundleLogs";
-import { type DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
 import { type FeatureSet, featureSetForVersion } from "./featureSet";
-import { type Logger } from "./logging/logger";
-import { type LoginCoordinator } from "./login/loginCoordinator";
 import { withCancellableProgress, withProgress } from "./progress";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import {
@@ -36,12 +23,30 @@ import {
 import { resolveCliAuth } from "./settings/cli";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
-import { type PongMessage, type WindowIpc } from "./windowIpc";
 import {
 	AgentTreeItem,
 	type OpenableTreeItem,
 	WorkspaceTreeItem,
 } from "./workspace/workspacesProvider";
+
+import type {
+	Workspace,
+	WorkspaceAgent,
+} from "coder/site/src/api/typesGenerated";
+
+import type { CoderApi } from "./api/coderApi";
+import type { CliManager } from "./core/cliManager";
+import type { ServiceContainer } from "./core/container";
+import type { MementoManager } from "./core/mementoManager";
+import type { PathResolver } from "./core/pathResolver";
+import type { SecretsManager } from "./core/secretsManager";
+import type { DeploymentManager } from "./deployment/deploymentManager";
+import type { Logger } from "./logging/logger";
+import type { LoginCoordinator } from "./login/loginCoordinator";
+import type {
+	DuplicateWorkspaceIpc,
+	PongMessage,
+} from "./workspace/duplicateWorkspaceIpc";
 
 interface OpenOptions {
 	workspaceOwner?: string;
@@ -66,7 +71,7 @@ export class Commands {
 	private readonly secretsManager: SecretsManager;
 	private readonly cliManager: CliManager;
 	private readonly loginCoordinator: LoginCoordinator;
-	private readonly windowIpc: WindowIpc;
+	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -90,7 +95,7 @@ export class Commands {
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.cliManager = serviceContainer.getCliManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
-		this.windowIpc = serviceContainer.getWindowIpc();
+		this.duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
 	}
 
 	/**
@@ -1083,8 +1088,9 @@ export class Commands {
 		// Only set the memento when opening a new folder/window
 		await this.mementoManager.setStartupMode("start");
 
-		// Best-effort: detect other connected windows in the background.
-		this.windowIpc
+		// Best-effort check for an already-connected window. Runs in the
+		// background so it never delays openFolder.
+		this.duplicateWorkspaceIpc
 			.sendPing(remoteAuthority)
 			.then((pong) => {
 				if (pong) {
@@ -1117,10 +1123,8 @@ export class Commands {
 		return true;
 	}
 
-	/**
-	 * Non-blocking notification — VS Code may dismiss it at any time,
-	 * so this must not be awaited.
-	 */
+	// VS Code may dismiss a non-modal info message without resolving the
+	// thenable, so this must not be awaited from the open path.
 	private showMultiWindowNotification(
 		pong: PongMessage,
 		remoteAuthority: string,
@@ -1129,13 +1133,13 @@ export class Commands {
 		const openEmptyAction = "Open Without Folder";
 		vscode.window
 			.showInformationMessage(
-				`A window is already connected to this workspace (${pong.folder}).`,
+				"This workspace is already open in another window.",
 				duplicateAction,
 				openEmptyAction,
 			)
 			.then(async (choice) => {
 				if (choice === duplicateAction) {
-					await this.windowIpc.sendDuplicate(pong.sessionId);
+					await this.duplicateWorkspaceIpc.sendDuplicate(pong.sessionId);
 				} else if (choice === openEmptyAction) {
 					await vscode.commands.executeCommand("vscode.newWindow", {
 						remoteAuthority,

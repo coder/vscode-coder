@@ -1,10 +1,6 @@
-import { type AxiosInstance } from "axios";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { type SecretsManager } from "../core/secretsManager";
-import { type Deployment } from "../deployment/types";
-import { type Logger } from "../logging/logger";
 
 import {
 	AUTH_GRANT_TYPE,
@@ -21,6 +17,7 @@ import {
 	toUrlSearchParams,
 } from "./utils";
 
+import type { AxiosInstance } from "axios";
 import type {
 	OAuth2AuthorizationServerMetadata,
 	OAuth2ClientRegistrationRequest,
@@ -29,6 +26,12 @@ import type {
 	OAuth2TokenResponse,
 	User,
 } from "coder/site/src/api/typesGenerated";
+
+import type { SecretsManager } from "../core/secretsManager";
+import type { Deployment } from "../deployment/types";
+import type { Logger } from "../logging/logger";
+
+import type { OAuthCallback } from "./oauthCallback";
 
 /**
  * Handles the OAuth authorization code flow for authenticating with Coder deployments.
@@ -39,6 +42,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 	constructor(
 		private readonly secretsManager: SecretsManager,
+		private readonly oauthCallback: OAuthCallback,
 		private readonly logger: Logger,
 		private readonly extensionId: string,
 	) {}
@@ -247,7 +251,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 					timeoutMins * 60 * 1000,
 				);
 
-				const listener = this.secretsManager.oauthCallback.onReceive(
+				const listener = this.oauthCallback.onReceive(
 					({ state: callbackState, code, error }) => {
 						if (callbackState !== state) {
 							this.logger.warn(

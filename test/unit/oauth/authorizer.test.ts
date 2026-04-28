@@ -61,6 +61,7 @@ function createTestContext() {
 	const base = createBaseTestContext();
 	const authorizer = new OAuthAuthorizer(
 		base.secretsManager,
+		base.oauthCallback,
 		base.logger,
 		EXTENSION_ID,
 	);
@@ -83,7 +84,7 @@ function createTestContext() {
 
 	/** Completes login by sending successful OAuth callback */
 	const completeLogin = async (state: string) => {
-		await base.secretsManager.oauthCallback.send({
+		await base.oauthCallback.send({
 			state,
 			code: "code",
 			error: null,
@@ -111,7 +112,8 @@ async function waitForBrowserToOpen(): Promise<{
 describe("OAuthAuthorizer", () => {
 	describe("login flow", () => {
 		it("completes full OAuth login flow successfully", async () => {
-			const { mockAdapter, secretsManager, authorizer } = createTestContext();
+			const { mockAdapter, oauthCallback, secretsManager, authorizer } =
+				createTestContext();
 
 			setupAxiosMockRoutes(mockAdapter, {
 				"/.well-known/oauth-authorization-server":
@@ -138,7 +140,7 @@ describe("OAuthAuthorizer", () => {
 			const { state } = await waitForBrowserToOpen();
 
 			// Set the callback with the correct state (simulate user clicking authorize)
-			await secretsManager.oauthCallback.send({
+			await oauthCallback.send({
 				state,
 				code: "auth-code-123",
 				error: null,
@@ -156,7 +158,8 @@ describe("OAuthAuthorizer", () => {
 		});
 
 		it("uses existing client registration when redirect URI matches", async () => {
-			const { mockAdapter, secretsManager, authorizer } = createTestContext();
+			const { mockAdapter, oauthCallback, secretsManager, authorizer } =
+				createTestContext();
 
 			// Pre-store a client registration with matching redirect URI
 			await secretsManager.setOAuthClientRegistration(
@@ -185,7 +188,7 @@ describe("OAuthAuthorizer", () => {
 			const { authUrl, state } = await waitForBrowserToOpen();
 			expect(authUrl.searchParams.get("client_id")).toBe("existing-client-id");
 
-			await secretsManager.oauthCallback.send({
+			await oauthCallback.send({
 				state,
 				code: "code",
 				error: null,
@@ -194,7 +197,8 @@ describe("OAuthAuthorizer", () => {
 		});
 
 		it("re-registers client when redirect URI has changed", async () => {
-			const { mockAdapter, secretsManager, authorizer } = createTestContext();
+			const { mockAdapter, oauthCallback, secretsManager, authorizer } =
+				createTestContext();
 
 			// Pre-store a client registration with different redirect URI
 			await secretsManager.setOAuthClientRegistration(
@@ -225,7 +229,7 @@ describe("OAuthAuthorizer", () => {
 			const { authUrl, state } = await waitForBrowserToOpen();
 			expect(authUrl.searchParams.get("client_id")).toBe("new-client-id");
 
-			await secretsManager.oauthCallback.send({
+			await oauthCallback.send({
 				state,
 				code: "code",
 				error: null,
@@ -260,14 +264,14 @@ describe("OAuthAuthorizer", () => {
 
 	describe("callback handling", () => {
 		it("ignores callback with wrong state", async () => {
-			const { secretsManager, setupOAuthRoutes, startLogin, completeLogin } =
+			const { oauthCallback, setupOAuthRoutes, startLogin, completeLogin } =
 				createTestContext();
 			setupOAuthRoutes();
 
 			const { loginPromise, state } = await startLogin();
 
 			// Send callback with wrong state - should be ignored
-			await secretsManager.oauthCallback.send({
+			await oauthCallback.send({
 				state: "wrong-state",
 				code: "code",
 				error: null,
@@ -287,12 +291,12 @@ describe("OAuthAuthorizer", () => {
 		});
 
 		it("rejects on OAuth error callback", async () => {
-			const { secretsManager, setupOAuthRoutes, startLogin } =
+			const { oauthCallback, setupOAuthRoutes, startLogin } =
 				createTestContext();
 			setupOAuthRoutes();
 
 			const { loginPromise, state } = await startLogin();
-			await secretsManager.oauthCallback.send({
+			await oauthCallback.send({
 				state,
 				code: null,
 				error: "access_denied",
@@ -302,12 +306,12 @@ describe("OAuthAuthorizer", () => {
 		});
 
 		it("rejects when no code is received", async () => {
-			const { secretsManager, setupOAuthRoutes, startLogin } =
+			const { oauthCallback, setupOAuthRoutes, startLogin } =
 				createTestContext();
 			setupOAuthRoutes();
 
 			const { loginPromise, state } = await startLogin();
-			await secretsManager.oauthCallback.send({
+			await oauthCallback.send({
 				state,
 				code: null,
 				error: null,

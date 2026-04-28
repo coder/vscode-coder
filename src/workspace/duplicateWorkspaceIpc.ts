@@ -1,71 +1,59 @@
 import crypto from "node:crypto";
+import { z } from "zod";
 
-import { WindowBroadcast } from "./windowBroadcast";
+import { WindowBroadcast } from "../ipc/windowBroadcast";
 
 import type { Disposable, SecretStorage } from "vscode";
 
-import type { Logger } from "./logging/logger";
+import type { Logger } from "../logging/logger";
 
 const MESSAGE_MAX_AGE_MS = 5000;
 const DEFAULT_PING_TIMEOUT_MS = 1000;
 
-export interface PingMessage {
-	type: "ping";
-	id: string;
-	authority: string;
-	ts: number;
-}
+const REQUEST_KEY = "coder.ipc.req";
+const RESPONSE_KEY = "coder.ipc.res";
 
-export interface PongMessage {
-	type: "pong";
-	id: string;
-	sessionId: string;
-	folder: string;
-	ts: number;
-}
+const PingMessageSchema = z.object({
+	type: z.literal("ping"),
+	id: z.string(),
+	authority: z.string(),
+	ts: z.number(),
+});
 
-export interface DuplicateMessage {
-	type: "duplicate";
-	id: string;
-	targetSessionId: string;
-	ts: number;
-}
+const PongMessageSchema = z.object({
+	type: z.literal("pong"),
+	id: z.string(),
+	sessionId: z.string(),
+	ts: z.number(),
+});
 
-type RequestMessage = PingMessage | DuplicateMessage;
+const DuplicateMessageSchema = z.object({
+	type: z.literal("duplicate"),
+	id: z.string(),
+	targetSessionId: z.string(),
+	ts: z.number(),
+});
 
-function isRequestMessage(msg: unknown): msg is RequestMessage {
-	if (typeof msg !== "object" || msg === null) {
-		return false;
-	}
-	const obj = msg as Record<string, unknown>;
-	if (typeof obj.id !== "string" || typeof obj.ts !== "number") {
-		return false;
-	}
-	if (obj.type === "ping") {
-		return typeof obj.authority === "string";
-	}
-	if (obj.type === "duplicate") {
-		return typeof obj.targetSessionId === "string";
-	}
-	return false;
-}
+const RequestMessageSchema = z.discriminatedUnion("type", [
+	PingMessageSchema,
+	DuplicateMessageSchema,
+]);
 
-function isPongMessage(msg: unknown): msg is PongMessage {
-	if (typeof msg !== "object" || msg === null) {
-		return false;
-	}
-	const obj = msg as Record<string, unknown>;
-	return (
-		obj.type === "pong" &&
-		typeof obj.id === "string" &&
-		typeof obj.sessionId === "string" &&
-		typeof obj.folder === "string" &&
-		typeof obj.ts === "number"
-	);
-}
+export type PingMessage = z.infer<typeof PingMessageSchema>;
+export type PongMessage = z.infer<typeof PongMessageSchema>;
+export type DuplicateMessage = z.infer<typeof DuplicateMessageSchema>;
+export type RequestMessage = z.infer<typeof RequestMessageSchema>;
 
-/** Cross-window IPC built on WindowBroadcast channels. */
-export class WindowIpc {
+/**
+ * Cross-window protocol for the open-workspace flow:
+ *   PING      "anyone connected to this authority?"
+ *   PONG      "yes, with this sessionId"
+ *   DUPLICATE "sessionId, please duplicate yourself"
+ *
+ * The sender shows the prompt locally on first PONG. If the user picks
+ * Duplicate, it sends DUPLICATE targeted at the responder's sessionId.
+ */
+export class DuplicateWorkspaceIpc {
 	private readonly requests: WindowBroadcast<RequestMessage>;
 	private readonly responses: WindowBroadcast<PongMessage>;
 
@@ -75,14 +63,14 @@ export class WindowIpc {
 	) {
 		this.requests = new WindowBroadcast(
 			secrets,
-			"coder.ipc.req",
-			isRequestMessage,
+			REQUEST_KEY,
+			RequestMessageSchema,
 			logger,
 		);
 		this.responses = new WindowBroadcast(
 			secrets,
-			"coder.ipc.res",
-			isPongMessage,
+			RESPONSE_KEY,
+			PongMessageSchema,
 			logger,
 		);
 	}
@@ -124,20 +112,16 @@ export class WindowIpc {
 		});
 	}
 
-	async sendPong(
-		pingId: string,
-		sessionId: string,
-		folder: string,
-	): Promise<void> {
+	async sendPong(pingId: string, sessionId: string): Promise<void> {
 		await this.responses.send({
 			type: "pong",
 			id: pingId,
 			sessionId,
-			folder,
 			ts: Date.now(),
 		});
 	}
 
+	/** Ask the window with this sessionId to duplicate itself. */
 	async sendDuplicate(targetSessionId: string): Promise<void> {
 		await this.requests.send({
 			type: "duplicate",
@@ -147,7 +131,7 @@ export class WindowIpc {
 		});
 	}
 
-	/** Listen for incoming requests. Stale messages are ignored. */
+	/** Listen for incoming requests. Stale messages are dropped. */
 	onRequest(
 		handler: (msg: RequestMessage) => void | Promise<void>,
 	): Disposable {

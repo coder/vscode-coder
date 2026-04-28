@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import { DeploymentSchema, type Deployment } from "../deployment/types";
 import { toSafeHost } from "../util";
-import { WindowBroadcast } from "../windowBroadcast";
 
 import type { OAuth2ClientRegistrationResponse } from "coder/site/src/api/typesGenerated";
 import type { Memento, SecretStorage, Disposable } from "vscode";
@@ -17,7 +16,6 @@ const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
 
 type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
-const OAUTH_CALLBACK_KEY = "coder.oauthCallback";
 const CURRENT_DEPLOYMENT_KEY = "coder.currentDeployment";
 const DEFAULT_MAX_DEPLOYMENTS = 10;
 
@@ -52,30 +50,12 @@ const SessionAuthSchema = z.object({
 
 export type SessionAuth = z.infer<typeof SessionAuthSchema>;
 
-const OAuthCallbackDataSchema = z.object({
-	state: z.string(),
-	code: z.string().nullable(),
-	error: z.string().nullable(),
-});
-
-export type OAuthCallbackData = z.infer<typeof OAuthCallbackDataSchema>;
-
 export class SecretsManager {
-	public readonly oauthCallback: WindowBroadcast<OAuthCallbackData>;
-
 	constructor(
 		private readonly secrets: SecretStorage,
 		private readonly memento: Memento,
 		private readonly logger: Logger,
-	) {
-		this.oauthCallback = new WindowBroadcast(
-			secrets,
-			OAUTH_CALLBACK_KEY,
-			(v: unknown): v is OAuthCallbackData =>
-				OAuthCallbackDataSchema.safeParse(v).success,
-			logger,
-		);
-	}
+	) {}
 
 	private buildKey(prefix: SecretKeyPrefix, safeHostname: string): string {
 		return `${prefix}${safeHostname || "<legacy>"}`;
