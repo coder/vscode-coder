@@ -108,13 +108,11 @@ function lastExecArgs() {
 }
 
 function successResolver(): BinaryResolver {
-	return vi.fn().mockResolvedValue(TEST_BIN) as unknown as BinaryResolver;
+	return vi.fn().mockResolvedValue(TEST_BIN);
 }
 
 function failingResolver(): BinaryResolver {
-	return vi
-		.fn()
-		.mockRejectedValue(new Error("no binary")) as unknown as BinaryResolver;
+	return vi.fn().mockRejectedValue(new Error("no binary"));
 }
 
 const configs = { get: vi.fn().mockReturnValue(undefined) };

@@ -268,7 +268,7 @@ describe("renameWithRetry", () => {
 	function makeErrno(code: string): NodeJS.ErrnoException {
 		const err = new Error(code);
 		(err as NodeJS.ErrnoException).code = code;
-		return err as NodeJS.ErrnoException;
+		return err;
 	}
 
 	function setPlatform(value: string) {

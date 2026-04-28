@@ -628,10 +628,10 @@
 		"@types/ua-parser-js": "0.7.39",
 		"@types/vscode": "1.106.0",
 		"@types/ws": "^8.18.1",
-		"@typescript-eslint/eslint-plugin": "^8.58.2",
-		"@typescript-eslint/parser": "^8.58.2",
+		"@typescript-eslint/eslint-plugin": "^8.59.1",
+		"@typescript-eslint/parser": "^8.59.1",
 		"@vitejs/plugin-react": "catalog:",
-		"@vitest/coverage-v8": "^4.1.4",
+		"@vitest/coverage-v8": "^4.1.5",
 		"@vscode/test-cli": "^0.0.12",
 		"@vscode/test-electron": "^2.5.2",
 		"@vscode/vsce": "^3.9.1",
@@ -647,24 +647,24 @@
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import-x": "^4.16.2",
-		"eslint-plugin-package-json": "^0.91.1",
+		"eslint-plugin-package-json": "^0.91.2",
 		"globals": "^17.5.0",
-		"jsdom": "^29.0.2",
+		"jsdom": "^29.1.0",
 		"jsonc-eslint-parser": "^3.1.0",
 		"memfs": "^4.57.2",
 		"prettier": "^3.8.3",
 		"react": "catalog:",
 		"react-dom": "catalog:",
 		"typescript": "catalog:",
-		"typescript-eslint": "^8.58.2",
+		"typescript-eslint": "^8.59.1",
 		"utf-8-validate": "^6.0.6",
 		"vite": "catalog:",
-		"vitest": "^4.1.4"
+		"vitest": "^4.1.5"
 	},
 	"extensionPack": [
 		"ms-vscode-remote.remote-ssh"
 	],
-	"packageManager": "pnpm@10.33.0",
+	"packageManager": "pnpm@10.33.2",
 	"engines": {
 		"vscode": "^1.106.0",
 		"node": ">= 22"
