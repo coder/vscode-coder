@@ -27,4 +27,13 @@ describe("TerminalOutputChannel", () => {
 	])("%s", (_label, input, expected) => {
 		expect(setup(input).content.join("")).toBe(expected);
 	});
+
+	it("does not create the channel until first write", () => {
+		vi.mocked(vscode.window.createOutputChannel).mockClear();
+		const channel = new TerminalOutputChannel("test");
+		expect(vscode.window.createOutputChannel).not.toHaveBeenCalled();
+
+		channel.write("hello");
+		expect(vscode.window.createOutputChannel).toHaveBeenCalledOnce();
+	});
 });
