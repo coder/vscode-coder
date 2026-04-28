@@ -9,22 +9,22 @@ import {
 	buildErrorBlock,
 	type SessionContext,
 	type TelemetryEvent,
+	type TelemetryLevel,
 	type TelemetrySink,
 } from "./event";
 import { Trace } from "./trace";
 
-type TelemetryLevel = "off" | "local";
-
 const TELEMETRY_LEVEL_SETTING = "coder.telemetry.level";
 
-const NOOP_TRACE = new Trace("", "", () => {
-	// Off-mode tracer; no events are emitted.
-});
+const LEVEL_ORDER: Readonly<Record<TelemetryLevel, number>> = {
+	off: 0,
+	local: 1,
+};
 
 /**
- * Emits structured telemetry events to a fan-out of sinks. Sinks self-gate;
- * `dispose` flushes are best-effort during deactivation since VS Code does
- * not await it.
+ * Emits structured telemetry events to a fan-out of sinks. The service filters
+ * sinks by `minLevel`; sinks may self-gate further. `dispose` flushes are
+ * best-effort during deactivation since VS Code does not await it.
  */
 export class TelemetryService implements vscode.Disposable {
 	#level: TelemetryLevel;
@@ -96,7 +96,7 @@ export class TelemetryService implements vscode.Disposable {
 		properties: Record<string, string> = {},
 	): Promise<T> {
 		if (this.#level === "off") {
-			return fn(NOOP_TRACE);
+			return fn(Trace.NOOP);
 		}
 		const traceId = crypto.randomUUID();
 		const tracer = new Trace(eventName, traceId, this.#emitter);
@@ -126,10 +126,6 @@ export class TelemetryService implements vscode.Disposable {
 		traceId?: string,
 		error?: unknown,
 	): void {
-		if (this.#level === "off") {
-			return;
-		}
-
 		const event: TelemetryEvent = {
 			eventId: crypto.randomUUID(),
 			eventName,
@@ -146,7 +142,11 @@ export class TelemetryService implements vscode.Disposable {
 			event.error = buildErrorBlock(error);
 		}
 
+		const currentOrder = LEVEL_ORDER[this.#level];
 		for (const sink of this.sinks) {
+			if (currentOrder < LEVEL_ORDER[sink.minLevel]) {
+				continue;
+			}
 			try {
 				sink.write(event);
 			} catch (err) {

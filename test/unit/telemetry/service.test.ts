@@ -262,6 +262,7 @@ describe("TelemetryService", () => {
 		it("a throwing sink does not block other sinks from receiving events", () => {
 			const bad: TelemetrySink = {
 				name: "bad",
+				minLevel: "local",
 				write: () => {
 					throw new Error("boom");
 				},
@@ -294,6 +295,7 @@ describe("TelemetryService", () => {
 		it("resolves even when sinks reject in flush or dispose", async () => {
 			const bad: TelemetrySink = {
 				name: "bad",
+				minLevel: "local",
 				write: () => {},
 				flush: () => Promise.reject(new Error("flush fail")),
 				dispose: () => Promise.reject(new Error("dispose fail")),

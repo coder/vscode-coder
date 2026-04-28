@@ -3,6 +3,9 @@ import * as vscode from "vscode";
 
 import { toError } from "../error/errorUtils";
 
+/** Telemetry level, mirrors `coder.telemetry.level`. Ordered: off < local. */
+export type TelemetryLevel = "off" | "local";
+
 /** Session-stable resource attributes. Field names follow OTel conventions. */
 export interface SessionContext {
 	readonly extensionVersion: string;
@@ -42,10 +45,12 @@ export interface TelemetryEvent {
 
 /**
  * Sink for telemetry events. `write` is sync and must buffer in memory; I/O
- * happens in `flush`/`dispose`. Sinks self-gate beyond the service kill switch.
+ * happens in `flush`/`dispose`. The service filters by `minLevel`; sinks can
+ * still self-gate on other signals (e.g. deployment URL).
  */
 export interface TelemetrySink {
 	readonly name: string;
+	readonly minLevel: TelemetryLevel;
 	write(event: TelemetryEvent): void;
 	flush(): Promise<void>;
 	dispose(): Promise<void>;
@@ -53,6 +58,7 @@ export interface TelemetrySink {
 
 /** Build session attributes. `extensionVersion` falls back to `"unknown"`. */
 export function buildSession(ctx: vscode.ExtensionContext): SessionContext {
+	// "unknown" only for malformed package.json or test fixtures missing `version`.
 	const packageJson = ctx.extension.packageJSON as { version?: unknown };
 	const extensionVersion =
 		typeof packageJson.version === "string" ? packageJson.version : "unknown";

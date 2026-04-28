@@ -1,6 +1,10 @@
 import { vi } from "vitest";
 
-import type { TelemetryEvent, TelemetrySink } from "@/telemetry/event";
+import type {
+	TelemetryEvent,
+	TelemetryLevel,
+	TelemetrySink,
+} from "@/telemetry/event";
 
 /**
  * In-memory `TelemetrySink` for tests. Captures every written event and
@@ -8,12 +12,14 @@ import type { TelemetryEvent, TelemetrySink } from "@/telemetry/event";
  */
 export class TestSink implements TelemetrySink {
 	readonly name: string;
+	readonly minLevel: TelemetryLevel;
 	readonly events: TelemetryEvent[] = [];
 	readonly flush = vi.fn(() => Promise.resolve());
 	readonly dispose = vi.fn(() => Promise.resolve());
 
-	constructor(name = "test") {
+	constructor(name = "test", minLevel: TelemetryLevel = "local") {
 		this.name = name;
+		this.minLevel = minLevel;
 	}
 
 	write(event: TelemetryEvent): void {
