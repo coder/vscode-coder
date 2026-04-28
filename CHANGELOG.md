@@ -7,6 +7,12 @@
 
 ## Unreleased
 
+### Added
+
+- Opening a workspace that's already connected in another VS Code window now shows a prompt
+  to **Duplicate Window** (preserving tabs and panels) or **Open Without Folder**, instead of
+  just focusing the existing window with no way to open a second view of the same workspace.
+
 ### Fixed
 
 - The **Coder: Workspace Build** output channel is no longer created when reconnecting to an

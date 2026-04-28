@@ -7,7 +7,6 @@ import type { Disposable, SecretStorage } from "vscode";
 
 import type { Logger } from "../logging/logger";
 
-const MESSAGE_MAX_AGE_MS = 5000;
 const DEFAULT_PING_TIMEOUT_MS = 1000;
 
 const REQUEST_KEY = "coder.ipc.req";
@@ -17,21 +16,18 @@ const PingMessageSchema = z.object({
 	type: z.literal("ping"),
 	id: z.string(),
 	authority: z.string(),
-	ts: z.number(),
 });
 
 const PongMessageSchema = z.object({
 	type: z.literal("pong"),
 	id: z.string(),
 	sessionId: z.string(),
-	ts: z.number(),
 });
 
 const DuplicateMessageSchema = z.object({
 	type: z.literal("duplicate"),
 	id: z.string(),
 	targetSessionId: z.string(),
-	ts: z.number(),
 });
 
 const RequestMessageSchema = z.discriminatedUnion("type", [
@@ -104,7 +100,7 @@ export class DuplicateWorkspaceIpc {
 			const timer = setTimeout(() => settle(undefined), timeoutMs);
 
 			this.requests
-				.send({ type: "ping", id, authority, ts: Date.now() })
+				.send({ type: "ping", id, authority })
 				.then(undefined, (err: unknown) => {
 					this.logger.error("Failed to send IPC ping", err);
 					settle(undefined);
@@ -117,7 +113,6 @@ export class DuplicateWorkspaceIpc {
 			type: "pong",
 			id: pingId,
 			sessionId,
-			ts: Date.now(),
 		});
 	}
 
@@ -127,19 +122,12 @@ export class DuplicateWorkspaceIpc {
 			type: "duplicate",
 			id: crypto.randomUUID(),
 			targetSessionId,
-			ts: Date.now(),
 		});
 	}
 
-	/** Listen for incoming requests. Stale messages are dropped. */
 	onRequest(
 		handler: (msg: RequestMessage) => void | Promise<void>,
 	): Disposable {
-		return this.requests.onReceive((msg) => {
-			if (Date.now() - msg.ts > MESSAGE_MAX_AGE_MS) {
-				return;
-			}
-			return handler(msg);
-		});
+		return this.requests.onReceive(handler);
 	}
 }

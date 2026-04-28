@@ -46,35 +46,6 @@ describe("DuplicateWorkspaceIpc", () => {
 		expect(await promise).toBeUndefined();
 	});
 
-	it("delivers fresh requests but drops stale ones", async () => {
-		const { secrets, sender, receiver } = makeIpcPair();
-		const handler = vi.fn();
-		receiver.onRequest(handler);
-
-		// Replay an old request directly through storage.
-		await secrets.store(
-			"coder.ipc.req",
-			JSON.stringify({
-				type: "ping",
-				id: "old",
-				authority: "ssh-remote+host",
-				ts: Date.now() - 10_000,
-			}),
-		);
-		await vi.advanceTimersByTimeAsync(10);
-		expect(handler).not.toHaveBeenCalled();
-
-		// A fresh sendDuplicate should be delivered.
-		await sender.sendDuplicate("session-fresh");
-		await vi.advanceTimersByTimeAsync(10);
-		expect(handler).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "duplicate",
-				targetSessionId: "session-fresh",
-			}),
-		);
-	});
-
 	it("supports the full ping → pong → duplicate round trip", async () => {
 		const { secrets, sender } = makeIpcPair();
 		const duplicateReceived = vi.fn();
