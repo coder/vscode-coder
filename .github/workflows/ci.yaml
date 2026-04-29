@@ -28,14 +28,21 @@ jobs:
       - run: pnpm build
 
   test-unit:
-    name: Unit Test (Electron ${{ matrix.electron-version }})
-    runs-on: ubuntu-24.04
+    name: Unit Test (${{ matrix.os }}, Electron ${{ matrix.electron-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # Minimum supported version: VS Code 1.106 (Oct 2025) -> Electron 37 -> Node 22
         # See https://github.com/ewanharris/vscode-versions for version mapping
+        os: [ubuntu-24.04]
         electron-version: ["37", "latest"]
+        # Smoke-test latest Electron on Windows + macOS; older Electron stays Linux-only.
+        include:
+          - os: windows-latest
+            electron-version: "latest"
+          - os: macos-latest
+            electron-version: "latest"
 
     steps:
       - uses: actions/checkout@v6
@@ -44,16 +51,23 @@ jobs:
 
       - name: Run tests with Electron ${{ matrix.electron-version }}
         run: ./scripts/test-electron.sh ${{ matrix.electron-version }}
+        shell: bash
         env:
           CI: true
 
   test-integration:
-    name: Integration Test (VS Code ${{ matrix.vscode-version }})
-    runs-on: ubuntu-24.04
+    name: Integration Test (${{ matrix.os }}, VS Code ${{ matrix.vscode-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-24.04]
         vscode-version: ["1.106.0", "stable"]
+        include:
+          - os: windows-latest
+            vscode-version: "stable"
+          - os: macos-latest
+            vscode-version: "stable"
 
     steps:
       - uses: actions/checkout@v6
@@ -62,8 +76,14 @@ jobs:
 
       - run: pnpm build
 
-      - name: Run integration tests on VS Code ${{ matrix.vscode-version }}
+      - name: Run integration tests on VS Code ${{ matrix.vscode-version }} (Linux)
+        if: runner.os == 'Linux'
         run: xvfb-run -a pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
+
+      - name: Run integration tests on VS Code ${{ matrix.vscode-version }} (Windows/macOS)
+        if: runner.os != 'Linux'
+        run: pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
+        shell: bash
 
   package:
     name: Package
