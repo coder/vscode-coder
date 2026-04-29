@@ -165,6 +165,7 @@ export class WorkspaceProvider
 				workspace,
 				this.getWorkspacesQuery === WorkspaceQuery.All,
 				showMetadata,
+				this.client.getAxiosInstance().defaults.baseURL,
 			);
 
 			return workspaceTreeItem;
@@ -258,12 +259,16 @@ export class WorkspaceProvider
 								// We need to do this for now because the reporting isn't super accurate
 								// yet.
 								appStatuses.push(
-									new AppStatusTreeItem({
-										id: status.id,
-										name: status.message,
-										command: app.command,
-										workspace_name: element.workspace.name,
-									}),
+									new AppStatusTreeItem(
+										{
+											id: status.id,
+											name: status.message,
+											command: app.command,
+											workspace_name: element.workspace.name,
+											icon: app.icon,
+										},
+										this.client.getAxiosInstance().defaults.baseURL,
+									),
 								);
 							}
 						}
@@ -358,6 +363,45 @@ class AgentMetadataTreeItem extends vscode.TreeItem {
 	}
 }
 
+function resolveTreeItemIconPath(
+	icon: string | undefined,
+	baseUrl?: string,
+): vscode.Uri | undefined {
+	if (!icon?.trim()) {
+		return undefined;
+	}
+
+	const trimmed = icon.trim();
+	if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed)) {
+		return vscode.Uri.parse(trimmed);
+	}
+
+	if (!baseUrl) {
+		return undefined;
+	}
+
+	try {
+		const fullIconUrl = new URL(trimmed, baseUrl).toString();
+		return vscode.Uri.parse(fullIconUrl);
+	} catch {
+		return undefined;
+	}
+}
+
+function defaultTreeItemIconPath(): {
+	light: vscode.Uri;
+	dark: vscode.Uri;
+} {
+	return {
+		light: vscode.Uri.file(
+			path.join(__dirname, "..", "..", "media", "logo-black.svg"),
+		),
+		dark: vscode.Uri.file(
+			path.join(__dirname, "..", "..", "media", "logo-white.svg"),
+		),
+	};
+}
+
 class AppStatusTreeItem extends vscode.TreeItem {
 	constructor(
 		public readonly app: {
@@ -366,12 +410,16 @@ class AppStatusTreeItem extends vscode.TreeItem {
 			url?: string;
 			command?: string;
 			workspace_name?: string;
+			icon?: string;
 		},
+		baseUrl?: string,
 	) {
-		super("", vscode.TreeItemCollapsibleState.None);
+		super(app.name, vscode.TreeItemCollapsibleState.None);
 		this.id = app.id;
-		this.description = app.name;
+		this.description = app.workspace_name;
 		this.contextValue = "coderAppStatus";
+		const resolvedAppIcon = resolveTreeItemIconPath(app.icon, baseUrl);
+		this.iconPath = resolvedAppIcon ?? defaultTreeItemIconPath();
 
 		// Add command to handle clicking on the app
 		this.command = {
@@ -409,16 +457,8 @@ export class OpenableTreeItem extends vscode.TreeItem {
 			tags.push("running");
 		}
 		this.contextValue = tags.join("+");
+		this.iconPath ??= defaultTreeItemIconPath();
 	}
-
-	override iconPath = {
-		light: vscode.Uri.file(
-			path.join(__filename, "..", "..", "media", "logo-black.svg"),
-		),
-		dark: vscode.Uri.file(
-			path.join(__filename, "..", "..", "media", "logo-white.svg"),
-		),
-	};
 }
 
 export class AgentTreeItem extends OpenableTreeItem {
@@ -446,6 +486,7 @@ export class WorkspaceTreeItem extends OpenableTreeItem {
 		workspace: Workspace,
 		public readonly showOwner: boolean,
 		public readonly watchMetadata = false,
+		baseUrl?: string,
 	) {
 		const status = workspaceStatusLabel(workspace.latest_build.status);
 
@@ -467,5 +508,13 @@ export class WorkspaceTreeItem extends OpenableTreeItem {
 				? "coderWorkspaceMultipleAgents"
 				: "coderWorkspaceSingleAgent",
 		);
+
+		const resolvedWorkspaceIcon = resolveTreeItemIconPath(
+			workspace.template_icon,
+			baseUrl,
+		);
+		if (resolvedWorkspaceIcon) {
+			this.iconPath = resolvedWorkspaceIcon;
+		}
 	}
 }
