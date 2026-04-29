@@ -28,21 +28,19 @@ jobs:
       - run: pnpm build
 
   test-unit:
-    name: Unit Test (${{ matrix.os }}, Electron ${{ matrix.electron-version }})
+    name: Unit Test (${{ matrix.name }}, Electron ${{ matrix.electron-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # Minimum supported version: VS Code 1.106 (Oct 2025) -> Electron 37 -> Node 22
-        # See https://github.com/ewanharris/vscode-versions for version mapping
-        os: [ubuntu-24.04]
-        electron-version: ["37", "latest"]
-        # Smoke-test latest Electron on Windows + macOS; older Electron stays Linux-only.
+        # See https://github.com/ewanharris/vscode-versions for version mapping.
+        # Older Electron stays Linux-only; "latest" smoke-tests Windows + macOS too.
         include:
-          - os: windows-latest
-            electron-version: "latest"
-          - os: macos-latest
-            electron-version: "latest"
+          - { os: ubuntu-24.04, name: Linux, electron-version: "37" }
+          - { os: ubuntu-24.04, name: Linux, electron-version: "latest" }
+          - { os: windows-2025, name: Windows, electron-version: "latest" }
+          - { os: macos-15, name: macOS, electron-version: "latest" }
 
     steps:
       - uses: actions/checkout@v6
@@ -56,18 +54,16 @@ jobs:
           CI: true
 
   test-integration:
-    name: Integration Test (${{ matrix.os }}, VS Code ${{ matrix.vscode-version }})
+    name: Integration Test (${{ matrix.name }}, VS Code ${{ matrix.vscode-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04]
-        vscode-version: ["1.106.0", "stable"]
         include:
-          - os: windows-latest
-            vscode-version: "stable"
-          - os: macos-latest
-            vscode-version: "stable"
+          - { os: ubuntu-24.04, name: Linux, vscode-version: "1.106.0" }
+          - { os: ubuntu-24.04, name: Linux, vscode-version: "stable" }
+          - { os: windows-2025, name: Windows, vscode-version: "stable" }
+          - { os: macos-15, name: macOS, vscode-version: "stable" }
 
     steps:
       - uses: actions/checkout@v6
@@ -76,13 +72,9 @@ jobs:
 
       - run: pnpm build
 
-      - name: Run integration tests on VS Code ${{ matrix.vscode-version }} (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
-
-      - name: Run integration tests on VS Code ${{ matrix.vscode-version }} (Windows/macOS)
-        if: runner.os != 'Linux'
-        run: pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
+      - name: Run integration tests on VS Code ${{ matrix.vscode-version }}
+        # xvfb only exists on Linux; on Windows/macOS the runner has a real display.
+        run: ${{ runner.os == 'Linux' && 'xvfb-run -a' || '' }} pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
         shell: bash
 
   package:
