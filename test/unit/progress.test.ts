@@ -1,12 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import {
+	reportElapsedProgress,
 	withCancellableProgress,
 	withOptionalProgress,
 	withProgress,
 	type ProgressContext,
 } from "@/progress";
+
+import { MockProgress } from "../mocks/testHelpers";
 
 function mockWithProgress(opts?: { cancelImmediately?: boolean }) {
 	const dispose = vi.fn();
@@ -194,6 +197,53 @@ describe("withOptionalProgress", () => {
 
 			expect(result).toEqual({ ok: false, cancelled: false, error });
 		});
+	});
+});
+
+describe("reportElapsedProgress", () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it("reports increasing percent and elapsed time on each tick", () => {
+		const progress = new MockProgress();
+		const stop = reportElapsedProgress({
+			progress,
+			totalMs: 1000,
+			format: (pct, elapsed) => `${pct}%/${elapsed}ms`,
+		});
+		vi.advanceTimersByTime(200);
+		stop();
+
+		expect(progress.getReports()).toEqual([
+			{ message: "10%/100ms", increment: 10 },
+			{ message: "20%/200ms", increment: 10 },
+		]);
+	});
+
+	it("clamps to 100 percent when totalMs is zero", () => {
+		const progress = new MockProgress();
+		const stop = reportElapsedProgress({
+			progress,
+			totalMs: 0,
+			format: (pct) => `${pct}`,
+		});
+		vi.advanceTimersByTime(100);
+		stop();
+
+		expect(progress.getReports()).toEqual([{ message: "100", increment: 100 }]);
+	});
+
+	it("emits no reports when stopped before the first tick", () => {
+		const progress = new MockProgress();
+		const stop = reportElapsedProgress({
+			progress,
+			totalMs: 1000,
+			format: (pct) => `${pct}`,
+		});
+		stop();
+		vi.advanceTimersByTime(500);
+
+		expect(progress.getReports()).toEqual([]);
 	});
 });
 

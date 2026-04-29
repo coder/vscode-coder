@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { renderLineChart } from "@repo/speedtest/chart";
 
@@ -24,11 +24,12 @@ function makeCanvas(width: number, height: number): HTMLCanvasElement {
 }
 
 describe("renderLineChart", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	it("scales the canvas backing store by devicePixelRatio", () => {
-		Object.defineProperty(window, "devicePixelRatio", {
-			value: 2,
-			configurable: true,
-		});
+		vi.stubGlobal("devicePixelRatio", 2);
 		const canvas = makeCanvas(600, 300);
 
 		renderLineChart(

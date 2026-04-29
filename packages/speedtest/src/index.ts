@@ -18,21 +18,23 @@ const TOOLTIP_GAP_PX = 32;
 let cleanup: (() => void) | undefined;
 
 function main(): void {
-	subscribeNotification(SpeedtestApi.data, ({ workspaceName, result }) => {
+	subscribeNotification(SpeedtestApi.data, ({ workspaceId, result }) => {
 		try {
 			cleanup?.();
-			cleanup = renderPage(result, workspaceName, () =>
+			cleanup = renderPage(result, workspaceId, () =>
 				postMessage({ method: SpeedtestApi.viewJson.method }),
 			);
 		} catch (err) {
 			showError(`Failed to render speedtest: ${toError(err).message}`);
 		}
 	});
+	// Signal we're subscribed; the extension waits for this before sending.
+	postMessage({ method: SpeedtestApi.ready.method });
 }
 
 function renderPage(
 	data: SpeedtestResult,
-	workspaceName: string,
+	workspaceId: string,
 	onViewJson: () => void,
 ): () => void {
 	const root = document.getElementById("root");
@@ -41,7 +43,7 @@ function renderPage(
 	}
 
 	root.innerHTML = "";
-	root.appendChild(renderHeading(workspaceName));
+	root.appendChild(renderHeading(workspaceId));
 	root.appendChild(renderSummary(data));
 
 	const samples = toChartSamples(data.intervals);
@@ -57,10 +59,10 @@ function renderPage(
 	return chart.cleanup;
 }
 
-function renderHeading(workspaceName: string): HTMLElement {
+function renderHeading(workspaceId: string): HTMLElement {
 	const heading = document.createElement("h1");
 	heading.className = "workspace-name";
-	heading.textContent = workspaceName;
+	heading.textContent = workspaceId;
 	return heading;
 }
 
@@ -97,10 +99,12 @@ function renderChart(samples: ChartPoint[]): {
 
 	const showDots = samples.length <= DOT_THRESHOLD;
 	let points: ChartPoint[] = [];
-	let canvasRect: DOMRect | undefined;
 	const draw = () => {
-		points = renderLineChart(canvas, samples, showDots);
-		canvasRect = canvas.getBoundingClientRect();
+		try {
+			points = renderLineChart(canvas, samples, showDots);
+		} catch (err) {
+			showError(`Failed to render speedtest: ${toError(err).message}`);
+		}
 	};
 
 	// ResizeObserver's first callback (fired when the caller appends `container`
@@ -113,11 +117,10 @@ function renderChart(samples: ChartPoint[]): {
 	observer.observe(container);
 
 	const onMouseMove = (e: MouseEvent) => {
-		if (!canvasRect) {
-			return;
-		}
-		const mx = e.clientX - canvasRect.left;
-		const my = e.clientY - canvasRect.top;
+		// Re-read on each move so scroll/layout shifts don't desync the hit test.
+		const rect = canvas.getBoundingClientRect();
+		const mx = e.clientX - rect.left;
+		const my = e.clientY - rect.top;
 		const hit = showDots
 			? findNearestDot(points, mx, my)
 			: findNearestOnLine(points, mx);
@@ -132,7 +135,7 @@ function renderChart(samples: ChartPoint[]): {
 			Math.min(hit.x - tw / 2, container.offsetWidth - tw),
 		);
 		tooltip.style.left = `${left}px`;
-		tooltip.style.top = `${hit.y - TOOLTIP_GAP_PX}px`;
+		tooltip.style.top = `${Math.max(0, hit.y - TOOLTIP_GAP_PX)}px`;
 		tooltip.classList.add("visible");
 	};
 	const onMouseLeave = () => tooltip.classList.remove("visible");

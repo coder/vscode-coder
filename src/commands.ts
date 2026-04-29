@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as semver from "semver";
 import * as vscode from "vscode";
+import { ZodError } from "zod";
 
 import {
 	createWorkspaceIdentifier,
@@ -250,13 +251,15 @@ export class Commands {
 				this.speedtestPanelFactory.show({
 					result: parsed,
 					rawJson: result.value,
-					workspaceName: workspaceId,
+					workspaceId,
 				});
 			} catch (err) {
 				this.logger.error("Failed to parse speedtest output", err);
-				vscode.window.showErrorMessage(
-					`Speed test returned unexpected output: ${toError(err).message}`,
-				);
+				const message =
+					err instanceof ZodError
+						? "Speed test output did not match the expected format. Check `Output > Coder` for details."
+						: `Speed test returned unexpected output: ${toError(err).message}`;
+				vscode.window.showErrorMessage(message);
 			}
 			return;
 		}

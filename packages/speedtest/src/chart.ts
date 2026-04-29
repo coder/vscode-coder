@@ -56,10 +56,11 @@ function layoutChart(
 	pxPerEm: number,
 	family: string,
 ) {
-	const maxVal = samples.reduce((m, s) => Math.max(m, s.y), 1) * Y_HEADROOM;
-	const maxX = samples.at(-1)?.x ?? 1;
+	const maxY = samples.reduce((m, s) => Math.max(m, s.y), 1) * Y_HEADROOM;
+	const lastX = samples.at(-1)?.x ?? 0;
+	const maxX = lastX > 0 ? lastX : 1;
 	ctx.font = `1em ${family}`;
-	const yLabelWidth = ctx.measureText(maxVal.toFixed(0)).width;
+	const yLabelWidth = ctx.measureText(maxY.toFixed(0)).width;
 	const pad = {
 		top: PLOT_PAD_EM.top * pxPerEm,
 		right: PLOT_PAD_EM.right * pxPerEm,
@@ -75,11 +76,11 @@ function layoutChart(
 		pad,
 		plotW,
 		plotH,
-		maxVal,
+		maxY,
 		maxX,
 		height,
-		tAt: (t: number) => pad.left + (t / maxX) * plotW,
-		yAt: (v: number) => pad.top + plotH - (v / maxVal) * plotH,
+		toCanvasX: (t: number) => pad.left + (t / maxX) * plotW,
+		toCanvasY: (v: number) => pad.top + plotH - (v / maxY) * plotH,
 	};
 }
 
@@ -91,15 +92,16 @@ function drawAxes(
 	theme: Theme,
 	pxPerEm: number,
 ): void {
-	const { pad, plotW, plotH, maxVal, maxX, height, tAt, yAt } = layout;
+	const { pad, plotW, plotH, maxY, maxX, height, toCanvasX, toCanvasY } =
+		layout;
 
 	ctx.strokeStyle = theme.grid;
 	ctx.lineWidth = 1;
 	ctx.fillStyle = theme.fg;
 	ctx.textAlign = "right";
 	for (let i = 0; i <= Y_GRID_LINES; i++) {
-		const v = (i / Y_GRID_LINES) * maxVal;
-		const y = yAt(v);
+		const v = (i / Y_GRID_LINES) * maxY;
+		const y = toCanvasY(v);
 		ctx.beginPath();
 		ctx.moveTo(pad.left, y);
 		ctx.lineTo(pad.left + plotW, y);
@@ -124,7 +126,7 @@ function drawAxes(
 	for (let t = 0; t <= maxX; t += step) {
 		ctx.fillText(
 			formatTick(t, step),
-			tAt(t),
+			toCanvasX(t),
 			height - pad.bottom + X_LABEL_GAP_EM * pxPerEm,
 		);
 	}
@@ -149,15 +151,15 @@ function drawSeries(
 	theme: Theme,
 	showDots: boolean,
 ): ChartPoint[] {
-	const { pad, plotH, tAt, yAt } = layout;
+	const { pad, plotH, toCanvasX, toCanvasY } = layout;
 	const baseline = pad.top + plotH;
 	const first = samples[0];
 	const last = samples.at(-1) ?? first;
 
 	if (first.x > 0) {
 		ctx.beginPath();
-		ctx.moveTo(tAt(0), baseline);
-		ctx.lineTo(tAt(first.x), yAt(first.y));
+		ctx.moveTo(toCanvasX(0), baseline);
+		ctx.lineTo(toCanvasX(first.x), toCanvasY(first.y));
 		ctx.setLineDash([4, 4]);
 		ctx.strokeStyle = theme.accent;
 		ctx.lineWidth = 1;
@@ -168,30 +170,30 @@ function drawSeries(
 	}
 
 	ctx.beginPath();
-	ctx.moveTo(tAt(first.x), baseline);
+	ctx.moveTo(toCanvasX(first.x), baseline);
 	for (const s of samples) {
-		ctx.lineTo(tAt(s.x), yAt(s.y));
+		ctx.lineTo(toCanvasX(s.x), toCanvasY(s.y));
 	}
-	ctx.lineTo(tAt(last.x), baseline);
+	ctx.lineTo(toCanvasX(last.x), baseline);
 	ctx.closePath();
 	const grad = ctx.createLinearGradient(0, pad.top, 0, baseline);
-	grad.addColorStop(0, theme.accent + "18");
-	grad.addColorStop(1, theme.accent + "04");
+	grad.addColorStop(0, withAlpha(theme.accent, "18"));
+	grad.addColorStop(1, withAlpha(theme.accent, "04"));
 	ctx.fillStyle = grad;
 	ctx.fill();
 
 	ctx.beginPath();
-	ctx.moveTo(tAt(first.x), yAt(first.y));
+	ctx.moveTo(toCanvasX(first.x), toCanvasY(first.y));
 	for (let i = 1; i < samples.length; i++) {
-		ctx.lineTo(tAt(samples[i].x), yAt(samples[i].y));
+		ctx.lineTo(toCanvasX(samples[i].x), toCanvasY(samples[i].y));
 	}
 	ctx.strokeStyle = theme.accent;
 	ctx.lineWidth = LINE_WIDTH_PX;
 	ctx.stroke();
 
 	return samples.map((s) => {
-		const x = tAt(s.x);
-		const y = yAt(s.y);
+		const x = toCanvasX(s.x);
+		const y = toCanvasY(s.y);
 		if (showDots) {
 			ctx.beginPath();
 			ctx.arc(x, y, DOT_RADIUS_PX, 0, Math.PI * 2);
@@ -200,6 +202,21 @@ function drawSeries(
 		}
 		return { x, y, label: s.label };
 	});
+}
+
+/** Append an `aa` alpha byte to a CSS color, using a dedicated canvas to
+ *  normalize any input (rgb/hsl/hex/named) to `#rrggbb`. */
+let normalizerCtx: CanvasRenderingContext2D | null | undefined;
+function withAlpha(color: string, alphaHex: string): string {
+	normalizerCtx ??= document.createElement("canvas").getContext("2d");
+	if (!normalizerCtx) {
+		return color;
+	}
+	normalizerCtx.fillStyle = color;
+	const normalized = String(normalizerCtx.fillStyle);
+	return /^#[0-9a-f]{6}$/i.test(normalized)
+		? normalized + alphaHex
+		: normalized;
 }
 
 /** Render the speedtest chart. Caller must ensure `samples` is non-empty. */

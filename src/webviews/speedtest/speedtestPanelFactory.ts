@@ -14,7 +14,7 @@ import type { Logger } from "../../logging/logger";
 export interface SpeedtestChartPayload {
 	result: SpeedtestResult;
 	rawJson: string;
-	workspaceName: string;
+	workspaceId: string;
 }
 
 /** Creates webview panels that render speedtest runs as interactive charts. */
@@ -24,8 +24,8 @@ export class SpeedtestPanelFactory {
 		private readonly logger: Logger,
 	) {}
 
-	public show({ result, rawJson, workspaceName }: SpeedtestChartPayload): void {
-		const title = `Speed Test: ${workspaceName}`;
+	public show({ result, rawJson, workspaceId }: SpeedtestChartPayload): void {
+		const title = `Speed Test: ${workspaceId}`;
 		const panel = vscode.window.createWebviewPanel(
 			"coder.speedtestPanel",
 			title,
@@ -58,7 +58,7 @@ export class SpeedtestPanelFactory {
 		// Webview JS is discarded when hidden (no retainContextWhenHidden), and
 		// the canvas caches theme colors into pixels, so we re-send on visibility
 		// or theme change to rehydrate and redraw.
-		const payload: SpeedtestData = { workspaceName, result };
+		const payload: SpeedtestData = { workspaceId, result };
 		const sendData = () =>
 			panel.webview.postMessage({
 				type: SpeedtestApi.data.method,
@@ -69,15 +69,25 @@ export class SpeedtestPanelFactory {
 				sendData();
 			}
 		};
-		sendData();
 
 		const commandHandlers = buildCommandHandlers(SpeedtestApi, {
-			async viewJson() {
-				const doc = await vscode.workspace.openTextDocument({
-					content: rawJson,
-					language: "json",
-				});
-				await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+			// Webview signals it's subscribed; safe to push the payload now.
+			ready: () => {
+				sendData();
+			},
+			viewJson: async () => {
+				try {
+					const doc = await vscode.workspace.openTextDocument({
+						content: rawJson,
+						language: "json",
+					});
+					await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+				} catch (err) {
+					this.logger.error("Failed to open speedtest JSON", err);
+					vscode.window.showErrorMessage(
+						"Failed to open speed test JSON. Check `Output > Coder` for details.",
+					);
+				}
 			},
 		});
 
@@ -90,7 +100,7 @@ export class SpeedtestPanelFactory {
 					if (handler) {
 						Promise.resolve(handler(message.params)).catch((err: unknown) => {
 							this.logger.error(
-								"Unhandled error in speedtest message handler",
+								`Unhandled error in speedtest handler for '${message.method}'`,
 								err,
 							);
 						});

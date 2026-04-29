@@ -48,7 +48,7 @@ function openChart(rawJson = '{"raw":true}'): Harness {
 	factory.show({
 		result: sampleResult,
 		rawJson,
-		workspaceName: "my-workspace",
+		workspaceId: "my-workspace",
 	});
 	return { panel, hooks };
 }
@@ -58,22 +58,27 @@ describe("SpeedtestPanelFactory", () => {
 		vi.resetAllMocks();
 	});
 
-	it("opens a titled webview with HTML and pushes the initial payload", () => {
+	it("opens a titled webview with HTML and pushes the payload after the webview signals ready", () => {
 		const { panel, hooks } = openChart();
 
 		expect(panel.viewType).toBe("coder.speedtestPanel");
 		expect(panel.title).toBe("Speed Test: my-workspace");
 		expect(panel.webview.html).toContain("Speed Test: my-workspace");
+		expect(hooks.postedMessages).toEqual([]);
+
+		hooks.sendFromWebview({ method: SpeedtestApi.ready.method });
+
 		expect(hooks.postedMessages).toEqual([
 			{
 				type: SpeedtestApi.data.method,
-				data: { workspaceName: "my-workspace", result: sampleResult },
+				data: { workspaceId: "my-workspace", result: sampleResult },
 			},
 		]);
 	});
 
 	it("re-pushes the payload when the panel returns to visible", () => {
 		const { hooks } = openChart();
+		hooks.sendFromWebview({ method: SpeedtestApi.ready.method });
 		const before = hooks.postedMessages.length;
 
 		hooks.setVisible(true);
@@ -83,6 +88,7 @@ describe("SpeedtestPanelFactory", () => {
 
 	it("does not push while the panel is hidden", () => {
 		const { hooks } = openChart();
+		hooks.sendFromWebview({ method: SpeedtestApi.ready.method });
 		const before = hooks.postedMessages.length;
 
 		hooks.setVisible(false);
@@ -92,6 +98,7 @@ describe("SpeedtestPanelFactory", () => {
 
 	it("re-pushes the payload on theme change while visible", () => {
 		const { hooks } = openChart();
+		hooks.sendFromWebview({ method: SpeedtestApi.ready.method });
 		const before = hooks.postedMessages.length;
 
 		setActiveColorTheme(vscode.ColorThemeKind.Light);

@@ -12,13 +12,15 @@ export interface SpeedtestResult {
 }
 
 export interface SpeedtestData {
-	workspaceName: string;
+	workspaceId: string;
 	result: SpeedtestResult;
 }
 
 export const SpeedtestApi = {
 	/** Extension pushes parsed results to the webview */
 	data: defineNotification<SpeedtestData>("speedtest/data"),
+	/** Webview signals that its message subscription is active */
+	ready: defineCommand<void>("speedtest/ready"),
 	/** Webview requests to open raw JSON in a text editor */
 	viewJson: defineCommand<void>("speedtest/viewJson"),
 } as const;
