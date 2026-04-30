@@ -50,9 +50,10 @@
   startup.
 - The **Coder: Workspace Build** output channel is no longer created when reconnecting to an
   already-running workspace, so the Output panel doesn't pop open empty.
-- CLI subprocesses spawned by **Speed Test**, **Ping**, **Create Support Bundle**, and the app
-  status terminal now inherit `CODER_URL` and `CODER_SESSION_TOKEN`, so authentication works for
-  any nested CLI invocations (including mTLS deployments).
+- **Speed Test**, **Ping**, **Create Support Bundle**, and the app status terminal now refresh
+  the stored credential file (or keyring on supported systems) before each invocation, so they
+  no longer fail with a stale token after the session has been refreshed since the workspace was
+  first opened. mTLS deployments continue to work with an empty token.
 - Cancelling a long-running CLI command no longer surfaces as a misleading CLI failure.
 
 ## [v1.14.3](https://github.com/coder/vscode-coder/releases/tag/v1.14.3) 2026-03-30
