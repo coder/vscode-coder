@@ -6,8 +6,12 @@ const webviewSharedAlias = path.resolve(
 	"packages/webview-shared/src",
 );
 
+// NTFS is slow with many small-file writes; double the default on Windows CI.
+const testTimeout = process.platform === "win32" ? 10_000 : 5_000;
+
 export default defineConfig({
 	test: {
+		testTimeout,
 		projects: [
 			{
 				extends: true,
