@@ -96,6 +96,15 @@ export type CommandHandlerMap<Api> = {
 		: never;
 };
 
+/** Requires a subscriber for every NotificationDef in Api. Compile error if one is missing. */
+export type NotificationHandlerMap<Api> = {
+	[K in keyof Api as Api[K] extends { kind: "notification" }
+		? K
+		: never]: Api[K] extends NotificationDef<infer D>
+		? (data: D) => void
+		: never;
+};
+
 // --- API hook type ---
 
 /** Derives a fully typed hook interface from an API definition object. */

@@ -4,139 +4,85 @@ Typed messaging between the extension and VS Code webviews. Both sides
 import the same `Api` definition, so wire formats can't drift and method
 typos fail at compile time.
 
+This file is a map; the helpers themselves are the source of truth. When
+something here looks wrong, trust the linked source.
+
 ## Three message kinds
 
-```ts
-defineNotification<D>(method); // extension to webview, fire-and-forget
-defineCommand<P>(method); // webview to extension, fire-and-forget
-defineRequest<P, R>(method); // webview to extension, awaits response
-```
+Defined in `packages/shared/src/ipc/protocol.ts`:
 
-Define them all in one `Api` so both sides share the strings:
+- `defineNotification<D>(method)` - extension to webview, fire-and-forget
+- `defineCommand<P>(method)` - webview to extension, fire-and-forget
+- `defineRequest<P, R>(method)` - webview to extension, awaits a response
 
-```ts
-// packages/shared/src/myfeature/api.ts
-export const MyFeatureApi = {
-	data: defineNotification<MyFeatureData>("myfeature/data"),
-	doThing: defineCommand<{ id: string }>("myfeature/doThing"),
-	getThings: defineRequest<void, Thing[]>("myfeature/getThings"),
-} as const;
-```
+Group them in one `Api` const at `packages/shared/src/<feature>/api.ts`
+(see `chat/api.ts`, `speedtest/api.ts`, `tasks/api.ts`).
 
-## Extension side (`src/webviews/...`)
+## Where each handler lives
 
-Push notifications:
+| Direction                             | Define                  | Extension side (`src/webviews/...`)                    | Webview vanilla               | Webview React                       |
+| ------------------------------------- | ----------------------- | ------------------------------------------------------ | ----------------------------- | ----------------------------------- |
+| extension -> webview push             | `defineNotification<D>` | `notifyWebview(view, def, data)`                       | `subscribeNotifications(api)` | `apiHook.on<Name>(cb)` via `useIpc` |
+| webview -> extension, fire-and-forget | `defineCommand<P>`      | handler in `buildCommandHandlers` -> `dispatchCommand` | `sendCommand(def, params)`    | `apiHook.<name>(params)`            |
+| webview -> extension, awaits response | `defineRequest<P, R>`   | handler in `buildRequestHandlers` -> `dispatchRequest` | _not exposed; use a command_  | `await apiHook.<name>(params)`      |
 
-```ts
-import { notifyWebview } from "../dispatch";
+Compile-time exhaustiveness fails the build in three places:
 
-notifyWebview(panel.webview, MyFeatureApi.data, payload);
-```
+- **Extension**: `buildCommandHandlers(Api, ...)` / `buildRequestHandlers(Api, ...)` (`packages/shared/src/ipc/protocol.ts`).
+- **Webview vanilla**: `subscribeNotifications(Api, ...)` (`packages/webview-shared/src/ipc.ts`).
+- **Webview React**: `apiHook` is generated from `Api` so every notification has a typed accessor (`buildApiHook` in `packages/shared/src/ipc/protocol.ts`).
 
-Receive commands and requests. Every panel builds both handler maps (an
-empty `{}` is fine). The maps are mapped over the `Api`, so adding a new
-`defineCommand` or `defineRequest` produces a compile error in any panel
-missing a handler. That's how new methods can't ship and silently drop.
+## Reference implementations
 
-```ts
-import { buildCommandHandlers, buildRequestHandlers } from "@repo/shared";
-import {
-	dispatchCommand,
-	dispatchRequest,
-	isIpcCommand,
-	isIpcRequest,
-} from "../dispatch";
+Use these as the working blueprint when writing a new webview. The
+helpers' JSDoc covers their contracts.
 
-const commandHandlers = buildCommandHandlers(MyFeatureApi, {
-	doThing: async (p) => { ... },
-});
-// Empty is fine; it still locks in future additions.
-const requestHandlers = buildRequestHandlers(MyFeatureApi, {
-	getThings: async () => this.fetchThings(),
-});
-
-panel.webview.onDidReceiveMessage((message: unknown) => {
-	if (isIpcRequest(message)) {
-		void dispatchRequest(message, requestHandlers, panel.webview, {
-			logger,
-			showErrorToUser: (m) => USER_ACTION_METHODS.has(m),
-		});
-	} else if (isIpcCommand(message)) {
-		void dispatchCommand(message, commandHandlers, { logger });
-	}
-});
-```
-
-### Error handling
-
-Both dispatchers log handler failures via `logger.warn`. Requests also
-post a `success: false` response so the webview's awaited promise rejects.
-
-Neither pops a dialog by default. Pass `showErrorToUser: (method) => ...`
-to opt in for methods where a silent failure would confuse the user.
-
-## Webview side, vanilla
-
-```ts
-import { MyFeatureApi } from "@repo/shared";
-import { onNotification, sendCommand } from "@repo/webview-shared";
-
-const unsubscribe = onNotification(MyFeatureApi.data, (payload) => {
-	render(payload);
-});
-
-sendCommand(MyFeatureApi.doThing, { id: "42" });
-```
-
-Call the returned unsubscribe function on cleanup.
-
-## Webview side, React
-
-Use `useIpc` from `packages/webview-shared/src/react/useIpc`. Same
-semantics, plus request/response correlation with timeouts and UUID
-bookkeeping.
+| Concern                                 | Look at                                                     |
+| --------------------------------------- | ----------------------------------------------------------- |
+| Vanilla webview package                 | `packages/speedtest/` (or `packages/chat/`)                 |
+| React webview package                   | `packages/tasks/`                                           |
+| Extension panel (`WebviewPanel`)        | `src/webviews/speedtest/speedtestPanelFactory.ts`           |
+| Extension panel (`WebviewViewProvider`) | `src/webviews/tasks/tasksPanelProvider.ts`                  |
+| Iframe-embedding panel                  | `src/webviews/chat/chatPanelProvider.ts` + `packages/chat/` |
+| Vite config helper                      | `packages/webview-shared/createWebviewConfig.ts`            |
+| Dispatch / lifecycle helpers            | `src/webviews/dispatch.ts`                                  |
+| HTML scaffolding                        | `src/webviews/html.ts`                                      |
 
 ## Re-sending on lifecycle events
 
-Webviews lose state in two ways the extension has to compensate for.
+Webviews lose state in two ways the extension has to compensate for:
 
-**Hidden webviews are destroyed.** Switching tabs discards in-memory state,
-listeners, and canvas pixels. Push-driven panels resend when the webview
-comes back. Subscribe to `panel.onDidChangeViewState` (`WebviewPanel`) or
-`view.onDidChangeVisibility` (`WebviewViewProvider`) and resend on
-`visible`. Setting `retainContextWhenHidden` avoids this but is costly,
-so we don't.
+1. **Hidden webviews are destroyed** unless `retainContextWhenHidden` is
+   set (costly; we don't). Push panels must resend when the webview
+   comes back visible.
+2. **Theme changes don't repaint canvases** (CSS vars update DOM but
+   imperative canvas/SVG bake the theme into pixels). Resend on
+   `vscode.window.onDidChangeActiveColorTheme` regardless of
+   `retainContextWhenHidden`.
 
-**Theme changes don't repaint canvases.** CSS vars update automatically,
-but canvas and SVG drawn imperatively bake the theme into pixels.
-Subscribe to `vscode.window.onDidChangeActiveColorTheme` and resend so
-the webview redraws. This applies regardless of `retainContextWhenHidden`.
-
-`onWhileVisible(panel, event, handler)` in `src/webviews/dispatch.ts`
-works with both panel shapes. Collect disposables and clear them in
-`onDidDispose`.
-
-See `speedtestPanelFactory.ts` for a `WebviewPanel` example and
-`tasksPanelProvider.ts` for a `WebviewViewProvider` example.
+`onWhileVisible` in `src/webviews/dispatch.ts` wraps both. See its JSDoc
+and the `disposables` array in `speedtestPanelFactory.ts` for usage.
 
 ## Checklist for a new webview
 
-1. Register the view in `package.json` under `contributes.views` (sidebar)
-   or call `vscode.window.createWebviewPanel` (editor tab).
-2. Register the provider in `src/extension.ts`.
-3. Define the API in `packages/shared/src/<feature>/api.ts` and export it
-   from `packages/shared/src/index.ts`.
-4. Build both handler maps with `buildCommandHandlers` and
-   `buildRequestHandlers` (empty `{}` is fine).
-5. Dispatch with `isIpcRequest` -> `dispatchRequest` and `isIpcCommand` ->
-   `dispatchCommand`, both with a logger.
-6. Use `onWhileVisible` for `onDidChangeViewState` /
-   `onDidChangeVisibility` and `onDidChangeActiveColorTheme`, and dispose
-   in `onDidDispose`.
-7. On the webview side, use `onNotification` / `sendCommand` (vanilla) or
-   `useIpc` (React). Don't hand-roll `window.addEventListener("message",
-...)` in webview package code. The one exception is an inline HTML
-   shim bridging a third-party iframe (see `chatPanelProvider.ts`); keep
-   it small.
-8. Tests: assert the panel posts the expected payload shape, resends on
-   visibility and theme, and handles incoming commands.
+1. **Shared API**: add `packages/shared/src/<feature>/api.ts` and
+   re-export from `packages/shared/src/index.ts`.
+2. **Webview package**: copy `packages/speedtest/` (vanilla) or
+   `packages/tasks/` (React). The `vite.config.ts` is one line.
+3. **Webview entry**: subscribe with `subscribeNotifications` (vanilla)
+   or `useIpc` + the generated `apiHook` (React). Don't hand-roll
+   `window.addEventListener("message", ...)`.
+4. **Extension panel**: register in `package.json` under
+   `contributes.views` (sidebar) or via `vscode.window.createWebviewPanel`
+   (editor tab), and wire the provider in `src/extension.ts`.
+5. **Extension dispatch**: build both handler maps with
+   `buildCommandHandlers` / `buildRequestHandlers` (empty `{}` is what
+   locks in future exhaustiveness), then dispatch with
+   `isIpcRequest` -> `dispatchRequest` and `isIpcCommand` ->
+   `dispatchCommand`. Pass `showErrorToUser` for user-initiated methods.
+6. **Lifecycle**: use `onWhileVisible` for `onDidChangeViewState` /
+   `onDidChangeVisibility` and `onDidChangeActiveColorTheme`; dispose in
+   `onDidDispose`.
+7. **Tests**: assert the panel posts the expected payload shape,
+   resends on visibility and theme, and handles incoming commands and
+   requests. See `test/unit/webviews/` for patterns.

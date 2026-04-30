@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { defineCommand, defineNotification } from "@repo/shared";
-import { onNotification, sendCommand } from "@repo/webview-shared/ipc";
+import { sendCommand, subscribeNotifications } from "@repo/webview-shared/ipc";
 
 interface Sent {
 	method: string;
@@ -27,107 +27,87 @@ describe("sendCommand", () => {
 	it("posts {method, params}", () => {
 		const cmd = defineCommand<{ id: string }>("ns/doThing");
 		sendCommand(cmd, { id: "42" });
-
 		expect(sent).toEqual([{ method: "ns/doThing", params: { id: "42" } }]);
 	});
 
 	it("omits params for void-payload commands", () => {
 		const cmd = defineCommand<void>("ns/noop");
 		sendCommand(cmd);
-
 		expect(sent).toEqual([{ method: "ns/noop" }]);
 	});
 });
 
-describe("onNotification", () => {
-	it("invokes callback only for matching method", () => {
-		const def = defineNotification<{ count: number }>("ns/updated");
-		const cb = vi.fn();
+describe("subscribeNotifications", () => {
+	const Api = {
+		updated: defineNotification<{ count: number }>("ns/updated"),
+		ping: defineNotification<void>("ns/ping"),
+		// non-notification entries are ignored.
+		doThing: defineCommand<{ id: string }>("ns/doThing"),
+	} as const;
 
-		const unsubscribe = onNotification(def, cb);
-
-		window.dispatchEvent(
-			new MessageEvent("message", {
-				data: { type: "ns/other", data: { count: 1 } },
-			}),
-		);
-		expect(cb).not.toHaveBeenCalled();
+	it("invokes the matching handler with typed data", () => {
+		const updated = vi.fn();
+		const ping = vi.fn();
+		const unsub = subscribeNotifications(Api, { updated, ping });
 
 		window.dispatchEvent(
 			new MessageEvent("message", {
 				data: { type: "ns/updated", data: { count: 7 } },
 			}),
 		);
-		expect(cb).toHaveBeenCalledWith({ count: 7 });
+		expect(updated).toHaveBeenCalledWith({ count: 7 });
+		expect(ping).not.toHaveBeenCalled();
 
-		unsubscribe();
+		unsub();
 	});
 
-	it("stops receiving events after unsubscribe", () => {
-		const def = defineNotification<string>("ns/ping");
-		const cb = vi.fn();
-
-		const unsubscribe = onNotification(def, cb);
-		unsubscribe();
+	it("ignores non-matching messages", () => {
+		const updated = vi.fn();
+		const ping = vi.fn();
+		const unsub = subscribeNotifications(Api, { updated, ping });
 
 		window.dispatchEvent(
-			new MessageEvent("message", {
-				data: { type: "ns/ping", data: "hello" },
-			}),
+			new MessageEvent("message", { data: { type: "ns/other" } }),
 		);
-
-		expect(cb).not.toHaveBeenCalled();
-	});
-
-	it("ignores non-object messages", () => {
-		const def = defineNotification<string>("ns/evt");
-		const cb = vi.fn();
-		const unsubscribe = onNotification(def, cb);
-
 		window.dispatchEvent(new MessageEvent("message", { data: null }));
-		window.dispatchEvent(new MessageEvent("message", { data: "string" }));
 		window.dispatchEvent(new MessageEvent("message", { data: 42 }));
 
-		expect(cb).not.toHaveBeenCalled();
-		unsubscribe();
+		expect(updated).not.toHaveBeenCalled();
+		expect(ping).not.toHaveBeenCalled();
+
+		unsub();
 	});
 
-	it("fires for void notifications (no data field)", () => {
-		const def = defineNotification<void>("ns/ping");
-		const cb = vi.fn();
-		const unsubscribe = onNotification(def, cb);
+	it("fires void notifications with undefined data", () => {
+		const updated = vi.fn();
+		const ping = vi.fn();
+		const unsub = subscribeNotifications(Api, { updated, ping });
 
 		window.dispatchEvent(
 			new MessageEvent("message", { data: { type: "ns/ping" } }),
 		);
-		expect(cb).toHaveBeenCalledWith(undefined);
+		expect(ping).toHaveBeenCalledWith(undefined);
 
-		unsubscribe();
+		unsub();
 	});
 
-	it("supports multiple independent subscribers", () => {
-		const def = defineNotification<number>("ns/count");
-		const a = vi.fn();
-		const b = vi.fn();
+	it("unsubscribes every handler when the returned function is called", () => {
+		const updated = vi.fn();
+		const ping = vi.fn();
+		const unsub = subscribeNotifications(Api, { updated, ping });
 
-		const unsubA = onNotification(def, a);
-		const unsubB = onNotification(def, b);
+		unsub();
 
 		window.dispatchEvent(
-			new MessageEvent("message", { data: { type: "ns/count", data: 1 } }),
+			new MessageEvent("message", {
+				data: { type: "ns/updated", data: { count: 1 } },
+			}),
 		);
-
-		expect(a).toHaveBeenCalledWith(1);
-		expect(b).toHaveBeenCalledWith(1);
-
-		unsubA();
 		window.dispatchEvent(
-			new MessageEvent("message", { data: { type: "ns/count", data: 2 } }),
+			new MessageEvent("message", { data: { type: "ns/ping" } }),
 		);
 
-		expect(a).toHaveBeenCalledTimes(1);
-		expect(b).toHaveBeenCalledTimes(2);
-
-		unsubB();
+		expect(updated).not.toHaveBeenCalled();
+		expect(ping).not.toHaveBeenCalled();
 	});
 });

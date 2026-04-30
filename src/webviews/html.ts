@@ -1,7 +1,45 @@
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 
-/** Get the HTML content for a webview. */
+/** Asset URIs for a webview's bundle. Use directly for custom HTML/CSP; otherwise call `getWebviewHtml`. */
+export function getWebviewAssetUris(
+	webview: vscode.Webview,
+	extensionUri: vscode.Uri,
+	webviewName: string,
+): { scriptUri: vscode.Uri; styleUri: vscode.Uri } {
+	const baseUri = vscode.Uri.joinPath(
+		extensionUri,
+		"dist",
+		"webviews",
+		webviewName,
+	);
+	return {
+		scriptUri: webview.asWebviewUri(vscode.Uri.joinPath(baseUri, "index.js")),
+		styleUri: webview.asWebviewUri(vscode.Uri.joinPath(baseUri, "index.css")),
+	};
+}
+
+/**
+ * Build the webview CSP. Pass `frameSrc` to allow embedding an iframe
+ * from that origin (used by the chat panel).
+ */
+export function buildWebviewCsp(
+	webview: vscode.Webview,
+	nonce: string,
+	options?: { frameSrc?: string },
+): string {
+	const directives = [
+		"default-src 'none'",
+		options?.frameSrc && `frame-src ${options.frameSrc}`,
+		`script-src 'nonce-${nonce}'`,
+		`style-src ${webview.cspSource} 'unsafe-inline'`,
+		`font-src ${webview.cspSource}`,
+		`img-src ${webview.cspSource} data:`,
+	];
+	return directives.filter(Boolean).join("; ");
+}
+
+/** Standard webview HTML: mounts the package's bundle into `#root`. */
 export function getWebviewHtml(
 	webview: vscode.Webview,
 	extensionUri: vscode.Uri,
@@ -9,17 +47,10 @@ export function getWebviewHtml(
 	title: string,
 ): string {
 	const nonce = getNonce();
-	const baseUri = vscode.Uri.joinPath(
+	const { scriptUri, styleUri } = getWebviewAssetUris(
+		webview,
 		extensionUri,
-		"dist",
-		"webviews",
 		webviewName,
-	);
-	const scriptUri = webview.asWebviewUri(
-		vscode.Uri.joinPath(baseUri, "index.js"),
-	);
-	const styleUri = webview.asWebviewUri(
-		vscode.Uri.joinPath(baseUri, "index.css"),
 	);
 
 	// The vscode-elements library looks for a link element with "vscode-codicon-stylesheet"
@@ -28,7 +59,7 @@ export function getWebviewHtml(
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} data:;">
+  <meta http-equiv="Content-Security-Policy" content="${buildWebviewCsp(webview, nonce)}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}</title>
   <link id="vscode-codicon-stylesheet" rel="stylesheet" href="${styleUri.toString()}" nonce="${nonce}">

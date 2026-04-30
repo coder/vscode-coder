@@ -73,7 +73,7 @@ describe("getWebviewHtml", () => {
 	it("uses the webview's cspSource for style/font/img sources", () => {
 		const html = getWebviewHtml(webview, extensionUri, "speedtest", "ok");
 		expect(html).toContain(
-			"style-src mock-csp 'unsafe-inline'; font-src mock-csp; img-src mock-csp data:;",
+			"style-src mock-csp 'unsafe-inline'; font-src mock-csp; img-src mock-csp data:",
 		);
 	});
 });

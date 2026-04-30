@@ -8,5 +8,5 @@ export interface WebviewMessage {
 // VS Code state API
 export { getState, setState, postMessage } from "./api";
 
-// Typed IPC helpers for vanilla webviews
-export { sendCommand, onNotification } from "./ipc";
+// IPC helpers for vanilla webviews. React webviews use `useIpc` instead.
+export { sendCommand, subscribeNotifications } from "./ipc";

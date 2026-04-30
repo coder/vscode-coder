@@ -17,7 +17,11 @@ interface Harness {
 }
 
 function createHarnessFor(client: MockCoderApi): Harness {
-	const provider = new ChatPanelProvider(client, createMockLogger());
+	const provider = new ChatPanelProvider(
+		vscode.Uri.file("/ext"),
+		client,
+		createMockLogger(),
+	);
 
 	let handler: ((msg: unknown) => void) | null = null;
 
@@ -196,6 +200,7 @@ describe("ChatPanelProvider", () => {
 			expect(html()).toContain(
 				"https://coder.example.com/agents/test-agent-123/embed",
 			);
+			expect(html()).toContain("/dist/webviews/chat/index.js");
 		});
 
 		it("focuses the chat panel", () => {

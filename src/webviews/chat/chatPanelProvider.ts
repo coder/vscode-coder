@@ -15,21 +15,18 @@ import {
 	isIpcRequest,
 	notifyWebview,
 } from "../dispatch";
-import { getNonce } from "../html";
+import { buildWebviewCsp, getNonce, getWebviewAssetUris } from "../html";
 
 /**
- * Provides a webview that embeds the Coder agent chat UI.
- * Authentication flows through postMessage:
+ * Webview that embeds the Coder agent chat UI inside an iframe. The
+ * panel's HTML pre-renders the iframe with `src=embedUrl`; the
+ * `@repo/chat` bundle attaches listeners and bridges the iframe's
+ * foreign `{ type, payload }` protocol to `ChatApi`. Auth flow:
  *
- *   1. The iframe loads /agents/{id}/embed on the Coder server.
- *   2. The embed page detects the user is signed out and posts
- *      { type: "coder:vscode-ready" } to window.parent.
- *   3. Our shim relays that to the extension as a ChatApi.vscodeReady
- *      command.
- *   4. The extension pushes the session token back with
- *      ChatApi.authBootstrapToken.
- *   5. The shim forwards it into the iframe, which calls
- *      API.setSessionToken and re-fetches the user.
+ *   1. Iframe loads /agents/{id}/embed and posts `coder:vscode-ready`.
+ *   2. Bundle forwards as `ChatApi.vscodeReady`.
+ *   3. Extension responds with `ChatApi.authBootstrapToken`.
+ *   4. Bundle forwards the token into the iframe.
  */
 export class ChatPanelProvider
 	implements vscode.WebviewViewProvider, vscode.Disposable
@@ -49,6 +46,7 @@ export class ChatPanelProvider
 	private readonly requestHandlers = buildRequestHandlers(ChatApi, {});
 
 	constructor(
+		private readonly extensionUri: vscode.Uri,
 		private readonly client: Pick<CoderApi, "getHost" | "getSessionToken">,
 		private readonly logger: Logger,
 	) {}
@@ -92,7 +90,12 @@ export class ChatPanelProvider
 		// duplicates if VS Code re-resolves the view.
 		this.disposeView();
 		this.view = webviewView;
-		webviewView.webview.options = { enableScripts: true };
+		webviewView.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [
+				vscode.Uri.joinPath(this.extensionUri, "dist", "webviews", "chat"),
+			],
+		};
 		this.disposables.push(
 			webviewView.webview.onDidReceiveMessage((message: unknown) => {
 				if (isIpcRequest(message)) {
@@ -128,20 +131,13 @@ export class ChatPanelProvider
 			throw new Error("renderView called before resolveWebviewView");
 		}
 		const webview = this.view.webview;
-
-		if (!this.chatId) {
-			webview.html = this.getNoAgentHtml();
-			return;
-		}
-
 		const coderUrl = this.client.getHost();
-		if (!coderUrl) {
+		if (!this.chatId || !coderUrl) {
 			webview.html = this.getNoAgentHtml();
 			return;
 		}
-
 		const embedUrl = `${coderUrl}/agents/${this.chatId}/embed?theme=${this.getTheme()}`;
-		webview.html = this.getIframeHtml(embedUrl, coderUrl);
+		webview.html = this.getEmbedHtml(webview, embedUrl);
 	}
 
 	private handleNavigate(url: string): void {
@@ -198,131 +194,31 @@ export class ChatPanelProvider
 		notifyWebview(this.view?.webview, ChatApi.authBootstrapToken, { token });
 	}
 
-	private getIframeHtml(embedUrl: string, allowedOrigin: string): string {
+	/**
+	 * Pre-renders the iframe and adds `frame-src` to the CSP. The bundle
+	 * attaches listeners; it doesn't construct the iframe.
+	 */
+	private getEmbedHtml(webview: vscode.Webview, embedUrl: string): string {
 		const nonce = getNonce();
-
-		return /* html */ `<!DOCTYPE html>
+		const frameSrc = new URL(embedUrl).origin;
+		const { scriptUri, styleUri } = getWebviewAssetUris(
+			webview,
+			this.extensionUri,
+			"chat",
+		);
+		return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none';
-                 frame-src ${allowedOrigin};
-                 script-src 'nonce-${nonce}';
-                 style-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="${buildWebviewCsp(webview, nonce, { frameSrc })}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Coder Chat</title>
-  <style>
-    html, body {
-      margin: 0; padding: 0;
-      width: 100%; height: 100%;
-      overflow: hidden;
-      background: var(--vscode-editor-background, #1e1e1e);
-    }
-    iframe { border: none; width: 100%; height: 100%; }
-    #status {
-      color: var(--vscode-foreground, #ccc);
-      font-family: var(--vscode-font-family, sans-serif);
-      font-size: 13px; padding: 16px; text-align: center;
-    }
-    #retry-btn {
-      margin-top: 12px; padding: 6px 16px;
-      background: var(--vscode-button-background, #0e639c);
-      color: var(--vscode-button-foreground, #fff);
-      border: none; border-radius: 2px; cursor: pointer;
-      font-family: var(--vscode-font-family, sans-serif);
-      font-size: 13px;
-    }
-    #retry-btn:hover {
-      background: var(--vscode-button-hoverBackground, #1177bb);
-    }
-  </style>
+  <link rel="stylesheet" href="${styleUri.toString()}" nonce="${nonce}">
 </head>
 <body>
   <div id="status">Loading chat…</div>
-  <iframe id="chat-frame" src="${embedUrl}" allow="clipboard-write"
-          style="display:none;"></iframe>
-  <script nonce="${nonce}">
-    (function () {
-      const vscode = acquireVsCodeApi();
-      const iframe = document.getElementById('chat-frame');
-      const status = document.getElementById('status');
-
-      iframe.addEventListener('load', () => {
-        iframe.style.display = 'block';
-        status.style.display = 'none';
-      });
-
-      // Bridges the iframe ({ type, payload }, owned by the Coder server)
-      // and the extension IPC ({ method, params } / { type, data }).
-      // Cases below must mirror ChatApi; inline JS can't import it.
-      const toIframe = (type, payload) => {
-        iframe.contentWindow.postMessage({ type, payload }, '${allowedOrigin}');
-      };
-
-      const showRetry = (error) => {
-        status.textContent = '';
-        status.appendChild(document.createTextNode(error || 'Authentication failed.'));
-        const btn = document.createElement('button');
-        btn.id = 'retry-btn';
-        btn.textContent = 'Retry';
-        btn.addEventListener('click', () => {
-          status.textContent = 'Authenticating…';
-          vscode.postMessage({ method: 'coder:vscode-ready' });
-        });
-        status.appendChild(document.createElement('br'));
-        status.appendChild(btn);
-        status.style.display = 'block';
-        iframe.style.display = 'none';
-      };
-
-      const handleFromIframe = (msg) => {
-        switch (msg.type) {
-          case 'coder:vscode-ready':
-            status.textContent = 'Authenticating…';
-            vscode.postMessage({ method: 'coder:vscode-ready' });
-            return;
-          case 'coder:chat-ready':
-            vscode.postMessage({ method: 'coder:chat-ready' });
-            return;
-          case 'coder:navigate':
-            if (msg.payload?.url) {
-              vscode.postMessage({
-                method: 'coder:navigate',
-                params: { url: msg.payload.url },
-              });
-            }
-            return;
-        }
-      };
-
-      const handleFromExtension = (msg) => {
-        const data = msg.data ?? {};
-        switch (msg.type) {
-          case 'coder:auth-bootstrap-token':
-            status.textContent = 'Signing in…';
-            toIframe('coder:vscode-auth-bootstrap', { token: data.token });
-            return;
-          case 'coder:set-theme':
-            toIframe('coder:set-theme', { theme: data.theme });
-            return;
-          case 'coder:auth-error':
-            showRetry(data.error);
-            return;
-        }
-      };
-
-      window.addEventListener('message', (event) => {
-        const msg = event.data;
-        if (!msg || typeof msg !== 'object') return;
-        if (event.source === iframe.contentWindow) {
-          handleFromIframe(msg);
-        } else {
-          handleFromExtension(msg);
-        }
-      });
-    })();
-  </script>
+  <iframe id="chat-frame" src="${embedUrl}" allow="clipboard-write" style="display:none;"></iframe>
+  <script nonce="${nonce}" type="module" src="${scriptUri.toString()}"></script>
 </body>
 </html>`;
 	}

@@ -6,7 +6,7 @@
 import { useEffect, useRef } from "react";
 
 import { postMessage } from "../api";
-import { onNotification as subscribe } from "../ipc";
+import { subscribeOne } from "../ipc";
 
 import type {
 	CommandDef,
@@ -143,7 +143,7 @@ export function useIpc(options: UseIpcOptions = {}) {
 		definition: NotificationDef<D>,
 		callback: (data: D) => void,
 	): () => void {
-		return subscribe(definition, callback);
+		return subscribeOne(definition, callback);
 	}
 
 	return { request, command, onNotification };
