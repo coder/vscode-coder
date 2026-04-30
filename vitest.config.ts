@@ -40,6 +40,10 @@ export default defineConfig({
 					alias: {
 						"@repo/webview-shared": webviewSharedAlias,
 						"@repo/tasks": path.resolve(__dirname, "packages/tasks/src"),
+						"@repo/speedtest": path.resolve(
+							__dirname,
+							"packages/speedtest/src",
+						),
 					},
 				},
 			},

@@ -8,6 +8,8 @@ import axios, {
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
+import { window as vscodeWindow } from "./vscode.runtime";
+
 import type { Experiment, User } from "coder/site/src/api/typesGenerated";
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import type { IncomingMessage } from "node:http";
@@ -439,6 +441,94 @@ export function createMockLogger(): Logger {
 		error: vi.fn(),
 		show: vi.fn(),
 	};
+}
+
+/** Update the mocked active color theme and fire onDidChangeActiveColorTheme. */
+export function setActiveColorTheme(kind: vscode.ColorThemeKind): void {
+	vscodeWindow.__setActiveColorThemeKind(kind);
+}
+
+/** Hooks to drive lifecycle and inspect messages on a mocked WebviewPanel. */
+export interface WebviewPanelTestHooks {
+	setVisible(visible: boolean): void;
+	fireDispose(): void;
+	sendFromWebview(msg: unknown): void;
+	readonly postedMessages: readonly unknown[];
+}
+
+/**
+ * Build a WebviewPanel for tests. Signature matches
+ * vscode.window.createWebviewPanel so it drops in via mockImplementation.
+ */
+export function createMockWebviewPanel(
+	viewType: string,
+	title: string,
+	showOptions:
+		| vscode.ViewColumn
+		| {
+				readonly viewColumn: vscode.ViewColumn;
+				readonly preserveFocus?: boolean;
+		  },
+	options?: vscode.WebviewPanelOptions & vscode.WebviewOptions,
+): { panel: vscode.WebviewPanel; hooks: WebviewPanelTestHooks } {
+	const viewStateEmitter =
+		new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>();
+	const disposeEmitter = new vscode.EventEmitter<void>();
+	const messageEmitter = new vscode.EventEmitter<unknown>();
+
+	const viewColumn =
+		typeof showOptions === "object" ? showOptions.viewColumn : showOptions;
+	const postedMessages: unknown[] = [];
+	let visible = true;
+
+	const webview: vscode.Webview = {
+		options: options ?? { enableScripts: true, localResourceRoots: [] },
+		html: "",
+		cspSource: "mock-csp",
+		onDidReceiveMessage: messageEmitter.event,
+		postMessage: (msg) => {
+			postedMessages.push(msg);
+			return Promise.resolve(true);
+		},
+		asWebviewUri: (uri) => uri,
+	};
+
+	const panel: vscode.WebviewPanel = {
+		viewType,
+		title,
+		iconPath: undefined,
+		webview,
+		options: options ?? {},
+		get viewColumn() {
+			return viewColumn;
+		},
+		get active() {
+			return visible;
+		},
+		get visible() {
+			return visible;
+		},
+		onDidChangeViewState: viewStateEmitter.event,
+		onDidDispose: disposeEmitter.event,
+		reveal: () => undefined,
+		dispose: () => disposeEmitter.fire(),
+	};
+
+	const hooks: WebviewPanelTestHooks = {
+		setVisible(next) {
+			visible = next;
+			viewStateEmitter.fire({ webviewPanel: panel });
+		},
+		fireDispose() {
+			disposeEmitter.fire();
+		},
+		sendFromWebview(msg) {
+			messageEmitter.fire(msg);
+		},
+		postedMessages,
+	};
+
+	return { panel, hooks };
 }
 
 export function createMockStream(

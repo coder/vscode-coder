@@ -84,3 +84,27 @@ export function withProgress<T>(
 ): Thenable<T> {
 	return vscode.window.withProgress(options, (progress) => fn(progress));
 }
+
+/** Drive a progress bar from wall-clock time over an expected duration.
+ *  Returns a stop function; call it (typically in `finally`) when the work
+ *  finishes. */
+export function reportElapsedProgress(opts: {
+	progress: vscode.Progress<{ message?: string; increment?: number }>;
+	totalMs: number;
+	format: (pct: number, elapsedMs: number) => string;
+	intervalMs?: number;
+}): () => void {
+	const { progress, totalMs, format, intervalMs = 100 } = opts;
+	const startTime = Date.now();
+	let reported = 0;
+	const timer = setInterval(() => {
+		const elapsed = Date.now() - startTime;
+		const pct = Math.min(Math.round((elapsed / totalMs) * 100), 100);
+		const increment = pct - reported;
+		if (increment > 0) {
+			progress.report({ message: format(pct, elapsed), increment });
+			reported = pct;
+		}
+	}, intervalMs);
+	return () => clearInterval(timer);
+}

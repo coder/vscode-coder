@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as semver from "semver";
 import * as vscode from "vscode";
+import { ZodError } from "zod";
 
 import {
 	createWorkspaceIdentifier,
@@ -14,7 +15,11 @@ import { appendVsCodeLogs } from "./core/supportBundleLogs";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
 import { type FeatureSet, featureSetForVersion } from "./featureSet";
-import { withCancellableProgress, withProgress } from "./progress";
+import {
+	reportElapsedProgress,
+	withCancellableProgress,
+	withProgress,
+} from "./progress";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import {
 	RECOMMENDED_SSH_SETTINGS,
@@ -23,6 +28,7 @@ import {
 import { resolveCliAuth } from "./settings/cli";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
+import { parseSpeedtestResult } from "./webviews/speedtest/types";
 import {
 	AgentTreeItem,
 	type OpenableTreeItem,
@@ -43,6 +49,7 @@ import type { SecretsManager } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator } from "./login/loginCoordinator";
+import type { SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
 import type {
 	DuplicateWorkspaceIpc,
 	PongMessage,
@@ -72,6 +79,7 @@ export class Commands {
 	private readonly cliManager: CliManager;
 	private readonly loginCoordinator: LoginCoordinator;
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
+	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -96,6 +104,7 @@ export class Commands {
 		this.cliManager = serviceContainer.getCliManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 		this.duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
+		this.speedtestPanelFactory = serviceContainer.getSpeedtestPanelFactory();
 	}
 
 	/**
@@ -188,45 +197,70 @@ export class Commands {
 
 		const { client, workspaceId } = resolved;
 
-		const duration = await vscode.window.showInputBox({
+		const input = await vscode.window.showInputBox({
 			title: "Speed Test Duration",
-			prompt: "Duration for the speed test",
-			value: "5s",
+			prompt: "Duration in seconds",
+			value: "5",
 			validateInput: (value) => {
-				const v = value.trim();
-				if (v && !cliExec.isGoDuration(v)) {
-					return "Invalid Go duration (e.g., 5s, 10s, 1m, 1m30s)";
+				const n = Number(value.trim());
+				if (!value.trim() || !Number.isFinite(n) || n <= 0) {
+					return "Please enter a positive number";
 				}
 				return undefined;
 			},
 		});
-		if (duration === undefined) {
+		if (input === undefined) {
 			return;
 		}
-		const trimmedDuration = duration.trim();
+		const seconds = Number(input.trim());
 
 		const result = await withCancellableProgress(
 			async ({ signal, progress }) => {
-				progress.report({ message: "Resolving CLI..." });
+				progress.report({ message: "Connecting..." });
 				const env = await this.resolveCliEnv(client);
-				progress.report({ message: "Running..." });
-				return cliExec.speedtest(env, workspaceId, trimmedDuration, signal);
+
+				const stopProgress = reportElapsedProgress({
+					progress,
+					totalMs: seconds * 1000,
+					format: (pct, elapsedMs) =>
+						pct >= 100
+							? "Collecting results..."
+							: `${Math.floor(elapsedMs / 1000)}s / ${seconds}s`,
+				});
+				try {
+					return await cliExec.speedtest(
+						env,
+						workspaceId,
+						`${seconds}s`,
+						signal,
+					);
+				} finally {
+					stopProgress();
+				}
 			},
 			{
 				location: vscode.ProgressLocation.Notification,
-				title: trimmedDuration
-					? `Speed test for ${workspaceId} (${trimmedDuration})`
-					: `Speed test for ${workspaceId}`,
+				title: `Running speed test for ${workspaceId}`,
 				cancellable: true,
 			},
 		);
 
 		if (result.ok) {
-			const doc = await vscode.workspace.openTextDocument({
-				content: result.value,
-				language: "json",
-			});
-			await vscode.window.showTextDocument(doc);
+			try {
+				const parsed = parseSpeedtestResult(result.value);
+				this.speedtestPanelFactory.show({
+					result: parsed,
+					rawJson: result.value,
+					workspaceId,
+				});
+			} catch (err) {
+				this.logger.error("Failed to parse speedtest output", err);
+				const message =
+					err instanceof ZodError
+						? "Speed test output did not match the expected format. Check `Output > Coder` for details."
+						: `Speed test returned unexpected output: ${toError(err).message}`;
+				vscode.window.showErrorMessage(message);
+			}
 			return;
 		}
 

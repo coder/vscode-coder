@@ -1,9 +1,9 @@
 import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
 import util from "node:util";
 
-/**
- * Check whether an unknown thrown value is an AbortError (signal cancellation).
- */
+import { toError as baseToError } from "@repo/shared";
+
+/** Check whether an unknown thrown value is an AbortError (signal cancellation). */
 export function isAbortError(error: unknown): boolean {
 	return error instanceof Error && error.name === "AbortError";
 }
@@ -19,40 +19,7 @@ export const getErrorDetail = (error: unknown): string | undefined | null => {
 	return null;
 };
 
-/**
- * Convert any value into an Error instance.
- * Handles Error instances, strings, error-like objects, null/undefined, and primitives.
- */
+/** Node flavor of toError: uses `util.inspect` for the richer object format. */
 export function toError(value: unknown, defaultMsg?: string): Error {
-	if (value instanceof Error) {
-		return value;
-	}
-
-	if (typeof value === "string") {
-		return new Error(value);
-	}
-
-	if (
-		value !== null &&
-		typeof value === "object" &&
-		"message" in value &&
-		typeof value.message === "string"
-	) {
-		const error = new Error(value.message);
-		if ("name" in value && typeof value.name === "string") {
-			error.name = value.name;
-		}
-		return error;
-	}
-
-	if (value === null || value === undefined) {
-		return new Error(defaultMsg || "Unknown error");
-	}
-
-	try {
-		return new Error(util.inspect(value));
-	} catch {
-		// Just in case
-		return new Error(defaultMsg || "Non-serializable error object");
-	}
+	return baseToError(value, defaultMsg, util.inspect);
 }

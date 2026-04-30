@@ -17,7 +17,6 @@ export default defineConfig(
 		"**/*.d.ts",
 		"vitest.config.ts",
 		"**/vite.config*.ts",
-		"**/createWebviewConfig.ts",
 		".vscode-test/**",
 		"test/fixtures/scripts/**",
 	]),

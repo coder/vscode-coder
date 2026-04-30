@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
+import { SpeedtestPanelFactory } from "../webviews/speedtest/speedtestPanelFactory";
 import { DuplicateWorkspaceIpc } from "../workspace/duplicateWorkspaceIpc";
 
 import { CliCredentialManager } from "./cliCredentialManager";
@@ -29,6 +30,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly loginCoordinator: LoginCoordinator;
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly oauthCallback: OAuthCallback;
+	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 
 	constructor(context: vscode.ExtensionContext) {
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
@@ -79,6 +81,11 @@ export class ServiceContainer implements vscode.Disposable {
 		);
 		this.duplicateWorkspaceIpc = new DuplicateWorkspaceIpc(
 			context.secrets,
+
+			this.logger,
+		);
+		this.speedtestPanelFactory = new SpeedtestPanelFactory(
+			context.extensionUri,
 			this.logger,
 		);
 	}
@@ -121,6 +128,10 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getOAuthCallback(): OAuthCallback {
 		return this.oauthCallback;
+	}
+
+	getSpeedtestPanelFactory(): SpeedtestPanelFactory {
+		return this.speedtestPanelFactory;
 	}
 
 	/**
