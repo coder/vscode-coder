@@ -500,7 +500,7 @@ describe("LoginCoordinator", () => {
 			return { ...ctx, user, login };
 		}
 
-		it("calls storeToken with keyringOnly after successful login", async () => {
+		it("calls storeToken after successful login", async () => {
 			const { mockCredentialManager, login } = await loginWithStoredToken();
 
 			await login();
@@ -509,7 +509,6 @@ describe("LoginCoordinator", () => {
 				TEST_URL,
 				"stored-token",
 				expect.anything(),
-				{ keyringOnly: true },
 			);
 		});
 

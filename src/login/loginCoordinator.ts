@@ -153,17 +153,11 @@ export class LoginCoordinator implements vscode.Disposable {
 			});
 			await this.mementoManager.addToUrlHistory(url);
 
-			// Fire-and-forget: sync token to OS keyring for the CLI.
 			if (result.token) {
 				this.cliCredentialManager
-					.storeToken(url, result.token, vscode.workspace.getConfiguration(), {
-						keyringOnly: true,
-					})
+					.storeToken(url, result.token, vscode.workspace.getConfiguration())
 					.catch((error) => {
-						this.logger.warn(
-							"Failed to store token in keyring at login:",
-							error,
-						);
+						this.logger.warn("Failed to store token at login:", error);
 					});
 			}
 		}

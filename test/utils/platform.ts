@@ -41,6 +41,20 @@ export function printEnvCommand(key: string, varName: string): string {
 }
 
 /**
+ * Generates a JS snippet that synchronously writes `data` to stdout. Use in
+ * fake CLI scripts so output isn't lost on exit (process.stdout.write is async
+ * on POSIX pipes; see https://nodejs.org/api/process.html#a-note-on-process-io).
+ */
+export function writeStdoutJs(data: string): string {
+	return `require("fs").writeSync(1, ${JSON.stringify(data)});`;
+}
+
+/** Same as {@link writeStdoutJs} but writes to stderr (fd 2). */
+export function writeStderrJs(data: string): string {
+	return `require("fs").writeSync(2, ${JSON.stringify(data)});`;
+}
+
+/**
  * Write a JS file that can be executed cross-platform.
  * Tests that use `execFile` on the returned path should apply
  * {@link shimExecFile} so `.js` files are run through `process.execPath`.

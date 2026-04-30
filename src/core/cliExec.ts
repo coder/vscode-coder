@@ -2,7 +2,7 @@ import { type ExecFileException, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 
-import { toError } from "../error/errorUtils";
+import { isAbortError, toError } from "../error/errorUtils";
 import {
 	type CliAuth,
 	getGlobalFlags,
@@ -15,23 +15,6 @@ export interface CliEnv {
 	binary: string;
 	auth: CliAuth;
 	configs: Pick<vscode.WorkspaceConfiguration, "get">;
-}
-
-const execFileAsync = promisify(execFile);
-
-function isExecFileException(error: unknown): error is ExecFileException {
-	return error instanceof Error && "code" in error;
-}
-
-/** Prefer stderr over the default message which includes the full command line. */
-function cliError(error: unknown): Error {
-	if (isExecFileException(error)) {
-		const stderr = error.stderr?.trim();
-		if (stderr) {
-			return new Error(stderr, { cause: error });
-		}
-	}
-	return toError(error);
 }
 
 /**
@@ -136,13 +119,55 @@ export function ping(env: CliEnv, workspaceName: string): vscode.Terminal {
 }
 
 /**
+ * SSH into a workspace and run a command via `terminal.sendText`.
+ */
+export async function openAppStatusTerminal(
+	env: CliEnv,
+	app: {
+		name?: string;
+		command?: string;
+		workspace_name: string;
+	},
+): Promise<void> {
+	const globalFlags = getGlobalShellFlags(env.configs, env.auth);
+	const terminal = vscode.window.createTerminal({ name: app.name });
+	terminal.sendText(
+		`${escapeCommandArg(env.binary)} ${globalFlags.join(" ")} ssh ${escapeCommandArg(app.workspace_name)}`,
+	);
+	await new Promise((resolve) => setTimeout(resolve, 5000));
+	terminal.sendText(app.command ?? "");
+	terminal.show(false);
+}
+
+const execFileAsync = promisify(execFile);
+
+/** Prefer stderr over the default message which includes the full command line. */
+function cliError(error: unknown): Error {
+	// Pass aborts through; wrapping erases the AbortError name and would surface stale CLI warnings as the failure.
+	if (isAbortError(error)) {
+		return error;
+	}
+	if (isExecFileException(error)) {
+		const stderr = error.stderr?.trim();
+		if (stderr) {
+			return new Error(stderr, { cause: error });
+		}
+	}
+	return toError(error);
+}
+
+function isExecFileException(error: unknown): error is ExecFileException {
+	return error instanceof Error && "code" in error;
+}
+
+/**
  * Spawn a CLI command in a PTY terminal with process lifecycle management.
  */
 function spawnCliInTerminal(options: {
 	name: string;
 	binary: string;
 	args: string[];
-	banner?: string[];
+	banner: string[];
 }): vscode.Terminal {
 	const writeEmitter = new vscode.EventEmitter<string>();
 	const closeEmitter = new vscode.EventEmitter<number | void>();
@@ -186,10 +211,8 @@ function spawnCliInTerminal(options: {
 			onDidWrite: writeEmitter.event,
 			onDidClose: closeEmitter.event,
 			open: () => {
-				if (options.banner) {
-					for (const line of options.banner) {
-						writeEmitter.fire(line + "\r\n");
-					}
+				for (const line of options.banner) {
+					writeEmitter.fire(line + "\r\n");
 				}
 			},
 			close: () => {
@@ -261,25 +284,4 @@ function spawnCliInTerminal(options: {
 
 	terminal.show(false);
 	return terminal;
-}
-
-/**
- * SSH into a workspace and run a command via `terminal.sendText`.
- */
-export async function openAppStatusTerminal(
-	env: CliEnv,
-	app: {
-		name?: string;
-		command?: string;
-		workspace_name: string;
-	},
-): Promise<void> {
-	const globalFlags = getGlobalShellFlags(env.configs, env.auth);
-	const terminal = vscode.window.createTerminal(app.name);
-	terminal.sendText(
-		`${escapeCommandArg(env.binary)} ${globalFlags.join(" ")} ssh ${escapeCommandArg(app.workspace_name)}`,
-	);
-	await new Promise((resolve) => setTimeout(resolve, 5000));
-	terminal.sendText(app.command ?? "");
-	terminal.show(false);
 }

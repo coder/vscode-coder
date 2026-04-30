@@ -1,6 +1,47 @@
 import { describe, it, expect } from "vitest";
 
-import { getErrorDetail, toError } from "@/error/errorUtils";
+import { getErrorDetail, isAbortError, toError } from "@/error/errorUtils";
+
+describe("isAbortError", () => {
+	it("returns true for an Error named AbortError", () => {
+		const err = new Error("aborted");
+		err.name = "AbortError";
+		expect(isAbortError(err)).toBe(true);
+	});
+
+	it("returns true for DOMException-style abort thrown by AbortController", () => {
+		const ac = new AbortController();
+		ac.abort();
+		// `signal.reason` is a DOMException with name "AbortError" in modern Node.
+		const reason = ac.signal.reason;
+		expect(isAbortError(reason)).toBe(true);
+	});
+
+	it("returns false for a plain Error", () => {
+		expect(isAbortError(new Error("nope"))).toBe(false);
+	});
+
+	it.each<[string, unknown]>([
+		["null", null],
+		["undefined", undefined],
+		["string", "AbortError"],
+		["object with name only", { name: "AbortError" }],
+	])("returns false for %s", (_name, input) => {
+		expect(isAbortError(input)).toBe(false);
+	});
+
+	it("narrows the type to Error", () => {
+		const err: unknown = Object.assign(new Error("aborted"), {
+			name: "AbortError",
+		});
+		if (isAbortError(err)) {
+			// Type-only assertion: this line must compile without a cast.
+			expect(err.message).toBe("aborted");
+		} else {
+			throw new Error("expected isAbortError to narrow");
+		}
+	});
+});
 
 describe("getErrorDetail", () => {
 	it("returns detail from API error", () => {

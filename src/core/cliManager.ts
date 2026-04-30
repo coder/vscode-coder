@@ -817,6 +817,9 @@ export class CliManager {
 	 *
 	 * Both URL and token are required. Empty tokens are allowed (e.g. mTLS
 	 * authentication) but the URL must be a non-empty string.
+	 *
+	 * @param options.silent Suppress the progress notification only; failures
+	 *   still surface via {@link handleStoreError} (logged + error toast).
 	 */
 	public async configure(
 		url: string,

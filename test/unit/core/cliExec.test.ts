@@ -4,7 +4,13 @@ import path from "path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { MockConfigurationProvider } from "../../mocks/testHelpers";
-import { isWindows, quoteCommand, writeExecutable } from "../../utils/platform";
+import {
+	isWindows,
+	quoteCommand,
+	writeExecutable,
+	writeStderrJs,
+	writeStdoutJs,
+} from "../../utils/platform";
 
 import type { CliEnv } from "@/core/cliExec";
 
@@ -36,7 +42,7 @@ describe("cliExec", () => {
 
 	/** JS code for a fake CLI that writes a fixed string to stdout. */
 	function echoBin(output: string): string {
-		return `process.stdout.write(${JSON.stringify(output)});`;
+		return writeStdoutJs(output);
 	}
 
 	/**
@@ -46,10 +52,11 @@ describe("cliExec", () => {
 	function oldCliBin(stderr: string, stdout: string): string {
 		return [
 			`if (process.argv.includes("--output")) {`,
-			`  process.stderr.write(${JSON.stringify(stderr)});`,
-			`  process.exitCode = 1;`,
+			`  ${writeStderrJs(stderr)}`,
+			`  process.exit(1);`,
 			`} else {`,
-			`  process.stdout.write(${JSON.stringify(stdout)});`,
+			`  ${writeStdoutJs(stdout)}`,
+			`  process.exit(0);`,
 			`}`,
 		].join("\n");
 	}
@@ -159,14 +166,26 @@ describe("cliExec", () => {
 
 		it("surfaces stderr instead of full command line on failure", async () => {
 			const code = [
-				`process.stderr.write("invalid argument for -t flag\\n");`,
-				`process.exitCode = 1;`,
+				writeStderrJs("invalid argument for -t flag\n"),
+				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "speedtest-err", code);
 			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
 			await expect(
 				cliExec.speedtest(env, "owner/workspace", "bad"),
 			).rejects.toThrow("invalid argument for -t flag");
+		});
+
+		it("preserves AbortError name when cancelled via signal", async () => {
+			// Hangs forever so the only way out is the abort signal.
+			const code = `setInterval(() => {}, 1000);`;
+			const bin = await writeExecutable(tmp, "speedtest-hang", code);
+			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const ac = new AbortController();
+			ac.abort();
+			await expect(
+				cliExec.speedtest(env, "owner/workspace", undefined, ac.signal),
+			).rejects.toMatchObject({ name: "AbortError" });
 		});
 	});
 
@@ -204,8 +223,8 @@ describe("cliExec", () => {
 
 		it("surfaces stderr on failure", async () => {
 			const code = [
-				`process.stderr.write("workspace not found\\n");`,
-				`process.exitCode = 1;`,
+				writeStderrJs("workspace not found\n"),
+				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "sb-err", code);
 			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);

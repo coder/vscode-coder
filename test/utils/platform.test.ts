@@ -13,6 +13,7 @@ import {
 	printEnvCommand,
 	shimExecFile,
 	writeExecutable,
+	writeStdoutJs,
 } from "./platform";
 
 describe("platform utils", () => {
@@ -123,11 +124,7 @@ describe("platform utils", () => {
 		});
 
 		it("runs .js files through node", async () => {
-			const script = await writeExecutable(
-				tmp,
-				"echo",
-				'process.stdout.write("ok");',
-			);
+			const script = await writeExecutable(tmp, "echo", writeStdoutJs("ok"));
 			const { stdout } = await execFileAsync(script);
 			expect(stdout).toBe("ok");
 		});
@@ -136,7 +133,7 @@ describe("platform utils", () => {
 			const script = await writeExecutable(
 				tmp,
 				"echo-args",
-				"process.stdout.write(process.argv.slice(2).join(','));",
+				`require("fs").writeSync(1, process.argv.slice(2).join(","));`,
 			);
 			const { stdout } = await execFileAsync(script, ["a", "b", "c"]);
 			expect(stdout).toBe("a,b,c");
@@ -149,11 +146,7 @@ describe("platform utils", () => {
 		});
 
 		it("preserves the callback form", async () => {
-			const script = await writeExecutable(
-				tmp,
-				"cb-echo",
-				'process.stdout.write("cb");',
-			);
+			const script = await writeExecutable(tmp, "cb-echo", writeStdoutJs("cb"));
 			const stdout = await new Promise<string>((resolve, reject) => {
 				mod.execFile(script, (err, out) =>
 					err ? reject(new Error(err.message)) : resolve(out),
