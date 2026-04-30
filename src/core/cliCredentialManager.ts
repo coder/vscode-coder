@@ -56,16 +56,13 @@ export class CliCredentialManager {
 	 * setting is enabled and the CLI supports it; otherwise writes plaintext
 	 * files under --global-config.
 	 *
-	 * Keyring and files are mutually exclusive — never both.
-	 *
-	 * When `keyringOnly` is set, silently returns if the keyring is unavailable
-	 * instead of falling back to file storage.
+	 * Keyring and files are mutually exclusive, never both.
 	 */
 	public async storeToken(
 		url: string,
 		token: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		options?: { signal?: AbortSignal; keyringOnly?: boolean },
+		options?: { signal?: AbortSignal },
 	): Promise<void> {
 		const binPath = await this.resolveKeyringBinary(
 			url,
@@ -73,9 +70,6 @@ export class CliCredentialManager {
 			"keyringAuth",
 		);
 		if (!binPath) {
-			if (options?.keyringOnly) {
-				return;
-			}
 			await this.writeCredentialFiles(url, token);
 			return;
 		}

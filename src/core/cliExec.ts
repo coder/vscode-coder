@@ -15,8 +15,6 @@ export interface CliEnv {
 	binary: string;
 	auth: CliAuth;
 	configs: Pick<vscode.WorkspaceConfiguration, "get">;
-	/** Forwarded to the child as `CODER_URL` / `CODER_SESSION_TOKEN`. Empty token is valid for mTLS. */
-	childCredentials: { url: string; token: string };
 }
 
 /**
@@ -74,10 +72,7 @@ export async function speedtest(
 		args.push("-t", duration);
 	}
 	try {
-		const result = await execFileAsync(env.binary, args, {
-			signal,
-			env: execFileEnv(env),
-		});
+		const result = await execFileAsync(env.binary, args, { signal });
 		return result.stdout;
 	} catch (error) {
 		throw cliError(error);
@@ -104,10 +99,7 @@ export async function supportBundle(
 		"--yes",
 	];
 	try {
-		await execFileAsync(env.binary, args, {
-			signal,
-			env: execFileEnv(env),
-		});
+		await execFileAsync(env.binary, args, { signal });
 	} catch (error) {
 		throw cliError(error);
 	}
@@ -123,7 +115,6 @@ export function ping(env: CliEnv, workspaceName: string): vscode.Terminal {
 		binary: env.binary,
 		args: [...globalFlags, "ping", escapeCommandArg(workspaceName)],
 		banner: ["Press Ctrl+C (^C) to stop.", "─".repeat(40)],
-		env: execFileEnv(env),
 	});
 }
 
@@ -139,11 +130,7 @@ export async function openAppStatusTerminal(
 	},
 ): Promise<void> {
 	const globalFlags = getGlobalShellFlags(env.configs, env.auth);
-	// Pass only the delta; createTerminal merges it on top of the user's terminal env.
-	const terminal = vscode.window.createTerminal({
-		name: app.name,
-		env: authEnv(env),
-	});
+	const terminal = vscode.window.createTerminal({ name: app.name });
 	terminal.sendText(
 		`${escapeCommandArg(env.binary)} ${globalFlags.join(" ")} ssh ${escapeCommandArg(app.workspace_name)}`,
 	);
@@ -153,22 +140,6 @@ export async function openAppStatusTerminal(
 }
 
 const execFileAsync = promisify(execFile);
-
-/**
- * Full env for `execFile`/`spawn`, which replace the child env entirely:
- * inherit `process.env` and overlay auth on top.
- */
-function execFileEnv(env: CliEnv): NodeJS.ProcessEnv {
-	return { ...process.env, ...authEnv(env) };
-}
-
-/** Auth env vars to forward to a coder child process. */
-function authEnv(env: CliEnv): NodeJS.ProcessEnv {
-	return {
-		CODER_URL: env.childCredentials.url,
-		CODER_SESSION_TOKEN: env.childCredentials.token,
-	};
-}
 
 /** Prefer stderr over the default message which includes the full command line. */
 function cliError(error: unknown): Error {
@@ -197,7 +168,6 @@ function spawnCliInTerminal(options: {
 	binary: string;
 	args: string[];
 	banner: string[];
-	env: NodeJS.ProcessEnv;
 }): vscode.Terminal {
 	const writeEmitter = new vscode.EventEmitter<string>();
 	const closeEmitter = new vscode.EventEmitter<number | void>();
@@ -211,7 +181,6 @@ function spawnCliInTerminal(options: {
 	const proc = spawn(cmd, {
 		shell: true,
 		detached: useProcessGroup,
-		env: options.env,
 	});
 
 	let closed = false;

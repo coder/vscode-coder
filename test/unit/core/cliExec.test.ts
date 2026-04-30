@@ -4,7 +4,13 @@ import path from "path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { MockConfigurationProvider } from "../../mocks/testHelpers";
-import { isWindows, quoteCommand, writeExecutable } from "../../utils/platform";
+import {
+	isWindows,
+	quoteCommand,
+	writeExecutable,
+	writeStderrJs,
+	writeStdoutJs,
+} from "../../utils/platform";
 
 import type { CliEnv } from "@/core/cliExec";
 
@@ -30,18 +36,13 @@ describe("cliExec", () => {
 
 	function setup(auth: CliEnv["auth"], binary = echoArgsBin) {
 		const configs = new MockConfigurationProvider();
-		const env: CliEnv = {
-			binary,
-			auth,
-			configs,
-			childCredentials: { url: "http://localhost:3000", token: "test-token" },
-		};
+		const env: CliEnv = { binary, auth, configs };
 		return { configs, env };
 	}
 
 	/** JS code for a fake CLI that writes a fixed string to stdout. */
 	function echoBin(output: string): string {
-		return `process.stdout.write(${JSON.stringify(output)});`;
+		return writeStdoutJs(output);
 	}
 
 	/**
@@ -51,10 +52,11 @@ describe("cliExec", () => {
 	function oldCliBin(stderr: string, stdout: string): string {
 		return [
 			`if (process.argv.includes("--output")) {`,
-			`  process.stderr.write(${JSON.stringify(stderr)});`,
-			`  process.exitCode = 1;`,
+			`  ${writeStderrJs(stderr)}`,
+			`  process.exit(1);`,
 			`} else {`,
-			`  process.stdout.write(${JSON.stringify(stdout)});`,
+			`  ${writeStdoutJs(stdout)}`,
+			`  process.exit(0);`,
 			`}`,
 		].join("\n");
 	}
@@ -164,34 +166,14 @@ describe("cliExec", () => {
 
 		it("surfaces stderr instead of full command line on failure", async () => {
 			const code = [
-				`process.stderr.write("invalid argument for -t flag\\n");`,
-				`process.exitCode = 1;`,
+				writeStderrJs("invalid argument for -t flag\n"),
+				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "speedtest-err", code);
 			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
 			await expect(
 				cliExec.speedtest(env, "owner/workspace", "bad"),
 			).rejects.toThrow("invalid argument for -t flag");
-		});
-
-		it("forwards CODER_URL and CODER_SESSION_TOKEN to the child", async () => {
-			const code = [
-				`process.stdout.write(JSON.stringify({`,
-				`  url: process.env.CODER_URL || "",`,
-				`  token: process.env.CODER_SESSION_TOKEN || "",`,
-				`}));`,
-			].join("\n");
-			const bin = await writeExecutable(tmp, "speedtest-env", code);
-			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
-			env.childCredentials = {
-				url: "http://localhost:3000",
-				token: "secret-token",
-			};
-			const out = await cliExec.speedtest(env, "owner/workspace");
-			expect(JSON.parse(out)).toEqual({
-				url: "http://localhost:3000",
-				token: "secret-token",
-			});
 		});
 
 		it("preserves AbortError name when cancelled via signal", async () => {
@@ -204,23 +186,6 @@ describe("cliExec", () => {
 			await expect(
 				cliExec.speedtest(env, "owner/workspace", undefined, ac.signal),
 			).rejects.toMatchObject({ name: "AbortError" });
-		});
-
-		it("forwards an empty CODER_SESSION_TOKEN for mTLS", async () => {
-			const code = [
-				`process.stdout.write(JSON.stringify({`,
-				`  url: process.env.CODER_URL,`,
-				`  token: process.env.CODER_SESSION_TOKEN,`,
-				`}));`,
-			].join("\n");
-			const bin = await writeExecutable(tmp, "speedtest-env-mtls", code);
-			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
-			env.childCredentials = { url: "http://localhost:3000", token: "" };
-			const out = await cliExec.speedtest(env, "owner/workspace");
-			expect(JSON.parse(out)).toEqual({
-				url: "http://localhost:3000",
-				token: "",
-			});
 		});
 	});
 
@@ -258,8 +223,8 @@ describe("cliExec", () => {
 
 		it("surfaces stderr on failure", async () => {
 			const code = [
-				`process.stderr.write("workspace not found\\n");`,
-				`process.exitCode = 1;`,
+				writeStderrJs("workspace not found\n"),
+				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "sb-err", code);
 			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);

@@ -930,11 +930,13 @@ export class Commands {
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
 		const configs = vscode.workspace.getConfiguration();
 		const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
-		const childCredentials = {
-			url: baseUrl,
-			token: client.getSessionToken() ?? "",
-		};
-		return { binary, configs, auth, childCredentials, featureSet };
+		// Same threat model as the connection-time write in remote.ts: token
+		// goes to the file (or keyring on supported systems), never env, since
+		// child env is sibling-readable on most platforms.
+		await this.cliManager.configure(baseUrl, client.getSessionToken() ?? "", {
+			silent: true,
+		});
+		return { binary, configs, auth, featureSet };
 	}
 
 	/**

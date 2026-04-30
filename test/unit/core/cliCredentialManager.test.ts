@@ -269,42 +269,6 @@ describe("CliCredentialManager", () => {
 				}),
 			).rejects.toThrow("The operation was aborted");
 		});
-
-		it.each([
-			{ scenario: "keyring disabled", keyringEnabled: false },
-			{ scenario: "CLI version too old", keyringEnabled: true },
-		])(
-			"never writes files when keyringOnly and $scenario",
-			async ({ keyringEnabled }) => {
-				vi.mocked(isKeyringEnabled).mockReturnValue(keyringEnabled);
-				if (keyringEnabled) {
-					vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
-				}
-				const { manager } = setup();
-
-				await manager.storeToken(TEST_URL, "token", configs, {
-					keyringOnly: true,
-				});
-
-				expect(execFile).not.toHaveBeenCalled();
-				expect(memfs.existsSync(URL_FILE)).toBe(false);
-				expect(memfs.existsSync(SESSION_FILE)).toBe(false);
-			},
-		);
-
-		it("uses keyring without writing files when keyringOnly and keyring available", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "" });
-			const { manager } = setup();
-
-			await manager.storeToken(TEST_URL, "my-token", configs, {
-				keyringOnly: true,
-			});
-
-			expect(execFile).toHaveBeenCalled();
-			expect(memfs.existsSync(URL_FILE)).toBe(false);
-			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
-		});
 	});
 
 	describe("readToken", () => {
