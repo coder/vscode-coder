@@ -34,7 +34,7 @@ describe("cliExec", () => {
 			binary,
 			auth,
 			configs,
-			authEnv: { url: "http://localhost:3000", token: "test-token" },
+			childCredentials: { url: "http://localhost:3000", token: "test-token" },
 		};
 		return { configs, env };
 	}
@@ -183,12 +183,27 @@ describe("cliExec", () => {
 			].join("\n");
 			const bin = await writeExecutable(tmp, "speedtest-env", code);
 			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
-			env.authEnv = { url: "http://localhost:3000", token: "secret-token" };
+			env.childCredentials = {
+				url: "http://localhost:3000",
+				token: "secret-token",
+			};
 			const out = await cliExec.speedtest(env, "owner/workspace");
 			expect(JSON.parse(out)).toEqual({
 				url: "http://localhost:3000",
 				token: "secret-token",
 			});
+		});
+
+		it("preserves AbortError name when cancelled via signal", async () => {
+			// Hangs forever so the only way out is the abort signal.
+			const code = `setInterval(() => {}, 1000);`;
+			const bin = await writeExecutable(tmp, "speedtest-hang", code);
+			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const ac = new AbortController();
+			ac.abort();
+			await expect(
+				cliExec.speedtest(env, "owner/workspace", undefined, ac.signal),
+			).rejects.toMatchObject({ name: "AbortError" });
 		});
 
 		it("forwards an empty CODER_SESSION_TOKEN for mTLS", async () => {
@@ -200,7 +215,7 @@ describe("cliExec", () => {
 			].join("\n");
 			const bin = await writeExecutable(tmp, "speedtest-env-mtls", code);
 			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
-			env.authEnv = { url: "http://localhost:3000", token: "" };
+			env.childCredentials = { url: "http://localhost:3000", token: "" };
 			const out = await cliExec.speedtest(env, "owner/workspace");
 			expect(JSON.parse(out)).toEqual({
 				url: "http://localhost:3000",

@@ -16,7 +16,7 @@ export interface CliEnv {
 	auth: CliAuth;
 	configs: Pick<vscode.WorkspaceConfiguration, "get">;
 	/** Forwarded to the child as `CODER_URL` / `CODER_SESSION_TOKEN`. Empty token is valid for mTLS. */
-	authEnv: { url: string; token: string };
+	childCredentials: { url: string; token: string };
 }
 
 /**
@@ -76,7 +76,7 @@ export async function speedtest(
 	try {
 		const result = await execFileAsync(env.binary, args, {
 			signal,
-			env: buildChildEnv(env),
+			env: execFileEnv(env),
 		});
 		return result.stdout;
 	} catch (error) {
@@ -106,7 +106,7 @@ export async function supportBundle(
 	try {
 		await execFileAsync(env.binary, args, {
 			signal,
-			env: buildChildEnv(env),
+			env: execFileEnv(env),
 		});
 	} catch (error) {
 		throw cliError(error);
@@ -123,7 +123,7 @@ export function ping(env: CliEnv, workspaceName: string): vscode.Terminal {
 		binary: env.binary,
 		args: [...globalFlags, "ping", escapeCommandArg(workspaceName)],
 		banner: ["Press Ctrl+C (^C) to stop.", "─".repeat(40)],
-		env: buildChildEnv(env),
+		env: execFileEnv(env),
 	});
 }
 
@@ -139,9 +139,10 @@ export async function openAppStatusTerminal(
 	},
 ): Promise<void> {
 	const globalFlags = getGlobalShellFlags(env.configs, env.auth);
+	// Pass only the delta; createTerminal merges it on top of the user's terminal env.
 	const terminal = vscode.window.createTerminal({
 		name: app.name,
-		env: buildChildEnv(env),
+		env: authEnv(env),
 	});
 	terminal.sendText(
 		`${escapeCommandArg(env.binary)} ${globalFlags.join(" ")} ssh ${escapeCommandArg(app.workspace_name)}`,
@@ -151,20 +152,22 @@ export async function openAppStatusTerminal(
 	terminal.show(false);
 }
 
-// --- helpers ---
-
 const execFileAsync = promisify(execFile);
 
-function buildChildEnv(env: CliEnv): NodeJS.ProcessEnv {
-	return {
-		...process.env,
-		CODER_URL: env.authEnv.url,
-		CODER_SESSION_TOKEN: env.authEnv.token,
-	};
+/**
+ * Full env for `execFile`/`spawn`, which replace the child env entirely:
+ * inherit `process.env` and overlay auth on top.
+ */
+function execFileEnv(env: CliEnv): NodeJS.ProcessEnv {
+	return { ...process.env, ...authEnv(env) };
 }
 
-function isExecFileException(error: unknown): error is ExecFileException {
-	return error instanceof Error && "code" in error;
+/** Auth env vars to forward to a coder child process. */
+function authEnv(env: CliEnv): NodeJS.ProcessEnv {
+	return {
+		CODER_URL: env.childCredentials.url,
+		CODER_SESSION_TOKEN: env.childCredentials.token,
+	};
 }
 
 /** Prefer stderr over the default message which includes the full command line. */
@@ -180,6 +183,10 @@ function cliError(error: unknown): Error {
 		}
 	}
 	return toError(error);
+}
+
+function isExecFileException(error: unknown): error is ExecFileException {
+	return error instanceof Error && "code" in error;
 }
 
 /**
@@ -235,10 +242,8 @@ function spawnCliInTerminal(options: {
 			onDidWrite: writeEmitter.event,
 			onDidClose: closeEmitter.event,
 			open: () => {
-				if (options.banner) {
-					for (const line of options.banner) {
-						writeEmitter.fire(line + "\r\n");
-					}
+				for (const line of options.banner) {
+					writeEmitter.fire(line + "\r\n");
 				}
 			},
 			close: () => {
