@@ -125,11 +125,12 @@ describe("SpeedtestPanelFactory", () => {
 		});
 	});
 
-	it("ignores unknown message methods", () => {
+	it("does not surface an error dialog for unknown command methods", async () => {
 		const { hooks } = openChart();
-		expect(() =>
-			hooks.sendFromWebview({ method: "speedtest/bogus" }),
-		).not.toThrow();
+		hooks.sendFromWebview({ method: "speedtest/bogus" });
+		// Dispatch is async; let the rejection settle before asserting.
+		await Promise.resolve();
+		expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 	});
 
 	it("stops responding to visibility and theme events after disposal", () => {

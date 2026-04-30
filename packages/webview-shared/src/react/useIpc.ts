@@ -6,7 +6,7 @@
 import { useEffect, useRef } from "react";
 
 import { postMessage } from "../api";
-import { subscribeOne } from "../ipc";
+import { sendCommand, subscribeOne } from "../ipc";
 
 import type {
 	CommandDef,
@@ -120,10 +120,7 @@ export function useIpc(options: UseIpcOptions = {}) {
 		definition: CommandDef<P>,
 		...args: P extends void ? [] : [params: P]
 	): void {
-		postMessage({
-			method: definition.method,
-			params: args[0],
-		});
+		sendCommand(definition, ...args);
 	}
 
 	/**
