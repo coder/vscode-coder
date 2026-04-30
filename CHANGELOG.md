@@ -5,26 +5,7 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
-
-### Added
-
-- Opening a workspace that's already connected in another VS Code window now shows a prompt
-  to **Duplicate Window** (preserving tabs and panels) or **Open Without Folder**, instead of
-  just focusing the existing window with no way to open a second view of the same workspace.
-
-### Fixed
-
-- The **Coder: Workspace Build** output channel is no longer created when reconnecting to an
-  already-running workspace, so the Output panel doesn't pop open empty.
-
-### Changed
-
-- **Coder: Speed Test Workspace** results now render in an interactive throughput chart with
-  hover tooltips, a summary header, and a real-time progress bar while the CLI runs. A View JSON
-  action exposes the raw output.
-
-## [v1.14.4-pre](https://github.com/coder/vscode-coder/releases/tag/v1.14.4-pre) 2026-04-20
+## [v1.14.5](https://github.com/coder/vscode-coder/releases/tag/v1.14.5) 2026-04-30
 
 ### Added
 
@@ -35,21 +16,26 @@
   without symlinking.
 - New **Coder: Speed Test Workspace** command to run
   [`coder speedtest`](https://coder.com/docs/reference/cli/speedtest) from the command palette or
-  workspace sidebar. Choose a running workspace, optionally set the test duration, and open the
-  JSON results directly in VS Code.
+  workspace sidebar. Choose a running workspace, optionally set the test duration, and view results
+  in an interactive throughput chart with hover tooltips, a summary header, and a real-time progress
+  bar while the CLI runs. A View JSON action exposes the raw output.
 - New **Coder: Ping Workspace** command to run
   [`coder ping`](https://coder.com/docs/reference/cli/ping) from the command palette or workspace
   sidebar, with live connectivity diagnostics in a terminal.
 - New **Coder: Create Support Bundle** command to run
   [`coder support bundle`](https://coder.com/docs/reference/cli/support_bundle) from VS Code and
-  save the resulting diagnostics zip for troubleshooting. Available when your deployment supports
-  support bundles.
+  save the resulting diagnostics zip for troubleshooting. The bundle also includes VS Code-side
+  logs (Remote SSH extension, SSH proxy, and extension output channels) for easier debugging.
+  Available when your deployment supports support bundles.
 - Coder SSH connections now default to `ServerAliveInterval=10` and `ServerAliveCountMax=3`,
   helping keep sessions alive through NATs and firewalls while detecting dead connections within
   about 30 seconds.
 - New `coder.networkThreshold.latencyMs` setting (default: 250ms, set to `0` to disable) to warn
   when workspace latency stays high. The network status bar indicator turns yellow and offers quick
   actions to run **Coder: Ping Workspace** or open the setting.
+- Opening a workspace that's already connected in another VS Code window now shows a prompt
+  to **Duplicate Window** (preserving tabs and panels) or **Open Without Folder**, instead of
+  just focusing the existing window with no way to open a second view of the same workspace.
 
 ### Fixed
 
@@ -62,6 +48,12 @@
   during an in-progress update.
 - Workspace build logs now reliably appear in the **Coder: Workspace Build** output channel during
   startup.
+- The **Coder: Workspace Build** output channel is no longer created when reconnecting to an
+  already-running workspace, so the Output panel doesn't pop open empty.
+- CLI subprocesses spawned by **Speed Test**, **Ping**, **Create Support Bundle**, and the app
+  status terminal now inherit `CODER_URL` and `CODER_SESSION_TOKEN`, so authentication works for
+  any nested CLI invocations (including mTLS deployments).
+- Cancelling a long-running CLI command no longer surfaces as a misleading CLI failure.
 
 ## [v1.14.3](https://github.com/coder/vscode-coder/releases/tag/v1.14.3) 2026-03-30
 
