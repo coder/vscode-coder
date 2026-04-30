@@ -1,7 +1,8 @@
-import { type ChartPoint, formatTick, niceStep } from "./chartUtils";
+import { type ChartPoint, formatTick, niceRound, niceStep } from "./chartUtils";
 
 const MIN_TICK_SPACING_EM = 4;
-const Y_GRID_LINES = 5;
+/** Target Y-axis tick intervals; the actual count varies slightly so steps land on round numbers. */
+const Y_TICK_TARGET = 6;
 /** 10% headroom above the max so the line doesn't hug the top edge. */
 const Y_HEADROOM = 1.1;
 const DOT_RADIUS_PX = 4;
@@ -23,44 +24,53 @@ interface Theme {
 	family: string;
 }
 
-/** Canvas pixels don't inherit CSS vars, so re-read on every render. */
-function readTheme(): Theme {
-	const s = getComputedStyle(document.documentElement);
-	const css = (prop: string) => s.getPropertyValue(prop).trim();
-	return {
-		fg:
-			css("--vscode-charts-foreground") ||
-			css("--vscode-descriptionForeground") ||
-			css("--vscode-editor-foreground") ||
-			"#888",
-		// focusBorder tracks the theme's accent; charts.blue is a fixed hue
-		// kept as a late fallback.
-		accent:
-			css("--vscode-chart-line") ||
-			css("--vscode-focusBorder") ||
-			css("--vscode-charts-blue") ||
-			"#3794ff",
-		grid:
-			css("--vscode-chart-guide") ||
-			css("--vscode-charts-lines") ||
-			"rgba(127, 127, 127, 0.35)",
-		family: css("--vscode-font-family") || "sans-serif",
-	};
+interface YAxis {
+	step: number;
+	ticks: number;
+	max: number;
+	format: (v: number) => string;
 }
 
-function layoutChart(
-	ctx: CanvasRenderingContext2D,
+interface Chart {
+	ctx: CanvasRenderingContext2D;
+	theme: Theme;
+	pxPerEm: number;
+	pad: { top: number; right: number; bottom: number; left: number };
+	plotW: number;
+	plotH: number;
+	baseline: number;
+	height: number;
+	maxX: number;
+	toCanvasX: (t: number) => number;
+	toCanvasY: (v: number) => number;
+}
+
+/** Render the speedtest chart. Caller must ensure `samples` is non-empty. */
+export function renderLineChart(
+	canvas: HTMLCanvasElement,
 	samples: ChartPoint[],
-	width: number,
-	height: number,
-	pxPerEm: number,
-	family: string,
-) {
-	const maxY = samples.reduce((m, s) => Math.max(m, s.y), 1) * Y_HEADROOM;
-	const lastX = samples.at(-1)?.x ?? 0;
-	const maxX = lastX > 0 ? lastX : 1;
-	ctx.font = `1em ${family}`;
-	const yLabelWidth = ctx.measureText(maxY.toFixed(0)).width;
+	showDots: boolean,
+): ChartPoint[] {
+	// Scale backing store by DPR so drawing stays crisp on high-DPI screens.
+	const parent = canvas.parentElement ?? canvas;
+	const { width, height } = parent.getBoundingClientRect();
+	const dpr = window.devicePixelRatio || 1;
+	canvas.width = width * dpr;
+	canvas.height = height * dpr;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) {
+		return [];
+	}
+	ctx.scale(dpr, dpr);
+
+	const pxPerEm = parseFloat(getComputedStyle(parent).fontSize) || 14;
+	const theme = readTheme();
+	const yAxis = computeYAxis(samples);
+	const last = samples.at(-1) ?? samples[0];
+	const maxX = Math.max(last.x, 1);
+
+	ctx.font = `1em ${theme.family}`;
+	const yLabelWidth = ctx.measureText(yAxis.format(yAxis.max)).width;
 	const pad = {
 		top: PLOT_PAD_EM.top * pxPerEm,
 		right: PLOT_PAD_EM.right * pxPerEm,
@@ -72,51 +82,69 @@ function layoutChart(
 	};
 	const plotW = width - pad.left - pad.right;
 	const plotH = height - pad.top - pad.bottom;
-	return {
+
+	const chart: Chart = {
+		ctx,
+		theme,
+		pxPerEm,
 		pad,
 		plotW,
 		plotH,
-		maxY,
-		maxX,
+		baseline: pad.top + plotH,
 		height,
-		toCanvasX: (t: number) => pad.left + (t / maxX) * plotW,
-		toCanvasY: (v: number) => pad.top + plotH - (v / maxY) * plotH,
+		maxX,
+		toCanvasX: (t) => pad.left + (t / maxX) * plotW,
+		toCanvasY: (v) => pad.top + plotH - (v / yAxis.max) * plotH,
 	};
+
+	drawYAxis(chart, yAxis);
+	drawXAxis(chart);
+	drawAxisTitles(chart);
+	return drawSeries(chart, samples, last, showDots);
 }
 
-type Layout = ReturnType<typeof layoutChart>;
+function computeYAxis(samples: ChartPoint[]): YAxis {
+	let peak = 1;
+	for (const s of samples) {
+		if (s.y > peak) peak = s.y;
+	}
+	const target = peak * Y_HEADROOM;
+	const step = niceRound(target / Y_TICK_TARGET);
+	const ticks = Math.ceil(target / step);
+	const max = ticks * step;
+	// Decimals follow the step's magnitude: step=1 → 0 decimals, step=0.1 → 1, etc.
+	const decimals = Math.max(0, -Math.floor(Math.log10(step)));
+	return { step, ticks, max, format: (v) => v.toFixed(decimals) };
+}
 
-function drawAxes(
-	ctx: CanvasRenderingContext2D,
-	layout: Layout,
-	theme: Theme,
-	pxPerEm: number,
-): void {
-	const { pad, plotW, plotH, maxY, maxX, height, toCanvasX, toCanvasY } =
-		layout;
-
+function drawYAxis(chart: Chart, axis: YAxis): void {
+	const { ctx, theme, pad, plotW, pxPerEm, toCanvasY } = chart;
 	ctx.strokeStyle = theme.grid;
 	ctx.lineWidth = 1;
 	ctx.fillStyle = theme.fg;
 	ctx.textAlign = "right";
-	for (let i = 0; i <= Y_GRID_LINES; i++) {
-		const v = (i / Y_GRID_LINES) * maxY;
+	for (let i = 0; i <= axis.ticks; i++) {
+		const v = i * axis.step;
 		const y = toCanvasY(v);
 		ctx.beginPath();
 		ctx.moveTo(pad.left, y);
 		ctx.lineTo(pad.left + plotW, y);
 		ctx.stroke();
 		ctx.fillText(
-			v.toFixed(0),
+			axis.format(v),
 			pad.left - Y_LABEL_GAP_EM * pxPerEm,
 			y + pxPerEm / 3,
 		);
 	}
+}
 
+function drawXAxis(chart: Chart): void {
+	const { ctx, theme, pad, plotW, baseline, height, pxPerEm, maxX, toCanvasX } =
+		chart;
 	ctx.strokeStyle = theme.fg;
 	ctx.beginPath();
-	ctx.moveTo(pad.left, pad.top + plotH);
-	ctx.lineTo(pad.left + plotW, pad.top + plotH);
+	ctx.moveTo(pad.left, baseline);
+	ctx.lineTo(pad.left + plotW, baseline);
 	ctx.stroke();
 
 	ctx.textAlign = "center";
@@ -130,7 +158,10 @@ function drawAxes(
 			height - pad.bottom + X_LABEL_GAP_EM * pxPerEm,
 		);
 	}
+}
 
+function drawAxisTitles(chart: Chart): void {
+	const { ctx, theme, pad, plotW, plotH, height, pxPerEm } = chart;
 	ctx.font = `0.95em ${theme.family}`;
 	ctx.fillText(
 		"Time",
@@ -145,16 +176,13 @@ function drawAxes(
 }
 
 function drawSeries(
-	ctx: CanvasRenderingContext2D,
+	chart: Chart,
 	samples: ChartPoint[],
-	layout: Layout,
-	theme: Theme,
+	last: ChartPoint,
 	showDots: boolean,
 ): ChartPoint[] {
-	const { pad, plotH, toCanvasX, toCanvasY } = layout;
-	const baseline = pad.top + plotH;
+	const { ctx, theme, pad, baseline, toCanvasX, toCanvasY } = chart;
 	const first = samples[0];
-	const last = samples.at(-1) ?? first;
 
 	if (first.x > 0) {
 		ctx.beginPath();
@@ -204,6 +232,31 @@ function drawSeries(
 	});
 }
 
+/** Canvas pixels don't inherit CSS vars, so re-read on every render. */
+function readTheme(): Theme {
+	const s = getComputedStyle(document.documentElement);
+	const css = (prop: string) => s.getPropertyValue(prop).trim();
+	return {
+		fg:
+			css("--vscode-charts-foreground") ||
+			css("--vscode-descriptionForeground") ||
+			css("--vscode-editor-foreground") ||
+			"#888",
+		// focusBorder tracks the theme's accent; charts.blue is a fixed hue
+		// kept as a late fallback.
+		accent:
+			css("--vscode-chart-line") ||
+			css("--vscode-focusBorder") ||
+			css("--vscode-charts-blue") ||
+			"#3794ff",
+		grid:
+			css("--vscode-chart-guide") ||
+			css("--vscode-charts-lines") ||
+			"rgba(127, 127, 127, 0.35)",
+		family: css("--vscode-font-family") || "sans-serif",
+	};
+}
+
 /** Append an `aa` alpha byte to a CSS color, using a dedicated canvas to
  *  normalize any input (rgb/hsl/hex/named) to `#rrggbb`. */
 let normalizerCtx: CanvasRenderingContext2D | null | undefined;
@@ -217,36 +270,4 @@ function withAlpha(color: string, alphaHex: string): string {
 	return /^#[0-9a-f]{6}$/i.test(normalized)
 		? normalized + alphaHex
 		: normalized;
-}
-
-/** Render the speedtest chart. Caller must ensure `samples` is non-empty. */
-export function renderLineChart(
-	canvas: HTMLCanvasElement,
-	samples: ChartPoint[],
-	showDots: boolean,
-): ChartPoint[] {
-	// Scale backing store by DPR so drawing stays crisp on high-DPI screens.
-	const parent = canvas.parentElement ?? canvas;
-	const { width, height } = parent.getBoundingClientRect();
-	const dpr = window.devicePixelRatio || 1;
-	canvas.width = width * dpr;
-	canvas.height = height * dpr;
-	const ctx = canvas.getContext("2d");
-	if (!ctx) {
-		return [];
-	}
-	ctx.scale(dpr, dpr);
-
-	const pxPerEm = parseFloat(getComputedStyle(parent).fontSize) || 14;
-	const theme = readTheme();
-	const layout = layoutChart(
-		ctx,
-		samples,
-		width,
-		height,
-		pxPerEm,
-		theme.family,
-	);
-	drawAxes(ctx, layout, theme, pxPerEm);
-	return drawSeries(ctx, samples, layout, theme, showDots);
 }

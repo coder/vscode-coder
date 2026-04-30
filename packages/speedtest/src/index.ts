@@ -6,6 +6,8 @@ import {
 	type ChartPoint,
 	findNearestDot,
 	findNearestOnLine,
+	formatDuration,
+	formatThroughput,
 	toChartSamples,
 } from "./chartUtils";
 import "./index.css";
@@ -60,30 +62,63 @@ function renderPage(
 }
 
 function renderHeading(workspaceId: string): HTMLElement {
+	const header = document.createElement("header");
+	header.className = "page-header";
+
+	const eyebrow = document.createElement("p");
+	eyebrow.className = "eyebrow";
+	eyebrow.textContent = "Speed Test";
+
 	const heading = document.createElement("h1");
-	heading.className = "workspace-name";
+	heading.className = "workspace-id";
 	heading.textContent = workspaceId;
-	return heading;
+
+	header.append(eyebrow, heading);
+	return header;
 }
 
 function renderSummary(data: SpeedtestResult): HTMLElement {
 	const summary = document.createElement("div");
 	summary.className = "summary";
-	summary.innerHTML = `
-		<div class="stat">
-			<span class="stat-label">Throughput</span>
-			<span class="stat-value">${data.overall.throughput_mbits.toFixed(2)} <small>Mbps</small></span>
-		</div>
-		<div class="stat">
-			<span class="stat-label">Duration</span>
-			<span class="stat-value">${data.overall.end_time_seconds.toFixed(1)}<small>s</small></span>
-		</div>
-		<div class="stat">
-			<span class="stat-label">Intervals</span>
-			<span class="stat-value">${data.intervals.length}</span>
-		</div>
-	`;
+	const duration = formatDuration(data.overall.end_time_seconds);
+	summary.append(
+		renderStat("Throughput", formatThroughput(data.overall.throughput_mbits), {
+			unit: "Mbps",
+		}),
+		renderStat("Duration", duration.value, {
+			unit: duration.unit,
+			tight: true,
+		}),
+		renderStat("Intervals", String(data.intervals.length)),
+	);
 	return summary;
+}
+
+function renderStat(
+	label: string,
+	value: string,
+	opts?: { unit: string; tight?: boolean },
+): HTMLElement {
+	const stat = document.createElement("div");
+	stat.className = "stat";
+
+	const labelEl = document.createElement("span");
+	labelEl.className = "stat-label";
+	labelEl.textContent = label;
+
+	const valueEl = document.createElement("span");
+	valueEl.className = "stat-value";
+	if (opts) {
+		valueEl.textContent = opts.tight ? value : `${value} `;
+		const unitEl = document.createElement("small");
+		unitEl.textContent = opts.unit;
+		valueEl.appendChild(unitEl);
+	} else {
+		valueEl.textContent = value;
+	}
+
+	stat.append(labelEl, valueEl);
+	return stat;
 }
 
 function renderChart(samples: ChartPoint[]): {

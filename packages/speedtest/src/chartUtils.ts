@@ -20,17 +20,49 @@ export function niceStep(raw: number): number {
 	);
 }
 
+/** Round to the nearest `1/2/5 × 10^n` (Heckbert's nice numbers). */
+export function niceRound(n: number): number {
+	if (!Number.isFinite(n) || n <= 0) return 1;
+	const mag = Math.pow(10, Math.floor(Math.log10(n)));
+	const norm = n / mag;
+	// Looks like magic but it works well
+	const fraction = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10;
+	return fraction * mag;
+}
+
+/** Pick the largest time unit that fits a duration (or tick step). */
+function pickTimeUnit(seconds: number): {
+	unit: "s" | "m" | "h";
+	divisor: number;
+} {
+	if (seconds >= 3600) return { unit: "h", divisor: 3600 };
+	if (seconds >= 60) return { unit: "m", divisor: 60 };
+	return { unit: "s", divisor: 1 };
+}
+
 /** Format a tick value as `Ns`, `Nm`, or `Nh` depending on the step size. */
 export function formatTick(t: number, step: number): string {
-	if (step >= 3600) {
-		const h = t / 3600;
-		return `${Number.isInteger(h) ? h : h.toFixed(1)}h`;
-	}
-	if (step >= 60) {
-		const m = t / 60;
-		return `${Number.isInteger(m) ? m : m.toFixed(1)}m`;
-	}
-	return `${t}s`;
+	const { unit, divisor } = pickTimeUnit(step);
+	const v = t / divisor;
+	if (unit === "s") return `${v}s`;
+	return `${Number.isInteger(v) ? v : v.toFixed(1)}${unit}`;
+}
+
+/** `YY.XX` below 1000 Mbps, integer above. */
+export function formatThroughput(mbits: number): string {
+	return mbits >= 1000 ? mbits.toFixed(0) : mbits.toFixed(2);
+}
+
+/** Format a duration value-magnitude as `{value, unit}` so the summary can style the unit. */
+export function formatDuration(seconds: number): {
+	value: string;
+	unit: string;
+} {
+	const { unit, divisor } = pickTimeUnit(seconds);
+	const v = seconds / divisor;
+	// Sub-minute always shows a decimal; m/h drop the trailing zero on whole numbers.
+	if (unit === "s") return { value: v.toFixed(1), unit };
+	return { value: Number.isInteger(v) ? String(v) : v.toFixed(1), unit };
 }
 
 /** Convert speedtest intervals into chart points with hover labels. */
@@ -40,7 +72,7 @@ export function toChartSamples(
 	return intervals.map((iv) => ({
 		x: iv.end_time_seconds,
 		y: iv.throughput_mbits,
-		label: `${iv.throughput_mbits.toFixed(2)} Mbps (${iv.start_time_seconds.toFixed(0)}\u2013${iv.end_time_seconds.toFixed(0)}s)`,
+		label: `${formatThroughput(iv.throughput_mbits)} Mbps (${iv.start_time_seconds.toFixed(0)}\u2013${iv.end_time_seconds.toFixed(0)}s)`,
 	}));
 }
 

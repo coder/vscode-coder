@@ -14,11 +14,24 @@ body {
 	font-size: var(--vscode-font-size);
 }
 
-.workspace-name {
+.page-header {
 	margin: 0 0 2em;
+	text-align: center;
+}
+
+.eyebrow {
+	margin: 0 0 0.4em;
+	font-size: 0.8em;
+	font-weight: 600;
+	opacity: 0.6;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.workspace-id {
+	margin: 0;
 	font-size: 1.8em;
 	font-weight: 600;
-	text-align: center;
 	word-break: break-all;
 }
 

@@ -28,7 +28,6 @@ import {
 import { resolveCliAuth } from "./settings/cli";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
-import { type SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";
 import {
 	AgentTreeItem,
@@ -50,6 +49,7 @@ import type { SecretsManager } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator } from "./login/loginCoordinator";
+import type { SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
 import type {
 	DuplicateWorkspaceIpc,
 	PongMessage,
