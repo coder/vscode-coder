@@ -12,7 +12,6 @@ import {
 	isStableTask,
 	TasksApi,
 	type CreateTaskParams,
-	type NotificationDef,
 	type TaskDetails,
 	type TaskLogs,
 	type TaskTemplate,
@@ -30,11 +29,11 @@ import { vscodeProposed } from "../../vscodeProposed";
 import {
 	dispatchCommand,
 	dispatchRequest,
-	getWebviewHtml,
 	isIpcCommand,
 	isIpcRequest,
 	notifyWebview,
-} from "../util";
+} from "../dispatch";
+import { getWebviewHtml } from "../html";
 
 import type {
 	Preset,
@@ -57,12 +56,15 @@ export class TasksPanelProvider
 {
 	public static readonly viewType = "coder.tasksPanel";
 
+	/** Methods whose handler errors pop a dialog; others are logged only. */
 	private static readonly USER_ACTION_METHODS = new Set([
 		TasksApi.pauseTask.method,
 		TasksApi.resumeTask.method,
 		TasksApi.deleteTask.method,
 		TasksApi.downloadLogs.method,
 		TasksApi.sendTaskMessage.method,
+		TasksApi.viewInCoder.method,
+		TasksApi.viewLogs.method,
 	]);
 
 	private view?: vscode.WebviewView;
@@ -110,12 +112,12 @@ export class TasksPanelProvider
 	) {}
 
 	public showCreateForm(): void {
-		this.notify(TasksApi.showCreateForm);
+		notifyWebview(this.view?.webview, TasksApi.showCreateForm);
 	}
 
 	public refresh(): void {
 		this.cachedLogs = undefined;
-		this.notify(TasksApi.refresh);
+		notifyWebview(this.view?.webview, TasksApi.refresh);
 	}
 
 	resolveWebviewView(
@@ -161,15 +163,17 @@ export class TasksPanelProvider
 	}
 
 	private async handleMessage(message: unknown): Promise<void> {
+		const showErrorToUser = (method: string) =>
+			TasksPanelProvider.USER_ACTION_METHODS.has(method);
 		if (isIpcRequest(message)) {
 			await dispatchRequest(message, this.requestHandlers, this.view?.webview, {
 				logger: this.logger,
-				showErrorToUser: (method) =>
-					TasksPanelProvider.USER_ACTION_METHODS.has(method),
+				showErrorToUser,
 			});
 		} else if (isIpcCommand(message)) {
 			await dispatchCommand(message, this.commandHandlers, {
 				logger: this.logger,
+				showErrorToUser,
 			});
 		}
 	}
@@ -364,7 +368,7 @@ export class TasksPanelProvider
 			const clean = stripAnsi(line);
 			// Skip lines that were purely ANSI codes, but keep intentional blank lines.
 			if (line.length > 0 && clean.length === 0) return;
-			this.notify(TasksApi.workspaceLogsAppend, [clean]);
+			notifyWebview(this.view?.webview, TasksApi.workspaceLogsAppend, [clean]);
 		};
 
 		const onStreamClose = () => {
@@ -423,7 +427,7 @@ export class TasksPanelProvider
 		try {
 			const tasks = await this.fetchTasks();
 			if (tasks !== null) {
-				this.notify(TasksApi.tasksUpdated, tasks);
+				notifyWebview(this.view?.webview, TasksApi.tasksUpdated, tasks);
 			}
 		} catch (err) {
 			this.logger.warn("Failed to refresh tasks after action", err);
@@ -433,7 +437,7 @@ export class TasksPanelProvider
 	private async refreshAndNotifyTask(taskId: string): Promise<void> {
 		try {
 			const task = await this.client.getTask("me", taskId);
-			this.notify(TasksApi.taskUpdated, task);
+			notifyWebview(this.view?.webview, TasksApi.taskUpdated, task);
 		} catch (err) {
 			this.logger.warn("Failed to refresh task after action", err);
 		}
@@ -519,15 +523,6 @@ export class TasksPanelProvider
 			}
 			this.logger.warn("Failed to fetch task logs", err);
 			return { status: "error" };
-		}
-	}
-
-	private notify<D>(
-		def: NotificationDef<D>,
-		...args: D extends void ? [] : [data: D]
-	): void {
-		if (this.view) {
-			notifyWebview(this.view.webview, def, ...args);
 		}
 	}
 

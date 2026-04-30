@@ -4,7 +4,6 @@ import {
 	buildCommandHandlers,
 	buildRequestHandlers,
 	ChatApi,
-	type NotificationDef,
 } from "@repo/shared";
 
 import { type CoderApi } from "../../api/coderApi";
@@ -12,11 +11,11 @@ import { type Logger } from "../../logging/logger";
 import {
 	dispatchCommand,
 	dispatchRequest,
-	getNonce,
 	isIpcCommand,
 	isIpcRequest,
 	notifyWebview,
-} from "../util";
+} from "../dispatch";
+import { getNonce } from "../html";
 
 /**
  * Provides a webview that embeds the Coder agent chat UI.
@@ -62,17 +61,10 @@ export class ChatPanelProvider
 			: "dark";
 	}
 
-	private notify<D>(
-		def: NotificationDef<D>,
-		...args: D extends void ? [] : [data: D]
-	): void {
-		if (this.view) {
-			notifyWebview(this.view.webview, def, ...args);
-		}
-	}
-
 	private sendTheme(): void {
-		this.notify(ChatApi.setTheme, { theme: this.getTheme() });
+		notifyWebview(this.view?.webview, ChatApi.setTheme, {
+			theme: this.getTheme(),
+		});
 	}
 
 	/**
@@ -113,7 +105,6 @@ export class ChatPanelProvider
 				} else if (isIpcCommand(message)) {
 					void dispatchCommand(message, this.commandHandlers, {
 						logger: this.logger,
-						showErrorToUser: () => false,
 					});
 				}
 			}),
@@ -198,13 +189,13 @@ export class ChatPanelProvider
 				"Chat iframe requested auth but no session token available " +
 					"after all retries",
 			);
-			this.notify(ChatApi.authError, {
+			notifyWebview(this.view?.webview, ChatApi.authError, {
 				error: "No session token available. Please sign in and retry.",
 			});
 			return;
 		}
 		this.logger.info("Chat: forwarding token to iframe");
-		this.notify(ChatApi.authBootstrapToken, { token });
+		notifyWebview(this.view?.webview, ChatApi.authBootstrapToken, { token });
 	}
 
 	private getIframeHtml(embedUrl: string, allowedOrigin: string): string {
@@ -262,11 +253,9 @@ export class ChatPanelProvider
         status.style.display = 'none';
       });
 
-      // Shim sits between two wire formats. The iframe speaks
-      // { type, payload } (a contract owned by the Coder server).
-      // The extension speaks the IPC protocol: commands are
-      // { method, params } and notifications are { type, data }.
-      // See packages/webview-shared/README.md.
+      // Bridges the iframe ({ type, payload }, owned by the Coder server)
+      // and the extension IPC ({ method, params } / { type, data }).
+      // Cases below must mirror ChatApi; inline JS can't import it.
       const toIframe = (type, payload) => {
         iframe.contentWindow.postMessage({ type, payload }, '${allowedOrigin}');
       };
@@ -297,16 +286,18 @@ export class ChatPanelProvider
             vscode.postMessage({ method: 'coder:chat-ready' });
             return;
           case 'coder:navigate':
-            vscode.postMessage({
-              method: 'coder:navigate',
-              params: { url: msg.payload?.url },
-            });
+            if (msg.payload?.url) {
+              vscode.postMessage({
+                method: 'coder:navigate',
+                params: { url: msg.payload.url },
+              });
+            }
             return;
         }
       };
 
       const handleFromExtension = (msg) => {
-        const data = msg.data || {};
+        const data = msg.data ?? {};
         switch (msg.type) {
           case 'coder:auth-bootstrap-token':
             status.textContent = 'Signing in…';

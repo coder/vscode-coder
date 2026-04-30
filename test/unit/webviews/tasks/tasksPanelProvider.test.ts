@@ -788,7 +788,7 @@ describe("TasksPanelProvider", () => {
 			const res = await h.request(defineRequest("unknownMethod"));
 
 			expect(res.success).toBe(false);
-			expect(res.error).toContain("Unknown method");
+			expect(res.error).toContain("Unknown request");
 		});
 
 		it("createTask succeeds even when refreshing the task list fails", async () => {

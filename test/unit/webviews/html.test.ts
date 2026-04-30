@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as vscode from "vscode";
 
-import { escapeHtml, getNonce, getWebviewHtml } from "@/webviews/util";
+import { escapeHtml, getNonce, getWebviewHtml } from "@/webviews/html";
 
 const webview: vscode.Webview = {
 	options: { enableScripts: true, localResourceRoots: [] },

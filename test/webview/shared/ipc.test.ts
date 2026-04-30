@@ -31,11 +31,11 @@ describe("sendCommand", () => {
 		expect(sent).toEqual([{ method: "ns/doThing", params: { id: "42" } }]);
 	});
 
-	it("posts without params for void-payload commands", () => {
+	it("omits params for void-payload commands", () => {
 		const cmd = defineCommand<void>("ns/noop");
 		sendCommand(cmd);
 
-		expect(sent).toEqual([{ method: "ns/noop", params: undefined }]);
+		expect(sent).toEqual([{ method: "ns/noop" }]);
 	});
 });
 
@@ -89,6 +89,19 @@ describe("onNotification", () => {
 		window.dispatchEvent(new MessageEvent("message", { data: 42 }));
 
 		expect(cb).not.toHaveBeenCalled();
+		unsubscribe();
+	});
+
+	it("fires for void notifications (no data field)", () => {
+		const def = defineNotification<void>("ns/ping");
+		const cb = vi.fn();
+		const unsubscribe = onNotification(def, cb);
+
+		window.dispatchEvent(
+			new MessageEvent("message", { data: { type: "ns/ping" } }),
+		);
+		expect(cb).toHaveBeenCalledWith(undefined);
+
 		unsubscribe();
 	});
 

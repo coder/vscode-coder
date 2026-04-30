@@ -11,12 +11,12 @@ import {
 import {
 	dispatchCommand,
 	dispatchRequest,
-	getWebviewHtml,
 	isIpcCommand,
 	isIpcRequest,
 	notifyWebview,
 	onWhileVisible,
-} from "../util";
+} from "../dispatch";
+import { getWebviewHtml } from "../html";
 
 import type { Logger } from "../../logging/logger";
 

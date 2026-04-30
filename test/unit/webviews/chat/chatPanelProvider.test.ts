@@ -16,10 +16,7 @@ interface Harness {
 	html: () => string;
 }
 
-function createHarness(): Harness {
-	const client = new MockCoderApi();
-	client.setCredentials("https://coder.example.com", "test-token");
-
+function createHarnessFor(client: MockCoderApi): Harness {
 	const provider = new ChatPanelProvider(client, createMockLogger());
 
 	let handler: ((msg: unknown) => void) | null = null;
@@ -60,6 +57,12 @@ function createHarness(): Harness {
 		sendFromWebview: (msg: unknown) => handler?.(msg),
 		html: () => webview.webview.html,
 	};
+}
+
+function createHarness(): Harness {
+	const client = new MockCoderApi();
+	client.setCredentials("https://coder.example.com", "test-token");
+	return createHarnessFor(client);
 }
 
 function findPostedMessage(
@@ -125,6 +128,28 @@ describe("ChatPanelProvider", () => {
 				type: "coder:auth-bootstrap-token",
 				data: { token: "test-token" },
 			});
+		});
+
+		it("posts auth-error after exhausting retries when token is missing", () => {
+			vi.useFakeTimers();
+			try {
+				const client = new MockCoderApi();
+				client.setCredentials("https://coder.example.com", undefined);
+				const { sendFromWebview, postMessage } = createHarnessFor(client);
+
+				sendFromWebview({ method: "coder:vscode-ready" });
+				// 5 retries with base 500ms exponential backoff.
+				vi.advanceTimersByTime(500 + 1000 + 2000 + 4000 + 8000);
+
+				expect(findPostedMessage(postMessage, "coder:auth-error")).toEqual({
+					type: "coder:auth-error",
+					data: {
+						error: "No session token available. Please sign in and retry.",
+					},
+				});
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 

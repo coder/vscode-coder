@@ -1,6 +1,9 @@
 import { defineCommand, defineNotification } from "../ipc/protocol";
 
-/** The chat webview embeds an iframe that speaks to the Coder server. */
+/**
+ * Chat webview API. The inline shim in `chatPanelProvider.ts` mirrors
+ * these entries; missed updates fail silently at runtime.
+ */
 export const ChatApi = {
 	/** Iframe reports it needs the session token. */
 	vscodeReady: defineCommand("coder:vscode-ready"),

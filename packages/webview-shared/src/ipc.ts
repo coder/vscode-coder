@@ -14,7 +14,7 @@ export function sendCommand<P>(
 ): void {
 	postMessage({
 		method: def.method,
-		params: args[0],
+		...(args.length > 0 ? { params: args[0] } : {}),
 	});
 }
 
