@@ -9,4 +9,8 @@ export interface WebviewMessage {
 export { getState, setState, postMessage } from "./api";
 
 // IPC helpers for vanilla webviews. React webviews use `useIpc` instead.
-export { sendCommand, subscribeNotifications } from "./ipc";
+export {
+	buildNotificationRouter,
+	sendCommand,
+	subscribeNotifications,
+} from "./ipc";

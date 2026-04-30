@@ -15,7 +15,12 @@ import {
 	isIpcRequest,
 	notifyWebview,
 } from "../dispatch";
-import { buildWebviewCsp, getNonce, getWebviewAssetUris } from "../html";
+import {
+	buildWebviewCsp,
+	escapeHtml,
+	getNonce,
+	getWebviewAssetUris,
+} from "../html";
 
 /**
  * Webview that embeds the Coder agent chat UI inside an iframe. The
@@ -217,7 +222,7 @@ export class ChatPanelProvider
 </head>
 <body>
   <div id="status">Loading chat…</div>
-  <iframe id="chat-frame" src="${embedUrl}" allow="clipboard-write" style="display:none;"></iframe>
+  <iframe id="chat-frame" src="${escapeHtml(embedUrl)}" allow="clipboard-write" style="display:none;"></iframe>
   <script nonce="${nonce}" type="module" src="${scriptUri.toString()}"></script>
 </body>
 </html>`;

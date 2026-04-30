@@ -20,9 +20,33 @@ export function sendCommand<P>(
 }
 
 /**
- * Exhaustively subscribe to every notification on `api`. Compile error
- * if any notification lacks a handler. Returns a single unsubscribe.
+ * Build a dispatcher that routes a message to the matching notification
+ * handler. Compile error if a handler is missing. Use this when composing
+ * dispatch with other listener logic; otherwise use `subscribeNotifications`.
  */
+export function buildNotificationRouter<
+	Api extends Record<string, { kind: string; method: string }>,
+>(api: Api, handlers: NotificationHandlerMap<Api>): (data: unknown) => void;
+export function buildNotificationRouter(
+	api: Record<string, { kind: string; method: string }>,
+	handlers: Record<string, (data: unknown) => void>,
+): (data: unknown) => void {
+	const byMethod = new Map<string, (data: unknown) => void>();
+	for (const [key, def] of Object.entries(api)) {
+		if (def.kind === "notification") {
+			byMethod.set(def.method, handlers[key]);
+		}
+	}
+	return (data: unknown) => {
+		if (typeof data !== "object" || data === null) {
+			return;
+		}
+		const msg = data as { type?: string; data?: unknown };
+		byMethod.get(msg.type ?? "")?.(msg.data);
+	};
+}
+
+/** Subscribe to every notification on `api`. Compile error if a handler is missing. */
 export function subscribeNotifications<
 	Api extends Record<string, { kind: string; method: string }>,
 >(api: Api, handlers: NotificationHandlerMap<Api>): () => void;
@@ -30,28 +54,13 @@ export function subscribeNotifications(
 	api: Record<string, { kind: string; method: string }>,
 	handlers: Record<string, (data: unknown) => void>,
 ): () => void {
-	const byMethod = new Map<string, (data: unknown) => void>();
-	for (const [key, def] of Object.entries(api)) {
-		if (def.kind === "notification") {
-			byMethod.set(def.method, handlers[key]);
-		}
-	}
-	const handler = (event: MessageEvent<unknown>) => {
-		const msg = event.data;
-		if (typeof msg !== "object" || msg === null) {
-			return;
-		}
-		const cb = byMethod.get((msg as { type?: string }).type ?? "");
-		cb?.((msg as { data: unknown }).data);
-	};
+	const route = buildNotificationRouter(api, handlers);
+	const handler = (event: MessageEvent<unknown>) => route(event.data);
 	window.addEventListener("message", handler);
 	return () => window.removeEventListener("message", handler);
 }
 
-/**
- * Single-notification subscribe. React's `useIpc` uses this for
- * `apiHook.on<Name>`. Vanilla webviews should use `subscribeNotifications`.
- */
+/** Single-notification subscribe; React's `useIpc` uses this. Vanilla webviews use `subscribeNotifications`. */
 export function subscribeOne<D>(
 	def: NotificationDef<D>,
 	callback: (data: D) => void,

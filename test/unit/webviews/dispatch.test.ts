@@ -4,6 +4,8 @@ import * as vscode from "vscode";
 import {
 	dispatchCommand,
 	dispatchRequest,
+	isIpcCommand,
+	isIpcRequest,
 	notifyWebview,
 	onWhileVisible,
 } from "@/webviews/dispatch";
@@ -159,6 +161,50 @@ describe("dispatchRequest", () => {
 				{ logger },
 			),
 		).resolves.toBeUndefined();
+	});
+});
+
+describe("isIpcRequest", () => {
+	it("matches messages with both string requestId and string method", () => {
+		expect(isIpcRequest({ requestId: "r1", method: "get" })).toBe(true);
+	});
+
+	it("rejects non-string requestId", () => {
+		expect(isIpcRequest({ requestId: 1, method: "get" })).toBe(false);
+	});
+
+	it("rejects non-string method", () => {
+		expect(isIpcRequest({ requestId: "r1", method: 7 })).toBe(false);
+	});
+
+	it("rejects messages missing requestId", () => {
+		expect(isIpcRequest({ method: "get" })).toBe(false);
+	});
+
+	it("rejects null and non-objects", () => {
+		expect(isIpcRequest(null)).toBe(false);
+		expect(isIpcRequest("string")).toBe(false);
+		expect(isIpcRequest(undefined)).toBe(false);
+	});
+});
+
+describe("isIpcCommand", () => {
+	it("matches messages with method but no requestId", () => {
+		expect(isIpcCommand({ method: "do" })).toBe(true);
+		expect(isIpcCommand({ method: "do", params: { x: 1 } })).toBe(true);
+	});
+
+	it("rejects messages with requestId (those are requests)", () => {
+		expect(isIpcCommand({ requestId: "r1", method: "do" })).toBe(false);
+	});
+
+	it("rejects non-string method", () => {
+		expect(isIpcCommand({ method: 7 })).toBe(false);
+	});
+
+	it("rejects null and non-objects", () => {
+		expect(isIpcCommand(null)).toBe(false);
+		expect(isIpcCommand(42)).toBe(false);
 	});
 });
 

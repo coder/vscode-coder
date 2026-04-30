@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import * as vscode from "vscode";
 
-import { escapeHtml, getNonce, getWebviewHtml } from "@/webviews/html";
+import {
+	buildWebviewCsp,
+	escapeHtml,
+	getNonce,
+	getWebviewHtml,
+} from "@/webviews/html";
 
 const webview: vscode.Webview = {
 	options: { enableScripts: true, localResourceRoots: [] },
@@ -38,6 +43,23 @@ describe("getNonce", () => {
 		const b = getNonce();
 		expect(a).toMatch(/^[A-Za-z0-9+/=]{24}$/);
 		expect(a).not.toBe(b);
+	});
+});
+
+describe("buildWebviewCsp", () => {
+	it("emits a base CSP without frame-src by default", () => {
+		const csp = buildWebviewCsp(webview, "abc");
+		expect(csp).toContain("default-src 'none'");
+		expect(csp).toContain("script-src 'nonce-abc'");
+		expect(csp).toContain("style-src mock-csp 'unsafe-inline'");
+		expect(csp).not.toContain("frame-src");
+	});
+
+	it("inserts frame-src when the option is set", () => {
+		const csp = buildWebviewCsp(webview, "abc", {
+			frameSrc: "https://coder.example.com",
+		});
+		expect(csp).toContain("frame-src https://coder.example.com");
 	});
 });
 

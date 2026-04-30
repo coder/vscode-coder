@@ -1,28 +1,106 @@
-import { ChatApi } from "@repo/shared";
-import { sendCommand, subscribeNotifications } from "@repo/webview-shared";
+import { ChatApi, type NotificationHandlerMap } from "@repo/shared";
+import { buildNotificationRouter, sendCommand } from "@repo/webview-shared";
 
 import "./index.css";
 
-/**
- * Chat shim. Bridges the iframe's foreign `{ type, payload }` protocol
- * and the extension's `ChatApi`. The iframe and status div are
- * pre-rendered in the panel's HTML; the bundle just attaches listeners.
- */
+/** Chat shim: source-gated bridge between the iframe `{ type, payload }` protocol and `ChatApi`. */
+export function main(): void {
+	const shim = findShim();
+	if (!shim) {
+		return;
+	}
+	revealIframeOnLoad(shim);
+	listenForMessages(shim);
+}
 
-const iframe = document.getElementById("chat-frame") as HTMLIFrameElement;
-const status = document.getElementById("status") as HTMLDivElement;
-const allowedOrigin = new URL(iframe.src).origin;
+interface Shim {
+	iframe: HTMLIFrameElement;
+	status: HTMLDivElement;
+	allowedOrigin: string;
+}
 
-iframe.addEventListener("load", () => {
-	iframe.style.display = "block";
-	status.style.display = "none";
-});
+interface IframeMessage {
+	type?: string;
+	payload?: { url?: string };
+}
 
-function toIframe(type: string, payload: unknown): void {
+function findShim(): Shim | null {
+	const iframe = document.getElementById("chat-frame");
+	const status = document.getElementById("status");
+	if (
+		!(iframe instanceof HTMLIFrameElement) ||
+		!(status instanceof HTMLDivElement)
+	) {
+		return null;
+	}
+	return { iframe, status, allowedOrigin: new URL(iframe.src).origin };
+}
+
+function revealIframeOnLoad({ iframe, status }: Shim): void {
+	iframe.addEventListener("load", () => {
+		iframe.style.display = "block";
+		status.style.display = "none";
+	});
+}
+
+function listenForMessages(shim: Shim): void {
+	const route = buildNotificationRouter(
+		ChatApi,
+		buildNotificationHandlers(shim),
+	);
+	window.addEventListener("message", (event) => {
+		if (event.source === shim.iframe.contentWindow) {
+			if (typeof event.data === "object" && event.data !== null) {
+				handleFromIframe(shim, event.data as IframeMessage);
+			}
+			return;
+		}
+		route(event.data);
+	});
+}
+
+function handleFromIframe({ status }: Shim, msg: IframeMessage): void {
+	switch (msg.type) {
+		case "coder:vscode-ready":
+			status.textContent = "Authenticating…";
+			sendCommand(ChatApi.vscodeReady);
+			return;
+		case "coder:chat-ready":
+			sendCommand(ChatApi.chatReady);
+			return;
+		case "coder:navigate":
+			if (msg.payload?.url) {
+				sendCommand(ChatApi.navigate, { url: msg.payload.url });
+			}
+			return;
+		default:
+			return;
+	}
+}
+
+// Compile-checked: a new ChatApi notification without a handler fails the build.
+function buildNotificationHandlers(
+	shim: Shim,
+): NotificationHandlerMap<typeof ChatApi> {
+	return {
+		setTheme: ({ theme }) => postToIframe(shim, "coder:set-theme", { theme }),
+		authBootstrapToken: ({ token }) => {
+			shim.status.textContent = "Signing in…";
+			postToIframe(shim, "coder:vscode-auth-bootstrap", { token });
+		},
+		authError: ({ error }) => showRetry(shim, error),
+	};
+}
+
+function postToIframe(
+	{ iframe, allowedOrigin }: Shim,
+	type: string,
+	payload: unknown,
+): void {
 	iframe.contentWindow?.postMessage({ type, payload }, allowedOrigin);
 }
 
-function showRetry(error: string): void {
+function showRetry({ iframe, status }: Shim, error: string): void {
 	status.textContent = "";
 	status.appendChild(
 		document.createTextNode(error || "Authentication failed."),
@@ -40,40 +118,4 @@ function showRetry(error: string): void {
 	iframe.style.display = "none";
 }
 
-// Compile-checked: a new ChatApi notification without a handler fails the build.
-subscribeNotifications(ChatApi, {
-	setTheme: ({ theme }) => toIframe("coder:set-theme", { theme }),
-	authBootstrapToken: ({ token }) => {
-		status.textContent = "Signing in…";
-		toIframe("coder:vscode-auth-bootstrap", { token });
-	},
-	authError: ({ error }) => showRetry(error),
-});
-
-// Iframe -> extension. `msg.type` strings are the foreign Coder protocol;
-// every `sendCommand(ChatApi.X)` below is still type-checked.
-window.addEventListener("message", (event) => {
-	if (event.source !== iframe.contentWindow) {
-		return;
-	}
-	if (typeof event.data !== "object" || event.data === null) {
-		return;
-	}
-	const msg = event.data as { type?: string; payload?: { url?: string } };
-	switch (msg.type) {
-		case "coder:vscode-ready":
-			status.textContent = "Authenticating…";
-			sendCommand(ChatApi.vscodeReady);
-			return;
-		case "coder:chat-ready":
-			sendCommand(ChatApi.chatReady);
-			return;
-		case "coder:navigate":
-			if (msg.payload?.url) {
-				sendCommand(ChatApi.navigate, { url: msg.payload.url });
-			}
-			return;
-		default:
-			return;
-	}
-});
+main();

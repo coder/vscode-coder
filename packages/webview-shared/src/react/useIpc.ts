@@ -60,8 +60,8 @@ export function useIpc(options: UseIpcOptions = {}) {
 		};
 	}, []);
 
-	// Request/response correlation lives here. Notifications are routed via
-	// the shared onNotification helper (see the method below).
+	// Request/response correlation lives here; notifications are handled
+	// per-subscription below.
 	useEffect(() => {
 		const handler = (event: MessageEvent) => {
 			const msg = event.data as IpcResponse | undefined;

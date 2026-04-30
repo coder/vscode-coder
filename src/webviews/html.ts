@@ -19,10 +19,7 @@ export function getWebviewAssetUris(
 	};
 }
 
-/**
- * Build the webview CSP. Pass `frameSrc` to allow embedding an iframe
- * from that origin (used by the chat panel).
- */
+/** Build the webview CSP. Pass `frameSrc` to allow embedding an iframe. */
 export function buildWebviewCsp(
 	webview: vscode.Webview,
 	nonce: string,
