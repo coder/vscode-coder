@@ -6,7 +6,8 @@ import { toError } from "../error/errorUtils";
 /** Telemetry level, mirrors `coder.telemetry.level`. Ordered: off < local. */
 export type TelemetryLevel = "off" | "local";
 
-/** Session-stable resource attributes. Field names follow OTel conventions. */
+/** Session-stable resource attributes. Field names are inspired by OTel
+ * resource attributes; they are camelCase TypeScript and not a 1:1 mapping. */
 export interface SessionContext {
 	readonly extensionVersion: string;
 	readonly machineId: string;
@@ -14,33 +15,36 @@ export interface SessionContext {
 	readonly osType: string;
 	readonly osVersion: string;
 	readonly hostArch: string;
-	readonly platformType: string;
+	readonly platformName: string;
 	readonly platformVersion: string;
 }
 
 /** Per-event context: session attributes plus the current deployment URL. */
 export interface TelemetryContext extends SessionContext {
-	deploymentUrl: string;
+	readonly deploymentUrl: string;
 }
 
 export interface TelemetryEvent {
-	eventId: string;
-	eventName: string;
-	timestamp: string;
-	eventSequence: number;
+	readonly eventId: string;
+	readonly eventName: string;
+	readonly timestamp: string;
+	readonly eventSequence: number;
 
-	context: TelemetryContext;
+	readonly context: TelemetryContext;
 
-	properties: Record<string, string>;
-	measurements: Record<string, number>;
+	readonly properties: Readonly<Record<string, string>>;
+	readonly measurements: Readonly<Record<string, number>>;
 
-	traceId?: string;
+	/** Shared by all events in a trace. Maps to OTel `trace_id`. */
+	readonly traceId?: string;
+	/** Set on phase children only. Equals the parent event's `eventId`. Maps to OTel `parent_span_id`. */
+	readonly parentEventId?: string;
 
-	error?: {
+	readonly error?: Readonly<{
 		message: string;
 		type?: string;
 		code?: string;
-	};
+	}>;
 }
 
 /**
@@ -70,7 +74,7 @@ export function buildSession(ctx: vscode.ExtensionContext): SessionContext {
 		osType: detectOsType(),
 		osVersion: os.release(),
 		hostArch: process.arch,
-		platformType: vscode.env.appName,
+		platformName: vscode.env.appName,
 		platformVersion: vscode.version,
 	};
 }
@@ -80,15 +84,13 @@ export function buildErrorBlock(
 	value: unknown,
 ): NonNullable<TelemetryEvent["error"]> {
 	const err = toError(value);
-	const block: NonNullable<TelemetryEvent["error"]> = { message: err.message };
-	if (err.name && err.name !== "Error") {
-		block.type = err.name;
-	}
 	const rawCode = (value as { code?: unknown } | null | undefined)?.code;
-	if (typeof rawCode === "string" || typeof rawCode === "number") {
-		block.code = String(rawCode);
-	}
-	return block;
+	const hasCode = typeof rawCode === "string" || typeof rawCode === "number";
+	return {
+		message: err.message,
+		...(err.name && err.name !== "Error" && { type: err.name }),
+		...(hasCode && { code: String(rawCode) }),
+	};
 }
 
 // Node uses "win32" on Windows; OTel's os.type is "windows".

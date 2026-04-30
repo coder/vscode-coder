@@ -18,7 +18,7 @@ describe("buildSession", () => {
 			extensionVersion: "1.2.3-test",
 			machineId: "test-machine-id",
 			sessionId: "test-session-id",
-			platformType: "Visual Studio Code",
+			platformName: "Visual Studio Code",
 			platformVersion: "1.106.0-test",
 			hostArch: process.arch,
 		});

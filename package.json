@@ -201,7 +201,10 @@
 						"Disable telemetry collection.",
 						"Record events on this machine only."
 					],
-					"default": "local"
+					"default": "local",
+					"tags": [
+						"telemetry"
+					]
 				}
 			}
 		},

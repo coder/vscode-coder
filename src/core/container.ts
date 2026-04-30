@@ -146,9 +146,10 @@ export class ServiceContainer implements vscode.Disposable {
 	 */
 	dispose(): void {
 		this.contextManager.dispose();
-		this.logger.dispose();
 		this.loginCoordinator.dispose();
 		// Fire-and-forget: VS Code does not await deactivation.
 		void this.telemetryService.dispose();
+		// Logger last so telemetry teardown can still log warnings.
+		this.logger.dispose();
 	}
 }

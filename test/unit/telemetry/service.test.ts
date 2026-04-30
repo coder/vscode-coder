@@ -127,20 +127,45 @@ describe("TelemetryService", () => {
 				error: { message: "boom" },
 			});
 		});
+
+		it("forwards caller measurements alongside the framework-set durationMs", async () => {
+			await h.service.time(
+				"auth.token_refresh",
+				() => Promise.resolve(),
+				{},
+				{ attempts: 2 },
+			);
+
+			const [event] = h.sink.events;
+			expect(event.measurements.attempts).toBe(2);
+			expect(event.measurements.durationMs).toBeGreaterThanOrEqual(0);
+		});
+
+		it("emits with a fresh traceId so it maps to a single-span trace", async () => {
+			await h.service.time("a", () => Promise.resolve(1));
+			await h.service.time("b", () => Promise.resolve(2));
+
+			const [a, b] = h.sink.events;
+			expect(a.traceId).toBeDefined();
+			expect(b.traceId).toBeDefined();
+			expect(a.traceId).not.toBe(b.traceId);
+			expect(a.parentEventId).toBeUndefined();
+			expect(b.parentEventId).toBeUndefined();
+		});
 	});
 
 	describe("trace", () => {
 		it("parent and child phase events share one traceId on success", async () => {
-			const result = await h.service.trace("remote.setup", async (trace) => {
-				await trace.phase("workspace_lookup", () => Promise.resolve("ws"));
-				await trace.phase("ssh_config", () => Promise.resolve("cfg"));
+			const result = await h.service.trace("remote.setup", async (span) => {
+				await span.phase("workspace_lookup", () => Promise.resolve("ws"));
+				await span.phase("ssh_config", () => Promise.resolve("cfg"));
 				return "done";
 			});
 
 			expect(result).toBe("done");
 			const [phase1, phase2, parent] = h.sink.events;
-			expect(phase1.eventName).toBe("remote.setup.phase");
-			expect(phase2.eventName).toBe("remote.setup.phase");
+			expect(phase1.eventName).toBe("remote.setup.workspace_lookup");
+			expect(phase2.eventName).toBe("remote.setup.ssh_config");
 			expect(parent).toMatchObject({
 				eventName: "remote.setup",
 				properties: { result: "success" },
@@ -150,27 +175,113 @@ describe("TelemetryService", () => {
 			expect(phase2.traceId).toBe(parent.traceId);
 		});
 
+		it("phase children carry parentEventId pointing at the parent's eventId; logs do not", async () => {
+			h.service.log("plain");
+			await h.service.trace("op", async (span) => {
+				await span.phase("p1", () => Promise.resolve());
+				await span.phase("p2", () => Promise.resolve());
+			});
+
+			const [plain, p1, p2, parent] = h.sink.events;
+			// log/logError/time events have no parentEventId field.
+			expect(plain.parentEventId).toBeUndefined();
+			// Parent (root) has no parentEventId either.
+			expect(parent.parentEventId).toBeUndefined();
+			// Phase children point at the parent's eventId.
+			expect(p1.parentEventId).toBe(parent.eventId);
+			expect(p2.parentEventId).toBe(parent.eventId);
+			// All eventIds are still globally unique.
+			expect(
+				new Set([plain.eventId, p1.eventId, p2.eventId, parent.eventId]).size,
+			).toBe(4);
+		});
+
+		it("phase eventName composes as '<parent>.<phaseName>' and records durationMs", async () => {
+			await h.service.trace("remote.setup", async (span) => {
+				await span.phase("workspace_lookup", () => Promise.resolve("ws"));
+			});
+
+			const [phase] = h.sink.events;
+			expect(phase.eventName).toBe("remote.setup.workspace_lookup");
+			expect(phase.measurements.durationMs).toBeGreaterThanOrEqual(0);
+		});
+
+		it("supports grandchildren via the child span's phase method", async () => {
+			await h.service.trace("remote.setup", async (span) => {
+				await span.phase("workspace_lookup", async (childSpan) => {
+					await childSpan.phase("dns_resolve", () => Promise.resolve());
+				});
+			});
+
+			const [grandchild, child, parent] = h.sink.events;
+			expect(parent.eventName).toBe("remote.setup");
+			expect(child.eventName).toBe("remote.setup.workspace_lookup");
+			expect(grandchild.eventName).toBe(
+				"remote.setup.workspace_lookup.dns_resolve",
+			);
+			// All three share one traceId.
+			expect(child.traceId).toBe(parent.traceId);
+			expect(grandchild.traceId).toBe(parent.traceId);
+			// Hierarchy via parentEventId.
+			expect(parent.parentEventId).toBeUndefined();
+			expect(child.parentEventId).toBe(parent.eventId);
+			expect(grandchild.parentEventId).toBe(child.eventId);
+		});
+
+		it("phase forwards caller properties unchanged except for the framework-set result", async () => {
+			await h.service.trace("op", async (span) => {
+				await span.phase("p", () => Promise.resolve(0), { extra: "yes" });
+			});
+
+			const [phase] = h.sink.events;
+			expect(phase.properties).toEqual({
+				extra: "yes",
+				result: "success",
+			});
+		});
+
+		it("phase emits error event with cause and rethrows on failure", async () => {
+			const boom = new Error("nope");
+			await expect(
+				h.service.trace("op", async (span) => {
+					await span.phase("p", () => Promise.reject(boom));
+				}),
+			).rejects.toBe(boom);
+
+			const [phase] = h.sink.events;
+			expect(phase).toMatchObject({
+				eventName: "op.p",
+				properties: { result: "error" },
+				error: { message: "nope" },
+			});
+		});
+
+		it("phase with a name containing '.' is sanitized and the call succeeds", async () => {
+			await h.service.trace("op", async (span) => {
+				await span.phase("bad.name", () => Promise.resolve());
+			});
+
+			const [phase] = h.sink.events;
+			expect(phase.eventName).toBe("op.bad_name");
+		});
+
 		it("on phase failure: completed phases emit success, parent emits an error summary, error rethrown, later phases never run", async () => {
 			const boom = new Error("phase-2-broke");
 
 			await expect(
-				h.service.trace("remote.setup", async (trace) => {
-					await trace.phase("ok_phase", () => Promise.resolve("ok"));
-					await trace.phase("bad_phase", () => Promise.reject(boom));
-					await trace.phase("never_runs", () => Promise.resolve("x"));
+				h.service.trace("remote.setup", async (span) => {
+					await span.phase("ok_phase", () => Promise.resolve("ok"));
+					await span.phase("bad_phase", () => Promise.reject(boom));
+					await span.phase("never_runs", () => Promise.resolve("x"));
 				}),
 			).rejects.toBe(boom);
 
 			expect(h.sink.events).toHaveLength(3);
 			const [okPhase, badPhase, parent] = h.sink.events;
-			expect(okPhase.properties).toMatchObject({
-				phase: "ok_phase",
-				result: "success",
-			});
-			expect(badPhase.properties).toMatchObject({
-				phase: "bad_phase",
-				result: "error",
-			});
+			expect(okPhase.eventName).toBe("remote.setup.ok_phase");
+			expect(okPhase.properties).toMatchObject({ result: "success" });
+			expect(badPhase.eventName).toBe("remote.setup.bad_phase");
+			expect(badPhase.properties).toMatchObject({ result: "error" });
 			expect(parent).toMatchObject({
 				eventName: "remote.setup",
 				properties: { result: "error" },
@@ -198,10 +309,10 @@ describe("TelemetryService", () => {
 		});
 
 		it("captures the URL as of the moment each event in a trace is emitted", async () => {
-			await h.service.trace("op", async (trace) => {
-				await trace.phase("first", () => Promise.resolve(""));
+			await h.service.trace("op", async (span) => {
+				await span.phase("first", () => Promise.resolve(""));
 				h.service.setDeploymentUrl("https://coder.example.com");
-				await trace.phase("second", () => Promise.resolve(""));
+				await span.phase("second", () => Promise.resolve(""));
 			});
 
 			const [first, second, parent] = h.sink.events;
@@ -222,8 +333,8 @@ describe("TelemetryService", () => {
 
 			expect(await h.service.time("c", () => Promise.resolve(42))).toBe(42);
 
-			const traceResult = await h.service.trace("d", async (trace) => {
-				const phaseValue = await trace.phase("p", () =>
+			const traceResult = await h.service.trace("d", async (span) => {
+				const phaseValue = await span.phase("p", () =>
 					Promise.resolve("inner"),
 				);
 				expect(phaseValue).toBe("inner");
@@ -252,6 +363,7 @@ describe("TelemetryService", () => {
 		});
 
 		it("treats unknown values (e.g. future deployment) as local", () => {
+			h = makeHarness("off");
 			h.config.set("coder.telemetry.level", "deployment");
 			h.service.log("evt");
 			expect(h.sink.events).toHaveLength(1);
@@ -274,6 +386,53 @@ describe("TelemetryService", () => {
 
 			service.log("activation");
 			expect(good.events).toHaveLength(1);
+		});
+	});
+
+	describe("errors never propagate to the caller", () => {
+		const throwingSink: TelemetrySink = {
+			name: "throws",
+			minLevel: "local",
+			write: () => {
+				throw new Error("sink write failed");
+			},
+			flush: () => Promise.resolve(),
+			dispose: () => Promise.resolve(),
+		};
+
+		it("log/logError do not throw when the only sink throws", () => {
+			const service = makeService([throwingSink]);
+			expect(() => service.log("a")).not.toThrow();
+			expect(() =>
+				service.logError("b", new Error("user-error")),
+			).not.toThrow();
+		});
+
+		it("time returns the user fn's value when the sink throws", async () => {
+			const service = makeService([throwingSink]);
+			await expect(service.time("op", () => Promise.resolve(42))).resolves.toBe(
+				42,
+			);
+		});
+
+		it("time rethrows the user fn's error (not any telemetry error)", async () => {
+			const service = makeService([throwingSink]);
+			const userErr = new Error("user-error");
+			await expect(
+				service.time("op", () => Promise.reject(userErr)),
+			).rejects.toBe(userErr);
+		});
+
+		it("trace and span.phase complete normally when the sink throws", async () => {
+			const service = makeService([throwingSink]);
+			const result = await service.trace("op", async (span) => {
+				const phaseValue = await span.phase("p", () =>
+					Promise.resolve("phase"),
+				);
+				expect(phaseValue).toBe("phase");
+				return "trace";
+			});
+			expect(result).toBe("trace");
 		});
 	});
 
