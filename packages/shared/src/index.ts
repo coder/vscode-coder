@@ -16,3 +16,6 @@ export {
 	type SpeedtestInterval,
 	type SpeedtestResult,
 } from "./speedtest/api";
+
+// Chat API
+export { ChatApi } from "./chat/api";

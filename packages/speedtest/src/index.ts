@@ -1,5 +1,5 @@
 import { SpeedtestApi, type SpeedtestResult, toError } from "@repo/shared";
-import { postMessage, subscribeNotification } from "@repo/webview-shared";
+import { sendCommand, subscribeNotifications } from "@repo/webview-shared";
 
 import { renderLineChart } from "./chart";
 import {
@@ -20,18 +20,20 @@ const TOOLTIP_GAP_PX = 32;
 let cleanup: (() => void) | undefined;
 
 function main(): void {
-	subscribeNotification(SpeedtestApi.data, ({ workspaceId, result }) => {
-		try {
-			cleanup?.();
-			cleanup = renderPage(result, workspaceId, () =>
-				postMessage({ method: SpeedtestApi.viewJson.method }),
-			);
-		} catch (err) {
-			showError(`Failed to render speedtest: ${toError(err).message}`);
-		}
+	subscribeNotifications(SpeedtestApi, {
+		data: ({ workspaceId, result }) => {
+			try {
+				cleanup?.();
+				cleanup = renderPage(result, workspaceId, () =>
+					sendCommand(SpeedtestApi.viewJson),
+				);
+			} catch (err) {
+				showError(`Failed to render speedtest: ${toError(err).message}`);
+			}
+		},
 	});
 	// Signal we're subscribed; the extension waits for this before sending.
-	postMessage({ method: SpeedtestApi.ready.method });
+	sendCommand(SpeedtestApi.ready);
 }
 
 function renderPage(

@@ -74,28 +74,18 @@ that are close to shutting down.
 
 ## Webviews
 
-The extension uses React-based webviews for rich UI panels, built with Vite and
-organized as a pnpm workspace in `packages/`.
+The extension ships rich UI panels as webviews built with Vite, organized as a
+pnpm workspace in `packages/`. The canonical guide for building one covers
+the IPC contract, exhaustiveness rules, the "no dropped events" guarantee,
+and a new-panel checklist. It lives next to the code:
 
-### Project Structure
+**[`packages/webview-shared/README.md`](packages/webview-shared/README.md)**
 
-```text
-packages/
-├── webview-shared/      # Shared types, React hooks, and Vite config
-│   └── extension.d.ts   # Types exposed to extension (excludes React)
-└── tasks/               # Example webview (copy this for new webviews)
+Existing webviews as references:
 
-src/webviews/
-├── util.ts          # getWebviewHtml() helper
-└── tasks/           # Extension-side provider for tasks panel
-```
-
-Key patterns:
-
-- **Type sharing**: Extension imports types from `@repo/webview-shared` via path mapping
-  to `extension.d.ts`. Webviews import directly from `@repo/webview-shared/react`.
-- **Message passing**: Use `postMessage()`/`useMessage()` hooks for communication.
-- **Lifecycle**: Dispose event listeners properly (see `TasksPanel.ts` for example).
+- `packages/tasks` + `src/webviews/tasks/`: React (uses `useIpc`).
+- `packages/speedtest` + `src/webviews/speedtest/`: vanilla TS (uses
+  `onNotification` / `sendCommand`).
 
 ### Development
 
@@ -103,15 +93,8 @@ Key patterns:
 pnpm watch  # Rebuild extension and webviews on changes
 ```
 
-Press F5 to launch the Extension Development Host. Use "Developer: Reload Webviews"
-to see webview changes.
-
-### Adding a New Webview
-
-1. Copy `packages/tasks` to `packages/<name>` and update the package name
-2. Create a provider in `src/webviews/<name>/` (see `TasksPanel.ts` for reference)
-3. Register the view in `package.json` under `contributes.views`
-4. Register the provider in `src/extension.ts`
+Press F5 to launch the Extension Development Host. Use "Developer: Reload
+Webviews" to see webview changes.
 
 ## Testing
 

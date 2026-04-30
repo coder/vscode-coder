@@ -1,22 +1,37 @@
 import * as vscode from "vscode";
 
+import {
+	buildCommandHandlers,
+	buildRequestHandlers,
+	ChatApi,
+} from "@repo/shared";
+
 import { type CoderApi } from "../../api/coderApi";
 import { type Logger } from "../../logging/logger";
-import { getNonce } from "../util";
+import {
+	dispatchCommand,
+	dispatchRequest,
+	isIpcCommand,
+	isIpcRequest,
+	notifyWebview,
+} from "../dispatch";
+import {
+	buildWebviewCsp,
+	escapeHtml,
+	getNonce,
+	getWebviewAssetUris,
+} from "../html";
 
 /**
- * Provides a webview that embeds the Coder agent chat UI.
- * Authentication flows through postMessage:
+ * Webview that embeds the Coder agent chat UI inside an iframe. The
+ * panel's HTML pre-renders the iframe with `src=embedUrl`; the
+ * `@repo/chat` bundle attaches listeners and bridges the iframe's
+ * foreign `{ type, payload }` protocol to `ChatApi`. Auth flow:
  *
- *   1. The iframe loads /agents/{id}/embed on the Coder server.
- *   2. The embed page detects the user is signed out and sends
- *      { type: "coder:vscode-ready" } to window.parent.
- *   3. Our webview relays this to the extension host.
- *   4. The extension host replies with the session token.
- *   5. The webview forwards { type: "coder:vscode-auth-bootstrap" }
- *      with the token back into the iframe.
- *   6. The embed page calls API.setSessionToken(token), re-fetches
- *      the authenticated user, and renders the chat UI.
+ *   1. Iframe loads /agents/{id}/embed and posts `coder:vscode-ready`.
+ *   2. Bundle forwards as `ChatApi.vscodeReady`.
+ *   3. Extension responds with `ChatApi.authBootstrapToken`.
+ *   4. Bundle forwards the token into the iframe.
  */
 export class ChatPanelProvider
 	implements vscode.WebviewViewProvider, vscode.Disposable
@@ -28,7 +43,15 @@ export class ChatPanelProvider
 	private chatId: string | undefined;
 	private authRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
+	private readonly commandHandlers = buildCommandHandlers(ChatApi, {
+		vscodeReady: () => this.sendAuthToken(),
+		chatReady: () => this.sendTheme(),
+		navigate: ({ url }) => this.handleNavigate(url),
+	});
+	private readonly requestHandlers = buildRequestHandlers(ChatApi, {});
+
 	constructor(
+		private readonly extensionUri: vscode.Uri,
 		private readonly client: Pick<CoderApi, "getHost" | "getSessionToken">,
 		private readonly logger: Logger,
 	) {}
@@ -42,8 +65,7 @@ export class ChatPanelProvider
 	}
 
 	private sendTheme(): void {
-		this.view?.webview.postMessage({
-			type: "coder:set-theme",
+		notifyWebview(this.view?.webview, ChatApi.setTheme, {
 			theme: this.getTheme(),
 		});
 	}
@@ -73,10 +95,26 @@ export class ChatPanelProvider
 		// duplicates if VS Code re-resolves the view.
 		this.disposeView();
 		this.view = webviewView;
-		webviewView.webview.options = { enableScripts: true };
+		webviewView.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [
+				vscode.Uri.joinPath(this.extensionUri, "dist", "webviews", "chat"),
+			],
+		};
 		this.disposables.push(
-			webviewView.webview.onDidReceiveMessage((msg: unknown) => {
-				this.handleMessage(msg);
+			webviewView.webview.onDidReceiveMessage((message: unknown) => {
+				if (isIpcRequest(message)) {
+					void dispatchRequest(
+						message,
+						this.requestHandlers,
+						webviewView.webview,
+						{ logger: this.logger },
+					);
+				} else if (isIpcCommand(message)) {
+					void dispatchCommand(message, this.commandHandlers, {
+						logger: this.logger,
+					});
+				}
 			}),
 			vscode.window.onDidChangeActiveColorTheme(() => {
 				this.sendTheme();
@@ -98,54 +136,28 @@ export class ChatPanelProvider
 			throw new Error("renderView called before resolveWebviewView");
 		}
 		const webview = this.view.webview;
-
-		if (!this.chatId) {
-			webview.html = this.getNoAgentHtml();
-			return;
-		}
-
 		const coderUrl = this.client.getHost();
-		if (!coderUrl) {
+		if (!this.chatId || !coderUrl) {
 			webview.html = this.getNoAgentHtml();
 			return;
 		}
-
 		const embedUrl = `${coderUrl}/agents/${this.chatId}/embed?theme=${this.getTheme()}`;
-		webview.html = this.getIframeHtml(embedUrl, coderUrl);
+		webview.html = this.getEmbedHtml(webview, embedUrl);
 	}
 
-	private handleMessage(message: unknown): void {
-		if (typeof message !== "object" || message === null) {
+	private handleNavigate(url: string): void {
+		const coderUrl = this.client.getHost();
+		if (!url || !coderUrl) {
 			return;
 		}
-		const msg = message as { type?: string; payload?: { url?: string } };
-		switch (msg.type) {
-			case "coder:vscode-ready":
-				this.sendAuthToken();
-				break;
-			case "coder:chat-ready":
-				this.sendTheme();
-				break;
-			case "coder:navigate": {
-				const url = msg.payload?.url;
-				const coderUrl = this.client.getHost();
-				if (url && coderUrl) {
-					try {
-						const resolved = new URL(url, coderUrl);
-						const expected = new URL(coderUrl);
-						if (resolved.origin === expected.origin) {
-							void vscode.env.openExternal(
-								vscode.Uri.parse(resolved.toString()),
-							);
-						}
-					} catch {
-						this.logger.warn(`Chat: invalid navigate URL: ${url}`);
-					}
-				}
-				break;
+		try {
+			const resolved = new URL(url, coderUrl);
+			const expected = new URL(coderUrl);
+			if (resolved.origin === expected.origin) {
+				void vscode.env.openExternal(vscode.Uri.parse(resolved.toString()));
 			}
-			default:
-				break;
+		} catch {
+			this.logger.warn(`Chat: invalid navigate URL: ${url}`);
 		}
 	}
 
@@ -178,125 +190,40 @@ export class ChatPanelProvider
 				"Chat iframe requested auth but no session token available " +
 					"after all retries",
 			);
-			this.view?.webview.postMessage({
-				type: "coder:auth-error",
+			notifyWebview(this.view?.webview, ChatApi.authError, {
 				error: "No session token available. Please sign in and retry.",
 			});
 			return;
 		}
 		this.logger.info("Chat: forwarding token to iframe");
-		this.view?.webview.postMessage({
-			type: "coder:auth-bootstrap-token",
-			token,
-		});
+		notifyWebview(this.view?.webview, ChatApi.authBootstrapToken, { token });
 	}
 
-	private getIframeHtml(embedUrl: string, allowedOrigin: string): string {
+	/**
+	 * Pre-renders the iframe and adds `frame-src` to the CSP. The bundle
+	 * attaches listeners; it doesn't construct the iframe.
+	 */
+	private getEmbedHtml(webview: vscode.Webview, embedUrl: string): string {
 		const nonce = getNonce();
-
-		return /* html */ `<!DOCTYPE html>
+		const frameSrc = new URL(embedUrl).origin;
+		const { scriptUri, styleUri } = getWebviewAssetUris(
+			webview,
+			this.extensionUri,
+			"chat",
+		);
+		return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none';
-                 frame-src ${allowedOrigin};
-                 script-src 'nonce-${nonce}';
-                 style-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="${buildWebviewCsp(webview, nonce, { frameSrc })}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Coder Chat</title>
-  <style>
-    html, body {
-      margin: 0; padding: 0;
-      width: 100%; height: 100%;
-      overflow: hidden;
-      background: var(--vscode-editor-background, #1e1e1e);
-    }
-    iframe { border: none; width: 100%; height: 100%; }
-    #status {
-      color: var(--vscode-foreground, #ccc);
-      font-family: var(--vscode-font-family, sans-serif);
-      font-size: 13px; padding: 16px; text-align: center;
-    }
-    #retry-btn {
-      margin-top: 12px; padding: 6px 16px;
-      background: var(--vscode-button-background, #0e639c);
-      color: var(--vscode-button-foreground, #fff);
-      border: none; border-radius: 2px; cursor: pointer;
-      font-family: var(--vscode-font-family, sans-serif);
-      font-size: 13px;
-    }
-    #retry-btn:hover {
-      background: var(--vscode-button-hoverBackground, #1177bb);
-    }
-  </style>
+  <link rel="stylesheet" href="${styleUri.toString()}" nonce="${nonce}">
 </head>
 <body>
   <div id="status">Loading chat…</div>
-  <iframe id="chat-frame" src="${embedUrl}" allow="clipboard-write"
-          style="display:none;"></iframe>
-  <script nonce="${nonce}">
-    (function () {
-      const vscode = acquireVsCodeApi();
-      const iframe = document.getElementById('chat-frame');
-      const status = document.getElementById('status');
-
-      iframe.addEventListener('load', () => {
-        iframe.style.display = 'block';
-        status.style.display = 'none';
-      });
-
-      window.addEventListener('message', (event) => {
-        const data = event.data;
-        if (!data || typeof data !== 'object') return;
-
-        if (event.source === iframe.contentWindow) {
-          if (data.type === 'coder:vscode-ready') {
-            status.textContent = 'Authenticating…';
-            vscode.postMessage({ type: 'coder:vscode-ready' });
-          }
-          if (data.type === 'coder:chat-ready') {
-            vscode.postMessage({ type: 'coder:chat-ready' });
-          }
-          if (data.type === 'coder:navigate') {
-            vscode.postMessage(data);
-          }
-          return;
-        }
-
-        if (data.type === 'coder:auth-bootstrap-token') {
-          status.textContent = 'Signing in…';
-          iframe.contentWindow.postMessage({
-            type: 'coder:vscode-auth-bootstrap',
-            payload: { token: data.token },
-          }, '${allowedOrigin}');
-        }
-
-        if (data.type === 'coder:set-theme') {
-          iframe.contentWindow.postMessage({
-            type: 'coder:set-theme',
-            payload: { theme: data.theme },
-          }, '${allowedOrigin}');
-        }
-
-        if (data.type === 'coder:auth-error') {
-          status.textContent = '';
-          status.appendChild(document.createTextNode(data.error || 'Authentication failed.'));
-          const btn = document.createElement('button');
-          btn.id = 'retry-btn';
-          btn.textContent = 'Retry';
-          btn.addEventListener('click', () => {
-            status.textContent = 'Authenticating…';
-            vscode.postMessage({ type: 'coder:vscode-ready' });
-          });
-          status.appendChild(document.createElement('br'));
-          status.appendChild(btn);
-          status.style.display = 'block';
-          iframe.style.display = 'none';
-        }
-      });
-    })();
-  </script>
+  <iframe id="chat-frame" src="${escapeHtml(embedUrl)}" allow="clipboard-write" style="display:none;"></iframe>
+  <script nonce="${nonce}" type="module" src="${scriptUri.toString()}"></script>
 </body>
 </html>`;
 	}

@@ -224,7 +224,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	);
 
 	// Register Chat embed panel with dependencies
-	const chatPanelProvider = new ChatPanelProvider(client, output);
+	const chatPanelProvider = new ChatPanelProvider(
+		ctx.extensionUri,
+		client,
+		output,
+	);
 	ctx.subscriptions.push(
 		chatPanelProvider,
 		vscode.window.registerWebviewViewProvider(

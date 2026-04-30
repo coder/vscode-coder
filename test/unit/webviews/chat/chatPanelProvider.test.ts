@@ -16,11 +16,12 @@ interface Harness {
 	html: () => string;
 }
 
-function createHarness(): Harness {
-	const client = new MockCoderApi();
-	client.setCredentials("https://coder.example.com", "test-token");
-
-	const provider = new ChatPanelProvider(client, createMockLogger());
+function createHarnessFor(client: MockCoderApi): Harness {
+	const provider = new ChatPanelProvider(
+		vscode.Uri.file("/ext"),
+		client,
+		createMockLogger(),
+	);
 
 	let handler: ((msg: unknown) => void) | null = null;
 
@@ -62,6 +63,12 @@ function createHarness(): Harness {
 	};
 }
 
+function createHarness(): Harness {
+	const client = new MockCoderApi();
+	client.setCredentials("https://coder.example.com", "test-token");
+	return createHarnessFor(client);
+}
+
 function findPostedMessage(
 	postMessage: ReturnType<typeof vi.fn>,
 	type: string,
@@ -92,11 +99,11 @@ describe("ChatPanelProvider", () => {
 			windowMock.__setActiveColorThemeKind(kind);
 			const { sendFromWebview, postMessage } = createHarness();
 
-			sendFromWebview({ type: "coder:chat-ready" });
+			sendFromWebview({ method: "coder:chat-ready" });
 
 			expect(findPostedMessage(postMessage, "coder:set-theme")).toEqual({
 				type: "coder:set-theme",
-				theme: expected,
+				data: { theme: expected },
 			});
 		});
 
@@ -108,7 +115,7 @@ describe("ChatPanelProvider", () => {
 
 			expect(postMessage).toHaveBeenCalledWith({
 				type: "coder:set-theme",
-				theme: "light",
+				data: { theme: "light" },
 			});
 		});
 	});
@@ -117,14 +124,36 @@ describe("ChatPanelProvider", () => {
 		it("sends auth token on coder:vscode-ready", () => {
 			const { sendFromWebview, postMessage } = createHarness();
 
-			sendFromWebview({ type: "coder:vscode-ready" });
+			sendFromWebview({ method: "coder:vscode-ready" });
 
 			expect(
 				findPostedMessage(postMessage, "coder:auth-bootstrap-token"),
 			).toEqual({
 				type: "coder:auth-bootstrap-token",
-				token: "test-token",
+				data: { token: "test-token" },
 			});
+		});
+
+		it("posts auth-error after exhausting retries when token is missing", () => {
+			vi.useFakeTimers();
+			try {
+				const client = new MockCoderApi();
+				client.setCredentials("https://coder.example.com", undefined);
+				const { sendFromWebview, postMessage } = createHarnessFor(client);
+
+				sendFromWebview({ method: "coder:vscode-ready" });
+				// 5 retries with base 500ms exponential backoff.
+				vi.advanceTimersByTime(500 + 1000 + 2000 + 4000 + 8000);
+
+				expect(findPostedMessage(postMessage, "coder:auth-error")).toEqual({
+					type: "coder:auth-error",
+					data: {
+						error: "No session token available. Please sign in and retry.",
+					},
+				});
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 
@@ -133,8 +162,8 @@ describe("ChatPanelProvider", () => {
 			const { sendFromWebview } = createHarness();
 
 			sendFromWebview({
-				type: "coder:navigate",
-				payload: { url: "/templates" },
+				method: "coder:navigate",
+				params: { url: "/templates" },
 			});
 
 			expect(vscode.env.openExternal).toHaveBeenCalledWith(
@@ -145,7 +174,7 @@ describe("ChatPanelProvider", () => {
 		it("ignores navigate without url payload", () => {
 			const { sendFromWebview } = createHarness();
 
-			sendFromWebview({ type: "coder:navigate" });
+			sendFromWebview({ method: "coder:navigate", params: {} });
 
 			expect(vscode.env.openExternal).not.toHaveBeenCalled();
 		});
@@ -154,8 +183,8 @@ describe("ChatPanelProvider", () => {
 			const { sendFromWebview } = createHarness();
 
 			sendFromWebview({
-				type: "coder:navigate",
-				payload: { url: "https://evil.com/steal" },
+				method: "coder:navigate",
+				params: { url: "https://evil.com/steal" },
 			});
 
 			expect(vscode.env.openExternal).not.toHaveBeenCalled();
@@ -171,6 +200,7 @@ describe("ChatPanelProvider", () => {
 			expect(html()).toContain(
 				"https://coder.example.com/agents/test-agent-123/embed",
 			);
+			expect(html()).toContain("/dist/webviews/chat/index.js");
 		});
 
 		it("focuses the chat panel", () => {

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import * as vscode from "vscode";
 
-import { escapeHtml, getNonce, getWebviewHtml } from "@/webviews/util";
+import {
+	buildWebviewCsp,
+	escapeHtml,
+	getNonce,
+	getWebviewHtml,
+} from "@/webviews/html";
 
 const webview: vscode.Webview = {
 	options: { enableScripts: true, localResourceRoots: [] },
@@ -41,6 +46,23 @@ describe("getNonce", () => {
 	});
 });
 
+describe("buildWebviewCsp", () => {
+	it("emits a base CSP without frame-src by default", () => {
+		const csp = buildWebviewCsp(webview, "abc");
+		expect(csp).toContain("default-src 'none'");
+		expect(csp).toContain("script-src 'nonce-abc'");
+		expect(csp).toContain("style-src mock-csp 'unsafe-inline'");
+		expect(csp).not.toContain("frame-src");
+	});
+
+	it("inserts frame-src when the option is set", () => {
+		const csp = buildWebviewCsp(webview, "abc", {
+			frameSrc: "https://coder.example.com",
+		});
+		expect(csp).toContain("frame-src https://coder.example.com");
+	});
+});
+
 describe("getWebviewHtml", () => {
 	it("escapes the title to prevent HTML injection", () => {
 		const html = getWebviewHtml(
@@ -73,7 +95,7 @@ describe("getWebviewHtml", () => {
 	it("uses the webview's cspSource for style/font/img sources", () => {
 		const html = getWebviewHtml(webview, extensionUri, "speedtest", "ok");
 		expect(html).toContain(
-			"style-src mock-csp 'unsafe-inline'; font-src mock-csp; img-src mock-csp data:;",
+			"style-src mock-csp 'unsafe-inline'; font-src mock-csp; img-src mock-csp data:",
 		);
 	});
 });
