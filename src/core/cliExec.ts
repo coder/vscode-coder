@@ -2,7 +2,7 @@ import { type ExecFileException, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 
-import { toError } from "../error/errorUtils";
+import { isAbortError, toError } from "../error/errorUtils";
 import {
 	type CliAuth,
 	getGlobalFlags,
@@ -15,9 +15,19 @@ export interface CliEnv {
 	binary: string;
 	auth: CliAuth;
 	configs: Pick<vscode.WorkspaceConfiguration, "get">;
+	/** Forwarded to the child as `CODER_URL` / `CODER_SESSION_TOKEN`. Empty token is valid for mTLS. */
+	authEnv: { url: string; token: string };
 }
 
 const execFileAsync = promisify(execFile);
+
+function buildChildEnv(env: CliEnv): NodeJS.ProcessEnv {
+	return {
+		...process.env,
+		CODER_URL: env.authEnv.url,
+		CODER_SESSION_TOKEN: env.authEnv.token,
+	};
+}
 
 function isExecFileException(error: unknown): error is ExecFileException {
 	return error instanceof Error && "code" in error;
@@ -25,6 +35,10 @@ function isExecFileException(error: unknown): error is ExecFileException {
 
 /** Prefer stderr over the default message which includes the full command line. */
 function cliError(error: unknown): Error {
+	// Pass aborts through; wrapping erases the AbortError name and would surface stale CLI warnings as the failure.
+	if (isAbortError(error)) {
+		return error;
+	}
 	if (isExecFileException(error)) {
 		const stderr = error.stderr?.trim();
 		if (stderr) {
@@ -89,7 +103,10 @@ export async function speedtest(
 		args.push("-t", duration);
 	}
 	try {
-		const result = await execFileAsync(env.binary, args, { signal });
+		const result = await execFileAsync(env.binary, args, {
+			signal,
+			env: buildChildEnv(env),
+		});
 		return result.stdout;
 	} catch (error) {
 		throw cliError(error);
@@ -116,7 +133,10 @@ export async function supportBundle(
 		"--yes",
 	];
 	try {
-		await execFileAsync(env.binary, args, { signal });
+		await execFileAsync(env.binary, args, {
+			signal,
+			env: buildChildEnv(env),
+		});
 	} catch (error) {
 		throw cliError(error);
 	}
@@ -132,6 +152,7 @@ export function ping(env: CliEnv, workspaceName: string): vscode.Terminal {
 		binary: env.binary,
 		args: [...globalFlags, "ping", escapeCommandArg(workspaceName)],
 		banner: ["Press Ctrl+C (^C) to stop.", "─".repeat(40)],
+		env: buildChildEnv(env),
 	});
 }
 
@@ -142,7 +163,8 @@ function spawnCliInTerminal(options: {
 	name: string;
 	binary: string;
 	args: string[];
-	banner?: string[];
+	banner: string[];
+	env: NodeJS.ProcessEnv;
 }): vscode.Terminal {
 	const writeEmitter = new vscode.EventEmitter<string>();
 	const closeEmitter = new vscode.EventEmitter<number | void>();
@@ -156,6 +178,7 @@ function spawnCliInTerminal(options: {
 	const proc = spawn(cmd, {
 		shell: true,
 		detached: useProcessGroup,
+		env: options.env,
 	});
 
 	let closed = false;
@@ -275,7 +298,10 @@ export async function openAppStatusTerminal(
 	},
 ): Promise<void> {
 	const globalFlags = getGlobalShellFlags(env.configs, env.auth);
-	const terminal = vscode.window.createTerminal(app.name);
+	const terminal = vscode.window.createTerminal({
+		name: app.name,
+		env: buildChildEnv(env),
+	});
 	terminal.sendText(
 		`${escapeCommandArg(env.binary)} ${globalFlags.join(" ")} ssh ${escapeCommandArg(app.workspace_name)}`,
 	);

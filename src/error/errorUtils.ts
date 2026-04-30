@@ -4,7 +4,7 @@ import util from "node:util";
 import { toError as baseToError } from "@repo/shared";
 
 /** Check whether an unknown thrown value is an AbortError (signal cancellation). */
-export function isAbortError(error: unknown): boolean {
+export function isAbortError(error: unknown): error is Error {
 	return error instanceof Error && error.name === "AbortError";
 }
 

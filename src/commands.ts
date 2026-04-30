@@ -930,7 +930,8 @@ export class Commands {
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
 		const configs = vscode.workspace.getConfiguration();
 		const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
-		return { binary, configs, auth, featureSet };
+		const authEnv = { url: baseUrl, token: client.getSessionToken() ?? "" };
+		return { binary, configs, auth, authEnv, featureSet };
 	}
 
 	/**

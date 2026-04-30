@@ -30,7 +30,12 @@ describe("cliExec", () => {
 
 	function setup(auth: CliEnv["auth"], binary = echoArgsBin) {
 		const configs = new MockConfigurationProvider();
-		const env: CliEnv = { binary, auth, configs };
+		const env: CliEnv = {
+			binary,
+			auth,
+			configs,
+			authEnv: { url: "http://localhost:3000", token: "test-token" },
+		};
 		return { configs, env };
 	}
 
@@ -167,6 +172,40 @@ describe("cliExec", () => {
 			await expect(
 				cliExec.speedtest(env, "owner/workspace", "bad"),
 			).rejects.toThrow("invalid argument for -t flag");
+		});
+
+		it("forwards CODER_URL and CODER_SESSION_TOKEN to the child", async () => {
+			const code = [
+				`process.stdout.write(JSON.stringify({`,
+				`  url: process.env.CODER_URL || "",`,
+				`  token: process.env.CODER_SESSION_TOKEN || "",`,
+				`}));`,
+			].join("\n");
+			const bin = await writeExecutable(tmp, "speedtest-env", code);
+			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			env.authEnv = { url: "http://localhost:3000", token: "secret-token" };
+			const out = await cliExec.speedtest(env, "owner/workspace");
+			expect(JSON.parse(out)).toEqual({
+				url: "http://localhost:3000",
+				token: "secret-token",
+			});
+		});
+
+		it("forwards an empty CODER_SESSION_TOKEN for mTLS", async () => {
+			const code = [
+				`process.stdout.write(JSON.stringify({`,
+				`  url: process.env.CODER_URL,`,
+				`  token: process.env.CODER_SESSION_TOKEN,`,
+				`}));`,
+			].join("\n");
+			const bin = await writeExecutable(tmp, "speedtest-env-mtls", code);
+			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			env.authEnv = { url: "http://localhost:3000", token: "" };
+			const out = await cliExec.speedtest(env, "owner/workspace");
+			expect(JSON.parse(out)).toEqual({
+				url: "http://localhost:3000",
+				token: "",
+			});
 		});
 	});
 
