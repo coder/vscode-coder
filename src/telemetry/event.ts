@@ -6,6 +6,14 @@ import { toError } from "../error/errorUtils";
 /** Telemetry level, mirrors `coder.telemetry.level`. Ordered: off < local. */
 export type TelemetryLevel = "off" | "local";
 
+/** Caller properties. `result` is framework-managed on traced events. */
+export type CallerProperties = Record<string, string> & { result?: never };
+
+/** Caller measurements. `durationMs` is framework-managed on traced events. */
+export type CallerMeasurements = Record<string, number> & {
+	durationMs?: never;
+};
+
 /** Session-stable resource attributes. Field names are inspired by OTel
  * resource attributes; they are camelCase TypeScript and not a 1:1 mapping. */
 export interface SessionContext {

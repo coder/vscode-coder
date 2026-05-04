@@ -6,6 +6,8 @@ import { type Logger } from "../logging/logger";
 import {
 	buildSession,
 	buildErrorBlock,
+	type CallerMeasurements,
+	type CallerProperties,
 	type SessionContext,
 	type TelemetryEvent,
 	type TelemetryLevel,
@@ -65,8 +67,8 @@ export class TelemetryService implements vscode.Disposable {
 
 	public log(
 		eventName: string,
-		properties: Record<string, string> = {},
-		measurements: Record<string, number> = {},
+		properties: CallerProperties = {},
+		measurements: CallerMeasurements = {},
 	): void {
 		if (this.#level === "off") {
 			return;
@@ -77,8 +79,8 @@ export class TelemetryService implements vscode.Disposable {
 	public logError(
 		eventName: string,
 		error: unknown,
-		properties: Record<string, string> = {},
-		measurements: Record<string, number> = {},
+		properties: CallerProperties = {},
+		measurements: CallerMeasurements = {},
 	): void {
 		if (this.#level === "off") {
 			return;
@@ -96,8 +98,8 @@ export class TelemetryService implements vscode.Disposable {
 	public trace<T>(
 		eventName: string,
 		fn: (span: Span) => Promise<T>,
-		properties: Record<string, string> = {},
-		measurements: Record<string, number> = {},
+		properties: CallerProperties = {},
+		measurements: CallerMeasurements = {},
 	): Promise<T> {
 		if (this.#level === "off") {
 			return fn(NOOP_SPAN);

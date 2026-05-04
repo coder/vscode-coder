@@ -52,14 +52,14 @@ describe("TelemetryService", () => {
 
 	describe("log", () => {
 		it("emits an event with auto-injected context, properties, and measurements", () => {
-			h.service.log("activation", { result: "success" }, { durationMs: 12 });
+			h.service.log("activation", { outcome: "success" }, { latencyMs: 12 });
 
 			const [event] = h.sink.events;
 			expect(event).toMatchObject({
 				eventName: "activation",
 				eventSequence: 0,
-				properties: { result: "success" },
-				measurements: { durationMs: 12 },
+				properties: { outcome: "success" },
+				measurements: { latencyMs: 12 },
 				context: {
 					extensionVersion: "1.2.3-test",
 					machineId: "test-machine-id",

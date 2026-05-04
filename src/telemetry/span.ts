@@ -1,3 +1,5 @@
+import { type CallerProperties } from "./event";
+
 /**
  * Parent span handle. Children's `eventName` composes as `${parent.eventName}.${phaseName}`;
  * phase names must not contain `.`. Recurse via `phase` for grandchildren.
@@ -10,7 +12,7 @@ export interface Span {
 	phase<T>(
 		phaseName: string,
 		fn: (span: Span) => Promise<T>,
-		properties?: Record<string, string>,
+		properties?: CallerProperties,
 		measurements?: Record<string, number>,
 	): Promise<T>;
 }
@@ -23,7 +25,7 @@ export const NOOP_SPAN: Span = {
 	phase<T>(
 		_phaseName: string,
 		fn: (span: Span) => Promise<T>,
-		_properties?: Record<string, string>,
+		_properties?: CallerProperties,
 		_measurements?: Record<string, number>,
 	): Promise<T> {
 		return fn(this);
