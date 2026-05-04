@@ -52,6 +52,7 @@ const config: StorybookConfig = {
 			resolve: {
 				alias: getWorkspaceAliases(packagesDir),
 			},
+			assetsInclude: ["**/*.ttf", "**/*.woff", "**/*.woff2"],
 		});
 	},
 };
