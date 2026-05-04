@@ -11,7 +11,7 @@ const meta: Meta<typeof TaskDetailHeader> = {
 };
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj<typeof TaskDetailHeader>;
 
 export const Default: Story = {
 	args: {
