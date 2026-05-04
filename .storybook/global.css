@@ -1,7 +1,5 @@
 html {
-	background: var(--vscode-editor-background);
-	scrollbar-color: var(--vscode-scrollbarSlider-background)
-		var(--vscode-editor-background);
+	background: var(--vscode-sideBar-background);
 }
 
 body {
@@ -11,12 +9,12 @@ body {
 }
 
 #storybook-preview-wrapper {
-	background-color: var(--vscode-panel-background);
+	background-color: var(--vscode-sideBar-background);
 }
 
 #root {
 	overscroll-behavior-x: none;
-	background-color: var(--vscode-panel-background);
+	background-color: var(--vscode-sideBar-background);
 	color: var(--vscode-editor-foreground);
 	font-family: var(--vscode-font-family);
 	font-weight: var(--vscode-font-weight);
