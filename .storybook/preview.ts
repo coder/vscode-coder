@@ -18,6 +18,8 @@ if (
 	document.head.appendChild(link);
 }
 
+// This allows the system viewing the storybook to use the same font
+// stack as vscode, which is important for accurate rendering of text.
 const getDefaultFontStack = () => {
 	if (navigator.userAgent.indexOf("Linux") > -1) {
 		return 'system-ui, "Ubuntu", "Droid Sans", sans-serif';
