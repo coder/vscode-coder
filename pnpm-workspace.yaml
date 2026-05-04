@@ -3,6 +3,11 @@ packages:
 
 catalog:
   "@rolldown/plugin-babel": ^0.2.3
+  "@storybook/addon-a11y": ^8.6.18
+  "@storybook/addon-essentials": ^8.6.18
+  "@storybook/react": ^8.6.18
+  "@storybook/react-vite": ^8.6.18
+  '@storybook/test': ^8.6.15
   "@tanstack/react-query": ^5.100.5
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
@@ -15,13 +20,11 @@ catalog:
   date-fns: ^4.1.0
   react: ^19.2.5
   react-dom: ^19.2.5
+  storybook: ^8.6.18
   typescript: ^6.0.3
   vite: ^8.0.10
 
 catalogMode: strict
-
-overrides:
-  "@vscode-elements/elements": ^2.5.1
 
 ignoredBuiltDependencies:
   - keytar
@@ -33,3 +36,6 @@ onlyBuiltDependencies:
   - esbuild
   - unrs-resolver
   - utf-8-validate
+
+overrides:
+  "@vscode-elements/elements": ^2.5.1
