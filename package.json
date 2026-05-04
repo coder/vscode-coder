@@ -189,22 +189,6 @@
 						"Logs everything from *headers* plus request and response bodies (may include sensitive data)"
 					],
 					"default": "basic"
-				},
-				"coder.telemetry.level": {
-					"markdownDescription": "Controls Coder extension telemetry collection. Used to diagnose extension issues.",
-					"type": "string",
-					"enum": [
-						"off",
-						"local"
-					],
-					"markdownEnumDescriptions": [
-						"Disable telemetry collection.",
-						"Record events on this machine only."
-					],
-					"default": "local",
-					"tags": [
-						"telemetry"
-					]
 				}
 			}
 		},

@@ -96,10 +96,10 @@ describe("TelemetryService", () => {
 		});
 	});
 
-	describe("time", () => {
+	describe("trace", () => {
 		it("returns the wrapped value and records durationMs on success", async () => {
 			vi.useFakeTimers();
-			const promise = h.service.time(
+			const promise = h.service.trace(
 				"activation",
 				async () => {
 					await new Promise((r) => setTimeout(r, 250));
@@ -119,7 +119,7 @@ describe("TelemetryService", () => {
 		it("emits an error event with the cause and rethrows on failure", async () => {
 			const err = new Error("boom");
 			await expect(
-				h.service.time("activation", () => Promise.reject(err)),
+				h.service.trace("activation", () => Promise.reject(err)),
 			).rejects.toBe(err);
 
 			expect(h.sink.events[0]).toMatchObject({
@@ -129,7 +129,7 @@ describe("TelemetryService", () => {
 		});
 
 		it("forwards caller measurements alongside the framework-set durationMs", async () => {
-			await h.service.time(
+			await h.service.trace(
 				"auth.token_refresh",
 				() => Promise.resolve(),
 				{},
@@ -141,9 +141,9 @@ describe("TelemetryService", () => {
 			expect(event.measurements.durationMs).toBeGreaterThanOrEqual(0);
 		});
 
-		it("emits with a fresh traceId so it maps to a single-span trace", async () => {
-			await h.service.time("a", () => Promise.resolve(1));
-			await h.service.time("b", () => Promise.resolve(2));
+		it("flat traces (no phases) emit a single event with a fresh traceId", async () => {
+			await h.service.trace("a", () => Promise.resolve(1));
+			await h.service.trace("b", () => Promise.resolve(2));
 
 			const [a, b] = h.sink.events;
 			expect(a.traceId).toBeDefined();
@@ -152,9 +152,7 @@ describe("TelemetryService", () => {
 			expect(a.parentEventId).toBeUndefined();
 			expect(b.parentEventId).toBeUndefined();
 		});
-	});
 
-	describe("trace", () => {
 		it("parent and child phase events share one traceId on success", async () => {
 			const result = await h.service.trace("remote.setup", async (span) => {
 				await span.phase("workspace_lookup", () => Promise.resolve("ws"));
@@ -327,11 +325,11 @@ describe("TelemetryService", () => {
 			h = makeHarness("off");
 		});
 
-		it("suppresses emissions but still runs wrapped functions of time and trace", async () => {
+		it("suppresses emissions but still runs wrapped fns for trace", async () => {
 			h.service.log("a");
 			h.service.logError("b", new Error("ignored"));
 
-			expect(await h.service.time("c", () => Promise.resolve(42))).toBe(42);
+			expect(await h.service.trace("c", () => Promise.resolve(42))).toBe(42);
 
 			const traceResult = await h.service.trace("d", async (span) => {
 				const phaseValue = await span.phase("p", () =>
@@ -408,18 +406,18 @@ describe("TelemetryService", () => {
 			).not.toThrow();
 		});
 
-		it("time returns the user fn's value when the sink throws", async () => {
+		it("trace returns the user fn's value when the sink throws", async () => {
 			const service = makeService([throwingSink]);
-			await expect(service.time("op", () => Promise.resolve(42))).resolves.toBe(
-				42,
-			);
+			await expect(
+				service.trace("op", () => Promise.resolve(42)),
+			).resolves.toBe(42);
 		});
 
-		it("time rethrows the user fn's error (not any telemetry error)", async () => {
+		it("trace rethrows the user fn's error (not any telemetry error)", async () => {
 			const service = makeService([throwingSink]);
 			const userErr = new Error("user-error");
 			await expect(
-				service.time("op", () => Promise.reject(userErr)),
+				service.trace("op", () => Promise.reject(userErr)),
 			).rejects.toBe(userErr);
 		});
 

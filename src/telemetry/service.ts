@@ -88,19 +88,10 @@ export class TelemetryService implements vscode.Disposable {
 		});
 	}
 
-	/** Time `fn` and emit one event with `durationMs` and `result`. */
-	public time<T>(
-		eventName: string,
-		fn: () => Promise<T>,
-		properties: Record<string, string> = {},
-		measurements: Record<string, number> = {},
-	): Promise<T> {
-		return this.trace(eventName, fn, properties, measurements);
-	}
-
 	/**
-	 * Run a multi-phase operation. All events share a `traceId`; each non-root
-	 * carries `parentEventId`. Framework sets `result` and `durationMs`.
+	 * Run a timed operation. The emitted event carries `durationMs` and a
+	 * `result` of `success` or `error`. All events from one call share a
+	 * `traceId`; phase children carry `parentEventId`.
 	 */
 	public trace<T>(
 		eventName: string,
@@ -284,14 +275,10 @@ export class TelemetryService implements vscode.Disposable {
 }
 
 function readLevel(): TelemetryLevel {
-	switch (
-		vscode.workspace.getConfiguration().get<string>(TELEMETRY_LEVEL_SETTING)
-	) {
-		case "off":
-			return "off";
-		default:
-			return "local";
-	}
+	const value = vscode.workspace
+		.getConfiguration()
+		.get<string>(TELEMETRY_LEVEL_SETTING);
+	return isTelemetryLevel(value) ? value : "local";
 }
 
 function isTelemetryLevel(value: unknown): value is TelemetryLevel {
