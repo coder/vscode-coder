@@ -54,7 +54,7 @@ const preview: Preview = {
 			useEffect(() => {
 				if (context.tags.includes("tasks")) {
 					// Dynamically import tasks CSS
-					import("../packages/tasks/src/index.css");
+					void import("../packages/tasks/src/index.css");
 				}
 			}, [context.tags]);
 
