@@ -21,6 +21,9 @@ catalogs:
     '@storybook/react-vite':
       specifier: ^8.6.18
       version: 8.6.18
+    '@storybook/test':
+      specifier: ^8.6.15
+      version: 8.6.15
     '@tanstack/react-query':
       specifier: ^5.100.5
       version: 5.100.5
@@ -152,10 +155,13 @@ importers:
         version: 8.6.18(@types/react@19.2.14)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
       '@storybook/react':
         specifier: 'catalog:'
-        version: 8.6.18(@storybook/test@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)
+        version: 8.6.18(@storybook/test@8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)
       '@storybook/react-vite':
         specifier: 'catalog:'
-        version: 8.6.18(@storybook/test@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))
+        version: 8.6.18(@storybook/test@8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))
+      '@storybook/test':
+        specifier: 'catalog:'
+        version: 8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.100.5(react@19.2.5)
@@ -224,7 +230,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: 'catalog:'
-        version: '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/033ed0bb827b8f2e40a8cfb49f868944037f073c'
+        version: '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c'
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
@@ -568,8 +574,8 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/033ed0bb827b8f2e40a8cfb49f868944037f073c':
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/033ed0bb827b8f2e40a8cfb49f868944037f073c}
+  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c':
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c}
     version: 0.0.0
 
   '@csstools/color-helpers@6.0.2':
@@ -1580,6 +1586,11 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0-beta
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0-beta
 
+  '@storybook/instrumenter@8.6.15':
+    resolution: {integrity: sha512-TvHR/+yyIAOp/1bLulFai2kkhIBtAlBw7J6Jd9DKyInoGhTWNE1G1Y61jD5GWXX29AlwaHfzGUaX5NL1K+FJpg==}
+    peerDependencies:
+      storybook: ^8.6.15
+
   '@storybook/instrumenter@8.6.18':
     resolution: {integrity: sha512-viEC1BGlYyjAzi1Tv3LZjByh7Y3Oh04u6QKsujxdeUbr5rUOH4pa/wCKmxXmY6yWrD4WjcNtojmUvQZN/66FXQ==}
     peerDependencies:
@@ -1629,6 +1640,11 @@ packages:
         optional: true
       typescript:
         optional: true
+
+  '@storybook/test@8.6.15':
+    resolution: {integrity: sha512-EwquDRUDVvWcZds3T2abmB5wSN/Vattal4YtZ6fpBlIUqONV4o/cOBX39cFfQSUCBrIXIjQ6RmapQCHK/PvBYw==}
+    peerDependencies:
+      storybook: ^8.6.15
 
   '@storybook/test@8.6.18':
     resolution: {integrity: sha512-u/RwfWMyHcH0N2hqfMTw2CoZ58IXdeED3b8NmcHc8bmERB3byI5vVAkwYbcD7+WeRHIiym38ZHi0SRn+IpkO3Q==}
@@ -5260,7 +5276,7 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/033ed0bb827b8f2e40a8cfb49f868944037f073c': {}
+  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c': {}
 
   '@csstools/color-helpers@6.0.2': {}
 
@@ -6235,6 +6251,12 @@ snapshots:
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
 
+  '@storybook/instrumenter@8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))':
+    dependencies:
+      '@storybook/global': 5.0.0
+      '@vitest/utils': 2.1.9
+      storybook: 8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)
+
   '@storybook/instrumenter@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))':
     dependencies:
       '@storybook/global': 5.0.0
@@ -6255,12 +6277,12 @@ snapshots:
       react-dom: 19.2.5(react@19.2.5)
       storybook: 8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)
 
-  '@storybook/react-vite@8.6.18(@storybook/test@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))':
+  '@storybook/react-vite@8.6.18(@storybook/test@8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))':
     dependencies:
       '@joshwooding/vite-plugin-react-docgen-typescript': 0.5.0(typescript@6.0.3)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))
       '@rollup/pluginutils': 5.3.0
       '@storybook/builder-vite': 8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))
-      '@storybook/react': 8.6.18(@storybook/test@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)
+      '@storybook/react': 8.6.18(@storybook/test@8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)
       find-up: 5.0.0
       magic-string: 0.30.21
       react: 19.2.5
@@ -6271,13 +6293,13 @@ snapshots:
       tsconfig-paths: 4.2.0
       vite: 8.0.10(@types/node@22.19.17)(esbuild@0.28.0)
     optionalDependencies:
-      '@storybook/test': 8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
+      '@storybook/test': 8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
     transitivePeerDependencies:
       - rollup
       - supports-color
       - typescript
 
-  '@storybook/react@8.6.18(@storybook/test@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)':
+  '@storybook/react@8.6.18(@storybook/test@8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)':
     dependencies:
       '@storybook/components': 8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
       '@storybook/global': 5.0.0
@@ -6289,8 +6311,19 @@ snapshots:
       react-dom: 19.2.5(react@19.2.5)
       storybook: 8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)
     optionalDependencies:
-      '@storybook/test': 8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
+      '@storybook/test': 8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
       typescript: 6.0.3
+
+  '@storybook/test@8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))':
+    dependencies:
+      '@storybook/global': 5.0.0
+      '@storybook/instrumenter': 8.6.15(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
+      '@testing-library/dom': 10.4.0
+      '@testing-library/jest-dom': 6.5.0
+      '@testing-library/user-event': 14.5.2(@testing-library/dom@10.4.0)
+      '@vitest/expect': 2.0.5
+      '@vitest/spy': 2.0.5
+      storybook: 8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)
 
   '@storybook/test@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))':
     dependencies:

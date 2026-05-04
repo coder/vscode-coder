@@ -622,6 +622,7 @@
 		"@storybook/addon-essentials": "catalog:",
 		"@storybook/react": "catalog:",
 		"@storybook/react-vite": "catalog:",
+		"@storybook/test": "catalog:",
 		"@tanstack/react-query": "catalog:",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",
