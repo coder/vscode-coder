@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { StatePanel } from "./StatePanel";
 
-const meta = {
+const meta: Meta<typeof StatePanel> = {
 	title: "Tasks/StatePanel",
 	component: StatePanel,
 	args: {
@@ -14,11 +14,10 @@ const meta = {
 		),
 	},
 	tags: ["tasks"],
-} satisfies Meta<typeof StatePanel>;
+};
 
 export default meta;
-
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj<typeof StatePanel>;
 
 export const Default: Story = {};
 

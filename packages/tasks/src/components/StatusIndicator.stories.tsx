@@ -2,14 +2,13 @@ import { Meta, StoryObj } from "@storybook/react";
 import { StatusIndicator } from "./StatusIndicator";
 import * as M from "../testHelpers/entities";
 
-const meta = {
+const meta: Meta<typeof StatusIndicator> = {
 	title: "Tasks/StatusIndicator",
 	component: StatusIndicator,
 	tags: ["tasks"],
 } satisfies Meta<typeof StatusIndicator>;
 
 export default meta;
-
 type Story = StoryObj<typeof meta>;
 
 export const Active: Story = {

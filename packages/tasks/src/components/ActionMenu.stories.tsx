@@ -41,11 +41,10 @@ const meta = {
 		],
 	},
 	tags: ["tasks"],
-} satisfies Meta<typeof ActionMenu>;
+};
 
 export default meta;
-
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj<typeof ActionMenu>;
 
 export const Default: Story = {};
 
