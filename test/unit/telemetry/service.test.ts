@@ -360,6 +360,26 @@ describe("TelemetryService", () => {
 			expect(h.sink.events).toHaveLength(2);
 		});
 
+		it("a mid-trace level → off does not orphan child phases or drop the parent", async () => {
+			let toggled = false;
+			await h.service.trace("op", async (span) => {
+				await span.phase("p1", () => Promise.resolve());
+				if (!toggled) {
+					h.config.set("coder.telemetry.level", "off");
+					toggled = true;
+				}
+				await span.phase("p2", () => Promise.resolve());
+			});
+
+			expect(h.sink.events).toHaveLength(3);
+			const [p1, p2, parent] = h.sink.events;
+			expect(p1.eventName).toBe("op.p1");
+			expect(p2.eventName).toBe("op.p2");
+			expect(parent.eventName).toBe("op");
+			expect(p1.traceId).toBe(parent.traceId);
+			expect(p2.traceId).toBe(parent.traceId);
+		});
+
 		it("treats unknown values (e.g. future deployment) as local", () => {
 			h = makeHarness("off");
 			h.config.set("coder.telemetry.level", "deployment");

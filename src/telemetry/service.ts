@@ -22,9 +22,15 @@ const LEVEL_ORDER: Readonly<Record<TelemetryLevel, number>> = {
 	local: 1,
 };
 
-interface EmitOptions {
-	traceId?: string;
+/** Trace context shared by all events in one trace. */
+interface SpanOptions {
+	traceId: string;
 	parentEventId?: string;
+	/** Level frozen at trace start so a mid-trace toggle does not orphan events. */
+	traceLevel: TelemetryLevel;
+}
+
+interface EmitOptions extends Partial<SpanOptions> {
 	error?: unknown;
 }
 
@@ -104,13 +110,10 @@ export class TelemetryService implements vscode.Disposable {
 		if (this.#level === "off") {
 			return fn(NOOP_SPAN);
 		}
-		return this.#startSpan(
-			crypto.randomUUID(),
-			eventName,
-			fn,
-			properties,
-			measurements,
-		);
+		return this.#startSpan(eventName, fn, properties, measurements, {
+			traceId: crypto.randomUUID(),
+			traceLevel: this.#level,
+		});
 	}
 
 	public async dispose(): Promise<void> {
@@ -124,14 +127,14 @@ export class TelemetryService implements vscode.Disposable {
 	}
 
 	#startSpan<T>(
-		traceId: string,
 		eventName: string,
 		fn: (span: Span) => Promise<T>,
 		properties: Record<string, string>,
 		measurements: Record<string, number>,
-		parentEventId?: string,
+		spanOpts: SpanOptions,
 	): Promise<T> {
 		const eventId = crypto.randomUUID();
+		const { traceId, traceLevel } = spanOpts;
 		const span: Span = {
 			traceId,
 			eventId,
@@ -144,12 +147,11 @@ export class TelemetryService implements vscode.Disposable {
 			): Promise<U> => {
 				const safeName = this.#sanitizePhaseName(phaseName);
 				return this.#startSpan(
-					traceId,
 					`${eventName}.${safeName}`,
 					phaseFn,
 					phaseProps,
 					phaseMeasurements,
-					eventId,
+					{ traceId, parentEventId: eventId, traceLevel },
 				);
 			},
 		};
@@ -159,7 +161,7 @@ export class TelemetryService implements vscode.Disposable {
 			() => fn(span),
 			properties,
 			measurements,
-			{ traceId, parentEventId },
+			spanOpts,
 		);
 	}
 
@@ -180,7 +182,7 @@ export class TelemetryService implements vscode.Disposable {
 		fn: () => Promise<T>,
 		properties: Record<string, string>,
 		measurements: Record<string, number>,
-		options: Omit<EmitOptions, "error"> = {},
+		spanOpts: SpanOptions,
 	): Promise<T> {
 		const start = performance.now();
 		const send = (result: "success" | "error", error?: unknown): void =>
@@ -189,7 +191,7 @@ export class TelemetryService implements vscode.Disposable {
 				eventName,
 				{ ...properties, result },
 				{ ...measurements, durationMs: performance.now() - start },
-				{ ...options, error },
+				{ ...spanOpts, error },
 			);
 		try {
 			const value = await fn();
@@ -223,7 +225,7 @@ export class TelemetryService implements vscode.Disposable {
 		measurements: Record<string, number>,
 		options: EmitOptions = {},
 	): void {
-		const { traceId, parentEventId, error } = options;
+		const { traceId, parentEventId, error, traceLevel } = options;
 		const event: TelemetryEvent = {
 			eventId,
 			eventName,
@@ -237,7 +239,7 @@ export class TelemetryService implements vscode.Disposable {
 			...(error !== undefined && { error: buildErrorBlock(error) }),
 		};
 
-		const currentOrder = LEVEL_ORDER[this.#level];
+		const currentOrder = LEVEL_ORDER[traceLevel ?? this.#level];
 		for (const sink of this.sinks) {
 			if (currentOrder < LEVEL_ORDER[sink.minLevel]) {
 				continue;

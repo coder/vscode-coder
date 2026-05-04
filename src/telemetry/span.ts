@@ -1,8 +1,9 @@
 import { type CallerProperties } from "./event";
 
 /**
- * Parent span handle. Children's `eventName` composes as `${parent.eventName}.${phaseName}`;
- * phase names must not contain `.`. Recurse via `phase` for grandchildren.
+ * Parent span handle. Children's `eventName` composes as `${parent.eventName}.${phaseName}`.
+ * Phase names should not contain `.`; if they do, dots are replaced with `_` and a warning is logged.
+ * Recurse via `phase` for grandchildren.
  */
 export interface Span {
 	readonly traceId: string;
@@ -28,6 +29,6 @@ export const NOOP_SPAN: Span = {
 		_properties?: CallerProperties,
 		_measurements?: Record<string, number>,
 	): Promise<T> {
-		return fn(this);
+		return fn(NOOP_SPAN);
 	},
 };
