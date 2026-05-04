@@ -70,6 +70,12 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 		return null;
 	}
 
+	// Reassemble Punycode labels (xn--...) the split broke apart: when the
+	// prefix ends in ".xn", the cut landed inside an "xn--..." label.
+	while (parts.length >= 2 && parts[0].endsWith(".xn")) {
+		parts.splice(0, 2, `${parts[0]}--${parts[1]}`);
+	}
+
 	// It has the proper prefix, so this is probably a Coder host name.
 	// Validate the SSH host name.  Including the prefix, we expect at least
 	// three parts, or four if including the agent.
