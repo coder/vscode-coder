@@ -189,6 +189,76 @@
 						"Logs everything from *headers* plus request and response bodies (may include sensitive data)"
 					],
 					"default": "basic"
+				},
+				"coder.telemetry.level": {
+					"markdownDescription": "Controls Coder extension telemetry collection. Used to diagnose extension issues.",
+					"type": "string",
+					"enum": [
+						"off",
+						"local"
+					],
+					"markdownEnumDescriptions": [
+						"Disable telemetry collection.",
+						"Record events on this machine only."
+					],
+					"default": "local",
+					"tags": [
+						"telemetry"
+					]
+				},
+				"coder.telemetry.localJsonl": {
+					"markdownDescription": "Tunables for the local JSONL telemetry sink. Active when `#coder.telemetry.level#` is at least `local`. Events are written to JSONL files under the extension's global storage directory. Missing or invalid fields fall back to defaults.",
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"flushIntervalMs": {
+							"type": "number",
+							"minimum": 1000,
+							"default": 15000,
+							"markdownDescription": "Interval in milliseconds between scheduled flushes of the in-memory buffer to disk."
+						},
+						"flushBatchSize": {
+							"type": "number",
+							"minimum": 1,
+							"default": 100,
+							"markdownDescription": "Buffer size that triggers an early flush before the next scheduled interval."
+						},
+						"bufferLimit": {
+							"type": "number",
+							"minimum": 1,
+							"default": 500,
+							"markdownDescription": "Maximum number of events held in memory. Oldest events are dropped on overflow. Should be at least `flushBatchSize`."
+						},
+						"maxFileBytes": {
+							"type": "number",
+							"minimum": 1024,
+							"default": 5242880,
+							"markdownDescription": "Maximum size in bytes of a single JSONL file before rotating to a new segment."
+						},
+						"maxAgeDays": {
+							"type": "number",
+							"minimum": 1,
+							"default": 30,
+							"markdownDescription": "Telemetry files older than this many days are deleted at activation."
+						},
+						"maxTotalBytes": {
+							"type": "number",
+							"minimum": 1024,
+							"default": 104857600,
+							"markdownDescription": "Total bytes across all telemetry files. Oldest files are deleted at activation until under the cap."
+						}
+					},
+					"default": {
+						"flushIntervalMs": 15000,
+						"flushBatchSize": 100,
+						"bufferLimit": 500,
+						"maxFileBytes": 5242880,
+						"maxAgeDays": 30,
+						"maxTotalBytes": 104857600
+					},
+					"tags": [
+						"telemetry"
+					]
 				}
 			}
 		},

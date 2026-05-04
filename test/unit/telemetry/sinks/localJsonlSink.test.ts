@@ -10,7 +10,10 @@ import {
 	type MockInstance,
 } from "vitest";
 
-import { type LocalJsonlConfig } from "@/settings/telemetry";
+import {
+	LOCAL_JSONL_SETTING,
+	type LocalJsonlConfig,
+} from "@/settings/telemetry";
 import { LocalJsonlSink } from "@/telemetry/sinks/localJsonlSink";
 
 import {
@@ -27,7 +30,6 @@ vi.mock("node:fs/promises", async () => {
 	return memfs.fs.promises;
 });
 
-const SETTING_NAME = "coder.telemetry.localJsonl";
 const BASE_DIR = "/telemetry";
 const SESSION_ID = "12345678-aaaa-bbbb-cccc-dddddddddddd";
 const SESSION_SLUG = "12345678";
@@ -76,7 +78,10 @@ describe("LocalJsonlSink", () => {
 		config: Partial<LocalJsonlConfig> = {},
 		sessionId = SESSION_ID,
 	) {
-		provider.set(SETTING_NAME, { flushIntervalMs: 1_000_000, ...config });
+		provider.set(LOCAL_JSONL_SETTING, {
+			flushIntervalMs: 1_000_000,
+			...config,
+		});
 		const logger = createMockLogger();
 		const sink = LocalJsonlSink.start({ baseDir: BASE_DIR, sessionId }, logger);
 		active.push(sink);
@@ -148,12 +153,53 @@ describe("LocalJsonlSink", () => {
 		]);
 	});
 
+	it("emits one overflow warning per burst regardless of flush outcome", async () => {
+		const { sink, logger, makeEvent } = setup({
+			bufferLimit: 5,
+			flushBatchSize: 10_000,
+		});
+		const overflowWarnings = (): number =>
+			vi.mocked(logger.warn).mock.calls.filter((c) => {
+				const arg = c[0];
+				return typeof arg === "string" && arg.includes("buffer overflow");
+			}).length;
+		const overflowBuffer = (): void => {
+			for (let i = 0; i < 8; i++) {
+				sink.write(makeEvent());
+			}
+		};
+
+		overflowBuffer();
+		await sink.flush();
+
+		vi.spyOn(fsPromises, "appendFile").mockRejectedValueOnce(new Error("boom"));
+		overflowBuffer();
+		await sink.flush();
+
+		overflowBuffer();
+		await sink.flush();
+
+		expect(overflowWarnings()).toBe(3);
+	});
+
 	it("flushes pending events on dispose", async () => {
 		const { sink, makeEvent } = setup();
 		sink.write(makeEvent());
 		sink.write(makeEvent());
 
 		await sink.dispose();
+
+		expect(readJsonl(todaysFile())).toHaveLength(2);
+	});
+
+	it("ignores writes after dispose", async () => {
+		const { sink, makeEvent } = setup();
+		sink.write(makeEvent());
+		sink.write(makeEvent());
+		await sink.dispose();
+
+		sink.write(makeEvent());
+		sink.write(makeEvent());
 
 		expect(readJsonl(todaysFile())).toHaveLength(2);
 	});
@@ -224,6 +270,27 @@ describe("LocalJsonlSink", () => {
 		await vi.waitFor(() =>
 			expect(vol.readdirSync(BASE_DIR).toSorted()).toEqual([
 				"telemetry-2026-04-02-b.jsonl",
+				"telemetry-2026-04-03-c.jsonl",
+			]),
+		);
+	});
+
+	it("keeps deleting until total size is under maxTotalBytes", async () => {
+		const dayMs = 24 * 60 * 60 * 1000;
+		const big = "x".repeat(2000);
+		vol.fromJSON({
+			[`${BASE_DIR}/telemetry-2026-04-01-a.jsonl`]: big,
+			[`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`]: big,
+			[`${BASE_DIR}/telemetry-2026-04-03-c.jsonl`]: big,
+		});
+		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-01-a.jsonl`, 5 * dayMs);
+		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`, 4 * dayMs);
+		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-03-c.jsonl`, 3 * dayMs);
+
+		setup({ maxAgeDays: 365, maxTotalBytes: 2500 });
+
+		await vi.waitFor(() =>
+			expect(vol.readdirSync(BASE_DIR)).toEqual([
 				"telemetry-2026-04-03-c.jsonl",
 			]),
 		);
@@ -333,7 +400,7 @@ describe("LocalJsonlSink", () => {
 		sink.write(makeEvent());
 		expect(vol.existsSync(todaysFile())).toBe(false);
 
-		provider.set(SETTING_NAME, {
+		provider.set(LOCAL_JSONL_SETTING, {
 			flushIntervalMs: 1_000_000,
 			flushBatchSize: 3,
 		});

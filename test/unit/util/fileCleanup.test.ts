@@ -1,4 +1,5 @@
 import { vol } from "memfs";
+import * as fsPromises from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleanupFiles } from "@/util/fileCleanup";
@@ -90,5 +91,31 @@ describe("cleanupFiles", () => {
 		});
 
 		expect(vol.readdirSync("/d")).toEqual([]);
+	});
+
+	it("does not throw when readdir fails for reasons other than ENOENT", async () => {
+		const { logger } = setup();
+		const err = Object.assign(new Error("denied"), { code: "EACCES" });
+		vi.spyOn(fsPromises, "readdir").mockRejectedValueOnce(err);
+
+		const pick = vi.fn(() => []);
+		await expect(
+			cleanupFiles("/d", logger, { fileType: "thing", pick }),
+		).resolves.toBeUndefined();
+		expect(pick).not.toHaveBeenCalled();
+	});
+
+	it("clamps pick names to their basename so unlinks cannot escape the directory", async () => {
+		const { logger } = setup({
+			"/d/inside.txt": "x",
+			"/outside.txt": "y",
+		});
+
+		await cleanupFiles("/d", logger, {
+			fileType: "thing",
+			pick: () => [{ name: "../outside.txt" }],
+		});
+
+		expect(vol.existsSync("/outside.txt")).toBe(true);
 	});
 });

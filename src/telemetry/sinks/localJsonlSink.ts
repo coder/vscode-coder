@@ -8,7 +8,10 @@ import {
 	readLocalJsonlConfig,
 	type LocalJsonlConfig,
 } from "../../settings/telemetry";
-import { cleanupFiles } from "../../util/fileCleanup";
+import {
+	cleanupFiles,
+	type FileCleanupCandidate,
+} from "../../util/fileCleanup";
 
 import type { Logger } from "../../logging/logger";
 import type { TelemetryEvent, TelemetryLevel, TelemetrySink } from "../event";
@@ -71,24 +74,9 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		logger: Logger,
 	): LocalJsonlSink {
 		const config = readLocalJsonlConfig(vscode.workspace.getConfiguration());
+		warnIfBufferTooSmall(config, logger);
 		const sink = new LocalJsonlSink(opts, logger, config);
-		sink.#configWatcher = watchConfigurationChanges(
-			[
-				{
-					setting: LOCAL_JSONL_SETTING,
-					getValue: () =>
-						readLocalJsonlConfig(vscode.workspace.getConfiguration()),
-				},
-			],
-			(changes) => {
-				const next = changes.get(LOCAL_JSONL_SETTING) as
-					| LocalJsonlConfig
-					| undefined;
-				if (next) {
-					sink.#config = next;
-				}
-			},
-		);
+		sink.#configWatcher = sink.#watchConfig();
 		sink.#scheduleNextFlush();
 		void sink.#cleanupOldFiles();
 		return sink;
@@ -106,18 +94,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 			return;
 		}
 		this.#buffer.push(line);
-
-		if (this.#buffer.length > this.#config.bufferLimit) {
-			const dropped = this.#buffer.length - this.#config.bufferLimit;
-			this.#buffer.splice(0, dropped);
-			if (!this.#overflowWarned) {
-				this.#overflowWarned = true;
-				this.#logger.warn(
-					`Telemetry sink '${this.name}' buffer overflow: dropped ${dropped} oldest event(s)`,
-				);
-			}
-		}
-
+		this.#enforceBufferLimit();
 		if (this.#buffer.length >= this.#config.flushBatchSize) {
 			void this.flush();
 		}
@@ -132,11 +109,11 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 			return this.#flushChain;
 		}
 		this.#hasQueued = true;
-		const next = (): Promise<void> => {
+		const run = async (): Promise<void> => {
 			this.#hasQueued = false;
-			return this.#doFlush();
+			await this.#doFlush();
 		};
-		this.#flushChain = this.#flushChain.then(next, next);
+		this.#flushChain = this.#flushChain.then(run, run);
 		return this.#flushChain;
 	}
 
@@ -153,6 +130,42 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		await this.flush();
 	}
 
+	#enforceBufferLimit(): void {
+		const overage = this.#buffer.length - this.#config.bufferLimit;
+		if (overage <= 0) {
+			return;
+		}
+		this.#buffer.splice(0, overage);
+		if (!this.#overflowWarned) {
+			this.#overflowWarned = true;
+			this.#logger.warn(
+				`Telemetry sink '${this.name}' buffer overflow: dropped ${overage} oldest event(s)`,
+			);
+		}
+	}
+
+	#watchConfig(): vscode.Disposable {
+		return watchConfigurationChanges(
+			[
+				{
+					setting: LOCAL_JSONL_SETTING,
+					getValue: () =>
+						readLocalJsonlConfig(vscode.workspace.getConfiguration()),
+				},
+			],
+			(changes) => {
+				const next = changes.get(LOCAL_JSONL_SETTING) as
+					| LocalJsonlConfig
+					| undefined;
+				if (!next) {
+					return;
+				}
+				warnIfBufferTooSmall(next, this.#logger);
+				this.#config = next;
+			},
+		);
+	}
+
 	// Chained on completion (not setInterval) so flushes never overlap or pile up.
 	#scheduleNextFlush(): void {
 		if (this.#disposed) {
@@ -166,9 +179,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 						err,
 					);
 				})
-				.finally(() => {
-					this.#scheduleNextFlush();
-				});
+				.finally(() => this.#scheduleNextFlush());
 		}, this.#config.flushIntervalMs);
 	}
 
@@ -176,83 +187,115 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		if (this.#buffer.length === 0) {
 			return;
 		}
+		// Capture before any await so concurrent writes go to the next batch.
 		const lines = this.#buffer.splice(0);
 		const payload = lines.join("");
-		const next = this.#nextFile(payload.length);
-		const seg = next.segment > 0 ? `.${next.segment}` : "";
-		const target = path.join(
-			this.#baseDir,
-			`${FILE_PREFIX}${next.date}-${this.#sessionSlug}${seg}${FILE_SUFFIX}`,
-		);
+		const payloadBytes = Buffer.byteLength(payload, "utf8");
 		try {
-			await fs.appendFile(target, payload, "utf8");
-			this.#current = { ...next, size: next.size + payload.length };
+			await this.#append(payload, payloadBytes);
 			this.#overflowWarned = false;
 		} catch (err) {
-			// Leave #current and #overflowWarned alone: the next flush re-evaluates
-			// rotation, and the warn flag fires again on the next overflow burst.
-			this.#logger.warn(`Telemetry sink '${this.name}' flush failed`, err);
+			// Reset so the next overflow burst is logged on repeated failures.
+			this.#overflowWarned = false;
+			this.#logger.warn(
+				`Telemetry sink '${this.name}' flush failed, ${lines.length} event(s) discarded`,
+				err,
+			);
 		}
 	}
 
-	#nextFile(payloadSize: number): CurrentFile {
+	async #append(payload: string, payloadBytes: number): Promise<void> {
+		// mkdir is idempotent with recursive:true; cheap enough to do per flush.
+		await fs.mkdir(this.#baseDir, { recursive: true });
+		const next = await this.#nextFile(payloadBytes);
+		await fs.appendFile(this.#segmentPath(next), payload, "utf8");
+		this.#current = { ...next, size: next.size + payloadBytes };
+	}
+
+	async #nextFile(payloadSize: number): Promise<CurrentFile> {
 		const today = todayUtc();
 		if (this.#current.date !== today) {
-			return { date: today, segment: 0, size: 0 };
+			// Seed from disk: an Extension Host restart may have left bytes in
+			// today's segment 0 from earlier in this session.
+			const target = this.#segmentPath({ date: today, segment: 0 });
+			const existing = await statBytes(target);
+			return { date: today, segment: 0, size: existing };
 		}
-		if (
-			this.#current.size > 0 &&
-			this.#current.size + payloadSize > this.#config.maxFileBytes
-		) {
+		const wouldExceed =
+			this.#current.size + payloadSize > this.#config.maxFileBytes;
+		if (this.#current.size > 0 && wouldExceed) {
 			return { date: today, segment: this.#current.segment + 1, size: 0 };
 		}
 		return this.#current;
 	}
 
+	#segmentPath(file: { date: string; segment: number }): string {
+		const seg = file.segment > 0 ? `.${file.segment}` : "";
+		return path.join(
+			this.#baseDir,
+			`${FILE_PREFIX}${file.date}-${this.#sessionSlug}${seg}${FILE_SUFFIX}`,
+		);
+	}
+
 	async #cleanupOldFiles(): Promise<void> {
-		try {
-			await fs.mkdir(this.#baseDir, { recursive: true });
-		} catch (err) {
-			this.#logger.warn(
-				`Telemetry sink '${this.name}' could not create base dir`,
-				err,
-			);
-			return;
-		}
-		const maxAgeMs = this.#config.maxAgeDays * MS_PER_DAY;
-		const { maxTotalBytes } = this.#config;
 		await cleanupFiles(this.#baseDir, this.#logger, {
 			fileType: "telemetry file",
 			match: (name) =>
 				name.startsWith(FILE_PREFIX) && name.endsWith(FILE_SUFFIX),
-			pick: (files, now) => {
-				const toDelete: Array<{ name: string }> = [];
-				const fresh: typeof files = [];
-				let total = 0;
-				for (const f of files) {
-					if (now - f.mtime > maxAgeMs) {
-						toDelete.push({ name: f.name });
-					} else {
-						fresh.push(f);
-						total += f.size;
-					}
-				}
-				fresh.sort((a, b) => a.mtime - b.mtime);
-				for (const f of fresh) {
-					if (total <= maxTotalBytes) {
-						break;
-					}
-					toDelete.push({ name: f.name });
-					total -= f.size;
-				}
-				return toDelete;
-			},
+			pick: pickByAgeAndSize(
+				this.#config.maxAgeDays * MS_PER_DAY,
+				this.#config.maxTotalBytes,
+			),
 		});
+	}
+}
+
+function pickByAgeAndSize(maxAgeMs: number, maxTotalBytes: number) {
+	return (
+		files: FileCleanupCandidate[],
+		now: number,
+	): Array<{ name: string }> => {
+		const toDelete: Array<{ name: string }> = [];
+		const survivors: FileCleanupCandidate[] = [];
+		let totalBytes = 0;
+		for (const file of files) {
+			if (now - file.mtime > maxAgeMs) {
+				toDelete.push({ name: file.name });
+			} else {
+				survivors.push(file);
+				totalBytes += file.size;
+			}
+		}
+		survivors.sort((a, b) => a.mtime - b.mtime);
+		for (const file of survivors) {
+			if (totalBytes <= maxTotalBytes) {
+				break;
+			}
+			toDelete.push({ name: file.name });
+			totalBytes -= file.size;
+		}
+		return toDelete;
+	};
+}
+
+async function statBytes(target: string): Promise<number> {
+	try {
+		return (await fs.stat(target)).size;
+	} catch {
+		return 0;
 	}
 }
 
 function todayUtc(): string {
 	return new Date().toISOString().slice(0, 10);
+}
+
+function warnIfBufferTooSmall(config: LocalJsonlConfig, logger: Logger): void {
+	if (config.bufferLimit < config.flushBatchSize) {
+		logger.warn(
+			`Telemetry sink '${SINK_NAME}' bufferLimit (${config.bufferLimit}) is below flushBatchSize (${config.flushBatchSize}); the batch-size flush trigger is unreachable and overflow will drop events instead. Raise bufferLimit or lower flushBatchSize.`,
+		);
+	}
 }
 
 function toSessionSlug(sessionId: string): string {
