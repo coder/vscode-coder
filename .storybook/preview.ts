@@ -1,9 +1,61 @@
+import "./global.css";
+import "@vscode/codicons/dist/codicon.css";
 import type { Preview } from "@storybook/react";
+import { theme } from "./themes/dark";
+import { createElement, useEffect } from "react";
+
+const getDefaultFontStack = () => {
+	if (navigator.userAgent.indexOf("Linux") > -1) {
+		return 'system-ui, "Ubuntu", "Droid Sans", sans-serif';
+	} else if (navigator.userAgent.indexOf("Mac") > -1) {
+		return "-apple-system, BlinkMacSystemFont, sans-serif";
+	} else if (navigator.userAgent.indexOf("Windows") > -1) {
+		return '"Segoe WPC", "Segoe UI", sans-serif';
+	} else {
+		return "sans-serif";
+	}
+};
 
 const preview: Preview = {
 	parameters: {
 		layout: "centered",
 	},
+	decorators: [
+		(Story, context) => {
+			useEffect(() => {
+				// Apply CSS custom properties to the document root
+				theme.forEach(([property, value]) => {
+					document.documentElement.style.setProperty(property, value);
+				});
+
+				// Cleanup function to remove properties when unmounting
+				return () => {
+					theme.forEach(([property]) => {
+						document.documentElement.style.removeProperty(property);
+					});
+					document.documentElement.style.removeProperty("font-family");
+				};
+			}, []);
+
+			useEffect(() => {
+				if (context.tags.includes("tasks")) {
+					// Dynamically import tasks CSS
+					import("../packages/tasks/src/index.css");
+				}
+			}, [context.tags]);
+
+			return createElement(
+				"div",
+				{
+					id: "root",
+					style: {
+						"font-family": getDefaultFontStack(),
+					},
+				},
+				Story(),
+			);
+		},
+	],
 };
 
 export default preview;

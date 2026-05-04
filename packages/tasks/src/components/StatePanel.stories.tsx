@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { StatePanel } from "./StatePanel";
 
 const meta = {
-	title: "States/StatePanel",
+	title: "Tasks/StatePanel",
 	component: StatePanel,
 	args: {
 		title: "Tasks not available",
@@ -13,6 +13,7 @@ const meta = {
 			</a>
 		),
 	},
+	tags: ["tasks"],
 } satisfies Meta<typeof StatePanel>;
 
 export default meta;
