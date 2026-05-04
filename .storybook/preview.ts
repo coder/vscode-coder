@@ -2,7 +2,7 @@ import "./global.css";
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
 
 import type { Preview } from "@storybook/react";
-import { theme } from "./themes/dark";
+import { theme } from "./themes/dark-v2";
 import { createElement, useEffect } from "react";
 
 // Inject codicon stylesheet immediately (before any components render)
