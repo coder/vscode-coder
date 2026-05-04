@@ -56,11 +56,13 @@ export class TelemetryService implements vscode.Disposable {
 		this.#configWatcher = watchConfigurationChanges(
 			[{ setting: TELEMETRY_LEVEL_SETTING, getValue: readLevel }],
 			(changes) => {
-				const raw = changes.get(TELEMETRY_LEVEL_SETTING);
-				if (!isTelemetryLevel(raw)) {
+				const next = changes.get(TELEMETRY_LEVEL_SETTING) as
+					| TelemetryLevel
+					| undefined;
+				if (!next) {
 					return;
 				}
-				this.#applyLevelChange(raw).catch((err) => {
+				this.#applyLevelChange(next).catch((err) => {
 					this.logger.warn("Telemetry level change failed", err);
 				});
 			},
