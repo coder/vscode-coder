@@ -2,6 +2,10 @@ import * as vscode from "vscode";
 
 import { watchConfigurationChanges } from "../configWatcher";
 import { type Logger } from "../logging/logger";
+import {
+	TELEMETRY_LEVEL_SETTING,
+	readTelemetryLevel,
+} from "../settings/telemetry";
 
 import {
 	buildSession,
@@ -15,12 +19,13 @@ import {
 } from "./event";
 import { NOOP_SPAN, type Span } from "./span";
 
-const TELEMETRY_LEVEL_SETTING = "coder.telemetry.level";
-
 const LEVEL_ORDER: Readonly<Record<TelemetryLevel, number>> = {
 	off: 0,
 	local: 1,
 };
+
+const readLevel = (): TelemetryLevel =>
+	readTelemetryLevel(vscode.workspace.getConfiguration());
 
 /** Trace context shared by all events in one trace. */
 interface SpanOptions {
@@ -278,15 +283,4 @@ export class TelemetryService implements vscode.Disposable {
 			this.logger.warn(`Telemetry sink '${sink.name}' ${action} failed`, err);
 		}
 	}
-}
-
-function readLevel(): TelemetryLevel {
-	const value = vscode.workspace
-		.getConfiguration()
-		.get<string>(TELEMETRY_LEVEL_SETTING);
-	return isTelemetryLevel(value) ? value : "local";
-}
-
-function isTelemetryLevel(value: unknown): value is TelemetryLevel {
-	return value === "off" || value === "local";
 }

@@ -10,26 +10,18 @@ export interface FileCleanupCandidate {
 }
 
 export interface FileCleanupOptions {
-	/** Human-readable noun used in log messages, e.g. "telemetry file". */
+	/** Noun used in log messages, e.g. "telemetry file". */
 	fileType: string;
-	/**
-	 * Optional name-based filter applied before stat. Use this to skip
-	 * unrelated entries cheaply. Files for which `match` returns false are
-	 * never stat'd or passed to `pick`.
-	 */
+	/** Name-based filter applied before stat to skip unrelated entries. */
 	match?: (name: string) => boolean;
-	/**
-	 * Picks files to delete after stat. Receives `{ name, mtime, size }` for
-	 * each survivor of `match`, plus the current time.
-	 */
+	/** Picks files to delete from the stat'd survivors of `match`. */
 	pick: (files: FileCleanupCandidate[], now: number) => Array<{ name: string }>;
 }
 
 /**
- * Stats files in `dir` in parallel (after the optional name-based `match`),
- * lets `pick` choose which to delete, then unlinks them in parallel.
- * Tolerates concurrent deletes from other processes (ENOENT is swallowed).
- * Never throws; failures are logged via `logger.debug`.
+ * Lists files in `dir`, filters by name, stats and unlinks the picks in
+ * parallel. ENOENT is swallowed so concurrent deletes are safe. Never
+ * throws; failures go to `logger.debug`.
  */
 export async function cleanupFiles(
 	dir: string,

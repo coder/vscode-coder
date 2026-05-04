@@ -3,6 +3,11 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { watchConfigurationChanges } from "../../configWatcher";
+import {
+	LOCAL_JSONL_SETTING,
+	readLocalJsonlConfig,
+	type LocalJsonlConfig,
+} from "../../settings/telemetry";
 import { cleanupFiles } from "../../util/fileCleanup";
 
 import type { Logger } from "../../logging/logger";
@@ -13,29 +18,9 @@ const FILE_PREFIX = "telemetry-";
 const FILE_SUFFIX = ".jsonl";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-const SETTING_NAME = "coder.telemetry.localJsonl";
-
-const DEFAULTS: LocalJsonlConfig = {
-	flushIntervalMs: 15_000,
-	flushBatchSize: 100,
-	bufferLimit: 500,
-	maxFileBytes: 5 * 1024 * 1024,
-	maxAgeDays: 30,
-	maxTotalBytes: 100 * 1024 * 1024,
-};
-
 export interface LocalJsonlSinkOptions {
 	baseDir: string;
 	sessionId: string;
-}
-
-export interface LocalJsonlConfig {
-	flushIntervalMs: number;
-	flushBatchSize: number;
-	bufferLimit: number;
-	maxFileBytes: number;
-	maxAgeDays: number;
-	maxTotalBytes: number;
 }
 
 interface CurrentFile {
@@ -45,20 +30,14 @@ interface CurrentFile {
 }
 
 /**
- * Writes telemetry events as JSON Lines.
- *
- * Each session writes its own files (`telemetry-YYYY-MM-DD-{sessionId8}.jsonl`,
- * with `.N.jsonl` suffixes added once `maxFileBytes` is exceeded), so multiple
- * VS Code windows sharing globalStorage cannot race on appends or rotation.
- * Cleanup runs across every session's files for shared retention.
- *
- * `write` is synchronous and never throws. Disk I/O happens in `flush` and
- * `dispose`, which catch errors and log them via the provided logger.
- *
- * Tunables come from the `coder.telemetry.localJsonl` setting (object-typed,
- * not registered in package.json) and update reactively.
+ * Writes telemetry events as JSON Lines. Each VS Code session writes its
+ * own files (`telemetry-YYYY-MM-DD-{sessionId8}.jsonl` plus `.N.jsonl` size
+ * segments), so concurrent windows cannot race on appends or rotation.
+ * `write` is sync and never throws; disk I/O happens in `flush` and
+ * `dispose` and catches errors. Tunables come from `coder.telemetry.localJsonl`
+ * and update reactively.
  */
-export class LocalJsonlSink implements TelemetrySink {
+export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	public readonly name = SINK_NAME;
 	public readonly minLevel: TelemetryLevel = "local";
 
@@ -66,8 +45,8 @@ export class LocalJsonlSink implements TelemetrySink {
 	readonly #sessionSlug: string;
 	readonly #logger: Logger;
 	readonly #buffer: string[] = [];
-	readonly #configWatcher: vscode.Disposable;
 	#config: LocalJsonlConfig;
+	#configWatcher: vscode.Disposable | null = null;
 	#flushTimer: NodeJS.Timeout | null = null;
 	#flushChain: Promise<void> = Promise.resolve();
 	#hasQueued = false;
@@ -77,32 +56,41 @@ export class LocalJsonlSink implements TelemetrySink {
 
 	private constructor(
 		opts: LocalJsonlSinkOptions,
-		config: LocalJsonlConfig,
 		logger: Logger,
+		config: LocalJsonlConfig,
 	) {
 		this.#baseDir = opts.baseDir;
 		this.#sessionSlug = toSessionSlug(opts.sessionId);
 		this.#logger = logger;
 		this.#config = config;
-		this.#configWatcher = watchConfigurationChanges(
-			[{ setting: SETTING_NAME, getValue: readConfig }],
-			(changes) => {
-				const next = changes.get(SETTING_NAME) as LocalJsonlConfig | undefined;
-				if (next) {
-					this.#config = next;
-				}
-			},
-		);
-		this.#scheduleNextFlush();
 	}
 
+	/** Constructs a sink and starts its timer, config watcher, and cleanup. */
 	public static start(
 		opts: LocalJsonlSinkOptions,
 		logger: Logger,
 	): LocalJsonlSink {
-		const config = readConfig();
-		const sink = new LocalJsonlSink(opts, config, logger);
-		void cleanupOldTelemetryFiles(opts.baseDir, config, logger);
+		const config = readLocalJsonlConfig(vscode.workspace.getConfiguration());
+		const sink = new LocalJsonlSink(opts, logger, config);
+		sink.#configWatcher = watchConfigurationChanges(
+			[
+				{
+					setting: LOCAL_JSONL_SETTING,
+					getValue: () =>
+						readLocalJsonlConfig(vscode.workspace.getConfiguration()),
+				},
+			],
+			(changes) => {
+				const next = changes.get(LOCAL_JSONL_SETTING) as
+					| LocalJsonlConfig
+					| undefined;
+				if (next) {
+					sink.#config = next;
+				}
+			},
+		);
+		sink.#scheduleNextFlush();
+		void sink.#cleanupOldFiles();
 		return sink;
 	}
 
@@ -137,9 +125,7 @@ export class LocalJsonlSink implements TelemetrySink {
 
 	/**
 	 * Coalesces concurrent flush requests. While a flush is running, at most
-	 * one more is queued; further callers receive that same queued promise.
-	 * Resolves once the buffer state at the time of the call has been written
-	 * (or attempted; failures are logged, not thrown).
+	 * one more is queued, and further callers share that queued promise.
 	 */
 	public flush(): Promise<void> {
 		if (this.#hasQueued) {
@@ -159,7 +145,7 @@ export class LocalJsonlSink implements TelemetrySink {
 			return;
 		}
 		this.#disposed = true;
-		this.#configWatcher.dispose();
+		this.#configWatcher?.dispose();
 		if (this.#flushTimer) {
 			clearTimeout(this.#flushTimer);
 			this.#flushTimer = null;
@@ -167,6 +153,7 @@ export class LocalJsonlSink implements TelemetrySink {
 		await this.flush();
 	}
 
+	// Chained on completion (not setInterval) so flushes never overlap or pile up.
 	#scheduleNextFlush(): void {
 		if (this.#disposed) {
 			return;
@@ -192,12 +179,18 @@ export class LocalJsonlSink implements TelemetrySink {
 		const lines = this.#buffer.splice(0);
 		const payload = lines.join("");
 		const next = this.#nextFile(payload.length);
-		const target = path.join(this.#baseDir, this.#fileName(next));
+		const seg = next.segment > 0 ? `.${next.segment}` : "";
+		const target = path.join(
+			this.#baseDir,
+			`${FILE_PREFIX}${next.date}-${this.#sessionSlug}${seg}${FILE_SUFFIX}`,
+		);
 		try {
 			await fs.appendFile(target, payload, "utf8");
 			this.#current = { ...next, size: next.size + payload.length };
 			this.#overflowWarned = false;
 		} catch (err) {
+			// Leave #current and #overflowWarned alone: the next flush re-evaluates
+			// rotation, and the warn flag fires again on the next overflow burst.
 			this.#logger.warn(`Telemetry sink '${this.name}' flush failed`, err);
 		}
 	}
@@ -216,73 +209,46 @@ export class LocalJsonlSink implements TelemetrySink {
 		return this.#current;
 	}
 
-	#fileName(file: CurrentFile): string {
-		const segment = file.segment > 0 ? `.${file.segment}` : "";
-		return `${FILE_PREFIX}${file.date}-${this.#sessionSlug}${segment}${FILE_SUFFIX}`;
-	}
-}
-
-async function cleanupOldTelemetryFiles(
-	baseDir: string,
-	config: LocalJsonlConfig,
-	logger: Logger,
-): Promise<void> {
-	try {
-		await fs.mkdir(baseDir, { recursive: true });
-	} catch (err) {
-		logger.warn(`Telemetry sink '${SINK_NAME}' could not create base dir`, err);
-		return;
-	}
-	const maxAgeMs = config.maxAgeDays * MS_PER_DAY;
-	const { maxTotalBytes } = config;
-	await cleanupFiles(baseDir, logger, {
-		fileType: "telemetry file",
-		match: (name) => name.startsWith(FILE_PREFIX) && name.endsWith(FILE_SUFFIX),
-		pick: (files, now) => {
-			const toDelete: Array<{ name: string }> = [];
-			const fresh: typeof files = [];
-			let total = 0;
-			for (const f of files) {
-				if (now - f.mtime > maxAgeMs) {
+	async #cleanupOldFiles(): Promise<void> {
+		try {
+			await fs.mkdir(this.#baseDir, { recursive: true });
+		} catch (err) {
+			this.#logger.warn(
+				`Telemetry sink '${this.name}' could not create base dir`,
+				err,
+			);
+			return;
+		}
+		const maxAgeMs = this.#config.maxAgeDays * MS_PER_DAY;
+		const { maxTotalBytes } = this.#config;
+		await cleanupFiles(this.#baseDir, this.#logger, {
+			fileType: "telemetry file",
+			match: (name) =>
+				name.startsWith(FILE_PREFIX) && name.endsWith(FILE_SUFFIX),
+			pick: (files, now) => {
+				const toDelete: Array<{ name: string }> = [];
+				const fresh: typeof files = [];
+				let total = 0;
+				for (const f of files) {
+					if (now - f.mtime > maxAgeMs) {
+						toDelete.push({ name: f.name });
+					} else {
+						fresh.push(f);
+						total += f.size;
+					}
+				}
+				fresh.sort((a, b) => a.mtime - b.mtime);
+				for (const f of fresh) {
+					if (total <= maxTotalBytes) {
+						break;
+					}
 					toDelete.push({ name: f.name });
-				} else {
-					fresh.push(f);
-					total += f.size;
+					total -= f.size;
 				}
-			}
-			fresh.sort((a, b) => a.mtime - b.mtime);
-			for (const f of fresh) {
-				if (total <= maxTotalBytes) {
-					break;
-				}
-				toDelete.push({ name: f.name });
-				total -= f.size;
-			}
-			return toDelete;
-		},
-	});
-}
-
-/** Reads `coder.telemetry.localJsonl`, falling back to defaults for invalid values. */
-function readConfig(): LocalJsonlConfig {
-	const raw = vscode.workspace.getConfiguration().get(SETTING_NAME);
-	const obj =
-		raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-	return {
-		flushIntervalMs: positiveNumber(
-			obj.flushIntervalMs,
-			DEFAULTS.flushIntervalMs,
-		),
-		flushBatchSize: positiveNumber(obj.flushBatchSize, DEFAULTS.flushBatchSize),
-		bufferLimit: positiveNumber(obj.bufferLimit, DEFAULTS.bufferLimit),
-		maxFileBytes: positiveNumber(obj.maxFileBytes, DEFAULTS.maxFileBytes),
-		maxAgeDays: positiveNumber(obj.maxAgeDays, DEFAULTS.maxAgeDays),
-		maxTotalBytes: positiveNumber(obj.maxTotalBytes, DEFAULTS.maxTotalBytes),
-	};
-}
-
-function positiveNumber(value: unknown, fallback: number): number {
-	return typeof value === "number" && value > 0 ? value : fallback;
+				return toDelete;
+			},
+		});
+	}
 }
 
 function todayUtc(): string {
