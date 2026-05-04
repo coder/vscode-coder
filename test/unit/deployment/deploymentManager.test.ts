@@ -66,11 +66,16 @@ function createTestContext() {
 		validationMockClient as unknown as CoderApi,
 	);
 
+	const telemetryService = {
+		setDeploymentUrl: vi.fn(),
+	};
+
 	const container = {
 		getSecretsManager: () => secretsManager,
 		getMementoManager: () => mementoManager,
 		getContextManager: () => contextManager as unknown as ContextManager,
 		getLogger: () => logger,
+		getTelemetryService: () => telemetryService,
 	};
 
 	const manager = DeploymentManager.create(
@@ -87,6 +92,7 @@ function createTestContext() {
 		contextManager,
 		mockOAuthSessionManager,
 		mockWorkspaceProvider,
+		telemetryService,
 		manager,
 	};
 }
@@ -156,6 +162,19 @@ describe("DeploymentManager", () => {
 
 			const persisted = await secretsManager.getCurrentDeployment();
 			expect(persisted?.url).toBe(TEST_URL);
+		});
+
+		it("notifies telemetry of the deployment URL", async () => {
+			const { telemetryService, manager } = createTestContext();
+
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "test-token",
+				user: createMockUser(),
+			});
+
+			expect(telemetryService.setDeploymentUrl).toHaveBeenCalledWith(TEST_URL);
 		});
 
 		it("sets isOwner context when user has owner role", async () => {
@@ -383,6 +402,20 @@ describe("DeploymentManager", () => {
 			expect(mockClient.token).toBeUndefined();
 			expect(contextManager.get("coder.authenticated")).toBe(false);
 			expect(contextManager.get("coder.isOwner")).toBe(false);
+		});
+
+		it("resets the telemetry deployment URL on clearDeployment", async () => {
+			const { telemetryService, manager } = createTestContext();
+
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "test-token",
+				user: createMockUser(),
+			});
+			await manager.clearDeployment();
+
+			expect(telemetryService.setDeploymentUrl).toHaveBeenLastCalledWith("");
 		});
 	});
 
