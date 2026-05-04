@@ -5,6 +5,14 @@ const meta: Meta<typeof PromptInput> = {
 	title: "Tasks/PromptInput",
 	component: PromptInput,
 	tags: ["tasks"],
+	args: {
+		value: "",
+		onChange: () => {},
+		onSubmit: () => {},
+		actionIcon: "send",
+		actionLabel: "Submit",
+		actionEnabled: true,
+	},
 };
 
 export default meta;
