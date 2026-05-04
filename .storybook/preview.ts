@@ -49,7 +49,7 @@ const preview: Preview = {
 				{
 					id: "root",
 					style: {
-						"font-family": getDefaultFontStack(),
+						fontFamily: getDefaultFontStack(),
 					},
 				},
 				Story(),
