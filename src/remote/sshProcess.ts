@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { findPort } from "../util";
+import { cleanupFiles } from "../util/fileCleanup";
 
 import { NetworkStatusReporter } from "./networkStatus";
 
@@ -81,72 +82,6 @@ export class SshProcessMonitor implements vscode.Disposable {
 	private readonly reporter: NetworkStatusReporter;
 
 	/**
-	 * Helper to clean up files in a directory.
-	 * Stats files in parallel, applies selection criteria, then deletes in parallel.
-	 */
-	private static async cleanupFiles(
-		dir: string,
-		fileType: string,
-		logger: Logger,
-		options: {
-			filter: (name: string) => boolean;
-			select: (
-				files: Array<{ name: string; mtime: number }>,
-				now: number,
-			) => Array<{ name: string }>;
-		},
-	): Promise<void> {
-		try {
-			const now = Date.now();
-			const files = await fs.readdir(dir);
-
-			// Gather file stats in parallel
-			const withStats = await Promise.all(
-				files.filter(options.filter).map(async (name) => {
-					try {
-						const stats = await fs.stat(path.join(dir, name));
-						return { name, mtime: stats.mtime.getTime() };
-					} catch (error) {
-						if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-							logger.debug(`Failed to stat ${fileType} ${name}`, error);
-						}
-						return null;
-					}
-				}),
-			);
-
-			const toDelete = options.select(
-				withStats.filter((f) => f !== null),
-				now,
-			);
-
-			// Delete files in parallel
-			const results = await Promise.all(
-				toDelete.map(async (file) => {
-					try {
-						await fs.unlink(path.join(dir, file.name));
-						return file.name;
-					} catch (error) {
-						if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-							logger.debug(`Failed to delete ${fileType} ${file.name}`, error);
-						}
-						return null;
-					}
-				}),
-			);
-
-			const deletedFiles = results.filter((name) => name !== null);
-			if (deletedFiles.length > 0) {
-				logger.debug(
-					`Cleaned up ${deletedFiles.length} ${fileType}(s): ${deletedFiles.join(", ")}`,
-				);
-			}
-		} catch {
-			// Directory may not exist yet, ignore
-		}
-	}
-
-	/**
 	 * Cleans up network info files older than the specified age.
 	 */
 	private static async cleanupOldNetworkFiles(
@@ -154,15 +89,11 @@ export class SshProcessMonitor implements vscode.Disposable {
 		maxAgeMs: number,
 		logger: Logger,
 	): Promise<void> {
-		await SshProcessMonitor.cleanupFiles(
-			networkInfoPath,
-			"network info file",
-			logger,
-			{
-				filter: (name) => name.endsWith(".json"),
-				select: (files, now) => files.filter((f) => now - f.mtime > maxAgeMs),
-			},
-		);
+		await cleanupFiles(networkInfoPath, logger, {
+			fileType: "network info file",
+			match: (name) => name.endsWith(".json"),
+			pick: (files, now) => files.filter((f) => now - f.mtime > maxAgeMs),
+		});
 	}
 
 	/**
@@ -175,9 +106,10 @@ export class SshProcessMonitor implements vscode.Disposable {
 		maxAgeMs: number,
 		logger: Logger,
 	): Promise<void> {
-		await SshProcessMonitor.cleanupFiles(logDir, "log file", logger, {
-			filter: (name) => name.startsWith("coder-ssh") && name.endsWith(".log"),
-			select: (files, now) =>
+		await cleanupFiles(logDir, logger, {
+			fileType: "log file",
+			match: (name) => name.startsWith("coder-ssh") && name.endsWith(".log"),
+			pick: (files, now) =>
 				files
 					.toSorted((a, b) => a.mtime - b.mtime) // oldest first
 					.slice(0, -maxFilesToKeep) // keep the newest maxFilesToKeep
