@@ -22,7 +22,7 @@ body {
 	font-weight: var(--vscode-font-weight);
 	font-size: var(--vscode-font-size);
 	margin: 0;
-	min-width: 300px;
+	width: 300px;
 	max-width: 100%;
 }
 
