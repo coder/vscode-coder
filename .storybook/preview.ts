@@ -5,6 +5,20 @@ import type { Preview } from "@storybook/react";
 import { theme } from "./themes/dark-v2";
 import { createElement, useEffect } from "react";
 
+// Mock the acquireVsCodeApi function for Storybook, so that components
+// that rely on it can function without errors.
+if (typeof window !== "undefined" && !(window as any).acquireVsCodeApi) {
+	(window as any).acquireVsCodeApi = () => ({
+		postMessage: (message: any) => {
+			console.log("[Storybook] postMessage:", message);
+		},
+		getState: () => undefined,
+		setState: (state: any) => {
+			console.log("[Storybook] setState:", state);
+		},
+	});
+}
+
 // Inject codicon stylesheet immediately (before any components render)
 // Must be a <link> element with id "vscode-codicon-stylesheet" for vscode-elements
 if (
