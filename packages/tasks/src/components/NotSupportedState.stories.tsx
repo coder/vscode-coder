@@ -1,4 +1,4 @@
-import { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react";
 import { NotSupportedState } from "./NotSupportedState";
 
 const meta: Meta<typeof NotSupportedState> = {

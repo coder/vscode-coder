@@ -1,4 +1,4 @@
-import { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react";
 import { NoTemplateState } from "./NoTemplateState";
 
 const meta: Meta<typeof NoTemplateState> = {

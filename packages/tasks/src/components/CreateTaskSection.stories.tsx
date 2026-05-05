@@ -1,4 +1,4 @@
-import { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react";
 import { CreateTaskSection } from "./CreateTaskSection";
 import { withQueryClient } from "../../../../test/webview/decorators";
 import { taskTemplate } from "../../../../test/mocks/tasks";

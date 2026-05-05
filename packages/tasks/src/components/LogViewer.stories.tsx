@@ -1,4 +1,4 @@
-import { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react";
 import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
 const meta: Meta<typeof LogViewer> = {

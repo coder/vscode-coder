@@ -1,4 +1,4 @@
-import { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react";
 import { TaskDetailView } from "./TaskDetailView";
 import { taskDetails } from "../../../../test/mocks/tasks";
 import { withQueryClient } from "../../../../test/webview/decorators";

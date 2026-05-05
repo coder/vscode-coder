@@ -1,4 +1,4 @@
-import { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react";
 import { ErrorState } from "./ErrorState";
 import { fn } from "@storybook/test";
 
