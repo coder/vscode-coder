@@ -1,6 +1,6 @@
 import { Meta, StoryObj } from "@storybook/react";
 import { TaskItem } from "./TaskItem";
-import * as M from "../../../../test/mocks/tasks";
+import { task } from "../../../../test/mocks/tasks";
 import { withQueryClient } from "../../../../test/webview/decorators";
 
 const meta: Meta<typeof TaskItem> = {
@@ -15,7 +15,7 @@ type Story = StoryObj<typeof TaskItem>;
 
 export const Default: Story = {
 	args: {
-		task: M.MockTask,
+		task: task(),
 		onSelect: (taskId) => console.log("Task selected:", taskId),
 	},
 };

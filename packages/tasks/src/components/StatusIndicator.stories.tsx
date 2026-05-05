@@ -1,6 +1,6 @@
 import { Meta, StoryObj } from "@storybook/react";
 import { StatusIndicator } from "./StatusIndicator";
-import * as M from "../../../../test/mocks/tasks";
+import { task } from "../../../../test/mocks/tasks";
 
 const meta: Meta<typeof StatusIndicator> = {
 	title: "Tasks/StatusIndicator",
@@ -13,51 +13,36 @@ type Story = StoryObj<typeof meta>;
 
 export const Active: Story = {
 	args: {
-		task: M.MockTask,
+		task: task(),
 	},
 };
 
 export const Error: Story = {
 	args: {
-		task: {
-			...M.MockTask,
-			status: "error",
-		},
+		task: task({ status: "error" }),
 	},
 };
 
 export const Initializing: Story = {
 	args: {
-		task: {
-			...M.MockTask,
-			status: "initializing",
-		},
+		task: task({ status: "initializing" }),
 	},
 };
 
 export const Paused: Story = {
 	args: {
-		task: {
-			...M.MockTask,
-			status: "paused",
-		},
+		task: task({ status: "paused" }),
 	},
 };
 
 export const Pending: Story = {
 	args: {
-		task: {
-			...M.MockTask,
-			status: "pending",
-		},
+		task: task({ status: "pending" }),
 	},
 };
 
 export const Unknown: Story = {
 	args: {
-		task: {
-			...M.MockTask,
-			status: "unknown",
-		},
+		task: task({ status: "unknown" }),
 	},
 };

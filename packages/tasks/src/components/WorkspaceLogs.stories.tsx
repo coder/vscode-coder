@@ -1,6 +1,6 @@
 import { Meta, StoryObj } from "@storybook/react";
 import { WorkspaceLogs } from "./WorkspaceLogs";
-import * as M from "../../../../test/mocks/tasks";
+import { task } from "../../../../test/mocks/tasks";
 
 const meta: Meta<typeof WorkspaceLogs> = {
 	title: "Tasks/WorkspaceLogs",
@@ -13,15 +13,12 @@ type Story = StoryObj<typeof WorkspaceLogs>;
 
 export const Default: Story = {
 	args: {
-		task: M.MockTask,
+		task: task(),
 	},
 };
 
 export const BuildingWorkspace: Story = {
 	args: {
-		task: {
-			...M.MockTask,
-			workspace_status: "pending",
-		},
+		task: task({ workspace_status: "pending" }),
 	},
 };

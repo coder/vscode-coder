@@ -1,6 +1,6 @@
 import { Meta, StoryObj } from "@storybook/react";
 import { TaskMessageInput } from "./TaskMessageInput";
-import * as M from "../../../../test/mocks/tasks";
+import { task } from "../../../../test/mocks/tasks";
 import { withQueryClient } from "../../../../test/webview/decorators";
 
 const meta: Meta<typeof TaskMessageInput> = {
@@ -15,18 +15,18 @@ type Story = StoryObj<typeof TaskMessageInput>;
 
 export const Active: Story = {
 	args: {
-		task: M.MockTask,
+		task: task(),
 	},
 };
 
 export const Paused: Story = {
 	args: {
-		task: { ...M.MockTask, status: "paused" },
+		task: task({ status: "paused" }),
 	},
 };
 
 export const Error: Story = {
 	args: {
-		task: { ...M.MockTask, status: "error" },
+		task: task({ status: "error" }),
 	},
 };

@@ -1,6 +1,6 @@
 import { Meta, StoryObj } from "@storybook/react";
 import { TasksPanel } from "./TasksPanel";
-import * as M from "../../../../test/mocks/tasks";
+import { task } from "../../../../test/mocks/tasks";
 import { withQueryClient } from "../../../../test/webview/decorators";
 
 const meta: Meta<typeof TasksPanel> = {
@@ -18,7 +18,7 @@ type Story = StoryObj<typeof TasksPanel>;
 
 export const Default: Story = {
 	args: {
-		tasks: [M.MockTask, M.MockTask, M.MockTask],
+		tasks: [task(), task(), task()],
 		templates: [],
 		persisted: {
 			initialCreateExpanded: true,
