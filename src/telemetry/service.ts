@@ -8,7 +8,6 @@ import {
 } from "../settings/telemetry";
 
 import {
-	buildSession,
 	buildErrorBlock,
 	type CallerMeasurements,
 	type CallerProperties,
@@ -17,6 +16,7 @@ import {
 	type TelemetryLevel,
 	type TelemetrySink,
 } from "./event";
+import { newSpanId, newTraceId } from "./ids";
 import { NOOP_SPAN, type Span } from "./span";
 
 const LEVEL_ORDER: Readonly<Record<TelemetryLevel, number>> = {
@@ -52,11 +52,11 @@ export class TelemetryService implements vscode.Disposable {
 	readonly #configWatcher: vscode.Disposable;
 
 	public constructor(
-		extensionVersion: string,
+		session: SessionContext,
 		private readonly sinks: readonly TelemetrySink[],
 		private readonly logger: Logger,
 	) {
-		this.#session = buildSession(extensionVersion);
+		this.#session = session;
 		this.#level = readLevel();
 		this.#configWatcher = watchConfigurationChanges(
 			[{ setting: TELEMETRY_LEVEL_SETTING, getValue: readLevel }],
@@ -86,7 +86,7 @@ export class TelemetryService implements vscode.Disposable {
 		if (this.#level === "off") {
 			return;
 		}
-		this.#safeEmit(crypto.randomUUID(), eventName, properties, measurements);
+		this.#safeEmit(newSpanId(), eventName, properties, measurements);
 	}
 
 	public logError(
@@ -98,7 +98,7 @@ export class TelemetryService implements vscode.Disposable {
 		if (this.#level === "off") {
 			return;
 		}
-		this.#safeEmit(crypto.randomUUID(), eventName, properties, measurements, {
+		this.#safeEmit(newSpanId(), eventName, properties, measurements, {
 			error,
 		});
 	}
@@ -118,7 +118,7 @@ export class TelemetryService implements vscode.Disposable {
 			return fn(NOOP_SPAN);
 		}
 		return this.#startSpan(eventName, fn, properties, measurements, {
-			traceId: crypto.randomUUID(),
+			traceId: newTraceId(),
 			traceLevel: this.#level,
 		});
 	}
@@ -140,7 +140,7 @@ export class TelemetryService implements vscode.Disposable {
 		measurements: Record<string, number>,
 		spanOpts: SpanOptions,
 	): Promise<T> {
-		const eventId = crypto.randomUUID();
+		const eventId = newSpanId();
 		const { traceId, traceLevel } = spanOpts;
 		const span: Span = {
 			traceId,

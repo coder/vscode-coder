@@ -8,6 +8,7 @@ import {
 	CommandManager,
 	type CoderCommandId,
 } from "@/core/commandManager";
+import { buildSession } from "@/telemetry/event";
 import { TelemetryService } from "@/telemetry/service";
 
 import { TestSink } from "../../mocks/telemetry";
@@ -26,7 +27,7 @@ function makeHarness(): Harness {
 	config.set("coder.telemetry.level", "local");
 	const sink = new TestSink();
 	const telemetry = new TelemetryService(
-		"1.2.3-test",
+		buildSession("1.2.3-test", "test-session"),
 		[sink],
 		createMockLogger(),
 	);
