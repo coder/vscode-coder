@@ -21,7 +21,6 @@ body {
 	font-size: var(--vscode-font-size);
 	margin: 0;
 	max-width: 100%;
-	/* TODO: Might be nice to introduce a customisable option for this. */
 	width: 300px;
 }
 
