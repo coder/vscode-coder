@@ -1,3 +1,6 @@
+// Sourced from `vscode-elements/webview-playground`.
+// https://github.com/vscode-elements/webview-playground/blob/f9a6f90413d0cc535839fb92445b7a5eebc540d7/dist/themes/light-v2.js
+
 export const lightTheme: Array<[string, string]> = [
 	["--vscode-actionBar-toggledBackground", "#dddddd"],
 	["--vscode-activityBar-activeBorder", "#005fb8"],

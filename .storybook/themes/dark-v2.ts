@@ -1,3 +1,6 @@
+// Sourced from `vscode-elements/webview-playground`.
+// https://github.com/vscode-elements/webview-playground/blob/f9a6f90413d0cc535839fb92445b7a5eebc540d7/dist/themes/dark-v2.js
+
 export const darkTheme: Array<[string, string]> = [
 	["--vscode-actionBar-toggledBackground", "#383a49"],
 	["--vscode-activityBar-activeBorder", "#0078d4"],
