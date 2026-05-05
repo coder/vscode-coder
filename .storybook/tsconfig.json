@@ -1,7 +1,15 @@
 {
 	"extends": "../tsconfig.json",
 	"compilerOptions": {
-		"types": ["node"]
+		"types": ["node"],
+		"jsx": "react-jsx",
+		"noEmit": true
 	},
-	"include": ["**/*"]
+	"include": [
+		"*.ts",
+		"themes/**/*.ts",
+		"../packages/*/src/**/*.stories.tsx",
+		"../packages/*/src/testHelpers/**/*"
+	],
+	"exclude": ["node_modules"]
 }
