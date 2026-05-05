@@ -47,7 +47,7 @@ const config: StorybookConfig = {
 		name: "@storybook/react-vite",
 		options: {},
 	},
-	async viteFinal(baseConfig) {
+	viteFinal(baseConfig) {
 		return mergeConfig(baseConfig, {
 			resolve: {
 				alias: getWorkspaceAliases(packagesDir),
