@@ -1,23 +1,32 @@
-import "./global.css";
-
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
+import { createElement, useEffect } from "react";
 
+import "./global.css";
 import { darkTheme } from "./themes/dark-v2";
 import { lightTheme } from "./themes/light-v2";
 
 import type { Preview } from "@storybook/react";
 
-import { createElement, useEffect } from "react";
+interface VsCodeApi {
+	postMessage: (message: unknown) => void;
+	getState: () => unknown;
+	setState: (state: unknown) => void;
+}
 
 // Mock the acquireVsCodeApi function for Storybook, so that components
 // that rely on it can function without errors.
-if (typeof window !== "undefined" && !(window as any).acquireVsCodeApi) {
-	(window as any).acquireVsCodeApi = () => ({
-		postMessage: (message: any) => {
+if (
+	typeof window !== "undefined" &&
+	!(window as { acquireVsCodeApi?: () => VsCodeApi }).acquireVsCodeApi
+) {
+	(window as { acquireVsCodeApi: () => VsCodeApi }).acquireVsCodeApi = () => ({
+		postMessage: (message: unknown) => {
+			// eslint-disable-next-line no-console
 			console.log("[Storybook] postMessage:", message);
 		},
 		getState: () => undefined,
-		setState: (state: any) => {
+		setState: (state: unknown) => {
+			// eslint-disable-next-line no-console
 			console.log("[Storybook] setState:", state);
 		},
 	});
