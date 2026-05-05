@@ -1,5 +1,5 @@
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
-import { createElement, useEffect } from "react";
+import { createElement, useEffect, useMemo } from "react";
 
 import "./global.css";
 import { darkTheme } from "./themes/dark-v2";
@@ -97,12 +97,17 @@ const preview: Preview = {
 				};
 			}, [selectedTheme]);
 
+			const hasTasks = useMemo(
+				() => context.tags.includes("tasks"),
+				[context.tags.join(",")],
+			);
+
 			useEffect(() => {
-				if (context.tags.includes("tasks")) {
+				if (hasTasks) {
 					// Dynamically import tasks CSS
 					void import("../packages/tasks/src/index.css");
 				}
-			}, [context.tags]);
+			}, [hasTasks]);
 
 			return createElement(
 				"div",
