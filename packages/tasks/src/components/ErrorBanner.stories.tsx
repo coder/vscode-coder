@@ -1,6 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { ErrorBanner } from "./ErrorBanner";
 import { task } from "../../../../test/mocks/tasks";
+
+import { ErrorBanner } from "./ErrorBanner";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof ErrorBanner> = {
 	title: "Tasks/ErrorBanner",

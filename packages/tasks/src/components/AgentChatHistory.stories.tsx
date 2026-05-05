@@ -1,6 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { AgentChatHistory } from "./AgentChatHistory";
 import { logEntry } from "../../../../test/mocks/tasks";
+
+import { AgentChatHistory } from "./AgentChatHistory";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof AgentChatHistory> = {
 	title: "Tasks/AgentChatHistory",

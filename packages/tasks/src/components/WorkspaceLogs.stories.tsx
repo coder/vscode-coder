@@ -1,6 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { WorkspaceLogs } from "./WorkspaceLogs";
 import { task } from "../../../../test/mocks/tasks";
+
+import { WorkspaceLogs } from "./WorkspaceLogs";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof WorkspaceLogs> = {
 	title: "Tasks/WorkspaceLogs",

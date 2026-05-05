@@ -1,6 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
 import { fn, userEvent } from "@storybook/test";
+
 import { ActionMenu } from "./ActionMenu";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof ActionMenu> = {
 	title: "Tasks/ActionMenu",
@@ -54,7 +56,7 @@ export const Opened: Story = {
 		// We need to find the vscode-icon element and click it
 		const icon = canvasElement.querySelector("vscode-icon[action-icon]");
 		if (icon) {
-			await userEvent.click(icon as HTMLElement);
+			await userEvent.click(icon);
 		}
 	},
 };

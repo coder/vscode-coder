@@ -1,6 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { StatusIndicator } from "./StatusIndicator";
 import { task } from "../../../../test/mocks/tasks";
+
+import { StatusIndicator } from "./StatusIndicator";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof StatusIndicator> = {
 	title: "Tasks/StatusIndicator",

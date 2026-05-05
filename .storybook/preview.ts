@@ -1,9 +1,12 @@
 import "./global.css";
+
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
+
 import { darkTheme } from "./themes/dark-v2";
 import { lightTheme } from "./themes/light-v2";
 
 import type { Preview } from "@storybook/react";
+
 import { createElement, useEffect } from "react";
 
 // Mock the acquireVsCodeApi function for Storybook, so that components
@@ -36,11 +39,11 @@ if (
 // This allows the system viewing the storybook to use the same font
 // stack as vscode, which is important for accurate rendering of text.
 const getDefaultFontStack = () => {
-	if (navigator.userAgent.indexOf("Linux") > -1) {
+	if (navigator.userAgent.includes("Linux")) {
 		return 'system-ui, "Ubuntu", "Droid Sans", sans-serif';
-	} else if (navigator.userAgent.indexOf("Mac") > -1) {
+	} else if (navigator.userAgent.includes("Mac")) {
 		return "-apple-system, BlinkMacSystemFont, sans-serif";
-	} else if (navigator.userAgent.indexOf("Windows") > -1) {
+	} else if (navigator.userAgent.includes("Windows")) {
 		return '"Segoe WPC", "Segoe UI", sans-serif';
 	} else {
 		return "sans-serif";

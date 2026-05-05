@@ -1,8 +1,12 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { TasksPanel } from "./TasksPanel";
+import { fn } from "@storybook/test";
+
 import { task } from "../../../../test/mocks/tasks";
 import { withQueryClient } from "../../../../test/webview/decorators";
-import { fn } from "@storybook/test";
+
+import { TasksPanel } from "./TasksPanel";
+
+import type { Meta, StoryObj } from "@storybook/react";
+
 
 const meta: Meta<typeof TasksPanel> = {
 	title: "Tasks/TasksPanel",

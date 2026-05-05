@@ -1,5 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react";
 import { StatePanel } from "./StatePanel";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof StatePanel> = {
 	title: "Tasks/StatePanel",

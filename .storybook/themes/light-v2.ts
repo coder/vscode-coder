@@ -1,4 +1,4 @@
-export const lightTheme: [string, string][] = [
+export const lightTheme: Array<[string, string]> = [
 	["--vscode-actionBar-toggledBackground", "#dddddd"],
 	["--vscode-activityBar-activeBorder", "#005fb8"],
 	["--vscode-activityBar-background", "#f8f8f8"],

@@ -1,5 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react";
 import { NotSupportedState } from "./NotSupportedState";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof NotSupportedState> = {
 	title: "Tasks/NotSupportedState",

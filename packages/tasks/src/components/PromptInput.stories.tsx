@@ -1,6 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { PromptInput } from "./PromptInput";
 import { fn } from "@storybook/test";
+
+import { PromptInput } from "./PromptInput";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof PromptInput> = {
 	title: "Tasks/PromptInput",

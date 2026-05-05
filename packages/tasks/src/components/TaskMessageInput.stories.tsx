@@ -1,7 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { TaskMessageInput } from "./TaskMessageInput";
 import { task } from "../../../../test/mocks/tasks";
 import { withQueryClient } from "../../../../test/webview/decorators";
+
+import { TaskMessageInput } from "./TaskMessageInput";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof TaskMessageInput> = {
 	title: "Tasks/TaskMessageInput",

@@ -1,4 +1,4 @@
-export const darkTheme: [string, string][] = [
+export const darkTheme: Array<[string, string]> = [
 	["--vscode-actionBar-toggledBackground", "#383a49"],
 	["--vscode-activityBar-activeBorder", "#0078d4"],
 	["--vscode-activityBar-background", "#181818"],

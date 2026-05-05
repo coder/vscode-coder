@@ -1,13 +1,13 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import type { StorybookConfig } from "@storybook/react-vite";
 import { mergeConfig } from "vite";
 
-type PackageManifest = {
+import type { StorybookConfig } from "@storybook/react-vite";
+
+interface PackageManifest {
 	name?: string;
-};
+}
 
 function getWorkspaceAliases(packagesDir: string): Record<string, string> {
 	const aliases: Record<string, string> = {};
