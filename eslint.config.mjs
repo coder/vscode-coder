@@ -113,6 +113,12 @@ export default defineConfig(
 					message:
 						"Do not use executeCommand('setContext', ...) directly. Use the ContextManager class instead.",
 				},
+				{
+					selector:
+						"CallExpression[callee.property.name='registerCommand'][arguments.0.value=/^coder\\./][arguments.length>=2]",
+					message:
+						"Do not use registerCommand('coder.*', ...) directly. Use the CommandManager class instead.",
+				},
 			],
 		},
 	},
@@ -146,9 +152,9 @@ export default defineConfig(
 		},
 	},
 
-	// Disable no-restricted-syntax for contextManager
+	// Disable no-restricted-syntax for contextManager and commandManager
 	{
-		files: ["src/core/contextManager.ts"],
+		files: ["src/core/contextManager.ts", "src/core/commandManager.ts"],
 		rules: {
 			"no-restricted-syntax": "off",
 		},
