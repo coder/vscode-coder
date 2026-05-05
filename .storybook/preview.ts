@@ -112,7 +112,7 @@ const preview: Preview = {
 						fontFamily: getDefaultFontStack(),
 					},
 				},
-				Story(),
+				createElement(Story),
 			);
 		},
 	],
