@@ -8,8 +8,8 @@
 	"include": [
 		"*.ts",
 		"themes/**/*.ts",
-		"../packages/*/src/**/*.stories.tsx",
-		"../packages/*/src/testHelpers/**/*"
+		"../test/webview/**/*",
+		"../test/mocks/**/*"
 	],
 	"exclude": ["node_modules"]
 }
