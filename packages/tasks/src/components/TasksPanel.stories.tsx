@@ -8,6 +8,9 @@ const meta: Meta<typeof TasksPanel> = {
 	component: TasksPanel,
 	decorators: [withQueryClient],
 	tags: ["tasks"],
+	parameters: {
+		layout: "fullscreen",
+	},
 };
 
 export default meta;
