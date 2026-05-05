@@ -14,12 +14,12 @@ export function readTelemetryLevel(
 }
 
 export interface LocalJsonlConfig {
-	flushIntervalMs: number;
-	flushBatchSize: number;
-	bufferLimit: number;
-	maxFileBytes: number;
-	maxAgeDays: number;
-	maxTotalBytes: number;
+	readonly flushIntervalMs: number;
+	readonly flushBatchSize: number;
+	readonly bufferLimit: number;
+	readonly maxFileBytes: number;
+	readonly maxAgeDays: number;
+	readonly maxTotalBytes: number;
 }
 
 export const LOCAL_JSONL_DEFAULTS: LocalJsonlConfig = {
@@ -31,39 +31,39 @@ export const LOCAL_JSONL_DEFAULTS: LocalJsonlConfig = {
 	maxTotalBytes: 100 * 1024 * 1024,
 };
 
-/** Reads the local JSONL sink config, defaulting any missing or invalid
- *  field. Each field must be a positive number to override the default. */
+// Mirrors the schema minimums in package.json.
+const MINIMUMS: LocalJsonlConfig = {
+	flushIntervalMs: 1000,
+	flushBatchSize: 1,
+	bufferLimit: 10,
+	maxFileBytes: 4096,
+	maxAgeDays: 1,
+	maxTotalBytes: 4096,
+};
+
+/** Missing or below-minimum fields fall back to the default. */
 export function readLocalJsonlConfig(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): LocalJsonlConfig {
 	const raw = cfg.get(LOCAL_JSONL_SETTING);
 	const obj =
 		raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+	const read = (key: keyof LocalJsonlConfig): number =>
+		numberAtLeast(obj[key], MINIMUMS[key], LOCAL_JSONL_DEFAULTS[key]);
 	return {
-		flushIntervalMs: positiveNumber(
-			obj.flushIntervalMs,
-			LOCAL_JSONL_DEFAULTS.flushIntervalMs,
-		),
-		flushBatchSize: positiveNumber(
-			obj.flushBatchSize,
-			LOCAL_JSONL_DEFAULTS.flushBatchSize,
-		),
-		bufferLimit: positiveNumber(
-			obj.bufferLimit,
-			LOCAL_JSONL_DEFAULTS.bufferLimit,
-		),
-		maxFileBytes: positiveNumber(
-			obj.maxFileBytes,
-			LOCAL_JSONL_DEFAULTS.maxFileBytes,
-		),
-		maxAgeDays: positiveNumber(obj.maxAgeDays, LOCAL_JSONL_DEFAULTS.maxAgeDays),
-		maxTotalBytes: positiveNumber(
-			obj.maxTotalBytes,
-			LOCAL_JSONL_DEFAULTS.maxTotalBytes,
-		),
+		flushIntervalMs: read("flushIntervalMs"),
+		flushBatchSize: read("flushBatchSize"),
+		bufferLimit: read("bufferLimit"),
+		maxFileBytes: read("maxFileBytes"),
+		maxAgeDays: read("maxAgeDays"),
+		maxTotalBytes: read("maxTotalBytes"),
 	};
 }
 
-function positiveNumber(value: unknown, fallback: number): number {
-	return typeof value === "number" && value > 0 ? value : fallback;
+function numberAtLeast(
+	value: unknown,
+	minimum: number,
+	fallback: number,
+): number {
+	return typeof value === "number" && value >= minimum ? value : fallback;
 }

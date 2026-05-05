@@ -139,23 +139,34 @@ describe("LocalJsonlSink", () => {
 
 	it("drops the oldest events when the buffer exceeds bufferLimit", async () => {
 		const { sink, makeEvent } = setup({
-			bufferLimit: 5,
+			bufferLimit: 10,
 			flushBatchSize: 10_000,
 		});
 
-		for (let i = 0; i < 8; i++) {
+		for (let i = 0; i < 13; i++) {
 			sink.write(makeEvent());
 		}
 		await sink.flush();
 
 		expect(readJsonl(todaysFile()).map((l) => l.event_sequence)).toEqual([
-			3, 4, 5, 6, 7,
+			3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
 		]);
+	});
+
+	it("warns when bufferLimit is below flushBatchSize", () => {
+		const { logger } = setup({ bufferLimit: 10, flushBatchSize: 100 });
+
+		const warned = vi
+			.mocked(logger.warn)
+			.mock.calls.some(
+				(c) => typeof c[0] === "string" && c[0].includes("is below"),
+			);
+		expect(warned).toBe(true);
 	});
 
 	it("emits one overflow warning per burst regardless of flush outcome", async () => {
 		const { sink, logger, makeEvent } = setup({
-			bufferLimit: 5,
+			bufferLimit: 10,
 			flushBatchSize: 10_000,
 		});
 		const overflowWarnings = (): number =>
@@ -164,7 +175,7 @@ describe("LocalJsonlSink", () => {
 				return typeof arg === "string" && arg.includes("buffer overflow");
 			}).length;
 		const overflowBuffer = (): void => {
-			for (let i = 0; i < 8; i++) {
+			for (let i = 0; i < 13; i++) {
 				sink.write(makeEvent());
 			}
 		};
@@ -205,16 +216,30 @@ describe("LocalJsonlSink", () => {
 	});
 
 	it("rotates to a numbered segment once maxFileBytes is exceeded", async () => {
-		// A serialized event is around 400 bytes, so 900 holds 2 events but not 3.
-		const { sink, makeEvent } = setup({ maxFileBytes: 900 });
+		// Padded events are ~2000 bytes; 4500 holds 2 events but not 3.
+		const { sink, makeEvent } = setup({ maxFileBytes: 4500 });
+		const padded = (): TelemetryEvent =>
+			makeEvent({ properties: { pad: "x".repeat(1500) } });
 
 		for (let i = 0; i < 3; i++) {
-			sink.write(makeEvent());
+			sink.write(padded());
 			await sink.flush();
 		}
 
 		expect(readJsonl(todaysFile(SESSION_SLUG, 0))).toHaveLength(2);
 		expect(readJsonl(todaysFile(SESSION_SLUG, 1))).toHaveLength(1);
+	});
+
+	it("keeps a single oversized payload in segment 0 instead of rotating", async () => {
+		// Single event larger than maxFileBytes. Without the `size > 0`
+		// guard, every event would skip segment 0 and start at .1.
+		const { sink, makeEvent } = setup({ maxFileBytes: 4096 });
+
+		sink.write(makeEvent({ properties: { huge: "x".repeat(5000) } }));
+		await sink.flush();
+
+		expect(readJsonl(todaysFile(SESSION_SLUG, 0))).toHaveLength(1);
+		expect(vol.existsSync(todaysFile(SESSION_SLUG, 1))).toBe(false);
 	});
 
 	it("starts a fresh file on UTC date rollover", async () => {
@@ -277,7 +302,7 @@ describe("LocalJsonlSink", () => {
 
 	it("keeps deleting until total size is under maxTotalBytes", async () => {
 		const dayMs = 24 * 60 * 60 * 1000;
-		const big = "x".repeat(2000);
+		const big = "x".repeat(3000);
 		vol.fromJSON({
 			[`${BASE_DIR}/telemetry-2026-04-01-a.jsonl`]: big,
 			[`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`]: big,
@@ -287,7 +312,7 @@ describe("LocalJsonlSink", () => {
 		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`, 4 * dayMs);
 		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-03-c.jsonl`, 3 * dayMs);
 
-		setup({ maxAgeDays: 365, maxTotalBytes: 2500 });
+		setup({ maxAgeDays: 365, maxTotalBytes: 5000 });
 
 		await vi.waitFor(() =>
 			expect(vol.readdirSync(BASE_DIR)).toEqual([
@@ -383,6 +408,8 @@ describe("LocalJsonlSink", () => {
 		sink.write(makeEvent());
 		const p2 = sink.flush();
 		const p3 = sink.flush();
+		// Third caller while one is queued must share the queued promise.
+		expect(p3).toBe(p2);
 
 		resolveFirst();
 		await Promise.all([p1, p2, p3]);

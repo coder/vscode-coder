@@ -53,9 +53,9 @@ describe("telemetry settings", () => {
 				flushIntervalMs: 1_000,
 				flushBatchSize: 10,
 				bufferLimit: 50,
-				maxFileBytes: 1024,
+				maxFileBytes: 8192,
 				maxAgeDays: 7,
-				maxTotalBytes: 4096,
+				maxTotalBytes: 8192,
 			};
 			config.set(LOCAL_JSONL_SETTING, custom);
 			expect(readLocalJsonlConfig(config)).toEqual(custom);

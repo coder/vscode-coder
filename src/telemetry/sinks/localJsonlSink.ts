@@ -161,26 +161,32 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 					return;
 				}
 				warnIfBufferTooSmall(next, this.#logger);
+				const intervalChanged =
+					next.flushIntervalMs !== this.#config.flushIntervalMs;
 				this.#config = next;
+				if (intervalChanged) {
+					this.#rescheduleFlush();
+				}
 			},
 		);
 	}
 
-	// Chained on completion (not setInterval) so flushes never overlap or pile up.
+	// Self-rescheduling timer so flushes can never overlap or pile up.
 	#scheduleNextFlush(): void {
 		if (this.#disposed) {
 			return;
 		}
 		this.#flushTimer = setTimeout(() => {
-			this.flush()
-				.catch((err) => {
-					this.#logger.warn(
-						`Telemetry sink '${this.name}' scheduled flush failed`,
-						err,
-					);
-				})
-				.finally(() => this.#scheduleNextFlush());
+			void this.flush().finally(() => this.#scheduleNextFlush());
 		}, this.#config.flushIntervalMs);
+	}
+
+	#rescheduleFlush(): void {
+		if (this.#flushTimer) {
+			clearTimeout(this.#flushTimer);
+			this.#flushTimer = null;
+		}
+		this.#scheduleNextFlush();
 	}
 
 	async #doFlush(): Promise<void> {
@@ -205,7 +211,6 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	}
 
 	async #append(payload: string, payloadBytes: number): Promise<void> {
-		// mkdir is idempotent with recursive:true; cheap enough to do per flush.
 		await fs.mkdir(this.#baseDir, { recursive: true });
 		const next = await this.#nextFile(payloadBytes);
 		await fs.appendFile(this.#segmentPath(next), payload, "utf8");
@@ -214,19 +219,22 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 
 	async #nextFile(payloadSize: number): Promise<CurrentFile> {
 		const today = todayUtc();
-		if (this.#current.date !== today) {
-			// Seed from disk: an Extension Host restart may have left bytes in
-			// today's segment 0 from earlier in this session.
-			const target = this.#segmentPath({ date: today, segment: 0 });
-			const existing = await statBytes(target);
-			return { date: today, segment: 0, size: existing };
+		const seeded =
+			this.#current.date === today
+				? this.#current
+				: await this.#seedFromDisk(today);
+		const wouldExceed = seeded.size + payloadSize > this.#config.maxFileBytes;
+		if (seeded.size > 0 && wouldExceed) {
+			return { date: today, segment: seeded.segment + 1, size: 0 };
 		}
-		const wouldExceed =
-			this.#current.size + payloadSize > this.#config.maxFileBytes;
-		if (this.#current.size > 0 && wouldExceed) {
-			return { date: today, segment: this.#current.segment + 1, size: 0 };
-		}
-		return this.#current;
+		return seeded;
+	}
+
+	/** Picks up bytes left in segment 0 by a prior Extension Host activation in the same VS Code session. */
+	async #seedFromDisk(today: string): Promise<CurrentFile> {
+		const target = this.#segmentPath({ date: today, segment: 0 });
+		const size = await statBytes(target, this.#logger);
+		return { date: today, segment: 0, size };
 	}
 
 	#segmentPath(file: { date: string; segment: number }): string {
@@ -238,10 +246,14 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	}
 
 	async #cleanupOldFiles(): Promise<void> {
+		// Skip files this session is writing to: cleanup must not race with our own appends.
+		const sessionMarker = `-${this.#sessionSlug}`;
 		await cleanupFiles(this.#baseDir, this.#logger, {
 			fileType: "telemetry file",
 			match: (name) =>
-				name.startsWith(FILE_PREFIX) && name.endsWith(FILE_SUFFIX),
+				name.startsWith(FILE_PREFIX) &&
+				name.endsWith(FILE_SUFFIX) &&
+				!name.includes(sessionMarker),
 			pick: pickByAgeAndSize(
 				this.#config.maxAgeDays * MS_PER_DAY,
 				this.#config.maxTotalBytes,
@@ -278,10 +290,13 @@ function pickByAgeAndSize(maxAgeMs: number, maxTotalBytes: number) {
 	};
 }
 
-async function statBytes(target: string): Promise<number> {
+async function statBytes(target: string, logger: Logger): Promise<number> {
 	try {
 		return (await fs.stat(target)).size;
-	} catch {
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+			logger.debug(`stat ${target} failed; treating size as 0`, err);
+		}
 		return 0;
 	}
 }

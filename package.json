@@ -225,13 +225,13 @@
 						},
 						"bufferLimit": {
 							"type": "number",
-							"minimum": 1,
+							"minimum": 10,
 							"default": 500,
 							"markdownDescription": "Maximum number of events held in memory. Oldest events are dropped on overflow. Should be at least `flushBatchSize`."
 						},
 						"maxFileBytes": {
 							"type": "number",
-							"minimum": 1024,
+							"minimum": 4096,
 							"default": 5242880,
 							"markdownDescription": "Maximum size in bytes of a single JSONL file before rotating to a new segment."
 						},
@@ -243,7 +243,7 @@
 						},
 						"maxTotalBytes": {
 							"type": "number",
-							"minimum": 1024,
+							"minimum": 4096,
 							"default": 104857600,
 							"markdownDescription": "Total bytes across all telemetry files. Oldest files are deleted at activation until under the cap."
 						}
