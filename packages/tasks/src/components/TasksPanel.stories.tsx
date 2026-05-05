@@ -93,8 +93,9 @@ export const TaskSelection: Story = {
 		// Click on the task to select it
 		await userEvent.click(taskItem);
 
-		// After clicking, the loading state should appear
-		// (we can't verify the full detail view in Storybook since it requires IPC)
+		// In Storybook the IPC layer is mocked, so selecting a task triggers
+		// a detail fetch that never resolves. The loading spinner is the
+		// expected terminal state for this interaction test.
 		const loadingContainer = canvasElement.querySelector(".loading-container");
 		await expect(loadingContainer).toBeTruthy();
 	},

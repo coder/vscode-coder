@@ -19,7 +19,11 @@ type Story = StoryObj<typeof TaskList>;
 
 export const Default: Story = {
 	args: {
-		tasks: [task(), task(), task()],
+		tasks: [
+			task({ id: "task-1" }),
+			task({ id: "task-2" }),
+			task({ id: "task-3" }),
+		],
 		onSelectTask: fn(),
 	},
 };
