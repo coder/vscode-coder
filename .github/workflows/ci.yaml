@@ -92,6 +92,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           persist-credentials: false
 
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/setup
+
       # This step is not meant for mainline because any detected changes to
       # storybook snapshots will require manual approval/review in order for
       # the check to pass. This is desired in PRs, but not in mainline.
@@ -133,7 +136,6 @@ jobs:
           exitZeroOnChanges: true
           # Do a full build with documentation for mainline builds
           buildScriptName: "storybook:build"
-          storybookConfigDir: "./site/.storybook"
           # Run TurboSnap to trace file dependencies to related stories
           # and tell chromatic to only take snapshots of relevant stories
           onlyChanged: true
