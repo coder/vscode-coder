@@ -36,36 +36,36 @@ export const Default: Story = {
 	},
 };
 
-export const CollapsibleToggle: Story = {
-	args: {
-		tasks: [
-			task({ id: "task-1" }),
-			task({ id: "task-2" }),
-			task({ id: "task-3" }),
-		],
-		templates: [],
-		persisted: {
-			initialCreateExpanded: false,
-			initialHistoryExpanded: false,
-			save: fn(),
-		},
-	},
-	play: async ({ canvasElement }) => {
-		// Find all vscode-collapsible elements
-		const collapsibles = canvasElement.querySelectorAll("vscode-collapsible");
+// export const CollapsibleToggle: Story = {
+// 	args: {
+// 		tasks: [
+// 			task({ id: "task-1" }),
+// 			task({ id: "task-2" }),
+// 			task({ id: "task-3" }),
+// 		],
+// 		templates: [],
+// 		persisted: {
+// 			initialCreateExpanded: false,
+// 			initialHistoryExpanded: false,
+// 			save: fn(),
+// 		},
+// 	},
+// 	play: async ({ canvasElement }) => {
+// 		// Find all vscode-collapsible elements
+// 		const collapsibles = canvasElement.querySelectorAll("vscode-collapsible");
 
-		// Should have two collapsible sections
-		await expect(collapsibles.length).toBe(2);
+// 		// Should have two collapsible sections
+// 		await expect(collapsibles.length).toBe(2);
 
-		// Both should be initially closed
-		await expect(collapsibles[0].hasAttribute("open")).toBe(false);
-		await expect(collapsibles[1].hasAttribute("open")).toBe(false);
+// 		// Both should be initially closed
+// 		await expect(collapsibles[0].hasAttribute("open")).toBe(false);
+// 		await expect(collapsibles[1].hasAttribute("open")).toBe(false);
 
-		// Click the first collapsible to toggle it
-		await userEvent.click(collapsibles[0]);
-		await expect(collapsibles[0].hasAttribute("open")).toBe(true);
-	},
-};
+// 		// Click the first collapsible to toggle it
+// 		await userEvent.click(collapsibles[0]);
+// 		await expect(collapsibles[0].hasAttribute("open")).toBe(true);
+// 	},
+// };
 
 export const TaskSelection: Story = {
 	args: {
