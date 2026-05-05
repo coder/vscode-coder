@@ -24,7 +24,7 @@ export const Default: Story = {
 	},
 };
 
-export const ErrorState: Story = {
+export const Error: Story = {
 	args: {
 		details: taskDetails({
 			task: {
