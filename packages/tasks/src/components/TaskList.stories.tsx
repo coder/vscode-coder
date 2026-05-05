@@ -17,6 +17,6 @@ type Story = StoryObj<typeof TaskList>;
 export const Default: Story = {
 	args: {
 		tasks: [task(), task(), task()],
-		onSelectTask: (taskId) => fn(),
+		onSelectTask: fn(),
 	},
 };
