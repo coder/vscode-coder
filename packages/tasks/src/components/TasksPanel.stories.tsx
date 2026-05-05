@@ -63,6 +63,7 @@ export const CollapsibleToggle: Story = {
 
 		// Click the first collapsible to toggle it
 		await userEvent.click(collapsibles[0]);
+		await expect(collapsibles[0].hasAttribute("open")).toBe(true);
 	},
 };
 
