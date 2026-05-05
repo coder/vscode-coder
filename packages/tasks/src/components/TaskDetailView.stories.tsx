@@ -1,7 +1,7 @@
 import { Meta, StoryObj } from "@storybook/react";
 import { TaskDetailView } from "./TaskDetailView";
-import * as M from "../testHelpers/entities";
-import { withQueryClient } from "../testHelpers/decorators";
+import * as M from "../../../../test/mocks/tasks";
+import { withQueryClient } from "../../../../test/webview/decorators";
 
 const meta: Meta<typeof TaskDetailView> = {
 	title: "Tasks/TaskDetailView",

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AgentChatHistory } from "./AgentChatHistory";
-import * as M from "../testHelpers/entities";
+import * as M from "../../../../test/mocks/tasks";
 
 const meta: Meta<typeof AgentChatHistory> = {
 	title: "Tasks/AgentChatHistory",
