@@ -23,3 +23,55 @@ export const Default: Story = {
 		onBack: fn(),
 	},
 };
+
+export const ErrorState: Story = {
+	args: {
+		details: taskDetails({
+			task: {
+				status: "error",
+				current_state: {
+					timestamp: "2024-01-01T00:00:00Z",
+					state: "failed",
+					message: "Task execution failed",
+					uri: "",
+				},
+			},
+		}),
+		onBack: fn(),
+	},
+};
+
+export const WorkspaceStarting: Story = {
+	args: {
+		details: taskDetails({
+			task: {
+				workspace_status: "starting",
+				current_state: {
+					timestamp: "2024-01-01T00:00:00Z",
+					state: "working",
+					message: "Starting workspace",
+					uri: "",
+				},
+			},
+		}),
+		onBack: fn(),
+	},
+};
+
+export const AgentStarting: Story = {
+	args: {
+		details: taskDetails({
+			task: {
+				workspace_status: "running",
+				workspace_agent_lifecycle: "starting",
+				current_state: {
+					timestamp: "2024-01-01T00:00:00Z",
+					state: "working",
+					message: "Agent initializing",
+					uri: "",
+				},
+			},
+		}),
+		onBack: fn(),
+	},
+};
