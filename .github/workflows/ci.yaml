@@ -105,6 +105,7 @@ jobs:
           NODE_OPTIONS: "--max_old_space_size=4096"
           STORYBOOK: true
         with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           # Do a fast, testing build for change previews
           buildScriptName: "storybook:ci"
           exitOnceUploaded: true
@@ -131,6 +132,7 @@ jobs:
           NODE_OPTIONS: "--max_old_space_size=4096"
           STORYBOOK: true
         with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           autoAcceptChanges: true
           # This will prevent CI from failing when Chromatic detects visual changes
           exitZeroOnChanges: true
