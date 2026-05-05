@@ -52,11 +52,12 @@ export const Default: Story = {};
 
 export const Opened: Story = {
 	play: async ({ canvasElement }) => {
-		// The vscode-icon renders a button in its shadow DOM
-		// We need to find the vscode-icon element and click it
 		const icon = canvasElement.querySelector("vscode-icon[action-icon]");
 		await expect(icon).toBeTruthy();
 		if (!icon) throw new Error("icon not found");
 		await userEvent.click(icon);
+
+		const dropdown = canvasElement.querySelector(".action-menu-dropdown");
+		await expect(dropdown).toBeTruthy();
 	},
 };
