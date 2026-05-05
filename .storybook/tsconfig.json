@@ -3,7 +3,8 @@
 	"compilerOptions": {
 		"types": ["node"],
 		"jsx": "react-jsx",
-		"noEmit": true
+		"noEmit": true,
+		"rootDir": ".."
 	},
 	"include": [
 		"*.ts",
