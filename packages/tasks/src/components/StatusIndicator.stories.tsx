@@ -11,7 +11,7 @@ const meta: Meta<typeof StatusIndicator> = {
 };
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj<typeof StatusIndicator>;
 
 export const Active: Story = {
 	args: {
