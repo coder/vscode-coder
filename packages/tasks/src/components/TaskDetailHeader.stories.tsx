@@ -17,6 +17,6 @@ type Story = StoryObj<typeof TaskDetailHeader>;
 export const Default: Story = {
 	args: {
 		task: task(),
-		onBack: () => fn(),
+		onBack: fn(),
 	},
 };

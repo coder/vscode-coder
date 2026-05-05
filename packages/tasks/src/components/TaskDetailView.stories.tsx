@@ -17,6 +17,6 @@ type Story = StoryObj<typeof TaskDetailView>;
 export const Default: Story = {
 	args: {
 		details: taskDetails(),
-		onBack: () => fn(),
+		onBack: fn(),
 	},
 };

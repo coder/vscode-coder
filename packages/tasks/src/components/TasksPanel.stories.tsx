@@ -2,6 +2,7 @@ import { Meta, StoryObj } from "@storybook/react";
 import { TasksPanel } from "./TasksPanel";
 import { task } from "../../../../test/mocks/tasks";
 import { withQueryClient } from "../../../../test/webview/decorators";
+import { fn } from "@storybook/test";
 
 const meta: Meta<typeof TasksPanel> = {
 	title: "Tasks/TasksPanel",
@@ -23,7 +24,7 @@ export const Default: Story = {
 		persisted: {
 			initialCreateExpanded: true,
 			initialHistoryExpanded: true,
-			save: () => {},
+			save: fn(),
 		},
 	},
 };

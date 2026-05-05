@@ -9,23 +9,23 @@ const meta: Meta<typeof ActionMenu> = {
 		items: [
 			{
 				label: "Run Task",
-				onClick: () => fn(),
+				onClick: fn(),
 				icon: "play",
 			},
 			{
 				label: "Configure Task",
-				onClick: () => fn(),
+				onClick: fn(),
 				icon: "settings",
 			},
 			{
 				label: "Delete Task",
-				onClick: () => fn(),
+				onClick: fn(),
 				icon: "trash",
 				danger: true,
 			},
 			{
 				label: "Disabled Action",
-				onClick: () => fn(),
+				onClick: fn(),
 				icon: "ban",
 				disabled: true,
 			},
@@ -34,7 +34,7 @@ const meta: Meta<typeof ActionMenu> = {
 			},
 			{
 				label: "Loading Action",
-				onClick: () => fn(),
+				onClick: fn(),
 				icon: "spinner",
 				loading: true,
 			},

@@ -14,6 +14,6 @@ type Story = StoryObj<typeof ErrorState>;
 export const Default: Story = {
 	args: {
 		message: "Task failed",
-		onRetry: () => fn(),
+		onRetry: fn(),
 	},
 };

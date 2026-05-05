@@ -1,5 +1,6 @@
 import { Meta, StoryObj } from "@storybook/react";
 import { PromptInput } from "./PromptInput";
+import { fn } from "@storybook/test";
 
 const meta: Meta<typeof PromptInput> = {
 	title: "Tasks/PromptInput",
@@ -7,8 +8,8 @@ const meta: Meta<typeof PromptInput> = {
 	tags: ["tasks"],
 	args: {
 		value: "",
-		onChange: () => {},
-		onSubmit: () => {},
+		onChange: fn(),
+		onSubmit: fn(),
 		actionIcon: "send",
 		actionLabel: "Submit",
 		actionEnabled: true,
