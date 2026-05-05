@@ -22,7 +22,11 @@ type Story = StoryObj<typeof TasksPanel>;
 
 export const Default: Story = {
 	args: {
-		tasks: [task(), task(), task()],
+		tasks: [
+			task({ id: "task-1" }),
+			task({ id: "task-2" }),
+			task({ id: "task-3" }),
+		],
 		templates: [],
 		persisted: {
 			initialCreateExpanded: true,
@@ -34,7 +38,11 @@ export const Default: Story = {
 
 export const CollapsibleToggle: Story = {
 	args: {
-		tasks: [task(), task(), task()],
+		tasks: [
+			task({ id: "task-1" }),
+			task({ id: "task-2" }),
+			task({ id: "task-3" }),
+		],
 		templates: [],
 		persisted: {
 			initialCreateExpanded: false,
@@ -60,7 +68,11 @@ export const CollapsibleToggle: Story = {
 
 export const TaskSelection: Story = {
 	args: {
-		tasks: [task(), task(), task()],
+		tasks: [
+			task({ id: "task-1" }),
+			task({ id: "task-2" }),
+			task({ id: "task-3" }),
+		],
 		templates: [],
 		persisted: {
 			initialCreateExpanded: false,
