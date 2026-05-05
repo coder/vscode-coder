@@ -1,4 +1,4 @@
-import { Task, TaskDetails, TaskLogs } from "@repo/shared";
+import { Task, TaskDetails, TaskLogs, TaskTemplate } from "@repo/shared";
 
 export const MockTask: Task = {
 	id: "task-1",
@@ -50,4 +50,19 @@ export const MockTaskDetails: TaskDetails = {
 	pauseDisabled: false,
 	canResume: false,
 	canSendMessage: true,
+};
+
+export const MockTemplate: TaskTemplate = {
+	id: "template-1",
+	name: "Template 1",
+	description: "Description for Template 1",
+	activeVersionId: "version-1",
+	presets: [
+		{
+			id: "preset-1",
+			name: "Preset 1",
+			description: "Description for Preset 1",
+			isDefault: true,
+		},
+	],
 };

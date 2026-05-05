@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AgentChatHistory } from "./AgentChatHistory";
+import * as M from "../testHelpers/entities";
 
 const meta: Meta<typeof AgentChatHistory> = {
 	title: "Tasks/AgentChatHistory",
@@ -13,24 +14,7 @@ type Story = StoryObj<typeof AgentChatHistory>;
 export const Default: Story = {
 	args: {
 		isThinking: false,
-		taskLogs: {
-			status: "ok",
-			snapshot: false,
-			logs: [
-				{
-					type: "input",
-					id: 1,
-					content: "What is the capital of France?",
-					time: "2024-01-01T12:00:00Z",
-				},
-				{
-					type: "output",
-					id: 2,
-					content: "The capital of France is Paris.",
-					time: "2024-01-01T12:00:05Z",
-				},
-			],
-		},
+		taskLogs: M.MockTaskLogs,
 	},
 };
 
@@ -48,24 +32,7 @@ export const Empty: Story = {
 export const Thinking: Story = {
 	args: {
 		isThinking: true,
-		taskLogs: {
-			status: "ok",
-			snapshot: false,
-			logs: [
-				{
-					type: "input",
-					id: 1,
-					content: "What is the capital of France?",
-					time: "2024-01-01T12:00:00Z",
-				},
-				{
-					type: "output",
-					id: 2,
-					content: "Let me look up the capital of France.",
-					time: "2024-01-01T12:00:05Z",
-				},
-			],
-		},
+		taskLogs: M.MockTaskLogs,
 	},
 };
 
