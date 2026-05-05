@@ -21,6 +21,7 @@ body {
 	font-size: var(--vscode-font-size);
 	margin: 0;
 	max-width: 100%;
+	/* arbitrary size choice for the rough VSCode sidebar size */
 	width: 300px;
 }
 
