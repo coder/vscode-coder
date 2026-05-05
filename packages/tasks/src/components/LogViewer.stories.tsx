@@ -27,13 +27,15 @@ export const Default: Story = {
 export const Loading: Story = {
 	args: {
 		header: "Task Logs",
-		children: <LogViewerPlaceholder children={"Loading logs..."} />,
+		children: <LogViewerPlaceholder>Loading logs...</LogViewerPlaceholder>,
 	},
 };
 
 export const WithError: Story = {
 	args: {
 		header: "Task Logs",
-		children: <LogViewerPlaceholder error children={"Failed to load logs."} />,
+		children: (
+			<LogViewerPlaceholder error>Failed to load logs.</LogViewerPlaceholder>
+		),
 	},
 };
