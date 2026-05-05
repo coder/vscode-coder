@@ -7,7 +7,6 @@ import { TaskList } from "./TaskList";
 
 import type { Meta, StoryObj } from "@storybook/react";
 
-
 const meta: Meta<typeof TaskList> = {
 	title: "Tasks/TaskList",
 	component: TaskList,

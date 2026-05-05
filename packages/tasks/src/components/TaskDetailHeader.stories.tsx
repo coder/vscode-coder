@@ -7,7 +7,6 @@ import { TaskDetailHeader } from "./TaskDetailHeader";
 
 import type { Meta, StoryObj } from "@storybook/react";
 
-
 const meta: Meta<typeof TaskDetailHeader> = {
 	title: "Tasks/TaskDetailHeader",
 	component: TaskDetailHeader,

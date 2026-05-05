@@ -94,7 +94,6 @@ const preview: Preview = {
 					selectedTheme.forEach(([property]) => {
 						document.documentElement.style.removeProperty(property);
 					});
-					document.documentElement.style.removeProperty("font-family");
 				};
 			}, [selectedTheme]);
 

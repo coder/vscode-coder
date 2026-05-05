@@ -7,7 +7,6 @@ import { TasksPanel } from "./TasksPanel";
 
 import type { Meta, StoryObj } from "@storybook/react";
 
-
 const meta: Meta<typeof TasksPanel> = {
 	title: "Tasks/TasksPanel",
 	component: TasksPanel,

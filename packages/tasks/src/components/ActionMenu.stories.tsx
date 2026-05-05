@@ -1,4 +1,4 @@
-import { fn, userEvent } from "@storybook/test";
+import { expect, fn, userEvent } from "@storybook/test";
 
 import { ActionMenu } from "./ActionMenu";
 
@@ -55,8 +55,7 @@ export const Opened: Story = {
 		// The vscode-icon renders a button in its shadow DOM
 		// We need to find the vscode-icon element and click it
 		const icon = canvasElement.querySelector("vscode-icon[action-icon]");
-		if (icon) {
-			await userEvent.click(icon);
-		}
+		expect(icon).toBeTruthy();
+		await userEvent.click(icon!);
 	},
 };

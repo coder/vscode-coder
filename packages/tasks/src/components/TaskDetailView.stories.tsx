@@ -7,7 +7,6 @@ import { TaskDetailView } from "./TaskDetailView";
 
 import type { Meta, StoryObj } from "@storybook/react";
 
-
 const meta: Meta<typeof TaskDetailView> = {
 	title: "Tasks/TaskDetailView",
 	component: TaskDetailView,
