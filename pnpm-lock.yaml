@@ -48,6 +48,9 @@ catalogs:
     babel-plugin-react-compiler:
       specifier: ^1.0.0
       version: 1.0.0
+    chromatic:
+      specifier: ^16.7.0
+      version: 16.7.0
     coder:
       specifier: github:coder/coder#main
       version: 0.0.0
@@ -228,9 +231,12 @@ importers:
       bufferutil:
         specifier: ^4.1.0
         version: 4.1.0
+      chromatic:
+        specifier: 'catalog:'
+        version: 16.7.0
       coder:
         specifier: 'catalog:'
-        version: '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c'
+        version: '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/e8e9e51036dd76b17f0e05efb39986a2e94f4a8f'
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
@@ -574,8 +580,8 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c':
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c}
+  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/e8e9e51036dd76b17f0e05efb39986a2e94f4a8f':
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/e8e9e51036dd76b17f0e05efb39986a2e94f4a8f}
     version: 0.0.0
 
   '@csstools/color-helpers@6.0.2':
@@ -2436,6 +2442,21 @@ packages:
 
   chownr@1.1.4:
     resolution: {integrity: sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg==}
+
+  chromatic@16.7.0:
+    resolution: {integrity: sha512-t6d3zFajnRYqK+pJg4v2qezDJ5EJxAsPypuV88xJ+u0z6Bec7MCV9j+nMKZXTua8e0wBt6FsjJ9Yqx+fyUngSA==}
+    hasBin: true
+    peerDependencies:
+      '@chromatic-com/cypress': ^0.*.* || ^1.0.0
+      '@chromatic-com/playwright': ^0.*.* || ^1.0.0
+      '@chromatic-com/vitest': ^0.*.* || ^1.0.0
+    peerDependenciesMeta:
+      '@chromatic-com/cypress':
+        optional: true
+      '@chromatic-com/playwright':
+        optional: true
+      '@chromatic-com/vitest':
+        optional: true
 
   cli-cursor@5.0.0:
     resolution: {integrity: sha512-aCj4O5wKyszjMmDT4tZj93kxyydN/K5zPWSCe6/0AV/AA1pqe5ZBIw0a2ZfPQV7lL5/yb5HsUreJ6UFAF1tEQw==}
@@ -5266,7 +5287,7 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c': {}
+  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/e8e9e51036dd76b17f0e05efb39986a2e94f4a8f': {}
 
   '@csstools/color-helpers@6.0.2': {}
 
@@ -7230,6 +7251,10 @@ snapshots:
 
   chownr@1.1.4:
     optional: true
+
+  chromatic@16.7.0:
+    dependencies:
+      semver: 7.7.4
 
   cli-cursor@5.0.0:
     dependencies:
