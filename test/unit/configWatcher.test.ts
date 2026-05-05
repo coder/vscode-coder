@@ -10,25 +10,24 @@ import { MockConfigurationProvider } from "../mocks/testHelpers";
 
 describe("watchConfigurationChanges", () => {
 	const createWatcher = (...keys: string[]) => {
-		const changes: string[][] = [];
+		const changes: Array<ReadonlyMap<string, unknown>> = [];
 		const settings: WatchedSetting[] = keys.map((key) => ({
 			setting: key,
 			getValue: () => vscode.workspace.getConfiguration().get(key),
 		}));
-		const watcher = watchConfigurationChanges(settings, (changed) =>
-			changes.push(changed),
-		);
+		const watcher = watchConfigurationChanges(settings, (c) => changes.push(c));
 		return { changes, dispose: () => watcher.dispose() };
 	};
 
-	it("fires callback when watched setting value changes", () => {
+	it("fires callback with the new value when a watched setting changes", () => {
 		const config = new MockConfigurationProvider();
 		config.set("test.setting", "initial");
 		const { changes, dispose } = createWatcher("test.setting");
 
 		config.set("test.setting", "changed");
 
-		expect(changes).toEqual([["test.setting"]]);
+		expect(changes).toHaveLength(1);
+		expect(changes[0].get("test.setting")).toBe("changed");
 		dispose();
 	});
 
@@ -64,10 +63,10 @@ describe("watchConfigurationChanges", () => {
 		config.set("test.setting", "changed2"); // same value - no callback
 		config.set("test.setting", "changed1"); // back to changed1 - should fire
 
-		expect(changes).toEqual([
-			["test.setting"],
-			["test.setting"],
-			["test.setting"],
+		expect(changes.map((c) => c.get("test.setting"))).toEqual([
+			"changed1",
+			"changed2",
+			"changed1",
 		]);
 		dispose();
 	});
@@ -91,7 +90,8 @@ describe("watchConfigurationChanges", () => {
 		config.set("test.setting", { key: "value" }); // deep equal - no callback
 		config.set("test.setting", { key: "different" });
 
-		expect(changes).toEqual([["test.setting"]]);
+		expect(changes).toHaveLength(1);
+		expect(changes[0].get("test.setting")).toEqual({ key: "different" });
 		dispose();
 	});
 
@@ -131,7 +131,8 @@ describe("watchConfigurationChanges", () => {
 
 		config.set("test.setting", to);
 
-		expect(changes).toEqual([["test.setting"]]);
+		expect(changes).toHaveLength(1);
+		expect(changes[0].has("test.setting")).toBe(true);
 		dispose();
 	});
 });

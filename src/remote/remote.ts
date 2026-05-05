@@ -861,8 +861,8 @@ export class Remote {
 	): vscode.Disposable {
 		const titleMap = new Map(settings.map((s) => [s.setting, s.title]));
 
-		return watchConfigurationChanges(settings, (changedSettings) => {
-			const changedTitles = changedSettings
+		return watchConfigurationChanges(settings, (changes) => {
+			const changedTitles = [...changes.keys()]
 				.map((s) => titleMap.get(s))
 				.filter((t) => t !== undefined);
 

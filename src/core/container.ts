@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
+import { TelemetryService } from "../telemetry/service";
 import { SpeedtestPanelFactory } from "../webviews/speedtest/speedtestPanelFactory";
 import { DuplicateWorkspaceIpc } from "../workspace/duplicateWorkspaceIpc";
 
@@ -31,6 +32,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly oauthCallback: OAuthCallback;
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
+	private readonly telemetryService: TelemetryService;
 
 	constructor(context: vscode.ExtensionContext) {
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
@@ -88,6 +90,7 @@ export class ServiceContainer implements vscode.Disposable {
 			context.extensionUri,
 			this.logger,
 		);
+		this.telemetryService = new TelemetryService(context, [], this.logger);
 	}
 
 	getPathResolver(): PathResolver {
@@ -134,12 +137,18 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.speedtestPanelFactory;
 	}
 
-	/**
-	 * Dispose of all services and clean up resources.
-	 */
-	dispose(): void {
+	getTelemetryService(): TelemetryService {
+		return this.telemetryService;
+	}
+
+	/** Dispose logger last so telemetry teardown warnings still reach it. */
+	async dispose(): Promise<void> {
 		this.contextManager.dispose();
-		this.logger.dispose();
 		this.loginCoordinator.dispose();
+		try {
+			await this.telemetryService.dispose();
+		} finally {
+			this.logger.dispose();
+		}
 	}
 }
