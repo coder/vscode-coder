@@ -2,7 +2,8 @@ import "./global.css";
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
 
 import type { Preview } from "@storybook/react";
-import { theme } from "./themes/dark-v2";
+import { theme as darkTheme } from "./themes/dark-v2";
+import { theme as lightTheme } from "./themes/light-v2";
 import { createElement, useEffect } from "react";
 
 // Mock the acquireVsCodeApi function for Storybook, so that components
@@ -50,22 +51,40 @@ const preview: Preview = {
 	parameters: {
 		layout: "centered",
 	},
+	globalTypes: {
+		theme: {
+			description: "Global theme for components",
+			defaultValue: "dark",
+			toolbar: {
+				title: "Theme",
+				icon: "circlehollow",
+				items: [
+					{ value: "light", icon: "circlehollow", title: "Light" },
+					{ value: "dark", icon: "circle", title: "Dark" },
+				],
+				dynamicTitle: true,
+			},
+		},
+	},
 	decorators: [
 		(Story, context) => {
+			const selectedTheme =
+				context.globals.theme === "light" ? lightTheme : darkTheme;
+
 			useEffect(() => {
 				// Apply CSS custom properties to the document root
-				theme.forEach(([property, value]) => {
+				selectedTheme.forEach(([property, value]) => {
 					document.documentElement.style.setProperty(property, value);
 				});
 
 				// Cleanup function to remove properties when unmounting
 				return () => {
-					theme.forEach(([property]) => {
+					selectedTheme.forEach(([property]) => {
 						document.documentElement.style.removeProperty(property);
 					});
 					document.documentElement.style.removeProperty("font-family");
 				};
-			}, []);
+			}, [selectedTheme]);
 
 			useEffect(() => {
 				if (context.tags.includes("tasks")) {
