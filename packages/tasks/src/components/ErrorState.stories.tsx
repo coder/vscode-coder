@@ -1,5 +1,6 @@
 import { Meta, StoryObj } from "@storybook/react";
 import { ErrorState } from "./ErrorState";
+import { fn } from "@storybook/test";
 
 const meta: Meta<typeof ErrorState> = {
 	title: "Tasks/ErrorState",
@@ -13,6 +14,6 @@ type Story = StoryObj<typeof ErrorState>;
 export const Default: Story = {
 	args: {
 		message: "Task failed",
-		onRetry: () => alert("Retrying task..."),
+		onRetry: () => fn(),
 	},
 };

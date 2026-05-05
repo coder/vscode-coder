@@ -1,31 +1,31 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { userEvent, within } from "@storybook/test";
+import { fn, userEvent } from "@storybook/test";
 import { ActionMenu } from "./ActionMenu";
 
-const meta = {
+const meta: Meta<typeof ActionMenu> = {
 	title: "Tasks/ActionMenu",
 	component: ActionMenu,
 	args: {
 		items: [
 			{
 				label: "Run Task",
-				onClick: () => alert("Run Task clicked"),
+				onClick: () => fn(),
 				icon: "play",
 			},
 			{
 				label: "Configure Task",
-				onClick: () => alert("Configure Task clicked"),
+				onClick: () => fn(),
 				icon: "settings",
 			},
 			{
 				label: "Delete Task",
-				onClick: () => alert("Delete Task clicked"),
+				onClick: () => fn(),
 				icon: "trash",
 				danger: true,
 			},
 			{
 				label: "Disabled Action",
-				onClick: () => alert("This should not be clickable"),
+				onClick: () => fn(),
 				icon: "ban",
 				disabled: true,
 			},
@@ -34,7 +34,7 @@ const meta = {
 			},
 			{
 				label: "Loading Action",
-				onClick: () => alert("This should show a loading state"),
+				onClick: () => fn(),
 				icon: "spinner",
 				loading: true,
 			},
