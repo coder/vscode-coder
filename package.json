@@ -688,30 +688,5 @@
 	},
 	"extensionKind": [
 		"ui"
-	],
-	"workspaces": {
-		"packages": [
-			"packages/*"
-		],
-		"catalog": {
-			"@rolldown/plugin-babel": "^0.2.3",
-			"@tanstack/react-query": "^5.100.5",
-			"@types/react": "^19.2.14",
-			"@types/react-dom": "^19.2.3",
-			"@types/vscode-webview": "^1.57.5",
-			"@vitejs/plugin-react": "^6.0.1",
-			"@vscode-elements/react-elements": "^2.4.0",
-			"@vscode/codicons": "^0.0.45",
-			"babel-plugin-react-compiler": "^1.0.0",
-			"coder": "github:coder/coder#main",
-			"date-fns": "^4.1.0",
-			"react": "^19.2.5",
-			"react-dom": "^19.2.5",
-			"typescript": "^6.0.3",
-			"vite": "^8.0.10"
-		}
-	},
-	"overrides": {
-		"@vscode-elements/elements": "^2.5.1"
-	}
+	]
 }
