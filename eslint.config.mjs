@@ -19,6 +19,7 @@ export default defineConfig(
 		"**/vite.config*.ts",
 		".vscode-test/**",
 		"test/fixtures/scripts/**",
+		"storybook-static/**",
 	]),
 
 	// Base ESLint recommended rules (for JS/TS/TSX files only)
