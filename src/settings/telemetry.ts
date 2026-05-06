@@ -3,9 +3,9 @@ import type { WorkspaceConfiguration } from "vscode";
 import type { TelemetryLevel } from "../telemetry/event";
 
 export const TELEMETRY_LEVEL_SETTING = "coder.telemetry.level";
-export const LOCAL_JSONL_SETTING = "coder.telemetry.localJsonl";
+export const LOCAL_SINK_SETTING = "coder.telemetry.local";
 
-/** Telemetry level. Falls back to `local` for any invalid value. */
+/** Telemetry level. Falls back to `local` for unknown or invalid values. */
 export function readTelemetryLevel(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): TelemetryLevel {
@@ -13,7 +13,7 @@ export function readTelemetryLevel(
 	return value === "off" || value === "local" ? value : "local";
 }
 
-export interface LocalJsonlConfig {
+export interface LocalSinkConfig {
 	readonly flushIntervalMs: number;
 	readonly flushBatchSize: number;
 	readonly bufferLimit: number;
@@ -22,7 +22,7 @@ export interface LocalJsonlConfig {
 	readonly maxTotalBytes: number;
 }
 
-export const LOCAL_JSONL_DEFAULTS: LocalJsonlConfig = {
+export const LOCAL_SINK_DEFAULTS: LocalSinkConfig = {
 	flushIntervalMs: 15_000,
 	flushBatchSize: 100,
 	bufferLimit: 500,
@@ -31,8 +31,9 @@ export const LOCAL_JSONL_DEFAULTS: LocalJsonlConfig = {
 	maxTotalBytes: 100 * 1024 * 1024,
 };
 
-// Mirrors the schema minimums in package.json.
-const MINIMUMS: LocalJsonlConfig = {
+// Defense in depth: VS Code does not enforce JSON schema at runtime, so users
+// can drop in any value via settings.json. Mirrors the minimums in package.json.
+const LOCAL_SINK_MINIMUMS: LocalSinkConfig = {
 	flushIntervalMs: 1000,
 	flushBatchSize: 1,
 	bufferLimit: 10,
@@ -41,15 +42,21 @@ const MINIMUMS: LocalJsonlConfig = {
 	maxTotalBytes: 4096,
 };
 
-/** Missing or below-minimum fields fall back to the default. */
-export function readLocalJsonlConfig(
+/** Per-field: missing, non-numeric, or below-minimum values fall back to defaults. */
+export function readLocalSinkConfig(
 	cfg: Pick<WorkspaceConfiguration, "get">,
-): LocalJsonlConfig {
-	const raw = cfg.get(LOCAL_JSONL_SETTING);
+): LocalSinkConfig {
+	const raw = cfg.get(LOCAL_SINK_SETTING);
 	const obj =
-		raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-	const read = (key: keyof LocalJsonlConfig): number =>
-		numberAtLeast(obj[key], MINIMUMS[key], LOCAL_JSONL_DEFAULTS[key]);
+		raw && typeof raw === "object" && !Array.isArray(raw)
+			? (raw as Record<string, unknown>)
+			: {};
+	const read = (key: keyof LocalSinkConfig): number => {
+		const value = obj[key];
+		return typeof value === "number" && value >= LOCAL_SINK_MINIMUMS[key]
+			? value
+			: LOCAL_SINK_DEFAULTS[key];
+	};
 	return {
 		flushIntervalMs: read("flushIntervalMs"),
 		flushBatchSize: read("flushBatchSize"),
@@ -58,12 +65,4 @@ export function readLocalJsonlConfig(
 		maxAgeDays: read("maxAgeDays"),
 		maxTotalBytes: read("maxTotalBytes"),
 	};
-}
-
-function numberAtLeast(
-	value: unknown,
-	minimum: number,
-	fallback: number,
-): number {
-	return typeof value === "number" && value >= minimum ? value : fallback;
 }

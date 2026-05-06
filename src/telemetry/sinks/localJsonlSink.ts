@@ -4,9 +4,9 @@ import * as vscode from "vscode";
 
 import { watchConfigurationChanges } from "../../configWatcher";
 import {
-	LOCAL_JSONL_SETTING,
-	readLocalJsonlConfig,
-	type LocalJsonlConfig,
+	LOCAL_SINK_SETTING,
+	readLocalSinkConfig,
+	type LocalSinkConfig,
 } from "../../settings/telemetry";
 import {
 	cleanupFiles,
@@ -37,7 +37,7 @@ interface CurrentFile {
  * own files (`telemetry-YYYY-MM-DD-{sessionId8}.jsonl` plus `.N.jsonl` size
  * segments), so concurrent windows cannot race on appends or rotation.
  * `write` is sync and never throws; disk I/O happens in `flush` and
- * `dispose` and catches errors. Tunables come from `coder.telemetry.localJsonl`
+ * `dispose` and catches errors. Tunables come from `coder.telemetry.local`
  * and update reactively.
  */
 export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
@@ -48,7 +48,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	readonly #sessionSlug: string;
 	readonly #logger: Logger;
 	readonly #buffer: string[] = [];
-	#config: LocalJsonlConfig;
+	#config: LocalSinkConfig;
 	#configWatcher: vscode.Disposable | null = null;
 	#flushTimer: NodeJS.Timeout | null = null;
 	#flushChain: Promise<void> = Promise.resolve();
@@ -60,7 +60,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	private constructor(
 		opts: LocalJsonlSinkOptions,
 		logger: Logger,
-		config: LocalJsonlConfig,
+		config: LocalSinkConfig,
 	) {
 		this.#baseDir = opts.baseDir;
 		this.#sessionSlug = toSessionSlug(opts.sessionId);
@@ -73,7 +73,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		opts: LocalJsonlSinkOptions,
 		logger: Logger,
 	): LocalJsonlSink {
-		const config = readLocalJsonlConfig(vscode.workspace.getConfiguration());
+		const config = readLocalSinkConfig(vscode.workspace.getConfiguration());
 		warnIfBufferTooSmall(config, logger);
 		const sink = new LocalJsonlSink(opts, logger, config);
 		sink.#configWatcher = sink.#watchConfig();
@@ -148,14 +148,14 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		return watchConfigurationChanges(
 			[
 				{
-					setting: LOCAL_JSONL_SETTING,
+					setting: LOCAL_SINK_SETTING,
 					getValue: () =>
-						readLocalJsonlConfig(vscode.workspace.getConfiguration()),
+						readLocalSinkConfig(vscode.workspace.getConfiguration()),
 				},
 			],
 			(changes) => {
-				const next = changes.get(LOCAL_JSONL_SETTING) as
-					| LocalJsonlConfig
+				const next = changes.get(LOCAL_SINK_SETTING) as
+					| LocalSinkConfig
 					| undefined;
 				if (!next) {
 					return;
@@ -165,7 +165,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 					next.flushIntervalMs !== this.#config.flushIntervalMs;
 				this.#config = next;
 				if (intervalChanged) {
-					this.#rescheduleFlush();
+					this.#scheduleNextFlush();
 				}
 			},
 		);
@@ -173,20 +173,16 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 
 	// Self-rescheduling timer so flushes can never overlap or pile up.
 	#scheduleNextFlush(): void {
+		if (this.#flushTimer) {
+			clearTimeout(this.#flushTimer);
+			this.#flushTimer = null;
+		}
 		if (this.#disposed) {
 			return;
 		}
 		this.#flushTimer = setTimeout(() => {
 			void this.flush().finally(() => this.#scheduleNextFlush());
 		}, this.#config.flushIntervalMs);
-	}
-
-	#rescheduleFlush(): void {
-		if (this.#flushTimer) {
-			clearTimeout(this.#flushTimer);
-			this.#flushTimer = null;
-		}
-		this.#scheduleNextFlush();
 	}
 
 	async #doFlush(): Promise<void> {
@@ -249,12 +245,12 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		// Skip files this session is writing to: cleanup must not race with our own appends.
 		const sessionMarker = `-${this.#sessionSlug}`;
 		await cleanupFiles(this.#baseDir, this.#logger, {
-			fileType: "telemetry file",
-			match: (name) =>
+			label: "telemetry file",
+			filter: (name) =>
 				name.startsWith(FILE_PREFIX) &&
 				name.endsWith(FILE_SUFFIX) &&
 				!name.includes(sessionMarker),
-			pick: pickByAgeAndSize(
+			select: selectByAgeAndSize(
 				this.#config.maxAgeDays * MS_PER_DAY,
 				this.#config.maxTotalBytes,
 			),
@@ -262,7 +258,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	}
 }
 
-function pickByAgeAndSize(maxAgeMs: number, maxTotalBytes: number) {
+function selectByAgeAndSize(maxAgeMs: number, maxTotalBytes: number) {
 	return (
 		files: FileCleanupCandidate[],
 		now: number,
@@ -305,7 +301,7 @@ function todayUtc(): string {
 	return new Date().toISOString().slice(0, 10);
 }
 
-function warnIfBufferTooSmall(config: LocalJsonlConfig, logger: Logger): void {
+function warnIfBufferTooSmall(config: LocalSinkConfig, logger: Logger): void {
 	if (config.bufferLimit < config.flushBatchSize) {
 		logger.warn(
 			`Telemetry sink '${SINK_NAME}' bufferLimit (${config.bufferLimit}) is below flushBatchSize (${config.flushBatchSize}); the batch-size flush trigger is unreachable and overflow will drop events instead. Raise bufferLimit or lower flushBatchSize.`,
@@ -319,33 +315,30 @@ function toSessionSlug(sessionId: string): string {
 }
 
 function serializeEvent(event: TelemetryEvent): string {
-	const out: Record<string, unknown> = {
-		event_id: event.eventId,
-		event_name: event.eventName,
-		timestamp: event.timestamp,
-		event_sequence: event.eventSequence,
-		context: {
-			extension_version: event.context.extensionVersion,
-			machine_id: event.context.machineId,
-			session_id: event.context.sessionId,
-			os_type: event.context.osType,
-			os_version: event.context.osVersion,
-			host_arch: event.context.hostArch,
-			platform_name: event.context.platformName,
-			platform_version: event.context.platformVersion,
-			deployment_url: event.context.deploymentUrl,
-		},
-		properties: event.properties,
-		measurements: event.measurements,
-	};
-	if (event.traceId !== undefined) {
-		out.trace_id = event.traceId;
-	}
-	if (event.parentEventId !== undefined) {
-		out.parent_event_id = event.parentEventId;
-	}
-	if (event.error !== undefined) {
-		out.error = event.error;
-	}
-	return JSON.stringify(out) + "\n";
+	return (
+		JSON.stringify({
+			event_id: event.eventId,
+			event_name: event.eventName,
+			timestamp: event.timestamp,
+			event_sequence: event.eventSequence,
+			context: {
+				extension_version: event.context.extensionVersion,
+				machine_id: event.context.machineId,
+				session_id: event.context.sessionId,
+				os_type: event.context.osType,
+				os_version: event.context.osVersion,
+				host_arch: event.context.hostArch,
+				platform_name: event.context.platformName,
+				platform_version: event.context.platformVersion,
+				deployment_url: event.context.deploymentUrl,
+			},
+			properties: event.properties,
+			measurements: event.measurements,
+			...(event.traceId !== undefined && { trace_id: event.traceId }),
+			...(event.parentEventId !== undefined && {
+				parent_event_id: event.parentEventId,
+			}),
+			...(event.error !== undefined && { error: event.error }),
+		}) + "\n"
+	);
 }

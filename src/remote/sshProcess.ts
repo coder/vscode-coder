@@ -90,9 +90,9 @@ export class SshProcessMonitor implements vscode.Disposable {
 		logger: Logger,
 	): Promise<void> {
 		await cleanupFiles(networkInfoPath, logger, {
-			fileType: "network info file",
-			match: (name) => name.endsWith(".json"),
-			pick: (files, now) => files.filter((f) => now - f.mtime > maxAgeMs),
+			label: "network info file",
+			filter: (name) => name.endsWith(".json"),
+			select: (files, now) => files.filter((f) => now - f.mtime > maxAgeMs),
 		});
 	}
 
@@ -107,9 +107,9 @@ export class SshProcessMonitor implements vscode.Disposable {
 		logger: Logger,
 	): Promise<void> {
 		await cleanupFiles(logDir, logger, {
-			fileType: "log file",
-			match: (name) => name.startsWith("coder-ssh") && name.endsWith(".log"),
-			pick: (files, now) =>
+			label: "log file",
+			filter: (name) => name.startsWith("coder-ssh") && name.endsWith(".log"),
+			select: (files, now) =>
 				files
 					.toSorted((a, b) => a.mtime - b.mtime) // oldest first
 					.slice(0, -maxFilesToKeep) // keep the newest maxFilesToKeep

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-	LOCAL_JSONL_DEFAULTS,
-	LOCAL_JSONL_SETTING,
+	LOCAL_SINK_DEFAULTS,
+	LOCAL_SINK_SETTING,
 	TELEMETRY_LEVEL_SETTING,
-	readLocalJsonlConfig,
+	readLocalSinkConfig,
 	readTelemetryLevel,
 } from "@/settings/telemetry";
 
@@ -33,9 +33,9 @@ describe("telemetry settings", () => {
 		});
 	});
 
-	describe("readLocalJsonlConfig", () => {
+	describe("readLocalSinkConfig", () => {
 		it("returns defaults when unset", () => {
-			expect(readLocalJsonlConfig(config)).toEqual(LOCAL_JSONL_DEFAULTS);
+			expect(readLocalSinkConfig(config)).toEqual(LOCAL_SINK_DEFAULTS);
 		});
 
 		it.each([
@@ -44,8 +44,8 @@ describe("telemetry settings", () => {
 			["null", null],
 			["an array", [1, 2]],
 		])("returns defaults when the raw value is %s", (_, raw) => {
-			config.set(LOCAL_JSONL_SETTING, raw);
-			expect(readLocalJsonlConfig(config)).toEqual(LOCAL_JSONL_DEFAULTS);
+			config.set(LOCAL_SINK_SETTING, raw);
+			expect(readLocalSinkConfig(config)).toEqual(LOCAL_SINK_DEFAULTS);
 		});
 
 		it("accepts a fully-specified object", () => {
@@ -57,8 +57,8 @@ describe("telemetry settings", () => {
 				maxAgeDays: 7,
 				maxTotalBytes: 8192,
 			};
-			config.set(LOCAL_JSONL_SETTING, custom);
-			expect(readLocalJsonlConfig(config)).toEqual(custom);
+			config.set(LOCAL_SINK_SETTING, custom);
+			expect(readLocalSinkConfig(config)).toEqual(custom);
 		});
 
 		it.each([
@@ -68,29 +68,29 @@ describe("telemetry settings", () => {
 			["a numeric string", "100"],
 			["a boolean", true],
 		])("falls back per-field when a value is %s", (_, bad) => {
-			config.set(LOCAL_JSONL_SETTING, { flushIntervalMs: bad });
-			expect(readLocalJsonlConfig(config).flushIntervalMs).toBe(
-				LOCAL_JSONL_DEFAULTS.flushIntervalMs,
+			config.set(LOCAL_SINK_SETTING, { flushIntervalMs: bad });
+			expect(readLocalSinkConfig(config).flushIntervalMs).toBe(
+				LOCAL_SINK_DEFAULTS.flushIntervalMs,
 			);
 		});
 
 		it("merges valid fields with defaults for invalid ones", () => {
-			config.set(LOCAL_JSONL_SETTING, {
+			config.set(LOCAL_SINK_SETTING, {
 				flushIntervalMs: 5_000,
 				flushBatchSize: -1,
 			});
-			expect(readLocalJsonlConfig(config)).toEqual({
-				...LOCAL_JSONL_DEFAULTS,
+			expect(readLocalSinkConfig(config)).toEqual({
+				...LOCAL_SINK_DEFAULTS,
 				flushIntervalMs: 5_000,
 			});
 		});
 
 		it("returns bufferLimit and flushBatchSize as written, without clamping", () => {
-			config.set(LOCAL_JSONL_SETTING, {
+			config.set(LOCAL_SINK_SETTING, {
 				flushBatchSize: 200,
 				bufferLimit: 50,
 			});
-			expect(readLocalJsonlConfig(config)).toMatchObject({
+			expect(readLocalSinkConfig(config)).toMatchObject({
 				flushBatchSize: 200,
 				bufferLimit: 50,
 			});

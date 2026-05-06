@@ -50,10 +50,7 @@ export class PathResolver {
 	}
 
 	/**
-	 * Return the directory where local telemetry JSONL files are written.
-	 *
-	 * Files within this directory are managed by `LocalJsonlSink`, which
-	 * creates the directory on activation if it does not already exist.
+	 * Return the directory where telemetry files are written.
 	 */
 	public getTelemetryPath(): string {
 		return path.join(this.basePath, "telemetry");

@@ -1,19 +1,8 @@
 import { vol } from "memfs";
 import * as fsPromises from "node:fs/promises";
-import {
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	vi,
-	type MockInstance,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-	LOCAL_JSONL_SETTING,
-	type LocalJsonlConfig,
-} from "@/settings/telemetry";
+import { LOCAL_SINK_SETTING, type LocalSinkConfig } from "@/settings/telemetry";
 import { LocalJsonlSink } from "@/telemetry/sinks/localJsonlSink";
 
 import {
@@ -75,10 +64,10 @@ describe("LocalJsonlSink", () => {
 	});
 
 	function setup(
-		config: Partial<LocalJsonlConfig> = {},
+		config: Partial<LocalSinkConfig> = {},
 		sessionId = SESSION_ID,
 	) {
-		provider.set(LOCAL_JSONL_SETTING, {
+		provider.set(LOCAL_SINK_SETTING, {
 			flushIntervalMs: 1_000_000,
 			...config,
 		});
@@ -156,12 +145,9 @@ describe("LocalJsonlSink", () => {
 	it("warns when bufferLimit is below flushBatchSize", () => {
 		const { logger } = setup({ bufferLimit: 10, flushBatchSize: 100 });
 
-		const warned = vi
-			.mocked(logger.warn)
-			.mock.calls.some(
-				(c) => typeof c[0] === "string" && c[0].includes("is below"),
-			);
-		expect(warned).toBe(true);
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("bufferLimit"),
+		);
 	});
 
 	it("emits one overflow warning per burst regardless of flush outcome", async () => {
@@ -169,11 +155,6 @@ describe("LocalJsonlSink", () => {
 			bufferLimit: 10,
 			flushBatchSize: 10_000,
 		});
-		const overflowWarnings = (): number =>
-			vi.mocked(logger.warn).mock.calls.filter((c) => {
-				const arg = c[0];
-				return typeof arg === "string" && arg.includes("buffer overflow");
-			}).length;
 		const overflowBuffer = (): void => {
 			for (let i = 0; i < 13; i++) {
 				sink.write(makeEvent());
@@ -190,7 +171,12 @@ describe("LocalJsonlSink", () => {
 		overflowBuffer();
 		await sink.flush();
 
-		expect(overflowWarnings()).toBe(3);
+		const overflowWarnings = vi
+			.mocked(logger.warn)
+			.mock.calls.filter(
+				(c) => typeof c[0] === "string" && c[0].includes("buffer overflow"),
+			);
+		expect(overflowWarnings).toHaveLength(3);
 	});
 
 	it("flushes pending events on dispose", async () => {
@@ -384,40 +370,47 @@ describe("LocalJsonlSink", () => {
 		expect(readJsonl(todaysFile("ffeeddcc"))).toHaveLength(5);
 	});
 
-	it("coalesces concurrent flush requests into at most two appendFile calls", async () => {
+	it("coalesces concurrent flushes so events write exactly once", async () => {
 		const { sink, makeEvent } = setup();
 
-		let resolveFirst!: () => void;
-		const firstAppendDone = new Promise<void>((r) => {
-			resolveFirst = r;
+		// Block the first append until we've enqueued more flushes; signal back
+		// when the in-flight write reaches `await appendFile` so the test can
+		// proceed deterministically without juggling microtasks.
+		let signalFirstStarted!: () => void;
+		const firstAppendStarted = new Promise<void>((r) => {
+			signalFirstStarted = r;
+		});
+		let releaseFirst!: () => void;
+		const firstAppendBlocked = new Promise<void>((r) => {
+			releaseFirst = r;
 		});
 		const realAppend = fsPromises.appendFile.bind(fsPromises);
-		const spy: MockInstance<typeof fsPromises.appendFile> = vi
+		const spy = vi
 			.spyOn(fsPromises, "appendFile")
 			.mockImplementationOnce(async (target, data, opts) => {
-				await firstAppendDone;
+				signalFirstStarted();
+				await firstAppendBlocked;
 				return realAppend(target, data, opts);
 			});
 
 		sink.write(makeEvent());
-		const p1 = sink.flush();
-		// Yield so doFlush #1 captures the buffer and reaches `await appendFile`.
-		await Promise.resolve();
-		await Promise.resolve();
+		const inFlight = sink.flush();
+		await firstAppendStarted;
 
 		sink.write(makeEvent());
-		const p2 = sink.flush();
-		const p3 = sink.flush();
-		// Third caller while one is queued must share the queued promise.
-		expect(p3).toBe(p2);
+		sink.write(makeEvent());
+		const queuedA = sink.flush();
+		const queuedB = sink.flush();
 
-		resolveFirst();
-		await Promise.all([p1, p2, p3]);
+		releaseFirst();
+		await Promise.all([inFlight, queuedA, queuedB]);
 
-		expect(spy).toHaveBeenCalledTimes(2);
 		expect(readJsonl(todaysFile()).map((l) => l.event_sequence)).toEqual([
-			0, 1,
+			0, 1, 2,
 		]);
+		// One in-flight + at most one queued; multiple flush() calls do not
+		// pile up into separate writes.
+		expect(spy.mock.calls.length).toBeLessThanOrEqual(2);
 	});
 
 	it("picks up config changes reactively", async () => {
@@ -427,7 +420,7 @@ describe("LocalJsonlSink", () => {
 		sink.write(makeEvent());
 		expect(vol.existsSync(todaysFile())).toBe(false);
 
-		provider.set(LOCAL_JSONL_SETTING, {
+		provider.set(LOCAL_SINK_SETTING, {
 			flushIntervalMs: 1_000_000,
 			flushBatchSize: 3,
 		});

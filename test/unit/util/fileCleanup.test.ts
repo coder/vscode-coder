@@ -31,22 +31,22 @@ describe("cleanupFiles", () => {
 	it("does not throw when the directory is missing", async () => {
 		const { logger } = setup();
 		await expect(
-			cleanupFiles("/nope", logger, { fileType: "thing", pick: () => [] }),
+			cleanupFiles("/nope", logger, { label: "thing", select: () => [] }),
 		).resolves.toBeUndefined();
 	});
 
-	it("unlinks the files chosen by pick and leaves the rest", async () => {
+	it("unlinks the files chosen by select and leaves the rest", async () => {
 		const { logger } = setup({ "/d/a": "1", "/d/b": "2", "/d/c": "3" });
 
 		await cleanupFiles("/d", logger, {
-			fileType: "thing",
-			pick: (files) => files.filter((f) => f.name !== "b"),
+			label: "thing",
+			select: (files) => files.filter((f) => f.name !== "b"),
 		});
 
 		expect(vol.readdirSync("/d")).toEqual(["b"]);
 	});
 
-	it("exposes mtime, size, and the current time so pick can filter on them", async () => {
+	it("exposes mtime, size, and the current time so select can filter on them", async () => {
 		const { logger } = setup({
 			"/d/old-big": "x".repeat(100),
 			"/d/new-small": "x",
@@ -55,15 +55,15 @@ describe("cleanupFiles", () => {
 		vol.utimesSync("/d/old-big", 1, 1);
 
 		await cleanupFiles("/d", logger, {
-			fileType: "thing",
-			pick: (files, now) =>
+			label: "thing",
+			select: (files, now) =>
 				files.filter((f) => now - f.mtime > 1000 && f.size > 50),
 		});
 
 		expect(vol.readdirSync("/d")).toEqual(["new-small"]);
 	});
 
-	it("only feeds pick the files matched by `match`", async () => {
+	it("only feeds select the files matched by `filter`", async () => {
 		const { logger } = setup({
 			"/d/keep.json": "{}",
 			"/d/skip.txt": "no",
@@ -71,9 +71,9 @@ describe("cleanupFiles", () => {
 		});
 
 		await cleanupFiles("/d", logger, {
-			fileType: "thing",
-			match: (n) => n.endsWith(".json"),
-			pick: (files) => files,
+			label: "thing",
+			filter: (n) => n.endsWith(".json"),
+			select: (files) => files,
 		});
 
 		expect(vol.readdirSync("/d")).toEqual(["skip.txt"]);
@@ -83,8 +83,8 @@ describe("cleanupFiles", () => {
 		const { logger } = setup({ "/d/a": "1", "/d/b": "2" });
 
 		await cleanupFiles("/d", logger, {
-			fileType: "thing",
-			pick: (files) => {
+			label: "thing",
+			select: (files) => {
 				vol.unlinkSync("/d/a");
 				return files;
 			},
@@ -98,22 +98,22 @@ describe("cleanupFiles", () => {
 		const err = Object.assign(new Error("denied"), { code: "EACCES" });
 		vi.spyOn(fsPromises, "readdir").mockRejectedValueOnce(err);
 
-		const pick = vi.fn(() => []);
+		const select = vi.fn(() => []);
 		await expect(
-			cleanupFiles("/d", logger, { fileType: "thing", pick }),
+			cleanupFiles("/d", logger, { label: "thing", select }),
 		).resolves.toBeUndefined();
-		expect(pick).not.toHaveBeenCalled();
+		expect(select).not.toHaveBeenCalled();
 	});
 
-	it("clamps pick names to their basename so unlinks cannot escape the directory", async () => {
+	it("clamps select names to their basename so unlinks cannot escape the directory", async () => {
 		const { logger } = setup({
 			"/d/inside.txt": "x",
 			"/outside.txt": "y",
 		});
 
 		await cleanupFiles("/d", logger, {
-			fileType: "thing",
-			pick: () => [{ name: "../outside.txt" }],
+			label: "thing",
+			select: () => [{ name: "../outside.txt" }],
 		});
 
 		expect(vol.existsSync("/outside.txt")).toBe(true);
