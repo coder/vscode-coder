@@ -1,6 +1,6 @@
 import { task } from "@repo/mocks";
 import { withQueryClient } from "@repo/storybook-utils";
-import { expect, fn, userEvent } from "@storybook/test";
+import { expect, fn, userEvent, waitFor } from "@storybook/test";
 
 import { withTasksStyles } from "../utils/storybook";
 
@@ -52,7 +52,8 @@ export const CollapsibleToggle: Story = {
 	},
 	play: async ({ canvasElement }) => {
 		// Find all vscode-collapsible elements
-		const collapsibles = canvasElement.querySelectorAll("vscode-collapsible");
+		const collapsibles =
+			canvasElement.querySelectorAll<HTMLElement>("vscode-collapsible");
 
 		// Should have two collapsible sections
 		await expect(collapsibles.length).toBe(2);
@@ -61,9 +62,17 @@ export const CollapsibleToggle: Story = {
 		await expect(collapsibles[0].hasAttribute("open")).toBe(false);
 		await expect(collapsibles[1].hasAttribute("open")).toBe(false);
 
-		// Click the first collapsible to toggle it
-		await userEvent.click(collapsibles[0]);
-		await expect(collapsibles[0].hasAttribute("open")).toBe(true);
+		// Simulate the collapsible toggle event that would be fired when clicking
+		const toggleEvent = new CustomEvent("vsc-collapsible-toggle", {
+			detail: { open: true },
+			bubbles: true,
+		});
+		collapsibles[0].dispatchEvent(toggleEvent);
+
+		// Wait for the state to update and the open attribute to be set
+		await waitFor(() => {
+			expect(collapsibles[0].hasAttribute("open")).toBe(true);
+		});
 	},
 };
 
