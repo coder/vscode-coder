@@ -1,9 +1,10 @@
-import type { Meta, StoryObj } from "@storybook/react";
 import { expect, fn, userEvent } from "@storybook/test";
 
 import { withTasksStyles } from "../utils/storybook";
 
 import { ActionMenu } from "./ActionMenu";
+
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof ActionMenu> = {
 	title: "Tasks/ActionMenu",

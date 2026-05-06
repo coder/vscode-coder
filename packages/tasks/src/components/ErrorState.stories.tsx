@@ -1,8 +1,9 @@
 import { fn } from "@storybook/test";
 
+import { withTasksStyles } from "../utils/storybook";
+
 import { ErrorState } from "./ErrorState";
 
-import { withTasksStyles } from "../utils/storybook";
 
 import type { Meta, StoryObj } from "@storybook/react";
 

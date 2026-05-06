@@ -1,9 +1,9 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { task } from "@repo/mocks";
 import { ErrorBanner } from "@repo/tasks/components/ErrorBanner";
 
-import { task } from "@repo/mocks";
 import { renderWithQuery } from "../render";
 
 import type { Task } from "@repo/shared";

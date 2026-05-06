@@ -1,8 +1,9 @@
 import { logEntry } from "@repo/mocks";
 
+import { withTasksStyles } from "../utils/storybook";
+
 import { AgentChatHistory } from "./AgentChatHistory";
 
-import { withTasksStyles } from "../utils/storybook";
 
 import type { Meta, StoryObj } from "@storybook/react";
 

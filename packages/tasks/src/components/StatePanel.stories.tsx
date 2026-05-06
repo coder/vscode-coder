@@ -1,6 +1,7 @@
+import { withTasksStyles } from "../utils/storybook";
+
 import { StatePanel } from "./StatePanel";
 
-import { withTasksStyles } from "../utils/storybook";
 
 import type { Meta, StoryObj } from "@storybook/react";
 

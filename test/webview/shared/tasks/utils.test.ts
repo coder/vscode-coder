@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	minimalTask as task,
+	task as fullTask,
+	taskState as state,
+} from "@repo/mocks";
+import {
 	getTaskPermissions,
 	isAgentStarting,
 	isBuildingWorkspace,
@@ -11,11 +16,6 @@ import {
 	type TaskPermissions,
 } from "@repo/shared";
 
-import {
-	minimalTask as task,
-	task as fullTask,
-	taskState as state,
-} from "@repo/mocks";
 
 import type {
 	WorkspaceAgentLifecycle,

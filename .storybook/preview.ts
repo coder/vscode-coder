@@ -1,12 +1,12 @@
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
 import { createElement, useEffect } from "react";
-import type { WebviewApi } from "vscode-webview";
 
 import "./global.css";
 import { darkTheme } from "./themes/dark-v2";
 import { lightTheme } from "./themes/light-v2";
 
 import type { Preview } from "@storybook/react";
+import type { WebviewApi } from "vscode-webview";
 
 // Mock the acquireVsCodeApi function for Storybook, so that components
 // that rely on it can function without errors.
@@ -18,7 +18,7 @@ if (
 		() => ({
 			postMessage: () => undefined,
 			getState: () => undefined,
-			setState: (T) => T,
+			setState: (state) => state,
 		});
 }
 

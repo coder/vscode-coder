@@ -3,6 +3,8 @@ import * as vscode from "vscode";
 
 import { WorkspaceMonitor } from "@/workspace/workspaceMonitor";
 
+import { workspace as createWorkspace } from "@repo/mocks";
+
 import {
 	MockConfigurationProvider,
 	MockContextManager,
@@ -10,7 +12,6 @@ import {
 	MockStatusBarItem,
 	createMockLogger,
 } from "../../mocks/testHelpers";
-import { workspace as createWorkspace } from "@repo/mocks";
 
 import type {
 	ServerSentEvent,

@@ -1,8 +1,9 @@
 import { task } from "@repo/mocks";
 
+import { withTasksStyles } from "../utils/storybook";
+
 import { StatusIndicator } from "./StatusIndicator";
 
-import { withTasksStyles } from "../utils/storybook";
 
 import type { Meta, StoryObj } from "@storybook/react";
 

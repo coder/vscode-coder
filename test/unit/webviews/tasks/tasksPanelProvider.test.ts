@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { streamAgentLogs, streamBuildLogs } from "@/api/workspace";
 import { TasksPanelProvider } from "@/webviews/tasks/tasksPanelProvider";
 
+import { logEntry, preset, task, taskState, template, workspace  } from "@repo/mocks";
 import {
 	TasksApi,
 	defineRequest,
@@ -12,13 +13,12 @@ import {
 	type TaskIdParams,
 } from "@repo/shared";
 
-import { logEntry, preset, task, taskState, template } from "@repo/mocks";
 import {
 	createAxiosError,
 	createMockLogger,
 	MockUserInteraction,
 } from "../../../mocks/testHelpers";
-import { workspace } from "@repo/mocks";
+
 
 import type {
 	ProvisionerJobLog,

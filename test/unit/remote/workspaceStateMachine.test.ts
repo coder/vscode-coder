@@ -10,16 +10,17 @@ import { maybeAskAgent } from "@/promptUtils";
 import { WorkspaceStateMachine } from "@/remote/workspaceStateMachine";
 
 import {
+	agent as createAgent,
+	resource as createResource,
+	workspace as createWorkspace,
+} from "@repo/mocks";
+
+import {
 	createMockLogger,
 	MockProgress,
 	MockTerminalOutputChannel,
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
-import {
-	agent as createAgent,
-	resource as createResource,
-	workspace as createWorkspace,
-} from "@repo/mocks";
 
 import type {
 	Workspace,
