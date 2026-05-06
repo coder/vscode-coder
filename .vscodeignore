@@ -53,3 +53,8 @@ AGENTS.md
 
 # Build artifacts
 *.vsix
+
+# Storybook
+.storybook/**
+storybook-static/**
+**/*.stories.*
