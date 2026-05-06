@@ -177,6 +177,9 @@ importers:
       '@types/vscode':
         specifier: 1.106.0
         version: 1.106.0
+      '@types/vscode-webview':
+        specifier: 'catalog:'
+        version: 1.57.5
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
