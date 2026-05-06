@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import { task } from "@repo/mocks";
 import { StatusIndicator } from "@repo/tasks/components/StatusIndicator";
 
-
 import type { TaskStatus } from "@repo/shared";
 
 const css = readFileSync(resolve("packages/tasks/src/index.css"), "utf-8");
