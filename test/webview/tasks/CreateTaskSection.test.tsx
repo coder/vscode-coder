@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CreateTaskSection } from "@repo/tasks/components/CreateTaskSection";
 import { logger } from "@repo/webview-shared/logger";
 
-import { taskTemplate } from "../../mocks/tasks";
+import { taskTemplate } from "@repo/mocks";
 import { renderWithQuery } from "../render";
 
 import type { TaskTemplate } from "@repo/shared";

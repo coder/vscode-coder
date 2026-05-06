@@ -616,6 +616,7 @@
 		"@eslint-react/eslint-plugin": "^4.2.3",
 		"@eslint/js": "^10.0.1",
 		"@eslint/markdown": "^8.0.1",
+		"@repo/mocks": "workspace:*",
 		"@rolldown/plugin-babel": "catalog:",
 		"@storybook/addon-a11y": "^8.6.18",
 		"@storybook/addon-essentials": "^8.6.18",

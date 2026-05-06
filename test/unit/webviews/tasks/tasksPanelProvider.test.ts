@@ -12,19 +12,13 @@ import {
 	type TaskIdParams,
 } from "@repo/shared";
 
-import {
-	logEntry,
-	preset,
-	task,
-	taskState,
-	template,
-} from "../../../mocks/tasks";
+import { logEntry, preset, task, taskState, template } from "@repo/mocks";
 import {
 	createAxiosError,
 	createMockLogger,
 	MockUserInteraction,
 } from "../../../mocks/testHelpers";
-import { workspace } from "../../../mocks/workspace";
+import { workspace } from "@repo/mocks";
 
 import type {
 	ProvisionerJobLog,

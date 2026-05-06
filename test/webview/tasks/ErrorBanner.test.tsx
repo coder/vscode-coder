@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ErrorBanner } from "@repo/tasks/components/ErrorBanner";
 
-import { task } from "../../mocks/tasks";
+import { task } from "@repo/mocks";
 import { renderWithQuery } from "../render";
 
 import type { Task } from "@repo/shared";

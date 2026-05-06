@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { StatusIndicator } from "@repo/tasks/components/StatusIndicator";
 
-import { task } from "../../mocks/tasks";
+import { task } from "@repo/mocks";
 
 import type { TaskStatus } from "@repo/shared";
 

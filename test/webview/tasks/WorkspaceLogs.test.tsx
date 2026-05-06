@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkspaceLogs } from "@repo/tasks/components/WorkspaceLogs";
 import * as hookModule from "@repo/tasks/hooks/useWorkspaceLogs";
 
-import { task } from "../../mocks/tasks";
+import { task } from "@repo/mocks";
 import { renderWithQuery } from "../render";
 
 vi.mock("@repo/tasks/hooks/useWorkspaceLogs", () => ({

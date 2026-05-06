@@ -10,7 +10,7 @@ import {
 	MockStatusBarItem,
 	createMockLogger,
 } from "../../mocks/testHelpers";
-import { workspace as createWorkspace } from "../../mocks/workspace";
+import { workspace as createWorkspace } from "@repo/mocks";
 
 import type {
 	ServerSentEvent,

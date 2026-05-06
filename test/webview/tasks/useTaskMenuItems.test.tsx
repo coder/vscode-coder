@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { getTaskLabel, type Task } from "@repo/shared";
 import { useTaskMenuItems } from "@repo/tasks/components/useTaskMenuItems";
 
-import { task } from "../../mocks/tasks";
+import { task } from "@repo/mocks";
 import { QueryWrapper } from "../render";
 
 import type { ActionMenuItem } from "@repo/tasks/components/ActionMenu";

@@ -19,7 +19,7 @@ import {
 	agent as createAgent,
 	resource as createResource,
 	workspace as createWorkspace,
-} from "../../mocks/workspace";
+} from "@repo/mocks";
 
 import type {
 	Workspace,

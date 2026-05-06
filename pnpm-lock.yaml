@@ -123,6 +123,9 @@ importers:
       '@eslint/markdown':
         specifier: ^8.0.1
         version: 8.0.1
+      '@repo/mocks':
+        specifier: workspace:*
+        version: link:packages/mocks
       '@rolldown/plugin-babel':
         specifier: 'catalog:'
         version: 0.2.3(@babel/core@7.29.0)(@babel/runtime@7.29.2)(rolldown@1.0.0-rc.17)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))
@@ -215,7 +218,7 @@ importers:
         version: 4.1.0
       coder:
         specifier: 'catalog:'
-        version: '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c'
+        version: '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/46a60e6d5d9b22a57899e3e51e91cdcd63a273f9'
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
@@ -305,6 +308,16 @@ importers:
         specifier: 'catalog:'
         version: 8.0.10(@types/node@24.10.12)(esbuild@0.28.0)
 
+  packages/mocks:
+    dependencies:
+      '@repo/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/shared:
     devDependencies:
       typescript:
@@ -341,9 +354,6 @@ importers:
       '@repo/shared':
         specifier: workspace:*
         version: link:../shared
-      '@repo/storybook-utils':
-        specifier: workspace:*
-        version: link:../storybook-utils
       '@repo/webview-shared':
         specifier: workspace:*
         version: link:../webview-shared
@@ -366,6 +376,12 @@ importers:
         specifier: 'catalog:'
         version: 19.2.5(react@19.2.5)
     devDependencies:
+      '@repo/mocks':
+        specifier: workspace:*
+        version: link:../mocks
+      '@repo/storybook-utils':
+        specifier: workspace:*
+        version: link:../storybook-utils
       '@rolldown/plugin-babel':
         specifier: 'catalog:'
         version: 0.2.3(@babel/core@7.29.0)(@babel/runtime@7.29.2)(rolldown@1.0.0-rc.17)(vite@8.0.10(@types/node@24.10.12)(esbuild@0.28.0))
@@ -568,8 +584,8 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c':
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c}
+  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/46a60e6d5d9b22a57899e3e51e91cdcd63a273f9':
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/46a60e6d5d9b22a57899e3e51e91cdcd63a273f9}
     version: 0.0.0
 
   '@csstools/color-helpers@6.0.2':
@@ -5261,7 +5277,7 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/6149fc36196ad6eb83c0a6a33c089f0f7d142b2c': {}
+  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/46a60e6d5d9b22a57899e3e51e91cdcd63a273f9': {}
 
   '@csstools/color-helpers@6.0.2': {}
 

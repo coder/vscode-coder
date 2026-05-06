@@ -15,7 +15,7 @@ import {
 	minimalTask as task,
 	task as fullTask,
 	taskState as state,
-} from "../../../mocks/tasks";
+} from "@repo/mocks";
 
 import type {
 	WorkspaceAgentLifecycle,

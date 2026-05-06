@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TaskList } from "@repo/tasks/components/TaskList";
 
-import { task } from "../../mocks/tasks";
+import { task } from "@repo/mocks";
 import { renderWithQuery } from "../render";
 
 vi.mock("@repo/tasks/hooks/useTasksApi", () => ({

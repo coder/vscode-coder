@@ -1,4 +1,4 @@
-import { logEntry } from "../../../../test/mocks/tasks";
+import { logEntry } from "@repo/mocks";
 
 import { AgentChatHistory } from "./AgentChatHistory";
 

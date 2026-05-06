@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TaskItem } from "@repo/tasks/components/TaskItem";
 
-import { task } from "../../mocks/tasks";
+import { task } from "@repo/mocks";
 import { renderWithQuery } from "../render";
 
 import type { Task } from "@repo/shared";

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TaskDetailHeader } from "@repo/tasks/components/TaskDetailHeader";
 
-import { task, taskState } from "../../mocks/tasks";
+import { task, taskState } from "@repo/mocks";
 import { qs } from "../helpers";
 import { renderWithQuery } from "../render";
 

@@ -1,4 +1,4 @@
-import { task } from "../../../../test/mocks/tasks";
+import { task } from "@repo/mocks";
 
 import { WorkspaceLogs } from "./WorkspaceLogs";
 

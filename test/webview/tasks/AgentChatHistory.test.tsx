@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { AgentChatHistory } from "@repo/tasks/components/AgentChatHistory";
 
-import { logEntry } from "../../mocks/tasks";
+import { logEntry } from "@repo/mocks";
 import { renderWithQuery } from "../render";
 
 import type { TaskLogs } from "@repo/shared";
