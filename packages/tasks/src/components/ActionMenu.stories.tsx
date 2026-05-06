@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { expect, fn, userEvent } from "@storybook/test";
 
+import { withTasksStyles } from "../decorators";
+
 import { ActionMenu } from "./ActionMenu";
 
 const meta: Meta<typeof ActionMenu> = {
@@ -41,7 +43,7 @@ const meta: Meta<typeof ActionMenu> = {
 			},
 		],
 	},
-	tags: ["tasks"],
+	decorators: [withTasksStyles],
 };
 
 export default meta;

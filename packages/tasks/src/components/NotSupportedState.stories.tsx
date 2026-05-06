@@ -1,11 +1,13 @@
 import { NotSupportedState } from "./NotSupportedState";
 
+import { withTasksStyles } from "../decorators";
+
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof NotSupportedState> = {
 	title: "Tasks/NotSupportedState",
 	component: NotSupportedState,
-	tags: ["tasks"],
+	decorators: [withTasksStyles],
 };
 
 export default meta;

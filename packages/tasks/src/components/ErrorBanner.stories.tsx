@@ -2,12 +2,14 @@ import { task } from "@repo/mocks";
 
 import { ErrorBanner } from "./ErrorBanner";
 
+import { withTasksStyles } from "../decorators";
+
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof ErrorBanner> = {
 	title: "Tasks/ErrorBanner",
 	component: ErrorBanner,
-	tags: ["tasks"],
+	decorators: [withTasksStyles],
 };
 
 export default meta;

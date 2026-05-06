@@ -3,6 +3,8 @@ import { fn } from "@storybook/test";
 import { task } from "@repo/mocks";
 import { withQueryClient } from "@repo/storybook-utils";
 
+import { withTasksStyles } from "../decorators";
+
 import { TaskList } from "./TaskList";
 
 import type { Meta, StoryObj } from "@storybook/react";
@@ -10,8 +12,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof TaskList> = {
 	title: "Tasks/TaskList",
 	component: TaskList,
-	decorators: [withQueryClient],
-	tags: ["tasks"],
+	decorators: [withTasksStyles, withQueryClient],
 };
 
 export default meta;

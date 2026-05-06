@@ -2,12 +2,14 @@ import { task } from "@repo/mocks";
 
 import { WorkspaceLogs } from "./WorkspaceLogs";
 
+import { withTasksStyles } from "../decorators";
+
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof WorkspaceLogs> = {
 	title: "Tasks/WorkspaceLogs",
 	component: WorkspaceLogs,
-	tags: ["tasks"],
+	decorators: [withTasksStyles],
 };
 
 export default meta;

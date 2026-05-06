@@ -3,6 +3,8 @@ import { expect, fn, userEvent } from "@storybook/test";
 import { task } from "@repo/mocks";
 import { withQueryClient } from "@repo/storybook-utils";
 
+import { withTasksStyles } from "../decorators";
+
 import { TasksPanel } from "./TasksPanel";
 
 import type { Meta, StoryObj } from "@storybook/react";
@@ -10,8 +12,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof TasksPanel> = {
 	title: "Tasks/TasksPanel",
 	component: TasksPanel,
-	decorators: [withQueryClient],
-	tags: ["tasks"],
+	decorators: [withTasksStyles, withQueryClient],
 	parameters: {
 		layout: "fullscreen",
 	},

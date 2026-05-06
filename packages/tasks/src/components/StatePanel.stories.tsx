@@ -1,5 +1,7 @@
 import { StatePanel } from "./StatePanel";
 
+import { withTasksStyles } from "../decorators";
+
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof StatePanel> = {
@@ -14,7 +16,7 @@ const meta: Meta<typeof StatePanel> = {
 			</a>
 		),
 	},
-	tags: ["tasks"],
+	decorators: [withTasksStyles],
 };
 
 export default meta;

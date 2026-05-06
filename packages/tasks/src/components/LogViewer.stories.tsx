@@ -1,11 +1,13 @@
 import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
+import { withTasksStyles } from "../decorators";
+
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof LogViewer> = {
 	title: "Tasks/LogViewer",
 	component: LogViewer,
-	tags: ["tasks"],
+	decorators: [withTasksStyles],
 };
 
 export default meta;

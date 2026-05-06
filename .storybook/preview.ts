@@ -1,5 +1,5 @@
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
-import { createElement, useEffect, useMemo } from "react";
+import { createElement, useEffect } from "react";
 import type { WebviewApi } from "vscode-webview";
 
 import "./global.css";
@@ -72,18 +72,6 @@ const preview: Preview = {
 					});
 				};
 			}, [selectedTheme]);
-
-			const hasTasks = useMemo(
-				() => context.tags.includes("tasks"),
-				[context.tags.join(",")],
-			);
-
-			useEffect(() => {
-				if (hasTasks) {
-					// Dynamically import tasks CSS
-					void import("../packages/tasks/src/index.css");
-				}
-			}, [hasTasks]);
 
 			return createElement(
 				"div",

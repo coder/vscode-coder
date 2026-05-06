@@ -2,12 +2,14 @@ import { expect, fn, userEvent } from "@storybook/test";
 
 import { PromptInput } from "./PromptInput";
 
+import { withTasksStyles } from "../decorators";
+
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof PromptInput> = {
 	title: "Tasks/PromptInput",
 	component: PromptInput,
-	tags: ["tasks"],
+	decorators: [withTasksStyles],
 	args: {
 		value: "",
 		onChange: fn(),
