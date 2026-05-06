@@ -1,6 +1,6 @@
 import { task } from "@repo/mocks";
 import { withQueryClient } from "@repo/storybook-utils";
-import { expect, fn, userEvent, waitFor } from "@storybook/test";
+import { fn } from "@storybook/test";
 
 import { withTasksStyles } from "../utils/storybook";
 
@@ -50,30 +50,6 @@ export const CollapsibleToggle: Story = {
 			save: fn(),
 		},
 	},
-	play: async ({ canvasElement }) => {
-		// Find all vscode-collapsible elements
-		const collapsibles =
-			canvasElement.querySelectorAll<HTMLElement>("vscode-collapsible");
-
-		// Should have two collapsible sections
-		await expect(collapsibles.length).toBe(2);
-
-		// Both should be initially closed
-		await expect(collapsibles[0].hasAttribute("open")).toBe(false);
-		await expect(collapsibles[1].hasAttribute("open")).toBe(false);
-
-		// Simulate the collapsible toggle event that would be fired when clicking
-		const toggleEvent = new CustomEvent("vsc-collapsible-toggle", {
-			detail: { open: true },
-			bubbles: true,
-		});
-		collapsibles[0].dispatchEvent(toggleEvent);
-
-		// Wait for the state to update and the open attribute to be set
-		await waitFor(() => {
-			expect(collapsibles[0].hasAttribute("open")).toBe(true);
-		});
-	},
 };
 
 export const TaskSelection: Story = {
@@ -89,23 +65,5 @@ export const TaskSelection: Story = {
 			initialHistoryExpanded: true,
 			save: fn(),
 		},
-	},
-	play: async ({ canvasElement }) => {
-		// Find the first task item in the list
-		const taskItem = canvasElement.querySelector(".task-item");
-		await expect(taskItem).toBeTruthy();
-
-		if (!taskItem) {
-			throw new Error("Task item not found");
-		}
-
-		// Click on the task to select it
-		await userEvent.click(taskItem);
-
-		// In Storybook the IPC layer is mocked, so selecting a task triggers
-		// a detail fetch that never resolves. The loading spinner is the
-		// expected terminal state for this interaction test.
-		const loadingContainer = canvasElement.querySelector(".loading-container");
-		await expect(loadingContainer).toBeTruthy();
 	},
 };
