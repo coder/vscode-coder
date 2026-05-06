@@ -1,5 +1,5 @@
 import { task } from "../../../../test/mocks/tasks";
-import { withQueryClient } from "../../../../test/webview/decorators";
+import { withQueryClient } from "@repo/storybook-utils";
 
 import { TaskMessageInput } from "./TaskMessageInput";
 

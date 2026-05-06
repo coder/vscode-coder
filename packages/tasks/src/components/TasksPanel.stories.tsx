@@ -1,7 +1,7 @@
 import { expect, fn, userEvent } from "@storybook/test";
 
 import { task } from "../../../../test/mocks/tasks";
-import { withQueryClient } from "../../../../test/webview/decorators";
+import { withQueryClient } from "@repo/storybook-utils";
 
 import { TasksPanel } from "./TasksPanel";
 

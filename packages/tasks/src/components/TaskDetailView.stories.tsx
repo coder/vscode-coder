@@ -1,7 +1,7 @@
 import { fn } from "@storybook/test";
 
 import { taskDetails } from "../../../../test/mocks/tasks";
-import { withQueryClient } from "../../../../test/webview/decorators";
+import { withQueryClient } from "@repo/storybook-utils";
 
 import { TaskDetailView } from "./TaskDetailView";
 

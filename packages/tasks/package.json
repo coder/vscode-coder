@@ -11,6 +11,7 @@
 	},
 	"dependencies": {
 		"@repo/shared": "workspace:*",
+		"@repo/storybook-utils": "workspace:*",
 		"@repo/webview-shared": "workspace:*",
 		"@tanstack/react-query": "catalog:",
 		"@vscode-elements/react-elements": "catalog:",
