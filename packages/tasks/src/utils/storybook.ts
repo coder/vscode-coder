@@ -1,4 +1,4 @@
-import "./index.css";
+import "../index.css";
 
 import type { Decorator } from "@storybook/react";
 

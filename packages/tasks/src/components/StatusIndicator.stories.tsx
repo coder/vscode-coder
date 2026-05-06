@@ -2,7 +2,7 @@ import { task } from "@repo/mocks";
 
 import { StatusIndicator } from "./StatusIndicator";
 
-import { withTasksStyles } from "../decorators";
+import { withTasksStyles } from "../utils/storybook";
 
 import type { Meta, StoryObj } from "@storybook/react";
 

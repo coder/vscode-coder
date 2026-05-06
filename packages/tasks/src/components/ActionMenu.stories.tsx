@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { expect, fn, userEvent } from "@storybook/test";
 
-import { withTasksStyles } from "../decorators";
+import { withTasksStyles } from "../utils/storybook";
 
 import { ActionMenu } from "./ActionMenu";
 

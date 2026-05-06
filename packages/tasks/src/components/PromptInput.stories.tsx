@@ -2,7 +2,7 @@ import { expect, fn, userEvent } from "@storybook/test";
 
 import { PromptInput } from "./PromptInput";
 
-import { withTasksStyles } from "../decorators";
+import { withTasksStyles } from "../utils/storybook";
 
 import type { Meta, StoryObj } from "@storybook/react";
 

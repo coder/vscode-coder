@@ -2,7 +2,7 @@ import { logEntry } from "@repo/mocks";
 
 import { AgentChatHistory } from "./AgentChatHistory";
 
-import { withTasksStyles } from "../decorators";
+import { withTasksStyles } from "../utils/storybook";
 
 import type { Meta, StoryObj } from "@storybook/react";
 

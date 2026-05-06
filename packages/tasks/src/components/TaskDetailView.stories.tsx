@@ -3,7 +3,7 @@ import { fn } from "@storybook/test";
 import { taskDetails } from "@repo/mocks";
 import { withQueryClient } from "@repo/storybook-utils";
 
-import { withTasksStyles } from "../decorators";
+import { withTasksStyles } from "../utils/storybook";
 
 import { TaskDetailView } from "./TaskDetailView";
 
