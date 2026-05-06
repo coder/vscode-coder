@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
+import { extractExtensionVersion } from "../telemetry/event";
 import { TelemetryService } from "../telemetry/service";
 import { LocalJsonlSink } from "../telemetry/sinks/localJsonlSink";
 import { SpeedtestPanelFactory } from "../webviews/speedtest/speedtestPanelFactory";
@@ -101,7 +102,7 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 		);
 		this.telemetryService = new TelemetryService(
-			context,
+			extractExtensionVersion(context.extension.packageJSON),
 			[localJsonlSink],
 			this.logger,
 		);

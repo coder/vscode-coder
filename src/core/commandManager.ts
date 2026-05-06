@@ -40,8 +40,7 @@ const VALID_IDS: ReadonlySet<string> = new Set(CODER_COMMAND_IDS);
 
 const COMMAND_INVOKED_EVENT = "command.invoked";
 
-// `never[]` parameter type lets any concrete handler shape satisfy the
-// constraint, sidestepping function-parameter contravariance.
+// `never[]` accepts any concrete handler shape (function-parameter contravariance).
 type CommandHandler = (...args: never[]) => unknown;
 
 /**

@@ -52,11 +52,11 @@ export class TelemetryService implements vscode.Disposable {
 	readonly #configWatcher: vscode.Disposable;
 
 	public constructor(
-		ctx: vscode.ExtensionContext,
+		extensionVersion: string,
 		private readonly sinks: readonly TelemetrySink[],
 		private readonly logger: Logger,
 	) {
-		this.#session = buildSession(ctx);
+		this.#session = buildSession(extensionVersion);
 		this.#level = readLevel();
 		this.#configWatcher = watchConfigurationChanges(
 			[{ setting: TELEMETRY_LEVEL_SETTING, getValue: readLevel }],

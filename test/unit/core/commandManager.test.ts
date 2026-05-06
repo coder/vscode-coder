@@ -16,14 +16,6 @@ import {
 	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
 
-import type * as vscodeTypes from "vscode";
-
-function fakeContext(): vscodeTypes.ExtensionContext {
-	return {
-		extension: { packageJSON: { version: "1.2.3-test" } },
-	} as unknown as vscodeTypes.ExtensionContext;
-}
-
 interface Harness {
 	manager: CommandManager;
 	sink: TestSink;
@@ -34,7 +26,7 @@ function makeHarness(): Harness {
 	config.set("coder.telemetry.level", "local");
 	const sink = new TestSink();
 	const telemetry = new TelemetryService(
-		fakeContext(),
+		"1.2.3-test",
 		[sink],
 		createMockLogger(),
 	);

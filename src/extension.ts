@@ -208,6 +208,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		client,
 		output,
 	);
+	commandManager.register("coder.tasks.refresh", () =>
+		tasksPanelProvider.refresh(),
+	);
 	ctx.subscriptions.push(
 		tasksPanelProvider,
 		vscode.window.registerWebviewViewProvider(
@@ -220,15 +223,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			tasksPanelProvider.refresh(),
 		),
 	);
-	commandManager.register("coder.tasks.refresh", () =>
-		tasksPanelProvider.refresh(),
-	);
 
 	// Register Chat embed panel with dependencies
 	const chatPanelProvider = new ChatPanelProvider(
 		ctx.extensionUri,
 		client,
 		output,
+	);
+	commandManager.register("coder.chat.refresh", () =>
+		chatPanelProvider.refresh(),
 	);
 	ctx.subscriptions.push(
 		chatPanelProvider,
@@ -237,9 +240,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			chatPanelProvider,
 			{ webviewOptions: { retainContextWhenHidden: true } },
 		),
-	);
-	commandManager.register("coder.chat.refresh", () =>
-		chatPanelProvider.refresh(),
 	);
 
 	ctx.subscriptions.push(
@@ -251,8 +251,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		}),
 	);
 
-	// Coder commands. The CommandManager owns disposal via ServiceContainer,
-	// so registrations do not need to be pushed onto ctx.subscriptions.
 	commandManager.register("coder.login", commands.login.bind(commands));
 	commandManager.register("coder.logout", commands.logout.bind(commands));
 	commandManager.register(
