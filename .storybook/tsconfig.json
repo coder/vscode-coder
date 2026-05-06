@@ -6,11 +6,6 @@
 		"noEmit": true,
 		"rootDir": ".."
 	},
-	"include": [
-		"*.ts",
-		"themes/**/*.ts",
-		"../test/webview/**/*",
-		"../test/mocks/**/*"
-	],
+	"include": ["*.ts", "themes/**/*.ts"],
 	"exclude": ["node_modules"]
 }
