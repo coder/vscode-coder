@@ -1,9 +1,9 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { task } from "@repo/mocks";
 import { TaskItem } from "@repo/tasks/components/TaskItem";
 
-import { task } from "../../mocks/tasks";
 import { renderWithQuery } from "../render";
 
 import type { Task } from "@repo/shared";

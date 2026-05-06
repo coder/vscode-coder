@@ -9,3 +9,4 @@
 flake.lock
 pnpm-debug.log
 pnpm-lock.yaml
+/storybook-static/

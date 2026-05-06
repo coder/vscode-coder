@@ -1,5 +1,7 @@
-import { task } from "../../../../test/mocks/tasks";
-import { withQueryClient } from "../../../../test/webview/decorators";
+import { task } from "@repo/mocks";
+import { withQueryClient } from "@repo/storybook-utils";
+
+import { withTasksStyles } from "../utils/storybook";
 
 import { TaskMessageInput } from "./TaskMessageInput";
 
@@ -8,8 +10,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof TaskMessageInput> = {
 	title: "Tasks/TaskMessageInput",
 	component: TaskMessageInput,
-	decorators: [withQueryClient],
-	tags: ["tasks"],
+	decorators: [withTasksStyles, withQueryClient],
 };
 
 export default meta;

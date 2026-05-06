@@ -1,35 +1,25 @@
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
-import { createElement, useEffect, useMemo } from "react";
+import { createElement, useEffect } from "react";
 
 import "./global.css";
 import { darkTheme } from "./themes/dark-v2";
 import { lightTheme } from "./themes/light-v2";
 
 import type { Preview } from "@storybook/react";
-
-interface VsCodeApi {
-	postMessage: (message: unknown) => void;
-	getState: () => unknown;
-	setState: (state: unknown) => void;
-}
+import type { WebviewApi } from "vscode-webview";
 
 // Mock the acquireVsCodeApi function for Storybook, so that components
 // that rely on it can function without errors.
 if (
 	typeof window !== "undefined" &&
-	!(window as { acquireVsCodeApi?: () => VsCodeApi }).acquireVsCodeApi
+	!(window as { acquireVsCodeApi?: () => WebviewApi<unknown> }).acquireVsCodeApi
 ) {
-	(window as { acquireVsCodeApi: () => VsCodeApi }).acquireVsCodeApi = () => ({
-		postMessage: (message: unknown) => {
-			// eslint-disable-next-line no-console
-			console.log("[Storybook] postMessage:", message);
-		},
-		getState: () => undefined,
-		setState: (state: unknown) => {
-			// eslint-disable-next-line no-console
-			console.log("[Storybook] setState:", state);
-		},
-	});
+	(window as { acquireVsCodeApi: () => WebviewApi<unknown> }).acquireVsCodeApi =
+		() => ({
+			postMessage: () => undefined,
+			getState: () => undefined,
+			setState: (state) => state,
+		});
 }
 
 // Inject codicon stylesheet immediately (before any components render)
@@ -44,20 +34,6 @@ if (
 	link.href = codiconCssUrl;
 	document.head.appendChild(link);
 }
-
-// This allows the system viewing the storybook to use the same font
-// stack as vscode, which is important for accurate rendering of text.
-const getDefaultFontStack = () => {
-	if (navigator.userAgent.includes("Linux")) {
-		return 'system-ui, "Ubuntu", "Droid Sans", sans-serif';
-	} else if (navigator.userAgent.includes("Mac")) {
-		return "-apple-system, BlinkMacSystemFont, sans-serif";
-	} else if (navigator.userAgent.includes("Windows")) {
-		return '"Segoe WPC", "Segoe UI", sans-serif';
-	} else {
-		return "sans-serif";
-	}
-};
 
 const preview: Preview = {
 	parameters: {
@@ -97,25 +73,10 @@ const preview: Preview = {
 				};
 			}, [selectedTheme]);
 
-			const hasTasks = useMemo(
-				() => context.tags.includes("tasks"),
-				[context.tags.join(",")],
-			);
-
-			useEffect(() => {
-				if (hasTasks) {
-					// Dynamically import tasks CSS
-					void import("../packages/tasks/src/index.css");
-				}
-			}, [hasTasks]);
-
 			return createElement(
 				"div",
 				{
 					id: "root",
-					style: {
-						fontFamily: getDefaultFontStack(),
-					},
 				},
 				createElement(Story),
 			);

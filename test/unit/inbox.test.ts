@@ -3,12 +3,13 @@ import * as vscode from "vscode";
 
 import { Inbox } from "@/inbox";
 
+import { workspace as createWorkspace } from "@repo/mocks";
+
 import {
 	MockConfigurationProvider,
 	MockEventStream,
 	createMockLogger,
 } from "../mocks/testHelpers";
-import { workspace as createWorkspace } from "../mocks/workspace";
 
 import type { GetInboxNotificationResponse } from "coder/site/src/api/typesGenerated";
 

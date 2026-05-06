@@ -1,3 +1,5 @@
+import { withTasksStyles } from "../utils/storybook";
+
 import { NoTemplateState } from "./NoTemplateState";
 
 import type { Meta, StoryObj } from "@storybook/react";
@@ -5,7 +7,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof NoTemplateState> = {
 	title: "Tasks/NoTemplateState",
 	component: NoTemplateState,
-	tags: ["tasks"],
+	decorators: [withTasksStyles],
 };
 
 export default meta;

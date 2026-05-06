@@ -1,9 +1,9 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { task } from "@repo/mocks";
 import { TaskList } from "@repo/tasks/components/TaskList";
 
-import { task } from "../../mocks/tasks";
 import { renderWithQuery } from "../render";
 
 vi.mock("@repo/tasks/hooks/useTasksApi", () => ({

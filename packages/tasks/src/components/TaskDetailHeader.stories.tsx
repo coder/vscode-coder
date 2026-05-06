@@ -1,7 +1,8 @@
+import { task } from "@repo/mocks";
+import { withQueryClient } from "@repo/storybook-utils";
 import { fn } from "@storybook/test";
 
-import { task } from "../../../../test/mocks/tasks";
-import { withQueryClient } from "../../../../test/webview/decorators";
+import { withTasksStyles } from "../utils/storybook";
 
 import { TaskDetailHeader } from "./TaskDetailHeader";
 
@@ -10,8 +11,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof TaskDetailHeader> = {
 	title: "Tasks/TaskDetailHeader",
 	component: TaskDetailHeader,
-	decorators: [withQueryClient],
-	tags: ["tasks"],
+	decorators: [withTasksStyles, withQueryClient],
 };
 
 export default meta;

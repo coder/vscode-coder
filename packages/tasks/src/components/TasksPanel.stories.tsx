@@ -1,7 +1,8 @@
+import { task } from "@repo/mocks";
+import { withQueryClient } from "@repo/storybook-utils";
 import { expect, fn, userEvent } from "@storybook/test";
 
-import { task } from "../../../../test/mocks/tasks";
-import { withQueryClient } from "../../../../test/webview/decorators";
+import { withTasksStyles } from "../utils/storybook";
 
 import { TasksPanel } from "./TasksPanel";
 
@@ -10,8 +11,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof TasksPanel> = {
 	title: "Tasks/TasksPanel",
 	component: TasksPanel,
-	decorators: [withQueryClient],
-	tags: ["tasks"],
+	decorators: [withTasksStyles, withQueryClient],
 	parameters: {
 		layout: "fullscreen",
 	},
@@ -93,8 +93,9 @@ export const TaskSelection: Story = {
 		// Click on the task to select it
 		await userEvent.click(taskItem);
 
-		// After clicking, the loading state should appear
-		// (we can't verify the full detail view in Storybook since it requires IPC)
+		// In Storybook the IPC layer is mocked, so selecting a task triggers
+		// a detail fetch that never resolves. The loading spinner is the
+		// expected terminal state for this interaction test.
 		const loadingContainer = canvasElement.querySelector(".loading-container");
 		await expect(loadingContainer).toBeTruthy();
 	},

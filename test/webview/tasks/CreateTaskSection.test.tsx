@@ -1,10 +1,10 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { taskTemplate } from "@repo/mocks";
 import { CreateTaskSection } from "@repo/tasks/components/CreateTaskSection";
 import { logger } from "@repo/webview-shared/logger";
 
-import { taskTemplate } from "../../mocks/tasks";
 import { renderWithQuery } from "../render";
 
 import type { TaskTemplate } from "@repo/shared";

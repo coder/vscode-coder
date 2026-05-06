@@ -3,6 +3,7 @@
  * Use these to create test data with sensible defaults.
  */
 
+import type { TaskDetails, TaskTemplate } from "@repo/shared";
 import type {
 	Task,
 	TaskLogEntry,
@@ -10,8 +11,6 @@ import type {
 	Preset,
 	TaskState,
 } from "coder/site/src/api/typesGenerated";
-
-import type { TaskDetails, TaskTemplate } from "@repo/shared";
 
 /**
  * Create a Task with sensible defaults.

@@ -11,3 +11,6 @@ pnpm-debug.log
 
 # Workspace packages
 packages/*/node_modules/
+
+# Storybook
+storybook-static/
