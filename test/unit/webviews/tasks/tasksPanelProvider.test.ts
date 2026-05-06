@@ -4,7 +4,14 @@ import * as vscode from "vscode";
 import { streamAgentLogs, streamBuildLogs } from "@/api/workspace";
 import { TasksPanelProvider } from "@/webviews/tasks/tasksPanelProvider";
 
-import { logEntry, preset, task, taskState, template, workspace  } from "@repo/mocks";
+import {
+	logEntry,
+	preset,
+	task,
+	taskState,
+	template,
+	workspace,
+} from "@repo/mocks";
 import {
 	TasksApi,
 	defineRequest,
@@ -18,7 +25,6 @@ import {
 	createMockLogger,
 	MockUserInteraction,
 } from "../../../mocks/testHelpers";
-
 
 import type {
 	ProvisionerJobLog,

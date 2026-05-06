@@ -2,7 +2,6 @@ import { withTasksStyles } from "../utils/storybook";
 
 import { NoTemplateState } from "./NoTemplateState";
 
-
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof NoTemplateState> = {

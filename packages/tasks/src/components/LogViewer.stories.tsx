@@ -2,7 +2,6 @@ import { withTasksStyles } from "../utils/storybook";
 
 import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
-
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof LogViewer> = {

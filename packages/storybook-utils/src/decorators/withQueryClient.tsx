@@ -1,13 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
-import type { Decorator } from "@storybook/react";
 import { useState } from "react";
 
-/**
- * Decorator that wraps stories with a QueryClientProvider.
- * Use this for components that use React Query hooks (useQuery, useMutation, etc.)
- */
-export const withQueryClient: Decorator = (Story) => {
+import type { Decorator } from "@storybook/react";
+
+function QueryClientDecorator({ children }: { children: React.ReactNode }) {
 	const [client] = useState(
 		() =>
 			new QueryClient({
@@ -23,9 +19,15 @@ export const withQueryClient: Decorator = (Story) => {
 			}),
 	);
 
-	return (
-		<QueryClientProvider client={client}>
-			<Story />
-		</QueryClientProvider>
-	);
-};
+	return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
+/**
+ * Decorator that wraps stories with a QueryClientProvider.
+ * Use this for components that use React Query hooks (useQuery, useMutation, etc.)
+ */
+export const withQueryClient: Decorator = (Story) => (
+	<QueryClientDecorator>
+		<Story />
+	</QueryClientDecorator>
+);

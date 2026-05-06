@@ -4,7 +4,6 @@ import { withTasksStyles } from "../utils/storybook";
 
 import { AgentChatHistory } from "./AgentChatHistory";
 
-
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof AgentChatHistory> = {

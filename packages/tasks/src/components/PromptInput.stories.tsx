@@ -4,7 +4,6 @@ import { withTasksStyles } from "../utils/storybook";
 
 import { PromptInput } from "./PromptInput";
 
-
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof PromptInput> = {

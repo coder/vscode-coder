@@ -2,7 +2,6 @@ import { withTasksStyles } from "../utils/storybook";
 
 import { NotSupportedState } from "./NotSupportedState";
 
-
 import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof NotSupportedState> = {
