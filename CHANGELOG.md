@@ -5,6 +5,14 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- Workspaces hosted on internationalized (IDN) domains can now be opened from
+  recent connections. The SSH authority parser was splitting Punycode (`xn--`)
+  domain labels across the field separator and rejecting the host as invalid.
+
 ## [v1.14.5](https://github.com/coder/vscode-coder/releases/tag/v1.14.5) 2026-04-30
 
 ### Added
