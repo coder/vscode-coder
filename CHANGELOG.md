@@ -7,6 +7,16 @@
 
 ## Unreleased
 
+### Added
+
+- Local extension telemetry to help diagnose issues. Events are recorded on this
+  machine only and never sent anywhere. Configure via the new
+  `coder.telemetry.level` setting (`local` by default, `off` to disable);
+  see `coder.telemetry.local` for tunables.
+- Every `coder.*` command now records a `command.invoked` telemetry event with
+  its duration and outcome, so command latency and failures are captured
+  alongside other local telemetry.
+
 ### Fixed
 
 - Workspaces hosted on internationalized (IDN) domains can now be opened from
