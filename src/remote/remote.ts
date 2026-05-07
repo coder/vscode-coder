@@ -562,7 +562,7 @@ export class Remote {
 							const isReady = await stateMachine.processWorkspace(w, progress);
 							if (isReady) {
 								subscription.dispose();
-								resolve(w);
+								resolve(stateMachine.getWorkspace() ?? w);
 								return;
 							}
 						} catch (error: unknown) {

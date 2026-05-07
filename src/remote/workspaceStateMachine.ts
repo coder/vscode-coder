@@ -35,6 +35,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	private readonly agentLogStream = new LazyStream<WorkspaceAgentLog[]>();
 
 	private agent: { id: string; name: string } | undefined;
+	private workspace: Workspace | undefined;
 
 	constructor(
 		private readonly parts: AuthorityParts,
@@ -56,13 +57,19 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		workspace: Workspace,
 		progress: vscode.Progress<{ message?: string }>,
 	): Promise<boolean> {
+		this.workspace = workspace;
 		const workspaceName = createWorkspaceIdentifier(workspace);
 
 		switch (workspace.latest_build.status) {
 			case "running":
 				this.buildLogStream.close();
 				if (this.startupMode === "update") {
-					await this.triggerUpdate(workspace, workspaceName, progress);
+					workspace = await this.triggerUpdate(
+						workspace,
+						workspaceName,
+						progress,
+					);
+					this.workspace = workspace;
 					// Agent IDs may have changed after an update.
 					this.agent = undefined;
 				}
@@ -84,7 +91,15 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				}
 
 				if (this.startupMode === "update") {
-					await this.triggerUpdate(workspace, workspaceName, progress);
+					workspace = await this.triggerUpdate(
+						workspace,
+						workspaceName,
+						progress,
+					);
+					this.workspace = workspace;
+					if (workspace.latest_build.status === "running") {
+						break;
+					}
 				} else {
 					await this.triggerStart(workspace, workspaceName, progress);
 				}
@@ -252,16 +267,19 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		workspace: Workspace,
 		workspaceName: string,
 		progress: vscode.Progress<{ message?: string }>,
-	): Promise<void> {
+	): Promise<Workspace> {
 		progress.report({ message: `updating ${workspaceName}...` });
 		this.logger.info(`Updating ${workspaceName}`, {
 			mode: this.startupMode,
 			status: workspace.latest_build.status,
 		});
-		await updateWorkspace(this.buildCliContext(workspace));
+		const updatedWorkspace = await updateWorkspace(
+			this.buildCliContext(workspace),
+		);
 		// Downgrade so subsequent transitions don't re-trigger the update.
 		this.startupMode = "start";
 		this.logger.info(`${workspaceName} update initiated`);
+		return updatedWorkspace;
 	}
 
 	private async confirmStartOrUpdate(
@@ -284,6 +302,10 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 	public getAgentId(): string | undefined {
 		return this.agent?.id;
+	}
+
+	public getWorkspace(): Workspace | undefined {
+		return this.workspace;
 	}
 
 	dispose(): void {

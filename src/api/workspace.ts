@@ -1,8 +1,11 @@
 import { type Api } from "coder/site/src/api/api";
 import {
-	type WorkspaceAgentLog,
+	type CreateWorkspaceBuildRequest,
 	type ProvisionerJobLog,
+	type TemplateVersionParameter,
 	type Workspace,
+	type WorkspaceAgentLog,
+	type WorkspaceBuildParameter,
 } from "coder/site/src/api/typesGenerated";
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
@@ -113,21 +116,40 @@ export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
 }
 
 /**
- * Update a workspace to the latest template version.
+ * Update a workspace to the latest template version using the API.
  *
- * Uses `coder update` when the CLI supports it (>= 2.24).
- * Falls back to the REST API: stop, wait, then updateWorkspaceVersion.
+ * Parameter prompts cannot be answered from the read-only output channel, so
+ * update builds are created with existing mutable values where valid and
+ * template defaults for values that would otherwise require prompting.
  */
 export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
-	if (ctx.featureSet.cliUpdate) {
-		await runCliCommand(ctx, ["update"]);
-		return ctx.restClient.getWorkspace(ctx.workspace.id);
+	const workspace = await ctx.restClient.getWorkspace(ctx.workspace.id);
+	if (!workspace.outdated) {
+		ctx.write("Workspace is up-to-date.\r\n");
+		return workspace;
 	}
 
-	// REST API fallback for older CLIs.
-	if (ctx.workspace.latest_build.status === "running") {
+	const targetVersionId = workspace.template_active_version_id;
+	const oldBuildParameters = await ctx.restClient.getWorkspaceBuildParameters(
+		workspace.latest_build.id,
+	);
+	const templateParameters = await getUpdateTemplateParameters(
+		ctx,
+		workspace,
+		oldBuildParameters,
+		targetVersionId,
+	);
+	const buildParameters = resolveUpdateParametersWithDefaults(
+		oldBuildParameters,
+		templateParameters,
+	);
+
+	if (workspace.latest_build.transition === "start") {
 		ctx.write("Stopping workspace for update...\r\n");
-		const stopBuild = await ctx.restClient.stopWorkspace(ctx.workspace.id);
+		const stopBuild = await ctx.restClient.postWorkspaceBuild(
+			workspace.id,
+			withBuildReason(ctx, { transition: "stop" }),
+		);
 		const stoppedJob = await ctx.restClient.waitForBuild(stopBuild);
 		if (stoppedJob?.status === "canceled") {
 			throw new Error("Workspace update canceled during stop");
@@ -135,8 +157,134 @@ export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
 	}
 
 	ctx.write("Starting workspace with updated template...\r\n");
-	await ctx.restClient.updateWorkspaceVersion(ctx.workspace);
-	return ctx.restClient.getWorkspace(ctx.workspace.id);
+	const startBuild = await ctx.restClient.postWorkspaceBuild(
+		workspace.id,
+		withBuildReason(ctx, {
+			transition: "start",
+			template_version_id: targetVersionId,
+			rich_parameter_values: buildParameters,
+		}),
+	);
+	const startedJob = await ctx.restClient.waitForBuild(startBuild);
+	if (startedJob?.status === "canceled") {
+		throw new Error("Workspace update canceled during start");
+	}
+
+	return ctx.restClient.getWorkspace(workspace.id);
+}
+
+async function getUpdateTemplateParameters(
+	ctx: CliContext,
+	workspace: Workspace,
+	oldBuildParameters: WorkspaceBuildParameter[],
+	targetVersionId: string,
+): Promise<TemplateVersionParameter[]> {
+	if (workspace.template_use_classic_parameter_flow) {
+		return ctx.restClient.getTemplateVersionRichParameters(targetVersionId);
+	}
+
+	return ctx.restClient.getDynamicParameters(
+		targetVersionId,
+		workspace.owner_id,
+		oldBuildParameters,
+	);
+}
+
+function withBuildReason(
+	ctx: CliContext,
+	request: CreateWorkspaceBuildRequest,
+): CreateWorkspaceBuildRequest {
+	if (!ctx.featureSet.buildReason) {
+		return request;
+	}
+	return { ...request, reason: "vscode_connection" };
+}
+
+function resolveUpdateParametersWithDefaults(
+	oldBuildParameters: WorkspaceBuildParameter[],
+	templateParameters: TemplateVersionParameter[],
+): WorkspaceBuildParameter[] {
+	const oldBuildParametersByName = new Map(
+		oldBuildParameters.map((parameter) => [parameter.name, parameter]),
+	);
+	const resolvedParameters: WorkspaceBuildParameter[] = [];
+
+	for (const parameter of templateParameters) {
+		if (parameter.ephemeral) {
+			continue;
+		}
+
+		const oldParameter = oldBuildParametersByName.get(parameter.name);
+		const oldParameterIsValid = oldParameter
+			? isValidParameterValue(oldParameter.value, parameter)
+			: false;
+
+		if (oldParameter && parameter.mutable && oldParameterIsValid) {
+			resolvedParameters.push(oldParameter);
+			continue;
+		}
+
+		if (!oldParameter || !oldParameterIsValid || parameter.mutable) {
+			if (!hasUsableDefault(parameter)) {
+				throw new Error(missingDefaultMessage(parameter));
+			}
+			resolvedParameters.push({
+				name: parameter.name,
+				value: parameter.default_value,
+			});
+		}
+	}
+
+	return resolvedParameters;
+}
+
+function hasUsableDefault(parameter: TemplateVersionParameter): boolean {
+	return !parameter.required;
+}
+
+function missingDefaultMessage(parameter: TemplateVersionParameter): string {
+	const name = parameter.display_name
+		? `${parameter.display_name} (${parameter.name})`
+		: parameter.name;
+	return `Workspace update requires a value for parameter "${name}", but no default is available. Open Coder in your browser to set this parameter, then try updating again.`;
+}
+
+function isValidParameterValue(
+	value: string,
+	parameter: TemplateVersionParameter,
+): boolean {
+	if (parameter.options.length === 0) {
+		return true;
+	}
+
+	const allowedValues = new Set(
+		parameter.options.map((option) => option.value),
+	);
+	if (parameter.type === "list(string)") {
+		return isValidListParameterValue(value, allowedValues);
+	}
+
+	return allowedValues.has(value);
+}
+
+function isValidListParameterValue(
+	value: string,
+	allowedValues: ReadonlySet<string>,
+): boolean {
+	let values: unknown;
+	try {
+		values = JSON.parse(value);
+	} catch {
+		return false;
+	}
+
+	return (
+		Array.isArray(values) &&
+		values.every(
+			(parameterValue) =>
+				typeof parameterValue === "string" && allowedValues.has(parameterValue),
+		)
+	);
 }
 
 /**
