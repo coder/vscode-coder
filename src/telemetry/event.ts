@@ -69,11 +69,14 @@ export interface TelemetrySink {
 }
 
 /** Build session attributes from the extension version and ambient host data. */
-export function buildSession(extensionVersion: string): SessionContext {
+export function buildSession(
+	extensionVersion: string,
+	sessionId: string,
+): SessionContext {
 	return {
 		extensionVersion,
 		machineId: vscode.env.machineId,
-		sessionId: vscode.env.sessionId,
+		sessionId,
 		osType: detectOsType(),
 		osVersion: os.release(),
 		hostArch: process.arch,

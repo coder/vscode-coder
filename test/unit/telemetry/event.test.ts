@@ -7,13 +7,13 @@ import {
 } from "@/telemetry/event";
 
 describe("buildSession", () => {
-	it("populates session-stable fields from the version, vscode env, and host", () => {
-		const session = buildSession("1.2.3-test");
+	it("populates session-stable fields from the version, sessionId, vscode env, and host", () => {
+		const session = buildSession("1.2.3-test", "session-abc");
 
 		expect(session).toMatchObject({
 			extensionVersion: "1.2.3-test",
 			machineId: "test-machine-id",
-			sessionId: "test-session-id",
+			sessionId: "session-abc",
 			platformName: "Visual Studio Code",
 			platformVersion: "1.106.0-test",
 			hostArch: process.arch,
