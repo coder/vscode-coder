@@ -13,6 +13,10 @@ export interface AuthorityParts {
 // they should be handled by this extension.
 export const AuthorityPrefix = "coder-vscode";
 
+const authorityHostPrefix = `${AuthorityPrefix}.`;
+const invalidAuthorityMessage =
+	"Invalid Coder SSH authority. Must be: <hostname>--<username>--<workspace>(.<agent?>)";
+
 // Regex patterns to find the SSH port from Remote SSH extension logs.
 // `ms-vscode-remote.remote-ssh`: `-> socksPort <port> ->` or `between local port <port>`
 // `codeium.windsurf-remote-openssh`, `jeanp413.open-remote-ssh`, `google.antigravity-remote-openssh`: `=> <port>(socks) =>`
@@ -62,18 +66,17 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	}
 
 	const parts = sshHost.split("--");
-	if (!parts[0].startsWith(`${AuthorityPrefix}.`)) {
+	if (!parts[0].startsWith(authorityHostPrefix)) {
 		return null;
 	}
 
-	const invalidAuthorityMessage =
-		"Invalid Coder SSH authority. Must be: <hostname>--<username>--<workspace>(.<agent?>)";
 	if (parts.length < 3 || parts.some((p) => !p)) {
 		throw new Error(invalidAuthorityMessage);
 	}
 
+	// Parse from the right because safe hostnames can contain "--".
 	const hostPrefix = parts.slice(0, -2).join("--");
-	const safeHostname = hostPrefix.slice(`${AuthorityPrefix}.`.length);
+	const safeHostname = hostPrefix.slice(authorityHostPrefix.length);
 	if (!safeHostname) {
 		throw new Error(invalidAuthorityMessage);
 	}
@@ -83,9 +86,13 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	let workspace = workspaceAndAgent;
 	let agent = "";
 	const workspaceParts = workspaceAndAgent.split(".");
+	// Multiple dots are ambiguous because workspace and agent share this separator.
 	if (workspaceParts.length === 2) {
 		workspace = workspaceParts[0];
 		agent = workspaceParts[1];
+		if (!workspace || !agent) {
+			throw new Error(invalidAuthorityMessage);
+		}
 	}
 
 	return {
