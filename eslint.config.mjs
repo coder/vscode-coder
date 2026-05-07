@@ -187,6 +187,8 @@ export default defineConfig(
 		rules: {
 			// React Compiler auto-memoizes; exhaustive-deps false-positives on useCallback
 			"@eslint-react/exhaustive-deps": "off",
+			"@eslint-react/web-api-no-leaked-fetch": "error",
+			"@eslint-react/jsx-no-leaked-dollar": "error",
 		},
 	},
 
