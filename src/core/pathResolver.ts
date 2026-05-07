@@ -13,21 +13,15 @@ export class PathResolver {
 	 * Return the directory for the deployment with the provided hostname to
 	 * where the global Coder configs are stored.
 	 *
-	 * If the hostname is empty, read the old deployment-unaware config instead.
-	 *
 	 * The caller must ensure this directory exists before use.
 	 */
 	public getGlobalConfigDir(safeHostname: string): string {
-		return safeHostname
-			? path.join(this.basePath, safeHostname)
-			: this.basePath;
+		return path.join(this.basePath, safeHostname);
 	}
 
 	/**
 	 * Return the directory for a deployment with the provided hostname to where
 	 * its binary is cached.
-	 *
-	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 *
 	 * The caller must ensure this directory exists before use.
 	 */
@@ -85,8 +79,6 @@ export class PathResolver {
 	 * Return the directory for the deployment with the provided hostname to
 	 * where its session token is stored.
 	 *
-	 * If the hostname is empty, read the old deployment-unaware config instead.
-	 *
 	 * The caller must ensure this directory exists before use.
 	 */
 	public getSessionTokenPath(safeHostname: string): string {
@@ -97,8 +89,6 @@ export class PathResolver {
 	 * Return the directory for the deployment with the provided hostname to
 	 * where its session token was stored by older code.
 	 *
-	 * If the hostname is empty, read the old deployment-unaware config instead.
-	 *
 	 * The caller must ensure this directory exists before use.
 	 */
 	public getLegacySessionTokenPath(safeHostname: string): string {
@@ -108,8 +98,6 @@ export class PathResolver {
 	/**
 	 * Return the directory for the deployment with the provided hostname to
 	 * where its url is stored.
-	 *
-	 * If the hostname is empty, read the old deployment-unaware config instead.
 	 *
 	 * The caller must ensure this directory exists before use.
 	 */

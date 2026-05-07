@@ -21,15 +21,23 @@ describe("parseRemoteAuthority", () => {
 		"vscode://ssh-remote+coder-vscode-test--foo--bar",
 		"vscode://ssh-remote+coder-vscode-foo--bar",
 		"vscode://ssh-remote+coder--foo--bar",
+		"vscode://ssh-remote+coder-vscode--foo",
+		"vscode://ssh-remote+coder-vscode--",
+		"vscode://ssh-remote+coder-vscode--foo--",
+		"vscode://ssh-remote+coder-vscode--foo--bar",
+		"vscode://ssh-remote+coder-vscode--foo--bar--",
+		"vscode://ssh-remote+coder-vscode--foo--bar--baz",
 	])("ignores unrelated authority: %s", (input) => {
 		expect(parseRemoteAuthority(input)).toBe(null);
 	});
 
 	it.each([
-		"vscode://ssh-remote+coder-vscode--foo",
-		"vscode://ssh-remote+coder-vscode--",
-		"vscode://ssh-remote+coder-vscode--foo--",
-		"vscode://ssh-remote+coder-vscode--foo--bar--",
+		"vscode://ssh-remote+coder-vscode.dev.coder.com--foo",
+		"vscode://ssh-remote+coder-vscode.dev.coder.com--",
+		"vscode://ssh-remote+coder-vscode.dev.coder.com--foo--",
+		"vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar--",
+		"vscode://ssh-remote+coder-vscode.dev.coder.com--foo----bar",
+		"vscode://ssh-remote+coder-vscode.--foo--bar",
 	])("rejects invalid authority: %s", (input) => {
 		expect(() => parseRemoteAuthority(input)).toThrow("Invalid");
 	});
@@ -42,44 +50,11 @@ describe("parseRemoteAuthority", () => {
 
 	it.each<ParseCase>([
 		{
-			label: "legacy form, no agent",
-			input: "vscode://ssh-remote+coder-vscode--foo--bar",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode--foo--bar",
-				safeHostname: "",
-				username: "foo",
-				workspace: "bar",
-			},
-		},
-		{
-			label: "legacy form with agent",
-			input: "vscode://ssh-remote+coder-vscode--foo--bar--baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode--foo--bar--baz",
-				safeHostname: "",
-				username: "foo",
-				workspace: "bar",
-			},
-		},
-		{
 			label: "with hostname, no agent",
 			input: "vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar",
 			expected: {
 				agent: "",
 				sshHost: "coder-vscode.dev.coder.com--foo--bar",
-				safeHostname: "dev.coder.com",
-				username: "foo",
-				workspace: "bar",
-			},
-		},
-		{
-			label: "with hostname and -- agent",
-			input: "vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar--baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.dev.coder.com--foo--bar--baz",
 				safeHostname: "dev.coder.com",
 				username: "foo",
 				workspace: "bar",
@@ -97,6 +72,41 @@ describe("parseRemoteAuthority", () => {
 			},
 		},
 		{
+			label: "hostname with double dash",
+			input: "vscode://ssh-remote+coder-vscode.test--domain.com--foo--bar",
+			expected: {
+				agent: "",
+				sshHost: "coder-vscode.test--domain.com--foo--bar",
+				safeHostname: "test--domain.com",
+				username: "foo",
+				workspace: "bar",
+			},
+		},
+		{
+			label: "Punycode hostname with triple dash",
+			input:
+				"vscode://ssh-remote+coder-vscode.xn--test---8o4.example--foo--bar",
+			expected: {
+				agent: "",
+				sshHost: "coder-vscode.xn--test---8o4.example--foo--bar",
+				safeHostname: "xn--test---8o4.example",
+				username: "foo",
+				workspace: "bar",
+			},
+		},
+		{
+			label: "hostname with multiple double dashes",
+			input:
+				"vscode://ssh-remote+coder-vscode.first--middle--last.example--foo--bar.baz",
+			expected: {
+				agent: "baz",
+				sshHost: "coder-vscode.first--middle--last.example--foo--bar.baz",
+				safeHostname: "first--middle--last.example",
+				username: "foo",
+				workspace: "bar",
+			},
+		},
+		{
 			label: "Punycode label in hostname",
 			input:
 				"vscode://ssh-remote+coder-vscode.dev.coder.xn--eckwd4c7cu47r2wf.jp--foo--bar",
@@ -104,18 +114,6 @@ describe("parseRemoteAuthority", () => {
 				agent: "",
 				sshHost: "coder-vscode.dev.coder.xn--eckwd4c7cu47r2wf.jp--foo--bar",
 				safeHostname: "dev.coder.xn--eckwd4c7cu47r2wf.jp",
-				username: "foo",
-				workspace: "bar",
-			},
-		},
-		{
-			label: "Punycode hostname with -- agent",
-			input:
-				"vscode://ssh-remote+coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar--baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar--baz",
-				safeHostname: "xn--eckwd4c7cu47r2wf.jp",
 				username: "foo",
 				workspace: "bar",
 			},

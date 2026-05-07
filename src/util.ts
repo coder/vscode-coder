@@ -56,52 +56,43 @@ export function findPort(text: string): number | null {
 export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	// The authority looks like: vscode://ssh-remote+<ssh host name>
 	const authorityParts = authority.split("+");
-
-	// We create SSH host names in a format matching:
-	// coder-vscode(--|.)<username>--<workspace>(--|.)<agent?>
-	// The agent can be omitted; the user will be prompted for it instead.
-	// Anything else is unrelated to Coder and can be ignored.
-	const parts = authorityParts[1].split("--");
-	if (
-		parts.length <= 1 ||
-		(parts[0] !== AuthorityPrefix &&
-			!parts[0].startsWith(`${AuthorityPrefix}.`))
-	) {
+	const sshHost = authorityParts[1];
+	if (!sshHost) {
 		return null;
 	}
 
-	// Reassemble Punycode labels (xn--...) the split broke apart: when the
-	// prefix ends in ".xn", the cut landed inside an "xn--..." label.
-	while (parts.length >= 2 && parts[0].endsWith(".xn")) {
-		parts.splice(0, 2, `${parts[0]}--${parts[1]}`);
+	const parts = sshHost.split("--");
+	if (!parts[0].startsWith(`${AuthorityPrefix}.`)) {
+		return null;
 	}
 
-	// It has the proper prefix, so this is probably a Coder host name.
-	// Validate the SSH host name.  Including the prefix, we expect at least
-	// three parts, or four if including the agent.
-	if ((parts.length !== 3 && parts.length !== 4) || parts.some((p) => !p)) {
-		throw new Error(
-			`Invalid Coder SSH authority. Must be: <username>--<workspace>(--|.)<agent?>`,
-		);
+	const invalidAuthorityMessage =
+		"Invalid Coder SSH authority. Must be: <hostname>--<username>--<workspace>(.<agent?>)";
+	if (parts.length < 3 || parts.some((p) => !p)) {
+		throw new Error(invalidAuthorityMessage);
 	}
 
-	let workspace = parts[2];
+	const hostPrefix = parts.slice(0, -2).join("--");
+	const safeHostname = hostPrefix.slice(`${AuthorityPrefix}.`.length);
+	if (!safeHostname) {
+		throw new Error(invalidAuthorityMessage);
+	}
+	const username = parts[parts.length - 2];
+	const workspaceAndAgent = parts[parts.length - 1];
+
+	let workspace = workspaceAndAgent;
 	let agent = "";
-	if (parts.length === 4) {
-		agent = parts[3];
-	} else if (parts.length === 3) {
-		const workspaceParts = parts[2].split(".");
-		if (workspaceParts.length === 2) {
-			workspace = workspaceParts[0];
-			agent = workspaceParts[1];
-		}
+	const workspaceParts = workspaceAndAgent.split(".");
+	if (workspaceParts.length === 2) {
+		workspace = workspaceParts[0];
+		agent = workspaceParts[1];
 	}
 
 	return {
 		agent: agent,
-		sshHost: authorityParts[1],
-		safeHostname: parts[0].replace(/^coder-vscode\.?/, ""),
-		username: parts[1],
+		sshHost: sshHost,
+		safeHostname: safeHostname,
+		username: username,
 		workspace: workspace,
 	};
 }

@@ -183,14 +183,10 @@ export class SshConfig {
 	private raw: string | undefined;
 
 	private startBlockComment(safeHostname: string): string {
-		return safeHostname
-			? `# --- START CODER VSCODE ${safeHostname} ---`
-			: `# --- START CODER VSCODE ---`;
+		return `# --- START CODER VSCODE ${safeHostname} ---`;
 	}
 	private endBlockComment(safeHostname: string): string {
-		return safeHostname
-			? `# --- END CODER VSCODE ${safeHostname} ---`
-			: `# --- END CODER VSCODE ---`;
+		return `# --- END CODER VSCODE ${safeHostname} ---`;
 	}
 
 	constructor(
@@ -248,13 +244,13 @@ export class SshConfig {
 		const endBlockCount = countSubstring(endBlock, raw);
 		if (startBlockCount !== endBlockCount) {
 			throw new SshConfigBadFormat(
-				`Malformed config: ${this.filePath} has an unterminated START CODER VSCODE ${safeHostname ? safeHostname + " " : ""}block. Each START block must have an END block.`,
+				`Malformed config: ${this.filePath} has an unterminated START CODER VSCODE ${safeHostname} block. Each START block must have an END block.`,
 			);
 		}
 
 		if (startBlockCount > 1 || endBlockCount > 1) {
 			throw new SshConfigBadFormat(
-				`Malformed config: ${this.filePath} has ${startBlockCount} START CODER VSCODE ${safeHostname ? safeHostname + " " : ""}sections. Please remove all but one.`,
+				`Malformed config: ${this.filePath} has ${startBlockCount} START CODER VSCODE ${safeHostname} sections. Please remove all but one.`,
 			);
 		}
 
