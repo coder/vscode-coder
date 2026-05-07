@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
 
 import { LazyStream, updateWorkspace } from "@/api/workspace";
 import { type FeatureSet } from "@/featureSet";
@@ -106,6 +107,13 @@ function parameterOption(
 	};
 }
 
+function chooseQuickPickValue(value: string): void {
+	vi.mocked(vscode.window.showQuickPick).mockResolvedValueOnce({
+		label: value,
+		value,
+	} as never);
+}
+
 function createBuild(
 	workspace: Workspace,
 	overrides: Partial<WorkspaceBuild> = {},
@@ -141,6 +149,9 @@ function setupUpdateWorkspace({
 	templateParameters?: TemplateVersionParameter[];
 	featureSetOverrides?: Partial<FeatureSet>;
 } = {}) {
+	vi.mocked(vscode.window.showInputBox).mockReset();
+	vi.mocked(vscode.window.showQuickPick).mockReset();
+
 	const stopBuild = createBuild(workspace, {
 		id: "stop-build",
 		build_number: 2,
@@ -160,8 +171,9 @@ function setupUpdateWorkspace({
 				data: CreateWorkspaceBuildRequest,
 			) => Promise<WorkspaceBuild>
 		>()
-		.mockResolvedValueOnce(stopBuild)
-		.mockResolvedValue(startBuild);
+		.mockImplementation((_workspaceId, data) =>
+			Promise.resolve(data.transition === "stop" ? stopBuild : startBuild),
+		);
 	const waitForBuild = vi
 		.fn<(build: WorkspaceBuild) => Promise<ProvisionerJob | undefined>>()
 		.mockResolvedValue(succeededJob(workspace));
@@ -318,7 +330,7 @@ describe("updateWorkspace", () => {
 			{
 				transition: "start",
 				template_version_id: "active-version",
-				rich_parameter_values: oldBuildParameters,
+				rich_parameter_values: [],
 				reason: "vscode_connection",
 			},
 		);
@@ -350,7 +362,7 @@ describe("updateWorkspace", () => {
 		expect(restClient.getTemplateVersionRichParameters).not.toHaveBeenCalled();
 	});
 
-	it("uses template defaults for missing optional parameters", async () => {
+	it("omits missing optional mutable parameters", async () => {
 		const { ctx, restClient } = setupUpdateWorkspace({
 			templateParameters: [
 				templateParameter({ name: "editor", default_value: "vim" }),
@@ -359,15 +371,74 @@ describe("updateWorkspace", () => {
 
 		await updateWorkspace(ctx);
 
+		expect(vscode.window.showInputBox).not.toHaveBeenCalled();
+		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
+			ctx.workspace.id,
+			expect.objectContaining({ rich_parameter_values: [] }),
+		);
+	});
+
+	it("prompts for missing required parameters before stopping", async () => {
+		const workspace = createWorkspace({
+			outdated: true,
+			template_use_classic_parameter_flow: true,
+			latest_build: { status: "running", transition: "start" },
+		});
+		const { ctx, restClient } = setupUpdateWorkspace({
+			workspace,
+			templateParameters: [
+				templateParameter({
+					name: "project",
+					required: true,
+					default_value: "",
+				}),
+			],
+		});
+		vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce("project-a");
+
+		await updateWorkspace(ctx);
+
+		expect(vscode.window.showInputBox).toHaveBeenCalledWith(
+			expect.objectContaining({ title: "Workspace parameter: project" }),
+		);
+		expect(restClient.postWorkspaceBuild).toHaveBeenNthCalledWith(
+			2,
+			workspace.id,
+			expect.objectContaining({
+				rich_parameter_values: [{ name: "project", value: "project-a" }],
+			}),
+		);
+		expect(
+			vi.mocked(vscode.window.showInputBox).mock.invocationCallOrder[0],
+		).toBeLessThan(
+			vi.mocked(restClient.postWorkspaceBuild).mock.invocationCallOrder[0],
+		);
+	});
+
+	it("prompts for first-time immutable parameters", async () => {
+		const { ctx, restClient } = setupUpdateWorkspace({
+			templateParameters: [
+				templateParameter({
+					name: "image",
+					mutable: false,
+					required: false,
+					default_value: "ubuntu",
+				}),
+			],
+		});
+		vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce("debian");
+
+		await updateWorkspace(ctx);
+
 		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
 			ctx.workspace.id,
 			expect.objectContaining({
-				rich_parameter_values: [{ name: "editor", value: "vim" }],
+				rich_parameter_values: [{ name: "image", value: "debian" }],
 			}),
 		);
 	});
 
-	it("falls back to the template default when an old option value is invalid", async () => {
+	it("prompts when an old scalar option value is invalid", async () => {
 		const { ctx, restClient } = setupUpdateWorkspace({
 			oldBuildParameters: [{ name: "color", value: "blue" }],
 			templateParameters: [
@@ -378,38 +449,47 @@ describe("updateWorkspace", () => {
 				}),
 			],
 		});
+		chooseQuickPickValue("green");
 
 		await updateWorkspace(ctx);
 
+		expect(vscode.window.showQuickPick).toHaveBeenCalledWith(
+			expect.arrayContaining([
+				expect.objectContaining({ label: "red", value: "red" }),
+				expect.objectContaining({ label: "green", value: "green" }),
+			]),
+			expect.objectContaining({ title: "Workspace parameter: color" }),
+		);
 		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
 			ctx.workspace.id,
 			expect.objectContaining({
-				rich_parameter_values: [{ name: "color", value: "red" }],
+				rich_parameter_values: [{ name: "color", value: "green" }],
 			}),
 		);
 	});
 
-	it("preserves valid multi-select values", async () => {
-		const oldBuildParameters = [
-			{ name: "tools", value: JSON.stringify(["vim", "emacs"]) },
-		];
+	it("does not prompt for invalid multi-select values", async () => {
 		const { ctx, restClient } = setupUpdateWorkspace({
-			oldBuildParameters,
+			oldBuildParameters: [
+				{ name: "tools", value: JSON.stringify(["vim", "emacs"]) },
+			],
 			templateParameters: [
 				templateParameter({
 					name: "tools",
 					type: "list(string)",
+					form_type: "multi-select",
 					default_value: JSON.stringify(["vim"]),
-					options: [parameterOption("vim"), parameterOption("emacs")],
+					options: [parameterOption("vim")],
 				}),
 			],
 		});
 
 		await updateWorkspace(ctx);
 
+		expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
 		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
 			ctx.workspace.id,
-			expect.objectContaining({ rich_parameter_values: oldBuildParameters }),
+			expect.objectContaining({ rich_parameter_values: [] }),
 		);
 	});
 
@@ -437,7 +517,7 @@ describe("updateWorkspace", () => {
 		);
 	});
 
-	it("throws before stopping when a required parameter has no default", async () => {
+	it("cancels before stopping when a parameter prompt is dismissed", async () => {
 		const workspace = createWorkspace({
 			outdated: true,
 			template_use_classic_parameter_flow: true,
@@ -454,7 +534,9 @@ describe("updateWorkspace", () => {
 			],
 		});
 
-		await expect(updateWorkspace(ctx)).rejects.toThrow('parameter "project"');
+		await expect(updateWorkspace(ctx)).rejects.toThrow(
+			"Workspace update canceled while configuring parameters",
+		);
 		expect(restClient.postWorkspaceBuild).not.toHaveBeenCalled();
 		expect(restClient.waitForBuild).not.toHaveBeenCalled();
 	});
