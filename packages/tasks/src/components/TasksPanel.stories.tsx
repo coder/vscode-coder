@@ -1,12 +1,12 @@
 import { task } from "@repo/mocks";
 import { withQueryClient } from "@repo/storybook-utils";
-import { fn } from "@storybook/test";
+import { fn } from "storybook/test";
 
 import { withTasksStyles } from "../utils/storybook";
 
 import { TasksPanel } from "./TasksPanel";
 
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const meta: Meta<typeof TasksPanel> = {
 	title: "Tasks/TasksPanel",

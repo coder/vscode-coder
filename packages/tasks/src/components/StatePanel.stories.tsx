@@ -2,7 +2,7 @@ import { withTasksStyles } from "../utils/storybook";
 
 import { StatePanel } from "./StatePanel";
 
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const meta: Meta<typeof StatePanel> = {
 	title: "Tasks/StatePanel",
