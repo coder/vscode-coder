@@ -9,6 +9,21 @@ catalogs:
     '@rolldown/plugin-babel':
       specifier: ^0.2.3
       version: 0.2.3
+    '@storybook/addon-a11y':
+      specifier: ^8.6.18
+      version: 8.6.18
+    '@storybook/addon-essentials':
+      specifier: ^8.6.18
+      version: 8.6.18
+    '@storybook/react':
+      specifier: ^8.6.18
+      version: 8.6.18
+    '@storybook/react-vite':
+      specifier: ^8.6.18
+      version: 8.6.18
+    '@storybook/test':
+      specifier: ^8.6.18
+      version: 8.6.18
     '@tanstack/react-query':
       specifier: ^5.100.5
       version: 5.100.5
@@ -45,6 +60,9 @@ catalogs:
     react-dom:
       specifier: ^19.2.5
       version: 19.2.5
+    storybook:
+      specifier: ^8.6.18
+      version: 8.6.18
     typescript:
       specifier: ^6.0.3
       version: 6.0.3
@@ -130,19 +148,19 @@ importers:
         specifier: 'catalog:'
         version: 0.2.3(@babel/core@7.29.0)(@babel/runtime@7.29.2)(rolldown@1.0.0-rc.17)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))
       '@storybook/addon-a11y':
-        specifier: ^8.6.18
+        specifier: 'catalog:'
         version: 8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
       '@storybook/addon-essentials':
-        specifier: ^8.6.18
+        specifier: 'catalog:'
         version: 8.6.18(@types/react@19.2.14)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
       '@storybook/react':
-        specifier: ^8.6.18
+        specifier: 'catalog:'
         version: 8.6.18(@storybook/test@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)
       '@storybook/react-vite':
-        specifier: ^8.6.18
+        specifier: 'catalog:'
         version: 8.6.18(@storybook/test@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))
       '@storybook/test':
-        specifier: ^8.6.18
+        specifier: 'catalog:'
         version: 8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))
       '@tanstack/react-query':
         specifier: 'catalog:'
@@ -271,7 +289,7 @@ importers:
         specifier: 'catalog:'
         version: 19.2.5(react@19.2.5)
       storybook:
-        specifier: ^8.6.18
+        specifier: 'catalog:'
         version: 8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)
       typescript:
         specifier: 'catalog:'
@@ -353,7 +371,7 @@ importers:
         version: 19.2.5
     devDependencies:
       '@storybook/react':
-        specifier: ^8.6.18
+        specifier: 'catalog:'
         version: 8.6.18(@storybook/test@8.6.18(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)
       typescript:
         specifier: 'catalog:'
