@@ -14,7 +14,10 @@ import { ServiceContainer } from "./core/container";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { getErrorDetail, toError } from "./error/errorUtils";
-import { ActivationTelemetry } from "./instrumentation/activation";
+import {
+	ActivationTelemetry,
+	type ActivationTracer,
+} from "./instrumentation/activation";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
@@ -37,15 +40,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		serviceContainer.getTelemetryService(),
 	);
 
-	await activationTelemetry.trace(() =>
-		doActivate(ctx, serviceContainer, activationTelemetry),
+	await activationTelemetry.trace((tracer) =>
+		doActivate(ctx, serviceContainer, tracer),
 	);
 }
 
 async function doActivate(
 	ctx: vscode.ExtensionContext,
 	serviceContainer: ServiceContainer,
-	activationTelemetry: ActivationTelemetry,
+	tracer: ActivationTracer,
 ): Promise<void> {
 	// The Remote SSH extension's proposed APIs are used to override the SSH host
 	// name in VS Code itself. It's visually unappealing having a lengthy name!
@@ -89,12 +92,13 @@ async function doActivate(
 	const startupMode = await mementoManager.getAndClearStartupMode();
 
 	const deployment = await secretsManager.getCurrentDeployment();
+	if (deployment) {
+		serviceContainer.getTelemetryService().setDeploymentUrl(deployment.url);
+	}
 	const deploymentSessionAuth = deployment
 		? await secretsManager.getSessionAuth(deployment.safeHostname)
 		: undefined;
-	activationTelemetry.setAuthState(
-		deploymentSessionAuth ? "valid_token" : "none",
-	);
+	tracer.setAuthState(deploymentSessionAuth ? "valid_token" : "none");
 
 	// Shared handler for auth failures (used by interceptor + session manager)
 	const handleAuthFailure = (): Promise<void> => {
@@ -396,9 +400,7 @@ async function doActivate(
 					url: details.url,
 					token: details.token,
 				});
-				activationTelemetry.setAuthState(
-					deploymentSet ? "valid_token" : "expired",
-				);
+				tracer.setAuthState(deploymentSet ? "valid_token" : "expired");
 
 				// If a deep link stored a chat agent ID before the
 				// remote-authority reload, open it now that the
@@ -456,7 +458,7 @@ async function doActivate(
 		contextManager.set("coder.loaded", true);
 	} else if (deployment) {
 		output.info(`Initializing deployment: ${deployment.url}`);
-		activationTelemetry
+		tracer
 			.traceDeploymentInit(() =>
 				deploymentManager.setDeploymentIfValid(deployment),
 			)

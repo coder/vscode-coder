@@ -8,14 +8,9 @@ import {
 	CommandManager,
 	type CoderCommandId,
 } from "@/core/commandManager";
-import { buildSession } from "@/telemetry/event";
-import { TelemetryService } from "@/telemetry/service";
 
-import { TestSink } from "../../mocks/telemetry";
-import {
-	createMockLogger,
-	MockConfigurationProvider,
-} from "../../mocks/testHelpers";
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
+import { MockConfigurationProvider } from "../../mocks/testHelpers";
 
 interface Harness {
 	manager: CommandManager;
@@ -23,15 +18,12 @@ interface Harness {
 }
 
 function makeHarness(): Harness {
-	const config = new MockConfigurationProvider();
-	config.set("coder.telemetry.level", "local");
+	new MockConfigurationProvider();
 	const sink = new TestSink();
-	const telemetry = new TelemetryService(
-		buildSession("1.2.3-test", "test-session"),
-		[sink],
-		createMockLogger(),
-	);
-	return { manager: new CommandManager(telemetry), sink };
+	return {
+		manager: new CommandManager(createTestTelemetryService(sink)),
+		sink,
+	};
 }
 
 function getRegisteredCallback(

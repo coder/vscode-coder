@@ -32,7 +32,10 @@ import { type SecretsManager } from "../core/secretsManager";
 import { toError } from "../error/errorUtils";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { Inbox } from "../inbox";
-import { RemoteSetupTelemetry } from "../instrumentation/remoteSetup";
+import {
+	RemoteSetupTelemetry,
+	type RemoteSetupTracer,
+} from "../instrumentation/remoteSetup";
 import { type Logger } from "../logging/logger";
 import { type LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthSessionManager } from "../oauth/sessionManager";
@@ -46,6 +49,7 @@ import {
 import { getHeaderCommand } from "../settings/headers";
 import {
 	AuthorityPrefix,
+	type AuthorityParts,
 	escapeCommandArg,
 	expandPath,
 	parseRemoteAuthority,
@@ -65,28 +69,24 @@ import { SshProcessMonitor } from "./sshProcess";
 import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
-import type { TelemetryService } from "../telemetry/service";
-
 export interface RemoteDetails extends vscode.Disposable {
 	safeHostname: string;
 	url: string;
 	token: string;
 }
 
-type RemoteAuthorityParts = NonNullable<
-	ReturnType<typeof parseRemoteAuthority>
->;
-
-interface RemoteSetupBaseContext {
-	parts: RemoteAuthorityParts;
-	workspaceName: string;
+/** Original {@link Remote.setup} args; retained so auth retries can re-invoke. */
+interface RemoteSetupArgs {
 	remoteAuthority: string;
 	startupMode: StartupMode;
 	remoteSshExtensionId: string;
 }
 
-interface RemoteSetupContext extends RemoteSetupBaseContext {
-	baseUrlRaw: string;
+interface RemoteSetupContext {
+	args: RemoteSetupArgs;
+	parts: AuthorityParts;
+	workspaceName: string;
+	baseUrl: string;
 	token: string | undefined;
 	disposables: vscode.Disposable[];
 }
@@ -98,7 +98,7 @@ export class Remote {
 	private readonly contextManager: ContextManager;
 	private readonly secretsManager: SecretsManager;
 	private readonly loginCoordinator: LoginCoordinator;
-	private readonly telemetryService: TelemetryService;
+	private readonly setupTelemetry: RemoteSetupTelemetry;
 
 	public constructor(
 		private readonly serviceContainer: ServiceContainer,
@@ -111,7 +111,9 @@ export class Remote {
 		this.contextManager = serviceContainer.getContextManager();
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
-		this.telemetryService = serviceContainer.getTelemetryService();
+		this.setupTelemetry = new RemoteSetupTelemetry(
+			serviceContainer.getTelemetryService(),
+		);
 	}
 
 	/**
@@ -136,59 +138,51 @@ export class Remote {
 			agent: parts.agent || "(default)",
 		});
 
-		const workspaceName = `${parts.username}/${parts.workspace}`;
-
-		return this.telemetryService.trace("remote.setup", (span) =>
-			this.setupCoderRemote(
-				{
-					parts,
-					workspaceName,
-					remoteAuthority,
-					startupMode,
-					remoteSshExtensionId,
-				},
-				new RemoteSetupTelemetry(span),
-			),
-		);
-	}
-
-	private async setupCoderRemote(
-		baseContext: RemoteSetupBaseContext,
-		setupTelemetry: RemoteSetupTelemetry,
-	): Promise<RemoteDetails | undefined> {
-		const { parts } = baseContext;
-		const auth = await setupTelemetry.phase("auth_retrieval", async () => {
-			// Migrate existing legacy file-based auth to secrets storage.
-			await this.migrateToSecretsStorage(parts.safeHostname);
-
-			// Get the URL and token belonging to this host.
-			return this.secretsManager.getSessionAuth(parts.safeHostname);
-		});
-		const baseUrlRaw = auth?.url ?? "";
-		const token = auth?.token;
-		this.logger.debug("Retrieved auth for hostname", {
-			hostname: parts.safeHostname,
-			hasUrl: Boolean(baseUrlRaw),
-			hasToken: token !== undefined,
-		});
-		const setupContext: RemoteSetupContext = {
-			...baseContext,
-			baseUrlRaw,
-			token,
-			disposables: [],
-		};
-		const {
-			workspaceName,
+		const args: RemoteSetupArgs = {
 			remoteAuthority,
 			startupMode,
 			remoteSshExtensionId,
-			disposables,
-		} = setupContext;
+		};
+		const workspaceName = `${parts.username}/${parts.workspace}`;
+
+		return this.setupTelemetry.trace(async (tracer) => {
+			const auth = await tracer.phase("auth_retrieval", async () => {
+				await this.migrateToSecretsStorage(parts.safeHostname);
+				return this.secretsManager.getSessionAuth(parts.safeHostname);
+			});
+			if (auth?.url) {
+				this.serviceContainer.getTelemetryService().setDeploymentUrl(auth.url);
+			}
+			this.logger.debug("Retrieved auth for hostname", {
+				hostname: parts.safeHostname,
+				hasUrl: Boolean(auth?.url),
+				hasToken: auth?.token !== undefined,
+			});
+			return this.setupCoderRemote(
+				{
+					args,
+					parts,
+					workspaceName,
+					baseUrl: auth?.url ?? "",
+					token: auth?.token,
+					disposables: [],
+				},
+				tracer,
+			);
+		});
+	}
+
+	private async setupCoderRemote(
+		setupContext: RemoteSetupContext,
+		tracer: RemoteSetupTracer,
+	): Promise<RemoteDetails | undefined> {
+		const { args, parts, workspaceName, baseUrl, token, disposables } =
+			setupContext;
 
 		try {
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = OAuthSessionManager.create(
-				{ url: baseUrlRaw, safeHostname: parts.safeHostname },
+				{ url: baseUrl, safeHostname: parts.safeHostname },
 				this.serviceContainer,
 				async () => {
 					await this.showSessionExpiredDialog(setupContext);
@@ -198,17 +192,17 @@ export class Remote {
 
 			// It could be that the cli config was deleted. If so, ask for the url.
 			if (
-				!baseUrlRaw ||
+				!baseUrl ||
 				(!token && needToken(vscode.workspace.getConfiguration()))
 			) {
 				return this.ensureLoggedInAndRetry(
 					setupContext,
 					"You are not logged in...",
-					baseUrlRaw,
+					baseUrl,
 				);
 			}
 
-			this.logger.info("Using deployment URL", baseUrlRaw);
+			this.logger.info("Using deployment URL", baseUrl);
 			this.logger.info("Using hostname", parts.safeHostname || "n/a");
 
 			// We could use the plugin client, but it is possible for the user to log
@@ -216,7 +210,7 @@ export class Remote {
 			// break this connection.  We could force close the remote session or
 			// disallow logging out/in altogether, but for now just use a separate
 			// client to remain unaffected by whatever the plugin is doing.
-			const workspaceClient = CoderApi.create(baseUrlRaw, token, this.logger);
+			const workspaceClient = CoderApi.create(baseUrl, token, this.logger);
 			disposables.push(workspaceClient);
 
 			// Create 401 interceptor - handles auth failures with re-login dialog
@@ -238,8 +232,8 @@ export class Remote {
 			const binaryPath = await this.resolveRemoteBinary(workspaceClient);
 
 			// Write token to keyring or file
-			if (baseUrlRaw && token !== undefined) {
-				await this.cliManager.configure(baseUrlRaw, token);
+			if (baseUrl && token !== undefined) {
+				await this.cliManager.configure(baseUrl, token);
 			}
 
 			// Listen for token changes for this deployment
@@ -264,7 +258,7 @@ export class Remote {
 			const cliAuth = resolveCliAuth(
 				vscode.workspace.getConfiguration(),
 				featureSet,
-				baseUrlRaw,
+				baseUrl,
 				configDir,
 			);
 
@@ -288,9 +282,8 @@ export class Remote {
 			}
 
 			// Next is to find the workspace from the URI scheme provided.
-			const foundWorkspace = await setupTelemetry.phase(
-				"workspace_lookup",
-				() => this.lookupWorkspace(setupContext, workspaceClient),
+			const foundWorkspace = await tracer.phase("workspace_lookup", () =>
+				this.lookupWorkspace(setupContext, workspaceClient),
 			);
 			if (!foundWorkspace) {
 				return;
@@ -299,7 +292,7 @@ export class Remote {
 
 			// Register before connection so the label still displays!
 			let labelFormatterDisposable = this.registerLabelFormatter(
-				remoteAuthority,
+				args.remoteAuthority,
 				workspace.owner_name,
 				workspace.name,
 			);
@@ -329,7 +322,7 @@ export class Remote {
 			const stateMachine = new WorkspaceStateMachine(
 				parts,
 				workspaceClient,
-				startupMode,
+				args.startupMode,
 				binaryPath,
 				featureSet,
 				this.logger,
@@ -338,7 +331,7 @@ export class Remote {
 			disposables.push(stateMachine);
 
 			try {
-				workspace = await setupTelemetry.phase("workspace_ready", () =>
+				workspace = await tracer.phase("workspace_ready", () =>
 					this.waitForWorkspaceReady(workspace, monitor, stateMachine),
 				);
 			} finally {
@@ -348,7 +341,7 @@ export class Remote {
 			// Mark initial setup as complete so the monitor can start notifying about state changes
 			monitor.markInitialSetupComplete();
 
-			const agent = await setupTelemetry.phase("agent_ready", () =>
+			const agent = await tracer.phase("agent_ready", () =>
 				this.findReadyAgent(setupContext, workspace, stateMachine),
 			);
 
@@ -358,17 +351,15 @@ export class Remote {
 
 			const logDir = this.getLogDir(featureSet);
 
-			const computedSshProperties = await setupTelemetry.phase(
-				"ssh_config_write",
-				() =>
-					this.writeRemoteSshConfig(
-						setupContext,
-						workspaceClient,
-						binaryPath,
-						logDir,
-						featureSet,
-						cliAuth,
-					),
+			const computedSshProperties = await tracer.phase("ssh_config_write", () =>
+				this.writeRemoteSshConfig(
+					setupContext,
+					workspaceClient,
+					binaryPath,
+					logDir,
+					featureSet,
+					cliAuth,
+				),
 			);
 			const remoteCommand = computedSshProperties.RemoteCommand;
 
@@ -398,7 +389,7 @@ export class Remote {
 				proxyLogDir: logDir || undefined,
 				logger: this.logger,
 				codeLogDir: this.pathResolver.getCodeLogDir(),
-				remoteSshExtensionId,
+				remoteSshExtensionId: args.remoteSshExtensionId,
 			});
 			disposables.push(sshMonitor);
 
@@ -407,7 +398,7 @@ export class Remote {
 			const reregisterLabelFormatter = () => {
 				labelFormatterDisposable.dispose();
 				labelFormatterDisposable = this.registerLabelFormatter(
-					remoteAuthority,
+					args.remoteAuthority,
 					workspace.owner_name,
 					workspace.name,
 					agent.name,
@@ -477,7 +468,7 @@ export class Remote {
 		// explained above.
 		return {
 			safeHostname: parts.safeHostname,
-			url: baseUrlRaw,
+			url: baseUrl,
 			token: token ?? "",
 			dispose: () => {
 				disposables.forEach((d) => {
@@ -513,13 +504,13 @@ export class Remote {
 						`That workspace doesn't exist!`,
 						{
 							modal: true,
-							detail: `${context.workspaceName} cannot be found on ${context.baseUrlRaw}. Maybe it was deleted...`,
+							detail: `${context.workspaceName} cannot be found on ${context.baseUrl}. Maybe it was deleted...`,
 							useCustom: true,
 						},
 						"Open Workspace",
 					);
-					context.disposables.forEach((disposable) => {
-						disposable.dispose();
+					context.disposables.forEach((d) => {
+						d.dispose();
 					});
 					if (!result) {
 						await this.closeRemote();
@@ -640,7 +631,7 @@ export class Remote {
 	private showSessionExpiredDialog(context: RemoteSetupContext) {
 		return this.loginCoordinator.ensureLoggedInWithDialog({
 			safeHostname: context.parts.safeHostname,
-			url: context.baseUrlRaw,
+			url: context.baseUrl,
 			message: "Your session expired...",
 			detailPrefix: `You must log in to access ${context.workspaceName}.`,
 		});
@@ -658,17 +649,14 @@ export class Remote {
 			detailPrefix: `You must log in to access ${context.workspaceName}.`,
 		});
 
-		// Dispose before retrying since setup will create new disposables
-		context.disposables.forEach((disposable) => {
-			disposable.dispose();
+		// Dispose before retrying since setup will create new disposables.
+		context.disposables.forEach((d) => {
+			d.dispose();
 		});
 		if (result.success) {
-			// Login successful, retry setup
-			return this.setup(
-				context.remoteAuthority,
-				context.startupMode,
-				context.remoteSshExtensionId,
-			);
+			const { remoteAuthority, startupMode, remoteSshExtensionId } =
+				context.args;
+			return this.setup(remoteAuthority, startupMode, remoteSshExtensionId);
 		}
 
 		// User cancelled or login failed
@@ -682,10 +670,8 @@ export class Remote {
 		) {
 			return this.cliManager.fetchBinary(workspaceClient);
 		}
-
+		// Dev override: use a custom binary at /tmp/coder if it exists.
 		try {
-			// In development, try to use `/tmp/coder` as the binary path.
-			// This is useful for debugging with a custom bin!
 			const binaryPath = path.join(os.tmpdir(), "coder");
 			await fs.stat(binaryPath);
 			return binaryPath;

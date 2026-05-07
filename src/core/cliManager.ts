@@ -36,16 +36,6 @@ type ResolvedBinary =
 
 type CliDownloadReason = "missing" | "version_mismatch";
 
-interface BinaryDownloadResult {
-	binPath: string;
-	downloadedBytes?: number;
-}
-
-interface DownloadResult {
-	status: number;
-	downloadedBytes: number;
-}
-
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
 
@@ -243,22 +233,18 @@ export class CliManager {
 			return await this.telemetry.trace(
 				"cli.download",
 				async (span) => {
-					const recordDownloadedBytes = (downloadedBytes: number): void => {
-						if (downloadedBytes > 0) {
-							span.setMeasurement("downloadedBytes", downloadedBytes);
-						}
-					};
-					const downloadResult = await this.performBinaryDownload(
+					const downloadedBinPath = await this.performBinaryDownload(
 						restClient,
 						latestVersion,
 						downloadBinPath,
 						progressLogPath,
-						recordDownloadedBytes,
+						(downloadedBytes) => {
+							if (downloadedBytes > 0) {
+								span.setMeasurement("downloadedBytes", downloadedBytes);
+							}
+						},
 					);
-					if (downloadResult.downloadedBytes !== undefined) {
-						recordDownloadedBytes(downloadResult.downloadedBytes);
-					}
-					return this.renameToFinalPath(resolved, downloadResult.binPath);
+					return this.renameToFinalPath(resolved, downloadedBinPath);
 				},
 				{ reason: downloadReason },
 			);
@@ -445,7 +431,7 @@ export class CliManager {
 		binPath: string,
 		progressLogPath: string,
 		recordDownloadedBytes: (downloadedBytes: number) => void,
-	): Promise<BinaryDownloadResult> {
+	): Promise<string> {
 		const cfg = vscode.workspace.getConfiguration("coder");
 		const tempFile = tempFilePath(binPath, "temp");
 
@@ -490,7 +476,7 @@ export class CliManager {
 			};
 
 			const client = restClient.getAxiosInstance();
-			const downloadResult = await this.download(
+			const status = await this.download(
 				client,
 				binSource,
 				writeStream,
@@ -500,7 +486,7 @@ export class CliManager {
 				onProgress,
 			);
 
-			switch (downloadResult.status) {
+			switch (status) {
 				case 200: {
 					await downloadProgress.writeProgress(progressLogPath, {
 						bytesDownloaded: 0,
@@ -531,14 +517,11 @@ export class CliManager {
 					// Replace existing binary (handles both renames + Windows lock)
 					await this.replaceExistingBinary(binPath, tempFile);
 
-					return {
-						binPath,
-						downloadedBytes: downloadResult.downloadedBytes,
-					};
+					return binPath;
 				}
 				case 304: {
 					this.output.info("Using existing binary since server returned a 304");
-					return { binPath };
+					return binPath;
 				}
 				case 404: {
 					vscode.window
@@ -575,7 +558,7 @@ export class CliManager {
 							}
 							const params = new URLSearchParams({
 								title: `Failed to download binary on \`${cliUtils.goos()}-${cliUtils.goarch()}\``,
-								body: `Received status code \`${downloadResult.status}\` when downloading the binary.`,
+								body: `Received status code \`${status}\` when downloading the binary.`,
 							});
 							const uri = vscode.Uri.parse(
 								`https://github.com/coder/vscode-coder/issues/new?${params.toString()}`,
@@ -603,7 +586,7 @@ export class CliManager {
 			bytesDownloaded: number,
 			totalBytes: number | null,
 		) => Promise<void>,
-	): Promise<DownloadResult> {
+	): Promise<number> {
 		const baseUrl = client.defaults.baseURL;
 
 		const controller = new AbortController();
@@ -621,8 +604,8 @@ export class CliManager {
 		});
 		this.output.info("Got status code", resp.status);
 
-		let written = 0;
 		if (resp.status === 200) {
+			let written = 0;
 			const rawContentLength = (resp.headers["content-length"] ??
 				resp.headers["x-original-content-length"]) as unknown;
 			const contentLength = Number.parseInt(
@@ -722,10 +705,7 @@ export class CliManager {
 			this.output.info(`Downloaded ${prettyBytes(written)}`);
 		}
 
-		return {
-			status: resp.status,
-			downloadedBytes: written,
-		};
+		return resp.status;
 	}
 
 	/**
@@ -815,8 +795,8 @@ export class CliManager {
 		this.output.info("Downloading signature from", source);
 		const signaturePath = path.join(cliPath + ".asc");
 		const writeStream = createWriteStream(signaturePath);
-		const downloadResult = await this.download(client, source, writeStream);
-		if (downloadResult.status === 200) {
+		const status = await this.download(client, source, writeStream);
+		if (status === 200) {
 			try {
 				await pgp.verifySignature(
 					publicKeys,
@@ -845,7 +825,7 @@ export class CliManager {
 				this.output.info("Binary will be ran anyway at user request");
 			}
 		}
-		return downloadResult.status;
+		return status;
 	}
 
 	/**

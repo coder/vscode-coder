@@ -774,40 +774,37 @@ describe("CliManager", () => {
 	});
 
 	describe("Telemetry", () => {
-		const telemetryEvent = (eventName: string) =>
-			telemetrySink.events.find((event) => event.eventName === eventName);
+		const event = (name: string) =>
+			telemetrySink.events.find((e) => e.eventName === name);
 
 		it.each([
-			{
-				name: "missing",
-				reason: "missing",
-				setup: () => undefined,
-			},
-			{
-				name: "version mismatch",
-				reason: "version_mismatch",
-				setup: () => withExistingBinary("1.0.0"),
-			},
-		])("emits cli.download for $name binary", async ({ reason, setup }) => {
-			setup();
-			withSuccessfulDownload();
-			await manager.fetchBinary(mockApi);
+			{ reason: "missing", existing: undefined },
+			{ reason: "version_mismatch", existing: "1.0.0" },
+		])(
+			"emits cli.download with reason=$reason",
+			async ({ reason, existing }) => {
+				if (existing) {
+					withExistingBinary(existing);
+				}
+				withSuccessfulDownload();
+				await manager.fetchBinary(mockApi);
 
-			const event = telemetryEvent("cli.download");
-			expect(event).toMatchObject({
-				properties: { reason, result: "success" },
-			});
-			expect(event?.measurements.durationMs).toBeGreaterThanOrEqual(0);
-			expect(event?.measurements.downloadedBytes).toBe(
-				Buffer.byteLength(mockBinaryContent(TEST_VERSION)),
-			);
-		});
+				const e = event("cli.download");
+				expect(e).toMatchObject({
+					properties: { reason, result: "success" },
+				});
+				expect(e?.measurements.durationMs).toBeGreaterThanOrEqual(0);
+				expect(e?.measurements.downloadedBytes).toBe(
+					Buffer.byteLength(mockBinaryContent(TEST_VERSION)),
+				);
+			},
+		);
 
 		it("does not emit cli.download when a cached binary already matches", async () => {
 			withExistingBinary(TEST_VERSION);
 			await manager.fetchBinary(mockApi);
 
-			expect(telemetryEvent("cli.download")).toBeUndefined();
+			expect(event("cli.download")).toBeUndefined();
 		});
 
 		it("omits downloadedBytes when the server returns 304", async () => {
@@ -815,69 +812,61 @@ describe("CliManager", () => {
 			withHttpResponse(304);
 			await manager.fetchBinary(mockApi);
 
-			const event = telemetryEvent("cli.download");
-			expect(event).toMatchObject({
+			const e = event("cli.download");
+			expect(e).toMatchObject({
 				properties: { reason: "version_mismatch", result: "success" },
 			});
-			expect(event?.measurements.downloadedBytes).toBeUndefined();
+			expect(e?.measurements.downloadedBytes).toBeUndefined();
 		});
 
-		it("emits downloadedBytes when a download fails after writing bytes", async () => {
-			const partialContent = "partial-binary";
+		it("emits downloadedBytes when a download fails mid-stream", async () => {
+			const partial = "partial-binary";
 			withHttpResponse(
 				200,
 				{ "content-length": "1024" },
-				createMockStream(partialContent, {
-					error: new Error("connection reset"),
-				}),
+				createMockStream(partial, { error: new Error("connection reset") }),
 			);
 
 			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
 				"Unable to download binary: connection reset",
 			);
 
-			const event = telemetryEvent("cli.download");
-			expect(event).toMatchObject({
+			expect(event("cli.download")).toMatchObject({
 				properties: { reason: "missing", result: "error" },
-				error: {
-					message: "Unable to download binary: connection reset",
-				},
+				error: { message: "Unable to download binary: connection reset" },
+				measurements: { downloadedBytes: Buffer.byteLength(partial) },
 			});
-			expect(event?.measurements.downloadedBytes).toBe(
-				Buffer.byteLength(partialContent),
-			);
 		});
 
-		it("emits cli.verify on successful signature verification", async () => {
-			mockConfig.set("coder.disableSignatureVerification", false);
-			withSuccessfulDownload();
-			withSignatureResponses([200]);
-			await manager.fetchBinary(mockApi);
-
-			const event = telemetryEvent("cli.verify");
-			expect(event).toMatchObject({
-				properties: { result: "success" },
+		describe("cli.verify", () => {
+			beforeEach(() => {
+				mockConfig.set("coder.disableSignatureVerification", false);
+				withSuccessfulDownload();
+				withSignatureResponses([200]);
 			});
-			expect(event?.measurements.durationMs).toBeGreaterThanOrEqual(0);
-		});
 
-		it("emits cli.verify error when signature verification fails", async () => {
-			mockConfig.set("coder.disableSignatureVerification", false);
-			withSuccessfulDownload();
-			withSignatureResponses([200]);
-			vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
-				createVerificationError("Invalid signature"),
-			);
-			mockUI.setResponse("Signature does not match", undefined);
+			it("emits success on valid signature", async () => {
+				await manager.fetchBinary(mockApi);
 
-			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
-				"Signature verification aborted",
-			);
+				const e = event("cli.verify");
+				expect(e).toMatchObject({ properties: { result: "success" } });
+				expect(e?.measurements.durationMs).toBeGreaterThanOrEqual(0);
+			});
 
-			const event = telemetryEvent("cli.verify");
-			expect(event).toMatchObject({
-				properties: { result: "error" },
-				error: { message: "Signature verification aborted" },
+			it("emits error when verification is aborted", async () => {
+				vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
+					createVerificationError("Invalid signature"),
+				);
+				mockUI.setResponse("Signature does not match", undefined);
+
+				await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
+					"Signature verification aborted",
+				);
+
+				expect(event("cli.verify")).toMatchObject({
+					properties: { result: "error" },
+					error: { message: "Signature verification aborted" },
+				});
 			});
 		});
 	});
