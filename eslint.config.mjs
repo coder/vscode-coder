@@ -175,6 +175,31 @@ export default defineConfig(
 		},
 	},
 
+	// Prevent runtime package code from importing test/storybook-only packages
+	{
+		files: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
+		ignores: ["**/*.stories.*"],
+		rules: {
+			"no-restricted-imports": [
+				"error",
+				{
+					patterns: [
+						{
+							group: ["@repo/mocks", "@repo/mocks/*"],
+							message:
+								"@repo/mocks is for tests and stories only. Do not import it from runtime code.",
+						},
+						{
+							group: ["@repo/storybook-utils", "@repo/storybook-utils/*"],
+							message:
+								"@repo/storybook-utils is for stories only. Do not import it from runtime code.",
+						},
+					],
+				},
+			],
+		},
+	},
+
 	// React rules with type-checked analysis (covers hooks, JSX, DOM)
 	{
 		files: ["packages/**/*.{ts,tsx}"],
