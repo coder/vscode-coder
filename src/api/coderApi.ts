@@ -39,6 +39,7 @@ import {
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
+	type ReconnectingWebSocketOptions,
 	type SocketFactory,
 } from "../websocket/reconnectingWebSocket";
 import { SseConnection } from "../websocket/sseConnection";
@@ -95,6 +96,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 
 	private constructor(
 		private readonly output: Logger,
+		private readonly telemetry: TelemetryReporter,
 		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
 	) {
 		super();
@@ -104,7 +106,9 @@ export class CoderApi extends Api implements vscode.Disposable {
 	/**
 	 * Create a new CoderApi instance with the provided configuration.
 	 * Automatically sets up logging interceptors, certificate handling,
-	 * and HTTP request telemetry that emits via the given reporter.
+	 * HTTP request telemetry, and WebSocket connection telemetry. All
+	 * telemetry routes through the single reporter passed in (defaults to
+	 * NOOP_TELEMETRY_REPORTER for throwaway clients).
 	 */
 	static create(
 		baseUrl: string,
@@ -113,7 +117,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): CoderApi {
 		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
-		const client = new CoderApi(output, httpRequestsTelemetry);
+		const client = new CoderApi(output, telemetry, httpRequestsTelemetry);
 		client.setCredentials(baseUrl, token);
 
 		setupInterceptors(client, output, httpRequestsTelemetry);
@@ -463,18 +467,21 @@ export class CoderApi extends Api implements vscode.Disposable {
 	private async createReconnectingSocket<TData>(
 		socketFactory: SocketFactory<TData>,
 	): Promise<ReconnectingWebSocket<TData>> {
+		const options: ReconnectingWebSocketOptions = {
+			onCertificateRefreshNeeded: async () => {
+				const refreshCommand = getRefreshCommand();
+				if (!refreshCommand) {
+					return false;
+				}
+				return refreshCertificates(refreshCommand, this.output);
+			},
+			telemetry: this.telemetry,
+		};
+
 		const reconnectingSocket = await ReconnectingWebSocket.create<TData>(
 			socketFactory,
 			this.output,
-			{
-				onCertificateRefreshNeeded: async () => {
-					const refreshCommand = getRefreshCommand();
-					if (!refreshCommand) {
-						return false;
-					}
-					return refreshCertificates(refreshCommand, this.output);
-				},
-			},
+			options,
 			() => this.reconnectingSockets.delete(reconnectingSocket),
 		);
 

@@ -10,7 +10,10 @@ import {
 	type NetworkInfo,
 	type SshProcessMonitorOptions,
 } from "@/remote/sshProcess";
+import { buildSession } from "@/telemetry/event";
+import { TelemetryService } from "@/telemetry/service";
 
+import { TestSink } from "../../mocks/telemetry";
 import {
 	createMockLogger,
 	makeNetworkInfo,
@@ -309,6 +312,150 @@ describe("SshProcessMonitor", () => {
 
 			// No events should fire - same process found, no change
 			expect(pids).toEqual([]);
+		});
+	});
+
+	describe("telemetry", () => {
+		const sshLog = {
+			"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+				"-> socksPort 12345 ->",
+		};
+
+		function networkTelemetryEvents(sink: TestSink) {
+			return sink.events.filter(
+				(event) => event.eventName === "ssh.network.info",
+			);
+		}
+
+		async function advanceUntilNetworkEvents(
+			sink: TestSink,
+			count: number,
+		): Promise<void> {
+			for (let i = 0; i < 20; i++) {
+				await vi.advanceTimersByTimeAsync(1);
+				if (networkTelemetryEvents(sink).length >= count) {
+					return;
+				}
+			}
+			expect(networkTelemetryEvents(sink)).toHaveLength(count);
+		}
+
+		function keepNetworkFileFresh(filePath: string, ms = 90_000): void {
+			const mtime = (Date.now() + ms) / 1000;
+			vol.utimesSync(filePath, mtime, mtime);
+		}
+
+		it("emits a process discovered trace", async () => {
+			const { telemetry, sink } = createTelemetry();
+			vol.fromJSON(sshLog);
+
+			const monitor = createMonitor({ telemetry });
+			await waitForEvent(monitor.onPidChange);
+
+			const event = sink.events.find(
+				(event) => event.eventName === "ssh.process.discovered",
+			);
+			expect(event?.properties.result).toBe("success");
+			expect(event?.measurements.durationMs).toEqual(expect.any(Number));
+			await telemetry.dispose();
+		});
+
+		it("emits process lost and recovered events after stale network info", async () => {
+			const { telemetry, sink } = createTelemetry();
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson(),
+			});
+			vi.mocked(find)
+				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValue([{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh" }]);
+
+			const monitor = createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+				telemetry,
+			});
+			await waitForEvent(monitor.onPidChange);
+
+			await waitFor(
+				() =>
+					sink.events.some((event) => event.eventName === "ssh.process.lost") &&
+					sink.events.some(
+						(event) => event.eventName === "ssh.process.recovered",
+					),
+				500,
+			);
+
+			const lost = sink.events.find(
+				(event) => event.eventName === "ssh.process.lost",
+			)!;
+			expect(lost.properties).toEqual({ cause: "stale_network_info" });
+			expect(lost.measurements.uptimeMs).toEqual(expect.any(Number));
+
+			const recovered = sink.events.find(
+				(event) => event.eventName === "ssh.process.recovered",
+			)!;
+			expect(recovered.measurements.recoveryDurationMs).toEqual(
+				expect.any(Number),
+			);
+			await telemetry.dispose();
+		});
+
+		it("samples network info on first read and every 60 seconds, not every poll", async () => {
+			vi.useFakeTimers();
+			const { telemetry, sink } = createTelemetry();
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson({ latency: 25 }),
+			});
+			keepNetworkFileFresh("/network/999.json");
+
+			createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10_000,
+				telemetry,
+			});
+			await advanceUntilNetworkEvents(sink, 1);
+			expect(networkTelemetryEvents(sink)).toHaveLength(1);
+
+			await vi.advanceTimersByTimeAsync(50_000);
+			expect(networkTelemetryEvents(sink)).toHaveLength(1);
+
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(networkTelemetryEvents(sink)).toHaveLength(2);
+			const first = networkTelemetryEvents(sink)[0];
+			expect(first.properties).toEqual({ p2p: "true", derp: "NYC" });
+			expect(first.measurements).toMatchObject({
+				latencyMs: 25,
+				downloadMbits: 50,
+				uploadMbits: 10,
+			});
+			await telemetry.dispose();
+		});
+
+		it("samples network info on p2p flip inside the 60 second window", async () => {
+			vi.useFakeTimers();
+			const { telemetry, sink } = createTelemetry();
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson({ p2p: true }),
+			});
+			keepNetworkFileFresh("/network/999.json");
+
+			createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+				telemetry,
+			});
+			await advanceUntilNetworkEvents(sink, 1);
+
+			vol.writeFileSync("/network/999.json", makeNetworkJson({ p2p: false }));
+			keepNetworkFileFresh("/network/999.json");
+			await vi.advanceTimersByTimeAsync(10);
+
+			expect(networkTelemetryEvents(sink)).toHaveLength(2);
+			expect(networkTelemetryEvents(sink)[1].properties.p2p).toBe("false");
+			await telemetry.dispose();
 		});
 	});
 
@@ -816,6 +963,17 @@ describe("SshProcessMonitor", () => {
 		});
 		activeMonitors.push(monitor);
 		return monitor;
+	}
+
+	function createTelemetry(): { telemetry: TelemetryService; sink: TestSink } {
+		new MockConfigurationProvider().set("coder.telemetry.level", "local");
+		const sink = new TestSink();
+		const telemetry = new TelemetryService(
+			buildSession("test", "test-session"),
+			[sink],
+			createMockLogger(),
+		);
+		return { telemetry, sink };
 	}
 });
 
