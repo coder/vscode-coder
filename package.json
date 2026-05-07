@@ -368,6 +368,11 @@
 				"icon": "$(play)"
 			},
 			{
+				"command": "coder.openDevContainer",
+				"title": "Open Dev Container",
+				"category": "Coder"
+			},
+			{
 				"command": "coder.createWorkspace",
 				"title": "Create Workspace",
 				"category": "Coder",
@@ -541,6 +546,10 @@
 				},
 				{
 					"command": "coder.openFromSidebar",
+					"when": "false"
+				},
+				{
+					"command": "coder.openDevContainer",
 					"when": "false"
 				},
 				{

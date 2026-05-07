@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
+import { extractExtensionVersion } from "../telemetry/event";
 import { TelemetryService } from "../telemetry/service";
 import { LocalJsonlSink } from "../telemetry/sinks/localJsonlSink";
 import { SpeedtestPanelFactory } from "../webviews/speedtest/speedtestPanelFactory";
@@ -10,6 +11,7 @@ import { DuplicateWorkspaceIpc } from "../workspace/duplicateWorkspaceIpc";
 
 import { CliCredentialManager } from "./cliCredentialManager";
 import { CliManager } from "./cliManager";
+import { CommandManager } from "./commandManager";
 import { ContextManager } from "./contextManager";
 import { MementoManager } from "./mementoManager";
 import { PathResolver } from "./pathResolver";
@@ -34,6 +36,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly oauthCallback: OAuthCallback;
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 	private readonly telemetryService: TelemetryService;
+	private readonly commandManager: CommandManager;
 
 	constructor(context: vscode.ExtensionContext) {
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
@@ -99,10 +102,11 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 		);
 		this.telemetryService = new TelemetryService(
-			context,
+			extractExtensionVersion(context.extension.packageJSON),
 			[localJsonlSink],
 			this.logger,
 		);
+		this.commandManager = new CommandManager(this.telemetryService);
 	}
 
 	getPathResolver(): PathResolver {
@@ -153,8 +157,13 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.telemetryService;
 	}
 
+	getCommandManager(): CommandManager {
+		return this.commandManager;
+	}
+
 	/** Dispose logger last so telemetry teardown warnings still reach it. */
 	async dispose(): Promise<void> {
+		this.commandManager.dispose();
 		this.contextManager.dispose();
 		this.loginCoordinator.dispose();
 		try {

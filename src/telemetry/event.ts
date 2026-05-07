@@ -68,13 +68,8 @@ export interface TelemetrySink {
 	dispose(): Promise<void>;
 }
 
-/** Build session attributes. `extensionVersion` falls back to `"unknown"`. */
-export function buildSession(ctx: vscode.ExtensionContext): SessionContext {
-	// "unknown" only for malformed package.json or test fixtures missing `version`.
-	const packageJson = ctx.extension.packageJSON as { version?: unknown };
-	const extensionVersion =
-		typeof packageJson.version === "string" ? packageJson.version : "unknown";
-
+/** Build session attributes from the extension version and ambient host data. */
+export function buildSession(extensionVersion: string): SessionContext {
 	return {
 		extensionVersion,
 		machineId: vscode.env.machineId,
@@ -85,6 +80,13 @@ export function buildSession(ctx: vscode.ExtensionContext): SessionContext {
 		platformName: vscode.env.appName,
 		platformVersion: vscode.version,
 	};
+}
+
+/** Read `version` from a package.json-like object, falling back to `"unknown"`. */
+export function extractExtensionVersion(packageJSON: unknown): string {
+	const version = (packageJSON as { version?: unknown } | null | undefined)
+		?.version;
+	return typeof version === "string" ? version : "unknown";
 }
 
 /** Normalize a thrown value into the event's `error` block. */
