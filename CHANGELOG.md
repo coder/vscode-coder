@@ -26,9 +26,10 @@
 
 ### Fixed
 
-- Workspaces hosted on internationalized (IDN) domains can now be opened from
-  recent connections. The SSH authority parser was splitting Punycode (`xn--`)
-  domain labels across the field separator and rejecting the host as invalid.
+- Workspaces on hostnames containing `--`, such as internationalized (IDN)
+  domains with Punycode (`xn--`) labels, can now be opened from recent
+  connections. The SSH authority parser was splitting these names across the
+  field separator and rejecting the host as invalid.
 
 ## [v1.14.5](https://github.com/coder/vscode-coder/releases/tag/v1.14.5) 2026-04-30
 

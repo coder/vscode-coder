@@ -134,12 +134,9 @@ async function doActivate(
 	// This client tracks the current login and will be used through the life of
 	// the plugin to poll workspaces for the current login, as well as being used
 	// in commands that operate on the current login.
-	const sessionAuth = deployment
-		? await secretsManager.getSessionAuth(deployment.safeHostname)
-		: undefined;
 	const client = CoderApi.create(
 		deployment?.url || "",
-		sessionAuth?.token,
+		deploymentSessionAuth?.token,
 		output,
 		telemetryService,
 	);

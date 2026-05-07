@@ -58,7 +58,6 @@ export function findPort(text: string): number | null {
  * Throw an error if the host is invalid.
  */
 export function parseRemoteAuthority(authority: string): AuthorityParts | null {
-	// The authority looks like: vscode://ssh-remote+<ssh host name>
 	const authorityParts = authority.split("+");
 	const sshHost = authorityParts[1];
 	if (!sshHost) {
