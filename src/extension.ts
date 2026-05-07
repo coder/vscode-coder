@@ -14,6 +14,7 @@ import { ServiceContainer } from "./core/container";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { getErrorDetail, toError } from "./error/errorUtils";
+import { ActivationTelemetry } from "./instrumentation/activation";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
@@ -30,6 +31,22 @@ const MY_WORKSPACES_TREE_ID = "myWorkspaces";
 const ALL_WORKSPACES_TREE_ID = "allWorkspaces";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
+	const serviceContainer = new ServiceContainer(ctx);
+	ctx.subscriptions.push(serviceContainer);
+	const activationTelemetry = new ActivationTelemetry(
+		serviceContainer.getTelemetryService(),
+	);
+
+	await activationTelemetry.trace(() =>
+		doActivate(ctx, serviceContainer, activationTelemetry),
+	);
+}
+
+async function doActivate(
+	ctx: vscode.ExtensionContext,
+	serviceContainer: ServiceContainer,
+	activationTelemetry: ActivationTelemetry,
+): Promise<void> {
 	// The Remote SSH extension's proposed APIs are used to override the SSH host
 	// name in VS Code itself. It's visually unappealing having a lengthy name!
 	//
@@ -59,9 +76,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// Initialize the global vscodeProposed module for use throughout the extension
 	initVscodeProposed(vscodeProposed);
 
-	const serviceContainer = new ServiceContainer(ctx);
-	ctx.subscriptions.push(serviceContainer);
-
 	const output = serviceContainer.getLogger();
 	const mementoManager = serviceContainer.getMementoManager();
 	const secretsManager = serviceContainer.getSecretsManager();
@@ -75,6 +89,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const startupMode = await mementoManager.getAndClearStartupMode();
 
 	const deployment = await secretsManager.getCurrentDeployment();
+	const deploymentSessionAuth = deployment
+		? await secretsManager.getSessionAuth(deployment.safeHostname)
+		: undefined;
+	activationTelemetry.setAuthState(
+		deploymentSessionAuth ? "valid_token" : "none",
+	);
 
 	// Shared handler for auth failures (used by interceptor + session manager)
 	const handleAuthFailure = (): Promise<void> => {
@@ -111,8 +131,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	// in commands that operate on the current login.
 	const client = CoderApi.create(
 		deployment?.url || "",
-		(await secretsManager.getSessionAuth(deployment?.safeHostname ?? ""))
-			?.token,
+		deploymentSessionAuth?.token,
 		output,
 	);
 	ctx.subscriptions.push(client);
@@ -372,11 +391,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			if (details) {
 				ctx.subscriptions.push(details);
 
-				await deploymentManager.setDeploymentIfValid({
+				const deploymentSet = await deploymentManager.setDeploymentIfValid({
 					safeHostname: details.safeHostname,
 					url: details.url,
 					token: details.token,
 				});
+				activationTelemetry.setAuthState(
+					deploymentSet ? "valid_token" : "expired",
+				);
 
 				// If a deep link stored a chat agent ID before the
 				// remote-authority reload, open it now that the
@@ -391,7 +413,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
 				output.warn(ex.detail);
-				await ex.showNotification("Failed to open workspace", { modal: true });
+				await ex.showNotification("Failed to open workspace", {
+					modal: true,
+				});
 			} else if (isAxiosError(ex)) {
 				const msg = getErrorMessage(ex, "None");
 				const detail = getErrorDetail(ex) || "None";
@@ -432,9 +456,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		contextManager.set("coder.loaded", true);
 	} else if (deployment) {
 		output.info(`Initializing deployment: ${deployment.url}`);
-		deploymentManager
-			.setDeploymentIfValid(deployment)
-			// Failure is logged internally
+		activationTelemetry
+			.traceDeploymentInit(() =>
+				deploymentManager.setDeploymentIfValid(deployment),
+			)
 			.then((success) => {
 				if (success) {
 					output.info("Deployment authenticated and set");

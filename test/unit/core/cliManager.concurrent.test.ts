@@ -17,6 +17,7 @@ import * as cliUtils from "@/core/cliUtils";
 import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
 
+import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
 	createMockCliCredentialManager,
 	createMockLogger,
@@ -87,6 +88,7 @@ function setupManager(testDir: string): CliManager {
 		createMockLogger(),
 		new PathResolver(testDir, "/code/log"),
 		createMockCliCredentialManager(),
+		createTestTelemetryService(),
 	);
 }
 

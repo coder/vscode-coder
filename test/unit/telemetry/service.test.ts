@@ -135,6 +135,40 @@ describe("TelemetryService", () => {
 			expect(event.measurements.durationMs).toBeGreaterThanOrEqual(0);
 		});
 
+		it("does not observe later caller object mutations", async () => {
+			const properties = { phase: "start" };
+			const measurements = { attempts: 1 };
+
+			await h.service.trace(
+				"op",
+				() => {
+					properties.phase = "changed";
+					measurements.attempts = 2;
+					return Promise.resolve();
+				},
+				properties,
+				measurements,
+			);
+
+			expect(h.sink.events[0]).toMatchObject({
+				properties: { phase: "start", result: "success" },
+				measurements: { attempts: 1 },
+			});
+		});
+
+		it("lets spans set properties and measurements before emit", async () => {
+			await h.service.trace("cli.download", (span) => {
+				span.setProperty("reason", "missing");
+				span.setMeasurement("downloadedBytes", 123);
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0]).toMatchObject({
+				properties: { reason: "missing", result: "success" },
+				measurements: { downloadedBytes: 123 },
+			});
+		});
+
 		it("flat traces (no phases) emit a single event with a fresh traceId", async () => {
 			await h.service.trace("a", () => Promise.resolve(1));
 			await h.service.trace("b", () => Promise.resolve(2));

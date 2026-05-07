@@ -141,6 +141,8 @@ export class TelemetryService implements vscode.Disposable {
 		spanOpts: SpanOptions,
 	): Promise<T> {
 		const eventId = newSpanId();
+		const spanProperties = { ...properties };
+		const spanMeasurements = { ...measurements };
 		const { traceId, traceLevel } = spanOpts;
 		const span: Span = {
 			traceId,
@@ -161,13 +163,19 @@ export class TelemetryService implements vscode.Disposable {
 					{ traceId, parentEventId: eventId, traceLevel },
 				);
 			},
+			setProperty(name: string, value: string): void {
+				spanProperties[name] = value;
+			},
+			setMeasurement(name: string, value: number): void {
+				spanMeasurements[name] = value;
+			},
 		};
 		return this.#emitTimed(
 			eventId,
 			eventName,
 			() => fn(span),
-			properties,
-			measurements,
+			spanProperties,
+			spanMeasurements,
 			spanOpts,
 		);
 	}
