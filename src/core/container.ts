@@ -4,6 +4,7 @@ import { CoderApi } from "../api/coderApi";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
 import { TelemetryService } from "../telemetry/service";
+import { LocalJsonlSink } from "../telemetry/sinks/localJsonlSink";
 import { SpeedtestPanelFactory } from "../webviews/speedtest/speedtestPanelFactory";
 import { DuplicateWorkspaceIpc } from "../workspace/duplicateWorkspaceIpc";
 
@@ -90,7 +91,18 @@ export class ServiceContainer implements vscode.Disposable {
 			context.extensionUri,
 			this.logger,
 		);
-		this.telemetryService = new TelemetryService(context, [], this.logger);
+		const localJsonlSink = LocalJsonlSink.start(
+			{
+				baseDir: this.pathResolver.getTelemetryPath(),
+				sessionId: vscode.env.sessionId,
+			},
+			this.logger,
+		);
+		this.telemetryService = new TelemetryService(
+			context,
+			[localJsonlSink],
+			this.logger,
+		);
 	}
 
 	getPathResolver(): PathResolver {

@@ -50,6 +50,13 @@ export class PathResolver {
 	}
 
 	/**
+	 * Return the directory where telemetry files are written.
+	 */
+	public getTelemetryPath(): string {
+		return path.join(this.basePath, "telemetry");
+	}
+
+	/**
 	 * Return the proxy log directory from the `coder.proxyLogDirectory` setting
 	 * or the `CODER_SSH_LOG_DIR` environment variable, falling back to the `log`
 	 * subdirectory inside the extension's global storage path.
