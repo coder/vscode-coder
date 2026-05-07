@@ -1,11 +1,4 @@
 {
 	"extends": "../packages/tsconfig.packages.json",
-	"compilerOptions": {
-		"types": ["node"],
-		"jsx": "react-jsx",
-		"noEmit": true,
-		"rootDir": ".."
-	},
-	"include": ["*.ts", "themes/**/*.ts"],
-	"exclude": ["node_modules"]
+	"include": ["*.ts", "themes/**/*.ts"]
 }
