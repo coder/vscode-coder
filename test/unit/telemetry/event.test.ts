@@ -1,23 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { buildErrorBlock, buildSession } from "@/telemetry/event";
-
-import type * as vscode from "vscode";
-
-function fakeContext(version: unknown = "1.2.3-test"): vscode.ExtensionContext {
-	return {
-		extension: { packageJSON: { version } },
-	} as unknown as vscode.ExtensionContext;
-}
+import {
+	buildErrorBlock,
+	buildSession,
+	extractExtensionVersion,
+} from "@/telemetry/event";
 
 describe("buildSession", () => {
-	it("populates session-stable fields from the extension context, vscode env, and host", () => {
-		const session = buildSession(fakeContext());
+	it("populates session-stable fields from the version, sessionId, vscode env, and host", () => {
+		const session = buildSession("1.2.3-test", "session-abc");
 
 		expect(session).toMatchObject({
 			extensionVersion: "1.2.3-test",
 			machineId: "test-machine-id",
-			sessionId: "test-session-id",
+			sessionId: "session-abc",
 			platformName: "Visual Studio Code",
 			platformVersion: "1.106.0-test",
 			hostArch: process.arch,
@@ -27,13 +23,18 @@ describe("buildSession", () => {
 		);
 		expect(session.osVersion).toBeTruthy();
 	});
+});
 
-	it("uses the 'unknown' sentinel when packageJSON.version is missing or non-string", () => {
-		const noVersion = {
-			extension: { packageJSON: {} },
-		} as unknown as vscode.ExtensionContext;
-		expect(buildSession(noVersion).extensionVersion).toBe("unknown");
-		expect(buildSession(fakeContext(123)).extensionVersion).toBe("unknown");
+describe("extractExtensionVersion", () => {
+	it("returns the version when packageJSON.version is a string", () => {
+		expect(extractExtensionVersion({ version: "4.5.6" })).toBe("4.5.6");
+	});
+
+	it("falls back to 'unknown' when packageJSON is missing, malformed, or non-string", () => {
+		expect(extractExtensionVersion({})).toBe("unknown");
+		expect(extractExtensionVersion({ version: 123 })).toBe("unknown");
+		expect(extractExtensionVersion(null)).toBe("unknown");
+		expect(extractExtensionVersion(undefined)).toBe("unknown");
 	});
 });
 

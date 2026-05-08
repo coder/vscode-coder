@@ -191,6 +191,76 @@
 						"Logs everything from *headers* plus request and response bodies (may include sensitive data)"
 					],
 					"default": "basic"
+				},
+				"coder.telemetry.level": {
+					"markdownDescription": "Controls Coder extension telemetry collection. Used to diagnose extension issues.",
+					"type": "string",
+					"enum": [
+						"off",
+						"local"
+					],
+					"markdownEnumDescriptions": [
+						"Disable telemetry collection.",
+						"Record events on this machine only."
+					],
+					"default": "local",
+					"tags": [
+						"telemetry"
+					]
+				},
+				"coder.telemetry.local": {
+					"markdownDescription": "Tunables for the local telemetry sink, which writes events as JSON Lines under the extension's global storage. Used when `#coder.telemetry.level#` is `local`. Missing or invalid fields fall back to defaults.",
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"flushIntervalMs": {
+							"type": "number",
+							"minimum": 1000,
+							"default": 15000,
+							"markdownDescription": "How often, in milliseconds, buffered events are written to disk."
+						},
+						"flushBatchSize": {
+							"type": "number",
+							"minimum": 1,
+							"default": 100,
+							"markdownDescription": "Number of buffered events that triggers an immediate write, ahead of the scheduled interval."
+						},
+						"bufferLimit": {
+							"type": "number",
+							"minimum": 10,
+							"default": 500,
+							"markdownDescription": "Maximum number of events held in memory. Oldest events are dropped on overflow. Should be at least `flushBatchSize`."
+						},
+						"maxFileBytes": {
+							"type": "number",
+							"minimum": 4096,
+							"default": 5242880,
+							"markdownDescription": "Maximum size, in bytes, of a single telemetry file before the sink rotates to a new one."
+						},
+						"maxAgeDays": {
+							"type": "number",
+							"minimum": 1,
+							"default": 30,
+							"markdownDescription": "Telemetry files older than this many days are deleted when the extension activates."
+						},
+						"maxTotalBytes": {
+							"type": "number",
+							"minimum": 4096,
+							"default": 104857600,
+							"markdownDescription": "Cap, in bytes, on the combined size of telemetry files. Oldest files are deleted on activation until the total is under the cap."
+						}
+					},
+					"default": {
+						"flushIntervalMs": 15000,
+						"flushBatchSize": 100,
+						"bufferLimit": 500,
+						"maxFileBytes": 5242880,
+						"maxAgeDays": 30,
+						"maxTotalBytes": 104857600
+					},
+					"tags": [
+						"telemetry"
+					]
 				}
 			}
 		},
@@ -298,6 +368,11 @@
 				"title": "Open Workspace",
 				"category": "Coder",
 				"icon": "$(play)"
+			},
+			{
+				"command": "coder.openDevContainer",
+				"title": "Open Dev Container",
+				"category": "Coder"
 			},
 			{
 				"command": "coder.createWorkspace",
@@ -476,6 +551,10 @@
 					"when": "false"
 				},
 				{
+					"command": "coder.openDevContainer",
+					"when": "false"
+				},
+				{
 					"command": "coder.searchMyWorkspaces",
 					"when": "false"
 				},
@@ -596,7 +675,7 @@
 		"@abraham/reflection": "^0.13.0",
 		"@peculiar/x509": "^2.0.0",
 		"@repo/shared": "workspace:*",
-		"axios": "1.15.0",
+		"axios": "1.16.0",
 		"date-fns": "catalog:",
 		"eventsource": "^4.1.0",
 		"fflate": "^0.8.2",
@@ -610,10 +689,10 @@
 		"strip-ansi": "^7.2.0",
 		"ua-parser-js": "^1.0.41",
 		"ws": "^8.20.0",
-		"zod": "^4.3.6"
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@eslint-react/eslint-plugin": "^4.2.3",
+		"@eslint-react/eslint-plugin": "^5.7.4",
 		"@eslint/js": "^10.0.1",
 		"@eslint/markdown": "^8.0.1",
 		"@repo/mocks": "workspace:*",
@@ -637,8 +716,8 @@
 		"@types/vscode": "1.106.0",
 		"@types/vscode-webview": "catalog:",
 		"@types/ws": "^8.18.1",
-		"@typescript-eslint/eslint-plugin": "^8.59.1",
-		"@typescript-eslint/parser": "^8.59.1",
+		"@typescript-eslint/eslint-plugin": "^8.59.2",
+		"@typescript-eslint/parser": "^8.59.2",
 		"@vitejs/plugin-react": "catalog:",
 		"@vitest/coverage-v8": "^4.1.5",
 		"@vscode/codicons": "catalog:",
@@ -653,13 +732,13 @@
 		"dayjs": "^1.11.20",
 		"electron": "39.8.5",
 		"esbuild": "^0.28.0",
-		"eslint": "^10.2.1",
+		"eslint": "^10.3.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import-x": "^4.16.2",
 		"eslint-plugin-package-json": "^0.91.2",
-		"globals": "^17.5.0",
-		"jsdom": "^29.1.0",
+		"globals": "^17.6.0",
+		"jsdom": "^29.1.1",
 		"jsonc-eslint-parser": "^3.1.0",
 		"memfs": "^4.57.2",
 		"prettier": "^3.8.3",
@@ -667,7 +746,7 @@
 		"react-dom": "catalog:",
 		"storybook": "catalog:",
 		"typescript": "catalog:",
-		"typescript-eslint": "^8.59.1",
+		"typescript-eslint": "^8.59.2",
 		"utf-8-validate": "^6.0.6",
 		"vite": "catalog:",
 		"vitest": "^4.1.5"
