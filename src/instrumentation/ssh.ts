@@ -4,16 +4,12 @@ import type { TelemetryReporter } from "../telemetry/reporter";
 const NETWORK_SAMPLE_INTERVAL_MS = 60_000;
 const NETWORK_LATENCY_CHANGE_RATIO = 0.1;
 
-export type ProcessLossCause =
-	| "stale_network_info"
-	| "missing_network_info"
-	| "process_changed"
-	| "disposed";
+export type ProcessLossCause = "stale_network_info" | "missing_network_info";
 
 interface NetworkSample {
 	readonly emittedAtMs: number;
 	readonly p2p: boolean;
-	readonly derp: string;
+	readonly preferredDerp: string;
 	readonly latencyMs: number;
 }
 
@@ -37,6 +33,7 @@ export class SshTelemetry {
 	): Promise<number | undefined> {
 		return this.#telemetry.trace("ssh.process.discovered", async (span) => {
 			const { pid, attempts } = await fn();
+			span.setProperty("found", String(pid !== undefined));
 			span.setMeasurement("attempts", attempts);
 			return pid;
 		});
@@ -75,22 +72,44 @@ export class SshTelemetry {
 		this.#processLostAtMs = undefined;
 	}
 
-	/**
-	 * Handover from one SSH process to another. Closes out the prior process
-	 * (recovery if lost, replacement otherwise) and starts fresh tracking.
-	 */
+	/** Handover to a different SSH process. Always emits `ssh.process.replaced`,
+	 * even when the prior process was already lost (replacement is operationally
+	 * distinct from recovery). */
 	public processReplaced(): void {
 		const now = performance.now();
-		if (this.#processLostAtMs !== undefined) {
-			this.processRecovered();
-		} else if (this.#processStartedAtMs !== undefined) {
+		if (this.#processStartedAtMs !== undefined) {
+			const wasLost = this.#processLostAtMs !== undefined;
+			const measurements: Record<string, number> = {
+				previousUptimeMs: now - this.#processStartedAtMs,
+			};
+			if (this.#processLostAtMs !== undefined) {
+				measurements.lostDurationMs = now - this.#processLostAtMs;
+			}
 			this.#telemetry.log(
 				"ssh.process.replaced",
-				{},
-				{ previousUptimeMs: now - this.#processStartedAtMs },
+				{ wasLost: String(wasLost) },
+				measurements,
 			);
 		}
 		this.#processStartedAtMs = now;
+		this.#processLostAtMs = undefined;
+		this.#lastNetworkSample = undefined;
+	}
+
+	/** Terminal teardown signal. Emits regardless of prior lost state so
+	 * consumers always see a session-ending event. */
+	public disposed(): void {
+		if (this.#processStartedAtMs === undefined) {
+			return;
+		}
+		const now = performance.now();
+		const wasLost = this.#processLostAtMs !== undefined;
+		this.#telemetry.log(
+			"ssh.process.disposed",
+			{ wasLost: String(wasLost) },
+			{ uptimeMs: now - this.#processStartedAtMs },
+		);
+		this.#processStartedAtMs = undefined;
 		this.#processLostAtMs = undefined;
 		this.#lastNetworkSample = undefined;
 	}
@@ -105,14 +124,14 @@ export class SshTelemetry {
 		this.#lastNetworkSample = {
 			emittedAtMs: now,
 			p2p: network.p2p,
-			derp: network.preferred_derp,
+			preferredDerp: network.preferred_derp,
 			latencyMs: network.latency,
 		};
 		this.#telemetry.log(
-			"ssh.network.sample",
+			"ssh.network.sampled",
 			{
 				p2p: String(network.p2p),
-				derp: network.preferred_derp,
+				preferredDerp: network.preferred_derp,
 			},
 			{
 				latencyMs: network.latency,
@@ -135,7 +154,7 @@ function shouldEmitSample(
 	if (current.p2p !== previous.p2p) {
 		return true;
 	}
-	if (current.preferred_derp !== previous.derp) {
+	if (current.preferred_derp !== previous.preferredDerp) {
 		return true;
 	}
 	return hasMeaningfulLatencyChange(current.latency, previous.latencyMs);

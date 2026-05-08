@@ -25,9 +25,7 @@ import type {
 } from "./eventStreamConnection";
 
 function toCloseEventError(event: CloseEvent): Error {
-	return new Error(
-		`WebSocket closed unexpectedly with code ${event.code}: ${event.reason}`,
-	);
+	return new Error(`WebSocket closed with code ${event.code}: ${event.reason}`);
 }
 
 /**
@@ -245,12 +243,16 @@ export class ReconnectingWebSocket<
 	 * Resumes the socket if previously disconnected via disconnect().
 	 */
 	public reconnect(): void {
+		this.#reconnectInternal("manual_reconnect");
+	}
+
+	#reconnectInternal(reason: ConnectionStateReason): void {
 		if (this.#state === ConnectionState.DISPOSED) {
 			return;
 		}
 
 		if (this.#state !== ConnectionState.IDLE) {
-			this.#telemetry.reconnectStarted("manual_reconnect");
+			this.#telemetry.reconnectStarted(reason);
 		}
 
 		if (this.#state === ConnectionState.DISCONNECTED) {
@@ -263,7 +265,7 @@ export class ReconnectingWebSocket<
 			this.#reconnectTimeoutId = null;
 		}
 
-		void this.connect("manual_reconnect");
+		void this.connect(reason);
 	}
 
 	/**
@@ -404,7 +406,10 @@ export class ReconnectingWebSocket<
 		}
 
 		if (NORMAL_CLOSURE_CODES.has(event.code)) {
-			this.#telemetry.dropped("normal_close", event.code);
+			this.disconnectWithReason("normal_close", "normal_close", {
+				code: event.code,
+				closeReason: event.reason,
+			});
 			return;
 		}
 
@@ -448,6 +453,7 @@ export class ReconnectingWebSocket<
 	private async handleClientCertificateError(
 		certError: ClientCertificateError,
 	): Promise<boolean> {
+		// Only attempt refresh once per connection cycle
 		if (this.#certRefreshAttempted) {
 			this.#logger.warn("Certificate refresh already attempted, not retrying");
 			void certError.showNotification();
@@ -518,7 +524,7 @@ export class ReconnectingWebSocket<
 		const certError = ClientCertificateError.fromError(error);
 		if (certError) {
 			if (await this.handleClientCertificateError(certError)) {
-				this.reconnect();
+				this.#reconnectInternal("certificate_refresh");
 			} else {
 				this.disconnectWithReason("certificate_error", "error", { error });
 			}

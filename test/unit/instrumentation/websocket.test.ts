@@ -14,7 +14,7 @@ function setup() {
 
 describe("WebSocketTelemetry", () => {
 	describe("stateTransition", () => {
-		it("emits a connection.state_transition event with from/to/reason", () => {
+		it("emits a connection.state_transitioned event with from/to/reason", () => {
 			const { ws, sink } = setup();
 
 			ws.stateTransition(
@@ -23,7 +23,7 @@ describe("WebSocketTelemetry", () => {
 				"initial_connect",
 			);
 
-			const [event] = sink.eventsNamed("connection.state_transition");
+			const [event] = sink.eventsNamed("connection.state_transitioned");
 			expect(event.properties).toEqual({
 				from: "IDLE",
 				to: "CONNECTING",
@@ -33,15 +33,15 @@ describe("WebSocketTelemetry", () => {
 	});
 
 	describe("opened", () => {
-		it("emits connection.open with route and connect duration", () => {
+		it("emits connection.opened with route and connect duration", () => {
 			const { ws, sink } = setup();
 
 			ws.connectStarted();
 			ws.opened("/api/test");
 
-			const [event] = sink.eventsNamed("connection.open");
+			const [event] = sink.eventsNamed("connection.opened");
 			expect(event).toMatchObject({
-				properties: { url: "/api/test" },
+				properties: { route: "/api/test" },
 				measurements: { connectDurationMs: expect.any(Number) },
 			});
 		});
@@ -51,7 +51,7 @@ describe("WebSocketTelemetry", () => {
 
 			ws.opened("/api/test");
 
-			const [event] = sink.eventsNamed("connection.open");
+			const [event] = sink.eventsNamed("connection.opened");
 			expect(event.measurements.connectDurationMs).toBe(0);
 		});
 	});
@@ -65,13 +65,13 @@ describe("WebSocketTelemetry", () => {
 			expect(sink.events).toHaveLength(0);
 		});
 
-		it("emits connection.drop with cause and close code", () => {
+		it("emits connection.dropped with cause and close code", () => {
 			const { ws, sink } = setup();
 
 			ws.opened("/api/test");
 			ws.dropped("unexpected_close", 1006);
 
-			const [event] = sink.eventsNamed("connection.drop");
+			const [event] = sink.eventsNamed("connection.dropped");
 			expect(event.properties).toMatchObject({
 				cause: "unexpected_close",
 				closeCode: "1006",
@@ -87,7 +87,7 @@ describe("WebSocketTelemetry", () => {
 			ws.opened("/api/test");
 			ws.dropped("error", 1006, new Error("boom"));
 
-			const [event] = sink.eventsNamed("connection.drop");
+			const [event] = sink.eventsNamed("connection.dropped");
 			expect(event.error).toMatchObject({ message: "boom" });
 		});
 
@@ -98,7 +98,7 @@ describe("WebSocketTelemetry", () => {
 			ws.dropped("normal_close");
 			ws.dropped("error");
 
-			expect(sink.eventsNamed("connection.drop")).toHaveLength(1);
+			expect(sink.eventsNamed("connection.dropped")).toHaveLength(1);
 		});
 	});
 
@@ -110,32 +110,43 @@ describe("WebSocketTelemetry", () => {
 			ws.reset();
 			ws.dropped("error");
 
-			expect(sink.eventsNamed("connection.drop")).toHaveLength(0);
+			expect(sink.eventsNamed("connection.dropped")).toHaveLength(0);
+		});
+
+		it("clears any open reconnect cycle", () => {
+			const { ws, sink } = setup();
+
+			ws.reconnectStarted("manual_reconnect");
+			ws.connectStarted();
+			ws.reset();
+			ws.opened("/api/test");
+
+			expect(sink.eventsNamed("connection.reconnected")).toHaveLength(0);
 		});
 	});
 
 	describe("reconnect cycle", () => {
-		it("emits connection.reconnect with success when opened closes the cycle", () => {
+		it("emits connection.reconnected with success when opened closes the cycle", () => {
 			const { ws, sink } = setup();
 
 			ws.reconnectStarted("manual_reconnect");
 			ws.connectStarted();
 			ws.opened("/api/test");
 
-			const [event] = sink.eventsNamed("connection.reconnect");
+			const [event] = sink.eventsNamed("connection.reconnected");
 			expect(event).toMatchObject({
 				properties: { result: "success", reason: "manual_reconnect" },
 				measurements: { attempts: 1, totalDurationMs: expect.any(Number) },
 			});
 		});
 
-		it("emits connection.reconnect with error when terminated closes the cycle", () => {
+		it("emits connection.reconnected with error when terminated closes the cycle", () => {
 			const { ws, sink } = setup();
 
 			ws.reconnectStarted("manual_reconnect");
 			ws.terminated("unrecoverable_http", { cause: "error" });
 
-			const [event] = sink.eventsNamed("connection.reconnect");
+			const [event] = sink.eventsNamed("connection.reconnected");
 			expect(event.properties).toEqual({
 				result: "error",
 				reason: "manual_reconnect",
@@ -148,7 +159,7 @@ describe("WebSocketTelemetry", () => {
 
 			ws.terminated("dispose", { cause: "disposed" });
 
-			expect(sink.eventsNamed("connection.reconnect")).toHaveLength(0);
+			expect(sink.eventsNamed("connection.reconnected")).toHaveLength(0);
 		});
 
 		it("counts each connectStarted as an attempt within the cycle", () => {
@@ -161,7 +172,7 @@ describe("WebSocketTelemetry", () => {
 			ws.opened("/api/test");
 
 			expect(
-				sink.eventsNamed("connection.reconnect")[0].measurements.attempts,
+				sink.eventsNamed("connection.reconnected")[0].measurements.attempts,
 			).toBe(3);
 		});
 
@@ -173,7 +184,7 @@ describe("WebSocketTelemetry", () => {
 			ws.opened("/api/test");
 
 			expect(
-				sink.eventsNamed("connection.reconnect")[0].properties.reason,
+				sink.eventsNamed("connection.reconnected")[0].properties.reason,
 			).toBe("manual_reconnect");
 		});
 
@@ -186,10 +197,10 @@ describe("WebSocketTelemetry", () => {
 				code: 1006,
 			});
 
-			expect(sink.eventsNamed("connection.drop")).toHaveLength(1);
+			expect(sink.eventsNamed("connection.dropped")).toHaveLength(1);
 
 			ws.opened("/api/test");
-			expect(sink.eventsNamed("connection.reconnect")).toHaveLength(1);
+			expect(sink.eventsNamed("connection.reconnected")).toHaveLength(1);
 		});
 	});
 });

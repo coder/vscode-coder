@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { NOOP_TELEMETRY_REPORTER } from "@/telemetry/reporter";
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "@/telemetry/reporter";
 import { WebSocketCloseCode, HttpStatusCode } from "@/websocket/codes";
 import {
 	ConnectionState,
@@ -16,7 +19,6 @@ import {
 
 import type { CloseEvent, Event as WsEvent } from "ws";
 
-import type { TelemetryService } from "@/telemetry/service";
 import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
 describe("ReconnectingWebSocket", () => {
@@ -609,7 +611,7 @@ describe("ReconnectingWebSocket", () => {
 
 			expect(
 				sink
-					.eventsNamed("connection.state_transition")
+					.eventsNamed("connection.state_transitioned")
 					.map((e) => e.properties),
 			).toEqual([
 				{ from: "IDLE", to: "CONNECTING", reason: "initial_connect" },
@@ -627,6 +629,66 @@ describe("ReconnectingWebSocket", () => {
 				{ from: "CONNECTING", to: "CONNECTED", reason: "open" },
 				{ from: "CONNECTED", to: "DISPOSED", reason: "dispose" },
 			]);
+
+			expect(sink.eventsNamed("connection.opened")).toHaveLength(2);
+			expect(sink.eventsNamed("connection.dropped")).toHaveLength(2);
+			expect(sink.eventsNamed("connection.reconnected")).toMatchObject([
+				{
+					properties: { result: "success", reason: "unexpected_close" },
+					measurements: { attempts: 1, totalDurationMs: expect.any(Number) },
+				},
+			]);
+		});
+
+		it("emits a normal-close drop and disconnects on server-initiated close", async () => {
+			const { telemetry, sink } = createTestTelemetry();
+			const { ws, sockets } = await createReconnectingWebSocket({ telemetry });
+
+			sockets[0].fireOpen();
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.GOING_AWAY,
+				reason: "server restarting",
+			});
+
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+			const dropped = sink.eventsNamed("connection.dropped");
+			expect(dropped).toHaveLength(1);
+			expect(dropped[0].properties).toMatchObject({
+				cause: "normal_close",
+				closeCode: String(WebSocketCloseCode.GOING_AWAY),
+			});
+			expect(
+				sink
+					.eventsNamed("connection.state_transitioned")
+					.map((e) => e.properties.reason),
+			).toContain("normal_close");
+
+			ws.close();
+		});
+
+		it("records certificate_refresh as the reconnect reason on successful refresh", async () => {
+			const { telemetry, sink } = createTestTelemetry();
+			const sockets: MockSocket[] = [];
+			const factory = vi.fn(() => {
+				const socket = createMockSocket();
+				sockets.push(socket);
+				return Promise.resolve(socket);
+			});
+			const ws = await fromFactory(factory, {
+				telemetry,
+				onCertificateRefreshNeeded: () => Promise.resolve(true),
+			});
+
+			sockets[0].fireOpen();
+			sockets[0].fireError(new Error("ssl alert certificate_expired"));
+			await vi.waitFor(() => expect(sockets).toHaveLength(2));
+			sockets[1].fireOpen();
+
+			const reconnected = sink.eventsNamed("connection.reconnected");
+			expect(reconnected).toHaveLength(1);
+			expect(reconnected[0].properties.reason).toBe("certificate_refresh");
+
+			ws.close();
 		});
 	});
 
@@ -795,7 +857,7 @@ function createMockSocket(): MockSocket {
 interface FactoryOptions {
 	onDispose?: () => void;
 	onCertificateRefreshNeeded?: () => Promise<boolean>;
-	telemetry?: TelemetryService;
+	telemetry?: TelemetryReporter;
 }
 
 async function createReconnectingWebSocket(

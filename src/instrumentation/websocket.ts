@@ -5,6 +5,7 @@ import type { ConnectionState } from "../websocket/reconnectingWebSocket";
 export type ConnectionStateReason =
 	| "initial_connect"
 	| "manual_reconnect"
+	| "certificate_refresh"
 	| "scheduled_reconnect"
 	| "open"
 	| "disconnect"
@@ -13,6 +14,7 @@ export type ConnectionStateReason =
 	| "unrecoverable_http"
 	| "certificate_error"
 	| "connection_error"
+	| "normal_close"
 	| "unexpected_close";
 
 export type ConnectionDropCause =
@@ -24,7 +26,7 @@ export type ConnectionDropCause =
 	| "disposed"
 	| "error";
 
-export type ReconnectOutcome =
+type ReconnectOutcome =
 	| { readonly result: "success" }
 	| {
 			readonly result: "error";
@@ -59,7 +61,11 @@ export class WebSocketTelemetry {
 		to: ConnectionState,
 		reason: ConnectionStateReason,
 	): void {
-		this.#telemetry.log("connection.state_transition", { from, to, reason });
+		this.#telemetry.log("connection.state_transitioned", {
+			from,
+			to,
+			reason,
+		});
 	}
 
 	/** Stamp the connect-start time; counts an attempt if a cycle is open. */
@@ -77,8 +83,8 @@ export class WebSocketTelemetry {
 		this.#connectionDropEmitted = false;
 		this.#connectStartedAtMs = undefined;
 		this.#telemetry.log(
-			"connection.open",
-			{ url: route },
+			"connection.opened",
+			{ route },
 			{ connectDurationMs: now - start },
 		);
 		this.#finishReconnect({ result: "success" });
@@ -104,10 +110,10 @@ export class WebSocketTelemetry {
 			connectionDurationMs: performance.now() - this.#connectionOpenedAtMs,
 		};
 		if (error === undefined) {
-			this.#telemetry.log("connection.drop", properties, measurements);
+			this.#telemetry.log("connection.dropped", properties, measurements);
 		} else {
 			this.#telemetry.logError(
-				"connection.drop",
+				"connection.dropped",
 				error,
 				properties,
 				measurements,
@@ -120,6 +126,7 @@ export class WebSocketTelemetry {
 		this.#connectStartedAtMs = undefined;
 		this.#connectionOpenedAtMs = undefined;
 		this.#connectionDropEmitted = false;
+		this.#reconnectCycle = undefined;
 	}
 
 	/** Open a reconnect cycle. No-op if one is already open. */
@@ -160,7 +167,7 @@ export class WebSocketTelemetry {
 		if (outcome.result === "error") {
 			properties.terminationReason = outcome.terminationReason;
 		}
-		this.#telemetry.log("connection.reconnect", properties, {
+		this.#telemetry.log("connection.reconnected", properties, {
 			attempts: cycle.attempts,
 			totalDurationMs: performance.now() - cycle.startMs,
 		});

@@ -335,12 +335,126 @@ describe("SshProcessMonitor", () => {
 			await waitForEvent(monitor.onPidChange);
 
 			expect(sink.eventsNamed("ssh.process.discovered")[0]).toMatchObject({
-				properties: { result: "success" },
+				properties: { result: "success", found: "true" },
 				measurements: {
 					durationMs: expect.any(Number),
 					attempts: expect.any(Number),
 				},
 			});
+		});
+
+		it("emits found=false when discovery is abandoned by dispose", async () => {
+			const { telemetry, sink } = createTestTelemetry();
+			vol.fromJSON({
+				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+					"-> socksPort 12345 ->",
+			});
+			vi.mocked(find).mockResolvedValue([]);
+
+			const monitor = createMonitor({ telemetry });
+			// Allow at least one discovery iteration to start, then abandon it.
+			await new Promise((r) => setTimeout(r, 30));
+			monitor.dispose();
+
+			await waitFor(
+				() => sink.eventsNamed("ssh.process.discovered").length > 0,
+			);
+			expect(sink.eventsNamed("ssh.process.discovered")[0]).toMatchObject({
+				properties: { result: "success", found: "false" },
+			});
+		});
+
+		it("emits ssh.process.disposed when dispose follows a successful discovery", async () => {
+			const { telemetry, sink } = createTestTelemetry();
+			vol.fromJSON(sshLog);
+
+			const monitor = createMonitor({ telemetry });
+			await waitForEvent(monitor.onPidChange);
+			monitor.dispose();
+
+			expect(sink.eventsNamed("ssh.process.disposed")[0]).toMatchObject({
+				properties: { wasLost: "false" },
+				measurements: { uptimeMs: expect.any(Number) },
+			});
+		});
+
+		it("emits ssh.process.disposed with wasLost=true when dispose follows a loss", async () => {
+			const { telemetry, sink } = createTestTelemetry();
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson(),
+			});
+			// Second discovery hangs so the lost->disposed sequence is observable.
+			vi.mocked(find)
+				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValue([]);
+
+			const monitor = createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+				telemetry,
+			});
+			await waitForEvent(monitor.onPidChange);
+			await waitFor(() => sink.eventsNamed("ssh.process.lost").length > 0);
+			monitor.dispose();
+
+			const disposed = sink.eventsNamed("ssh.process.disposed");
+			expect(disposed).toHaveLength(1);
+			expect(disposed[0].properties).toMatchObject({ wasLost: "true" });
+		});
+
+		it("emits missing_network_info as the loss cause when reads fail repeatedly", async () => {
+			vi.useFakeTimers();
+			const { telemetry, sink } = createTestTelemetry();
+			vol.fromJSON(sshLog);
+			// No /network/999.json — every read fails until threshold is reached.
+			vi.mocked(find).mockResolvedValue([
+				{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" },
+			]);
+
+			const monitor = createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+				telemetry,
+			});
+
+			await vi.advanceTimersByTimeAsync(500);
+			await vi.waitFor(() =>
+				expect(sink.eventsNamed("ssh.process.lost").length).toBeGreaterThan(0),
+			);
+
+			expect(sink.eventsNamed("ssh.process.lost")[0].properties).toMatchObject({
+				cause: "missing_network_info",
+			});
+
+			monitor.dispose();
+		});
+
+		it("emits ssh.process.replaced (not recovered) when a different PID takes over", async () => {
+			const { telemetry, sink } = createTestTelemetry();
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson(),
+			});
+			vi.mocked(find)
+				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValue([{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh" }]);
+
+			const monitor = createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+				telemetry,
+			});
+			await waitForEvent(monitor.onPidChange);
+			await waitFor(() => sink.eventsNamed("ssh.process.replaced").length > 0);
+
+			const replaced = sink.eventsNamed("ssh.process.replaced");
+			expect(replaced[0].properties).toMatchObject({ wasLost: "true" });
+			expect(replaced[0].measurements).toMatchObject({
+				previousUptimeMs: expect.any(Number),
+				lostDurationMs: expect.any(Number),
+			});
+			expect(sink.eventsNamed("ssh.process.recovered")).toHaveLength(0);
 		});
 
 		it("emits lost and recovered events around a stale-network reconnect", async () => {
@@ -389,10 +503,10 @@ describe("SshProcessMonitor", () => {
 				networkPollInterval: 10,
 				telemetry,
 			});
-			await waitFor(() => sink.eventsNamed("ssh.network.sample").length > 0);
+			await waitFor(() => sink.eventsNamed("ssh.network.sampled").length > 0);
 
-			expect(sink.eventsNamed("ssh.network.sample")[0]).toMatchObject({
-				properties: { p2p: "true", derp: "NYC" },
+			expect(sink.eventsNamed("ssh.network.sampled")[0]).toMatchObject({
+				properties: { p2p: "true", preferredDerp: "NYC" },
 				measurements: { latencyMs: 25 },
 			});
 		});

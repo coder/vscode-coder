@@ -15,8 +15,33 @@ function setup() {
 }
 
 describe("SshTelemetry", () => {
+	describe("traceProcessDiscovery", () => {
+		interface DiscoveryCase {
+			pid: number | undefined;
+			attempts: number;
+			found: string;
+		}
+		it.each<DiscoveryCase>([
+			{ pid: 123, attempts: 2, found: "true" },
+			{ pid: undefined, attempts: 5, found: "false" },
+		])(
+			"emits found=$found and attempts=$attempts based on the result",
+			async ({ pid, attempts, found }) => {
+				const { ssh, sink } = setup();
+
+				await ssh.traceProcessDiscovery(() =>
+					Promise.resolve({ pid, attempts }),
+				);
+
+				const [event] = sink.eventsNamed("ssh.process.discovered");
+				expect(event.properties).toMatchObject({ result: "success", found });
+				expect(event.measurements.attempts).toBe(attempts);
+			},
+		);
+	});
+
 	describe("processReplaced", () => {
-		it("emits a recovery when the prior process was already marked lost", () => {
+		it("emits a replacement (not recovery) when the prior process was lost", () => {
 			const { ssh, sink } = setup();
 
 			ssh.processStarted();
@@ -25,8 +50,14 @@ describe("SshTelemetry", () => {
 
 			expect(sink.events.map((e) => e.eventName)).toEqual([
 				"ssh.process.lost",
-				"ssh.process.recovered",
+				"ssh.process.replaced",
 			]);
+			const [replaced] = sink.eventsNamed("ssh.process.replaced");
+			expect(replaced.properties).toMatchObject({ wasLost: "true" });
+			expect(replaced.measurements).toMatchObject({
+				previousUptimeMs: expect.any(Number),
+				lostDurationMs: expect.any(Number),
+			});
 		});
 
 		it("emits a replacement event for an instant handover", () => {
@@ -37,9 +68,11 @@ describe("SshTelemetry", () => {
 
 			const replaced = sink.eventsNamed("ssh.process.replaced");
 			expect(replaced).toHaveLength(1);
+			expect(replaced[0].properties).toMatchObject({ wasLost: "false" });
 			expect(replaced[0].measurements).toMatchObject({
 				previousUptimeMs: expect.any(Number),
 			});
+			expect(replaced[0].measurements.lostDurationMs).toBeUndefined();
 		});
 
 		it("emits nothing if there was no prior process", () => {
@@ -55,7 +88,7 @@ describe("SshTelemetry", () => {
 		it("is a no-op when there is no started process", () => {
 			const { ssh, sink } = setup();
 
-			ssh.processLost("disposed");
+			ssh.processLost("stale_network_info");
 
 			expect(sink.events).toHaveLength(0);
 		});
@@ -70,6 +103,38 @@ describe("SshTelemetry", () => {
 			const lost = sink.eventsNamed("ssh.process.lost");
 			expect(lost).toHaveLength(1);
 			expect(lost[0].properties.cause).toBe("stale_network_info");
+		});
+	});
+
+	describe("disposed", () => {
+		it("is a no-op when there is no started process", () => {
+			const { ssh, sink } = setup();
+
+			ssh.disposed();
+
+			expect(sink.events).toHaveLength(0);
+		});
+
+		interface DisposedCase {
+			name: string;
+			lose: boolean;
+			wasLost: string;
+		}
+		it.each<DisposedCase>([
+			{ name: "from a healthy state", lose: false, wasLost: "false" },
+			{ name: "after the process was lost", lose: true, wasLost: "true" },
+		])("emits a terminal event $name", ({ lose, wasLost }) => {
+			const { ssh, sink } = setup();
+
+			ssh.processStarted();
+			if (lose) {
+				ssh.processLost("stale_network_info");
+			}
+			ssh.disposed();
+
+			const [event] = sink.eventsNamed("ssh.process.disposed");
+			expect(event.properties).toMatchObject({ wasLost });
+			expect(event.measurements.uptimeMs).toEqual(expect.any(Number));
 		});
 	});
 
@@ -111,16 +176,16 @@ describe("SshTelemetry", () => {
 			vi.advanceTimersByTime(advanceMs);
 			ssh.networkSampled(makeNetworkInfo(next));
 
-			expect(sink.eventsNamed("ssh.network.sample")).toHaveLength(expected);
+			expect(sink.eventsNamed("ssh.network.sampled")).toHaveLength(expected);
 		});
 
-		it("includes p2p, derp, latency, and bandwidth in the emitted sample", () => {
+		it("includes p2p, preferredDerp, latency, and bandwidth in the emitted sample", () => {
 			const { ssh, sink } = setup();
 
 			ssh.networkSampled(makeNetworkInfo({ latency: 25 }));
 
-			const [sample] = sink.eventsNamed("ssh.network.sample");
-			expect(sample.properties).toEqual({ p2p: "true", derp: "NYC" });
+			const [sample] = sink.eventsNamed("ssh.network.sampled");
+			expect(sample.properties).toEqual({ p2p: "true", preferredDerp: "NYC" });
 			expect(sample.measurements).toMatchObject({
 				latencyMs: 25,
 				downloadMbits: expect.any(Number),
