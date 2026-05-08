@@ -74,29 +74,24 @@ const preview: Preview = {
 				context.globals.theme === "light" ? lightTheme : darkTheme;
 
 			useEffect(() => {
+				const root = document.documentElement.style;
+
 				// Apply CSS custom properties to the document root
 				selectedTheme.forEach(([property, value]) => {
-					document.documentElement.style.setProperty(property, value);
+					root.setProperty(property, value);
 				});
+				root.setProperty("--vscode-font-family", getDefaultFontStack());
 
 				// Cleanup function to remove properties when unmounting
 				return () => {
 					selectedTheme.forEach(([property]) => {
-						document.documentElement.style.removeProperty(property);
+						root.removeProperty(property);
 					});
+					root.removeProperty("--vscode-font-family");
 				};
 			}, [selectedTheme]);
 
-			return createElement(
-				"div",
-				{
-					id: "root",
-					style: {
-						fontFamily: getDefaultFontStack(),
-					},
-				},
-				createElement(Story),
-			);
+			return createElement("div", { id: "root" }, createElement(Story));
 		},
 	],
 };
