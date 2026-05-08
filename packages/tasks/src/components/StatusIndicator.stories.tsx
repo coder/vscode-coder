@@ -6,6 +6,19 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof StatusIndicator> = {
 	title: "Tasks/StatusIndicator",
 	component: StatusIndicator,
+	decorators: [
+		(Story) => (
+			<div
+				style={{
+					display: "flex",
+					justifyContent: "center",
+					alignItems: "center",
+				}}
+			>
+				<Story />
+			</div>
+		),
+	],
 };
 
 export default meta;
