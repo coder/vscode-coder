@@ -1,17 +1,22 @@
 import type { TelemetryService } from "../telemetry/service";
 
 export type RemoteSetupPhase =
-	| "auth_retrieval"
 	| "workspace_lookup"
 	| "workspace_ready"
-	| "agent_ready"
+	| "resolve_agent"
 	| "ssh_config_write";
+
+/** Outcome on the parent `remote.setup` event for non-throwing early exits. */
+export type RemoteSetupOutcome = "workspace_not_found" | "incompatible_server";
 
 /** Helpers scoped to the remote.setup trace's lifetime. */
 export interface RemoteSetupTracer {
 	phase<T>(name: RemoteSetupPhase, fn: () => T | PromiseLike<T>): Promise<T>;
+	/** Annotate the parent event for non-throwing exits (e.g. workspace 404). */
+	setOutcome(outcome: RemoteSetupOutcome): void;
 }
 
+/** Emits `remote.setup` with typed child phases and an `outcome` property. */
 export class RemoteSetupTelemetry {
 	public constructor(private readonly telemetry: TelemetryService) {}
 
@@ -20,6 +25,7 @@ export class RemoteSetupTelemetry {
 			fn({
 				phase: (name, phaseFn) =>
 					span.phase(name, () => Promise.resolve(phaseFn())),
+				setOutcome: (outcome) => span.setProperty("outcome", outcome),
 			}),
 		);
 	}

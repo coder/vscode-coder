@@ -82,6 +82,7 @@ interface RemoteSetupArgs {
 	remoteSshExtensionId: string;
 }
 
+/** Per-attempt state for the remote setup flow, threaded through helpers. */
 interface RemoteSetupContext {
 	args: RemoteSetupArgs;
 	parts: AuthorityParts;
@@ -138,46 +139,59 @@ export class Remote {
 			agent: parts.agent || "(default)",
 		});
 
+		// Both run before `remote.setup` so an auth-required retry doesn't nest
+		// traces, and migration is kept out of `remote.auth_retrieval` so a slow
+		// first-run migration doesn't pollute that signal.
+		await this.migrateToSecretsStorage(parts.safeHostname);
+		const telemetry = this.serviceContainer.getTelemetryService();
+		const auth = await telemetry.trace("remote.auth_retrieval", () =>
+			this.secretsManager.getSessionAuth(parts.safeHostname),
+		);
+		if (auth?.url) {
+			telemetry.setDeploymentUrl(auth.url);
+		}
+		this.logger.debug("Retrieved auth for hostname", {
+			hostname: parts.safeHostname,
+			hasUrl: Boolean(auth?.url),
+			hasToken: auth?.token !== undefined,
+		});
+
 		const args: RemoteSetupArgs = {
 			remoteAuthority,
 			startupMode,
 			remoteSshExtensionId,
 		};
 		const workspaceName = `${parts.username}/${parts.workspace}`;
+		const context: RemoteSetupContext = {
+			args,
+			parts,
+			workspaceName,
+			baseUrl: auth?.url ?? "",
+			token: auth?.token,
+			disposables: [],
+		};
 
-		return this.setupTelemetry.trace(async (tracer) => {
-			const auth = await tracer.phase("auth_retrieval", async () => {
-				await this.migrateToSecretsStorage(parts.safeHostname);
-				return this.secretsManager.getSessionAuth(parts.safeHostname);
-			});
-			if (auth?.url) {
-				this.serviceContainer.getTelemetryService().setDeploymentUrl(auth.url);
-			}
-			this.logger.debug("Retrieved auth for hostname", {
-				hostname: parts.safeHostname,
-				hasUrl: Boolean(auth?.url),
-				hasToken: auth?.token !== undefined,
-			});
-			return this.setupCoderRemote(
-				{
-					args,
-					parts,
-					workspaceName,
-					baseUrl: auth?.url ?? "",
-					token: auth?.token,
-					disposables: [],
-				},
-				tracer,
+		if (
+			!context.baseUrl ||
+			(!context.token && needToken(vscode.workspace.getConfiguration()))
+		) {
+			return this.ensureLoggedInAndRetry(
+				context,
+				"You are not logged in...",
+				context.baseUrl,
 			);
-		});
+		}
+
+		return this.setupTelemetry.trace((tracer) =>
+			this.setupCoderRemote(context, tracer),
+		);
 	}
 
 	private async setupCoderRemote(
-		setupContext: RemoteSetupContext,
+		context: RemoteSetupContext,
 		tracer: RemoteSetupTracer,
 	): Promise<RemoteDetails | undefined> {
-		const { args, parts, workspaceName, baseUrl, token, disposables } =
-			setupContext;
+		const { args, parts, workspaceName, baseUrl, token, disposables } = context;
 
 		try {
 			// Create OAuth session manager for this remote deployment
@@ -185,22 +199,10 @@ export class Remote {
 				{ url: baseUrl, safeHostname: parts.safeHostname },
 				this.serviceContainer,
 				async () => {
-					await this.showSessionExpiredDialog(setupContext);
+					await this.showSessionExpiredDialog(context);
 				},
 			);
 			disposables.push(remoteOAuthManager);
-
-			// It could be that the cli config was deleted. If so, ask for the url.
-			if (
-				!baseUrl ||
-				(!token && needToken(vscode.workspace.getConfiguration()))
-			) {
-				return this.ensureLoggedInAndRetry(
-					setupContext,
-					"You are not logged in...",
-					baseUrl,
-				);
-			}
 
 			this.logger.info("Using deployment URL", baseUrl);
 			this.logger.info("Using hostname", parts.safeHostname || "n/a");
@@ -220,7 +222,7 @@ export class Remote {
 				remoteOAuthManager,
 				this.secretsManager,
 				async () => {
-					const result = await this.showSessionExpiredDialog(setupContext);
+					const result = await this.showSessionExpiredDialog(context);
 					return result.success;
 				},
 			);
@@ -237,9 +239,7 @@ export class Remote {
 			}
 
 			// Listen for token changes for this deployment
-			disposables.push(
-				this.watchRemoteSessionAuth(setupContext, workspaceClient),
-			);
+			disposables.push(this.watchRemoteSessionAuth(context, workspaceClient));
 
 			// First thing is to check the version.
 			const buildInfo = await workspaceClient.getBuildInfo();
@@ -264,6 +264,7 @@ export class Remote {
 
 			// Server versions before v0.14.1 don't support the vscodessh command!
 			if (!featureSet.vscodessh) {
+				tracer.setOutcome("incompatible_server");
 				await vscodeProposed.window.showErrorMessage(
 					"Incompatible Server",
 					{
@@ -283,9 +284,10 @@ export class Remote {
 
 			// Next is to find the workspace from the URI scheme provided.
 			const foundWorkspace = await tracer.phase("workspace_lookup", () =>
-				this.lookupWorkspace(setupContext, workspaceClient),
+				this.lookupWorkspace(context, workspaceClient),
 			);
 			if (!foundWorkspace) {
+				tracer.setOutcome("workspace_not_found");
 				return;
 			}
 			let workspace: Workspace = foundWorkspace;
@@ -341,8 +343,8 @@ export class Remote {
 			// Mark initial setup as complete so the monitor can start notifying about state changes
 			monitor.markInitialSetupComplete();
 
-			const agent = await tracer.phase("agent_ready", () =>
-				this.findReadyAgent(setupContext, workspace, stateMachine),
+			const agent = await tracer.phase("resolve_agent", () =>
+				this.resolveAgent(context, workspace, stateMachine),
 			);
 
 			// Watch coder inbox for messages
@@ -353,7 +355,7 @@ export class Remote {
 
 			const computedSshProperties = await tracer.phase("ssh_config_write", () =>
 				this.writeRemoteSshConfig(
-					setupContext,
+					context,
 					workspaceClient,
 					binaryPath,
 					logDir,
@@ -579,7 +581,7 @@ export class Remote {
 		);
 	}
 
-	private findReadyAgent(
+	private resolveAgent(
 		context: RemoteSetupContext,
 		workspace: Workspace,
 		stateMachine: WorkspaceStateMachine,

@@ -1,6 +1,15 @@
 import type { TelemetryService } from "../telemetry/service";
 
-export type ActivationAuthState = "none" | "valid_token" | "expired";
+/**
+ * `none`: no stored token. `stored`: token present, not yet validated.
+ * `valid_token`/`expired`: post-validation. `unknown`: validation threw.
+ */
+export type ActivationAuthState =
+	| "none"
+	| "stored"
+	| "valid_token"
+	| "expired"
+	| "unknown";
 
 /** Helpers scoped to the activation trace's lifetime. */
 export interface ActivationTracer {
@@ -8,6 +17,10 @@ export interface ActivationTracer {
 	traceDeploymentInit(fn: () => Promise<boolean>): Promise<boolean>;
 }
 
+/**
+ * Emits `activation` with `authState`, plus a sibling `activation.deployment_init`
+ * trace (sibling, not child, because deployment init outlives the activation span).
+ */
 export class ActivationTelemetry {
 	public constructor(private readonly telemetry: TelemetryService) {}
 
@@ -20,6 +33,7 @@ export class ActivationTelemetry {
 					this.telemetry.trace(
 						"activation.deployment_init",
 						async (childSpan) => {
+							childSpan.setProperty("authState", "unknown");
 							const success = await initFn();
 							childSpan.setProperty(
 								"authState",

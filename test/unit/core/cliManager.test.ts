@@ -838,22 +838,53 @@ describe("CliManager", () => {
 			});
 		});
 
-		describe("cli.verify", () => {
+		describe("cli.download.verify", () => {
 			beforeEach(() => {
 				mockConfig.set("coder.disableSignatureVerification", false);
 				withSuccessfulDownload();
-				withSignatureResponses([200]);
 			});
 
-			it("emits success on valid signature", async () => {
+			it("emits outcome=verified on valid signature", async () => {
+				withSignatureResponses([200]);
 				await manager.fetchBinary(mockApi);
 
-				const e = event("cli.verify");
-				expect(e).toMatchObject({ properties: { result: "success" } });
-				expect(e?.measurements.durationMs).toBeGreaterThanOrEqual(0);
+				const verify = event("cli.download.verify");
+				const download = event("cli.download");
+				expect(verify).toMatchObject({
+					properties: { outcome: "verified", result: "success" },
+				});
+				expect(verify?.measurements.durationMs).toBeGreaterThanOrEqual(0);
+				expect(verify?.traceId).toBe(download?.traceId);
+				expect(verify?.parentEventId).toBe(download?.eventId);
+			});
+
+			it("emits outcome=bypassed when user runs anyway despite invalid signature", async () => {
+				withSignatureResponses([200]);
+				vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
+					createVerificationError("Invalid signature"),
+				);
+				mockUI.setResponse("Signature does not match", "Run anyway");
+
+				await manager.fetchBinary(mockApi);
+
+				expect(event("cli.download.verify")).toMatchObject({
+					properties: { outcome: "bypassed", result: "success" },
+				});
+			});
+
+			it("emits outcome=sig_not_found when user runs without verification", async () => {
+				withSignatureResponses([404, 404]);
+				mockUI.setResponse("Signature not found", "Run without verification");
+
+				await manager.fetchBinary(mockApi);
+
+				expect(event("cli.download.verify")).toMatchObject({
+					properties: { outcome: "sig_not_found", result: "success" },
+				});
 			});
 
 			it("emits error when verification is aborted", async () => {
+				withSignatureResponses([200]);
 				vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
 					createVerificationError("Invalid signature"),
 				);
@@ -863,7 +894,7 @@ describe("CliManager", () => {
 					"Signature verification aborted",
 				);
 
-				expect(event("cli.verify")).toMatchObject({
+				expect(event("cli.download.verify")).toMatchObject({
 					properties: { result: "error" },
 					error: { message: "Signature verification aborted" },
 				});

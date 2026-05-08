@@ -9,6 +9,9 @@ import {
 	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
 
+import type { Logger } from "@/logging/logger";
+import type { Span } from "@/telemetry/span";
+
 const TEST_VERSION = "1.2.3-test";
 const TEST_SESSION_ID = "test-session";
 
@@ -18,18 +21,16 @@ interface Harness {
 	service: TelemetryService;
 	sink: TestSink;
 	config: MockConfigurationProvider;
+	logger: Logger;
 }
 
 function makeHarness(level: "off" | "local" = "local"): Harness {
 	const config = new MockConfigurationProvider();
 	config.set("coder.telemetry.level", level);
 	const sink = new TestSink();
-	const service = new TelemetryService(
-		testSession(),
-		[sink],
-		createMockLogger(),
-	);
-	return { service, sink, config };
+	const logger = createMockLogger();
+	const service = new TelemetryService(testSession(), [sink], logger);
+	return { service, sink, config, logger };
 }
 
 function makeService(sinks: TelemetrySink[]): TelemetryService {
@@ -289,6 +290,33 @@ describe("TelemetryService", () => {
 
 			const [phase] = h.sink.events;
 			expect(phase.eventName).toBe("op.bad_name");
+		});
+
+		it("warns and ignores setProperty/setMeasurement called after emit", async () => {
+			let escapedSpan: Span | undefined;
+			await h.service.trace("op", (span) => {
+				escapedSpan = span;
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events).toHaveLength(1);
+			const warnBefore = vi.mocked(h.logger.warn).mock.calls.length;
+
+			escapedSpan?.setProperty("late", "ignored");
+			escapedSpan?.setMeasurement("lateMs", 99);
+
+			// Mutations dropped: emitted event is unchanged.
+			expect(h.sink.events[0].properties.late).toBeUndefined();
+			expect(h.sink.events[0].measurements.lateMs).toBeUndefined();
+
+			// Each post-emit mutation logs a warning.
+			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 2);
+			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore][0]).toContain(
+				"setProperty",
+			);
+			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 1][0]).toContain(
+				"setMeasurement",
+			);
 		});
 
 		it("on phase failure: completed phases emit success, parent emits an error summary, error rethrown, later phases never run", async () => {

@@ -144,6 +144,12 @@ export class TelemetryService implements vscode.Disposable {
 		const spanProperties = { ...properties };
 		const spanMeasurements = { ...measurements };
 		const { traceId, traceLevel } = spanOpts;
+		let completed = false;
+		const warnPostEmit = (op: string, name: string): void => {
+			this.logger.warn(
+				`Telemetry span '${eventName}' ${op}('${name}') called after emit; mutation dropped`,
+			);
+		};
 		const span: Span = {
 			traceId,
 			eventId,
@@ -164,9 +170,17 @@ export class TelemetryService implements vscode.Disposable {
 				);
 			},
 			setProperty(name: string, value: string): void {
+				if (completed) {
+					warnPostEmit("setProperty", name);
+					return;
+				}
 				spanProperties[name] = value;
 			},
 			setMeasurement(name: string, value: number): void {
+				if (completed) {
+					warnPostEmit("setMeasurement", name);
+					return;
+				}
 				spanMeasurements[name] = value;
 			},
 		};
@@ -177,7 +191,9 @@ export class TelemetryService implements vscode.Disposable {
 			spanProperties,
 			spanMeasurements,
 			spanOpts,
-		);
+		).finally(() => {
+			completed = true;
+		});
 	}
 
 	#sanitizePhaseName(name: string): string {
