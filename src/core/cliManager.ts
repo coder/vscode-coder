@@ -37,7 +37,10 @@ type ResolvedBinary =
 
 type CliDownloadReason = "missing" | "version_mismatch" | "unreadable";
 
-type CliVerifyOutcome = "verified" | "bypassed" | "sig_not_found";
+type CliVerifyResult =
+	| { kind: "verified" }
+	| { kind: "bypassed" }
+	| { kind: "sig_not_found"; status: number };
 
 type SingleVerifyResult =
 	| { kind: "verified" }
@@ -509,7 +512,7 @@ export class CliManager {
 						);
 					} else {
 						await downloadSpan.phase("verify", async (verifySpan) => {
-							const outcome = await this.verifyBinarySignatures(
+							const result = await this.verifyBinarySignatures(
 								client,
 								tempFile,
 								[
@@ -524,7 +527,10 @@ export class CliManager {
 									`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.asc`,
 								],
 							);
-							verifySpan.setProperty("outcome", outcome);
+							verifySpan.setProperty("outcome", result.kind);
+							if (result.kind === "sig_not_found") {
+								verifySpan.setProperty("sigStatus", String(result.status));
+							}
 						});
 					}
 
@@ -741,7 +747,7 @@ export class CliManager {
 		client: AxiosInstance,
 		cliPath: string,
 		sources: string[],
-	): Promise<CliVerifyOutcome> {
+	): Promise<CliVerifyResult> {
 		const publicKeys = await pgp.readPublicKeys(this.output);
 		for (let i = 0; i < sources.length; ++i) {
 			const source = sources[i];
@@ -757,7 +763,7 @@ export class CliManager {
 				source,
 			);
 			if (result.kind === "verified" || result.kind === "bypassed") {
-				return result.kind;
+				return { kind: result.kind };
 			}
 			// If we failed to download, try the next source.
 			let nextPrompt = "";
@@ -789,7 +795,7 @@ export class CliManager {
 				case "Run without verification":
 					this.output.info(`Signature download from ${nextSource} declined`);
 					this.output.info("Binary will be ran anyway at user request");
-					return "sig_not_found";
+					return { kind: "sig_not_found", status: result.status };
 				default:
 					this.output.info(`Signature download from ${nextSource} declined`);
 					this.output.info("Binary was rejected at user request");

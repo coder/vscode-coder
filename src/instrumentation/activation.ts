@@ -2,13 +2,15 @@ import type { TelemetryService } from "../telemetry/service";
 
 /**
  * `none`: no stored token. `stored`: token present, not yet validated.
- * `valid_token`/`expired`: post-validation. `unknown`: validation threw.
+ * `valid_token`: server validation passed. `auth_failed`: validation returned
+ * false (covers expiration, network/DNS, cert, server errors — the boolean
+ * doesn't distinguish). `unknown`: validation threw before classification.
  */
 export type ActivationAuthState =
 	| "none"
 	| "stored"
 	| "valid_token"
-	| "expired"
+	| "auth_failed"
 	| "unknown";
 
 /** Helpers scoped to the activation trace's lifetime. */
@@ -37,7 +39,7 @@ export class ActivationTelemetry {
 							const success = await initFn();
 							childSpan.setProperty(
 								"authState",
-								success ? "valid_token" : "expired",
+								success ? "valid_token" : "auth_failed",
 							);
 							return success;
 						},

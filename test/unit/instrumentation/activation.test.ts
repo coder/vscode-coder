@@ -69,7 +69,7 @@ describe("ActivationTelemetry.traceDeploymentInit", () => {
 
 	it.each([
 		{ ret: true, expected: "valid_token" },
-		{ ret: false, expected: "expired" },
+		{ ret: false, expected: "auth_failed" },
 	])(
 		"maps initFn returning $ret to authState=$expected",
 		async ({ ret, expected }) => {

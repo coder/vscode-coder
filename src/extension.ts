@@ -400,7 +400,7 @@ async function doActivate(
 					url: details.url,
 					token: details.token,
 				});
-				tracer.setAuthState(deploymentSet ? "valid_token" : "expired");
+				tracer.setAuthState(deploymentSet ? "valid_token" : "auth_failed");
 
 				// If a deep link stored a chat agent ID before the
 				// remote-authority reload, open it now that the

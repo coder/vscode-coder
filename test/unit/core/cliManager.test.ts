@@ -778,27 +778,23 @@ describe("CliManager", () => {
 			telemetrySink.events.find((e) => e.eventName === name);
 
 		it.each([
-			{ reason: "missing", existing: undefined },
-			{ reason: "version_mismatch", existing: "1.0.0" },
-		])(
-			"emits cli.download with reason=$reason",
-			async ({ reason, existing }) => {
-				if (existing) {
-					withExistingBinary(existing);
-				}
-				withSuccessfulDownload();
-				await manager.fetchBinary(mockApi);
+			{ reason: "missing", setup: () => {} },
+			{ reason: "version_mismatch", setup: () => withExistingBinary("1.0.0") },
+			{ reason: "unreadable", setup: () => withCorruptedBinary() },
+		])("emits cli.download with reason=$reason", async ({ reason, setup }) => {
+			setup();
+			withSuccessfulDownload();
+			await manager.fetchBinary(mockApi);
 
-				const e = event("cli.download");
-				expect(e).toMatchObject({
-					properties: { reason, result: "success" },
-				});
-				expect(e?.measurements.durationMs).toBeGreaterThanOrEqual(0);
-				expect(e?.measurements.downloadedBytes).toBe(
-					Buffer.byteLength(mockBinaryContent(TEST_VERSION)),
-				);
-			},
-		);
+			const e = event("cli.download");
+			expect(e).toMatchObject({
+				properties: { reason, result: "success" },
+			});
+			expect(e?.measurements.durationMs).toBeGreaterThanOrEqual(0);
+			expect(e?.measurements.downloadedBytes).toBe(
+				Buffer.byteLength(mockBinaryContent(TEST_VERSION)),
+			);
+		});
 
 		it("does not emit cli.download when a cached binary already matches", async () => {
 			withExistingBinary(TEST_VERSION);
@@ -872,16 +868,26 @@ describe("CliManager", () => {
 				});
 			});
 
-			it("emits outcome=sig_not_found when user runs without verification", async () => {
-				withSignatureResponses([404, 404]);
-				mockUI.setResponse("Signature not found", "Run without verification");
+			it.each([
+				{ status: 404, message: "Signature not found" },
+				{ status: 500, message: "Failed to download signature" },
+			])(
+				"emits outcome=sig_not_found with sigStatus=$status when user runs without verification",
+				async ({ status, message }) => {
+					withSignatureResponses([status, status]);
+					mockUI.setResponse(message, "Run without verification");
 
-				await manager.fetchBinary(mockApi);
+					await manager.fetchBinary(mockApi);
 
-				expect(event("cli.download.verify")).toMatchObject({
-					properties: { outcome: "sig_not_found", result: "success" },
-				});
-			});
+					expect(event("cli.download.verify")).toMatchObject({
+						properties: {
+							outcome: "sig_not_found",
+							sigStatus: String(status),
+							result: "success",
+						},
+					});
+				},
+			);
 
 			it("emits error when verification is aborted", async () => {
 				withSignatureResponses([200]);
