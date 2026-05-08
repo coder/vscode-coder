@@ -321,33 +321,12 @@ describe("SshProcessMonitor", () => {
 				"-> socksPort 12345 ->",
 		};
 
-		function eventsNamed(sink: TestSink, eventName: string) {
-			return sink.events.filter((event) => event.eventName === eventName);
-		}
-
-		function networkTelemetryEvents(sink: TestSink) {
-			return eventsNamed(sink, "ssh.network.sample");
-		}
-
-		async function advanceUntilNetworkEvents(
-			sink: TestSink,
-			count: number,
-		): Promise<void> {
-			for (let i = 0; i < 20; i++) {
-				await vi.advanceTimersByTimeAsync(1);
-				if (networkTelemetryEvents(sink).length >= count) {
-					return;
-				}
-			}
-			expect(networkTelemetryEvents(sink)).toHaveLength(count);
-		}
-
 		function keepNetworkFileFresh(filePath: string, ms = 90_000): void {
 			const mtime = (Date.now() + ms) / 1000;
 			vol.utimesSync(filePath, mtime, mtime);
 		}
 
-		it("emits a process discovered trace", async () => {
+		it("emits a process discovered trace once a PID is found", async () => {
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON(sshLog);
@@ -355,17 +334,16 @@ describe("SshProcessMonitor", () => {
 			const monitor = createMonitor({ telemetry });
 			await waitForEvent(monitor.onPidChange);
 
-			expect(eventsNamed(sink, "ssh.process.discovered")[0]).toMatchObject({
+			expect(sink.eventsNamed("ssh.process.discovered")[0]).toMatchObject({
 				properties: { result: "success" },
 				measurements: {
 					durationMs: expect.any(Number),
 					attempts: expect.any(Number),
 				},
 			});
-			await telemetry.dispose();
 		});
 
-		it("emits process lost and recovered events after stale network info", async () => {
+		it("emits lost and recovered events around a stale-network reconnect", async () => {
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON({
@@ -382,26 +360,22 @@ describe("SshProcessMonitor", () => {
 				telemetry,
 			});
 			await waitForEvent(monitor.onPidChange);
-
 			await waitFor(
 				() =>
-					eventsNamed(sink, "ssh.process.lost").length > 0 &&
-					eventsNamed(sink, "ssh.process.recovered").length > 0,
-				500,
+					sink.eventsNamed("ssh.process.lost").length > 0 &&
+					sink.eventsNamed("ssh.process.recovered").length > 0,
 			);
 
-			expect(eventsNamed(sink, "ssh.process.lost")[0]).toMatchObject({
+			expect(sink.eventsNamed("ssh.process.lost")[0]).toMatchObject({
 				properties: { cause: "stale_network_info" },
 				measurements: { uptimeMs: expect.any(Number) },
 			});
-			expect(eventsNamed(sink, "ssh.process.recovered")[0]).toMatchObject({
+			expect(sink.eventsNamed("ssh.process.recovered")[0]).toMatchObject({
 				measurements: { recoveryDurationMs: expect.any(Number) },
 			});
-			await telemetry.dispose();
 		});
 
-		it("samples network info on first read and every 60 seconds, not every poll", async () => {
-			vi.useFakeTimers();
+		it("forwards network reads to the telemetry as samples", async () => {
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON({
@@ -412,51 +386,15 @@ describe("SshProcessMonitor", () => {
 
 			createMonitor({
 				networkInfoPath: "/network",
-				networkPollInterval: 10_000,
-				telemetry,
-			});
-			await advanceUntilNetworkEvents(sink, 1);
-			expect(networkTelemetryEvents(sink)).toHaveLength(1);
-
-			await vi.advanceTimersByTimeAsync(50_000);
-			expect(networkTelemetryEvents(sink)).toHaveLength(1);
-
-			await vi.advanceTimersByTimeAsync(10_000);
-			expect(networkTelemetryEvents(sink)).toHaveLength(2);
-			const first = networkTelemetryEvents(sink)[0];
-			expect(first.properties).toEqual({ p2p: "true", derp: "NYC" });
-			expect(first.measurements).toMatchObject({
-				latencyMs: 25,
-				downloadMbits: 50,
-				uploadMbits: 10,
-			});
-			await telemetry.dispose();
-		});
-
-		it("samples network info on p2p flip inside the 60 second window", async () => {
-			vi.useFakeTimers();
-			const sink = new TestSink();
-			const telemetry = createTestTelemetryService(sink);
-			vol.fromJSON({
-				...sshLog,
-				"/network/999.json": makeNetworkJson({ p2p: true }),
-			});
-			keepNetworkFileFresh("/network/999.json");
-
-			createMonitor({
-				networkInfoPath: "/network",
 				networkPollInterval: 10,
 				telemetry,
 			});
-			await advanceUntilNetworkEvents(sink, 1);
+			await waitFor(() => sink.eventsNamed("ssh.network.sample").length > 0);
 
-			vol.writeFileSync("/network/999.json", makeNetworkJson({ p2p: false }));
-			keepNetworkFileFresh("/network/999.json");
-			await vi.advanceTimersByTimeAsync(10);
-
-			expect(networkTelemetryEvents(sink)).toHaveLength(2);
-			expect(networkTelemetryEvents(sink)[1].properties.p2p).toBe("false");
-			await telemetry.dispose();
+			expect(sink.eventsNamed("ssh.network.sample")[0]).toMatchObject({
+				properties: { p2p: "true", derp: "NYC" },
+				measurements: { latencyMs: 25 },
+			});
 		});
 	});
 

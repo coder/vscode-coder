@@ -29,6 +29,10 @@ export class TestSink implements TelemetrySink {
 	write(event: TelemetryEvent): void {
 		this.events.push(event);
 	}
+
+	eventsNamed(name: string): TelemetryEvent[] {
+		return this.events.filter((e) => e.eventName === name);
+	}
 }
 
 export function createTestTelemetryService(

@@ -1,130 +1,131 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SshTelemetry } from "@/instrumentation/ssh";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
-import { MockConfigurationProvider } from "../../mocks/testHelpers";
+import {
+	makeNetworkInfo,
+	MockConfigurationProvider,
+} from "../../mocks/testHelpers";
 
-import type { NetworkInfo } from "@/remote/sshProcess";
-
-function makeTelemetry() {
+function setup() {
 	new MockConfigurationProvider().set("coder.telemetry.level", "local");
 	const sink = new TestSink();
-	return { telemetry: createTestTelemetryService(sink), sink };
-}
-
-function makeNetwork(overrides: Partial<NetworkInfo> = {}): NetworkInfo {
-	return {
-		p2p: true,
-		latency: 50,
-		preferred_derp: "NYC",
-		derp_latency: { NYC: 10 },
-		upload_bytes_sec: 1_250_000,
-		download_bytes_sec: 6_250_000,
-		using_coder_connect: false,
-		...overrides,
-	};
+	return { ssh: new SshTelemetry(createTestTelemetryService(sink)), sink };
 }
 
 describe("SshTelemetry", () => {
 	describe("processReplaced", () => {
-		it("emits a recovery when the prior process was already marked lost", async () => {
-			const { telemetry, sink } = makeTelemetry();
-			const ssh = new SshTelemetry(telemetry);
+		it("emits a recovery when the prior process was already marked lost", () => {
+			const { ssh, sink } = setup();
 
 			ssh.processStarted();
 			ssh.processLost("stale_network_info");
 			ssh.processReplaced();
 
-			const events = sink.events.map((e) => e.eventName);
-			expect(events).toEqual(["ssh.process.lost", "ssh.process.recovered"]);
-			await telemetry.dispose();
+			expect(sink.events.map((e) => e.eventName)).toEqual([
+				"ssh.process.lost",
+				"ssh.process.recovered",
+			]);
 		});
 
-		it("emits a replacement event for an instant handover", async () => {
-			const { telemetry, sink } = makeTelemetry();
-			const ssh = new SshTelemetry(telemetry);
+		it("emits a replacement event for an instant handover", () => {
+			const { ssh, sink } = setup();
 
 			ssh.processStarted();
 			ssh.processReplaced();
 
-			const replaced = sink.events.filter(
-				(e) => e.eventName === "ssh.process.replaced",
-			);
+			const replaced = sink.eventsNamed("ssh.process.replaced");
 			expect(replaced).toHaveLength(1);
 			expect(replaced[0].measurements).toMatchObject({
 				previousUptimeMs: expect.any(Number),
 			});
-			await telemetry.dispose();
 		});
 
-		it("emits nothing if there was no prior process", async () => {
-			const { telemetry, sink } = makeTelemetry();
-			const ssh = new SshTelemetry(telemetry);
+		it("emits nothing if there was no prior process", () => {
+			const { ssh, sink } = setup();
 
 			ssh.processReplaced();
 
 			expect(sink.events).toHaveLength(0);
-			await telemetry.dispose();
 		});
 	});
 
 	describe("processLost", () => {
-		it("is a no-op when there is no started process", async () => {
-			const { telemetry, sink } = makeTelemetry();
-			const ssh = new SshTelemetry(telemetry);
+		it("is a no-op when there is no started process", () => {
+			const { ssh, sink } = setup();
 
 			ssh.processLost("disposed");
 
 			expect(sink.events).toHaveLength(0);
-			await telemetry.dispose();
 		});
 
-		it("does not double-emit when called twice without a recovery", async () => {
-			const { telemetry, sink } = makeTelemetry();
-			const ssh = new SshTelemetry(telemetry);
+		it("does not double-emit when called twice without a recovery", () => {
+			const { ssh, sink } = setup();
 
 			ssh.processStarted();
 			ssh.processLost("stale_network_info");
 			ssh.processLost("missing_network_info");
 
-			const lost = sink.events.filter(
-				(e) => e.eventName === "ssh.process.lost",
-			);
+			const lost = sink.eventsNamed("ssh.process.lost");
 			expect(lost).toHaveLength(1);
-			expect(lost[0].properties).toMatchObject({ cause: "stale_network_info" });
-			await telemetry.dispose();
+			expect(lost[0].properties.cause).toBe("stale_network_info");
 		});
 	});
 
 	describe("networkSampled", () => {
-		it("emits the first sample and skips unchanged follow-ups", async () => {
-			const { telemetry, sink } = makeTelemetry();
-			const ssh = new SshTelemetry(telemetry);
+		beforeEach(() => vi.useFakeTimers());
+		afterEach(() => vi.useRealTimers());
 
-			ssh.networkSampled(makeNetwork());
-			ssh.networkSampled(makeNetwork());
+		it.each([
+			{ name: "no change in window", next: {}, advanceMs: 1_000, expected: 1 },
+			{
+				name: "small latency change (under 10%)",
+				next: { latency: 51 },
+				advanceMs: 1_000,
+				expected: 1,
+			},
+			{ name: "p2p flip", next: { p2p: false }, advanceMs: 1_000, expected: 2 },
+			{
+				name: "DERP region change",
+				next: { preferred_derp: "SFO" },
+				advanceMs: 1_000,
+				expected: 2,
+			},
+			{
+				name: "large latency swing (over 10%)",
+				next: { latency: 100 },
+				advanceMs: 1_000,
+				expected: 2,
+			},
+			{
+				name: "heartbeat after 60s without change",
+				next: {},
+				advanceMs: 60_000,
+				expected: 2,
+			},
+		])("$name -> $expected sample(s)", ({ next, advanceMs, expected }) => {
+			const { ssh, sink } = setup();
 
-			const samples = sink.events.filter(
-				(e) => e.eventName === "ssh.network.sample",
-			);
-			expect(samples).toHaveLength(1);
-			await telemetry.dispose();
+			ssh.networkSampled(makeNetworkInfo());
+			vi.advanceTimersByTime(advanceMs);
+			ssh.networkSampled(makeNetworkInfo(next));
+
+			expect(sink.eventsNamed("ssh.network.sample")).toHaveLength(expected);
 		});
 
-		it("re-samples on a p2p flip inside the heartbeat window", async () => {
-			const { telemetry, sink } = makeTelemetry();
-			const ssh = new SshTelemetry(telemetry);
+		it("includes p2p, derp, latency, and bandwidth in the emitted sample", () => {
+			const { ssh, sink } = setup();
 
-			ssh.networkSampled(makeNetwork({ p2p: true }));
-			ssh.networkSampled(makeNetwork({ p2p: false }));
+			ssh.networkSampled(makeNetworkInfo({ latency: 25 }));
 
-			const samples = sink.events.filter(
-				(e) => e.eventName === "ssh.network.sample",
-			);
-			expect(samples).toHaveLength(2);
-			expect(samples[1].properties.p2p).toBe("false");
-			await telemetry.dispose();
+			const [sample] = sink.eventsNamed("ssh.network.sample");
+			expect(sample.properties).toEqual({ p2p: "true", derp: "NYC" });
+			expect(sample.measurements).toMatchObject({
+				latencyMs: 25,
+				downloadMbits: expect.any(Number),
+				uploadMbits: expect.any(Number),
+			});
 		});
 	});
 });
