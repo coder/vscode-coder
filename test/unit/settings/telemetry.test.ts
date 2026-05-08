@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	HTTP_REQUESTS_TELEMETRY_DEFAULTS,
 	LOCAL_SINK_DEFAULTS,
-	LOCAL_SINK_SETTING,
+	LOCAL_TELEMETRY_SETTING,
 	TELEMETRY_LEVEL_SETTING,
 	readHttpRequestsTelemetryConfig,
 	readLocalSinkConfig,
@@ -46,7 +46,7 @@ describe("telemetry settings", () => {
 			["null", null],
 			["an array", [1, 2]],
 		])("returns defaults when the raw value is %s", (_, raw) => {
-			config.set(LOCAL_SINK_SETTING, raw);
+			config.set(LOCAL_TELEMETRY_SETTING, raw);
 			expect(readLocalSinkConfig(config)).toEqual(LOCAL_SINK_DEFAULTS);
 		});
 
@@ -59,7 +59,7 @@ describe("telemetry settings", () => {
 				maxAgeDays: 7,
 				maxTotalBytes: 8192,
 			};
-			config.set(LOCAL_SINK_SETTING, custom);
+			config.set(LOCAL_TELEMETRY_SETTING, custom);
 			expect(readLocalSinkConfig(config)).toEqual(custom);
 		});
 
@@ -70,14 +70,14 @@ describe("telemetry settings", () => {
 			["a numeric string", "100"],
 			["a boolean", true],
 		])("falls back per-field when a value is %s", (_, bad) => {
-			config.set(LOCAL_SINK_SETTING, { flushIntervalMs: bad });
+			config.set(LOCAL_TELEMETRY_SETTING, { flushIntervalMs: bad });
 			expect(readLocalSinkConfig(config).flushIntervalMs).toBe(
 				LOCAL_SINK_DEFAULTS.flushIntervalMs,
 			);
 		});
 
 		it("merges valid fields with defaults for invalid ones", () => {
-			config.set(LOCAL_SINK_SETTING, {
+			config.set(LOCAL_TELEMETRY_SETTING, {
 				flushIntervalMs: 5_000,
 				flushBatchSize: -1,
 			});
@@ -88,7 +88,7 @@ describe("telemetry settings", () => {
 		});
 
 		it("returns bufferLimit and flushBatchSize as written, without clamping", () => {
-			config.set(LOCAL_SINK_SETTING, {
+			config.set(LOCAL_TELEMETRY_SETTING, {
 				flushBatchSize: 200,
 				bufferLimit: 50,
 			});
@@ -112,14 +112,14 @@ describe("telemetry settings", () => {
 			["null", null],
 			["an array", [1, 2]],
 		])("returns defaults when the raw value is %s", (_, raw) => {
-			config.set(LOCAL_SINK_SETTING, raw);
+			config.set(LOCAL_TELEMETRY_SETTING, raw);
 			expect(readHttpRequestsTelemetryConfig(config)).toEqual(
 				HTTP_REQUESTS_TELEMETRY_DEFAULTS,
 			);
 		});
 
 		it("accepts a fully-specified object", () => {
-			config.set(LOCAL_SINK_SETTING, {
+			config.set(LOCAL_TELEMETRY_SETTING, {
 				httpRequests: { windowSeconds: 10 },
 			});
 			expect(readHttpRequestsTelemetryConfig(config)).toEqual({
@@ -134,7 +134,7 @@ describe("telemetry settings", () => {
 			["a numeric string", "100"],
 			["a boolean", true],
 		])("falls back per-field when a value is %s", (_, bad) => {
-			config.set(LOCAL_SINK_SETTING, {
+			config.set(LOCAL_TELEMETRY_SETTING, {
 				httpRequests: { windowSeconds: bad },
 			});
 			expect(readHttpRequestsTelemetryConfig(config).windowSeconds).toBe(
@@ -143,7 +143,7 @@ describe("telemetry settings", () => {
 		});
 
 		it("ignores invalid httpRequests values", () => {
-			config.set(LOCAL_SINK_SETTING, { httpRequests: "nope" });
+			config.set(LOCAL_TELEMETRY_SETTING, { httpRequests: "nope" });
 			expect(readHttpRequestsTelemetryConfig(config)).toEqual(
 				HTTP_REQUESTS_TELEMETRY_DEFAULTS,
 			);

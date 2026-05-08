@@ -60,12 +60,8 @@ export function readLocalSinkConfig(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): LocalSinkConfig {
 	const obj = readLocalTelemetryObject(cfg);
-	const read = (key: keyof LocalSinkConfig): number => {
-		const value = obj[key];
-		return typeof value === "number" && value >= LOCAL_SINK_MINIMUMS[key]
-			? value
-			: LOCAL_SINK_DEFAULTS[key];
-	};
+	const read = (key: keyof LocalSinkConfig): number =>
+		readNumber(obj, key, LOCAL_SINK_DEFAULTS[key], LOCAL_SINK_MINIMUMS[key]);
 	return {
 		flushIntervalMs: read("flushIntervalMs"),
 		flushBatchSize: read("flushBatchSize"),
@@ -79,30 +75,37 @@ export function readLocalSinkConfig(
 export function readHttpRequestsTelemetryConfig(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): HttpRequestsTelemetryConfig {
-	const obj = readLocalTelemetryObject(cfg);
-	const httpRequests =
-		obj.httpRequests &&
-		typeof obj.httpRequests === "object" &&
-		!Array.isArray(obj.httpRequests)
-			? (obj.httpRequests as Record<string, unknown>)
-			: {};
-	const read = (key: keyof HttpRequestsTelemetryConfig): number => {
-		const value = httpRequests[key];
-		return typeof value === "number" &&
-			value >= HTTP_REQUESTS_TELEMETRY_MINIMUMS[key]
-			? value
-			: HTTP_REQUESTS_TELEMETRY_DEFAULTS[key];
-	};
+	const httpRequests = readObject(readLocalTelemetryObject(cfg).httpRequests);
 	return {
-		windowSeconds: read("windowSeconds"),
+		windowSeconds: readNumber(
+			httpRequests,
+			"windowSeconds",
+			HTTP_REQUESTS_TELEMETRY_DEFAULTS.windowSeconds,
+			HTTP_REQUESTS_TELEMETRY_MINIMUMS.windowSeconds,
+		),
 	};
 }
 
 function readLocalTelemetryObject(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): Record<string, unknown> {
-	const raw = cfg.get(LOCAL_TELEMETRY_SETTING);
-	return raw && typeof raw === "object" && !Array.isArray(raw)
-		? (raw as Record<string, unknown>)
+	return readObject(cfg.get(LOCAL_TELEMETRY_SETTING));
+}
+
+function readObject(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
 		: {};
+}
+
+function readNumber(
+	obj: Record<string, unknown>,
+	key: string,
+	defaultValue: number,
+	minimum: number,
+): number {
+	const value = obj[key];
+	return typeof value === "number" && Number.isFinite(value) && value >= minimum
+		? value
+		: defaultValue;
 }

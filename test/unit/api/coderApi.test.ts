@@ -4,7 +4,6 @@ import axios, {
 	type CreateAxiosDefaults,
 	type InternalAxiosRequestConfig,
 } from "axios";
-import { type ProvisionerJobLog } from "coder/site/src/api/typesGenerated";
 import { EventSource } from "eventsource";
 import { ProxyAgent } from "proxy-agent";
 import {
@@ -27,8 +26,7 @@ import { createHttpAgent } from "@/api/utils";
 import { ClientCertificateError } from "@/error/clientCertificateError";
 import { ServerCertificateError } from "@/error/serverCertificateError";
 import { getHeaders } from "@/headers";
-import { type RequestConfigWithMeta } from "@/logging/types";
-import { LOCAL_SINK_SETTING } from "@/settings/telemetry";
+import { LOCAL_TELEMETRY_SETTING } from "@/settings/telemetry";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
@@ -39,6 +37,10 @@ import {
 	createMockLogger,
 	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
+
+import type { ProvisionerJobLog } from "coder/site/src/api/typesGenerated";
+
+import type { RequestConfigWithMeta } from "@/logging/types";
 
 const CODER_URL = "https://coder.example.com";
 const AXIOS_TOKEN = "passed-token";
@@ -101,7 +103,7 @@ describe("CoderApi", () => {
 	const createApi = (
 		url = CODER_URL,
 		token = AXIOS_TOKEN,
-		telemetry?: TelemetryReporter,
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	) => {
 		return CoderApi.create(url, token, mockLogger, telemetry);
 	};
@@ -126,6 +128,7 @@ describe("CoderApi", () => {
 	afterEach(() => {
 		// Dispose any api created during the test to clean up config watchers
 		api?.dispose();
+		vi.useRealTimers();
 	});
 
 	describe("HTTP Interceptors", () => {
@@ -240,7 +243,7 @@ describe("CoderApi", () => {
 
 		it("rolls HTTP responses into telemetry when telemetry is provided", async () => {
 			vi.useFakeTimers();
-			mockConfig.set(LOCAL_SINK_SETTING, {
+			mockConfig.set(LOCAL_TELEMETRY_SETTING, {
 				httpRequests: { windowSeconds: 1 },
 			});
 			const log = vi.fn();
@@ -249,21 +252,41 @@ describe("CoderApi", () => {
 				log,
 			});
 
-			try {
-				await api.getAxiosInstance().get("/api/v2/workspaces/abc-123");
-				await vi.advanceTimersByTimeAsync(1000);
+			await api.getAxiosInstance().get("/api/v2/workspaces/abc-123");
+			await vi.advanceTimersByTimeAsync(1000);
 
-				expect(log).toHaveBeenCalledWith(
-					"http.requests",
-					{ method: "GET", route: "/api/v2/workspaces/{id}" },
-					expect.objectContaining({
-						window_seconds: 1,
-						count_2xx: 1,
-					}),
-				);
-			} finally {
-				vi.useRealTimers();
-			}
+			expect(log).toHaveBeenCalledWith(
+				"http.requests",
+				{ method: "GET", route: "/api/v2/workspaces/{id}" },
+				expect.objectContaining({
+					window_seconds: 1,
+					count_2xx: 1,
+				}),
+			);
+		});
+
+		it("updates HTTP telemetry window from configuration changes", async () => {
+			vi.useFakeTimers();
+			mockConfig.set(LOCAL_TELEMETRY_SETTING, {
+				httpRequests: { windowSeconds: 10 },
+			});
+			const log = vi.fn();
+			api = createApi(CODER_URL, AXIOS_TOKEN, {
+				...NOOP_TELEMETRY_REPORTER,
+				log,
+			});
+
+			mockConfig.set(LOCAL_TELEMETRY_SETTING, {
+				httpRequests: { windowSeconds: 1 },
+			});
+			await api.getAxiosInstance().get("/api/v2/workspaces/abc-123");
+			await vi.advanceTimersByTimeAsync(1000);
+
+			expect(log).toHaveBeenCalledWith(
+				"http.requests",
+				{ method: "GET", route: "/api/v2/workspaces/{id}" },
+				expect.objectContaining({ window_seconds: 1 }),
+			);
 		});
 
 		describe("certificate refresh and retry", () => {

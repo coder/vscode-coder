@@ -1,21 +1,12 @@
 import {
-	type AxiosResponseHeaders,
-	type AxiosInstance,
-	type AxiosHeaders,
-	type AxiosResponseTransformer,
 	isAxiosError,
+	type AxiosHeaders,
+	type AxiosInstance,
+	type AxiosResponseHeaders,
+	type AxiosResponseTransformer,
 } from "axios";
 import { Api } from "coder/site/src/api/api";
-import {
-	type ServerSentEvent,
-	type GetInboxNotificationResponse,
-	type ProvisionerJobLog,
-	type Workspace,
-	type WorkspaceAgent,
-	type WorkspaceAgentLog,
-} from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
-import { type ClientOptions } from "ws";
 
 import { watchConfigurationChanges } from "../configWatcher";
 import { ClientCertificateError } from "../error/clientCertificateError";
@@ -25,25 +16,31 @@ import { getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
 import {
 	createRequestMeta,
-	logRequest,
 	logError,
+	logRequest,
 	logResponse,
 } from "../logging/httpLogger";
-import { HttpRequestsTelemetry } from "../logging/httpRequestsTelemetry";
-import { type Logger } from "../logging/logger";
 import {
-	type RequestConfigWithMeta,
+	HttpRequestsTelemetry,
+	NOOP_HTTP_REQUESTS_TELEMETRY,
+	type HttpRequestsTelemetryRecorder,
+} from "../logging/httpRequestsTelemetry";
+import {
 	HttpClientLogLevel,
+	type RequestConfigWithMeta,
 } from "../logging/types";
 import { sizeOf } from "../logging/utils";
 import { getHeaderCommand } from "../settings/headers";
-import { type TelemetryReporter } from "../telemetry/reporter";
-import { HttpStatusCode, WebSocketCloseCode } from "../websocket/codes";
 import {
-	type UnidirectionalStream,
-	type CloseEvent,
-	type ErrorEvent,
-} from "../websocket/eventStreamConnection";
+	LOCAL_TELEMETRY_SETTING,
+	readHttpRequestsTelemetryConfig,
+	type HttpRequestsTelemetryConfig,
+} from "../settings/telemetry";
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "../telemetry/reporter";
+import { HttpStatusCode, WebSocketCloseCode } from "../websocket/codes";
 import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
@@ -58,7 +55,28 @@ import { SseConnection } from "../websocket/sseConnection";
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
 import { createHttpAgent } from "./utils";
 
+import type {
+	GetInboxNotificationResponse,
+	ProvisionerJobLog,
+	ServerSentEvent,
+	Workspace,
+	WorkspaceAgent,
+	WorkspaceAgentLog,
+} from "coder/site/src/api/typesGenerated";
+import type { ClientOptions } from "ws";
+
+import type { Logger } from "../logging/logger";
+import type {
+	CloseEvent,
+	ErrorEvent,
+	UnidirectionalStream,
+} from "../websocket/eventStreamConnection";
+
 const coderSessionTokenHeader = "Coder-Session-Token";
+
+const NOOP_DISPOSABLE: vscode.Disposable = {
+	dispose: () => undefined,
+};
 
 /**
  * Configuration settings that affect WebSocket connections.
@@ -87,13 +105,15 @@ export class CoderApi extends Api implements vscode.Disposable {
 		ReconnectingWebSocket<never>
 	>();
 	private readonly configWatcher: vscode.Disposable;
+	private readonly httpRequestsConfigWatcher: vscode.Disposable;
 
 	private constructor(
 		private readonly output: Logger,
-		private readonly httpRequestsTelemetry?: HttpRequestsTelemetry,
+		private readonly httpRequestsTelemetry: HttpRequestsTelemetryRecorder,
 	) {
 		super();
 		this.configWatcher = this.watchConfigChanges();
+		this.httpRequestsConfigWatcher = this.watchHttpRequestsConfigChanges();
 	}
 
 	/**
@@ -104,11 +124,9 @@ export class CoderApi extends Api implements vscode.Disposable {
 		baseUrl: string,
 		token: string | undefined,
 		output: Logger,
-		telemetry?: TelemetryReporter,
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): CoderApi {
-		const httpRequestsTelemetry = telemetry
-			? HttpRequestsTelemetry.start(telemetry)
-			: undefined;
+		const httpRequestsTelemetry = createHttpRequestsTelemetry(telemetry);
 		const client = new CoderApi(output, httpRequestsTelemetry);
 		client.setCredentials(baseUrl, token);
 
@@ -164,7 +182,8 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 */
 	dispose(): void {
 		this.configWatcher.dispose();
-		this.httpRequestsTelemetry?.dispose();
+		this.httpRequestsConfigWatcher.dispose();
+		this.httpRequestsTelemetry.dispose();
 		for (const socket of this.reconnectingSockets) {
 			socket.close();
 		}
@@ -195,6 +214,32 @@ export class CoderApi extends Api implements vscode.Disposable {
 				}
 			}
 		});
+	}
+
+	private watchHttpRequestsConfigChanges(): vscode.Disposable {
+		if (this.httpRequestsTelemetry === NOOP_HTTP_REQUESTS_TELEMETRY) {
+			return NOOP_DISPOSABLE;
+		}
+
+		return watchConfigurationChanges(
+			[
+				{
+					setting: LOCAL_TELEMETRY_SETTING,
+					getValue: () =>
+						readHttpRequestsTelemetryConfig(
+							vscode.workspace.getConfiguration(),
+						),
+				},
+			],
+			(changes) => {
+				const config = changes.get(LOCAL_TELEMETRY_SETTING) as
+					| HttpRequestsTelemetryConfig
+					| undefined;
+				if (config) {
+					this.httpRequestsTelemetry.updateConfig(config);
+				}
+			},
+		);
 	}
 
 	watchInboxNotifications = async (
@@ -483,10 +528,23 @@ export class CoderApi extends Api implements vscode.Disposable {
 /**
  * Set up logging and request interceptors for the CoderApi instance.
  */
+function createHttpRequestsTelemetry(
+	telemetry: TelemetryReporter,
+): HttpRequestsTelemetryRecorder {
+	if (telemetry === NOOP_TELEMETRY_REPORTER) {
+		return NOOP_HTTP_REQUESTS_TELEMETRY;
+	}
+
+	return new HttpRequestsTelemetry(
+		telemetry,
+		readHttpRequestsTelemetryConfig(vscode.workspace.getConfiguration()),
+	);
+}
+
 function setupInterceptors(
 	client: CoderApi,
 	output: Logger,
-	httpRequestsTelemetry: HttpRequestsTelemetry | undefined,
+	httpRequestsTelemetry: HttpRequestsTelemetryRecorder,
 ): void {
 	addLoggingInterceptors(
 		client.getAxiosInstance(),
@@ -543,7 +601,7 @@ function setupInterceptors(
 function addLoggingInterceptors(
 	client: AxiosInstance,
 	logger: Logger,
-	httpRequestsTelemetry: HttpRequestsTelemetry | undefined,
+	httpRequestsTelemetry: HttpRequestsTelemetryRecorder,
 ) {
 	client.interceptors.request.use(
 		(config) => {
@@ -577,12 +635,12 @@ function addLoggingInterceptors(
 
 	client.interceptors.response.use(
 		(response) => {
-			httpRequestsTelemetry?.recordResponse(response);
+			httpRequestsTelemetry.recordResponse(response);
 			logResponse(logger, response, getLogLevel());
 			return response;
 		},
 		(error: unknown) => {
-			httpRequestsTelemetry?.recordError(error);
+			httpRequestsTelemetry.recordError(error);
 			logError(logger, error, getLogLevel());
 			throw error;
 		},

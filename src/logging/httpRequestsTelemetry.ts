@@ -1,27 +1,26 @@
 import { isAxiosError, type AxiosResponse } from "axios";
-import * as vscode from "vscode";
-
-import { watchConfigurationChanges } from "../configWatcher";
-import {
-	LOCAL_TELEMETRY_SETTING,
-	readHttpRequestsTelemetryConfig,
-	type HttpRequestsTelemetryConfig,
-} from "../settings/telemetry";
-import { type TelemetryReporter } from "../telemetry/reporter";
 
 import { formatMethod } from "./formatters";
+
+import type { Disposable } from "vscode";
+
+import type { HttpRequestsTelemetryConfig } from "../settings/telemetry";
+import type { TelemetryReporter } from "../telemetry/reporter";
 
 import type { RequestConfigWithMeta } from "./types";
 
 const EVENT_NAME = "http.requests";
 const UNKNOWN_ROUTE = "<unknown>";
 
-interface RouteNormalizationRule {
-	readonly pattern: RegExp;
-	readonly replacement: string;
-}
+const ID_PLACEHOLDER = "{id}";
+const NAME_PLACEHOLDER = "{name}";
+type Placeholder = typeof ID_PLACEHOLDER | typeof NAME_PLACEHOLDER;
+type RouteNormalizationRule = readonly string[];
 
-const ID_RESOURCES = [
+const route = (...segments: RouteNormalizationRule): RouteNormalizationRule =>
+	segments;
+
+const ID_RESOURCE_ROUTES = [
 	"aibridge/sessions",
 	"files",
 	"groups",
@@ -35,46 +34,48 @@ const ID_RESOURCES = [
 ] as const;
 
 export const ROUTE_NORMALIZATION_RULES: readonly RouteNormalizationRule[] = [
-	{
-		pattern: /^(\/api\/v2\/users\/)[^/]+(\/workspace\/)[^/]+(?=$|\/)/,
-		replacement: "$1{name}$2{name}",
-	},
-	{
-		pattern: /^(\/api\/v2\/users\/)[^/]+(?=$|\/)/,
-		replacement: "$1{name}",
-	},
-	{
-		pattern: /^(\/api\/v2\/tasks\/)[^/]+(?=$|\/)/,
-		replacement: "$1{name}",
-	},
-	{
-		pattern:
-			/^(\/api\/v2\/organizations\/)[^/]+(\/templates\/)[^/]+(\/versions\/)[^/]+(?=$|\/)/,
-		replacement: "$1{id}$2{name}$3{name}",
-	},
-	{
-		pattern: /^(\/api\/v2\/organizations\/)[^/]+(\/templates\/)[^/]+(?=$|\/)/,
-		replacement: "$1{id}$2{name}",
-	},
-	{
-		pattern: /^(\/api\/v2\/organizations\/)[^/]+(\/groups\/)[^/]+(?=$|\/)/,
-		replacement: "$1{id}$2{name}",
-	},
-	{
-		pattern: /^(\/api\/v2\/organizations\/)[^/]+(?=$|\/)/,
-		replacement: "$1{id}",
-	},
-	...ID_RESOURCES.map((resource) => ({
-		pattern: new RegExp(`^(\\/api\\/v2\\/${resource}\\/)[^/]+(?=$|\\/)`),
-		replacement: "$1{id}",
-	})),
+	route("api", "v2", "users", NAME_PLACEHOLDER, "workspace", NAME_PLACEHOLDER),
+	route("api", "v2", "users", NAME_PLACEHOLDER, "keys", ID_PLACEHOLDER),
+	route("api", "v2", "users", NAME_PLACEHOLDER),
+	route("api", "v2", "tasks", NAME_PLACEHOLDER, ID_PLACEHOLDER),
+	route("api", "v2", "tasks", NAME_PLACEHOLDER),
+	route(
+		"api",
+		"v2",
+		"organizations",
+		ID_PLACEHOLDER,
+		"templates",
+		NAME_PLACEHOLDER,
+		"versions",
+		NAME_PLACEHOLDER,
+	),
+	route(
+		"api",
+		"v2",
+		"organizations",
+		ID_PLACEHOLDER,
+		"templates",
+		NAME_PLACEHOLDER,
+	),
+	route(
+		"api",
+		"v2",
+		"organizations",
+		ID_PLACEHOLDER,
+		"groups",
+		NAME_PLACEHOLDER,
+	),
+	route("api", "v2", "organizations", ID_PLACEHOLDER),
+	...ID_RESOURCE_ROUTES.map((resource) =>
+		route("api", "v2", ...resource.split("/"), ID_PLACEHOLDER),
+	),
 ];
 
-const UUID_SEGMENT =
-	/\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?=$|\/)/gi;
-const NUMERIC_SEGMENT = /\/\d+(?=$|\/)/g;
+const UUID =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const NUMERIC = /^\d+$/;
 
-export interface HttpRequestTelemetrySample {
+interface HttpRequestTelemetrySample {
 	readonly method?: string;
 	readonly url?: string;
 	readonly baseURL?: string;
@@ -92,34 +93,46 @@ interface HttpRequestBucket {
 	durationsMs: number[];
 }
 
-export class HttpRequestsTelemetry implements vscode.Disposable {
+export interface HttpRequestsTelemetryRecorder extends Disposable {
+	recordResponse(response: AxiosResponse): void;
+	recordError(error: unknown): void;
+	updateConfig(config: HttpRequestsTelemetryConfig): void;
+}
+
+export const NOOP_HTTP_REQUESTS_TELEMETRY: HttpRequestsTelemetryRecorder = {
+	recordResponse: () => undefined,
+	recordError: () => undefined,
+	updateConfig: () => undefined,
+	dispose: () => undefined,
+};
+
+export class HttpRequestsTelemetry implements HttpRequestsTelemetryRecorder {
 	readonly #telemetry: TelemetryReporter;
-	#config: HttpRequestsTelemetryConfig;
+	#windowSeconds: number;
 	#timer: NodeJS.Timeout | null = null;
-	#configWatcher: vscode.Disposable | null = null;
 	#disposed = false;
 	readonly #buckets = new Map<string, HttpRequestBucket>();
 
-	private constructor(
+	public constructor(
 		telemetry: TelemetryReporter,
 		config: HttpRequestsTelemetryConfig,
 	) {
 		this.#telemetry = telemetry;
-		this.#config = config;
+		this.#windowSeconds = config.windowSeconds;
+		this.#scheduleNextWindow();
 	}
 
-	public static start(telemetry: TelemetryReporter): HttpRequestsTelemetry {
-		const rollup = new HttpRequestsTelemetry(
-			telemetry,
-			readHttpRequestsTelemetryConfig(vscode.workspace.getConfiguration()),
-		);
-		rollup.#configWatcher = rollup.#watchConfig();
-		rollup.#scheduleNextWindow();
-		return rollup;
+	public updateConfig(config: HttpRequestsTelemetryConfig): void {
+		if (config.windowSeconds === this.#windowSeconds) {
+			return;
+		}
+		this.#flush();
+		this.#windowSeconds = config.windowSeconds;
+		this.#scheduleNextWindow();
 	}
 
 	public recordResponse(response: AxiosResponse): void {
-		this.record({
+		this.#record({
 			method: response.config.method,
 			url: response.config.url,
 			baseURL: response.config.baseURL,
@@ -138,7 +151,7 @@ export class HttpRequestsTelemetry implements vscode.Disposable {
 			return;
 		}
 
-		this.record({
+		this.#record({
 			method: config.method,
 			url: config.url,
 			baseURL: config.baseURL,
@@ -148,14 +161,45 @@ export class HttpRequestsTelemetry implements vscode.Disposable {
 		});
 	}
 
-	public record(sample: HttpRequestTelemetrySample): void {
+	#flush(): void {
+		const buckets = [...this.#buckets.entries()];
+		this.#buckets.clear();
+		for (const [key, bucket] of buckets) {
+			const { method, route: normalizedRoute } = parseBucketKey(key);
+			this.#telemetry.log(
+				EVENT_NAME,
+				{ method, route: normalizedRoute },
+				{
+					window_seconds: this.#windowSeconds,
+					count_2xx: bucket.count2xx,
+					count_3xx: bucket.count3xx,
+					count_4xx: bucket.count4xx,
+					count_5xx: bucket.count5xx,
+					count_network_error: bucket.countNetworkError,
+					avg_duration_ms: average(bucket.durationsMs),
+					p95_duration_ms: percentile95(bucket.durationsMs),
+				},
+			);
+		}
+	}
+
+	public dispose(): void {
+		this.#disposed = true;
+		if (this.#timer) {
+			clearTimeout(this.#timer);
+			this.#timer = null;
+		}
+		this.#buckets.clear();
+	}
+
+	#record(sample: HttpRequestTelemetrySample): void {
 		if (this.#disposed) {
 			return;
 		}
 
 		const method = formatMethod(sample.method);
-		const route = normalizeHttpRoute(sample.url, sample.baseURL);
-		const key = bucketKey(method, route);
+		const normalizedRoute = normalizeHttpRoute(sample.url, sample.baseURL);
+		const key = bucketKey(method, normalizedRoute);
 		const bucket = this.#buckets.get(key) ?? createBucket();
 		this.#buckets.set(key, bucket);
 
@@ -186,64 +230,6 @@ export class HttpRequestsTelemetry implements vscode.Disposable {
 		}
 	}
 
-	public flush(): void {
-		const buckets = [...this.#buckets.entries()];
-		this.#buckets.clear();
-		for (const [key, bucket] of buckets) {
-			const { method, route } = parseBucketKey(key);
-			this.#telemetry.log(
-				EVENT_NAME,
-				{ method, route },
-				{
-					window_seconds: this.#config.windowSeconds,
-					count_2xx: bucket.count2xx,
-					count_3xx: bucket.count3xx,
-					count_4xx: bucket.count4xx,
-					count_5xx: bucket.count5xx,
-					count_network_error: bucket.countNetworkError,
-					avg_duration_ms: average(bucket.durationsMs),
-					p95_duration_ms: percentile95(bucket.durationsMs),
-				},
-			);
-		}
-	}
-
-	public dispose(): void {
-		this.#disposed = true;
-		this.#configWatcher?.dispose();
-		this.#configWatcher = null;
-		if (this.#timer) {
-			clearTimeout(this.#timer);
-			this.#timer = null;
-		}
-		this.#buckets.clear();
-	}
-
-	#watchConfig(): vscode.Disposable {
-		return watchConfigurationChanges(
-			[
-				{
-					setting: LOCAL_TELEMETRY_SETTING,
-					getValue: () =>
-						readHttpRequestsTelemetryConfig(
-							vscode.workspace.getConfiguration(),
-						),
-				},
-			],
-			(changes) => {
-				const next = changes.get(LOCAL_TELEMETRY_SETTING) as
-					| HttpRequestsTelemetryConfig
-					| undefined;
-				if (!next) {
-					return;
-				}
-				this.flush();
-				this.#config = next;
-				this.#scheduleNextWindow();
-			},
-		);
-	}
-
 	#scheduleNextWindow(): void {
 		if (this.#timer) {
 			clearTimeout(this.#timer);
@@ -253,9 +239,9 @@ export class HttpRequestsTelemetry implements vscode.Disposable {
 			return;
 		}
 		this.#timer = setTimeout(() => {
-			this.flush();
+			this.#flush();
 			this.#scheduleNextWindow();
-		}, this.#config.windowSeconds * 1000);
+		}, this.#windowSeconds * 1000);
 	}
 }
 
@@ -267,20 +253,62 @@ export function normalizeHttpRoute(
 		return UNKNOWN_ROUTE;
 	}
 
-	let route = parsePathname(url, baseURL);
-	for (const rule of ROUTE_NORMALIZATION_RULES) {
-		route = route.replace(rule.pattern, rule.replacement);
+	const segments = parsePathSegments(url, baseURL);
+	if (segments.length === 0) {
+		return UNKNOWN_ROUTE;
 	}
-	return route.replace(UUID_SEGMENT, "/{id}").replace(NUMERIC_SEGMENT, "/{id}");
+
+	for (const rule of ROUTE_NORMALIZATION_RULES) {
+		const normalized = normalizeByRule(segments, rule);
+		if (normalized) {
+			return normalized;
+		}
+	}
+	return `/${segments.map(normalizeIdSegment).join("/")}`;
 }
 
-function parsePathname(url: string, baseURL?: string): string {
-	try {
-		return new URL(url, baseURL ?? "http://coder.invalid").pathname;
-	} catch {
-		const withoutQuery = url.split("?", 1)[0] || UNKNOWN_ROUTE;
-		return withoutQuery.startsWith("/") ? withoutQuery : `/${withoutQuery}`;
+function normalizeByRule(
+	segments: readonly string[],
+	rule: RouteNormalizationRule,
+): string | undefined {
+	if (segments.length < rule.length) {
+		return undefined;
 	}
+
+	const normalized: string[] = [];
+	for (const [index, ruleSegment] of rule.entries()) {
+		if (isPlaceholder(ruleSegment)) {
+			normalized.push(ruleSegment);
+			continue;
+		}
+		if (segments[index] !== ruleSegment) {
+			return undefined;
+		}
+		normalized.push(segments[index]);
+	}
+
+	return `/${[
+		...normalized,
+		...segments.slice(rule.length).map(normalizeIdSegment),
+	].join("/")}`;
+}
+
+function parsePathSegments(url: string, baseURL?: string): string[] {
+	try {
+		return new URL(url, baseURL ?? "http://coder.invalid").pathname
+			.split("/")
+			.filter(Boolean);
+	} catch {
+		return [];
+	}
+}
+
+function isPlaceholder(segment: string): segment is Placeholder {
+	return segment === ID_PLACEHOLDER || segment === NAME_PLACEHOLDER;
+}
+
+function normalizeIdSegment(segment: string): string {
+	return UUID.test(segment) || NUMERIC.test(segment) ? ID_PLACEHOLDER : segment;
 }
 
 function durationFromConfig(config: RequestConfigWithMeta | undefined): number {
