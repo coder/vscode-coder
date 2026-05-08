@@ -10,10 +10,9 @@ import {
 	type NetworkInfo,
 	type SshProcessMonitorOptions,
 } from "@/remote/sshProcess";
-import { buildSession } from "@/telemetry/event";
-import { TelemetryService } from "@/telemetry/service";
+import { NOOP_TELEMETRY_REPORTER } from "@/telemetry/reporter";
 
-import { TestSink } from "../../mocks/telemetry";
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	createMockLogger,
 	makeNetworkInfo,
@@ -43,8 +42,9 @@ describe("SshProcessMonitor", () => {
 		vol.reset();
 		activeMonitors = [];
 		statusBar = new MockStatusBarItem();
-		// Provide default threshold config so getThresholdConfig() works
-		new MockConfigurationProvider();
+		// Provide default threshold config so getThresholdConfig() works,
+		// and enable telemetry so traces are emitted to the test sink.
+		new MockConfigurationProvider().set("coder.telemetry.level", "local");
 
 		// Default: process found immediately
 		vi.mocked(find).mockResolvedValue([
@@ -321,10 +321,12 @@ describe("SshProcessMonitor", () => {
 				"-> socksPort 12345 ->",
 		};
 
+		function eventsNamed(sink: TestSink, eventName: string) {
+			return sink.events.filter((event) => event.eventName === eventName);
+		}
+
 		function networkTelemetryEvents(sink: TestSink) {
-			return sink.events.filter(
-				(event) => event.eventName === "ssh.network.info",
-			);
+			return eventsNamed(sink, "ssh.network.sample");
 		}
 
 		async function advanceUntilNetworkEvents(
@@ -346,22 +348,26 @@ describe("SshProcessMonitor", () => {
 		}
 
 		it("emits a process discovered trace", async () => {
-			const { telemetry, sink } = createTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON(sshLog);
 
 			const monitor = createMonitor({ telemetry });
 			await waitForEvent(monitor.onPidChange);
 
-			const event = sink.events.find(
-				(event) => event.eventName === "ssh.process.discovered",
-			);
-			expect(event?.properties.result).toBe("success");
-			expect(event?.measurements.durationMs).toEqual(expect.any(Number));
+			expect(eventsNamed(sink, "ssh.process.discovered")[0]).toMatchObject({
+				properties: { result: "success" },
+				measurements: {
+					durationMs: expect.any(Number),
+					attempts: expect.any(Number),
+				},
+			});
 			await telemetry.dispose();
 		});
 
 		it("emits process lost and recovered events after stale network info", async () => {
-			const { telemetry, sink } = createTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON({
 				...sshLog,
 				"/network/999.json": makeNetworkJson(),
@@ -379,31 +385,25 @@ describe("SshProcessMonitor", () => {
 
 			await waitFor(
 				() =>
-					sink.events.some((event) => event.eventName === "ssh.process.lost") &&
-					sink.events.some(
-						(event) => event.eventName === "ssh.process.recovered",
-					),
+					eventsNamed(sink, "ssh.process.lost").length > 0 &&
+					eventsNamed(sink, "ssh.process.recovered").length > 0,
 				500,
 			);
 
-			const lost = sink.events.find(
-				(event) => event.eventName === "ssh.process.lost",
-			)!;
-			expect(lost.properties).toEqual({ cause: "stale_network_info" });
-			expect(lost.measurements.uptimeMs).toEqual(expect.any(Number));
-
-			const recovered = sink.events.find(
-				(event) => event.eventName === "ssh.process.recovered",
-			)!;
-			expect(recovered.measurements.recoveryDurationMs).toEqual(
-				expect.any(Number),
-			);
+			expect(eventsNamed(sink, "ssh.process.lost")[0]).toMatchObject({
+				properties: { cause: "stale_network_info" },
+				measurements: { uptimeMs: expect.any(Number) },
+			});
+			expect(eventsNamed(sink, "ssh.process.recovered")[0]).toMatchObject({
+				measurements: { recoveryDurationMs: expect.any(Number) },
+			});
 			await telemetry.dispose();
 		});
 
 		it("samples network info on first read and every 60 seconds, not every poll", async () => {
 			vi.useFakeTimers();
-			const { telemetry, sink } = createTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON({
 				...sshLog,
 				"/network/999.json": makeNetworkJson({ latency: 25 }),
@@ -435,7 +435,8 @@ describe("SshProcessMonitor", () => {
 
 		it("samples network info on p2p flip inside the 60 second window", async () => {
 			vi.useFakeTimers();
-			const { telemetry, sink } = createTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON({
 				...sshLog,
 				"/network/999.json": makeNetworkJson({ p2p: true }),
@@ -959,21 +960,11 @@ describe("SshProcessMonitor", () => {
 			discoveryPollIntervalMs: 10,
 			maxDiscoveryBackoffMs: 100,
 			networkPollInterval: 10,
+			telemetry: NOOP_TELEMETRY_REPORTER,
 			...overrides,
 		});
 		activeMonitors.push(monitor);
 		return monitor;
-	}
-
-	function createTelemetry(): { telemetry: TelemetryService; sink: TestSink } {
-		new MockConfigurationProvider().set("coder.telemetry.level", "local");
-		const sink = new TestSink();
-		const telemetry = new TelemetryService(
-			buildSession("test", "test-session"),
-			[sink],
-			createMockLogger(),
-		);
-		return { telemetry, sink };
 	}
 });
 

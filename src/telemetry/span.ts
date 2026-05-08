@@ -32,13 +32,7 @@ export const NOOP_SPAN: Span = {
 	phase<T>(_phaseName: string, fn: (span: Span) => Promise<T>): Promise<T> {
 		return fn(NOOP_SPAN);
 	},
-	markAborted(): void {
-		return undefined;
-	},
-	setProperty(): void {
-		return undefined;
-	},
-	setMeasurement(): void {
-		return undefined;
-	},
+	markAborted: () => undefined,
+	setProperty: () => undefined,
+	setMeasurement: () => undefined,
 };

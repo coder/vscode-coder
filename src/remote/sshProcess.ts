@@ -3,13 +3,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
-import { type TelemetryReporter } from "../telemetry/reporter";
+import { SshTelemetry, type ProcessLossCause } from "../instrumentation/ssh";
 import { findPort } from "../util";
 import { cleanupFiles } from "../util/fileCleanup";
 
 import { NetworkStatusReporter } from "./networkStatus";
 
 import type { Logger } from "../logging/logger";
+import type { TelemetryReporter } from "../telemetry/reporter";
 
 /**
  * Network information from the Coder CLI.
@@ -41,7 +42,7 @@ export interface SshProcessMonitorOptions {
 	// For port-based SSH process discovery
 	codeLogDir: string;
 	remoteSshExtensionId: string;
-	telemetry?: TelemetryReporter;
+	telemetry: TelemetryReporter;
 }
 
 // 1 hour cleanup threshold for old network info files
@@ -50,21 +51,6 @@ const CLEANUP_NETWORK_MAX_AGE_MS = 60 * 60 * 1000;
 const CLEANUP_LOG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // Maximum number of proxy log files to keep during cleanup
 const CLEANUP_MAX_LOG_FILES = 20;
-const NETWORK_TELEMETRY_SAMPLE_INTERVAL_MS = 60_000;
-const NETWORK_TELEMETRY_LATENCY_CHANGE_RATIO = 0.1;
-
-type ProcessLossCause =
-	| "stale_network_info"
-	| "missing_network_info"
-	| "process_changed"
-	| "disposed";
-
-interface NetworkTelemetrySample {
-	readonly emittedAtMs: number;
-	readonly p2p: boolean;
-	readonly derp: string;
-	readonly latencyMs: number;
-}
 
 /**
  * Monitors the SSH process for a Coder workspace connection and displays
@@ -76,8 +62,8 @@ export class SshProcessMonitor implements vscode.Disposable {
 		Omit<SshProcessMonitorOptions, "proxyLogDir" | "telemetry">
 	> & {
 		readonly proxyLogDir: string | undefined;
-		readonly telemetry: TelemetryReporter | undefined;
 	};
+	private readonly telemetry: SshTelemetry;
 
 	private readonly _onLogFilePathChange = new vscode.EventEmitter<
 		string | undefined
@@ -100,9 +86,6 @@ export class SshProcessMonitor implements vscode.Disposable {
 	private pendingTimeout: NodeJS.Timeout | undefined;
 	private lastStaleSearchTime = 0;
 	private readonly reporter: NetworkStatusReporter;
-	private processStartedAtMs: number | undefined;
-	private processLostAtMs: number | undefined;
-	private lastNetworkTelemetrySample: NetworkTelemetrySample | undefined;
 
 	/**
 	 * Cleans up network info files older than the specified age.
@@ -148,8 +131,8 @@ export class SshProcessMonitor implements vscode.Disposable {
 			maxDiscoveryBackoffMs: options.maxDiscoveryBackoffMs ?? 30_000,
 			// Matches the SSH update interval
 			networkPollInterval: options.networkPollInterval ?? 3000,
-			telemetry: options.telemetry,
 		};
+		this.telemetry = new SshTelemetry(options.telemetry);
 		this.statusBarItem = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
 			1000,
@@ -205,7 +188,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 		if (this.disposed) {
 			return;
 		}
-		this.emitProcessLost("disposed");
+		this.telemetry.processLost("disposed");
 		this.disposed = true;
 		if (this.pendingTimeout) {
 			clearTimeout(this.pendingTimeout);
@@ -236,7 +219,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 	 * Starts monitoring when it finds the process through the port.
 	 */
 	private async searchForProcess(): Promise<void> {
-		const pid = await this.traceProcessDiscovery(() =>
+		const pid = await this.telemetry.traceProcessDiscovery(() =>
 			this.discoverSshProcess(),
 		);
 		if (pid === undefined || this.disposed) {
@@ -247,30 +230,22 @@ export class SshProcessMonitor implements vscode.Disposable {
 		this.startMonitoring();
 	}
 
-	private async traceProcessDiscovery(
-		fn: () => Promise<number | undefined>,
-	): Promise<number | undefined> {
-		const { telemetry } = this.options;
-		if (!telemetry) {
-			return fn();
-		}
-
-		return telemetry.trace("ssh.process.discovered", fn);
-	}
-
-	private async discoverSshProcess(): Promise<number | undefined> {
+	private async discoverSshProcess(): Promise<{
+		pid: number | undefined;
+		attempts: number;
+	}> {
 		const { discoveryPollIntervalMs, maxDiscoveryBackoffMs, logger, sshHost } =
 			this.options;
-		let attempt = 0;
+		let attempts = 0;
 		let currentBackoff = discoveryPollIntervalMs;
 		let lastFoundPort: number | undefined;
 
 		while (!this.disposed) {
-			attempt++;
+			attempts++;
 
-			if (attempt === 1 || attempt % 10 === 0) {
+			if (attempts === 1 || attempts % 10 === 0) {
 				logger.debug(
-					`SSH process search attempt ${attempt} for host: ${sshHost}`,
+					`SSH process search attempt ${attempts} for host: ${sshHost}`,
 				);
 			}
 
@@ -292,14 +267,14 @@ export class SshProcessMonitor implements vscode.Disposable {
 			}
 
 			if (pid !== undefined) {
-				return pid;
+				return { pid, attempts };
 			}
 
 			await this.delay(currentBackoff);
 			currentBackoff = Math.min(currentBackoff * 2, maxDiscoveryBackoffMs);
 		}
 
-		return undefined;
+		return { pid: undefined, attempts };
 	}
 
 	/**
@@ -352,62 +327,27 @@ export class SshProcessMonitor implements vscode.Disposable {
 	 */
 	private setCurrentPid(pid: number): void {
 		const previousPid = this.currentPid;
-		const now = performance.now();
 		this.currentPid = pid;
 
 		if (previousPid === undefined) {
-			this.processStartedAtMs = now;
+			this.telemetry.processStarted();
 			this.options.logger.info(`SSH connection established (PID: ${pid})`);
 			this._onPidChange.fire(pid);
 			return;
 		}
 
-		if (previousPid !== pid && this.processLostAtMs === undefined) {
-			this.emitProcessLost("process_changed");
-		}
-
-		if (this.processLostAtMs !== undefined) {
-			this.emitProcessRecovered();
-		}
-
-		if (previousPid !== pid) {
-			this.processStartedAtMs = now;
-			this.lastNetworkTelemetrySample = undefined;
-			this.options.logger.info(
-				`SSH process changed from ${previousPid} to ${pid}`,
-			);
-			this.logFilePath = undefined;
-			this._onLogFilePathChange.fire(undefined);
-			this._onPidChange.fire(pid);
-		}
-	}
-
-	private emitProcessLost(cause: ProcessLossCause): void {
-		if (this.currentPid === undefined || this.processLostAtMs !== undefined) {
+		if (previousPid === pid) {
+			this.telemetry.processRecovered();
 			return;
 		}
 
-		const now = performance.now();
-		const startedAt = this.processStartedAtMs ?? now;
-		this.processLostAtMs = now;
-		this.options.telemetry?.log(
-			"ssh.process.lost",
-			{ cause },
-			{ uptimeMs: now - startedAt },
+		this.telemetry.processReplaced();
+		this.options.logger.info(
+			`SSH process changed from ${previousPid} to ${pid}`,
 		);
-	}
-
-	private emitProcessRecovered(now = performance.now()): void {
-		if (this.processLostAtMs === undefined) {
-			return;
-		}
-
-		this.options.telemetry?.log(
-			"ssh.process.recovered",
-			{},
-			{ recoveryDurationMs: now - this.processLostAtMs },
-		);
-		this.processLostAtMs = undefined;
+		this.logFilePath = undefined;
+		this._onLogFilePathChange.fire(undefined);
+		this._onPidChange.fire(pid);
 	}
 
 	/**
@@ -499,7 +439,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 					const network = JSON.parse(content) as NetworkInfo;
 					const isStale = ageMs > networkPollInterval * 2;
 					this.reporter.update(network, isStale);
-					this.sampleNetworkTelemetry(network);
+					this.telemetry.networkSampled(network);
 				}
 			} catch (error) {
 				readFailures++;
@@ -523,7 +463,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 				}
 
 				logger.debug(`${searchReason}, searching for new SSH process`);
-				this.emitProcessLost(lossCause);
+				this.telemetry.processLost(lossCause);
 				// searchForProcess will update PID if a different process is found
 				this.lastStaleSearchTime = Date.now();
 				await this.searchForProcess();
@@ -533,74 +473,6 @@ export class SshProcessMonitor implements vscode.Disposable {
 			await this.delay(networkPollInterval);
 		}
 	}
-
-	private sampleNetworkTelemetry(network: NetworkInfo): void {
-		if (!this.options.telemetry) {
-			return;
-		}
-
-		const sample = toNetworkTelemetrySample(network);
-		if (!this.shouldEmitNetworkTelemetry(sample)) {
-			return;
-		}
-
-		this.options.telemetry.log(
-			"ssh.network.info",
-			{
-				p2p: String(network.p2p),
-				derp: sample.derp,
-			},
-			{
-				latencyMs: sample.latencyMs,
-				downloadMbits: bytesPerSecondToMbits(network.download_bytes_sec),
-				uploadMbits: bytesPerSecondToMbits(network.upload_bytes_sec),
-			},
-		);
-		this.lastNetworkTelemetrySample = sample;
-	}
-
-	private shouldEmitNetworkTelemetry(sample: NetworkTelemetrySample): boolean {
-		const previous = this.lastNetworkTelemetrySample;
-		if (!previous) {
-			return true;
-		}
-
-		return (
-			sample.emittedAtMs - previous.emittedAtMs >=
-				NETWORK_TELEMETRY_SAMPLE_INTERVAL_MS ||
-			sample.p2p !== previous.p2p ||
-			sample.derp !== previous.derp ||
-			hasMeaningfulLatencyChange(sample.latencyMs, previous.latencyMs)
-		);
-	}
-}
-
-function toNetworkTelemetrySample(
-	network: NetworkInfo,
-): NetworkTelemetrySample {
-	return {
-		emittedAtMs: Date.now(),
-		p2p: network.p2p,
-		derp: network.preferred_derp,
-		latencyMs: network.latency,
-	};
-}
-
-function hasMeaningfulLatencyChange(
-	current: number,
-	previous: number,
-): boolean {
-	if (previous === 0) {
-		return current !== 0;
-	}
-	return (
-		Math.abs(current - previous) / previous >
-		NETWORK_TELEMETRY_LATENCY_CHANGE_RATIO
-	);
-}
-
-function bytesPerSecondToMbits(bytesPerSecond: number): number {
-	return (bytesPerSecond * 8) / 1_000_000;
 }
 
 /**
