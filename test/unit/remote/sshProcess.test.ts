@@ -447,6 +447,9 @@ describe("SshProcessMonitor", () => {
 			});
 			await waitForEvent(monitor.onPidChange);
 			await waitFor(() => sink.eventsNamed("ssh.process.replaced").length > 0);
+			// Halt monitoring before the negative assertion so the 888 loop
+			// can't race ahead and emit its own lost/recovered cycle.
+			monitor.dispose();
 
 			const replaced = sink.eventsNamed("ssh.process.replaced");
 			expect(replaced[0].properties).toMatchObject({ wasLost: "true" });
@@ -464,9 +467,9 @@ describe("SshProcessMonitor", () => {
 				...sshLog,
 				"/network/999.json": makeNetworkJson(),
 			});
-			vi.mocked(find)
-				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
-				.mockResolvedValue([{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh" }]);
+			vi.mocked(find).mockResolvedValue([
+				{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" },
+			]);
 
 			const monitor = createMonitor({
 				networkInfoPath: "/network",

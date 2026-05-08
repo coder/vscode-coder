@@ -83,8 +83,10 @@ export class SshProcessMonitor implements vscode.Disposable {
 	private disposed = false;
 	private currentPid: number | undefined;
 	private logFilePath: string | undefined;
-	private pendingTimeout: NodeJS.Timeout | undefined;
-	private pendingDelayResolve: (() => void) | undefined;
+	private readonly pendingDelays = new Set<{
+		timer: NodeJS.Timeout;
+		resolve: () => void;
+	}>();
 	private lastStaleSearchTime = 0;
 	private readonly reporter: NetworkStatusReporter;
 
@@ -191,13 +193,12 @@ export class SshProcessMonitor implements vscode.Disposable {
 		}
 		this.telemetry.disposed();
 		this.disposed = true;
-		if (this.pendingTimeout) {
-			clearTimeout(this.pendingTimeout);
-			this.pendingTimeout = undefined;
+		// Unblock all in-flight delay() calls so concurrent loops exit promptly.
+		for (const handle of this.pendingDelays) {
+			clearTimeout(handle.timer);
+			handle.resolve();
 		}
-		// Unblock any in-flight delay() so discovery loops exit promptly.
-		this.pendingDelayResolve?.();
-		this.pendingDelayResolve = undefined;
+		this.pendingDelays.clear();
 		this.statusBarItem.dispose();
 		this._onLogFilePathChange.dispose();
 		this._onPidChange.dispose();
@@ -211,12 +212,14 @@ export class SshProcessMonitor implements vscode.Disposable {
 			return;
 		}
 		await new Promise<void>((resolve) => {
-			this.pendingDelayResolve = resolve;
-			this.pendingTimeout = setTimeout(() => {
-				this.pendingTimeout = undefined;
-				this.pendingDelayResolve = undefined;
-				resolve();
-			}, ms);
+			const handle = {
+				timer: setTimeout(() => {
+					this.pendingDelays.delete(handle);
+					resolve();
+				}, ms),
+				resolve,
+			};
+			this.pendingDelays.add(handle);
 		});
 	}
 

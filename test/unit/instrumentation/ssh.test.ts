@@ -84,6 +84,39 @@ describe("SshTelemetry", () => {
 		});
 	});
 
+	describe("processRecovered", () => {
+		it("is a no-op when the process is not currently lost", () => {
+			const { ssh, sink } = setup();
+
+			ssh.processStarted();
+			ssh.processRecovered();
+
+			expect(sink.events).toHaveLength(0);
+		});
+
+		it("emits ssh.process.recovered with recoveryDurationMs after a loss", () => {
+			const { ssh, sink } = setup();
+
+			ssh.processStarted();
+			ssh.processLost("stale_network_info");
+			ssh.processRecovered();
+
+			const [event] = sink.eventsNamed("ssh.process.recovered");
+			expect(event.measurements.recoveryDurationMs).toEqual(expect.any(Number));
+		});
+
+		it("does not double-emit when called twice without another loss", () => {
+			const { ssh, sink } = setup();
+
+			ssh.processStarted();
+			ssh.processLost("stale_network_info");
+			ssh.processRecovered();
+			ssh.processRecovered();
+
+			expect(sink.eventsNamed("ssh.process.recovered")).toHaveLength(1);
+		});
+	});
+
 	describe("processLost", () => {
 		it("is a no-op when there is no started process", () => {
 			const { ssh, sink } = setup();
