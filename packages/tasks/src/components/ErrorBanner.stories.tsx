@@ -1,7 +1,4 @@
 import { task } from "@repo/mocks";
-
-import { withTasksStyles } from "../utils/storybook";
-
 import { ErrorBanner } from "./ErrorBanner";
 
 import type { Meta, StoryObj } from "@storybook/react";
@@ -9,7 +6,6 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof ErrorBanner> = {
 	title: "Tasks/ErrorBanner",
 	component: ErrorBanner,
-	decorators: [withTasksStyles],
 };
 
 export default meta;

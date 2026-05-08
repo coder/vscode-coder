@@ -1,7 +1,4 @@
 import { fn } from "@storybook/test";
-
-import { withTasksStyles } from "../utils/storybook";
-
 import { ErrorState } from "./ErrorState";
 
 import type { Meta, StoryObj } from "@storybook/react";
@@ -9,7 +6,6 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof ErrorState> = {
 	title: "Tasks/ErrorState",
 	component: ErrorState,
-	decorators: [withTasksStyles],
 };
 
 export default meta;

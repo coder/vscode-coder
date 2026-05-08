@@ -1,7 +1,13 @@
+/// <reference types="vite/client" />
+
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
 import { createElement, useEffect } from "react";
 
 import "./global.css";
+
+// Auto-import per-package Storybook CSS entry points
+import.meta.glob("../packages/*/storybook.preview.ts", { eager: true });
+
 import { darkTheme } from "./themes/dark-v2";
 import { lightTheme } from "./themes/light-v2";
 

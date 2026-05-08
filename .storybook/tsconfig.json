@@ -6,6 +6,6 @@
 		"noEmit": true,
 		"rootDir": ".."
 	},
-	"include": ["*.ts", "themes/**/*.ts"],
+	"include": ["*.ts", "themes/**/*.ts", "../packages/*/storybook.preview.ts"],
 	"exclude": ["node_modules"]
 }

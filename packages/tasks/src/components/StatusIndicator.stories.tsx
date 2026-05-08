@@ -1,7 +1,4 @@
 import { task } from "@repo/mocks";
-
-import { withTasksStyles } from "../utils/storybook";
-
 import { StatusIndicator } from "./StatusIndicator";
 
 import type { Meta, StoryObj } from "@storybook/react";
@@ -9,7 +6,6 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof StatusIndicator> = {
 	title: "Tasks/StatusIndicator",
 	component: StatusIndicator,
-	decorators: [withTasksStyles],
 };
 
 export default meta;

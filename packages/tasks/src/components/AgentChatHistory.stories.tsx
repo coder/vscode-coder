@@ -1,7 +1,4 @@
 import { logEntry } from "@repo/mocks";
-
-import { withTasksStyles } from "../utils/storybook";
-
 import { AgentChatHistory } from "./AgentChatHistory";
 
 import type { Meta, StoryObj } from "@storybook/react";
@@ -9,7 +6,6 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof AgentChatHistory> = {
 	title: "Tasks/AgentChatHistory",
 	component: AgentChatHistory,
-	decorators: [withTasksStyles],
 };
 
 export default meta;

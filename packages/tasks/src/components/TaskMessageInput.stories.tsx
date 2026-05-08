@@ -1,8 +1,5 @@
 import { task } from "@repo/mocks";
 import { withQueryClient } from "@repo/storybook-utils";
-
-import { withTasksStyles } from "../utils/storybook";
-
 import { TaskMessageInput } from "./TaskMessageInput";
 
 import type { Meta, StoryObj } from "@storybook/react";
@@ -10,7 +7,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 const meta: Meta<typeof TaskMessageInput> = {
 	title: "Tasks/TaskMessageInput",
 	component: TaskMessageInput,
-	decorators: [withTasksStyles, withQueryClient],
+	decorators: [withQueryClient],
 };
 
 export default meta;
