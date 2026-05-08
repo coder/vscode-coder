@@ -13,7 +13,7 @@ interface NetworkSample {
 	readonly latencyMs: number;
 }
 
-export interface ProcessDiscoveryResult {
+interface ProcessDiscoveryResult {
 	readonly pid: number | undefined;
 	readonly attempts: number;
 }

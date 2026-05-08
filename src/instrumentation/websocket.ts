@@ -167,7 +167,7 @@ export class WebSocketTelemetry {
 		if (outcome.result === "error") {
 			properties.terminationReason = outcome.terminationReason;
 		}
-		this.#telemetry.log("connection.reconnected", properties, {
+		this.#telemetry.log("connection.reconnect_resolved", properties, {
 			attempts: cycle.attempts,
 			totalDurationMs: performance.now() - cycle.startMs,
 		});

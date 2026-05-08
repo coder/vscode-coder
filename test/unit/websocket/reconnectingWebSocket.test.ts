@@ -632,7 +632,7 @@ describe("ReconnectingWebSocket", () => {
 
 			expect(sink.eventsNamed("connection.opened")).toHaveLength(2);
 			expect(sink.eventsNamed("connection.dropped")).toHaveLength(2);
-			expect(sink.eventsNamed("connection.reconnected")).toMatchObject([
+			expect(sink.eventsNamed("connection.reconnect_resolved")).toMatchObject([
 				{
 					properties: { result: "success", reason: "unexpected_close" },
 					measurements: { attempts: 1, totalDurationMs: expect.any(Number) },
@@ -684,7 +684,7 @@ describe("ReconnectingWebSocket", () => {
 			await vi.waitFor(() => expect(sockets).toHaveLength(2));
 			sockets[1].fireOpen();
 
-			const reconnected = sink.eventsNamed("connection.reconnected");
+			const reconnected = sink.eventsNamed("connection.reconnect_resolved");
 			expect(reconnected).toHaveLength(1);
 			expect(reconnected[0].properties.reason).toBe("certificate_refresh");
 

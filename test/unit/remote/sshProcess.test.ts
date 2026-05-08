@@ -407,7 +407,7 @@ describe("SshProcessMonitor", () => {
 			vi.useFakeTimers();
 			const { telemetry, sink } = createTestTelemetry();
 			vol.fromJSON(sshLog);
-			// No /network/999.json — every read fails until threshold is reached.
+			// No /network/999.json. Every read fails until threshold is reached.
 			vi.mocked(find).mockResolvedValue([
 				{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" },
 			]);

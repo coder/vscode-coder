@@ -121,32 +121,32 @@ describe("WebSocketTelemetry", () => {
 			ws.reset();
 			ws.opened("/api/test");
 
-			expect(sink.eventsNamed("connection.reconnected")).toHaveLength(0);
+			expect(sink.eventsNamed("connection.reconnect_resolved")).toHaveLength(0);
 		});
 	});
 
 	describe("reconnect cycle", () => {
-		it("emits connection.reconnected with success when opened closes the cycle", () => {
+		it("emits connection.reconnect_resolved with success when opened closes the cycle", () => {
 			const { ws, sink } = setup();
 
 			ws.reconnectStarted("manual_reconnect");
 			ws.connectStarted();
 			ws.opened("/api/test");
 
-			const [event] = sink.eventsNamed("connection.reconnected");
+			const [event] = sink.eventsNamed("connection.reconnect_resolved");
 			expect(event).toMatchObject({
 				properties: { result: "success", reason: "manual_reconnect" },
 				measurements: { attempts: 1, totalDurationMs: expect.any(Number) },
 			});
 		});
 
-		it("emits connection.reconnected with error when terminated closes the cycle", () => {
+		it("emits connection.reconnect_resolved with error when terminated closes the cycle", () => {
 			const { ws, sink } = setup();
 
 			ws.reconnectStarted("manual_reconnect");
 			ws.terminated("unrecoverable_http", { cause: "error" });
 
-			const [event] = sink.eventsNamed("connection.reconnected");
+			const [event] = sink.eventsNamed("connection.reconnect_resolved");
 			expect(event.properties).toEqual({
 				result: "error",
 				reason: "manual_reconnect",
@@ -159,7 +159,7 @@ describe("WebSocketTelemetry", () => {
 
 			ws.terminated("dispose", { cause: "disposed" });
 
-			expect(sink.eventsNamed("connection.reconnected")).toHaveLength(0);
+			expect(sink.eventsNamed("connection.reconnect_resolved")).toHaveLength(0);
 		});
 
 		it("counts each connectStarted as an attempt within the cycle", () => {
@@ -172,7 +172,8 @@ describe("WebSocketTelemetry", () => {
 			ws.opened("/api/test");
 
 			expect(
-				sink.eventsNamed("connection.reconnected")[0].measurements.attempts,
+				sink.eventsNamed("connection.reconnect_resolved")[0].measurements
+					.attempts,
 			).toBe(3);
 		});
 
@@ -184,7 +185,7 @@ describe("WebSocketTelemetry", () => {
 			ws.opened("/api/test");
 
 			expect(
-				sink.eventsNamed("connection.reconnected")[0].properties.reason,
+				sink.eventsNamed("connection.reconnect_resolved")[0].properties.reason,
 			).toBe("manual_reconnect");
 		});
 
@@ -200,7 +201,7 @@ describe("WebSocketTelemetry", () => {
 			expect(sink.eventsNamed("connection.dropped")).toHaveLength(1);
 
 			ws.opened("/api/test");
-			expect(sink.eventsNamed("connection.reconnected")).toHaveLength(1);
+			expect(sink.eventsNamed("connection.reconnect_resolved")).toHaveLength(1);
 		});
 	});
 });
