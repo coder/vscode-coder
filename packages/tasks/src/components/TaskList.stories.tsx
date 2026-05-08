@@ -18,8 +18,10 @@ export const Default: Story = {
 	args: {
 		tasks: [
 			task({ id: "task-1" }),
-			task({ id: "task-2" }),
-			task({ id: "task-3" }),
+			task({ id: "task-2", status: "unknown" }),
+			task({ id: "task-3", status: "error" }),
+			task({ id: "task-4", status: "paused" }),
+			task({ id: "task-5", status: "initializing" }),
 		],
 		onSelectTask: fn(),
 	},
