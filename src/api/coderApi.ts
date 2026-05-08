@@ -29,6 +29,7 @@ import {
 	logError,
 	logResponse,
 } from "../logging/httpLogger";
+import { HttpRequestsTelemetry } from "../logging/httpRequestsTelemetry";
 import { type Logger } from "../logging/logger";
 import {
 	type RequestConfigWithMeta,
@@ -36,6 +37,7 @@ import {
 } from "../logging/types";
 import { sizeOf } from "../logging/utils";
 import { getHeaderCommand } from "../settings/headers";
+import { type TelemetryReporter } from "../telemetry/reporter";
 import { HttpStatusCode, WebSocketCloseCode } from "../websocket/codes";
 import {
 	type UnidirectionalStream,
@@ -86,7 +88,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 	>();
 	private readonly configWatcher: vscode.Disposable;
 
-	private constructor(private readonly output: Logger) {
+	private constructor(
+		private readonly output: Logger,
+		private readonly httpRequestsTelemetry?: HttpRequestsTelemetry,
+	) {
 		super();
 		this.configWatcher = this.watchConfigChanges();
 	}
@@ -99,11 +104,15 @@ export class CoderApi extends Api implements vscode.Disposable {
 		baseUrl: string,
 		token: string | undefined,
 		output: Logger,
+		telemetry?: TelemetryReporter,
 	): CoderApi {
-		const client = new CoderApi(output);
+		const httpRequestsTelemetry = telemetry
+			? HttpRequestsTelemetry.start(telemetry)
+			: undefined;
+		const client = new CoderApi(output, httpRequestsTelemetry);
 		client.setCredentials(baseUrl, token);
 
-		setupInterceptors(client, output);
+		setupInterceptors(client, output, httpRequestsTelemetry);
 		return client;
 	}
 
@@ -155,6 +164,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 */
 	dispose(): void {
 		this.configWatcher.dispose();
+		this.httpRequestsTelemetry?.dispose();
 		for (const socket of this.reconnectingSockets) {
 			socket.close();
 		}
@@ -473,8 +483,16 @@ export class CoderApi extends Api implements vscode.Disposable {
 /**
  * Set up logging and request interceptors for the CoderApi instance.
  */
-function setupInterceptors(client: CoderApi, output: Logger): void {
-	addLoggingInterceptors(client.getAxiosInstance(), output);
+function setupInterceptors(
+	client: CoderApi,
+	output: Logger,
+	httpRequestsTelemetry: HttpRequestsTelemetry | undefined,
+): void {
+	addLoggingInterceptors(
+		client.getAxiosInstance(),
+		output,
+		httpRequestsTelemetry,
+	);
 
 	client.getAxiosInstance().interceptors.request.use(async (config) => {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
@@ -522,7 +540,11 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 	);
 }
 
-function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
+function addLoggingInterceptors(
+	client: AxiosInstance,
+	logger: Logger,
+	httpRequestsTelemetry: HttpRequestsTelemetry | undefined,
+) {
 	client.interceptors.request.use(
 		(config) => {
 			const configWithMeta = config as RequestConfigWithMeta;
@@ -555,10 +577,12 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 
 	client.interceptors.response.use(
 		(response) => {
+			httpRequestsTelemetry?.recordResponse(response);
 			logResponse(logger, response, getLogLevel());
 			return response;
 		},
 		(error: unknown) => {
+			httpRequestsTelemetry?.recordError(error);
 			logError(logger, error, getLogLevel());
 			throw error;
 		},

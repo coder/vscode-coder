@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+	HTTP_REQUESTS_TELEMETRY_DEFAULTS,
 	LOCAL_SINK_DEFAULTS,
 	LOCAL_SINK_SETTING,
 	TELEMETRY_LEVEL_SETTING,
+	readHttpRequestsTelemetryConfig,
 	readLocalSinkConfig,
 	readTelemetryLevel,
 } from "@/settings/telemetry";
@@ -94,6 +96,57 @@ describe("telemetry settings", () => {
 				flushBatchSize: 200,
 				bufferLimit: 50,
 			});
+		});
+	});
+
+	describe("readHttpRequestsTelemetryConfig", () => {
+		it("returns defaults when unset", () => {
+			expect(readHttpRequestsTelemetryConfig(config)).toEqual(
+				HTTP_REQUESTS_TELEMETRY_DEFAULTS,
+			);
+		});
+
+		it.each([
+			["a string", "nope"],
+			["a boolean", true],
+			["null", null],
+			["an array", [1, 2]],
+		])("returns defaults when the raw value is %s", (_, raw) => {
+			config.set(LOCAL_SINK_SETTING, raw);
+			expect(readHttpRequestsTelemetryConfig(config)).toEqual(
+				HTTP_REQUESTS_TELEMETRY_DEFAULTS,
+			);
+		});
+
+		it("accepts a fully-specified object", () => {
+			config.set(LOCAL_SINK_SETTING, {
+				httpRequests: { windowSeconds: 10 },
+			});
+			expect(readHttpRequestsTelemetryConfig(config)).toEqual({
+				windowSeconds: 10,
+			});
+		});
+
+		it.each([
+			["zero", 0],
+			["a negative", -1],
+			["NaN", Number.NaN],
+			["a numeric string", "100"],
+			["a boolean", true],
+		])("falls back per-field when a value is %s", (_, bad) => {
+			config.set(LOCAL_SINK_SETTING, {
+				httpRequests: { windowSeconds: bad },
+			});
+			expect(readHttpRequestsTelemetryConfig(config).windowSeconds).toBe(
+				HTTP_REQUESTS_TELEMETRY_DEFAULTS.windowSeconds,
+			);
+		});
+
+		it("ignores invalid httpRequests values", () => {
+			config.set(LOCAL_SINK_SETTING, { httpRequests: "nope" });
+			expect(readHttpRequestsTelemetryConfig(config)).toEqual(
+				HTTP_REQUESTS_TELEMETRY_DEFAULTS,
+			);
 		});
 	});
 });

@@ -212,7 +212,12 @@ export class Remote {
 			// break this connection.  We could force close the remote session or
 			// disallow logging out/in altogether, but for now just use a separate
 			// client to remain unaffected by whatever the plugin is doing.
-			const workspaceClient = CoderApi.create(baseUrl, token, this.logger);
+			const workspaceClient = CoderApi.create(
+				baseUrl,
+				token,
+				this.logger,
+				this.serviceContainer.getTelemetryService(),
+			);
 			disposables.push(workspaceClient);
 
 			// Create 401 interceptor - handles auth failures with re-login dialog

@@ -211,7 +211,7 @@
 					]
 				},
 				"coder.telemetry.local": {
-					"markdownDescription": "Tunables for the local telemetry sink, which writes events as JSON Lines under the extension's global storage. Used when `#coder.telemetry.level#` is `local`. Missing or invalid fields fall back to defaults.",
+					"markdownDescription": "Advanced tunables for local telemetry collection. The local sink writes events as JSON Lines under the extension's global storage. Used when `#coder.telemetry.level#` is `local`. Missing or invalid fields fall back to defaults.",
 					"type": "object",
 					"additionalProperties": false,
 					"properties": {
@@ -250,6 +250,22 @@
 							"minimum": 4096,
 							"default": 104857600,
 							"markdownDescription": "Cap, in bytes, on the combined size of telemetry files. Oldest files are deleted on activation until the total is under the cap."
+						},
+						"httpRequests": {
+							"type": "object",
+							"additionalProperties": false,
+							"markdownDescription": "Tunables for HTTP request rollup telemetry.",
+							"properties": {
+								"windowSeconds": {
+									"type": "number",
+									"minimum": 1,
+									"default": 60,
+									"markdownDescription": "Tumbling window length, in seconds, for aggregated `http.requests` events."
+								}
+							},
+							"default": {
+								"windowSeconds": 60
+							}
 						}
 					},
 					"default": {
@@ -258,7 +274,10 @@
 						"bufferLimit": 500,
 						"maxFileBytes": 5242880,
 						"maxAgeDays": 30,
-						"maxTotalBytes": 104857600
+						"maxTotalBytes": 104857600,
+						"httpRequests": {
+							"windowSeconds": 60
+						}
 					},
 					"tags": [
 						"telemetry"

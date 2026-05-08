@@ -28,6 +28,11 @@ import { ClientCertificateError } from "@/error/clientCertificateError";
 import { ServerCertificateError } from "@/error/serverCertificateError";
 import { getHeaders } from "@/headers";
 import { type RequestConfigWithMeta } from "@/logging/types";
+import { LOCAL_SINK_SETTING } from "@/settings/telemetry";
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "@/telemetry/reporter";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 
 import {
@@ -93,8 +98,12 @@ describe("CoderApi", () => {
 	>;
 	let api: CoderApi;
 
-	const createApi = (url = CODER_URL, token = AXIOS_TOKEN) => {
-		return CoderApi.create(url, token, mockLogger);
+	const createApi = (
+		url = CODER_URL,
+		token = AXIOS_TOKEN,
+		telemetry?: TelemetryReporter,
+	) => {
+		return CoderApi.create(url, token, mockLogger, telemetry);
 	};
 
 	beforeEach(() => {
@@ -227,6 +236,34 @@ describe("CoderApi", () => {
 			expect((response.config as RequestConfigWithMeta).rawResponseSize).toBe(
 				15,
 			);
+		});
+
+		it("rolls HTTP responses into telemetry when telemetry is provided", async () => {
+			vi.useFakeTimers();
+			mockConfig.set(LOCAL_SINK_SETTING, {
+				httpRequests: { windowSeconds: 1 },
+			});
+			const log = vi.fn();
+			api = createApi(CODER_URL, AXIOS_TOKEN, {
+				...NOOP_TELEMETRY_REPORTER,
+				log,
+			});
+
+			try {
+				await api.getAxiosInstance().get("/api/v2/workspaces/abc-123");
+				await vi.advanceTimersByTimeAsync(1000);
+
+				expect(log).toHaveBeenCalledWith(
+					"http.requests",
+					{ method: "GET", route: "/api/v2/workspaces/{id}" },
+					expect.objectContaining({
+						window_seconds: 1,
+						count_2xx: 1,
+					}),
+				);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 
 		describe("certificate refresh and retry", () => {
