@@ -4,38 +4,38 @@ import { AgentChatHistory } from "./AgentChatHistory";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
+const defaultLogs = [
+	logEntry({
+		id: 1,
+		type: "input",
+		content: "What is the weather today?",
+	}),
+	logEntry({
+		id: 2,
+		type: "output",
+		content: "The weather today is sunny with a high of 25°C.",
+	}),
+];
+
 const meta: Meta<typeof AgentChatHistory> = {
 	title: "Tasks/AgentChatHistory",
 	component: AgentChatHistory,
+	args: {
+		isThinking: false,
+		taskLogs: {
+			status: "ok",
+			logs: defaultLogs,
+		},
+	},
 };
 
 export default meta;
 type Story = StoryObj<typeof AgentChatHistory>;
 
-export const Default: Story = {
-	args: {
-		isThinking: false,
-		taskLogs: {
-			status: "ok",
-			logs: [
-				logEntry({
-					id: 1,
-					type: "input",
-					content: "What is the weather today?",
-				}),
-				logEntry({
-					id: 2,
-					type: "output",
-					content: "The weather today is sunny with a high of 25°C.",
-				}),
-			],
-		},
-	},
-};
+export const Default: Story = {};
 
 export const Empty: Story = {
 	args: {
-		isThinking: false,
 		taskLogs: {
 			status: "ok",
 			snapshot: false,
@@ -47,21 +47,6 @@ export const Empty: Story = {
 export const Thinking: Story = {
 	args: {
 		isThinking: true,
-		taskLogs: {
-			status: "ok",
-			logs: [
-				logEntry({
-					id: 1,
-					type: "input",
-					content: "What is the weather today?",
-				}),
-				logEntry({
-					id: 2,
-					type: "output",
-					content: "The weather today is sunny with a high of 25°C.",
-				}),
-			],
-		},
 	},
 };
 

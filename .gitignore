@@ -13,4 +13,4 @@ pnpm-debug.log
 packages/*/node_modules/
 
 # Storybook
-storybook-static/
+storybook-static/debug-storybook.log
