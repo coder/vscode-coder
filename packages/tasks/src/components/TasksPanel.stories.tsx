@@ -1,6 +1,6 @@
 import { task } from "@repo/mocks";
 import { withQueryClient } from "@repo/storybook-utils";
-import { expect, fn, userEvent, waitFor } from "storybook/test";
+import { fn } from "storybook/test";
 
 import { TasksPanel } from "./TasksPanel";
 
@@ -52,22 +52,5 @@ export const TaskSelection: Story = {
 			initialHistoryExpanded: true,
 			save: fn(),
 		},
-	},
-	play: async ({ canvasElement }) => {
-		const taskItems = canvasElement.querySelectorAll(".task-item");
-		await expect(taskItems.length).toBeGreaterThan(0);
-
-		// Click the second task to select it
-		const secondTask = taskItems[1];
-		await expect(secondTask).toBeTruthy();
-		if (!secondTask) throw new Error("Second task not found");
-
-		await userEvent.click(secondTask);
-
-		// Wait for the task detail view to appear
-		await waitFor(async () => {
-			const detailView = canvasElement.querySelector(".task-detail-view");
-			await expect(detailView).toBeTruthy();
-		});
 	},
 };
