@@ -105,8 +105,9 @@ export class TelemetryService implements vscode.Disposable {
 
 	/**
 	 * Run a timed operation. The emitted event carries `durationMs` and a
-	 * `result` of `success` or `error`. All events from one call share a
-	 * `traceId`; phase children carry `parentEventId`.
+	 * `result` of `success`, `error`, or `aborted` (set via `span.markAborted()`
+	 * for intentional early exits). All events from one call share a `traceId`;
+	 * phase children carry `parentEventId`.
 	 */
 	public trace<T>(
 		eventName: string,
@@ -141,7 +142,16 @@ export class TelemetryService implements vscode.Disposable {
 		spanOpts: SpanOptions,
 	): Promise<T> {
 		const eventId = newSpanId();
+		const spanProperties = { ...properties };
+		const spanMeasurements = { ...measurements };
 		const { traceId, traceLevel } = spanOpts;
+		let completed = false;
+		let aborted = false;
+		const warnPostEmit = (op: string, name: string): void => {
+			this.logger.warn(
+				`Telemetry span '${eventName}' ${op}('${name}') called after emit; mutation dropped`,
+			);
+		};
 		const span: Span = {
 			traceId,
 			eventId,
@@ -161,15 +171,39 @@ export class TelemetryService implements vscode.Disposable {
 					{ traceId, parentEventId: eventId, traceLevel },
 				);
 			},
+			setProperty(name: string, value: string): void {
+				if (completed) {
+					warnPostEmit("setProperty", name);
+					return;
+				}
+				spanProperties[name] = value;
+			},
+			setMeasurement(name: string, value: number): void {
+				if (completed) {
+					warnPostEmit("setMeasurement", name);
+					return;
+				}
+				spanMeasurements[name] = value;
+			},
+			markAborted(): void {
+				if (completed) {
+					warnPostEmit("markAborted", "");
+					return;
+				}
+				aborted = true;
+			},
 		};
 		return this.#emitTimed(
 			eventId,
 			eventName,
 			() => fn(span),
-			properties,
-			measurements,
+			spanProperties,
+			spanMeasurements,
 			spanOpts,
-		);
+			() => aborted,
+		).finally(() => {
+			completed = true;
+		});
 	}
 
 	#sanitizePhaseName(name: string): string {
@@ -190,9 +224,13 @@ export class TelemetryService implements vscode.Disposable {
 		properties: Record<string, string>,
 		measurements: Record<string, number>,
 		spanOpts: SpanOptions,
+		isAborted: () => boolean,
 	): Promise<T> {
 		const start = performance.now();
-		const send = (result: "success" | "error", error?: unknown): void =>
+		const send = (
+			result: "success" | "error" | "aborted",
+			error?: unknown,
+		): void =>
 			this.#safeEmit(
 				eventId,
 				eventName,
@@ -202,7 +240,7 @@ export class TelemetryService implements vscode.Disposable {
 			);
 		try {
 			const value = await fn();
-			send("success");
+			send(isAborted() ? "aborted" : "success");
 			return value;
 		} catch (err) {
 			send("error", err);

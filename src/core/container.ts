@@ -51,6 +51,25 @@ export class ServiceContainer implements vscode.Disposable {
 			context.globalState,
 			this.logger,
 		);
+
+		const sessionId = newSessionId();
+		const localJsonlSink = LocalJsonlSink.start(
+			{
+				baseDir: this.pathResolver.getTelemetryPath(),
+				sessionId,
+			},
+			this.logger,
+		);
+		const session = buildSession(
+			extractExtensionVersion(context.extension.packageJSON),
+			sessionId,
+		);
+		this.telemetryService = new TelemetryService(
+			session,
+			[localJsonlSink],
+			this.logger,
+		);
+
 		// Circular ref: cliCredentialManager ↔ cliManager. The resolver
 		// closure captures `this` by reference, so `this.cliManager` is
 		// available when the closure is called (after construction).
@@ -75,6 +94,7 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 			this.pathResolver,
 			this.cliCredentialManager,
+			this.telemetryService,
 		);
 		this.contextManager = new ContextManager(context);
 		this.oauthCallback = new OAuthCallback(context.secrets, this.logger);
@@ -96,23 +116,6 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 		);
 
-		const sessionId = newSessionId();
-		const localJsonlSink = LocalJsonlSink.start(
-			{
-				baseDir: this.pathResolver.getTelemetryPath(),
-				sessionId,
-			},
-			this.logger,
-		);
-		const session = buildSession(
-			extractExtensionVersion(context.extension.packageJSON),
-			sessionId,
-		);
-		this.telemetryService = new TelemetryService(
-			session,
-			[localJsonlSink],
-			this.logger,
-		);
 		this.commandManager = new CommandManager(this.telemetryService);
 	}
 
