@@ -48,9 +48,6 @@ catalogs:
     babel-plugin-react-compiler:
       specifier: ^1.0.0
       version: 1.0.0
-    chromatic:
-      specifier: ^16.9.1
-      version: 16.9.1
     coder:
       specifier: github:coder/coder#v2.33.1
       version: 0.0.0
@@ -241,7 +238,7 @@ importers:
         specifier: ^4.1.0
         version: 4.1.0
       chromatic:
-        specifier: 'catalog:'
+        specifier: ^16.9.1
         version: 16.9.1
       coder:
         specifier: 'catalog:'
@@ -276,9 +273,6 @@ importers:
       eslint-plugin-package-json:
         specifier: ^0.91.2
         version: 0.91.2(@types/estree@1.0.9)(eslint@10.3.0)(jsonc-eslint-parser@3.1.0)
-      eslint-plugin-storybook:
-        specifier: 10.3.6
-        version: 10.3.6(eslint@10.3.0)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3)
       globals:
         specifier: ^17.6.0
         version: 17.6.0
@@ -2990,12 +2984,6 @@ packages:
     peerDependencies:
       eslint: ^10.3.0
       typescript: '*'
-
-  eslint-plugin-storybook@10.3.6:
-    resolution: {integrity: sha512-8udrL+Rmp5LFaZvgRe4J226X1MYls25bWCyHuzR5X8s2qbFTryX+wKC+o/0Ato4A1AvwnDg8OOMPc6yWJ9JpcA==}
-    peerDependencies:
-      eslint: '>=8'
-      storybook: ^10.3.6
 
   eslint-scope@9.1.2:
     resolution: {integrity: sha512-xS90H51cKw0jltxmvmHy2Iai1LIqrfbw57b79w/J7MfvDfkIkFZ+kj6zC3BjtUwh150HsSSdxXZcsuv72miDFQ==}
@@ -7914,15 +7902,6 @@ snapshots:
       typescript: 6.0.3
     transitivePeerDependencies:
       - supports-color
-
-  eslint-plugin-storybook@10.3.6(eslint@10.3.0)(storybook@8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6))(typescript@6.0.3):
-    dependencies:
-      '@typescript-eslint/utils': 8.59.2(eslint@10.3.0)(typescript@6.0.3)
-      eslint: 10.3.0
-      storybook: 8.6.18(bufferutil@4.1.0)(prettier@3.8.3)(utf-8-validate@6.0.6)
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
 
   eslint-scope@9.1.2:
     dependencies:

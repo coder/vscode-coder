@@ -728,7 +728,7 @@
 		"@vscode/vsce": "^3.9.1",
 		"babel-plugin-react-compiler": "catalog:",
 		"bufferutil": "^4.1.0",
-		"chromatic": "catalog:",
+		"chromatic": "^16.9.1",
 		"coder": "catalog:",
 		"concurrently": "^9.2.1",
 		"cross-env": "^10.1.0",
@@ -753,7 +753,6 @@
 		"utf-8-validate": "^6.0.6",
 		"vite": "catalog:",
 		"vitest": "^4.1.5",
-		"eslint-plugin-storybook": "10.3.6",
 		"@storybook/addon-docs": "^10.3.6"
 	},
 	"extensionPack": [
