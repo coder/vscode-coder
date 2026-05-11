@@ -76,9 +76,9 @@ export const TaskSelection: Story = {
 		await userEvent.click(secondTask);
 
 		// Wait for the task detail view to appear
-		await waitFor(() => {
+		await waitFor(async () => {
 			const detailView = canvasElement.querySelector(".task-detail-view");
-			expect(detailView).toBeTruthy();
+			await expect(detailView).toBeTruthy();
 		});
 	},
 };
