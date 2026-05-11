@@ -13,14 +13,6 @@ const meta: Meta<typeof TasksPanel> = {
 	parameters: {
 		layout: "fullscreen",
 	},
-	args: {
-		tasks: [
-			task({ id: "task-1" }),
-			task({ id: "task-2" }),
-			task({ id: "task-3" }),
-		],
-		templates: [],
-	},
 };
 
 export default meta;
@@ -28,6 +20,12 @@ type Story = StoryObj<typeof TasksPanel>;
 
 export const Default: Story = {
 	args: {
+		tasks: [
+			task({ id: "task-1" }),
+			task({ id: "task-2" }),
+			task({ id: "task-3" }),
+		],
+		templates: [],
 		persisted: {
 			initialCreateExpanded: true,
 			initialHistoryExpanded: true,
@@ -38,6 +36,12 @@ export const Default: Story = {
 
 export const CollapsibleToggle: Story = {
 	args: {
+		tasks: [
+			task({ id: "task-1" }),
+			task({ id: "task-2" }),
+			task({ id: "task-3" }),
+		],
+		templates: [],
 		persisted: {
 			initialCreateExpanded: false,
 			initialHistoryExpanded: false,
@@ -48,6 +52,12 @@ export const CollapsibleToggle: Story = {
 
 export const TaskSelection: Story = {
 	args: {
+		tasks: [
+			task({ id: "task-1" }),
+			task({ id: "task-2" }),
+			task({ id: "task-3" }),
+		],
+		templates: [],
 		persisted: {
 			initialCreateExpanded: false,
 			initialHistoryExpanded: true,

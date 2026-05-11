@@ -10,4 +10,6 @@ const meta: Meta<typeof NotSupportedState> = {
 export default meta;
 type Story = StoryObj<typeof NotSupportedState>;
 
-export const Default: Story = {};
+export const Default: Story = {
+	args: {},
+};
