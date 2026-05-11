@@ -4,7 +4,6 @@ import type { TelemetryLevel } from "../telemetry/event";
 
 export const TELEMETRY_LEVEL_SETTING = "coder.telemetry.level";
 export const LOCAL_TELEMETRY_SETTING = "coder.telemetry.local";
-export const LOCAL_SINK_SETTING = LOCAL_TELEMETRY_SETTING;
 
 /** Telemetry level. Falls back to `local` for unknown or invalid values. */
 export function readTelemetryLevel(

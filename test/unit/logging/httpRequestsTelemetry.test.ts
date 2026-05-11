@@ -1,5 +1,13 @@
 import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	type Mock,
+	vi,
+} from "vitest";
 
 import {
 	HttpRequestsTelemetry,
@@ -12,11 +20,6 @@ import {
 
 import type { RequestConfigWithMeta } from "@/logging/types";
 
-interface Harness {
-	rollup: HttpRequestsTelemetry;
-	log: ReturnType<typeof vi.fn>;
-}
-
 interface RequestOptions {
 	readonly method?: string;
 	readonly url: string;
@@ -25,129 +28,187 @@ interface RequestOptions {
 }
 
 describe("HttpRequestsTelemetry", () => {
-	afterEach(() => vi.useRealTimers());
+	let log: Mock<TelemetryReporter["log"]>;
+	let rollup: HttpRequestsTelemetry;
+
+	const start = (windowSeconds: number) => {
+		const reporter: TelemetryReporter = { ...NOOP_TELEMETRY_REPORTER, log };
+		rollup = new HttpRequestsTelemetry(reporter, { windowSeconds });
+		return rollup;
+	};
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		log = vi.fn();
+	});
+
+	afterEach(() => {
+		rollup?.dispose();
+		vi.useRealTimers();
+	});
 
 	it("emits one event per active method and route at the window boundary", async () => {
-		const { rollup, log } = createHarness(2);
-		try {
-			recordResponse(rollup, {
-				method: "get",
-				url: "/api/v2/workspaces/abc-123?owner=danny",
-				status: 200,
-				durationMs: 100,
-			});
-			recordResponse(rollup, {
-				method: "GET",
-				url: "/api/v2/workspaces/abc-123?owner=someone-else",
-				status: 204,
-				durationMs: 200,
-			});
-			recordResponse(rollup, {
-				method: "POST",
-				url: "/api/v2/workspaces/abc-123",
-				status: 201,
-				durationMs: 300,
-			});
+		start(2);
+		recordResponse(rollup, {
+			method: "get",
+			url: "/api/v2/workspaces/abc-123?owner=danny",
+			status: 200,
+			durationMs: 100,
+		});
+		recordResponse(rollup, {
+			method: "GET",
+			url: "/api/v2/workspaces/abc-123?owner=someone-else",
+			status: 204,
+			durationMs: 200,
+		});
+		recordResponse(rollup, {
+			method: "POST",
+			url: "/api/v2/workspaces/abc-123",
+			status: 201,
+			durationMs: 300,
+		});
 
-			await vi.advanceTimersByTimeAsync(2000);
+		await vi.advanceTimersByTimeAsync(2000);
 
-			expect(log).toHaveBeenCalledTimes(2);
-			expect(log).toHaveBeenNthCalledWith(
-				1,
-				"http.requests",
-				{ method: "GET", route: "/api/v2/workspaces/{id}" },
-				{
-					window_seconds: 2,
-					count_2xx: 2,
-					count_3xx: 0,
-					count_4xx: 0,
-					count_5xx: 0,
-					count_network_error: 0,
-					avg_duration_ms: 150,
-					p95_duration_ms: 200,
-				},
-			);
-			expect(log).toHaveBeenNthCalledWith(
-				2,
-				"http.requests",
-				{ method: "POST", route: "/api/v2/workspaces/{id}" },
-				expect.objectContaining({
-					window_seconds: 2,
-					count_2xx: 1,
-				}),
-			);
-		} finally {
-			rollup.dispose();
-		}
+		expect(log).toHaveBeenCalledTimes(2);
+		expect(log).toHaveBeenNthCalledWith(
+			1,
+			"http.requests",
+			{ method: "GET", route: "/api/v2/workspaces/{id}" },
+			{
+				window_seconds: 2,
+				count_2xx: 2,
+				count_3xx: 0,
+				count_4xx: 0,
+				count_5xx: 0,
+				count_network_error: 0,
+				avg_duration_ms: 150,
+				p95_duration_ms: 200,
+			},
+		);
+		expect(log).toHaveBeenNthCalledWith(
+			2,
+			"http.requests",
+			{ method: "POST", route: "/api/v2/workspaces/{id}" },
+			expect.objectContaining({ window_seconds: 2, count_2xx: 1 }),
+		);
 	});
 
 	it("counts status code classes and network errors", async () => {
-		const { rollup, log } = createHarness(1);
-		try {
-			const route = "/api/v2/users/danny/workspaces";
-			recordResponse(rollup, { method: "POST", url: route, status: 201 });
-			recordResponse(rollup, { method: "POST", url: route, status: 302 });
-			recordAxiosError(rollup, { method: "POST", url: route, status: 404 });
-			recordAxiosError(rollup, { method: "POST", url: route, status: 500 });
-			recordAxiosError(rollup, { method: "POST", url: route });
+		start(1);
+		const route = "/api/v2/users/danny/workspaces";
+		recordResponse(rollup, { method: "POST", url: route, status: 201 });
+		recordResponse(rollup, { method: "POST", url: route, status: 302 });
+		recordAxiosError(rollup, { method: "POST", url: route, status: 404 });
+		recordAxiosError(rollup, { method: "POST", url: route, status: 500 });
+		recordAxiosError(rollup, { method: "POST", url: route });
 
-			await vi.advanceTimersByTimeAsync(1000);
+		await vi.advanceTimersByTimeAsync(1000);
 
-			expect(log).toHaveBeenCalledWith(
-				"http.requests",
-				{ method: "POST", route: "/api/v2/users/{name}/workspaces" },
-				expect.objectContaining({
-					count_2xx: 1,
-					count_3xx: 1,
-					count_4xx: 1,
-					count_5xx: 1,
-					count_network_error: 1,
-				}),
-			);
-		} finally {
-			rollup.dispose();
-		}
+		expect(log).toHaveBeenCalledWith(
+			"http.requests",
+			{ method: "POST", route: "/api/v2/users/{name}/workspaces" },
+			expect.objectContaining({
+				count_2xx: 1,
+				count_3xx: 1,
+				count_4xx: 1,
+				count_5xx: 1,
+				count_network_error: 1,
+			}),
+		);
 	});
 
 	it("emits nothing for empty windows", async () => {
-		const { rollup, log } = createHarness(1);
-		try {
-			await vi.advanceTimersByTimeAsync(2000);
-
-			expect(log).not.toHaveBeenCalled();
-		} finally {
-			rollup.dispose();
-		}
+		start(1);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(log).not.toHaveBeenCalled();
 	});
 
 	it("calculates nearest-rank p95", async () => {
-		const { rollup, log } = createHarness(1);
-		try {
-			for (const durationMs of [
-				10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160,
-				170, 180, 190, 200,
-			]) {
-				recordResponse(rollup, {
-					method: "GET",
-					url: "/api/v2/workspaces/ws-id",
-					status: 200,
-					durationMs,
-				});
-			}
-
-			await vi.advanceTimersByTimeAsync(1000);
-
-			expect(log).toHaveBeenCalledWith(
-				"http.requests",
-				{ method: "GET", route: "/api/v2/workspaces/{id}" },
-				expect.objectContaining({
-					avg_duration_ms: 105,
-					p95_duration_ms: 190,
-				}),
-			);
-		} finally {
-			rollup.dispose();
+		start(1);
+		for (let durationMs = 10; durationMs <= 200; durationMs += 10) {
+			recordResponse(rollup, {
+				method: "GET",
+				url: "/api/v2/workspaces/ws-id",
+				status: 200,
+				durationMs,
+			});
 		}
+
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(log).toHaveBeenCalledWith(
+			"http.requests",
+			{ method: "GET", route: "/api/v2/workspaces/{id}" },
+			expect.objectContaining({ avg_duration_ms: 105, p95_duration_ms: 190 }),
+		);
+	});
+
+	it("skips duration when request metadata is missing", async () => {
+		start(1);
+		rollup.recordResponse({
+			data: {},
+			status: 200,
+			statusText: "OK",
+			headers: {},
+			config: {
+				headers: new AxiosHeaders(),
+				method: "GET",
+				url: "/api/v2/workspaces/abc",
+			},
+		} as AxiosResponse);
+
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(log).toHaveBeenCalledWith(
+			"http.requests",
+			{ method: "GET", route: "/api/v2/workspaces/{id}" },
+			expect.objectContaining({
+				count_2xx: 1,
+				avg_duration_ms: 0,
+				p95_duration_ms: 0,
+			}),
+		);
+	});
+
+	it("re-flushes and reschedules after updateConfig changes the window", async () => {
+		start(10);
+		recordResponse(rollup, {
+			method: "GET",
+			url: "/api/v2/workspaces/abc",
+			status: 200,
+		});
+
+		rollup.updateConfig({ windowSeconds: 1 });
+
+		// updateConfig flushes pending buckets immediately under the old window.
+		expect(log).toHaveBeenCalledWith(
+			"http.requests",
+			{ method: "GET", route: "/api/v2/workspaces/{id}" },
+			expect.objectContaining({ window_seconds: 10 }),
+		);
+
+		recordResponse(rollup, {
+			method: "GET",
+			url: "/api/v2/workspaces/abc",
+			status: 200,
+		});
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(log).toHaveBeenLastCalledWith(
+			"http.requests",
+			{ method: "GET", route: "/api/v2/workspaces/{id}" },
+			expect.objectContaining({ window_seconds: 1 }),
+		);
+	});
+
+	it("ignores non-axios errors", async () => {
+		start(1);
+		rollup.recordError(new Error("not an axios error"));
+		rollup.recordError("string error");
+
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(log).not.toHaveBeenCalled();
 	});
 
 	it.each([
@@ -176,26 +237,17 @@ describe("HttpRequestsTelemetry", () => {
 	});
 });
 
-function createHarness(windowSeconds = 60): Harness {
-	vi.useFakeTimers();
-	vi.setSystemTime(new Date("2025-01-01T00:00:00.000Z"));
-
-	const log = vi.fn();
-	const reporter: TelemetryReporter = {
-		...NOOP_TELEMETRY_REPORTER,
-		log,
-	};
-	return {
-		rollup: new HttpRequestsTelemetry(reporter, { windowSeconds }),
-		log,
-	};
-}
-
 function recordResponse(
 	rollup: HttpRequestsTelemetry,
 	options: RequestOptions,
 ): void {
-	rollup.recordResponse(makeResponse(options));
+	rollup.recordResponse({
+		data: {},
+		status: options.status ?? 200,
+		statusText: "",
+		headers: {},
+		config: makeRequestConfig(options),
+	} as AxiosResponse);
 }
 
 function recordAxiosError(
@@ -204,22 +256,17 @@ function recordAxiosError(
 ): void {
 	const config = makeRequestConfig(options);
 	const response = options.status
-		? makeResponse({ ...options, status: options.status })
+		? ({
+				data: {},
+				status: options.status,
+				statusText: "",
+				headers: {},
+				config,
+			} as AxiosResponse)
 		: undefined;
 	rollup.recordError(
 		new AxiosError("Request failed", undefined, config, {}, response),
 	);
-}
-
-function makeResponse(options: RequestOptions): AxiosResponse {
-	const status = options.status ?? 200;
-	return {
-		data: {},
-		status,
-		statusText: String(status),
-		headers: {},
-		config: makeRequestConfig(options),
-	};
 }
 
 function makeRequestConfig(options: RequestOptions): RequestConfigWithMeta {

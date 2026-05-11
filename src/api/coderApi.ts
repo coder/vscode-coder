@@ -20,11 +20,7 @@ import {
 	logRequest,
 	logResponse,
 } from "../logging/httpLogger";
-import {
-	HttpRequestsTelemetry,
-	NOOP_HTTP_REQUESTS_TELEMETRY,
-	type HttpRequestsTelemetryRecorder,
-} from "../logging/httpRequestsTelemetry";
+import { HttpRequestsTelemetry } from "../logging/httpRequestsTelemetry";
 import {
 	HttpClientLogLevel,
 	type RequestConfigWithMeta,
@@ -74,10 +70,6 @@ import type {
 
 const coderSessionTokenHeader = "Coder-Session-Token";
 
-const NOOP_DISPOSABLE: vscode.Disposable = {
-	dispose: () => undefined,
-};
-
 /**
  * Configuration settings that affect WebSocket connections.
  * Changes to these settings will trigger WebSocket reconnection.
@@ -109,7 +101,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 
 	private constructor(
 		private readonly output: Logger,
-		private readonly httpRequestsTelemetry: HttpRequestsTelemetryRecorder,
+		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
 	) {
 		super();
 		this.configWatcher = this.watchConfigChanges();
@@ -126,7 +118,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 		output: Logger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): CoderApi {
-		const httpRequestsTelemetry = createHttpRequestsTelemetry(telemetry);
+		const httpRequestsTelemetry = new HttpRequestsTelemetry(
+			telemetry,
+			readHttpRequestsTelemetryConfig(vscode.workspace.getConfiguration()),
+		);
 		const client = new CoderApi(output, httpRequestsTelemetry);
 		client.setCredentials(baseUrl, token);
 
@@ -217,10 +212,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 	}
 
 	private watchHttpRequestsConfigChanges(): vscode.Disposable {
-		if (this.httpRequestsTelemetry === NOOP_HTTP_REQUESTS_TELEMETRY) {
-			return NOOP_DISPOSABLE;
-		}
-
 		return watchConfigurationChanges(
 			[
 				{
@@ -525,26 +516,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 	}
 }
 
-/**
- * Set up logging and request interceptors for the CoderApi instance.
- */
-function createHttpRequestsTelemetry(
-	telemetry: TelemetryReporter,
-): HttpRequestsTelemetryRecorder {
-	if (telemetry === NOOP_TELEMETRY_REPORTER) {
-		return NOOP_HTTP_REQUESTS_TELEMETRY;
-	}
-
-	return new HttpRequestsTelemetry(
-		telemetry,
-		readHttpRequestsTelemetryConfig(vscode.workspace.getConfiguration()),
-	);
-}
-
 function setupInterceptors(
 	client: CoderApi,
 	output: Logger,
-	httpRequestsTelemetry: HttpRequestsTelemetryRecorder,
+	httpRequestsTelemetry: HttpRequestsTelemetry,
 ): void {
 	addLoggingInterceptors(
 		client.getAxiosInstance(),
@@ -601,7 +576,7 @@ function setupInterceptors(
 function addLoggingInterceptors(
 	client: AxiosInstance,
 	logger: Logger,
-	httpRequestsTelemetry: HttpRequestsTelemetryRecorder,
+	httpRequestsTelemetry: HttpRequestsTelemetry,
 ) {
 	client.interceptors.request.use(
 		(config) => {

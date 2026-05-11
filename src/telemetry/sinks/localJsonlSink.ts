@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 
 import { watchConfigurationChanges } from "../../configWatcher";
 import {
-	LOCAL_SINK_SETTING,
+	LOCAL_TELEMETRY_SETTING,
 	readLocalSinkConfig,
 	type LocalSinkConfig,
 } from "../../settings/telemetry";
@@ -148,13 +148,13 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		return watchConfigurationChanges(
 			[
 				{
-					setting: LOCAL_SINK_SETTING,
+					setting: LOCAL_TELEMETRY_SETTING,
 					getValue: () =>
 						readLocalSinkConfig(vscode.workspace.getConfiguration()),
 				},
 			],
 			(changes) => {
-				const next = changes.get(LOCAL_SINK_SETTING) as
+				const next = changes.get(LOCAL_TELEMETRY_SETTING) as
 					| LocalSinkConfig
 					| undefined;
 				if (!next) {

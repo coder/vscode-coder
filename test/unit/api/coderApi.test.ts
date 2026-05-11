@@ -126,7 +126,6 @@ describe("CoderApi", () => {
 	});
 
 	afterEach(() => {
-		// Dispose any api created during the test to clean up config watchers
 		api?.dispose();
 		vi.useRealTimers();
 	});
@@ -241,53 +240,41 @@ describe("CoderApi", () => {
 			);
 		});
 
-		it("rolls HTTP responses into telemetry when telemetry is provided", async () => {
-			vi.useFakeTimers();
-			mockConfig.set(LOCAL_TELEMETRY_SETTING, {
-				httpRequests: { windowSeconds: 1 },
-			});
-			const log = vi.fn();
-			api = createApi(CODER_URL, AXIOS_TOKEN, {
-				...NOOP_TELEMETRY_REPORTER,
-				log,
-			});
+		it.each([
+			["initial config", 1, undefined],
+			["after config change", 10, 1],
+		])(
+			"rolls HTTP responses into telemetry (%s)",
+			async (_, initialWindow, updatedWindow) => {
+				vi.useFakeTimers();
+				mockConfig.set(LOCAL_TELEMETRY_SETTING, {
+					httpRequests: { windowSeconds: initialWindow },
+				});
+				const log = vi.fn();
+				api = createApi(CODER_URL, AXIOS_TOKEN, {
+					...NOOP_TELEMETRY_REPORTER,
+					log,
+				});
 
-			await api.getAxiosInstance().get("/api/v2/workspaces/abc-123");
-			await vi.advanceTimersByTimeAsync(1000);
+				if (updatedWindow !== undefined) {
+					mockConfig.set(LOCAL_TELEMETRY_SETTING, {
+						httpRequests: { windowSeconds: updatedWindow },
+					});
+				}
 
-			expect(log).toHaveBeenCalledWith(
-				"http.requests",
-				{ method: "GET", route: "/api/v2/workspaces/{id}" },
-				expect.objectContaining({
-					window_seconds: 1,
-					count_2xx: 1,
-				}),
-			);
-		});
+				await api.getAxiosInstance().get("/api/v2/workspaces/abc-123");
+				await vi.advanceTimersByTimeAsync(1000);
 
-		it("updates HTTP telemetry window from configuration changes", async () => {
-			vi.useFakeTimers();
-			mockConfig.set(LOCAL_TELEMETRY_SETTING, {
-				httpRequests: { windowSeconds: 10 },
-			});
-			const log = vi.fn();
-			api = createApi(CODER_URL, AXIOS_TOKEN, {
-				...NOOP_TELEMETRY_REPORTER,
-				log,
-			});
-
-			mockConfig.set(LOCAL_TELEMETRY_SETTING, {
-				httpRequests: { windowSeconds: 1 },
-			});
-			await api.getAxiosInstance().get("/api/v2/workspaces/abc-123");
-			await vi.advanceTimersByTimeAsync(1000);
-
-			expect(log).toHaveBeenCalledWith(
-				"http.requests",
-				{ method: "GET", route: "/api/v2/workspaces/{id}" },
-				expect.objectContaining({ window_seconds: 1 }),
-			);
-		});
+				expect(log).toHaveBeenCalledWith(
+					"http.requests",
+					{ method: "GET", route: "/api/v2/workspaces/{id}" },
+					expect.objectContaining({
+						window_seconds: updatedWindow ?? initialWindow,
+						count_2xx: 1,
+					}),
+				);
+			},
+		);
 
 		describe("certificate refresh and retry", () => {
 			const rejectWithCertError = (
