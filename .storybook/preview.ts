@@ -10,23 +10,21 @@ import { lightTheme } from "./themes/light-v2";
 import type { Preview } from "@storybook/react";
 import type { WebviewApi } from "vscode-webview";
 
-declare global {
-	interface Window {
-		acquireVsCodeApi?: <T = unknown>() => WebviewApi<T>;
-	}
-}
-
 // Auto-import per-package Storybook CSS entry points
 import.meta.glob("../packages/*/storybook.preview.ts", { eager: true });
 
 // Mock the acquireVsCodeApi function for Storybook, so that components
 // that rely on it can function without errors.
-if (typeof window !== "undefined") {
-	window.acquireVsCodeApi ??= () => ({
-		postMessage: () => undefined,
-		getState: () => undefined,
-		setState: (state) => state,
-	});
+if (
+	typeof window !== "undefined" &&
+	!(window as { acquireVsCodeApi?: () => WebviewApi<unknown> }).acquireVsCodeApi
+) {
+	(window as { acquireVsCodeApi: () => WebviewApi<unknown> }).acquireVsCodeApi =
+		() => ({
+			postMessage: () => undefined,
+			getState: () => undefined,
+			setState: (state) => state,
+		});
 }
 
 // Inject codicon stylesheet immediately (before any components render)

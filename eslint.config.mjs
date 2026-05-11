@@ -1,5 +1,3 @@
-import storybook from "eslint-plugin-storybook";
-
 // @ts-check
 import eslint from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
@@ -248,9 +246,6 @@ export default defineConfig(
 			],
 		},
 	},
-
-	// Storybook recommended rules for story files
-	...storybook.configs["flat/recommended"],
 
 	// Prettier must be last to override other formatting rules
 	prettierConfig,

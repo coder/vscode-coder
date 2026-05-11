@@ -700,7 +700,6 @@
 		"@repo/mocks": "workspace:*",
 		"@rolldown/plugin-babel": "catalog:",
 		"@storybook/addon-a11y": "catalog:",
-		"@storybook/addon-docs": "^10.3.6",
 		"@storybook/addon-essentials": "catalog:",
 		"@storybook/react": "catalog:",
 		"@storybook/react-vite": "catalog:",
