@@ -13,7 +13,6 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO = "vscode-elements/webview-playground";
-const BASE_URL = `https://raw.githubusercontent.com/${REPO}`;
 
 const themes = [
 	{
@@ -28,63 +27,45 @@ const themes = [
 	},
 ];
 
-async function resolveLatestSha() {
-	const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, {
-		headers: { Accept: "application/vnd.github.sha" },
-	});
-	if (!res.ok) {
-		throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
-	}
-	return (await res.text()).trim();
-}
-
-async function fetchTheme(sha, remotePath) {
-	const url = `${BASE_URL}/${sha}/${remotePath}`;
-	const res = await fetch(url);
+async function fetchText(url, headers) {
+	const res = await fetch(url, { headers });
 	if (!res.ok) {
 		throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
 	}
 	return res.text();
 }
 
-// The upstream JS files export a default array of [property, value] tuples.
-// Strip the JS export wrapper and re-emit as a typed TypeScript constant.
-function toTypeScript(jsSource, sha, remotePath, exportName) {
-	// Find the array that follows `export const theme =`
-	const exportMatch = jsSource.match(/export\s+const\s+theme\s*=\s*/);
-	if (!exportMatch) {
-		throw new Error("Could not find `export const theme` in upstream source");
-	}
-	const afterExport = jsSource.slice(exportMatch.index + exportMatch[0].length);
-	const start = afterExport.indexOf("[");
-	const end = afterExport.lastIndexOf("]");
-	if (start === -1 || end === -1) {
-		throw new Error("Could not locate array literal in upstream source");
-	}
-	const arrayLiteral = afterExport.slice(start, end + 1);
+const sha =
+	process.argv[2] ??
+	(
+		await fetchText(`https://api.github.com/repos/${REPO}/commits/main`, {
+			Accept: "application/vnd.github.sha",
+		})
+	).trim();
 
-	// The upstream source escapes dots in CSS property names (e.g.
-	// `disabled\.background`). These are unnecessary in JS strings and
-	// would break setProperty lookups, so strip them.
-	const cleaned = arrayLiteral.replaceAll("\\.", ".");
-
-	const header = [
-		`// Sourced from \`vscode-elements/webview-playground\`.`,
-		`// https://github.com/${REPO}/blob/${sha}/${remotePath}`,
-	].join("\n");
-
-	return `${header}\n\nexport const ${exportName}: Array<[string, string]> = ${cleaned};\n`;
-}
-
-const sha = process.argv[2] ?? (await resolveLatestSha());
 console.log(`Syncing themes from ${REPO}@${sha}`);
 
-for (const { remotePath, localPath, exportName } of themes) {
-	const js = await fetchTheme(sha, remotePath);
-	const ts = toTypeScript(js, sha, remotePath, exportName);
-	const dest = resolve(ROOT, localPath);
-	writeFileSync(dest, ts);
-	console.log(`  ${localPath}`);
-}
+await Promise.all(
+	themes.map(async ({ remotePath, localPath, exportName }) => {
+		const js = await fetchText(
+			`https://raw.githubusercontent.com/${REPO}/${sha}/${remotePath}`,
+		);
+		const match = js.match(/export\s+const\s+theme\s*=\s*(\[[\s\S]*\])/);
+		if (!match) {
+			throw new Error(`Could not find theme array in ${remotePath}`);
+		}
+		// Upstream escapes dots in CSS property names (e.g. `disabled\.background`).
+		// These are unnecessary in JS strings and break setProperty lookups.
+		const arrayLiteral = match[1].replaceAll("\\.", ".");
+
+		const ts = `// Sourced from \`vscode-elements/webview-playground\`.
+// https://github.com/${REPO}/blob/${sha}/${remotePath}
+
+export const ${exportName}: Array<[string, string]> = ${arrayLiteral};
+`;
+		writeFileSync(resolve(ROOT, localPath), ts);
+		console.log(`  ${localPath}`);
+	}),
+);
 
 console.log("Done. Run `pnpm format` to normalize the output.");
