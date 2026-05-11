@@ -641,7 +641,9 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("emits a normal-close drop and disconnects on server-initiated close", async () => {
-			const { telemetry, sink } = createTestTelemetry();
+			new MockConfigurationProvider().set("coder.telemetry.level", "local");
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			const { ws, sockets } = await createReconnectingWebSocket({ telemetry });
 
 			sockets[0].fireOpen();
@@ -667,7 +669,9 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("records certificate_refresh as the reconnect reason on successful refresh", async () => {
-			const { telemetry, sink } = createTestTelemetry();
+			new MockConfigurationProvider().set("coder.telemetry.level", "local");
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			const sockets: MockSocket[] = [];
 			const factory = vi.fn(() => {
 				const socket = createMockSocket();

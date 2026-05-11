@@ -344,7 +344,8 @@ describe("SshProcessMonitor", () => {
 		});
 
 		it("emits found=false when discovery is abandoned by dispose", async () => {
-			const { telemetry, sink } = createTestTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON({
 				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
 					"-> socksPort 12345 ->",
@@ -365,7 +366,8 @@ describe("SshProcessMonitor", () => {
 		});
 
 		it("emits ssh.process.disposed when dispose follows a successful discovery", async () => {
-			const { telemetry, sink } = createTestTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON(sshLog);
 
 			const monitor = createMonitor({ telemetry });
@@ -379,7 +381,8 @@ describe("SshProcessMonitor", () => {
 		});
 
 		it("emits ssh.process.disposed with wasLost=true when dispose follows a loss", async () => {
-			const { telemetry, sink } = createTestTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON({
 				...sshLog,
 				"/network/999.json": makeNetworkJson(),
@@ -405,7 +408,8 @@ describe("SshProcessMonitor", () => {
 
 		it("emits missing_network_info as the loss cause when reads fail repeatedly", async () => {
 			vi.useFakeTimers();
-			const { telemetry, sink } = createTestTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON(sshLog);
 			// No /network/999.json. Every read fails until threshold is reached.
 			vi.mocked(find).mockResolvedValue([
@@ -431,7 +435,8 @@ describe("SshProcessMonitor", () => {
 		});
 
 		it("emits ssh.process.replaced (not recovered) when a different PID takes over", async () => {
-			const { telemetry, sink } = createTestTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON({
 				...sshLog,
 				"/network/999.json": makeNetworkJson(),
