@@ -2,7 +2,7 @@ import { task } from "@repo/mocks";
 
 import { StatusIndicator } from "./StatusIndicator";
 
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const meta: Meta<typeof StatusIndicator> = {
 	title: "Tasks/StatusIndicator",

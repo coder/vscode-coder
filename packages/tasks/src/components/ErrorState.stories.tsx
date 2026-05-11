@@ -1,8 +1,8 @@
-import { fn } from "@storybook/test";
+import { fn } from "storybook/test";
 
 import { ErrorState } from "./ErrorState";
 
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const meta: Meta<typeof ErrorState> = {
 	title: "Tasks/ErrorState",

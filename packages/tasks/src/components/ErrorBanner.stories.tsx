@@ -2,7 +2,7 @@ import { task } from "@repo/mocks";
 
 import { ErrorBanner } from "./ErrorBanner";
 
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const meta: Meta<typeof ErrorBanner> = {
 	title: "Tasks/ErrorBanner",

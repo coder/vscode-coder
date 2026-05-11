@@ -18,7 +18,7 @@
 		"react": "catalog:"
 	},
 	"devDependencies": {
-		"@storybook/react": "catalog:",
+		"@storybook/react-vite": "catalog:",
 		"typescript": "catalog:"
 	}
 }
