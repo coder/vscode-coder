@@ -44,15 +44,15 @@ describe("RemoteSetupTelemetry", () => {
 		expect(sshWrite.parentEventId).toBe(parent.eventId);
 	});
 
-	it("setOutcome annotates the parent event for non-throwing exits", async () => {
+	it("markAborted records the outcome and flips result to aborted", async () => {
 		const { sink, remoteSetup } = makeHarness();
 		await remoteSetup.trace((tracer) => {
-			tracer.setOutcome("workspace_not_found");
+			tracer.markAborted("workspace_not_found");
 			return Promise.resolve();
 		});
 
 		expect(sink.events[0]).toMatchObject({
-			properties: { outcome: "workspace_not_found", result: "success" },
+			properties: { outcome: "workspace_not_found", result: "aborted" },
 		});
 	});
 

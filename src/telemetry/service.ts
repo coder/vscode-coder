@@ -105,8 +105,9 @@ export class TelemetryService implements vscode.Disposable {
 
 	/**
 	 * Run a timed operation. The emitted event carries `durationMs` and a
-	 * `result` of `success` or `error`. All events from one call share a
-	 * `traceId`; phase children carry `parentEventId`.
+	 * `result` of `success`, `error`, or `aborted` (set via `span.markAborted()`
+	 * for intentional early exits). All events from one call share a `traceId`;
+	 * phase children carry `parentEventId`.
 	 */
 	public trace<T>(
 		eventName: string,
@@ -145,6 +146,7 @@ export class TelemetryService implements vscode.Disposable {
 		const spanMeasurements = { ...measurements };
 		const { traceId, traceLevel } = spanOpts;
 		let completed = false;
+		let aborted = false;
 		const warnPostEmit = (op: string, name: string): void => {
 			this.logger.warn(
 				`Telemetry span '${eventName}' ${op}('${name}') called after emit; mutation dropped`,
@@ -183,6 +185,13 @@ export class TelemetryService implements vscode.Disposable {
 				}
 				spanMeasurements[name] = value;
 			},
+			markAborted(): void {
+				if (completed) {
+					warnPostEmit("markAborted", "");
+					return;
+				}
+				aborted = true;
+			},
 		};
 		return this.#emitTimed(
 			eventId,
@@ -191,6 +200,7 @@ export class TelemetryService implements vscode.Disposable {
 			spanProperties,
 			spanMeasurements,
 			spanOpts,
+			() => aborted,
 		).finally(() => {
 			completed = true;
 		});
@@ -214,9 +224,13 @@ export class TelemetryService implements vscode.Disposable {
 		properties: Record<string, string>,
 		measurements: Record<string, number>,
 		spanOpts: SpanOptions,
+		isAborted: () => boolean,
 	): Promise<T> {
 		const start = performance.now();
-		const send = (result: "success" | "error", error?: unknown): void =>
+		const send = (
+			result: "success" | "error" | "aborted",
+			error?: unknown,
+		): void =>
 			this.#safeEmit(
 				eventId,
 				eventName,
@@ -226,7 +240,7 @@ export class TelemetryService implements vscode.Disposable {
 			);
 		try {
 			const value = await fn();
-			send("success");
+			send(isAborted() ? "aborted" : "success");
 			return value;
 		} catch (err) {
 			send("error", err);

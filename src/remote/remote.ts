@@ -140,11 +140,11 @@ export class Remote {
 		});
 
 		// Both run before `remote.setup` so an auth-required retry doesn't nest
-		// traces, and migration is kept out of `remote.auth_retrieval` so a slow
+		// traces, and migration is kept out of `auth.session_lookup` so a slow
 		// first-run migration doesn't pollute that signal.
 		await this.migrateToSecretsStorage(parts.safeHostname);
 		const telemetry = this.serviceContainer.getTelemetryService();
-		const auth = await telemetry.trace("remote.auth_retrieval", () =>
+		const auth = await telemetry.trace("auth.session_lookup", () =>
 			this.secretsManager.getSessionAuth(parts.safeHostname),
 		);
 		if (auth?.url) {
@@ -264,7 +264,7 @@ export class Remote {
 
 			// Server versions before v0.14.1 don't support the vscodessh command!
 			if (!featureSet.vscodessh) {
-				tracer.setOutcome("incompatible_server");
+				tracer.markAborted("incompatible_server");
 				await vscodeProposed.window.showErrorMessage(
 					"Incompatible Server",
 					{
@@ -287,7 +287,7 @@ export class Remote {
 				this.lookupWorkspace(context, workspaceClient),
 			);
 			if (!foundWorkspace) {
-				tracer.setOutcome("workspace_not_found");
+				tracer.markAborted("workspace_not_found");
 				return;
 			}
 			let workspace: Workspace = foundWorkspace;

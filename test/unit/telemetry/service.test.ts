@@ -304,19 +304,52 @@ describe("TelemetryService", () => {
 
 			escapedSpan?.setProperty("late", "ignored");
 			escapedSpan?.setMeasurement("lateMs", 99);
+			escapedSpan?.markAborted();
 
 			// Mutations dropped: emitted event is unchanged.
 			expect(h.sink.events[0].properties.late).toBeUndefined();
 			expect(h.sink.events[0].measurements.lateMs).toBeUndefined();
+			expect(h.sink.events[0].properties.result).toBe("success");
 
 			// Each post-emit mutation logs a warning.
-			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 2);
+			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 3);
 			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore][0]).toContain(
 				"setProperty",
 			);
 			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 1][0]).toContain(
 				"setMeasurement",
 			);
+			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 2][0]).toContain(
+				"markAborted",
+			);
+		});
+
+		it("markAborted flips result to 'aborted' on normal return", async () => {
+			await h.service.trace("op", (span) => {
+				span.markAborted();
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "aborted" },
+			});
+		});
+
+		it("markAborted does not override 'error' when the span throws", async () => {
+			const boom = new Error("kaboom");
+			await expect(
+				h.service.trace("op", (span) => {
+					span.markAborted();
+					return Promise.reject(boom);
+				}),
+			).rejects.toBe(boom);
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "error" },
+				error: { message: "kaboom" },
+			});
 		});
 
 		it("on phase failure: completed phases emit success, parent emits an error summary, error rethrown, later phases never run", async () => {
