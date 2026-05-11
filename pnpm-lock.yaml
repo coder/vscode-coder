@@ -52,7 +52,7 @@ catalogs:
       specifier: ^16.9.1
       version: 16.9.1
     coder:
-      specifier: github:coder/coder#main
+      specifier: github:coder/coder#v2.33.1
       version: 0.0.0
     date-fns:
       specifier: ^4.1.0
@@ -245,7 +245,7 @@ importers:
         version: 16.9.1
       coder:
         specifier: 'catalog:'
-        version: '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/063c06ca5feb4b968e83af76d7f17e8050796876'
+        version: '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/3e34ba7bf029394b642bced1428af2d94a99f55a'
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
@@ -624,8 +624,8 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/063c06ca5feb4b968e83af76d7f17e8050796876':
-    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/063c06ca5feb4b968e83af76d7f17e8050796876}
+  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/3e34ba7bf029394b642bced1428af2d94a99f55a':
+    resolution: {tarball: https://codeload.github.com/coder/coder/tar.gz/3e34ba7bf029394b642bced1428af2d94a99f55a}
     version: 0.0.0
 
   '@csstools/color-helpers@6.0.2':
@@ -5383,7 +5383,7 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/063c06ca5feb4b968e83af76d7f17e8050796876': {}
+  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/3e34ba7bf029394b642bced1428af2d94a99f55a': {}
 
   '@csstools/color-helpers@6.0.2': {}
 
