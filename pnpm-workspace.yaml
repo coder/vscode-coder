@@ -18,6 +18,7 @@ catalog:
   babel-plugin-react-compiler: ^1.0.0
   coder: github:coder/coder#v2.33.1
   date-fns: ^4.1.0
+  eslint-plugin-storybook: ^10.3.6
   react: ^19.2.6
   react-dom: ^19.2.6
   storybook: ^8.6.18

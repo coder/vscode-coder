@@ -1,3 +1,5 @@
+import storybook from "eslint-plugin-storybook";
+
 // @ts-check
 import eslint from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
@@ -244,6 +246,17 @@ export default defineConfig(
 					allowLabels: ["!NOTE", "!TIP", "!IMPORTANT", "!WARNING", "!CAUTION"],
 				},
 			],
+		},
+	},
+
+	// Storybook recommended rules for story files
+	...storybook.configs["flat/recommended"],
+	{
+		files: ["**/*.stories.@(ts|tsx|js|jsx|mjs|cjs)"],
+		rules: {
+			// At storybook v8, @storybook/react-vite doesn't re-export Meta/StoryObj;
+			// importing from @storybook/react is correct for now.
+			"storybook/no-renderer-packages": "off",
 		},
 	},
 
