@@ -16,7 +16,7 @@ catalog:
   "@vscode-elements/react-elements": ^2.4.0
   "@vscode/codicons": ^0.0.45
   babel-plugin-react-compiler: ^1.0.0
-  chromatic: ^16.7.0
+  chromatic: ^16.9.1
   coder: github:coder/coder#main
   date-fns: ^4.1.0
   react: ^19.2.6

@@ -77,8 +77,6 @@ jobs:
         run: ${{ runner.os == 'Linux' && 'xvfb-run -a' || '' }} pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
         shell: bash
 
-  # Reference guide:
-  # https://www.chromatic.com/docs/turbosnap-best-practices/#run-with-caution-when-using-the-pull_request-event
   chromatic:
     name: Chromatic
     runs-on: ubuntu-24.04
@@ -86,62 +84,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          # 👇 Ensures Chromatic can read your full git history
           fetch-depth: 0
-          # 👇 Tells the checkout which commit hash to reference
           ref: ${{ github.event.pull_request.head.ref }}
           persist-credentials: false
 
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
 
-      # This step is not meant for mainline because any detected changes to
-      # storybook snapshots will require manual approval/review in order for
-      # the check to pass. This is desired in PRs, but not in mainline.
+      # PR builds gate on visual review; mainline auto-accepts.
       - name: Publish to Chromatic (non-mainline)
         if: github.ref != 'refs/heads/main' && github.repository_owner == 'coder'
-        uses: chromaui/action@latest
+        uses: chromaui/action@5c6ec06f45a2117a25f07b1bf2b2f3009233fac8 # v16.3.0
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           STORYBOOK: true
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
-          # Do a fast, testing build for change previews
           buildScriptName: "storybook:ci"
           exitOnceUploaded: true
-          # This will prevent CI from failing when Chromatic detects visual changes
           exitZeroOnChanges: true
-          # Prevent excessive build runs on minor version changes
           skip: "@(renovate/**|dependabot/**)"
-          # Run TurboSnap to trace file dependencies to related stories
-          # and tell chromatic to only take snapshots of relevant stories
           onlyChanged: true
-          # Avoid uploading single files, because that's very slow
           zip: true
 
-      # This is a separate step for mainline only that auto accepts and changes
-      # instead of holding CI up. Since we squash/merge, this is defensive to
-      # avoid the same changeset from requiring review once squashed into
-      # main. Chromatic is supposed to be able to detect that we use squash
-      # commits, but it's good to be defensive in case, otherwise CI remains
-      # infinitely "in progress" in mainline unless we re-review each build.
+      # Auto-accept on mainline to avoid blocking CI after squash merges.
       - name: Publish to Chromatic (mainline)
         if: github.ref == 'refs/heads/main' && github.repository_owner == 'coder'
-        uses: chromaui/action@latest
+        uses: chromaui/action@5c6ec06f45a2117a25f07b1bf2b2f3009233fac8 # v16.3.0
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           STORYBOOK: true
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           autoAcceptChanges: true
-          # This will prevent CI from failing when Chromatic detects visual changes
           exitZeroOnChanges: true
-          # Do a full build with documentation for mainline builds
           buildScriptName: "storybook:build"
-          # Run TurboSnap to trace file dependencies to related stories
-          # and tell chromatic to only take snapshots of relevant stories
-          onlyChanged: true
-          # Avoid uploading single files, because that's very slow
           zip: true
 
   package:
