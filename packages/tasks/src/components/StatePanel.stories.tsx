@@ -1,4 +1,4 @@
-import { withTasksStyles } from "../utils/storybook";
+import { VscodeButton, VscodeIcon } from "@vscode-elements/react-elements";
 
 import { StatePanel } from "./StatePanel";
 
@@ -12,11 +12,10 @@ const meta: Meta<typeof StatePanel> = {
 		description: "This Coder server does not support tasks.",
 		action: (
 			<a href="/" className="text-link">
-				Learn more
+				Learn more <VscodeIcon name="link-external" />
 			</a>
 		),
 	},
-	decorators: [withTasksStyles],
 };
 
 export default meta;
@@ -28,10 +27,6 @@ export const Error: Story = {
 	args: {
 		className: "error-state",
 		description: "Unable to load tasks right now.",
-		action: (
-			<button type="button" className="text-link">
-				Retry
-			</button>
-		),
+		action: <VscodeButton>Retry</VscodeButton>,
 	},
 };

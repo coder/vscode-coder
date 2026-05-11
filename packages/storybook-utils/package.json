@@ -18,7 +18,7 @@
 		"react": "catalog:"
 	},
 	"devDependencies": {
-		"@storybook/react": "^8.6.18",
+		"@storybook/react": "catalog:",
 		"typescript": "catalog:"
 	}
 }

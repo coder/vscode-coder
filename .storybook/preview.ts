@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
 import { createElement, useEffect } from "react";
 
@@ -13,6 +15,9 @@ declare global {
 		acquireVsCodeApi?: <T = unknown>() => WebviewApi<T>;
 	}
 }
+
+// Auto-import per-package Storybook CSS entry points
+import.meta.glob("../packages/*/storybook.preview.ts", { eager: true });
 
 // Mock the acquireVsCodeApi function for Storybook, so that components
 // that rely on it can function without errors.
@@ -76,29 +81,24 @@ const preview: Preview = {
 				context.globals.theme === "light" ? lightTheme : darkTheme;
 
 			useEffect(() => {
+				const root = document.documentElement.style;
+
 				// Apply CSS custom properties to the document root
 				selectedTheme.forEach(([property, value]) => {
-					document.documentElement.style.setProperty(property, value);
+					root.setProperty(property, value);
 				});
+				root.setProperty("--vscode-font-family", getDefaultFontStack());
 
 				// Cleanup function to remove properties when unmounting
 				return () => {
 					selectedTheme.forEach(([property]) => {
-						document.documentElement.style.removeProperty(property);
+						root.removeProperty(property);
 					});
+					root.removeProperty("--vscode-font-family");
 				};
 			}, [selectedTheme]);
 
-			return createElement(
-				"div",
-				{
-					id: "root",
-					style: {
-						fontFamily: getDefaultFontStack(),
-					},
-				},
-				createElement(Story),
-			);
+			return createElement("div", { id: "root" }, createElement(Story));
 		},
 	],
 };

@@ -14,7 +14,7 @@ import {
 	type DeploymentWithAuth,
 } from "./types";
 
-import type { User } from "coder/site/src/api/typesGenerated";
+import type { Experiment, User } from "coder/site/src/api/typesGenerated";
 import type * as vscode from "vscode";
 
 /**
@@ -271,7 +271,7 @@ export class DeploymentManager implements vscode.Disposable {
 				}
 				this.contextManager.set(
 					"coder.agentsEnabled",
-					experiments.includes("agents"),
+					experiments.includes("agents" as Experiment),
 				);
 			})
 			.catch((err) => {

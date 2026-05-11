@@ -1,7 +1,5 @@
 import { logEntry } from "@repo/mocks";
 
-import { withTasksStyles } from "../utils/storybook";
-
 import { AgentChatHistory } from "./AgentChatHistory";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -10,7 +8,12 @@ import { TaskLogEntry } from "@repo/shared";
 const meta: Meta<typeof AgentChatHistory> = {
 	title: "Tasks/AgentChatHistory",
 	component: AgentChatHistory,
-	decorators: [withTasksStyles],
+};
+
+export default meta;
+type Story = StoryObj<typeof AgentChatHistory>;
+
+export const Default: Story = {
 	args: {
 		isThinking: false,
 		taskLogs: {
@@ -31,11 +34,6 @@ const meta: Meta<typeof AgentChatHistory> = {
 		},
 	},
 };
-
-export default meta;
-type Story = StoryObj<typeof AgentChatHistory>;
-
-export const Default: Story = {};
 
 export const Empty: Story = {
 	args: {

@@ -1,7 +1,5 @@
 import { fn } from "storybook/test";
 
-import { withTasksStyles } from "../utils/storybook";
-
 import { ErrorState } from "./ErrorState";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -9,7 +7,6 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 const meta: Meta<typeof ErrorState> = {
 	title: "Tasks/ErrorState",
 	component: ErrorState,
-	decorators: [withTasksStyles],
 };
 
 export default meta;

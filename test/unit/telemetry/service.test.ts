@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { buildSession, type TelemetrySink } from "@/telemetry/event";
 import { TelemetryService } from "@/telemetry/service";
 
 import { TestSink } from "../../mocks/telemetry";
@@ -8,15 +9,10 @@ import {
 	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
 
-import type * as vscode from "vscode";
+const TEST_VERSION = "1.2.3-test";
+const TEST_SESSION_ID = "test-session";
 
-import type { TelemetrySink } from "@/telemetry/event";
-
-function fakeContext(): vscode.ExtensionContext {
-	return {
-		extension: { packageJSON: { version: "1.2.3-test" } },
-	} as unknown as vscode.ExtensionContext;
-}
+const testSession = () => buildSession(TEST_VERSION, TEST_SESSION_ID);
 
 interface Harness {
 	service: TelemetryService;
@@ -29,7 +25,7 @@ function makeHarness(level: "off" | "local" = "local"): Harness {
 	config.set("coder.telemetry.level", level);
 	const sink = new TestSink();
 	const service = new TelemetryService(
-		fakeContext(),
+		testSession(),
 		[sink],
 		createMockLogger(),
 	);
@@ -38,7 +34,7 @@ function makeHarness(level: "off" | "local" = "local"): Harness {
 
 function makeService(sinks: TelemetrySink[]): TelemetryService {
 	new MockConfigurationProvider().set("coder.telemetry.level", "local");
-	return new TelemetryService(fakeContext(), sinks, createMockLogger());
+	return new TelemetryService(testSession(), sinks, createMockLogger());
 }
 
 describe("TelemetryService", () => {
@@ -63,13 +59,11 @@ describe("TelemetryService", () => {
 				context: {
 					extensionVersion: "1.2.3-test",
 					machineId: "test-machine-id",
-					sessionId: "test-session-id",
+					sessionId: TEST_SESSION_ID,
 					deploymentUrl: "",
 				},
 			});
-			expect(event.eventId).toMatch(
-				/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-			);
+			expect(event.eventId).toMatch(/^[0-9a-f]{16}$/);
 			expect(event.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 		});
 

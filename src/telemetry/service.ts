@@ -2,9 +2,12 @@ import * as vscode from "vscode";
 
 import { watchConfigurationChanges } from "../configWatcher";
 import { type Logger } from "../logging/logger";
+import {
+	TELEMETRY_LEVEL_SETTING,
+	readTelemetryLevel,
+} from "../settings/telemetry";
 
 import {
-	buildSession,
 	buildErrorBlock,
 	type CallerMeasurements,
 	type CallerProperties,
@@ -13,14 +16,16 @@ import {
 	type TelemetryLevel,
 	type TelemetrySink,
 } from "./event";
+import { newSpanId, newTraceId } from "./ids";
 import { NOOP_SPAN, type Span } from "./span";
-
-const TELEMETRY_LEVEL_SETTING = "coder.telemetry.level";
 
 const LEVEL_ORDER: Readonly<Record<TelemetryLevel, number>> = {
 	off: 0,
 	local: 1,
 };
+
+const readLevel = (): TelemetryLevel =>
+	readTelemetryLevel(vscode.workspace.getConfiguration());
 
 /** Trace context shared by all events in one trace. */
 interface SpanOptions {
@@ -47,20 +52,22 @@ export class TelemetryService implements vscode.Disposable {
 	readonly #configWatcher: vscode.Disposable;
 
 	public constructor(
-		ctx: vscode.ExtensionContext,
+		session: SessionContext,
 		private readonly sinks: readonly TelemetrySink[],
 		private readonly logger: Logger,
 	) {
-		this.#session = buildSession(ctx);
+		this.#session = session;
 		this.#level = readLevel();
 		this.#configWatcher = watchConfigurationChanges(
 			[{ setting: TELEMETRY_LEVEL_SETTING, getValue: readLevel }],
 			(changes) => {
-				const raw = changes.get(TELEMETRY_LEVEL_SETTING);
-				if (!isTelemetryLevel(raw)) {
+				const next = changes.get(TELEMETRY_LEVEL_SETTING) as
+					| TelemetryLevel
+					| undefined;
+				if (!next) {
 					return;
 				}
-				this.#applyLevelChange(raw).catch((err) => {
+				this.#applyLevelChange(next).catch((err) => {
 					this.logger.warn("Telemetry level change failed", err);
 				});
 			},
@@ -79,7 +86,7 @@ export class TelemetryService implements vscode.Disposable {
 		if (this.#level === "off") {
 			return;
 		}
-		this.#safeEmit(crypto.randomUUID(), eventName, properties, measurements);
+		this.#safeEmit(newSpanId(), eventName, properties, measurements);
 	}
 
 	public logError(
@@ -91,7 +98,7 @@ export class TelemetryService implements vscode.Disposable {
 		if (this.#level === "off") {
 			return;
 		}
-		this.#safeEmit(crypto.randomUUID(), eventName, properties, measurements, {
+		this.#safeEmit(newSpanId(), eventName, properties, measurements, {
 			error,
 		});
 	}
@@ -111,7 +118,7 @@ export class TelemetryService implements vscode.Disposable {
 			return fn(NOOP_SPAN);
 		}
 		return this.#startSpan(eventName, fn, properties, measurements, {
-			traceId: crypto.randomUUID(),
+			traceId: newTraceId(),
 			traceLevel: this.#level,
 		});
 	}
@@ -133,7 +140,7 @@ export class TelemetryService implements vscode.Disposable {
 		measurements: Record<string, number>,
 		spanOpts: SpanOptions,
 	): Promise<T> {
-		const eventId = crypto.randomUUID();
+		const eventId = newSpanId();
 		const { traceId, traceLevel } = spanOpts;
 		const span: Span = {
 			traceId,
@@ -276,15 +283,4 @@ export class TelemetryService implements vscode.Disposable {
 			this.logger.warn(`Telemetry sink '${sink.name}' ${action} failed`, err);
 		}
 	}
-}
-
-function readLevel(): TelemetryLevel {
-	const value = vscode.workspace
-		.getConfiguration()
-		.get<string>(TELEMETRY_LEVEL_SETTING);
-	return isTelemetryLevel(value) ? value : "local";
-}
-
-function isTelemetryLevel(value: unknown): value is TelemetryLevel {
-	return value === "off" || value === "local";
 }

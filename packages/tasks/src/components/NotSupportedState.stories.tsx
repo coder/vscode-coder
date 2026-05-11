@@ -1,5 +1,3 @@
-import { withTasksStyles } from "../utils/storybook";
-
 import { NotSupportedState } from "./NotSupportedState";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -7,7 +5,6 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 const meta: Meta<typeof NotSupportedState> = {
 	title: "Tasks/NotSupportedState",
 	component: NotSupportedState,
-	decorators: [withTasksStyles],
 };
 
 export default meta;

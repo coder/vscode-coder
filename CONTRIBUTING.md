@@ -193,8 +193,11 @@ Some dependencies are not directly used in the source but are required anyway.
 - `bufferutil` and `utf-8-validate` are peer dependencies of `ws`.
 - `ua-parser-js` and `dayjs` are used by the Coder API client.
 
-The coder client is vendored from coder/coder. Every now and then, we should be running `pnpm update coder`
-to make sure we're using up to date versions of the client.
+The coder client is vendored from coder/coder. Pin it to a release tag in
+`pnpm-workspace.yaml` (e.g. `coder: github:coder/coder#v2.33.1`), not `#main`.
+A tag gives reproducible builds and is not re-fetched on every `pnpm install`,
+unlike `#main` which can drift between installs. To update, bump the tag and
+run `pnpm install` (or `pnpm update coder`).
 
 After running `pnpm update`, always run `pnpm dedupe` to consolidate duplicate
 package versions across the workspace. Without this, workspace packages can

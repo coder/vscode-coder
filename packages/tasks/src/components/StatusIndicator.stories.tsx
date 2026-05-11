@@ -1,7 +1,5 @@
 import { task } from "@repo/mocks";
 
-import { withTasksStyles } from "../utils/storybook";
-
 import { StatusIndicator } from "./StatusIndicator";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -9,7 +7,19 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 const meta: Meta<typeof StatusIndicator> = {
 	title: "Tasks/StatusIndicator",
 	component: StatusIndicator,
-	decorators: [withTasksStyles],
+	decorators: [
+		(Story) => (
+			<div
+				style={{
+					display: "flex",
+					justifyContent: "center",
+					alignItems: "center",
+				}}
+			>
+				<Story />
+			</div>
+		),
+	],
 };
 
 export default meta;

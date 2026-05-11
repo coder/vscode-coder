@@ -66,6 +66,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const mementoManager = serviceContainer.getMementoManager();
 	const secretsManager = serviceContainer.getSecretsManager();
 	const contextManager = serviceContainer.getContextManager();
+	const commandManager = serviceContainer.getCommandManager();
 
 	// Migrate auth storage from old flat format to new label-based format
 	await migrateAuthStorage(serviceContainer);
@@ -207,15 +208,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		client,
 		output,
 	);
+	commandManager.register("coder.tasks.refresh", () =>
+		tasksPanelProvider.refresh(),
+	);
 	ctx.subscriptions.push(
 		tasksPanelProvider,
 		vscode.window.registerWebviewViewProvider(
 			TasksPanelProvider.viewType,
 			tasksPanelProvider,
 			{ webviewOptions: { retainContextWhenHidden: true } },
-		),
-		vscode.commands.registerCommand("coder.tasks.refresh", () =>
-			tasksPanelProvider.refresh(),
 		),
 		// Refresh tasks panel when deployment changes (login/logout/switch)
 		secretsManager.onDidChangeCurrentDeployment(() =>
@@ -229,15 +230,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 		client,
 		output,
 	);
+	commandManager.register("coder.chat.refresh", () =>
+		chatPanelProvider.refresh(),
+	);
 	ctx.subscriptions.push(
 		chatPanelProvider,
 		vscode.window.registerWebviewViewProvider(
 			ChatPanelProvider.viewType,
 			chatPanelProvider,
 			{ webviewOptions: { retainContextWhenHidden: true } },
-		),
-		vscode.commands.registerCommand("coder.chat.refresh", () =>
-			chatPanelProvider.refresh(),
 		),
 	);
 
@@ -248,93 +249,82 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			commands,
 			chatPanelProvider,
 		}),
-		vscode.commands.registerCommand(
-			"coder.login",
-			commands.login.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.logout",
-			commands.logout.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.switchDeployment",
-			commands.switchDeployment.bind(commands),
-		),
-		vscode.commands.registerCommand("coder.open", commands.open.bind(commands)),
-		vscode.commands.registerCommand(
-			"coder.openDevContainer",
-			commands.openDevContainer.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.openFromSidebar",
-			commands.openFromSidebar.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.openAppStatus",
-			commands.openAppStatus.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.workspace.update",
-			commands.updateWorkspace.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.createWorkspace",
-			commands.createWorkspace.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.navigateToWorkspace",
-			commands.navigateToWorkspace.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.navigateToWorkspaceSettings",
-			commands.navigateToWorkspaceSettings.bind(commands),
-		),
-		vscode.commands.registerCommand("coder.refreshWorkspaces", () => {
-			void myWorkspacesProvider.fetchAndRefresh();
-			void allWorkspacesProvider.fetchAndRefresh();
-		}),
-		vscode.commands.registerCommand(
-			"coder.viewLogs",
-			commands.viewLogs.bind(commands),
-		),
-		vscode.commands.registerCommand("coder.searchMyWorkspaces", async () =>
-			showTreeViewSearch(MY_WORKSPACES_TREE_ID),
-		),
-		vscode.commands.registerCommand("coder.searchAllWorkspaces", async () =>
-			showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
-		),
-		vscode.commands.registerCommand(
-			"coder.manageCredentials",
-			commands.manageCredentials.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.applyRecommendedSettings",
-			commands.applyRecommendedSettings.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.pingWorkspace",
-			commands.pingWorkspace.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.pingWorkspace:views",
-			commands.pingWorkspace.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.speedTest",
-			commands.speedTest.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.speedTest:views",
-			commands.speedTest.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.supportBundle",
-			commands.supportBundle.bind(commands),
-		),
-		vscode.commands.registerCommand(
-			"coder.supportBundle:views",
-			commands.supportBundle.bind(commands),
-		),
+	);
+
+	commandManager.register("coder.login", commands.login.bind(commands));
+	commandManager.register("coder.logout", commands.logout.bind(commands));
+	commandManager.register(
+		"coder.switchDeployment",
+		commands.switchDeployment.bind(commands),
+	);
+	commandManager.register("coder.open", commands.open.bind(commands));
+	commandManager.register(
+		"coder.openDevContainer",
+		commands.openDevContainer.bind(commands),
+	);
+	commandManager.register(
+		"coder.openFromSidebar",
+		commands.openFromSidebar.bind(commands),
+	);
+	commandManager.register(
+		"coder.openAppStatus",
+		commands.openAppStatus.bind(commands),
+	);
+	commandManager.register(
+		"coder.workspace.update",
+		commands.updateWorkspace.bind(commands),
+	);
+	commandManager.register(
+		"coder.createWorkspace",
+		commands.createWorkspace.bind(commands),
+	);
+	commandManager.register(
+		"coder.navigateToWorkspace",
+		commands.navigateToWorkspace.bind(commands),
+	);
+	commandManager.register(
+		"coder.navigateToWorkspaceSettings",
+		commands.navigateToWorkspaceSettings.bind(commands),
+	);
+	commandManager.register("coder.refreshWorkspaces", () => {
+		void myWorkspacesProvider.fetchAndRefresh();
+		void allWorkspacesProvider.fetchAndRefresh();
+	});
+	commandManager.register("coder.viewLogs", commands.viewLogs.bind(commands));
+	commandManager.register("coder.searchMyWorkspaces", async () =>
+		showTreeViewSearch(MY_WORKSPACES_TREE_ID),
+	);
+	commandManager.register("coder.searchAllWorkspaces", async () =>
+		showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
+	);
+	commandManager.register(
+		"coder.manageCredentials",
+		commands.manageCredentials.bind(commands),
+	);
+	commandManager.register(
+		"coder.applyRecommendedSettings",
+		commands.applyRecommendedSettings.bind(commands),
+	);
+	commandManager.register(
+		"coder.pingWorkspace",
+		commands.pingWorkspace.bind(commands),
+	);
+	commandManager.register(
+		"coder.pingWorkspace:views",
+		commands.pingWorkspace.bind(commands),
+	);
+	commandManager.register("coder.speedTest", commands.speedTest.bind(commands));
+	commandManager.register(
+		"coder.speedTest:views",
+		commands.speedTest.bind(commands),
+	);
+	commandManager.register(
+		"coder.supportBundle",
+		commands.supportBundle.bind(commands),
+	);
+	commandManager.register(
+		"coder.supportBundle:views",
+		commands.supportBundle.bind(commands),
 	);
 
 	const remote = new Remote(serviceContainer, commands, ctx);

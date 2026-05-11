@@ -1,4 +1,11 @@
 {
 	"extends": "../packages/tsconfig.packages.json",
-	"include": ["*.ts", "themes/**/*.ts"]
+	"compilerOptions": {
+		"types": ["node"],
+		"jsx": "react-jsx",
+		"noEmit": true,
+		"rootDir": ".."
+	},
+	"include": ["*.ts", "themes/**/*.ts", "../packages/*/storybook.preview.ts"],
+	"exclude": ["node_modules"]
 }
