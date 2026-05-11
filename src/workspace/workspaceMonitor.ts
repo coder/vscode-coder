@@ -269,7 +269,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private updateStatusBar(workspace: Workspace) {
-		if (workspace.outdated) {
+		const status = workspace.latest_build.status;
+		const settled =
+			status === "running" || status === "stopped" || status === "failed";
+		if (workspace.outdated && settled) {
 			this.statusBarItem.show();
 		} else {
 			this.statusBarItem.hide();

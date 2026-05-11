@@ -1,4 +1,10 @@
-import { createWorkspaceIdentifier, extractAgents } from "../api/api-helper";
+import * as vscode from "vscode";
+
+import {
+	createWorkspaceIdentifier,
+	errToStr,
+	extractAgents,
+} from "../api/api-helper";
 import {
 	LazyStream,
 	startWorkspace,
@@ -16,7 +22,6 @@ import type {
 	Workspace,
 	WorkspaceAgentLog,
 } from "coder/site/src/api/typesGenerated";
-import type * as vscode from "vscode";
 
 import type { CoderApi } from "../api/coderApi";
 import type { StartupMode } from "../core/mementoManager";
@@ -61,19 +66,20 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		const workspaceName = createWorkspaceIdentifier(workspace);
 
 		switch (workspace.latest_build.status) {
-			case "running":
+			case "running": {
 				this.buildLogStream.close();
-				if (this.startupMode === "update") {
-					workspace = await this.triggerUpdate(
-						workspace,
-						workspaceName,
-						progress,
-					);
-					this.workspace = workspace;
+				const updated = await this.maybeUpdate(
+					workspace,
+					workspaceName,
+					progress,
+				);
+				if (updated) {
+					workspace = updated;
 					// Agent IDs may have changed after an update.
 					this.agent = undefined;
 				}
 				break;
+			}
 
 			case "stopped":
 			case "failed": {
@@ -90,19 +96,18 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 					this.startupMode = choice;
 				}
 
-				if (this.startupMode === "update") {
-					workspace = await this.triggerUpdate(
-						workspace,
-						workspaceName,
-						progress,
-					);
-					this.workspace = workspace;
-					if (workspace.latest_build.status === "running") {
-						break;
-					}
-				} else {
-					await this.triggerStart(workspace, workspaceName, progress);
+				const updated = await this.maybeUpdate(
+					workspace,
+					workspaceName,
+					progress,
+				);
+				if (updated) {
+					workspace = updated;
+					if (workspace.latest_build.status === "running") break;
+					return false;
 				}
+				// Either we weren't in update mode, or the update failed: start.
+				await this.triggerStart(workspace, workspaceName, progress);
 				return false;
 			}
 
@@ -263,23 +268,30 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		this.logger.info(`${workspaceName} start initiated`);
 	}
 
-	private async triggerUpdate(
+	/** No-op if not in update mode. Falls through to start on failure. */
+	private async maybeUpdate(
 		workspace: Workspace,
 		workspaceName: string,
 		progress: vscode.Progress<{ message?: string }>,
-	): Promise<Workspace> {
+	): Promise<Workspace | undefined> {
+		if (this.startupMode !== "update") return undefined;
+		// Downgrade up-front so monitor events don't retry the update.
+		this.startupMode = "start";
 		progress.report({ message: `updating ${workspaceName}...` });
 		this.logger.info(`Updating ${workspaceName}`, {
-			mode: this.startupMode,
 			status: workspace.latest_build.status,
 		});
-		const updatedWorkspace = await updateWorkspace(
-			this.buildCliContext(workspace),
-		);
-		// Downgrade so subsequent transitions don't re-trigger the update.
-		this.startupMode = "start";
-		this.logger.info(`${workspaceName} update initiated`);
-		return updatedWorkspace;
+		try {
+			this.workspace = await updateWorkspace(this.buildCliContext(workspace));
+			return this.workspace;
+		} catch (error) {
+			const reason = errToStr(error);
+			this.logger.warn(`Update failed for ${workspaceName}: ${reason}`);
+			vscode.window.showWarningMessage(
+				`Workspace update failed: ${reason}. Continuing with the existing version.`,
+			);
+			return undefined;
+		}
 	}
 
 	private async confirmStartOrUpdate(

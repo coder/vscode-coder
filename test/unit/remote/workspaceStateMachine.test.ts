@@ -195,6 +195,18 @@ describe("WorkspaceStateMachine", () => {
 			expect(sm.getWorkspace()?.latest_build.status).toBe("running");
 		});
 
+		it("falls back to start when the update fails", async () => {
+			vi.mocked(updateWorkspace).mockRejectedValueOnce(
+				new Error("Workspace update cancelled"),
+			);
+			const { sm, progress } = setup("update");
+			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+
+			expect(await sm.processWorkspace(ws, progress)).toBe(false);
+			expect(updateWorkspace).toHaveBeenCalledOnce();
+			expect(startWorkspace).toHaveBeenCalledOnce();
+		});
+
 		it("prompts user when mode is 'none' and user picks 'Start'", async () => {
 			const { sm, progress, userInteraction } = setup("none");
 			userInteraction.setResponse(CONFIRM_MESSAGE, "Start");

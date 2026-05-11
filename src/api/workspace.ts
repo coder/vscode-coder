@@ -1,11 +1,9 @@
 import { type Api } from "coder/site/src/api/api";
 import {
-	type CreateWorkspaceBuildRequest,
 	type ProvisionerJobLog,
 	type TemplateVersionParameter,
 	type Workspace,
 	type WorkspaceAgentLog,
-	type WorkspaceBuildParameter,
 } from "coder/site/src/api/typesGenerated";
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
@@ -57,10 +55,6 @@ interface CliContext {
 	featureSet: FeatureSet;
 }
 
-/**
- * Spawn a Coder CLI subcommand and stream its output.
- * Resolves when the process exits successfully; rejects on non-zero exit.
- */
 function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const fullArgs = [
@@ -68,18 +62,17 @@ function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 			...args,
 			createWorkspaceIdentifier(ctx.workspace),
 		];
-
 		const cmd = `${escapeCommandArg(ctx.binPath)} ${fullArgs.join(" ")}`;
 		const proc = spawn(cmd, { shell: true });
 
 		proc.stdout.on("data", (data: Buffer) => {
-			ctx.write(data.toString().replace(/\r?\n/g, "\r\n"));
+			ctx.write(data.toString());
 		});
 
 		let capturedStderr = "";
 		proc.stderr.on("data", (data: Buffer) => {
 			const text = data.toString();
-			ctx.write(text.replace(/\r?\n/g, "\r\n"));
+			ctx.write(text);
 			capturedStderr += text;
 		});
 
@@ -87,11 +80,9 @@ function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 			if (code === 0) {
 				resolve();
 			} else {
-				let errorText = `"${fullArgs.join(" ")}" exited with code ${code}`;
-				if (capturedStderr !== "") {
-					errorText += `: ${capturedStderr}`;
-				}
-				reject(new Error(errorText));
+				let msg = `"${fullArgs.join(" ")}" exited with code ${code}`;
+				if (capturedStderr) msg += `: ${capturedStderr}`;
+				reject(new Error(msg));
 			}
 		});
 	});
@@ -116,39 +107,25 @@ export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
 }
 
 /**
- * Update a workspace to the latest template version using the API.
- *
- * Parameter values that need user input are collected with VS Code prompts
- * before the workspace is stopped.
+ * Update a workspace to the latest template version. Collects any newly-
+ * required parameters via VS Code prompts and passes them to the CLI as flags
+ * (the resolver phase can't render an interactive terminal). Falls back to
+ * the REST API for CLIs older than 2.24.
  */
 export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
-	const workspace = await ctx.restClient.getWorkspace(ctx.workspace.id);
-	if (!workspace.outdated) {
-		ctx.write("Workspace is up-to-date.\r\n");
-		return workspace;
+	if (!ctx.featureSet.cliUpdate) {
+		return updateWorkspaceVersion(ctx);
 	}
 
-	const targetVersionId = workspace.template_active_version_id;
-	const oldBuildParameters = await ctx.restClient.getWorkspaceBuildParameters(
-		workspace.latest_build.id,
-	);
-	const templateParameters = await getUpdateTemplateParameters(
-		ctx,
-		workspace,
-		oldBuildParameters,
-		targetVersionId,
-	);
-	const buildParameters = await promptForUpdateParameters(
-		oldBuildParameters,
-		templateParameters,
-	);
+	const paramArgs = await collectUpdateParameters(ctx);
+	await runCliCommand(ctx, ["update", ...paramArgs]);
+	return ctx.restClient.getWorkspace(ctx.workspace.id);
+}
 
-	if (workspace.latest_build.transition === "start") {
+async function updateWorkspaceVersion(ctx: CliContext): Promise<Workspace> {
+	if (ctx.workspace.latest_build.status === "running") {
 		ctx.write("Stopping workspace for update...\r\n");
-		const stopBuild = await ctx.restClient.postWorkspaceBuild(
-			workspace.id,
-			withBuildReason(ctx, { transition: "stop" }),
-		);
+		const stopBuild = await ctx.restClient.stopWorkspace(ctx.workspace.id);
 		const stoppedJob = await ctx.restClient.waitForBuild(stopBuild);
 		if (stoppedJob?.status === "canceled") {
 			throw new Error("Workspace update canceled during stop");
@@ -156,302 +133,181 @@ export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
 	}
 
 	ctx.write("Starting workspace with updated template...\r\n");
-	const startBuild = await ctx.restClient.postWorkspaceBuild(
-		workspace.id,
-		withBuildReason(ctx, {
-			transition: "start",
-			template_version_id: targetVersionId,
-			rich_parameter_values: buildParameters,
-		}),
-	);
-	const startedJob = await ctx.restClient.waitForBuild(startBuild);
-	if (startedJob?.status === "canceled") {
-		throw new Error("Workspace update canceled during start");
-	}
-
-	return ctx.restClient.getWorkspace(workspace.id);
+	await ctx.restClient.updateWorkspaceVersion(ctx.workspace);
+	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }
 
-async function getUpdateTemplateParameters(
-	ctx: CliContext,
-	workspace: Workspace,
-	oldBuildParameters: WorkspaceBuildParameter[],
-	targetVersionId: string,
-): Promise<TemplateVersionParameter[]> {
-	if (workspace.template_use_classic_parameter_flow) {
-		return ctx.restClient.getTemplateVersionRichParameters(targetVersionId);
-	}
-
-	return ctx.restClient.getDynamicParameters(
-		targetVersionId,
-		workspace.owner_id,
-		oldBuildParameters,
+async function collectUpdateParameters(ctx: CliContext): Promise<string[]> {
+	const newParams = await ctx.restClient.getTemplateVersionRichParameters(
+		ctx.workspace.template_active_version_id,
 	);
-}
+	const candidates = newParams.filter((p) => p.required && !p.default_value);
+	if (candidates.length === 0) return [];
 
-function withBuildReason(
-	ctx: CliContext,
-	request: CreateWorkspaceBuildRequest,
-): CreateWorkspaceBuildRequest {
-	if (!ctx.featureSet.buildReason) {
-		return request;
-	}
-	return { ...request, reason: "vscode_connection" };
-}
-
-async function promptForUpdateParameters(
-	oldBuildParameters: WorkspaceBuildParameter[],
-	templateParameters: TemplateVersionParameter[],
-): Promise<WorkspaceBuildParameter[]> {
-	const missingParameters = getMissingParameters(
-		oldBuildParameters,
-		[],
-		templateParameters,
+	const currentValues = await ctx.restClient.getWorkspaceBuildParameters(
+		ctx.workspace.latest_build.id,
 	);
-	const buildParameters: WorkspaceBuildParameter[] = [];
+	const existing = new Set(currentValues.map((p) => p.name));
+	const toPrompt = candidates.filter((p) => !existing.has(p.name));
 
-	for (const parameter of missingParameters) {
-		const value = await promptForParameter(parameter);
+	const args: string[] = [];
+	for (let i = 0; i < toPrompt.length; i++) {
+		const value = await promptForParameter(toPrompt[i], i + 1, toPrompt.length);
 		if (value === undefined) {
-			throw new Error("Workspace update canceled while configuring parameters");
+			throw new Error("Workspace update cancelled");
 		}
-		buildParameters.push({ name: parameter.name, value });
+		args.push("--parameter", escapeCommandArg(`${toPrompt[i].name}=${value}`));
 	}
-
-	return buildParameters;
+	return args;
 }
 
-function getMissingParameters(
-	oldBuildParameters: WorkspaceBuildParameter[],
-	buildParameters: WorkspaceBuildParameter[],
-	templateParameters: TemplateVersionParameter[],
-): TemplateVersionParameter[] {
-	const missingParameters: TemplateVersionParameter[] = [];
-	const requiredParameters = templateParameters.filter(
-		(parameter) =>
-			(parameter.mutable && parameter.required) || !parameter.mutable,
-	);
+function promptForParameter(
+	param: TemplateVersionParameter,
+	step: number,
+	totalSteps: number,
+): Promise<string | undefined> {
+	const title = param.display_name || param.name;
+	const items = quickPickItems(param);
 
-	for (const parameter of requiredParameters) {
-		const buildParameter = findBuildParameter(
-			parameter,
-			oldBuildParameters,
-			buildParameters,
-		);
-		if (!buildParameter) {
-			missingParameters.push(parameter);
-		}
+	if (items) {
+		const multi = param.form_type === "multi-select";
+		const qp = vscode.window.createQuickPick<(typeof items)[number]>();
+		qp.title = title;
+		qp.step = step;
+		qp.totalSteps = totalSteps;
+		qp.placeholder = param.description_plaintext;
+		qp.items = items;
+		qp.canSelectMany = multi;
+		qp.ignoreFocusOut = true;
+		return untilHidden(qp, () => {
+			if (multi) {
+				return qp.selectedItems.length > 0
+					? JSON.stringify(qp.selectedItems.map((i) => i.value))
+					: undefined;
+			}
+			return qp.selectedItems[0]?.value;
+		});
 	}
 
-	for (const parameter of templateParameters) {
-		if (
-			parameter.options.length === 0 ||
-			parameter.form_type === "multi-select"
-		) {
-			continue;
-		}
-
-		const buildParameter = findBuildParameter(
-			parameter,
-			oldBuildParameters,
-			buildParameters,
-		);
-		if (!buildParameter) {
-			continue;
-		}
-
-		const matchingOption = parameter.options.find(
-			(option) => option.value === buildParameter.value,
-		);
-		if (!matchingOption && !missingParameters.includes(parameter)) {
-			missingParameters.push(parameter);
-		}
-	}
-
-	return missingParameters;
-}
-
-function findBuildParameter(
-	parameter: TemplateVersionParameter,
-	oldBuildParameters: WorkspaceBuildParameter[],
-	buildParameters: WorkspaceBuildParameter[],
-): WorkspaceBuildParameter | undefined {
-	return (
-		buildParameters.find((p) => p.name === parameter.name) ??
-		oldBuildParameters.find((p) => p.name === parameter.name)
+	const input = vscode.window.createInputBox();
+	input.title = title;
+	input.step = step;
+	input.totalSteps = totalSteps;
+	input.prompt = param.description_plaintext;
+	input.placeholder = formatConstraint(param);
+	input.value = param.default_value;
+	input.ignoreFocusOut = true;
+	const validate = makeValidator(param);
+	const refresh = () => {
+		input.validationMessage = validate(input.value).message ?? "";
+	};
+	refresh();
+	input.onDidChangeValue(refresh);
+	return untilHidden(input, () =>
+		validate(input.value).ok ? input.value : undefined,
 	);
 }
 
-async function promptForParameter(
-	parameter: TemplateVersionParameter,
-): Promise<string | undefined> {
-	if (parameter.options.length > 0) {
-		if (
-			parameter.form_type === "multi-select" ||
-			parameter.type === "list(string)"
-		) {
-			return promptForMultiSelectParameter(parameter);
-		}
-		return promptForSelectParameter(parameter);
-	}
-
-	if (parameter.type === "bool" || parameter.form_type === "checkbox") {
-		return promptForBooleanParameter(parameter);
-	}
-
-	return promptForTextParameter(parameter);
-}
-
-type ParameterQuickPickItem = vscode.QuickPickItem & {
-	value: string;
-};
-
-async function promptForSelectParameter(
-	parameter: TemplateVersionParameter,
-): Promise<string | undefined> {
-	const items = parameter.options.map((option): ParameterQuickPickItem => {
-		const details = [option.description];
-		if (option.value === parameter.default_value) {
-			details.push("Default");
-		}
-		return {
-			label: option.name || option.value,
-			description: option.value,
-			detail: details.filter(Boolean).join(" • "),
-			value: option.value,
+function untilHidden<T>(
+	qi: vscode.InputBox | vscode.QuickPick<vscode.QuickPickItem>,
+	onAccept: () => T | undefined,
+): Promise<T | undefined> {
+	return new Promise((resolve) => {
+		let done = false;
+		const finish = (value: T | undefined) => {
+			if (done) return;
+			done = true;
+			resolve(value);
+			qi.dispose();
 		};
-	});
-	const choice = await vscode.window.showQuickPick(items, {
-		title: parameterTitle(parameter),
-		placeHolder: parameterPlaceHolder(parameter),
-		ignoreFocusOut: true,
-	});
-	return choice?.value;
-}
-
-async function promptForMultiSelectParameter(
-	parameter: TemplateVersionParameter,
-): Promise<string | undefined> {
-	const defaultValues = parseListParameterValue(parameter.default_value);
-	const items = parameter.options.map(
-		(option): ParameterQuickPickItem => ({
-			label: option.name || option.value,
-			description: option.value,
-			detail: option.description,
-			picked: defaultValues.includes(option.value),
-			value: option.value,
-		}),
-	);
-	const choices = await vscode.window.showQuickPick(items, {
-		title: parameterTitle(parameter),
-		placeHolder: parameterPlaceHolder(parameter),
-		canPickMany: true,
-		ignoreFocusOut: true,
-	});
-	return choices
-		? JSON.stringify(choices.map((choice) => choice.value))
-		: undefined;
-}
-
-async function promptForBooleanParameter(
-	parameter: TemplateVersionParameter,
-): Promise<string | undefined> {
-	const items: ParameterQuickPickItem[] = [
-		{ label: "Yes", value: "true" },
-		{ label: "No", value: "false" },
-	].map((item) => ({
-		...item,
-		detail: item.value === parameter.default_value ? "Default" : undefined,
-	}));
-	const choice = await vscode.window.showQuickPick(items, {
-		title: parameterTitle(parameter),
-		placeHolder: parameterPlaceHolder(parameter),
-		ignoreFocusOut: true,
-	});
-	return choice?.value;
-}
-
-async function promptForTextParameter(
-	parameter: TemplateVersionParameter,
-): Promise<string | undefined> {
-	return vscode.window.showInputBox({
-		title: parameterTitle(parameter),
-		prompt: parameterPlaceHolder(parameter),
-		value: parameter.default_value,
-		password: parameter.form_type === "password",
-		ignoreFocusOut: true,
-		validateInput: (value) => validateParameterInput(parameter, value),
+		qi.onDidAccept(() => {
+			const value = onAccept();
+			if (value !== undefined) finish(value);
+		});
+		qi.onDidHide(() => finish(undefined));
+		qi.show();
 	});
 }
 
-function validateParameterInput(
-	parameter: TemplateVersionParameter,
-	value: string,
-): string | undefined {
-	if (parameter.required && value === "") {
-		return "A value is required.";
+/**
+ * Returns picker items if the param needs a chooser, otherwise undefined.
+ * Anything that falls through gets a free-form text input.
+ */
+function quickPickItems(
+	param: TemplateVersionParameter,
+): Array<vscode.QuickPickItem & { value: string }> | undefined {
+	if (param.type === "bool") {
+		return [
+			{ label: "True", value: "true" },
+			{ label: "False", value: "false" },
+		];
 	}
-
-	if (parameter.type === "number") {
-		const numberValue = Number(value);
-		if (!Number.isFinite(numberValue)) {
-			return "Enter a number.";
-		}
-		if (
-			parameter.validation_min !== undefined &&
-			numberValue < parameter.validation_min
-		) {
-			return `Enter a number greater than or equal to ${parameter.validation_min}.`;
-		}
-		if (
-			parameter.validation_max !== undefined &&
-			numberValue > parameter.validation_max
-		) {
-			return `Enter a number less than or equal to ${parameter.validation_max}.`;
-		}
+	if (param.options.length > 0) {
+		return param.options.map((o) => ({
+			label: o.name,
+			description: o.description,
+			value: o.value,
+		}));
 	}
-
-	if (parameter.type === "list(string)" && parameter.options.length === 0) {
-		const values = parseListParameterValue(value);
-		if (values.length === 0 && value !== "[]") {
-			return "Enter a JSON array of strings.";
-		}
-	}
-
-	if (parameter.validation_regex) {
-		const regex = new RegExp(parameter.validation_regex);
-		if (!regex.test(value)) {
-			return parameter.validation_error || "Enter a valid value.";
-		}
-	}
-
 	return undefined;
 }
 
-function parseListParameterValue(value: string): string[] {
-	try {
-		const parsed: unknown = JSON.parse(value);
-		return Array.isArray(parsed) &&
-			parsed.every((item): item is string => typeof item === "string")
-			? parsed
-			: [];
-	} catch {
-		return [];
+function formatConstraint(param: TemplateVersionParameter): string {
+	if (param.type === "number") {
+		const lo = param.validation_min;
+		const hi = param.validation_max;
+		if (lo !== undefined && hi !== undefined) return `between ${lo} and ${hi}`;
+		if (lo !== undefined) return `at least ${lo}`;
+		if (hi !== undefined) return `at most ${hi}`;
+		return "a number";
 	}
+	if (param.validation_regex) {
+		return param.validation_error || `must match ${param.validation_regex}`;
+	}
+	return "";
 }
 
-function parameterTitle(parameter: TemplateVersionParameter): string {
-	return `Workspace parameter: ${parameterDisplayName(parameter)}`;
-}
-
-function parameterPlaceHolder(parameter: TemplateVersionParameter): string {
-	return (
-		parameter.description_plaintext || parameter.description || parameter.name
-	);
-}
-
-function parameterDisplayName(parameter: TemplateVersionParameter): string {
-	return parameter.display_name || parameter.name;
+/**
+ * Returns `{ ok, message }`: `ok` gates submission, `message` (if any) is
+ * shown inline. Empty input on a required param blocks submit silently.
+ * Coder regexes are RE2; on parse failure we defer to server-side validation.
+ */
+function makeValidator(
+	param: TemplateVersionParameter,
+): (input: string) => { ok: boolean; message?: string } {
+	let re: RegExp | undefined;
+	if (param.validation_regex) {
+		try {
+			re = new RegExp(param.validation_regex);
+		} catch {
+			re = undefined;
+		}
+	}
+	return (input) => {
+		if (!input) return { ok: !param.required };
+		if (param.type === "number") {
+			const n = Number(input);
+			if (!Number.isFinite(n)) {
+				return { ok: false, message: "Must be a number" };
+			}
+			if (param.validation_min !== undefined && n < param.validation_min) {
+				return {
+					ok: false,
+					message: `Must be at least ${param.validation_min}`,
+				};
+			}
+			if (param.validation_max !== undefined && n > param.validation_max) {
+				return {
+					ok: false,
+					message: `Must be at most ${param.validation_max}`,
+				};
+			}
+		}
+		if (re && !re.test(input)) {
+			return { ok: false, message: param.validation_error || "Invalid format" };
+		}
+		return { ok: true };
+	};
 }
 
 /**

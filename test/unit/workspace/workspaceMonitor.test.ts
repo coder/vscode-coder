@@ -106,6 +106,19 @@ describe("WorkspaceMonitor", () => {
 			stream.pushMessage(workspaceEvent({ outdated: false }));
 			expect(statusBar.hide).toHaveBeenCalled();
 		});
+
+		it("hides status bar while an outdated workspace is building", async () => {
+			const { stream, statusBar } = await setup();
+
+			stream.pushMessage(
+				workspaceEvent({
+					outdated: true,
+					latest_build: { status: "starting" },
+				}),
+			);
+			expect(statusBar.show).not.toHaveBeenCalled();
+			expect(statusBar.hide).toHaveBeenCalled();
+		});
 	});
 
 	describe("notifications", () => {

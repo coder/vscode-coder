@@ -1,43 +1,25 @@
-import { describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { LazyStream, updateWorkspace } from "@/api/workspace";
+import { LazyStream, startWorkspace, updateWorkspace } from "@/api/workspace";
 import { type FeatureSet } from "@/featureSet";
 import { type UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
-import { workspace as createWorkspace } from "../../mocks/workspace";
+import { workspace as createWorkspace } from "@repo/mocks";
 
 import type { Api } from "coder/site/src/api/api";
 import type {
-	CreateWorkspaceBuildRequest,
-	ProvisionerJob,
 	TemplateVersionParameter,
-	TemplateVersionParameterOption,
 	Workspace,
 	WorkspaceBuild,
-	WorkspaceBuildParameter,
 } from "coder/site/src/api/typesGenerated";
 
-type UpdateWorkspaceContext = Parameters<typeof updateWorkspace>[0];
-interface UpdateRestClient {
-	getWorkspace: (workspaceId: string) => Promise<Workspace>;
-	getWorkspaceBuildParameters: (
-		workspaceBuildId: string,
-	) => Promise<WorkspaceBuildParameter[]>;
-	getTemplateVersionRichParameters: (
-		versionId: string,
-	) => Promise<TemplateVersionParameter[]>;
-	getDynamicParameters: (
-		templateVersionId: string,
-		ownerId: string,
-		oldBuildParameters: WorkspaceBuildParameter[],
-	) => Promise<TemplateVersionParameter[]>;
-	postWorkspaceBuild: (
-		workspaceId: string,
-		data: CreateWorkspaceBuildRequest,
-	) => Promise<WorkspaceBuild>;
-	waitForBuild: (build: WorkspaceBuild) => Promise<ProvisionerJob | undefined>;
-}
+vi.mock(import("node:child_process"), async (importOriginal) => ({
+	...(await importOriginal()),
+	spawn: vi.fn(),
+}));
+const { spawn } = await import("node:child_process");
 
 const featureSet: FeatureSet = {
 	vscodessh: true,
@@ -75,141 +57,159 @@ function deferredFactory() {
 	};
 }
 
-function templateParameter(
-	overrides: Partial<TemplateVersionParameter> = {},
-): TemplateVersionParameter {
-	return {
-		name: "parameter",
-		description: "",
-		description_plaintext: "",
-		type: "string",
-		form_type: "",
-		mutable: true,
-		default_value: "default",
-		icon: "",
-		options: [],
-		required: false,
-		ephemeral: false,
-		...overrides,
-	};
-}
-
-function parameterOption(
-	value: string,
-	overrides: Partial<TemplateVersionParameterOption> = {},
-): TemplateVersionParameterOption {
-	return {
-		name: value,
-		description: "",
-		value,
-		icon: "",
-		...overrides,
-	};
-}
-
-function chooseQuickPickValue(value: string): void {
-	vi.mocked(vscode.window.showQuickPick).mockResolvedValueOnce({
-		label: value,
-		value,
+function createUpdateCtx(
+	overrides: {
+		workspace?: Omit<Partial<Workspace>, "latest_build"> & {
+			latest_build?: Partial<WorkspaceBuild>;
+		};
+		featureSet?: Partial<FeatureSet>;
+	} = {},
+) {
+	vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+		get: vi.fn((_key: string, defaultValue: unknown) => defaultValue),
 	} as never);
-}
-
-function createBuild(
-	workspace: Workspace,
-	overrides: Partial<WorkspaceBuild> = {},
-): WorkspaceBuild {
-	return {
-		...workspace.latest_build,
-		...overrides,
-	};
-}
-
-function succeededJob(workspace: Workspace): ProvisionerJob {
-	return { ...workspace.latest_build.job, status: "succeeded" };
-}
-
-function setupUpdateWorkspace({
-	workspace = createWorkspace({
+	const workspace = createWorkspace({
 		outdated: true,
-		template_use_classic_parameter_flow: true,
-		latest_build: { status: "stopped", transition: "stop" },
-	}),
-	finalWorkspace = createWorkspace({
+		latest_build: { status: "running", transition: "start" },
+		...overrides.workspace,
+	});
+	const finalWorkspace = createWorkspace({
 		outdated: false,
-		template_use_classic_parameter_flow: true,
 		latest_build: { status: "running" },
-	}),
-	oldBuildParameters = [],
-	templateParameters = [],
-	featureSetOverrides = {},
-}: {
-	workspace?: Workspace;
-	finalWorkspace?: Workspace;
-	oldBuildParameters?: WorkspaceBuildParameter[];
-	templateParameters?: TemplateVersionParameter[];
-	featureSetOverrides?: Partial<FeatureSet>;
-} = {}) {
-	vi.mocked(vscode.window.showInputBox).mockReset();
-	vi.mocked(vscode.window.showQuickPick).mockReset();
-
-	const stopBuild = createBuild(workspace, {
-		id: "stop-build",
-		build_number: 2,
-		transition: "stop",
-		status: "stopped",
 	});
-	const startBuild = createBuild(workspace, {
-		id: "start-build",
-		build_number: 3,
-		transition: "start",
-		status: "running",
-	});
-	const postWorkspaceBuild = vi
-		.fn<
-			(
-				workspaceId: string,
-				data: CreateWorkspaceBuildRequest,
-			) => Promise<WorkspaceBuild>
-		>()
-		.mockImplementation((_workspaceId, data) =>
-			Promise.resolve(data.transition === "stop" ? stopBuild : startBuild),
-		);
-	const waitForBuild = vi
-		.fn<(build: WorkspaceBuild) => Promise<ProvisionerJob | undefined>>()
-		.mockResolvedValue(succeededJob(workspace));
-	const restClient: UpdateRestClient = {
-		getWorkspace: vi
-			.fn<(workspaceId: string) => Promise<Workspace>>()
-			.mockResolvedValueOnce(workspace)
-			.mockResolvedValue(finalWorkspace),
-		getWorkspaceBuildParameters: vi
-			.fn<(workspaceBuildId: string) => Promise<WorkspaceBuildParameter[]>>()
-			.mockResolvedValue(oldBuildParameters),
-		getTemplateVersionRichParameters: vi
-			.fn<(versionId: string) => Promise<TemplateVersionParameter[]>>()
-			.mockResolvedValue(templateParameters),
-		getDynamicParameters: vi
-			.fn<
-				(
-					templateVersionId: string,
-					ownerId: string,
-					oldBuildParameters: WorkspaceBuildParameter[],
-				) => Promise<TemplateVersionParameter[]>
-			>()
-			.mockResolvedValue(templateParameters),
-		postWorkspaceBuild,
-		waitForBuild,
+	const restClient = {
+		getWorkspace: vi.fn().mockResolvedValue(finalWorkspace),
+		stopWorkspace: vi
+			.fn()
+			.mockResolvedValue({ ...workspace.latest_build, status: "stopped" }),
+		updateWorkspaceVersion: vi.fn().mockResolvedValue(workspace.latest_build),
+		waitForBuild: vi.fn().mockResolvedValue({
+			...workspace.latest_build.job,
+			status: "succeeded",
+		}),
+		getTemplateVersionRichParameters: vi.fn().mockResolvedValue([]),
+		getWorkspaceBuildParameters: vi.fn().mockResolvedValue([]),
 	};
-	const write = vi.fn<(data: string) => void>();
-	const ctx: UpdateWorkspaceContext = {
-		restClient: restClient as Api,
-		auth: { mode: "url", url: "https://test.coder.com" },
+	const ctx = {
+		restClient: restClient as unknown as Api,
+		auth: { mode: "url" as const, url: "https://test.coder.com" },
 		binPath: "/usr/bin/coder",
 		workspace,
-		write,
-		featureSet: { ...featureSet, ...featureSetOverrides },
+		write: vi.fn<(data: string) => void>(),
+		featureSet: { ...featureSet, ...overrides.featureSet },
 	};
-	return { ctx, restClient, startBuild, stopBuild, write };
+	return { ctx, restClient, finalWorkspace };
+}
+
+/** Drives mocked spawn() so tests can fire stdout/stderr + close at will. */
+function controlSpawn() {
+	const proc = new EventEmitter() as EventEmitter & {
+		stdout: EventEmitter;
+		stderr: EventEmitter;
+	};
+	proc.stdout = new EventEmitter();
+	proc.stderr = new EventEmitter();
+	let resolveSpawned!: () => void;
+	const spawned = new Promise<void>((resolve) => {
+		resolveSpawned = resolve;
+	});
+	vi.mocked(spawn).mockImplementation(() => {
+		resolveSpawned();
+		return proc as never;
+	});
+	return {
+		spawned,
+		stderr(data: string) {
+			proc.stderr.emit("data", Buffer.from(data));
+		},
+		async close(exitCode: number) {
+			await spawned;
+			proc.emit("close", exitCode);
+		},
+	};
+}
+
+interface QuickInputMock {
+	mock: Record<string, unknown> & {
+		show: ReturnType<typeof vi.fn>;
+		dispose: ReturnType<typeof vi.fn>;
+	};
+	accept: (overrides?: Record<string, unknown>) => void;
+	hide: () => void;
+}
+
+function quickInputMock(): QuickInputMock {
+	let acceptCb: () => void = () => {};
+	let hideCb: () => void = () => {};
+	let changeCb: (v: string) => void = () => {};
+	const mock = {
+		title: "",
+		step: 0,
+		totalSteps: 0,
+		prompt: "",
+		placeholder: "",
+		value: "",
+		validationMessage: "",
+		ignoreFocusOut: false,
+		items: [] as readonly unknown[],
+		selectedItems: [] as readonly unknown[],
+		onDidAccept: vi.fn((cb: () => void) => {
+			acceptCb = cb;
+			return { dispose: vi.fn() };
+		}),
+		onDidHide: vi.fn((cb: () => void) => {
+			hideCb = cb;
+			return { dispose: vi.fn() };
+		}),
+		onDidChangeValue: vi.fn((cb: (v: string) => void) => {
+			changeCb = cb;
+			return { dispose: vi.fn() };
+		}),
+		show: vi.fn(),
+		dispose: vi.fn(),
+	};
+	return {
+		mock,
+		accept(overrides) {
+			Object.assign(mock, overrides ?? {});
+			if (overrides && "value" in overrides) changeCb(mock.value);
+			acceptCb();
+		},
+		hide() {
+			hideCb();
+		},
+	};
+}
+
+function mockCreateInputBox() {
+	const qi = quickInputMock();
+	vi.mocked(vscode.window.createInputBox).mockReturnValue(
+		qi.mock as unknown as vscode.InputBox,
+	);
+	return qi;
+}
+
+function mockCreateQuickPick() {
+	const qi = quickInputMock();
+	vi.mocked(vscode.window.createQuickPick).mockReturnValue(
+		qi.mock as unknown as vscode.QuickPick<vscode.QuickPickItem>,
+	);
+	return qi;
+}
+
+async function flushMicrotasks(times = 4) {
+	for (let i = 0; i < times; i++) await Promise.resolve();
+}
+
+function setupUpdate(
+	params: Array<Partial<TemplateVersionParameter>> = [],
+	opts: Parameters<typeof createUpdateCtx>[0] = {},
+) {
+	const ctxBundle = createUpdateCtx(opts);
+	ctxBundle.restClient.getTemplateVersionRichParameters.mockResolvedValue(
+		params.map(param),
+	);
+	return { ...ctxBundle, sp: controlSpawn() };
 }
 
 describe("LazyStream", () => {
@@ -271,285 +271,238 @@ describe("LazyStream", () => {
 	});
 });
 
+function param(overrides: Partial<TemplateVersionParameter> = {}) {
+	return {
+		name: "environment",
+		display_name: "Environment",
+		description: "",
+		description_plaintext: "",
+		type: "string",
+		form_type: "input",
+		mutable: true,
+		default_value: "",
+		icon: "",
+		options: [],
+		required: true,
+		ephemeral: false,
+		...overrides,
+	} as TemplateVersionParameter;
+}
+
 describe("updateWorkspace", () => {
-	it("returns the fresh workspace without building when already up to date", async () => {
-		const workspace = createWorkspace({ outdated: false });
-		const { ctx, restClient, write } = setupUpdateWorkspace({ workspace });
-
-		await expect(updateWorkspace(ctx)).resolves.toBe(workspace);
-
-		expect(write).toHaveBeenCalledWith("Workspace is up-to-date.\r\n");
-		expect(restClient.getWorkspaceBuildParameters).not.toHaveBeenCalled();
-		expect(restClient.postWorkspaceBuild).not.toHaveBeenCalled();
-		expect(restClient.waitForBuild).not.toHaveBeenCalled();
+	beforeEach(() => {
+		vi.clearAllMocks();
 	});
 
-	it("stops a started workspace before starting the update build", async () => {
-		const workspace = createWorkspace({
-			outdated: true,
-			template_active_version_id: "active-version",
-			template_use_classic_parameter_flow: true,
-			latest_build: { status: "running", transition: "start" },
-		});
-		const finalWorkspace = createWorkspace({
-			outdated: false,
-			template_active_version_id: "active-version",
-			latest_build: {
-				status: "running",
-				template_version_id: "active-version",
+	it.each([
+		{
+			kind: "text input",
+			param: { name: "environment" } as Partial<TemplateVersionParameter>,
+			mock: mockCreateInputBox,
+			accept: { value: "dev" },
+			expected: '--parameter "environment=dev"',
+		},
+		{
+			kind: "bool quick pick",
+			param: { name: "enabled", type: "bool" },
+			mock: mockCreateQuickPick,
+			accept: { selectedItems: [{ label: "True", value: "true" }] },
+			expected: '--parameter "enabled=true"',
+		},
+		{
+			kind: "options quick pick",
+			param: {
+				name: "size",
+				options: [
+					{ name: "Small", description: "", value: "s", icon: "" },
+					{ name: "Large", description: "", value: "l", icon: "" },
+				],
 			},
-		});
-		const oldBuildParameters = [{ name: "region", value: "us" }];
-		const templateParameters = [
-			templateParameter({ name: "region", default_value: "eu" }),
-		];
-		const { ctx, restClient, startBuild, stopBuild } = setupUpdateWorkspace({
-			workspace,
-			finalWorkspace,
-			oldBuildParameters,
-			templateParameters,
+			mock: mockCreateQuickPick,
+			accept: { selectedItems: [{ value: "l" }] },
+			expected: '--parameter "size=l"',
+		},
+		{
+			kind: "fallback text input for unknown types",
+			param: { name: "x", type: "list(string)" },
+			mock: mockCreateInputBox,
+			accept: { value: "[]" },
+			expected: '--parameter "x=[]"',
+		},
+	])(
+		"collects the value via $kind",
+		async ({ param: p, mock, accept, expected }) => {
+			const { ctx, sp, finalWorkspace } = setupUpdate([p]);
+			const qi = mock();
+
+			const result = updateWorkspace(ctx);
+			await flushMicrotasks();
+			qi.accept(accept);
+			await sp.close(0);
+
+			await expect(result).resolves.toBe(finalWorkspace);
+			expect(spawn).toHaveBeenCalledWith(
+				expect.stringContaining(expected),
+				expect.objectContaining({ shell: true }),
+			);
+		},
+	);
+
+	it("skips parameters that already have a value or default", async () => {
+		const { ctx, restClient, sp } = setupUpdate([
+			{ name: "existing" },
+			{ name: "with_default", default_value: "foo" },
+			{ name: "optional", required: false },
+		]);
+		restClient.getWorkspaceBuildParameters.mockResolvedValue([
+			{ name: "existing", value: "kept" },
+		]);
+
+		const result = updateWorkspace(ctx);
+		await sp.close(0);
+		await result;
+
+		expect(vscode.window.createInputBox).not.toHaveBeenCalled();
+		expect(spawn).toHaveBeenCalledWith(
+			expect.not.stringContaining("--parameter"),
+			expect.anything(),
+		);
+	});
+
+	it("throws when the user cancels a parameter prompt", async () => {
+		const { ctx } = setupUpdate([{}]);
+		const qi = mockCreateInputBox();
+
+		const result = updateWorkspace(ctx);
+		await flushMicrotasks();
+		qi.hide();
+
+		await expect(result).rejects.toThrow("Workspace update cancelled");
+		expect(spawn).not.toHaveBeenCalled();
+	});
+
+	it("steps the input title across multiple required params", async () => {
+		const { ctx, sp } = setupUpdate([{ name: "a" }, { name: "b" }]);
+		const inputs = [quickInputMock(), quickInputMock()];
+		vi.mocked(vscode.window.createInputBox)
+			.mockReturnValueOnce(inputs[0].mock as unknown as vscode.InputBox)
+			.mockReturnValueOnce(inputs[1].mock as unknown as vscode.InputBox);
+
+		const result = updateWorkspace(ctx);
+		await flushMicrotasks();
+		inputs[0].accept({ value: "first" });
+		await flushMicrotasks();
+		inputs[1].accept({ value: "second" });
+		await sp.close(0);
+		await result;
+
+		expect(inputs.map((i) => [i.mock.step, i.mock.totalSteps])).toEqual([
+			[1, 2],
+			[2, 2],
+		]);
+	});
+
+	it("rejects when the process exits non-zero", async () => {
+		const { ctx, restClient } = createUpdateCtx();
+		const sp = controlSpawn();
+
+		const result = updateWorkspace(ctx);
+		await sp.spawned;
+		sp.stderr("auth failed");
+		await sp.close(1);
+
+		await expect(result).rejects.toThrow(/exited with code 1.*auth failed/);
+		expect(restClient.getWorkspace).not.toHaveBeenCalled();
+	});
+
+	it("falls back to the API update path when coder update is unsupported", async () => {
+		const { ctx, restClient, finalWorkspace } = createUpdateCtx({
+			featureSet: { cliUpdate: false },
 		});
 
 		await expect(updateWorkspace(ctx)).resolves.toBe(finalWorkspace);
 
-		expect(restClient.getWorkspace).toHaveBeenNthCalledWith(1, workspace.id);
-		expect(restClient.getWorkspaceBuildParameters).toHaveBeenCalledWith(
-			workspace.latest_build.id,
-		);
-		expect(restClient.getTemplateVersionRichParameters).toHaveBeenCalledWith(
-			"active-version",
-		);
-		expect(restClient.postWorkspaceBuild).toHaveBeenNthCalledWith(
-			1,
-			workspace.id,
-			{ transition: "stop", reason: "vscode_connection" },
-		);
-		expect(restClient.postWorkspaceBuild).toHaveBeenNthCalledWith(
-			2,
-			workspace.id,
-			{
-				transition: "start",
-				template_version_id: "active-version",
-				rich_parameter_values: [],
-				reason: "vscode_connection",
-			},
-		);
-		expect(restClient.waitForBuild).toHaveBeenNthCalledWith(1, stopBuild);
-		expect(restClient.waitForBuild).toHaveBeenNthCalledWith(2, startBuild);
-	});
-
-	it("evaluates dynamic parameters when the template uses dynamic parameter flow", async () => {
-		const workspace = createWorkspace({
-			outdated: true,
-			template_active_version_id: "active-version",
-			template_use_classic_parameter_flow: false,
-			latest_build: { status: "stopped", transition: "stop" },
-		});
-		const oldBuildParameters = [{ name: "region", value: "us" }];
-		const { ctx, restClient } = setupUpdateWorkspace({
-			workspace,
-			oldBuildParameters,
-			templateParameters: [templateParameter({ name: "region" })],
-		});
-
-		await updateWorkspace(ctx);
-
-		expect(restClient.getDynamicParameters).toHaveBeenCalledWith(
-			"active-version",
-			workspace.owner_id,
-			oldBuildParameters,
-		);
+		expect(spawn).not.toHaveBeenCalled();
 		expect(restClient.getTemplateVersionRichParameters).not.toHaveBeenCalled();
+		expect(restClient.stopWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
+		expect(restClient.updateWorkspaceVersion).toHaveBeenCalledWith(
+			ctx.workspace,
+		);
 	});
 
-	it("omits missing optional mutable parameters", async () => {
-		const { ctx, restClient } = setupUpdateWorkspace({
-			templateParameters: [
-				templateParameter({ name: "editor", default_value: "vim" }),
-			],
+	it("does not stop before API fallback update when the workspace is not running", async () => {
+		const { ctx, restClient } = createUpdateCtx({
+			workspace: { latest_build: { status: "stopped", transition: "stop" } },
+			featureSet: { cliUpdate: false },
 		});
 
 		await updateWorkspace(ctx);
 
-		expect(vscode.window.showInputBox).not.toHaveBeenCalled();
-		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
-			ctx.workspace.id,
-			expect.objectContaining({ rich_parameter_values: [] }),
+		expect(restClient.stopWorkspace).not.toHaveBeenCalled();
+		expect(restClient.updateWorkspaceVersion).toHaveBeenCalledWith(
+			ctx.workspace,
 		);
 	});
 
-	it("prompts for missing required parameters before stopping", async () => {
-		const workspace = createWorkspace({
-			outdated: true,
-			template_use_classic_parameter_flow: true,
-			latest_build: { status: "running", transition: "start" },
+	it("throws before update when the API fallback stop is canceled", async () => {
+		const { ctx, restClient } = createUpdateCtx({
+			featureSet: { cliUpdate: false },
 		});
-		const { ctx, restClient } = setupUpdateWorkspace({
-			workspace,
-			templateParameters: [
-				templateParameter({
-					name: "project",
-					required: true,
-					default_value: "",
-				}),
-			],
-		});
-		vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce("project-a");
-
-		await updateWorkspace(ctx);
-
-		expect(vscode.window.showInputBox).toHaveBeenCalledWith(
-			expect.objectContaining({ title: "Workspace parameter: project" }),
-		);
-		expect(restClient.postWorkspaceBuild).toHaveBeenNthCalledWith(
-			2,
-			workspace.id,
-			expect.objectContaining({
-				rich_parameter_values: [{ name: "project", value: "project-a" }],
-			}),
-		);
-		expect(
-			vi.mocked(vscode.window.showInputBox).mock.invocationCallOrder[0],
-		).toBeLessThan(
-			vi.mocked(restClient.postWorkspaceBuild).mock.invocationCallOrder[0],
-		);
-	});
-
-	it("prompts for first-time immutable parameters", async () => {
-		const { ctx, restClient } = setupUpdateWorkspace({
-			templateParameters: [
-				templateParameter({
-					name: "image",
-					mutable: false,
-					required: false,
-					default_value: "ubuntu",
-				}),
-			],
-		});
-		vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce("debian");
-
-		await updateWorkspace(ctx);
-
-		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
-			ctx.workspace.id,
-			expect.objectContaining({
-				rich_parameter_values: [{ name: "image", value: "debian" }],
-			}),
-		);
-	});
-
-	it("prompts when an old scalar option value is invalid", async () => {
-		const { ctx, restClient } = setupUpdateWorkspace({
-			oldBuildParameters: [{ name: "color", value: "blue" }],
-			templateParameters: [
-				templateParameter({
-					name: "color",
-					default_value: "red",
-					options: [parameterOption("red"), parameterOption("green")],
-				}),
-			],
-		});
-		chooseQuickPickValue("green");
-
-		await updateWorkspace(ctx);
-
-		expect(vscode.window.showQuickPick).toHaveBeenCalledWith(
-			expect.arrayContaining([
-				expect.objectContaining({ label: "red", value: "red" }),
-				expect.objectContaining({ label: "green", value: "green" }),
-			]),
-			expect.objectContaining({ title: "Workspace parameter: color" }),
-		);
-		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
-			ctx.workspace.id,
-			expect.objectContaining({
-				rich_parameter_values: [{ name: "color", value: "green" }],
-			}),
-		);
-	});
-
-	it("does not prompt for invalid multi-select values", async () => {
-		const { ctx, restClient } = setupUpdateWorkspace({
-			oldBuildParameters: [
-				{ name: "tools", value: JSON.stringify(["vim", "emacs"]) },
-			],
-			templateParameters: [
-				templateParameter({
-					name: "tools",
-					type: "list(string)",
-					form_type: "multi-select",
-					default_value: JSON.stringify(["vim"]),
-					options: [parameterOption("vim")],
-				}),
-			],
-		});
-
-		await updateWorkspace(ctx);
-
-		expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
-		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
-			ctx.workspace.id,
-			expect.objectContaining({ rich_parameter_values: [] }),
-		);
-	});
-
-	it("omits ephemeral and previously-set immutable parameters", async () => {
-		const { ctx, restClient } = setupUpdateWorkspace({
-			oldBuildParameters: [
-				{ name: "token", value: "secret" },
-				{ name: "size", value: "large" },
-			],
-			templateParameters: [
-				templateParameter({ name: "token", ephemeral: true }),
-				templateParameter({
-					name: "size",
-					mutable: false,
-					default_value: "small",
-				}),
-			],
-		});
-
-		await updateWorkspace(ctx);
-
-		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
-			ctx.workspace.id,
-			expect.objectContaining({ rich_parameter_values: [] }),
-		);
-	});
-
-	it("cancels before stopping when a parameter prompt is dismissed", async () => {
-		const workspace = createWorkspace({
-			outdated: true,
-			template_use_classic_parameter_flow: true,
-			latest_build: { status: "running", transition: "start" },
-		});
-		const { ctx, restClient } = setupUpdateWorkspace({
-			workspace,
-			templateParameters: [
-				templateParameter({
-					name: "project",
-					required: true,
-					default_value: "",
-				}),
-			],
+		restClient.waitForBuild.mockResolvedValueOnce({
+			...ctx.workspace.latest_build.job,
+			status: "canceled",
 		});
 
 		await expect(updateWorkspace(ctx)).rejects.toThrow(
-			"Workspace update canceled while configuring parameters",
+			"Workspace update canceled during stop",
 		);
-		expect(restClient.postWorkspaceBuild).not.toHaveBeenCalled();
-		expect(restClient.waitForBuild).not.toHaveBeenCalled();
+		expect(restClient.updateWorkspaceVersion).not.toHaveBeenCalled();
+	});
+});
+
+describe("startWorkspace", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
 	});
 
-	it("omits build reasons when unsupported by the server", async () => {
-		const { ctx, restClient } = setupUpdateWorkspace({
-			templateParameters: [templateParameter({ name: "region" })],
-			featureSetOverrides: { buildReason: false },
+	it("runs coder start when the workspace is stopped", async () => {
+		const { ctx, restClient, finalWorkspace } = createUpdateCtx({
+			workspace: { latest_build: { status: "stopped", transition: "stop" } },
 		});
+		const sp = controlSpawn();
 
-		await updateWorkspace(ctx);
+		const result = startWorkspace(ctx);
+		await sp.close(0);
 
-		const request = vi.mocked(restClient.postWorkspaceBuild).mock.calls[0][1];
-		expect(request).not.toHaveProperty("reason");
+		await expect(result).resolves.toBe(finalWorkspace);
+		expect(spawn).toHaveBeenCalledWith(
+			'"/usr/bin/coder" --url "https://test.coder.com" start --yes --reason vscode_connection testuser/test-workspace',
+			expect.objectContaining({ shell: true }),
+		);
+		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
+	});
+
+	it("no-ops when the workspace is already running", async () => {
+		const { ctx, restClient } = createUpdateCtx();
+		await expect(startWorkspace(ctx)).resolves.toBe(ctx.workspace);
+		expect(spawn).not.toHaveBeenCalled();
+		expect(restClient.getWorkspace).not.toHaveBeenCalled();
+	});
+
+	it("omits --reason when buildReason feature is unavailable", async () => {
+		const { ctx } = createUpdateCtx({
+			workspace: { latest_build: { status: "stopped", transition: "stop" } },
+			featureSet: { buildReason: false },
+		});
+		const sp = controlSpawn();
+
+		const result = startWorkspace(ctx);
+		await sp.close(0);
+		await result;
+
+		expect(spawn).toHaveBeenCalledWith(
+			'"/usr/bin/coder" --url "https://test.coder.com" start --yes testuser/test-workspace',
+			expect.objectContaining({ shell: true }),
+		);
 	});
 });
