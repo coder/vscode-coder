@@ -700,6 +700,7 @@
 		"@repo/mocks": "workspace:*",
 		"@rolldown/plugin-babel": "catalog:",
 		"@storybook/addon-a11y": "catalog:",
+		"@storybook/addon-docs": "^10.3.6",
 		"@storybook/addon-essentials": "catalog:",
 		"@storybook/react": "catalog:",
 		"@storybook/react-vite": "catalog:",
@@ -752,8 +753,7 @@
 		"typescript-eslint": "^8.59.2",
 		"utf-8-validate": "^6.0.6",
 		"vite": "catalog:",
-		"vitest": "^4.1.5",
-		"@storybook/addon-docs": "^10.3.6"
+		"vitest": "^4.1.5"
 	},
 	"extensionPack": [
 		"ms-vscode-remote.remote-ssh"
