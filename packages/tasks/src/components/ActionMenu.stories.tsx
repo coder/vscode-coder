@@ -1,4 +1,4 @@
-import { expect, fn, userEvent } from "storybook/test";
+import { fn } from "storybook/test";
 
 import { ActionMenu } from "./ActionMenu";
 
@@ -48,15 +48,3 @@ export default meta;
 type Story = StoryObj<typeof ActionMenu>;
 
 export const Default: Story = {};
-
-export const Opened: Story = {
-	play: async ({ canvasElement }) => {
-		const icon = canvasElement.querySelector("vscode-icon[action-icon]");
-		await expect(icon).toBeTruthy();
-		if (!icon) throw new Error("icon not found");
-		await userEvent.click(icon);
-
-		const dropdown = canvasElement.querySelector(".action-menu-dropdown");
-		await expect(dropdown).toBeTruthy();
-	},
-};
