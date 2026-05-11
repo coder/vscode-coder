@@ -21,8 +21,8 @@
   binary download/verify now emit local telemetry events with their duration
   and outcome, so startup latency and failures are captured alongside other
   local telemetry.
-- Local telemetry now records aggregated `http.requests` rollups for per-route
-  HTTP health without emitting one event per request.
+- Local telemetry now records `http.requests` rollups for per-route HTTP
+  health without emitting one event per request.
 
 ### Fixed
 

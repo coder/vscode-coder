@@ -28,11 +28,6 @@ import {
 import { sizeOf } from "../logging/utils";
 import { getHeaderCommand } from "../settings/headers";
 import {
-	LOCAL_TELEMETRY_SETTING,
-	readHttpRequestsTelemetryConfig,
-	type HttpRequestsTelemetryConfig,
-} from "../settings/telemetry";
-import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "../telemetry/reporter";
@@ -97,7 +92,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 		ReconnectingWebSocket<never>
 	>();
 	private readonly configWatcher: vscode.Disposable;
-	private readonly httpRequestsConfigWatcher: vscode.Disposable;
 
 	private constructor(
 		private readonly output: Logger,
@@ -105,12 +99,12 @@ export class CoderApi extends Api implements vscode.Disposable {
 	) {
 		super();
 		this.configWatcher = this.watchConfigChanges();
-		this.httpRequestsConfigWatcher = this.watchHttpRequestsConfigChanges();
 	}
 
 	/**
 	 * Create a new CoderApi instance with the provided configuration.
-	 * Automatically sets up logging interceptors and certificate handling.
+	 * Automatically sets up logging interceptors, certificate handling,
+	 * and HTTP request telemetry that emits via the given reporter.
 	 */
 	static create(
 		baseUrl: string,
@@ -118,10 +112,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		output: Logger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): CoderApi {
-		const httpRequestsTelemetry = new HttpRequestsTelemetry(
-			telemetry,
-			readHttpRequestsTelemetryConfig(vscode.workspace.getConfiguration()),
-		);
+		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
 		const client = new CoderApi(output, httpRequestsTelemetry);
 		client.setCredentials(baseUrl, token);
 
@@ -177,7 +168,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 */
 	dispose(): void {
 		this.configWatcher.dispose();
-		this.httpRequestsConfigWatcher.dispose();
 		this.httpRequestsTelemetry.dispose();
 		for (const socket of this.reconnectingSockets) {
 			socket.close();
@@ -209,28 +199,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 				}
 			}
 		});
-	}
-
-	private watchHttpRequestsConfigChanges(): vscode.Disposable {
-		return watchConfigurationChanges(
-			[
-				{
-					setting: LOCAL_TELEMETRY_SETTING,
-					getValue: () =>
-						readHttpRequestsTelemetryConfig(
-							vscode.workspace.getConfiguration(),
-						),
-				},
-			],
-			(changes) => {
-				const config = changes.get(LOCAL_TELEMETRY_SETTING) as
-					| HttpRequestsTelemetryConfig
-					| undefined;
-				if (config) {
-					this.httpRequestsTelemetry.updateConfig(config);
-				}
-			},
-		);
 	}
 
 	watchInboxNotifications = async (
@@ -521,7 +489,7 @@ function setupInterceptors(
 	output: Logger,
 	httpRequestsTelemetry: HttpRequestsTelemetry,
 ): void {
-	addLoggingInterceptors(
+	addRequestInterceptors(
 		client.getAxiosInstance(),
 		output,
 		httpRequestsTelemetry,
@@ -550,7 +518,7 @@ function setupInterceptors(
 		return config;
 	});
 
-	// Wrap certificate errors and handle client certificate errors with refresh.
+	// Cert-refresh retries re-enter the chain, so each attempt is recorded.
 	client.getAxiosInstance().interceptors.response.use(
 		(r) => r,
 		async (err: unknown) => {
@@ -573,7 +541,7 @@ function setupInterceptors(
 	);
 }
 
-function addLoggingInterceptors(
+function addRequestInterceptors(
 	client: AxiosInstance,
 	logger: Logger,
 	httpRequestsTelemetry: HttpRequestsTelemetry,

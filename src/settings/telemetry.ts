@@ -22,10 +22,6 @@ export interface LocalSinkConfig {
 	readonly maxTotalBytes: number;
 }
 
-export interface HttpRequestsTelemetryConfig {
-	readonly windowSeconds: number;
-}
-
 export const LOCAL_SINK_DEFAULTS: LocalSinkConfig = {
 	flushIntervalMs: 15_000,
 	flushBatchSize: 100,
@@ -33,10 +29,6 @@ export const LOCAL_SINK_DEFAULTS: LocalSinkConfig = {
 	maxFileBytes: 5 * 1024 * 1024,
 	maxAgeDays: 30,
 	maxTotalBytes: 100 * 1024 * 1024,
-};
-
-export const HTTP_REQUESTS_TELEMETRY_DEFAULTS: HttpRequestsTelemetryConfig = {
-	windowSeconds: 60,
 };
 
 // Defense in depth: VS Code does not enforce JSON schema at runtime, so users
@@ -50,15 +42,11 @@ const LOCAL_SINK_MINIMUMS: LocalSinkConfig = {
 	maxTotalBytes: 4096,
 };
 
-const HTTP_REQUESTS_TELEMETRY_MINIMUMS: HttpRequestsTelemetryConfig = {
-	windowSeconds: 1,
-};
-
 /** Per-field: missing, non-numeric, or below-minimum values fall back to defaults. */
 export function readLocalSinkConfig(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): LocalSinkConfig {
-	const obj = readLocalTelemetryObject(cfg);
+	const obj = readObject(cfg.get(LOCAL_TELEMETRY_SETTING));
 	const read = (key: keyof LocalSinkConfig): number =>
 		readNumber(obj, key, LOCAL_SINK_DEFAULTS[key], LOCAL_SINK_MINIMUMS[key]);
 	return {
@@ -69,26 +57,6 @@ export function readLocalSinkConfig(
 		maxAgeDays: read("maxAgeDays"),
 		maxTotalBytes: read("maxTotalBytes"),
 	};
-}
-
-export function readHttpRequestsTelemetryConfig(
-	cfg: Pick<WorkspaceConfiguration, "get">,
-): HttpRequestsTelemetryConfig {
-	const httpRequests = readObject(readLocalTelemetryObject(cfg).httpRequests);
-	return {
-		windowSeconds: readNumber(
-			httpRequests,
-			"windowSeconds",
-			HTTP_REQUESTS_TELEMETRY_DEFAULTS.windowSeconds,
-			HTTP_REQUESTS_TELEMETRY_MINIMUMS.windowSeconds,
-		),
-	};
-}
-
-function readLocalTelemetryObject(
-	cfg: Pick<WorkspaceConfiguration, "get">,
-): Record<string, unknown> {
-	return readObject(cfg.get(LOCAL_TELEMETRY_SETTING));
 }
 
 function readObject(value: unknown): Record<string, unknown> {

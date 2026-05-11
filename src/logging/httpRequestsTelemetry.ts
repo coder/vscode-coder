@@ -1,21 +1,24 @@
 import { isAxiosError, type AxiosResponse } from "axios";
 
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "../telemetry/reporter";
+
 import { formatMethod } from "./formatters";
 
 import type { Disposable } from "vscode";
-
-import type { HttpRequestsTelemetryConfig } from "../settings/telemetry";
-import type { TelemetryReporter } from "../telemetry/reporter";
 
 import type { RequestConfigWithMeta } from "./types";
 
 const EVENT_NAME = "http.requests";
 const UNKNOWN_ROUTE = "<unknown>";
+const WINDOW_SECONDS = 60;
 
 const ID_PLACEHOLDER = "{id}";
 const NAME_PLACEHOLDER = "{name}";
 
-export const ROUTE_NORMALIZATION_RULES: ReadonlyArray<readonly string[]> = [
+const ROUTE_NORMALIZATION_RULES: ReadonlyArray<readonly string[]> = [
 	"api/v2/users/{name}/workspace/{name}",
 	"api/v2/users/{name}/keys/{id}",
 	"api/v2/users/{name}",
@@ -24,6 +27,7 @@ export const ROUTE_NORMALIZATION_RULES: ReadonlyArray<readonly string[]> = [
 	"api/v2/organizations/{id}/templates/{name}/versions/{name}",
 	"api/v2/organizations/{id}/templates/{name}",
 	"api/v2/organizations/{id}/groups/{name}",
+	"api/v2/organizations/{id}/members/{name}",
 	"api/v2/organizations/{id}",
 	"api/v2/aibridge/sessions/{id}",
 	"api/v2/files/{id}",
@@ -34,12 +38,9 @@ export const ROUTE_NORMALIZATION_RULES: ReadonlyArray<readonly string[]> = [
 	"api/v2/templateversions/{id}",
 	"api/v2/workspaceagents/{id}",
 	"api/v2/workspacebuilds/{id}",
+	"api/v2/workspaces/{id}/builds/{id}",
 	"api/v2/workspaces/{id}",
 ].map((rule) => rule.split("/"));
-
-const UUID =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const NUMERIC = /^\d+$/;
 
 interface HttpRequestBucket {
 	count2xx: number;
@@ -50,29 +51,23 @@ interface HttpRequestBucket {
 	durationsMs: number[];
 }
 
+/**
+ * Rolls up HTTP request counts and latencies into "http.requests" events
+ * every 60 seconds. Construct with NOOP_TELEMETRY_REPORTER to skip the
+ * timer so throwaway clients don't leak it.
+ */
 export class HttpRequestsTelemetry implements Disposable {
 	readonly #telemetry: TelemetryReporter;
-	#windowSeconds: number;
 	#timer: NodeJS.Timeout | null = null;
 	#disposed = false;
+	#windowStartedAt = Date.now();
 	readonly #buckets = new Map<string, Map<string, HttpRequestBucket>>();
 
-	public constructor(
-		telemetry: TelemetryReporter,
-		config: HttpRequestsTelemetryConfig,
-	) {
+	public constructor(telemetry: TelemetryReporter) {
 		this.#telemetry = telemetry;
-		this.#windowSeconds = config.windowSeconds;
-		this.#scheduleNextWindow();
-	}
-
-	public updateConfig(config: HttpRequestsTelemetryConfig): void {
-		if (config.windowSeconds === this.#windowSeconds) {
-			return;
+		if (telemetry !== NOOP_TELEMETRY_REPORTER) {
+			this.#scheduleNextWindow();
 		}
-		this.#flush();
-		this.#windowSeconds = config.windowSeconds;
-		this.#scheduleNextWindow();
 	}
 
 	public recordResponse(response: AxiosResponse): void {
@@ -95,12 +90,18 @@ export class HttpRequestsTelemetry implements Disposable {
 	}
 
 	public dispose(): void {
-		this.#disposed = true;
-		if (this.#timer) {
-			clearTimeout(this.#timer);
-			this.#timer = null;
+		if (this.#disposed) {
+			return;
 		}
-		this.#buckets.clear();
+		try {
+			this.#flush();
+		} finally {
+			this.#disposed = true;
+			if (this.#timer) {
+				clearTimeout(this.#timer);
+				this.#timer = null;
+			}
+		}
 	}
 
 	#record(
@@ -158,13 +159,17 @@ export class HttpRequestsTelemetry implements Disposable {
 	}
 
 	#flush(): void {
+		const elapsedSeconds = Math.max(
+			1,
+			Math.round((Date.now() - this.#windowStartedAt) / 1000),
+		);
 		for (const [method, byRoute] of this.#buckets) {
 			for (const [route, bucket] of byRoute) {
 				this.#telemetry.log(
 					EVENT_NAME,
 					{ method, route },
 					{
-						window_seconds: this.#windowSeconds,
+						window_seconds: elapsedSeconds,
 						count_2xx: bucket.count2xx,
 						count_3xx: bucket.count3xx,
 						count_4xx: bucket.count4xx,
@@ -177,13 +182,10 @@ export class HttpRequestsTelemetry implements Disposable {
 			}
 		}
 		this.#buckets.clear();
+		this.#windowStartedAt = Date.now();
 	}
 
 	#scheduleNextWindow(): void {
-		if (this.#timer) {
-			clearTimeout(this.#timer);
-			this.#timer = null;
-		}
 		if (this.#disposed) {
 			return;
 		}
@@ -193,7 +195,7 @@ export class HttpRequestsTelemetry implements Disposable {
 			} finally {
 				this.#scheduleNextWindow();
 			}
-		}, this.#windowSeconds * 1000);
+		}, WINDOW_SECONDS * 1000);
 	}
 }
 
@@ -216,7 +218,8 @@ export function normalizeHttpRoute(
 			return normalized;
 		}
 	}
-	return `/${segments.map(normalizeIdSegment).join("/")}`;
+	// No matching rule. Pass through; add a rule above if cardinality grows.
+	return `/${segments.join("/")}`;
 }
 
 function normalizeByRule(
@@ -239,10 +242,8 @@ function normalizeByRule(
 		normalized.push(segments[index]);
 	}
 
-	return `/${[
-		...normalized,
-		...segments.slice(rule.length).map(normalizeIdSegment),
-	].join("/")}`;
+	// Trailing segments pass through. If a tail can hold an ID, add a rule.
+	return `/${[...normalized, ...segments.slice(rule.length)].join("/")}`;
 }
 
 function parsePathSegments(url: string, baseURL?: string): string[] {
@@ -253,10 +254,6 @@ function parsePathSegments(url: string, baseURL?: string): string[] {
 	} catch {
 		return [];
 	}
-}
-
-function normalizeIdSegment(segment: string): string {
-	return UUID.test(segment) || NUMERIC.test(segment) ? ID_PLACEHOLDER : segment;
 }
 
 function elapsedMs(
@@ -279,7 +276,7 @@ function percentile95(values: readonly number[]): number {
 	if (values.length === 0) {
 		return 0;
 	}
-	const sorted = [...values].sort((a, b) => a - b);
+	const sorted = values.toSorted((a, b) => a - b);
 	const index = Math.ceil(sorted.length * 0.95) - 1;
 	return sorted[Math.max(0, index)];
 }

@@ -26,7 +26,6 @@ import { createHttpAgent } from "@/api/utils";
 import { ClientCertificateError } from "@/error/clientCertificateError";
 import { ServerCertificateError } from "@/error/serverCertificateError";
 import { getHeaders } from "@/headers";
-import { LOCAL_TELEMETRY_SETTING } from "@/settings/telemetry";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
@@ -240,41 +239,27 @@ describe("CoderApi", () => {
 			);
 		});
 
-		it.each([
-			["initial config", 1, undefined],
-			["after config change", 10, 1],
-		])(
-			"rolls HTTP responses into telemetry (%s)",
-			async (_, initialWindow, updatedWindow) => {
-				vi.useFakeTimers();
-				mockConfig.set(LOCAL_TELEMETRY_SETTING, {
-					httpRequests: { windowSeconds: initialWindow },
-				});
-				const log = vi.fn();
-				api = createApi(CODER_URL, AXIOS_TOKEN, {
-					...NOOP_TELEMETRY_REPORTER,
-					log,
-				});
+		it("rolls HTTP responses into telemetry", async () => {
+			vi.useFakeTimers();
+			const log = vi.fn();
+			api = createApi(CODER_URL, AXIOS_TOKEN, {
+				...NOOP_TELEMETRY_REPORTER,
+				log,
+			});
 
-				if (updatedWindow !== undefined) {
-					mockConfig.set(LOCAL_TELEMETRY_SETTING, {
-						httpRequests: { windowSeconds: updatedWindow },
-					});
-				}
+			await api.getAxiosInstance().get("/api/v2/workspaces/abc-123");
+			// WINDOW_SECONDS is 60 in the implementation.
+			await vi.advanceTimersByTimeAsync(60_000);
 
-				await api.getAxiosInstance().get("/api/v2/workspaces/abc-123");
-				await vi.advanceTimersByTimeAsync(1000);
-
-				expect(log).toHaveBeenCalledWith(
-					"http.requests",
-					{ method: "GET", route: "/api/v2/workspaces/{id}" },
-					expect.objectContaining({
-						window_seconds: updatedWindow ?? initialWindow,
-						count_2xx: 1,
-					}),
-				);
-			},
-		);
+			expect(log).toHaveBeenCalledWith(
+				"http.requests",
+				{ method: "GET", route: "/api/v2/workspaces/{id}" },
+				expect.objectContaining({
+					window_seconds: 60,
+					count_2xx: 1,
+				}),
+			);
+		});
 
 		describe("certificate refresh and retry", () => {
 			const rejectWithCertError = (

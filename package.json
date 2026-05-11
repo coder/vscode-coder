@@ -250,22 +250,6 @@
 							"minimum": 4096,
 							"default": 104857600,
 							"markdownDescription": "Cap, in bytes, on the combined size of telemetry files. Oldest files are deleted on activation until the total is under the cap."
-						},
-						"httpRequests": {
-							"type": "object",
-							"additionalProperties": false,
-							"markdownDescription": "Tunables for HTTP request rollup telemetry.",
-							"properties": {
-								"windowSeconds": {
-									"type": "number",
-									"minimum": 1,
-									"default": 60,
-									"markdownDescription": "Tumbling window length, in seconds, for aggregated `http.requests` events."
-								}
-							},
-							"default": {
-								"windowSeconds": 60
-							}
 						}
 					},
 					"default": {
@@ -274,10 +258,7 @@
 						"bufferLimit": 500,
 						"maxFileBytes": 5242880,
 						"maxAgeDays": 30,
-						"maxTotalBytes": 104857600,
-						"httpRequests": {
-							"windowSeconds": 60
-						}
+						"maxTotalBytes": 104857600
 					},
 					"tags": [
 						"telemetry"

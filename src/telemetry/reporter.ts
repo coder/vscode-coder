@@ -2,6 +2,10 @@ import { NOOP_SPAN, type Span } from "./span";
 
 import type { CallerMeasurements, CallerProperties } from "./event";
 
+/**
+ * Narrow reporting surface so callers don't have to depend on the full
+ * TelemetryService. Pass NOOP_TELEMETRY_REPORTER to opt out.
+ */
 export interface TelemetryReporter {
 	log(
 		eventName: string,
