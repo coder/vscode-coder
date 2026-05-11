@@ -13,18 +13,20 @@ import type { WebviewApi } from "vscode-webview";
 // Auto-import per-package Storybook CSS entry points
 import.meta.glob("../packages/*/storybook.preview.ts", { eager: true });
 
+declare global {
+	interface Window {
+		acquireVsCodeApi?: <T = unknown>() => WebviewApi<T>;
+	}
+}
+
 // Mock the acquireVsCodeApi function for Storybook, so that components
 // that rely on it can function without errors.
-if (
-	typeof window !== "undefined" &&
-	!(window as { acquireVsCodeApi?: () => WebviewApi<unknown> }).acquireVsCodeApi
-) {
-	(window as { acquireVsCodeApi: () => WebviewApi<unknown> }).acquireVsCodeApi =
-		() => ({
-			postMessage: () => undefined,
-			getState: () => undefined,
-			setState: (state) => state,
-		});
+if (typeof window !== "undefined") {
+	window.acquireVsCodeApi ??= () => ({
+		postMessage: () => undefined,
+		getState: () => undefined,
+		setState: (state) => state,
+	});
 }
 
 // Inject codicon stylesheet immediately (before any components render)
@@ -39,20 +41,6 @@ if (
 	link.href = codiconCssUrl;
 	document.head.appendChild(link);
 }
-
-// This allows the system viewing the storybook to use the same font
-// stack as vscode, which is important for accurate rendering of text.
-const getDefaultFontStack = () => {
-	if (navigator.userAgent.includes("Linux")) {
-		return 'system-ui, "Ubuntu", "Droid Sans", sans-serif';
-	} else if (navigator.userAgent.includes("Mac")) {
-		return "-apple-system, BlinkMacSystemFont, sans-serif";
-	} else if (navigator.userAgent.includes("Windows")) {
-		return '"Segoe WPC", "Segoe UI", sans-serif';
-	} else {
-		return "sans-serif";
-	}
-};
 
 const preview: Preview = {
 	parameters: {
@@ -85,7 +73,6 @@ const preview: Preview = {
 				selectedTheme.forEach(([property, value]) => {
 					root.setProperty(property, value);
 				});
-				root.setProperty("--vscode-font-family", getDefaultFontStack());
 
 				// Cleanup function to remove properties when unmounting
 				return () => {
