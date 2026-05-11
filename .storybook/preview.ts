@@ -7,7 +7,7 @@ import "./global.css";
 import { darkTheme } from "./themes/dark-v2";
 import { lightTheme } from "./themes/light-v2";
 
-import type { Preview } from "@storybook/react";
+import type { Preview } from "@storybook/react-vite";
 import type { WebviewApi } from "vscode-webview";
 
 // Auto-import per-package Storybook CSS entry points

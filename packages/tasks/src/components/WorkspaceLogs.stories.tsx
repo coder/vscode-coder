@@ -2,7 +2,7 @@ import { task } from "@repo/mocks";
 
 import { WorkspaceLogs } from "./WorkspaceLogs";
 
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const meta: Meta<typeof WorkspaceLogs> = {
 	title: "Tasks/WorkspaceLogs",

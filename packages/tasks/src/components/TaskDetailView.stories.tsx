@@ -1,10 +1,10 @@
 import { taskDetails } from "@repo/mocks";
 import { withQueryClient } from "@repo/storybook-utils";
-import { fn } from "@storybook/test";
+import { fn } from "storybook/test";
 
 import { TaskDetailView } from "./TaskDetailView";
 
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const meta: Meta<typeof TaskDetailView> = {
 	title: "Tasks/TaskDetailView",

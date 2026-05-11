@@ -251,14 +251,6 @@ export default defineConfig(
 
 	// Storybook recommended rules for story files
 	...storybook.configs["flat/recommended"],
-	{
-		files: ["**/*.stories.@(ts|tsx|js|jsx|mjs|cjs)"],
-		rules: {
-			// At storybook v8, @storybook/react-vite doesn't re-export Meta/StoryObj;
-			// importing from @storybook/react is correct for now.
-			"storybook/no-renderer-packages": "off",
-		},
-	},
 
 	// Prettier must be last to override other formatting rules
 	prettierConfig,
