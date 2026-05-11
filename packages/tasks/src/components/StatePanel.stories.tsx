@@ -2,7 +2,7 @@ import { VscodeButton, VscodeIcon } from "@vscode-elements/react-elements";
 
 import { StatePanel } from "./StatePanel";
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof StatePanel> = {
 	title: "Tasks/StatePanel",

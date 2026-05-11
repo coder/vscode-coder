@@ -3,7 +3,7 @@ import { withQueryClient } from "@repo/storybook-utils";
 
 import { CreateTaskSection } from "./CreateTaskSection";
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof CreateTaskSection> = {
 	title: "Tasks/CreateTaskSection",

@@ -1,8 +1,8 @@
-import { expect, fn, userEvent } from "storybook/test";
+import { expect, fn, userEvent } from "@storybook/test";
 
 import { PromptInput } from "./PromptInput";
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof PromptInput> = {
 	title: "Tasks/PromptInput",

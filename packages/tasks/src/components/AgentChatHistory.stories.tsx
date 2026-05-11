@@ -2,7 +2,7 @@ import { logEntry } from "@repo/mocks";
 
 import { AgentChatHistory } from "./AgentChatHistory";
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from "@storybook/react";
 import { TaskLogEntry } from "@repo/shared";
 
 const meta: Meta<typeof AgentChatHistory> = {

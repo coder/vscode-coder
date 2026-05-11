@@ -1,6 +1,6 @@
 import { LogViewer, LogViewerPlaceholder } from "./LogViewer";
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof LogViewer> = {
 	title: "Tasks/LogViewer",

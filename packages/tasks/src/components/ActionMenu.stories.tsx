@@ -1,8 +1,8 @@
-import { expect, fn, userEvent } from "storybook/test";
+import { expect, fn, userEvent } from "@storybook/test";
 
 import { ActionMenu } from "./ActionMenu";
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof ActionMenu> = {
 	title: "Tasks/ActionMenu",

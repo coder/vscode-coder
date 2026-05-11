@@ -1,6 +1,6 @@
 import { NoTemplateState } from "./NoTemplateState";
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof NoTemplateState> = {
 	title: "Tasks/NoTemplateState",

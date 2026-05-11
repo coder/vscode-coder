@@ -4,7 +4,7 @@ import { expect, fn, userEvent, waitFor } from "@storybook/test";
 
 import { TasksPanel } from "./TasksPanel";
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from "@storybook/react";
 
 const meta: Meta<typeof TasksPanel> = {
 	title: "Tasks/TasksPanel",
