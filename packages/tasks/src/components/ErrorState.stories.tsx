@@ -1,4 +1,5 @@
 import { fn } from "@storybook/test";
+
 import { ErrorState } from "./ErrorState";
 
 import type { Meta, StoryObj } from "@storybook/react";
