@@ -9,6 +9,9 @@ import {
 	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
 
+import type { Logger } from "@/logging/logger";
+import type { Span } from "@/telemetry/span";
+
 const TEST_VERSION = "1.2.3-test";
 const TEST_SESSION_ID = "test-session";
 
@@ -18,18 +21,16 @@ interface Harness {
 	service: TelemetryService;
 	sink: TestSink;
 	config: MockConfigurationProvider;
+	logger: Logger;
 }
 
 function makeHarness(level: "off" | "local" = "local"): Harness {
 	const config = new MockConfigurationProvider();
 	config.set("coder.telemetry.level", level);
 	const sink = new TestSink();
-	const service = new TelemetryService(
-		testSession(),
-		[sink],
-		createMockLogger(),
-	);
-	return { service, sink, config };
+	const logger = createMockLogger();
+	const service = new TelemetryService(testSession(), [sink], logger);
+	return { service, sink, config, logger };
 }
 
 function makeService(sinks: TelemetrySink[]): TelemetryService {
@@ -133,6 +134,40 @@ describe("TelemetryService", () => {
 			const [event] = h.sink.events;
 			expect(event.measurements.attempts).toBe(2);
 			expect(event.measurements.durationMs).toBeGreaterThanOrEqual(0);
+		});
+
+		it("does not observe later caller object mutations", async () => {
+			const properties = { phase: "start" };
+			const measurements = { attempts: 1 };
+
+			await h.service.trace(
+				"op",
+				() => {
+					properties.phase = "changed";
+					measurements.attempts = 2;
+					return Promise.resolve();
+				},
+				properties,
+				measurements,
+			);
+
+			expect(h.sink.events[0]).toMatchObject({
+				properties: { phase: "start", result: "success" },
+				measurements: { attempts: 1 },
+			});
+		});
+
+		it("lets spans set properties and measurements before emit", async () => {
+			await h.service.trace("cli.download", (span) => {
+				span.setProperty("reason", "missing");
+				span.setMeasurement("downloadedBytes", 123);
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0]).toMatchObject({
+				properties: { reason: "missing", result: "success" },
+				measurements: { downloadedBytes: 123 },
+			});
 		});
 
 		it("flat traces (no phases) emit a single event with a fresh traceId", async () => {
@@ -255,6 +290,66 @@ describe("TelemetryService", () => {
 
 			const [phase] = h.sink.events;
 			expect(phase.eventName).toBe("op.bad_name");
+		});
+
+		it("warns and ignores setProperty/setMeasurement called after emit", async () => {
+			let escapedSpan: Span | undefined;
+			await h.service.trace("op", (span) => {
+				escapedSpan = span;
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events).toHaveLength(1);
+			const warnBefore = vi.mocked(h.logger.warn).mock.calls.length;
+
+			escapedSpan?.setProperty("late", "ignored");
+			escapedSpan?.setMeasurement("lateMs", 99);
+			escapedSpan?.markAborted();
+
+			// Mutations dropped: emitted event is unchanged.
+			expect(h.sink.events[0].properties.late).toBeUndefined();
+			expect(h.sink.events[0].measurements.lateMs).toBeUndefined();
+			expect(h.sink.events[0].properties.result).toBe("success");
+
+			// Each post-emit mutation logs a warning.
+			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 3);
+			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore][0]).toContain(
+				"setProperty",
+			);
+			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 1][0]).toContain(
+				"setMeasurement",
+			);
+			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 2][0]).toContain(
+				"markAborted",
+			);
+		});
+
+		it("markAborted flips result to 'aborted' on normal return", async () => {
+			await h.service.trace("op", (span) => {
+				span.markAborted();
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "aborted" },
+			});
+		});
+
+		it("markAborted does not override 'error' when the span throws", async () => {
+			const boom = new Error("kaboom");
+			await expect(
+				h.service.trace("op", (span) => {
+					span.markAborted();
+					return Promise.reject(boom);
+				}),
+			).rejects.toBe(boom);
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "error" },
+				error: { message: "kaboom" },
+			});
 		});
 
 		it("on phase failure: completed phases emit success, parent emits an error summary, error rethrown, later phases never run", async () => {

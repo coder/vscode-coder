@@ -15,6 +15,7 @@ import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
 import { isKeyringEnabled } from "@/settings/cli";
 
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	createMockCliCredentialManager,
 	createMockLogger,
@@ -76,6 +77,7 @@ describe("CliManager", () => {
 	let mockApi: Api;
 	let mockAxios: AxiosInstance;
 	let mockCredManager: CliCredentialManager;
+	let telemetrySink: TestSink;
 
 	const TEST_VERSION = "1.2.3";
 	const TEST_URL = "https://test.coder.com";
@@ -97,10 +99,12 @@ describe("CliManager", () => {
 		mockProgress = new MockProgressReporter();
 		mockUI = new MockUserInteraction();
 		mockCredManager = createMockCliCredentialManager();
+		telemetrySink = new TestSink();
 		manager = new CliManager(
 			createMockLogger(),
 			new PathResolver(BASE_PATH, "/code/log"),
 			mockCredManager,
+			createTestTelemetryService(telemetrySink),
 		);
 
 		// Mock only what's necessary
@@ -769,6 +773,141 @@ describe("CliManager", () => {
 		);
 	});
 
+	describe("Telemetry", () => {
+		const event = (name: string) =>
+			telemetrySink.events.find((e) => e.eventName === name);
+
+		it.each([
+			{ reason: "missing", setup: () => {} },
+			{ reason: "version_mismatch", setup: () => withExistingBinary("1.0.0") },
+			{ reason: "unreadable", setup: () => withCorruptedBinary() },
+		])("emits cli.download with reason=$reason", async ({ reason, setup }) => {
+			setup();
+			withSuccessfulDownload();
+			await manager.fetchBinary(mockApi);
+
+			const e = event("cli.download");
+			expect(e).toMatchObject({
+				properties: { reason, result: "success" },
+			});
+			expect(e?.measurements.durationMs).toBeGreaterThanOrEqual(0);
+			expect(e?.measurements.downloadedBytes).toBe(
+				Buffer.byteLength(mockBinaryContent(TEST_VERSION)),
+			);
+		});
+
+		it("does not emit cli.download when a cached binary already matches", async () => {
+			withExistingBinary(TEST_VERSION);
+			await manager.fetchBinary(mockApi);
+
+			expect(event("cli.download")).toBeUndefined();
+		});
+
+		it("omits downloadedBytes when the server returns 304", async () => {
+			withExistingBinary("1.0.0");
+			withHttpResponse(304);
+			await manager.fetchBinary(mockApi);
+
+			const e = event("cli.download");
+			expect(e).toMatchObject({
+				properties: { reason: "version_mismatch", result: "success" },
+			});
+			expect(e?.measurements.downloadedBytes).toBeUndefined();
+		});
+
+		it("emits downloadedBytes when a download fails mid-stream", async () => {
+			const partial = "partial-binary";
+			withHttpResponse(
+				200,
+				{ "content-length": "1024" },
+				createMockStream(partial, { error: new Error("connection reset") }),
+			);
+
+			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
+				"Unable to download binary: connection reset",
+			);
+
+			expect(event("cli.download")).toMatchObject({
+				properties: { reason: "missing", result: "error" },
+				error: { message: "Unable to download binary: connection reset" },
+				measurements: { downloadedBytes: Buffer.byteLength(partial) },
+			});
+		});
+
+		describe("cli.download.verify", () => {
+			beforeEach(() => {
+				mockConfig.set("coder.disableSignatureVerification", false);
+				withSuccessfulDownload();
+			});
+
+			it("emits outcome=verified on valid signature", async () => {
+				withSignatureResponses([200]);
+				await manager.fetchBinary(mockApi);
+
+				const verify = event("cli.download.verify");
+				const download = event("cli.download");
+				expect(verify).toMatchObject({
+					properties: { outcome: "verified", result: "success" },
+				});
+				expect(verify?.measurements.durationMs).toBeGreaterThanOrEqual(0);
+				expect(verify?.traceId).toBe(download?.traceId);
+				expect(verify?.parentEventId).toBe(download?.eventId);
+			});
+
+			it("emits outcome=bypassed when user runs anyway despite invalid signature", async () => {
+				withSignatureResponses([200]);
+				vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
+					createVerificationError("Invalid signature"),
+				);
+				mockUI.setResponse("Signature does not match", "Run anyway");
+
+				await manager.fetchBinary(mockApi);
+
+				expect(event("cli.download.verify")).toMatchObject({
+					properties: { outcome: "bypassed", result: "success" },
+				});
+			});
+
+			it.each([
+				{ status: 404, message: "Signature not found" },
+				{ status: 500, message: "Failed to download signature" },
+			])(
+				"emits outcome=sig_not_found with sigStatus=$status when user runs without verification",
+				async ({ status, message }) => {
+					withSignatureResponses([status, status]);
+					mockUI.setResponse(message, "Run without verification");
+
+					await manager.fetchBinary(mockApi);
+
+					expect(event("cli.download.verify")).toMatchObject({
+						properties: {
+							outcome: "sig_not_found",
+							sigStatus: String(status),
+							result: "success",
+						},
+					});
+				},
+			);
+
+			it("emits error when verification is aborted", async () => {
+				withSignatureResponses([200]);
+				vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
+					createVerificationError("Invalid signature"),
+				);
+				mockUI.setResponse("Signature does not match", undefined);
+
+				await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
+					"Signature verification aborted",
+				);
+
+				expect(event("cli.download.verify")).toMatchObject({
+					properties: { result: "error" },
+					error: { message: "Signature verification aborted" },
+				});
+			});
+		});
+	});
+
 	describe("File System Operations", () => {
 		it("creates binary directory", async () => {
 			expect(memfs.existsSync(BINARY_DIR)).toBe(false);
@@ -799,6 +938,7 @@ describe("CliManager", () => {
 				createMockLogger(),
 				new PathResolver(pathWithSpaces, "/log"),
 				createMockCliCredentialManager(),
+				createTestTelemetryService(),
 			);
 
 			withSuccessfulDownload();

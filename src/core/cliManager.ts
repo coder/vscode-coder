@@ -25,6 +25,8 @@ import type { Api } from "coder/site/src/api/api";
 import type { IncomingMessage } from "node:http";
 
 import type { Logger } from "../logging/logger";
+import type { TelemetryService } from "../telemetry/service";
+import type { Span } from "../telemetry/span";
 
 import type { CliCredentialManager } from "./cliCredentialManager";
 import type { PathResolver } from "./pathResolver";
@@ -33,6 +35,18 @@ type ResolvedBinary =
 	| { binPath: string; stat: Stats; source: "file-path" | "directory" }
 	| { binPath: string; source: "not-found" };
 
+type CliDownloadReason = "missing" | "version_mismatch" | "unreadable";
+
+type CliVerifyResult =
+	| { kind: "verified" }
+	| { kind: "bypassed" }
+	| { kind: "sig_not_found"; status: number };
+
+type SingleVerifyResult =
+	| { kind: "verified" }
+	| { kind: "bypassed" }
+	| { kind: "sig_unavailable"; status: number };
+
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
 
@@ -40,6 +54,7 @@ export class CliManager {
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
 		private readonly cliCredentialManager: CliCredentialManager,
+		private readonly telemetry: TelemetryService,
 	) {
 		this.binaryLock = new BinaryLock(output);
 	}
@@ -140,7 +155,11 @@ export class CliManager {
 		);
 
 		let existingVersion: string | null = null;
-		if (resolved.source !== "not-found") {
+		let downloadReason: CliDownloadReason;
+		if (resolved.source === "not-found") {
+			downloadReason = "missing";
+			this.output.info("No existing binary found, starting download");
+		} else {
 			this.output.debug(
 				"Existing binary size is",
 				prettyBytes(resolved.stat.size),
@@ -148,14 +167,14 @@ export class CliManager {
 			try {
 				existingVersion = await cliVersion(resolved.binPath);
 				this.output.debug("Existing binary version is", existingVersion);
+				downloadReason = "version_mismatch";
 			} catch (error) {
 				this.output.warn(
 					"Unable to get version of existing binary, downloading instead",
 					error,
 				);
+				downloadReason = "unreadable";
 			}
-		} else {
-			this.output.info("No existing binary found, starting download");
 		}
 
 		if (existingVersion === buildInfo.version) {
@@ -224,13 +243,20 @@ export class CliManager {
 				latestVersion = latestParsedVersion;
 			}
 
-			await this.performBinaryDownload(
-				restClient,
-				latestVersion,
-				downloadBinPath,
-				progressLogPath,
+			return await this.telemetry.trace(
+				"cli.download",
+				async (span) => {
+					const downloadedBinPath = await this.performBinaryDownload(
+						restClient,
+						latestVersion,
+						downloadBinPath,
+						progressLogPath,
+						span,
+					);
+					return this.renameToFinalPath(resolved, downloadedBinPath);
+				},
+				{ reason: downloadReason },
 			);
-			return await this.renameToFinalPath(resolved, downloadBinPath);
 		} catch (error) {
 			const fallback = await this.handleAnyBinaryFailure(
 				error,
@@ -413,9 +439,13 @@ export class CliManager {
 		parsedVersion: semver.SemVer,
 		binPath: string,
 		progressLogPath: string,
+		downloadSpan: Span,
 	): Promise<string> {
 		const cfg = vscode.workspace.getConfiguration("coder");
 		const tempFile = tempFilePath(binPath, "temp");
+
+		// Tracked locally because onProgress can fire after the trace closes.
+		let bytesWritten = 0;
 
 		try {
 			const removed = await cliUtils.rmOld(binPath);
@@ -449,6 +479,7 @@ export class CliManager {
 				bytesDownloaded: number,
 				totalBytes: number | null,
 			) => {
+				bytesWritten = bytesDownloaded;
 				await downloadProgress.writeProgress(progressLogPath, {
 					bytesDownloaded,
 					totalBytes,
@@ -480,17 +511,27 @@ export class CliManager {
 							"Skipping binary signature verification due to settings",
 						);
 					} else {
-						await this.verifyBinarySignatures(client, tempFile, [
-							// A signature placed at the same level as the binary.  It must be
-							// named exactly the same with an appended `.asc` (such as
-							// coder-windows-amd64.exe.asc or coder-linux-amd64.asc).
-							binSource + ".asc",
-							// The releases.coder.com bucket does not include the leading "v",
-							// and unlike what we get from buildinfo it uses a truncated version
-							// with only major.minor.patch.  The signature name follows the same
-							// rule as above.
-							`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.asc`,
-						]);
+						await downloadSpan.phase("verify", async (verifySpan) => {
+							const result = await this.verifyBinarySignatures(
+								client,
+								tempFile,
+								[
+									// A signature placed at the same level as the binary.  It must be
+									// named exactly the same with an appended `.asc` (such as
+									// coder-windows-amd64.exe.asc or coder-linux-amd64.asc).
+									binSource + ".asc",
+									// The releases.coder.com bucket does not include the leading "v",
+									// and unlike what we get from buildinfo it uses a truncated version
+									// with only major.minor.patch.  The signature name follows the same
+									// rule as above.
+									`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.asc`,
+								],
+							);
+							verifySpan.setProperty("outcome", result.kind);
+							if (result.kind === "sig_not_found") {
+								verifySpan.setProperty("sigStatus", String(result.status));
+							}
+						});
 					}
 
 					// Replace existing binary (handles both renames + Windows lock)
@@ -548,6 +589,9 @@ export class CliManager {
 				}
 			}
 		} finally {
+			if (bytesWritten > 0) {
+				downloadSpan.setMeasurement("downloadedBytes", bytesWritten);
+			}
 			await downloadProgress.clearProgress(progressLogPath);
 		}
 	}
@@ -584,6 +628,7 @@ export class CliManager {
 		this.output.info("Got status code", resp.status);
 
 		if (resp.status === 200) {
+			let written = 0;
 			const rawContentLength = (resp.headers["content-length"] ??
 				resp.headers["x-original-content-length"]) as unknown;
 			const contentLength = Number.parseInt(
@@ -598,9 +643,6 @@ export class CliManager {
 			} else {
 				this.output.info("Got content length", prettyBytes(contentLength));
 			}
-
-			// Track how many bytes were written.
-			let written = 0;
 
 			const completed = await vscode.window.withProgress<boolean>(
 				{
@@ -705,7 +747,7 @@ export class CliManager {
 		client: AxiosInstance,
 		cliPath: string,
 		sources: string[],
-	): Promise<void> {
+	): Promise<CliVerifyResult> {
 		const publicKeys = await pgp.readPublicKeys(this.output);
 		for (let i = 0; i < sources.length; ++i) {
 			const source = sources[i];
@@ -714,14 +756,14 @@ export class CliManager {
 			if (i === 1) {
 				client = globalAxios.create();
 			}
-			const status = await this.verifyBinarySignature(
+			const result = await this.verifyBinarySignature(
 				client,
 				cliPath,
 				publicKeys,
 				source,
 			);
-			if (status === 200) {
-				return;
+			if (result.kind === "verified" || result.kind === "bypassed") {
+				return { kind: result.kind };
 			}
 			// If we failed to download, try the next source.
 			let nextPrompt = "";
@@ -733,14 +775,16 @@ export class CliManager {
 			}
 			options.push("Run without verification");
 			const action = await vscodeProposed.window.showWarningMessage(
-				status === 404 ? "Signature not found" : "Failed to download signature",
+				result.status === 404
+					? "Signature not found"
+					: "Failed to download signature",
 				{
 					useCustom: true,
 					modal: true,
 					detail:
-						status === 404
+						result.status === 404
 							? `No binary signature was found at ${source}.${nextPrompt}`
-							: `Received ${status} trying to download binary signature from ${source}.${nextPrompt}`,
+							: `Received ${result.status} trying to download binary signature from ${source}.${nextPrompt}`,
 				},
 				...options,
 			);
@@ -751,7 +795,7 @@ export class CliManager {
 				case "Run without verification":
 					this.output.info(`Signature download from ${nextSource} declined`);
 					this.output.info("Binary will be ran anyway at user request");
-					return;
+					return { kind: "sig_not_found", status: result.status };
 				default:
 					this.output.info(`Signature download from ${nextSource} declined`);
 					this.output.info("Binary was rejected at user request");
@@ -772,41 +816,43 @@ export class CliManager {
 		cliPath: string,
 		publicKeys: pgp.Key[],
 		source: string,
-	): Promise<number> {
+	): Promise<SingleVerifyResult> {
 		this.output.info("Downloading signature from", source);
 		const signaturePath = path.join(cliPath + ".asc");
 		const writeStream = createWriteStream(signaturePath);
 		const status = await this.download(client, source, writeStream);
-		if (status === 200) {
-			try {
-				await pgp.verifySignature(
-					publicKeys,
-					cliPath,
-					signaturePath,
-					this.output,
-				);
-			} catch (error) {
-				const action = await vscodeProposed.window.showWarningMessage(
-					// VerificationError should be the only thing that throws, but
-					// unfortunately caught errors are always type unknown.
-					error instanceof pgp.VerificationError
-						? error.summary()
-						: "Failed to verify signature",
-					{
-						useCustom: true,
-						modal: true,
-						detail: `${errToStr(error)} Would you like to accept this risk and run the binary anyway?`,
-					},
-					"Run anyway",
-				);
-				if (!action) {
-					this.output.info("Binary was rejected at user request");
-					throw new Error("Signature verification aborted", { cause: error });
-				}
-				this.output.info("Binary will be ran anyway at user request");
-			}
+		if (status !== 200) {
+			return { kind: "sig_unavailable", status };
 		}
-		return status;
+		try {
+			await pgp.verifySignature(
+				publicKeys,
+				cliPath,
+				signaturePath,
+				this.output,
+			);
+			return { kind: "verified" };
+		} catch (error) {
+			const action = await vscodeProposed.window.showWarningMessage(
+				// VerificationError should be the only thing that throws, but
+				// unfortunately caught errors are always type unknown.
+				error instanceof pgp.VerificationError
+					? error.summary()
+					: "Failed to verify signature",
+				{
+					useCustom: true,
+					modal: true,
+					detail: `${errToStr(error)} Would you like to accept this risk and run the binary anyway?`,
+				},
+				"Run anyway",
+			);
+			if (!action) {
+				this.output.info("Binary was rejected at user request");
+				throw new Error("Signature verification aborted", { cause: error });
+			}
+			this.output.info("Binary will be ran anyway at user request");
+			return { kind: "bypassed" };
+		}
 	}
 
 	/**

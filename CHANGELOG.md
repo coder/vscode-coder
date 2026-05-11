@@ -16,6 +16,11 @@
 - Every `coder.*` command now records a `command.invoked` telemetry event with
   its duration and outcome, so command latency and failures are captured
   alongside other local telemetry.
+- Extension activation, remote workspace setup phases (auth retrieval,
+  workspace lookup, workspace and agent readiness, SSH config write), and CLI
+  binary download/verify now emit local telemetry events with their duration
+  and outcome, so startup latency and failures are captured alongside other
+  local telemetry.
 
 ### Fixed
 
