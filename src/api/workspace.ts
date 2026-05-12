@@ -1,8 +1,7 @@
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 
-import { getGlobalShellFlags, type CliAuth } from "../settings/cli";
-import { escapeCommandArg, escapeShellArg } from "../util";
+import { getGlobalFlags, type CliAuth } from "../settings/cli";
 
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
 import { collectUpdateParameters } from "./updateParameters";
@@ -62,12 +61,11 @@ interface CliContext {
 function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const fullArgs = [
-			...getGlobalShellFlags(vscode.workspace.getConfiguration(), ctx.auth),
+			...getGlobalFlags(vscode.workspace.getConfiguration(), ctx.auth),
 			...args,
-			escapeShellArg(createWorkspaceIdentifier(ctx.workspace)),
+			createWorkspaceIdentifier(ctx.workspace),
 		];
-		const cmd = `${escapeCommandArg(ctx.binPath)} ${fullArgs.join(" ")}`;
-		const proc = spawn(cmd, { shell: true });
+		const proc = spawn(ctx.binPath, fullArgs);
 		// Unexpected prompts EOF instead of hanging forever.
 		proc.stdin.end();
 
@@ -81,6 +79,9 @@ function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 			ctx.write(text);
 			capturedStderr += text;
 		});
+
+		// Settle on ENOENT/EACCES; later `close` rejects are then no-ops.
+		proc.on("error", reject);
 
 		proc.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
 			if (code === 0) {

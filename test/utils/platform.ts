@@ -124,18 +124,6 @@ export function quoteCommand(value: string): string {
 	return `${quote}${value}${quote}`;
 }
 
-/**
- * Test-side mirror of `escapeShellArg` from src/util.ts. Wraps in single
- * quotes on Unix and double quotes (with `"` doubled and `%` doubled) on
- * Windows.
- */
-export function shellQuote(value: string): string {
-	if (isWindows()) {
-		return `"${value.replace(/"/g, '""').replace(/%/g, "%%")}"`;
-	}
-	return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
 export function expectPathsEqual(actual: string, expected: string) {
 	expect(normalizePath(actual)).toBe(normalizePath(expected));
 }

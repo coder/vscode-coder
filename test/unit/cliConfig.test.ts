@@ -231,6 +231,49 @@ describe("cliConfig", () => {
 				"--disable-direct-connections",
 			]);
 		});
+
+		it("substitutes ${env:VAR} from process.env", () => {
+			const restore = process.env.CODER_TEST_VAR;
+			process.env.CODER_TEST_VAR = "from-env";
+			try {
+				const config = new MockConfigurationProvider();
+				config.set("coder.globalFlags", [
+					"--prefix=${env:CODER_TEST_VAR}",
+					"${env:CODER_MISSING_VAR}-suffix",
+				]);
+
+				expect(getUserGlobalFlags(config)).toStrictEqual([
+					"--prefix=from-env",
+					"-suffix",
+				]);
+			} finally {
+				if (restore === undefined) {
+					delete process.env.CODER_TEST_VAR;
+				} else {
+					process.env.CODER_TEST_VAR = restore;
+				}
+			}
+		});
+
+		it("expands ~ and ${userHome} in flag values", () => {
+			vi.mocked(os.homedir).mockReturnValue("/home/coder");
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", [
+				"~/bare",
+				"--cfg=~/coder",
+				"--state=${userHome}/state",
+				"--literal=value~with~tildes",
+			]);
+
+			expect(getUserGlobalFlags(config)).toStrictEqual([
+				"/home/coder/bare",
+				"--cfg=/home/coder/coder",
+				"--state=/home/coder/state",
+				// Tildes mid-value are left alone (only ~ at the start of the
+				// value half is expanded).
+				"--literal=value~with~tildes",
+			]);
+		});
 	});
 
 	describe("getSshFlags", () => {
