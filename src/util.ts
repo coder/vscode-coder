@@ -53,6 +53,10 @@ export function findPort(text: string): number | null {
 /**
  * Given an authority, parse into the expected parts.
  *
+ * The authority looks like `<scheme>://ssh-remote+<ssh host name>`, where the
+ * SSH host names created by this extension match the format:
+ *   coder-vscode.<safeHostname>--<username>--<workspace>(.<agent?>)
+ *
  * If this is not a Coder host, return null.
  *
  * Throw an error if the host is invalid.
@@ -69,18 +73,18 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 		return null;
 	}
 
-	if (parts.length < 3 || parts.some((p) => !p)) {
+	if (parts.length < 3) {
 		throw new Error(invalidAuthorityMessage);
 	}
 
 	// Parse from the right because safe hostnames can contain "--".
 	const hostPrefix = parts.slice(0, -2).join("--");
 	const safeHostname = hostPrefix.slice(authorityHostPrefix.length);
-	if (!safeHostname) {
-		throw new Error(invalidAuthorityMessage);
-	}
 	const username = parts[parts.length - 2];
 	const workspaceAndAgent = parts[parts.length - 1];
+	if (!safeHostname || !username || !workspaceAndAgent) {
+		throw new Error(invalidAuthorityMessage);
+	}
 
 	let workspace = workspaceAndAgent;
 	let agent = "";
@@ -95,11 +99,11 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	}
 
 	return {
-		agent: agent,
-		sshHost: sshHost,
-		safeHostname: safeHostname,
-		username: username,
-		workspace: workspace,
+		agent,
+		sshHost,
+		safeHostname,
+		username,
+		workspace,
 	};
 }
 

@@ -118,6 +118,12 @@ describe("parseRemoteAuthority", () => {
 			agent: "baz",
 		},
 		{
+			label: "hostname with many consecutive dashes",
+			sshHost: "coder-vscode.foo---------------bar.com--foo--bar",
+			safeHostname: "foo---------------bar.com",
+			workspace: "bar",
+		},
+		{
 			label: "ambiguous workspace/agent separator",
 			sshHost: "coder-vscode.dev.coder.com--foo--bar.baz.qux",
 			safeHostname: "dev.coder.com",
