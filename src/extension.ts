@@ -84,6 +84,7 @@ async function doActivate(
 	const secretsManager = serviceContainer.getSecretsManager();
 	const contextManager = serviceContainer.getContextManager();
 	const commandManager = serviceContainer.getCommandManager();
+	const telemetryService = serviceContainer.getTelemetryService();
 
 	// Migrate auth storage from old flat format to new label-based format
 	await migrateAuthStorage(serviceContainer);
@@ -137,6 +138,7 @@ async function doActivate(
 		deployment?.url || "",
 		deploymentSessionAuth?.token,
 		output,
+		telemetryService,
 	);
 	ctx.subscriptions.push(client);
 

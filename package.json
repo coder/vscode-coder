@@ -31,7 +31,7 @@
 		"package:prerelease": "pnpm build:production && vsce package --pre-release --no-dependencies",
 		"storybook": "storybook dev -p 6006 --config-dir .storybook",
 		"storybook:build": "storybook build --config-dir .storybook",
-			"storybook:ci": "storybook build --test --config-dir .storybook",
+		"storybook:ci": "storybook build --test --config-dir .storybook",
 		"test": "cross-env CI=true ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs",
 		"test:extension": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs --project extension",
 		"test:integration": "pnpm compile-tests:integration && node esbuild.mjs && vscode-test",
@@ -211,7 +211,7 @@
 					]
 				},
 				"coder.telemetry.local": {
-					"markdownDescription": "Tunables for the local telemetry sink, which writes events as JSON Lines under the extension's global storage. Used when `#coder.telemetry.level#` is `local`. Missing or invalid fields fall back to defaults.",
+					"markdownDescription": "Advanced tunables for local telemetry collection. The local sink writes events as JSON Lines under the extension's global storage. Used when `#coder.telemetry.level#` is `local`. Missing or invalid fields fall back to defaults.",
 					"type": "object",
 					"additionalProperties": false,
 					"properties": {

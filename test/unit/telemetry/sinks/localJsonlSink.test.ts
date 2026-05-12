@@ -2,7 +2,10 @@ import { vol } from "memfs";
 import * as fsPromises from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { LOCAL_SINK_SETTING, type LocalSinkConfig } from "@/settings/telemetry";
+import {
+	LOCAL_TELEMETRY_SETTING,
+	type LocalSinkConfig,
+} from "@/settings/telemetry";
 import { LocalJsonlSink } from "@/telemetry/sinks/localJsonlSink";
 
 import {
@@ -67,7 +70,7 @@ describe("LocalJsonlSink", () => {
 		config: Partial<LocalSinkConfig> = {},
 		sessionId = SESSION_ID,
 	) {
-		provider.set(LOCAL_SINK_SETTING, {
+		provider.set(LOCAL_TELEMETRY_SETTING, {
 			flushIntervalMs: 1_000_000,
 			...config,
 		});
@@ -420,7 +423,7 @@ describe("LocalJsonlSink", () => {
 		sink.write(makeEvent());
 		expect(vol.existsSync(todaysFile())).toBe(false);
 
-		provider.set(LOCAL_SINK_SETTING, {
+		provider.set(LOCAL_TELEMETRY_SETTING, {
 			flushIntervalMs: 1_000_000,
 			flushBatchSize: 3,
 		});

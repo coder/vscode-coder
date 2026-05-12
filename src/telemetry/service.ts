@@ -19,6 +19,8 @@ import {
 import { newSpanId, newTraceId } from "./ids";
 import { NOOP_SPAN, type Span } from "./span";
 
+import type { TelemetryReporter } from "./reporter";
+
 const LEVEL_ORDER: Readonly<Record<TelemetryLevel, number>> = {
 	off: 0,
 	local: 1,
@@ -44,7 +46,7 @@ interface EmitOptions extends Partial<SpanOptions> {
  * by `minLevel` and may self-gate. `dispose` flushes are best-effort since
  * VS Code does not await deactivation.
  */
-export class TelemetryService implements vscode.Disposable {
+export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 	#level: TelemetryLevel;
 	#nextSequence = 0;
 	#deploymentUrl = "";

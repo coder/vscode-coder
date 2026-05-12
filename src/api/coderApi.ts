@@ -1,21 +1,12 @@
 import {
-	type AxiosResponseHeaders,
-	type AxiosInstance,
-	type AxiosHeaders,
-	type AxiosResponseTransformer,
 	isAxiosError,
+	type AxiosHeaders,
+	type AxiosInstance,
+	type AxiosResponseHeaders,
+	type AxiosResponseTransformer,
 } from "axios";
 import { Api } from "coder/site/src/api/api";
-import {
-	type ServerSentEvent,
-	type GetInboxNotificationResponse,
-	type ProvisionerJobLog,
-	type Workspace,
-	type WorkspaceAgent,
-	type WorkspaceAgentLog,
-} from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
-import { type ClientOptions } from "ws";
 
 import { watchConfigurationChanges } from "../configWatcher";
 import { ClientCertificateError } from "../error/clientCertificateError";
@@ -25,23 +16,22 @@ import { getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
 import {
 	createRequestMeta,
-	logRequest,
 	logError,
+	logRequest,
 	logResponse,
 } from "../logging/httpLogger";
-import { type Logger } from "../logging/logger";
+import { HttpRequestsTelemetry } from "../logging/httpRequestsTelemetry";
 import {
-	type RequestConfigWithMeta,
 	HttpClientLogLevel,
+	type RequestConfigWithMeta,
 } from "../logging/types";
 import { sizeOf } from "../logging/utils";
 import { getHeaderCommand } from "../settings/headers";
-import { HttpStatusCode, WebSocketCloseCode } from "../websocket/codes";
 import {
-	type UnidirectionalStream,
-	type CloseEvent,
-	type ErrorEvent,
-} from "../websocket/eventStreamConnection";
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "../telemetry/reporter";
+import { HttpStatusCode, WebSocketCloseCode } from "../websocket/codes";
 import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
@@ -55,6 +45,23 @@ import { SseConnection } from "../websocket/sseConnection";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
 import { createHttpAgent } from "./utils";
+
+import type {
+	GetInboxNotificationResponse,
+	ProvisionerJobLog,
+	ServerSentEvent,
+	Workspace,
+	WorkspaceAgent,
+	WorkspaceAgentLog,
+} from "coder/site/src/api/typesGenerated";
+import type { ClientOptions } from "ws";
+
+import type { Logger } from "../logging/logger";
+import type {
+	CloseEvent,
+	ErrorEvent,
+	UnidirectionalStream,
+} from "../websocket/eventStreamConnection";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
 
@@ -86,24 +93,30 @@ export class CoderApi extends Api implements vscode.Disposable {
 	>();
 	private readonly configWatcher: vscode.Disposable;
 
-	private constructor(private readonly output: Logger) {
+	private constructor(
+		private readonly output: Logger,
+		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
+	) {
 		super();
 		this.configWatcher = this.watchConfigChanges();
 	}
 
 	/**
 	 * Create a new CoderApi instance with the provided configuration.
-	 * Automatically sets up logging interceptors and certificate handling.
+	 * Automatically sets up logging interceptors, certificate handling,
+	 * and HTTP request telemetry that emits via the given reporter.
 	 */
 	static create(
 		baseUrl: string,
 		token: string | undefined,
 		output: Logger,
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): CoderApi {
-		const client = new CoderApi(output);
+		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
+		const client = new CoderApi(output, httpRequestsTelemetry);
 		client.setCredentials(baseUrl, token);
 
-		setupInterceptors(client, output);
+		setupInterceptors(client, output, httpRequestsTelemetry);
 		return client;
 	}
 
@@ -155,6 +168,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 */
 	dispose(): void {
 		this.configWatcher.dispose();
+		this.httpRequestsTelemetry.dispose();
 		for (const socket of this.reconnectingSockets) {
 			socket.close();
 		}
@@ -470,11 +484,16 @@ export class CoderApi extends Api implements vscode.Disposable {
 	}
 }
 
-/**
- * Set up logging and request interceptors for the CoderApi instance.
- */
-function setupInterceptors(client: CoderApi, output: Logger): void {
-	addLoggingInterceptors(client.getAxiosInstance(), output);
+function setupInterceptors(
+	client: CoderApi,
+	output: Logger,
+	httpRequestsTelemetry: HttpRequestsTelemetry,
+): void {
+	addRequestInterceptors(
+		client.getAxiosInstance(),
+		output,
+		httpRequestsTelemetry,
+	);
 
 	client.getAxiosInstance().interceptors.request.use(async (config) => {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
@@ -499,7 +518,7 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 		return config;
 	});
 
-	// Wrap certificate errors and handle client certificate errors with refresh.
+	// Cert-refresh retries re-enter the chain, so each attempt is recorded.
 	client.getAxiosInstance().interceptors.response.use(
 		(r) => r,
 		async (err: unknown) => {
@@ -522,7 +541,11 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 	);
 }
 
-function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
+function addRequestInterceptors(
+	client: AxiosInstance,
+	logger: Logger,
+	httpRequestsTelemetry: HttpRequestsTelemetry,
+) {
 	client.interceptors.request.use(
 		(config) => {
 			const configWithMeta = config as RequestConfigWithMeta;
@@ -555,10 +578,12 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 
 	client.interceptors.response.use(
 		(response) => {
+			httpRequestsTelemetry.recordResponse(response);
 			logResponse(logger, response, getLogLevel());
 			return response;
 		},
 		(error: unknown) => {
+			httpRequestsTelemetry.recordError(error);
 			logError(logger, error, getLogLevel());
 			throw error;
 		},
