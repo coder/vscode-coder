@@ -190,14 +190,14 @@ describe("cliConfig", () => {
 			]);
 		});
 
-		it("should still escape header-command flags", () => {
+		it("passes header-command value through verbatim (no shell)", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.headerCommand", "echo test");
 			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
 				"--global-config",
 				"/config/dir",
 				"--header-command",
-				quoteCommand("echo test"),
+				"echo test",
 			]);
 		});
 

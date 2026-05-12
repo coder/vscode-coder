@@ -119,12 +119,17 @@ function controlSpawn() {
 	});
 	return {
 		spawned,
+		stdinEnd: proc.stdin.end,
 		stderr(data: string) {
 			proc.stderr.emit("data", Buffer.from(data));
 		},
-		async close(exitCode: number) {
+		async close(exitCode: number | null, signal?: NodeJS.Signals) {
 			await spawned;
-			proc.emit("close", exitCode);
+			proc.emit("close", exitCode, signal ?? null);
+		},
+		async error(err: Error) {
+			await spawned;
+			proc.emit("error", err);
 		},
 	};
 }
@@ -207,6 +212,7 @@ describe("updateWorkspace", () => {
 			"update",
 			"testuser/test-workspace",
 		]);
+		expect(sp.stdinEnd).toHaveBeenCalled();
 		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
 	});
 
@@ -221,6 +227,27 @@ describe("updateWorkspace", () => {
 
 		await expect(result).rejects.toThrow(/exited with code 1.*auth failed/);
 		expect(restClient.getWorkspace).not.toHaveBeenCalled();
+	});
+
+	it("rejects when spawn emits an error (e.g. missing binary)", async () => {
+		const { ctx, restClient } = createUpdateCtx();
+		const sp = controlSpawn();
+
+		const result = updateWorkspace(ctx);
+		await sp.error(new Error("spawn /usr/bin/coder ENOENT"));
+
+		await expect(result).rejects.toThrow(/ENOENT/);
+		expect(restClient.getWorkspace).not.toHaveBeenCalled();
+	});
+
+	it("reports the terminating signal when the process is killed", async () => {
+		const { ctx } = createUpdateCtx();
+		const sp = controlSpawn();
+
+		const result = updateWorkspace(ctx);
+		await sp.close(null, "SIGTERM");
+
+		await expect(result).rejects.toThrow(/signal SIGTERM/);
 	});
 
 	it("falls back to the API update path when coder update is unsupported", async () => {

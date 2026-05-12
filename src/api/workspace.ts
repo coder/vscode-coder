@@ -80,14 +80,19 @@ function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 			capturedStderr += text;
 		});
 
-		proc.on("close", (code: number) => {
+		// Settle on ENOENT/EACCES; later `close` rejects are then no-ops.
+		proc.on("error", reject);
+
+		proc.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
 			if (code === 0) {
 				resolve();
-			} else {
-				let msg = `"${fullArgs.join(" ")}" exited with code ${code}`;
-				if (capturedStderr) msg += `: ${capturedStderr}`;
-				reject(new Error(msg));
+				return;
 			}
+			const exit =
+				code !== null ? `code ${code}` : `signal ${signal ?? "unknown"}`;
+			let msg = `"${fullArgs.join(" ")}" exited with ${exit}`;
+			if (capturedStderr) msg += `: ${capturedStderr}`;
+			reject(new Error(msg));
 		});
 	});
 }
