@@ -1,5 +1,11 @@
 import * as vscode from "vscode";
 
+import {
+	buildCommandHandlers,
+	buildRequestHandlers,
+	WorkspacesApi,
+} from "@repo/shared";
+
 import { type CoderApi } from "../../api/coderApi";
 import { type Logger } from "../../logging/logger";
 import {
@@ -18,9 +24,10 @@ export class ExperimentalWorkspacesPanelProvider
 	private view?: vscode.WebviewView;
 	private disposables: vscode.Disposable[] = [];
 
-	// Empty handlers for now - will be populated as we build out the API
-	private readonly requestHandlers = {};
-	private readonly commandHandlers = {};
+	// Use buildRequestHandlers/buildCommandHandlers for compile-time safety
+	// Empty for now, but will enforce exhaustiveness when WorkspacesApi is defined
+	private readonly requestHandlers = buildRequestHandlers(WorkspacesApi, {});
+	private readonly commandHandlers = buildCommandHandlers(WorkspacesApi, {});
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,

@@ -19,3 +19,6 @@ export {
 
 // Chat API
 export { ChatApi } from "./chat/api";
+
+// Workspaces API
+export { WorkspacesApi } from "./workspaces/api";
