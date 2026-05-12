@@ -8,8 +8,6 @@ import {
 
 import { workspace as createWorkspace } from "@repo/mocks";
 
-import { shellQuote } from "../../utils/platform";
-
 import type { Api } from "coder/site/src/api/api";
 import type { TemplateVersionParameter } from "coder/site/src/api/typesGenerated";
 
@@ -145,14 +143,14 @@ describe("collectUpdateParameters", () => {
 			param: { name: "environment" },
 			mock: mockCreateInputBox,
 			accept: { value: "dev" },
-			expected: ["--parameter", shellQuote("environment=dev")],
+			expected: ["--parameter", "environment=dev"],
 		},
 		{
 			kind: "bool quick pick",
 			param: { name: "enabled", type: "bool" },
 			mock: mockCreateQuickPick,
 			accept: { selectedItems: [{ value: "true" }] },
-			expected: ["--parameter", shellQuote("enabled=true")],
+			expected: ["--parameter", "enabled=true"],
 		},
 		{
 			kind: "options quick pick",
@@ -165,7 +163,7 @@ describe("collectUpdateParameters", () => {
 			},
 			mock: mockCreateQuickPick,
 			accept: { selectedItems: [{ value: "l" }] },
-			expected: ["--parameter", shellQuote("size=l")],
+			expected: ["--parameter", "size=l"],
 		},
 		{
 			kind: "multi-select quick pick (JSON array)",
@@ -179,7 +177,7 @@ describe("collectUpdateParameters", () => {
 			},
 			mock: mockCreateQuickPick,
 			accept: { selectedItems: [{ value: "us" }, { value: "eu" }] },
-			expected: ["--parameter", shellQuote('regions=["us","eu"]')],
+			expected: ["--parameter", 'regions=["us","eu"]'],
 		},
 	])(
 		"collects the value via $kind",
@@ -195,7 +193,7 @@ describe("collectUpdateParameters", () => {
 		},
 	);
 
-	it("escapes shell metacharacters in server-controlled values", async () => {
+	it("passes server-controlled values through verbatim (no shell expansion path)", async () => {
 		const { restClient, workspace } = createCollectCtx([{ name: "evil" }]);
 		const qi = mockCreateInputBox();
 
@@ -203,10 +201,7 @@ describe("collectUpdateParameters", () => {
 		await waitShown(qi);
 		qi.accept({ value: "$(rm -rf /)" });
 
-		await expect(result).resolves.toEqual([
-			"--parameter",
-			shellQuote("evil=$(rm -rf /)"),
-		]);
+		await expect(result).resolves.toEqual(["--parameter", "evil=$(rm -rf /)"]);
 	});
 
 	it("skips parameters that already have a value or default", async () => {
@@ -313,21 +308,6 @@ describe("parameter prompt validation", () => {
 			expected: "Must be a number",
 		},
 		{
-			kind: "regex mismatch with default message",
-			param: { validation_regex: "^x" },
-			input: "y",
-			expected: "Invalid format",
-		},
-		{
-			kind: "regex mismatch with {value} substitution",
-			param: {
-				validation_regex: "^x",
-				validation_error: "Value {value} is not allowed",
-			},
-			input: "y",
-			expected: "Value y is not allowed",
-		},
-		{
 			kind: "number out-of-range with {min}/{max} substitution",
 			param: {
 				type: "number",
@@ -342,6 +322,13 @@ describe("parameter prompt validation", () => {
 		await withInputBox({ name: "x", ...p }, (qi) => {
 			qi.change(input);
 			expect(qi.mock.validationMessage).toBe(expected);
+		});
+	});
+
+	it("does not evaluate validation_regex client-side (ReDoS guard)", async () => {
+		await withInputBox({ name: "r", validation_regex: "^(a+)+$" }, (qi) => {
+			qi.change("aaaaaaaaaaaaaaaaaaaaaaaaaaa!");
+			expect(qi.mock.validationMessage).toBe("");
 		});
 	});
 

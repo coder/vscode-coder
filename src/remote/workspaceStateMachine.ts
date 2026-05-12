@@ -78,6 +78,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 					workspace = updated;
 					// Agent IDs may have changed after an update.
 					this.agent = undefined;
+					if (workspace.latest_build.status !== "running") return false;
 				}
 				break;
 			}
@@ -106,8 +107,8 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 					workspace = updated;
 					// Agent IDs may have changed after an update.
 					this.agent = undefined;
-					if (workspace.latest_build.status === "running") break;
-					return false;
+					if (workspace.latest_build.status !== "running") return false;
+					break;
 				}
 				// Either we weren't in update mode, or the update failed: start.
 				await this.triggerStart(workspace, workspaceName, progress);

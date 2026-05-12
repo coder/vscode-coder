@@ -213,7 +213,8 @@ export function escapeCommandArg(arg: string): string {
  */
 export function escapeShellArg(arg: string): string {
 	if (os.platform() === "win32") {
-		return escapeCommandArg(arg).replace(/%/g, "%%");
+		const escaped = arg.replace(/"/g, '""').replace(/%/g, "%%");
+		return `"${escaped}"`;
 	}
 	return `'${arg.replace(/'/g, "'\\''")}'`;
 }

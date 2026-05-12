@@ -12,12 +12,21 @@ export type CliAuth =
 	| { mode: "url"; url: string };
 
 /**
- * Returns the raw global flags from user configuration.
+ * Returns the user's `coder.globalFlags` with `${env:VAR}` references
+ * substituted from `process.env`. Missing variables resolve to an empty
+ * string, matching VS Code's behaviour for built-in `${env:VAR}` sites.
  */
-export function getGlobalFlagsRaw(
+export function getUserGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 ): string[] {
-	return configs.get<string[]>("coder.globalFlags", []);
+	return configs
+		.get<string[]>("coder.globalFlags", [])
+		.map((flag) =>
+			flag.replace(
+				/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g,
+				(_, name: string) => process.env[name] ?? "",
+			),
+		);
 }
 
 /**
@@ -52,26 +61,25 @@ function buildGlobalFlags(
 			? ["--url", esc(auth.url)]
 			: ["--global-config", esc(auth.configDir)];
 
-	const raw = getGlobalFlagsRaw(configs);
-	const filtered = stripManagedFlags(raw);
+	const filtered = stripManagedFlags(getUserGlobalFlags(configs));
 
 	return [...filtered, ...authFlags, ...getHeaderArgs(configs)];
 }
 
-function stripManagedFlags(rawFlags: string[]): string[] {
+function stripManagedFlags(flags: string[]): string[] {
 	const filtered: string[] = [];
-	for (let i = 0; i < rawFlags.length; i++) {
-		if (isFlag(rawFlags[i], "--use-keyring")) {
+	for (let i = 0; i < flags.length; i++) {
+		if (isFlag(flags[i], "--use-keyring")) {
 			continue;
 		}
-		if (isFlag(rawFlags[i], "--global-config")) {
+		if (isFlag(flags[i], "--global-config")) {
 			// Skip the next item too when the value is a separate entry.
-			if (rawFlags[i] === "--global-config") {
+			if (flags[i] === "--global-config") {
 				i++;
 			}
 			continue;
 		}
-		filtered.push(rawFlags[i]);
+		filtered.push(flags[i]);
 	}
 	return filtered;
 }

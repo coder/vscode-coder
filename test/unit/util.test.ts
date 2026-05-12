@@ -240,14 +240,20 @@ describe("escapeShellArg", () => {
 			expect(escapeShellArg("env=dev")).toBe('"env=dev"');
 		});
 
-		it("escapes embedded double quotes", () => {
+		it('doubles embedded `"`', () => {
 			expect(escapeShellArg('regions=["us","eu"]')).toBe(
-				String.raw`"regions=[\"us\",\"eu\"]"`,
+				'"regions=[""us"",""eu""]"',
 			);
 		});
 
-		it("doubles percent signs to block %VAR% expansion", () => {
+		it("doubles `%` to block %VAR% expansion", () => {
 			expect(escapeShellArg("%PATH%")).toBe('"%%PATH%%"');
+		});
+
+		it("keeps cmd metachars inside the quoted region", () => {
+			expect(escapeShellArg('foo" & calc.exe & "x')).toBe(
+				'"foo"" & calc.exe & ""x"',
+			);
 		});
 	});
 });

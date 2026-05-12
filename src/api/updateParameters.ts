@@ -1,7 +1,5 @@
 import * as vscode from "vscode";
 
-import { escapeShellArg } from "../util";
-
 import type { Api } from "coder/site/src/api/api";
 import type {
 	TemplateVersionParameter,
@@ -25,15 +23,15 @@ export async function collectUpdateParameters(
 	restClient: Api,
 	workspace: Workspace,
 ): Promise<string[]> {
-	const newParams = await restClient.getTemplateVersionRichParameters(
-		workspace.template_active_version_id,
-	);
+	const [newParams, currentValues] = await Promise.all([
+		restClient.getTemplateVersionRichParameters(
+			workspace.template_active_version_id,
+		),
+		restClient.getWorkspaceBuildParameters(workspace.latest_build.id),
+	]);
 	const candidates = newParams.filter((p) => p.required && !p.default_value);
 	if (candidates.length === 0) return [];
 
-	const currentValues = await restClient.getWorkspaceBuildParameters(
-		workspace.latest_build.id,
-	);
 	const existing = new Set(currentValues.map((p) => p.name));
 	const toPrompt = candidates.filter((p) => !existing.has(p.name));
 
@@ -44,8 +42,7 @@ export async function collectUpdateParameters(
 		if (value === undefined) {
 			throw new WorkspaceUpdateCancelledError();
 		}
-		// Server-controlled values; block shell expansion under `shell: true`.
-		args.push("--parameter", escapeShellArg(`${param.name}=${value}`));
+		args.push("--parameter", `${param.name}=${value}`);
 	}
 	return args;
 }
@@ -178,20 +175,12 @@ function substituteTemplate(
 }
 
 /**
- * Returns `{ ok, message }`; invalid RE2 regexes fall through to server-side
- * validation.
+ * Returns `{ ok, message }`. Regex constraints are intentionally not tested
+ * client-side; server validates with RE2 (linear-time, ReDoS-safe).
  */
 function makeValidator(
 	param: TemplateVersionParameter,
 ): (input: string) => { ok: boolean; message?: string } {
-	let re: RegExp | undefined;
-	if (param.validation_regex) {
-		try {
-			re = new RegExp(param.validation_regex);
-		} catch {
-			re = undefined;
-		}
-	}
 	return (input) => {
 		if (!input) return { ok: !param.required };
 		if (param.type === "number") {
@@ -215,14 +204,6 @@ function makeValidator(
 						`Must be at most ${param.validation_max}`,
 				};
 			}
-		}
-		if (re && !re.test(input)) {
-			return {
-				ok: false,
-				message:
-					substituteTemplate(param.validation_error, param, input) ||
-					"Invalid format",
-			};
 		}
 		return { ok: true };
 	};

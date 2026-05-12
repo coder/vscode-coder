@@ -106,9 +106,11 @@ function controlSpawn() {
 	const proc = new EventEmitter() as EventEmitter & {
 		stdout: EventEmitter;
 		stderr: EventEmitter;
+		stdin: { end: ReturnType<typeof vi.fn> };
 	};
 	proc.stdout = new EventEmitter();
 	proc.stderr = new EventEmitter();
+	proc.stdin = { end: vi.fn() };
 	const { promise: spawned, resolve: resolveSpawned } =
 		Promise.withResolvers<void>();
 	vi.mocked(spawn).mockImplementation(() => {
@@ -191,6 +193,23 @@ describe("updateWorkspace", () => {
 		vi.clearAllMocks();
 	});
 
+	it("runs coder update and resolves with the refreshed workspace", async () => {
+		const { ctx, restClient, finalWorkspace } = createUpdateCtx();
+		const sp = controlSpawn();
+
+		const result = updateWorkspace(ctx);
+		await sp.close(0);
+
+		await expect(result).resolves.toBe(finalWorkspace);
+		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
+			"--url",
+			"https://test.coder.com",
+			"update",
+			"testuser/test-workspace",
+		]);
+		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
+	});
+
 	it("rejects when the process exits non-zero", async () => {
 		const { ctx, restClient } = createUpdateCtx();
 		const sp = controlSpawn();
@@ -264,10 +283,15 @@ describe("startWorkspace", () => {
 		await sp.close(0);
 
 		await expect(result).resolves.toBe(finalWorkspace);
-		expect(spawn).toHaveBeenCalledWith(
-			'"/usr/bin/coder" --url "https://test.coder.com" start --yes --reason vscode_connection testuser/test-workspace',
-			expect.objectContaining({ shell: true }),
-		);
+		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
+			"--url",
+			"https://test.coder.com",
+			"start",
+			"--yes",
+			"--reason",
+			"vscode_connection",
+			"testuser/test-workspace",
+		]);
 		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
 	});
 
@@ -289,9 +313,12 @@ describe("startWorkspace", () => {
 		await sp.close(0);
 		await result;
 
-		expect(spawn).toHaveBeenCalledWith(
-			'"/usr/bin/coder" --url "https://test.coder.com" start --yes testuser/test-workspace',
-			expect.objectContaining({ shell: true }),
-		);
+		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
+			"--url",
+			"https://test.coder.com",
+			"start",
+			"--yes",
+			"testuser/test-workspace",
+		]);
 	});
 });

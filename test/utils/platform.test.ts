@@ -3,15 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import {
-	afterEach,
-	beforeAll,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
 	expectPathsEqual,
@@ -19,7 +11,6 @@ import {
 	isWindows,
 	printCommand,
 	printEnvCommand,
-	shellQuote,
 	shimExecFile,
 	writeExecutable,
 	writeStdoutJs,
@@ -166,45 +157,6 @@ describe("platform utils", () => {
 
 		it("does not touch spawn", () => {
 			expect(mod.spawn).toBe(cp.spawn);
-		});
-	});
-
-	describe("shellQuote", () => {
-		const platformSpy = vi.spyOn(os, "platform");
-		afterEach(() => platformSpy.mockReset());
-
-		describe("on Unix", () => {
-			beforeEach(() => platformSpy.mockReturnValue("linux"));
-
-			it("wraps in single quotes", () => {
-				expect(shellQuote("env=dev")).toBe("'env=dev'");
-			});
-
-			it("escapes single quotes via the '\\'' sequence", () => {
-				expect(shellQuote("it's fine")).toBe("'it'\\''s fine'");
-			});
-
-			it("keeps $VAR, $(...), and backticks literal inside the quotes", () => {
-				expect(shellQuote("$(echo pwned)")).toBe("'$(echo pwned)'");
-			});
-		});
-
-		describe("on Windows", () => {
-			beforeEach(() => platformSpy.mockReturnValue("win32"));
-
-			it("wraps in double quotes", () => {
-				expect(shellQuote("env=dev")).toBe('"env=dev"');
-			});
-
-			it("escapes embedded double quotes", () => {
-				expect(shellQuote('regions=["us","eu"]')).toBe(
-					String.raw`"regions=[\"us\",\"eu\"]"`,
-				);
-			});
-
-			it("doubles percent signs to block %VAR% expansion", () => {
-				expect(shellQuote("%PATH%")).toBe('"%%PATH%%"');
-			});
 		});
 	});
 });

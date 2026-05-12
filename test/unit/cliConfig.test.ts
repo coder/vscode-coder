@@ -6,9 +6,9 @@ import { featureSetForVersion } from "@/featureSet";
 import {
 	type CliAuth,
 	getGlobalFlags,
-	getGlobalFlagsRaw,
 	getGlobalShellFlags,
 	getSshFlags,
+	getUserGlobalFlags,
 	isKeyringEnabled,
 	resolveCliAuth,
 } from "@/settings/cli";
@@ -212,11 +212,11 @@ describe("cliConfig", () => {
 		});
 	});
 
-	describe("getGlobalFlagsRaw", () => {
+	describe("getUserGlobalFlags", () => {
 		it("returns empty array when no global flags configured", () => {
 			const config = new MockConfigurationProvider();
 
-			expect(getGlobalFlagsRaw(config)).toStrictEqual([]);
+			expect(getUserGlobalFlags(config)).toStrictEqual([]);
 		});
 
 		it("returns global flags from config", () => {
@@ -226,10 +226,33 @@ describe("cliConfig", () => {
 				"--disable-direct-connections",
 			]);
 
-			expect(getGlobalFlagsRaw(config)).toStrictEqual([
+			expect(getUserGlobalFlags(config)).toStrictEqual([
 				"--verbose",
 				"--disable-direct-connections",
 			]);
+		});
+
+		it("substitutes ${env:VAR} from process.env", () => {
+			const restore = process.env.CODER_TEST_VAR;
+			process.env.CODER_TEST_VAR = "from-env";
+			try {
+				const config = new MockConfigurationProvider();
+				config.set("coder.globalFlags", [
+					"--prefix=${env:CODER_TEST_VAR}",
+					"${env:CODER_MISSING_VAR}-suffix",
+				]);
+
+				expect(getUserGlobalFlags(config)).toStrictEqual([
+					"--prefix=from-env",
+					"-suffix",
+				]);
+			} finally {
+				if (restore === undefined) {
+					delete process.env.CODER_TEST_VAR;
+				} else {
+					process.env.CODER_TEST_VAR = restore;
+				}
+			}
 		});
 	});
 
