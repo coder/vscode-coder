@@ -43,6 +43,7 @@ const ROUTE_NORMALIZATION_RULES: ReadonlyArray<readonly string[]> = [
 ].map((rule) => rule.split("/"));
 
 interface HttpRequestBucket {
+	count1xx: number;
 	count2xx: number;
 	count3xx: number;
 	count4xx: number;
@@ -124,6 +125,8 @@ export class HttpRequestsTelemetry implements Disposable {
 
 		if (networkError || statusCode === undefined) {
 			bucket.countNetworkError += 1;
+		} else if (statusCode >= 100 && statusCode < 200) {
+			bucket.count1xx += 1;
 		} else if (statusCode >= 200 && statusCode < 300) {
 			bucket.count2xx += 1;
 		} else if (statusCode >= 300 && statusCode < 400) {
@@ -146,6 +149,7 @@ export class HttpRequestsTelemetry implements Disposable {
 		let bucket = byRoute.get(route);
 		if (!bucket) {
 			bucket = {
+				count1xx: 0,
 				count2xx: 0,
 				count3xx: 0,
 				count4xx: 0,
@@ -165,18 +169,21 @@ export class HttpRequestsTelemetry implements Disposable {
 		);
 		for (const [method, byRoute] of this.#buckets) {
 			for (const [route, bucket] of byRoute) {
+				const sortedDurations = bucket.durationsMs.toSorted((a, b) => a - b);
 				this.#telemetry.log(
 					EVENT_NAME,
 					{ method, route },
 					{
 						window_seconds: elapsedSeconds,
+						count_1xx: bucket.count1xx,
 						count_2xx: bucket.count2xx,
 						count_3xx: bucket.count3xx,
 						count_4xx: bucket.count4xx,
 						count_5xx: bucket.count5xx,
 						count_network_error: bucket.countNetworkError,
-						avg_duration_ms: average(bucket.durationsMs),
-						p95_duration_ms: percentile95(bucket.durationsMs),
+						p50_duration_ms: percentile(sortedDurations, 0.5),
+						p95_duration_ms: percentile(sortedDurations, 0.95),
+						p99_duration_ms: percentile(sortedDurations, 0.99),
 					},
 				);
 			}
@@ -265,18 +272,10 @@ function elapsedMs(
 		: undefined;
 }
 
-function average(values: readonly number[]): number {
-	if (values.length === 0) {
+function percentile(sortedValues: readonly number[], p: number): number {
+	if (sortedValues.length === 0) {
 		return 0;
 	}
-	return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function percentile95(values: readonly number[]): number {
-	if (values.length === 0) {
-		return 0;
-	}
-	const sorted = values.toSorted((a, b) => a - b);
-	const index = Math.ceil(sorted.length * 0.95) - 1;
-	return sorted[Math.max(0, index)];
+	const index = Math.ceil(sortedValues.length * p) - 1;
+	return sortedValues[Math.max(0, index)];
 }

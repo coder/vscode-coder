@@ -80,13 +80,15 @@ describe("HttpRequestsTelemetry", () => {
 			{ method: "GET", route: "/api/v2/workspaces/{id}" },
 			{
 				window_seconds: WINDOW_SECONDS,
+				count_1xx: 0,
 				count_2xx: 2,
 				count_3xx: 0,
 				count_4xx: 0,
 				count_5xx: 0,
 				count_network_error: 0,
-				avg_duration_ms: 150,
+				p50_duration_ms: 100,
 				p95_duration_ms: 200,
+				p99_duration_ms: 200,
 			},
 		);
 		expect(log).toHaveBeenNthCalledWith(
@@ -100,6 +102,7 @@ describe("HttpRequestsTelemetry", () => {
 	it("counts status code classes and network errors", async () => {
 		start();
 		const route = "/api/v2/users/danny/workspaces";
+		recordResponse(rollup, { method: "POST", url: route, status: 101 });
 		recordResponse(rollup, { method: "POST", url: route, status: 201 });
 		recordResponse(rollup, { method: "POST", url: route, status: 302 });
 		recordAxiosError(rollup, { method: "POST", url: route, status: 404 });
@@ -112,6 +115,7 @@ describe("HttpRequestsTelemetry", () => {
 			"http.requests",
 			{ method: "POST", route: "/api/v2/users/{name}/workspaces" },
 			expect.objectContaining({
+				count_1xx: 1,
 				count_2xx: 1,
 				count_3xx: 1,
 				count_4xx: 1,
@@ -139,7 +143,7 @@ describe("HttpRequestsTelemetry", () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
-	it("calculates nearest-rank p95", async () => {
+	it("calculates nearest-rank p50, p95, p99", async () => {
 		start();
 		for (let durationMs = 10; durationMs <= 200; durationMs += 10) {
 			recordResponse(rollup, {
@@ -155,7 +159,11 @@ describe("HttpRequestsTelemetry", () => {
 		expect(log).toHaveBeenCalledWith(
 			"http.requests",
 			{ method: "GET", route: "/api/v2/workspaces/{id}" },
-			expect.objectContaining({ avg_duration_ms: 105, p95_duration_ms: 190 }),
+			expect.objectContaining({
+				p50_duration_ms: 100,
+				p95_duration_ms: 190,
+				p99_duration_ms: 200,
+			}),
 		);
 	});
 
@@ -180,8 +188,9 @@ describe("HttpRequestsTelemetry", () => {
 			{ method: "GET", route: "/api/v2/workspaces/{id}" },
 			expect.objectContaining({
 				count_2xx: 1,
-				avg_duration_ms: 0,
+				p50_duration_ms: 0,
 				p95_duration_ms: 0,
+				p99_duration_ms: 0,
 			}),
 		);
 	});
