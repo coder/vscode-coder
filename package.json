@@ -149,17 +149,6 @@
 						"experimental"
 					]
 				},
-				"coder.experimental.workspacesPanel": {
-					"markdownDescription": "Enable the experimental Workspaces webview panel. This feature is in active development.",
-					"type": "boolean",
-					"default": false,
-					"tags": [
-						"experimental"
-					],
-					"scope": "application",
-					"ignoreSync": true,
-					"order": 999
-				},
 				"coder.sshFlags": {
 					"markdownDescription": "Additional flags to pass to the `coder ssh` command when establishing SSH connections. Enter each flag as a separate array item; values are passed verbatim and in order. See the [CLI ssh reference](https://coder.com/docs/reference/cli/ssh) for available flags.\n\nNote: `--network-info-dir` and `--ssh-host-prefix` are ignored (managed internally). Prefer `#coder.proxyLogDirectory#` over `--log-dir`/`-l` for full functionality.",
 					"type": "array",
@@ -346,10 +335,10 @@
 			"coderExperimentalWorkspaces": [
 				{
 					"type": "webview",
-					"id": "coder.experimental.workspacesPanel",
+					"id": "coder.workspacesPanel",
 					"name": "Workspaces",
-					"icon": "media/logo-white.svg",
-					"when": "coder.authenticated && coder.experimental.webkitWorkspaces"
+					"icon": "media/shorthand-logo.svg",
+					"when": "coder.authenticated && coder.workspacesPanelEnabled"
 				}
 			]
 		},
