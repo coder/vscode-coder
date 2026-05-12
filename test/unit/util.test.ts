@@ -14,160 +14,133 @@ import {
 } from "@/util";
 
 describe("parseRemoteAuthority", () => {
+	const remoteAuthority = (sshHost: string) => `vscode://ssh-remote+${sshHost}`;
+
 	it.each([
-		"vscode://ssh-remote+some-unrelated-host.com",
-		"vscode://ssh-remote+coder-vscode",
-		"vscode://ssh-remote+coder-vscode-test",
-		"vscode://ssh-remote+coder-vscode-test--foo--bar",
-		"vscode://ssh-remote+coder-vscode-foo--bar",
-		"vscode://ssh-remote+coder--foo--bar",
-	])("ignores unrelated authority: %s", (input) => {
+		{ label: "missing SSH host", input: "vscode://ssh-remote" },
+		{ label: "empty SSH host", input: "vscode://ssh-remote+" },
+		{
+			label: "non-Coder host",
+			input: remoteAuthority("some-unrelated-host.com"),
+		},
+		{
+			label: "prefix without safeHostname separator",
+			input: remoteAuthority("coder-vscode--foo--bar"),
+		},
+		{
+			label: "similar prefix",
+			input: remoteAuthority("coder-vscode-test--foo--bar"),
+		},
+		{ label: "wrong prefix", input: remoteAuthority("coder--foo--bar") },
+	])("ignores unrelated authority: $label", ({ input }) => {
 		expect(parseRemoteAuthority(input)).toBe(null);
 	});
 
 	it.each([
-		"vscode://ssh-remote+coder-vscode--foo",
-		"vscode://ssh-remote+coder-vscode--",
-		"vscode://ssh-remote+coder-vscode--foo--",
-		"vscode://ssh-remote+coder-vscode--foo--bar--",
-	])("rejects invalid authority: %s", (input) => {
-		expect(() => parseRemoteAuthority(input)).toThrow("Invalid");
+		{
+			label: "missing user and workspace",
+			sshHost: "coder-vscode.dev.coder.com",
+		},
+		{
+			label: "missing workspace",
+			sshHost: "coder-vscode.dev.coder.com--foo",
+		},
+		{
+			label: "empty username",
+			sshHost: "coder-vscode.dev.coder.com----bar",
+		},
+		{
+			label: "empty workspace",
+			sshHost: "coder-vscode.dev.coder.com--foo--",
+		},
+		{
+			label: "empty hostname",
+			sshHost: "coder-vscode.--foo--bar",
+		},
+		{
+			label: "empty trailing segment",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar--",
+		},
+		{
+			label: "empty workspace before agent separator",
+			sshHost: "coder-vscode.dev.coder.com--foo--.agent",
+		},
+		{
+			label: "empty agent after separator",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar.",
+		},
+	])("rejects invalid authority: $label", ({ sshHost }) => {
+		expect(() => parseRemoteAuthority(remoteAuthority(sshHost))).toThrow(
+			"Invalid Coder SSH authority",
+		);
 	});
 
 	interface ParseCase {
 		label: string;
-		input: string;
-		expected: AuthorityParts;
+		sshHost: string;
+		safeHostname: string;
+		workspace: string;
+		agent?: string;
+		username?: string;
 	}
 
 	it.each<ParseCase>([
 		{
-			label: "legacy form, no agent",
-			input: "vscode://ssh-remote+coder-vscode--foo--bar",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode--foo--bar",
-				safeHostname: "",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname without agent",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar",
+			safeHostname: "dev.coder.com",
+			workspace: "bar",
 		},
 		{
-			label: "legacy form with agent",
-			input: "vscode://ssh-remote+coder-vscode--foo--bar--baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode--foo--bar--baz",
-				safeHostname: "",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname with agent",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar.baz",
+			safeHostname: "dev.coder.com",
+			workspace: "bar",
+			agent: "baz",
 		},
 		{
-			label: "with hostname, no agent",
-			input: "vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.dev.coder.com--foo--bar",
-				safeHostname: "dev.coder.com",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname containing delimiter",
+			sshHost: "coder-vscode.test--domain.com--foo--bar",
+			safeHostname: "test--domain.com",
+			workspace: "bar",
 		},
 		{
-			label: "with hostname and -- agent",
-			input: "vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar--baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.dev.coder.com--foo--bar--baz",
-				safeHostname: "dev.coder.com",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "Punycode hostname containing delimiter",
+			sshHost: "coder-vscode.xn--test---8o4.example--foo--bar",
+			safeHostname: "xn--test---8o4.example",
+			workspace: "bar",
 		},
 		{
-			label: "with hostname and . agent",
-			input: "vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.dev.coder.com--foo--bar.baz",
-				safeHostname: "dev.coder.com",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname with repeated delimiters and agent",
+			sshHost: "coder-vscode.first--middle--last.example--foo--bar.baz",
+			safeHostname: "first--middle--last.example",
+			workspace: "bar",
+			agent: "baz",
 		},
 		{
-			label: "Punycode label in hostname",
-			input:
-				"vscode://ssh-remote+coder-vscode.dev.coder.xn--eckwd4c7cu47r2wf.jp--foo--bar",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.dev.coder.xn--eckwd4c7cu47r2wf.jp--foo--bar",
-				safeHostname: "dev.coder.xn--eckwd4c7cu47r2wf.jp",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname with many consecutive dashes",
+			sshHost: "coder-vscode.foo---------------bar.com--foo--bar",
+			safeHostname: "foo---------------bar.com",
+			workspace: "bar",
 		},
 		{
-			label: "Punycode hostname with -- agent",
-			input:
-				"vscode://ssh-remote+coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar--baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar--baz",
-				safeHostname: "xn--eckwd4c7cu47r2wf.jp",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "ambiguous workspace/agent separator",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar.baz.qux",
+			safeHostname: "dev.coder.com",
+			workspace: "bar.baz.qux",
 		},
-		{
-			label: "Punycode hostname with . agent",
-			input:
-				"vscode://ssh-remote+coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar.baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar.baz",
-				safeHostname: "xn--eckwd4c7cu47r2wf.jp",
-				username: "foo",
-				workspace: "bar",
-			},
+	])(
+		"parses $label",
+		({ sshHost, safeHostname, workspace, agent, username }) => {
+			expect(parseRemoteAuthority(remoteAuthority(sshHost))).toStrictEqual({
+				agent: agent ?? "",
+				sshHost,
+				safeHostname,
+				username: username ?? "foo",
+				workspace,
+			} satisfies AuthorityParts);
 		},
-		{
-			label: "multiple Punycode labels",
-			input: "vscode://ssh-remote+coder-vscode.xn--abc.xn--def.com--foo--bar",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.xn--abc.xn--def.com--foo--bar",
-				safeHostname: "xn--abc.xn--def.com",
-				username: "foo",
-				workspace: "bar",
-			},
-		},
-		{
-			label: "apex Punycode",
-			input: "vscode://ssh-remote+coder-vscode.xn--p1ai--owner--ws",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.xn--p1ai--owner--ws",
-				safeHostname: "xn--p1ai",
-				username: "owner",
-				workspace: "ws",
-			},
-		},
-		{
-			label: "consecutive apex Punycode labels",
-			input: "vscode://ssh-remote+coder-vscode.xn--p1ai.xn--abc--owner--ws",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.xn--p1ai.xn--abc--owner--ws",
-				safeHostname: "xn--p1ai.xn--abc",
-				username: "owner",
-				workspace: "ws",
-			},
-		},
-	])("parses $label", ({ input, expected }) => {
-		expect(parseRemoteAuthority(input)).toStrictEqual(expected);
-	});
+	);
 });
 
 describe("toSafeHost", () => {
