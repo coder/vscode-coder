@@ -231,29 +231,6 @@ describe("cliConfig", () => {
 				"--disable-direct-connections",
 			]);
 		});
-
-		it("substitutes ${env:VAR} from process.env", () => {
-			const restore = process.env.CODER_TEST_VAR;
-			process.env.CODER_TEST_VAR = "from-env";
-			try {
-				const config = new MockConfigurationProvider();
-				config.set("coder.globalFlags", [
-					"--prefix=${env:CODER_TEST_VAR}",
-					"${env:CODER_MISSING_VAR}-suffix",
-				]);
-
-				expect(getUserGlobalFlags(config)).toStrictEqual([
-					"--prefix=from-env",
-					"-suffix",
-				]);
-			} finally {
-				if (restore === undefined) {
-					delete process.env.CODER_TEST_VAR;
-				} else {
-					process.env.CODER_TEST_VAR = restore;
-				}
-			}
-		});
 	});
 
 	describe("getSshFlags", () => {

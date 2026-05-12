@@ -160,7 +160,7 @@
 					]
 				},
 				"coder.globalFlags": {
-					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item; values are passed verbatim and in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nValues are passed directly to the CLI without a shell, so `$VAR` and `%VAR%` are **not** expanded. Use `${env:VAR}` to reference environment variables (e.g. `--cfg=${env:HOME}/cfg`); missing variables resolve to an empty string.\n\nNote that for `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here. The `--global-config` and `--use-keyring` flags are silently ignored as the extension manages them via `#coder.useKeyring#`.",
+					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item; values are passed verbatim and in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nNote that for `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here. The `--global-config` and `--use-keyring` flags are silently ignored as the extension manages them via `#coder.useKeyring#`.",
 					"type": "array",
 					"items": {
 						"type": "string"

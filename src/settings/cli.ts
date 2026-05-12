@@ -11,22 +11,11 @@ export type CliAuth =
 	| { mode: "global-config"; configDir: string }
 	| { mode: "url"; url: string };
 
-/**
- * Returns the user's `coder.globalFlags` with `${env:VAR}` references
- * substituted from `process.env`. Missing variables resolve to an empty
- * string, matching VS Code's behaviour for built-in `${env:VAR}` sites.
- */
+/** Returns the user's `coder.globalFlags` as configured, with no expansion. */
 export function getUserGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 ): string[] {
-	return configs
-		.get<string[]>("coder.globalFlags", [])
-		.map((flag) =>
-			flag.replace(
-				/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g,
-				(_, name: string) => process.env[name] ?? "",
-			),
-		);
+	return configs.get<string[]>("coder.globalFlags", []);
 }
 
 /** Flags for shell contexts (`terminal.sendText`, `spawn({ shell: true })`). */
