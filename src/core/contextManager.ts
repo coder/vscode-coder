@@ -7,6 +7,7 @@ const CONTEXT_DEFAULTS = {
 	"coder.agentsEnabled": false,
 	"coder.workspace.connected": false,
 	"coder.workspace.updatable": false,
+	"coder.experimental.webkitWorkspaces": false,
 } as const;
 
 type CoderContext = keyof typeof CONTEXT_DEFAULTS;

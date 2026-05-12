@@ -31,7 +31,7 @@
 		"package:prerelease": "pnpm build:production && vsce package --pre-release --no-dependencies",
 		"storybook": "storybook dev -p 6006 --config-dir .storybook",
 		"storybook:build": "storybook build --config-dir .storybook",
-			"storybook:ci": "storybook build --test --config-dir .storybook",
+		"storybook:ci": "storybook build --test --config-dir .storybook",
 		"test": "cross-env CI=true ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs",
 		"test:extension": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs --project extension",
 		"test:integration": "pnpm compile-tests:integration && node esbuild.mjs && vscode-test",
@@ -148,6 +148,17 @@
 					"tags": [
 						"experimental"
 					]
+				},
+				"coder.experimental.workspacesPanel": {
+					"markdownDescription": "Enable the experimental Workspaces webview panel. This feature is in active development.",
+					"type": "boolean",
+					"default": false,
+					"tags": [
+						"experimental"
+					],
+					"scope": "application",
+					"ignoreSync": true,
+					"order": 999
 				},
 				"coder.sshFlags": {
 					"markdownDescription": "Additional flags to pass to the `coder ssh` command when establishing SSH connections. Enter each flag as a separate array item; values are passed verbatim and in order. See the [CLI ssh reference](https://coder.com/docs/reference/cli/ssh) for available flags.\n\nNote: `--network-info-dir` and `--ssh-host-prefix` are ignored (managed internally). Prefer `#coder.proxyLogDirectory#` over `--log-dir`/`-l` for full functionality.",
@@ -277,6 +288,11 @@
 					"id": "coderTasks",
 					"title": "Coder Tasks",
 					"icon": "media/tasks-logo.svg"
+				},
+				{
+					"id": "coderExperimentalWorkspaces",
+					"title": "Coder Remote (New)",
+					"icon": "media/shorthand-logo.svg"
 				}
 			],
 			"secondarySidebar": [
@@ -325,6 +341,15 @@
 					"name": "Coder Chat (Experimental)",
 					"icon": "media/shorthand-logo.svg",
 					"when": "coder.agentsEnabled"
+				}
+			],
+			"coderExperimentalWorkspaces": [
+				{
+					"type": "webview",
+					"id": "coder.experimental.workspacesPanel",
+					"name": "Workspaces",
+					"icon": "media/logo-white.svg",
+					"when": "coder.authenticated && coder.experimental.webkitWorkspaces"
 				}
 			]
 		},

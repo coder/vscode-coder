@@ -1,0 +1,33 @@
+{
+	"name": "@repo/workspaces",
+	"version": "1.0.0",
+	"description": "Coder Workspaces webview panel",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vite build",
+		"dev": "vite build --watch",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@repo/shared": "workspace:*",
+		"@repo/webview-shared": "workspace:*",
+		"@tanstack/react-query": "catalog:",
+		"@vscode-elements/react-elements": "catalog:",
+		"@vscode/codicons": "catalog:",
+		"date-fns": "catalog:",
+		"react": "catalog:",
+		"react-dom": "catalog:"
+	},
+	"devDependencies": {
+		"@repo/mocks": "workspace:*",
+		"@repo/storybook-utils": "workspace:*",
+		"@rolldown/plugin-babel": "catalog:",
+		"@types/react": "catalog:",
+		"@types/react-dom": "catalog:",
+		"@vitejs/plugin-react": "catalog:",
+		"babel-plugin-react-compiler": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:"
+	}
+}

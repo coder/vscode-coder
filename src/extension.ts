@@ -25,6 +25,7 @@ import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscodeProposed";
 import { ChatPanelProvider } from "./webviews/chat/chatPanelProvider";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
+import { ExperimentalWorkspacesPanelProvider } from "./webviews/workspaces/workspacesPanelProvider";
 import {
 	WorkspaceProvider,
 	WorkspaceQuery,
@@ -264,6 +265,40 @@ async function doActivate(
 			{ webviewOptions: { retainContextWhenHidden: true } },
 		),
 	);
+
+	// Register Experimental Workspaces webview panel (behind configuration setting)
+	const workspacesPanelEnabled = vscode.workspace
+		.getConfiguration("coder")
+		.get<boolean>("experimental.workspacesPanel", false);
+
+	// Set context first so the view visibility is correct
+	contextManager.set(
+		"coder.experimental.webkitWorkspaces",
+		workspacesPanelEnabled,
+	);
+
+	if (workspacesPanelEnabled) {
+		const workspacesPanelProvider = new ExperimentalWorkspacesPanelProvider(
+			ctx.extensionUri,
+			client,
+			output,
+		);
+		commandManager.register("coder.workspaces.refresh", () =>
+			workspacesPanelProvider.refresh(),
+		);
+		ctx.subscriptions.push(
+			workspacesPanelProvider,
+			vscode.window.registerWebviewViewProvider(
+				ExperimentalWorkspacesPanelProvider.viewType,
+				workspacesPanelProvider,
+				{ webviewOptions: { retainContextWhenHidden: true } },
+			),
+			// Refresh workspaces panel when deployment changes (login/logout/switch)
+			secretsManager.onDidChangeCurrentDeployment(() =>
+				workspacesPanelProvider.refresh(),
+			),
+		);
+	}
 
 	ctx.subscriptions.push(
 		registerUriHandler({
