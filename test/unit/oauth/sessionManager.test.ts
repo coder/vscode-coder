@@ -9,8 +9,10 @@ import { type SecretsManager, type SessionAuth } from "@/core/secretsManager";
 import { DEFAULT_OAUTH_SCOPES } from "@/oauth/constants";
 import { OAuthSessionManager } from "@/oauth/sessionManager";
 
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	type createMockLogger,
+	MockConfigurationProvider,
 	setupAxiosMockRoutes,
 } from "../../mocks/testHelpers";
 
@@ -27,6 +29,7 @@ import {
 
 import type { ServiceContainer } from "@/core/container";
 import type { Deployment } from "@/deployment/types";
+import type { TelemetryReporter } from "@/telemetry/reporter";
 
 vi.mock("axios", async () => {
 	const actual = await vi.importActual<typeof import("axios")>("axios");
@@ -102,7 +105,8 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 	const createManager = (
 		d: Deployment = deployment,
 		onAuthRequired: () => Promise<void> = () => Promise.resolve(),
-	) => OAuthSessionManager.create(d, container, onAuthRequired);
+		telemetry?: TelemetryReporter,
+	) => OAuthSessionManager.create(d, container, onAuthRequired, telemetry);
 
 	/**
 	 * Sets up a complete OAuth operation test context.
@@ -188,6 +192,38 @@ describe("OAuthSessionManager", () => {
 
 			await expect(manager.refreshToken()).rejects.toThrow(
 				"No refresh token available",
+			);
+		});
+
+		it("emits telemetry for reactive refresh", async () => {
+			const { createManager, setupForOAuthOperation } = createTestContext();
+			const sink = new TestSink();
+			new MockConfigurationProvider().set("coder.telemetry.level", "local");
+			const manager = createManager(
+				createTestDeployment(),
+				() => Promise.resolve(),
+				createTestTelemetryService(sink),
+			);
+
+			await setupForOAuthOperation({
+				"/oauth2/token": createMockTokenResponse({
+					access_token: "telemetry-token",
+				}),
+			});
+
+			await manager.refreshToken();
+
+			expect(sink.events).toContainEqual(
+				expect.objectContaining({
+					eventName: "auth.token_refresh",
+					properties: expect.objectContaining({
+						trigger: "reactive",
+						result: "success",
+					}),
+					measurements: expect.objectContaining({
+						durationMs: expect.any(Number),
+					}),
+				}),
 			);
 		});
 
@@ -288,6 +324,34 @@ describe("OAuthSessionManager", () => {
 
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
 			expect(auth?.token).toBe("background-refreshed-token");
+		});
+
+		it("emits telemetry with background trigger", async () => {
+			const { createManager, setupForOAuthOperation } = createTestContext();
+			const sink = new TestSink();
+			new MockConfigurationProvider().set("coder.telemetry.level", "local");
+			const manager = createManager(
+				createTestDeployment(),
+				() => Promise.resolve(),
+				createTestTelemetryService(sink),
+			);
+
+			await setupForOAuthOperation({
+				"/oauth2/token": createMockTokenResponse({
+					access_token: "background-token",
+				}),
+			});
+			await manager.refreshToken("background");
+
+			expect(sink.events).toContainEqual(
+				expect.objectContaining({
+					eventName: "auth.token_refresh",
+					properties: expect.objectContaining({
+						trigger: "background",
+						result: "success",
+					}),
+				}),
+			);
 		});
 
 		it("calls onAuthRequired when refresh fails with re-auth error", async () => {

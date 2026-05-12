@@ -5,11 +5,19 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { CertificateError } from "../error/certificateError";
+import {
+	AuthTelemetry,
+	type AuthLoginPromptTrigger,
+} from "../instrumentation/auth";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
 import { withOptionalProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 import { isKeyringEnabled } from "../settings/cli";
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "../telemetry/reporter";
 import { vscodeProposed } from "../vscodeProposed";
 
 import type { User } from "coder/site/src/api/typesGenerated";
@@ -38,6 +46,7 @@ export interface LoginOptions {
 export class LoginCoordinator implements vscode.Disposable {
 	private loginQueue: Promise<unknown> = Promise.resolve();
 	private readonly oauthAuthorizer: OAuthAuthorizer;
+	private readonly authTelemetry: AuthTelemetry;
 
 	constructor(
 		private readonly secretsManager: SecretsManager,
@@ -46,7 +55,9 @@ export class LoginCoordinator implements vscode.Disposable {
 		private readonly cliCredentialManager: CliCredentialManager,
 		oauthCallback: OAuthCallback,
 		extensionId: string,
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	) {
+		this.authTelemetry = new AuthTelemetry(telemetry);
 		this.oauthAuthorizer = new OAuthAuthorizer(
 			secretsManager,
 			oauthCallback,
@@ -80,63 +91,72 @@ export class LoginCoordinator implements vscode.Disposable {
 	 * Shows dialog then login - for system-initiated auth (remote, OAuth refresh).
 	 */
 	public async ensureLoggedInWithDialog(
-		options: LoginOptions & { message?: string; detailPrefix?: string },
+		options: LoginOptions & {
+			message?: string;
+			detailPrefix?: string;
+			trigger?: AuthLoginPromptTrigger;
+		},
 	): Promise<LoginResult> {
 		const { safeHostname, url, detailPrefix, message } = options;
-		return this.executeWithGuard(async () => {
-			// Show dialog promise
-			const dialogPromise = vscodeProposed.window
-				.showErrorMessage(
-					message || "Authentication Required",
-					{
-						modal: true,
-						useCustom: true,
-						detail:
-							(detailPrefix || `Authentication needed for ${safeHostname}.`) +
-							"\n\nIf you've already logged in, you may close this dialog.",
-					},
-					"Login",
-				)
-				.then(async (action) => {
-					if (action === "Login") {
-						// Proceed with the login flow, handling logging in from another window
-						const storedAuth =
-							await this.secretsManager.getSessionAuth(safeHostname);
-						const newUrl = await maybeAskUrl(
-							this.mementoManager,
-							url,
-							storedAuth?.url,
-						);
-						if (!newUrl) {
-							throw new Error("URL must be provided");
-						}
+		return this.authTelemetry.traceLoginPrompt(
+			options.trigger ?? "auth_required",
+			() =>
+				this.executeWithGuard(async () => {
+					// Show dialog promise
+					const dialogPromise = vscodeProposed.window
+						.showErrorMessage(
+							message || "Authentication Required",
+							{
+								modal: true,
+								useCustom: true,
+								detail:
+									(detailPrefix ||
+										`Authentication needed for ${safeHostname}.`) +
+									"\n\nIf you've already logged in, you may close this dialog.",
+							},
+							"Login",
+						)
+						.then(async (action) => {
+							if (action === "Login") {
+								// Proceed with the login flow, handling logging in from another window
+								const storedAuth =
+									await this.secretsManager.getSessionAuth(safeHostname);
+								const newUrl = await maybeAskUrl(
+									this.mementoManager,
+									url,
+									storedAuth?.url,
+								);
+								if (!newUrl) {
+									throw new Error("URL must be provided");
+								}
 
-						const result = await this.attemptLogin(
-							{ url: newUrl, safeHostname },
-							false,
-							options.token,
-						);
+								const result = await this.attemptLogin(
+									{ url: newUrl, safeHostname },
+									false,
+									options.token,
+								);
 
-						await this.persistSessionAuth(result, safeHostname, newUrl);
+								await this.persistSessionAuth(result, safeHostname, newUrl);
 
-						return result;
-					} else {
-						// User cancelled
-						return { success: false } as const;
+								return result;
+							} else {
+								// User cancelled
+								return { success: false } as const;
+							}
+						});
+
+					// Race between user clicking login and cross-window detection
+					const {
+						promise: crossWindowPromise,
+						dispose: disposeCrossWindowListener,
+					} = this.waitForCrossWindowLogin(safeHostname);
+					try {
+						return await Promise.race([dialogPromise, crossWindowPromise]);
+					} finally {
+						disposeCrossWindowListener();
 					}
-				});
-
-			// Race between user clicking login and cross-window detection
-			const {
-				promise: crossWindowPromise,
-				dispose: disposeCrossWindowListener,
-			} = this.waitForCrossWindowLogin(safeHostname);
-			try {
-				return await Promise.race([dialogPromise, crossWindowPromise]);
-			} finally {
-				disposeCrossWindowListener();
-			}
-		});
+				}),
+		);
 	}
 
 	private async persistSessionAuth(

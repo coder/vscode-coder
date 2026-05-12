@@ -7,11 +7,13 @@ import {
 } from "@/api/authInterceptor";
 import { SecretsManager } from "@/core/secretsManager";
 
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	createAxiosError,
 	createMockLogger,
 	InMemoryMemento,
 	InMemorySecretStorage,
+	MockConfigurationProvider,
 	MockOAuthSessionManager,
 } from "../../mocks/testHelpers";
 import {
@@ -22,6 +24,7 @@ import {
 
 import type { CoderApi } from "@/api/coderApi";
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
+import type { TelemetryReporter } from "@/telemetry/reporter";
 
 /**
  * Creates a mock axios instance with controllable interceptors.
@@ -84,6 +87,7 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function createTestContext() {
 	vi.resetAllMocks();
+	new MockConfigurationProvider().set("coder.telemetry.level", "local");
 
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
@@ -136,13 +140,17 @@ function createTestContext() {
 	};
 
 	/** Creates interceptor with optional callback */
-	const createInterceptor = (onAuthRequired?: AuthRequiredHandler) =>
+	const createInterceptor = (
+		onAuthRequired?: AuthRequiredHandler,
+		telemetry?: TelemetryReporter,
+	) =>
 		new AuthInterceptor(
 			mockCoderApi,
 			logger,
 			mockOAuthManager as unknown as OAuthSessionManager,
 			secretsManager,
 			onAuthRequired,
+			telemetry,
 		);
 
 	return {
@@ -182,7 +190,7 @@ describe("AuthInterceptor", () => {
 	});
 
 	describe("401 handling with OAuth", () => {
-		it("refreshes token and retries request", async () => {
+		it("refreshes token, retries request, and emits telemetry", async () => {
 			const {
 				mockCoderApi,
 				mockOAuthManager,
@@ -190,6 +198,7 @@ describe("AuthInterceptor", () => {
 				setupOAuthTokens,
 				createInterceptor,
 			} = createTestContext();
+			const sink = new TestSink();
 
 			await setupOAuthTokens();
 
@@ -201,13 +210,19 @@ describe("AuthInterceptor", () => {
 			const retryResponse = { data: "success", status: 200 };
 			vi.spyOn(axiosInstance, "request").mockResolvedValue(retryResponse);
 
-			createInterceptor();
+			createInterceptor(undefined, createTestTelemetryService(sink));
 
 			const error = createAxiosError(401, "Unauthorized");
 			const result = await axiosInstance.triggerResponseError(error);
 
 			expect(mockCoderApi.getSessionToken()).toBe("new-access-token");
 			expect(result).toEqual(retryResponse);
+			expect(sink.events).toContainEqual(
+				expect.objectContaining({
+					eventName: "auth.intercept_401",
+					properties: { recovery: "refresh_success" },
+				}),
+			);
 		});
 
 		it("does not retry if already retried", async () => {
@@ -255,16 +270,23 @@ describe("AuthInterceptor", () => {
 	});
 
 	describe("401 handling with callback (non-OAuth)", () => {
-		it("calls onAuthRequired callback on 401", async () => {
+		it("calls onAuthRequired callback on 401 and emits login-required recovery", async () => {
 			const { axiosInstance, createInterceptor } = createTestContext();
+			const sink = new TestSink();
 
 			const onAuthRequired = vi.fn().mockResolvedValue(false);
-			createInterceptor(onAuthRequired);
+			createInterceptor(onAuthRequired, createTestTelemetryService(sink));
 
 			const error = createAxiosError(401, "Unauthorized");
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
+			expect(sink.events).toContainEqual(
+				expect.objectContaining({
+					eventName: "auth.intercept_401",
+					properties: { recovery: "login_required" },
+				}),
+			);
 		});
 
 		it("retries request when callback returns true", async () => {

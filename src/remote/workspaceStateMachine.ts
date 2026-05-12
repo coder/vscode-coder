@@ -13,7 +13,12 @@ import {
 	streamAgentLogs,
 	streamBuildLogs,
 } from "../api/workspace";
+import { WorkspaceTelemetry } from "../instrumentation/workspace";
 import { maybeAskAgent } from "../promptUtils";
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "../telemetry/reporter";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { TerminalOutputChannel } from "./terminalOutputChannel";
@@ -21,7 +26,10 @@ import { TerminalOutputChannel } from "./terminalOutputChannel";
 import type {
 	ProvisionerJobLog,
 	Workspace,
+	WorkspaceAgent,
+	WorkspaceAgentLifecycle,
 	WorkspaceAgentLog,
+	WorkspaceAgentStatus,
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "../api/coderApi";
@@ -35,13 +43,21 @@ import type { AuthorityParts } from "../util";
  * Manages workspace and agent state transitions until ready for SSH connection.
  * Streams build and agent logs, and handles socket lifecycle.
  */
+interface ObservedAgentState {
+	readonly status: WorkspaceAgentStatus;
+	readonly lifecycleState: WorkspaceAgentLifecycle;
+	readonly observedAtMs: number;
+}
+
 export class WorkspaceStateMachine implements vscode.Disposable {
 	private readonly terminal: TerminalOutputChannel;
 	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
 	private readonly agentLogStream = new LazyStream<WorkspaceAgentLog[]>();
+	private readonly telemetry: WorkspaceTelemetry;
 
 	private agent: { id: string; name: string } | undefined;
 	private workspace: Workspace | undefined;
+	private observedAgentState: ObservedAgentState | undefined;
 
 	constructor(
 		private readonly parts: AuthorityParts,
@@ -51,8 +67,10 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		private readonly featureSet: FeatureSet,
 		private readonly logger: Logger,
 		private readonly cliAuth: CliAuth,
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	) {
 		this.terminal = new TerminalOutputChannel("Coder: Workspace Build");
+		this.telemetry = new WorkspaceTelemetry(telemetry);
 	}
 
 	/**
@@ -77,7 +95,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				if (updated) {
 					workspace = updated;
 					// Agent IDs may have changed after an update.
-					this.agent = undefined;
+					this.resetAgent();
 					if (workspace.latest_build.status !== "running") return false;
 				}
 				break;
@@ -106,7 +124,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				if (updated) {
 					workspace = updated;
 					// Agent IDs may have changed after an update.
-					this.agent = undefined;
+					this.resetAgent();
 					if (workspace.latest_build.status !== "running") return false;
 					break;
 				}
@@ -119,7 +137,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "starting":
 			case "stopping": {
 				// Clear the agent since its ID could change after a restart
-				this.agent = undefined;
+				this.resetAgent();
 				this.agentLogStream.close();
 				progress.report({
 					message: `building ${workspaceName} (${workspace.latest_build.status})...`,
@@ -164,6 +182,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				`Agent ${this.agent.name} not found in ${workspaceName} resources`,
 			);
 		}
+		this.recordAgentState(agent);
 
 		switch (agent.status) {
 			case "connecting":
@@ -286,7 +305,10 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			status: workspace.latest_build.status,
 		});
 		try {
-			this.workspace = await updateWorkspace(this.buildCliContext(workspace));
+			this.workspace = await this.telemetry.traceUpdateTriggered(() =>
+				updateWorkspace(this.buildCliContext(workspace)),
+			);
+			this.logger.info(`${workspaceName} update initiated`);
 			return this.workspace;
 		} catch (error) {
 			if (error instanceof WorkspaceUpdateCancelledError) {
@@ -328,6 +350,36 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 	public getWorkspace(): Workspace | undefined {
 		return this.workspace;
+	}
+
+	private resetAgent(): void {
+		this.agent = undefined;
+		this.observedAgentState = undefined;
+	}
+
+	private recordAgentState(agent: WorkspaceAgent): void {
+		const now = performance.now();
+		const previous = this.observedAgentState;
+		if (
+			previous?.status === agent.status &&
+			previous.lifecycleState === agent.lifecycle_state
+		) {
+			return;
+		}
+
+		this.telemetry.agentStateTransition({
+			agentName: agent.name,
+			fromStatus: previous?.status ?? "unknown",
+			toStatus: agent.status,
+			fromLifecycleState: previous?.lifecycleState ?? "unknown",
+			toLifecycleState: agent.lifecycle_state,
+			...(previous && { observedDurationMs: now - previous.observedAtMs }),
+		});
+		this.observedAgentState = {
+			status: agent.status,
+			lifecycleState: agent.lifecycle_state,
+			observedAtMs: now,
+		};
 	}
 
 	dispose(): void {

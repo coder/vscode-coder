@@ -1,15 +1,21 @@
 import {
 	type ServerSentEvent,
 	type Workspace,
+	type WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
+import { WorkspaceTelemetry } from "../instrumentation/workspace";
 import {
 	areNotificationsDisabled,
 	areUpdateNotificationsDisabled,
 } from "../settings/notifications";
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "../telemetry/reporter";
 import { vscodeProposed } from "../vscodeProposed";
 
 import type { CoderApi } from "../api/coderApi";
@@ -42,16 +48,21 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	// For logging.
 	private readonly name: string;
+	private readonly telemetry: WorkspaceTelemetry;
 
 	private latestWorkspace: Workspace;
+	private lastWorkspaceStatus: WorkspaceStatus | undefined;
+	private lastWorkspaceStatusObservedAtMs: number | undefined;
 
 	private constructor(
 		workspace: Workspace,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
 		private readonly contextManager: ContextManager,
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	) {
 		this.name = createWorkspaceIdentifier(workspace);
+		this.telemetry = new WorkspaceTelemetry(telemetry);
 		this.latestWorkspace = workspace;
 
 		const statusBarItem = vscode.window.createStatusBarItem(
@@ -77,12 +88,14 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		client: CoderApi,
 		logger: Logger,
 		contextManager: ContextManager,
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): Promise<WorkspaceMonitor> {
 		const monitor = new WorkspaceMonitor(
 			workspace,
 			client,
 			logger,
 			contextManager,
+			telemetry,
 		);
 
 		// Initialize websocket connection
@@ -134,9 +147,31 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private update(workspace: Workspace) {
+		this.recordWorkspaceStatus(workspace);
 		this.latestWorkspace = workspace;
 		this.updateContext(workspace);
 		this.updateStatusBar(workspace);
+	}
+
+	private recordWorkspaceStatus(workspace: Workspace): void {
+		const status = workspace.latest_build.status;
+		const now = performance.now();
+		const previous = this.lastWorkspaceStatus;
+		if (previous === status) {
+			return;
+		}
+
+		this.telemetry.workspaceStateTransition({
+			from: previous ?? "unknown",
+			to: status,
+			transition: workspace.latest_build.transition,
+			reason: workspace.latest_build.reason,
+			...(this.lastWorkspaceStatusObservedAtMs !== undefined && {
+				observedDurationMs: now - this.lastWorkspaceStatusObservedAtMs,
+			}),
+		});
+		this.lastWorkspaceStatus = status;
+		this.lastWorkspaceStatusObservedAtMs = now;
 	}
 
 	private maybeNotify(workspace: Workspace) {

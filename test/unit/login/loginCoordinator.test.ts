@@ -9,6 +9,7 @@ import { LoginCoordinator } from "@/login/loginCoordinator";
 import { OAuthCallback } from "@/oauth/oauthCallback";
 import { maybeAskAuthMethod } from "@/promptUtils";
 
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	createAxiosError,
 	createMockCliCredentialManager,
@@ -20,6 +21,8 @@ import {
 	MockProgressReporter,
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
+
+import type { TelemetryReporter } from "@/telemetry/reporter";
 
 // Hoisted mock adapter implementation
 const mockAxiosAdapterImpl = vi.hoisted(
@@ -98,7 +101,7 @@ const TEST_HOSTNAME = "coder.example.com";
 /**
  * Creates a fresh test context with all dependencies.
  */
-function createTestContext() {
+function createTestContext(telemetry?: TelemetryReporter) {
 	vi.resetAllMocks();
 
 	const mockAdapter = (axios as MockedAxios).__mockAdapter;
@@ -127,6 +130,7 @@ function createTestContext() {
 		mockCredentialManager,
 		oauthCallback,
 		"coder.coder-remote",
+		telemetry,
 	);
 
 	const mockSuccessfulAuth = (user = createMockUser()) => {
@@ -356,6 +360,30 @@ describe("LoginCoordinator", () => {
 			});
 
 			expect(result.success).toBe(false);
+		});
+
+		it("emits telemetry with trigger and aborted result when dismissed", async () => {
+			const sink = new TestSink();
+			const { userInteraction, coordinator } = createTestContext(
+				createTestTelemetryService(sink),
+			);
+			userInteraction.setResponse("Authentication Required", undefined);
+
+			await coordinator.ensureLoggedInWithDialog({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				trigger: "missing_session",
+			});
+
+			expect(sink.events).toContainEqual(
+				expect.objectContaining({
+					eventName: "auth.login_prompt",
+					properties: expect.objectContaining({
+						trigger: "missing_session",
+						result: "aborted",
+					}),
+				}),
+			);
 		});
 	});
 

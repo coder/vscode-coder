@@ -128,6 +128,7 @@ async function doActivate(
 		deployment,
 		serviceContainer,
 		handleAuthFailure,
+		telemetryService,
 	);
 	ctx.subscriptions.push(oauthSessionManager);
 
@@ -152,6 +153,7 @@ async function doActivate(
 			await handleAuthFailure();
 			return false;
 		},
+		telemetryService,
 	);
 	ctx.subscriptions.push(authInterceptor);
 

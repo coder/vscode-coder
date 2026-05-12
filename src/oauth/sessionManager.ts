@@ -1,4 +1,12 @@
 import { CoderApi } from "../api/coderApi";
+import {
+	AuthTelemetry,
+	type AuthTokenRefreshTrigger,
+} from "../instrumentation/auth";
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "../telemetry/reporter";
 
 import { DEFAULT_OAUTH_SCOPES, REFRESH_GRANT_TYPE } from "./constants";
 import { OAuthError, parseOAuthError } from "./errors";
@@ -58,24 +66,31 @@ export class OAuthSessionManager implements vscode.Disposable {
 		deployment: Deployment | null,
 		container: ServiceContainer,
 		onAuthRequired: () => Promise<void> = () => Promise.resolve(),
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): OAuthSessionManager {
 		const manager = new OAuthSessionManager(
 			deployment,
 			container.getSecretsManager(),
 			container.getLogger(),
 			onAuthRequired,
+			telemetry,
 		);
 		manager.setupTokenListener();
 		manager.scheduleNextRefresh();
 		return manager;
 	}
 
+	private readonly authTelemetry: AuthTelemetry;
+
 	private constructor(
 		private deployment: Deployment | null,
 		private readonly secretsManager: SecretsManager,
 		private readonly logger: Logger,
 		private readonly onAuthRequired: () => Promise<void>,
-	) {}
+		telemetry: TelemetryReporter,
+	) {
+		this.authTelemetry = new AuthTelemetry(telemetry);
+	}
 
 	/**
 	 * Get current deployment, throwing if not set.
@@ -218,7 +233,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		this.refreshTimer = undefined;
 
-		this.refreshToken()
+		this.refreshToken("background")
 			.then(() => {
 				this.logger.debug("Background token refresh succeeded");
 			})
@@ -342,7 +357,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Refresh the access token using the stored refresh token.
 	 * Uses a shared promise to handle concurrent refresh attempts.
 	 */
-	public async refreshToken(): Promise<OAuth2TokenResponse> {
+	public async refreshToken(
+		trigger: AuthTokenRefreshTrigger = "reactive",
+	): Promise<OAuth2TokenResponse> {
 		if (this.refreshPromise) {
 			this.logger.debug(
 				"Token refresh already in progress, waiting for result",
@@ -352,7 +369,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		const deployment = this.requireDeployment();
 		// Assign synchronously before any async work to prevent race conditions
-		this.refreshPromise = this.executeTokenRefresh(deployment);
+		this.refreshPromise = this.authTelemetry.traceTokenRefresh(trigger, () =>
+			this.executeTokenRefresh(deployment),
+		);
 		return this.refreshPromise;
 	}
 

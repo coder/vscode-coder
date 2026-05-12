@@ -5,6 +5,7 @@ import { WorkspaceMonitor } from "@/workspace/workspaceMonitor";
 
 import { workspace as createWorkspace } from "@repo/mocks";
 
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	MockConfigurationProvider,
 	MockContextManager,
@@ -20,6 +21,7 @@ import type {
 
 import type { CoderApi } from "@/api/coderApi";
 import type { ContextManager } from "@/core/contextManager";
+import type { TelemetryReporter } from "@/telemetry/reporter";
 
 function workspaceEvent(
 	overrides?: Parameters<typeof createWorkspace>[0],
@@ -36,7 +38,11 @@ describe("WorkspaceMonitor", () => {
 		vi.resetAllMocks();
 	});
 
-	async function setup(stream = new MockEventStream<ServerSentEvent>()) {
+	async function setup(
+		stream = new MockEventStream<ServerSentEvent>(),
+		telemetry?: TelemetryReporter,
+		initialWorkspace: Workspace = createWorkspace(),
+	) {
 		const config = new MockConfigurationProvider();
 		const statusBar = new MockStatusBarItem();
 		const contextManager = new MockContextManager();
@@ -50,13 +56,58 @@ describe("WorkspaceMonitor", () => {
 			}),
 		} as unknown as CoderApi;
 		const monitor = await WorkspaceMonitor.create(
-			createWorkspace(),
+			initialWorkspace,
 			client,
 			createMockLogger(),
 			contextManager as unknown as ContextManager,
+			telemetry,
 		);
 		return { monitor, client, stream, config, statusBar, contextManager };
 	}
+
+	describe("telemetry", () => {
+		it("emits initial workspace state and observed transitions", async () => {
+			const stream = new MockEventStream<ServerSentEvent>();
+			const sink = new TestSink();
+			new MockConfigurationProvider().set("coder.telemetry.level", "local");
+
+			await setup(
+				stream,
+				createTestTelemetryService(sink),
+				createWorkspace({ latest_build: { status: "running" } }),
+			);
+			stream.pushMessage(
+				workspaceEvent({
+					latest_build: {
+						status: "stopping",
+						transition: "stop",
+						reason: "autostop",
+					},
+				}),
+			);
+
+			const events = sink.events.filter(
+				(event) => event.eventName === "workspace.state_transitioned",
+			);
+			expect(events).toHaveLength(2);
+			expect(events[0]).toMatchObject({
+				properties: {
+					from: "unknown",
+					to: "running",
+				},
+			});
+			expect(events[0].measurements.observedDurationMs).toBeUndefined();
+			expect(events[1]).toMatchObject({
+				properties: {
+					from: "running",
+					to: "stopping",
+					transition: "stop",
+					reason: "autostop",
+				},
+				measurements: { observedDurationMs: expect.any(Number) },
+			});
+		});
+	});
 
 	describe("websocket lifecycle", () => {
 		it("fires onChange when a workspace message arrives", async () => {

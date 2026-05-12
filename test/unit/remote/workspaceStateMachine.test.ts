@@ -17,8 +17,10 @@ import {
 	workspace as createWorkspace,
 } from "@repo/mocks";
 
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	createMockLogger,
+	MockConfigurationProvider,
 	MockProgress,
 	MockTerminalOutputChannel,
 	MockUserInteraction,
@@ -32,6 +34,7 @@ import type {
 import type { CoderApi } from "@/api/coderApi";
 import type { StartupMode } from "@/core/mementoManager";
 import type { FeatureSet } from "@/featureSet";
+import type { TelemetryReporter } from "@/telemetry/reporter";
 import type { AuthorityParts } from "@/util";
 
 vi.mock("@/api/workspace", async (importActual) => {
@@ -77,7 +80,11 @@ function runningWorkspace(
 	});
 }
 
-function setup(startupMode: StartupMode = "start") {
+function setup(
+	startupMode: StartupMode = "start",
+	telemetry?: TelemetryReporter,
+) {
+	new MockConfigurationProvider().set("coder.telemetry.level", "local");
 	const progress = new MockProgress<{ message?: string }>();
 	const userInteraction = new MockUserInteraction();
 	const sm = new WorkspaceStateMachine(
@@ -88,6 +95,7 @@ function setup(startupMode: StartupMode = "start") {
 		{} as FeatureSet,
 		createMockLogger(),
 		{ mode: "url", url: "https://test.coder.com" },
+		telemetry,
 	);
 	return { sm, progress, userInteraction };
 }
@@ -368,6 +376,86 @@ describe("WorkspaceStateMachine", () => {
 				);
 			});
 		}
+	});
+
+	describe("telemetry", () => {
+		it("emits update triggered telemetry with duration", async () => {
+			const sink = new TestSink();
+			const { sm, progress } = setup(
+				"update",
+				createTestTelemetryService(sink),
+			);
+
+			await sm.processWorkspace(runningWorkspace(), progress);
+
+			expect(sink.events).toContainEqual(
+				expect.objectContaining({
+					eventName: "workspace.update.triggered",
+					properties: expect.objectContaining({ result: "success" }),
+					measurements: expect.objectContaining({
+						durationMs: expect.any(Number),
+					}),
+				}),
+			);
+		});
+
+		it("emits error result when update fails", async () => {
+			const sink = new TestSink();
+			const { sm, progress } = setup(
+				"update",
+				createTestTelemetryService(sink),
+			);
+			vi.mocked(updateWorkspace).mockRejectedValueOnce(
+				new Error("update failed"),
+			);
+
+			// The state machine catches the failure and falls back to the
+			// existing template version, so processWorkspace resolves.
+			await sm.processWorkspace(runningWorkspace(), progress);
+
+			expect(sink.events).toContainEqual(
+				expect.objectContaining({
+					eventName: "workspace.update.triggered",
+					properties: expect.objectContaining({ result: "error" }),
+					error: { message: "update failed" },
+				}),
+			);
+		});
+
+		it("emits selected-agent state transitions with observed duration", async () => {
+			const sink = new TestSink();
+			const { sm, progress } = setup("start", createTestTelemetryService(sink));
+
+			await sm.processWorkspace(
+				runningWorkspace({ status: "connecting", lifecycle_state: "created" }),
+				progress,
+			);
+			await sm.processWorkspace(runningWorkspace(), progress);
+
+			const agentEvents = sink.events.filter(
+				(event) => event.eventName === "workspace.agent.state_transitioned",
+			);
+			expect(agentEvents).toHaveLength(2);
+			expect(agentEvents[0]).toMatchObject({
+				properties: {
+					agentName: "main",
+					fromStatus: "unknown",
+					toStatus: "connecting",
+					fromLifecycleState: "unknown",
+					toLifecycleState: "created",
+				},
+			});
+			expect(agentEvents[1]).toMatchObject({
+				properties: {
+					agentName: "main",
+					fromStatus: "connecting",
+					toStatus: "connected",
+					fromLifecycleState: "created",
+					toLifecycleState: "ready",
+				},
+				measurements: { observedDurationMs: expect.any(Number) },
+			});
+		});
 	});
 
 	describe("agent selection", () => {

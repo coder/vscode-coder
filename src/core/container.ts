@@ -105,6 +105,7 @@ export class ServiceContainer implements vscode.Disposable {
 			this.cliCredentialManager,
 			this.oauthCallback,
 			context.extension.id,
+			this.telemetryService,
 		);
 		this.duplicateWorkspaceIpc = new DuplicateWorkspaceIpc(
 			context.secrets,

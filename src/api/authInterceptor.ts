@@ -1,6 +1,11 @@
 import { type AxiosError, isAxiosError } from "axios";
 
+import { AuthTelemetry } from "../instrumentation/auth";
 import { OAuthError } from "../oauth/errors";
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "../telemetry/reporter";
 import { toSafeHost } from "../util";
 
 import type * as vscode from "vscode";
@@ -28,6 +33,7 @@ export type AuthRequiredHandler = (hostname: string) => Promise<boolean>;
  */
 export class AuthInterceptor implements vscode.Disposable {
 	private readonly interceptorId: number;
+	private readonly authTelemetry: AuthTelemetry;
 	private authRequiredPromise: Promise<boolean> | null = null;
 
 	constructor(
@@ -36,7 +42,9 @@ export class AuthInterceptor implements vscode.Disposable {
 		private readonly oauthSessionManager: OAuthSessionManager,
 		private readonly secretsManager: SecretsManager,
 		private readonly onAuthRequired?: AuthRequiredHandler,
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	) {
+		this.authTelemetry = new AuthTelemetry(telemetry);
 		this.interceptorId = this.client
 			.getAxiosInstance()
 			.interceptors.response.use(
@@ -54,6 +62,9 @@ export class AuthInterceptor implements vscode.Disposable {
 		if (error.config) {
 			const config = error.config as { _retryAttempted?: boolean };
 			if (config._retryAttempted) {
+				if (error.response?.status === 401) {
+					this.authTelemetry.intercept401("none");
+				}
 				throw error;
 			}
 		}
@@ -64,6 +75,7 @@ export class AuthInterceptor implements vscode.Disposable {
 
 		const baseUrl = this.client.getHost();
 		if (!baseUrl) {
+			this.authTelemetry.intercept401("none");
 			throw error;
 		}
 		const hostname = toSafeHost(baseUrl);
@@ -77,11 +89,14 @@ export class AuthInterceptor implements vscode.Disposable {
 	): Promise<unknown> {
 		this.logger.debug("Received 401 response, attempting recovery");
 
+		let loggedRecovery = false;
+
 		if (await this.oauthSessionManager.isLoggedInWithOAuth(hostname)) {
 			try {
 				const newTokens = await this.oauthSessionManager.refreshToken();
 				this.client.setSessionToken(newTokens.access_token);
 				this.logger.debug("Token refresh successful, retrying request");
+				this.authTelemetry.intercept401("refresh_success");
 				return this.retryRequest(error, newTokens.access_token);
 			} catch (refreshError) {
 				if (refreshError instanceof OAuthError) {
@@ -98,6 +113,8 @@ export class AuthInterceptor implements vscode.Disposable {
 		}
 
 		if (this.onAuthRequired) {
+			this.authTelemetry.intercept401("login_required");
+			loggedRecovery = true;
 			const success = await this.executeAuthRequired(hostname);
 			if (success) {
 				const auth = await this.secretsManager.getSessionAuth(hostname);
@@ -108,6 +125,9 @@ export class AuthInterceptor implements vscode.Disposable {
 			}
 		}
 
+		if (!loggedRecovery) {
+			this.authTelemetry.intercept401("none");
+		}
 		throw error;
 	}
 

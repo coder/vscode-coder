@@ -195,12 +195,14 @@ export class Remote {
 
 		try {
 			// Create OAuth session manager for this remote deployment
+			const telemetry = this.serviceContainer.getTelemetryService();
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrl, safeHostname: parts.safeHostname },
 				this.serviceContainer,
 				async () => {
 					await this.showSessionExpiredDialog(context);
 				},
+				telemetry,
 			);
 			disposables.push(remoteOAuthManager);
 
@@ -216,7 +218,7 @@ export class Remote {
 				baseUrl,
 				token,
 				this.logger,
-				this.serviceContainer.getTelemetryService(),
+				telemetry,
 			);
 			disposables.push(workspaceClient);
 
@@ -230,6 +232,7 @@ export class Remote {
 					const result = await this.showSessionExpiredDialog(context);
 					return result.success;
 				},
+				telemetry,
 			);
 			disposables.push(authInterceptor);
 
@@ -315,6 +318,7 @@ export class Remote {
 				workspaceClient,
 				this.logger,
 				this.contextManager,
+				telemetry,
 			);
 			disposables.push(
 				monitor,
@@ -334,6 +338,7 @@ export class Remote {
 				featureSet,
 				this.logger,
 				cliAuth,
+				telemetry,
 			);
 			disposables.push(stateMachine);
 
@@ -642,6 +647,7 @@ export class Remote {
 			url: context.baseUrl,
 			message: "Your session expired...",
 			detailPrefix: `You must log in to access ${context.workspaceName}.`,
+			trigger: "auth_required",
 		});
 	}
 
@@ -655,6 +661,7 @@ export class Remote {
 			url,
 			message,
 			detailPrefix: `You must log in to access ${context.workspaceName}.`,
+			trigger: "missing_session",
 		});
 
 		// Dispose before retrying since setup will create new disposables.
