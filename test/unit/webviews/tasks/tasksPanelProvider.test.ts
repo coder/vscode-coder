@@ -5,6 +5,14 @@ import { streamAgentLogs, streamBuildLogs } from "@/api/workspace";
 import { TasksPanelProvider } from "@/webviews/tasks/tasksPanelProvider";
 
 import {
+	logEntry,
+	preset,
+	task,
+	taskState,
+	template,
+	workspace,
+} from "@repo/mocks";
+import {
 	TasksApi,
 	defineRequest,
 	type CommandDef,
@@ -13,18 +21,10 @@ import {
 } from "@repo/shared";
 
 import {
-	logEntry,
-	preset,
-	task,
-	taskState,
-	template,
-} from "../../../mocks/tasks";
-import {
 	createAxiosError,
 	createMockLogger,
 	MockUserInteraction,
 } from "../../../mocks/testHelpers";
-import { workspace } from "../../../mocks/workspace";
 
 import type {
 	ProvisionerJobLog,

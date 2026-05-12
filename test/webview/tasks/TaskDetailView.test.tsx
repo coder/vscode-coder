@@ -1,9 +1,9 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { logEntry, taskDetails, taskState } from "@repo/mocks";
 import { TaskDetailView } from "@repo/tasks/components/TaskDetailView";
 
-import { logEntry, taskDetails, taskState } from "../../mocks/tasks";
 import { qs } from "../helpers";
 import { renderWithQuery } from "../render";
 

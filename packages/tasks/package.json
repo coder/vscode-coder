@@ -20,6 +20,8 @@
 		"react-dom": "catalog:"
 	},
 	"devDependencies": {
+		"@repo/mocks": "workspace:*",
+		"@repo/storybook-utils": "workspace:*",
 		"@rolldown/plugin-babel": "catalog:",
 		"@types/react": "catalog:",
 		"@types/react-dom": "catalog:",

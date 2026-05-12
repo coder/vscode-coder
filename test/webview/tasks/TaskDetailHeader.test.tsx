@@ -1,9 +1,9 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { task, taskState } from "@repo/mocks";
 import { TaskDetailHeader } from "@repo/tasks/components/TaskDetailHeader";
 
-import { task, taskState } from "../../mocks/tasks";
 import { qs } from "../helpers";
 import { renderWithQuery } from "../render";
 

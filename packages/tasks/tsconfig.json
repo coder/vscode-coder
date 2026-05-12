@@ -6,5 +6,5 @@
 			"@repo/webview-shared": ["../webview-shared/src"]
 		}
 	},
-	"include": ["src"]
+	"include": ["src", "storybook.preview.ts"]
 }

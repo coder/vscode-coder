@@ -1,0 +1,33 @@
+import { task } from "@repo/mocks";
+import { withQueryClient } from "@repo/storybook-utils";
+
+import { TaskMessageInput } from "./TaskMessageInput";
+
+import type { Meta, StoryObj } from "@storybook/react-vite";
+
+const meta: Meta<typeof TaskMessageInput> = {
+	title: "Tasks/TaskMessageInput",
+	component: TaskMessageInput,
+	decorators: [withQueryClient],
+};
+
+export default meta;
+type Story = StoryObj<typeof TaskMessageInput>;
+
+export const Active: Story = {
+	args: {
+		task: task(),
+	},
+};
+
+export const Paused: Story = {
+	args: {
+		task: task({ status: "paused" }),
+	},
+};
+
+export const Error: Story = {
+	args: {
+		task: task({ status: "error" }),
+	},
+};

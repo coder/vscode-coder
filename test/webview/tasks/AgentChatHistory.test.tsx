@@ -1,9 +1,9 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { logEntry } from "@repo/mocks";
 import { AgentChatHistory } from "@repo/tasks/components/AgentChatHistory";
 
-import { logEntry } from "../../mocks/tasks";
 import { renderWithQuery } from "../render";
 
 import type { TaskLogs } from "@repo/shared";

@@ -1,3 +1,5 @@
+import storybook from "eslint-plugin-storybook";
+
 // @ts-check
 import eslint from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
@@ -19,6 +21,7 @@ export default defineConfig(
 		"**/vite.config*.ts",
 		".vscode-test/**",
 		"test/fixtures/scripts/**",
+		"storybook-static/**",
 	]),
 
 	// Base ESLint recommended rules (for JS/TS/TSX files only)
@@ -180,6 +183,31 @@ export default defineConfig(
 		},
 	},
 
+	// Prevent runtime package code from importing test/storybook-only packages
+	{
+		files: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
+		ignores: ["**/*.stories.*"],
+		rules: {
+			"no-restricted-imports": [
+				"error",
+				{
+					patterns: [
+						{
+							group: ["@repo/mocks", "@repo/mocks/*"],
+							message:
+								"@repo/mocks is for tests and stories only. Do not import it from runtime code.",
+						},
+						{
+							group: ["@repo/storybook-utils", "@repo/storybook-utils/*"],
+							message:
+								"@repo/storybook-utils is for stories only. Do not import it from runtime code.",
+						},
+					],
+				},
+			],
+		},
+	},
+
 	// React rules with type-checked analysis (covers hooks, JSX, DOM)
 	{
 		files: ["packages/**/*.{ts,tsx}"],
@@ -220,6 +248,9 @@ export default defineConfig(
 			],
 		},
 	},
+
+	// Storybook recommended rules for story files
+	...storybook.configs["flat/recommended"],
 
 	// Prettier must be last to override other formatting rules
 	prettierConfig,
