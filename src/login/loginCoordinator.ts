@@ -97,66 +97,70 @@ export class LoginCoordinator implements vscode.Disposable {
 			trigger?: AuthLoginPromptTrigger;
 		},
 	): Promise<LoginResult> {
-		const { safeHostname, url, detailPrefix, message } = options;
 		return this.authTelemetry.traceLoginPrompt(
 			options.trigger ?? "auth_required",
-			() =>
-				this.executeWithGuard(async () => {
-					// Show dialog promise
-					const dialogPromise = vscodeProposed.window
-						.showErrorMessage(
-							message || "Authentication Required",
-							{
-								modal: true,
-								useCustom: true,
-								detail:
-									(detailPrefix ||
-										`Authentication needed for ${safeHostname}.`) +
-									"\n\nIf you've already logged in, you may close this dialog.",
-							},
-							"Login",
-						)
-						.then(async (action) => {
-							if (action === "Login") {
-								// Proceed with the login flow, handling logging in from another window
-								const storedAuth =
-									await this.secretsManager.getSessionAuth(safeHostname);
-								const newUrl = await maybeAskUrl(
-									this.mementoManager,
-									url,
-									storedAuth?.url,
-								);
-								if (!newUrl) {
-									throw new Error("URL must be provided");
-								}
-
-								const result = await this.attemptLogin(
-									{ url: newUrl, safeHostname },
-									false,
-									options.token,
-								);
-
-								await this.persistSessionAuth(result, safeHostname, newUrl);
-
-								return result;
-							} else {
-								// User cancelled
-								return { success: false } as const;
-							}
-						});
-
-					// Race between user clicking login and cross-window detection
-					const {
-						promise: crossWindowPromise,
-						dispose: disposeCrossWindowListener,
-					} = this.waitForCrossWindowLogin(safeHostname);
-					try {
-						return await Promise.race([dialogPromise, crossWindowPromise]);
-					} finally {
-						disposeCrossWindowListener();
-					}
-				}),
+			() => this.performLoginDialog(options),
 		);
+	}
+
+	private async performLoginDialog(
+		options: LoginOptions & { message?: string; detailPrefix?: string },
+	): Promise<LoginResult> {
+		const { safeHostname, url, detailPrefix, message } = options;
+		return this.executeWithGuard(async () => {
+			// Show dialog promise
+			const dialogPromise = vscodeProposed.window
+				.showErrorMessage(
+					message || "Authentication Required",
+					{
+						modal: true,
+						useCustom: true,
+						detail:
+							(detailPrefix || `Authentication needed for ${safeHostname}.`) +
+							"\n\nIf you've already logged in, you may close this dialog.",
+					},
+					"Login",
+				)
+				.then(async (action) => {
+					if (action === "Login") {
+						// Proceed with the login flow, handling logging in from another window
+						const storedAuth =
+							await this.secretsManager.getSessionAuth(safeHostname);
+						const newUrl = await maybeAskUrl(
+							this.mementoManager,
+							url,
+							storedAuth?.url,
+						);
+						if (!newUrl) {
+							throw new Error("URL must be provided");
+						}
+
+						const result = await this.attemptLogin(
+							{ url: newUrl, safeHostname },
+							false,
+							options.token,
+						);
+
+						await this.persistSessionAuth(result, safeHostname, newUrl);
+
+						return result;
+					} else {
+						// User cancelled
+						return { success: false } as const;
+					}
+				});
+
+			// Race between user clicking login and cross-window detection
+			const {
+				promise: crossWindowPromise,
+				dispose: disposeCrossWindowListener,
+			} = this.waitForCrossWindowLogin(safeHostname);
+			try {
+				return await Promise.race([dialogPromise, crossWindowPromise]);
+			} finally {
+				disposeCrossWindowListener();
+			}
+		});
 	}
 
 	private async persistSessionAuth(

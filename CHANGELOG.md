@@ -23,12 +23,19 @@
   local telemetry.
 - Local telemetry now records `http.requests` rollups for per-route HTTP
   health without emitting one event per request.
+<<<<<<< HEAD
 - Local telemetry now records connection lifecycle: SSH process
   discovery/loss/recovery with sampled network info, and reconnecting
   WebSocket open, drop, reconnect, and state transitions, so connection
   stability is captured alongside other local telemetry.
 - Local telemetry now records authentication refresh/recovery prompts plus
   workspace and agent state transitions for connection lifecycle diagnostics.
+=======
+- Local telemetry now records authentication refresh/recovery attempts for
+  connection debugging.
+- Local telemetry now records workspace and agent state transitions with observed
+  durations for connection lifecycle diagnostics.
+>>>>>>> c7d49c2 (refactor(telemetry): keep lifecycle tracking isolated)
 
 ### Fixed
 

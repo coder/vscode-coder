@@ -1,7 +1,6 @@
 import {
 	type ServerSentEvent,
 	type Workspace,
-	type WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
@@ -51,8 +50,6 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	private readonly telemetry: WorkspaceTelemetry;
 
 	private latestWorkspace: Workspace;
-	private lastWorkspaceStatus: WorkspaceStatus | undefined;
-	private lastWorkspaceStatusObservedAtMs: number | undefined;
 
 	private constructor(
 		workspace: Workspace,
@@ -147,31 +144,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private update(workspace: Workspace) {
-		this.recordWorkspaceStatus(workspace);
+		this.telemetry.observeWorkspace(workspace);
 		this.latestWorkspace = workspace;
 		this.updateContext(workspace);
 		this.updateStatusBar(workspace);
-	}
-
-	private recordWorkspaceStatus(workspace: Workspace): void {
-		const status = workspace.latest_build.status;
-		const now = performance.now();
-		const previous = this.lastWorkspaceStatus;
-		if (previous === status) {
-			return;
-		}
-
-		this.telemetry.workspaceStateTransition({
-			from: previous ?? "unknown",
-			to: status,
-			transition: workspace.latest_build.transition,
-			reason: workspace.latest_build.reason,
-			...(this.lastWorkspaceStatusObservedAtMs !== undefined && {
-				observedDurationMs: now - this.lastWorkspaceStatusObservedAtMs,
-			}),
-		});
-		this.lastWorkspaceStatus = status;
-		this.lastWorkspaceStatusObservedAtMs = now;
 	}
 
 	private maybeNotify(workspace: Workspace) {

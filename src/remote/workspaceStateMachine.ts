@@ -26,10 +26,7 @@ import { TerminalOutputChannel } from "./terminalOutputChannel";
 import type {
 	ProvisionerJobLog,
 	Workspace,
-	WorkspaceAgent,
-	WorkspaceAgentLifecycle,
 	WorkspaceAgentLog,
-	WorkspaceAgentStatus,
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "../api/coderApi";
@@ -43,12 +40,6 @@ import type { AuthorityParts } from "../util";
  * Manages workspace and agent state transitions until ready for SSH connection.
  * Streams build and agent logs, and handles socket lifecycle.
  */
-interface ObservedAgentState {
-	readonly status: WorkspaceAgentStatus;
-	readonly lifecycleState: WorkspaceAgentLifecycle;
-	readonly observedAtMs: number;
-}
-
 export class WorkspaceStateMachine implements vscode.Disposable {
 	private readonly terminal: TerminalOutputChannel;
 	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
@@ -57,7 +48,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 	private agent: { id: string; name: string } | undefined;
 	private workspace: Workspace | undefined;
-	private observedAgentState: ObservedAgentState | undefined;
 
 	constructor(
 		private readonly parts: AuthorityParts,
@@ -182,7 +172,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				`Agent ${this.agent.name} not found in ${workspaceName} resources`,
 			);
 		}
-		this.recordAgentState(agent);
+		this.telemetry.observeAgent(agent);
 
 		switch (agent.status) {
 			case "connecting":
@@ -354,32 +344,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 	private resetAgent(): void {
 		this.agent = undefined;
-		this.observedAgentState = undefined;
-	}
-
-	private recordAgentState(agent: WorkspaceAgent): void {
-		const now = performance.now();
-		const previous = this.observedAgentState;
-		if (
-			previous?.status === agent.status &&
-			previous.lifecycleState === agent.lifecycle_state
-		) {
-			return;
-		}
-
-		this.telemetry.agentStateTransition({
-			agentName: agent.name,
-			fromStatus: previous?.status ?? "unknown",
-			toStatus: agent.status,
-			fromLifecycleState: previous?.lifecycleState ?? "unknown",
-			toLifecycleState: agent.lifecycle_state,
-			...(previous && { observedDurationMs: now - previous.observedAtMs }),
-		});
-		this.observedAgentState = {
-			status: agent.status,
-			lifecycleState: agent.lifecycle_state,
-			observedAtMs: now,
-		};
+		this.telemetry.resetAgent();
 	}
 
 	dispose(): void {

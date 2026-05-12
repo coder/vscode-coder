@@ -5,6 +5,8 @@ import {
 
 import type {
 	BuildReason,
+	Workspace,
+	WorkspaceAgent,
 	WorkspaceAgentLifecycle,
 	WorkspaceAgentStatus,
 	WorkspaceStatus,
@@ -32,12 +34,75 @@ interface WorkspaceAgentStateTransition {
 	readonly observedDurationMs?: number;
 }
 
+interface ObservedWorkspaceState {
+	readonly status: WorkspaceStatus;
+	readonly observedAtMs: number;
+}
+
+interface ObservedAgentState {
+	readonly status: WorkspaceAgentStatus;
+	readonly lifecycleState: WorkspaceAgentLifecycle;
+	readonly observedAtMs: number;
+}
+
 export class WorkspaceTelemetry {
+	private observedWorkspaceState: ObservedWorkspaceState | undefined;
+	private observedAgentState: ObservedAgentState | undefined;
+
 	public constructor(
 		private readonly telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	) {}
 
-	public workspaceStateTransition(transition: WorkspaceStateTransition): void {
+	public observeWorkspace(workspace: Workspace): void {
+		const status = workspace.latest_build.status;
+		const now = performance.now();
+		const previous = this.observedWorkspaceState;
+		if (previous?.status === status) {
+			return;
+		}
+
+		this.workspaceStateTransition({
+			from: previous?.status ?? INITIAL_STATE,
+			to: status,
+			transition: workspace.latest_build.transition,
+			reason: workspace.latest_build.reason,
+			...(previous && {
+				observedDurationMs: now - previous.observedAtMs,
+			}),
+		});
+		this.observedWorkspaceState = { status, observedAtMs: now };
+	}
+
+	public observeAgent(agent: WorkspaceAgent): void {
+		const now = performance.now();
+		const previous = this.observedAgentState;
+		if (
+			previous?.status === agent.status &&
+			previous.lifecycleState === agent.lifecycle_state
+		) {
+			return;
+		}
+
+		this.agentStateTransition({
+			agentName: agent.name,
+			fromStatus: previous?.status ?? INITIAL_STATE,
+			toStatus: agent.status,
+			fromLifecycleState: previous?.lifecycleState ?? INITIAL_STATE,
+			toLifecycleState: agent.lifecycle_state,
+			...(previous && { observedDurationMs: now - previous.observedAtMs }),
+		});
+		this.observedAgentState = {
+			status: agent.status,
+			lifecycleState: agent.lifecycle_state,
+			observedAtMs: now,
+		};
+	}
+
+	public resetAgent(): void {
+		this.observedAgentState = undefined;
+	}
+
+	private workspaceStateTransition(transition: WorkspaceStateTransition): void {
 		this.telemetry.log(
 			"workspace.state_transitioned",
 			{
@@ -52,7 +117,9 @@ export class WorkspaceTelemetry {
 		);
 	}
 
-	public agentStateTransition(transition: WorkspaceAgentStateTransition): void {
+	private agentStateTransition(
+		transition: WorkspaceAgentStateTransition,
+	): void {
 		this.telemetry.log(
 			"workspace.agent.state_transitioned",
 			{
