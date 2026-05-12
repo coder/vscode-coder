@@ -77,6 +77,50 @@ jobs:
         run: ${{ runner.os == 'Linux' && 'xvfb-run -a' || '' }} pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
         shell: bash
 
+  chromatic:
+    name: Chromatic
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/setup
+
+      # PR builds gate on visual review; mainline auto-accepts.
+      - name: Publish to Chromatic (non-mainline)
+        if: github.ref != 'refs/heads/main' && github.repository_owner == 'coder'
+        uses: chromaui/action@5c6ec06f45a2117a25f07b1bf2b2f3009233fac8 # v16.3.0
+        env:
+          NODE_OPTIONS: "--max_old_space_size=4096"
+          STORYBOOK: true
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          buildScriptName: "storybook:ci"
+          exitOnceUploaded: true
+          exitZeroOnChanges: true
+          skip: "@(renovate/**|dependabot/**)"
+          onlyChanged: true
+          zip: true
+
+      # Auto-accept on mainline to avoid blocking CI after squash merges.
+      - name: Publish to Chromatic (mainline)
+        if: github.ref == 'refs/heads/main' && github.repository_owner == 'coder'
+        uses: chromaui/action@5c6ec06f45a2117a25f07b1bf2b2f3009233fac8 # v16.3.0
+        env:
+          NODE_OPTIONS: "--max_old_space_size=4096"
+          STORYBOOK: true
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          autoAcceptChanges: true
+          exitZeroOnChanges: true
+          buildScriptName: "storybook:build"
+          zip: true
+
   package:
     name: Package
     runs-on: ubuntu-24.04
