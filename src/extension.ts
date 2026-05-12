@@ -283,9 +283,7 @@ async function doActivate(
 			client,
 			output,
 		);
-		commandManager.register("coder.workspaces.refresh", () =>
-			workspacesPanelProvider.refresh(),
-		);
+
 		ctx.subscriptions.push(
 			workspacesPanelProvider,
 			vscode.window.registerWebviewViewProvider(
