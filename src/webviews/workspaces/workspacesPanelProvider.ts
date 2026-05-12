@@ -7,7 +7,6 @@ import {
 	dispatchRequest,
 	isIpcCommand,
 	isIpcRequest,
-	notifyWebview,
 } from "../dispatch";
 import { getWebviewHtml } from "../html";
 
