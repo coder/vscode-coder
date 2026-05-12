@@ -3,17 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { LazyStream, startWorkspace, updateWorkspace } from "@/api/workspace";
-import { type FeatureSet } from "@/featureSet";
-import { type UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
 import { workspace as createWorkspace } from "@repo/mocks";
 
 import type { Api } from "coder/site/src/api/api";
 import type {
-	TemplateVersionParameter,
 	Workspace,
 	WorkspaceBuild,
 } from "coder/site/src/api/typesGenerated";
+
+import type { FeatureSet } from "@/featureSet";
+import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
 vi.mock(import("node:child_process"), async (importOriginal) => ({
 	...(await importOriginal()),
@@ -109,10 +109,8 @@ function controlSpawn() {
 	};
 	proc.stdout = new EventEmitter();
 	proc.stderr = new EventEmitter();
-	let resolveSpawned!: () => void;
-	const spawned = new Promise<void>((resolve) => {
-		resolveSpawned = resolve;
-	});
+	const { promise: spawned, resolve: resolveSpawned } =
+		Promise.withResolvers<void>();
 	vi.mocked(spawn).mockImplementation(() => {
 		resolveSpawned();
 		return proc as never;
@@ -127,89 +125,6 @@ function controlSpawn() {
 			proc.emit("close", exitCode);
 		},
 	};
-}
-
-interface QuickInputMock {
-	mock: Record<string, unknown> & {
-		show: ReturnType<typeof vi.fn>;
-		dispose: ReturnType<typeof vi.fn>;
-	};
-	accept: (overrides?: Record<string, unknown>) => void;
-	hide: () => void;
-}
-
-function quickInputMock(): QuickInputMock {
-	let acceptCb: () => void = () => {};
-	let hideCb: () => void = () => {};
-	let changeCb: (v: string) => void = () => {};
-	const mock = {
-		title: "",
-		step: 0,
-		totalSteps: 0,
-		prompt: "",
-		placeholder: "",
-		value: "",
-		validationMessage: "",
-		ignoreFocusOut: false,
-		items: [] as readonly unknown[],
-		selectedItems: [] as readonly unknown[],
-		onDidAccept: vi.fn((cb: () => void) => {
-			acceptCb = cb;
-			return { dispose: vi.fn() };
-		}),
-		onDidHide: vi.fn((cb: () => void) => {
-			hideCb = cb;
-			return { dispose: vi.fn() };
-		}),
-		onDidChangeValue: vi.fn((cb: (v: string) => void) => {
-			changeCb = cb;
-			return { dispose: vi.fn() };
-		}),
-		show: vi.fn(),
-		dispose: vi.fn(),
-	};
-	return {
-		mock,
-		accept(overrides) {
-			Object.assign(mock, overrides ?? {});
-			if (overrides && "value" in overrides) changeCb(mock.value);
-			acceptCb();
-		},
-		hide() {
-			hideCb();
-		},
-	};
-}
-
-function mockCreateInputBox() {
-	const qi = quickInputMock();
-	vi.mocked(vscode.window.createInputBox).mockReturnValue(
-		qi.mock as unknown as vscode.InputBox,
-	);
-	return qi;
-}
-
-function mockCreateQuickPick() {
-	const qi = quickInputMock();
-	vi.mocked(vscode.window.createQuickPick).mockReturnValue(
-		qi.mock as unknown as vscode.QuickPick<vscode.QuickPickItem>,
-	);
-	return qi;
-}
-
-async function flushMicrotasks(times = 4) {
-	for (let i = 0; i < times; i++) await Promise.resolve();
-}
-
-function setupUpdate(
-	params: Array<Partial<TemplateVersionParameter>> = [],
-	opts: Parameters<typeof createUpdateCtx>[0] = {},
-) {
-	const ctxBundle = createUpdateCtx(opts);
-	ctxBundle.restClient.getTemplateVersionRichParameters.mockResolvedValue(
-		params.map(param),
-	);
-	return { ...ctxBundle, sp: controlSpawn() };
 }
 
 describe("LazyStream", () => {
@@ -271,135 +186,9 @@ describe("LazyStream", () => {
 	});
 });
 
-function param(overrides: Partial<TemplateVersionParameter> = {}) {
-	return {
-		name: "environment",
-		display_name: "Environment",
-		description: "",
-		description_plaintext: "",
-		type: "string",
-		form_type: "input",
-		mutable: true,
-		default_value: "",
-		icon: "",
-		options: [],
-		required: true,
-		ephemeral: false,
-		...overrides,
-	} as TemplateVersionParameter;
-}
-
 describe("updateWorkspace", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-	});
-
-	it.each([
-		{
-			kind: "text input",
-			param: { name: "environment" } as Partial<TemplateVersionParameter>,
-			mock: mockCreateInputBox,
-			accept: { value: "dev" },
-			expected: '--parameter "environment=dev"',
-		},
-		{
-			kind: "bool quick pick",
-			param: { name: "enabled", type: "bool" },
-			mock: mockCreateQuickPick,
-			accept: { selectedItems: [{ label: "True", value: "true" }] },
-			expected: '--parameter "enabled=true"',
-		},
-		{
-			kind: "options quick pick",
-			param: {
-				name: "size",
-				options: [
-					{ name: "Small", description: "", value: "s", icon: "" },
-					{ name: "Large", description: "", value: "l", icon: "" },
-				],
-			},
-			mock: mockCreateQuickPick,
-			accept: { selectedItems: [{ value: "l" }] },
-			expected: '--parameter "size=l"',
-		},
-		{
-			kind: "fallback text input for unknown types",
-			param: { name: "x", type: "list(string)" },
-			mock: mockCreateInputBox,
-			accept: { value: "[]" },
-			expected: '--parameter "x=[]"',
-		},
-	])(
-		"collects the value via $kind",
-		async ({ param: p, mock, accept, expected }) => {
-			const { ctx, sp, finalWorkspace } = setupUpdate([p]);
-			const qi = mock();
-
-			const result = updateWorkspace(ctx);
-			await flushMicrotasks();
-			qi.accept(accept);
-			await sp.close(0);
-
-			await expect(result).resolves.toBe(finalWorkspace);
-			expect(spawn).toHaveBeenCalledWith(
-				expect.stringContaining(expected),
-				expect.objectContaining({ shell: true }),
-			);
-		},
-	);
-
-	it("skips parameters that already have a value or default", async () => {
-		const { ctx, restClient, sp } = setupUpdate([
-			{ name: "existing" },
-			{ name: "with_default", default_value: "foo" },
-			{ name: "optional", required: false },
-		]);
-		restClient.getWorkspaceBuildParameters.mockResolvedValue([
-			{ name: "existing", value: "kept" },
-		]);
-
-		const result = updateWorkspace(ctx);
-		await sp.close(0);
-		await result;
-
-		expect(vscode.window.createInputBox).not.toHaveBeenCalled();
-		expect(spawn).toHaveBeenCalledWith(
-			expect.not.stringContaining("--parameter"),
-			expect.anything(),
-		);
-	});
-
-	it("throws when the user cancels a parameter prompt", async () => {
-		const { ctx } = setupUpdate([{}]);
-		const qi = mockCreateInputBox();
-
-		const result = updateWorkspace(ctx);
-		await flushMicrotasks();
-		qi.hide();
-
-		await expect(result).rejects.toThrow("Workspace update cancelled");
-		expect(spawn).not.toHaveBeenCalled();
-	});
-
-	it("steps the input title across multiple required params", async () => {
-		const { ctx, sp } = setupUpdate([{ name: "a" }, { name: "b" }]);
-		const inputs = [quickInputMock(), quickInputMock()];
-		vi.mocked(vscode.window.createInputBox)
-			.mockReturnValueOnce(inputs[0].mock as unknown as vscode.InputBox)
-			.mockReturnValueOnce(inputs[1].mock as unknown as vscode.InputBox);
-
-		const result = updateWorkspace(ctx);
-		await flushMicrotasks();
-		inputs[0].accept({ value: "first" });
-		await flushMicrotasks();
-		inputs[1].accept({ value: "second" });
-		await sp.close(0);
-		await result;
-
-		expect(inputs.map((i) => [i.mock.step, i.mock.totalSteps])).toEqual([
-			[1, 2],
-			[2, 2],
-		]);
 	});
 
 	it("rejects when the process exits non-zero", async () => {
@@ -444,7 +233,7 @@ describe("updateWorkspace", () => {
 		);
 	});
 
-	it("throws before update when the API fallback stop is canceled", async () => {
+	it("throws before update when the API fallback stop is cancelled", async () => {
 		const { ctx, restClient } = createUpdateCtx({
 			featureSet: { cliUpdate: false },
 		});
@@ -454,7 +243,7 @@ describe("updateWorkspace", () => {
 		});
 
 		await expect(updateWorkspace(ctx)).rejects.toThrow(
-			"Workspace update canceled during stop",
+			"Workspace update cancelled during stop",
 		);
 		expect(restClient.updateWorkspaceVersion).not.toHaveBeenCalled();
 	});

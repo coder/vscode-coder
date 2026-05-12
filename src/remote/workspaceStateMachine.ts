@@ -5,6 +5,7 @@ import {
 	errToStr,
 	extractAgents,
 } from "../api/api-helper";
+import { WorkspaceUpdateCancelledError } from "../api/updateParameters";
 import {
 	LazyStream,
 	startWorkspace,
@@ -103,6 +104,8 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				);
 				if (updated) {
 					workspace = updated;
+					// Agent IDs may have changed after an update.
+					this.agent = undefined;
 					if (workspace.latest_build.status === "running") break;
 					return false;
 				}
@@ -285,6 +288,12 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			this.workspace = await updateWorkspace(this.buildCliContext(workspace));
 			return this.workspace;
 		} catch (error) {
+			if (error instanceof WorkspaceUpdateCancelledError) {
+				this.logger.info(
+					`Update cancelled for ${workspaceName}; continuing with the existing version.`,
+				);
+				return undefined;
+			}
 			const reason = errToStr(error);
 			this.logger.warn(`Update failed for ${workspaceName}: ${reason}`);
 			vscode.window.showWarningMessage(
