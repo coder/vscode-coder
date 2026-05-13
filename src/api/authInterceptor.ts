@@ -115,7 +115,7 @@ export class AuthInterceptor implements vscode.Disposable {
 		try {
 			const newTokens = await this.oauthSessionManager.refreshToken();
 			this.client.setSessionToken(newTokens.access_token);
-			this.logger.debug("Token refresh successful, retrying request");
+			this.logger.debug("Token refresh successful");
 			return newTokens.access_token;
 		} catch (refreshError) {
 			if (!(refreshError instanceof OAuthError)) {

@@ -545,7 +545,77 @@ describe("LoginCoordinator", () => {
 			trigger,
 		});
 
-		it("emits result=aborted with reason when the user dismisses the dialog", async () => {
+		const enableMTLS = (mockConfig: MockConfigurationProvider) => {
+			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
+			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
+		};
+
+		interface PromptCase {
+			name: string;
+			arrange: (ctx: ReturnType<typeof createTestContext>) => void;
+			trigger: "auth_required" | "missing_session";
+			expected: {
+				result: "success" | "aborted" | "error";
+				reason?: "user_dismissed" | "no_url_provided" | "auth_failed";
+			};
+		}
+
+		it.each<PromptCase>([
+			{
+				name: "user dismisses the dialog: aborted + user_dismissed",
+				arrange: (ctx) =>
+					ctx.userInteraction.setResponse("Authentication Required", undefined),
+				trigger: "missing_session",
+				expected: { result: "aborted", reason: "user_dismissed" },
+			},
+			{
+				name: "authentication fails: error + auth_failed",
+				arrange: (ctx) => {
+					enableMTLS(ctx.mockConfig);
+					ctx.mockAuthFailure("Certificate error");
+					vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
+					ctx.userInteraction.setResponse("Authentication Required", "Login");
+				},
+				trigger: "auth_required",
+				expected: { result: "error", reason: "auth_failed" },
+			},
+			{
+				name: "user cancels URL prompt: aborted + no_url_provided",
+				arrange: (ctx) => {
+					enableMTLS(ctx.mockConfig);
+					vi.mocked(maybeAskUrl).mockResolvedValue(undefined);
+					ctx.userInteraction.setResponse("Authentication Required", "Login");
+				},
+				trigger: "auth_required",
+				expected: { result: "aborted", reason: "no_url_provided" },
+			},
+			{
+				name: "happy path: success and no reason",
+				arrange: (ctx) => {
+					enableMTLS(ctx.mockConfig);
+					ctx.mockSuccessfulAuth();
+					vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
+					ctx.userInteraction.setResponse("Authentication Required", "Login");
+				},
+				trigger: "auth_required",
+				expected: { result: "success" },
+			},
+		])("$name", async ({ arrange, trigger, expected }) => {
+			const sink = new TestSink();
+			const ctx = createTestContext(createTestTelemetryService(sink));
+			arrange(ctx);
+
+			await ctx.coordinator.ensureLoggedInWithDialog(dialogOptions(trigger));
+
+			const event = sink.expectOne("auth.login_prompted");
+			expect(event.properties).toMatchObject({ trigger, ...expected });
+			if (expected.reason === undefined) {
+				expect(event.properties.reason).toBeUndefined();
+			}
+			expect(event.error).toBeUndefined();
+		});
+
+		it("includes durationMs on the prompt span", async () => {
 			const sink = new TestSink();
 			const { userInteraction, coordinator } = createTestContext(
 				createTestTelemetryService(sink),
@@ -556,68 +626,9 @@ describe("LoginCoordinator", () => {
 				dialogOptions("missing_session"),
 			);
 
-			expect(sink.eventsNamed("auth.login_prompted")).toEqual([
-				expect.objectContaining({
-					properties: expect.objectContaining({
-						trigger: "missing_session",
-						result: "aborted",
-						reason: "user_dismissed",
-					}),
-					measurements: expect.objectContaining({
-						durationMs: expect.any(Number),
-					}),
-				}),
-			]);
-		});
-
-		it("emits result=error with reason (and no error block) when authentication fails", async () => {
-			const sink = new TestSink();
-			const { mockConfig, userInteraction, coordinator, mockAuthFailure } =
-				createTestContext(createTestTelemetryService(sink));
-			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-			mockAuthFailure("Certificate error");
-			vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
-			userInteraction.setResponse("Authentication Required", "Login");
-
-			const result = await coordinator.ensureLoggedInWithDialog(
-				dialogOptions("auth_required"),
-			);
-
-			expect(result).toEqual({ success: false, reason: "auth_failed" });
-			const events = sink.eventsNamed("auth.login_prompted");
-			expect(events).toEqual([
-				expect.objectContaining({
-					properties: expect.objectContaining({
-						trigger: "auth_required",
-						result: "error",
-						reason: "auth_failed",
-					}),
-				}),
-			]);
-			expect(events[0].error).toBeUndefined();
-		});
-
-		it("emits result=success without a reason on the happy path", async () => {
-			const sink = new TestSink();
-			const { mockConfig, userInteraction, coordinator, mockSuccessfulAuth } =
-				createTestContext(createTestTelemetryService(sink));
-			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-			mockSuccessfulAuth();
-			vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
-			userInteraction.setResponse("Authentication Required", "Login");
-
-			await coordinator.ensureLoggedInWithDialog(
-				dialogOptions("auth_required"),
-			);
-
-			const [event] = sink.eventsNamed("auth.login_prompted");
-			expect(event.properties).toMatchObject({
-				trigger: "auth_required",
-				result: "success",
-			});
-			expect(event.properties.reason).toBeUndefined();
+			expect(
+				sink.expectOne("auth.login_prompted").measurements.durationMs,
+			).toEqual(expect.any(Number));
 		});
 	});
 });

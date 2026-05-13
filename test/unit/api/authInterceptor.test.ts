@@ -7,14 +7,17 @@ import {
 } from "@/api/authInterceptor";
 import { SecretsManager } from "@/core/secretsManager";
 
-import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
+import {
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
 import {
 	createAxiosError,
 	createMockLogger,
 	createMockServiceContainer,
 	InMemoryMemento,
 	InMemorySecretStorage,
-	MockConfigurationProvider,
 	MockOAuthSessionManager,
 } from "../../mocks/testHelpers";
 import {
@@ -24,6 +27,7 @@ import {
 } from "../oauth/testUtils";
 
 import type { CoderApi } from "@/api/coderApi";
+import type { AuthRecoveryAction } from "@/instrumentation/auth";
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
 import type { TelemetryService } from "@/telemetry/service";
 
@@ -88,7 +92,7 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function createTestContext() {
 	vi.resetAllMocks();
-	new MockConfigurationProvider().set("coder.telemetry.level", "local");
+	enableLocalTelemetry();
 
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
@@ -433,77 +437,130 @@ describe("AuthInterceptor", () => {
 	});
 
 	describe("telemetry", () => {
-		it("emits span with recovery=refresh_success and result=success when OAuth refresh succeeds", async () => {
+		interface RecoveryCase {
+			name: string;
+			arrange: (ctx: ReturnType<typeof createTestContext>) => Promise<void>;
+			withCallback: boolean;
+			callbackResult?: boolean;
+			expectThrow: boolean;
+			expected: {
+				recovery: AuthRecoveryAction;
+				refreshAttempted: "true" | "false";
+				result: "success" | "error";
+			};
+		}
+
+		it.each<RecoveryCase>([
+			{
+				name: "OAuth refresh succeeds: recovery=refresh_success",
+				arrange: async (ctx) => {
+					await ctx.setupOAuthTokens();
+					ctx.mockOAuthManager.refreshToken.mockResolvedValue(
+						createMockTokenResponse({ access_token: "new" }),
+					);
+					vi.spyOn(ctx.axiosInstance, "request").mockResolvedValue({
+						status: 200,
+					});
+				},
+				withCallback: false,
+				expectThrow: false,
+				expected: {
+					recovery: "refresh_success",
+					refreshAttempted: "true",
+					result: "success",
+				},
+			},
+			{
+				name: "no OAuth + callback declines: recovery=login_required",
+				arrange: () => Promise.resolve(),
+				withCallback: true,
+				callbackResult: false,
+				expectThrow: true,
+				expected: {
+					recovery: "login_required",
+					refreshAttempted: "false",
+					result: "error",
+				},
+			},
+			{
+				name: "no OAuth + no callback: recovery=none",
+				arrange: () => Promise.resolve(),
+				withCallback: false,
+				expectThrow: true,
+				expected: {
+					recovery: "none",
+					refreshAttempted: "false",
+					result: "error",
+				},
+			},
+			{
+				name: "OAuth refresh fails + callback declines: refreshAttempted=true, recovery=login_required",
+				arrange: async (ctx) => {
+					await ctx.setupOAuthTokens();
+					ctx.mockOAuthManager.refreshToken.mockRejectedValue(
+						new Error("refresh failed"),
+					);
+				},
+				withCallback: true,
+				callbackResult: false,
+				expectThrow: true,
+				expected: {
+					recovery: "login_required",
+					refreshAttempted: "true",
+					result: "error",
+				},
+			},
+		])(
+			"$name",
+			async ({
+				arrange,
+				withCallback,
+				callbackResult,
+				expectThrow,
+				expected,
+			}) => {
+				const sink = new TestSink();
+				const ctx = createTestContext();
+				await arrange(ctx);
+				const onAuthRequired = withCallback
+					? vi.fn().mockResolvedValue(callbackResult)
+					: undefined;
+				ctx.createInterceptor(onAuthRequired, createTestTelemetryService(sink));
+
+				const trigger = ctx.axiosInstance.triggerResponseError(
+					createAxiosError(401, "Unauthorized"),
+				);
+				if (expectThrow) {
+					await expect(trigger).rejects.toThrow();
+				} else {
+					await trigger;
+				}
+
+				expect(
+					sink.expectOne("auth.unauthorized_intercepted").properties,
+				).toMatchObject(expected);
+			},
+		);
+
+		it("includes durationMs on the recovery span", async () => {
 			const sink = new TestSink();
-			const {
-				mockOAuthManager,
-				axiosInstance,
-				setupOAuthTokens,
-				createInterceptor,
-			} = createTestContext();
-			await setupOAuthTokens();
-			mockOAuthManager.refreshToken.mockResolvedValue(
+			const ctx = createTestContext();
+			await ctx.setupOAuthTokens();
+			ctx.mockOAuthManager.refreshToken.mockResolvedValue(
 				createMockTokenResponse({ access_token: "new" }),
 			);
-			vi.spyOn(axiosInstance, "request").mockResolvedValue({ status: 200 });
+			vi.spyOn(ctx.axiosInstance, "request").mockResolvedValue({
+				status: 200,
+			});
+			ctx.createInterceptor(undefined, createTestTelemetryService(sink));
 
-			createInterceptor(undefined, createTestTelemetryService(sink));
-			await axiosInstance.triggerResponseError(
+			await ctx.axiosInstance.triggerResponseError(
 				createAxiosError(401, "Unauthorized"),
 			);
 
-			expect(sink.eventsNamed("auth.unauthorized_intercepted")).toEqual([
-				expect.objectContaining({
-					properties: expect.objectContaining({
-						recovery: "refresh_success",
-						result: "success",
-					}),
-					measurements: expect.objectContaining({
-						durationMs: expect.any(Number),
-					}),
-				}),
-			]);
-		});
-
-		it("emits span with recovery=login_required and result=error when falling through to callback", async () => {
-			const sink = new TestSink();
-			const { axiosInstance, createInterceptor } = createTestContext();
-			const onAuthRequired = vi.fn().mockResolvedValue(false);
-
-			createInterceptor(onAuthRequired, createTestTelemetryService(sink));
-			await expect(
-				axiosInstance.triggerResponseError(createAxiosError(401, "denied")),
-			).rejects.toThrow();
-
-			expect(sink.eventsNamed("auth.unauthorized_intercepted")).toEqual([
-				expect.objectContaining({
-					properties: expect.objectContaining({
-						recovery: "login_required",
-						refreshAttempted: "false",
-						result: "error",
-					}),
-				}),
-			]);
-		});
-
-		it("emits span with recovery=none when no callback is registered", async () => {
-			const sink = new TestSink();
-			const { axiosInstance, createInterceptor } = createTestContext();
-
-			createInterceptor(undefined, createTestTelemetryService(sink));
-			await expect(
-				axiosInstance.triggerResponseError(createAxiosError(401, "denied")),
-			).rejects.toThrow();
-
-			expect(sink.eventsNamed("auth.unauthorized_intercepted")).toEqual([
-				expect.objectContaining({
-					properties: expect.objectContaining({
-						recovery: "none",
-						refreshAttempted: "false",
-						result: "error",
-					}),
-				}),
-			]);
+			expect(
+				sink.expectOne("auth.unauthorized_intercepted").measurements.durationMs,
+			).toEqual(expect.any(Number));
 		});
 	});
 });

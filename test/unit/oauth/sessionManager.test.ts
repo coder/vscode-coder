@@ -9,10 +9,13 @@ import { type SessionAuth } from "@/core/secretsManager";
 import { DEFAULT_OAUTH_SCOPES } from "@/oauth/constants";
 import { OAuthSessionManager } from "@/oauth/sessionManager";
 
-import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
+import {
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
 import {
 	createMockServiceContainer,
-	MockConfigurationProvider,
 	setupAxiosMockRoutes,
 } from "../../mocks/testHelpers";
 
@@ -479,8 +482,8 @@ describe("OAuthSessionManager", () => {
 
 	describe("telemetry", () => {
 		const setupWithSink = async () => {
+			enableLocalTelemetry();
 			const sink = new TestSink();
-			new MockConfigurationProvider().set("coder.telemetry.level", "local");
 			const ctx = createTestContext();
 			const manager = ctx.createManager(
 				createTestDeployment(),
@@ -500,18 +503,27 @@ describe("OAuthSessionManager", () => {
 
 				await manager.refreshToken(trigger);
 
-				expect(sink.eventsNamed("auth.token_refreshed")).toEqual([
-					expect.objectContaining({
-						properties: expect.objectContaining({
-							trigger,
-							result: "success",
-						}),
-						measurements: expect.objectContaining({
-							durationMs: expect.any(Number),
-						}),
-					}),
-				]);
+				const event = sink.expectOne("auth.token_refreshed");
+				expect(event.properties).toMatchObject({ trigger, result: "success" });
+				expect(event.measurements.durationMs).toEqual(expect.any(Number));
 			},
 		);
+
+		it("emits auth.token_refresh.deduped for callers that join an in-flight refresh", async () => {
+			const { manager, sink } = await setupWithSink();
+
+			const [first, second] = await Promise.all([
+				manager.refreshToken("background"),
+				manager.refreshToken("reactive"),
+			]);
+
+			expect(first).toBe(second);
+			expect(sink.eventsNamed("auth.token_refreshed")).toHaveLength(1);
+			expect(
+				sink.expectOne("auth.token_refresh.deduped").properties,
+			).toMatchObject({
+				trigger: "reactive",
+			});
+		});
 	});
 });

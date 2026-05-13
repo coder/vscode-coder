@@ -49,7 +49,6 @@ export class WebSocketTelemetry {
 	readonly #telemetry: TelemetryReporter;
 	#connectStartedAtMs: number | undefined;
 	#connectionOpenedAtMs: number | undefined;
-	#connectionDropEmitted = false;
 	#reconnectCycle: ReconnectCycle | undefined;
 
 	public constructor(telemetry: TelemetryReporter) {
@@ -80,7 +79,6 @@ export class WebSocketTelemetry {
 		const now = performance.now();
 		const start = this.#connectStartedAtMs ?? now;
 		this.#connectionOpenedAtMs = now;
-		this.#connectionDropEmitted = false;
 		this.#connectStartedAtMs = undefined;
 		this.#telemetry.log(
 			"connection.opened",
@@ -95,19 +93,19 @@ export class WebSocketTelemetry {
 		closeCode?: number,
 		error?: unknown,
 	): void {
-		if (
-			this.#connectionOpenedAtMs === undefined ||
-			this.#connectionDropEmitted
-		) {
+		// Capture-and-clear up-front so a throw, future await, or re-entry can't re-emit.
+		const openedAtMs = this.#connectionOpenedAtMs;
+		if (openedAtMs === undefined) {
 			return;
 		}
+		this.#connectionOpenedAtMs = undefined;
 
 		const properties: CallerProperties = { cause };
 		if (closeCode !== undefined) {
 			properties.closeCode = String(closeCode);
 		}
 		const measurements = {
-			connectionDurationMs: performance.now() - this.#connectionOpenedAtMs,
+			connectionDurationMs: performance.now() - openedAtMs,
 		};
 		if (error === undefined) {
 			this.#telemetry.log("connection.dropped", properties, measurements);
@@ -119,13 +117,11 @@ export class WebSocketTelemetry {
 				measurements,
 			);
 		}
-		this.#connectionDropEmitted = true;
 	}
 
 	public reset(): void {
 		this.#connectStartedAtMs = undefined;
 		this.#connectionOpenedAtMs = undefined;
-		this.#connectionDropEmitted = false;
 		this.#reconnectCycle = undefined;
 	}
 

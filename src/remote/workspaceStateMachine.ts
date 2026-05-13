@@ -306,8 +306,8 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			status: workspace.latest_build.status,
 		});
 		try {
-			this.workspace = await this.operationTelemetry.traceUpdateTriggered(
-				() => updateWorkspace(this.buildCliContext(workspace)),
+			this.workspace = await this.operationTelemetry.traceUpdateTriggered(() =>
+				updateWorkspace(this.buildCliContext(workspace)),
 			);
 			this.logger.info(`${workspaceName} update initiated`);
 			return this.workspace;

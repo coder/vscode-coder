@@ -11,11 +11,12 @@ import {
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
 
-import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
-	createMockLogger,
-	MockConfigurationProvider,
-} from "../../mocks/testHelpers";
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
+import { createMockLogger } from "../../mocks/testHelpers";
 
 import type { CloseEvent, Event as WsEvent } from "ws";
 
@@ -595,7 +596,7 @@ describe("ReconnectingWebSocket", () => {
 
 	describe("Telemetry wiring", () => {
 		it("walks the state machine through a full reconnect lifecycle", async () => {
-			new MockConfigurationProvider().set("coder.telemetry.level", "local");
+			enableLocalTelemetry();
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			const { ws, sockets } = await createReconnectingWebSocket({ telemetry });
@@ -641,7 +642,7 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("emits a normal-close drop and disconnects on server-initiated close", async () => {
-			new MockConfigurationProvider().set("coder.telemetry.level", "local");
+			enableLocalTelemetry();
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			const { ws, sockets } = await createReconnectingWebSocket({ telemetry });
@@ -669,7 +670,7 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("records certificate_refresh as the reconnect reason on successful refresh", async () => {
-			new MockConfigurationProvider().set("coder.telemetry.level", "local");
+			enableLocalTelemetry();
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			const sockets: MockSocket[] = [];

@@ -1,7 +1,7 @@
 import type { TelemetryReporter } from "../telemetry/reporter";
 
 export type AuthTokenRefreshTrigger = "background" | "reactive";
-export type AuthRecoveryOutcome = "refresh_success" | "login_required" | "none";
+export type AuthRecoveryAction = "refresh_success" | "login_required" | "none";
 export type AuthLoginPromptTrigger = "auth_required" | "missing_session";
 
 /**
@@ -19,7 +19,7 @@ export type LoginPromptOutcome =
 
 /** Span annotator for the auth-recovery flow. Defaults to safe values. */
 export interface AuthRecoveryRecorder {
-	setRecovery(recovery: AuthRecoveryOutcome): void;
+	setRecovery(recovery: AuthRecoveryAction): void;
 	setRefreshAttempted(attempted: boolean): void;
 }
 

@@ -5,7 +5,11 @@ import { WorkspaceMonitor } from "@/workspace/workspaceMonitor";
 
 import { workspace as createWorkspace } from "@repo/mocks";
 
-import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
+import {
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
 import {
 	createMockServiceContainer,
 	MockConfigurationProvider,
@@ -69,10 +73,11 @@ describe("WorkspaceMonitor", () => {
 
 	describe("telemetry", () => {
 		const buildSinkContext = () => {
-			const stream = new MockEventStream<ServerSentEvent>();
-			const sink = new TestSink();
-			new MockConfigurationProvider().set("coder.telemetry.level", "local");
-			return { stream, sink };
+			enableLocalTelemetry();
+			return {
+				stream: new MockEventStream<ServerSentEvent>(),
+				sink: new TestSink(),
+			};
 		};
 
 		it("emits initial state plus subsequent transitions with duration", async () => {
@@ -152,7 +157,7 @@ describe("WorkspaceMonitor", () => {
 			expect(reasons).toEqual(["autostop", "initiator"]);
 		});
 
-		it("emits buildDurationMs on the event that resolves a build run", async () => {
+		it("emits observedBuildDurationMs on the event that resolves a build run", async () => {
 			const { stream, sink } = buildSinkContext();
 
 			await setup(
@@ -171,20 +176,20 @@ describe("WorkspaceMonitor", () => {
 			);
 
 			const events = sink.eventsNamed("workspace.state_transitioned");
-			// pending and starting are intermediate; only running carries buildDurationMs.
+			// pending and starting are intermediate; only running carries observedBuildDurationMs.
 			expect(events.map((e) => e.properties.to)).toEqual([
 				"pending",
 				"starting",
 				"running",
 				"stopping",
 			]);
-			expect(events[0].measurements.buildDurationMs).toBeUndefined();
-			expect(events[1].measurements.buildDurationMs).toBeUndefined();
-			expect(events[2].measurements.buildDurationMs).toEqual(
+			expect(events[0].measurements.observedBuildDurationMs).toBeUndefined();
+			expect(events[1].measurements.observedBuildDurationMs).toBeUndefined();
+			expect(events[2].measurements.observedBuildDurationMs).toEqual(
 				expect.any(Number),
 			);
 			// Next build cycle resets; stopping doesn't carry the previous duration.
-			expect(events[3].measurements.buildDurationMs).toBeUndefined();
+			expect(events[3].measurements.observedBuildDurationMs).toBeUndefined();
 		});
 	});
 

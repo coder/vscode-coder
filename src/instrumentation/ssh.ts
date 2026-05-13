@@ -79,7 +79,6 @@ export class SshTelemetry {
 	public processReplaced(): void {
 		const now = performance.now();
 		if (this.#processStartedAtMs !== undefined) {
-			const wasLost = this.#processLostAtMs !== undefined;
 			const measurements: Record<string, number> = {
 				previousUptimeMs: now - this.#processStartedAtMs,
 			};
@@ -88,7 +87,7 @@ export class SshTelemetry {
 			}
 			this.#telemetry.log(
 				"ssh.process.replaced",
-				{ wasLost: String(wasLost) },
+				{ wasLost: String(this.#processLostAtMs !== undefined) },
 				measurements,
 			);
 		}

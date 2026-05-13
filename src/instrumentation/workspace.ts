@@ -35,7 +35,7 @@ interface ObservedAgentState {
 
 /**
  * Emits `workspace.state_transitioned` as a workspace progresses through
- * statuses, plus `buildDurationMs` when a provisioner run resolves.
+ * statuses, plus `observedBuildDurationMs` when a provisioner run resolves.
  * Construct one per workspace; `WorkspaceMonitor` is the sole call site.
  */
 export class WorkspaceStateTelemetry {
@@ -71,7 +71,7 @@ export class WorkspaceStateTelemetry {
 			this.buildStartedAtMs ??= now;
 		} else {
 			if (wasProvisioning && this.buildStartedAtMs !== undefined) {
-				measurements.buildDurationMs = now - this.buildStartedAtMs;
+				measurements.observedBuildDurationMs = now - this.buildStartedAtMs;
 			}
 			this.buildStartedAtMs = undefined;
 		}

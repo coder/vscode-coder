@@ -17,11 +17,14 @@ import {
 	workspace as createWorkspace,
 } from "@repo/mocks";
 
-import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
+import {
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
 import {
 	createMockLogger,
 	createMockServiceContainer,
-	MockConfigurationProvider,
 	MockProgress,
 	MockTerminalOutputChannel,
 	MockUserInteraction,
@@ -85,7 +88,7 @@ function setup(
 	startupMode: StartupMode = "start",
 	telemetry?: TelemetryService,
 ) {
-	new MockConfigurationProvider().set("coder.telemetry.level", "local");
+	enableLocalTelemetry();
 	const progress = new MockProgress<{ message?: string }>();
 	const userInteraction = new MockUserInteraction();
 	const sm = new WorkspaceStateMachine(
@@ -412,14 +415,9 @@ describe("WorkspaceStateMachine", () => {
 				await sm.processWorkspace(workspace(), progress);
 
 				expect(mock).toHaveBeenCalledOnce();
-				expect(sink.eventsNamed(eventName)).toEqual([
-					expect.objectContaining({
-						properties: expect.objectContaining({ result: "success" }),
-						measurements: expect.objectContaining({
-							durationMs: expect.any(Number),
-						}),
-					}),
-				]);
+				const event = sink.expectOne(eventName);
+				expect(event.properties.result).toBe("success");
+				expect(event.measurements.durationMs).toEqual(expect.any(Number));
 			},
 		);
 
@@ -437,12 +435,9 @@ describe("WorkspaceStateMachine", () => {
 			// existing template version, so processWorkspace resolves.
 			await sm.processWorkspace(runningWorkspace(), progress);
 
-			expect(sink.eventsNamed("workspace.update.triggered")).toEqual([
-				expect.objectContaining({
-					properties: expect.objectContaining({ result: "error" }),
-					error: { message: "update failed" },
-				}),
-			]);
+			const event = sink.expectOne("workspace.update.triggered");
+			expect(event.properties.result).toBe("error");
+			expect(event.error).toEqual({ message: "update failed" });
 		});
 
 		it("emits agent state transitions with observed duration", async () => {
@@ -455,25 +450,23 @@ describe("WorkspaceStateMachine", () => {
 			);
 			await sm.processWorkspace(runningWorkspace(), progress);
 
-			expect(sink.eventsNamed("workspace.agent.state_transitioned")).toEqual([
-				expect.objectContaining({
-					properties: expect.objectContaining({
-						fromStatus: "unknown",
-						toStatus: "connecting",
-						fromLifecycleState: "unknown",
-						toLifecycleState: "created",
-					}),
-				}),
-				expect.objectContaining({
-					properties: expect.objectContaining({
-						fromStatus: "connecting",
-						toStatus: "connected",
-						fromLifecycleState: "created",
-						toLifecycleState: "ready",
-					}),
-					measurements: { observedDurationMs: expect.any(Number) },
-				}),
-			]);
+			const events = sink.eventsNamed("workspace.agent.state_transitioned");
+			expect(events).toHaveLength(2);
+			expect(events[0].properties).toMatchObject({
+				fromStatus: "unknown",
+				toStatus: "connecting",
+				fromLifecycleState: "unknown",
+				toLifecycleState: "created",
+			});
+			expect(events[1].properties).toMatchObject({
+				fromStatus: "connecting",
+				toStatus: "connected",
+				fromLifecycleState: "created",
+				toLifecycleState: "ready",
+			});
+			expect(events[1].measurements.observedDurationMs).toEqual(
+				expect.any(Number),
+			);
 		});
 	});
 

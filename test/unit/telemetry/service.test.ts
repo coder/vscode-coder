@@ -305,6 +305,7 @@ describe("TelemetryService", () => {
 			escapedSpan?.setProperty("late", "ignored");
 			escapedSpan?.setMeasurement("lateMs", 99);
 			escapedSpan?.markAborted();
+			escapedSpan?.markFailure();
 
 			// Mutations dropped: emitted event is unchanged.
 			expect(h.sink.events[0].properties.late).toBeUndefined();
@@ -312,7 +313,7 @@ describe("TelemetryService", () => {
 			expect(h.sink.events[0].properties.result).toBe("success");
 
 			// Each post-emit mutation logs a warning.
-			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 3);
+			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 4);
 			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore][0]).toContain(
 				"setProperty",
 			);
@@ -321,6 +322,9 @@ describe("TelemetryService", () => {
 			);
 			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 2][0]).toContain(
 				"markAborted",
+			);
+			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 3][0]).toContain(
+				"markFailure",
 			);
 		});
 
