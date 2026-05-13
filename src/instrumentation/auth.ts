@@ -10,8 +10,9 @@ export type AuthIntercept401Recovery =
 	| "none";
 export type AuthLoginPromptTrigger = "auth_required" | "missing_session";
 
-interface LoginPromptResult {
-	readonly success: boolean;
+/** Helpers scoped to the auth.login_prompt trace's lifetime. */
+export interface LoginPromptTracer {
+	markAborted(): void;
 }
 
 export class AuthTelemetry {
@@ -30,19 +31,13 @@ export class AuthTelemetry {
 		this.telemetry.log("auth.intercept_401", { recovery });
 	}
 
-	public traceLoginPrompt<T extends LoginPromptResult>(
+	public traceLoginPrompt<T>(
 		trigger: AuthLoginPromptTrigger,
-		fn: () => Promise<T>,
+		fn: (tracer: LoginPromptTracer) => Promise<T>,
 	): Promise<T> {
 		return this.telemetry.trace(
 			"auth.login_prompt",
-			async (span) => {
-				const result = await fn();
-				if (!result.success) {
-					span.markAborted();
-				}
-				return result;
-			},
+			(span) => fn({ markAborted: () => span.markAborted() }),
 			{ trigger },
 		);
 	}

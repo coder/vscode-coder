@@ -99,7 +99,13 @@ export class LoginCoordinator implements vscode.Disposable {
 	): Promise<LoginResult> {
 		return this.authTelemetry.traceLoginPrompt(
 			options.trigger ?? "auth_required",
-			() => this.performLoginDialog(options),
+			async (tracer) => {
+				const result = await this.performLoginDialog(options);
+				if (!result.success) {
+					tracer.markAborted();
+				}
+				return result;
+			},
 		);
 	}
 
