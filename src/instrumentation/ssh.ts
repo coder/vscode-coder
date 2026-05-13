@@ -2,7 +2,8 @@ import type { NetworkInfo } from "../remote/sshProcess";
 import type { TelemetryReporter } from "../telemetry/reporter";
 
 const NETWORK_SAMPLE_INTERVAL_MS = 60_000;
-const NETWORK_LATENCY_CHANGE_RATIO = 0.1;
+const NETWORK_LATENCY_CHANGE_RATIO = 0.2;
+const NETWORK_LATENCY_MIN_ABSOLUTE_CHANGE_MS = 25;
 
 export type ProcessLossCause = "stale_network_info" | "missing_network_info";
 
@@ -167,7 +168,11 @@ function hasMeaningfulLatencyChange(
 	if (previous === 0) {
 		return current !== 0;
 	}
-	return Math.abs(current - previous) / previous > NETWORK_LATENCY_CHANGE_RATIO;
+	const absoluteChange = Math.abs(current - previous);
+	return (
+		absoluteChange >= NETWORK_LATENCY_MIN_ABSOLUTE_CHANGE_MS ||
+		absoluteChange / Math.abs(previous) >= NETWORK_LATENCY_CHANGE_RATIO
+	);
 }
 
 function bytesPerSecondToMbits(bytesPerSecond: number): number {

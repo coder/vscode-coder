@@ -176,41 +176,74 @@ describe("SshTelemetry", () => {
 		afterEach(() => vi.useRealTimers());
 
 		it.each([
-			{ name: "no change in window", next: {}, advanceMs: 1_000, expected: 1 },
 			{
-				name: "small latency change (under 10%)",
+				name: "no change in window",
+				prev: {},
+				next: {},
+				advanceMs: 1_000,
+				expected: 1,
+			},
+			{
+				name: "latency change below both thresholds (50 -> 51)",
+				prev: {},
 				next: { latency: 51 },
 				advanceMs: 1_000,
 				expected: 1,
 			},
-			{ name: "p2p flip", next: { p2p: false }, advanceMs: 1_000, expected: 2 },
+			{
+				name: "ratio branch only (50 -> 70)",
+				prev: {},
+				next: { latency: 70 },
+				advanceMs: 1_000,
+				expected: 2,
+			},
+			{
+				name: "absolute branch only (200 -> 230)",
+				prev: { latency: 200 },
+				next: { latency: 230 },
+				advanceMs: 1_000,
+				expected: 2,
+			},
+			{
+				name: "p2p flip",
+				prev: {},
+				next: { p2p: false },
+				advanceMs: 1_000,
+				expected: 2,
+			},
 			{
 				name: "DERP region change",
+				prev: {},
 				next: { preferred_derp: "SFO" },
 				advanceMs: 1_000,
 				expected: 2,
 			},
 			{
-				name: "large latency swing (over 10%)",
-				next: { latency: 100 },
-				advanceMs: 1_000,
-				expected: 2,
-			},
-			{
 				name: "heartbeat after 60s without change",
+				prev: {},
 				next: {},
 				advanceMs: 60_000,
 				expected: 2,
 			},
-		])("$name -> $expected sample(s)", ({ next, advanceMs, expected }) => {
-			const { ssh, sink } = setup();
+			{
+				name: "baseline established from zero-latency placeholder (0 -> 5)",
+				prev: { latency: 0 },
+				next: { latency: 5 },
+				advanceMs: 1_000,
+				expected: 2,
+			},
+		])(
+			"$name -> $expected sample(s)",
+			({ prev, next, advanceMs, expected }) => {
+				const { ssh, sink } = setup();
 
-			ssh.networkSampled(makeNetworkInfo());
-			vi.advanceTimersByTime(advanceMs);
-			ssh.networkSampled(makeNetworkInfo(next));
+				ssh.networkSampled(makeNetworkInfo(prev));
+				vi.advanceTimersByTime(advanceMs);
+				ssh.networkSampled(makeNetworkInfo({ ...prev, ...next }));
 
-			expect(sink.eventsNamed("ssh.network.sampled")).toHaveLength(expected);
-		});
+				expect(sink.eventsNamed("ssh.network.sampled")).toHaveLength(expected);
+			},
+		);
 
 		it("includes p2p, preferredDerp, latency, and bandwidth in the emitted sample", () => {
 			const { ssh, sink } = setup();
