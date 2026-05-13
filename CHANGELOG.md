@@ -13,29 +13,20 @@
   machine only and never sent anywhere. Configure via the new
   `coder.telemetry.level` setting (`local` by default, `off` to disable);
   see `coder.telemetry.local` for tunables.
-- Every `coder.*` command now records a `command.invoked` telemetry event with
-  its duration and outcome, so command latency and failures are captured
-  alongside other local telemetry.
-- Extension activation, remote workspace setup phases (auth retrieval,
-  workspace lookup, workspace and agent readiness, SSH config write), and CLI
-  binary download/verify now emit local telemetry events with their duration
-  and outcome, so startup latency and failures are captured alongside other
-  local telemetry.
+- Local telemetry now records `command.invoked` for each `coder.*` command
+  with duration and outcome.
+- Local telemetry now records extension activation, remote workspace setup
+  phases (auth retrieval, workspace lookup, workspace and agent readiness,
+  SSH config write), and CLI binary download/verify with their durations
+  and outcomes.
 - Local telemetry now records `http.requests` rollups for per-route HTTP
-  health without emitting one event per request.
-<<<<<<< HEAD
+  health, without emitting one event per request.
 - Local telemetry now records connection lifecycle: SSH process
   discovery/loss/recovery with sampled network info, and reconnecting
-  WebSocket open, drop, reconnect, and state transitions, so connection
-  stability is captured alongside other local telemetry.
-- Local telemetry now records authentication refresh/recovery prompts plus
-  workspace and agent state transitions for connection lifecycle diagnostics.
-=======
-- Local telemetry now records authentication refresh/recovery attempts for
-  connection debugging.
-- Local telemetry now records workspace and agent state transitions with observed
-  durations for connection lifecycle diagnostics.
->>>>>>> c7d49c2 (refactor(telemetry): keep lifecycle tracking isolated)
+  WebSocket open/drop/reconnect/state transitions.
+- Local telemetry now records authentication refresh and recovery prompts.
+- Local telemetry now records workspace and agent state transitions with
+  observed durations.
 
 ### Fixed
 
