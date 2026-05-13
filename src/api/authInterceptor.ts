@@ -75,29 +75,25 @@ export class AuthInterceptor implements vscode.Disposable {
 		}
 		const hostname = toSafeHost(baseUrl);
 
-		return this.handle401Error(error, hostname);
+		return this.recoverFromUnauthorized(error, hostname);
 	}
 
-	private handle401Error(
+	private recoverFromUnauthorized(
 		error: AxiosError,
 		hostname: string,
 	): Promise<unknown> {
 		this.logger.debug("Received 401 response, attempting recovery");
-		// TODO(#925): when Span.log() lands, emit a correlated
-		// `auth.unauthorized_intercepted.received` log at decision time so
-		// analytics can see the receive moment without back-computing from
-		// `timestamp - durationMs`.
-		return this.authTelemetry.traceIntercept401(async (setRecovery) => {
-			const newToken = (await this.oauthSessionManager.isLoggedInWithOAuth(
-				hostname,
-			))
-				? await this.tryOAuthRefresh()
-				: undefined;
+		// TODO(#925): emit a correlated received-log here once Span.log() lands.
+		return this.authTelemetry.traceAuthRecovery(async (recorder) => {
+			const isOAuth =
+				await this.oauthSessionManager.isLoggedInWithOAuth(hostname);
+			recorder.setRefreshAttempted(isOAuth);
+			const newToken = isOAuth ? await this.tryOAuthRefresh() : undefined;
 			if (newToken) {
-				setRecovery("refresh_success");
+				recorder.setRecovery("refresh_success");
 				return this.retryRequest(error, newToken);
 			} else if (this.onAuthRequired) {
-				setRecovery("login_required");
+				recorder.setRecovery("login_required");
 				const success = await this.executeAuthRequired(hostname);
 				const auth = success
 					? await this.secretsManager.getSessionAuth(hostname)
@@ -108,7 +104,7 @@ export class AuthInterceptor implements vscode.Disposable {
 				}
 				throw error;
 			} else {
-				setRecovery("none");
+				recorder.setRecovery("none");
 				throw error;
 			}
 		});

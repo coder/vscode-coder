@@ -13,7 +13,10 @@ import {
 	streamAgentLogs,
 	streamBuildLogs,
 } from "../api/workspace";
-import { WorkspaceTelemetry } from "../instrumentation/workspace";
+import {
+	WorkspaceAgentTelemetry,
+	WorkspaceOperationTelemetry,
+} from "../instrumentation/workspace";
 import { maybeAskAgent } from "../promptUtils";
 import { vscodeProposed } from "../vscodeProposed";
 
@@ -41,7 +44,8 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	private readonly terminal: TerminalOutputChannel;
 	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
 	private readonly agentLogStream = new LazyStream<WorkspaceAgentLog[]>();
-	private readonly telemetry: WorkspaceTelemetry;
+	private readonly agentTelemetry: WorkspaceAgentTelemetry;
+	private readonly operationTelemetry: WorkspaceOperationTelemetry;
 
 	private agent: { id: string; name: string } | undefined;
 	private workspace: Workspace | undefined;
@@ -59,7 +63,13 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	) {
 		this.logger = container.getLogger();
 		this.terminal = new TerminalOutputChannel("Coder: Workspace Build");
-		this.telemetry = new WorkspaceTelemetry(container.getTelemetryService());
+		const telemetry = container.getTelemetryService();
+		const workspaceName = `${parts.username}/${parts.workspace}`;
+		this.agentTelemetry = new WorkspaceAgentTelemetry(telemetry, workspaceName);
+		this.operationTelemetry = new WorkspaceOperationTelemetry(
+			telemetry,
+			workspaceName,
+		);
 	}
 
 	/**
@@ -171,7 +181,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				`Agent ${this.agent.name} not found in ${workspaceName} resources`,
 			);
 		}
-		this.telemetry.observeAgent(agent);
+		this.agentTelemetry.observe(agent);
 
 		switch (agent.status) {
 			case "connecting":
@@ -276,7 +286,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			mode: this.startupMode,
 			status: workspace.latest_build.status,
 		});
-		await this.telemetry.traceStartTriggered(workspaceName, () =>
+		await this.operationTelemetry.traceStartTriggered(() =>
 			startWorkspace(this.buildCliContext(workspace)),
 		);
 		this.logger.info(`${workspaceName} start initiated`);
@@ -296,8 +306,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			status: workspace.latest_build.status,
 		});
 		try {
-			this.workspace = await this.telemetry.traceUpdateTriggered(
-				workspaceName,
+			this.workspace = await this.operationTelemetry.traceUpdateTriggered(
 				() => updateWorkspace(this.buildCliContext(workspace)),
 			);
 			this.logger.info(`${workspaceName} update initiated`);
@@ -346,7 +355,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 	private resetAgent(): void {
 		this.agent = undefined;
-		this.telemetry.resetAgent();
+		this.agentTelemetry.reset();
 	}
 
 	dispose(): void {

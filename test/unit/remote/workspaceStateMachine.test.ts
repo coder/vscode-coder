@@ -405,12 +405,13 @@ describe("WorkspaceStateMachine", () => {
 			},
 		])(
 			"emits $name with duration on success",
-			async ({ eventName, mode, workspace }) => {
+			async ({ eventName, mode, workspace, mock }) => {
 				const sink = new TestSink();
 				const { sm, progress } = setup(mode, createTestTelemetryService(sink));
 
 				await sm.processWorkspace(workspace(), progress);
 
+				expect(mock).toHaveBeenCalledOnce();
 				expect(sink.eventsNamed(eventName)).toEqual([
 					expect.objectContaining({
 						properties: expect.objectContaining({ result: "success" }),

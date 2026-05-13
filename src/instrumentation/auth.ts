@@ -1,10 +1,7 @@
 import type { TelemetryReporter } from "../telemetry/reporter";
 
 export type AuthTokenRefreshTrigger = "background" | "reactive";
-export type AuthIntercept401Recovery =
-	| "refresh_success"
-	| "login_required"
-	| "none";
+export type AuthRecoveryOutcome = "refresh_success" | "login_required" | "none";
 export type AuthLoginPromptTrigger = "auth_required" | "missing_session";
 
 /**
@@ -20,6 +17,12 @@ export type LoginPromptOutcome =
 	| { success: true }
 	| { success: false; reason: LoginPromptReason };
 
+/** Span annotator for the auth-recovery flow. Defaults to safe values. */
+export interface AuthRecoveryRecorder {
+	setRecovery(recovery: AuthRecoveryOutcome): void;
+	setRefreshAttempted(attempted: boolean): void;
+}
+
 export class AuthTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
 
@@ -30,14 +33,27 @@ export class AuthTelemetry {
 		return this.telemetry.trace("auth.token_refreshed", fn, { trigger });
 	}
 
-	/** Wraps the recovery+retry path for a 401; `setRecovery` records how it was handled. */
-	public traceIntercept401<T>(
-		fn: (
-			setRecovery: (recovery: AuthIntercept401Recovery) => void,
-		) => Promise<T>,
+	/** Logged when a refresh call joins an in-flight refresh and emits no span of its own. */
+	public tokenRefreshDeduped(trigger: AuthTokenRefreshTrigger): void {
+		this.telemetry.log("auth.token_refresh.deduped", { trigger });
+	}
+
+	/**
+	 * Wraps the auth-recovery path triggered by a 401. Initial properties
+	 * cover the throw-before-callback case.
+	 */
+	public traceAuthRecovery<T>(
+		fn: (recorder: AuthRecoveryRecorder) => Promise<T>,
 	): Promise<T> {
-		return this.telemetry.trace("auth.unauthorized_intercepted", (span) =>
-			fn((recovery) => span.setProperty("recovery", recovery)),
+		return this.telemetry.trace(
+			"auth.unauthorized_intercepted",
+			(span) =>
+				fn({
+					setRecovery: (recovery) => span.setProperty("recovery", recovery),
+					setRefreshAttempted: (attempted) =>
+						span.setProperty("refreshAttempted", String(attempted)),
+				}),
+			{ recovery: "none", refreshAttempted: "false" },
 		);
 	}
 

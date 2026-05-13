@@ -479,6 +479,27 @@ describe("AuthInterceptor", () => {
 				expect.objectContaining({
 					properties: expect.objectContaining({
 						recovery: "login_required",
+						refreshAttempted: "false",
+						result: "error",
+					}),
+				}),
+			]);
+		});
+
+		it("emits span with recovery=none when no callback is registered", async () => {
+			const sink = new TestSink();
+			const { axiosInstance, createInterceptor } = createTestContext();
+
+			createInterceptor(undefined, createTestTelemetryService(sink));
+			await expect(
+				axiosInstance.triggerResponseError(createAxiosError(401, "denied")),
+			).rejects.toThrow();
+
+			expect(sink.eventsNamed("auth.unauthorized_intercepted")).toEqual([
+				expect.objectContaining({
+					properties: expect.objectContaining({
+						recovery: "none",
+						refreshAttempted: "false",
 						result: "error",
 					}),
 				}),

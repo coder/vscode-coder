@@ -6,7 +6,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
-import { WorkspaceTelemetry } from "../instrumentation/workspace";
+import { WorkspaceStateTelemetry } from "../instrumentation/workspace";
 import {
 	areNotificationsDisabled,
 	areUpdateNotificationsDisabled,
@@ -44,7 +44,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	// For logging.
 	private readonly name: string;
-	private readonly telemetry: WorkspaceTelemetry;
+	private readonly telemetry: WorkspaceStateTelemetry;
 	private readonly logger: Logger;
 	private readonly contextManager: ContextManager;
 
@@ -58,7 +58,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		this.logger = container.getLogger();
 		this.contextManager = container.getContextManager();
 		this.name = createWorkspaceIdentifier(workspace);
-		this.telemetry = new WorkspaceTelemetry(container.getTelemetryService());
+		this.telemetry = new WorkspaceStateTelemetry(
+			container.getTelemetryService(),
+			this.name,
+		);
 		this.latestWorkspace = workspace;
 
 		const statusBarItem = vscode.window.createStatusBarItem(
@@ -135,7 +138,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private update(workspace: Workspace) {
-		this.telemetry.observeWorkspace(workspace);
+		this.telemetry.observe(workspace);
 		this.latestWorkspace = workspace;
 		this.updateContext(workspace);
 		this.updateStatusBar(workspace);

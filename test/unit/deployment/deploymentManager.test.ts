@@ -17,6 +17,7 @@ import {
 } from "../../mocks/testHelpers";
 
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
+import type { TelemetryService } from "@/telemetry/service";
 import type { WorkspaceProvider } from "@/workspace/workspacesProvider";
 
 // Mock CoderApi.create to return our mock client for validation
