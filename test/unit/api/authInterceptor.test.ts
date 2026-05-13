@@ -452,7 +452,7 @@ describe("AuthInterceptor", () => {
 				createAxiosError(401, "Unauthorized"),
 			);
 
-			expect(sink.eventsNamed("auth.intercept_401")).toEqual([
+			expect(sink.eventsNamed("auth.unauthorized_intercepted")).toEqual([
 				expect.objectContaining({
 					properties: expect.objectContaining({
 						recovery: "refresh_success",
@@ -475,7 +475,7 @@ describe("AuthInterceptor", () => {
 				axiosInstance.triggerResponseError(createAxiosError(401, "denied")),
 			).rejects.toThrow();
 
-			expect(sink.eventsNamed("auth.intercept_401")).toEqual([
+			expect(sink.eventsNamed("auth.unauthorized_intercepted")).toEqual([
 				expect.objectContaining({
 					properties: expect.objectContaining({
 						recovery: "login_required",

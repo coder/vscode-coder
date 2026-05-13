@@ -494,13 +494,13 @@ describe("OAuthSessionManager", () => {
 		};
 
 		it.each(["reactive", "background"] as const)(
-			"emits auth.token_refresh with trigger=%s",
+			"emits auth.token_refreshed with trigger=%s",
 			async (trigger) => {
 				const { manager, sink } = await setupWithSink();
 
 				await manager.refreshToken(trigger);
 
-				expect(sink.eventsNamed("auth.token_refresh")).toEqual([
+				expect(sink.eventsNamed("auth.token_refreshed")).toEqual([
 					expect.objectContaining({
 						properties: expect.objectContaining({
 							trigger,

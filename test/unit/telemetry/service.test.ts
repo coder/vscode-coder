@@ -125,7 +125,7 @@ describe("TelemetryService", () => {
 
 		it("forwards caller measurements alongside the framework-set durationMs", async () => {
 			await h.service.trace(
-				"auth.token_refresh",
+				"auth.token_refreshed",
 				() => Promise.resolve(),
 				{},
 				{ attempts: 2 },

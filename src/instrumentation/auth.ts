@@ -7,18 +7,18 @@ export type AuthIntercept401Recovery =
 	| "none";
 export type AuthLoginPromptTrigger = "auth_required" | "missing_session";
 
-/** User-initiated reasons a login prompt ended without success. */
-export type LoginPromptAbortReason = "user_dismissed" | "no_url_provided";
-/** Non-user-initiated reasons a login prompt ended without success. */
-export type LoginPromptFailureReason = "auth_failed";
+/**
+ * Why a login prompt ended without a session. `auth_failed` indicates
+ * authentication itself failed; the others are user-driven aborts.
+ */
+export type LoginPromptReason =
+	| "user_dismissed"
+	| "no_url_provided"
+	| "auth_failed";
 
-/** Minimum shape `traceLoginPrompt` needs to classify a prompt outcome. */
 export type LoginPromptOutcome =
 	| { success: true }
-	| {
-			success: false;
-			reason: LoginPromptAbortReason | LoginPromptFailureReason;
-	  };
+	| { success: false; reason: LoginPromptReason };
 
 export class AuthTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
@@ -27,42 +27,40 @@ export class AuthTelemetry {
 		trigger: AuthTokenRefreshTrigger,
 		fn: () => Promise<T>,
 	): Promise<T> {
-		return this.telemetry.trace("auth.token_refresh", fn, { trigger });
+		return this.telemetry.trace("auth.token_refreshed", fn, { trigger });
 	}
 
-	/** Wrap a 401 recovery; `setRecovery` records the outcome on the span. */
+	/** Wraps the recovery+retry path for a 401; `setRecovery` records how it was handled. */
 	public traceIntercept401<T>(
 		fn: (
 			setRecovery: (recovery: AuthIntercept401Recovery) => void,
 		) => Promise<T>,
 	): Promise<T> {
-		return this.telemetry.trace("auth.intercept_401", (span) =>
+		return this.telemetry.trace("auth.unauthorized_intercepted", (span) =>
 			fn((recovery) => span.setProperty("recovery", recovery)),
 		);
 	}
 
 	/**
-	 * Record `auth.login_prompt`. The returned `LoginPromptOutcome` drives
-	 * the span: success stays `success`, `auth_failed` maps to `markFailure`,
-	 * any other reason maps to `markAborted`. The reason is always copied to
-	 * the `outcome` property.
+	 * Records `auth.login_prompted`. `auth_failed` marks the span as failure;
+	 * other non-success reasons mark it as aborted. The reason is copied to the
+	 * span's `reason` property on failure/abort only.
 	 */
 	public traceLoginPrompt<T extends LoginPromptOutcome>(
 		trigger: AuthLoginPromptTrigger,
 		fn: () => Promise<T>,
 	): Promise<T> {
 		return this.telemetry.trace(
-			"auth.login_prompt",
+			"auth.login_prompted",
 			async (span) => {
 				const result = await fn();
-				if (result.success) {
-					span.setProperty("outcome", "success");
-				} else if (result.reason === "auth_failed") {
-					span.setProperty("outcome", result.reason);
-					span.markFailure();
-				} else {
-					span.setProperty("outcome", result.reason);
-					span.markAborted();
+				if (!result.success) {
+					span.setProperty("reason", result.reason);
+					if (result.reason === "auth_failed") {
+						span.markFailure();
+					} else {
+						span.markAborted();
+					}
 				}
 				return result;
 			},

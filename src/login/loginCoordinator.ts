@@ -8,8 +8,7 @@ import { CertificateError } from "../error/certificateError";
 import {
 	AuthTelemetry,
 	type AuthLoginPromptTrigger,
-	type LoginPromptAbortReason,
-	type LoginPromptFailureReason,
+	type LoginPromptReason,
 } from "../instrumentation/auth";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
@@ -29,10 +28,7 @@ import type { Logger } from "../logging/logger";
 import type { OAuthCallback } from "../oauth/oauthCallback";
 
 type LoginResult =
-	| {
-			success: false;
-			reason: LoginPromptAbortReason | LoginPromptFailureReason;
-	  }
+	| { success: false; reason: LoginPromptReason }
 	| { success: true; user: User; token: string; oauth?: OAuthTokenData };
 
 export interface LoginOptions {

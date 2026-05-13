@@ -78,19 +78,15 @@ export class AuthInterceptor implements vscode.Disposable {
 		return this.handle401Error(error, hostname);
 	}
 
-	/**
-	 * `auth.intercept_401` wraps recovery + retry, so the span emits after the
-	 * retry resolves; the receive-time is `timestamp - durationMs`.
-	 *
-	 * TODO(#925): once `Span.log()` lands, emit a correlated `auth.intercept_401.received`
-	 * log here at decision time so analytics can see the receive moment
-	 * directly without back-computing.
-	 */
 	private handle401Error(
 		error: AxiosError,
 		hostname: string,
 	): Promise<unknown> {
 		this.logger.debug("Received 401 response, attempting recovery");
+		// TODO(#925): when Span.log() lands, emit a correlated
+		// `auth.unauthorized_intercepted.received` log at decision time so
+		// analytics can see the receive moment without back-computing from
+		// `timestamp - durationMs`.
 		return this.authTelemetry.traceIntercept401(async (setRecovery) => {
 			const newToken = (await this.oauthSessionManager.isLoggedInWithOAuth(
 				hostname,

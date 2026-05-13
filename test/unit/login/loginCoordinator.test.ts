@@ -545,7 +545,7 @@ describe("LoginCoordinator", () => {
 			trigger,
 		});
 
-		it("emits aborted + outcome when the user dismisses the dialog", async () => {
+		it("emits result=aborted with reason when the user dismisses the dialog", async () => {
 			const sink = new TestSink();
 			const { userInteraction, coordinator } = createTestContext(
 				createTestTelemetryService(sink),
@@ -556,12 +556,12 @@ describe("LoginCoordinator", () => {
 				dialogOptions("missing_session"),
 			);
 
-			expect(sink.eventsNamed("auth.login_prompt")).toEqual([
+			expect(sink.eventsNamed("auth.login_prompted")).toEqual([
 				expect.objectContaining({
 					properties: expect.objectContaining({
 						trigger: "missing_session",
 						result: "aborted",
-						outcome: "user_dismissed",
+						reason: "user_dismissed",
 					}),
 					measurements: expect.objectContaining({
 						durationMs: expect.any(Number),
@@ -570,7 +570,7 @@ describe("LoginCoordinator", () => {
 			]);
 		});
 
-		it("emits result=error (no error block) + outcome when authentication itself fails", async () => {
+		it("emits result=error with reason (and no error block) when authentication fails", async () => {
 			const sink = new TestSink();
 			const { mockConfig, userInteraction, coordinator, mockAuthFailure } =
 				createTestContext(createTestTelemetryService(sink));
@@ -585,20 +585,20 @@ describe("LoginCoordinator", () => {
 			);
 
 			expect(result).toEqual({ success: false, reason: "auth_failed" });
-			const events = sink.eventsNamed("auth.login_prompt");
+			const events = sink.eventsNamed("auth.login_prompted");
 			expect(events).toEqual([
 				expect.objectContaining({
 					properties: expect.objectContaining({
 						trigger: "auth_required",
 						result: "error",
-						outcome: "auth_failed",
+						reason: "auth_failed",
 					}),
 				}),
 			]);
 			expect(events[0].error).toBeUndefined();
 		});
 
-		it("emits success + outcome on the happy path", async () => {
+		it("emits result=success without a reason on the happy path", async () => {
 			const sink = new TestSink();
 			const { mockConfig, userInteraction, coordinator, mockSuccessfulAuth } =
 				createTestContext(createTestTelemetryService(sink));
@@ -612,15 +612,12 @@ describe("LoginCoordinator", () => {
 				dialogOptions("auth_required"),
 			);
 
-			expect(sink.eventsNamed("auth.login_prompt")).toEqual([
-				expect.objectContaining({
-					properties: expect.objectContaining({
-						trigger: "auth_required",
-						result: "success",
-						outcome: "success",
-					}),
-				}),
-			]);
+			const [event] = sink.eventsNamed("auth.login_prompted");
+			expect(event.properties).toMatchObject({
+				trigger: "auth_required",
+				result: "success",
+			});
+			expect(event.properties.reason).toBeUndefined();
 		});
 	});
 });

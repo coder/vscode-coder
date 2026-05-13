@@ -346,15 +346,12 @@ describe("SshProcessMonitor", () => {
 		it("emits found=false when discovery is abandoned by dispose", async () => {
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
-			vol.fromJSON({
-				"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
-					"-> socksPort 12345 ->",
-			});
+			vol.fromJSON(sshLog);
 			vi.mocked(find).mockResolvedValue([]);
 
 			const monitor = createMonitor({ telemetry });
-			// Allow at least one discovery iteration to start, then abandon it.
-			await new Promise((r) => setTimeout(r, 30));
+			// `find` always returns []; dispose ends the polling loop and
+			// finalises the span with `found: false`.
 			monitor.dispose();
 
 			await waitFor(
