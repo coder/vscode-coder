@@ -128,7 +128,6 @@ async function doActivate(
 		deployment,
 		serviceContainer,
 		handleAuthFailure,
-		telemetryService,
 	);
 	ctx.subscriptions.push(oauthSessionManager);
 
@@ -146,14 +145,12 @@ async function doActivate(
 	// Handles 401 responses (OAuth and otherwise)
 	const authInterceptor = new AuthInterceptor(
 		client,
-		output,
 		oauthSessionManager,
-		secretsManager,
+		serviceContainer,
 		async () => {
 			await handleAuthFailure();
 			return false;
 		},
-		telemetryService,
 	);
 	ctx.subscriptions.push(authInterceptor);
 

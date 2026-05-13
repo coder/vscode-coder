@@ -17,7 +17,7 @@ import {
 	type TelemetrySink,
 } from "./event";
 import { newSpanId, newTraceId } from "./ids";
-import { NOOP_SPAN, type Span } from "./span";
+import { NOOP_SPAN, type Span, type SpanResult } from "./span";
 
 import type { TelemetryReporter } from "./reporter";
 
@@ -149,6 +149,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		const { traceId, traceLevel } = spanOpts;
 		let completed = false;
 		let aborted = false;
+		let failed = false;
 		const warnPostEmit = (op: string, name: string): void => {
 			this.logger.warn(
 				`Telemetry span '${eventName}' ${op}('${name}') called after emit; mutation dropped`,
@@ -194,6 +195,22 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 				}
 				aborted = true;
 			},
+			markFailure(): void {
+				if (completed) {
+					warnPostEmit("markFailure", "");
+					return;
+				}
+				failed = true;
+			},
+		};
+		const resolveResult = (): SpanResult => {
+			if (failed) {
+				return "error";
+			} else if (aborted) {
+				return "aborted";
+			} else {
+				return "success";
+			}
 		};
 		return this.#emitTimed(
 			eventId,
@@ -202,7 +219,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 			spanProperties,
 			spanMeasurements,
 			spanOpts,
-			() => aborted,
+			resolveResult,
 		).finally(() => {
 			completed = true;
 		});
@@ -226,13 +243,10 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		properties: Record<string, string>,
 		measurements: Record<string, number>,
 		spanOpts: SpanOptions,
-		isAborted: () => boolean,
+		resolveResult: () => SpanResult,
 	): Promise<T> {
 		const start = performance.now();
-		const send = (
-			result: "success" | "error" | "aborted",
-			error?: unknown,
-		): void =>
+		const send = (result: SpanResult, error?: unknown): void =>
 			this.#safeEmit(
 				eventId,
 				eventName,
@@ -242,7 +256,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 			);
 		try {
 			const value = await fn();
-			send(isAborted() ? "aborted" : "success");
+			send(resolveResult());
 			return value;
 		} catch (err) {
 			send("error", err);

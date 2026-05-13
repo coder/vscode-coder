@@ -8,6 +8,7 @@ import axios, {
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
+import { createTestTelemetryService } from "./telemetry";
 import { window as vscodeWindow } from "./vscode.runtime";
 
 import type { Experiment, User } from "coder/site/src/api/typesGenerated";
@@ -16,8 +17,12 @@ import type { IncomingMessage } from "node:http";
 
 import type { CoderApi } from "@/api/coderApi";
 import type { CliCredentialManager } from "@/core/cliCredentialManager";
+import type { ServiceContainer } from "@/core/container";
+import type { MementoManager } from "@/core/mementoManager";
+import type { SecretsManager } from "@/core/secretsManager";
 import type { Logger } from "@/logging/logger";
 import type { NetworkInfo } from "@/remote/sshProcess";
+import type { TelemetryService } from "@/telemetry/service";
 import type {
 	EventHandler,
 	EventPayloadMap,
@@ -441,6 +446,35 @@ export function createMockLogger(): Logger {
 		error: vi.fn(),
 		show: vi.fn(),
 	};
+}
+
+/**
+ * Minimal `ServiceContainer` stub for tests. Pass only the services the unit
+ * under test reads; unset services fail loudly on access.
+ */
+export function createMockServiceContainer(
+	overrides: {
+		telemetry?: TelemetryService;
+		logger?: Logger;
+		secretsManager?: SecretsManager;
+		mementoManager?: MementoManager;
+		cliCredentialManager?: CliCredentialManager;
+		contextManager?: unknown;
+	} = {},
+): ServiceContainer {
+	const telemetry = overrides.telemetry ?? createTestTelemetryService();
+	const logger = overrides.logger ?? createMockLogger();
+	return {
+		getTelemetryService: () => telemetry,
+		getLogger: () => logger,
+		getSecretsManager: () => overrides.secretsManager!,
+		getMementoManager: () => overrides.mementoManager!,
+		getCliCredentialManager: () => overrides.cliCredentialManager!,
+		getContextManager: () =>
+			overrides.contextManager as ReturnType<
+				ServiceContainer["getContextManager"]
+			>,
+	} as ServiceContainer;
 }
 
 /** Update the mocked active color theme and fire onDidChangeActiveColorTheme. */

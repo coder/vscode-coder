@@ -1,18 +1,12 @@
 import { type AxiosError, isAxiosError } from "axios";
 
-import {
-	AuthTelemetry,
-	type AuthIntercept401Recovery,
-} from "../instrumentation/auth";
+import { AuthTelemetry } from "../instrumentation/auth";
 import { OAuthError } from "../oauth/errors";
-import {
-	NOOP_TELEMETRY_REPORTER,
-	type TelemetryReporter,
-} from "../telemetry/reporter";
 import { toSafeHost } from "../util";
 
 import type * as vscode from "vscode";
 
+import type { ServiceContainer } from "../core/container";
 import type { SecretsManager } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
 import type { RequestConfigWithMeta } from "../logging/types";
@@ -37,17 +31,19 @@ export type AuthRequiredHandler = (hostname: string) => Promise<boolean>;
 export class AuthInterceptor implements vscode.Disposable {
 	private readonly interceptorId: number;
 	private readonly authTelemetry: AuthTelemetry;
+	private readonly logger: Logger;
+	private readonly secretsManager: SecretsManager;
 	private authRequiredPromise: Promise<boolean> | null = null;
 
 	constructor(
 		private readonly client: CoderApi,
-		private readonly logger: Logger,
 		private readonly oauthSessionManager: OAuthSessionManager,
-		private readonly secretsManager: SecretsManager,
+		container: ServiceContainer,
 		private readonly onAuthRequired?: AuthRequiredHandler,
-		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	) {
-		this.authTelemetry = new AuthTelemetry(telemetry);
+		this.logger = container.getLogger();
+		this.secretsManager = container.getSecretsManager();
+		this.authTelemetry = new AuthTelemetry(container.getTelemetryService());
 		this.interceptorId = this.client
 			.getAxiosInstance()
 			.interceptors.response.use(
@@ -82,50 +78,63 @@ export class AuthInterceptor implements vscode.Disposable {
 		return this.handle401Error(error, hostname);
 	}
 
-	private async handle401Error(
+	/**
+	 * `auth.intercept_401` wraps recovery + retry, so the span emits after the
+	 * retry resolves; the receive-time is `timestamp - durationMs`.
+	 *
+	 * TODO(#925): once `Span.log()` lands, emit a correlated `auth.intercept_401.received`
+	 * log here at decision time so analytics can see the receive moment
+	 * directly without back-computing.
+	 */
+	private handle401Error(
 		error: AxiosError,
 		hostname: string,
 	): Promise<unknown> {
 		this.logger.debug("Received 401 response, attempting recovery");
-
-		let recovery: AuthIntercept401Recovery = "none";
-
-		if (await this.oauthSessionManager.isLoggedInWithOAuth(hostname)) {
-			try {
-				const newTokens = await this.oauthSessionManager.refreshToken();
-				this.client.setSessionToken(newTokens.access_token);
-				this.logger.debug("Token refresh successful, retrying request");
-				recovery = "refresh_success";
-				this.authTelemetry.intercept401(recovery);
-				return this.retryRequest(error, newTokens.access_token);
-			} catch (refreshError) {
-				if (refreshError instanceof OAuthError) {
-					const msg = `Token refresh failed: ${refreshError.message}`;
-					if (refreshError.requiresReAuth) {
-						this.logger.warn(msg);
-					} else {
-						this.logger.error(msg);
-					}
-				} else {
-					this.logger.error("Token refresh failed:", refreshError);
-				}
-			}
-		}
-
-		if (this.onAuthRequired) {
-			recovery = "login_required";
-			const success = await this.executeAuthRequired(hostname);
-			if (success) {
-				const auth = await this.secretsManager.getSessionAuth(hostname);
+		return this.authTelemetry.traceIntercept401(async (setRecovery) => {
+			const newToken = (await this.oauthSessionManager.isLoggedInWithOAuth(
+				hostname,
+			))
+				? await this.tryOAuthRefresh()
+				: undefined;
+			if (newToken) {
+				setRecovery("refresh_success");
+				return this.retryRequest(error, newToken);
+			} else if (this.onAuthRequired) {
+				setRecovery("login_required");
+				const success = await this.executeAuthRequired(hostname);
+				const auth = success
+					? await this.secretsManager.getSessionAuth(hostname)
+					: undefined;
 				if (auth) {
 					this.logger.debug("Re-authentication successful, retrying request");
 					return this.retryRequest(error, auth.token);
 				}
+				throw error;
+			} else {
+				setRecovery("none");
+				throw error;
 			}
-		}
+		});
+	}
 
-		this.authTelemetry.intercept401(recovery);
-		throw error;
+	/** Returns the new access token on success, or undefined when refresh fails. */
+	private async tryOAuthRefresh(): Promise<string | undefined> {
+		try {
+			const newTokens = await this.oauthSessionManager.refreshToken();
+			this.client.setSessionToken(newTokens.access_token);
+			this.logger.debug("Token refresh successful, retrying request");
+			return newTokens.access_token;
+		} catch (refreshError) {
+			if (!(refreshError instanceof OAuthError)) {
+				this.logger.error("Token refresh failed:", refreshError);
+			} else if (refreshError.requiresReAuth) {
+				this.logger.warn(`Token refresh failed: ${refreshError.message}`);
+			} else {
+				this.logger.error(`Token refresh failed: ${refreshError.message}`);
+			}
+			return undefined;
+		}
 	}
 
 	/**

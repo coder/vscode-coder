@@ -352,6 +352,45 @@ describe("TelemetryService", () => {
 			});
 		});
 
+		it("markFailure flips result to 'error' on normal return without an error block", async () => {
+			await h.service.trace("op", (span) => {
+				span.markFailure();
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "error" },
+			});
+			expect(h.sink.events[0].error).toBeUndefined();
+		});
+
+		it("markFailure overrides markAborted (failure wins over abort)", async () => {
+			await h.service.trace("op", (span) => {
+				span.markAborted();
+				span.markFailure();
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0].properties.result).toBe("error");
+		});
+
+		it("thrown errors take precedence over markFailure (error block is preserved)", async () => {
+			const boom = new Error("kaboom");
+			await expect(
+				h.service.trace("op", (span) => {
+					span.markFailure();
+					return Promise.reject(boom);
+				}),
+			).rejects.toBe(boom);
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "error" },
+				error: { message: "kaboom" },
+			});
+		});
+
 		it("on phase failure: completed phases emit success, parent emits an error summary, error rethrown, later phases never run", async () => {
 			const boom = new Error("phase-2-broke");
 

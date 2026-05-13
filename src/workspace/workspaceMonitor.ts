@@ -11,13 +11,10 @@ import {
 	areNotificationsDisabled,
 	areUpdateNotificationsDisabled,
 } from "../settings/notifications";
-import {
-	NOOP_TELEMETRY_REPORTER,
-	type TelemetryReporter,
-} from "../telemetry/reporter";
 import { vscodeProposed } from "../vscodeProposed";
 
 import type { CoderApi } from "../api/coderApi";
+import type { ServiceContainer } from "../core/container";
 import type { ContextManager } from "../core/contextManager";
 import type { Logger } from "../logging/logger";
 import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
@@ -48,18 +45,20 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	// For logging.
 	private readonly name: string;
 	private readonly telemetry: WorkspaceTelemetry;
+	private readonly logger: Logger;
+	private readonly contextManager: ContextManager;
 
 	private latestWorkspace: Workspace;
 
 	private constructor(
 		workspace: Workspace,
 		private readonly client: CoderApi,
-		private readonly logger: Logger,
-		private readonly contextManager: ContextManager,
-		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
+		container: ServiceContainer,
 	) {
+		this.logger = container.getLogger();
+		this.contextManager = container.getContextManager();
 		this.name = createWorkspaceIdentifier(workspace);
-		this.telemetry = new WorkspaceTelemetry(telemetry);
+		this.telemetry = new WorkspaceTelemetry(container.getTelemetryService());
 		this.latestWorkspace = workspace;
 
 		const statusBarItem = vscode.window.createStatusBarItem(
@@ -83,23 +82,15 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	static async create(
 		workspace: Workspace,
 		client: CoderApi,
-		logger: Logger,
-		contextManager: ContextManager,
-		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
+		container: ServiceContainer,
 	): Promise<WorkspaceMonitor> {
-		const monitor = new WorkspaceMonitor(
-			workspace,
-			client,
-			logger,
-			contextManager,
-			telemetry,
-		);
+		const monitor = new WorkspaceMonitor(workspace, client, container);
 
 		// Initialize websocket connection
 		const socket = await client.watchWorkspace(workspace);
 
 		socket.addEventListener("open", () => {
-			logger.info(`Monitoring ${monitor.name}...`);
+			monitor.logger.info(`Monitoring ${monitor.name}...`);
 		});
 
 		socket.addEventListener("message", (event) => {

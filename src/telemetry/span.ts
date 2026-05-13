@@ -1,6 +1,16 @@
 import type { CallerMeasurements, CallerProperties } from "./event";
 
 /**
+ * Final disposition recorded on a traced event's `result` property.
+ * - `success`: ran to completion as intended.
+ * - `aborted`: ended early by a user-initiated cancel.
+ * - `error`:   the operation failed. Thrown exceptions populate the event's
+ *              `error` block; `markFailure()` does not. This matches
+ *              OpenTelemetry's "Status: Error + optional exception event".
+ */
+export type SpanResult = "success" | "aborted" | "error";
+
+/**
  * Parent span handle. Children's `eventName` composes as `${parent.eventName}.${phaseName}`.
  * Phase names should not contain `.`; if they do, dots are replaced with `_` and a warning is logged.
  * Recurse via `phase` for grandchildren.
@@ -22,6 +32,8 @@ export interface Span {
 	setMeasurement(name: string, value: number): void;
 	/** Flip this span's `result` from `success` to `aborted` on normal return. */
 	markAborted(): void;
+	/** Flip `result` to `error` for a failure captured in the return value. See `SpanResult`. */
+	markFailure(): void;
 }
 
 /** No-op `Span` used when telemetry is off. Runs phase fns but emits nothing. */
@@ -33,6 +45,7 @@ export const NOOP_SPAN: Span = {
 		return fn(NOOP_SPAN);
 	},
 	markAborted: () => undefined,
+	markFailure: () => undefined,
 	setProperty: () => undefined,
 	setMeasurement: () => undefined,
 };

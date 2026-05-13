@@ -7,13 +7,14 @@ import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { LoginCoordinator } from "@/login/loginCoordinator";
 import { OAuthCallback } from "@/oauth/oauthCallback";
-import { maybeAskAuthMethod } from "@/promptUtils";
+import { maybeAskAuthMethod, maybeAskUrl } from "@/promptUtils";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	createAxiosError,
 	createMockCliCredentialManager,
 	createMockLogger,
+	createMockServiceContainer,
 	createMockUser,
 	InMemoryMemento,
 	InMemorySecretStorage,
@@ -22,7 +23,7 @@ import {
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
 
-import type { TelemetryReporter } from "@/telemetry/reporter";
+import type { TelemetryService } from "@/telemetry/service";
 
 // Hoisted mock adapter implementation
 const mockAxiosAdapterImpl = vi.hoisted(
@@ -101,7 +102,7 @@ const TEST_HOSTNAME = "coder.example.com";
 /**
  * Creates a fresh test context with all dependencies.
  */
-function createTestContext(telemetry?: TelemetryReporter) {
+function createTestContext(telemetry?: TelemetryService) {
 	vi.resetAllMocks();
 
 	const mockAdapter = (axios as MockedAxios).__mockAdapter;
@@ -124,13 +125,15 @@ function createTestContext(telemetry?: TelemetryReporter) {
 
 	const mockCredentialManager = createMockCliCredentialManager();
 	const coordinator = new LoginCoordinator(
-		secretsManager,
-		mementoManager,
-		logger,
-		mockCredentialManager,
+		createMockServiceContainer({
+			telemetry,
+			logger,
+			secretsManager,
+			mementoManager,
+			cliCredentialManager: mockCredentialManager,
+		}),
 		oauthCallback,
 		"coder.coder-remote",
-		telemetry,
 	);
 
 	const mockSuccessfulAuth = (user = createMockUser()) => {
@@ -157,6 +160,7 @@ function createTestContext(telemetry?: TelemetryReporter) {
 		mockGetAuthenticatedUser,
 		mockConfig,
 		userInteraction,
+		logger,
 		secretsManager,
 		oauthCallback,
 		mementoManager,
@@ -310,26 +314,10 @@ describe("LoginCoordinator", () => {
 		});
 
 		it("logs warning instead of showing dialog for autoLogin", async () => {
-			const {
-				mockConfig,
-				secretsManager,
-				oauthCallback,
-				mementoManager,
-				mockAuthFailure,
-			} = createTestContext();
+			const { mockConfig, logger, coordinator, mockAuthFailure } =
+				createTestContext();
 			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
 			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-
-			const logger = createMockLogger();
-			const coordinator = new LoginCoordinator(
-				secretsManager,
-				mementoManager,
-				logger,
-				createMockCliCredentialManager(),
-				oauthCallback,
-				"coder.coder-remote",
-			);
-
 			mockAuthFailure("Certificate error");
 
 			const result = await coordinator.ensureLoggedIn({
@@ -357,33 +345,10 @@ describe("LoginCoordinator", () => {
 			const result = await coordinator.ensureLoggedInWithDialog({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
+				trigger: "auth_required",
 			});
 
 			expect(result.success).toBe(false);
-		});
-
-		it("emits telemetry with trigger and aborted result when dismissed", async () => {
-			const sink = new TestSink();
-			const { userInteraction, coordinator } = createTestContext(
-				createTestTelemetryService(sink),
-			);
-			userInteraction.setResponse("Authentication Required", undefined);
-
-			await coordinator.ensureLoggedInWithDialog({
-				url: TEST_URL,
-				safeHostname: TEST_HOSTNAME,
-				trigger: "missing_session",
-			});
-
-			expect(sink.events).toContainEqual(
-				expect.objectContaining({
-					eventName: "auth.login_prompt",
-					properties: expect.objectContaining({
-						trigger: "missing_session",
-						result: "aborted",
-					}),
-				}),
-			);
 		});
 	});
 
@@ -570,6 +535,92 @@ describe("LoginCoordinator", () => {
 			const result = await login();
 
 			expect(result).toEqual({ success: true, user, token: "stored-token" });
+		});
+	});
+
+	describe("telemetry", () => {
+		const dialogOptions = (trigger: "auth_required" | "missing_session") => ({
+			url: TEST_URL,
+			safeHostname: TEST_HOSTNAME,
+			trigger,
+		});
+
+		it("emits aborted + outcome when the user dismisses the dialog", async () => {
+			const sink = new TestSink();
+			const { userInteraction, coordinator } = createTestContext(
+				createTestTelemetryService(sink),
+			);
+			userInteraction.setResponse("Authentication Required", undefined);
+
+			await coordinator.ensureLoggedInWithDialog(
+				dialogOptions("missing_session"),
+			);
+
+			expect(sink.eventsNamed("auth.login_prompt")).toEqual([
+				expect.objectContaining({
+					properties: expect.objectContaining({
+						trigger: "missing_session",
+						result: "aborted",
+						outcome: "user_dismissed",
+					}),
+					measurements: expect.objectContaining({
+						durationMs: expect.any(Number),
+					}),
+				}),
+			]);
+		});
+
+		it("emits result=error (no error block) + outcome when authentication itself fails", async () => {
+			const sink = new TestSink();
+			const { mockConfig, userInteraction, coordinator, mockAuthFailure } =
+				createTestContext(createTestTelemetryService(sink));
+			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
+			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
+			mockAuthFailure("Certificate error");
+			vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
+			userInteraction.setResponse("Authentication Required", "Login");
+
+			const result = await coordinator.ensureLoggedInWithDialog(
+				dialogOptions("auth_required"),
+			);
+
+			expect(result).toEqual({ success: false, reason: "auth_failed" });
+			const events = sink.eventsNamed("auth.login_prompt");
+			expect(events).toEqual([
+				expect.objectContaining({
+					properties: expect.objectContaining({
+						trigger: "auth_required",
+						result: "error",
+						outcome: "auth_failed",
+					}),
+				}),
+			]);
+			expect(events[0].error).toBeUndefined();
+		});
+
+		it("emits success + outcome on the happy path", async () => {
+			const sink = new TestSink();
+			const { mockConfig, userInteraction, coordinator, mockSuccessfulAuth } =
+				createTestContext(createTestTelemetryService(sink));
+			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
+			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
+			mockSuccessfulAuth();
+			vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
+			userInteraction.setResponse("Authentication Required", "Login");
+
+			await coordinator.ensureLoggedInWithDialog(
+				dialogOptions("auth_required"),
+			);
+
+			expect(sink.eventsNamed("auth.login_prompt")).toEqual([
+				expect.objectContaining({
+					properties: expect.objectContaining({
+						trigger: "auth_required",
+						result: "success",
+						outcome: "success",
+					}),
+				}),
+			]);
 		});
 	});
 });

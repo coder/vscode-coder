@@ -202,7 +202,6 @@ export class Remote {
 				async () => {
 					await this.showSessionExpiredDialog(context);
 				},
-				telemetry,
 			);
 			disposables.push(remoteOAuthManager);
 
@@ -225,14 +224,12 @@ export class Remote {
 			// Create 401 interceptor - handles auth failures with re-login dialog
 			const authInterceptor = new AuthInterceptor(
 				workspaceClient,
-				this.logger,
 				remoteOAuthManager,
-				this.secretsManager,
+				this.serviceContainer,
 				async () => {
 					const result = await this.showSessionExpiredDialog(context);
 					return result.success;
 				},
-				telemetry,
 			);
 			disposables.push(authInterceptor);
 
@@ -316,9 +313,7 @@ export class Remote {
 			const monitor = await WorkspaceMonitor.create(
 				workspace,
 				workspaceClient,
-				this.logger,
-				this.contextManager,
-				telemetry,
+				this.serviceContainer,
 			);
 			disposables.push(
 				monitor,
@@ -336,9 +331,8 @@ export class Remote {
 				args.startupMode,
 				binaryPath,
 				featureSet,
-				this.logger,
 				cliAuth,
-				telemetry,
+				this.serviceContainer,
 			);
 			disposables.push(stateMachine);
 

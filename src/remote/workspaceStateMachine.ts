@@ -15,10 +15,6 @@ import {
 } from "../api/workspace";
 import { WorkspaceTelemetry } from "../instrumentation/workspace";
 import { maybeAskAgent } from "../promptUtils";
-import {
-	NOOP_TELEMETRY_REPORTER,
-	type TelemetryReporter,
-} from "../telemetry/reporter";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { TerminalOutputChannel } from "./terminalOutputChannel";
@@ -30,6 +26,7 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "../api/coderApi";
+import type { ServiceContainer } from "../core/container";
 import type { StartupMode } from "../core/mementoManager";
 import type { FeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
@@ -49,18 +46,20 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	private agent: { id: string; name: string } | undefined;
 	private workspace: Workspace | undefined;
 
+	private readonly logger: Logger;
+
 	constructor(
 		private readonly parts: AuthorityParts,
 		private readonly workspaceClient: CoderApi,
 		private startupMode: StartupMode,
 		private readonly binaryPath: string,
 		private readonly featureSet: FeatureSet,
-		private readonly logger: Logger,
 		private readonly cliAuth: CliAuth,
-		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
+		container: ServiceContainer,
 	) {
+		this.logger = container.getLogger();
 		this.terminal = new TerminalOutputChannel("Coder: Workspace Build");
-		this.telemetry = new WorkspaceTelemetry(telemetry);
+		this.telemetry = new WorkspaceTelemetry(container.getTelemetryService());
 	}
 
 	/**
@@ -277,7 +276,9 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			mode: this.startupMode,
 			status: workspace.latest_build.status,
 		});
-		await startWorkspace(this.buildCliContext(workspace));
+		await this.telemetry.traceStartTriggered(workspaceName, () =>
+			startWorkspace(this.buildCliContext(workspace)),
+		);
 		this.logger.info(`${workspaceName} start initiated`);
 	}
 
@@ -295,8 +296,9 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			status: workspace.latest_build.status,
 		});
 		try {
-			this.workspace = await this.telemetry.traceUpdateTriggered(() =>
-				updateWorkspace(this.buildCliContext(workspace)),
+			this.workspace = await this.telemetry.traceUpdateTriggered(
+				workspaceName,
+				() => updateWorkspace(this.buildCliContext(workspace)),
 			);
 			this.logger.info(`${workspaceName} update initiated`);
 			return this.workspace;

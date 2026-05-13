@@ -11,6 +11,7 @@ import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	createAxiosError,
 	createMockLogger,
+	createMockServiceContainer,
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockConfigurationProvider,
@@ -24,7 +25,7 @@ import {
 
 import type { CoderApi } from "@/api/coderApi";
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
-import type { TelemetryReporter } from "@/telemetry/reporter";
+import type { TelemetryService } from "@/telemetry/service";
 
 /**
  * Creates a mock axios instance with controllable interceptors.
@@ -142,15 +143,13 @@ function createTestContext() {
 	/** Creates interceptor with optional callback */
 	const createInterceptor = (
 		onAuthRequired?: AuthRequiredHandler,
-		telemetry?: TelemetryReporter,
+		telemetry?: TelemetryService,
 	) =>
 		new AuthInterceptor(
 			mockCoderApi,
-			logger,
 			mockOAuthManager as unknown as OAuthSessionManager,
-			secretsManager,
+			createMockServiceContainer({ telemetry, logger, secretsManager }),
 			onAuthRequired,
-			telemetry,
 		);
 
 	return {
@@ -190,7 +189,7 @@ describe("AuthInterceptor", () => {
 	});
 
 	describe("401 handling with OAuth", () => {
-		it("refreshes token, retries request, and emits telemetry", async () => {
+		it("refreshes token and retries the request", async () => {
 			const {
 				mockCoderApi,
 				mockOAuthManager,
@@ -198,7 +197,6 @@ describe("AuthInterceptor", () => {
 				setupOAuthTokens,
 				createInterceptor,
 			} = createTestContext();
-			const sink = new TestSink();
 
 			await setupOAuthTokens();
 
@@ -210,19 +208,13 @@ describe("AuthInterceptor", () => {
 			const retryResponse = { data: "success", status: 200 };
 			vi.spyOn(axiosInstance, "request").mockResolvedValue(retryResponse);
 
-			createInterceptor(undefined, createTestTelemetryService(sink));
+			createInterceptor();
 
 			const error = createAxiosError(401, "Unauthorized");
 			const result = await axiosInstance.triggerResponseError(error);
 
 			expect(mockCoderApi.getSessionToken()).toBe("new-access-token");
 			expect(result).toEqual(retryResponse);
-			expect(sink.events).toContainEqual(
-				expect.objectContaining({
-					eventName: "auth.intercept_401",
-					properties: { recovery: "refresh_success" },
-				}),
-			);
 		});
 
 		it("does not retry if already retried", async () => {
@@ -270,23 +262,16 @@ describe("AuthInterceptor", () => {
 	});
 
 	describe("401 handling with callback (non-OAuth)", () => {
-		it("calls onAuthRequired callback on 401 and emits login-required recovery", async () => {
+		it("calls onAuthRequired callback on 401", async () => {
 			const { axiosInstance, createInterceptor } = createTestContext();
-			const sink = new TestSink();
 
 			const onAuthRequired = vi.fn().mockResolvedValue(false);
-			createInterceptor(onAuthRequired, createTestTelemetryService(sink));
+			createInterceptor(onAuthRequired);
 
 			const error = createAxiosError(401, "Unauthorized");
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
-			expect(sink.events).toContainEqual(
-				expect.objectContaining({
-					eventName: "auth.intercept_401",
-					properties: { recovery: "login_required" },
-				}),
-			);
 		});
 
 		it("retries request when callback returns true", async () => {
@@ -444,6 +429,60 @@ describe("AuthInterceptor", () => {
 			interceptor.dispose();
 
 			expect(axiosInstance.getInterceptorCount()).toBe(0);
+		});
+	});
+
+	describe("telemetry", () => {
+		it("emits span with recovery=refresh_success and result=success when OAuth refresh succeeds", async () => {
+			const sink = new TestSink();
+			const {
+				mockOAuthManager,
+				axiosInstance,
+				setupOAuthTokens,
+				createInterceptor,
+			} = createTestContext();
+			await setupOAuthTokens();
+			mockOAuthManager.refreshToken.mockResolvedValue(
+				createMockTokenResponse({ access_token: "new" }),
+			);
+			vi.spyOn(axiosInstance, "request").mockResolvedValue({ status: 200 });
+
+			createInterceptor(undefined, createTestTelemetryService(sink));
+			await axiosInstance.triggerResponseError(
+				createAxiosError(401, "Unauthorized"),
+			);
+
+			expect(sink.eventsNamed("auth.intercept_401")).toEqual([
+				expect.objectContaining({
+					properties: expect.objectContaining({
+						recovery: "refresh_success",
+						result: "success",
+					}),
+					measurements: expect.objectContaining({
+						durationMs: expect.any(Number),
+					}),
+				}),
+			]);
+		});
+
+		it("emits span with recovery=login_required and result=error when falling through to callback", async () => {
+			const sink = new TestSink();
+			const { axiosInstance, createInterceptor } = createTestContext();
+			const onAuthRequired = vi.fn().mockResolvedValue(false);
+
+			createInterceptor(onAuthRequired, createTestTelemetryService(sink));
+			await expect(
+				axiosInstance.triggerResponseError(createAxiosError(401, "denied")),
+			).rejects.toThrow();
+
+			expect(sink.eventsNamed("auth.intercept_401")).toEqual([
+				expect.objectContaining({
+					properties: expect.objectContaining({
+						recovery: "login_required",
+						result: "error",
+					}),
+				}),
+			]);
 		});
 	});
 });

@@ -3,10 +3,6 @@ import {
 	AuthTelemetry,
 	type AuthTokenRefreshTrigger,
 } from "../instrumentation/auth";
-import {
-	NOOP_TELEMETRY_REPORTER,
-	type TelemetryReporter,
-} from "../telemetry/reporter";
 
 import { DEFAULT_OAUTH_SCOPES, REFRESH_GRANT_TYPE } from "./constants";
 import { OAuthError, parseOAuthError } from "./errors";
@@ -66,31 +62,26 @@ export class OAuthSessionManager implements vscode.Disposable {
 		deployment: Deployment | null,
 		container: ServiceContainer,
 		onAuthRequired: () => Promise<void> = () => Promise.resolve(),
-		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): OAuthSessionManager {
 		const manager = new OAuthSessionManager(
 			deployment,
 			container.getSecretsManager(),
 			container.getLogger(),
 			onAuthRequired,
-			telemetry,
+			new AuthTelemetry(container.getTelemetryService()),
 		);
 		manager.setupTokenListener();
 		manager.scheduleNextRefresh();
 		return manager;
 	}
 
-	private readonly authTelemetry: AuthTelemetry;
-
 	private constructor(
 		private deployment: Deployment | null,
 		private readonly secretsManager: SecretsManager,
 		private readonly logger: Logger,
 		private readonly onAuthRequired: () => Promise<void>,
-		telemetry: TelemetryReporter,
-	) {
-		this.authTelemetry = new AuthTelemetry(telemetry);
-	}
+		private readonly authTelemetry: AuthTelemetry,
+	) {}
 
 	/**
 	 * Get current deployment, throwing if not set.
