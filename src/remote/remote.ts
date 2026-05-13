@@ -397,6 +397,7 @@ export class Remote {
 				logger: this.logger,
 				codeLogDir: this.pathResolver.getCodeLogDir(),
 				remoteSshExtensionId: args.remoteSshExtensionId,
+				telemetry: this.serviceContainer.getTelemetryService(),
 			});
 			disposables.push(sshMonitor);
 
