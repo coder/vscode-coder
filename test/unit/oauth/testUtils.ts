@@ -123,7 +123,7 @@ export function createBaseTestContext() {
 	vi.mocked(getHeaders).mockResolvedValue({});
 
 	// Constructor sets up vscode.workspace mock
-	const _configurationProvider = new MockConfigurationProvider();
+	const configurationProvider = new MockConfigurationProvider();
 
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
@@ -148,5 +148,6 @@ export function createBaseTestContext() {
 		oauthCallback,
 		logger,
 		setupOAuthRoutes,
+		configurationProvider,
 	};
 }

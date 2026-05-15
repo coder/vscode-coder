@@ -134,11 +134,11 @@
 					"default": "",
 					"scope": "application"
 				},
-				"coder.alternativeWebUrl": {
-					"markdownDescription": "An alternative URL to use when opening Coder pages in the browser. When set, this replaces the connection URL for browser links only (dashboard, workspace pages, token authentication page). The connection URL is still used for API calls, SSH, and CLI operations. Useful when the Coder API runs on a port that browsers restrict (e.g., 7004) but the web UI is accessible on a standard port (e.g., 443).",
-					"type": "string",
-					"default": ""
-				},
+			"coder.alternativeWebUrl": {
+				"markdownDescription": "An alternative URL to use when opening Coder pages in the browser. When set, this replaces the connection URL for browser links only (dashboard, workspace pages, token authentication page, OAuth authorization page). The connection URL is still used for API calls, SSH, and CLI operations. Useful when the Coder API runs on a port that browsers restrict (e.g., 7004) but the web UI is accessible on a standard port (e.g., 443).",
+				"type": "string",
+				"default": ""
+			},
 				"coder.autologin": {
 					"markdownDescription": "Automatically log into the default URL when the extension is activated. coder.defaultUrl is preferred, otherwise the CODER_URL environment variable will be used. This setting has no effect if neither is set.",
 					"type": "boolean",
