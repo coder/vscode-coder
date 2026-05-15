@@ -142,10 +142,10 @@ export function expandPath(input: string): string {
 		(_, name: string) => process.env[name] ?? "",
 	);
 	const userHome = os.homedir();
-	const detilded = expanded.startsWith("~")
+	const tildeExpanded = expanded.startsWith("~")
 		? userHome + expanded.substring("~".length)
 		: expanded;
-	return detilded.replaceAll("${userHome}", userHome);
+	return tildeExpanded.replaceAll("${userHome}", userHome);
 }
 
 /**
@@ -209,9 +209,24 @@ export async function renameWithRetry(
 	}
 }
 
+/**
+ * Wraps `arg` in `"..."` unless every character is in the shell-safe
+ * whitelist (matching Python `shlex.quote`'s set: alphanumerics plus
+ * `@%+,=:./-`). Anything else (whitespace, `"`, `&|;()<>*?[~#!^\` `$`)
+ * forces quoting so the output is a single token in POSIX `sh`, cmd.exe,
+ * and PowerShell.
+ *
+ * Not a universal shell-escape: `$VAR` / `$(...)` / `%VAR%` still expand
+ * inside `"..."`. For untrusted values use {@link escapeShellArg}.
+ *
+ * @see https://docs.python.org/3/library/shlex.html#shlex.quote
+ * @see https://learn.microsoft.com/en-us/archive/blogs/twistylittlepassagesallalike/everyone-quotes-command-line-arguments-the-wrong-way
+ */
 export function escapeCommandArg(arg: string): string {
-	const escapedString = arg.replaceAll('"', String.raw`\"`);
-	return `"${escapedString}"`;
+	if (arg !== "" && /^[\w@%+,=:./-]+$/.test(arg)) {
+		return arg;
+	}
+	return `"${arg.replaceAll('"', String.raw`\"`)}"`;
 }
 
 /**

@@ -264,11 +264,12 @@ function spawnCliInTerminal(options: {
 		writeEmitter.fire("Press any key to close.\r\n");
 	});
 	proc.on("close", (code, signal) => {
-		exited = true;
-		clearTimeout(forceKillTimer);
-		if (closed) {
+		// On ENOENT/EACCES, `error` fires first and already wrote the failure
+		if (exited || closed) {
 			return;
 		}
+		exited = true;
+		clearTimeout(forceKillTimer);
 		let reason: string;
 		if (signal === "SIGKILL") {
 			reason = "Process force killed (SIGKILL)";

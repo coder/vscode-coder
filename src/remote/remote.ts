@@ -41,9 +41,9 @@ import { type LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	type CliAuth,
+	getExpandedUserGlobalFlags,
 	getGlobalShellFlags,
 	getSshFlags,
-	getUserGlobalFlags,
 	resolveCliAuth,
 } from "../settings/cli";
 import { getHeaderCommand } from "../settings/headers";
@@ -436,7 +436,7 @@ export class Remote {
 					setting: "coder.globalFlags",
 					title: "Global Flags",
 					getValue: () =>
-						getUserGlobalFlags(vscode.workspace.getConfiguration()),
+						getExpandedUserGlobalFlags(vscode.workspace.getConfiguration()),
 				},
 				{
 					setting: "coder.headerCommand",

@@ -235,6 +235,8 @@ describe("updateWorkspace", () => {
 
 		const result = updateWorkspace(ctx);
 		await sp.error(new Error("spawn /usr/bin/coder ENOENT"));
+		// Real Node fires `error` then `close(null, null)` on ENOENT.
+		await sp.close(null);
 
 		await expect(result).rejects.toThrow(/ENOENT/);
 		expect(restClient.getWorkspace).not.toHaveBeenCalled();

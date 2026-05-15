@@ -16,7 +16,7 @@ export type CliAuth =
  * `--flag=value` entries the substitution is scoped to the value half so
  * `--cfg=~/coder` works without rewriting the flag name.
  */
-export function getUserGlobalFlags(
+export function getExpandedUserGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 ): string[] {
 	return configs.get<string[]>("coder.globalFlags", []).map((flag) => {
@@ -56,7 +56,11 @@ function buildGlobalFlags(
 			? ["--url", escAuth(auth.url)]
 			: ["--global-config", escAuth(auth.configDir)];
 
-	const filtered = stripManagedFlags(getUserGlobalFlags(configs));
+	// Escape each user flag so expansion-introduced whitespace stays inside
+	// one shell token. `escAuth` is `identity` on the array path.
+	const filtered = stripManagedFlags(getExpandedUserGlobalFlags(configs)).map(
+		escAuth,
+	);
 
 	return [...filtered, ...authFlags, ...getHeaderArgs(configs, escHeader)];
 }
