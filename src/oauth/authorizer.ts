@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
+import { resolveBrowserUrl } from "../util";
 
 import {
 	AUTH_GRANT_TYPE,
@@ -201,7 +202,13 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			code_challenge_method: PKCE_CHALLENGE_METHOD,
 		});
 
-		const url = `${metadata.authorization_endpoint}?${params.toString()}`;
+		// The server-advertised endpoint is authoritative for the path, but the
+		// origin may be unreachable from a browser (e.g. blocked port). When
+		// `coder.alternativeWebUrl` is set, swap the origin so the user lands on
+		// a reachable host while preserving the path the server told us to use.
+		const endpoint = new URL(metadata.authorization_endpoint);
+		const browserBase = resolveBrowserUrl(endpoint.origin);
+		const url = `${browserBase}${endpoint.pathname}?${params.toString()}`;
 
 		this.logger.debug("Built OAuth authorization URL:", {
 			client_id: clientId,

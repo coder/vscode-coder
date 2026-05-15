@@ -260,6 +260,34 @@ describe("OAuthAuthorizer", () => {
 				"fetching user...",
 			]);
 		});
+
+		it("rewrites authorization endpoint origin when alternativeWebUrl is set", async () => {
+			const {
+				mockAdapter,
+				configurationProvider,
+				startLogin,
+				completeLogin,
+			} = createTestContext();
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://web.example.com",
+			);
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					"https://coder.example.com:7004",
+				),
+				"/oauth2/register": createMockClientRegistration(),
+				"/oauth2/token": createMockTokenResponse(),
+				"/api/v2/users/me": { username: "test-user" },
+			});
+
+			const { loginPromise, authUrl, state } = await startLogin();
+			expect(authUrl.origin).toBe("https://web.example.com");
+			expect(authUrl.pathname).toBe("/oauth2/authorize");
+
+			await completeLogin(state);
+			await loginPromise;
+		});
 	});
 
 	describe("callback handling", () => {
