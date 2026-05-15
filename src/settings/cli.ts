@@ -1,5 +1,5 @@
 import { isKeyringSupported } from "../core/cliCredentialManager";
-import { escapeCommandArg } from "../util";
+import { escapeCommandArg, escapeShellArg } from "../util";
 
 import { getHeaderArgs } from "./headers";
 
@@ -11,67 +11,61 @@ export type CliAuth =
 	| { mode: "global-config"; configDir: string }
 	| { mode: "url"; url: string };
 
-/**
- * Returns the raw global flags from user configuration.
- */
-export function getGlobalFlagsRaw(
+/** Returns the user's `coder.globalFlags` as configured, with no expansion. */
+export function getUserGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 ): string[] {
 	return configs.get<string[]>("coder.globalFlags", []);
 }
 
-/**
- * Returns global configuration flags for Coder CLI commands with auth values
- * escaped for shell use (e.g., `terminal.sendText`, `spawn({ shell: true })`).
- */
+/** Flags for shell contexts (`terminal.sendText`, `spawn({ shell: true })`). */
 export function getGlobalShellFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
 ): string[] {
-	return buildGlobalFlags(configs, auth, escapeCommandArg);
+	return buildGlobalFlags(configs, auth, escapeCommandArg, escapeShellArg);
 }
 
-/**
- * Returns global configuration flags for Coder CLI commands with raw auth
- * values suitable for `execFile` (no shell escaping).
- */
+/** Raw flags for `execFile` or `spawn` without a shell. */
 export function getGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
 ): string[] {
-	return buildGlobalFlags(configs, auth, (s) => s);
+	return buildGlobalFlags(configs, auth, identity, identity);
 }
+
+const identity = (s: string) => s;
 
 function buildGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
-	esc: (s: string) => string,
+	escAuth: (s: string) => string,
+	escHeader: (s: string) => string,
 ): string[] {
 	const authFlags =
 		auth.mode === "url"
-			? ["--url", esc(auth.url)]
-			: ["--global-config", esc(auth.configDir)];
+			? ["--url", escAuth(auth.url)]
+			: ["--global-config", escAuth(auth.configDir)];
 
-	const raw = getGlobalFlagsRaw(configs);
-	const filtered = stripManagedFlags(raw);
+	const filtered = stripManagedFlags(getUserGlobalFlags(configs));
 
-	return [...filtered, ...authFlags, ...getHeaderArgs(configs)];
+	return [...filtered, ...authFlags, ...getHeaderArgs(configs, escHeader)];
 }
 
-function stripManagedFlags(rawFlags: string[]): string[] {
+function stripManagedFlags(flags: string[]): string[] {
 	const filtered: string[] = [];
-	for (let i = 0; i < rawFlags.length; i++) {
-		if (isFlag(rawFlags[i], "--use-keyring")) {
+	for (let i = 0; i < flags.length; i++) {
+		if (isFlag(flags[i], "--use-keyring")) {
 			continue;
 		}
-		if (isFlag(rawFlags[i], "--global-config")) {
+		if (isFlag(flags[i], "--global-config")) {
 			// Skip the next item too when the value is a separate entry.
-			if (rawFlags[i] === "--global-config") {
+			if (flags[i] === "--global-config") {
 				i++;
 			}
 			continue;
 		}
-		filtered.push(rawFlags[i]);
+		filtered.push(flags[i]);
 	}
 	return filtered;
 }

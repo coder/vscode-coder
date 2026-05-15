@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
 
+import { WorkspaceUpdateCancelledError } from "@/api/updateParameters";
 import {
 	startWorkspace,
 	updateWorkspace,
@@ -94,6 +96,9 @@ describe("WorkspaceStateMachine", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		MockTerminalOutputChannel.lastInstance = undefined;
+		vi.mocked(updateWorkspace).mockImplementation((ctx) =>
+			Promise.resolve(ctx.workspace),
+		);
 		vi.mocked(maybeAskAgent).mockImplementation((agents) =>
 			Promise.resolve(agents.length > 0 ? agents[0] : undefined),
 		);
@@ -180,6 +185,44 @@ describe("WorkspaceStateMachine", () => {
 
 			expect(await sm.processWorkspace(ws, progress)).toBe(false);
 			expect(updateWorkspace).toHaveBeenCalledOnce();
+		});
+
+		it("falls through to the agent check after an update completes", async () => {
+			vi.mocked(updateWorkspace).mockResolvedValueOnce(runningWorkspace());
+			const { sm, progress } = setup("update");
+			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+
+			expect(await sm.processWorkspace(ws, progress)).toBe(true);
+			expect(updateWorkspace).toHaveBeenCalledOnce();
+			expect(sm.getWorkspace()?.latest_build.status).toBe("running");
+		});
+
+		it("falls back to start and warns the user when the update fails", async () => {
+			vi.mocked(updateWorkspace).mockRejectedValueOnce(
+				new Error("template not found"),
+			);
+			const { sm, progress } = setup("update");
+			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+
+			expect(await sm.processWorkspace(ws, progress)).toBe(false);
+			expect(updateWorkspace).toHaveBeenCalledOnce();
+			expect(startWorkspace).toHaveBeenCalledOnce();
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				expect.stringMatching(/Workspace update failed:.*template not found/),
+			);
+		});
+
+		it("falls back to start silently when the user cancels the update", async () => {
+			vi.mocked(updateWorkspace).mockRejectedValueOnce(
+				new WorkspaceUpdateCancelledError(),
+			);
+			const { sm, progress } = setup("update");
+			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+
+			expect(await sm.processWorkspace(ws, progress)).toBe(false);
+			expect(updateWorkspace).toHaveBeenCalledOnce();
+			expect(startWorkspace).toHaveBeenCalledOnce();
+			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 		});
 
 		it("prompts user when mode is 'none' and user picks 'Start'", async () => {

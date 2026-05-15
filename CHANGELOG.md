@@ -34,6 +34,12 @@
   domains with Punycode (`xn--`) labels, can now be opened from recent
   connections. The SSH authority parser was splitting these names across the
   field separator and rejecting the host as invalid.
+- Updating a workspace from VS Code no longer hangs when the new template
+  version requires parameters. The extension now prompts for any missing
+  required values through VS Code input boxes and passes them to
+  `coder update` so the CLI runs non-interactively. If the CLI still asks
+  for input the update is failed instead of hanging, and the workspace
+  falls back to starting on the existing template version with a warning.
 
 ## [v1.14.5](https://github.com/coder/vscode-coder/releases/tag/v1.14.5) 2026-04-30
 

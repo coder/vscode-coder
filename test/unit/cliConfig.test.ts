@@ -6,9 +6,9 @@ import { featureSetForVersion } from "@/featureSet";
 import {
 	type CliAuth,
 	getGlobalFlags,
-	getGlobalFlagsRaw,
 	getGlobalShellFlags,
 	getSshFlags,
+	getUserGlobalFlags,
 	isKeyringEnabled,
 	resolveCliAuth,
 } from "@/settings/cli";
@@ -190,14 +190,14 @@ describe("cliConfig", () => {
 			]);
 		});
 
-		it("should still escape header-command flags", () => {
+		it("passes header-command value through verbatim (no shell)", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.headerCommand", "echo test");
 			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
 				"--global-config",
 				"/config/dir",
 				"--header-command",
-				quoteCommand("echo test"),
+				"echo test",
 			]);
 		});
 
@@ -212,11 +212,11 @@ describe("cliConfig", () => {
 		});
 	});
 
-	describe("getGlobalFlagsRaw", () => {
+	describe("getUserGlobalFlags", () => {
 		it("returns empty array when no global flags configured", () => {
 			const config = new MockConfigurationProvider();
 
-			expect(getGlobalFlagsRaw(config)).toStrictEqual([]);
+			expect(getUserGlobalFlags(config)).toStrictEqual([]);
 		});
 
 		it("returns global flags from config", () => {
@@ -226,7 +226,7 @@ describe("cliConfig", () => {
 				"--disable-direct-connections",
 			]);
 
-			expect(getGlobalFlagsRaw(config)).toStrictEqual([
+			expect(getUserGlobalFlags(config)).toStrictEqual([
 				"--verbose",
 				"--disable-direct-connections",
 			]);

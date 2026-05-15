@@ -1,4 +1,4 @@
-import * as os from "node:os";
+import os from "node:os";
 import url from "node:url";
 
 export interface AuthorityParts {
@@ -205,6 +205,18 @@ export async function renameWithRetry(
 export function escapeCommandArg(arg: string): string {
 	const escapedString = arg.replaceAll('"', String.raw`\"`);
 	return `"${escapedString}"`;
+}
+
+/**
+ * Cross-platform shell quoting that blocks variable expansion. Use for
+ * values from outside the user's local settings (e.g. server-controlled).
+ */
+export function escapeShellArg(arg: string): string {
+	if (os.platform() === "win32") {
+		const escaped = arg.replace(/"/g, '""').replace(/%/g, "%%");
+		return `"${escaped}"`;
+	}
+	return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 
 /**

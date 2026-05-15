@@ -6,7 +6,6 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { MockConfigurationProvider } from "../../mocks/testHelpers";
 import {
 	isWindows,
-	quoteCommand,
 	writeExecutable,
 	writeStderrJs,
 	writeStdoutJs,
@@ -154,7 +153,7 @@ describe("cliExec", () => {
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
-				quoteCommand("my-header-cmd"),
+				"my-header-cmd",
 				"speedtest",
 				"owner/workspace",
 				"--output",
@@ -211,7 +210,7 @@ describe("cliExec", () => {
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
-				quoteCommand("my-header-cmd"),
+				"my-header-cmd",
 				"support",
 				"bundle",
 				"owner/workspace",

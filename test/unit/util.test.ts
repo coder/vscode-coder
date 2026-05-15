@@ -5,6 +5,7 @@ import {
 	type AuthorityParts,
 	countSubstring,
 	escapeCommandArg,
+	escapeShellArg,
 	expandPath,
 	findPort,
 	parseRemoteAuthority,
@@ -209,6 +210,51 @@ describe("escapeCommandArg", () => {
 
 	it("handles string with spaces", () => {
 		expect(escapeCommandArg("hello world")).toBe('"hello world"');
+	});
+});
+
+describe("escapeShellArg", () => {
+	const platformSpy = vi.spyOn(os, "platform");
+	afterEach(() => platformSpy.mockReset());
+
+	describe("on Unix", () => {
+		beforeEach(() => platformSpy.mockReturnValue("linux"));
+
+		it("wraps in single quotes", () => {
+			expect(escapeShellArg("env=dev")).toBe("'env=dev'");
+		});
+
+		it("escapes single quotes via the '\\'' sequence", () => {
+			expect(escapeShellArg("it's fine")).toBe("'it'\\''s fine'");
+		});
+
+		it("leaves $VAR, $(...), and backticks literal inside the quotes", () => {
+			expect(escapeShellArg("$(echo pwned)")).toBe("'$(echo pwned)'");
+		});
+	});
+
+	describe("on Windows", () => {
+		beforeEach(() => platformSpy.mockReturnValue("win32"));
+
+		it("wraps in double quotes", () => {
+			expect(escapeShellArg("env=dev")).toBe('"env=dev"');
+		});
+
+		it('doubles embedded `"`', () => {
+			expect(escapeShellArg('regions=["us","eu"]')).toBe(
+				'"regions=[""us"",""eu""]"',
+			);
+		});
+
+		it("doubles `%` to block %VAR% expansion", () => {
+			expect(escapeShellArg("%PATH%")).toBe('"%%PATH%%"');
+		});
+
+		it("keeps cmd metachars inside the quoted region", () => {
+			expect(escapeShellArg('foo" & calc.exe & "x')).toBe(
+				'"foo"" & calc.exe & ""x"',
+			);
+		});
 	});
 });
 

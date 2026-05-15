@@ -41,9 +41,9 @@ import { type LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	type CliAuth,
-	getGlobalFlagsRaw,
 	getGlobalShellFlags,
 	getSshFlags,
+	getUserGlobalFlags,
 	resolveCliAuth,
 } from "../settings/cli";
 import { getHeaderCommand } from "../settings/headers";
@@ -437,7 +437,7 @@ export class Remote {
 					setting: "coder.globalFlags",
 					title: "Global Flags",
 					getValue: () =>
-						getGlobalFlagsRaw(vscode.workspace.getConfiguration()),
+						getUserGlobalFlags(vscode.workspace.getConfiguration()),
 				},
 				{
 					setting: "coder.headerCommand",
@@ -562,7 +562,7 @@ export class Remote {
 							const isReady = await stateMachine.processWorkspace(w, progress);
 							if (isReady) {
 								subscription.dispose();
-								resolve(w);
+								resolve(stateMachine.getWorkspace() ?? w);
 								return;
 							}
 						} catch (error: unknown) {
