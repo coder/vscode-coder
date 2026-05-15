@@ -27,7 +27,7 @@ import {
 import { resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
-import { toRemoteAuthority, toSafeHost } from "./util";
+import { resolveBrowserUrl, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";
 import {
@@ -118,6 +118,17 @@ export class Commands {
 		const url = this.extensionClient.getAxiosInstance().defaults.baseURL;
 		if (!url) {
 			throw new Error("You are not logged in");
+		}
+		return url;
+	}
+
+	/**
+	 * Get the remote workspace deployment URL, throwing if not connected.
+	 */
+	private requireRemoteBaseUrl(): string {
+		const url = this.remoteWorkspaceClient?.getAxiosInstance().defaults.baseURL;
+		if (!url) {
+			throw new Error("No remote workspace connection");
 		}
 		return url;
 	}
@@ -587,7 +598,7 @@ export class Commands {
 	 * Must only be called if currently logged in.
 	 */
 	public async createWorkspace(): Promise<void> {
-		const baseUrl = this.requireExtensionBaseUrl();
+		const baseUrl = resolveBrowserUrl(this.requireExtensionBaseUrl());
 		const uri = baseUrl + "/templates";
 		await vscode.commands.executeCommand("vscode.open", uri);
 	}
@@ -602,13 +613,12 @@ export class Commands {
 	 */
 	public async navigateToWorkspace(item?: OpenableTreeItem) {
 		if (item) {
-			const baseUrl = this.requireExtensionBaseUrl();
+			const baseUrl = resolveBrowserUrl(this.requireExtensionBaseUrl());
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
 			const uri = baseUrl + `/@${workspaceId}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.remoteWorkspaceClient) {
-			const baseUrl =
-				this.remoteWorkspaceClient.getAxiosInstance().defaults.baseURL;
+			const baseUrl = resolveBrowserUrl(this.requireRemoteBaseUrl());
 			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
@@ -626,13 +636,12 @@ export class Commands {
 	 */
 	public async navigateToWorkspaceSettings(item?: OpenableTreeItem) {
 		if (item) {
-			const baseUrl = this.requireExtensionBaseUrl();
+			const baseUrl = resolveBrowserUrl(this.requireExtensionBaseUrl());
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
 			const uri = baseUrl + `/@${workspaceId}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else if (this.workspace && this.remoteWorkspaceClient) {
-			const baseUrl =
-				this.remoteWorkspaceClient.getAxiosInstance().defaults.baseURL;
+			const baseUrl = resolveBrowserUrl(this.requireRemoteBaseUrl());
 			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}/settings`;
 			await vscode.commands.executeCommand("vscode.open", uri);
 		} else {
