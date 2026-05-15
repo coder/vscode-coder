@@ -156,11 +156,11 @@ export class ChatPanelProvider
 			const expected = new URL(coderUrl);
 			if (resolved.origin === expected.origin) {
 				const browserBase = resolveBrowserUrl(coderUrl);
-				const browserUrl = new URL(
-					resolved.pathname + resolved.search + resolved.hash,
-					browserBase,
-				);
-				void vscode.env.openExternal(vscode.Uri.parse(browserUrl.toString()));
+				// Concatenate rather than `new URL(path, base)` so a path prefix on
+				// the alternative URL (e.g. a reverse proxy at https://host/coder)
+				// is preserved.
+				const browserUrl = `${browserBase}${resolved.pathname}${resolved.search}${resolved.hash}`;
+				void vscode.env.openExternal(vscode.Uri.parse(browserUrl));
 			}
 		} catch {
 			this.logger.warn(`Chat: invalid navigate URL: ${url}`);

@@ -195,6 +195,23 @@ describe("ChatPanelProvider", () => {
 			);
 		});
 
+		it("preserves path prefix in alternative web URL", () => {
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn().mockReturnValue("https://proxy.example.com/coder"),
+			} as unknown as vscode.WorkspaceConfiguration);
+
+			const { sendFromWebview } = createHarness();
+
+			sendFromWebview({
+				method: "coder:navigate",
+				params: { url: "/templates" },
+			});
+
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				vscode.Uri.parse("https://proxy.example.com/coder/templates"),
+			);
+		});
+
 		it("ignores navigate without url payload", () => {
 			const { sendFromWebview } = createHarness();
 
