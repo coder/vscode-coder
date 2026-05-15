@@ -12,32 +12,19 @@ export type CliAuth =
 	| { mode: "url"; url: string };
 
 /**
- * Returns the user's `coder.globalFlags` with `${env:VAR}` references
- * substituted from `process.env` (missing vars become empty, matching
- * VS Code's built-in `${env:VAR}` behaviour) and `~` / `${userHome}`
- * expanded to the home directory. For `--flag=value` entries the path
- * expansion applies to the value half so `--cfg=~/coder` works.
+ * Returns the user's `coder.globalFlags` with `expandPath` applied. For
+ * `--flag=value` entries the substitution is scoped to the value half so
+ * `--cfg=~/coder` works without rewriting the flag name.
  */
 export function getUserGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 ): string[] {
-	return configs
-		.get<string[]>("coder.globalFlags", [])
-		.map((flag) =>
-			flag.replace(
-				/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g,
-				(_, name: string) => process.env[name] ?? "",
-			),
-		)
-		.map(expandFlagPath);
-}
-
-/** Applies `expandPath` to the value half of `--flag=value`, or the whole entry. */
-function expandFlagPath(flag: string): string {
-	const eq = flag.indexOf("=");
-	return eq === -1
-		? expandPath(flag)
-		: flag.slice(0, eq + 1) + expandPath(flag.slice(eq + 1));
+	return configs.get<string[]>("coder.globalFlags", []).map((flag) => {
+		const eq = flag.indexOf("=");
+		return eq === -1
+			? expandPath(flag)
+			: flag.slice(0, eq + 1) + expandPath(flag.slice(eq + 1));
+	});
 }
 
 /** Flags for shell contexts (`terminal.sendText`, SSH `ProxyCommand`). */

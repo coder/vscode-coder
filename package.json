@@ -67,7 +67,7 @@
 					"default": ""
 				},
 				"coder.binaryDestination": {
-					"markdownDescription": "The path to the Coder CLI binary or the directory containing it. When set to a file path (e.g., `/usr/bin/coder`), the extension checks its version and downloads a replacement if it does not match the server (and downloads are enabled). When set to a directory, the extension looks for the CLI inside it (downloading if enabled). Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.",
+					"markdownDescription": "The path to the Coder CLI binary or the directory containing it. When set to a file path (e.g., `/usr/bin/coder`), the extension checks its version and downloads a replacement if it does not match the server (and downloads are enabled). When set to a directory, the extension looks for the CLI inside it (downloading if enabled). Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": ""
 				},
@@ -82,22 +82,22 @@
 					"default": ""
 				},
 				"coder.tlsCertFile": {
-					"markdownDescription": "Path to file for TLS client cert. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
+					"markdownDescription": "Path to file for TLS client cert. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": ""
 				},
 				"coder.tlsKeyFile": {
-					"markdownDescription": "Path to file for TLS client key. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
+					"markdownDescription": "Path to file for TLS client key. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": ""
 				},
 				"coder.tlsCaFile": {
-					"markdownDescription": "Path to file for TLS certificate authority. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
+					"markdownDescription": "Path to file for TLS certificate authority. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": ""
 				},
 				"coder.tlsAltHost": {
-					"markdownDescription": "Alternative hostname to use for TLS verification. This is useful when the hostname in the certificate does not match the hostname used to connect.",
+					"markdownDescription": "Alternative hostname to use for TLS verification. This is useful when the hostname in the certificate does not match the hostname used to connect.\n\nSupports `${env:VAR}` substitution.",
 					"type": "string",
 					"default": ""
 				},
@@ -107,7 +107,7 @@
 					"default": ""
 				},
 				"coder.proxyLogDirectory": {
-					"markdownDescription": "Directory where the Coder CLI outputs SSH connection logs for debugging. Defaults to the value of `CODER_SSH_LOG_DIR` if not set, otherwise the extension's global storage directory.",
+					"markdownDescription": "Directory where the Coder CLI outputs SSH connection logs for debugging. Defaults to the value of `CODER_SSH_LOG_DIR` if not set, otherwise the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": ""
 				},
@@ -160,7 +160,7 @@
 					]
 				},
 				"coder.globalFlags": {
-					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item; values are passed verbatim and in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nValues are passed directly to the CLI without a shell, so `$VAR` and `%VAR%` are **not** expanded. The extension does expand:\n- `${env:VAR}` → the value of `VAR` in the extension host's environment (missing variables resolve to an empty string).\n- A leading `~` or `${userHome}` → your home directory. For `--flag=value` entries the path expansion applies to the value half so `--cfg=~/coder` works.\n\nNote that for `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here. The `--global-config` and `--use-keyring` flags are silently ignored as the extension manages them via `#coder.useKeyring#`.",
+					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item, in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nItems run without a shell, so `$VAR` and `%VAR%` are **not** expanded. For `--flag=value` items the substitutions below apply to the value half only (so `--cfg=~/coder` works):\n- `${env:VAR}` becomes the value of `VAR` in the extension host's environment (unset becomes empty).\n- `${userHome}` (anywhere) or a leading `~` becomes your home directory.\n\nFor `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here. The `--global-config` and `--use-keyring` flags are silently ignored as the extension manages them via `#coder.useKeyring#`.",
 					"type": "array",
 					"items": {
 						"type": "string"

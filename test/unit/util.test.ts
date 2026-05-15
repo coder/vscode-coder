@@ -291,6 +291,46 @@ describe("expandPath", () => {
 	it("expands both tilde and ${userHome}", () => {
 		expect(expandPath("~/${userHome}/foo")).toBe(`${home}/${home}/foo`);
 	});
+
+	describe("${env:VAR}", () => {
+		const envKey = "CODER_EXPAND_PATH_TEST";
+		const ref = "${env:" + envKey + "}";
+		let original: string | undefined;
+		beforeEach(() => {
+			original = process.env[envKey];
+		});
+		afterEach(() => {
+			if (original === undefined) {
+				delete process.env[envKey];
+			} else {
+				process.env[envKey] = original;
+			}
+		});
+
+		it("substitutes a present env var", () => {
+			process.env[envKey] = "/data";
+			expect(expandPath(`${ref}/foo`)).toBe("/data/foo");
+		});
+
+		it("replaces a missing env var with an empty string", () => {
+			delete process.env[envKey];
+			expect(expandPath(`prefix-${ref}-suffix`)).toBe("prefix--suffix");
+		});
+
+		it("substitutes multiple occurrences in one string", () => {
+			process.env[envKey] = "data";
+			expect(expandPath(`${ref}/${ref}`)).toBe("data/data");
+		});
+
+		it("expands tilde or ${userHome} that appears inside the env value", () => {
+			process.env[envKey] = "~/projects";
+			expect(expandPath(`${ref}/x`)).toBe(`${home}/projects/x`);
+		});
+
+		it("ignores ${env:...} with invalid names", () => {
+			expect(expandPath("${env:1BAD}/x")).toBe("${env:1BAD}/x");
+		});
+	});
 });
 
 describe("findPort", () => {

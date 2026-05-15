@@ -131,14 +131,21 @@ export function toSafeHost(rawUrl: string): string {
 }
 
 /**
- * Expand a path if it starts with tilde (~) or contains ${userHome}.
+ * Substitute `${env:VAR}` with `process.env.VAR` (unset → empty string),
+ * `${userHome}` (anywhere) with `os.homedir()`, and a leading `~` with
+ * `os.homedir()`. Env substitution runs first so env values can themselves
+ * contain `~` or `${userHome}`.
  */
 export function expandPath(input: string): string {
+	const expanded = input.replace(
+		/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g,
+		(_, name: string) => process.env[name] ?? "",
+	);
 	const userHome = os.homedir();
-	if (input.startsWith("~")) {
-		input = userHome + input.substring("~".length);
-	}
-	return input.replaceAll("${userHome}", userHome);
+	const detilded = expanded.startsWith("~")
+		? userHome + expanded.substring("~".length)
+		: expanded;
+	return detilded.replaceAll("${userHome}", userHome);
 }
 
 /**
