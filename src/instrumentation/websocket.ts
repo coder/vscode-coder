@@ -102,7 +102,7 @@ export class WebSocketTelemetry {
 
 		const properties: CallerProperties = { cause };
 		if (closeCode !== undefined) {
-			properties.closeCode = String(closeCode);
+			properties.closeCode = closeCode;
 		}
 		const measurements = {
 			connectionDurationMs: performance.now() - openedAtMs,

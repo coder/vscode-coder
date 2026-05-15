@@ -6,8 +6,13 @@ import { toError } from "../error/errorUtils";
 /** Telemetry level, mirrors `coder.telemetry.level`. Ordered: off < local. */
 export type TelemetryLevel = "off" | "local";
 
+/** Value types accepted from callers; the framework stringifies at the wire boundary. */
+export type CallerPropertyValue = string | number | boolean;
+
 /** Caller properties. `result` is framework-managed on traced events. */
-export type CallerProperties = Record<string, string> & { result?: never };
+export type CallerProperties = Record<string, CallerPropertyValue> & {
+	result?: never;
+};
 
 /** Caller measurements. `durationMs` is framework-managed on traced events. */
 export type CallerMeasurements = Record<string, number> & {

@@ -101,7 +101,7 @@ describe("WorkspaceMonitor", () => {
 			const events = sink.eventsNamed("workspace.state_transitioned");
 			expect(events).toHaveLength(2);
 			expect(events[0].properties).toMatchObject({
-				from: "unknown",
+				from: "none",
 				to: "running",
 			});
 			expect(events[0].measurements.observedDurationMs).toBeUndefined();

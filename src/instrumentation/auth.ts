@@ -51,9 +51,9 @@ export class AuthTelemetry {
 				fn({
 					setRecovery: (recovery) => span.setProperty("recovery", recovery),
 					setRefreshAttempted: (attempted) =>
-						span.setProperty("refreshAttempted", String(attempted)),
+						span.setProperty("refreshAttempted", attempted),
 				}),
-			{ recovery: "none", refreshAttempted: "false" },
+			{ recovery: "none", refreshAttempted: false },
 		);
 	}
 

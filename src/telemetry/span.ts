@@ -1,4 +1,8 @@
-import type { CallerMeasurements, CallerProperties } from "./event";
+import type {
+	CallerMeasurements,
+	CallerProperties,
+	CallerPropertyValue,
+} from "./event";
 
 /**
  * Final disposition recorded on a traced event's `result` property.
@@ -27,7 +31,7 @@ export interface Span {
 		measurements?: CallerMeasurements,
 	): Promise<T>;
 	/** Add or replace a property on the event emitted for this span. */
-	setProperty(name: string, value: string): void;
+	setProperty(name: string, value: CallerPropertyValue): void;
 	/** Add or replace a measurement on the event emitted for this span. */
 	setMeasurement(name: string, value: number): void;
 	/** Flip this span's `result` from `success` to `aborted` on normal return. */

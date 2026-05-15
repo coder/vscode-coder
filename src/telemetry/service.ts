@@ -11,6 +11,7 @@ import {
 	buildErrorBlock,
 	type CallerMeasurements,
 	type CallerProperties,
+	type CallerPropertyValue,
 	type SessionContext,
 	type TelemetryEvent,
 	type TelemetryLevel,
@@ -28,6 +29,16 @@ const LEVEL_ORDER: Readonly<Record<TelemetryLevel, number>> = {
 
 const readLevel = (): TelemetryLevel =>
 	readTelemetryLevel(vscode.workspace.getConfiguration());
+
+const normalizeProps = (
+	props: Record<string, CallerPropertyValue>,
+): Record<string, string> => {
+	const out: Record<string, string> = {};
+	for (const [k, v] of Object.entries(props)) {
+		out[k] = typeof v === "string" ? v : String(v);
+	}
+	return out;
+};
 
 /** Trace context shared by all events in one trace. */
 interface SpanOptions {
@@ -88,7 +99,12 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		if (this.#level === "off") {
 			return;
 		}
-		this.#safeEmit(newSpanId(), eventName, properties, measurements);
+		this.#safeEmit(
+			newSpanId(),
+			eventName,
+			normalizeProps(properties),
+			measurements,
+		);
 	}
 
 	public logError(
@@ -100,9 +116,13 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		if (this.#level === "off") {
 			return;
 		}
-		this.#safeEmit(newSpanId(), eventName, properties, measurements, {
-			error,
-		});
+		this.#safeEmit(
+			newSpanId(),
+			eventName,
+			normalizeProps(properties),
+			measurements,
+			{ error },
+		);
 	}
 
 	/**
@@ -120,10 +140,16 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		if (this.#level === "off") {
 			return fn(NOOP_SPAN);
 		}
-		return this.#startSpan(eventName, fn, properties, measurements, {
-			traceId: newTraceId(),
-			traceLevel: this.#level,
-		});
+		return this.#startSpan(
+			eventName,
+			fn,
+			normalizeProps(properties),
+			measurements,
+			{
+				traceId: newTraceId(),
+				traceLevel: this.#level,
+			},
+		);
 	}
 
 	public async dispose(): Promise<void> {
@@ -148,8 +174,8 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		const spanMeasurements = { ...measurements };
 		const { traceId, traceLevel } = spanOpts;
 		let completed = false;
-		let aborted = false;
-		let failed = false;
+		// `markFailure` wins over `markAborted` regardless of call order.
+		let mark: "aborted" | "error" | undefined;
 		const warnPostEmit = (op: string, name: string): void => {
 			this.logger.warn(
 				`Telemetry span '${eventName}' ${op}('${name}') called after emit; mutation dropped`,
@@ -162,24 +188,25 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 			phase: <U>(
 				phaseName: string,
 				phaseFn: (childSpan: Span) => Promise<U>,
-				phaseProps: Record<string, string> = {},
+				phaseProps: CallerProperties = {},
 				phaseMeasurements: Record<string, number> = {},
 			): Promise<U> => {
 				const safeName = this.#sanitizePhaseName(phaseName);
 				return this.#startSpan(
 					`${eventName}.${safeName}`,
 					phaseFn,
-					phaseProps,
+					normalizeProps(phaseProps),
 					phaseMeasurements,
 					{ traceId, parentEventId: eventId, traceLevel },
 				);
 			},
-			setProperty(name: string, value: string): void {
+			setProperty(name: string, value: CallerPropertyValue): void {
 				if (completed) {
 					warnPostEmit("setProperty", name);
 					return;
 				}
-				spanProperties[name] = value;
+				spanProperties[name] =
+					typeof value === "string" ? value : String(value);
 			},
 			setMeasurement(name: string, value: number): void {
 				if (completed) {
@@ -193,24 +220,15 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 					warnPostEmit("markAborted", "");
 					return;
 				}
-				aborted = true;
+				mark ??= "aborted";
 			},
 			markFailure(): void {
 				if (completed) {
 					warnPostEmit("markFailure", "");
 					return;
 				}
-				failed = true;
+				mark = "error";
 			},
-		};
-		const resolveResult = (): SpanResult => {
-			if (failed) {
-				return "error";
-			} else if (aborted) {
-				return "aborted";
-			} else {
-				return "success";
-			}
 		};
 		return this.#emitTimed(
 			eventId,
@@ -219,7 +237,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 			spanProperties,
 			spanMeasurements,
 			spanOpts,
-			resolveResult,
+			() => mark ?? "success",
 		).finally(() => {
 			completed = true;
 		});

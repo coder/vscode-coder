@@ -9,7 +9,8 @@ import type {
 
 import type { TelemetryReporter } from "../telemetry/reporter";
 
-const INITIAL_STATE = "unknown";
+/** Sentinel for `from*` before any state is observed. `"unknown"` is a real server-reported value, so avoid it. */
+const INITIAL_STATE = "none";
 
 /** Statuses where a provisioner job is actively running. */
 const PROVISIONING_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
@@ -115,7 +116,6 @@ export class WorkspaceAgentTelemetry {
 		}
 		const now = performance.now();
 
-		// Flat camelCase matches the codebase; switch to dot-namespaced grouping (from.status, from.lifecycleState, ...) if a third state dimension lands.
 		this.telemetry.log(
 			"workspace.agent.state_transitioned",
 			{

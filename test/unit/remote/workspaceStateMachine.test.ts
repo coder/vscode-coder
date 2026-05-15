@@ -453,9 +453,9 @@ describe("WorkspaceStateMachine", () => {
 			const events = sink.eventsNamed("workspace.agent.state_transitioned");
 			expect(events).toHaveLength(2);
 			expect(events[0].properties).toMatchObject({
-				fromStatus: "unknown",
+				fromStatus: "none",
 				toStatus: "connecting",
-				fromLifecycleState: "unknown",
+				fromLifecycleState: "none",
 				toLifecycleState: "created",
 			});
 			expect(events[1].properties).toMatchObject({
