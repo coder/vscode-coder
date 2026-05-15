@@ -1,5 +1,6 @@
 import os from "node:os";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import * as vscode from "vscode";
 
 import {
 	type AuthorityParts,
@@ -9,6 +10,7 @@ import {
 	findPort,
 	parseRemoteAuthority,
 	renameWithRetry,
+	resolveBrowserUrl,
 	tempFilePath,
 	toSafeHost,
 } from "@/util";
@@ -388,5 +390,66 @@ describe("renameWithRetry", () => {
 				expect(renameFn).toHaveBeenCalledTimes(1);
 			},
 		);
+	});
+
+	describe("resolveBrowserUrl", () => {
+		function mockAlternativeWebUrl(value: string | undefined): void {
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn().mockReturnValue(value),
+			} as unknown as vscode.WorkspaceConfiguration);
+		}
+
+		afterEach(() => {
+			vi.mocked(vscode.workspace.getConfiguration).mockReset();
+		});
+
+		it("returns connection URL when setting is not configured", () => {
+			mockAlternativeWebUrl(undefined);
+			expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+				"https://coder.example.com:7004",
+			);
+		});
+
+		it("returns connection URL when setting is empty", () => {
+			mockAlternativeWebUrl("");
+			expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+				"https://coder.example.com:7004",
+			);
+		});
+
+		it("returns connection URL when setting is whitespace", () => {
+			mockAlternativeWebUrl("   ");
+			expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+				"https://coder.example.com:7004",
+			);
+		});
+
+		it("returns alternative URL when configured", () => {
+			mockAlternativeWebUrl("https://coder.example.com");
+			expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+				"https://coder.example.com",
+			);
+		});
+
+		it("strips trailing slashes from alternative URL", () => {
+			mockAlternativeWebUrl("https://coder.example.com/");
+			expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+				"https://coder.example.com",
+			);
+		});
+
+		it("strips multiple trailing slashes from alternative URL", () => {
+			mockAlternativeWebUrl("https://coder.example.com///");
+			expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+				"https://coder.example.com",
+			);
+		});
+
+		it("trims whitespace from alternative URL", () => {
+			mockAlternativeWebUrl("  https://coder.example.com  ");
+			expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+				"https://coder.example.com",
+			);
+		});
 	});
 });

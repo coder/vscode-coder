@@ -25,6 +25,7 @@ import {
 	streamBuildLogs,
 } from "../../api/workspace";
 import { type Logger } from "../../logging/logger";
+import { resolveBrowserUrl } from "../../util";
 import { vscodeProposed } from "../../vscodeProposed";
 import {
 	dispatchCommand,
@@ -308,9 +309,10 @@ export class TasksPanelProvider
 	}
 
 	private async handleViewInCoder(taskId: string): Promise<void> {
-		const baseUrl = this.client.getHost();
-		if (!baseUrl) return;
+		const connUrl = this.client.getHost();
+		if (!connUrl) return;
 
+		const baseUrl = resolveBrowserUrl(connUrl);
 		const task = await this.client.getTask("me", taskId);
 		vscode.env.openExternal(
 			vscode.Uri.parse(`${baseUrl}/tasks/${task.owner_name}/${task.id}`),
@@ -318,9 +320,10 @@ export class TasksPanelProvider
 	}
 
 	private async handleViewLogs(taskId: string): Promise<void> {
-		const baseUrl = this.client.getHost();
-		if (!baseUrl) return;
+		const connUrl = this.client.getHost();
+		if (!connUrl) return;
 
+		const baseUrl = resolveBrowserUrl(connUrl);
 		const task = await this.client.getTask("me", taskId);
 		vscode.env.openExternal(vscode.Uri.parse(getTaskBuildUrl(baseUrl, task)));
 	}
