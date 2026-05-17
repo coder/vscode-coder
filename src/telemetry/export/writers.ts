@@ -1,10 +1,19 @@
+import { Zip, ZipPassThrough } from "fflate";
 import { randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import { renameWithRetry } from "../../util";
 
 import { toStoredTelemetryEvent } from "./files";
+import {
+	isMetricEvent,
+	toOtlpLogResource,
+	toOtlpMetricResource,
+	toOtlpSpanResource,
+} from "./otlp";
 
 import type { ExportTelemetryEvent } from "./types";
 
@@ -37,7 +46,8 @@ class JsonEnvelopeWriter {
 			await writer.#write(prefix);
 			return writer;
 		} catch (err) {
-			await writer.close();
+			await writer.#handle.close();
+			writer.#handle = undefined;
 			throw err;
 		}
 	}
@@ -98,6 +108,92 @@ export async function writeJsonArrayExport(
 	});
 }
 
+export async function writeOtlpZipExport(
+	outputPath: string,
+	events: AsyncIterable<ExportTelemetryEvent>,
+): Promise<ExportCounts> {
+	return writeTempOutput(outputPath, async (tempPath) => {
+		const tempDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "coder-telemetry-export-"),
+		);
+		try {
+			const counts = await writeOtlpJsonFiles(tempDir, events);
+			await writeZip(tempPath, [
+				{ name: "logs.json", filePath: path.join(tempDir, "logs.json") },
+				{ name: "traces.json", filePath: path.join(tempDir, "traces.json") },
+				{ name: "metrics.json", filePath: path.join(tempDir, "metrics.json") },
+			]);
+			return counts;
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true });
+		}
+	});
+}
+
+async function writeOtlpJsonFiles(
+	tempDir: string,
+	events: AsyncIterable<ExportTelemetryEvent>,
+): Promise<ExportCounts> {
+	const writers = await openOtlpWriters(tempDir);
+	let eventCount = 0;
+	try {
+		for await (const event of events) {
+			eventCount += 1;
+			if (isMetricEvent(event)) {
+				await writers.metrics.write(toOtlpMetricResource(event));
+			} else if (event.traceId !== undefined) {
+				await writers.traces.write(toOtlpSpanResource(event));
+			} else {
+				await writers.logs.write(toOtlpLogResource(event));
+			}
+		}
+	} finally {
+		await Promise.all([
+			writers.logs.close(),
+			writers.traces.close(),
+			writers.metrics.close(),
+		]);
+	}
+
+	return {
+		events: eventCount,
+		logs: writers.logs.count,
+		traces: writers.traces.count,
+		metrics: writers.metrics.count,
+	};
+}
+
+async function openOtlpWriters(tempDir: string): Promise<{
+	readonly logs: JsonEnvelopeWriter;
+	readonly traces: JsonEnvelopeWriter;
+	readonly metrics: JsonEnvelopeWriter;
+}> {
+	const opened: JsonEnvelopeWriter[] = [];
+	try {
+		const logs = await JsonEnvelopeWriter.open(
+			path.join(tempDir, "logs.json"),
+			'{"resourceLogs":[',
+			"]}\n",
+		);
+		opened.push(logs);
+		const traces = await JsonEnvelopeWriter.open(
+			path.join(tempDir, "traces.json"),
+			'{"resourceSpans":[',
+			"]}\n",
+		);
+		opened.push(traces);
+		const metrics = await JsonEnvelopeWriter.open(
+			path.join(tempDir, "metrics.json"),
+			'{"resourceMetrics":[',
+			"]}\n",
+		);
+		return { logs, traces, metrics };
+	} catch (err) {
+		await Promise.allSettled(opened.map((writer) => writer.close()));
+		throw err;
+	}
+}
+
 async function writeTempOutput<T>(
 	outputPath: string,
 	write: (tempPath: string) => Promise<T>,
@@ -119,4 +215,72 @@ async function writeTempOutput<T>(
 		}
 		throw err;
 	}
+}
+
+async function writeZip(
+	outputPath: string,
+	entries: ReadonlyArray<{ readonly name: string; readonly filePath: string }>,
+): Promise<void> {
+	const handle = await fs.open(outputPath, "w");
+	let writeChain = Promise.resolve();
+	let rejectZip: (err: unknown) => void = () => undefined;
+	let resolveZip: () => void = () => undefined;
+	const done = new Promise<void>((resolve, reject) => {
+		resolveZip = resolve;
+		rejectZip = reject;
+	});
+	const zip = new Zip((err, chunk, final) => {
+		if (err) {
+			rejectZip(err);
+			return;
+		}
+		if (chunk) {
+			writeChain = writeChain.then(() => handle.writeFile(chunk));
+		}
+		if (final) {
+			writeChain.then(resolveZip, rejectZip);
+		}
+	});
+
+	try {
+		for (const entry of entries) {
+			await addZipEntry(zip, entry.name, entry.filePath, () => writeChain);
+		}
+		zip.end();
+		await done;
+	} finally {
+		zip.terminate();
+		try {
+			await writeChain;
+		} catch {
+			// Preserve the original zip/read error when there is one.
+		}
+		await handle.close();
+	}
+}
+
+async function addZipEntry(
+	zip: Zip,
+	name: string,
+	filePath: string,
+	pendingWrites: () => Promise<void>,
+): Promise<void> {
+	const entry = new ZipPassThrough(name);
+	zip.add(entry);
+	for await (const chunk of createReadStream(filePath)) {
+		entry.push(toUint8Array(chunk));
+		await pendingWrites();
+	}
+	entry.push(new Uint8Array(), true);
+	await pendingWrites();
+}
+
+function toUint8Array(chunk: unknown): Uint8Array {
+	if (typeof chunk === "string") {
+		return new TextEncoder().encode(chunk);
+	}
+	if (Buffer.isBuffer(chunk)) {
+		return chunk;
+	}
+	throw new Error("Unexpected zip entry chunk type.");
 }
