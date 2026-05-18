@@ -468,6 +468,47 @@ describe("WorkspaceStateMachine", () => {
 				expect.any(Number),
 			);
 		});
+
+		it("resets agent telemetry on restart so the next transition emits from 'none'", async () => {
+			const sink = new TestSink();
+			const { sm, progress } = setup("start", createTestTelemetryService(sink));
+
+			// The build log stream is closed when we return to running; give the
+			// mock something disposable so close() doesn't blow up.
+			vi.mocked(streamBuildLogs).mockResolvedValueOnce({
+				close: vi.fn(),
+			} as never);
+
+			// Establish a baseline: connected/ready.
+			await sm.processWorkspace(runningWorkspace(), progress);
+
+			// Workspace enters a build state; resetAgent fires.
+			await sm.processWorkspace(
+				createWorkspace({ latest_build: { status: "stopping" } }),
+				progress,
+			);
+
+			// Next agent observation must restart from "none", not the prior baseline.
+			await sm.processWorkspace(
+				runningWorkspace({ status: "connecting", lifecycle_state: "created" }),
+				progress,
+			);
+
+			const events = sink.eventsNamed("workspace.agent.state_transitioned");
+			expect(events).toHaveLength(2);
+			expect(events[0].properties).toMatchObject({
+				fromStatus: "none",
+				toStatus: "connected",
+				fromLifecycleState: "none",
+				toLifecycleState: "ready",
+			});
+			expect(events[1].properties).toMatchObject({
+				fromStatus: "none",
+				toStatus: "connecting",
+				fromLifecycleState: "none",
+				toLifecycleState: "created",
+			});
+		});
 	});
 
 	describe("agent selection", () => {

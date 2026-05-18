@@ -124,12 +124,7 @@ describe("TelemetryService", () => {
 		});
 
 		it("forwards caller measurements alongside the framework-set durationMs", async () => {
-			await h.service.trace(
-				"auth.token_refreshed",
-				() => Promise.resolve(),
-				{},
-				{ attempts: 2 },
-			);
+			await h.service.trace("op", () => Promise.resolve(), {}, { attempts: 2 });
 
 			const [event] = h.sink.events;
 			expect(event.measurements.attempts).toBe(2);

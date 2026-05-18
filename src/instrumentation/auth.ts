@@ -18,7 +18,7 @@ export type LoginPromptOutcome =
 	| { success: false; reason: LoginPromptReason };
 
 /** Span annotator for the auth-recovery flow. Defaults to safe values. */
-export interface AuthRecoveryRecorder {
+interface AuthRecoveryRecorder {
 	setRecovery(recovery: AuthRecoveryAction): void;
 	setRefreshAttempted(attempted: boolean): void;
 }

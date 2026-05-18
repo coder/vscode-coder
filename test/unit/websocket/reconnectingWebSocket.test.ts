@@ -595,8 +595,11 @@ describe("ReconnectingWebSocket", () => {
 	});
 
 	describe("Telemetry wiring", () => {
-		it("walks the state machine through a full reconnect lifecycle", async () => {
+		beforeEach(() => {
 			enableLocalTelemetry();
+		});
+
+		it("walks the state machine through a full reconnect lifecycle", async () => {
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			const { ws, sockets } = await createReconnectingWebSocket({ telemetry });
@@ -642,7 +645,6 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("emits a normal-close drop and disconnects on server-initiated close", async () => {
-			enableLocalTelemetry();
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			const { ws, sockets } = await createReconnectingWebSocket({ telemetry });
@@ -670,7 +672,6 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("records certificate_refresh as the reconnect reason on successful refresh", async () => {
-			enableLocalTelemetry();
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			const sockets: MockSocket[] = [];

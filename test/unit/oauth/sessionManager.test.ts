@@ -481,7 +481,9 @@ describe("OAuthSessionManager", () => {
 	});
 
 	describe("telemetry", () => {
-		const setupWithSink = async () => {
+		const setupWithSink = async (
+			tokenEndpoint: unknown = createMockTokenResponse({ access_token: "new" }),
+		) => {
 			enableLocalTelemetry();
 			const sink = new TestSink();
 			const ctx = createTestContext();
@@ -490,9 +492,7 @@ describe("OAuthSessionManager", () => {
 				() => Promise.resolve(),
 				createTestTelemetryService(sink),
 			);
-			await ctx.setupForOAuthOperation({
-				"/oauth2/token": createMockTokenResponse({ access_token: "new" }),
-			});
+			await ctx.setupForOAuthOperation({ "/oauth2/token": tokenEndpoint });
 			return { manager, sink };
 		};
 
@@ -508,6 +508,21 @@ describe("OAuthSessionManager", () => {
 				expect(event.measurements.durationMs).toEqual(expect.any(Number));
 			},
 		);
+
+		it("emits auth.token_refreshed with result=error when refresh fails", async () => {
+			const { manager, sink } = await setupWithSink(
+				createOAuthAxiosError("invalid_grant"),
+			);
+
+			await expect(manager.refreshToken("reactive")).rejects.toThrow();
+
+			const event = sink.expectOne("auth.token_refreshed");
+			expect(event.properties).toMatchObject({
+				trigger: "reactive",
+				result: "error",
+			});
+			expect(event.measurements.durationMs).toEqual(expect.any(Number));
+		});
 
 		it("emits auth.token_refresh.deduped for callers that join an in-flight refresh", async () => {
 			const { manager, sink } = await setupWithSink();
