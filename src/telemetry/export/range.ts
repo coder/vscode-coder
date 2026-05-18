@@ -3,11 +3,48 @@ import { z } from "zod";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const UtcDateSchema = z.iso.date();
 
-export type TelemetryRangePresetId =
-	| "last24Hours"
-	| "last7Days"
-	| "last30Days"
-	| "allTime";
+interface PresetConfig {
+	readonly label: string;
+	readonly detail: string;
+	readonly filenamePart: string;
+	readonly durationMs: number | undefined;
+}
+
+const PRESET_IDS = [
+	"last24Hours",
+	"last7Days",
+	"last30Days",
+	"allTime",
+] as const;
+
+export type TelemetryRangePresetId = (typeof PRESET_IDS)[number];
+
+const PRESETS: Record<TelemetryRangePresetId, PresetConfig> = {
+	last24Hours: {
+		label: "Last 24 hours",
+		detail: "Export telemetry from the last day.",
+		filenamePart: "last-24-hours",
+		durationMs: DAY_MS,
+	},
+	last7Days: {
+		label: "Last 7 days",
+		detail: "Export telemetry from the last week.",
+		filenamePart: "last-7-days",
+		durationMs: 7 * DAY_MS,
+	},
+	last30Days: {
+		label: "Last 30 days",
+		detail: "Export telemetry from the last month.",
+		filenamePart: "last-30-days",
+		durationMs: 30 * DAY_MS,
+	},
+	allTime: {
+		label: "All time",
+		detail: "Export all stored telemetry.",
+		filenamePart: "all-time",
+		durationMs: undefined,
+	},
+};
 
 export interface TelemetryDateRange {
 	readonly label: string;
@@ -22,62 +59,23 @@ export interface TelemetryRangePreset {
 	readonly detail: string;
 }
 
-export const TELEMETRY_RANGE_PRESETS: readonly TelemetryRangePreset[] = [
-	{
-		id: "last24Hours",
-		label: "Last 24 hours",
-		detail: "Export telemetry from the last day.",
-	},
-	{
-		id: "last7Days",
-		label: "Last 7 days",
-		detail: "Export telemetry from the last week.",
-	},
-	{
-		id: "last30Days",
-		label: "Last 30 days",
-		detail: "Export telemetry from the last month.",
-	},
-	{
-		id: "allTime",
-		label: "All time",
-		detail: "Export all stored telemetry.",
-	},
-];
+export const TELEMETRY_RANGE_PRESETS: readonly TelemetryRangePreset[] =
+	PRESET_IDS.map((id) => ({
+		id,
+		label: PRESETS[id].label,
+		detail: PRESETS[id].detail,
+	}));
 
 export function createPresetDateRange(
 	id: TelemetryRangePresetId,
 	now: Date = new Date(),
 ): TelemetryDateRange {
-	const endMs = now.getTime();
-	switch (id) {
-		case "last24Hours":
-			return {
-				label: "Last 24 hours",
-				filenamePart: "last-24-hours",
-				startMs: endMs - DAY_MS,
-				endMs,
-			};
-		case "last7Days":
-			return {
-				label: "Last 7 days",
-				filenamePart: "last-7-days",
-				startMs: endMs - 7 * DAY_MS,
-				endMs,
-			};
-		case "last30Days":
-			return {
-				label: "Last 30 days",
-				filenamePart: "last-30-days",
-				startMs: endMs - 30 * DAY_MS,
-				endMs,
-			};
-		case "allTime":
-			return {
-				label: "All time",
-				filenamePart: "all-time",
-			};
+	const { label, filenamePart, durationMs } = PRESETS[id];
+	if (durationMs === undefined) {
+		return { label, filenamePart };
 	}
+	const endMs = now.getTime();
+	return { label, filenamePart, startMs: endMs - durationMs, endMs };
 }
 
 export function createCustomDateRange(
@@ -106,7 +104,7 @@ export function validateUtcDateInput(value: string): string | undefined {
 		: "Enter a valid calendar date.";
 }
 
-export function parseUtcDate(value: string): number {
+function parseUtcDate(value: string): number {
 	try {
 		const [year, month, day] = UtcDateSchema.parse(value)
 			.split("-")
@@ -117,7 +115,7 @@ export function parseUtcDate(value: string): number {
 	}
 }
 
-export function utcDateString(ms: number): string {
+function utcDateString(ms: number): string {
 	return new Date(ms).toISOString().slice(0, 10);
 }
 
@@ -144,6 +142,7 @@ export function fileDateCanContainRangeEvent(
 	}
 	const startDate =
 		range.startMs === undefined ? undefined : utcDateString(range.startMs);
+	// One-day forward grace for events buffered past midnight.
 	const endDate =
 		range.endMs === undefined
 			? undefined

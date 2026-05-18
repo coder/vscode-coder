@@ -11,7 +11,7 @@ import {
 } from "@/telemetry/export/files";
 import { createCustomDateRange } from "@/telemetry/export/range";
 
-import type { ExportTelemetryEvent } from "@/telemetry/export/types";
+import type { TelemetryEvent } from "@/telemetry/event";
 
 let tmpDir: string;
 
@@ -124,7 +124,7 @@ describe("telemetry export files", () => {
 				.join("\n") + "\n",
 		);
 
-		const events: ExportTelemetryEvent[] = [];
+		const events: TelemetryEvent[] = [];
 		for await (const event of readTelemetryEvents(
 			[filePath],
 			createCustomDateRange("2026-05-12", "2026-05-12"),
@@ -167,9 +167,7 @@ describe("telemetry export files", () => {
 	});
 });
 
-function makeEvent(
-	overrides: Partial<ExportTelemetryEvent>,
-): ExportTelemetryEvent {
+function makeEvent(overrides: Partial<TelemetryEvent>): TelemetryEvent {
 	return {
 		eventId: "1111111111111111",
 		eventName: "test.event",
