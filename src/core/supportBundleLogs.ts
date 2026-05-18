@@ -1,4 +1,4 @@
-import { unzip, zip } from "fflate";
+import { unzip, zip, type Zippable } from "fflate";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
@@ -124,7 +124,7 @@ export async function appendVsCodeLogs(
 		);
 
 		try {
-			const entries = await unzipAsync(await fs.readFile(zipPath));
+			const entries: Zippable = await unzipAsync(await fs.readFile(zipPath));
 			for (const [name, data] of logFiles) {
 				entries[name] = data;
 			}
