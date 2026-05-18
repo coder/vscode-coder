@@ -10,7 +10,7 @@ import {
 	type TelemetryDateRange,
 } from "./range";
 
-import type { ExportTelemetryEvent } from "./types";
+import type { TelemetryEvent } from "../event";
 
 const TELEMETRY_FILE_PATTERN =
 	/^telemetry-(\d{4}-\d{2}-\d{2})-([a-zA-Z0-9]+)(?:\.(\d+))?\.jsonl$/;
@@ -44,8 +44,8 @@ const StoredTelemetryEventSchema = z.object({
 		.optional(),
 });
 
-const ExportTelemetryEventSchema = StoredTelemetryEventSchema.transform(
-	(event): ExportTelemetryEvent => ({
+const TelemetryEventSchema = StoredTelemetryEventSchema.transform(
+	(event): TelemetryEvent => ({
 		eventId: event.event_id,
 		eventName: event.event_name,
 		timestamp: event.timestamp,
@@ -135,7 +135,7 @@ function compareTelemetryFiles(
 export async function* readTelemetryEvents(
 	filePaths: readonly string[],
 	range: TelemetryDateRange,
-): AsyncGenerator<ExportTelemetryEvent> {
+): AsyncGenerator<TelemetryEvent> {
 	for (const filePath of filePaths) {
 		let lineNumber = 0;
 		const lines = readline.createInterface({
@@ -163,9 +163,9 @@ export function parseStoredTelemetryEvent(
 	line: string,
 	filePath = "<telemetry>",
 	lineNumber = 1,
-): ExportTelemetryEvent {
+): TelemetryEvent {
 	try {
-		return ExportTelemetryEventSchema.parse(JSON.parse(line));
+		return TelemetryEventSchema.parse(JSON.parse(line));
 	} catch (err) {
 		throw new Error(
 			`Failed to parse telemetry file ${path.basename(filePath)}:${lineNumber}: ${errorMessage(err)}`,
@@ -175,7 +175,7 @@ export function parseStoredTelemetryEvent(
 }
 
 export function toStoredTelemetryEvent(
-	event: ExportTelemetryEvent,
+	event: TelemetryEvent,
 ): StoredTelemetryEvent {
 	return {
 		event_id: event.eventId,
@@ -219,9 +219,11 @@ function wrapReadError(
 }
 
 function errorMessage(err: unknown): string {
-	return err instanceof z.ZodError
-		? z.prettifyError(err)
-		: err instanceof Error
-			? err.message
-			: String(err);
+	if (err instanceof z.ZodError) {
+		return z.prettifyError(err);
+	}
+	if (err instanceof Error) {
+		return err.message;
+	}
+	return String(err);
 }
