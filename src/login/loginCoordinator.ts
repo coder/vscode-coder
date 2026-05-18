@@ -5,11 +5,6 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { CertificateError } from "../error/certificateError";
-import {
-	AuthTelemetry,
-	type AuthLoginPromptTrigger,
-	type LoginPromptReason,
-} from "../instrumentation/auth";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
 import { withOptionalProgress } from "../progress";
@@ -20,10 +15,14 @@ import { vscodeProposed } from "../vscodeProposed";
 import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { CliCredentialManager } from "../core/cliCredentialManager";
-import type { ServiceContainer } from "../core/container";
 import type { MementoManager } from "../core/mementoManager";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
+import type {
+	AuthLoginPromptTrigger,
+	AuthTelemetry,
+	LoginPromptReason,
+} from "../instrumentation/auth";
 import type { Logger } from "../logging/logger";
 import type { OAuthCallback } from "../oauth/oauthCallback";
 
@@ -44,26 +43,20 @@ export interface LoginOptions {
 export class LoginCoordinator implements vscode.Disposable {
 	private loginQueue: Promise<unknown> = Promise.resolve();
 	private readonly oauthAuthorizer: OAuthAuthorizer;
-	private readonly authTelemetry: AuthTelemetry;
-	private readonly secretsManager: SecretsManager;
-	private readonly mementoManager: MementoManager;
-	private readonly logger: Logger;
-	private readonly cliCredentialManager: CliCredentialManager;
 
 	constructor(
-		container: ServiceContainer,
+		private readonly secretsManager: SecretsManager,
+		private readonly mementoManager: MementoManager,
+		private readonly logger: Logger,
+		private readonly cliCredentialManager: CliCredentialManager,
+		private readonly authTelemetry: AuthTelemetry,
 		oauthCallback: OAuthCallback,
 		extensionId: string,
 	) {
-		this.secretsManager = container.getSecretsManager();
-		this.mementoManager = container.getMementoManager();
-		this.logger = container.getLogger();
-		this.cliCredentialManager = container.getCliCredentialManager();
-		this.authTelemetry = new AuthTelemetry(container.getTelemetryService());
 		this.oauthAuthorizer = new OAuthAuthorizer(
-			this.secretsManager,
+			secretsManager,
 			oauthCallback,
-			this.logger,
+			logger,
 			extensionId,
 		);
 	}

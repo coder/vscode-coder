@@ -85,28 +85,33 @@ export class AuthInterceptor implements vscode.Disposable {
 		this.logger.debug("Received 401 response, attempting recovery");
 		// TODO(#925): emit a correlated received-log here once Span.log() lands.
 		return this.authTelemetry.traceAuthRecovery(async (recorder) => {
+			// 1) OAuth refresh path.
 			const isOAuth =
 				await this.oauthSessionManager.isLoggedInWithOAuth(hostname);
 			recorder.setRefreshAttempted(isOAuth);
-			const newToken = isOAuth ? await this.tryOAuthRefresh() : undefined;
-			if (newToken) {
-				recorder.setRecovery("refresh_success");
-				return this.retryRequest(error, newToken);
-			} else if (this.onAuthRequired) {
-				recorder.setRecovery("login_required");
-				const success = await this.executeAuthRequired(hostname);
-				const auth = success
-					? await this.secretsManager.getSessionAuth(hostname)
-					: undefined;
-				if (auth) {
-					this.logger.debug("Re-authentication successful, retrying request");
-					return this.retryRequest(error, auth.token);
+			if (isOAuth) {
+				const newToken = await this.tryOAuthRefresh();
+				if (newToken) {
+					recorder.setRecovery("refresh_success");
+					return this.retryRequest(error, newToken);
 				}
-				throw error;
-			} else {
+			}
+
+			// 2) Interactive re-auth fallback.
+			if (!this.onAuthRequired) {
 				recorder.setRecovery("none");
 				throw error;
 			}
+			recorder.setRecovery("login_required");
+			const success = await this.executeAuthRequired(hostname);
+			const auth = success
+				? await this.secretsManager.getSessionAuth(hostname)
+				: undefined;
+			if (!auth) {
+				throw error;
+			}
+			this.logger.debug("Re-authentication successful, retrying request");
+			return this.retryRequest(error, auth.token);
 		});
 	}
 

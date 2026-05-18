@@ -4,14 +4,6 @@ import type {
 	CallerPropertyValue,
 } from "./event";
 
-/**
- * Final disposition recorded on a traced event's `result` property.
- * - `success`: ran to completion as intended.
- * - `aborted`: ended early by a user-initiated cancel.
- * - `error`:   the operation failed. Thrown exceptions populate the event's
- *              `error` block; `markFailure()` does not. This matches
- *              OpenTelemetry's "Status: Error + optional exception event".
- */
 export type SpanResult = "success" | "aborted" | "error";
 
 /**

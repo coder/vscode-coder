@@ -4,10 +4,6 @@ export type AuthTokenRefreshTrigger = "background" | "reactive";
 export type AuthRecoveryAction = "refresh_success" | "login_required" | "none";
 export type AuthLoginPromptTrigger = "auth_required" | "missing_session";
 
-/**
- * Why a login prompt ended without a session. `auth_failed` indicates
- * authentication itself failed; the others are user-driven aborts.
- */
 export type LoginPromptReason =
 	| "user_dismissed"
 	| "no_url_provided"
@@ -17,7 +13,6 @@ export type LoginPromptOutcome =
 	| { success: true }
 	| { success: false; reason: LoginPromptReason };
 
-/** Span annotator for the auth-recovery flow. Defaults to safe values. */
 interface AuthRecoveryRecorder {
 	setRecovery(recovery: AuthRecoveryAction): void;
 	setRefreshAttempted(attempted: boolean): void;
@@ -34,7 +29,7 @@ export class AuthTelemetry {
 	}
 
 	/** Logged when a refresh call joins an in-flight refresh and emits no span of its own. */
-	public tokenRefreshDeduped(trigger: AuthTokenRefreshTrigger): void {
+	public logTokenRefreshDeduped(trigger: AuthTokenRefreshTrigger): void {
 		this.telemetry.log("auth.token_refresh.deduped", { trigger });
 	}
 

@@ -355,7 +355,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 			this.logger.debug(
 				"Token refresh already in progress, waiting for result",
 			);
-			this.authTelemetry.tokenRefreshDeduped(trigger);
+			this.authTelemetry.logTokenRefreshDeduped(trigger);
 			return this.refreshPromise;
 		}
 

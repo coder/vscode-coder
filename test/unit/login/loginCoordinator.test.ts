@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
+import { AuthTelemetry } from "@/instrumentation/auth";
 import { LoginCoordinator } from "@/login/loginCoordinator";
 import { OAuthCallback } from "@/oauth/oauthCallback";
 import { maybeAskAuthMethod, maybeAskUrl } from "@/promptUtils";
@@ -14,7 +15,6 @@ import {
 	createAxiosError,
 	createMockCliCredentialManager,
 	createMockLogger,
-	createMockServiceContainer,
 	createMockUser,
 	InMemoryMemento,
 	InMemorySecretStorage,
@@ -124,14 +124,15 @@ function createTestContext(telemetry?: TelemetryService) {
 	const mementoManager = new MementoManager(memento);
 
 	const mockCredentialManager = createMockCliCredentialManager();
+	const authTelemetry = new AuthTelemetry(
+		telemetry ?? createTestTelemetryService(),
+	);
 	const coordinator = new LoginCoordinator(
-		createMockServiceContainer({
-			telemetry,
-			logger,
-			secretsManager,
-			mementoManager,
-			cliCredentialManager: mockCredentialManager,
-		}),
+		secretsManager,
+		mementoManager,
+		logger,
+		mockCredentialManager,
+		authTelemetry,
 		oauthCallback,
 		"coder.coder-remote",
 	);

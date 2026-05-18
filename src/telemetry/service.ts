@@ -30,7 +30,7 @@ const LEVEL_ORDER: Readonly<Record<TelemetryLevel, number>> = {
 const readLevel = (): TelemetryLevel =>
 	readTelemetryLevel(vscode.workspace.getConfiguration());
 
-const normalizeProps = (
+const stringifyProps = (
 	props: Record<string, CallerPropertyValue>,
 ): Record<string, string> => {
 	const out: Record<string, string> = {};
@@ -102,7 +102,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		this.#safeEmit(
 			newSpanId(),
 			eventName,
-			normalizeProps(properties),
+			stringifyProps(properties),
 			measurements,
 		);
 	}
@@ -119,7 +119,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		this.#safeEmit(
 			newSpanId(),
 			eventName,
-			normalizeProps(properties),
+			stringifyProps(properties),
 			measurements,
 			{ error },
 		);
@@ -143,7 +143,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		return this.#startSpan(
 			eventName,
 			fn,
-			normalizeProps(properties),
+			stringifyProps(properties),
 			measurements,
 			{
 				traceId: newTraceId(),
@@ -195,7 +195,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 				return this.#startSpan(
 					`${eventName}.${safeName}`,
 					phaseFn,
-					normalizeProps(phaseProps),
+					stringifyProps(phaseProps),
 					phaseMeasurements,
 					{ traceId, parentEventId: eventId, traceLevel },
 				);

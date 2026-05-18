@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
+import { AuthTelemetry } from "../instrumentation/auth";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
 import { buildSession, extractExtensionVersion } from "../telemetry/event";
@@ -99,7 +100,11 @@ export class ServiceContainer implements vscode.Disposable {
 		this.contextManager = new ContextManager(context);
 		this.oauthCallback = new OAuthCallback(context.secrets, this.logger);
 		this.loginCoordinator = new LoginCoordinator(
-			this,
+			this.secretsManager,
+			this.mementoManager,
+			this.logger,
+			this.cliCredentialManager,
+			new AuthTelemetry(this.telemetryService),
 			this.oauthCallback,
 			context.extension.id,
 		);
