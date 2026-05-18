@@ -5,6 +5,11 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { CertificateError } from "../error/certificateError";
+import {
+	AuthTelemetry,
+	type AuthLoginPromptTrigger,
+	type LoginPromptReason,
+} from "../instrumentation/auth";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
 import { withOptionalProgress } from "../progress";
@@ -15,6 +20,7 @@ import { vscodeProposed } from "../vscodeProposed";
 import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { CliCredentialManager } from "../core/cliCredentialManager";
+import type { ServiceContainer } from "../core/container";
 import type { MementoManager } from "../core/mementoManager";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
@@ -22,7 +28,7 @@ import type { Logger } from "../logging/logger";
 import type { OAuthCallback } from "../oauth/oauthCallback";
 
 type LoginResult =
-	| { success: false }
+	| { success: false; reason: LoginPromptReason }
 	| { success: true; user: User; token: string; oauth?: OAuthTokenData };
 
 export interface LoginOptions {
@@ -38,19 +44,26 @@ export interface LoginOptions {
 export class LoginCoordinator implements vscode.Disposable {
 	private loginQueue: Promise<unknown> = Promise.resolve();
 	private readonly oauthAuthorizer: OAuthAuthorizer;
+	private readonly authTelemetry: AuthTelemetry;
+	private readonly secretsManager: SecretsManager;
+	private readonly mementoManager: MementoManager;
+	private readonly logger: Logger;
+	private readonly cliCredentialManager: CliCredentialManager;
 
 	constructor(
-		private readonly secretsManager: SecretsManager,
-		private readonly mementoManager: MementoManager,
-		private readonly logger: Logger,
-		private readonly cliCredentialManager: CliCredentialManager,
+		container: ServiceContainer,
 		oauthCallback: OAuthCallback,
 		extensionId: string,
 	) {
+		this.secretsManager = container.getSecretsManager();
+		this.mementoManager = container.getMementoManager();
+		this.logger = container.getLogger();
+		this.cliCredentialManager = container.getCliCredentialManager();
+		this.authTelemetry = new AuthTelemetry(container.getTelemetryService());
 		this.oauthAuthorizer = new OAuthAuthorizer(
-			secretsManager,
+			this.secretsManager,
 			oauthCallback,
-			logger,
+			this.logger,
 			extensionId,
 		);
 	}
@@ -79,7 +92,19 @@ export class LoginCoordinator implements vscode.Disposable {
 	/**
 	 * Shows dialog then login - for system-initiated auth (remote, OAuth refresh).
 	 */
-	public async ensureLoggedInWithDialog(
+	public ensureLoggedInWithDialog(
+		options: LoginOptions & {
+			message?: string;
+			detailPrefix?: string;
+			trigger: AuthLoginPromptTrigger;
+		},
+	): Promise<LoginResult> {
+		return this.authTelemetry.traceLoginPrompt(options.trigger, () =>
+			this.performLoginDialog(options),
+		);
+	}
+
+	private async performLoginDialog(
 		options: LoginOptions & { message?: string; detailPrefix?: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url, detailPrefix, message } = options;
@@ -97,7 +122,7 @@ export class LoginCoordinator implements vscode.Disposable {
 					},
 					"Login",
 				)
-				.then(async (action) => {
+				.then(async (action): Promise<LoginResult> => {
 					if (action === "Login") {
 						// Proceed with the login flow, handling logging in from another window
 						const storedAuth =
@@ -108,7 +133,7 @@ export class LoginCoordinator implements vscode.Disposable {
 							storedAuth?.url,
 						);
 						if (!newUrl) {
-							throw new Error("URL must be provided");
+							return { success: false, reason: "no_url_provided" };
 						}
 
 						const result = await this.attemptLogin(
@@ -120,10 +145,9 @@ export class LoginCoordinator implements vscode.Disposable {
 						await this.persistSessionAuth(result, safeHostname, newUrl);
 
 						return result;
-					} else {
-						// User cancelled
-						return { success: false } as const;
 					}
+					// User cancelled
+					return { success: false, reason: "user_dismissed" };
 				});
 
 			// Race between user clicking login and cross-window detection
@@ -290,7 +314,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			case "legacy":
 				return this.loginWithToken(client);
 			case undefined:
-				return { success: false }; // User aborted
+				return { success: false, reason: "user_dismissed" };
 		}
 	}
 
@@ -303,7 +327,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			return { success: true, token: "", user };
 		} catch (err) {
 			this.showAuthError(err, isAutoLogin);
-			return { success: false };
+			return { success: false, reason: "auth_failed" };
 		}
 	}
 
@@ -324,7 +348,7 @@ export class LoginCoordinator implements vscode.Disposable {
 				return "unauthorized";
 			}
 			this.showAuthError(err, isAutoLogin);
-			return { success: false };
+			return { success: false, reason: "auth_failed" };
 		}
 	}
 
@@ -406,7 +430,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			return { success: true, user, token: validatedToken ?? "" };
 		}
 
-		return { success: false };
+		return { success: false, reason: "user_dismissed" };
 	}
 
 	/**
@@ -446,7 +470,7 @@ export class LoginCoordinator implements vscode.Disposable {
 					`${title}: ${getErrorMessage(error, "Unknown error")}`,
 				);
 			}
-			return { success: false };
+			return { success: false, reason: "auth_failed" };
 		}
 	}
 

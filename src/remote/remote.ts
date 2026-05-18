@@ -223,9 +223,8 @@ export class Remote {
 			// Create 401 interceptor - handles auth failures with re-login dialog
 			const authInterceptor = new AuthInterceptor(
 				workspaceClient,
-				this.logger,
 				remoteOAuthManager,
-				this.secretsManager,
+				this.serviceContainer,
 				async () => {
 					const result = await this.showSessionExpiredDialog(context);
 					return result.success;
@@ -642,6 +641,7 @@ export class Remote {
 			url: context.baseUrl,
 			message: "Your session expired...",
 			detailPrefix: `You must log in to access ${context.workspaceName}.`,
+			trigger: "auth_required",
 		});
 	}
 
@@ -655,6 +655,7 @@ export class Remote {
 			url,
 			message,
 			detailPrefix: `You must log in to access ${context.workspaceName}.`,
+			trigger: "missing_session",
 		});
 
 		// Dispose before retrying since setup will create new disposables.

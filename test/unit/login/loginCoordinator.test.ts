@@ -7,12 +7,14 @@ import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { LoginCoordinator } from "@/login/loginCoordinator";
 import { OAuthCallback } from "@/oauth/oauthCallback";
-import { maybeAskAuthMethod } from "@/promptUtils";
+import { maybeAskAuthMethod, maybeAskUrl } from "@/promptUtils";
 
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	createAxiosError,
 	createMockCliCredentialManager,
 	createMockLogger,
+	createMockServiceContainer,
 	createMockUser,
 	InMemoryMemento,
 	InMemorySecretStorage,
@@ -20,6 +22,8 @@ import {
 	MockProgressReporter,
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
+
+import type { TelemetryService } from "@/telemetry/service";
 
 // Hoisted mock adapter implementation
 const mockAxiosAdapterImpl = vi.hoisted(
@@ -98,7 +102,7 @@ const TEST_HOSTNAME = "coder.example.com";
 /**
  * Creates a fresh test context with all dependencies.
  */
-function createTestContext() {
+function createTestContext(telemetry?: TelemetryService) {
 	vi.resetAllMocks();
 
 	const mockAdapter = (axios as MockedAxios).__mockAdapter;
@@ -121,10 +125,13 @@ function createTestContext() {
 
 	const mockCredentialManager = createMockCliCredentialManager();
 	const coordinator = new LoginCoordinator(
-		secretsManager,
-		mementoManager,
-		logger,
-		mockCredentialManager,
+		createMockServiceContainer({
+			telemetry,
+			logger,
+			secretsManager,
+			mementoManager,
+			cliCredentialManager: mockCredentialManager,
+		}),
 		oauthCallback,
 		"coder.coder-remote",
 	);
@@ -153,6 +160,7 @@ function createTestContext() {
 		mockGetAuthenticatedUser,
 		mockConfig,
 		userInteraction,
+		logger,
 		secretsManager,
 		oauthCallback,
 		mementoManager,
@@ -306,26 +314,10 @@ describe("LoginCoordinator", () => {
 		});
 
 		it("logs warning instead of showing dialog for autoLogin", async () => {
-			const {
-				mockConfig,
-				secretsManager,
-				oauthCallback,
-				mementoManager,
-				mockAuthFailure,
-			} = createTestContext();
+			const { mockConfig, logger, coordinator, mockAuthFailure } =
+				createTestContext();
 			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
 			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-
-			const logger = createMockLogger();
-			const coordinator = new LoginCoordinator(
-				secretsManager,
-				mementoManager,
-				logger,
-				createMockCliCredentialManager(),
-				oauthCallback,
-				"coder.coder-remote",
-			);
-
 			mockAuthFailure("Certificate error");
 
 			const result = await coordinator.ensureLoggedIn({
@@ -353,6 +345,7 @@ describe("LoginCoordinator", () => {
 			const result = await coordinator.ensureLoggedInWithDialog({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
+				trigger: "auth_required",
 			});
 
 			expect(result.success).toBe(false);
@@ -542,6 +535,100 @@ describe("LoginCoordinator", () => {
 			const result = await login();
 
 			expect(result).toEqual({ success: true, user, token: "stored-token" });
+		});
+	});
+
+	describe("telemetry", () => {
+		const dialogOptions = (trigger: "auth_required" | "missing_session") => ({
+			url: TEST_URL,
+			safeHostname: TEST_HOSTNAME,
+			trigger,
+		});
+
+		const enableMTLS = (mockConfig: MockConfigurationProvider) => {
+			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
+			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
+		};
+
+		interface PromptCase {
+			name: string;
+			arrange: (ctx: ReturnType<typeof createTestContext>) => void;
+			trigger: "auth_required" | "missing_session";
+			expected: {
+				result: "success" | "aborted" | "error";
+				reason?: "user_dismissed" | "no_url_provided" | "auth_failed";
+			};
+		}
+
+		it.each<PromptCase>([
+			{
+				name: "user dismisses the dialog: aborted + user_dismissed",
+				arrange: (ctx) =>
+					ctx.userInteraction.setResponse("Authentication Required", undefined),
+				trigger: "missing_session",
+				expected: { result: "aborted", reason: "user_dismissed" },
+			},
+			{
+				name: "authentication fails: error + auth_failed",
+				arrange: (ctx) => {
+					enableMTLS(ctx.mockConfig);
+					ctx.mockAuthFailure("Certificate error");
+					vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
+					ctx.userInteraction.setResponse("Authentication Required", "Login");
+				},
+				trigger: "auth_required",
+				expected: { result: "error", reason: "auth_failed" },
+			},
+			{
+				name: "user cancels URL prompt: aborted + no_url_provided",
+				arrange: (ctx) => {
+					enableMTLS(ctx.mockConfig);
+					vi.mocked(maybeAskUrl).mockResolvedValue(undefined);
+					ctx.userInteraction.setResponse("Authentication Required", "Login");
+				},
+				trigger: "auth_required",
+				expected: { result: "aborted", reason: "no_url_provided" },
+			},
+			{
+				name: "happy path: success and no reason",
+				arrange: (ctx) => {
+					enableMTLS(ctx.mockConfig);
+					ctx.mockSuccessfulAuth();
+					vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
+					ctx.userInteraction.setResponse("Authentication Required", "Login");
+				},
+				trigger: "auth_required",
+				expected: { result: "success" },
+			},
+		])("$name", async ({ arrange, trigger, expected }) => {
+			const sink = new TestSink();
+			const ctx = createTestContext(createTestTelemetryService(sink));
+			arrange(ctx);
+
+			await ctx.coordinator.ensureLoggedInWithDialog(dialogOptions(trigger));
+
+			const event = sink.expectOne("auth.login_prompted");
+			expect(event.properties).toMatchObject({ trigger, ...expected });
+			if (expected.reason === undefined) {
+				expect(event.properties.reason).toBeUndefined();
+			}
+			expect(event.error).toBeUndefined();
+		});
+
+		it("includes durationMs on the prompt span", async () => {
+			const sink = new TestSink();
+			const { userInteraction, coordinator } = createTestContext(
+				createTestTelemetryService(sink),
+			);
+			userInteraction.setResponse("Authentication Required", undefined);
+
+			await coordinator.ensureLoggedInWithDialog(
+				dialogOptions("missing_session"),
+			);
+
+			expect(
+				sink.expectOne("auth.login_prompted").measurements.durationMs,
+			).toEqual(expect.any(Number));
 		});
 	});
 });

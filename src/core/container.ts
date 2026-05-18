@@ -99,10 +99,7 @@ export class ServiceContainer implements vscode.Disposable {
 		this.contextManager = new ContextManager(context);
 		this.oauthCallback = new OAuthCallback(context.secrets, this.logger);
 		this.loginCoordinator = new LoginCoordinator(
-			this.secretsManager,
-			this.mementoManager,
-			this.logger,
-			this.cliCredentialManager,
+			this,
 			this.oauthCallback,
 			context.extension.id,
 		);

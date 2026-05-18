@@ -124,12 +124,7 @@ describe("TelemetryService", () => {
 		});
 
 		it("forwards caller measurements alongside the framework-set durationMs", async () => {
-			await h.service.trace(
-				"auth.token_refresh",
-				() => Promise.resolve(),
-				{},
-				{ attempts: 2 },
-			);
+			await h.service.trace("op", () => Promise.resolve(), {}, { attempts: 2 });
 
 			const [event] = h.sink.events;
 			expect(event.measurements.attempts).toBe(2);
@@ -305,6 +300,7 @@ describe("TelemetryService", () => {
 			escapedSpan?.setProperty("late", "ignored");
 			escapedSpan?.setMeasurement("lateMs", 99);
 			escapedSpan?.markAborted();
+			escapedSpan?.markFailure();
 
 			// Mutations dropped: emitted event is unchanged.
 			expect(h.sink.events[0].properties.late).toBeUndefined();
@@ -312,7 +308,7 @@ describe("TelemetryService", () => {
 			expect(h.sink.events[0].properties.result).toBe("success");
 
 			// Each post-emit mutation logs a warning.
-			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 3);
+			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 4);
 			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore][0]).toContain(
 				"setProperty",
 			);
@@ -321,6 +317,9 @@ describe("TelemetryService", () => {
 			);
 			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 2][0]).toContain(
 				"markAborted",
+			);
+			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 3][0]).toContain(
+				"markFailure",
 			);
 		});
 
@@ -341,6 +340,45 @@ describe("TelemetryService", () => {
 			await expect(
 				h.service.trace("op", (span) => {
 					span.markAborted();
+					return Promise.reject(boom);
+				}),
+			).rejects.toBe(boom);
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "error" },
+				error: { message: "kaboom" },
+			});
+		});
+
+		it("markFailure flips result to 'error' on normal return without an error block", async () => {
+			await h.service.trace("op", (span) => {
+				span.markFailure();
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "error" },
+			});
+			expect(h.sink.events[0].error).toBeUndefined();
+		});
+
+		it("markFailure overrides markAborted (failure wins over abort)", async () => {
+			await h.service.trace("op", (span) => {
+				span.markAborted();
+				span.markFailure();
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0].properties.result).toBe("error");
+		});
+
+		it("thrown errors take precedence over markFailure (error block is preserved)", async () => {
+			const boom = new Error("kaboom");
+			await expect(
+				h.service.trace("op", (span) => {
+					span.markFailure();
 					return Promise.reject(boom);
 				}),
 			).rejects.toBe(boom);

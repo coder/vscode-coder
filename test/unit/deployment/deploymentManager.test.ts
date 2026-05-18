@@ -7,6 +7,7 @@ import { DeploymentManager } from "@/deployment/deploymentManager";
 
 import {
 	createMockLogger,
+	createMockServiceContainer,
 	createMockUser,
 	InMemoryMemento,
 	InMemorySecretStorage,
@@ -15,9 +16,8 @@ import {
 	MockOAuthSessionManager,
 } from "../../mocks/testHelpers";
 
-import type { ServiceContainer } from "@/core/container";
-import type { ContextManager } from "@/core/contextManager";
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
+import type { TelemetryService } from "@/telemetry/service";
 import type { WorkspaceProvider } from "@/workspace/workspacesProvider";
 
 // Mock CoderApi.create to return our mock client for validation
@@ -70,16 +70,14 @@ function createTestContext() {
 		setDeploymentUrl: vi.fn(),
 	};
 
-	const container = {
-		getSecretsManager: () => secretsManager,
-		getMementoManager: () => mementoManager,
-		getContextManager: () => contextManager as unknown as ContextManager,
-		getLogger: () => logger,
-		getTelemetryService: () => telemetryService,
-	};
-
 	const manager = DeploymentManager.create(
-		container as unknown as ServiceContainer,
+		createMockServiceContainer({
+			telemetry: telemetryService as unknown as TelemetryService,
+			logger,
+			secretsManager,
+			mementoManager,
+			contextManager,
+		}),
 		mockClient as unknown as CoderApi,
 		mockOAuthSessionManager as unknown as OAuthSessionManager,
 		[mockWorkspaceProvider as unknown as WorkspaceProvider],

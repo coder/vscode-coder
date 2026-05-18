@@ -8,6 +8,7 @@ import axios, {
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
+import { createTestTelemetryService } from "./telemetry";
 import { window as vscodeWindow } from "./vscode.runtime";
 
 import type { Experiment, User } from "coder/site/src/api/typesGenerated";
@@ -16,14 +17,30 @@ import type { IncomingMessage } from "node:http";
 
 import type { CoderApi } from "@/api/coderApi";
 import type { CliCredentialManager } from "@/core/cliCredentialManager";
+import type { ServiceContainer } from "@/core/container";
+import type { ContextManager } from "@/core/contextManager";
+import type { MementoManager } from "@/core/mementoManager";
+import type { SecretsManager } from "@/core/secretsManager";
 import type { Logger } from "@/logging/logger";
 import type { NetworkInfo } from "@/remote/sshProcess";
+import type { TelemetryService } from "@/telemetry/service";
 import type {
 	EventHandler,
 	EventPayloadMap,
 	ParsedMessageEvent,
 	UnidirectionalStream,
 } from "@/websocket/eventStreamConnection";
+
+/**
+ * Subset of `ContextManager`'s public API that mocks (e.g. `MockContextManager`)
+ * implement. Used by `createMockServiceContainer` so tests can pass either the
+ * real class or a mock without resorting to `unknown`.
+ */
+interface ContextManagerLike {
+	set(key: string, value: boolean): void;
+	get(key: string): boolean;
+	dispose(): void;
+}
 
 export function makeNetworkInfo(
 	overrides: Partial<NetworkInfo> = {},
@@ -441,6 +458,43 @@ export function createMockLogger(): Logger {
 		error: vi.fn(),
 		show: vi.fn(),
 	};
+}
+
+/**
+ * Minimal `ServiceContainer` stub for tests. Pass only the services the unit
+ * under test reads; unset services throw on access so a missing dependency
+ * surfaces as a clear error rather than a downstream `undefined` deref.
+ */
+export function createMockServiceContainer(
+	overrides: {
+		telemetry?: TelemetryService;
+		logger?: Logger;
+		secretsManager?: SecretsManager;
+		mementoManager?: MementoManager;
+		cliCredentialManager?: CliCredentialManager;
+		contextManager?: ContextManagerLike;
+	} = {},
+): ServiceContainer {
+	const telemetry = overrides.telemetry ?? createTestTelemetryService();
+	const logger = overrides.logger ?? createMockLogger();
+	const require = <T>(name: string, value: T | undefined): T => {
+		if (value === undefined) {
+			throw new Error(`createMockServiceContainer: '${name}' was not provided`);
+		}
+		return value;
+	};
+	return {
+		getTelemetryService: () => telemetry,
+		getLogger: () => logger,
+		getSecretsManager: () =>
+			require("secretsManager", overrides.secretsManager),
+		getMementoManager: () =>
+			require("mementoManager", overrides.mementoManager),
+		getCliCredentialManager: () =>
+			require("cliCredentialManager", overrides.cliCredentialManager),
+		getContextManager: () =>
+			require("contextManager", overrides.contextManager) as ContextManager,
+	} as ServiceContainer;
 }
 
 /** Update the mocked active color theme and fire onDidChangeActiveColorTheme. */
