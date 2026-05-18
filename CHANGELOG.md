@@ -25,6 +25,8 @@
   discovery/loss/recovery with sampled network info, and reconnecting
   WebSocket open/drop/reconnect/state transitions.
 - Local telemetry now records authentication refresh and recovery prompts.
+- Local telemetry now records workspace and agent state transitions with
+  observed durations.
 - Path-like settings (`coder.binaryDestination`, `coder.tlsCertFile`,
   `coder.tlsKeyFile`, `coder.tlsCaFile`, `coder.tlsAltHost`,
   `coder.proxyLogDirectory`) and items in `coder.globalFlags` now support
