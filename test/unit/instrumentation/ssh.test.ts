@@ -2,25 +2,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SshTelemetry } from "@/instrumentation/ssh";
 
-import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
-import {
-	makeNetworkInfo,
-	MockConfigurationProvider,
-} from "../../mocks/testHelpers";
+import { createTelemetryHarness } from "../../mocks/telemetry";
+import { makeNetworkInfo } from "../../mocks/testHelpers";
 
 function setup() {
-	new MockConfigurationProvider().set("coder.telemetry.level", "local");
-	const sink = new TestSink();
-	return { ssh: new SshTelemetry(createTestTelemetryService(sink)), sink };
+	const { sink, service } = createTelemetryHarness();
+	return { ssh: new SshTelemetry(service), sink };
+}
+
+interface DiscoveryCase {
+	pid: number | undefined;
+	attempts: number;
+	found: string;
+}
+
+interface DisposedCase {
+	name: string;
+	lose: boolean;
+	wasLost: string;
 }
 
 describe("SshTelemetry", () => {
 	describe("traceProcessDiscovery", () => {
-		interface DiscoveryCase {
-			pid: number | undefined;
-			attempts: number;
-			found: string;
-		}
 		it.each<DiscoveryCase>([
 			{ pid: 123, attempts: 2, found: "true" },
 			{ pid: undefined, attempts: 5, found: "false" },
@@ -148,11 +151,6 @@ describe("SshTelemetry", () => {
 			expect(sink.events).toHaveLength(0);
 		});
 
-		interface DisposedCase {
-			name: string;
-			lose: boolean;
-			wasLost: string;
-		}
 		it.each<DisposedCase>([
 			{ name: "from a healthy state", lose: false, wasLost: "false" },
 			{ name: "after the process was lost", lose: true, wasLost: "true" },

@@ -1,4 +1,10 @@
-import type { CallerMeasurements, CallerProperties } from "./event";
+import type {
+	CallerMeasurements,
+	CallerProperties,
+	CallerPropertyValue,
+} from "./event";
+
+export type SpanResult = "success" | "aborted" | "error";
 
 /**
  * Parent span handle. Children's `eventName` composes as `${parent.eventName}.${phaseName}`.
@@ -17,11 +23,13 @@ export interface Span {
 		measurements?: CallerMeasurements,
 	): Promise<T>;
 	/** Add or replace a property on the event emitted for this span. */
-	setProperty(name: string, value: string): void;
+	setProperty(name: string, value: CallerPropertyValue): void;
 	/** Add or replace a measurement on the event emitted for this span. */
 	setMeasurement(name: string, value: number): void;
 	/** Flip this span's `result` from `success` to `aborted` on normal return. */
 	markAborted(): void;
+	/** Flip `result` to `error` for a failure captured in the return value. See `SpanResult`. */
+	markFailure(): void;
 }
 
 /** No-op `Span` used when telemetry is off. Runs phase fns but emits nothing. */
@@ -33,6 +41,7 @@ export const NOOP_SPAN: Span = {
 		return fn(NOOP_SPAN);
 	},
 	markAborted: () => undefined,
+	markFailure: () => undefined,
 	setProperty: () => undefined,
 	setMeasurement: () => undefined,
 };

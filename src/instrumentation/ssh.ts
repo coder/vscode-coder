@@ -34,7 +34,7 @@ export class SshTelemetry {
 	): Promise<number | undefined> {
 		return this.#telemetry.trace("ssh.process.discovered", async (span) => {
 			const { pid, attempts } = await fn();
-			span.setProperty("found", String(pid !== undefined));
+			span.setProperty("found", pid !== undefined);
 			span.setMeasurement("attempts", attempts);
 			return pid;
 		});
@@ -79,7 +79,6 @@ export class SshTelemetry {
 	public processReplaced(): void {
 		const now = performance.now();
 		if (this.#processStartedAtMs !== undefined) {
-			const wasLost = this.#processLostAtMs !== undefined;
 			const measurements: Record<string, number> = {
 				previousUptimeMs: now - this.#processStartedAtMs,
 			};
@@ -88,7 +87,7 @@ export class SshTelemetry {
 			}
 			this.#telemetry.log(
 				"ssh.process.replaced",
-				{ wasLost: String(wasLost) },
+				{ wasLost: this.#processLostAtMs !== undefined },
 				measurements,
 			);
 		}
@@ -104,10 +103,9 @@ export class SshTelemetry {
 			return;
 		}
 		const now = performance.now();
-		const wasLost = this.#processLostAtMs !== undefined;
 		this.#telemetry.log(
 			"ssh.process.disposed",
-			{ wasLost: String(wasLost) },
+			{ wasLost: this.#processLostAtMs !== undefined },
 			{ uptimeMs: now - this.#processStartedAtMs },
 		);
 		this.#processStartedAtMs = undefined;
@@ -131,7 +129,7 @@ export class SshTelemetry {
 		this.#telemetry.log(
 			"ssh.network.sampled",
 			{
-				p2p: String(network.p2p),
+				p2p: network.p2p,
 				preferredDerp: network.preferred_derp,
 			},
 			{

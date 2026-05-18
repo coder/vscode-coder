@@ -3,13 +3,11 @@ import { describe, expect, it } from "vitest";
 import { WebSocketTelemetry } from "@/instrumentation/websocket";
 import { ConnectionState } from "@/websocket/reconnectingWebSocket";
 
-import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
-import { MockConfigurationProvider } from "../../mocks/testHelpers";
+import { createTelemetryHarness } from "../../mocks/telemetry";
 
 function setup() {
-	new MockConfigurationProvider().set("coder.telemetry.level", "local");
-	const sink = new TestSink();
-	return { ws: new WebSocketTelemetry(createTestTelemetryService(sink)), sink };
+	const { sink, service } = createTelemetryHarness();
+	return { ws: new WebSocketTelemetry(service), sink };
 }
 
 describe("WebSocketTelemetry", () => {

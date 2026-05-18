@@ -1,4 +1,8 @@
 import { CoderApi } from "../api/coderApi";
+import {
+	AuthTelemetry,
+	type AuthTokenRefreshTrigger,
+} from "../instrumentation/auth";
 
 import { DEFAULT_OAUTH_SCOPES, REFRESH_GRANT_TYPE } from "./constants";
 import { OAuthError, parseOAuthError } from "./errors";
@@ -64,6 +68,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 			container.getSecretsManager(),
 			container.getLogger(),
 			onAuthRequired,
+			new AuthTelemetry(container.getTelemetryService()),
 		);
 		manager.setupTokenListener();
 		manager.scheduleNextRefresh();
@@ -75,6 +80,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		private readonly secretsManager: SecretsManager,
 		private readonly logger: Logger,
 		private readonly onAuthRequired: () => Promise<void>,
+		private readonly authTelemetry: AuthTelemetry,
 	) {}
 
 	/**
@@ -218,7 +224,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		this.refreshTimer = undefined;
 
-		this.refreshToken()
+		this.refreshToken("background")
 			.then(() => {
 				this.logger.debug("Background token refresh succeeded");
 			})
@@ -342,17 +348,22 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Refresh the access token using the stored refresh token.
 	 * Uses a shared promise to handle concurrent refresh attempts.
 	 */
-	public async refreshToken(): Promise<OAuth2TokenResponse> {
+	public async refreshToken(
+		trigger: AuthTokenRefreshTrigger = "reactive",
+	): Promise<OAuth2TokenResponse> {
 		if (this.refreshPromise) {
 			this.logger.debug(
 				"Token refresh already in progress, waiting for result",
 			);
+			this.authTelemetry.logTokenRefreshDeduped(trigger);
 			return this.refreshPromise;
 		}
 
 		const deployment = this.requireDeployment();
 		// Assign synchronously before any async work to prevent race conditions
-		this.refreshPromise = this.executeTokenRefresh(deployment);
+		this.refreshPromise = this.authTelemetry.traceTokenRefresh(trigger, () =>
+			this.executeTokenRefresh(deployment),
+		);
 		return this.refreshPromise;
 	}
 

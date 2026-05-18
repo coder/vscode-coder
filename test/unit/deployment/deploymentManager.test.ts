@@ -5,18 +5,19 @@ import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { DeploymentManager } from "@/deployment/deploymentManager";
 
+import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
 	createMockLogger,
+	createMockServiceContainer,
 	createMockUser,
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockCoderApi,
+	MockConfigurationProvider,
 	MockContextManager,
 	MockOAuthSessionManager,
 } from "../../mocks/testHelpers";
 
-import type { ServiceContainer } from "@/core/container";
-import type { ContextManager } from "@/core/contextManager";
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
 import type { WorkspaceProvider } from "@/workspace/workspacesProvider";
 
@@ -48,6 +49,7 @@ const TEST_HOSTNAME = "coder.example.com";
  */
 function createTestContext() {
 	vi.resetAllMocks();
+	new MockConfigurationProvider();
 
 	const mockClient = new MockCoderApi();
 	// For setDeploymentIfValid, we use a separate mock for validation
@@ -66,20 +68,17 @@ function createTestContext() {
 		validationMockClient as unknown as CoderApi,
 	);
 
-	const telemetryService = {
-		setDeploymentUrl: vi.fn(),
-	};
-
-	const container = {
-		getSecretsManager: () => secretsManager,
-		getMementoManager: () => mementoManager,
-		getContextManager: () => contextManager as unknown as ContextManager,
-		getLogger: () => logger,
-		getTelemetryService: () => telemetryService,
-	};
+	const telemetryService = createTestTelemetryService();
+	const setDeploymentUrlSpy = vi.spyOn(telemetryService, "setDeploymentUrl");
 
 	const manager = DeploymentManager.create(
-		container as unknown as ServiceContainer,
+		createMockServiceContainer({
+			telemetry: telemetryService,
+			logger,
+			secretsManager,
+			mementoManager,
+			contextManager,
+		}),
 		mockClient as unknown as CoderApi,
 		mockOAuthSessionManager as unknown as OAuthSessionManager,
 		[mockWorkspaceProvider as unknown as WorkspaceProvider],
@@ -93,6 +92,7 @@ function createTestContext() {
 		mockOAuthSessionManager,
 		mockWorkspaceProvider,
 		telemetryService,
+		setDeploymentUrlSpy,
 		manager,
 	};
 }
@@ -165,7 +165,7 @@ describe("DeploymentManager", () => {
 		});
 
 		it("notifies telemetry of the deployment URL", async () => {
-			const { telemetryService, manager } = createTestContext();
+			const { setDeploymentUrlSpy, manager } = createTestContext();
 
 			await manager.setDeployment({
 				url: TEST_URL,
@@ -174,7 +174,7 @@ describe("DeploymentManager", () => {
 				user: createMockUser(),
 			});
 
-			expect(telemetryService.setDeploymentUrl).toHaveBeenCalledWith(TEST_URL);
+			expect(setDeploymentUrlSpy).toHaveBeenCalledWith(TEST_URL);
 		});
 
 		it("sets isOwner context when user has owner role", async () => {
@@ -405,7 +405,7 @@ describe("DeploymentManager", () => {
 		});
 
 		it("resets the telemetry deployment URL on clearDeployment", async () => {
-			const { telemetryService, manager } = createTestContext();
+			const { setDeploymentUrlSpy, manager } = createTestContext();
 
 			await manager.setDeployment({
 				url: TEST_URL,
@@ -415,7 +415,7 @@ describe("DeploymentManager", () => {
 			});
 			await manager.clearDeployment();
 
-			expect(telemetryService.setDeploymentUrl).toHaveBeenLastCalledWith("");
+			expect(setDeploymentUrlSpy).toHaveBeenLastCalledWith("");
 		});
 	});
 

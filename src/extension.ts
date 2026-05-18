@@ -145,9 +145,8 @@ async function doActivate(
 	// Handles 401 responses (OAuth and otherwise)
 	const authInterceptor = new AuthInterceptor(
 		client,
-		output,
 		oauthSessionManager,
-		secretsManager,
+		serviceContainer,
 		async () => {
 			await handleAuthFailure();
 			return false;

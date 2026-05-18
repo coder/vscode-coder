@@ -13,20 +13,18 @@
   machine only and never sent anywhere. Configure via the new
   `coder.telemetry.level` setting (`local` by default, `off` to disable);
   see `coder.telemetry.local` for tunables.
-- Every `coder.*` command now records a `command.invoked` telemetry event with
-  its duration and outcome, so command latency and failures are captured
-  alongside other local telemetry.
-- Extension activation, remote workspace setup phases (auth retrieval,
-  workspace lookup, workspace and agent readiness, SSH config write), and CLI
-  binary download/verify now emit local telemetry events with their duration
-  and outcome, so startup latency and failures are captured alongside other
-  local telemetry.
+- Local telemetry now records `command.invoked` for each `coder.*` command
+  with duration and outcome.
+- Local telemetry now records extension activation, remote workspace setup
+  phases (auth retrieval, workspace lookup, workspace and agent readiness,
+  SSH config write), and CLI binary download/verify with their durations
+  and outcomes.
 - Local telemetry now records `http.requests` rollups for per-route HTTP
-  health without emitting one event per request.
-- Connection lifecycle now records local telemetry: SSH process
+  health, without emitting one event per request.
+- Local telemetry now records connection lifecycle: SSH process
   discovery/loss/recovery with sampled network info, and reconnecting
-  WebSocket open, drop, reconnect, and state transitions, so connection
-  stability is captured alongside other local telemetry.
+  WebSocket open/drop/reconnect/state transitions.
+- Local telemetry now records authentication refresh and recovery prompts.
 
 ### Fixed
 

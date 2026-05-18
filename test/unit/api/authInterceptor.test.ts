@@ -8,8 +8,14 @@ import {
 import { SecretsManager } from "@/core/secretsManager";
 
 import {
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
+import {
 	createAxiosError,
 	createMockLogger,
+	createMockServiceContainer,
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockOAuthSessionManager,
@@ -21,7 +27,9 @@ import {
 } from "../oauth/testUtils";
 
 import type { CoderApi } from "@/api/coderApi";
+import type { AuthRecoveryAction } from "@/instrumentation/auth";
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
+import type { TelemetryService } from "@/telemetry/service";
 
 /**
  * Creates a mock axios instance with controllable interceptors.
@@ -84,6 +92,7 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function createTestContext() {
 	vi.resetAllMocks();
+	enableLocalTelemetry();
 
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
@@ -136,12 +145,14 @@ function createTestContext() {
 	};
 
 	/** Creates interceptor with optional callback */
-	const createInterceptor = (onAuthRequired?: AuthRequiredHandler) =>
+	const createInterceptor = (
+		onAuthRequired?: AuthRequiredHandler,
+		telemetry?: TelemetryService,
+	) =>
 		new AuthInterceptor(
 			mockCoderApi,
-			logger,
 			mockOAuthManager as unknown as OAuthSessionManager,
-			secretsManager,
+			createMockServiceContainer({ telemetry, logger, secretsManager }),
 			onAuthRequired,
 		);
 
@@ -182,7 +193,7 @@ describe("AuthInterceptor", () => {
 	});
 
 	describe("401 handling with OAuth", () => {
-		it("refreshes token and retries request", async () => {
+		it("refreshes token and retries the request", async () => {
 			const {
 				mockCoderApi,
 				mockOAuthManager,
@@ -422,6 +433,134 @@ describe("AuthInterceptor", () => {
 			interceptor.dispose();
 
 			expect(axiosInstance.getInterceptorCount()).toBe(0);
+		});
+	});
+
+	describe("telemetry", () => {
+		interface RecoveryCase {
+			name: string;
+			arrange: (ctx: ReturnType<typeof createTestContext>) => Promise<void>;
+			withCallback: boolean;
+			callbackResult?: boolean;
+			expectThrow: boolean;
+			expected: {
+				recovery: AuthRecoveryAction;
+				refreshAttempted: "true" | "false";
+				result: "success" | "error";
+			};
+		}
+
+		it.each<RecoveryCase>([
+			{
+				name: "OAuth refresh succeeds: recovery=refresh_success",
+				arrange: async (ctx) => {
+					await ctx.setupOAuthTokens();
+					ctx.mockOAuthManager.refreshToken.mockResolvedValue(
+						createMockTokenResponse({ access_token: "new" }),
+					);
+					vi.spyOn(ctx.axiosInstance, "request").mockResolvedValue({
+						status: 200,
+					});
+				},
+				withCallback: false,
+				expectThrow: false,
+				expected: {
+					recovery: "refresh_success",
+					refreshAttempted: "true",
+					result: "success",
+				},
+			},
+			{
+				name: "no OAuth + callback declines: recovery=login_required",
+				arrange: () => Promise.resolve(),
+				withCallback: true,
+				callbackResult: false,
+				expectThrow: true,
+				expected: {
+					recovery: "login_required",
+					refreshAttempted: "false",
+					result: "error",
+				},
+			},
+			{
+				name: "no OAuth + no callback: recovery=none",
+				arrange: () => Promise.resolve(),
+				withCallback: false,
+				expectThrow: true,
+				expected: {
+					recovery: "none",
+					refreshAttempted: "false",
+					result: "error",
+				},
+			},
+			{
+				name: "OAuth refresh fails + callback declines: refreshAttempted=true, recovery=login_required",
+				arrange: async (ctx) => {
+					await ctx.setupOAuthTokens();
+					ctx.mockOAuthManager.refreshToken.mockRejectedValue(
+						new Error("refresh failed"),
+					);
+				},
+				withCallback: true,
+				callbackResult: false,
+				expectThrow: true,
+				expected: {
+					recovery: "login_required",
+					refreshAttempted: "true",
+					result: "error",
+				},
+			},
+		])(
+			"$name",
+			async ({
+				arrange,
+				withCallback,
+				callbackResult,
+				expectThrow,
+				expected,
+			}) => {
+				const sink = new TestSink();
+				const ctx = createTestContext();
+				await arrange(ctx);
+				const onAuthRequired = withCallback
+					? vi.fn().mockResolvedValue(callbackResult)
+					: undefined;
+				ctx.createInterceptor(onAuthRequired, createTestTelemetryService(sink));
+
+				const trigger = ctx.axiosInstance.triggerResponseError(
+					createAxiosError(401, "Unauthorized"),
+				);
+				if (expectThrow) {
+					await expect(trigger).rejects.toThrow();
+				} else {
+					await trigger;
+				}
+
+				expect(
+					sink.expectOne("auth.unauthorized_intercepted").properties,
+				).toMatchObject(expected);
+			},
+		);
+
+		it("includes durationMs on the recovery span", async () => {
+			const sink = new TestSink();
+			const ctx = createTestContext();
+			await ctx.setupOAuthTokens();
+			ctx.mockOAuthManager.refreshToken.mockResolvedValue(
+				createMockTokenResponse({ access_token: "new" }),
+			);
+			vi.spyOn(ctx.axiosInstance, "request").mockResolvedValue({
+				status: 200,
+			});
+			ctx.createInterceptor(undefined, createTestTelemetryService(sink));
+
+			await ctx.axiosInstance.triggerResponseError(
+				createAxiosError(401, "Unauthorized"),
+			);
+
+			expect(
+				sink.expectOne("auth.unauthorized_intercepted").measurements.durationMs,
+			).toEqual(expect.any(Number));
 		});
 	});
 });
