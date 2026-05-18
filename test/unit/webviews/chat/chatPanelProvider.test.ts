@@ -87,6 +87,13 @@ describe("ChatPanelProvider", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		windowMock.__setActiveColorThemeKind(vscode.ColorThemeKind.Dark);
+
+		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+			get: vi.fn(),
+			has: vi.fn().mockReturnValue(false),
+			inspect: vi.fn(),
+			update: vi.fn().mockResolvedValue(undefined),
+		} as unknown as vscode.WorkspaceConfiguration);
 	});
 
 	describe("theme sync", () => {
@@ -168,6 +175,40 @@ describe("ChatPanelProvider", () => {
 
 			expect(vscode.env.openExternal).toHaveBeenCalledWith(
 				vscode.Uri.parse("https://coder.example.com/templates"),
+			);
+		});
+
+		it("uses alternative web URL for navigation when configured", () => {
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn().mockReturnValue("https://web.example.com"),
+			} as unknown as vscode.WorkspaceConfiguration);
+
+			const { sendFromWebview } = createHarness();
+
+			sendFromWebview({
+				method: "coder:navigate",
+				params: { url: "/templates" },
+			});
+
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				vscode.Uri.parse("https://web.example.com/templates"),
+			);
+		});
+
+		it("preserves path prefix in alternative web URL", () => {
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn().mockReturnValue("https://proxy.example.com/coder"),
+			} as unknown as vscode.WorkspaceConfiguration);
+
+			const { sendFromWebview } = createHarness();
+
+			sendFromWebview({
+				method: "coder:navigate",
+				params: { url: "/templates" },
+			});
+
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				vscode.Uri.parse("https://proxy.example.com/coder/templates"),
 			);
 		});
 

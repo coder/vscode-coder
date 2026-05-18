@@ -203,6 +203,13 @@ describe("TasksPanelProvider", () => {
 	beforeEach(() => {
 		// Reset shared vscode mocks between tests
 		vi.resetAllMocks();
+
+		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+			get: vi.fn(),
+			has: vi.fn().mockReturnValue(false),
+			inspect: vi.fn(),
+			update: vi.fn().mockResolvedValue(undefined),
+		} as unknown as vscode.WorkspaceConfiguration);
 	});
 
 	describe("getTasks", () => {
@@ -677,6 +684,46 @@ describe("TasksPanelProvider", () => {
 			await h.command(TasksApi.viewInCoder, { taskId: "task-123" });
 
 			expect(vscode.env.openExternal).not.toHaveBeenCalled();
+		});
+
+		it("viewInCoder uses alternative web URL when configured", async () => {
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn().mockReturnValue("https://coder.example.com:443"),
+			} as unknown as vscode.WorkspaceConfiguration);
+
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(
+				task({ id: "task-1", owner_name: "alice" }),
+			);
+
+			await h.command(TasksApi.viewInCoder, { taskId: "task-1" });
+
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				vscode.Uri.parse("https://coder.example.com:443/tasks/alice/task-1"),
+			);
+		});
+
+		it("viewLogs uses alternative web URL when configured", async () => {
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+				get: vi.fn().mockReturnValue("https://coder.example.com:443"),
+			} as unknown as vscode.WorkspaceConfiguration);
+
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(
+				task({
+					owner_name: "alice",
+					workspace_name: "my-ws",
+					workspace_build_number: 42,
+				}),
+			);
+
+			await h.command(TasksApi.viewLogs, { taskId: "task-1" });
+
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				vscode.Uri.parse(
+					"https://coder.example.com:443/@alice/my-ws/builds/42",
+				),
+			);
 		});
 	});
 

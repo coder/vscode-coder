@@ -8,6 +8,7 @@ import {
 
 import { type CoderApi } from "../../api/coderApi";
 import { type Logger } from "../../logging/logger";
+import { resolveBrowserUrl } from "../../util";
 import {
 	dispatchCommand,
 	dispatchRequest,
@@ -154,7 +155,12 @@ export class ChatPanelProvider
 			const resolved = new URL(url, coderUrl);
 			const expected = new URL(coderUrl);
 			if (resolved.origin === expected.origin) {
-				void vscode.env.openExternal(vscode.Uri.parse(resolved.toString()));
+				const browserBase = resolveBrowserUrl(coderUrl);
+				// Concatenate rather than `new URL(path, base)` so a path prefix on
+				// the alternative URL (e.g. a reverse proxy at https://host/coder)
+				// is preserved.
+				const browserUrl = `${browserBase}${resolved.pathname}${resolved.search}${resolved.hash}`;
+				void vscode.env.openExternal(vscode.Uri.parse(browserUrl));
 			}
 		} catch {
 			this.logger.warn(`Chat: invalid navigate URL: ${url}`);

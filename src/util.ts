@@ -1,5 +1,6 @@
 import os from "node:os";
 import url from "node:url";
+import * as vscode from "vscode";
 
 export interface AuthorityParts {
 	agent: string | undefined;
@@ -200,6 +201,20 @@ export async function renameWithRetry(
 			await new Promise((resolve) => setTimeout(resolve, delay));
 		}
 	}
+}
+
+/**
+ * Return the URL for opening Coder pages in the browser.  Uses the
+ * `coder.alternativeWebUrl` setting when configured, otherwise returns
+ * the connection URL unchanged.
+ */
+export function resolveBrowserUrl(connectionUrl: string): string {
+	const alt = vscode.workspace
+		.getConfiguration("coder")
+		.get<string>("alternativeWebUrl")
+		?.trim()
+		.replace(/\/+$/, "");
+	return alt || connectionUrl;
 }
 
 export function escapeCommandArg(arg: string): string {
