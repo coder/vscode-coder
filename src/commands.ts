@@ -26,6 +26,7 @@ import {
 	applySettingOverrides,
 } from "./remote/sshOverrides";
 import { resolveCliAuth } from "./settings/cli";
+import { runExportTelemetryCommand } from "./telemetry/export/command";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";
@@ -49,6 +50,7 @@ import type { SecretsManager } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator } from "./login/loginCoordinator";
+import type { TelemetryService } from "./telemetry/service";
 import type { SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
 import type {
 	DuplicateWorkspaceIpc,
@@ -80,6 +82,7 @@ export class Commands {
 	private readonly loginCoordinator: LoginCoordinator;
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
+	private readonly telemetryService: TelemetryService;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -97,6 +100,7 @@ export class Commands {
 		private readonly extensionClient: CoderApi,
 		private readonly deploymentManager: DeploymentManager,
 	) {
+		this.telemetryService = serviceContainer.getTelemetryService();
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.mementoManager = serviceContainer.getMementoManager();
@@ -348,6 +352,14 @@ export class Commands {
 			filters: { "Zip files": ["zip"] },
 			title: "Save Support Bundle",
 		});
+	}
+
+	public async exportTelemetry(): Promise<void> {
+		await runExportTelemetryCommand(
+			this.pathResolver.getTelemetryPath(),
+			this.logger,
+			() => this.telemetryService.flush(),
+		);
 	}
 
 	/**

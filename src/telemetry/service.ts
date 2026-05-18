@@ -152,6 +152,12 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		);
 	}
 
+	public async flush(): Promise<void> {
+		await Promise.allSettled(
+			this.sinks.map((sink) => this.#safeCall(sink, "flush")),
+		);
+	}
+
 	public async dispose(): Promise<void> {
 		this.#configWatcher.dispose();
 		await Promise.allSettled(
