@@ -1,7 +1,17 @@
-import fs from "fs/promises";
-import os from "os";
-import path from "path";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import {
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
+import * as vscode from "vscode";
 
 import { MockConfigurationProvider } from "../../mocks/testHelpers";
 import {
@@ -14,13 +24,16 @@ import {
 import type { CliEnv } from "@/core/cliExec";
 
 // Shim execFile so .js test scripts are run through node cross-platform.
+// Spawn is replaced with vi.fn() so the ping tests can intercept it without
+// starting real child processes.
 vi.mock("node:child_process", async (importOriginal) => {
 	const { shimExecFile } = await import("../../utils/platform");
-	return shimExecFile(await importOriginal());
+	return { ...shimExecFile(await importOriginal()), spawn: vi.fn() };
 });
 
 // Import after mock so the module picks up the shimmed execFile.
 const cliExec = await import("@/core/cliExec");
+const { spawn } = await import("node:child_process");
 
 describe("cliExec", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests-cliExec");
@@ -230,6 +243,82 @@ describe("cliExec", () => {
 			await expect(
 				cliExec.supportBundle(env, "owner/workspace", "/tmp/bundle.zip"),
 			).rejects.toThrow("workspace not found");
+		});
+	});
+
+	describe("ping", () => {
+		let writeListeners: string[];
+		let proc: EventEmitter & {
+			stdout: EventEmitter;
+			stderr: EventEmitter;
+			pid: number;
+			kill: ReturnType<typeof vi.fn>;
+		};
+
+		beforeEach(() => {
+			vi.clearAllMocks();
+			proc = Object.assign(new EventEmitter(), {
+				stdout: new EventEmitter(),
+				stderr: new EventEmitter(),
+				pid: 12345,
+				kill: vi.fn(),
+			});
+			vi.mocked(spawn).mockReturnValue(proc as never);
+
+			writeListeners = [];
+			vi.mocked(vscode.window.createTerminal).mockImplementation(
+				(opts: vscode.ExtensionTerminalOptions) => {
+					opts.pty.onDidWrite((s) => {
+						writeListeners.push(s);
+					});
+					opts.pty.open?.(undefined);
+					return { show: vi.fn() } as unknown as vscode.Terminal;
+				},
+			);
+		});
+
+		afterEach(() => {
+			proc.removeAllListeners();
+		});
+
+		it("spawns coder ping with raw argv (no shell, unescaped workspace name)", () => {
+			const { env } = setup({ mode: "url", url: "https://test.coder.com" });
+			cliExec.ping(env, "owner/my workspace");
+
+			expect(spawn).toHaveBeenCalledWith(
+				env.binary,
+				["--url", "https://test.coder.com", "ping", "owner/my workspace"],
+				expect.objectContaining({ detached: process.platform !== "win32" }),
+			);
+		});
+
+		it("includes user global flags raw in the spawn argv", () => {
+			const { configs, env } = setup({
+				mode: "global-config",
+				configDir: "/cfg",
+			});
+			configs.set("coder.globalFlags", ["--verbose"]);
+
+			cliExec.ping(env, "owner/ws");
+
+			expect(spawn).toHaveBeenCalledWith(
+				env.binary,
+				["--verbose", "--global-config", "/cfg", "ping", "owner/ws"],
+				expect.objectContaining({ detached: process.platform !== "win32" }),
+			);
+		});
+
+		it("reports ENOENT once even when `close` fires after `error`", () => {
+			const { env } = setup({ mode: "url", url: "https://test.coder.com" });
+			cliExec.ping(env, "owner/ws");
+
+			// Real Node emits `error` then `close(null, null)` on missing binary.
+			proc.emit("error", new Error("spawn /missing/coder ENOENT"));
+			proc.emit("close", null, null);
+
+			const output = writeListeners.join("");
+			expect(output).toContain("Failed to start: spawn /missing/coder ENOENT");
+			expect(output).not.toContain("Process exited");
 		});
 	});
 });

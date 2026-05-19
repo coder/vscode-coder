@@ -190,26 +190,57 @@ describe("countSubstring", () => {
 });
 
 describe("escapeCommandArg", () => {
-	it("wraps simple string in quotes", () => {
-		expect(escapeCommandArg("hello")).toBe('"hello"');
+	it("returns simple strings unquoted", () => {
+		expect(escapeCommandArg("hello")).toBe("hello");
 	});
 
-	it("handles empty string", () => {
+	it("returns flag-style strings unquoted", () => {
+		expect(escapeCommandArg("--verbose")).toBe("--verbose");
+		expect(escapeCommandArg("--cfg=/etc/coder")).toBe("--cfg=/etc/coder");
+	});
+
+	it("quotes the empty string so it survives as a token", () => {
 		expect(escapeCommandArg("")).toBe('""');
 	});
 
-	it("escapes double quotes", () => {
+	it("escapes double quotes and wraps in quotes", () => {
 		expect(escapeCommandArg('say "hello"')).toBe(String.raw`"say \"hello\""`);
 	});
 
-	it("preserves backslashes", () => {
+	it("quotes backslashes (POSIX escape char)", () => {
 		expect(escapeCommandArg(String.raw`path\to\file`)).toBe(
 			String.raw`"path\to\file"`,
 		);
 	});
 
-	it("handles string with spaces", () => {
+	it("quotes strings containing spaces", () => {
 		expect(escapeCommandArg("hello world")).toBe('"hello world"');
+	});
+
+	it.each([["tab\there"], ["line\nbreak"], ["vtab\vhere"]])(
+		"quotes strings containing other whitespace: %j",
+		(input) => {
+			expect(escapeCommandArg(input)).toBe(`"${input}"`);
+		},
+	);
+
+	it.each([
+		["foo&bar"],
+		["foo;bar"],
+		["foo|bar"],
+		["foo(bar)"],
+		["foo<bar"],
+		["foo>bar"],
+		["foo*bar"],
+		["foo?bar"],
+		["foo$bar"],
+		["foo`bar"],
+		["foo~bar"],
+		["foo!bar"],
+		["foo#bar"],
+		["https://x.com?a=1&b=2"],
+	])("quotes strings containing shell metacharacter: %j", (input) => {
+		expect(escapeCommandArg(input)).toBe(`"${input}"`);
 	});
 });
 
@@ -290,6 +321,39 @@ describe("expandPath", () => {
 
 	it("expands both tilde and ${userHome}", () => {
 		expect(expandPath("~/${userHome}/foo")).toBe(`${home}/${home}/foo`);
+	});
+
+	describe("${env:VAR}", () => {
+		const envKey = "CODER_EXPAND_PATH_TEST";
+		const ref = "${env:" + envKey + "}";
+
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
+
+		it("substitutes a present env var", () => {
+			vi.stubEnv(envKey, "/data");
+			expect(expandPath(`${ref}/foo`)).toBe("/data/foo");
+		});
+
+		it("replaces a missing env var with an empty string", () => {
+			vi.stubEnv(envKey, undefined);
+			expect(expandPath(`prefix-${ref}-suffix`)).toBe("prefix--suffix");
+		});
+
+		it("substitutes multiple occurrences in one string", () => {
+			vi.stubEnv(envKey, "data");
+			expect(expandPath(`${ref}/${ref}`)).toBe("data/data");
+		});
+
+		it("expands tilde or ${userHome} that appears inside the env value", () => {
+			vi.stubEnv(envKey, "~/projects");
+			expect(expandPath(`${ref}/x`)).toBe(`${home}/projects/x`);
+		});
+
+		it("ignores ${env:...} with invalid names", () => {
+			expect(expandPath("${env:1BAD}/x")).toBe("${env:1BAD}/x");
+		});
 	});
 });
 

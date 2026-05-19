@@ -1,5 +1,5 @@
 import { isKeyringSupported } from "../core/cliCredentialManager";
-import { escapeCommandArg, escapeShellArg } from "../util";
+import { escapeCommandArg, escapeShellArg, expandPath } from "../util";
 
 import { getHeaderArgs } from "./headers";
 
@@ -11,14 +11,23 @@ export type CliAuth =
 	| { mode: "global-config"; configDir: string }
 	| { mode: "url"; url: string };
 
-/** Returns the user's `coder.globalFlags` as configured, with no expansion. */
-export function getUserGlobalFlags(
+/**
+ * Returns the user's `coder.globalFlags` with `expandPath` applied. For
+ * `--flag=value` entries the substitution is scoped to the value half so
+ * `--cfg=~/coder` works without rewriting the flag name.
+ */
+export function getExpandedUserGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 ): string[] {
-	return configs.get<string[]>("coder.globalFlags", []);
+	return configs.get<string[]>("coder.globalFlags", []).map((flag) => {
+		const eq = flag.indexOf("=");
+		return eq === -1
+			? expandPath(flag)
+			: flag.slice(0, eq + 1) + expandPath(flag.slice(eq + 1));
+	});
 }
 
-/** Flags for shell contexts (`terminal.sendText`, `spawn({ shell: true })`). */
+/** Flags for shell contexts (`terminal.sendText`, SSH `ProxyCommand`). */
 export function getGlobalShellFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
@@ -47,7 +56,11 @@ function buildGlobalFlags(
 			? ["--url", escAuth(auth.url)]
 			: ["--global-config", escAuth(auth.configDir)];
 
-	const filtered = stripManagedFlags(getUserGlobalFlags(configs));
+	// Escape each user flag so expansion-introduced whitespace stays inside
+	// one shell token. `escAuth` is `identity` on the array path.
+	const filtered = stripManagedFlags(getExpandedUserGlobalFlags(configs)).map(
+		escAuth,
+	);
 
 	return [...filtered, ...authFlags, ...getHeaderArgs(configs, escHeader)];
 }

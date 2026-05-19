@@ -141,6 +141,7 @@ export const window = {
 	createInputBox: vi.fn(),
 	createQuickPick: vi.fn(),
 	createStatusBarItem: vi.fn(),
+	createTerminal: vi.fn(),
 	createWebviewPanel: vi.fn(),
 	registerUriHandler: vi.fn(() => ({ dispose: vi.fn() })),
 };

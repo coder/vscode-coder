@@ -6,8 +6,6 @@ import { LazyStream, startWorkspace, updateWorkspace } from "@/api/workspace";
 
 import { workspace as createWorkspace } from "@repo/mocks";
 
-import { shellQuote } from "../../utils/platform";
-
 import type { Api } from "coder/site/src/api/api";
 import type {
 	Workspace,
@@ -129,6 +127,10 @@ function controlSpawn() {
 			await spawned;
 			proc.emit("close", exitCode, signal ?? null);
 		},
+		async error(err: Error) {
+			await spawned;
+			proc.emit("error", err);
+		},
 	};
 }
 
@@ -204,10 +206,12 @@ describe("updateWorkspace", () => {
 		await sp.close(0);
 
 		await expect(result).resolves.toBe(finalWorkspace);
-		expect(spawn).toHaveBeenCalledWith(
-			`"/usr/bin/coder" --url "https://test.coder.com" update ${shellQuote("testuser/test-workspace")}`,
-			{ shell: true },
-		);
+		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
+			"--url",
+			"https://test.coder.com",
+			"update",
+			"testuser/test-workspace",
+		]);
 		expect(sp.stdinEnd).toHaveBeenCalled();
 		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
 	});
@@ -222,6 +226,19 @@ describe("updateWorkspace", () => {
 		await sp.close(1);
 
 		await expect(result).rejects.toThrow(/exited with code 1.*auth failed/);
+		expect(restClient.getWorkspace).not.toHaveBeenCalled();
+	});
+
+	it("rejects when spawn emits an error (e.g. missing binary)", async () => {
+		const { ctx, restClient } = createUpdateCtx();
+		const sp = controlSpawn();
+
+		const result = updateWorkspace(ctx);
+		await sp.error(new Error("spawn /usr/bin/coder ENOENT"));
+		// Real Node fires `error` then `close(null, null)` on ENOENT.
+		await sp.close(null);
+
+		await expect(result).rejects.toThrow(/ENOENT/);
 		expect(restClient.getWorkspace).not.toHaveBeenCalled();
 	});
 
@@ -295,10 +312,15 @@ describe("startWorkspace", () => {
 		await sp.close(0);
 
 		await expect(result).resolves.toBe(finalWorkspace);
-		expect(spawn).toHaveBeenCalledWith(
-			`"/usr/bin/coder" --url "https://test.coder.com" start --yes --reason vscode_connection ${shellQuote("testuser/test-workspace")}`,
-			{ shell: true },
-		);
+		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
+			"--url",
+			"https://test.coder.com",
+			"start",
+			"--yes",
+			"--reason",
+			"vscode_connection",
+			"testuser/test-workspace",
+		]);
 		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
 	});
 
@@ -320,9 +342,12 @@ describe("startWorkspace", () => {
 		await sp.close(0);
 		await result;
 
-		expect(spawn).toHaveBeenCalledWith(
-			`"/usr/bin/coder" --url "https://test.coder.com" start --yes ${shellQuote("testuser/test-workspace")}`,
-			{ shell: true },
-		);
+		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
+			"--url",
+			"https://test.coder.com",
+			"start",
+			"--yes",
+			"testuser/test-workspace",
+		]);
 	});
 });

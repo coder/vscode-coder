@@ -1,7 +1,5 @@
 import * as vscode from "vscode";
 
-import { escapeShellArg } from "../util";
-
 import type { Api } from "coder/site/src/api/api";
 import type {
 	TemplateVersionParameter,
@@ -44,7 +42,7 @@ export async function collectUpdateParameters(
 		if (value === undefined) {
 			throw new WorkspaceUpdateCancelledError();
 		}
-		args.push("--parameter", escapeShellArg(`${param.name}=${value}`));
+		args.push("--parameter", `${param.name}=${value}`);
 	}
 	return args;
 }
