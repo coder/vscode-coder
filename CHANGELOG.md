@@ -25,6 +25,21 @@
   discovery/loss/recovery with sampled network info, and reconnecting
   WebSocket open/drop/reconnect/state transitions.
 - Local telemetry now records authentication refresh and recovery prompts.
+- Path-like settings (`coder.binaryDestination`, `coder.tlsCertFile`,
+  `coder.tlsKeyFile`, `coder.tlsCaFile`, `coder.tlsAltHost`,
+  `coder.proxyLogDirectory`) and items in `coder.globalFlags` now support
+  `${env:VAR}`, `${userHome}`, and a leading `~`. For `--flag=value` items
+  in `coder.globalFlags`, the expansion applies to the value half, so
+  `--cfg=~/coder` works.
+
+### Changed
+
+- The Coder CLI is now spawned directly instead of through a shell, so
+  arguments reach the binary as-is. The extension no longer has to
+  shell-escape values by hand. That escaping was error-prone (especially
+  around `cmd.exe` on Windows) and a recurring command-injection risk
+  when deployment-supplied values like workspace names or template
+  parameters contained spaces, quotes, or shell metacharacters.
 
 ### Fixed
 
