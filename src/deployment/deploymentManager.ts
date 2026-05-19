@@ -37,6 +37,7 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly telemetryService: TelemetryService;
 
 	#deployment: Deployment | null = null;
+	#currentUserId: string | undefined;
 	#authListenerDisposable: vscode.Disposable | undefined;
 	#crossWindowSyncDisposable: vscode.Disposable | undefined;
 
@@ -84,6 +85,14 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/**
+	 * Get the id of the currently authenticated user, if any. Used by the
+	 * Shared workspaces view to filter out the current user's workspaces.
+	 */
+	public getCurrentUserId(): string | undefined {
+		return this.#currentUserId;
+	}
+
+	/**
 	 * Attempt to change to a deployment after validating authentication.
 	 * Only changes deployment if authentication succeeds.
 	 * Returns true if deployment was changed, false otherwise.
@@ -127,6 +136,7 @@ export class DeploymentManager implements vscode.Disposable {
 			user: deployment.user.username,
 		});
 		this.#deployment = { ...deployment };
+		this.#currentUserId = deployment.user.id;
 		this.telemetryService.setDeploymentUrl(deployment.url);
 
 		// Updates client credentials
@@ -173,6 +183,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.client.setCredentials(undefined, undefined);
 		this.updateAuthContexts(undefined);
 		this.contextManager.set("coder.agentsEnabled", false);
+		this.#currentUserId = undefined;
 		this.clearWorkspaces();
 	}
 

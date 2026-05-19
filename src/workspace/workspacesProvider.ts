@@ -23,6 +23,11 @@ import { type Logger } from "../logging/logger";
 export enum WorkspaceQuery {
 	Mine = "owner:me",
 	All = "",
+	// Shared returns workspaces the user has access to via sharing but does not
+	// own. The server-side `shared:true` filter also includes workspaces the
+	// user owns and has shared out, so the provider filters those out
+	// client-side using the current user's id.
+	Shared = "shared:true",
 }
 
 /**
@@ -53,6 +58,10 @@ export class WorkspaceProvider
 		private readonly logger: Logger,
 		private readonly isAuthenticated: () => boolean,
 		private readonly timerSeconds?: number,
+		// Returns the id of the currently authenticated user. Used by the Shared
+		// query to filter out workspaces owned by the current user.
+		private readonly getCurrentUserId: () => string | undefined = () =>
+			undefined,
 	) {
 		// No initialization.
 	}
@@ -112,6 +121,18 @@ export class WorkspaceProvider
 			q: this.getWorkspacesQuery,
 		});
 
+		// `shared:true` also matches workspaces the current user shared out;
+		// keep only the ones owned by someone else.
+		let workspaces = resp.workspaces;
+		if (this.getWorkspacesQuery === WorkspaceQuery.Shared) {
+			const currentUserId = this.getCurrentUserId();
+			if (currentUserId) {
+				workspaces = workspaces.filter(
+					(workspace) => workspace.owner_id !== currentUserId,
+				);
+			}
+		}
+
 		// We could have logged out while waiting for the query, or logged into a
 		// different deployment.
 		const url2 = this.client.getAxiosInstance().defaults.baseURL;
@@ -133,7 +154,7 @@ export class WorkspaceProvider
 		// have this separate map held outside the tree.
 		const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine;
 		if (showMetadata) {
-			const agents = extractAllAgents(resp.workspaces);
+			const agents = extractAllAgents(workspaces);
 			for (const agent of agents) {
 				// If we have an existing watcher, re-use it.
 				const oldWatcher = this.agentWatchers.get(agent.id);
@@ -159,11 +180,15 @@ export class WorkspaceProvider
 			}
 		}
 
+		// Show the owner alongside the workspace name when the list may contain
+		// workspaces owned by other users.
+		const showOwner = this.getWorkspacesQuery !== WorkspaceQuery.Mine;
+
 		// Create tree items for each workspace
-		const workspaceTreeItems = resp.workspaces.map((workspace: Workspace) => {
+		const workspaceTreeItems = workspaces.map((workspace: Workspace) => {
 			const workspaceTreeItem = new WorkspaceTreeItem(
 				workspace,
-				this.getWorkspacesQuery === WorkspaceQuery.All,
+				showOwner,
 				showMetadata,
 			);
 

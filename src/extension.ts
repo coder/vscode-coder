@@ -31,6 +31,7 @@ import {
 } from "./workspace/workspacesProvider";
 
 const MY_WORKSPACES_TREE_ID = "myWorkspaces";
+const SHARED_WORKSPACES_TREE_ID = "sharedWorkspaces";
 const ALL_WORKSPACES_TREE_ID = "allWorkspaces";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
@@ -173,6 +174,19 @@ async function doActivate(
 	);
 	ctx.subscriptions.push(allWorkspacesProvider);
 
+	const sharedWorkspacesProvider = new WorkspaceProvider(
+		WorkspaceQuery.Shared,
+		client,
+		output,
+		isAuthenticated,
+		undefined,
+		// Filter out workspaces owned by the current user. The deployment
+		// manager is created below; we capture it via the closure and read it
+		// lazily, since the callback only fires when workspaces are fetched.
+		() => deploymentManager.getCurrentUserId(),
+	);
+	ctx.subscriptions.push(sharedWorkspacesProvider);
+
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
 	// (so we can see when it is visible) but otherwise they have the same effect.
 	const myWsTree = vscode.window.createTreeView(MY_WORKSPACES_TREE_ID, {
@@ -183,6 +197,19 @@ async function doActivate(
 	myWsTree.onDidChangeVisibility(
 		(event) => {
 			myWorkspacesProvider.setVisibility(event.visible);
+		},
+		undefined,
+		ctx.subscriptions,
+	);
+
+	const sharedWsTree = vscode.window.createTreeView(SHARED_WORKSPACES_TREE_ID, {
+		treeDataProvider: sharedWorkspacesProvider,
+	});
+	ctx.subscriptions.push(sharedWsTree);
+	sharedWorkspacesProvider.setVisibility(sharedWsTree.visible);
+	sharedWsTree.onDidChangeVisibility(
+		(event) => {
+			sharedWorkspacesProvider.setVisibility(event.visible);
 		},
 		undefined,
 		ctx.subscriptions,
@@ -206,7 +233,7 @@ async function doActivate(
 		serviceContainer,
 		client,
 		oauthSessionManager,
-		[myWorkspacesProvider, allWorkspacesProvider],
+		[myWorkspacesProvider, sharedWorkspacesProvider, allWorkspacesProvider],
 	);
 	ctx.subscriptions.push(deploymentManager);
 
@@ -312,11 +339,15 @@ async function doActivate(
 	);
 	commandManager.register("coder.refreshWorkspaces", () => {
 		void myWorkspacesProvider.fetchAndRefresh();
+		void sharedWorkspacesProvider.fetchAndRefresh();
 		void allWorkspacesProvider.fetchAndRefresh();
 	});
 	commandManager.register("coder.viewLogs", commands.viewLogs.bind(commands));
 	commandManager.register("coder.searchMyWorkspaces", async () =>
 		showTreeViewSearch(MY_WORKSPACES_TREE_ID),
+	);
+	commandManager.register("coder.searchSharedWorkspaces", async () =>
+		showTreeViewSearch(SHARED_WORKSPACES_TREE_ID),
 	);
 	commandManager.register("coder.searchAllWorkspaces", async () =>
 		showTreeViewSearch(ALL_WORKSPACES_TREE_ID),

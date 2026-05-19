@@ -21,6 +21,7 @@ export const CODER_COMMAND_IDS = [
 	"coder.refreshWorkspaces",
 	"coder.viewLogs",
 	"coder.searchMyWorkspaces",
+	"coder.searchSharedWorkspaces",
 	"coder.searchAllWorkspaces",
 	"coder.manageCredentials",
 	"coder.applyRecommendedSettings",
