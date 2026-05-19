@@ -8,7 +8,8 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
-import { countSubstring, renameWithRetry, tempFilePath } from "../util";
+import { countSubstring } from "../util";
+import { renameWithRetry, tempFilePath } from "../util/fs";
 
 import type { Logger } from "../logging/logger";
 

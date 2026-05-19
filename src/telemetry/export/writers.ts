@@ -1,112 +1,37 @@
-import * as fs from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
-import { renameWithRetry, tempFilePath } from "../../util";
-
-import { toStoredTelemetryEvent } from "./files";
+import { writeAtomically } from "../../util/fs";
+import { serializeTelemetryEvent } from "../wireFormat";
 
 import type { TelemetryEvent } from "../event";
 
-export interface ExportCounts {
-	readonly events: number;
-	readonly logs: number;
-	readonly traces: number;
-	readonly metrics: number;
-}
-
-class JsonEnvelopeWriter {
-	readonly #filePath: string;
-	readonly #suffix: string;
-	#handle: fs.FileHandle | undefined;
-	#count = 0;
-
-	private constructor(filePath: string, suffix: string) {
-		this.#filePath = filePath;
-		this.#suffix = suffix;
-	}
-
-	public static async open(
-		filePath: string,
-		prefix: string,
-		suffix: string,
-	): Promise<JsonEnvelopeWriter> {
-		const writer = new JsonEnvelopeWriter(filePath, suffix);
-		writer.#handle = await fs.open(filePath, "w");
-		try {
-			await writer.#write(prefix);
-			return writer;
-		} catch (err) {
-			await writer.close();
-			throw err;
-		}
-	}
-
-	public get count(): number {
-		return this.#count;
-	}
-
-	public async write(value: unknown): Promise<void> {
-		if (this.#count > 0) {
-			await this.#write(",");
-		}
-		await this.#write(JSON.stringify(value));
-		this.#count += 1;
-	}
-
-	public async close(): Promise<void> {
-		if (!this.#handle) {
-			return;
-		}
-		try {
-			await this.#write(this.#suffix);
-		} finally {
-			await this.#handle.close();
-			this.#handle = undefined;
-		}
-	}
-
-	async #write(chunk: string): Promise<void> {
-		if (!this.#handle) {
-			throw new Error(`JSON writer for ${this.#filePath} is closed.`);
-		}
-		await this.#handle.writeFile(chunk, "utf8");
-	}
-}
-
+/**
+ * Writes `events` as a JSON array to `outputPath` via a temp file + atomic
+ * rename, so a partial write never replaces the destination. Streams chunks
+ * with backpressure so memory stays flat even for large exports.
+ * Returns the number of events written.
+ */
 export async function writeJsonArrayExport(
 	outputPath: string,
 	events: AsyncIterable<TelemetryEvent>,
-): Promise<ExportCounts> {
-	return writeTempOutput(outputPath, async (tempPath) => {
-		const writer = await JsonEnvelopeWriter.open(tempPath, "[\n", "\n]\n");
-		try {
-			for await (const event of events) {
-				await writer.write(toStoredTelemetryEvent(event));
-			}
-		} finally {
-			await writer.close();
+): Promise<number> {
+	let count = 0;
+	async function* chunks(): AsyncGenerator<string> {
+		yield "[";
+		for await (const event of events) {
+			yield (count === 0 ? "\n" : ",\n") +
+				JSON.stringify(serializeTelemetryEvent(event));
+			count += 1;
 		}
-		return {
-			events: writer.count,
-			logs: 0,
-			traces: 0,
-			metrics: 0,
-		};
-	});
-}
-
-async function writeTempOutput<T>(
-	outputPath: string,
-	write: (tempPath: string) => Promise<T>,
-): Promise<T> {
-	const tempPath = tempFilePath(outputPath, "tmp");
-	try {
-		const result = await write(tempPath);
-		await renameWithRetry(fs.rename, tempPath, outputPath);
-		return result;
-	} catch (err) {
-		await fs.rm(tempPath, { force: true }).catch(() => {
-			// Keep the export failure as the error callers see.
-		});
-		throw err;
+		yield count === 0 ? "]\n" : "\n]\n";
 	}
+	await writeAtomically(outputPath, async (tempPath) => {
+		await pipeline(
+			Readable.from(chunks()),
+			createWriteStream(tempPath, { encoding: "utf8" }),
+		);
+	});
+	return count;
 }

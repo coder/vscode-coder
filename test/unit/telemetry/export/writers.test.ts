@@ -1,64 +1,96 @@
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { vol } from "memfs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { toStoredTelemetryEvent } from "@/telemetry/export/files";
 import { writeJsonArrayExport } from "@/telemetry/export/writers";
+import { serializeTelemetryEvent } from "@/telemetry/wireFormat";
+
+import { createTelemetryEventFactory } from "../../../mocks/telemetry";
+
+import type * as fs from "node:fs";
 
 import type { TelemetryEvent } from "@/telemetry/event";
 
-let tmpDir: string;
-
-beforeEach(async () => {
-	tmpDir = await fs.mkdtemp(
-		path.join(os.tmpdir(), "telemetry-export-writers-"),
-	);
+vi.mock("node:fs/promises", async () => {
+	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
+	return memfs.fs.promises;
 });
 
-afterEach(async () => {
-	await fs.rm(tmpDir, { recursive: true, force: true });
+vi.mock("node:fs", async () => {
+	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
+	return memfs.fs;
 });
 
-describe("telemetry export writers", () => {
-	it("writes telemetry events as a JSON array using the stored event shape", async () => {
-		const outputPath = path.join(tmpDir, "telemetry.json");
+const DIR = "/exports";
 
+let makeEvent: ReturnType<typeof createTelemetryEventFactory>;
+
+beforeEach(() => {
+	vol.reset();
+	vol.mkdirSync(DIR, { recursive: true });
+	makeEvent = createTelemetryEventFactory();
+});
+
+afterEach(() => {
+	vol.reset();
+});
+
+describe("writeJsonArrayExport", () => {
+	it("writes events as a JSON array in wire format", async () => {
 		const events = [
 			makeEvent({
-				eventId: "1111111111111111",
 				eventName: "first",
 				properties: { result: "success" },
 				measurements: { durationMs: 12 },
 				traceId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			}),
 			makeEvent({
-				eventId: "2222222222222222",
 				eventName: "second",
-				parentEventId: "1111111111111111",
+				parentEventId: "id-0",
 				error: { message: "boom", type: "Error" },
 			}),
 		];
 
-		const counts = await writeJsonArrayExport(outputPath, asyncEvents(events));
+		const count = await writeJsonArrayExport(
+			`${DIR}/telemetry.json`,
+			asyncIterable(events),
+		);
 
-		expect(counts.events).toBe(2);
-		expect(JSON.parse(await fs.readFile(outputPath, "utf8"))).toEqual(
-			events.map(toStoredTelemetryEvent),
+		expect(count).toBe(2);
+		expect(readJson(`${DIR}/telemetry.json`)).toEqual(
+			events.map(serializeTelemetryEvent),
 		);
 	});
 
-	it("writes a valid empty JSON array", async () => {
-		const outputPath = path.join(tmpDir, "empty.json");
+	it("writes a valid empty JSON array when there are no events", async () => {
+		const count = await writeJsonArrayExport(
+			`${DIR}/empty.json`,
+			asyncIterable([]),
+		);
 
-		const counts = await writeJsonArrayExport(outputPath, asyncEvents([]));
+		expect(count).toBe(0);
+		expect(readJson(`${DIR}/empty.json`)).toEqual([]);
+	});
 
-		expect(counts.events).toBe(0);
-		expect(JSON.parse(await fs.readFile(outputPath, "utf8"))).toEqual([]);
+	it("leaves the destination untouched when writing fails midway", async () => {
+		const outputPath = `${DIR}/telemetry.json`;
+		vol.writeFileSync(outputPath, "previous content");
+
+		const events = (async function* () {
+			yield makeEvent();
+			await Promise.resolve();
+			throw new Error("boom");
+		})();
+
+		await expect(writeJsonArrayExport(outputPath, events)).rejects.toThrow(
+			/boom/,
+		);
+
+		expect(vol.readFileSync(outputPath, "utf8")).toBe("previous content");
+		expect(vol.readdirSync(DIR)).toEqual(["telemetry.json"]);
 	});
 });
 
-async function* asyncEvents(
+async function* asyncIterable(
 	events: readonly TelemetryEvent[],
 ): AsyncGenerator<TelemetryEvent> {
 	for (const event of events) {
@@ -67,25 +99,6 @@ async function* asyncEvents(
 	}
 }
 
-function makeEvent(overrides: Partial<TelemetryEvent>): TelemetryEvent {
-	return {
-		eventId: "1111111111111111",
-		eventName: "test.event",
-		timestamp: "2026-05-12T12:00:00.000Z",
-		eventSequence: 1,
-		context: {
-			extensionVersion: "1.2.3",
-			machineId: "machine",
-			sessionId: "session",
-			osType: "linux",
-			osVersion: "6.0.0",
-			hostArch: "x64",
-			platformName: "VS Code",
-			platformVersion: "1.100.0",
-			deploymentUrl: "https://coder.example.com",
-		},
-		properties: {},
-		measurements: {},
-		...overrides,
-	};
+function readJson(filePath: string): unknown {
+	return JSON.parse(vol.readFileSync(filePath, "utf8") as string);
 }
