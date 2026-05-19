@@ -312,8 +312,7 @@ export class Remote {
 			const monitor = await WorkspaceMonitor.create(
 				workspace,
 				workspaceClient,
-				this.logger,
-				this.contextManager,
+				this.serviceContainer,
 			);
 			disposables.push(
 				monitor,
@@ -331,8 +330,8 @@ export class Remote {
 				args.startupMode,
 				binaryPath,
 				featureSet,
-				this.logger,
 				cliAuth,
+				this.serviceContainer,
 			);
 			disposables.push(stateMachine);
 
