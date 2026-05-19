@@ -8,14 +8,13 @@ import {
 } from "@/settings/telemetry";
 import { LocalJsonlSink } from "@/telemetry/sinks/localJsonlSink";
 
+import { createTelemetryEventFactory } from "../../../mocks/telemetry";
 import {
 	createMockLogger,
 	MockConfigurationProvider,
 } from "../../../mocks/testHelpers";
 
 import type * as fs from "node:fs";
-
-import type { TelemetryEvent } from "@/telemetry/event";
 
 vi.mock("node:fs/promises", async () => {
 	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
@@ -78,31 +77,7 @@ describe("LocalJsonlSink", () => {
 		const sink = LocalJsonlSink.start({ baseDir: BASE_DIR, sessionId }, logger);
 		active.push(sink);
 
-		let seq = 0;
-		const makeEvent = (
-			overrides: Partial<TelemetryEvent> = {},
-		): TelemetryEvent => ({
-			eventId: `id-${seq}`,
-			eventName: "test.event",
-			timestamp: "2026-05-04T12:00:00.000Z",
-			eventSequence: seq++,
-			context: {
-				extensionVersion: "1.14.5",
-				machineId: "machine-id",
-				sessionId: "session-id",
-				osType: "linux",
-				osVersion: "6.0.0",
-				hostArch: "x64",
-				platformName: "Visual Studio Code",
-				platformVersion: "1.106.0",
-				deploymentUrl: "https://coder.example.com",
-			},
-			properties: {},
-			measurements: {},
-			...overrides,
-		});
-
-		return { sink, logger, makeEvent };
+		return { sink, logger, makeEvent: createTelemetryEventFactory() };
 	}
 
 	it("flushes the buffer when the interval fires", async () => {
@@ -207,8 +182,7 @@ describe("LocalJsonlSink", () => {
 	it("rotates to a numbered segment once maxFileBytes is exceeded", async () => {
 		// Padded events are ~2000 bytes; 4500 holds 2 events but not 3.
 		const { sink, makeEvent } = setup({ maxFileBytes: 4500 });
-		const padded = (): TelemetryEvent =>
-			makeEvent({ properties: { pad: "x".repeat(1500) } });
+		const padded = () => makeEvent({ properties: { pad: "x".repeat(1500) } });
 
 		for (let i = 0; i < 3; i++) {
 			sink.write(padded());

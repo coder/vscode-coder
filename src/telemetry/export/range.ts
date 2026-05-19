@@ -3,23 +3,27 @@ import { z } from "zod";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const UtcDateSchema = z.iso.date();
 
-interface PresetConfig {
+/**
+ * Half-open UTC window `[startMs, endMs)` used to filter telemetry. Either
+ * bound may be `undefined` (e.g. "all time"). `label` is for the UI and
+ * `filenamePart` is for export filenames.
+ */
+export interface TelemetryDateRange {
 	readonly label: string;
-	readonly detail: string;
 	readonly filenamePart: string;
-	readonly durationMs: number | undefined;
+	readonly startMs?: number;
+	readonly endMs?: number;
 }
 
-const PRESET_IDS = [
-	"last24Hours",
-	"last7Days",
-	"last30Days",
-	"allTime",
-] as const;
+export interface TelemetryRangePreset {
+	readonly id: TelemetryRangePresetId;
+	readonly label: string;
+	readonly detail: string;
+}
 
-export type TelemetryRangePresetId = (typeof PRESET_IDS)[number];
+export type TelemetryRangePresetId = keyof typeof PRESETS;
 
-const PRESETS: Record<TelemetryRangePresetId, PresetConfig> = {
+const PRESETS = {
 	last24Hours: {
 		label: "Last 24 hours",
 		detail: "Export telemetry from the last day.",
@@ -44,28 +48,17 @@ const PRESETS: Record<TelemetryRangePresetId, PresetConfig> = {
 		filenamePart: "all-time",
 		durationMs: undefined,
 	},
-};
+} as const;
 
-export interface TelemetryDateRange {
-	readonly label: string;
-	readonly filenamePart: string;
-	readonly startMs?: number;
-	readonly endMs?: number;
-}
-
-export interface TelemetryRangePreset {
-	readonly id: TelemetryRangePresetId;
-	readonly label: string;
-	readonly detail: string;
-}
-
+/** Presets the export UI shows, in display order. */
 export const TELEMETRY_RANGE_PRESETS: readonly TelemetryRangePreset[] =
-	PRESET_IDS.map((id) => ({
-		id,
-		label: PRESETS[id].label,
-		detail: PRESETS[id].detail,
+	Object.entries(PRESETS).map(([id, p]) => ({
+		id: id as TelemetryRangePresetId,
+		label: p.label,
+		detail: p.detail,
 	}));
 
+/** Range from a preset id, anchored at `now`. */
 export function createPresetDateRange(
 	id: TelemetryRangePresetId,
 	now: Date = new Date(),
@@ -78,6 +71,10 @@ export function createPresetDateRange(
 	return { label, filenamePart, startMs: endMs - durationMs, endMs };
 }
 
+/**
+ * UTC range that includes the full 24h of `endDate`; `endMs` lands at
+ * exclusive midnight of the day after.
+ */
 export function createCustomDateRange(
 	startDate: string,
 	endDate: string,
@@ -95,6 +92,7 @@ export function createCustomDateRange(
 	};
 }
 
+/** User-facing error string if `value` isn't a UTC date, else `undefined`. */
 export function validateUtcDateInput(value: string): string | undefined {
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
 		return "Use YYYY-MM-DD.";
@@ -104,21 +102,7 @@ export function validateUtcDateInput(value: string): string | undefined {
 		: "Enter a valid calendar date.";
 }
 
-function parseUtcDate(value: string): number {
-	try {
-		const [year, month, day] = UtcDateSchema.parse(value)
-			.split("-")
-			.map(Number);
-		return Date.UTC(year, month - 1, day);
-	} catch (err) {
-		throw new Error(`Invalid date '${value}'. Use YYYY-MM-DD.`, { cause: err });
-	}
-}
-
-function utcDateString(ms: number): string {
-	return new Date(ms).toISOString().slice(0, 10);
-}
-
+/** True if the ISO `timestamp` falls inside the range. */
 export function isTimestampInRange(
 	timestamp: string,
 	range: TelemetryDateRange,
@@ -133,22 +117,33 @@ export function isTimestampInRange(
 	);
 }
 
+/**
+ * Coarse calendar-day filter: could a file dated `date` (YYYY-MM-DD) hold any
+ * event in `range`? Lets us skip files without reading them.
+ */
 export function fileDateCanContainRangeEvent(
 	date: string,
 	range: TelemetryDateRange,
 ): boolean {
-	if (range.startMs === undefined && range.endMs === undefined) {
-		return true;
-	}
 	const startDate =
 		range.startMs === undefined ? undefined : utcDateString(range.startMs);
-	// One-day forward grace for events buffered past midnight.
 	const endDate =
-		range.endMs === undefined
-			? undefined
-			: utcDateString(range.endMs - 1 + DAY_MS);
+		range.endMs === undefined ? undefined : utcDateString(range.endMs - 1);
 	return (
 		(startDate === undefined || date >= startDate) &&
 		(endDate === undefined || date <= endDate)
 	);
+}
+
+function parseUtcDate(value: string): number {
+	const error = validateUtcDateInput(value);
+	if (error !== undefined) {
+		throw new Error(`Invalid date '${value}': ${error}`);
+	}
+	const [y, m, d] = value.split("-").map(Number);
+	return Date.UTC(y, m - 1, d);
+}
+
+function utcDateString(ms: number): string {
+	return new Date(ms).toISOString().slice(0, 10);
 }

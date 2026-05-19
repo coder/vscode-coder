@@ -44,8 +44,7 @@ describe("telemetry export ranges", () => {
 		expect(fileDateCanContainRangeEvent("2026-05-11", range)).toBe(false);
 		expect(fileDateCanContainRangeEvent("2026-05-12", range)).toBe(true);
 		expect(fileDateCanContainRangeEvent("2026-05-13", range)).toBe(true);
-		expect(fileDateCanContainRangeEvent("2026-05-14", range)).toBe(true);
-		expect(fileDateCanContainRangeEvent("2026-05-15", range)).toBe(false);
+		expect(fileDateCanContainRangeEvent("2026-05-14", range)).toBe(false);
 	});
 
 	it("includes every filename date for all time", () => {

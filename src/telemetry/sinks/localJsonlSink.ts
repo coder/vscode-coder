@@ -12,6 +12,7 @@ import {
 	cleanupFiles,
 	type FileCleanupCandidate,
 } from "../../util/fileCleanup";
+import { serializeTelemetryEvent } from "../wireFormat";
 
 import type { Logger } from "../../logging/logger";
 import type { TelemetryEvent, TelemetryLevel, TelemetrySink } from "../event";
@@ -315,30 +316,5 @@ function toSessionSlug(sessionId: string): string {
 }
 
 function serializeEvent(event: TelemetryEvent): string {
-	return (
-		JSON.stringify({
-			event_id: event.eventId,
-			event_name: event.eventName,
-			timestamp: event.timestamp,
-			event_sequence: event.eventSequence,
-			context: {
-				extension_version: event.context.extensionVersion,
-				machine_id: event.context.machineId,
-				session_id: event.context.sessionId,
-				os_type: event.context.osType,
-				os_version: event.context.osVersion,
-				host_arch: event.context.hostArch,
-				platform_name: event.context.platformName,
-				platform_version: event.context.platformVersion,
-				deployment_url: event.context.deploymentUrl,
-			},
-			properties: event.properties,
-			measurements: event.measurements,
-			...(event.traceId !== undefined && { trace_id: event.traceId }),
-			...(event.parentEventId !== undefined && {
-				parent_event_id: event.parentEventId,
-			}),
-			...(event.error !== undefined && { error: event.error }),
-		}) + "\n"
-	);
+	return JSON.stringify(serializeTelemetryEvent(event)) + "\n";
 }
