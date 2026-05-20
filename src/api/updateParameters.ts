@@ -36,7 +36,12 @@ export async function collectUpdateParameters(
 	const collected: WorkspaceBuildParameter[] = [];
 	for (let i = 0; i < toPrompt.length; i++) {
 		const param = toPrompt[i];
-		const value = await promptForParameter(param, i + 1, toPrompt.length);
+		const value = await promptForParameter(
+			param,
+			i + 1,
+			toPrompt.length,
+			stored.get(param.name),
+		);
 		if (value === undefined) {
 			throw new WorkspaceUpdateCancelledError();
 		}
@@ -45,20 +50,24 @@ export async function collectUpdateParameters(
 	return collected;
 }
 
-/** Mirrors the dashboard's `getMissingParameters` (coder/site/src/api/api.ts). */
+/** Based on the dashboard's `getMissingParameters` (coder/site/src/api/api.ts). */
 function needsPrompt(
 	param: TemplateVersionParameter,
 	storedValue: string | undefined,
 ): boolean {
 	if (storedValue === undefined) {
-		const mustBeSet = (param.mutable && param.required) || !param.mutable;
-		// Deviation: skip when a template default exists; server falls back to it.
-		return mustBeSet && !param.default_value;
+		// Accepting the default locks it in.
+		if (!param.mutable) return true;
+		// Deviation: dashboard prompts mutable+required even when a default
+		// exists; we skip so the server can apply the default during
+		// auto-update without surfacing a modal.
+		return param.required && !param.default_value;
 	}
 	if (param.options.length === 0) return false;
 
 	const validValues = new Set(param.options.map((o) => o.value));
 	if (param.form_type === "multi-select") {
+		// Beyond dashboard: detect multi-select drift too.
 		const picks = parseMultiSelectValue(storedValue);
 		return picks === null || picks.some((v) => !validValues.has(v));
 	}
@@ -67,24 +76,22 @@ function needsPrompt(
 
 /** Multi-select values are stored as a JSON-encoded string array. */
 function parseMultiSelectValue(raw: string): string[] | null {
+	let parsed: unknown;
 	try {
-		const parsed: unknown = JSON.parse(raw);
-		if (
-			Array.isArray(parsed) &&
-			parsed.every((v): v is string => typeof v === "string")
-		) {
-			return parsed;
-		}
+		parsed = JSON.parse(raw);
 	} catch {
-		// invalid JSON
+		return null;
 	}
-	return null;
+	return Array.isArray(parsed) && parsed.every((v) => typeof v === "string")
+		? parsed
+		: null;
 }
 
 function promptForParameter(
 	param: TemplateVersionParameter,
 	step: number,
 	totalSteps: number,
+	storedValue: string | undefined,
 ): Promise<string | undefined> {
 	const title = param.display_name || param.name;
 	const items = quickPickItems(param);
@@ -99,11 +106,16 @@ function promptForParameter(
 		qp.items = items;
 		qp.canSelectMany = multi;
 		qp.ignoreFocusOut = true;
+		if (multi && storedValue !== undefined) {
+			const previous = new Set(parseMultiSelectValue(storedValue) ?? []);
+			qp.selectedItems = items.filter((item) => previous.has(item.value));
+		}
 		return collectInput(qp, () => {
 			if (multi) {
-				return qp.selectedItems.length > 0
-					? JSON.stringify(qp.selectedItems.map((i) => i.value))
-					: undefined;
+				if (qp.selectedItems.length === 0) {
+					return param.required ? undefined : "[]";
+				}
+				return JSON.stringify(qp.selectedItems.map((i) => i.value));
 			}
 			return qp.selectedItems[0]?.value;
 		});

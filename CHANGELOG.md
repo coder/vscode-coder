@@ -57,7 +57,7 @@
   parameter whose stored value is no longer one of the new template
   version's options, instead of carrying a stale value forward and
   failing the build. Immutable parameters without a stored value are
-  also surfaced, matching the dashboard's behaviour.
+  now prompted as well, closing a gap with the web dashboard.
 - Updating a workspace from VS Code no longer hangs when the new template
   version requires parameters. The extension now prompts for any missing
   required values through VS Code input boxes and passes them to

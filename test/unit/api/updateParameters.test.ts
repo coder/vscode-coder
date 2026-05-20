@@ -235,6 +235,19 @@ describe("collectUpdateParameters", () => {
 		await expect(result).resolves.toEqual([{ name: "zone", value: "us-east" }]);
 	});
 
+	it("prompts an immutable param even when a template default exists", async () => {
+		const { restClient, workspace } = createCollectCtx([
+			{ name: "zone", mutable: false, default_value: "us-east" },
+		]);
+		const qi = mockCreateInputBox();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		qi.accept({ value: "us-west" });
+
+		await expect(result).resolves.toEqual([{ name: "zone", value: "us-west" }]);
+	});
+
 	it("skips an option param whose stored value is still in the new options", async () => {
 		const optionParam: Partial<TemplateVersionParameter> = {
 			name: "size",
@@ -359,6 +372,114 @@ describe("collectUpdateParameters", () => {
 		await expect(result).resolves.toEqual([
 			{ name: "regions", value: '["us"]' },
 		]);
+	});
+
+	it("skips a multi-select when every stored pick is still in the new options", async () => {
+		const multiParam: Partial<TemplateVersionParameter> = {
+			name: "regions",
+			form_type: "multi-select",
+			options: [
+				{ name: "US", description: "", value: "us", icon: "" },
+				{ name: "EU", description: "", value: "eu", icon: "" },
+			],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[multiParam],
+			[{ name: "regions", value: '["us","eu"]' }],
+		);
+
+		await expect(
+			collectUpdateParameters(restClient, workspace),
+		).resolves.toEqual([]);
+		expect(vscode.window.createQuickPick).not.toHaveBeenCalled();
+	});
+
+	it("skips a multi-select when the stored value is an empty JSON array", async () => {
+		const multiParam: Partial<TemplateVersionParameter> = {
+			name: "regions",
+			form_type: "multi-select",
+			options: [{ name: "US", description: "", value: "us", icon: "" }],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[multiParam],
+			[{ name: "regions", value: "[]" }],
+		);
+
+		await expect(
+			collectUpdateParameters(restClient, workspace),
+		).resolves.toEqual([]);
+		expect(vscode.window.createQuickPick).not.toHaveBeenCalled();
+	});
+
+	it("pre-selects still-valid picks on a multi-select drift re-prompt", async () => {
+		const multiParam: Partial<TemplateVersionParameter> = {
+			name: "regions",
+			form_type: "multi-select",
+			options: [
+				{ name: "US", description: "", value: "us", icon: "" },
+				{ name: "EU", description: "", value: "eu", icon: "" },
+			],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[multiParam],
+			[{ name: "regions", value: '["us","apac-retired"]' }],
+		);
+		const qi = mockCreateQuickPick();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		expect(qi.mock.selectedItems).toEqual([
+			{ label: "US", description: "", value: "us" },
+		]);
+		qi.accept({ selectedItems: [{ value: "us" }, { value: "eu" }] });
+
+		await expect(result).resolves.toEqual([
+			{ name: "regions", value: '["us","eu"]' },
+		]);
+	});
+
+	it("keeps the prompt open on an empty submission for a required multi-select", async () => {
+		const multiParam: Partial<TemplateVersionParameter> = {
+			name: "regions",
+			required: true,
+			form_type: "multi-select",
+			options: [{ name: "US", description: "", value: "us", icon: "" }],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[multiParam],
+			[{ name: "regions", value: '["apac-retired"]' }],
+		);
+		const qi = mockCreateQuickPick();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		qi.accept({ selectedItems: [] });
+		expect(qi.mock.dispose).not.toHaveBeenCalled();
+		qi.accept({ selectedItems: [{ value: "us" }] });
+
+		await expect(result).resolves.toEqual([
+			{ name: "regions", value: '["us"]' },
+		]);
+	});
+
+	it("accepts an empty selection on a non-required multi-select re-prompt", async () => {
+		const multiParam: Partial<TemplateVersionParameter> = {
+			name: "regions",
+			required: false,
+			form_type: "multi-select",
+			options: [{ name: "US", description: "", value: "us", icon: "" }],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[multiParam],
+			[{ name: "regions", value: '["apac-retired"]' }],
+		);
+		const qi = mockCreateQuickPick();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		qi.accept({ selectedItems: [] });
+
+		await expect(result).resolves.toEqual([{ name: "regions", value: "[]" }]);
 	});
 
 	it("throws WorkspaceUpdateCancelledError when the prompt is dismissed", async () => {
