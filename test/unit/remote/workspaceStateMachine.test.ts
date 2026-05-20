@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { WorkspaceUpdateCancelledError } from "@/api/updateParameters";
+import {
+	collectUpdateParameters,
+	WorkspaceUpdateCancelledError,
+} from "@/api/updateParameters";
 import {
 	startWorkspace,
 	updateWorkspace,
@@ -18,7 +21,13 @@ import {
 } from "@repo/mocks";
 
 import {
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
+import {
 	createMockLogger,
+	createMockServiceContainer,
 	MockProgress,
 	MockTerminalOutputChannel,
 	MockUserInteraction,
@@ -32,6 +41,7 @@ import type {
 import type { CoderApi } from "@/api/coderApi";
 import type { StartupMode } from "@/core/mementoManager";
 import type { FeatureSet } from "@/featureSet";
+import type { TelemetryService } from "@/telemetry/service";
 import type { AuthorityParts } from "@/util";
 
 vi.mock("@/api/workspace", async (importActual) => {
@@ -42,6 +52,14 @@ vi.mock("@/api/workspace", async (importActual) => {
 		updateWorkspace: vi.fn().mockResolvedValue({}),
 		streamBuildLogs: vi.fn().mockResolvedValue({}),
 		streamAgentLogs: vi.fn().mockResolvedValue({}),
+	};
+});
+
+vi.mock("@/api/updateParameters", async (importActual) => {
+	const actual = await importActual<typeof import("@/api/updateParameters")>();
+	return {
+		...actual,
+		collectUpdateParameters: vi.fn().mockResolvedValue([]),
 	};
 });
 
@@ -77,7 +95,11 @@ function runningWorkspace(
 	});
 }
 
-function setup(startupMode: StartupMode = "start") {
+function setup(
+	startupMode: StartupMode = "start",
+	telemetry?: TelemetryService,
+) {
+	enableLocalTelemetry();
 	const progress = new MockProgress<{ message?: string }>();
 	const userInteraction = new MockUserInteraction();
 	const sm = new WorkspaceStateMachine(
@@ -86,8 +108,8 @@ function setup(startupMode: StartupMode = "start") {
 		startupMode,
 		"/usr/bin/coder",
 		{} as FeatureSet,
-		createMockLogger(),
 		{ mode: "url", url: "https://test.coder.com" },
+		createMockServiceContainer({ telemetry, logger: createMockLogger() }),
 	);
 	return { sm, progress, userInteraction };
 }
@@ -213,14 +235,14 @@ describe("WorkspaceStateMachine", () => {
 		});
 
 		it("falls back to start silently when the user cancels the update", async () => {
-			vi.mocked(updateWorkspace).mockRejectedValueOnce(
+			vi.mocked(collectUpdateParameters).mockRejectedValueOnce(
 				new WorkspaceUpdateCancelledError(),
 			);
 			const { sm, progress } = setup("update");
 			const ws = createWorkspace({ latest_build: { status: "stopped" } });
 
 			expect(await sm.processWorkspace(ws, progress)).toBe(false);
-			expect(updateWorkspace).toHaveBeenCalledOnce();
+			expect(updateWorkspace).not.toHaveBeenCalled();
 			expect(startWorkspace).toHaveBeenCalledOnce();
 			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 		});
@@ -368,6 +390,117 @@ describe("WorkspaceStateMachine", () => {
 				);
 			});
 		}
+	});
+
+	describe("telemetry", () => {
+		const stoppedWorkspace = () =>
+			createWorkspace({ latest_build: { status: "stopped" } });
+
+		it.each<{
+			name: string;
+			eventName: "workspace.start.triggered" | "workspace.update.triggered";
+			mode: StartupMode;
+			workspace: () => Workspace;
+			mock: typeof startWorkspace | typeof updateWorkspace;
+		}>([
+			{
+				name: "workspace.start.triggered on stopped workspace",
+				eventName: "workspace.start.triggered",
+				mode: "start",
+				workspace: stoppedWorkspace,
+				mock: startWorkspace,
+			},
+			{
+				name: "workspace.update.triggered on running workspace in update mode",
+				eventName: "workspace.update.triggered",
+				mode: "update",
+				workspace: runningWorkspace,
+				mock: updateWorkspace,
+			},
+		])(
+			"emits $name with duration on success",
+			async ({ eventName, mode, workspace, mock }) => {
+				const sink = new TestSink();
+				const { sm, progress } = setup(mode, createTestTelemetryService(sink));
+
+				await sm.processWorkspace(workspace(), progress);
+
+				expect(mock).toHaveBeenCalledOnce();
+				const event = sink.expectOne(eventName);
+				expect(event.properties.result).toBe("success");
+				expect(event.measurements.durationMs).toEqual(expect.any(Number));
+			},
+		);
+
+		it("emits agent state transitions with observed duration", async () => {
+			const sink = new TestSink();
+			const { sm, progress } = setup("start", createTestTelemetryService(sink));
+
+			await sm.processWorkspace(
+				runningWorkspace({ status: "connecting", lifecycle_state: "created" }),
+				progress,
+			);
+			await sm.processWorkspace(runningWorkspace(), progress);
+
+			const events = sink.eventsNamed("workspace.agent.state_transitioned");
+			expect(events).toHaveLength(2);
+			expect(events[0].properties).toMatchObject({
+				fromStatus: "none",
+				toStatus: "connecting",
+				fromLifecycleState: "none",
+				toLifecycleState: "created",
+			});
+			expect(events[1].properties).toMatchObject({
+				fromStatus: "connecting",
+				toStatus: "connected",
+				fromLifecycleState: "created",
+				toLifecycleState: "ready",
+			});
+			expect(events[1].measurements.observedDurationMs).toEqual(
+				expect.any(Number),
+			);
+		});
+
+		it("resets agent telemetry on restart so the next transition emits from 'none'", async () => {
+			const sink = new TestSink();
+			const { sm, progress } = setup("start", createTestTelemetryService(sink));
+
+			// The build log stream is closed when we return to running; give the
+			// mock something disposable so close() doesn't blow up.
+			vi.mocked(streamBuildLogs).mockResolvedValueOnce({
+				close: vi.fn(),
+			} as never);
+
+			// Establish a baseline: connected/ready.
+			await sm.processWorkspace(runningWorkspace(), progress);
+
+			// Workspace enters a build state; resetAgent fires.
+			await sm.processWorkspace(
+				createWorkspace({ latest_build: { status: "stopping" } }),
+				progress,
+			);
+
+			// Next agent observation must restart from "none", not the prior baseline.
+			await sm.processWorkspace(
+				runningWorkspace({ status: "connecting", lifecycle_state: "created" }),
+				progress,
+			);
+
+			const events = sink.eventsNamed("workspace.agent.state_transitioned");
+			expect(events).toHaveLength(2);
+			expect(events[0].properties).toMatchObject({
+				fromStatus: "none",
+				toStatus: "connected",
+				fromLifecycleState: "none",
+				toLifecycleState: "ready",
+			});
+			expect(events[1].properties).toMatchObject({
+				fromStatus: "none",
+				toStatus: "connecting",
+				fromLifecycleState: "none",
+				toLifecycleState: "created",
+			});
+		});
 	});
 
 	describe("agent selection", () => {

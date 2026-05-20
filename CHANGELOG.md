@@ -25,6 +25,8 @@
   discovery/loss/recovery with sampled network info, and reconnecting
   WebSocket open/drop/reconnect/state transitions.
 - Local telemetry now records authentication refresh and recovery prompts.
+- Local telemetry now records workspace and agent state transitions with
+  observed durations.
 - Path-like settings (`coder.binaryDestination`, `coder.tlsCertFile`,
   `coder.tlsKeyFile`, `coder.tlsCaFile`, `coder.tlsAltHost`,
   `coder.proxyLogDirectory`) and items in `coder.globalFlags` now support
@@ -47,6 +49,10 @@
   domains with Punycode (`xn--`) labels, can now be opened from recent
   connections. The SSH authority parser was splitting these names across the
   field separator and rejecting the host as invalid.
+- Updating a workspace on a CLI older than 2.24 (which can't run
+  `coder update` non-interactively) now passes newly-required template
+  parameters into the REST-API fallback build, instead of silently omitting
+  them and letting the server reject the build.
 - Updating a workspace from VS Code no longer hangs when the new template
   version requires parameters. The extension now prompts for any missing
   required values through VS Code input boxes and passes them to

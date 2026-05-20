@@ -82,13 +82,14 @@ function createUpdateCtx(
 		stopWorkspace: vi
 			.fn()
 			.mockResolvedValue({ ...workspace.latest_build, status: "stopped" }),
-		updateWorkspaceVersion: vi.fn().mockResolvedValue(workspace.latest_build),
+		startWorkspace: vi.fn().mockResolvedValue(workspace.latest_build),
+		getTemplate: vi
+			.fn()
+			.mockResolvedValue({ active_version_id: "active-version-id" }),
 		waitForBuild: vi.fn().mockResolvedValue({
 			...workspace.latest_build.job,
 			status: "succeeded",
 		}),
-		getTemplateVersionRichParameters: vi.fn().mockResolvedValue([]),
-		getWorkspaceBuildParameters: vi.fn().mockResolvedValue([]),
 	};
 	const ctx = {
 		restClient: restClient as unknown as Api,
@@ -202,7 +203,7 @@ describe("updateWorkspace", () => {
 		const { ctx, restClient, finalWorkspace } = createUpdateCtx();
 		const sp = controlSpawn();
 
-		const result = updateWorkspace(ctx);
+		const result = updateWorkspace(ctx, []);
 		await sp.close(0);
 
 		await expect(result).resolves.toBe(finalWorkspace);
@@ -216,11 +217,34 @@ describe("updateWorkspace", () => {
 		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
 	});
 
+	it("passes collected parameters as --parameter flags", async () => {
+		const { ctx } = createUpdateCtx();
+		const sp = controlSpawn();
+
+		const result = updateWorkspace(ctx, [
+			{ name: "region", value: "us-east" },
+			{ name: "size", value: "large" },
+		]);
+		await sp.close(0);
+		await result;
+
+		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
+			"--url",
+			"https://test.coder.com",
+			"update",
+			"--parameter",
+			"region=us-east",
+			"--parameter",
+			"size=large",
+			"testuser/test-workspace",
+		]);
+	});
+
 	it("rejects when the process exits non-zero", async () => {
 		const { ctx, restClient } = createUpdateCtx();
 		const sp = controlSpawn();
 
-		const result = updateWorkspace(ctx);
+		const result = updateWorkspace(ctx, []);
 		await sp.spawned;
 		sp.stderr("auth failed");
 		await sp.close(1);
@@ -233,7 +257,7 @@ describe("updateWorkspace", () => {
 		const { ctx, restClient } = createUpdateCtx();
 		const sp = controlSpawn();
 
-		const result = updateWorkspace(ctx);
+		const result = updateWorkspace(ctx, []);
 		await sp.error(new Error("spawn /usr/bin/coder ENOENT"));
 		// Real Node fires `error` then `close(null, null)` on ENOENT.
 		await sp.close(null);
@@ -246,7 +270,7 @@ describe("updateWorkspace", () => {
 		const { ctx } = createUpdateCtx();
 		const sp = controlSpawn();
 
-		const result = updateWorkspace(ctx);
+		const result = updateWorkspace(ctx, []);
 		await sp.close(null, "SIGTERM");
 
 		await expect(result).rejects.toThrow(/signal SIGTERM/);
@@ -257,13 +281,31 @@ describe("updateWorkspace", () => {
 			featureSet: { cliUpdate: false },
 		});
 
-		await expect(updateWorkspace(ctx)).resolves.toBe(finalWorkspace);
+		await expect(updateWorkspace(ctx, [])).resolves.toBe(finalWorkspace);
 
 		expect(spawn).not.toHaveBeenCalled();
-		expect(restClient.getTemplateVersionRichParameters).not.toHaveBeenCalled();
 		expect(restClient.stopWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
-		expect(restClient.updateWorkspaceVersion).toHaveBeenCalledWith(
-			ctx.workspace,
+		expect(restClient.startWorkspace).toHaveBeenCalledWith(
+			ctx.workspace.id,
+			"active-version-id",
+			undefined,
+			[],
+		);
+	});
+
+	it("passes collected parameters when using the API fallback", async () => {
+		const { ctx, restClient } = createUpdateCtx({
+			featureSet: { cliUpdate: false },
+		});
+		const parameters = [{ name: "region", value: "us-east" }];
+
+		await updateWorkspace(ctx, parameters);
+
+		expect(restClient.startWorkspace).toHaveBeenCalledWith(
+			ctx.workspace.id,
+			"active-version-id",
+			undefined,
+			parameters,
 		);
 	});
 
@@ -273,11 +315,14 @@ describe("updateWorkspace", () => {
 			featureSet: { cliUpdate: false },
 		});
 
-		await updateWorkspace(ctx);
+		await updateWorkspace(ctx, []);
 
 		expect(restClient.stopWorkspace).not.toHaveBeenCalled();
-		expect(restClient.updateWorkspaceVersion).toHaveBeenCalledWith(
-			ctx.workspace,
+		expect(restClient.startWorkspace).toHaveBeenCalledWith(
+			ctx.workspace.id,
+			"active-version-id",
+			undefined,
+			[],
 		);
 	});
 
@@ -290,10 +335,10 @@ describe("updateWorkspace", () => {
 			status: "canceled",
 		});
 
-		await expect(updateWorkspace(ctx)).rejects.toThrow(
+		await expect(updateWorkspace(ctx, [])).rejects.toThrow(
 			"Workspace update cancelled during stop",
 		);
-		expect(restClient.updateWorkspaceVersion).not.toHaveBeenCalled();
+		expect(restClient.startWorkspace).not.toHaveBeenCalled();
 	});
 });
 

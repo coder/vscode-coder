@@ -4,13 +4,13 @@ import * as vscode from "vscode";
 import { getGlobalFlags, type CliAuth } from "../settings/cli";
 
 import { errToStr, createWorkspaceIdentifier } from "./api-helper";
-import { collectUpdateParameters } from "./updateParameters";
 
 import type { Api } from "coder/site/src/api/api";
 import type {
 	ProvisionerJobLog,
 	Workspace,
 	WorkspaceAgentLog,
+	WorkspaceBuildParameter,
 } from "coder/site/src/api/typesGenerated";
 
 import type { FeatureSet } from "../featureSet";
@@ -116,25 +116,31 @@ export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
 }
 
 /**
- * Update a workspace to the latest template version. Collects any newly-
- * required parameters via VS Code prompts and passes them to the CLI as flags
- * (the resolver phase can't render an interactive terminal). Falls back to
- * the REST API for CLIs older than 2.24.
+ * Update a workspace to the latest template version. Callers must collect
+ * any newly-required parameters via `collectUpdateParameters` first; this
+ * function does not prompt. Falls back to the REST API on CLIs older than
+ * 2.24.
  */
-export async function updateWorkspace(ctx: CliContext): Promise<Workspace> {
+export async function updateWorkspace(
+	ctx: CliContext,
+	parameters: WorkspaceBuildParameter[],
+): Promise<Workspace> {
 	if (!ctx.featureSet.cliUpdate) {
-		return updateWorkspaceVersion(ctx);
+		return updateWorkspaceViaApi(ctx, parameters);
 	}
 
-	const paramArgs = await collectUpdateParameters(
-		ctx.restClient,
-		ctx.workspace,
-	);
+	const paramArgs = parameters.flatMap((p) => [
+		"--parameter",
+		`${p.name}=${p.value}`,
+	]);
 	await runCliCommand(ctx, ["update", ...paramArgs]);
 	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }
 
-async function updateWorkspaceVersion(ctx: CliContext): Promise<Workspace> {
+async function updateWorkspaceViaApi(
+	ctx: CliContext,
+	parameters: WorkspaceBuildParameter[],
+): Promise<Workspace> {
 	if (ctx.workspace.latest_build.status === "running") {
 		ctx.write("Stopping workspace for update...\r\n");
 		const stopBuild = await ctx.restClient.stopWorkspace(ctx.workspace.id);
@@ -145,7 +151,13 @@ async function updateWorkspaceVersion(ctx: CliContext): Promise<Workspace> {
 	}
 
 	ctx.write("Starting workspace with updated template...\r\n");
-	await ctx.restClient.updateWorkspaceVersion(ctx.workspace);
+	const template = await ctx.restClient.getTemplate(ctx.workspace.template_id);
+	await ctx.restClient.startWorkspace(
+		ctx.workspace.id,
+		template.active_version_id,
+		undefined,
+		parameters,
+	);
 	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }
 
