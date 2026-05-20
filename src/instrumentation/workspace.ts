@@ -1,9 +1,12 @@
+import { WorkspaceUpdateCancelledError } from "../api/updateParameters";
+
 import type {
 	Workspace,
 	WorkspaceAgent,
 	WorkspaceAgentLifecycle,
 	WorkspaceAgentStatus,
 	WorkspaceBuild,
+	WorkspaceBuildParameter,
 	WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 
@@ -160,5 +163,33 @@ export class WorkspaceOperationTelemetry {
 		return this.telemetry.trace("workspace.start.triggered", fn, {
 			workspaceName: this.workspaceName,
 		});
+	}
+
+	/**
+	 * Records dismissal as `result: "aborted"`. The framework treats any throw
+	 * as `result: "error"`, so we return inside the span and rethrow outside.
+	 */
+	public async traceUpdatePrompted(
+		fn: () => Promise<WorkspaceBuildParameter[]>,
+	): Promise<WorkspaceBuildParameter[]> {
+		let cancel: WorkspaceUpdateCancelledError | undefined;
+		const parameters = await this.telemetry.trace(
+			"workspace.update.prompted",
+			async (span) => {
+				try {
+					return await fn();
+				} catch (error) {
+					if (error instanceof WorkspaceUpdateCancelledError) {
+						span.markAborted();
+						cancel = error;
+						return [];
+					}
+					throw error;
+				}
+			},
+			{ workspaceName: this.workspaceName },
+		);
+		if (cancel) throw cancel;
+		return parameters;
 	}
 }

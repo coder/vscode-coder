@@ -5,7 +5,10 @@ import {
 	errToStr,
 	extractAgents,
 } from "../api/api-helper";
-import { WorkspaceUpdateCancelledError } from "../api/updateParameters";
+import {
+	collectUpdateParameters,
+	WorkspaceUpdateCancelledError,
+} from "../api/updateParameters";
 import {
 	LazyStream,
 	startWorkspace,
@@ -306,8 +309,11 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			status: workspace.latest_build.status,
 		});
 		try {
+			const parameters = await this.operationTelemetry.traceUpdatePrompted(() =>
+				collectUpdateParameters(this.workspaceClient, workspace),
+			);
 			this.workspace = await this.operationTelemetry.traceUpdateTriggered(() =>
-				updateWorkspace(this.buildCliContext(workspace)),
+				updateWorkspace(this.buildCliContext(workspace), parameters),
 			);
 			this.logger.info(`${workspaceName} update initiated`);
 			return this.workspace;

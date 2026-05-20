@@ -134,7 +134,7 @@ describe("collectUpdateParameters", () => {
 		param: Partial<TemplateVersionParameter>;
 		mock: () => QuickInputMock;
 		accept: Record<string, unknown>;
-		expected: string[];
+		expected: Array<{ name: string; value: string }>;
 	}
 
 	it.each<CollectCase>([
@@ -143,14 +143,14 @@ describe("collectUpdateParameters", () => {
 			param: { name: "environment" },
 			mock: mockCreateInputBox,
 			accept: { value: "dev" },
-			expected: ["--parameter", "environment=dev"],
+			expected: [{ name: "environment", value: "dev" }],
 		},
 		{
 			kind: "bool quick pick",
 			param: { name: "enabled", type: "bool" },
 			mock: mockCreateQuickPick,
 			accept: { selectedItems: [{ value: "true" }] },
-			expected: ["--parameter", "enabled=true"],
+			expected: [{ name: "enabled", value: "true" }],
 		},
 		{
 			kind: "options quick pick",
@@ -163,7 +163,7 @@ describe("collectUpdateParameters", () => {
 			},
 			mock: mockCreateQuickPick,
 			accept: { selectedItems: [{ value: "l" }] },
-			expected: ["--parameter", "size=l"],
+			expected: [{ name: "size", value: "l" }],
 		},
 		{
 			kind: "multi-select quick pick (JSON array)",
@@ -177,7 +177,7 @@ describe("collectUpdateParameters", () => {
 			},
 			mock: mockCreateQuickPick,
 			accept: { selectedItems: [{ value: "us" }, { value: "eu" }] },
-			expected: ["--parameter", 'regions=["us","eu"]'],
+			expected: [{ name: "regions", value: '["us","eu"]' }],
 		},
 	])(
 		"collects the value via $kind",
@@ -201,7 +201,9 @@ describe("collectUpdateParameters", () => {
 		await waitShown(qi);
 		qi.accept({ value: "$(rm -rf /)" });
 
-		await expect(result).resolves.toEqual(["--parameter", "evil=$(rm -rf /)"]);
+		await expect(result).resolves.toEqual([
+			{ name: "evil", value: "$(rm -rf /)" },
+		]);
 	});
 
 	it("skips parameters that already have a value or default", async () => {

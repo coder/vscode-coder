@@ -4,6 +4,7 @@ import type { Api } from "coder/site/src/api/api";
 import type {
 	TemplateVersionParameter,
 	Workspace,
+	WorkspaceBuildParameter,
 } from "coder/site/src/api/typesGenerated";
 
 /** Thrown when the user dismisses a parameter prompt. */
@@ -15,14 +16,14 @@ export class WorkspaceUpdateCancelledError extends Error {
 }
 
 /**
- * Prompts the user for any newly-required template parameters and returns
- * `--parameter name=value` args suitable for `coder update`. Throws
- * `WorkspaceUpdateCancelledError` if the user dismisses a prompt.
+ * Prompts the user for any newly-required template parameters and returns the
+ * collected `{ name, value }` pairs. Throws `WorkspaceUpdateCancelledError` if
+ * the user dismisses a prompt.
  */
 export async function collectUpdateParameters(
 	restClient: Api,
 	workspace: Workspace,
-): Promise<string[]> {
+): Promise<WorkspaceBuildParameter[]> {
 	const [newParams, currentValues] = await Promise.all([
 		restClient.getTemplateVersionRichParameters(
 			workspace.template_active_version_id,
@@ -35,16 +36,16 @@ export async function collectUpdateParameters(
 	const existing = new Set(currentValues.map((p) => p.name));
 	const toPrompt = candidates.filter((p) => !existing.has(p.name));
 
-	const args: string[] = [];
+	const collected: WorkspaceBuildParameter[] = [];
 	for (let i = 0; i < toPrompt.length; i++) {
 		const param = toPrompt[i];
 		const value = await promptForParameter(param, i + 1, toPrompt.length);
 		if (value === undefined) {
 			throw new WorkspaceUpdateCancelledError();
 		}
-		args.push("--parameter", `${param.name}=${value}`);
+		collected.push({ name: param.name, value });
 	}
-	return args;
+	return collected;
 }
 
 function promptForParameter(

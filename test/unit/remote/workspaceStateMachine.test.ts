@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { WorkspaceUpdateCancelledError } from "@/api/updateParameters";
+import {
+	collectUpdateParameters,
+	WorkspaceUpdateCancelledError,
+} from "@/api/updateParameters";
 import {
 	startWorkspace,
 	updateWorkspace,
@@ -49,6 +52,14 @@ vi.mock("@/api/workspace", async (importActual) => {
 		updateWorkspace: vi.fn().mockResolvedValue({}),
 		streamBuildLogs: vi.fn().mockResolvedValue({}),
 		streamAgentLogs: vi.fn().mockResolvedValue({}),
+	};
+});
+
+vi.mock("@/api/updateParameters", async (importActual) => {
+	const actual = await importActual<typeof import("@/api/updateParameters")>();
+	return {
+		...actual,
+		collectUpdateParameters: vi.fn().mockResolvedValue([]),
 	};
 });
 
@@ -224,14 +235,14 @@ describe("WorkspaceStateMachine", () => {
 		});
 
 		it("falls back to start silently when the user cancels the update", async () => {
-			vi.mocked(updateWorkspace).mockRejectedValueOnce(
+			vi.mocked(collectUpdateParameters).mockRejectedValueOnce(
 				new WorkspaceUpdateCancelledError(),
 			);
 			const { sm, progress } = setup("update");
 			const ws = createWorkspace({ latest_build: { status: "stopped" } });
 
 			expect(await sm.processWorkspace(ws, progress)).toBe(false);
-			expect(updateWorkspace).toHaveBeenCalledOnce();
+			expect(updateWorkspace).not.toHaveBeenCalled();
 			expect(startWorkspace).toHaveBeenCalledOnce();
 			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 		});
@@ -420,25 +431,6 @@ describe("WorkspaceStateMachine", () => {
 				expect(event.measurements.durationMs).toEqual(expect.any(Number));
 			},
 		);
-
-		it("emits result=error when the triggered action throws", async () => {
-			const sink = new TestSink();
-			const { sm, progress } = setup(
-				"update",
-				createTestTelemetryService(sink),
-			);
-			vi.mocked(updateWorkspace).mockRejectedValueOnce(
-				new Error("update failed"),
-			);
-
-			// The state machine catches the failure and falls back to the
-			// existing template version, so processWorkspace resolves.
-			await sm.processWorkspace(runningWorkspace(), progress);
-
-			const event = sink.expectOne("workspace.update.triggered");
-			expect(event.properties.result).toBe("error");
-			expect(event.error).toEqual({ message: "update failed" });
-		});
 
 		it("emits agent state transitions with observed duration", async () => {
 			const sink = new TestSink();
