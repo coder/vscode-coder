@@ -16,9 +16,9 @@ export class WorkspaceUpdateCancelledError extends Error {
 }
 
 /**
- * Prompts the user for any newly-required template parameters and returns the
- * collected `{ name, value }` pairs. Throws `WorkspaceUpdateCancelledError` if
- * the user dismisses a prompt.
+ * Prompts the user for any template parameters that the new version needs
+ * answered, and returns the collected `{ name, value }` pairs. Throws
+ * `WorkspaceUpdateCancelledError` if the user dismisses a prompt.
  */
 export async function collectUpdateParameters(
 	restClient: Api,
@@ -30,11 +30,8 @@ export async function collectUpdateParameters(
 		),
 		restClient.getWorkspaceBuildParameters(workspace.latest_build.id),
 	]);
-	const candidates = newParams.filter((p) => p.required && !p.default_value);
-	if (candidates.length === 0) return [];
-
-	const existing = new Set(currentValues.map((p) => p.name));
-	const toPrompt = candidates.filter((p) => !existing.has(p.name));
+	const stored = new Map(currentValues.map((p) => [p.name, p.value]));
+	const toPrompt = newParams.filter((p) => needsPrompt(p, stored.get(p.name)));
 
 	const collected: WorkspaceBuildParameter[] = [];
 	for (let i = 0; i < toPrompt.length; i++) {
@@ -46,6 +43,42 @@ export async function collectUpdateParameters(
 		collected.push({ name: param.name, value });
 	}
 	return collected;
+}
+
+/** Mirrors the dashboard's `getMissingParameters` (coder/site/src/api/api.ts). */
+function needsPrompt(
+	param: TemplateVersionParameter,
+	storedValue: string | undefined,
+): boolean {
+	if (storedValue === undefined) {
+		const mustBeSet = (param.mutable && param.required) || !param.mutable;
+		// Deviation: skip when a template default exists; server falls back to it.
+		return mustBeSet && !param.default_value;
+	}
+	if (param.options.length === 0) return false;
+
+	const validValues = new Set(param.options.map((o) => o.value));
+	if (param.form_type === "multi-select") {
+		const picks = parseMultiSelectValue(storedValue);
+		return picks === null || picks.some((v) => !validValues.has(v));
+	}
+	return !validValues.has(storedValue);
+}
+
+/** Multi-select values are stored as a JSON-encoded string array. */
+function parseMultiSelectValue(raw: string): string[] | null {
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (
+			Array.isArray(parsed) &&
+			parsed.every((v): v is string => typeof v === "string")
+		) {
+			return parsed;
+		}
+	} catch {
+		// invalid JSON
+	}
+	return null;
 }
 
 function promptForParameter(

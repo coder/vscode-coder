@@ -222,6 +222,145 @@ describe("collectUpdateParameters", () => {
 		expect(vscode.window.createInputBox).not.toHaveBeenCalled();
 	});
 
+	it("prompts an immutable param that has no stored value (even if not required)", async () => {
+		const { restClient, workspace } = createCollectCtx([
+			{ name: "zone", required: false, mutable: false },
+		]);
+		const qi = mockCreateInputBox();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		qi.accept({ value: "us-east" });
+
+		await expect(result).resolves.toEqual([{ name: "zone", value: "us-east" }]);
+	});
+
+	it("skips an option param whose stored value is still in the new options", async () => {
+		const optionParam: Partial<TemplateVersionParameter> = {
+			name: "size",
+			options: [
+				{ name: "Small", description: "", value: "s", icon: "" },
+				{ name: "Large", description: "", value: "l", icon: "" },
+			],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[optionParam],
+			[{ name: "size", value: "l" }],
+		);
+
+		await expect(
+			collectUpdateParameters(restClient, workspace),
+		).resolves.toEqual([]);
+		expect(vscode.window.createQuickPick).not.toHaveBeenCalled();
+	});
+
+	it("re-prompts when a stored option value drifted out of the new options", async () => {
+		const optionParam: Partial<TemplateVersionParameter> = {
+			name: "size",
+			options: [
+				{ name: "Small", description: "", value: "s", icon: "" },
+				{ name: "Large", description: "", value: "l", icon: "" },
+			],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[optionParam],
+			[{ name: "size", value: "xl-retired" }],
+		);
+		const qi = mockCreateQuickPick();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		qi.accept({ selectedItems: [{ value: "l" }] });
+
+		await expect(result).resolves.toEqual([{ name: "size", value: "l" }]);
+	});
+
+	it("re-prompts on drift even when the template parameter has a default value", async () => {
+		const optionParam: Partial<TemplateVersionParameter> = {
+			name: "size",
+			default_value: "s",
+			options: [
+				{ name: "Small", description: "", value: "s", icon: "" },
+				{ name: "Large", description: "", value: "l", icon: "" },
+			],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[optionParam],
+			[{ name: "size", value: "xl-retired" }],
+		);
+		const qi = mockCreateQuickPick();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		qi.accept({ selectedItems: [{ value: "l" }] });
+
+		await expect(result).resolves.toEqual([{ name: "size", value: "l" }]);
+	});
+
+	it("re-prompts on drift for an immutable param too", async () => {
+		const optionParam: Partial<TemplateVersionParameter> = {
+			name: "zone",
+			mutable: false,
+			options: [{ name: "US", description: "", value: "us", icon: "" }],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[optionParam],
+			[{ name: "zone", value: "eu-retired" }],
+		);
+		const qi = mockCreateQuickPick();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		qi.accept({ selectedItems: [{ value: "us" }] });
+
+		await expect(result).resolves.toEqual([{ name: "zone", value: "us" }]);
+	});
+
+	it("re-prompts a multi-select when any stored pick drifted out", async () => {
+		const multiParam: Partial<TemplateVersionParameter> = {
+			name: "regions",
+			form_type: "multi-select",
+			options: [
+				{ name: "US", description: "", value: "us", icon: "" },
+				{ name: "EU", description: "", value: "eu", icon: "" },
+			],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[multiParam],
+			[{ name: "regions", value: '["us","apac-retired"]' }],
+		);
+		const qi = mockCreateQuickPick();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		qi.accept({ selectedItems: [{ value: "us" }] });
+
+		await expect(result).resolves.toEqual([
+			{ name: "regions", value: '["us"]' },
+		]);
+	});
+
+	it("re-prompts a multi-select when the stored value isn't a JSON string array", async () => {
+		const multiParam: Partial<TemplateVersionParameter> = {
+			name: "regions",
+			form_type: "multi-select",
+			options: [{ name: "US", description: "", value: "us", icon: "" }],
+		};
+		const { restClient, workspace } = createCollectCtx(
+			[multiParam],
+			[{ name: "regions", value: "not-json" }],
+		);
+		const qi = mockCreateQuickPick();
+
+		const result = collectUpdateParameters(restClient, workspace);
+		await waitShown(qi);
+		qi.accept({ selectedItems: [{ value: "us" }] });
+
+		await expect(result).resolves.toEqual([
+			{ name: "regions", value: '["us"]' },
+		]);
+	});
+
 	it("throws WorkspaceUpdateCancelledError when the prompt is dismissed", async () => {
 		const { restClient, workspace } = createCollectCtx([{}]);
 		const qi = mockCreateInputBox();
