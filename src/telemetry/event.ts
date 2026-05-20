@@ -3,6 +3,14 @@ import * as vscode from "vscode";
 
 import { toError } from "../error/errorUtils";
 
+export type {
+	SessionContext,
+	TelemetryContext,
+	TelemetryEvent,
+} from "./wireFormat";
+
+import type { SessionContext, TelemetryEvent } from "./wireFormat";
+
 /** Telemetry level, mirrors `coder.telemetry.level`. Ordered: off < local. */
 export type TelemetryLevel = "off" | "local";
 
@@ -18,47 +26,6 @@ export type CallerProperties = Record<string, CallerPropertyValue> & {
 export type CallerMeasurements = Record<string, number> & {
 	durationMs?: never;
 };
-
-/** Session-stable resource attributes. Field names are inspired by OTel
- * resource attributes; they are camelCase TypeScript and not a 1:1 mapping. */
-export interface SessionContext {
-	readonly extensionVersion: string;
-	readonly machineId: string;
-	readonly sessionId: string;
-	readonly osType: string;
-	readonly osVersion: string;
-	readonly hostArch: string;
-	readonly platformName: string;
-	readonly platformVersion: string;
-}
-
-/** Per-event context: session attributes plus the current deployment URL. */
-export interface TelemetryContext extends SessionContext {
-	readonly deploymentUrl: string;
-}
-
-export interface TelemetryEvent {
-	readonly eventId: string;
-	readonly eventName: string;
-	readonly timestamp: string;
-	readonly eventSequence: number;
-
-	readonly context: TelemetryContext;
-
-	readonly properties: Readonly<Record<string, string>>;
-	readonly measurements: Readonly<Record<string, number>>;
-
-	/** Shared by all events in a trace. Maps to OTel `trace_id`. */
-	readonly traceId?: string;
-	/** Set on phase children only. Equals the parent event's `eventId`. Maps to OTel `parent_span_id`. */
-	readonly parentEventId?: string;
-
-	readonly error?: Readonly<{
-		message: string;
-		type?: string;
-		code?: string;
-	}>;
-}
 
 /**
  * Sink for telemetry events. `write` is sync and must buffer in memory; I/O

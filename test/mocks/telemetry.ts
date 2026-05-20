@@ -70,3 +70,36 @@ export function createTelemetryHarness(): {
 	const sink = new TestSink();
 	return { sink, service: createTestTelemetryService(sink) };
 }
+
+/**
+ * Factory for `TelemetryEvent` fixtures. Each call gets a fresh `eventId` and
+ * monotonic `eventSequence`; overrides win.
+ */
+export function createTelemetryEventFactory(): (
+	overrides?: Partial<TelemetryEvent>,
+) => TelemetryEvent {
+	let sequence = 0;
+	return (overrides = {}) => {
+		const seq = sequence++;
+		return {
+			eventId: `id-${seq}`,
+			eventName: "test.event",
+			timestamp: "2026-05-04T12:00:00.000Z",
+			eventSequence: seq,
+			context: {
+				extensionVersion: "1.14.5",
+				machineId: "machine-id",
+				sessionId: "session-id",
+				osType: "linux",
+				osVersion: "6.0.0",
+				hostArch: "x64",
+				platformName: "Visual Studio Code",
+				platformVersion: "1.106.0",
+				deploymentUrl: "https://coder.example.com",
+			},
+			properties: {},
+			measurements: {},
+			...overrides,
+		};
+	};
+}
