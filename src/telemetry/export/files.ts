@@ -94,8 +94,11 @@ export async function* streamTelemetryEvents(
 				{ cause: err },
 			);
 		} finally {
-			lines.close();
-			stream.destroy();
+			try {
+				lines.close();
+			} finally {
+				stream.destroy();
+			}
 		}
 	}
 }

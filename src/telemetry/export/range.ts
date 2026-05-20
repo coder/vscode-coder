@@ -79,16 +79,16 @@ export function createCustomDateRange(
 	startDate: string,
 	endDate: string,
 ): TelemetryDateRange {
-	const startMs = parseUtcDate(startDate);
-	const endStartMs = parseUtcDate(endDate);
-	if (endStartMs < startMs) {
+	const startDateMs = parseUtcDate(startDate);
+	const endDateMs = parseUtcDate(endDate);
+	if (endDateMs < startDateMs) {
 		throw new Error("End date must be on or after start date.");
 	}
 	return {
 		label: `${startDate} to ${endDate}`,
 		filenamePart: `${startDate}_to_${endDate}`,
-		startMs,
-		endMs: endStartMs + DAY_MS,
+		startMs: startDateMs,
+		endMs: endDateMs + DAY_MS,
 	};
 }
 

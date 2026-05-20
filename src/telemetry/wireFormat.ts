@@ -62,6 +62,11 @@ export class TelemetryFileParseError extends Error {
 	}
 }
 
+/** Serializes one event to its newline-terminated JSONL row. */
+export function serializeTelemetryEventLine(event: TelemetryEvent): string {
+	return JSON.stringify(serializeTelemetryEvent(event)) + "\n";
+}
+
 /** Snake-case row written to disk by the sink and read back by the exporter. */
 export function serializeTelemetryEvent(
 	event: TelemetryEvent,

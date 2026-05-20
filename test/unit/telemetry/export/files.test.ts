@@ -7,7 +7,7 @@ import {
 	streamTelemetryEvents,
 } from "@/telemetry/export/files";
 import { createCustomDateRange } from "@/telemetry/export/range";
-import { serializeTelemetryEvent } from "@/telemetry/wireFormat";
+import { serializeTelemetryEventLine } from "@/telemetry/wireFormat";
 
 import { createTelemetryEventFactory } from "../../../mocks/telemetry";
 
@@ -74,8 +74,12 @@ describe("streamTelemetryEvents", () => {
 	it("yields only events whose timestamp falls inside the range", async () => {
 		writeFiles({
 			"telemetry-2026-05-12-aaaaaaaa.jsonl":
-				wireLine(makeEvent({ timestamp: "2026-05-11T23:59:59.999Z" })) +
-				wireLine(makeEvent({ timestamp: "2026-05-12T00:00:00.000Z" })),
+				serializeTelemetryEventLine(
+					makeEvent({ timestamp: "2026-05-11T23:59:59.999Z" }),
+				) +
+				serializeTelemetryEventLine(
+					makeEvent({ timestamp: "2026-05-12T00:00:00.000Z" }),
+				),
 		});
 
 		const events: TelemetryEvent[] = [];
@@ -114,8 +118,4 @@ async function drain(name: string): Promise<void> {
 	)) {
 		// Pull the iterator to surface parse errors.
 	}
-}
-
-function wireLine(event: TelemetryEvent): string {
-	return JSON.stringify(serializeTelemetryEvent(event)) + "\n";
 }

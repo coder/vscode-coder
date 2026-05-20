@@ -12,7 +12,7 @@ import {
 	cleanupFiles,
 	type FileCleanupCandidate,
 } from "../../util/fileCleanup";
-import { serializeTelemetryEvent } from "../wireFormat";
+import { serializeTelemetryEventLine } from "../wireFormat";
 
 import type { Logger } from "../../logging/logger";
 import type { TelemetryEvent, TelemetryLevel, TelemetrySink } from "../event";
@@ -89,7 +89,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		}
 		let line: string;
 		try {
-			line = serializeEvent(event);
+			line = serializeTelemetryEventLine(event);
 		} catch (err) {
 			this.#logger.warn(`Telemetry sink '${this.name}' serialize failed`, err);
 			return;
@@ -313,8 +313,4 @@ function warnIfBufferTooSmall(config: LocalSinkConfig, logger: Logger): void {
 function toSessionSlug(sessionId: string): string {
 	const cleaned = sessionId.replace(/[^a-zA-Z0-9]/g, "");
 	return cleaned.slice(0, 8) || "anon0000";
-}
-
-function serializeEvent(event: TelemetryEvent): string {
-	return JSON.stringify(serializeTelemetryEvent(event)) + "\n";
 }
