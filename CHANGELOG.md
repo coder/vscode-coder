@@ -5,6 +5,31 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## [v1.14.6](https://github.com/coder/vscode-coder/releases/tag/v1.14.6) 2026-05-19
+
+### Security
+
+- Hardened the configuration scope of security-sensitive settings so that a
+  malicious `.vscode/settings.json` cannot override them (SEC-200). Workspace
+  and folder values are now ignored by VS Code for these settings. This closes
+  a path where a workspace could redirect command execution
+  (`coder.headerCommand`, `coder.tlsCertRefreshCommand`), substitute the CLI
+  binary or its source (`coder.binarySource`, `coder.binaryDestination`,
+  `coder.disableSignatureVerification`, `coder.enableDownloads`), inject
+  CLI/SSH flags (`coder.globalFlags`, `coder.sshFlags`), swap TLS material or
+  disable TLS verification (`coder.tlsCertFile`, `coder.tlsKeyFile`,
+  `coder.tlsCaFile`, `coder.tlsAltHost`, `coder.insecure`), or override
+  identity, networking, and credential storage (`coder.defaultUrl`,
+  `coder.autologin`, `coder.useKeyring`, `coder.proxyBypass`,
+  `coder.proxyLogDirectory`).
+- Path-, command-, and network-dependent settings use `"scope": "machine"`
+  (per-machine, not synced via Settings Sync), while user-wide preferences
+  (`coder.defaultUrl`, `coder.autologin`, `coder.useKeyring`, `coder.insecure`,
+  `coder.disableSignatureVerification`, `coder.enableDownloads`) use
+  `"scope": "application"`, which preserves Settings Sync across your
+  machines while still blocking workspace overrides. This follows VS Code's
+  [recommended scope semantics](https://code.visualstudio.com/api/references/contribution-points#contributes.configuration).
+
 ## [v1.14.5](https://github.com/coder/vscode-coder/releases/tag/v1.14.5) 2026-04-30
 
 ### Added
