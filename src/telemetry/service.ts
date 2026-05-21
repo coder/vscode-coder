@@ -178,7 +178,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		let mark: "aborted" | "error" | undefined;
 		const warnPostEmit = (op: string, name: string): void => {
 			this.logger.warn(
-				`Telemetry span '${eventName}' ${op}('${name}') called after emit; mutation dropped`,
+				`Telemetry span '${eventName}' ${op}('${name}') called after emit; call ignored`,
 			);
 		};
 		const emitSpanLog = (

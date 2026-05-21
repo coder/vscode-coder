@@ -221,8 +221,13 @@ describe("TelemetryService", () => {
 		it("child span logs point at the child span", async () => {
 			await h.service.trace("op", async (span) => {
 				await span.phase("phase", (childSpan) => {
-					childSpan.log("checkpoint");
-					childSpan.logError("oops", new Error("boom"));
+					childSpan.log("checkpoint", { ready: true }, { count: 1 });
+					childSpan.logError(
+						"oops",
+						new Error("boom"),
+						{ attempt: 2 },
+						{ retries: 3 },
+					);
 					return Promise.resolve();
 				});
 			});
@@ -231,10 +236,14 @@ describe("TelemetryService", () => {
 			expect(log.eventName).toBe("op.phase.checkpoint");
 			expect(log.traceId).toBe(parent.traceId);
 			expect(log.parentEventId).toBe(child.eventId);
+			expect(log.properties.ready).toBe("true");
+			expect(log.measurements.count).toBe(1);
 			expect(logError.eventName).toBe("op.phase.oops");
 			expect(logError.traceId).toBe(parent.traceId);
 			expect(logError.parentEventId).toBe(child.eventId);
 			expect(logError.error).toMatchObject({ message: "boom" });
+			expect(logError.properties.attempt).toBe("2");
+			expect(logError.measurements.retries).toBe(3);
 			expect(child.parentEventId).toBe(parent.eventId);
 		});
 
