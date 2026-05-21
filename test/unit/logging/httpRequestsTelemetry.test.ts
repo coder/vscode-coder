@@ -80,22 +80,22 @@ describe("HttpRequestsTelemetry", () => {
 			{ method: "GET", route: "/api/v2/workspaces/{id}" },
 			{
 				window_seconds: WINDOW_SECONDS,
-				count_1xx: 0,
-				count_2xx: 2,
-				count_3xx: 0,
-				count_4xx: 0,
-				count_5xx: 0,
-				count_network_error: 0,
-				p50_duration_ms: 100,
-				p95_duration_ms: 200,
-				p99_duration_ms: 200,
+				"count.1xx": 0,
+				"count.2xx": 2,
+				"count.3xx": 0,
+				"count.4xx": 0,
+				"count.5xx": 0,
+				"count.network_error": 0,
+				"duration.p50_ms": 100,
+				"duration.p95_ms": 200,
+				"duration.p99_ms": 200,
 			},
 		);
 		expect(log).toHaveBeenNthCalledWith(
 			2,
 			"http.requests",
 			{ method: "POST", route: "/api/v2/workspaces/{id}" },
-			expect.objectContaining({ count_2xx: 1 }),
+			expect.objectContaining({ "count.2xx": 1 }),
 		);
 	});
 
@@ -115,12 +115,12 @@ describe("HttpRequestsTelemetry", () => {
 			"http.requests",
 			{ method: "POST", route: "/api/v2/users/{name}/workspaces" },
 			expect.objectContaining({
-				count_1xx: 1,
-				count_2xx: 1,
-				count_3xx: 1,
-				count_4xx: 1,
-				count_5xx: 1,
-				count_network_error: 1,
+				"count.1xx": 1,
+				"count.2xx": 1,
+				"count.3xx": 1,
+				"count.4xx": 1,
+				"count.5xx": 1,
+				"count.network_error": 1,
 			}),
 		);
 	});
@@ -160,9 +160,9 @@ describe("HttpRequestsTelemetry", () => {
 			"http.requests",
 			{ method: "GET", route: "/api/v2/workspaces/{id}" },
 			expect.objectContaining({
-				p50_duration_ms: 100,
-				p95_duration_ms: 190,
-				p99_duration_ms: 200,
+				"duration.p50_ms": 100,
+				"duration.p95_ms": 190,
+				"duration.p99_ms": 200,
 			}),
 		);
 	});
@@ -187,10 +187,10 @@ describe("HttpRequestsTelemetry", () => {
 			"http.requests",
 			{ method: "GET", route: "/api/v2/workspaces/{id}" },
 			expect.objectContaining({
-				count_2xx: 1,
-				p50_duration_ms: 0,
-				p95_duration_ms: 0,
-				p99_duration_ms: 0,
+				"count.2xx": 1,
+				"duration.p50_ms": 0,
+				"duration.p95_ms": 0,
+				"duration.p99_ms": 0,
 			}),
 		);
 	});
@@ -208,7 +208,7 @@ describe("HttpRequestsTelemetry", () => {
 		expect(log).toHaveBeenCalledWith(
 			"http.requests",
 			{ method: "GET", route: "/api/v2/workspaces/{id}" },
-			expect.objectContaining({ count_2xx: 1 }),
+			expect.objectContaining({ "count.2xx": 1 }),
 		);
 	});
 

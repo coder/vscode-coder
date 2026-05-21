@@ -109,14 +109,14 @@ describe("WorkspaceMonitor", () => {
 				properties: {
 					from: "running",
 					to: "stopping",
-					transition: "stop",
-					reason: "autostop",
+					"build.transition": "stop",
+					"build.reason": "autostop",
 				},
 				measurements: { observedDurationMs: expect.any(Number) },
 			});
 		});
 
-		it("dedupes on (status, transition, reason); re-emits when only reason changes", async () => {
+		it("dedupes on (status, build transition, build reason); re-emits when only reason changes", async () => {
 			const { stream, sink } = buildSinkContext();
 
 			await setup(
@@ -153,7 +153,7 @@ describe("WorkspaceMonitor", () => {
 
 			const reasons = sink
 				.eventsNamed("workspace.state_transitioned")
-				.map((e) => e.properties.reason);
+				.map((e) => e.properties["build.reason"]);
 			expect(reasons).toEqual(["autostop", "initiator"]);
 		});
 

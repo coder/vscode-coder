@@ -256,12 +256,12 @@ describe("CoderApi", () => {
 				{ method: "GET", route: "/api/v2/workspaces/{id}" },
 				expect.objectContaining({
 					window_seconds: 60,
-					count_1xx: 0,
-					count_2xx: 1,
-					count_3xx: 0,
-					count_4xx: 0,
-					count_5xx: 0,
-					count_network_error: 0,
+					"count.1xx": 0,
+					"count.2xx": 1,
+					"count.3xx": 0,
+					"count.4xx": 0,
+					"count.5xx": 0,
+					"count.network_error": 0,
 				}),
 			);
 		});
