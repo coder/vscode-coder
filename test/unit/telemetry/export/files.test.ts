@@ -11,19 +11,10 @@ import { serializeTelemetryEventLine } from "@/telemetry/wireFormat";
 
 import { createTelemetryEventFactory } from "../../../mocks/telemetry";
 
-import type * as fs from "node:fs";
-
 import type { TelemetryEvent } from "@/telemetry/event";
 
-vi.mock("node:fs/promises", async () => {
-	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
-	return memfs.fs.promises;
-});
-
-vi.mock("node:fs", async () => {
-	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
-	return memfs.fs;
-});
+vi.mock("node:fs", async () => (await import("memfs")).fs);
+vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
 
 const DIR = "/telemetry";
 

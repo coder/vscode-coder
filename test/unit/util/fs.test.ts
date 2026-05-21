@@ -3,12 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renameWithRetry, tempFilePath, writeAtomically } from "@/util/fs";
 
-import type * as fs from "node:fs";
-
-vi.mock("node:fs/promises", async () => {
-	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
-	return memfs.fs.promises;
-});
+vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
 
 describe("tempFilePath", () => {
 	it("prepends basePath and suffix before the random part", () => {

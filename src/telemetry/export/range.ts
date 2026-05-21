@@ -102,15 +102,21 @@ export function validateUtcDateInput(value: string): string | undefined {
 		: "Enter a valid calendar date.";
 }
 
+/** Parses a telemetry ISO timestamp to epoch ms, throwing on unparseable input. */
+export function parseTelemetryTimestampMs(timestamp: string): number {
+	const ms = Date.parse(timestamp);
+	if (!Number.isFinite(ms)) {
+		throw new Error(`Invalid telemetry timestamp '${timestamp}'.`);
+	}
+	return ms;
+}
+
 /** True if the ISO `timestamp` falls inside the range. */
 export function isTimestampInRange(
 	timestamp: string,
 	range: TelemetryDateRange,
 ): boolean {
-	const ms = Date.parse(timestamp);
-	if (!Number.isFinite(ms)) {
-		throw new Error(`Invalid telemetry timestamp '${timestamp}'.`);
-	}
+	const ms = parseTelemetryTimestampMs(timestamp);
 	return (
 		(range.startMs === undefined || ms >= range.startMs) &&
 		(range.endMs === undefined || ms < range.endMs)
