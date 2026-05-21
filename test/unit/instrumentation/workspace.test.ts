@@ -118,13 +118,23 @@ describe("WorkspaceStateTelemetry.observe", () => {
 	it("emits the first observation with from=none and no duration", () => {
 		const { sink, instance: state } = setup(newState);
 
-		state.observe(createWorkspace({ latest_build: { status: "running" } }));
+		state.observe(
+			createWorkspace({
+				latest_build: {
+					status: "running",
+					transition: "start",
+					reason: "initiator",
+				},
+			}),
+		);
 
 		const event = sink.expectOne("workspace.state_transitioned");
 		expect(event.properties).toMatchObject({
 			workspaceName: WORKSPACE_NAME,
 			from: "none",
 			to: "running",
+			buildTransition: "start",
+			buildReason: "initiator",
 		});
 		expect(event.measurements.observedDurationMs).toBeUndefined();
 	});
@@ -168,10 +178,10 @@ describe("WorkspaceAgentTelemetry.observe", () => {
 
 		expect(sink.expectOne("workspace.agent.state_transitioned")).toMatchObject({
 			properties: {
-				fromStatus: "none",
-				toStatus: "connecting",
-				fromLifecycleState: "none",
-				toLifecycleState: "created",
+				"status.from": "none",
+				"status.to": "connecting",
+				"lifecycleState.from": "none",
+				"lifecycleState.to": "created",
 			},
 		});
 	});
@@ -197,7 +207,7 @@ describe("WorkspaceAgentTelemetry.observe", () => {
 
 		const events = sink.eventsNamed("workspace.agent.state_transitioned");
 		expect(events).toHaveLength(2);
-		expect(events[1].properties.fromStatus).toBe("none");
+		expect(events[1].properties["status.from"]).toBe("none");
 	});
 
 	it("includes observedDurationMs between transitions", () => {

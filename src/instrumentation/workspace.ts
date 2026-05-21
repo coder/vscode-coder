@@ -26,8 +26,8 @@ const PROVISIONING_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
 
 interface ObservedWorkspaceState {
 	readonly status: WorkspaceStatus;
-	readonly transition: WorkspaceBuild["transition"];
-	readonly reason: WorkspaceBuild["reason"];
+	readonly buildTransition: WorkspaceBuild["transition"];
+	readonly buildReason: WorkspaceBuild["reason"];
 	readonly observedAtMs: number;
 }
 
@@ -53,12 +53,16 @@ export class WorkspaceStateTelemetry {
 	) {}
 
 	public observe(workspace: Workspace): void {
-		const { status, transition, reason } = workspace.latest_build;
+		const {
+			status,
+			transition: buildTransition,
+			reason: buildReason,
+		} = workspace.latest_build;
 		const previous = this.observed;
 		if (
 			previous?.status === status &&
-			previous.transition === transition &&
-			previous.reason === reason
+			previous.buildTransition === buildTransition &&
+			previous.buildReason === buildReason
 		) {
 			return;
 		}
@@ -86,20 +90,25 @@ export class WorkspaceStateTelemetry {
 				workspaceName: this.workspaceName,
 				from: previous?.status ?? INITIAL_STATE,
 				to: status,
-				transition,
-				reason,
+				buildTransition,
+				buildReason,
 			},
 			measurements,
 		);
-		this.observed = { status, transition, reason, observedAtMs: now };
+		this.observed = {
+			status,
+			buildTransition,
+			buildReason,
+			observedAtMs: now,
+		};
 	}
 }
 
 /**
  * Emits `workspace.agent.state_transitioned` as the agent's `status` and
  * `lifecycle_state` change. The agent has two state dimensions so the event
- * carries qualified `fromStatus`/`toStatus` and `fromLifecycleState`/
- * `toLifecycleState` properties. Construct one per workspace.
+ * carries `status.*` and `lifecycleState.*` properties. Construct one per
+ * workspace.
  */
 export class WorkspaceAgentTelemetry {
 	private observed: ObservedAgentState | undefined;
@@ -124,10 +133,10 @@ export class WorkspaceAgentTelemetry {
 			{
 				workspaceName: this.workspaceName,
 				agentName: agent.name,
-				fromStatus: previous?.status ?? INITIAL_STATE,
-				toStatus: agent.status,
-				fromLifecycleState: previous?.lifecycleState ?? INITIAL_STATE,
-				toLifecycleState: agent.lifecycle_state,
+				"status.from": previous?.status ?? INITIAL_STATE,
+				"status.to": agent.status,
+				"lifecycleState.from": previous?.lifecycleState ?? INITIAL_STATE,
+				"lifecycleState.to": agent.lifecycle_state,
 			},
 			previous ? { observedDurationMs: now - previous.observedAtMs } : {},
 		);
