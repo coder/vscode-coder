@@ -370,7 +370,7 @@ describe("TelemetryService", () => {
 			expect(phase.eventName).toBe("op.bad_name");
 		});
 
-		it("warns and ignores setProperty/setMeasurement called after emit", async () => {
+		it("drops setProperty/setMeasurement/markAborted/markFailure called after emit", async () => {
 			let escapedSpan: Span | undefined;
 			await h.service.trace("op", (span) => {
 				escapedSpan = span;
@@ -378,32 +378,15 @@ describe("TelemetryService", () => {
 			});
 
 			expect(h.sink.events).toHaveLength(1);
-			const warnBefore = vi.mocked(h.logger.warn).mock.calls.length;
 
 			escapedSpan?.setProperty("late", "ignored");
 			escapedSpan?.setMeasurement("lateMs", 99);
 			escapedSpan?.markAborted();
 			escapedSpan?.markFailure();
 
-			// Mutations dropped: emitted event is unchanged.
 			expect(h.sink.events[0].properties.late).toBeUndefined();
 			expect(h.sink.events[0].measurements.lateMs).toBeUndefined();
 			expect(h.sink.events[0].properties.result).toBe("success");
-
-			// Each post-emit mutation logs a warning.
-			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 4);
-			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore][0]).toContain(
-				"setProperty",
-			);
-			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 1][0]).toContain(
-				"setMeasurement",
-			);
-			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 2][0]).toContain(
-				"markAborted",
-			);
-			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 3][0]).toContain(
-				"markFailure",
-			);
 		});
 
 		it("drops span logs called after emit", async () => {
@@ -433,6 +416,25 @@ describe("TelemetryService", () => {
 
 			expect(result).toBe("ran");
 			expect(h.sink.events).toHaveLength(1);
+		});
+
+		it("warns once per post-emit method call", async () => {
+			let escapedSpan: Span | undefined;
+			await h.service.trace("op", (span) => {
+				escapedSpan = span;
+				return Promise.resolve();
+			});
+
+			const warnBefore = vi.mocked(h.logger.warn).mock.calls.length;
+			escapedSpan?.setProperty("late", "ignored");
+			escapedSpan?.setMeasurement("lateMs", 99);
+			escapedSpan?.markAborted();
+			escapedSpan?.markFailure();
+			escapedSpan?.log("late_log");
+			escapedSpan?.logError("late_log_error", new Error("ignored"));
+			await escapedSpan?.phase("late_phase", () => Promise.resolve());
+
+			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 7);
 		});
 
 		it("markAborted flips result to 'aborted' on normal return", async () => {
