@@ -15,12 +15,7 @@ import {
 	setAge,
 } from "../../../mocks/testHelpers";
 
-import type * as fs from "node:fs";
-
-vi.mock("node:fs/promises", async () => {
-	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
-	return memfs.fs.promises;
-});
+vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
 
 const BASE_DIR = "/telemetry";
 const SESSION_ID = "12345678-aaaa-bbbb-cccc-dddddddddddd";
