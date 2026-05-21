@@ -90,8 +90,8 @@ export class WorkspaceStateTelemetry {
 				workspaceName: this.workspaceName,
 				from: previous?.status ?? INITIAL_STATE,
 				to: status,
-				buildTransition,
-				buildReason,
+				"build.transition": buildTransition,
+				"build.reason": buildReason,
 			},
 			measurements,
 		);
@@ -107,7 +107,7 @@ export class WorkspaceStateTelemetry {
 /**
  * Emits `workspace.agent.state_transitioned` as the agent's `status` and
  * `lifecycle_state` change. The agent has two state dimensions so the event
- * carries `status.*` and `lifecycleState.*` properties. Construct one per
+ * carries `status.*` and `lifecycle_state.*` properties. Construct one per
  * workspace.
  */
 export class WorkspaceAgentTelemetry {
@@ -135,8 +135,8 @@ export class WorkspaceAgentTelemetry {
 				agentName: agent.name,
 				"status.from": previous?.status ?? INITIAL_STATE,
 				"status.to": agent.status,
-				"lifecycleState.from": previous?.lifecycleState ?? INITIAL_STATE,
-				"lifecycleState.to": agent.lifecycle_state,
+				"lifecycle_state.from": previous?.lifecycleState ?? INITIAL_STATE,
+				"lifecycle_state.to": agent.lifecycle_state,
 			},
 			previous ? { observedDurationMs: now - previous.observedAtMs } : {},
 		);

@@ -447,14 +447,14 @@ describe("WorkspaceStateMachine", () => {
 			expect(events[0].properties).toMatchObject({
 				"status.from": "none",
 				"status.to": "connecting",
-				"lifecycleState.from": "none",
-				"lifecycleState.to": "created",
+				"lifecycle_state.from": "none",
+				"lifecycle_state.to": "created",
 			});
 			expect(events[1].properties).toMatchObject({
 				"status.from": "connecting",
 				"status.to": "connected",
-				"lifecycleState.from": "created",
-				"lifecycleState.to": "ready",
+				"lifecycle_state.from": "created",
+				"lifecycle_state.to": "ready",
 			});
 			expect(events[1].measurements.observedDurationMs).toEqual(
 				expect.any(Number),
@@ -491,14 +491,14 @@ describe("WorkspaceStateMachine", () => {
 			expect(events[0].properties).toMatchObject({
 				"status.from": "none",
 				"status.to": "connected",
-				"lifecycleState.from": "none",
-				"lifecycleState.to": "ready",
+				"lifecycle_state.from": "none",
+				"lifecycle_state.to": "ready",
 			});
 			expect(events[1].properties).toMatchObject({
 				"status.from": "none",
 				"status.to": "connecting",
-				"lifecycleState.from": "none",
-				"lifecycleState.to": "created",
+				"lifecycle_state.from": "none",
+				"lifecycle_state.to": "created",
 			});
 		});
 	});

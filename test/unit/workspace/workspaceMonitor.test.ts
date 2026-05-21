@@ -109,8 +109,8 @@ describe("WorkspaceMonitor", () => {
 				properties: {
 					from: "running",
 					to: "stopping",
-					buildTransition: "stop",
-					buildReason: "autostop",
+					"build.transition": "stop",
+					"build.reason": "autostop",
 				},
 				measurements: { observedDurationMs: expect.any(Number) },
 			});
@@ -153,7 +153,7 @@ describe("WorkspaceMonitor", () => {
 
 			const reasons = sink
 				.eventsNamed("workspace.state_transitioned")
-				.map((e) => e.properties.buildReason);
+				.map((e) => e.properties["build.reason"]);
 			expect(reasons).toEqual(["autostop", "initiator"]);
 		});
 

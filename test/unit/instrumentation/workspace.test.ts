@@ -133,8 +133,8 @@ describe("WorkspaceStateTelemetry.observe", () => {
 			workspaceName: WORKSPACE_NAME,
 			from: "none",
 			to: "running",
-			buildTransition: "start",
-			buildReason: "initiator",
+			"build.transition": "start",
+			"build.reason": "initiator",
 		});
 		expect(event.measurements.observedDurationMs).toBeUndefined();
 	});
@@ -180,8 +180,8 @@ describe("WorkspaceAgentTelemetry.observe", () => {
 			properties: {
 				"status.from": "none",
 				"status.to": "connecting",
-				"lifecycleState.from": "none",
-				"lifecycleState.to": "created",
+				"lifecycle_state.from": "none",
+				"lifecycle_state.to": "created",
 			},
 		});
 	});
