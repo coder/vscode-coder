@@ -91,7 +91,7 @@ describe("TelemetryService", () => {
 		});
 	});
 
-	it("leaves top-level logs uncorrelated", () => {
+	it("top-level log/logError emit no traceId or parentEventId", () => {
 		h.service.log("plain");
 		h.service.logError("plain.error", new Error("nope"));
 
@@ -176,7 +176,7 @@ describe("TelemetryService", () => {
 			});
 		});
 
-		it("span.log emits a correlated point-in-time event", async () => {
+		it("span.log emits with the span's traceId and parentEventId", async () => {
 			await h.service.trace("op", (span) => {
 				span.log("checkpoint", { ready: true }, { count: 1 });
 				return Promise.resolve();
@@ -195,7 +195,7 @@ describe("TelemetryService", () => {
 			expect(log.measurements.durationMs).toBeUndefined();
 		});
 
-		it("span.logError emits a correlated error log", async () => {
+		it("span.logError emits with traceId, parentEventId, and the error block", async () => {
 			await h.service.trace("op", (span) => {
 				span.logError(
 					"failed",

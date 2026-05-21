@@ -563,7 +563,7 @@ describe("AuthInterceptor", () => {
 			).toEqual(expect.any(Number));
 		});
 
-		it("emits a received log correlated with the recovery span", async () => {
+		it("emits a received log under the recovery span", async () => {
 			const sink = new TestSink();
 			const ctx = createTestContext();
 			await ctx.setupOAuthTokens();

@@ -22,13 +22,13 @@ export interface Span {
 		properties?: CallerProperties,
 		measurements?: CallerMeasurements,
 	): Promise<T>;
-	/** Emit a point-in-time log event correlated with this span. */
+	/** Emit a point-in-time log event under this span. No framework-set `result` or `durationMs`. */
 	log(
 		logName: string,
 		properties?: CallerProperties,
 		measurements?: CallerMeasurements,
 	): void;
-	/** Emit a point-in-time error log event correlated with this span. */
+	/** Emit a point-in-time error log event under this span. No framework-set `result` or `durationMs`. */
 	logError(
 		logName: string,
 		error: unknown,
