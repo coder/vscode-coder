@@ -59,72 +59,86 @@
 				"coder.insecure": {
 					"markdownDescription": "If true, the extension will not verify the authenticity of the remote host. This is useful for self-signed certificates.",
 					"type": "boolean",
-					"default": false
+					"default": false,
+					"scope": "application"
 				},
 				"coder.binarySource": {
 					"markdownDescription": "Used to download the Coder CLI which is necessary to make SSH connections. The If-None-Match header will be set to the SHA1 of the CLI and can be used for caching. Absolute URLs will be used as-is; otherwise this value will be resolved against the deployment domain. Defaults to downloading from the Coder deployment.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.binaryDestination": {
 					"markdownDescription": "The path to the Coder CLI binary or the directory containing it. When set to a file path (e.g., `/usr/bin/coder`), the extension checks its version and downloads a replacement if it does not match the server (and downloads are enabled). When set to a directory, the extension looks for the CLI inside it (downloading if enabled). Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.enableDownloads": {
 					"markdownDescription": "Allow the plugin to download the CLI when missing or out of date.",
 					"type": "boolean",
-					"default": true
+					"default": true,
+					"scope": "application"
 				},
 				"coder.headerCommand": {
 					"markdownDescription": "An external command that outputs additional HTTP headers added to all requests. The command must output each header as `key=value` on its own line. The following environment variables will be available to the process: `CODER_URL`. Defaults to the value of `CODER_HEADER_COMMAND` if not set.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsCertFile": {
 					"markdownDescription": "Path to file for TLS client cert. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsKeyFile": {
 					"markdownDescription": "Path to file for TLS client key. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsCaFile": {
 					"markdownDescription": "Path to file for TLS certificate authority. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsAltHost": {
 					"markdownDescription": "Alternative hostname to use for TLS verification. This is useful when the hostname in the certificate does not match the hostname used to connect.\n\nSupports `${env:VAR}` substitution.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsCertRefreshCommand": {
 					"markdownDescription": "Command to run when TLS client certificate errors occur (e.g., expired, revoked, or rejected certificates). If configured, the extension will automatically execute this command and retry failed requests. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.proxyLogDirectory": {
 					"markdownDescription": "Directory where the Coder CLI outputs SSH connection logs for debugging. Defaults to the value of `CODER_SSH_LOG_DIR` if not set, otherwise the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.proxyBypass": {
 					"markdownDescription": "If not set, will inherit from the `no_proxy` or `NO_PROXY` environment variables. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.defaultUrl": {
 					"markdownDescription": "This will be shown in the URL prompt, along with the CODER_URL environment variable if set, for the user to select when logging in.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "application"
 				},
 				"coder.autologin": {
 					"markdownDescription": "Automatically log into the default URL when the extension is activated. coder.defaultUrl is preferred, otherwise the CODER_URL environment variable will be used. This setting has no effect if neither is set.",
 					"type": "boolean",
-					"default": false
+					"default": false,
+					"scope": "application"
 				},
 				"coder.disableNotifications": {
 					"markdownDescription": "Disable all notification prompts from the Coder deployment (workspace updates, scheduling reminders, resource alerts, etc.). Notifications are delivered by your Coder server and displayed by this extension.",
@@ -139,7 +153,8 @@
 				"coder.disableSignatureVerification": {
 					"markdownDescription": "Disable Coder CLI signature verification, which can be useful if you run an unsigned fork of the binary.",
 					"type": "boolean",
-					"default": false
+					"default": false,
+					"scope": "application"
 				},
 				"coder.experimental.oauth": {
 					"markdownDescription": "Enable [OAuth 2.1](https://coder.com/docs/admin/integrations/oauth2-provider) authentication. When enabled, you'll be prompted to choose between OAuth and session token authentication during login. OAuth provides automatic token refresh, eliminating the need to manually re-authenticate when your session expires.",
@@ -157,19 +172,22 @@
 					},
 					"default": [
 						"--disable-autostart"
-					]
+					],
+					"scope": "machine"
 				},
 				"coder.globalFlags": {
 					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item, in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`. For `--flag=value` items the expansion applies to the value half, so `--cfg=~/coder` works.\n\nFor `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here. The `--global-config` and `--use-keyring` flags are silently ignored as the extension manages them via `#coder.useKeyring#`.",
 					"type": "array",
 					"items": {
 						"type": "string"
-					}
+					},
+					"scope": "machine"
 				},
 				"coder.useKeyring": {
 					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of plaintext files. Requires CLI >= 2.29.0 (>= 2.31.0 to sync login from CLI to VS Code). This will attempt to sync between the CLI and VS Code since they share the same keyring entry. It will log you out of the CLI if you log out of the IDE, and vice versa. Has no effect on Linux.",
 					"type": "boolean",
-					"default": false
+					"default": false,
+					"scope": "application"
 				},
 				"coder.networkThreshold.latencyMs": {
 					"markdownDescription": "Latency threshold in milliseconds. A warning indicator appears in the status bar when latency exceeds this value. Set to `0` to disable.",
