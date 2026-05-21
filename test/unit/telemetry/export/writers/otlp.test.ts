@@ -52,12 +52,19 @@ interface TracesFile {
 	resourceSpans: [{ scopeSpans: [{ spans: RawRecord[] }] }];
 }
 interface MetricsFile {
-	resourceMetrics: [{ scopeMetrics: [{ metrics: RawRecord[] }] }];
+	resourceMetrics: [
+		{
+			resource: { attributes: unknown };
+			scopeMetrics: [{ scope: RawRecord; metrics: RawRecord[] }];
+		},
+	];
 }
 
 interface Captured {
 	counts: Awaited<ReturnType<typeof writeOtlpZipExport>>;
 	logResource: { attributes: unknown };
+	metricsResource: { attributes: unknown };
+	logsScope: RawRecord;
 	logs: RawRecord[];
 	spans: RawRecord[];
 	metrics: RawRecord[];
@@ -84,6 +91,8 @@ async function capture(events: readonly TelemetryEvent[]): Promise<Captured> {
 	return {
 		counts,
 		logResource: logs.resource,
+		metricsResource: metrics.resource,
+		logsScope: (logs.scopeLogs[0] as unknown as { scope: RawRecord }).scope,
 		logs: logs.scopeLogs[0].logRecords,
 		spans: traces.scopeSpans[0].spans,
 		metrics: metrics.scopeMetrics[0].metrics,
@@ -91,20 +100,37 @@ async function capture(events: readonly TelemetryEvent[]): Promise<Captured> {
 }
 
 describe("writeOtlpZipExport: resource", () => {
-	it("emits service, OS, host, vscode, and coder attributes from the context", async () => {
-		const { logResource } = await capture([makeEvent()]);
+	const EXPECTED_RESOURCE = {
+		"service.name": "coder-vscode-extension",
+		"service.version": "1.14.5",
+		"service.instance.id": "session-id",
+		"host.id": "machine-id",
+		"host.arch": "x64",
+		"os.type": "linux",
+		"os.version": "6.0.0",
+		"vscode.platform.name": "Visual Studio Code",
+		"vscode.platform.version": "1.106.0",
+		"coder.deployment.url": "https://coder.example.com",
+	};
 
-		expect(attrs(logResource.attributes)).toEqual({
-			"service.name": "coder-vscode-extension",
-			"service.version": "1.14.5",
-			"coder.machine.id": "machine-id",
-			"coder.session.id": "session-id",
-			"os.type": "linux",
-			"os.version": "6.0.0",
-			"host.arch": "x64",
-			"vscode.platform.name": "Visual Studio Code",
-			"vscode.platform.version": "1.106.0",
-			"coder.deployment.url": "https://coder.example.com",
+	it("uses OTel-standard semconv keys on the resource", async () => {
+		const { logResource, metricsResource } = await capture([
+			makeEvent(),
+			makeEvent({
+				eventName: "ssh.network.sampled",
+				measurements: { latencyMs: 1 },
+			}),
+		]);
+
+		expect(attrs(logResource.attributes)).toEqual(EXPECTED_RESOURCE);
+		expect(attrs(metricsResource.attributes)).toEqual(EXPECTED_RESOURCE);
+	});
+
+	it("stamps each scope with the extension version", async () => {
+		const { logsScope } = await capture([makeEvent()]);
+		expect(logsScope).toMatchObject({
+			name: "coder.vscode-coder.telemetry.export",
+			version: "1.14.5",
 		});
 	});
 });
@@ -244,40 +270,83 @@ describe("writeOtlpZipExport: metrics", () => {
 		});
 	});
 
-	it("splits http.requests into monotonic count sums and gauges sharing the window", async () => {
+	it("emits http.requests counts as cumulative monotonic sums with a stable start time", async () => {
+		const { metrics } = await capture([
+			makeEvent({
+				eventName: "http.requests",
+				properties: { method: "GET", route: "/a" },
+				timestamp: "2026-05-04T12:01:00.000Z",
+				measurements: { window_seconds: 60, count_2xx: 2 },
+			}),
+			makeEvent({
+				eventName: "http.requests",
+				properties: { method: "GET", route: "/a" },
+				timestamp: "2026-05-04T12:02:00.000Z",
+				measurements: { window_seconds: 60, count_2xx: 3 },
+			}),
+		]);
+		const counts = metrics.map(
+			(m) =>
+				m.sum as {
+					aggregationTemporality: number;
+					isMonotonic: boolean;
+					dataPoints: [
+						{
+							asInt: string;
+							startTimeUnixNano: string;
+							timeUnixNano: string;
+						},
+					];
+				},
+		);
+
+		expect(counts.map((c) => c.dataPoints[0].asInt)).toEqual(["2", "5"]);
+		expect(counts.every((c) => c.aggregationTemporality === 2)).toBe(true);
+		expect(counts.every((c) => c.isMonotonic)).toBe(true);
+		// startTimeUnixNano is set once on the first event and stays fixed.
+		expect(counts[1].dataPoints[0].startTimeUnixNano).toBe(
+			counts[0].dataPoints[0].startTimeUnixNano,
+		);
+	});
+
+	it("keeps gauges windowed alongside the cumulative count sums", async () => {
 		const { metrics } = await capture([
 			makeEvent({
 				eventName: "http.requests",
 				measurements: { window_seconds: 60, count_2xx: 2, p95_duration_ms: 42 },
 			}),
 		]);
-		const count = metrics[0].sum as {
-			aggregationTemporality: number;
-			isMonotonic: boolean;
-			dataPoints: [
-				{ asInt: string; startTimeUnixNano: string; timeUnixNano: string },
-			];
-		};
-		const p95Point = (
-			metrics[1].gauge as { dataPoints: [{ startTimeUnixNano: string }] }
-		).dataPoints[0];
 
 		expect(metrics.map((m) => [m.name, m.unit])).toEqual([
 			["http.requests.count_2xx", "{request}"],
 			["http.requests.p95_duration_ms", "ms"],
 		]);
-		expect(count).toMatchObject({
-			aggregationTemporality: 1,
-			isMonotonic: true,
-		});
-		expect(count.dataPoints[0].asInt).toBe("2");
+		const p95Point = (
+			metrics[1].gauge as {
+				dataPoints: [{ startTimeUnixNano: string; timeUnixNano: string }];
+			}
+		).dataPoints[0];
 		expect(
-			BigInt(count.dataPoints[0].timeUnixNano) -
-				BigInt(count.dataPoints[0].startTimeUnixNano),
+			BigInt(p95Point.timeUnixNano) - BigInt(p95Point.startTimeUnixNano),
 		).toBe(60_000_000_000n);
-		expect(p95Point.startTimeUnixNano).toBe(
-			count.dataPoints[0].startTimeUnixNano,
-		);
+	});
+
+	it("suppresses zero-valued cumulative counters", async () => {
+		const { metrics } = await capture([
+			makeEvent({
+				eventName: "http.requests",
+				measurements: {
+					window_seconds: 60,
+					count_2xx: 0,
+					count_5xx: 0,
+					p95_duration_ms: 10,
+				},
+			}),
+		]);
+
+		expect(metrics.map((m) => m.name)).toEqual([
+			"http.requests.p95_duration_ms",
+		]);
 	});
 
 	it("treats http.requests without window_seconds as a zero-width window", async () => {

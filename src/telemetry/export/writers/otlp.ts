@@ -29,7 +29,8 @@ export interface OtlpExportCounts {
 // OTLP proto SpanKind reserves 0 for UNSPECIFIED, so api values shift by 1
 // on the wire. AGGREGATION_TEMPORALITY has no enum in @opentelemetry/api.
 const otlpSpanKind = (kind: SpanKind): number => kind + 1;
-const AGGREGATION_TEMPORALITY_DELTA = 1;
+const AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
+const OTLP_SCHEMA_URL = "https://opentelemetry.io/schemas/1.24.0";
 const zipAsync = promisify(zip);
 
 /**
@@ -66,6 +67,14 @@ export async function writeOtlpZipExport(
 	);
 }
 
+/** Per-export state threaded through the metric mapper for cumulative sums. */
+interface ExportState {
+	readonly cumulative: {
+		startTimeUnixNano: string | undefined;
+		readonly totals: Map<string, bigint>;
+	};
+}
+
 // Per-signal layout driving file names, envelope JSON keys, routing, and counts.
 const ENVELOPES = [
 	{
@@ -75,7 +84,7 @@ const ENVELOPES = [
 		resourceKey: "resourceLogs",
 		scopeKey: "scopeLogs",
 		recordsKey: "logRecords",
-		toRecords: (e: TelemetryEvent) => [toOtlpLogRecord(e)],
+		toRecords: (e: TelemetryEvent, _state: ExportState) => [toOtlpLogRecord(e)],
 	},
 	{
 		signal: "trace",
@@ -84,7 +93,7 @@ const ENVELOPES = [
 		resourceKey: "resourceSpans",
 		scopeKey: "scopeSpans",
 		recordsKey: "spans",
-		toRecords: (e: TelemetryEvent) => [toOtlpSpan(e)],
+		toRecords: (e: TelemetryEvent, _state: ExportState) => [toOtlpSpan(e)],
 	},
 	{
 		signal: "metric",
@@ -102,7 +111,7 @@ const ENVELOPES = [
 	resourceKey: string;
 	scopeKey: string;
 	recordsKey: string;
-	toRecords: (event: TelemetryEvent) => readonly unknown[];
+	toRecords: (event: TelemetryEvent, state: ExportState) => readonly unknown[];
 }>;
 
 async function writeOtlpJsonFiles(
@@ -111,17 +120,20 @@ async function writeOtlpJsonFiles(
 	context: TelemetryContext,
 ): Promise<OtlpExportCounts> {
 	const resource = JSON.stringify(toOtlpResource(context));
-	const scope = JSON.stringify(toOtlpScope());
+	const scope = JSON.stringify(toOtlpScope(context.extensionVersion));
 	const entries = await Promise.all(
 		ENVELOPES.map(async (envelope) => ({
 			...envelope,
 			writer: await openEnvelope(
 				path.join(dir, envelope.file),
-				`{"${envelope.resourceKey}":[{"resource":${resource},"${envelope.scopeKey}":[{"scope":${scope},"${envelope.recordsKey}":[`,
+				`{"${envelope.resourceKey}":[{"resource":${resource},"schemaUrl":"${OTLP_SCHEMA_URL}","${envelope.scopeKey}":[{"scope":${scope},"schemaUrl":"${OTLP_SCHEMA_URL}","${envelope.recordsKey}":[`,
 				"]}]}]}\n",
 			),
 		})),
 	);
+	const state: ExportState = {
+		cumulative: { startTimeUnixNano: undefined, totals: new Map() },
+	};
 	const counts: Record<keyof OtlpExportCounts, number> = {
 		logs: 0,
 		traces: 0,
@@ -136,7 +148,7 @@ async function writeOtlpJsonFiles(
 				continue;
 			}
 			counts[entry.counter] += 1;
-			for (const record of entry.toRecords(event)) {
+			for (const record of entry.toRecords(event, state)) {
 				await entry.writer.write(record);
 			}
 		}
@@ -209,11 +221,11 @@ function toOtlpResource(context: TelemetryContext): JsonObject {
 		attributes: keyValues({
 			"service.name": "coder-vscode-extension",
 			"service.version": context.extensionVersion,
-			"coder.machine.id": context.machineId,
-			"coder.session.id": context.sessionId,
+			"service.instance.id": context.sessionId,
+			"host.id": context.machineId,
+			"host.arch": context.hostArch,
 			"os.type": context.osType,
 			"os.version": context.osVersion,
-			"host.arch": context.hostArch,
 			"vscode.platform.name": context.platformName,
 			"vscode.platform.version": context.platformVersion,
 			"coder.deployment.url": context.deploymentUrl,
@@ -222,8 +234,8 @@ function toOtlpResource(context: TelemetryContext): JsonObject {
 }
 
 /** OTLP `InstrumentationScope` shared by every record. */
-function toOtlpScope(): JsonObject {
-	return { name: "coder.vscode-coder.telemetry.export" };
+function toOtlpScope(version: string): JsonObject {
+	return { name: "coder.vscode-coder.telemetry.export", version };
 }
 
 function toOtlpLogRecord(event: TelemetryEvent): JsonObject {
@@ -291,11 +303,14 @@ function spanStatus(event: TelemetryEvent): JsonObject {
 }
 
 /** A metric event yields one record per measurement (http.requests fans out). */
-function toOtlpMetricRecords(event: TelemetryEvent): JsonObject[] {
+function toOtlpMetricRecords(
+	event: TelemetryEvent,
+	state: ExportState,
+): JsonObject[] {
 	const timeUnixNano = toUnixNano(event.timestamp);
 	const attributes = metricAttributes(event);
 	if (event.eventName === "http.requests") {
-		return toHttpRequestMetrics(event, timeUnixNano, attributes);
+		return toHttpRequestMetrics(event, timeUnixNano, attributes, state);
 	}
 	return toGaugeMetrics(
 		event,
@@ -309,6 +324,7 @@ function toHttpRequestMetrics(
 	event: TelemetryEvent,
 	timeUnixNano: string,
 	attributes: JsonObject[],
+	state: ExportState,
 ): JsonObject[] {
 	const counts: Array<[string, number]> = [];
 	const gauges: Array<[string, number]> = [];
@@ -322,36 +338,62 @@ function toHttpRequestMetrics(
 			gauges.push([name, value]);
 		}
 	}
-	const startTimeUnixNano = String(
+	const windowStartUnixNano = String(
 		BigInt(timeUnixNano) - nanosFromSeconds(windowSeconds ?? 0),
 	);
+	// Cumulative series anchor: first observed window's start, stable across
+	// every subsequent http.requests data point in this export.
+	state.cumulative.startTimeUnixNano ??= windowStartUnixNano;
+	const cumulativeStart = state.cumulative.startTimeUnixNano;
 
-	return [
-		...counts.map(([name, value]) => ({
+	const sumRecords: JsonObject[] = [];
+	for (const [name, value] of counts) {
+		const seriesKey = `${name}|${stableSeriesKey(event.properties)}`;
+		const total =
+			(state.cumulative.totals.get(seriesKey) ?? 0n) +
+			BigInt(Math.trunc(value));
+		state.cumulative.totals.set(seriesKey, total);
+		// Suppress unchanged-from-zero counters to save bytes; receivers
+		// interpret an absent series as "no events yet".
+		if (total === 0n) {
+			continue;
+		}
+		sumRecords.push({
 			name: `${event.eventName}.${name}`,
 			description: event.eventName,
 			unit: "{request}",
 			sum: {
-				aggregationTemporality: AGGREGATION_TEMPORALITY_DELTA,
+				aggregationTemporality: AGGREGATION_TEMPORALITY_CUMULATIVE,
 				isMonotonic: true,
 				dataPoints: [
 					{
 						attributes,
-						startTimeUnixNano,
+						startTimeUnixNano: cumulativeStart,
 						timeUnixNano,
-						asInt: String(Math.trunc(value)),
+						asInt: String(total),
 					},
 				],
 			},
-		})),
+		});
+	}
+
+	return [
+		...sumRecords,
 		...toGaugeMetrics(
 			event,
 			gauges,
 			attributes,
 			timeUnixNano,
-			startTimeUnixNano,
+			windowStartUnixNano,
 		),
 	];
+}
+
+function stableSeriesKey(properties: Readonly<Record<string, string>>): string {
+	return Object.entries(properties)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([k, v]) => `${k}=${v}`)
+		.join("|");
 }
 
 function toGaugeMetrics(
