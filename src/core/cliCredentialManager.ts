@@ -266,8 +266,11 @@ export class CliCredentialManager {
 		content: string,
 	): Promise<void> {
 		await fs.mkdir(path.dirname(filePath), { recursive: true });
-		await writeAtomically(filePath, (tempPath) =>
-			fs.writeFile(tempPath, content, { mode: 0o600 }),
+		await writeAtomically(
+			filePath,
+			(tempPath) => fs.writeFile(tempPath, content, { mode: 0o600 }),
+			(rmErr, tempPath) =>
+				this.logger.warn("Failed to delete temp file", tempPath, rmErr),
 		);
 	}
 }

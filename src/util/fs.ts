@@ -55,23 +55,30 @@ export function tempFilePath(basePath: string, suffix: string): string {
 }
 
 /**
- * Writes `outputPath` atomically: `write` builds the content at a sibling
- * temp path, then we rename onto the destination. A failure mid-write never
- * touches the destination; the temp file is best-effort cleaned up.
+ * Atomically writes to `outputPath` via a sibling temp file and rename.
+ * The parent directory must already exist. On failure the destination is
+ * left untouched, the temp file is best-effort removed, and the writer
+ * error is always rethrown. `onCleanupError` receives any error from the
+ * cleanup attempt; its own throws are swallowed.
  */
 export async function writeAtomically<T>(
 	outputPath: string,
 	write: (tempPath: string) => Promise<T>,
+	onCleanupError: (err: unknown, tempPath: string) => void,
 ): Promise<T> {
-	const tempPath = tempFilePath(outputPath, "tmp");
+	const tempPath = tempFilePath(outputPath, "temp");
 	try {
 		const result = await write(tempPath);
 		await renameWithRetry(fs.rename, tempPath, outputPath);
 		return result;
 	} catch (err) {
-		await fs.rm(tempPath, { force: true }).catch(() => {
-			// Surface the original failure, not the cleanup failure.
-		});
+		try {
+			await fs.rm(tempPath, { force: true }).catch((rmErr) => {
+				onCleanupError(rmErr, tempPath);
+			});
+		} catch {
+			// onCleanupError threw; the writer error below takes precedence.
+		}
 		throw err;
 	}
 }

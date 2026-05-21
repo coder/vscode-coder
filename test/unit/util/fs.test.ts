@@ -1,4 +1,5 @@
 import { vol } from "memfs";
+import * as fsPromises from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renameWithRetry, tempFilePath, writeAtomically } from "@/util/fs";
@@ -108,6 +109,7 @@ describe("renameWithRetry", () => {
 
 describe("writeAtomically", () => {
 	const DIR = "/atomic";
+	const noopCleanup = () => {};
 
 	beforeEach(() => {
 		vol.reset();
@@ -120,11 +122,15 @@ describe("writeAtomically", () => {
 
 	it("renames the temp file onto the destination on success", async () => {
 		const outputPath = `${DIR}/result.txt`;
-		await writeAtomically(outputPath, (tempPath) => {
-			expect(tempPath).not.toBe(outputPath);
-			vol.writeFileSync(tempPath, "hello");
-			return Promise.resolve();
-		});
+		await writeAtomically(
+			outputPath,
+			(tempPath) => {
+				expect(tempPath).not.toBe(outputPath);
+				vol.writeFileSync(tempPath, "hello");
+				return Promise.resolve();
+			},
+			noopCleanup,
+		);
 
 		expect(vol.readFileSync(outputPath, "utf8")).toBe("hello");
 		expect(vol.readdirSync(DIR)).toEqual(["result.txt"]);
@@ -135,10 +141,14 @@ describe("writeAtomically", () => {
 		vol.writeFileSync(outputPath, "previous");
 
 		await expect(
-			writeAtomically(outputPath, (tempPath) => {
-				vol.writeFileSync(tempPath, "partial");
-				return Promise.reject(new Error("boom"));
-			}),
+			writeAtomically(
+				outputPath,
+				(tempPath) => {
+					vol.writeFileSync(tempPath, "partial");
+					return Promise.reject(new Error("boom"));
+				},
+				noopCleanup,
+			),
 		).rejects.toThrow(/boom/);
 
 		expect(vol.readFileSync(outputPath, "utf8")).toBe("previous");
@@ -146,11 +156,48 @@ describe("writeAtomically", () => {
 	});
 
 	it("returns the writer callback's value", async () => {
-		const result = await writeAtomically(`${DIR}/x`, (tempPath) => {
-			vol.writeFileSync(tempPath, "");
-			return Promise.resolve(42);
-		});
+		const result = await writeAtomically(
+			`${DIR}/x`,
+			(tempPath) => {
+				vol.writeFileSync(tempPath, "");
+				return Promise.resolve(42);
+			},
+			noopCleanup,
+		);
 
 		expect(result).toBe(42);
+	});
+
+	it("invokes onCleanupError when temp removal fails", async () => {
+		vi.spyOn(fsPromises, "rm").mockRejectedValueOnce(new Error("rm boom"));
+		const onCleanupError = vi.fn();
+
+		await expect(
+			writeAtomically(
+				`${DIR}/x.txt`,
+				() => Promise.reject(new Error("write boom")),
+				onCleanupError,
+			),
+		).rejects.toThrow(/write boom/);
+
+		expect(onCleanupError).toHaveBeenCalledWith(
+			expect.objectContaining({ message: "rm boom" }),
+			expect.stringMatching(/^\/atomic\/x\.txt\.temp-/),
+		);
+	});
+
+	it("rethrows the writer error when onCleanupError itself throws", async () => {
+		vi.spyOn(fsPromises, "rm").mockRejectedValueOnce(new Error("rm boom"));
+		const throwingCleanup = () => {
+			throw new Error("callback boom");
+		};
+
+		await expect(
+			writeAtomically(
+				`${DIR}/x.txt`,
+				() => Promise.reject(new Error("write boom")),
+				throwingCleanup,
+			),
+		).rejects.toThrow(/write boom/);
 	});
 });
