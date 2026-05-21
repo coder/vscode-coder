@@ -562,5 +562,29 @@ describe("AuthInterceptor", () => {
 				sink.expectOne("auth.unauthorized_intercepted").measurements.durationMs,
 			).toEqual(expect.any(Number));
 		});
+
+		it("emits a received log correlated with the recovery span", async () => {
+			const sink = new TestSink();
+			const ctx = createTestContext();
+			await ctx.setupOAuthTokens();
+			ctx.mockOAuthManager.refreshToken.mockResolvedValue(
+				createMockTokenResponse({ access_token: "new" }),
+			);
+			vi.spyOn(ctx.axiosInstance, "request").mockResolvedValue({
+				status: 200,
+			});
+			ctx.createInterceptor(undefined, createTestTelemetryService(sink));
+
+			await ctx.axiosInstance.triggerResponseError(
+				createAxiosError(401, "Unauthorized"),
+			);
+
+			const received = sink.expectOne("auth.unauthorized_intercepted.received");
+			const recovery = sink.expectOne("auth.unauthorized_intercepted");
+			expect(received.traceId).toBe(recovery.traceId);
+			expect(received.parentEventId).toBe(recovery.eventId);
+			expect(received.measurements.durationMs).toBeUndefined();
+			expect(received.properties.result).toBeUndefined();
+		});
 	});
 });

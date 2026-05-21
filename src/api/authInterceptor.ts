@@ -83,8 +83,9 @@ export class AuthInterceptor implements vscode.Disposable {
 		hostname: string,
 	): Promise<unknown> {
 		this.logger.debug("Received 401 response, attempting recovery");
-		// TODO(#925): emit a correlated received-log here once Span.log() lands.
 		return this.authTelemetry.traceAuthRecovery(async (recorder) => {
+			recorder.logReceived();
+
 			// 1) OAuth refresh path.
 			const isOAuth =
 				await this.oauthSessionManager.isLoggedInWithOAuth(hostname);

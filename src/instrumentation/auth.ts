@@ -14,6 +14,7 @@ export type LoginPromptOutcome =
 	| { success: false; reason: LoginPromptReason };
 
 interface AuthRecoveryRecorder {
+	logReceived(): void;
 	setRecovery(recovery: AuthRecoveryAction): void;
 	setRefreshAttempted(attempted: boolean): void;
 }
@@ -44,6 +45,7 @@ export class AuthTelemetry {
 			"auth.unauthorized_intercepted",
 			(span) =>
 				fn({
+					logReceived: () => span.log("received"),
 					setRecovery: (recovery) => span.setProperty("recovery", recovery),
 					setRefreshAttempted: (attempted) =>
 						span.setProperty("refreshAttempted", attempted),

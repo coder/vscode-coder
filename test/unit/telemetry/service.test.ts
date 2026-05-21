@@ -91,6 +91,17 @@ describe("TelemetryService", () => {
 		});
 	});
 
+	it("leaves top-level logs uncorrelated", () => {
+		h.service.log("plain");
+		h.service.logError("plain.error", new Error("nope"));
+
+		const [log, logError] = h.sink.events;
+		expect(log.traceId).toBeUndefined();
+		expect(log.parentEventId).toBeUndefined();
+		expect(logError.traceId).toBeUndefined();
+		expect(logError.parentEventId).toBeUndefined();
+	});
+
 	describe("trace", () => {
 		it("returns the wrapped value and records durationMs on success", async () => {
 			vi.useFakeTimers();
@@ -165,6 +176,78 @@ describe("TelemetryService", () => {
 			});
 		});
 
+		it("span.log emits a correlated point-in-time event", async () => {
+			await h.service.trace("op", (span) => {
+				span.log("checkpoint", { ready: true }, { count: 1 });
+				return Promise.resolve();
+			});
+
+			const [log, parent] = h.sink.events;
+			expect(log).toMatchObject({
+				eventName: "op.checkpoint",
+				properties: { ready: "true" },
+				measurements: { count: 1 },
+			});
+			expect(log.eventId).not.toBe(parent.eventId);
+			expect(log.traceId).toBe(parent.traceId);
+			expect(log.parentEventId).toBe(parent.eventId);
+			expect(log.properties.result).toBeUndefined();
+			expect(log.measurements.durationMs).toBeUndefined();
+		});
+
+		it("span.logError emits a correlated error log", async () => {
+			await h.service.trace("op", (span) => {
+				span.logError(
+					"failed",
+					new TypeError("nope"),
+					{ attempt: 1 },
+					{ retries: 2 },
+				);
+				return Promise.resolve();
+			});
+
+			const [log, parent] = h.sink.events;
+			expect(log).toMatchObject({
+				eventName: "op.failed",
+				properties: { attempt: "1" },
+				measurements: { retries: 2 },
+				error: { message: "nope", type: "TypeError" },
+			});
+			expect(log.traceId).toBe(parent.traceId);
+			expect(log.parentEventId).toBe(parent.eventId);
+			expect(log.measurements.durationMs).toBeUndefined();
+		});
+
+		it("child span logs point at the child span", async () => {
+			await h.service.trace("op", async (span) => {
+				await span.phase("phase", (childSpan) => {
+					childSpan.log("checkpoint");
+					childSpan.logError("oops", new Error("boom"));
+					return Promise.resolve();
+				});
+			});
+
+			const [log, logError, child, parent] = h.sink.events;
+			expect(log.eventName).toBe("op.phase.checkpoint");
+			expect(log.traceId).toBe(parent.traceId);
+			expect(log.parentEventId).toBe(child.eventId);
+			expect(logError.eventName).toBe("op.phase.oops");
+			expect(logError.traceId).toBe(parent.traceId);
+			expect(logError.parentEventId).toBe(child.eventId);
+			expect(logError.error).toMatchObject({ message: "boom" });
+			expect(child.parentEventId).toBe(parent.eventId);
+		});
+
+		it("span log names containing '.' are sanitized like phase names", async () => {
+			await h.service.trace("op", (span) => {
+				span.log("bad.name");
+				return Promise.resolve();
+			});
+
+			const [log] = h.sink.events;
+			expect(log.eventName).toBe("op.bad_name");
+		});
+
 		it("flat traces (no phases) emit a single event with a fresh traceId", async () => {
 			await h.service.trace("a", () => Promise.resolve(1));
 			await h.service.trace("b", () => Promise.resolve(2));
@@ -197,7 +280,7 @@ describe("TelemetryService", () => {
 			expect(phase2.traceId).toBe(parent.traceId);
 		});
 
-		it("phase children carry parentEventId pointing at the parent's eventId; logs do not", async () => {
+		it("phase children carry parentEventId pointing at the parent's eventId; top-level logs do not", async () => {
 			h.service.log("plain");
 			await h.service.trace("op", async (span) => {
 				await span.phase("p1", () => Promise.resolve());
@@ -205,7 +288,7 @@ describe("TelemetryService", () => {
 			});
 
 			const [plain, p1, p2, parent] = h.sink.events;
-			// log/logError/time events have no parentEventId field.
+			// Top-level log/logError events have no parentEventId field.
 			expect(plain.parentEventId).toBeUndefined();
 			// Parent (root) has no parentEventId either.
 			expect(parent.parentEventId).toBeUndefined();
@@ -321,6 +404,35 @@ describe("TelemetryService", () => {
 			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 3][0]).toContain(
 				"markFailure",
 			);
+		});
+
+		it("drops span logs called after emit", async () => {
+			let escapedSpan: Span | undefined;
+			await h.service.trace("op", (span) => {
+				escapedSpan = span;
+				return Promise.resolve();
+			});
+
+			escapedSpan?.log("late");
+			escapedSpan?.logError("late_error", new Error("ignored"));
+
+			expect(h.sink.events).toHaveLength(1);
+		});
+
+		it("runs phase fns called after emit but emits no phase event", async () => {
+			let escapedSpan: Span | undefined;
+			await h.service.trace("op", (span) => {
+				escapedSpan = span;
+				return Promise.resolve();
+			});
+
+			const result = await escapedSpan?.phase("late", (childSpan) => {
+				childSpan.log("ignored");
+				return Promise.resolve("ran");
+			});
+
+			expect(result).toBe("ran");
+			expect(h.sink.events).toHaveLength(1);
 		});
 
 		it("markAborted flips result to 'aborted' on normal return", async () => {
@@ -456,12 +568,20 @@ describe("TelemetryService", () => {
 			h.service.log("a");
 			h.service.logError("b", new Error("ignored"));
 
-			expect(await h.service.trace("c", () => Promise.resolve(42))).toBe(42);
+			expect(
+				await h.service.trace("c", (span) => {
+					span.log("ignored");
+					span.logError("ignored_error", new Error("ignored"));
+					return Promise.resolve(42);
+				}),
+			).toBe(42);
 
 			const traceResult = await h.service.trace("d", async (span) => {
-				const phaseValue = await span.phase("p", () =>
-					Promise.resolve("inner"),
-				);
+				const phaseValue = await span.phase("p", (childSpan) => {
+					childSpan.log("ignored");
+					childSpan.logError("ignored_error", new Error("ignored"));
+					return Promise.resolve("inner");
+				});
 				expect(phaseValue).toBe("inner");
 				return "outer";
 			});
@@ -571,9 +691,12 @@ describe("TelemetryService", () => {
 		it("trace and span.phase complete normally when the sink throws", async () => {
 			const service = makeService([throwingSink]);
 			const result = await service.trace("op", async (span) => {
-				const phaseValue = await span.phase("p", () =>
-					Promise.resolve("phase"),
-				);
+				span.log("checkpoint");
+				span.logError("failure", new Error("telemetry-error"));
+				const phaseValue = await span.phase("p", (childSpan) => {
+					childSpan.log("checkpoint");
+					return Promise.resolve("phase");
+				});
 				expect(phaseValue).toBe("phase");
 				return "trace";
 			});
