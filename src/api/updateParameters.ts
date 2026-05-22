@@ -7,6 +7,16 @@ import type {
 	WorkspaceBuildParameter,
 } from "coder/site/src/api/typesGenerated";
 
+const MAX_VALUE_LEN = 60;
+const MAX_LIST_ITEMS = 5;
+
+interface PromptSpec {
+	/** Drift note prepended to the parameter's description in the prompt placeholder. */
+	driftNote?: string;
+	/** Surviving picks to pre-check on a multi-select drift re-prompt. */
+	preselect?: string[];
+}
+
 /** Thrown when the user dismisses a parameter prompt. */
 export class WorkspaceUpdateCancelledError extends Error {
 	constructor() {
@@ -16,9 +26,9 @@ export class WorkspaceUpdateCancelledError extends Error {
 }
 
 /**
- * Prompts the user for any newly-required template parameters and returns the
- * collected `{ name, value }` pairs. Throws `WorkspaceUpdateCancelledError` if
- * the user dismisses a prompt.
+ * Prompts the user for any template parameters that the new version needs
+ * answered, and returns the collected `{ name, value }` pairs. Throws
+ * `WorkspaceUpdateCancelledError` if the user dismisses a prompt.
  */
 export async function collectUpdateParameters(
 	restClient: Api,
@@ -30,16 +40,16 @@ export async function collectUpdateParameters(
 		),
 		restClient.getWorkspaceBuildParameters(workspace.latest_build.id),
 	]);
-	const candidates = newParams.filter((p) => p.required && !p.default_value);
-	if (candidates.length === 0) return [];
-
-	const existing = new Set(currentValues.map((p) => p.name));
-	const toPrompt = candidates.filter((p) => !existing.has(p.name));
+	const stored = new Map(currentValues.map((p) => [p.name, p.value]));
+	const toPrompt = newParams.flatMap((param) => {
+		const spec = promptSpec(param, stored.get(param.name));
+		return spec ? [{ param, spec }] : [];
+	});
 
 	const collected: WorkspaceBuildParameter[] = [];
 	for (let i = 0; i < toPrompt.length; i++) {
-		const param = toPrompt[i];
-		const value = await promptForParameter(param, i + 1, toPrompt.length);
+		const { param, spec } = toPrompt[i];
+		const value = await promptForParameter(param, spec, i + 1, toPrompt.length);
 		if (value === undefined) {
 			throw new WorkspaceUpdateCancelledError();
 		}
@@ -48,8 +58,81 @@ export async function collectUpdateParameters(
 	return collected;
 }
 
+/**
+ * Returns a `PromptSpec` if the parameter needs a fresh answer, else `undefined`.
+ *
+ * Based on the dashboard's `getMissingParameters` (coder/site/src/api/api.ts),
+ * which is the legacy-params check. Dynamic-parameter templates rely on
+ * server-side validation via the `/dynamic-parameters` WebSocket.
+ */
+function promptSpec(
+	param: TemplateVersionParameter,
+	storedValue: string | undefined,
+): PromptSpec | undefined {
+	if (storedValue === undefined) {
+		// Immutable: prompt before the default is locked in for good.
+		if (!param.mutable) return {};
+		// `required` is false whenever a default exists (TF provider sets
+		// `optional=true`), so no separate default_value check is needed.
+		return param.required ? {} : undefined;
+	}
+	if (param.options.length === 0) return undefined;
+	const valid = new Set(param.options.map((o) => o.value));
+	if (param.form_type === "multi-select") {
+		// Beyond dashboard: detect multi-select drift too.
+		const picks = parseMultiSelectValue(storedValue);
+		if (picks === null) {
+			return {
+				driftNote: "No previous selections recovered.",
+				preselect: [],
+			};
+		}
+		const drifted = picks.filter((v) => !valid.has(v));
+		if (drifted.length === 0) return undefined;
+		return {
+			driftNote: `Previous selections no longer available: ${formatDriftList(drifted)}.`,
+			preselect: picks.filter((v) => valid.has(v)),
+		};
+	}
+	if (valid.has(storedValue)) return undefined;
+	const driftNote =
+		storedValue === ""
+			? "No previous value was set."
+			: `Previous value ${formatValue(storedValue)} is no longer available.`;
+	return { driftNote };
+}
+
+/** Multi-select values are stored as a JSON-encoded string array. */
+function parseMultiSelectValue(raw: string): string[] | null {
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		return Array.isArray(parsed) && parsed.every((v) => typeof v === "string")
+			? parsed
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+/** Truncates and JSON-quotes a value for safe display in a placeholder. */
+function formatValue(value: string): string {
+	const truncated =
+		value.length > MAX_VALUE_LEN
+			? `${value.slice(0, MAX_VALUE_LEN)}...`
+			: value;
+	return JSON.stringify(truncated);
+}
+
+/** Joins drifted values with per-item and list-length caps. */
+function formatDriftList(values: string[]): string {
+	const head = values.slice(0, MAX_LIST_ITEMS).map(formatValue).join(", ");
+	const extra = values.length - MAX_LIST_ITEMS;
+	return extra > 0 ? `${head}, +${extra} more` : head;
+}
+
 function promptForParameter(
 	param: TemplateVersionParameter,
+	spec: PromptSpec,
 	step: number,
 	totalSteps: number,
 ): Promise<string | undefined> {
@@ -62,15 +145,22 @@ function promptForParameter(
 		qp.title = title;
 		qp.step = step;
 		qp.totalSteps = totalSteps;
-		qp.placeholder = param.description_plaintext;
+		qp.placeholder = [spec.driftNote, param.description_plaintext]
+			.filter((s) => s)
+			.join(" ");
 		qp.items = items;
 		qp.canSelectMany = multi;
 		qp.ignoreFocusOut = true;
+		const { preselect } = spec;
+		if (multi && preselect) {
+			qp.selectedItems = items.filter((item) => preselect.includes(item.value));
+		}
 		return collectInput(qp, () => {
 			if (multi) {
-				return qp.selectedItems.length > 0
-					? JSON.stringify(qp.selectedItems.map((i) => i.value))
-					: undefined;
+				if (qp.selectedItems.length === 0) {
+					return param.required ? undefined : "[]";
+				}
+				return JSON.stringify(qp.selectedItems.map((i) => i.value));
 			}
 			return qp.selectedItems[0]?.value;
 		});
