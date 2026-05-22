@@ -7,8 +7,8 @@ import type {
 export type SpanResult = "success" | "aborted" | "error";
 
 /**
- * Parent span handle. Children's `eventName` composes as `${parent.eventName}.${phaseName}`.
- * Phase names should not contain `.`; if they do, dots are replaced with `_` and a warning is logged.
+ * Parent span handle. Child phases and logs compose as `${parent.eventName}.${name}`.
+ * Child names should not contain `.`; if they do, dots are replaced with `_` and a warning is logged.
  * Recurse via `phase` for grandchildren.
  */
 export interface Span {
@@ -22,6 +22,19 @@ export interface Span {
 		properties?: CallerProperties,
 		measurements?: CallerMeasurements,
 	): Promise<T>;
+	/** Emit a point-in-time log event under this span. No framework-set `result` or `durationMs`. */
+	log(
+		logName: string,
+		properties?: CallerProperties,
+		measurements?: CallerMeasurements,
+	): void;
+	/** Emit a point-in-time error log event under this span. No framework-set `result` or `durationMs`. */
+	logError(
+		logName: string,
+		error: unknown,
+		properties?: CallerProperties,
+		measurements?: CallerMeasurements,
+	): void;
 	/** Add or replace a property on the event emitted for this span. */
 	setProperty(name: string, value: CallerPropertyValue): void;
 	/** Add or replace a measurement on the event emitted for this span. */
@@ -40,6 +53,8 @@ export const NOOP_SPAN: Span = {
 	phase<T>(_phaseName: string, fn: (span: Span) => Promise<T>): Promise<T> {
 		return fn(NOOP_SPAN);
 	},
+	log: () => undefined,
+	logError: () => undefined,
 	markAborted: () => undefined,
 	markFailure: () => undefined,
 	setProperty: () => undefined,

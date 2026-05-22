@@ -32,7 +32,11 @@ const TelemetryEventSchema = z.object({
 	measurements: z.record(z.string(), z.number()),
 	/** Shared by all events in a trace. Maps to OTel `trace_id`. */
 	traceId: z.string().optional(),
-	/** Parent event in the same trace. Maps to OTel `parent_span_id`. */
+	/**
+	 * Parent span in the same trace. For phase children this maps to OTel
+	 * `parent_span_id`. For span logs it maps to OTel `span_id` on the log
+	 * record (the span the log belongs to).
+	 */
 	parentEventId: z.string().optional(),
 	error: z
 		.object({

@@ -129,7 +129,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 	 * Run a timed operation. The emitted event carries `durationMs` and a
 	 * `result` of `success`, `error`, or `aborted` (set via `span.markAborted()`
 	 * for intentional early exits). All events from one call share a `traceId`;
-	 * phase children carry `parentEventId`.
+	 * child phases and span logs carry `parentEventId`.
 	 */
 	public trace<T>(
 		eventName: string,
@@ -178,7 +178,22 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		let mark: "aborted" | "error" | undefined;
 		const warnPostEmit = (op: string, name: string): void => {
 			this.logger.warn(
-				`Telemetry span '${eventName}' ${op}('${name}') called after emit; mutation dropped`,
+				`Telemetry span '${eventName}' ${op}('${name}') called after emit; call ignored`,
+			);
+		};
+		const emitSpanLog = (
+			logName: string,
+			logProperties: CallerProperties,
+			logMeasurements: CallerMeasurements,
+			error?: unknown,
+		): void => {
+			const safeName = this.#sanitizeChildName(logName, "log");
+			this.#safeEmit(
+				newSpanId(),
+				`${eventName}.${safeName}`,
+				stringifyProps(logProperties),
+				logMeasurements,
+				{ traceId, parentEventId: eventId, traceLevel, error },
 			);
 		};
 		const span: Span = {
@@ -189,9 +204,13 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 				phaseName: string,
 				phaseFn: (childSpan: Span) => Promise<U>,
 				phaseProps: CallerProperties = {},
-				phaseMeasurements: Record<string, number> = {},
+				phaseMeasurements: CallerMeasurements = {},
 			): Promise<U> => {
-				const safeName = this.#sanitizePhaseName(phaseName);
+				if (completed) {
+					warnPostEmit("phase", phaseName);
+					return phaseFn(NOOP_SPAN);
+				}
+				const safeName = this.#sanitizeChildName(phaseName, "phase");
 				return this.#startSpan(
 					`${eventName}.${safeName}`,
 					phaseFn,
@@ -199,6 +218,29 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 					phaseMeasurements,
 					{ traceId, parentEventId: eventId, traceLevel },
 				);
+			},
+			log: (
+				logName: string,
+				logProperties: CallerProperties = {},
+				logMeasurements: CallerMeasurements = {},
+			): void => {
+				if (completed) {
+					warnPostEmit("log", logName);
+					return;
+				}
+				emitSpanLog(logName, logProperties, logMeasurements);
+			},
+			logError: (
+				logName: string,
+				error: unknown,
+				logProperties: CallerProperties = {},
+				logMeasurements: CallerMeasurements = {},
+			): void => {
+				if (completed) {
+					warnPostEmit("logError", logName);
+					return;
+				}
+				emitSpanLog(logName, logProperties, logMeasurements, error);
 			},
 			setProperty(name: string, value: CallerPropertyValue): void {
 				if (completed) {
@@ -243,13 +285,13 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		});
 	}
 
-	#sanitizePhaseName(name: string): string {
+	#sanitizeChildName(name: string, kind: "phase" | "log"): string {
 		if (!name.includes(".")) {
 			return name;
 		}
 		const sanitized = name.replaceAll(".", "_");
 		this.logger.warn(
-			`Telemetry phase name '${name}' contains '.', sanitized to '${sanitized}'`,
+			`Telemetry ${kind} name '${name}' contains '.', sanitized to '${sanitized}'`,
 		);
 		return sanitized;
 	}
