@@ -210,7 +210,9 @@ describe("collectUpdateParameters", () => {
 		const { restClient, workspace } = createCollectCtx(
 			[
 				{ name: "existing" },
-				{ name: "with_default", default_value: "foo" },
+				// Required is false when a default is set; the TF provider
+				// auto-sets optional=true whenever a default is provided.
+				{ name: "with_default", required: false, default_value: "foo" },
 				{ name: "optional", required: false },
 			],
 			[{ name: "existing", value: "kept" }],
@@ -267,125 +269,88 @@ describe("collectUpdateParameters", () => {
 		expect(vscode.window.createQuickPick).not.toHaveBeenCalled();
 	});
 
-	it("re-prompts when a stored option value drifted out of the new options", async () => {
-		const optionParam: Partial<TemplateVersionParameter> = {
-			name: "size",
-			options: [
-				{ name: "Small", description: "", value: "s", icon: "" },
-				{ name: "Large", description: "", value: "l", icon: "" },
-			],
-		};
+	const US = { name: "US", description: "", value: "us", icon: "" };
+	const EU = { name: "EU", description: "", value: "eu", icon: "" };
+	const SMALL = { name: "Small", description: "", value: "s", icon: "" };
+	const LARGE = { name: "Large", description: "", value: "l", icon: "" };
+
+	it.each<{
+		kind: string;
+		param: Partial<TemplateVersionParameter>;
+		storedValue: string;
+		pick: string;
+		expected: string;
+	}>([
+		{
+			kind: "single-select drift",
+			param: { name: "size", options: [SMALL, LARGE] },
+			storedValue: "xl-retired",
+			pick: "l",
+			expected: "l",
+		},
+		{
+			kind: "single-select drift with a template default",
+			param: { name: "size", default_value: "s", options: [SMALL, LARGE] },
+			storedValue: "xl-retired",
+			pick: "l",
+			expected: "l",
+		},
+		{
+			kind: "immutable single-select drift",
+			param: { name: "zone", mutable: false, options: [US] },
+			storedValue: "eu-retired",
+			pick: "us",
+			expected: "us",
+		},
+		{
+			kind: "multi-select with a drifted pick",
+			param: { name: "regions", form_type: "multi-select", options: [US, EU] },
+			storedValue: '["us","apac-retired"]',
+			pick: "us",
+			expected: '["us"]',
+		},
+		{
+			kind: "multi-select with a non-JSON stored value",
+			param: { name: "regions", form_type: "multi-select", options: [US] },
+			storedValue: "not-json",
+			pick: "us",
+			expected: '["us"]',
+		},
+	])("re-prompts on $kind", async ({ param, storedValue, pick, expected }) => {
 		const { restClient, workspace } = createCollectCtx(
-			[optionParam],
-			[{ name: "size", value: "xl-retired" }],
+			[param],
+			[{ name: param.name!, value: storedValue }],
 		);
 		const qi = mockCreateQuickPick();
 
 		const result = collectUpdateParameters(restClient, workspace);
 		await waitShown(qi);
-		qi.accept({ selectedItems: [{ value: "l" }] });
-
-		await expect(result).resolves.toEqual([{ name: "size", value: "l" }]);
-	});
-
-	it("re-prompts on drift even when the template parameter has a default value", async () => {
-		const optionParam: Partial<TemplateVersionParameter> = {
-			name: "size",
-			default_value: "s",
-			options: [
-				{ name: "Small", description: "", value: "s", icon: "" },
-				{ name: "Large", description: "", value: "l", icon: "" },
-			],
-		};
-		const { restClient, workspace } = createCollectCtx(
-			[optionParam],
-			[{ name: "size", value: "xl-retired" }],
-		);
-		const qi = mockCreateQuickPick();
-
-		const result = collectUpdateParameters(restClient, workspace);
-		await waitShown(qi);
-		qi.accept({ selectedItems: [{ value: "l" }] });
-
-		await expect(result).resolves.toEqual([{ name: "size", value: "l" }]);
-	});
-
-	it("re-prompts on drift for an immutable param too", async () => {
-		const optionParam: Partial<TemplateVersionParameter> = {
-			name: "zone",
-			mutable: false,
-			options: [{ name: "US", description: "", value: "us", icon: "" }],
-		};
-		const { restClient, workspace } = createCollectCtx(
-			[optionParam],
-			[{ name: "zone", value: "eu-retired" }],
-		);
-		const qi = mockCreateQuickPick();
-
-		const result = collectUpdateParameters(restClient, workspace);
-		await waitShown(qi);
-		qi.accept({ selectedItems: [{ value: "us" }] });
-
-		await expect(result).resolves.toEqual([{ name: "zone", value: "us" }]);
-	});
-
-	it("re-prompts a multi-select when any stored pick drifted out", async () => {
-		const multiParam: Partial<TemplateVersionParameter> = {
-			name: "regions",
-			form_type: "multi-select",
-			options: [
-				{ name: "US", description: "", value: "us", icon: "" },
-				{ name: "EU", description: "", value: "eu", icon: "" },
-			],
-		};
-		const { restClient, workspace } = createCollectCtx(
-			[multiParam],
-			[{ name: "regions", value: '["us","apac-retired"]' }],
-		);
-		const qi = mockCreateQuickPick();
-
-		const result = collectUpdateParameters(restClient, workspace);
-		await waitShown(qi);
-		qi.accept({ selectedItems: [{ value: "us" }] });
+		qi.accept({ selectedItems: [{ value: pick }] });
 
 		await expect(result).resolves.toEqual([
-			{ name: "regions", value: '["us"]' },
+			{ name: param.name, value: expected },
 		]);
 	});
 
-	it("re-prompts a multi-select when the stored value isn't a JSON string array", async () => {
-		const multiParam: Partial<TemplateVersionParameter> = {
-			name: "regions",
-			form_type: "multi-select",
-			options: [{ name: "US", description: "", value: "us", icon: "" }],
-		};
+	it.each<{
+		kind: string;
+		param: Partial<TemplateVersionParameter>;
+		storedValue: string;
+	}>([
+		{
+			kind: "every multi-select pick is still in the new options",
+			param: { name: "regions", form_type: "multi-select", options: [US, EU] },
+			storedValue: '["us","eu"]',
+		},
+		{
+			kind: "the multi-select stored value is an empty JSON array",
+			param: { name: "regions", form_type: "multi-select", options: [US] },
+			storedValue: "[]",
+		},
+	])("skips when $kind", async ({ param, storedValue }) => {
 		const { restClient, workspace } = createCollectCtx(
-			[multiParam],
-			[{ name: "regions", value: "not-json" }],
-		);
-		const qi = mockCreateQuickPick();
-
-		const result = collectUpdateParameters(restClient, workspace);
-		await waitShown(qi);
-		qi.accept({ selectedItems: [{ value: "us" }] });
-
-		await expect(result).resolves.toEqual([
-			{ name: "regions", value: '["us"]' },
-		]);
-	});
-
-	it("skips a multi-select when every stored pick is still in the new options", async () => {
-		const multiParam: Partial<TemplateVersionParameter> = {
-			name: "regions",
-			form_type: "multi-select",
-			options: [
-				{ name: "US", description: "", value: "us", icon: "" },
-				{ name: "EU", description: "", value: "eu", icon: "" },
-			],
-		};
-		const { restClient, workspace } = createCollectCtx(
-			[multiParam],
-			[{ name: "regions", value: '["us","eu"]' }],
+			[param],
+			[{ name: param.name!, value: storedValue }],
 		);
 
 		await expect(
@@ -394,49 +359,108 @@ describe("collectUpdateParameters", () => {
 		expect(vscode.window.createQuickPick).not.toHaveBeenCalled();
 	});
 
-	it("skips a multi-select when the stored value is an empty JSON array", async () => {
-		const multiParam: Partial<TemplateVersionParameter> = {
-			name: "regions",
-			form_type: "multi-select",
-			options: [{ name: "US", description: "", value: "us", icon: "" }],
-		};
-		const { restClient, workspace } = createCollectCtx(
-			[multiParam],
-			[{ name: "regions", value: "[]" }],
-		);
+	it.each<{
+		kind: string;
+		param: Partial<TemplateVersionParameter>;
+		storedValue: string;
+		expectedPlaceholder?: string;
+		expectedPreselect?: Array<{ label: string; value: string }>;
+		picks: string[];
+		expected: string;
+	}>([
+		{
+			kind: "single-select drift, appended to the description",
+			param: {
+				name: "size",
+				description_plaintext: "Pick a t-shirt size.",
+				options: [SMALL, LARGE],
+			},
+			storedValue: "xl-retired",
+			expectedPlaceholder:
+				'Previous value "xl-retired" is no longer available. Pick a t-shirt size.',
+			picks: ["l"],
+			expected: "l",
+		},
+		{
+			kind: "single-select with an empty stored value",
+			param: { name: "size", options: [SMALL] },
+			storedValue: "",
+			expectedPlaceholder: "No previous value was set.",
+			picks: ["s"],
+			expected: "s",
+		},
+		{
+			kind: "multi-select drift, escaping quotes/commas and pre-selecting survivors",
+			param: { name: "regions", form_type: "multi-select", options: [US, EU] },
+			storedValue: '["us","a,b","c\\"d"]',
+			expectedPlaceholder:
+				'Previous selections no longer available: "a,b", "c\\"d".',
+			expectedPreselect: [{ label: "US", value: "us" }],
+			picks: ["us"],
+			expected: '["us"]',
+		},
+		{
+			kind: "multi-select drift, pre-selecting survivors without placeholder check",
+			param: { name: "regions", form_type: "multi-select", options: [US, EU] },
+			storedValue: '["us","apac-retired"]',
+			expectedPreselect: [{ label: "US", value: "us" }],
+			picks: ["us", "eu"],
+			expected: '["us","eu"]',
+		},
+		{
+			kind: "multi-select drift with many drifted picks, capped with +N more",
+			param: { name: "regions", form_type: "multi-select", options: [US] },
+			storedValue: JSON.stringify(["d1", "d2", "d3", "d4", "d5", "d6", "d7"]),
+			expectedPlaceholder:
+				'Previous selections no longer available: "d1", "d2", "d3", "d4", "d5", +2 more.',
+			picks: ["us"],
+			expected: '["us"]',
+		},
+		{
+			kind: "multi-select with an unparseable stored value",
+			param: { name: "regions", form_type: "multi-select", options: [US] },
+			storedValue: "not-json",
+			expectedPlaceholder: "No previous selections recovered.",
+			expectedPreselect: [],
+			picks: ["us"],
+			expected: '["us"]',
+		},
+	])(
+		"prompts on $kind",
+		async ({
+			param,
+			storedValue,
+			expectedPlaceholder,
+			expectedPreselect,
+			picks,
+			expected,
+		}) => {
+			const { restClient, workspace } = createCollectCtx(
+				[param],
+				[{ name: param.name!, value: storedValue }],
+			);
+			const qi = mockCreateQuickPick();
 
-		await expect(
-			collectUpdateParameters(restClient, workspace),
-		).resolves.toEqual([]);
-		expect(vscode.window.createQuickPick).not.toHaveBeenCalled();
-	});
-
-	it("pre-selects still-valid picks on a multi-select drift re-prompt", async () => {
-		const multiParam: Partial<TemplateVersionParameter> = {
-			name: "regions",
-			form_type: "multi-select",
-			options: [
-				{ name: "US", description: "", value: "us", icon: "" },
-				{ name: "EU", description: "", value: "eu", icon: "" },
-			],
-		};
-		const { restClient, workspace } = createCollectCtx(
-			[multiParam],
-			[{ name: "regions", value: '["us","apac-retired"]' }],
-		);
-		const qi = mockCreateQuickPick();
-
-		const result = collectUpdateParameters(restClient, workspace);
-		await waitShown(qi);
-		expect(qi.mock.selectedItems).toEqual([
-			{ label: "US", description: "", value: "us" },
-		]);
-		qi.accept({ selectedItems: [{ value: "us" }, { value: "eu" }] });
-
-		await expect(result).resolves.toEqual([
-			{ name: "regions", value: '["us","eu"]' },
-		]);
-	});
+			const result = collectUpdateParameters(restClient, workspace);
+			await waitShown(qi);
+			if (expectedPlaceholder !== undefined) {
+				expect(qi.mock.placeholder).toBe(expectedPlaceholder);
+			}
+			if (expectedPreselect !== undefined) {
+				expect(qi.mock.selectedItems).toEqual(
+					expectedPreselect.map((p) => ({
+						label: p.label,
+						description: "",
+						value: p.value,
+					})),
+				);
+			}
+			qi.accept({ selectedItems: picks.map((v) => ({ value: v })) });
+			await expect(result).resolves.toEqual([
+				{ name: param.name, value: expected },
+			]);
+		},
+	);
 
 	it("keeps the prompt open on an empty submission for a required multi-select", async () => {
 		const multiParam: Partial<TemplateVersionParameter> = {
