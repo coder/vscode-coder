@@ -9,13 +9,11 @@ import { vscodeProposed } from "../vscodeProposed";
 import type { Commands } from "../commands";
 import type { ServiceContainer } from "../core/container";
 import type { DeploymentManager } from "../deployment/deploymentManager";
-import type { ChatPanelProvider } from "../webviews/chat/chatPanelProvider";
 
 interface UriHandlerDeps {
 	serviceContainer: ServiceContainer;
 	deploymentManager: Pick<DeploymentManager, "setDeployment">;
 	commands: Pick<Commands, "open" | "openDevContainer">;
-	chatPanelProvider: Pick<ChatPanelProvider, "openChat">;
 }
 
 interface UriRouteContext extends UriHandlerDeps {
@@ -79,41 +77,16 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		params.has("openRecent") &&
 		(!params.get("openRecent") || params.get("openRecent") === "true");
 
-	// Persist the chat ID before commands.open() triggers
-	// a remote-authority reload that wipes in-memory state.
-	// The extension picks this up after the reload in activate().
-	const chatId = params.get("chatId");
-	const mementoManager = serviceContainer.getMementoManager();
-	if (chatId) {
-		await mementoManager.setPendingChatId(chatId);
-	}
-
 	await setupDeployment(params, serviceContainer, deploymentManager);
 
-	let opened = false;
-	try {
-		opened = await commands.open({
-			workspaceOwner: owner,
-			workspaceName: workspace,
-			agentName: agent ?? undefined,
-			folderPath: folder ?? undefined,
-			openRecent,
-			useDefaultDirectory: false,
-		});
-	} finally {
-		// Clear the pending chat ID if commands.open() did not
-		// actually open a window (user cancelled, or it threw).
-		if (!opened && chatId) {
-			await mementoManager.clearPendingChatId();
-		}
-	}
-
-	// Already-open workspace: VS Code refocuses without reloading,
-	// so activate() won't run. openChat is idempotent if both fire.
-	if (opened && chatId) {
-		serviceContainer.getContextManager().set("coder.agentsEnabled", true);
-		ctx.chatPanelProvider.openChat(chatId);
-	}
+	await commands.open({
+		workspaceOwner: owner,
+		workspaceName: workspace,
+		agentName: agent ?? undefined,
+		folderPath: folder ?? undefined,
+		openRecent,
+		useDefaultDirectory: false,
+	});
 }
 
 async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {

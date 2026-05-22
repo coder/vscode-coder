@@ -278,13 +278,6 @@
 					"title": "Coder Tasks",
 					"icon": "media/tasks-logo.svg"
 				}
-			],
-			"secondarySidebar": [
-				{
-					"id": "coderChat",
-					"title": "Coder Chat (Experimental)",
-					"icon": "media/shorthand-logo.svg"
-				}
 			]
 		},
 		"views": {
@@ -316,15 +309,6 @@
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
 					"when": "coder.authenticated"
-				}
-			],
-			"coderChat": [
-				{
-					"type": "webview",
-					"id": "coder.chatPanel",
-					"name": "Coder Chat (Experimental)",
-					"icon": "media/shorthand-logo.svg",
-					"when": "coder.agentsEnabled"
 				}
 			]
 		},
@@ -450,12 +434,6 @@
 				"icon": "$(refresh)"
 			},
 			{
-				"command": "coder.chat.refresh",
-				"title": "Refresh Chat",
-				"category": "Coder",
-				"icon": "$(refresh)"
-			},
-			{
 				"command": "coder.applyRecommendedSettings",
 				"title": "Apply Recommended SSH Settings",
 				"category": "Coder"
@@ -572,10 +550,6 @@
 					"when": "false"
 				},
 				{
-					"command": "coder.chat.refresh",
-					"when": "false"
-				},
-				{
 					"command": "coder.applyRecommendedSettings"
 				}
 			],
@@ -615,11 +589,6 @@
 				{
 					"command": "coder.tasks.refresh",
 					"when": "coder.authenticated && view == coder.tasksPanel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "coder.chat.refresh",
-					"when": "view == coder.chatPanel",
 					"group": "navigation@1"
 				}
 			],
@@ -713,7 +682,7 @@
 		"@types/react-dom": "catalog:",
 		"@types/semver": "^7.7.1",
 		"@types/ua-parser-js": "0.7.39",
-		"@types/vscode": "1.106.0",
+		"@types/vscode": "1.105.0",
 		"@types/vscode-webview": "catalog:",
 		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^8.59.3",
@@ -758,7 +727,7 @@
 	],
 	"packageManager": "pnpm@11.1.2+sha224.6d287705d0efa6c2ba7a74795dc72a7800f64840f2bc0961cedba029",
 	"engines": {
-		"vscode": "^1.106.0",
+		"vscode": "^1.105.0",
 		"node": ">= 22"
 	},
 	"icon": "media/logo.png",

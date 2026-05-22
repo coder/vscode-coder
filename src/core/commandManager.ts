@@ -31,7 +31,6 @@ export const CODER_COMMAND_IDS = [
 	"coder.supportBundle",
 	"coder.supportBundle:views",
 	"coder.tasks.refresh",
-	"coder.chat.refresh",
 ] as const;
 
 export type CoderCommandId = (typeof CODER_COMMAND_IDS)[number];
