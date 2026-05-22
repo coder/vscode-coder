@@ -1,10 +1,15 @@
 import { CoderApi } from "../api/coderApi";
+import {
+	CONFIG_CHANGE_DEBOUNCE_MS,
+	watchConfigurationChanges,
+} from "../configWatcher";
 import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
 import { type MementoManager } from "../core/mementoManager";
 import { type SecretsManager } from "../core/secretsManager";
 import { type Logger } from "../logging/logger";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
+import { getAuthConfigWatchSettings } from "../settings/authConfig";
 import { type TelemetryService } from "../telemetry/service";
 import { type WorkspaceProvider } from "../workspace/workspacesProvider";
 
@@ -37,7 +42,11 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly telemetryService: TelemetryService;
 
 	#deployment: Deployment | null = null;
+	#disposed = false;
 	#authListenerDisposable: vscode.Disposable | undefined;
+	#authConfigDisposable: vscode.Disposable | undefined;
+	#recoveryPromise: Promise<void> | null = null;
+	#recoveryPending = false;
 	#crossWindowSyncDisposable: vscode.Disposable | undefined;
 
 	private constructor(
@@ -65,6 +74,7 @@ export class DeploymentManager implements vscode.Disposable {
 			oauthSessionManager,
 			workspaceProviders,
 		);
+		manager.subscribeToAuthConfigChanges();
 		manager.subscribeToCrossWindowChanges();
 		return manager;
 	}
@@ -84,12 +94,13 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Attempt to change to a deployment after validating authentication.
-	 * Only changes deployment if authentication succeeds.
-	 * Returns true if deployment was changed, false otherwise.
+	 * Validate authentication and switch on success. `shouldApply`, if given,
+	 * is checked after validation; the write is skipped when it returns false
+	 * (used to bail out if state mutated during the validation await).
 	 */
 	public async setDeploymentIfValid(
 		deployment: Deployment & { token?: string },
+		shouldApply: () => boolean = () => true,
 	): Promise<boolean> {
 		const token =
 			deployment.token ??
@@ -99,13 +110,10 @@ export class DeploymentManager implements vscode.Disposable {
 
 		try {
 			const user = await tempClient.getAuthenticatedUser();
-
-			// Authentication succeeded - now change the deployment
-			await this.setDeployment({
-				...deployment,
-				token,
-				user,
-			});
+			if (!shouldApply()) {
+				return false;
+			}
+			await this.setDeployment({ ...deployment, token, user });
 			return true;
 		} catch (e) {
 			this.logger.warn("Failed to authenticate with deployment:", e);
@@ -186,7 +194,9 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	public dispose(): void {
+		this.#disposed = true;
 		this.#authListenerDisposable?.dispose();
+		this.#authConfigDisposable?.dispose();
 		this.#crossWindowSyncDisposable?.dispose();
 	}
 
@@ -230,6 +240,50 @@ export class DeploymentManager implements vscode.Disposable {
 				}
 			},
 		);
+	}
+
+	private subscribeToAuthConfigChanges(): void {
+		this.#authConfigDisposable = watchConfigurationChanges(
+			getAuthConfigWatchSettings(),
+			() => this.onAuthConfigChange(),
+			{ debounceMs: CONFIG_CHANGE_DEBOUNCE_MS },
+		);
+	}
+
+	private onAuthConfigChange(): void {
+		// One recovery at a time; mark pending so a settings change during the
+		// current pass triggers a fresh attempt once it settles.
+		if (this.#recoveryPromise) {
+			this.#recoveryPending = true;
+			return;
+		}
+		this.#recoveryPromise = this.runRecovery();
+	}
+
+	private async runRecovery(): Promise<void> {
+		try {
+			do {
+				this.#recoveryPending = false;
+				const snapshot = this.#deployment;
+				if (this.#disposed || !snapshot || this.isAuthenticated()) {
+					return;
+				}
+				this.logger.debug(
+					"Authentication settings changed after session suspended, recovering",
+				);
+				await this.setDeploymentIfValid(
+					snapshot,
+					() => !this.#disposed && this.#deployment === snapshot,
+				);
+			} while (this.#recoveryPending);
+		} catch (err) {
+			this.logger.warn(
+				"Failed to recover session after authentication settings changed",
+				err,
+			);
+		} finally {
+			this.#recoveryPromise = null;
+		}
 	}
 
 	private subscribeToCrossWindowChanges(): void {

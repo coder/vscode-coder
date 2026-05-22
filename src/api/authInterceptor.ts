@@ -58,15 +58,19 @@ export class AuthInterceptor implements vscode.Disposable {
 			throw error;
 		}
 
+		if (error.response?.status !== 401) {
+			throw error;
+		}
+
+		if (this.shouldRetryAfterAuthConfigChange(error)) {
+			return this.retryAfterAuthConfigChange(error);
+		}
+
 		if (error.config) {
 			const config = error.config as { _retryAttempted?: boolean };
 			if (config._retryAttempted) {
 				throw error;
 			}
-		}
-
-		if (error.response?.status !== 401) {
-			throw error;
 		}
 
 		const baseUrl = this.client.getHost();
@@ -76,6 +80,39 @@ export class AuthInterceptor implements vscode.Disposable {
 		const hostname = toSafeHost(baseUrl);
 
 		return this.recoverFromUnauthorized(error, hostname);
+	}
+
+	private shouldRetryAfterAuthConfigChange(error: AxiosError): boolean {
+		if (!error.config) {
+			return false;
+		}
+
+		const config = error.config as RequestConfigWithMeta & {
+			_retryAttempted?: boolean;
+			_authConfigRetryAttempted?: boolean;
+			authConfigVersion?: number;
+		};
+		// Skip if any retry already happened: caps total attempts at 2.
+		if (config._retryAttempted || config._authConfigRetryAttempted) {
+			return false;
+		}
+
+		return this.client.hasAuthConfigChangedSince(config.authConfigVersion);
+	}
+
+	private retryAfterAuthConfigChange(error: AxiosError): Promise<unknown> {
+		if (!error.config) {
+			throw error;
+		}
+
+		const config = error.config as RequestConfigWithMeta & {
+			_authConfigRetryAttempted?: boolean;
+		};
+		config._authConfigRetryAttempted = true;
+		this.logger.debug(
+			"Authentication settings changed during request, retrying once",
+		);
+		return this.client.getAxiosInstance().request(config);
 	}
 
 	private recoverFromUnauthorized(

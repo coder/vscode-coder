@@ -285,29 +285,39 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Prepare common OAuth operation setup: client, metadata, and registration.
-	 * Used by refresh and revoke operations to reduce duplication.
+	 * Run `fn` with a per-call CoderApi configured for the current
+	 * deployment. The client is disposed on exit so its config-change
+	 * subscriptions never outlive the operation.
 	 */
-	private async prepareOAuthOperation(token?: string): Promise<{
-		axiosInstance: AxiosInstance;
-		metadata: OAuth2AuthorizationServerMetadata;
-		registration: OAuth2ClientRegistrationResponse;
-	}> {
+	private async withOAuthOperation<T>(
+		token: string | undefined,
+		fn: (ctx: {
+			axiosInstance: AxiosInstance;
+			metadata: OAuth2AuthorizationServerMetadata;
+			registration: OAuth2ClientRegistrationResponse;
+		}) => Promise<T>,
+	): Promise<T> {
 		const deployment = this.requireDeployment();
 		const client = CoderApi.create(deployment.url, token, this.logger);
-		const axiosInstance = client.getAxiosInstance();
+		try {
+			const axiosInstance = client.getAxiosInstance();
+			const metadataClient = new OAuthMetadataClient(
+				axiosInstance,
+				this.logger,
+			);
+			const metadata = await metadataClient.getMetadata();
 
-		const metadataClient = new OAuthMetadataClient(axiosInstance, this.logger);
-		const metadata = await metadataClient.getMetadata();
+			const registration = await this.secretsManager.getOAuthClientRegistration(
+				deployment.safeHostname,
+			);
+			if (!registration) {
+				throw new Error("No client registration found");
+			}
 
-		const registration = await this.secretsManager.getOAuthClientRegistration(
-			deployment.safeHostname,
-		);
-		if (!registration) {
-			throw new Error("No client registration found");
+			return await fn({ axiosInstance, metadata, registration });
+		} finally {
+			client.dispose();
 		}
-
-		return { axiosInstance, metadata, registration };
 	}
 
 	public async setDeployment(deployment: Deployment): Promise<void> {
@@ -382,46 +392,45 @@ export class OAuthSessionManager implements vscode.Disposable {
 			const refreshToken = storedTokens.refresh_token;
 			const accessToken = storedTokens.access_token;
 
-			const { axiosInstance, metadata, registration } =
-				await this.prepareOAuthOperation(accessToken);
+			return await this.withOAuthOperation(
+				accessToken,
+				async ({ axiosInstance, metadata, registration }) => {
+					this.logger.debug("Refreshing access token");
 
-			this.logger.debug("Refreshing access token");
+					const params: OAuth2TokenRequest = {
+						grant_type: REFRESH_GRANT_TYPE,
+						refresh_token: refreshToken,
+						client_id: registration.client_id,
+						client_secret: registration.client_secret,
+					};
 
-			const params: OAuth2TokenRequest = {
-				grant_type: REFRESH_GRANT_TYPE,
-				refresh_token: refreshToken,
-				client_id: registration.client_id,
-				client_secret: registration.client_secret,
-			};
+					const response = await axiosInstance.post<OAuth2TokenResponse>(
+						metadata.token_endpoint,
+						toUrlSearchParams(params),
+						{
+							headers: {
+								"Content-Type": "application/x-www-form-urlencoded",
+							},
+							signal: abortController.signal,
+						},
+					);
 
-			const tokenRequest = toUrlSearchParams(params);
+					if (abortController.signal.aborted) {
+						throw new Error("Token refresh aborted");
+					}
 
-			const response = await axiosInstance.post<OAuth2TokenResponse>(
-				metadata.token_endpoint,
-				tokenRequest,
-				{
-					headers: {
-						"Content-Type": "application/x-www-form-urlencoded",
-					},
-					signal: abortController.signal,
+					this.logger.debug("Token refresh successful");
+
+					const oauthData = buildOAuthTokenData(response.data);
+					await this.secretsManager.setSessionAuth(deployment.safeHostname, {
+						url: deployment.url,
+						token: response.data.access_token,
+						oauth: oauthData,
+					});
+
+					return response.data;
 				},
 			);
-
-			// Check if aborted between response and save
-			if (abortController.signal.aborted) {
-				throw new Error("Token refresh aborted");
-			}
-
-			this.logger.debug("Token refresh successful");
-
-			const oauthData = buildOAuthTokenData(response.data);
-			await this.secretsManager.setSessionAuth(deployment.safeHostname, {
-				url: deployment.url,
-				token: response.data.access_token,
-				oauth: oauthData,
-			});
-
-			return response.data;
 		} catch (error) {
 			throw parseOAuthError(error) ?? error;
 		} finally {
@@ -458,43 +467,42 @@ export class OAuthSessionManager implements vscode.Disposable {
 		tokenToRevoke: string,
 		tokenTypeHint: "access_token" | "refresh_token" = "refresh_token",
 	): Promise<void> {
-		const { axiosInstance, metadata, registration } =
-			await this.prepareOAuthOperation(authToken);
+		await this.withOAuthOperation(
+			authToken,
+			async ({ axiosInstance, metadata, registration }) => {
+				if (!metadata.revocation_endpoint) {
+					this.logger.debug(
+						"No revocation endpoint available, skipping revocation",
+					);
+					return;
+				}
 
-		if (!metadata.revocation_endpoint) {
-			this.logger.debug(
-				"No revocation endpoint available, skipping revocation",
-			);
-			return;
-		}
+				this.logger.debug("Revoking refresh token");
 
-		this.logger.debug("Revoking refresh token");
+				const params: OAuth2TokenRevocationRequest = {
+					token: tokenToRevoke,
+					client_id: registration.client_id,
+					client_secret: registration.client_secret,
+					token_type_hint: tokenTypeHint,
+				};
 
-		const params: OAuth2TokenRevocationRequest = {
-			token: tokenToRevoke,
-			client_id: registration.client_id,
-			client_secret: registration.client_secret,
-			token_type_hint: tokenTypeHint,
-		};
-
-		const revocationRequest = toUrlSearchParams(params);
-
-		try {
-			await axiosInstance.post(
-				metadata.revocation_endpoint,
-				revocationRequest,
-				{
-					headers: {
-						"Content-Type": "application/x-www-form-urlencoded",
-					},
-				},
-			);
-
-			this.logger.debug("Token revocation successful");
-		} catch (error) {
-			this.logger.error("Token revocation failed:", error);
-			throw error;
-		}
+				try {
+					await axiosInstance.post(
+						metadata.revocation_endpoint,
+						toUrlSearchParams(params),
+						{
+							headers: {
+								"Content-Type": "application/x-www-form-urlencoded",
+							},
+						},
+					);
+					this.logger.debug("Token revocation successful");
+				} catch (error) {
+					this.logger.error("Token revocation failed:", error);
+					throw error;
+				}
+			},
+		);
 	}
 
 	/**

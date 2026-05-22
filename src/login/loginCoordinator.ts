@@ -214,7 +214,8 @@ export class LoginCoordinator implements vscode.Disposable {
 							resolve({ success: true, token: auth.token, user });
 						} catch {
 							// Token from other window was invalid, ignore and keep waiting
-							// (or user can click Login/Cancel in the dialog)
+						} finally {
+							client.dispose();
 						}
 					}
 				},
@@ -240,7 +241,24 @@ export class LoginCoordinator implements vscode.Disposable {
 		providedToken?: string,
 	): Promise<LoginResult> {
 		const client = CoderApi.create(deployment.url, "", this.logger);
+		try {
+			return await this.runLoginAttempts(
+				client,
+				deployment,
+				isAutoLogin,
+				providedToken,
+			);
+		} finally {
+			client.dispose();
+		}
+	}
 
+	private async runLoginAttempts(
+		client: CoderApi,
+		deployment: Deployment,
+		isAutoLogin: boolean,
+		providedToken: string | undefined,
+	): Promise<LoginResult> {
 		// mTLS authentication (no token needed)
 		if (!needToken(vscode.workspace.getConfiguration())) {
 			this.logger.debug("Attempting mTLS authentication (no token required)");
