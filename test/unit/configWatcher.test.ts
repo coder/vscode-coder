@@ -136,7 +136,7 @@ describe("watchConfigurationChanges", () => {
 		dispose();
 	});
 
-	describe("debounced (fixed window)", () => {
+	describe("debounced (idle window)", () => {
 		const setup = () => {
 			vi.useFakeTimers();
 			const config = new MockConfigurationProvider();
@@ -184,17 +184,19 @@ describe("watchConfigurationChanges", () => {
 			}
 		});
 
-		it("does not starve when events arrive faster than the window", () => {
+		it("resets the idle window on each event and fires once after the burst settles", () => {
 			const { config, changes, watcher } = setup();
 			try {
+				// Events spaced inside the window keep resetting the timer.
 				for (let i = 0; i < 5; i++) {
 					config.set("test.setting", `tick-${i}`);
 					vi.advanceTimersByTime(200);
 				}
+				expect(changes).toEqual([]);
+
+				// Once quiet, the callback fires exactly once with the last value.
 				vi.advanceTimersByTime(250);
-				expect(changes.length).toBeGreaterThan(0);
-				const last = changes[changes.length - 1];
-				expect(last.get("test.setting")).toBe("tick-4");
+				expect(changes.map((c) => c.get("test.setting"))).toEqual(["tick-4"]);
 			} finally {
 				watcher.dispose();
 				vi.useRealTimers();

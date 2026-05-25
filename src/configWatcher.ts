@@ -1,12 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import * as vscode from "vscode";
 
-/**
- * Debounce window for config-change reactions that fan out (recovery,
- * reconnect, reload prompts). Keeps rapid edits in settings.json from
- * flushing each side-effect per keystroke.
- */
-export const CONFIG_CHANGE_DEBOUNCE_MS = 250;
+/** Idle window for config-change reactions. Coalesces rapid edits into one fire. */
+export const CONFIG_CHANGE_DEBOUNCE_MS = 200;
 
 export interface WatchedSetting {
 	setting: string;
@@ -14,15 +10,17 @@ export interface WatchedSetting {
 }
 
 export interface WatchConfigurationChangesOptions {
+	/**
+	 * Idle window in ms. Each new event resets the timer; the callback
+	 * fires once settings have been quiet for this long. Unset means fire
+	 * synchronously on every event.
+	 */
 	debounceMs?: number;
 }
 
 /**
- * Watch for configuration changes and invoke a callback when values change.
- * Fires only when actual values change. With `debounceMs`, the first event
- * opens a fixed collection window; subsequent events during the window are
- * coalesced. This bounds latency even when events arrive faster than the
- * window length (a reset-style debounce would starve).
+ * Watch for configuration changes and fire when watched values change.
+ * With `debounceMs`, defers until settings have been quiet for that long.
  */
 export function watchConfigurationChanges(
 	settings: WatchedSetting[],
@@ -45,7 +43,7 @@ export function watchConfigurationChanges(
 		}
 	};
 
-	let windowTimer: ReturnType<typeof setTimeout> | undefined;
+	let idleTimer: ReturnType<typeof setTimeout> | undefined;
 	const listener = vscode.workspace.onDidChangeConfiguration((e) => {
 		if (!settings.some((s) => e.affectsConfiguration(s.setting))) {
 			return;
@@ -54,18 +52,16 @@ export function watchConfigurationChanges(
 			detectAndFire();
 			return;
 		}
-		if (windowTimer) {
-			return; // already collecting in the open window
-		}
-		windowTimer = setTimeout(() => {
-			windowTimer = undefined;
+		clearTimeout(idleTimer);
+		idleTimer = setTimeout(() => {
+			idleTimer = undefined;
 			detectAndFire();
 		}, options.debounceMs);
 	});
 
 	return {
 		dispose: () => {
-			clearTimeout(windowTimer);
+			clearTimeout(idleTimer);
 			listener.dispose();
 		},
 	};

@@ -61,7 +61,7 @@ function createTestContext() {
 	new MockConfigurationProvider();
 
 	const mockClient = new MockCoderApi();
-	// For setDeploymentIfValid, we use a separate mock for validation
+	// For verifyAndApplyDeployment, we use a separate mock for validation
 	const validationMockClient = new MockCoderApi();
 	const mockWorkspaceProvider = new MockWorkspaceProvider();
 	const mockOAuthSessionManager = new MockOAuthSessionManager();
@@ -204,13 +204,13 @@ describe("DeploymentManager", () => {
 		});
 	});
 
-	describe("setDeploymentIfValid", () => {
+	describe("verifyAndApplyDeployment", () => {
 		it("returns true and sets deployment on auth success", async () => {
 			const { mockClient, validationMockClient, manager } = createTestContext();
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
-			const result = await manager.setDeploymentIfValid({
+			const result = await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -228,7 +228,7 @@ describe("DeploymentManager", () => {
 				new Error("Auth failed"),
 			);
 
-			const result = await manager.setDeploymentIfValid({
+			const result = await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -244,7 +244,7 @@ describe("DeploymentManager", () => {
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
-			const result = await manager.setDeploymentIfValid({
+			const result = await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "",
@@ -268,7 +268,7 @@ describe("DeploymentManager", () => {
 				token: "stored-token",
 			});
 
-			const result = await manager.setDeploymentIfValid({
+			const result = await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 			});
@@ -282,7 +282,7 @@ describe("DeploymentManager", () => {
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
-			await manager.setDeploymentIfValid({
+			await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",

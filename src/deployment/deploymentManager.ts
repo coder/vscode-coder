@@ -45,7 +45,7 @@ export class DeploymentManager implements vscode.Disposable {
 	#disposed = false;
 	#authListenerDisposable: vscode.Disposable | undefined;
 	#authConfigDisposable: vscode.Disposable | undefined;
-	#recoveryPromise: Promise<void> | null = null;
+	#recoveryRunning = false;
 	#recoveryPending = false;
 	#crossWindowSyncDisposable: vscode.Disposable | undefined;
 
@@ -94,14 +94,15 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Validate authentication and switch on success. `shouldApply`, if given,
-	 * is checked after validation; the write is skipped when it returns false
-	 * (used to bail out if state mutated during the validation await).
+	 * Verify credentials and apply the deployment on success. Used for
+	 * fresh logins and for un-suspending a session after auth settings or
+	 * a token become valid again. Bails if state moved during the verify
+	 * (logout, another login, dispose), so callers don't need a race guard.
 	 */
-	public async setDeploymentIfValid(
+	public async verifyAndApplyDeployment(
 		deployment: Deployment & { token?: string },
-		shouldApply: () => boolean = () => true,
 	): Promise<boolean> {
+		const deploymentBefore = this.#deployment;
 		const token =
 			deployment.token ??
 			(await this.secretsManager.getSessionAuth(deployment.safeHostname))
@@ -110,7 +111,7 @@ export class DeploymentManager implements vscode.Disposable {
 
 		try {
 			const user = await tempClient.getAuthenticatedUser();
-			if (!shouldApply()) {
+			if (this.#hasStateChangedSince(deploymentBefore)) {
 				return false;
 			}
 			await this.setDeployment({ ...deployment, token, user });
@@ -121,6 +122,15 @@ export class DeploymentManager implements vscode.Disposable {
 		} finally {
 			tempClient.dispose();
 		}
+	}
+
+	/** True if disposal, login, or a deployment switch raced our await. */
+	#hasStateChangedSince(deploymentBefore: Deployment | null): boolean {
+		return (
+			this.#disposed ||
+			this.isAuthenticated() ||
+			this.#deployment !== deploymentBefore
+		);
 	}
 
 	/**
@@ -135,6 +145,7 @@ export class DeploymentManager implements vscode.Disposable {
 			user: deployment.user.username,
 		});
 		this.#deployment = { ...deployment };
+		const ourRef = this.#deployment;
 		this.telemetryService.setDeploymentUrl(deployment.url);
 
 		// Updates client credentials
@@ -155,6 +166,10 @@ export class DeploymentManager implements vscode.Disposable {
 		const deploymentWithoutAuth: Deployment =
 			DeploymentSchema.parse(deployment);
 		await this.oauthSessionManager.setDeployment(deploymentWithoutAuth);
+		// Bail if a concurrent write took over during the await.
+		if (this.#deployment !== ourRef) {
+			return;
+		}
 		await this.persistDeployment(deploymentWithoutAuth);
 	}
 
@@ -229,7 +244,7 @@ export class DeploymentManager implements vscode.Disposable {
 						this.logger.debug(
 							"Token updated after session suspended, recovering",
 						);
-						await this.setDeploymentIfValid({
+						await this.verifyAndApplyDeployment({
 							url: auth.url,
 							safeHostname,
 							token: auth.token,
@@ -253,11 +268,12 @@ export class DeploymentManager implements vscode.Disposable {
 	private onAuthConfigChange(): void {
 		// One recovery at a time; mark pending so a settings change during the
 		// current pass triggers a fresh attempt once it settles.
-		if (this.#recoveryPromise) {
+		if (this.#recoveryRunning) {
 			this.#recoveryPending = true;
 			return;
 		}
-		this.#recoveryPromise = this.runRecovery();
+		this.#recoveryRunning = true;
+		void this.runRecovery();
 	}
 
 	private async runRecovery(): Promise<void> {
@@ -271,10 +287,7 @@ export class DeploymentManager implements vscode.Disposable {
 				this.logger.debug(
 					"Authentication settings changed after session suspended, recovering",
 				);
-				await this.setDeploymentIfValid(
-					snapshot,
-					() => !this.#disposed && this.#deployment === snapshot,
-				);
+				await this.verifyAndApplyDeployment(snapshot);
 			} while (this.#recoveryPending);
 		} catch (err) {
 			this.logger.warn(
@@ -282,7 +295,7 @@ export class DeploymentManager implements vscode.Disposable {
 				err,
 			);
 		} finally {
-			this.#recoveryPromise = null;
+			this.#recoveryRunning = false;
 		}
 	}
 
@@ -291,13 +304,12 @@ export class DeploymentManager implements vscode.Disposable {
 			this.secretsManager.onDidChangeCurrentDeployment(
 				async ({ deployment }) => {
 					if (this.isAuthenticated()) {
-						// Ignore if we are already authenticated
 						return;
 					}
 
 					if (deployment) {
 						this.logger.info("Deployment changed from another window");
-						await this.setDeploymentIfValid(deployment);
+						await this.verifyAndApplyDeployment(deployment);
 					}
 				},
 			);

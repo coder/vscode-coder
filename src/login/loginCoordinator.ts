@@ -207,13 +207,15 @@ export class LoginCoordinator implements vscode.Disposable {
 				safeHostname,
 				async (auth) => {
 					if (auth?.token) {
-						disposable?.dispose();
 						const client = CoderApi.create(auth.url, auth.token, this.logger);
 						try {
 							const user = await client.getAuthenticatedUser();
+							// Stop listening only on success; a bad token shouldn't
+							// drop us off the bus for a follow-up valid write.
+							disposable?.dispose();
 							resolve({ success: true, token: auth.token, user });
 						} catch {
-							// Token from other window was invalid, ignore and keep waiting
+							// Invalid token; keep listening.
 						} finally {
 							client.dispose();
 						}

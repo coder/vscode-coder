@@ -396,7 +396,7 @@ async function doActivate(
 			if (details) {
 				ctx.subscriptions.push(details);
 
-				const deploymentSet = await deploymentManager.setDeploymentIfValid({
+				const deploymentSet = await deploymentManager.verifyAndApplyDeployment({
 					safeHostname: details.safeHostname,
 					url: details.url,
 					token: details.token,
@@ -461,7 +461,7 @@ async function doActivate(
 		output.info(`Initializing deployment: ${deployment.url}`);
 		tracer
 			.traceDeploymentInit(() =>
-				deploymentManager.setDeploymentIfValid(deployment),
+				deploymentManager.verifyAndApplyDeployment(deployment),
 			)
 			.then((success) => {
 				if (success) {

@@ -511,11 +511,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 	}
 }
 
-type RequestConfigWithAuthMeta = RequestConfigWithMeta & {
-	authConfigVersion?: number;
-	headerCommandKeys?: string[];
-};
-
 function setupInterceptors(
 	client: CoderApi,
 	output: Logger,
@@ -529,9 +524,13 @@ function setupInterceptors(
 	);
 
 	client.getAxiosInstance().interceptors.request.use(async (config) => {
-		const configWithAuthMeta = config as RequestConfigWithAuthMeta;
+		// Snapshot the version up front so it matches the config we're about
+		// to read, not whatever it bumps to during the awaits below.
+		config.authConfigVersion = authConfigTracker.version;
 
-		for (const key of configWithAuthMeta.headerCommandKeys ?? []) {
+		// Drop headers from the prior header-command run so stale keys can't
+		// leak through if the command output changed between attempts.
+		for (const key of config.headerCommandKeys ?? []) {
 			config.headers.delete(key);
 		}
 
@@ -541,12 +540,22 @@ function setupInterceptors(
 			getHeaderCommand(vscode.workspace.getConfiguration()),
 			output,
 		);
+		const retrying =
+			config._retryAttempted === true ||
+			config._authConfigRetryAttempted === true;
 		for (const [key, value] of Object.entries(headers)) {
+			// On retry, don't let stale command output overwrite the session
+			// token retryRequest just wrote.
+			if (
+				retrying &&
+				key.toLowerCase() === coderSessionTokenHeader.toLowerCase()
+			) {
+				continue;
+			}
 			config.headers[key] = value;
 		}
-		// Skip the session-token header: retryRequest writes it on the same
-		// config and the retry cleanup would clobber the refreshed token.
-		configWithAuthMeta.headerCommandKeys = Object.keys(headers).filter(
+		// Don't track the session token: cleanup must never touch it.
+		config.headerCommandKeys = Object.keys(headers).filter(
 			(k) => k.toLowerCase() !== coderSessionTokenHeader.toLowerCase(),
 		);
 
@@ -556,9 +565,6 @@ function setupInterceptors(
 		config.httpsAgent = agent;
 		config.httpAgent = agent;
 		config.proxy = false;
-
-		// Stamp last so the version matches the config actually used.
-		configWithAuthMeta.authConfigVersion = authConfigTracker.version;
 
 		return config;
 	});
@@ -664,13 +670,10 @@ async function tryRefreshClientCertificate(
 	}
 
 	// _certRetried is per-request (Axios creates fresh config per request).
-	const config = err.config as RequestConfigWithMeta & {
-		_certRetried?: boolean;
-	};
-	if (config._certRetried) {
+	if (err.config._certRetried) {
 		throw certError;
 	}
-	config._certRetried = true;
+	err.config._certRetried = true;
 
 	output.info(
 		`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
@@ -682,12 +685,12 @@ async function tryRefreshClientCertificate(
 
 	// Create new agent with refreshed certificates.
 	const agent = await createHttpAgent(vscode.workspace.getConfiguration());
-	config.httpsAgent = agent;
-	config.httpAgent = agent;
+	err.config.httpsAgent = agent;
+	err.config.httpAgent = agent;
 
 	// Retry the request.
 	output.info("Retrying request with refreshed certificates...");
-	return axiosInstance.request(config);
+	return axiosInstance.request(err.config);
 }
 
 function wrapRequestTransform(
