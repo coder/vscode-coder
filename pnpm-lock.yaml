@@ -160,8 +160,8 @@ importers:
         specifier: 0.7.39
         version: 0.7.39
       '@types/vscode':
-        specifier: 1.106.0
-        version: 1.106.0
+        specifier: 1.105.0
+        version: 1.105.0
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
@@ -261,25 +261,6 @@ importers:
       vitest:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@22.19.17)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.0)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0))
-
-  packages/chat:
-    dependencies:
-      '@repo/shared':
-        specifier: workspace:*
-        version: link:../shared
-      '@repo/webview-shared':
-        specifier: workspace:*
-        version: link:../webview-shared
-    devDependencies:
-      '@types/vscode-webview':
-        specifier: 'catalog:'
-        version: 1.57.5
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vite:
-        specifier: 'catalog:'
-        version: 8.0.10(@types/node@24.10.12)(esbuild@0.28.0)
 
   packages/shared:
     devDependencies:
@@ -1422,8 +1403,8 @@ packages:
   '@types/vscode-webview@1.57.5':
     resolution: {integrity: sha512-iBAUYNYkz+uk1kdsq05fEcoh8gJmwT3lqqFPN7MGyjQ3HVloViMdo7ZJ8DFIP8WOK74PjOEilosqAyxV2iUFUw==}
 
-  '@types/vscode@1.106.0':
-    resolution: {integrity: sha512-88oUcEl9Wmlyt64pbvjLzyyFuFuPotdjwy+P+5ggg3DyTJSMWJD3ShX2ppya5mqrAYTKEhcaJBerdc5JTeb32w==}
+  '@types/vscode@1.105.0':
+    resolution: {integrity: sha512-Lotk3CTFlGZN8ray4VxJE7axIyLZZETQJVWi/lYoUVQuqfRxlQhVOfoejsD2V3dVXPSbS15ov5ZyowMAzgUqcw==}
 
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
@@ -5538,7 +5519,7 @@ snapshots:
 
   '@types/vscode-webview@1.57.5': {}
 
-  '@types/vscode@1.106.0': {}
+  '@types/vscode@1.105.0': {}
 
   '@types/ws@8.18.1':
     dependencies:

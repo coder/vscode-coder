@@ -20,9 +20,6 @@ The Coder Remote extension connects your editor to
   metadata and app statuses at a glance.
 - **Coder Tasks** - create, monitor, and manage AI agent tasks directly from
   the sidebar with real-time log streaming.
-- **Coder Chat** - delegate development tasks to AI coding agents from the
-  sidebar. Requires [Coder Agents](https://coder.com/docs/ai-coder/agents) to
-  be enabled on your deployment.
 - **Multi-deployment support** - connect to multiple Coder deployments and
   switch between them without losing credentials.
 - **Dev container support** - open dev containers running inside workspaces.

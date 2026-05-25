@@ -97,13 +97,10 @@ function createTestContext() {
 		.mocked(vscode.window.showErrorMessage)
 		.mockResolvedValue(undefined);
 
-	const chatPanelProvider = { openChat: vi.fn() };
-
 	registerUriHandler({
 		serviceContainer: container,
 		deploymentManager,
 		commands,
-		chatPanelProvider,
 	});
 
 	return {
@@ -114,7 +111,6 @@ function createTestContext() {
 		oauthCallback,
 		logger,
 		showErrorMessage,
-		chatPanelProvider,
 		handleUri: registeredHandler!,
 	};
 }
@@ -167,23 +163,38 @@ describe("uriHandler", () => {
 			});
 		});
 
-		it("opens chat when chatId is present and open succeeds", async () => {
-			const { handleUri, commands, chatPanelProvider } = createTestContext();
-			commands.open.mockResolvedValue(true);
-			const query = `owner=o&workspace=w&chatId=chat-123&url=${encodeURIComponent(TEST_URL)}`;
+		it("ignores unknown query params from older server (chatId)", async () => {
+			const { handleUri, commands, deploymentManager, showErrorMessage } =
+				createTestContext();
+			const query = `owner=o&workspace=w&chatId=stale-123&url=${encodeURIComponent(TEST_URL)}`;
 			await handleUri(createMockUri("/open", query));
-			expect(chatPanelProvider.openChat).toHaveBeenCalledWith("chat-123");
+
+			expect(deploymentManager.setDeployment).toHaveBeenCalled();
+			expect(commands.open).toHaveBeenCalledWith({
+				workspaceOwner: "o",
+				workspaceName: "w",
+				agentName: undefined,
+				folderPath: undefined,
+				openRecent: false,
+				useDefaultDirectory: false,
+			});
+			expect(showErrorMessage).not.toHaveBeenCalled();
 		});
 
-		it.each([
-			["no chatId", "owner=o&workspace=w", true],
-			["open returns false", "owner=o&workspace=w&chatId=chat-123", false],
-		])("does not open chat when %s", async (_label, params, openResult) => {
-			const { handleUri, commands, chatPanelProvider } = createTestContext();
-			commands.open.mockResolvedValue(openResult);
-			const query = `${params}&url=${encodeURIComponent(TEST_URL)}`;
+		it("ignores unknown query params from newer server", async () => {
+			const { handleUri, commands, showErrorMessage } = createTestContext();
+			const query = `owner=o&workspace=w&someFutureFlag=1&anotherParam=v&url=${encodeURIComponent(TEST_URL)}`;
 			await handleUri(createMockUri("/open", query));
-			expect(chatPanelProvider.openChat).not.toHaveBeenCalled();
+
+			expect(commands.open).toHaveBeenCalledWith({
+				workspaceOwner: "o",
+				workspaceName: "w",
+				agentName: undefined,
+				folderPath: undefined,
+				openRecent: false,
+				useDefaultDirectory: false,
+			});
+			expect(showErrorMessage).not.toHaveBeenCalled();
 		});
 	});
 
@@ -207,6 +218,23 @@ describe("uriHandler", () => {
 				"/l",
 				"/cfg",
 			);
+		});
+
+		it("ignores unknown query params", async () => {
+			const { handleUri, commands, showErrorMessage } = createTestContext();
+			const query = `owner=o&workspace=w&agent=a&devContainerName=c&devContainerFolder=/f&legacyExtra=1&someFutureFlag=on&url=${encodeURIComponent(TEST_URL)}`;
+			await handleUri(createMockUri("/openDevContainer", query));
+
+			expect(commands.openDevContainer).toHaveBeenCalledWith(
+				"o",
+				"w",
+				"a",
+				"c",
+				"/f",
+				"",
+				"",
+			);
+			expect(showErrorMessage).not.toHaveBeenCalled();
 		});
 	});
 

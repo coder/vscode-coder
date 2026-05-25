@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Minimum supported version: VS Code 1.106 (Oct 2025) -> Electron 37 -> Node 22
+        # Minimum supported version: VS Code 1.105 (Sept 2025) -> Electron 37 -> Node 22
         # See https://github.com/ewanharris/vscode-versions for version mapping.
         # Older Electron stays Linux-only; "latest" smoke-tests Windows + macOS too.
         include:
@@ -60,7 +60,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, name: Linux, vscode-version: "1.106.0" }
+          - { os: ubuntu-24.04, name: Linux, vscode-version: "1.105.0" }
           - { os: ubuntu-24.04, name: Linux, vscode-version: "stable" }
           - { os: windows-2025, name: Windows, vscode-version: "stable" }
           - { os: macos-15, name: macOS, vscode-version: "stable" }
