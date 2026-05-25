@@ -16,7 +16,7 @@ Defined in `packages/shared/src/ipc/protocol.ts`:
 - `defineRequest<P, R>(method)` - webview to extension, awaits a response
 
 Group them in one `Api` const at `packages/shared/src/<feature>/api.ts`
-(see `chat/api.ts`, `speedtest/api.ts`, `tasks/api.ts`).
+(see `speedtest/api.ts`, `tasks/api.ts`).
 
 ## Where each handler lives
 
@@ -37,16 +37,15 @@ Compile-time exhaustiveness fails the build in three places:
 Use these as the working blueprint when writing a new webview. The
 helpers' JSDoc covers their contracts.
 
-| Concern                                 | Look at                                                     |
-| --------------------------------------- | ----------------------------------------------------------- |
-| Vanilla webview package                 | `packages/speedtest/` (or `packages/chat/`)                 |
-| React webview package                   | `packages/tasks/`                                           |
-| Extension panel (`WebviewPanel`)        | `src/webviews/speedtest/speedtestPanelFactory.ts`           |
-| Extension panel (`WebviewViewProvider`) | `src/webviews/tasks/tasksPanelProvider.ts`                  |
-| Iframe-embedding panel                  | `src/webviews/chat/chatPanelProvider.ts` + `packages/chat/` |
-| Vite config helper                      | `packages/webview-shared/createWebviewConfig.ts`            |
-| Dispatch / lifecycle helpers            | `src/webviews/dispatch.ts`                                  |
-| HTML scaffolding                        | `src/webviews/html.ts`                                      |
+| Concern                                 | Look at                                           |
+| --------------------------------------- | ------------------------------------------------- |
+| Vanilla webview package                 | `packages/speedtest/`                             |
+| React webview package                   | `packages/tasks/`                                 |
+| Extension panel (`WebviewPanel`)        | `src/webviews/speedtest/speedtestPanelFactory.ts` |
+| Extension panel (`WebviewViewProvider`) | `src/webviews/tasks/tasksPanelProvider.ts`        |
+| Vite config helper                      | `packages/webview-shared/createWebviewConfig.ts`  |
+| Dispatch / lifecycle helpers            | `src/webviews/dispatch.ts`                        |
+| HTML scaffolding                        | `src/webviews/html.ts`                            |
 
 ## Re-sending on lifecycle events
 

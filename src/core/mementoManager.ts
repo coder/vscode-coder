@@ -72,25 +72,6 @@ export class MementoManager {
 		return value ?? "none";
 	}
 
-	/** Store a chat ID to open after a remote-authority reload. */
-	public async setPendingChatId(chatId: string): Promise<void> {
-		await this.setStamped("pendingChatId", chatId);
-	}
-
-	/** Read and clear the pending chat ID (undefined if none). */
-	public async getAndClearPendingChatId(): Promise<string | undefined> {
-		const chatId = this.getStamped<string>("pendingChatId");
-		if (chatId !== undefined) {
-			await this.memento.update("pendingChatId", undefined);
-		}
-		return chatId;
-	}
-
-	/** Clear the pending chat ID without reading it. */
-	public async clearPendingChatId(): Promise<void> {
-		await this.memento.update("pendingChatId", undefined);
-	}
-
 	private async setStamped<T>(key: string, value: T): Promise<void> {
 		await this.memento.update(key, { value, setAt: Date.now() });
 	}

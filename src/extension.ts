@@ -23,7 +23,6 @@ import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscodeProposed";
-import { ChatPanelProvider } from "./webviews/chat/chatPanelProvider";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
 import {
 	WorkspaceProvider,
@@ -248,30 +247,11 @@ async function doActivate(
 		),
 	);
 
-	// Register Chat embed panel with dependencies
-	const chatPanelProvider = new ChatPanelProvider(
-		ctx.extensionUri,
-		client,
-		output,
-	);
-	commandManager.register("coder.chat.refresh", () =>
-		chatPanelProvider.refresh(),
-	);
-	ctx.subscriptions.push(
-		chatPanelProvider,
-		vscode.window.registerWebviewViewProvider(
-			ChatPanelProvider.viewType,
-			chatPanelProvider,
-			{ webviewOptions: { retainContextWhenHidden: true } },
-		),
-	);
-
 	ctx.subscriptions.push(
 		registerUriHandler({
 			serviceContainer,
 			deploymentManager,
 			commands,
-			chatPanelProvider,
 		}),
 	);
 
@@ -402,16 +382,6 @@ async function doActivate(
 					token: details.token,
 				});
 				tracer.setAuthState(deploymentSet ? "valid_token" : "auth_failed");
-
-				// If a deep link stored a chat agent ID before the
-				// remote-authority reload, open it now that the
-				// deployment is configured.
-				const pendingChatId = await mementoManager.getAndClearPendingChatId();
-				if (pendingChatId) {
-					// Enable eagerly so the view is visible before focus.
-					contextManager.set("coder.agentsEnabled", true);
-					chatPanelProvider.openChat(pendingChatId);
-				}
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {

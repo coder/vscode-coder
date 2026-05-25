@@ -42,6 +42,13 @@
   around `cmd.exe` on Windows) and a recurring command-injection risk
   when deployment-supplied values like workspace names or template
   parameters contained spaces, quotes, or shell metacharacters.
+- Minimum supported VS Code lowered to 1.105 for Cursor compatibility.
+
+### Removed
+
+- The "Coder Chat (Experimental)" secondary sidebar and its `agents`
+  experiment gate. Deeplinks that still include `chatId` continue to open
+  the workspace; the parameter is now silently ignored.
 
 ### Fixed
 
