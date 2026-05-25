@@ -75,6 +75,7 @@ function createMockAxiosInstance(): AxiosInstance & {
 function createMockCoderApi(axiosInstance: AxiosInstance): CoderApi {
 	let sessionToken: string | undefined;
 	let host: string | undefined = TEST_URL;
+	let authConfigVersion = 0;
 	return {
 		getAxiosInstance: () => axiosInstance,
 		setSessionToken: vi.fn((token: string) => {
@@ -84,6 +85,11 @@ function createMockCoderApi(axiosInstance: AxiosInstance): CoderApi {
 		getHost: () => host,
 		setHost: (newHost: string | undefined) => {
 			host = newHost;
+		},
+		hasAuthConfigChangedSince: (version: number | undefined) =>
+			version !== undefined && version !== authConfigVersion,
+		setAuthConfigVersion: (version: number) => {
+			authConfigVersion = version;
 		},
 	} as unknown as CoderApi;
 }
@@ -388,6 +394,105 @@ describe("AuthInterceptor", () => {
 	});
 
 	describe("race condition safety", () => {
+		it("silently retries when auth settings changed since the request started", async () => {
+			const { mockCoderApi, axiosInstance, createInterceptor } =
+				createTestContext();
+			const retryResponse = { data: "success", status: 200 };
+			vi.spyOn(axiosInstance, "request").mockResolvedValue(retryResponse);
+			const onAuthRequired = vi.fn().mockResolvedValue(false);
+			createInterceptor(onAuthRequired);
+
+			const error = createAxiosError(401, "Unauthorized", {
+				authConfigVersion: 0,
+			});
+			(
+				mockCoderApi as unknown as {
+					setAuthConfigVersion: (version: number) => void;
+				}
+			).setAuthConfigVersion(1);
+
+			const result = await axiosInstance.triggerResponseError(error);
+
+			expect(result).toBe(retryResponse);
+			expect(axiosInstance.request).toHaveBeenCalledWith(
+				expect.objectContaining({
+					_authConfigRetryAttempted: true,
+				}),
+			);
+			expect(onAuthRequired).not.toHaveBeenCalled();
+		});
+
+		it("escalates to interactive after the silent auth-config retry already ran", async () => {
+			const { mockCoderApi, axiosInstance, createInterceptor } =
+				createTestContext();
+			vi.spyOn(axiosInstance, "request");
+			const onAuthRequired = vi.fn().mockResolvedValue(false);
+			createInterceptor(onAuthRequired);
+			(
+				mockCoderApi as unknown as {
+					setAuthConfigVersion: (version: number) => void;
+				}
+			).setAuthConfigVersion(1);
+
+			const error = createAxiosError(401, "Unauthorized", {
+				authConfigVersion: 0,
+				_authConfigRetryAttempted: true,
+			});
+
+			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
+			expect(axiosInstance.request).not.toHaveBeenCalled();
+			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
+		});
+
+		it("still silent-retries when an OAuth-retry 401s under newly-changed settings", async () => {
+			const { mockCoderApi, axiosInstance, createInterceptor } =
+				createTestContext();
+			const retryResponse = { data: "success", status: 200 };
+			vi.spyOn(axiosInstance, "request").mockResolvedValue(retryResponse);
+			const onAuthRequired = vi.fn().mockResolvedValue(false);
+			createInterceptor(onAuthRequired);
+			(
+				mockCoderApi as unknown as {
+					setAuthConfigVersion: (version: number) => void;
+				}
+			).setAuthConfigVersion(1);
+
+			const error = createAxiosError(401, "Unauthorized", {
+				authConfigVersion: 0,
+				_retryAttempted: true,
+			});
+
+			const result = await axiosInstance.triggerResponseError(error);
+			expect(result).toBe(retryResponse);
+			expect(axiosInstance.request).toHaveBeenCalledWith(
+				expect.objectContaining({ _authConfigRetryAttempted: true }),
+			);
+			expect(onAuthRequired).not.toHaveBeenCalled();
+		});
+
+		it("gives up once both silent and OAuth/interactive retries have run", async () => {
+			const { mockCoderApi, axiosInstance, createInterceptor } =
+				createTestContext();
+			vi.spyOn(axiosInstance, "request");
+			const onAuthRequired = vi.fn().mockResolvedValue(false);
+			createInterceptor(onAuthRequired);
+			(
+				mockCoderApi as unknown as {
+					setAuthConfigVersion: (version: number) => void;
+				}
+			).setAuthConfigVersion(1);
+
+			const error = createAxiosError(401, "Unauthorized", {
+				authConfigVersion: 0,
+				_retryAttempted: true,
+				_authConfigRetryAttempted: true,
+			});
+
+			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
+			expect(axiosInstance.request).not.toHaveBeenCalled();
+			expect(onAuthRequired).not.toHaveBeenCalled();
+		});
+
 		it("skips OAuth refresh if hostname changed", async () => {
 			const {
 				mockOAuthManager,

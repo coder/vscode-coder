@@ -86,6 +86,7 @@ vi.mock("@/api/coderApi", async (importOriginal) => {
 				}),
 				setSessionToken: vi.fn(),
 				getAuthenticatedUser: mockGetAuthenticatedUser,
+				dispose: vi.fn(),
 			})),
 		},
 	};
