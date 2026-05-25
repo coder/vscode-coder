@@ -24,6 +24,7 @@ import {
 } from "@/api/certificateRefresh";
 import { CoderApi } from "@/api/coderApi";
 import { createHttpAgent } from "@/api/utils";
+import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
 import { ClientCertificateError } from "@/error/clientCertificateError";
 import { ServerCertificateError } from "@/error/serverCertificateError";
 import { getHeaders } from "@/headers";
@@ -202,6 +203,26 @@ describe("CoderApi", () => {
 			expect(
 				responseWithHeaderCommand.config.headers["Coder-Session-Token"],
 			).toBe("from-header-command");
+		});
+
+		it("preserves Coder-Session-Token on retry when prior command emitted it", async () => {
+			const api = createApi(CODER_URL, "default-token");
+
+			vi.mocked(getHeaders).mockResolvedValueOnce({
+				"Coder-Session-Token": "from-cmd",
+			});
+			const first = await api.getAxiosInstance().get("/api/v2/users/me");
+
+			// Retry: command no longer emits the token; retryRequest writes a
+			// fresh OAuth token onto the same config and re-issues.
+			vi.mocked(getHeaders).mockResolvedValueOnce({});
+			(first.config.headers as AxiosHeaders).set(
+				"Coder-Session-Token",
+				"fresh",
+			);
+			const retry = await api.getAxiosInstance().request(first.config);
+
+			expect(retry.config.headers["Coder-Session-Token"]).toBe("fresh");
 		});
 
 		it("logs requests and responses", async () => {
@@ -880,7 +901,9 @@ describe("CoderApi", () => {
 			await tick();
 
 			mockConfig.set("coder.insecure", true);
-			await tick();
+			await new Promise((resolve) =>
+				setTimeout(resolve, CONFIG_CHANGE_DEBOUNCE_MS + 50),
+			);
 
 			// Only DISCONNECTED sockets get reconnected by config changes
 			expect(sockets).toHaveLength(2);

@@ -7,7 +7,6 @@ import type * as vscode from "vscode";
 
 import type { SecretsManager } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
-import type { RequestConfigWithMeta } from "../logging/types";
 import type { OAuthSessionManager } from "../oauth/sessionManager";
 
 import type { CoderApi } from "./coderApi";
@@ -51,13 +50,6 @@ export class AuthInterceptor implements vscode.Disposable {
 			throw error;
 		}
 
-		if (error.config) {
-			const config = error.config as { _retryAttempted?: boolean };
-			if (config._retryAttempted) {
-				throw error;
-			}
-		}
-
 		if (error.response?.status !== 401) {
 			throw error;
 		}
@@ -75,6 +67,26 @@ export class AuthInterceptor implements vscode.Disposable {
 		error: AxiosError,
 		hostname: string,
 	): Promise<unknown> {
+		const config = error.config;
+
+		// Checked before _retryAttempted so an OAuth-retry 401 caused by a
+		// fresh settings change still gets one silent attempt.
+		if (
+			config &&
+			!config._authConfigRetryAttempted &&
+			this.client.hasAuthConfigChangedSince(config.authConfigVersion)
+		) {
+			config._authConfigRetryAttempted = true;
+			this.logger.debug(
+				"Authentication settings changed during request, retrying once",
+			);
+			return this.client.getAxiosInstance().request(config);
+		}
+
+		if (config?._retryAttempted) {
+			throw error;
+		}
+
 		this.logger.debug("Received 401 response, attempting recovery");
 
 		if (await this.oauthSessionManager.isLoggedInWithOAuth(hostname)) {
@@ -142,12 +154,9 @@ export class AuthInterceptor implements vscode.Disposable {
 			throw error;
 		}
 
-		const config = error.config as RequestConfigWithMeta & {
-			_retryAttempted?: boolean;
-		};
-		config._retryAttempted = true;
-		config.headers[coderSessionTokenHeader] = token;
-		return this.client.getAxiosInstance().request(config);
+		error.config._retryAttempted = true;
+		error.config.headers[coderSessionTokenHeader] = token;
+		return this.client.getAxiosInstance().request(error.config);
 	}
 
 	public dispose(): void {

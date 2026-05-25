@@ -57,6 +57,25 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
 		cancellationToken: vscode.CancellationToken,
 	): Promise<{ tokenResponse: OAuth2TokenResponse; user: User }> {
+		const client = CoderApi.create(deployment.url, undefined, this.logger);
+		try {
+			return await this.runLoginFlow(
+				client,
+				deployment,
+				progress,
+				cancellationToken,
+			);
+		} finally {
+			client.dispose();
+		}
+	}
+
+	private async runLoginFlow(
+		client: CoderApi,
+		deployment: Deployment,
+		progress: vscode.Progress<{ message?: string; increment?: number }>,
+		cancellationToken: vscode.CancellationToken,
+	): Promise<{ tokenResponse: OAuth2TokenResponse; user: User }> {
 		const reportProgress = (message?: string, increment?: number): void => {
 			if (cancellationToken.isCancellationRequested) {
 				throw new Error("OAuth login cancelled by user");
@@ -64,7 +83,6 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			progress.report({ message, increment });
 		};
 
-		const client = CoderApi.create(deployment.url, undefined, this.logger);
 		const axiosInstance = client.getAxiosInstance();
 
 		reportProgress("fetching metadata...", 10);
@@ -94,7 +112,6 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			registration,
 		);
 
-		// Set token on client to fetch user
 		client.setSessionToken(tokenResponse.access_token);
 
 		reportProgress("fetching user...", 20);
@@ -102,10 +119,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 		this.logger.debug("OAuth login flow completed successfully");
 
-		return {
-			tokenResponse,
-			user,
-		};
+		return { tokenResponse, user };
 	}
 
 	/**

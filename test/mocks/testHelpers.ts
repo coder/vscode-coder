@@ -632,6 +632,7 @@ export class MockCoderApi implements Pick<
 	| "setCredentials"
 	| "getHost"
 	| "getSessionToken"
+	| "hasAuthConfigChangedSince"
 	| "getAuthenticatedUser"
 	| "dispose"
 	| "getExperiments"
@@ -658,6 +659,9 @@ export class MockCoderApi implements Pick<
 
 	readonly getHost = vi.fn(() => this._host);
 	readonly getSessionToken = vi.fn(() => this._token);
+	readonly hasAuthConfigChangedSince = vi.fn(
+		(version: number | undefined) => version !== undefined && version !== 0,
+	);
 
 	readonly getAuthenticatedUser = vi.fn((): Promise<User> => {
 		if (this.authenticatedUser instanceof Error) {

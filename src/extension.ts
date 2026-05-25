@@ -362,7 +362,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 			if (details) {
 				ctx.subscriptions.push(details);
 
-				await deploymentManager.setDeploymentIfValid({
+				await deploymentManager.verifyAndApplyDeployment({
 					safeHostname: details.safeHostname,
 					url: details.url,
 					token: details.token,
@@ -413,7 +413,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	} else if (deployment) {
 		output.info(`Initializing deployment: ${deployment.url}`);
 		deploymentManager
-			.setDeploymentIfValid(deployment)
+			.verifyAndApplyDeployment(deployment)
 			// Failure is logged internally
 			.then((success) => {
 				if (success) {

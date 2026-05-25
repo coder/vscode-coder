@@ -1,10 +1,15 @@
 import { CoderApi } from "../api/coderApi";
+import {
+	CONFIG_CHANGE_DEBOUNCE_MS,
+	watchConfigurationChanges,
+} from "../configWatcher";
 import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
 import { type MementoManager } from "../core/mementoManager";
 import { type SecretsManager } from "../core/secretsManager";
 import { type Logger } from "../logging/logger";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
+import { getAuthConfigWatchSettings } from "../settings/authConfig";
 import { type WorkspaceProvider } from "../workspace/workspacesProvider";
 
 import {
@@ -35,7 +40,11 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly logger: Logger;
 
 	#deployment: Deployment | null = null;
+	#disposed = false;
 	#authListenerDisposable: vscode.Disposable | undefined;
+	#authConfigDisposable: vscode.Disposable | undefined;
+	#recoveryRunning = false;
+	#recoveryPending = false;
 	#crossWindowSyncDisposable: vscode.Disposable | undefined;
 
 	private constructor(
@@ -62,6 +71,7 @@ export class DeploymentManager implements vscode.Disposable {
 			oauthSessionManager,
 			workspaceProviders,
 		);
+		manager.subscribeToAuthConfigChanges();
 		manager.subscribeToCrossWindowChanges();
 		return manager;
 	}
@@ -81,13 +91,15 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Attempt to change to a deployment after validating authentication.
-	 * Only changes deployment if authentication succeeds.
-	 * Returns true if deployment was changed, false otherwise.
+	 * Verify credentials and apply the deployment on success. Used for
+	 * fresh logins and for un-suspending a session after auth settings or
+	 * a token become valid again. Bails if state moved during the verify
+	 * (logout, another login, dispose), so callers don't need a race guard.
 	 */
-	public async setDeploymentIfValid(
+	public async verifyAndApplyDeployment(
 		deployment: Deployment & { token?: string },
 	): Promise<boolean> {
+		const deploymentBefore = this.#deployment;
 		const token =
 			deployment.token ??
 			(await this.secretsManager.getSessionAuth(deployment.safeHostname))
@@ -96,13 +108,10 @@ export class DeploymentManager implements vscode.Disposable {
 
 		try {
 			const user = await tempClient.getAuthenticatedUser();
-
-			// Authentication succeeded - now change the deployment
-			await this.setDeployment({
-				...deployment,
-				token,
-				user,
-			});
+			if (this.#hasStateChangedSince(deploymentBefore)) {
+				return false;
+			}
+			await this.setDeployment({ ...deployment, token, user });
 			return true;
 		} catch (e) {
 			this.logger.warn("Failed to authenticate with deployment:", e);
@@ -110,6 +119,15 @@ export class DeploymentManager implements vscode.Disposable {
 		} finally {
 			tempClient.dispose();
 		}
+	}
+
+	/** True if disposal, login, or a deployment switch raced our await. */
+	#hasStateChangedSince(deploymentBefore: Deployment | null): boolean {
+		return (
+			this.#disposed ||
+			this.isAuthenticated() ||
+			this.#deployment !== deploymentBefore
+		);
 	}
 
 	/**
@@ -124,6 +142,7 @@ export class DeploymentManager implements vscode.Disposable {
 			user: deployment.user.username,
 		});
 		this.#deployment = { ...deployment };
+		const ourRef = this.#deployment;
 
 		// Updates client credentials
 		if (deployment.token === undefined) {
@@ -142,6 +161,10 @@ export class DeploymentManager implements vscode.Disposable {
 		const deploymentWithoutAuth: Deployment =
 			DeploymentSchema.parse(deployment);
 		await this.oauthSessionManager.setDeployment(deploymentWithoutAuth);
+		// Bail if a concurrent write took over during the await.
+		if (this.#deployment !== ourRef) {
+			return;
+		}
 		await this.persistDeployment(deploymentWithoutAuth);
 	}
 
@@ -179,7 +202,9 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	public dispose(): void {
+		this.#disposed = true;
 		this.#authListenerDisposable?.dispose();
+		this.#authConfigDisposable?.dispose();
 		this.#crossWindowSyncDisposable?.dispose();
 	}
 
@@ -212,7 +237,7 @@ export class DeploymentManager implements vscode.Disposable {
 						this.logger.debug(
 							"Token updated after session suspended, recovering",
 						);
-						await this.setDeploymentIfValid({
+						await this.verifyAndApplyDeployment({
 							url: auth.url,
 							safeHostname,
 							token: auth.token,
@@ -225,18 +250,59 @@ export class DeploymentManager implements vscode.Disposable {
 		);
 	}
 
+	private subscribeToAuthConfigChanges(): void {
+		this.#authConfigDisposable = watchConfigurationChanges(
+			getAuthConfigWatchSettings(),
+			() => this.onAuthConfigChange(),
+			{ debounceMs: CONFIG_CHANGE_DEBOUNCE_MS },
+		);
+	}
+
+	private onAuthConfigChange(): void {
+		// One recovery at a time; mark pending so a settings change during the
+		// current pass triggers a fresh attempt once it settles.
+		if (this.#recoveryRunning) {
+			this.#recoveryPending = true;
+			return;
+		}
+		this.#recoveryRunning = true;
+		void this.runRecovery();
+	}
+
+	private async runRecovery(): Promise<void> {
+		try {
+			do {
+				this.#recoveryPending = false;
+				const snapshot = this.#deployment;
+				if (this.#disposed || !snapshot || this.isAuthenticated()) {
+					return;
+				}
+				this.logger.debug(
+					"Authentication settings changed after session suspended, recovering",
+				);
+				await this.verifyAndApplyDeployment(snapshot);
+			} while (this.#recoveryPending);
+		} catch (err) {
+			this.logger.warn(
+				"Failed to recover session after authentication settings changed",
+				err,
+			);
+		} finally {
+			this.#recoveryRunning = false;
+		}
+	}
+
 	private subscribeToCrossWindowChanges(): void {
 		this.#crossWindowSyncDisposable =
 			this.secretsManager.onDidChangeCurrentDeployment(
 				async ({ deployment }) => {
 					if (this.isAuthenticated()) {
-						// Ignore if we are already authenticated
 						return;
 					}
 
 					if (deployment) {
 						this.logger.info("Deployment changed from another window");
-						await this.setDeploymentIfValid(deployment);
+						await this.verifyAndApplyDeployment(deployment);
 					}
 				},
 			);

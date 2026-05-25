@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CoderApi } from "@/api/coderApi";
+import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
 import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { DeploymentManager } from "@/deployment/deploymentManager";
@@ -11,6 +12,7 @@ import {
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockCoderApi,
+	MockConfigurationProvider,
 	MockContextManager,
 	MockOAuthSessionManager,
 } from "../../mocks/testHelpers";
@@ -42,15 +44,24 @@ class MockWorkspaceProvider {
 
 const TEST_URL = "https://coder.example.com";
 const TEST_HOSTNAME = "coder.example.com";
+const managers: DeploymentManager[] = [];
+
+afterEach(() => {
+	for (const manager of managers) {
+		manager.dispose();
+	}
+	managers.length = 0;
+});
 
 /**
  * Creates a fresh test context with all dependencies.
  */
 function createTestContext() {
 	vi.resetAllMocks();
+	new MockConfigurationProvider();
 
 	const mockClient = new MockCoderApi();
-	// For setDeploymentIfValid, we use a separate mock for validation
+	// For verifyAndApplyDeployment, we use a separate mock for validation
 	const validationMockClient = new MockCoderApi();
 	const mockWorkspaceProvider = new MockWorkspaceProvider();
 	const mockOAuthSessionManager = new MockOAuthSessionManager();
@@ -79,6 +90,7 @@ function createTestContext() {
 		mockOAuthSessionManager as unknown as OAuthSessionManager,
 		[mockWorkspaceProvider as unknown as WorkspaceProvider],
 	);
+	managers.push(manager);
 
 	return {
 		mockClient,
@@ -175,13 +187,13 @@ describe("DeploymentManager", () => {
 		});
 	});
 
-	describe("setDeploymentIfValid", () => {
+	describe("verifyAndApplyDeployment", () => {
 		it("returns true and sets deployment on auth success", async () => {
 			const { mockClient, validationMockClient, manager } = createTestContext();
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
-			const result = await manager.setDeploymentIfValid({
+			const result = await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -199,7 +211,7 @@ describe("DeploymentManager", () => {
 				new Error("Auth failed"),
 			);
 
-			const result = await manager.setDeploymentIfValid({
+			const result = await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -215,7 +227,7 @@ describe("DeploymentManager", () => {
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
-			const result = await manager.setDeploymentIfValid({
+			const result = await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "",
@@ -239,7 +251,7 @@ describe("DeploymentManager", () => {
 				token: "stored-token",
 			});
 
-			const result = await manager.setDeploymentIfValid({
+			const result = await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 			});
@@ -253,7 +265,7 @@ describe("DeploymentManager", () => {
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
-			await manager.setDeploymentIfValid({
+			await manager.verifyAndApplyDeployment({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -423,6 +435,75 @@ describe("DeploymentManager", () => {
 	});
 
 	describe("auth listener recovery", () => {
+		it("recovers from suspended state when auth settings change", async () => {
+			vi.useFakeTimers();
+			try {
+				const { mockClient, validationMockClient, manager } =
+					createTestContext();
+				const config = new MockConfigurationProvider();
+				const user = createMockUser();
+				validationMockClient.setAuthenticatedUserResponse(user);
+
+				await manager.setDeployment({
+					url: TEST_URL,
+					safeHostname: TEST_HOSTNAME,
+					token: "",
+					user,
+				});
+				manager.suspendSession();
+				expect(manager.isAuthenticated()).toBe(false);
+
+				config.set("coder.tlsCertFile", "/path/to/cert.pem");
+				config.set("coder.tlsKeyFile", "/path/to/key.pem");
+				await vi.advanceTimersByTimeAsync(CONFIG_CHANGE_DEBOUNCE_MS);
+
+				expect(mockClient.host).toBe(TEST_URL);
+				expect(mockClient.token).toBe("");
+				expect(manager.isAuthenticated()).toBe(true);
+				expect(validationMockClient.getAuthenticatedUser).toHaveBeenCalledTimes(
+					1,
+				);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("does not resurrect a concurrent clearDeployment during recovery", async () => {
+			vi.useFakeTimers();
+			try {
+				const { validationMockClient, manager } = createTestContext();
+				const config = new MockConfigurationProvider();
+				const user = createMockUser();
+
+				// Pause validation so a clearDeployment can race in.
+				let resolveAuth!: (u: typeof user) => void;
+				validationMockClient.getAuthenticatedUser.mockReturnValue(
+					new Promise((resolve) => {
+						resolveAuth = resolve;
+					}),
+				);
+
+				await manager.setDeployment({
+					url: TEST_URL,
+					safeHostname: TEST_HOSTNAME,
+					token: "",
+					user,
+				});
+				manager.suspendSession();
+				config.set("coder.tlsCertFile", "/path/to/cert.pem");
+				await vi.advanceTimersByTimeAsync(CONFIG_CHANGE_DEBOUNCE_MS);
+
+				await manager.clearDeployment();
+				resolveAuth(user);
+				await vi.runAllTimersAsync();
+
+				expect(manager.getCurrentDeployment()).toBeNull();
+				expect(manager.isAuthenticated()).toBe(false);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
 		it("recovers from suspended state when tokens update", async () => {
 			const { mockClient, validationMockClient, secretsManager, manager } =
 				createTestContext();
