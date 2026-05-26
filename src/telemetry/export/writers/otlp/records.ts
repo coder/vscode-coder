@@ -14,17 +14,58 @@ import type {
 	OtlpStatus,
 } from "./types";
 
-/** Per-export state for cumulative HTTP counters. */
-export interface ExportState {
-	cumulativeStart: string | undefined;
-	readonly cumulativeTotals: Map<string, bigint>;
+export type Signal = "logs" | "traces" | "metrics";
+
+export interface EnvelopeSpec {
+	readonly file: string;
+	readonly resourceKey: string;
+	readonly scopeKey: string;
+	readonly recordsKey: string;
 }
 
-export function newExportState(): ExportState {
-	return { cumulativeStart: undefined, cumulativeTotals: new Map() };
+export const ENVELOPES = {
+	logs: {
+		file: "logs.json",
+		resourceKey: "resourceLogs",
+		scopeKey: "scopeLogs",
+		recordsKey: "logRecords",
+	},
+	traces: {
+		file: "traces.json",
+		resourceKey: "resourceSpans",
+		scopeKey: "scopeSpans",
+		recordsKey: "spans",
+	},
+	metrics: {
+		file: "metrics.json",
+		resourceKey: "resourceMetrics",
+		scopeKey: "scopeMetrics",
+		recordsKey: "metrics",
+	},
+} as const satisfies Record<Signal, EnvelopeSpec>;
+
+const OTLP_SCHEMA_URL = "https://opentelemetry.io/schemas/1.24.0";
+export const ENVELOPE_SUFFIX = "]}]}]}\n";
+
+const AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
+
+export function envelopePrefix(
+	envelope: EnvelopeSpec,
+	resource: string,
+	scope: string,
+): string {
+	return `{"${envelope.resourceKey}":[{"resource":${resource},"schemaUrl":"${OTLP_SCHEMA_URL}","${envelope.scopeKey}":[{"scope":${scope},"schemaUrl":"${OTLP_SCHEMA_URL}","${envelope.recordsKey}":[`;
 }
 
-/** OTLP `Resource`, one per export. */
+export interface CumulativeState {
+	anchor: bigint | undefined;
+	readonly totals: Map<string, bigint>;
+}
+
+export function newCumulativeState(): CumulativeState {
+	return { anchor: undefined, totals: new Map() };
+}
+
 export function otlpResource(context: TelemetryContext) {
 	return {
 		attributes: keyValues({
@@ -42,13 +83,12 @@ export function otlpResource(context: TelemetryContext) {
 	};
 }
 
-/** OTLP `InstrumentationScope`, shared by every record. */
 export function otlpScope(version: string) {
 	return { name: "coder.vscode-coder.telemetry.export", version };
 }
 
 export function logRecord(event: TelemetryEvent): OtlpLogRecord {
-	const timeUnixNano = toUnixNano(event.timestamp);
+	const timeUnixNano = String(toUnixNano(event.timestamp));
 	const errored = event.error !== undefined;
 	return {
 		timeUnixNano,
@@ -65,12 +105,10 @@ export function logRecord(event: TelemetryEvent): OtlpLogRecord {
 }
 
 export function spanRecord(event: TelemetryEvent): OtlpSpan {
-	const endTimeUnixNano = toUnixNano(event.timestamp);
-	const startTimeUnixNano = String(
-		BigInt(endTimeUnixNano) - nanosFromMs(event.measurements.durationMs ?? 0),
-	);
-	// durationMs is encoded as start/end times; don't repeat it as an attribute.
-	const { durationMs: _durationMs, ...measurements } = event.measurements;
+	const endNano = toUnixNano(event.timestamp);
+	const startNano = endNano - nanosFromMs(event.measurements.durationMs ?? 0);
+	const endTimeUnixNano = String(endNano);
+	const { durationMs: _, ...measurements } = event.measurements;
 	return {
 		traceId: event.traceId ?? "",
 		spanId: event.eventId,
@@ -80,7 +118,7 @@ export function spanRecord(event: TelemetryEvent): OtlpSpan {
 		name: event.eventName,
 		// OTLP proto SpanKind reserves 0 for UNSPECIFIED; api values shift by 1.
 		kind: SpanKind.INTERNAL + 1,
-		startTimeUnixNano,
+		startTimeUnixNano: String(startNano),
 		endTimeUnixNano,
 		attributes: keyValues({
 			"coder.event_name": event.eventName,
@@ -101,121 +139,117 @@ export function spanRecord(event: TelemetryEvent): OtlpSpan {
 }
 
 function spanStatus(event: TelemetryEvent): OtlpStatus {
-	if (event.properties.result === "success") {
-		return { code: SpanStatusCode.OK };
+	switch (event.properties.result) {
+		case "success":
+			return { code: SpanStatusCode.OK };
+		case "error":
+			return {
+				code: SpanStatusCode.ERROR,
+				...(event.error && { message: event.error.message }),
+			};
 	}
-	if (event.properties.result === "error" || event.error !== undefined) {
-		return {
-			code: SpanStatusCode.ERROR,
-			...(event.error && { message: event.error.message }),
-		};
+	if (event.error !== undefined) {
+		return { code: SpanStatusCode.ERROR, message: event.error.message };
 	}
 	return { code: SpanStatusCode.UNSET };
 }
 
-/** Gauge and cumulative-sum records for one classified metric event. */
+interface MetricContext {
+	readonly eventName: string;
+	readonly properties: Readonly<Record<string, string>>;
+	readonly attributes: readonly OtlpKeyValue[];
+	readonly timeNano: bigint;
+	readonly windowStartNano: bigint | undefined;
+}
+
+/** OTLP metric records (gauges and cumulative sums) for one metric event. */
 export function metricRecords(
 	event: TelemetryEvent,
 	descriptor: MetricDescriptor,
-	state: ExportState,
+	state: CumulativeState,
 ): OtlpMetric[] {
-	const timeUnixNano = toUnixNano(event.timestamp);
-	const attributes = keyValues({
-		"coder.event_name": event.eventName,
-		...event.properties,
-	});
-	const windowStart =
+	const timeNano = toUnixNano(event.timestamp);
+	const windowStartNano =
 		descriptor.windowSeconds !== undefined
-			? String(
-					BigInt(timeUnixNano) - nanosFromSeconds(descriptor.windowSeconds),
-				)
+			? timeNano - nanosFromSeconds(descriptor.windowSeconds)
 			: undefined;
 	// Anchor cumulative series on the first event seen; reused across the export.
-	state.cumulativeStart ??= windowStart ?? timeUnixNano;
+	state.anchor ??= windowStartNano ?? timeNano;
 
-	const records: OtlpMetric[] = [];
-	for (const m of descriptor.measurements) {
-		if (m.kind === "counter") {
-			const sum = cumulativeSum(event, m, attributes, timeUnixNano, state);
-			if (sum) {
-				records.push(sum);
-			}
-		} else {
-			records.push(
-				gaugeRecord(event.eventName, m, attributes, timeUnixNano, windowStart),
-			);
-		}
-	}
-	return records;
+	const ctx: MetricContext = {
+		eventName: event.eventName,
+		properties: event.properties,
+		attributes: keyValues({
+			"coder.event_name": event.eventName,
+			...event.properties,
+		}),
+		timeNano,
+		windowStartNano,
+	};
+
+	return descriptor.measurements.flatMap((m) => {
+		const record =
+			m.kind === "counter" ? sumMetric(ctx, m, state) : gaugeMetric(ctx, m);
+		return record ? [record] : [];
+	});
 }
 
-function gaugeRecord(
-	eventName: string,
-	measurement: MetricMeasurement,
-	attributes: readonly OtlpKeyValue[],
-	timeUnixNano: string,
-	startTimeUnixNano?: string,
-): OtlpMetric {
+function gaugeMetric(ctx: MetricContext, m: MetricMeasurement): OtlpMetric {
 	return {
-		name: `${eventName}.${measurement.name}`,
-		description: eventName,
-		unit: measurement.unit,
+		name: `${ctx.eventName}.${m.name}`,
+		description: ctx.eventName,
+		unit: m.unit,
 		gauge: {
 			dataPoints: [
 				{
-					attributes,
-					...(startTimeUnixNano !== undefined && { startTimeUnixNano }),
-					timeUnixNano,
-					asDouble: measurement.value,
+					attributes: ctx.attributes,
+					...(ctx.windowStartNano !== undefined && {
+						startTimeUnixNano: String(ctx.windowStartNano),
+					}),
+					timeUnixNano: String(ctx.timeNano),
+					asDouble: m.value,
 				},
 			],
 		},
 	};
 }
 
-// No enum in @opentelemetry/api; 2 == CUMULATIVE.
-const AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
-
-function cumulativeSum(
-	event: TelemetryEvent,
-	measurement: MetricMeasurement,
-	attributes: readonly OtlpKeyValue[],
-	timeUnixNano: string,
-	state: ExportState,
+function sumMetric(
+	ctx: MetricContext,
+	m: MetricMeasurement,
+	state: CumulativeState,
 ): OtlpMetric | undefined {
-	// Clamp the anchor so out-of-order events can't emit startTime > timeTime.
-	const anchor = state.cumulativeStart ?? timeUnixNano;
-	const startTimeUnixNano =
-		BigInt(anchor) <= BigInt(timeUnixNano) ? anchor : timeUnixNano;
-	const key = `${event.eventName}|${measurement.name}|${seriesKey(event.properties)}`;
-	const total =
-		(state.cumulativeTotals.get(key) ?? 0n) +
-		toIntegerBigInt(measurement.value);
-	state.cumulativeTotals.set(key, total);
+	// Clamp the anchor so out-of-order events can't emit startTime > timeUnixNano.
+	const anchor = state.anchor ?? ctx.timeNano;
+	const startNano = anchor <= ctx.timeNano ? anchor : ctx.timeNano;
+	const serializedProps = Object.entries(ctx.properties)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([k, v]) => `${k}=${v}`)
+		.join("|");
+	const key = `${ctx.eventName}|${m.name}|${serializedProps}`;
+	const total = (state.totals.get(key) ?? 0n) + toIntegerBigInt(m.value);
+	state.totals.set(key, total);
 	// Suppress zero counters; absence reads as "no events".
 	if (total === 0n) {
 		return undefined;
 	}
 	return {
-		name: `${event.eventName}.${measurement.name}`,
-		description: event.eventName,
-		unit: measurement.unit,
+		name: `${ctx.eventName}.${m.name}`,
+		description: ctx.eventName,
+		unit: m.unit,
 		sum: {
 			aggregationTemporality: AGGREGATION_TEMPORALITY_CUMULATIVE,
 			isMonotonic: true,
 			dataPoints: [
-				{ attributes, startTimeUnixNano, timeUnixNano, asInt: String(total) },
+				{
+					attributes: ctx.attributes,
+					startTimeUnixNano: String(startNano),
+					timeUnixNano: String(ctx.timeNano),
+					asInt: String(total),
+				},
 			],
 		},
 	};
-}
-
-/** Stable key for property labels so identical labels share a series. */
-function seriesKey(properties: Readonly<Record<string, string>>): string {
-	return Object.entries(properties)
-		.sort(([a], [b]) => a.localeCompare(b))
-		.map(([k, v]) => `${k}=${v}`)
-		.join("|");
 }
 
 function exceptionAttributes(
@@ -240,8 +274,8 @@ function keyValues(
 	}));
 }
 
-function toUnixNano(timestamp: string): string {
-	return String(BigInt(parseTelemetryTimestampMs(timestamp)) * 1_000_000n);
+function toUnixNano(timestamp: string): bigint {
+	return BigInt(parseTelemetryTimestampMs(timestamp)) * 1_000_000n;
 }
 
 function nanosFromMs(ms: number): bigint {
@@ -252,18 +286,13 @@ function nanosFromSeconds(seconds: number): bigint {
 	return toNonNegativeBigInt(seconds * 1e9);
 }
 
-// Coerce non-finite/negative to 0n; round the rest.
-function toNonNegativeBigInt(n: number): bigint {
-	if (!Number.isFinite(n) || n <= 0) {
-		return 0n;
-	}
-	return BigInt(Math.round(n));
-}
-
-// Counter increments must be integers; coerce NaN/Infinity to 0n.
 function toIntegerBigInt(n: number): bigint {
 	if (!Number.isFinite(n)) {
 		return 0n;
 	}
 	return BigInt(Math.round(n));
+}
+
+function toNonNegativeBigInt(n: number): bigint {
+	return n > 0 ? toIntegerBigInt(n) : 0n;
 }

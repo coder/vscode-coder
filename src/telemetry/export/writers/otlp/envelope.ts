@@ -1,6 +1,6 @@
 import { createWriteStream } from "node:fs";
 
-import { toError } from "../../../../error/errorUtils";
+import { wrapError } from "../../../../error/errorUtils";
 
 /** Append-only writer for one OTLP/JSON envelope file. `append` is not re-entrant. */
 export interface EnvelopeFile {
@@ -16,23 +16,45 @@ export async function openEnvelopeFile(
 ): Promise<EnvelopeFile> {
 	const stream = createWriteStream(filePath, { encoding: "utf8" });
 	// Open failures (ENOENT/EACCES) surface as 'error' events, not write
-	// callbacks; capture them so pending writes reject instead of hanging.
-	let asyncError: Error | undefined;
+	// callbacks; capture them so pending operations reject instead of hanging.
+	const errRef: { current?: Error } = {};
 	stream.once("error", (err) => {
-		asyncError ??= err;
+		errRef.current ??= err;
 	});
 
-	await write(stream, prefix, filePath, () => asyncError);
+	const awaitOp = (op: (cb: (err?: Error | null) => void) => void) =>
+		new Promise<void>((resolve, reject) => {
+			if (errRef.current) {
+				reject(errRef.current);
+				return;
+			}
+			op((err) => {
+				const failure = err ?? errRef.current;
+				if (failure) {
+					reject(failure);
+				} else {
+					resolve();
+				}
+			});
+		});
+
+	const writeChunk = (chunk: string) =>
+		awaitOp((cb) => stream.write(chunk, "utf8", cb));
+
+	try {
+		await writeChunk(prefix);
+	} catch (err) {
+		throw wrapError("write", filePath, err);
+	}
 	let written = 0;
 	let closed = false;
 	return {
 		async append(value) {
-			await write(
-				stream,
-				(written === 0 ? "" : ",") + JSON.stringify(value),
-				filePath,
-				() => asyncError,
-			);
+			try {
+				await writeChunk((written === 0 ? "" : ",") + JSON.stringify(value));
+			} catch (err) {
+				throw wrapError("write", filePath, err);
+			}
 			written += 1;
 		},
 		async close() {
@@ -41,57 +63,11 @@ export async function openEnvelopeFile(
 			}
 			closed = true;
 			try {
-				await write(stream, suffix, filePath, () => asyncError);
+				await writeChunk(suffix);
+				await awaitOp((cb) => stream.end(cb));
 			} catch (err) {
-				// Re-label suffix-write failures as a close failure.
-				const inner = (err as { cause?: unknown }).cause;
-				const msg =
-					inner instanceof Error ? inner.message : toError(err).message;
-				throw new Error(`Failed to close ${filePath}: ${msg}`, { cause: err });
+				throw wrapError("close", filePath, err);
 			}
-			await new Promise<void>((resolve, reject) => {
-				stream.end((err?: Error | null) => {
-					const failure = err ?? asyncError;
-					if (failure) {
-						reject(
-							new Error(`Failed to close ${filePath}: ${failure.message}`, {
-								cause: failure,
-							}),
-						);
-					} else {
-						resolve();
-					}
-				});
-			});
 		},
 	};
-}
-
-function write(
-	stream: NodeJS.WritableStream,
-	chunk: string,
-	filePath: string,
-	asyncError: () => Error | undefined,
-): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const reject_ = (err: unknown) =>
-			reject(
-				new Error(`Failed to write ${filePath}: ${toError(err).message}`, {
-					cause: err,
-				}),
-			);
-		const existing = asyncError();
-		if (existing) {
-			reject_(existing);
-			return;
-		}
-		stream.write(chunk, "utf8", (err) => {
-			const failure = err ?? asyncError();
-			if (failure) {
-				reject_(failure);
-			} else {
-				resolve();
-			}
-		});
-	});
 }

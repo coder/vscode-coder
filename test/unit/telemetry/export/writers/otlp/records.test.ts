@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { type MetricDescriptor } from "@/telemetry/export/metrics";
 import {
-	type ExportState,
+	type MetricDescriptor,
+	type MetricMeasurement,
+} from "@/telemetry/export/metrics";
+import {
+	type CumulativeState,
 	logRecord,
 	metricRecords,
-	newExportState,
+	newCumulativeState,
 	otlpResource,
 	otlpScope,
 	spanRecord,
@@ -13,20 +16,21 @@ import {
 
 import { createTelemetryEventFactory } from "../../../../../mocks/telemetry";
 
-const TRACE_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+import { TRACE_ID, attrs } from "./helpers";
 
 const makeEvent = createTelemetryEventFactory();
 
-/** Flatten OTLP `[{key, value: {stringValue|doubleValue}}]` to `{key: value}`. */
-function attrs(raw: unknown): Record<string, string | number> {
-	const list = raw as Array<{
-		key: string;
-		value: { stringValue?: string; doubleValue?: number };
-	}>;
-	return Object.fromEntries(
-		list.map((a) => [a.key, a.value.doubleValue ?? a.value.stringValue!]),
-	);
-}
+const gauge = (name: string, value: number, unit = "1"): MetricMeasurement => ({
+	name,
+	value,
+	kind: "gauge",
+	unit,
+});
+const counter = (
+	name: string,
+	value: number,
+	unit = "{request}",
+): MetricMeasurement => ({ name, value, kind: "counter", unit });
 
 describe("otlpResource", () => {
 	it("maps the session context onto OTel-standard semconv keys", () => {
@@ -158,11 +162,6 @@ describe("spanRecord", () => {
 });
 
 describe("metricRecords", () => {
-	const gauge = (name: string, value: number, unit = "1") =>
-		({ name, value, kind: "gauge", unit }) as const;
-	const counter = (name: string, value: number) =>
-		({ name, value, kind: "counter", unit: "{request}" }) as const;
-
 	it("emits one gauge per measurement when the descriptor has no window", () => {
 		const event = makeEvent({
 			eventName: "ssh.network.sampled",
@@ -175,7 +174,7 @@ describe("metricRecords", () => {
 			],
 		};
 
-		const records = metricRecords(event, descriptor, newExportState());
+		const records = metricRecords(event, descriptor, newCumulativeState());
 
 		expect(records.map((r) => [r.name, r.unit])).toEqual([
 			["ssh.network.sampled.latencyMs", "ms"],
@@ -191,7 +190,7 @@ describe("metricRecords", () => {
 	});
 
 	it("accumulates counter values into cumulative monotonic sums anchored at the first window", () => {
-		const state = newExportState();
+		const state = newCumulativeState();
 		const first = metricRecords(
 			makeEvent({
 				eventName: "http.requests",
@@ -226,7 +225,7 @@ describe("metricRecords", () => {
 	});
 
 	it("clamps startTimeUnixNano <= timeUnixNano for events that arrive before the anchor", () => {
-		const state = newExportState();
+		const state = newCumulativeState();
 		// First event lands at T=12:03 with a 60s window → anchor = 12:02.
 		metricRecords(
 			makeEvent({
@@ -253,7 +252,7 @@ describe("metricRecords", () => {
 	});
 
 	it("keeps cumulative totals separate by eventName when measurement names collide", () => {
-		const state = newExportState();
+		const state = newCumulativeState();
 		const first = metricRecords(
 			makeEvent({
 				eventName: "http.requests",
@@ -288,7 +287,7 @@ describe("metricRecords", () => {
 			),
 		).not.toThrow();
 
-		const state = newExportState();
+		const state = newCumulativeState();
 		const records = metricRecords(
 			makeEvent({ eventName: "http.requests" }),
 			{ windowSeconds: NaN, measurements: [counter("count_2xx", Infinity)] },
@@ -306,7 +305,7 @@ describe("metricRecords", () => {
 			measurements: [gauge("p95_duration_ms", 42, "ms")],
 		};
 
-		const [record] = metricRecords(event, descriptor, newExportState());
+		const [record] = metricRecords(event, descriptor, newCumulativeState());
 		const point = record.gauge!.dataPoints[0];
 
 		expect(BigInt(point.timeUnixNano) - BigInt(point.startTimeUnixNano!)).toBe(
@@ -315,7 +314,7 @@ describe("metricRecords", () => {
 	});
 
 	it("suppresses zero-valued cumulative counters", () => {
-		const state: ExportState = newExportState();
+		const state: CumulativeState = newCumulativeState();
 		const records = metricRecords(
 			makeEvent({ eventName: "http.requests" }),
 			{
@@ -338,7 +337,7 @@ describe("metricRecords", () => {
 		const [record] = metricRecords(
 			makeEvent({ eventName: "http.requests" }),
 			{ windowSeconds: 0, measurements: [counter("count_2xx", 1)] },
-			newExportState(),
+			newCumulativeState(),
 		);
 		const point = record.sum!.dataPoints[0];
 

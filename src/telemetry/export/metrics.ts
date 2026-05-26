@@ -19,12 +19,17 @@ export interface MetricDescriptor {
 	readonly measurements: readonly MetricMeasurement[];
 }
 
-// Single source of truth for which event names are metric series.
 const METRIC_EVENT_NAMES: ReadonlySet<string> = new Set([
 	"http.requests",
 	"ssh.network.info",
 	"ssh.network.sampled",
 ]);
+
+const UNIT_SUFFIXES: ReadonlyArray<readonly [string, string]> = [
+	["_ms", "ms"],
+	["Ms", "ms"],
+	["Mbits", "Mbit/s"],
+];
 
 export function isMetricEvent(event: TelemetryEvent): boolean {
 	return METRIC_EVENT_NAMES.has(event.eventName);
@@ -50,7 +55,6 @@ export function describeMetricEvent(
 	};
 }
 
-// `window_seconds` is metadata, `count_*` are cumulative counters, the rest gauges.
 function describeHttpRequests(event: TelemetryEvent): MetricDescriptor {
 	let windowSeconds = 0;
 	const measurements: MetricMeasurement[] = [];
@@ -72,11 +76,5 @@ function describeHttpRequests(event: TelemetryEvent): MetricDescriptor {
 }
 
 function measurementUnit(name: string): string {
-	if (name.endsWith("_ms") || name.endsWith("Ms")) {
-		return "ms";
-	}
-	if (name.endsWith("Mbits")) {
-		return "Mbit/s";
-	}
-	return "1";
+	return UNIT_SUFFIXES.find(([suffix]) => name.endsWith(suffix))?.[1] ?? "1";
 }
