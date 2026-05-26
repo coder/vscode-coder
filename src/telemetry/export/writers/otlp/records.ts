@@ -48,6 +48,9 @@ const OTLP_SCHEMA_URL = "https://opentelemetry.io/schemas/1.24.0";
 export const ENVELOPE_SUFFIX = "]}]}]}\n";
 
 const AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
+// OTLP proto SpanKind reserves 0 for UNSPECIFIED; @opentelemetry/api values
+// start at 0 (INTERNAL), so shift by 1 when encoding for proto.
+const OTLP_SPAN_KIND_OFFSET = 1;
 
 export function envelopePrefix(
 	envelope: EnvelopeSpec,
@@ -104,20 +107,21 @@ export function logRecord(event: TelemetryEvent): OtlpLogRecord {
 	};
 }
 
-export function spanRecord(event: TelemetryEvent): OtlpSpan {
+export function spanRecord(
+	event: TelemetryEvent & { readonly traceId: string },
+): OtlpSpan {
 	const endNano = toUnixNano(event.timestamp);
 	const startNano = endNano - nanosFromMs(event.measurements.durationMs ?? 0);
 	const endTimeUnixNano = String(endNano);
 	const { durationMs: _, ...measurements } = event.measurements;
 	return {
-		traceId: event.traceId ?? "",
+		traceId: event.traceId,
 		spanId: event.eventId,
 		...(event.parentEventId !== undefined && {
 			parentSpanId: event.parentEventId,
 		}),
 		name: event.eventName,
-		// OTLP proto SpanKind reserves 0 for UNSPECIFIED; api values shift by 1.
-		kind: SpanKind.INTERNAL + 1,
+		kind: SpanKind.INTERNAL + OTLP_SPAN_KIND_OFFSET,
 		startTimeUnixNano: String(startNano),
 		endTimeUnixNano,
 		attributes: keyValues({
@@ -222,12 +226,14 @@ function sumMetric(
 	// Clamp the anchor so out-of-order events can't emit startTime > timeUnixNano.
 	const anchor = state.anchor ?? ctx.timeNano;
 	const startNano = anchor <= ctx.timeNano ? anchor : ctx.timeNano;
-	const serializedProps = Object.entries(ctx.properties)
-		.sort(([a], [b]) => a.localeCompare(b))
-		.map(([k, v]) => `${k}=${v}`)
-		.join("|");
-	const key = `${ctx.eventName}|${m.name}|${serializedProps}`;
-	const total = (state.totals.get(key) ?? 0n) + toIntegerBigInt(m.value);
+	const sortedProps = Object.fromEntries(
+		Object.entries(ctx.properties).sort(([a], [b]) => a.localeCompare(b)),
+	);
+	// JSON.stringify avoids collisions like `{a: "b|c=d"}` vs `{a: "b", c: "d"}`.
+	const key = `${ctx.eventName}\x00${m.name}\x00${JSON.stringify(sortedProps)}`;
+	// Clamp negatives: backends treat a decreasing monotonic sum as a reset.
+	const delta = toIntegerBigInt(Math.max(0, m.value));
+	const total = (state.totals.get(key) ?? 0n) + delta;
 	state.totals.set(key, total);
 	// Suppress zero counters; absence reads as "no events".
 	if (total === 0n) {

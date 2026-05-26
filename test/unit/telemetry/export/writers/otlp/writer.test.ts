@@ -60,6 +60,29 @@ describe("writeOtlpZipExport", () => {
 		);
 	});
 
+	it("produces three empty-array envelopes for an empty event stream", async () => {
+		const { counts, logs, traces, metrics } = await exportAndRead([]);
+
+		expect(counts).toEqual({ logs: 0, traces: 0, metrics: 0 });
+		expect(logs.records).toEqual([]);
+		expect(traces.records).toEqual([]);
+		expect(metrics.records).toEqual([]);
+	});
+
+	it("routes metric-named events to metrics even when a traceId is present", async () => {
+		const { counts, traces, metrics } = await exportAndRead([
+			makeEvent({
+				eventName: "http.requests",
+				traceId: TRACE_ID,
+				measurements: { window_seconds: 60, "count.2xx": 1 },
+			}),
+		]);
+
+		expect(counts).toEqual({ logs: 0, traces: 0, metrics: 1 });
+		expect(traces.records).toEqual([]);
+		expect(metrics.records.length).toBeGreaterThan(0);
+	});
+
 	it("counts events by signal even when a metric event fans out into multiple records", async () => {
 		const { counts, logs, traces, metrics } = await exportAndRead([
 			makeEvent({ eventName: "log.info" }),
@@ -67,7 +90,11 @@ describe("writeOtlpZipExport", () => {
 			makeEvent({ eventName: "trace.x", traceId: TRACE_ID }),
 			makeEvent({
 				eventName: "http.requests",
-				measurements: { window_seconds: 60, count_2xx: 1, p95_duration_ms: 5 },
+				measurements: {
+					window_seconds: 60,
+					"count.2xx": 1,
+					"duration.p95_ms": 5,
+				},
 			}),
 		]);
 
@@ -85,7 +112,7 @@ describe("writeOtlpZipExport", () => {
 			makeEvent({ eventName: "trace.x", traceId: TRACE_ID }),
 			makeEvent({
 				eventName: "http.requests",
-				measurements: { window_seconds: 60, count_2xx: 1 },
+				measurements: { window_seconds: 60, "count.2xx": 1 },
 			}),
 		]);
 

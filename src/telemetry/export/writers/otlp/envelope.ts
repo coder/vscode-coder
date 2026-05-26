@@ -2,7 +2,7 @@ import { createWriteStream } from "node:fs";
 
 import { wrapError } from "../../../../error/errorUtils";
 
-/** Append-only writer for one OTLP/JSON envelope file. `append` is not re-entrant. */
+/** `append` is not re-entrant. */
 export interface EnvelopeFile {
 	append(value: unknown): Promise<void>;
 	close(): Promise<void>;
@@ -44,6 +44,7 @@ export async function openEnvelopeFile(
 	try {
 		await writeChunk(prefix);
 	} catch (err) {
+		stream.destroy();
 		throw wrapError("write", filePath, err);
 	}
 	let written = 0;
@@ -66,6 +67,7 @@ export async function openEnvelopeFile(
 				await writeChunk(suffix);
 				await awaitOp((cb) => stream.end(cb));
 			} catch (err) {
+				stream.destroy();
 				throw wrapError("close", filePath, err);
 			}
 		},

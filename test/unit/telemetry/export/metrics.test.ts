@@ -9,11 +9,10 @@ const makeEvent = createTelemetryEventFactory();
 describe("isMetricEvent", () => {
 	it.each([
 		["http.requests", true],
-		["ssh.network.info", true],
 		["ssh.network.sampled", true],
 		["log.something", false],
 		["remote.setup.workspace_ready", false],
-	])("returns %p for %s", (name, expected) => {
+	])("returns %s for %p", (name, expected) => {
 		expect(isMetricEvent(makeEvent({ eventName: name }))).toBe(expected);
 	});
 });
@@ -47,19 +46,26 @@ describe("describeMetricEvent", () => {
 				eventName: "http.requests",
 				measurements: {
 					window_seconds: 60,
-					count_2xx: 5,
-					count_5xx: 1,
-					p95_duration_ms: 42,
+					"count.2xx": 5,
+					"count.5xx": 1,
+					"count.network_error": 0,
+					"duration.p95_ms": 42,
 				},
 			}),
 		);
 		expect(descriptor).toEqual({
 			windowSeconds: 60,
 			measurements: [
-				{ name: "count_2xx", value: 5, kind: "counter", unit: "{request}" },
-				{ name: "count_5xx", value: 1, kind: "counter", unit: "{request}" },
+				{ name: "count.2xx", value: 5, kind: "counter", unit: "{request}" },
+				{ name: "count.5xx", value: 1, kind: "counter", unit: "{request}" },
 				{
-					name: "p95_duration_ms",
+					name: "count.network_error",
+					value: 0,
+					kind: "counter",
+					unit: "{request}",
+				},
+				{
+					name: "duration.p95_ms",
 					value: 42,
 					kind: "gauge",
 					unit: "ms",
@@ -72,7 +78,7 @@ describe("describeMetricEvent", () => {
 		const descriptor = describeMetricEvent(
 			makeEvent({
 				eventName: "http.requests",
-				measurements: { count_2xx: 1 },
+				measurements: { "count.2xx": 1 },
 			}),
 		);
 		expect(descriptor?.windowSeconds).toBe(0);

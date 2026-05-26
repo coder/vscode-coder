@@ -20,6 +20,11 @@ import { TRACE_ID, attrs } from "./helpers";
 
 const makeEvent = createTelemetryEventFactory();
 
+const makeSpanEvent = (overrides: Parameters<typeof makeEvent>[0] = {}) => ({
+	...makeEvent({ traceId: TRACE_ID, ...overrides }),
+	traceId: TRACE_ID,
+});
+
 const gauge = (name: string, value: number, unit = "1"): MetricMeasurement => ({
 	name,
 	value,
@@ -99,9 +104,8 @@ describe("logRecord", () => {
 describe("spanRecord", () => {
 	it("encodes an INTERNAL span with derived start time and parent linkage", () => {
 		const span = spanRecord(
-			makeEvent({
+			makeSpanEvent({
 				eventName: "remote.setup.workspace_ready",
-				traceId: TRACE_ID,
 				parentEventId: "parent-span-id",
 				properties: { result: "success", route: "/api" },
 				measurements: { durationMs: 250, retries: 2 },
@@ -127,7 +131,7 @@ describe("spanRecord", () => {
 	});
 
 	it("collapses start to end and omits parentSpanId on a minimal span", () => {
-		const span = spanRecord(makeEvent({ traceId: TRACE_ID }));
+		const span = spanRecord(makeSpanEvent());
 
 		expect(span).not.toHaveProperty("parentSpanId");
 		expect(span.startTimeUnixNano).toBe(span.endTimeUnixNano);
@@ -139,14 +143,13 @@ describe("spanRecord", () => {
 		[{ error: { message: "boom" } }, { code: 2, message: "boom" }],
 		[{}, { code: 0 }],
 	])("maps span status: %j -> %j", (overrides, expected) => {
-		const span = spanRecord(makeEvent({ traceId: TRACE_ID, ...overrides }));
+		const span = spanRecord(makeSpanEvent(overrides));
 		expect(span.status).toEqual(expected);
 	});
 
 	it("attaches an `exception` event to errored spans", () => {
 		const span = spanRecord(
-			makeEvent({
-				traceId: TRACE_ID,
+			makeSpanEvent({
 				error: { message: "boom", type: "Error" },
 			}),
 		);
@@ -197,7 +200,7 @@ describe("metricRecords", () => {
 				properties: { method: "GET", route: "/a" },
 				timestamp: "2026-05-04T12:01:00.000Z",
 			}),
-			{ windowSeconds: 60, measurements: [counter("count_2xx", 2)] },
+			{ windowSeconds: 60, measurements: [counter("count.2xx", 2)] },
 			state,
 		);
 		const second = metricRecords(
@@ -206,7 +209,7 @@ describe("metricRecords", () => {
 				properties: { method: "GET", route: "/a" },
 				timestamp: "2026-05-04T12:02:00.000Z",
 			}),
-			{ windowSeconds: 60, measurements: [counter("count_2xx", 3)] },
+			{ windowSeconds: 60, measurements: [counter("count.2xx", 3)] },
 			state,
 		);
 		// 2026-05-04T12:00:00.000Z (window start = first event time − 60s) in ns:
@@ -232,7 +235,7 @@ describe("metricRecords", () => {
 				eventName: "http.requests",
 				timestamp: "2026-05-04T12:03:00.000Z",
 			}),
-			{ windowSeconds: 60, measurements: [counter("count_2xx", 1)] },
+			{ windowSeconds: 60, measurements: [counter("count.2xx", 1)] },
 			state,
 		);
 		// Out-of-order event at T=12:01:30 (earlier than the anchor).
@@ -241,7 +244,7 @@ describe("metricRecords", () => {
 				eventName: "http.requests",
 				timestamp: "2026-05-04T12:01:30.000Z",
 			}),
-			{ windowSeconds: 60, measurements: [counter("count_2xx", 1)] },
+			{ windowSeconds: 60, measurements: [counter("count.2xx", 1)] },
 			state,
 		);
 		const point = records[0].sum!.dataPoints[0];
@@ -251,37 +254,37 @@ describe("metricRecords", () => {
 		);
 	});
 
-	it("keeps cumulative totals separate by eventName when measurement names collide", () => {
+	it("keeps cumulative totals separate by properties so distinct routes don't merge", () => {
 		const state = newCumulativeState();
-		const first = metricRecords(
+		const a = metricRecords(
 			makeEvent({
 				eventName: "http.requests",
-				properties: { route: "/a" },
+				properties: { method: "GET", route: "/api/health" },
 			}),
-			{ windowSeconds: 60, measurements: [counter("count_2xx", 3)] },
+			{ windowSeconds: 60, measurements: [counter("count.2xx", 3)] },
 			state,
 		);
-		// A second metric event type that happens to share a counter name and
-		// matching properties must not accumulate into the first series.
-		const second = metricRecords(
+		// Same eventName and measurement name but a different route must not
+		// merge: without property participation in the key, /api/workspaces
+		// would inherit /api/health's total.
+		const b = metricRecords(
 			makeEvent({
-				eventName: "ssh.network.info",
-				properties: { route: "/a" },
+				eventName: "http.requests",
+				properties: { method: "GET", route: "/api/workspaces" },
 			}),
-			{ windowSeconds: 60, measurements: [counter("count_2xx", 5)] },
+			{ windowSeconds: 60, measurements: [counter("count.2xx", 5)] },
 			state,
 		);
 
-		expect(first[0].sum!.dataPoints[0].asInt).toBe("3");
-		expect(second[0].sum!.dataPoints[0].asInt).toBe("5");
+		expect(a[0].sum!.dataPoints[0].asInt).toBe("3");
+		expect(b[0].sum!.dataPoints[0].asInt).toBe("5");
 	});
 
 	it("coerces NaN/Infinity inputs to safe zeros instead of throwing", () => {
 		// durationMs=NaN in a span; counter=Infinity in a metric; windowSeconds=NaN.
 		expect(() =>
 			spanRecord(
-				makeEvent({
-					traceId: TRACE_ID,
+				makeSpanEvent({
 					measurements: { durationMs: NaN, retries: 1 },
 				}),
 			),
@@ -290,7 +293,7 @@ describe("metricRecords", () => {
 		const state = newCumulativeState();
 		const records = metricRecords(
 			makeEvent({ eventName: "http.requests" }),
-			{ windowSeconds: NaN, measurements: [counter("count_2xx", Infinity)] },
+			{ windowSeconds: NaN, measurements: [counter("count.2xx", Infinity)] },
 			state,
 		);
 
@@ -320,8 +323,8 @@ describe("metricRecords", () => {
 			{
 				windowSeconds: 60,
 				measurements: [
-					counter("count_2xx", 0),
-					counter("count_5xx", 0),
+					counter("count.2xx", 0),
+					counter("count.5xx", 0),
 					gauge("p95_duration_ms", 10, "ms"),
 				],
 			},
@@ -336,7 +339,7 @@ describe("metricRecords", () => {
 	it("treats windowSeconds=0 as a zero-width window", () => {
 		const [record] = metricRecords(
 			makeEvent({ eventName: "http.requests" }),
-			{ windowSeconds: 0, measurements: [counter("count_2xx", 1)] },
+			{ windowSeconds: 0, measurements: [counter("count.2xx", 1)] },
 			newCumulativeState(),
 		);
 		const point = record.sum!.dataPoints[0];

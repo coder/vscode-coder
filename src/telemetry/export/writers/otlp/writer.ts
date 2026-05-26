@@ -1,6 +1,7 @@
 import { zip } from "fflate";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { promisify } from "node:util";
 
 import { wrapError } from "../../../../error/errorUtils";
 import { writeAtomically } from "../../../../util/fs";
@@ -34,15 +35,11 @@ interface Channel {
 	count: number;
 }
 
-const zipAsync = (files: Record<string, Uint8Array>): Promise<Uint8Array> =>
-	new Promise((resolve, reject) =>
-		zip(files, (err, data) => (err ? reject(err) : resolve(data))),
-	);
+const zipAsync = promisify(zip);
 
 /**
  * Writes `events` as an OTLP/JSON zip (`logs.json`, `traces.json`,
- * `metrics.json`) to `outputPath`. Records stream into a staging directory
- * then get packed in-memory; the zip is atomically renamed at the end.
+ * `metrics.json`) to `outputPath`.
  */
 export async function writeOtlpZipExport(
 	outputPath: string,
@@ -110,12 +107,31 @@ async function openChannels(
 		);
 		return { file, count: 0 };
 	};
-	const [logs, traces, metrics] = await Promise.all([
+	// Promise.allSettled so one failure doesn't orphan its siblings' fds.
+	const settled = await Promise.allSettled([
 		open("logs"),
 		open("traces"),
 		open("metrics"),
 	]);
+	const failure = settled.find((r) => r.status === "rejected");
+	if (failure) {
+		await Promise.allSettled(
+			settled.flatMap((r) =>
+				r.status === "fulfilled" ? [r.value.file.close()] : [],
+			),
+		);
+		throw failure.reason;
+	}
+	const [logs, traces, metrics] = settled.map(
+		(r) => (r as PromiseFulfilledResult<Channel>).value,
+	);
 	return { logs, traces, metrics };
+}
+
+function hasTraceId(
+	event: TelemetryEvent,
+): event is TelemetryEvent & { readonly traceId: string } {
+	return event.traceId !== undefined;
 }
 
 async function routeEvent(
@@ -130,7 +146,7 @@ async function routeEvent(
 				channels.metrics,
 				metricRecords(event, metric, state),
 			);
-		} else if (event.traceId !== undefined) {
+		} else if (hasTraceId(event)) {
 			await appendRecords(channels.traces, [spanRecord(event)]);
 		} else {
 			await appendRecords(channels.logs, [logRecord(event)]);
@@ -148,9 +164,13 @@ async function appendRecords(
 	channel: Channel,
 	records: Iterable<unknown>,
 ): Promise<void> {
-	channel.count += 1;
+	let wrote = false;
 	for (const record of records) {
 		await channel.file.append(record);
+		wrote = true;
+	}
+	if (wrote) {
+		channel.count += 1;
 	}
 }
 

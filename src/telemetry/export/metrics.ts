@@ -1,6 +1,5 @@
 import type { TelemetryEvent } from "../event";
 
-/** One measurement, classified for export. */
 export interface MetricMeasurement {
 	readonly name: string;
 	readonly value: number;
@@ -10,9 +9,9 @@ export interface MetricMeasurement {
 }
 
 /**
- * Typed view of a metric event. `windowSeconds` is set on windowed events
- * (`http.requests`) and absent on point-in-time samples; exporters use it to
- * stamp gauge start times and anchor cumulative counters.
+ * `windowSeconds` is set on windowed events (`http.requests`) and absent on
+ * point-in-time samples; exporters use it to stamp gauge start times and
+ * anchor cumulative counters.
  */
 export interface MetricDescriptor {
 	readonly windowSeconds?: number;
@@ -21,7 +20,6 @@ export interface MetricDescriptor {
 
 const METRIC_EVENT_NAMES: ReadonlySet<string> = new Set([
 	"http.requests",
-	"ssh.network.info",
 	"ssh.network.sampled",
 ]);
 
@@ -35,7 +33,6 @@ export function isMetricEvent(event: TelemetryEvent): boolean {
 	return METRIC_EVENT_NAMES.has(event.eventName);
 }
 
-/** Typed layout for a metric event, or `undefined` if it isn't a metric. */
 export function describeMetricEvent(
 	event: TelemetryEvent,
 ): MetricDescriptor | undefined {
@@ -61,7 +58,7 @@ function describeHttpRequests(event: TelemetryEvent): MetricDescriptor {
 	for (const [name, value] of Object.entries(event.measurements)) {
 		if (name === "window_seconds") {
 			windowSeconds = value;
-		} else if (name.startsWith("count_")) {
+		} else if (name.startsWith("count.")) {
 			measurements.push({ name, value, kind: "counter", unit: "{request}" });
 		} else {
 			measurements.push({

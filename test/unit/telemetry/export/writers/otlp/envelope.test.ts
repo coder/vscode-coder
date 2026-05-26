@@ -5,6 +5,7 @@ const { stream } = vi.hoisted(() => ({
 		chunks: [] as string[],
 		writeFailMsg: null as string | null,
 		endFailMsg: null as string | null,
+		destroyed: 0,
 		listeners: new Map<string, (err: Error) => void>(),
 		write(chunk: string, _enc: string, cb: (err?: Error | null) => void) {
 			if (stream.writeFailMsg) {
@@ -20,6 +21,9 @@ const { stream } = vi.hoisted(() => ({
 				return;
 			}
 			cb(null);
+		},
+		destroy() {
+			stream.destroyed += 1;
 		},
 		once(event: string, listener: (err: Error) => void) {
 			stream.listeners.set(event, listener);
@@ -42,6 +46,7 @@ beforeEach(() => {
 	stream.chunks = [];
 	stream.writeFailMsg = null;
 	stream.endFailMsg = null;
+	stream.destroyed = 0;
 	stream.listeners = new Map();
 });
 
@@ -71,11 +76,12 @@ describe("openEnvelopeFile", () => {
 		expect(stream.chunks).toEqual(["[", "1", ",2", "]"]);
 	});
 
-	it("wraps prefix-write failures with the file path", async () => {
+	it("wraps prefix-write failures with the file path and releases the fd", async () => {
 		stream.writeFailMsg = "disk full";
 		await expect(openEnvelopeFile("/foo.json", "[", "]")).rejects.toThrow(
 			"Failed to write /foo.json: disk full",
 		);
+		expect(stream.destroyed).toBe(1);
 	});
 
 	it("wraps append-time write failures with the file path", async () => {
@@ -86,12 +92,13 @@ describe("openEnvelopeFile", () => {
 		);
 	});
 
-	it("wraps suffix-write failures during close as a close failure", async () => {
+	it("wraps suffix-write failures during close as a close failure and releases the fd", async () => {
 		const env = await openEnvelopeFile("/foo.json", "[", "]");
 		stream.writeFailMsg = "disk full";
 		await expect(env.close()).rejects.toThrow(
 			"Failed to close /foo.json: disk full",
 		);
+		expect(stream.destroyed).toBe(1);
 	});
 
 	it("wraps stream.end failures with the file path", async () => {
