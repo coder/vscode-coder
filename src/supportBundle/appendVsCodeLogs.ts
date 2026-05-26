@@ -22,15 +22,15 @@ function vscodeBundlePath(zipPath: string): string {
 	);
 }
 
-async function writeBundleWithLogs(
+async function writeBundleWithDiagnostics(
 	zipPath: string,
 	outputPath: string,
-	logFiles: Map<string, Uint8Array>,
+	diagnosticFiles: Map<string, Uint8Array>,
 ): Promise<void> {
 	const sourceMode = (await fs.stat(zipPath)).mode & 0o777;
 	const entries: Zippable = await unzipAsync(await fs.readFile(zipPath));
 
-	for (const [name, data] of logFiles) {
+	for (const [name, data] of diagnosticFiles) {
 		entries[name] = data;
 	}
 
@@ -49,21 +49,28 @@ export async function appendVsCodeLogs(
 	logger: Logger,
 ): Promise<void> {
 	try {
-		const logFiles = await collectVsCodeDiagnostics(sources, logger);
-		if (logFiles.size === 0) {
-			logger.info("No VS Code logs found to add to support bundle");
+		const diagnosticFiles = await collectVsCodeDiagnostics(sources, logger);
+		if (diagnosticFiles.size === 0) {
+			logger.info("No VS Code diagnostics found to add to support bundle");
 			return;
 		}
 
 		logger.info(
-			`Adding ${logFiles.size} VS Code log file(s) to support bundle`,
+			`Adding ${diagnosticFiles.size} VS Code diagnostic file(s) to support bundle`,
 		);
 
 		const outputBundlePath = vscodeBundlePath(zipPath);
 		try {
-			await writeBundleWithLogs(zipPath, outputBundlePath, logFiles);
+			await writeBundleWithDiagnostics(
+				zipPath,
+				outputBundlePath,
+				diagnosticFiles,
+			);
 		} catch (error) {
-			logger.error("Failed to add VS Code logs to support bundle", error);
+			logger.error(
+				"Failed to add VS Code diagnostics to support bundle",
+				error,
+			);
 
 			try {
 				await fs.rm(outputBundlePath, { force: true });
@@ -80,12 +87,12 @@ export async function appendVsCodeLogs(
 			await renameWithRetry(fs.rename, outputBundlePath, zipPath);
 		} catch (error) {
 			logger.warn(
-				`Could not replace original bundle; VS Code logs saved separately at ${outputBundlePath}`,
+				`Could not replace original bundle; VS Code diagnostics saved separately at ${outputBundlePath}`,
 				error,
 			);
 		}
 	} catch (error) {
 		// Best-effort: never let a failure here lose the user's bundle.
-		logger.error("Unexpected error appending VS Code logs", error);
+		logger.error("Unexpected error appending VS Code diagnostics", error);
 	}
 }

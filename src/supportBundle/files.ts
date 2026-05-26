@@ -46,15 +46,14 @@ function isEnoent(error: unknown): boolean {
 	);
 }
 
-async function readRecentFile(
+// lstat rejects symlinks so a planted link can't pull host files in.
+export async function readLogFile(
 	filePath: string,
 	logger: Logger,
 ): Promise<{ data: Uint8Array; mtimeMs: number } | undefined> {
 	try {
-		// lstat: skip symlinks so a planted link can't pull host files in.
 		const stat = await fs.lstat(filePath);
-		const cutoff = Date.now() - LOG_MAX_AGE_MS;
-		if (!stat.isFile() || stat.mtimeMs < cutoff) {
+		if (!stat.isFile()) {
 			return undefined;
 		}
 		return { data: await fs.readFile(filePath), mtimeMs: stat.mtimeMs };
@@ -64,7 +63,18 @@ async function readRecentFile(
 	}
 }
 
-async function readDirents(
+async function readRecentFile(
+	filePath: string,
+	logger: Logger,
+): Promise<{ data: Uint8Array; mtimeMs: number } | undefined> {
+	const file = await readLogFile(filePath, logger);
+	if (!file || file.mtimeMs < Date.now() - LOG_MAX_AGE_MS) {
+		return undefined;
+	}
+	return file;
+}
+
+export async function readDirents(
 	dirPath: string,
 	logger: Logger,
 	warnOnMissing = true,

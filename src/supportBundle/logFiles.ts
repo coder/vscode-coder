@@ -1,5 +1,3 @@
-import { type Dirent } from "node:fs";
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { type Logger } from "../logging/logger";
@@ -13,6 +11,8 @@ import {
 	isLogFile,
 	normalizeZipPath,
 	prefixFiles,
+	readDirents,
+	readLogFile,
 } from "./files";
 import { collectSettingsFile } from "./settings";
 
@@ -95,32 +95,20 @@ export function resolveLogContext(
 	};
 }
 
-async function readWindowDir(
-	dirPath: string,
-	logger: Logger,
-): Promise<Dirent[]> {
-	try {
-		return await fs.readdir(dirPath, { withFileTypes: true });
-	} catch (error) {
-		logger.warn(`Could not read log directory ${dirPath}`, error);
-		return [];
-	}
-}
-
 export async function collectWindowLogDirs(
 	logsRoot: string,
 	logger: Logger,
 ): Promise<WindowLogDir[]> {
 	const windows: WindowLogDir[] = [];
 	await Promise.all(
-		(await readWindowDir(logsRoot, logger)).map(async (entry) => {
+		(await readDirents(logsRoot, logger)).map(async (entry) => {
 			if (!entry.isDirectory()) return;
 			const entryPath = path.join(logsRoot, entry.name);
 			if (/^window\d+$/i.test(entry.name)) {
 				windows.push({ relativePath: entry.name, windowPath: entryPath });
 				return;
 			}
-			for (const sub of await readWindowDir(entryPath, logger)) {
+			for (const sub of await readDirents(entryPath, logger)) {
 				if (sub.isDirectory() && /^window\d+$/i.test(sub.name)) {
 					windows.push({
 						relativePath: `${entry.name}/${sub.name}`,
@@ -130,7 +118,7 @@ export async function collectWindowLogDirs(
 			}
 		}),
 	);
-	return windows.sort((a, b) => (a.relativePath > b.relativePath ? 1 : -1));
+	return windows.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 }
 
 async function collectProxyLogs(
@@ -143,13 +131,10 @@ async function collectProxyLogs(
 		: undefined;
 
 	if (sources.activeProxyLogPath && activeBasename) {
-		try {
-			files.set(
-				`vscode-logs/proxy/${activeBasename}`,
-				await fs.readFile(sources.activeProxyLogPath),
-			);
-		} catch (error) {
-			logger.warn("Could not read active Coder SSH proxy log", error);
+		// No age cutoff: long-lived sessions can have mtime past the window.
+		const file = await readLogFile(sources.activeProxyLogPath, logger);
+		if (file) {
+			files.set(`vscode-logs/proxy/${activeBasename}`, file.data);
 		}
 	}
 
@@ -267,6 +252,11 @@ export async function collectSupportLogFiles(
 	return files;
 }
 
+/**
+ * Collects proxy logs, Remote-SSH and extension logs across recent windows,
+ * and a redacted `coder.*` / `remote.*` settings snapshot. Keys are
+ * zip-relative paths under `vscode-logs/`.
+ */
 export async function collectVsCodeDiagnostics(
 	sources: LogSources,
 	logger: Logger,

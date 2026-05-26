@@ -4,7 +4,7 @@ import { type Logger } from "../logging/logger";
 
 // Paths, hostnames, URLs, and command strings: anything user-supplied that
 // could identify a machine or deployment in a shared bundle.
-const REDACTED_SETTINGS = new Set([
+const REDACTED_SETTINGS: ReadonlySet<string> = new Set([
 	"coder.binaryDestination",
 	"coder.binarySource",
 	"coder.defaultUrl",
@@ -24,16 +24,19 @@ const REDACTED_SETTINGS = new Set([
 // Explicit allowlist instead of package.json discovery: discovery requires
 // the extension to be installed (it isn't for tests/headless runs) and
 // silently misses settings declared via contributes.configurationDefaults.
-const COLLECTED_SETTINGS = [
+const COLLECTED_SETTINGS: readonly string[] = [
 	...REDACTED_SETTINGS,
 	"coder.autologin",
 	"coder.disableNotifications",
 	"coder.disableSignatureVerification",
 	"coder.disableUpdateNotifications",
 	"coder.enableDownloads",
+	"coder.experimental.oauth",
 	"coder.httpClientLogLevel",
 	"coder.insecure",
 	"coder.networkThreshold.latencyMs",
+	"coder.telemetry.level",
+	"coder.telemetry.local",
 	"coder.useKeyring",
 	"remote.SSH.connectTimeout",
 	"remote.SSH.logLevel",
@@ -85,6 +88,11 @@ function collectSettingsDiagnostics(): Record<string, SettingInspection> {
 	return diagnostics;
 }
 
+/**
+ * Returns a UTF-8 JSON snapshot of `inspect()` output for the allowlisted
+ * `coder.*` / `remote.*` settings. Sensitive values (paths, hostnames,
+ * URLs, commands) are replaced with `<set>` or `<empty>`.
+ */
 export function collectSettingsFile(logger: Logger): Uint8Array | undefined {
 	try {
 		const diagnostics = collectSettingsDiagnostics();

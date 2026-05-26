@@ -173,7 +173,7 @@ describe("appendVsCodeLogs", () => {
 
 		expect(Buffer.compare(beforeBytes, await fs.readFile(zipPath))).toBe(0);
 		expect(logger.error).toHaveBeenCalledWith(
-			"Unexpected error appending VS Code logs",
+			"Unexpected error appending VS Code diagnostics",
 			expect.any(Error),
 		);
 	});
