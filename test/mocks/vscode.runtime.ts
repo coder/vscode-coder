@@ -70,6 +70,9 @@ export class Uri {
 		public scheme: string,
 		public path: string,
 	) {}
+	get fsPath(): string {
+		return this.path;
+	}
 	static file(p: string) {
 		return new Uri("file", p);
 	}

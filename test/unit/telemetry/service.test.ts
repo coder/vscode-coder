@@ -746,4 +746,73 @@ describe("TelemetryService", () => {
 			expect(good.dispose).toHaveBeenCalled();
 		});
 	});
+
+	describe("getContext", () => {
+		it("returns the session plus the current deploymentUrl", () => {
+			h.service.setDeploymentUrl("https://coder.example.com");
+			expect(h.service.getContext()).toEqual({
+				extensionVersion: "1.2.3-test",
+				machineId: "test-machine-id",
+				sessionId: TEST_SESSION_ID,
+				osType: expect.any(String),
+				osVersion: expect.any(String),
+				hostArch: expect.any(String),
+				platformName: expect.any(String),
+				platformVersion: expect.any(String),
+				deploymentUrl: "https://coder.example.com",
+			});
+		});
+
+		it("matches the context attached to emitted events", () => {
+			h.service.setDeploymentUrl("https://coder.example.com");
+			h.service.log("activation");
+			expect(h.service.getContext()).toEqual(h.sink.events[0].context);
+		});
+
+		it("returns a fresh object each call so callers can't mutate internal state", () => {
+			const a = h.service.getContext();
+			const b = h.service.getContext();
+			expect(a).not.toBe(b);
+			expect(a).toEqual(b);
+		});
+
+		it("reflects setDeploymentUrl changes between calls", () => {
+			h.service.setDeploymentUrl("a");
+			expect(h.service.getContext().deploymentUrl).toBe("a");
+			h.service.setDeploymentUrl("b");
+			expect(h.service.getContext().deploymentUrl).toBe("b");
+		});
+	});
+
+	describe("flush", () => {
+		it("flushes every sink", async () => {
+			const second = new TestSink("second");
+			const service = makeService([h.sink, second]);
+
+			await service.flush();
+
+			expect(h.sink.flush).toHaveBeenCalledTimes(1);
+			expect(second.flush).toHaveBeenCalledTimes(1);
+		});
+
+		it("resolves even when a sink rejects", async () => {
+			const bad: TelemetrySink = {
+				name: "bad",
+				minLevel: "local",
+				write: () => {},
+				flush: () => Promise.reject(new Error("flush failed")),
+				dispose: () => Promise.resolve(),
+			};
+			const good = new TestSink("good");
+			const service = makeService([bad, good]);
+
+			await expect(service.flush()).resolves.toBeUndefined();
+			expect(good.flush).toHaveBeenCalled();
+		});
+
+		it("does not dispose sinks", async () => {
+			await h.service.flush();
+			expect(h.sink.dispose).not.toHaveBeenCalled();
+		});
+	});
 });
