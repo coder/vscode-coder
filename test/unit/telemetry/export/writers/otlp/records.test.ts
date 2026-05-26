@@ -140,6 +140,10 @@ describe("spanRecord", () => {
 	it.each([
 		[{ properties: { result: "success" } }, { code: 1 }],
 		[{ properties: { result: "error" } }, { code: 2 }],
+		[
+			{ properties: { result: "error" }, error: { message: "boom" } },
+			{ code: 2, message: "boom" },
+		],
 		[{ error: { message: "boom" } }, { code: 2, message: "boom" }],
 		[{}, { code: 0 }],
 	])("maps span status: %j -> %j", (overrides, expected) => {
@@ -334,6 +338,24 @@ describe("metricRecords", () => {
 		expect(records.map((r) => r.name)).toEqual([
 			"http.requests.p95_duration_ms",
 		]);
+	});
+
+	it("clamps negative counter deltas so the cumulative total never decreases", () => {
+		// Without Math.max(0, ...) a negative delta would shrink the total; backends
+		// read a decreasing monotonic sum as a counter reset.
+		const state = newCumulativeState();
+		metricRecords(
+			makeEvent({ eventName: "http.requests" }),
+			{ windowSeconds: 60, measurements: [counter("count.2xx", 5)] },
+			state,
+		);
+		const [record] = metricRecords(
+			makeEvent({ eventName: "http.requests" }),
+			{ windowSeconds: 60, measurements: [counter("count.2xx", -3)] },
+			state,
+		);
+
+		expect(record.sum!.dataPoints[0].asInt).toBe("5");
 	});
 
 	it("treats windowSeconds=0 as a zero-width window", () => {

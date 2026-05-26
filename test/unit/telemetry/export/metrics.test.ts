@@ -12,7 +12,7 @@ describe("isMetricEvent", () => {
 		["ssh.network.sampled", true],
 		["log.something", false],
 		["remote.setup.workspace_ready", false],
-	])("returns %s for %p", (name, expected) => {
+	])("returns %s for %s", (name, expected) => {
 		expect(isMetricEvent(makeEvent({ eventName: name }))).toBe(expected);
 	});
 });

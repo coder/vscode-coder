@@ -101,12 +101,13 @@ describe("openEnvelopeFile", () => {
 		expect(stream.destroyed).toBe(1);
 	});
 
-	it("wraps stream.end failures with the file path", async () => {
+	it("wraps stream.end failures with the file path and releases the fd", async () => {
 		const env = await openEnvelopeFile("/foo.json", "[", "]");
 		stream.endFailMsg = "stream gone";
 		await expect(env.close()).rejects.toThrow(
 			"Failed to close /foo.json: stream gone",
 		);
+		expect(stream.destroyed).toBe(1);
 	});
 
 	it("rejects subsequent writes after the stream emits 'error'", async () => {
