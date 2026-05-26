@@ -15,7 +15,8 @@ export interface CollectedFile {
 const LOG_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_LOG_SCAN_DEPTH = 6;
 
-export const isLogFile = (name: string): boolean => name.endsWith(".log");
+// Accept .log and VS Code's rotated .log.N form.
+export const isLogFile = (name: string): boolean => /\.log(\.\d+)?$/.test(name);
 
 export function normalizeZipPath(filePath: string): string {
 	return filePath.replaceAll(path.sep, "/");
@@ -37,16 +38,12 @@ export function prefixFiles(
 	return new Map([...files].map(([name, data]) => [`${prefix}/${name}`, data]));
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isNotFoundError(error: unknown): boolean {
-	return isObject(error) && error["code"] === "ENOENT";
-}
-
-function cutoffTime(): number {
-	return Date.now() - LOG_MAX_AGE_MS;
+function isEnoent(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as { code?: unknown }).code === "ENOENT"
+	);
 }
 
 async function readRecentFile(
@@ -54,8 +51,10 @@ async function readRecentFile(
 	logger: Logger,
 ): Promise<{ data: Uint8Array; mtimeMs: number } | undefined> {
 	try {
-		const stat = await fs.stat(filePath);
-		if (!stat.isFile() || stat.mtimeMs < cutoffTime()) {
+		// lstat: skip symlinks so a planted link can't pull host files in.
+		const stat = await fs.lstat(filePath);
+		const cutoff = Date.now() - LOG_MAX_AGE_MS;
+		if (!stat.isFile() || stat.mtimeMs < cutoff) {
 			return undefined;
 		}
 		return { data: await fs.readFile(filePath), mtimeMs: stat.mtimeMs };
@@ -65,27 +64,15 @@ async function readRecentFile(
 	}
 }
 
-async function readDir(
+async function readDirents(
 	dirPath: string,
 	logger: Logger,
-	options: { withFileTypes: true; warnOnMissing?: boolean },
-): Promise<Dirent[]>;
-async function readDir(
-	dirPath: string,
-	logger: Logger,
-	options?: { warnOnMissing?: boolean },
-): Promise<string[]>;
-async function readDir(
-	dirPath: string,
-	logger: Logger,
-	options: { withFileTypes?: boolean; warnOnMissing?: boolean } = {},
-): Promise<Dirent[] | string[]> {
+	warnOnMissing = true,
+): Promise<Dirent[]> {
 	try {
-		return options.withFileTypes
-			? await fs.readdir(dirPath, { withFileTypes: true })
-			: await fs.readdir(dirPath);
+		return await fs.readdir(dirPath, { withFileTypes: true });
 	} catch (error) {
-		if (options.warnOnMissing !== false || !isNotFoundError(error)) {
+		if (warnOnMissing || !isEnoent(error)) {
 			logger.warn(`Could not read log directory ${dirPath}`, error);
 		}
 		return [];
@@ -99,21 +86,19 @@ export async function collectDirFiles(
 	warnOnMissing = true,
 ): Promise<Map<string, Uint8Array>> {
 	const results = new Map<string, Uint8Array>();
-	const entries = await readDir(dirPath, logger, { warnOnMissing });
+	const entries = await readDirents(dirPath, logger, warnOnMissing);
 
 	await Promise.all(
 		entries.map(async (entry) => {
-			if (!filter(entry)) {
+			if (!entry.isFile() || !filter(entry.name)) {
 				return;
 			}
-
-			const file = await readRecentFile(path.join(dirPath, entry), logger);
+			const file = await readRecentFile(path.join(dirPath, entry.name), logger);
 			if (file) {
-				results.set(entry, file.data);
+				results.set(entry.name, file.data);
 			}
 		}),
 	);
-
 	return results;
 }
 
@@ -125,23 +110,21 @@ export async function collectMatchingFiles(
 	const results: CollectedFile[] = [];
 
 	async function walk(dirPath: string, depth: number): Promise<void> {
-		const entries = await readDir(dirPath, logger, { withFileTypes: true });
+		// Silence ENOENT on descents; VS Code log rotation races are normal.
+		const entries = await readDirents(dirPath, logger, depth === 0);
 		await Promise.all(
 			entries.map(async (entry) => {
 				const entryPath = path.join(dirPath, entry.name);
-
 				if (entry.isDirectory()) {
 					if (depth < MAX_LOG_SCAN_DEPTH) {
 						await walk(entryPath, depth + 1);
 					}
 					return;
 				}
-
 				const relativePath = path.relative(rootPath, entryPath);
 				if (!entry.isFile() || !matches(relativePath, entry.name)) {
 					return;
 				}
-
 				const file = await readRecentFile(entryPath, logger);
 				if (file) {
 					results.push({ ...file, relativePath });

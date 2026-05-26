@@ -34,7 +34,10 @@ describe("support bundle file helpers", () => {
 	it("normalizes zip paths and identifies log files", () => {
 		expect(normalizeZipPath("a/b/c.log")).toBe("a/b/c.log");
 		expect(isLogFile("Coder.log")).toBe(true);
+		expect(isLogFile("Coder.log.1")).toBe(true);
+		expect(isLogFile("Coder.log.12")).toBe(true);
 		expect(isLogFile("settings.json")).toBe(false);
+		expect(isLogFile("Coder.log.gz")).toBe(false);
 	});
 
 	it("prefixes and merges file maps", () => {
@@ -84,4 +87,20 @@ describe("support bundle file helpers", () => {
 			},
 		]);
 	});
+
+	it.runIf(process.platform !== "win32")(
+		"does not follow symlinks when reading files",
+		async () => {
+			const outsideTarget = path.join(tmpDir, "outside.secret");
+			await fs.writeFile(outsideTarget, "should-not-be-read");
+			const logsDir = path.join(tmpDir, "logs");
+			await fs.mkdir(logsDir);
+			await fs.symlink(outsideTarget, path.join(logsDir, "evil.log"));
+			await fs.writeFile(path.join(logsDir, "good.log"), "good");
+
+			const files = await collectDirFiles(logsDir, logger, isLogFile);
+
+			expect(files).toEqual(new Map([["good.log", Buffer.from("good")]]));
+		},
+	);
 });

@@ -1,32 +1,40 @@
 import * as vscode from "vscode";
 
 import { type Logger } from "../logging/logger";
-import { REMOTE_SSH_EXTENSION_IDS } from "../remote/sshExtension";
 
-interface ConfigurationContribution {
-	properties?: unknown;
-}
-
-interface ExtensionPackageJson {
-	contributes?: unknown;
-	name?: unknown;
-	publisher?: unknown;
-}
-
-type SettingValue = unknown;
-type SettingInspection = Record<string, SettingValue>;
-type SettingDiagnostics = Record<string, SettingInspection>;
-
+// Paths, hostnames, URLs, and command strings: anything user-supplied that
+// could identify a machine or deployment in a shared bundle.
 const REDACTED_SETTINGS = new Set([
+	"coder.binaryDestination",
 	"coder.binarySource",
+	"coder.defaultUrl",
 	"coder.globalFlags",
 	"coder.headerCommand",
+	"coder.proxyBypass",
+	"coder.proxyLogDirectory",
 	"coder.sshConfig",
 	"coder.sshFlags",
+	"coder.tlsAltHost",
+	"coder.tlsCaFile",
+	"coder.tlsCertFile",
 	"coder.tlsCertRefreshCommand",
+	"coder.tlsKeyFile",
 ]);
 
-const REMOTE_SETTINGS = new Set([
+// Explicit allowlist instead of package.json discovery: discovery requires
+// the extension to be installed (it isn't for tests/headless runs) and
+// silently misses settings declared via contributes.configurationDefaults.
+const COLLECTED_SETTINGS = [
+	...REDACTED_SETTINGS,
+	"coder.autologin",
+	"coder.disableNotifications",
+	"coder.disableSignatureVerification",
+	"coder.disableUpdateNotifications",
+	"coder.enableDownloads",
+	"coder.httpClientLogLevel",
+	"coder.insecure",
+	"coder.networkThreshold.latencyMs",
+	"coder.useKeyring",
 	"remote.SSH.connectTimeout",
 	"remote.SSH.logLevel",
 	"remote.SSH.reconnectionGraceTime",
@@ -34,76 +42,10 @@ const REMOTE_SETTINGS = new Set([
 	"remote.SSH.useExecServer",
 	"remote.SSH.useLocalServer",
 	"remote.autoForwardPorts",
-]);
+].sort();
 
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readPackageJson(value: unknown): ExtensionPackageJson | undefined {
-	return isObject(value) ? value : undefined;
-}
-
-function configurationContributions(
-	packageJson: ExtensionPackageJson,
-): ConfigurationContribution[] {
-	if (!isObject(packageJson.contributes)) {
-		return [];
-	}
-
-	const configuration = packageJson.contributes["configuration"];
-	const contributions = Array.isArray(configuration)
-		? configuration
-		: [configuration];
-	return contributions.filter(isObject);
-}
-
-function isCoderExtension(extension: vscode.Extension<unknown>): boolean {
-	const packageJson = readPackageJson(extension.packageJSON);
-	return (
-		extension.id === "coder.coder-remote" ||
-		(packageJson?.publisher === "coder" && packageJson.name === "coder-remote")
-	);
-}
-
-function isRemoteSshExtension(extension: vscode.Extension<unknown>): boolean {
-	return (REMOTE_SSH_EXTENSION_IDS as readonly string[]).includes(extension.id);
-}
-
-function shouldCollectKey(
-	extension: vscode.Extension<unknown>,
-	key: string,
-): boolean {
-	return (
-		(isCoderExtension(extension) && key.startsWith("coder.")) ||
-		(isRemoteSshExtension(extension) && REMOTE_SETTINGS.has(key))
-	);
-}
-
-function configurationKeys(): string[] {
-	const keys = new Set<string>();
-
-	for (const extension of vscode.extensions.all) {
-		const packageJson = readPackageJson(extension.packageJSON);
-		if (!packageJson) {
-			continue;
-		}
-
-		for (const contribution of configurationContributions(packageJson)) {
-			if (!isObject(contribution.properties)) {
-				continue;
-			}
-
-			for (const key of Object.keys(contribution.properties)) {
-				if (shouldCollectKey(extension, key)) {
-					keys.add(key);
-				}
-			}
-		}
-	}
-
-	return [...keys].sort();
-}
+type SettingValue = unknown;
+type SettingInspection = Record<string, SettingValue>;
 
 function redactedSettingValue(value: SettingValue): string {
 	const emptyArray = Array.isArray(value) && value.length === 0;
@@ -112,29 +54,34 @@ function redactedSettingValue(value: SettingValue): string {
 		: "<set>";
 }
 
-function maybeRedactSetting(key: string, value: SettingValue): SettingValue {
+function maybeRedact(
+	key: string,
+	name: string,
+	value: SettingValue,
+): SettingValue {
+	// `key` and `languageIds` are inspect() metadata, not the secret payload.
+	if (name === "key" || name === "languageIds") {
+		return value;
+	}
 	return REDACTED_SETTINGS.has(key) ? redactedSettingValue(value) : value;
 }
 
-function collectSettingsDiagnostics(): SettingDiagnostics {
+function collectSettingsDiagnostics(): Record<string, SettingInspection> {
 	const config = vscode.workspace.getConfiguration();
-	const diagnostics: SettingDiagnostics = {};
-
-	for (const key of configurationKeys()) {
+	const diagnostics: Record<string, SettingInspection> = {};
+	for (const key of COLLECTED_SETTINGS) {
 		const inspected = config.inspect<SettingValue>(key);
 		if (!inspected) {
 			continue;
 		}
-
 		const entry: SettingInspection = {
-			effective: maybeRedactSetting(key, config.get(key)),
+			effective: maybeRedact(key, "effective", config.get(key)),
 		};
 		for (const [name, value] of Object.entries(inspected)) {
-			entry[name] = name === "key" ? value : maybeRedactSetting(key, value);
+			entry[name] = maybeRedact(key, name, value);
 		}
 		diagnostics[key] = entry;
 	}
-
 	return diagnostics;
 }
 

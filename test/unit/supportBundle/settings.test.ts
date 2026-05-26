@@ -8,19 +8,9 @@ import { createMockLogger } from "../../mocks/testHelpers";
 const logger = createMockLogger();
 
 beforeEach(() => {
-	setExtensions([]);
 	vi.mocked(vscode.workspace.getConfiguration).mockReset();
 	vi.mocked(logger.warn).mockClear();
 });
-
-function setExtensions(
-	extensions: Array<{ id: string; packageJSON: unknown }>,
-): void {
-	Object.defineProperty(vscode.extensions, "all", {
-		configurable: true,
-		value: extensions,
-	});
-}
 
 function setConfiguration(
 	values: Record<string, unknown>,
@@ -38,17 +28,6 @@ function setConfiguration(
 	);
 }
 
-function readSettings(): Record<string, Record<string, unknown>> {
-	const data = collectSettingsFile(logger);
-	if (!data) {
-		throw new Error("settings were not collected");
-	}
-	return JSON.parse(Buffer.from(data).toString()) as Record<
-		string,
-		Record<string, unknown>
-	>;
-}
-
 describe("collectSettingsFile", () => {
 	it("returns undefined when there are no supported settings", () => {
 		setConfiguration({}, {});
@@ -56,104 +35,40 @@ describe("collectSettingsFile", () => {
 		expect(collectSettingsFile(logger)).toBeUndefined();
 	});
 
-	it("collects Coder settings and allowlisted Remote-SSH settings only", () => {
-		setExtensions([
-			{
-				id: "coder.coder-remote",
-				packageJSON: {
-					name: "coder-remote",
-					publisher: "coder",
-					contributes: {
-						configuration: {
-							properties: {
-								"coder.binarySource": {},
-								"coder.globalFlags": {},
-								"coder.headerCommand": {},
-								"coder.proxyLogDirectory": {},
-								"coder.sshConfig": {},
-								"coder.sshFlags": {},
-								"coder.tlsCertRefreshCommand": {},
-								"unrelated.setting": {},
-							},
-						},
-					},
-				},
-			},
-			{
-				id: "ms-vscode-remote.remote-ssh",
-				packageJSON: {
-					contributes: {
-						configuration: {
-							properties: {
-								"remote.SSH.connectTimeout": {},
-								"remote.SSH.remotePlatform": {},
-								"remote.autoForwardPorts": {},
-							},
-						},
-					},
-				},
-			},
-			{
-				id: "other.remote-extension",
-				packageJSON: {
-					contributes: {
-						configuration: {
-							properties: { "remote.someToken": {} },
-						},
-					},
-				},
-			},
-		]);
+	it("redacts sensitive Coder settings while preserving safe ones", () => {
 		setConfiguration(
 			{
-				"coder.binarySource": "",
-				"coder.globalFlags": ["--header-command", "DO_NOT_LEAK_SECRET"],
 				"coder.headerCommand": "echo DO_NOT_LEAK_SECRET",
-				"coder.proxyLogDirectory": "/tmp/proxy",
-				"coder.sshConfig": ["SetEnv TOKEN=DO_NOT_LEAK_SECRET"],
 				"coder.sshFlags": ["--flag", "DO_NOT_LEAK_SECRET"],
-				"coder.tlsCertRefreshCommand": "refresh DO_NOT_LEAK_SECRET",
-				"remote.SSH.connectTimeout": 1800,
-				"remote.SSH.remotePlatform": { workspace: "linux" },
-				"remote.autoForwardPorts": true,
+				"coder.tlsCertFile": "/etc/ssl/DO_NOT_LEAK_SECRET.pem",
+				"coder.defaultUrl": "https://internal.DO_NOT_LEAK_SECRET",
+				"coder.insecure": true,
+				"coder.httpClientLogLevel": "debug",
+				"coder.binarySource": "",
 			},
 			{
-				"coder.binarySource": { defaultValue: "", globalValue: "" },
-				"coder.globalFlags": {
-					defaultValue: [],
-					globalValue: ["--header-command", "DO_NOT_LEAK_SECRET"],
-				},
 				"coder.headerCommand": {
 					defaultValue: "",
 					globalValue: "echo DO_NOT_LEAK_SECRET",
-				},
-				"coder.proxyLogDirectory": {
-					defaultValue: "",
-					globalValue: "/tmp/proxy",
-				},
-				"coder.sshConfig": {
-					defaultValue: [],
-					globalValue: ["SetEnv TOKEN=DO_NOT_LEAK_SECRET"],
 				},
 				"coder.sshFlags": {
 					defaultValue: [],
 					globalValue: ["--flag", "DO_NOT_LEAK_SECRET"],
 				},
-				"coder.tlsCertRefreshCommand": {
+				"coder.tlsCertFile": {
 					defaultValue: "",
-					globalValue: "refresh DO_NOT_LEAK_SECRET",
+					globalValue: "/etc/ssl/DO_NOT_LEAK_SECRET.pem",
 				},
-				"remote.SSH.connectTimeout": {
-					defaultValue: 60,
-					globalValue: 1800,
+				"coder.defaultUrl": {
+					defaultValue: "",
+					globalValue: "https://internal.DO_NOT_LEAK_SECRET",
 				},
-				"remote.SSH.remotePlatform": {
-					globalValue: { workspace: "linux" },
+				"coder.insecure": { defaultValue: false, globalValue: true },
+				"coder.httpClientLogLevel": {
+					defaultValue: "info",
+					globalValue: "debug",
 				},
-				"remote.autoForwardPorts": {
-					defaultValue: false,
-					workspaceValue: true,
-				},
+				"coder.binarySource": { defaultValue: "", globalValue: "" },
 			},
 		);
 
@@ -163,45 +78,66 @@ describe("collectSettingsFile", () => {
 		const settings = JSON.parse(raw) as Record<string, Record<string, unknown>>;
 
 		expect(raw).not.toContain("DO_NOT_LEAK_SECRET");
-		expect(Object.keys(settings).sort()).toEqual([
-			"coder.binarySource",
-			"coder.globalFlags",
-			"coder.headerCommand",
-			"coder.proxyLogDirectory",
-			"coder.sshConfig",
-			"coder.sshFlags",
-			"coder.tlsCertRefreshCommand",
-			"remote.SSH.connectTimeout",
-			"remote.autoForwardPorts",
-		]);
-		expect(settings["coder.binarySource"]).toEqual({
+		expect(settings["coder.headerCommand"]).toEqual({
 			defaultValue: "<empty>",
-			effective: "<empty>",
-			globalValue: "<empty>",
-			key: "coder.binarySource",
+			effective: "<set>",
+			globalValue: "<set>",
+			key: "coder.headerCommand",
 		});
-		expect(settings["coder.headerCommand"]?.effective).toBe("<set>");
-		expect(settings["coder.globalFlags"]?.defaultValue).toBe("<empty>");
-		expect(settings["coder.globalFlags"]?.effective).toBe("<set>");
-		expect(settings["coder.sshConfig"]?.effective).toBe("<set>");
-		expect(settings["coder.proxyLogDirectory"]?.effective).toBe("/tmp/proxy");
+		expect(settings["coder.sshFlags"]?.effective).toBe("<set>");
+		expect(settings["coder.tlsCertFile"]?.effective).toBe("<set>");
+		expect(settings["coder.defaultUrl"]?.effective).toBe("<set>");
+		expect(settings["coder.binarySource"]?.effective).toBe("<empty>");
+		// Non-sensitive settings pass through verbatim.
+		expect(settings["coder.insecure"]?.effective).toBe(true);
+		expect(settings["coder.httpClientLogLevel"]?.effective).toBe("debug");
+	});
+
+	it("collects allowlisted Remote-SSH settings", () => {
+		setConfiguration(
+			{
+				"remote.SSH.connectTimeout": 1800,
+				"remote.autoForwardPorts": true,
+			},
+			{
+				"remote.SSH.connectTimeout": { defaultValue: 60, globalValue: 1800 },
+				"remote.autoForwardPorts": {
+					defaultValue: false,
+					workspaceValue: true,
+				},
+			},
+		);
+
+		const settings = JSON.parse(
+			Buffer.from(collectSettingsFile(logger) ?? new Uint8Array()).toString(),
+		) as Record<string, Record<string, unknown>>;
+
 		expect(settings["remote.SSH.connectTimeout"]?.globalValue).toBe(1800);
 		expect(settings["remote.autoForwardPorts"]?.workspaceValue).toBe(true);
 	});
 
-	it("warns and returns undefined when settings collection fails", () => {
-		setExtensions([
+	it("preserves languageIds metadata on redacted settings", () => {
+		setConfiguration(
+			{ "coder.headerCommand": "echo secret" },
 			{
-				id: "coder.coder-remote",
-				packageJSON: {
-					contributes: {
-						configuration: {
-							properties: { "coder.proxyLogDirectory": {} },
-						},
-					},
+				"coder.headerCommand": {
+					globalValue: "echo secret",
+					languageIds: ["typescript"],
 				},
 			},
+		);
+
+		const settings = JSON.parse(
+			Buffer.from(collectSettingsFile(logger) ?? new Uint8Array()).toString(),
+		) as Record<string, Record<string, unknown>>;
+
+		expect(settings["coder.headerCommand"]?.languageIds).toEqual([
+			"typescript",
 		]);
+		expect(settings["coder.headerCommand"]?.globalValue).toBe("<set>");
+	});
+
+	it("warns and returns undefined when settings collection fails", () => {
 		vi.mocked(vscode.workspace.getConfiguration).mockImplementation(() => {
 			throw new Error("settings failed");
 		});
@@ -210,27 +146,6 @@ describe("collectSettingsFile", () => {
 		expect(logger.warn).toHaveBeenCalledWith(
 			"Could not collect VS Code settings",
 			expect.any(Error),
-		);
-	});
-
-	it("supports array-style configuration contributions", () => {
-		setExtensions([
-			{
-				id: "coder.coder-remote",
-				packageJSON: {
-					contributes: {
-						configuration: [{ properties: { "coder.proxyLogDirectory": {} } }],
-					},
-				},
-			},
-		]);
-		setConfiguration(
-			{ "coder.proxyLogDirectory": "/tmp/proxy" },
-			{ "coder.proxyLogDirectory": { globalValue: "/tmp/proxy" } },
-		);
-
-		expect(readSettings()["coder.proxyLogDirectory"]?.effective).toBe(
-			"/tmp/proxy",
 		);
 	});
 });

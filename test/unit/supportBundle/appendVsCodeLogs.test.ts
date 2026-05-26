@@ -5,14 +5,14 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { appendVsCodeLogs } from "@/supportBundle/appendVsCodeLogs";
-import { collectVsCodeDiagnostics } from "@/supportBundle/diagnostics";
+import { collectVsCodeDiagnostics } from "@/supportBundle/logFiles";
 import { renameWithRetry } from "@/util/fs";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
 const collectVsCodeDiagnosticsMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/supportBundle/diagnostics", () => ({
+vi.mock("@/supportBundle/logFiles", () => ({
 	collectVsCodeDiagnostics: collectVsCodeDiagnosticsMock,
 }));
 
@@ -31,6 +31,9 @@ beforeEach(async () => {
 	tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "support-bundle-"));
 	vi.mocked(collectVsCodeDiagnostics).mockReset();
 	vi.mocked(renameWithRetry).mockClear();
+	vi.mocked(logger.error).mockClear();
+	vi.mocked(logger.warn).mockClear();
+	vi.mocked(logger.info).mockClear();
 });
 
 afterEach(async () => {
@@ -57,9 +60,8 @@ async function readZip(zipPath: string): Promise<Record<string, string>> {
 }
 
 async function findBundleSibling(): Promise<string> {
-	const sibling = (await fs.readdir(tmpDir)).find(
-		(name) =>
-			name.startsWith("coder-support-123-vscode-") && name.endsWith(".zip"),
+	const sibling = (await fs.readdir(tmpDir)).find((name) =>
+		/^coder-support-123-vscode-[a-f0-9]{8}\.zip$/.test(name),
 	);
 	if (!sibling) {
 		throw new Error("support bundle sibling not found");

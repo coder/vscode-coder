@@ -7,9 +7,9 @@ import { promisify } from "node:util";
 import { type Logger } from "../logging/logger";
 import { renameWithRetry } from "../util/fs";
 
-import { collectVsCodeDiagnostics, type LogSources } from "./diagnostics";
+import { collectVsCodeDiagnostics, type LogSources } from "./logFiles";
 
-export type { LogSources } from "./diagnostics";
+export type { LogSources } from "./logFiles";
 
 const unzipAsync = promisify(unzip);
 const zipAsync = promisify(zip);
@@ -18,7 +18,7 @@ function vscodeBundlePath(zipPath: string): string {
 	const parsed = path.parse(zipPath);
 	return path.join(
 		parsed.dir,
-		`${parsed.name}-vscode-${randomUUID()}${parsed.ext}`,
+		`${parsed.name}-vscode-${randomUUID().slice(0, 8)}${parsed.ext}`,
 	);
 }
 
@@ -34,8 +34,9 @@ async function writeBundleWithLogs(
 		entries[name] = data;
 	}
 
-	await fs.writeFile(outputPath, await zipAsync(entries));
-	await fs.chmod(outputPath, sourceMode);
+	// Set mode at create time: no umask window, no separate chmod that
+	// could fail on filesystems that don't honor mode bits.
+	await fs.writeFile(outputPath, await zipAsync(entries), { mode: sourceMode });
 }
 
 /**

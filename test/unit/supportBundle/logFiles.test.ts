@@ -3,7 +3,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { collectSupportLogFiles } from "@/supportBundle/logFiles";
+import {
+	collectSupportLogFiles,
+	collectWindowLogDirs,
+	resolveLogContext,
+} from "@/supportBundle/logFiles";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
@@ -37,13 +41,14 @@ async function collectTextFiles(
 }
 
 describe("collectSupportLogFiles", () => {
-	it("collects active proxy log and recent Coder SSH proxy logs", async () => {
+	it("collects active proxy log under its real name alongside Coder SSH proxy logs", async () => {
 		const proxyDir = path.join(tmpDir, "proxy");
 		await fs.mkdir(proxyDir);
 		const activeProxyLog = path.join(tmpDir, "custom-active.log");
 		await fs.writeFile(activeProxyLog, "active");
 		await fs.writeFile(path.join(proxyDir, "coder-ssh-recent.log"), "recent");
 		await fs.writeFile(path.join(proxyDir, "coder-ssh-old.log"), "old");
+		await fs.writeFile(path.join(proxyDir, "12345.log"), "pid-style");
 		await fs.writeFile(path.join(proxyDir, "other.log"), "other");
 		await fs.writeFile(path.join(proxyDir, "secret.env"), "secret");
 		await fs.mkdir(path.join(proxyDir, "subdir"));
@@ -55,15 +60,33 @@ describe("collectSupportLogFiles", () => {
 				proxyLogDir: proxyDir,
 			}),
 		).resolves.toEqual({
-			"vscode-logs/proxy/active.log": "active",
+			"vscode-logs/proxy/custom-active.log": "active",
 			"vscode-logs/proxy/coder-ssh-recent.log": "recent",
+			"vscode-logs/proxy/12345.log": "pid-style",
 		});
 	});
 
-	it("collects recent extension logs from a non-canonical extension log directory", async () => {
+	it("does not double-bundle the active proxy log when it lives inside proxyLogDir", async () => {
+		const proxyDir = path.join(tmpDir, "proxy");
+		await fs.mkdir(proxyDir);
+		const activeProxyLog = path.join(proxyDir, "coder-ssh-active.log");
+		await fs.writeFile(activeProxyLog, "active");
+
+		const result = await collectTextFiles({
+			activeProxyLogPath: activeProxyLog,
+			proxyLogDir: proxyDir,
+		});
+
+		expect(result).toEqual({
+			"vscode-logs/proxy/coder-ssh-active.log": "active",
+		});
+	});
+
+	it("collects recent extension logs (including rotated .log.N) from a non-canonical extension log directory", async () => {
 		const extDir = path.join(tmpDir, "ext");
 		await fs.mkdir(extDir);
 		await fs.writeFile(path.join(extDir, "Coder-recent.log"), "recent");
+		await fs.writeFile(path.join(extDir, "Coder-recent.log.1"), "rotated");
 		await fs.writeFile(path.join(extDir, "Coder-old.log"), "old");
 		await fs.writeFile(path.join(extDir, "notes.txt"), "notes");
 		await fs.mkdir(path.join(extDir, "subdir"));
@@ -73,6 +96,7 @@ describe("collectSupportLogFiles", () => {
 			collectTextFiles({ extensionLogDir: extDir }),
 		).resolves.toEqual({
 			"vscode-logs/extension/Coder-recent.log": "recent",
+			"vscode-logs/extension/Coder-recent.log.1": "rotated",
 		});
 	});
 
@@ -216,6 +240,128 @@ describe("collectSupportLogFiles", () => {
 		).toBeUndefined();
 	});
 
+	it("collects Remote-SSH logs from the host extension's exthost dir even when filenames lack 'Remote - SSH'", async () => {
+		const logsRoot = path.join(tmpDir, "logs");
+		const currentExtDir = path.join(
+			logsRoot,
+			"20240101T000000",
+			"window1",
+			"exthost",
+			"coder.coder-remote",
+		);
+		await fs.mkdir(currentExtDir, { recursive: true });
+		await fs.writeFile(path.join(currentExtDir, "Coder.log"), "coder");
+
+		const remoteSshExtDir = path.join(
+			logsRoot,
+			"20240101T000000",
+			"window1",
+			"exthost",
+			"ms-vscode-remote.remote-ssh",
+		);
+		await fs.mkdir(remoteSshExtDir, { recursive: true });
+		await fs.writeFile(path.join(remoteSshExtDir, "1.log"), "ext-host-log");
+
+		const files = await collectTextFiles({ extensionLogDir: currentExtDir });
+
+		expect(files).toMatchObject({
+			"vscode-logs/remote-ssh/20240101T000000/window1/exthost/ms-vscode-remote.remote-ssh/1.log":
+				"ext-host-log",
+		});
+	});
+
+	it("does not promote a stale log from another window when the current window has no Remote-SSH logs", async () => {
+		const logsRoot = path.join(tmpDir, "logs");
+		const currentSession = "20240103T000000";
+		const otherSession = "20240102T000000";
+
+		const currentExtDir = path.join(
+			logsRoot,
+			currentSession,
+			"window1",
+			"exthost",
+			"coder.coder-remote",
+		);
+		const otherExtDir = path.join(
+			logsRoot,
+			otherSession,
+			"window1",
+			"exthost",
+			"coder.coder-remote",
+		);
+		await fs.mkdir(currentExtDir, { recursive: true });
+		await fs.mkdir(otherExtDir, { recursive: true });
+		await fs.writeFile(path.join(currentExtDir, "Coder.log"), "current");
+		await fs.writeFile(path.join(otherExtDir, "Coder.log"), "other");
+
+		const otherSshDir = path.join(
+			logsRoot,
+			otherSession,
+			"window1",
+			"output_logging_1",
+		);
+		await fs.mkdir(otherSshDir, { recursive: true });
+		await fs.writeFile(
+			path.join(otherSshDir, "1-Remote - SSH.log"),
+			"stale ssh",
+		);
+
+		const files = await collectTextFiles({ extensionLogDir: currentExtDir });
+
+		expect(files["vscode-logs/remote-ssh/1-Remote - SSH.log"]).toBeUndefined();
+		expect(
+			files[
+				`vscode-logs/remote-ssh/${otherSession}/window1/output_logging_1/1-Remote - SSH.log`
+			],
+		).toBe("stale ssh");
+	});
+
+	it("falls back to scanning the assumed window dir when the layout is non-canonical", async () => {
+		const extDir = path.join(tmpDir, "ext");
+		const siblingSshDir = path.join(tmpDir, "output_logging_1");
+		await fs.mkdir(extDir);
+		await fs.mkdir(siblingSshDir);
+		await fs.writeFile(path.join(siblingSshDir, "1-Remote - SSH.log"), "ssh");
+		await fs.writeFile(path.join(extDir, "Coder.log"), "coder");
+
+		const files = await collectTextFiles({ extensionLogDir: extDir });
+
+		expect(files).toMatchObject({
+			"vscode-logs/extension/Coder.log": "coder",
+			"vscode-logs/remote-ssh/output_logging_1/1-Remote - SSH.log": "ssh",
+		});
+	});
+
+	it("resolves a forked Coder extension id via the same layout", async () => {
+		const logsRoot = path.join(tmpDir, "logs");
+		const currentExtDir = path.join(
+			logsRoot,
+			"20240101T000000",
+			"window1",
+			"exthost",
+			"mycompany.coder-remote",
+		);
+		await fs.mkdir(currentExtDir, { recursive: true });
+		await fs.writeFile(path.join(currentExtDir, "Coder.log"), "coder");
+
+		const previousExtDir = path.join(
+			logsRoot,
+			"20240102T000000",
+			"window1",
+			"exthost",
+			"mycompany.coder-remote",
+		);
+		await fs.mkdir(previousExtDir, { recursive: true });
+		await fs.writeFile(path.join(previousExtDir, "Coder.log"), "previous");
+
+		const files = await collectTextFiles({ extensionLogDir: currentExtDir });
+
+		expect(files).toMatchObject({
+			"vscode-logs/extension/20240101T000000/window1/Coder.log": "coder",
+			"vscode-logs/extension/20240102T000000/window1/Coder.log": "previous",
+		});
+	});
+
 	it.runIf(canTestUnreadable)(
 		"skips missing or unreadable sources and includes readable files",
 		async () => {
@@ -241,4 +387,99 @@ describe("collectSupportLogFiles", () => {
 			}
 		},
 	);
+});
+
+describe("resolveLogContext", () => {
+	it("resolves VS Code session log layout", () => {
+		const extensionLogDir = path.join(
+			tmpDir,
+			"20240101T000000",
+			"window1",
+			"exthost",
+			"coder.coder-remote",
+		);
+
+		expect(resolveLogContext(extensionLogDir)).toEqual({
+			currentWindowPath: path.join(tmpDir, "20240101T000000", "window1"),
+			logsRoot: tmpDir,
+		});
+	});
+
+	it("resolves flat window log layout", () => {
+		const extensionLogDir = path.join(
+			tmpDir,
+			"window1",
+			"exthost",
+			"coder.coder-remote",
+		);
+
+		expect(resolveLogContext(extensionLogDir)).toEqual({
+			currentWindowPath: path.join(tmpDir, "window1"),
+			logsRoot: tmpDir,
+		});
+	});
+
+	it("ignores paths outside the Coder extension log layout", () => {
+		expect(
+			resolveLogContext(path.join(tmpDir, "window1", "other")),
+		).toBeUndefined();
+	});
+
+	it("accepts a forked Coder extension id provided the layout matches", () => {
+		const extensionLogDir = path.join(
+			tmpDir,
+			"20240101T000000",
+			"window1",
+			"exthost",
+			"mycompany.coder-remote",
+		);
+
+		expect(resolveLogContext(extensionLogDir)).toEqual({
+			currentWindowPath: path.join(tmpDir, "20240101T000000", "window1"),
+			logsRoot: tmpDir,
+		});
+	});
+
+	it("does not treat a non-canonical session-suffix name as a session root", () => {
+		const extensionLogDir = path.join(
+			tmpDir,
+			"20240101T000000-foo",
+			"window1",
+			"exthost",
+			"coder.coder-remote",
+		);
+
+		expect(resolveLogContext(extensionLogDir)).toEqual({
+			currentWindowPath: path.join(tmpDir, "20240101T000000-foo", "window1"),
+			logsRoot: path.join(tmpDir, "20240101T000000-foo"),
+		});
+	});
+});
+
+describe("collectWindowLogDirs", () => {
+	it("finds and sorts session and flat window directories", async () => {
+		await fs.mkdir(path.join(tmpDir, "20240102T000000", "window2"), {
+			recursive: true,
+		});
+		await fs.mkdir(path.join(tmpDir, "20240101T000000", "window1"), {
+			recursive: true,
+		});
+		await fs.mkdir(path.join(tmpDir, "window3"), { recursive: true });
+		await fs.writeFile(path.join(tmpDir, "not-a-window.log"), "ignore");
+
+		await expect(collectWindowLogDirs(tmpDir, logger)).resolves.toEqual([
+			{
+				relativePath: "20240101T000000/window1",
+				windowPath: path.join(tmpDir, "20240101T000000", "window1"),
+			},
+			{
+				relativePath: "20240102T000000/window2",
+				windowPath: path.join(tmpDir, "20240102T000000", "window2"),
+			},
+			{
+				relativePath: "window3",
+				windowPath: path.join(tmpDir, "window3"),
+			},
+		]);
+	});
 });
