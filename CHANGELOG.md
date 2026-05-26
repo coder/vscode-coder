@@ -42,13 +42,6 @@
   around `cmd.exe` on Windows) and a recurring command-injection risk
   when deployment-supplied values like workspace names or template
   parameters contained spaces, quotes, or shell metacharacters.
-- Minimum supported VS Code lowered to 1.105 for Cursor compatibility.
-
-### Removed
-
-- The "Coder Chat (Experimental)" secondary sidebar and its `agents`
-  experiment gate. Deeplinks that still include `chatId` continue to open
-  the workspace; the parameter is now silently ignored.
 
 ### Fixed
 
@@ -71,6 +64,33 @@
   `coder update` so the CLI runs non-interactively. If the CLI still asks
   for input the update is failed instead of hanging, and the workspace
   falls back to starting on the existing template version with a warning.
+
+## [v1.14.6](https://github.com/coder/vscode-coder/releases/tag/v1.14.6) 2026-05-26
+
+### Changed
+
+- Minimum supported VS Code lowered to 1.105 for Cursor compatibility.
+
+### Removed
+
+- The "Coder Chat (Experimental)" secondary sidebar and its `agents`
+  experiment gate. Deeplinks that still include `chatId` continue to open
+  the workspace; the parameter is now silently ignored.
+
+### Fixed
+
+- Sessions suspended by an mTLS or `coder.headerCommand` failure now
+  auto-recover once the setting is corrected; a 401 from a mid-flight
+  settings change is retried silently with the new settings and fresh
+  headers instead of escalating to an interactive prompt.
+- Logout, deployment switch, or dispose during an in-flight auth verify
+  is no longer overwritten when the verify finishes, and no longer
+  leaves stale deployment data in storage.
+- Cross-window login keeps listening when the first token observed from
+  another window is invalid, so a follow-up valid write still resolves
+  the dialog.
+- Config-change side-effects (reload prompt, recovery, reconnects) fire
+  once after edits settle instead of on every event in a burst.
 
 ### Security
 
