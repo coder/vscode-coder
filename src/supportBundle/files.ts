@@ -46,7 +46,7 @@ function isEnoent(error: unknown): boolean {
 	);
 }
 
-// lstat rejects symlinks so a planted link can't pull host files in.
+/** Read a file with an lstat guard that rejects symlinks. */
 export async function readLogFile(
 	filePath: string,
 	logger: Logger,

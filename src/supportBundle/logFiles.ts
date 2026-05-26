@@ -1,7 +1,11 @@
 import * as path from "node:path";
 
 import { type Logger } from "../logging/logger";
-import { REMOTE_SSH_EXTENSION_IDS } from "../remote/sshExtension";
+import {
+	isOutputLoggingDir,
+	isRemoteSshExtensionDir,
+	isSharedChannelRemoteSshLog,
+} from "../remote/sshExtension";
 
 import {
 	addFiles,
@@ -42,16 +46,11 @@ function isRemoteSshLog(relativePath: string, fileName: string): boolean {
 	}
 	const parts = normalizeZipPath(relativePath).split("/");
 	// Whole exthost dir belongs to one extension; output_logging_* is shared.
-	if (
-		parts.some((part) =>
-			(REMOTE_SSH_EXTENSION_IDS as readonly string[]).includes(part),
-		)
-	) {
+	if (parts.some(isRemoteSshExtensionDir)) {
 		return true;
 	}
 	return (
-		parts.some((part) => part.startsWith("output_logging_")) &&
-		fileName.includes("Remote - SSH")
+		parts.some(isOutputLoggingDir) && isSharedChannelRemoteSshLog(fileName)
 	);
 }
 
