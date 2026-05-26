@@ -10,6 +10,7 @@ import {
 	isLogFile,
 	normalizeZipPath,
 	prefixFiles,
+	readLogFile,
 } from "@/supportBundle/files";
 
 import { createMockLogger } from "../../mocks/testHelpers";
@@ -86,6 +87,22 @@ describe("support bundle file helpers", () => {
 				),
 			},
 		]);
+	});
+
+	it("truncates oversized log files to the tail", async () => {
+		const filePath = path.join(tmpDir, "huge.log");
+		const head = Buffer.alloc(60 * 1024 * 1024, "H");
+		const tail = Buffer.from("TAIL_MARKER\n");
+		await fs.writeFile(filePath, Buffer.concat([head, tail]));
+
+		const result = await readLogFile(filePath, logger);
+
+		expect(result?.data.byteLength).toBe(50 * 1024 * 1024);
+		expect(
+			Buffer.from(result?.data ?? new Uint8Array())
+				.subarray(-tail.byteLength)
+				.toString(),
+		).toBe("TAIL_MARKER\n");
 	});
 
 	it.runIf(process.platform !== "win32")(

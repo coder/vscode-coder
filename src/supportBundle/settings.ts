@@ -57,13 +57,19 @@ function redactedSettingValue(value: SettingValue): string {
 		: "<set>";
 }
 
+/** inspect() metadata + public package.json default; not user-supplied. */
+const REDACTION_PASSTHROUGH: ReadonlySet<string> = new Set([
+	"key",
+	"languageIds",
+	"defaultValue",
+]);
+
 function maybeRedact(
 	key: string,
 	name: string,
 	value: SettingValue,
 ): SettingValue {
-	// `key` and `languageIds` are inspect() metadata, not the secret payload.
-	if (name === "key" || name === "languageIds") {
+	if (REDACTION_PASSTHROUGH.has(name)) {
 		return value;
 	}
 	return REDACTED_SETTINGS.has(key) ? redactedSettingValue(value) : value;

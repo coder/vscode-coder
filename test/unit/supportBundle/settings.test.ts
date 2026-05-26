@@ -79,7 +79,7 @@ describe("collectSettingsFile", () => {
 
 		expect(raw).not.toContain("DO_NOT_LEAK_SECRET");
 		expect(settings["coder.headerCommand"]).toEqual({
-			defaultValue: "<empty>",
+			defaultValue: "",
 			effective: "<set>",
 			globalValue: "<set>",
 			key: "coder.headerCommand",

@@ -10,10 +10,11 @@ export interface CollectedFile {
 	relativePath: string;
 }
 
-// 3 days is enough context for recent issues; matching the 7-day
-// rotation would bloat the bundle.
+/** 3-day window; the 7-day rotation would bloat the bundle. */
 const LOG_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_LOG_SCAN_DEPTH = 6;
+/** Per-file cap to prevent OOM on multi-GB debug logs. */
+const MAX_LOG_FILE_BYTES = 50 * 1024 * 1024;
 
 // Accept .log and VS Code's rotated .log.N form.
 export const isLogFile = (name: string): boolean => /\.log(\.\d+)?$/.test(name);
@@ -46,7 +47,22 @@ function isEnoent(error: unknown): boolean {
 	);
 }
 
-/** Read a file with an lstat guard that rejects symlinks. */
+/** Read the last `length` bytes of `filePath`. */
+async function readTail(filePath: string, length: number): Promise<Uint8Array> {
+	const handle = await fs.open(filePath, "r");
+	try {
+		const { size } = await handle.stat();
+		const offset = Math.max(0, size - length);
+		const readLen = Math.min(length, size);
+		const buf = Buffer.alloc(readLen);
+		const { bytesRead } = await handle.read(buf, 0, readLen, offset);
+		return buf.subarray(0, bytesRead);
+	} finally {
+		await handle.close();
+	}
+}
+
+/** lstat-guarded read; tail-truncates files over `MAX_LOG_FILE_BYTES`. */
 export async function readLogFile(
 	filePath: string,
 	logger: Logger,
@@ -55,6 +71,15 @@ export async function readLogFile(
 		const stat = await fs.lstat(filePath);
 		if (!stat.isFile()) {
 			return undefined;
+		}
+		if (stat.size > MAX_LOG_FILE_BYTES) {
+			logger.warn(
+				`Truncating log file ${filePath} (${stat.size} bytes) to last ${MAX_LOG_FILE_BYTES} bytes`,
+			);
+			return {
+				data: await readTail(filePath, MAX_LOG_FILE_BYTES),
+				mtimeMs: stat.mtimeMs,
+			};
 		}
 		return { data: await fs.readFile(filePath), mtimeMs: stat.mtimeMs };
 	} catch (error) {
