@@ -69,6 +69,11 @@ export function newCumulativeState(): CumulativeState {
 	return { anchor: undefined, totals: new Map() };
 }
 
+/**
+ * Resource attributes describe the export tool (forwarder), not the original
+ * producer. Per-event identity is stamped on each record by
+ * `eventContextAttributes` so multi-session exports preserve provenance.
+ */
 export function otlpResource(context: TelemetryContext) {
 	return {
 		attributes: keyValues({
@@ -83,6 +88,19 @@ export function otlpResource(context: TelemetryContext) {
 			"vscode.platform.version": context.platformVersion,
 			"coder.deployment.url": context.deploymentUrl,
 		}),
+	};
+}
+
+/**
+ * Per-event identity stamped on every record so multi-session exports stay
+ * attributable. Spread LAST in attribute maps so caller-supplied properties
+ * keyed `coder.event.*` cannot override the canonical provenance.
+ */
+function eventContextAttributes(event: TelemetryEvent): Record<string, string> {
+	return {
+		"coder.event.extension_version": event.context.extensionVersion,
+		"coder.event.session_id": event.context.sessionId,
+		"coder.event.deployment_url": event.context.deploymentUrl,
 	};
 }
 
@@ -103,6 +121,7 @@ export function logRecord(event: TelemetryEvent): OtlpLogRecord {
 			...event.properties,
 			...event.measurements,
 			...(event.error && exceptionAttributes(event.error)),
+			...eventContextAttributes(event),
 		}),
 	};
 }
@@ -125,9 +144,10 @@ export function spanRecord(
 		startTimeUnixNano: String(startNano),
 		endTimeUnixNano,
 		attributes: keyValues({
-			"coder.event_name": event.eventName,
 			...event.properties,
 			...measurements,
+			"coder.event_name": event.eventName,
+			...eventContextAttributes(event),
 		}),
 		status: spanStatus(event),
 		...(event.error && {
@@ -184,8 +204,9 @@ export function metricRecords(
 		eventName: event.eventName,
 		properties: event.properties,
 		attributes: keyValues({
-			"coder.event_name": event.eventName,
 			...event.properties,
+			"coder.event_name": event.eventName,
+			...eventContextAttributes(event),
 		}),
 		timeNano,
 		windowStartNano,
