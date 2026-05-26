@@ -5,6 +5,56 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## [v1.14.6](https://github.com/coder/vscode-coder/releases/tag/v1.14.6) 2026-05-26
+
+### Changed
+
+- Minimum supported VS Code lowered to 1.105 for Cursor compatibility.
+
+### Removed
+
+- The "Coder Chat (Experimental)" secondary sidebar and its `agents`
+  experiment gate. Deeplinks that still include `chatId` continue to open
+  the workspace; the parameter is now silently ignored.
+
+### Fixed
+
+- Sessions suspended by an mTLS or `coder.headerCommand` failure now
+  auto-recover once the setting is corrected; a 401 from a mid-flight
+  settings change is retried silently with the new settings and fresh
+  headers instead of escalating to an interactive prompt.
+- Logout, deployment switch, or dispose during an in-flight auth verify
+  is no longer overwritten when the verify finishes, and no longer
+  leaves stale deployment data in storage.
+- Cross-window login keeps listening when the first token observed from
+  another window is invalid, so a follow-up valid write still resolves
+  the dialog.
+- Config-change side-effects (reload prompt, recovery, reconnects) fire
+  once after edits settle instead of on every event in a burst.
+
+### Security
+
+- Hardened the configuration scope of security-sensitive settings so that a
+  malicious `.vscode/settings.json` cannot override them (SEC-200). Workspace
+  and folder values are now ignored by VS Code for these settings. This closes
+  a path where a workspace could redirect command execution
+  (`coder.headerCommand`, `coder.tlsCertRefreshCommand`), substitute the CLI
+  binary or its source (`coder.binarySource`, `coder.binaryDestination`,
+  `coder.disableSignatureVerification`, `coder.enableDownloads`), inject
+  CLI/SSH flags (`coder.globalFlags`, `coder.sshFlags`), swap TLS material or
+  disable TLS verification (`coder.tlsCertFile`, `coder.tlsKeyFile`,
+  `coder.tlsCaFile`, `coder.tlsAltHost`, `coder.insecure`), or override
+  identity, networking, and credential storage (`coder.defaultUrl`,
+  `coder.autologin`, `coder.useKeyring`, `coder.proxyBypass`,
+  `coder.proxyLogDirectory`).
+- Path-, command-, and network-dependent settings use `"scope": "machine"`
+  (per-machine, not synced via Settings Sync), while user-wide preferences
+  (`coder.defaultUrl`, `coder.autologin`, `coder.useKeyring`, `coder.insecure`,
+  `coder.disableSignatureVerification`, `coder.enableDownloads`) use
+  `"scope": "application"`, which preserves Settings Sync across your
+  machines while still blocking workspace overrides. This follows VS Code's
+  [recommended scope semantics](https://code.visualstudio.com/api/references/contribution-points#contributes.configuration).
+
 ## [v1.14.5](https://github.com/coder/vscode-coder/releases/tag/v1.14.5) 2026-04-30
 
 ### Added
