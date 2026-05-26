@@ -13,7 +13,8 @@ import { errToStr } from "../api/api-helper";
 import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
 import { isKeyringEnabled } from "../settings/cli";
-import { tempFilePath, toSafeHost } from "../util";
+import { toSafeHost } from "../util";
+import { tempFilePath } from "../util/fs";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";

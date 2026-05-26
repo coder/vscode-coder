@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 
 import { type Logger } from "../logging/logger";
-import { renameWithRetry } from "../util";
+import { renameWithRetry } from "../util/fs";
 
 export interface LogSources {
 	remoteSshLogPath?: string;

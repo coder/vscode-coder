@@ -445,7 +445,10 @@ describe("SshProcessMonitor", () => {
 			});
 			vi.mocked(find)
 				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
-				.mockResolvedValue([{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh" }]);
+				.mockResolvedValueOnce([{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh" }])
+				// No rediscovery after takeover: a same-PID rediscovery would
+				// emit ssh.process.recovered and break the negative assertion.
+				.mockResolvedValue([]);
 
 			const monitor = createMonitor({
 				networkInfoPath: "/network",
@@ -456,8 +459,6 @@ describe("SshProcessMonitor", () => {
 			await waitUntil(
 				() => sink.eventsNamed("ssh.process.replaced").length > 0,
 			);
-			// Halt monitoring before the negative assertion so the 888 loop
-			// can't race ahead and emit its own lost/recovered cycle.
 			monitor.dispose();
 
 			const replaced = sink.eventsNamed("ssh.process.replaced");
