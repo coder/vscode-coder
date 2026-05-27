@@ -738,7 +738,7 @@
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import-x": "^4.16.2",
-		"eslint-plugin-package-json": "^0.91.2",
+		"eslint-plugin-package-json": "^1.1.0",
 		"eslint-plugin-storybook": "catalog:",
 		"globals": "^17.6.0",
 		"jsdom": "^29.1.1",
