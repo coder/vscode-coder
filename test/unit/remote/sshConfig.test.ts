@@ -45,44 +45,6 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-it("creates a new file and adds config with empty label", async () => {
-	mockFileSystem.readFile.mockRejectedValueOnce("No file found");
-	mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" });
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	await sshConfig.load();
-	await sshConfig.update("", { ...BASE_SSH_VALUES, Host: "coder-vscode--*" });
-
-	const expectedOutput = `# --- START CODER VSCODE ---
-${managedHeader}
-Host coder-vscode--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  ServerAliveCountMax 3
-  ServerAliveInterval 10
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE ---`;
-
-	expect(mockFileSystem.readFile).toHaveBeenCalledWith(
-		sshFilePath,
-		expect.anything(),
-	);
-	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		expectedOutput,
-		expect.objectContaining({
-			encoding: "utf-8",
-			mode: 0o600, // Default mode for new files.
-		}),
-	);
-	expect(mockFileSystem.rename).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		sshFilePath,
-	);
-});
-
 it("creates a new file and adds the config", async () => {
 	mockFileSystem.readFile.mockRejectedValueOnce("No file found");
 	mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" });
@@ -404,48 +366,6 @@ Host afterconfig
 		sshConfig.update("dev.coder.com", BASE_SSH_VALUES),
 	).rejects.toThrow(
 		`Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE dev.coder.com block. Each START block must have an END block.`,
-	);
-});
-
-it("throws an error if there is a mismatched start and end block count (without label)", async () => {
-	// As above, but without a label.
-	const existentSSHConfig = `Host beforeconfig
-  HostName before.config.tld
-  User before
-
-# --- START CODER VSCODE ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# missing END CODER VSCODE ---
-
-Host donotdelete
-  HostName dont.delete.me
-  User please
-
-# --- START CODER VSCODE ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE ---
-
-Host afterconfig
-  HostName after.config.tld
-  User after`;
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	await sshConfig.load();
-
-	// When we try to update the config, it should throw an error.
-	await expect(sshConfig.update("", BASE_SSH_VALUES)).rejects.toThrow(
-		`Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE block. Each START block must have an END block.`,
 	);
 });
 

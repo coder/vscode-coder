@@ -5,169 +5,141 @@ import {
 	type AuthorityParts,
 	countSubstring,
 	escapeCommandArg,
+	escapeShellArg,
 	expandPath,
 	findPort,
 	parseRemoteAuthority,
-	renameWithRetry,
-	tempFilePath,
 	toSafeHost,
 } from "@/util";
 
 describe("parseRemoteAuthority", () => {
+	const remoteAuthority = (sshHost: string) => `vscode://ssh-remote+${sshHost}`;
+
 	it.each([
-		"vscode://ssh-remote+some-unrelated-host.com",
-		"vscode://ssh-remote+coder-vscode",
-		"vscode://ssh-remote+coder-vscode-test",
-		"vscode://ssh-remote+coder-vscode-test--foo--bar",
-		"vscode://ssh-remote+coder-vscode-foo--bar",
-		"vscode://ssh-remote+coder--foo--bar",
-	])("ignores unrelated authority: %s", (input) => {
+		{ label: "missing SSH host", input: "vscode://ssh-remote" },
+		{ label: "empty SSH host", input: "vscode://ssh-remote+" },
+		{
+			label: "non-Coder host",
+			input: remoteAuthority("some-unrelated-host.com"),
+		},
+		{
+			label: "prefix without safeHostname separator",
+			input: remoteAuthority("coder-vscode--foo--bar"),
+		},
+		{
+			label: "similar prefix",
+			input: remoteAuthority("coder-vscode-test--foo--bar"),
+		},
+		{ label: "wrong prefix", input: remoteAuthority("coder--foo--bar") },
+	])("ignores unrelated authority: $label", ({ input }) => {
 		expect(parseRemoteAuthority(input)).toBe(null);
 	});
 
 	it.each([
-		"vscode://ssh-remote+coder-vscode--foo",
-		"vscode://ssh-remote+coder-vscode--",
-		"vscode://ssh-remote+coder-vscode--foo--",
-		"vscode://ssh-remote+coder-vscode--foo--bar--",
-	])("rejects invalid authority: %s", (input) => {
-		expect(() => parseRemoteAuthority(input)).toThrow("Invalid");
+		{
+			label: "missing user and workspace",
+			sshHost: "coder-vscode.dev.coder.com",
+		},
+		{
+			label: "missing workspace",
+			sshHost: "coder-vscode.dev.coder.com--foo",
+		},
+		{
+			label: "empty username",
+			sshHost: "coder-vscode.dev.coder.com----bar",
+		},
+		{
+			label: "empty workspace",
+			sshHost: "coder-vscode.dev.coder.com--foo--",
+		},
+		{
+			label: "empty hostname",
+			sshHost: "coder-vscode.--foo--bar",
+		},
+		{
+			label: "empty trailing segment",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar--",
+		},
+		{
+			label: "empty workspace before agent separator",
+			sshHost: "coder-vscode.dev.coder.com--foo--.agent",
+		},
+		{
+			label: "empty agent after separator",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar.",
+		},
+	])("rejects invalid authority: $label", ({ sshHost }) => {
+		expect(() => parseRemoteAuthority(remoteAuthority(sshHost))).toThrow(
+			"Invalid Coder SSH authority",
+		);
 	});
 
 	interface ParseCase {
 		label: string;
-		input: string;
-		expected: AuthorityParts;
+		sshHost: string;
+		safeHostname: string;
+		workspace: string;
+		agent?: string;
+		username?: string;
 	}
 
 	it.each<ParseCase>([
 		{
-			label: "legacy form, no agent",
-			input: "vscode://ssh-remote+coder-vscode--foo--bar",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode--foo--bar",
-				safeHostname: "",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname without agent",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar",
+			safeHostname: "dev.coder.com",
+			workspace: "bar",
 		},
 		{
-			label: "legacy form with agent",
-			input: "vscode://ssh-remote+coder-vscode--foo--bar--baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode--foo--bar--baz",
-				safeHostname: "",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname with agent",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar.baz",
+			safeHostname: "dev.coder.com",
+			workspace: "bar",
+			agent: "baz",
 		},
 		{
-			label: "with hostname, no agent",
-			input: "vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.dev.coder.com--foo--bar",
-				safeHostname: "dev.coder.com",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname containing delimiter",
+			sshHost: "coder-vscode.test--domain.com--foo--bar",
+			safeHostname: "test--domain.com",
+			workspace: "bar",
 		},
 		{
-			label: "with hostname and -- agent",
-			input: "vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar--baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.dev.coder.com--foo--bar--baz",
-				safeHostname: "dev.coder.com",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "Punycode hostname containing delimiter",
+			sshHost: "coder-vscode.xn--test---8o4.example--foo--bar",
+			safeHostname: "xn--test---8o4.example",
+			workspace: "bar",
 		},
 		{
-			label: "with hostname and . agent",
-			input: "vscode://ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.dev.coder.com--foo--bar.baz",
-				safeHostname: "dev.coder.com",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname with repeated delimiters and agent",
+			sshHost: "coder-vscode.first--middle--last.example--foo--bar.baz",
+			safeHostname: "first--middle--last.example",
+			workspace: "bar",
+			agent: "baz",
 		},
 		{
-			label: "Punycode label in hostname",
-			input:
-				"vscode://ssh-remote+coder-vscode.dev.coder.xn--eckwd4c7cu47r2wf.jp--foo--bar",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.dev.coder.xn--eckwd4c7cu47r2wf.jp--foo--bar",
-				safeHostname: "dev.coder.xn--eckwd4c7cu47r2wf.jp",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "hostname with many consecutive dashes",
+			sshHost: "coder-vscode.foo---------------bar.com--foo--bar",
+			safeHostname: "foo---------------bar.com",
+			workspace: "bar",
 		},
 		{
-			label: "Punycode hostname with -- agent",
-			input:
-				"vscode://ssh-remote+coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar--baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar--baz",
-				safeHostname: "xn--eckwd4c7cu47r2wf.jp",
-				username: "foo",
-				workspace: "bar",
-			},
+			label: "ambiguous workspace/agent separator",
+			sshHost: "coder-vscode.dev.coder.com--foo--bar.baz.qux",
+			safeHostname: "dev.coder.com",
+			workspace: "bar.baz.qux",
 		},
-		{
-			label: "Punycode hostname with . agent",
-			input:
-				"vscode://ssh-remote+coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar.baz",
-			expected: {
-				agent: "baz",
-				sshHost: "coder-vscode.xn--eckwd4c7cu47r2wf.jp--foo--bar.baz",
-				safeHostname: "xn--eckwd4c7cu47r2wf.jp",
-				username: "foo",
-				workspace: "bar",
-			},
+	])(
+		"parses $label",
+		({ sshHost, safeHostname, workspace, agent, username }) => {
+			expect(parseRemoteAuthority(remoteAuthority(sshHost))).toStrictEqual({
+				agent: agent ?? "",
+				sshHost,
+				safeHostname,
+				username: username ?? "foo",
+				workspace,
+			} satisfies AuthorityParts);
 		},
-		{
-			label: "multiple Punycode labels",
-			input: "vscode://ssh-remote+coder-vscode.xn--abc.xn--def.com--foo--bar",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.xn--abc.xn--def.com--foo--bar",
-				safeHostname: "xn--abc.xn--def.com",
-				username: "foo",
-				workspace: "bar",
-			},
-		},
-		{
-			label: "apex Punycode",
-			input: "vscode://ssh-remote+coder-vscode.xn--p1ai--owner--ws",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.xn--p1ai--owner--ws",
-				safeHostname: "xn--p1ai",
-				username: "owner",
-				workspace: "ws",
-			},
-		},
-		{
-			label: "consecutive apex Punycode labels",
-			input: "vscode://ssh-remote+coder-vscode.xn--p1ai.xn--abc--owner--ws",
-			expected: {
-				agent: "",
-				sshHost: "coder-vscode.xn--p1ai.xn--abc--owner--ws",
-				safeHostname: "xn--p1ai.xn--abc",
-				username: "owner",
-				workspace: "ws",
-			},
-		},
-	])("parses $label", ({ input, expected }) => {
-		expect(parseRemoteAuthority(input)).toStrictEqual(expected);
-	});
+	);
 });
 
 describe("toSafeHost", () => {
@@ -216,26 +188,102 @@ describe("countSubstring", () => {
 });
 
 describe("escapeCommandArg", () => {
-	it("wraps simple string in quotes", () => {
-		expect(escapeCommandArg("hello")).toBe('"hello"');
+	it("returns simple strings unquoted", () => {
+		expect(escapeCommandArg("hello")).toBe("hello");
 	});
 
-	it("handles empty string", () => {
+	it("returns flag-style strings unquoted", () => {
+		expect(escapeCommandArg("--verbose")).toBe("--verbose");
+		expect(escapeCommandArg("--cfg=/etc/coder")).toBe("--cfg=/etc/coder");
+	});
+
+	it("quotes the empty string so it survives as a token", () => {
 		expect(escapeCommandArg("")).toBe('""');
 	});
 
-	it("escapes double quotes", () => {
+	it("escapes double quotes and wraps in quotes", () => {
 		expect(escapeCommandArg('say "hello"')).toBe(String.raw`"say \"hello\""`);
 	});
 
-	it("preserves backslashes", () => {
+	it("quotes backslashes (POSIX escape char)", () => {
 		expect(escapeCommandArg(String.raw`path\to\file`)).toBe(
 			String.raw`"path\to\file"`,
 		);
 	});
 
-	it("handles string with spaces", () => {
+	it("quotes strings containing spaces", () => {
 		expect(escapeCommandArg("hello world")).toBe('"hello world"');
+	});
+
+	it.each([["tab\there"], ["line\nbreak"], ["vtab\vhere"]])(
+		"quotes strings containing other whitespace: %j",
+		(input) => {
+			expect(escapeCommandArg(input)).toBe(`"${input}"`);
+		},
+	);
+
+	it.each([
+		["foo&bar"],
+		["foo;bar"],
+		["foo|bar"],
+		["foo(bar)"],
+		["foo<bar"],
+		["foo>bar"],
+		["foo*bar"],
+		["foo?bar"],
+		["foo$bar"],
+		["foo`bar"],
+		["foo~bar"],
+		["foo!bar"],
+		["foo#bar"],
+		["https://x.com?a=1&b=2"],
+	])("quotes strings containing shell metacharacter: %j", (input) => {
+		expect(escapeCommandArg(input)).toBe(`"${input}"`);
+	});
+});
+
+describe("escapeShellArg", () => {
+	const platformSpy = vi.spyOn(os, "platform");
+	afterEach(() => platformSpy.mockReset());
+
+	describe("on Unix", () => {
+		beforeEach(() => platformSpy.mockReturnValue("linux"));
+
+		it("wraps in single quotes", () => {
+			expect(escapeShellArg("env=dev")).toBe("'env=dev'");
+		});
+
+		it("escapes single quotes via the '\\'' sequence", () => {
+			expect(escapeShellArg("it's fine")).toBe("'it'\\''s fine'");
+		});
+
+		it("leaves $VAR, $(...), and backticks literal inside the quotes", () => {
+			expect(escapeShellArg("$(echo pwned)")).toBe("'$(echo pwned)'");
+		});
+	});
+
+	describe("on Windows", () => {
+		beforeEach(() => platformSpy.mockReturnValue("win32"));
+
+		it("wraps in double quotes", () => {
+			expect(escapeShellArg("env=dev")).toBe('"env=dev"');
+		});
+
+		it('doubles embedded `"`', () => {
+			expect(escapeShellArg('regions=["us","eu"]')).toBe(
+				'"regions=[""us"",""eu""]"',
+			);
+		});
+
+		it("doubles `%` to block %VAR% expansion", () => {
+			expect(escapeShellArg("%PATH%")).toBe('"%%PATH%%"');
+		});
+
+		it("keeps cmd metachars inside the quoted region", () => {
+			expect(escapeShellArg('foo" & calc.exe & "x')).toBe(
+				'"foo"" & calc.exe & ""x"',
+			);
+		});
 	});
 });
 
@@ -271,6 +319,39 @@ describe("expandPath", () => {
 
 	it("expands both tilde and ${userHome}", () => {
 		expect(expandPath("~/${userHome}/foo")).toBe(`${home}/${home}/foo`);
+	});
+
+	describe("${env:VAR}", () => {
+		const envKey = "CODER_EXPAND_PATH_TEST";
+		const ref = "${env:" + envKey + "}";
+
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
+
+		it("substitutes a present env var", () => {
+			vi.stubEnv(envKey, "/data");
+			expect(expandPath(`${ref}/foo`)).toBe("/data/foo");
+		});
+
+		it("replaces a missing env var with an empty string", () => {
+			vi.stubEnv(envKey, undefined);
+			expect(expandPath(`prefix-${ref}-suffix`)).toBe("prefix--suffix");
+		});
+
+		it("substitutes multiple occurrences in one string", () => {
+			vi.stubEnv(envKey, "data");
+			expect(expandPath(`${ref}/${ref}`)).toBe("data/data");
+		});
+
+		it("expands tilde or ${userHome} that appears inside the env value", () => {
+			vi.stubEnv(envKey, "~/projects");
+			expect(expandPath(`${ref}/x`)).toBe(`${home}/projects/x`);
+		});
+
+		it("ignores ${env:...} with invalid names", () => {
+			expect(expandPath("${env:1BAD}/x")).toBe("${env:1BAD}/x");
+		});
 	});
 });
 
@@ -314,106 +395,5 @@ describe("findPort", () => {
 [10:30:10] Final connection Socks port: 3333 established
 		`;
 		expect(findPort(log)).toBe(3333);
-	});
-});
-
-describe("tempFilePath", () => {
-	it("prepends basePath and suffix before the random part", () => {
-		const result = tempFilePath("/a/b/file", "temp");
-		const prefix = "/a/b/file.temp-";
-		expect(result.startsWith(prefix)).toBe(true);
-		// prefix(15) + uuid(8) = 23
-		expect(result).toHaveLength(prefix.length + 8);
-	});
-
-	it("generates different paths on each call", () => {
-		const a = tempFilePath("/x", "tmp");
-		const b = tempFilePath("/x", "tmp");
-		expect(a).not.toBe(b);
-	});
-
-	it("uses the provided suffix", () => {
-		const result = tempFilePath("/base", "old");
-		expect(result.startsWith("/base.old-")).toBe(true);
-	});
-});
-
-describe("renameWithRetry", () => {
-	const realPlatform = process.platform;
-
-	function makeErrno(code: string): NodeJS.ErrnoException {
-		const err = new Error(code);
-		(err as NodeJS.ErrnoException).code = code;
-		return err;
-	}
-
-	function setPlatform(value: string) {
-		Object.defineProperty(process, "platform", { value });
-	}
-
-	afterEach(() => {
-		setPlatform(realPlatform);
-		vi.useRealTimers();
-	});
-
-	it("succeeds on first attempt", async () => {
-		const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
-		renameFn.mockResolvedValueOnce(undefined);
-		await renameWithRetry(renameFn, "/a", "/b");
-		expect(renameFn).toHaveBeenCalledTimes(1);
-		expect(renameFn).toHaveBeenCalledWith("/a", "/b");
-	});
-
-	it("skips retry logic on non-Windows platforms", async () => {
-		setPlatform("linux");
-		const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
-		renameFn.mockRejectedValueOnce(makeErrno("EPERM"));
-
-		await expect(renameWithRetry(renameFn, "/a", "/b")).rejects.toThrow(
-			"EPERM",
-		);
-		expect(renameFn).toHaveBeenCalledTimes(1);
-	});
-
-	describe("on Windows", () => {
-		beforeEach(() => setPlatform("win32"));
-
-		it.each(["EPERM", "EACCES", "EBUSY"])(
-			"retries on transient %s and succeeds",
-			async (code) => {
-				const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
-				renameFn
-					.mockRejectedValueOnce(makeErrno(code))
-					.mockResolvedValueOnce(undefined);
-
-				await renameWithRetry(renameFn, "/a", "/b", 60_000, 10);
-				expect(renameFn).toHaveBeenCalledTimes(2);
-			},
-		);
-
-		it("throws after timeout is exceeded", async () => {
-			vi.useFakeTimers();
-			const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
-			const epermError = makeErrno("EPERM");
-			renameFn.mockImplementation(() => Promise.reject(epermError));
-
-			const promise = renameWithRetry(renameFn, "/a", "/b", 5);
-			const assertion = expect(promise).rejects.toThrow(epermError);
-			await vi.advanceTimersByTimeAsync(100);
-			await assertion;
-		});
-
-		it.each(["EXDEV", "ENOENT", "EISDIR"])(
-			"does not retry non-transient %s",
-			async (code) => {
-				const renameFn = vi.fn<(s: string, d: string) => Promise<void>>();
-				renameFn.mockRejectedValueOnce(makeErrno(code));
-
-				await expect(renameWithRetry(renameFn, "/a", "/b")).rejects.toThrow(
-					code,
-				);
-				expect(renameFn).toHaveBeenCalledTimes(1);
-			},
-		);
 	});
 });

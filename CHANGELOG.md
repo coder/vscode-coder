@@ -13,20 +13,107 @@
   machine only and never sent anywhere. Configure via the new
   `coder.telemetry.level` setting (`local` by default, `off` to disable);
   see `coder.telemetry.local` for tunables.
-- Every `coder.*` command now records a `command.invoked` telemetry event with
-  its duration and outcome, so command latency and failures are captured
-  alongside other local telemetry.
-- Extension activation, remote workspace setup phases (auth retrieval,
-  workspace lookup, workspace and agent readiness, SSH config write), and CLI
-  binary download/verify now emit local telemetry events with their duration
-  and outcome, so startup latency and failures are captured alongside other
-  local telemetry.
+- Local telemetry now records `command.invoked` for each `coder.*` command
+  with duration and outcome.
+- Local telemetry now records extension activation, remote workspace setup
+  phases (auth retrieval, workspace lookup, workspace and agent readiness,
+  SSH config write), and CLI binary download/verify with their durations
+  and outcomes.
+- Local telemetry now records `http.requests` rollups for per-route HTTP
+  health, without emitting one event per request.
+- Local telemetry now records connection lifecycle: SSH process
+  discovery/loss/recovery with sampled network info, and reconnecting
+  WebSocket open/drop/reconnect/state transitions.
+- Local telemetry now records authentication refresh and recovery prompts.
+- Local telemetry now records workspace and agent state transitions with
+  observed durations.
+- Path-like settings (`coder.binaryDestination`, `coder.tlsCertFile`,
+  `coder.tlsKeyFile`, `coder.tlsCaFile`, `coder.tlsAltHost`,
+  `coder.proxyLogDirectory`) and items in `coder.globalFlags` now support
+  `${env:VAR}`, `${userHome}`, and a leading `~`. For `--flag=value` items
+  in `coder.globalFlags`, the expansion applies to the value half, so
+  `--cfg=~/coder` works.
+
+### Changed
+
+- The Coder CLI is now spawned directly instead of through a shell, so
+  arguments reach the binary as-is. The extension no longer has to
+  shell-escape values by hand. That escaping was error-prone (especially
+  around `cmd.exe` on Windows) and a recurring command-injection risk
+  when deployment-supplied values like workspace names or template
+  parameters contained spaces, quotes, or shell metacharacters.
 
 ### Fixed
 
-- Workspaces hosted on internationalized (IDN) domains can now be opened from
-  recent connections. The SSH authority parser was splitting Punycode (`xn--`)
-  domain labels across the field separator and rejecting the host as invalid.
+- Workspaces on hostnames containing `--`, such as internationalized (IDN)
+  domains with Punycode (`xn--`) labels, can now be opened from recent
+  connections. The SSH authority parser was splitting these names across the
+  field separator and rejecting the host as invalid.
+- Updating a workspace on a CLI older than 2.24 (which can't run
+  `coder update` non-interactively) now passes newly-required template
+  parameters into the REST-API fallback build, instead of silently omitting
+  them and letting the server reject the build.
+- Updating a workspace now re-prompts for an option or multi-select
+  parameter whose stored value is no longer one of the new template
+  version's options, instead of carrying a stale value forward and
+  failing the build. Immutable parameters without a stored value are
+  now prompted as well, closing a gap with the web dashboard.
+- Updating a workspace from VS Code no longer hangs when the new template
+  version requires parameters. The extension now prompts for any missing
+  required values through VS Code input boxes and passes them to
+  `coder update` so the CLI runs non-interactively. If the CLI still asks
+  for input the update is failed instead of hanging, and the workspace
+  falls back to starting on the existing template version with a warning.
+
+## [v1.14.6](https://github.com/coder/vscode-coder/releases/tag/v1.14.6) 2026-05-26
+
+### Changed
+
+- Minimum supported VS Code lowered to 1.105 for Cursor compatibility.
+
+### Removed
+
+- The "Coder Chat (Experimental)" secondary sidebar and its `agents`
+  experiment gate. Deeplinks that still include `chatId` continue to open
+  the workspace; the parameter is now silently ignored.
+
+### Fixed
+
+- Sessions suspended by an mTLS or `coder.headerCommand` failure now
+  auto-recover once the setting is corrected; a 401 from a mid-flight
+  settings change is retried silently with the new settings and fresh
+  headers instead of escalating to an interactive prompt.
+- Logout, deployment switch, or dispose during an in-flight auth verify
+  is no longer overwritten when the verify finishes, and no longer
+  leaves stale deployment data in storage.
+- Cross-window login keeps listening when the first token observed from
+  another window is invalid, so a follow-up valid write still resolves
+  the dialog.
+- Config-change side-effects (reload prompt, recovery, reconnects) fire
+  once after edits settle instead of on every event in a burst.
+
+### Security
+
+- Hardened the configuration scope of security-sensitive settings so that a
+  malicious `.vscode/settings.json` cannot override them (SEC-200). Workspace
+  and folder values are now ignored by VS Code for these settings. This closes
+  a path where a workspace could redirect command execution
+  (`coder.headerCommand`, `coder.tlsCertRefreshCommand`), substitute the CLI
+  binary or its source (`coder.binarySource`, `coder.binaryDestination`,
+  `coder.disableSignatureVerification`, `coder.enableDownloads`), inject
+  CLI/SSH flags (`coder.globalFlags`, `coder.sshFlags`), swap TLS material or
+  disable TLS verification (`coder.tlsCertFile`, `coder.tlsKeyFile`,
+  `coder.tlsCaFile`, `coder.tlsAltHost`, `coder.insecure`), or override
+  identity, networking, and credential storage (`coder.defaultUrl`,
+  `coder.autologin`, `coder.useKeyring`, `coder.proxyBypass`,
+  `coder.proxyLogDirectory`).
+- Path-, command-, and network-dependent settings use `"scope": "machine"`
+  (per-machine, not synced via Settings Sync), while user-wide preferences
+  (`coder.defaultUrl`, `coder.autologin`, `coder.useKeyring`, `coder.insecure`,
+  `coder.disableSignatureVerification`, `coder.enableDownloads`) use
+  `"scope": "application"`, which preserves Settings Sync across your
+  machines while still blocking workspace overrides. This follows VS Code's
+  [recommended scope semantics](https://code.visualstudio.com/api/references/contribution-points#contributes.configuration).
 
 ## [v1.14.5](https://github.com/coder/vscode-coder/releases/tag/v1.14.5) 2026-04-30
 

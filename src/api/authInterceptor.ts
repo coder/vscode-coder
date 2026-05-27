@@ -1,13 +1,14 @@
 import { type AxiosError, isAxiosError } from "axios";
 
+import { AuthTelemetry } from "../instrumentation/auth";
 import { OAuthError } from "../oauth/errors";
 import { toSafeHost } from "../util";
 
 import type * as vscode from "vscode";
 
+import type { ServiceContainer } from "../core/container";
 import type { SecretsManager } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
-import type { RequestConfigWithMeta } from "../logging/types";
 import type { OAuthSessionManager } from "../oauth/sessionManager";
 
 import type { CoderApi } from "./coderApi";
@@ -28,15 +29,20 @@ export type AuthRequiredHandler = (hostname: string) => Promise<boolean>;
  */
 export class AuthInterceptor implements vscode.Disposable {
 	private readonly interceptorId: number;
+	private readonly authTelemetry: AuthTelemetry;
+	private readonly logger: Logger;
+	private readonly secretsManager: SecretsManager;
 	private authRequiredPromise: Promise<boolean> | null = null;
 
 	constructor(
 		private readonly client: CoderApi,
-		private readonly logger: Logger,
 		private readonly oauthSessionManager: OAuthSessionManager,
-		private readonly secretsManager: SecretsManager,
+		container: ServiceContainer,
 		private readonly onAuthRequired?: AuthRequiredHandler,
 	) {
+		this.logger = container.getLogger();
+		this.secretsManager = container.getSecretsManager();
+		this.authTelemetry = new AuthTelemetry(container.getTelemetryService());
 		this.interceptorId = this.client
 			.getAxiosInstance()
 			.interceptors.response.use(
@@ -51,13 +57,6 @@ export class AuthInterceptor implements vscode.Disposable {
 			throw error;
 		}
 
-		if (error.config) {
-			const config = error.config as { _retryAttempted?: boolean };
-			if (config._retryAttempted) {
-				throw error;
-			}
-		}
-
 		if (error.response?.status !== 401) {
 			throw error;
 		}
@@ -68,47 +67,84 @@ export class AuthInterceptor implements vscode.Disposable {
 		}
 		const hostname = toSafeHost(baseUrl);
 
-		return this.handle401Error(error, hostname);
+		return this.recoverFromUnauthorized(error, hostname);
 	}
 
-	private async handle401Error(
+	private recoverFromUnauthorized(
 		error: AxiosError,
 		hostname: string,
 	): Promise<unknown> {
+		const config = error.config;
+
+		// Checked before _retryAttempted so an OAuth-retry 401 caused by a
+		// fresh settings change still gets one silent attempt.
+		if (
+			config &&
+			!config._authConfigRetryAttempted &&
+			this.client.hasAuthConfigChangedSince(config.authConfigVersion)
+		) {
+			config._authConfigRetryAttempted = true;
+			this.logger.debug(
+				"Authentication settings changed during request, retrying once",
+			);
+			return this.client.getAxiosInstance().request(config);
+		}
+
+		if (config?._retryAttempted) {
+			throw error;
+		}
+
 		this.logger.debug("Received 401 response, attempting recovery");
+		return this.authTelemetry.traceAuthRecovery(async (recorder) => {
+			recorder.logReceived();
 
-		if (await this.oauthSessionManager.isLoggedInWithOAuth(hostname)) {
-			try {
-				const newTokens = await this.oauthSessionManager.refreshToken();
-				this.client.setSessionToken(newTokens.access_token);
-				this.logger.debug("Token refresh successful, retrying request");
-				return this.retryRequest(error, newTokens.access_token);
-			} catch (refreshError) {
-				if (refreshError instanceof OAuthError) {
-					const msg = `Token refresh failed: ${refreshError.message}`;
-					if (refreshError.requiresReAuth) {
-						this.logger.warn(msg);
-					} else {
-						this.logger.error(msg);
-					}
-				} else {
-					this.logger.error("Token refresh failed:", refreshError);
+			// 1) OAuth refresh path.
+			const isOAuth =
+				await this.oauthSessionManager.isLoggedInWithOAuth(hostname);
+			recorder.setRefreshAttempted(isOAuth);
+			if (isOAuth) {
+				const newToken = await this.tryOAuthRefresh();
+				if (newToken) {
+					recorder.setRecovery("refresh_success");
+					return this.retryRequest(error, newToken);
 				}
 			}
-		}
 
-		if (this.onAuthRequired) {
+			// 2) Interactive re-auth fallback.
+			if (!this.onAuthRequired) {
+				recorder.setRecovery("none");
+				throw error;
+			}
+			recorder.setRecovery("login_required");
 			const success = await this.executeAuthRequired(hostname);
-			if (success) {
-				const auth = await this.secretsManager.getSessionAuth(hostname);
-				if (auth) {
-					this.logger.debug("Re-authentication successful, retrying request");
-					return this.retryRequest(error, auth.token);
-				}
+			const auth = success
+				? await this.secretsManager.getSessionAuth(hostname)
+				: undefined;
+			if (!auth) {
+				throw error;
 			}
-		}
+			this.logger.debug("Re-authentication successful, retrying request");
+			return this.retryRequest(error, auth.token);
+		});
+	}
 
-		throw error;
+	/** Returns the new access token on success, or undefined when refresh fails. */
+	private async tryOAuthRefresh(): Promise<string | undefined> {
+		try {
+			const newTokens = await this.oauthSessionManager.refreshToken();
+			this.client.setSessionToken(newTokens.access_token);
+			this.logger.debug("Token refresh successful");
+			return newTokens.access_token;
+		} catch (refreshError) {
+			if (!(refreshError instanceof OAuthError)) {
+				this.logger.error("Token refresh failed:", refreshError);
+			} else if (refreshError.requiresReAuth) {
+				this.logger.warn(`Token refresh failed: ${refreshError.message}`);
+			} else {
+				this.logger.error(`Token refresh failed: ${refreshError.message}`);
+			}
+			return undefined;
+		}
 	}
 
 	/**
@@ -142,12 +178,9 @@ export class AuthInterceptor implements vscode.Disposable {
 			throw error;
 		}
 
-		const config = error.config as RequestConfigWithMeta & {
-			_retryAttempted?: boolean;
-		};
-		config._retryAttempted = true;
-		config.headers[coderSessionTokenHeader] = token;
-		return this.client.getAxiosInstance().request(config);
+		error.config._retryAttempted = true;
+		error.config.headers[coderSessionTokenHeader] = token;
+		return this.client.getAxiosInstance().request(error.config);
 	}
 
 	public dispose(): void {

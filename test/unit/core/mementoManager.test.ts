@@ -93,34 +93,4 @@ describe("MementoManager", () => {
 			expect(await mementoManager.getAndClearStartupMode()).toBe("none");
 		});
 	});
-
-	describe("pendingChatId", () => {
-		it("should store, retrieve, and clear in one call", async () => {
-			await mementoManager.setPendingChatId("chat-123");
-
-			expect(await mementoManager.getAndClearPendingChatId()).toBe("chat-123");
-			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
-		});
-
-		it("should return undefined when nothing is set", async () => {
-			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
-		});
-
-		it("should support explicit clear", async () => {
-			await mementoManager.setPendingChatId("chat-123");
-			await mementoManager.clearPendingChatId();
-			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
-		});
-
-		it("should expire after 5 minutes", async () => {
-			await mementoManager.setPendingChatId("chat-123");
-			vi.advanceTimersByTime(5 * 60 * 1000 + 1);
-			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
-		});
-
-		it("should treat legacy bare values as expired", async () => {
-			await memento.update("pendingChatId", "bare-chat-id");
-			expect(await mementoManager.getAndClearPendingChatId()).toBeUndefined();
-		});
-	});
 });

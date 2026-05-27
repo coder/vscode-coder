@@ -1,7 +1,7 @@
 {
 	"name": "coder-remote",
 	"displayName": "Coder",
-	"version": "1.14.5",
+	"version": "1.14.6",
 	"description": "Open any workspace with a single click.",
 	"categories": [
 		"Other"
@@ -59,72 +59,86 @@
 				"coder.insecure": {
 					"markdownDescription": "If true, the extension will not verify the authenticity of the remote host. This is useful for self-signed certificates.",
 					"type": "boolean",
-					"default": false
+					"default": false,
+					"scope": "application"
 				},
 				"coder.binarySource": {
 					"markdownDescription": "Used to download the Coder CLI which is necessary to make SSH connections. The If-None-Match header will be set to the SHA1 of the CLI and can be used for caching. Absolute URLs will be used as-is; otherwise this value will be resolved against the deployment domain. Defaults to downloading from the Coder deployment.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.binaryDestination": {
-					"markdownDescription": "The path to the Coder CLI binary or the directory containing it. When set to a file path (e.g., `/usr/bin/coder`), the extension checks its version and downloads a replacement if it does not match the server (and downloads are enabled). When set to a directory, the extension looks for the CLI inside it (downloading if enabled). Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.",
+					"markdownDescription": "The path to the Coder CLI binary or the directory containing it. When set to a file path (e.g., `/usr/bin/coder`), the extension checks its version and downloads a replacement if it does not match the server (and downloads are enabled). When set to a directory, the extension looks for the CLI inside it (downloading if enabled). Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.enableDownloads": {
 					"markdownDescription": "Allow the plugin to download the CLI when missing or out of date.",
 					"type": "boolean",
-					"default": true
+					"default": true,
+					"scope": "application"
 				},
 				"coder.headerCommand": {
 					"markdownDescription": "An external command that outputs additional HTTP headers added to all requests. The command must output each header as `key=value` on its own line. The following environment variables will be available to the process: `CODER_URL`. Defaults to the value of `CODER_HEADER_COMMAND` if not set.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsCertFile": {
-					"markdownDescription": "Path to file for TLS client cert. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
+					"markdownDescription": "Path to file for TLS client cert. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsKeyFile": {
-					"markdownDescription": "Path to file for TLS client key. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
+					"markdownDescription": "Path to file for TLS client key. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsCaFile": {
-					"markdownDescription": "Path to file for TLS certificate authority. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
+					"markdownDescription": "Path to file for TLS certificate authority. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsAltHost": {
-					"markdownDescription": "Alternative hostname to use for TLS verification. This is useful when the hostname in the certificate does not match the hostname used to connect.",
+					"markdownDescription": "Alternative hostname to use for TLS verification. This is useful when the hostname in the certificate does not match the hostname used to connect.\n\nSupports `${env:VAR}` substitution.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.tlsCertRefreshCommand": {
 					"markdownDescription": "Command to run when TLS client certificate errors occur (e.g., expired, revoked, or rejected certificates). If configured, the extension will automatically execute this command and retry failed requests. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.proxyLogDirectory": {
-					"markdownDescription": "Directory where the Coder CLI outputs SSH connection logs for debugging. Defaults to the value of `CODER_SSH_LOG_DIR` if not set, otherwise the extension's global storage directory.",
+					"markdownDescription": "Directory where the Coder CLI outputs SSH connection logs for debugging. Defaults to the value of `CODER_SSH_LOG_DIR` if not set, otherwise the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.proxyBypass": {
 					"markdownDescription": "If not set, will inherit from the `no_proxy` or `NO_PROXY` environment variables. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "machine"
 				},
 				"coder.defaultUrl": {
 					"markdownDescription": "This will be shown in the URL prompt, along with the CODER_URL environment variable if set, for the user to select when logging in.",
 					"type": "string",
-					"default": ""
+					"default": "",
+					"scope": "application"
 				},
 				"coder.autologin": {
 					"markdownDescription": "Automatically log into the default URL when the extension is activated. coder.defaultUrl is preferred, otherwise the CODER_URL environment variable will be used. This setting has no effect if neither is set.",
 					"type": "boolean",
-					"default": false
+					"default": false,
+					"scope": "application"
 				},
 				"coder.disableNotifications": {
 					"markdownDescription": "Disable all notification prompts from the Coder deployment (workspace updates, scheduling reminders, resource alerts, etc.). Notifications are delivered by your Coder server and displayed by this extension.",
@@ -139,7 +153,8 @@
 				"coder.disableSignatureVerification": {
 					"markdownDescription": "Disable Coder CLI signature verification, which can be useful if you run an unsigned fork of the binary.",
 					"type": "boolean",
-					"default": false
+					"default": false,
+					"scope": "application"
 				},
 				"coder.experimental.oauth": {
 					"markdownDescription": "Enable [OAuth 2.1](https://coder.com/docs/admin/integrations/oauth2-provider) authentication. When enabled, you'll be prompted to choose between OAuth and session token authentication during login. OAuth provides automatic token refresh, eliminating the need to manually re-authenticate when your session expires.",
@@ -157,19 +172,22 @@
 					},
 					"default": [
 						"--disable-autostart"
-					]
+					],
+					"scope": "machine"
 				},
 				"coder.globalFlags": {
-					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item; values are passed verbatim and in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nNote that for `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here. The `--global-config` and `--use-keyring` flags are silently ignored as the extension manages them via `#coder.useKeyring#`.",
+					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item, in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`. For `--flag=value` items the expansion applies to the value half, so `--cfg=~/coder` works.\n\nFor `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here. The `--global-config` and `--use-keyring` flags are silently ignored as the extension manages them via `#coder.useKeyring#`.",
 					"type": "array",
 					"items": {
 						"type": "string"
-					}
+					},
+					"scope": "machine"
 				},
 				"coder.useKeyring": {
 					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of plaintext files. Requires CLI >= 2.29.0 (>= 2.31.0 to sync login from CLI to VS Code). This will attempt to sync between the CLI and VS Code since they share the same keyring entry. It will log you out of the CLI if you log out of the IDE, and vice versa. Has no effect on Linux.",
 					"type": "boolean",
-					"default": false
+					"default": false,
+					"scope": "application"
 				},
 				"coder.networkThreshold.latencyMs": {
 					"markdownDescription": "Latency threshold in milliseconds. A warning indicator appears in the status bar when latency exceeds this value. Set to `0` to disable.",
@@ -211,7 +229,7 @@
 					]
 				},
 				"coder.telemetry.local": {
-					"markdownDescription": "Tunables for the local telemetry sink, which writes events as JSON Lines under the extension's global storage. Used when `#coder.telemetry.level#` is `local`. Missing or invalid fields fall back to defaults.",
+					"markdownDescription": "Advanced tunables for local telemetry collection. The local sink writes events as JSON Lines under the extension's global storage. Used when `#coder.telemetry.level#` is `local`. Missing or invalid fields fall back to defaults.",
 					"type": "object",
 					"additionalProperties": false,
 					"properties": {
@@ -283,13 +301,6 @@
 					"title": "Coder Remote (New)",
 					"icon": "media/shorthand-logo.svg"
 				}
-			],
-			"secondarySidebar": [
-				{
-					"id": "coderChat",
-					"title": "Coder Chat (Experimental)",
-					"icon": "media/shorthand-logo.svg"
-				}
 			]
 		},
 		"views": {
@@ -321,15 +332,6 @@
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
 					"when": "coder.authenticated"
-				}
-			],
-			"coderChat": [
-				{
-					"type": "webview",
-					"id": "coder.chatPanel",
-					"name": "Coder Chat (Experimental)",
-					"icon": "media/shorthand-logo.svg",
-					"when": "coder.agentsEnabled"
 				}
 			],
 			"coderExperimentalWorkspaces": [
@@ -464,12 +466,6 @@
 				"icon": "$(refresh)"
 			},
 			{
-				"command": "coder.chat.refresh",
-				"title": "Refresh Chat",
-				"category": "Coder",
-				"icon": "$(refresh)"
-			},
-			{
 				"command": "coder.applyRecommendedSettings",
 				"title": "Apply Recommended SSH Settings",
 				"category": "Coder"
@@ -586,10 +582,6 @@
 					"when": "false"
 				},
 				{
-					"command": "coder.chat.refresh",
-					"when": "false"
-				},
-				{
 					"command": "coder.applyRecommendedSettings"
 				}
 			],
@@ -629,11 +621,6 @@
 				{
 					"command": "coder.tasks.refresh",
 					"when": "coder.authenticated && view == coder.tasksPanel",
-					"group": "navigation@1"
-				},
-				{
-					"command": "coder.chat.refresh",
-					"when": "view == coder.chatPanel",
 					"group": "navigation@1"
 				}
 			],
@@ -691,24 +678,24 @@
 		"@abraham/reflection": "^0.13.0",
 		"@peculiar/x509": "^2.0.0",
 		"@repo/shared": "workspace:*",
-		"axios": "1.16.0",
+		"axios": "^1.16.1",
 		"date-fns": "catalog:",
 		"eventsource": "^4.1.0",
-		"fflate": "^0.8.2",
+		"fflate": "^0.8.3",
 		"find-process": "^2.1.1",
 		"jsonc-parser": "^3.3.1",
 		"openpgp": "^6.3.0",
 		"pretty-bytes": "^7.1.0",
 		"proper-lockfile": "^4.1.2",
 		"proxy-agent": "^8.0.1",
-		"semver": "^7.7.4",
+		"semver": "^7.8.0",
 		"strip-ansi": "^7.2.0",
 		"ua-parser-js": "^1.0.41",
-		"ws": "^8.20.0",
+		"ws": "^8.20.1",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@eslint-react/eslint-plugin": "^5.7.4",
+		"@eslint-react/eslint-plugin": "^5.8.0",
 		"@eslint/js": "^10.0.1",
 		"@eslint/markdown": "^8.0.1",
 		"@repo/mocks": "workspace:*",
@@ -721,33 +708,33 @@
 		"@testing-library/react": "^16.3.2",
 		"@tsconfig/node22": "^22.0.5",
 		"@types/mocha": "^10.0.10",
-		"@types/node": "^22.19.17",
+		"@types/node": "^22.19.19",
 		"@types/proper-lockfile": "^4.1.4",
 		"@types/react": "catalog:",
 		"@types/react-dom": "catalog:",
 		"@types/semver": "^7.7.1",
 		"@types/ua-parser-js": "0.7.39",
-		"@types/vscode": "1.106.0",
+		"@types/vscode": "1.105.0",
 		"@types/vscode-webview": "catalog:",
 		"@types/ws": "^8.18.1",
-		"@typescript-eslint/eslint-plugin": "^8.59.2",
-		"@typescript-eslint/parser": "^8.59.2",
+		"@typescript-eslint/eslint-plugin": "^8.59.3",
+		"@typescript-eslint/parser": "^8.59.3",
 		"@vitejs/plugin-react": "catalog:",
-		"@vitest/coverage-v8": "^4.1.5",
+		"@vitest/coverage-v8": "^4.1.6",
 		"@vscode/codicons": "catalog:",
 		"@vscode/test-cli": "^0.0.12",
 		"@vscode/test-electron": "^2.5.2",
 		"@vscode/vsce": "^3.9.1",
 		"babel-plugin-react-compiler": "catalog:",
 		"bufferutil": "^4.1.0",
-		"chromatic": "^16.9.1",
+		"chromatic": "^16.10.1",
 		"coder": "catalog:",
 		"concurrently": "^9.2.1",
 		"cross-env": "^10.1.0",
 		"dayjs": "^1.11.20",
 		"electron": "39.8.5",
 		"esbuild": "^0.28.0",
-		"eslint": "^10.3.0",
+		"eslint": "^10.4.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import-x": "^4.16.2",
@@ -762,17 +749,17 @@
 		"react-dom": "catalog:",
 		"storybook": "catalog:",
 		"typescript": "catalog:",
-		"typescript-eslint": "^8.59.2",
+		"typescript-eslint": "^8.59.3",
 		"utf-8-validate": "^6.0.6",
 		"vite": "catalog:",
-		"vitest": "^4.1.5"
+		"vitest": "^4.1.6"
 	},
 	"extensionPack": [
 		"ms-vscode-remote.remote-ssh"
 	],
-	"packageManager": "pnpm@10.33.2",
+	"packageManager": "pnpm@11.1.2+sha224.6d287705d0efa6c2ba7a74795dc72a7800f64840f2bc0961cedba029",
 	"engines": {
-		"vscode": "^1.106.0",
+		"vscode": "^1.105.0",
 		"node": ">= 22"
 	},
 	"icon": "media/logo.png",

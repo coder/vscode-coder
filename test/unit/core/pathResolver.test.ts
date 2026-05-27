@@ -19,15 +19,6 @@ describe("PathResolver", () => {
 		mockConfig = new MockConfigurationProvider();
 	});
 
-	it("should use base path for empty labels", () => {
-		expectPathsEqual(pathResolver.getGlobalConfigDir(""), basePath);
-		expectPathsEqual(
-			pathResolver.getSessionTokenPath(""),
-			path.join(basePath, "session"),
-		);
-		expectPathsEqual(pathResolver.getUrlPath(""), path.join(basePath, "url"));
-	});
-
 	describe("getProxyLogPath", () => {
 		const defaultLogPath = path.join(basePath, "log");
 

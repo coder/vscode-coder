@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+import {
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "@/telemetry/reporter";
 import { WebSocketCloseCode, HttpStatusCode } from "@/websocket/codes";
 import {
 	ConnectionState,
@@ -7,6 +11,11 @@ import {
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
 
+import {
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
 import { createMockLogger } from "../../mocks/testHelpers";
 
 import type { CloseEvent, Event as WsEvent } from "ws";
@@ -100,11 +109,7 @@ describe("ReconnectingWebSocket", () => {
 				});
 
 				// create() returns a disconnected instance instead of throwing
-				const ws = await ReconnectingWebSocket.create(
-					factory,
-					createMockLogger(),
-					{ onCertificateRefreshNeeded: () => Promise.resolve(false) },
-				);
+				const ws = await fromFactory(factory);
 
 				// Should be disconnected after unrecoverable HTTP error
 				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
@@ -363,7 +368,9 @@ describe("ReconnectingWebSocket", () => {
 
 		it("calls onDispose callback once, even with multiple close() calls", async () => {
 			let disposeCount = 0;
-			const { ws } = await createReconnectingWebSocket(() => ++disposeCount);
+			const { ws } = await createReconnectingWebSocket({
+				onDispose: () => ++disposeCount,
+			});
 
 			ws.close();
 			ws.close();
@@ -374,9 +381,9 @@ describe("ReconnectingWebSocket", () => {
 
 		it("suspends (not disposes) on unrecoverable WebSocket close code", async () => {
 			let disposeCount = 0;
-			const { ws, sockets } = await createReconnectingWebSocket(
-				() => ++disposeCount,
-			);
+			const { ws, sockets } = await createReconnectingWebSocket({
+				onDispose: () => ++disposeCount,
+			});
 
 			sockets[0].fireOpen();
 			expect(ws.state).toBe(ConnectionState.CONNECTED);
@@ -403,9 +410,9 @@ describe("ReconnectingWebSocket", () => {
 
 		it("does not call onDispose callback during reconnection", async () => {
 			let disposeCount = 0;
-			const { ws, sockets } = await createReconnectingWebSocket(
-				() => ++disposeCount,
-			);
+			const { ws, sockets } = await createReconnectingWebSocket({
+				onDispose: () => ++disposeCount,
+			});
 
 			sockets[0].fireOpen();
 			sockets[0].fireClose({
@@ -587,6 +594,110 @@ describe("ReconnectingWebSocket", () => {
 		});
 	});
 
+	describe("Telemetry wiring", () => {
+		beforeEach(() => {
+			enableLocalTelemetry();
+		});
+
+		it("walks the state machine through a full reconnect lifecycle", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			const { ws, sockets } = await createReconnectingWebSocket({ telemetry });
+
+			sockets[0].fireOpen();
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Network error",
+			});
+			await vi.advanceTimersByTimeAsync(300);
+			sockets[1].fireOpen();
+			ws.close();
+
+			expect(
+				sink
+					.eventsNamed("connection.state_transitioned")
+					.map((e) => e.properties),
+			).toEqual([
+				{ from: "IDLE", to: "CONNECTING", reason: "initial_connect" },
+				{ from: "CONNECTING", to: "CONNECTED", reason: "open" },
+				{
+					from: "CONNECTED",
+					to: "AWAITING_RETRY",
+					reason: "unexpected_close",
+				},
+				{
+					from: "AWAITING_RETRY",
+					to: "CONNECTING",
+					reason: "scheduled_reconnect",
+				},
+				{ from: "CONNECTING", to: "CONNECTED", reason: "open" },
+				{ from: "CONNECTED", to: "DISPOSED", reason: "dispose" },
+			]);
+
+			expect(sink.eventsNamed("connection.opened")).toHaveLength(2);
+			expect(sink.eventsNamed("connection.dropped")).toHaveLength(2);
+			expect(sink.eventsNamed("connection.reconnect_resolved")).toMatchObject([
+				{
+					properties: { result: "success", reason: "unexpected_close" },
+					measurements: { attempts: 1, totalDurationMs: expect.any(Number) },
+				},
+			]);
+		});
+
+		it("emits a normal-close drop and disconnects on server-initiated close", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			const { ws, sockets } = await createReconnectingWebSocket({ telemetry });
+
+			sockets[0].fireOpen();
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.GOING_AWAY,
+				reason: "server restarting",
+			});
+
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+			const dropped = sink.eventsNamed("connection.dropped");
+			expect(dropped).toHaveLength(1);
+			expect(dropped[0].properties).toMatchObject({
+				cause: "normal_close",
+				closeCode: String(WebSocketCloseCode.GOING_AWAY),
+			});
+			expect(
+				sink
+					.eventsNamed("connection.state_transitioned")
+					.map((e) => e.properties.reason),
+			).toContain("normal_close");
+
+			ws.close();
+		});
+
+		it("records certificate_refresh as the reconnect reason on successful refresh", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			const sockets: MockSocket[] = [];
+			const factory = vi.fn(() => {
+				const socket = createMockSocket();
+				sockets.push(socket);
+				return Promise.resolve(socket);
+			});
+			const ws = await fromFactory(factory, {
+				telemetry,
+				onCertificateRefreshNeeded: () => Promise.resolve(true),
+			});
+
+			sockets[0].fireOpen();
+			sockets[0].fireError(new Error("ssl alert certificate_expired"));
+			await vi.waitFor(() => expect(sockets).toHaveLength(2));
+			sockets[1].fireOpen();
+
+			const reconnected = sink.eventsNamed("connection.reconnect_resolved");
+			expect(reconnected).toHaveLength(1);
+			expect(reconnected[0].properties.reason).toBe("certificate_refresh");
+
+			ws.close();
+		});
+	});
+
 	describe("Certificate Refresh", () => {
 		const setupRefreshTest = async (onRefresh: () => Promise<boolean>) => {
 			const sockets: MockSocket[] = [];
@@ -596,7 +707,9 @@ describe("ReconnectingWebSocket", () => {
 				sockets.push(socket);
 				return Promise.resolve(socket);
 			});
-			const ws = await fromFactory(factory, undefined, refreshCallback);
+			const ws = await fromFactory(factory, {
+				onCertificateRefreshNeeded: refreshCallback,
+			});
 			sockets[0].fireOpen();
 			return { ws, sockets, refreshCallback };
 		};
@@ -747,7 +860,15 @@ function createMockSocket(): MockSocket {
 	};
 }
 
-async function createReconnectingWebSocket(onDispose?: () => void): Promise<{
+interface FactoryOptions {
+	onDispose?: () => void;
+	onCertificateRefreshNeeded?: () => Promise<boolean>;
+	telemetry?: TelemetryReporter;
+}
+
+async function createReconnectingWebSocket(
+	options: FactoryOptions = {},
+): Promise<{
 	ws: ReconnectingWebSocket;
 	sockets: MockSocket[];
 }> {
@@ -757,15 +878,14 @@ async function createReconnectingWebSocket(onDispose?: () => void): Promise<{
 		sockets.push(socket);
 		return Promise.resolve(socket);
 	});
-	const ws = await fromFactory(factory, onDispose);
-
-	// We start with one socket
+	const ws = await fromFactory(factory, options);
 	expect(sockets).toHaveLength(1);
-
 	return { ws, sockets };
 }
 
-async function createReconnectingWebSocketWithErrorControl(): Promise<{
+async function createReconnectingWebSocketWithErrorControl(
+	options: FactoryOptions = {},
+): Promise<{
 	ws: ReconnectingWebSocket;
 	sockets: MockSocket[];
 	setFactoryError: (error: Error | null) => void;
@@ -782,7 +902,7 @@ async function createReconnectingWebSocketWithErrorControl(): Promise<{
 		return Promise.resolve(socket);
 	});
 
-	const ws = await fromFactory(factory);
+	const ws = await fromFactory(factory, options);
 	expect(sockets).toHaveLength(1);
 
 	return {
@@ -796,17 +916,17 @@ async function createReconnectingWebSocketWithErrorControl(): Promise<{
 
 async function fromFactory<T>(
 	factory: SocketFactory<T>,
-	onDispose?: () => void,
-	onCertificateRefreshNeeded?: () => Promise<boolean>,
+	options: FactoryOptions = {},
 ): Promise<ReconnectingWebSocket<T>> {
 	return await ReconnectingWebSocket.create(
 		factory,
 		createMockLogger(),
 		{
+			telemetry: options.telemetry ?? NOOP_TELEMETRY_REPORTER,
 			onCertificateRefreshNeeded:
-				onCertificateRefreshNeeded ?? (() => Promise.resolve(false)),
+				options.onCertificateRefreshNeeded ?? (() => Promise.resolve(false)),
 		},
-		onDispose,
+		options.onDispose,
 	);
 }
 

@@ -3,12 +3,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+import { SshTelemetry, type ProcessLossCause } from "../instrumentation/ssh";
 import { findPort } from "../util";
 import { cleanupFiles } from "../util/fileCleanup";
 
 import { NetworkStatusReporter } from "./networkStatus";
 
 import type { Logger } from "../logging/logger";
+import type { TelemetryReporter } from "../telemetry/reporter";
 
 /**
  * Network information from the Coder CLI.
@@ -40,6 +42,7 @@ export interface SshProcessMonitorOptions {
 	// For port-based SSH process discovery
 	codeLogDir: string;
 	remoteSshExtensionId: string;
+	telemetry: TelemetryReporter;
 }
 
 // 1 hour cleanup threshold for old network info files
@@ -56,8 +59,11 @@ const CLEANUP_MAX_LOG_FILES = 20;
 export class SshProcessMonitor implements vscode.Disposable {
 	private readonly statusBarItem: vscode.StatusBarItem;
 	private readonly options: Required<
-		SshProcessMonitorOptions & { proxyLogDir: string | undefined }
-	>;
+		Omit<SshProcessMonitorOptions, "proxyLogDir" | "telemetry">
+	> & {
+		readonly proxyLogDir: string | undefined;
+	};
+	private readonly telemetry: SshTelemetry;
 
 	private readonly _onLogFilePathChange = new vscode.EventEmitter<
 		string | undefined
@@ -77,7 +83,10 @@ export class SshProcessMonitor implements vscode.Disposable {
 	private disposed = false;
 	private currentPid: number | undefined;
 	private logFilePath: string | undefined;
-	private pendingTimeout: NodeJS.Timeout | undefined;
+	private readonly pendingDelays = new Set<{
+		timer: NodeJS.Timeout;
+		resolve: () => void;
+	}>();
 	private lastStaleSearchTime = 0;
 	private readonly reporter: NetworkStatusReporter;
 
@@ -126,6 +135,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 			// Matches the SSH update interval
 			networkPollInterval: options.networkPollInterval ?? 3000,
 		};
+		this.telemetry = new SshTelemetry(options.telemetry);
 		this.statusBarItem = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
 			1000,
@@ -181,11 +191,14 @@ export class SshProcessMonitor implements vscode.Disposable {
 		if (this.disposed) {
 			return;
 		}
+		this.telemetry.disposed();
 		this.disposed = true;
-		if (this.pendingTimeout) {
-			clearTimeout(this.pendingTimeout);
-			this.pendingTimeout = undefined;
+		// Unblock all in-flight delay() calls so concurrent loops exit promptly.
+		for (const handle of this.pendingDelays) {
+			clearTimeout(handle.timer);
+			handle.resolve();
 		}
+		this.pendingDelays.clear();
 		this.statusBarItem.dispose();
 		this._onLogFilePathChange.dispose();
 		this._onPidChange.dispose();
@@ -199,10 +212,14 @@ export class SshProcessMonitor implements vscode.Disposable {
 			return;
 		}
 		await new Promise<void>((resolve) => {
-			this.pendingTimeout = setTimeout(() => {
-				this.pendingTimeout = undefined;
-				resolve();
-			}, ms);
+			const handle = {
+				timer: setTimeout(() => {
+					this.pendingDelays.delete(handle);
+					resolve();
+				}, ms),
+				resolve,
+			};
+			this.pendingDelays.add(handle);
 		});
 	}
 
@@ -211,18 +228,33 @@ export class SshProcessMonitor implements vscode.Disposable {
 	 * Starts monitoring when it finds the process through the port.
 	 */
 	private async searchForProcess(): Promise<void> {
+		const pid = await this.telemetry.traceProcessDiscovery(() =>
+			this.discoverSshProcess(),
+		);
+		if (pid === undefined || this.disposed) {
+			return;
+		}
+
+		this.setCurrentPid(pid);
+		this.startMonitoring();
+	}
+
+	private async discoverSshProcess(): Promise<{
+		pid: number | undefined;
+		attempts: number;
+	}> {
 		const { discoveryPollIntervalMs, maxDiscoveryBackoffMs, logger, sshHost } =
 			this.options;
-		let attempt = 0;
+		let attempts = 0;
 		let currentBackoff = discoveryPollIntervalMs;
 		let lastFoundPort: number | undefined;
 
 		while (!this.disposed) {
-			attempt++;
+			attempts++;
 
-			if (attempt === 1 || attempt % 10 === 0) {
+			if (attempts === 1 || attempts % 10 === 0) {
 				logger.debug(
-					`SSH process search attempt ${attempt} for host: ${sshHost}`,
+					`SSH process search attempt ${attempts} for host: ${sshHost}`,
 				);
 			}
 
@@ -244,14 +276,14 @@ export class SshProcessMonitor implements vscode.Disposable {
 			}
 
 			if (pid !== undefined) {
-				this.setCurrentPid(pid);
-				this.startMonitoring();
-				return;
+				return { pid, attempts };
 			}
 
 			await this.delay(currentBackoff);
 			currentBackoff = Math.min(currentBackoff * 2, maxDiscoveryBackoffMs);
 		}
+
+		return { pid: undefined, attempts };
 	}
 
 	/**
@@ -307,16 +339,24 @@ export class SshProcessMonitor implements vscode.Disposable {
 		this.currentPid = pid;
 
 		if (previousPid === undefined) {
+			this.telemetry.processStarted();
 			this.options.logger.info(`SSH connection established (PID: ${pid})`);
 			this._onPidChange.fire(pid);
-		} else if (previousPid !== pid) {
-			this.options.logger.info(
-				`SSH process changed from ${previousPid} to ${pid}`,
-			);
-			this.logFilePath = undefined;
-			this._onLogFilePathChange.fire(undefined);
-			this._onPidChange.fire(pid);
+			return;
 		}
+
+		if (previousPid === pid) {
+			this.telemetry.processRecovered();
+			return;
+		}
+
+		this.telemetry.processReplaced();
+		this.options.logger.info(
+			`SSH process changed from ${previousPid} to ${pid}`,
+		);
+		this.logFilePath = undefined;
+		this._onLogFilePathChange.fire(undefined);
+		this._onPidChange.fire(pid);
 	}
 
 	/**
@@ -408,6 +448,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 					const network = JSON.parse(content) as NetworkInfo;
 					const isStale = ageMs > networkPollInterval * 2;
 					this.reporter.update(network, isStale);
+					this.telemetry.networkSampled(network);
 				}
 			} catch (error) {
 				readFailures++;
@@ -420,6 +461,10 @@ export class SshProcessMonitor implements vscode.Disposable {
 			}
 
 			if (searchReason !== undefined) {
+				const lossCause: ProcessLossCause =
+					readFailures >= maxReadFailures
+						? "missing_network_info"
+						: "stale_network_info";
 				const timeSinceLastSearch = Date.now() - this.lastStaleSearchTime;
 				if (timeSinceLastSearch < staleThreshold) {
 					await this.delay(staleThreshold - timeSinceLastSearch);
@@ -427,6 +472,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 				}
 
 				logger.debug(`${searchReason}, searching for new SSH process`);
+				this.telemetry.processLost(lossCause);
 				// searchForProcess will update PID if a different process is found
 				this.lastStaleSearchTime = Date.now();
 				await this.searchForProcess();

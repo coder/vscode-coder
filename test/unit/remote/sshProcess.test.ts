@@ -10,7 +10,13 @@ import {
 	type NetworkInfo,
 	type SshProcessMonitorOptions,
 } from "@/remote/sshProcess";
+import { NOOP_TELEMETRY_REPORTER } from "@/telemetry/reporter";
 
+import {
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
 import {
 	createMockLogger,
 	makeNetworkInfo,
@@ -40,8 +46,9 @@ describe("SshProcessMonitor", () => {
 		vol.reset();
 		activeMonitors = [];
 		statusBar = new MockStatusBarItem();
-		// Provide default threshold config so getThresholdConfig() works
-		new MockConfigurationProvider();
+		// Provide default threshold config so getThresholdConfig() works,
+		// and enable telemetry so traces are emitted to the test sink.
+		enableLocalTelemetry();
 
 		// Default: process found immediately
 		vi.mocked(find).mockResolvedValue([
@@ -213,7 +220,7 @@ describe("SshProcessMonitor", () => {
 			monitor.onPidChange((pid) => pids.push(pid));
 
 			// Wait for reconnection to find new PID
-			await waitFor(() => pids.includes(888), 200);
+			await waitUntil(() => pids.includes(888), { timeout: 200 });
 
 			// Should NOT fire undefined - we keep showing last status while searching
 			expect(pids).toContain(888);
@@ -309,6 +316,212 @@ describe("SshProcessMonitor", () => {
 
 			// No events should fire - same process found, no change
 			expect(pids).toEqual([]);
+		});
+	});
+
+	describe("telemetry", () => {
+		const sshLog = {
+			"/logs/ms-vscode-remote.remote-ssh/1-Remote - SSH.log":
+				"-> socksPort 12345 ->",
+		};
+
+		function keepNetworkFileFresh(filePath: string, ms = 90_000): void {
+			const mtime = (Date.now() + ms) / 1000;
+			vol.utimesSync(filePath, mtime, mtime);
+		}
+
+		it("emits a process discovered trace once a PID is found", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			vol.fromJSON(sshLog);
+
+			const monitor = createMonitor({ telemetry });
+			await waitForEvent(monitor.onPidChange);
+
+			expect(sink.eventsNamed("ssh.process.discovered")[0]).toMatchObject({
+				properties: { result: "success", found: "true" },
+				measurements: {
+					durationMs: expect.any(Number),
+					attempts: expect.any(Number),
+				},
+			});
+		});
+
+		it("emits found=false when discovery is abandoned by dispose", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			vol.fromJSON(sshLog);
+			vi.mocked(find).mockResolvedValue([]);
+
+			const monitor = createMonitor({ telemetry });
+			// `find` always returns []; dispose ends the polling loop and
+			// finalises the span with `found: false`.
+			monitor.dispose();
+
+			await waitUntil(
+				() => sink.eventsNamed("ssh.process.discovered").length > 0,
+			);
+			expect(sink.eventsNamed("ssh.process.discovered")[0]).toMatchObject({
+				properties: { result: "success", found: "false" },
+			});
+		});
+
+		it("emits ssh.process.disposed when dispose follows a successful discovery", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			vol.fromJSON(sshLog);
+
+			const monitor = createMonitor({ telemetry });
+			await waitForEvent(monitor.onPidChange);
+			monitor.dispose();
+
+			expect(sink.eventsNamed("ssh.process.disposed")[0]).toMatchObject({
+				properties: { wasLost: "false" },
+				measurements: { uptimeMs: expect.any(Number) },
+			});
+		});
+
+		it("emits ssh.process.disposed with wasLost=true when dispose follows a loss", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson(),
+			});
+			// Second discovery hangs so the lost->disposed sequence is observable.
+			vi.mocked(find)
+				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValue([]);
+
+			const monitor = createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+				telemetry,
+			});
+			await waitForEvent(monitor.onPidChange);
+			await waitUntil(() => sink.eventsNamed("ssh.process.lost").length > 0);
+			monitor.dispose();
+
+			const disposed = sink.eventsNamed("ssh.process.disposed");
+			expect(disposed).toHaveLength(1);
+			expect(disposed[0].properties).toMatchObject({ wasLost: "true" });
+		});
+
+		it("emits missing_network_info as the loss cause when reads fail repeatedly", async () => {
+			vi.useFakeTimers();
+			try {
+				const sink = new TestSink();
+				const telemetry = createTestTelemetryService(sink);
+				vol.fromJSON(sshLog);
+				// No /network/999.json. Every read fails until threshold is reached.
+				vi.mocked(find).mockResolvedValue([
+					{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" },
+				]);
+
+				const monitor = createMonitor({
+					networkInfoPath: "/network",
+					networkPollInterval: 10,
+					telemetry,
+				});
+
+				await vi.advanceTimersByTimeAsync(500);
+				expect(sink.eventsNamed("ssh.process.lost").length).toBeGreaterThan(0);
+				expect(
+					sink.eventsNamed("ssh.process.lost")[0].properties,
+				).toMatchObject({ cause: "missing_network_info" });
+
+				monitor.dispose();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("emits ssh.process.replaced (not recovered) when a different PID takes over", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson(),
+			});
+			vi.mocked(find)
+				.mockResolvedValueOnce([{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" }])
+				.mockResolvedValueOnce([{ pid: 888, ppid: 1, name: "ssh", cmd: "ssh" }])
+				// No rediscovery after takeover: a same-PID rediscovery would
+				// emit ssh.process.recovered and break the negative assertion.
+				.mockResolvedValue([]);
+
+			const monitor = createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+				telemetry,
+			});
+			await waitForEvent(monitor.onPidChange);
+			await waitUntil(
+				() => sink.eventsNamed("ssh.process.replaced").length > 0,
+			);
+			monitor.dispose();
+
+			const replaced = sink.eventsNamed("ssh.process.replaced");
+			expect(replaced[0].properties).toMatchObject({ wasLost: "true" });
+			expect(replaced[0].measurements).toMatchObject({
+				previousUptimeMs: expect.any(Number),
+				lostDurationMs: expect.any(Number),
+			});
+			expect(sink.eventsNamed("ssh.process.recovered")).toHaveLength(0);
+		});
+
+		it("emits lost and recovered events around a stale-network reconnect", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson(),
+			});
+			vi.mocked(find).mockResolvedValue([
+				{ pid: 999, ppid: 1, name: "ssh", cmd: "ssh" },
+			]);
+
+			const monitor = createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+				telemetry,
+			});
+			await waitForEvent(monitor.onPidChange);
+			await waitUntil(
+				() =>
+					sink.eventsNamed("ssh.process.lost").length > 0 &&
+					sink.eventsNamed("ssh.process.recovered").length > 0,
+			);
+
+			expect(sink.eventsNamed("ssh.process.lost")[0]).toMatchObject({
+				properties: { cause: "stale_network_info" },
+				measurements: { uptimeMs: expect.any(Number) },
+			});
+			expect(sink.eventsNamed("ssh.process.recovered")[0]).toMatchObject({
+				measurements: { recoveryDurationMs: expect.any(Number) },
+			});
+		});
+
+		it("forwards network reads to the telemetry as samples", async () => {
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			vol.fromJSON({
+				...sshLog,
+				"/network/999.json": makeNetworkJson({ latency: 25 }),
+			});
+			keepNetworkFileFresh("/network/999.json");
+
+			createMonitor({
+				networkInfoPath: "/network",
+				networkPollInterval: 10,
+				telemetry,
+			});
+			await waitUntil(() => sink.eventsNamed("ssh.network.sampled").length > 0);
+
+			expect(sink.eventsNamed("ssh.network.sampled")[0]).toMatchObject({
+				properties: { p2p: "true", preferredDerp: "NYC" },
+				measurements: { latencyMs: 25 },
+			});
 		});
 	});
 
@@ -435,7 +648,7 @@ describe("SshProcessMonitor", () => {
 				codeLogDir: "/logs/window1",
 				networkInfoPath: "/network",
 			});
-			await waitFor(() => statusBar.text.includes("Direct"));
+			await waitUntil(() => statusBar.text.includes("Direct"));
 
 			expect(statusBar.text).toContain("Direct");
 			expect(statusBar.text).toContain("25.50ms");
@@ -457,7 +670,7 @@ describe("SshProcessMonitor", () => {
 				codeLogDir: "/logs/window1",
 				networkInfoPath: "/network",
 			});
-			await waitFor(() => statusBar.text.includes("SFO"));
+			await waitUntil(() => statusBar.text.includes("SFO"));
 
 			expect(statusBar.text).toContain("SFO");
 			expect(tooltipText()).toContain("relay");
@@ -474,7 +687,7 @@ describe("SshProcessMonitor", () => {
 				codeLogDir: "/logs/window1",
 				networkInfoPath: "/network",
 			});
-			await waitFor(() => statusBar.text.includes("Coder Connect"));
+			await waitUntil(() => statusBar.text.includes("Coder Connect"));
 
 			expect(statusBar.text).toContain("Coder Connect");
 		});
@@ -794,10 +1007,9 @@ describe("SshProcessMonitor", () => {
 			);
 			startWithNetwork({ latency: 200 });
 
-			await waitFor(
-				() => statusBar.backgroundColor instanceof ThemeColor,
-				2000,
-			);
+			await waitUntil(() => statusBar.backgroundColor instanceof ThemeColor, {
+				timeout: 2000,
+			});
 			expect(statusBar.command).toBe("coder.pingWorkspace");
 		});
 	});
@@ -812,6 +1024,7 @@ describe("SshProcessMonitor", () => {
 			discoveryPollIntervalMs: 10,
 			maxDiscoveryBackoffMs: 100,
 			networkPollInterval: 10,
+			telemetry: NOOP_TELEMETRY_REPORTER,
 			...overrides,
 		});
 		activeMonitors.push(monitor);
@@ -837,6 +1050,18 @@ function mockReaddirOrder(dirPath: string, files: string[]): void {
 	);
 }
 
+/** Poll `cond` via `vi.waitFor` until it returns truthy. */
+async function waitUntil(
+	cond: () => boolean,
+	options?: { timeout?: number },
+): Promise<void> {
+	await vi.waitFor(() => {
+		if (!cond()) {
+			throw new Error("waitUntil: condition not met");
+		}
+	}, options);
+}
+
 /** Wait for a VS Code event to fire once */
 function waitForEvent<T>(
 	event: (listener: (e: T) => void) => { dispose(): void },
@@ -854,19 +1079,4 @@ function waitForEvent<T>(
 			resolve(value);
 		});
 	});
-}
-
-/** Poll for a condition to become true */
-async function waitFor(
-	condition: () => boolean,
-	timeout = 1000,
-	interval = 5,
-): Promise<void> {
-	const start = Date.now();
-	while (!condition()) {
-		if (Date.now() - start > timeout) {
-			throw new Error(`waitFor timed out after ${timeout}ms`);
-		}
-		await new Promise((r) => setTimeout(r, interval));
-	}
 }

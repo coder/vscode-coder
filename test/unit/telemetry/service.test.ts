@@ -91,6 +91,17 @@ describe("TelemetryService", () => {
 		});
 	});
 
+	it("top-level log/logError emit no traceId or parentEventId", () => {
+		h.service.log("plain");
+		h.service.logError("plain.error", new Error("nope"));
+
+		const [log, logError] = h.sink.events;
+		expect(log.traceId).toBeUndefined();
+		expect(log.parentEventId).toBeUndefined();
+		expect(logError.traceId).toBeUndefined();
+		expect(logError.parentEventId).toBeUndefined();
+	});
+
 	describe("trace", () => {
 		it("returns the wrapped value and records durationMs on success", async () => {
 			vi.useFakeTimers();
@@ -124,12 +135,7 @@ describe("TelemetryService", () => {
 		});
 
 		it("forwards caller measurements alongside the framework-set durationMs", async () => {
-			await h.service.trace(
-				"auth.token_refresh",
-				() => Promise.resolve(),
-				{},
-				{ attempts: 2 },
-			);
+			await h.service.trace("op", () => Promise.resolve(), {}, { attempts: 2 });
 
 			const [event] = h.sink.events;
 			expect(event.measurements.attempts).toBe(2);
@@ -170,6 +176,87 @@ describe("TelemetryService", () => {
 			});
 		});
 
+		it("span.log emits with the span's traceId and parentEventId", async () => {
+			await h.service.trace("op", (span) => {
+				span.log("checkpoint", { ready: true }, { count: 1 });
+				return Promise.resolve();
+			});
+
+			const [log, parent] = h.sink.events;
+			expect(log).toMatchObject({
+				eventName: "op.checkpoint",
+				properties: { ready: "true" },
+				measurements: { count: 1 },
+			});
+			expect(log.eventId).not.toBe(parent.eventId);
+			expect(log.traceId).toBe(parent.traceId);
+			expect(log.parentEventId).toBe(parent.eventId);
+			expect(log.properties.result).toBeUndefined();
+			expect(log.measurements.durationMs).toBeUndefined();
+		});
+
+		it("span.logError emits with traceId, parentEventId, and the error block", async () => {
+			await h.service.trace("op", (span) => {
+				span.logError(
+					"failed",
+					new TypeError("nope"),
+					{ attempt: 1 },
+					{ retries: 2 },
+				);
+				return Promise.resolve();
+			});
+
+			const [log, parent] = h.sink.events;
+			expect(log).toMatchObject({
+				eventName: "op.failed",
+				properties: { attempt: "1" },
+				measurements: { retries: 2 },
+				error: { message: "nope", type: "TypeError" },
+			});
+			expect(log.traceId).toBe(parent.traceId);
+			expect(log.parentEventId).toBe(parent.eventId);
+			expect(log.measurements.durationMs).toBeUndefined();
+		});
+
+		it("child span logs point at the child span", async () => {
+			await h.service.trace("op", async (span) => {
+				await span.phase("phase", (childSpan) => {
+					childSpan.log("checkpoint", { ready: true }, { count: 1 });
+					childSpan.logError(
+						"oops",
+						new Error("boom"),
+						{ attempt: 2 },
+						{ retries: 3 },
+					);
+					return Promise.resolve();
+				});
+			});
+
+			const [log, logError, child, parent] = h.sink.events;
+			expect(log.eventName).toBe("op.phase.checkpoint");
+			expect(log.traceId).toBe(parent.traceId);
+			expect(log.parentEventId).toBe(child.eventId);
+			expect(log.properties.ready).toBe("true");
+			expect(log.measurements.count).toBe(1);
+			expect(logError.eventName).toBe("op.phase.oops");
+			expect(logError.traceId).toBe(parent.traceId);
+			expect(logError.parentEventId).toBe(child.eventId);
+			expect(logError.error).toMatchObject({ message: "boom" });
+			expect(logError.properties.attempt).toBe("2");
+			expect(logError.measurements.retries).toBe(3);
+			expect(child.parentEventId).toBe(parent.eventId);
+		});
+
+		it("span log names containing '.' are sanitized like phase names", async () => {
+			await h.service.trace("op", (span) => {
+				span.log("bad.name");
+				return Promise.resolve();
+			});
+
+			const [log] = h.sink.events;
+			expect(log.eventName).toBe("op.bad_name");
+		});
+
 		it("flat traces (no phases) emit a single event with a fresh traceId", async () => {
 			await h.service.trace("a", () => Promise.resolve(1));
 			await h.service.trace("b", () => Promise.resolve(2));
@@ -202,7 +289,7 @@ describe("TelemetryService", () => {
 			expect(phase2.traceId).toBe(parent.traceId);
 		});
 
-		it("phase children carry parentEventId pointing at the parent's eventId; logs do not", async () => {
+		it("phase children carry parentEventId pointing at the parent's eventId; top-level logs do not", async () => {
 			h.service.log("plain");
 			await h.service.trace("op", async (span) => {
 				await span.phase("p1", () => Promise.resolve());
@@ -210,7 +297,7 @@ describe("TelemetryService", () => {
 			});
 
 			const [plain, p1, p2, parent] = h.sink.events;
-			// log/logError/time events have no parentEventId field.
+			// Top-level log/logError events have no parentEventId field.
 			expect(plain.parentEventId).toBeUndefined();
 			// Parent (root) has no parentEventId either.
 			expect(parent.parentEventId).toBeUndefined();
@@ -292,7 +379,7 @@ describe("TelemetryService", () => {
 			expect(phase.eventName).toBe("op.bad_name");
 		});
 
-		it("warns and ignores setProperty/setMeasurement called after emit", async () => {
+		it("drops setProperty/setMeasurement/markAborted/markFailure called after emit", async () => {
 			let escapedSpan: Span | undefined;
 			await h.service.trace("op", (span) => {
 				escapedSpan = span;
@@ -300,28 +387,63 @@ describe("TelemetryService", () => {
 			});
 
 			expect(h.sink.events).toHaveLength(1);
-			const warnBefore = vi.mocked(h.logger.warn).mock.calls.length;
 
 			escapedSpan?.setProperty("late", "ignored");
 			escapedSpan?.setMeasurement("lateMs", 99);
 			escapedSpan?.markAborted();
+			escapedSpan?.markFailure();
 
-			// Mutations dropped: emitted event is unchanged.
 			expect(h.sink.events[0].properties.late).toBeUndefined();
 			expect(h.sink.events[0].measurements.lateMs).toBeUndefined();
 			expect(h.sink.events[0].properties.result).toBe("success");
+		});
 
-			// Each post-emit mutation logs a warning.
-			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 3);
-			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore][0]).toContain(
-				"setProperty",
-			);
-			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 1][0]).toContain(
-				"setMeasurement",
-			);
-			expect(vi.mocked(h.logger.warn).mock.calls[warnBefore + 2][0]).toContain(
-				"markAborted",
-			);
+		it("drops span logs called after emit", async () => {
+			let escapedSpan: Span | undefined;
+			await h.service.trace("op", (span) => {
+				escapedSpan = span;
+				return Promise.resolve();
+			});
+
+			escapedSpan?.log("late");
+			escapedSpan?.logError("late_error", new Error("ignored"));
+
+			expect(h.sink.events).toHaveLength(1);
+		});
+
+		it("runs phase fns called after emit but emits no phase event", async () => {
+			let escapedSpan: Span | undefined;
+			await h.service.trace("op", (span) => {
+				escapedSpan = span;
+				return Promise.resolve();
+			});
+
+			const result = await escapedSpan?.phase("late", (childSpan) => {
+				childSpan.log("ignored");
+				return Promise.resolve("ran");
+			});
+
+			expect(result).toBe("ran");
+			expect(h.sink.events).toHaveLength(1);
+		});
+
+		it("warns once per post-emit method call", async () => {
+			let escapedSpan: Span | undefined;
+			await h.service.trace("op", (span) => {
+				escapedSpan = span;
+				return Promise.resolve();
+			});
+
+			const warnBefore = vi.mocked(h.logger.warn).mock.calls.length;
+			escapedSpan?.setProperty("late", "ignored");
+			escapedSpan?.setMeasurement("lateMs", 99);
+			escapedSpan?.markAborted();
+			escapedSpan?.markFailure();
+			escapedSpan?.log("late_log");
+			escapedSpan?.logError("late_log_error", new Error("ignored"));
+			await escapedSpan?.phase("late_phase", () => Promise.resolve());
+
+			expect(vi.mocked(h.logger.warn).mock.calls.length).toBe(warnBefore + 7);
 		});
 
 		it("markAborted flips result to 'aborted' on normal return", async () => {
@@ -341,6 +463,45 @@ describe("TelemetryService", () => {
 			await expect(
 				h.service.trace("op", (span) => {
 					span.markAborted();
+					return Promise.reject(boom);
+				}),
+			).rejects.toBe(boom);
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "error" },
+				error: { message: "kaboom" },
+			});
+		});
+
+		it("markFailure flips result to 'error' on normal return without an error block", async () => {
+			await h.service.trace("op", (span) => {
+				span.markFailure();
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0]).toMatchObject({
+				eventName: "op",
+				properties: { result: "error" },
+			});
+			expect(h.sink.events[0].error).toBeUndefined();
+		});
+
+		it("markFailure overrides markAborted (failure wins over abort)", async () => {
+			await h.service.trace("op", (span) => {
+				span.markAborted();
+				span.markFailure();
+				return Promise.resolve();
+			});
+
+			expect(h.sink.events[0].properties.result).toBe("error");
+		});
+
+		it("thrown errors take precedence over markFailure (error block is preserved)", async () => {
+			const boom = new Error("kaboom");
+			await expect(
+				h.service.trace("op", (span) => {
+					span.markFailure();
 					return Promise.reject(boom);
 				}),
 			).rejects.toBe(boom);
@@ -418,12 +579,20 @@ describe("TelemetryService", () => {
 			h.service.log("a");
 			h.service.logError("b", new Error("ignored"));
 
-			expect(await h.service.trace("c", () => Promise.resolve(42))).toBe(42);
+			expect(
+				await h.service.trace("c", (span) => {
+					span.log("ignored");
+					span.logError("ignored_error", new Error("ignored"));
+					return Promise.resolve(42);
+				}),
+			).toBe(42);
 
 			const traceResult = await h.service.trace("d", async (span) => {
-				const phaseValue = await span.phase("p", () =>
-					Promise.resolve("inner"),
-				);
+				const phaseValue = await span.phase("p", (childSpan) => {
+					childSpan.log("ignored");
+					childSpan.logError("ignored_error", new Error("ignored"));
+					return Promise.resolve("inner");
+				});
 				expect(phaseValue).toBe("inner");
 				return "outer";
 			});
@@ -533,9 +702,12 @@ describe("TelemetryService", () => {
 		it("trace and span.phase complete normally when the sink throws", async () => {
 			const service = makeService([throwingSink]);
 			const result = await service.trace("op", async (span) => {
-				const phaseValue = await span.phase("p", () =>
-					Promise.resolve("phase"),
-				);
+				span.log("checkpoint");
+				span.logError("failure", new Error("telemetry-error"));
+				const phaseValue = await span.phase("p", (childSpan) => {
+					childSpan.log("checkpoint");
+					return Promise.resolve("phase");
+				});
 				expect(phaseValue).toBe("phase");
 				return "trace";
 			});

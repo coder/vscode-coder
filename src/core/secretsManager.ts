@@ -58,7 +58,7 @@ export class SecretsManager {
 	) {}
 
 	private buildKey(prefix: SecretKeyPrefix, safeHostname: string): string {
-		return `${prefix}${safeHostname || "<legacy>"}`;
+		return `${prefix}${safeHostname}`;
 	}
 
 	private async getSecret<T>(

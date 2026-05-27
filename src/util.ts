@@ -1,4 +1,4 @@
-import * as os from "node:os";
+import os from "node:os";
 import url from "node:url";
 
 export interface AuthorityParts {
@@ -12,6 +12,10 @@ export interface AuthorityParts {
 // Prefix is a magic string that is prepended to SSH hosts to indicate that
 // they should be handled by this extension.
 export const AuthorityPrefix = "coder-vscode";
+
+const authorityHostPrefix = `${AuthorityPrefix}.`;
+const invalidAuthorityMessage =
+	"Invalid Coder SSH authority. Must be: <hostname>--<username>--<workspace>(.<agent?>)";
 
 // Regex patterns to find the SSH port from Remote SSH extension logs.
 // `ms-vscode-remote.remote-ssh`: `-> socksPort <port> ->` or `between local port <port>`
@@ -49,60 +53,57 @@ export function findPort(text: string): number | null {
 /**
  * Given an authority, parse into the expected parts.
  *
+ * The authority looks like `<scheme>://ssh-remote+<ssh host name>`, where the
+ * SSH host names created by this extension match the format:
+ *   coder-vscode.<safeHostname>--<username>--<workspace>(.<agent?>)
+ *
  * If this is not a Coder host, return null.
  *
  * Throw an error if the host is invalid.
  */
 export function parseRemoteAuthority(authority: string): AuthorityParts | null {
-	// The authority looks like: vscode://ssh-remote+<ssh host name>
 	const authorityParts = authority.split("+");
-
-	// We create SSH host names in a format matching:
-	// coder-vscode(--|.)<username>--<workspace>(--|.)<agent?>
-	// The agent can be omitted; the user will be prompted for it instead.
-	// Anything else is unrelated to Coder and can be ignored.
-	const parts = authorityParts[1].split("--");
-	if (
-		parts.length <= 1 ||
-		(parts[0] !== AuthorityPrefix &&
-			!parts[0].startsWith(`${AuthorityPrefix}.`))
-	) {
+	const sshHost = authorityParts[1];
+	if (!sshHost) {
 		return null;
 	}
 
-	// Reassemble Punycode labels (xn--...) the split broke apart: when the
-	// prefix ends in ".xn", the cut landed inside an "xn--..." label.
-	while (parts.length >= 2 && parts[0].endsWith(".xn")) {
-		parts.splice(0, 2, `${parts[0]}--${parts[1]}`);
+	const parts = sshHost.split("--");
+	if (!parts[0].startsWith(authorityHostPrefix)) {
+		return null;
 	}
 
-	// It has the proper prefix, so this is probably a Coder host name.
-	// Validate the SSH host name.  Including the prefix, we expect at least
-	// three parts, or four if including the agent.
-	if ((parts.length !== 3 && parts.length !== 4) || parts.some((p) => !p)) {
-		throw new Error(
-			`Invalid Coder SSH authority. Must be: <username>--<workspace>(--|.)<agent?>`,
-		);
+	if (parts.length < 3) {
+		throw new Error(invalidAuthorityMessage);
 	}
 
-	let workspace = parts[2];
+	// Parse from the right because safe hostnames can contain "--".
+	const hostPrefix = parts.slice(0, -2).join("--");
+	const safeHostname = hostPrefix.slice(authorityHostPrefix.length);
+	const username = parts[parts.length - 2];
+	const workspaceAndAgent = parts[parts.length - 1];
+	if (!safeHostname || !username || !workspaceAndAgent) {
+		throw new Error(invalidAuthorityMessage);
+	}
+
+	let workspace = workspaceAndAgent;
 	let agent = "";
-	if (parts.length === 4) {
-		agent = parts[3];
-	} else if (parts.length === 3) {
-		const workspaceParts = parts[2].split(".");
-		if (workspaceParts.length === 2) {
-			workspace = workspaceParts[0];
-			agent = workspaceParts[1];
+	const workspaceParts = workspaceAndAgent.split(".");
+	// Multiple dots are ambiguous because workspace and agent share this separator.
+	if (workspaceParts.length === 2) {
+		workspace = workspaceParts[0];
+		agent = workspaceParts[1];
+		if (!workspace || !agent) {
+			throw new Error(invalidAuthorityMessage);
 		}
 	}
 
 	return {
-		agent: agent,
-		sshHost: authorityParts[1],
-		safeHostname: parts[0].replace(/^coder-vscode\.?/, ""),
-		username: parts[1],
-		workspace: workspace,
+		agent,
+		sshHost,
+		safeHostname,
+		username,
+		workspace,
 	};
 }
 
@@ -130,14 +131,21 @@ export function toSafeHost(rawUrl: string): string {
 }
 
 /**
- * Expand a path if it starts with tilde (~) or contains ${userHome}.
+ * Substitute `${env:VAR}` with `process.env.VAR` (unset → empty string),
+ * `${userHome}` (anywhere) with `os.homedir()`, and a leading `~` with
+ * `os.homedir()`. Env substitution runs first so env values can themselves
+ * contain `~` or `${userHome}`.
  */
 export function expandPath(input: string): string {
+	const expanded = input.replace(
+		/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g,
+		(_, name: string) => process.env[name] ?? "",
+	);
 	const userHome = os.homedir();
-	if (input.startsWith("~")) {
-		input = userHome + input.substring("~".length);
-	}
-	return input.replaceAll("${userHome}", userHome);
+	const tildeExpanded = expanded.startsWith("~")
+		? userHome + expanded.substring("~".length)
+		: expanded;
+	return tildeExpanded.replaceAll("${userHome}", userHome);
 }
 
 /**
@@ -156,61 +164,34 @@ export function countSubstring(needle: string, haystack: string): number {
 	return count;
 }
 
-const transientRenameCodes: ReadonlySet<string> = new Set([
-	"EPERM",
-	"EACCES",
-	"EBUSY",
-]);
-
 /**
- * Rename with retry for transient Windows filesystem errors (EPERM, EACCES,
- * EBUSY). On Windows, antivirus, Search Indexer, cloud sync, or concurrent
- * processes can briefly lock files causing renames to fail.
+ * Wraps `arg` in `"..."` unless every character is in the shell-safe
+ * whitelist (matching Python `shlex.quote`'s set: alphanumerics plus
+ * `@%+,=:./-`). Anything else (whitespace, `"`, `&|;()<>*?[~#!^\` `$`)
+ * forces quoting so the output is a single token in POSIX `sh`, cmd.exe,
+ * and PowerShell.
  *
- * On non-Windows platforms, calls renameFn directly with no retry.
+ * Not a universal shell-escape: `$VAR` / `$(...)` / `%VAR%` still expand
+ * inside `"..."`. For untrusted values use {@link escapeShellArg}.
  *
- * Matches the strategy used by VS Code (pfs.ts) and graceful-fs: 60s
- * wall-clock timeout with linear backoff (10ms increments) capped at 100ms.
+ * @see https://docs.python.org/3/library/shlex.html#shlex.quote
+ * @see https://learn.microsoft.com/en-us/archive/blogs/twistylittlepassagesallalike/everyone-quotes-command-line-arguments-the-wrong-way
  */
-export async function renameWithRetry(
-	renameFn: (src: string, dest: string) => Promise<void>,
-	source: string,
-	destination: string,
-	timeoutMs = 60_000,
-	delayCapMs = 100,
-): Promise<void> {
-	if (process.platform !== "win32") {
-		return renameFn(source, destination);
-	}
-	const startTime = Date.now();
-	for (let attempt = 1; ; attempt++) {
-		try {
-			return await renameFn(source, destination);
-		} catch (err) {
-			const code = (err as NodeJS.ErrnoException).code;
-			if (
-				!code ||
-				!transientRenameCodes.has(code) ||
-				Date.now() - startTime >= timeoutMs
-			) {
-				throw err;
-			}
-			const delay = Math.min(delayCapMs, attempt * 10);
-			await new Promise((resolve) => setTimeout(resolve, delay));
-		}
-	}
-}
-
 export function escapeCommandArg(arg: string): string {
-	const escapedString = arg.replaceAll('"', String.raw`\"`);
-	return `"${escapedString}"`;
+	if (arg !== "" && /^[\w@%+,=:./-]+$/.test(arg)) {
+		return arg;
+	}
+	return `"${arg.replaceAll('"', String.raw`\"`)}"`;
 }
 
 /**
- * Generate a temporary file path by appending a suffix with a random component.
- * The suffix describes the purpose of the temp file (e.g. "temp", "old").
- * Example: tempFilePath("/a/b", "temp") → "/a/b.temp-k7x3f9qw"
+ * Cross-platform shell quoting that blocks variable expansion. Use for
+ * values from outside the user's local settings (e.g. server-controlled).
  */
-export function tempFilePath(basePath: string, suffix: string): string {
-	return `${basePath}.${suffix}-${crypto.randomUUID().substring(0, 8)}`;
+export function escapeShellArg(arg: string): string {
+	if (os.platform() === "win32") {
+		const escaped = arg.replace(/"/g, '""').replace(/%/g, "%%");
+		return `"${escaped}"`;
+	}
+	return `'${arg.replace(/'/g, "'\\''")}'`;
 }

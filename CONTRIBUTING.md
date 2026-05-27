@@ -66,8 +66,6 @@ The extension provides several sidebar panels:
   indicators, quick actions, and search.
 - **Coder Tasks** - a React webview for creating, monitoring, and managing AI
   agent tasks with real-time log streaming.
-- **Coder Chat** - an embedded chat UI for delegating tasks to AI coding agents
-  (gated behind the `coder.agentsEnabled` context flag).
 
 There are also notifications for outdated workspace templates and for workspaces
 that are close to shutting down.
@@ -176,7 +174,7 @@ This extension targets the Node.js version bundled with VS Code's Electron:
 
 | VS Code | Electron | Node.js | Status            |
 | ------- | -------- | ------- | ----------------- |
-| 1.106   | 37       | 22      | Minimum supported |
+| 1.105   | 37       | 22      | Minimum supported |
 | stable  | latest   | varies  | Also tested in CI |
 
 When updating the minimum Node.js version, update these files:

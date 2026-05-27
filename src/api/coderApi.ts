@@ -1,23 +1,17 @@
 import {
-	type AxiosResponseHeaders,
-	type AxiosInstance,
-	type AxiosHeaders,
-	type AxiosResponseTransformer,
 	isAxiosError,
+	type AxiosHeaders,
+	type AxiosInstance,
+	type AxiosResponseHeaders,
+	type AxiosResponseTransformer,
 } from "axios";
 import { Api } from "coder/site/src/api/api";
-import {
-	type ServerSentEvent,
-	type GetInboxNotificationResponse,
-	type ProvisionerJobLog,
-	type Workspace,
-	type WorkspaceAgent,
-	type WorkspaceAgentLog,
-} from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
-import { type ClientOptions } from "ws";
 
-import { watchConfigurationChanges } from "../configWatcher";
+import {
+	CONFIG_CHANGE_DEBOUNCE_MS,
+	watchConfigurationChanges,
+} from "../configWatcher";
 import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
 import { ServerCertificateError } from "../error/serverCertificateError";
@@ -25,23 +19,23 @@ import { getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
 import {
 	createRequestMeta,
-	logRequest,
 	logError,
+	logRequest,
 	logResponse,
 } from "../logging/httpLogger";
-import { type Logger } from "../logging/logger";
+import { HttpRequestsTelemetry } from "../logging/httpRequestsTelemetry";
 import {
-	type RequestConfigWithMeta,
 	HttpClientLogLevel,
+	type RequestConfigWithMeta,
 } from "../logging/types";
 import { sizeOf } from "../logging/utils";
+import { AuthConfigTracker } from "../settings/authConfig";
 import { getHeaderCommand } from "../settings/headers";
-import { HttpStatusCode, WebSocketCloseCode } from "../websocket/codes";
 import {
-	type UnidirectionalStream,
-	type CloseEvent,
-	type ErrorEvent,
-} from "../websocket/eventStreamConnection";
+	NOOP_TELEMETRY_REPORTER,
+	type TelemetryReporter,
+} from "../telemetry/reporter";
+import { HttpStatusCode, WebSocketCloseCode } from "../websocket/codes";
 import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
@@ -49,12 +43,30 @@ import {
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
+	type ReconnectingWebSocketOptions,
 	type SocketFactory,
 } from "../websocket/reconnectingWebSocket";
 import { SseConnection } from "../websocket/sseConnection";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
 import { createHttpAgent } from "./utils";
+
+import type {
+	GetInboxNotificationResponse,
+	ProvisionerJobLog,
+	ServerSentEvent,
+	Workspace,
+	WorkspaceAgent,
+	WorkspaceAgentLog,
+} from "coder/site/src/api/typesGenerated";
+import type { ClientOptions } from "ws";
+
+import type { Logger } from "../logging/logger";
+import type {
+	CloseEvent,
+	ErrorEvent,
+	UnidirectionalStream,
+} from "../websocket/eventStreamConnection";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
 
@@ -86,29 +98,49 @@ export class CoderApi extends Api implements vscode.Disposable {
 	>();
 	private readonly configWatcher: vscode.Disposable;
 
-	private constructor(private readonly output: Logger) {
+	private constructor(
+		private readonly output: Logger,
+		private readonly telemetry: TelemetryReporter,
+		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
+		private readonly authConfigTracker: AuthConfigTracker,
+	) {
 		super();
 		this.configWatcher = this.watchConfigChanges();
 	}
 
 	/**
 	 * Create a new CoderApi instance with the provided configuration.
-	 * Automatically sets up logging interceptors and certificate handling.
+	 * Automatically sets up logging interceptors, certificate handling,
+	 * HTTP request telemetry, and WebSocket connection telemetry. All
+	 * telemetry routes through the single reporter passed in (defaults to
+	 * NOOP_TELEMETRY_REPORTER for throwaway clients).
 	 */
 	static create(
 		baseUrl: string,
 		token: string | undefined,
 		output: Logger,
+		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): CoderApi {
-		const client = new CoderApi(output);
+		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
+		const authConfigTracker = new AuthConfigTracker();
+		const client = new CoderApi(
+			output,
+			telemetry,
+			httpRequestsTelemetry,
+			authConfigTracker,
+		);
 		client.setCredentials(baseUrl, token);
 
-		setupInterceptors(client, output);
+		setupInterceptors(client, output, httpRequestsTelemetry, authConfigTracker);
 		return client;
 	}
 
 	getHost(): string | undefined {
 		return this.getAxiosInstance().defaults.baseURL;
+	}
+
+	hasAuthConfigChangedSince(version: number | undefined): boolean {
+		return this.authConfigTracker.hasChangedSince(version);
 	}
 
 	/**
@@ -155,6 +187,8 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 */
 	dispose(): void {
 		this.configWatcher.dispose();
+		this.authConfigTracker.dispose();
+		this.httpRequestsTelemetry.dispose();
 		for (const socket of this.reconnectingSockets) {
 			socket.close();
 		}
@@ -171,20 +205,24 @@ export class CoderApi extends Api implements vscode.Disposable {
 			setting,
 			getValue: () => vscode.workspace.getConfiguration().get(setting),
 		}));
-		return watchConfigurationChanges(settings, () => {
-			const socketsToReconnect = [...this.reconnectingSockets].filter(
-				(socket) => socket.state === ConnectionState.DISCONNECTED,
-			);
-			if (socketsToReconnect.length) {
-				this.output.debug(
-					`Configuration changed, ${socketsToReconnect.length}/${this.reconnectingSockets.size} socket(s) in DISCONNECTED state`,
+		return watchConfigurationChanges(
+			settings,
+			() => {
+				const socketsToReconnect = [...this.reconnectingSockets].filter(
+					(socket) => socket.state === ConnectionState.DISCONNECTED,
 				);
-				for (const socket of socketsToReconnect) {
-					this.output.debug(`Reconnecting WebSocket: ${socket.url}`);
-					socket.reconnect();
+				if (socketsToReconnect.length) {
+					this.output.debug(
+						`Configuration changed, ${socketsToReconnect.length}/${this.reconnectingSockets.size} socket(s) in DISCONNECTED state`,
+					);
+					for (const socket of socketsToReconnect) {
+						this.output.debug(`Reconnecting WebSocket: ${socket.url}`);
+						socket.reconnect();
+					}
 				}
-			}
-		});
+			},
+			{ debounceMs: CONFIG_CHANGE_DEBOUNCE_MS },
+		);
 	}
 
 	watchInboxNotifications = async (
@@ -449,18 +487,21 @@ export class CoderApi extends Api implements vscode.Disposable {
 	private async createReconnectingSocket<TData>(
 		socketFactory: SocketFactory<TData>,
 	): Promise<ReconnectingWebSocket<TData>> {
+		const options: ReconnectingWebSocketOptions = {
+			onCertificateRefreshNeeded: async () => {
+				const refreshCommand = getRefreshCommand();
+				if (!refreshCommand) {
+					return false;
+				}
+				return refreshCertificates(refreshCommand, this.output);
+			},
+			telemetry: this.telemetry,
+		};
+
 		const reconnectingSocket = await ReconnectingWebSocket.create<TData>(
 			socketFactory,
 			this.output,
-			{
-				onCertificateRefreshNeeded: async () => {
-					const refreshCommand = getRefreshCommand();
-					if (!refreshCommand) {
-						return false;
-					}
-					return refreshCertificates(refreshCommand, this.output);
-				},
-			},
+			options,
 			() => this.reconnectingSockets.delete(reconnectingSocket),
 		);
 
@@ -470,27 +511,56 @@ export class CoderApi extends Api implements vscode.Disposable {
 	}
 }
 
-/**
- * Set up logging and request interceptors for the CoderApi instance.
- */
-function setupInterceptors(client: CoderApi, output: Logger): void {
-	addLoggingInterceptors(client.getAxiosInstance(), output);
+function setupInterceptors(
+	client: CoderApi,
+	output: Logger,
+	httpRequestsTelemetry: HttpRequestsTelemetry,
+	authConfigTracker: AuthConfigTracker,
+): void {
+	addRequestInterceptors(
+		client.getAxiosInstance(),
+		output,
+		httpRequestsTelemetry,
+	);
 
 	client.getAxiosInstance().interceptors.request.use(async (config) => {
+		// Snapshot the version up front so it matches the config we're about
+		// to read, not whatever it bumps to during the awaits below.
+		config.authConfigVersion = authConfigTracker.version;
+
+		// Drop headers from the prior header-command run so stale keys can't
+		// leak through if the command output changed between attempts.
+		for (const key of config.headerCommandKeys ?? []) {
+			config.headers.delete(key);
+		}
+
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		const headers = await getHeaders(
 			baseUrl,
 			getHeaderCommand(vscode.workspace.getConfiguration()),
 			output,
 		);
-		// Add headers from the header command.
+		const retrying =
+			config._retryAttempted === true ||
+			config._authConfigRetryAttempted === true;
 		for (const [key, value] of Object.entries(headers)) {
+			// On retry, don't let stale command output overwrite the session
+			// token retryRequest just wrote.
+			if (
+				retrying &&
+				key.toLowerCase() === coderSessionTokenHeader.toLowerCase()
+			) {
+				continue;
+			}
 			config.headers[key] = value;
 		}
+		// Don't track the session token: cleanup must never touch it.
+		config.headerCommandKeys = Object.keys(headers).filter(
+			(k) => k.toLowerCase() !== coderSessionTokenHeader.toLowerCase(),
+		);
 
-		// Configure proxy and TLS.
-		// Note that by default VS Code overrides the agent. To prevent this, set
-		// `http.proxySupport` to `on` or `off`.
+		// VS Code overrides the agent by default; set `http.proxySupport` to
+		// `on` or `off` to keep ours.
 		const agent = await createHttpAgent(vscode.workspace.getConfiguration());
 		config.httpsAgent = agent;
 		config.httpAgent = agent;
@@ -499,7 +569,7 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 		return config;
 	});
 
-	// Wrap certificate errors and handle client certificate errors with refresh.
+	// Cert-refresh retries re-enter the chain, so each attempt is recorded.
 	client.getAxiosInstance().interceptors.response.use(
 		(r) => r,
 		async (err: unknown) => {
@@ -522,7 +592,11 @@ function setupInterceptors(client: CoderApi, output: Logger): void {
 	);
 }
 
-function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
+function addRequestInterceptors(
+	client: AxiosInstance,
+	logger: Logger,
+	httpRequestsTelemetry: HttpRequestsTelemetry,
+) {
 	client.interceptors.request.use(
 		(config) => {
 			const configWithMeta = config as RequestConfigWithMeta;
@@ -555,10 +629,12 @@ function addLoggingInterceptors(client: AxiosInstance, logger: Logger) {
 
 	client.interceptors.response.use(
 		(response) => {
+			httpRequestsTelemetry.recordResponse(response);
 			logResponse(logger, response, getLogLevel());
 			return response;
 		},
 		(error: unknown) => {
+			httpRequestsTelemetry.recordError(error);
 			logError(logger, error, getLogLevel());
 			throw error;
 		},
@@ -594,13 +670,10 @@ async function tryRefreshClientCertificate(
 	}
 
 	// _certRetried is per-request (Axios creates fresh config per request).
-	const config = err.config as RequestConfigWithMeta & {
-		_certRetried?: boolean;
-	};
-	if (config._certRetried) {
+	if (err.config._certRetried) {
 		throw certError;
 	}
-	config._certRetried = true;
+	err.config._certRetried = true;
 
 	output.info(
 		`Client certificate error (alert ${certError.alertCode}), attempting refresh...`,
@@ -612,12 +685,12 @@ async function tryRefreshClientCertificate(
 
 	// Create new agent with refreshed certificates.
 	const agent = await createHttpAgent(vscode.workspace.getConfiguration());
-	config.httpsAgent = agent;
-	config.httpAgent = agent;
+	err.config.httpsAgent = agent;
+	err.config.httpAgent = agent;
 
 	// Retry the request.
 	output.info("Retrying request with refreshed certificates...");
-	return axiosInstance.request(config);
+	return axiosInstance.request(err.config);
 }
 
 function wrapRequestTransform(

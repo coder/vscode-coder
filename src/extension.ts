@@ -23,7 +23,6 @@ import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscodeProposed";
-import { ChatPanelProvider } from "./webviews/chat/chatPanelProvider";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
 import { WorkspacesPanelProvider } from "./webviews/workspaces/workspacesPanelProvider";
 import {
@@ -85,6 +84,7 @@ async function doActivate(
 	const secretsManager = serviceContainer.getSecretsManager();
 	const contextManager = serviceContainer.getContextManager();
 	const commandManager = serviceContainer.getCommandManager();
+	const telemetryService = serviceContainer.getTelemetryService();
 
 	// Migrate auth storage from old flat format to new label-based format
 	await migrateAuthStorage(serviceContainer);
@@ -138,15 +138,15 @@ async function doActivate(
 		deployment?.url || "",
 		deploymentSessionAuth?.token,
 		output,
+		telemetryService,
 	);
 	ctx.subscriptions.push(client);
 
 	// Handles 401 responses (OAuth and otherwise)
 	const authInterceptor = new AuthInterceptor(
 		client,
-		output,
 		oauthSessionManager,
-		secretsManager,
+		serviceContainer,
 		async () => {
 			await handleAuthFailure();
 			return false;
@@ -248,24 +248,6 @@ async function doActivate(
 		),
 	);
 
-	// Register Chat embed panel with dependencies
-	const chatPanelProvider = new ChatPanelProvider(
-		ctx.extensionUri,
-		client,
-		output,
-	);
-	commandManager.register("coder.chat.refresh", () =>
-		chatPanelProvider.refresh(),
-	);
-	ctx.subscriptions.push(
-		chatPanelProvider,
-		vscode.window.registerWebviewViewProvider(
-			ChatPanelProvider.viewType,
-			chatPanelProvider,
-			{ webviewOptions: { retainContextWhenHidden: true } },
-		),
-	);
-
 	const workspacesPanelEnabled = vscode.workspace
 		.getConfiguration("coder")
 		.get<boolean>("experimental.workspacesPanel", false);
@@ -296,7 +278,6 @@ async function doActivate(
 			serviceContainer,
 			deploymentManager,
 			commands,
-			chatPanelProvider,
 		}),
 	);
 
@@ -421,22 +402,12 @@ async function doActivate(
 			if (details) {
 				ctx.subscriptions.push(details);
 
-				const deploymentSet = await deploymentManager.setDeploymentIfValid({
+				const deploymentSet = await deploymentManager.verifyAndApplyDeployment({
 					safeHostname: details.safeHostname,
 					url: details.url,
 					token: details.token,
 				});
 				tracer.setAuthState(deploymentSet ? "valid_token" : "auth_failed");
-
-				// If a deep link stored a chat agent ID before the
-				// remote-authority reload, open it now that the
-				// deployment is configured.
-				const pendingChatId = await mementoManager.getAndClearPendingChatId();
-				if (pendingChatId) {
-					// Enable eagerly so the view is visible before focus.
-					contextManager.set("coder.agentsEnabled", true);
-					chatPanelProvider.openChat(pendingChatId);
-				}
 			}
 		} catch (ex) {
 			if (ex instanceof CertificateError) {
@@ -486,7 +457,7 @@ async function doActivate(
 		output.info(`Initializing deployment: ${deployment.url}`);
 		tracer
 			.traceDeploymentInit(() =>
-				deploymentManager.setDeploymentIfValid(deployment),
+				deploymentManager.verifyAndApplyDeployment(deployment),
 			)
 			.then((success) => {
 				if (success) {

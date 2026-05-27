@@ -21,7 +21,10 @@ import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
 import { type Commands } from "../commands";
-import { watchConfigurationChanges } from "../configWatcher";
+import {
+	CONFIG_CHANGE_DEBOUNCE_MS,
+	watchConfigurationChanges,
+} from "../configWatcher";
 import { version as cliVersion } from "../core/cliExec";
 import { type CliManager } from "../core/cliManager";
 import { type ServiceContainer } from "../core/container";
@@ -41,7 +44,7 @@ import { type LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	type CliAuth,
-	getGlobalFlagsRaw,
+	getExpandedUserGlobalFlags,
 	getGlobalShellFlags,
 	getSshFlags,
 	resolveCliAuth,
@@ -212,15 +215,19 @@ export class Remote {
 			// break this connection.  We could force close the remote session or
 			// disallow logging out/in altogether, but for now just use a separate
 			// client to remain unaffected by whatever the plugin is doing.
-			const workspaceClient = CoderApi.create(baseUrl, token, this.logger);
+			const workspaceClient = CoderApi.create(
+				baseUrl,
+				token,
+				this.logger,
+				this.serviceContainer.getTelemetryService(),
+			);
 			disposables.push(workspaceClient);
 
 			// Create 401 interceptor - handles auth failures with re-login dialog
 			const authInterceptor = new AuthInterceptor(
 				workspaceClient,
-				this.logger,
 				remoteOAuthManager,
-				this.secretsManager,
+				this.serviceContainer,
 				async () => {
 					const result = await this.showSessionExpiredDialog(context);
 					return result.success;
@@ -308,8 +315,7 @@ export class Remote {
 			const monitor = await WorkspaceMonitor.create(
 				workspace,
 				workspaceClient,
-				this.logger,
-				this.contextManager,
+				this.serviceContainer,
 			);
 			disposables.push(
 				monitor,
@@ -327,8 +333,8 @@ export class Remote {
 				args.startupMode,
 				binaryPath,
 				featureSet,
-				this.logger,
 				cliAuth,
+				this.serviceContainer,
 			);
 			disposables.push(stateMachine);
 
@@ -392,6 +398,7 @@ export class Remote {
 				logger: this.logger,
 				codeLogDir: this.pathResolver.getCodeLogDir(),
 				remoteSshExtensionId: args.remoteSshExtensionId,
+				telemetry: this.serviceContainer.getTelemetryService(),
 			});
 			disposables.push(sshMonitor);
 
@@ -431,7 +438,7 @@ export class Remote {
 					setting: "coder.globalFlags",
 					title: "Global Flags",
 					getValue: () =>
-						getGlobalFlagsRaw(vscode.workspace.getConfiguration()),
+						getExpandedUserGlobalFlags(vscode.workspace.getConfiguration()),
 				},
 				{
 					setting: "coder.headerCommand",
@@ -556,7 +563,7 @@ export class Remote {
 							const isReady = await stateMachine.processWorkspace(w, progress);
 							if (isReady) {
 								subscription.dispose();
-								resolve(w);
+								resolve(stateMachine.getWorkspace() ?? w);
 								return;
 							}
 						} catch (error: unknown) {
@@ -636,6 +643,7 @@ export class Remote {
 			url: context.baseUrl,
 			message: "Your session expired...",
 			detailPrefix: `You must log in to access ${context.workspaceName}.`,
+			trigger: "auth_required",
 		});
 	}
 
@@ -649,6 +657,7 @@ export class Remote {
 			url,
 			message,
 			detailPrefix: `You must log in to access ${context.workspaceName}.`,
+			trigger: "missing_session",
 		});
 
 		// Dispose before retrying since setup will create new disposables.
@@ -979,22 +988,28 @@ export class Remote {
 	): vscode.Disposable {
 		const titleMap = new Map(settings.map((s) => [s.setting, s.title]));
 
-		return watchConfigurationChanges(settings, (changes) => {
-			const changedTitles = [...changes.keys()]
-				.map((s) => titleMap.get(s))
-				.filter((t) => t !== undefined);
+		return watchConfigurationChanges(
+			settings,
+			(changes) => {
+				const changedTitles = [...changes.keys()]
+					.map((s) => titleMap.get(s))
+					.filter((t) => t !== undefined);
 
-			const message =
-				changedTitles.length === 1
-					? `${changedTitles[0]} setting changed. Reload window to apply.`
-					: `${changedTitles.join(", ")} settings changed. Reload window to apply.`;
+				const message =
+					changedTitles.length === 1
+						? `${changedTitles[0]} setting changed. Reload window to apply.`
+						: `${changedTitles.join(", ")} settings changed. Reload window to apply.`;
 
-			vscode.window.showInformationMessage(message, "Reload").then((action) => {
-				if (action === "Reload") {
-					vscode.commands.executeCommand("workbench.action.reloadWindow");
-				}
-			});
-		});
+				vscode.window
+					.showInformationMessage(message, "Reload")
+					.then((action) => {
+						if (action === "Reload") {
+							vscode.commands.executeCommand("workbench.action.reloadWindow");
+						}
+					});
+			},
+			{ debounceMs: CONFIG_CHANGE_DEBOUNCE_MS },
+		);
 	}
 
 	/**

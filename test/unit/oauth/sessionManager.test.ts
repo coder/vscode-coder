@@ -5,12 +5,17 @@ import {
 } from "axios";
 import { describe, expect, it, vi } from "vitest";
 
-import { type SecretsManager, type SessionAuth } from "@/core/secretsManager";
+import { type SessionAuth } from "@/core/secretsManager";
 import { DEFAULT_OAUTH_SCOPES } from "@/oauth/constants";
 import { OAuthSessionManager } from "@/oauth/sessionManager";
 
 import {
-	type createMockLogger,
+	createTestTelemetryService,
+	enableLocalTelemetry,
+	TestSink,
+} from "../../mocks/telemetry";
+import {
+	createMockServiceContainer,
 	setupAxiosMockRoutes,
 } from "../../mocks/testHelpers";
 
@@ -25,8 +30,8 @@ import {
 	TEST_URL,
 } from "./testUtils";
 
-import type { ServiceContainer } from "@/core/container";
 import type { Deployment } from "@/deployment/types";
+import type { TelemetryService } from "@/telemetry/service";
 
 vi.mock("axios", async () => {
 	const actual = await vi.importActual<typeof import("axios")>("axios");
@@ -58,25 +63,17 @@ const REFRESH_BUFFER_MS = 5 * 60 * 1000; // Tokens refresh 5 minutes before expi
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const BACKGROUND_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
-function createMockServiceContainer(
-	secretsManager: SecretsManager,
-	logger: ReturnType<typeof createMockLogger>,
-): ServiceContainer {
-	return {
-		getSecretsManager: () => secretsManager,
-		getLogger: () => logger,
-	} as ServiceContainer;
-}
-
 function createTestContext(deployment: Deployment = createTestDeployment()) {
 	vi.resetAllMocks();
 
 	const base = createBaseTestContext();
-	const container = createMockServiceContainer(
-		base.secretsManager,
-		base.logger,
-	);
-	const manager = OAuthSessionManager.create(deployment, container);
+	const buildContainer = (telemetry?: TelemetryService) =>
+		createMockServiceContainer({
+			secretsManager: base.secretsManager,
+			logger: base.logger,
+			telemetry,
+		});
+	const manager = OAuthSessionManager.create(deployment, buildContainer());
 
 	/** Sets up OAuth session auth */
 	const setupOAuthSession = async (
@@ -102,7 +99,8 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 	const createManager = (
 		d: Deployment = deployment,
 		onAuthRequired: () => Promise<void> = () => Promise.resolve(),
-	) => OAuthSessionManager.create(d, container, onAuthRequired);
+		telemetry?: TelemetryService,
+	) => OAuthSessionManager.create(d, buildContainer(telemetry), onAuthRequired);
 
 	/**
 	 * Sets up a complete OAuth operation test context.
@@ -479,6 +477,68 @@ describe("OAuthSessionManager", () => {
 
 			const result = await manager.isLoggedInWithOAuth();
 			expect(result).toBe(true);
+		});
+	});
+
+	describe("telemetry", () => {
+		const setupWithSink = async (
+			tokenEndpoint: unknown = createMockTokenResponse({ access_token: "new" }),
+		) => {
+			enableLocalTelemetry();
+			const sink = new TestSink();
+			const ctx = createTestContext();
+			const manager = ctx.createManager(
+				createTestDeployment(),
+				() => Promise.resolve(),
+				createTestTelemetryService(sink),
+			);
+			await ctx.setupForOAuthOperation({ "/oauth2/token": tokenEndpoint });
+			return { manager, sink };
+		};
+
+		it.each(["reactive", "background"] as const)(
+			"emits auth.token_refreshed with trigger=%s",
+			async (trigger) => {
+				const { manager, sink } = await setupWithSink();
+
+				await manager.refreshToken(trigger);
+
+				const event = sink.expectOne("auth.token_refreshed");
+				expect(event.properties).toMatchObject({ trigger, result: "success" });
+				expect(event.measurements.durationMs).toEqual(expect.any(Number));
+			},
+		);
+
+		it("emits auth.token_refreshed with result=error when refresh fails", async () => {
+			const { manager, sink } = await setupWithSink(
+				createOAuthAxiosError("invalid_grant"),
+			);
+
+			await expect(manager.refreshToken("reactive")).rejects.toThrow();
+
+			const event = sink.expectOne("auth.token_refreshed");
+			expect(event.properties).toMatchObject({
+				trigger: "reactive",
+				result: "error",
+			});
+			expect(event.measurements.durationMs).toEqual(expect.any(Number));
+		});
+
+		it("emits auth.token_refresh.deduped for callers that join an in-flight refresh", async () => {
+			const { manager, sink } = await setupWithSink();
+
+			const [first, second] = await Promise.all([
+				manager.refreshToken("background"),
+				manager.refreshToken("reactive"),
+			]);
+
+			expect(first).toBe(second);
+			expect(sink.eventsNamed("auth.token_refreshed")).toHaveLength(1);
+			expect(
+				sink.expectOne("auth.token_refresh.deduped").properties,
+			).toMatchObject({
+				trigger: "reactive",
+			});
 		});
 	});
 });

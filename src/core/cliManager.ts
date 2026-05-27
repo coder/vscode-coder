@@ -13,7 +13,8 @@ import { errToStr } from "../api/api-helper";
 import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
 import { isKeyringEnabled } from "../settings/cli";
-import { tempFilePath, toSafeHost } from "../util";
+import { toSafeHost } from "../util";
+import { tempFilePath } from "../util/fs";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";
@@ -113,9 +114,8 @@ export class CliManager {
 	}
 
 	/**
-	 * Download and return the path to a working binary for the deployment with
-	 * the provided hostname using the provided client.  If the hostname is empty,
-	 * use the old deployment-unaware path instead.
+	 * Download and return the path to a working binary for the deployment using
+	 * the provided client.
 	 *
 	 * If there is already a working binary and it matches the server version,
 	 * return that, skipping the download.  If it does not match but downloads are

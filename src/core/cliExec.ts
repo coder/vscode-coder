@@ -109,11 +109,11 @@ export async function supportBundle(
  * Run `coder ping` in a PTY terminal with Ctrl+C support.
  */
 export function ping(env: CliEnv, workspaceName: string): vscode.Terminal {
-	const globalFlags = getGlobalShellFlags(env.configs, env.auth);
+	const globalFlags = getGlobalFlags(env.configs, env.auth);
 	return spawnCliInTerminal({
 		name: `Coder Ping: ${workspaceName}`,
 		binary: env.binary,
-		args: [...globalFlags, "ping", escapeCommandArg(workspaceName)],
+		args: [...globalFlags, "ping", workspaceName],
 		banner: ["Press Ctrl+C (^C) to stop.", "─".repeat(40)],
 	});
 }
@@ -172,14 +172,12 @@ function spawnCliInTerminal(options: {
 	const writeEmitter = new vscode.EventEmitter<string>();
 	const closeEmitter = new vscode.EventEmitter<number | void>();
 
-	const cmd = `${escapeCommandArg(options.binary)} ${options.args.join(" ")}`;
-	// On Unix, spawn in a new process group so we can signal the
-	// entire group (shell + coder binary) on Ctrl+C. On Windows,
-	// detached opens a visible console window and negative-PID kill
-	// is unsupported, so we fall back to proc.kill().
+	// On Unix, `detached` puts the child in its own process group so
+	// Ctrl+C can signal the whole subtree. On Windows it would open a
+	// visible console window and negative-PID kill is unsupported, so we
+	// fall back to proc.kill() there.
 	const useProcessGroup = process.platform !== "win32";
-	const proc = spawn(cmd, {
-		shell: true,
+	const proc = spawn(options.binary, options.args, {
 		detached: useProcessGroup,
 	});
 
@@ -266,11 +264,12 @@ function spawnCliInTerminal(options: {
 		writeEmitter.fire("Press any key to close.\r\n");
 	});
 	proc.on("close", (code, signal) => {
-		exited = true;
-		clearTimeout(forceKillTimer);
-		if (closed) {
+		// On ENOENT/EACCES, `error` fires first and already wrote the failure
+		if (exited || closed) {
 			return;
 		}
+		exited = true;
+		clearTimeout(forceKillTimer);
 		let reason: string;
 		if (signal === "SIGKILL") {
 			reason = "Process force killed (SIGKILL)";

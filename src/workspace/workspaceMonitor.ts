@@ -6,6 +6,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
+import { WorkspaceStateTelemetry } from "../instrumentation/workspace";
 import {
 	areNotificationsDisabled,
 	areUpdateNotificationsDisabled,
@@ -13,6 +14,7 @@ import {
 import { vscodeProposed } from "../vscodeProposed";
 
 import type { CoderApi } from "../api/coderApi";
+import type { ServiceContainer } from "../core/container";
 import type { ContextManager } from "../core/contextManager";
 import type { Logger } from "../logging/logger";
 import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
@@ -42,16 +44,24 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	// For logging.
 	private readonly name: string;
+	private readonly telemetry: WorkspaceStateTelemetry;
+	private readonly logger: Logger;
+	private readonly contextManager: ContextManager;
 
 	private latestWorkspace: Workspace;
 
 	private constructor(
 		workspace: Workspace,
 		private readonly client: CoderApi,
-		private readonly logger: Logger,
-		private readonly contextManager: ContextManager,
+		container: ServiceContainer,
 	) {
+		this.logger = container.getLogger();
+		this.contextManager = container.getContextManager();
 		this.name = createWorkspaceIdentifier(workspace);
+		this.telemetry = new WorkspaceStateTelemetry(
+			container.getTelemetryService(),
+			this.name,
+		);
 		this.latestWorkspace = workspace;
 
 		const statusBarItem = vscode.window.createStatusBarItem(
@@ -75,21 +85,15 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	static async create(
 		workspace: Workspace,
 		client: CoderApi,
-		logger: Logger,
-		contextManager: ContextManager,
+		container: ServiceContainer,
 	): Promise<WorkspaceMonitor> {
-		const monitor = new WorkspaceMonitor(
-			workspace,
-			client,
-			logger,
-			contextManager,
-		);
+		const monitor = new WorkspaceMonitor(workspace, client, container);
 
 		// Initialize websocket connection
 		const socket = await client.watchWorkspace(workspace);
 
 		socket.addEventListener("open", () => {
-			logger.info(`Monitoring ${monitor.name}...`);
+			monitor.logger.info(`Monitoring ${monitor.name}...`);
 		});
 
 		socket.addEventListener("message", (event) => {
@@ -134,6 +138,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private update(workspace: Workspace) {
+		this.telemetry.observe(workspace);
 		this.latestWorkspace = workspace;
 		this.updateContext(workspace);
 		this.updateStatusBar(workspace);
@@ -269,7 +274,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private updateStatusBar(workspace: Workspace) {
-		if (workspace.outdated) {
+		const status = workspace.latest_build.status;
+		const settled =
+			status === "running" || status === "stopped" || status === "failed";
+		if (workspace.outdated && settled) {
 			this.statusBarItem.show();
 		} else {
 			this.statusBarItem.hide();

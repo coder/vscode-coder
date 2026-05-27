@@ -9,7 +9,8 @@ import { isAbortError } from "../error/errorUtils";
 import { featureSetForVersion } from "../featureSet";
 import { isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
-import { renameWithRetry, tempFilePath, toSafeHost } from "../util";
+import { toSafeHost } from "../util";
+import { writeAtomically } from "../util/fs";
 
 import { version } from "./cliExec";
 
@@ -259,23 +260,17 @@ export class CliCredentialManager {
 		}
 	}
 
-	/**
-	 * Atomically write content to a file via temp-file + rename.
-	 */
+	/** Atomically write content to a file. */
 	private async atomicWriteFile(
 		filePath: string,
 		content: string,
 	): Promise<void> {
 		await fs.mkdir(path.dirname(filePath), { recursive: true });
-		const tempPath = tempFilePath(filePath, "temp");
-		try {
-			await fs.writeFile(tempPath, content, { mode: 0o600 });
-			await renameWithRetry(fs.rename, tempPath, filePath);
-		} catch (err) {
-			await fs.rm(tempPath, { force: true }).catch((rmErr) => {
-				this.logger.warn("Failed to delete temp file", tempPath, rmErr);
-			});
-			throw err;
-		}
+		await writeAtomically(
+			filePath,
+			(tempPath) => fs.writeFile(tempPath, content, { mode: 0o600 }),
+			(rmErr, tempPath) =>
+				this.logger.warn("Failed to delete temp file", tempPath, rmErr),
+		);
 	}
 }

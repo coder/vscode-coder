@@ -18,11 +18,16 @@ import type { CliCredentialManager } from "../core/cliCredentialManager";
 import type { MementoManager } from "../core/mementoManager";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
+import type {
+	AuthLoginPromptTrigger,
+	AuthTelemetry,
+	LoginPromptReason,
+} from "../instrumentation/auth";
 import type { Logger } from "../logging/logger";
 import type { OAuthCallback } from "../oauth/oauthCallback";
 
 type LoginResult =
-	| { success: false }
+	| { success: false; reason: LoginPromptReason }
 	| { success: true; user: User; token: string; oauth?: OAuthTokenData };
 
 export interface LoginOptions {
@@ -44,6 +49,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		private readonly mementoManager: MementoManager,
 		private readonly logger: Logger,
 		private readonly cliCredentialManager: CliCredentialManager,
+		private readonly authTelemetry: AuthTelemetry,
 		oauthCallback: OAuthCallback,
 		extensionId: string,
 	) {
@@ -79,7 +85,19 @@ export class LoginCoordinator implements vscode.Disposable {
 	/**
 	 * Shows dialog then login - for system-initiated auth (remote, OAuth refresh).
 	 */
-	public async ensureLoggedInWithDialog(
+	public ensureLoggedInWithDialog(
+		options: LoginOptions & {
+			message?: string;
+			detailPrefix?: string;
+			trigger: AuthLoginPromptTrigger;
+		},
+	): Promise<LoginResult> {
+		return this.authTelemetry.traceLoginPrompt(options.trigger, () =>
+			this.performLoginDialog(options),
+		);
+	}
+
+	private async performLoginDialog(
 		options: LoginOptions & { message?: string; detailPrefix?: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url, detailPrefix, message } = options;
@@ -97,7 +115,7 @@ export class LoginCoordinator implements vscode.Disposable {
 					},
 					"Login",
 				)
-				.then(async (action) => {
+				.then(async (action): Promise<LoginResult> => {
 					if (action === "Login") {
 						// Proceed with the login flow, handling logging in from another window
 						const storedAuth =
@@ -108,7 +126,7 @@ export class LoginCoordinator implements vscode.Disposable {
 							storedAuth?.url,
 						);
 						if (!newUrl) {
-							throw new Error("URL must be provided");
+							return { success: false, reason: "no_url_provided" };
 						}
 
 						const result = await this.attemptLogin(
@@ -120,10 +138,9 @@ export class LoginCoordinator implements vscode.Disposable {
 						await this.persistSessionAuth(result, safeHostname, newUrl);
 
 						return result;
-					} else {
-						// User cancelled
-						return { success: false } as const;
 					}
+					// User cancelled
+					return { success: false, reason: "user_dismissed" };
 				});
 
 			// Race between user clicking login and cross-window detection
@@ -190,14 +207,17 @@ export class LoginCoordinator implements vscode.Disposable {
 				safeHostname,
 				async (auth) => {
 					if (auth?.token) {
-						disposable?.dispose();
 						const client = CoderApi.create(auth.url, auth.token, this.logger);
 						try {
 							const user = await client.getAuthenticatedUser();
+							// Stop listening only on success; a bad token shouldn't
+							// drop us off the bus for a follow-up valid write.
+							disposable?.dispose();
 							resolve({ success: true, token: auth.token, user });
 						} catch {
-							// Token from other window was invalid, ignore and keep waiting
-							// (or user can click Login/Cancel in the dialog)
+							// Invalid token; keep listening.
+						} finally {
+							client.dispose();
 						}
 					}
 				},
@@ -223,7 +243,24 @@ export class LoginCoordinator implements vscode.Disposable {
 		providedToken?: string,
 	): Promise<LoginResult> {
 		const client = CoderApi.create(deployment.url, "", this.logger);
+		try {
+			return await this.runLoginAttempts(
+				client,
+				deployment,
+				isAutoLogin,
+				providedToken,
+			);
+		} finally {
+			client.dispose();
+		}
+	}
 
+	private async runLoginAttempts(
+		client: CoderApi,
+		deployment: Deployment,
+		isAutoLogin: boolean,
+		providedToken: string | undefined,
+	): Promise<LoginResult> {
 		// mTLS authentication (no token needed)
 		if (!needToken(vscode.workspace.getConfiguration())) {
 			this.logger.debug("Attempting mTLS authentication (no token required)");
@@ -290,7 +327,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			case "legacy":
 				return this.loginWithToken(client);
 			case undefined:
-				return { success: false }; // User aborted
+				return { success: false, reason: "user_dismissed" };
 		}
 	}
 
@@ -303,7 +340,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			return { success: true, token: "", user };
 		} catch (err) {
 			this.showAuthError(err, isAutoLogin);
-			return { success: false };
+			return { success: false, reason: "auth_failed" };
 		}
 	}
 
@@ -324,7 +361,7 @@ export class LoginCoordinator implements vscode.Disposable {
 				return "unauthorized";
 			}
 			this.showAuthError(err, isAutoLogin);
-			return { success: false };
+			return { success: false, reason: "auth_failed" };
 		}
 	}
 
@@ -406,7 +443,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			return { success: true, user, token: validatedToken ?? "" };
 		}
 
-		return { success: false };
+		return { success: false, reason: "user_dismissed" };
 	}
 
 	/**
@@ -446,7 +483,7 @@ export class LoginCoordinator implements vscode.Disposable {
 					`${title}: ${getErrorMessage(error, "Unknown error")}`,
 				);
 			}
-			return { success: false };
+			return { success: false, reason: "auth_failed" };
 		}
 	}
 
