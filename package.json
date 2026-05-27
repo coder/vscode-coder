@@ -295,6 +295,11 @@
 					"id": "coderTasks",
 					"title": "Coder Tasks",
 					"icon": "media/tasks-logo.svg"
+				},
+				{
+					"id": "coderExperimentalWorkspaces",
+					"title": "Coder Remote (New)",
+					"icon": "media/shorthand-logo.svg"
 				}
 			]
 		},
@@ -327,6 +332,15 @@
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
 					"when": "coder.authenticated"
+				}
+			],
+			"coderExperimentalWorkspaces": [
+				{
+					"type": "webview",
+					"id": "coder.workspacesPanel",
+					"name": "Workspaces",
+					"icon": "media/shorthand-logo.svg",
+					"when": "coder.authenticated && coder.workspacesPanelEnabled"
 				}
 			]
 		},

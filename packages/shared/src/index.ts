@@ -16,3 +16,6 @@ export {
 	type SpeedtestInterval,
 	type SpeedtestResult,
 } from "./speedtest/api";
+
+// Workspaces API
+export { WorkspacesApi } from "./workspaces/api";
