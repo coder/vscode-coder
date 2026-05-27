@@ -727,7 +727,7 @@
 		"@vscode/vsce": "^3.9.1",
 		"babel-plugin-react-compiler": "catalog:",
 		"bufferutil": "^4.1.0",
-		"chromatic": "^16.10.1",
+		"chromatic": "^17.0.0",
 		"coder": "catalog:",
 		"concurrently": "^9.2.1",
 		"cross-env": "^10.1.0",
