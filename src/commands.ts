@@ -27,7 +27,7 @@ import {
 import { resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
-import { resolveBrowserUrl, toRemoteAuthority, toSafeHost } from "./util";
+import { openInBrowser, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";
 import {
@@ -598,9 +598,7 @@ export class Commands {
 	 * Must only be called if currently logged in.
 	 */
 	public async createWorkspace(): Promise<void> {
-		const baseUrl = resolveBrowserUrl(this.requireExtensionBaseUrl());
-		const uri = baseUrl + "/templates";
-		await vscode.commands.executeCommand("vscode.open", uri);
+		await openInBrowser(this.requireExtensionBaseUrl(), "/templates");
 	}
 
 	/**
@@ -613,14 +611,13 @@ export class Commands {
 	 */
 	public async navigateToWorkspace(item?: OpenableTreeItem) {
 		if (item) {
-			const baseUrl = resolveBrowserUrl(this.requireExtensionBaseUrl());
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			const uri = baseUrl + `/@${workspaceId}`;
-			await vscode.commands.executeCommand("vscode.open", uri);
+			await openInBrowser(this.requireExtensionBaseUrl(), `/@${workspaceId}`);
 		} else if (this.workspace && this.remoteWorkspaceClient) {
-			const baseUrl = resolveBrowserUrl(this.requireRemoteBaseUrl());
-			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}`;
-			await vscode.commands.executeCommand("vscode.open", uri);
+			await openInBrowser(
+				this.requireRemoteBaseUrl(),
+				`/@${createWorkspaceIdentifier(this.workspace)}`,
+			);
 		} else {
 			vscode.window.showInformationMessage("No workspace found.");
 		}
@@ -636,14 +633,16 @@ export class Commands {
 	 */
 	public async navigateToWorkspaceSettings(item?: OpenableTreeItem) {
 		if (item) {
-			const baseUrl = resolveBrowserUrl(this.requireExtensionBaseUrl());
 			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			const uri = baseUrl + `/@${workspaceId}/settings`;
-			await vscode.commands.executeCommand("vscode.open", uri);
+			await openInBrowser(
+				this.requireExtensionBaseUrl(),
+				`/@${workspaceId}/settings`,
+			);
 		} else if (this.workspace && this.remoteWorkspaceClient) {
-			const baseUrl = resolveBrowserUrl(this.requireRemoteBaseUrl());
-			const uri = `${baseUrl}/@${createWorkspaceIdentifier(this.workspace)}/settings`;
-			await vscode.commands.executeCommand("vscode.open", uri);
+			await openInBrowser(
+				this.requireRemoteBaseUrl(),
+				`/@${createWorkspaceIdentifier(this.workspace)}/settings`,
+			);
 		} else {
 			vscode.window.showInformationMessage("No workspace found.");
 		}

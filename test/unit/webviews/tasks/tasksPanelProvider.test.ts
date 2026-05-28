@@ -23,6 +23,7 @@ import {
 import {
 	createAxiosError,
 	createMockLogger,
+	MockConfigurationProvider,
 	MockUserInteraction,
 } from "../../../mocks/testHelpers";
 
@@ -200,16 +201,13 @@ function createHarness(): Harness {
 }
 
 describe("TasksPanelProvider", () => {
+	let configurationProvider: MockConfigurationProvider;
+
 	beforeEach(() => {
 		// Reset shared vscode mocks between tests
 		vi.resetAllMocks();
 
-		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
-			get: vi.fn(),
-			has: vi.fn().mockReturnValue(false),
-			inspect: vi.fn(),
-			update: vi.fn().mockResolvedValue(undefined),
-		} as unknown as vscode.WorkspaceConfiguration);
+		configurationProvider = new MockConfigurationProvider();
 	});
 
 	describe("getTasks", () => {
@@ -687,9 +685,10 @@ describe("TasksPanelProvider", () => {
 		});
 
 		it("viewInCoder uses alternative web URL when configured", async () => {
-			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn().mockReturnValue("https://coder.example.com:443"),
-			} as unknown as vscode.WorkspaceConfiguration);
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://coder.example.com:443",
+			);
 
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(
@@ -704,9 +703,10 @@ describe("TasksPanelProvider", () => {
 		});
 
 		it("viewLogs uses alternative web URL when configured", async () => {
-			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
-				get: vi.fn().mockReturnValue("https://coder.example.com:443"),
-			} as unknown as vscode.WorkspaceConfiguration);
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://coder.example.com:443",
+			);
 
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(

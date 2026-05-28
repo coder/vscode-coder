@@ -10,7 +10,7 @@ import { buildOAuthTokenData } from "../oauth/utils";
 import { withOptionalProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 import { isKeyringEnabled } from "../settings/cli";
-import { resolveBrowserUrl } from "../util";
+import { openInBrowser } from "../util";
 import { vscodeProposed } from "../vscodeProposed";
 
 import type { User } from "coder/site/src/api/typesGenerated";
@@ -399,9 +399,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		}
 		// This prompt is for convenience; do not error if they close it since
 		// they may already have a token or already have the page opened.
-		await vscode.env.openExternal(
-			vscode.Uri.parse(`${resolveBrowserUrl(url)}/cli-auth`),
-		);
+		await openInBrowser(url, "/cli-auth");
 
 		// For token auth, start with the existing token in the prompt or the last
 		// used token.  Once submitted, if there is a failure we will keep asking

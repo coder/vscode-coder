@@ -9,10 +9,13 @@ import {
 	escapeShellArg,
 	expandPath,
 	findPort,
+	openInBrowser,
 	parseRemoteAuthority,
-	resolveBrowserUrl,
+	resolveUiUrl,
 	toSafeHost,
 } from "@/util";
+
+import { MockConfigurationProvider } from "../mocks/testHelpers";
 
 describe("parseRemoteAuthority", () => {
 	const remoteAuthority = (sshHost: string) => `vscode://ssh-remote+${sshHost}`;
@@ -400,63 +403,123 @@ describe("findPort", () => {
 	});
 });
 
-describe("resolveBrowserUrl", () => {
-	function mockAlternativeWebUrl(value: string | undefined): void {
-		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
-			get: vi.fn().mockReturnValue(value),
-		} as unknown as vscode.WorkspaceConfiguration);
-	}
+describe("resolveUiUrl", () => {
+	let configurationProvider: MockConfigurationProvider;
+
+	beforeEach(() => {
+		configurationProvider = new MockConfigurationProvider();
+	});
 
 	afterEach(() => {
 		vi.mocked(vscode.workspace.getConfiguration).mockReset();
 	});
 
 	it("returns connection URL when setting is not configured", () => {
-		mockAlternativeWebUrl(undefined);
-		expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com:7004",
 		);
 	});
 
 	it("returns connection URL when setting is empty", () => {
-		mockAlternativeWebUrl("");
-		expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+		configurationProvider.set("coder.alternativeWebUrl", "");
+		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com:7004",
 		);
 	});
 
 	it("returns connection URL when setting is whitespace", () => {
-		mockAlternativeWebUrl("   ");
-		expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+		configurationProvider.set("coder.alternativeWebUrl", "   ");
+		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com:7004",
 		);
 	});
 
 	it("returns alternative URL when configured", () => {
-		mockAlternativeWebUrl("https://coder.example.com");
-		expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+		configurationProvider.set(
+			"coder.alternativeWebUrl",
+			"https://coder.example.com",
+		);
+		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com",
 		);
 	});
 
 	it("strips trailing slashes from alternative URL", () => {
-		mockAlternativeWebUrl("https://coder.example.com/");
-		expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+		configurationProvider.set(
+			"coder.alternativeWebUrl",
+			"https://coder.example.com/",
+		);
+		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com",
 		);
 	});
 
 	it("strips multiple trailing slashes from alternative URL", () => {
-		mockAlternativeWebUrl("https://coder.example.com///");
-		expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+		configurationProvider.set(
+			"coder.alternativeWebUrl",
+			"https://coder.example.com///",
+		);
+		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com",
 		);
 	});
 
 	it("trims whitespace from alternative URL", () => {
-		mockAlternativeWebUrl("  https://coder.example.com  ");
-		expect(resolveBrowserUrl("https://coder.example.com:7004")).toBe(
+		configurationProvider.set(
+			"coder.alternativeWebUrl",
+			"  https://coder.example.com  ",
+		);
+		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com",
+		);
+	});
+});
+
+describe("openInBrowser", () => {
+	let configurationProvider: MockConfigurationProvider;
+
+	beforeEach(() => {
+		configurationProvider = new MockConfigurationProvider();
+		vi.mocked(vscode.env.openExternal).mockClear();
+	});
+
+	afterEach(() => {
+		vi.mocked(vscode.workspace.getConfiguration).mockReset();
+	});
+
+	it("opens the connection URL with the given path when no alt URL set", () => {
+		openInBrowser("https://coder.example.com:7004", "/templates");
+		expect(vscode.env.openExternal).toHaveBeenCalledWith(
+			vscode.Uri.parse("https://coder.example.com:7004/templates"),
+		);
+	});
+
+	it("opens the alternative URL when configured", () => {
+		configurationProvider.set(
+			"coder.alternativeWebUrl",
+			"https://coder.example.com",
+		);
+		openInBrowser("https://coder.example.com:7004", "/templates");
+		expect(vscode.env.openExternal).toHaveBeenCalledWith(
+			vscode.Uri.parse("https://coder.example.com/templates"),
+		);
+	});
+
+	it("preserves a path prefix on the alternative URL", () => {
+		configurationProvider.set(
+			"coder.alternativeWebUrl",
+			"https://proxy.example.com/coder",
+		);
+		openInBrowser("https://coder.example.com:7004", "/templates");
+		expect(vscode.env.openExternal).toHaveBeenCalledWith(
+			vscode.Uri.parse("https://proxy.example.com/coder/templates"),
+		);
+	});
+
+	it("handles paths without a leading slash", () => {
+		openInBrowser("https://coder.example.com", "templates");
+		expect(vscode.env.openExternal).toHaveBeenCalledWith(
+			vscode.Uri.parse("https://coder.example.com/templates"),
 		);
 	});
 });

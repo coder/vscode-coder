@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { resolveBrowserUrl } from "../util";
+import { resolveUiUrl } from "../util";
 
 import {
 	AUTH_GRANT_TYPE,
@@ -99,6 +99,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 		reportProgress("waiting for authorization...", 30);
 		const { code, verifier } = await this.startAuthorization(
+			deployment.url,
 			metadata,
 			registration,
 			cancellationToken,
@@ -188,6 +189,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 	 * Build authorization URL with all required OAuth 2.1 parameters.
 	 */
 	private buildAuthorizationUrl(
+		connectionUrl: string,
 		metadata: OAuth2AuthorizationServerMetadata,
 		clientId: string,
 		state: string,
@@ -206,7 +208,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			}
 		}
 
-		const params = new URLSearchParams({
+		const params: Record<string, string> = {
 			client_id: clientId,
 			response_type: RESPONSE_TYPE,
 			redirect_uri: this.getRedirectUri(),
@@ -214,15 +216,20 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			state,
 			code_challenge: challenge,
 			code_challenge_method: PKCE_CHALLENGE_METHOD,
-		});
+		};
 
-		// The server-advertised endpoint is authoritative for the path, but the
-		// origin may be unreachable from a browser (e.g. blocked port). When
-		// `coder.alternativeWebUrl` is set, swap the origin so the user lands on
-		// a reachable host while preserving the path the server told us to use.
+		// Server is authoritative for the path; alternativeWebUrl can swap the origin.
 		const endpoint = new URL(metadata.authorization_endpoint);
-		const browserBase = resolveBrowserUrl(endpoint.origin);
-		const url = `${browserBase}${endpoint.pathname}?${params.toString()}`;
+		const browserBase = new URL(resolveUiUrl(connectionUrl));
+		endpoint.protocol = browserBase.protocol;
+		endpoint.hostname = browserBase.hostname;
+		endpoint.port = browserBase.port;
+		// Preserve any path prefix on the alternative URL (e.g. reverse proxy).
+		const prefix = browserBase.pathname.replace(/\/$/, "");
+		endpoint.pathname = `${prefix}${endpoint.pathname}`;
+		for (const [key, value] of Object.entries(params)) {
+			endpoint.searchParams.set(key, value);
+		}
 
 		this.logger.debug("Built OAuth authorization URL:", {
 			client_id: clientId,
@@ -230,7 +237,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			scope: DEFAULT_OAUTH_SCOPES,
 		});
 
-		return url;
+		return endpoint.toString();
 	}
 
 	/**
@@ -239,6 +246,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 	 * Returns authorization code and PKCE verifier on success.
 	 */
 	private async startAuthorization(
+		connectionUrl: string,
 		metadata: OAuth2AuthorizationServerMetadata,
 		registration: OAuth2ClientRegistrationResponse,
 		cancellationToken: vscode.CancellationToken,
@@ -247,6 +255,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		const { verifier, challenge } = generatePKCE();
 
 		const authUrl = this.buildAuthorizationUrl(
+			connectionUrl,
 			metadata,
 			registration.client_id,
 			state,

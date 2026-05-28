@@ -202,11 +202,24 @@ export function escapeShellArg(arg: string): string {
  * `coder.alternativeWebUrl` setting when configured, otherwise returns
  * the connection URL unchanged.
  */
-export function resolveBrowserUrl(connectionUrl: string): string {
+export function resolveUiUrl(connectionUrl: string): string {
 	const alt = vscode.workspace
 		.getConfiguration("coder")
 		.get<string>("alternativeWebUrl")
 		?.trim()
 		.replace(/\/+$/, "");
 	return alt || connectionUrl;
+}
+
+/**
+ * Open a path on the Coder deployment in the user's browser, applying
+ * `coder.alternativeWebUrl` when configured.
+ */
+export function openInBrowser(
+	connectionUrl: string,
+	path: string,
+): Thenable<boolean> {
+	const base = vscode.Uri.parse(resolveUiUrl(connectionUrl));
+	const segment = path.replace(/^\/+/, "");
+	return vscode.env.openExternal(vscode.Uri.joinPath(base, segment));
 }

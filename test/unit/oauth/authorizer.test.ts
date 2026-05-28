@@ -262,12 +262,8 @@ describe("OAuthAuthorizer", () => {
 		});
 
 		it("rewrites authorization endpoint origin when alternativeWebUrl is set", async () => {
-			const {
-				mockAdapter,
-				configurationProvider,
-				startLogin,
-				completeLogin,
-			} = createTestContext();
+			const { mockAdapter, configurationProvider, startLogin, completeLogin } =
+				createTestContext();
 			configurationProvider.set(
 				"coder.alternativeWebUrl",
 				"https://web.example.com",
@@ -284,6 +280,52 @@ describe("OAuthAuthorizer", () => {
 			const { loginPromise, authUrl, state } = await startLogin();
 			expect(authUrl.origin).toBe("https://web.example.com");
 			expect(authUrl.pathname).toBe("/oauth2/authorize");
+
+			await completeLogin(state);
+			await loginPromise;
+		});
+
+		it("preserves path prefix on alternativeWebUrl", async () => {
+			const { mockAdapter, configurationProvider, startLogin, completeLogin } =
+				createTestContext();
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://proxy.example.com/coder",
+			);
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					"https://coder.example.com:7004",
+				),
+				"/oauth2/register": createMockClientRegistration(),
+				"/oauth2/token": createMockTokenResponse(),
+				"/api/v2/users/me": { username: "test-user" },
+			});
+
+			const { loginPromise, authUrl, state } = await startLogin();
+			expect(authUrl.origin).toBe("https://proxy.example.com");
+			expect(authUrl.pathname).toBe("/coder/oauth2/authorize");
+
+			await completeLogin(state);
+			await loginPromise;
+		});
+
+		it("preserves query params already on the authorization endpoint", async () => {
+			const { mockAdapter, startLogin, completeLogin } = createTestContext();
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					TEST_URL,
+					{
+						authorization_endpoint: `${TEST_URL}/oauth2/authorize?audience=workspace`,
+					},
+				),
+				"/oauth2/register": createMockClientRegistration(),
+				"/oauth2/token": createMockTokenResponse(),
+				"/api/v2/users/me": { username: "test-user" },
+			});
+
+			const { loginPromise, authUrl, state } = await startLogin();
+			expect(authUrl.searchParams.get("audience")).toBe("workspace");
+			expect(authUrl.searchParams.get("client_id")).toBeTruthy();
 
 			await completeLogin(state);
 			await loginPromise;
