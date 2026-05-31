@@ -15,7 +15,7 @@ import {
 import {
 	formatTelemetryJsonlFileName,
 	isTelemetryJsonlFileName,
-} from "../fileNames";
+} from "../localJsonlFiles";
 import { serializeTelemetryEventLine } from "../wireFormat";
 
 import type { Logger } from "../../logging/logger";

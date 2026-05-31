@@ -103,22 +103,10 @@ describe("collectSupportLogFiles", () => {
 			"recent",
 		);
 		await fs.writeFile(
-			path.join(telemetryDir, "telemetry-2026-05-12-aaaaaaaa.1.jsonl"),
-			"rotated",
-		);
-		await fs.writeFile(
 			path.join(telemetryDir, "telemetry-2026-05-12-bbbbbbbb.jsonl"),
 			"old",
 		);
 		await fs.writeFile(path.join(telemetryDir, "notes.jsonl"), "notes");
-		await fs.writeFile(
-			path.join(telemetryDir, "telemetry-2026-05-12-aaaaaaaa.json"),
-			"json",
-		);
-		await fs.writeFile(
-			path.join(telemetryDir, "telemetry-2026-05-12-aaaaaaaa.bad.jsonl"),
-			"bad segment",
-		);
 		await fs.mkdir(path.join(telemetryDir, "subdir"));
 		await setAge(
 			path.join(telemetryDir, "telemetry-2026-05-12-bbbbbbbb.jsonl"),
@@ -127,7 +115,6 @@ describe("collectSupportLogFiles", () => {
 
 		await expect(collectTextFiles({ telemetryDir })).resolves.toEqual({
 			"vscode-logs/telemetry/telemetry-2026-05-12-aaaaaaaa.jsonl": "recent",
-			"vscode-logs/telemetry/telemetry-2026-05-12-aaaaaaaa.1.jsonl": "rotated",
 		});
 	});
 

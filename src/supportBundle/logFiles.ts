@@ -6,7 +6,7 @@ import {
 	isRemoteSshExtensionDir,
 	isSharedChannelRemoteSshLog,
 } from "../remote/sshExtension";
-import { isTelemetryJsonlFileName } from "../telemetry/fileNames";
+import { isTelemetryJsonlFileName } from "../telemetry/localJsonlFiles";
 
 import {
 	addFiles,

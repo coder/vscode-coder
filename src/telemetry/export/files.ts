@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 
 import { toError } from "../../error/errorUtils";
-import { parseTelemetryJsonlFileName } from "../fileNames";
+import { parseTelemetryJsonlFileName } from "../localJsonlFiles";
 import {
 	parseTelemetryEventLine,
 	TelemetryFileParseError,
