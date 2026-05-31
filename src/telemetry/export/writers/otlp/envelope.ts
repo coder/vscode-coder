@@ -67,6 +67,8 @@ export async function openEnvelopeFile(
 				await writeChunk(suffix);
 				await awaitOp((cb) => stream.end(cb));
 			} catch (err) {
+				// destroy() never throws synchronously, so it can't mask the
+				// rethrown error; any teardown failure routes to the 'error' event.
 				stream.destroy();
 				throw wrapError("close", filePath, err);
 			}

@@ -1,7 +1,8 @@
 /**
- * Local TypeScript shapes for the OTLP/JSON wire format. Upstream TS types
- * live in `@opentelemetry/otlp-transformer`, which pulls in the OTel SDK; we
- * mirror the proto schema instead so the writer stays SDK-free.
+ * Local TypeScript shapes for the OTLP/JSON wire format. The upstream types in
+ * `@opentelemetry/otlp-transformer` drag in the whole OTel SDK for runtime
+ * exporters we don't use, so we mirror the slice of the proto schema we
+ * serialize and stay SDK-free.
  *
  * Spec (opentelemetry-proto v1.10.0):
  * https://github.com/open-telemetry/opentelemetry-proto/tree/ca839c51f706f5d53bfb46f06c3e90c3af3a52c6/opentelemetry/proto

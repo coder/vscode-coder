@@ -9,7 +9,13 @@ import { writeOtlpZipExport } from "@/telemetry/export/writers/otlp/writer";
 import { asyncIterable } from "../../../../../mocks/asyncIterable";
 import { createTelemetryEventFactory } from "../../../../../mocks/telemetry";
 
-import { TRACE_ID, attrs, parseEnvelope } from "./helpers";
+import {
+	GOLDEN_CONTEXT,
+	GOLDEN_EVENTS,
+	TRACE_ID,
+	attrs,
+	parseEnvelope,
+} from "./helpers";
 
 import type { TelemetryEvent } from "@/telemetry/event";
 
@@ -56,6 +62,26 @@ describe("writeOtlpZipExport", () => {
 				.map((e) => e.file)
 				.sort(),
 		);
+	});
+
+	// Golden files capture the full serialized envelope per signal so schema
+	// changes show up as a reviewable JSON diff. Regenerate with `pnpm test ... -u`.
+	it("matches the golden OTLP envelopes for a representative export", async () => {
+		await writeOtlpZipExport(
+			OUT,
+			asyncIterable(Object.values(GOLDEN_EVENTS)),
+			GOLDEN_CONTEXT,
+		);
+		const files = unzipSync(vol.readFileSync(OUT) as Uint8Array);
+
+		for (const { file } of Object.values(ENVELOPES)) {
+			const pretty = JSON.stringify(
+				JSON.parse(new TextDecoder().decode(files[file])),
+				null,
+				2,
+			);
+			await expect(pretty).toMatchFileSnapshot(`./__golden__/envelope-${file}`);
+		}
 	});
 
 	it("produces three empty-array envelopes for an empty event stream", async () => {

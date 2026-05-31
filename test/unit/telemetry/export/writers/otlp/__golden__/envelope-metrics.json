@@ -1,0 +1,400 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "coder-vscode-extension"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "1.14.5"
+            }
+          },
+          {
+            "key": "service.instance.id",
+            "value": {
+              "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+            }
+          },
+          {
+            "key": "host.id",
+            "value": {
+              "stringValue": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+            }
+          },
+          {
+            "key": "host.arch",
+            "value": {
+              "stringValue": "arm64"
+            }
+          },
+          {
+            "key": "os.type",
+            "value": {
+              "stringValue": "Darwin"
+            }
+          },
+          {
+            "key": "os.version",
+            "value": {
+              "stringValue": "24.5.0"
+            }
+          },
+          {
+            "key": "vscode.platform.name",
+            "value": {
+              "stringValue": "Visual Studio Code"
+            }
+          },
+          {
+            "key": "vscode.platform.version",
+            "value": {
+              "stringValue": "1.96.2"
+            }
+          },
+          {
+            "key": "coder.deployment.url",
+            "value": {
+              "stringValue": "https://dev.coder.com"
+            }
+          }
+        ]
+      },
+      "schemaUrl": "https://opentelemetry.io/schemas/1.24.0",
+      "scopeMetrics": [
+        {
+          "scope": {
+            "name": "coder.vscode-coder.telemetry.export",
+            "version": "1.14.5"
+          },
+          "schemaUrl": "https://opentelemetry.io/schemas/1.24.0",
+          "metrics": [
+            {
+              "name": "http.requests.count.2xx",
+              "description": "http.requests",
+              "unit": "{request}",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "method",
+                        "value": {
+                          "stringValue": "GET"
+                        }
+                      },
+                      {
+                        "key": "route",
+                        "value": {
+                          "stringValue": "/api/v2/workspaces"
+                        }
+                      },
+                      {
+                        "key": "coder.event_name",
+                        "value": {
+                          "stringValue": "http.requests"
+                        }
+                      },
+                      {
+                        "key": "coder.event.extension_version",
+                        "value": {
+                          "stringValue": "1.14.5"
+                        }
+                      },
+                      {
+                        "key": "coder.event.session_id",
+                        "value": {
+                          "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                        }
+                      },
+                      {
+                        "key": "coder.event.deployment_url",
+                        "value": {
+                          "stringValue": "https://dev.coder.com"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1777918320000000000",
+                    "timeUnixNano": "1777918380000000000",
+                    "asInt": "1280"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "http.requests.count.5xx",
+              "description": "http.requests",
+              "unit": "{request}",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "method",
+                        "value": {
+                          "stringValue": "GET"
+                        }
+                      },
+                      {
+                        "key": "route",
+                        "value": {
+                          "stringValue": "/api/v2/workspaces"
+                        }
+                      },
+                      {
+                        "key": "coder.event_name",
+                        "value": {
+                          "stringValue": "http.requests"
+                        }
+                      },
+                      {
+                        "key": "coder.event.extension_version",
+                        "value": {
+                          "stringValue": "1.14.5"
+                        }
+                      },
+                      {
+                        "key": "coder.event.session_id",
+                        "value": {
+                          "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                        }
+                      },
+                      {
+                        "key": "coder.event.deployment_url",
+                        "value": {
+                          "stringValue": "https://dev.coder.com"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1777918320000000000",
+                    "timeUnixNano": "1777918380000000000",
+                    "asInt": "3"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "http.requests.count.network_error",
+              "description": "http.requests",
+              "unit": "{request}",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "method",
+                        "value": {
+                          "stringValue": "GET"
+                        }
+                      },
+                      {
+                        "key": "route",
+                        "value": {
+                          "stringValue": "/api/v2/workspaces"
+                        }
+                      },
+                      {
+                        "key": "coder.event_name",
+                        "value": {
+                          "stringValue": "http.requests"
+                        }
+                      },
+                      {
+                        "key": "coder.event.extension_version",
+                        "value": {
+                          "stringValue": "1.14.5"
+                        }
+                      },
+                      {
+                        "key": "coder.event.session_id",
+                        "value": {
+                          "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                        }
+                      },
+                      {
+                        "key": "coder.event.deployment_url",
+                        "value": {
+                          "stringValue": "https://dev.coder.com"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1777918320000000000",
+                    "timeUnixNano": "1777918380000000000",
+                    "asInt": "1"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "http.requests.duration.p50_ms",
+              "description": "http.requests",
+              "unit": "ms",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "method",
+                        "value": {
+                          "stringValue": "GET"
+                        }
+                      },
+                      {
+                        "key": "route",
+                        "value": {
+                          "stringValue": "/api/v2/workspaces"
+                        }
+                      },
+                      {
+                        "key": "coder.event_name",
+                        "value": {
+                          "stringValue": "http.requests"
+                        }
+                      },
+                      {
+                        "key": "coder.event.extension_version",
+                        "value": {
+                          "stringValue": "1.14.5"
+                        }
+                      },
+                      {
+                        "key": "coder.event.session_id",
+                        "value": {
+                          "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                        }
+                      },
+                      {
+                        "key": "coder.event.deployment_url",
+                        "value": {
+                          "stringValue": "https://dev.coder.com"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1777918320000000000",
+                    "timeUnixNano": "1777918380000000000",
+                    "asDouble": 12
+                  }
+                ]
+              }
+            },
+            {
+              "name": "http.requests.duration.p95_ms",
+              "description": "http.requests",
+              "unit": "ms",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "method",
+                        "value": {
+                          "stringValue": "GET"
+                        }
+                      },
+                      {
+                        "key": "route",
+                        "value": {
+                          "stringValue": "/api/v2/workspaces"
+                        }
+                      },
+                      {
+                        "key": "coder.event_name",
+                        "value": {
+                          "stringValue": "http.requests"
+                        }
+                      },
+                      {
+                        "key": "coder.event.extension_version",
+                        "value": {
+                          "stringValue": "1.14.5"
+                        }
+                      },
+                      {
+                        "key": "coder.event.session_id",
+                        "value": {
+                          "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                        }
+                      },
+                      {
+                        "key": "coder.event.deployment_url",
+                        "value": {
+                          "stringValue": "https://dev.coder.com"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1777918320000000000",
+                    "timeUnixNano": "1777918380000000000",
+                    "asDouble": 88
+                  }
+                ]
+              }
+            },
+            {
+              "name": "http.requests.duration.p99_ms",
+              "description": "http.requests",
+              "unit": "ms",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "method",
+                        "value": {
+                          "stringValue": "GET"
+                        }
+                      },
+                      {
+                        "key": "route",
+                        "value": {
+                          "stringValue": "/api/v2/workspaces"
+                        }
+                      },
+                      {
+                        "key": "coder.event_name",
+                        "value": {
+                          "stringValue": "http.requests"
+                        }
+                      },
+                      {
+                        "key": "coder.event.extension_version",
+                        "value": {
+                          "stringValue": "1.14.5"
+                        }
+                      },
+                      {
+                        "key": "coder.event.session_id",
+                        "value": {
+                          "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                        }
+                      },
+                      {
+                        "key": "coder.event.deployment_url",
+                        "value": {
+                          "stringValue": "https://dev.coder.com"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1777918320000000000",
+                    "timeUnixNano": "1777918380000000000",
+                    "asDouble": 240
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

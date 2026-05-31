@@ -44,6 +44,8 @@ interface Channel {
 	count: number;
 }
 
+// Read high-water mark (HWM): bytes buffered per read while streaming a staged
+// envelope into the zip.
 const READ_HWM_BYTES = 256 * 1024;
 
 /**

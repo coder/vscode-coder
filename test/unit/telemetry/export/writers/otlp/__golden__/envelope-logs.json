@@ -1,0 +1,200 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "coder-vscode-extension"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "1.14.5"
+            }
+          },
+          {
+            "key": "service.instance.id",
+            "value": {
+              "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+            }
+          },
+          {
+            "key": "host.id",
+            "value": {
+              "stringValue": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+            }
+          },
+          {
+            "key": "host.arch",
+            "value": {
+              "stringValue": "arm64"
+            }
+          },
+          {
+            "key": "os.type",
+            "value": {
+              "stringValue": "Darwin"
+            }
+          },
+          {
+            "key": "os.version",
+            "value": {
+              "stringValue": "24.5.0"
+            }
+          },
+          {
+            "key": "vscode.platform.name",
+            "value": {
+              "stringValue": "Visual Studio Code"
+            }
+          },
+          {
+            "key": "vscode.platform.version",
+            "value": {
+              "stringValue": "1.96.2"
+            }
+          },
+          {
+            "key": "coder.deployment.url",
+            "value": {
+              "stringValue": "https://dev.coder.com"
+            }
+          }
+        ]
+      },
+      "schemaUrl": "https://opentelemetry.io/schemas/1.24.0",
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "coder.vscode-coder.telemetry.export",
+            "version": "1.14.5"
+          },
+          "schemaUrl": "https://opentelemetry.io/schemas/1.24.0",
+          "logRecords": [
+            {
+              "timeUnixNano": "1777918323412000000",
+              "observedTimeUnixNano": "1777918323412000000",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "workspace.open"
+              },
+              "attributes": [
+                {
+                  "key": "workspace_owner",
+                  "value": {
+                    "stringValue": "developer"
+                  }
+                },
+                {
+                  "key": "workspace_name",
+                  "value": {
+                    "stringValue": "frontend-dev"
+                  }
+                },
+                {
+                  "key": "transport",
+                  "value": {
+                    "stringValue": "ssh"
+                  }
+                },
+                {
+                  "key": "startup_ms",
+                  "value": {
+                    "doubleValue": 842
+                  }
+                },
+                {
+                  "key": "coder.event.extension_version",
+                  "value": {
+                    "stringValue": "1.14.5"
+                  }
+                },
+                {
+                  "key": "coder.event.session_id",
+                  "value": {
+                    "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                  }
+                },
+                {
+                  "key": "coder.event.deployment_url",
+                  "value": {
+                    "stringValue": "https://dev.coder.com"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1777918324118000000",
+              "observedTimeUnixNano": "1777918324118000000",
+              "severityNumber": 17,
+              "severityText": "ERROR",
+              "body": {
+                "stringValue": "cli.download.failed"
+              },
+              "attributes": [
+                {
+                  "key": "source",
+                  "value": {
+                    "stringValue": "github-releases"
+                  }
+                },
+                {
+                  "key": "version",
+                  "value": {
+                    "stringValue": "v2.18.1"
+                  }
+                },
+                {
+                  "key": "retry_count",
+                  "value": {
+                    "doubleValue": 3
+                  }
+                },
+                {
+                  "key": "exception.message",
+                  "value": {
+                    "stringValue": "connect ECONNREFUSED 140.82.121.3:443"
+                  }
+                },
+                {
+                  "key": "exception.type",
+                  "value": {
+                    "stringValue": "FetchError"
+                  }
+                },
+                {
+                  "key": "exception.code",
+                  "value": {
+                    "stringValue": "ECONNREFUSED"
+                  }
+                },
+                {
+                  "key": "coder.event.extension_version",
+                  "value": {
+                    "stringValue": "1.14.5"
+                  }
+                },
+                {
+                  "key": "coder.event.session_id",
+                  "value": {
+                    "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                  }
+                },
+                {
+                  "key": "coder.event.deployment_url",
+                  "value": {
+                    "stringValue": "https://dev.coder.com"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

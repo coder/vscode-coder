@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	describeMetricEvent,
 	type MetricDescriptor,
 	type MetricMeasurement,
 } from "@/telemetry/export/metrics";
@@ -16,7 +17,7 @@ import {
 
 import { createTelemetryEventFactory } from "../../../../../mocks/telemetry";
 
-import { TRACE_ID, attrs } from "./helpers";
+import { GOLDEN_EVENTS, TRACE_ID, attrs } from "./helpers";
 
 const makeEvent = createTelemetryEventFactory();
 
@@ -401,5 +402,43 @@ describe("metricRecords", () => {
 		const point = record.sum!.dataPoints[0];
 
 		expect(point.startTimeUnixNano).toBe(point.timeUnixNano);
+	});
+});
+
+// Golden files lock the full OTLP wire shape so schema changes show up as a
+// reviewable JSON diff. Regenerate with `pnpm test ... -u`.
+describe("golden OTLP record shapes", () => {
+	const golden = (value: unknown) => JSON.stringify(value, null, 2);
+
+	it("log records: an info event and a failed download", async () => {
+		const records = [
+			logRecord(GOLDEN_EVENTS.workspaceOpen),
+			logRecord(GOLDEN_EVENTS.cliDownloadFailed),
+		];
+		await expect(golden(records)).toMatchFileSnapshot(
+			"./__golden__/log-records.json",
+		);
+	});
+
+	it("span records: a parent span and an errored child in one trace", async () => {
+		const records = [
+			spanRecord(GOLDEN_EVENTS.setupReady),
+			spanRecord(GOLDEN_EVENTS.sshConnect),
+		];
+		await expect(golden(records)).toMatchFileSnapshot(
+			"./__golden__/span-records.json",
+		);
+	});
+
+	it("metric records: a full http.requests window of counters and percentiles", async () => {
+		const event = GOLDEN_EVENTS.httpRequests;
+		const records = metricRecords(
+			event,
+			describeMetricEvent(event)!,
+			newCumulativeState(),
+		);
+		await expect(golden(records)).toMatchFileSnapshot(
+			"./__golden__/metric-records.json",
+		);
 	});
 });
