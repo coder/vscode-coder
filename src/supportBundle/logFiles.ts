@@ -24,6 +24,7 @@ export interface LogSources {
 	activeProxyLogPath?: string;
 	proxyLogDir?: string;
 	extensionLogDir?: string;
+	telemetryDir?: string;
 }
 
 interface WindowLogDir {
@@ -62,6 +63,9 @@ export async function collectSupportLogFiles(
 			files,
 			await collectVsCodeWindowLogs(sources.extensionLogDir, logger),
 		);
+	}
+	if (sources.telemetryDir) {
+		addFiles(files, await collectTelemetryFiles(sources.telemetryDir, logger));
 	}
 	return files;
 }
@@ -117,6 +121,16 @@ export async function collectWindowLogDirs(
 		}),
 	);
 	return windows.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+async function collectTelemetryFiles(
+	telemetryDir: string,
+	logger: Logger,
+): Promise<Map<string, Uint8Array>> {
+	return prefixFiles(
+		"vscode-logs/telemetry",
+		await collectDirFiles(telemetryDir, logger, isTelemetryJsonlFile, false),
+	);
 }
 
 async function collectProxyLogs(
@@ -238,6 +252,9 @@ async function collectVsCodeWindowLogs(
 // Coder CLI logs: `coder-ssh-*.log` or bare `<pid>.log`.
 const isProxyLogFile = (name: string): boolean =>
 	isLogFile(name) && (name.startsWith("coder-ssh") || /^\d+\.log$/.test(name));
+
+const isTelemetryJsonlFile = (name: string): boolean =>
+	/^telemetry-\d{4}-\d{2}-\d{2}-[^.]+(?:\.\d+)?\.jsonl$/.test(name);
 
 function isRemoteSshLog(relativePath: string, fileName: string): boolean {
 	if (!isLogFile(fileName)) {

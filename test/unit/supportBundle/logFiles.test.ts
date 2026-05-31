@@ -95,6 +95,48 @@ describe("collectSupportLogFiles", () => {
 		});
 	});
 
+	it("collects recent telemetry JSONL files", async () => {
+		const telemetryDir = path.join(tmpDir, "telemetry");
+		await fs.mkdir(telemetryDir);
+		await fs.writeFile(
+			path.join(telemetryDir, "telemetry-2026-05-12-aaaaaaaa.jsonl"),
+			"recent",
+		);
+		await fs.writeFile(
+			path.join(telemetryDir, "telemetry-2026-05-12-aaaaaaaa.1.jsonl"),
+			"rotated",
+		);
+		await fs.writeFile(
+			path.join(telemetryDir, "telemetry-2026-05-12-bbbbbbbb.jsonl"),
+			"old",
+		);
+		await fs.writeFile(path.join(telemetryDir, "notes.jsonl"), "notes");
+		await fs.writeFile(
+			path.join(telemetryDir, "telemetry-2026-05-12-aaaaaaaa.json"),
+			"json",
+		);
+		await fs.writeFile(
+			path.join(telemetryDir, "telemetry-2026-05-12-aaaaaaaa.bad.jsonl"),
+			"bad segment",
+		);
+		await fs.mkdir(path.join(telemetryDir, "subdir"));
+		await setAge(
+			path.join(telemetryDir, "telemetry-2026-05-12-bbbbbbbb.jsonl"),
+			5,
+		);
+
+		await expect(collectTextFiles({ telemetryDir })).resolves.toEqual({
+			"vscode-logs/telemetry/telemetry-2026-05-12-aaaaaaaa.jsonl": "recent",
+			"vscode-logs/telemetry/telemetry-2026-05-12-aaaaaaaa.1.jsonl": "rotated",
+		});
+	});
+
+	it("skips missing telemetry directories", async () => {
+		await expect(
+			collectTextFiles({ telemetryDir: path.join(tmpDir, "no-such-dir") }),
+		).resolves.toEqual({});
+	});
+
 	it("collects extension and Remote-SSH logs across recent VS Code sessions", async () => {
 		const logsRoot = path.join(tmpDir, "logs");
 		const currentSession = "20240103T000000";
@@ -379,6 +421,32 @@ describe("collectSupportLogFiles", () => {
 				});
 			} finally {
 				await fs.chmod(badLog, 0o644);
+			}
+		},
+	);
+
+	it.runIf(canTestUnreadable)(
+		"skips unreadable telemetry sources and includes readable telemetry files",
+		async () => {
+			const telemetryDir = path.join(tmpDir, "telemetry");
+			await fs.mkdir(telemetryDir);
+			await fs.writeFile(
+				path.join(telemetryDir, "telemetry-2026-05-12-aaaaaaaa.jsonl"),
+				"ok",
+			);
+			const badFile = path.join(
+				telemetryDir,
+				"telemetry-2026-05-12-bbbbbbbb.jsonl",
+			);
+			await fs.writeFile(badFile, "secret");
+			await fs.chmod(badFile, 0o000);
+
+			try {
+				await expect(collectTextFiles({ telemetryDir })).resolves.toEqual({
+					"vscode-logs/telemetry/telemetry-2026-05-12-aaaaaaaa.jsonl": "ok",
+				});
+			} finally {
+				await fs.chmod(badFile, 0o644);
 			}
 		},
 	);
