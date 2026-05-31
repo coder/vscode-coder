@@ -9,7 +9,7 @@ import {
 	resolveLogContext,
 } from "@/supportBundle/logFiles";
 
-import { createMockLogger } from "../../mocks/testHelpers";
+import { createMockLogger, setAge } from "../../mocks/testHelpers";
 
 // chmod to 0o000 is a no-op as root and on Windows.
 const canTestUnreadable =
@@ -25,11 +25,6 @@ beforeEach(async () => {
 afterEach(async () => {
 	await fs.rm(tmpDir, { recursive: true, force: true });
 });
-
-async function setAge(filePath: string, daysAgo: number): Promise<void> {
-	const past = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
-	await fs.utimes(filePath, past, past);
-}
 
 async function collectTextFiles(
 	sources: Parameters<typeof collectSupportLogFiles>[0],

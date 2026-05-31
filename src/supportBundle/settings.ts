@@ -2,31 +2,22 @@ import * as vscode from "vscode";
 
 import { type Logger } from "../logging/logger";
 
-// Paths, hostnames, URLs, and command strings: anything user-supplied that
-// could identify a machine or deployment in a shared bundle.
+// Masked to <set>/<empty> because their value can hold a secret; every other
+// collected setting is kept verbatim, so only add a key here if it can.
 const REDACTED_SETTINGS: ReadonlySet<string> = new Set([
-	"coder.binaryDestination",
-	"coder.binarySource",
-	"coder.defaultUrl",
 	"coder.globalFlags",
 	"coder.headerCommand",
-	"coder.proxyBypass",
-	"coder.proxyLogDirectory",
-	"coder.sshConfig",
-	"coder.sshFlags",
-	"coder.tlsAltHost",
-	"coder.tlsCaFile",
-	"coder.tlsCertFile",
 	"coder.tlsCertRefreshCommand",
-	"coder.tlsKeyFile",
 ]);
 
-// Explicit allowlist instead of package.json discovery: discovery requires
-// the extension to be installed (it isn't for tests/headless runs) and
-// silently misses settings declared via contributes.configurationDefaults.
+// Explicit allowlist: package.json discovery needs the extension installed
+// (not so in tests) and misses contributes.configurationDefaults.
 const COLLECTED_SETTINGS: readonly string[] = [
 	...REDACTED_SETTINGS,
 	"coder.autologin",
+	"coder.binaryDestination",
+	"coder.binarySource",
+	"coder.defaultUrl",
 	"coder.disableNotifications",
 	"coder.disableSignatureVerification",
 	"coder.disableUpdateNotifications",
@@ -35,8 +26,16 @@ const COLLECTED_SETTINGS: readonly string[] = [
 	"coder.httpClientLogLevel",
 	"coder.insecure",
 	"coder.networkThreshold.latencyMs",
+	"coder.proxyBypass",
+	"coder.proxyLogDirectory",
+	"coder.sshConfig",
+	"coder.sshFlags",
 	"coder.telemetry.level",
 	"coder.telemetry.local",
+	"coder.tlsAltHost",
+	"coder.tlsCaFile",
+	"coder.tlsCertFile",
+	"coder.tlsKeyFile",
 	"coder.useKeyring",
 	"remote.SSH.connectTimeout",
 	"remote.SSH.logLevel",
@@ -50,13 +49,6 @@ const COLLECTED_SETTINGS: readonly string[] = [
 type SettingValue = unknown;
 type SettingInspection = Record<string, SettingValue>;
 
-function redactedSettingValue(value: SettingValue): string {
-	const emptyArray = Array.isArray(value) && value.length === 0;
-	return value === undefined || value === null || value === "" || emptyArray
-		? "<empty>"
-		: "<set>";
-}
-
 /** inspect() metadata + public package.json default; not user-supplied. */
 const REDACTION_PASSTHROUGH: ReadonlySet<string> = new Set([
 	"key",
@@ -64,15 +56,21 @@ const REDACTION_PASSTHROUGH: ReadonlySet<string> = new Set([
 	"defaultValue",
 ]);
 
-function maybeRedact(
-	key: string,
-	name: string,
-	value: SettingValue,
-): SettingValue {
-	if (REDACTION_PASSTHROUGH.has(name)) {
-		return value;
+/**
+ * UTF-8 JSON snapshot of `inspect()` for the allowlisted `coder.*` / `remote.*`
+ * settings, with sensitive values replaced by `<set>` or `<empty>`.
+ */
+export function collectSettingsFile(logger: Logger): Uint8Array | undefined {
+	try {
+		const diagnostics = collectSettingsDiagnostics();
+		if (Object.keys(diagnostics).length === 0) {
+			return undefined;
+		}
+		return Buffer.from(`${JSON.stringify(diagnostics, null, "\t")}\n`);
+	} catch (error) {
+		logger.warn("Could not collect VS Code settings", error);
+		return undefined;
 	}
-	return REDACTED_SETTINGS.has(key) ? redactedSettingValue(value) : value;
 }
 
 function collectSettingsDiagnostics(): Record<string, SettingInspection> {
@@ -94,20 +92,20 @@ function collectSettingsDiagnostics(): Record<string, SettingInspection> {
 	return diagnostics;
 }
 
-/**
- * Returns a UTF-8 JSON snapshot of `inspect()` output for the allowlisted
- * `coder.*` / `remote.*` settings. Sensitive values (paths, hostnames,
- * URLs, commands) are replaced with `<set>` or `<empty>`.
- */
-export function collectSettingsFile(logger: Logger): Uint8Array | undefined {
-	try {
-		const diagnostics = collectSettingsDiagnostics();
-		if (Object.keys(diagnostics).length === 0) {
-			return undefined;
-		}
-		return Buffer.from(`${JSON.stringify(diagnostics, null, "\t")}\n`);
-	} catch (error) {
-		logger.warn("Could not collect VS Code settings", error);
-		return undefined;
+function maybeRedact(
+	key: string,
+	name: string,
+	value: SettingValue,
+): SettingValue {
+	if (REDACTION_PASSTHROUGH.has(name)) {
+		return value;
 	}
+	return REDACTED_SETTINGS.has(key) ? redactedSettingValue(value) : value;
+}
+
+function redactedSettingValue(value: SettingValue): string {
+	const emptyArray = Array.isArray(value) && value.length === 0;
+	return value === undefined || value === null || value === "" || emptyArray
+		? "<empty>"
+		: "<set>";
 }

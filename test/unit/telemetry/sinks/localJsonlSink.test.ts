@@ -12,6 +12,7 @@ import { createTelemetryEventFactory } from "../../../mocks/telemetry";
 import {
 	createMockLogger,
 	MockConfigurationProvider,
+	setAge,
 } from "../../../mocks/testHelpers";
 
 import type * as fs from "node:fs";
@@ -40,11 +41,6 @@ const readJsonl = (filePath: string): Array<Record<string, unknown>> =>
 		.split("\n")
 		.filter((l) => l.length > 0)
 		.map((l) => JSON.parse(l));
-
-const setMtimeAgo = (filePath: string, ageMs: number): void => {
-	const t = (Date.now() - ageMs) / 1000;
-	vol.utimesSync(filePath, t, t);
-};
 
 describe("LocalJsonlSink", () => {
 	let active: LocalJsonlSink[];
@@ -222,15 +218,14 @@ describe("LocalJsonlSink", () => {
 	});
 
 	it("deletes telemetry files older than maxAgeDays at startup", async () => {
-		const dayMs = 24 * 60 * 60 * 1000;
 		const today = todayUtc();
 		vol.fromJSON({
 			[`${BASE_DIR}/telemetry-2025-01-01-aaaa1111.jsonl`]: "{}\n",
 			[`${BASE_DIR}/telemetry-2025-01-02-aaaa1111.jsonl`]: "{}\n",
 			[`${BASE_DIR}/telemetry-${today}-bbbb2222.jsonl`]: "{}\n",
 		});
-		setMtimeAgo(`${BASE_DIR}/telemetry-2025-01-01-aaaa1111.jsonl`, 60 * dayMs);
-		setMtimeAgo(`${BASE_DIR}/telemetry-2025-01-02-aaaa1111.jsonl`, 60 * dayMs);
+		await setAge(`${BASE_DIR}/telemetry-2025-01-01-aaaa1111.jsonl`, 60);
+		await setAge(`${BASE_DIR}/telemetry-2025-01-02-aaaa1111.jsonl`, 60);
 
 		setup({ maxAgeDays: 30 });
 
@@ -242,16 +237,15 @@ describe("LocalJsonlSink", () => {
 	});
 
 	it("trims oldest files when total size exceeds maxTotalBytes", async () => {
-		const dayMs = 24 * 60 * 60 * 1000;
 		const big = "x".repeat(2000);
 		vol.fromJSON({
 			[`${BASE_DIR}/telemetry-2026-04-01-a.jsonl`]: big,
 			[`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`]: big,
 			[`${BASE_DIR}/telemetry-2026-04-03-c.jsonl`]: big,
 		});
-		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-01-a.jsonl`, 5 * dayMs);
-		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`, 4 * dayMs);
-		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-03-c.jsonl`, 3 * dayMs);
+		await setAge(`${BASE_DIR}/telemetry-2026-04-01-a.jsonl`, 5);
+		await setAge(`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`, 4);
+		await setAge(`${BASE_DIR}/telemetry-2026-04-03-c.jsonl`, 3);
 
 		setup({ maxAgeDays: 365, maxTotalBytes: 4500 });
 
@@ -264,16 +258,15 @@ describe("LocalJsonlSink", () => {
 	});
 
 	it("keeps deleting until total size is under maxTotalBytes", async () => {
-		const dayMs = 24 * 60 * 60 * 1000;
 		const big = "x".repeat(3000);
 		vol.fromJSON({
 			[`${BASE_DIR}/telemetry-2026-04-01-a.jsonl`]: big,
 			[`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`]: big,
 			[`${BASE_DIR}/telemetry-2026-04-03-c.jsonl`]: big,
 		});
-		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-01-a.jsonl`, 5 * dayMs);
-		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`, 4 * dayMs);
-		setMtimeAgo(`${BASE_DIR}/telemetry-2026-04-03-c.jsonl`, 3 * dayMs);
+		await setAge(`${BASE_DIR}/telemetry-2026-04-01-a.jsonl`, 5);
+		await setAge(`${BASE_DIR}/telemetry-2026-04-02-b.jsonl`, 4);
+		await setAge(`${BASE_DIR}/telemetry-2026-04-03-c.jsonl`, 3);
 
 		setup({ maxAgeDays: 365, maxTotalBytes: 5000 });
 

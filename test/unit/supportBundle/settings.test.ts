@@ -35,40 +35,52 @@ describe("collectSettingsFile", () => {
 		expect(collectSettingsFile(logger)).toBeUndefined();
 	});
 
-	it("redacts sensitive Coder settings while preserving safe ones", () => {
+	it("redacts secret-bearing Coder settings while preserving the rest", () => {
 		setConfiguration(
 			{
+				// Free-form values that can embed a token: redacted.
 				"coder.headerCommand": "echo DO_NOT_LEAK_SECRET",
-				"coder.sshFlags": ["--flag", "DO_NOT_LEAK_SECRET"],
-				"coder.tlsCertFile": "/etc/ssl/DO_NOT_LEAK_SECRET.pem",
-				"coder.defaultUrl": "https://internal.DO_NOT_LEAK_SECRET",
+				"coder.globalFlags": ["--token", "DO_NOT_LEAK_SECRET"],
+				"coder.tlsCertRefreshCommand": "",
+				// Paths, hostnames, and flags are collected verbatim.
+				"coder.tlsCertFile": "/etc/ssl/cert.pem",
+				"coder.sshFlags": ["--disable-autostart"],
+				"coder.defaultUrl": "https://coder.example.com",
+				"coder.proxyLogDirectory": "/home/user/.coder/logs",
 				"coder.insecure": true,
 				"coder.httpClientLogLevel": "debug",
-				"coder.binarySource": "",
 			},
 			{
 				"coder.headerCommand": {
 					defaultValue: "",
 					globalValue: "echo DO_NOT_LEAK_SECRET",
 				},
-				"coder.sshFlags": {
+				"coder.globalFlags": {
 					defaultValue: [],
-					globalValue: ["--flag", "DO_NOT_LEAK_SECRET"],
+					globalValue: ["--token", "DO_NOT_LEAK_SECRET"],
 				},
+				"coder.tlsCertRefreshCommand": { defaultValue: "", globalValue: "" },
 				"coder.tlsCertFile": {
 					defaultValue: "",
-					globalValue: "/etc/ssl/DO_NOT_LEAK_SECRET.pem",
+					globalValue: "/etc/ssl/cert.pem",
+				},
+				"coder.sshFlags": {
+					defaultValue: [],
+					globalValue: ["--disable-autostart"],
 				},
 				"coder.defaultUrl": {
 					defaultValue: "",
-					globalValue: "https://internal.DO_NOT_LEAK_SECRET",
+					globalValue: "https://coder.example.com",
+				},
+				"coder.proxyLogDirectory": {
+					defaultValue: "",
+					globalValue: "/home/user/.coder/logs",
 				},
 				"coder.insecure": { defaultValue: false, globalValue: true },
 				"coder.httpClientLogLevel": {
 					defaultValue: "info",
 					globalValue: "debug",
 				},
-				"coder.binarySource": { defaultValue: "", globalValue: "" },
 			},
 		);
 
@@ -84,11 +96,19 @@ describe("collectSettingsFile", () => {
 			globalValue: "<set>",
 			key: "coder.headerCommand",
 		});
-		expect(settings["coder.sshFlags"]?.effective).toBe("<set>");
-		expect(settings["coder.tlsCertFile"]?.effective).toBe("<set>");
-		expect(settings["coder.defaultUrl"]?.effective).toBe("<set>");
-		expect(settings["coder.binarySource"]?.effective).toBe("<empty>");
-		// Non-sensitive settings pass through verbatim.
+		expect(settings["coder.globalFlags"]?.effective).toBe("<set>");
+		expect(settings["coder.tlsCertRefreshCommand"]?.effective).toBe("<empty>");
+		// Paths, hostnames, flags, and non-secret values pass through verbatim.
+		expect(settings["coder.tlsCertFile"]?.effective).toBe("/etc/ssl/cert.pem");
+		expect(settings["coder.sshFlags"]?.effective).toEqual([
+			"--disable-autostart",
+		]);
+		expect(settings["coder.defaultUrl"]?.effective).toBe(
+			"https://coder.example.com",
+		);
+		expect(settings["coder.proxyLogDirectory"]?.effective).toBe(
+			"/home/user/.coder/logs",
+		);
 		expect(settings["coder.insecure"]?.effective).toBe(true);
 		expect(settings["coder.httpClientLogLevel"]?.effective).toBe("debug");
 	});

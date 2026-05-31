@@ -36,35 +36,34 @@ interface LogContext {
 	logsRoot: string;
 }
 
-// Coder CLI writes either `coder-ssh-*.log` or bare `<pid>.log`.
-const isProxyLogFile = (name: string): boolean =>
-	isLogFile(name) && (name.startsWith("coder-ssh") || /^\d+\.log$/.test(name));
-
-function isRemoteSshLog(relativePath: string, fileName: string): boolean {
-	if (!isLogFile(fileName)) {
-		return false;
+/**
+ * Proxy, Remote-SSH, and extension logs from recent windows plus a redacted
+ * settings snapshot, keyed by zip path under `vscode-logs/`.
+ */
+export async function collectVsCodeDiagnostics(
+	sources: LogSources,
+	logger: Logger,
+): Promise<Map<string, Uint8Array>> {
+	const files = await collectSupportLogFiles(sources, logger);
+	const settings = collectSettingsFile(logger);
+	if (settings) {
+		files.set("vscode-logs/settings.json", settings);
 	}
-	const parts = normalizeZipPath(relativePath).split("/");
-	// Whole exthost dir belongs to one extension; output_logging_* is shared.
-	if (parts.some(isRemoteSshExtensionDir)) {
-		return true;
-	}
-	return (
-		parts.some(isOutputLoggingDir) && isSharedChannelRemoteSshLog(fileName)
-	);
+	return files;
 }
 
-function newestLog(logs: CollectedFile[]): CollectedFile | undefined {
-	// Lexicographic tie-break (not localeCompare) so the choice is locale-stable.
-	return logs.toSorted((a, b) => {
-		if (b.mtimeMs !== a.mtimeMs) {
-			return b.mtimeMs - a.mtimeMs;
-		}
-		if (b.relativePath === a.relativePath) {
-			return 0;
-		}
-		return b.relativePath > a.relativePath ? 1 : -1;
-	})[0];
+export async function collectSupportLogFiles(
+	sources: LogSources,
+	logger: Logger,
+): Promise<Map<string, Uint8Array>> {
+	const files = await collectProxyLogs(sources, logger);
+	if (sources.extensionLogDir) {
+		addFiles(
+			files,
+			await collectVsCodeWindowLogs(sources.extensionLogDir, logger),
+		);
+	}
+	return files;
 }
 
 export function resolveLogContext(
@@ -76,7 +75,7 @@ export function resolveLogContext(
 	const windowName = path.basename(windowDir);
 	const sessionDir = path.dirname(windowDir);
 
-	// Trust the layout, not the literal id: forks may rebrand the id.
+	// Match the layout, not the id: forks rebrand it.
 	if (
 		path.basename(exthostDir) !== "exthost" ||
 		!/^window\d+$/i.test(windowName)
@@ -130,7 +129,7 @@ async function collectProxyLogs(
 		: undefined;
 
 	if (sources.activeProxyLogPath && activeBasename) {
-		// No age cutoff: long-lived sessions can have mtime past the window.
+		// No age cutoff: long sessions outlive the window.
 		const file = await readLogFile(sources.activeProxyLogPath, logger);
 		if (file) {
 			files.set(`vscode-logs/proxy/${activeBasename}`, file.data);
@@ -142,7 +141,7 @@ async function collectProxyLogs(
 			files,
 			prefixFiles(
 				"vscode-logs/proxy",
-				// Active log was already added above; don't double-bundle.
+				// Already added above; don't double-bundle.
 				await collectDirFiles(
 					sources.proxyLogDir,
 					logger,
@@ -162,8 +161,7 @@ async function collectVsCodeWindowLogs(
 	const context = resolveLogContext(extensionLogDir);
 
 	if (!context) {
-		// Non-canonical layout: scan the extension dir + assumed window dir
-		// (one level up, or two if the parent is `exthost`).
+		// Non-canonical layout: scan the ext dir and assumed window dir.
 		addFiles(
 			files,
 			prefixFiles(
@@ -199,7 +197,7 @@ async function collectVsCodeWindowLogs(
 			isLogFile,
 			false,
 		);
-		// Skip windows that never hosted Coder; their SSH logs aren't ours.
+		// Window never hosted Coder; its SSH logs aren't ours.
 		if (extLogs.size === 0) continue;
 
 		addFiles(
@@ -226,7 +224,7 @@ async function collectVsCodeWindowLogs(
 		}
 	}
 
-	// Current window only; falling back to others would mislabel a stale log.
+	// Current window only: others would mislabel a stale log.
 	const activeLog = newestLog(currentWindowSshLogs);
 	if (activeLog) {
 		files.set(
@@ -237,33 +235,35 @@ async function collectVsCodeWindowLogs(
 	return files;
 }
 
-export async function collectSupportLogFiles(
-	sources: LogSources,
-	logger: Logger,
-): Promise<Map<string, Uint8Array>> {
-	const files = await collectProxyLogs(sources, logger);
-	if (sources.extensionLogDir) {
-		addFiles(
-			files,
-			await collectVsCodeWindowLogs(sources.extensionLogDir, logger),
-		);
+// Coder CLI logs: `coder-ssh-*.log` or bare `<pid>.log`.
+const isProxyLogFile = (name: string): boolean =>
+	isLogFile(name) && (name.startsWith("coder-ssh") || /^\d+\.log$/.test(name));
+
+function isRemoteSshLog(relativePath: string, fileName: string): boolean {
+	if (!isLogFile(fileName)) {
+		return false;
 	}
-	return files;
+	const parts = normalizeZipPath(relativePath).split("/");
+	// exthost dir is per-extension; output_logging_* is shared.
+	if (parts.some(isRemoteSshExtensionDir)) {
+		return true;
+	}
+	return (
+		parts.some(isOutputLoggingDir) && isSharedChannelRemoteSshLog(fileName)
+	);
 }
 
-/**
- * Collects proxy logs, Remote-SSH and extension logs across recent windows,
- * and a redacted `coder.*` / `remote.*` settings snapshot. Keys are
- * zip-relative paths under `vscode-logs/`.
- */
-export async function collectVsCodeDiagnostics(
-	sources: LogSources,
-	logger: Logger,
-): Promise<Map<string, Uint8Array>> {
-	const files = await collectSupportLogFiles(sources, logger);
-	const settings = collectSettingsFile(logger);
-	if (settings) {
-		files.set("vscode-logs/settings.json", settings);
+function newestLog(logs: CollectedFile[]): CollectedFile | undefined {
+	let newest: CollectedFile | undefined;
+	for (const log of logs) {
+		if (
+			!newest ||
+			log.mtimeMs > newest.mtimeMs ||
+			// Locale-stable tie-break (not localeCompare).
+			(log.mtimeMs === newest.mtimeMs && log.relativePath > newest.relativePath)
+		) {
+			newest = log;
+		}
 	}
-	return files;
+	return newest;
 }

@@ -5,6 +5,7 @@ import axios, {
 	type AxiosResponse,
 	type InternalAxiosRequestConfig,
 } from "axios";
+import * as fs from "node:fs/promises";
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
@@ -458,6 +459,15 @@ export function createMockLogger(): Logger {
 		error: vi.fn(),
 		show: vi.fn(),
 	};
+}
+
+/**
+ * Backdate a file's atime/mtime by `daysAgo` days so tests can exercise the
+ * support-bundle age cutoff without waiting.
+ */
+export async function setAge(filePath: string, daysAgo: number): Promise<void> {
+	const past = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+	await fs.utimes(filePath, past, past);
 }
 
 /**

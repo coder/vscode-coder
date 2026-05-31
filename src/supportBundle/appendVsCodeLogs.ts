@@ -14,34 +14,9 @@ export type { LogSources } from "./logFiles";
 const unzipAsync = promisify(unzip);
 const zipAsync = promisify(zip);
 
-function vscodeBundlePath(zipPath: string): string {
-	const parsed = path.parse(zipPath);
-	return path.join(
-		parsed.dir,
-		`${parsed.name}-vscode-${randomUUID().slice(0, 8)}${parsed.ext}`,
-	);
-}
-
-async function writeBundleWithDiagnostics(
-	zipPath: string,
-	outputPath: string,
-	diagnosticFiles: Map<string, Uint8Array>,
-): Promise<void> {
-	const sourceMode = (await fs.stat(zipPath)).mode & 0o777;
-	const entries: Zippable = await unzipAsync(await fs.readFile(zipPath));
-
-	for (const [name, data] of diagnosticFiles) {
-		entries[name] = data;
-	}
-
-	// Set mode at create time: no umask window, no separate chmod that
-	// could fail on filesystems that don't honor mode bits.
-	await fs.writeFile(outputPath, await zipAsync(entries), { mode: sourceMode });
-}
-
 /**
- * Best-effort: append VS Code logs to a support bundle zip.
- * Uses atomic rename to avoid corrupting the original bundle on failure.
+ * Best-effort: append VS Code logs to the bundle zip, swapped in by atomic
+ * rename so a failure leaves the original intact.
  */
 export async function appendVsCodeLogs(
 	zipPath: string,
@@ -72,6 +47,7 @@ export async function appendVsCodeLogs(
 				error,
 			);
 
+			// Write-failure path only: success and failed-rename both keep the file.
 			try {
 				await fs.rm(outputBundlePath, { force: true });
 			} catch (cleanupError) {
@@ -95,4 +71,28 @@ export async function appendVsCodeLogs(
 		// Best-effort: never let a failure here lose the user's bundle.
 		logger.error("Unexpected error appending VS Code diagnostics", error);
 	}
+}
+
+function vscodeBundlePath(zipPath: string): string {
+	const parsed = path.parse(zipPath);
+	return path.join(
+		parsed.dir,
+		`${parsed.name}-vscode-${randomUUID().slice(0, 8)}${parsed.ext}`,
+	);
+}
+
+async function writeBundleWithDiagnostics(
+	zipPath: string,
+	outputPath: string,
+	diagnosticFiles: Map<string, Uint8Array>,
+): Promise<void> {
+	const sourceMode = (await fs.stat(zipPath)).mode & 0o777;
+	const entries: Zippable = await unzipAsync(await fs.readFile(zipPath));
+
+	for (const [name, data] of diagnosticFiles) {
+		entries[name] = data;
+	}
+
+	// Set mode at create time: avoids a umask window and a fallible chmod.
+	await fs.writeFile(outputPath, await zipAsync(entries), { mode: sourceMode });
 }

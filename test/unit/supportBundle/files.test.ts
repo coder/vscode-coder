@@ -13,7 +13,7 @@ import {
 	readLogFile,
 } from "@/supportBundle/files";
 
-import { createMockLogger } from "../../mocks/testHelpers";
+import { createMockLogger, setAge } from "../../mocks/testHelpers";
 
 let tmpDir: string;
 const logger = createMockLogger();
@@ -25,11 +25,6 @@ beforeEach(async () => {
 afterEach(async () => {
 	await fs.rm(tmpDir, { recursive: true, force: true });
 });
-
-async function setAge(filePath: string, daysAgo: number): Promise<void> {
-	const past = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
-	await fs.utimes(filePath, past, past);
-}
 
 describe("support bundle file helpers", () => {
 	it("normalizes zip paths and identifies log files", () => {
