@@ -6,6 +6,7 @@ import {
 	isRemoteSshExtensionDir,
 	isSharedChannelRemoteSshLog,
 } from "../remote/sshExtension";
+import { isTelemetryJsonlFileName } from "../telemetry/fileNames";
 
 import {
 	addFiles,
@@ -129,7 +130,12 @@ async function collectTelemetryFiles(
 ): Promise<Map<string, Uint8Array>> {
 	return prefixFiles(
 		"vscode-logs/telemetry",
-		await collectDirFiles(telemetryDir, logger, isTelemetryJsonlFile, false),
+		await collectDirFiles(
+			telemetryDir,
+			logger,
+			isTelemetryJsonlFileName,
+			false,
+		),
 	);
 }
 
@@ -252,9 +258,6 @@ async function collectVsCodeWindowLogs(
 // Coder CLI logs: `coder-ssh-*.log` or bare `<pid>.log`.
 const isProxyLogFile = (name: string): boolean =>
 	isLogFile(name) && (name.startsWith("coder-ssh") || /^\d+\.log$/.test(name));
-
-const isTelemetryJsonlFile = (name: string): boolean =>
-	/^telemetry-\d{4}-\d{2}-\d{2}-[^.]+(?:\.\d+)?\.jsonl$/.test(name);
 
 function isRemoteSshLog(relativePath: string, fileName: string): boolean {
 	if (!isLogFile(fileName)) {

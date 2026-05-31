@@ -12,14 +12,16 @@ import {
 	cleanupFiles,
 	type FileCleanupCandidate,
 } from "../../util/fileCleanup";
+import {
+	formatTelemetryJsonlFileName,
+	isTelemetryJsonlFileName,
+} from "../fileNames";
 import { serializeTelemetryEventLine } from "../wireFormat";
 
 import type { Logger } from "../../logging/logger";
 import type { TelemetryEvent, TelemetryLevel, TelemetrySink } from "../event";
 
 const SINK_NAME = "local-jsonl";
-const FILE_PREFIX = "telemetry-";
-const FILE_SUFFIX = ".jsonl";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface LocalJsonlSinkOptions {
@@ -235,10 +237,9 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	}
 
 	#segmentPath(file: { date: string; segment: number }): string {
-		const seg = file.segment > 0 ? `.${file.segment}` : "";
 		return path.join(
 			this.#baseDir,
-			`${FILE_PREFIX}${file.date}-${this.#sessionSlug}${seg}${FILE_SUFFIX}`,
+			formatTelemetryJsonlFileName(file.date, this.#sessionSlug, file.segment),
 		);
 	}
 
@@ -248,9 +249,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		await cleanupFiles(this.#baseDir, this.#logger, {
 			label: "telemetry file",
 			filter: (name) =>
-				name.startsWith(FILE_PREFIX) &&
-				name.endsWith(FILE_SUFFIX) &&
-				!name.includes(sessionMarker),
+				isTelemetryJsonlFileName(name) && !name.includes(sessionMarker),
 			select: selectByAgeAndSize(
 				this.#config.maxAgeDays * MS_PER_DAY,
 				this.#config.maxTotalBytes,
