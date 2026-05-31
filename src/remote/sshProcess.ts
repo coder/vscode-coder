@@ -8,6 +8,10 @@ import { findPort } from "../util";
 import { cleanupFiles } from "../util/fileCleanup";
 
 import { NetworkStatusReporter } from "./networkStatus";
+import {
+	isOutputLoggingDir,
+	isSharedChannelRemoteSshLog,
+} from "./sshExtension";
 
 import type { Logger } from "../logging/logger";
 import type { TelemetryReporter } from "../telemetry/reporter";
@@ -514,7 +518,7 @@ async function findRemoteSshLogPath(
 	try {
 		const dirs = await fs.readdir(logsParentDir);
 		const outputDirs = dirs
-			.filter((d) => d.startsWith("output_logging_"))
+			.filter(isOutputLoggingDir)
 			.sort((a, b) => a.localeCompare(b))
 			.reverse();
 
@@ -541,6 +545,6 @@ async function findRemoteSshLogPath(
 
 async function findSshLogInDir(dirPath: string): Promise<string | undefined> {
 	const files = await fs.readdir(dirPath);
-	const remoteSshLog = files.find((f) => f.includes("Remote - SSH"));
+	const remoteSshLog = files.find(isSharedChannelRemoteSshLog);
 	return remoteSshLog ? path.join(dirPath, remoteSshLog) : undefined;
 }

@@ -11,7 +11,6 @@ import {
 	workspaceStatusLabel,
 } from "./api/api-helper";
 import * as cliExec from "./core/cliExec";
-import { appendVsCodeLogs } from "./core/supportBundleLogs";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
 import { type FeatureSet, featureSetForVersion } from "./featureSet";
@@ -26,6 +25,7 @@ import {
 	applySettingOverrides,
 } from "./remote/sshOverrides";
 import { resolveCliAuth } from "./settings/cli";
+import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
 import { toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";
@@ -304,7 +304,7 @@ export class Commands {
 				await appendVsCodeLogs(
 					outputUri.fsPath,
 					{
-						remoteSshLogPath: this.workspaceLogPath,
+						activeProxyLogPath: this.workspaceLogPath,
 						proxyLogDir: this.pathResolver.getProxyLogPath(),
 						extensionLogDir: this.pathResolver.getCodeLogDir(),
 					},
