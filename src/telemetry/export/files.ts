@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 
 import { toError } from "../../error/errorUtils";
-import { parseTelemetryJsonlFileName } from "../localJsonlFiles";
+import * as localJsonlFiles from "../localJsonlFiles";
 import {
 	parseTelemetryEventLine,
 	TelemetryFileParseError,
@@ -100,7 +100,7 @@ function parseLogFilename(
 	dir: string,
 	name: string,
 ): TelemetryLogFile | undefined {
-	const parsed = parseTelemetryJsonlFileName(name);
+	const parsed = localJsonlFiles.parseFileName(name);
 	if (!parsed) {
 		return undefined;
 	}

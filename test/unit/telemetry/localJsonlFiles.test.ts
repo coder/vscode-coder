@@ -1,34 +1,28 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	formatTelemetryJsonlFileName,
-	isTelemetryJsonlFileName,
-	parseTelemetryJsonlFileName,
-} from "@/telemetry/localJsonlFiles";
+import * as localJsonlFiles from "@/telemetry/localJsonlFiles";
 
-describe("local JSONL telemetry filenames", () => {
-	it.each([
-		{
-			name: "telemetry-2026-05-12-aaaaaaaa.jsonl",
-			expected: { date: "2026-05-12", session: "aaaaaaaa", part: 0 },
-		},
-		{
-			name: "telemetry-2026-05-12-aaaaaaaa.12.jsonl",
-			expected: { date: "2026-05-12", session: "aaaaaaaa", part: 12 },
-		},
-	])("parses $name", ({ name, expected }) => {
-		expect(parseTelemetryJsonlFileName(name)).toEqual(expected);
-		expect(isTelemetryJsonlFileName(name)).toBe(true);
-	});
+const parsedFileNameCases = [
+	[
+		"telemetry-2026-05-12-aaaaaaaa.jsonl",
+		{ date: "2026-05-12", session: "aaaaaaaa", part: 0 },
+	],
+	[
+		"telemetry-2026-05-12-aaaaaaaa.12.jsonl",
+		{ date: "2026-05-12", session: "aaaaaaaa", part: 12 },
+	],
+] as const;
 
-	it.each([
-		"notes.jsonl",
-		"telemetry-2026-05-12-aaaaaaaa.json",
-		"telemetry-2026-05-12-aaaaaaaa.bad.jsonl",
-		"telemetry-2026-05-12.jsonl",
-	])("rejects %s", (name) => {
-		expect(parseTelemetryJsonlFileName(name)).toBeUndefined();
-		expect(isTelemetryJsonlFileName(name)).toBe(false);
+const invalidFileNames = [
+	"notes.jsonl",
+	"telemetry-2026-05-12-aaaaaaaa.json",
+	"telemetry-2026-05-12-aaaaaaaa.bad.jsonl",
+	"telemetry-2026-05-12.jsonl",
+] as const;
+
+describe("localJsonlFiles", () => {
+	it.each(parsedFileNameCases)("parses %s", (name, expected) => {
+		expect(localJsonlFiles.parseFileName(name)).toEqual(expected);
 	});
 
 	it.each([
@@ -40,7 +34,19 @@ describe("local JSONL telemetry filenames", () => {
 		],
 		["2026-05-12", "aaaaaaaa", 0, "telemetry-2026-05-12-aaaaaaaa.jsonl"],
 		["2026-05-12", "aaaaaaaa", 2, "telemetry-2026-05-12-aaaaaaaa.2.jsonl"],
-	] as const)("formats part %s %s %s", (date, session, part, expected) => {
-		expect(formatTelemetryJsonlFileName(date, session, part)).toBe(expected);
+	] as const)("formats %s %s part %s", (date, session, part, expected) => {
+		expect(localJsonlFiles.formatFileName(date, session, part)).toBe(expected);
+	});
+
+	it.each(parsedFileNameCases.map(([name]) => [name] as const))(
+		"matches %s",
+		(name) => {
+			expect(localJsonlFiles.isFileName(name)).toBe(true);
+		},
+	);
+
+	it.each(invalidFileNames)("rejects %s", (name) => {
+		expect(localJsonlFiles.parseFileName(name)).toBeUndefined();
+		expect(localJsonlFiles.isFileName(name)).toBe(false);
 	});
 });

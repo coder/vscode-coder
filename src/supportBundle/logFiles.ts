@@ -6,7 +6,7 @@ import {
 	isRemoteSshExtensionDir,
 	isSharedChannelRemoteSshLog,
 } from "../remote/sshExtension";
-import { isTelemetryJsonlFileName } from "../telemetry/localJsonlFiles";
+import * as localJsonlFiles from "../telemetry/localJsonlFiles";
 
 import {
 	addFiles,
@@ -133,7 +133,7 @@ async function collectTelemetryFiles(
 		await collectDirFiles(
 			telemetryDir,
 			logger,
-			isTelemetryJsonlFileName,
+			localJsonlFiles.isFileName,
 			false,
 		),
 	);

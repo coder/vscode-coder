@@ -12,10 +12,7 @@ import {
 	cleanupFiles,
 	type FileCleanupCandidate,
 } from "../../util/fileCleanup";
-import {
-	formatTelemetryJsonlFileName,
-	isTelemetryJsonlFileName,
-} from "../localJsonlFiles";
+import * as localJsonlFiles from "../localJsonlFiles";
 import { serializeTelemetryEventLine } from "../wireFormat";
 
 import type { Logger } from "../../logging/logger";
@@ -239,7 +236,11 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	#segmentPath(file: { date: string; segment: number }): string {
 		return path.join(
 			this.#baseDir,
-			formatTelemetryJsonlFileName(file.date, this.#sessionSlug, file.segment),
+			localJsonlFiles.formatFileName(
+				file.date,
+				this.#sessionSlug,
+				file.segment,
+			),
 		);
 	}
 
@@ -249,7 +250,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		await cleanupFiles(this.#baseDir, this.#logger, {
 			label: "telemetry file",
 			filter: (name) =>
-				isTelemetryJsonlFileName(name) && !name.includes(sessionMarker),
+				localJsonlFiles.isFileName(name) && !name.includes(sessionMarker),
 			select: selectByAgeAndSize(
 				this.#config.maxAgeDays * MS_PER_DAY,
 				this.#config.maxTotalBytes,
