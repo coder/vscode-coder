@@ -23,3 +23,10 @@ export const getErrorDetail = (error: unknown): string | undefined | null => {
 export function toError(value: unknown, defaultMsg?: string): Error {
 	return baseToError(value, defaultMsg, util.inspect);
 }
+
+/** Wrap `cause` as `Failed to <verb> <target>: <cause.message>`, preserving the chain. */
+export function wrapError(verb: string, target: string, cause: unknown): Error {
+	return new Error(`Failed to ${verb} ${target}: ${toError(cause).message}`, {
+		cause,
+	});
+}

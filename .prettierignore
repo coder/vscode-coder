@@ -10,3 +10,6 @@ flake.lock
 pnpm-debug.log
 pnpm-lock.yaml
 /storybook-static/
+
+# Golden snapshots are written verbatim; prettier would drift them out of sync.
+**/__golden__/

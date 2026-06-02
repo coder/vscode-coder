@@ -1,0 +1,214 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "coder-vscode-extension"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "1.14.5"
+            }
+          },
+          {
+            "key": "service.instance.id",
+            "value": {
+              "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+            }
+          },
+          {
+            "key": "host.id",
+            "value": {
+              "stringValue": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+            }
+          },
+          {
+            "key": "host.arch",
+            "value": {
+              "stringValue": "arm64"
+            }
+          },
+          {
+            "key": "os.type",
+            "value": {
+              "stringValue": "Darwin"
+            }
+          },
+          {
+            "key": "os.version",
+            "value": {
+              "stringValue": "24.5.0"
+            }
+          },
+          {
+            "key": "vscode.platform.name",
+            "value": {
+              "stringValue": "Visual Studio Code"
+            }
+          },
+          {
+            "key": "vscode.platform.version",
+            "value": {
+              "stringValue": "1.96.2"
+            }
+          },
+          {
+            "key": "coder.deployment.url",
+            "value": {
+              "stringValue": "https://dev.coder.com"
+            }
+          }
+        ]
+      },
+      "schemaUrl": "https://opentelemetry.io/schemas/1.24.0",
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "coder.vscode-coder.telemetry.export",
+            "version": "1.14.5"
+          },
+          "schemaUrl": "https://opentelemetry.io/schemas/1.24.0",
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "00f067aa0ba902b7",
+              "name": "remote.setup.workspace_ready",
+              "kind": 1,
+              "startTimeUnixNano": "1777918320581000000",
+              "endTimeUnixNano": "1777918329004000000",
+              "attributes": [
+                {
+                  "key": "result",
+                  "value": {
+                    "stringValue": "success"
+                  }
+                },
+                {
+                  "key": "retries",
+                  "value": {
+                    "doubleValue": 0
+                  }
+                },
+                {
+                  "key": "coder.event_name",
+                  "value": {
+                    "stringValue": "remote.setup.workspace_ready"
+                  }
+                },
+                {
+                  "key": "coder.event.extension_version",
+                  "value": {
+                    "stringValue": "1.14.5"
+                  }
+                },
+                {
+                  "key": "coder.event.session_id",
+                  "value": {
+                    "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                  }
+                },
+                {
+                  "key": "coder.event.deployment_url",
+                  "value": {
+                    "stringValue": "https://dev.coder.com"
+                  }
+                }
+              ],
+              "status": {
+                "code": 1
+              }
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "b7ad6b7169203331",
+              "parentSpanId": "00f067aa0ba902b7",
+              "name": "remote.ssh.connect",
+              "kind": 1,
+              "startTimeUnixNano": "1777918329004000000",
+              "endTimeUnixNano": "1777918332560000000",
+              "attributes": [
+                {
+                  "key": "result",
+                  "value": {
+                    "stringValue": "error"
+                  }
+                },
+                {
+                  "key": "host",
+                  "value": {
+                    "stringValue": "coder.frontend-dev"
+                  }
+                },
+                {
+                  "key": "attempts",
+                  "value": {
+                    "doubleValue": 4
+                  }
+                },
+                {
+                  "key": "coder.event_name",
+                  "value": {
+                    "stringValue": "remote.ssh.connect"
+                  }
+                },
+                {
+                  "key": "coder.event.extension_version",
+                  "value": {
+                    "stringValue": "1.14.5"
+                  }
+                },
+                {
+                  "key": "coder.event.session_id",
+                  "value": {
+                    "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+                  }
+                },
+                {
+                  "key": "coder.event.deployment_url",
+                  "value": {
+                    "stringValue": "https://dev.coder.com"
+                  }
+                }
+              ],
+              "status": {
+                "code": 2,
+                "message": "dial tcp 100.64.0.7:22: i/o timeout"
+              },
+              "events": [
+                {
+                  "name": "exception",
+                  "timeUnixNano": "1777918332560000000",
+                  "attributes": [
+                    {
+                      "key": "exception.message",
+                      "value": {
+                        "stringValue": "dial tcp 100.64.0.7:22: i/o timeout"
+                      }
+                    },
+                    {
+                      "key": "exception.type",
+                      "value": {
+                        "stringValue": "Error"
+                      }
+                    },
+                    {
+                      "key": "exception.code",
+                      "value": {
+                        "stringValue": "ETIMEDOUT"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

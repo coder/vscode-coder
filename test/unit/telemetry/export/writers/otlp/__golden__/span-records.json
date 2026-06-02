@@ -1,0 +1,134 @@
+[
+  {
+    "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "spanId": "00f067aa0ba902b7",
+    "name": "remote.setup.workspace_ready",
+    "kind": 1,
+    "startTimeUnixNano": "1777918320581000000",
+    "endTimeUnixNano": "1777918329004000000",
+    "attributes": [
+      {
+        "key": "result",
+        "value": {
+          "stringValue": "success"
+        }
+      },
+      {
+        "key": "retries",
+        "value": {
+          "doubleValue": 0
+        }
+      },
+      {
+        "key": "coder.event_name",
+        "value": {
+          "stringValue": "remote.setup.workspace_ready"
+        }
+      },
+      {
+        "key": "coder.event.extension_version",
+        "value": {
+          "stringValue": "1.14.5"
+        }
+      },
+      {
+        "key": "coder.event.session_id",
+        "value": {
+          "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        }
+      },
+      {
+        "key": "coder.event.deployment_url",
+        "value": {
+          "stringValue": "https://dev.coder.com"
+        }
+      }
+    ],
+    "status": {
+      "code": 1
+    }
+  },
+  {
+    "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "spanId": "b7ad6b7169203331",
+    "parentSpanId": "00f067aa0ba902b7",
+    "name": "remote.ssh.connect",
+    "kind": 1,
+    "startTimeUnixNano": "1777918329004000000",
+    "endTimeUnixNano": "1777918332560000000",
+    "attributes": [
+      {
+        "key": "result",
+        "value": {
+          "stringValue": "error"
+        }
+      },
+      {
+        "key": "host",
+        "value": {
+          "stringValue": "coder.frontend-dev"
+        }
+      },
+      {
+        "key": "attempts",
+        "value": {
+          "doubleValue": 4
+        }
+      },
+      {
+        "key": "coder.event_name",
+        "value": {
+          "stringValue": "remote.ssh.connect"
+        }
+      },
+      {
+        "key": "coder.event.extension_version",
+        "value": {
+          "stringValue": "1.14.5"
+        }
+      },
+      {
+        "key": "coder.event.session_id",
+        "value": {
+          "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        }
+      },
+      {
+        "key": "coder.event.deployment_url",
+        "value": {
+          "stringValue": "https://dev.coder.com"
+        }
+      }
+    ],
+    "status": {
+      "code": 2,
+      "message": "dial tcp 100.64.0.7:22: i/o timeout"
+    },
+    "events": [
+      {
+        "name": "exception",
+        "timeUnixNano": "1777918332560000000",
+        "attributes": [
+          {
+            "key": "exception.message",
+            "value": {
+              "stringValue": "dial tcp 100.64.0.7:22: i/o timeout"
+            }
+          },
+          {
+            "key": "exception.type",
+            "value": {
+              "stringValue": "Error"
+            }
+          },
+          {
+            "key": "exception.code",
+            "value": {
+              "stringValue": "ETIMEDOUT"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]
