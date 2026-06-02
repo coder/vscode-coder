@@ -35,12 +35,16 @@ jobs:
       matrix:
         # Minimum supported version: VS Code 1.105 (Sept 2025) -> Electron 37 -> Node 22
         # See https://github.com/ewanharris/vscode-versions for version mapping.
-        # Older Electron stays Linux-only; "latest" smoke-tests Windows + macOS too.
+        # Newer Electron is pinned (not "latest"): 42.3.1+ breaks the oxc transform on macOS arm64.
         include:
           - { os: ubuntu-24.04, name: Linux, electron-version: "37" }
-          - { os: ubuntu-24.04, name: Linux, electron-version: "latest" }
-          - { os: windows-2025, name: Windows, electron-version: "latest" }
-          - { os: macos-15, name: macOS, electron-version: "latest" }
+          - { os: ubuntu-24.04, name: Linux, electron-version: "42.3.0" }
+          - {
+              os: windows-2025-vs2026,
+              name: Windows,
+              electron-version: "42.3.0",
+            }
+          - { os: macos-15, name: macOS, electron-version: "42.3.0" }
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -62,7 +66,7 @@ jobs:
         include:
           - { os: ubuntu-24.04, name: Linux, vscode-version: "1.105.0" }
           - { os: ubuntu-24.04, name: Linux, vscode-version: "stable" }
-          - { os: windows-2025, name: Windows, vscode-version: "stable" }
+          - { os: windows-2025-vs2026, name: Windows, vscode-version: "stable" }
           - { os: macos-15, name: macOS, vscode-version: "stable" }
 
     steps:
@@ -94,7 +98,7 @@ jobs:
       # PR builds gate on visual review; mainline auto-accepts.
       - name: Publish to Chromatic (non-mainline)
         if: github.ref != 'refs/heads/main' && github.repository_owner == 'coder'
-        uses: chromaui/action@1bbb5819252d9782cb7d77122d9becae467def18 # v16.10.1
+        uses: chromaui/action@d92ea1ce501f70e8c34745b2c7888648150a368a # v17.2.0
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           STORYBOOK: true
@@ -110,7 +114,7 @@ jobs:
       # Auto-accept on mainline to avoid blocking CI after squash merges.
       - name: Publish to Chromatic (mainline)
         if: github.ref == 'refs/heads/main' && github.repository_owner == 'coder'
-        uses: chromaui/action@1bbb5819252d9782cb7d77122d9becae467def18 # v16.10.1
+        uses: chromaui/action@d92ea1ce501f70e8c34745b2c7888648150a368a # v17.2.0
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           STORYBOOK: true
