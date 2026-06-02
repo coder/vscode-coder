@@ -3,15 +3,15 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
-import { toError } from "../../error/errorUtils";
+import { throwIfAborted, toError } from "../../error/errorUtils";
 import { withCancellableProgress } from "../../progress";
+import { toUtcDateString, validateUtcDateInput } from "../../util/date";
 
 import { listTelemetryFilesForRange, streamTelemetryEvents } from "./files";
 import {
 	TELEMETRY_RANGE_PRESETS,
 	createCustomDateRange,
 	createPresetDateRange,
-	validateUtcDateInput,
 	type TelemetryDateRange,
 	type TelemetryRangePresetId,
 } from "./range";
@@ -77,14 +77,14 @@ export async function runExportTelemetryCommand(
 	const outputUri = await promptSavePath(range, format.id);
 	if (!outputUri) return;
 
-	const onCleanupError = cleanupWarner(
-		logger,
-		"Failed to delete telemetry export temp file",
-	);
-	const onStagingCleanupError = cleanupWarner(
-		logger,
-		"Failed to delete telemetry export staging directory",
-	);
+	const onCleanupError = (err: unknown, target: string) =>
+		logger.warn("Failed to delete telemetry export temp file", target, err);
+	const onStagingCleanupError = (err: unknown, target: string) =>
+		logger.warn(
+			"Failed to delete telemetry export staging directory",
+			target,
+			err,
+		);
 
 	// Flush + list run inside the progress callback so the on-disk snapshot
 	// is taken right before streaming and the user can cancel a long flush.
@@ -160,13 +160,6 @@ export async function runExportTelemetryCommand(
 	await notifyExportSuccess(outputUri, eventCount, logger);
 }
 
-function cleanupWarner(
-	logger: Logger,
-	message: string,
-): (err: unknown, target: string) => void {
-	return (err, target) => logger.warn(message, target, err);
-}
-
 async function notifyExportSuccess(
 	outputUri: vscode.Uri,
 	eventCount: number,
@@ -180,7 +173,6 @@ async function notifyExportSuccess(
 	try {
 		await vscode.commands.executeCommand("revealFileInOS", outputUri);
 	} catch (err) {
-		// The export already succeeded; a reveal failure is informational.
 		logger.warn("Failed to reveal exported telemetry file", err);
 	}
 }
@@ -206,14 +198,6 @@ async function notifyNoEventsMatched(
 	);
 }
 
-function throwIfAborted(signal: AbortSignal): void {
-	if (!signal.aborted) return;
-	const reason: unknown = signal.reason;
-	throw reason instanceof Error
-		? reason
-		: Object.assign(new Error("Aborted"), { name: "AbortError" });
-}
-
 async function promptDateRange(): Promise<TelemetryDateRange | undefined> {
 	const pick = await vscode.window.showQuickPick(
 		[...TELEMETRY_RANGE_PRESETS, CUSTOM_RANGE_PICK],
@@ -231,7 +215,7 @@ async function promptDateRange(): Promise<TelemetryDateRange | undefined> {
 async function promptCustomDateRange(): Promise<
 	TelemetryDateRange | undefined
 > {
-	const todayUtc = new Date().toISOString().slice(0, 10);
+	const todayUtc = toUtcDateString(new Date());
 	const startDate = await vscode.window.showInputBox({
 		title: "Export Telemetry: Custom Start Date",
 		prompt: `Start date in UTC (YYYY-MM-DD). Today in UTC is ${todayUtc}; your local date may differ.`,

@@ -4,7 +4,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { isAbortError, toError, wrapError } from "../../../../error/errorUtils";
+import {
+	isAbortError,
+	throwIfAborted,
+	toError,
+	wrapError,
+} from "../../../../error/errorUtils";
 import { writeAtomically } from "../../../../util/fs";
 import { describeMetricEvent } from "../../metrics";
 
@@ -315,15 +320,5 @@ async function streamFileIntoZip(
 		entry.push(new Uint8Array(0), true);
 	} finally {
 		readStream.destroy();
-	}
-}
-
-/** Like AbortSignal.throwIfAborted() but coerces non-Error reasons to a named AbortError. */
-function throwIfAborted(signal: AbortSignal | undefined): void {
-	if (signal?.aborted) {
-		const reason: unknown = signal.reason;
-		throw reason instanceof Error
-			? reason
-			: Object.assign(new Error("Aborted"), { name: "AbortError" });
 	}
 }
