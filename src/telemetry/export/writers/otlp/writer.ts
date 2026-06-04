@@ -29,19 +29,13 @@ import {
 } from "./records";
 
 import type { TelemetryContext, TelemetryEvent } from "../../../event";
+import type { ExportWriteOptions } from "../types";
 
 /** Event totals by signal — a metric event with all records suppressed still counts as one. */
 export interface OtlpExportCounts {
 	readonly logs: number;
 	readonly traces: number;
 	readonly metrics: number;
-}
-
-export interface OtlpWriteOptions {
-	readonly signal?: AbortSignal;
-	readonly onTempCleanupError?: (err: unknown, tempPath: string) => void;
-	/** Fires on either success or failure path so cleanup errors never mask the export outcome. */
-	readonly onStagingCleanupError?: (err: unknown, dir: string) => void;
 }
 
 interface Channel {
@@ -63,7 +57,7 @@ export async function writeOtlpZipExport(
 	outputPath: string,
 	events: AsyncIterable<TelemetryEvent>,
 	context: TelemetryContext,
-	options: OtlpWriteOptions = {},
+	options: ExportWriteOptions = {},
 ): Promise<OtlpExportCounts> {
 	throwIfAborted(options.signal);
 	return writeAtomically(
@@ -82,18 +76,14 @@ export async function writeOtlpZipExport(
 				);
 				await packZip(zipPath, stagingDir, options.signal);
 			} catch (err) {
-				await safeRemove(stagingDir, options.onStagingCleanupError);
+				await safeRemove(stagingDir, options.onCleanupError);
 				throw err;
 			}
-			await safeRemove(stagingDir, options.onStagingCleanupError);
+			await safeRemove(stagingDir, options.onCleanupError);
 			return counts;
 		},
-		options.onTempCleanupError ?? swallowCleanupError,
+		options.onCleanupError,
 	);
-}
-
-function swallowCleanupError(): void {
-	/* Default: temp-cleanup errors from writeAtomically are silently dropped. */
 }
 
 async function safeRemove(

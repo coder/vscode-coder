@@ -7,16 +7,17 @@ import { serializeTelemetryEvent } from "../../wireFormat";
 
 import type { TelemetryEvent } from "../../event";
 
+import type { ExportWriteOptions } from "./types";
+
 /**
- * Streams `events` as a JSON array to `outputPath` via a temp file and
- * atomic rename. Returns the number of events written. `onCleanupError`
- * is invoked if removing the temp file after a failed write itself fails
- * (typically a Windows lock); callers are expected to log it.
+ * Streams `events` as a JSON array to `outputPath` via a temp file and atomic
+ * rename. Returns the number of events written; empty input writes a valid
+ * `[]`. `options.signal` is unused (callers cancel upstream of the stream).
  */
 export async function writeJsonArrayExport(
 	outputPath: string,
 	events: AsyncIterable<TelemetryEvent>,
-	onCleanupError: (err: unknown, tempPath: string) => void,
+	options: ExportWriteOptions = {},
 ): Promise<number> {
 	let count = 0;
 	async function* chunks(): AsyncGenerator<string> {
@@ -36,7 +37,7 @@ export async function writeJsonArrayExport(
 				createWriteStream(tempPath, { encoding: "utf8" }),
 			);
 		},
-		onCleanupError,
+		options.onCleanupError,
 	);
 	return count;
 }

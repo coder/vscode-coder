@@ -207,7 +207,7 @@ describe("writeOtlpZipExport", () => {
 		expect(metrics.records).toEqual([]);
 	});
 
-	it("reports staging cleanup failures via onStagingCleanupError instead of masking success", async () => {
+	it("reports staging cleanup failures via onCleanupError instead of masking success", async () => {
 		const fsPromises = await import("node:fs/promises");
 		const cleanupErrors: Array<{ err: unknown; dir: string }> = [];
 		const spy = vi
@@ -222,7 +222,7 @@ describe("writeOtlpZipExport", () => {
 				asyncIterable([makeEvent()]),
 				context,
 				{
-					onStagingCleanupError: (err, dir) => cleanupErrors.push({ err, dir }),
+					onCleanupError: (err, dir) => cleanupErrors.push({ err, dir }),
 				},
 			);
 
@@ -235,7 +235,7 @@ describe("writeOtlpZipExport", () => {
 		}
 	});
 
-	it("does not surface onStagingCleanupError throws to callers", async () => {
+	it("does not surface onCleanupError throws to callers", async () => {
 		const fsPromises = await import("node:fs/promises");
 		const spy = vi
 			.spyOn(fsPromises, "rm")
@@ -247,7 +247,7 @@ describe("writeOtlpZipExport", () => {
 				asyncIterable([makeEvent()]),
 				context,
 				{
-					onStagingCleanupError: () => {
+					onCleanupError: () => {
 						throw new Error("logger blew up");
 					},
 				},
