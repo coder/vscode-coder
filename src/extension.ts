@@ -321,6 +321,10 @@ async function doActivate(
 		void allWorkspacesProvider.fetchAndRefresh();
 	});
 	commandManager.register("coder.viewLogs", commands.viewLogs.bind(commands));
+	commandManager.register(
+		"coder.exportTelemetry",
+		commands.exportTelemetry.bind(commands),
+	);
 	commandManager.register("coder.searchMyWorkspaces", async () =>
 		showTreeViewSearch(MY_WORKSPACES_TREE_ID),
 	);

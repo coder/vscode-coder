@@ -58,13 +58,13 @@ export function tempFilePath(basePath: string, suffix: string): string {
  * Atomically writes to `outputPath` via a sibling temp file and rename.
  * The parent directory must already exist. On failure the destination is
  * left untouched, the temp file is best-effort removed, and the writer
- * error is always rethrown. `onCleanupError` receives any error from the
- * cleanup attempt; its own throws are swallowed.
+ * error is always rethrown. `onCleanupError`, if given, receives any error
+ * from the cleanup attempt; its own throws are swallowed.
  */
 export async function writeAtomically<T>(
 	outputPath: string,
 	write: (tempPath: string) => Promise<T>,
-	onCleanupError: (err: unknown, tempPath: string) => void,
+	onCleanupError?: (err: unknown, tempPath: string) => void,
 ): Promise<T> {
 	const tempPath = tempFilePath(outputPath, "temp");
 	try {
@@ -74,7 +74,7 @@ export async function writeAtomically<T>(
 	} catch (err) {
 		try {
 			await fs.rm(tempPath, { force: true }).catch((rmErr) => {
-				onCleanupError(rmErr, tempPath);
+				onCleanupError?.(rmErr, tempPath);
 			});
 		} catch {
 			// onCleanupError threw; the writer error below takes precedence.

@@ -1,0 +1,124 @@
+import * as vscode from "vscode";
+
+import { toError } from "../../error/errorUtils";
+import {
+	withCancellableProgress,
+	type ProgressContext,
+	type ProgressResult,
+} from "../../progress";
+
+import {
+	collectTelemetryExport,
+	type ExportRequest,
+	type ExportRuntime,
+} from "./pipeline";
+import { promptForExport, type ExportChoice } from "./prompts";
+import { createExportWriter } from "./writers";
+
+import type { Logger } from "../../logging/logger";
+import type { TelemetryContext } from "../event";
+
+const REVEAL_ACTION = "Reveal in File Explorer";
+
+const PROGRESS_OPTIONS = {
+	location: vscode.ProgressLocation.Notification,
+	title: "Exporting Coder telemetry",
+	cancellable: true,
+} as const;
+
+export async function runExportTelemetryCommand(
+	telemetryDir: string,
+	logger: Logger,
+	flushTelemetry: () => Promise<void>,
+	context: TelemetryContext,
+): Promise<void> {
+	const choice = await promptForExport();
+	if (!choice) {
+		return;
+	}
+
+	const request: ExportRequest = {
+		telemetryDir,
+		range: choice.range,
+		outputPath: choice.outputPath,
+		writer: createExportWriter(choice.format, context),
+	};
+	const result = await withCancellableProgress(
+		(ctx) =>
+			collectTelemetryExport(
+				request,
+				exportRuntime(ctx, flushTelemetry, logger),
+			),
+		PROGRESS_OPTIONS,
+	);
+
+	await reportOutcome(result, choice, logger);
+}
+
+/** Wires the pipeline's host hooks to the progress UI and the logger. */
+function exportRuntime(
+	{ progress, signal }: ProgressContext,
+	flushTelemetry: () => Promise<void>,
+	logger: Logger,
+): ExportRuntime {
+	return {
+		signal,
+		flushTelemetry,
+		report: (message) => progress.report({ message }),
+		onCleanupError: (err, target) =>
+			logger.warn("Failed to clean up after telemetry export", target, err),
+	};
+}
+
+/** Turns the export result into the matching user-facing notification. */
+async function reportOutcome(
+	result: ProgressResult<number>,
+	choice: ExportChoice,
+	logger: Logger,
+): Promise<void> {
+	if (!result.ok) {
+		if (result.cancelled) {
+			return;
+		}
+		logger.error("Telemetry export failed", result.error);
+		void vscode.window.showErrorMessage(
+			`Telemetry export failed: ${toError(result.error).message}`,
+		);
+		return;
+	}
+
+	const eventCount = result.value;
+	if (eventCount === 0) {
+		void vscode.window.showInformationMessage(
+			`No telemetry events found for ${choice.range.label}.`,
+		);
+		return;
+	}
+	await notifyExportSucceeded(choice.outputPath, eventCount, logger);
+}
+
+async function notifyExportSucceeded(
+	outputPath: string,
+	eventCount: number,
+	logger: Logger,
+): Promise<void> {
+	const action = await vscode.window.showInformationMessage(
+		`Exported ${formatEventCount(eventCount)} to ${outputPath}.`,
+		REVEAL_ACTION,
+	);
+	if (action !== REVEAL_ACTION) {
+		return;
+	}
+	try {
+		await vscode.commands.executeCommand(
+			"revealFileInOS",
+			vscode.Uri.file(outputPath),
+		);
+	} catch (err) {
+		logger.warn("Failed to reveal exported telemetry file", err);
+	}
+}
+
+function formatEventCount(count: number): string {
+	return `${count} telemetry ${count === 1 ? "event" : "events"}`;
+}

@@ -8,6 +8,7 @@ import {
 	readLocalSinkConfig,
 	type LocalSinkConfig,
 } from "../../settings/telemetry";
+import { DAY_MS, toUtcDateString } from "../../util/date";
 import {
 	cleanupFiles,
 	type FileCleanupCandidate,
@@ -19,7 +20,6 @@ import type { Logger } from "../../logging/logger";
 import type { TelemetryEvent, TelemetryLevel, TelemetrySink } from "../event";
 
 const SINK_NAME = "local-jsonl";
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface LocalJsonlSinkOptions {
 	baseDir: string;
@@ -214,7 +214,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	}
 
 	async #nextFile(payloadSize: number): Promise<CurrentFile> {
-		const today = todayUtc();
+		const today = toUtcDateString(new Date());
 		const seeded =
 			this.#current.date === today
 				? this.#current
@@ -252,7 +252,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 			filter: (name) =>
 				localJsonlFiles.isFileName(name) && !name.includes(sessionMarker),
 			select: selectByAgeAndSize(
-				this.#config.maxAgeDays * MS_PER_DAY,
+				this.#config.maxAgeDays * DAY_MS,
 				this.#config.maxTotalBytes,
 			),
 		});
@@ -296,10 +296,6 @@ async function statBytes(target: string, logger: Logger): Promise<number> {
 		}
 		return 0;
 	}
-}
-
-function todayUtc(): string {
-	return new Date().toISOString().slice(0, 10);
 }
 
 function warnIfBufferTooSmall(config: LocalSinkConfig, logger: Logger): void {

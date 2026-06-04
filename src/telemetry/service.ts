@@ -13,6 +13,7 @@ import {
 	type CallerProperties,
 	type CallerPropertyValue,
 	type SessionContext,
+	type TelemetryContext,
 	type TelemetryEvent,
 	type TelemetryLevel,
 	type TelemetrySink,
@@ -91,6 +92,11 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		this.#deploymentUrl = url;
 	}
 
+	/** Snapshot of the context every emitted event currently carries. */
+	public getContext(): TelemetryContext {
+		return { ...this.#session, deploymentUrl: this.#deploymentUrl };
+	}
+
 	public log(
 		eventName: string,
 		properties: CallerProperties = {},
@@ -149,6 +155,12 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 				traceId: newTraceId(),
 				traceLevel: this.#level,
 			},
+		);
+	}
+
+	public async flush(): Promise<void> {
+		await Promise.allSettled(
+			this.sinks.map((sink) => this.#safeCall(sink, "flush")),
 		);
 	}
 
@@ -352,7 +364,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 			eventName,
 			timestamp: new Date().toISOString(),
 			eventSequence: this.#nextSequence++,
-			context: { ...this.#session, deploymentUrl: this.#deploymentUrl },
+			context: this.getContext(),
 			properties: { ...properties },
 			measurements: { ...measurements },
 			...(traceId !== undefined && { traceId }),

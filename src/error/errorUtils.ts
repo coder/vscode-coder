@@ -8,6 +8,18 @@ export function isAbortError(error: unknown): error is Error {
 	return error instanceof Error && error.name === "AbortError";
 }
 
+/**
+ * Like AbortSignal.throwIfAborted() but coerces non-Error reasons (e.g. the
+ * default DOMException) to a named AbortError so isAbortError matches them.
+ */
+export function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (!signal?.aborted) return;
+	const reason: unknown = signal.reason;
+	throw reason instanceof Error
+		? reason
+		: Object.assign(new Error("Aborted"), { name: "AbortError" });
+}
+
 // getErrorDetail is copied from coder/site, but changes the default return.
 export const getErrorDetail = (error: unknown): string | undefined | null => {
 	if (isApiError(error)) {

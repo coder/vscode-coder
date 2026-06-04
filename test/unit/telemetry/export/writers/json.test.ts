@@ -23,7 +23,6 @@ beforeEach(() => {
 afterEach(() => vol.reset());
 
 const readOut = () => JSON.parse(vol.readFileSync(OUT, "utf8") as string);
-const noopCleanup = () => {};
 
 describe("writeJsonArrayExport", () => {
 	it("writes events in wire format and returns the count", async () => {
@@ -32,22 +31,14 @@ describe("writeJsonArrayExport", () => {
 			makeEvent({ eventName: "second", error: { message: "boom" } }),
 		];
 
-		const count = await writeJsonArrayExport(
-			OUT,
-			asyncIterable(events),
-			noopCleanup,
-		);
+		const count = await writeJsonArrayExport(OUT, asyncIterable(events));
 
 		expect(count).toBe(2);
 		expect(readOut()).toEqual(events.map(serializeTelemetryEvent));
 	});
 
 	it("writes a valid empty array for empty input", async () => {
-		const count = await writeJsonArrayExport(
-			OUT,
-			asyncIterable([]),
-			noopCleanup,
-		);
+		const count = await writeJsonArrayExport(OUT, asyncIterable([]));
 
 		expect(count).toBe(0);
 		expect(readOut()).toEqual([]);
@@ -61,9 +52,7 @@ describe("writeJsonArrayExport", () => {
 			throw new Error("boom");
 		})();
 
-		await expect(
-			writeJsonArrayExport(OUT, failing, noopCleanup),
-		).rejects.toThrow(/boom/);
+		await expect(writeJsonArrayExport(OUT, failing)).rejects.toThrow(/boom/);
 
 		expect(vol.readFileSync(OUT, "utf8")).toBe("previous");
 		expect(vol.readdirSync("/exports")).toEqual(["telemetry.json"]);

@@ -5,18 +5,9 @@ import {
 	createPresetDateRange,
 	isTimestampInRange,
 	fileDateCanContainRangeEvent,
-	validateUtcDateInput,
 } from "@/telemetry/export/range";
 
 describe("telemetry export ranges", () => {
-	it("validates exact UTC calendar dates", () => {
-		expect(validateUtcDateInput("2026-05-13")).toBeUndefined();
-		expect(validateUtcDateInput("2026-5-13")).toBe("Use YYYY-MM-DD.");
-		expect(validateUtcDateInput("2026-02-30")).toBe(
-			"Enter a valid calendar date.",
-		);
-	});
-
 	it("builds inclusive custom UTC day ranges", () => {
 		const range = createCustomDateRange("2026-05-12", "2026-05-13");
 

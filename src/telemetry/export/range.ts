@@ -1,7 +1,4 @@
-import { z } from "zod";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const UtcDateSchema = z.iso.date();
+import { DAY_MS, parseUtcDate, toUtcDateString } from "../../util/date";
 
 /**
  * Half-open UTC window `[startMs, endMs)` used to filter telemetry. Either
@@ -92,16 +89,6 @@ export function createCustomDateRange(
 	};
 }
 
-/** User-facing error string if `value` isn't a UTC date, else `undefined`. */
-export function validateUtcDateInput(value: string): string | undefined {
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-		return "Use YYYY-MM-DD.";
-	}
-	return UtcDateSchema.safeParse(value).success
-		? undefined
-		: "Enter a valid calendar date.";
-}
-
 /** Parses a telemetry ISO timestamp to epoch ms, throwing on unparseable input. */
 export function parseTelemetryTimestampMs(timestamp: string): number {
 	const ms = Date.parse(timestamp);
@@ -132,24 +119,15 @@ export function fileDateCanContainRangeEvent(
 	range: TelemetryDateRange,
 ): boolean {
 	const startDate =
-		range.startMs === undefined ? undefined : utcDateString(range.startMs);
+		range.startMs === undefined
+			? undefined
+			: toUtcDateString(new Date(range.startMs));
 	const endDate =
-		range.endMs === undefined ? undefined : utcDateString(range.endMs - 1);
+		range.endMs === undefined
+			? undefined
+			: toUtcDateString(new Date(range.endMs - 1));
 	return (
 		(startDate === undefined || date >= startDate) &&
 		(endDate === undefined || date <= endDate)
 	);
-}
-
-function parseUtcDate(value: string): number {
-	const error = validateUtcDateInput(value);
-	if (error !== undefined) {
-		throw new Error(`Invalid date '${value}': ${error}`);
-	}
-	const [y, m, d] = value.split("-").map(Number);
-	return Date.UTC(y, m - 1, d);
-}
-
-function utcDateString(ms: number): string {
-	return new Date(ms).toISOString().slice(0, 10);
 }

@@ -437,6 +437,11 @@
 				"icon": "$(list-unordered)"
 			},
 			{
+				"command": "coder.exportTelemetry",
+				"title": "Coder: Export Telemetry",
+				"icon": "$(save)"
+			},
+			{
 				"command": "coder.openAppStatus",
 				"title": "Open App Status",
 				"category": "Coder",
@@ -548,6 +553,10 @@
 				},
 				{
 					"command": "coder.viewLogs",
+					"when": "true"
+				},
+				{
+					"command": "coder.exportTelemetry",
 					"when": "true"
 				},
 				{
