@@ -36,8 +36,9 @@ interface CurrentFile {
  * Writes telemetry events as JSON Lines. Each VS Code session writes its
  * own files (`telemetry-YYYY-MM-DD-{sessionId8}.jsonl` plus `.N.jsonl` size
  * segments), so concurrent windows cannot race on appends or rotation.
- * `write` is sync and never throws; disk I/O happens in `flush` and
- * `dispose` and catches errors. Tunables come from `coder.telemetry.local`
+ * `write` is sync and never throws. Disk I/O happens in `flush`/`dispose`;
+ * a failed flush rejects so awaited callers (the export) can react, while
+ * background flushes ignore it. Tunables come from `coder.telemetry.local`
  * and update reactively.
  */
 export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
@@ -96,7 +97,9 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		this.#buffer.push(line);
 		this.#enforceBufferLimit();
 		if (this.#buffer.length >= this.#config.flushBatchSize) {
-			void this.flush();
+			void this.flush().catch(() => {
+				// Background flush; failures are logged in #doFlush.
+			});
 		}
 	}
 
@@ -127,7 +130,9 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 			clearTimeout(this.#flushTimer);
 			this.#flushTimer = null;
 		}
-		await this.flush();
+		await this.flush().catch(() => {
+			// Failure already logged in #doFlush; dispose is best-effort.
+		});
 	}
 
 	#enforceBufferLimit(): void {
@@ -181,7 +186,11 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 			return;
 		}
 		this.#flushTimer = setTimeout(() => {
-			void this.flush().finally(() => this.#scheduleNextFlush());
+			void this.flush()
+				.catch(() => {
+					// Background flush; failures are logged in #doFlush.
+				})
+				.finally(() => this.#scheduleNextFlush());
 		}, this.#config.flushIntervalMs);
 	}
 
@@ -203,6 +212,8 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 				`Telemetry sink '${this.name}' flush failed, ${lines.length} event(s) discarded`,
 				err,
 			);
+			// Surface to awaited callers (the export) so they can warn.
+			throw err;
 		}
 	}
 

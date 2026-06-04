@@ -7,6 +7,7 @@ import {
 	type TelemetrySink,
 } from "@/telemetry/event";
 import { TelemetryService } from "@/telemetry/service";
+import { CURRENT_TELEMETRY_SCHEMA_VERSION } from "@/telemetry/wireFormat";
 
 import { createMockLogger, MockConfigurationProvider } from "./testHelpers";
 
@@ -86,6 +87,7 @@ export function createTelemetryEventFactory(): (
 			eventName: "test.event",
 			timestamp: "2026-05-04T12:00:00.000Z",
 			eventSequence: seq,
+			schemaVersion: CURRENT_TELEMETRY_SCHEMA_VERSION,
 			context: {
 				extensionVersion: "1.14.5",
 				machineId: "machine-id",

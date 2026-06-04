@@ -20,6 +20,7 @@ import {
 } from "./event";
 import { newSpanId, newTraceId } from "./ids";
 import { NOOP_SPAN, type Span, type SpanResult } from "./span";
+import { CURRENT_TELEMETRY_SCHEMA_VERSION } from "./wireFormat";
 
 import type { TelemetryReporter } from "./reporter";
 
@@ -51,6 +52,18 @@ interface SpanOptions {
 
 interface EmitOptions extends Partial<SpanOptions> {
 	error?: unknown;
+}
+
+/** Per-sink flush outcome. */
+export interface SinkFlushResult {
+	readonly name: string;
+	readonly ok: boolean;
+}
+
+/** Structured result of flushing all sinks; `ok` is true only if all flushed. */
+export interface FlushStatus {
+	readonly ok: boolean;
+	readonly sinks: readonly SinkFlushResult[];
 }
 
 /**
@@ -158,19 +171,28 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		);
 	}
 
-	public async flush(): Promise<void> {
-		await Promise.allSettled(
-			this.sinks.map((sink) => this.#safeCall(sink, "flush")),
+	public async flush(): Promise<FlushStatus> {
+		const sinks = await Promise.all(
+			this.sinks.map(async (sink) => ({
+				name: sink.name,
+				ok: await this.#flushSink(sink),
+			})),
 		);
+		return { ok: sinks.every((s) => s.ok), sinks };
 	}
 
 	public async dispose(): Promise<void> {
 		this.#configWatcher.dispose();
-		await Promise.allSettled(
-			this.sinks.map(async (sink) => {
-				await this.#safeCall(sink, "flush");
-				await this.#safeCall(sink, "dispose");
-			}),
+		await this.flush();
+		await Promise.allSettled(this.sinks.map((sink) => this.#disposeSink(sink)));
+	}
+
+	#flushSink(sink: TelemetrySink): Promise<boolean> {
+		// The sink logs its own flush failure with detail; we only need the
+		// outcome for FlushStatus.
+		return sink.flush().then(
+			() => true,
+			() => false,
 		);
 	}
 
@@ -364,6 +386,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 			eventName,
 			timestamp: new Date().toISOString(),
 			eventSequence: this.#nextSequence++,
+			schemaVersion: CURRENT_TELEMETRY_SCHEMA_VERSION,
 			context: this.getContext(),
 			properties: { ...properties },
 			measurements: { ...measurements },
@@ -393,20 +416,15 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		}
 		this.#level = newLevel;
 		if (newLevel === "off") {
-			await Promise.allSettled(
-				this.sinks.map((sink) => this.#safeCall(sink, "flush")),
-			);
+			await this.flush();
 		}
 	}
 
-	async #safeCall(
-		sink: TelemetrySink,
-		action: "flush" | "dispose",
-	): Promise<void> {
+	async #disposeSink(sink: TelemetrySink): Promise<void> {
 		try {
-			await sink[action]();
+			await sink.dispose();
 		} catch (err) {
-			this.logger.warn(`Telemetry sink '${sink.name}' ${action} failed`, err);
+			this.logger.warn(`Telemetry sink '${sink.name}' dispose failed`, err);
 		}
 	}
 }

@@ -152,5 +152,14 @@ async function promptSavePath(
 		filters,
 		title: "Save Telemetry Export",
 	});
-	return uri?.fsPath;
+	if (!uri) {
+		return undefined;
+	}
+	if (uri.scheme !== "file") {
+		vscode.window.showErrorMessage(
+			"Telemetry can only be exported to a local file. The selected location is not a local file path.",
+		);
+		return undefined;
+	}
+	return uri.fsPath;
 }

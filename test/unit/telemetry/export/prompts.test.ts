@@ -86,6 +86,15 @@ describe("promptForExport", () => {
 		},
 	);
 
+	it("rejects a non-file destination with an error and returns undefined", async () => {
+		answer({ savePath: vscode.Uri.parse("vscode-vfs://host/telemetry.json") });
+
+		await expect(promptForExport()).resolves.toBeUndefined();
+		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+			expect.stringContaining("local file"),
+		);
+	});
+
 	it("sets ignoreFocusOut on every prompt", async () => {
 		answer({
 			range: CUSTOM_PICK,

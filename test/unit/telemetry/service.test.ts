@@ -603,7 +603,7 @@ describe("TelemetryService", () => {
 	});
 
 	describe("reactive level", () => {
-		it("local → off flushes sinks and suppresses; off → local resumes", () => {
+		it("local to off flushes sinks and suppresses; off to local resumes", () => {
 			h.service.log("first");
 			expect(h.sink.events).toHaveLength(1);
 
@@ -618,7 +618,7 @@ describe("TelemetryService", () => {
 			expect(h.sink.events).toHaveLength(2);
 		});
 
-		it("a mid-trace level → off does not orphan child phases or drop the parent", async () => {
+		it("a mid-trace level to off does not orphan child phases or drop the parent", async () => {
 			let toggled = false;
 			await h.service.trace("op", async (span) => {
 				await span.phase("p1", () => Promise.resolve());
@@ -785,17 +785,24 @@ describe("TelemetryService", () => {
 	});
 
 	describe("flush", () => {
-		it("flushes every sink", async () => {
+		it("flushes every sink and reports success", async () => {
 			const second = new TestSink("second");
 			const service = makeService([h.sink, second]);
 
-			await service.flush();
+			const status = await service.flush();
 
 			expect(h.sink.flush).toHaveBeenCalledTimes(1);
 			expect(second.flush).toHaveBeenCalledTimes(1);
+			expect(status).toEqual({
+				ok: true,
+				sinks: [
+					{ name: h.sink.name, ok: true },
+					{ name: "second", ok: true },
+				],
+			});
 		});
 
-		it("resolves even when a sink rejects", async () => {
+		it("reports per-sink failure without rejecting", async () => {
 			const bad: TelemetrySink = {
 				name: "bad",
 				minLevel: "local",
@@ -806,8 +813,14 @@ describe("TelemetryService", () => {
 			const good = new TestSink("good");
 			const service = makeService([bad, good]);
 
-			await expect(service.flush()).resolves.toBeUndefined();
+			const status = await service.flush();
+
 			expect(good.flush).toHaveBeenCalled();
+			expect(status.ok).toBe(false);
+			expect(status.sinks).toEqual([
+				{ name: "bad", ok: false },
+				{ name: "good", ok: true },
+			]);
 		});
 
 		it("does not dispose sinks", async () => {

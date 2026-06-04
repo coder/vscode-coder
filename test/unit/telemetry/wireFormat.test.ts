@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	CURRENT_TELEMETRY_SCHEMA_VERSION,
 	parseTelemetryEventLine,
 	serializeTelemetryEvent,
 	TelemetryFileParseError,
@@ -51,6 +52,12 @@ describe("serializeTelemetryEvent", () => {
 		expect(wire.properties).toEqual({ user_id: "alice", camelCase: "kept" });
 		expect(wire.measurements).toEqual({ duration_ms: 42 });
 	});
+
+	it("stamps the current schema version on every row", () => {
+		const wire = serializeTelemetryEvent(makeEvent());
+
+		expect(wire.schema_version).toBe(CURRENT_TELEMETRY_SCHEMA_VERSION);
+	});
 });
 
 describe("parseTelemetryEventLine", () => {
@@ -96,6 +103,15 @@ describe("parseTelemetryEventLine", () => {
 	it("rejects rows missing required structural fields", () => {
 		const wire = serializeTelemetryEvent(makeEvent());
 		delete wire.context;
+
+		expect(() =>
+			parseTelemetryEventLine(JSON.stringify(wire), "<test>", 1),
+		).toThrow(TelemetryFileParseError);
+	});
+
+	it("rejects rows without a schema version", () => {
+		const wire = serializeTelemetryEvent(makeEvent());
+		delete wire.schema_version;
 
 		expect(() =>
 			parseTelemetryEventLine(JSON.stringify(wire), "<test>", 1),

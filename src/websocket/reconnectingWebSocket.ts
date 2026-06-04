@@ -212,8 +212,9 @@ export class ReconnectingWebSocket<
 	}
 
 	/**
-	 * Extract the route (pathname + search) from the current socket URL for logging.
-	 * Falls back to the last known route when the socket is closed.
+	 * Route (pathname only) of the current socket, for logging. The query
+	 * string is dropped so connection tokens carried there never reach logs or
+	 * telemetry. Falls back to the last known route when the socket is closed.
 	 */
 	get #route(): string {
 		const socketUrl = this.#currentSocket?.url;
@@ -221,7 +222,7 @@ export class ReconnectingWebSocket<
 			return this.#lastRoute;
 		}
 		const url = new URL(socketUrl);
-		return url.pathname + url.search;
+		return url.pathname;
 	}
 
 	public addEventListener<TEvent extends WebSocketEventType>(

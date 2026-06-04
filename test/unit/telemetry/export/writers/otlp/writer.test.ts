@@ -4,7 +4,10 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ENVELOPES } from "@/telemetry/export/writers/otlp/records";
-import { writeOtlpZipExport } from "@/telemetry/export/writers/otlp/writer";
+import {
+	type OtlpExportCounts,
+	writeOtlpZipExport,
+} from "@/telemetry/export/writers/otlp/writer";
 
 import { asyncIterable } from "../../../../../mocks/asyncIterable";
 import { createTelemetryEventFactory } from "../../../../../mocks/telemetry";
@@ -17,7 +20,11 @@ import {
 	parseEnvelope,
 } from "./helpers";
 
-import type { TelemetryEvent } from "@/telemetry/event";
+import type { TelemetryContext, TelemetryEvent } from "@/telemetry/event";
+import type {
+	ExportDescriptor,
+	ExportWriteOptions,
+} from "@/telemetry/export/writers/types";
 
 vi.mock("node:fs", async () => (await import("memfs")).fs);
 vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
@@ -30,6 +37,16 @@ const OUT = "/exports/telemetry.otlp.zip";
 /** Matches what writer.ts passes to fs.mkdtemp on every platform. */
 const STAGING_PREFIX = path.join("/tmp", "coder-telemetry-otlp-");
 
+const DESCRIPTOR: ExportDescriptor = {
+	range: {
+		label: "Last 24 hours",
+		filenamePart: "last-24-hours",
+		startMs: 0,
+		endMs: 86_400_000,
+	},
+	sourceFiles: 2,
+};
+
 const makeEvent = createTelemetryEventFactory();
 const { context } = makeEvent();
 
@@ -41,9 +58,20 @@ beforeEach(() => {
 
 afterEach(() => vol.reset());
 
+/** Exports to OUT with the default descriptor; tests override events/options/context. */
+function writeZip(
+	events: AsyncIterable<TelemetryEvent> | readonly TelemetryEvent[],
+	options: ExportWriteOptions = {},
+	ctx: TelemetryContext = context,
+): Promise<OtlpExportCounts> {
+	const stream =
+		Symbol.asyncIterator in events ? events : asyncIterable(events);
+	return writeOtlpZipExport(OUT, stream, ctx, DESCRIPTOR, options);
+}
+
 /** Reads the zip and returns the parsed envelope for each signal. */
 async function exportAndRead(events: readonly TelemetryEvent[]) {
-	const counts = await writeOtlpZipExport(OUT, asyncIterable(events), context);
+	const counts = await writeZip(events);
 	const files = unzipSync(vol.readFileSync(OUT) as Uint8Array);
 	return {
 		counts,
@@ -54,24 +82,18 @@ async function exportAndRead(events: readonly TelemetryEvent[]) {
 }
 
 describe("writeOtlpZipExport", () => {
-	it("packs logs.json, traces.json, and metrics.json into the zip", async () => {
-		await writeOtlpZipExport(OUT, asyncIterable([makeEvent()]), context);
+	it("packs the three signal envelopes plus the manifest into the zip", async () => {
+		await writeZip([makeEvent()]);
 		const files = unzipSync(vol.readFileSync(OUT) as Uint8Array);
 		expect(Object.keys(files).sort()).toEqual(
-			Object.values(ENVELOPES)
-				.map((e) => e.file)
-				.sort(),
+			[...Object.values(ENVELOPES).map((e) => e.file), "manifest.json"].sort(),
 		);
 	});
 
 	// Golden files capture the full serialized envelope per signal so schema
 	// changes show up as a reviewable JSON diff. Regenerate with `pnpm test ... -u`.
 	it("matches the golden OTLP envelopes for a representative export", async () => {
-		await writeOtlpZipExport(
-			OUT,
-			asyncIterable(Object.values(GOLDEN_EVENTS)),
-			GOLDEN_CONTEXT,
-		);
+		await writeZip(Object.values(GOLDEN_EVENTS), {}, GOLDEN_CONTEXT);
 		const files = unzipSync(vol.readFileSync(OUT) as Uint8Array);
 
 		for (const { file } of Object.values(ENVELOPES)) {
@@ -111,7 +133,11 @@ describe("writeOtlpZipExport", () => {
 		const { counts, logs, traces, metrics } = await exportAndRead([
 			makeEvent({ eventName: "log.info" }),
 			makeEvent({ eventName: "log.warn" }),
-			makeEvent({ eventName: "trace.x", traceId: TRACE_ID }),
+			makeEvent({
+				eventName: "trace.x",
+				traceId: TRACE_ID,
+				properties: { result: "success" },
+			}),
 			makeEvent({
 				eventName: "http.requests",
 				measurements: {
@@ -133,7 +159,11 @@ describe("writeOtlpZipExport", () => {
 	it("writes identical resource, scope, and schemaUrl into every envelope file", async () => {
 		const { logs, traces, metrics } = await exportAndRead([
 			makeEvent({ eventName: "log.info" }),
-			makeEvent({ eventName: "trace.x", traceId: TRACE_ID }),
+			makeEvent({
+				eventName: "trace.x",
+				traceId: TRACE_ID,
+				properties: { result: "success" },
+			}),
 			makeEvent({
 				eventName: "http.requests",
 				measurements: { window_seconds: 60, "count.2xx": 1 },
@@ -160,20 +190,12 @@ describe("writeOtlpZipExport", () => {
 			throw new Error("boom");
 		})();
 
-		await expect(writeOtlpZipExport(OUT, failing, context)).rejects.toThrow(
-			/boom/,
-		);
+		await expect(writeZip(failing)).rejects.toThrow(/boom/);
 	});
 
 	it("wraps per-event mapping failures with the event identity", async () => {
 		await expect(
-			writeOtlpZipExport(
-				OUT,
-				asyncIterable([
-					makeEvent({ eventId: "id-bad", timestamp: "not-a-date" }),
-				]),
-				context,
-			),
+			writeZip([makeEvent({ eventId: "id-bad", timestamp: "not-a-date" })]),
 		).rejects.toThrow(
 			/Failed to export event id-bad .*Invalid telemetry timestamp/,
 		);
@@ -184,7 +206,7 @@ describe("writeOtlpZipExport", () => {
 		const mkdtempSpy = vi.spyOn(fsPromises, "mkdtemp");
 
 		try {
-			await writeOtlpZipExport(OUT, asyncIterable([makeEvent()]), context);
+			await writeZip([makeEvent()]);
 
 			expect(vol.readdirSync("/exports")).toEqual(["telemetry.otlp.zip"]);
 			expect(mkdtempSpy).toHaveBeenCalledWith(STAGING_PREFIX);
@@ -217,14 +239,9 @@ describe("writeOtlpZipExport", () => {
 			);
 
 		try {
-			const counts = await writeOtlpZipExport(
-				OUT,
-				asyncIterable([makeEvent()]),
-				context,
-				{
-					onCleanupError: (err, dir) => cleanupErrors.push({ err, dir }),
-				},
-			);
+			const counts = await writeZip([makeEvent()], {
+				onCleanupError: (err, dir) => cleanupErrors.push({ err, dir }),
+			});
 
 			expect(counts.logs).toBe(1);
 			expect(cleanupErrors).toHaveLength(1);
@@ -242,16 +259,11 @@ describe("writeOtlpZipExport", () => {
 			.mockRejectedValueOnce(new Error("EBUSY"));
 
 		try {
-			const counts = await writeOtlpZipExport(
-				OUT,
-				asyncIterable([makeEvent()]),
-				context,
-				{
-					onCleanupError: () => {
-						throw new Error("logger blew up");
-					},
+			const counts = await writeZip([makeEvent()], {
+				onCleanupError: () => {
+					throw new Error("logger blew up");
 				},
-			);
+			});
 			expect(counts.logs).toBe(1);
 		} finally {
 			spy.mockRestore();
@@ -267,9 +279,9 @@ describe("writeOtlpZipExport", () => {
 			yield makeEvent();
 		})();
 
-		await expect(
-			writeOtlpZipExport(OUT, events, context, { signal: ac.signal }),
-		).rejects.toMatchObject({ name: "AbortError" });
+		await expect(writeZip(events, { signal: ac.signal })).rejects.toMatchObject(
+			{ name: "AbortError" },
+		);
 	});
 
 	it("preserves AbortError name when cancellation fires during zip packing", async () => {
@@ -282,9 +294,9 @@ describe("writeOtlpZipExport", () => {
 			ac.abort();
 		})();
 
-		await expect(
-			writeOtlpZipExport(OUT, events, context, { signal: ac.signal }),
-		).rejects.toMatchObject({ name: "AbortError" });
+		await expect(writeZip(events, { signal: ac.signal })).rejects.toMatchObject(
+			{ name: "AbortError" },
+		);
 	});
 
 	it("coerces non-Error abort reasons into a named AbortError", async () => {
@@ -292,9 +304,68 @@ describe("writeOtlpZipExport", () => {
 		ac.abort("user cancelled");
 
 		await expect(
-			writeOtlpZipExport(OUT, asyncIterable([makeEvent()]), context, {
-				signal: ac.signal,
-			}),
+			writeZip([makeEvent()], { signal: ac.signal }),
 		).rejects.toMatchObject({ name: "AbortError", message: "Aborted" });
+	});
+});
+
+describe("writeOtlpZipExport manifest", () => {
+	interface Manifest {
+		schemaVersion: number;
+		telemetrySchemaVersion: number;
+		format: string;
+		sourceFiles: number;
+		sourceEvents: number;
+		records: { logs: number; traces: number; metrics: number };
+		range: { label: string; start: string | null; end: string | null };
+	}
+
+	async function exportWithManifest(
+		events: readonly TelemetryEvent[],
+	): Promise<{ files: Record<string, Uint8Array>; manifest: Manifest }> {
+		await writeZip(events);
+		const files = unzipSync(vol.readFileSync(OUT) as Uint8Array);
+		const manifest = JSON.parse(
+			new TextDecoder().decode(files["manifest.json"]),
+		) as Manifest;
+		return { files, manifest };
+	}
+
+	it("reports record counts, source totals, and range in the manifest", async () => {
+		const { manifest } = await exportWithManifest([
+			makeEvent({ eventName: "log.info" }),
+			makeEvent({
+				eventName: "trace.x",
+				traceId: TRACE_ID,
+				properties: { result: "success" },
+			}),
+			makeEvent({
+				eventName: "http.requests",
+				measurements: {
+					window_seconds: 60,
+					"count.2xx": 1,
+					"duration.p95_ms": 5,
+				},
+			}),
+		]);
+
+		expect(manifest).toMatchObject({
+			format: "otlp-json",
+			sourceFiles: 2,
+			sourceEvents: 3,
+			records: { logs: 1, traces: 1, metrics: 2 },
+			range: {
+				label: "Last 24 hours",
+				start: "1970-01-01T00:00:00.000Z",
+				end: "1970-01-02T00:00:00.000Z",
+			},
+		});
+	});
+
+	it("stamps both the manifest and telemetry schema versions", async () => {
+		const { manifest } = await exportWithManifest([makeEvent()]);
+
+		expect(manifest.schemaVersion).toBeGreaterThanOrEqual(1);
+		expect(manifest.telemetrySchemaVersion).toBeGreaterThanOrEqual(1);
 	});
 });

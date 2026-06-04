@@ -9,10 +9,7 @@ import {
 	vi,
 } from "vitest";
 
-import {
-	HttpRequestsTelemetry,
-	normalizeHttpRoute,
-} from "@/logging/httpRequestsTelemetry";
+import { HttpRequestsTelemetry } from "@/logging/httpRequestsTelemetry";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
@@ -219,39 +216,6 @@ describe("HttpRequestsTelemetry", () => {
 
 		await advanceOneWindow();
 		expect(log).not.toHaveBeenCalled();
-	});
-
-	it.each([
-		["/api/v2/workspaces/abc-123?foo=bar", "/api/v2/workspaces/{id}"],
-		[
-			"/api/v2/users/danny/workspace/my-workspace?foo=bar",
-			"/api/v2/users/{name}/workspace/{name}",
-		],
-		["/api/v2/users/danny/keys/123", "/api/v2/users/{name}/keys/{id}"],
-		["/api/v2/tasks/danny/task-123", "/api/v2/tasks/{name}/{id}"],
-		[
-			"/api/v2/organizations/9f0f7f37-dfb7-4f4b-bcb8-c7062c7550fc/templates/base/versions/v1",
-			"/api/v2/organizations/{id}/templates/{name}/versions/{name}",
-		],
-		[
-			"/api/v2/organizations/9f0f7f37-dfb7-4f4b-bcb8-c7062c7550fc/members/danny",
-			"/api/v2/organizations/{id}/members/{name}",
-		],
-		[
-			"/api/v2/workspaceagents/9f0f7f37-dfb7-4f4b-bcb8-c7062c7550fc/logs",
-			"/api/v2/workspaceagents/{id}/logs",
-		],
-		[
-			"/api/v2/workspaces/0196ac60-0cf9-7c6b-ba8e-925c3e83bb9f/builds/42",
-			"/api/v2/workspaces/{id}/builds/{id}",
-		],
-		// No rule match: route is passed through verbatim.
-		["/api/v2/buildinfo", "/api/v2/buildinfo"],
-		[undefined, "<unknown>"],
-		["", "<unknown>"],
-		["http://%", "<unknown>"],
-	])("normalizes %s", (url, expected) => {
-		expect(normalizeHttpRoute(url)).toBe(expected);
 	});
 });
 

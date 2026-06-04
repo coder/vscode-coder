@@ -11,6 +11,8 @@ import {
 	MockProgressReporter,
 } from "../../../mocks/testHelpers";
 
+import type { FlushStatus } from "@/telemetry/service";
+
 // command.ts orchestrates prompts and the pipeline; both are covered in their
 // own files and mocked here so these tests focus on command.ts: given a choice
 // and a result count, the right notification fires.
@@ -29,6 +31,8 @@ const CHOICE: ExportChoice = {
 	format: "json",
 	outputPath: OUTPUT_PATH,
 };
+
+const OK_FLUSH: FlushStatus = { ok: true, sinks: [] };
 
 function setup(
 	opts: {
@@ -57,7 +61,7 @@ function setup(
 			runExportTelemetryCommand(
 				TELEMETRY_DIR,
 				createMockLogger(),
-				vi.fn(() => Promise.resolve()),
+				vi.fn(() => Promise.resolve(OK_FLUSH)),
 				context,
 			),
 	};
@@ -89,6 +93,24 @@ describe("runExportTelemetryCommand", () => {
 				writer: expect.any(Function),
 			},
 			expect.anything(),
+		);
+	});
+
+	it("wires a warning into the runtime for an incomplete flush", async () => {
+		const { run } = setup();
+		let onFlushIncomplete: (() => void) | undefined;
+		vi.mocked(collectTelemetryExport).mockImplementation(
+			(_request, runtime) => {
+				onFlushIncomplete = runtime.onFlushIncomplete;
+				return Promise.resolve(2);
+			},
+		);
+
+		await run();
+		onFlushIncomplete?.();
+
+		expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+			expect.stringContaining("could not be flushed"),
 		);
 	});
 

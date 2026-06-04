@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+/**
+ * Wire schema version stamped on every telemetry row. Each row carries its
+ * own version because rows are self-contained: one row maps to one exported
+ * record, with no file-level header to anchor a single version to. Bump only
+ * on a breaking change to the JSONL shape (a renamed, removed, or retyped
+ * field); additive optional fields do not need a bump.
+ */
+export const CURRENT_TELEMETRY_SCHEMA_VERSION = 1;
+
 /** Session-stable resource attributes captured once per VS Code session. */
 const SessionContextSchema = z.object({
 	extensionVersion: z.string(),
@@ -27,6 +36,8 @@ const TelemetryEventSchema = z.object({
 	eventName: z.string(),
 	timestamp: z.iso.datetime({ offset: true }),
 	eventSequence: z.number(),
+	/** Wire schema version of this row. See `CURRENT_TELEMETRY_SCHEMA_VERSION`. */
+	schemaVersion: z.number().int().positive(),
 	context: TelemetryContextSchema,
 	properties: z.record(z.string(), z.string()),
 	measurements: z.record(z.string(), z.number()),
@@ -80,6 +91,7 @@ export function serializeTelemetryEvent(
 		event_name: event.eventName,
 		timestamp: event.timestamp,
 		event_sequence: event.eventSequence,
+		schema_version: event.schemaVersion,
 		context: {
 			extension_version: event.context.extensionVersion,
 			machine_id: event.context.machineId,

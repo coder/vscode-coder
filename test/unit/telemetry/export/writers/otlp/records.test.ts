@@ -133,6 +133,28 @@ describe("logRecord", () => {
 			"coder.event.deployment_url": "https://prev.coder.example.com",
 		});
 	});
+
+	it("links span-attached logs to their parent span", () => {
+		const record = logRecord(
+			makeEvent({
+				eventName: "remote.setup.checkpoint",
+				traceId: TRACE_ID,
+				parentEventId: "parent-span-id",
+			}),
+		);
+
+		expect(record).toMatchObject({
+			traceId: TRACE_ID,
+			spanId: "parent-span-id",
+		});
+	});
+
+	it("omits trace correlation on plain logs", () => {
+		const record = logRecord(makeEvent());
+
+		expect(record).not.toHaveProperty("traceId");
+		expect(record).not.toHaveProperty("spanId");
+	});
 });
 
 describe("spanRecord", () => {
@@ -251,7 +273,7 @@ describe("metricRecords", () => {
 			{ windowSeconds: 60, measurements: [counter("count.2xx", 3)] },
 			state,
 		);
-		// 2026-05-04T12:00:00.000Z (window start = first event time − 60s) in ns:
+		// 2026-05-04T12:00:00.000Z (window start = first event time minus 60s) in ns:
 		const expectedStart = String(
 			BigInt(Date.parse("2026-05-04T12:00:00.000Z")) * 1_000_000n,
 		);
@@ -268,7 +290,7 @@ describe("metricRecords", () => {
 
 	it("clamps startTimeUnixNano <= timeUnixNano for events that arrive before the anchor", () => {
 		const state = newCumulativeState();
-		// First event lands at T=12:03 with a 60s window → anchor = 12:02.
+		// First event lands at T=12:03 with a 60s window, so anchor = 12:02.
 		metricRecords(
 			makeEvent({
 				eventName: "http.requests",
@@ -336,7 +358,7 @@ describe("metricRecords", () => {
 			state,
 		);
 
-		// Infinity counter coerces to 0 → suppressed.
+		// Infinity counter coerces to 0, so it is suppressed.
 		expect(records).toEqual([]);
 	});
 
