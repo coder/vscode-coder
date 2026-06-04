@@ -20,15 +20,20 @@ import {
 import { type CoderApi } from "../api/coderApi";
 import { type Logger } from "../logging/logger";
 
+import type {
+	WorkspaceSessionSnapshot,
+	WorkspaceSessionState,
+} from "./session";
+
 export enum WorkspaceQuery {
 	Mine = "owner:me",
 	All = "",
 	Shared = "shared:true",
 }
 
-type WorkspaceFilter = (
-	workspaces: readonly Workspace[],
-) => readonly Workspace[];
+export interface WorkspaceProviderOptions {
+	readonly refreshIntervalMs?: number;
+}
 
 /**
  * Polls workspaces using the provided REST client and renders them in a tree.
@@ -47,8 +52,10 @@ export class WorkspaceProvider
 		WorkspaceAgent["id"],
 		AgentMetadataWatcher
 	>();
+	private readonly sessionChangeDisposable: vscode.Disposable;
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
+	private refreshQueued = false;
 	private visible = false;
 	private disposed = false;
 
@@ -56,85 +63,113 @@ export class WorkspaceProvider
 		private readonly getWorkspacesQuery: WorkspaceQuery,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
-		private readonly isAuthenticated: () => boolean,
-		private readonly timerSeconds?: number,
-		private readonly filterWorkspaces: WorkspaceFilter = (workspaces) =>
-			workspaces,
-		private readonly getStateVersion: () => number = () => 0,
+		private readonly sessionState: WorkspaceSessionState,
+		private readonly options: WorkspaceProviderOptions = {},
 	) {
-		// No initialization.
+		this.sessionChangeDisposable = this.sessionState.onDidChange(() => {
+			this.clear();
+			this.requestRefresh();
+			void this.runRefreshLoop();
+		});
 	}
 
 	// fetchAndRefresh fetches new workspaces, re-renders the entire tree, then
 	// keeps refreshing (if a timer length was provided) as long as the user is
 	// still logged in and no errors were encountered fetching workspaces.
-	// Calling this while already refreshing or not visible is a no-op and will
-	// return immediately.
+	// Calling this while not visible is a no-op and will return immediately.
 	public async fetchAndRefresh() {
-		if (
-			this.disposed ||
-			this.fetching ||
-			!this.visible ||
-			!this.isAuthenticated()
-		) {
+		this.requestRefresh();
+		await this.runRefreshLoop();
+	}
+
+	private requestRefresh(): void {
+		if (this.disposed || !this.visible) {
 			return;
 		}
+		this.refreshQueued = true;
+	}
+
+	private async runRefreshLoop(): Promise<void> {
+		if (this.disposed || this.fetching || !this.visible) {
+			return;
+		}
+
 		this.fetching = true;
-
-		// It is possible we called fetchAndRefresh() manually (through the button
-		// for example), in which case we might still have a pending refresh that
-		// needs to be cleared.
 		this.cancelPendingRefresh();
+		let shouldScheduleRefresh = false;
 
-		let hadError = false;
 		try {
-			this.workspaces = await this.fetch();
-		} catch (error) {
-			this.logger.warn("Failed to fetch workspaces:", error);
-			hadError = true;
-			this.workspaces = [];
+			while (this.refreshQueued && !this.disposed && this.visible) {
+				this.refreshQueued = false;
+				shouldScheduleRefresh = false;
+				const session = this.sessionState.getSnapshot();
+
+				if (session.kind !== "signedIn") {
+					this.setWorkspaces([]);
+					continue;
+				}
+
+				let hadError = false;
+				try {
+					const workspaces = await this.fetch(session);
+					if (workspaces && !this.disposed) {
+						this.setWorkspaces(workspaces);
+					}
+				} catch (error) {
+					this.logger.warn("Failed to fetch workspaces:", error);
+					hadError = true;
+					this.setWorkspaces([]);
+				}
+
+				shouldScheduleRefresh = !hadError && !this.refreshQueued;
+			}
+		} finally {
+			this.fetching = false;
+			if (this.refreshQueued && !this.disposed && this.visible) {
+				void this.runRefreshLoop();
+			} else if (shouldScheduleRefresh && !this.disposed && this.visible) {
+				this.maybeScheduleRefresh();
+			}
 		}
+	}
 
-		this.fetching = false;
-
+	private setWorkspaces(workspaces: WorkspaceTreeItem[]): void {
+		this.workspaces = workspaces;
 		this.refresh();
-
-		// As long as there was no error we can schedule the next refresh.
-		if (!hadError) {
-			this.maybeScheduleRefresh();
-		}
 	}
 
 	/**
 	 * Fetch workspaces and turn them into tree items.  Throw an error if not
 	 * logged in or the query fails.
 	 */
-	private async fetch(): Promise<WorkspaceTreeItem[]> {
+	private async fetch(
+		session: Extract<WorkspaceSessionSnapshot, { kind: "signedIn" }>,
+	): Promise<WorkspaceTreeItem[] | undefined> {
 		// If there is no URL configured, assume we are logged out.
 		const url = this.client.getAxiosInstance().defaults.baseURL;
 		if (!url) {
 			throw new Error("not logged in");
 		}
 
-		const stateVersion = this.getStateVersion();
 		const resp = await this.client.getWorkspaces({
 			q: this.getWorkspacesQuery,
 		});
 
-		// We could have logged out while waiting for the query, or logged into a
-		// different deployment.
+		const latestSession = this.sessionState.getSnapshot();
 		const url2 = this.client.getAxiosInstance().defaults.baseURL;
 		if (!url2) {
 			throw new Error("not logged in");
-		} else if (url !== url2 || stateVersion !== this.getStateVersion()) {
-			// In this case we need to fetch from the new deployment instead.
-			// TODO: It would be better to cancel this fetch when that happens,
-			// because this means we have to wait for the old fetch to finish before
-			// finally getting workspaces for the new one.
-			return this.fetch();
+		}
+		if (
+			url !== url2 ||
+			latestSession.kind !== "signedIn" ||
+			latestSession.revision !== session.revision
+		) {
+			this.refreshQueued = true;
+			return undefined;
 		}
 
-		const workspaces = this.filterWorkspaces(resp.workspaces);
+		const workspaces = this.filterWorkspaces(resp.workspaces, session);
 		const oldWatcherIds = [...this.agentWatchers.keys()];
 		const reusedWatcherIds: string[] = [];
 
@@ -172,17 +207,22 @@ export class WorkspaceProvider
 		const showOwner = this.getWorkspacesQuery !== WorkspaceQuery.Mine;
 
 		// Create tree items for each workspace
-		const workspaceTreeItems = workspaces.map((workspace: Workspace) => {
-			const workspaceTreeItem = new WorkspaceTreeItem(
-				workspace,
-				showOwner,
-				showMetadata,
-			);
+		return workspaces.map(
+			(workspace: Workspace) =>
+				new WorkspaceTreeItem(workspace, showOwner, showMetadata),
+		);
+	}
 
-			return workspaceTreeItem;
-		});
-
-		return workspaceTreeItems;
+	private filterWorkspaces(
+		workspaces: readonly Workspace[],
+		session: Extract<WorkspaceSessionSnapshot, { kind: "signedIn" }>,
+	): readonly Workspace[] {
+		if (this.getWorkspacesQuery !== WorkspaceQuery.Shared) {
+			return workspaces;
+		}
+		return workspaces.filter(
+			(workspace) => workspace.owner_id !== session.userId,
+		);
 	}
 
 	/**
@@ -197,10 +237,13 @@ export class WorkspaceProvider
 		this.visible = visible;
 		if (!visible) {
 			this.cancelPendingRefresh();
+		} else if (this.refreshQueued) {
+			void this.runRefreshLoop();
 		} else if (this.workspaces) {
 			this.maybeScheduleRefresh();
 		} else {
-			void this.fetchAndRefresh();
+			this.requestRefresh();
+			void this.runRefreshLoop();
 		}
 	}
 
@@ -216,10 +259,11 @@ export class WorkspaceProvider
 	 * timeout length was provided.
 	 */
 	private maybeScheduleRefresh() {
-		if (this.timerSeconds && !this.timeout && !this.fetching) {
+		if (this.options.refreshIntervalMs && !this.timeout) {
 			this.timeout = setTimeout(() => {
-				void this.fetchAndRefresh();
-			}, this.timerSeconds * 1000);
+				this.requestRefresh();
+				void this.runRefreshLoop();
+			}, this.options.refreshIntervalMs);
 		}
 	}
 
@@ -320,18 +364,24 @@ export class WorkspaceProvider
 	 * Clear all workspaces from the tree without fetching.
 	 */
 	public clear(): void {
+		this.clearState();
+		this.refresh();
+	}
+
+	private clearState(): void {
 		this.cancelPendingRefresh();
 		for (const watcher of this.agentWatchers.values()) {
 			watcher.dispose();
 		}
 		this.agentWatchers.clear();
 		this.workspaces = undefined;
-		this.refresh();
+		this.refreshQueued = false;
 	}
 
 	public dispose() {
 		this.disposed = true;
-		this.clear();
+		this.clearState();
+		this.sessionChangeDisposable.dispose();
 	}
 }
 

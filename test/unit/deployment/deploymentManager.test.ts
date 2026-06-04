@@ -20,7 +20,6 @@ import {
 } from "../../mocks/testHelpers";
 
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
-import type { WorkspaceProvider } from "@/workspace/workspacesProvider";
 
 // Mock CoderApi.create to return our mock client for validation
 vi.mock("@/api/coderApi", async (importOriginal) => {
@@ -34,17 +33,24 @@ vi.mock("@/api/coderApi", async (importOriginal) => {
 	};
 });
 
-/**
- * Mock WorkspaceProvider for deployment tests.
- */
-class MockWorkspaceProvider {
-	readonly fetchAndRefresh = vi.fn();
-	readonly clear = vi.fn();
-}
-
 const TEST_URL = "https://coder.example.com";
 const TEST_HOSTNAME = "coder.example.com";
 const managers: DeploymentManager[] = [];
+
+function deferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T | PromiseLike<T>) => void;
+} {
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	const promise = new Promise<T>((res) => {
+		resolve = res;
+	});
+	return { promise, resolve };
+}
+
+async function flush(): Promise<void> {
+	await new Promise((resolve) => setImmediate(resolve));
+}
 
 afterEach(() => {
 	for (const manager of managers) {
@@ -63,7 +69,6 @@ function createTestContext() {
 	const mockClient = new MockCoderApi();
 	// For verifyAndApplyDeployment, we use a separate mock for validation
 	const validationMockClient = new MockCoderApi();
-	const mockWorkspaceProvider = new MockWorkspaceProvider();
 	const mockOAuthSessionManager = new MockOAuthSessionManager();
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
@@ -91,7 +96,6 @@ function createTestContext() {
 		}),
 		mockClient as unknown as CoderApi,
 		mockOAuthSessionManager as unknown as OAuthSessionManager,
-		[mockWorkspaceProvider as unknown as WorkspaceProvider],
 	);
 	managers.push(manager);
 
@@ -101,7 +105,6 @@ function createTestContext() {
 		secretsManager,
 		contextManager,
 		mockOAuthSessionManager,
-		mockWorkspaceProvider,
 		telemetrySink,
 		telemetryService,
 		setDeploymentUrlSpy,
@@ -177,6 +180,29 @@ describe("DeploymentManager", () => {
 
 			const persisted = await secretsManager.getCurrentDeployment();
 			expect(persisted?.url).toBe(TEST_URL);
+		});
+
+		it("does not persist a deployment after a newer state wins", async () => {
+			const { mockOAuthSessionManager, secretsManager, manager } =
+				createTestContext();
+			const oauthSetDeployment = deferred<void>();
+			mockOAuthSessionManager.setDeployment.mockReturnValueOnce(
+				oauthSetDeployment.promise,
+			);
+			const firstSetDeployment = manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "test-token",
+				user: createMockUser(),
+			});
+
+			await flush();
+			await manager.clearDeployment("logout");
+			oauthSetDeployment.resolve();
+			await firstSetDeployment;
+
+			expect(await secretsManager.getCurrentDeployment()).toBeNull();
+			expect(manager.isAuthenticated()).toBe(false);
 		});
 
 		it("notifies telemetry of the deployment URL", async () => {
@@ -297,6 +323,35 @@ describe("DeploymentManager", () => {
 
 			expect(validationMockClient.disposed).toBe(true);
 		});
+
+		it("does not apply stale validation after a concurrent login", async () => {
+			const { mockClient, validationMockClient, manager } = createTestContext();
+			const remoteUser = createMockUser({ id: "remote-user" });
+			const localUser = createMockUser({ id: "local-user" });
+			const validation = deferred<typeof remoteUser>();
+			validationMockClient.getAuthenticatedUser.mockReturnValueOnce(
+				validation.promise,
+			);
+			const remoteLogin = manager.verifyAndApplyDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "remote-token",
+			});
+
+			await flush();
+			await manager.setDeployment({
+				url: "https://local.example.com",
+				safeHostname: "local.example.com",
+				token: "local-token",
+				user: localUser,
+			});
+			validation.resolve(remoteUser);
+
+			expect(await remoteLogin).toBe(false);
+			expect(mockClient.host).toBe("https://local.example.com");
+			expect(mockClient.token).toBe("local-token");
+			expect(manager.getCurrentUserId()).toBe("local-user");
+		});
 	});
 
 	describe("cross-window sync", () => {
@@ -345,7 +400,7 @@ describe("DeploymentManager", () => {
 			});
 
 			// Wait for async handler
-			await new Promise((resolve) => setImmediate(resolve));
+			await flush();
 
 			expect(mockClient.host).toBe(TEST_URL);
 			expect(mockClient.token).toBe("synced-token");
@@ -374,7 +429,7 @@ describe("DeploymentManager", () => {
 			});
 
 			// Wait for async handler
-			await new Promise((resolve) => setImmediate(resolve));
+			await flush();
 
 			expect(mockClient.host).toBe(TEST_URL);
 			expect(mockClient.token).toBe("");
@@ -407,11 +462,42 @@ describe("DeploymentManager", () => {
 				url: TEST_URL,
 				token: "refreshed-token",
 			});
-			await new Promise((resolve) => setImmediate(resolve));
+			await flush();
 
 			expect(mockClient.token).toBe("refreshed-token");
 			expect(manager.getCurrentUserId()).toBe("refreshed-user");
 			expect(manager.isAuthenticated()).toBe(true);
+		});
+
+		it("does not apply stale token validation after logout", async () => {
+			const { mockClient, validationMockClient, secretsManager, manager } =
+				createTestContext();
+			const user = createMockUser({ id: "initial-user" });
+			const refreshedUser = createMockUser({ id: "refreshed-user" });
+			const validation = deferred<typeof refreshedUser>();
+			validationMockClient.getAuthenticatedUser.mockReturnValueOnce(
+				validation.promise,
+			);
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "initial-token",
+				user,
+			});
+
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "refreshed-token",
+			});
+			await flush();
+			await manager.clearDeployment("logout");
+			validation.resolve(refreshedUser);
+			await flush();
+
+			expect(mockClient.host).toBeUndefined();
+			expect(mockClient.token).toBeUndefined();
+			expect(manager.getCurrentDeployment()).toBeNull();
+			expect(manager.getCurrentUserId()).toBeUndefined();
 		});
 	});
 
@@ -471,13 +557,8 @@ describe("DeploymentManager", () => {
 		});
 
 		it("clears auth state but keeps deployment for re-login", async () => {
-			const {
-				mockClient,
-				contextManager,
-				mockOAuthSessionManager,
-				mockWorkspaceProvider,
-				manager,
-			} = createTestContext();
+			const { mockClient, contextManager, mockOAuthSessionManager, manager } =
+				createTestContext();
 
 			await manager.setDeployment({
 				url: TEST_URL,
@@ -496,7 +577,6 @@ describe("DeploymentManager", () => {
 			expect(contextManager.get("coder.authenticated")).toBe(false);
 			expect(manager.getCurrentUserId()).toBeUndefined();
 			expect(manager.isAuthenticated()).toBe(false);
-			expect(mockWorkspaceProvider.clear).toHaveBeenCalled();
 
 			// Deployment is retained for easy re-login
 			expect(manager.getCurrentDeployment()).toMatchObject({
@@ -619,7 +699,7 @@ describe("DeploymentManager", () => {
 				token: "recovered-token",
 			});
 
-			await new Promise((resolve) => setImmediate(resolve));
+			await flush();
 
 			// Should recover and be authenticated again
 			expect(mockClient.token).toBe("recovered-token");

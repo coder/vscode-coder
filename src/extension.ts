@@ -30,8 +30,6 @@ import {
 	WorkspaceQuery,
 } from "./workspace/workspacesProvider";
 
-import type { Workspace } from "coder/site/src/api/typesGenerated";
-
 const MY_WORKSPACES_TREE_ID = "myWorkspaces";
 const SHARED_WORKSPACES_TREE_ID = "sharedWorkspaces";
 const ALL_WORKSPACES_TREE_ID = "allWorkspaces";
@@ -156,23 +154,19 @@ async function doActivate(
 	);
 	ctx.subscriptions.push(authInterceptor);
 
-	const isAuthenticated = () => contextManager.get("coder.authenticated");
-	const getAuthStateVersion = () => deploymentManager.getAuthStateVersion();
-	const filterSharedWorkspaces = (workspaces: readonly Workspace[]) => {
-		const currentUserId = deploymentManager.getCurrentUserId();
-		return currentUserId
-			? workspaces.filter((workspace) => workspace.owner_id !== currentUserId)
-			: [];
-	};
+	const deploymentManager = DeploymentManager.create(
+		serviceContainer,
+		client,
+		oauthSessionManager,
+	);
+	ctx.subscriptions.push(deploymentManager);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
 		client,
 		output,
-		isAuthenticated,
-		5,
-		undefined,
-		getAuthStateVersion,
+		deploymentManager,
+		{ refreshIntervalMs: 5_000 },
 	);
 	ctx.subscriptions.push(myWorkspacesProvider);
 
@@ -180,10 +174,7 @@ async function doActivate(
 		WorkspaceQuery.All,
 		client,
 		output,
-		isAuthenticated,
-		undefined,
-		undefined,
-		getAuthStateVersion,
+		deploymentManager,
 	);
 	ctx.subscriptions.push(allWorkspacesProvider);
 
@@ -191,20 +182,9 @@ async function doActivate(
 		WorkspaceQuery.Shared,
 		client,
 		output,
-		isAuthenticated,
-		undefined,
-		filterSharedWorkspaces,
-		getAuthStateVersion,
+		deploymentManager,
 	);
 	ctx.subscriptions.push(sharedWorkspacesProvider);
-
-	const deploymentManager = DeploymentManager.create(
-		serviceContainer,
-		client,
-		oauthSessionManager,
-		[myWorkspacesProvider, sharedWorkspacesProvider, allWorkspacesProvider],
-	);
-	ctx.subscriptions.push(deploymentManager);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
 	// (so we can see when it is visible) but otherwise they have the same effect.
