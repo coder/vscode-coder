@@ -307,6 +307,7 @@ export class Commands {
 						activeProxyLogPath: this.workspaceLogPath,
 						proxyLogDir: this.pathResolver.getProxyLogPath(),
 						extensionLogDir: this.pathResolver.getCodeLogDir(),
+						telemetryDir: this.pathResolver.getTelemetryPath(),
 					},
 					this.logger,
 				);

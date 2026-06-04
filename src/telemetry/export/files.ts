@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 
 import { toError } from "../../error/errorUtils";
+import * as localJsonlFiles from "../localJsonlFiles";
 import {
 	parseTelemetryEventLine,
 	TelemetryFileParseError,
@@ -23,14 +24,6 @@ interface TelemetryLogFile {
 	readonly session: string;
 	readonly part: number;
 }
-
-/**
- * Filename shape written by the sink:
- * `telemetry-YYYY-MM-DD-{session}[.{part}].jsonl`. We need the date to filter
- * and (session, part) to order files within a day.
- */
-const TELEMETRY_FILE_PATTERN =
-	/^telemetry-(\d{4}-\d{2}-\d{2})-([^.]+)(?:\.(\d+))?\.jsonl$/;
 
 /** Log files that could contain events in `range`, in chronological order. */
 export async function listTelemetryFilesForRange(
@@ -107,16 +100,11 @@ function parseLogFilename(
 	dir: string,
 	name: string,
 ): TelemetryLogFile | undefined {
-	const match = TELEMETRY_FILE_PATTERN.exec(name);
-	if (!match) {
+	const parsed = localJsonlFiles.parseFileName(name);
+	if (!parsed) {
 		return undefined;
 	}
-	return {
-		path: path.join(dir, name),
-		date: match[1],
-		session: match[2],
-		part: match[3] === undefined ? 0 : Number(match[3]),
-	};
+	return { path: path.join(dir, name), ...parsed };
 }
 
 function compareLogFiles(a: TelemetryLogFile, b: TelemetryLogFile): number {
