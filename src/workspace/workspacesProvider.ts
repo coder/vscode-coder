@@ -23,7 +23,12 @@ import { type Logger } from "../logging/logger";
 export enum WorkspaceQuery {
 	Mine = "owner:me",
 	All = "",
+	Shared = "shared:true",
 }
+
+type WorkspaceFilter = (
+	workspaces: readonly Workspace[],
+) => readonly Workspace[];
 
 /**
  * Polls workspaces using the provided REST client and renders them in a tree.
@@ -53,6 +58,9 @@ export class WorkspaceProvider
 		private readonly logger: Logger,
 		private readonly isAuthenticated: () => boolean,
 		private readonly timerSeconds?: number,
+		private readonly filterWorkspaces: WorkspaceFilter = (workspaces) =>
+			workspaces,
+		private readonly getStateVersion: () => number = () => 0,
 	) {
 		// No initialization.
 	}
@@ -108,6 +116,7 @@ export class WorkspaceProvider
 			throw new Error("not logged in");
 		}
 
+		const stateVersion = this.getStateVersion();
 		const resp = await this.client.getWorkspaces({
 			q: this.getWorkspacesQuery,
 		});
@@ -117,7 +126,7 @@ export class WorkspaceProvider
 		const url2 = this.client.getAxiosInstance().defaults.baseURL;
 		if (!url2) {
 			throw new Error("not logged in");
-		} else if (url !== url2) {
+		} else if (url !== url2 || stateVersion !== this.getStateVersion()) {
 			// In this case we need to fetch from the new deployment instead.
 			// TODO: It would be better to cancel this fetch when that happens,
 			// because this means we have to wait for the old fetch to finish before
@@ -125,6 +134,7 @@ export class WorkspaceProvider
 			return this.fetch();
 		}
 
+		const workspaces = this.filterWorkspaces(resp.workspaces);
 		const oldWatcherIds = [...this.agentWatchers.keys()];
 		const reusedWatcherIds: string[] = [];
 
@@ -133,7 +143,7 @@ export class WorkspaceProvider
 		// have this separate map held outside the tree.
 		const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine;
 		if (showMetadata) {
-			const agents = extractAllAgents(resp.workspaces);
+			const agents = extractAllAgents(workspaces);
 			for (const agent of agents) {
 				// If we have an existing watcher, re-use it.
 				const oldWatcher = this.agentWatchers.get(agent.id);
@@ -159,11 +169,13 @@ export class WorkspaceProvider
 			}
 		}
 
+		const showOwner = this.getWorkspacesQuery !== WorkspaceQuery.Mine;
+
 		// Create tree items for each workspace
-		const workspaceTreeItems = resp.workspaces.map((workspace: Workspace) => {
+		const workspaceTreeItems = workspaces.map((workspace: Workspace) => {
 			const workspaceTreeItem = new WorkspaceTreeItem(
 				workspace,
-				this.getWorkspacesQuery === WorkspaceQuery.All,
+				showOwner,
 				showMetadata,
 			);
 

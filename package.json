@@ -318,6 +318,13 @@
 					"icon": "media/logo-white.svg"
 				},
 				{
+					"id": "sharedWorkspaces",
+					"name": "Shared Workspaces",
+					"visibility": "visible",
+					"icon": "media/logo-white.svg",
+					"when": "coder.authenticated"
+				},
+				{
 					"id": "allWorkspaces",
 					"name": "All Workspaces",
 					"visibility": "visible",
@@ -460,6 +467,12 @@
 				"icon": "$(search)"
 			},
 			{
+				"command": "coder.searchSharedWorkspaces",
+				"title": "Search",
+				"category": "Coder",
+				"icon": "$(search)"
+			},
+			{
 				"command": "coder.searchAllWorkspaces",
 				"title": "Search",
 				"category": "Coder",
@@ -586,6 +599,10 @@
 					"when": "false"
 				},
 				{
+					"command": "coder.searchSharedWorkspaces",
+					"when": "false"
+				},
+				{
 					"command": "coder.searchAllWorkspaces",
 					"when": "false"
 				},
@@ -626,6 +643,16 @@
 				{
 					"command": "coder.searchMyWorkspaces",
 					"when": "coder.authenticated && view == myWorkspaces",
+					"group": "navigation@3"
+				},
+				{
+					"command": "coder.refreshWorkspaces",
+					"when": "coder.authenticated && view == sharedWorkspaces",
+					"group": "navigation@2"
+				},
+				{
+					"command": "coder.searchSharedWorkspaces",
+					"when": "coder.authenticated && view == sharedWorkspaces",
 					"group": "navigation@3"
 				},
 				{

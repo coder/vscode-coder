@@ -48,6 +48,8 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly deploymentTelemetry: DeploymentTelemetry;
 
 	#deployment: Deployment | null = null;
+	#authedUser: User | null = null;
+	#authStateVersion = 0;
 	#disposed = false;
 	#authListenerDisposable: vscode.Disposable | undefined;
 	#authConfigDisposable: vscode.Disposable | undefined;
@@ -93,6 +95,14 @@ export class DeploymentManager implements vscode.Disposable {
 		return this.#deployment;
 	}
 
+	public getCurrentUserId(): string | undefined {
+		return this.#authedUser?.id;
+	}
+
+	public getAuthStateVersion(): number {
+		return this.#authStateVersion;
+	}
+
 	/**
 	 * Check if we have an authenticated deployment (does not guarantee that the current auth data is valid).
 	 */
@@ -110,6 +120,7 @@ export class DeploymentManager implements vscode.Disposable {
 		deployment: Deployment & { token?: string },
 	): Promise<boolean> {
 		const deploymentBefore = this.#deployment;
+		const authStateVersionBefore = this.#authStateVersion;
 		const token =
 			deployment.token ??
 			(await this.secretsManager.getSessionAuth(deployment.safeHostname))
@@ -118,7 +129,9 @@ export class DeploymentManager implements vscode.Disposable {
 
 		try {
 			const user = await tempClient.getAuthenticatedUser();
-			if (this.#hasStateChangedSince(deploymentBefore)) {
+			if (
+				this.#hasStateChangedSince(deploymentBefore, authStateVersionBefore)
+			) {
 				return false;
 			}
 			await this.setDeployment({ ...deployment, token, user });
@@ -132,11 +145,15 @@ export class DeploymentManager implements vscode.Disposable {
 	}
 
 	/** True if disposal, login, or a deployment switch raced our await. */
-	#hasStateChangedSince(deploymentBefore: Deployment | null): boolean {
+	#hasStateChangedSince(
+		deploymentBefore: Deployment | null,
+		authStateVersionBefore: number,
+	): boolean {
 		return (
 			this.#disposed ||
 			this.isAuthenticated() ||
-			this.#deployment !== deploymentBefore
+			this.#deployment !== deploymentBefore ||
+			this.#authStateVersion !== authStateVersionBefore
 		);
 	}
 
@@ -151,8 +168,12 @@ export class DeploymentManager implements vscode.Disposable {
 			hostname: deployment.safeHostname,
 			user: deployment.user.username,
 		});
-		this.#deployment = { ...deployment };
-		const ourRef = this.#deployment;
+		const deploymentWithoutAuth = DeploymentSchema.parse(deployment);
+		const ourRef = this.commitDeploymentState(
+			deploymentWithoutAuth,
+			deployment.user,
+		);
+		const authStateVersion = this.#authStateVersion;
 		this.telemetryService.setDeploymentUrl(deployment.url);
 
 		// Updates client credentials
@@ -169,11 +190,12 @@ export class DeploymentManager implements vscode.Disposable {
 		this.updateAuthContexts(deployment.user);
 		this.refreshWorkspaces();
 
-		const deploymentWithoutAuth: Deployment =
-			DeploymentSchema.parse(deployment);
 		await this.oauthSessionManager.setDeployment(deploymentWithoutAuth);
 		// Bail if a concurrent write took over during the await.
-		if (this.#deployment !== ourRef) {
+		if (
+			this.#deployment !== ourRef ||
+			this.#authStateVersion !== authStateVersion
+		) {
 			return;
 		}
 		await this.persistDeployment(deploymentWithoutAuth);
@@ -187,7 +209,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.suspendSession(reason);
 		this.#authListenerDisposable?.dispose();
 		this.#authListenerDisposable = undefined;
-		this.#deployment = null;
+		this.commitDeploymentState(null, null);
 		this.telemetryService.setDeploymentUrl("");
 
 		await this.secretsManager.setCurrentDeployment(undefined);
@@ -199,6 +221,7 @@ export class DeploymentManager implements vscode.Disposable {
 	 */
 	public suspendSession(reason: DeploymentSuspendReason): void {
 		const wasAuthenticated = this.isAuthenticated();
+		this.commitDeploymentState(this.#deployment, null);
 		this.oauthSessionManager.clearDeployment();
 		this.client.setCredentials(undefined, undefined);
 		this.updateAuthContexts(undefined);
@@ -248,7 +271,11 @@ export class DeploymentManager implements vscode.Disposable {
 
 				if (auth) {
 					if (this.isAuthenticated()) {
-						this.client.setCredentials(auth.url, auth.token);
+						await this.verifyAndUpdateAuthenticatedSession({
+							url: auth.url,
+							safeHostname,
+							token: auth.token,
+						});
 					} else {
 						this.logger.debug(
 							"Token updated after session suspended, recovering",
@@ -267,6 +294,44 @@ export class DeploymentManager implements vscode.Disposable {
 				}
 			},
 		);
+	}
+
+	private async verifyAndUpdateAuthenticatedSession(
+		deployment: Deployment & { token: string },
+	): Promise<void> {
+		const deploymentBefore = this.#deployment;
+		const authStateVersionBefore = this.#authStateVersion;
+		const tempClient = CoderApi.create(
+			deployment.url,
+			deployment.token,
+			this.logger,
+		);
+
+		try {
+			const user = await tempClient.getAuthenticatedUser();
+			if (
+				this.#disposed ||
+				this.#deployment !== deploymentBefore ||
+				this.#authStateVersion !== authStateVersionBefore
+			) {
+				return;
+			}
+			await this.setDeployment({ ...deployment, user });
+		} catch (e) {
+			this.logger.warn("Failed to authenticate updated session:", e);
+		} finally {
+			tempClient.dispose();
+		}
+	}
+
+	private commitDeploymentState(
+		deployment: Deployment | null,
+		authedUser: User | null,
+	): Deployment | null {
+		this.#deployment = deployment;
+		this.#authedUser = authedUser;
+		this.#authStateVersion += 1;
+		return this.#deployment;
 	}
 
 	private subscribeToAuthConfigChanges(): void {

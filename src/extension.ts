@@ -30,7 +30,10 @@ import {
 	WorkspaceQuery,
 } from "./workspace/workspacesProvider";
 
+import type { Workspace } from "coder/site/src/api/typesGenerated";
+
 const MY_WORKSPACES_TREE_ID = "myWorkspaces";
+const SHARED_WORKSPACES_TREE_ID = "sharedWorkspaces";
 const ALL_WORKSPACES_TREE_ID = "allWorkspaces";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
@@ -100,7 +103,6 @@ async function doActivate(
 		? await secretsManager.getSessionAuth(deployment.safeHostname)
 		: undefined;
 	tracer.setAuthState(deploymentSessionAuth ? "stored" : "none");
-
 	// Shared handler for auth failures (used by interceptor + session manager)
 	const handleAuthFailure = (): Promise<void> => {
 		deploymentManager.suspendSession("auth_failure");
@@ -155,6 +157,13 @@ async function doActivate(
 	ctx.subscriptions.push(authInterceptor);
 
 	const isAuthenticated = () => contextManager.get("coder.authenticated");
+	const getAuthStateVersion = () => deploymentManager.getAuthStateVersion();
+	const filterSharedWorkspaces = (workspaces: readonly Workspace[]) => {
+		const currentUserId = deploymentManager.getCurrentUserId();
+		return currentUserId
+			? workspaces.filter((workspace) => workspace.owner_id !== currentUserId)
+			: [];
+	};
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
@@ -162,6 +171,8 @@ async function doActivate(
 		output,
 		isAuthenticated,
 		5,
+		undefined,
+		getAuthStateVersion,
 	);
 	ctx.subscriptions.push(myWorkspacesProvider);
 
@@ -170,8 +181,30 @@ async function doActivate(
 		client,
 		output,
 		isAuthenticated,
+		undefined,
+		undefined,
+		getAuthStateVersion,
 	);
 	ctx.subscriptions.push(allWorkspacesProvider);
+
+	const sharedWorkspacesProvider = new WorkspaceProvider(
+		WorkspaceQuery.Shared,
+		client,
+		output,
+		isAuthenticated,
+		undefined,
+		filterSharedWorkspaces,
+		getAuthStateVersion,
+	);
+	ctx.subscriptions.push(sharedWorkspacesProvider);
+
+	const deploymentManager = DeploymentManager.create(
+		serviceContainer,
+		client,
+		oauthSessionManager,
+		[myWorkspacesProvider, sharedWorkspacesProvider, allWorkspacesProvider],
+	);
+	ctx.subscriptions.push(deploymentManager);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
 	// (so we can see when it is visible) but otherwise they have the same effect.
@@ -183,6 +216,19 @@ async function doActivate(
 	myWsTree.onDidChangeVisibility(
 		(event) => {
 			myWorkspacesProvider.setVisibility(event.visible);
+		},
+		undefined,
+		ctx.subscriptions,
+	);
+
+	const sharedWsTree = vscode.window.createTreeView(SHARED_WORKSPACES_TREE_ID, {
+		treeDataProvider: sharedWorkspacesProvider,
+	});
+	ctx.subscriptions.push(sharedWsTree);
+	sharedWorkspacesProvider.setVisibility(sharedWsTree.visible);
+	sharedWsTree.onDidChangeVisibility(
+		(event) => {
+			sharedWorkspacesProvider.setVisibility(event.visible);
 		},
 		undefined,
 		ctx.subscriptions,
@@ -200,15 +246,6 @@ async function doActivate(
 		undefined,
 		ctx.subscriptions,
 	);
-
-	// Create deployment manager to centralize deployment state management
-	const deploymentManager = DeploymentManager.create(
-		serviceContainer,
-		client,
-		oauthSessionManager,
-		[myWorkspacesProvider, allWorkspacesProvider],
-	);
-	ctx.subscriptions.push(deploymentManager);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
@@ -318,6 +355,7 @@ async function doActivate(
 	);
 	commandManager.register("coder.refreshWorkspaces", () => {
 		void myWorkspacesProvider.fetchAndRefresh();
+		void sharedWorkspacesProvider.fetchAndRefresh();
 		void allWorkspacesProvider.fetchAndRefresh();
 	});
 	commandManager.register("coder.viewLogs", commands.viewLogs.bind(commands));
@@ -327,6 +365,9 @@ async function doActivate(
 	);
 	commandManager.register("coder.searchMyWorkspaces", async () =>
 		showTreeViewSearch(MY_WORKSPACES_TREE_ID),
+	);
+	commandManager.register("coder.searchSharedWorkspaces", async () =>
+		showTreeViewSearch(SHARED_WORKSPACES_TREE_ID),
 	);
 	commandManager.register("coder.searchAllWorkspaces", async () =>
 		showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
