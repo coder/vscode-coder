@@ -11,6 +11,7 @@ import {
 	createMockLogger,
 	createMockServiceContainer,
 	createMockUser,
+	flush,
 	InMemoryMemento,
 	InMemorySecretStorage,
 	MockCoderApi,
@@ -37,19 +38,9 @@ const TEST_URL = "https://coder.example.com";
 const TEST_HOSTNAME = "coder.example.com";
 const managers: DeploymentManager[] = [];
 
-function deferred<T>(): {
-	promise: Promise<T>;
-	resolve: (value: T | PromiseLike<T>) => void;
-} {
-	let resolve!: (value: T | PromiseLike<T>) => void;
-	const promise = new Promise<T>((res) => {
-		resolve = res;
-	});
-	return { promise, resolve };
-}
-
-async function flush(): Promise<void> {
-	await new Promise((resolve) => setImmediate(resolve));
+function currentUserId(manager: DeploymentManager): string | undefined {
+	const snapshot = manager.getSnapshot();
+	return snapshot.kind === "signedIn" ? snapshot.userId : undefined;
 }
 
 afterEach(() => {
@@ -67,7 +58,7 @@ function createTestContext() {
 	new MockConfigurationProvider();
 
 	const mockClient = new MockCoderApi();
-	// For verifyAndApplyDeployment, we use a separate mock for validation
+	// For verifyAndApplySession, we use a separate mock for validation
 	const validationMockClient = new MockCoderApi();
 	const mockOAuthSessionManager = new MockOAuthSessionManager();
 	const secretStorage = new InMemorySecretStorage();
@@ -118,7 +109,7 @@ describe("DeploymentManager", () => {
 			const { manager } = createTestContext();
 
 			expect(manager.getCurrentDeployment()).toBeNull();
-			expect(manager.getCurrentUserId()).toBeUndefined();
+			expect(currentUserId(manager)).toBeUndefined();
 			expect(manager.isAuthenticated()).toBe(false);
 		});
 
@@ -137,7 +128,7 @@ describe("DeploymentManager", () => {
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 			});
-			expect(manager.getCurrentUserId()).toBe("current-user");
+			expect(currentUserId(manager)).toBe("current-user");
 			expect(manager.isAuthenticated()).toBe(true);
 		});
 
@@ -155,7 +146,7 @@ describe("DeploymentManager", () => {
 			await manager.clearDeployment("credentials_removed");
 
 			expect(manager.getCurrentDeployment()).toBeNull();
-			expect(manager.getCurrentUserId()).toBeUndefined();
+			expect(currentUserId(manager)).toBeUndefined();
 			expect(manager.isAuthenticated()).toBe(false);
 		});
 	});
@@ -185,7 +176,7 @@ describe("DeploymentManager", () => {
 		it("does not persist a deployment after a newer state wins", async () => {
 			const { mockOAuthSessionManager, secretsManager, manager } =
 				createTestContext();
-			const oauthSetDeployment = deferred<void>();
+			const oauthSetDeployment = Promise.withResolvers<void>();
 			mockOAuthSessionManager.setDeployment.mockReturnValueOnce(
 				oauthSetDeployment.promise,
 			);
@@ -235,13 +226,13 @@ describe("DeploymentManager", () => {
 		});
 	});
 
-	describe("verifyAndApplyDeployment", () => {
+	describe("verifyAndApplySession", () => {
 		it("returns true and sets deployment on auth success", async () => {
 			const { mockClient, validationMockClient, manager } = createTestContext();
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
-			const result = await manager.verifyAndApplyDeployment({
+			const result = await manager.verifyAndApplySession({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -250,7 +241,7 @@ describe("DeploymentManager", () => {
 			expect(result).toBe(true);
 			expect(mockClient.host).toBe(TEST_URL);
 			expect(mockClient.token).toBe("test-token");
-			expect(manager.getCurrentUserId()).toBe(user.id);
+			expect(currentUserId(manager)).toBe(user.id);
 			expect(manager.isAuthenticated()).toBe(true);
 		});
 
@@ -260,7 +251,7 @@ describe("DeploymentManager", () => {
 				new Error("Auth failed"),
 			);
 
-			const result = await manager.verifyAndApplyDeployment({
+			const result = await manager.verifyAndApplySession({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -268,7 +259,7 @@ describe("DeploymentManager", () => {
 
 			expect(result).toBe(false);
 			expect(manager.getCurrentDeployment()).toBeNull();
-			expect(manager.getCurrentUserId()).toBeUndefined();
+			expect(currentUserId(manager)).toBeUndefined();
 			expect(manager.isAuthenticated()).toBe(false);
 		});
 
@@ -277,7 +268,7 @@ describe("DeploymentManager", () => {
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
-			const result = await manager.verifyAndApplyDeployment({
+			const result = await manager.verifyAndApplySession({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "",
@@ -301,7 +292,7 @@ describe("DeploymentManager", () => {
 				token: "stored-token",
 			});
 
-			const result = await manager.verifyAndApplyDeployment({
+			const result = await manager.verifyAndApplySession({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 			});
@@ -315,7 +306,7 @@ describe("DeploymentManager", () => {
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
-			await manager.verifyAndApplyDeployment({
+			await manager.verifyAndApplySession({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "test-token",
@@ -328,11 +319,11 @@ describe("DeploymentManager", () => {
 			const { mockClient, validationMockClient, manager } = createTestContext();
 			const remoteUser = createMockUser({ id: "remote-user" });
 			const localUser = createMockUser({ id: "local-user" });
-			const validation = deferred<typeof remoteUser>();
+			const validation = Promise.withResolvers<typeof remoteUser>();
 			validationMockClient.getAuthenticatedUser.mockReturnValueOnce(
 				validation.promise,
 			);
-			const remoteLogin = manager.verifyAndApplyDeployment({
+			const remoteLogin = manager.verifyAndApplySession({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 				token: "remote-token",
@@ -350,7 +341,7 @@ describe("DeploymentManager", () => {
 			expect(await remoteLogin).toBe(false);
 			expect(mockClient.host).toBe("https://local.example.com");
 			expect(mockClient.token).toBe("local-token");
-			expect(manager.getCurrentUserId()).toBe("local-user");
+			expect(currentUserId(manager)).toBe("local-user");
 		});
 	});
 
@@ -455,7 +446,7 @@ describe("DeploymentManager", () => {
 			});
 
 			expect(mockClient.token).toBe("initial-token");
-			expect(manager.getCurrentUserId()).toBe("initial-user");
+			expect(currentUserId(manager)).toBe("initial-user");
 			expect(manager.isAuthenticated()).toBe(true);
 
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
@@ -465,7 +456,7 @@ describe("DeploymentManager", () => {
 			await flush();
 
 			expect(mockClient.token).toBe("refreshed-token");
-			expect(manager.getCurrentUserId()).toBe("refreshed-user");
+			expect(currentUserId(manager)).toBe("refreshed-user");
 			expect(manager.isAuthenticated()).toBe(true);
 		});
 
@@ -474,7 +465,7 @@ describe("DeploymentManager", () => {
 				createTestContext();
 			const user = createMockUser({ id: "initial-user" });
 			const refreshedUser = createMockUser({ id: "refreshed-user" });
-			const validation = deferred<typeof refreshedUser>();
+			const validation = Promise.withResolvers<typeof refreshedUser>();
 			validationMockClient.getAuthenticatedUser.mockReturnValueOnce(
 				validation.promise,
 			);
@@ -497,7 +488,7 @@ describe("DeploymentManager", () => {
 			expect(mockClient.host).toBeUndefined();
 			expect(mockClient.token).toBeUndefined();
 			expect(manager.getCurrentDeployment()).toBeNull();
-			expect(manager.getCurrentUserId()).toBeUndefined();
+			expect(currentUserId(manager)).toBeUndefined();
 		});
 	});
 
@@ -519,7 +510,7 @@ describe("DeploymentManager", () => {
 			expect(mockClient.token).toBeUndefined();
 			expect(contextManager.get("coder.authenticated")).toBe(false);
 			expect(contextManager.get("coder.isOwner")).toBe(false);
-			expect(manager.getCurrentUserId()).toBeUndefined();
+			expect(currentUserId(manager)).toBeUndefined();
 		});
 
 		it("resets the telemetry deployment URL on clearDeployment", async () => {
@@ -575,7 +566,7 @@ describe("DeploymentManager", () => {
 			expect(mockClient.host).toBeUndefined();
 			expect(mockClient.token).toBeUndefined();
 			expect(contextManager.get("coder.authenticated")).toBe(false);
-			expect(manager.getCurrentUserId()).toBeUndefined();
+			expect(currentUserId(manager)).toBeUndefined();
 			expect(manager.isAuthenticated()).toBe(false);
 
 			// Deployment is retained for easy re-login
@@ -621,7 +612,7 @@ describe("DeploymentManager", () => {
 				expect(mockClient.host).toBe(TEST_URL);
 				expect(mockClient.token).toBe("");
 				expect(manager.isAuthenticated()).toBe(true);
-				expect(manager.getCurrentUserId()).toBe(user.id);
+				expect(currentUserId(manager)).toBe(user.id);
 				expect(validationMockClient.getAuthenticatedUser).toHaveBeenCalledTimes(
 					1,
 				);
@@ -663,7 +654,7 @@ describe("DeploymentManager", () => {
 				await vi.runAllTimersAsync();
 
 				expect(manager.getCurrentDeployment()).toBeNull();
-				expect(manager.getCurrentUserId()).toBeUndefined();
+				expect(currentUserId(manager)).toBeUndefined();
 				expect(manager.isAuthenticated()).toBe(false);
 			} finally {
 				vi.useRealTimers();
@@ -703,7 +694,7 @@ describe("DeploymentManager", () => {
 
 			// Should recover and be authenticated again
 			expect(mockClient.token).toBe("recovered-token");
-			expect(manager.getCurrentUserId()).toBe(user.id);
+			expect(currentUserId(manager)).toBe(user.id);
 			expect(manager.isAuthenticated()).toBe(true);
 			expect(telemetrySink.expectOne("deployment.recovered")).toMatchObject({
 				properties: { trigger: "token_update" },

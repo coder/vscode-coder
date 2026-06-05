@@ -188,44 +188,28 @@ async function doActivate(
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
 	// (so we can see when it is visible) but otherwise they have the same effect.
-	const myWsTree = vscode.window.createTreeView(MY_WORKSPACES_TREE_ID, {
-		treeDataProvider: myWorkspacesProvider,
-	});
-	ctx.subscriptions.push(myWsTree);
-	myWorkspacesProvider.setVisibility(myWsTree.visible);
-	myWsTree.onDidChangeVisibility(
-		(event) => {
-			myWorkspacesProvider.setVisibility(event.visible);
-		},
-		undefined,
-		ctx.subscriptions,
-	);
+	const registerWorkspaceTreeView = (
+		viewId: string,
+		provider: WorkspaceProvider,
+	) => {
+		const tree = vscode.window.createTreeView(viewId, {
+			treeDataProvider: provider,
+		});
+		ctx.subscriptions.push(tree);
+		provider.setVisibility(tree.visible);
+		tree.onDidChangeVisibility(
+			(event) => provider.setVisibility(event.visible),
+			undefined,
+			ctx.subscriptions,
+		);
+	};
 
-	const sharedWsTree = vscode.window.createTreeView(SHARED_WORKSPACES_TREE_ID, {
-		treeDataProvider: sharedWorkspacesProvider,
-	});
-	ctx.subscriptions.push(sharedWsTree);
-	sharedWorkspacesProvider.setVisibility(sharedWsTree.visible);
-	sharedWsTree.onDidChangeVisibility(
-		(event) => {
-			sharedWorkspacesProvider.setVisibility(event.visible);
-		},
-		undefined,
-		ctx.subscriptions,
+	registerWorkspaceTreeView(MY_WORKSPACES_TREE_ID, myWorkspacesProvider);
+	registerWorkspaceTreeView(
+		SHARED_WORKSPACES_TREE_ID,
+		sharedWorkspacesProvider,
 	);
-
-	const allWsTree = vscode.window.createTreeView(ALL_WORKSPACES_TREE_ID, {
-		treeDataProvider: allWorkspacesProvider,
-	});
-	ctx.subscriptions.push(allWsTree);
-	allWorkspacesProvider.setVisibility(allWsTree.visible);
-	allWsTree.onDidChangeVisibility(
-		(event) => {
-			allWorkspacesProvider.setVisibility(event.visible);
-		},
-		undefined,
-		ctx.subscriptions,
-	);
+	registerWorkspaceTreeView(ALL_WORKSPACES_TREE_ID, allWorkspacesProvider);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
@@ -427,7 +411,7 @@ async function doActivate(
 			if (details) {
 				ctx.subscriptions.push(details);
 
-				const deploymentSet = await deploymentManager.verifyAndApplyDeployment({
+				const deploymentSet = await deploymentManager.verifyAndApplySession({
 					safeHostname: details.safeHostname,
 					url: details.url,
 					token: details.token,
@@ -482,7 +466,7 @@ async function doActivate(
 		output.info(`Initializing deployment: ${deployment.url}`);
 		tracer
 			.traceDeploymentInit(() =>
-				deploymentManager.verifyAndApplyDeployment(deployment),
+				deploymentManager.verifyAndApplySession(deployment),
 			)
 			.then((success) => {
 				if (success) {

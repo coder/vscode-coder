@@ -1,5 +1,3 @@
-import * as vscode from "vscode";
-
 import { CoderApi } from "../api/coderApi";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
@@ -19,6 +17,7 @@ import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { getAuthConfigWatchSettings } from "../settings/authConfig";
 import { type TelemetryService } from "../telemetry/service";
 
+import { SessionStore, type SessionData } from "./sessionStore";
 import {
 	DeploymentSchema,
 	type Deployment,
@@ -26,24 +25,12 @@ import {
 } from "./types";
 
 import type { User } from "coder/site/src/api/typesGenerated";
+import type * as vscode from "vscode";
 
 import type {
 	WorkspaceSessionSnapshot,
 	WorkspaceSessionState,
 } from "../workspace/session";
-
-type DeploymentSessionSnapshot =
-	| {
-			readonly kind: "signedOut";
-			readonly revision: number;
-			readonly deployment: Deployment | null;
-	  }
-	| {
-			readonly kind: "signedIn";
-			readonly revision: number;
-			readonly deployment: Deployment;
-			readonly user: User;
-	  };
 
 /**
  * Manages deployment state for the extension.
@@ -66,14 +53,8 @@ export class DeploymentManager
 	private readonly telemetryService: TelemetryService;
 	private readonly deploymentTelemetry: DeploymentTelemetry;
 
-	#session: DeploymentSessionSnapshot = {
-		kind: "signedOut",
-		revision: 0,
-		deployment: null,
-	};
-	readonly #onDidChangeWorkspaceSession =
-		new vscode.EventEmitter<WorkspaceSessionSnapshot>();
-	public readonly onDidChange = this.#onDidChangeWorkspaceSession.event;
+	readonly #sessionStore = new SessionStore();
+	public readonly onDidChange = this.#sessionStore.onDidChange;
 	#disposed = false;
 	#authListenerDisposable: vscode.Disposable | undefined;
 	#authConfigDisposable: vscode.Disposable | undefined;
@@ -113,51 +94,37 @@ export class DeploymentManager
 	 * Get the current deployment state.
 	 */
 	public getCurrentDeployment(): Deployment | null {
-		return this.#session.deployment;
-	}
-
-	public getCurrentUserId(): string | undefined {
-		return this.#session.kind === "signedIn"
-			? this.#session.user.id
-			: undefined;
+		return this.#sessionStore.current.deployment;
 	}
 
 	public getSnapshot(): WorkspaceSessionSnapshot {
-		if (this.#session.kind === "signedIn") {
-			return {
-				kind: "signedIn",
-				revision: this.#session.revision,
-				userId: this.#session.user.id,
-			};
-		}
-		return { kind: "signedOut", revision: this.#session.revision };
+		return this.#sessionStore.getSnapshot();
 	}
 
 	/**
 	 * Check if we have an authenticated deployment (does not guarantee that the current auth data is valid).
 	 */
 	public isAuthenticated(): boolean {
-		return this.#session.kind === "signedIn";
+		return this.#sessionStore.current.kind === "signedIn";
 	}
 
 	/**
-	 * Verify credentials and apply the deployment on success. Used for
-	 * fresh logins and for un-suspending a session after auth settings or
-	 * a token become valid again. Bails if state moved during the verify
-	 * (logout, another login, dispose), so callers don't need a race guard.
+	 * Verify credentials and apply the deployment on success, signing in. Used
+	 * for fresh logins and for un-suspending a session once auth settings or a
+	 * token become valid again. Bails if state moved during the verify (logout,
+	 * another login, dispose), so callers don't need a race guard.
 	 */
-	public async verifyAndApplyDeployment(
+	public async verifyAndApplySession(
 		deployment: Deployment & { token?: string },
 	): Promise<boolean> {
-		const sessionBefore = this.#session;
+		const sessionBefore = this.#sessionStore.current;
 		const token =
 			deployment.token ??
 			(await this.secretsManager.getSessionAuth(deployment.safeHostname))
 				?.token;
-		const tempClient = CoderApi.create(deployment.url, token, this.logger);
 
 		try {
-			const user = await tempClient.getAuthenticatedUser();
+			const user = await this.#verifyCredentials(deployment.url, token);
 			if (this.#hasStateChangedSince(sessionBefore)) {
 				return false;
 			}
@@ -166,17 +133,31 @@ export class DeploymentManager
 		} catch (e) {
 			this.logger.warn("Failed to authenticate with deployment:", e);
 			return false;
+		}
+	}
+
+	/**
+	 * Verify credentials with a throwaway client and return the authenticated
+	 * user. Throws if the credentials are rejected.
+	 */
+	async #verifyCredentials(
+		url: string,
+		token: string | undefined,
+	): Promise<User> {
+		const tempClient = CoderApi.create(url, token, this.logger);
+		try {
+			return await tempClient.getAuthenticatedUser();
 		} finally {
 			tempClient.dispose();
 		}
 	}
 
 	/** True if disposal, login, or a deployment switch raced our await. */
-	#hasStateChangedSince(sessionBefore: DeploymentSessionSnapshot): boolean {
+	#hasStateChangedSince(sessionBefore: SessionData): boolean {
 		return (
 			this.#disposed ||
 			this.isAuthenticated() ||
-			this.#session !== sessionBefore
+			this.#sessionStore.current !== sessionBefore
 		);
 	}
 
@@ -199,14 +180,17 @@ export class DeploymentManager
 			this.client.setCredentials(deployment.url, deployment.token);
 		}
 
-		const ourRef = this.setSignedIn(deploymentWithoutAuth, deployment.user);
+		const ourRef = this.#sessionStore.signIn(
+			deploymentWithoutAuth,
+			deployment.user,
+		);
 		// Register before OAuth setup so background token refresh can update client credentials.
 		this.registerAuthListener();
 		this.updateAuthContexts(deployment.user);
 
 		await this.oauthSessionManager.setDeployment(deploymentWithoutAuth);
 		// Bail if a concurrent write took over during the await.
-		if (this.#session !== ourRef) {
+		if (this.#sessionStore.current !== ourRef) {
 			return;
 		}
 		await this.persistDeployment(deploymentWithoutAuth);
@@ -218,13 +202,13 @@ export class DeploymentManager
 	public async clearDeployment(reason: DeploymentSuspendReason): Promise<void> {
 		this.logger.debug(
 			"Clearing deployment",
-			this.#session.deployment?.safeHostname,
+			this.#sessionStore.current.deployment?.safeHostname,
 		);
 		const wasAuthenticated = this.isAuthenticated();
 		this.#authListenerDisposable?.dispose();
 		this.#authListenerDisposable = undefined;
-		this.setSignedOut(null);
-		this.clearSessionSideEffects();
+		this.#sessionStore.signOut(null);
+		this.clearSideEffects();
 		this.telemetryService.setDeploymentUrl("");
 		if (wasAuthenticated) {
 			this.deploymentTelemetry.suspended(reason);
@@ -239,14 +223,14 @@ export class DeploymentManager
 	 */
 	public suspendSession(reason: DeploymentSuspendReason): void {
 		const wasAuthenticated = this.isAuthenticated();
-		this.setSignedOut(this.#session.deployment);
-		this.clearSessionSideEffects();
+		this.#sessionStore.signOut(this.#sessionStore.current.deployment);
+		this.clearSideEffects();
 		if (wasAuthenticated) {
 			this.deploymentTelemetry.suspended(reason);
 		}
 	}
 
-	private clearSessionSideEffects(): void {
+	private clearSideEffects(): void {
 		this.oauthSessionManager.clearDeployment();
 		this.client.setCredentials(undefined, undefined);
 		this.updateAuthContexts(undefined);
@@ -257,7 +241,7 @@ export class DeploymentManager
 		this.#authListenerDisposable?.dispose();
 		this.#authConfigDisposable?.dispose();
 		this.#crossWindowSyncDisposable?.dispose();
-		this.#onDidChangeWorkspaceSession.dispose();
+		this.#sessionStore.dispose();
 	}
 
 	/**
@@ -266,25 +250,28 @@ export class DeploymentManager
 	 * Also handles recovery from suspended session state.
 	 */
 	private registerAuthListener(): void {
-		if (!this.#session.deployment) {
+		const deployment = this.#sessionStore.current.deployment;
+		if (!deployment) {
 			return;
 		}
 
 		// Capture hostname at registration time for the guard clause
-		const safeHostname = this.#session.deployment.safeHostname;
+		const safeHostname = deployment.safeHostname;
 
 		this.#authListenerDisposable?.dispose();
 		this.logger.debug("Registering auth listener for hostname", safeHostname);
 		this.#authListenerDisposable = this.secretsManager.onDidChangeSessionAuth(
 			safeHostname,
 			async (auth) => {
-				if (this.#session.deployment?.safeHostname !== safeHostname) {
+				if (
+					this.#sessionStore.current.deployment?.safeHostname !== safeHostname
+				) {
 					return;
 				}
 
 				if (auth) {
 					if (this.isAuthenticated()) {
-						await this.verifyAndUpdateAuthenticatedSession({
+						await this.verifyAndUpdateSession({
 							url: auth.url,
 							safeHostname,
 							token: auth.token,
@@ -309,53 +296,22 @@ export class DeploymentManager
 		);
 	}
 
-	private async verifyAndUpdateAuthenticatedSession(
+	private async verifyAndUpdateSession(
 		deployment: Deployment & { token: string },
 	): Promise<void> {
-		const sessionBefore = this.#session;
-		const tempClient = CoderApi.create(
-			deployment.url,
-			deployment.token,
-			this.logger,
-		);
-
+		const sessionBefore = this.#sessionStore.current;
 		try {
-			const user = await tempClient.getAuthenticatedUser();
-			if (this.#disposed || this.#session !== sessionBefore) {
+			const user = await this.#verifyCredentials(
+				deployment.url,
+				deployment.token,
+			);
+			if (this.#disposed || this.#sessionStore.current !== sessionBefore) {
 				return;
 			}
 			await this.setDeployment({ ...deployment, user });
 		} catch (e) {
 			this.logger.warn("Failed to authenticate updated session:", e);
-		} finally {
-			tempClient.dispose();
 		}
-	}
-
-	private setSignedIn(
-		deployment: Deployment,
-		user: User,
-	): DeploymentSessionSnapshot {
-		this.#session = {
-			kind: "signedIn",
-			revision: this.#session.revision + 1,
-			deployment,
-			user,
-		};
-		this.#onDidChangeWorkspaceSession.fire(this.getSnapshot());
-		return this.#session;
-	}
-
-	private setSignedOut(
-		deployment: Deployment | null,
-	): DeploymentSessionSnapshot {
-		this.#session = {
-			kind: "signedOut",
-			revision: this.#session.revision + 1,
-			deployment,
-		};
-		this.#onDidChangeWorkspaceSession.fire(this.getSnapshot());
-		return this.#session;
 	}
 
 	private subscribeToAuthConfigChanges(): void {
@@ -381,14 +337,17 @@ export class DeploymentManager
 		try {
 			do {
 				this.#recoveryPending = false;
-				const snapshot = this.#session.deployment;
-				if (this.#disposed || !snapshot || this.isAuthenticated()) {
+				const deployment = this.#sessionStore.current.deployment;
+				if (this.#disposed || !deployment || this.isAuthenticated()) {
 					return;
 				}
 				this.logger.debug(
 					"Authentication settings changed after session suspended, recovering",
 				);
-				const recovered = await this.recoverDeployment(snapshot, "auth_config");
+				const recovered = await this.recoverDeployment(
+					deployment,
+					"auth_config",
+				);
 				if (!recovered) {
 					this.deploymentTelemetry.authConfigRecoveryFailed();
 				}
@@ -424,7 +383,7 @@ export class DeploymentManager
 		deployment: Deployment & { token?: string },
 		trigger: DeploymentRecoveryTrigger,
 	): Promise<boolean> {
-		const recovered = await this.verifyAndApplyDeployment(deployment);
+		const recovered = await this.verifyAndApplySession(deployment);
 		if (recovered) {
 			this.deploymentTelemetry.recovered(trigger);
 		}
