@@ -497,26 +497,26 @@ describe("OAuthSessionManager", () => {
 		};
 
 		it.each(["reactive", "background"] as const)(
-			"emits auth.token_refreshed with trigger=%s",
+			"emits auth.token_refresh with trigger=%s",
 			async (trigger) => {
 				const { manager, sink } = await setupWithSink();
 
 				await manager.refreshToken(trigger);
 
-				const event = sink.expectOne("auth.token_refreshed");
+				const event = sink.expectOne("auth.token_refresh.completed");
 				expect(event.properties).toMatchObject({ trigger, result: "success" });
 				expect(event.measurements.durationMs).toEqual(expect.any(Number));
 			},
 		);
 
-		it("emits auth.token_refreshed with result=error when refresh fails", async () => {
+		it("emits auth.token_refresh with result=error when refresh fails", async () => {
 			const { manager, sink } = await setupWithSink(
 				createOAuthAxiosError("invalid_grant"),
 			);
 
 			await expect(manager.refreshToken("reactive")).rejects.toThrow();
 
-			const event = sink.expectOne("auth.token_refreshed");
+			const event = sink.expectOne("auth.token_refresh.completed");
 			expect(event.properties).toMatchObject({
 				trigger: "reactive",
 				result: "error",
@@ -533,7 +533,7 @@ describe("OAuthSessionManager", () => {
 			]);
 
 			expect(first).toBe(second);
-			expect(sink.eventsNamed("auth.token_refreshed")).toHaveLength(1);
+			expect(sink.eventsNamed("auth.token_refresh.completed")).toHaveLength(1);
 			expect(
 				sink.expectOne("auth.token_refresh.deduped").properties,
 			).toMatchObject({

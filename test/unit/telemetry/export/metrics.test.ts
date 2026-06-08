@@ -28,13 +28,13 @@ describe("describeMetricEvent", () => {
 		const descriptor = describeMetricEvent(
 			makeEvent({
 				eventName: "ssh.network.sampled",
-				measurements: { latencyMs: 35, downloadMbits: 10, custom: 1 },
+				measurements: { latency_ms: 35, download_mbits: 10, custom: 1 },
 			}),
 		);
 		expect(descriptor).toEqual({
 			measurements: [
-				{ name: "latencyMs", value: 35, kind: "gauge", unit: "ms" },
-				{ name: "downloadMbits", value: 10, kind: "gauge", unit: "Mbit/s" },
+				{ name: "latency", value: 35, kind: "gauge", unit: "ms" },
+				{ name: "download", value: 10, kind: "gauge", unit: "Mbit/s" },
 				{ name: "custom", value: 1, kind: "gauge", unit: "1" },
 			],
 		});
@@ -65,7 +65,7 @@ describe("describeMetricEvent", () => {
 					unit: "{request}",
 				},
 				{
-					name: "duration.p95_ms",
+					name: "duration.p95",
 					value: 42,
 					kind: "gauge",
 					unit: "ms",
@@ -86,8 +86,8 @@ describe("describeMetricEvent", () => {
 
 	it.each([
 		["latency_ms", "ms"],
-		["durationMs", "ms"],
-		["downloadMbits", "Mbit/s"],
+		["duration_ms", "ms"],
+		["download_mbits", "Mbit/s"],
 		["something_else", "1"],
 	])("derives unit for measurement '%s' -> '%s'", (name, unit) => {
 		const descriptor = describeMetricEvent(

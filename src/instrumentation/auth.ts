@@ -88,7 +88,9 @@ export class AuthTelemetry {
 		trigger: AuthTokenRefreshTrigger,
 		fn: () => Promise<T>,
 	): Promise<T> {
-		return this.telemetry.trace("auth.token_refreshed", fn, { trigger });
+		return this.telemetry.trace("auth.token_refresh.completed", fn, {
+			trigger,
+		});
 	}
 
 	/** Logged when a refresh call joins an in-flight refresh and emits no span of its own. */
@@ -110,9 +112,9 @@ export class AuthTelemetry {
 					logReceived: () => span.log("received"),
 					setRecovery: (recovery) => span.setProperty("recovery", recovery),
 					setRefreshAttempted: (attempted) =>
-						span.setProperty("refreshAttempted", attempted),
+						span.setProperty("refresh_attempted", attempted),
 				}),
-			{ recovery: "none", refreshAttempted: false },
+			{ recovery: "none", refresh_attempted: false },
 		);
 	}
 

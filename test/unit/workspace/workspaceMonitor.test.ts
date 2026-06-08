@@ -104,7 +104,7 @@ describe("WorkspaceMonitor", () => {
 				from: "none",
 				to: "running",
 			});
-			expect(events[0].measurements.observedDurationMs).toBeUndefined();
+			expect(events[0].measurements.observed_duration_ms).toBeUndefined();
 			expect(events[1]).toMatchObject({
 				properties: {
 					from: "running",
@@ -112,7 +112,7 @@ describe("WorkspaceMonitor", () => {
 					"build.transition": "stop",
 					"build.reason": "autostop",
 				},
-				measurements: { observedDurationMs: expect.any(Number) },
+				measurements: { observed_duration_ms: expect.any(Number) },
 			});
 		});
 
@@ -157,7 +157,7 @@ describe("WorkspaceMonitor", () => {
 			expect(reasons).toEqual(["autostop", "initiator"]);
 		});
 
-		it("emits observedBuildDurationMs on the event that resolves a build run", async () => {
+		it("emits observed_build_duration_ms on the event that resolves a build run", async () => {
 			const { stream, sink } = buildSinkContext();
 
 			await setup(
@@ -176,20 +176,20 @@ describe("WorkspaceMonitor", () => {
 			);
 
 			const events = sink.eventsNamed("workspace.state_transitioned");
-			// pending and starting are intermediate; only running carries observedBuildDurationMs.
+			// pending and starting are intermediate; only running carries observed_build_duration_ms.
 			expect(events.map((e) => e.properties.to)).toEqual([
 				"pending",
 				"starting",
 				"running",
 				"stopping",
 			]);
-			expect(events[0].measurements.observedBuildDurationMs).toBeUndefined();
-			expect(events[1].measurements.observedBuildDurationMs).toBeUndefined();
-			expect(events[2].measurements.observedBuildDurationMs).toEqual(
+			expect(events[0].measurements.observed_build_duration_ms).toBeUndefined();
+			expect(events[1].measurements.observed_build_duration_ms).toBeUndefined();
+			expect(events[2].measurements.observed_build_duration_ms).toEqual(
 				expect.any(Number),
 			);
 			// Next build cycle resets; stopping doesn't carry the previous duration.
-			expect(events[3].measurements.observedBuildDurationMs).toBeUndefined();
+			expect(events[3].measurements.observed_build_duration_ms).toBeUndefined();
 		});
 	});
 

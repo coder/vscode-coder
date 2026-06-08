@@ -43,7 +43,7 @@ interface ObservedAgentState {
 
 /**
  * Emits `workspace.state_transitioned` as a workspace progresses through
- * statuses, plus `observedBuildDurationMs` when a provisioner run resolves.
+ * statuses, plus `observed_build_duration_ms` when a provisioner run resolves.
  * Construct one per workspace; `WorkspaceMonitor` is the sole call site.
  */
 export class WorkspaceStateTelemetry {
@@ -73,7 +73,7 @@ export class WorkspaceStateTelemetry {
 
 		const now = performance.now();
 		const measurements: Record<string, number> = previous
-			? { observedDurationMs: now - previous.observedAtMs }
+			? { observed_duration_ms: now - previous.observedAtMs }
 			: {};
 
 		const wasProvisioning =
@@ -83,7 +83,7 @@ export class WorkspaceStateTelemetry {
 			this.buildStartedAtMs ??= now;
 		} else {
 			if (wasProvisioning && this.buildStartedAtMs !== undefined) {
-				measurements.observedBuildDurationMs = now - this.buildStartedAtMs;
+				measurements.observed_build_duration_ms = now - this.buildStartedAtMs;
 			}
 			this.buildStartedAtMs = undefined;
 		}
@@ -91,7 +91,7 @@ export class WorkspaceStateTelemetry {
 		this.telemetry.log(
 			"workspace.state_transitioned",
 			{
-				workspaceName: this.workspaceName,
+				workspace_name: this.workspaceName,
 				from: previous?.status ?? INITIAL_STATE,
 				to: status,
 				"build.transition": buildTransition,
@@ -135,14 +135,14 @@ export class WorkspaceAgentTelemetry {
 		this.telemetry.log(
 			"workspace.agent.state_transitioned",
 			{
-				workspaceName: this.workspaceName,
-				agentName: agent.name,
+				workspace_name: this.workspaceName,
+				agent_name: agent.name,
 				"status.from": previous?.status ?? INITIAL_STATE,
 				"status.to": agent.status,
 				"lifecycle_state.from": previous?.lifecycleState ?? INITIAL_STATE,
 				"lifecycle_state.to": agent.lifecycle_state,
 			},
-			previous ? { observedDurationMs: now - previous.observedAtMs } : {},
+			previous ? { observed_duration_ms: now - previous.observedAtMs } : {},
 		);
 		this.observed = {
 			status: agent.status,
@@ -168,13 +168,13 @@ export class WorkspaceOperationTelemetry {
 
 	public traceUpdate<T>(fn: () => Promise<T>): Promise<T> {
 		return this.telemetry.trace("workspace.update.triggered", fn, {
-			workspaceName: this.workspaceName,
+			workspace_name: this.workspaceName,
 		});
 	}
 
 	public traceStart<T>(fn: () => Promise<T>): Promise<T> {
 		return this.telemetry.trace("workspace.start.triggered", fn, {
-			workspaceName: this.workspaceName,
+			workspace_name: this.workspaceName,
 		});
 	}
 
@@ -193,7 +193,7 @@ export class WorkspaceOperationTelemetry {
 				span.setProperty("action", action);
 				return action;
 			},
-			{ workspaceName: this.workspaceName, update_offered: outdated },
+			{ workspace_name: this.workspaceName, update_offered: outdated },
 		);
 	}
 
@@ -246,7 +246,7 @@ export class WorkspaceOperationTelemetry {
 	): Promise<T> {
 		return this.telemetry.trace("workspace.update.prompted", fn, {
 			prompt,
-			workspaceName: this.workspaceName,
+			workspace_name: this.workspaceName,
 		});
 	}
 }

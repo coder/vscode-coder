@@ -550,7 +550,7 @@ describe("AuthInterceptor", () => {
 			expectThrow: boolean;
 			expected: {
 				recovery: AuthRecoveryAction;
-				refreshAttempted: "true" | "false";
+				refresh_attempted: "true" | "false";
 				result: "success" | "error";
 			};
 		}
@@ -571,7 +571,7 @@ describe("AuthInterceptor", () => {
 				expectThrow: false,
 				expected: {
 					recovery: "refresh_success",
-					refreshAttempted: "true",
+					refresh_attempted: "true",
 					result: "success",
 				},
 			},
@@ -583,7 +583,7 @@ describe("AuthInterceptor", () => {
 				expectThrow: true,
 				expected: {
 					recovery: "login_required",
-					refreshAttempted: "false",
+					refresh_attempted: "false",
 					result: "error",
 				},
 			},
@@ -594,12 +594,12 @@ describe("AuthInterceptor", () => {
 				expectThrow: true,
 				expected: {
 					recovery: "none",
-					refreshAttempted: "false",
+					refresh_attempted: "false",
 					result: "error",
 				},
 			},
 			{
-				name: "OAuth refresh fails + callback declines: refreshAttempted=true, recovery=login_required",
+				name: "OAuth refresh fails + callback declines: refresh_attempted=true, recovery=login_required",
 				arrange: async (ctx) => {
 					await ctx.setupOAuthTokens();
 					ctx.mockOAuthManager.refreshToken.mockRejectedValue(
@@ -611,7 +611,7 @@ describe("AuthInterceptor", () => {
 				expectThrow: true,
 				expected: {
 					recovery: "login_required",
-					refreshAttempted: "true",
+					refresh_attempted: "true",
 					result: "error",
 				},
 			},

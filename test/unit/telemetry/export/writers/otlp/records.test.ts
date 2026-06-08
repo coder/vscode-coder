@@ -271,16 +271,16 @@ describe("metricRecords", () => {
 		});
 		const descriptor: MetricDescriptor = {
 			measurements: [
-				gauge("latencyMs", 35, "ms"),
-				gauge("downloadMbits", 10, "Mbit/s"),
+				gauge("latency", 35, "ms"),
+				gauge("download", 10, "Mbit/s"),
 			],
 		};
 
 		const records = metricRecords(event, descriptor, newCumulativeState());
 
 		expect(records.map((r) => [r.name, r.unit])).toEqual([
-			["ssh.network.sampled.latencyMs", "ms"],
-			["ssh.network.sampled.downloadMbits", "Mbit/s"],
+			["ssh.network.sampled.latency", "ms"],
+			["ssh.network.sampled.download", "Mbit/s"],
 		]);
 		const point = records[0].gauge!.dataPoints[0];
 		expect(point).not.toHaveProperty("startTimeUnixNano");

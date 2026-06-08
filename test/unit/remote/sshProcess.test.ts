@@ -373,12 +373,12 @@ describe("SshProcessMonitor", () => {
 			monitor.dispose();
 
 			expect(sink.eventsNamed("ssh.process.disposed")[0]).toMatchObject({
-				properties: { wasLost: "false" },
-				measurements: { uptimeMs: expect.any(Number) },
+				properties: { was_lost: "false" },
+				measurements: { uptime_ms: expect.any(Number) },
 			});
 		});
 
-		it("emits ssh.process.disposed with wasLost=true when dispose follows a loss", async () => {
+		it("emits ssh.process.disposed with was_lost=true when dispose follows a loss", async () => {
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			vol.fromJSON({
@@ -401,7 +401,7 @@ describe("SshProcessMonitor", () => {
 
 			const disposed = sink.eventsNamed("ssh.process.disposed");
 			expect(disposed).toHaveLength(1);
-			expect(disposed[0].properties).toMatchObject({ wasLost: "true" });
+			expect(disposed[0].properties).toMatchObject({ was_lost: "true" });
 		});
 
 		it("emits missing_network_info as the loss cause when reads fail repeatedly", async () => {
@@ -459,10 +459,10 @@ describe("SshProcessMonitor", () => {
 			monitor.dispose();
 
 			const replaced = sink.eventsNamed("ssh.process.replaced");
-			expect(replaced[0].properties).toMatchObject({ wasLost: "true" });
+			expect(replaced[0].properties).toMatchObject({ was_lost: "true" });
 			expect(replaced[0].measurements).toMatchObject({
-				previousUptimeMs: expect.any(Number),
-				lostDurationMs: expect.any(Number),
+				previous_uptime_ms: expect.any(Number),
+				lost_duration_ms: expect.any(Number),
 			});
 			expect(sink.eventsNamed("ssh.process.recovered")).toHaveLength(0);
 		});
@@ -492,10 +492,10 @@ describe("SshProcessMonitor", () => {
 
 			expect(sink.eventsNamed("ssh.process.lost")[0]).toMatchObject({
 				properties: { cause: "stale_network_info" },
-				measurements: { uptimeMs: expect.any(Number) },
+				measurements: { uptime_ms: expect.any(Number) },
 			});
 			expect(sink.eventsNamed("ssh.process.recovered")[0]).toMatchObject({
-				measurements: { recoveryDurationMs: expect.any(Number) },
+				measurements: { recovery_duration_ms: expect.any(Number) },
 			});
 		});
 
@@ -516,8 +516,8 @@ describe("SshProcessMonitor", () => {
 			await waitUntil(() => sink.eventsNamed("ssh.network.sampled").length > 0);
 
 			expect(sink.eventsNamed("ssh.network.sampled")[0]).toMatchObject({
-				properties: { p2p: "true", preferredDerp: "NYC" },
-				measurements: { latencyMs: 25 },
+				properties: { p2p: "true", preferred_derp: "NYC" },
+				measurements: { latency_ms: 25 },
 			});
 		});
 	});
