@@ -337,18 +337,20 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		workspaceName: string,
 		outdated: boolean,
 	): Promise<"start" | "update" | undefined> {
-		const buttons = outdated ? ["Start", "Update and Start"] : ["Start"];
-		const action = await vscodeProposed.window.showInformationMessage(
-			`The workspace ${workspaceName} is not running. How would you like to proceed?`,
-			{
-				useCustom: true,
-				modal: true,
-			},
-			...buttons,
-		);
-		if (action === "Start") return "start";
-		if (action === "Update and Start") return "update";
-		return undefined;
+		return this.operationTelemetry.traceStartPrompted(outdated, async () => {
+			const buttons = outdated ? ["Start", "Update and Start"] : ["Start"];
+			const action = await vscodeProposed.window.showInformationMessage(
+				`The workspace ${workspaceName} is not running. How would you like to proceed?`,
+				{
+					useCustom: true,
+					modal: true,
+				},
+				...buttons,
+			);
+			if (action === "Start") return "start";
+			if (action === "Update and Start") return "update";
+			return undefined;
+		});
 	}
 
 	public getAgentId(): string | undefined {

@@ -20,6 +20,15 @@ import {
 	type AuthLogoutOutcome,
 } from "./instrumentation/auth";
 import {
+	CommandInstrumentation,
+	type DevcontainerMode,
+	type WorkspaceOpenSource,
+	type WorkspaceOpenTrace,
+	type WorkspacePickerFailureCategory,
+	type WorkspacePickerResult,
+	type WorkspacePickerSource,
+} from "./instrumentation/commands";
+import {
 	reportElapsedProgress,
 	withCancellableProgress,
 	withProgress,
@@ -34,7 +43,6 @@ import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
 import { openInBrowser, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
-import { parseSpeedtestResult } from "./webviews/speedtest/types";
 import {
 	AgentTreeItem,
 	type OpenableTreeItem,
@@ -68,6 +76,7 @@ interface OpenOptions {
 	agentName?: string;
 	folderPath?: string;
 	openRecent?: boolean;
+	source?: WorkspaceOpenSource;
 	/** When false, an absent folderPath opens a bare remote window instead of
 	 *  falling back to the agent's expanded_directory. Defaults to true. */
 	useDefaultDirectory?: boolean;
@@ -77,6 +86,18 @@ interface LoginArgs {
 	readonly url?: string;
 	readonly autoLogin?: boolean;
 }
+
+type WorkspaceResolution =
+	| {
+			readonly status: "selected";
+			readonly client: CoderApi;
+			readonly workspaceId: string;
+	  }
+	| { readonly status: "cancelled" }
+	| {
+			readonly status: "failed";
+			readonly category: WorkspacePickerFailureCategory;
+	  };
 
 const openDefaults = {
 	openRecent: false,
@@ -94,6 +115,7 @@ export class Commands {
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 	private readonly telemetryService: TelemetryService;
 	private readonly authTelemetry: AuthTelemetry;
+	private readonly traces: CommandInstrumentation;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -112,6 +134,7 @@ export class Commands {
 		private readonly deploymentManager: DeploymentManager,
 	) {
 		this.telemetryService = serviceContainer.getTelemetryService();
+		this.traces = new CommandInstrumentation(this.telemetryService);
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.mementoManager = serviceContainer.getMementoManager();
@@ -223,138 +246,178 @@ export class Commands {
 	 * editor document.  Can be triggered from the sidebar or command palette.
 	 */
 	public async speedTest(item?: OpenableTreeItem): Promise<void> {
-		const resolved = await this.resolveClientAndWorkspace(item);
-		if (!resolved) {
-			return;
-		}
+		await this.traces.diagnostic("coder.speedTest", async (telemetry) => {
+			const resolved = await this.resolveClientAndWorkspace(item);
+			if (resolved.status === "cancelled") {
+				telemetry.cancel("workspace_picker");
+				return;
+			}
+			if (resolved.status === "failed") {
+				telemetry.fail(undefined, resolved.category);
+				return;
+			}
 
-		const { client, workspaceId } = resolved;
+			const { client, workspaceId } = resolved;
 
-		const input = await vscode.window.showInputBox({
-			title: "Speed Test Duration",
-			prompt: "Duration in seconds",
-			value: "5",
-			validateInput: (value) => {
-				const n = Number(value.trim());
-				if (!value.trim() || !Number.isFinite(n) || n <= 0) {
-					return "Please enter a positive number";
-				}
-				return undefined;
-			},
-		});
-		if (input === undefined) {
-			return;
-		}
-		const seconds = Number(input.trim());
+			const input = await vscode.window.showInputBox({
+				title: "Speed Test Duration",
+				prompt: "Duration in seconds",
+				value: "5",
+				validateInput: (value) => {
+					const n = Number(value.trim());
+					if (!value.trim() || !Number.isFinite(n) || n <= 0) {
+						return "Please enter a positive number";
+					}
+					return undefined;
+				},
+			});
+			if (input === undefined) {
+				telemetry.cancel("input");
+				return;
+			}
+			const seconds = Number(input.trim());
+			telemetry.speedtestRequestedDuration(seconds);
 
-		const result = await withCancellableProgress(
-			async ({ signal, progress }) => {
-				progress.report({ message: "Connecting..." });
-				const env = await this.resolveCliEnv(client);
+			const result = await withCancellableProgress(
+				async ({ signal, progress }) => {
+					progress.report({ message: "Connecting..." });
+					const env = await this.resolveCliEnv(client);
 
-				const stopProgress = reportElapsedProgress({
-					progress,
-					totalMs: seconds * 1000,
-					format: (pct, elapsedMs) =>
-						pct >= 100
-							? "Collecting results..."
-							: `${Math.floor(elapsedMs / 1000)}s / ${seconds}s`,
-				});
-				try {
-					return await cliExec.speedtest(
-						env,
-						workspaceId,
-						`${seconds}s`,
-						signal,
+					const stopProgress = reportElapsedProgress({
+						progress,
+						totalMs: seconds * 1000,
+						format: (pct, elapsedMs) =>
+							pct >= 100
+								? "Collecting results..."
+								: `${Math.floor(elapsedMs / 1000)}s / ${seconds}s`,
+					});
+					try {
+						return await cliExec.speedtest(
+							env,
+							workspaceId,
+							`${seconds}s`,
+							signal,
+						);
+					} finally {
+						stopProgress();
+					}
+				},
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: `Running speed test for ${workspaceId}`,
+					cancellable: true,
+				},
+			);
+
+			if (!telemetry.progressResult(result)) {
+				if (!result.cancelled) {
+					this.logger.error("Speed test failed", result.error);
+					vscode.window.showErrorMessage(
+						`Speed test failed: ${toError(result.error).message}`,
 					);
-				} finally {
-					stopProgress();
 				}
-			},
-			{
-				location: vscode.ProgressLocation.Notification,
-				title: `Running speed test for ${workspaceId}`,
-				cancellable: true,
-			},
-		);
+				return;
+			}
 
-		if (result.ok) {
 			try {
-				const parsed = parseSpeedtestResult(result.value);
+				const parsed = telemetry.speedtestSuccess(result.value);
 				this.speedtestPanelFactory.show({
 					result: parsed,
 					rawJson: result.value,
 					workspaceId,
 				});
 			} catch (err) {
-				this.logger.error("Failed to parse speedtest output", err);
-				const message =
-					err instanceof ZodError
-						? "Speed test output did not match the expected format. Check `Output > Coder` for details."
-						: `Speed test returned unexpected output: ${toError(err).message}`;
-				vscode.window.showErrorMessage(message);
+				if (err instanceof ZodError || err instanceof SyntaxError) {
+					telemetry.fail(err, "parse_error");
+					this.logger.error("Failed to parse speedtest output", err);
+					vscode.window.showErrorMessage(
+						"Speed test output did not match the expected format. Check `Output > Coder` for details.",
+					);
+					return;
+				}
+				telemetry.fail(err);
+				this.logger.error("Failed to display speedtest results", err);
+				vscode.window.showErrorMessage(
+					`Speed test returned unexpected output: ${toError(err).message}`,
+				);
 			}
-			return;
-		}
-
-		if (result.cancelled) {
-			return;
-		}
-
-		this.logger.error("Speed test failed", result.error);
-		vscode.window.showErrorMessage(
-			`Speed test failed: ${toError(result.error).message}`,
-		);
+		});
 	}
 
 	public async supportBundle(item?: OpenableTreeItem): Promise<void> {
-		const resolved = await this.resolveClientAndWorkspace(item);
-		if (!resolved) {
-			return;
-		}
+		await this.traces.diagnostic("coder.supportBundle", async (telemetry) => {
+			const resolved = await this.resolveClientAndWorkspace(item);
+			if (resolved.status === "cancelled") {
+				telemetry.cancel("workspace_picker");
+				return;
+			}
+			if (resolved.status === "failed") {
+				telemetry.fail(undefined, resolved.category);
+				return;
+			}
 
-		const { client, workspaceId } = resolved;
+			const { client, workspaceId } = resolved;
 
-		const outputUri = await this.promptSupportBundlePath();
-		if (!outputUri) {
-			return;
-		}
+			const outputUri = await this.promptSupportBundlePath();
+			if (!outputUri) {
+				telemetry.cancel("save_dialog");
+				return;
+			}
 
-		const result = await withCancellableProgress(
-			async ({ signal, progress }) => {
-				progress.report({ message: "Resolving CLI..." });
-				const env = await this.resolveCliEnv(client);
-				if (!env.featureSet.supportBundle) {
-					throw new Error(
-						"Support bundles require Coder CLI v2.10.0 or later. Please update your Coder deployment.",
+			const result = await withCancellableProgress(
+				async ({ signal, progress }) => {
+					progress.report({ message: "Resolving CLI..." });
+					const env = await this.resolveCliEnv(client);
+					if (!env.featureSet.supportBundle) {
+						throw new Error(
+							"Support bundles require Coder CLI v2.10.0 or later. Please update your Coder deployment.",
+						);
+					}
+
+					progress.report({ message: "Collecting diagnostics..." });
+					await cliExec.supportBundle(
+						env,
+						workspaceId,
+						outputUri.fsPath,
+						signal,
+					);
+
+					progress.report({ message: "Adding VS Code logs..." });
+					await appendVsCodeLogs(
+						outputUri.fsPath,
+						{
+							activeProxyLogPath: this.workspaceLogPath,
+							proxyLogDir: this.pathResolver.getProxyLogPath(),
+							extensionLogDir: this.pathResolver.getCodeLogDir(),
+							telemetryDir: this.pathResolver.getTelemetryPath(),
+						},
+						this.logger,
+					);
+
+					return outputUri;
+				},
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: `Creating support bundle for ${workspaceId}`,
+					cancellable: true,
+				},
+			);
+
+			if (!telemetry.progressResult(result)) {
+				if (!result.cancelled) {
+					if (
+						toError(result.error).message.startsWith("Support bundles require")
+					) {
+						telemetry.fail(result.error, "unsupported_cli");
+					}
+					this.logger.error("Support bundle failed", result.error);
+					vscode.window.showErrorMessage(
+						`Support bundle failed: ${toError(result.error).message}`,
 					);
 				}
+				return;
+			}
 
-				progress.report({ message: "Collecting diagnostics..." });
-				await cliExec.supportBundle(env, workspaceId, outputUri.fsPath, signal);
-
-				progress.report({ message: "Adding VS Code logs..." });
-				await appendVsCodeLogs(
-					outputUri.fsPath,
-					{
-						activeProxyLogPath: this.workspaceLogPath,
-						proxyLogDir: this.pathResolver.getProxyLogPath(),
-						extensionLogDir: this.pathResolver.getCodeLogDir(),
-						telemetryDir: this.pathResolver.getTelemetryPath(),
-					},
-					this.logger,
-				);
-
-				return outputUri;
-			},
-			{
-				location: vscode.ProgressLocation.Notification,
-				title: `Creating support bundle for ${workspaceId}`,
-				cancellable: true,
-			},
-		);
-
-		if (result.ok) {
 			const action = await vscode.window.showInformationMessage(
 				`Support bundle saved to ${result.value.fsPath}`,
 				"Reveal in File Explorer",
@@ -362,17 +425,7 @@ export class Commands {
 			if (action === "Reveal in File Explorer") {
 				await vscode.commands.executeCommand("revealFileInOS", result.value);
 			}
-			return;
-		}
-
-		if (result.cancelled) {
-			return;
-		}
-
-		this.logger.error("Support bundle failed", result.error);
-		vscode.window.showErrorMessage(
-			`Support bundle failed: ${toError(result.error).message}`,
-		);
+		});
 	}
 
 	private promptSupportBundlePath(): Thenable<vscode.Uri | undefined> {
@@ -385,12 +438,25 @@ export class Commands {
 	}
 
 	public async exportTelemetry(): Promise<void> {
-		await runExportTelemetryCommand(
-			this.pathResolver.getTelemetryPath(),
-			this.logger,
-			() => this.telemetryService.flush(),
-			this.telemetryService.getContext(),
-		);
+		await this.traces.diagnostic("coder.exportTelemetry", async (telemetry) => {
+			const outcome = await runExportTelemetryCommand(
+				this.pathResolver.getTelemetryPath(),
+				this.logger,
+				() => this.telemetryService.flush(),
+				this.telemetryService.getContext(),
+			);
+			switch (outcome.status) {
+				case "cancelled":
+					telemetry.cancel(outcome.stage);
+					return;
+				case "failed":
+					telemetry.fail(outcome.error);
+					return;
+				case "success":
+					telemetry.exportSuccess(outcome.format, outcome.eventCount);
+					return;
+			}
+		});
 	}
 
 	/**
@@ -690,26 +756,45 @@ export class Commands {
 				throw new Error("You are not logged in");
 			}
 			if (item instanceof AgentTreeItem) {
-				await this.openWorkspace(baseUrl, item.workspace, item.agent, {
-					openRecent: true,
-				});
+				await this.traces.workspaceOpen(
+					"sidebar.agent",
+					{ workspace: item.workspace, agent: item.agent },
+					(telemetry) => {
+						return this.openWorkspace(baseUrl, item.workspace, item.agent, {
+							openRecent: true,
+							telemetry,
+						});
+					},
+				);
 			} else if (item instanceof WorkspaceTreeItem) {
-				const agents = await this.extractAgentsWithFallback(item.workspace);
-				const agent = await maybeAskAgent(agents);
-				if (!agent) {
-					// User declined to pick an agent.
-					return;
-				}
-				await this.openWorkspace(baseUrl, item.workspace, agent, {
-					openRecent: true,
-				});
+				await this.traces.workspaceOpen(
+					"sidebar.workspace",
+					{ workspace: item.workspace },
+					async (telemetry) => {
+						const agents = await this.extractAgentsWithFallback(item.workspace);
+						const agent = await maybeAskAgent(agents);
+						if (!agent) {
+							return telemetry.cancel("agent_picker", {
+								workspace: item.workspace,
+							});
+						}
+						telemetry.select({
+							workspace: item.workspace,
+							agent,
+						});
+						return this.openWorkspace(baseUrl, item.workspace, agent, {
+							openRecent: true,
+							telemetry,
+						});
+					},
+				);
 			} else {
 				throw new TypeError("Unable to open unknown sidebar item");
 			}
 		} else {
 			// If there is no tree item, then the user manually ran this command.
 			// Default to the regular open instead.
-			await this.open();
+			await this.open({ source: "sidebar.fallback" });
 		}
 	}
 
@@ -756,39 +841,46 @@ export class Commands {
 			agentName,
 			folderPath,
 			openRecent,
+			source = workspaceOwner && workspaceName ? "uri" : "command",
 			useDefaultDirectory,
 		} = { ...openDefaults, ...options };
 
-		const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
-		if (!baseUrl) {
-			throw new Error("You are not logged in");
-		}
-
-		let workspace: Workspace | undefined;
-		if (workspaceOwner && workspaceName) {
-			workspace = await this.extensionClient.getWorkspaceByOwnerAndName(
-				workspaceOwner,
-				workspaceName,
-			);
-		} else {
-			workspace = await this.pickWorkspace();
-			if (!workspace) {
-				// User declined to pick a workspace.
-				return false;
+		return this.traces.workspaceOpen(source, undefined, async (telemetry) => {
+			const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
+			if (!baseUrl) {
+				throw new Error("You are not logged in");
 			}
-		}
 
-		const agents = await this.extractAgentsWithFallback(workspace);
-		const agent = await maybeAskAgent(agents, agentName);
-		if (!agent) {
-			// User declined to pick an agent.
-			return false;
-		}
+			let workspace: Workspace;
+			if (workspaceOwner && workspaceName) {
+				workspace = await this.extensionClient.getWorkspaceByOwnerAndName(
+					workspaceOwner,
+					workspaceName,
+				);
+			} else {
+				const pick = await this.pickWorkspace("workspace.open");
+				if (pick.status === "cancelled") {
+					return telemetry.cancel("workspace_picker");
+				}
+				if (pick.status === "failed") {
+					return telemetry.fail(pick.category);
+				}
+				workspace = pick.workspace;
+			}
 
-		return this.openWorkspace(baseUrl, workspace, agent, {
-			folderPath,
-			openRecent,
-			useDefaultDirectory,
+			const agents = await this.extractAgentsWithFallback(workspace);
+			const agent = await maybeAskAgent(agents, agentName);
+			if (!agent) {
+				return telemetry.cancel("agent_picker", { workspace });
+			}
+			telemetry.select({ workspace, agent });
+
+			return this.openWorkspace(baseUrl, workspace, agent, {
+				folderPath,
+				openRecent,
+				useDefaultDirectory,
+				telemetry,
+			});
 		});
 	}
 
@@ -806,55 +898,62 @@ export class Commands {
 		localWorkspaceFolder = "",
 		localConfigFile = "",
 	): Promise<void> {
-		const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
-		if (!baseUrl) {
-			throw new Error("You are not logged in");
-		}
+		const mode: DevcontainerMode = localWorkspaceFolder
+			? "dev_container"
+			: "attached_container";
+		await this.traces.devcontainerOpen(mode, async () => {
+			const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
+			if (!baseUrl) {
+				throw new Error("You are not logged in");
+			}
 
-		const remoteAuthority = toRemoteAuthority(
-			baseUrl,
-			workspaceOwner,
-			workspaceName,
-			workspaceAgent,
-		);
+			const remoteAuthority = toRemoteAuthority(
+				baseUrl,
+				workspaceOwner,
+				workspaceName,
+				workspaceAgent,
+			);
 
-		const hostPath = localWorkspaceFolder || undefined;
-		const configFile =
-			hostPath && localConfigFile
-				? {
-						path: localConfigFile,
-						scheme: "vscode-fileHost",
-					}
-				: undefined;
-		const devContainer = Buffer.from(
-			JSON.stringify({
-				containerName: devContainerName,
-				hostPath,
-				configFile,
-				localDocker: false,
-			}),
-			"utf-8",
-		).toString("hex");
+			const hostPath = localWorkspaceFolder || undefined;
+			const configFile =
+				hostPath && localConfigFile
+					? {
+							path: localConfigFile,
+							scheme: "vscode-fileHost",
+						}
+					: undefined;
+			const devContainer = Buffer.from(
+				JSON.stringify({
+					containerName: devContainerName,
+					hostPath,
+					configFile,
+					localDocker: false,
+				}),
+				"utf-8",
+			).toString("hex");
 
-		const type = localWorkspaceFolder ? "dev-container" : "attached-container";
-		const devContainerAuthority = `${type}+${devContainer}@${remoteAuthority}`;
+			const type = localWorkspaceFolder
+				? "dev-container"
+				: "attached-container";
+			const devContainerAuthority = `${type}+${devContainer}@${remoteAuthority}`;
 
-		let newWindow = true;
-		if (!vscode.workspace.workspaceFolders?.length) {
-			newWindow = false;
-		}
+			let newWindow = true;
+			if (!vscode.workspace.workspaceFolders?.length) {
+				newWindow = false;
+			}
 
-		// Only set the memento when opening a new folder
-		await this.mementoManager.setStartupMode("start");
-		await vscode.commands.executeCommand(
-			"vscode.openFolder",
-			vscode.Uri.from({
-				scheme: "vscode-remote",
-				authority: devContainerAuthority,
-				path: devContainerFolder,
-			}),
-			newWindow,
-		);
+			// Only set the memento when opening a new folder
+			await this.mementoManager.setStartupMode("start");
+			await vscode.commands.executeCommand(
+				"vscode.openFolder",
+				vscode.Uri.from({
+					scheme: "vscode-remote",
+					authority: devContainerAuthority,
+					path: devContainerFolder,
+				}),
+				newWindow,
+			);
+		});
 	}
 
 	/**
@@ -905,7 +1004,7 @@ export class Commands {
 
 	public async pingWorkspace(item?: OpenableTreeItem): Promise<void> {
 		const resolved = await this.resolveClientAndWorkspace(item);
-		if (!resolved) {
+		if (resolved.status !== "selected") {
 			return;
 		}
 
@@ -927,36 +1026,39 @@ export class Commands {
 	/**
 	 * Resolve the API client and workspace identifier from a sidebar item,
 	 * the currently connected workspace, or by prompting the user to pick one.
-	 * Returns undefined if the user cancels the picker.
+	 * Returns cancelled/failed if the user cancels the picker or the picker cannot load.
 	 */
 	private async resolveClientAndWorkspace(
 		item?: OpenableTreeItem,
-	): Promise<{ client: CoderApi; workspaceId: string } | undefined> {
+	): Promise<WorkspaceResolution> {
 		if (item) {
 			return {
+				status: "selected",
 				client: this.extensionClient,
 				workspaceId: createWorkspaceIdentifier(item.workspace),
 			};
 		}
 		if (this.workspace && this.remoteWorkspaceClient) {
 			return {
+				status: "selected",
 				client: this.remoteWorkspaceClient,
 				workspaceId: createWorkspaceIdentifier(this.workspace),
 			};
 		}
-		const workspace = await this.pickWorkspace({
+		const pick = await this.pickWorkspace("diagnostic", {
 			title: "Select a running workspace",
 			initialValue: "owner:me status:running ",
 			placeholder: "Search running workspaces...",
 			filter: (w) => w.latest_build.status === "running",
 		});
-		if (!workspace) {
-			return undefined;
+		if (pick.status === "selected") {
+			return {
+				status: "selected",
+				client: this.extensionClient,
+				workspaceId: createWorkspaceIdentifier(pick.workspace),
+			};
 		}
-		return {
-			client: this.extensionClient,
-			workspaceId: createWorkspaceIdentifier(workspace),
-		};
+		return pick;
 	}
 
 	/** Resolve a CliEnv, preferring a locally cached binary over a network fetch. */
@@ -991,19 +1093,24 @@ export class Commands {
 	/**
 	 * Ask the user to select a workspace.  Return undefined if canceled.
 	 */
-	private async pickWorkspace(options?: {
-		title?: string;
-		initialValue?: string;
-		placeholder?: string;
-		filter?: (w: Workspace) => boolean;
-	}): Promise<Workspace | undefined> {
+	private async pickWorkspace(
+		source: WorkspacePickerSource,
+		options?: {
+			title?: string;
+			initialValue?: string;
+			placeholder?: string;
+			filter?: (w: Workspace) => boolean;
+		},
+	): Promise<WorkspacePickerResult> {
 		const quickPick = vscode.window.createQuickPick();
 		quickPick.value = options?.initialValue ?? "owner:me ";
 		quickPick.placeholder = options?.placeholder ?? "owner:me template:go";
 		quickPick.title = options?.title ?? "Connect to a workspace";
 		const filter = options?.filter;
 
-		let lastWorkspaces: readonly Workspace[];
+		let lastWorkspaces: readonly Workspace[] = [];
+		let settled = false;
+		let fetchFailureCategory: WorkspacePickerFailureCategory | undefined;
 		const disposables: vscode.Disposable[] = [];
 		disposables.push(
 			quickPick.onDidChangeValue((value) => {
@@ -1013,6 +1120,7 @@ export class Commands {
 						q: value,
 					})
 					.then((workspaces) => {
+						fetchFailureCategory = undefined;
 						const filtered = filter
 							? workspaces.workspaces.filter(filter)
 							: workspaces.workspaces;
@@ -1042,6 +1150,7 @@ export class Commands {
 						}
 					})
 					.catch((ex) => {
+						fetchFailureCategory = "fetch_failed";
 						this.logger.error("Failed to fetch workspaces", ex);
 						if (ex instanceof CertificateError) {
 							void ex.showNotification();
@@ -1058,26 +1167,58 @@ export class Commands {
 		);
 
 		quickPick.show();
-		return new Promise<Workspace | undefined>((resolve) => {
-			disposables.push(
-				quickPick.onDidHide(() => {
-					resolve(undefined);
-				}),
-				quickPick.onDidChangeSelection((selected) => {
-					if (selected.length < 1) {
-						return resolve(undefined);
-					}
-					const workspace =
-						lastWorkspaces[quickPick.items.indexOf(selected[0])];
-					resolve(workspace);
-				}),
-			);
-		}).finally(() => {
-			for (const d of disposables) {
-				d.dispose();
-			}
-			quickPick.dispose();
-		});
+		return this.traces
+			.workspacePicker(
+				source,
+				async (telemetry) =>
+					new Promise<WorkspacePickerResult>((resolve) => {
+						const finish = (result: WorkspacePickerResult) => {
+							if (settled) {
+								return;
+							}
+							settled = true;
+							if (result.status === "selected") {
+								telemetry.selected(result.workspace, lastWorkspaces.length);
+							} else if (result.status === "failed") {
+								telemetry.failed(result.category, lastWorkspaces.length);
+							} else {
+								telemetry.cancelled(lastWorkspaces.length);
+							}
+							resolve(result);
+						};
+						disposables.push(
+							quickPick.onDidHide(() => {
+								if (fetchFailureCategory) {
+									finish({
+										status: "failed",
+										category: fetchFailureCategory,
+									});
+									return;
+								}
+								finish({ status: "cancelled" });
+							}),
+							quickPick.onDidChangeSelection((selected) => {
+								if (selected.length < 1) {
+									finish({ status: "cancelled" });
+									return;
+								}
+								const workspace =
+									lastWorkspaces[quickPick.items.indexOf(selected[0])];
+								if (!workspace) {
+									finish({ status: "cancelled" });
+									return;
+								}
+								finish({ status: "selected", workspace });
+							}),
+						);
+					}),
+			)
+			.finally(() => {
+				for (const d of disposables) {
+					d.dispose();
+				}
+				quickPick.dispose();
+			});
 	}
 
 	/**
@@ -1120,12 +1261,13 @@ export class Commands {
 		options: Pick<
 			OpenOptions,
 			"folderPath" | "openRecent" | "useDefaultDirectory"
-		> = {},
+		> & { telemetry?: WorkspaceOpenTrace } = {},
 	): Promise<boolean> {
 		const { openRecent, useDefaultDirectory } = {
 			...openDefaults,
 			...options,
 		};
+		const { telemetry } = options;
 		let { folderPath } = options;
 		const remoteAuthority = toRemoteAuthority(
 			baseUrl,
@@ -1169,7 +1311,12 @@ export class Commands {
 				});
 				if (!folderPath) {
 					// User aborted.
-					return false;
+					return (
+						telemetry?.cancel("recent_folder_picker", {
+							workspace,
+							agent,
+						}) ?? false
+					);
 				}
 			}
 		}
@@ -1191,6 +1338,7 @@ export class Commands {
 			});
 
 		if (folderPath) {
+			telemetry?.handoff("folder");
 			await vscode.commands.executeCommand(
 				"vscode.openFolder",
 				vscode.Uri.from({
@@ -1205,6 +1353,7 @@ export class Commands {
 		}
 
 		// This opens the workspace without an active folder opened.
+		telemetry?.handoff("empty_window");
 		await vscode.commands.executeCommand("vscode.newWindow", {
 			remoteAuthority: remoteAuthority,
 			reuseWindow: !newWindow,

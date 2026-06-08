@@ -24,6 +24,8 @@ const PROVISIONING_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
 	"deleting",
 ]);
 
+export type WorkspacePromptAction = "start" | "update";
+
 interface ObservedWorkspaceState {
 	readonly status: WorkspaceStatus;
 	readonly buildTransition: WorkspaceBuild["transition"];
@@ -174,6 +176,25 @@ export class WorkspaceOperationTelemetry {
 		});
 	}
 
+	public async traceStartPrompted(
+		outdated: boolean,
+		fn: () => Promise<WorkspacePromptAction | undefined>,
+	): Promise<WorkspacePromptAction | undefined> {
+		return this.telemetry.trace(
+			"workspace.start.prompted",
+			async (span) => {
+				const action = await fn();
+				if (!action) {
+					span.markAborted();
+					return undefined;
+				}
+				span.setProperty("action", action);
+				return action;
+			},
+			{ "update.offered": outdated },
+		);
+	}
+
 	/**
 	 * Records dismissal as `result: "aborted"`. The framework treats any throw
 	 * as `result: "error"`, so we return inside the span and rethrow outside.
@@ -196,7 +217,7 @@ export class WorkspaceOperationTelemetry {
 					throw error;
 				}
 			},
-			{ workspaceName: this.workspaceName },
+			{ prompt: "parameters" },
 		);
 		if (cancel) throw cancel;
 		return parameters;

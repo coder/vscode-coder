@@ -19,6 +19,8 @@ import type { Logger } from "../../logging/logger";
 import type { TelemetryContext } from "../event";
 import type { FlushStatus } from "../service";
 
+import type { ExportFormat } from "./writers/types";
+
 const REVEAL_ACTION = "Reveal in File Explorer";
 
 const PROGRESS_OPTIONS = {
@@ -27,15 +29,24 @@ const PROGRESS_OPTIONS = {
 	cancellable: true,
 } as const;
 
+export type ExportTelemetryOutcome =
+	| { readonly status: "cancelled"; readonly stage: "prompt" | "progress" }
+	| { readonly status: "failed"; readonly error: unknown }
+	| {
+			readonly status: "success";
+			readonly eventCount: number;
+			readonly format: ExportFormat;
+	  };
+
 export async function runExportTelemetryCommand(
 	telemetryDir: string,
 	logger: Logger,
 	flushTelemetry: () => Promise<FlushStatus>,
 	context: TelemetryContext,
-): Promise<void> {
+): Promise<ExportTelemetryOutcome> {
 	const choice = await promptForExport();
 	if (!choice) {
-		return;
+		return { status: "cancelled", stage: "prompt" };
 	}
 
 	const request: ExportRequest = {
@@ -53,7 +64,7 @@ export async function runExportTelemetryCommand(
 		PROGRESS_OPTIONS,
 	);
 
-	await reportOutcome(result, choice, logger);
+	return reportOutcome(result, choice, logger);
 }
 
 /** Wires the pipeline's host hooks to the progress UI and the logger. */
@@ -81,16 +92,16 @@ async function reportOutcome(
 	result: ProgressResult<number>,
 	choice: ExportChoice,
 	logger: Logger,
-): Promise<void> {
+): Promise<ExportTelemetryOutcome> {
 	if (!result.ok) {
 		if (result.cancelled) {
-			return;
+			return { status: "cancelled", stage: "progress" };
 		}
 		logger.error("Telemetry export failed", result.error);
 		void vscode.window.showErrorMessage(
 			`Telemetry export failed: ${toError(result.error).message}`,
 		);
-		return;
+		return { status: "failed", error: result.error };
 	}
 
 	const eventCount = result.value;
@@ -98,9 +109,10 @@ async function reportOutcome(
 		void vscode.window.showInformationMessage(
 			`No telemetry events found for ${choice.range.label}.`,
 		);
-		return;
+		return { status: "success", eventCount, format: choice.format };
 	}
 	await notifyExportSucceeded(choice.outputPath, eventCount, logger);
+	return { status: "success", eventCount, format: choice.format };
 }
 
 async function notifyExportSucceeded(

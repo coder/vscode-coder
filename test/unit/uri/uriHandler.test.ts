@@ -142,6 +142,7 @@ describe("uriHandler", () => {
 				agentName: "a",
 				folderPath: "/f",
 				openRecent: true,
+				source: "uri",
 				useDefaultDirectory: false,
 			});
 		});
@@ -161,6 +162,7 @@ describe("uriHandler", () => {
 				agentName: undefined,
 				folderPath: undefined,
 				openRecent: expected,
+				source: "uri",
 				useDefaultDirectory: false,
 			});
 		});
@@ -178,6 +180,7 @@ describe("uriHandler", () => {
 				agentName: undefined,
 				folderPath: undefined,
 				openRecent: false,
+				source: "uri",
 				useDefaultDirectory: false,
 			});
 			expect(showErrorMessage).not.toHaveBeenCalled();
@@ -194,6 +197,7 @@ describe("uriHandler", () => {
 				agentName: undefined,
 				folderPath: undefined,
 				openRecent: false,
+				source: "uri",
 				useDefaultDirectory: false,
 			});
 			expect(showErrorMessage).not.toHaveBeenCalled();

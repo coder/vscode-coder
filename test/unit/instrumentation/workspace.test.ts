@@ -70,6 +70,41 @@ describe("WorkspaceOperationTelemetry", () => {
 		});
 	});
 
+	describe("traceStartPrompted", () => {
+		it("emits result=success with accepted action", async () => {
+			const { sink, instance: ops } = setup(newOps);
+
+			const result = await ops.traceStartPrompted(true, () =>
+				Promise.resolve("update"),
+			);
+
+			expect(result).toBe("update");
+			expect(sink.expectOne("workspace.start.prompted")).toMatchObject({
+				properties: {
+					"update.offered": "true",
+					action: "update",
+					result: "success",
+				},
+			});
+		});
+
+		it("emits result=aborted when dismissed", async () => {
+			const { sink, instance: ops } = setup(newOps);
+
+			const result = await ops.traceStartPrompted(false, () =>
+				Promise.resolve(undefined),
+			);
+
+			expect(result).toBeUndefined();
+			expect(sink.expectOne("workspace.start.prompted")).toMatchObject({
+				properties: {
+					"update.offered": "false",
+					result: "aborted",
+				},
+			});
+		});
+	});
+
 	describe("traceUpdatePrompted", () => {
 		it("returns the collected parameters and emits result=success", async () => {
 			const { sink, instance: ops } = setup(newOps);
@@ -80,9 +115,12 @@ describe("WorkspaceOperationTelemetry", () => {
 			);
 
 			expect(result).toEqual(collected);
-			expect(sink.expectOne("workspace.update.prompted")).toMatchObject({
-				properties: { workspaceName: WORKSPACE_NAME, result: "success" },
+			const event = sink.expectOne("workspace.update.prompted");
+			expect(event.properties).toMatchObject({
+				prompt: "parameters",
+				result: "success",
 			});
+			expect(event.properties.workspaceName).toBeUndefined();
 		});
 
 		it("emits result=aborted (no error block) and rethrows on cancellation", async () => {

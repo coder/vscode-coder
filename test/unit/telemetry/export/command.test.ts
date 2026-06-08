@@ -72,7 +72,10 @@ describe("runExportTelemetryCommand", () => {
 		const { run } = setup();
 		vi.mocked(promptForExport).mockResolvedValue(undefined);
 
-		await run();
+		await expect(run()).resolves.toEqual({
+			status: "cancelled",
+			stage: "prompt",
+		});
 
 		expect(collectTelemetryExport).not.toHaveBeenCalled();
 		expect(vscode.window.withProgress).not.toHaveBeenCalled();
@@ -121,7 +124,11 @@ describe("runExportTelemetryCommand", () => {
 		])("notifies with a pluralized %i-event count", async (count, message) => {
 			const { run } = setup({ outcome: { count } });
 
-			await run();
+			await expect(run()).resolves.toEqual({
+				status: "success",
+				eventCount: count,
+				format: "json",
+			});
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				`${message} ${OUTPUT_PATH}.`,
@@ -132,7 +139,10 @@ describe("runExportTelemetryCommand", () => {
 		it("reveals the file when the user clicks the action", async () => {
 			const { run } = setup({ revealChoice: REVEAL_ACTION });
 
-			await run();
+			await expect(run()).resolves.toMatchObject({
+				status: "success",
+				eventCount: 2,
+			});
 
 			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
 				"revealFileInOS",
@@ -154,7 +164,10 @@ describe("runExportTelemetryCommand", () => {
 				new Error("no command"),
 			);
 
-			await expect(run()).resolves.toBeUndefined();
+			await expect(run()).resolves.toMatchObject({
+				status: "success",
+				eventCount: 2,
+			});
 
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 		});
@@ -164,7 +177,11 @@ describe("runExportTelemetryCommand", () => {
 		it("reports that no events were found", async () => {
 			const { run } = setup({ outcome: { count: 0 } });
 
-			await run();
+			await expect(run()).resolves.toEqual({
+				status: "success",
+				eventCount: 0,
+				format: "json",
+			});
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				"No telemetry events found for Last 24 hours.",
@@ -174,9 +191,10 @@ describe("runExportTelemetryCommand", () => {
 
 	describe("failure", () => {
 		it("shows an error notification without throwing", async () => {
-			const { run } = setup({ outcome: { error: new Error("disk full") } });
+			const error = new Error("disk full");
+			const { run } = setup({ outcome: { error } });
 
-			await expect(run()).resolves.toBeUndefined();
+			await expect(run()).resolves.toEqual({ status: "failed", error });
 
 			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
 				"Telemetry export failed: disk full",
@@ -190,7 +208,10 @@ describe("runExportTelemetryCommand", () => {
 			});
 			const { run } = setup({ outcome: { error: aborted } });
 
-			await run();
+			await expect(run()).resolves.toEqual({
+				status: "cancelled",
+				stage: "progress",
+			});
 
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
