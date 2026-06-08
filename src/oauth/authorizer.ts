@@ -208,7 +208,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			}
 		}
 
-		const params: Record<string, string> = {
+		const params = new URLSearchParams({
 			client_id: clientId,
 			response_type: RESPONSE_TYPE,
 			redirect_uri: this.getRedirectUri(),
@@ -216,30 +216,13 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			state,
 			code_challenge: challenge,
 			code_challenge_method: PKCE_CHALLENGE_METHOD,
-		};
+		});
 
-		// The server's endpoint path already includes the connection URL's path
-		// prefix (e.g. a sub-path deployment). alternativeWebUrl can swap the
-		// origin and path prefix (e.g. a reverse proxy) for browser use.
-		const endpoint = new URL(metadata.authorization_endpoint);
-		const connectionBase = new URL(connectionUrl);
-		const browserBase = new URL(resolveUiUrl(connectionUrl));
-		endpoint.protocol = browserBase.protocol;
-		endpoint.hostname = browserBase.hostname;
-		endpoint.port = browserBase.port;
-		// Swap the connection prefix for the browser prefix without doubling it.
-		const connectionPrefix = connectionBase.pathname.replace(/\/$/, "");
-		const browserPrefix = browserBase.pathname.replace(/\/$/, "");
-		let endpointPath = endpoint.pathname;
-		if (
-			connectionPrefix &&
-			(endpointPath === connectionPrefix ||
-				endpointPath.startsWith(`${connectionPrefix}/`))
-		) {
-			endpointPath = endpointPath.slice(connectionPrefix.length);
-		}
-		endpoint.pathname = `${browserPrefix}${endpointPath}`;
-		for (const [key, value] of Object.entries(params)) {
+		const endpoint = toBrowserAuthorizationUrl(
+			metadata.authorization_endpoint,
+			connectionUrl,
+		);
+		for (const [key, value] of params) {
 			endpoint.searchParams.set(key, value);
 		}
 
@@ -386,4 +369,32 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			this.pendingAuthReject = null;
 		}
 	}
+}
+
+/**
+ * Swap the server's authorization endpoint onto the browser-facing URL
+ * (`alternativeWebUrl`) when it lives under the connection URL, preserving any
+ * sub-path prefix. Endpoints on a different host are left untouched.
+ */
+function toBrowserAuthorizationUrl(
+	authorizationEndpoint: string,
+	connectionUrl: string,
+): URL {
+	const endpoint = new URL(authorizationEndpoint);
+	const connectionBase = new URL(connectionUrl);
+	const browserBase = new URL(resolveUiUrl(connectionUrl));
+	const connectionPrefix = connectionBase.pathname.replace(/\/$/, "");
+	const browserPrefix = browserBase.pathname.replace(/\/$/, "");
+	const underConnection =
+		endpoint.origin === connectionBase.origin &&
+		(connectionPrefix === "" ||
+			endpoint.pathname === connectionPrefix ||
+			endpoint.pathname.startsWith(`${connectionPrefix}/`));
+	if (underConnection) {
+		endpoint.protocol = browserBase.protocol;
+		endpoint.hostname = browserBase.hostname;
+		endpoint.port = browserBase.port;
+		endpoint.pathname = `${browserPrefix}${endpoint.pathname.slice(connectionPrefix.length)}`;
+	}
+	return endpoint;
 }

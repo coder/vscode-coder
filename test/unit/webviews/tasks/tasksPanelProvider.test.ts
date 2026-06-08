@@ -684,12 +684,11 @@ describe("TasksPanelProvider", () => {
 			expect(vscode.env.openExternal).not.toHaveBeenCalled();
 		});
 
-		it("viewInCoder uses alternative web URL when configured", async () => {
+		it("viewInCoder uses the alternative web URL when configured", async () => {
 			configurationProvider.set(
 				"coder.alternativeWebUrl",
 				"https://coder.example.com:443",
 			);
-
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(
 				task({ id: "task-1", owner_name: "alice" }),
@@ -702,12 +701,11 @@ describe("TasksPanelProvider", () => {
 			);
 		});
 
-		it("viewLogs uses alternative web URL when configured", async () => {
+		it("viewLogs uses the alternative web URL when configured", async () => {
 			configurationProvider.set(
 				"coder.alternativeWebUrl",
 				"https://coder.example.com:443",
 			);
-
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(
 				task({

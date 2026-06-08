@@ -220,6 +220,5 @@ export function openInBrowser(
 	path: string,
 ): Thenable<boolean> {
 	const base = vscode.Uri.parse(resolveUiUrl(connectionUrl));
-	const segment = path.replace(/^\/+/, "");
-	return vscode.env.openExternal(vscode.Uri.joinPath(base, segment));
+	return vscode.env.openExternal(vscode.Uri.joinPath(base, path));
 }

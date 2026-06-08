@@ -410,65 +410,38 @@ describe("resolveUiUrl", () => {
 		configurationProvider = new MockConfigurationProvider();
 	});
 
-	afterEach(() => {
-		vi.mocked(vscode.workspace.getConfiguration).mockReset();
-	});
-
-	it("returns connection URL when setting is not configured", () => {
+	it("returns the connection URL when no alternative is configured", () => {
 		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com:7004",
 		);
 	});
 
-	it("returns connection URL when setting is empty", () => {
-		configurationProvider.set("coder.alternativeWebUrl", "");
-		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
-			"https://coder.example.com:7004",
-		);
-	});
+	it.each([
+		{ name: "empty", value: "" },
+		{ name: "whitespace", value: "   " },
+	])(
+		"returns the connection URL when the alternative is $name",
+		({ value }) => {
+			configurationProvider.set("coder.alternativeWebUrl", value);
+			expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
+				"https://coder.example.com:7004",
+			);
+		},
+	);
 
-	it("returns connection URL when setting is whitespace", () => {
-		configurationProvider.set("coder.alternativeWebUrl", "   ");
-		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
-			"https://coder.example.com:7004",
-		);
-	});
-
-	it("returns alternative URL when configured", () => {
-		configurationProvider.set(
-			"coder.alternativeWebUrl",
-			"https://coder.example.com",
-		);
-		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
-			"https://coder.example.com",
-		);
-	});
-
-	it("strips trailing slashes from alternative URL", () => {
-		configurationProvider.set(
-			"coder.alternativeWebUrl",
-			"https://coder.example.com/",
-		);
-		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
-			"https://coder.example.com",
-		);
-	});
-
-	it("strips multiple trailing slashes from alternative URL", () => {
-		configurationProvider.set(
-			"coder.alternativeWebUrl",
-			"https://coder.example.com///",
-		);
-		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
-			"https://coder.example.com",
-		);
-	});
-
-	it("trims whitespace from alternative URL", () => {
-		configurationProvider.set(
-			"coder.alternativeWebUrl",
-			"  https://coder.example.com  ",
-		);
+	it.each([
+		{
+			name: "uses the alternative URL when configured",
+			value: "https://coder.example.com",
+		},
+		{ name: "strips trailing slashes", value: "https://coder.example.com/" },
+		{
+			name: "strips multiple trailing slashes",
+			value: "https://coder.example.com///",
+		},
+		{ name: "trims whitespace", value: "  https://coder.example.com  " },
+	])("$name", ({ value }) => {
+		configurationProvider.set("coder.alternativeWebUrl", value);
 		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com",
 		);
@@ -483,11 +456,7 @@ describe("openInBrowser", () => {
 		vi.mocked(vscode.env.openExternal).mockClear();
 	});
 
-	afterEach(() => {
-		vi.mocked(vscode.workspace.getConfiguration).mockReset();
-	});
-
-	it("opens the connection URL with the given path when no alt URL set", () => {
+	it("opens the connection URL joined with the path when no alt URL is set", () => {
 		openInBrowser("https://coder.example.com:7004", "/templates");
 		expect(vscode.env.openExternal).toHaveBeenCalledWith(
 			vscode.Uri.parse("https://coder.example.com:7004/templates"),
@@ -516,7 +485,7 @@ describe("openInBrowser", () => {
 		);
 	});
 
-	it("handles paths without a leading slash", () => {
+	it("joins paths without a leading slash", () => {
 		openInBrowser("https://coder.example.com", "templates");
 		expect(vscode.env.openExternal).toHaveBeenCalledWith(
 			vscode.Uri.parse("https://coder.example.com/templates"),

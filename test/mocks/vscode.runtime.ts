@@ -89,8 +89,14 @@ export class Uri {
 			: `${this.scheme}:${this.path}`;
 	}
 	static joinPath(base: Uri, ...paths: string[]) {
-		const sep = base.path.endsWith("/") ? "" : "/";
-		return new Uri(base.scheme, base.path + sep + paths.join("/"));
+		// Mirror vscode-uri: collapse slashes at the seams while preserving the
+		// leading "//" that separates the authority from the path.
+		const head = base.path.replace(/\/+$/, "");
+		const tail = paths
+			.map((p) => p.replace(/^\/+|\/+$/g, ""))
+			.filter(Boolean)
+			.join("/");
+		return new Uri(base.scheme, tail ? `${head}/${tail}` : head);
 	}
 }
 
