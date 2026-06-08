@@ -61,7 +61,7 @@ export interface WorkspaceProviderOptions {
 }
 
 // Bounds fetch() retries when the session keeps changing mid-request.
-const MAX_FETCH_ATTEMPTS = 3;
+export const MAX_FETCH_ATTEMPTS = 3;
 
 /**
  * Polls workspaces using the provided REST client and renders them in a tree.
@@ -159,8 +159,7 @@ export class WorkspaceProvider
 			});
 
 			// Session changed mid-request; this result is stale, so retry.
-			const latest = this.sessionState.getSnapshot();
-			if (latest.kind !== "signedIn" || latest.revision !== session.revision) {
+			if (this.sessionChangedSince(session)) {
 				continue;
 			}
 
@@ -184,9 +183,9 @@ export class WorkspaceProvider
 						agent.id,
 						this.client,
 					);
-					// dispose() may have cleared the map mid-create; don't leak
-					// this watcher.
-					if (this.disposed) {
+					// dispose() or a session change may have raced this await;
+					// drop the watcher rather than leak it or render stale data.
+					if (this.disposed || this.sessionChangedSince(session)) {
 						watcher.dispose();
 						return [];
 					}
@@ -214,6 +213,14 @@ export class WorkspaceProvider
 		}
 		// Session changed on every attempt; the next refresh will catch up.
 		return [];
+	}
+
+	/** True if the session signed out or changed revision since `session`. */
+	private sessionChangedSince(
+		session: Extract<WorkspaceSessionSnapshot, { kind: "signedIn" }>,
+	): boolean {
+		const latest = this.sessionState.getSnapshot();
+		return latest.kind !== "signedIn" || latest.revision !== session.revision;
 	}
 
 	private filterWorkspaces(

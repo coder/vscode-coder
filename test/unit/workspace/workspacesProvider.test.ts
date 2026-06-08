@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import {
+	MAX_FETCH_ATTEMPTS,
 	WorkspaceProvider,
 	WorkspaceQuery,
 	type AgentTreeItem,
@@ -14,6 +15,7 @@ import {
 	createMockLogger,
 	flush,
 	flushPromises,
+	MockEventStream,
 	MockWorkspaceSessionState,
 	MockWorkspacesClient,
 	TEST_CURRENT_USER_ID,
@@ -515,5 +517,46 @@ describe("WorkspaceProvider", () => {
 		client.respondOnce([workspace({ name: "recovered" })]);
 		await provider.fetchAndRefresh();
 		expect(await labels(provider)).toEqual(["recovered"]);
+	});
+
+	it("gives up after the retry cap when the session keeps changing", async () => {
+		const { client, session, makeProvider } = setup();
+		// Every response arrives stale: each call bumps the revision first.
+		client.getWorkspaces.mockImplementation(() => {
+			session.signIn();
+			return Promise.resolve({
+				workspaces: [workspace({ name: "ws" })],
+				count: 1,
+			});
+		});
+		const provider = makeProvider(WorkspaceQuery.Mine);
+
+		await show(provider);
+
+		expect(client.getWorkspaces).toHaveBeenCalledTimes(MAX_FETCH_ATTEMPTS);
+		expect(await provider.getChildren()).toEqual([]);
+	});
+
+	it("disposes a watcher created after dispose() races fetch()", async () => {
+		const { client, makeProvider } = setup();
+		client.respondOnce([
+			workspaceWithAgents({ name: "dev" }, [agent({ id: "agent-1" })]),
+		]);
+		const stream = new MockEventStream<{ data: AgentMetadataEvent[] }>();
+		const watch =
+			Promise.withResolvers<MockEventStream<{ data: AgentMetadataEvent[] }>>();
+		client.watchAgentMetadata = vi.fn((_agentId: string) => watch.promise);
+		const provider = makeProvider(WorkspaceQuery.Mine);
+
+		provider.setVisibility(true);
+		await flush();
+
+		// dispose() while the watcher socket is still opening.
+		provider.dispose();
+		watch.resolve(stream);
+		await flush();
+
+		expect(stream.close).toHaveBeenCalled();
+		expect(await provider.getChildren()).toEqual([]);
 	});
 });
