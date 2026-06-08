@@ -541,6 +541,17 @@ describe("LoginCoordinator", () => {
 	});
 
 	describe("telemetry", () => {
+		function setupTelemetryContext() {
+			const sink = new TestSink();
+			const ctx = createTestContext(createTestTelemetryService(sink));
+			return { ...ctx, sink };
+		}
+
+		const loginOptions = () => ({
+			url: TEST_URL,
+			safeHostname: TEST_HOSTNAME,
+		});
+
 		const dialogOptions = (trigger: "auth_required" | "missing_session") => ({
 			url: TEST_URL,
 			safeHostname: TEST_HOSTNAME,
@@ -561,6 +572,77 @@ describe("LoginCoordinator", () => {
 				reason?: "user_dismissed" | "no_url_provided" | "auth_failed";
 			};
 		}
+
+		it("records auth.login success with source, method, result, and duration", async () => {
+			const { mockConfig, coordinator, mockSuccessfulAuth, sink } =
+				setupTelemetryContext();
+			enableMTLS(mockConfig);
+			mockSuccessfulAuth();
+
+			await coordinator.ensureLoggedIn({
+				...loginOptions(),
+				source: "uri",
+			});
+
+			const event = sink.expectOne("auth.login");
+			expect(event.properties).toMatchObject({
+				source: "uri",
+				method: "mtls",
+				result: "success",
+			});
+			expect(event.properties.reason).toBeUndefined();
+			expect(event.error).toBeUndefined();
+			expect(event.measurements.durationMs).toEqual(expect.any(Number));
+		});
+
+		it("records auth.login cancellation with bounded reason", async () => {
+			const { userInteraction, coordinator, mockAuthFailure, sink } =
+				setupTelemetryContext();
+			mockAuthFailure();
+			userInteraction.setInputBoxValue(undefined);
+
+			await coordinator.ensureLoggedIn(loginOptions());
+
+			const event = sink.expectOne("auth.login");
+			expect(event.properties).toMatchObject({
+				source: "direct",
+				method: "legacy_token",
+				result: "aborted",
+				reason: "user_dismissed",
+			});
+			expect(event.error).toBeUndefined();
+		});
+
+		it("records auth.login auth failures as errors with bounded reason", async () => {
+			const { mockConfig, coordinator, mockAuthFailure, sink } =
+				setupTelemetryContext();
+			enableMTLS(mockConfig);
+			mockAuthFailure("Certificate error");
+
+			await coordinator.ensureLoggedIn(loginOptions());
+
+			const event = sink.expectOne("auth.login");
+			expect(event.properties).toMatchObject({
+				method: "mtls",
+				result: "error",
+				reason: "auth_failed",
+			});
+			expect(event.error).toBeUndefined();
+		});
+
+		it("does not duplicate auth.login when tracing is disabled by caller", async () => {
+			const { mockConfig, coordinator, mockSuccessfulAuth, sink } =
+				setupTelemetryContext();
+			enableMTLS(mockConfig);
+			mockSuccessfulAuth();
+
+			await coordinator.ensureLoggedIn({
+				...loginOptions(),
+				traceLogin: false,
+			});
+
+			expect(sink.eventsNamed("auth.login")).toHaveLength(0);
+		});
 
 		it.each<PromptCase>([
 			{

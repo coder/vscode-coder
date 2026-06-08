@@ -12,7 +12,11 @@ import * as cliExec from "@/core/cliExec";
 import { PathResolver } from "@/core/pathResolver";
 import { isKeyringEnabled } from "@/settings/cli";
 
-import { createMockLogger } from "../../mocks/testHelpers";
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
+import {
+	createMockLogger,
+	MockConfigurationProvider,
+} from "../../mocks/testHelpers";
 
 import type * as nodeFs from "node:fs";
 
@@ -136,12 +140,15 @@ function writeCredentialFiles(url: string, token: string) {
 
 function setup(resolver?: BinaryResolver) {
 	const r = resolver ?? successResolver();
+	const sink = new TestSink();
 	return {
 		resolver: r,
+		sink,
 		manager: new CliCredentialManager(
 			createMockLogger(),
 			r,
 			TEST_PATH_RESOLVER,
+			createTestTelemetryService(sink),
 		),
 	};
 }
@@ -160,6 +167,7 @@ describe("isKeyringSupported", () => {
 
 describe("CliCredentialManager", () => {
 	beforeEach(() => {
+		new MockConfigurationProvider();
 		vi.clearAllMocks();
 		vol.reset();
 		vi.mocked(isKeyringEnabled).mockReturnValue(false);
@@ -168,19 +176,26 @@ describe("CliCredentialManager", () => {
 
 	describe("storeToken", () => {
 		it("writes files when keyring is disabled", async () => {
-			const { manager } = setup();
+			const { manager, sink } = setup();
 
 			await manager.storeToken(TEST_URL, "my-token", configs);
 
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
 			expect(memfs.readFileSync(SESSION_FILE, "utf8")).toBe("my-token");
+			expect(sink.expectOne("auth.credential_stored")).toMatchObject({
+				properties: {
+					category: "file",
+					keyringEnabled: "false",
+					result: "success",
+				},
+			});
 		});
 
 		it("resolves binary and invokes coder login when keyring enabled", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFile({ stdout: "" });
-			const { manager, resolver } = setup();
+			const { manager, resolver, sink } = setup();
 
 			await manager.storeToken(TEST_URL, "my-secret-token", configs);
 
@@ -191,6 +206,13 @@ describe("CliCredentialManager", () => {
 			// Token must only appear in env, never in args
 			expect(exec.env.CODER_SESSION_TOKEN).toBe("my-secret-token");
 			expect(exec.args).not.toContain("my-secret-token");
+			expect(sink.expectOne("auth.credential_stored")).toMatchObject({
+				properties: {
+					category: "keyring",
+					keyringEnabled: "true",
+					result: "success",
+				},
+			});
 		});
 
 		it("falls back to files when CLI version too old", async () => {
@@ -208,11 +230,17 @@ describe("CliCredentialManager", () => {
 		it("throws when CLI exec fails", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFile({ error: "login failed" });
-			const { manager } = setup();
+			const { manager, sink } = setup();
 
 			await expect(
 				manager.storeToken(TEST_URL, "token", configs),
-			).rejects.toThrow("login failed");
+			).rejects.toThrow("Credential CLI operation failed");
+			expect(sink.expectOne("auth.credential_stored")).toMatchObject({
+				properties: {
+					failureCategory: "cli",
+					result: "error",
+				},
+			});
 		});
 
 		it("throws when binary resolver fails and keyring enabled", async () => {
@@ -261,13 +289,19 @@ describe("CliCredentialManager", () => {
 		it("rejects with AbortError when signal is pre-aborted", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFileAbortable();
-			const { manager } = setup();
+			const { manager, sink } = setup();
 
 			await expect(
 				manager.storeToken(TEST_URL, "token", configs, {
 					signal: AbortSignal.abort(),
 				}),
 			).rejects.toThrow("The operation was aborted");
+			expect(sink.expectOne("auth.credential_stored")).toMatchObject({
+				properties: {
+					failureCategory: "aborted",
+					result: "aborted",
+				},
+			});
 		});
 	});
 
@@ -369,7 +403,7 @@ describe("CliCredentialManager", () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFile({ stdout: "" });
 			writeCredentialFiles(TEST_URL, "old-token");
-			const { manager, resolver } = setup();
+			const { manager, resolver, sink } = setup();
 
 			await manager.deleteToken(TEST_URL, configs);
 
@@ -379,6 +413,13 @@ describe("CliCredentialManager", () => {
 			expect(exec.args).toEqual(["logout", "--url", TEST_URL, "--yes"]);
 			expect(memfs.existsSync(URL_FILE)).toBe(false);
 			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
+			expect(sink.expectOne("auth.credential_cleared")).toMatchObject({
+				properties: {
+					category: "keyring",
+					keyringEnabled: "true",
+					result: "success",
+				},
+			});
 		});
 
 		it("deletes files even when keyring is disabled", async () => {
@@ -395,21 +436,35 @@ describe("CliCredentialManager", () => {
 		it("never throws on CLI error", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFile({ error: "logout failed" });
-			const { manager } = setup();
+			const { manager, sink } = setup();
 
 			await expect(
 				manager.deleteToken(TEST_URL, configs),
 			).resolves.not.toThrow();
+			expect(sink.expectOne("auth.credential_cleared")).toMatchObject({
+				properties: {
+					failureCategory: "cli",
+					result: "error",
+				},
+			});
 		});
 
 		it("never throws when binary resolver fails", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			const { manager } = setup(failingResolver());
+			const { manager, sink } = setup(failingResolver());
 
-			await expect(
-				manager.deleteToken(TEST_URL, configs),
-			).resolves.not.toThrow();
+			await expect(manager.deleteToken(TEST_URL, configs)).resolves.toEqual({
+				category: "keyring",
+				failureCategory: "binary",
+			});
 			expect(execFile).not.toHaveBeenCalled();
+			expect(sink.expectOne("auth.credential_cleared")).toMatchObject({
+				properties: {
+					category: "keyring",
+					failureCategory: "binary",
+					result: "error",
+				},
+			});
 		});
 
 		it("forwards header command args", async () => {
@@ -450,13 +505,19 @@ describe("CliCredentialManager", () => {
 		it("throws AbortError when signal is aborted", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			stubExecFileAbortable();
-			const { manager } = setup();
+			const { manager, sink } = setup();
 
 			await expect(
 				manager.deleteToken(TEST_URL, configs, {
 					signal: AbortSignal.abort(),
 				}),
 			).rejects.toThrow("The operation was aborted");
+			expect(sink.expectOne("auth.credential_cleared")).toMatchObject({
+				properties: {
+					failureCategory: "aborted",
+					result: "aborted",
+				},
+			});
 		});
 	});
 });

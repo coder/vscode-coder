@@ -3,15 +3,41 @@ import type { TelemetryReporter } from "../telemetry/reporter";
 export type AuthTokenRefreshTrigger = "background" | "reactive";
 export type AuthRecoveryAction = "refresh_success" | "login_required" | "none";
 export type AuthLoginPromptTrigger = "auth_required" | "missing_session";
+export type AuthLoginSource =
+	| "auto_login"
+	| "command"
+	| "direct"
+	| "switch_deployment"
+	| "uri";
+export type AuthLoginMethod =
+	| "unknown"
+	| "mtls"
+	| "provided_token"
+	| "stored_token"
+	| "keyring_token"
+	| "legacy_token"
+	| "oauth";
 
 export type LoginPromptReason =
 	| "user_dismissed"
 	| "no_url_provided"
 	| "auth_failed";
+export type AuthLoginReason = LoginPromptReason | "exception";
+export type AuthLogoutReason =
+	| "not_authenticated"
+	| "credential_clear_cancelled"
+	| "credential_clear_failed"
+	| "exception";
 
 export type LoginPromptOutcome =
 	| { success: true }
 	| { success: false; reason: LoginPromptReason };
+export type AuthLoginOutcome =
+	| { success: true }
+	| { success: false; reason: AuthLoginReason };
+export type AuthLogoutOutcome =
+	| { success: true }
+	| { success: false; reason: AuthLogoutReason };
 
 interface AuthRecoveryRecorder {
 	logReceived(): void;
@@ -21,6 +47,62 @@ interface AuthRecoveryRecorder {
 
 export class AuthTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
+
+	public traceLogin<T extends AuthLoginOutcome>(
+		source: AuthLoginSource,
+		getMethod: () => AuthLoginMethod,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		return this.telemetry.trace(
+			"auth.login",
+			async (span) => {
+				const setMethod = () => span.setProperty("method", getMethod());
+				try {
+					const result = await fn();
+					setMethod();
+					if (!result.success) {
+						span.setProperty("reason", result.reason);
+						if (result.reason === "auth_failed") {
+							span.markFailure();
+						} else {
+							span.markAborted();
+						}
+					}
+					return result;
+				} catch (error) {
+					setMethod();
+					span.setProperty("reason", "exception");
+					throw error;
+				}
+			},
+			{ source, method: "unknown" },
+		);
+	}
+
+	public traceLogout<T extends AuthLogoutOutcome>(
+		fn: () => Promise<T>,
+	): Promise<T> {
+		return this.telemetry.trace("auth.logout", async (span) => {
+			try {
+				const result = await fn();
+				if (!result.success) {
+					span.setProperty("reason", result.reason);
+					if (
+						result.reason === "not_authenticated" ||
+						result.reason === "credential_clear_cancelled"
+					) {
+						span.markAborted();
+					} else {
+						span.markFailure();
+					}
+				}
+				return result;
+			} catch (error) {
+				span.setProperty("reason", "exception");
+				throw error;
+			}
+		});
+	}
 
 	public traceTokenRefresh<T>(
 		trigger: AuthTokenRefreshTrigger,

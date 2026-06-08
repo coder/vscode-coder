@@ -6,7 +6,7 @@ import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { DeploymentManager } from "@/deployment/deploymentManager";
 
-import { createTestTelemetryService } from "../../mocks/telemetry";
+import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
 	createMockLogger,
 	createMockServiceContainer,
@@ -77,7 +77,8 @@ function createTestContext() {
 		validationMockClient as unknown as CoderApi,
 	);
 
-	const telemetryService = createTestTelemetryService();
+	const telemetrySink = new TestSink();
+	const telemetryService = createTestTelemetryService(telemetrySink);
 	const setDeploymentUrlSpy = vi.spyOn(telemetryService, "setDeploymentUrl");
 
 	const manager = DeploymentManager.create(
@@ -101,6 +102,7 @@ function createTestContext() {
 		contextManager,
 		mockOAuthSessionManager,
 		mockWorkspaceProvider,
+		telemetrySink,
 		telemetryService,
 		setDeploymentUrlSpy,
 		manager,
@@ -316,8 +318,12 @@ describe("DeploymentManager", () => {
 		});
 
 		it("picks up deployment when not authenticated", async () => {
-			const { mockClient, validationMockClient, secretsManager } =
-				createTestContext();
+			const {
+				mockClient,
+				validationMockClient,
+				secretsManager,
+				telemetrySink,
+			} = createTestContext();
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
@@ -338,6 +344,12 @@ describe("DeploymentManager", () => {
 
 			expect(mockClient.host).toBe(TEST_URL);
 			expect(mockClient.token).toBe("synced-token");
+			expect(
+				telemetrySink.expectOne("deployment.cross_window_detected").properties,
+			).toEqual({});
+			expect(telemetrySink.expectOne("deployment.recovered")).toMatchObject({
+				properties: { trigger: "cross_window" },
+			});
 		});
 
 		it("handles mTLS deployment (empty token) from other window", async () => {
@@ -430,6 +442,24 @@ describe("DeploymentManager", () => {
 	});
 
 	describe("suspendSession", () => {
+		it("emits deployment.suspended once for an authenticated session", async () => {
+			const { manager, telemetrySink } = createTestContext();
+
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "test-token",
+				user: createMockUser(),
+			});
+
+			manager.suspendSession("auth_failure");
+			manager.suspendSession("auth_failure");
+
+			const events = telemetrySink.eventsNamed("deployment.suspended");
+			expect(events).toHaveLength(1);
+			expect(events[0].properties).toEqual({ reason: "auth_failure" });
+		});
+
 		it("clears auth state but keeps deployment for re-login", async () => {
 			const {
 				mockClient,
@@ -469,7 +499,7 @@ describe("DeploymentManager", () => {
 		it("recovers from suspended state when auth settings change", async () => {
 			vi.useFakeTimers();
 			try {
-				const { mockClient, validationMockClient, manager } =
+				const { mockClient, validationMockClient, telemetrySink, manager } =
 					createTestContext();
 				const config = new MockConfigurationProvider();
 				const user = createMockUser();
@@ -494,6 +524,9 @@ describe("DeploymentManager", () => {
 				expect(validationMockClient.getAuthenticatedUser).toHaveBeenCalledTimes(
 					1,
 				);
+				expect(telemetrySink.expectOne("deployment.recovered")).toMatchObject({
+					properties: { trigger: "auth_config" },
+				});
 			} finally {
 				vi.useRealTimers();
 			}
@@ -536,8 +569,13 @@ describe("DeploymentManager", () => {
 		});
 
 		it("recovers from suspended state when tokens update", async () => {
-			const { mockClient, validationMockClient, secretsManager, manager } =
-				createTestContext();
+			const {
+				mockClient,
+				validationMockClient,
+				secretsManager,
+				telemetrySink,
+				manager,
+			} = createTestContext();
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
 
@@ -564,6 +602,44 @@ describe("DeploymentManager", () => {
 			// Should recover and be authenticated again
 			expect(mockClient.token).toBe("recovered-token");
 			expect(manager.isAuthenticated()).toBe(true);
+			expect(telemetrySink.expectOne("deployment.recovered")).toMatchObject({
+				properties: { trigger: "token_update" },
+			});
+		});
+
+		it("logs failed auth-config recovery", async () => {
+			vi.useFakeTimers();
+			try {
+				const { validationMockClient, telemetrySink, manager } =
+					createTestContext();
+				const config = new MockConfigurationProvider();
+				const user = createMockUser();
+
+				await manager.setDeployment({
+					url: TEST_URL,
+					safeHostname: TEST_HOSTNAME,
+					token: "test-token",
+					user,
+				});
+				manager.suspendSession();
+				validationMockClient.setAuthenticatedUserResponse(
+					new Error("Auth failed"),
+				);
+
+				config.set("coder.tlsCertFile", "/path/to/cert.pem");
+				await vi.advanceTimersByTimeAsync(CONFIG_CHANGE_DEBOUNCE_MS);
+
+				expect(manager.isAuthenticated()).toBe(false);
+				expect(telemetrySink.eventsNamed("deployment.recovered")).toHaveLength(
+					0,
+				);
+				expect(
+					telemetrySink.expectOne("deployment.auth_config_recovery_failed")
+						.properties,
+				).toEqual({});
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 });

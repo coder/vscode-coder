@@ -7,6 +7,11 @@ import { type ServiceContainer } from "../core/container";
 import { type ContextManager } from "../core/contextManager";
 import { type MementoManager } from "../core/mementoManager";
 import { type SecretsManager } from "../core/secretsManager";
+import {
+	DeploymentTelemetry,
+	type DeploymentRecoveryTrigger,
+	type DeploymentSuspendReason,
+} from "../instrumentation/deployment";
 import { type Logger } from "../logging/logger";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { getAuthConfigWatchSettings } from "../settings/authConfig";
@@ -40,6 +45,7 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly contextManager: ContextManager;
 	private readonly logger: Logger;
 	private readonly telemetryService: TelemetryService;
+	private readonly deploymentTelemetry: DeploymentTelemetry;
 
 	#deployment: Deployment | null = null;
 	#disposed = false;
@@ -60,6 +66,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.contextManager = serviceContainer.getContextManager();
 		this.logger = serviceContainer.getLogger();
 		this.telemetryService = serviceContainer.getTelemetryService();
+		this.deploymentTelemetry = new DeploymentTelemetry(this.telemetryService);
 	}
 
 	public static create(
@@ -175,9 +182,11 @@ export class DeploymentManager implements vscode.Disposable {
 	/**
 	 * Clears the current deployment.
 	 */
-	public async clearDeployment(): Promise<void> {
+	public async clearDeployment(
+		reason: DeploymentSuspendReason = "credentials_removed",
+	): Promise<void> {
 		this.logger.debug("Clearing deployment", this.#deployment?.safeHostname);
-		this.suspendSession();
+		this.suspendSession(reason);
 		this.#authListenerDisposable?.dispose();
 		this.#authListenerDisposable = undefined;
 		this.#deployment = null;
@@ -190,11 +199,17 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Suspend session: shows logged-out state but keeps deployment for easy re-login.
 	 * Auth listener remains active so recovery can happen automatically if tokens update.
 	 */
-	public suspendSession(): void {
+	public suspendSession(
+		reason: DeploymentSuspendReason = "auth_config_change",
+	): void {
+		const wasAuthenticated = this.isAuthenticated();
 		this.oauthSessionManager.clearDeployment();
 		this.client.setCredentials(undefined, undefined);
 		this.updateAuthContexts(undefined);
 		this.clearWorkspaces();
+		if (wasAuthenticated) {
+			this.deploymentTelemetry.suspended(reason);
+		}
 	}
 
 	/**
@@ -242,11 +257,14 @@ export class DeploymentManager implements vscode.Disposable {
 						this.logger.debug(
 							"Token updated after session suspended, recovering",
 						);
-						await this.verifyAndApplyDeployment({
-							url: auth.url,
-							safeHostname,
-							token: auth.token,
-						});
+						await this.recoverDeployment(
+							{
+								url: auth.url,
+								safeHostname,
+								token: auth.token,
+							},
+							"token_update",
+						);
 					}
 				} else {
 					await this.clearDeployment();
@@ -285,7 +303,10 @@ export class DeploymentManager implements vscode.Disposable {
 				this.logger.debug(
 					"Authentication settings changed after session suspended, recovering",
 				);
-				await this.verifyAndApplyDeployment(snapshot);
+				const recovered = await this.recoverDeployment(snapshot, "auth_config");
+				if (!recovered) {
+					this.deploymentTelemetry.authConfigRecoveryFailed();
+				}
 			} while (this.#recoveryPending);
 		} catch (err) {
 			this.logger.warn(
@@ -307,10 +328,22 @@ export class DeploymentManager implements vscode.Disposable {
 
 					if (deployment) {
 						this.logger.info("Deployment changed from another window");
-						await this.verifyAndApplyDeployment(deployment);
+						this.deploymentTelemetry.crossWindowDetected();
+						await this.recoverDeployment(deployment, "cross_window");
 					}
 				},
 			);
+	}
+
+	private async recoverDeployment(
+		deployment: Deployment & { token?: string },
+		trigger: DeploymentRecoveryTrigger,
+	): Promise<boolean> {
+		const recovered = await this.verifyAndApplyDeployment(deployment);
+		if (recovered) {
+			this.deploymentTelemetry.recovered(trigger);
+		}
+		return recovered;
 	}
 
 	/**

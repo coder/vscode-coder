@@ -20,7 +20,9 @@ import type { MementoManager } from "../core/mementoManager";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type {
+	AuthLoginMethod,
 	AuthLoginPromptTrigger,
+	AuthLoginSource,
 	AuthTelemetry,
 	LoginPromptReason,
 } from "../instrumentation/auth";
@@ -36,6 +38,9 @@ export interface LoginOptions {
 	url: string | undefined;
 	autoLogin?: boolean;
 	token?: string;
+	source?: AuthLoginSource;
+	traceLogin?: boolean;
+	onLoginMethod?: (method: AuthLoginMethod) => void;
 }
 
 /**
@@ -70,17 +75,34 @@ export class LoginCoordinator implements vscode.Disposable {
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url } = options;
-		return this.executeWithGuard(async () => {
-			const result = await this.attemptLogin(
-				{ safeHostname, url },
-				options.autoLogin ?? false,
-				options.token,
-			);
+		let method: AuthLoginMethod = "unknown";
+		const setMethod = (next: AuthLoginMethod): void => {
+			method = next;
+			options.onLoginMethod?.(next);
+		};
+		const login = () =>
+			this.executeWithGuard(async () => {
+				const result = await this.attemptLogin(
+					{ safeHostname, url },
+					options.autoLogin ?? false,
+					options.token,
+					setMethod,
+				);
 
-			await this.persistSessionAuth(result, safeHostname, url);
+				await this.persistSessionAuth(result, safeHostname, url);
 
-			return result;
-		});
+				return result;
+			});
+
+		if (options.traceLogin === false) {
+			return login();
+		}
+
+		return this.authTelemetry.traceLogin(
+			options.source ?? "direct",
+			() => method,
+			login,
+		);
 	}
 
 	/**
@@ -242,6 +264,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		deployment: Deployment,
 		isAutoLogin: boolean,
 		providedToken?: string,
+		recordMethod: (method: AuthLoginMethod) => void = () => undefined,
 	): Promise<LoginResult> {
 		const client = CoderApi.create(deployment.url, "", this.logger);
 		try {
@@ -250,6 +273,7 @@ export class LoginCoordinator implements vscode.Disposable {
 				deployment,
 				isAutoLogin,
 				providedToken,
+				recordMethod,
 			);
 		} finally {
 			client.dispose();
@@ -261,10 +285,12 @@ export class LoginCoordinator implements vscode.Disposable {
 		deployment: Deployment,
 		isAutoLogin: boolean,
 		providedToken: string | undefined,
+		recordMethod: (method: AuthLoginMethod) => void,
 	): Promise<LoginResult> {
 		// mTLS authentication (no token needed)
 		if (!needToken(vscode.workspace.getConfiguration())) {
 			this.logger.debug("Attempting mTLS authentication (no token required)");
+			recordMethod("mtls");
 			return this.tryMtlsAuth(client, isAutoLogin);
 		}
 
@@ -277,6 +303,7 @@ export class LoginCoordinator implements vscode.Disposable {
 				isAutoLogin,
 			);
 			if (result !== "unauthorized") {
+				recordMethod("provided_token");
 				return result;
 			}
 		}
@@ -289,6 +316,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			this.logger.debug("Trying stored session token");
 			const result = await this.tryTokenAuth(client, auth.token, isAutoLogin);
 			if (result !== "unauthorized") {
+				recordMethod("stored_token");
 				return result;
 			}
 		}
@@ -316,6 +344,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			this.logger.debug("Trying token from OS keyring");
 			const result = await this.tryTokenAuth(client, keyringToken, isAutoLogin);
 			if (result !== "unauthorized") {
+				recordMethod("keyring_token");
 				return result;
 			}
 		}
@@ -324,8 +353,10 @@ export class LoginCoordinator implements vscode.Disposable {
 		const authMethod = await maybeAskAuthMethod(client);
 		switch (authMethod) {
 			case "oauth":
+				recordMethod("oauth");
 				return this.loginWithOAuth(deployment);
 			case "legacy":
+				recordMethod("legacy_token");
 				return this.loginWithToken(client);
 			case undefined:
 				return { success: false, reason: "user_dismissed" };

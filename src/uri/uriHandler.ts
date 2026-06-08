@@ -155,6 +155,7 @@ async function setupDeployment(
 		safeHostname,
 		url,
 		token,
+		source: "uri",
 	});
 
 	if (!result.success) {

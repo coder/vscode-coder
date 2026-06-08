@@ -15,6 +15,11 @@ import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
 import { type FeatureSet, featureSetForVersion } from "./featureSet";
 import {
+	AuthTelemetry,
+	type AuthLoginMethod,
+	type AuthLoginSource,
+} from "./instrumentation/auth";
+import {
 	reportElapsedProgress,
 	withCancellableProgress,
 	withProgress,
@@ -83,6 +88,7 @@ export class Commands {
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 	private readonly telemetryService: TelemetryService;
+	private readonly authTelemetry: AuthTelemetry;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -109,6 +115,7 @@ export class Commands {
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 		this.duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
 		this.speedtestPanelFactory = serviceContainer.getSpeedtestPanelFactory();
+		this.authTelemetry = new AuthTelemetry(this.telemetryService);
 	}
 
 	/**
@@ -144,60 +151,76 @@ export class Commands {
 		if (this.deploymentManager.isAuthenticated()) {
 			return;
 		}
-		await this.performLogin(args);
+		await this.performLogin(args, args?.autoLogin ? "auto_login" : "command");
 	}
 
-	private async performLogin(args?: {
-		url?: string;
-		autoLogin?: boolean;
-	}): Promise<void> {
-		this.logger.debug("Logging in");
+	private async performLogin(
+		args?: {
+			url?: string;
+			autoLogin?: boolean;
+		},
+		source: AuthLoginSource = args?.autoLogin ? "auto_login" : "command",
+	): Promise<void> {
+		let method: AuthLoginMethod = "unknown";
+		await this.authTelemetry.traceLogin(
+			source,
+			() => method,
+			async () => {
+				this.logger.debug("Logging in");
 
-		const currentDeployment = await this.secretsManager.getCurrentDeployment();
-		const url = await maybeAskUrl(
-			this.mementoManager,
-			args?.url,
-			currentDeployment?.url,
-		);
-		if (!url) {
-			return; // The user aborted.
-		}
-
-		const safeHostname = toSafeHost(url);
-		this.logger.debug("Using hostname", safeHostname);
-
-		const result = await this.loginCoordinator.ensureLoggedIn({
-			safeHostname,
-			url,
-			autoLogin: args?.autoLogin,
-		});
-
-		if (!result.success) {
-			return;
-		}
-
-		await this.deploymentManager.setDeployment({
-			url,
-			safeHostname,
-			token: result.token,
-			user: result.user,
-		});
-
-		vscode.window
-			.showInformationMessage(
-				`Welcome to Coder, ${result.user.username}!`,
-				{
-					detail:
-						"You can now use the Coder extension to manage your Coder instance.",
-				},
-				"Open Workspace",
-			)
-			.then((action) => {
-				if (action === "Open Workspace") {
-					vscode.commands.executeCommand("coder.open");
+				const currentDeployment =
+					await this.secretsManager.getCurrentDeployment();
+				const url = await maybeAskUrl(
+					this.mementoManager,
+					args?.url,
+					currentDeployment?.url,
+				);
+				if (!url) {
+					return { success: false, reason: "no_url_provided" };
 				}
-			});
-		this.logger.debug("Login complete to deployment:", url);
+
+				const safeHostname = toSafeHost(url);
+				this.logger.debug("Using hostname", safeHostname);
+
+				const result = await this.loginCoordinator.ensureLoggedIn({
+					safeHostname,
+					url,
+					autoLogin: args?.autoLogin,
+					traceLogin: false,
+					onLoginMethod: (next) => {
+						method = next;
+					},
+				});
+
+				if (!result.success) {
+					return result;
+				}
+
+				await this.deploymentManager.setDeployment({
+					url,
+					safeHostname,
+					token: result.token,
+					user: result.user,
+				});
+
+				vscode.window
+					.showInformationMessage(
+						`Welcome to Coder, ${result.user.username}!`,
+						{
+							detail:
+								"You can now use the Coder extension to manage your Coder instance.",
+						},
+						"Open Workspace",
+					)
+					.then((action) => {
+						if (action === "Open Workspace") {
+							vscode.commands.executeCommand("coder.open");
+						}
+					});
+				this.logger.debug("Login complete to deployment:", url);
+				return { success: true };
+			},
+		);
 	}
 
 	/**
@@ -418,32 +441,45 @@ export class Commands {
 	 * Log out and clear stored credentials, requiring re-authentication on next login.
 	 */
 	public async logout(): Promise<void> {
-		if (!this.deploymentManager.isAuthenticated()) {
-			return;
-		}
+		await this.authTelemetry.traceLogout(async () => {
+			if (!this.deploymentManager.isAuthenticated()) {
+				return { success: false, reason: "not_authenticated" };
+			}
 
-		this.logger.debug("Logging out");
+			this.logger.debug("Logging out");
 
-		const deployment = this.deploymentManager.getCurrentDeployment();
+			const deployment = this.deploymentManager.getCurrentDeployment();
 
-		await this.deploymentManager.clearDeployment();
+			await this.deploymentManager.clearDeployment("logout");
 
-		if (deployment) {
-			await this.cliManager.clearCredentials(deployment.url);
-			await this.secretsManager.clearAllAuthData(deployment.safeHostname);
-		}
+			let credentialFailureCategory: string | undefined;
+			if (deployment) {
+				const credentialResult = await this.cliManager.clearCredentials(
+					deployment.url,
+				);
+				credentialFailureCategory = credentialResult.failureCategory;
+				await this.secretsManager.clearAllAuthData(deployment.safeHostname);
+			}
 
-		vscode.window
-			.showInformationMessage("You've been logged out of Coder!", "Login")
-			.then((action) => {
-				if (action === "Login") {
-					this.login().catch((error) => {
-						this.logger.error("Login failed", error);
-					});
-				}
-			});
+			vscode.window
+				.showInformationMessage("You've been logged out of Coder!", "Login")
+				.then((action) => {
+					if (action === "Login") {
+						this.login().catch((error) => {
+							this.logger.error("Login failed", error);
+						});
+					}
+				});
 
-		this.logger.debug("Logout complete");
+			this.logger.debug("Logout complete");
+			if (credentialFailureCategory === "aborted") {
+				return { success: false, reason: "credential_clear_cancelled" };
+			}
+			if (credentialFailureCategory) {
+				return { success: false, reason: "credential_clear_failed" };
+			}
+			return { success: true };
+		});
 	}
 
 	/**
@@ -452,7 +488,7 @@ export class Commands {
 	 */
 	public async switchDeployment(): Promise<void> {
 		this.logger.debug("Switching deployment");
-		await this.performLogin();
+		await this.performLogin(undefined, "switch_deployment");
 	}
 
 	/**
