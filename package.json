@@ -135,7 +135,7 @@
 					"scope": "application"
 				},
 				"coder.alternativeWebUrl": {
-					"markdownDescription": "An alternative URL to use when opening Coder pages in the browser. When set, this replaces the connection URL for browser links only (dashboard, workspace pages, token authentication page, OAuth authorization page). When empty, the connection URL is used for the UI as well. The connection URL is always used for API calls, SSH, and CLI operations. Useful when the Coder API runs on a port that browsers restrict (e.g., 7004) but the web UI is accessible on a standard port (e.g., 443).",
+					"markdownDescription": "Alternative URL for opening Coder pages in the browser (dashboard, workspace, and login pages). API, SSH, and CLI always use the connection URL; when this is empty, so does the browser. Useful when the API runs on a browser-restricted port (e.g. 7004) but the web UI is served on a standard port (e.g. 443).",
 					"type": "string",
 					"default": "",
 					"scope": "application"
