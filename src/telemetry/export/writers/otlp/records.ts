@@ -108,6 +108,12 @@ export function otlpScope(version: string) {
 	return { name: "coder.vscode-coder.telemetry.export", version };
 }
 
+/**
+ * Builds an OTLP log record. Span-attached logs (`Span.log()` /
+ * `Span.logError()`) carry `traceId` and a `parentEventId`, mapped here to
+ * the OTLP `traceId`/`spanId` so backends nest them under their span rather
+ * than treat them as standalone events. Plain logs carry neither.
+ */
 export function logRecord(event: TelemetryEvent): OtlpLogRecord {
 	const timeUnixNano = String(toUnixNano(event.timestamp));
 	const errored = event.error !== undefined;
@@ -123,6 +129,8 @@ export function logRecord(event: TelemetryEvent): OtlpLogRecord {
 			...(event.error && exceptionAttributes(event.error)),
 			...eventContextAttributes(event),
 		}),
+		...(event.traceId !== undefined && { traceId: event.traceId }),
+		...(event.parentEventId !== undefined && { spanId: event.parentEventId }),
 	};
 }
 

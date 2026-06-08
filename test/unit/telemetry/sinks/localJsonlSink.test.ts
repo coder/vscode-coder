@@ -135,7 +135,7 @@ describe("LocalJsonlSink", () => {
 
 		vi.spyOn(fsPromises, "appendFile").mockRejectedValueOnce(new Error("boom"));
 		overflowBuffer();
-		await sink.flush();
+		await expect(sink.flush()).rejects.toThrow("boom");
 
 		overflowBuffer();
 		await sink.flush();
@@ -309,16 +309,31 @@ describe("LocalJsonlSink", () => {
 		});
 	});
 
-	it("does not throw when fs.appendFile rejects, and recovers on the next flush", async () => {
+	it("rejects when fs.appendFile fails, and recovers on the next flush", async () => {
 		const { sink, makeEvent } = setup();
 		vi.spyOn(fsPromises, "appendFile").mockRejectedValueOnce(new Error("boom"));
 
 		sink.write(makeEvent());
-		await expect(sink.flush()).resolves.toBeUndefined();
+		await expect(sink.flush()).rejects.toThrow("boom");
 
 		sink.write(makeEvent());
 		await sink.flush();
 		expect(readJsonl(todaysFile())).toHaveLength(1);
+	});
+
+	it("drops the oldest events once the buffer overflows", async () => {
+		const { sink, makeEvent } = setup({
+			bufferLimit: 10,
+			flushBatchSize: 10_000,
+		});
+
+		for (let i = 0; i < 13; i++) {
+			sink.write(makeEvent());
+		}
+		await sink.flush();
+
+		// 13 written, 3 oldest dropped to honor bufferLimit.
+		expect(readJsonl(todaysFile())).toHaveLength(10);
 	});
 
 	it("two sinks with different sessions write to disjoint files", async () => {

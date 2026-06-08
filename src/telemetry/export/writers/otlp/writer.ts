@@ -14,6 +14,7 @@ import { writeAtomically } from "../../../../util/fs";
 import { describeMetricEvent } from "../../metrics";
 
 import { openEnvelopeFile, type EnvelopeFile } from "./envelope";
+import { buildManifest, MANIFEST_FILE, type RecordCounts } from "./manifest";
 import {
 	ENVELOPES,
 	ENVELOPE_SUFFIX,
@@ -29,18 +30,24 @@ import {
 } from "./records";
 
 import type { TelemetryContext, TelemetryEvent } from "../../../event";
-import type { ExportWriteOptions } from "../types";
+import type { ExportDescriptor, ExportWriteOptions } from "../types";
 
-/** Event totals by signal — a metric event with all records suppressed still counts as one. */
+/** Event totals by signal; a metric event with all records suppressed still counts as one. */
 export interface OtlpExportCounts {
 	readonly logs: number;
 	readonly traces: number;
 	readonly metrics: number;
 }
 
+/** OTLP/JSON format tag recorded in the manifest. */
+const OTLP_FORMAT = "otlp-json";
+
 interface Channel {
 	file: EnvelopeFile;
+	/** Source events routed to this signal. */
 	count: number;
+	/** OTLP records written to this signal. */
+	records: number;
 }
 
 // Read high-water mark (HWM): bytes buffered per read while streaming a staged
@@ -57,6 +64,7 @@ export async function writeOtlpZipExport(
 	outputPath: string,
 	events: AsyncIterable<TelemetryEvent>,
 	context: TelemetryContext,
+	descriptor: ExportDescriptor,
 	options: ExportWriteOptions = {},
 ): Promise<OtlpExportCounts> {
 	throwIfAborted(options.signal);
@@ -73,6 +81,7 @@ export async function writeOtlpZipExport(
 					events,
 					context,
 					options.signal,
+					descriptor,
 				);
 				await packZip(zipPath, stagingDir, options.signal);
 			} catch (err) {
@@ -106,6 +115,7 @@ async function writeStagedFiles(
 	events: AsyncIterable<TelemetryEvent>,
 	context: TelemetryContext,
 	signal: AbortSignal | undefined,
+	descriptor: ExportDescriptor,
 ): Promise<OtlpExportCounts> {
 	const resource = JSON.stringify(otlpResource(context));
 	const scope = JSON.stringify(otlpScope(context.extensionVersion));
@@ -126,11 +136,40 @@ async function writeStagedFiles(
 		await (succeeded ? Promise.all(closes) : Promise.allSettled(closes));
 	}
 
-	return {
+	const counts: OtlpExportCounts = {
 		logs: channels.logs.count,
 		traces: channels.traces.count,
 		metrics: channels.metrics.count,
 	};
+	await writeManifest(dir, descriptor, context, channels);
+	return counts;
+}
+
+async function writeManifest(
+	dir: string,
+	descriptor: ExportDescriptor,
+	context: TelemetryContext,
+	channels: Record<Signal, Channel>,
+): Promise<void> {
+	const records: RecordCounts = {
+		logs: channels.logs.records,
+		traces: channels.traces.records,
+		metrics: channels.metrics.records,
+	};
+	const sourceEvents =
+		channels.logs.count + channels.traces.count + channels.metrics.count;
+	const manifest = buildManifest({
+		format: OTLP_FORMAT,
+		input: descriptor,
+		context,
+		sourceEvents,
+		records,
+	});
+	await fs.writeFile(
+		path.join(dir, MANIFEST_FILE),
+		JSON.stringify(manifest, null, 2),
+		"utf8",
+	);
 }
 
 async function openChannels(
@@ -145,7 +184,7 @@ async function openChannels(
 			envelopePrefix(envelope, resource, scope),
 			ENVELOPE_SUFFIX,
 		);
-		return { file, count: 0 };
+		return { file, count: 0, records: 0 };
 	};
 	// Promise.allSettled so one failure doesn't orphan its siblings' fds.
 	const settled = await Promise.allSettled([
@@ -168,10 +207,18 @@ async function openChannels(
 	return { logs, traces, metrics };
 }
 
-function hasTraceId(
+/**
+ * A completed timed span (`trace()` / `Span.phase()`) always carries a
+ * framework-set `result` property. Span-attached logs (`Span.log()` /
+ * `Span.logError()`) share the `traceId` but have no `result`, so they route
+ * to log records instead of becoming zero-duration spans.
+ */
+function isTimedSpan(
 	event: TelemetryEvent,
 ): event is TelemetryEvent & { readonly traceId: string } {
-	return event.traceId !== undefined;
+	return (
+		event.traceId !== undefined && Object.hasOwn(event.properties, "result")
+	);
 }
 
 async function routeEvent(
@@ -187,7 +234,7 @@ async function routeEvent(
 				metricRecords(event, metric, state),
 			);
 			channels.metrics.count += 1;
-		} else if (hasTraceId(event)) {
+		} else if (isTimedSpan(event)) {
 			await appendRecords(channels.traces, [spanRecord(event)]);
 			channels.traces.count += 1;
 		} else {
@@ -209,6 +256,7 @@ async function appendRecords(
 ): Promise<void> {
 	for (const record of records) {
 		await channel.file.append(record);
+		channel.records += 1;
 	}
 }
 
@@ -276,12 +324,16 @@ async function pumpEnvelopes(
 	signal: AbortSignal | undefined,
 	waitForDrain: () => Promise<void>,
 ): Promise<void> {
-	for (const envelope of Object.values(ENVELOPES)) {
+	const names = [
+		...Object.values(ENVELOPES).map((envelope) => envelope.file),
+		MANIFEST_FILE,
+	];
+	for (const name of names) {
 		throwIfAborted(signal);
 		await streamFileIntoZip(
 			zip,
-			envelope.file,
-			path.join(sourceDir, envelope.file),
+			name,
+			path.join(sourceDir, name),
 			signal,
 			waitForDrain,
 		);

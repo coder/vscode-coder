@@ -22,6 +22,9 @@ export interface OtlpLogRecord {
 	readonly severityText: string;
 	readonly body: { readonly stringValue: string };
 	readonly attributes: readonly OtlpKeyValue[];
+	/** Set on span-attached logs to link the record to its parent span. */
+	readonly traceId?: string;
+	readonly spanId?: string;
 }
 
 export interface OtlpStatus {

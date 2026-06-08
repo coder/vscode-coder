@@ -6,41 +6,14 @@ import {
 } from "../telemetry/reporter";
 
 import { formatMethod } from "./formatters";
+import { normalizeRoute } from "./routeNormalization";
 
 import type { Disposable } from "vscode";
 
 import type { RequestConfigWithMeta } from "./types";
 
 const EVENT_NAME = "http.requests";
-const UNKNOWN_ROUTE = "<unknown>";
 const WINDOW_SECONDS = 60;
-
-const ID_PLACEHOLDER = "{id}";
-const NAME_PLACEHOLDER = "{name}";
-
-const ROUTE_NORMALIZATION_RULES: ReadonlyArray<readonly string[]> = [
-	"api/v2/users/{name}/workspace/{name}",
-	"api/v2/users/{name}/keys/{id}",
-	"api/v2/users/{name}",
-	"api/v2/tasks/{name}/{id}",
-	"api/v2/tasks/{name}",
-	"api/v2/organizations/{id}/templates/{name}/versions/{name}",
-	"api/v2/organizations/{id}/templates/{name}",
-	"api/v2/organizations/{id}/groups/{name}",
-	"api/v2/organizations/{id}/members/{name}",
-	"api/v2/organizations/{id}",
-	"api/v2/aibridge/sessions/{id}",
-	"api/v2/files/{id}",
-	"api/v2/groups/{id}",
-	"api/v2/licenses/{id}",
-	"api/v2/oauth2-provider/apps/{id}",
-	"api/v2/templates/{id}",
-	"api/v2/templateversions/{id}",
-	"api/v2/workspaceagents/{id}",
-	"api/v2/workspacebuilds/{id}",
-	"api/v2/workspaces/{id}/builds/{id}",
-	"api/v2/workspaces/{id}",
-].map((rule) => rule.split("/"));
 
 interface HttpRequestBucket {
 	count1xx: number;
@@ -115,7 +88,7 @@ export class HttpRequestsTelemetry implements Disposable {
 		}
 
 		const method = formatMethod(config.method);
-		const route = normalizeHttpRoute(config.url, config.baseURL);
+		const route = normalizeRoute(config.url, config.baseURL);
 		const bucket = this.#getOrCreateBucket(method, route);
 
 		const durationMs = elapsedMs(config);
@@ -203,63 +176,6 @@ export class HttpRequestsTelemetry implements Disposable {
 				this.#scheduleNextWindow();
 			}
 		}, WINDOW_SECONDS * 1000);
-	}
-}
-
-export function normalizeHttpRoute(
-	url: string | undefined,
-	baseURL?: string,
-): string {
-	if (!url) {
-		return UNKNOWN_ROUTE;
-	}
-
-	const segments = parsePathSegments(url, baseURL);
-	if (segments.length === 0) {
-		return UNKNOWN_ROUTE;
-	}
-
-	for (const rule of ROUTE_NORMALIZATION_RULES) {
-		const normalized = normalizeByRule(segments, rule);
-		if (normalized) {
-			return normalized;
-		}
-	}
-	// No matching rule. Pass through; add a rule above if cardinality grows.
-	return `/${segments.join("/")}`;
-}
-
-function normalizeByRule(
-	segments: readonly string[],
-	rule: readonly string[],
-): string | undefined {
-	if (segments.length < rule.length) {
-		return undefined;
-	}
-
-	const normalized: string[] = [];
-	for (const [index, ruleSegment] of rule.entries()) {
-		if (ruleSegment === ID_PLACEHOLDER || ruleSegment === NAME_PLACEHOLDER) {
-			normalized.push(ruleSegment);
-			continue;
-		}
-		if (segments[index] !== ruleSegment) {
-			return undefined;
-		}
-		normalized.push(segments[index]);
-	}
-
-	// Trailing segments pass through. If a tail can hold an ID, add a rule.
-	return `/${[...normalized, ...segments.slice(rule.length)].join("/")}`;
-}
-
-function parsePathSegments(url: string, baseURL?: string): string[] {
-	try {
-		return new URL(url, baseURL ?? "http://coder.invalid").pathname
-			.split("/")
-			.filter(Boolean);
-	} catch {
-		return [];
 	}
 }
 

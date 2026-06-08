@@ -17,6 +17,7 @@ import { createExportWriter } from "./writers";
 
 import type { Logger } from "../../logging/logger";
 import type { TelemetryContext } from "../event";
+import type { FlushStatus } from "../service";
 
 const REVEAL_ACTION = "Reveal in File Explorer";
 
@@ -29,7 +30,7 @@ const PROGRESS_OPTIONS = {
 export async function runExportTelemetryCommand(
 	telemetryDir: string,
 	logger: Logger,
-	flushTelemetry: () => Promise<void>,
+	flushTelemetry: () => Promise<FlushStatus>,
 	context: TelemetryContext,
 ): Promise<void> {
 	const choice = await promptForExport();
@@ -58,13 +59,18 @@ export async function runExportTelemetryCommand(
 /** Wires the pipeline's host hooks to the progress UI and the logger. */
 function exportRuntime(
 	{ progress, signal }: ProgressContext,
-	flushTelemetry: () => Promise<void>,
+	flushTelemetry: () => Promise<FlushStatus>,
 	logger: Logger,
 ): ExportRuntime {
 	return {
 		signal,
 		flushTelemetry,
 		report: (message) => progress.report({ message }),
+		// Warn but keep going: the export still reflects what reached disk.
+		onFlushIncomplete: () =>
+			void vscode.window.showWarningMessage(
+				"Some recent telemetry could not be flushed; this export may be missing the latest events.",
+			),
 		onCleanupError: (err, target) =>
 			logger.warn("Failed to clean up after telemetry export", target, err),
 	};

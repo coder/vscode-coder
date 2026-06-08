@@ -1,3 +1,5 @@
+import { normalizeRoute } from "../logging/routeNormalization";
+
 import type { CallerProperties } from "../telemetry/event";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { ConnectionState } from "../websocket/reconnectingWebSocket";
@@ -82,7 +84,7 @@ export class WebSocketTelemetry {
 		this.#connectStartedAtMs = undefined;
 		this.#telemetry.log(
 			"connection.opened",
-			{ route },
+			{ route: normalizeRoute(route) },
 			{ connectDurationMs: now - start },
 		);
 		this.#finishReconnect({ result: "success" });

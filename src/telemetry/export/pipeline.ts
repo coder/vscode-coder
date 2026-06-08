@@ -5,6 +5,7 @@ import { throwIfAborted } from "../../error/errorUtils";
 import { listTelemetryFilesForRange, streamTelemetryEvents } from "./files";
 
 import type { TelemetryEvent } from "../event";
+import type { FlushStatus } from "../service";
 
 import type { TelemetryDateRange } from "./range";
 import type { ExportWriter } from "./writers/types";
@@ -22,8 +23,10 @@ export interface ExportRequest {
  */
 export interface ExportRuntime {
 	readonly signal: AbortSignal;
-	readonly flushTelemetry: () => Promise<void>;
+	readonly flushTelemetry: () => Promise<FlushStatus>;
 	readonly report: (message: string) => void;
+	/** The pre-export flush did not fully succeed, so recent events may be missing. */
+	readonly onFlushIncomplete: () => void;
 	/** A temp file, staging dir, or empty export could not be removed (caller logs). */
 	readonly onCleanupError: (err: unknown, target: string) => void;
 }
@@ -38,8 +41,11 @@ export async function collectTelemetryExport(
 	runtime: ExportRuntime,
 ): Promise<number> {
 	runtime.report("Flushing buffered events...");
-	await runtime.flushTelemetry();
+	const flushStatus = await runtime.flushTelemetry();
 	throwIfAborted(runtime.signal);
+	if (!flushStatus.ok) {
+		runtime.onFlushIncomplete();
+	}
 
 	runtime.report("Locating telemetry files...");
 	const filePaths = await listTelemetryFilesForRange(
@@ -55,10 +61,12 @@ export async function collectTelemetryExport(
 		streamTelemetryEvents(filePaths, request.range),
 		runtime.signal,
 	);
-	const eventCount = await request.writer(request.outputPath, events, {
-		signal: runtime.signal,
-		onCleanupError: runtime.onCleanupError,
-	});
+	const eventCount = await request.writer(
+		request.outputPath,
+		events,
+		{ range: request.range, sourceFiles: filePaths.length },
+		{ signal: runtime.signal, onCleanupError: runtime.onCleanupError },
+	);
 	if (eventCount === 0) {
 		await removeEmptyExport(request.outputPath, runtime.onCleanupError);
 	}

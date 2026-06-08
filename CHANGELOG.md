@@ -27,6 +27,11 @@
 - Local telemetry now records authentication refresh and recovery prompts.
 - Local telemetry now records workspace and agent state transitions with
   observed durations.
+- The `Coder: Export Telemetry` command writes locally recorded telemetry to
+  a file you choose, as a JSON array or an OTLP/JSON zip, for a selected date
+  range. The OTLP zip includes a `manifest.json` summarizing the export: date
+  range, source file and event counts, per-signal record counts, and the
+  telemetry schema version.
 - Path-like settings (`coder.binaryDestination`, `coder.tlsCertFile`,
   `coder.tlsKeyFile`, `coder.tlsCaFile`, `coder.tlsAltHost`,
   `coder.proxyLogDirectory`) and items in `coder.globalFlags` now support

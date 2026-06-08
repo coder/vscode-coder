@@ -14,6 +14,7 @@ import { createTelemetryEventFactory } from "../../../mocks/telemetry";
 import type { TelemetryEvent } from "@/telemetry/event";
 import type { TelemetryDateRange } from "@/telemetry/export/range";
 import type { ExportWriter } from "@/telemetry/export/writers/types";
+import type { FlushStatus } from "@/telemetry/service";
 
 vi.mock("@/telemetry/export/files", () => ({
 	listTelemetryFilesForRange: vi.fn(),
@@ -28,6 +29,7 @@ const RANGE: TelemetryDateRange = {
 };
 const FILE_PATHS = ["/tmp/telemetry/a.jsonl", "/tmp/telemetry/b.jsonl"];
 const OUTPUT_PATH = "/tmp/out.json";
+const OK_FLUSH: FlushStatus = { ok: true, sinks: [] };
 
 function setup(
 	opts: {
@@ -35,6 +37,7 @@ function setup(
 		filePaths?: readonly string[];
 		signal?: AbortSignal;
 		writeCount?: number;
+		flush?: FlushStatus;
 	} = {},
 ) {
 	vi.resetAllMocks();
@@ -49,11 +52,12 @@ function setup(
 	const writer = vi.fn<ExportWriter>(() =>
 		Promise.resolve(opts.writeCount ?? 1),
 	);
-	const flushTelemetry = vi.fn(() => Promise.resolve());
+	const flushTelemetry = vi.fn(() => Promise.resolve(opts.flush ?? OK_FLUSH));
 	const runtime: ExportRuntime = {
 		signal: opts.signal ?? new AbortController().signal,
 		flushTelemetry,
 		report: vi.fn(),
+		onFlushIncomplete: vi.fn(),
 		onCleanupError: vi.fn(),
 	};
 	const request: ExportRequest = {
@@ -82,6 +86,24 @@ describe("collectTelemetryExport", () => {
 		expect(flushOrder).toBeLessThan(listOrder);
 	});
 
+	it("notifies the host when the flush did not fully succeed", async () => {
+		const { run, runtime } = setup({
+			flush: { ok: false, sinks: [{ name: "local-jsonl", ok: false }] },
+		});
+
+		await run();
+
+		expect(runtime.onFlushIncomplete).toHaveBeenCalled();
+	});
+
+	it("does not notify the host when the flush succeeds", async () => {
+		const { run, runtime } = setup();
+
+		await run();
+
+		expect(runtime.onFlushIncomplete).not.toHaveBeenCalled();
+	});
+
 	it("returns 0 and never writes when no files cover the range", async () => {
 		const { run, writer } = setup({ filePaths: [] });
 
@@ -96,15 +118,17 @@ describe("collectTelemetryExport", () => {
 		await expect(run()).resolves.toBe(5);
 	});
 
-	it("passes the output path, signal, and cleanup handler to the writer", async () => {
+	it("passes the descriptor, output path, signal, and cleanup handler to the writer", async () => {
 		const { run, runtime, writer } = setup({ writeCount: 2 });
 
 		await run();
 
-		expect(writer).toHaveBeenCalledWith(OUTPUT_PATH, expect.anything(), {
-			signal: runtime.signal,
-			onCleanupError: runtime.onCleanupError,
-		});
+		expect(writer).toHaveBeenCalledWith(
+			OUTPUT_PATH,
+			expect.anything(),
+			{ range: RANGE, sourceFiles: FILE_PATHS.length },
+			{ signal: runtime.signal, onCleanupError: runtime.onCleanupError },
+		);
 	});
 
 	it("removes the empty output file when the writer wrote nothing", async () => {

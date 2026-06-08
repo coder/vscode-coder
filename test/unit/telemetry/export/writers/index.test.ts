@@ -17,14 +17,23 @@ vi.mock("@/telemetry/export/writers/otlp/writer", () => ({
 const { context } = createTelemetryEventFactory()();
 const OUTPUT = "/tmp/out";
 const EVENTS = asyncIterable([]);
+const DESCRIPTOR = {
+	range: { label: "Last 24 hours", filenamePart: "last-24-hours" },
+	sourceFiles: 2,
+};
 const OPTIONS = {
 	signal: new AbortController().signal,
 	onCleanupError: vi.fn(),
 };
 
 describe("createExportWriter", () => {
-	it("uses the JSON writer for the json format", () => {
-		expect(createExportWriter("json", context)).toBe(writeJsonArrayExport);
+	it("delegates to the JSON writer, which ignores the descriptor", async () => {
+		vi.mocked(writeJsonArrayExport).mockResolvedValue(4);
+
+		const writer = createExportWriter("json", context);
+
+		await expect(writer(OUTPUT, EVENTS, DESCRIPTOR, OPTIONS)).resolves.toBe(4);
+		expect(writeJsonArrayExport).toHaveBeenCalledWith(OUTPUT, EVENTS, OPTIONS);
 	});
 
 	it("binds the context and sums signal counts for the otlp format", async () => {
@@ -36,11 +45,12 @@ describe("createExportWriter", () => {
 
 		const writer = createExportWriter("otlp", context);
 
-		await expect(writer(OUTPUT, EVENTS, OPTIONS)).resolves.toBe(9);
+		await expect(writer(OUTPUT, EVENTS, DESCRIPTOR, OPTIONS)).resolves.toBe(9);
 		expect(writeOtlpZipExport).toHaveBeenCalledWith(
 			OUTPUT,
 			EVENTS,
 			context,
+			DESCRIPTOR,
 			OPTIONS,
 		);
 	});
