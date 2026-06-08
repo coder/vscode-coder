@@ -33,6 +33,13 @@ type LoginResult =
 	| { success: false; reason: LoginPromptReason }
 	| { success: true; user: User; token: string; oauth?: OAuthTokenData };
 
+type LoginMethodRecorder = (method: AuthLoginMethod) => void;
+
+interface LoginMethodTracker {
+	readonly record: LoginMethodRecorder;
+	readonly current: () => AuthLoginMethod;
+}
+
 export interface LoginOptions {
 	safeHostname: string;
 	url: string | undefined;
@@ -71,28 +78,11 @@ export class LoginCoordinator implements vscode.Disposable {
 	 * Direct login - for user-initiated login via commands.
 	 * Stores session auth and URL history on success.
 	 */
-	public async ensureLoggedIn(
+	public ensureLoggedIn(
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
-		const { safeHostname, url } = options;
-		let method: AuthLoginMethod = "unknown";
-		const setMethod = (next: AuthLoginMethod): void => {
-			method = next;
-			options.onLoginMethod?.(next);
-		};
-		const login = () =>
-			this.executeWithGuard(async () => {
-				const result = await this.attemptLogin(
-					{ safeHostname, url },
-					options.autoLogin ?? false,
-					options.token,
-					setMethod,
-				);
-
-				await this.persistSessionAuth(result, safeHostname, url);
-
-				return result;
-			});
+		const method = createLoginMethodTracker(options.onLoginMethod);
+		const login = () => this.ensureLoggedInCore(options, method.record);
 
 		if (options.traceLogin === false) {
 			return login();
@@ -100,9 +90,28 @@ export class LoginCoordinator implements vscode.Disposable {
 
 		return this.authTelemetry.traceLogin(
 			options.source ?? "direct",
-			() => method,
+			method.current,
 			login,
 		);
+	}
+
+	private ensureLoggedInCore(
+		options: LoginOptions & { url: string },
+		recordMethod: LoginMethodRecorder,
+	): Promise<LoginResult> {
+		const { safeHostname, url } = options;
+		return this.executeWithGuard(async () => {
+			const result = await this.attemptLogin(
+				{ safeHostname, url },
+				options.autoLogin ?? false,
+				options.token,
+				recordMethod,
+			);
+
+			await this.persistSessionAuth(result, safeHostname, url);
+
+			return result;
+		});
 	}
 
 	/**
@@ -264,7 +273,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		deployment: Deployment,
 		isAutoLogin: boolean,
 		providedToken?: string,
-		recordMethod: (method: AuthLoginMethod) => void = () => undefined,
+		recordMethod: LoginMethodRecorder = () => undefined,
 	): Promise<LoginResult> {
 		const client = CoderApi.create(deployment.url, "", this.logger);
 		try {
@@ -285,7 +294,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		deployment: Deployment,
 		isAutoLogin: boolean,
 		providedToken: string | undefined,
-		recordMethod: (method: AuthLoginMethod) => void,
+		recordMethod: LoginMethodRecorder,
 	): Promise<LoginResult> {
 		// mTLS authentication (no token needed)
 		if (!needToken(vscode.workspace.getConfiguration())) {
@@ -522,4 +531,17 @@ export class LoginCoordinator implements vscode.Disposable {
 	public dispose(): void {
 		this.oauthAuthorizer.dispose();
 	}
+}
+
+function createLoginMethodTracker(
+	onRecord?: LoginMethodRecorder,
+): LoginMethodTracker {
+	let method: AuthLoginMethod = "unknown";
+	return {
+		record: (next) => {
+			method = next;
+			onRecord?.(next);
+		},
+		current: () => method,
+	};
 }

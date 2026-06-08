@@ -17,7 +17,9 @@ import { type FeatureSet, featureSetForVersion } from "./featureSet";
 import {
 	AuthTelemetry,
 	type AuthLoginMethod,
+	type AuthLoginOutcome,
 	type AuthLoginSource,
+	type AuthLogoutOutcome,
 } from "./instrumentation/auth";
 import {
 	reportElapsedProgress,
@@ -42,6 +44,7 @@ import {
 } from "./workspace/workspacesProvider";
 
 import type {
+	User,
 	Workspace,
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
@@ -53,6 +56,8 @@ import type { MementoManager } from "./core/mementoManager";
 import type { PathResolver } from "./core/pathResolver";
 import type { SecretsManager } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
+import type { Deployment } from "./deployment/types";
+import type { CredentialFailureCategory } from "./instrumentation/credentials";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator } from "./login/loginCoordinator";
 import type { TelemetryService } from "./telemetry/service";
@@ -71,6 +76,18 @@ interface OpenOptions {
 	/** When false, an absent folderPath opens a bare remote window instead of
 	 *  falling back to the agent's expanded_directory. Defaults to true. */
 	useDefaultDirectory?: boolean;
+}
+
+interface LoginArgs {
+	readonly url?: string;
+	readonly autoLogin?: boolean;
+}
+
+type LoginMethodRecorder = (method: AuthLoginMethod) => void;
+
+interface LoginSuccess {
+	readonly user: User;
+	readonly token: string;
 }
 
 const openDefaults = {
@@ -144,83 +161,97 @@ export class Commands {
 	 * Log into a deployment. If already authenticated, this is a no-op.
 	 * If no URL is provided, shows a menu of recent URLs plus defaults.
 	 */
-	public async login(args?: {
-		url?: string;
-		autoLogin?: boolean;
-	}): Promise<void> {
+	public async login(args?: LoginArgs): Promise<void> {
 		if (this.deploymentManager.isAuthenticated()) {
 			return;
 		}
-		await this.performLogin(args, args?.autoLogin ? "auto_login" : "command");
+		await this.traceLoginCommand(
+			args?.autoLogin ? "auto_login" : "command",
+			(recordMethod) => this.performLogin(args, recordMethod),
+		);
 	}
 
-	private async performLogin(
-		args?: {
-			url?: string;
-			autoLogin?: boolean;
-		},
-		source: AuthLoginSource = args?.autoLogin ? "auto_login" : "command",
+	private async traceLoginCommand(
+		source: AuthLoginSource,
+		run: (recordMethod: LoginMethodRecorder) => Promise<AuthLoginOutcome>,
 	): Promise<void> {
 		let method: AuthLoginMethod = "unknown";
 		await this.authTelemetry.traceLogin(
 			source,
 			() => method,
-			async () => {
-				this.logger.debug("Logging in");
-
-				const currentDeployment =
-					await this.secretsManager.getCurrentDeployment();
-				const url = await maybeAskUrl(
-					this.mementoManager,
-					args?.url,
-					currentDeployment?.url,
-				);
-				if (!url) {
-					return { success: false, reason: "no_url_provided" };
-				}
-
-				const safeHostname = toSafeHost(url);
-				this.logger.debug("Using hostname", safeHostname);
-
-				const result = await this.loginCoordinator.ensureLoggedIn({
-					safeHostname,
-					url,
-					autoLogin: args?.autoLogin,
-					traceLogin: false,
-					onLoginMethod: (next) => {
-						method = next;
-					},
-				});
-
-				if (!result.success) {
-					return result;
-				}
-
-				await this.deploymentManager.setDeployment({
-					url,
-					safeHostname,
-					token: result.token,
-					user: result.user,
-				});
-
-				vscode.window
-					.showInformationMessage(
-						`Welcome to Coder, ${result.user.username}!`,
-						{
-							detail:
-								"You can now use the Coder extension to manage your Coder instance.",
-						},
-						"Open Workspace",
-					)
-					.then((action) => {
-						if (action === "Open Workspace") {
-							vscode.commands.executeCommand("coder.open");
-						}
-					});
-				this.logger.debug("Login complete to deployment:", url);
-				return { success: true };
-			},
+			() =>
+				run((next) => {
+					method = next;
+				}),
 		);
+	}
+
+	private async performLogin(
+		args: LoginArgs | undefined,
+		recordMethod: LoginMethodRecorder,
+	): Promise<AuthLoginOutcome> {
+		this.logger.debug("Logging in");
+
+		const currentDeployment = await this.secretsManager.getCurrentDeployment();
+		const url = await maybeAskUrl(
+			this.mementoManager,
+			args?.url,
+			currentDeployment?.url,
+		);
+		if (!url) {
+			return { success: false, reason: "no_url_provided" };
+		}
+
+		const safeHostname = toSafeHost(url);
+		this.logger.debug("Using hostname", safeHostname);
+
+		const result = await this.loginCoordinator.ensureLoggedIn({
+			safeHostname,
+			url,
+			autoLogin: args?.autoLogin,
+			traceLogin: false,
+			onLoginMethod: recordMethod,
+		});
+
+		if (!result.success) {
+			return result;
+		}
+
+		await this.completeLogin(url, safeHostname, result);
+		return { success: true };
+	}
+
+	private async completeLogin(
+		url: string,
+		safeHostname: string,
+		result: LoginSuccess,
+	): Promise<void> {
+		await this.deploymentManager.setDeployment({
+			url,
+			safeHostname,
+			token: result.token,
+			user: result.user,
+		});
+
+		this.showWelcomeMessage(result.user.username);
+		this.logger.debug("Login complete to deployment:", url);
+	}
+
+	private showWelcomeMessage(username: string): void {
+		vscode.window
+			.showInformationMessage(
+				`Welcome to Coder, ${username}!`,
+				{
+					detail:
+						"You can now use the Coder extension to manage your Coder instance.",
+				},
+				"Open Workspace",
+			)
+			.then((action) => {
+				if (action === "Open Workspace") {
+					vscode.commands.executeCommand("coder.open");
+				}
+			});
 	}
 
 	/**
@@ -441,45 +472,46 @@ export class Commands {
 	 * Log out and clear stored credentials, requiring re-authentication on next login.
 	 */
 	public async logout(): Promise<void> {
-		await this.authTelemetry.traceLogout(async () => {
-			if (!this.deploymentManager.isAuthenticated()) {
-				return { success: false, reason: "not_authenticated" };
-			}
+		await this.authTelemetry.traceLogout(() => this.performLogout());
+	}
 
-			this.logger.debug("Logging out");
+	private async performLogout(): Promise<AuthLogoutOutcome> {
+		if (!this.deploymentManager.isAuthenticated()) {
+			return { success: false, reason: "not_authenticated" };
+		}
 
-			const deployment = this.deploymentManager.getCurrentDeployment();
+		this.logger.debug("Logging out");
 
-			await this.deploymentManager.clearDeployment("logout");
+		const deployment = this.deploymentManager.getCurrentDeployment();
+		await this.deploymentManager.clearDeployment("logout");
 
-			let credentialFailureCategory: string | undefined;
-			if (deployment) {
-				const credentialResult = await this.cliManager.clearCredentials(
-					deployment.url,
-				);
-				credentialFailureCategory = credentialResult.failureCategory;
-				await this.secretsManager.clearAllAuthData(deployment.safeHostname);
-			}
+		const credentialFailureCategory = deployment
+			? await this.clearDeploymentCredentials(deployment)
+			: undefined;
 
-			vscode.window
-				.showInformationMessage("You've been logged out of Coder!", "Login")
-				.then((action) => {
-					if (action === "Login") {
-						this.login().catch((error) => {
-							this.logger.error("Login failed", error);
-						});
-					}
-				});
+		this.showLogoutMessage();
+		this.logger.debug("Logout complete");
+		return logoutResultForCredentialFailure(credentialFailureCategory);
+	}
 
-			this.logger.debug("Logout complete");
-			if (credentialFailureCategory === "aborted") {
-				return { success: false, reason: "credential_clear_cancelled" };
-			}
-			if (credentialFailureCategory) {
-				return { success: false, reason: "credential_clear_failed" };
-			}
-			return { success: true };
-		});
+	private async clearDeploymentCredentials(
+		deployment: Deployment,
+	): Promise<CredentialFailureCategory | undefined> {
+		const result = await this.cliManager.clearCredentials(deployment.url);
+		await this.secretsManager.clearAllAuthData(deployment.safeHostname);
+		return result.failureCategory;
+	}
+
+	private showLogoutMessage(): void {
+		vscode.window
+			.showInformationMessage("You've been logged out of Coder!", "Login")
+			.then((action) => {
+				if (action === "Login") {
+					this.login().catch((error) => {
+						this.logger.error("Login failed", error);
+					});
+				}
+			});
 	}
 
 	/**
@@ -488,7 +520,9 @@ export class Commands {
 	 */
 	public async switchDeployment(): Promise<void> {
 		this.logger.debug("Switching deployment");
-		await this.performLogin(undefined, "switch_deployment");
+		await this.traceLoginCommand("switch_deployment", (recordMethod) =>
+			this.performLogin(undefined, recordMethod),
+		);
 	}
 
 	/**
@@ -1252,6 +1286,18 @@ export class Commands {
 				);
 			});
 	}
+}
+
+function logoutResultForCredentialFailure(
+	failureCategory: CredentialFailureCategory | undefined,
+): AuthLogoutOutcome {
+	if (failureCategory === "aborted") {
+		return { success: false, reason: "credential_clear_cancelled" };
+	}
+	if (failureCategory) {
+		return { success: false, reason: "credential_clear_failed" };
+	}
+	return { success: true };
 }
 
 async function openFile(filePath: string): Promise<void> {
