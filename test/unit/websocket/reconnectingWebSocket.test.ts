@@ -638,7 +638,12 @@ describe("ReconnectingWebSocket", () => {
 			expect(sink.eventsNamed("connection.dropped")).toHaveLength(2);
 			expect(sink.eventsNamed("connection.reconnect_resolved")).toMatchObject([
 				{
-					properties: { result: "success", reason: "unexpected_close" },
+					properties: {
+						result: "success",
+						reason: "unexpected_close",
+						attemptBucket: "1",
+						maxBackoffBucket: "<1s",
+					},
 					measurements: { attempts: 1, totalDurationMs: expect.any(Number) },
 				},
 			]);

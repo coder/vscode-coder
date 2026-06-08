@@ -31,6 +31,11 @@ const execFileAsync = promisify(execFile);
 
 type KeyringFeature = "keyringAuth" | "keyringTokenRead";
 
+export interface CliCredentialStoreResult {
+	readonly mode: "keyring" | "file";
+	readonly credentialSource: "session_token" | "empty_token";
+}
+
 const EXEC_TIMEOUT_MS = 60_000;
 const EXEC_LOG_INTERVAL_MS = 5_000;
 
@@ -71,13 +76,15 @@ export class CliCredentialManager {
 	 *
 	 * Keyring and files are mutually exclusive, never both.
 	 */
-	public storeToken(
+	public async storeToken(
 		url: string,
 		token: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
-	): Promise<void> {
-		return this.credentialTelemetry.traceStore(configs, async (span) => {
+	): Promise<CliCredentialStoreResult> {
+		const credentialSource = token === "" ? "empty_token" : "session_token";
+		let mode: CliCredentialStoreResult["mode"] = "file";
+		await this.credentialTelemetry.traceStore(configs, async (span) => {
 			const binPath = await this.resolveKeyringBinary(
 				url,
 				configs,
@@ -88,9 +95,11 @@ export class CliCredentialManager {
 				await this.writeCredentialFiles(url, token);
 				return;
 			}
+			mode = "keyring";
 			span.setProperty("category", "keyring");
 			await this.storeKeyringToken(binPath, url, token, configs, options);
 		});
+		return { mode, credentialSource };
 	}
 
 	private async storeKeyringToken(

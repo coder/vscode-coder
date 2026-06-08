@@ -238,35 +238,45 @@ export class Remote {
 			// Store for use in commands.
 			this.commands.remoteWorkspaceClient = workspaceClient;
 
-			const binaryPath = await this.resolveRemoteBinary(workspaceClient);
+			const binaryPath = await tracer.phase("cli_resolve", () =>
+				this.resolveRemoteBinary(workspaceClient),
+			);
 
 			// Write token to keyring or file
 			if (baseUrl && token !== undefined) {
-				await this.cliManager.configure(baseUrl, token);
+				await tracer.phase("cli_configure", () =>
+					this.cliManager.configure(baseUrl, token),
+				);
 			}
 
 			// Listen for token changes for this deployment
 			disposables.push(this.watchRemoteSessionAuth(context, workspaceClient));
 
-			// First thing is to check the version.
-			const buildInfo = await workspaceClient.getBuildInfo();
+			const { featureSet, cliAuth } = await tracer.phase(
+				"compatibility_check",
+				async () => {
+					// First thing is to check the version.
+					const buildInfo = await workspaceClient.getBuildInfo();
 
-			let version: semver.SemVer | null = null;
-			try {
-				version = semver.parse(await cliVersion(binaryPath));
-			} catch {
-				version = semver.parse(buildInfo.version);
-			}
+					let version: semver.SemVer | null;
+					try {
+						version = semver.parse(await cliVersion(binaryPath));
+					} catch {
+						version = semver.parse(buildInfo.version);
+					}
 
-			const featureSet = featureSetForVersion(version);
-			const configDir = this.pathResolver.getGlobalConfigDir(
-				parts.safeHostname,
-			);
-			const cliAuth = resolveCliAuth(
-				vscode.workspace.getConfiguration(),
-				featureSet,
-				baseUrl,
-				configDir,
+					const featureSet = featureSetForVersion(version);
+					const configDir = this.pathResolver.getGlobalConfigDir(
+						parts.safeHostname,
+					);
+					const cliAuth = resolveCliAuth(
+						vscode.workspace.getConfiguration(),
+						featureSet,
+						baseUrl,
+						configDir,
+					);
+					return { featureSet, cliAuth };
+				},
 			);
 
 			// Server versions before v0.14.1 don't support the vscodessh command!
@@ -312,10 +322,12 @@ export class Remote {
 			});
 
 			// Watch the workspace for changes.
-			const monitor = await WorkspaceMonitor.create(
-				workspace,
-				workspaceClient,
-				this.serviceContainer,
+			const monitor = await tracer.phase("workspace_monitor_setup", () =>
+				WorkspaceMonitor.create(
+					workspace,
+					workspaceClient,
+					this.serviceContainer,
+				),
 			);
 			disposables.push(
 				monitor,
@@ -391,15 +403,17 @@ export class Remote {
 			}
 
 			// Monitor SSH process and display network status
-			const sshMonitor = SshProcessMonitor.start({
-				sshHost: parts.sshHost,
-				networkInfoPath: this.pathResolver.getNetworkInfoPath(),
-				proxyLogDir: logDir || undefined,
-				logger: this.logger,
-				codeLogDir: this.pathResolver.getCodeLogDir(),
-				remoteSshExtensionId: args.remoteSshExtensionId,
-				telemetry: this.serviceContainer.getTelemetryService(),
-			});
+			const sshMonitor = await tracer.phase("ssh_monitor_setup", () =>
+				SshProcessMonitor.start({
+					sshHost: parts.sshHost,
+					networkInfoPath: this.pathResolver.getNetworkInfoPath(),
+					proxyLogDir: logDir || undefined,
+					logger: this.logger,
+					codeLogDir: this.pathResolver.getCodeLogDir(),
+					remoteSshExtensionId: args.remoteSshExtensionId,
+					telemetry: this.serviceContainer.getTelemetryService(),
+				}),
+			);
 			disposables.push(sshMonitor);
 
 			this.commands.workspaceLogPath = sshMonitor.getLogFilePath();
@@ -468,23 +482,25 @@ export class Remote {
 			throw ex;
 		}
 
-		this.contextManager.set("coder.workspace.connected", true);
-		this.logger.info("Remote setup complete");
+		return await tracer.phase("vscode_handoff", () => {
+			this.contextManager.set("coder.workspace.connected", true);
+			this.logger.info("Remote setup complete");
 
-		// Returning the URL and token allows the plugin to authenticate its own
-		// client, for example to display the list of workspaces belonging to this
-		// deployment in the sidebar.  We use our own client in here for reasons
-		// explained above.
-		return {
-			safeHostname: parts.safeHostname,
-			url: baseUrl,
-			token: token ?? "",
-			dispose: () => {
-				disposables.forEach((d) => {
-					d.dispose();
-				});
-			},
-		};
+			// Returning the URL and token allows the plugin to authenticate its own
+			// client, for example to display the list of workspaces belonging to this
+			// deployment in the sidebar.  We use our own client in here for reasons
+			// explained above.
+			return {
+				safeHostname: parts.safeHostname,
+				url: baseUrl,
+				token: token ?? "",
+				dispose: () => {
+					disposables.forEach((d) => {
+						d.dispose();
+					});
+				},
+			};
+		});
 	}
 
 	private async lookupWorkspace(

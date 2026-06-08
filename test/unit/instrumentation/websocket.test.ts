@@ -44,6 +44,17 @@ describe("WebSocketTelemetry", () => {
 			});
 		});
 
+		it("normalizes websocket URLs before emitting the route", () => {
+			const { ws, sink } = setup();
+
+			ws.opened(
+				"wss://coder.example.com/api/v2/workspaces/123e4567-e89b-12d3-a456-426614174000/watch-ws?token=secret#fragment",
+			);
+
+			const [event] = sink.eventsNamed("connection.opened");
+			expect(event.properties.route).toBe("/api/v2/workspaces/{id}/watch-ws");
+		});
+
 		it("uses 0 duration when connectStarted was not called", () => {
 			const { ws, sink } = setup();
 
@@ -133,7 +144,12 @@ describe("WebSocketTelemetry", () => {
 
 			const [event] = sink.eventsNamed("connection.reconnect_resolved");
 			expect(event).toMatchObject({
-				properties: { result: "success", reason: "manual_reconnect" },
+				properties: {
+					result: "success",
+					reason: "manual_reconnect",
+					attemptBucket: "1",
+					maxBackoffBucket: "none",
+				},
 				measurements: { attempts: 1, totalDurationMs: expect.any(Number) },
 			});
 		});
@@ -148,6 +164,8 @@ describe("WebSocketTelemetry", () => {
 			expect(event.properties).toEqual({
 				result: "error",
 				reason: "manual_reconnect",
+				attemptBucket: "0",
+				maxBackoffBucket: "none",
 				terminationReason: "unrecoverable_http",
 			});
 		});
@@ -191,15 +209,26 @@ describe("WebSocketTelemetry", () => {
 			const { ws, sink } = setup();
 
 			ws.opened("/api/test");
-			ws.retrying("unexpected_close", {
-				cause: "unexpected_close",
-				code: 1006,
-			});
+			ws.retrying(
+				"unexpected_close",
+				{
+					cause: "unexpected_close",
+					code: 1006,
+				},
+				250,
+			);
 
 			expect(sink.eventsNamed("connection.dropped")).toHaveLength(1);
 
 			ws.opened("/api/test");
-			expect(sink.eventsNamed("connection.reconnect_resolved")).toHaveLength(1);
+			expect(sink.eventsNamed("connection.reconnect_resolved")).toMatchObject([
+				{
+					properties: {
+						attemptBucket: "0",
+						maxBackoffBucket: "<1s",
+					},
+				},
+			]);
 		});
 	});
 });

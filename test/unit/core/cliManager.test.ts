@@ -128,6 +128,8 @@ describe("CliManager", () => {
 		const CONFIGURE_URL = "https://coder.example.com";
 		const TOKEN = "test-token";
 
+		const configureEvent = () => telemetrySink.expectOne("cli.configure");
+
 		function configure(options?: { silent?: boolean }) {
 			return manager.configure(CONFIGURE_URL, TOKEN, options);
 		}
@@ -149,6 +151,15 @@ describe("CliManager", () => {
 				expect.anything(),
 				{ signal: expect.any(AbortSignal) },
 			);
+			expect(configureEvent()).toMatchObject({
+				properties: {
+					result: "success",
+					silent: "false",
+					configMode: "file",
+					credentialSource: "session_token",
+				},
+				measurements: { durationMs: expect.any(Number) },
+			});
 		});
 
 		it("should skip progress when silent", async () => {
@@ -160,6 +171,12 @@ describe("CliManager", () => {
 				TOKEN,
 				expect.anything(),
 			);
+			expect(configureEvent().properties).toMatchObject({
+				result: "success",
+				silent: "true",
+				configMode: "file",
+				credentialSource: "session_token",
+			});
 		});
 
 		it("should throw when URL is empty", async () => {
@@ -180,6 +197,13 @@ describe("CliManager", () => {
 					expect.stringContaining("keyring unavailable"),
 					"Open Settings",
 				);
+				expect(configureEvent()).toMatchObject({
+					properties: {
+						result: "error",
+						failureCategory: "credential_store",
+					},
+					error: { message: "keyring unavailable" },
+				});
 			},
 		);
 
@@ -190,6 +214,10 @@ describe("CliManager", () => {
 
 			await expect(configure()).resolves.not.toThrow();
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+			expect(configureEvent().properties).toMatchObject({
+				result: "aborted",
+				failureCategory: "cancelled",
+			});
 		});
 	});
 
@@ -796,11 +824,65 @@ describe("CliManager", () => {
 			);
 		});
 
-		it("does not emit cli.download when a cached binary already matches", async () => {
+		it("emits cli.resolve cache-hit phases without cli.download", async () => {
 			withExistingBinary(TEST_VERSION);
 			await manager.fetchBinary(mockApi);
 
 			expect(event("cli.download")).toBeUndefined();
+			expect(event("cli.resolve")).toMatchObject({
+				properties: {
+					result: "success",
+					outcome: "cache_hit",
+					cacheSource: "directory",
+					versionCheck: "match",
+				},
+				measurements: { durationMs: expect.any(Number) },
+			});
+			expect(event("cli.resolve.cache_lookup")).toMatchObject({
+				properties: { source: "directory", result: "success" },
+			});
+			expect(event("cli.resolve.version_check")).toMatchObject({
+				properties: { outcome: "match", result: "success" },
+			});
+		});
+
+		it("distinguishes disabled-download fallback", async () => {
+			mockConfig.set("coder.enableDownloads", false);
+			withExistingBinary("1.0.0");
+
+			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
+
+			expect(event("cli.download")).toBeUndefined();
+			expect(event("cli.resolve.download_decision")).toMatchObject({
+				properties: {
+					reason: "version_mismatch",
+					downloadsEnabled: "false",
+					outcome: "fallback",
+					result: "success",
+				},
+			});
+			expect(event("cli.resolve")).toMatchObject({
+				properties: {
+					outcome: "download_disabled_fallback",
+					result: "success",
+				},
+			});
+		});
+
+		it("distinguishes disabled-download failure", async () => {
+			mockConfig.set("coder.enableDownloads", false);
+
+			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
+				"Unable to download CLI because downloads are disabled",
+			);
+
+			expect(event("cli.download")).toBeUndefined();
+			expect(event("cli.resolve")).toMatchObject({
+				properties: {
+					failureCategory: "downloads_disabled",
+					result: "error",
+				},
+			});
 		});
 
 		it("omits downloadedBytes when the server returns 304", async () => {
@@ -813,6 +895,9 @@ describe("CliManager", () => {
 				properties: { reason: "version_mismatch", result: "success" },
 			});
 			expect(e?.measurements.downloadedBytes).toBeUndefined();
+			expect(event("cli.resolve")).toMatchObject({
+				properties: { outcome: "downloaded", result: "success" },
+			});
 		});
 
 		it("emits downloadedBytes when a download fails mid-stream", async () => {
@@ -831,6 +916,12 @@ describe("CliManager", () => {
 				properties: { reason: "missing", result: "error" },
 				error: { message: "Unable to download binary: connection reset" },
 				measurements: { downloadedBytes: Buffer.byteLength(partial) },
+			});
+			expect(event("cli.resolve.fallback_to_existing_binary")).toMatchObject({
+				properties: { failureCategory: "download", result: "error" },
+			});
+			expect(event("cli.resolve")).toMatchObject({
+				properties: { result: "error" },
 			});
 		});
 

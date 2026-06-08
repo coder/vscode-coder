@@ -178,7 +178,12 @@ describe("CliCredentialManager", () => {
 		it("writes files when keyring is disabled", async () => {
 			const { manager, sink } = setup();
 
-			await manager.storeToken(TEST_URL, "my-token", configs);
+			await expect(
+				manager.storeToken(TEST_URL, "my-token", configs),
+			).resolves.toEqual({
+				mode: "file",
+				credentialSource: "session_token",
+			});
 
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
@@ -197,7 +202,12 @@ describe("CliCredentialManager", () => {
 			stubExecFile({ stdout: "" });
 			const { manager, resolver, sink } = setup();
 
-			await manager.storeToken(TEST_URL, "my-secret-token", configs);
+			await expect(
+				manager.storeToken(TEST_URL, "my-secret-token", configs),
+			).resolves.toEqual({
+				mode: "keyring",
+				credentialSource: "session_token",
+			});
 
 			expect(resolver).toHaveBeenCalledWith(TEST_URL);
 			const exec = lastExecArgs();
@@ -220,11 +230,25 @@ describe("CliCredentialManager", () => {
 			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
 			const { manager } = setup();
 
-			await manager.storeToken(TEST_URL, "token", configs);
+			await expect(
+				manager.storeToken(TEST_URL, "token", configs),
+			).resolves.toEqual({
+				mode: "file",
+				credentialSource: "session_token",
+			});
 
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
 			expect(memfs.readFileSync(SESSION_FILE, "utf8")).toBe("token");
+		});
+
+		it("reports empty tokens as mTLS credential source", async () => {
+			const { manager } = setup();
+
+			await expect(manager.storeToken(TEST_URL, "", configs)).resolves.toEqual({
+				mode: "file",
+				credentialSource: "empty_token",
+			});
 		});
 
 		it("throws when CLI exec fails", async () => {

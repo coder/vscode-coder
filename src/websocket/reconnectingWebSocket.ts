@@ -428,15 +428,18 @@ export class ReconnectingWebSocket<
 		if (!this.#dispatch({ type: "SCHEDULE_RETRY" }, reason)) {
 			return;
 		}
-		this.#telemetry.retrying(reason, {
-			cause,
-			code: options.code,
-			error: options.error,
-		});
-
 		const jitter =
 			this.#backoffMs * this.#options.jitterFactor * (Math.random() * 2 - 1);
 		const delayMs = Math.max(0, this.#backoffMs + jitter);
+		this.#telemetry.retrying(
+			reason,
+			{
+				cause,
+				code: options.code,
+				error: options.error,
+			},
+			delayMs,
+		);
 
 		this.#logger.debug(
 			`Reconnecting WebSocket in ${Math.round(delayMs)}ms for ${this.#route}`,

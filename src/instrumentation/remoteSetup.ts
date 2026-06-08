@@ -1,10 +1,16 @@
 import type { TelemetryService } from "../telemetry/service";
 
 export type RemoteSetupPhase =
+	| "cli_resolve"
+	| "cli_configure"
+	| "compatibility_check"
 	| "workspace_lookup"
+	| "workspace_monitor_setup"
 	| "workspace_ready"
 	| "resolve_agent"
-	| "ssh_config_write";
+	| "ssh_config_write"
+	| "ssh_monitor_setup"
+	| "vscode_handoff";
 
 /** Reason for a non-throwing early exit from `remote.setup`. */
 export type RemoteSetupOutcome = "workspace_not_found" | "incompatible_server";

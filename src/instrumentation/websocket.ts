@@ -39,6 +39,42 @@ interface ReconnectCycle {
 	readonly startMs: number;
 	readonly reason: ConnectionStateReason;
 	attempts: number;
+	maxBackoffMs: number;
+}
+
+function bucketAttempts(attempts: number): string {
+	if (attempts <= 0) {
+		return "0";
+	}
+	if (attempts === 1) {
+		return "1";
+	}
+	if (attempts === 2) {
+		return "2";
+	}
+	if (attempts <= 5) {
+		return "3-5";
+	}
+	if (attempts <= 10) {
+		return "6-10";
+	}
+	return "11+";
+}
+
+function bucketBackoff(ms: number): string {
+	if (ms <= 0) {
+		return "none";
+	}
+	if (ms < 1000) {
+		return "<1s";
+	}
+	if (ms < 5000) {
+		return "1-5s";
+	}
+	if (ms < 30000) {
+		return "5-30s";
+	}
+	return "30s+";
 }
 
 interface DropOptions {
@@ -136,6 +172,7 @@ export class WebSocketTelemetry {
 			startMs: performance.now(),
 			reason,
 			attempts: 0,
+			maxBackoffMs: 0,
 		};
 	}
 
@@ -146,9 +183,17 @@ export class WebSocketTelemetry {
 	}
 
 	/** Drop and (re)open a reconnect cycle. */
-	public retrying(reason: ConnectionStateReason, options: DropOptions): void {
+	public retrying(
+		reason: ConnectionStateReason,
+		options: DropOptions,
+		backoffMs: number,
+	): void {
 		this.dropped(options.cause, options.code, options.error);
 		this.reconnectStarted(reason);
+		const cycle = this.#reconnectCycle;
+		if (cycle) {
+			cycle.maxBackoffMs = Math.max(cycle.maxBackoffMs, backoffMs);
+		}
 	}
 
 	#finishReconnect(outcome: ReconnectOutcome): void {
@@ -161,6 +206,8 @@ export class WebSocketTelemetry {
 		const properties: Record<string, string> = {
 			result: outcome.result,
 			reason: cycle.reason,
+			attemptBucket: bucketAttempts(cycle.attempts),
+			maxBackoffBucket: bucketBackoff(cycle.maxBackoffMs),
 		};
 		if (outcome.result === "error") {
 			properties.terminationReason = outcome.terminationReason;
