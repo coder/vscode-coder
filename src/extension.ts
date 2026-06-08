@@ -101,6 +101,7 @@ async function doActivate(
 		? await secretsManager.getSessionAuth(deployment.safeHostname)
 		: undefined;
 	tracer.setAuthState(deploymentSessionAuth ? "stored" : "none");
+
 	// Shared handler for auth failures (used by interceptor + session manager)
 	const handleAuthFailure = (): Promise<void> => {
 		deploymentManager.suspendSession("auth_failure");

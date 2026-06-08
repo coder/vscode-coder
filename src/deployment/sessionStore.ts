@@ -38,12 +38,12 @@ export class SessionStore implements WorkspaceSessionState {
 
 	public readonly onDidChange = this.#onDidChange.event;
 
-	/** The full current session, including deployment and user. */
+	/** Full session state, including deployment and user. */
 	public get current(): SessionData {
 		return this.#data;
 	}
 
-	/** The lean projection exposed to session-state consumers. */
+	/** Lean projection for consumers that only track auth status and revision. */
 	public getSnapshot(): WorkspaceSessionSnapshot {
 		if (this.#data.kind === "signedIn") {
 			return {

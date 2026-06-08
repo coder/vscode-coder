@@ -60,6 +60,9 @@ export interface WorkspaceProviderOptions {
 	readonly refreshIntervalMs?: number;
 }
 
+// Bounds fetch() retries when the session keeps changing mid-request.
+const MAX_FETCH_ATTEMPTS = 3;
+
 /**
  * Polls workspaces using the provided REST client and renders them in a tree.
  *
@@ -119,7 +122,6 @@ export class WorkspaceProvider
 			this.fetching = false;
 		}
 
-		// Keep polling only after a clean fetch while still signed in and visible.
 		if (
 			!hadError &&
 			!this.disposed &&
@@ -143,65 +145,75 @@ export class WorkspaceProvider
 	 * signed out, and throws if the query fails.
 	 */
 	private async fetch(): Promise<WorkspaceTreeItem[]> {
-		const session = this.sessionState.getSnapshot();
-		if (session.kind !== "signedIn") {
-			return [];
-		}
+		for (let attempt = 0; attempt < MAX_FETCH_ATTEMPTS; attempt++) {
+			if (this.disposed) {
+				return [];
+			}
+			const session = this.sessionState.getSnapshot();
+			if (session.kind !== "signedIn") {
+				return [];
+			}
 
-		const resp = await this.client.getWorkspaces({
-			q: this.getWorkspacesQuery,
-		});
+			const resp = await this.client.getWorkspaces({
+				q: this.getWorkspacesQuery,
+			});
 
-		// If the session changed while the request was in flight, this result is
-		// stale. Drop it and fetch again for the current session.
-		const latest = this.sessionState.getSnapshot();
-		if (latest.kind !== "signedIn" || latest.revision !== session.revision) {
-			return this.fetch();
-		}
+			// Session changed mid-request; this result is stale, so retry.
+			const latest = this.sessionState.getSnapshot();
+			if (latest.kind !== "signedIn" || latest.revision !== session.revision) {
+				continue;
+			}
 
-		const workspaces = this.filterWorkspaces(resp.workspaces, session);
-		const oldWatcherIds = [...this.agentWatchers.keys()];
-		const reusedWatcherIds: string[] = [];
+			const workspaces = this.filterWorkspaces(resp.workspaces, session);
+			const oldWatcherIds = [...this.agentWatchers.keys()];
+			const reusedWatcherIds: string[] = [];
 
-		// TODO: I think it might make more sense for the tree items to contain
-		// their own watchers, rather than recreate the tree items every time and
-		// have this separate map held outside the tree.
-		if (this.config.showMetadata) {
-			const agents = extractAllAgents(workspaces);
-			for (const agent of agents) {
-				// If we have an existing watcher, re-use it.
-				const oldWatcher = this.agentWatchers.get(agent.id);
-				if (oldWatcher) {
-					reusedWatcherIds.push(agent.id);
-				} else {
-					// Otherwise create a new watcher.
+			// TODO: I think it might make more sense for the tree items to contain
+			// their own watchers, rather than recreate the tree items every time
+			// and have this separate map held outside the tree.
+			if (this.config.showMetadata) {
+				const agents = extractAllAgents(workspaces);
+				for (const agent of agents) {
+					// If we have an existing watcher, re-use it.
+					const oldWatcher = this.agentWatchers.get(agent.id);
+					if (oldWatcher) {
+						reusedWatcherIds.push(agent.id);
+						continue;
+					}
 					const watcher = await createAgentMetadataWatcher(
 						agent.id,
 						this.client,
 					);
+					// dispose() may have cleared the map mid-create; don't leak
+					// this watcher.
+					if (this.disposed) {
+						watcher.dispose();
+						return [];
+					}
 					watcher.onChange(() => this.refreshTree());
 					this.agentWatchers.set(agent.id, watcher);
 				}
 			}
-		}
 
-		// Dispose of watchers we ended up not reusing.
-		for (const id of oldWatcherIds) {
-			if (!reusedWatcherIds.includes(id)) {
-				this.agentWatchers.get(id)?.dispose();
-				this.agentWatchers.delete(id);
+			// Dispose of watchers we ended up not reusing.
+			for (const id of oldWatcherIds) {
+				if (!reusedWatcherIds.includes(id)) {
+					this.agentWatchers.get(id)?.dispose();
+					this.agentWatchers.delete(id);
+				}
 			}
-		}
 
-		// Create tree items for each workspace
-		return workspaces.map(
-			(workspace: Workspace) =>
-				new WorkspaceTreeItem(
-					workspace,
-					this.config.showOwner,
-					this.config.showMetadata,
-				),
-		);
+			return workspaces.map(
+				(workspace: Workspace) =>
+					new WorkspaceTreeItem(
+						workspace,
+						this.config.showOwner,
+						this.config.showMetadata,
+					),
+			);
+		}
+		// Session changed on every attempt; the next refresh will catch up.
+		return [];
 	}
 
 	private filterWorkspaces(
@@ -244,10 +256,7 @@ export class WorkspaceProvider
 		}
 	}
 
-	/**
-	 * Schedule a refresh if one is not already scheduled or underway and a
-	 * timeout length was provided.
-	 */
+	/** Schedule the next poll, unless one is pending or no interval is set. */
 	private maybeScheduleRefresh() {
 		if (this.options.refreshIntervalMs && !this.timeout) {
 			this.timeout = setTimeout(() => {
@@ -370,6 +379,7 @@ export class WorkspaceProvider
 		this.disposed = true;
 		this.clearState();
 		this.sessionChangeDisposable.dispose();
+		this._onDidChangeTreeData.dispose();
 	}
 }
 

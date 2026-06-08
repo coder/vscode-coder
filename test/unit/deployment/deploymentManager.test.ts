@@ -490,6 +490,94 @@ describe("DeploymentManager", () => {
 			expect(manager.getCurrentDeployment()).toBeNull();
 			expect(currentUserId(manager)).toBeUndefined();
 		});
+
+		it("rotates the token in place without a revision bump when the user is unchanged", async () => {
+			const { mockClient, validationMockClient, secretsManager, manager } =
+				createTestContext();
+			const user = createMockUser({ id: "stable-user" });
+			validationMockClient.setAuthenticatedUserResponse(user);
+
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "initial-token",
+				user,
+			});
+			const revisionBefore = manager.getSnapshot().revision;
+
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "rotated-token",
+			});
+			await flush();
+
+			expect(mockClient.token).toBe("rotated-token");
+			expect(currentUserId(manager)).toBe("stable-user");
+			// No sign-in fired, so the workspace trees are not rebuilt.
+			expect(manager.getSnapshot().revision).toBe(revisionBefore);
+		});
+
+		it("keeps the existing session when verifying a rotated token fails", async () => {
+			const { mockClient, validationMockClient, secretsManager, manager } =
+				createTestContext();
+			const user = createMockUser({ id: "stable-user" });
+
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "initial-token",
+				user,
+			});
+
+			// Verifying the rotated token fails (e.g. a transient network blip).
+			validationMockClient.getAuthenticatedUser.mockRejectedValueOnce(
+				new Error("network down"),
+			);
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "rotated-token",
+			});
+			await flush();
+
+			// Verify-before-apply: the unverified token never reaches the client.
+			expect(mockClient.token).toBe("initial-token");
+			expect(manager.isAuthenticated()).toBe(true);
+			expect(currentUserId(manager)).toBe("stable-user");
+		});
+
+		it("recovers a session suspended while a rotated token is verified", async () => {
+			const { mockClient, validationMockClient, secretsManager, manager } =
+				createTestContext();
+			const user = createMockUser({ id: "stable-user" });
+			const validation = Promise.withResolvers<typeof user>();
+			validationMockClient.getAuthenticatedUser.mockReturnValueOnce(
+				validation.promise,
+			);
+
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "initial-token",
+				user,
+			});
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "rotated-token",
+			});
+			await flush();
+
+			// A concurrent 401 on the old token suspends the session mid-verify.
+			manager.suspendSession("auth_failure");
+			expect(manager.isAuthenticated()).toBe(false);
+
+			validation.resolve(user);
+			await flush();
+
+			// The verified token recovers the session instead of staying suspended.
+			expect(manager.isAuthenticated()).toBe(true);
+			expect(mockClient.token).toBe("rotated-token");
+			expect(currentUserId(manager)).toBe("stable-user");
+		});
 	});
 
 	describe("logout", () => {

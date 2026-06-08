@@ -208,7 +208,7 @@ export class DeploymentManager
 		this.#authListenerDisposable?.dispose();
 		this.#authListenerDisposable = undefined;
 		this.#sessionStore.signOut(null);
-		this.clearSideEffects();
+		this.clearAuthState();
 		this.telemetryService.setDeploymentUrl("");
 		if (wasAuthenticated) {
 			this.deploymentTelemetry.suspended(reason);
@@ -224,13 +224,13 @@ export class DeploymentManager
 	public suspendSession(reason: DeploymentSuspendReason): void {
 		const wasAuthenticated = this.isAuthenticated();
 		this.#sessionStore.signOut(this.#sessionStore.current.deployment);
-		this.clearSideEffects();
+		this.clearAuthState();
 		if (wasAuthenticated) {
 			this.deploymentTelemetry.suspended(reason);
 		}
 	}
 
-	private clearSideEffects(): void {
+	private clearAuthState(): void {
 		this.oauthSessionManager.clearDeployment();
 		this.client.setCredentials(undefined, undefined);
 		this.updateAuthContexts(undefined);
@@ -296,6 +296,10 @@ export class DeploymentManager
 		);
 	}
 
+	/**
+	 * Handle a token change while already signed in: verify the new token before
+	 * applying it, so an unverified token never reaches the live client.
+	 */
 	private async verifyAndUpdateSession(
 		deployment: Deployment & { token: string },
 	): Promise<void> {
@@ -305,10 +309,30 @@ export class DeploymentManager
 				deployment.url,
 				deployment.token,
 			);
-			if (this.#disposed || this.#sessionStore.current !== sessionBefore) {
+			if (this.#disposed) {
 				return;
 			}
-			await this.setDeployment({ ...deployment, user });
+			const current = this.#sessionStore.current;
+
+			if (current === sessionBefore) {
+				// Same-user rotation only needs fresh credentials; skipping
+				// setDeployment avoids a revision bump and tree rebuild.
+				if (current.kind === "signedIn" && current.user.id === user.id) {
+					this.client.setCredentials(deployment.url, deployment.token);
+				} else {
+					await this.setDeployment({ ...deployment, user });
+				}
+				return;
+			}
+
+			// Session changed under us: recover only a same-deployment suspension
+			// (e.g. a concurrent 401); a logout or switch wins.
+			if (
+				current.kind === "signedOut" &&
+				current.deployment?.safeHostname === deployment.safeHostname
+			) {
+				await this.setDeployment({ ...deployment, user });
+			}
 		} catch (e) {
 			this.logger.warn("Failed to authenticate updated session:", e);
 		}

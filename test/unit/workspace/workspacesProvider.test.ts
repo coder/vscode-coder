@@ -463,4 +463,57 @@ describe("WorkspaceProvider", () => {
 
 		expect(await provider.getChildren()).toEqual([]);
 	});
+
+	it("fetches when the session signs in after starting signed out", async () => {
+		const { client, session, makeProvider } = setup();
+		session.signOut();
+		client.respondOnce([workspace({ name: "dev" })]);
+		const provider = makeProvider(WorkspaceQuery.Mine);
+
+		await show(provider);
+		expect(client.getWorkspaces).not.toHaveBeenCalled();
+
+		session.signIn();
+		await flush();
+
+		expect(await labels(provider)).toEqual(["dev"]);
+	});
+
+	it("stops reacting to session changes after dispose", async () => {
+		const { client, session, makeProvider } = setup();
+		client.respondOnce([workspace({ name: "dev" })]);
+		const provider = makeProvider(WorkspaceQuery.Mine);
+
+		await show(provider);
+		expect(await labels(provider)).toEqual(["dev"]);
+
+		provider.dispose();
+		session.signIn("another-user");
+		await flush();
+
+		expect(client.getWorkspaces).toHaveBeenCalledTimes(1);
+		expect(await provider.getChildren()).toEqual([]);
+	});
+
+	it("leaves the tree empty when a fetch fails after a mid-request session change", async () => {
+		const { client, session, makeProvider } = setup();
+		const pending = client.pending();
+		client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
+		const provider = makeProvider(WorkspaceQuery.Mine);
+
+		provider.setVisibility(true);
+		await flush();
+		session.signIn("second-user");
+		pending.resolve([workspace({ name: "stale" })]);
+		await flush();
+		await flush();
+
+		// Failed retry leaves the tree empty until a manual refresh.
+		expect(await provider.getChildren()).toEqual([]);
+
+		// A manual refresh recovers.
+		client.respondOnce([workspace({ name: "recovered" })]);
+		await provider.fetchAndRefresh();
+		expect(await labels(provider)).toEqual(["recovered"]);
+	});
 });

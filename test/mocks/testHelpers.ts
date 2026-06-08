@@ -1254,7 +1254,6 @@ interface WorkspacesResponse {
  * tests drive the production watcher rather than a stub.
  */
 export class MockWorkspacesClient {
-	baseURL: string | undefined = "https://coder.example.com";
 	readonly metadataStreams = new Map<
 		string,
 		MockEventStream<{ data: AgentMetadataEvent[] }>
@@ -1269,10 +1268,6 @@ export class MockWorkspacesClient {
 		const stream = new MockEventStream<{ data: AgentMetadataEvent[] }>();
 		this.metadataStreams.set(agentId, stream);
 		return Promise.resolve(stream);
-	}
-
-	getAxiosInstance() {
-		return { defaults: { baseURL: this.baseURL } };
 	}
 
 	/** Resolve the next getWorkspaces call with these workspaces. */
