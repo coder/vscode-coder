@@ -22,6 +22,8 @@ import {
 
 import type { CreateAxiosDefaults } from "axios";
 
+import type { Deployment } from "@/deployment/types";
+
 vi.mock("axios", async () => {
 	const actual = await vi.importActual<typeof import("axios")>("axios");
 	const mockAdapter = vi.fn();
@@ -70,11 +72,12 @@ function createTestContext() {
 	const startLogin = async (options?: {
 		progress?: MockProgress;
 		token?: MockCancellationToken;
+		deployment?: Deployment;
 	}) => {
 		const progress = options?.progress ?? new MockProgress();
 		const token = options?.token ?? new MockCancellationToken();
 		const loginPromise = authorizer.login(
-			createTestDeployment(),
+			options?.deployment ?? createTestDeployment(),
 			progress,
 			token,
 		);
@@ -259,6 +262,123 @@ describe("OAuthAuthorizer", () => {
 				"exchanging token...",
 				"fetching user...",
 			]);
+		});
+
+		it("rewrites the endpoint origin when alternativeWebUrl is set", async () => {
+			const {
+				configurationProvider,
+				setupOAuthRoutes,
+				startLogin,
+				completeLogin,
+			} = createTestContext();
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://coder.example.com",
+			);
+			setupOAuthRoutes(
+				createMockOAuthMetadata("https://coder.example.com:7004"),
+			);
+
+			const { loginPromise, authUrl, state } = await startLogin({
+				deployment: {
+					url: "https://coder.example.com:7004",
+					safeHostname: "coder.example.com",
+				},
+			});
+			expect(authUrl.origin).toBe("https://coder.example.com");
+			expect(authUrl.pathname).toBe("/oauth2/authorize");
+
+			await completeLogin(state);
+			await loginPromise;
+		});
+
+		it("preserves a path prefix on alternativeWebUrl", async () => {
+			const {
+				configurationProvider,
+				setupOAuthRoutes,
+				startLogin,
+				completeLogin,
+			} = createTestContext();
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://proxy.example.com/coder",
+			);
+			setupOAuthRoutes(
+				createMockOAuthMetadata("https://coder.example.com:7004"),
+			);
+
+			const { loginPromise, authUrl, state } = await startLogin({
+				deployment: {
+					url: "https://coder.example.com:7004",
+					safeHostname: "coder.example.com",
+				},
+			});
+			expect(authUrl.origin).toBe("https://proxy.example.com");
+			expect(authUrl.pathname).toBe("/coder/oauth2/authorize");
+
+			await completeLogin(state);
+			await loginPromise;
+		});
+
+		it("does not double the path prefix on sub-path deployments", async () => {
+			const { setupOAuthRoutes, startLogin, completeLogin } =
+				createTestContext();
+			setupOAuthRoutes(createMockOAuthMetadata("https://example.com/coder"));
+
+			const { loginPromise, authUrl, state } = await startLogin({
+				deployment: {
+					url: "https://example.com/coder",
+					safeHostname: "example.com",
+				},
+			});
+			expect(authUrl.origin).toBe("https://example.com");
+			expect(authUrl.pathname).toBe("/coder/oauth2/authorize");
+
+			await completeLogin(state);
+			await loginPromise;
+		});
+
+		it("swaps the sub-path prefix for the alternativeWebUrl prefix", async () => {
+			const {
+				configurationProvider,
+				setupOAuthRoutes,
+				startLogin,
+				completeLogin,
+			} = createTestContext();
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://proxy.example.com/proxy",
+			);
+			setupOAuthRoutes(createMockOAuthMetadata("https://example.com/coder"));
+
+			const { loginPromise, authUrl, state } = await startLogin({
+				deployment: {
+					url: "https://example.com/coder",
+					safeHostname: "example.com",
+				},
+			});
+			expect(authUrl.origin).toBe("https://proxy.example.com");
+			expect(authUrl.pathname).toBe("/proxy/oauth2/authorize");
+
+			await completeLogin(state);
+			await loginPromise;
+		});
+
+		it("preserves query params already on the authorization endpoint", async () => {
+			const { setupOAuthRoutes, startLogin, completeLogin } =
+				createTestContext();
+			setupOAuthRoutes(
+				createMockOAuthMetadata(TEST_URL, {
+					authorization_endpoint: `${TEST_URL}/oauth2/authorize?audience=workspace`,
+				}),
+			);
+
+			const { loginPromise, authUrl, state } = await startLogin();
+			expect(authUrl.searchParams.get("audience")).toBe("workspace");
+			expect(authUrl.searchParams.get("client_id")).toBeTruthy();
+
+			await completeLogin(state);
+			await loginPromise;
 		});
 	});
 

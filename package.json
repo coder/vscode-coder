@@ -134,6 +134,12 @@
 					"default": "",
 					"scope": "application"
 				},
+				"coder.alternativeWebUrl": {
+					"markdownDescription": "Alternative URL for opening Coder pages in the browser (dashboard, workspace, and login pages). API, SSH, and CLI always use the connection URL; when this is empty, so does the browser. Useful when the API runs on a browser-restricted port (e.g. 7004) but the web UI is served on a standard port (e.g. 443).",
+					"type": "string",
+					"default": "",
+					"scope": "application"
+				},
 				"coder.autologin": {
 					"markdownDescription": "Automatically log into the default URL when the extension is activated. coder.defaultUrl is preferred, otherwise the CODER_URL environment variable will be used. This setting has no effect if neither is set.",
 					"type": "boolean",

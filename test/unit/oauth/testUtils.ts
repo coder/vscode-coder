@@ -123,7 +123,7 @@ export function createBaseTestContext() {
 	vi.mocked(getHeaders).mockResolvedValue({});
 
 	// Constructor sets up vscode.workspace mock
-	const _configurationProvider = new MockConfigurationProvider();
+	const configurationProvider = new MockConfigurationProvider();
 
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
@@ -131,11 +131,14 @@ export function createBaseTestContext() {
 	const secretsManager = new SecretsManager(secretStorage, memento, logger);
 	const oauthCallback = new OAuthCallback(secretStorage, logger);
 
-	/** Sets up default OAuth routes - use explicit routes when asserting on values */
-	const setupOAuthRoutes = () => {
+	/** Sets up OAuth routes, defaulting to metadata for TEST_URL. */
+	const setupOAuthRoutes = (
+		metadata: OAuth2AuthorizationServerMetadata = createMockOAuthMetadata(
+			TEST_URL,
+		),
+	) => {
 		setupAxiosMockRoutes(mockAdapter, {
-			"/.well-known/oauth-authorization-server":
-				createMockOAuthMetadata(TEST_URL),
+			"/.well-known/oauth-authorization-server": metadata,
 			"/oauth2/register": createMockClientRegistration(),
 			"/oauth2/token": createMockTokenResponse(),
 			"/api/v2/users/me": { username: "test-user" },
@@ -148,5 +151,6 @@ export function createBaseTestContext() {
 		oauthCallback,
 		logger,
 		setupOAuthRoutes,
+		configurationProvider,
 	};
 }

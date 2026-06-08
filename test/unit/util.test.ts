@@ -1,5 +1,6 @@
 import os from "node:os";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import * as vscode from "vscode";
 
 import {
 	type AuthorityParts,
@@ -8,9 +9,13 @@ import {
 	escapeShellArg,
 	expandPath,
 	findPort,
+	openInBrowser,
 	parseRemoteAuthority,
+	resolveUiUrl,
 	toSafeHost,
 } from "@/util";
+
+import { MockConfigurationProvider } from "../mocks/testHelpers";
 
 describe("parseRemoteAuthority", () => {
 	const remoteAuthority = (sshHost: string) => `vscode://ssh-remote+${sshHost}`;
@@ -395,5 +400,95 @@ describe("findPort", () => {
 [10:30:10] Final connection Socks port: 3333 established
 		`;
 		expect(findPort(log)).toBe(3333);
+	});
+});
+
+describe("resolveUiUrl", () => {
+	let configurationProvider: MockConfigurationProvider;
+
+	beforeEach(() => {
+		configurationProvider = new MockConfigurationProvider();
+	});
+
+	it("returns the connection URL when no alternative is configured", () => {
+		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
+			"https://coder.example.com:7004",
+		);
+	});
+
+	it.each([
+		{ name: "empty", value: "" },
+		{ name: "whitespace", value: "   " },
+	])(
+		"returns the connection URL when the alternative is $name",
+		({ value }) => {
+			configurationProvider.set("coder.alternativeWebUrl", value);
+			expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
+				"https://coder.example.com:7004",
+			);
+		},
+	);
+
+	it.each([
+		{
+			name: "uses the alternative URL when configured",
+			value: "https://coder.example.com",
+		},
+		{ name: "strips trailing slashes", value: "https://coder.example.com/" },
+		{
+			name: "strips multiple trailing slashes",
+			value: "https://coder.example.com///",
+		},
+		{ name: "trims whitespace", value: "  https://coder.example.com  " },
+	])("$name", ({ value }) => {
+		configurationProvider.set("coder.alternativeWebUrl", value);
+		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
+			"https://coder.example.com",
+		);
+	});
+});
+
+describe("openInBrowser", () => {
+	let configurationProvider: MockConfigurationProvider;
+
+	beforeEach(() => {
+		configurationProvider = new MockConfigurationProvider();
+		vi.mocked(vscode.env.openExternal).mockClear();
+	});
+
+	it("opens the connection URL joined with the path when no alt URL is set", () => {
+		openInBrowser("https://coder.example.com:7004", "/templates");
+		expect(vscode.env.openExternal).toHaveBeenCalledWith(
+			vscode.Uri.parse("https://coder.example.com:7004/templates"),
+		);
+	});
+
+	it("opens the alternative URL when configured", () => {
+		configurationProvider.set(
+			"coder.alternativeWebUrl",
+			"https://coder.example.com",
+		);
+		openInBrowser("https://coder.example.com:7004", "/templates");
+		expect(vscode.env.openExternal).toHaveBeenCalledWith(
+			vscode.Uri.parse("https://coder.example.com/templates"),
+		);
+	});
+
+	it("preserves a path prefix on the alternative URL", () => {
+		configurationProvider.set(
+			"coder.alternativeWebUrl",
+			"https://proxy.example.com/coder",
+		);
+		openInBrowser("https://coder.example.com:7004", "/templates");
+		expect(vscode.env.openExternal).toHaveBeenCalledWith(
+			vscode.Uri.parse("https://proxy.example.com/coder/templates"),
+		);
+	});
+
+	it("joins paths without a leading slash", () => {
+		openInBrowser("https://coder.example.com", "templates");
+		expect(vscode.env.openExternal).toHaveBeenCalledWith(
+			vscode.Uri.parse("https://coder.example.com/templates"),
+		);
 	});
 });

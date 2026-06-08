@@ -25,6 +25,7 @@ import {
 	streamBuildLogs,
 } from "../../api/workspace";
 import { type Logger } from "../../logging/logger";
+import { openInBrowser } from "../../util";
 import { vscodeProposed } from "../../vscodeProposed";
 import {
 	dispatchCommand,
@@ -43,12 +44,12 @@ import type {
 	WorkspaceAgentLog,
 } from "coder/site/src/api/typesGenerated";
 
-/** Build URL to view task build logs in Coder dashboard */
-function getTaskBuildUrl(baseUrl: string, task: Task): string {
+/** Build the dashboard path for a task's build logs. */
+function getTaskBuildPath(task: Task): string {
 	if (task.workspace_name && task.workspace_build_number) {
-		return `${baseUrl}/@${task.owner_name}/${task.workspace_name}/builds/${task.workspace_build_number}`;
+		return `/@${task.owner_name}/${task.workspace_name}/builds/${task.workspace_build_number}`;
 	}
-	return `${baseUrl}/tasks/${task.owner_name}/${task.id}`;
+	return `/tasks/${task.owner_name}/${task.id}`;
 }
 
 export class TasksPanelProvider
@@ -308,21 +309,19 @@ export class TasksPanelProvider
 	}
 
 	private async handleViewInCoder(taskId: string): Promise<void> {
-		const baseUrl = this.client.getHost();
-		if (!baseUrl) return;
+		const connUrl = this.client.getHost();
+		if (!connUrl) return;
 
 		const task = await this.client.getTask("me", taskId);
-		vscode.env.openExternal(
-			vscode.Uri.parse(`${baseUrl}/tasks/${task.owner_name}/${task.id}`),
-		);
+		await openInBrowser(connUrl, `/tasks/${task.owner_name}/${task.id}`);
 	}
 
 	private async handleViewLogs(taskId: string): Promise<void> {
-		const baseUrl = this.client.getHost();
-		if (!baseUrl) return;
+		const connUrl = this.client.getHost();
+		if (!connUrl) return;
 
 		const task = await this.client.getTask("me", taskId);
-		vscode.env.openExternal(vscode.Uri.parse(getTaskBuildUrl(baseUrl, task)));
+		await openInBrowser(connUrl, getTaskBuildPath(task));
 	}
 
 	private async handleDownloadLogs(taskId: string): Promise<void> {

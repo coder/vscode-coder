@@ -23,6 +23,7 @@ import {
 import {
 	createAxiosError,
 	createMockLogger,
+	MockConfigurationProvider,
 	MockUserInteraction,
 } from "../../../mocks/testHelpers";
 
@@ -200,9 +201,13 @@ function createHarness(): Harness {
 }
 
 describe("TasksPanelProvider", () => {
+	let configurationProvider: MockConfigurationProvider;
+
 	beforeEach(() => {
 		// Reset shared vscode mocks between tests
 		vi.resetAllMocks();
+
+		configurationProvider = new MockConfigurationProvider();
 	});
 
 	describe("getTasks", () => {
@@ -677,6 +682,46 @@ describe("TasksPanelProvider", () => {
 			await h.command(TasksApi.viewInCoder, { taskId: "task-123" });
 
 			expect(vscode.env.openExternal).not.toHaveBeenCalled();
+		});
+
+		it("viewInCoder uses the alternative web URL when configured", async () => {
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://coder.example.com:443",
+			);
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(
+				task({ id: "task-1", owner_name: "alice" }),
+			);
+
+			await h.command(TasksApi.viewInCoder, { taskId: "task-1" });
+
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				vscode.Uri.parse("https://coder.example.com:443/tasks/alice/task-1"),
+			);
+		});
+
+		it("viewLogs uses the alternative web URL when configured", async () => {
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://coder.example.com:443",
+			);
+			const h = createHarness();
+			h.client.getTask.mockResolvedValue(
+				task({
+					owner_name: "alice",
+					workspace_name: "my-ws",
+					workspace_build_number: 42,
+				}),
+			);
+
+			await h.command(TasksApi.viewLogs, { taskId: "task-1" });
+
+			expect(vscode.env.openExternal).toHaveBeenCalledWith(
+				vscode.Uri.parse(
+					"https://coder.example.com:443/@alice/my-ws/builds/42",
+				),
+			);
 		});
 	});
 

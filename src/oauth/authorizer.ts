@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
+import { resolveUiUrl } from "../util";
 
 import {
 	AUTH_GRANT_TYPE,
@@ -98,6 +99,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 		reportProgress("waiting for authorization...", 30);
 		const { code, verifier } = await this.startAuthorization(
+			deployment.url,
 			metadata,
 			registration,
 			cancellationToken,
@@ -187,6 +189,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 	 * Build authorization URL with all required OAuth 2.1 parameters.
 	 */
 	private buildAuthorizationUrl(
+		connectionUrl: string,
 		metadata: OAuth2AuthorizationServerMetadata,
 		clientId: string,
 		state: string,
@@ -215,7 +218,13 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			code_challenge_method: PKCE_CHALLENGE_METHOD,
 		});
 
-		const url = `${metadata.authorization_endpoint}?${params.toString()}`;
+		const endpoint = toBrowserAuthorizationUrl(
+			metadata.authorization_endpoint,
+			connectionUrl,
+		);
+		for (const [key, value] of params) {
+			endpoint.searchParams.set(key, value);
+		}
 
 		this.logger.debug("Built OAuth authorization URL:", {
 			client_id: clientId,
@@ -223,7 +232,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			scope: DEFAULT_OAUTH_SCOPES,
 		});
 
-		return url;
+		return endpoint.toString();
 	}
 
 	/**
@@ -232,6 +241,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 	 * Returns authorization code and PKCE verifier on success.
 	 */
 	private async startAuthorization(
+		connectionUrl: string,
 		metadata: OAuth2AuthorizationServerMetadata,
 		registration: OAuth2ClientRegistrationResponse,
 		cancellationToken: vscode.CancellationToken,
@@ -240,6 +250,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		const { verifier, challenge } = generatePKCE();
 
 		const authUrl = this.buildAuthorizationUrl(
+			connectionUrl,
 			metadata,
 			registration.client_id,
 			state,
@@ -358,4 +369,32 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			this.pendingAuthReject = null;
 		}
 	}
+}
+
+/**
+ * Swap the server's authorization endpoint onto the browser-facing URL
+ * (`alternativeWebUrl`) when it lives under the connection URL, preserving any
+ * sub-path prefix. Endpoints on a different host are left untouched.
+ */
+function toBrowserAuthorizationUrl(
+	authorizationEndpoint: string,
+	connectionUrl: string,
+): URL {
+	const endpoint = new URL(authorizationEndpoint);
+	const connectionBase = new URL(connectionUrl);
+	const browserBase = new URL(resolveUiUrl(connectionUrl));
+	const connectionPrefix = connectionBase.pathname.replace(/\/$/, "");
+	const browserPrefix = browserBase.pathname.replace(/\/$/, "");
+	const underConnection =
+		endpoint.origin === connectionBase.origin &&
+		(connectionPrefix === "" ||
+			endpoint.pathname === connectionPrefix ||
+			endpoint.pathname.startsWith(`${connectionPrefix}/`));
+	if (underConnection) {
+		endpoint.protocol = browserBase.protocol;
+		endpoint.hostname = browserBase.hostname;
+		endpoint.port = browserBase.port;
+		endpoint.pathname = `${browserPrefix}${endpoint.pathname.slice(connectionPrefix.length)}`;
+	}
+	return endpoint;
 }
