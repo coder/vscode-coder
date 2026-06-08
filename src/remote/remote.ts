@@ -361,7 +361,7 @@ export class Remote {
 			// Mark initial setup as complete so the monitor can start notifying about state changes
 			monitor.markInitialSetupComplete();
 
-			const agent = await tracer.phase("resolve_agent", () =>
+			const agent = await tracer.phase("agent_resolve", () =>
 				this.resolveAgent(context, workspace, stateMachine),
 			);
 
@@ -482,7 +482,7 @@ export class Remote {
 			throw ex;
 		}
 
-		return await tracer.phase("vscode_handoff", () => {
+		return await tracer.phase("connection_handoff", () => {
 			this.contextManager.set("coder.workspace.connected", true);
 			this.logger.info("Remote setup complete");
 

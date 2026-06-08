@@ -179,6 +179,14 @@ describe("CliManager", () => {
 			});
 		});
 
+		it("reports an empty token as the mTLS credential source", async () => {
+			await manager.configure(CONFIGURE_URL, "");
+
+			expect(configureEvent().properties).toMatchObject({
+				credentialSource: "empty_token",
+			});
+		});
+
 		it("should throw when URL is empty", async () => {
 			await expect(manager.configure("", TOKEN)).rejects.toThrow(
 				"URL is required to configure the CLI",

@@ -144,13 +144,12 @@ describe("WebSocketTelemetry", () => {
 
 			const [event] = sink.eventsNamed("connection.reconnect_resolved");
 			expect(event).toMatchObject({
-				properties: {
-					result: "success",
-					reason: "manual_reconnect",
-					attemptBucket: "1",
-					maxBackoffBucket: "none",
+				properties: { result: "success", reason: "manual_reconnect" },
+				measurements: {
+					attempts: 1,
+					maxBackoffMs: 0,
+					totalDurationMs: expect.any(Number),
 				},
-				measurements: { attempts: 1, totalDurationMs: expect.any(Number) },
 			});
 		});
 
@@ -164,8 +163,6 @@ describe("WebSocketTelemetry", () => {
 			expect(event.properties).toEqual({
 				result: "error",
 				reason: "manual_reconnect",
-				attemptBucket: "0",
-				maxBackoffBucket: "none",
 				terminationReason: "unrecoverable_http",
 			});
 		});
@@ -222,12 +219,7 @@ describe("WebSocketTelemetry", () => {
 
 			ws.opened("/api/test");
 			expect(sink.eventsNamed("connection.reconnect_resolved")).toMatchObject([
-				{
-					properties: {
-						attemptBucket: "0",
-						maxBackoffBucket: "<1s",
-					},
-				},
+				{ measurements: { attempts: 0, maxBackoffMs: 250 } },
 			]);
 		});
 	});

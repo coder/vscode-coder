@@ -42,41 +42,6 @@ interface ReconnectCycle {
 	maxBackoffMs: number;
 }
 
-function bucketAttempts(attempts: number): string {
-	if (attempts <= 0) {
-		return "0";
-	}
-	if (attempts === 1) {
-		return "1";
-	}
-	if (attempts === 2) {
-		return "2";
-	}
-	if (attempts <= 5) {
-		return "3-5";
-	}
-	if (attempts <= 10) {
-		return "6-10";
-	}
-	return "11+";
-}
-
-function bucketBackoff(ms: number): string {
-	if (ms <= 0) {
-		return "none";
-	}
-	if (ms < 1000) {
-		return "<1s";
-	}
-	if (ms < 5000) {
-		return "1-5s";
-	}
-	if (ms < 30000) {
-		return "5-30s";
-	}
-	return "30s+";
-}
-
 interface DropOptions {
 	cause: ConnectionDropCause;
 	code?: number;
@@ -206,14 +171,13 @@ export class WebSocketTelemetry {
 		const properties: Record<string, string> = {
 			result: outcome.result,
 			reason: cycle.reason,
-			attemptBucket: bucketAttempts(cycle.attempts),
-			maxBackoffBucket: bucketBackoff(cycle.maxBackoffMs),
 		};
 		if (outcome.result === "error") {
 			properties.terminationReason = outcome.terminationReason;
 		}
 		this.#telemetry.log("connection.reconnect_resolved", properties, {
 			attempts: cycle.attempts,
+			maxBackoffMs: cycle.maxBackoffMs,
 			totalDurationMs: performance.now() - cycle.startMs,
 		});
 	}

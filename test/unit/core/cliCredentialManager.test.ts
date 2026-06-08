@@ -180,10 +180,7 @@ describe("CliCredentialManager", () => {
 
 			await expect(
 				manager.storeToken(TEST_URL, "my-token", configs),
-			).resolves.toEqual({
-				mode: "file",
-				credentialSource: "session_token",
-			});
+			).resolves.toEqual({ mode: "file" });
 
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
@@ -204,10 +201,7 @@ describe("CliCredentialManager", () => {
 
 			await expect(
 				manager.storeToken(TEST_URL, "my-secret-token", configs),
-			).resolves.toEqual({
-				mode: "keyring",
-				credentialSource: "session_token",
-			});
+			).resolves.toEqual({ mode: "keyring" });
 
 			expect(resolver).toHaveBeenCalledWith(TEST_URL);
 			const exec = lastExecArgs();
@@ -232,23 +226,11 @@ describe("CliCredentialManager", () => {
 
 			await expect(
 				manager.storeToken(TEST_URL, "token", configs),
-			).resolves.toEqual({
-				mode: "file",
-				credentialSource: "session_token",
-			});
+			).resolves.toEqual({ mode: "file" });
 
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
 			expect(memfs.readFileSync(SESSION_FILE, "utf8")).toBe("token");
-		});
-
-		it("reports empty tokens as mTLS credential source", async () => {
-			const { manager } = setup();
-
-			await expect(manager.storeToken(TEST_URL, "", configs)).resolves.toEqual({
-				mode: "file",
-				credentialSource: "empty_token",
-			});
 		});
 
 		it("throws when CLI exec fails", async () => {

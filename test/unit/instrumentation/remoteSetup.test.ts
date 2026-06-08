@@ -36,10 +36,10 @@ describe("RemoteSetupTelemetry", () => {
 			"workspace_lookup",
 			"workspace_monitor_setup",
 			"workspace_ready",
-			"resolve_agent",
+			"agent_resolve",
 			"ssh_config_write",
 			"ssh_monitor_setup",
-			"vscode_handoff",
+			"connection_handoff",
 		] as const;
 		await remoteSetup.trace(async (tracer) => {
 			for (const phase of phases) {

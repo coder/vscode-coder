@@ -444,10 +444,7 @@ export class InMemorySecretStorage implements vscode.SecretStorage {
 
 export function createMockCliCredentialManager(): CliCredentialManager {
 	return {
-		storeToken: vi.fn().mockResolvedValue({
-			mode: "file",
-			credentialSource: "session_token",
-		}),
+		storeToken: vi.fn().mockResolvedValue({ mode: "file" }),
 		readToken: vi.fn().mockResolvedValue(undefined),
 		deleteToken: vi.fn().mockResolvedValue(undefined),
 	} as unknown as CliCredentialManager;

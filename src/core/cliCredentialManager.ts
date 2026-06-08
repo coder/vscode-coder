@@ -33,7 +33,6 @@ type KeyringFeature = "keyringAuth" | "keyringTokenRead";
 
 export interface CliCredentialStoreResult {
 	readonly mode: "keyring" | "file";
-	readonly credentialSource: "session_token" | "empty_token";
 }
 
 const EXEC_TIMEOUT_MS = 60_000;
@@ -82,7 +81,6 @@ export class CliCredentialManager {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<CliCredentialStoreResult> {
-		const credentialSource = token === "" ? "empty_token" : "session_token";
 		let mode: CliCredentialStoreResult["mode"] = "file";
 		await this.credentialTelemetry.traceStore(configs, async (span) => {
 			const binPath = await this.resolveKeyringBinary(
@@ -99,7 +97,7 @@ export class CliCredentialManager {
 			span.setProperty("category", "keyring");
 			await this.storeKeyringToken(binPath, url, token, configs, options);
 		});
-		return { mode, credentialSource };
+		return { mode };
 	}
 
 	private async storeKeyringToken(
