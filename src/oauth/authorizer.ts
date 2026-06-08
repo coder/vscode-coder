@@ -218,15 +218,27 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			code_challenge_method: PKCE_CHALLENGE_METHOD,
 		};
 
-		// Server is authoritative for the path; alternativeWebUrl can swap the origin.
+		// The server's endpoint path already includes the connection URL's path
+		// prefix (e.g. a sub-path deployment). alternativeWebUrl can swap the
+		// origin and path prefix (e.g. a reverse proxy) for browser use.
 		const endpoint = new URL(metadata.authorization_endpoint);
+		const connectionBase = new URL(connectionUrl);
 		const browserBase = new URL(resolveUiUrl(connectionUrl));
 		endpoint.protocol = browserBase.protocol;
 		endpoint.hostname = browserBase.hostname;
 		endpoint.port = browserBase.port;
-		// Preserve any path prefix on the alternative URL (e.g. reverse proxy).
-		const prefix = browserBase.pathname.replace(/\/$/, "");
-		endpoint.pathname = `${prefix}${endpoint.pathname}`;
+		// Swap the connection prefix for the browser prefix without doubling it.
+		const connectionPrefix = connectionBase.pathname.replace(/\/$/, "");
+		const browserPrefix = browserBase.pathname.replace(/\/$/, "");
+		let endpointPath = endpoint.pathname;
+		if (
+			connectionPrefix &&
+			(endpointPath === connectionPrefix ||
+				endpointPath.startsWith(`${connectionPrefix}/`))
+		) {
+			endpointPath = endpointPath.slice(connectionPrefix.length);
+		}
+		endpoint.pathname = `${browserPrefix}${endpointPath}`;
 		for (const [key, value] of Object.entries(params)) {
 			endpoint.searchParams.set(key, value);
 		}

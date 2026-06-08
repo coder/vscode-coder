@@ -20,6 +20,7 @@ import {
 	TEST_URL,
 } from "./testUtils";
 
+import type { Deployment } from "@/deployment/types";
 import type { CreateAxiosDefaults } from "axios";
 
 vi.mock("axios", async () => {
@@ -70,11 +71,12 @@ function createTestContext() {
 	const startLogin = async (options?: {
 		progress?: MockProgress;
 		token?: MockCancellationToken;
+		deployment?: Deployment;
 	}) => {
 		const progress = options?.progress ?? new MockProgress();
 		const token = options?.token ?? new MockCancellationToken();
 		const loginPromise = authorizer.login(
-			createTestDeployment(),
+			options?.deployment ?? createTestDeployment(),
 			progress,
 			token,
 		);
@@ -304,6 +306,59 @@ describe("OAuthAuthorizer", () => {
 			const { loginPromise, authUrl, state } = await startLogin();
 			expect(authUrl.origin).toBe("https://proxy.example.com");
 			expect(authUrl.pathname).toBe("/coder/oauth2/authorize");
+
+			await completeLogin(state);
+			await loginPromise;
+		});
+
+		it("does not double the path prefix on sub-path deployments", async () => {
+			const { mockAdapter, startLogin, completeLogin } = createTestContext();
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					"https://example.com/coder",
+				),
+				"/oauth2/register": createMockClientRegistration(),
+				"/oauth2/token": createMockTokenResponse(),
+				"/api/v2/users/me": { username: "test-user" },
+			});
+
+			const { loginPromise, authUrl, state } = await startLogin({
+				deployment: {
+					url: "https://example.com/coder",
+					safeHostname: "example.com",
+				},
+			});
+			expect(authUrl.origin).toBe("https://example.com");
+			expect(authUrl.pathname).toBe("/coder/oauth2/authorize");
+
+			await completeLogin(state);
+			await loginPromise;
+		});
+
+		it("swaps the sub-path prefix for the alternativeWebUrl prefix", async () => {
+			const { mockAdapter, configurationProvider, startLogin, completeLogin } =
+				createTestContext();
+			configurationProvider.set(
+				"coder.alternativeWebUrl",
+				"https://proxy.example.com/proxy",
+			);
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					"https://example.com/coder",
+				),
+				"/oauth2/register": createMockClientRegistration(),
+				"/oauth2/token": createMockTokenResponse(),
+				"/api/v2/users/me": { username: "test-user" },
+			});
+
+			const { loginPromise, authUrl, state } = await startLogin({
+				deployment: {
+					url: "https://example.com/coder",
+					safeHostname: "example.com",
+				},
+			});
+			expect(authUrl.origin).toBe("https://proxy.example.com");
+			expect(authUrl.pathname).toBe("/proxy/oauth2/authorize");
 
 			await completeLogin(state);
 			await loginPromise;
