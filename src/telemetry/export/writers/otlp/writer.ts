@@ -164,7 +164,6 @@ async function writeManifest(
 		context,
 		sourceEvents,
 		records,
-		exportedAt: new Date().toISOString(),
 	});
 	await fs.writeFile(
 		path.join(dir, MANIFEST_FILE),

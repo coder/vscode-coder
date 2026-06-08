@@ -51,13 +51,12 @@ export function buildManifest(args: {
 	readonly input: ManifestInput;
 	readonly sourceEvents: number;
 	readonly records: RecordCounts;
-	readonly exportedAt: string;
 }): ExportManifest {
-	const { format, context, input, sourceEvents, records, exportedAt } = args;
+	const { format, context, input, sourceEvents, records } = args;
 	return {
 		schemaVersion: MANIFEST_SCHEMA_VERSION,
 		telemetrySchemaVersion: CURRENT_TELEMETRY_SCHEMA_VERSION,
-		exportedAt,
+		exportedAt: new Date().toISOString(),
 		extensionVersion: context.extensionVersion,
 		format,
 		range: {

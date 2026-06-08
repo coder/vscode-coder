@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	buildManifest,
@@ -25,12 +25,18 @@ function build(overrides: Partial<Parameters<typeof buildManifest>[0]> = {}) {
 		input: INPUT,
 		sourceEvents: 9,
 		records: { logs: 5, traces: 3, metrics: 1 },
-		exportedAt: "2026-05-04T18:00:00.000Z",
 		...overrides,
 	});
 }
 
 describe("buildManifest", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-05-04T18:00:00.000Z"));
+	});
+
+	afterEach(() => vi.useRealTimers());
+
 	it("captures the manifest and telemetry schema versions separately", () => {
 		const manifest = build();
 
