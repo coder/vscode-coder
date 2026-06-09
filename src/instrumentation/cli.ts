@@ -1,11 +1,13 @@
 import { isAbortError } from "../error/errorUtils";
 
-import type { CallerPropertyValue } from "../telemetry/event";
+import type { CallerProperties, CallerPropertyValue } from "../telemetry/event";
 import type { TelemetryService } from "../telemetry/service";
 import type { Span } from "../telemetry/span";
 
 export type CliCacheSource = "file-path" | "directory" | "not-found";
 export type CliDownloadReason = "missing" | "version_mismatch" | "unreadable";
+export type CliDownloadAction = "download" | "fallback" | "blocked";
+export type CliCredentialSource = "session_token" | "empty_token";
 export type CliResolveOutcome =
 	| "cache_hit"
 	| "downloaded"
@@ -27,6 +29,30 @@ export type CliResolveFailureCategory =
 	| "download"
 	| "fallback_declined";
 
+interface CliConfigureOptions {
+	readonly silent: boolean;
+	readonly credentialSource: CliCredentialSource;
+}
+
+export class CliDownloadsDisabledError extends Error {
+	public constructor() {
+		super("Unable to download CLI because downloads are disabled");
+		this.name = "CliDownloadsDisabledError";
+	}
+}
+
+export class CliFallbackDeclinedError extends Error {
+	public constructor(cause: unknown) {
+		super(
+			cause instanceof Error ? cause.message : "CLI binary fallback declined",
+			{
+				cause,
+			},
+		);
+		this.name = "CliFallbackDeclinedError";
+	}
+}
+
 export class CliTelemetry {
 	public constructor(private readonly telemetry: TelemetryService) {}
 
@@ -44,26 +70,26 @@ export class CliTelemetry {
 	}
 
 	public configure<T>(
-		options: { silent: boolean; hasToken: boolean },
+		options: CliConfigureOptions,
 		fn: (trace: CliConfigureTrace) => Promise<T>,
 	): Promise<T> {
-		return this.telemetry.trace("cli.configure", (span) => {
-			span.setProperty("silent", options.silent);
-			span.setProperty(
-				"credential_source",
-				options.hasToken ? "session_token" : "empty_token",
-			);
-			return fn(new CliConfigureTrace(span));
-		});
+		return this.telemetry.trace("cli.configure", (span) =>
+			fn(this.createConfigureTrace(span, options)),
+		);
+	}
+
+	private createConfigureTrace(
+		span: Span,
+		options: CliConfigureOptions,
+	): CliConfigureTrace {
+		span.setProperty("silent", options.silent);
+		span.setProperty("credential_source", options.credentialSource);
+		return new CliConfigureTrace(span);
 	}
 }
 
 export class CliResolveTrace {
 	public constructor(private readonly span: Span) {}
-
-	public setDownloadsEnabled(enabled: boolean): void {
-		this.span.setProperty("downloads_enabled", enabled);
-	}
 
 	public setOutcome(outcome: CliResolveOutcome): void {
 		this.span.setProperty("outcome", outcome);
@@ -79,8 +105,7 @@ export class CliResolveTrace {
 		const result = await tracedPhase(
 			this.span,
 			"cache_lookup",
-			"source",
-			(r) => r.source,
+			{ source: (r) => r.source },
 			fn,
 		);
 		this.span.setProperty("cache_source", result.source);
@@ -93,39 +118,28 @@ export class CliResolveTrace {
 		const result = await tracedPhase(
 			this.span,
 			"version_check",
-			"outcome",
-			(r) => r.outcome,
+			{ outcome: (r) => r.outcome },
 			fn,
 		);
 		this.span.setProperty("version_check", result.outcome);
 		return result;
 	}
 
-	public downloadDecision(
-		reason: CliDownloadReason,
-		downloadsEnabled: boolean,
-		hasExistingBinary: boolean,
-	): Promise<void> {
-		this.span.setProperty("download_reason", reason);
-		return this.span.phase("download_decision", (span) => {
-			span.setProperty("reason", reason);
-			span.setProperty("downloads_enabled", downloadsEnabled);
-			span.setProperty(
-				"outcome",
-				downloadsEnabled
-					? "download"
-					: hasExistingBinary
-						? "fallback"
-						: "blocked",
-			);
-			return Promise.resolve();
+	public recordDownloadDecision(options: {
+		readonly reason: CliDownloadReason;
+		readonly action: CliDownloadAction;
+	}): Promise<void> {
+		this.span.setProperty("download_reason", options.reason);
+		return this.phase("download_decision", {
+			reason: options.reason,
+			outcome: options.action,
 		});
 	}
 
 	public lockWait<T extends { readonly waited: boolean }>(
 		fn: () => Promise<T>,
 	): Promise<T> {
-		return tracedPhase(this.span, "lock_wait", "waited", (r) => r.waited, fn);
+		return tracedPhase(this.span, "lock_wait", { waited: (r) => r.waited }, fn);
 	}
 
 	public lockWaitRecheck<
@@ -134,8 +148,7 @@ export class CliResolveTrace {
 		return tracedPhase(
 			this.span,
 			"lock_wait_recheck",
-			"outcome",
-			(r) => r.outcome,
+			{ outcome: (r) => r.outcome },
 			fn,
 		);
 	}
@@ -144,21 +157,35 @@ export class CliResolveTrace {
 		const result = await this.span.phase(
 			"fallback_to_existing_binary",
 			async (span) => {
-				span.setProperty("failure_category", categorizeResolveFailure(error));
-				return fn();
+				try {
+					const result = await fn();
+					span.setProperty("failure_category", categorizeResolveFailure(error));
+					return result;
+				} catch (fallbackError) {
+					span.setProperty(
+						"failure_category",
+						categorizeResolveFailure(fallbackError),
+					);
+					throw fallbackError;
+				}
 			},
 		);
 		this.setOutcome("fallback_to_existing_binary");
 		return result;
 	}
+
+	private phase(name: string, properties: CallerProperties): Promise<void> {
+		return this.span.phase(name, (span) => {
+			for (const [key, value] of Object.entries(properties)) {
+				span.setProperty(key, value);
+			}
+			return Promise.resolve();
+		});
+	}
 }
 
 export class CliConfigureTrace {
 	public constructor(private readonly span: Span) {}
-
-	public stored(mode: "keyring" | "file"): void {
-		this.span.setProperty("config_mode", mode);
-	}
 
 	public cancelled(): void {
 		this.span.setProperty("failure_category", "cancelled");
@@ -173,17 +200,17 @@ export class CliConfigureTrace {
 	}
 }
 
-/** Run `fn` as a child phase, tagging the child span with `key = select(result)`. */
 function tracedPhase<T>(
 	span: Span,
 	name: string,
-	key: string,
-	select: (result: T) => CallerPropertyValue,
+	properties: Readonly<Record<string, (result: T) => CallerPropertyValue>>,
 	fn: () => Promise<T>,
 ): Promise<T> {
 	return span.phase(name, async (child) => {
 		const result = await fn();
-		child.setProperty(key, select(result));
+		for (const [key, select] of Object.entries(properties)) {
+			child.setProperty(key, select(result));
+		}
 		return result;
 	});
 }
@@ -202,14 +229,11 @@ function categorizeConfigureFailure(
 }
 
 function categorizeResolveFailure(error: unknown): CliResolveFailureCategory {
-	if (!(error instanceof Error)) {
-		return "download";
-	}
-	const message = error.message.toLowerCase();
-	if (message === "unable to download cli because downloads are disabled") {
+	if (error instanceof CliDownloadsDisabledError) {
 		return "downloads_disabled";
 	}
-	return message.includes("declined") || message.includes("aborted")
-		? "fallback_declined"
-		: "download";
+	if (error instanceof CliFallbackDeclinedError) {
+		return "fallback_declined";
+	}
+	return "download";
 }

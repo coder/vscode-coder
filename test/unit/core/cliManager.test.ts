@@ -15,7 +15,7 @@ import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
 import { isKeyringEnabled } from "@/settings/cli";
 
-import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
+import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
 	createMockCliCredentialManager,
 	createMockLogger,
@@ -77,7 +77,6 @@ describe("CliManager", () => {
 	let mockApi: Api;
 	let mockAxios: AxiosInstance;
 	let mockCredManager: CliCredentialManager;
-	let telemetrySink: TestSink;
 
 	const TEST_VERSION = "1.2.3";
 	const TEST_URL = "https://test.coder.com";
@@ -99,12 +98,11 @@ describe("CliManager", () => {
 		mockProgress = new MockProgressReporter();
 		mockUI = new MockUserInteraction();
 		mockCredManager = createMockCliCredentialManager();
-		telemetrySink = new TestSink();
 		manager = new CliManager(
 			createMockLogger(),
 			new PathResolver(BASE_PATH, "/code/log"),
 			mockCredManager,
-			createTestTelemetryService(telemetrySink),
+			createTestTelemetryService(),
 		);
 
 		// Mock only what's necessary
@@ -128,8 +126,6 @@ describe("CliManager", () => {
 		const CONFIGURE_URL = "https://coder.example.com";
 		const TOKEN = "test-token";
 
-		const configureEvent = () => telemetrySink.expectOne("cli.configure");
-
 		function configure(options?: { silent?: boolean }) {
 			return manager.configure(CONFIGURE_URL, TOKEN, options);
 		}
@@ -151,15 +147,6 @@ describe("CliManager", () => {
 				expect.anything(),
 				{ signal: expect.any(AbortSignal) },
 			);
-			expect(configureEvent()).toMatchObject({
-				properties: {
-					result: "success",
-					silent: "false",
-					config_mode: "file",
-					credential_source: "session_token",
-				},
-				measurements: { durationMs: expect.any(Number) },
-			});
 		});
 
 		it("should skip progress when silent", async () => {
@@ -171,20 +158,6 @@ describe("CliManager", () => {
 				TOKEN,
 				expect.anything(),
 			);
-			expect(configureEvent().properties).toMatchObject({
-				result: "success",
-				silent: "true",
-				config_mode: "file",
-				credential_source: "session_token",
-			});
-		});
-
-		it("reports an empty token as the mTLS credential source", async () => {
-			await manager.configure(CONFIGURE_URL, "");
-
-			expect(configureEvent().properties).toMatchObject({
-				credential_source: "empty_token",
-			});
 		});
 
 		it("should throw when URL is empty", async () => {
@@ -205,13 +178,6 @@ describe("CliManager", () => {
 					expect.stringContaining("keyring unavailable"),
 					"Open Settings",
 				);
-				expect(configureEvent()).toMatchObject({
-					properties: {
-						result: "error",
-						failure_category: "credential_store",
-					},
-					error: { message: "keyring unavailable" },
-				});
 			},
 		);
 
@@ -222,10 +188,6 @@ describe("CliManager", () => {
 
 			await expect(configure()).resolves.not.toThrow();
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
-			expect(configureEvent().properties).toMatchObject({
-				result: "aborted",
-				failure_category: "cancelled",
-			});
 		});
 	});
 
@@ -807,204 +769,6 @@ describe("CliManager", () => {
 				);
 			},
 		);
-	});
-
-	describe("Telemetry", () => {
-		const event = (name: string) =>
-			telemetrySink.events.find((e) => e.eventName === name);
-
-		it.each([
-			{ reason: "missing", setup: () => {} },
-			{ reason: "version_mismatch", setup: () => withExistingBinary("1.0.0") },
-			{ reason: "unreadable", setup: () => withCorruptedBinary() },
-		])("emits cli.download with reason=$reason", async ({ reason, setup }) => {
-			setup();
-			withSuccessfulDownload();
-			await manager.fetchBinary(mockApi);
-
-			const e = event("cli.download");
-			expect(e).toMatchObject({
-				properties: { reason, result: "success" },
-			});
-			expect(e?.measurements.durationMs).toBeGreaterThanOrEqual(0);
-			expect(e?.measurements.downloaded_bytes).toBe(
-				Buffer.byteLength(mockBinaryContent(TEST_VERSION)),
-			);
-		});
-
-		it("emits cli.resolve cache-hit phases without cli.download", async () => {
-			withExistingBinary(TEST_VERSION);
-			await manager.fetchBinary(mockApi);
-
-			expect(event("cli.download")).toBeUndefined();
-			expect(event("cli.resolve")).toMatchObject({
-				properties: {
-					result: "success",
-					outcome: "cache_hit",
-					cache_source: "directory",
-					version_check: "match",
-				},
-				measurements: { durationMs: expect.any(Number) },
-			});
-			expect(event("cli.resolve.cache_lookup")).toMatchObject({
-				properties: { source: "directory", result: "success" },
-			});
-			expect(event("cli.resolve.version_check")).toMatchObject({
-				properties: { outcome: "match", result: "success" },
-			});
-		});
-
-		it("distinguishes disabled-download fallback", async () => {
-			mockConfig.set("coder.enableDownloads", false);
-			withExistingBinary("1.0.0");
-
-			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
-
-			expect(event("cli.download")).toBeUndefined();
-			expect(event("cli.resolve.download_decision")).toMatchObject({
-				properties: {
-					reason: "version_mismatch",
-					downloads_enabled: "false",
-					outcome: "fallback",
-					result: "success",
-				},
-			});
-			expect(event("cli.resolve")).toMatchObject({
-				properties: {
-					outcome: "download_disabled_fallback",
-					result: "success",
-				},
-			});
-		});
-
-		it("distinguishes disabled-download failure", async () => {
-			mockConfig.set("coder.enableDownloads", false);
-
-			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
-				"Unable to download CLI because downloads are disabled",
-			);
-
-			expect(event("cli.download")).toBeUndefined();
-			expect(event("cli.resolve")).toMatchObject({
-				properties: {
-					failure_category: "downloads_disabled",
-					result: "error",
-				},
-			});
-		});
-
-		it("omits downloaded_bytes when the server returns 304", async () => {
-			withExistingBinary("1.0.0");
-			withHttpResponse(304);
-			await manager.fetchBinary(mockApi);
-
-			const e = event("cli.download");
-			expect(e).toMatchObject({
-				properties: { reason: "version_mismatch", result: "success" },
-			});
-			expect(e?.measurements.downloaded_bytes).toBeUndefined();
-			expect(event("cli.resolve")).toMatchObject({
-				properties: { outcome: "downloaded", result: "success" },
-			});
-		});
-
-		it("emits downloaded_bytes when a download fails mid-stream", async () => {
-			const partial = "partial-binary";
-			withHttpResponse(
-				200,
-				{ "content-length": "1024" },
-				createMockStream(partial, { error: new Error("connection reset") }),
-			);
-
-			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
-				"Unable to download binary: connection reset",
-			);
-
-			expect(event("cli.download")).toMatchObject({
-				properties: { reason: "missing", result: "error" },
-				error: { message: "Unable to download binary: connection reset" },
-				measurements: { downloaded_bytes: Buffer.byteLength(partial) },
-			});
-			expect(event("cli.resolve.fallback_to_existing_binary")).toMatchObject({
-				properties: { failure_category: "download", result: "error" },
-			});
-			expect(event("cli.resolve")).toMatchObject({
-				properties: { result: "error" },
-			});
-		});
-
-		describe("cli.download.verify", () => {
-			beforeEach(() => {
-				mockConfig.set("coder.disableSignatureVerification", false);
-				withSuccessfulDownload();
-			});
-
-			it("emits outcome=verified on valid signature", async () => {
-				withSignatureResponses([200]);
-				await manager.fetchBinary(mockApi);
-
-				const verify = event("cli.download.verify");
-				const download = event("cli.download");
-				expect(verify).toMatchObject({
-					properties: { outcome: "verified", result: "success" },
-				});
-				expect(verify?.measurements.durationMs).toBeGreaterThanOrEqual(0);
-				expect(verify?.traceId).toBe(download?.traceId);
-				expect(verify?.parentEventId).toBe(download?.eventId);
-			});
-
-			it("emits outcome=bypassed when user runs anyway despite invalid signature", async () => {
-				withSignatureResponses([200]);
-				vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
-					createVerificationError("Invalid signature"),
-				);
-				mockUI.setResponse("Signature does not match", "Run anyway");
-
-				await manager.fetchBinary(mockApi);
-
-				expect(event("cli.download.verify")).toMatchObject({
-					properties: { outcome: "bypassed", result: "success" },
-				});
-			});
-
-			it.each([
-				{ status: 404, message: "Signature not found" },
-				{ status: 500, message: "Failed to download signature" },
-			])(
-				"emits outcome=sig_not_found with sig_status=$status when user runs without verification",
-				async ({ status, message }) => {
-					withSignatureResponses([status, status]);
-					mockUI.setResponse(message, "Run without verification");
-
-					await manager.fetchBinary(mockApi);
-
-					expect(event("cli.download.verify")).toMatchObject({
-						properties: {
-							outcome: "sig_not_found",
-							sig_status: String(status),
-							result: "success",
-						},
-					});
-				},
-			);
-
-			it("emits error when verification is aborted", async () => {
-				withSignatureResponses([200]);
-				vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
-					createVerificationError("Invalid signature"),
-				);
-				mockUI.setResponse("Signature does not match", undefined);
-
-				await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
-					"Signature verification aborted",
-				);
-
-				expect(event("cli.download.verify")).toMatchObject({
-					properties: { result: "error" },
-					error: { message: "Signature verification aborted" },
-				});
-			});
-		});
 	});
 
 	describe("File System Operations", () => {

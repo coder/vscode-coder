@@ -11,7 +11,10 @@ import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
 import {
+	CliDownloadsDisabledError,
+	CliFallbackDeclinedError,
 	CliTelemetry,
+	type CliDownloadAction,
 	type CliDownloadReason,
 	type CliVersionCheckOutcome,
 	type CliResolveTrace,
@@ -51,6 +54,16 @@ type SingleVerifyResult =
 	| { kind: "verified" }
 	| { kind: "bypassed" }
 	| { kind: "sig_unavailable"; status: number };
+
+function getDownloadAction(
+	downloadsEnabled: boolean,
+	hasExistingBinary: boolean,
+): CliDownloadAction {
+	if (downloadsEnabled) {
+		return "download";
+	}
+	return hasExistingBinary ? "fallback" : "blocked";
+}
 
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
@@ -141,7 +154,6 @@ export class CliManager {
 			// Settings can be undefined when set to their defaults (true in this
 			// case), so explicitly check against false.
 			const enableDownloads = cfg.get("enableDownloads") !== false;
-			trace.setDownloadsEnabled(enableDownloads);
 			this.output.debug(
 				"Downloads are",
 				enableDownloads ? "enabled" : "disabled",
@@ -161,11 +173,10 @@ export class CliManager {
 				return resolved.binPath;
 			}
 
-			await trace.downloadDecision(
-				downloadReason,
-				enableDownloads,
-				existingVersion !== null,
-			);
+			await trace.recordDownloadDecision({
+				reason: downloadReason,
+				action: getDownloadAction(enableDownloads, existingVersion !== null),
+			});
 
 			if (!enableDownloads) {
 				if (existingVersion) {
@@ -178,10 +189,9 @@ export class CliManager {
 				this.output.warn(
 					"Unable to download CLI because downloads are disabled",
 				);
+				const error = new CliDownloadsDisabledError();
 				trace.setFailure("downloads_disabled");
-				throw new Error(
-					"Unable to download CLI because downloads are disabled",
-				);
+				throw error;
 			}
 
 			if (existingVersion) {
@@ -523,7 +533,7 @@ export class CliManager {
 				!check.matches &&
 				!(await this.promptUseExistingBinary(check.version, message))
 			) {
-				throw error;
+				throw new CliFallbackDeclinedError(error);
 			}
 			return candidate;
 		};
@@ -996,18 +1006,16 @@ export class CliManager {
 
 		const silent = options?.silent === true;
 		return this.cliTelemetry.configure(
-			{ silent, hasToken: token !== "" },
+			{
+				silent,
+				credentialSource: token === "" ? "empty_token" : "session_token",
+			},
 			async (trace) => {
 				const configs = vscode.workspace.getConfiguration();
 
 				if (silent) {
 					try {
-						const { mode } = await this.cliCredentialManager.storeToken(
-							url,
-							token,
-							configs,
-						);
-						trace.stored(mode);
+						await this.cliCredentialManager.storeToken(url, token, configs);
 					} catch (error) {
 						trace.failed(error);
 						this.handleStoreError(error);
@@ -1027,7 +1035,6 @@ export class CliManager {
 					},
 				);
 				if (result.ok) {
-					trace.stored(result.value.mode);
 					return;
 				}
 				if (result.cancelled) {

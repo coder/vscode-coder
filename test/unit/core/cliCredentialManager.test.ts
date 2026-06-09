@@ -180,7 +180,7 @@ describe("CliCredentialManager", () => {
 
 			await expect(
 				manager.storeToken(TEST_URL, "my-token", configs),
-			).resolves.toEqual({ mode: "file" });
+			).resolves.toBeUndefined();
 
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
@@ -201,7 +201,7 @@ describe("CliCredentialManager", () => {
 
 			await expect(
 				manager.storeToken(TEST_URL, "my-secret-token", configs),
-			).resolves.toEqual({ mode: "keyring" });
+			).resolves.toBeUndefined();
 
 			expect(resolver).toHaveBeenCalledWith(TEST_URL);
 			const exec = lastExecArgs();
@@ -226,7 +226,7 @@ describe("CliCredentialManager", () => {
 
 			await expect(
 				manager.storeToken(TEST_URL, "token", configs),
-			).resolves.toEqual({ mode: "file" });
+			).resolves.toBeUndefined();
 
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
