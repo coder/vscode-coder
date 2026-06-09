@@ -8,41 +8,26 @@ export type AuthLoginPromptTrigger = "auth_required" | "missing_session";
 export type AuthLoginSource =
 	| "auto_login"
 	| "command"
-	| "direct"
 	| "switch_deployment"
 	| "uri";
-export type AuthLoginMethod =
-	| "unknown"
-	| "mtls"
-	| "provided_token"
-	| "stored_token"
-	| "keyring_token"
-	| "cli_token"
-	| "oauth";
 
 export type LoginPromptReason =
 	| "user_dismissed"
 	| "no_url_provided"
 	| "auth_failed";
-export type AuthLoginReason = LoginPromptReason | "exception";
-export type AuthLogoutReason =
-	| "not_authenticated"
-	| "credential_clear_cancelled"
-	| "credential_clear_failed"
-	| "exception";
 
 export type LoginPromptOutcome =
 	| { success: true }
 	| { success: false; reason: LoginPromptReason };
 export type AuthLoginOutcome =
 	| { success: true; method: LoginMethod }
-	| { success: false; method?: LoginMethod; reason: AuthLoginReason };
+	| { success: false; method?: LoginMethod; reason: LoginPromptReason };
 export type AuthLogoutOutcome =
 	| { success: true }
-	| { success: false; reason: AuthLogoutReason };
+	| { success: false; reason: "not_authenticated" };
 
 interface AuthLoginTrace {
-	setMethod(method: LoginMethod): void;
+	setMethod: (method: LoginMethod) => void;
 }
 
 interface AuthRecoveryRecorder {
@@ -50,16 +35,6 @@ interface AuthRecoveryRecorder {
 	setRecovery(recovery: AuthRecoveryAction): void;
 	setRefreshAttempted(attempted: boolean): void;
 }
-
-const loginMethods = {
-	unknown: "unknown",
-	mtls: "mtls",
-	provided_token: "provided_token",
-	stored_token: "stored_token",
-	keyring_token: "keyring_token",
-	cli_token: "cli_token",
-	oauth: "oauth",
-} as const satisfies Record<LoginMethod | "unknown", AuthLoginMethod>;
 
 export class AuthTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
@@ -72,8 +47,15 @@ export class AuthTelemetry {
 			"auth.login",
 			async (span) => {
 				try {
-					const result = await fn(createLoginTrace(span));
-					recordLoginResult(span, result);
+					const result = await fn({
+						setMethod: (method) => span.setProperty("method", method),
+					});
+					if (result.method) {
+						span.setProperty("method", result.method);
+					}
+					if (!result.success) {
+						recordReason(span, result.reason);
+					}
 					return result;
 				} catch (error) {
 					span.setProperty("reason", "exception");
@@ -84,13 +66,16 @@ export class AuthTelemetry {
 		);
 	}
 
-	public traceLogout<T extends AuthLogoutOutcome>(
-		fn: () => Promise<T>,
-	): Promise<T> {
+	public traceLogout(
+		fn: () => Promise<AuthLogoutOutcome>,
+	): Promise<AuthLogoutOutcome> {
 		return this.telemetry.trace("auth.logout", async (span) => {
 			try {
 				const result = await fn();
-				recordLogoutResult(span, result);
+				if (!result.success) {
+					span.setProperty("reason", result.reason);
+					span.markAborted();
+				}
 				return result;
 			} catch (error) {
 				span.setProperty("reason", "exception");
@@ -144,7 +129,9 @@ export class AuthTelemetry {
 			"auth.login_prompted",
 			async (span) => {
 				const result = await fn();
-				recordPromptResult(span, result);
+				if (!result.success) {
+					recordReason(span, result.reason);
+				}
 				return result;
 			},
 			{ trigger },
@@ -152,52 +139,12 @@ export class AuthTelemetry {
 	}
 }
 
-function createLoginTrace(span: Span): AuthLoginTrace {
-	return {
-		setMethod: (method) => span.setProperty("method", loginMethods[method]),
-	};
-}
-
-function recordLoginResult(span: Span, result: AuthLoginOutcome): void {
-	if (result.method) {
-		span.setProperty("method", loginMethods[result.method]);
-	}
-	if (result.success) {
-		return;
-	}
-
-	recordReason(span, result.reason);
-}
-
-function recordLogoutResult(span: Span, result: AuthLogoutOutcome): void {
-	if (result.success) {
-		return;
-	}
-
-	span.setProperty("reason", result.reason);
-	if (
-		result.reason === "not_authenticated" ||
-		result.reason === "credential_clear_cancelled"
-	) {
-		span.markAborted();
-		return;
-	}
-	span.markFailure();
-}
-
-function recordPromptResult(span: Span, result: LoginPromptOutcome): void {
-	if (result.success) {
-		return;
-	}
-
-	recordReason(span, result.reason);
-}
-
-function recordReason(span: Span, reason: AuthLoginReason): void {
+/** `auth_failed` is a real failure; user/URL dismissals are intentional aborts. */
+function recordReason(span: Span, reason: LoginPromptReason): void {
 	span.setProperty("reason", reason);
-	if (reason === "auth_failed" || reason === "exception") {
+	if (reason === "auth_failed") {
 		span.markFailure();
-		return;
+	} else {
+		span.markAborted();
 	}
-	span.markAborted();
 }

@@ -17,7 +17,6 @@ import { type FeatureSet, featureSetForVersion } from "./featureSet";
 import {
 	AuthTelemetry,
 	type AuthLoginOutcome,
-	type AuthLoginSource,
 	type AuthLogoutOutcome,
 } from "./instrumentation/auth";
 import {
@@ -43,7 +42,6 @@ import {
 } from "./workspace/workspacesProvider";
 
 import type {
-	User,
 	Workspace,
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
@@ -55,8 +53,6 @@ import type { MementoManager } from "./core/mementoManager";
 import type { PathResolver } from "./core/pathResolver";
 import type { SecretsManager } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
-import type { Deployment } from "./deployment/types";
-import type { CredentialFailureCategory } from "./instrumentation/credentials";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
 import type { TelemetryService } from "./telemetry/service";
@@ -80,11 +76,6 @@ interface OpenOptions {
 interface LoginArgs {
 	readonly url?: string;
 	readonly autoLogin?: boolean;
-}
-
-interface LoginSuccess {
-	readonly user: User;
-	readonly token: string;
 }
 
 const openDefaults = {
@@ -162,20 +153,9 @@ export class Commands {
 		if (this.deploymentManager.isAuthenticated()) {
 			return;
 		}
-		await this.traceLoginCommand(
+		await this.authTelemetry.traceLogin(
 			args?.autoLogin ? "auto_login" : "command",
-			(setMethod) => this.performLogin(args, setMethod),
-		);
-	}
-
-	private async traceLoginCommand(
-		source: AuthLoginSource,
-		run: (
-			setMethod: (method: LoginMethod) => void,
-		) => Promise<AuthLoginOutcome>,
-	): Promise<void> {
-		await this.authTelemetry.traceLogin(source, (trace) =>
-			run((method) => trace.setMethod(method)),
+			(trace) => this.performLogin(args, trace.setMethod),
 		);
 	}
 
@@ -205,31 +185,20 @@ export class Commands {
 		});
 
 		if (!result.success) {
-			if (result.method) {
-				setMethod(result.method);
-			}
 			return result;
 		}
 
+		// Record the method eagerly so it is captured even if persistence throws.
 		setMethod(result.method);
-		await this.completeLogin(url, safeHostname, result);
-		return { success: true, method: result.method };
-	}
-
-	private async completeLogin(
-		url: string,
-		safeHostname: string,
-		result: LoginSuccess,
-	): Promise<void> {
 		await this.deploymentManager.setDeployment({
 			url,
 			safeHostname,
 			token: result.token,
 			user: result.user,
 		});
-
 		this.showWelcomeMessage(result.user.username);
 		this.logger.debug("Login complete to deployment:", url);
+		return { success: true, method: result.method };
 	}
 
 	private showWelcomeMessage(username: string): void {
@@ -480,21 +449,14 @@ export class Commands {
 		const deployment = this.deploymentManager.getCurrentDeployment();
 		await this.deploymentManager.clearDeployment("logout");
 
-		const credentialFailureCategory = deployment
-			? await this.clearDeploymentCredentials(deployment)
-			: undefined;
+		if (deployment) {
+			await this.cliManager.clearCredentials(deployment.url);
+			await this.secretsManager.clearAllAuthData(deployment.safeHostname);
+		}
 
 		this.showLogoutMessage();
 		this.logger.debug("Logout complete");
-		return logoutResultForCredentialFailure(credentialFailureCategory);
-	}
-
-	private async clearDeploymentCredentials(
-		deployment: Deployment,
-	): Promise<CredentialFailureCategory | undefined> {
-		const result = await this.cliManager.clearCredentials(deployment.url);
-		await this.secretsManager.clearAllAuthData(deployment.safeHostname);
-		return result.failureCategory;
+		return { success: true };
 	}
 
 	private showLogoutMessage(): void {
@@ -515,8 +477,8 @@ export class Commands {
 	 */
 	public async switchDeployment(): Promise<void> {
 		this.logger.debug("Switching deployment");
-		await this.traceLoginCommand("switch_deployment", (setMethod) =>
-			this.performLogin(undefined, setMethod),
+		await this.authTelemetry.traceLogin("switch_deployment", (trace) =>
+			this.performLogin(undefined, trace.setMethod),
 		);
 	}
 
@@ -1281,18 +1243,6 @@ export class Commands {
 				);
 			});
 	}
-}
-
-function logoutResultForCredentialFailure(
-	failureCategory: CredentialFailureCategory | undefined,
-): AuthLogoutOutcome {
-	if (failureCategory === "aborted") {
-		return { success: false, reason: "credential_clear_cancelled" };
-	}
-	if (failureCategory) {
-		return { success: false, reason: "credential_clear_failed" };
-	}
-	return { success: true };
 }
 
 async function openFile(filePath: string): Promise<void> {

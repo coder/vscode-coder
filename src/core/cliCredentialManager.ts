@@ -11,7 +11,6 @@ import {
 	CredentialCliError,
 	CredentialFileError,
 	CredentialTelemetry,
-	type CredentialClearResult,
 } from "../instrumentation/credentials";
 import { isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
@@ -27,6 +26,7 @@ import { version } from "./cliExec";
 import type { WorkspaceConfiguration } from "vscode";
 
 import type { Logger } from "../logging/logger";
+import type { Span } from "../telemetry/span";
 
 import type { PathResolver } from "./pathResolver";
 
@@ -56,21 +56,15 @@ export function isKeyringSupported(): boolean {
  * persistence: keyring-backed (via CLI) and file-based (plaintext).
  */
 export class CliCredentialManager {
-	readonly #logger: Logger;
-	readonly #resolveBinary: BinaryResolver;
-	readonly #pathResolver: PathResolver;
-	readonly #credentialTelemetry: CredentialTelemetry;
+	private readonly credentialTelemetry: CredentialTelemetry;
 
 	constructor(
-		logger: Logger,
-		resolveBinary: BinaryResolver,
-		pathResolver: PathResolver,
+		private readonly logger: Logger,
+		private readonly resolveBinary: BinaryResolver,
+		private readonly pathResolver: PathResolver,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	) {
-		this.#logger = logger;
-		this.#resolveBinary = resolveBinary;
-		this.#pathResolver = pathResolver;
-		this.#credentialTelemetry = new CredentialTelemetry(telemetry);
+		this.credentialTelemetry = new CredentialTelemetry(telemetry);
 	}
 
 	/**
@@ -86,24 +80,23 @@ export class CliCredentialManager {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<void> {
-		return this.#credentialTelemetry.traceStore(configs, async (trace) => {
-			const binPath = await this.#resolveKeyringBinary(
+		return this.credentialTelemetry.traceStore(configs, async (span) => {
+			const binPath = await this.resolveKeyringBinary(
 				url,
 				configs,
 				"keyringAuth",
 			);
 			if (!binPath) {
-				await trace.file(() => this.#writeCredentialFiles(url, token));
+				span.setProperty("category", "file");
+				await this.writeCredentialFiles(url, token);
 				return;
 			}
-
-			await trace.keyring(() =>
-				this.#storeKeyringToken(binPath, url, token, configs, options),
-			);
+			span.setProperty("category", "keyring");
+			await this.storeKeyringToken(binPath, url, token, configs, options);
 		});
 	}
 
-	async #storeKeyringToken(
+	private async storeKeyringToken(
 		binPath: string,
 		url: string,
 		token: string,
@@ -117,13 +110,13 @@ export class CliCredentialManager {
 			url,
 		];
 		try {
-			await this.#execWithTimeout(binPath, args, {
+			await this.execWithTimeout(binPath, args, {
 				env: { ...process.env, CODER_SESSION_TOKEN: token },
 				signal: options?.signal,
 			});
-			this.#logger.info("Stored token via CLI for", url);
+			this.logger.info("Stored token via CLI for", url);
 		} catch (error) {
-			this.#logger.warn("Failed to store token via CLI:", error);
+			this.logger.warn("Failed to store token via CLI:", error);
 			if (isAbortError(error)) {
 				throw error;
 			}
@@ -143,13 +136,13 @@ export class CliCredentialManager {
 	): Promise<string | undefined> {
 		let binPath: string | undefined;
 		try {
-			binPath = await this.#resolveKeyringBinary(
+			binPath = await this.resolveKeyringBinary(
 				url,
 				configs,
 				"keyringTokenRead",
 			);
 		} catch (error) {
-			this.#logger.warn("Could not resolve CLI binary for token read:", error);
+			this.logger.warn("Could not resolve CLI binary for token read:", error);
 			return undefined;
 		}
 		if (!binPath) {
@@ -158,7 +151,7 @@ export class CliCredentialManager {
 
 		const args = [...getHeaderArgs(configs), "login", "token", "--url", url];
 		try {
-			const { stdout } = await this.#execWithTimeout(binPath, args, {
+			const { stdout } = await this.execWithTimeout(binPath, args, {
 				signal: options?.signal,
 			});
 			const token = stdout.trim();
@@ -167,46 +160,29 @@ export class CliCredentialManager {
 			if (isAbortError(error)) {
 				throw error;
 			}
-			this.#logger.warn("Failed to read token via CLI:", error);
+			this.logger.warn("Failed to read token via CLI:", error);
 			return undefined;
 		}
 	}
 
 	/**
-	 * Delete credentials for a deployment. File deletion is best-effort.
-	 * Keyring deletion returns a bounded failure category when attempted and
-	 * unsuccessful. Throws AbortError when the signal is aborted.
+	 * Delete credentials for a deployment. Runs file deletion and keyring
+	 * deletion in parallel, both best-effort. Throws AbortError when the
+	 * signal is aborted.
 	 */
 	public deleteToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
-	): Promise<CredentialClearResult> {
-		return this.#credentialTelemetry.traceClear(configs, async (trace) => {
-			await trace.file(() => this.#deleteCredentialFiles(url));
-
-			let binPath: string | undefined;
-			try {
-				binPath = await this.#resolveKeyringBinary(url, configs, "keyringAuth");
-			} catch (error) {
-				this.#logger.warn(
-					"Could not resolve keyring binary for delete:",
-					error,
-				);
-				await trace.keyring(() => Promise.resolve());
-				return { failureCategory: "binary" };
-			}
-			if (!binPath) {
-				return {};
-			}
-
-			const result = await trace.keyring(() =>
-				this.#deleteKeyringToken(binPath, url, configs, options?.signal),
-			);
-			if (result.failureCategory) {
-				return { failureCategory: result.failureCategory };
-			}
-			return {};
+	): Promise<void> {
+		return this.credentialTelemetry.traceClear(configs, async (span) => {
+			await Promise.all([
+				this.deleteCredentialFiles(url),
+				this.deleteKeyringToken(url, configs, {
+					signal: options?.signal,
+					span,
+				}),
+			]);
 		});
 	}
 
@@ -218,7 +194,7 @@ export class CliCredentialManager {
 	 * Throws on binary resolution or version-check failure (caller decides
 	 * whether to catch or propagate).
 	 */
-	async #resolveKeyringBinary(
+	private async resolveKeyringBinary(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		feature: KeyringFeature,
@@ -226,7 +202,7 @@ export class CliCredentialManager {
 		if (!isKeyringEnabled(configs)) {
 			return undefined;
 		}
-		const binPath = await this.#resolveBinary(url);
+		const binPath = await this.resolveBinary(url);
 		const cliVersion = semver.parse(await version(binPath));
 		return featureSetForVersion(cliVersion)[feature] ? binPath : undefined;
 	}
@@ -234,14 +210,14 @@ export class CliCredentialManager {
 	/**
 	 * Wrap execFileAsync with a 60s timeout and periodic debug logging.
 	 */
-	async #execWithTimeout(
+	private async execWithTimeout(
 		binPath: string,
 		args: string[],
 		options: { env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {},
 	): Promise<{ stdout: string; stderr: string }> {
 		const { signal, ...execOptions } = options;
 		const timer = setInterval(() => {
-			this.#logger.debug(`CLI command still running: coder ${args[0]} ...`);
+			this.logger.debug(`CLI command still running: coder ${args[0]} ...`);
 		}, EXEC_LOG_INTERVAL_MS);
 		try {
 			return await execFileAsync(binPath, args, {
@@ -257,13 +233,16 @@ export class CliCredentialManager {
 	/**
 	 * Write URL and token files under --global-config.
 	 */
-	async #writeCredentialFiles(url: string, token: string): Promise<void> {
+	private async writeCredentialFiles(
+		url: string,
+		token: string,
+	): Promise<void> {
 		try {
 			const safeHostname = toSafeHost(url);
 			await Promise.all([
-				this.#atomicWriteFile(this.#pathResolver.getUrlPath(safeHostname), url),
-				this.#atomicWriteFile(
-					this.#pathResolver.getSessionTokenPath(safeHostname),
+				this.atomicWriteFile(this.pathResolver.getUrlPath(safeHostname), url),
+				this.atomicWriteFile(
+					this.pathResolver.getSessionTokenPath(safeHostname),
 					token,
 				),
 			]);
@@ -275,52 +254,69 @@ export class CliCredentialManager {
 	/**
 	 * Delete URL and token files. Best-effort: never throws.
 	 */
-	async #deleteCredentialFiles(url: string): Promise<void> {
+	private async deleteCredentialFiles(url: string): Promise<void> {
 		const safeHostname = toSafeHost(url);
 		const paths = [
-			this.#pathResolver.getSessionTokenPath(safeHostname),
-			this.#pathResolver.getUrlPath(safeHostname),
+			this.pathResolver.getSessionTokenPath(safeHostname),
+			this.pathResolver.getUrlPath(safeHostname),
 		];
 		await Promise.all(
 			paths.map((p) =>
 				fs.rm(p, { force: true }).catch((error) => {
-					this.#logger.warn("Failed to remove credential file", p, error);
+					this.logger.warn("Failed to remove credential file", p, error);
 				}),
 			),
 		);
 	}
 
 	/**
-	 * Delete keyring token via `coder logout`. Best-effort: never throws.
+	 * Delete keyring token via `coder logout`. Best-effort: records the failure
+	 * on the span instead of throwing (except on abort), so it is tagged where
+	 * it occurs.
 	 */
-	async #deleteKeyringToken(
-		binPath: string,
+	private async deleteKeyringToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		signal?: AbortSignal,
-	): Promise<CredentialClearResult> {
+		{ signal, span }: { signal?: AbortSignal; span: Span },
+	): Promise<void> {
+		let binPath: string | undefined;
+		try {
+			binPath = await this.resolveKeyringBinary(url, configs, "keyringAuth");
+		} catch (error) {
+			this.logger.warn("Could not resolve keyring binary for delete:", error);
+			span.setProperty("failure_category", "binary");
+			span.markFailure();
+			return;
+		}
+		if (!binPath) {
+			return;
+		}
+
 		const args = [...getHeaderArgs(configs), "logout", "--url", url, "--yes"];
 		try {
-			await this.#execWithTimeout(binPath, args, { signal });
-			this.#logger.info("Deleted token via CLI for", url);
-			return {};
+			await this.execWithTimeout(binPath, args, { signal });
+			this.logger.info("Deleted token via CLI for", url);
 		} catch (error) {
 			if (isAbortError(error)) {
 				throw error;
 			}
-			this.#logger.warn("Failed to delete token via CLI:", error);
-			return { failureCategory: "cli" };
+			this.logger.warn("Failed to delete token via CLI:", error);
+			span.setProperty("failure_category", "cli");
+			span.markFailure();
 		}
 	}
 
 	/** Atomically write content to a file. */
-	async #atomicWriteFile(filePath: string, content: string): Promise<void> {
+	private async atomicWriteFile(
+		filePath: string,
+		content: string,
+	): Promise<void> {
 		await fs.mkdir(path.dirname(filePath), { recursive: true });
 		await writeAtomically(
 			filePath,
 			(tempPath) => fs.writeFile(tempPath, content, { mode: 0o600 }),
 			(rmErr, tempPath) =>
-				this.#logger.warn("Failed to delete temp file", tempPath, rmErr),
+				this.logger.warn("Failed to delete temp file", tempPath, rmErr),
 		);
 	}
 }

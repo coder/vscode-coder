@@ -155,17 +155,9 @@ async function setupDeployment(
 	const safeHostname = toSafeHost(url);
 
 	const token: string | undefined = params.get("token") ?? undefined;
-	const result = await authTelemetry.traceLogin("uri", async (trace) => {
-		const result = await loginCoordinator.ensureLoggedIn({
-			safeHostname,
-			url,
-			token,
-		});
-		if (result.method) {
-			trace.setMethod(result.method);
-		}
-		return result;
-	});
+	const result = await authTelemetry.traceLogin("uri", () =>
+		loginCoordinator.ensureLoggedIn({ safeHostname, url, token }),
+	);
 
 	if (!result.success) {
 		throw new Error("Failed to login to deployment from URI");

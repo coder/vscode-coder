@@ -6,126 +6,71 @@ import type { WorkspaceConfiguration } from "vscode";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
-export type CredentialCategory = "keyring" | "file";
 export type CredentialFailureCategory = "aborted" | "binary" | "cli" | "file";
 
-interface CredentialTrace {
-	file<T>(fn: () => Promise<T>): Promise<T>;
-	keyring<T>(fn: () => Promise<T>): Promise<T>;
-}
+type CredentialEvent = "auth.credential.store" | "auth.credential.clear";
 
-export interface CredentialClearResult {
-	readonly failureCategory?: CredentialFailureCategory;
-}
-
+/**
+ * Wraps credential store/clear in a span carrying `keyring_enabled`, the
+ * `category` of storage involved, and a `failure_category` on failure. The
+ * traced operation sets `category` on the span and reports failures by
+ * throwing a categorized error (store) or recording on the span (clear, which
+ * is best-effort). Aborts are recorded and re-thrown so callers still unwind.
+ */
 export class CredentialTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
 
-	public async traceStore<T>(
+	public traceStore(
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: (trace: CredentialTrace) => Promise<T>,
-	): Promise<T> {
-		return this.traceCredential("auth.credential.store", configs, fn);
+		fn: (span: Span) => Promise<void>,
+	): Promise<void> {
+		return this.trace("auth.credential.store", configs, fn);
 	}
 
-	public async traceClear<T extends CredentialClearResult>(
+	public traceClear(
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: (trace: CredentialTrace) => Promise<T>,
-	): Promise<T> {
-		return this.traceCredential(
-			"auth.credential.clear",
-			configs,
-			fn,
-			recordClearFailure,
-		);
+		fn: (span: Span) => Promise<void>,
+	): Promise<void> {
+		return this.trace("auth.credential.clear", configs, fn);
 	}
 
-	private async traceCredential<T>(
-		eventName: "auth.credential.store" | "auth.credential.clear",
+	private async trace(
+		eventName: CredentialEvent,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: (trace: CredentialTrace) => Promise<T>,
-		recordResult?: (span: Span, result: T) => void,
-	): Promise<T> {
-		const defaults = defaultCredentialProperties(configs);
-		let cancellation: unknown;
-		const result = await this.telemetry.trace(
+		fn: (span: Span) => Promise<void>,
+	): Promise<void> {
+		const keyringEnabled = isKeyringEnabled(configs);
+		let aborted: Error | undefined;
+		await this.telemetry.trace(
 			eventName,
 			async (span) => {
 				try {
-					const result = await fn(createCredentialTrace(span));
-					recordResult?.(span, result);
-					return result;
+					await fn(span);
 				} catch (error) {
-					recordCredentialFailure(span, defaults.category, error);
+					span.setProperty(
+						"failure_category",
+						categorizeCredentialError(error),
+					);
 					if (isAbortError(error)) {
 						span.markAborted();
-						cancellation = error;
-						return undefined as T;
+						aborted = error;
+						return;
 					}
 					throw error;
 				}
 			},
 			{
-				keyring_enabled: defaults.keyringEnabled,
-				category: defaults.category,
+				keyring_enabled: keyringEnabled,
+				category: keyringEnabled ? "keyring" : "file",
 			},
 		);
-		if (cancellation instanceof Error) {
-			throw cancellation;
+		if (aborted) {
+			throw aborted;
 		}
-		return result;
 	}
 }
 
-function defaultCredentialProperties(
-	configs: Pick<WorkspaceConfiguration, "get">,
-): { keyringEnabled: boolean; category: CredentialCategory } {
-	const keyringEnabled = isKeyringEnabled(configs);
-	return {
-		keyringEnabled,
-		category: keyringEnabled ? "keyring" : "file",
-	};
-}
-
-function createCredentialTrace(span: Span): CredentialTrace {
-	const run = async <T>(
-		category: CredentialCategory,
-		fn: () => Promise<T>,
-	): Promise<T> => {
-		span.setProperty("category", category);
-		return await fn();
-	};
-	return {
-		file: (fn) => run("file", fn),
-		keyring: (fn) => run("keyring", fn),
-	};
-}
-
-function recordCredentialFailure(
-	span: Span,
-	category: CredentialCategory,
-	error: unknown,
-): void {
-	span.setProperty("category", category);
-	span.setProperty("failure_category", categorizeCredentialError(error));
-}
-
-function recordClearFailure(span: Span, result: CredentialClearResult): void {
-	if (!result.failureCategory) {
-		return;
-	}
-
-	span.setProperty("failure_category", result.failureCategory);
-	if (result.failureCategory === "aborted") {
-		span.markAborted();
-		return;
-	}
-	span.markFailure();
-}
-
-export function categorizeCredentialError(
-	error: unknown,
-): CredentialFailureCategory {
+function categorizeCredentialError(error: unknown): CredentialFailureCategory {
 	if (isAbortError(error)) {
 		return "aborted";
 	}

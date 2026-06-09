@@ -453,9 +453,9 @@ describe("CliCredentialManager", () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			const { manager, sink } = setup(failingResolver());
 
-			await expect(manager.deleteToken(TEST_URL, configs)).resolves.toEqual({
-				failureCategory: "binary",
-			});
+			await expect(
+				manager.deleteToken(TEST_URL, configs),
+			).resolves.toBeUndefined();
 			expect(execFile).not.toHaveBeenCalled();
 			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {

@@ -353,7 +353,7 @@ describe("CliManager", () => {
 		const CLEAR_URL = "https://dev.coder.com";
 
 		it("should skip progress notification when keyring is disabled", async () => {
-			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({});
+			await manager.clearCredentials(CLEAR_URL);
 
 			expect(vscode.window.withProgress).not.toHaveBeenCalled();
 			expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
@@ -365,9 +365,8 @@ describe("CliManager", () => {
 
 		it("should show progress notification when keyring is enabled", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			vi.mocked(mockCredManager.deleteToken).mockResolvedValueOnce({});
 
-			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({});
+			await manager.clearCredentials(CLEAR_URL);
 
 			expect(vscode.window.withProgress).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -379,35 +378,15 @@ describe("CliManager", () => {
 			);
 		});
 
-		it("returns credential manager failure categories", async () => {
-			vi.mocked(mockCredManager.deleteToken).mockResolvedValueOnce({
-				failureCategory: "cli",
-			});
-
-			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({
-				failureCategory: "cli",
-			});
-		});
-
-		it("categorizes unexpected deleteToken failures", async () => {
-			vi.mocked(mockCredManager.deleteToken).mockRejectedValueOnce(
-				new Error("unexpected failure"),
-			);
-
-			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({
-				failureCategory: "binary",
-			});
-		});
-
-		it("categorizes deleteToken cancellation", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			vi.mocked(mockCredManager.deleteToken).mockRejectedValueOnce(
-				makeAbortError(),
-			);
-
-			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({
-				failureCategory: "aborted",
-			});
+		it.each([
+			{ scenario: "succeeds", error: undefined },
+			{ scenario: "fails", error: new Error("unexpected failure") },
+			{ scenario: "is cancelled", error: makeAbortError() },
+		])("should not throw when deleteToken $scenario", async ({ error }) => {
+			if (error) {
+				vi.mocked(mockCredManager.deleteToken).mockRejectedValueOnce(error);
+			}
+			await expect(manager.clearCredentials(CLEAR_URL)).resolves.not.toThrow();
 		});
 	});
 

@@ -76,39 +76,34 @@ describe("AuthTelemetry", () => {
 			expect(event.measurements.durationMs).toEqual(expect.any(Number));
 		});
 
-		it("marks user cancellation as aborted with a bounded reason", async () => {
+		it("marks not_authenticated as aborted", async () => {
 			const { auth, sink } = setup();
 
 			await auth.traceLogout(() =>
-				Promise.resolve({
-					success: false,
-					reason: "credential_clear_cancelled",
-				}),
+				Promise.resolve({ success: false, reason: "not_authenticated" }),
 			);
 
 			expect(sink.expectOne("auth.logout")).toMatchObject({
 				properties: {
 					result: "aborted",
-					reason: "credential_clear_cancelled",
+					reason: "not_authenticated",
 				},
 			});
 		});
 
-		it("marks credential clear failures as errors with a bounded reason", async () => {
+		it("records exceptions as errors", async () => {
 			const { auth, sink } = setup();
 
-			await auth.traceLogout(() =>
-				Promise.resolve({
-					success: false,
-					reason: "credential_clear_failed",
-				}),
-			);
+			await expect(
+				auth.traceLogout(() => Promise.reject(new Error("clear failed"))),
+			).rejects.toThrow("clear failed");
 
 			expect(sink.expectOne("auth.logout")).toMatchObject({
 				properties: {
 					result: "error",
-					reason: "credential_clear_failed",
+					reason: "exception",
 				},
+				error: { message: "clear failed" },
 			});
 		});
 	});

@@ -6,6 +6,7 @@ import { SecretsManager } from "@/core/secretsManager";
 import { OAuthCallback } from "@/oauth/oauthCallback";
 import { CALLBACK_PATH } from "@/oauth/utils";
 import { maybeAskUrl } from "@/promptUtils";
+import { NOOP_TELEMETRY_REPORTER } from "@/telemetry/reporter";
 import { registerUriHandler } from "@/uri/uriHandler";
 
 import {
@@ -81,6 +82,7 @@ function createTestContext() {
 		getContextManager: () => new MockContextManager(),
 		getOAuthCallback: () => oauthCallback,
 		getLogger: () => logger,
+		getTelemetryService: () => NOOP_TELEMETRY_REPORTER,
 	} as unknown as ServiceContainer;
 
 	vi.mocked(maybeAskUrl).mockImplementation((_m, urlParam) =>

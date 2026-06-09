@@ -19,7 +19,6 @@ import type { PathResolver } from "@/core/pathResolver";
 import type { SecretsManager } from "@/core/secretsManager";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
-import type { CredentialClearResult } from "@/instrumentation/credentials";
 import type { LoginCoordinator, LoginResult } from "@/login/loginCoordinator";
 import type { SpeedtestPanelFactory } from "@/webviews/speedtest/speedtestPanelFactory";
 import type { DuplicateWorkspaceIpc } from "@/workspace/duplicateWorkspaceIpc";
@@ -52,7 +51,6 @@ interface CommandsHarnessOptions {
 	readonly authenticated?: boolean;
 
 	readonly loginResult?: LoginResultForTest;
-	readonly credentialResult?: CredentialClearResult;
 	readonly clearDeploymentError?: Error;
 	readonly clearAllAuthDataError?: Error;
 }
@@ -97,9 +95,7 @@ function createCommandsHarness(options: CommandsHarnessOptions = {}) {
 	};
 
 	const cliManager = {
-		clearCredentials: vi.fn(() =>
-			Promise.resolve(options.credentialResult ?? {}),
-		),
+		clearCredentials: vi.fn(() => Promise.resolve()),
 	};
 
 	const secretsManager = {
@@ -304,44 +300,6 @@ describe("Commands", () => {
 				expect(mocks.secretsManager.clearAllAuthData).toHaveBeenCalledWith(
 					TEST_HOSTNAME,
 				);
-			},
-		});
-
-		testCommandScenario({
-			name: "records credential clear cancellation as aborted",
-			options: {
-				authenticated: true,
-				credentialResult: {
-					failureCategory: "aborted",
-				},
-			},
-			act: ({ commands }) => commands.logout(),
-			assert: ({ telemetry }) => {
-				expect(telemetry.expectOne("auth.logout")).toMatchObject({
-					properties: {
-						result: "aborted",
-						reason: "credential_clear_cancelled",
-					},
-				});
-			},
-		});
-
-		testCommandScenario({
-			name: "records credential clear failure as an error",
-			options: {
-				authenticated: true,
-				credentialResult: {
-					failureCategory: "cli",
-				},
-			},
-			act: ({ commands }) => commands.logout(),
-			assert: ({ telemetry }) => {
-				expect(telemetry.expectOne("auth.logout")).toMatchObject({
-					properties: {
-						result: "error",
-						reason: "credential_clear_failed",
-					},
-				});
 			},
 		});
 

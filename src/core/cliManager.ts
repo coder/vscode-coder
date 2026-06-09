@@ -10,10 +10,6 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import {
-	categorizeCredentialError,
-	type CredentialClearResult,
-} from "../instrumentation/credentials";
 import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
 import { isKeyringEnabled } from "../settings/cli";
@@ -914,7 +910,7 @@ export class CliManager {
 	 * Remove credentials for a deployment. Clears both file-based credentials
 	 * and keyring entries (via `coder logout`). All cleanup is best-effort.
 	 */
-	public async clearCredentials(url: string): Promise<CredentialClearResult> {
+	public async clearCredentials(url: string): Promise<void> {
 		const configs = vscode.workspace.getConfiguration();
 		const result = await withOptionalProgress(
 			({ signal }) =>
@@ -927,14 +923,13 @@ export class CliManager {
 			},
 		);
 		if (result.ok) {
-			return result.value;
+			return;
 		}
 		if (result.cancelled) {
 			this.output.info("Credential removal cancelled by user");
-			return { failureCategory: "aborted" };
+		} else {
+			this.output.warn("Failed to remove credentials:", result.error);
 		}
-		this.output.warn("Failed to remove credentials:", result.error);
-		return { failureCategory: categorizeCredentialError(result.error) };
 	}
 
 	private handleStoreError(error: unknown): void {
