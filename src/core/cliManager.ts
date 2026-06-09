@@ -931,13 +931,10 @@ export class CliManager {
 		}
 		if (result.cancelled) {
 			this.output.info("Credential removal cancelled by user");
-			return { category: "keyring", failureCategory: "aborted" };
+			return { failureCategory: "aborted" };
 		}
 		this.output.warn("Failed to remove credentials:", result.error);
-		return {
-			category: isKeyringEnabled(configs) ? "keyring" : "file",
-			failureCategory: categorizeCredentialError(result.error),
-		};
+		return { failureCategory: categorizeCredentialError(result.error) };
 	}
 
 	private handleStoreError(error: unknown): void {

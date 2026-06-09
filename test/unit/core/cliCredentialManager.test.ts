@@ -183,10 +183,10 @@ describe("CliCredentialManager", () => {
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
 			expect(memfs.readFileSync(SESSION_FILE, "utf8")).toBe("my-token");
-			expect(sink.expectOne("auth.credential_stored")).toMatchObject({
+			expect(sink.expectOne("auth.credential.store")).toMatchObject({
 				properties: {
 					category: "file",
-					keyringEnabled: "false",
+					keyring_enabled: "false",
 					result: "success",
 				},
 			});
@@ -206,10 +206,10 @@ describe("CliCredentialManager", () => {
 			// Token must only appear in env, never in args
 			expect(exec.env.CODER_SESSION_TOKEN).toBe("my-secret-token");
 			expect(exec.args).not.toContain("my-secret-token");
-			expect(sink.expectOne("auth.credential_stored")).toMatchObject({
+			expect(sink.expectOne("auth.credential.store")).toMatchObject({
 				properties: {
 					category: "keyring",
-					keyringEnabled: "true",
+					keyring_enabled: "true",
 					result: "success",
 				},
 			});
@@ -235,9 +235,9 @@ describe("CliCredentialManager", () => {
 			await expect(
 				manager.storeToken(TEST_URL, "token", configs),
 			).rejects.toThrow("Credential CLI operation failed");
-			expect(sink.expectOne("auth.credential_stored")).toMatchObject({
+			expect(sink.expectOne("auth.credential.store")).toMatchObject({
 				properties: {
-					failureCategory: "cli",
+					failure_category: "cli",
 					result: "error",
 				},
 			});
@@ -296,9 +296,9 @@ describe("CliCredentialManager", () => {
 					signal: AbortSignal.abort(),
 				}),
 			).rejects.toThrow("The operation was aborted");
-			expect(sink.expectOne("auth.credential_stored")).toMatchObject({
+			expect(sink.expectOne("auth.credential.store")).toMatchObject({
 				properties: {
-					failureCategory: "aborted",
+					failure_category: "aborted",
 					result: "aborted",
 				},
 			});
@@ -413,10 +413,10 @@ describe("CliCredentialManager", () => {
 			expect(exec.args).toEqual(["logout", "--url", TEST_URL, "--yes"]);
 			expect(memfs.existsSync(URL_FILE)).toBe(false);
 			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
-			expect(sink.expectOne("auth.credential_cleared")).toMatchObject({
+			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {
 					category: "keyring",
-					keyringEnabled: "true",
+					keyring_enabled: "true",
 					result: "success",
 				},
 			});
@@ -441,9 +441,9 @@ describe("CliCredentialManager", () => {
 			await expect(
 				manager.deleteToken(TEST_URL, configs),
 			).resolves.not.toThrow();
-			expect(sink.expectOne("auth.credential_cleared")).toMatchObject({
+			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {
-					failureCategory: "cli",
+					failure_category: "cli",
 					result: "error",
 				},
 			});
@@ -454,14 +454,13 @@ describe("CliCredentialManager", () => {
 			const { manager, sink } = setup(failingResolver());
 
 			await expect(manager.deleteToken(TEST_URL, configs)).resolves.toEqual({
-				category: "keyring",
 				failureCategory: "binary",
 			});
 			expect(execFile).not.toHaveBeenCalled();
-			expect(sink.expectOne("auth.credential_cleared")).toMatchObject({
+			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {
 					category: "keyring",
-					failureCategory: "binary",
+					failure_category: "binary",
 					result: "error",
 				},
 			});
@@ -512,9 +511,9 @@ describe("CliCredentialManager", () => {
 					signal: AbortSignal.abort(),
 				}),
 			).rejects.toThrow("The operation was aborted");
-			expect(sink.expectOne("auth.credential_cleared")).toMatchObject({
+			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {
-					failureCategory: "aborted",
+					failure_category: "aborted",
 					result: "aborted",
 				},
 			});

@@ -4,50 +4,51 @@ import { isKeyringEnabled } from "../settings/cli";
 import type { WorkspaceConfiguration } from "vscode";
 
 import type { TelemetryReporter } from "../telemetry/reporter";
+import type { Span } from "../telemetry/span";
 
 export type CredentialCategory = "keyring" | "file";
 export type CredentialFailureCategory = "aborted" | "binary" | "cli" | "file";
 
-export interface CredentialStoreResult {
-	readonly category: CredentialCategory;
+export interface CredentialStoreRecorder {
+	setCategory(category: CredentialCategory): void;
+}
+
+export interface CredentialClearRecorder {
+	setCategory(category: CredentialCategory): void;
 }
 
 export interface CredentialClearResult {
-	readonly category: CredentialCategory;
 	readonly failureCategory?: CredentialFailureCategory;
 }
 
 export class CredentialTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
 
-	public async traceStore<T extends CredentialStoreResult>(
+	public async traceStore<T>(
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: () => Promise<T>,
+		fn: (recorder: CredentialStoreRecorder) => Promise<T>,
 	): Promise<T> {
-		const keyringEnabled = isKeyringEnabled(configs);
-		const defaultCategory: CredentialCategory = keyringEnabled
-			? "keyring"
-			: "file";
+		const defaults = defaultCredentialProperties(configs);
 		let cancellation: unknown;
 		const result = await this.telemetry.trace(
-			"auth.credential_stored",
+			"auth.credential.store",
 			async (span) => {
 				try {
-					const result = await fn();
-					span.setProperty("category", result.category);
-					return result;
+					return await fn(createCredentialRecorder(span));
 				} catch (error) {
-					span.setProperty("category", defaultCategory);
-					span.setProperty("failureCategory", categorizeCredentialError(error));
+					recordCredentialFailure(span, defaults.category, error);
 					if (isAbortError(error)) {
 						span.markAborted();
 						cancellation = error;
-						return { category: defaultCategory } as T;
+						return undefined as T;
 					}
 					throw error;
 				}
 			},
-			{ keyringEnabled, category: defaultCategory },
+			{
+				keyring_enabled: defaults.keyringEnabled,
+				category: defaults.category,
+			},
 		);
 		if (cancellation instanceof Error) {
 			throw cancellation;
@@ -57,49 +58,80 @@ export class CredentialTelemetry {
 
 	public async traceClear<T extends CredentialClearResult>(
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: () => Promise<T>,
+		fn: (recorder: CredentialClearRecorder) => Promise<T>,
 	): Promise<T> {
-		const keyringEnabled = isKeyringEnabled(configs);
-		const defaultCategory: CredentialCategory = keyringEnabled
-			? "keyring"
-			: "file";
+		const defaults = defaultCredentialProperties(configs);
 		let cancellation: unknown;
 		const result = await this.telemetry.trace(
-			"auth.credential_cleared",
+			"auth.credential.clear",
 			async (span) => {
 				try {
-					const result = await fn();
-					span.setProperty("category", result.category);
-					if (result.failureCategory) {
-						span.setProperty("failureCategory", result.failureCategory);
-						if (result.failureCategory === "aborted") {
-							span.markAborted();
-						} else {
-							span.markFailure();
-						}
-					}
+					const result = await fn(createCredentialRecorder(span));
+					recordClearFailure(span, result.failureCategory);
 					return result;
 				} catch (error) {
-					span.setProperty("category", defaultCategory);
-					span.setProperty("failureCategory", categorizeCredentialError(error));
+					recordCredentialFailure(span, defaults.category, error);
 					if (isAbortError(error)) {
 						span.markAborted();
 						cancellation = error;
-						return {
-							category: defaultCategory,
-							failureCategory: "aborted",
-						} as T;
+						return { failureCategory: "aborted" } as T;
 					}
 					throw error;
 				}
 			},
-			{ keyringEnabled, category: defaultCategory },
+			{
+				keyring_enabled: defaults.keyringEnabled,
+				category: defaults.category,
+			},
 		);
 		if (cancellation instanceof Error) {
 			throw cancellation;
 		}
 		return result;
 	}
+}
+
+function defaultCredentialProperties(
+	configs: Pick<WorkspaceConfiguration, "get">,
+): { keyringEnabled: boolean; category: CredentialCategory } {
+	const keyringEnabled = isKeyringEnabled(configs);
+	return {
+		keyringEnabled,
+		category: keyringEnabled ? "keyring" : "file",
+	};
+}
+
+function createCredentialRecorder(
+	span: Span,
+): CredentialStoreRecorder & CredentialClearRecorder {
+	return {
+		setCategory: (category) => span.setProperty("category", category),
+	};
+}
+
+function recordCredentialFailure(
+	span: Span,
+	category: CredentialCategory,
+	error: unknown,
+): void {
+	span.setProperty("category", category);
+	span.setProperty("failure_category", categorizeCredentialError(error));
+}
+
+function recordClearFailure(
+	span: Span,
+	failureCategory: CredentialClearResult["failureCategory"],
+): void {
+	if (!failureCategory) {
+		return;
+	}
+
+	span.setProperty("failure_category", failureCategory);
+	if (failureCategory === "aborted") {
+		span.markAborted();
+		return;
+	}
+	span.markFailure();
 }
 
 export function categorizeCredentialError(

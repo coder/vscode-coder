@@ -106,7 +106,7 @@ function createCommandsHarness(options: CommandsHarnessOptions = {}) {
 
 	const cliManager = {
 		clearCredentials: vi.fn(() =>
-			Promise.resolve(options.credentialResult ?? { category: "file" }),
+			Promise.resolve(options.credentialResult ?? {}),
 		),
 	};
 
@@ -311,7 +311,6 @@ describe("Commands", () => {
 			options: {
 				authenticated: true,
 				credentialResult: {
-					category: "keyring",
 					failureCategory: "aborted",
 				},
 			},
@@ -331,7 +330,6 @@ describe("Commands", () => {
 			options: {
 				authenticated: true,
 				credentialResult: {
-					category: "keyring",
 					failureCategory: "cli",
 				},
 			},

@@ -22,10 +22,10 @@ export class DeploymentTelemetry {
 	}
 
 	public crossWindowDetected(): void {
-		this.telemetry.log("deployment.cross_window_detected");
+		this.telemetry.log("deployment.cross_window.detected");
 	}
 
 	public authConfigRecoveryFailed(): void {
-		this.telemetry.log("deployment.auth_config_recovery_failed");
+		this.telemetry.log("deployment.auth_config.recovery_failed");
 	}
 }

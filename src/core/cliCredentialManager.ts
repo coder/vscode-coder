@@ -11,9 +11,9 @@ import {
 	CredentialCliError,
 	CredentialFileError,
 	CredentialTelemetry,
-	type CredentialCategory,
+	type CredentialClearRecorder,
 	type CredentialClearResult,
-	type CredentialStoreResult,
+	type CredentialStoreRecorder,
 } from "../instrumentation/credentials";
 import { isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
@@ -81,9 +81,9 @@ export class CliCredentialManager {
 		token: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
-	): Promise<CredentialStoreResult> {
-		return this.credentialTelemetry.traceStore(configs, () =>
-			this.storeTokenInner(url, token, configs, options),
+	): Promise<void> {
+		return this.credentialTelemetry.traceStore(configs, (recorder) =>
+			this.storeTokenInner(url, token, configs, recorder, options),
 		);
 	}
 
@@ -91,8 +91,9 @@ export class CliCredentialManager {
 		url: string,
 		token: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
+		recorder: CredentialStoreRecorder,
 		options?: { signal?: AbortSignal },
-	): Promise<CredentialStoreResult> {
+	): Promise<void> {
 		const binPath = await this.resolveKeyringBinary(
 			url,
 			configs,
@@ -100,7 +101,8 @@ export class CliCredentialManager {
 		);
 		if (!binPath) {
 			await this.writeCredentialFiles(url, token);
-			return { category: "file" };
+			recorder.setCategory("file");
+			return;
 		}
 
 		const args = [
@@ -114,8 +116,8 @@ export class CliCredentialManager {
 				env: { ...process.env, CODER_SESSION_TOKEN: token },
 				signal: options?.signal,
 			});
+			recorder.setCategory("keyring");
 			this.logger.info("Stored token via CLI for", url);
-			return { category: "keyring" };
 		} catch (error) {
 			this.logger.warn("Failed to store token via CLI:", error);
 			if (isAbortError(error)) {
@@ -176,27 +178,27 @@ export class CliCredentialManager {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<CredentialClearResult> {
-		return this.credentialTelemetry.traceClear(configs, () =>
-			this.deleteTokenInner(url, configs, options),
+		return this.credentialTelemetry.traceClear(configs, (recorder) =>
+			this.deleteTokenInner(url, configs, recorder, options),
 		);
 	}
 
 	private async deleteTokenInner(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
+		recorder: CredentialClearRecorder,
 		options?: { signal?: AbortSignal },
 	): Promise<CredentialClearResult> {
-		const [filesResult, keyringResult] = await Promise.all([
+		const [_filesResult, keyringResult] = await Promise.all([
 			this.deleteCredentialFiles(url),
 			this.deleteKeyringToken(url, configs, options?.signal),
 		]);
-		return {
-			category:
-				keyringResult.used || keyringResult.failureCategory
-					? "keyring"
-					: filesResult.category,
-			failureCategory: keyringResult.failureCategory,
-		};
+		recorder.setCategory(
+			keyringResult.used || keyringResult.failureCategory ? "keyring" : "file",
+		);
+		return keyringResult.failureCategory
+			? { failureCategory: keyringResult.failureCategory }
+			: {};
 	}
 
 	/**
@@ -267,9 +269,7 @@ export class CliCredentialManager {
 	/**
 	 * Delete URL and token files. Best-effort: never throws.
 	 */
-	private async deleteCredentialFiles(
-		url: string,
-	): Promise<{ category: CredentialCategory }> {
+	private async deleteCredentialFiles(url: string): Promise<void> {
 		const safeHostname = toSafeHost(url);
 		const paths = [
 			this.pathResolver.getSessionTokenPath(safeHostname),
@@ -282,7 +282,6 @@ export class CliCredentialManager {
 				}),
 			),
 		);
-		return { category: "file" };
 	}
 
 	/**

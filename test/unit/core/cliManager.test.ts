@@ -353,9 +353,7 @@ describe("CliManager", () => {
 		const CLEAR_URL = "https://dev.coder.com";
 
 		it("should skip progress notification when keyring is disabled", async () => {
-			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({
-				category: "file",
-			});
+			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({});
 
 			expect(vscode.window.withProgress).not.toHaveBeenCalled();
 			expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
@@ -367,13 +365,9 @@ describe("CliManager", () => {
 
 		it("should show progress notification when keyring is enabled", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			vi.mocked(mockCredManager.deleteToken).mockResolvedValueOnce({
-				category: "keyring",
-			});
+			vi.mocked(mockCredManager.deleteToken).mockResolvedValueOnce({});
 
-			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({
-				category: "keyring",
-			});
+			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({});
 
 			expect(vscode.window.withProgress).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -387,12 +381,10 @@ describe("CliManager", () => {
 
 		it("returns credential manager failure categories", async () => {
 			vi.mocked(mockCredManager.deleteToken).mockResolvedValueOnce({
-				category: "keyring",
 				failureCategory: "cli",
 			});
 
 			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({
-				category: "keyring",
 				failureCategory: "cli",
 			});
 		});
@@ -403,7 +395,6 @@ describe("CliManager", () => {
 			);
 
 			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({
-				category: "file",
 				failureCategory: "binary",
 			});
 		});
@@ -415,7 +406,6 @@ describe("CliManager", () => {
 			);
 
 			await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({
-				category: "keyring",
 				failureCategory: "aborted",
 			});
 		});

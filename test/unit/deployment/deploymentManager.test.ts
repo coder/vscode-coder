@@ -345,7 +345,7 @@ describe("DeploymentManager", () => {
 			expect(mockClient.host).toBe(TEST_URL);
 			expect(mockClient.token).toBe("synced-token");
 			expect(
-				telemetrySink.expectOne("deployment.cross_window_detected").properties,
+				telemetrySink.expectOne("deployment.cross_window.detected").properties,
 			).toEqual({});
 			expect(telemetrySink.expectOne("deployment.recovered")).toMatchObject({
 				properties: { trigger: "cross_window" },
@@ -634,7 +634,7 @@ describe("DeploymentManager", () => {
 					0,
 				);
 				expect(
-					telemetrySink.expectOne("deployment.auth_config_recovery_failed")
+					telemetrySink.expectOne("deployment.auth_config.recovery_failed")
 						.properties,
 				).toEqual({});
 			} finally {
