@@ -191,7 +191,7 @@ export class WorkspaceOperationTelemetry {
 				span.setProperty("action", action);
 				return action;
 			},
-			{ "update.offered": outdated },
+			{ update_offered: outdated },
 		);
 	}
 

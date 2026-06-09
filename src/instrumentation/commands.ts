@@ -15,12 +15,12 @@ import type { Span } from "../telemetry/span";
 
 export type WorkspaceOpenSource =
 	| "command"
-	| "sidebar.agent"
-	| "sidebar.workspace"
-	| "sidebar.fallback"
+	| "sidebar_agent"
+	| "sidebar_workspace"
+	| "sidebar_fallback"
 	| "uri";
 
-export type WorkspacePickerSource = "workspace.open" | "diagnostic";
+export type WorkspacePickerSource = "workspace_open" | "diagnostic";
 export type WorkspacePickerFailureCategory = "fetch_failed";
 export type WorkspaceOpenFailureCategory =
 	| WorkspacePickerFailureCategory
@@ -33,10 +33,10 @@ export type WorkspacePickerResult =
 			readonly status: "failed";
 			readonly category: WorkspacePickerFailureCategory;
 	  };
-export type DiagnosticCommandId =
-	| "coder.speedTest"
-	| "coder.supportBundle"
-	| "coder.exportTelemetry";
+export type DiagnosticCommand =
+	| "speed_test"
+	| "support_bundle"
+	| "export_telemetry";
 export type DiagnosticFailureCategory =
 	| WorkspacePickerFailureCategory
 	| "parse_error"
@@ -124,17 +124,17 @@ export interface DevcontainerTrace {
 	fail(error: unknown): void;
 }
 
-export class CommandInstrumentation {
+export class CommandTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
 
 	public diagnostic(
-		commandId: DiagnosticCommandId,
+		command: DiagnosticCommand,
 		fn: (trace: DiagnosticTrace) => Promise<void>,
 	): Promise<void> {
 		return this.telemetry.trace(
 			"command.diagnostic.completed",
 			(span) => fn(new SpanDiagnosticTrace(span)),
-			{ commandId },
+			{ command },
 		);
 	}
 
@@ -191,7 +191,7 @@ export class CommandInstrumentation {
 		let deferredError: unknown;
 		let failed = false;
 		await this.telemetry.trace(
-			"workspace.devcontainer.open",
+			"workspace.dev_container.open",
 			async (span) => {
 				const trace = new SpanDevcontainerTrace(span);
 				try {
@@ -273,7 +273,7 @@ class SpanDiagnosticTrace implements DiagnosticTrace {
 	}
 
 	public speedtestRequestedDuration(seconds: number): void {
-		this.span.setMeasurement("requestedDurationSec", seconds);
+		this.span.setMeasurement("requested_duration_seconds", seconds);
 	}
 
 	public speedtestSuccess(rawJson: string): SpeedtestResult {
@@ -282,7 +282,7 @@ class SpanDiagnosticTrace implements DiagnosticTrace {
 
 	public exportSuccess(format: string, eventCount: number): void {
 		this.span.setProperty("format", format);
-		this.span.setMeasurement("eventCount", eventCount);
+		this.span.setMeasurement("event_count", eventCount);
 	}
 }
 
@@ -291,7 +291,7 @@ class SpanDevcontainerTrace implements DevcontainerTrace {
 
 	public fail(error: unknown): void {
 		this.span.setProperty(
-			"failure.category",
+			"failure_category",
 			categorizeDevcontainerFailure(error),
 		);
 		this.span.markFailure();
@@ -304,18 +304,18 @@ function setWorkspaceProperties(
 	agent?: WorkspaceAgent,
 ): void {
 	const agents = extractAgents(workspace.latest_build.resources);
-	span.setProperty("workspace.status", bucketWorkspaceStatus(workspace));
-	span.setProperty("workspace.outdated", workspace.outdated);
-	span.setMeasurement("agentCount", agents.length);
+	span.setProperty("workspace_status", bucketWorkspaceStatus(workspace));
+	span.setProperty("workspace_outdated", workspace.outdated);
+	span.setMeasurement("agent_count", agents.length);
 	span.setMeasurement(
-		"connectedAgentCount",
+		"connected_agent_count",
 		agents.filter((candidate) => candidate.status === "connected").length,
 	);
 	if (!agent) {
 		return;
 	}
-	span.setProperty("agent.status", bucketAgentStatus(agent));
-	span.setProperty("agent.lifecycle_state", bucketAgentLifecycle(agent));
+	span.setProperty("agent_status", bucketAgentStatus(agent));
+	span.setProperty("agent_lifecycle_state", bucketAgentLifecycle(agent));
 }
 
 function setWorkspacePickerResult(
@@ -323,7 +323,7 @@ function setWorkspacePickerResult(
 	workspace: Workspace | undefined,
 	resultCount: number,
 ): void {
-	span.setMeasurement("workspaceCount", resultCount);
+	span.setMeasurement("workspace_count", resultCount);
 	if (!workspace) {
 		span.markAborted();
 		return;
@@ -336,8 +336,8 @@ function setWorkspacePickerFailure(
 	category: WorkspacePickerFailureCategory,
 	resultCount: number,
 ): void {
-	span.setMeasurement("workspaceCount", resultCount);
-	span.setProperty("failure.category", category);
+	span.setMeasurement("workspace_count", resultCount);
+	span.setProperty("failure_category", category);
 	span.markFailure();
 }
 
@@ -353,7 +353,7 @@ function markWorkspaceOpenCancelled(
 	stage: WorkspaceOpenCancelStage,
 	selection?: WorkspaceOpenSelection,
 ): false {
-	span.setProperty("cancel.stage", stage);
+	span.setProperty("cancel_stage", stage);
 	if (selection) {
 		setWorkspaceOpenSelection(span, selection);
 	}
@@ -366,7 +366,7 @@ function markWorkspaceOpenFailure(
 	category: WorkspaceOpenFailureCategory,
 	selection?: WorkspaceOpenSelection,
 ): false {
-	span.setProperty("failure.category", category);
+	span.setProperty("failure_category", category);
 	if (selection) {
 		setWorkspaceOpenSelection(span, selection);
 	}
@@ -393,7 +393,7 @@ function markDiagnosticCancelled(
 	span: Span,
 	stage: DiagnosticCancelStage,
 ): void {
-	span.setProperty("cancel.stage", stage);
+	span.setProperty("cancel_stage", stage);
 	span.markAborted();
 }
 
@@ -402,14 +402,14 @@ function markDiagnosticFailure(
 	error: unknown,
 	category: DiagnosticFailureCategory = categorizeFailure(error),
 ): void {
-	span.setProperty("failure.category", category);
+	span.setProperty("failure_category", category);
 	span.markFailure();
 }
 
 function setSpeedtestSuccess(span: Span, rawJson: string): SpeedtestResult {
 	const parsed = parseSpeedtestResult(rawJson);
-	span.setMeasurement("intervalCount", parsed.intervals.length);
-	span.setMeasurement("throughputMbits", parsed.overall.throughput_mbits);
+	span.setMeasurement("interval_count", parsed.intervals.length);
+	span.setMeasurement("throughput_mbits", parsed.overall.throughput_mbits);
 	return parsed;
 }
 

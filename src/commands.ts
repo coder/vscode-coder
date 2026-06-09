@@ -20,7 +20,7 @@ import {
 	type AuthLogoutOutcome,
 } from "./instrumentation/auth";
 import {
-	CommandInstrumentation,
+	CommandTelemetry,
 	type DevcontainerMode,
 	type WorkspaceOpenSource,
 	type WorkspaceOpenTrace,
@@ -115,7 +115,7 @@ export class Commands {
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 	private readonly telemetryService: TelemetryService;
 	private readonly authTelemetry: AuthTelemetry;
-	private readonly traces: CommandInstrumentation;
+	private readonly commandTelemetry: CommandTelemetry;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -134,7 +134,7 @@ export class Commands {
 		private readonly deploymentManager: DeploymentManager,
 	) {
 		this.telemetryService = serviceContainer.getTelemetryService();
-		this.traces = new CommandInstrumentation(this.telemetryService);
+		this.commandTelemetry = new CommandTelemetry(this.telemetryService);
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.mementoManager = serviceContainer.getMementoManager();
@@ -246,7 +246,7 @@ export class Commands {
 	 * editor document.  Can be triggered from the sidebar or command palette.
 	 */
 	public async speedTest(item?: OpenableTreeItem): Promise<void> {
-		await this.traces.diagnostic("coder.speedTest", async (telemetry) => {
+		await this.commandTelemetry.diagnostic("speed_test", async (telemetry) => {
 			const resolved = await this.resolveClientAndWorkspace(item);
 			if (resolved.status === "cancelled") {
 				telemetry.cancel("workspace_picker");
@@ -345,87 +345,92 @@ export class Commands {
 	}
 
 	public async supportBundle(item?: OpenableTreeItem): Promise<void> {
-		await this.traces.diagnostic("coder.supportBundle", async (telemetry) => {
-			const resolved = await this.resolveClientAndWorkspace(item);
-			if (resolved.status === "cancelled") {
-				telemetry.cancel("workspace_picker");
-				return;
-			}
-			if (resolved.status === "failed") {
-				telemetry.fail(undefined, resolved.category);
-				return;
-			}
+		await this.commandTelemetry.diagnostic(
+			"support_bundle",
+			async (telemetry) => {
+				const resolved = await this.resolveClientAndWorkspace(item);
+				if (resolved.status === "cancelled") {
+					telemetry.cancel("workspace_picker");
+					return;
+				}
+				if (resolved.status === "failed") {
+					telemetry.fail(undefined, resolved.category);
+					return;
+				}
 
-			const { client, workspaceId } = resolved;
+				const { client, workspaceId } = resolved;
 
-			const outputUri = await this.promptSupportBundlePath();
-			if (!outputUri) {
-				telemetry.cancel("save_dialog");
-				return;
-			}
+				const outputUri = await this.promptSupportBundlePath();
+				if (!outputUri) {
+					telemetry.cancel("save_dialog");
+					return;
+				}
 
-			const result = await withCancellableProgress(
-				async ({ signal, progress }) => {
-					progress.report({ message: "Resolving CLI..." });
-					const env = await this.resolveCliEnv(client);
-					if (!env.featureSet.supportBundle) {
-						throw new Error(
-							"Support bundles require Coder CLI v2.10.0 or later. Please update your Coder deployment.",
+				const result = await withCancellableProgress(
+					async ({ signal, progress }) => {
+						progress.report({ message: "Resolving CLI..." });
+						const env = await this.resolveCliEnv(client);
+						if (!env.featureSet.supportBundle) {
+							throw new Error(
+								"Support bundles require Coder CLI v2.10.0 or later. Please update your Coder deployment.",
+							);
+						}
+
+						progress.report({ message: "Collecting diagnostics..." });
+						await cliExec.supportBundle(
+							env,
+							workspaceId,
+							outputUri.fsPath,
+							signal,
+						);
+
+						progress.report({ message: "Adding VS Code logs..." });
+						await appendVsCodeLogs(
+							outputUri.fsPath,
+							{
+								activeProxyLogPath: this.workspaceLogPath,
+								proxyLogDir: this.pathResolver.getProxyLogPath(),
+								extensionLogDir: this.pathResolver.getCodeLogDir(),
+								telemetryDir: this.pathResolver.getTelemetryPath(),
+							},
+							this.logger,
+						);
+
+						return outputUri;
+					},
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: `Creating support bundle for ${workspaceId}`,
+						cancellable: true,
+					},
+				);
+
+				if (!telemetry.progressResult(result)) {
+					if (!result.cancelled) {
+						if (
+							toError(result.error).message.startsWith(
+								"Support bundles require",
+							)
+						) {
+							telemetry.fail(result.error, "unsupported_cli");
+						}
+						this.logger.error("Support bundle failed", result.error);
+						vscode.window.showErrorMessage(
+							`Support bundle failed: ${toError(result.error).message}`,
 						);
 					}
-
-					progress.report({ message: "Collecting diagnostics..." });
-					await cliExec.supportBundle(
-						env,
-						workspaceId,
-						outputUri.fsPath,
-						signal,
-					);
-
-					progress.report({ message: "Adding VS Code logs..." });
-					await appendVsCodeLogs(
-						outputUri.fsPath,
-						{
-							activeProxyLogPath: this.workspaceLogPath,
-							proxyLogDir: this.pathResolver.getProxyLogPath(),
-							extensionLogDir: this.pathResolver.getCodeLogDir(),
-							telemetryDir: this.pathResolver.getTelemetryPath(),
-						},
-						this.logger,
-					);
-
-					return outputUri;
-				},
-				{
-					location: vscode.ProgressLocation.Notification,
-					title: `Creating support bundle for ${workspaceId}`,
-					cancellable: true,
-				},
-			);
-
-			if (!telemetry.progressResult(result)) {
-				if (!result.cancelled) {
-					if (
-						toError(result.error).message.startsWith("Support bundles require")
-					) {
-						telemetry.fail(result.error, "unsupported_cli");
-					}
-					this.logger.error("Support bundle failed", result.error);
-					vscode.window.showErrorMessage(
-						`Support bundle failed: ${toError(result.error).message}`,
-					);
+					return;
 				}
-				return;
-			}
 
-			const action = await vscode.window.showInformationMessage(
-				`Support bundle saved to ${result.value.fsPath}`,
-				"Reveal in File Explorer",
-			);
-			if (action === "Reveal in File Explorer") {
-				await vscode.commands.executeCommand("revealFileInOS", result.value);
-			}
-		});
+				const action = await vscode.window.showInformationMessage(
+					`Support bundle saved to ${result.value.fsPath}`,
+					"Reveal in File Explorer",
+				);
+				if (action === "Reveal in File Explorer") {
+					await vscode.commands.executeCommand("revealFileInOS", result.value);
+				}
+			},
+		);
 	}
 
 	private promptSupportBundlePath(): Thenable<vscode.Uri | undefined> {
@@ -438,25 +443,28 @@ export class Commands {
 	}
 
 	public async exportTelemetry(): Promise<void> {
-		await this.traces.diagnostic("coder.exportTelemetry", async (telemetry) => {
-			const outcome = await runExportTelemetryCommand(
-				this.pathResolver.getTelemetryPath(),
-				this.logger,
-				() => this.telemetryService.flush(),
-				this.telemetryService.getContext(),
-			);
-			switch (outcome.status) {
-				case "cancelled":
-					telemetry.cancel(outcome.stage);
-					return;
-				case "failed":
-					telemetry.fail(outcome.error);
-					return;
-				case "success":
-					telemetry.exportSuccess(outcome.format, outcome.eventCount);
-					return;
-			}
-		});
+		await this.commandTelemetry.diagnostic(
+			"export_telemetry",
+			async (telemetry) => {
+				const outcome = await runExportTelemetryCommand(
+					this.pathResolver.getTelemetryPath(),
+					this.logger,
+					() => this.telemetryService.flush(),
+					this.telemetryService.getContext(),
+				);
+				switch (outcome.status) {
+					case "cancelled":
+						telemetry.cancel(outcome.stage);
+						return;
+					case "failed":
+						telemetry.fail(outcome.error);
+						return;
+					case "success":
+						telemetry.exportSuccess(outcome.format, outcome.eventCount);
+						return;
+				}
+			},
+		);
 	}
 
 	/**
@@ -756,8 +764,8 @@ export class Commands {
 				throw new Error("You are not logged in");
 			}
 			if (item instanceof AgentTreeItem) {
-				await this.traces.workspaceOpen(
-					"sidebar.agent",
+				await this.commandTelemetry.workspaceOpen(
+					"sidebar_agent",
 					{ workspace: item.workspace, agent: item.agent },
 					(telemetry) => {
 						return this.openWorkspace(baseUrl, item.workspace, item.agent, {
@@ -767,8 +775,8 @@ export class Commands {
 					},
 				);
 			} else if (item instanceof WorkspaceTreeItem) {
-				await this.traces.workspaceOpen(
-					"sidebar.workspace",
+				await this.commandTelemetry.workspaceOpen(
+					"sidebar_workspace",
 					{ workspace: item.workspace },
 					async (telemetry) => {
 						const agents = await this.extractAgentsWithFallback(item.workspace);
@@ -794,7 +802,7 @@ export class Commands {
 		} else {
 			// If there is no tree item, then the user manually ran this command.
 			// Default to the regular open instead.
-			await this.open({ source: "sidebar.fallback" });
+			await this.open({ source: "sidebar_fallback" });
 		}
 	}
 
@@ -845,43 +853,48 @@ export class Commands {
 			useDefaultDirectory,
 		} = { ...openDefaults, ...options };
 
-		return this.traces.workspaceOpen(source, undefined, async (telemetry) => {
-			const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
-			if (!baseUrl) {
-				throw new Error("You are not logged in");
-			}
-
-			let workspace: Workspace;
-			if (workspaceOwner && workspaceName) {
-				workspace = await this.extensionClient.getWorkspaceByOwnerAndName(
-					workspaceOwner,
-					workspaceName,
-				);
-			} else {
-				const pick = await this.pickWorkspace("workspace.open");
-				if (pick.status === "cancelled") {
-					return telemetry.cancel("workspace_picker");
+		return this.commandTelemetry.workspaceOpen(
+			source,
+			undefined,
+			async (telemetry) => {
+				const baseUrl =
+					this.extensionClient.getAxiosInstance().defaults.baseURL;
+				if (!baseUrl) {
+					throw new Error("You are not logged in");
 				}
-				if (pick.status === "failed") {
-					return telemetry.fail(pick.category);
+
+				let workspace: Workspace;
+				if (workspaceOwner && workspaceName) {
+					workspace = await this.extensionClient.getWorkspaceByOwnerAndName(
+						workspaceOwner,
+						workspaceName,
+					);
+				} else {
+					const pick = await this.pickWorkspace("workspace_open");
+					if (pick.status === "cancelled") {
+						return telemetry.cancel("workspace_picker");
+					}
+					if (pick.status === "failed") {
+						return telemetry.fail(pick.category);
+					}
+					workspace = pick.workspace;
 				}
-				workspace = pick.workspace;
-			}
 
-			const agents = await this.extractAgentsWithFallback(workspace);
-			const agent = await maybeAskAgent(agents, agentName);
-			if (!agent) {
-				return telemetry.cancel("agent_picker", { workspace });
-			}
-			telemetry.select({ workspace, agent });
+				const agents = await this.extractAgentsWithFallback(workspace);
+				const agent = await maybeAskAgent(agents, agentName);
+				if (!agent) {
+					return telemetry.cancel("agent_picker", { workspace });
+				}
+				telemetry.select({ workspace, agent });
 
-			return this.openWorkspace(baseUrl, workspace, agent, {
-				folderPath,
-				openRecent,
-				useDefaultDirectory,
-				telemetry,
-			});
-		});
+				return this.openWorkspace(baseUrl, workspace, agent, {
+					folderPath,
+					openRecent,
+					useDefaultDirectory,
+					telemetry,
+				});
+			},
+		);
 	}
 
 	/**
@@ -901,7 +914,7 @@ export class Commands {
 		const mode: DevcontainerMode = localWorkspaceFolder
 			? "dev_container"
 			: "attached_container";
-		await this.traces.devcontainerOpen(mode, async () => {
+		await this.commandTelemetry.devcontainerOpen(mode, async () => {
 			const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
 			if (!baseUrl) {
 				throw new Error("You are not logged in");
@@ -1167,7 +1180,7 @@ export class Commands {
 		);
 
 		quickPick.show();
-		return this.traces
+		return this.commandTelemetry
 			.workspacePicker(
 				source,
 				async (telemetry) =>

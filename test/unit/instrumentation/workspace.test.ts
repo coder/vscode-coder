@@ -81,7 +81,7 @@ describe("WorkspaceOperationTelemetry", () => {
 			expect(result).toBe("update");
 			expect(sink.expectOne("workspace.start.prompted")).toMatchObject({
 				properties: {
-					"update.offered": "true",
+					update_offered: "true",
 					action: "update",
 					result: "success",
 				},
@@ -98,7 +98,7 @@ describe("WorkspaceOperationTelemetry", () => {
 			expect(result).toBeUndefined();
 			expect(sink.expectOne("workspace.start.prompted")).toMatchObject({
 				properties: {
-					"update.offered": "false",
+					update_offered: "false",
 					result: "aborted",
 				},
 			});
