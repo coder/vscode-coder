@@ -50,7 +50,7 @@ export class CliTelemetry {
 		return this.telemetry.trace("cli.configure", (span) => {
 			span.setProperty("silent", options.silent);
 			span.setProperty(
-				"credentialSource",
+				"credential_source",
 				options.hasToken ? "session_token" : "empty_token",
 			);
 			return fn(new CliConfigureTrace(span));
@@ -62,7 +62,7 @@ export class CliResolveTrace {
 	public constructor(private readonly span: Span) {}
 
 	public setDownloadsEnabled(enabled: boolean): void {
-		this.span.setProperty("downloadsEnabled", enabled);
+		this.span.setProperty("downloads_enabled", enabled);
 	}
 
 	public setOutcome(outcome: CliResolveOutcome): void {
@@ -70,7 +70,7 @@ export class CliResolveTrace {
 	}
 
 	public setFailure(category: CliResolveFailureCategory | "unknown"): void {
-		this.span.setProperty("failureCategory", category);
+		this.span.setProperty("failure_category", category);
 	}
 
 	public async cacheLookup<T extends { readonly source: CliCacheSource }>(
@@ -83,7 +83,7 @@ export class CliResolveTrace {
 			(r) => r.source,
 			fn,
 		);
-		this.span.setProperty("cacheSource", result.source);
+		this.span.setProperty("cache_source", result.source);
 		return result;
 	}
 
@@ -97,7 +97,7 @@ export class CliResolveTrace {
 			(r) => r.outcome,
 			fn,
 		);
-		this.span.setProperty("versionCheck", result.outcome);
+		this.span.setProperty("version_check", result.outcome);
 		return result;
 	}
 
@@ -106,10 +106,10 @@ export class CliResolveTrace {
 		downloadsEnabled: boolean,
 		hasExistingBinary: boolean,
 	): Promise<void> {
-		this.span.setProperty("downloadReason", reason);
+		this.span.setProperty("download_reason", reason);
 		return this.span.phase("download_decision", (span) => {
 			span.setProperty("reason", reason);
-			span.setProperty("downloadsEnabled", downloadsEnabled);
+			span.setProperty("downloads_enabled", downloadsEnabled);
 			span.setProperty(
 				"outcome",
 				downloadsEnabled
@@ -144,7 +144,7 @@ export class CliResolveTrace {
 		const result = await this.span.phase(
 			"fallback_to_existing_binary",
 			async (span) => {
-				span.setProperty("failureCategory", categorizeResolveFailure(error));
+				span.setProperty("failure_category", categorizeResolveFailure(error));
 				return fn();
 			},
 		);
@@ -157,16 +157,19 @@ export class CliConfigureTrace {
 	public constructor(private readonly span: Span) {}
 
 	public stored(mode: "keyring" | "file"): void {
-		this.span.setProperty("configMode", mode);
+		this.span.setProperty("config_mode", mode);
 	}
 
 	public cancelled(): void {
-		this.span.setProperty("failureCategory", "cancelled");
+		this.span.setProperty("failure_category", "cancelled");
 		this.span.markAborted();
 	}
 
 	public failed(error: unknown): void {
-		this.span.setProperty("failureCategory", categorizeConfigureFailure(error));
+		this.span.setProperty(
+			"failure_category",
+			categorizeConfigureFailure(error),
+		);
 	}
 }
 

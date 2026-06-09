@@ -155,8 +155,8 @@ describe("CliManager", () => {
 				properties: {
 					result: "success",
 					silent: "false",
-					configMode: "file",
-					credentialSource: "session_token",
+					config_mode: "file",
+					credential_source: "session_token",
 				},
 				measurements: { durationMs: expect.any(Number) },
 			});
@@ -174,8 +174,8 @@ describe("CliManager", () => {
 			expect(configureEvent().properties).toMatchObject({
 				result: "success",
 				silent: "true",
-				configMode: "file",
-				credentialSource: "session_token",
+				config_mode: "file",
+				credential_source: "session_token",
 			});
 		});
 
@@ -183,7 +183,7 @@ describe("CliManager", () => {
 			await manager.configure(CONFIGURE_URL, "");
 
 			expect(configureEvent().properties).toMatchObject({
-				credentialSource: "empty_token",
+				credential_source: "empty_token",
 			});
 		});
 
@@ -208,7 +208,7 @@ describe("CliManager", () => {
 				expect(configureEvent()).toMatchObject({
 					properties: {
 						result: "error",
-						failureCategory: "credential_store",
+						failure_category: "credential_store",
 					},
 					error: { message: "keyring unavailable" },
 				});
@@ -224,7 +224,7 @@ describe("CliManager", () => {
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 			expect(configureEvent().properties).toMatchObject({
 				result: "aborted",
-				failureCategory: "cancelled",
+				failure_category: "cancelled",
 			});
 		});
 	});
@@ -827,7 +827,7 @@ describe("CliManager", () => {
 				properties: { reason, result: "success" },
 			});
 			expect(e?.measurements.durationMs).toBeGreaterThanOrEqual(0);
-			expect(e?.measurements.downloadedBytes).toBe(
+			expect(e?.measurements.downloaded_bytes).toBe(
 				Buffer.byteLength(mockBinaryContent(TEST_VERSION)),
 			);
 		});
@@ -841,8 +841,8 @@ describe("CliManager", () => {
 				properties: {
 					result: "success",
 					outcome: "cache_hit",
-					cacheSource: "directory",
-					versionCheck: "match",
+					cache_source: "directory",
+					version_check: "match",
 				},
 				measurements: { durationMs: expect.any(Number) },
 			});
@@ -864,7 +864,7 @@ describe("CliManager", () => {
 			expect(event("cli.resolve.download_decision")).toMatchObject({
 				properties: {
 					reason: "version_mismatch",
-					downloadsEnabled: "false",
+					downloads_enabled: "false",
 					outcome: "fallback",
 					result: "success",
 				},
@@ -887,13 +887,13 @@ describe("CliManager", () => {
 			expect(event("cli.download")).toBeUndefined();
 			expect(event("cli.resolve")).toMatchObject({
 				properties: {
-					failureCategory: "downloads_disabled",
+					failure_category: "downloads_disabled",
 					result: "error",
 				},
 			});
 		});
 
-		it("omits downloadedBytes when the server returns 304", async () => {
+		it("omits downloaded_bytes when the server returns 304", async () => {
 			withExistingBinary("1.0.0");
 			withHttpResponse(304);
 			await manager.fetchBinary(mockApi);
@@ -902,13 +902,13 @@ describe("CliManager", () => {
 			expect(e).toMatchObject({
 				properties: { reason: "version_mismatch", result: "success" },
 			});
-			expect(e?.measurements.downloadedBytes).toBeUndefined();
+			expect(e?.measurements.downloaded_bytes).toBeUndefined();
 			expect(event("cli.resolve")).toMatchObject({
 				properties: { outcome: "downloaded", result: "success" },
 			});
 		});
 
-		it("emits downloadedBytes when a download fails mid-stream", async () => {
+		it("emits downloaded_bytes when a download fails mid-stream", async () => {
 			const partial = "partial-binary";
 			withHttpResponse(
 				200,
@@ -923,10 +923,10 @@ describe("CliManager", () => {
 			expect(event("cli.download")).toMatchObject({
 				properties: { reason: "missing", result: "error" },
 				error: { message: "Unable to download binary: connection reset" },
-				measurements: { downloadedBytes: Buffer.byteLength(partial) },
+				measurements: { downloaded_bytes: Buffer.byteLength(partial) },
 			});
 			expect(event("cli.resolve.fallback_to_existing_binary")).toMatchObject({
-				properties: { failureCategory: "download", result: "error" },
+				properties: { failure_category: "download", result: "error" },
 			});
 			expect(event("cli.resolve")).toMatchObject({
 				properties: { result: "error" },
@@ -971,7 +971,7 @@ describe("CliManager", () => {
 				{ status: 404, message: "Signature not found" },
 				{ status: 500, message: "Failed to download signature" },
 			])(
-				"emits outcome=sig_not_found with sigStatus=$status when user runs without verification",
+				"emits outcome=sig_not_found with sig_status=$status when user runs without verification",
 				async ({ status, message }) => {
 					withSignatureResponses([status, status]);
 					mockUI.setResponse(message, "Run without verification");
@@ -981,7 +981,7 @@ describe("CliManager", () => {
 					expect(event("cli.download.verify")).toMatchObject({
 						properties: {
 							outcome: "sig_not_found",
-							sigStatus: String(status),
+							sig_status: String(status),
 							result: "success",
 						},
 					});

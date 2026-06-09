@@ -641,8 +641,8 @@ describe("ReconnectingWebSocket", () => {
 					properties: { result: "success", reason: "unexpected_close" },
 					measurements: {
 						attempts: 1,
-						maxBackoffMs: expect.any(Number),
-						totalDurationMs: expect.any(Number),
+						max_backoff_ms: expect.any(Number),
+						total_duration_ms: expect.any(Number),
 					},
 				},
 			]);
@@ -664,7 +664,7 @@ describe("ReconnectingWebSocket", () => {
 			expect(dropped).toHaveLength(1);
 			expect(dropped[0].properties).toMatchObject({
 				cause: "normal_close",
-				closeCode: String(WebSocketCloseCode.GOING_AWAY),
+				close_code: String(WebSocketCloseCode.GOING_AWAY),
 			});
 			expect(
 				sink

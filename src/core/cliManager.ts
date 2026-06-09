@@ -647,7 +647,7 @@ export class CliManager {
 							);
 							verifySpan.setProperty("outcome", result.kind);
 							if (result.kind === "sig_not_found") {
-								verifySpan.setProperty("sigStatus", String(result.status));
+								verifySpan.setProperty("sig_status", String(result.status));
 							}
 						});
 					}
@@ -708,7 +708,7 @@ export class CliManager {
 			}
 		} finally {
 			if (bytesWritten > 0) {
-				downloadSpan.setMeasurement("downloadedBytes", bytesWritten);
+				downloadSpan.setMeasurement("downloaded_bytes", bytesWritten);
 			}
 			await downloadProgress.clearProgress(progressLogPath);
 		}
