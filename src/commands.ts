@@ -16,7 +16,6 @@ import { toError } from "./error/errorUtils";
 import { type FeatureSet, featureSetForVersion } from "./featureSet";
 import {
 	AuthTelemetry,
-	type AuthLoginMethod,
 	type AuthLoginOutcome,
 	type AuthLoginSource,
 	type AuthLogoutOutcome,
@@ -59,7 +58,7 @@ import type { DeploymentManager } from "./deployment/deploymentManager";
 import type { Deployment } from "./deployment/types";
 import type { CredentialFailureCategory } from "./instrumentation/credentials";
 import type { Logger } from "./logging/logger";
-import type { LoginCoordinator } from "./login/loginCoordinator";
+import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
 import type { TelemetryService } from "./telemetry/service";
 import type { SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
 import type {
@@ -82,8 +81,6 @@ interface LoginArgs {
 	readonly url?: string;
 	readonly autoLogin?: boolean;
 }
-
-type LoginMethodRecorder = (method: AuthLoginMethod) => void;
 
 interface LoginSuccess {
 	readonly user: User;
@@ -167,28 +164,24 @@ export class Commands {
 		}
 		await this.traceLoginCommand(
 			args?.autoLogin ? "auto_login" : "command",
-			(recordMethod) => this.performLogin(args, recordMethod),
+			(setMethod) => this.performLogin(args, setMethod),
 		);
 	}
 
 	private async traceLoginCommand(
 		source: AuthLoginSource,
-		run: (recordMethod: LoginMethodRecorder) => Promise<AuthLoginOutcome>,
+		run: (
+			setMethod: (method: LoginMethod) => void,
+		) => Promise<AuthLoginOutcome>,
 	): Promise<void> {
-		let method: AuthLoginMethod = "unknown";
-		await this.authTelemetry.traceLogin(
-			source,
-			() => method,
-			() =>
-				run((next) => {
-					method = next;
-				}),
+		await this.authTelemetry.traceLogin(source, (trace) =>
+			run((method) => trace.setMethod(method)),
 		);
 	}
 
 	private async performLogin(
 		args: LoginArgs | undefined,
-		recordMethod: LoginMethodRecorder,
+		setMethod: (method: LoginMethod) => void,
 	): Promise<AuthLoginOutcome> {
 		this.logger.debug("Logging in");
 
@@ -209,16 +202,18 @@ export class Commands {
 			safeHostname,
 			url,
 			autoLogin: args?.autoLogin,
-			traceLogin: false,
-			onLoginMethod: recordMethod,
 		});
 
 		if (!result.success) {
+			if (result.method) {
+				setMethod(result.method);
+			}
 			return result;
 		}
 
+		setMethod(result.method);
 		await this.completeLogin(url, safeHostname, result);
-		return { success: true };
+		return { success: true, method: result.method };
 	}
 
 	private async completeLogin(
@@ -520,8 +515,8 @@ export class Commands {
 	 */
 	public async switchDeployment(): Promise<void> {
 		this.logger.debug("Switching deployment");
-		await this.traceLoginCommand("switch_deployment", (recordMethod) =>
-			this.performLogin(undefined, recordMethod),
+		await this.traceLoginCommand("switch_deployment", (setMethod) =>
+			this.performLogin(undefined, setMethod),
 		);
 	}
 

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
+import { AuthTelemetry } from "../instrumentation/auth";
 import { CALLBACK_PATH } from "../oauth/utils";
 import { maybeAskUrl } from "../promptUtils";
 import { toSafeHost } from "../util";
@@ -131,6 +132,9 @@ async function setupDeployment(
 	const secretsManager = serviceContainer.getSecretsManager();
 	const mementoManager = serviceContainer.getMementoManager();
 	const loginCoordinator = serviceContainer.getLoginCoordinator();
+	const authTelemetry = new AuthTelemetry(
+		serviceContainer.getTelemetryService(),
+	);
 
 	const currentDeployment = await secretsManager.getCurrentDeployment();
 
@@ -151,11 +155,16 @@ async function setupDeployment(
 	const safeHostname = toSafeHost(url);
 
 	const token: string | undefined = params.get("token") ?? undefined;
-	const result = await loginCoordinator.ensureLoggedIn({
-		safeHostname,
-		url,
-		token,
-		source: "uri",
+	const result = await authTelemetry.traceLogin("uri", async (trace) => {
+		const result = await loginCoordinator.ensureLoggedIn({
+			safeHostname,
+			url,
+			token,
+		});
+		if (result.method) {
+			trace.setMethod(result.method);
+		}
+		return result;
 	});
 
 	if (!result.success) {

@@ -9,12 +9,9 @@ import type { Span } from "../telemetry/span";
 export type CredentialCategory = "keyring" | "file";
 export type CredentialFailureCategory = "aborted" | "binary" | "cli" | "file";
 
-export interface CredentialStoreRecorder {
-	setCategory(category: CredentialCategory): void;
-}
-
-export interface CredentialClearRecorder {
-	setCategory(category: CredentialCategory): void;
+interface CredentialTrace {
+	file<T>(fn: () => Promise<T>): Promise<T>;
+	keyring<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 export interface CredentialClearResult {
@@ -26,55 +23,44 @@ export class CredentialTelemetry {
 
 	public async traceStore<T>(
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: (recorder: CredentialStoreRecorder) => Promise<T>,
+		fn: (trace: CredentialTrace) => Promise<T>,
 	): Promise<T> {
-		const defaults = defaultCredentialProperties(configs);
-		let cancellation: unknown;
-		const result = await this.telemetry.trace(
-			"auth.credential.store",
-			async (span) => {
-				try {
-					return await fn(createCredentialRecorder(span));
-				} catch (error) {
-					recordCredentialFailure(span, defaults.category, error);
-					if (isAbortError(error)) {
-						span.markAborted();
-						cancellation = error;
-						return undefined as T;
-					}
-					throw error;
-				}
-			},
-			{
-				keyring_enabled: defaults.keyringEnabled,
-				category: defaults.category,
-			},
-		);
-		if (cancellation instanceof Error) {
-			throw cancellation;
-		}
-		return result;
+		return this.traceCredential("auth.credential.store", configs, fn);
 	}
 
 	public async traceClear<T extends CredentialClearResult>(
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: (recorder: CredentialClearRecorder) => Promise<T>,
+		fn: (trace: CredentialTrace) => Promise<T>,
+	): Promise<T> {
+		return this.traceCredential(
+			"auth.credential.clear",
+			configs,
+			fn,
+			recordClearFailure,
+		);
+	}
+
+	private async traceCredential<T>(
+		eventName: "auth.credential.store" | "auth.credential.clear",
+		configs: Pick<WorkspaceConfiguration, "get">,
+		fn: (trace: CredentialTrace) => Promise<T>,
+		recordResult?: (span: Span, result: T) => void,
 	): Promise<T> {
 		const defaults = defaultCredentialProperties(configs);
 		let cancellation: unknown;
 		const result = await this.telemetry.trace(
-			"auth.credential.clear",
+			eventName,
 			async (span) => {
 				try {
-					const result = await fn(createCredentialRecorder(span));
-					recordClearFailure(span, result.failureCategory);
+					const result = await fn(createCredentialTrace(span));
+					recordResult?.(span, result);
 					return result;
 				} catch (error) {
 					recordCredentialFailure(span, defaults.category, error);
 					if (isAbortError(error)) {
 						span.markAborted();
 						cancellation = error;
-						return { failureCategory: "aborted" } as T;
+						return undefined as T;
 					}
 					throw error;
 				}
@@ -101,11 +87,17 @@ function defaultCredentialProperties(
 	};
 }
 
-function createCredentialRecorder(
-	span: Span,
-): CredentialStoreRecorder & CredentialClearRecorder {
+function createCredentialTrace(span: Span): CredentialTrace {
+	const run = async <T>(
+		category: CredentialCategory,
+		fn: () => Promise<T>,
+	): Promise<T> => {
+		span.setProperty("category", category);
+		return await fn();
+	};
 	return {
-		setCategory: (category) => span.setProperty("category", category),
+		file: (fn) => run("file", fn),
+		keyring: (fn) => run("keyring", fn),
 	};
 }
 
@@ -118,16 +110,13 @@ function recordCredentialFailure(
 	span.setProperty("failure_category", categorizeCredentialError(error));
 }
 
-function recordClearFailure(
-	span: Span,
-	failureCategory: CredentialClearResult["failureCategory"],
-): void {
-	if (!failureCategory) {
+function recordClearFailure(span: Span, result: CredentialClearResult): void {
+	if (!result.failureCategory) {
 		return;
 	}
 
-	span.setProperty("failure_category", failureCategory);
-	if (failureCategory === "aborted") {
+	span.setProperty("failure_category", result.failureCategory);
+	if (result.failureCategory === "aborted") {
 		span.markAborted();
 		return;
 	}

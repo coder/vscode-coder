@@ -19,12 +19,8 @@ import type { PathResolver } from "@/core/pathResolver";
 import type { SecretsManager } from "@/core/secretsManager";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
-import type {
-	AuthLoginMethod,
-	LoginPromptReason,
-} from "@/instrumentation/auth";
 import type { CredentialClearResult } from "@/instrumentation/credentials";
-import type { LoginCoordinator } from "@/login/loginCoordinator";
+import type { LoginCoordinator, LoginResult } from "@/login/loginCoordinator";
 import type { SpeedtestPanelFactory } from "@/webviews/speedtest/speedtestPanelFactory";
 import type { DuplicateWorkspaceIpc } from "@/workspace/duplicateWorkspaceIpc";
 
@@ -46,17 +42,15 @@ interface LoginOptionsForTest {
 	safeHostname: string;
 	url: string;
 	autoLogin?: boolean;
-	traceLogin?: boolean;
-	onLoginMethod?: (method: AuthLoginMethod) => void;
 }
 
-type LoginResultForTest =
-	| { success: true; user: ReturnType<typeof createMockUser>; token: string }
-	| { success: false; reason: LoginPromptReason };
+type LoginResultForTest = LoginResult & {
+	readonly user?: ReturnType<typeof createMockUser>;
+};
 
 interface CommandsHarnessOptions {
 	readonly authenticated?: boolean;
-	readonly loginMethod?: AuthLoginMethod;
+
 	readonly loginResult?: LoginResultForTest;
 	readonly credentialResult?: CredentialClearResult;
 	readonly clearDeploymentError?: Error;
@@ -80,16 +74,14 @@ function createCommandsHarness(options: CommandsHarnessOptions = {}) {
 		options.loginResult ??
 		({
 			success: true,
+			method: "stored_token",
 			user: createMockUser(),
 			token: "test-token",
 		} satisfies LoginResultForTest);
-	const loginMethod = options.loginMethod ?? "stored_token";
-
 	const loginCoordinator = {
-		ensureLoggedIn: vi.fn((loginOptions: LoginOptionsForTest) => {
-			loginOptions.onLoginMethod?.(loginMethod);
-			return Promise.resolve(loginResult);
-		}),
+		ensureLoggedIn: vi.fn((_loginOptions: LoginOptionsForTest) =>
+			Promise.resolve(loginResult),
+		),
 	};
 
 	const deploymentManager = {
@@ -196,7 +188,6 @@ describe("Commands", () => {
 					expect.objectContaining({
 						safeHostname: TEST_HOSTNAME,
 						url: TEST_URL,
-						traceLogin: false,
 					}),
 				);
 				expect(mocks.deploymentManager.setDeployment).toHaveBeenCalled();
@@ -205,7 +196,14 @@ describe("Commands", () => {
 
 		testCommandScenario({
 			name: "uses auto_login source when requested",
-			options: { loginMethod: "provided_token" },
+			options: {
+				loginResult: {
+					success: true,
+					method: "provided_token",
+					user: createMockUser(),
+					token: "test-token",
+				},
+			},
 			act: ({ commands }) => commands.login({ url: TEST_URL, autoLogin: true }),
 			assert: ({ mocks, telemetry }) => {
 				expect(telemetry.expectOne("auth.login").properties).toMatchObject({
@@ -214,7 +212,7 @@ describe("Commands", () => {
 					result: "success",
 				});
 				expect(mocks.loginCoordinator.ensureLoggedIn).toHaveBeenCalledWith(
-					expect.objectContaining({ autoLogin: true, traceLogin: false }),
+					expect.objectContaining({ autoLogin: true }),
 				);
 			},
 		});
@@ -241,14 +239,17 @@ describe("Commands", () => {
 		testCommandScenario({
 			name: "records auth failures as auth.login errors",
 			options: {
-				loginMethod: "legacy_token",
-				loginResult: { success: false, reason: "auth_failed" },
+				loginResult: {
+					success: false,
+					method: "cli_token",
+					reason: "auth_failed",
+				},
 			},
 			act: ({ commands }) => commands.login(),
 			assert: ({ mocks, telemetry }) => {
 				expect(telemetry.expectOne("auth.login")).toMatchObject({
 					properties: {
-						method: "legacy_token",
+						method: "cli_token",
 						result: "error",
 						reason: "auth_failed",
 					},

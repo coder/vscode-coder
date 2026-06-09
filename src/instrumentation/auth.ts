@@ -1,4 +1,6 @@
+import type { LoginMethod } from "../login/loginCoordinator";
 import type { TelemetryReporter } from "../telemetry/reporter";
+import type { Span } from "../telemetry/span";
 
 export type AuthTokenRefreshTrigger = "background" | "reactive";
 export type AuthRecoveryAction = "refresh_success" | "login_required" | "none";
@@ -15,7 +17,7 @@ export type AuthLoginMethod =
 	| "provided_token"
 	| "stored_token"
 	| "keyring_token"
-	| "legacy_token"
+	| "cli_token"
 	| "oauth";
 
 export type LoginPromptReason =
@@ -33,11 +35,15 @@ export type LoginPromptOutcome =
 	| { success: true }
 	| { success: false; reason: LoginPromptReason };
 export type AuthLoginOutcome =
-	| { success: true }
-	| { success: false; reason: AuthLoginReason };
+	| { success: true; method: LoginMethod }
+	| { success: false; method?: LoginMethod; reason: AuthLoginReason };
 export type AuthLogoutOutcome =
 	| { success: true }
 	| { success: false; reason: AuthLogoutReason };
+
+interface AuthLoginTrace {
+	setMethod(method: LoginMethod): void;
+}
 
 interface AuthRecoveryRecorder {
 	logReceived(): void;
@@ -45,32 +51,31 @@ interface AuthRecoveryRecorder {
 	setRefreshAttempted(attempted: boolean): void;
 }
 
+const loginMethods = {
+	unknown: "unknown",
+	mtls: "mtls",
+	provided_token: "provided_token",
+	stored_token: "stored_token",
+	keyring_token: "keyring_token",
+	cli_token: "cli_token",
+	oauth: "oauth",
+} as const satisfies Record<LoginMethod | "unknown", AuthLoginMethod>;
+
 export class AuthTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
 
 	public traceLogin<T extends AuthLoginOutcome>(
 		source: AuthLoginSource,
-		getMethod: () => AuthLoginMethod,
-		fn: () => Promise<T>,
+		fn: (trace: AuthLoginTrace) => Promise<T>,
 	): Promise<T> {
 		return this.telemetry.trace(
 			"auth.login",
 			async (span) => {
-				const setMethod = () => span.setProperty("method", getMethod());
 				try {
-					const result = await fn();
-					setMethod();
-					if (!result.success) {
-						span.setProperty("reason", result.reason);
-						if (result.reason === "auth_failed") {
-							span.markFailure();
-						} else {
-							span.markAborted();
-						}
-					}
+					const result = await fn(createLoginTrace(span));
+					recordLoginResult(span, result);
 					return result;
 				} catch (error) {
-					setMethod();
 					span.setProperty("reason", "exception");
 					throw error;
 				}
@@ -85,17 +90,7 @@ export class AuthTelemetry {
 		return this.telemetry.trace("auth.logout", async (span) => {
 			try {
 				const result = await fn();
-				if (!result.success) {
-					span.setProperty("reason", result.reason);
-					if (
-						result.reason === "not_authenticated" ||
-						result.reason === "credential_clear_cancelled"
-					) {
-						span.markAborted();
-					} else {
-						span.markFailure();
-					}
-				}
+				recordLogoutResult(span, result);
 				return result;
 			} catch (error) {
 				span.setProperty("reason", "exception");
@@ -149,17 +144,60 @@ export class AuthTelemetry {
 			"auth.login_prompted",
 			async (span) => {
 				const result = await fn();
-				if (!result.success) {
-					span.setProperty("reason", result.reason);
-					if (result.reason === "auth_failed") {
-						span.markFailure();
-					} else {
-						span.markAborted();
-					}
-				}
+				recordPromptResult(span, result);
 				return result;
 			},
 			{ trigger },
 		);
 	}
+}
+
+function createLoginTrace(span: Span): AuthLoginTrace {
+	return {
+		setMethod: (method) => span.setProperty("method", loginMethods[method]),
+	};
+}
+
+function recordLoginResult(span: Span, result: AuthLoginOutcome): void {
+	if (result.method) {
+		span.setProperty("method", loginMethods[result.method]);
+	}
+	if (result.success) {
+		return;
+	}
+
+	recordReason(span, result.reason);
+}
+
+function recordLogoutResult(span: Span, result: AuthLogoutOutcome): void {
+	if (result.success) {
+		return;
+	}
+
+	span.setProperty("reason", result.reason);
+	if (
+		result.reason === "not_authenticated" ||
+		result.reason === "credential_clear_cancelled"
+	) {
+		span.markAborted();
+		return;
+	}
+	span.markFailure();
+}
+
+function recordPromptResult(span: Span, result: LoginPromptOutcome): void {
+	if (result.success) {
+		return;
+	}
+
+	recordReason(span, result.reason);
+}
+
+function recordReason(span: Span, reason: AuthLoginReason): void {
+	span.setProperty("reason", reason);
+	if (reason === "auth_failed" || reason === "exception") {
+		span.markFailure();
+		return;
+	}
+	span.markAborted();
 }

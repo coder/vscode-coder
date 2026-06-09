@@ -191,7 +191,12 @@ describe("LoginCoordinator", () => {
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			expect(result).toEqual({ success: true, user, token: "stored-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "stored_token",
+				user,
+				token: "stored-token",
+			});
 
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
 			expect(auth?.token).toBe("stored-token");
@@ -215,7 +220,12 @@ describe("LoginCoordinator", () => {
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			expect(result).toEqual({ success: true, user, token: "new-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "cli_token",
+				user,
+				token: "new-token",
+			});
 
 			// Verify new token was persisted
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
@@ -259,10 +269,17 @@ describe("LoginCoordinator", () => {
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			// Both should complete with the same result
 			const [result1, result2] = await Promise.all([login1, login2]);
-			expect(result1.success).toBe(true);
-			expect(result1).toEqual(result2);
+			expect(result1).toMatchObject({
+				success: true,
+				method: "cli_token",
+				token: "new-token",
+			});
+			expect(result2).toMatchObject({
+				success: true,
+				method: "stored_token",
+				token: "new-token",
+			});
 
 			// Input box should only be shown once (guard prevents duplicate prompts)
 			expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
@@ -284,7 +301,12 @@ describe("LoginCoordinator", () => {
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			expect(result).toEqual({ success: true, user, token: "" });
+			expect(result).toEqual({
+				success: true,
+				method: "mtls",
+				user,
+				token: "",
+			});
 
 			// Verify empty string token was persisted
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
@@ -372,7 +394,12 @@ describe("LoginCoordinator", () => {
 				token: "provided-token",
 			});
 
-			expect(result).toEqual({ success: true, user, token: "provided-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "provided_token",
+				user,
+				token: "provided-token",
+			});
 		});
 
 		it("falls back to stored token when provided token is invalid", async () => {
@@ -396,7 +423,12 @@ describe("LoginCoordinator", () => {
 				token: "invalid-provided-token",
 			});
 
-			expect(result).toEqual({ success: true, user, token: "stored-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "stored_token",
+				user,
+				token: "stored-token",
+			});
 		});
 
 		it("prompts user when both provided and stored tokens are invalid", async () => {
@@ -430,6 +462,7 @@ describe("LoginCoordinator", () => {
 
 			expect(result).toEqual({
 				success: true,
+				method: "cli_token",
 				user,
 				token: "user-entered-token",
 			});
@@ -467,6 +500,7 @@ describe("LoginCoordinator", () => {
 
 			expect(result).toEqual({
 				success: true,
+				method: "cli_token",
 				user,
 				token: "user-entered-token",
 			});
@@ -536,22 +570,16 @@ describe("LoginCoordinator", () => {
 
 			const result = await login();
 
-			expect(result).toEqual({ success: true, user, token: "stored-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "stored_token",
+				user,
+				token: "stored-token",
+			});
 		});
 	});
 
 	describe("telemetry", () => {
-		function setupTelemetryContext() {
-			const sink = new TestSink();
-			const ctx = createTestContext(createTestTelemetryService(sink));
-			return { ...ctx, sink };
-		}
-
-		const loginOptions = () => ({
-			url: TEST_URL,
-			safeHostname: TEST_HOSTNAME,
-		});
-
 		const dialogOptions = (trigger: "auth_required" | "missing_session") => ({
 			url: TEST_URL,
 			safeHostname: TEST_HOSTNAME,
@@ -572,77 +600,6 @@ describe("LoginCoordinator", () => {
 				reason?: "user_dismissed" | "no_url_provided" | "auth_failed";
 			};
 		}
-
-		it("records auth.login success with source, method, result, and duration", async () => {
-			const { mockConfig, coordinator, mockSuccessfulAuth, sink } =
-				setupTelemetryContext();
-			enableMTLS(mockConfig);
-			mockSuccessfulAuth();
-
-			await coordinator.ensureLoggedIn({
-				...loginOptions(),
-				source: "uri",
-			});
-
-			const event = sink.expectOne("auth.login");
-			expect(event.properties).toMatchObject({
-				source: "uri",
-				method: "mtls",
-				result: "success",
-			});
-			expect(event.properties.reason).toBeUndefined();
-			expect(event.error).toBeUndefined();
-			expect(event.measurements.durationMs).toEqual(expect.any(Number));
-		});
-
-		it("records auth.login cancellation with bounded reason", async () => {
-			const { userInteraction, coordinator, mockAuthFailure, sink } =
-				setupTelemetryContext();
-			mockAuthFailure();
-			userInteraction.setInputBoxValue(undefined);
-
-			await coordinator.ensureLoggedIn(loginOptions());
-
-			const event = sink.expectOne("auth.login");
-			expect(event.properties).toMatchObject({
-				source: "direct",
-				method: "legacy_token",
-				result: "aborted",
-				reason: "user_dismissed",
-			});
-			expect(event.error).toBeUndefined();
-		});
-
-		it("records auth.login auth failures as errors with bounded reason", async () => {
-			const { mockConfig, coordinator, mockAuthFailure, sink } =
-				setupTelemetryContext();
-			enableMTLS(mockConfig);
-			mockAuthFailure("Certificate error");
-
-			await coordinator.ensureLoggedIn(loginOptions());
-
-			const event = sink.expectOne("auth.login");
-			expect(event.properties).toMatchObject({
-				method: "mtls",
-				result: "error",
-				reason: "auth_failed",
-			});
-			expect(event.error).toBeUndefined();
-		});
-
-		it("does not duplicate auth.login when tracing is disabled by caller", async () => {
-			const { mockConfig, coordinator, mockSuccessfulAuth, sink } =
-				setupTelemetryContext();
-			enableMTLS(mockConfig);
-			mockSuccessfulAuth();
-
-			await coordinator.ensureLoggedIn({
-				...loginOptions(),
-				traceLogin: false,
-			});
-
-			expect(sink.eventsNamed("auth.login")).toHaveLength(0);
-		});
 
 		it.each<PromptCase>([
 			{
