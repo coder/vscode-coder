@@ -150,6 +150,41 @@ describe("WorkspaceOperationTelemetry", () => {
 			});
 		});
 	});
+
+	describe("traceUpdateConfirmationPrompted", () => {
+		it("emits result=success with accepted action", async () => {
+			const { sink, instance: ops } = setup(newOps);
+
+			const result = await ops.traceUpdateConfirmationPrompted(() =>
+				Promise.resolve("Update and Restart"),
+			);
+
+			expect(result).toBe("Update and Restart");
+			expect(sink.expectOne("workspace.update.prompted")).toMatchObject({
+				properties: {
+					action: "update",
+					prompt: "confirmation",
+					result: "success",
+				},
+			});
+		});
+
+		it("emits result=aborted when dismissed", async () => {
+			const { sink, instance: ops } = setup(newOps);
+
+			const result = await ops.traceUpdateConfirmationPrompted(() =>
+				Promise.resolve(undefined),
+			);
+
+			expect(result).toBeUndefined();
+			expect(sink.expectOne("workspace.update.prompted")).toMatchObject({
+				properties: {
+					prompt: "confirmation",
+					result: "aborted",
+				},
+			});
+		});
+	});
 });
 
 describe("WorkspaceStateTelemetry.observe", () => {

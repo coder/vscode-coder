@@ -11,6 +11,7 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { TelemetryReporter } from "../telemetry/reporter";
+import type { Span } from "../telemetry/span";
 
 /** Sentinel for `from*` before any state is observed. `"unknown"` is a real server-reported value, so avoid it. */
 const INITIAL_STATE = "none";
@@ -25,6 +26,7 @@ const PROVISIONING_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
 ]);
 
 export type WorkspacePromptAction = "start" | "update";
+export type WorkspaceUpdatePrompt = "parameters" | "confirmation";
 
 interface ObservedWorkspaceState {
 	readonly status: WorkspaceStatus;
@@ -199,27 +201,61 @@ export class WorkspaceOperationTelemetry {
 	 * Records dismissal as `result: "aborted"`. The framework treats any throw
 	 * as `result: "error"`, so we return inside the span and rethrow outside.
 	 */
-	public async traceUpdatePrompted(
+	public traceUpdatePrompted(
 		fn: () => Promise<WorkspaceBuildParameter[]>,
 	): Promise<WorkspaceBuildParameter[]> {
-		let cancel: WorkspaceUpdateCancelledError | undefined;
-		const parameters = await this.telemetry.trace(
+		return this.traceUpdatePrompt("parameters", fn, {
+			isCancelled: (error) => error instanceof WorkspaceUpdateCancelledError,
+			cancelledValue: () => [],
+		});
+	}
+
+	public traceUpdateConfirmationPrompted<T>(
+		fn: () => Promise<T | undefined>,
+	): Promise<T | undefined> {
+		return this.traceUpdatePrompt("confirmation", fn, {
+			isCancelled: (value) => value === undefined,
+			recordAccepted: (span) => span.setProperty("action", "update"),
+		});
+	}
+
+	private async traceUpdatePrompt<T>(
+		prompt: WorkspaceUpdatePrompt,
+		fn: () => Promise<T>,
+		options: {
+			readonly isCancelled: (value: unknown) => boolean;
+			readonly cancelledValue?: () => T;
+			readonly recordAccepted?: (span: Span, value: T) => void;
+		},
+	): Promise<T> {
+		let cancelledError: Error | undefined;
+		const cancelledValue = options.cancelledValue;
+		const result = await this.telemetry.trace(
 			"workspace.update.prompted",
 			async (span) => {
 				try {
-					return await fn();
-				} catch (error) {
-					if (error instanceof WorkspaceUpdateCancelledError) {
+					const value = await fn();
+					if (options.isCancelled(value)) {
 						span.markAborted();
-						cancel = error;
-						return [];
+					} else {
+						options.recordAccepted?.(span, value);
+					}
+					return value;
+				} catch (error) {
+					if (error instanceof Error && options.isCancelled(error)) {
+						span.markAborted();
+						cancelledError = error;
+						if (!cancelledValue) {
+							throw error;
+						}
+						return cancelledValue();
 					}
 					throw error;
 				}
 			},
-			{ prompt: "parameters" },
+			{ prompt },
 		);
-		if (cancel) throw cancel;
-		return parameters;
+		if (cancelledError !== undefined) throw cancelledError;
+		return result;
 	}
 }

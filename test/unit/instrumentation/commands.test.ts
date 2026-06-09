@@ -63,12 +63,14 @@ describe("command instrumentation helpers", () => {
 		const traces = new CommandTelemetry(service);
 
 		await traces.workspacePicker("workspace_open", (telemetry) => {
-			telemetry.cancelled(3);
-			return Promise.resolve({ status: "cancelled" });
+			const result = { status: "cancelled" } as const;
+			telemetry.finish(result, 3);
+			return Promise.resolve(result);
 		});
 		await traces.workspacePicker("workspace_open", (telemetry) => {
-			telemetry.failed("fetch_failed", 0);
-			return Promise.resolve({ status: "failed", category: "fetch_failed" });
+			const result = { status: "failed", category: "fetch_failed" } as const;
+			telemetry.finish(result, 0);
+			return Promise.resolve(result);
 		});
 
 		const [cancelled, failed] = sink.eventsNamed("workspace.picker.prompted");
@@ -86,14 +88,14 @@ describe("command instrumentation helpers", () => {
 		const traces = new CommandTelemetry(service);
 		const selection = workspaceWithAgents();
 
-		await traces.workspaceOpen("command", undefined, (telemetry) =>
-			Promise.resolve(
-				telemetry.cancel("agent_picker", { workspace: selection.workspace }),
-			),
-		);
-		await traces.workspaceOpen("command", undefined, (telemetry) =>
-			Promise.resolve(telemetry.fail("fetch_failed")),
-		);
+		await traces.workspaceOpen("command", undefined, (telemetry) => {
+			telemetry.cancel("agent_picker", { workspace: selection.workspace });
+			return Promise.resolve(false);
+		});
+		await traces.workspaceOpen("command", undefined, (telemetry) => {
+			telemetry.fail("fetch_failed");
+			return Promise.resolve(false);
+		});
 
 		const [cancelled, failed] = sink.eventsNamed("workspace.open");
 		expect(cancelled.properties).toMatchObject({
@@ -128,14 +130,12 @@ describe("command instrumentation helpers", () => {
 	it("records diagnostic cancellation and failure categories", async () => {
 		const { sink, service } = createTelemetryHarness();
 		const traces = new CommandTelemetry(service);
-		const failure = new Error("boom");
-
 		await traces.diagnostic("support_bundle", (telemetry) => {
 			telemetry.cancel("save_dialog");
 			return Promise.resolve();
 		});
 		await traces.diagnostic("support_bundle", (telemetry) => {
-			telemetry.fail(failure, "unsupported_cli");
+			telemetry.fail("unsupported_cli");
 			return Promise.resolve();
 		});
 
@@ -158,23 +158,20 @@ describe("command instrumentation helpers", () => {
 		const traces = new CommandTelemetry(service);
 
 		await traces.diagnostic("speed_test", (telemetry) => {
-			const parsed = telemetry.speedtestSuccess(
-				JSON.stringify({
-					overall: {
+			telemetry.speedtestSuccess({
+				overall: {
+					start_time_seconds: 0,
+					end_time_seconds: 5,
+					throughput_mbits: 42,
+				},
+				intervals: [
+					{
 						start_time_seconds: 0,
 						end_time_seconds: 5,
 						throughput_mbits: 42,
 					},
-					intervals: [
-						{
-							start_time_seconds: 0,
-							end_time_seconds: 5,
-							throughput_mbits: 42,
-						},
-					],
-				}),
-			);
-			expect(parsed.overall.throughput_mbits).toBe(42);
+				],
+			});
 			return Promise.resolve();
 		});
 

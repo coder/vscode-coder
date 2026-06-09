@@ -29,24 +29,23 @@ const PROGRESS_OPTIONS = {
 	cancellable: true,
 } as const;
 
-export type ExportTelemetryOutcome =
-	| { readonly status: "cancelled"; readonly stage: "prompt" | "progress" }
-	| { readonly status: "failed"; readonly error: unknown }
-	| {
-			readonly status: "success";
-			readonly eventCount: number;
-			readonly format: ExportFormat;
-	  };
+export interface ExportTelemetryObserver {
+	cancelled(stage: "prompt" | "progress"): void;
+	failed(): void;
+	succeeded(format: ExportFormat, eventCount: number): void;
+}
 
 export async function runExportTelemetryCommand(
 	telemetryDir: string,
 	logger: Logger,
 	flushTelemetry: () => Promise<FlushStatus>,
 	context: TelemetryContext,
-): Promise<ExportTelemetryOutcome> {
+	observer?: ExportTelemetryObserver,
+): Promise<void> {
 	const choice = await promptForExport();
 	if (!choice) {
-		return { status: "cancelled", stage: "prompt" };
+		observer?.cancelled("prompt");
+		return;
 	}
 
 	const request: ExportRequest = {
@@ -64,7 +63,7 @@ export async function runExportTelemetryCommand(
 		PROGRESS_OPTIONS,
 	);
 
-	return reportOutcome(result, choice, logger);
+	await reportOutcome(result, choice, logger, observer);
 }
 
 /** Wires the pipeline's host hooks to the progress UI and the logger. */
@@ -92,27 +91,30 @@ async function reportOutcome(
 	result: ProgressResult<number>,
 	choice: ExportChoice,
 	logger: Logger,
-): Promise<ExportTelemetryOutcome> {
+	observer?: ExportTelemetryObserver,
+): Promise<void> {
 	if (!result.ok) {
 		if (result.cancelled) {
-			return { status: "cancelled", stage: "progress" };
+			observer?.cancelled("progress");
+			return;
 		}
+		observer?.failed();
 		logger.error("Telemetry export failed", result.error);
 		void vscode.window.showErrorMessage(
 			`Telemetry export failed: ${toError(result.error).message}`,
 		);
-		return { status: "failed", error: result.error };
+		return;
 	}
 
 	const eventCount = result.value;
+	observer?.succeeded(choice.format, eventCount);
 	if (eventCount === 0) {
 		void vscode.window.showInformationMessage(
 			`No telemetry events found for ${choice.range.label}.`,
 		);
-		return { status: "success", eventCount, format: choice.format };
+		return;
 	}
 	await notifyExportSucceeded(choice.outputPath, eventCount, logger);
-	return { status: "success", eventCount, format: choice.format };
 }
 
 async function notifyExportSucceeded(

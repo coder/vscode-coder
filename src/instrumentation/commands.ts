@@ -1,6 +1,5 @@
 import { extractAgents } from "../api/api-helper";
 import { isAbortError } from "../error/errorUtils";
-import { parseSpeedtestResult } from "../webviews/speedtest/types";
 
 import type {
 	Workspace,
@@ -9,7 +8,6 @@ import type {
 
 import type { SpeedtestResult } from "@repo/shared";
 
-import type { ProgressResult } from "../progress";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
@@ -22,10 +20,10 @@ export type WorkspaceOpenSource =
 
 export type WorkspacePickerSource = "workspace_open" | "diagnostic";
 export type WorkspacePickerFailureCategory = "fetch_failed";
+type AbortableFailureCategory = "aborted" | "error";
 export type WorkspaceOpenFailureCategory =
 	| WorkspacePickerFailureCategory
-	| "aborted"
-	| "error";
+	| AbortableFailureCategory;
 export type WorkspacePickerResult =
 	| { readonly status: "selected"; readonly workspace: Workspace }
 	| { readonly status: "cancelled" }
@@ -41,10 +39,9 @@ export type DiagnosticFailureCategory =
 	| WorkspacePickerFailureCategory
 	| "parse_error"
 	| "unsupported_cli"
-	| "aborted"
 	| "error";
 export type DevcontainerMode = "dev_container" | "attached_container";
-export type DevcontainerFailureCategory = "aborted" | "error";
+export type DevcontainerFailureCategory = AbortableFailureCategory;
 export type WorkspaceOpenCancelStage =
 	| "workspace_picker"
 	| "agent_picker"
@@ -56,47 +53,13 @@ export type DiagnosticCancelStage =
 	| "save_dialog"
 	| "progress";
 
-type WorkspaceStateBucket =
-	| "running"
-	| "stopped"
-	| "failed"
-	| "starting"
-	| "stopping"
-	| "pending"
-	| "deleting"
-	| "deleted"
-	| "canceled"
-	| "canceling"
-	| "unknown";
-
-type AgentStatusBucket =
-	| "connected"
-	| "connecting"
-	| "disconnected"
-	| "timeout"
-	| "unknown";
-
-type AgentLifecycleBucket =
-	| "ready"
-	| "starting"
-	| "created"
-	| "start_error"
-	| "start_timeout"
-	| "shutting_down"
-	| "off"
-	| "shutdown_error"
-	| "shutdown_timeout"
-	| "unknown";
-
 export interface WorkspaceOpenSelection {
 	readonly workspace: Workspace;
 	readonly agent?: WorkspaceAgent;
 }
 
 export interface WorkspacePickerTrace {
-	selected(workspace: Workspace, resultCount: number): void;
-	cancelled(resultCount: number): void;
-	failed(category: WorkspacePickerFailureCategory, resultCount: number): void;
+	finish(result: WorkspacePickerResult, resultCount: number): void;
 }
 
 export interface WorkspaceOpenTrace {
@@ -104,24 +67,17 @@ export interface WorkspaceOpenTrace {
 	cancel(
 		stage: WorkspaceOpenCancelStage,
 		selection?: WorkspaceOpenSelection,
-	): false;
-	fail(category: WorkspaceOpenFailureCategory): false;
+	): void;
+	fail(category: WorkspaceOpenFailureCategory): void;
 	handoff(kind: "folder" | "empty_window"): void;
 }
 
 export interface DiagnosticTrace {
 	cancel(stage: DiagnosticCancelStage): void;
-	fail(error: unknown, category?: DiagnosticFailureCategory): void;
-	progressResult<T>(
-		result: ProgressResult<T>,
-	): result is { ok: true; value: T };
+	fail(category?: DiagnosticFailureCategory): void;
 	speedtestRequestedDuration(seconds: number): void;
-	speedtestSuccess(rawJson: string): SpeedtestResult;
+	speedtestSuccess(result: SpeedtestResult): void;
 	exportSuccess(format: string, eventCount: number): void;
-}
-
-export interface DevcontainerTrace {
-	fail(error: unknown): void;
 }
 
 export class CommandTelemetry {
@@ -161,7 +117,7 @@ export class CommandTelemetry {
 				} catch (error) {
 					failed = true;
 					deferredError = error;
-					trace.fail(categorizeWorkspaceOpenFailure(error));
+					trace.fail(categorizeAbortableFailure(error));
 					return false;
 				}
 			},
@@ -186,20 +142,19 @@ export class CommandTelemetry {
 
 	public async devcontainerOpen(
 		mode: DevcontainerMode,
-		fn: (trace: DevcontainerTrace) => Promise<void>,
+		fn: () => Promise<void>,
 	): Promise<void> {
 		let deferredError: unknown;
 		let failed = false;
 		await this.telemetry.trace(
 			"workspace.dev_container.open",
 			async (span) => {
-				const trace = new SpanDevcontainerTrace(span);
 				try {
-					await fn(trace);
+					await fn();
 				} catch (error) {
 					failed = true;
 					deferredError = error;
-					trace.fail(error);
+					recordFailure(span, categorizeAbortableFailure(error));
 				}
 			},
 			{ mode },
@@ -213,19 +168,8 @@ export class CommandTelemetry {
 class SpanWorkspacePickerTrace implements WorkspacePickerTrace {
 	public constructor(private readonly span: Span) {}
 
-	public selected(workspace: Workspace, resultCount: number): void {
-		setWorkspacePickerResult(this.span, workspace, resultCount);
-	}
-
-	public cancelled(resultCount: number): void {
-		setWorkspacePickerResult(this.span, undefined, resultCount);
-	}
-
-	public failed(
-		category: WorkspacePickerFailureCategory,
-		resultCount: number,
-	): void {
-		setWorkspacePickerFailure(this.span, category, resultCount);
+	public finish(result: WorkspacePickerResult, resultCount: number): void {
+		recordWorkspacePickerResult(this.span, result, resultCount);
 	}
 }
 
@@ -233,18 +177,18 @@ class SpanWorkspaceOpenTrace implements WorkspaceOpenTrace {
 	public constructor(private readonly span: Span) {}
 
 	public select(selection: WorkspaceOpenSelection): void {
-		setWorkspaceOpenSelection(this.span, selection);
+		recordWorkspaceContext(this.span, selection.workspace, selection.agent);
 	}
 
 	public cancel(
 		stage: WorkspaceOpenCancelStage,
 		selection?: WorkspaceOpenSelection,
-	): false {
-		return markWorkspaceOpenCancelled(this.span, stage, selection);
+	): void {
+		recordWorkspaceOpenCancelled(this.span, stage, selection);
 	}
 
-	public fail(category: WorkspaceOpenFailureCategory): false {
-		return markWorkspaceOpenFailure(this.span, category);
+	public fail(category: WorkspaceOpenFailureCategory): void {
+		recordFailure(this.span, category);
 	}
 
 	public handoff(kind: "folder" | "empty_window"): void {
@@ -256,28 +200,19 @@ class SpanDiagnosticTrace implements DiagnosticTrace {
 	public constructor(private readonly span: Span) {}
 
 	public cancel(stage: DiagnosticCancelStage): void {
-		markDiagnosticCancelled(this.span, stage);
+		recordCancelled(this.span, stage);
 	}
 
-	public fail(
-		error: unknown,
-		category: DiagnosticFailureCategory = categorizeFailure(error),
-	): void {
-		markDiagnosticFailure(this.span, error, category);
-	}
-
-	public progressResult<T>(
-		result: ProgressResult<T>,
-	): result is { ok: true; value: T } {
-		return setDiagnosticProgressResult(this.span, result);
+	public fail(category: DiagnosticFailureCategory = "error"): void {
+		recordFailure(this.span, category);
 	}
 
 	public speedtestRequestedDuration(seconds: number): void {
 		this.span.setMeasurement("requested_duration_seconds", seconds);
 	}
 
-	public speedtestSuccess(rawJson: string): SpeedtestResult {
-		return setSpeedtestSuccess(this.span, rawJson);
+	public speedtestSuccess(result: SpeedtestResult): void {
+		recordSpeedtestResult(this.span, result);
 	}
 
 	public exportSuccess(format: string, eventCount: number): void {
@@ -286,25 +221,13 @@ class SpanDiagnosticTrace implements DiagnosticTrace {
 	}
 }
 
-class SpanDevcontainerTrace implements DevcontainerTrace {
-	public constructor(private readonly span: Span) {}
-
-	public fail(error: unknown): void {
-		this.span.setProperty(
-			"failure_category",
-			categorizeDevcontainerFailure(error),
-		);
-		this.span.markFailure();
-	}
-}
-
-function setWorkspaceProperties(
+function recordWorkspaceContext(
 	span: Span,
 	workspace: Workspace,
 	agent?: WorkspaceAgent,
 ): void {
 	const agents = extractAgents(workspace.latest_build.resources);
-	span.setProperty("workspace_status", bucketWorkspaceStatus(workspace));
+	span.setProperty("workspace_status", workspace.latest_build.status);
 	span.setProperty("workspace_outdated", workspace.outdated);
 	span.setMeasurement("agent_count", agents.length);
 	span.setMeasurement(
@@ -314,171 +237,61 @@ function setWorkspaceProperties(
 	if (!agent) {
 		return;
 	}
-	span.setProperty("agent_status", bucketAgentStatus(agent));
-	span.setProperty("agent_lifecycle_state", bucketAgentLifecycle(agent));
+	span.setProperty("agent_status", agent.status);
+	span.setProperty("agent_lifecycle_state", agent.lifecycle_state);
 }
 
-function setWorkspacePickerResult(
+function recordWorkspacePickerResult(
 	span: Span,
-	workspace: Workspace | undefined,
+	result: WorkspacePickerResult,
 	resultCount: number,
 ): void {
 	span.setMeasurement("workspace_count", resultCount);
-	if (!workspace) {
-		span.markAborted();
+	if (result.status === "selected") {
+		recordWorkspaceContext(span, result.workspace);
 		return;
 	}
-	setWorkspaceProperties(span, workspace);
+	if (result.status === "failed") {
+		recordFailure(span, result.category);
+		return;
+	}
+	span.markAborted();
 }
 
-function setWorkspacePickerFailure(
-	span: Span,
-	category: WorkspacePickerFailureCategory,
-	resultCount: number,
-): void {
-	span.setMeasurement("workspace_count", resultCount);
-	span.setProperty("failure_category", category);
-	span.markFailure();
-}
-
-function setWorkspaceOpenSelection(
-	span: Span,
-	selection: WorkspaceOpenSelection,
-): void {
-	setWorkspaceProperties(span, selection.workspace, selection.agent);
-}
-
-function markWorkspaceOpenCancelled(
+function recordWorkspaceOpenCancelled(
 	span: Span,
 	stage: WorkspaceOpenCancelStage,
 	selection?: WorkspaceOpenSelection,
-): false {
-	span.setProperty("cancel_stage", stage);
-	if (selection) {
-		setWorkspaceOpenSelection(span, selection);
-	}
-	span.markAborted();
-	return false;
-}
-
-function markWorkspaceOpenFailure(
-	span: Span,
-	category: WorkspaceOpenFailureCategory,
-	selection?: WorkspaceOpenSelection,
-): false {
-	span.setProperty("failure_category", category);
-	if (selection) {
-		setWorkspaceOpenSelection(span, selection);
-	}
-	span.markFailure();
-	return false;
-}
-
-function setDiagnosticProgressResult<T>(
-	span: Span,
-	result: ProgressResult<T>,
-): result is { ok: true; value: T } {
-	if (result.ok) {
-		return true;
-	}
-	if (result.cancelled) {
-		markDiagnosticCancelled(span, "progress");
-	} else {
-		markDiagnosticFailure(span, result.error);
-	}
-	return false;
-}
-
-function markDiagnosticCancelled(
-	span: Span,
-	stage: DiagnosticCancelStage,
 ): void {
 	span.setProperty("cancel_stage", stage);
+	if (selection) {
+		recordWorkspaceContext(span, selection.workspace, selection.agent);
+	}
 	span.markAborted();
 }
 
-function markDiagnosticFailure(
+function recordCancelled(span: Span, stage: DiagnosticCancelStage): void {
+	span.setProperty("cancel_stage", stage);
+	span.markAborted();
+}
+
+function recordFailure(
 	span: Span,
-	error: unknown,
-	category: DiagnosticFailureCategory = categorizeFailure(error),
+	category:
+		| DiagnosticFailureCategory
+		| WorkspaceOpenFailureCategory
+		| DevcontainerFailureCategory,
 ): void {
 	span.setProperty("failure_category", category);
 	span.markFailure();
 }
 
-function setSpeedtestSuccess(span: Span, rawJson: string): SpeedtestResult {
-	const parsed = parseSpeedtestResult(rawJson);
-	span.setMeasurement("interval_count", parsed.intervals.length);
-	span.setMeasurement("throughput_mbits", parsed.overall.throughput_mbits);
-	return parsed;
+function recordSpeedtestResult(span: Span, result: SpeedtestResult): void {
+	span.setMeasurement("interval_count", result.intervals.length);
+	span.setMeasurement("throughput_mbits", result.overall.throughput_mbits);
 }
 
-function categorizeFailure(error: unknown): DiagnosticFailureCategory {
-	if (isAbortError(error)) {
-		return "aborted";
-	}
-	return "error";
-}
-
-function categorizeWorkspaceOpenFailure(
-	error: unknown,
-): WorkspaceOpenFailureCategory {
-	if (isAbortError(error)) {
-		return "aborted";
-	}
-	return "error";
-}
-
-function bucketWorkspaceStatus(workspace: Workspace): WorkspaceStateBucket {
-	switch (workspace.latest_build.status) {
-		case "running":
-		case "stopped":
-		case "failed":
-		case "starting":
-		case "stopping":
-		case "pending":
-		case "deleting":
-		case "deleted":
-		case "canceled":
-		case "canceling":
-			return workspace.latest_build.status;
-		default:
-			return "unknown";
-	}
-}
-
-function bucketAgentStatus(agent: WorkspaceAgent): AgentStatusBucket {
-	switch (agent.status) {
-		case "connected":
-		case "connecting":
-		case "disconnected":
-		case "timeout":
-			return agent.status;
-		default:
-			return "unknown";
-	}
-}
-
-function bucketAgentLifecycle(agent: WorkspaceAgent): AgentLifecycleBucket {
-	switch (agent.lifecycle_state) {
-		case "ready":
-		case "starting":
-		case "created":
-		case "start_error":
-		case "start_timeout":
-		case "shutting_down":
-		case "off":
-		case "shutdown_error":
-		case "shutdown_timeout":
-			return agent.lifecycle_state;
-		default:
-			return "unknown";
-	}
-}
-
-function categorizeDevcontainerFailure(
-	error: unknown,
-): DevcontainerFailureCategory {
+function categorizeAbortableFailure(error: unknown): AbortableFailureCategory {
 	if (isAbortError(error)) {
 		return "aborted";
 	}
