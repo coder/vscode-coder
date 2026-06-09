@@ -14,6 +14,7 @@ import {
 	CliDownloadsDisabledError,
 	CliFallbackDeclinedError,
 	CliTelemetry,
+	type CliConfigureTrace,
 	type CliDownloadAction,
 	type CliDownloadReason,
 	type CliVersionCheckOutcome,
@@ -54,16 +55,6 @@ type SingleVerifyResult =
 	| { kind: "verified" }
 	| { kind: "bypassed" }
 	| { kind: "sig_unavailable"; status: number };
-
-function getDownloadAction(
-	downloadsEnabled: boolean,
-	hasExistingBinary: boolean,
-): CliDownloadAction {
-	if (downloadsEnabled) {
-		return "download";
-	}
-	return hasExistingBinary ? "fallback" : "blocked";
-}
 
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
@@ -142,73 +133,82 @@ export class CliManager {
 	 * unable to download a working binary, whether because of network issues or
 	 * downloads being disabled.
 	 */
-	public async fetchBinary(restClient: Api): Promise<string> {
-		return this.cliTelemetry.resolve(async (trace) => {
-			const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
-			if (!baseUrl) {
-				trace.setFailure("unknown");
-				throw new Error("REST client has no base URL configured");
-			}
-			const safeHostname = toSafeHost(baseUrl);
-			const cfg = vscode.workspace.getConfiguration("coder");
-			// Settings can be undefined when set to their defaults (true in this
-			// case), so explicitly check against false.
-			const enableDownloads = cfg.get("enableDownloads") !== false;
-			this.output.debug(
-				"Downloads are",
-				enableDownloads ? "enabled" : "disabled",
+	public fetchBinary(restClient: Api): Promise<string> {
+		return this.cliTelemetry.resolve((trace) =>
+			this.resolveBinary(restClient, trace),
+		);
+	}
+
+	private async resolveBinary(
+		restClient: Api,
+		trace: CliResolveTrace,
+	): Promise<string> {
+		const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
+		if (!baseUrl) {
+			trace.setFailure("unknown");
+			throw new Error("REST client has no base URL configured");
+		}
+		const safeHostname = toSafeHost(baseUrl);
+		const cfg = vscode.workspace.getConfiguration("coder");
+		// Settings can be undefined when set to their defaults (true in this
+		// case), so explicitly check against false.
+		const enableDownloads = cfg.get("enableDownloads") !== false;
+		this.output.debug(
+			"Downloads are",
+			enableDownloads ? "enabled" : "disabled",
+		);
+
+		const resolved = await trace.cacheLookup(() =>
+			this.lookupBinary(safeHostname),
+		);
+		const { buildInfo, parsedVersion, existingVersion, downloadReason } =
+			await trace.versionCheck(() =>
+				this.checkResolvedBinary(restClient, resolved),
 			);
 
-			const resolved = await trace.cacheLookup(() =>
-				this.lookupBinary(safeHostname),
-			);
-			const { buildInfo, parsedVersion, existingVersion, downloadReason } =
-				await trace.versionCheck(() =>
-					this.checkResolvedBinary(restClient, resolved),
-				);
+		if (existingVersion === buildInfo.version) {
+			this.output.debug("Existing binary matches server version");
+			trace.setOutcome("cache_hit");
+			return resolved.binPath;
+		}
 
-			if (existingVersion === buildInfo.version) {
-				this.output.debug("Existing binary matches server version");
-				trace.setOutcome("cache_hit");
-				return resolved.binPath;
-			}
+		let action: CliDownloadAction;
+		if (enableDownloads) {
+			action = "download";
+		} else {
+			action = existingVersion !== null ? "fallback" : "blocked";
+		}
+		await trace.downloadDecision(downloadReason, action);
 
-			await trace.recordDownloadDecision({
-				reason: downloadReason,
-				action: getDownloadAction(enableDownloads, existingVersion !== null),
-			});
-
-			if (!enableDownloads) {
-				if (existingVersion) {
-					this.output.info(
-						"Using existing binary despite version mismatch because downloads are disabled",
-					);
-					trace.setOutcome("download_disabled_fallback");
-					return resolved.binPath;
-				}
-				this.output.warn(
-					"Unable to download CLI because downloads are disabled",
-				);
-				const error = new CliDownloadsDisabledError();
-				trace.setFailure("downloads_disabled");
-				throw error;
-			}
-
+		if (!enableDownloads) {
 			if (existingVersion) {
 				this.output.info(
-					"Downloading since existing binary does not match the server version",
+					"Using existing binary despite version mismatch because downloads are disabled",
 				);
+				trace.setOutcome("download_disabled_fallback");
+				return resolved.binPath;
 			}
+			this.output.warn("Unable to download CLI because downloads are disabled");
+			trace.setFailure("downloads_disabled");
+			throw new CliDownloadsDisabledError();
+		}
 
-			return this.downloadBinary(
-				restClient,
-				trace,
+		if (existingVersion) {
+			this.output.info(
+				"Downloading since existing binary does not match the server version",
+			);
+		}
+
+		return this.downloadBinary(
+			restClient,
+			{
 				resolved,
 				parsedVersion,
-				buildInfo.version,
+				serverVersion: buildInfo.version,
 				downloadReason,
-			);
-		});
+			},
+			trace,
+		);
 	}
 
 	private async lookupBinary(safeHostname: string): Promise<ResolvedBinary> {
@@ -282,12 +282,15 @@ export class CliManager {
 
 	private async downloadBinary(
 		restClient: Api,
+		options: {
+			resolved: ResolvedBinary;
+			parsedVersion: semver.SemVer;
+			serverVersion: string;
+			downloadReason: CliDownloadReason;
+		},
 		trace: CliResolveTrace,
-		resolved: ResolvedBinary,
-		parsedVersion: semver.SemVer,
-		serverVersion: string,
-		downloadReason: CliDownloadReason,
 	): Promise<string> {
+		const { resolved, parsedVersion, serverVersion, downloadReason } = options;
 		// Always download using the platform-specific name.
 		const downloadBinPath = path.join(
 			path.dirname(resolved.binPath),
@@ -308,7 +311,7 @@ export class CliManager {
 			this.output.debug("Acquired download lock");
 
 			if (lockResult.waited) {
-				const waitResult = await trace.lockWaitRecheck(() =>
+				const waitResult = await trace.lockRecheck(() =>
 					this.recheckBinaryAfterWait(restClient, downloadBinPath),
 				);
 				if (waitResult.matches) {
@@ -324,9 +327,11 @@ export class CliManager {
 				async (span) => {
 					const downloadedBinPath = await this.performBinaryDownload(
 						restClient,
-						latestVersion,
-						downloadBinPath,
-						progressLogPath,
+						{
+							parsedVersion: latestVersion,
+							binPath: downloadBinPath,
+							progressLogPath,
+						},
 						span,
 					);
 					return this.renameToFinalPath(resolved, downloadedBinPath);
@@ -564,11 +569,14 @@ export class CliManager {
 
 	private async performBinaryDownload(
 		restClient: Api,
-		parsedVersion: semver.SemVer,
-		binPath: string,
-		progressLogPath: string,
+		options: {
+			parsedVersion: semver.SemVer;
+			binPath: string;
+			progressLogPath: string;
+		},
 		downloadSpan: Span,
 	): Promise<string> {
+		const { parsedVersion, binPath, progressLogPath } = options;
 		const cfg = vscode.workspace.getConfiguration("coder");
 		const tempFile = tempFilePath(binPath, "temp");
 
@@ -1010,42 +1018,46 @@ export class CliManager {
 				silent,
 				credentialSource: token === "" ? "empty_token" : "session_token",
 			},
-			async (trace) => {
-				const configs = vscode.workspace.getConfiguration();
+			(trace) => this.storeCredentials({ url, token, silent }, trace),
+		);
+	}
 
-				if (silent) {
-					try {
-						await this.cliCredentialManager.storeToken(url, token, configs);
-					} catch (error) {
-						trace.failed(error);
-						this.handleStoreError(error);
-					}
-					return;
-				}
+	private async storeCredentials(
+		options: { url: string; token: string; silent: boolean },
+		trace: CliConfigureTrace,
+	): Promise<void> {
+		const { url, token, silent } = options;
+		const configs = vscode.workspace.getConfiguration();
 
-				const result = await withCancellableProgress(
-					({ signal }) =>
-						this.cliCredentialManager.storeToken(url, token, configs, {
-							signal,
-						}),
-					{
-						location: vscode.ProgressLocation.Notification,
-						title: `Storing credentials for ${url}`,
-						cancellable: true,
-					},
-				);
-				if (result.ok) {
-					return;
-				}
-				if (result.cancelled) {
-					this.output.info("Credential storage cancelled by user");
-					trace.cancelled();
-					return;
-				}
-				trace.failed(result.error);
-				this.handleStoreError(result.error);
+		if (silent) {
+			try {
+				await this.cliCredentialManager.storeToken(url, token, configs);
+			} catch (error) {
+				trace.failed(error);
+				this.handleStoreError(error);
+			}
+			return;
+		}
+
+		const result = await withCancellableProgress(
+			({ signal }) =>
+				this.cliCredentialManager.storeToken(url, token, configs, { signal }),
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Storing credentials for ${url}`,
+				cancellable: true,
 			},
 		);
+		if (result.ok) {
+			return;
+		}
+		if (result.cancelled) {
+			this.output.info("Credential storage cancelled by user");
+			trace.cancelled();
+			return;
+		}
+		trace.failed(result.error);
+		this.handleStoreError(result.error);
 	}
 
 	/**

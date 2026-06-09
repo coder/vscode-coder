@@ -1,6 +1,8 @@
 import { isAbortError } from "../error/errorUtils";
 
-import type { CallerProperties, CallerPropertyValue } from "../telemetry/event";
+import { CredentialFileError } from "./credentials";
+
+import type { CallerPropertyValue } from "../telemetry/event";
 import type { TelemetryService } from "../telemetry/service";
 import type { Span } from "../telemetry/span";
 
@@ -73,18 +75,11 @@ export class CliTelemetry {
 		options: CliConfigureOptions,
 		fn: (trace: CliConfigureTrace) => Promise<T>,
 	): Promise<T> {
-		return this.telemetry.trace("cli.configure", (span) =>
-			fn(this.createConfigureTrace(span, options)),
-		);
-	}
-
-	private createConfigureTrace(
-		span: Span,
-		options: CliConfigureOptions,
-	): CliConfigureTrace {
-		span.setProperty("silent", options.silent);
-		span.setProperty("credential_source", options.credentialSource);
-		return new CliConfigureTrace(span);
+		return this.telemetry.trace("cli.configure", (span) => {
+			span.setProperty("silent", options.silent);
+			span.setProperty("credential_source", options.credentialSource);
+			return fn(new CliConfigureTrace(span));
+		});
 	}
 }
 
@@ -99,58 +94,49 @@ export class CliResolveTrace {
 		this.span.setProperty("failure_category", category);
 	}
 
-	public async cacheLookup<T extends { readonly source: CliCacheSource }>(
+	public cacheLookup<T extends { readonly source: CliCacheSource }>(
 		fn: () => Promise<T>,
 	): Promise<T> {
-		const result = await tracedPhase(
-			this.span,
-			"cache_lookup",
-			{ source: (r) => r.source },
-			fn,
-		);
-		this.span.setProperty("cache_source", result.source);
-		return result;
+		return this.tracedPhase("cache_lookup", fn, (r) => r.source, {
+			child: "source",
+			parent: "cache_source",
+		});
 	}
 
-	public async versionCheck<
-		T extends { readonly outcome: CliVersionCheckOutcome },
-	>(fn: () => Promise<T>): Promise<T> {
-		const result = await tracedPhase(
-			this.span,
-			"version_check",
-			{ outcome: (r) => r.outcome },
-			fn,
-		);
-		this.span.setProperty("version_check", result.outcome);
-		return result;
-	}
-
-	public recordDownloadDecision(options: {
-		readonly reason: CliDownloadReason;
-		readonly action: CliDownloadAction;
-	}): Promise<void> {
-		this.span.setProperty("download_reason", options.reason);
-		return this.phase("download_decision", {
-			reason: options.reason,
-			outcome: options.action,
+	public versionCheck<T extends { readonly outcome: CliVersionCheckOutcome }>(
+		fn: () => Promise<T>,
+	): Promise<T> {
+		return this.tracedPhase("version_check", fn, (r) => r.outcome, {
+			child: "outcome",
+			parent: "version_check",
 		});
 	}
 
 	public lockWait<T extends { readonly waited: boolean }>(
 		fn: () => Promise<T>,
 	): Promise<T> {
-		return tracedPhase(this.span, "lock_wait", { waited: (r) => r.waited }, fn);
+		return this.tracedPhase("lock_wait", fn, (r) => r.waited, {
+			child: "waited",
+		});
 	}
 
-	public lockWaitRecheck<
-		T extends { readonly outcome: CliVersionCheckOutcome },
-	>(fn: () => Promise<T>): Promise<T> {
-		return tracedPhase(
-			this.span,
-			"lock_wait_recheck",
-			{ outcome: (r) => r.outcome },
-			fn,
-		);
+	public lockRecheck<T extends { readonly outcome: CliVersionCheckOutcome }>(
+		fn: () => Promise<T>,
+	): Promise<T> {
+		return this.tracedPhase("lock_wait_recheck", fn, (r) => r.outcome, {
+			child: "outcome",
+		});
+	}
+
+	public downloadDecision(
+		reason: CliDownloadReason,
+		action: CliDownloadAction,
+	): Promise<void> {
+		this.span.setProperty("download_reason", reason);
+		return this.span.phase("download_decision", () => Promise.resolve(), {
+			reason,
+			outcome: action,
+		});
 	}
 
 	public async fallback<T>(error: unknown, fn: () => Promise<T>): Promise<T> {
@@ -174,13 +160,25 @@ export class CliResolveTrace {
 		return result;
 	}
 
-	private phase(name: string, properties: CallerProperties): Promise<void> {
-		return this.span.phase(name, (span) => {
-			for (const [key, value] of Object.entries(properties)) {
-				span.setProperty(key, value);
-			}
-			return Promise.resolve();
+	/**
+	 * Run `fn` as a child phase tagged with `select(result)`, mirroring it onto
+	 * the parent when `keys.parent` is given.
+	 */
+	private async tracedPhase<T>(
+		name: string,
+		fn: () => Promise<T>,
+		select: (result: T) => CallerPropertyValue,
+		keys: { readonly child: string; readonly parent?: string },
+	): Promise<T> {
+		const result = await this.span.phase(name, async (child) => {
+			const value = await fn();
+			child.setProperty(keys.child, select(value));
+			return value;
 		});
+		if (keys.parent) {
+			this.span.setProperty(keys.parent, select(result));
+		}
+		return result;
 	}
 }
 
@@ -200,29 +198,14 @@ export class CliConfigureTrace {
 	}
 }
 
-function tracedPhase<T>(
-	span: Span,
-	name: string,
-	properties: Readonly<Record<string, (result: T) => CallerPropertyValue>>,
-	fn: () => Promise<T>,
-): Promise<T> {
-	return span.phase(name, async (child) => {
-		const result = await fn();
-		for (const [key, select] of Object.entries(properties)) {
-			child.setProperty(key, select(result));
-		}
-		return result;
-	});
-}
-
 function categorizeConfigureFailure(
 	error: unknown,
 ): CliConfigureFailureCategory {
 	if (isAbortError(error)) {
 		return "cancelled";
 	}
-	const code = (error as NodeJS.ErrnoException | undefined)?.code;
-	if (typeof code === "string" && code.startsWith("E")) {
+	// A CredentialFileError is a file-write failure; anything else is keyring/CLI.
+	if (error instanceof CredentialFileError) {
 		return "filesystem";
 	}
 	return error instanceof Error ? "credential_store" : "unknown";

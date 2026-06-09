@@ -254,29 +254,13 @@ export class Remote {
 
 			const { featureSet, cliAuth } = await tracer.phase(
 				"compatibility_check",
-				async () => {
-					// First thing is to check the version.
-					const buildInfo = await workspaceClient.getBuildInfo();
-
-					let version: semver.SemVer | null;
-					try {
-						version = semver.parse(await cliVersion(binaryPath));
-					} catch {
-						version = semver.parse(buildInfo.version);
-					}
-
-					const featureSet = featureSetForVersion(version);
-					const configDir = this.pathResolver.getGlobalConfigDir(
-						parts.safeHostname,
-					);
-					const cliAuth = resolveCliAuth(
-						vscode.workspace.getConfiguration(),
-						featureSet,
+				() =>
+					this.checkCompatibility({
+						workspaceClient,
+						binaryPath,
 						baseUrl,
-						configDir,
-					);
-					return { featureSet, cliAuth };
-				},
+						safeHostname: parts.safeHostname,
+					}),
 			);
 
 			// Server versions before v0.14.1 don't support the vscodessh command!
@@ -705,6 +689,37 @@ export class Remote {
 		} catch {
 			return this.cliManager.fetchBinary(workspaceClient);
 		}
+	}
+
+	/**
+	 * Resolve the feature set and CLI auth, falling back to the server version
+	 * when the CLI version can't be read.
+	 */
+	private async checkCompatibility(options: {
+		workspaceClient: Api;
+		binaryPath: string;
+		baseUrl: string;
+		safeHostname: string;
+	}): Promise<{ featureSet: FeatureSet; cliAuth: CliAuth }> {
+		const { workspaceClient, binaryPath, baseUrl, safeHostname } = options;
+		const buildInfo = await workspaceClient.getBuildInfo();
+
+		let version: semver.SemVer | null;
+		try {
+			version = semver.parse(await cliVersion(binaryPath));
+		} catch {
+			version = semver.parse(buildInfo.version);
+		}
+
+		const featureSet = featureSetForVersion(version);
+		const configDir = this.pathResolver.getGlobalConfigDir(safeHostname);
+		const cliAuth = resolveCliAuth(
+			vscode.workspace.getConfiguration(),
+			featureSet,
+			baseUrl,
+			configDir,
+		);
+		return { featureSet, cliAuth };
 	}
 
 	private watchRemoteSessionAuth(
