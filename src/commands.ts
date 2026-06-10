@@ -136,7 +136,7 @@ export class Commands {
 	private readonly telemetryService: TelemetryService;
 	private readonly authTelemetry: AuthTelemetry;
 	private readonly diagnosticTelemetry: DiagnosticTelemetry;
-	private readonly openTelemetry: WorkspaceOpenTelemetry;
+	private readonly workspaceOpenTelemetry: WorkspaceOpenTelemetry;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -155,8 +155,11 @@ export class Commands {
 		private readonly deploymentManager: DeploymentManager,
 	) {
 		this.telemetryService = serviceContainer.getTelemetryService();
+		this.authTelemetry = new AuthTelemetry(this.telemetryService);
 		this.diagnosticTelemetry = new DiagnosticTelemetry(this.telemetryService);
-		this.openTelemetry = new WorkspaceOpenTelemetry(this.telemetryService);
+		this.workspaceOpenTelemetry = new WorkspaceOpenTelemetry(
+			this.telemetryService,
+		);
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.mementoManager = serviceContainer.getMementoManager();
@@ -165,7 +168,6 @@ export class Commands {
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 		this.duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
 		this.speedtestPanelFactory = serviceContainer.getSpeedtestPanelFactory();
-		this.authTelemetry = new AuthTelemetry(this.telemetryService);
 	}
 
 	/**
@@ -781,13 +783,13 @@ export class Commands {
 		if (item) {
 			const baseUrl = this.requireExtensionBaseUrl();
 			if (item instanceof AgentTreeItem) {
-				await this.openTelemetry.traceOpen(
+				await this.workspaceOpenTelemetry.traceOpen(
 					"sidebar_agent",
 					{ workspace: item.workspace, agent: item.agent },
 					(telemetry) => this.runOpenAgentItem(baseUrl, item, telemetry),
 				);
 			} else if (item instanceof WorkspaceTreeItem) {
-				await this.openTelemetry.traceOpen(
+				await this.workspaceOpenTelemetry.traceOpen(
 					"sidebar_workspace",
 					{ workspace: item.workspace },
 					(telemetry) => this.runOpenWorkspaceItem(baseUrl, item, telemetry),
@@ -879,8 +881,10 @@ export class Commands {
 	 */
 	public async open(options: OpenOptions = {}): Promise<boolean> {
 		const { source = "command", ...rest } = { ...openDefaults, ...options };
-		return this.openTelemetry.traceOpen(source, undefined, (telemetry) =>
-			this.runOpen(rest, telemetry),
+		return this.workspaceOpenTelemetry.traceOpen(
+			source,
+			undefined,
+			(telemetry) => this.runOpen(rest, telemetry),
 		);
 	}
 
@@ -951,7 +955,7 @@ export class Commands {
 		const mode: DevcontainerMode = localWorkspaceFolder
 			? "dev_container"
 			: "attached_container";
-		await this.openTelemetry.traceDevcontainer(mode, () =>
+		await this.workspaceOpenTelemetry.traceDevcontainer(mode, () =>
 			this.runOpenDevContainer(
 				workspaceOwner,
 				workspaceName,
@@ -1237,7 +1241,7 @@ export class Commands {
 		);
 
 		quickPick.show();
-		return this.openTelemetry
+		return this.workspaceOpenTelemetry
 			.tracePicker(
 				source,
 				async (telemetry) =>

@@ -100,7 +100,7 @@ export class AuthTelemetry {
 	 * Wraps the auth-recovery path triggered by a 401. Initial properties
 	 * cover the throw-before-callback case.
 	 */
-	public traceAuthRecovery<T>(
+	public traceRecovery<T>(
 		fn: (recorder: AuthRecoveryRecorder) => Promise<T>,
 	): Promise<T> {
 		return this.telemetry.trace(
