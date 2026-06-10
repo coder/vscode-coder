@@ -182,9 +182,7 @@ export class DeploymentManager implements vscode.Disposable {
 	/**
 	 * Clears the current deployment.
 	 */
-	public async clearDeployment(
-		reason: DeploymentSuspendReason = "credentials_removed",
-	): Promise<void> {
+	public async clearDeployment(reason: DeploymentSuspendReason): Promise<void> {
 		this.logger.debug("Clearing deployment", this.#deployment?.safeHostname);
 		this.suspendSession(reason);
 		this.#authListenerDisposable?.dispose();
@@ -199,9 +197,7 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Suspend session: shows logged-out state but keeps deployment for easy re-login.
 	 * Auth listener remains active so recovery can happen automatically if tokens update.
 	 */
-	public suspendSession(
-		reason: DeploymentSuspendReason = "auth_config_change",
-	): void {
+	public suspendSession(reason: DeploymentSuspendReason): void {
 		const wasAuthenticated = this.isAuthenticated();
 		this.oauthSessionManager.clearDeployment();
 		this.client.setCredentials(undefined, undefined);
@@ -267,7 +263,7 @@ export class DeploymentManager implements vscode.Disposable {
 						);
 					}
 				} else {
-					await this.clearDeployment();
+					await this.clearDeployment("credentials_removed");
 				}
 			},
 		);

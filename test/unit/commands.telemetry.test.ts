@@ -3,11 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { Commands } from "@/commands";
 import { maybeAskUrl } from "@/promptUtils";
 
-import { createTestTelemetryService, TestSink } from "../mocks/telemetry";
+import { createTelemetryHarness } from "../mocks/telemetry";
 import {
 	createMockLogger,
 	createMockUser,
-	MockConfigurationProvider,
 	MockUserInteraction,
 } from "../mocks/testHelpers";
 
@@ -37,33 +36,22 @@ vi.mock("@/workspace/workspacesProvider", () => {
 const TEST_URL = "https://coder.example.com";
 const TEST_HOSTNAME = "coder.example.com";
 
-interface LoginOptionsForTest {
-	safeHostname: string;
-	url: string;
-	autoLogin?: boolean;
-}
-
 type LoginResultForTest = LoginResult & {
 	readonly user?: ReturnType<typeof createMockUser>;
 };
 
-interface CommandsHarnessOptions {
+interface SetupOptions {
 	readonly authenticated?: boolean;
-
 	readonly loginResult?: LoginResultForTest;
-	readonly clearDeploymentError?: Error;
 	readonly clearAllAuthDataError?: Error;
 }
 
-function createCommandsHarness(options: CommandsHarnessOptions = {}) {
+function setup(options: SetupOptions = {}) {
 	vi.clearAllMocks();
-	new MockConfigurationProvider();
 	new MockUserInteraction();
 	vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
 
-	const sink = new TestSink();
-	const telemetry = createTestTelemetryService(sink);
-	const logger = createMockLogger();
+	const { sink, service } = createTelemetryHarness();
 	const deployment: Deployment = {
 		url: TEST_URL,
 		safeHostname: TEST_HOSTNAME,
@@ -76,29 +64,31 @@ function createCommandsHarness(options: CommandsHarnessOptions = {}) {
 			user: createMockUser(),
 			token: "test-token",
 		} satisfies LoginResultForTest);
-	const loginCoordinator = {
-		ensureLoggedIn: vi.fn((_loginOptions: LoginOptionsForTest) =>
-			Promise.resolve(loginResult),
-		),
+	const loginCoordinator: Pick<LoginCoordinator, "ensureLoggedIn"> = {
+		ensureLoggedIn: vi.fn(() => Promise.resolve(loginResult)),
 	};
 
-	const deploymentManager = {
+	const deploymentManager: Pick<
+		DeploymentManager,
+		| "isAuthenticated"
+		| "getCurrentDeployment"
+		| "setDeployment"
+		| "clearDeployment"
+	> = {
 		isAuthenticated: vi.fn(() => options.authenticated ?? false),
 		getCurrentDeployment: vi.fn(() => deployment),
 		setDeployment: vi.fn(() => Promise.resolve()),
-		clearDeployment: vi.fn(() => {
-			if (options.clearDeploymentError) {
-				return Promise.reject(options.clearDeploymentError);
-			}
-			return Promise.resolve();
-		}),
+		clearDeployment: vi.fn(() => Promise.resolve()),
 	};
 
-	const cliManager = {
+	const cliManager: Pick<CliManager, "clearCredentials"> = {
 		clearCredentials: vi.fn(() => Promise.resolve()),
 	};
 
-	const secretsManager = {
+	const secretsManager: Pick<
+		SecretsManager,
+		"getCurrentDeployment" | "clearAllAuthData"
+	> = {
 		getCurrentDeployment: vi.fn(() => Promise.resolve(null)),
 		clearAllAuthData: vi.fn(() => {
 			if (options.clearAllAuthDataError) {
@@ -109,16 +99,16 @@ function createCommandsHarness(options: CommandsHarnessOptions = {}) {
 	};
 
 	const serviceContainer = {
-		getTelemetryService: () => telemetry,
-		getLogger: () => logger,
+		getTelemetryService: () => service,
+		getLogger: () => createMockLogger(),
 		getPathResolver: () => ({}) as PathResolver,
 		getMementoManager: () => ({}) as MementoManager,
-		getSecretsManager: () => secretsManager as unknown as SecretsManager,
-		getCliManager: () => cliManager as unknown as CliManager,
-		getLoginCoordinator: () => loginCoordinator as unknown as LoginCoordinator,
+		getSecretsManager: () => secretsManager,
+		getCliManager: () => cliManager,
+		getLoginCoordinator: () => loginCoordinator,
 		getDuplicateWorkspaceIpc: () => ({}) as DuplicateWorkspaceIpc,
 		getSpeedtestPanelFactory: () => ({}) as SpeedtestPanelFactory,
-	} as unknown as ServiceContainer;
+	} as ServiceContainer;
 
 	const extensionClient = {
 		getAxiosInstance: () => ({ defaults: { baseURL: TEST_URL } }),
@@ -127,192 +117,156 @@ function createCommandsHarness(options: CommandsHarnessOptions = {}) {
 	const commands = new Commands(
 		serviceContainer,
 		extensionClient,
-		deploymentManager as unknown as DeploymentManager,
+		deploymentManager as DeploymentManager,
 	);
 
 	return {
 		commands,
-		deployment,
-		telemetry: sink,
-		mocks: {
-			cliManager,
-			deploymentManager,
-			loginCoordinator,
-			secretsManager,
-		},
+		sink,
+		mocks: { cliManager, deploymentManager, loginCoordinator, secretsManager },
 	};
-}
-
-type CommandsHarness = ReturnType<typeof createCommandsHarness>;
-
-interface CommandScenario {
-	readonly name: string;
-	readonly options?: CommandsHarnessOptions;
-	readonly arrange?: (harness: CommandsHarness) => void;
-	readonly act: (harness: CommandsHarness) => Promise<void>;
-	readonly assert: (harness: CommandsHarness) => void;
-}
-
-function testCommandScenario(scenario: CommandScenario): void {
-	it(scenario.name, async () => {
-		const harness = createCommandsHarness(scenario.options);
-		scenario.arrange?.(harness);
-
-		await scenario.act(harness);
-
-		scenario.assert(harness);
-	});
 }
 
 describe("Commands", () => {
 	describe("login telemetry", () => {
-		testCommandScenario({
-			name: "emits one auth.login for command login success",
-			act: ({ commands }) => commands.login(),
-			assert: ({ mocks, telemetry }) => {
-				const events = telemetry.eventsNamed("auth.login");
-				expect(events).toHaveLength(1);
-				expect(events[0]).toMatchObject({
-					properties: {
-						source: "command",
-						method: "stored_token",
-						result: "success",
-					},
-				});
-				expect(events[0].measurements.durationMs).toEqual(expect.any(Number));
-				expect(mocks.loginCoordinator.ensureLoggedIn).toHaveBeenCalledWith(
-					expect.objectContaining({
-						safeHostname: TEST_HOSTNAME,
-						url: TEST_URL,
-					}),
-				);
-				expect(mocks.deploymentManager.setDeployment).toHaveBeenCalled();
-			},
+		it("emits one auth.login for command login success", async () => {
+			const { commands, mocks, sink } = setup();
+
+			await commands.login();
+
+			const events = sink.eventsNamed("auth.login");
+			expect(events).toHaveLength(1);
+			expect(events[0]).toMatchObject({
+				properties: {
+					source: "command",
+					method: "stored_token",
+					result: "success",
+				},
+			});
+			expect(events[0].measurements.durationMs).toEqual(expect.any(Number));
+			expect(mocks.loginCoordinator.ensureLoggedIn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					safeHostname: TEST_HOSTNAME,
+					url: TEST_URL,
+				}),
+			);
+			expect(mocks.deploymentManager.setDeployment).toHaveBeenCalled();
 		});
 
-		testCommandScenario({
-			name: "uses auto_login source when requested",
-			options: {
+		it("uses auto_login source when requested", async () => {
+			const { commands, mocks, sink } = setup({
 				loginResult: {
 					success: true,
 					method: "provided_token",
 					user: createMockUser(),
 					token: "test-token",
 				},
-			},
-			act: ({ commands }) => commands.login({ url: TEST_URL, autoLogin: true }),
-			assert: ({ mocks, telemetry }) => {
-				expect(telemetry.expectOne("auth.login").properties).toMatchObject({
-					source: "auto_login",
-					method: "provided_token",
-					result: "success",
-				});
-				expect(mocks.loginCoordinator.ensureLoggedIn).toHaveBeenCalledWith(
-					expect.objectContaining({ autoLogin: true }),
-				);
-			},
+			});
+
+			await commands.login({ url: TEST_URL, autoLogin: true });
+
+			expect(sink.expectOne("auth.login").properties).toMatchObject({
+				source: "auto_login",
+				method: "provided_token",
+				result: "success",
+			});
+			expect(mocks.loginCoordinator.ensureLoggedIn).toHaveBeenCalledWith(
+				expect.objectContaining({ autoLogin: true }),
+			);
 		});
 
-		testCommandScenario({
-			name: "records URL cancellation without attempting login",
-			arrange: () => {
-				vi.mocked(maybeAskUrl).mockResolvedValueOnce(undefined);
-			},
-			act: ({ commands }) => commands.login(),
-			assert: ({ mocks, telemetry }) => {
-				expect(telemetry.expectOne("auth.login")).toMatchObject({
-					properties: {
-						source: "command",
-						method: "unknown",
-						result: "aborted",
-						reason: "no_url_provided",
-					},
-				});
-				expect(mocks.loginCoordinator.ensureLoggedIn).not.toHaveBeenCalled();
-			},
+		it("records URL cancellation without attempting login", async () => {
+			const { commands, mocks, sink } = setup();
+			vi.mocked(maybeAskUrl).mockResolvedValueOnce(undefined);
+
+			await commands.login();
+
+			expect(sink.expectOne("auth.login")).toMatchObject({
+				properties: {
+					source: "command",
+					method: "unknown",
+					result: "aborted",
+					reason: "no_url_provided",
+				},
+			});
+			expect(mocks.loginCoordinator.ensureLoggedIn).not.toHaveBeenCalled();
 		});
 
-		testCommandScenario({
-			name: "records auth failures as auth.login errors",
-			options: {
+		it("records auth failures as auth.login errors", async () => {
+			const { commands, mocks, sink } = setup({
 				loginResult: {
 					success: false,
 					method: "cli_token",
 					reason: "auth_failed",
 				},
-			},
-			act: ({ commands }) => commands.login(),
-			assert: ({ mocks, telemetry }) => {
-				expect(telemetry.expectOne("auth.login")).toMatchObject({
-					properties: {
-						method: "cli_token",
-						result: "error",
-						reason: "auth_failed",
-					},
-				});
-				expect(mocks.deploymentManager.setDeployment).not.toHaveBeenCalled();
-			},
+			});
+
+			await commands.login();
+
+			expect(sink.expectOne("auth.login")).toMatchObject({
+				properties: {
+					method: "cli_token",
+					result: "error",
+					reason: "auth_failed",
+				},
+			});
+			expect(mocks.deploymentManager.setDeployment).not.toHaveBeenCalled();
 		});
 
-		testCommandScenario({
-			name: "uses switch_deployment source",
-			act: ({ commands }) => commands.switchDeployment(),
-			assert: ({ telemetry }) => {
-				expect(telemetry.expectOne("auth.login").properties).toMatchObject({
-					source: "switch_deployment",
-					result: "success",
-				});
-			},
+		it("uses switch_deployment source", async () => {
+			const { commands, sink } = setup();
+
+			await commands.switchDeployment();
+
+			expect(sink.expectOne("auth.login").properties).toMatchObject({
+				source: "switch_deployment",
+				result: "success",
+			});
 		});
 	});
 
 	describe("logout telemetry", () => {
-		testCommandScenario({
-			name: "records not_authenticated as aborted",
-			options: { authenticated: false },
-			act: ({ commands }) => commands.logout(),
-			assert: ({ mocks, telemetry }) => {
-				expect(telemetry.expectOne("auth.logout")).toMatchObject({
-					properties: {
-						result: "aborted",
-						reason: "not_authenticated",
-					},
-				});
-				expect(mocks.cliManager.clearCredentials).not.toHaveBeenCalled();
-			},
+		it("records not_authenticated as aborted", async () => {
+			const { commands, mocks, sink } = setup({ authenticated: false });
+
+			await commands.logout();
+
+			expect(sink.expectOne("auth.logout")).toMatchObject({
+				properties: {
+					result: "aborted",
+					reason: "not_authenticated",
+				},
+			});
+			expect(mocks.cliManager.clearCredentials).not.toHaveBeenCalled();
 		});
 
-		testCommandScenario({
-			name: "records successful logout",
-			options: { authenticated: true },
-			act: ({ commands }) => commands.logout(),
-			assert: ({ mocks, telemetry }) => {
-				const event = telemetry.expectOne("auth.logout");
-				expect(event.properties).toMatchObject({ result: "success" });
-				expect(event.properties.reason).toBeUndefined();
-				expect(event.measurements.durationMs).toEqual(expect.any(Number));
-				expect(mocks.deploymentManager.clearDeployment).toHaveBeenCalledWith(
-					"logout",
-				);
-				expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(
-					TEST_URL,
-				);
-				expect(mocks.secretsManager.clearAllAuthData).toHaveBeenCalledWith(
-					TEST_HOSTNAME,
-				);
-			},
+		it("records successful logout", async () => {
+			const { commands, mocks, sink } = setup({ authenticated: true });
+
+			await commands.logout();
+
+			const event = sink.expectOne("auth.logout");
+			expect(event.properties).toMatchObject({ result: "success" });
+			expect(event.properties.reason).toBeUndefined();
+			expect(event.measurements.durationMs).toEqual(expect.any(Number));
+			expect(mocks.deploymentManager.clearDeployment).toHaveBeenCalledWith(
+				"logout",
+			);
+			expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(TEST_URL);
+			expect(mocks.secretsManager.clearAllAuthData).toHaveBeenCalledWith(
+				TEST_HOSTNAME,
+			);
 		});
 
 		it("records logout exceptions", async () => {
-			const harness = createCommandsHarness({
+			const { commands, sink } = setup({
 				authenticated: true,
 				clearAllAuthDataError: new Error("secret clear failed"),
 			});
 
-			await expect(harness.commands.logout()).rejects.toThrow(
-				"secret clear failed",
-			);
-			expect(harness.telemetry.expectOne("auth.logout")).toMatchObject({
+			await expect(commands.logout()).rejects.toThrow("secret clear failed");
+
+			expect(sink.expectOne("auth.logout")).toMatchObject({
 				properties: { result: "error", reason: "exception" },
 				error: { message: "secret clear failed" },
 			});

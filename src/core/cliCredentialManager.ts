@@ -14,10 +14,7 @@ import {
 } from "../instrumentation/credentials";
 import { isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
-import {
-	NOOP_TELEMETRY_REPORTER,
-	type TelemetryReporter,
-} from "../telemetry/reporter";
+import { type TelemetryReporter } from "../telemetry/reporter";
 import { toSafeHost } from "../util";
 import { writeAtomically } from "../util/fs";
 
@@ -62,7 +59,7 @@ export class CliCredentialManager {
 		private readonly logger: Logger,
 		private readonly resolveBinary: BinaryResolver,
 		private readonly pathResolver: PathResolver,
-		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
+		telemetry: TelemetryReporter,
 	) {
 		this.credentialTelemetry = new CredentialTelemetry(telemetry);
 	}

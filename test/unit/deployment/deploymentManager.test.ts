@@ -147,7 +147,7 @@ describe("DeploymentManager", () => {
 				user,
 			});
 
-			await manager.clearDeployment();
+			await manager.clearDeployment("credentials_removed");
 
 			expect(manager.getCurrentDeployment()).toBeNull();
 			expect(manager.isAuthenticated()).toBe(false);
@@ -418,7 +418,7 @@ describe("DeploymentManager", () => {
 				user,
 			});
 
-			await manager.clearDeployment();
+			await manager.clearDeployment("credentials_removed");
 
 			expect(mockClient.host).toBeUndefined();
 			expect(mockClient.token).toBeUndefined();
@@ -435,7 +435,7 @@ describe("DeploymentManager", () => {
 				token: "test-token",
 				user: createMockUser(),
 			});
-			await manager.clearDeployment();
+			await manager.clearDeployment("credentials_removed");
 
 			expect(setDeploymentUrlSpy).toHaveBeenLastCalledWith("");
 		});
@@ -477,7 +477,7 @@ describe("DeploymentManager", () => {
 			});
 			expect(manager.isAuthenticated()).toBe(true);
 
-			manager.suspendSession();
+			manager.suspendSession("auth_failure");
 
 			// Auth state is cleared
 			expect(mockOAuthSessionManager.clearDeployment).toHaveBeenCalled();
@@ -511,7 +511,7 @@ describe("DeploymentManager", () => {
 					token: "",
 					user,
 				});
-				manager.suspendSession();
+				manager.suspendSession("auth_failure");
 				expect(manager.isAuthenticated()).toBe(false);
 
 				config.set("coder.tlsCertFile", "/path/to/cert.pem");
@@ -553,11 +553,11 @@ describe("DeploymentManager", () => {
 					token: "",
 					user,
 				});
-				manager.suspendSession();
+				manager.suspendSession("auth_failure");
 				config.set("coder.tlsCertFile", "/path/to/cert.pem");
 				await vi.advanceTimersByTimeAsync(CONFIG_CHANGE_DEBOUNCE_MS);
 
-				await manager.clearDeployment();
+				await manager.clearDeployment("credentials_removed");
 				resolveAuth(user);
 				await vi.runAllTimersAsync();
 
@@ -588,7 +588,7 @@ describe("DeploymentManager", () => {
 			});
 
 			// Suspend session (simulates session expiry)
-			manager.suspendSession();
+			manager.suspendSession("auth_failure");
 			expect(manager.isAuthenticated()).toBe(false);
 
 			// Simulate token update (e.g., from another window or re-login)
@@ -621,7 +621,7 @@ describe("DeploymentManager", () => {
 					token: "test-token",
 					user,
 				});
-				manager.suspendSession();
+				manager.suspendSession("auth_failure");
 				validationMockClient.setAuthenticatedUserResponse(
 					new Error("Auth failed"),
 				);
