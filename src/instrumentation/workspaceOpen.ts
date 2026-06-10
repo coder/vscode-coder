@@ -24,7 +24,7 @@ export type WorkspaceOpenSource =
 	| "uri";
 
 export type WorkspacePickerSource = "workspace_open" | "diagnostic";
-export type WorkspacePickerErrorCategory = "fetch_failed";
+export type WorkspacePickerErrorCategory = "fetch_error";
 export type WorkspaceOpenErrorCategory =
 	| WorkspacePickerErrorCategory
 	| AbortableErrorCategory;
@@ -56,7 +56,7 @@ export interface WorkspaceOpenTrace {
 		stage: WorkspaceOpenAbortStage,
 		selection?: WorkspaceOpenSelection,
 	): void;
-	fail(category: WorkspaceOpenErrorCategory): void;
+	error(category: WorkspaceOpenErrorCategory): void;
 	handoff(kind: "folder" | "empty_window"): void;
 }
 
@@ -148,7 +148,7 @@ class SpanWorkspacePickerTrace implements WorkspacePickerTrace {
 	public constructor(private readonly span: Span) {}
 
 	public finish(result: WorkspacePickerResult, resultCount: number): void {
-		this.span.setMeasurement("workspace_count", resultCount);
+		this.span.setMeasurement("workspace.count", resultCount);
 		if (result.status === "selected") {
 			recordWorkspaceContext(this.span, result.workspace);
 			return;
@@ -178,7 +178,7 @@ class SpanWorkspaceOpenTrace implements WorkspaceOpenTrace {
 		recordAborted(this.span, stage);
 	}
 
-	public fail(category: WorkspaceOpenErrorCategory): void {
+	public error(category: WorkspaceOpenErrorCategory): void {
 		recordError(this.span, category);
 	}
 
@@ -195,9 +195,9 @@ function recordWorkspaceContext(
 	const agents = extractAgents(workspace.latest_build.resources);
 	span.setProperty("workspace_status", workspace.latest_build.status);
 	span.setProperty("workspace_outdated", workspace.outdated);
-	span.setMeasurement("agent_count", agents.length);
+	span.setMeasurement("agent.count", agents.length);
 	span.setMeasurement(
-		"connected_agent_count",
+		"agent.connected_count",
 		agents.filter((candidate) => candidate.status === "connected").length,
 	);
 	if (!agent) {

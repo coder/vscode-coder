@@ -58,7 +58,7 @@ export class AuthTelemetry {
 					}
 					return result;
 				} catch (error) {
-					span.setProperty("reason", "exception");
+					span.setProperty("error.type", "exception");
 					throw error;
 				}
 			},
@@ -78,7 +78,7 @@ export class AuthTelemetry {
 				}
 				return result;
 			} catch (error) {
-				span.setProperty("reason", "exception");
+				span.setProperty("error.type", "exception");
 				throw error;
 			}
 		});
@@ -143,11 +143,11 @@ export class AuthTelemetry {
 
 /** `auth_failed` is a real error; user/URL dismissals are intentional aborts. */
 function recordReason(span: Span, reason: LoginPromptReason): void {
-	span.setProperty("reason", reason);
 	if (reason === "auth_failed") {
 		span.setProperty("error.type", reason);
 		span.markError();
 	} else {
+		span.setProperty("reason", reason);
 		span.markAborted();
 	}
 }

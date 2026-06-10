@@ -285,7 +285,7 @@ export class Commands {
 			return;
 		}
 		if (resolved.status === "failed") {
-			telemetry.fail(resolved.category);
+			telemetry.error(resolved.category);
 			return;
 		}
 
@@ -346,7 +346,7 @@ export class Commands {
 				telemetry.abort("progress");
 				return;
 			}
-			telemetry.fail();
+			telemetry.error();
 			this.logger.error("Speed test failed", result.error);
 			vscode.window.showErrorMessage(
 				`Speed test failed: ${toError(result.error).message}`,
@@ -364,14 +364,14 @@ export class Commands {
 			});
 		} catch (err) {
 			if (err instanceof ZodError || err instanceof SyntaxError) {
-				telemetry.fail("parse_error");
+				telemetry.error("parse_error");
 				this.logger.error("Failed to parse speedtest output", err);
 				vscode.window.showErrorMessage(
 					"Speed test output did not match the expected format. Check `Output > Coder` for details.",
 				);
 				return;
 			}
-			telemetry.fail();
+			telemetry.error();
 			this.logger.error("Failed to display speedtest results", err);
 			vscode.window.showErrorMessage(
 				`Speed test returned unexpected output: ${toError(err).message}`,
@@ -395,7 +395,7 @@ export class Commands {
 			return;
 		}
 		if (resolved.status === "failed") {
-			telemetry.fail(resolved.category);
+			telemetry.error(resolved.category);
 			return;
 		}
 
@@ -444,7 +444,7 @@ export class Commands {
 				telemetry.abort("progress");
 				return;
 			}
-			telemetry.fail(
+			telemetry.error(
 				result.error instanceof SupportBundleUnsupportedCliError
 					? "unsupported_cli"
 					: undefined,
@@ -915,7 +915,7 @@ export class Commands {
 				return false;
 			}
 			if (pick.status === "failed") {
-				telemetry.fail(pick.category);
+				telemetry.error(pick.category);
 				return false;
 			}
 			workspace = pick.workspace;
@@ -1224,7 +1224,7 @@ export class Commands {
 						}
 					})
 					.catch((ex) => {
-						fetchErrorCategory = "fetch_failed";
+						fetchErrorCategory = "fetch_error";
 						this.logger.error("Failed to fetch workspaces", ex);
 						if (ex instanceof CertificateError) {
 							void ex.showNotification();

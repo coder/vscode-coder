@@ -2,8 +2,7 @@
 
 How to add telemetry so every instrumentation reads the same way. The framework
 lives in `src/telemetry`; the per-domain instrumentation business code talks to
-lives here in `src/instrumentation`. See `cli.ts` (spans + phases) and `ssh.ts`
-(point-in-time logs) as references.
+lives here in `src/instrumentation`.
 
 ## Checklist
 
@@ -19,8 +18,8 @@ lives here in `src/instrumentation`. See `cli.ts` (spans + phases) and `ssh.ts`
 - No secrets, tokens, query strings, or unbounded values in properties; routes
   go through `normalizeRoute`.
 - Let the framework set `result`; add a domain `outcome` only when an operation
-  has several success modes. Failures go to a typed union; non-error early exits
-  call `markAborted`.
+  has several success modes. Errors go to a typed `error.type` union; non-error
+  early exits call `markAborted`.
 
 ## Layers
 
@@ -30,6 +29,15 @@ lives here in `src/instrumentation`. See `cli.ts` (spans + phases) and `ssh.ts`
   never checks whether telemetry is enabled.
 - **Instrumentation** (`src/instrumentation/*`): one typed class per domain, the
   only telemetry surface business code sees.
+
+## Structure
+
+- Split instrumentation files along the same boundaries as the business code,
+  not one catch-all module.
+- Shared span helpers (`recordError`, `recordAborted`) live in one shared module,
+  not duplicated per file.
+- Record-error-then-rethrow-outside-the-span logic lives once per class, in a
+  single private helper, not in every `traceX` method.
 
 ## Threading
 
@@ -45,6 +53,15 @@ ambient/active-span context. Two patterns keep telemetry out of business logic:
 
 Never return a value purely so a caller can log it; that couples the return type
 to observability. Returning is fine when the business uses the value too.
+
+## Callers
+
+- Declare telemetry dimensions explicitly at the call site; pass `source: "uri"`
+  rather than inferring it from which arguments happen to be set.
+- Keep business bodies in named private `runX(args, trace)` methods; the public
+  method just opens the span and wraps them. Small diffs, named telemetry seam.
+- When sibling events share a correlating property, emit it on every event in the
+  family; don't drop it from new ones.
 
 ## Spans, phases, logs
 
@@ -62,7 +79,7 @@ to observability. Returning is fine when the business uses the value too.
 | Event name                 | `domain.snake_case`                         | `cli.resolve`, `remote.setup`, `connection.dropped`       |
 | Point-in-time log          | past tense                                  | `connection.dropped`, `ssh.process.lost`                  |
 | Child phase                | bare `snake_case`                           | `cache_lookup`, `version_check`, `connection_handoff`     |
-| Property / measurement key | lowercase; `_` splits words, `.` for groups | `cache_source`, `failure_category`, `status.from`         |
+| Property / measurement key | lowercase; `_` splits words, `.` for groups | `cache_source`, `error.type`, `status.from`               |
 | Enumerated value           | typed `snake_case` union                    | `"cache_hit"`, `"session_token"`, `"unrecoverable_close"` |
 
 This is the [OTel attribute convention](https://opentelemetry.io/docs/specs/semconv/general/naming/):
@@ -70,6 +87,10 @@ This is the [OTel attribute convention](https://opentelemetry.io/docs/specs/semc
 camelCase. Default to a flat `snake_case` key; use `.` only to group genuinely
 related attributes (a `status.from` / `status.to` pair). Keep phase names
 subject-first within a domain (`agent_resolve`, not `resolve_agent`).
+
+**Methods.** Span-wrapper methods are `trace<Noun>` (`traceOpen`,
+`traceConfirmationPrompt`); don't echo the event's past-tense suffix
+(`traceUpdateConfirmationPrompted`), and drop qualifiers the class implies.
 
 **Grouping.** Group related events under a shared dotted namespace so a prefix
 query returns the whole family: `workspace.update.triggered` and
@@ -102,19 +123,28 @@ Coder's own pipeline, so a bare `cache_source` can't collide with a future OTel
   `latency`, unit `ms`, which Prometheus then suffixes itself); log and span
   attributes keep the key as written. You always author `latency_ms`; only the
   exported metric name changes.
+- **Counts.** Name a count `<entity>.count`, singular entity (`agent.count`,
+  `workspace.count`), per OTel (`system.process.count`) — not flat `agent_count`.
+  Related counts share the namespace (`agent.count`, `agent.connected_count`); a
+  count with no entity (`retry_count`) stays flat.
 
-## Outcomes, failures, aborts
+## Outcomes, errors, aborts
 
 - The framework sets `result` (`success` / `error` / `aborted`) on every span;
   don't duplicate it.
 - Add a domain `outcome` property only when an operation has several success
   modes worth distinguishing (e.g. `cli.resolve`: `cache_hit`, `downloaded`).
-- Classify failures into a typed union (`failure_category`, or a domain
-  `reason`) via a `categorize*Failure` helper rather than emitting raw error
-  strings; the
-  framework already captures the error block.
-- For a non-error early exit (cancelled, not-found), call `span.markAborted()`
-  rather than throwing.
+- Classify errors into a typed `error.type` union via a `categorize*Error` helper
+  rather than emitting raw error strings; the framework captures the error block.
+- For a non-error early exit (backed out, not-found), call `span.markAborted()`
+  rather than throwing, recording its reason in a separate key, not `error.type`.
+- A trace exposes one outcome trio — `abort(stage)`, `error(category?)`,
+  `succeed*(payload)` — over the shared `recordAborted` / `recordError` helpers;
+  each outcome sets one, never two.
+- Prefer **error** over "failure" and **abort** over "cancel" here (`recordError`
+  / `error.type` / `error()`; `recordAborted` / `markAborted` / `abort()`).
+  Point-in-time logs keep past tense (`recovery_failed`) — they state what
+  happened, not a span's `error` result.
 
 ## Safety
 
@@ -122,3 +152,10 @@ Never put tokens, credentials, full URLs with query strings, or unbounded user
 input into properties. Routes go through `normalizeRoute`
 (`src/logging/routeNormalization.ts`). Prefer a closed union over a free-form
 string for any property a dashboard groups by.
+
+## Tests
+
+- Telemetry-only tests of business code are `<subject>.telemetry.test.ts`;
+  instrumentation modules keep `<module>.test.ts` and split when the module does.
+- Assert what privacy intends to omit, not only what is present (e.g.
+  `workspace_name` undefined on command events).

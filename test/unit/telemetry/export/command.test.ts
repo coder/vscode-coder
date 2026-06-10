@@ -61,7 +61,7 @@ function setup(
 
 	const observer: ExportTelemetryObserver = {
 		abort: vi.fn(),
-		fail: vi.fn(),
+		error: vi.fn(),
 		succeedExport: vi.fn(),
 	};
 
@@ -196,7 +196,7 @@ describe("runExportTelemetryCommand", () => {
 
 			await run();
 
-			expect(observer.fail).toHaveBeenCalledOnce();
+			expect(observer.error).toHaveBeenCalledOnce();
 
 			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
 				"Telemetry export failed: disk full",

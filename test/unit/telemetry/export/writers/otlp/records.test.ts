@@ -231,8 +231,8 @@ describe("spanRecord", () => {
 		[{ properties: { result: "error" } }, "_OTHER"],
 		// An instrumentation-set category is never overwritten.
 		[
-			{ properties: { result: "error", "error.type": "fetch_failed" } },
-			"fetch_failed",
+			{ properties: { result: "error", "error.type": "fetch_error" } },
+			"fetch_error",
 		],
 	])("backfills error.type on error spans: %j -> %s", (overrides, expected) => {
 		const span = spanRecord(makeSpanEvent(overrides));

@@ -55,11 +55,11 @@ describe("WorkspaceOpenTelemetry", () => {
 			result: "success",
 		});
 		expect(event.measurements).toMatchObject({
-			agent_count: 2,
-			connected_agent_count: 1,
+			"agent.count": 2,
+			"agent.connected_count": 1,
 		});
-		expect(event.properties.workspaceName).toBeUndefined();
-		expect(event.properties.agentName).toBeUndefined();
+		expect(event.properties.workspace_name).toBeUndefined();
+		expect(event.properties.agent_name).toBeUndefined();
 	});
 
 	it("counts every connected agent on the workspace", async () => {
@@ -90,8 +90,8 @@ describe("WorkspaceOpenTelemetry", () => {
 
 		const event = sink.expectOne("workspace.open");
 		expect(event.measurements).toMatchObject({
-			agent_count: 3,
-			connected_agent_count: 2,
+			"agent.count": 3,
+			"agent.connected_count": 2,
 		});
 	});
 
@@ -104,19 +104,19 @@ describe("WorkspaceOpenTelemetry", () => {
 			return Promise.resolve(result);
 		});
 		await telemetry.tracePicker("workspace_open", (trace) => {
-			const result = { status: "failed", category: "fetch_failed" } as const;
+			const result = { status: "failed", category: "fetch_error" } as const;
 			trace.finish(result, 0);
 			return Promise.resolve(result);
 		});
 
 		const [cancelled, failed] = sink.eventsNamed("workspace.picker.prompted");
 		expect(cancelled.properties).toMatchObject({ result: "aborted" });
-		expect(cancelled.measurements.workspace_count).toBe(3);
+		expect(cancelled.measurements["workspace.count"]).toBe(3);
 		expect(failed.properties).toMatchObject({
-			"error.type": "fetch_failed",
+			"error.type": "fetch_error",
 			result: "error",
 		});
-		expect(failed.measurements.workspace_count).toBe(0);
+		expect(failed.measurements["workspace.count"]).toBe(0);
 	});
 
 	it("records workspace open cancellation and handled failure distinctly", async () => {
@@ -128,7 +128,7 @@ describe("WorkspaceOpenTelemetry", () => {
 			return Promise.resolve(false);
 		});
 		await telemetry.traceOpen("command", undefined, (trace) => {
-			trace.fail("fetch_failed");
+			trace.error("fetch_error");
 			return Promise.resolve(false);
 		});
 
@@ -139,7 +139,7 @@ describe("WorkspaceOpenTelemetry", () => {
 			result: "aborted",
 		});
 		expect(failed.properties).toMatchObject({
-			"error.type": "fetch_failed",
+			"error.type": "fetch_error",
 			result: "error",
 		});
 	});

@@ -46,7 +46,7 @@ describe("AuthTelemetry", () => {
 					source: "uri",
 					method: "oauth",
 					result: "error",
-					reason: "auth_failed",
+					"error.type": "auth_failed",
 				},
 			},
 		])("$name", async ({ outcome, traceMethod, properties }) => {
@@ -101,7 +101,7 @@ describe("AuthTelemetry", () => {
 			expect(sink.expectOne("auth.logout")).toMatchObject({
 				properties: {
 					result: "error",
-					reason: "exception",
+					"error.type": "exception",
 				},
 				error: { message: "clear failed" },
 			});
