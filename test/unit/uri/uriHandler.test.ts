@@ -126,6 +126,9 @@ describe("uriHandler", () => {
 	});
 
 	describe("/open", () => {
+		// Fields the URI handler always supplies; per-test overrides spread on top.
+		const OPEN_DEFAULTS = { source: "uri", useDefaultDirectory: false };
+
 		it("opens workspace with parameters", async () => {
 			const { handleUri, commands, deploymentManager } = createTestContext();
 			await handleUri(
@@ -142,7 +145,7 @@ describe("uriHandler", () => {
 				agentName: "a",
 				folderPath: "/f",
 				openRecent: true,
-				useDefaultDirectory: false,
+				...OPEN_DEFAULTS,
 			});
 		});
 
@@ -161,7 +164,7 @@ describe("uriHandler", () => {
 				agentName: undefined,
 				folderPath: undefined,
 				openRecent: expected,
-				useDefaultDirectory: false,
+				...OPEN_DEFAULTS,
 			});
 		});
 
@@ -178,7 +181,7 @@ describe("uriHandler", () => {
 				agentName: undefined,
 				folderPath: undefined,
 				openRecent: false,
-				useDefaultDirectory: false,
+				...OPEN_DEFAULTS,
 			});
 			expect(showErrorMessage).not.toHaveBeenCalled();
 		});
@@ -194,7 +197,7 @@ describe("uriHandler", () => {
 				agentName: undefined,
 				folderPath: undefined,
 				openRecent: false,
-				useDefaultDirectory: false,
+				...OPEN_DEFAULTS,
 			});
 			expect(showErrorMessage).not.toHaveBeenCalled();
 		});

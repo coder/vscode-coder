@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { runExportTelemetryCommand } from "@/telemetry/export/command";
+import {
+	runExportTelemetryCommand,
+	type ExportTelemetryObserver,
+} from "@/telemetry/export/command";
 import { collectTelemetryExport } from "@/telemetry/export/pipeline";
 import { promptForExport, type ExportChoice } from "@/telemetry/export/prompts";
 
@@ -56,23 +59,33 @@ function setup(
 		vi.mocked(collectTelemetryExport).mockResolvedValue(outcome.count);
 	}
 
+	const observer: ExportTelemetryObserver = {
+		abort: vi.fn(),
+		fail: vi.fn(),
+		succeedExport: vi.fn(),
+	};
+
 	return {
+		observer,
 		run: () =>
 			runExportTelemetryCommand(
 				TELEMETRY_DIR,
 				createMockLogger(),
 				vi.fn(() => Promise.resolve(OK_FLUSH)),
 				context,
+				observer,
 			),
 	};
 }
 
 describe("runExportTelemetryCommand", () => {
 	it("does nothing when the user cancels the prompts", async () => {
-		const { run } = setup();
+		const { observer, run } = setup();
 		vi.mocked(promptForExport).mockResolvedValue(undefined);
 
 		await run();
+
+		expect(observer.abort).toHaveBeenCalledWith("prompt");
 
 		expect(collectTelemetryExport).not.toHaveBeenCalled();
 		expect(vscode.window.withProgress).not.toHaveBeenCalled();
@@ -119,9 +132,11 @@ describe("runExportTelemetryCommand", () => {
 			[1, "Exported 1 telemetry event to"],
 			[3, "Exported 3 telemetry events to"],
 		])("notifies with a pluralized %i-event count", async (count, message) => {
-			const { run } = setup({ outcome: { count } });
+			const { observer, run } = setup({ outcome: { count } });
 
 			await run();
+
+			expect(observer.succeedExport).toHaveBeenCalledWith("json", count);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				`${message} ${OUTPUT_PATH}.`,
@@ -154,7 +169,7 @@ describe("runExportTelemetryCommand", () => {
 				new Error("no command"),
 			);
 
-			await expect(run()).resolves.toBeUndefined();
+			await run();
 
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 		});
@@ -162,9 +177,11 @@ describe("runExportTelemetryCommand", () => {
 
 	describe("nothing to export", () => {
 		it("reports that no events were found", async () => {
-			const { run } = setup({ outcome: { count: 0 } });
+			const { observer, run } = setup({ outcome: { count: 0 } });
 
 			await run();
+
+			expect(observer.succeedExport).toHaveBeenCalledWith("json", 0);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				"No telemetry events found for Last 24 hours.",
@@ -174,9 +191,12 @@ describe("runExportTelemetryCommand", () => {
 
 	describe("failure", () => {
 		it("shows an error notification without throwing", async () => {
-			const { run } = setup({ outcome: { error: new Error("disk full") } });
+			const error = new Error("disk full");
+			const { observer, run } = setup({ outcome: { error } });
 
-			await expect(run()).resolves.toBeUndefined();
+			await run();
+
+			expect(observer.fail).toHaveBeenCalledOnce();
 
 			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
 				"Telemetry export failed: disk full",
@@ -188,9 +208,11 @@ describe("runExportTelemetryCommand", () => {
 			const aborted = Object.assign(new Error("Aborted"), {
 				name: "AbortError",
 			});
-			const { run } = setup({ outcome: { error: aborted } });
+			const { observer, run } = setup({ outcome: { error: aborted } });
 
 			await run();
+
+			expect(observer.abort).toHaveBeenCalledWith("progress");
 
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();

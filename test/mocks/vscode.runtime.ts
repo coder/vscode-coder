@@ -65,6 +65,20 @@ export class ThemeColor {
 	}
 }
 
+export class TreeItem {
+	id?: string;
+	contextValue?: string;
+	description?: string;
+	tooltip?: string;
+	command?: unknown;
+	iconPath?: unknown;
+
+	constructor(
+		public label: string,
+		public collapsibleState?: number,
+	) {}
+}
+
 export class Uri {
 	constructor(
 		public scheme: string,
@@ -213,6 +227,7 @@ const vscode = {
 	EventEmitter,
 	MarkdownString,
 	ThemeColor,
+	TreeItem,
 	window,
 	commands,
 	workspace,

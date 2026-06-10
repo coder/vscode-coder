@@ -208,7 +208,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 		const spanMeasurements = { ...measurements };
 		const { traceId, traceLevel } = spanOpts;
 		let completed = false;
-		// `markFailure` wins over `markAborted` regardless of call order.
+		// `markError` wins over `markAborted` regardless of call order.
 		let mark: "aborted" | "error" | undefined;
 		const warnPostEmit = (op: string, name: string): void => {
 			this.logger.warn(
@@ -298,9 +298,9 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 				}
 				mark ??= "aborted";
 			},
-			markFailure(): void {
+			markError(): void {
 				if (completed) {
-					warnPostEmit("markFailure", "");
+					warnPostEmit("markError", "");
 					return;
 				}
 				mark = "error";

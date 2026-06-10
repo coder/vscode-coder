@@ -19,6 +19,8 @@ import type { Logger } from "../../logging/logger";
 import type { TelemetryContext } from "../event";
 import type { FlushStatus } from "../service";
 
+import type { ExportFormat } from "./writers/types";
+
 const REVEAL_ACTION = "Reveal in File Explorer";
 
 const PROGRESS_OPTIONS = {
@@ -27,14 +29,26 @@ const PROGRESS_OPTIONS = {
 	cancellable: true,
 } as const;
 
+/**
+ * Outcome hooks for the caller's telemetry span. `DiagnosticTrace` satisfies
+ * this shape, so command callers can pass their trace directly.
+ */
+export interface ExportTelemetryObserver {
+	abort(stage: "prompt" | "progress"): void;
+	fail(): void;
+	succeedExport(format: ExportFormat, eventCount: number): void;
+}
+
 export async function runExportTelemetryCommand(
 	telemetryDir: string,
 	logger: Logger,
 	flushTelemetry: () => Promise<FlushStatus>,
 	context: TelemetryContext,
+	observer: ExportTelemetryObserver,
 ): Promise<void> {
 	const choice = await promptForExport();
 	if (!choice) {
+		observer.abort("prompt");
 		return;
 	}
 
@@ -53,7 +67,7 @@ export async function runExportTelemetryCommand(
 		PROGRESS_OPTIONS,
 	);
 
-	await reportOutcome(result, choice, logger);
+	await reportOutcome(result, choice, logger, observer);
 }
 
 /** Wires the pipeline's host hooks to the progress UI and the logger. */
@@ -81,11 +95,14 @@ async function reportOutcome(
 	result: ProgressResult<number>,
 	choice: ExportChoice,
 	logger: Logger,
+	observer: ExportTelemetryObserver,
 ): Promise<void> {
 	if (!result.ok) {
 		if (result.cancelled) {
+			observer.abort("progress");
 			return;
 		}
+		observer.fail();
 		logger.error("Telemetry export failed", result.error);
 		void vscode.window.showErrorMessage(
 			`Telemetry export failed: ${toError(result.error).message}`,
@@ -94,6 +111,7 @@ async function reportOutcome(
 	}
 
 	const eventCount = result.value;
+	observer.succeedExport(choice.format, eventCount);
 	if (eventCount === 0) {
 		void vscode.window.showInformationMessage(
 			`No telemetry events found for ${choice.range.label}.`,

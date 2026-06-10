@@ -98,6 +98,12 @@
         "value": {
           "stringValue": "https://dev.coder.com"
         }
+      },
+      {
+        "key": "error.type",
+        "value": {
+          "stringValue": "Error"
+        }
       }
     ],
     "status": {

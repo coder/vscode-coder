@@ -196,6 +196,8 @@ describe("spanRecord", () => {
 
 	it.each([
 		[{ properties: { result: "success" } }, { code: 1 }],
+		// Intentional cancellation stays unset per OTel.
+		[{ properties: { result: "aborted" } }, { code: 0 }],
 		[{ properties: { result: "error" } }, { code: 2 }],
 		[
 			{ properties: { result: "error" }, error: { message: "boom" } },
@@ -206,6 +208,42 @@ describe("spanRecord", () => {
 	])("maps span status: %j -> %j", (overrides, expected) => {
 		const span = spanRecord(makeSpanEvent(overrides));
 		expect(span.status).toEqual(expected);
+	});
+
+	it.each([
+		// The exception type wins when present.
+		[
+			{
+				properties: { result: "error" },
+				error: { message: "boom", type: "TypeError" },
+			},
+			"TypeError",
+		],
+		// The error code stands in when there is no type.
+		[
+			{
+				properties: { result: "error" },
+				error: { message: "boom", code: "ECONNREFUSED" },
+			},
+			"ECONNREFUSED",
+		],
+		// Neither type nor code falls back to OTel's _OTHER sentinel.
+		[{ properties: { result: "error" } }, "_OTHER"],
+		// An instrumentation-set category is never overwritten.
+		[
+			{ properties: { result: "error", "error.type": "fetch_failed" } },
+			"fetch_failed",
+		],
+	])("backfills error.type on error spans: %j -> %s", (overrides, expected) => {
+		const span = spanRecord(makeSpanEvent(overrides));
+		expect(attrs(span.attributes)["error.type"]).toBe(expected);
+	});
+
+	it("never adds error.type to a non-error span", () => {
+		const span = spanRecord(
+			makeSpanEvent({ properties: { result: "success" } }),
+		);
+		expect(attrs(span.attributes)).not.toHaveProperty("error.type");
 	});
 
 	it("attaches an `exception` event to errored spans", () => {

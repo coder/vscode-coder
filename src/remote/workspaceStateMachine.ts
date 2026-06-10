@@ -289,7 +289,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			mode: this.startupMode,
 			status: workspace.latest_build.status,
 		});
-		await this.operationTelemetry.traceStartTriggered(() =>
+		await this.operationTelemetry.traceStart(() =>
 			startWorkspace(this.buildCliContext(workspace)),
 		);
 		this.logger.info(`${workspaceName} start initiated`);
@@ -309,10 +309,10 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			status: workspace.latest_build.status,
 		});
 		try {
-			const parameters = await this.operationTelemetry.traceUpdatePrompted(() =>
-				collectUpdateParameters(this.workspaceClient, workspace),
+			const parameters = await this.operationTelemetry.traceParametersPrompt(
+				() => collectUpdateParameters(this.workspaceClient, workspace),
 			);
-			this.workspace = await this.operationTelemetry.traceUpdateTriggered(() =>
+			this.workspace = await this.operationTelemetry.traceUpdate(() =>
 				updateWorkspace(this.buildCliContext(workspace), parameters),
 			);
 			this.logger.info(`${workspaceName} update initiated`);
@@ -337,18 +337,22 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		workspaceName: string,
 		outdated: boolean,
 	): Promise<"start" | "update" | undefined> {
-		const buttons = outdated ? ["Start", "Update and Start"] : ["Start"];
-		const action = await vscodeProposed.window.showInformationMessage(
-			`The workspace ${workspaceName} is not running. How would you like to proceed?`,
-			{
-				useCustom: true,
-				modal: true,
-			},
-			...buttons,
-		);
-		if (action === "Start") return "start";
-		if (action === "Update and Start") return "update";
-		return undefined;
+		return this.operationTelemetry.traceStartPrompt(outdated, async () => {
+			const buttons = outdated
+				? (["Start", "Update and Start"] as const)
+				: (["Start"] as const);
+			const action = await vscodeProposed.window.showInformationMessage(
+				`The workspace ${workspaceName} is not running. How would you like to proceed?`,
+				{
+					useCustom: true,
+					modal: true,
+				},
+				...buttons,
+			);
+			if (action === "Start") return "start";
+			if (action === "Update and Start") return "update";
+			return undefined;
+		});
 	}
 
 	public getAgentId(): string | undefined {

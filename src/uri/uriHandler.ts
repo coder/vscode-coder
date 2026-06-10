@@ -86,6 +86,7 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		agentName: agent ?? undefined,
 		folderPath: folder ?? undefined,
 		openRecent,
+		source: "uri",
 		useDefaultDirectory: false,
 	});
 }

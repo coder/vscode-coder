@@ -11,6 +11,7 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { TelemetryReporter } from "../telemetry/reporter";
+import type { Span } from "../telemetry/span";
 
 /** Sentinel for `from*` before any state is observed. `"unknown"` is a real server-reported value, so avoid it. */
 const INITIAL_STATE = "none";
@@ -23,6 +24,9 @@ const PROVISIONING_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
 	"canceling",
 	"deleting",
 ]);
+
+export type WorkspacePromptAction = "start" | "update";
+export type WorkspaceUpdatePrompt = "parameters" | "confirmation";
 
 interface ObservedWorkspaceState {
 	readonly status: WorkspaceStatus;
@@ -162,43 +166,87 @@ export class WorkspaceOperationTelemetry {
 		private readonly workspaceName: string,
 	) {}
 
-	public traceUpdateTriggered<T>(fn: () => Promise<T>): Promise<T> {
+	public traceUpdate<T>(fn: () => Promise<T>): Promise<T> {
 		return this.telemetry.trace("workspace.update.triggered", fn, {
 			workspaceName: this.workspaceName,
 		});
 	}
 
-	public traceStartTriggered<T>(fn: () => Promise<T>): Promise<T> {
+	public traceStart<T>(fn: () => Promise<T>): Promise<T> {
 		return this.telemetry.trace("workspace.start.triggered", fn, {
 			workspaceName: this.workspaceName,
 		});
+	}
+
+	public async traceStartPrompt(
+		outdated: boolean,
+		fn: () => Promise<WorkspacePromptAction | undefined>,
+	): Promise<WorkspacePromptAction | undefined> {
+		return this.telemetry.trace(
+			"workspace.start.prompted",
+			async (span) => {
+				const action = await fn();
+				if (!action) {
+					span.markAborted();
+					return undefined;
+				}
+				span.setProperty("action", action);
+				return action;
+			},
+			{ workspaceName: this.workspaceName, update_offered: outdated },
+		);
 	}
 
 	/**
 	 * Records dismissal as `result: "aborted"`. The framework treats any throw
 	 * as `result: "error"`, so we return inside the span and rethrow outside.
 	 */
-	public async traceUpdatePrompted(
+	public async traceParametersPrompt(
 		fn: () => Promise<WorkspaceBuildParameter[]>,
 	): Promise<WorkspaceBuildParameter[]> {
-		let cancel: WorkspaceUpdateCancelledError | undefined;
-		const parameters = await this.telemetry.trace(
-			"workspace.update.prompted",
+		let cancelled: WorkspaceUpdateCancelledError | undefined;
+		const parameters = await this.traceUpdatePrompt(
+			"parameters",
 			async (span) => {
 				try {
 					return await fn();
 				} catch (error) {
 					if (error instanceof WorkspaceUpdateCancelledError) {
 						span.markAborted();
-						cancel = error;
+						cancelled = error;
 						return [];
 					}
 					throw error;
 				}
 			},
-			{ workspaceName: this.workspaceName },
 		);
-		if (cancel) throw cancel;
+		if (cancelled) {
+			throw cancelled;
+		}
 		return parameters;
+	}
+
+	public traceConfirmationPrompt<T>(
+		fn: () => Promise<T | undefined>,
+	): Promise<T | undefined> {
+		return this.traceUpdatePrompt("confirmation", async (span) => {
+			const value = await fn();
+			if (value === undefined) {
+				span.markAborted();
+				return undefined;
+			}
+			span.setProperty("action", "update");
+			return value;
+		});
+	}
+
+	private traceUpdatePrompt<T>(
+		prompt: WorkspaceUpdatePrompt,
+		fn: (span: Span) => Promise<T>,
+	): Promise<T> {
+		return this.telemetry.trace("workspace.update.prompted", fn, {
+			prompt,
+			workspaceName: this.workspaceName,
+		});
 	}
 }
