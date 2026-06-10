@@ -20,16 +20,19 @@ import {
 	type AuthLogoutOutcome,
 } from "./instrumentation/auth";
 import {
-	CommandTelemetry,
-	type DevcontainerMode,
+	DiagnosticTelemetry,
 	type DiagnosticTrace,
+} from "./instrumentation/diagnostics";
+import { WorkspaceOperationTelemetry } from "./instrumentation/workspace";
+import {
+	type DevcontainerMode,
 	type WorkspaceOpenSource,
+	WorkspaceOpenTelemetry,
 	type WorkspaceOpenTrace,
 	type WorkspacePickerFailureCategory,
 	type WorkspacePickerResult,
 	type WorkspacePickerSource,
-} from "./instrumentation/commands";
-import { WorkspaceOperationTelemetry } from "./instrumentation/workspace";
+} from "./instrumentation/workspaceOpen";
 import {
 	reportElapsedProgress,
 	withCancellableProgress,
@@ -42,10 +45,7 @@ import {
 } from "./remote/sshOverrides";
 import { resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
-import {
-	runExportTelemetryCommand,
-	type ExportTelemetryObserver,
-} from "./telemetry/export/command";
+import { runExportTelemetryCommand } from "./telemetry/export/command";
 import { openInBrowser, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";
@@ -135,7 +135,8 @@ export class Commands {
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 	private readonly telemetryService: TelemetryService;
 	private readonly authTelemetry: AuthTelemetry;
-	private readonly commandTelemetry: CommandTelemetry;
+	private readonly diagnosticTelemetry: DiagnosticTelemetry;
+	private readonly openTelemetry: WorkspaceOpenTelemetry;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -154,7 +155,8 @@ export class Commands {
 		private readonly deploymentManager: DeploymentManager,
 	) {
 		this.telemetryService = serviceContainer.getTelemetryService();
-		this.commandTelemetry = new CommandTelemetry(this.telemetryService);
+		this.diagnosticTelemetry = new DiagnosticTelemetry(this.telemetryService);
+		this.openTelemetry = new WorkspaceOpenTelemetry(this.telemetryService);
 		this.logger = serviceContainer.getLogger();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.mementoManager = serviceContainer.getMementoManager();
@@ -266,7 +268,7 @@ export class Commands {
 	 * editor document.  Can be triggered from the sidebar or command palette.
 	 */
 	public async speedTest(item?: OpenableTreeItem): Promise<void> {
-		await this.commandTelemetry.diagnostic("speed_test", (telemetry) =>
+		await this.diagnosticTelemetry.trace("speed_test", (telemetry) =>
 			this.runSpeedTest(item, telemetry),
 		);
 	}
@@ -304,7 +306,7 @@ export class Commands {
 			return;
 		}
 		const seconds = Number(input.trim());
-		telemetry.speedtestRequestedDuration(seconds);
+		telemetry.setRequestedDuration(seconds);
 
 		const result = await withCancellableProgress(
 			async ({ signal, progress }) => {
@@ -352,7 +354,7 @@ export class Commands {
 
 		try {
 			const parsed = parseSpeedtestResult(result.value);
-			telemetry.speedtestSuccess(parsed);
+			telemetry.succeedSpeedtest(parsed);
 			this.speedtestPanelFactory.show({
 				result: parsed,
 				rawJson: result.value,
@@ -376,7 +378,7 @@ export class Commands {
 	}
 
 	public async supportBundle(item?: OpenableTreeItem): Promise<void> {
-		await this.commandTelemetry.diagnostic("support_bundle", (telemetry) =>
+		await this.diagnosticTelemetry.trace("support_bundle", (telemetry) =>
 			this.runSupportBundle(item, telemetry),
 		);
 	}
@@ -470,24 +472,18 @@ export class Commands {
 	}
 
 	public async exportTelemetry(): Promise<void> {
-		await this.commandTelemetry.diagnostic("export_telemetry", (telemetry) =>
+		await this.diagnosticTelemetry.trace("export_telemetry", (telemetry) =>
 			this.runExportTelemetry(telemetry),
 		);
 	}
 
 	private async runExportTelemetry(telemetry: DiagnosticTrace): Promise<void> {
-		const observer: ExportTelemetryObserver = {
-			cancelled: (stage) => telemetry.cancel(stage),
-			failed: () => telemetry.fail(),
-			succeeded: (format, eventCount) =>
-				telemetry.exportSuccess(format, eventCount),
-		};
 		await runExportTelemetryCommand(
 			this.pathResolver.getTelemetryPath(),
 			this.logger,
 			() => this.telemetryService.flush(),
 			this.telemetryService.getContext(),
-			observer,
+			telemetry,
 		);
 	}
 
@@ -783,51 +779,18 @@ export class Commands {
 	 */
 	public async openFromSidebar(item: OpenableTreeItem): Promise<void> {
 		if (item) {
-			const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
-			if (!baseUrl) {
-				throw new Error("You are not logged in");
-			}
+			const baseUrl = this.requireExtensionBaseUrl();
 			if (item instanceof AgentTreeItem) {
-				await this.commandTelemetry.workspaceOpen(
+				await this.openTelemetry.traceOpen(
 					"sidebar_agent",
 					{ workspace: item.workspace, agent: item.agent },
-					async (telemetry) => {
-						const result = await this.openWorkspaceInternal(
-							baseUrl,
-							item.workspace,
-							item.agent,
-							{ openRecent: true },
-						);
-						return recordWorkspaceOpenResult(
-							telemetry,
-							{ workspace: item.workspace, agent: item.agent },
-							result,
-						);
-					},
+					(telemetry) => this.runOpenAgentItem(baseUrl, item, telemetry),
 				);
 			} else if (item instanceof WorkspaceTreeItem) {
-				await this.commandTelemetry.workspaceOpen(
+				await this.openTelemetry.traceOpen(
 					"sidebar_workspace",
 					{ workspace: item.workspace },
-					async (telemetry) => {
-						const agents = await this.extractAgentsWithFallback(item.workspace);
-						const agent = await maybeAskAgent(agents);
-						if (!agent) {
-							telemetry.cancel("agent_picker", {
-								workspace: item.workspace,
-							});
-							return false;
-						}
-						const selection = { workspace: item.workspace, agent };
-						telemetry.select(selection);
-						const result = await this.openWorkspaceInternal(
-							baseUrl,
-							item.workspace,
-							agent,
-							{ openRecent: true },
-						);
-						return recordWorkspaceOpenResult(telemetry, selection, result);
-					},
+					(telemetry) => this.runOpenWorkspaceItem(baseUrl, item, telemetry),
 				);
 			} else {
 				throw new TypeError("Unable to open unknown sidebar item");
@@ -837,6 +800,45 @@ export class Commands {
 			// Default to the regular open instead.
 			await this.open({ source: "sidebar_fallback" });
 		}
+	}
+
+	private async runOpenAgentItem(
+		baseUrl: string,
+		item: AgentTreeItem,
+		telemetry: WorkspaceOpenTrace,
+	): Promise<boolean> {
+		const result = await this.openWorkspace(
+			baseUrl,
+			item.workspace,
+			item.agent,
+			{
+				openRecent: true,
+			},
+		);
+		return recordOpenResult(
+			telemetry,
+			{ workspace: item.workspace, agent: item.agent },
+			result,
+		);
+	}
+
+	private async runOpenWorkspaceItem(
+		baseUrl: string,
+		item: WorkspaceTreeItem,
+		telemetry: WorkspaceOpenTrace,
+	): Promise<boolean> {
+		const agents = await this.extractAgentsWithFallback(item.workspace);
+		const agent = await maybeAskAgent(agents);
+		if (!agent) {
+			telemetry.cancel("agent_picker", { workspace: item.workspace });
+			return false;
+		}
+		const selection = { workspace: item.workspace, agent };
+		telemetry.select(selection);
+		const result = await this.openWorkspace(baseUrl, item.workspace, agent, {
+			openRecent: true,
+		});
+		return recordOpenResult(telemetry, selection, result);
 	}
 
 	public async openAppStatus(app: {
@@ -876,67 +878,60 @@ export class Commands {
 	 * cannot be found.
 	 */
 	public async open(options: OpenOptions = {}): Promise<boolean> {
+		const { source = "command", ...rest } = { ...openDefaults, ...options };
+		return this.openTelemetry.traceOpen(source, undefined, (telemetry) =>
+			this.runOpen(rest, telemetry),
+		);
+	}
+
+	private async runOpen(
+		options: Omit<OpenOptions, "source">,
+		telemetry: WorkspaceOpenTrace,
+	): Promise<boolean> {
 		const {
 			workspaceOwner,
 			workspaceName,
 			agentName,
 			folderPath,
 			openRecent,
-			source = workspaceOwner && workspaceName ? "uri" : "command",
 			useDefaultDirectory,
-		} = { ...openDefaults, ...options };
+		} = options;
+		const baseUrl = this.requireExtensionBaseUrl();
 
-		return this.commandTelemetry.workspaceOpen(
-			source,
-			undefined,
-			async (telemetry) => {
-				const baseUrl =
-					this.extensionClient.getAxiosInstance().defaults.baseURL;
-				if (!baseUrl) {
-					throw new Error("You are not logged in");
-				}
+		let workspace: Workspace;
+		if (workspaceOwner && workspaceName) {
+			workspace = await this.extensionClient.getWorkspaceByOwnerAndName(
+				workspaceOwner,
+				workspaceName,
+			);
+		} else {
+			const pick = await this.pickWorkspace("workspace_open");
+			if (pick.status === "cancelled") {
+				telemetry.cancel("workspace_picker");
+				return false;
+			}
+			if (pick.status === "failed") {
+				telemetry.fail(pick.category);
+				return false;
+			}
+			workspace = pick.workspace;
+		}
 
-				let workspace: Workspace;
-				if (workspaceOwner && workspaceName) {
-					workspace = await this.extensionClient.getWorkspaceByOwnerAndName(
-						workspaceOwner,
-						workspaceName,
-					);
-				} else {
-					const pick = await this.pickWorkspace("workspace_open");
-					if (pick.status === "cancelled") {
-						telemetry.cancel("workspace_picker");
-						return false;
-					}
-					if (pick.status === "failed") {
-						telemetry.fail(pick.category);
-						return false;
-					}
-					workspace = pick.workspace;
-				}
+		const agents = await this.extractAgentsWithFallback(workspace);
+		const agent = await maybeAskAgent(agents, agentName);
+		if (!agent) {
+			telemetry.cancel("agent_picker", { workspace });
+			return false;
+		}
+		const selection = { workspace, agent };
+		telemetry.select(selection);
 
-				const agents = await this.extractAgentsWithFallback(workspace);
-				const agent = await maybeAskAgent(agents, agentName);
-				if (!agent) {
-					telemetry.cancel("agent_picker", { workspace });
-					return false;
-				}
-				const selection = { workspace, agent };
-				telemetry.select(selection);
-
-				const result = await this.openWorkspaceInternal(
-					baseUrl,
-					workspace,
-					agent,
-					{
-						folderPath,
-						openRecent,
-						useDefaultDirectory,
-					},
-				);
-				return recordWorkspaceOpenResult(telemetry, selection, result);
-			},
-		);
+		const result = await this.openWorkspace(baseUrl, workspace, agent, {
+			folderPath,
+			openRecent,
+			useDefaultDirectory,
+		});
+		return recordOpenResult(telemetry, selection, result);
 	}
 
 	/**
@@ -956,59 +951,74 @@ export class Commands {
 		const mode: DevcontainerMode = localWorkspaceFolder
 			? "dev_container"
 			: "attached_container";
-		await this.commandTelemetry.devcontainerOpen(mode, async () => {
-			const baseUrl = this.extensionClient.getAxiosInstance().defaults.baseURL;
-			if (!baseUrl) {
-				throw new Error("You are not logged in");
-			}
-
-			const remoteAuthority = toRemoteAuthority(
-				baseUrl,
+		await this.openTelemetry.traceDevcontainer(mode, () =>
+			this.runOpenDevContainer(
 				workspaceOwner,
 				workspaceName,
 				workspaceAgent,
-			);
+				devContainerName,
+				devContainerFolder,
+				localWorkspaceFolder,
+				localConfigFile,
+			),
+		);
+	}
 
-			const hostPath = localWorkspaceFolder || undefined;
-			const configFile =
-				hostPath && localConfigFile
-					? {
-							path: localConfigFile,
-							scheme: "vscode-fileHost",
-						}
-					: undefined;
-			const devContainer = Buffer.from(
-				JSON.stringify({
-					containerName: devContainerName,
-					hostPath,
-					configFile,
-					localDocker: false,
-				}),
-				"utf-8",
-			).toString("hex");
+	private async runOpenDevContainer(
+		workspaceOwner: string,
+		workspaceName: string,
+		workspaceAgent: string,
+		devContainerName: string,
+		devContainerFolder: string,
+		localWorkspaceFolder: string,
+		localConfigFile: string,
+	): Promise<void> {
+		const baseUrl = this.requireExtensionBaseUrl();
 
-			const type = localWorkspaceFolder
-				? "dev-container"
-				: "attached-container";
-			const devContainerAuthority = `${type}+${devContainer}@${remoteAuthority}`;
+		const remoteAuthority = toRemoteAuthority(
+			baseUrl,
+			workspaceOwner,
+			workspaceName,
+			workspaceAgent,
+		);
 
-			let newWindow = true;
-			if (!vscode.workspace.workspaceFolders?.length) {
-				newWindow = false;
-			}
+		const hostPath = localWorkspaceFolder || undefined;
+		const configFile =
+			hostPath && localConfigFile
+				? {
+						path: localConfigFile,
+						scheme: "vscode-fileHost",
+					}
+				: undefined;
+		const devContainer = Buffer.from(
+			JSON.stringify({
+				containerName: devContainerName,
+				hostPath,
+				configFile,
+				localDocker: false,
+			}),
+			"utf-8",
+		).toString("hex");
 
-			// Only set the memento when opening a new folder
-			await this.mementoManager.setStartupMode("start");
-			await vscode.commands.executeCommand(
-				"vscode.openFolder",
-				vscode.Uri.from({
-					scheme: "vscode-remote",
-					authority: devContainerAuthority,
-					path: devContainerFolder,
-				}),
-				newWindow,
-			);
-		});
+		const type = localWorkspaceFolder ? "dev-container" : "attached-container";
+		const devContainerAuthority = `${type}+${devContainer}@${remoteAuthority}`;
+
+		let newWindow = true;
+		if (!vscode.workspace.workspaceFolders?.length) {
+			newWindow = false;
+		}
+
+		// Only set the memento when opening a new folder
+		await this.mementoManager.setStartupMode("start");
+		await vscode.commands.executeCommand(
+			"vscode.openFolder",
+			vscode.Uri.from({
+				scheme: "vscode-remote",
+				authority: devContainerAuthority,
+				path: devContainerFolder,
+			}),
+			newWindow,
+		);
 	}
 
 	/**
@@ -1033,17 +1043,16 @@ export class Commands {
 			this.telemetryService,
 			workspaceName,
 		);
-		const action = await operationTelemetry.traceUpdateConfirmationPrompted(
-			async () =>
-				vscodeProposed.window.showWarningMessage(
-					"Update Workspace",
-					{
-						useCustom: true,
-						modal: true,
-						detail: `Update ${workspaceName} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
-					},
-					UPDATE_AND_RESTART_ACTION,
-				),
+		const action = await operationTelemetry.traceConfirmationPrompt(async () =>
+			vscodeProposed.window.showWarningMessage(
+				"Update Workspace",
+				{
+					useCustom: true,
+					modal: true,
+					detail: `Update ${workspaceName} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
+				},
+				UPDATE_AND_RESTART_ACTION,
+			),
 		);
 		if (action !== UPDATE_AND_RESTART_ACTION) {
 			return;
@@ -1228,8 +1237,8 @@ export class Commands {
 		);
 
 		quickPick.show();
-		return this.commandTelemetry
-			.workspacePicker(
+		return this.openTelemetry
+			.tracePicker(
 				source,
 				async (telemetry) =>
 					new Promise<WorkspacePickerResult>((resolve) => {
@@ -1309,25 +1318,7 @@ export class Commands {
 	 * If provided, folderPath is always used, otherwise expanded_directory from
 	 * the agent is used.
 	 */
-	async openWorkspace(
-		baseUrl: string,
-		workspace: Workspace,
-		agent: WorkspaceAgent,
-		options: Pick<
-			OpenOptions,
-			"folderPath" | "openRecent" | "useDefaultDirectory"
-		> = {},
-	): Promise<boolean> {
-		const result = await this.openWorkspaceInternal(
-			baseUrl,
-			workspace,
-			agent,
-			options,
-		);
-		return result.status === "opened";
-	}
-
-	private async openWorkspaceInternal(
+	private async openWorkspace(
 		baseUrl: string,
 		workspace: Workspace,
 		agent: WorkspaceAgent,
@@ -1459,7 +1450,7 @@ export class Commands {
 	}
 }
 
-function recordWorkspaceOpenResult(
+function recordOpenResult(
 	telemetry: WorkspaceOpenTrace,
 	selection: { readonly workspace: Workspace; readonly agent: WorkspaceAgent },
 	result: OpenWorkspaceResult,

@@ -60,9 +60,9 @@ function setup(
 	}
 
 	const observer: ExportTelemetryObserver = {
-		cancelled: vi.fn(),
-		failed: vi.fn(),
-		succeeded: vi.fn(),
+		cancel: vi.fn(),
+		fail: vi.fn(),
+		succeedExport: vi.fn(),
 	};
 
 	return {
@@ -85,7 +85,7 @@ describe("runExportTelemetryCommand", () => {
 
 		await run();
 
-		expect(observer.cancelled).toHaveBeenCalledWith("prompt");
+		expect(observer.cancel).toHaveBeenCalledWith("prompt");
 
 		expect(collectTelemetryExport).not.toHaveBeenCalled();
 		expect(vscode.window.withProgress).not.toHaveBeenCalled();
@@ -136,7 +136,7 @@ describe("runExportTelemetryCommand", () => {
 
 			await run();
 
-			expect(observer.succeeded).toHaveBeenCalledWith("json", count);
+			expect(observer.succeedExport).toHaveBeenCalledWith("json", count);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				`${message} ${OUTPUT_PATH}.`,
@@ -181,7 +181,7 @@ describe("runExportTelemetryCommand", () => {
 
 			await run();
 
-			expect(observer.succeeded).toHaveBeenCalledWith("json", 0);
+			expect(observer.succeedExport).toHaveBeenCalledWith("json", 0);
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				"No telemetry events found for Last 24 hours.",
@@ -196,7 +196,7 @@ describe("runExportTelemetryCommand", () => {
 
 			await run();
 
-			expect(observer.failed).toHaveBeenCalledOnce();
+			expect(observer.fail).toHaveBeenCalledOnce();
 
 			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
 				"Telemetry export failed: disk full",
@@ -212,7 +212,7 @@ describe("runExportTelemetryCommand", () => {
 
 			await run();
 
-			expect(observer.cancelled).toHaveBeenCalledWith("progress");
+			expect(observer.cancel).toHaveBeenCalledWith("progress");
 
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();

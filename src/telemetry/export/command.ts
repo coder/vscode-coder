@@ -29,10 +29,14 @@ const PROGRESS_OPTIONS = {
 	cancellable: true,
 } as const;
 
+/**
+ * Outcome hooks for the caller's telemetry span. `DiagnosticTrace` satisfies
+ * this shape, so command callers can pass their trace directly.
+ */
 export interface ExportTelemetryObserver {
-	cancelled(stage: "prompt" | "progress"): void;
-	failed(): void;
-	succeeded(format: ExportFormat, eventCount: number): void;
+	cancel(stage: "prompt" | "progress"): void;
+	fail(): void;
+	succeedExport(format: ExportFormat, eventCount: number): void;
 }
 
 export async function runExportTelemetryCommand(
@@ -40,11 +44,11 @@ export async function runExportTelemetryCommand(
 	logger: Logger,
 	flushTelemetry: () => Promise<FlushStatus>,
 	context: TelemetryContext,
-	observer?: ExportTelemetryObserver,
+	observer: ExportTelemetryObserver,
 ): Promise<void> {
 	const choice = await promptForExport();
 	if (!choice) {
-		observer?.cancelled("prompt");
+		observer.cancel("prompt");
 		return;
 	}
 
@@ -91,14 +95,14 @@ async function reportOutcome(
 	result: ProgressResult<number>,
 	choice: ExportChoice,
 	logger: Logger,
-	observer?: ExportTelemetryObserver,
+	observer: ExportTelemetryObserver,
 ): Promise<void> {
 	if (!result.ok) {
 		if (result.cancelled) {
-			observer?.cancelled("progress");
+			observer.cancel("progress");
 			return;
 		}
-		observer?.failed();
+		observer.fail();
 		logger.error("Telemetry export failed", result.error);
 		void vscode.window.showErrorMessage(
 			`Telemetry export failed: ${toError(result.error).message}`,
@@ -107,7 +111,7 @@ async function reportOutcome(
 	}
 
 	const eventCount = result.value;
-	observer?.succeeded(choice.format, eventCount);
+	observer.succeedExport(choice.format, eventCount);
 	if (eventCount === 0) {
 		void vscode.window.showInformationMessage(
 			`No telemetry events found for ${choice.range.label}.`,

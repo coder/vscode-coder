@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { CommandTelemetry } from "@/instrumentation/commands";
+import { WorkspaceOpenTelemetry } from "@/instrumentation/workspaceOpen";
 
 import { agent, resource, workspace } from "@repo/mocks";
 
 import { createTelemetryHarness } from "../../mocks/telemetry";
+
+function setup() {
+	const { sink, service } = createTelemetryHarness();
+	return { sink, telemetry: new WorkspaceOpenTelemetry(service) };
+}
 
 function workspaceWithAgents() {
 	const connected = agent({
@@ -30,13 +35,12 @@ function workspaceWithAgents() {
 	};
 }
 
-describe("command instrumentation helpers", () => {
+describe("WorkspaceOpenTelemetry", () => {
 	it("records workspace selection without workspace or agent names", async () => {
-		const { sink, service } = createTelemetryHarness();
-		const traces = new CommandTelemetry(service);
+		const { sink, telemetry } = setup();
 		const selection = workspaceWithAgents();
 
-		await traces.workspaceOpen(
+		await telemetry.traceOpen(
 			"command",
 			{ workspace: selection.workspace, agent: selection.connected },
 			() => Promise.resolve(true),
@@ -59,17 +63,16 @@ describe("command instrumentation helpers", () => {
 	});
 
 	it("records workspace picker cancellation and failure distinctly", async () => {
-		const { sink, service } = createTelemetryHarness();
-		const traces = new CommandTelemetry(service);
+		const { sink, telemetry } = setup();
 
-		await traces.workspacePicker("workspace_open", (telemetry) => {
+		await telemetry.tracePicker("workspace_open", (trace) => {
 			const result = { status: "cancelled" } as const;
-			telemetry.finish(result, 3);
+			trace.finish(result, 3);
 			return Promise.resolve(result);
 		});
-		await traces.workspacePicker("workspace_open", (telemetry) => {
+		await telemetry.tracePicker("workspace_open", (trace) => {
 			const result = { status: "failed", category: "fetch_failed" } as const;
-			telemetry.finish(result, 0);
+			trace.finish(result, 0);
 			return Promise.resolve(result);
 		});
 
@@ -84,16 +87,15 @@ describe("command instrumentation helpers", () => {
 	});
 
 	it("records workspace open cancellation and handled failure distinctly", async () => {
-		const { sink, service } = createTelemetryHarness();
-		const traces = new CommandTelemetry(service);
+		const { sink, telemetry } = setup();
 		const selection = workspaceWithAgents();
 
-		await traces.workspaceOpen("command", undefined, (telemetry) => {
-			telemetry.cancel("agent_picker", { workspace: selection.workspace });
+		await telemetry.traceOpen("command", undefined, (trace) => {
+			trace.cancel("agent_picker", { workspace: selection.workspace });
 			return Promise.resolve(false);
 		});
-		await traces.workspaceOpen("command", undefined, (telemetry) => {
-			telemetry.fail("fetch_failed");
+		await telemetry.traceOpen("command", undefined, (trace) => {
+			trace.fail("fetch_failed");
 			return Promise.resolve(false);
 		});
 
@@ -110,11 +112,10 @@ describe("command instrumentation helpers", () => {
 	});
 
 	it("records thrown workspace open failures without raw error details", async () => {
-		const { sink, service } = createTelemetryHarness();
-		const traces = new CommandTelemetry(service);
+		const { sink, telemetry } = setup();
 
 		await expect(
-			traces.workspaceOpen("command", undefined, () =>
+			telemetry.traceOpen("command", undefined, () =>
 				Promise.reject(new Error("secret path /tmp/workspace")),
 			),
 		).rejects.toThrow("secret path /tmp/workspace");
@@ -127,69 +128,11 @@ describe("command instrumentation helpers", () => {
 		expect(event.error).toBeUndefined();
 	});
 
-	it("records diagnostic cancellation and failure categories", async () => {
-		const { sink, service } = createTelemetryHarness();
-		const traces = new CommandTelemetry(service);
-		await traces.diagnostic("support_bundle", (telemetry) => {
-			telemetry.cancel("save_dialog");
-			return Promise.resolve();
-		});
-		await traces.diagnostic("support_bundle", (telemetry) => {
-			telemetry.fail("unsupported_cli");
-			return Promise.resolve();
-		});
-
-		const [cancelled, failed] = sink.eventsNamed(
-			"command.diagnostic.completed",
-		);
-		expect(cancelled.properties).toMatchObject({
-			cancel_stage: "save_dialog",
-			result: "aborted",
-		});
-		expect(failed.properties).toMatchObject({
-			failure_category: "unsupported_cli",
-			result: "error",
-		});
-		expect(failed.error).toBeUndefined();
-	});
-
-	it("records bounded speed test measurements", async () => {
-		const { sink, service } = createTelemetryHarness();
-		const traces = new CommandTelemetry(service);
-
-		await traces.diagnostic("speed_test", (telemetry) => {
-			telemetry.speedtestSuccess({
-				overall: {
-					start_time_seconds: 0,
-					end_time_seconds: 5,
-					throughput_mbits: 42,
-				},
-				intervals: [
-					{
-						start_time_seconds: 0,
-						end_time_seconds: 5,
-						throughput_mbits: 42,
-					},
-				],
-			});
-			return Promise.resolve();
-		});
-
-		expect(sink.expectOne("command.diagnostic.completed")).toMatchObject({
-			measurements: {
-				interval_count: 1,
-				throughput_mbits: 42,
-			},
-			properties: { result: "success" },
-		});
-	});
-
 	it("records thrown devcontainer failures without raw error details", async () => {
-		const { sink, service } = createTelemetryHarness();
-		const traces = new CommandTelemetry(service);
+		const { sink, telemetry } = setup();
 
 		await expect(
-			traces.devcontainerOpen("dev_container", () =>
+			telemetry.traceDevcontainer("dev_container", () =>
 				Promise.reject(new Error("secret local path /tmp/workspace")),
 			),
 		).rejects.toThrow("secret local path /tmp/workspace");

@@ -166,19 +166,19 @@ export class WorkspaceOperationTelemetry {
 		private readonly workspaceName: string,
 	) {}
 
-	public traceUpdateTriggered<T>(fn: () => Promise<T>): Promise<T> {
+	public traceUpdate<T>(fn: () => Promise<T>): Promise<T> {
 		return this.telemetry.trace("workspace.update.triggered", fn, {
 			workspaceName: this.workspaceName,
 		});
 	}
 
-	public traceStartTriggered<T>(fn: () => Promise<T>): Promise<T> {
+	public traceStart<T>(fn: () => Promise<T>): Promise<T> {
 		return this.telemetry.trace("workspace.start.triggered", fn, {
 			workspaceName: this.workspaceName,
 		});
 	}
 
-	public async traceStartPrompted(
+	public async traceStartPrompt(
 		outdated: boolean,
 		fn: () => Promise<WorkspacePromptAction | undefined>,
 	): Promise<WorkspacePromptAction | undefined> {
@@ -193,7 +193,7 @@ export class WorkspaceOperationTelemetry {
 				span.setProperty("action", action);
 				return action;
 			},
-			{ update_offered: outdated },
+			{ workspaceName: this.workspaceName, update_offered: outdated },
 		);
 	}
 
@@ -201,61 +201,52 @@ export class WorkspaceOperationTelemetry {
 	 * Records dismissal as `result: "aborted"`. The framework treats any throw
 	 * as `result: "error"`, so we return inside the span and rethrow outside.
 	 */
-	public traceUpdatePrompted(
+	public async traceParametersPrompt(
 		fn: () => Promise<WorkspaceBuildParameter[]>,
 	): Promise<WorkspaceBuildParameter[]> {
-		return this.traceUpdatePrompt("parameters", fn, {
-			isCancelled: (error) => error instanceof WorkspaceUpdateCancelledError,
-			cancelledValue: () => [],
-		});
-	}
-
-	public traceUpdateConfirmationPrompted<T>(
-		fn: () => Promise<T | undefined>,
-	): Promise<T | undefined> {
-		return this.traceUpdatePrompt("confirmation", fn, {
-			isCancelled: (value) => value === undefined,
-			recordAccepted: (span) => span.setProperty("action", "update"),
-		});
-	}
-
-	private async traceUpdatePrompt<T>(
-		prompt: WorkspaceUpdatePrompt,
-		fn: () => Promise<T>,
-		options: {
-			readonly isCancelled: (value: unknown) => boolean;
-			readonly cancelledValue?: () => T;
-			readonly recordAccepted?: (span: Span, value: T) => void;
-		},
-	): Promise<T> {
-		let cancelledError: Error | undefined;
-		const cancelledValue = options.cancelledValue;
-		const result = await this.telemetry.trace(
-			"workspace.update.prompted",
+		let cancelled: WorkspaceUpdateCancelledError | undefined;
+		const parameters = await this.traceUpdatePrompt(
+			"parameters",
 			async (span) => {
 				try {
-					const value = await fn();
-					if (options.isCancelled(value)) {
-						span.markAborted();
-					} else {
-						options.recordAccepted?.(span, value);
-					}
-					return value;
+					return await fn();
 				} catch (error) {
-					if (error instanceof Error && options.isCancelled(error)) {
+					if (error instanceof WorkspaceUpdateCancelledError) {
 						span.markAborted();
-						cancelledError = error;
-						if (!cancelledValue) {
-							throw error;
-						}
-						return cancelledValue();
+						cancelled = error;
+						return [];
 					}
 					throw error;
 				}
 			},
-			{ prompt },
 		);
-		if (cancelledError !== undefined) throw cancelledError;
-		return result;
+		if (cancelled) {
+			throw cancelled;
+		}
+		return parameters;
+	}
+
+	public traceConfirmationPrompt<T>(
+		fn: () => Promise<T | undefined>,
+	): Promise<T | undefined> {
+		return this.traceUpdatePrompt("confirmation", async (span) => {
+			const value = await fn();
+			if (value === undefined) {
+				span.markAborted();
+				return undefined;
+			}
+			span.setProperty("action", "update");
+			return value;
+		});
+	}
+
+	private traceUpdatePrompt<T>(
+		prompt: WorkspaceUpdatePrompt,
+		fn: (span: Span) => Promise<T>,
+	): Promise<T> {
+		return this.telemetry.trace("workspace.update.prompted", fn, {
+			prompt,
+			workspaceName: this.workspaceName,
+		});
 	}
 }

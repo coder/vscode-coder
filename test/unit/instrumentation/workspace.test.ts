@@ -33,11 +33,11 @@ const newAgentTelemetry = (svc: TelemetryService, name: string) =>
 describe("WorkspaceOperationTelemetry", () => {
 	it.each([
 		{
-			method: "traceStartTriggered" as const,
+			method: "traceStart" as const,
 			event: "workspace.start.triggered",
 		},
 		{
-			method: "traceUpdateTriggered" as const,
+			method: "traceUpdate" as const,
 			event: "workspace.update.triggered",
 		},
 	])("$method emits $event with result=success", async ({ method, event }) => {
@@ -52,11 +52,11 @@ describe("WorkspaceOperationTelemetry", () => {
 
 	it.each([
 		{
-			method: "traceStartTriggered" as const,
+			method: "traceStart" as const,
 			event: "workspace.start.triggered",
 		},
 		{
-			method: "traceUpdateTriggered" as const,
+			method: "traceUpdate" as const,
 			event: "workspace.update.triggered",
 		},
 	])("$method emits result=error and rethrows", async ({ method, event }) => {
@@ -70,17 +70,18 @@ describe("WorkspaceOperationTelemetry", () => {
 		});
 	});
 
-	describe("traceStartPrompted", () => {
+	describe("traceStartPrompt", () => {
 		it("emits result=success with accepted action", async () => {
 			const { sink, instance: ops } = setup(newOps);
 
-			const result = await ops.traceStartPrompted(true, () =>
+			const result = await ops.traceStartPrompt(true, () =>
 				Promise.resolve("update"),
 			);
 
 			expect(result).toBe("update");
 			expect(sink.expectOne("workspace.start.prompted")).toMatchObject({
 				properties: {
+					workspaceName: WORKSPACE_NAME,
 					update_offered: "true",
 					action: "update",
 					result: "success",
@@ -91,7 +92,7 @@ describe("WorkspaceOperationTelemetry", () => {
 		it("emits result=aborted when dismissed", async () => {
 			const { sink, instance: ops } = setup(newOps);
 
-			const result = await ops.traceStartPrompted(false, () =>
+			const result = await ops.traceStartPrompt(false, () =>
 				Promise.resolve(undefined),
 			);
 
@@ -105,22 +106,23 @@ describe("WorkspaceOperationTelemetry", () => {
 		});
 	});
 
-	describe("traceUpdatePrompted", () => {
+	describe("traceParametersPrompt", () => {
 		it("returns the collected parameters and emits result=success", async () => {
 			const { sink, instance: ops } = setup(newOps);
 			const collected = [{ name: "region", value: "us-east" }];
 
-			const result = await ops.traceUpdatePrompted(() =>
+			const result = await ops.traceParametersPrompt(() =>
 				Promise.resolve(collected),
 			);
 
 			expect(result).toEqual(collected);
-			const event = sink.expectOne("workspace.update.prompted");
-			expect(event.properties).toMatchObject({
-				prompt: "parameters",
-				result: "success",
+			expect(sink.expectOne("workspace.update.prompted")).toMatchObject({
+				properties: {
+					workspaceName: WORKSPACE_NAME,
+					prompt: "parameters",
+					result: "success",
+				},
 			});
-			expect(event.properties.workspaceName).toBeUndefined();
 		});
 
 		it("emits result=aborted (no error block) and rethrows on cancellation", async () => {
@@ -128,7 +130,7 @@ describe("WorkspaceOperationTelemetry", () => {
 			const cancel = new WorkspaceUpdateCancelledError();
 
 			await expect(
-				ops.traceUpdatePrompted(() => Promise.reject(cancel)),
+				ops.traceParametersPrompt(() => Promise.reject(cancel)),
 			).rejects.toBe(cancel);
 
 			const event = sink.expectOne("workspace.update.prompted");
@@ -141,7 +143,7 @@ describe("WorkspaceOperationTelemetry", () => {
 			const boom = new Error("rest call failed");
 
 			await expect(
-				ops.traceUpdatePrompted(() => Promise.reject(boom)),
+				ops.traceParametersPrompt(() => Promise.reject(boom)),
 			).rejects.toBe(boom);
 
 			expect(sink.expectOne("workspace.update.prompted")).toMatchObject({
@@ -151,17 +153,18 @@ describe("WorkspaceOperationTelemetry", () => {
 		});
 	});
 
-	describe("traceUpdateConfirmationPrompted", () => {
+	describe("traceConfirmationPrompt", () => {
 		it("emits result=success with accepted action", async () => {
 			const { sink, instance: ops } = setup(newOps);
 
-			const result = await ops.traceUpdateConfirmationPrompted(() =>
+			const result = await ops.traceConfirmationPrompt(() =>
 				Promise.resolve("Update and Restart"),
 			);
 
 			expect(result).toBe("Update and Restart");
 			expect(sink.expectOne("workspace.update.prompted")).toMatchObject({
 				properties: {
+					workspaceName: WORKSPACE_NAME,
 					action: "update",
 					prompt: "confirmation",
 					result: "success",
@@ -172,7 +175,7 @@ describe("WorkspaceOperationTelemetry", () => {
 		it("emits result=aborted when dismissed", async () => {
 			const { sink, instance: ops } = setup(newOps);
 
-			const result = await ops.traceUpdateConfirmationPrompted(() =>
+			const result = await ops.traceConfirmationPrompt(() =>
 				Promise.resolve(undefined),
 			);
 
