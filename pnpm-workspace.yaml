@@ -14,7 +14,7 @@ catalog:
   "@vscode-elements/react-elements": ^2.4.0
   "@vscode/codicons": ^0.0.45
   babel-plugin-react-compiler: ^1.0.0
-  coder: github:coder/coder#v2.33.1
+  coder: github:coder/coder#v2.34.1
   date-fns: ^4.4.0
   react: ^19.2.7
   react-dom: ^19.2.7
