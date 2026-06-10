@@ -103,7 +103,7 @@ async function doActivate(
 
 	// Shared handler for auth failures (used by interceptor + session manager)
 	const handleAuthFailure = (): Promise<void> => {
-		deploymentManager.suspendSession();
+		deploymentManager.suspendSession("auth_failure");
 		vscode.window
 			.showWarningMessage(
 				"Session expired. You have been signed out.",

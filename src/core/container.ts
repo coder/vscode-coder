@@ -90,6 +90,7 @@ export class ServiceContainer implements vscode.Disposable {
 				}
 			},
 			this.pathResolver,
+			this.telemetryService,
 		);
 		this.cliManager = new CliManager(
 			this.logger,

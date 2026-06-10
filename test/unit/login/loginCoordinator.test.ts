@@ -191,7 +191,12 @@ describe("LoginCoordinator", () => {
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			expect(result).toEqual({ success: true, user, token: "stored-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "stored_token",
+				user,
+				token: "stored-token",
+			});
 
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
 			expect(auth?.token).toBe("stored-token");
@@ -215,7 +220,12 @@ describe("LoginCoordinator", () => {
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			expect(result).toEqual({ success: true, user, token: "new-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "cli_token",
+				user,
+				token: "new-token",
+			});
 
 			// Verify new token was persisted
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
@@ -259,10 +269,17 @@ describe("LoginCoordinator", () => {
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			// Both should complete with the same result
 			const [result1, result2] = await Promise.all([login1, login2]);
-			expect(result1.success).toBe(true);
-			expect(result1).toEqual(result2);
+			expect(result1).toMatchObject({
+				success: true,
+				method: "cli_token",
+				token: "new-token",
+			});
+			expect(result2).toMatchObject({
+				success: true,
+				method: "stored_token",
+				token: "new-token",
+			});
 
 			// Input box should only be shown once (guard prevents duplicate prompts)
 			expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
@@ -284,7 +301,12 @@ describe("LoginCoordinator", () => {
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			expect(result).toEqual({ success: true, user, token: "" });
+			expect(result).toEqual({
+				success: true,
+				method: "mtls",
+				user,
+				token: "",
+			});
 
 			// Verify empty string token was persisted
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
@@ -372,7 +394,12 @@ describe("LoginCoordinator", () => {
 				token: "provided-token",
 			});
 
-			expect(result).toEqual({ success: true, user, token: "provided-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "provided_token",
+				user,
+				token: "provided-token",
+			});
 		});
 
 		it("falls back to stored token when provided token is invalid", async () => {
@@ -396,7 +423,12 @@ describe("LoginCoordinator", () => {
 				token: "invalid-provided-token",
 			});
 
-			expect(result).toEqual({ success: true, user, token: "stored-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "stored_token",
+				user,
+				token: "stored-token",
+			});
 		});
 
 		it("prompts user when both provided and stored tokens are invalid", async () => {
@@ -430,6 +462,7 @@ describe("LoginCoordinator", () => {
 
 			expect(result).toEqual({
 				success: true,
+				method: "cli_token",
 				user,
 				token: "user-entered-token",
 			});
@@ -467,6 +500,7 @@ describe("LoginCoordinator", () => {
 
 			expect(result).toEqual({
 				success: true,
+				method: "cli_token",
 				user,
 				token: "user-entered-token",
 			});
@@ -536,7 +570,12 @@ describe("LoginCoordinator", () => {
 
 			const result = await login();
 
-			expect(result).toEqual({ success: true, user, token: "stored-token" });
+			expect(result).toEqual({
+				success: true,
+				method: "stored_token",
+				user,
+				token: "stored-token",
+			});
 		});
 	});
 

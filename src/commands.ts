@@ -15,6 +15,11 @@ import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
 import { type FeatureSet, featureSetForVersion } from "./featureSet";
 import {
+	AuthTelemetry,
+	type AuthLoginOutcome,
+	type AuthLogoutOutcome,
+} from "./instrumentation/auth";
+import {
 	reportElapsedProgress,
 	withCancellableProgress,
 	withProgress,
@@ -49,7 +54,7 @@ import type { PathResolver } from "./core/pathResolver";
 import type { SecretsManager } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
 import type { Logger } from "./logging/logger";
-import type { LoginCoordinator } from "./login/loginCoordinator";
+import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
 import type { TelemetryService } from "./telemetry/service";
 import type { SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
 import type {
@@ -68,6 +73,11 @@ interface OpenOptions {
 	useDefaultDirectory?: boolean;
 }
 
+interface LoginArgs {
+	readonly url?: string;
+	readonly autoLogin?: boolean;
+}
+
 const openDefaults = {
 	openRecent: false,
 	useDefaultDirectory: true,
@@ -83,6 +93,7 @@ export class Commands {
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 	private readonly telemetryService: TelemetryService;
+	private readonly authTelemetry: AuthTelemetry;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -109,6 +120,7 @@ export class Commands {
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 		this.duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
 		this.speedtestPanelFactory = serviceContainer.getSpeedtestPanelFactory();
+		this.authTelemetry = new AuthTelemetry(this.telemetryService);
 	}
 
 	/**
@@ -137,20 +149,20 @@ export class Commands {
 	 * Log into a deployment. If already authenticated, this is a no-op.
 	 * If no URL is provided, shows a menu of recent URLs plus defaults.
 	 */
-	public async login(args?: {
-		url?: string;
-		autoLogin?: boolean;
-	}): Promise<void> {
+	public async login(args?: LoginArgs): Promise<void> {
 		if (this.deploymentManager.isAuthenticated()) {
 			return;
 		}
-		await this.performLogin(args);
+		await this.authTelemetry.traceLogin(
+			args?.autoLogin ? "auto_login" : "command",
+			(trace) => this.performLogin(args, trace.setMethod),
+		);
 	}
 
-	private async performLogin(args?: {
-		url?: string;
-		autoLogin?: boolean;
-	}): Promise<void> {
+	private async performLogin(
+		args: LoginArgs | undefined,
+		setMethod: (method: LoginMethod) => void,
+	): Promise<AuthLoginOutcome> {
 		this.logger.debug("Logging in");
 
 		const currentDeployment = await this.secretsManager.getCurrentDeployment();
@@ -160,7 +172,7 @@ export class Commands {
 			currentDeployment?.url,
 		);
 		if (!url) {
-			return; // The user aborted.
+			return { success: false, reason: "no_url_provided" };
 		}
 
 		const safeHostname = toSafeHost(url);
@@ -173,19 +185,26 @@ export class Commands {
 		});
 
 		if (!result.success) {
-			return;
+			return result;
 		}
 
+		// Record the method eagerly so it is captured even if persistence throws.
+		setMethod(result.method);
 		await this.deploymentManager.setDeployment({
 			url,
 			safeHostname,
 			token: result.token,
 			user: result.user,
 		});
+		this.showWelcomeMessage(result.user.username);
+		this.logger.debug("Login complete to deployment:", url);
+		return { success: true, method: result.method };
+	}
 
+	private showWelcomeMessage(username: string): void {
 		vscode.window
 			.showInformationMessage(
-				`Welcome to Coder, ${result.user.username}!`,
+				`Welcome to Coder, ${username}!`,
 				{
 					detail:
 						"You can now use the Coder extension to manage your Coder instance.",
@@ -197,7 +216,6 @@ export class Commands {
 					vscode.commands.executeCommand("coder.open");
 				}
 			});
-		this.logger.debug("Login complete to deployment:", url);
 	}
 
 	/**
@@ -418,21 +436,30 @@ export class Commands {
 	 * Log out and clear stored credentials, requiring re-authentication on next login.
 	 */
 	public async logout(): Promise<void> {
+		await this.authTelemetry.traceLogout(() => this.performLogout());
+	}
+
+	private async performLogout(): Promise<AuthLogoutOutcome> {
 		if (!this.deploymentManager.isAuthenticated()) {
-			return;
+			return { success: false, reason: "not_authenticated" };
 		}
 
 		this.logger.debug("Logging out");
 
 		const deployment = this.deploymentManager.getCurrentDeployment();
-
-		await this.deploymentManager.clearDeployment();
+		await this.deploymentManager.clearDeployment("logout");
 
 		if (deployment) {
 			await this.cliManager.clearCredentials(deployment.url);
 			await this.secretsManager.clearAllAuthData(deployment.safeHostname);
 		}
 
+		this.showLogoutMessage();
+		this.logger.debug("Logout complete");
+		return { success: true };
+	}
+
+	private showLogoutMessage(): void {
 		vscode.window
 			.showInformationMessage("You've been logged out of Coder!", "Login")
 			.then((action) => {
@@ -442,8 +469,6 @@ export class Commands {
 					});
 				}
 			});
-
-		this.logger.debug("Logout complete");
 	}
 
 	/**
@@ -452,7 +477,9 @@ export class Commands {
 	 */
 	public async switchDeployment(): Promise<void> {
 		this.logger.debug("Switching deployment");
-		await this.performLogin();
+		await this.authTelemetry.traceLogin("switch_deployment", (trace) =>
+			this.performLogin(undefined, trace.setMethod),
+		);
 	}
 
 	/**
