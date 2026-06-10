@@ -237,7 +237,7 @@ describe("CliCredentialManager", () => {
 			).rejects.toThrow("Credential CLI operation failed");
 			expect(sink.expectOne("auth.credential.store")).toMatchObject({
 				properties: {
-					failure_category: "cli",
+					"error.type": "cli",
 					result: "error",
 				},
 			});
@@ -298,7 +298,7 @@ describe("CliCredentialManager", () => {
 			).rejects.toThrow("The operation was aborted");
 			expect(sink.expectOne("auth.credential.store")).toMatchObject({
 				properties: {
-					failure_category: "aborted",
+					"error.type": "aborted",
 					result: "aborted",
 				},
 			});
@@ -443,7 +443,7 @@ describe("CliCredentialManager", () => {
 			).resolves.not.toThrow();
 			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {
-					failure_category: "cli",
+					"error.type": "cli",
 					result: "error",
 				},
 			});
@@ -460,7 +460,7 @@ describe("CliCredentialManager", () => {
 			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {
 					category: "keyring",
-					failure_category: "binary",
+					"error.type": "binary",
 					result: "error",
 				},
 			});
@@ -513,7 +513,7 @@ describe("CliCredentialManager", () => {
 			).rejects.toThrow("The operation was aborted");
 			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {
-					failure_category: "aborted",
+					"error.type": "aborted",
 					result: "aborted",
 				},
 			});

@@ -52,6 +52,9 @@ const AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
 // start at 0 (INTERNAL), so shift by 1 when encoding for proto.
 const OTLP_SPAN_KIND_OFFSET = 1;
 
+// OtlpStatus.code is a wire-format int, so compare against a numeric alias.
+const OTLP_STATUS_ERROR: number = SpanStatusCode.ERROR;
+
 export function envelopePrefix(
 	envelope: EnvelopeSpec,
 	resource: string,
@@ -141,6 +144,22 @@ export function spanRecord(
 	const startNano = endNano - nanosFromMs(event.measurements.durationMs ?? 0);
 	const endTimeUnixNano = String(endNano);
 	const { durationMs: _, ...measurements } = event.measurements;
+	const status = spanStatus(event);
+	const attributes: Record<string, string | number> = {
+		...event.properties,
+		...measurements,
+		"coder.event_name": event.eventName,
+		...eventContextAttributes(event),
+	};
+	// OTel wants every error span to carry a low-cardinality error.type, so
+	// backfill the exception type or code, falling back to OTel's _OTHER sentinel.
+	if (
+		status.code === OTLP_STATUS_ERROR &&
+		attributes["error.type"] === undefined
+	) {
+		attributes["error.type"] =
+			event.error?.type ?? event.error?.code ?? "_OTHER";
+	}
 	return {
 		traceId: event.traceId,
 		spanId: event.eventId,
@@ -151,13 +170,8 @@ export function spanRecord(
 		kind: SpanKind.INTERNAL + OTLP_SPAN_KIND_OFFSET,
 		startTimeUnixNano: String(startNano),
 		endTimeUnixNano,
-		attributes: keyValues({
-			...event.properties,
-			...measurements,
-			"coder.event_name": event.eventName,
-			...eventContextAttributes(event),
-		}),
-		status: spanStatus(event),
+		attributes: keyValues(attributes),
+		status,
 		...(event.error && {
 			events: [
 				{
@@ -174,6 +188,9 @@ function spanStatus(event: TelemetryEvent): OtlpStatus {
 	switch (event.properties.result) {
 		case "success":
 			return { code: SpanStatusCode.OK };
+		case "aborted":
+			// OTel treats intentional cancellation as non-error, so leave it unset.
+			return { code: SpanStatusCode.UNSET };
 		case "error":
 			return {
 				code: SpanStatusCode.ERROR,

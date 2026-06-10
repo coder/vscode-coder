@@ -14,7 +14,7 @@ describe("DiagnosticTelemetry", () => {
 		const { sink, telemetry } = setup();
 
 		await telemetry.trace("support_bundle", (trace) => {
-			trace.cancel("save_dialog");
+			trace.abort("save_dialog");
 			return Promise.resolve();
 		});
 		await telemetry.trace("support_bundle", (trace) => {
@@ -26,11 +26,11 @@ describe("DiagnosticTelemetry", () => {
 			"command.diagnostic.completed",
 		);
 		expect(cancelled.properties).toMatchObject({
-			cancel_stage: "save_dialog",
+			abort_stage: "save_dialog",
 			result: "aborted",
 		});
 		expect(failed.properties).toMatchObject({
-			failure_category: "unsupported_cli",
+			"error.type": "unsupported_cli",
 			result: "error",
 		});
 		expect(failed.error).toBeUndefined();

@@ -281,8 +281,8 @@ export class CliCredentialManager {
 			binPath = await this.resolveKeyringBinary(url, configs, "keyringAuth");
 		} catch (error) {
 			this.logger.warn("Could not resolve keyring binary for delete:", error);
-			span.setProperty("failure_category", "binary");
-			span.markFailure();
+			span.setProperty("error.type", "binary");
+			span.markError();
 			return;
 		}
 		if (!binPath) {
@@ -298,8 +298,8 @@ export class CliCredentialManager {
 				throw error;
 			}
 			this.logger.warn("Failed to delete token via CLI:", error);
-			span.setProperty("failure_category", "cli");
-			span.markFailure();
+			span.setProperty("error.type", "cli");
+			span.markError();
 		}
 	}
 

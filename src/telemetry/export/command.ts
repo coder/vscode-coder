@@ -34,7 +34,7 @@ const PROGRESS_OPTIONS = {
  * this shape, so command callers can pass their trace directly.
  */
 export interface ExportTelemetryObserver {
-	cancel(stage: "prompt" | "progress"): void;
+	abort(stage: "prompt" | "progress"): void;
 	fail(): void;
 	succeedExport(format: ExportFormat, eventCount: number): void;
 }
@@ -48,7 +48,7 @@ export async function runExportTelemetryCommand(
 ): Promise<void> {
 	const choice = await promptForExport();
 	if (!choice) {
-		observer.cancel("prompt");
+		observer.abort("prompt");
 		return;
 	}
 
@@ -99,7 +99,7 @@ async function reportOutcome(
 ): Promise<void> {
 	if (!result.ok) {
 		if (result.cancelled) {
-			observer.cancel("progress");
+			observer.abort("progress");
 			return;
 		}
 		observer.fail();

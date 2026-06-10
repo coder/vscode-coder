@@ -62,6 +62,39 @@ describe("WorkspaceOpenTelemetry", () => {
 		expect(event.properties.agentName).toBeUndefined();
 	});
 
+	it("counts every connected agent on the workspace", async () => {
+		const { sink, telemetry } = setup();
+		const first = agent({ status: "connected", lifecycle_state: "ready" });
+		const second = agent({
+			id: "agent-2",
+			name: "secondary",
+			status: "connected",
+			lifecycle_state: "ready",
+		});
+		const offline = agent({
+			id: "agent-3",
+			name: "tertiary",
+			status: "disconnected",
+			lifecycle_state: "off",
+		});
+		const selection = workspace({
+			latest_build: {
+				status: "running",
+				resources: [resource({ agents: [first, second, offline] })],
+			},
+		});
+
+		await telemetry.traceOpen("command", { workspace: selection }, () =>
+			Promise.resolve(true),
+		);
+
+		const event = sink.expectOne("workspace.open");
+		expect(event.measurements).toMatchObject({
+			agent_count: 3,
+			connected_agent_count: 2,
+		});
+	});
+
 	it("records workspace picker cancellation and failure distinctly", async () => {
 		const { sink, telemetry } = setup();
 
@@ -80,7 +113,7 @@ describe("WorkspaceOpenTelemetry", () => {
 		expect(cancelled.properties).toMatchObject({ result: "aborted" });
 		expect(cancelled.measurements.workspace_count).toBe(3);
 		expect(failed.properties).toMatchObject({
-			failure_category: "fetch_failed",
+			"error.type": "fetch_failed",
 			result: "error",
 		});
 		expect(failed.measurements.workspace_count).toBe(0);
@@ -91,7 +124,7 @@ describe("WorkspaceOpenTelemetry", () => {
 		const selection = workspaceWithAgents();
 
 		await telemetry.traceOpen("command", undefined, (trace) => {
-			trace.cancel("agent_picker", { workspace: selection.workspace });
+			trace.abort("agent_picker", { workspace: selection.workspace });
 			return Promise.resolve(false);
 		});
 		await telemetry.traceOpen("command", undefined, (trace) => {
@@ -101,12 +134,12 @@ describe("WorkspaceOpenTelemetry", () => {
 
 		const [cancelled, failed] = sink.eventsNamed("workspace.open");
 		expect(cancelled.properties).toMatchObject({
-			cancel_stage: "agent_picker",
+			abort_stage: "agent_picker",
 			workspace_status: "running",
 			result: "aborted",
 		});
 		expect(failed.properties).toMatchObject({
-			failure_category: "fetch_failed",
+			"error.type": "fetch_failed",
 			result: "error",
 		});
 	});
@@ -122,7 +155,7 @@ describe("WorkspaceOpenTelemetry", () => {
 
 		const event = sink.expectOne("workspace.open");
 		expect(event.properties).toMatchObject({
-			failure_category: "error",
+			"error.type": "error",
 			result: "error",
 		});
 		expect(event.error).toBeUndefined();
@@ -132,14 +165,14 @@ describe("WorkspaceOpenTelemetry", () => {
 		const { sink, telemetry } = setup();
 
 		await expect(
-			telemetry.traceDevcontainer("dev_container", () =>
+			telemetry.traceDevContainer("dev_container", () =>
 				Promise.reject(new Error("secret local path /tmp/workspace")),
 			),
 		).rejects.toThrow("secret local path /tmp/workspace");
 
 		const event = sink.expectOne("workspace.dev_container.open");
 		expect(event.properties).toMatchObject({
-			failure_category: "error",
+			"error.type": "error",
 			mode: "dev_container",
 			result: "error",
 		});

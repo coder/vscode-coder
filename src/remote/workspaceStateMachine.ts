@@ -338,7 +338,9 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		outdated: boolean,
 	): Promise<"start" | "update" | undefined> {
 		return this.operationTelemetry.traceStartPrompt(outdated, async () => {
-			const buttons = outdated ? ["Start", "Update and Start"] : ["Start"];
+			const buttons = outdated
+				? (["Start", "Update and Start"] as const)
+				: (["Start"] as const);
 			const action = await vscodeProposed.window.showInformationMessage(
 				`The workspace ${workspaceName} is not running. How would you like to proceed?`,
 				{

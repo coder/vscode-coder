@@ -117,9 +117,9 @@ export class AuthTelemetry {
 	}
 
 	/**
-	 * Records `auth.login_prompted`. `auth_failed` marks the span as failure;
+	 * Records `auth.login_prompted`. `auth_failed` marks the span as error;
 	 * other non-success reasons mark it as aborted. The reason is copied to the
-	 * span's `reason` property on failure/abort only.
+	 * span's `reason` property on error/abort only.
 	 */
 	public traceLoginPrompt<T extends LoginPromptOutcome>(
 		trigger: AuthLoginPromptTrigger,
@@ -139,11 +139,12 @@ export class AuthTelemetry {
 	}
 }
 
-/** `auth_failed` is a real failure; user/URL dismissals are intentional aborts. */
+/** `auth_failed` is a real error; user/URL dismissals are intentional aborts. */
 function recordReason(span: Span, reason: LoginPromptReason): void {
 	span.setProperty("reason", reason);
 	if (reason === "auth_failed") {
-		span.markFailure();
+		span.setProperty("error.type", reason);
+		span.markError();
 	} else {
 		span.markAborted();
 	}

@@ -1,22 +1,22 @@
-import { recordCancelled, recordFailure } from "./outcomes";
+import { recordAborted, recordError } from "./outcomes";
 
 import type { SpeedtestResult } from "@repo/shared";
 
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
-import type { WorkspacePickerFailureCategory } from "./workspaceOpen";
+import type { WorkspacePickerErrorCategory } from "./workspaceOpen";
 
 export type DiagnosticCommand =
 	| "speed_test"
 	| "support_bundle"
 	| "export_telemetry";
-export type DiagnosticFailureCategory =
-	| WorkspacePickerFailureCategory
+export type DiagnosticErrorCategory =
+	| WorkspacePickerErrorCategory
 	| "parse_error"
 	| "unsupported_cli"
 	| "error";
-export type DiagnosticCancelStage =
+export type DiagnosticAbortStage =
 	| "workspace_picker"
 	| "input"
 	| "prompt"
@@ -24,8 +24,8 @@ export type DiagnosticCancelStage =
 	| "progress";
 
 export interface DiagnosticTrace {
-	cancel(stage: DiagnosticCancelStage): void;
-	fail(category?: DiagnosticFailureCategory): void;
+	abort(stage: DiagnosticAbortStage): void;
+	fail(category?: DiagnosticErrorCategory): void;
 	setRequestedDuration(seconds: number): void;
 	succeedSpeedtest(result: SpeedtestResult): void;
 	succeedExport(format: string, eventCount: number): void;
@@ -50,12 +50,12 @@ export class DiagnosticTelemetry {
 class SpanDiagnosticTrace implements DiagnosticTrace {
 	public constructor(private readonly span: Span) {}
 
-	public cancel(stage: DiagnosticCancelStage): void {
-		recordCancelled(this.span, stage);
+	public abort(stage: DiagnosticAbortStage): void {
+		recordAborted(this.span, stage);
 	}
 
-	public fail(category: DiagnosticFailureCategory = "error"): void {
-		recordFailure(this.span, category);
+	public fail(category: DiagnosticErrorCategory = "error"): void {
+		recordError(this.span, category);
 	}
 
 	public setRequestedDuration(seconds: number): void {

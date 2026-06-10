@@ -379,7 +379,7 @@ describe("TelemetryService", () => {
 			expect(phase.eventName).toBe("op.bad_name");
 		});
 
-		it("drops setProperty/setMeasurement/markAborted/markFailure called after emit", async () => {
+		it("drops setProperty/setMeasurement/markAborted/markError called after emit", async () => {
 			let escapedSpan: Span | undefined;
 			await h.service.trace("op", (span) => {
 				escapedSpan = span;
@@ -391,7 +391,7 @@ describe("TelemetryService", () => {
 			escapedSpan?.setProperty("late", "ignored");
 			escapedSpan?.setMeasurement("lateMs", 99);
 			escapedSpan?.markAborted();
-			escapedSpan?.markFailure();
+			escapedSpan?.markError();
 
 			expect(h.sink.events[0].properties.late).toBeUndefined();
 			expect(h.sink.events[0].measurements.lateMs).toBeUndefined();
@@ -438,7 +438,7 @@ describe("TelemetryService", () => {
 			escapedSpan?.setProperty("late", "ignored");
 			escapedSpan?.setMeasurement("lateMs", 99);
 			escapedSpan?.markAborted();
-			escapedSpan?.markFailure();
+			escapedSpan?.markError();
 			escapedSpan?.log("late_log");
 			escapedSpan?.logError("late_log_error", new Error("ignored"));
 			await escapedSpan?.phase("late_phase", () => Promise.resolve());
@@ -474,9 +474,9 @@ describe("TelemetryService", () => {
 			});
 		});
 
-		it("markFailure flips result to 'error' on normal return without an error block", async () => {
+		it("markError flips result to 'error' on normal return without an error block", async () => {
 			await h.service.trace("op", (span) => {
-				span.markFailure();
+				span.markError();
 				return Promise.resolve();
 			});
 
@@ -487,21 +487,21 @@ describe("TelemetryService", () => {
 			expect(h.sink.events[0].error).toBeUndefined();
 		});
 
-		it("markFailure overrides markAborted (failure wins over abort)", async () => {
+		it("markError overrides markAborted (error wins over abort)", async () => {
 			await h.service.trace("op", (span) => {
 				span.markAborted();
-				span.markFailure();
+				span.markError();
 				return Promise.resolve();
 			});
 
 			expect(h.sink.events[0].properties.result).toBe("error");
 		});
 
-		it("thrown errors take precedence over markFailure (error block is preserved)", async () => {
+		it("thrown errors take precedence over markError (error block is preserved)", async () => {
 			const boom = new Error("kaboom");
 			await expect(
 				h.service.trace("op", (span) => {
-					span.markFailure();
+					span.markError();
 					return Promise.reject(boom);
 				}),
 			).rejects.toBe(boom);

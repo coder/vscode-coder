@@ -25,11 +25,11 @@ import {
 } from "./instrumentation/diagnostics";
 import { WorkspaceOperationTelemetry } from "./instrumentation/workspace";
 import {
-	type DevcontainerMode,
+	type DevContainerMode,
 	type WorkspaceOpenSource,
 	WorkspaceOpenTelemetry,
 	type WorkspaceOpenTrace,
-	type WorkspacePickerFailureCategory,
+	type WorkspacePickerErrorCategory,
 	type WorkspacePickerResult,
 	type WorkspacePickerSource,
 } from "./instrumentation/workspaceOpen";
@@ -102,7 +102,7 @@ type WorkspaceResolution =
 	| { readonly status: "cancelled" }
 	| {
 			readonly status: "failed";
-			readonly category: WorkspacePickerFailureCategory;
+			readonly category: WorkspacePickerErrorCategory;
 	  };
 
 type OpenWorkspaceResult =
@@ -281,7 +281,7 @@ export class Commands {
 	): Promise<void> {
 		const resolved = await this.resolveClientAndWorkspace(item);
 		if (resolved.status === "cancelled") {
-			telemetry.cancel("workspace_picker");
+			telemetry.abort("workspace_picker");
 			return;
 		}
 		if (resolved.status === "failed") {
@@ -304,7 +304,7 @@ export class Commands {
 			},
 		});
 		if (input === undefined) {
-			telemetry.cancel("input");
+			telemetry.abort("input");
 			return;
 		}
 		const seconds = Number(input.trim());
@@ -343,7 +343,7 @@ export class Commands {
 
 		if (!result.ok) {
 			if (result.cancelled) {
-				telemetry.cancel("progress");
+				telemetry.abort("progress");
 				return;
 			}
 			telemetry.fail();
@@ -391,7 +391,7 @@ export class Commands {
 	): Promise<void> {
 		const resolved = await this.resolveClientAndWorkspace(item);
 		if (resolved.status === "cancelled") {
-			telemetry.cancel("workspace_picker");
+			telemetry.abort("workspace_picker");
 			return;
 		}
 		if (resolved.status === "failed") {
@@ -403,7 +403,7 @@ export class Commands {
 
 		const outputUri = await this.promptSupportBundlePath();
 		if (!outputUri) {
-			telemetry.cancel("save_dialog");
+			telemetry.abort("save_dialog");
 			return;
 		}
 
@@ -441,7 +441,7 @@ export class Commands {
 
 		if (!result.ok) {
 			if (result.cancelled) {
-				telemetry.cancel("progress");
+				telemetry.abort("progress");
 				return;
 			}
 			telemetry.fail(
@@ -832,7 +832,7 @@ export class Commands {
 		const agents = await this.extractAgentsWithFallback(item.workspace);
 		const agent = await maybeAskAgent(agents);
 		if (!agent) {
-			telemetry.cancel("agent_picker", { workspace: item.workspace });
+			telemetry.abort("agent_picker", { workspace: item.workspace });
 			return false;
 		}
 		const selection = { workspace: item.workspace, agent };
@@ -911,7 +911,7 @@ export class Commands {
 		} else {
 			const pick = await this.pickWorkspace("workspace_open");
 			if (pick.status === "cancelled") {
-				telemetry.cancel("workspace_picker");
+				telemetry.abort("workspace_picker");
 				return false;
 			}
 			if (pick.status === "failed") {
@@ -924,7 +924,7 @@ export class Commands {
 		const agents = await this.extractAgentsWithFallback(workspace);
 		const agent = await maybeAskAgent(agents, agentName);
 		if (!agent) {
-			telemetry.cancel("agent_picker", { workspace });
+			telemetry.abort("agent_picker", { workspace });
 			return false;
 		}
 		const selection = { workspace, agent };
@@ -952,10 +952,10 @@ export class Commands {
 		localWorkspaceFolder = "",
 		localConfigFile = "",
 	): Promise<void> {
-		const mode: DevcontainerMode = localWorkspaceFolder
+		const mode: DevContainerMode = localWorkspaceFolder
 			? "dev_container"
 			: "attached_container";
-		await this.workspaceOpenTelemetry.traceDevcontainer(mode, () =>
+		await this.workspaceOpenTelemetry.traceDevContainer(mode, () =>
 			this.runOpenDevContainer(
 				workspaceOwner,
 				workspaceName,
@@ -1184,7 +1184,7 @@ export class Commands {
 
 		let lastWorkspaces: readonly Workspace[] = [];
 		let settled = false;
-		let fetchFailureCategory: WorkspacePickerFailureCategory | undefined;
+		let fetchErrorCategory: WorkspacePickerErrorCategory | undefined;
 		const disposables: vscode.Disposable[] = [];
 		disposables.push(
 			quickPick.onDidChangeValue((value) => {
@@ -1194,7 +1194,7 @@ export class Commands {
 						q: value,
 					})
 					.then((workspaces) => {
-						fetchFailureCategory = undefined;
+						fetchErrorCategory = undefined;
 						const filtered = filter
 							? workspaces.workspaces.filter(filter)
 							: workspaces.workspaces;
@@ -1224,7 +1224,7 @@ export class Commands {
 						}
 					})
 					.catch((ex) => {
-						fetchFailureCategory = "fetch_failed";
+						fetchErrorCategory = "fetch_failed";
 						this.logger.error("Failed to fetch workspaces", ex);
 						if (ex instanceof CertificateError) {
 							void ex.showNotification();
@@ -1256,10 +1256,10 @@ export class Commands {
 						};
 						disposables.push(
 							quickPick.onDidHide(() => {
-								if (fetchFailureCategory) {
+								if (fetchErrorCategory) {
 									finish({
 										status: "failed",
-										category: fetchFailureCategory,
+										category: fetchErrorCategory,
 									});
 									return;
 								}
@@ -1460,7 +1460,7 @@ function recordOpenResult(
 	result: OpenWorkspaceResult,
 ): boolean {
 	if (result.status === "cancelled") {
-		telemetry.cancel(result.stage, selection);
+		telemetry.abort(result.stage, selection);
 		return false;
 	}
 	telemetry.handoff(result.handoff);

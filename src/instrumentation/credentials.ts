@@ -6,13 +6,13 @@ import type { WorkspaceConfiguration } from "vscode";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
-export type CredentialFailureCategory = "aborted" | "binary" | "cli" | "file";
+export type CredentialErrorCategory = "aborted" | "binary" | "cli" | "file";
 
 type CredentialEvent = "auth.credential.store" | "auth.credential.clear";
 
 /**
  * Wraps credential store/clear in a span carrying `keyring_enabled`, the
- * `category` of storage involved, and a `failure_category` on failure. The
+ * `category` of storage involved, and an `error.type` on failure. The
  * traced operation sets `category` on the span and reports failures by
  * throwing a categorized error (store) or recording on the span (clear, which
  * is best-effort). Aborts are recorded and re-thrown so callers still unwind.
@@ -47,10 +47,7 @@ export class CredentialTelemetry {
 				try {
 					await fn(span);
 				} catch (error) {
-					span.setProperty(
-						"failure_category",
-						categorizeCredentialError(error),
-					);
+					span.setProperty("error.type", categorizeCredentialError(error));
 					if (isAbortError(error)) {
 						span.markAborted();
 						aborted = error;
@@ -70,7 +67,7 @@ export class CredentialTelemetry {
 	}
 }
 
-function categorizeCredentialError(error: unknown): CredentialFailureCategory {
+function categorizeCredentialError(error: unknown): CredentialErrorCategory {
 	if (isAbortError(error)) {
 		return "aborted";
 	}

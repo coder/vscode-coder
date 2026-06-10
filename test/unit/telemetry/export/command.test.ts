@@ -60,7 +60,7 @@ function setup(
 	}
 
 	const observer: ExportTelemetryObserver = {
-		cancel: vi.fn(),
+		abort: vi.fn(),
 		fail: vi.fn(),
 		succeedExport: vi.fn(),
 	};
@@ -85,7 +85,7 @@ describe("runExportTelemetryCommand", () => {
 
 		await run();
 
-		expect(observer.cancel).toHaveBeenCalledWith("prompt");
+		expect(observer.abort).toHaveBeenCalledWith("prompt");
 
 		expect(collectTelemetryExport).not.toHaveBeenCalled();
 		expect(vscode.window.withProgress).not.toHaveBeenCalled();
@@ -212,7 +212,7 @@ describe("runExportTelemetryCommand", () => {
 
 			await run();
 
-			expect(observer.cancel).toHaveBeenCalledWith("progress");
+			expect(observer.abort).toHaveBeenCalledWith("progress");
 
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();

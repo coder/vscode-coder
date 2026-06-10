@@ -1,10 +1,10 @@
 import { extractAgents } from "../api/api-helper";
 
 import {
-	type AbortableFailureCategory,
-	categorizeAbortableFailure,
-	recordCancelled,
-	recordFailure,
+	type AbortableErrorCategory,
+	categorizeAbortableError,
+	recordAborted,
+	recordError,
 } from "./outcomes";
 
 import type {
@@ -24,19 +24,19 @@ export type WorkspaceOpenSource =
 	| "uri";
 
 export type WorkspacePickerSource = "workspace_open" | "diagnostic";
-export type WorkspacePickerFailureCategory = "fetch_failed";
-export type WorkspaceOpenFailureCategory =
-	| WorkspacePickerFailureCategory
-	| AbortableFailureCategory;
+export type WorkspacePickerErrorCategory = "fetch_failed";
+export type WorkspaceOpenErrorCategory =
+	| WorkspacePickerErrorCategory
+	| AbortableErrorCategory;
 export type WorkspacePickerResult =
 	| { readonly status: "selected"; readonly workspace: Workspace }
 	| { readonly status: "cancelled" }
 	| {
 			readonly status: "failed";
-			readonly category: WorkspacePickerFailureCategory;
+			readonly category: WorkspacePickerErrorCategory;
 	  };
-export type DevcontainerMode = "dev_container" | "attached_container";
-export type WorkspaceOpenCancelStage =
+export type DevContainerMode = "dev_container" | "attached_container";
+export type WorkspaceOpenAbortStage =
 	| "workspace_picker"
 	| "agent_picker"
 	| "recent_folder_picker";
@@ -52,11 +52,11 @@ export interface WorkspacePickerTrace {
 
 export interface WorkspaceOpenTrace {
 	select(selection: WorkspaceOpenSelection): void;
-	cancel(
-		stage: WorkspaceOpenCancelStage,
+	abort(
+		stage: WorkspaceOpenAbortStage,
 		selection?: WorkspaceOpenSelection,
 	): void;
-	fail(category: WorkspaceOpenFailureCategory): void;
+	fail(category: WorkspaceOpenErrorCategory): void;
 	handoff(kind: "folder" | "empty_window"): void;
 }
 
@@ -101,8 +101,8 @@ export class WorkspaceOpenTelemetry {
 		);
 	}
 
-	public async traceDevcontainer(
-		mode: DevcontainerMode,
+	public async traceDevContainer(
+		mode: DevContainerMode,
 		fn: () => Promise<void>,
 	): Promise<void> {
 		await this.traceRethrowing(
@@ -115,7 +115,7 @@ export class WorkspaceOpenTelemetry {
 
 	/**
 	 * Runs `fn` inside the span, recording a thrown error as a categorized
-	 * failure without its raw details, then rethrows outside the span.
+	 * error without its raw details, then rethrows outside the span.
 	 */
 	private async traceRethrowing<T>(
 		eventName: string,
@@ -131,7 +131,7 @@ export class WorkspaceOpenTelemetry {
 					return await fn(span);
 				} catch (error) {
 					thrown = { error };
-					recordFailure(span, categorizeAbortableFailure(error));
+					recordError(span, categorizeAbortableError(error));
 					return fallback;
 				}
 			},
@@ -154,7 +154,7 @@ class SpanWorkspacePickerTrace implements WorkspacePickerTrace {
 			return;
 		}
 		if (result.status === "failed") {
-			recordFailure(this.span, result.category);
+			recordError(this.span, result.category);
 			return;
 		}
 		this.span.markAborted();
@@ -168,18 +168,18 @@ class SpanWorkspaceOpenTrace implements WorkspaceOpenTrace {
 		recordWorkspaceContext(this.span, selection.workspace, selection.agent);
 	}
 
-	public cancel(
-		stage: WorkspaceOpenCancelStage,
+	public abort(
+		stage: WorkspaceOpenAbortStage,
 		selection?: WorkspaceOpenSelection,
 	): void {
 		if (selection) {
 			recordWorkspaceContext(this.span, selection.workspace, selection.agent);
 		}
-		recordCancelled(this.span, stage);
+		recordAborted(this.span, stage);
 	}
 
-	public fail(category: WorkspaceOpenFailureCategory): void {
-		recordFailure(this.span, category);
+	public fail(category: WorkspaceOpenErrorCategory): void {
+		recordError(this.span, category);
 	}
 
 	public handoff(kind: "folder" | "empty_window"): void {

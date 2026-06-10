@@ -41,8 +41,8 @@ export interface Span {
 	setMeasurement(name: string, value: number): void;
 	/** Flip this span's `result` from `success` to `aborted` on normal return. */
 	markAborted(): void;
-	/** Flip `result` to `error` for a failure captured in the return value. See `SpanResult`. */
-	markFailure(): void;
+	/** Flip `result` to `error` for an error captured in the return value. See `SpanResult`. */
+	markError(): void;
 }
 
 /** No-op `Span` used when telemetry is off. Runs phase fns but emits nothing. */
@@ -56,7 +56,7 @@ export const NOOP_SPAN: Span = {
 	log: () => undefined,
 	logError: () => undefined,
 	markAborted: () => undefined,
-	markFailure: () => undefined,
+	markError: () => undefined,
 	setProperty: () => undefined,
 	setMeasurement: () => undefined,
 };
