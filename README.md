@@ -67,15 +67,15 @@ vscode://coder.coder-remote/open?owner=alice&workspace=dev&agent=main&folder=/ho
 
 Opens a workspace, starting it first if needed.
 
-| Parameter    | Required | Description                                                                                                |
-| ------------ | -------- | ---------------------------------------------------------------------------------------------------------- |
-| `owner`      | Yes      | Username of the workspace owner.                                                                           |
-| `workspace`  | Yes      | Name of the workspace.                                                                                     |
-| `agent`      | No       | Agent _name_ (not ID). If omitted or unmatched in a multi-agent workspace, a picker is shown.              |
-| `folder`     | No       | Absolute path inside the workspace to open.                                                                |
-| `openRecent` | No       | Open the most recently used folder for this workspace. True when present without a value or set to `true`. |
-| `url`        | No       | Coder deployment URL. If omitted, the extension prompts for it (pre-filled with the current deployment).   |
-| `token`      | No       | Session token for authentication. If omitted, the existing session is used or a login flow is started.     |
+| Parameter    | Required | Description                                                                                                                                                                                                 |
+| ------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `owner`      | Yes      | Username of the workspace owner.                                                                                                                                                                            |
+| `workspace`  | Yes      | Name of the workspace.                                                                                                                                                                                      |
+| `agent`      | No       | Agent _name_ (not ID). If omitted or unmatched in a multi-agent workspace, a picker is shown.                                                                                                               |
+| `folder`     | No       | Absolute path inside the workspace to open. If omitted, a recently opened folder for this workspace is used (a picker is shown when there are several); with no recents, the window opens without a folder. |
+| `openRecent` | No       | Open the most recently used folder for this workspace, skipping the picker. True when present without a value or set to `true`. Ignored when `folder` is set.                                               |
+| `url`        | No       | Coder deployment URL. If omitted, the extension prompts for it (pre-filled with the current deployment).                                                                                                    |
+| `token`      | No       | Session token for authentication. If omitted, the existing session is used or a login flow is started.                                                                                                      |
 
 ### `/openDevContainer`
 
