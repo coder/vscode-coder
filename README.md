@@ -51,3 +51,43 @@ Alternatively, manually install the VSIX from the
 All extension settings are under the `coder.*` namespace in the Settings UI.
 Paths in settings accept `~` and `${userHome}` from VS Code's
 [variables reference](https://code.visualstudio.com/docs/editor/variables-reference).
+
+## URI Handler
+
+The extension registers a URI handler that can open workspaces from outside
+the editor, such as links on the Coder dashboard. The scheme matches the
+editor (`vscode://`, `cursor://`, `windsurf://`, etc.), followed by the
+extension ID and a path:
+
+```text
+vscode://coder.coder-remote/open?owner=alice&workspace=dev&agent=main&folder=/home/coder/project
+```
+
+### `/open`
+
+Opens a workspace, starting it first if needed.
+
+| Parameter    | Required | Description                                                                                                                                                                                                 |
+| ------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `owner`      | Yes      | Username of the workspace owner.                                                                                                                                                                            |
+| `workspace`  | Yes      | Name of the workspace.                                                                                                                                                                                      |
+| `agent`      | No       | Agent _name_ (not ID). If omitted or unmatched in a multi-agent workspace, a picker is shown.                                                                                                               |
+| `folder`     | No       | Absolute path inside the workspace to open. If omitted, a recently opened folder for this workspace is used (a picker is shown when there are several); with no recents, the window opens without a folder. |
+| `openRecent` | No       | Open the most recently used folder for this workspace, skipping the picker. True when present without a value or set to `true`. Ignored when `folder` is set.                                               |
+| `url`        | No       | Coder deployment URL. If omitted, the extension prompts for it (pre-filled with the current deployment).                                                                                                    |
+| `token`      | No       | Session token for authentication. If omitted, the existing session is used or a login flow is started.                                                                                                      |
+
+### `/openDevContainer`
+
+Opens a dev container running inside a workspace.
+
+| Parameter              | Required | Description                                                                    |
+| ---------------------- | -------- | ------------------------------------------------------------------------------ |
+| `owner`                | Yes      | Username of the workspace owner.                                               |
+| `workspace`            | Yes      | Name of the workspace.                                                         |
+| `agent`                | Yes      | Agent name the dev container runs on.                                          |
+| `devContainerName`     | Yes      | Name of the dev container.                                                     |
+| `devContainerFolder`   | Yes      | Folder to open inside the dev container.                                       |
+| `localWorkspaceFolder` | No       | Local path of the dev container project. Required if `localConfigFile` is set. |
+| `localConfigFile`      | No       | Local path to the `devcontainer.json` file.                                    |
+| `url`, `token`         | No       | Same as `/open`.                                                               |
