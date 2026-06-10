@@ -134,7 +134,7 @@ export class CliManager {
 	 * downloads being disabled.
 	 */
 	public fetchBinary(restClient: Api): Promise<string> {
-		return this.cliTelemetry.resolve((trace) =>
+		return this.cliTelemetry.traceResolve((trace) =>
 			this.resolveBinary(restClient, trace),
 		);
 	}
@@ -322,7 +322,7 @@ export class CliManager {
 				latestVersion = waitResult.parsedVersion;
 			}
 
-			const result = await this.cliTelemetry.download(
+			const result = await this.cliTelemetry.traceDownload(
 				downloadReason,
 				async (span) => {
 					const downloadedBinPath = await this.performBinaryDownload(
@@ -1013,7 +1013,7 @@ export class CliManager {
 		}
 
 		const silent = options?.silent === true;
-		return this.cliTelemetry.configure(
+		return this.cliTelemetry.traceConfigure(
 			{
 				silent,
 				credentialSource: token === "" ? "empty_token" : "session_token",
@@ -1033,7 +1033,7 @@ export class CliManager {
 			try {
 				await this.cliCredentialManager.storeToken(url, token, configs);
 			} catch (error) {
-				trace.failed(error);
+				trace.fail(error);
 				this.handleStoreError(error);
 			}
 			return;
@@ -1053,10 +1053,10 @@ export class CliManager {
 		}
 		if (result.cancelled) {
 			this.output.info("Credential storage cancelled by user");
-			trace.cancelled();
+			trace.cancel();
 			return;
 		}
-		trace.failed(result.error);
+		trace.fail(result.error);
 		this.handleStoreError(result.error);
 	}
 

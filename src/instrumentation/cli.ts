@@ -58,20 +58,22 @@ export class CliFallbackDeclinedError extends Error {
 export class CliTelemetry {
 	public constructor(private readonly telemetry: TelemetryService) {}
 
-	public resolve<T>(fn: (trace: CliResolveTrace) => Promise<T>): Promise<T> {
+	public traceResolve<T>(
+		fn: (trace: CliResolveTrace) => Promise<T>,
+	): Promise<T> {
 		return this.telemetry.trace("cli.resolve", (span) =>
 			fn(new CliResolveTrace(span)),
 		);
 	}
 
-	public download<T>(
+	public traceDownload<T>(
 		reason: CliDownloadReason,
 		fn: (span: Span) => Promise<T>,
 	): Promise<T> {
 		return this.telemetry.trace("cli.download", fn, { reason });
 	}
 
-	public configure<T>(
+	public traceConfigure<T>(
 		options: CliConfigureOptions,
 		fn: (trace: CliConfigureTrace) => Promise<T>,
 	): Promise<T> {
@@ -185,12 +187,12 @@ export class CliResolveTrace {
 export class CliConfigureTrace {
 	public constructor(private readonly span: Span) {}
 
-	public cancelled(): void {
+	public cancel(): void {
 		this.span.setProperty("failure_category", "cancelled");
 		this.span.markAborted();
 	}
 
-	public failed(error: unknown): void {
+	public fail(error: unknown): void {
 		this.span.setProperty(
 			"failure_category",
 			categorizeConfigureFailure(error),
