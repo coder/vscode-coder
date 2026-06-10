@@ -3,21 +3,21 @@ packages:
 
 catalog:
   "@rolldown/plugin-babel": ^0.2.3
-  "@storybook/addon-a11y": ^10.4.1
-  "@storybook/addon-docs": ^10.4.1
-  "@storybook/react-vite": ^10.4.1
-  "@tanstack/react-query": ^5.100.14
-  "@types/react": ^19.2.15
+  "@storybook/addon-a11y": ^10.4.2
+  "@storybook/addon-docs": ^10.4.2
+  "@storybook/react-vite": ^10.4.2
+  "@tanstack/react-query": ^5.101.0
+  "@types/react": ^19.2.17
   "@types/react-dom": ^19.2.3
   "@types/vscode-webview": ^1.57.5
   "@vitejs/plugin-react": ^6.0.2
   "@vscode-elements/react-elements": ^2.4.0
   "@vscode/codicons": ^0.0.45
   babel-plugin-react-compiler: ^1.0.0
-  coder: github:coder/coder#v2.33.1
+  coder: github:coder/coder#v2.34.1
   date-fns: ^4.4.0
-  react: ^19.2.6
-  react-dom: ^19.2.6
+  react: ^19.2.7
+  react-dom: ^19.2.7
   typescript: ^6.0.3
   vite: ^8.0.16
 
