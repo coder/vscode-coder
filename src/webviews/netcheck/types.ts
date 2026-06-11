@@ -4,16 +4,20 @@ import type { NetcheckReport } from "@repo/shared";
 
 const SeveritySchema = z.enum(["ok", "warning", "error"]);
 
+/** The CLI emits `null` instead of `[]` for empty lists. */
+function emptyIfNull<T extends z.ZodType>(item: T) {
+	return z
+		.array(item)
+		.nullish()
+		.transform((v) => v ?? []);
+}
+
 const HealthMessageSchema = z.object({
 	code: z.string(),
 	message: z.string(),
 });
 
-/** The CLI emits `null` instead of `[]` for empty warning lists. */
-const WarningsSchema = z
-	.array(HealthMessageSchema)
-	.nullish()
-	.transform((v) => v ?? []);
+const WarningsSchema = emptyIfNull(HealthMessageSchema);
 
 const NodeReportSchema = z.object({
 	severity: SeveritySchema,
@@ -40,10 +44,7 @@ const RegionReportSchema = z.object({
 			EmbeddedRelay: z.boolean(),
 		})
 		.nullish(),
-	node_reports: z
-		.array(NodeReportSchema)
-		.nullish()
-		.transform((v) => v ?? []),
+	node_reports: emptyIfNull(NodeReportSchema),
 });
 
 const ConnectivitySchema = z.object({
@@ -77,13 +78,15 @@ const NetcheckReportSchema = z.object({
 		regions: z
 			.record(z.string(), RegionReportSchema.nullable())
 			.nullish()
-			.transform((v) =>
-				Object.fromEntries(
-					Object.entries(v ?? {}).filter(
-						([, region]) => region !== null,
-					) as Array<[string, z.output<typeof RegionReportSchema>]>,
-				),
-			),
+			.transform((v) => {
+				const regions: Record<string, z.output<typeof RegionReportSchema>> = {};
+				for (const [id, region] of Object.entries(v ?? {})) {
+					if (region !== null) {
+						regions[id] = region;
+					}
+				}
+				return regions;
+			}),
 		netcheck: ConnectivitySchema.nullish(),
 		netcheck_err: z.string().nullish(),
 	}),
@@ -91,10 +94,7 @@ const NetcheckReportSchema = z.object({
 		severity: SeveritySchema,
 		warnings: WarningsSchema,
 		error: z.string().nullish(),
-		interfaces: z
-			.array(InterfaceSchema)
-			.nullish()
-			.transform((v) => v ?? []),
+		interfaces: emptyIfNull(InterfaceSchema),
 	}),
 });
 
