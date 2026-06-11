@@ -1,16 +1,23 @@
 import type { TelemetryService } from "../telemetry/service";
 
 export type RemoteSetupPhase =
+	| "cli_resolve"
+	| "cli_configure"
+	| "compatibility_check"
 	| "workspace_lookup"
+	| "workspace_monitor_setup"
 	| "workspace_ready"
-	| "resolve_agent"
-	| "ssh_config_write";
+	| "agent_resolve"
+	| "ssh_config_write"
+	| "ssh_monitor_setup"
+	| "connection_handoff";
 
 /** Reason for a non-throwing early exit from `remote.setup`. */
 export type RemoteSetupOutcome = "workspace_not_found" | "incompatible_server";
 
 /** Helpers scoped to the remote.setup trace's lifetime. */
 export interface RemoteSetupTracer {
+	/** Emit a typed child phase of `remote.setup`. */
 	phase<T>(name: RemoteSetupPhase, fn: () => T | PromiseLike<T>): Promise<T>;
 	/** Mark this setup as aborted with a typed reason; emits as `outcome` on the parent event. */
 	markAborted(reason: RemoteSetupOutcome): void;

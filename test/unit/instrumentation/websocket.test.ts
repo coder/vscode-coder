@@ -40,8 +40,19 @@ describe("WebSocketTelemetry", () => {
 			const [event] = sink.eventsNamed("connection.opened");
 			expect(event).toMatchObject({
 				properties: { route: "/api/test" },
-				measurements: { connectDurationMs: expect.any(Number) },
+				measurements: { connect_duration_ms: expect.any(Number) },
 			});
+		});
+
+		it("normalizes websocket URLs before emitting the route", () => {
+			const { ws, sink } = setup();
+
+			ws.opened(
+				"wss://coder.example.com/api/v2/workspaces/123e4567-e89b-12d3-a456-426614174000/watch-ws?token=secret#fragment",
+			);
+
+			const [event] = sink.eventsNamed("connection.opened");
+			expect(event.properties.route).toBe("/api/v2/workspaces/{id}/watch-ws");
 		});
 
 		it("uses 0 duration when connectStarted was not called", () => {
@@ -50,7 +61,7 @@ describe("WebSocketTelemetry", () => {
 			ws.opened("/api/test");
 
 			const [event] = sink.eventsNamed("connection.opened");
-			expect(event.measurements.connectDurationMs).toBe(0);
+			expect(event.measurements.connect_duration_ms).toBe(0);
 		});
 	});
 
@@ -72,9 +83,9 @@ describe("WebSocketTelemetry", () => {
 			const [event] = sink.eventsNamed("connection.dropped");
 			expect(event.properties).toMatchObject({
 				cause: "unexpected_close",
-				closeCode: "1006",
+				close_code: "1006",
 			});
-			expect(event.measurements.connectionDurationMs).toEqual(
+			expect(event.measurements.connection_duration_ms).toEqual(
 				expect.any(Number),
 			);
 		});
@@ -134,7 +145,11 @@ describe("WebSocketTelemetry", () => {
 			const [event] = sink.eventsNamed("connection.reconnect_resolved");
 			expect(event).toMatchObject({
 				properties: { result: "success", reason: "manual_reconnect" },
-				measurements: { attempts: 1, totalDurationMs: expect.any(Number) },
+				measurements: {
+					attempts: 1,
+					max_backoff_ms: 0,
+					total_duration_ms: expect.any(Number),
+				},
 			});
 		});
 
@@ -148,7 +163,7 @@ describe("WebSocketTelemetry", () => {
 			expect(event.properties).toEqual({
 				result: "error",
 				reason: "manual_reconnect",
-				terminationReason: "unrecoverable_http",
+				termination_reason: "unrecoverable_http",
 			});
 		});
 
@@ -191,15 +206,21 @@ describe("WebSocketTelemetry", () => {
 			const { ws, sink } = setup();
 
 			ws.opened("/api/test");
-			ws.retrying("unexpected_close", {
-				cause: "unexpected_close",
-				code: 1006,
-			});
+			ws.retrying(
+				"unexpected_close",
+				{
+					cause: "unexpected_close",
+					code: 1006,
+				},
+				250,
+			);
 
 			expect(sink.eventsNamed("connection.dropped")).toHaveLength(1);
 
 			ws.opened("/api/test");
-			expect(sink.eventsNamed("connection.reconnect_resolved")).toHaveLength(1);
+			expect(sink.eventsNamed("connection.reconnect_resolved")).toMatchObject([
+				{ measurements: { attempts: 0, max_backoff_ms: 250 } },
+			]);
 		});
 	});
 });

@@ -178,7 +178,9 @@ describe("CliCredentialManager", () => {
 		it("writes files when keyring is disabled", async () => {
 			const { manager, sink } = setup();
 
-			await manager.storeToken(TEST_URL, "my-token", configs);
+			await expect(
+				manager.storeToken(TEST_URL, "my-token", configs),
+			).resolves.toBeUndefined();
 
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
@@ -197,7 +199,9 @@ describe("CliCredentialManager", () => {
 			stubExecFile({ stdout: "" });
 			const { manager, resolver, sink } = setup();
 
-			await manager.storeToken(TEST_URL, "my-secret-token", configs);
+			await expect(
+				manager.storeToken(TEST_URL, "my-secret-token", configs),
+			).resolves.toBeUndefined();
 
 			expect(resolver).toHaveBeenCalledWith(TEST_URL);
 			const exec = lastExecArgs();
@@ -220,7 +224,9 @@ describe("CliCredentialManager", () => {
 			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
 			const { manager } = setup();
 
-			await manager.storeToken(TEST_URL, "token", configs);
+			await expect(
+				manager.storeToken(TEST_URL, "token", configs),
+			).resolves.toBeUndefined();
 
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);

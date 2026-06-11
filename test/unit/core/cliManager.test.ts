@@ -1,32 +1,29 @@
-import globalAxios, { type AxiosInstance } from "axios";
-import { type Api } from "coder/site/src/api/api";
 import { fs as memfs, vol } from "memfs";
-import EventEmitter from "node:events";
-import * as fs from "node:fs";
-import { type IncomingMessage } from "node:http";
-import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import * as cliExec from "@/core/cliExec";
-import { CliManager } from "@/core/cliManager";
-import { PathResolver } from "@/core/pathResolver";
 import * as pgp from "@/pgp";
 import { isKeyringEnabled } from "@/settings/cli";
 
-import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
-import {
-	createMockCliCredentialManager,
-	createMockLogger,
-	createMockStream,
-	MockConfigurationProvider,
-	MockProgressReporter,
-	MockUserInteraction,
-} from "../../mocks/testHelpers";
 import { expectPathsEqual } from "../../utils/platform";
 
-import type { CliCredentialManager } from "@/core/cliCredentialManager";
+import {
+	BINARY_DIR,
+	BINARY_NAME,
+	BINARY_PATH,
+	type CliManagerHarness,
+	expectFileInDir,
+	flushPendingIO,
+	makeAbortError,
+	mockBinaryContent,
+	readdir,
+	setupCliManager,
+	TEST_URL,
+	TEST_VERSION,
+} from "./cliManagerHarness";
+
+import type * as fs from "node:fs";
 
 vi.mock("os");
 vi.mock("axios");
@@ -38,21 +35,14 @@ vi.mock("@/settings/cli", async () => {
 
 vi.mock("fs", async () => {
 	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
-	return {
-		...memfs.fs,
-		default: memfs.fs,
-	};
+	return { ...memfs.fs, default: memfs.fs };
 });
 
 vi.mock("fs/promises", async () => {
 	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
-	return {
-		...memfs.fs.promises,
-		default: memfs.fs.promises,
-	};
+	return { ...memfs.fs.promises, default: memfs.fs.promises };
 });
 
-// Mock lockfile to bypass file locking in tests
 vi.mock("proper-lockfile", () => ({
 	lock: () => Promise.resolve(() => Promise.resolve()),
 	check: () => Promise.resolve(false),
@@ -63,88 +53,31 @@ vi.mock("@/pgp");
 vi.mock("@/core/cliExec", async () => {
 	const actual =
 		await vi.importActual<typeof import("@/core/cliExec")>("@/core/cliExec");
-	return {
-		...actual,
-		version: vi.fn(),
-	};
+	return { ...actual, version: vi.fn() };
 });
 
 describe("CliManager", () => {
-	let manager: CliManager;
-	let mockConfig: MockConfigurationProvider;
-	let mockProgress: MockProgressReporter;
-	let mockUI: MockUserInteraction;
-	let mockApi: Api;
-	let mockAxios: AxiosInstance;
-	let mockCredManager: CliCredentialManager;
-	let telemetrySink: TestSink;
-
-	const TEST_VERSION = "1.2.3";
-	const TEST_URL = "https://test.coder.com";
-	const BASE_PATH = "/path/base";
-	const BINARY_DIR = `${BASE_PATH}/test.coder.com/bin`;
-	const PLATFORM = "linux";
-	const ARCH = "amd64";
-	const BINARY_NAME = `coder-${PLATFORM}-${ARCH}`;
-	const BINARY_PATH = `${BINARY_DIR}/${BINARY_NAME}`;
-	beforeEach(() => {
-		vi.resetAllMocks();
-		vol.reset();
-
-		// Core setup
-		mockApi = createMockApi(TEST_VERSION, TEST_URL);
-		mockAxios = mockApi.getAxiosInstance();
-		vi.mocked(globalAxios.create).mockReturnValue(mockAxios);
-		mockConfig = new MockConfigurationProvider();
-		mockProgress = new MockProgressReporter();
-		mockUI = new MockUserInteraction();
-		mockCredManager = createMockCliCredentialManager();
-		telemetrySink = new TestSink();
-		manager = new CliManager(
-			createMockLogger(),
-			new PathResolver(BASE_PATH, "/code/log"),
-			mockCredManager,
-			createTestTelemetryService(telemetrySink),
-		);
-
-		// Mock only what's necessary
-		vi.mocked(os.platform).mockReturnValue(PLATFORM);
-		vi.mocked(os.arch).mockReturnValue(ARCH);
-		vi.mocked(pgp.readPublicKeys).mockResolvedValue([]);
-
-		// Most tests don't need signature verification.
-		mockConfig.set("coder.disableSignatureVerification", true);
-	});
-
-	afterEach(async () => {
-		mockProgress?.setCancellation(false);
-		vi.clearAllTimers();
-		// memfs internally schedules some FS operations so we have to wait for them to finish
-		await new Promise((resolve) => setImmediate(resolve));
-		vol.reset();
-	});
+	afterEach(flushPendingIO);
 
 	describe("Configure CLI", () => {
-		const CONFIGURE_URL = "https://coder.example.com";
+		const URL = "https://coder.example.com";
 		const TOKEN = "test-token";
 
-		function configure(options?: { silent?: boolean }) {
-			return manager.configure(CONFIGURE_URL, TOKEN, options);
-		}
-
 		it("should store credentials with progress notification", async () => {
-			await configure();
+			const { manager, mockCredManager } = setupCliManager();
+
+			await manager.configure(URL, TOKEN);
 
 			expect(vscode.window.withProgress).toHaveBeenCalledWith(
 				expect.objectContaining({
 					location: vscode.ProgressLocation.Notification,
-					title: `Storing credentials for ${CONFIGURE_URL}`,
+					title: `Storing credentials for ${URL}`,
 					cancellable: true,
 				}),
 				expect.any(Function),
 			);
 			expect(mockCredManager.storeToken).toHaveBeenCalledWith(
-				CONFIGURE_URL,
+				URL,
 				TOKEN,
 				expect.anything(),
 				{ signal: expect.any(AbortSignal) },
@@ -152,17 +85,21 @@ describe("CliManager", () => {
 		});
 
 		it("should skip progress when silent", async () => {
-			await configure({ silent: true });
+			const { manager, mockCredManager } = setupCliManager();
+
+			await manager.configure(URL, TOKEN, { silent: true });
 
 			expect(vscode.window.withProgress).not.toHaveBeenCalled();
 			expect(mockCredManager.storeToken).toHaveBeenCalledWith(
-				CONFIGURE_URL,
+				URL,
 				TOKEN,
 				expect.anything(),
 			);
 		});
 
 		it("should throw when URL is empty", async () => {
+			const { manager } = setupCliManager();
+
 			await expect(manager.configure("", TOKEN)).rejects.toThrow(
 				"URL is required to configure the CLI",
 			);
@@ -171,11 +108,14 @@ describe("CliManager", () => {
 		it.each([{ silent: false }, { silent: true }])(
 			"should throw and show error on failure (silent=$silent)",
 			async (options) => {
+				const { manager, mockCredManager } = setupCliManager();
 				vi.mocked(mockCredManager.storeToken).mockRejectedValueOnce(
 					new Error("keyring unavailable"),
 				);
 
-				await expect(configure(options)).rejects.toThrow("keyring unavailable");
+				await expect(manager.configure(URL, TOKEN, options)).rejects.toThrow(
+					"keyring unavailable",
+				);
 				expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
 					expect.stringContaining("keyring unavailable"),
 					"Open Settings",
@@ -184,23 +124,25 @@ describe("CliManager", () => {
 		);
 
 		it("should swallow AbortError when user cancels", async () => {
+			const { manager, mockCredManager } = setupCliManager();
 			vi.mocked(mockCredManager.storeToken).mockRejectedValueOnce(
 				makeAbortError(),
 			);
 
-			await expect(configure()).resolves.not.toThrow();
+			await expect(manager.configure(URL, TOKEN)).resolves.not.toThrow();
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 		});
 	});
 
 	describe("Locate Binary", () => {
 		it("returns path when binary exists", async () => {
+			const { manager, withExistingBinary } = setupCliManager();
 			withExistingBinary(TEST_VERSION);
-			const result = await manager.locateBinary(TEST_URL);
-			expectPathsEqual(result, BINARY_PATH);
+			expectPathsEqual(await manager.locateBinary(TEST_URL), BINARY_PATH);
 		});
 
 		it("throws when binary does not exist", async () => {
+			const { manager } = setupCliManager();
 			await expect(manager.locateBinary(TEST_URL)).rejects.toThrow(
 				"No CLI binary found at",
 			);
@@ -208,11 +150,11 @@ describe("CliManager", () => {
 	});
 
 	describe("Binary Resolution", () => {
-		/** Simulate a download failure with a usable fallback binary. */
-		function withFailedDownload(fallbackVersion: string) {
-			withStreamError("write", "disk full");
-			vi.mocked(cliExec.version).mockResolvedValueOnce(fallbackVersion);
-			mockUI.setResponse(
+		/** Simulate a write failure where the user accepts the existing fallback. */
+		function withFailedDownload(t: CliManagerHarness, fallbackVersion: string) {
+			t.withStreamError("write", "disk full");
+			t.withBinaryVersion(fallbackVersion);
+			t.mockUI.setResponse(
 				`Failed to update CLI binary. Run version ${fallbackVersion} anyway?`,
 				"Run",
 			);
@@ -220,24 +162,29 @@ describe("CliManager", () => {
 
 		describe("file destination", () => {
 			const FILE_PATH = "/usr/local/bin/coder";
-			const FILE_DIR = path.dirname(FILE_PATH);
-			const DOWNLOAD_PATH = path.join(FILE_DIR, BINARY_NAME);
+			const DOWNLOAD_PATH = path.join(path.dirname(FILE_PATH), BINARY_NAME);
 
-			function withFileBinary(filePath: string, version: string) {
-				mockConfig.set("coder.binaryDestination", filePath);
+			function withFileBinary(
+				t: CliManagerHarness,
+				filePath: string,
+				version: string,
+			) {
+				t.mockConfig.set("coder.binaryDestination", filePath);
 				vol.mkdirSync(path.dirname(filePath), { recursive: true });
 				memfs.writeFileSync(filePath, mockBinaryContent(version), {
 					mode: 0o755,
 				});
-				vi.mocked(cliExec.version).mockResolvedValueOnce(version);
+				t.withBinaryVersion(version);
 			}
 
 			it("locateBinary returns file path directly", async () => {
-				withFileBinary(FILE_PATH, TEST_VERSION);
-				expectPathsEqual(await manager.locateBinary(TEST_URL), FILE_PATH);
+				const t = setupCliManager();
+				withFileBinary(t, FILE_PATH, TEST_VERSION);
+				expectPathsEqual(await t.manager.locateBinary(TEST_URL), FILE_PATH);
 			});
 
 			it("locateBinary throws when file does not exist", async () => {
+				const { manager, mockConfig } = setupCliManager();
 				mockConfig.set("coder.binaryDestination", "/nonexistent/coder");
 				await expect(manager.locateBinary(TEST_URL)).rejects.toThrow(
 					"No CLI binary found at",
@@ -245,16 +192,18 @@ describe("CliManager", () => {
 			});
 
 			it("fetchBinary uses file when version matches", async () => {
-				withFileBinary(FILE_PATH, TEST_VERSION);
-				expectPathsEqual(await manager.fetchBinary(mockApi), FILE_PATH);
-				expect(mockAxios.get).not.toHaveBeenCalled();
+				const t = setupCliManager();
+				withFileBinary(t, FILE_PATH, TEST_VERSION);
+				expectPathsEqual(await t.manager.fetchBinary(t.mockApi), FILE_PATH);
+				expect(t.mockAxios.get).not.toHaveBeenCalled();
 			});
 
 			it("fetchBinary downloads to platform-specific name then renames", async () => {
-				withFileBinary(FILE_PATH, "0.0.1");
-				withSuccessfulDownload();
+				const t = setupCliManager();
+				withFileBinary(t, FILE_PATH, "0.0.1");
+				t.withSuccessfulDownload();
 
-				expectPathsEqual(await manager.fetchBinary(mockApi), FILE_PATH);
+				expectPathsEqual(await t.manager.fetchBinary(t.mockApi), FILE_PATH);
 				expect(memfs.existsSync(DOWNLOAD_PATH)).toBe(false);
 				expect(memfs.readFileSync(FILE_PATH).toString()).toBe(
 					mockBinaryContent(TEST_VERSION),
@@ -262,38 +211,42 @@ describe("CliManager", () => {
 			});
 
 			it("fetchBinary downloads in-place when file is already platform-specific", async () => {
+				const t = setupCliManager();
 				// User configured a path that matches the platform-specific name.
-				withFileBinary(DOWNLOAD_PATH, "0.0.1");
-				withSuccessfulDownload();
+				withFileBinary(t, DOWNLOAD_PATH, "0.0.1");
+				t.withSuccessfulDownload();
 
-				expectPathsEqual(await manager.fetchBinary(mockApi), DOWNLOAD_PATH);
+				expectPathsEqual(await t.manager.fetchBinary(t.mockApi), DOWNLOAD_PATH);
 				expect(memfs.readFileSync(DOWNLOAD_PATH).toString()).toBe(
 					mockBinaryContent(TEST_VERSION),
 				);
 			});
 
 			it("fetchBinary keeps mismatched file when downloads disabled", async () => {
-				mockConfig.set("coder.enableDownloads", false);
-				withFileBinary(FILE_PATH, "0.0.1");
-				expectPathsEqual(await manager.fetchBinary(mockApi), FILE_PATH);
-				expect(mockAxios.get).not.toHaveBeenCalled();
+				const t = setupCliManager();
+				t.mockConfig.set("coder.enableDownloads", false);
+				withFileBinary(t, FILE_PATH, "0.0.1");
+				expectPathsEqual(await t.manager.fetchBinary(t.mockApi), FILE_PATH);
+				expect(t.mockAxios.get).not.toHaveBeenCalled();
 			});
 
 			it("fetchBinary falls back to configured path on download failure", async () => {
-				withFileBinary(FILE_PATH, "0.0.1");
-				withFailedDownload("0.0.1");
-				expectPathsEqual(await manager.fetchBinary(mockApi), FILE_PATH);
+				const t = setupCliManager();
+				withFileBinary(t, FILE_PATH, "0.0.1");
+				withFailedDownload(t, "0.0.1");
+				expectPathsEqual(await t.manager.fetchBinary(t.mockApi), FILE_PATH);
 			});
 
 			it("fetchBinary renames fallback to configured path on download failure", async () => {
-				withFileBinary(FILE_PATH, "0.0.1");
+				const t = setupCliManager();
+				withFileBinary(t, FILE_PATH, "0.0.1");
 				// A previous download left a binary at the platform-specific path.
 				memfs.writeFileSync(DOWNLOAD_PATH, mockBinaryContent("0.0.1"), {
 					mode: 0o755,
 				});
-				withFailedDownload("0.0.1");
+				withFailedDownload(t, "0.0.1");
 
-				expectPathsEqual(await manager.fetchBinary(mockApi), FILE_PATH);
+				expectPathsEqual(await t.manager.fetchBinary(t.mockApi), FILE_PATH);
 				expect(memfs.existsSync(DOWNLOAD_PATH)).toBe(false);
 			});
 		});
@@ -301,38 +254,42 @@ describe("CliManager", () => {
 		describe("simple name fallback", () => {
 			const SIMPLE_PATH = `${BINARY_DIR}/coder`;
 
-			function withSimpleBinary(version: string) {
+			function withSimpleBinary(t: CliManagerHarness, version: string) {
 				vol.mkdirSync(BINARY_DIR, { recursive: true });
 				memfs.writeFileSync(SIMPLE_PATH, mockBinaryContent(version), {
 					mode: 0o755,
 				});
-				vi.mocked(cliExec.version).mockResolvedValueOnce(version);
+				t.withBinaryVersion(version);
 			}
 
 			it("locateBinary falls back to simple name", async () => {
-				withSimpleBinary(TEST_VERSION);
-				expectPathsEqual(await manager.locateBinary(TEST_URL), SIMPLE_PATH);
+				const t = setupCliManager();
+				withSimpleBinary(t, TEST_VERSION);
+				expectPathsEqual(await t.manager.locateBinary(TEST_URL), SIMPLE_PATH);
 			});
 
 			it("locateBinary prefers platform-specific name", async () => {
-				withSimpleBinary(TEST_VERSION);
+				const t = setupCliManager();
+				withSimpleBinary(t, TEST_VERSION);
 				memfs.writeFileSync(BINARY_PATH, mockBinaryContent(TEST_VERSION), {
 					mode: 0o755,
 				});
-				expectPathsEqual(await manager.locateBinary(TEST_URL), BINARY_PATH);
+				expectPathsEqual(await t.manager.locateBinary(TEST_URL), BINARY_PATH);
 			});
 
 			it("fetchBinary uses simple-named binary", async () => {
-				withSimpleBinary(TEST_VERSION);
-				expectPathsEqual(await manager.fetchBinary(mockApi), SIMPLE_PATH);
-				expect(mockAxios.get).not.toHaveBeenCalled();
+				const t = setupCliManager();
+				withSimpleBinary(t, TEST_VERSION);
+				expectPathsEqual(await t.manager.fetchBinary(t.mockApi), SIMPLE_PATH);
+				expect(t.mockAxios.get).not.toHaveBeenCalled();
 			});
 
 			it("fetchBinary downloads to platform-specific name (not simple name)", async () => {
-				withSimpleBinary("0.0.1");
-				withSuccessfulDownload();
+				const t = setupCliManager();
+				withSimpleBinary(t, "0.0.1");
+				t.withSuccessfulDownload();
 
-				expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
+				expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
 				expect(memfs.readFileSync(SIMPLE_PATH).toString()).toBe(
 					mockBinaryContent("0.0.1"),
 				);
@@ -342,9 +299,10 @@ describe("CliManager", () => {
 			});
 
 			it("fetchBinary falls back to simple name on download failure", async () => {
-				withSimpleBinary("0.0.1");
-				withFailedDownload("0.0.1");
-				expectPathsEqual(await manager.fetchBinary(mockApi), SIMPLE_PATH);
+				const t = setupCliManager();
+				withSimpleBinary(t, "0.0.1");
+				withFailedDownload(t, "0.0.1");
+				expectPathsEqual(await t.manager.fetchBinary(t.mockApi), SIMPLE_PATH);
 			});
 		});
 	});
@@ -353,6 +311,8 @@ describe("CliManager", () => {
 		const CLEAR_URL = "https://dev.coder.com";
 
 		it("should skip progress notification when keyring is disabled", async () => {
+			const { manager, mockCredManager } = setupCliManager();
+
 			await manager.clearCredentials(CLEAR_URL);
 
 			expect(vscode.window.withProgress).not.toHaveBeenCalled();
@@ -364,6 +324,7 @@ describe("CliManager", () => {
 		});
 
 		it("should show progress notification when keyring is enabled", async () => {
+			const { manager } = setupCliManager();
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 
 			await manager.clearCredentials(CLEAR_URL);
@@ -383,6 +344,7 @@ describe("CliManager", () => {
 			{ scenario: "fails", error: new Error("unexpected failure") },
 			{ scenario: "is cancelled", error: makeAbortError() },
 		])("should not throw when deleteToken $scenario", async ({ error }) => {
+			const { manager, mockCredManager } = setupCliManager();
 			if (error) {
 				vi.mocked(mockCredManager.deleteToken).mockRejectedValueOnce(error);
 			}
@@ -392,6 +354,7 @@ describe("CliManager", () => {
 
 	describe("Binary Version Validation", () => {
 		it("rejects invalid server versions", async () => {
+			const { manager, mockApi } = setupCliManager();
 			mockApi.getBuildInfo = vi.fn().mockResolvedValue({ version: "invalid" });
 			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
 				"Got invalid version from deployment",
@@ -399,6 +362,7 @@ describe("CliManager", () => {
 		});
 
 		it("accepts valid semver versions", async () => {
+			const { manager, mockApi, withExistingBinary } = setupCliManager();
 			withExistingBinary(TEST_VERSION);
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
 		});
@@ -406,14 +370,17 @@ describe("CliManager", () => {
 
 	describe("Existing Binary Handling", () => {
 		it("reuses matching binary without downloading", async () => {
+			const { manager, mockApi, mockAxios, withExistingBinary } =
+				setupCliManager();
 			withExistingBinary(TEST_VERSION);
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
 			expect(mockAxios.get).not.toHaveBeenCalled();
-			// Verify binary still exists
 			expect(memfs.existsSync(BINARY_PATH)).toBe(true);
 		});
 
 		it("downloads when versions differ", async () => {
+			const { manager, mockApi, withExistingBinary, withSuccessfulDownload } =
+				setupCliManager();
 			withExistingBinary("1.0.0");
 			withSuccessfulDownload();
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
@@ -423,6 +390,8 @@ describe("CliManager", () => {
 		});
 
 		it("keeps mismatched binary when downloads disabled", async () => {
+			const { manager, mockApi, mockAxios, mockConfig, withExistingBinary } =
+				setupCliManager();
 			mockConfig.set("coder.enableDownloads", false);
 			withExistingBinary("1.0.0");
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
@@ -433,6 +402,8 @@ describe("CliManager", () => {
 		});
 
 		it("downloads fresh binary when corrupted", async () => {
+			const { manager, mockApi, withCorruptedBinary, withSuccessfulDownload } =
+				setupCliManager();
 			withCorruptedBinary();
 			withSuccessfulDownload();
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
@@ -442,6 +413,7 @@ describe("CliManager", () => {
 		});
 
 		it("downloads when no binary exists", async () => {
+			const { manager, mockApi, withSuccessfulDownload } = setupCliManager();
 			expect(memfs.existsSync(BINARY_DIR)).toBe(false);
 			withSuccessfulDownload();
 
@@ -453,6 +425,7 @@ describe("CliManager", () => {
 		});
 
 		it("fails when downloads disabled and no binary", async () => {
+			const { manager, mockApi, mockConfig } = setupCliManager();
 			mockConfig.set("coder.enableDownloads", false);
 			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
 				"Unable to download CLI because downloads are disabled",
@@ -461,6 +434,8 @@ describe("CliManager", () => {
 		});
 
 		it("restores old backup when replace fails", async () => {
+			const { manager, mockApi, withExistingBinary, withSuccessfulDownload } =
+				setupCliManager();
 			withExistingBinary("1.0.0");
 			withSuccessfulDownload();
 
@@ -488,6 +463,8 @@ describe("CliManager", () => {
 
 	describe("Binary Download Behavior", () => {
 		it("downloads with correct headers", async () => {
+			const { manager, mockApi, mockAxios, withSuccessfulDownload } =
+				setupCliManager();
 			withSuccessfulDownload();
 			await manager.fetchBinary(mockApi);
 			expect(mockAxios.get).toHaveBeenCalledWith(
@@ -503,6 +480,13 @@ describe("CliManager", () => {
 		});
 
 		it("uses custom binary source", async () => {
+			const {
+				manager,
+				mockApi,
+				mockAxios,
+				mockConfig,
+				withSuccessfulDownload,
+			} = setupCliManager();
 			mockConfig.set("coder.binarySource", "/custom/path");
 			withSuccessfulDownload();
 			await manager.fetchBinary(mockApi);
@@ -517,6 +501,13 @@ describe("CliManager", () => {
 		});
 
 		it("uses ETag for existing binaries", async () => {
+			const {
+				manager,
+				mockApi,
+				mockAxios,
+				withExistingBinary,
+				withSuccessfulDownload,
+			} = setupCliManager();
 			withExistingBinary("1.0.0");
 			withSuccessfulDownload();
 			await manager.fetchBinary(mockApi);
@@ -533,6 +524,7 @@ describe("CliManager", () => {
 		});
 
 		it("cleans up old files before download", async () => {
+			const { manager, mockApi, withSuccessfulDownload } = setupCliManager();
 			// Create old temporary files and signature files matching the binary name
 			vol.mkdirSync(BINARY_DIR, { recursive: true });
 			memfs.writeFileSync(
@@ -570,14 +562,15 @@ describe("CliManager", () => {
 		});
 
 		it("moves existing binary to backup file before writing new version", async () => {
+			const { manager, mockApi, withExistingBinary, withSuccessfulDownload } =
+				setupCliManager();
 			withExistingBinary("1.0.0");
 			withSuccessfulDownload();
 
 			await manager.fetchBinary(mockApi);
 
 			// Verify the old binary was backed up
-			const files = readdir(BINARY_DIR);
-			const backupFile = files.find(
+			const backupFile = readdir(BINARY_DIR).find(
 				(f) => f.startsWith(BINARY_NAME) && /\.old-[a-z0-9]+$/.exec(f),
 			);
 			expect(backupFile).toBeDefined();
@@ -586,6 +579,8 @@ describe("CliManager", () => {
 
 	describe("Download HTTP Response Handling", () => {
 		it("handles 304 Not Modified", async () => {
+			const { manager, mockApi, withExistingBinary, withHttpResponse } =
+				setupCliManager();
 			withExistingBinary("1.0.0");
 			withHttpResponse(304);
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
@@ -595,6 +590,7 @@ describe("CliManager", () => {
 		});
 
 		it("handles 404 platform not supported", async () => {
+			const { manager, mockApi, mockUI, withHttpResponse } = setupCliManager();
 			withHttpResponse(404);
 			mockUI.setResponse(
 				"Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
@@ -613,6 +609,7 @@ describe("CliManager", () => {
 		});
 
 		it("handles server errors", async () => {
+			const { manager, mockApi, mockUI, withHttpResponse } = setupCliManager();
 			withHttpResponse(500);
 			mockUI.setResponse(
 				"Failed to download binary. Please open an issue.",
@@ -633,6 +630,7 @@ describe("CliManager", () => {
 
 	describe("Download Stream Handling", () => {
 		it("handles write stream errors", async () => {
+			const { manager, mockApi, withStreamError } = setupCliManager();
 			withStreamError("write", "disk full");
 			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
 				"Unable to download binary: disk full",
@@ -641,6 +639,7 @@ describe("CliManager", () => {
 		});
 
 		it("handles read stream errors", async () => {
+			const { manager, mockApi, withStreamError } = setupCliManager();
 			withStreamError("read", "network timeout");
 			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
 				"Unable to download binary: network timeout",
@@ -649,6 +648,8 @@ describe("CliManager", () => {
 		});
 
 		it("handles missing content-length", async () => {
+			const { manager, mockApi, mockProgress, withSuccessfulDownload } =
+				setupCliManager();
 			withSuccessfulDownload({ headers: {} });
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
 			const reports = mockProgress.getProgressReports();
@@ -661,6 +662,8 @@ describe("CliManager", () => {
 		it.each(["content-length", "x-original-content-length"])(
 			"reports progress with %s header",
 			async (header) => {
+				const { manager, mockApi, mockProgress, withSuccessfulDownload } =
+					setupCliManager();
 				withSuccessfulDownload({ headers: { [header]: "1024" } });
 				expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
 				const reports = mockProgress.getProgressReports();
@@ -674,6 +677,7 @@ describe("CliManager", () => {
 
 	describe("Download Progress Tracking", () => {
 		it("shows download progress", async () => {
+			const { manager, mockApi, withSuccessfulDownload } = setupCliManager();
 			withSuccessfulDownload();
 			await manager.fetchBinary(mockApi);
 			expect(vscode.window.withProgress).toHaveBeenCalledWith(
@@ -685,6 +689,8 @@ describe("CliManager", () => {
 		});
 
 		it("handles user cancellation", async () => {
+			const { manager, mockApi, mockProgress, withSuccessfulDownload } =
+				setupCliManager();
 			mockProgress.setCancellation(true);
 			withSuccessfulDownload();
 			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
@@ -695,50 +701,52 @@ describe("CliManager", () => {
 	});
 
 	describe("Binary Signature Verification", () => {
-		beforeEach(() => {
-			mockConfig.set("coder.disableSignatureVerification", false);
-		});
+		/** A download with signature verification enabled. */
+		function setupVerify(): CliManagerHarness {
+			const t = setupCliManager();
+			t.mockConfig.set("coder.disableSignatureVerification", false);
+			t.withSuccessfulDownload();
+			return t;
+		}
 
 		it("verifies valid signatures", async () => {
-			withSuccessfulDownload();
-			withSignatureResponses([200]);
-			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
+			const t = setupVerify();
+			t.withSignatureResponses([200]);
+			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
 			expect(pgp.verifySignature).toHaveBeenCalled();
 			expect(expectFileInDir(BINARY_DIR, ".asc")).toBeDefined();
 		});
 
 		it("tries fallback signature on 404", async () => {
-			withSuccessfulDownload();
-			withSignatureResponses([404, 200]);
-			mockUI.setResponse("Signature not found", "Download signature");
-			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
-			expect(mockAxios.get).toHaveBeenCalledTimes(3);
+			const t = setupVerify();
+			t.withSignatureResponses([404, 200]);
+			t.mockUI.setResponse("Signature not found", "Download signature");
+			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
+			expect(t.mockAxios.get).toHaveBeenCalledTimes(3);
 			expect(expectFileInDir(BINARY_DIR, ".asc")).toBeDefined();
 		});
 
 		it("allows running despite invalid signature", async () => {
-			withSuccessfulDownload();
-			withSignatureResponses([200]);
-			vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
-				createVerificationError("Invalid signature"),
-			);
-			mockUI.setResponse("Signature does not match", "Run anyway");
-			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
+			const t = setupVerify();
+			t.withSignatureResponses([200]);
+			t.withInvalidSignature();
+			t.mockUI.setResponse("Signature does not match", "Run anyway");
+			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
 		});
 
 		it("aborts on signature rejection", async () => {
-			withSuccessfulDownload();
-			withSignatureResponses([200]);
-			vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
-				createVerificationError("Invalid signature"),
-			);
-			mockUI.setResponse("Signature does not match", undefined);
-			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
+			const t = setupVerify();
+			t.withSignatureResponses([200]);
+			t.withInvalidSignature();
+			t.mockUI.setResponse("Signature does not match", undefined);
+			await expect(t.manager.fetchBinary(t.mockApi)).rejects.toThrow(
 				"Signature verification aborted",
 			);
 		});
 
 		it("skips verification when disabled", async () => {
+			const { manager, mockApi, mockConfig, withSuccessfulDownload } =
+				setupCliManager();
 			mockConfig.set("coder.disableSignatureVerification", true);
 			withSuccessfulDownload();
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
@@ -750,10 +758,10 @@ describe("CliManager", () => {
 			[404, "Signature not found"],
 			[500, "Failed to download signature"],
 		])("allows skipping verification on %i", async (status, message) => {
-			withSuccessfulDownload();
-			withHttpResponse(status);
-			mockUI.setResponse(message, "Run without verification");
-			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
+			const t = setupVerify();
+			t.withHttpResponse(status);
+			t.mockUI.setResponse(message, "Run without verification");
+			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
 			expect(pgp.verifySignature).not.toHaveBeenCalled();
 		});
 
@@ -763,153 +771,19 @@ describe("CliManager", () => {
 		])(
 			"aborts when user declines missing signature on %i",
 			async (status, message) => {
-				withSuccessfulDownload();
-				withHttpResponse(status);
-				mockUI.setResponse(message, undefined); // User cancels
-				await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
+				const t = setupVerify();
+				t.withHttpResponse(status);
+				t.mockUI.setResponse(message, undefined); // User cancels
+				await expect(t.manager.fetchBinary(t.mockApi)).rejects.toThrow(
 					"Signature download aborted",
 				);
 			},
 		);
 	});
 
-	describe("Telemetry", () => {
-		const event = (name: string) =>
-			telemetrySink.events.find((e) => e.eventName === name);
-
-		it.each([
-			{ reason: "missing", setup: () => {} },
-			{ reason: "version_mismatch", setup: () => withExistingBinary("1.0.0") },
-			{ reason: "unreadable", setup: () => withCorruptedBinary() },
-		])("emits cli.download with reason=$reason", async ({ reason, setup }) => {
-			setup();
-			withSuccessfulDownload();
-			await manager.fetchBinary(mockApi);
-
-			const e = event("cli.download");
-			expect(e).toMatchObject({
-				properties: { reason, result: "success" },
-			});
-			expect(e?.measurements.durationMs).toBeGreaterThanOrEqual(0);
-			expect(e?.measurements.downloadedBytes).toBe(
-				Buffer.byteLength(mockBinaryContent(TEST_VERSION)),
-			);
-		});
-
-		it("does not emit cli.download when a cached binary already matches", async () => {
-			withExistingBinary(TEST_VERSION);
-			await manager.fetchBinary(mockApi);
-
-			expect(event("cli.download")).toBeUndefined();
-		});
-
-		it("omits downloadedBytes when the server returns 304", async () => {
-			withExistingBinary("1.0.0");
-			withHttpResponse(304);
-			await manager.fetchBinary(mockApi);
-
-			const e = event("cli.download");
-			expect(e).toMatchObject({
-				properties: { reason: "version_mismatch", result: "success" },
-			});
-			expect(e?.measurements.downloadedBytes).toBeUndefined();
-		});
-
-		it("emits downloadedBytes when a download fails mid-stream", async () => {
-			const partial = "partial-binary";
-			withHttpResponse(
-				200,
-				{ "content-length": "1024" },
-				createMockStream(partial, { error: new Error("connection reset") }),
-			);
-
-			await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
-				"Unable to download binary: connection reset",
-			);
-
-			expect(event("cli.download")).toMatchObject({
-				properties: { reason: "missing", result: "error" },
-				error: { message: "Unable to download binary: connection reset" },
-				measurements: { downloadedBytes: Buffer.byteLength(partial) },
-			});
-		});
-
-		describe("cli.download.verify", () => {
-			beforeEach(() => {
-				mockConfig.set("coder.disableSignatureVerification", false);
-				withSuccessfulDownload();
-			});
-
-			it("emits outcome=verified on valid signature", async () => {
-				withSignatureResponses([200]);
-				await manager.fetchBinary(mockApi);
-
-				const verify = event("cli.download.verify");
-				const download = event("cli.download");
-				expect(verify).toMatchObject({
-					properties: { outcome: "verified", result: "success" },
-				});
-				expect(verify?.measurements.durationMs).toBeGreaterThanOrEqual(0);
-				expect(verify?.traceId).toBe(download?.traceId);
-				expect(verify?.parentEventId).toBe(download?.eventId);
-			});
-
-			it("emits outcome=bypassed when user runs anyway despite invalid signature", async () => {
-				withSignatureResponses([200]);
-				vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
-					createVerificationError("Invalid signature"),
-				);
-				mockUI.setResponse("Signature does not match", "Run anyway");
-
-				await manager.fetchBinary(mockApi);
-
-				expect(event("cli.download.verify")).toMatchObject({
-					properties: { outcome: "bypassed", result: "success" },
-				});
-			});
-
-			it.each([
-				{ status: 404, message: "Signature not found" },
-				{ status: 500, message: "Failed to download signature" },
-			])(
-				"emits outcome=sig_not_found with sigStatus=$status when user runs without verification",
-				async ({ status, message }) => {
-					withSignatureResponses([status, status]);
-					mockUI.setResponse(message, "Run without verification");
-
-					await manager.fetchBinary(mockApi);
-
-					expect(event("cli.download.verify")).toMatchObject({
-						properties: {
-							outcome: "sig_not_found",
-							sigStatus: String(status),
-							result: "success",
-						},
-					});
-				},
-			);
-
-			it("emits error when verification is aborted", async () => {
-				withSignatureResponses([200]);
-				vi.mocked(pgp.verifySignature).mockRejectedValueOnce(
-					createVerificationError("Invalid signature"),
-				);
-				mockUI.setResponse("Signature does not match", undefined);
-
-				await expect(manager.fetchBinary(mockApi)).rejects.toThrow(
-					"Signature verification aborted",
-				);
-
-				expect(event("cli.download.verify")).toMatchObject({
-					properties: { result: "error" },
-					error: { message: "Signature verification aborted" },
-				});
-			});
-		});
-	});
-
 	describe("File System Operations", () => {
 		it("creates binary directory", async () => {
+			const { manager, mockApi, withSuccessfulDownload } = setupCliManager();
 			expect(memfs.existsSync(BINARY_DIR)).toBe(false);
 			withSuccessfulDownload();
 			await manager.fetchBinary(mockApi);
@@ -917,6 +791,7 @@ describe("CliManager", () => {
 		});
 
 		it("validates downloaded binary version", async () => {
+			const { manager, mockApi, withSuccessfulDownload } = setupCliManager();
 			withSuccessfulDownload();
 			await manager.fetchBinary(mockApi);
 			expect(memfs.readFileSync(BINARY_PATH).toString()).toBe(
@@ -925,6 +800,7 @@ describe("CliManager", () => {
 		});
 
 		it("sets correct file permissions", async () => {
+			const { manager, mockApi, withSuccessfulDownload } = setupCliManager();
 			withSuccessfulDownload();
 			await manager.fetchBinary(mockApi);
 			expect(memfs.statSync(BINARY_PATH).mode & 0o777).toBe(0o755);
@@ -933,13 +809,9 @@ describe("CliManager", () => {
 
 	describe("Path Pecularities", () => {
 		it("handles binary with spaces in path", async () => {
-			const pathWithSpaces = "/path with spaces/bin";
-			const manager = new CliManager(
-				createMockLogger(),
-				new PathResolver(pathWithSpaces, "/log"),
-				createMockCliCredentialManager(),
-				createTestTelemetryService(),
-			);
+			const pathWithSpaces = "/path with spaces";
+			const { manager, mockApi, withSuccessfulDownload } =
+				setupCliManager(pathWithSpaces);
 
 			withSuccessfulDownload();
 			expectPathsEqual(
@@ -948,133 +820,4 @@ describe("CliManager", () => {
 			);
 		});
 	});
-
-	function createMockApi(version: string, url: string): Api {
-		const axios = {
-			defaults: { baseURL: url },
-			get: vi.fn(),
-		} as unknown as AxiosInstance;
-		return {
-			getBuildInfo: vi.fn().mockResolvedValue({ version }),
-			getAxiosInstance: () => axios,
-		} as unknown as Api;
-	}
-
-	function withExistingBinary(version: string, dir: string = BINARY_DIR) {
-		vol.mkdirSync(dir, { recursive: true });
-		memfs.writeFileSync(`${dir}/${BINARY_NAME}`, mockBinaryContent(version), {
-			mode: 0o755,
-		});
-
-		// Mock version to return the specified version
-		vi.mocked(cliExec.version).mockResolvedValueOnce(version);
-	}
-
-	function withCorruptedBinary() {
-		vol.mkdirSync(BINARY_DIR, { recursive: true });
-		memfs.writeFileSync(BINARY_PATH, "corrupted-binary-content", {
-			mode: 0o755,
-		});
-
-		// Mock version to fail
-		vi.mocked(cliExec.version).mockRejectedValueOnce(new Error("corrupted"));
-	}
-
-	function withSuccessfulDownload(opts?: {
-		headers?: Record<string, unknown>;
-	}) {
-		const stream = createMockStream(mockBinaryContent(TEST_VERSION));
-		withHttpResponse(
-			200,
-			opts?.headers ?? { "content-length": "1024" },
-			stream,
-		);
-
-		// Mock version to return TEST_VERSION after download
-		vi.mocked(cliExec.version).mockResolvedValue(TEST_VERSION);
-	}
-
-	function withSignatureResponses(statuses: number[]): void {
-		for (const status of statuses) {
-			const data =
-				status === 200 ? createMockStream("mock-signature-content") : undefined;
-			withHttpResponse(status, {}, data);
-		}
-	}
-
-	function withHttpResponse(
-		status: number,
-		headers: Record<string, unknown> = {},
-		data?: unknown,
-	) {
-		vi.mocked(mockAxios.get).mockResolvedValueOnce({
-			status,
-			headers,
-			data,
-		});
-	}
-
-	function withStreamError(type: "read" | "write", message: string) {
-		if (type === "write") {
-			vi.spyOn(fs, "createWriteStream").mockImplementation(() => {
-				const stream = new EventEmitter();
-				(stream as unknown as fs.WriteStream).write = vi.fn();
-				(stream as unknown as fs.WriteStream).close = vi.fn();
-				// Emit error on next tick after stream is returned
-				setImmediate(() => {
-					stream.emit("error", new Error(message));
-				});
-
-				return stream as ReturnType<typeof memfs.createWriteStream>;
-			});
-
-			// Provide a normal read stream
-			withHttpResponse(
-				200,
-				{ "content-length": "256" },
-				createMockStream("data"),
-			);
-		} else {
-			// Create a read stream that emits error
-			const errorStream = {
-				on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
-					if (event === "error") {
-						setImmediate(() => callback(new Error(message)));
-					}
-					return errorStream;
-				}),
-				destroy: vi.fn(),
-			} as unknown as IncomingMessage;
-
-			withHttpResponse(200, { "content-length": "1024" }, errorStream);
-		}
-	}
 });
-
-function makeAbortError(): Error {
-	const error = new Error("The operation was aborted");
-	error.name = "AbortError";
-	return error;
-}
-
-function createVerificationError(msg: string): pgp.VerificationError {
-	const error = new pgp.VerificationError(
-		pgp.VerificationErrorCode.Invalid,
-		msg,
-	);
-	vi.mocked(error.summary).mockReturnValue("Signature does not match");
-	return error;
-}
-
-function mockBinaryContent(version: string): string {
-	return `mock-binary-v${version}`;
-}
-
-function expectFileInDir(dir: string, pattern: string): string | undefined {
-	const files = readdir(dir);
-	return files.find((f) => f.includes(pattern));
-}
-
-function readdir(dir: string): string[] {
-	return memfs.readdirSync(dir) as string[];
-}

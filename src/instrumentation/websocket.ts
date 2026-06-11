@@ -39,6 +39,7 @@ interface ReconnectCycle {
 	readonly startMs: number;
 	readonly reason: ConnectionStateReason;
 	attempts: number;
+	maxBackoffMs: number;
 }
 
 interface DropOptions {
@@ -85,7 +86,7 @@ export class WebSocketTelemetry {
 		this.#telemetry.log(
 			"connection.opened",
 			{ route: normalizeRoute(route) },
-			{ connectDurationMs: now - start },
+			{ connect_duration_ms: now - start },
 		);
 		this.#finishReconnect({ result: "success" });
 	}
@@ -104,10 +105,10 @@ export class WebSocketTelemetry {
 
 		const properties: CallerProperties = { cause };
 		if (closeCode !== undefined) {
-			properties.closeCode = closeCode;
+			properties.close_code = closeCode;
 		}
 		const measurements = {
-			connectionDurationMs: performance.now() - openedAtMs,
+			connection_duration_ms: performance.now() - openedAtMs,
 		};
 		if (error === undefined) {
 			this.#telemetry.log("connection.dropped", properties, measurements);
@@ -136,6 +137,7 @@ export class WebSocketTelemetry {
 			startMs: performance.now(),
 			reason,
 			attempts: 0,
+			maxBackoffMs: 0,
 		};
 	}
 
@@ -146,9 +148,17 @@ export class WebSocketTelemetry {
 	}
 
 	/** Drop and (re)open a reconnect cycle. */
-	public retrying(reason: ConnectionStateReason, options: DropOptions): void {
+	public retrying(
+		reason: ConnectionStateReason,
+		options: DropOptions,
+		backoffMs: number,
+	): void {
 		this.dropped(options.cause, options.code, options.error);
 		this.reconnectStarted(reason);
+		const cycle = this.#reconnectCycle;
+		if (cycle) {
+			cycle.maxBackoffMs = Math.max(cycle.maxBackoffMs, backoffMs);
+		}
 	}
 
 	#finishReconnect(outcome: ReconnectOutcome): void {
@@ -163,11 +173,12 @@ export class WebSocketTelemetry {
 			reason: cycle.reason,
 		};
 		if (outcome.result === "error") {
-			properties.terminationReason = outcome.terminationReason;
+			properties.termination_reason = outcome.terminationReason;
 		}
 		this.#telemetry.log("connection.reconnect_resolved", properties, {
 			attempts: cycle.attempts,
-			totalDurationMs: performance.now() - cycle.startMs,
+			max_backoff_ms: cycle.maxBackoffMs,
+			total_duration_ms: performance.now() - cycle.startMs,
 		});
 	}
 }

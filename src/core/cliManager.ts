@@ -10,6 +10,16 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
+import {
+	CliDownloadsDisabledError,
+	CliFallbackDeclinedError,
+	CliTelemetry,
+	type CliConfigureTrace,
+	type CliDownloadAction,
+	type CliDownloadReason,
+	type CliVersionCheckOutcome,
+	type CliResolveTrace,
+} from "../instrumentation/cli";
 import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
 import { isKeyringEnabled } from "../settings/cli";
@@ -36,8 +46,6 @@ type ResolvedBinary =
 	| { binPath: string; stat: Stats; source: "file-path" | "directory" }
 	| { binPath: string; source: "not-found" };
 
-type CliDownloadReason = "missing" | "version_mismatch" | "unreadable";
-
 type CliVerifyResult =
 	| { kind: "verified" }
 	| { kind: "bypassed" }
@@ -50,14 +58,16 @@ type SingleVerifyResult =
 
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
+	private readonly cliTelemetry: CliTelemetry;
 
 	constructor(
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
 		private readonly cliCredentialManager: CliCredentialManager,
-		private readonly telemetry: TelemetryService,
+		telemetry: TelemetryService,
 	) {
 		this.binaryLock = new BinaryLock(output);
+		this.cliTelemetry = new CliTelemetry(telemetry);
 	}
 
 	/**
@@ -123,21 +133,102 @@ export class CliManager {
 	 * unable to download a working binary, whether because of network issues or
 	 * downloads being disabled.
 	 */
-	public async fetchBinary(restClient: Api): Promise<string> {
+	public fetchBinary(restClient: Api): Promise<string> {
+		return this.cliTelemetry.traceResolve((trace) =>
+			this.resolveBinary(restClient, trace),
+		);
+	}
+
+	private async resolveBinary(
+		restClient: Api,
+		trace: CliResolveTrace,
+	): Promise<string> {
 		const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
+			trace.error("unknown");
 			throw new Error("REST client has no base URL configured");
 		}
 		const safeHostname = toSafeHost(baseUrl);
 		const cfg = vscode.workspace.getConfiguration("coder");
-		// Settings can be undefined when set to their defaults (true in this case),
-		// so explicitly check against false.
+		// Settings can be undefined when set to their defaults (true in this
+		// case), so explicitly check against false.
 		const enableDownloads = cfg.get("enableDownloads") !== false;
 		this.output.debug(
 			"Downloads are",
 			enableDownloads ? "enabled" : "disabled",
 		);
 
+		const resolved = await trace.cacheLookup(() =>
+			this.lookupBinary(safeHostname),
+		);
+		const { buildInfo, parsedVersion, existingVersion, downloadReason } =
+			await trace.versionCheck(() =>
+				this.checkResolvedBinary(restClient, resolved),
+			);
+
+		if (existingVersion === buildInfo.version) {
+			this.output.debug("Existing binary matches server version");
+			trace.setOutcome("cache_hit");
+			return resolved.binPath;
+		}
+
+		let action: CliDownloadAction;
+		if (enableDownloads) {
+			action = "download";
+		} else {
+			action = existingVersion !== null ? "fallback" : "blocked";
+		}
+		trace.setDownloadDecision(downloadReason, action);
+
+		if (!enableDownloads) {
+			if (existingVersion) {
+				this.output.info(
+					"Using existing binary despite version mismatch because downloads are disabled",
+				);
+				trace.setOutcome("download_disabled_fallback");
+				return resolved.binPath;
+			}
+			this.output.warn("Unable to download CLI because downloads are disabled");
+			trace.error("downloads_disabled");
+			throw new CliDownloadsDisabledError();
+		}
+
+		if (existingVersion) {
+			this.output.info(
+				"Downloading since existing binary does not match the server version",
+			);
+		}
+
+		return this.downloadBinary(
+			restClient,
+			{
+				resolved,
+				parsedVersion,
+				serverVersion: buildInfo.version,
+				downloadReason,
+			},
+			trace,
+		);
+	}
+
+	private async lookupBinary(safeHostname: string): Promise<ResolvedBinary> {
+		const resolved = await this.resolveBinaryPath(safeHostname);
+		this.output.debug(
+			`Resolved binary: ${resolved.binPath} (${resolved.source})`,
+		);
+		return resolved;
+	}
+
+	private async checkResolvedBinary(
+		restClient: Api,
+		resolved: ResolvedBinary,
+	): Promise<{
+		buildInfo: Awaited<ReturnType<Api["getBuildInfo"]>>;
+		parsedVersion: semver.SemVer;
+		existingVersion: string | null;
+		downloadReason: CliDownloadReason;
+		outcome: CliVersionCheckOutcome;
+	}> {
 		// Get the build info to compare with the existing binary version, if any,
 		// and to log for debugging.
 		const buildInfo = await restClient.getBuildInfo();
@@ -149,62 +240,62 @@ export class CliManager {
 			);
 		}
 
-		const resolved = await this.resolveBinaryPath(safeHostname);
-		this.output.debug(
-			`Resolved binary: ${resolved.binPath} (${resolved.source})`,
-		);
-
-		let existingVersion: string | null = null;
-		let downloadReason: CliDownloadReason;
 		if (resolved.source === "not-found") {
-			downloadReason = "missing";
 			this.output.info("No existing binary found, starting download");
-		} else {
-			this.output.debug(
-				"Existing binary size is",
-				prettyBytes(resolved.stat.size),
+			return {
+				buildInfo,
+				parsedVersion,
+				existingVersion: null,
+				downloadReason: "missing",
+				outcome: "missing",
+			};
+		}
+
+		this.output.debug(
+			"Existing binary size is",
+			prettyBytes(resolved.stat.size),
+		);
+		try {
+			const existingVersion = await cliVersion(resolved.binPath);
+			this.output.debug("Existing binary version is", existingVersion);
+			return {
+				buildInfo,
+				parsedVersion,
+				existingVersion,
+				downloadReason: "version_mismatch",
+				outcome: existingVersion === buildInfo.version ? "match" : "mismatch",
+			};
+		} catch (error) {
+			this.output.warn(
+				"Unable to get version of existing binary, downloading instead",
+				error,
 			);
-			try {
-				existingVersion = await cliVersion(resolved.binPath);
-				this.output.debug("Existing binary version is", existingVersion);
-				downloadReason = "version_mismatch";
-			} catch (error) {
-				this.output.warn(
-					"Unable to get version of existing binary, downloading instead",
-					error,
-				);
-				downloadReason = "unreadable";
-			}
+			return {
+				buildInfo,
+				parsedVersion,
+				existingVersion: null,
+				downloadReason: "unreadable",
+				outcome: "unreadable",
+			};
 		}
+	}
 
-		if (existingVersion === buildInfo.version) {
-			this.output.debug("Existing binary matches server version");
-			return resolved.binPath;
-		}
-
-		if (!enableDownloads) {
-			if (existingVersion) {
-				this.output.info(
-					"Using existing binary despite version mismatch because downloads are disabled",
-				);
-				return resolved.binPath;
-			}
-			this.output.warn("Unable to download CLI because downloads are disabled");
-			throw new Error("Unable to download CLI because downloads are disabled");
-		}
-
-		if (existingVersion) {
-			this.output.info(
-				"Downloading since existing binary does not match the server version",
-			);
-		}
-
+	private async downloadBinary(
+		restClient: Api,
+		options: {
+			resolved: ResolvedBinary;
+			parsedVersion: semver.SemVer;
+			serverVersion: string;
+			downloadReason: CliDownloadReason;
+		},
+		trace: CliResolveTrace,
+	): Promise<string> {
+		const { resolved, parsedVersion, serverVersion, downloadReason } = options;
 		// Always download using the platform-specific name.
 		const downloadBinPath = path.join(
 			path.dirname(resolved.binPath),
 			cliUtils.fullName(),
 		);
-
 		// Create the `bin` folder if it doesn't exist
 		await fs.mkdir(path.dirname(downloadBinPath), { recursive: true });
 		const progressLogPath = downloadBinPath + ".progress.log";
@@ -214,67 +305,109 @@ export class CliManager {
 			| undefined;
 		let latestVersion = parsedVersion;
 		try {
-			lockResult = await this.binaryLock.acquireLockOrWait(
-				downloadBinPath,
-				progressLogPath,
+			lockResult = await trace.lockWait(() =>
+				this.binaryLock.acquireLockOrWait(downloadBinPath, progressLogPath),
 			);
 			this.output.debug("Acquired download lock");
 
-			// Another process may have finished the download while we waited.
 			if (lockResult.waited) {
-				const latestBuildInfo = await restClient.getBuildInfo();
-				this.output.debug("Got latest server version", latestBuildInfo.version);
-
-				const recheckAfterWait = await this.checkBinaryVersion(
-					downloadBinPath,
-					latestBuildInfo.version,
+				const waitResult = await trace.lockRecheck(() =>
+					this.recheckBinaryAfterWait(restClient, downloadBinPath),
 				);
-				if (recheckAfterWait.matches) {
+				if (waitResult.matches) {
 					this.output.debug("Binary already matches server version after wait");
+					trace.setOutcome("lock_wait_cache_hit");
 					return await this.renameToFinalPath(resolved, downloadBinPath);
 				}
-
-				const latestParsedVersion = semver.parse(latestBuildInfo.version);
-				if (!latestParsedVersion) {
-					throw new Error(
-						`Got invalid version from deployment: ${latestBuildInfo.version}`,
-					);
-				}
-				latestVersion = latestParsedVersion;
+				latestVersion = waitResult.parsedVersion;
 			}
 
-			return await this.telemetry.trace(
-				"cli.download",
+			const result = await this.cliTelemetry.traceDownload(
+				downloadReason,
 				async (span) => {
 					const downloadedBinPath = await this.performBinaryDownload(
 						restClient,
-						latestVersion,
-						downloadBinPath,
-						progressLogPath,
+						{
+							parsedVersion: latestVersion,
+							binPath: downloadBinPath,
+							progressLogPath,
+						},
 						span,
 					);
 					return this.renameToFinalPath(resolved, downloadedBinPath);
 				},
-				{ reason: downloadReason },
 			);
+			trace.setOutcome("downloaded");
+			return result;
 		} catch (error) {
-			const fallback = await this.handleAnyBinaryFailure(
-				error,
-				downloadBinPath,
-				buildInfo.version,
-				resolved.binPath !== downloadBinPath ? resolved.binPath : undefined,
+			return await trace.fallback(error, () =>
+				this.fallbackToExistingBinary(
+					error,
+					downloadBinPath,
+					serverVersion,
+					resolved,
+				),
 			);
-			// Move the fallback to the expected path if needed.
-			if (fallback !== resolved.binPath) {
-				await fs.rename(fallback, resolved.binPath);
-			}
-			return resolved.binPath;
 		} finally {
 			if (lockResult) {
 				await lockResult.release();
 				this.output.debug("Released download lock");
 			}
 		}
+	}
+
+	private async recheckBinaryAfterWait(
+		restClient: Api,
+		downloadBinPath: string,
+	): Promise<
+		| { matches: true; outcome: CliVersionCheckOutcome }
+		| {
+				matches: false;
+				parsedVersion: semver.SemVer;
+				outcome: CliVersionCheckOutcome;
+		  }
+	> {
+		const latestBuildInfo = await restClient.getBuildInfo();
+		this.output.debug("Got latest server version", latestBuildInfo.version);
+
+		const recheckAfterWait = await this.checkBinaryVersion(
+			downloadBinPath,
+			latestBuildInfo.version,
+		);
+		if (recheckAfterWait.matches) {
+			return { matches: true, outcome: "match" };
+		}
+
+		const latestParsedVersion = semver.parse(latestBuildInfo.version);
+		if (!latestParsedVersion) {
+			throw new Error(
+				`Got invalid version from deployment: ${latestBuildInfo.version}`,
+			);
+		}
+		return {
+			matches: false,
+			parsedVersion: latestParsedVersion,
+			outcome: recheckAfterWait.version ? "mismatch" : "missing",
+		};
+	}
+
+	private async fallbackToExistingBinary(
+		error: unknown,
+		downloadBinPath: string,
+		serverVersion: string,
+		resolved: ResolvedBinary,
+	): Promise<string> {
+		const fallback = await this.handleAnyBinaryFailure(
+			error,
+			downloadBinPath,
+			serverVersion,
+			resolved.binPath !== downloadBinPath ? resolved.binPath : undefined,
+		);
+		// Move the fallback to the expected path if needed.
+		if (fallback !== resolved.binPath) {
+			await fs.rename(fallback, resolved.binPath);
+		}
+		return resolved.binPath;
 	}
 
 	/**
@@ -405,7 +538,7 @@ export class CliManager {
 				!check.matches &&
 				!(await this.promptUseExistingBinary(check.version, message))
 			) {
-				throw error;
+				throw new CliFallbackDeclinedError(error);
 			}
 			return candidate;
 		};
@@ -436,11 +569,14 @@ export class CliManager {
 
 	private async performBinaryDownload(
 		restClient: Api,
-		parsedVersion: semver.SemVer,
-		binPath: string,
-		progressLogPath: string,
+		options: {
+			parsedVersion: semver.SemVer;
+			binPath: string;
+			progressLogPath: string;
+		},
 		downloadSpan: Span,
 	): Promise<string> {
+		const { parsedVersion, binPath, progressLogPath } = options;
 		const cfg = vscode.workspace.getConfiguration("coder");
 		const tempFile = tempFilePath(binPath, "temp");
 
@@ -529,7 +665,7 @@ export class CliManager {
 							);
 							verifySpan.setProperty("outcome", result.kind);
 							if (result.kind === "sig_not_found") {
-								verifySpan.setProperty("sigStatus", String(result.status));
+								verifySpan.setProperty("sig_status", String(result.status));
 							}
 						});
 					}
@@ -590,7 +726,7 @@ export class CliManager {
 			}
 		} finally {
 			if (bytesWritten > 0) {
-				downloadSpan.setMeasurement("downloadedBytes", bytesWritten);
+				downloadSpan.setMeasurement("downloaded_bytes", bytesWritten);
 			}
 			await downloadProgress.clearProgress(progressLogPath);
 		}
@@ -876,12 +1012,28 @@ export class CliManager {
 			throw new Error("URL is required to configure the CLI");
 		}
 
+		const silent = options?.silent === true;
+		return this.cliTelemetry.traceConfigure(
+			{
+				silent,
+				credentialSource: token === "" ? "empty_token" : "session_token",
+			},
+			(trace) => this.storeCredentials({ url, token, silent }, trace),
+		);
+	}
+
+	private async storeCredentials(
+		options: { url: string; token: string; silent: boolean },
+		trace: CliConfigureTrace,
+	): Promise<void> {
+		const { url, token, silent } = options;
 		const configs = vscode.workspace.getConfiguration();
 
-		if (options?.silent) {
+		if (silent) {
 			try {
 				await this.cliCredentialManager.storeToken(url, token, configs);
 			} catch (error) {
+				trace.error(error);
 				this.handleStoreError(error);
 			}
 			return;
@@ -901,8 +1053,10 @@ export class CliManager {
 		}
 		if (result.cancelled) {
 			this.output.info("Credential storage cancelled by user");
+			trace.abort();
 			return;
 		}
+		trace.error(result.error);
 		this.handleStoreError(result.error);
 	}
 

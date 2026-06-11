@@ -29,19 +29,35 @@ describe("RemoteSetupTelemetry", () => {
 
 	it("emits each named phase as a child of remote.setup with shared traceId", async () => {
 		const { sink, remoteSetup } = makeHarness();
+		const phases = [
+			"cli_resolve",
+			"cli_configure",
+			"compatibility_check",
+			"workspace_lookup",
+			"workspace_monitor_setup",
+			"workspace_ready",
+			"agent_resolve",
+			"ssh_config_write",
+			"ssh_monitor_setup",
+			"connection_handoff",
+		] as const;
 		await remoteSetup.trace(async (tracer) => {
-			await tracer.phase("workspace_lookup", () => "ws");
-			await tracer.phase("ssh_config_write", () => Promise.resolve("cfg"));
+			for (const phase of phases) {
+				await tracer.phase(phase, () => phase);
+			}
 		});
 
-		const [lookup, sshWrite, parent] = sink.events;
-		expect(lookup.eventName).toBe("remote.setup.workspace_lookup");
-		expect(sshWrite.eventName).toBe("remote.setup.ssh_config_write");
-		expect(parent.eventName).toBe("remote.setup");
-		expect(lookup.traceId).toBe(parent.traceId);
-		expect(sshWrite.traceId).toBe(parent.traceId);
-		expect(lookup.parentEventId).toBe(parent.eventId);
-		expect(sshWrite.parentEventId).toBe(parent.eventId);
+		const parent = sink.events.at(-1);
+		expect(parent).toBeDefined();
+		expect(parent?.eventName).toBe("remote.setup");
+		expect(sink.events.map((event) => event.eventName)).toEqual([
+			...phases.map((phase) => `remote.setup.${phase}`),
+			"remote.setup",
+		]);
+		for (const phase of sink.events.slice(0, -1)) {
+			expect(phase.traceId).toBe(parent?.traceId);
+			expect(phase.parentEventId).toBe(parent?.eventId);
+		}
 	});
 
 	it("markAborted records the outcome and flips result to aborted", async () => {
