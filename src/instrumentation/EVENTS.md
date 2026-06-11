@@ -1,40 +1,25 @@
 # Telemetry events
 
-Every event, property, and measurement the extension emits, grouped by signal
-kind. Conventions for adding new ones live in `CONVENTIONS.md`.
+Every event, property, and measurement the extension emits, grouped by
+category and, within each category, by signal kind. Conventions for adding
+new ones live in `CONVENTIONS.md`.
 
 ## Event index
 
-[Spans](#spans):
+| Category                                        | Events                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Activation](#activation)                       | `activation`, `activation.deployment_init`                                                                                                                                                                                                                              |
+| [Auth](#auth)                                   | `auth.login`, `auth.logout`, `auth.login_prompted`, `auth.token_refresh.completed`, `auth.unauthorized_intercepted`, `auth.session_lookup`, `auth.credential.store`, `auth.credential.clear`, `auth.token_refresh.deduped`                                              |
+| [CLI](#cli)                                     | `cli.resolve`, `cli.download`, `cli.configure`                                                                                                                                                                                                                          |
+| [Commands](#commands)                           | `command.invoked`, `command.diagnostic.completed`                                                                                                                                                                                                                       |
+| [Deployment](#deployment)                       | `deployment.suspended`, `deployment.recovered`, `deployment.cross_window.detected`, `deployment.auth_config.recovery_failed`                                                                                                                                            |
+| [Remote setup](#remote-setup)                   | `remote.setup`                                                                                                                                                                                                                                                          |
+| [SSH](#ssh)                                     | `ssh.process.discovered`, `ssh.process.lost`, `ssh.process.recovered`, `ssh.process.replaced`, `ssh.process.disposed`, `ssh.network.sampled`                                                                                                                            |
+| [HTTP](#http)                                   | `http.requests`                                                                                                                                                                                                                                                         |
+| [WebSocket connections](#websocket-connections) | `connection.state_transitioned`, `connection.opened`, `connection.dropped`, `connection.reconnect_resolved`                                                                                                                                                             |
+| [Workspace](#workspace)                         | `workspace.start.triggered`, `workspace.update.triggered`, `workspace.start.prompted`, `workspace.update.prompted`, `workspace.open`, `workspace.picker.prompted`, `workspace.dev_container.open`, `workspace.state_transitioned`, `workspace.agent.state_transitioned` |
 
-| Category     | Events                                                                                                                                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Activation   | `activation`, `activation.deployment_init`                                                                                                                                                        |
-| Auth         | `auth.login`, `auth.logout`, `auth.login_prompted`, `auth.token_refresh.completed`, `auth.unauthorized_intercepted`, `auth.session_lookup`, `auth.credential.store`, `auth.credential.clear`      |
-| CLI          | `cli.resolve`, `cli.download`, `cli.configure`                                                                                                                                                    |
-| Commands     | `command.invoked`, `command.diagnostic.completed`                                                                                                                                                 |
-| Remote setup | `remote.setup`                                                                                                                                                                                    |
-| SSH          | `ssh.process.discovered`                                                                                                                                                                          |
-| Workspace    | `workspace.start.triggered`, `workspace.start.prompted`, `workspace.update.triggered`, `workspace.update.prompted`, `workspace.open`, `workspace.picker.prompted`, `workspace.dev_container.open` |
-
-[Logs](#logs):
-
-| Category              | Events                                                                                                                       |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Auth                  | `auth.token_refresh.deduped`                                                                                                 |
-| Deployment            | `deployment.suspended`, `deployment.recovered`, `deployment.cross_window.detected`, `deployment.auth_config.recovery_failed` |
-| SSH                   | `ssh.process.lost`, `ssh.process.recovered`, `ssh.process.replaced`, `ssh.process.disposed`                                  |
-| WebSocket connections | `connection.state_transitioned`, `connection.opened`, `connection.dropped`, `connection.reconnect_resolved`                  |
-| Workspace             | `workspace.state_transitioned`, `workspace.agent.state_transitioned`                                                         |
-
-[Metrics](#metrics):
-
-| Category | Events                |
-| -------- | --------------------- |
-| SSH      | `ssh.network.sampled` |
-| HTTP     | `http.requests`       |
-
-Signal kinds, which the sections below group by:
+Signal kinds, which each category groups its events by:
 
 - **span**: a traced operation; the framework adds `result`
   (`success` / `aborted` / `error`) and `durationMs`.
@@ -98,15 +83,16 @@ bundle alone is enough to inspect what was emitted.
 
 ## Reading the tables
 
-Every event below has its own heading under its signal kind and an attribute
-table. Event names go out on the wire exactly as written, with no `coder.`
-prefix. Attributes are properties (string dimensions; numbers and booleans are
-stringified) unless marked **(measurement)**, a raw number. Measurements carry
-their unit in the key suffix (`_ms`, `_seconds`, `_mbits`, `_bytes`) and
-`<entity>.count` keys are counts, so the tables do not repeat units. Notes
-about when an attribute is set, or where its value comes from, follow the
-values in parentheses. `WorkspaceStatus`, `WorkspaceAgentStatus`, and
-`WorkspaceAgentLifecycle` are the server-defined unions from the Coder API.
+Every event below has its own heading, grouped by category and signal kind,
+and an attribute table. Event names go out on the wire exactly as written,
+with no `coder.` prefix. Attributes are properties (string dimensions; numbers
+and booleans are stringified) unless marked **(measurement)**, a raw number.
+Measurements carry their unit in the key suffix (`_ms`, `_seconds`, `_mbits`,
+`_bytes`) and `<entity>.count` keys are counts, so the tables do not repeat
+units. Notes about when an attribute is set, or where its value comes from,
+follow the values in parentheses. `WorkspaceStatus`, `WorkspaceAgentStatus`,
+and `WorkspaceAgentLifecycle` are the server-defined unions from the Coder
+API.
 
 Two attributes follow the same rule on every span, so the tables do not repeat
 it:
@@ -117,11 +103,11 @@ it:
   Aborts never set `error.type`; an abort with no recorded stage or reason
   carries just `result: aborted`.
 
-## Spans
-
-### Activation
+## Activation
 
 Emitted by `ActivationTelemetry`.
+
+### Spans
 
 #### `activation`
 
@@ -138,9 +124,11 @@ outlives the activation span.
 | ------------ | ------------------------------------------------------------------- |
 | `auth_state` | `unknown`, then `valid_token` or `auth_failed` from the init result |
 
-### Auth
+## Auth
 
 Emitted by `AuthTelemetry`; the credential events by `CredentialTelemetry`.
+
+### Spans
 
 #### `auth.login`
 
@@ -197,9 +185,22 @@ Secret-storage session read during remote setup. No custom attributes.
 | `category`        | `keyring`, `file` (the storage actually involved) |
 | `error.type`      | `binary`, `cli`, `file`                           |
 
-### CLI
+### Logs
+
+#### `auth.token_refresh.deduped`
+
+Logged when a refresh call joins an in-flight refresh and emits no
+`auth.token_refresh.completed` span of its own.
+
+| Attribute | Values                   |
+| --------- | ------------------------ |
+| `trigger` | `background`, `reactive` |
+
+## CLI
 
 Emitted by `CliTelemetry`; attributes set from `CliManager`.
+
+### Spans
 
 #### `cli.resolve`
 
@@ -244,7 +245,9 @@ Phase `cli.download.verify` covers binary signature verification:
 | `abort_stage`       | `credential_store`                          |
 | `error.type`        | `filesystem`, `credential_store`, `unknown` |
 
-### Commands
+## Commands
+
+### Spans
 
 #### `command.invoked`
 
@@ -269,7 +272,31 @@ Emitted by `DiagnosticTelemetry` around each diagnostic command.
 | `throughput_mbits` (measurement)           | speed test only                                                  |
 | `event.count` (measurement)                | telemetry export only                                            |
 
-### Remote setup
+## Deployment
+
+Emitted by `DeploymentTelemetry`.
+
+### Logs
+
+#### `deployment.suspended`
+
+| Attribute | Values                                                                |
+| --------- | --------------------------------------------------------------------- |
+| `reason`  | `auth_config_change`, `auth_failure`, `credentials_removed`, `logout` |
+
+#### `deployment.recovered`
+
+| Attribute | Values                                        |
+| --------- | --------------------------------------------- |
+| `trigger` | `auth_config`, `cross_window`, `token_update` |
+
+#### `deployment.cross_window.detected` / `deployment.auth_config.recovery_failed`
+
+No attributes.
+
+## Remote setup
+
+### Spans
 
 #### `remote.setup`
 
@@ -284,9 +311,11 @@ Phases (`remote.setup.<name>`): `cli_resolve`, `cli_configure`,
 `workspace_ready`, `agent_resolve`, `ssh_config_write`, `ssh_monitor_setup`,
 `connection_handoff`.
 
-### SSH
+## SSH
 
 Emitted by `SshTelemetry`.
+
+### Spans
 
 #### `ssh.process.discovered`
 
@@ -295,10 +324,128 @@ Emitted by `SshTelemetry`.
 | `found`                  | `true`, `false` (whether a PID was found) |
 | `attempts` (measurement) | discovery attempts                        |
 
-### Workspace
+### Logs
 
-Emitted by `WorkspaceOperationTelemetry` (start and update) and
-`WorkspaceOpenTelemetry` (open, picker, dev container).
+#### `ssh.process.lost`
+
+| Attribute                 | Values                                       |
+| ------------------------- | -------------------------------------------- |
+| `cause`                   | `stale_network_info`, `missing_network_info` |
+| `uptime_ms` (measurement) | since process start                          |
+
+#### `ssh.process.recovered`
+
+| Attribute                            | Values     |
+| ------------------------------------ | ---------- |
+| `recovery_duration_ms` (measurement) | since loss |
+
+#### `ssh.process.replaced`
+
+| Attribute                          | Values                 |
+| ---------------------------------- | ---------------------- |
+| `was_lost`                         | `true`, `false`        |
+| `previous_uptime_ms` (measurement) | prior process lifetime |
+| `lost_duration_ms` (measurement)   | only when `was_lost`   |
+
+#### `ssh.process.disposed`
+
+| Attribute                 | Values              |
+| ------------------------- | ------------------- |
+| `was_lost`                | `true`, `false`     |
+| `uptime_ms` (measurement) | since process start |
+
+### Metrics
+
+#### `ssh.network.sampled`
+
+Tunnel network sample. Emitted on a p2p flip, a preferred-DERP change, a
+meaningful latency change (at least 25 ms or 20 %), or a roughly 60 s
+heartbeat.
+
+| Attribute                      | Values                                                             |
+| ------------------------------ | ------------------------------------------------------------------ |
+| `p2p`                          | `true`, `false`                                                    |
+| `preferred_derp`               | DERP region name                                                   |
+| `latency_ms` (measurement)     | exports as gauge `ssh.network.sampled.latency` with unit `ms`      |
+| `download_mbits` (measurement) | exports as gauge `ssh.network.sampled.download` with unit `Mbit/s` |
+| `upload_mbits` (measurement)   | exports as gauge `ssh.network.sampled.upload` with unit `Mbit/s`   |
+
+## HTTP
+
+### Metrics
+
+#### `http.requests`
+
+Emitted by `HttpRequestsTelemetry`, which lives with the HTTP logging in
+`src/logging`. A per-minute rollup of REST traffic, one event per method and
+route bucket.
+
+| Attribute                                                              | Values                                                              |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `method`                                                               | HTTP method                                                         |
+| `route`                                                                | normalized route (ids replaced by placeholders)                     |
+| `window_seconds` (measurement)                                         | actual window length                                                |
+| `count.1xx` through `count.5xx`, `count.network_error` (measurements)  | export as cumulative counters with unit `{request}`                 |
+| `duration.p50_ms`, `duration.p95_ms`, `duration.p99_ms` (measurements) | export as gauges (`http.requests.duration.p50` etc.) with unit `ms` |
+
+## WebSocket connections
+
+Emitted by `WebSocketTelemetry`.
+
+These events share one value set, **ConnectionStateReason**: `initial_connect`,
+`manual_reconnect`, `certificate_refresh`, `scheduled_reconnect`, `open`,
+`disconnect`, `dispose`, `unrecoverable_close`, `unrecoverable_http`,
+`certificate_error`, `connection_error`, `normal_close`, `unexpected_close`.
+
+### Logs
+
+#### `connection.state_transitioned`
+
+| Attribute    | Values                                                                                                               |
+| ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `from`, `to` | `idle`, `connecting`, `connected`, `awaiting_retry`, `disconnected`, `disposed` (the `ReconnectingWebSocket` states) |
+| `reason`     | ConnectionStateReason                                                                                                |
+
+#### `connection.opened`
+
+| Attribute                           | Values             |
+| ----------------------------------- | ------------------ |
+| `route`                             | normalized route   |
+| `connect_duration_ms` (measurement) | from connect start |
+
+#### `connection.dropped`
+
+Emitted as an error log (with the `error` block) when a socket error caused
+the drop.
+
+| Attribute                              | Values                                                                                                          |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `cause`                                | `manual_disconnect`, `replaced`, `unrecoverable_close`, `normal_close`, `unexpected_close`, `disposed`, `error` |
+| `close_code`                           | WebSocket close code (when known)                                                                               |
+| `connection_duration_ms` (measurement) | time the connection was open                                                                                    |
+
+#### `connection.reconnect_resolved`
+
+Closes a reconnect cycle (opened on the first drop, resolved on reconnect
+success or termination).
+
+| Attribute                         | Values                                                 |
+| --------------------------------- | ------------------------------------------------------ |
+| `outcome`                         | `success`, `error` (how the cycle resolved)            |
+| `reason`                          | ConnectionStateReason (why the cycle started)          |
+| `termination_reason`              | ConnectionStateReason (only when `outcome` is `error`) |
+| `attempts` (measurement)          | connect attempts in the cycle                          |
+| `max_backoff_ms` (measurement)    | largest backoff scheduled                              |
+| `total_duration_ms` (measurement) | cycle wall time                                        |
+
+## Workspace
+
+Emitted by `WorkspaceOperationTelemetry` (start and update),
+`WorkspaceOpenTelemetry` (open, picker, dev container), and
+`WorkspaceStateTelemetry` / `WorkspaceAgentTelemetry` (the state-transition
+logs).
+
+### Spans
 
 #### `workspace.start.triggered` / `workspace.update.triggered`
 
@@ -356,122 +503,7 @@ Opening a workspace from any entry point.
 | `mode`       | `dev_container`, `attached_container` |
 | `error.type` | `error`                               |
 
-## Logs
-
-### Auth
-
-#### `auth.token_refresh.deduped`
-
-Emitted by `AuthTelemetry` when a refresh call joins an in-flight refresh and
-emits no `auth.token_refresh.completed` span of its own.
-
-| Attribute | Values                   |
-| --------- | ------------------------ |
-| `trigger` | `background`, `reactive` |
-
-### Deployment
-
-Emitted by `DeploymentTelemetry`.
-
-#### `deployment.suspended`
-
-| Attribute | Values                                                                |
-| --------- | --------------------------------------------------------------------- |
-| `reason`  | `auth_config_change`, `auth_failure`, `credentials_removed`, `logout` |
-
-#### `deployment.recovered`
-
-| Attribute | Values                                        |
-| --------- | --------------------------------------------- |
-| `trigger` | `auth_config`, `cross_window`, `token_update` |
-
-#### `deployment.cross_window.detected` / `deployment.auth_config.recovery_failed`
-
-No attributes.
-
-### SSH
-
-Emitted by `SshTelemetry`.
-
-#### `ssh.process.lost`
-
-| Attribute                 | Values                                       |
-| ------------------------- | -------------------------------------------- |
-| `cause`                   | `stale_network_info`, `missing_network_info` |
-| `uptime_ms` (measurement) | since process start                          |
-
-#### `ssh.process.recovered`
-
-| Attribute                            | Values     |
-| ------------------------------------ | ---------- |
-| `recovery_duration_ms` (measurement) | since loss |
-
-#### `ssh.process.replaced`
-
-| Attribute                          | Values                 |
-| ---------------------------------- | ---------------------- |
-| `was_lost`                         | `true`, `false`        |
-| `previous_uptime_ms` (measurement) | prior process lifetime |
-| `lost_duration_ms` (measurement)   | only when `was_lost`   |
-
-#### `ssh.process.disposed`
-
-| Attribute                 | Values              |
-| ------------------------- | ------------------- |
-| `was_lost`                | `true`, `false`     |
-| `uptime_ms` (measurement) | since process start |
-
-### WebSocket connections
-
-Emitted by `WebSocketTelemetry`.
-
-These events share one value set, **ConnectionStateReason**: `initial_connect`,
-`manual_reconnect`, `certificate_refresh`, `scheduled_reconnect`, `open`,
-`disconnect`, `dispose`, `unrecoverable_close`, `unrecoverable_http`,
-`certificate_error`, `connection_error`, `normal_close`, `unexpected_close`.
-
-#### `connection.state_transitioned`
-
-| Attribute    | Values                                                                                                               |
-| ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `from`, `to` | `idle`, `connecting`, `connected`, `awaiting_retry`, `disconnected`, `disposed` (the `ReconnectingWebSocket` states) |
-| `reason`     | ConnectionStateReason                                                                                                |
-
-#### `connection.opened`
-
-| Attribute                           | Values             |
-| ----------------------------------- | ------------------ |
-| `route`                             | normalized route   |
-| `connect_duration_ms` (measurement) | from connect start |
-
-#### `connection.dropped`
-
-Emitted as an error log (with the `error` block) when a socket error caused
-the drop.
-
-| Attribute                              | Values                                                                                                          |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `cause`                                | `manual_disconnect`, `replaced`, `unrecoverable_close`, `normal_close`, `unexpected_close`, `disposed`, `error` |
-| `close_code`                           | WebSocket close code (when known)                                                                               |
-| `connection_duration_ms` (measurement) | time the connection was open                                                                                    |
-
-#### `connection.reconnect_resolved`
-
-Closes a reconnect cycle (opened on the first drop, resolved on reconnect
-success or termination).
-
-| Attribute                         | Values                                                 |
-| --------------------------------- | ------------------------------------------------------ |
-| `outcome`                         | `success`, `error` (how the cycle resolved)            |
-| `reason`                          | ConnectionStateReason (why the cycle started)          |
-| `termination_reason`              | ConnectionStateReason (only when `outcome` is `error`) |
-| `attempts` (measurement)          | connect attempts in the cycle                          |
-| `max_backoff_ms` (measurement)    | largest backoff scheduled                              |
-| `total_duration_ms` (measurement) | cycle wall time                                        |
-
-### Workspace
-
-Emitted by `WorkspaceStateTelemetry` and `WorkspaceAgentTelemetry`.
+### Logs
 
 #### `workspace.state_transitioned`
 
@@ -492,37 +524,3 @@ Emitted by `WorkspaceStateTelemetry` and `WorkspaceAgentTelemetry`.
 | `status.from`, `status.to`                   | WorkspaceAgentStatus (`from` is `none` initially)    |
 | `lifecycle_state.from`, `lifecycle_state.to` | WorkspaceAgentLifecycle (`from` is `none` initially) |
 | `observed_duration_ms` (measurement)         | omitted on first observation                         |
-
-## Metrics
-
-### SSH
-
-#### `ssh.network.sampled`
-
-Emitted by `SshTelemetry`. Tunnel network sample, emitted on a p2p flip, a
-preferred-DERP change, a meaningful latency change (at least 25 ms or 20 %),
-or a roughly 60 s heartbeat.
-
-| Attribute                      | Values                                                             |
-| ------------------------------ | ------------------------------------------------------------------ |
-| `p2p`                          | `true`, `false`                                                    |
-| `preferred_derp`               | DERP region name                                                   |
-| `latency_ms` (measurement)     | exports as gauge `ssh.network.sampled.latency` with unit `ms`      |
-| `download_mbits` (measurement) | exports as gauge `ssh.network.sampled.download` with unit `Mbit/s` |
-| `upload_mbits` (measurement)   | exports as gauge `ssh.network.sampled.upload` with unit `Mbit/s`   |
-
-### HTTP
-
-#### `http.requests`
-
-Emitted by `HttpRequestsTelemetry`, which lives with the HTTP logging in
-`src/logging`. A per-minute rollup of REST traffic, one event per method and
-route bucket.
-
-| Attribute                                                              | Values                                                              |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `method`                                                               | HTTP method                                                         |
-| `route`                                                                | normalized route (ids replaced by placeholders)                     |
-| `window_seconds` (measurement)                                         | actual window length                                                |
-| `count.1xx` through `count.5xx`, `count.network_error` (measurements)  | export as cumulative counters with unit `{request}`                 |
-| `duration.p50_ms`, `duration.p95_ms`, `duration.p99_ms` (measurements) | export as gauges (`http.requests.duration.p50` etc.) with unit `ms` |
