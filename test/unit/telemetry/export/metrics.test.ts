@@ -87,6 +87,7 @@ describe("describeMetricEvent", () => {
 	it.each([
 		["latency_ms", "ms"],
 		["duration_ms", "ms"],
+		["wait_seconds", "s"],
 		["download_mbits", "Mbit/s"],
 		["something_else", "1"],
 	])("derives unit for measurement '%s' -> '%s'", (name, unit) => {

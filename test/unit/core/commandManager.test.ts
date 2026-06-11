@@ -81,7 +81,7 @@ describe("CommandManager", () => {
 			expect(sink.events[0]).toMatchObject({
 				eventName: "command.invoked",
 				properties: {
-					commandId: "coder.refreshWorkspaces",
+					command_id: "coder.refreshWorkspaces",
 					result: "success",
 				},
 			});
@@ -100,7 +100,7 @@ describe("CommandManager", () => {
 			expect(sink.events).toHaveLength(1);
 			expect(sink.events[0]).toMatchObject({
 				eventName: "command.invoked",
-				properties: { commandId: "coder.login", result: "error" },
+				properties: { command_id: "coder.login", result: "error" },
 				error: { message: "boom", type: "TypeError" },
 			});
 		});

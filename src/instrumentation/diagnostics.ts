@@ -2,6 +2,7 @@ import { recordAborted, recordError } from "./outcomes";
 
 import type { SpeedtestResult } from "@repo/shared";
 
+import type { ExportFormat } from "../telemetry/export/writers/types";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
@@ -28,7 +29,7 @@ export interface DiagnosticTrace {
 	error(category?: DiagnosticErrorCategory): void;
 	setRequestedDuration(seconds: number): void;
 	succeedSpeedtest(result: SpeedtestResult): void;
-	succeedExport(format: string, eventCount: number): void;
+	succeedExport(format: ExportFormat, eventCount: number): void;
 }
 
 /** Emits `command.diagnostic.completed` around each diagnostic command. */
@@ -70,7 +71,7 @@ class SpanDiagnosticTrace implements DiagnosticTrace {
 		);
 	}
 
-	public succeedExport(format: string, eventCount: number): void {
+	public succeedExport(format: ExportFormat, eventCount: number): void {
 		this.span.setProperty("format", format);
 		this.span.setMeasurement("event.count", eventCount);
 	}

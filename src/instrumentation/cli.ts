@@ -5,7 +5,7 @@ import type { CallerPropertyValue } from "../telemetry/event";
 import type { TelemetryService } from "../telemetry/service";
 import type { Span } from "../telemetry/span";
 
-export type CliCacheSource = "file-path" | "directory" | "not-found";
+export type CliCacheSource = "file_path" | "directory" | "not_found";
 export type CliDownloadReason = "missing" | "version_mismatch" | "unreadable";
 export type CliDownloadAction = "download" | "fallback" | "blocked";
 export type CliCredentialSource = "session_token" | "empty_token";

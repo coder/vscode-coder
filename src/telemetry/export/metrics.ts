@@ -25,6 +25,7 @@ const METRIC_EVENT_NAMES: ReadonlySet<string> = new Set([
 
 const UNIT_SUFFIXES: ReadonlyArray<readonly [string, string]> = [
 	["_ms", "ms"],
+	["_seconds", "s"],
 	["_mbits", "Mbit/s"],
 ];
 

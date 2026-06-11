@@ -35,6 +35,7 @@ import { type SecretsManager } from "../core/secretsManager";
 import { toError } from "../error/errorUtils";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { Inbox } from "../inbox";
+import { AuthTelemetry } from "../instrumentation/auth";
 import {
 	RemoteSetupTelemetry,
 	type RemoteSetupTracer,
@@ -103,6 +104,7 @@ export class Remote {
 	private readonly secretsManager: SecretsManager;
 	private readonly loginCoordinator: LoginCoordinator;
 	private readonly setupTelemetry: RemoteSetupTelemetry;
+	private readonly authTelemetry: AuthTelemetry;
 
 	public constructor(
 		private readonly serviceContainer: ServiceContainer,
@@ -116,6 +118,9 @@ export class Remote {
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 		this.setupTelemetry = new RemoteSetupTelemetry(
+			serviceContainer.getTelemetryService(),
+		);
+		this.authTelemetry = new AuthTelemetry(
 			serviceContainer.getTelemetryService(),
 		);
 	}
@@ -147,7 +152,7 @@ export class Remote {
 		// first-run migration doesn't pollute that signal.
 		await this.migrateToSecretsStorage(parts.safeHostname);
 		const telemetry = this.serviceContainer.getTelemetryService();
-		const auth = await telemetry.trace("auth.session_lookup", () =>
+		const auth = await this.authTelemetry.traceSessionLookup(() =>
 			this.secretsManager.getSessionAuth(parts.safeHostname),
 		);
 		if (auth?.url) {

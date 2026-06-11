@@ -116,7 +116,8 @@ Coder's own pipeline, so a bare `cache_source` can't collide with a future OTel
   export as record attributes, and a query can bucket the raw number at read
   time. `result` and `durationMs` are framework-managed and cannot be set.
 - **Units.** There is no unit field at emit time, so put the unit in the
-  measurement key as a `_ms` / `_mbits` suffix, the same way for every event.
+  measurement key as a `_ms` / `_seconds` / `_mbits` suffix, the same way for
+  every event.
   The OTLP exporter then resolves it per signal: for metric events
   (`http.requests`, `ssh.network.sampled`) it moves the suffix into the OTLP
   `unit` field and drops it from the metric name (`latency_ms` exports as metric

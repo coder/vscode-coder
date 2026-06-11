@@ -1,11 +1,6 @@
 import { extractAgents } from "../api/api-helper";
 
-import {
-	type AbortableErrorCategory,
-	categorizeAbortableError,
-	recordAborted,
-	recordError,
-} from "./outcomes";
+import { recordAbortableError, recordAborted, recordError } from "./outcomes";
 
 import type {
 	Workspace,
@@ -25,9 +20,7 @@ export type WorkspaceOpenSource =
 
 export type WorkspacePickerSource = "workspace_open" | "diagnostic";
 export type WorkspacePickerErrorCategory = "fetch_error";
-export type WorkspaceOpenErrorCategory =
-	| WorkspacePickerErrorCategory
-	| AbortableErrorCategory;
+export type WorkspaceOpenErrorCategory = WorkspacePickerErrorCategory | "error";
 export type WorkspacePickerResult =
 	| { readonly status: "selected"; readonly workspace: Workspace }
 	| { readonly status: "cancelled" }
@@ -114,8 +107,9 @@ export class WorkspaceOpenTelemetry {
 	}
 
 	/**
-	 * Runs `fn` inside the span, recording a thrown error as a categorized
-	 * error without its raw details, then rethrows outside the span.
+	 * Runs `fn` inside the span, recording a thrown abort as `aborted` and any
+	 * other error as a categorized error without its raw details, then rethrows
+	 * outside the span.
 	 */
 	private async traceRethrowing<T>(
 		eventName: string,
@@ -131,7 +125,7 @@ export class WorkspaceOpenTelemetry {
 					return await fn(span);
 				} catch (error) {
 					thrown = { error };
-					recordError(span, categorizeAbortableError(error));
+					recordAbortableError(span, error);
 					return fallback;
 				}
 			},

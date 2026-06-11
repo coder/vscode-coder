@@ -84,6 +84,11 @@ export class AuthTelemetry {
 		});
 	}
 
+	/** Wraps the secret-storage session read that seeds a remote connection. */
+	public traceSessionLookup<T>(fn: () => Promise<T>): Promise<T> {
+		return this.telemetry.trace("auth.session_lookup", fn);
+	}
+
 	public traceTokenRefresh<T>(
 		trigger: AuthTokenRefreshTrigger,
 		fn: () => Promise<T>,

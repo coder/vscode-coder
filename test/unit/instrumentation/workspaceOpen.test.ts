@@ -161,6 +161,21 @@ describe("WorkspaceOpenTelemetry", () => {
 		expect(event.error).toBeUndefined();
 	});
 
+	it("records a thrown abort as aborted without an error.type", async () => {
+		const { sink, telemetry } = setup();
+		const abort = Object.assign(new Error("user backed out"), {
+			name: "AbortError",
+		});
+
+		await expect(
+			telemetry.traceOpen("command", undefined, () => Promise.reject(abort)),
+		).rejects.toThrow("user backed out");
+
+		const event = sink.expectOne("workspace.open");
+		expect(event.properties).toMatchObject({ result: "aborted" });
+		expect(event.properties["error.type"]).toBeUndefined();
+	});
+
 	it("records thrown devcontainer failures without raw error details", async () => {
 		const { sink, telemetry } = setup();
 

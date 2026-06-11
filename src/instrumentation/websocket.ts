@@ -29,11 +29,18 @@ export type ConnectionDropCause =
 	| "error";
 
 type ReconnectOutcome =
-	| { readonly result: "success" }
+	| { readonly outcome: "success" }
 	| {
-			readonly result: "error";
+			readonly outcome: "error";
 			readonly terminationReason: ConnectionStateReason;
 	  };
+
+/** `ConnectionState` lowercased into the OTel snake_case attribute value. */
+type ConnectionStateValue = Lowercase<`${ConnectionState}`>;
+
+function stateValue(state: ConnectionState): ConnectionStateValue {
+	return state.toLowerCase() as ConnectionStateValue;
+}
 
 interface ReconnectCycle {
 	readonly startMs: number;
@@ -64,8 +71,8 @@ export class WebSocketTelemetry {
 		reason: ConnectionStateReason,
 	): void {
 		this.#telemetry.log("connection.state_transitioned", {
-			from,
-			to,
+			from: stateValue(from),
+			to: stateValue(to),
 			reason,
 		});
 	}
@@ -88,7 +95,7 @@ export class WebSocketTelemetry {
 			{ route: normalizeRoute(route) },
 			{ connect_duration_ms: now - start },
 		);
-		this.#finishReconnect({ result: "success" });
+		this.#finishReconnect({ outcome: "success" });
 	}
 
 	public dropped(
@@ -144,7 +151,7 @@ export class WebSocketTelemetry {
 	/** Drop and end the reconnect cycle as a failure. */
 	public terminated(reason: ConnectionStateReason, options: DropOptions): void {
 		this.dropped(options.cause, options.code, options.error);
-		this.#finishReconnect({ result: "error", terminationReason: reason });
+		this.#finishReconnect({ outcome: "error", terminationReason: reason });
 	}
 
 	/** Drop and (re)open a reconnect cycle. */
@@ -168,11 +175,11 @@ export class WebSocketTelemetry {
 		}
 		this.#reconnectCycle = undefined;
 
-		const properties: Record<string, string> = {
-			result: outcome.result,
+		const properties: CallerProperties = {
+			outcome: outcome.outcome,
 			reason: cycle.reason,
 		};
-		if (outcome.result === "error") {
+		if (outcome.outcome === "error") {
 			properties.termination_reason = outcome.terminationReason;
 		}
 		this.#telemetry.log("connection.reconnect_resolved", properties, {
