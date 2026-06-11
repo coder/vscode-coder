@@ -5,33 +5,50 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.15.0](https://github.com/coder/vscode-coder/releases/tag/v1.15.0) 2026-06-11
 
 ### Added
 
-- Local extension telemetry to help diagnose issues. Events are recorded on this
-  machine only and never sent anywhere. Configure via the new
-  `coder.telemetry.level` setting (`local` by default, `off` to disable);
-  see `coder.telemetry.local` for tunables.
-- Local telemetry now records `command.invoked` for each `coder.*` command
-  with duration and outcome.
-- Local telemetry now records extension activation, remote workspace setup
-  phases (auth retrieval, workspace lookup, workspace and agent readiness,
-  SSH config write), and CLI binary download/verify with their durations
-  and outcomes.
-- Local telemetry now records `http.requests` rollups for per-route HTTP
-  health, without emitting one event per request.
-- Local telemetry now records connection lifecycle: SSH process
-  discovery/loss/recovery with sampled network info, and reconnecting
-  WebSocket open/drop/reconnect/state transitions.
-- Local telemetry now records authentication refresh and recovery prompts.
-- Local telemetry now records workspace and agent state transitions with
-  observed durations.
-- The `Coder: Export Telemetry` command writes locally recorded telemetry to
-  a file you choose, as a JSON array or an OTLP/JSON zip, for a selected date
-  range. The OTLP zip includes a `manifest.json` summarizing the export: date
-  range, source file and event counts, per-signal record counts, and the
-  telemetry schema version.
+- New **Shared Workspaces** view in the Coder sidebar that lists workspaces
+  other users have shared with you, with search and refresh actions, so you
+  can find and open them just like your own.
+- New `coder.alternativeWebUrl` setting to open browser pages (dashboard,
+  workspace pages, login) on a different URL than the one used for API, SSH,
+  and CLI traffic. Useful when the API runs on a browser-restricted port
+  (e.g. 7004) but the web UI is served on a standard one (e.g. 443).
+- Local extension telemetry to help diagnose issues. Events are recorded on
+  this machine only and never sent anywhere; payloads are bounded and never
+  include raw workspace names, paths, queries, or command output. Configure
+  via the new `coder.telemetry.level` setting (`local` by default, `off` to
+  disable); see `coder.telemetry.local` for tunables. Every event, property,
+  and measurement is documented in
+  [EVENTS.md](https://github.com/coder/vscode-coder/blob/main/src/instrumentation/EVENTS.md).
+  Coverage:
+  - **Activation and commands**: extension activation phases and every
+    `coder.*` command invocation, with durations and outcomes.
+  - **Auth and deployment**: login/logout, token refresh, credential
+    store/clear, recovery prompts, and session suspend/recover events.
+  - **CLI**: binary resolution, download and signature verification, and
+    SSH configuration, with durations and typed failure categories.
+  - **Remote setup**: each phase of connecting to a workspace, from auth
+    retrieval and workspace lookup through workspace and agent readiness,
+    SSH config write, and connection handoff.
+  - **Connections**: SSH process discovery/loss/recovery with sampled
+    network stats, and reconnecting WebSocket open/drop/reconnect state
+    transitions.
+  - **Workspaces and HTTP**: workspace and agent state transitions with
+    observed durations, start/update/open flows, and per-route
+    `http.requests` rollups for HTTP health without one event per request.
+- The new **Coder: Export Telemetry** command writes locally recorded
+  telemetry for a selected date range to a file you choose, as a JSON array
+  or an OTLP/JSON zip ready for OpenTelemetry tooling. The OTLP zip includes
+  a `manifest.json` summarizing the export: date range, source file and
+  event counts, per-signal record counts, and the telemetry schema version.
+- **Coder: Create Support Bundle** now captures VS Code-side diagnostics in
+  the bundle: a snapshot of `coder.*` and `remote.*` settings (values that
+  can hold secrets are masked), recent extension and SSH proxy logs across
+  sessions, and the local telemetry files, so a single bundle is usually
+  enough to diagnose an issue.
 - Path-like settings (`coder.binaryDestination`, `coder.tlsCertFile`,
   `coder.tlsKeyFile`, `coder.tlsCaFile`, `coder.tlsAltHost`,
   `coder.proxyLogDirectory`) and items in `coder.globalFlags` now support
@@ -50,25 +67,26 @@
 
 ### Fixed
 
-- Workspaces on hostnames containing `--`, such as internationalized (IDN)
-  domains with Punycode (`xn--`) labels, can now be opened from recent
-  connections. The SSH authority parser was splitting these names across the
-  field separator and rejecting the host as invalid.
-- Updating a workspace on a CLI older than 2.24 (which can't run
-  `coder update` non-interactively) now passes newly-required template
-  parameters into the REST-API fallback build, instead of silently omitting
-  them and letting the server reject the build.
-- Updating a workspace now re-prompts for an option or multi-select
-  parameter whose stored value is no longer one of the new template
-  version's options, instead of carrying a stale value forward and
-  failing the build. Immutable parameters without a stored value are
-  now prompted as well, closing a gap with the web dashboard.
 - Updating a workspace from VS Code no longer hangs when the new template
   version requires parameters. The extension now prompts for any missing
   required values through VS Code input boxes and passes them to
   `coder update` so the CLI runs non-interactively. If the CLI still asks
-  for input the update is failed instead of hanging, and the workspace
-  falls back to starting on the existing template version with a warning.
+  for input, the update fails fast and the workspace falls back to starting
+  on its existing template version with a warning, instead of stalling
+  indefinitely.
+- Updating a workspace on a CLI older than 2.24 (which can't run
+  `coder update` non-interactively) now passes newly-required template
+  parameters into the REST API fallback build, instead of silently omitting
+  them and letting the server reject the build.
+- Updating a workspace now re-prompts for an option or multi-select
+  parameter whose stored value is no longer offered by the new template
+  version, instead of carrying the stale value forward and failing the
+  build. Immutable parameters without a stored value are prompted as well,
+  matching the web dashboard's behavior.
+- Workspaces on hostnames containing `--`, such as internationalized (IDN)
+  domains with Punycode (`xn--`) labels, can now be opened from recent
+  connections. The SSH authority parser previously split these names at the
+  wrong separator and rejected the host as invalid.
 
 ## [v1.14.6](https://github.com/coder/vscode-coder/releases/tag/v1.14.6) 2026-05-26
 
