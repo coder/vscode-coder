@@ -78,7 +78,7 @@ describe("CliManager telemetry", () => {
 		});
 
 		it.each([{ silent: false }, { silent: true }])(
-			"emits credential_store failure category on failure (silent=$silent)",
+			"emits credential_store error type on failure (silent=$silent)",
 			async ({ silent }) => {
 				const { manager, mockCredManager, event } = setupCliManager();
 				vi.mocked(mockCredManager.storeToken).mockRejectedValueOnce(
@@ -89,13 +89,13 @@ describe("CliManager telemetry", () => {
 					"keyring unavailable",
 				);
 				expect(event("cli.configure")).toMatchObject({
-					properties: { result: "error", failure_category: "credential_store" },
+					properties: { result: "error", "error.type": "credential_store" },
 					error: { message: "keyring unavailable" },
 				});
 			},
 		);
 
-		it("emits cancelled failure category when the user cancels", async () => {
+		it("aborts with a stage when the user cancels", async () => {
 			const { manager, mockCredManager, expectProps } = setupCliManager();
 			vi.mocked(mockCredManager.storeToken).mockRejectedValueOnce(
 				makeAbortError(),
@@ -104,7 +104,7 @@ describe("CliManager telemetry", () => {
 			await expect(manager.configure(URL, TOKEN)).resolves.not.toThrow();
 			expectProps("cli.configure", {
 				result: "aborted",
-				failure_category: "cancelled",
+				abort_stage: "credential_store",
 			});
 		});
 	});
@@ -181,12 +181,9 @@ describe("CliManager telemetry", () => {
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
 
 			noEvent("cli.download");
-			expectProps("cli.resolve.download_decision", {
-				reason: "version_mismatch",
-				outcome: "fallback",
-				result: "success",
-			});
 			expectProps("cli.resolve", {
+				download_reason: "version_mismatch",
+				download_action: "fallback",
 				outcome: "download_disabled_fallback",
 				result: "success",
 			});
@@ -203,7 +200,7 @@ describe("CliManager telemetry", () => {
 
 			noEvent("cli.download");
 			expectProps("cli.resolve", {
-				failure_category: "downloads_disabled",
+				"error.type": "downloads_disabled",
 				result: "error",
 			});
 		});
@@ -231,7 +228,12 @@ describe("CliManager telemetry", () => {
 			);
 
 			expectProps("cli.resolve.fallback_to_existing_binary", {
-				failure_category: "fallback_declined",
+				"error.type": "fallback_declined",
+				result: "error",
+			});
+			expectProps("cli.resolve", {
+				fallback_reason: "download",
+				"error.type": "fallback_declined",
 				result: "error",
 			});
 		});
@@ -276,10 +278,14 @@ describe("CliManager telemetry", () => {
 				measurements: { downloaded_bytes: Buffer.byteLength(partial) },
 			});
 			expectProps("cli.resolve.fallback_to_existing_binary", {
-				failure_category: "download",
+				"error.type": "download",
 				result: "error",
 			});
-			expectProps("cli.resolve", { result: "error" });
+			expectProps("cli.resolve", {
+				fallback_reason: "download",
+				"error.type": "download",
+				result: "error",
+			});
 		});
 
 		describe("cli.download.verify", () => {

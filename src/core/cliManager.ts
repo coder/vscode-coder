@@ -145,7 +145,7 @@ export class CliManager {
 	): Promise<string> {
 		const baseUrl = restClient.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
-			trace.setFailure("unknown");
+			trace.error("unknown");
 			throw new Error("REST client has no base URL configured");
 		}
 		const safeHostname = toSafeHost(baseUrl);
@@ -178,7 +178,7 @@ export class CliManager {
 		} else {
 			action = existingVersion !== null ? "fallback" : "blocked";
 		}
-		await trace.downloadDecision(downloadReason, action);
+		trace.setDownloadDecision(downloadReason, action);
 
 		if (!enableDownloads) {
 			if (existingVersion) {
@@ -189,7 +189,7 @@ export class CliManager {
 				return resolved.binPath;
 			}
 			this.output.warn("Unable to download CLI because downloads are disabled");
-			trace.setFailure("downloads_disabled");
+			trace.error("downloads_disabled");
 			throw new CliDownloadsDisabledError();
 		}
 
@@ -1033,7 +1033,7 @@ export class CliManager {
 			try {
 				await this.cliCredentialManager.storeToken(url, token, configs);
 			} catch (error) {
-				trace.fail(error);
+				trace.error(error);
 				this.handleStoreError(error);
 			}
 			return;
@@ -1053,10 +1053,10 @@ export class CliManager {
 		}
 		if (result.cancelled) {
 			this.output.info("Credential storage cancelled by user");
-			trace.cancel();
+			trace.abort();
 			return;
 		}
-		trace.fail(result.error);
+		trace.error(result.error);
 		this.handleStoreError(result.error);
 	}
 

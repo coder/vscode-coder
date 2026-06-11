@@ -1,6 +1,5 @@
-import { isAbortError } from "../error/errorUtils";
-
 import { CredentialFileError } from "./credentials";
+import { recordAborted, recordError } from "./outcomes";
 
 import type { CallerPropertyValue } from "../telemetry/event";
 import type { TelemetryService } from "../telemetry/service";
@@ -21,12 +20,11 @@ export type CliVersionCheckOutcome =
 	| "match"
 	| "mismatch"
 	| "unreadable";
-export type CliConfigureFailureCategory =
-	| "cancelled"
+export type CliConfigureErrorType =
 	| "filesystem"
 	| "credential_store"
 	| "unknown";
-export type CliResolveFailureCategory =
+export type CliResolveErrorType =
 	| "downloads_disabled"
 	| "download"
 	| "fallback_declined";
@@ -92,8 +90,8 @@ export class CliResolveTrace {
 		this.span.setProperty("outcome", outcome);
 	}
 
-	public setFailure(category: CliResolveFailureCategory | "unknown"): void {
-		this.span.setProperty("failure_category", category);
+	public error(category: CliResolveErrorType | "unknown"): void {
+		recordError(this.span, category);
 	}
 
 	public cacheLookup<T extends { readonly source: CliCacheSource }>(
@@ -130,30 +128,27 @@ export class CliResolveTrace {
 		});
 	}
 
-	public downloadDecision(
+	public setDownloadDecision(
 		reason: CliDownloadReason,
 		action: CliDownloadAction,
-	): Promise<void> {
+	): void {
 		this.span.setProperty("download_reason", reason);
-		return this.span.phase("download_decision", () => Promise.resolve(), {
-			reason,
-			outcome: action,
-		});
+		this.span.setProperty("download_action", action);
 	}
 
 	public async fallback<T>(error: unknown, fn: () => Promise<T>): Promise<T> {
+		// Why we fell back, recorded even when the fallback succeeds.
+		this.span.setProperty("fallback_reason", categorizeResolveError(error));
 		const result = await this.span.phase(
 			"fallback_to_existing_binary",
-			async (span) => {
+			async (child) => {
 				try {
-					const result = await fn();
-					span.setProperty("failure_category", categorizeResolveFailure(error));
-					return result;
+					return await fn();
 				} catch (fallbackError) {
-					span.setProperty(
-						"failure_category",
-						categorizeResolveFailure(fallbackError),
-					);
+					// Fallback failed too: tag the phase and parent with its error.type.
+					const category = categorizeResolveError(fallbackError);
+					recordError(child, category);
+					this.error(category);
 					throw fallbackError;
 				}
 			},
@@ -187,25 +182,16 @@ export class CliResolveTrace {
 export class CliConfigureTrace {
 	public constructor(private readonly span: Span) {}
 
-	public cancel(): void {
-		this.span.setProperty("failure_category", "cancelled");
-		this.span.markAborted();
+	public abort(): void {
+		recordAborted(this.span, "credential_store");
 	}
 
-	public fail(error: unknown): void {
-		this.span.setProperty(
-			"failure_category",
-			categorizeConfigureFailure(error),
-		);
+	public error(error: unknown): void {
+		recordError(this.span, categorizeConfigureError(error));
 	}
 }
 
-function categorizeConfigureFailure(
-	error: unknown,
-): CliConfigureFailureCategory {
-	if (isAbortError(error)) {
-		return "cancelled";
-	}
+function categorizeConfigureError(error: unknown): CliConfigureErrorType {
 	// A CredentialFileError is a file-write failure; anything else is keyring/CLI.
 	if (error instanceof CredentialFileError) {
 		return "filesystem";
@@ -213,7 +199,7 @@ function categorizeConfigureFailure(
 	return error instanceof Error ? "credential_store" : "unknown";
 }
 
-function categorizeResolveFailure(error: unknown): CliResolveFailureCategory {
+function categorizeResolveError(error: unknown): CliResolveErrorType {
 	if (error instanceof CliDownloadsDisabledError) {
 		return "downloads_disabled";
 	}
