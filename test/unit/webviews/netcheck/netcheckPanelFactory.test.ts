@@ -67,11 +67,7 @@ function openReport(rawJson = '{"raw":true}'): Harness {
 		createMockLogger(),
 	);
 
-	factory.show({
-		report: sampleReport,
-		rawJson,
-		host: "dev.coder.com",
-	});
+	factory.show({ host: "dev.coder.com", report: sampleReport }, rawJson);
 	return { panel, hooks };
 }
 

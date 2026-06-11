@@ -3,7 +3,6 @@ import {
 	buildRequestHandlers,
 	NetcheckApi,
 	type NetcheckData,
-	type NetcheckReport,
 } from "@repo/shared";
 
 import { notifyWebview } from "../dispatch";
@@ -13,12 +12,6 @@ import type * as vscode from "vscode";
 
 import type { Logger } from "../../logging/logger";
 
-export interface NetcheckReportPayload {
-	report: NetcheckReport;
-	rawJson: string;
-	host: string;
-}
-
 /** Creates webview panels that render `coder netcheck` reports. */
 export class NetcheckPanelFactory {
 	public constructor(
@@ -26,17 +19,16 @@ export class NetcheckPanelFactory {
 		private readonly logger: Logger,
 	) {}
 
-	public show({ report, rawJson, host }: NetcheckReportPayload): void {
-		const payload: NetcheckData = { host, report };
+	public show(data: NetcheckData, rawJson: string): void {
 		showResultPanel({
 			extensionUri: this.extensionUri,
 			logger: this.logger,
 			viewType: "coder.netcheckPanel",
 			webviewName: "netcheck",
-			title: `Network Check: ${host}`,
+			title: `Network Check: ${data.host}`,
 			rawJson,
 			jsonErrorLabel: "network check",
-			notify: (webview) => notifyWebview(webview, NetcheckApi.data, payload),
+			notify: (webview) => notifyWebview(webview, NetcheckApi.data, data),
 			// Both builders emit a compile error if any command or request in the
 			// API lacks a handler here; the empty `{}` below is still load-bearing.
 			buildHandlers: ({ sendData, openRawJson }) => ({
