@@ -15,8 +15,8 @@ lives here in `src/instrumentation`.
 - Numbers go in `measurements` (raw), never pre-bucketed into string properties.
 - Set attributes imperatively with `setProperty`/`setMeasurement`; never add a
   return value that exists only to be logged.
-- No secrets, tokens, query strings, or unbounded values in properties; routes
-  go through `normalizeRoute`.
+- No secrets, tokens, query strings, file paths, or other unbounded user
+  content in properties; routes go through `normalizeRoute`.
 - Let the framework set `result`; add a domain `outcome` only when an operation
   has several success modes. Errors go to a typed `error.type` union; non-error
   early exits call `markAborted`.
@@ -149,10 +149,18 @@ Coder's own pipeline, so a bare `cache_source` can't collide with a future OTel
 
 ## Safety
 
-Never put tokens, credentials, full URLs with query strings, or unbounded user
-input into properties. Routes go through `normalizeRoute`
-(`src/logging/routeNormalization.ts`). Prefer a closed union over a free-form
-string for any property a dashboard groups by.
+Never put tokens, credentials, file paths, full URLs with query strings, or
+user-provided content (prompts, messages, titles) into properties. Routes go
+through `normalizeRoute` (`src/logging/routeNormalization.ts`). Prefer a closed
+union over a free-form string for any property a dashboard groups by, and keep
+metric attributes low-cardinality: every distinct value combination becomes its
+own series.
+
+Identifying dimensions are deliberate, not default. `deployment_url`,
+`machine_id`, and `session_id` ride along in the session context, so events
+never repeat them as properties. Workspace and agent names are opt-in per
+event: include them only where the event is useless without them
+(`workspace.state_transitioned`), omit them everywhere else.
 
 ## Tests
 
