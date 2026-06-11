@@ -404,13 +404,13 @@ Emitted by `HttpRequestsTelemetry`, which lives with the HTTP logging in
 `src/logging`. A per-minute rollup of REST traffic, one event per method and
 route bucket.
 
-| Attribute                                                              | Values                                                              |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `method`                                                               | HTTP method                                                         |
-| `route`                                                                | normalized route (ids replaced by placeholders)                     |
-| `window_seconds` (measurement)                                         | actual window length                                                |
-| `count.1xx` through `count.5xx`, `count.network_error` (measurements)  | export as cumulative counters with unit `{request}`                 |
-| `duration.p50_ms`, `duration.p95_ms`, `duration.p99_ms` (measurements) | export as gauges (`http.requests.duration.p50` etc.) with unit `ms` |
+| Attribute                                                              | Values                                                                                                               |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `method`                                                               | HTTP method                                                                                                          |
+| `route`                                                                | normalized route (ids replaced by placeholders)                                                                      |
+| `window_seconds` (measurement)                                         | actual window length                                                                                                 |
+| `count.1xx` through `count.5xx`, `count.network_error` (measurements)  | omitted when 0; export as cumulative counters with unit `{request}`                                                  |
+| `duration.p50_ms`, `duration.p95_ms`, `duration.p99_ms` (measurements) | omitted when no request carried timing metadata; export as gauges (`http.requests.duration.p50` etc.) with unit `ms` |
 
 ## WebSocket connections
 

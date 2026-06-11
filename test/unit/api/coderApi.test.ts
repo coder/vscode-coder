@@ -277,14 +277,11 @@ describe("CoderApi", () => {
 				{ method: "GET", route: "/api/v2/workspaces/{id}" },
 				expect.objectContaining({
 					window_seconds: 60,
-					"count.1xx": 0,
 					"count.2xx": 1,
-					"count.3xx": 0,
-					"count.4xx": 0,
-					"count.5xx": 0,
-					"count.network_error": 0,
 				}),
 			);
+			// Status classes with no requests in the window are omitted.
+			expect(log.mock.calls[0][2]).not.toHaveProperty("count.5xx");
 		});
 
 		describe("certificate refresh and retry", () => {
