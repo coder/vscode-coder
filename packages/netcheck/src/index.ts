@@ -9,6 +9,7 @@ import {
 } from "@repo/shared";
 import { sendCommand, subscribeNotifications } from "@repo/webview-shared";
 
+import "./index.css";
 import {
 	bannerTitle,
 	buildConnectivityItems,
@@ -20,7 +21,6 @@ import {
 	severityLabel,
 	type Issue,
 } from "./render";
-import "./index.css";
 
 function main(): void {
 	subscribeNotifications(NetcheckApi, {
@@ -163,7 +163,9 @@ function renderRegions(report: NetcheckReport): HTMLElement {
 
 	const table = document.createElement("table");
 	table.className = "report-table";
-	table.appendChild(renderTableHead("Region", "Status", "Latency", "STUN", "Relay"));
+	table.appendChild(
+		renderTableHead("Region", "Status", "Latency", "STUN", "Relay"),
+	);
 
 	const tbody = document.createElement("tbody");
 	for (const row of rows) {

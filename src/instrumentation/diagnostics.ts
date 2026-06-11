@@ -1,10 +1,10 @@
-import { recordAborted, recordError } from "./outcomes";
-
 import {
 	overallNetcheckSeverity,
 	type NetcheckReport,
 	type SpeedtestResult,
 } from "@repo/shared";
+
+import { recordAborted, recordError } from "./outcomes";
 
 import type { ExportFormat } from "../telemetry/export/writers/types";
 import type { TelemetryReporter } from "../telemetry/reporter";

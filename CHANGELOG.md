@@ -5,6 +5,18 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- New **Coder: Network Check** command to run
+  [`coder netcheck`](https://coder.com/docs/reference/cli/netcheck) from the
+  command palette or the My Workspaces view menu. The report opens in a panel
+  with an overall health banner, any warnings, a connectivity summary (UDP,
+  IPv4/IPv6, NAT mapping, hairpinning, port mapping), per-region DERP/STUN
+  results with latencies, and local interfaces. A View JSON action exposes the
+  raw output.
+
 ## [v1.15.0](https://github.com/coder/vscode-coder/releases/tag/v1.15.0) 2026-06-11
 
 ### Added

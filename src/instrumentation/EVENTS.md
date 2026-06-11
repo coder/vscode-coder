@@ -263,13 +263,16 @@ Emitted by `DiagnosticTelemetry` around each diagnostic command.
 
 | Attribute                                  | Values                                                           |
 | ------------------------------------------ | ---------------------------------------------------------------- |
-| `command`                                  | `speed_test`, `support_bundle`, `export_telemetry`               |
+| `command`                                  | `speed_test`, `netcheck`, `support_bundle`, `export_telemetry`   |
 | `abort_stage`                              | `workspace_picker`, `input`, `prompt`, `save_dialog`, `progress` |
 | `error.type`                               | `fetch_error`, `parse_error`, `unsupported_cli`, `error`         |
 | `format`                                   | `json`, `otlp` (telemetry export only)                           |
+| `severity`                                 | `ok`, `warning`, `error` (netcheck only)                         |
 | `requested_duration_seconds` (measurement) | speed test only                                                  |
 | `interval.count` (measurement)             | speed test only                                                  |
 | `throughput_mbits` (measurement)           | speed test only                                                  |
+| `region.count` (measurement)               | netcheck only; DERP regions in the report                        |
+| `warning.count` (measurement)              | netcheck only; warnings across report sections                   |
 | `event.count` (measurement)                | telemetry export only                                            |
 
 ## Deployment

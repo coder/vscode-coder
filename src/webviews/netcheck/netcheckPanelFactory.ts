@@ -1,5 +1,3 @@
-import type * as vscode from "vscode";
-
 import {
 	buildCommandHandlers,
 	buildRequestHandlers,
@@ -10,6 +8,8 @@ import {
 
 import { notifyWebview } from "../dispatch";
 import { showResultPanel } from "../resultPanel";
+
+import type * as vscode from "vscode";
 
 import type { Logger } from "../../logging/logger";
 

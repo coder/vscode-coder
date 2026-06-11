@@ -184,7 +184,8 @@ body {
 .report-table td {
 	padding: 0.45em 0.75em;
 	text-align: left;
-	border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+	border-bottom: 1px solid
+		var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
 }
 
 .report-table th {
