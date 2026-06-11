@@ -225,7 +225,14 @@ function renderSection(title: string, body: HTMLElement): HTMLElement {
 	section.className = "report-section";
 	const heading = document.createElement("h2");
 	heading.textContent = title;
-	section.append(heading, body);
+	const content = document.createElement("div");
+	// Tables run edge-to-edge inside the card; everything else gets padding.
+	content.className =
+		body instanceof HTMLTableElement
+			? "section-body section-body-flush"
+			: "section-body";
+	content.appendChild(body);
+	section.append(heading, content);
 	return section;
 }
 
