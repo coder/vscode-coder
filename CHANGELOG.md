@@ -7,6 +7,16 @@
 
 ## Unreleased
 
+### Added
+
+- New **Coder: Network Check** command to run
+  [`coder netcheck`](https://coder.com/docs/reference/cli/netcheck) from the
+  command palette or the My Workspaces view menu. The report opens in a panel
+  with an overall health banner, any warnings, a connectivity summary (UDP,
+  IPv4/IPv6, NAT mapping, hairpinning, port mapping), per-region DERP/STUN
+  results with latencies, and local interfaces. A View JSON action exposes the
+  raw output.
+
 ### Fixed
 
 - Propagate VS Code's proxy settings (`http.proxy`, `http.noProxy`, and
