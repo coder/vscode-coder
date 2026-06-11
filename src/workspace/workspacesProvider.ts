@@ -20,10 +20,7 @@ import {
 import { type CoderApi } from "../api/coderApi";
 import { type Logger } from "../logging/logger";
 
-import type {
-	WorkspaceSessionSnapshot,
-	WorkspaceSessionState,
-} from "./session";
+import type { SessionData, SessionState } from "../deployment/sessionStore";
 
 export enum WorkspaceQuery {
 	Mine = "owner:me",
@@ -52,6 +49,8 @@ const WORKSPACE_QUERY_CONFIG = {
 	[WorkspaceQuery.Shared]: {
 		showOwner: true,
 		showMetadata: false,
+		// `shared:true` also returns workspaces we own and shared out; exclude
+		// them to leave only those shared with us.
 		excludeOwn: true,
 	},
 } as const satisfies Record<WorkspaceQuery, WorkspaceQueryConfig>;
@@ -59,9 +58,6 @@ const WORKSPACE_QUERY_CONFIG = {
 export interface WorkspaceProviderOptions {
 	readonly refreshIntervalMs?: number;
 }
-
-// Bounds fetch() retries when the session keeps changing mid-request.
-export const MAX_FETCH_ATTEMPTS = 3;
 
 /**
  * Polls workspaces using the provided REST client and renders them in a tree.
@@ -84,6 +80,7 @@ export class WorkspaceProvider
 	private readonly config: WorkspaceQueryConfig;
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
+	private refetchPending = false;
 	private visible = false;
 	private disposed = false;
 
@@ -91,7 +88,7 @@ export class WorkspaceProvider
 		private readonly getWorkspacesQuery: WorkspaceQuery,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
-		private readonly sessionState: WorkspaceSessionState,
+		private readonly sessionState: SessionState,
 		private readonly options: WorkspaceProviderOptions = {},
 	) {
 		this.config = WORKSPACE_QUERY_CONFIG[getWorkspacesQuery];
@@ -102,22 +99,36 @@ export class WorkspaceProvider
 	}
 
 	// Fetch workspaces, render them, and queue the next poll. Does nothing when
-	// hidden, disposed, or already fetching. Never rejects, so it is safe as void.
+	// hidden or disposed. Never rejects, so it is safe as void.
 	public async fetchAndRefresh(): Promise<void> {
-		if (this.disposed || this.fetching || !this.visible) {
+		if (this.disposed || !this.visible) {
+			return;
+		}
+		if (this.fetching) {
+			// Picked up below once the in-flight fetch settles.
+			this.refetchPending = true;
 			return;
 		}
 		this.fetching = true;
 		// A manual refresh may race a scheduled one, so drop any pending timer.
 		this.cancelPendingRefresh();
 
-		let hadError = false;
+		let hadError;
 		try {
-			this.setWorkspaces(await this.fetch());
-		} catch (error) {
-			this.logger.warn("Failed to fetch workspaces:", error);
-			hadError = true;
-			this.setWorkspaces([]);
+			do {
+				this.refetchPending = false;
+				hadError = false;
+				try {
+					const workspaces = await this.fetch();
+					if (workspaces) {
+						this.setWorkspaces(workspaces);
+					}
+				} catch (error) {
+					this.logger.warn("Failed to fetch workspaces:", error);
+					hadError = true;
+					this.setWorkspaces([]);
+				}
+			} while (this.refetchPending && !this.disposed && this.visible);
 		} finally {
 			this.fetching = false;
 		}
@@ -126,7 +137,7 @@ export class WorkspaceProvider
 			!hadError &&
 			!this.disposed &&
 			this.visible &&
-			this.sessionState.getSnapshot().kind === "signedIn"
+			this.sessionState.current.kind === "signedIn"
 		) {
 			this.maybeScheduleRefresh();
 		}
@@ -142,98 +153,83 @@ export class WorkspaceProvider
 
 	/**
 	 * Fetch workspaces and turn them into tree items. Returns an empty list when
-	 * signed out, and throws if the query fails.
+	 * signed out, null when the result went stale (the session change queued a
+	 * re-fetch, so the caller just drops it), and throws if the query fails.
 	 */
-	private async fetch(): Promise<WorkspaceTreeItem[]> {
-		for (let attempt = 0; attempt < MAX_FETCH_ATTEMPTS; attempt++) {
-			if (this.disposed) {
-				return [];
-			}
-			const session = this.sessionState.getSnapshot();
-			if (session.kind !== "signedIn") {
-				return [];
-			}
-
-			const resp = await this.client.getWorkspaces({
-				q: this.getWorkspacesQuery,
-			});
-
-			// Session changed mid-request; this result is stale, so retry.
-			if (this.sessionChangedSince(session)) {
-				continue;
-			}
-
-			const workspaces = this.filterWorkspaces(resp.workspaces, session);
-			const oldWatcherIds = [...this.agentWatchers.keys()];
-			const reusedWatcherIds: string[] = [];
-
-			// TODO: I think it might make more sense for the tree items to contain
-			// their own watchers, rather than recreate the tree items every time
-			// and have this separate map held outside the tree.
-			if (this.config.showMetadata) {
-				const agents = extractAllAgents(workspaces);
-				for (const agent of agents) {
-					// If we have an existing watcher, re-use it.
-					const oldWatcher = this.agentWatchers.get(agent.id);
-					if (oldWatcher) {
-						reusedWatcherIds.push(agent.id);
-						continue;
-					}
-					const watcher = await createAgentMetadataWatcher(
-						agent.id,
-						this.client,
-					);
-					// dispose() or a session change may have raced this await;
-					// drop the watcher rather than leak it or render stale data.
-					if (this.disposed || this.sessionChangedSince(session)) {
-						watcher.dispose();
-						return [];
-					}
-					watcher.onChange(() => this.refreshTree());
-					this.agentWatchers.set(agent.id, watcher);
-				}
-			}
-
-			// Dispose of watchers we ended up not reusing.
-			for (const id of oldWatcherIds) {
-				if (!reusedWatcherIds.includes(id)) {
-					this.agentWatchers.get(id)?.dispose();
-					this.agentWatchers.delete(id);
-				}
-			}
-
-			return workspaces.map(
-				(workspace: Workspace) =>
-					new WorkspaceTreeItem(
-						workspace,
-						this.config.showOwner,
-						this.config.showMetadata,
-					),
-			);
+	private async fetch(): Promise<WorkspaceTreeItem[] | null> {
+		const session = this.sessionState.current;
+		if (session.kind !== "signedIn") {
+			return [];
 		}
-		// Session changed on every attempt; the next refresh will catch up.
-		return [];
+
+		const resp = await this.client.getWorkspaces({
+			q: this.getWorkspacesQuery,
+		});
+
+		if (this.sessionChangedSince(session)) {
+			return null;
+		}
+
+		const workspaces = this.filterWorkspaces(resp.workspaces, session);
+		const oldWatcherIds = [...this.agentWatchers.keys()];
+		const reusedWatcherIds: string[] = [];
+
+		// TODO: I think it might make more sense for the tree items to contain
+		// their own watchers, rather than recreate the tree items every time
+		// and have this separate map held outside the tree.
+		if (this.config.showMetadata) {
+			const agents = extractAllAgents(workspaces);
+			for (const agent of agents) {
+				// If we have an existing watcher, re-use it.
+				const oldWatcher = this.agentWatchers.get(agent.id);
+				if (oldWatcher) {
+					reusedWatcherIds.push(agent.id);
+					continue;
+				}
+				const watcher = await createAgentMetadataWatcher(agent.id, this.client);
+				// dispose() or a session change may have raced this await;
+				// drop the watcher rather than leak it or render stale data.
+				if (this.disposed || this.sessionChangedSince(session)) {
+					watcher.dispose();
+					return null;
+				}
+				watcher.onChange(() => this.refreshTree());
+				this.agentWatchers.set(agent.id, watcher);
+			}
+		}
+
+		// Dispose of watchers we ended up not reusing.
+		for (const id of oldWatcherIds) {
+			if (!reusedWatcherIds.includes(id)) {
+				this.agentWatchers.get(id)?.dispose();
+				this.agentWatchers.delete(id);
+			}
+		}
+
+		return workspaces.map(
+			(workspace: Workspace) =>
+				new WorkspaceTreeItem(
+					workspace,
+					this.config.showOwner,
+					this.config.showMetadata,
+				),
+		);
 	}
 
-	/** True if the session signed out or changed revision since `session`. */
-	private sessionChangedSince(
-		session: Extract<WorkspaceSessionSnapshot, { kind: "signedIn" }>,
-	): boolean {
-		const latest = this.sessionState.getSnapshot();
-		return latest.kind !== "signedIn" || latest.revision !== session.revision;
+	/** True if the session signed in/out or changed since `session` was read. */
+	private sessionChangedSince(session: SessionData): boolean {
+		return this.sessionState.current !== session;
 	}
 
 	private filterWorkspaces(
 		workspaces: readonly Workspace[],
-		session: Extract<WorkspaceSessionSnapshot, { kind: "signedIn" }>,
+		session: Extract<SessionData, { kind: "signedIn" }>,
 	): readonly Workspace[] {
 		if (!this.config.excludeOwn) {
 			return workspaces;
 		}
-		// `shared:true` also returns workspaces we own and shared out; drop them
-		// to leave only those shared with us.
 		return workspaces.filter(
-			(workspace) => workspace.owner_id !== session.userId,
+			(workspace) => workspace.owner_id !== session.user.id,
 		);
 	}
 

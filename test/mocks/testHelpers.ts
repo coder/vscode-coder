@@ -9,6 +9,8 @@ import * as fs from "node:fs/promises";
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
+import { SessionStore, type SessionData } from "@/deployment/sessionStore";
+
 import { createTestTelemetryService } from "./telemetry";
 import { window as vscodeWindow } from "./vscode.runtime";
 
@@ -27,6 +29,7 @@ import type { ServiceContainer } from "@/core/container";
 import type { ContextManager } from "@/core/contextManager";
 import type { MementoManager } from "@/core/mementoManager";
 import type { SecretsManager } from "@/core/secretsManager";
+import type { Deployment } from "@/deployment/types";
 import type { Logger } from "@/logging/logger";
 import type { NetworkInfo } from "@/remote/sshProcess";
 import type { TelemetryService } from "@/telemetry/service";
@@ -36,11 +39,6 @@ import type {
 	ParsedMessageEvent,
 	UnidirectionalStream,
 } from "@/websocket/eventStreamConnection";
-import type {
-	WorkspaceSessionSnapshot,
-	WorkspaceSessionState,
-} from "@/workspace/session";
-
 /**
  * Subset of `ContextManager`'s public API that mocks (e.g. `MockContextManager`)
  * implement. Used by `createMockServiceContainer` so tests can pass either the
@@ -1209,36 +1207,28 @@ export class MockTerminalOutputChannel {
 	}
 }
 
-/** Default user id reported by MockWorkspaceSessionState's signed-in snapshot. */
+/** Default user id of TestSessionStore's initial signed-in session. */
 export const TEST_CURRENT_USER_ID = "current-user";
 
-/** In-memory WorkspaceSessionState double with sign-in/out controls. */
-export class MockWorkspaceSessionState implements WorkspaceSessionState {
-	private revision = 0;
-	private readonly emitter =
-		new vscode.EventEmitter<WorkspaceSessionSnapshot>();
-	private snapshot: WorkspaceSessionSnapshot = {
-		kind: "signedIn",
-		revision: 0,
-		userId: TEST_CURRENT_USER_ID,
-	};
-
-	readonly onDidChange = this.emitter.event;
-
-	getSnapshot(): WorkspaceSessionSnapshot {
-		return this.snapshot;
+/**
+ * Real SessionStore that starts signed in as TEST_CURRENT_USER_ID, with
+ * id-only sign-in/out helpers for tests that switch users.
+ */
+export class TestSessionStore extends SessionStore {
+	constructor() {
+		super();
+		this.signInAs(TEST_CURRENT_USER_ID);
 	}
 
-	signIn(userId = TEST_CURRENT_USER_ID): void {
-		this.revision += 1;
-		this.snapshot = { kind: "signedIn", revision: this.revision, userId };
-		this.emitter.fire(this.snapshot);
+	signInAs(userId = TEST_CURRENT_USER_ID): void {
+		this.signIn(
+			{ url: "https://coder.example.com", safeHostname: "coder.example.com" },
+			createMockUser({ id: userId }),
+		);
 	}
 
-	signOut(): void {
-		this.revision += 1;
-		this.snapshot = { kind: "signedOut", revision: this.revision };
-		this.emitter.fire(this.snapshot);
+	override signOut(deployment: Deployment | null = null): SessionData {
+		return super.signOut(deployment);
 	}
 }
 

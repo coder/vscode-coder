@@ -2,11 +2,6 @@ import * as vscode from "vscode";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 
-import type {
-	WorkspaceSessionSnapshot,
-	WorkspaceSessionState,
-} from "../workspace/session";
-
 import type { Deployment } from "./types";
 
 /**
@@ -25,34 +20,29 @@ export type SessionData =
 	  };
 
 /**
- * Owns the deployment session. State changes only through signIn()/signOut(),
- * each of which bumps the revision and notifies listeners.
+ * Read-only session access: the current data plus change notifications.
  *
- * Consumers that only need auth status (like the workspace tree) take the lean
- * WorkspaceSessionState projection instead of the full session.
+ * To detect a change across an await, keep the SessionData read before the
+ * await and compare it by identity afterward; sign-in and sign-out always
+ * replace the object.
  */
-export class SessionStore implements WorkspaceSessionState {
+export interface SessionState {
+	readonly current: SessionData;
+	readonly onDidChange: vscode.Event<SessionData>;
+}
+
+/**
+ * Owns the deployment session. State changes only through signIn()/signOut(),
+ * each of which replaces the session object and notifies listeners.
+ */
+export class SessionStore implements SessionState {
 	#data: SessionData = { kind: "signedOut", deployment: null };
-	#revision = 0;
-	readonly #onDidChange = new vscode.EventEmitter<WorkspaceSessionSnapshot>();
+	readonly #onDidChange = new vscode.EventEmitter<SessionData>();
 
 	public readonly onDidChange = this.#onDidChange.event;
 
-	/** Full session state, including deployment and user. */
 	public get current(): SessionData {
 		return this.#data;
-	}
-
-	/** Lean projection for consumers that only track auth status and revision. */
-	public getSnapshot(): WorkspaceSessionSnapshot {
-		if (this.#data.kind === "signedIn") {
-			return {
-				kind: "signedIn",
-				revision: this.#revision,
-				userId: this.#data.user.id,
-			};
-		}
-		return { kind: "signedOut", revision: this.#revision };
 	}
 
 	public signIn(deployment: Deployment, user: User): SessionData {
@@ -65,8 +55,7 @@ export class SessionStore implements WorkspaceSessionState {
 
 	private transition(data: SessionData): SessionData {
 		this.#data = data;
-		this.#revision++;
-		this.#onDidChange.fire(this.getSnapshot());
+		this.#onDidChange.fire(data);
 		return data;
 	}
 

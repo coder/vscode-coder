@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import {
-	MAX_FETCH_ATTEMPTS,
 	WorkspaceProvider,
 	WorkspaceQuery,
 	type AgentTreeItem,
@@ -16,9 +15,9 @@ import {
 	flush,
 	flushPromises,
 	MockEventStream,
-	MockWorkspaceSessionState,
 	MockWorkspacesClient,
 	TEST_CURRENT_USER_ID,
+	TestSessionStore,
 } from "../../mocks/testHelpers";
 
 import type {
@@ -34,7 +33,7 @@ import type { CoderApi } from "@/api/coderApi";
 function setup() {
 	const logger = createMockLogger();
 	const client = new MockWorkspacesClient();
-	const session = new MockWorkspaceSessionState();
+	const session = new TestSessionStore();
 	const makeProvider = (
 		query: WorkspaceQuery,
 		options?: { refreshIntervalMs?: number },
@@ -271,7 +270,7 @@ describe("WorkspaceProvider", () => {
 
 		provider.setVisibility(true);
 		await flush();
-		session.signIn("second-user");
+		session.signInAs("second-user");
 		pending.resolve([
 			workspace({ owner_id: "bob-id", owner_name: "bob", name: "stale" }),
 		]);
@@ -313,7 +312,7 @@ describe("WorkspaceProvider", () => {
 		provider.setVisibility(true);
 		await flush();
 		provider.setVisibility(false);
-		session.signIn("second-user");
+		session.signInAs("second-user");
 		pending.resolve([workspace({ name: "stale" })]);
 		await flush();
 
@@ -475,7 +474,7 @@ describe("WorkspaceProvider", () => {
 		await show(provider);
 		expect(client.getWorkspaces).not.toHaveBeenCalled();
 
-		session.signIn();
+		session.signInAs();
 		await flush();
 
 		expect(await labels(provider)).toEqual(["dev"]);
@@ -490,7 +489,7 @@ describe("WorkspaceProvider", () => {
 		expect(await labels(provider)).toEqual(["dev"]);
 
 		provider.dispose();
-		session.signIn("another-user");
+		session.signInAs("another-user");
 		await flush();
 
 		expect(client.getWorkspaces).toHaveBeenCalledTimes(1);
@@ -505,7 +504,7 @@ describe("WorkspaceProvider", () => {
 
 		provider.setVisibility(true);
 		await flush();
-		session.signIn("second-user");
+		session.signInAs("second-user");
 		pending.resolve([workspace({ name: "stale" })]);
 		await flush();
 		await flush();
@@ -519,22 +518,33 @@ describe("WorkspaceProvider", () => {
 		expect(await labels(provider)).toEqual(["recovered"]);
 	});
 
-	it("gives up after the retry cap when the session keeps changing", async () => {
+	it("re-fetches once per batch of session changes, never in parallel", async () => {
 		const { client, session, makeProvider } = setup();
-		// Every response arrives stale: each call bumps the revision first.
-		client.getWorkspaces.mockImplementation(() => {
-			session.signIn();
-			return Promise.resolve({
-				workspaces: [workspace({ name: "ws" })],
-				count: 1,
-			});
-		});
+		const first = client.pending();
+		const second = client.pending();
+		client.respondOnce([workspace({ name: "fresh" })]);
 		const provider = makeProvider(WorkspaceQuery.Mine);
 
-		await show(provider);
+		provider.setVisibility(true);
+		await flush();
+		expect(client.getWorkspaces).toHaveBeenCalledTimes(1);
 
-		expect(client.getWorkspaces).toHaveBeenCalledTimes(MAX_FETCH_ATTEMPTS);
-		expect(await provider.getChildren()).toEqual([]);
+		// Two changes during one in-flight request collapse into one re-fetch.
+		session.signInAs("second-user");
+		session.signInAs("third-user");
+		expect(client.getWorkspaces).toHaveBeenCalledTimes(1);
+		first.resolve([workspace({ name: "stale-1" })]);
+		await flush();
+		expect(client.getWorkspaces).toHaveBeenCalledTimes(2);
+
+		// A change during the re-fetch queues another one.
+		session.signInAs("fourth-user");
+		second.resolve([workspace({ name: "stale-2" })]);
+		await flush();
+		await flush();
+
+		expect(client.getWorkspaces).toHaveBeenCalledTimes(3);
+		expect(await labels(provider)).toEqual(["fresh"]);
 	});
 
 	it("disposes a watcher created after dispose() races fetch()", async () => {

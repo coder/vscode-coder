@@ -166,7 +166,7 @@ async function doActivate(
 		WorkspaceQuery.Mine,
 		client,
 		output,
-		deploymentManager,
+		deploymentManager.session,
 		{ refreshIntervalMs: 5_000 },
 	);
 	ctx.subscriptions.push(myWorkspacesProvider);
@@ -175,7 +175,7 @@ async function doActivate(
 		WorkspaceQuery.All,
 		client,
 		output,
-		deploymentManager,
+		deploymentManager.session,
 	);
 	ctx.subscriptions.push(allWorkspacesProvider);
 
@@ -183,7 +183,7 @@ async function doActivate(
 		WorkspaceQuery.Shared,
 		client,
 		output,
-		deploymentManager,
+		deploymentManager.session,
 	);
 	ctx.subscriptions.push(sharedWorkspacesProvider);
 

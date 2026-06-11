@@ -39,8 +39,8 @@ const TEST_HOSTNAME = "coder.example.com";
 const managers: DeploymentManager[] = [];
 
 function currentUserId(manager: DeploymentManager): string | undefined {
-	const snapshot = manager.getSnapshot();
-	return snapshot.kind === "signedIn" ? snapshot.userId : undefined;
+	const session = manager.session.current;
+	return session.kind === "signedIn" ? session.user.id : undefined;
 }
 
 afterEach(() => {
@@ -491,7 +491,7 @@ describe("DeploymentManager", () => {
 			expect(currentUserId(manager)).toBeUndefined();
 		});
 
-		it("rotates the token in place without a revision bump when the user is unchanged", async () => {
+		it("rotates the token in place without a session change when the user is unchanged", async () => {
 			const { mockClient, validationMockClient, secretsManager, manager } =
 				createTestContext();
 			const user = createMockUser({ id: "stable-user" });
@@ -503,7 +503,7 @@ describe("DeploymentManager", () => {
 				token: "initial-token",
 				user,
 			});
-			const revisionBefore = manager.getSnapshot().revision;
+			const sessionBefore = manager.session.current;
 
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
@@ -514,7 +514,7 @@ describe("DeploymentManager", () => {
 			expect(mockClient.token).toBe("rotated-token");
 			expect(currentUserId(manager)).toBe("stable-user");
 			// No sign-in fired, so the workspace trees are not rebuilt.
-			expect(manager.getSnapshot().revision).toBe(revisionBefore);
+			expect(manager.session.current).toBe(sessionBefore);
 		});
 
 		it("keeps the existing session when verifying a rotated token fails", async () => {

@@ -17,7 +17,11 @@ import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { getAuthConfigWatchSettings } from "../settings/authConfig";
 import { type TelemetryService } from "../telemetry/service";
 
-import { SessionStore, type SessionData } from "./sessionStore";
+import {
+	SessionStore,
+	type SessionData,
+	type SessionState,
+} from "./sessionStore";
 import {
 	DeploymentSchema,
 	type Deployment,
@@ -26,11 +30,6 @@ import {
 
 import type { User } from "coder/site/src/api/typesGenerated";
 import type * as vscode from "vscode";
-
-import type {
-	WorkspaceSessionSnapshot,
-	WorkspaceSessionState,
-} from "../workspace/session";
 
 /**
  * Manages deployment state for the extension.
@@ -43,9 +42,7 @@ import type {
  * - Context updates (coder.authenticated, coder.isOwner)
  * - Cross-window sync handling
  */
-export class DeploymentManager
-	implements vscode.Disposable, WorkspaceSessionState
-{
+export class DeploymentManager implements vscode.Disposable {
 	private readonly secretsManager: SecretsManager;
 	private readonly mementoManager: MementoManager;
 	private readonly contextManager: ContextManager;
@@ -54,7 +51,6 @@ export class DeploymentManager
 	private readonly deploymentTelemetry: DeploymentTelemetry;
 
 	readonly #sessionStore = new SessionStore();
-	public readonly onDidChange = this.#sessionStore.onDidChange;
 	#disposed = false;
 	#authListenerDisposable: vscode.Disposable | undefined;
 	#authConfigDisposable: vscode.Disposable | undefined;
@@ -97,8 +93,9 @@ export class DeploymentManager
 		return this.#sessionStore.current.deployment;
 	}
 
-	public getSnapshot(): WorkspaceSessionSnapshot {
-		return this.#sessionStore.getSnapshot();
+	/** Read-only view of the auth session for consumers that track changes. */
+	public get session(): SessionState {
+		return this.#sessionStore;
 	}
 
 	/**
