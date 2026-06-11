@@ -113,10 +113,17 @@ export function attrs(raw: unknown): Record<string, string | number> {
 	);
 }
 
-export interface ParsedEnvelope {
+/** One resource block of an OTLP/JSON envelope. */
+export interface ParsedBlock {
 	resource: { attributes: unknown };
 	schemaUrl: unknown;
 	scope: { name: string; version: string };
+	records: unknown[];
+}
+
+export interface ParsedEnvelope {
+	blocks: ParsedBlock[];
+	/** Records of all blocks, flattened in file order. */
 	records: unknown[];
 }
 
@@ -128,12 +135,14 @@ export function parseEnvelope(
 	const env = ENVELOPES[signal];
 	type Rec = Record<string, unknown>;
 	const json = JSON.parse(new TextDecoder().decode(files[env.file])) as Rec;
-	const wrapper = (json[env.resourceKey] as Rec[])[0];
-	const scopeWrapper = (wrapper[env.scopeKey] as Rec[])[0];
-	return {
-		resource: wrapper.resource as { attributes: unknown },
-		schemaUrl: wrapper.schemaUrl,
-		scope: scopeWrapper.scope as { name: string; version: string },
-		records: scopeWrapper[env.recordsKey] as unknown[],
-	};
+	const blocks = (json[env.resourceKey] as Rec[]).map((wrapper) => {
+		const scopeWrapper = (wrapper[env.scopeKey] as Rec[])[0];
+		return {
+			resource: wrapper.resource as { attributes: unknown },
+			schemaUrl: wrapper.schemaUrl,
+			scope: scopeWrapper.scope as { name: string; version: string },
+			records: scopeWrapper[env.recordsKey] as unknown[],
+		};
+	});
+	return { blocks, records: blocks.flatMap((block) => block.records) };
 }

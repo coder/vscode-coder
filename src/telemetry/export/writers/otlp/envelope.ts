@@ -2,17 +2,24 @@ import { createWriteStream } from "node:fs";
 
 import { wrapError } from "../../../../error/errorUtils";
 
-/** `append` is not re-entrant. */
+/** `openBlock` and `append` are not re-entrant. */
 export interface EnvelopeFile {
+	/** Opens a new block, closing the previous one with the block suffix. */
+	openBlock(prefix: string): Promise<void>;
+	/** Appends one record to the open block; rejects if no block is open. */
 	append(value: unknown): Promise<void>;
 	close(): Promise<void>;
 }
 
-/** Streams `<prefix>v1,v2,...<suffix>` JSON into `filePath`. */
+/**
+ * Streams `<filePrefix>block,block,...<fileSuffix>` JSON into `filePath`,
+ * where each block is `<prefix>v1,v2,...<blockSuffix>`.
+ */
 export async function openEnvelopeFile(
 	filePath: string,
-	prefix: string,
-	suffix: string,
+	filePrefix: string,
+	blockSuffix: string,
+	fileSuffix: string,
 ): Promise<EnvelopeFile> {
 	const stream = createWriteStream(filePath, { encoding: "utf8" });
 	// Open failures (ENOENT/EACCES) surface as 'error' events, not write
@@ -42,15 +49,28 @@ export async function openEnvelopeFile(
 		awaitOp((cb) => stream.write(chunk, "utf8", cb));
 
 	try {
-		await writeChunk(prefix);
+		await writeChunk(filePrefix);
 	} catch (err) {
 		stream.destroy();
 		throw wrapError("write", filePath, err);
 	}
+	let blockOpen = false;
 	let written = 0;
 	let closed = false;
 	return {
+		async openBlock(prefix) {
+			try {
+				await writeChunk((blockOpen ? blockSuffix + "," : "") + prefix);
+			} catch (err) {
+				throw wrapError("write", filePath, err);
+			}
+			blockOpen = true;
+			written = 0;
+		},
 		async append(value) {
+			if (!blockOpen) {
+				throw new Error(`No open block to append to in ${filePath}`);
+			}
 			try {
 				await writeChunk((written === 0 ? "" : ",") + JSON.stringify(value));
 			} catch (err) {
@@ -64,7 +84,7 @@ export async function openEnvelopeFile(
 			}
 			closed = true;
 			try {
-				await writeChunk(suffix);
+				await writeChunk((blockOpen ? blockSuffix : "") + fileSuffix);
 				await awaitOp((cb) => stream.end(cb));
 			} catch (err) {
 				// destroy() never throws synchronously, so it can't mask the

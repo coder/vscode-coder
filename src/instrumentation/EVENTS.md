@@ -82,9 +82,8 @@ context.
 On OTLP export the context becomes resource attributes (`service.name:
 coder-vscode-extension`, `service.version`, `service.instance.id`, `host.id`,
 `host.arch`, `os.type`, `os.version`, `vscode.platform.name`,
-`vscode.platform.version`, `coder.deployment.url`) plus per-record provenance
-(`coder.event.extension_version`, `coder.event.session_id`,
-`coder.event.deployment_url`).
+`vscode.platform.version`, `coder.deployment.url`) on the resource block
+holding the producing session's records.
 
 ## Consuming exports
 
@@ -97,7 +96,11 @@ date range in one of two formats:
   ad-hoc processing.
 - **OTLP**: a zip of standard OTLP/JSON envelopes (spans in `traces.json`,
   logs in `logs.json`, metric events as data points in `metrics.json`) plus
-  a `manifest.json` describing the export. Feed these to any OTel-compatible
+  a `manifest.json` describing the export. Each envelope holds one resource
+  block per producing session and UTC date, carrying that session's context
+  as resource attributes; within a block, metric data points are grouped
+  under one `metrics[]` entry per metric name and unit, and cumulative
+  counters restart at the block boundary. Feed these to any OTel-compatible
   tool that ingests OTLP/JSON, such as an OpenTelemetry Collector pipeline or
   your observability backend's import tooling.
 

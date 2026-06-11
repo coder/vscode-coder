@@ -26,24 +26,6 @@
               "value": {
                 "stringValue": "http.requests"
               }
-            },
-            {
-              "key": "coder.event.extension_version",
-              "value": {
-                "stringValue": "1.14.5"
-              }
-            },
-            {
-              "key": "coder.event.session_id",
-              "value": {
-                "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
-              }
-            },
-            {
-              "key": "coder.event.deployment_url",
-              "value": {
-                "stringValue": "https://dev.coder.com"
-              }
             }
           ],
           "startTimeUnixNano": "1777918320000000000",
@@ -79,24 +61,6 @@
               "key": "coder.event_name",
               "value": {
                 "stringValue": "http.requests"
-              }
-            },
-            {
-              "key": "coder.event.extension_version",
-              "value": {
-                "stringValue": "1.14.5"
-              }
-            },
-            {
-              "key": "coder.event.session_id",
-              "value": {
-                "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
-              }
-            },
-            {
-              "key": "coder.event.deployment_url",
-              "value": {
-                "stringValue": "https://dev.coder.com"
               }
             }
           ],
@@ -134,24 +98,6 @@
               "value": {
                 "stringValue": "http.requests"
               }
-            },
-            {
-              "key": "coder.event.extension_version",
-              "value": {
-                "stringValue": "1.14.5"
-              }
-            },
-            {
-              "key": "coder.event.session_id",
-              "value": {
-                "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
-              }
-            },
-            {
-              "key": "coder.event.deployment_url",
-              "value": {
-                "stringValue": "https://dev.coder.com"
-              }
             }
           ],
           "startTimeUnixNano": "1777918320000000000",
@@ -185,24 +131,6 @@
               "key": "coder.event_name",
               "value": {
                 "stringValue": "http.requests"
-              }
-            },
-            {
-              "key": "coder.event.extension_version",
-              "value": {
-                "stringValue": "1.14.5"
-              }
-            },
-            {
-              "key": "coder.event.session_id",
-              "value": {
-                "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
-              }
-            },
-            {
-              "key": "coder.event.deployment_url",
-              "value": {
-                "stringValue": "https://dev.coder.com"
               }
             }
           ],
@@ -238,24 +166,6 @@
               "value": {
                 "stringValue": "http.requests"
               }
-            },
-            {
-              "key": "coder.event.extension_version",
-              "value": {
-                "stringValue": "1.14.5"
-              }
-            },
-            {
-              "key": "coder.event.session_id",
-              "value": {
-                "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
-              }
-            },
-            {
-              "key": "coder.event.deployment_url",
-              "value": {
-                "stringValue": "https://dev.coder.com"
-              }
             }
           ],
           "startTimeUnixNano": "1777918320000000000",
@@ -289,24 +199,6 @@
               "key": "coder.event_name",
               "value": {
                 "stringValue": "http.requests"
-              }
-            },
-            {
-              "key": "coder.event.extension_version",
-              "value": {
-                "stringValue": "1.14.5"
-              }
-            },
-            {
-              "key": "coder.event.session_id",
-              "value": {
-                "stringValue": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
-              }
-            },
-            {
-              "key": "coder.event.deployment_url",
-              "value": {
-                "stringValue": "https://dev.coder.com"
               }
             }
           ],

@@ -115,6 +115,8 @@ Coder's own pipeline, so a bare `cache_source` can't collide with a future OTel
 - **Measurements** are raw numbers. Don't pre-bucket into string labels: both
   export as record attributes, and a query can bucket the raw number at read
   time. `result` and `durationMs` are framework-managed and cannot be set.
+  `durationMs` never reaches OTLP; the export derives span start/end times
+  from it.
 - **Units.** There is no unit field at emit time, so put the unit in the
   measurement key as a `_ms` / `_seconds` / `_mbits` suffix, the same way for
   every event.

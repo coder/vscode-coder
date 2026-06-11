@@ -1,10 +1,11 @@
-import { unzipSync } from "fflate";
+import { unzipSync, type DeflateOptions } from "fflate";
 import { vol } from "memfs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ENVELOPES } from "@/telemetry/export/writers/otlp/records";
 import {
+	MAX_BUFFERED_METRIC_POINTS,
 	type OtlpExportCounts,
 	writeOtlpZipExport,
 } from "@/telemetry/export/writers/otlp/writer";
@@ -33,6 +34,21 @@ vi.mock("node:os", async () => {
 	return { ...actual, tmpdir: () => "/tmp" };
 });
 
+/** Constructor options of every ZipDeflate created during a test. */
+const zipDeflateOptions = vi.hoisted(() => ({
+	current: [] as Array<{ level?: number } | undefined>,
+}));
+vi.mock("fflate", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("fflate")>();
+	class RecordingZipDeflate extends actual.ZipDeflate {
+		constructor(filename: string, opts?: DeflateOptions) {
+			super(filename, opts);
+			zipDeflateOptions.current.push(opts);
+		}
+	}
+	return { ...actual, ZipDeflate: RecordingZipDeflate };
+});
+
 const OUT = "/exports/telemetry.otlp.zip";
 /** Matches what writer.ts passes to fs.mkdtemp on every platform. */
 const STAGING_PREFIX = path.join("/tmp", "coder-telemetry-otlp-");
@@ -50,10 +66,18 @@ const DESCRIPTOR: ExportDescriptor = {
 const makeEvent = createTelemetryEventFactory();
 const { context } = makeEvent();
 
+/** Shape of a grouped metric record as read back from `metrics.json`. */
+interface MetricRecord {
+	name: string;
+	sum?: { dataPoints: Array<{ asInt: string }> };
+	gauge?: { dataPoints: Array<{ asDouble: number }> };
+}
+
 beforeEach(() => {
 	vol.reset();
 	vol.mkdirSync("/exports", { recursive: true });
 	vol.mkdirSync("/tmp", { recursive: true });
+	zipDeflateOptions.current = [];
 });
 
 afterEach(() => vol.reset());
@@ -106,13 +130,13 @@ describe("writeOtlpZipExport", () => {
 		}
 	});
 
-	it("produces three empty-array envelopes for an empty event stream", async () => {
+	it("produces envelopes with no resource blocks for an empty event stream", async () => {
 		const { counts, logs, traces, metrics } = await exportAndRead([]);
 
 		expect(counts).toEqual({ logs: 0, traces: 0, metrics: 0 });
-		expect(logs.records).toEqual([]);
-		expect(traces.records).toEqual([]);
-		expect(metrics.records).toEqual([]);
+		expect(logs.blocks).toEqual([]);
+		expect(traces.blocks).toEqual([]);
+		expect(metrics.blocks).toEqual([]);
 	});
 
 	it("routes metric-named events to metrics even when a traceId is present", async () => {
@@ -171,16 +195,158 @@ describe("writeOtlpZipExport", () => {
 		]);
 
 		for (const other of [traces, metrics]) {
-			expect(other.resource).toEqual(logs.resource);
-			expect(other.scope).toEqual(logs.scope);
-			expect(other.schemaUrl).toBe(logs.schemaUrl);
+			expect(other.blocks[0].resource).toEqual(logs.blocks[0].resource);
+			expect(other.blocks[0].scope).toEqual(logs.blocks[0].scope);
+			expect(other.blocks[0].schemaUrl).toBe(logs.blocks[0].schemaUrl);
 		}
 		// Spot-check the resource carries the extension identity; full shape is
 		// asserted in records.test.ts.
-		expect(attrs(logs.resource.attributes)).toMatchObject({
+		expect(attrs(logs.blocks[0].resource.attributes)).toMatchObject({
 			"service.name": "coder-vscode-extension",
 			"service.version": "1.14.5",
 		});
+	});
+
+	it("starts a new resource block when the producing session changes", async () => {
+		const withSession = (sessionId: string) =>
+			makeEvent({ context: { ...context, sessionId } });
+		const { logs } = await exportAndRead([
+			withSession("session-a"),
+			withSession("session-a"),
+			withSession("session-b"),
+		]);
+
+		expect(logs.blocks).toHaveLength(2);
+		expect(logs.blocks[0].records).toHaveLength(2);
+		expect(logs.blocks[1].records).toHaveLength(1);
+		expect(
+			logs.blocks.map(
+				(block) => attrs(block.resource.attributes)["service.instance.id"],
+			),
+		).toEqual(["session-a", "session-b"]);
+	});
+
+	it("attributes each block to the producing event's context, not the exporter's", async () => {
+		const producer = {
+			...context,
+			extensionVersion: "0.9.0",
+			sessionId: "older-session",
+			deploymentUrl: "https://prev.coder.example.com",
+		};
+		// exportAndRead exports with the factory-default context as the exporter.
+		const { logs } = await exportAndRead([makeEvent({ context: producer })]);
+
+		expect(attrs(logs.blocks[0].resource.attributes)).toMatchObject({
+			"service.version": "0.9.0",
+			"service.instance.id": "older-session",
+			"coder.deployment.url": "https://prev.coder.example.com",
+		});
+		// The scope still identifies the exporting extension.
+		expect(logs.blocks[0].scope.version).toBe("1.14.5");
+	});
+
+	it("starts a new resource block when the event date changes within a session", async () => {
+		const { logs } = await exportAndRead([
+			makeEvent({ timestamp: "2026-05-04T23:59:00.000Z" }),
+			makeEvent({ timestamp: "2026-05-05T00:01:00.000Z" }),
+		]);
+
+		expect(logs.blocks).toHaveLength(2);
+		expect(logs.blocks[1].resource).toEqual(logs.blocks[0].resource);
+	});
+
+	it("groups metric data points under one metric per series within a block", async () => {
+		const { counts, metrics } = await exportAndRead([
+			makeEvent({
+				eventName: "http.requests",
+				timestamp: "2026-05-04T12:01:00.000Z",
+				measurements: {
+					window_seconds: 60,
+					"count.2xx": 2,
+					"duration.p95_ms": 5,
+				},
+			}),
+			makeEvent({
+				eventName: "http.requests",
+				timestamp: "2026-05-04T12:02:00.000Z",
+				measurements: {
+					window_seconds: 60,
+					"count.2xx": 3,
+					"duration.p95_ms": 7,
+				},
+			}),
+		]);
+
+		expect(counts.metrics).toBe(2);
+		expect(metrics.blocks).toHaveLength(1);
+		const records = metrics.blocks[0].records as MetricRecord[];
+		const byName = new Map(records.map((r) => [r.name, r]));
+		expect(records).toHaveLength(2);
+		expect(
+			byName
+				.get("http.requests.count.2xx")!
+				.sum!.dataPoints.map((p) => p.asInt),
+		).toEqual(["2", "5"]);
+		expect(
+			byName
+				.get("http.requests.duration.p95")!
+				.gauge!.dataPoints.map((p) => p.asDouble),
+		).toEqual([5, 7]);
+	});
+
+	it("force-flushes the metric buffer at the point cap within one block", async () => {
+		const events = Array.from({ length: MAX_BUFFERED_METRIC_POINTS + 1 }, () =>
+			makeEvent({
+				eventName: "http.requests",
+				timestamp: "2026-05-04T12:01:00.000Z",
+				measurements: { window_seconds: 60, "count.2xx": 1 },
+			}),
+		);
+
+		const { metrics } = await exportAndRead(events);
+
+		// The capped series splits into a second entry in the same block.
+		expect(metrics.blocks).toHaveLength(1);
+		const records = metrics.blocks[0].records as MetricRecord[];
+		expect(records.map((r) => r.name)).toEqual([
+			"http.requests.count.2xx",
+			"http.requests.count.2xx",
+		]);
+		expect(records.flatMap((r) => r.sum!.dataPoints)).toHaveLength(
+			MAX_BUFFERED_METRIC_POINTS + 1,
+		);
+	});
+
+	it("resets cumulative counter totals at each block boundary", async () => {
+		const httpEvent = (sessionId: string, timestamp: string, count: number) =>
+			makeEvent({
+				eventName: "http.requests",
+				timestamp,
+				context: { ...context, sessionId },
+				measurements: { window_seconds: 60, "count.2xx": count },
+			});
+		const { metrics } = await exportAndRead([
+			httpEvent("session-a", "2026-05-04T12:01:00.000Z", 2),
+			httpEvent("session-a", "2026-05-04T12:02:00.000Z", 3),
+			httpEvent("session-b", "2026-05-04T12:03:00.000Z", 7),
+		]);
+
+		expect(metrics.blocks).toHaveLength(2);
+		const [a] = metrics.blocks[0].records as MetricRecord[];
+		const [b] = metrics.blocks[1].records as MetricRecord[];
+		expect(a.sum!.dataPoints.map((p) => p.asInt)).toEqual(["2", "5"]);
+		// Session B starts its own total instead of inheriting session A's 5.
+		expect(b.sum!.dataPoints.map((p) => p.asInt)).toEqual(["7"]);
+	});
+
+	it("compresses every zip entry at maximum deflate level", async () => {
+		await writeZip([makeEvent()]);
+
+		// Three envelopes plus the manifest.
+		expect(zipDeflateOptions.current).toHaveLength(4);
+		for (const options of zipDeflateOptions.current) {
+			expect(options).toEqual({ level: 9 });
+		}
 	});
 
 	it("propagates midstream iterator errors", async () => {

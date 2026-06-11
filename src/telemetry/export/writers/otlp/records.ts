@@ -45,7 +45,10 @@ export const ENVELOPES = {
 } as const satisfies Record<Signal, EnvelopeSpec>;
 
 const OTLP_SCHEMA_URL = "https://opentelemetry.io/schemas/1.24.0";
-export const ENVELOPE_SUFFIX = "]}]}]}\n";
+/** Closes one resource block: records array, scope wrapper, resource wrapper. */
+export const RESOURCE_BLOCK_SUFFIX = "]}]}";
+/** Closes the top-level resource list opened by `envelopeFilePrefix`. */
+export const ENVELOPE_FILE_SUFFIX = "]}\n";
 
 const AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
 // OTLP proto SpanKind reserves 0 for UNSPECIFIED; @opentelemetry/api values
@@ -55,12 +58,18 @@ const OTLP_SPAN_KIND_OFFSET = 1;
 // OtlpStatus.code is a wire-format int, so compare against a numeric alias.
 const OTLP_STATUS_ERROR: number = SpanStatusCode.ERROR;
 
-export function envelopePrefix(
+/** Opens the envelope's top-level resource list (`resourceLogs` etc.). */
+export function envelopeFilePrefix(envelope: EnvelopeSpec): string {
+	return `{"${envelope.resourceKey}":[`;
+}
+
+/** Opens one resource block: resource and scope wrappers up to the records array. */
+export function resourceBlockPrefix(
 	envelope: EnvelopeSpec,
 	resource: string,
 	scope: string,
 ): string {
-	return `{"${envelope.resourceKey}":[{"resource":${resource},"schemaUrl":"${OTLP_SCHEMA_URL}","${envelope.scopeKey}":[{"scope":${scope},"schemaUrl":"${OTLP_SCHEMA_URL}","${envelope.recordsKey}":[`;
+	return `{"resource":${resource},"schemaUrl":"${OTLP_SCHEMA_URL}","${envelope.scopeKey}":[{"scope":${scope},"schemaUrl":"${OTLP_SCHEMA_URL}","${envelope.recordsKey}":[`;
 }
 
 export interface CumulativeState {
@@ -73,9 +82,10 @@ export function newCumulativeState(): CumulativeState {
 }
 
 /**
- * Resource attributes describe the export tool (forwarder), not the original
- * producer. Per-event identity is stamped on each record by
- * `eventContextAttributes` so multi-session exports preserve provenance.
+ * Resource attributes identifying the session that produced a resource
+ * block's records. The writer builds one per block from the producing
+ * event's context, so multi-session exports attribute every record to its
+ * own session.
  */
 export function otlpResource(context: TelemetryContext) {
 	return {
@@ -91,19 +101,6 @@ export function otlpResource(context: TelemetryContext) {
 			"vscode.platform.version": context.platformVersion,
 			"coder.deployment.url": context.deploymentUrl,
 		}),
-	};
-}
-
-/**
- * Per-event identity stamped on every record so multi-session exports stay
- * attributable. Spread LAST in attribute maps so caller-supplied properties
- * keyed `coder.event.*` cannot override the canonical provenance.
- */
-function eventContextAttributes(event: TelemetryEvent): Record<string, string> {
-	return {
-		"coder.event.extension_version": event.context.extensionVersion,
-		"coder.event.session_id": event.context.sessionId,
-		"coder.event.deployment_url": event.context.deploymentUrl,
 	};
 }
 
@@ -130,7 +127,6 @@ export function logRecord(event: TelemetryEvent): OtlpLogRecord {
 			...event.properties,
 			...event.measurements,
 			...(event.error && exceptionAttributes(event.error)),
-			...eventContextAttributes(event),
 		}),
 		...(event.traceId !== undefined && { traceId: event.traceId }),
 		...(event.parentEventId !== undefined && { spanId: event.parentEventId }),
@@ -149,7 +145,6 @@ export function spanRecord(
 		...event.properties,
 		...measurements,
 		"coder.event_name": event.eventName,
-		...eventContextAttributes(event),
 	};
 	// OTel wants every error span to carry a low-cardinality error.type, so
 	// backfill the exception type or code, falling back to OTel's _OTHER sentinel.
@@ -231,7 +226,6 @@ export function metricRecords(
 		attributes: keyValues({
 			...event.properties,
 			"coder.event_name": event.eventName,
-			...eventContextAttributes(event),
 		}),
 		timeNano,
 		windowStartNano,
