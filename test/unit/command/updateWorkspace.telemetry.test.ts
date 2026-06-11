@@ -29,6 +29,7 @@ function setup() {
 		getLoginCoordinator: () => ({}),
 		getDuplicateWorkspaceIpc: () => ({}),
 		getSpeedtestPanelFactory: () => ({}),
+		getNetcheckPanelFactory: () => ({}),
 	} as unknown as ServiceContainer;
 	const commands = new Commands(
 		container,

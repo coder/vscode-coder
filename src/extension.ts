@@ -358,6 +358,7 @@ async function doActivate(
 		"coder.speedTest:views",
 		commands.speedTest.bind(commands),
 	);
+	commandManager.register("coder.netcheck", commands.netcheck.bind(commands));
 	commandManager.register(
 		"coder.supportBundle",
 		commands.supportBundle.bind(commands),

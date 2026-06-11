@@ -1,6 +1,10 @@
-import { recordAborted, recordError } from "./outcomes";
+import {
+	overallNetcheckSeverity,
+	type NetcheckReport,
+	type SpeedtestResult,
+} from "@repo/shared";
 
-import type { SpeedtestResult } from "@repo/shared";
+import { recordAborted, recordError } from "./outcomes";
 
 import type { ExportResult } from "../telemetry/export/pipeline";
 import type { ExportFormat } from "../telemetry/export/writers/types";
@@ -11,6 +15,7 @@ import type { WorkspacePickerErrorCategory } from "./workspaceOpen";
 
 export type DiagnosticCommand =
 	| "speed_test"
+	| "netcheck"
 	| "support_bundle"
 	| "export_telemetry";
 export type DiagnosticErrorCategory =
@@ -31,6 +36,7 @@ export interface DiagnosticTrace {
 	setRequestedDuration(seconds: number): void;
 	succeedSpeedtest(result: SpeedtestResult): void;
 	succeedExport(format: ExportFormat, result: ExportResult): void;
+	succeedNetcheck(report: NetcheckReport): void;
 }
 
 /** Emits `command.diagnostic.completed` around each diagnostic command. */
@@ -78,5 +84,17 @@ class SpanDiagnosticTrace implements DiagnosticTrace {
 		if (result.skippedFileCount > 0) {
 			this.span.setMeasurement("file.skipped_count", result.skippedFileCount);
 		}
+	}
+
+	public succeedNetcheck(report: NetcheckReport): void {
+		this.span.setProperty("severity", overallNetcheckSeverity(report));
+		this.span.setMeasurement(
+			"region.count",
+			Object.keys(report.derp.regions).length,
+		);
+		this.span.setMeasurement(
+			"warning.count",
+			report.derp.warnings.length + report.interfaces.warnings.length,
+		);
 	}
 }
