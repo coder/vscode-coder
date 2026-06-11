@@ -382,9 +382,10 @@ Emitted by `SshTelemetry`.
 
 #### `ssh.network.sampled`
 
-Tunnel network sample. Emitted on a p2p flip, a preferred-DERP change, a
-meaningful latency change (at least 25 ms or 20 %), or a roughly 60 s
-heartbeat.
+Tunnel network sample. Emitted on a roughly 60 s heartbeat, or on a p2p
+flip, a preferred-DERP change, or a meaningful latency change (at least
+25 ms and at least 20 %). Change-triggered emissions are limited to one per
+15 s; a change that persists past that cooldown is emitted when it expires.
 
 | Attribute                      | Values                                                             |
 | ------------------------------ | ------------------------------------------------------------------ |

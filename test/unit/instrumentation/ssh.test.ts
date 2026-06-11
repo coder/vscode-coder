@@ -187,35 +187,56 @@ describe("SshTelemetry", () => {
 				name: "latency change below both thresholds (50 -> 51)",
 				prev: {},
 				next: { latency: 51 },
+				advanceMs: 15_000,
+				expected: 1,
+			},
+			{
+				name: "latency change meeting only the ratio threshold (50 -> 70)",
+				prev: {},
+				next: { latency: 70 },
+				advanceMs: 15_000,
+				expected: 1,
+			},
+			{
+				name: "latency change meeting only the absolute threshold (200 -> 230)",
+				prev: { latency: 200 },
+				next: { latency: 230 },
+				advanceMs: 15_000,
+				expected: 1,
+			},
+			{
+				name: "latency change meeting both thresholds (50 -> 80)",
+				prev: {},
+				next: { latency: 80 },
+				advanceMs: 15_000,
+				expected: 2,
+			},
+			{
+				name: "latency change within the cooldown (50 -> 80)",
+				prev: {},
+				next: { latency: 80 },
 				advanceMs: 1_000,
 				expected: 1,
 			},
 			{
-				name: "ratio branch only (50 -> 70)",
+				name: "p2p flip after the cooldown",
 				prev: {},
-				next: { latency: 70 },
-				advanceMs: 1_000,
+				next: { p2p: false },
+				advanceMs: 15_000,
 				expected: 2,
 			},
 			{
-				name: "absolute branch only (200 -> 230)",
-				prev: { latency: 200 },
-				next: { latency: 230 },
-				advanceMs: 1_000,
-				expected: 2,
-			},
-			{
-				name: "p2p flip",
+				name: "p2p flip within the cooldown",
 				prev: {},
 				next: { p2p: false },
 				advanceMs: 1_000,
-				expected: 2,
+				expected: 1,
 			},
 			{
-				name: "DERP region change",
+				name: "DERP region change after the cooldown",
 				prev: {},
 				next: { preferred_derp: "SFO" },
-				advanceMs: 1_000,
+				advanceMs: 15_000,
 				expected: 2,
 			},
 			{
@@ -229,7 +250,7 @@ describe("SshTelemetry", () => {
 				name: "baseline established from zero-latency placeholder (0 -> 5)",
 				prev: { latency: 0 },
 				next: { latency: 5 },
-				advanceMs: 1_000,
+				advanceMs: 15_000,
 				expected: 2,
 			},
 		])(
@@ -244,6 +265,20 @@ describe("SshTelemetry", () => {
 				expect(sink.eventsNamed("ssh.network.sampled")).toHaveLength(expected);
 			},
 		);
+
+		it("coalesces a change suppressed by the cooldown into a later emission", () => {
+			const { ssh, sink } = setup();
+
+			ssh.networkSampled(makeNetworkInfo());
+			vi.advanceTimersByTime(3_000);
+			ssh.networkSampled(makeNetworkInfo({ p2p: false }));
+			vi.advanceTimersByTime(12_000);
+			ssh.networkSampled(makeNetworkInfo({ p2p: false }));
+
+			const samples = sink.eventsNamed("ssh.network.sampled");
+			expect(samples).toHaveLength(2);
+			expect(samples[1].properties.p2p).toBe("false");
+		});
 
 		it("includes p2p, preferred_derp, latency, and bandwidth in the emitted sample", () => {
 			const { ssh, sink } = setup();
