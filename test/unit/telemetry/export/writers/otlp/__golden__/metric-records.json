@@ -162,7 +162,7 @@
     }
   },
   {
-    "name": "http.requests.duration.p50_ms",
+    "name": "http.requests.duration.p50",
     "description": "http.requests",
     "unit": "ms",
     "gauge": {
@@ -214,7 +214,7 @@
     }
   },
   {
-    "name": "http.requests.duration.p95_ms",
+    "name": "http.requests.duration.p95",
     "description": "http.requests",
     "unit": "ms",
     "gauge": {
@@ -266,7 +266,7 @@
     }
   },
   {
-    "name": "http.requests.duration.p99_ms",
+    "name": "http.requests.duration.p99",
     "description": "http.requests",
     "unit": "ms",
     "gauge": {

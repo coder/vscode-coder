@@ -35,7 +35,7 @@ const PROGRESS_OPTIONS = {
  */
 export interface ExportTelemetryObserver {
 	abort(stage: "prompt" | "progress"): void;
-	fail(): void;
+	error(): void;
 	succeedExport(format: ExportFormat, eventCount: number): void;
 }
 
@@ -102,7 +102,7 @@ async function reportOutcome(
 			observer.abort("progress");
 			return;
 		}
-		observer.fail();
+		observer.error();
 		logger.error("Telemetry export failed", result.error);
 		void vscode.window.showErrorMessage(
 			`Telemetry export failed: ${toError(result.error).message}`,

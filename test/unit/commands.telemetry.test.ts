@@ -207,7 +207,7 @@ describe("Commands", () => {
 				properties: {
 					method: "cli_token",
 					result: "error",
-					reason: "auth_failed",
+					"error.type": "auth_failed",
 				},
 			});
 			expect(mocks.deploymentManager.setDeployment).not.toHaveBeenCalled();
@@ -267,7 +267,7 @@ describe("Commands", () => {
 			await expect(commands.logout()).rejects.toThrow("secret clear failed");
 
 			expect(sink.expectOne("auth.logout")).toMatchObject({
-				properties: { result: "error", reason: "exception" },
+				properties: { result: "error", "error.type": "exception" },
 				error: { message: "secret clear failed" },
 			});
 		});

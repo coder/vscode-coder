@@ -58,7 +58,7 @@ export class AuthTelemetry {
 					}
 					return result;
 				} catch (error) {
-					span.setProperty("reason", "exception");
+					span.setProperty("error.type", "exception");
 					throw error;
 				}
 			},
@@ -78,17 +78,24 @@ export class AuthTelemetry {
 				}
 				return result;
 			} catch (error) {
-				span.setProperty("reason", "exception");
+				span.setProperty("error.type", "exception");
 				throw error;
 			}
 		});
+	}
+
+	/** Wraps the secret-storage session read that seeds a remote connection. */
+	public traceSessionLookup<T>(fn: () => Promise<T>): Promise<T> {
+		return this.telemetry.trace("auth.session_lookup", fn);
 	}
 
 	public traceTokenRefresh<T>(
 		trigger: AuthTokenRefreshTrigger,
 		fn: () => Promise<T>,
 	): Promise<T> {
-		return this.telemetry.trace("auth.token_refreshed", fn, { trigger });
+		return this.telemetry.trace("auth.token_refresh.completed", fn, {
+			trigger,
+		});
 	}
 
 	/** Logged when a refresh call joins an in-flight refresh and emits no span of its own. */
@@ -110,9 +117,9 @@ export class AuthTelemetry {
 					logReceived: () => span.log("received"),
 					setRecovery: (recovery) => span.setProperty("recovery", recovery),
 					setRefreshAttempted: (attempted) =>
-						span.setProperty("refreshAttempted", attempted),
+						span.setProperty("refresh_attempted", attempted),
 				}),
-			{ recovery: "none", refreshAttempted: false },
+			{ recovery: "none", refresh_attempted: false },
 		);
 	}
 
@@ -141,11 +148,11 @@ export class AuthTelemetry {
 
 /** `auth_failed` is a real error; user/URL dismissals are intentional aborts. */
 function recordReason(span: Span, reason: LoginPromptReason): void {
-	span.setProperty("reason", reason);
 	if (reason === "auth_failed") {
 		span.setProperty("error.type", reason);
 		span.markError();
 	} else {
+		span.setProperty("reason", reason);
 		span.markAborted();
 	}
 }

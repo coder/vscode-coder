@@ -618,27 +618,27 @@ describe("ReconnectingWebSocket", () => {
 					.eventsNamed("connection.state_transitioned")
 					.map((e) => e.properties),
 			).toEqual([
-				{ from: "IDLE", to: "CONNECTING", reason: "initial_connect" },
-				{ from: "CONNECTING", to: "CONNECTED", reason: "open" },
+				{ from: "idle", to: "connecting", reason: "initial_connect" },
+				{ from: "connecting", to: "connected", reason: "open" },
 				{
-					from: "CONNECTED",
-					to: "AWAITING_RETRY",
+					from: "connected",
+					to: "awaiting_retry",
 					reason: "unexpected_close",
 				},
 				{
-					from: "AWAITING_RETRY",
-					to: "CONNECTING",
+					from: "awaiting_retry",
+					to: "connecting",
 					reason: "scheduled_reconnect",
 				},
-				{ from: "CONNECTING", to: "CONNECTED", reason: "open" },
-				{ from: "CONNECTED", to: "DISPOSED", reason: "dispose" },
+				{ from: "connecting", to: "connected", reason: "open" },
+				{ from: "connected", to: "disposed", reason: "dispose" },
 			]);
 
 			expect(sink.eventsNamed("connection.opened")).toHaveLength(2);
 			expect(sink.eventsNamed("connection.dropped")).toHaveLength(2);
 			expect(sink.eventsNamed("connection.reconnect_resolved")).toMatchObject([
 				{
-					properties: { result: "success", reason: "unexpected_close" },
+					properties: { outcome: "success", reason: "unexpected_close" },
 					measurements: {
 						attempts: 1,
 						max_backoff_ms: expect.any(Number),

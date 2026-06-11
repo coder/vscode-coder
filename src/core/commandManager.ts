@@ -62,7 +62,7 @@ export class CommandManager implements vscode.Disposable {
 		}
 
 		const invoke = handler as (...args: unknown[]) => unknown;
-		const properties = { commandId: id };
+		const properties = { command_id: id };
 		const wrapped = (...args: unknown[]): Thenable<unknown> =>
 			this.telemetry.trace(
 				COMMAND_INVOKED_EVENT,

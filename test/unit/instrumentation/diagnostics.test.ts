@@ -18,7 +18,7 @@ describe("DiagnosticTelemetry", () => {
 			return Promise.resolve();
 		});
 		await telemetry.trace("support_bundle", (trace) => {
-			trace.fail("unsupported_cli");
+			trace.error("unsupported_cli");
 			return Promise.resolve();
 		});
 
@@ -59,7 +59,7 @@ describe("DiagnosticTelemetry", () => {
 
 		expect(sink.expectOne("command.diagnostic.completed")).toMatchObject({
 			measurements: {
-				interval_count: 1,
+				"interval.count": 1,
 				throughput_mbits: 42,
 			},
 			properties: { result: "success" },

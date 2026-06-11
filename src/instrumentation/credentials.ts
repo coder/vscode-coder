@@ -6,7 +6,7 @@ import type { WorkspaceConfiguration } from "vscode";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
-export type CredentialErrorCategory = "aborted" | "binary" | "cli" | "file";
+export type CredentialErrorCategory = "binary" | "cli" | "file";
 
 type CredentialEvent = "auth.credential.store" | "auth.credential.clear";
 
@@ -47,12 +47,12 @@ export class CredentialTelemetry {
 				try {
 					await fn(span);
 				} catch (error) {
-					span.setProperty("error.type", categorizeCredentialError(error));
 					if (isAbortError(error)) {
 						span.markAborted();
 						aborted = error;
 						return;
 					}
+					span.setProperty("error.type", categorizeCredentialError(error));
 					throw error;
 				}
 			},
@@ -68,9 +68,6 @@ export class CredentialTelemetry {
 }
 
 function categorizeCredentialError(error: unknown): CredentialErrorCategory {
-	if (isAbortError(error)) {
-		return "aborted";
-	}
 	if (error instanceof CredentialFileError) {
 		return "file";
 	}

@@ -25,8 +25,8 @@ const METRIC_EVENT_NAMES: ReadonlySet<string> = new Set([
 
 const UNIT_SUFFIXES: ReadonlyArray<readonly [string, string]> = [
 	["_ms", "ms"],
-	["Ms", "ms"],
-	["Mbits", "Mbit/s"],
+	["_seconds", "s"],
+	["_mbits", "Mbit/s"],
 ];
 
 export function isMetricEvent(event: TelemetryEvent): boolean {
@@ -43,12 +43,10 @@ export function describeMetricEvent(
 		return describeHttpRequests(event);
 	}
 	return {
-		measurements: Object.entries(event.measurements).map(([name, value]) => ({
-			name,
-			value,
-			kind: "gauge",
-			unit: measurementUnit(name),
-		})),
+		measurements: Object.entries(event.measurements).map(([key, value]) => {
+			const { name, unit } = splitUnit(key);
+			return { name, value, kind: "gauge", unit };
+		}),
 	};
 }
 
@@ -61,17 +59,21 @@ function describeHttpRequests(event: TelemetryEvent): MetricDescriptor {
 		} else if (name.startsWith("count.")) {
 			measurements.push({ name, value, kind: "counter", unit: "{request}" });
 		} else {
-			measurements.push({
-				name,
-				value,
-				kind: "gauge",
-				unit: measurementUnit(name),
-			});
+			const { name: metricName, unit } = splitUnit(name);
+			measurements.push({ name: metricName, value, kind: "gauge", unit });
 		}
 	}
 	return { windowSeconds, measurements };
 }
 
-function measurementUnit(name: string): string {
-	return UNIT_SUFFIXES.find(([suffix]) => name.endsWith(suffix))?.[1] ?? "1";
+/**
+ * Split a measurement key into its metric name and unit, dropping the unit
+ * suffix from the name (OTLP carries the unit in a field, not the name):
+ * `latency_ms` -> `{ name: "latency", unit: "ms" }`. No known suffix -> "1".
+ */
+function splitUnit(key: string): { name: string; unit: string } {
+	const match = UNIT_SUFFIXES.find(([suffix]) => key.endsWith(suffix));
+	return match
+		? { name: key.slice(0, -match[0].length), unit: match[1] }
+		: { name: key, unit: "1" };
 }

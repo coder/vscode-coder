@@ -56,10 +56,10 @@ describe("SshTelemetry", () => {
 				"ssh.process.replaced",
 			]);
 			const [replaced] = sink.eventsNamed("ssh.process.replaced");
-			expect(replaced.properties).toMatchObject({ wasLost: "true" });
+			expect(replaced.properties).toMatchObject({ was_lost: "true" });
 			expect(replaced.measurements).toMatchObject({
-				previousUptimeMs: expect.any(Number),
-				lostDurationMs: expect.any(Number),
+				previous_uptime_ms: expect.any(Number),
+				lost_duration_ms: expect.any(Number),
 			});
 		});
 
@@ -71,11 +71,11 @@ describe("SshTelemetry", () => {
 
 			const replaced = sink.eventsNamed("ssh.process.replaced");
 			expect(replaced).toHaveLength(1);
-			expect(replaced[0].properties).toMatchObject({ wasLost: "false" });
+			expect(replaced[0].properties).toMatchObject({ was_lost: "false" });
 			expect(replaced[0].measurements).toMatchObject({
-				previousUptimeMs: expect.any(Number),
+				previous_uptime_ms: expect.any(Number),
 			});
-			expect(replaced[0].measurements.lostDurationMs).toBeUndefined();
+			expect(replaced[0].measurements.lost_duration_ms).toBeUndefined();
 		});
 
 		it("emits nothing if there was no prior process", () => {
@@ -97,7 +97,7 @@ describe("SshTelemetry", () => {
 			expect(sink.events).toHaveLength(0);
 		});
 
-		it("emits ssh.process.recovered with recoveryDurationMs after a loss", () => {
+		it("emits ssh.process.recovered with recovery_duration_ms after a loss", () => {
 			const { ssh, sink } = setup();
 
 			ssh.processStarted();
@@ -105,7 +105,9 @@ describe("SshTelemetry", () => {
 			ssh.processRecovered();
 
 			const [event] = sink.eventsNamed("ssh.process.recovered");
-			expect(event.measurements.recoveryDurationMs).toEqual(expect.any(Number));
+			expect(event.measurements.recovery_duration_ms).toEqual(
+				expect.any(Number),
+			);
 		});
 
 		it("does not double-emit when called twice without another loss", () => {
@@ -164,8 +166,8 @@ describe("SshTelemetry", () => {
 			ssh.disposed();
 
 			const [event] = sink.eventsNamed("ssh.process.disposed");
-			expect(event.properties).toMatchObject({ wasLost });
-			expect(event.measurements.uptimeMs).toEqual(expect.any(Number));
+			expect(event.properties).toMatchObject({ was_lost: wasLost });
+			expect(event.measurements.uptime_ms).toEqual(expect.any(Number));
 		});
 	});
 
@@ -243,17 +245,17 @@ describe("SshTelemetry", () => {
 			},
 		);
 
-		it("includes p2p, preferredDerp, latency, and bandwidth in the emitted sample", () => {
+		it("includes p2p, preferred_derp, latency, and bandwidth in the emitted sample", () => {
 			const { ssh, sink } = setup();
 
 			ssh.networkSampled(makeNetworkInfo({ latency: 25 }));
 
 			const [sample] = sink.eventsNamed("ssh.network.sampled");
-			expect(sample.properties).toEqual({ p2p: "true", preferredDerp: "NYC" });
+			expect(sample.properties).toEqual({ p2p: "true", preferred_derp: "NYC" });
 			expect(sample.measurements).toMatchObject({
-				latencyMs: 25,
-				downloadMbits: expect.any(Number),
-				uploadMbits: expect.any(Number),
+				latency_ms: 25,
+				download_mbits: expect.any(Number),
+				upload_mbits: expect.any(Number),
 			});
 		});
 	});

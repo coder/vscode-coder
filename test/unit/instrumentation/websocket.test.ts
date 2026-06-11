@@ -23,8 +23,8 @@ describe("WebSocketTelemetry", () => {
 
 			const [event] = sink.eventsNamed("connection.state_transitioned");
 			expect(event.properties).toEqual({
-				from: "IDLE",
-				to: "CONNECTING",
+				from: "idle",
+				to: "connecting",
 				reason: "initial_connect",
 			});
 		});
@@ -144,7 +144,7 @@ describe("WebSocketTelemetry", () => {
 
 			const [event] = sink.eventsNamed("connection.reconnect_resolved");
 			expect(event).toMatchObject({
-				properties: { result: "success", reason: "manual_reconnect" },
+				properties: { outcome: "success", reason: "manual_reconnect" },
 				measurements: {
 					attempts: 1,
 					max_backoff_ms: 0,
@@ -161,7 +161,7 @@ describe("WebSocketTelemetry", () => {
 
 			const [event] = sink.eventsNamed("connection.reconnect_resolved");
 			expect(event.properties).toEqual({
-				result: "error",
+				outcome: "error",
 				reason: "manual_reconnect",
 				termination_reason: "unrecoverable_http",
 			});

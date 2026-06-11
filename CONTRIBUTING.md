@@ -94,6 +94,15 @@ pnpm watch  # Rebuild extension and webviews on changes
 Press F5 to launch the Extension Development Host. Use "Developer: Reload
 Webviews" to see webview changes.
 
+## Telemetry
+
+Local telemetry instrumentation follows a shared style: how spans are threaded,
+how events and properties are named, and properties vs measurements. Read this
+before adding new telemetry so it stays consistent across the codebase. It lives
+next to the code:
+
+**[`src/instrumentation/CONVENTIONS.md`](src/instrumentation/CONVENTIONS.md)**
+
 ## Testing
 
 There are a few ways you can test the "Open in VS Code" flow:

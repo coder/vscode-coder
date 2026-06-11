@@ -404,14 +404,14 @@ describe("WorkspaceStateMachine", () => {
 			mock: typeof startWorkspace | typeof updateWorkspace;
 		}>([
 			{
-				name: "workspace.start.triggered on stopped workspace",
+				name: "workspace.start on stopped workspace",
 				eventName: "workspace.start.triggered",
 				mode: "start",
 				workspace: stoppedWorkspace,
 				mock: startWorkspace,
 			},
 			{
-				name: "workspace.update.triggered on running workspace in update mode",
+				name: "workspace.update on running workspace in update mode",
 				eventName: "workspace.update.triggered",
 				mode: "update",
 				workspace: runningWorkspace,
@@ -456,7 +456,7 @@ describe("WorkspaceStateMachine", () => {
 				"lifecycle_state.from": "created",
 				"lifecycle_state.to": "ready",
 			});
-			expect(events[1].measurements.observedDurationMs).toEqual(
+			expect(events[1].measurements.observed_duration_ms).toEqual(
 				expect.any(Number),
 			);
 		});

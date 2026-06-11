@@ -302,12 +302,11 @@ describe("CliCredentialManager", () => {
 					signal: AbortSignal.abort(),
 				}),
 			).rejects.toThrow("The operation was aborted");
-			expect(sink.expectOne("auth.credential.store")).toMatchObject({
-				properties: {
-					"error.type": "aborted",
-					result: "aborted",
-				},
+			const event = sink.expectOne("auth.credential.store");
+			expect(event).toMatchObject({
+				properties: { result: "aborted" },
 			});
+			expect(event.properties["error.type"]).toBeUndefined();
 		});
 	});
 
@@ -517,12 +516,11 @@ describe("CliCredentialManager", () => {
 					signal: AbortSignal.abort(),
 				}),
 			).rejects.toThrow("The operation was aborted");
-			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
-				properties: {
-					"error.type": "aborted",
-					result: "aborted",
-				},
+			const event = sink.expectOne("auth.credential.clear");
+			expect(event).toMatchObject({
+				properties: { result: "aborted" },
 			});
+			expect(event.properties["error.type"]).toBeUndefined();
 		});
 	});
 });

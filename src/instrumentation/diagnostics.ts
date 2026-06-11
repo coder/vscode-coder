@@ -2,6 +2,7 @@ import { recordAborted, recordError } from "./outcomes";
 
 import type { SpeedtestResult } from "@repo/shared";
 
+import type { ExportFormat } from "../telemetry/export/writers/types";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
@@ -25,10 +26,10 @@ export type DiagnosticAbortStage =
 
 export interface DiagnosticTrace {
 	abort(stage: DiagnosticAbortStage): void;
-	fail(category?: DiagnosticErrorCategory): void;
+	error(category?: DiagnosticErrorCategory): void;
 	setRequestedDuration(seconds: number): void;
 	succeedSpeedtest(result: SpeedtestResult): void;
-	succeedExport(format: string, eventCount: number): void;
+	succeedExport(format: ExportFormat, eventCount: number): void;
 }
 
 /** Emits `command.diagnostic.completed` around each diagnostic command. */
@@ -54,7 +55,7 @@ class SpanDiagnosticTrace implements DiagnosticTrace {
 		recordAborted(this.span, stage);
 	}
 
-	public fail(category: DiagnosticErrorCategory = "error"): void {
+	public error(category: DiagnosticErrorCategory = "error"): void {
 		recordError(this.span, category);
 	}
 
@@ -63,15 +64,15 @@ class SpanDiagnosticTrace implements DiagnosticTrace {
 	}
 
 	public succeedSpeedtest(result: SpeedtestResult): void {
-		this.span.setMeasurement("interval_count", result.intervals.length);
+		this.span.setMeasurement("interval.count", result.intervals.length);
 		this.span.setMeasurement(
 			"throughput_mbits",
 			result.overall.throughput_mbits,
 		);
 	}
 
-	public succeedExport(format: string, eventCount: number): void {
+	public succeedExport(format: ExportFormat, eventCount: number): void {
 		this.span.setProperty("format", format);
-		this.span.setMeasurement("event_count", eventCount);
+		this.span.setMeasurement("event.count", eventCount);
 	}
 }

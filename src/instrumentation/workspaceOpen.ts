@@ -1,11 +1,6 @@
 import { extractAgents } from "../api/api-helper";
 
-import {
-	type AbortableErrorCategory,
-	categorizeAbortableError,
-	recordAborted,
-	recordError,
-} from "./outcomes";
+import { recordAbortableError, recordAborted, recordError } from "./outcomes";
 
 import type {
 	Workspace,
@@ -24,10 +19,8 @@ export type WorkspaceOpenSource =
 	| "uri";
 
 export type WorkspacePickerSource = "workspace_open" | "diagnostic";
-export type WorkspacePickerErrorCategory = "fetch_failed";
-export type WorkspaceOpenErrorCategory =
-	| WorkspacePickerErrorCategory
-	| AbortableErrorCategory;
+export type WorkspacePickerErrorCategory = "fetch_error";
+export type WorkspaceOpenErrorCategory = WorkspacePickerErrorCategory | "error";
 export type WorkspacePickerResult =
 	| { readonly status: "selected"; readonly workspace: Workspace }
 	| { readonly status: "cancelled" }
@@ -56,7 +49,7 @@ export interface WorkspaceOpenTrace {
 		stage: WorkspaceOpenAbortStage,
 		selection?: WorkspaceOpenSelection,
 	): void;
-	fail(category: WorkspaceOpenErrorCategory): void;
+	error(category: WorkspaceOpenErrorCategory): void;
 	handoff(kind: "folder" | "empty_window"): void;
 }
 
@@ -114,8 +107,9 @@ export class WorkspaceOpenTelemetry {
 	}
 
 	/**
-	 * Runs `fn` inside the span, recording a thrown error as a categorized
-	 * error without its raw details, then rethrows outside the span.
+	 * Runs `fn` inside the span, recording a thrown abort as `aborted` and any
+	 * other error as a categorized error without its raw details, then rethrows
+	 * outside the span.
 	 */
 	private async traceRethrowing<T>(
 		eventName: string,
@@ -131,7 +125,7 @@ export class WorkspaceOpenTelemetry {
 					return await fn(span);
 				} catch (error) {
 					thrown = { error };
-					recordError(span, categorizeAbortableError(error));
+					recordAbortableError(span, error);
 					return fallback;
 				}
 			},
@@ -148,7 +142,7 @@ class SpanWorkspacePickerTrace implements WorkspacePickerTrace {
 	public constructor(private readonly span: Span) {}
 
 	public finish(result: WorkspacePickerResult, resultCount: number): void {
-		this.span.setMeasurement("workspace_count", resultCount);
+		this.span.setMeasurement("workspace.count", resultCount);
 		if (result.status === "selected") {
 			recordWorkspaceContext(this.span, result.workspace);
 			return;
@@ -178,7 +172,7 @@ class SpanWorkspaceOpenTrace implements WorkspaceOpenTrace {
 		recordAborted(this.span, stage);
 	}
 
-	public fail(category: WorkspaceOpenErrorCategory): void {
+	public error(category: WorkspaceOpenErrorCategory): void {
 		recordError(this.span, category);
 	}
 
@@ -195,9 +189,9 @@ function recordWorkspaceContext(
 	const agents = extractAgents(workspace.latest_build.resources);
 	span.setProperty("workspace_status", workspace.latest_build.status);
 	span.setProperty("workspace_outdated", workspace.outdated);
-	span.setMeasurement("agent_count", agents.length);
+	span.setMeasurement("agent.count", agents.length);
 	span.setMeasurement(
-		"connected_agent_count",
+		"agent.connected_count",
 		agents.filter((candidate) => candidate.status === "connected").length,
 	);
 	if (!agent) {

@@ -46,7 +46,7 @@ describe("WorkspaceOperationTelemetry", () => {
 		await ops[method](() => Promise.resolve());
 
 		expect(sink.expectOne(event)).toMatchObject({
-			properties: { workspaceName: WORKSPACE_NAME, result: "success" },
+			properties: { workspace_name: WORKSPACE_NAME, result: "success" },
 		});
 	});
 
@@ -81,7 +81,7 @@ describe("WorkspaceOperationTelemetry", () => {
 			expect(result).toBe("update");
 			expect(sink.expectOne("workspace.start.prompted")).toMatchObject({
 				properties: {
-					workspaceName: WORKSPACE_NAME,
+					workspace_name: WORKSPACE_NAME,
 					update_offered: "true",
 					action: "update",
 					result: "success",
@@ -118,7 +118,7 @@ describe("WorkspaceOperationTelemetry", () => {
 			expect(result).toEqual(collected);
 			expect(sink.expectOne("workspace.update.prompted")).toMatchObject({
 				properties: {
-					workspaceName: WORKSPACE_NAME,
+					workspace_name: WORKSPACE_NAME,
 					prompt: "parameters",
 					result: "success",
 				},
@@ -164,7 +164,7 @@ describe("WorkspaceOperationTelemetry", () => {
 			expect(result).toBe("Update and Restart");
 			expect(sink.expectOne("workspace.update.prompted")).toMatchObject({
 				properties: {
-					workspaceName: WORKSPACE_NAME,
+					workspace_name: WORKSPACE_NAME,
 					action: "update",
 					prompt: "confirmation",
 					result: "success",
@@ -206,13 +206,13 @@ describe("WorkspaceStateTelemetry.observe", () => {
 
 		const event = sink.expectOne("workspace.state_transitioned");
 		expect(event.properties).toMatchObject({
-			workspaceName: WORKSPACE_NAME,
+			workspace_name: WORKSPACE_NAME,
 			from: "none",
 			to: "running",
 			"build.transition": "start",
 			"build.reason": "initiator",
 		});
-		expect(event.measurements.observedDurationMs).toBeUndefined();
+		expect(event.measurements.observed_duration_ms).toBeUndefined();
 	});
 
 	it("ignores duplicate observations of the same state", () => {
@@ -225,7 +225,7 @@ describe("WorkspaceStateTelemetry.observe", () => {
 		expect(sink.eventsNamed("workspace.state_transitioned")).toHaveLength(1);
 	});
 
-	it("records observedDurationMs across transitions and observedBuildDurationMs once a build resolves", () => {
+	it("records observed_duration_ms across transitions and observed_build_duration_ms once a build resolves", () => {
 		const { sink, instance: state } = setup(newState);
 
 		state.observe(createWorkspace({ latest_build: { status: "stopped" } }));
@@ -235,10 +235,12 @@ describe("WorkspaceStateTelemetry.observe", () => {
 		const [first, second, third] = sink.eventsNamed(
 			"workspace.state_transitioned",
 		);
-		expect(first.measurements.observedDurationMs).toBeUndefined();
-		expect(second.measurements.observedDurationMs).toEqual(expect.any(Number));
-		expect(second.measurements.observedBuildDurationMs).toBeUndefined();
-		expect(third.measurements.observedBuildDurationMs).toEqual(
+		expect(first.measurements.observed_duration_ms).toBeUndefined();
+		expect(second.measurements.observed_duration_ms).toEqual(
+			expect.any(Number),
+		);
+		expect(second.measurements.observed_build_duration_ms).toBeUndefined();
+		expect(third.measurements.observed_build_duration_ms).toEqual(
 			expect.any(Number),
 		);
 	});
@@ -286,14 +288,14 @@ describe("WorkspaceAgentTelemetry.observe", () => {
 		expect(events[1].properties["status.from"]).toBe("none");
 	});
 
-	it("includes observedDurationMs between transitions", () => {
+	it("includes observed_duration_ms between transitions", () => {
 		const { sink, instance: agentTelemetry } = setup(newAgentTelemetry);
 
 		agentTelemetry.observe(createAgent({ status: "connecting" }));
 		agentTelemetry.observe(createAgent({ status: "connected" }));
 
 		const events = sink.eventsNamed("workspace.agent.state_transitioned");
-		expect(events[1].measurements.observedDurationMs).toEqual(
+		expect(events[1].measurements.observed_duration_ms).toEqual(
 			expect.any(Number),
 		);
 	});

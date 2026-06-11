@@ -18,14 +18,14 @@ const find = (sink: TestSink, name: string) =>
 	sink.events.find((e) => e.eventName === name);
 
 describe("ActivationTelemetry.trace", () => {
-	it("emits one 'activation' event with default authState=none", async () => {
+	it("emits one 'activation' event with default auth_state=none", async () => {
 		const { sink, activation } = makeHarness();
 		await activation.trace(() => Promise.resolve());
 
 		expect(sink.events).toHaveLength(1);
 		expect(sink.events[0]).toMatchObject({
 			eventName: "activation",
-			properties: { authState: "none", result: "success" },
+			properties: { auth_state: "none", result: "success" },
 		});
 	});
 
@@ -37,10 +37,10 @@ describe("ActivationTelemetry.trace", () => {
 			return Promise.resolve();
 		});
 
-		expect(sink.events[0].properties.authState).toBe("valid_token");
+		expect(sink.events[0].properties.auth_state).toBe("valid_token");
 	});
 
-	it("rethrows fn errors and emits result=error with the default authState", async () => {
+	it("rethrows fn errors and emits result=error with the default auth_state", async () => {
 		const { sink, activation } = makeHarness();
 		const boom = new Error("nope");
 
@@ -48,7 +48,7 @@ describe("ActivationTelemetry.trace", () => {
 			boom,
 		);
 		expect(sink.events[0]).toMatchObject({
-			properties: { authState: "none", result: "error" },
+			properties: { auth_state: "none", result: "error" },
 			error: { message: "nope" },
 		});
 	});
@@ -71,7 +71,7 @@ describe("ActivationTelemetry.traceDeploymentInit", () => {
 		{ ret: true, expected: "valid_token" },
 		{ ret: false, expected: "auth_failed" },
 	])(
-		"maps initFn returning $ret to authState=$expected",
+		"maps initFn returning $ret to auth_state=$expected",
 		async ({ ret, expected }) => {
 			const { sink, activation } = makeHarness();
 			await activation.trace((tracer) =>
@@ -79,12 +79,12 @@ describe("ActivationTelemetry.traceDeploymentInit", () => {
 			);
 
 			expect(find(sink, "activation.deployment_init")).toMatchObject({
-				properties: { authState: expected, result: "success" },
+				properties: { auth_state: expected, result: "success" },
 			});
 		},
 	);
 
-	it("records authState=unknown when initFn throws", async () => {
+	it("records auth_state=unknown when initFn throws", async () => {
 		const { sink, activation } = makeHarness();
 		const boom = new Error("init failed");
 
@@ -95,7 +95,7 @@ describe("ActivationTelemetry.traceDeploymentInit", () => {
 		});
 
 		expect(find(sink, "activation.deployment_init")).toMatchObject({
-			properties: { authState: "unknown", result: "error" },
+			properties: { auth_state: "unknown", result: "error" },
 			error: { message: "init failed" },
 		});
 	});

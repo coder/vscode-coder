@@ -57,7 +57,7 @@ export class SshTelemetry {
 		this.#telemetry.log(
 			"ssh.process.lost",
 			{ cause },
-			{ uptimeMs: now - this.#processStartedAtMs },
+			{ uptime_ms: now - this.#processStartedAtMs },
 		);
 	}
 
@@ -68,7 +68,7 @@ export class SshTelemetry {
 		this.#telemetry.log(
 			"ssh.process.recovered",
 			{},
-			{ recoveryDurationMs: performance.now() - this.#processLostAtMs },
+			{ recovery_duration_ms: performance.now() - this.#processLostAtMs },
 		);
 		this.#processLostAtMs = undefined;
 	}
@@ -80,14 +80,14 @@ export class SshTelemetry {
 		const now = performance.now();
 		if (this.#processStartedAtMs !== undefined) {
 			const measurements: Record<string, number> = {
-				previousUptimeMs: now - this.#processStartedAtMs,
+				previous_uptime_ms: now - this.#processStartedAtMs,
 			};
 			if (this.#processLostAtMs !== undefined) {
-				measurements.lostDurationMs = now - this.#processLostAtMs;
+				measurements.lost_duration_ms = now - this.#processLostAtMs;
 			}
 			this.#telemetry.log(
 				"ssh.process.replaced",
-				{ wasLost: this.#processLostAtMs !== undefined },
+				{ was_lost: this.#processLostAtMs !== undefined },
 				measurements,
 			);
 		}
@@ -105,8 +105,8 @@ export class SshTelemetry {
 		const now = performance.now();
 		this.#telemetry.log(
 			"ssh.process.disposed",
-			{ wasLost: this.#processLostAtMs !== undefined },
-			{ uptimeMs: now - this.#processStartedAtMs },
+			{ was_lost: this.#processLostAtMs !== undefined },
+			{ uptime_ms: now - this.#processStartedAtMs },
 		);
 		this.#processStartedAtMs = undefined;
 		this.#processLostAtMs = undefined;
@@ -130,12 +130,12 @@ export class SshTelemetry {
 			"ssh.network.sampled",
 			{
 				p2p: network.p2p,
-				preferredDerp: network.preferred_derp,
+				preferred_derp: network.preferred_derp,
 			},
 			{
-				latencyMs: network.latency,
-				downloadMbits: bytesPerSecondToMbits(network.download_bytes_sec),
-				uploadMbits: bytesPerSecondToMbits(network.upload_bytes_sec),
+				latency_ms: network.latency,
+				download_mbits: bytesPerSecondToMbits(network.download_bytes_sec),
+				upload_mbits: bytesPerSecondToMbits(network.upload_bytes_sec),
 			},
 		);
 	}

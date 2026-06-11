@@ -43,8 +43,8 @@ import type { CliCredentialManager } from "./cliCredentialManager";
 import type { PathResolver } from "./pathResolver";
 
 type ResolvedBinary =
-	| { binPath: string; stat: Stats; source: "file-path" | "directory" }
-	| { binPath: string; source: "not-found" };
+	| { binPath: string; stat: Stats; source: "file_path" | "directory" }
+	| { binPath: string; source: "not_found" };
 
 type CliVerifyResult =
 	| { kind: "verified" }
@@ -77,7 +77,7 @@ export class CliManager {
 	public async locateBinary(url: string): Promise<string> {
 		const safeHostname = toSafeHost(url);
 		const resolved = await this.resolveBinaryPath(safeHostname);
-		if (resolved.source === "not-found") {
+		if (resolved.source === "not_found") {
 			throw new Error(`No CLI binary found at ${resolved.binPath}`);
 		}
 		return resolved.binPath;
@@ -86,9 +86,9 @@ export class CliManager {
 	/**
 	 * Resolve the CLI binary path from the configured cache path.
 	 *
-	 * Returns "file-path" when the cache path is an existing file (checked for
+	 * Returns "file_path" when the cache path is an existing file (checked for
 	 * version match and updated if needed), "directory" when a binary was found
-	 * inside the directory, or "not-found" with the platform-specific path for
+	 * inside the directory, or "not_found" with the platform-specific path for
 	 * the caller to download into.
 	 */
 	private async resolveBinaryPath(
@@ -98,14 +98,14 @@ export class CliManager {
 		const cacheStat = await cliUtils.stat(cachePath);
 
 		if (cacheStat?.isFile()) {
-			return { binPath: cachePath, stat: cacheStat, source: "file-path" };
+			return { binPath: cachePath, stat: cacheStat, source: "file_path" };
 		}
 
 		const fullNamePath = path.join(cachePath, cliUtils.fullName());
 
 		// Path does not exist yet; return the platform-specific path to download.
 		if (!cacheStat) {
-			return { binPath: fullNamePath, source: "not-found" };
+			return { binPath: fullNamePath, source: "not_found" };
 		}
 
 		// Directory exists; check platform-specific name, then simple name.
@@ -120,7 +120,7 @@ export class CliManager {
 			return { binPath: simpleNamePath, stat: simpleStat, source: "directory" };
 		}
 
-		return { binPath: fullNamePath, source: "not-found" };
+		return { binPath: fullNamePath, source: "not_found" };
 	}
 
 	/**
@@ -240,7 +240,7 @@ export class CliManager {
 			);
 		}
 
-		if (resolved.source === "not-found") {
+		if (resolved.source === "not_found") {
 			this.output.info("No existing binary found, starting download");
 			return {
 				buildInfo,
@@ -442,7 +442,7 @@ export class CliManager {
 		downloadBinPath: string,
 	): Promise<string> {
 		if (
-			resolved.source === "file-path" &&
+			resolved.source === "file_path" &&
 			downloadBinPath !== resolved.binPath
 		) {
 			this.output.info(

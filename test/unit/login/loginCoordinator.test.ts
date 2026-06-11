@@ -597,7 +597,8 @@ describe("LoginCoordinator", () => {
 			trigger: "auth_required" | "missing_session";
 			expected: {
 				result: "success" | "aborted" | "error";
-				reason?: "user_dismissed" | "no_url_provided" | "auth_failed";
+				reason?: "user_dismissed" | "no_url_provided";
+				"error.type"?: "auth_failed";
 			};
 		}
 
@@ -618,7 +619,7 @@ describe("LoginCoordinator", () => {
 					ctx.userInteraction.setResponse("Authentication Required", "Login");
 				},
 				trigger: "auth_required",
-				expected: { result: "error", reason: "auth_failed" },
+				expected: { result: "error", "error.type": "auth_failed" },
 			},
 			{
 				name: "user cancels URL prompt: aborted + no_url_provided",
