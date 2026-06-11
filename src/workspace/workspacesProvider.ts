@@ -20,9 +20,43 @@ import {
 import { type CoderApi } from "../api/coderApi";
 import { type Logger } from "../logging/logger";
 
+import type { SessionData, SessionState } from "../deployment/sessionStore";
+
 export enum WorkspaceQuery {
 	Mine = "owner:me",
 	All = "",
+	Shared = "shared:true",
+}
+
+/** Per-view rendering behavior, keyed by workspace query. */
+interface WorkspaceQueryConfig {
+	readonly showOwner: boolean;
+	readonly showMetadata: boolean;
+	readonly excludeOwn: boolean;
+}
+
+const WORKSPACE_QUERY_CONFIG = {
+	[WorkspaceQuery.Mine]: {
+		showOwner: false,
+		showMetadata: true,
+		excludeOwn: false,
+	},
+	[WorkspaceQuery.All]: {
+		showOwner: true,
+		showMetadata: false,
+		excludeOwn: false,
+	},
+	[WorkspaceQuery.Shared]: {
+		showOwner: true,
+		showMetadata: false,
+		// `shared:true` also returns workspaces we own and shared out; exclude
+		// them to leave only those shared with us.
+		excludeOwn: true,
+	},
+} as const satisfies Record<WorkspaceQuery, WorkspaceQueryConfig>;
+
+export interface WorkspaceProviderOptions {
+	readonly refreshIntervalMs?: number;
 }
 
 /**
@@ -30,8 +64,8 @@ export enum WorkspaceQuery {
  *
  * Polling does not start until fetchAndRefresh() is called at least once.
  *
- * If the poll fails or the client has no URL configured, clear the tree and
- * abort polling until fetchAndRefresh() is called again.
+ * If a poll fails or the session is signed out, the tree is cleared and polling
+ * stops until the next fetchAndRefresh() or session change.
  */
 export class WorkspaceProvider
 	implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable
@@ -42,8 +76,11 @@ export class WorkspaceProvider
 		WorkspaceAgent["id"],
 		AgentMetadataWatcher
 	>();
+	private readonly sessionChangeDisposable: vscode.Disposable;
+	private readonly config: WorkspaceQueryConfig;
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
+	private refetchPending = false;
 	private visible = false;
 	private disposed = false;
 
@@ -51,103 +88,113 @@ export class WorkspaceProvider
 		private readonly getWorkspacesQuery: WorkspaceQuery,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
-		private readonly isAuthenticated: () => boolean,
-		private readonly timerSeconds?: number,
+		private readonly sessionState: SessionState,
+		private readonly options: WorkspaceProviderOptions = {},
 	) {
-		// No initialization.
+		this.config = WORKSPACE_QUERY_CONFIG[getWorkspacesQuery];
+		this.sessionChangeDisposable = this.sessionState.onDidChange(() => {
+			this.clear();
+			void this.fetchAndRefresh();
+		});
 	}
 
-	// fetchAndRefresh fetches new workspaces, re-renders the entire tree, then
-	// keeps refreshing (if a timer length was provided) as long as the user is
-	// still logged in and no errors were encountered fetching workspaces.
-	// Calling this while already refreshing or not visible is a no-op and will
-	// return immediately.
-	public async fetchAndRefresh() {
-		if (
-			this.disposed ||
-			this.fetching ||
-			!this.visible ||
-			!this.isAuthenticated()
-		) {
+	// Fetch workspaces, render them, and queue the next poll. Does nothing when
+	// hidden or disposed. Never rejects, so it is safe as void.
+	public async fetchAndRefresh(): Promise<void> {
+		if (this.disposed || !this.visible) {
+			return;
+		}
+		if (this.fetching) {
+			// Picked up below once the in-flight fetch settles.
+			this.refetchPending = true;
 			return;
 		}
 		this.fetching = true;
-
-		// It is possible we called fetchAndRefresh() manually (through the button
-		// for example), in which case we might still have a pending refresh that
-		// needs to be cleared.
+		// A manual refresh may race a scheduled one, so drop any pending timer.
 		this.cancelPendingRefresh();
 
-		let hadError = false;
+		let hadError;
 		try {
-			this.workspaces = await this.fetch();
-		} catch (error) {
-			this.logger.warn("Failed to fetch workspaces:", error);
-			hadError = true;
-			this.workspaces = [];
+			do {
+				this.refetchPending = false;
+				hadError = false;
+				try {
+					const workspaces = await this.fetch();
+					if (workspaces) {
+						this.setWorkspaces(workspaces);
+					}
+				} catch (error) {
+					this.logger.warn("Failed to fetch workspaces:", error);
+					hadError = true;
+					this.setWorkspaces([]);
+				}
+			} while (this.refetchPending && !this.disposed && this.visible);
+		} finally {
+			this.fetching = false;
 		}
 
-		this.fetching = false;
-
-		this.refresh();
-
-		// As long as there was no error we can schedule the next refresh.
-		if (!hadError) {
+		if (
+			!hadError &&
+			!this.disposed &&
+			this.visible &&
+			this.sessionState.current.kind === "signedIn"
+		) {
 			this.maybeScheduleRefresh();
 		}
 	}
 
+	private setWorkspaces(workspaces: WorkspaceTreeItem[]): void {
+		if (this.disposed) {
+			return;
+		}
+		this.workspaces = workspaces;
+		this.refreshTree();
+	}
+
 	/**
-	 * Fetch workspaces and turn them into tree items.  Throw an error if not
-	 * logged in or the query fails.
+	 * Fetch workspaces and turn them into tree items. Returns an empty list when
+	 * signed out, null when the result went stale (the session change queued a
+	 * re-fetch, so the caller just drops it), and throws if the query fails.
 	 */
-	private async fetch(): Promise<WorkspaceTreeItem[]> {
-		// If there is no URL configured, assume we are logged out.
-		const url = this.client.getAxiosInstance().defaults.baseURL;
-		if (!url) {
-			throw new Error("not logged in");
+	private async fetch(): Promise<WorkspaceTreeItem[] | null> {
+		const session = this.sessionState.current;
+		if (session.kind !== "signedIn") {
+			return [];
 		}
 
 		const resp = await this.client.getWorkspaces({
 			q: this.getWorkspacesQuery,
 		});
 
-		// We could have logged out while waiting for the query, or logged into a
-		// different deployment.
-		const url2 = this.client.getAxiosInstance().defaults.baseURL;
-		if (!url2) {
-			throw new Error("not logged in");
-		} else if (url !== url2) {
-			// In this case we need to fetch from the new deployment instead.
-			// TODO: It would be better to cancel this fetch when that happens,
-			// because this means we have to wait for the old fetch to finish before
-			// finally getting workspaces for the new one.
-			return this.fetch();
+		if (this.sessionChangedSince(session)) {
+			return null;
 		}
 
+		const workspaces = this.filterWorkspaces(resp.workspaces, session);
 		const oldWatcherIds = [...this.agentWatchers.keys()];
 		const reusedWatcherIds: string[] = [];
 
 		// TODO: I think it might make more sense for the tree items to contain
-		// their own watchers, rather than recreate the tree items every time and
-		// have this separate map held outside the tree.
-		const showMetadata = this.getWorkspacesQuery === WorkspaceQuery.Mine;
-		if (showMetadata) {
-			const agents = extractAllAgents(resp.workspaces);
+		// their own watchers, rather than recreate the tree items every time
+		// and have this separate map held outside the tree.
+		if (this.config.showMetadata) {
+			const agents = extractAllAgents(workspaces);
 			for (const agent of agents) {
 				// If we have an existing watcher, re-use it.
 				const oldWatcher = this.agentWatchers.get(agent.id);
 				if (oldWatcher) {
 					reusedWatcherIds.push(agent.id);
-				} else {
-					// Otherwise create a new watcher.
-					const watcher = await createAgentMetadataWatcher(
-						agent.id,
-						this.client,
-					);
-					watcher.onChange(() => this.refresh());
-					this.agentWatchers.set(agent.id, watcher);
+					continue;
 				}
+				const watcher = await createAgentMetadataWatcher(agent.id, this.client);
+				// dispose() or a session change may have raced this await;
+				// drop the watcher rather than leak it or render stale data.
+				if (this.disposed || this.sessionChangedSince(session)) {
+					watcher.dispose();
+					return null;
+				}
+				watcher.onChange(() => this.refreshTree());
+				this.agentWatchers.set(agent.id, watcher);
 			}
 		}
 
@@ -159,18 +206,31 @@ export class WorkspaceProvider
 			}
 		}
 
-		// Create tree items for each workspace
-		const workspaceTreeItems = resp.workspaces.map((workspace: Workspace) => {
-			const workspaceTreeItem = new WorkspaceTreeItem(
-				workspace,
-				this.getWorkspacesQuery === WorkspaceQuery.All,
-				showMetadata,
-			);
+		return workspaces.map(
+			(workspace: Workspace) =>
+				new WorkspaceTreeItem(
+					workspace,
+					this.config.showOwner,
+					this.config.showMetadata,
+				),
+		);
+	}
 
-			return workspaceTreeItem;
-		});
+	/** True if the session signed in/out or changed since `session` was read. */
+	private sessionChangedSince(session: SessionData): boolean {
+		return this.sessionState.current !== session;
+	}
 
-		return workspaceTreeItems;
+	private filterWorkspaces(
+		workspaces: readonly Workspace[],
+		session: Extract<SessionData, { kind: "signedIn" }>,
+	): readonly Workspace[] {
+		if (!this.config.excludeOwn) {
+			return workspaces;
+		}
+		return workspaces.filter(
+			(workspace) => workspace.owner_id !== session.user.id,
+		);
 	}
 
 	/**
@@ -199,15 +259,12 @@ export class WorkspaceProvider
 		}
 	}
 
-	/**
-	 * Schedule a refresh if one is not already scheduled or underway and a
-	 * timeout length was provided.
-	 */
+	/** Schedule the next poll, unless one is pending or no interval is set. */
 	private maybeScheduleRefresh() {
-		if (this.timerSeconds && !this.timeout && !this.fetching) {
+		if (this.options.refreshIntervalMs && !this.timeout) {
 			this.timeout = setTimeout(() => {
 				void this.fetchAndRefresh();
-			}, this.timerSeconds * 1000);
+			}, this.options.refreshIntervalMs);
 		}
 	}
 
@@ -218,8 +275,8 @@ export class WorkspaceProvider
 		vscode.TreeItem | undefined | null | void
 	> = this._onDidChangeTreeData.event;
 
-	// refresh causes the tree to re-render. It does not fetch fresh workspaces.
-	public refresh(item?: vscode.TreeItem): void {
+	// Re-render the tree from the current workspaces. Does not fetch.
+	public refreshTree(item?: vscode.TreeItem): void {
 		if (this.disposed) {
 			return;
 		}
@@ -308,18 +365,24 @@ export class WorkspaceProvider
 	 * Clear all workspaces from the tree without fetching.
 	 */
 	public clear(): void {
+		this.clearState();
+		this.refreshTree();
+	}
+
+	private clearState(): void {
 		this.cancelPendingRefresh();
 		for (const watcher of this.agentWatchers.values()) {
 			watcher.dispose();
 		}
 		this.agentWatchers.clear();
 		this.workspaces = undefined;
-		this.refresh();
 	}
 
 	public dispose() {
 		this.disposed = true;
-		this.clear();
+		this.clearState();
+		this.sessionChangeDisposable.dispose();
+		this._onDidChangeTreeData.dispose();
 	}
 }
 

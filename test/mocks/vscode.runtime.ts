@@ -67,16 +67,19 @@ export class ThemeColor {
 
 export class TreeItem {
 	id?: string;
-	contextValue?: string;
+	label?: string;
 	description?: string;
 	tooltip?: string;
+	contextValue?: string;
 	command?: unknown;
 	iconPath?: unknown;
 
 	constructor(
-		public label: string,
+		label: string,
 		public collapsibleState?: number,
-	) {}
+	) {
+		this.label = label;
+	}
 }
 
 export class Uri {

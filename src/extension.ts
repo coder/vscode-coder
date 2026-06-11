@@ -31,6 +31,7 @@ import {
 } from "./workspace/workspacesProvider";
 
 const MY_WORKSPACES_TREE_ID = "myWorkspaces";
+const SHARED_WORKSPACES_TREE_ID = "sharedWorkspaces";
 const ALL_WORKSPACES_TREE_ID = "allWorkspaces";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
@@ -154,14 +155,19 @@ async function doActivate(
 	);
 	ctx.subscriptions.push(authInterceptor);
 
-	const isAuthenticated = () => contextManager.get("coder.authenticated");
+	const deploymentManager = DeploymentManager.create(
+		serviceContainer,
+		client,
+		oauthSessionManager,
+	);
+	ctx.subscriptions.push(deploymentManager);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
 		client,
 		output,
-		isAuthenticated,
-		5,
+		deploymentManager.session,
+		{ refreshIntervalMs: 5_000 },
 	);
 	ctx.subscriptions.push(myWorkspacesProvider);
 
@@ -169,46 +175,42 @@ async function doActivate(
 		WorkspaceQuery.All,
 		client,
 		output,
-		isAuthenticated,
+		deploymentManager.session,
 	);
 	ctx.subscriptions.push(allWorkspacesProvider);
 
+	const sharedWorkspacesProvider = new WorkspaceProvider(
+		WorkspaceQuery.Shared,
+		client,
+		output,
+		deploymentManager.session,
+	);
+	ctx.subscriptions.push(sharedWorkspacesProvider);
+
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
 	// (so we can see when it is visible) but otherwise they have the same effect.
-	const myWsTree = vscode.window.createTreeView(MY_WORKSPACES_TREE_ID, {
-		treeDataProvider: myWorkspacesProvider,
-	});
-	ctx.subscriptions.push(myWsTree);
-	myWorkspacesProvider.setVisibility(myWsTree.visible);
-	myWsTree.onDidChangeVisibility(
-		(event) => {
-			myWorkspacesProvider.setVisibility(event.visible);
-		},
-		undefined,
-		ctx.subscriptions,
-	);
+	const registerWorkspaceTreeView = (
+		viewId: string,
+		provider: WorkspaceProvider,
+	) => {
+		const tree = vscode.window.createTreeView(viewId, {
+			treeDataProvider: provider,
+		});
+		ctx.subscriptions.push(tree);
+		provider.setVisibility(tree.visible);
+		tree.onDidChangeVisibility(
+			(event) => provider.setVisibility(event.visible),
+			undefined,
+			ctx.subscriptions,
+		);
+	};
 
-	const allWsTree = vscode.window.createTreeView(ALL_WORKSPACES_TREE_ID, {
-		treeDataProvider: allWorkspacesProvider,
-	});
-	ctx.subscriptions.push(allWsTree);
-	allWorkspacesProvider.setVisibility(allWsTree.visible);
-	allWsTree.onDidChangeVisibility(
-		(event) => {
-			allWorkspacesProvider.setVisibility(event.visible);
-		},
-		undefined,
-		ctx.subscriptions,
+	registerWorkspaceTreeView(MY_WORKSPACES_TREE_ID, myWorkspacesProvider);
+	registerWorkspaceTreeView(
+		SHARED_WORKSPACES_TREE_ID,
+		sharedWorkspacesProvider,
 	);
-
-	// Create deployment manager to centralize deployment state management
-	const deploymentManager = DeploymentManager.create(
-		serviceContainer,
-		client,
-		oauthSessionManager,
-		[myWorkspacesProvider, allWorkspacesProvider],
-	);
-	ctx.subscriptions.push(deploymentManager);
+	registerWorkspaceTreeView(ALL_WORKSPACES_TREE_ID, allWorkspacesProvider);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
@@ -318,6 +320,7 @@ async function doActivate(
 	);
 	commandManager.register("coder.refreshWorkspaces", () => {
 		void myWorkspacesProvider.fetchAndRefresh();
+		void sharedWorkspacesProvider.fetchAndRefresh();
 		void allWorkspacesProvider.fetchAndRefresh();
 	});
 	commandManager.register("coder.viewLogs", commands.viewLogs.bind(commands));
@@ -327,6 +330,9 @@ async function doActivate(
 	);
 	commandManager.register("coder.searchMyWorkspaces", async () =>
 		showTreeViewSearch(MY_WORKSPACES_TREE_ID),
+	);
+	commandManager.register("coder.searchSharedWorkspaces", async () =>
+		showTreeViewSearch(SHARED_WORKSPACES_TREE_ID),
 	);
 	commandManager.register("coder.searchAllWorkspaces", async () =>
 		showTreeViewSearch(ALL_WORKSPACES_TREE_ID),
@@ -406,7 +412,7 @@ async function doActivate(
 			if (details) {
 				ctx.subscriptions.push(details);
 
-				const deploymentSet = await deploymentManager.verifyAndApplyDeployment({
+				const deploymentSet = await deploymentManager.verifyAndApplySession({
 					safeHostname: details.safeHostname,
 					url: details.url,
 					token: details.token,
@@ -461,7 +467,7 @@ async function doActivate(
 		output.info(`Initializing deployment: ${deployment.url}`);
 		tracer
 			.traceDeploymentInit(() =>
-				deploymentManager.verifyAndApplyDeployment(deployment),
+				deploymentManager.verifyAndApplySession(deployment),
 			)
 			.then((success) => {
 				if (success) {

@@ -9,19 +9,27 @@ import * as fs from "node:fs/promises";
 import { vi } from "vitest";
 import * as vscode from "vscode";
 
+import { SessionStore, type SessionData } from "@/deployment/sessionStore";
+
 import { createTestTelemetryService } from "./telemetry";
 import { window as vscodeWindow } from "./vscode.runtime";
 
-import type { Experiment, User } from "coder/site/src/api/typesGenerated";
+import type {
+	Experiment,
+	User,
+	Workspace,
+} from "coder/site/src/api/typesGenerated";
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import type { IncomingMessage } from "node:http";
 
+import type { AgentMetadataEvent } from "@/api/api-helper";
 import type { CoderApi } from "@/api/coderApi";
 import type { CliCredentialManager } from "@/core/cliCredentialManager";
 import type { ServiceContainer } from "@/core/container";
 import type { ContextManager } from "@/core/contextManager";
 import type { MementoManager } from "@/core/mementoManager";
 import type { SecretsManager } from "@/core/secretsManager";
+import type { Deployment } from "@/deployment/types";
 import type { Logger } from "@/logging/logger";
 import type { NetworkInfo } from "@/remote/sshProcess";
 import type { TelemetryService } from "@/telemetry/service";
@@ -31,7 +39,6 @@ import type {
 	ParsedMessageEvent,
 	UnidirectionalStream,
 } from "@/websocket/eventStreamConnection";
-
 /**
  * Subset of `ContextManager`'s public API that mocks (e.g. `MockContextManager`)
  * implement. Used by `createMockServiceContainer` so tests can pass either the
@@ -459,6 +466,21 @@ export function createMockLogger(): Logger {
 		error: vi.fn(),
 		show: vi.fn(),
 	};
+}
+
+/** Resolve once pending microtasks and the macrotask queue have drained. */
+export async function flush(): Promise<void> {
+	await new Promise((resolve) => setImmediate(resolve));
+}
+
+/**
+ * Drain only the microtask queue. Use instead of flush() under fake timers,
+ * which leave the macrotask queue (setImmediate) untouched.
+ */
+export async function flushPromises(): Promise<void> {
+	await Promise.resolve();
+	await Promise.resolve();
+	await Promise.resolve();
 }
 
 /**
@@ -1182,5 +1204,77 @@ export class MockTerminalOutputChannel {
 	clear(): void {
 		this._lines.length = 0;
 		this.write.mockClear();
+	}
+}
+
+/** Default user id of TestSessionStore's initial signed-in session. */
+export const TEST_CURRENT_USER_ID = "current-user";
+
+/**
+ * Real SessionStore that starts signed in as TEST_CURRENT_USER_ID, with
+ * id-only sign-in/out helpers for tests that switch users.
+ */
+export class TestSessionStore extends SessionStore {
+	constructor() {
+		super();
+		this.signInAs(TEST_CURRENT_USER_ID);
+	}
+
+	signInAs(userId = TEST_CURRENT_USER_ID): void {
+		this.signIn(
+			{ url: "https://coder.example.com", safeHostname: "coder.example.com" },
+			createMockUser({ id: userId }),
+		);
+	}
+
+	override signOut(deployment: Deployment | null = null): SessionData {
+		return super.signOut(deployment);
+	}
+}
+
+interface WorkspacesResponse {
+	workspaces: readonly Workspace[];
+	count: number;
+}
+
+/**
+ * Stands in for CoderApi at the boundaries WorkspaceProvider touches: the
+ * workspaces query and the per-agent metadata socket. Program responses with
+ * respondOnce()/pending(); metadata flows through a real MockEventStream so
+ * tests drive the production watcher rather than a stub.
+ */
+export class MockWorkspacesClient {
+	readonly metadataStreams = new Map<
+		string,
+		MockEventStream<{ data: AgentMetadataEvent[] }>
+	>();
+
+	readonly getWorkspaces = vi.fn(
+		(_req: { q: string }): Promise<WorkspacesResponse> =>
+			Promise.resolve({ workspaces: [], count: 0 }),
+	);
+
+	watchAgentMetadata(agentId: string) {
+		const stream = new MockEventStream<{ data: AgentMetadataEvent[] }>();
+		this.metadataStreams.set(agentId, stream);
+		return Promise.resolve(stream);
+	}
+
+	/** Resolve the next getWorkspaces call with these workspaces. */
+	respondOnce(workspaces: readonly Workspace[]): void {
+		this.getWorkspaces.mockResolvedValueOnce({
+			workspaces,
+			count: workspaces.length,
+		});
+	}
+
+	/** Make the next getWorkspaces call hang until the returned resolve() runs. */
+	pending(): { resolve: (workspaces: readonly Workspace[]) => void } {
+		const { promise, resolve } = Promise.withResolvers<WorkspacesResponse>();
+		this.getWorkspaces.mockReturnValueOnce(promise);
+		return {
+			resolve: (workspaces) =>
+				resolve({ workspaces, count: workspaces.length }),
+		};
 	}
 }

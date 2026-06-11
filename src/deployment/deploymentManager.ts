@@ -16,8 +16,12 @@ import { type Logger } from "../logging/logger";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { getAuthConfigWatchSettings } from "../settings/authConfig";
 import { type TelemetryService } from "../telemetry/service";
-import { type WorkspaceProvider } from "../workspace/workspacesProvider";
 
+import {
+	SessionStore,
+	type SessionData,
+	type SessionState,
+} from "./sessionStore";
 import {
 	DeploymentSchema,
 	type Deployment,
@@ -36,7 +40,6 @@ import type * as vscode from "vscode";
  * - OAuth session management
  * - Auth listener registration
  * - Context updates (coder.authenticated, coder.isOwner)
- * - Workspace provider refresh
  * - Cross-window sync handling
  */
 export class DeploymentManager implements vscode.Disposable {
@@ -47,7 +50,7 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly telemetryService: TelemetryService;
 	private readonly deploymentTelemetry: DeploymentTelemetry;
 
-	#deployment: Deployment | null = null;
+	readonly #sessionStore = new SessionStore();
 	#disposed = false;
 	#authListenerDisposable: vscode.Disposable | undefined;
 	#authConfigDisposable: vscode.Disposable | undefined;
@@ -59,7 +62,6 @@ export class DeploymentManager implements vscode.Disposable {
 		serviceContainer: ServiceContainer,
 		private readonly client: CoderApi,
 		private readonly oauthSessionManager: OAuthSessionManager,
-		private readonly workspaceProviders: WorkspaceProvider[],
 	) {
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.mementoManager = serviceContainer.getMementoManager();
@@ -73,13 +75,11 @@ export class DeploymentManager implements vscode.Disposable {
 		serviceContainer: ServiceContainer,
 		client: CoderApi,
 		oauthSessionManager: OAuthSessionManager,
-		workspaceProviders: WorkspaceProvider[],
 	): DeploymentManager {
 		const manager = new DeploymentManager(
 			serviceContainer,
 			client,
 			oauthSessionManager,
-			workspaceProviders,
 		);
 		manager.subscribeToAuthConfigChanges();
 		manager.subscribeToCrossWindowChanges();
@@ -90,35 +90,39 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Get the current deployment state.
 	 */
 	public getCurrentDeployment(): Deployment | null {
-		return this.#deployment;
+		return this.#sessionStore.current.deployment;
+	}
+
+	/** Read-only view of the auth session for consumers that track changes. */
+	public get session(): SessionState {
+		return this.#sessionStore;
 	}
 
 	/**
 	 * Check if we have an authenticated deployment (does not guarantee that the current auth data is valid).
 	 */
 	public isAuthenticated(): boolean {
-		return this.contextManager.get("coder.authenticated");
+		return this.#sessionStore.current.kind === "signedIn";
 	}
 
 	/**
-	 * Verify credentials and apply the deployment on success. Used for
-	 * fresh logins and for un-suspending a session after auth settings or
-	 * a token become valid again. Bails if state moved during the verify
-	 * (logout, another login, dispose), so callers don't need a race guard.
+	 * Verify credentials and apply the deployment on success, signing in. Used
+	 * for fresh logins and for un-suspending a session once auth settings or a
+	 * token become valid again. Bails if state moved during the verify (logout,
+	 * another login, dispose), so callers don't need a race guard.
 	 */
-	public async verifyAndApplyDeployment(
+	public async verifyAndApplySession(
 		deployment: Deployment & { token?: string },
 	): Promise<boolean> {
-		const deploymentBefore = this.#deployment;
+		const sessionBefore = this.#sessionStore.current;
 		const token =
 			deployment.token ??
 			(await this.secretsManager.getSessionAuth(deployment.safeHostname))
 				?.token;
-		const tempClient = CoderApi.create(deployment.url, token, this.logger);
 
 		try {
-			const user = await tempClient.getAuthenticatedUser();
-			if (this.#hasStateChangedSince(deploymentBefore)) {
+			const user = await this.#verifyCredentials(deployment.url, token);
+			if (this.#hasStateChangedSince(sessionBefore)) {
 				return false;
 			}
 			await this.setDeployment({ ...deployment, token, user });
@@ -126,17 +130,31 @@ export class DeploymentManager implements vscode.Disposable {
 		} catch (e) {
 			this.logger.warn("Failed to authenticate with deployment:", e);
 			return false;
+		}
+	}
+
+	/**
+	 * Verify credentials with a throwaway client and return the authenticated
+	 * user. Throws if the credentials are rejected.
+	 */
+	async #verifyCredentials(
+		url: string,
+		token: string | undefined,
+	): Promise<User> {
+		const tempClient = CoderApi.create(url, token, this.logger);
+		try {
+			return await tempClient.getAuthenticatedUser();
 		} finally {
 			tempClient.dispose();
 		}
 	}
 
 	/** True if disposal, login, or a deployment switch raced our await. */
-	#hasStateChangedSince(deploymentBefore: Deployment | null): boolean {
+	#hasStateChangedSince(sessionBefore: SessionData): boolean {
 		return (
 			this.#disposed ||
 			this.isAuthenticated() ||
-			this.#deployment !== deploymentBefore
+			this.#sessionStore.current !== sessionBefore
 		);
 	}
 
@@ -151,29 +169,25 @@ export class DeploymentManager implements vscode.Disposable {
 			hostname: deployment.safeHostname,
 			user: deployment.user.username,
 		});
-		this.#deployment = { ...deployment };
-		const ourRef = this.#deployment;
+		const deploymentWithoutAuth = DeploymentSchema.parse(deployment);
 		this.telemetryService.setDeploymentUrl(deployment.url);
-
-		// Updates client credentials
 		if (deployment.token === undefined) {
 			this.client.setHost(deployment.url);
 		} else {
 			this.client.setCredentials(deployment.url, deployment.token);
 		}
 
-		// Register auth listener before setDeployment so background token refresh
-		// can update client credentials via the listener
+		const ourRef = this.#sessionStore.signIn(
+			deploymentWithoutAuth,
+			deployment.user,
+		);
+		// Register before OAuth setup so background token refresh can update client credentials.
 		this.registerAuthListener();
-		// Contexts must be set before refresh (providers check isAuthenticated)
 		this.updateAuthContexts(deployment.user);
-		this.refreshWorkspaces();
 
-		const deploymentWithoutAuth: Deployment =
-			DeploymentSchema.parse(deployment);
 		await this.oauthSessionManager.setDeployment(deploymentWithoutAuth);
 		// Bail if a concurrent write took over during the await.
-		if (this.#deployment !== ourRef) {
+		if (this.#sessionStore.current !== ourRef) {
 			return;
 		}
 		await this.persistDeployment(deploymentWithoutAuth);
@@ -183,12 +197,19 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Clears the current deployment.
 	 */
 	public async clearDeployment(reason: DeploymentSuspendReason): Promise<void> {
-		this.logger.debug("Clearing deployment", this.#deployment?.safeHostname);
-		this.suspendSession(reason);
+		this.logger.debug(
+			"Clearing deployment",
+			this.#sessionStore.current.deployment?.safeHostname,
+		);
+		const wasAuthenticated = this.isAuthenticated();
 		this.#authListenerDisposable?.dispose();
 		this.#authListenerDisposable = undefined;
-		this.#deployment = null;
+		this.#sessionStore.signOut(null);
+		this.clearAuthState();
 		this.telemetryService.setDeploymentUrl("");
+		if (wasAuthenticated) {
+			this.deploymentTelemetry.suspended(reason);
+		}
 
 		await this.secretsManager.setCurrentDeployment(undefined);
 	}
@@ -199,22 +220,17 @@ export class DeploymentManager implements vscode.Disposable {
 	 */
 	public suspendSession(reason: DeploymentSuspendReason): void {
 		const wasAuthenticated = this.isAuthenticated();
-		this.oauthSessionManager.clearDeployment();
-		this.client.setCredentials(undefined, undefined);
-		this.updateAuthContexts(undefined);
-		this.clearWorkspaces();
+		this.#sessionStore.signOut(this.#sessionStore.current.deployment);
+		this.clearAuthState();
 		if (wasAuthenticated) {
 			this.deploymentTelemetry.suspended(reason);
 		}
 	}
 
-	/**
-	 * Clear all workspace providers without fetching.
-	 */
-	private clearWorkspaces(): void {
-		for (const provider of this.workspaceProviders) {
-			provider.clear();
-		}
+	private clearAuthState(): void {
+		this.oauthSessionManager.clearDeployment();
+		this.client.setCredentials(undefined, undefined);
+		this.updateAuthContexts(undefined);
 	}
 
 	public dispose(): void {
@@ -222,6 +238,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.#authListenerDisposable?.dispose();
 		this.#authConfigDisposable?.dispose();
 		this.#crossWindowSyncDisposable?.dispose();
+		this.#sessionStore.dispose();
 	}
 
 	/**
@@ -230,25 +247,32 @@ export class DeploymentManager implements vscode.Disposable {
 	 * Also handles recovery from suspended session state.
 	 */
 	private registerAuthListener(): void {
-		if (!this.#deployment) {
+		const deployment = this.#sessionStore.current.deployment;
+		if (!deployment) {
 			return;
 		}
 
 		// Capture hostname at registration time for the guard clause
-		const safeHostname = this.#deployment.safeHostname;
+		const safeHostname = deployment.safeHostname;
 
 		this.#authListenerDisposable?.dispose();
 		this.logger.debug("Registering auth listener for hostname", safeHostname);
 		this.#authListenerDisposable = this.secretsManager.onDidChangeSessionAuth(
 			safeHostname,
 			async (auth) => {
-				if (this.#deployment?.safeHostname !== safeHostname) {
+				if (
+					this.#sessionStore.current.deployment?.safeHostname !== safeHostname
+				) {
 					return;
 				}
 
 				if (auth) {
 					if (this.isAuthenticated()) {
-						this.client.setCredentials(auth.url, auth.token);
+						await this.verifyAndUpdateSession({
+							url: auth.url,
+							safeHostname,
+							token: auth.token,
+						});
 					} else {
 						this.logger.debug(
 							"Token updated after session suspended, recovering",
@@ -267,6 +291,48 @@ export class DeploymentManager implements vscode.Disposable {
 				}
 			},
 		);
+	}
+
+	/**
+	 * Handle a token change while already signed in: verify the new token before
+	 * applying it, so an unverified token never reaches the live client.
+	 */
+	private async verifyAndUpdateSession(
+		deployment: Deployment & { token: string },
+	): Promise<void> {
+		const sessionBefore = this.#sessionStore.current;
+		try {
+			const user = await this.#verifyCredentials(
+				deployment.url,
+				deployment.token,
+			);
+			if (this.#disposed) {
+				return;
+			}
+			const current = this.#sessionStore.current;
+
+			if (current === sessionBefore) {
+				// Same-user rotation only needs fresh credentials; skipping
+				// setDeployment avoids a revision bump and tree rebuild.
+				if (current.kind === "signedIn" && current.user.id === user.id) {
+					this.client.setCredentials(deployment.url, deployment.token);
+				} else {
+					await this.setDeployment({ ...deployment, user });
+				}
+				return;
+			}
+
+			// Session changed under us: recover only a same-deployment suspension
+			// (e.g. a concurrent 401); a logout or switch wins.
+			if (
+				current.kind === "signedOut" &&
+				current.deployment?.safeHostname === deployment.safeHostname
+			) {
+				await this.setDeployment({ ...deployment, user });
+			}
+		} catch (e) {
+			this.logger.warn("Failed to authenticate updated session:", e);
+		}
 	}
 
 	private subscribeToAuthConfigChanges(): void {
@@ -292,14 +358,17 @@ export class DeploymentManager implements vscode.Disposable {
 		try {
 			do {
 				this.#recoveryPending = false;
-				const snapshot = this.#deployment;
-				if (this.#disposed || !snapshot || this.isAuthenticated()) {
+				const deployment = this.#sessionStore.current.deployment;
+				if (this.#disposed || !deployment || this.isAuthenticated()) {
 					return;
 				}
 				this.logger.debug(
 					"Authentication settings changed after session suspended, recovering",
 				);
-				const recovered = await this.recoverDeployment(snapshot, "auth_config");
+				const recovered = await this.recoverDeployment(
+					deployment,
+					"auth_config",
+				);
 				if (!recovered) {
 					this.deploymentTelemetry.authConfigRecoveryFailed();
 				}
@@ -335,7 +404,7 @@ export class DeploymentManager implements vscode.Disposable {
 		deployment: Deployment & { token?: string },
 		trigger: DeploymentRecoveryTrigger,
 	): Promise<boolean> {
-		const recovered = await this.verifyAndApplyDeployment(deployment);
+		const recovered = await this.verifyAndApplySession(deployment);
 		if (recovered) {
 			this.deploymentTelemetry.recovered(trigger);
 		}
@@ -349,15 +418,6 @@ export class DeploymentManager implements vscode.Disposable {
 		this.contextManager.set("coder.authenticated", Boolean(user));
 		const isOwner = user?.roles.some((r) => r.name === "owner") ?? false;
 		this.contextManager.set("coder.isOwner", isOwner);
-	}
-
-	/**
-	 * Refresh all workspace providers asynchronously.
-	 */
-	private refreshWorkspaces(): void {
-		for (const provider of this.workspaceProviders) {
-			void provider.fetchAndRefresh();
-		}
 	}
 
 	/**
