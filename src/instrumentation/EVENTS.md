@@ -88,9 +88,9 @@ date range in one of two formats:
   above, for direct inspection or ad-hoc processing.
 - **OTLP**: a zip of standard OTLP/JSON envelopes (spans in `traces.json`,
   logs in `logs.json`, metric events as data points in `metrics.json`) plus
-  a `manifest.json` describing the export. Feed these to anything that
-  ingests OTLP/JSON, such as an OpenTelemetry Collector pipeline or your
-  observability backend's import tooling.
+  a `manifest.json` describing the export. Feed these to any OTel-compatible
+  tool that ingests OTLP/JSON, such as an OpenTelemetry Collector pipeline or
+  your observability backend's import tooling.
 
 The **Coder: Create Support Bundle** command also packs the raw JSONL
 telemetry files into its bundle (under `vscode-logs/telemetry`), so a support
