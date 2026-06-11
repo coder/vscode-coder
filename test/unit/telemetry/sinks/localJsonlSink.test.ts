@@ -7,6 +7,11 @@ import {
 	type LocalSinkConfig,
 } from "@/settings/telemetry";
 import { LocalJsonlSink } from "@/telemetry/sinks/localJsonlSink";
+import {
+	serializeTelemetryEventLine,
+	serializeTelemetryFileHeaderLine,
+	type SessionContext,
+} from "@/telemetry/wireFormat";
 
 import { createTelemetryEventFactory } from "../../../mocks/telemetry";
 import {
@@ -20,6 +25,17 @@ vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
 const BASE_DIR = "/telemetry";
 const SESSION_ID = "12345678-aaaa-bbbb-cccc-dddddddddddd";
 const SESSION_SLUG = "12345678";
+
+const sessionContext = (sessionId: string): SessionContext => ({
+	extensionVersion: "1.14.5",
+	machineId: "machine-id",
+	sessionId,
+	osType: "linux",
+	osVersion: "6.0.0",
+	hostArch: "x64",
+	platformName: "Visual Studio Code",
+	platformVersion: "1.106.0",
+});
 
 const todayUtc = (): string => new Date().toISOString().slice(0, 10);
 
@@ -36,6 +52,13 @@ const readJsonl = (filePath: string): Array<Record<string, unknown>> =>
 		.split("\n")
 		.filter((l) => l.length > 0)
 		.map((l) => JSON.parse(l));
+
+/** Event rows only, with header lines filtered out. */
+const readRows = (filePath: string): Array<Record<string, unknown>> =>
+	readJsonl(filePath).filter((l) => l.kind === undefined);
+
+const readHeaders = (filePath: string): Array<Record<string, unknown>> =>
+	readJsonl(filePath).filter((l) => l.kind === "header");
 
 describe("LocalJsonlSink", () => {
 	let active: LocalJsonlSink[];
@@ -65,7 +88,10 @@ describe("LocalJsonlSink", () => {
 			...config,
 		});
 		const logger = createMockLogger();
-		const sink = LocalJsonlSink.start({ baseDir: BASE_DIR, sessionId }, logger);
+		const sink = LocalJsonlSink.start(
+			{ baseDir: BASE_DIR, session: sessionContext(sessionId) },
+			logger,
+		);
 		active.push(sink);
 
 		return { sink, logger, makeEvent: createTelemetryEventFactory() };
@@ -80,7 +106,42 @@ describe("LocalJsonlSink", () => {
 		expect(vol.existsSync(todaysFile())).toBe(false);
 
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(readJsonl(todaysFile())).toHaveLength(2);
+		expect(readRows(todaysFile())).toHaveLength(2);
+	});
+
+	it("writes the session header as the first line of a new file", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-05-04T12:00:00.000Z"));
+		const { sink, makeEvent } = setup();
+
+		sink.write(makeEvent());
+		await sink.flush();
+
+		// The header shape itself is locked by the wireFormat tests.
+		const [first, ...rest] = readJsonl(todaysFile());
+		expect(first).toEqual(
+			JSON.parse(serializeTelemetryFileHeaderLine(sessionContext(SESSION_ID))),
+		);
+		expect(rest).toHaveLength(1);
+	});
+
+	it("appends rows without a second header when the file already has bytes", async () => {
+		// A prior flush in the same session (simulated on disk) already wrote
+		// the header; seeding from disk must not repeat it.
+		const priorEvents = createTelemetryEventFactory();
+		vol.fromJSON({
+			[todaysFile()]:
+				serializeTelemetryFileHeaderLine(sessionContext(SESSION_ID)) +
+				serializeTelemetryEventLine(priorEvents()),
+		});
+		const { sink, makeEvent } = setup();
+
+		sink.write(makeEvent());
+		await sink.flush();
+
+		expect(readHeaders(todaysFile())).toHaveLength(1);
+		expect(readRows(todaysFile())).toHaveLength(2);
+		expect(readJsonl(todaysFile())[0].kind).toBe("header");
 	});
 
 	it("flushes early once the buffer reaches flushBatchSize", async () => {
@@ -92,7 +153,7 @@ describe("LocalJsonlSink", () => {
 
 		sink.write(makeEvent());
 		await vi.waitFor(() => expect(vol.existsSync(todaysFile())).toBe(true));
-		expect(readJsonl(todaysFile())).toHaveLength(3);
+		expect(readRows(todaysFile())).toHaveLength(3);
 	});
 
 	it("drops the oldest events when the buffer exceeds bufferLimit", async () => {
@@ -106,7 +167,7 @@ describe("LocalJsonlSink", () => {
 		}
 		await sink.flush();
 
-		expect(readJsonl(todaysFile()).map((l) => l.event_sequence)).toEqual([
+		expect(readRows(todaysFile()).map((l) => l.event_sequence)).toEqual([
 			3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
 		]);
 	});
@@ -155,7 +216,7 @@ describe("LocalJsonlSink", () => {
 
 		await sink.dispose();
 
-		expect(readJsonl(todaysFile())).toHaveLength(2);
+		expect(readRows(todaysFile())).toHaveLength(2);
 	});
 
 	it("ignores writes after dispose", async () => {
@@ -167,11 +228,12 @@ describe("LocalJsonlSink", () => {
 		sink.write(makeEvent());
 		sink.write(makeEvent());
 
-		expect(readJsonl(todaysFile())).toHaveLength(2);
+		expect(readRows(todaysFile())).toHaveLength(2);
 	});
 
 	it("rotates to a numbered segment once maxFileBytes is exceeded", async () => {
-		// Padded events are ~2000 bytes; 4500 holds 2 events but not 3.
+		// Header + padded rows are ~2000 bytes each; 4500 holds the header and
+		// 2 rows but not 3.
 		const { sink, makeEvent } = setup({ maxFileBytes: 4500 });
 		const padded = () => makeEvent({ properties: { pad: "x".repeat(1500) } });
 
@@ -180,8 +242,11 @@ describe("LocalJsonlSink", () => {
 			await sink.flush();
 		}
 
-		expect(readJsonl(todaysFile(SESSION_SLUG, 0))).toHaveLength(2);
-		expect(readJsonl(todaysFile(SESSION_SLUG, 1))).toHaveLength(1);
+		expect(readRows(todaysFile(SESSION_SLUG, 0))).toHaveLength(2);
+		expect(readRows(todaysFile(SESSION_SLUG, 1))).toHaveLength(1);
+		// Every segment is independently readable: each opens with a header.
+		expect(readJsonl(todaysFile(SESSION_SLUG, 0))[0].kind).toBe("header");
+		expect(readJsonl(todaysFile(SESSION_SLUG, 1))[0].kind).toBe("header");
 	});
 
 	it("keeps a single oversized payload in segment 0 instead of rotating", async () => {
@@ -192,11 +257,11 @@ describe("LocalJsonlSink", () => {
 		sink.write(makeEvent({ properties: { huge: "x".repeat(5000) } }));
 		await sink.flush();
 
-		expect(readJsonl(todaysFile(SESSION_SLUG, 0))).toHaveLength(1);
+		expect(readRows(todaysFile(SESSION_SLUG, 0))).toHaveLength(1);
 		expect(vol.existsSync(todaysFile(SESSION_SLUG, 1))).toBe(false);
 	});
 
-	it("starts a fresh file on UTC date rollover", async () => {
+	it("starts a fresh file with its own header on UTC date rollover", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-05-04T23:59:00.000Z"));
 		const { sink, makeEvent } = setup();
@@ -208,8 +273,10 @@ describe("LocalJsonlSink", () => {
 		sink.write(makeEvent());
 		await sink.flush();
 
-		expect(readJsonl(fileFor("2026-05-04"))).toHaveLength(1);
-		expect(readJsonl(fileFor("2026-05-05"))).toHaveLength(1);
+		for (const date of ["2026-05-04", "2026-05-05"]) {
+			expect(readRows(fileFor(date))).toHaveLength(1);
+			expect(readJsonl(fileFor(date))[0].kind).toBe("header");
+		}
 	});
 
 	it("deletes telemetry files older than maxAgeDays at startup", async () => {
@@ -272,7 +339,7 @@ describe("LocalJsonlSink", () => {
 		);
 	});
 
-	it("emits valid snake_case JSONL with optional fields when set, omitting when not", async () => {
+	it("emits valid snake_case JSONL rows with optional fields when set, omitting when not", async () => {
 		const { sink, makeEvent } = setup();
 
 		sink.write(makeEvent());
@@ -288,10 +355,11 @@ describe("LocalJsonlSink", () => {
 		);
 		await sink.dispose();
 
-		const [bare, full] = readJsonl(todaysFile());
+		const [bare, full] = readRows(todaysFile());
 		expect(bare).not.toHaveProperty("trace_id");
 		expect(bare).not.toHaveProperty("parent_event_id");
 		expect(bare).not.toHaveProperty("error");
+		expect(bare).not.toHaveProperty("context");
 		expect(full).toMatchObject({
 			event_id: expect.any(String),
 			event_name: "remote.connect",
@@ -299,11 +367,7 @@ describe("LocalJsonlSink", () => {
 			trace_id: "trace-1",
 			parent_event_id: "parent-1",
 			error: { message: "nope", type: "TypeError", code: "E_FAIL" },
-			context: {
-				extension_version: "1.14.5",
-				deployment_url: "https://coder.example.com",
-				platform_name: "Visual Studio Code",
-			},
+			deployment_url: "https://coder.example.com",
 			properties: { result: "success" },
 			measurements: { durationMs: 12.5 },
 		});
@@ -318,7 +382,11 @@ describe("LocalJsonlSink", () => {
 
 		sink.write(makeEvent());
 		await sink.flush();
-		expect(readJsonl(todaysFile())).toHaveLength(1);
+		// The failed append did not advance file state, so the retry still
+		// opens the file with exactly one header.
+		expect(readHeaders(todaysFile())).toHaveLength(1);
+		expect(readJsonl(todaysFile())[0].kind).toBe("header");
+		expect(readRows(todaysFile())).toHaveLength(1);
 	});
 
 	it("drops the oldest events once the buffer overflows", async () => {
@@ -333,7 +401,7 @@ describe("LocalJsonlSink", () => {
 		await sink.flush();
 
 		// 13 written, 3 oldest dropped to honor bufferLimit.
-		expect(readJsonl(todaysFile())).toHaveLength(10);
+		expect(readRows(todaysFile())).toHaveLength(10);
 	});
 
 	it("two sinks with different sessions write to disjoint files", async () => {
@@ -346,8 +414,8 @@ describe("LocalJsonlSink", () => {
 		}
 		await Promise.all([a.sink.flush(), b.sink.flush()]);
 
-		expect(readJsonl(todaysFile(SESSION_SLUG))).toHaveLength(5);
-		expect(readJsonl(todaysFile("ffeeddcc"))).toHaveLength(5);
+		expect(readRows(todaysFile(SESSION_SLUG))).toHaveLength(5);
+		expect(readRows(todaysFile("ffeeddcc"))).toHaveLength(5);
 	});
 
 	it("coalesces concurrent flushes so events write exactly once", async () => {
@@ -385,7 +453,7 @@ describe("LocalJsonlSink", () => {
 		releaseFirst();
 		await Promise.all([inFlight, queuedA, queuedB]);
 
-		expect(readJsonl(todaysFile()).map((l) => l.event_sequence)).toEqual([
+		expect(readRows(todaysFile()).map((l) => l.event_sequence)).toEqual([
 			0, 1, 2,
 		]);
 		// One in-flight + at most one queued; multiple flush() calls do not
@@ -407,7 +475,7 @@ describe("LocalJsonlSink", () => {
 		sink.write(makeEvent());
 
 		await vi.waitFor(() => expect(vol.existsSync(todaysFile())).toBe(true));
-		expect(readJsonl(todaysFile())).toHaveLength(3);
+		expect(readRows(todaysFile())).toHaveLength(3);
 	});
 
 	it("write() does not throw when an event cannot be serialized", async () => {
@@ -419,6 +487,6 @@ describe("LocalJsonlSink", () => {
 
 		sink.write(makeEvent());
 		await sink.flush();
-		expect(readJsonl(todaysFile())).toHaveLength(1);
+		expect(readRows(todaysFile())).toHaveLength(1);
 	});
 });

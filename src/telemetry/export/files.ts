@@ -5,10 +5,7 @@ import * as readline from "node:readline";
 
 import { toError } from "../../error/errorUtils";
 import * as localJsonlFiles from "../localJsonlFiles";
-import {
-	parseTelemetryEventLine,
-	TelemetryFileParseError,
-} from "../wireFormat";
+import { TelemetryFileParser, TelemetryFileParseError } from "../wireFormat";
 
 import {
 	fileDateCanContainRangeEvent,
@@ -95,6 +92,7 @@ async function* streamTelemetryEventsFromFiles(
 			input: stream,
 			crlfDelay: Infinity,
 		});
+		const parser = new TelemetryFileParser(name);
 		let lineNumber = 0;
 		try {
 			for await (const line of lines) {
@@ -102,8 +100,8 @@ async function* streamTelemetryEventsFromFiles(
 				if (line.trim() === "") {
 					continue;
 				}
-				const event = parseTelemetryEventLine(line, name, lineNumber);
-				if (isTimestampInRange(event.timestamp, range)) {
+				const event = parser.parseLine(line, lineNumber);
+				if (event && isTimestampInRange(event.timestamp, range)) {
 					yield event;
 				}
 			}

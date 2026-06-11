@@ -14,7 +14,11 @@ import {
 	type FileCleanupCandidate,
 } from "../../util/fileCleanup";
 import * as localJsonlFiles from "../localJsonlFiles";
-import { serializeTelemetryEventLine } from "../wireFormat";
+import {
+	serializeTelemetryEventLine,
+	serializeTelemetryFileHeaderLine,
+	type SessionContext,
+} from "../wireFormat";
 
 import type { Logger } from "../../logging/logger";
 import type { TelemetryEvent, TelemetryLevel, TelemetrySink } from "../event";
@@ -23,7 +27,7 @@ const SINK_NAME = "local-jsonl";
 
 export interface LocalJsonlSinkOptions {
 	baseDir: string;
-	sessionId: string;
+	session: SessionContext;
 }
 
 interface CurrentFile {
@@ -35,11 +39,13 @@ interface CurrentFile {
 /**
  * Writes telemetry events as JSON Lines. Each VS Code session writes its
  * own files (`telemetry-YYYY-MM-DD-{sessionId8}.jsonl` plus `.N.jsonl` size
- * segments), so concurrent windows cannot race on appends or rotation.
- * `write` is sync and never throws. Disk I/O happens in `flush`/`dispose`;
- * a failed flush rejects so awaited callers (the export) can react, while
- * background flushes ignore it. Tunables come from `coder.telemetry.local`
- * and update reactively.
+ * segments), so concurrent windows cannot race on appends or rotation. Every
+ * file opens with a header line carrying the sink start time and session
+ * context; rows hold only
+ * per-event fields. `write` is sync and never throws. Disk I/O happens in
+ * `flush`/`dispose`; a failed flush rejects so awaited callers (the export)
+ * can react, while background flushes ignore it. Tunables come from
+ * `coder.telemetry.local` and update reactively.
  */
 export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	public readonly name = SINK_NAME;
@@ -47,6 +53,8 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 
 	readonly #baseDir: string;
 	readonly #sessionSlug: string;
+	readonly #headerLine: string;
+	readonly #headerBytes: number;
 	readonly #logger: Logger;
 	readonly #buffer: string[] = [];
 	#config: LocalSinkConfig;
@@ -64,7 +72,9 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		config: LocalSinkConfig,
 	) {
 		this.#baseDir = opts.baseDir;
-		this.#sessionSlug = toSessionSlug(opts.sessionId);
+		this.#sessionSlug = toSessionSlug(opts.session.sessionId);
+		this.#headerLine = serializeTelemetryFileHeaderLine(opts.session);
+		this.#headerBytes = Buffer.byteLength(this.#headerLine, "utf8");
 		this.#logger = logger;
 		this.#config = config;
 	}
@@ -220,8 +230,16 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 	async #append(payload: string, payloadBytes: number): Promise<void> {
 		await fs.mkdir(this.#baseDir, { recursive: true });
 		const next = await this.#nextFile(payloadBytes);
-		await fs.appendFile(this.#segmentPath(next), payload, "utf8");
-		this.#current = { ...next, size: next.size + payloadBytes };
+		// A zero-size target has no header yet (only this session ever writes
+		// its files, and every prior append wrote one). Prepending it to the
+		// same appendFile call means no file can end up header-only or torn.
+		const withHeader = next.size === 0;
+		const data = withHeader ? this.#headerLine + payload : payload;
+		const dataBytes = withHeader
+			? this.#headerBytes + payloadBytes
+			: payloadBytes;
+		await fs.appendFile(this.#segmentPath(next), data, "utf8");
+		this.#current = { ...next, size: next.size + dataBytes };
 	}
 
 	async #nextFile(payloadSize: number): Promise<CurrentFile> {

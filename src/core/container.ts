@@ -53,17 +53,16 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 		);
 
-		const sessionId = newSessionId();
+		const session = buildSession(
+			extractExtensionVersion(context.extension.packageJSON),
+			newSessionId(),
+		);
 		const localJsonlSink = LocalJsonlSink.start(
 			{
 				baseDir: this.pathResolver.getTelemetryPath(),
-				sessionId,
+				session,
 			},
 			this.logger,
-		);
-		const session = buildSession(
-			extractExtensionVersion(context.extension.packageJSON),
-			sessionId,
 		);
 		this.telemetryService = new TelemetryService(
 			session,

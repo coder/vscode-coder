@@ -1,11 +1,10 @@
 import { z } from "zod";
 
 /**
- * Wire schema version stamped on every telemetry row. Each row carries its
- * own version because rows are self-contained: one row maps to one exported
- * record, with no file-level header to anchor a single version to. Bump only
- * on a breaking change to the JSONL shape (a renamed, removed, or retyped
- * field); additive optional fields do not need a bump.
+ * Wire schema version stamped on the header line of every telemetry file and
+ * applied to all rows below it. Bump only on a breaking change to the JSONL
+ * shape (a renamed, removed, or retyped field); additive optional fields do
+ * not need a bump.
  */
 export const CURRENT_TELEMETRY_SCHEMA_VERSION = 1;
 
@@ -21,24 +20,20 @@ const SessionContextSchema = z.object({
 	platformVersion: z.string(),
 });
 
-/** Session attributes plus the deployment URL active at emit time. */
-const TelemetryContextSchema = SessionContextSchema.extend({
-	deploymentUrl: z.string(),
+/** First line of every telemetry file: schema version, start time, session context. */
+const TelemetryFileHeaderSchema = z.object({
+	kind: z.literal("header"),
+	schemaVersion: z.number().int().positive(),
+	/** Sink start time; at or before every row's timestamp. */
+	timestamp: z.iso.datetime({ offset: true }),
+	context: SessionContextSchema,
 });
 
-/**
- * Canonical telemetry event. Derived TS types (`TelemetryEvent`,
- * `TelemetryContext`, `SessionContext`) come straight from these schemas,
- * so the wire format and the in-memory shape can't drift.
- */
-const TelemetryEventSchema = z.object({
+const TelemetryEventBaseSchema = z.object({
 	eventId: z.string(),
 	eventName: z.string(),
 	timestamp: z.iso.datetime({ offset: true }),
 	eventSequence: z.number(),
-	/** Wire schema version of this row. See `CURRENT_TELEMETRY_SCHEMA_VERSION`. */
-	schemaVersion: z.number().int().positive(),
-	context: TelemetryContextSchema,
 	properties: z.record(z.string(), z.string()),
 	measurements: z.record(z.string(), z.number()),
 	/** Shared by all events in a trace. Maps to OTel `trace_id`. */
@@ -58,16 +53,38 @@ const TelemetryEventSchema = z.object({
 		.optional(),
 });
 
+/**
+ * Event row as stored on disk. Session-constant fields live in the file
+ * header; the row adds only the mutable deployment URL.
+ */
+const TelemetryEventRowSchema = TelemetryEventBaseSchema.extend({
+	deploymentUrl: z.string(),
+});
+
 /** Deep `readonly` since zod's inferred types are mutable by default. */
 type DeepReadonly<T> = T extends object
 	? { readonly [K in keyof T]: DeepReadonly<T[K]> }
 	: T;
 
 export type SessionContext = DeepReadonly<z.infer<typeof SessionContextSchema>>;
+
+/** Session attributes plus the deployment URL active at emit time. */
 export type TelemetryContext = DeepReadonly<
-	z.infer<typeof TelemetryContextSchema>
+	z.infer<typeof SessionContextSchema> & { deploymentUrl: string }
 >;
-export type TelemetryEvent = DeepReadonly<z.infer<typeof TelemetryEventSchema>>;
+
+/**
+ * Canonical in-memory telemetry event: the row fields plus the schema version
+ * and session context carried by the file header. Derived from the wire
+ * schemas so the wire format and the in-memory shape can't drift.
+ */
+export type TelemetryEvent = DeepReadonly<
+	z.infer<typeof TelemetryEventBaseSchema> & {
+		/** Wire schema version of the file the event came from. See `CURRENT_TELEMETRY_SCHEMA_VERSION`. */
+		schemaVersion: number;
+		context: TelemetryContext;
+	}
+>;
 
 /** Lets stream readers tell a parse failure apart from an IO failure. */
 export class TelemetryFileParseError extends Error {
@@ -77,32 +94,13 @@ export class TelemetryFileParseError extends Error {
 	}
 }
 
-/** Serializes one event to its newline-terminated JSONL row. */
-export function serializeTelemetryEventLine(event: TelemetryEvent): string {
-	return JSON.stringify(serializeTelemetryEvent(event)) + "\n";
-}
-
-/** Snake-case row written to disk by the sink and read back by the exporter. */
-export function serializeTelemetryEvent(
-	event: TelemetryEvent,
-): Record<string, unknown> {
+/** Per-event fields in their snake_case wire form. */
+function eventWireFields(event: TelemetryEvent): Record<string, unknown> {
 	return {
 		event_id: event.eventId,
 		event_name: event.eventName,
 		timestamp: event.timestamp,
 		event_sequence: event.eventSequence,
-		schema_version: event.schemaVersion,
-		context: {
-			extension_version: event.context.extensionVersion,
-			machine_id: event.context.machineId,
-			session_id: event.context.sessionId,
-			os_type: event.context.osType,
-			os_version: event.context.osVersion,
-			host_arch: event.context.hostArch,
-			platform_name: event.context.platformName,
-			platform_version: event.context.platformVersion,
-			deployment_url: event.context.deploymentUrl,
-		},
 		properties: event.properties,
 		measurements: event.measurements,
 		...(event.traceId !== undefined && { trace_id: event.traceId }),
@@ -113,20 +111,119 @@ export function serializeTelemetryEvent(
 	};
 }
 
-/** Parses one JSONL row. Throws `TelemetryFileParseError` on bad input. */
-export function parseTelemetryEventLine(
-	line: string,
-	source: string,
-	lineNumber: number,
-): TelemetryEvent {
-	try {
-		return TelemetryEventSchema.parse(wireToCamel(JSON.parse(line)));
-	} catch (err) {
-		throw new TelemetryFileParseError(
-			`Failed to parse telemetry file ${source}:${lineNumber}: ${describeParseError(err)}`,
-			{ cause: err },
-		);
+/** Session attributes in their snake_case wire form. */
+function sessionWireFields(session: SessionContext): Record<string, unknown> {
+	return {
+		extension_version: session.extensionVersion,
+		machine_id: session.machineId,
+		session_id: session.sessionId,
+		os_type: session.osType,
+		os_version: session.osVersion,
+		host_arch: session.hostArch,
+		platform_name: session.platformName,
+		platform_version: session.platformVersion,
+	};
+}
+
+/** Serializes the newline-terminated header line opening a telemetry file, stamped with the current time. */
+export function serializeTelemetryFileHeaderLine(
+	session: SessionContext,
+): string {
+	return (
+		JSON.stringify({
+			kind: "header",
+			schema_version: CURRENT_TELEMETRY_SCHEMA_VERSION,
+			timestamp: new Date().toISOString(),
+			context: sessionWireFields(session),
+		}) + "\n"
+	);
+}
+
+/**
+ * Serializes one event to its newline-terminated JSONL row. Session-constant
+ * fields are written once in the file header, so the row carries only the
+ * per-event fields plus the deployment URL active at emit time.
+ */
+export function serializeTelemetryEventLine(event: TelemetryEvent): string {
+	return (
+		JSON.stringify({
+			...eventWireFields(event),
+			deployment_url: event.context.deploymentUrl,
+		}) + "\n"
+	);
+}
+
+/**
+ * Snake-case object carrying the full event including its context, so each
+ * exported record is self-contained. Used by the JSON export, not the sink.
+ */
+export function serializeTelemetryEvent(
+	event: TelemetryEvent,
+): Record<string, unknown> {
+	return {
+		...eventWireFields(event),
+		schema_version: event.schemaVersion,
+		context: {
+			...sessionWireFields(event.context),
+			deployment_url: event.context.deploymentUrl,
+		},
+	};
+}
+
+/**
+ * Stateful parser for one telemetry JSONL file. The first line must be the
+ * file header; every row below it combines with the header's session context
+ * to yield a full `TelemetryEvent`. Throws `TelemetryFileParseError` on
+ * malformed lines, rows before the header, duplicate headers, or an unknown
+ * `kind`. A header with no rows is a valid, empty file.
+ */
+export class TelemetryFileParser {
+	readonly #source: string;
+	#header: z.infer<typeof TelemetryFileHeaderSchema> | undefined;
+
+	constructor(source: string) {
+		this.#source = source;
 	}
+
+	/** Parses one line, returning its event or undefined for the header line. */
+	parseLine(line: string, lineNumber: number): TelemetryEvent | undefined {
+		try {
+			return this.#parse(line);
+		} catch (err) {
+			throw new TelemetryFileParseError(
+				`Failed to parse telemetry file ${this.#source}:${lineNumber}: ${describeParseError(err)}`,
+				{ cause: err },
+			);
+		}
+	}
+
+	#parse(line: string): TelemetryEvent | undefined {
+		const value = wireToCamel(JSON.parse(line));
+		if (hasKind(value)) {
+			if (this.#header) {
+				throw new Error("unexpected second file header");
+			}
+			this.#header = TelemetryFileHeaderSchema.parse(value);
+			return undefined;
+		}
+		if (!this.#header) {
+			throw new Error("expected a file header before event rows");
+		}
+		const { deploymentUrl, ...row } = TelemetryEventRowSchema.parse(value);
+		return {
+			...row,
+			schemaVersion: this.#header.schemaVersion,
+			context: { ...this.#header.context, deploymentUrl },
+		};
+	}
+}
+
+function hasKind(value: unknown): boolean {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		(value as Record<string, unknown>).kind !== undefined
+	);
 }
 
 const SNAKE_TO_CAMEL = /_([a-z])/g;

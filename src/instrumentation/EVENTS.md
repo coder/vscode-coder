@@ -34,27 +34,50 @@ Signal kinds, which each category groups its events by:
 
 Framework-managed envelope fields (wire keys, JSONL):
 
-| Field             | Meaning                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------- |
-| `event_id`        | Unique per event (OTel span id, 16 hex)                                                     |
-| `event_name`      | The event names below                                                                       |
-| `timestamp`       | ISO 8601 emission time                                                                      |
-| `event_sequence`  | Monotonic per-session counter                                                               |
-| `schema_version`  | Integer, currently `1`; bumped only on breaking wire changes, additive fields never bump it |
-| `trace_id`        | Spans and their child events only (OTel trace id, 32 hex)                                   |
-| `parent_event_id` | Phases and span logs only; the parent span's `event_id`                                     |
-| `error`           | `{ message, type?, code? }`, only when an error was captured                                |
+| Field             | Meaning                                                                |
+| ----------------- | ---------------------------------------------------------------------- |
+| `event_id`        | Unique per event (OTel span id, 16 hex)                                |
+| `event_name`      | The event names below                                                  |
+| `timestamp`       | ISO 8601 emission time                                                 |
+| `event_sequence`  | Monotonic per-session counter                                          |
+| `deployment_url`  | Deployment active at emit time; empty until set via `setDeploymentUrl` |
+| `trace_id`        | Spans and their child events only (OTel trace id, 32 hex)              |
+| `parent_event_id` | Phases and span logs only; the parent span's `event_id`                |
+| `error`           | `{ message, type?, code? }`, only when an error was captured           |
 
-Session context, stamped on every event under `context`:
+Session-constant context is written once per file instead of on every row:
+the first line of every telemetry file (including rotated `.N` segments) is
+a header carrying the wire schema version, the sink start time, and the
+session context; each row below it implicitly inherits the version and
+context.
 
-| Field                                  | Source                                                                    |
-| -------------------------------------- | ------------------------------------------------------------------------- |
-| `extension_version`                    | package.json version                                                      |
-| `machine_id`                           | `vscode.env.machineId`                                                    |
-| `session_id`                           | Generated per session                                                     |
-| `os_type` / `os_version` / `host_arch` | `process.platform` (windows normalized) / `os.release()` / `process.arch` |
-| `platform_name` / `platform_version`   | `vscode.env.appName` / `vscode.version`                                   |
-| `deployment_url`                       | Set once known via `setDeploymentUrl`                                     |
+```json
+{
+	"kind": "header",
+	"schema_version": 1,
+	"timestamp": "...",
+	"context": {
+		"extension_version": "...",
+		"machine_id": "...",
+		"session_id": "...",
+		"os_type": "...",
+		"os_version": "...",
+		"host_arch": "...",
+		"platform_name": "...",
+		"platform_version": "..."
+	}
+}
+```
+
+| Field                                  | Source                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `schema_version`                       | Integer, currently `1`; bumped only on breaking wire changes, additive fields never bump it |
+| `timestamp`                            | ISO 8601 sink start time; at or before every row's timestamp                                |
+| `extension_version`                    | package.json version                                                                        |
+| `machine_id`                           | `vscode.env.machineId`                                                                      |
+| `session_id`                           | Generated per session                                                                       |
+| `os_type` / `os_version` / `host_arch` | `process.platform` (windows normalized) / `os.release()` / `process.arch`                   |
+| `platform_name` / `platform_version`   | `vscode.env.appName` / `vscode.version`                                                     |
 
 On OTLP export the context becomes resource attributes (`service.name:
 coder-vscode-extension`, `service.version`, `service.instance.id`, `host.id`,
@@ -69,8 +92,9 @@ Events buffer on disk as JSONL; nothing leaves the machine on its own. The
 **Coder: Export Telemetry** command flushes the buffer and writes a chosen
 date range in one of two formats:
 
-- **JSON**: one file holding an array of the wire-format rows described
-  above, for direct inspection or ad-hoc processing.
+- **JSON**: one file holding an array of self-contained events, each
+  carrying its full context and schema version, for direct inspection or
+  ad-hoc processing.
 - **OTLP**: a zip of standard OTLP/JSON envelopes (spans in `traces.json`,
   logs in `logs.json`, metric events as data points in `metrics.json`) plus
   a `manifest.json` describing the export. Feed these to any OTel-compatible
