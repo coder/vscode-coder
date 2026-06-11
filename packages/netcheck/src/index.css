@@ -1,0 +1,266 @@
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	padding: 1.5em;
+	min-width: 22em;
+	background: var(--vscode-editor-background);
+	color: var(--vscode-editor-foreground);
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+}
+
+#root {
+	max-width: 56em;
+	margin: 0 auto;
+}
+
+.page-header {
+	margin: 0 0 1.5em;
+}
+
+.eyebrow {
+	margin: 0 0 0.4em;
+	font-size: 0.8em;
+	font-weight: 600;
+	opacity: 0.6;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.deployment-host {
+	margin: 0;
+	font-size: 1.8em;
+	font-weight: 600;
+	word-break: break-all;
+}
+
+/* Severity accents shared by the banner, issue list, and table cells. */
+.severity-ok {
+	--severity-color: var(--vscode-testing-iconPassed, #2ea043);
+}
+
+.severity-warning {
+	--severity-color: var(--vscode-editorWarning-foreground, #d29922);
+}
+
+.severity-error {
+	--severity-color: var(--vscode-errorForeground, #f85149);
+}
+
+.status-banner {
+	display: flex;
+	align-items: center;
+	gap: 0.85em;
+	padding: 0.9em 1.1em;
+	border-radius: 4px;
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border, transparent);
+	border-left: 3px solid var(--severity-color);
+}
+
+.status-dot {
+	flex-shrink: 0;
+	width: 0.75em;
+	height: 0.75em;
+	border-radius: 50%;
+	background: var(--severity-color);
+}
+
+.status-title {
+	margin: 0;
+	font-size: 1.1em;
+	font-weight: 600;
+}
+
+.status-detail {
+	margin: 0.2em 0 0;
+	opacity: 0.75;
+}
+
+.report-section {
+	margin-top: 1.75em;
+}
+
+.report-section h2 {
+	margin: 0 0 0.6em;
+	font-size: 0.8em;
+	font-weight: 600;
+	opacity: 0.6;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.issue-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.issue {
+	display: flex;
+	align-items: baseline;
+	gap: 0.6em;
+	padding: 0.55em 0.8em;
+	border-radius: 4px;
+	background: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.1));
+	border-left: 3px solid var(--severity-color);
+}
+
+.issue-kind {
+	flex-shrink: 0;
+	font-size: 0.8em;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--severity-color);
+}
+
+.issue-message {
+	flex: 1;
+}
+
+.issue-code {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.85em;
+	opacity: 0.6;
+}
+
+.conn-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(13em, 1fr));
+	gap: 0.75em;
+}
+
+.conn-item {
+	padding: 0.6em 0.8em;
+	border-radius: 4px;
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.conn-label {
+	display: block;
+	font-size: 0.8em;
+	opacity: 0.6;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	margin-bottom: 0.25em;
+}
+
+.conn-value {
+	font-weight: 600;
+}
+
+.tone-good {
+	color: var(--vscode-testing-iconPassed, #2ea043);
+}
+
+.tone-bad {
+	color: var(--vscode-errorForeground, #f85149);
+}
+
+.tone-warn {
+	color: var(--vscode-editorWarning-foreground, #d29922);
+}
+
+.tone-neutral {
+	opacity: 0.75;
+}
+
+.report-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.report-table th,
+.report-table td {
+	padding: 0.45em 0.75em;
+	text-align: left;
+	border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+}
+
+.report-table th {
+	font-size: 0.8em;
+	font-weight: 600;
+	opacity: 0.6;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.report-table tbody tr:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.region-name {
+	font-weight: 600;
+}
+
+.severity-text {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45em;
+}
+
+.severity-text .status-dot {
+	width: 0.55em;
+	height: 0.55em;
+}
+
+.badge {
+	margin-left: 0.6em;
+	padding: 0.1em 0.55em;
+	border-radius: 1em;
+	font-size: 0.75em;
+	font-weight: 500;
+	vertical-align: middle;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+}
+
+.addresses {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.9em;
+	word-break: break-word;
+	opacity: 0.9;
+}
+
+.actions {
+	display: flex;
+	justify-content: center;
+	margin-top: 2em;
+}
+
+button {
+	padding: 0.4em 1em;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 2px;
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	font: inherit;
+	cursor: pointer;
+}
+
+button:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.error,
+.empty {
+	margin: 0.5em 0;
+}
+
+.error {
+	color: var(--vscode-errorForeground);
+}
+
+.empty {
+	opacity: 0.7;
+}

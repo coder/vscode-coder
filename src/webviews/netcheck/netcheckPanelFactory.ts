@@ -3,9 +3,9 @@ import type * as vscode from "vscode";
 import {
 	buildCommandHandlers,
 	buildRequestHandlers,
-	SpeedtestApi,
-	type SpeedtestData,
-	type SpeedtestResult,
+	NetcheckApi,
+	type NetcheckData,
+	type NetcheckReport,
 } from "@repo/shared";
 
 import { notifyWebview } from "../dispatch";
@@ -13,41 +13,41 @@ import { showResultPanel } from "../resultPanel";
 
 import type { Logger } from "../../logging/logger";
 
-export interface SpeedtestChartPayload {
-	result: SpeedtestResult;
+export interface NetcheckReportPayload {
+	report: NetcheckReport;
 	rawJson: string;
-	workspaceId: string;
+	host: string;
 }
 
-/** Creates webview panels that render speedtest runs as interactive charts. */
-export class SpeedtestPanelFactory {
+/** Creates webview panels that render `coder netcheck` reports. */
+export class NetcheckPanelFactory {
 	public constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly logger: Logger,
 	) {}
 
-	public show({ result, rawJson, workspaceId }: SpeedtestChartPayload): void {
-		const payload: SpeedtestData = { workspaceId, result };
+	public show({ report, rawJson, host }: NetcheckReportPayload): void {
+		const payload: NetcheckData = { host, report };
 		showResultPanel({
 			extensionUri: this.extensionUri,
 			logger: this.logger,
-			viewType: "coder.speedtestPanel",
-			webviewName: "speedtest",
-			title: `Speed Test: ${workspaceId}`,
+			viewType: "coder.netcheckPanel",
+			webviewName: "netcheck",
+			title: `Network Check: ${host}`,
 			rawJson,
-			jsonErrorLabel: "speed test",
-			notify: (webview) => notifyWebview(webview, SpeedtestApi.data, payload),
+			jsonErrorLabel: "network check",
+			notify: (webview) => notifyWebview(webview, NetcheckApi.data, payload),
 			// Both builders emit a compile error if any command or request in the
 			// API lacks a handler here; the empty `{}` below is still load-bearing.
 			buildHandlers: ({ sendData, openRawJson }) => ({
-				commands: buildCommandHandlers(SpeedtestApi, {
+				commands: buildCommandHandlers(NetcheckApi, {
 					// Webview signals it's subscribed; safe to push the payload now.
 					ready: () => {
 						sendData();
 					},
 					viewJson: () => openRawJson(),
 				}),
-				requests: buildRequestHandlers(SpeedtestApi, {}),
+				requests: buildRequestHandlers(NetcheckApi, {}),
 			}),
 		});
 	}
