@@ -13,7 +13,7 @@ describe("telemetry export ranges", () => {
 
 		expect(range).toMatchObject({
 			label: "2026-05-12 to 2026-05-13",
-			filenamePart: "2026-05-12_to_2026-05-13",
+			filenamePart: "2026-05-12-to-2026-05-13",
 		});
 		expect(isTimestampInRange("2026-05-12T00:00:00.000Z", range)).toBe(true);
 		expect(isTimestampInRange("2026-05-13T23:59:59.999Z", range)).toBe(true);
@@ -32,6 +32,7 @@ describe("telemetry export ranges", () => {
 			new Date("2026-05-13T12:00:00.000Z"),
 		);
 
+		expect(range.filenamePart).toBe("last-24-hours-2026-05-13");
 		expect(fileDateCanContainRangeEvent("2026-05-11", range)).toBe(false);
 		expect(fileDateCanContainRangeEvent("2026-05-12", range)).toBe(true);
 		expect(fileDateCanContainRangeEvent("2026-05-13", range)).toBe(true);

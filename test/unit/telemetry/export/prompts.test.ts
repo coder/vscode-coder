@@ -64,7 +64,7 @@ describe("promptForExport", () => {
 
 		expect(choice?.range).toMatchObject({
 			label: "2026-01-01 to 2026-01-31",
-			filenamePart: "2026-01-01_to_2026-01-31",
+			filenamePart: "2026-01-01-to-2026-01-31",
 		});
 	});
 
