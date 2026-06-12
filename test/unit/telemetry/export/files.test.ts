@@ -4,9 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	listTelemetryFilesForRange,
-	streamTelemetryEvents,
+	streamTelemetryEventsSorted,
+	type TelemetryLogFile,
 } from "@/telemetry/export/files";
 import { createCustomDateRange } from "@/telemetry/export/range";
+import { parseFileName } from "@/telemetry/localJsonlFiles";
 import { serializeTelemetryEventLine } from "@/telemetry/wireFormat";
 
 import { createTelemetryEventFactory } from "../../../mocks/telemetry";
@@ -45,7 +47,7 @@ describe("listTelemetryFilesForRange", () => {
 			createCustomDateRange("2026-05-12", "2026-05-13"),
 		);
 
-		expect(files.map((p) => path.basename(p))).toEqual([
+		expect(files.map((file) => path.basename(file.path))).toEqual([
 			"telemetry-2026-05-12-bbbbbbbb.jsonl",
 			"telemetry-2026-05-12-bbbbbbbb.1.jsonl",
 		]);
@@ -61,28 +63,71 @@ describe("listTelemetryFilesForRange", () => {
 	});
 });
 
-describe("streamTelemetryEvents", () => {
-	it("yields only events whose timestamp falls inside the range", async () => {
+describe("streamTelemetryEventsSorted", () => {
+	it("returns a timestamp-sorted stream with deterministic session-id ties", async () => {
+		writeFiles({
+			"telemetry-2026-05-12-cccccccc.jsonl": serializeTelemetryEventLine(
+				makeSessionEvent("session-c", 0, "2026-05-12T10:00:00.000Z"),
+			),
+			"telemetry-2026-05-12-aaaaaaaa.jsonl": serializeTelemetryEventLine(
+				makeSessionEvent("session-a", 10, "2026-05-12T10:00:00.000Z"),
+			),
+			"telemetry-2026-05-12-bbbbbbbb.jsonl": serializeTelemetryEventLine(
+				makeSessionEvent("session-b", 0, "2026-05-12T10:01:00.000Z"),
+			),
+			"telemetry-2026-05-12-aaaaaaaa.1.jsonl": serializeTelemetryEventLine(
+				makeSessionEvent("session-a", 11, "2026-05-12T10:02:00.000Z"),
+			),
+		});
+
+		const events = await collectSorted([
+			"telemetry-2026-05-12-aaaaaaaa.1.jsonl",
+			"telemetry-2026-05-12-bbbbbbbb.jsonl",
+			"telemetry-2026-05-12-cccccccc.jsonl",
+			"telemetry-2026-05-12-aaaaaaaa.jsonl",
+		]);
+
+		expect(
+			events.map((event) => [
+				event.timestamp,
+				event.context.sessionId,
+				event.eventSequence,
+			]),
+		).toEqual([
+			["2026-05-12T10:00:00.000Z", "session-a", 10],
+			["2026-05-12T10:00:00.000Z", "session-c", 0],
+			["2026-05-12T10:01:00.000Z", "session-b", 0],
+			["2026-05-12T10:02:00.000Z", "session-a", 11],
+		]);
+	});
+
+	it("filters by range and preserves backward session timestamps", async () => {
 		writeFiles({
 			"telemetry-2026-05-12-aaaaaaaa.jsonl":
 				serializeTelemetryEventLine(
-					makeEvent({ timestamp: "2026-05-11T23:59:59.999Z" }),
+					makeSessionEvent("session-a", 0, "2026-05-11T23:59:59.999Z"),
 				) +
 				serializeTelemetryEventLine(
-					makeEvent({ timestamp: "2026-05-12T00:00:00.000Z" }),
+					makeSessionEvent("session-a", 1, "2026-05-12T10:02:00.000Z"),
+				) +
+				serializeTelemetryEventLine(
+					makeSessionEvent("session-a", 2, "2026-05-12T10:00:00.000Z"),
 				),
+			"telemetry-2026-05-12-bbbbbbbb.jsonl": serializeTelemetryEventLine(
+				makeSessionEvent("session-b", 0, "2026-05-12T10:01:00.000Z"),
+			),
 		});
 
-		const events: TelemetryEvent[] = [];
-		for await (const event of streamTelemetryEvents(
-			[`${DIR}/telemetry-2026-05-12-aaaaaaaa.jsonl`],
-			createCustomDateRange("2026-05-12", "2026-05-12"),
-		)) {
-			events.push(event);
-		}
+		const events = await collectSorted([
+			"telemetry-2026-05-12-aaaaaaaa.jsonl",
+			"telemetry-2026-05-12-bbbbbbbb.jsonl",
+		]);
 
-		expect(events).toHaveLength(1);
-		expect(events[0].timestamp).toBe("2026-05-12T00:00:00.000Z");
+		expect(events.map((event) => event.timestamp)).toEqual([
+			"2026-05-12T10:01:00.000Z",
+			"2026-05-12T10:02:00.000Z",
+			"2026-05-12T10:00:00.000Z",
+		]);
 	});
 
 	it("surfaces parse errors with file:line context", async () => {
@@ -90,7 +135,9 @@ describe("streamTelemetryEvents", () => {
 			"telemetry-2026-05-12-aaaaaaaa.jsonl": "{not-json}\n",
 		});
 
-		await expect(drain("telemetry-2026-05-12-aaaaaaaa.jsonl")).rejects.toThrow(
+		await expect(
+			collectSorted(["telemetry-2026-05-12-aaaaaaaa.jsonl"]),
+		).rejects.toThrow(
 			/Failed to parse telemetry file telemetry-2026-05-12-aaaaaaaa\.jsonl:1/,
 		);
 	});
@@ -102,11 +149,35 @@ function writeFiles(files: Record<string, string>): void {
 	}
 }
 
-async function drain(name: string): Promise<void> {
-	for await (const _ of streamTelemetryEvents(
-		[`${DIR}/${name}`],
+function makeSessionEvent(
+	sessionId: string,
+	eventSequence: number,
+	timestamp: string,
+): TelemetryEvent {
+	const event = makeEvent({ timestamp, eventSequence });
+	return {
+		...event,
+		context: { ...event.context, sessionId },
+	};
+}
+
+function makeLogFile(name: string): TelemetryLogFile {
+	const parsed = parseFileName(name);
+	if (!parsed) {
+		throw new Error(`Test file name does not parse: ${name}`);
+	}
+	return { path: `${DIR}/${name}`, ...parsed };
+}
+
+async function collectSorted(
+	names: readonly string[],
+): Promise<TelemetryEvent[]> {
+	const events: TelemetryEvent[] = [];
+	for await (const event of streamTelemetryEventsSorted(
+		names.map(makeLogFile),
 		createCustomDateRange("2026-05-12", "2026-05-12"),
 	)) {
-		// Pull the iterator to surface parse errors.
+		events.push(event);
 	}
+	return events;
 }

@@ -64,7 +64,6 @@ function setup(
 		error: vi.fn(),
 		succeedExport: vi.fn(),
 	};
-
 	return {
 		observer,
 		run: () =>

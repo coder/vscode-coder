@@ -2,7 +2,10 @@ import * as fs from "node:fs/promises";
 
 import { throwIfAborted } from "../../error/errorUtils";
 
-import { listTelemetryFilesForRange, streamTelemetryEvents } from "./files";
+import {
+	listTelemetryFilesForRange,
+	streamTelemetryEventsSorted,
+} from "./files";
 
 import type { TelemetryEvent } from "../event";
 import type { FlushStatus } from "../service";
@@ -48,23 +51,23 @@ export async function collectTelemetryExport(
 	}
 
 	runtime.report("Locating telemetry files...");
-	const filePaths = await listTelemetryFilesForRange(
+	const files = await listTelemetryFilesForRange(
 		request.telemetryDir,
 		request.range,
 	);
-	if (filePaths.length === 0) {
+	if (files.length === 0) {
 		return 0;
 	}
 
 	runtime.report("Writing export...");
 	const events = abortable(
-		streamTelemetryEvents(filePaths, request.range),
+		streamTelemetryEventsSorted(files, request.range),
 		runtime.signal,
 	);
 	const eventCount = await request.writer(
 		request.outputPath,
 		events,
-		{ range: request.range, sourceFiles: filePaths.length },
+		{ range: request.range, sourceFiles: files.length },
 		{ signal: runtime.signal, onCleanupError: runtime.onCleanupError },
 	);
 	if (eventCount === 0) {

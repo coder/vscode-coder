@@ -18,7 +18,7 @@ import type { FlushStatus } from "@/telemetry/service";
 
 vi.mock("@/telemetry/export/files", () => ({
 	listTelemetryFilesForRange: vi.fn(),
-	streamTelemetryEvents: vi.fn(),
+	streamTelemetryEventsSorted: vi.fn(),
 }));
 vi.mock("node:fs/promises", () => ({ rm: vi.fn(() => Promise.resolve()) }));
 
@@ -27,14 +27,27 @@ const RANGE: TelemetryDateRange = {
 	label: "Last 24 hours",
 	filenamePart: "last-24-hours",
 };
-const FILE_PATHS = ["/tmp/telemetry/a.jsonl", "/tmp/telemetry/b.jsonl"];
+const FILES: files.TelemetryLogFile[] = [
+	{
+		path: "/tmp/telemetry/telemetry-2026-05-12-aaaaaaaa.jsonl",
+		date: "2026-05-12",
+		session: "aaaaaaaa",
+		part: 0,
+	},
+	{
+		path: "/tmp/telemetry/telemetry-2026-05-12-bbbbbbbb.jsonl",
+		date: "2026-05-12",
+		session: "bbbbbbbb",
+		part: 0,
+	},
+];
 const OUTPUT_PATH = "/tmp/out.json";
 const OK_FLUSH: FlushStatus = { ok: true, sinks: [] };
 
 function setup(
 	opts: {
 		events?: readonly TelemetryEvent[];
-		filePaths?: readonly string[];
+		files?: readonly files.TelemetryLogFile[];
 		signal?: AbortSignal;
 		writeCount?: number;
 		flush?: FlushStatus;
@@ -43,9 +56,9 @@ function setup(
 	vi.resetAllMocks();
 	vi.mocked(fsp.rm).mockResolvedValue(undefined);
 	vi.mocked(files.listTelemetryFilesForRange).mockResolvedValue([
-		...(opts.filePaths ?? FILE_PATHS),
+		...(opts.files ?? FILES),
 	]);
-	vi.mocked(files.streamTelemetryEvents).mockReturnValue(
+	vi.mocked(files.streamTelemetryEventsSorted).mockReturnValue(
 		asyncIterable(opts.events ?? [makeEvent()]),
 	);
 
@@ -105,7 +118,7 @@ describe("collectTelemetryExport", () => {
 	});
 
 	it("returns 0 and never writes when no files cover the range", async () => {
-		const { run, writer } = setup({ filePaths: [] });
+		const { run, writer } = setup({ files: [] });
 
 		await expect(run()).resolves.toBe(0);
 		expect(writer).not.toHaveBeenCalled();
@@ -126,7 +139,7 @@ describe("collectTelemetryExport", () => {
 		expect(writer).toHaveBeenCalledWith(
 			OUTPUT_PATH,
 			expect.anything(),
-			{ range: RANGE, sourceFiles: FILE_PATHS.length },
+			{ range: RANGE, sourceFiles: FILES.length },
 			{ signal: runtime.signal, onCleanupError: runtime.onCleanupError },
 		);
 	});
