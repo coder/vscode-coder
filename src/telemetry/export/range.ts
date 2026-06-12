@@ -60,7 +60,8 @@ export function createPresetDateRange(
 	id: TelemetryRangePresetId,
 	now: Date = new Date(),
 ): TelemetryDateRange {
-	const { label, filenamePart, durationMs } = PRESETS[id];
+	const { label, durationMs } = PRESETS[id];
+	const filenamePart = `${PRESETS[id].filenamePart}-${toUtcDateString(now)}`;
 	if (durationMs === undefined) {
 		return { label, filenamePart };
 	}
@@ -83,7 +84,7 @@ export function createCustomDateRange(
 	}
 	return {
 		label: `${startDate} to ${endDate}`,
-		filenamePart: `${startDate}_to_${endDate}`,
+		filenamePart: `${startDate}-to-${endDate}`,
 		startMs: startDateMs,
 		endMs: endDateMs + DAY_MS,
 	};
