@@ -27,14 +27,27 @@ const RANGE: TelemetryDateRange = {
 	label: "Last 24 hours",
 	filenamePart: "last-24-hours",
 };
-const FILE_PATHS = ["/tmp/telemetry/a.jsonl", "/tmp/telemetry/b.jsonl"];
+const FILES: files.TelemetryLogFile[] = [
+	{
+		path: "/tmp/telemetry/telemetry-2026-05-12-aaaaaaaa.jsonl",
+		date: "2026-05-12",
+		session: "aaaaaaaa",
+		part: 0,
+	},
+	{
+		path: "/tmp/telemetry/telemetry-2026-05-12-bbbbbbbb.jsonl",
+		date: "2026-05-12",
+		session: "bbbbbbbb",
+		part: 0,
+	},
+];
 const OUTPUT_PATH = "/tmp/out.json";
 const OK_FLUSH: FlushStatus = { ok: true, sinks: [] };
 
 function setup(
 	opts: {
 		events?: readonly TelemetryEvent[];
-		filePaths?: readonly string[];
+		files?: readonly files.TelemetryLogFile[];
 		signal?: AbortSignal;
 		writeCount?: number;
 		flush?: FlushStatus;
@@ -43,7 +56,7 @@ function setup(
 	vi.resetAllMocks();
 	vi.mocked(fsp.rm).mockResolvedValue(undefined);
 	vi.mocked(files.listTelemetryFilesForRange).mockResolvedValue([
-		...(opts.filePaths ?? FILE_PATHS),
+		...(opts.files ?? FILES),
 	]);
 	vi.mocked(files.streamTelemetryEventsSorted).mockReturnValue(
 		asyncIterable(opts.events ?? [makeEvent()]),
@@ -59,7 +72,6 @@ function setup(
 		report: vi.fn(),
 		onFlushIncomplete: vi.fn(),
 		onCleanupError: vi.fn(),
-		onWarning: vi.fn(),
 	};
 	const request: ExportRequest = {
 		telemetryDir: "/tmp/telemetry",
@@ -105,34 +117,8 @@ describe("collectTelemetryExport", () => {
 		expect(runtime.onFlushIncomplete).not.toHaveBeenCalled();
 	});
 
-	it("reports recoverable warnings from the event stream", async () => {
-		const warning = {
-			code: "invalidTelemetryFilePath" as const,
-			filePath: "/tmp/telemetry/notes.jsonl",
-			error: new Error("bad name"),
-		};
-		const { run, runtime, writer } = setup();
-		vi.mocked(files.streamTelemetryEventsSorted).mockImplementation(
-			async function* (_filePaths, _range, warningSink) {
-				await Promise.resolve();
-				warningSink.onWarning(warning);
-				yield makeEvent();
-			},
-		);
-		writer.mockImplementation(async (_outputPath, events) => {
-			for await (const _event of events) {
-				// Consume the stream so stream warnings surface.
-			}
-			return 1;
-		});
-
-		await run();
-
-		expect(runtime.onWarning).toHaveBeenCalledWith(warning);
-	});
-
 	it("returns 0 and never writes when no files cover the range", async () => {
-		const { run, writer } = setup({ filePaths: [] });
+		const { run, writer } = setup({ files: [] });
 
 		await expect(run()).resolves.toBe(0);
 		expect(writer).not.toHaveBeenCalled();
@@ -153,7 +139,7 @@ describe("collectTelemetryExport", () => {
 		expect(writer).toHaveBeenCalledWith(
 			OUTPUT_PATH,
 			expect.anything(),
-			{ range: RANGE, sourceFiles: FILE_PATHS.length },
+			{ range: RANGE, sourceFiles: FILES.length },
 			{ signal: runtime.signal, onCleanupError: runtime.onCleanupError },
 		);
 	});

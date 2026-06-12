@@ -5,9 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	listTelemetryFilesForRange,
 	streamTelemetryEventsSorted,
-	type TelemetryExportWarningSink,
+	type TelemetryLogFile,
 } from "@/telemetry/export/files";
 import { createCustomDateRange } from "@/telemetry/export/range";
+import { parseFileName } from "@/telemetry/localJsonlFiles";
 import { serializeTelemetryEventLine } from "@/telemetry/wireFormat";
 
 import { createTelemetryEventFactory } from "../../../mocks/telemetry";
@@ -18,9 +19,6 @@ vi.mock("node:fs", async () => (await import("memfs")).fs);
 vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
 
 const DIR = "/telemetry";
-const IGNORE_WARNINGS: TelemetryExportWarningSink = {
-	onWarning: () => undefined,
-};
 
 let makeEvent: ReturnType<typeof createTelemetryEventFactory>;
 
@@ -49,7 +47,7 @@ describe("listTelemetryFilesForRange", () => {
 			createCustomDateRange("2026-05-12", "2026-05-13"),
 		);
 
-		expect(files.map((p) => path.basename(p))).toEqual([
+		expect(files.map((file) => path.basename(file.path))).toEqual([
 			"telemetry-2026-05-12-bbbbbbbb.jsonl",
 			"telemetry-2026-05-12-bbbbbbbb.1.jsonl",
 		]);
@@ -143,29 +141,6 @@ describe("streamTelemetryEventsSorted", () => {
 			/Failed to parse telemetry file telemetry-2026-05-12-aaaaaaaa\.jsonl:1/,
 		);
 	});
-
-	it("skips invalid telemetry file paths after reporting a warning", async () => {
-		writeFiles({
-			"telemetry-2026-05-12-aaaaaaaa.jsonl": serializeTelemetryEventLine(
-				makeSessionEvent("session-a", 0, "2026-05-12T10:00:00.000Z"),
-			),
-		});
-		const onWarning = vi.fn();
-
-		const events = await collectSorted(
-			["telemetry-2026-05-12-aaaaaaaa.jsonl", "notes-2026-05-12.jsonl"],
-			{ onWarning },
-		);
-
-		expect(events.map((event) => event.context.sessionId)).toEqual([
-			"session-a",
-		]);
-		expect(onWarning).toHaveBeenCalledWith({
-			code: "invalidTelemetryFilePath",
-			filePath: `${DIR}/notes-2026-05-12.jsonl`,
-			error: expect.any(Error),
-		});
-	});
 });
 
 function writeFiles(files: Record<string, string>): void {
@@ -186,15 +161,21 @@ function makeSessionEvent(
 	};
 }
 
+function makeLogFile(name: string): TelemetryLogFile {
+	const parsed = parseFileName(name);
+	if (!parsed) {
+		throw new Error(`Test file name does not parse: ${name}`);
+	}
+	return { path: `${DIR}/${name}`, ...parsed };
+}
+
 async function collectSorted(
 	names: readonly string[],
-	warningSink: TelemetryExportWarningSink = IGNORE_WARNINGS,
 ): Promise<TelemetryEvent[]> {
 	const events: TelemetryEvent[] = [];
 	for await (const event of streamTelemetryEventsSorted(
-		names.map((name) => `${DIR}/${name}`),
+		names.map(makeLogFile),
 		createCustomDateRange("2026-05-12", "2026-05-12"),
-		warningSink,
 	)) {
 		events.push(event);
 	}

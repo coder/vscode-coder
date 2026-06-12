@@ -19,38 +19,24 @@ import {
 
 import type { TelemetryEvent } from "../event";
 
-interface TelemetryLogFile {
+export interface TelemetryLogFile {
 	readonly path: string;
 	readonly date: string;
 	readonly session: string;
 	readonly part: number;
 }
 
-interface QueuedTelemetryEvent {
+interface EventCursor {
 	readonly event: TelemetryEvent;
 	readonly timestampMs: number;
-}
-
-interface EventCursor {
-	readonly queued: QueuedTelemetryEvent;
 	readonly iterator: AsyncIterator<TelemetryEvent>;
 }
 
-export interface TelemetryExportWarning {
-	readonly code: "invalidTelemetryFilePath";
-	readonly filePath: string;
-	readonly error: Error;
-}
-
-export interface TelemetryExportWarningSink {
-	readonly onWarning: (warning: TelemetryExportWarning) => void;
-}
-
-/** Log files whose dates could overlap `range`. */
+/** Log files whose dates could overlap `range`, in (date, session, part) order. */
 export async function listTelemetryFilesForRange(
 	telemetryDir: string,
 	range: TelemetryDateRange,
-): Promise<string[]> {
+): Promise<TelemetryLogFile[]> {
 	let names: string[];
 	try {
 		names = await fs.readdir(telemetryDir);
@@ -67,28 +53,31 @@ export async function listTelemetryFilesForRange(
 			(file): file is TelemetryLogFile =>
 				file !== undefined && fileDateCanContainRangeEvent(file.date, range),
 		)
-		.sort(compareLogFiles)
-		.map(({ path: filePath }) => filePath);
+		.sort(compareLogFiles);
 }
 
 /**
- * Merge range-filtered, per-session event streams by timestamp. This stays
- * globally sorted while each session's timestamps are monotonic; if a session's
- * clock moves backward, that session's append order is preserved.
+ * Merge per-session event streams by timestamp, keeping only events whose
+ * timestamp falls inside `range`. Output stays globally sorted while each
+ * session's timestamps are monotonic; if a session's clock moves backward,
+ * that session's append order is preserved.
  */
 export async function* streamTelemetryEventsSorted(
-	filePaths: readonly string[],
+	files: readonly TelemetryLogFile[],
 	range: TelemetryDateRange,
-	warningSink: TelemetryExportWarningSink,
 ): AsyncIterable<TelemetryEvent> {
-	const iterators: Array<AsyncIterator<TelemetryEvent>> = [];
+	const iterators = groupFilesBySession(files).map((sessionFiles) =>
+		streamTelemetryEventsFromFiles(sessionFiles, range),
+	);
 	const frontier: EventCursor[] = [];
 	try {
-		await seedFrontier(frontier, iterators, filePaths, range, warningSink);
+		for (const iterator of iterators) {
+			await advanceCursor(frontier, iterator);
+		}
 		while (frontier.length > 0) {
 			const cursor = takeNextCursor(frontier);
-			yield cursor.queued.event;
-			await advanceCursor(frontier, cursor);
+			yield cursor.event;
+			await advanceCursor(frontier, cursor.iterator);
 		}
 	} finally {
 		await closeIterators(iterators);
@@ -98,7 +87,7 @@ export async function* streamTelemetryEventsSorted(
 async function* streamTelemetryEventsFromFiles(
 	files: readonly TelemetryLogFile[],
 	range: TelemetryDateRange,
-): AsyncIterable<TelemetryEvent> {
+): AsyncGenerator<TelemetryEvent> {
 	for (const file of files) {
 		const name = path.basename(file.path);
 		const stream = createReadStream(file.path, { encoding: "utf8" });
@@ -138,53 +127,15 @@ async function* streamTelemetryEventsFromFiles(
 }
 
 function groupFilesBySession(
-	filePaths: readonly string[],
-	warningSink: TelemetryExportWarningSink,
+	files: readonly TelemetryLogFile[],
 ): TelemetryLogFile[][] {
-	const files = parseLogFilePaths(filePaths, warningSink).sort(compareLogFiles);
-	return [...Map.groupBy(files, (file) => file.session).values()];
-}
-
-function parseLogFilePaths(
-	filePaths: readonly string[],
-	warningSink: TelemetryExportWarningSink,
-): TelemetryLogFile[] {
-	const files: TelemetryLogFile[] = [];
-	for (const filePath of filePaths) {
-		const file = parseLogFilePath(filePath);
-		if (!file) {
-			emitWarning(warningSink, invalidTelemetryFilePathWarning(filePath));
-			continue;
-		}
-		files.push(file);
-	}
-	return files;
+	const sorted = [...files].sort(compareLogFiles);
+	return [...Map.groupBy(sorted, (file) => file.session).values()];
 }
 
 function parseLogFilePath(filePath: string): TelemetryLogFile | undefined {
 	const parsed = localJsonlFiles.parseFileName(path.basename(filePath));
 	return parsed ? { path: filePath, ...parsed } : undefined;
-}
-
-function invalidTelemetryFilePathWarning(
-	filePath: string,
-): TelemetryExportWarning {
-	return {
-		code: "invalidTelemetryFilePath",
-		filePath,
-		error: new Error(`Invalid telemetry file path: ${path.basename(filePath)}`),
-	};
-}
-
-function emitWarning(
-	warningSink: TelemetryExportWarningSink,
-	warning: TelemetryExportWarning,
-): void {
-	try {
-		warningSink.onWarning(warning);
-	} catch {
-		// Warning observers must not fail the export.
-	}
 }
 
 function compareLogFiles(a: TelemetryLogFile, b: TelemetryLogFile): number {
@@ -195,31 +146,16 @@ function compareLogFiles(a: TelemetryLogFile, b: TelemetryLogFile): number {
 	);
 }
 
-async function seedFrontier(
-	frontier: EventCursor[],
-	iterators: Array<AsyncIterator<TelemetryEvent>>,
-	filePaths: readonly string[],
-	range: TelemetryDateRange,
-	warningSink: TelemetryExportWarningSink,
-): Promise<void> {
-	for (const files of groupFilesBySession(filePaths, warningSink)) {
-		const iterator = streamTelemetryEventsFromFiles(files, range)[
-			Symbol.asyncIterator
-		]();
-		iterators.push(iterator);
-		await advanceCursor(frontier, { iterator });
-	}
-}
-
 async function advanceCursor(
 	frontier: EventCursor[],
-	cursor: Pick<EventCursor, "iterator">,
+	iterator: AsyncIterator<TelemetryEvent>,
 ): Promise<void> {
-	const next = await cursor.iterator.next();
+	const next = await iterator.next();
 	if (!next.done) {
 		frontier.push({
-			queued: queueEvent(next.value),
-			iterator: cursor.iterator,
+			event: next.value,
+			timestampMs: parseTelemetryTimestampMs(next.value.timestamp),
+			iterator,
 		});
 	}
 }
@@ -234,16 +170,10 @@ async function closeIterators(
 	);
 }
 
-function queueEvent(event: TelemetryEvent): QueuedTelemetryEvent {
-	return { event, timestampMs: parseTelemetryTimestampMs(event.timestamp) };
-}
-
 function takeNextCursor(frontier: EventCursor[]): EventCursor {
 	let nextIndex = 0;
 	for (let i = 1; i < frontier.length; i += 1) {
-		if (
-			compareQueuedEvents(frontier[i].queued, frontier[nextIndex].queued) < 0
-		) {
+		if (compareCursors(frontier[i], frontier[nextIndex]) < 0) {
 			nextIndex = i;
 		}
 	}
@@ -252,10 +182,7 @@ function takeNextCursor(frontier: EventCursor[]): EventCursor {
 	return cursor;
 }
 
-function compareQueuedEvents(
-	a: QueuedTelemetryEvent,
-	b: QueuedTelemetryEvent,
-): number {
+function compareCursors(a: EventCursor, b: EventCursor): number {
 	return (
 		a.timestampMs - b.timestampMs ||
 		a.event.context.sessionId.localeCompare(b.event.context.sessionId)
