@@ -20,6 +20,12 @@ export interface ExportRequest {
 	readonly writer: ExportWriter;
 }
 
+export interface ExportResult {
+	readonly eventCount: number;
+	/** Files skipped because they could not be read or parsed. */
+	readonly skippedFileCount: number;
+}
+
 /**
  * Host hooks the export needs: cancellation, flush, progress, and a cleanup
  * callback. Free of VS Code types so the pipeline is testable without a UI.
@@ -30,19 +36,22 @@ export interface ExportRuntime {
 	readonly report: (message: string) => void;
 	/** The pre-export flush did not fully succeed, so recent events may be missing. */
 	readonly onFlushIncomplete: () => void;
+	/** A file could not be read or parsed; the export continues without it (caller logs). */
+	readonly onFileSkipped: (err: Error, fileName: string) => void;
 	/** A temp file, staging dir, or empty export could not be removed (caller logs). */
 	readonly onCleanupError: (err: unknown, target: string) => void;
 }
 
 /**
  * Flushes telemetry, then streams every event in the range to `outputPath`.
- * Returns the number written; an export matching nothing leaves no file
- * behind. Throws on cancellation or write failure.
+ * Returns the count written and any unreadable files skipped; an export
+ * matching nothing leaves no file behind. Throws on cancellation or write
+ * failure.
  */
 export async function collectTelemetryExport(
 	request: ExportRequest,
 	runtime: ExportRuntime,
-): Promise<number> {
+): Promise<ExportResult> {
 	runtime.report("Flushing buffered events...");
 	const flushStatus = await runtime.flushTelemetry();
 	throwIfAborted(runtime.signal);
@@ -56,12 +65,16 @@ export async function collectTelemetryExport(
 		request.range,
 	);
 	if (files.length === 0) {
-		return 0;
+		return { eventCount: 0, skippedFileCount: 0 };
 	}
 
 	runtime.report("Writing export...");
+	let skippedFileCount = 0;
 	const events = abortable(
-		streamTelemetryEventsSorted(files, request.range),
+		streamTelemetryEventsSorted(files, request.range, (err, fileName) => {
+			skippedFileCount += 1;
+			runtime.onFileSkipped(err, fileName);
+		}),
 		runtime.signal,
 	);
 	const eventCount = await request.writer(
@@ -73,7 +86,7 @@ export async function collectTelemetryExport(
 	if (eventCount === 0) {
 		await removeEmptyExport(request.outputPath, runtime.onCleanupError);
 	}
-	return eventCount;
+	return { eventCount, skippedFileCount };
 }
 
 /** Removes the file a writer produced for an export that matched no events. */

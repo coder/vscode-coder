@@ -83,7 +83,7 @@ describe("streamTelemetryEventsSorted", () => {
 			]),
 		});
 
-		const events = await collectSorted([
+		const events = await drain([
 			"telemetry-2026-05-12-aaaaaaaa.1.jsonl",
 			"telemetry-2026-05-12-bbbbbbbb.jsonl",
 			"telemetry-2026-05-12-cccccccc.jsonl",
@@ -116,7 +116,7 @@ describe("streamTelemetryEventsSorted", () => {
 			]),
 		});
 
-		const events = await collectSorted([
+		const events = await drain([
 			"telemetry-2026-05-12-aaaaaaaa.jsonl",
 			"telemetry-2026-05-12-bbbbbbbb.jsonl",
 		]);
@@ -139,7 +139,7 @@ describe("streamTelemetryEventsSorted", () => {
 			"telemetry-2026-05-12-bbbbbbbb.jsonl": sessionFileContent([second]),
 		});
 
-		const events = await collectSorted([
+		const events = await drain([
 			"telemetry-2026-05-12-aaaaaaaa.jsonl",
 			"telemetry-2026-05-12-bbbbbbbb.jsonl",
 		]);
@@ -147,28 +147,94 @@ describe("streamTelemetryEventsSorted", () => {
 		expect(events).toEqual([first, second]);
 	});
 
-	it("rejects a file whose rows precede its header", async () => {
+	it("skips a file whose rows precede its header and reports it", async () => {
 		writeFiles({
 			"telemetry-2026-05-12-aaaaaaaa.jsonl": serializeTelemetryEventLine(
 				makeEvent({ timestamp: "2026-05-12T01:00:00.000Z" }),
 			),
 		});
+		const onFileError = vi.fn();
 
-		await expect(
-			collectSorted(["telemetry-2026-05-12-aaaaaaaa.jsonl"]),
-		).rejects.toThrow(/expected a file header before event rows/);
+		const events = await drain(
+			["telemetry-2026-05-12-aaaaaaaa.jsonl"],
+			onFileError,
+		);
+
+		expect(events).toEqual([]);
+		expect(onFileError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				message: expect.stringMatching(
+					/expected a file header before event rows/,
+				),
+			}),
+			"telemetry-2026-05-12-aaaaaaaa.jsonl",
+		);
 	});
 
-	it("surfaces parse errors with file:line context", async () => {
+	it("reports parse errors with file:line context", async () => {
 		writeFiles({
 			"telemetry-2026-05-12-aaaaaaaa.jsonl": "{not-json}\n",
 		});
+		const onFileError = vi.fn();
 
-		await expect(
-			collectSorted(["telemetry-2026-05-12-aaaaaaaa.jsonl"]),
-		).rejects.toThrow(
-			/Failed to parse telemetry file telemetry-2026-05-12-aaaaaaaa\.jsonl:1/,
+		await drain(["telemetry-2026-05-12-aaaaaaaa.jsonl"], onFileError);
+
+		expect(onFileError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				message: expect.stringMatching(
+					/Failed to parse telemetry file telemetry-2026-05-12-aaaaaaaa\.jsonl:1/,
+				),
+			}),
+			"telemetry-2026-05-12-aaaaaaaa.jsonl",
 		);
+	});
+
+	it("skips a file that cannot be opened and reports it", async () => {
+		const onFileError = vi.fn();
+
+		const events = await drain(
+			["telemetry-2026-05-12-gone0000.jsonl"],
+			onFileError,
+		);
+
+		expect(events).toEqual([]);
+		expect(onFileError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				message: expect.stringMatching(
+					/Failed to read telemetry file telemetry-2026-05-12-gone0000\.jsonl/,
+				),
+			}),
+			"telemetry-2026-05-12-gone0000.jsonl",
+		);
+	});
+
+	it("keeps a corrupt file's earlier events and continues with later files", async () => {
+		const first = makeEvent({ timestamp: "2026-05-12T01:00:00.000Z" });
+		const lost = makeEvent({ timestamp: "2026-05-12T02:00:00.000Z" });
+		const second = makeEvent({ timestamp: "2026-05-12T03:00:00.000Z" });
+		writeFiles({
+			"telemetry-2026-05-12-aaaaaaaa.jsonl":
+				serializeTelemetryFileHeaderLine(first.context) +
+				serializeTelemetryEventLine(first) +
+				"{not-json}\n" +
+				serializeTelemetryEventLine(lost),
+			"telemetry-2026-05-12-bbbbbbbb.jsonl":
+				serializeTelemetryFileHeaderLine(second.context) +
+				serializeTelemetryEventLine(second),
+		});
+		const onFileError = vi.fn();
+
+		const events = await drain(
+			[
+				"telemetry-2026-05-12-aaaaaaaa.jsonl",
+				"telemetry-2026-05-12-bbbbbbbb.jsonl",
+			],
+			onFileError,
+		);
+
+		// The rest of the corrupt file is dropped; events already parsed stay.
+		expect(events).toEqual([first, second]);
+		expect(onFileError).toHaveBeenCalledOnce();
 	});
 });
 
@@ -206,13 +272,18 @@ function makeLogFile(name: string): TelemetryLogFile {
 	return { path: `${DIR}/${name}`, ...parsed };
 }
 
-async function collectSorted(
+/** `onFileError` defaults to rethrowing so a happy-path test cannot skip silently. */
+async function drain(
 	names: readonly string[],
+	onFileError: (err: Error, fileName: string) => void = (err) => {
+		throw err;
+	},
 ): Promise<TelemetryEvent[]> {
 	const events: TelemetryEvent[] = [];
 	for await (const event of streamTelemetryEventsSorted(
 		names.map(makeLogFile),
 		createCustomDateRange("2026-05-12", "2026-05-12"),
+		onFileError,
 	)) {
 		events.push(event);
 	}

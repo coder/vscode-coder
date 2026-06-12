@@ -40,7 +40,7 @@ const OK_FLUSH: FlushStatus = { ok: true, sinks: [] };
 function setup(
 	opts: {
 		choice?: ExportChoice;
-		outcome?: { count: number } | { error: unknown };
+		outcome?: { count: number; skipped?: number } | { error: unknown };
 		revealChoice?: string;
 	} = {},
 ) {
@@ -56,7 +56,10 @@ function setup(
 	if ("error" in outcome) {
 		vi.mocked(collectTelemetryExport).mockRejectedValue(outcome.error);
 	} else {
-		vi.mocked(collectTelemetryExport).mockResolvedValue(outcome.count);
+		vi.mocked(collectTelemetryExport).mockResolvedValue({
+			eventCount: outcome.count,
+			skippedFileCount: outcome.skipped ?? 0,
+		});
 	}
 
 	const observer: ExportTelemetryObserver = {
@@ -64,12 +67,15 @@ function setup(
 		error: vi.fn(),
 		succeedExport: vi.fn(),
 	};
+	const logger = createMockLogger();
+
 	return {
 		observer,
+		logger,
 		run: () =>
 			runExportTelemetryCommand(
 				TELEMETRY_DIR,
-				createMockLogger(),
+				logger,
 				vi.fn(() => Promise.resolve(OK_FLUSH)),
 				context,
 				observer,
@@ -114,7 +120,7 @@ describe("runExportTelemetryCommand", () => {
 		vi.mocked(collectTelemetryExport).mockImplementation(
 			(_request, runtime) => {
 				onFlushIncomplete = runtime.onFlushIncomplete;
-				return Promise.resolve(2);
+				return Promise.resolve({ eventCount: 2, skippedFileCount: 0 });
 			},
 		);
 
@@ -135,12 +141,40 @@ describe("runExportTelemetryCommand", () => {
 
 			await run();
 
-			expect(observer.succeedExport).toHaveBeenCalledWith("json", count);
+			expect(observer.succeedExport).toHaveBeenCalledWith("json", {
+				eventCount: count,
+				skippedFileCount: 0,
+			});
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				`${message} ${OUTPUT_PATH}.`,
 				REVEAL_ACTION,
 			);
+		});
+
+		it("warns and names the skip count when files were skipped", async () => {
+			const { run } = setup({ outcome: { count: 2, skipped: 1 } });
+
+			await run();
+
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				`Exported 2 telemetry events to ${OUTPUT_PATH}. 1 file could not be read. Check the Coder output for details.`,
+				REVEAL_ACTION,
+				"Show Output",
+			);
+			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+		});
+
+		it("opens the Coder output when Show Output is clicked", async () => {
+			const { logger, run } = setup({ outcome: { count: 2, skipped: 1 } });
+			vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(
+				"Show Output" as never,
+			);
+
+			await run();
+
+			expect(logger.show).toHaveBeenCalled();
+			expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
 		});
 
 		it("reveals the file when the user clicks the action", async () => {
@@ -180,10 +214,24 @@ describe("runExportTelemetryCommand", () => {
 
 			await run();
 
-			expect(observer.succeedExport).toHaveBeenCalledWith("json", 0);
+			expect(observer.succeedExport).toHaveBeenCalledWith("json", {
+				eventCount: 0,
+				skippedFileCount: 0,
+			});
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				"No telemetry events found for Last 24 hours.",
+			);
+		});
+
+		it("warns when every matching file was skipped", async () => {
+			const { run } = setup({ outcome: { count: 0, skipped: 2 } });
+
+			await run();
+
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				"No telemetry events found for Last 24 hours. 2 files could not be read. Check the Coder output for details.",
+				"Show Output",
 			);
 		});
 	});

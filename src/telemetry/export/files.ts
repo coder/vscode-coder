@@ -57,14 +57,17 @@ export async function listTelemetryFilesForRange(
  * Merge per-session event streams by timestamp, keeping only events whose
  * timestamp falls inside `range`. Output stays globally sorted while each
  * session's timestamps are monotonic; if a session's clock moves backward,
- * that session's append order is preserved.
+ * that session's append order is preserved. A file that cannot be read or
+ * parsed is reported through `onFileError` and skipped from its first bad
+ * line, so one bad file cannot sink an export.
  */
 export async function* streamTelemetryEventsSorted(
 	files: readonly TelemetryLogFile[],
 	range: TelemetryDateRange,
+	onFileError: (err: Error, fileName: string) => void,
 ): AsyncIterable<TelemetryEvent> {
 	const iterators = groupFilesBySession(files).map((sessionFiles) =>
-		streamTelemetryEventsFromFiles(sessionFiles, range),
+		streamTelemetryEventsFromFiles(sessionFiles, range, onFileError),
 	);
 	const frontier: EventCursor[] = [];
 	try {
@@ -84,6 +87,7 @@ export async function* streamTelemetryEventsSorted(
 async function* streamTelemetryEventsFromFiles(
 	files: readonly TelemetryLogFile[],
 	range: TelemetryDateRange,
+	onFileError: (err: Error, fileName: string) => void,
 ): AsyncGenerator<TelemetryEvent> {
 	for (const file of files) {
 		const name = path.basename(file.path);
@@ -106,13 +110,15 @@ async function* streamTelemetryEventsFromFiles(
 				}
 			}
 		} catch (err) {
-			if (err instanceof TelemetryFileParseError) {
-				throw err;
-			}
 			const at = lineNumber > 0 ? `:${lineNumber}` : "";
-			throw new Error(
-				`Failed to read telemetry file ${name}${at}: ${toError(err).message}`,
-				{ cause: err },
+			onFileError(
+				err instanceof TelemetryFileParseError
+					? err
+					: new Error(
+							`Failed to read telemetry file ${name}${at}: ${toError(err).message}`,
+							{ cause: err },
+						),
+				name,
 			);
 		} finally {
 			try {

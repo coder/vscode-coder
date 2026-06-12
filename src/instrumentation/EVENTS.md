@@ -298,6 +298,7 @@ Emitted by `DiagnosticTelemetry` around each diagnostic command.
 | `interval.count` (measurement)             | speed test only                                                  |
 | `throughput_mbits` (measurement)           | speed test only                                                  |
 | `event.count` (measurement)                | telemetry export only                                            |
+| `file.skipped_count` (measurement)         | telemetry export only; unreadable files skipped, omitted at zero |
 
 ## Deployment
 
