@@ -1,6 +1,10 @@
-import { recordAborted, recordError } from "./outcomes";
+import {
+	overallNetcheckSeverity,
+	type NetcheckReport,
+	type SpeedtestResult,
+} from "@repo/shared";
 
-import type { SpeedtestResult } from "@repo/shared";
+import { recordAborted, recordError } from "./outcomes";
 
 import type { ExportFormat } from "../telemetry/export/writers/types";
 import type { TelemetryReporter } from "../telemetry/reporter";
@@ -10,6 +14,7 @@ import type { WorkspacePickerErrorCategory } from "./workspaceOpen";
 
 export type DiagnosticCommand =
 	| "speed_test"
+	| "netcheck"
 	| "support_bundle"
 	| "export_telemetry";
 export type DiagnosticErrorCategory =
@@ -29,6 +34,7 @@ export interface DiagnosticTrace {
 	error(category?: DiagnosticErrorCategory): void;
 	setRequestedDuration(seconds: number): void;
 	succeedSpeedtest(result: SpeedtestResult): void;
+	succeedNetcheck(report: NetcheckReport): void;
 	succeedExport(format: ExportFormat, eventCount: number): void;
 }
 
@@ -68,6 +74,18 @@ class SpanDiagnosticTrace implements DiagnosticTrace {
 		this.span.setMeasurement(
 			"throughput_mbits",
 			result.overall.throughput_mbits,
+		);
+	}
+
+	public succeedNetcheck(report: NetcheckReport): void {
+		this.span.setProperty("severity", overallNetcheckSeverity(report));
+		this.span.setMeasurement(
+			"region.count",
+			Object.keys(report.derp.regions).length,
+		);
+		this.span.setMeasurement(
+			"warning.count",
+			report.derp.warnings.length + report.interfaces.warnings.length,
 		);
 	}
 

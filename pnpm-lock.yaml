@@ -315,6 +315,25 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/netcheck:
+    dependencies:
+      '@repo/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@repo/webview-shared':
+        specifier: workspace:*
+        version: link:../webview-shared
+    devDependencies:
+      '@types/vscode-webview':
+        specifier: 'catalog:'
+        version: 1.57.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite:
+        specifier: 'catalog:'
+        version: 8.0.16(@types/node@22.19.20)(esbuild@0.28.0)
+
   packages/shared:
     devDependencies:
       typescript:

@@ -4,6 +4,8 @@ import { DiagnosticTelemetry } from "@/instrumentation/diagnostics";
 
 import { createTelemetryHarness } from "../../mocks/telemetry";
 
+import type { NetcheckReport } from "@repo/shared";
+
 function setup() {
 	const { sink, service } = createTelemetryHarness();
 	return { sink, telemetry: new DiagnosticTelemetry(service) };
@@ -63,6 +65,42 @@ describe("DiagnosticTelemetry", () => {
 				throughput_mbits: 42,
 			},
 			properties: { result: "success" },
+		});
+	});
+
+	it("records netcheck severity and bounded counts", async () => {
+		const { sink, telemetry } = setup();
+		const report: NetcheckReport = {
+			derp: {
+				severity: "ok",
+				warnings: [],
+				regions: {
+					"999": { severity: "ok", node_reports: [] },
+					"1000": { severity: "ok", node_reports: [] },
+				},
+			},
+			interfaces: {
+				severity: "warning",
+				warnings: [{ code: "EIF01", message: "MTU is low" }],
+				interfaces: [],
+			},
+		};
+
+		await telemetry.trace("netcheck", (trace) => {
+			trace.succeedNetcheck(report);
+			return Promise.resolve();
+		});
+
+		expect(sink.expectOne("command.diagnostic.completed")).toMatchObject({
+			measurements: {
+				"region.count": 2,
+				"warning.count": 1,
+			},
+			properties: {
+				command: "netcheck",
+				severity: "warning",
+				result: "success",
+			},
 		});
 	});
 });

@@ -12,6 +12,7 @@
 			"@repo/webview-shared": ["../packages/webview-shared/src/index.ts"],
 			"@repo/webview-shared/*": ["../packages/webview-shared/src/*"],
 			"@repo/tasks/*": ["../packages/tasks/src/*"],
+			"@repo/netcheck/*": ["../packages/netcheck/src/*"],
 			"@repo/speedtest/*": ["../packages/speedtest/src/*"]
 		}
 	},

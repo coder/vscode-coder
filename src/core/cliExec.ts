@@ -80,6 +80,26 @@ export async function speedtest(
 }
 
 /**
+ * Run `coder netcheck` and return the raw JSON report.
+ */
+export async function netcheck(
+	env: CliEnv,
+	signal?: AbortSignal,
+): Promise<string> {
+	const globalFlags = getGlobalFlags(env.configs, env.auth);
+	try {
+		const result = await execFileAsync(
+			env.binary,
+			[...globalFlags, "netcheck"],
+			{ signal },
+		);
+		return result.stdout;
+	} catch (error) {
+		throw cliError(error);
+	}
+}
+
+/**
  * Run `coder support bundle` and save the output zip to the given path.
  */
 export async function supportBundle(
