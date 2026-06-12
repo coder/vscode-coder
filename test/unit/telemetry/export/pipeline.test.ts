@@ -18,7 +18,7 @@ import type { FlushStatus } from "@/telemetry/service";
 
 vi.mock("@/telemetry/export/files", () => ({
 	listTelemetryFilesForRange: vi.fn(),
-	streamTelemetryEvents: vi.fn(),
+	streamTelemetryEventsSorted: vi.fn(),
 }));
 vi.mock("node:fs/promises", () => ({ rm: vi.fn(() => Promise.resolve()) }));
 
@@ -45,7 +45,7 @@ function setup(
 	vi.mocked(files.listTelemetryFilesForRange).mockResolvedValue([
 		...(opts.filePaths ?? FILE_PATHS),
 	]);
-	vi.mocked(files.streamTelemetryEvents).mockReturnValue(
+	vi.mocked(files.streamTelemetryEventsSorted).mockReturnValue(
 		asyncIterable(opts.events ?? [makeEvent()]),
 	);
 

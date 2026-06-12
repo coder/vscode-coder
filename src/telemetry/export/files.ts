@@ -13,6 +13,7 @@ import {
 import {
 	fileDateCanContainRangeEvent,
 	isTimestampInRange,
+	parseTelemetryTimestampMs,
 	type TelemetryDateRange,
 } from "./range";
 
@@ -25,7 +26,18 @@ interface TelemetryLogFile {
 	readonly part: number;
 }
 
-/** Log files that could contain events in `range`, in chronological order. */
+interface TelemetryEventEntry {
+	readonly event: TelemetryEvent;
+	readonly file: TelemetryLogFile;
+	readonly lineNumber: number;
+}
+
+interface EventCursor {
+	readonly entry: TelemetryEventEntry;
+	readonly iterator: AsyncIterator<TelemetryEventEntry>;
+}
+
+/** Log files whose dates could overlap `range`. */
 export async function listTelemetryFilesForRange(
 	telemetryDir: string,
 	range: TelemetryDateRange,
@@ -41,7 +53,7 @@ export async function listTelemetryFilesForRange(
 	}
 
 	return names
-		.map((name) => parseLogFilename(telemetryDir, name))
+		.map((name) => parseLogFilePath(path.join(telemetryDir, name)))
 		.filter(
 			(file): file is TelemetryLogFile =>
 				file !== undefined && fileDateCanContainRangeEvent(file.date, range),
@@ -50,17 +62,44 @@ export async function listTelemetryFilesForRange(
 		.map(({ path: filePath }) => filePath);
 }
 
-/**
- * Yields events from `filePaths` in order, keeping only those whose timestamp
- * falls inside `range`. Reads line-by-line so memory stays flat on big files.
- */
-export async function* streamTelemetryEvents(
+/** Merge per-session append streams by timestamp, buffering one event per session. */
+export async function* streamTelemetryEventsSorted(
 	filePaths: readonly string[],
 	range: TelemetryDateRange,
 ): AsyncIterable<TelemetryEvent> {
-	for (const filePath of filePaths) {
-		const name = path.basename(filePath);
-		const stream = createReadStream(filePath, { encoding: "utf8" });
+	const frontier: EventCursor[] = [];
+	for (const files of sessionFileGroups(filePaths)) {
+		const iterator = streamTelemetryEventEntries(files, range)[
+			Symbol.asyncIterator
+		]();
+		const next = await iterator.next();
+		if (!next.done) {
+			frontier.push({ entry: next.value, iterator });
+		}
+	}
+
+	while (frontier.length > 0) {
+		frontier.sort((a, b) => compareEventEntries(a.entry, b.entry));
+		const cursor = frontier.shift();
+		if (!cursor) {
+			return;
+		}
+		yield cursor.entry.event;
+
+		const next = await cursor.iterator.next();
+		if (!next.done) {
+			frontier.push({ entry: next.value, iterator: cursor.iterator });
+		}
+	}
+}
+
+async function* streamTelemetryEventEntries(
+	files: readonly TelemetryLogFile[],
+	range: TelemetryDateRange,
+): AsyncIterable<TelemetryEventEntry> {
+	for (const file of files) {
+		const name = path.basename(file.path);
+		const stream = createReadStream(file.path, { encoding: "utf8" });
 		const lines = readline.createInterface({
 			input: stream,
 			crlfDelay: Infinity,
@@ -74,7 +113,7 @@ export async function* streamTelemetryEvents(
 				}
 				const event = parseTelemetryEventLine(line, name, lineNumber);
 				if (isTimestampInRange(event.timestamp, range)) {
-					yield event;
+					yield { event, file, lineNumber };
 				}
 			}
 		} catch (err) {
@@ -96,15 +135,29 @@ export async function* streamTelemetryEvents(
 	}
 }
 
-function parseLogFilename(
-	dir: string,
-	name: string,
-): TelemetryLogFile | undefined {
-	const parsed = localJsonlFiles.parseFileName(name);
-	if (!parsed) {
-		return undefined;
+function sessionFileGroups(filePaths: readonly string[]): TelemetryLogFile[][] {
+	const groups = new Map<string, TelemetryLogFile[]>();
+	for (const file of parseLogFilePaths(filePaths).sort(compareLogFiles)) {
+		const group = groups.get(file.session);
+		if (group) {
+			group.push(file);
+		} else {
+			groups.set(file.session, [file]);
+		}
 	}
-	return { path: path.join(dir, name), ...parsed };
+	return [...groups.values()];
+}
+
+function parseLogFilePaths(filePaths: readonly string[]): TelemetryLogFile[] {
+	return filePaths.flatMap((filePath) => {
+		const file = parseLogFilePath(filePath);
+		return file ? [file] : [];
+	});
+}
+
+function parseLogFilePath(filePath: string): TelemetryLogFile | undefined {
+	const parsed = localJsonlFiles.parseFileName(path.basename(filePath));
+	return parsed ? { path: filePath, ...parsed } : undefined;
 }
 
 function compareLogFiles(a: TelemetryLogFile, b: TelemetryLogFile): number {
@@ -112,5 +165,18 @@ function compareLogFiles(a: TelemetryLogFile, b: TelemetryLogFile): number {
 		a.date.localeCompare(b.date) ||
 		a.session.localeCompare(b.session) ||
 		a.part - b.part
+	);
+}
+
+function compareEventEntries(
+	a: TelemetryEventEntry,
+	b: TelemetryEventEntry,
+): number {
+	const timestamp =
+		parseTelemetryTimestampMs(a.event.timestamp) -
+		parseTelemetryTimestampMs(b.event.timestamp);
+	return (
+		timestamp ||
+		a.event.context.sessionId.localeCompare(b.event.context.sessionId)
 	);
 }

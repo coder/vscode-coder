@@ -2,7 +2,10 @@ import * as fs from "node:fs/promises";
 
 import { throwIfAborted } from "../../error/errorUtils";
 
-import { listTelemetryFilesForRange, streamTelemetryEvents } from "./files";
+import {
+	listTelemetryFilesForRange,
+	streamTelemetryEventsSorted,
+} from "./files";
 
 import type { TelemetryEvent } from "../event";
 import type { FlushStatus } from "../service";
@@ -58,7 +61,7 @@ export async function collectTelemetryExport(
 
 	runtime.report("Writing export...");
 	const events = abortable(
-		streamTelemetryEvents(filePaths, request.range),
+		streamTelemetryEventsSorted(filePaths, request.range),
 		runtime.signal,
 	);
 	const eventCount = await request.writer(
