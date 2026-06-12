@@ -34,34 +34,56 @@ Signal kinds, which each category groups its events by:
 
 Framework-managed envelope fields (wire keys, JSONL):
 
-| Field             | Meaning                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------- |
-| `event_id`        | Unique per event (OTel span id, 16 hex)                                                     |
-| `event_name`      | The event names below                                                                       |
-| `timestamp`       | ISO 8601 emission time                                                                      |
-| `event_sequence`  | Monotonic per-session counter                                                               |
-| `schema_version`  | Integer, currently `1`; bumped only on breaking wire changes, additive fields never bump it |
-| `trace_id`        | Spans and their child events only (OTel trace id, 32 hex)                                   |
-| `parent_event_id` | Phases and span logs only; the parent span's `event_id`                                     |
-| `error`           | `{ message, type?, code? }`, only when an error was captured                                |
+| Field             | Meaning                                                                |
+| ----------------- | ---------------------------------------------------------------------- |
+| `event_id`        | Unique per event (OTel span id, 16 hex)                                |
+| `event_name`      | The event names below                                                  |
+| `timestamp`       | ISO 8601 emission time                                                 |
+| `event_sequence`  | Monotonic per-session counter                                          |
+| `deployment_url`  | Deployment active at emit time; empty until set via `setDeploymentUrl` |
+| `trace_id`        | Spans and their child events only (OTel trace id, 32 hex)              |
+| `parent_event_id` | Phases and span logs only; the parent span's `event_id`                |
+| `error`           | `{ message, type?, code? }`, only when an error was captured           |
 
-Session context, stamped on every event under `context`:
+Session-constant context is written once per file instead of on every row:
+the first line of every telemetry file (including rotated `.N` segments) is
+a header carrying the wire schema version, the sink start time, and the
+session context; each row below it implicitly inherits the version and
+context.
 
-| Field                                  | Source                                                                    |
-| -------------------------------------- | ------------------------------------------------------------------------- |
-| `extension_version`                    | package.json version                                                      |
-| `machine_id`                           | `vscode.env.machineId`                                                    |
-| `session_id`                           | Generated per session                                                     |
-| `os_type` / `os_version` / `host_arch` | `process.platform` (windows normalized) / `os.release()` / `process.arch` |
-| `platform_name` / `platform_version`   | `vscode.env.appName` / `vscode.version`                                   |
-| `deployment_url`                       | Set once known via `setDeploymentUrl`                                     |
+```json
+{
+	"kind": "header",
+	"schema_version": 1,
+	"timestamp": "...",
+	"context": {
+		"extension_version": "...",
+		"machine_id": "...",
+		"session_id": "...",
+		"os_type": "...",
+		"os_version": "...",
+		"host_arch": "...",
+		"platform_name": "...",
+		"platform_version": "..."
+	}
+}
+```
+
+| Field                                  | Source                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `schema_version`                       | Integer, currently `1`; bumped only on breaking wire changes, additive fields never bump it |
+| `timestamp`                            | ISO 8601 sink start time; at or before every row's timestamp                                |
+| `extension_version`                    | package.json version                                                                        |
+| `machine_id`                           | `vscode.env.machineId`                                                                      |
+| `session_id`                           | Generated per session                                                                       |
+| `os_type` / `os_version` / `host_arch` | `process.platform` (windows normalized) / `os.release()` / `process.arch`                   |
+| `platform_name` / `platform_version`   | `vscode.env.appName` / `vscode.version`                                                     |
 
 On OTLP export the context becomes resource attributes (`service.name:
 coder-vscode-extension`, `service.version`, `service.instance.id`, `host.id`,
 `host.arch`, `os.type`, `os.version`, `vscode.platform.name`,
-`vscode.platform.version`, `coder.deployment.url`) plus per-record provenance
-(`coder.event.extension_version`, `coder.event.session_id`,
-`coder.event.deployment_url`).
+`vscode.platform.version`, `coder.deployment.url`) on the resource block
+holding the producing session's records.
 
 ## Consuming exports
 
@@ -69,11 +91,16 @@ Events buffer on disk as JSONL; nothing leaves the machine on its own. The
 **Coder: Export Telemetry** command flushes the buffer and writes a chosen
 date range in one of two formats:
 
-- **JSON**: one file holding an array of the wire-format rows described
-  above, for direct inspection or ad-hoc processing.
+- **JSON**: one file holding an array of self-contained events, each
+  carrying its full context and schema version, for direct inspection or
+  ad-hoc processing.
 - **OTLP**: a zip of standard OTLP/JSON envelopes (spans in `traces.json`,
   logs in `logs.json`, metric events as data points in `metrics.json`) plus
-  a `manifest.json` describing the export. Feed these to any OTel-compatible
+  a `manifest.json` describing the export. Each envelope holds one resource
+  block per producing session and UTC date, carrying that session's context
+  as resource attributes; within a block, metric data points are grouped
+  under one `metrics[]` entry per metric name and unit, and cumulative
+  counters restart at the block boundary. Feed these to any OTel-compatible
   tool that ingests OTLP/JSON, such as an OpenTelemetry Collector pipeline or
   your observability backend's import tooling.
 
@@ -271,6 +298,7 @@ Emitted by `DiagnosticTelemetry` around each diagnostic command.
 | `interval.count` (measurement)             | speed test only                                                  |
 | `throughput_mbits` (measurement)           | speed test only                                                  |
 | `event.count` (measurement)                | telemetry export only                                            |
+| `file.skipped_count` (measurement)         | telemetry export only; unreadable files skipped, omitted at zero |
 
 ## Deployment
 
@@ -358,9 +386,10 @@ Emitted by `SshTelemetry`.
 
 #### `ssh.network.sampled`
 
-Tunnel network sample. Emitted on a p2p flip, a preferred-DERP change, a
-meaningful latency change (at least 25 ms or 20 %), or a roughly 60 s
-heartbeat.
+Tunnel network sample. Emitted on a roughly 60 s heartbeat, or on a p2p
+flip, a preferred-DERP change, or a meaningful latency change (at least
+25 ms and at least 20 %). Change-triggered emissions are limited to one per
+15 s; a change that persists past that cooldown is emitted when it expires.
 
 | Attribute                      | Values                                                             |
 | ------------------------------ | ------------------------------------------------------------------ |
@@ -380,13 +409,13 @@ Emitted by `HttpRequestsTelemetry`, which lives with the HTTP logging in
 `src/logging`. A per-minute rollup of REST traffic, one event per method and
 route bucket.
 
-| Attribute                                                              | Values                                                              |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `method`                                                               | HTTP method                                                         |
-| `route`                                                                | normalized route (ids replaced by placeholders)                     |
-| `window_seconds` (measurement)                                         | actual window length                                                |
-| `count.1xx` through `count.5xx`, `count.network_error` (measurements)  | export as cumulative counters with unit `{request}`                 |
-| `duration.p50_ms`, `duration.p95_ms`, `duration.p99_ms` (measurements) | export as gauges (`http.requests.duration.p50` etc.) with unit `ms` |
+| Attribute                                                              | Values                                                                                                               |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `method`                                                               | HTTP method                                                                                                          |
+| `route`                                                                | normalized route (ids replaced by placeholders)                                                                      |
+| `window_seconds` (measurement)                                         | actual window length                                                                                                 |
+| `count.1xx` through `count.5xx`, `count.network_error` (measurements)  | omitted when 0; export as cumulative counters with unit `{request}`                                                  |
+| `duration.p50_ms`, `duration.p95_ms`, `duration.p99_ms` (measurements) | omitted when no request carried timing metadata; export as gauges (`http.requests.duration.p50` etc.) with unit `ms` |
 
 ## WebSocket connections
 

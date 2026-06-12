@@ -71,6 +71,7 @@ function setup(
 		flushTelemetry,
 		report: vi.fn(),
 		onFlushIncomplete: vi.fn(),
+		onFileSkipped: vi.fn(),
 		onCleanupError: vi.fn(),
 	};
 	const request: ExportRequest = {
@@ -120,7 +121,10 @@ describe("collectTelemetryExport", () => {
 	it("returns 0 and never writes when no files cover the range", async () => {
 		const { run, writer } = setup({ files: [] });
 
-		await expect(run()).resolves.toBe(0);
+		await expect(run()).resolves.toEqual({
+			eventCount: 0,
+			skippedFileCount: 0,
+		});
 		expect(writer).not.toHaveBeenCalled();
 		expect(fsp.rm).not.toHaveBeenCalled();
 	});
@@ -128,7 +132,29 @@ describe("collectTelemetryExport", () => {
 	it("returns the writer's event count", async () => {
 		const { run } = setup({ writeCount: 5 });
 
-		await expect(run()).resolves.toBe(5);
+		await expect(run()).resolves.toEqual({
+			eventCount: 5,
+			skippedFileCount: 0,
+		});
+	});
+
+	it("counts files the stream skips and notifies the host of each", async () => {
+		const { run, runtime } = setup({ writeCount: 1 });
+		vi.mocked(files.streamTelemetryEventsSorted).mockImplementation(
+			(_files, _range, onFileError) => {
+				onFileError(new Error("corrupt"), "a.jsonl");
+				return asyncIterable([makeEvent()]);
+			},
+		);
+
+		await expect(run()).resolves.toEqual({
+			eventCount: 1,
+			skippedFileCount: 1,
+		});
+		expect(runtime.onFileSkipped).toHaveBeenCalledWith(
+			expect.any(Error),
+			"a.jsonl",
+		);
 	});
 
 	it("passes the descriptor, output path, signal, and cleanup handler to the writer", async () => {
@@ -147,7 +173,7 @@ describe("collectTelemetryExport", () => {
 	it("removes the empty output file when the writer wrote nothing", async () => {
 		const { run } = setup({ writeCount: 0 });
 
-		await expect(run()).resolves.toBe(0);
+		await expect(run()).resolves.toMatchObject({ eventCount: 0 });
 		expect(fsp.rm).toHaveBeenCalledWith(OUTPUT_PATH, { force: true });
 	});
 
@@ -163,7 +189,7 @@ describe("collectTelemetryExport", () => {
 		const { run, runtime } = setup({ writeCount: 0 });
 		vi.mocked(fsp.rm).mockRejectedValue(new Error("EACCES"));
 
-		await expect(run()).resolves.toBe(0);
+		await expect(run()).resolves.toMatchObject({ eventCount: 0 });
 		expect(runtime.onCleanupError).toHaveBeenCalledWith(
 			expect.any(Error),
 			OUTPUT_PATH,

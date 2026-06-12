@@ -142,23 +142,31 @@ export class HttpRequestsTelemetry implements Disposable {
 		);
 		for (const [method, byRoute] of this.#buckets) {
 			for (const [route, bucket] of byRoute) {
-				const sortedDurations = bucket.durationsMs.toSorted((a, b) => a - b);
-				this.#telemetry.log(
-					EVENT_NAME,
-					{ method, route },
-					{
-						window_seconds: elapsedSeconds,
-						"count.1xx": bucket.count1xx,
-						"count.2xx": bucket.count2xx,
-						"count.3xx": bucket.count3xx,
-						"count.4xx": bucket.count4xx,
-						"count.5xx": bucket.count5xx,
-						"count.network_error": bucket.countNetworkError,
-						"duration.p50_ms": percentile(sortedDurations, 0.5),
-						"duration.p95_ms": percentile(sortedDurations, 0.95),
-						"duration.p99_ms": percentile(sortedDurations, 0.99),
-					},
-				);
+				const counts: Record<string, number> = {
+					"count.1xx": bucket.count1xx,
+					"count.2xx": bucket.count2xx,
+					"count.3xx": bucket.count3xx,
+					"count.4xx": bucket.count4xx,
+					"count.5xx": bucket.count5xx,
+					"count.network_error": bucket.countNetworkError,
+				};
+				const measurements: Record<string, number> = {
+					window_seconds: elapsedSeconds,
+				};
+				// Zero counters are omitted; absence reads as "none in this window".
+				for (const [key, count] of Object.entries(counts)) {
+					if (count > 0) {
+						measurements[key] = count;
+					}
+				}
+				// Percentiles are omitted when no request carried timing metadata.
+				if (bucket.durationsMs.length > 0) {
+					const sorted = bucket.durationsMs.toSorted((a, b) => a - b);
+					measurements["duration.p50_ms"] = percentile(sorted, 0.5);
+					measurements["duration.p95_ms"] = percentile(sorted, 0.95);
+					measurements["duration.p99_ms"] = percentile(sorted, 0.99);
+				}
+				this.#telemetry.log(EVENT_NAME, { method, route }, measurements);
 			}
 		}
 		this.#buckets.clear();
@@ -189,6 +197,7 @@ function elapsedMs(
 }
 
 function percentile(sortedValues: readonly number[], p: number): number {
+	// Indexing an empty array would return undefined as a number.
 	if (sortedValues.length === 0) {
 		return 0;
 	}

@@ -10,6 +10,7 @@ import {
 import {
 	collectTelemetryExport,
 	type ExportRequest,
+	type ExportResult,
 	type ExportRuntime,
 } from "./pipeline";
 import { promptForExport, type ExportChoice } from "./prompts";
@@ -20,8 +21,6 @@ import type { TelemetryContext } from "../event";
 import type { FlushStatus } from "../service";
 
 import type { ExportFormat } from "./writers/types";
-
-const REVEAL_ACTION = "Reveal in File Explorer";
 
 const PROGRESS_OPTIONS = {
 	location: vscode.ProgressLocation.Notification,
@@ -36,7 +35,7 @@ const PROGRESS_OPTIONS = {
 export interface ExportTelemetryObserver {
 	abort(stage: "prompt" | "progress"): void;
 	error(): void;
-	succeedExport(format: ExportFormat, eventCount: number): void;
+	succeedExport(format: ExportFormat, result: ExportResult): void;
 }
 
 export async function runExportTelemetryCommand(
@@ -87,12 +86,15 @@ function exportRuntime(
 			),
 		onCleanupError: (err, target) =>
 			logger.warn("Failed to clean up after telemetry export", target, err),
+		// The skipped file's name and line are in the error message.
+		onFileSkipped: (err) =>
+			logger.warn("Telemetry export skipped an unreadable file", err),
 	};
 }
 
 /** Turns the export result into the matching user-facing notification. */
 async function reportOutcome(
-	result: ProgressResult<number>,
+	result: ProgressResult<ExportResult>,
 	choice: ExportChoice,
 	logger: Logger,
 	observer: ExportTelemetryObserver,
@@ -110,29 +112,59 @@ async function reportOutcome(
 		return;
 	}
 
-	const eventCount = result.value;
-	observer.succeedExport(choice.format, eventCount);
+	const { eventCount, skippedFileCount } = result.value;
+	observer.succeedExport(choice.format, result.value);
 	if (eventCount === 0) {
-		void vscode.window.showInformationMessage(
+		void showExportMessage(
 			`No telemetry events found for ${choice.range.label}.`,
+			skippedFileCount,
+			logger,
 		);
 		return;
 	}
-	await notifyExportSucceeded(choice.outputPath, eventCount, logger);
+	const action = await showExportMessage(
+		`Exported ${formatEventCount(eventCount)} to ${choice.outputPath}.`,
+		skippedFileCount,
+		logger,
+		"Reveal in File Explorer",
+	);
+	if (action === "Reveal in File Explorer") {
+		await revealExportedFile(choice.outputPath, logger);
+	}
 }
 
-async function notifyExportSucceeded(
+type ExportAction = "Reveal in File Explorer";
+
+/**
+ * A partial export warns and names the unreadable-file count. "Show Output"
+ * is offered on warnings and handled here; only caller actions are returned.
+ */
+async function showExportMessage(
+	message: string,
+	skippedFileCount: number,
+	logger: Logger,
+	...actions: ExportAction[]
+): Promise<ExportAction | undefined> {
+	if (skippedFileCount === 0) {
+		return vscode.window.showInformationMessage(message, ...actions);
+	}
+	const files = skippedFileCount === 1 ? "file" : "files";
+	const action = await vscode.window.showWarningMessage(
+		`${message} ${skippedFileCount} ${files} could not be read. Check the Coder output for details.`,
+		...actions,
+		"Show Output",
+	);
+	if (action === "Show Output") {
+		logger.show();
+		return undefined;
+	}
+	return action;
+}
+
+async function revealExportedFile(
 	outputPath: string,
-	eventCount: number,
 	logger: Logger,
 ): Promise<void> {
-	const action = await vscode.window.showInformationMessage(
-		`Exported ${formatEventCount(eventCount)} to ${outputPath}.`,
-		REVEAL_ACTION,
-	);
-	if (action !== REVEAL_ACTION) {
-		return;
-	}
 	try {
 		await vscode.commands.executeCommand(
 			"revealFileInOS",

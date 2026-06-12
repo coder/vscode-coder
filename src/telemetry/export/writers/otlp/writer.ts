@@ -10,21 +10,27 @@ import {
 	toError,
 	wrapError,
 } from "../../../../error/errorUtils";
+import { toUtcDateString } from "../../../../util/date";
 import { writeAtomically } from "../../../../util/fs";
 import { describeMetricEvent } from "../../metrics";
+import { parseTelemetryTimestampMs } from "../../range";
 
 import { openEnvelopeFile, type EnvelopeFile } from "./envelope";
 import { buildManifest, MANIFEST_FILE, type RecordCounts } from "./manifest";
+import { MetricBlockBuffer } from "./metricBlockBuffer";
 import {
 	ENVELOPES,
-	ENVELOPE_SUFFIX,
+	ENVELOPE_FILE_SUFFIX,
+	RESOURCE_BLOCK_SUFFIX,
 	type CumulativeState,
-	envelopePrefix,
+	type EnvelopeSpec,
+	envelopeFilePrefix,
 	logRecord,
 	metricRecords,
 	newCumulativeState,
 	otlpResource,
 	otlpScope,
+	resourceBlockPrefix,
 	type Signal,
 	spanRecord,
 } from "./records";
@@ -43,16 +49,52 @@ export interface OtlpExportCounts {
 const OTLP_FORMAT = "otlp-json";
 
 interface Channel {
-	file: EnvelopeFile;
+	readonly envelope: EnvelopeSpec;
+	readonly file: EnvelopeFile;
 	/** Source events routed to this signal. */
 	count: number;
 	/** OTLP records written to this signal. */
 	records: number;
+	/** Key of the resource block currently open in this envelope, if any. */
+	blockKey: string | undefined;
+}
+
+/** One resource block: a contiguous run of events sharing a block key. */
+interface ResourceBlock {
+	readonly key: string;
+	/** Serialized OTLP resource built from the producing event's context. */
+	readonly resource: string;
+}
+
+/** Single-entry cache of the last serialized OTLP resource. */
+interface ResourceCache {
+	readonly context: TelemetryContext;
+	readonly resource: string;
+}
+
+/** Mutable per-export state shared by the routing helpers. */
+interface ExportRun {
+	readonly channels: Record<Signal, Channel>;
+	/** Serialized instrumentation scope of the exporting session. */
+	readonly scope: string;
+	readonly metricBuffer: MetricBlockBuffer;
+	/** Cumulative counter state; reset at every block boundary. */
+	state: CumulativeState;
+	block: ResourceBlock | undefined;
+	resourceCache: ResourceCache | undefined;
 }
 
 // Read high-water mark (HWM): bytes buffered per read while streaming a staged
 // envelope into the zip.
 const READ_HWM_BYTES = 256 * 1024;
+
+// Maximum deflate effort: exports run on demand, so CPU cost is irrelevant
+// next to bundle size.
+const ZIP_COMPRESSION_LEVEL = 9;
+
+// Force-flush bound for buffered metric points, so one block cannot grow the
+// buffer without limit. A flushed series continues in a new `metrics[]` entry.
+export const MAX_BUFFERED_METRIC_POINTS = 10_000;
 
 /**
  * Writes `events` as an OTLP/JSON zip (`logs.json`, `traces.json`,
@@ -117,17 +159,23 @@ async function writeStagedFiles(
 	signal: AbortSignal | undefined,
 	descriptor: ExportDescriptor,
 ): Promise<OtlpExportCounts> {
-	const resource = JSON.stringify(otlpResource(context));
-	const scope = JSON.stringify(otlpScope(context.extensionVersion));
-	const channels = await openChannels(dir, resource, scope);
-	const state = newCumulativeState();
+	const channels = await openChannels(dir);
+	const run: ExportRun = {
+		channels,
+		scope: JSON.stringify(otlpScope(context.extensionVersion)),
+		metricBuffer: new MetricBlockBuffer(),
+		state: newCumulativeState(),
+		block: undefined,
+		resourceCache: undefined,
+	};
 
 	let succeeded = false;
 	try {
 		for await (const event of events) {
 			throwIfAborted(signal);
-			await routeEvent(event, channels, state);
+			await routeEvent(event, run);
 		}
+		await flushMetricBlock(run);
 		succeeded = true;
 	} finally {
 		// On success surface close failures; on failure swallow them so the
@@ -172,19 +220,16 @@ async function writeManifest(
 	);
 }
 
-async function openChannels(
-	dir: string,
-	resource: string,
-	scope: string,
-): Promise<Record<Signal, Channel>> {
+async function openChannels(dir: string): Promise<Record<Signal, Channel>> {
 	const open = async (signal: Signal): Promise<Channel> => {
 		const envelope = ENVELOPES[signal];
 		const file = await openEnvelopeFile(
 			path.join(dir, envelope.file),
-			envelopePrefix(envelope, resource, scope),
-			ENVELOPE_SUFFIX,
+			envelopeFilePrefix(envelope),
+			RESOURCE_BLOCK_SUFFIX,
+			ENVELOPE_FILE_SUFFIX,
 		);
-		return { file, count: 0, records: 0 };
+		return { envelope, file, count: 0, records: 0, blockKey: undefined };
 	};
 	// Promise.allSettled so one failure doesn't orphan its siblings' fds.
 	const settled = await Promise.allSettled([
@@ -223,23 +268,25 @@ function isTimedSpan(
 
 async function routeEvent(
 	event: TelemetryEvent,
-	channels: Record<Signal, Channel>,
-	state: CumulativeState,
+	run: ExportRun,
 ): Promise<void> {
 	try {
+		await openEventBlock(event, run);
 		const metric = describeMetricEvent(event);
 		if (metric) {
-			await appendRecords(
-				channels.metrics,
-				metricRecords(event, metric, state),
-			);
-			channels.metrics.count += 1;
+			// Buffered so data points group under one metric per series; records
+			// are counted when the block's buffer flushes.
+			run.metricBuffer.add(metricRecords(event, metric, run.state));
+			run.channels.metrics.count += 1;
+			if (run.metricBuffer.points >= MAX_BUFFERED_METRIC_POINTS) {
+				await flushMetricBlock(run);
+			}
 		} else if (isTimedSpan(event)) {
-			await appendRecords(channels.traces, [spanRecord(event)]);
-			channels.traces.count += 1;
+			await appendRecords(run, run.channels.traces, [spanRecord(event)]);
+			run.channels.traces.count += 1;
 		} else {
-			await appendRecords(channels.logs, [logRecord(event)]);
-			channels.logs.count += 1;
+			await appendRecords(run, run.channels.logs, [logRecord(event)]);
+			run.channels.logs.count += 1;
 		}
 	} catch (err) {
 		throw wrapError(
@@ -250,10 +297,70 @@ async function routeEvent(
 	}
 }
 
+/**
+ * Starts a new resource block when the event's UTC date or producing context
+ * changes: buffered metrics flush under the previous block and cumulative
+ * counters reset, as OTel models a process restart. Input files sort by
+ * (date, session, part), so equal keys arrive as contiguous runs.
+ */
+async function openEventBlock(
+	event: TelemetryEvent,
+	run: ExportRun,
+): Promise<void> {
+	const date = toUtcDateString(
+		new Date(parseTelemetryTimestampMs(event.timestamp)),
+	);
+	const resource = serializeResourceCached(run, event.context);
+	const key = date + resource;
+	if (run.block?.key === key) {
+		return;
+	}
+	await flushMetricBlock(run);
+	run.state = newCumulativeState();
+	run.block = { key, resource };
+}
+
+/**
+ * Cached by context identity: the parser reuses one context object across
+ * rows, so this serializes once per file rather than once per event.
+ */
+function serializeResourceCached(
+	run: ExportRun,
+	context: TelemetryContext,
+): string {
+	if (run.resourceCache?.context !== context) {
+		run.resourceCache = {
+			context,
+			resource: JSON.stringify(otlpResource(context)),
+		};
+	}
+	return run.resourceCache.resource;
+}
+
+/** Writes the buffered metric series under the block that produced them. */
+async function flushMetricBlock(run: ExportRun): Promise<void> {
+	const records = run.metricBuffer.drain();
+	if (records.length > 0) {
+		await appendRecords(run, run.channels.metrics, records);
+	}
+}
+
 async function appendRecords(
+	run: ExportRun,
 	channel: Channel,
 	records: Iterable<unknown>,
 ): Promise<void> {
+	const block = run.block;
+	if (block === undefined) {
+		// Unreachable: records are only produced after openEventBlock.
+		throw new Error(`No open resource block for ${channel.envelope.file}`);
+	}
+	if (channel.blockKey !== block.key) {
+		await channel.file.openBlock(
+			resourceBlockPrefix(channel.envelope, block.resource, run.scope),
+		);
+		channel.blockKey = block.key;
+	}
 	for (const record of records) {
 		await channel.file.append(record);
 		channel.records += 1;
@@ -348,7 +455,7 @@ async function streamFileIntoZip(
 	signal: AbortSignal | undefined,
 	waitForDrain: () => Promise<void>,
 ): Promise<void> {
-	const entry = new ZipDeflate(name);
+	const entry = new ZipDeflate(name, { level: ZIP_COMPRESSION_LEVEL });
 	zip.add(entry);
 	const readStream = createReadStream(filePath, {
 		highWaterMark: READ_HWM_BYTES,

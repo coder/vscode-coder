@@ -77,12 +77,7 @@ describe("HttpRequestsTelemetry", () => {
 			{ method: "GET", route: "/api/v2/workspaces/{id}" },
 			{
 				window_seconds: WINDOW_SECONDS,
-				"count.1xx": 0,
 				"count.2xx": 2,
-				"count.3xx": 0,
-				"count.4xx": 0,
-				"count.5xx": 0,
-				"count.network_error": 0,
 				"duration.p50_ms": 100,
 				"duration.p95_ms": 200,
 				"duration.p99_ms": 200,
@@ -94,6 +89,26 @@ describe("HttpRequestsTelemetry", () => {
 			{ method: "POST", route: "/api/v2/workspaces/{id}" },
 			expect.objectContaining({ "count.2xx": 1 }),
 		);
+	});
+
+	it("omits count keys for status classes with no requests in the window", async () => {
+		start();
+		recordResponse(rollup, {
+			method: "GET",
+			url: "/api/v2/workspaces/abc",
+			status: 200,
+		});
+
+		await advanceOneWindow();
+
+		const [, , measurements] = log.mock.calls[0];
+		expect(Object.keys(measurements ?? {}).sort()).toEqual([
+			"count.2xx",
+			"duration.p50_ms",
+			"duration.p95_ms",
+			"duration.p99_ms",
+			"window_seconds",
+		]);
 	});
 
 	it("counts status code classes and network errors", async () => {
@@ -180,16 +195,11 @@ describe("HttpRequestsTelemetry", () => {
 
 		await advanceOneWindow();
 
-		expect(log).toHaveBeenCalledWith(
-			"http.requests",
-			{ method: "GET", route: "/api/v2/workspaces/{id}" },
-			expect.objectContaining({
-				"count.2xx": 1,
-				"duration.p50_ms": 0,
-				"duration.p95_ms": 0,
-				"duration.p99_ms": 0,
-			}),
-		);
+		const [, , measurements] = log.mock.calls[0];
+		expect(Object.keys(measurements ?? {}).sort()).toEqual([
+			"count.2xx",
+			"window_seconds",
+		]);
 	});
 
 	it("flushes any pending bucket on dispose", () => {

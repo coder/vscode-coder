@@ -21,13 +21,6 @@ import { GOLDEN_EVENTS, TRACE_ID, attrs } from "./helpers";
 
 const makeEvent = createTelemetryEventFactory();
 
-/** Per-event identity that every record carries, derived from the factory defaults. */
-const EVENT_CONTEXT_ATTRS = {
-	"coder.event.extension_version": "1.14.5",
-	"coder.event.session_id": "session-id",
-	"coder.event.deployment_url": "https://coder.example.com",
-} as const;
-
 const makeSpanEvent = (overrides: Parameters<typeof makeEvent>[0] = {}) => ({
 	...makeEvent({ traceId: TRACE_ID, ...overrides }),
 	traceId: TRACE_ID,
@@ -89,7 +82,6 @@ describe("logRecord", () => {
 		});
 		expect(record.timeUnixNano).toBe(record.observedTimeUnixNano);
 		expect(attrs(record.attributes)).toEqual({
-			...EVENT_CONTEXT_ATTRS,
 			source: "unit",
 			count: 3,
 		});
@@ -110,28 +102,14 @@ describe("logRecord", () => {
 			"exception.code": "E_RANGE",
 		});
 		expect(attrs(minimal.attributes)).toEqual({
-			...EVENT_CONTEXT_ATTRS,
 			"exception.message": "boom",
 		});
 	});
 
-	it("stamps each event's own context onto its record", () => {
-		const base = makeEvent();
-		const record = logRecord({
-			...base,
-			context: {
-				...base.context,
-				extensionVersion: "0.9.0",
-				sessionId: "older-session",
-				deploymentUrl: "https://prev.coder.example.com",
-			},
-		});
+	it("carries no per-record provenance; identity lives on the block resource", () => {
+		const record = logRecord(makeEvent());
 
-		expect(attrs(record.attributes)).toMatchObject({
-			"coder.event.extension_version": "0.9.0",
-			"coder.event.session_id": "older-session",
-			"coder.event.deployment_url": "https://prev.coder.example.com",
-		});
+		expect(attrs(record.attributes)).toEqual({});
 	});
 
 	it("links span-attached logs to their parent span", () => {
@@ -180,7 +158,6 @@ describe("spanRecord", () => {
 		);
 		expect(attrs(span.attributes)).toEqual({
 			"coder.event_name": "remote.setup.workspace_ready",
-			...EVENT_CONTEXT_ATTRS,
 			result: "success",
 			route: "/api",
 			retries: 2,

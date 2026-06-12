@@ -2,6 +2,7 @@ import type { NetworkInfo } from "../remote/sshProcess";
 import type { TelemetryReporter } from "../telemetry/reporter";
 
 const NETWORK_SAMPLE_INTERVAL_MS = 60_000;
+const NETWORK_CHANGE_COOLDOWN_MS = 15_000;
 const NETWORK_LATENCY_CHANGE_RATIO = 0.2;
 const NETWORK_LATENCY_MIN_ABSOLUTE_CHANGE_MS = 25;
 
@@ -141,14 +142,21 @@ export class SshTelemetry {
 	}
 }
 
-/** Emit on p2p flip, DERP change, large latency swing, or heartbeat interval. */
+/** Emit on the heartbeat interval, or on a p2p flip, DERP change, or large
+ * latency swing once the change cooldown has elapsed. Suppression leaves the
+ * last emitted sample in place, so a change that persists through the
+ * cooldown is emitted when it expires rather than lost. */
 function shouldEmitSample(
 	previous: NetworkSample,
 	current: NetworkInfo,
 	now: number,
 ): boolean {
-	if (now - previous.emittedAtMs >= NETWORK_SAMPLE_INTERVAL_MS) {
+	const sinceLastEmit = now - previous.emittedAtMs;
+	if (sinceLastEmit >= NETWORK_SAMPLE_INTERVAL_MS) {
 		return true;
+	}
+	if (sinceLastEmit < NETWORK_CHANGE_COOLDOWN_MS) {
+		return false;
 	}
 	if (current.p2p !== previous.p2p) {
 		return true;
@@ -167,8 +175,9 @@ function hasMeaningfulLatencyChange(
 		return current !== 0;
 	}
 	const absoluteChange = Math.abs(current - previous);
+	// The absolute floor mutes fast-link jitter; the ratio mutes slow-link noise.
 	return (
-		absoluteChange >= NETWORK_LATENCY_MIN_ABSOLUTE_CHANGE_MS ||
+		absoluteChange >= NETWORK_LATENCY_MIN_ABSOLUTE_CHANGE_MS &&
 		absoluteChange / Math.abs(previous) >= NETWORK_LATENCY_CHANGE_RATIO
 	);
 }
