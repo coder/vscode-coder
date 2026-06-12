@@ -175,6 +175,7 @@ function hasMeaningfulLatencyChange(
 		return current !== 0;
 	}
 	const absoluteChange = Math.abs(current - previous);
+	// The absolute floor mutes fast-link jitter; the ratio mutes slow-link noise.
 	return (
 		absoluteChange >= NETWORK_LATENCY_MIN_ABSOLUTE_CHANGE_MS &&
 		absoluteChange / Math.abs(previous) >= NETWORK_LATENCY_CHANGE_RATIO

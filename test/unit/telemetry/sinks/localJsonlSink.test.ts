@@ -13,7 +13,10 @@ import {
 	type SessionContext,
 } from "@/telemetry/wireFormat";
 
-import { createTelemetryEventFactory } from "../../../mocks/telemetry";
+import {
+	createTelemetryEventFactory,
+	TEST_SESSION_CONTEXT,
+} from "../../../mocks/telemetry";
 import {
 	createMockLogger,
 	MockConfigurationProvider,
@@ -27,14 +30,8 @@ const SESSION_ID = "12345678-aaaa-bbbb-cccc-dddddddddddd";
 const SESSION_SLUG = "12345678";
 
 const sessionContext = (sessionId: string): SessionContext => ({
-	extensionVersion: "1.14.5",
-	machineId: "machine-id",
+	...TEST_SESSION_CONTEXT,
 	sessionId,
-	osType: "linux",
-	osVersion: "6.0.0",
-	hostArch: "x64",
-	platformName: "Visual Studio Code",
-	platformVersion: "1.106.0",
 });
 
 const todayUtc = (): string => new Date().toISOString().slice(0, 10);
@@ -232,8 +229,7 @@ describe("LocalJsonlSink", () => {
 	});
 
 	it("rotates to a numbered segment once maxFileBytes is exceeded", async () => {
-		// Header + padded rows are ~2000 bytes each; 4500 holds the header and
-		// 2 rows but not 3.
+		// ~300B header + ~1700B rows: 4500 holds the header and 2 rows, not 3.
 		const { sink, makeEvent } = setup({ maxFileBytes: 4500 });
 		const padded = () => makeEvent({ properties: { pad: "x".repeat(1500) } });
 

@@ -197,6 +197,10 @@ function elapsedMs(
 }
 
 function percentile(sortedValues: readonly number[], p: number): number {
+	// Indexing an empty array would return undefined as a number.
+	if (sortedValues.length === 0) {
+		return 0;
+	}
 	const index = Math.ceil(sortedValues.length * p) - 1;
 	return sortedValues[Math.max(0, index)];
 }

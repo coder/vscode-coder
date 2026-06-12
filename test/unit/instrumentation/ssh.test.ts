@@ -177,10 +177,17 @@ describe("SshTelemetry", () => {
 
 		it.each([
 			{
-				name: "no change in window",
+				name: "no change within the cooldown",
 				prev: {},
 				next: {},
 				advanceMs: 1_000,
+				expected: 1,
+			},
+			{
+				name: "no change after the cooldown",
+				prev: {},
+				next: {},
+				advanceMs: 16_000,
 				expected: 1,
 			},
 			{

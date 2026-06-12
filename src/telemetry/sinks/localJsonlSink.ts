@@ -41,8 +41,8 @@ interface CurrentFile {
  * own files (`telemetry-YYYY-MM-DD-{sessionId8}.jsonl` plus `.N.jsonl` size
  * segments), so concurrent windows cannot race on appends or rotation. Every
  * file opens with a header line carrying the sink start time and session
- * context; rows hold only
- * per-event fields. `write` is sync and never throws. Disk I/O happens in
+ * context; rows hold only per-event fields. `write` is sync and never throws.
+ * Disk I/O happens in
  * `flush`/`dispose`; a failed flush rejects so awaited callers (the export)
  * can react, while background flushes ignore it. Tunables come from
  * `coder.telemetry.local` and update reactively.
@@ -242,6 +242,10 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 		this.#current = { ...next, size: next.size + dataBytes };
 	}
 
+	/**
+	 * `maxFileBytes` is payload-granular: a segment's first write includes
+	 * the header, so it may overshoot by up to `headerBytes`.
+	 */
 	async #nextFile(payloadSize: number): Promise<CurrentFile> {
 		const today = toUtcDateString(new Date());
 		const seeded =

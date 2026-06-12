@@ -7,7 +7,10 @@ import {
 	type TelemetrySink,
 } from "@/telemetry/event";
 import { TelemetryService } from "@/telemetry/service";
-import { CURRENT_TELEMETRY_SCHEMA_VERSION } from "@/telemetry/wireFormat";
+import {
+	CURRENT_TELEMETRY_SCHEMA_VERSION,
+	type SessionContext,
+} from "@/telemetry/wireFormat";
 
 import { createMockLogger, MockConfigurationProvider } from "./testHelpers";
 
@@ -72,6 +75,18 @@ export function createTelemetryHarness(): {
 	return { sink, service: createTestTelemetryService(sink) };
 }
 
+/** Shared session fixture so test values cannot drift. */
+export const TEST_SESSION_CONTEXT: SessionContext = {
+	extensionVersion: "1.14.5",
+	machineId: "machine-id",
+	sessionId: "session-id",
+	osType: "linux",
+	osVersion: "6.0.0",
+	hostArch: "x64",
+	platformName: "Visual Studio Code",
+	platformVersion: "1.106.0",
+};
+
 /**
  * Factory for `TelemetryEvent` fixtures. Each call gets a fresh `eventId` and
  * monotonic `eventSequence`; overrides win.
@@ -89,14 +104,7 @@ export function createTelemetryEventFactory(): (
 			eventSequence: seq,
 			schemaVersion: CURRENT_TELEMETRY_SCHEMA_VERSION,
 			context: {
-				extensionVersion: "1.14.5",
-				machineId: "machine-id",
-				sessionId: "session-id",
-				osType: "linux",
-				osVersion: "6.0.0",
-				hostArch: "x64",
-				platformName: "Visual Studio Code",
-				platformVersion: "1.106.0",
+				...TEST_SESSION_CONTEXT,
 				deploymentUrl: "https://coder.example.com",
 			},
 			properties: {},

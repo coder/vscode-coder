@@ -66,6 +66,12 @@ interface ResourceBlock {
 	readonly resource: string;
 }
 
+/** Single-entry cache of the last serialized OTLP resource. */
+interface ResourceCache {
+	readonly context: TelemetryContext;
+	readonly resource: string;
+}
+
 /** Mutable per-export state shared by the routing helpers. */
 interface ExportRun {
 	readonly channels: Record<Signal, Channel>;
@@ -75,6 +81,7 @@ interface ExportRun {
 	/** Cumulative counter state; reset at every block boundary. */
 	state: CumulativeState;
 	block: ResourceBlock | undefined;
+	resourceCache: ResourceCache | undefined;
 }
 
 // Read high-water mark (HWM): bytes buffered per read while streaming a staged
@@ -159,6 +166,7 @@ async function writeStagedFiles(
 		metricBuffer: new MetricBlockBuffer(),
 		state: newCumulativeState(),
 		block: undefined,
+		resourceCache: undefined,
 	};
 
 	let succeeded = false;
@@ -302,7 +310,7 @@ async function openEventBlock(
 	const date = toUtcDateString(
 		new Date(parseTelemetryTimestampMs(event.timestamp)),
 	);
-	const resource = JSON.stringify(otlpResource(event.context));
+	const resource = serializeResourceCached(run, event.context);
 	const key = date + resource;
 	if (run.block?.key === key) {
 		return;
@@ -310,6 +318,23 @@ async function openEventBlock(
 	await flushMetricBlock(run);
 	run.state = newCumulativeState();
 	run.block = { key, resource };
+}
+
+/**
+ * Cached by context identity: the parser reuses one context object across
+ * rows, so this serializes once per file rather than once per event.
+ */
+function serializeResourceCached(
+	run: ExportRun,
+	context: TelemetryContext,
+): string {
+	if (run.resourceCache?.context !== context) {
+		run.resourceCache = {
+			context,
+			resource: JSON.stringify(otlpResource(context)),
+		};
+	}
+	return run.resourceCache.resource;
 }
 
 /** Writes the buffered metric series under the block that produced them. */

@@ -180,6 +180,7 @@ export function serializeTelemetryEvent(
 export class TelemetryFileParser {
 	readonly #source: string;
 	#header: z.infer<typeof TelemetryFileHeaderSchema> | undefined;
+	#context: TelemetryContext | undefined;
 
 	constructor(source: string) {
 		this.#source = source;
@@ -199,7 +200,11 @@ export class TelemetryFileParser {
 
 	#parse(line: string): TelemetryEvent | undefined {
 		const value = wireToCamel(JSON.parse(line));
-		if (hasKind(value)) {
+		const kind = kindOf(value);
+		if (kind !== undefined) {
+			if (kind !== "header") {
+				throw new Error(`unknown kind ${JSON.stringify(kind)}`);
+			}
 			if (this.#header) {
 				throw new Error("unexpected second file header");
 			}
@@ -210,20 +215,23 @@ export class TelemetryFileParser {
 			throw new Error("expected a file header before event rows");
 		}
 		const { deploymentUrl, ...row } = TelemetryEventRowSchema.parse(value);
+		// One object per deployment URL run lets consumers memoize by identity.
+		if (this.#context?.deploymentUrl !== deploymentUrl) {
+			this.#context = { ...this.#header.context, deploymentUrl };
+		}
 		return {
 			...row,
 			schemaVersion: this.#header.schemaVersion,
-			context: { ...this.#header.context, deploymentUrl },
+			context: this.#context,
 		};
 	}
 }
 
-function hasKind(value: unknown): boolean {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		(value as Record<string, unknown>).kind !== undefined
-	);
+/** The line's `kind` discriminator; event rows have none. */
+function kindOf(value: unknown): unknown {
+	return typeof value === "object" && value !== null
+		? (value as Record<string, unknown>).kind
+		: undefined;
 }
 
 const SNAKE_TO_CAMEL = /_([a-z])/g;

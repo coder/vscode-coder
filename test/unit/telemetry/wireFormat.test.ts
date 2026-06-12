@@ -175,10 +175,33 @@ describe("TelemetryFileParser", () => {
 		);
 	});
 
-	it("rejects lines with an unknown kind", () => {
+	it("rejects lines with an unknown kind before the header", () => {
 		expect(() => parse(['{"kind":"trailer"}'])).toThrow(
-			TelemetryFileParseError,
+			/unknown kind "trailer"/,
 		);
+	});
+
+	it("rejects lines with an unknown kind after the header", () => {
+		expect(() =>
+			parse([headerLineFor(makeEvent()), '{"kind":"trailer"}']),
+		).toThrow(/unknown kind "trailer"/);
+	});
+
+	it("reuses one context object across rows with the same deployment URL", () => {
+		const event = makeEvent();
+		const otherUrl = makeEvent({
+			context: { ...event.context, deploymentUrl: "https://other.example" },
+		});
+
+		const [, a, b, c] = parse([
+			headerLineFor(event),
+			serializeTelemetryEventLine(event),
+			serializeTelemetryEventLine(event),
+			serializeTelemetryEventLine(otherUrl),
+		]);
+
+		expect(a?.context).toBe(b?.context);
+		expect(c?.context).not.toBe(a?.context);
 	});
 
 	it("throws TelemetryFileParseError tagged with source:lineNumber", () => {
