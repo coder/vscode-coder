@@ -59,6 +59,7 @@ function setup(
 		report: vi.fn(),
 		onFlushIncomplete: vi.fn(),
 		onCleanupError: vi.fn(),
+		onWarning: vi.fn(),
 	};
 	const request: ExportRequest = {
 		telemetryDir: "/tmp/telemetry",
@@ -102,6 +103,32 @@ describe("collectTelemetryExport", () => {
 		await run();
 
 		expect(runtime.onFlushIncomplete).not.toHaveBeenCalled();
+	});
+
+	it("reports recoverable warnings from the event stream", async () => {
+		const warning = {
+			code: "invalidTelemetryFilePath" as const,
+			filePath: "/tmp/telemetry/notes.jsonl",
+			error: new Error("bad name"),
+		};
+		const { run, runtime, writer } = setup();
+		vi.mocked(files.streamTelemetryEventsSorted).mockImplementation(
+			async function* (_filePaths, _range, warningSink) {
+				await Promise.resolve();
+				warningSink.onWarning(warning);
+				yield makeEvent();
+			},
+		);
+		writer.mockImplementation(async (_outputPath, events) => {
+			for await (const _event of events) {
+				// Consume the stream so stream warnings surface.
+			}
+			return 1;
+		});
+
+		await run();
+
+		expect(runtime.onWarning).toHaveBeenCalledWith(warning);
 	});
 
 	it("returns 0 and never writes when no files cover the range", async () => {

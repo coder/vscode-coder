@@ -64,13 +64,15 @@ function setup(
 		error: vi.fn(),
 		succeedExport: vi.fn(),
 	};
+	const logger = createMockLogger();
 
 	return {
+		logger,
 		observer,
 		run: () =>
 			runExportTelemetryCommand(
 				TELEMETRY_DIR,
-				createMockLogger(),
+				logger,
 				vi.fn(() => Promise.resolve(OK_FLUSH)),
 				context,
 				observer,
@@ -124,6 +126,33 @@ describe("runExportTelemetryCommand", () => {
 
 		expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
 			expect.stringContaining("could not be flushed"),
+		);
+	});
+
+	it("logs invalid telemetry file warnings", async () => {
+		const { logger, run } = setup();
+		let onWarning:
+			| Parameters<typeof collectTelemetryExport>[1]["onWarning"]
+			| undefined;
+		const error = new Error("bad name");
+		vi.mocked(collectTelemetryExport).mockImplementation(
+			(_request, runtime) => {
+				onWarning = runtime.onWarning;
+				return Promise.resolve(2);
+			},
+		);
+
+		await run();
+		onWarning?.({
+			code: "invalidTelemetryFilePath",
+			filePath: "/tmp/telemetry/notes.jsonl",
+			error,
+		});
+
+		expect(logger.warn).toHaveBeenCalledWith(
+			"Skipping invalid telemetry file during export",
+			"/tmp/telemetry/notes.jsonl",
+			error,
 		);
 	});
 

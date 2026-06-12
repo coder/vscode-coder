@@ -26,15 +26,24 @@ interface TelemetryLogFile {
 	readonly part: number;
 }
 
-interface TelemetryEventEntry {
+interface QueuedTelemetryEvent {
 	readonly event: TelemetryEvent;
-	readonly file: TelemetryLogFile;
-	readonly lineNumber: number;
+	readonly timestampMs: number;
 }
 
 interface EventCursor {
-	readonly entry: TelemetryEventEntry;
-	readonly iterator: AsyncIterator<TelemetryEventEntry>;
+	readonly queued: QueuedTelemetryEvent;
+	readonly iterator: AsyncIterator<TelemetryEvent>;
+}
+
+export interface TelemetryExportWarning {
+	readonly code: "invalidTelemetryFilePath";
+	readonly filePath: string;
+	readonly error: Error;
+}
+
+export interface TelemetryExportWarningSink {
+	readonly onWarning: (warning: TelemetryExportWarning) => void;
 }
 
 /** Log files whose dates could overlap `range`. */
@@ -62,41 +71,34 @@ export async function listTelemetryFilesForRange(
 		.map(({ path: filePath }) => filePath);
 }
 
-/** Merge per-session append streams by timestamp, buffering one event per session. */
+/**
+ * Merge range-filtered, per-session event streams by timestamp. This stays
+ * globally sorted while each session's timestamps are monotonic; if a session's
+ * clock moves backward, that session's append order is preserved.
+ */
 export async function* streamTelemetryEventsSorted(
 	filePaths: readonly string[],
 	range: TelemetryDateRange,
+	warningSink: TelemetryExportWarningSink,
 ): AsyncIterable<TelemetryEvent> {
+	const iterators: Array<AsyncIterator<TelemetryEvent>> = [];
 	const frontier: EventCursor[] = [];
-	for (const files of sessionFileGroups(filePaths)) {
-		const iterator = streamTelemetryEventEntries(files, range)[
-			Symbol.asyncIterator
-		]();
-		const next = await iterator.next();
-		if (!next.done) {
-			frontier.push({ entry: next.value, iterator });
+	try {
+		await seedFrontier(frontier, iterators, filePaths, range, warningSink);
+		while (frontier.length > 0) {
+			const cursor = takeNextCursor(frontier);
+			yield cursor.queued.event;
+			await advanceCursor(frontier, cursor);
 		}
-	}
-
-	while (frontier.length > 0) {
-		frontier.sort((a, b) => compareEventEntries(a.entry, b.entry));
-		const cursor = frontier.shift();
-		if (!cursor) {
-			return;
-		}
-		yield cursor.entry.event;
-
-		const next = await cursor.iterator.next();
-		if (!next.done) {
-			frontier.push({ entry: next.value, iterator: cursor.iterator });
-		}
+	} finally {
+		await closeIterators(iterators);
 	}
 }
 
-async function* streamTelemetryEventEntries(
+async function* streamTelemetryEventsFromFiles(
 	files: readonly TelemetryLogFile[],
 	range: TelemetryDateRange,
-): AsyncIterable<TelemetryEventEntry> {
+): AsyncIterable<TelemetryEvent> {
 	for (const file of files) {
 		const name = path.basename(file.path);
 		const stream = createReadStream(file.path, { encoding: "utf8" });
@@ -113,7 +115,7 @@ async function* streamTelemetryEventEntries(
 				}
 				const event = parseTelemetryEventLine(line, name, lineNumber);
 				if (isTimestampInRange(event.timestamp, range)) {
-					yield { event, file, lineNumber };
+					yield event;
 				}
 			}
 		} catch (err) {
@@ -135,29 +137,54 @@ async function* streamTelemetryEventEntries(
 	}
 }
 
-function sessionFileGroups(filePaths: readonly string[]): TelemetryLogFile[][] {
-	const groups = new Map<string, TelemetryLogFile[]>();
-	for (const file of parseLogFilePaths(filePaths).sort(compareLogFiles)) {
-		const group = groups.get(file.session);
-		if (group) {
-			group.push(file);
-		} else {
-			groups.set(file.session, [file]);
-		}
-	}
-	return [...groups.values()];
+function groupFilesBySession(
+	filePaths: readonly string[],
+	warningSink: TelemetryExportWarningSink,
+): TelemetryLogFile[][] {
+	const files = parseLogFilePaths(filePaths, warningSink).sort(compareLogFiles);
+	return [...Map.groupBy(files, (file) => file.session).values()];
 }
 
-function parseLogFilePaths(filePaths: readonly string[]): TelemetryLogFile[] {
-	return filePaths.flatMap((filePath) => {
+function parseLogFilePaths(
+	filePaths: readonly string[],
+	warningSink: TelemetryExportWarningSink,
+): TelemetryLogFile[] {
+	const files: TelemetryLogFile[] = [];
+	for (const filePath of filePaths) {
 		const file = parseLogFilePath(filePath);
-		return file ? [file] : [];
-	});
+		if (!file) {
+			emitWarning(warningSink, invalidTelemetryFilePathWarning(filePath));
+			continue;
+		}
+		files.push(file);
+	}
+	return files;
 }
 
 function parseLogFilePath(filePath: string): TelemetryLogFile | undefined {
 	const parsed = localJsonlFiles.parseFileName(path.basename(filePath));
 	return parsed ? { path: filePath, ...parsed } : undefined;
+}
+
+function invalidTelemetryFilePathWarning(
+	filePath: string,
+): TelemetryExportWarning {
+	return {
+		code: "invalidTelemetryFilePath",
+		filePath,
+		error: new Error(`Invalid telemetry file path: ${path.basename(filePath)}`),
+	};
+}
+
+function emitWarning(
+	warningSink: TelemetryExportWarningSink,
+	warning: TelemetryExportWarning,
+): void {
+	try {
+		warningSink.onWarning(warning);
+	} catch {
+		// Warning observers must not fail the export.
+	}
 }
 
 function compareLogFiles(a: TelemetryLogFile, b: TelemetryLogFile): number {
@@ -168,15 +195,69 @@ function compareLogFiles(a: TelemetryLogFile, b: TelemetryLogFile): number {
 	);
 }
 
-function compareEventEntries(
-	a: TelemetryEventEntry,
-	b: TelemetryEventEntry,
+async function seedFrontier(
+	frontier: EventCursor[],
+	iterators: Array<AsyncIterator<TelemetryEvent>>,
+	filePaths: readonly string[],
+	range: TelemetryDateRange,
+	warningSink: TelemetryExportWarningSink,
+): Promise<void> {
+	for (const files of groupFilesBySession(filePaths, warningSink)) {
+		const iterator = streamTelemetryEventsFromFiles(files, range)[
+			Symbol.asyncIterator
+		]();
+		iterators.push(iterator);
+		await advanceCursor(frontier, { iterator });
+	}
+}
+
+async function advanceCursor(
+	frontier: EventCursor[],
+	cursor: Pick<EventCursor, "iterator">,
+): Promise<void> {
+	const next = await cursor.iterator.next();
+	if (!next.done) {
+		frontier.push({
+			queued: queueEvent(next.value),
+			iterator: cursor.iterator,
+		});
+	}
+}
+
+async function closeIterators(
+	iterators: ReadonlyArray<AsyncIterator<TelemetryEvent>>,
+): Promise<void> {
+	await Promise.allSettled(
+		iterators.map(async (iterator) => {
+			await iterator.return?.();
+		}),
+	);
+}
+
+function queueEvent(event: TelemetryEvent): QueuedTelemetryEvent {
+	return { event, timestampMs: parseTelemetryTimestampMs(event.timestamp) };
+}
+
+function takeNextCursor(frontier: EventCursor[]): EventCursor {
+	let nextIndex = 0;
+	for (let i = 1; i < frontier.length; i += 1) {
+		if (
+			compareQueuedEvents(frontier[i].queued, frontier[nextIndex].queued) < 0
+		) {
+			nextIndex = i;
+		}
+	}
+	const cursor = frontier[nextIndex];
+	frontier.splice(nextIndex, 1);
+	return cursor;
+}
+
+function compareQueuedEvents(
+	a: QueuedTelemetryEvent,
+	b: QueuedTelemetryEvent,
 ): number {
-	const timestamp =
-		parseTelemetryTimestampMs(a.event.timestamp) -
-		parseTelemetryTimestampMs(b.event.timestamp);
 	return (
-		timestamp ||
+		a.timestampMs - b.timestampMs ||
 		a.event.context.sessionId.localeCompare(b.event.context.sessionId)
 	);
 }

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	listTelemetryFilesForRange,
 	streamTelemetryEventsSorted,
+	type TelemetryExportWarningSink,
 } from "@/telemetry/export/files";
 import { createCustomDateRange } from "@/telemetry/export/range";
 import { serializeTelemetryEventLine } from "@/telemetry/wireFormat";
@@ -17,6 +18,9 @@ vi.mock("node:fs", async () => (await import("memfs")).fs);
 vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
 
 const DIR = "/telemetry";
+const IGNORE_WARNINGS: TelemetryExportWarningSink = {
+	onWarning: () => undefined,
+};
 
 let makeEvent: ReturnType<typeof createTelemetryEventFactory>;
 
@@ -99,20 +103,30 @@ describe("streamTelemetryEventsSorted", () => {
 		]);
 	});
 
-	it("preserves events when a session timestamp moves backward", async () => {
+	it("filters by range and preserves backward session timestamps", async () => {
 		writeFiles({
 			"telemetry-2026-05-12-aaaaaaaa.jsonl":
 				serializeTelemetryEventLine(
-					makeSessionEvent("session-a", 0, "2026-05-12T10:02:00.000Z"),
+					makeSessionEvent("session-a", 0, "2026-05-11T23:59:59.999Z"),
 				) +
 				serializeTelemetryEventLine(
-					makeSessionEvent("session-a", 1, "2026-05-12T10:00:00.000Z"),
+					makeSessionEvent("session-a", 1, "2026-05-12T10:02:00.000Z"),
+				) +
+				serializeTelemetryEventLine(
+					makeSessionEvent("session-a", 2, "2026-05-12T10:00:00.000Z"),
 				),
+			"telemetry-2026-05-12-bbbbbbbb.jsonl": serializeTelemetryEventLine(
+				makeSessionEvent("session-b", 0, "2026-05-12T10:01:00.000Z"),
+			),
 		});
 
-		const events = await collectSorted(["telemetry-2026-05-12-aaaaaaaa.jsonl"]);
+		const events = await collectSorted([
+			"telemetry-2026-05-12-aaaaaaaa.jsonl",
+			"telemetry-2026-05-12-bbbbbbbb.jsonl",
+		]);
 
 		expect(events.map((event) => event.timestamp)).toEqual([
+			"2026-05-12T10:01:00.000Z",
 			"2026-05-12T10:02:00.000Z",
 			"2026-05-12T10:00:00.000Z",
 		]);
@@ -128,6 +142,29 @@ describe("streamTelemetryEventsSorted", () => {
 		).rejects.toThrow(
 			/Failed to parse telemetry file telemetry-2026-05-12-aaaaaaaa\.jsonl:1/,
 		);
+	});
+
+	it("skips invalid telemetry file paths after reporting a warning", async () => {
+		writeFiles({
+			"telemetry-2026-05-12-aaaaaaaa.jsonl": serializeTelemetryEventLine(
+				makeSessionEvent("session-a", 0, "2026-05-12T10:00:00.000Z"),
+			),
+		});
+		const onWarning = vi.fn();
+
+		const events = await collectSorted(
+			["telemetry-2026-05-12-aaaaaaaa.jsonl", "notes-2026-05-12.jsonl"],
+			{ onWarning },
+		);
+
+		expect(events.map((event) => event.context.sessionId)).toEqual([
+			"session-a",
+		]);
+		expect(onWarning).toHaveBeenCalledWith({
+			code: "invalidTelemetryFilePath",
+			filePath: `${DIR}/notes-2026-05-12.jsonl`,
+			error: expect.any(Error),
+		});
 	});
 });
 
@@ -151,11 +188,13 @@ function makeSessionEvent(
 
 async function collectSorted(
 	names: readonly string[],
+	warningSink: TelemetryExportWarningSink = IGNORE_WARNINGS,
 ): Promise<TelemetryEvent[]> {
 	const events: TelemetryEvent[] = [];
 	for await (const event of streamTelemetryEventsSorted(
 		names.map((name) => `${DIR}/${name}`),
 		createCustomDateRange("2026-05-12", "2026-05-12"),
+		warningSink,
 	)) {
 		events.push(event);
 	}

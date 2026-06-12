@@ -29,6 +29,8 @@ const PROGRESS_OPTIONS = {
 	cancellable: true,
 } as const;
 
+type ExportWarning = Parameters<ExportRuntime["onWarning"]>[0];
+
 /**
  * Outcome hooks for the caller's telemetry span. `DiagnosticTrace` satisfies
  * this shape, so command callers can pass their trace directly.
@@ -87,7 +89,20 @@ function exportRuntime(
 			),
 		onCleanupError: (err, target) =>
 			logger.warn("Failed to clean up after telemetry export", target, err),
+		onWarning: (warning) => logExportWarning(logger, warning),
 	};
+}
+
+function logExportWarning(logger: Logger, warning: ExportWarning): void {
+	switch (warning.code) {
+		case "invalidTelemetryFilePath":
+			logger.warn(
+				"Skipping invalid telemetry file during export",
+				warning.filePath,
+				warning.error,
+			);
+			return;
+	}
 }
 
 /** Turns the export result into the matching user-facing notification. */

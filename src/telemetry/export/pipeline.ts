@@ -5,6 +5,7 @@ import { throwIfAborted } from "../../error/errorUtils";
 import {
 	listTelemetryFilesForRange,
 	streamTelemetryEventsSorted,
+	type TelemetryExportWarningSink,
 } from "./files";
 
 import type { TelemetryEvent } from "../event";
@@ -24,7 +25,7 @@ export interface ExportRequest {
  * Host hooks the export needs: cancellation, flush, progress, and a cleanup
  * callback. Free of VS Code types so the pipeline is testable without a UI.
  */
-export interface ExportRuntime {
+export interface ExportRuntime extends TelemetryExportWarningSink {
 	readonly signal: AbortSignal;
 	readonly flushTelemetry: () => Promise<FlushStatus>;
 	readonly report: (message: string) => void;
@@ -61,7 +62,7 @@ export async function collectTelemetryExport(
 
 	runtime.report("Writing export...");
 	const events = abortable(
-		streamTelemetryEventsSorted(filePaths, request.range),
+		streamTelemetryEventsSorted(filePaths, request.range, runtime),
 		runtime.signal,
 	);
 	const eventCount = await request.writer(
