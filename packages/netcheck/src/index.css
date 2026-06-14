@@ -119,7 +119,8 @@ body {
 	overflow-x: auto;
 }
 
-.section-body-flush {
+/* Tables run edge-to-edge inside the card; everything else keeps its padding. */
+.section-body:has(> .report-table) {
 	padding: 0;
 }
 

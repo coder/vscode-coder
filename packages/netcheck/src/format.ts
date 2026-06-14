@@ -19,15 +19,13 @@ export function formatLatency(ms: number | undefined): string {
 	return `${Math.round(ms)} ms`;
 }
 
-export function formatTriState(
-	value: TriState,
-	labels: { yes: string; no: string },
-): string {
+/** Renders a STUN/relay capability result for a table cell. */
+export function formatTriState(value: TriState): string {
 	switch (value) {
 		case "yes":
-			return labels.yes;
+			return "Yes";
 		case "no":
-			return labels.no;
+			return "Failed";
 		case "unknown":
 			return "—";
 	}

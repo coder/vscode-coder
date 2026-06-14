@@ -1,19 +1,14 @@
 import { NetcheckApi, toError, type NetcheckData } from "@repo/shared";
 import { sendCommand, subscribeNotifications } from "@repo/webview-shared";
 
-import { el } from "./dom";
 import "./index.css";
-import { renderPage } from "./page";
+import { renderError, renderPage } from "./page";
 
 function main(): void {
+	// The extension re-sends `data` on visibility/theme changes, so each render
+	// replaces the whole root, clearing any prior error or report.
 	subscribeNotifications(NetcheckApi, {
-		data: (data) => {
-			try {
-				render(data);
-			} catch (err) {
-				showError(`Failed to render network check: ${toError(err).message}`);
-			}
-		},
+		data: (data) => render(data),
 	});
 	// Signal we're subscribed; the extension waits for this before sending.
 	sendCommand(NetcheckApi.ready);
@@ -21,14 +16,18 @@ function main(): void {
 
 function render(data: NetcheckData): void {
 	const root = document.getElementById("root");
-	root?.replaceChildren(
-		...renderPage(data, () => sendCommand(NetcheckApi.viewJson)),
-	);
-}
-
-function showError(message: string): void {
-	const root = document.getElementById("root");
-	root?.replaceChildren(el("p", "error", message));
+	if (!root) {
+		return;
+	}
+	try {
+		root.replaceChildren(
+			...renderPage(data, () => sendCommand(NetcheckApi.viewJson)),
+		);
+	} catch (err) {
+		root.replaceChildren(
+			renderError(`Failed to render network check: ${toError(err).message}`),
+		);
+	}
 }
 
 main();

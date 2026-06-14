@@ -7,7 +7,6 @@ import {
 } from "@repo/shared";
 
 import { buildConnectivityItems } from "./connectivity";
-import { badge, el, emptyMessage } from "./dom";
 import { formatLatency, formatTriState } from "./format";
 import {
 	bannerTitle,
@@ -16,7 +15,7 @@ import {
 	severityLabel,
 	type Issue,
 } from "./health";
-import { buildRegionRows } from "./regions";
+import { buildRegionRows, type RegionRow } from "./regions";
 
 export function renderPage(
 	{ host, report }: NetcheckData,
@@ -59,8 +58,8 @@ function renderBanner(report: NetcheckReport): HTMLElement {
 			"p",
 			"status-detail",
 			[
-				sectionSummary("DERP & STUN", report.derp),
-				sectionSummary("Local interfaces", report.interfaces),
+				`DERP & STUN: ${sectionSummary(report.derp)}`,
+				`Local interfaces: ${sectionSummary(report.interfaces)}`,
 			].join("  ·  "),
 		),
 	);
@@ -108,81 +107,75 @@ function renderRegions(report: NetcheckReport): HTMLElement {
 	if (rows.length === 0) {
 		return emptyMessage("No DERP regions in the deployment's relay map.");
 	}
+	return renderTable(
+		["Region", "Status", "Latency", "STUN", "Relay"],
+		rows,
+		renderRegionRow,
+	);
+}
 
-	const table = el("table", "report-table");
-	table.append(renderTableHead("Region", "Status", "Latency", "STUN", "Relay"));
-
-	const tbody = el("tbody");
-	for (const row of rows) {
-		const name = el("td", "region-name", row.name);
-		if (row.preferred) {
-			name.append(badge("Preferred"));
-		}
-		if (row.embeddedRelay) {
-			name.append(badge("Embedded"));
-		}
-
-		const status = renderSeverityCell(row.severity);
-		if (row.error) {
-			status.title = row.error;
-		}
-
-		const tr = el("tr");
-		tr.append(
-			name,
-			status,
-			el("td", undefined, formatLatency(row.latencyMs)),
-			el(
-				"td",
-				undefined,
-				formatTriState(row.stun, { yes: "Yes", no: "Failed" }),
-			),
-			el(
-				"td",
-				undefined,
-				formatTriState(row.relay, { yes: "Yes", no: "Failed" }),
-			),
-		);
-		tbody.append(tr);
+function renderRegionRow(row: RegionRow): HTMLTableRowElement {
+	const name = el("td", "region-name", row.name);
+	if (row.preferred) {
+		name.append(badge("Preferred"));
 	}
-	table.append(tbody);
-	return table;
+	if (row.embeddedRelay) {
+		name.append(badge("Embedded"));
+	}
+
+	const status = renderSeverityCell(row.severity);
+	if (row.error) {
+		status.title = row.error;
+	}
+
+	const tr = el("tr");
+	tr.append(
+		name,
+		status,
+		el("td", undefined, formatLatency(row.latencyMs)),
+		el("td", undefined, formatTriState(row.stun)),
+		el("td", undefined, formatTriState(row.relay)),
+	);
+	return tr;
 }
 
 function renderInterfaces(interfaces: NetcheckInterface[]): HTMLElement {
 	if (interfaces.length === 0) {
 		return emptyMessage("No active network interfaces found.");
 	}
-
-	const table = el("table", "report-table");
-	table.append(renderTableHead("Name", "MTU", "Addresses"));
-
-	const tbody = el("tbody");
-	for (const iface of interfaces) {
+	return renderTable(["Name", "MTU", "Addresses"], interfaces, (iface) => {
 		const tr = el("tr");
 		tr.append(
 			el("td", undefined, iface.name),
 			el("td", undefined, String(iface.mtu)),
 			el("td", "addresses", iface.addresses.join(", ")),
 		);
-		tbody.append(tr);
-	}
-	table.append(tbody);
-	return table;
+		return tr;
+	});
 }
 
 function renderSection(title: string, body: HTMLElement): HTMLElement {
 	const section = el("section", "report-section");
-	// Tables run edge-to-edge inside the card; everything else gets padding.
-	const content = el(
-		"div",
-		body instanceof HTMLTableElement
-			? "section-body section-body-flush"
-			: "section-body",
-	);
+	// Tables flush to the card edges via `.section-body:has(> table)` in CSS.
+	const content = el("div", "section-body");
 	content.append(body);
 	section.append(el("h2", undefined, title), content);
 	return section;
+}
+
+function renderTable<T>(
+	headers: string[],
+	rows: T[],
+	renderRow: (row: T) => HTMLTableRowElement,
+): HTMLTableElement {
+	const table = el("table", "report-table");
+	table.append(renderTableHead(...headers));
+	const tbody = el("tbody");
+	for (const row of rows) {
+		tbody.append(renderRow(row));
+	}
+	table.append(tbody);
+	return table;
 }
 
 function renderTableHead(...labels: string[]): HTMLElement {
@@ -210,4 +203,33 @@ function renderActions(onViewJson: () => void): HTMLElement {
 	viewBtn.addEventListener("click", onViewJson);
 	actions.append(viewBtn);
 	return actions;
+}
+
+/** Renders a top-level error message in place of the report. */
+export function renderError(message: string): HTMLElement {
+	return el("p", "error", message);
+}
+
+/** Create an element with an optional class and text content. */
+function el<K extends keyof HTMLElementTagNameMap>(
+	tag: K,
+	className?: string,
+	text?: string,
+): HTMLElementTagNameMap[K] {
+	const node = document.createElement(tag);
+	if (className) {
+		node.className = className;
+	}
+	if (text !== undefined) {
+		node.textContent = text;
+	}
+	return node;
+}
+
+function badge(text: string): HTMLElement {
+	return el("span", "badge", text);
+}
+
+function emptyMessage(text: string): HTMLElement {
+	return el("p", "empty", text);
 }

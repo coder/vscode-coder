@@ -1,5 +1,4 @@
 import type {
-	NetcheckHealthMessage,
 	NetcheckReport,
 	NetcheckSectionHealth,
 	NetcheckSeverity,
@@ -11,7 +10,7 @@ export interface Issue {
 	message: string;
 }
 
-const SEVERITY_LABEL: Record<NetcheckSeverity, string> = {
+const SEVERITY_LABEL: Readonly<Record<NetcheckSeverity, string>> = {
 	ok: "Healthy",
 	warning: "Warning",
 	error: "Error",
@@ -21,7 +20,7 @@ export function severityLabel(severity: NetcheckSeverity): string {
 	return SEVERITY_LABEL[severity];
 }
 
-const BANNER_TITLE: Record<NetcheckSeverity, string> = {
+const BANNER_TITLE: Readonly<Record<NetcheckSeverity, string>> = {
 	ok: "Network is healthy",
 	warning: "Network has warnings",
 	error: "Network problems detected",
@@ -31,23 +30,19 @@ export function bannerTitle(severity: NetcheckSeverity): string {
 	return BANNER_TITLE[severity];
 }
 
-/** One-line status for a report section, e.g. "DERP & STUN: 2 warnings". */
-export function sectionSummary(
-	label: string,
-	section: NetcheckSectionHealth,
-): string {
-	switch (section.severity) {
-		case "ok":
-			return `${label}: healthy`;
-		case "warning": {
-			const count = section.warnings.length;
-			return count > 0
-				? `${label}: ${count} warning${count === 1 ? "" : "s"}`
-				: `${label}: warning`;
-		}
-		case "error":
-			return `${label}: error`;
+const SECTION_STATUS: Readonly<Record<NetcheckSeverity, string>> = {
+	ok: "healthy",
+	warning: "warning",
+	error: "error",
+};
+
+/** One-line status for a report section, e.g. "2 warnings" or "healthy". */
+export function sectionSummary(section: NetcheckSectionHealth): string {
+	const count = section.warnings.length;
+	if (section.severity === "warning" && count > 0) {
+		return `${count} warning${count === 1 ? "" : "s"}`;
 	}
+	return SECTION_STATUS[section.severity];
 }
 
 /** Section errors first, then warnings, so the most severe issues lead. */
@@ -59,7 +54,11 @@ export function collectIssues(report: NetcheckReport): Issue[] {
 			errors.push({ kind: "error", message: section.error });
 		}
 		for (const warning of section.warnings) {
-			warnings.push({ kind: "warning", ...toIssueParts(warning) });
+			warnings.push({
+				kind: "warning",
+				message: warning.message,
+				...(warning.code ? { code: warning.code } : {}),
+			});
 		}
 	};
 	addSection(report.derp);
@@ -68,13 +67,4 @@ export function collectIssues(report: NetcheckReport): Issue[] {
 	}
 	addSection(report.interfaces);
 	return [...errors, ...warnings];
-}
-
-function toIssueParts(warning: NetcheckHealthMessage): {
-	code?: string;
-	message: string;
-} {
-	return warning.code
-		? { code: warning.code, message: warning.message }
-		: { message: warning.message };
 }

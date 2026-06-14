@@ -15,10 +15,8 @@ export interface NetcheckSectionHealth {
 }
 
 export interface NetcheckNodeReport {
-	severity: NetcheckSeverity;
 	can_exchange_messages: boolean;
 	round_trip_ping_ms: number;
-	uses_websocket: boolean;
 	/** Field names match the CLI's Go JSON output, which has no tags here. */
 	stun: { Enabled: boolean; CanSTUN: boolean };
 	/** Field names match tailscale's DERP map JSON. */

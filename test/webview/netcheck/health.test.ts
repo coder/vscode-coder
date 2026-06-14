@@ -6,24 +6,23 @@ import { report } from "./fixtures";
 
 describe("sectionSummary", () => {
 	it("summarizes severity with warning counts", () => {
+		expect(sectionSummary({ severity: "ok", warnings: [] })).toBe("healthy");
 		expect(
-			sectionSummary("DERP & STUN", {
-				severity: "ok",
-				warnings: [],
-			}),
-		).toBe("DERP & STUN: healthy");
-		expect(
-			sectionSummary("DERP & STUN", {
+			sectionSummary({
 				severity: "warning",
 				warnings: [{ code: "X", message: "m" }],
 			}),
-		).toBe("DERP & STUN: 1 warning");
+		).toBe("1 warning");
 		expect(
-			sectionSummary("Local interfaces", {
-				severity: "error",
-				warnings: [],
+			sectionSummary({
+				severity: "warning",
+				warnings: [
+					{ code: "X", message: "m" },
+					{ code: "Y", message: "n" },
+				],
 			}),
-		).toBe("Local interfaces: error");
+		).toBe("2 warnings");
+		expect(sectionSummary({ severity: "error", warnings: [] })).toBe("error");
 	});
 });
 

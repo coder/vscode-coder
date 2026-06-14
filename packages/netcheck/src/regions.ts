@@ -7,7 +7,6 @@ import type {
 } from "@repo/shared";
 
 export interface RegionRow {
-	id: number;
 	name: string;
 	severity: NetcheckSeverity;
 	latencyMs: number | undefined;
@@ -35,7 +34,6 @@ export function buildRegionRows(report: NetcheckReport): RegionRow[] {
 		const stunNodes = nodes.filter((n) => n.stun.Enabled);
 		const relayNodes = nodes.filter((n) => !(n.node?.STUNOnly ?? false));
 		return {
-			id,
 			name: regionName(region, id),
 			severity: region.severity,
 			latencyMs: regionLatencyMs(latencies[key], relayNodes),
@@ -73,17 +71,12 @@ function compareRegionRows(a: RegionRow, b: RegionRow): number {
 	if (a.preferred !== b.preferred) {
 		return a.preferred ? -1 : 1;
 	}
-	const aHasLatency = a.latencyMs !== undefined;
-	const bHasLatency = b.latencyMs !== undefined;
-	if (aHasLatency !== bHasLatency) {
-		return aHasLatency ? -1 : 1;
-	}
-	if (
-		a.latencyMs !== undefined &&
-		b.latencyMs !== undefined &&
-		a.latencyMs !== b.latencyMs
-	) {
-		return a.latencyMs - b.latencyMs;
+	// Missing latencies sort last; the `!==` guard avoids Infinity - Infinity
+	// (NaN), letting two unmeasured regions fall through to name order.
+	const aLatency = a.latencyMs ?? Infinity;
+	const bLatency = b.latencyMs ?? Infinity;
+	if (aLatency !== bLatency) {
+		return aLatency - bLatency;
 	}
 	return a.name.localeCompare(b.name);
 }

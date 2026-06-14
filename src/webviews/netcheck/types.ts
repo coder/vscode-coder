@@ -20,10 +20,8 @@ const HealthMessageSchema = z.object({
 const WarningsSchema = emptyIfNull(HealthMessageSchema);
 
 const NodeReportSchema = z.object({
-	severity: SeveritySchema,
 	can_exchange_messages: z.boolean(),
 	round_trip_ping_ms: z.number(),
-	uses_websocket: z.boolean(),
 	stun: z.object({
 		Enabled: z.boolean(),
 		CanSTUN: z.boolean(),

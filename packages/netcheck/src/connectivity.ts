@@ -2,7 +2,7 @@ import { regionName } from "./regions";
 
 import type { NetcheckConnectivity, NetcheckReport } from "@repo/shared";
 
-/** Visual emphasis for a connectivity value. */
+/** Maps to a `tone-*` CSS class so color lives in the stylesheet, not here. */
 export type Tone = "good" | "bad" | "warn" | "neutral";
 
 export interface ConnectivityItem {
@@ -11,7 +11,7 @@ export interface ConnectivityItem {
 	tone: Tone;
 }
 
-type ItemDisplay = Omit<ConnectivityItem, "label">;
+type Outcome = [value: string, tone: Tone];
 
 /** Connectivity facts derived from the embedded tailscale netcheck probe. */
 export function buildConnectivityItems(
@@ -22,36 +22,23 @@ export function buildConnectivityItems(
 		return [];
 	}
 
+	// Tones: bad = real problem, warn = works but suboptimal, neutral = optional.
+	// So a missing optional capability stays neutral, but blocked UDP is bad.
 	const items: ConnectivityItem[] = [
-		triItem(
-			"UDP",
-			probe.UDP,
-			{ value: "Reachable", tone: "good" },
-			{ value: "Blocked", tone: "bad" },
-		),
-		triItem(
-			"IPv4",
-			probe.IPv4,
-			{ value: "Yes", tone: "good" },
-			{ value: "No", tone: "bad" },
-		),
-		triItem(
-			"IPv6",
-			probe.IPv6,
-			{ value: "Yes", tone: "good" },
-			{ value: "No", tone: "neutral" },
-		),
-		triItem(
+		boolItem("UDP", probe.UDP, ["Reachable", "good"], ["Blocked", "bad"]),
+		boolItem("IPv4", probe.IPv4, ["Yes", "good"], ["No", "bad"]),
+		boolItem("IPv6", probe.IPv6, ["Yes", "good"], ["No", "neutral"]),
+		boolItem(
 			"NAT mapping",
 			probe.MappingVariesByDestIP,
-			{ value: "Varies by destination (hard NAT)", tone: "warn" },
-			{ value: "Consistent (easy NAT)", tone: "good" },
+			["Varies by destination (hard NAT)", "warn"],
+			["Consistent (easy NAT)", "good"],
 		),
-		triItem(
+		boolItem(
 			"Hairpinning",
 			probe.HairPinning,
-			{ value: "Supported", tone: "good" },
-			{ value: "Not supported", tone: "neutral" },
+			["Supported", "good"],
+			["Not supported", "neutral"],
 		),
 		portMappingItem(probe),
 	];
@@ -63,20 +50,20 @@ export function buildConnectivityItems(
 	return items;
 }
 
-/** Maps true/false to the given displays; null/undefined render as Unknown. */
-function triItem(
+/** Picks the true/false outcome; null/undefined render as a neutral "Unknown". */
+function boolItem(
 	label: string,
 	state: boolean | null | undefined,
-	whenTrue: ItemDisplay,
-	whenFalse: ItemDisplay,
+	ifTrue: Outcome,
+	ifFalse: Outcome,
 ): ConnectivityItem {
-	if (state === true) {
-		return { label, ...whenTrue };
-	}
-	if (state === false) {
-		return { label, ...whenFalse };
-	}
-	return { label, value: "Unknown", tone: "neutral" };
+	const [value, tone]: Outcome =
+		state === true
+			? ifTrue
+			: state === false
+				? ifFalse
+				: ["Unknown", "neutral"];
+	return { label, value, tone };
 }
 
 function portMappingItem(probe: NetcheckConnectivity): ConnectivityItem {

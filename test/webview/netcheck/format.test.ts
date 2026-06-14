@@ -22,9 +22,9 @@ describe("nanosToMs", () => {
 });
 
 describe("formatTriState", () => {
-	it("maps yes/no to the given labels and unknown to a dash", () => {
-		expect(formatTriState("yes", { yes: "Yes", no: "Failed" })).toBe("Yes");
-		expect(formatTriState("no", { yes: "Yes", no: "Failed" })).toBe("Failed");
-		expect(formatTriState("unknown", { yes: "Yes", no: "Failed" })).toBe("—");
+	it("maps yes/no/unknown to capability labels", () => {
+		expect(formatTriState("yes")).toBe("Yes");
+		expect(formatTriState("no")).toBe("Failed");
+		expect(formatTriState("unknown")).toBe("—");
 	});
 });

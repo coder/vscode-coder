@@ -6,10 +6,8 @@ import { report } from "./fixtures";
 
 describe("buildRegionRows", () => {
 	const baseNode = {
-		severity: "ok",
 		can_exchange_messages: true,
 		round_trip_ping_ms: 60,
-		uses_websocket: false,
 		stun: { Enabled: false, CanSTUN: false },
 		node: { STUNOnly: false },
 	} as const;
@@ -108,10 +106,8 @@ describe("buildRegionRows", () => {
 							},
 							node_reports: [
 								{
-									severity: "ok",
 									can_exchange_messages: false,
 									round_trip_ping_ms: 0,
-									uses_websocket: false,
 									stun: { Enabled: true, CanSTUN: true },
 									node: { STUNOnly: true },
 								},
