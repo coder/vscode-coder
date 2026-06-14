@@ -10,31 +10,31 @@ export interface Issue {
 	message: string;
 }
 
-const SEVERITY_LABEL: Readonly<Record<NetcheckSeverity, string>> = {
+const SEVERITY_LABEL = {
 	ok: "Healthy",
 	warning: "Warning",
 	error: "Error",
-};
+} as const satisfies Record<NetcheckSeverity, string>;
+
+const BANNER_TITLE = {
+	ok: "Network is healthy",
+	warning: "Network has warnings",
+	error: "Network problems detected",
+} as const satisfies Record<NetcheckSeverity, string>;
+
+const SECTION_STATUS = {
+	ok: "healthy",
+	warning: "warning",
+	error: "error",
+} as const satisfies Record<NetcheckSeverity, string>;
 
 export function severityLabel(severity: NetcheckSeverity): string {
 	return SEVERITY_LABEL[severity];
 }
 
-const BANNER_TITLE: Readonly<Record<NetcheckSeverity, string>> = {
-	ok: "Network is healthy",
-	warning: "Network has warnings",
-	error: "Network problems detected",
-};
-
 export function bannerTitle(severity: NetcheckSeverity): string {
 	return BANNER_TITLE[severity];
 }
-
-const SECTION_STATUS: Readonly<Record<NetcheckSeverity, string>> = {
-	ok: "healthy",
-	warning: "warning",
-	error: "error",
-};
 
 /** One-line status for a report section, e.g. "2 warnings" or "healthy". */
 export function sectionSummary(section: NetcheckSectionHealth): string {

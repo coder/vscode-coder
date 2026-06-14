@@ -1,5 +1,6 @@
 import { SpeedtestApi, type SpeedtestResult, toError } from "@repo/shared";
 import { sendCommand, subscribeNotifications } from "@repo/webview-shared";
+import "@repo/webview-shared/base.css";
 
 import { renderLineChart } from "./chart";
 import {

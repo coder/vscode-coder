@@ -1,0 +1,11 @@
+{
+	"overall": {
+		"start_time_seconds": 0,
+		"end_time_seconds": 5,
+		"throughput_mbits": 100
+	},
+	"intervals": [
+		{ "start_time_seconds": 0, "end_time_seconds": 1, "throughput_mbits": 95 },
+		{ "start_time_seconds": 1, "end_time_seconds": 2, "throughput_mbits": 105 }
+	]
+}

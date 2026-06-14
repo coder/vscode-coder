@@ -1,17 +1,7 @@
-*,
-*::before,
-*::after {
-	box-sizing: border-box;
-}
+/* Base reset, body, and button styles come from @repo/webview-shared/base.css. */
 
 body {
-	margin: 0;
-	padding: 1.5em;
 	min-width: 22em;
-	background: var(--vscode-editor-background);
-	color: var(--vscode-editor-foreground);
-	font-family: var(--vscode-font-family);
-	font-size: var(--vscode-font-size);
 }
 
 .page-header {
@@ -75,25 +65,6 @@ body {
 	height: 100%;
 }
 
-.actions {
-	display: flex;
-	justify-content: center;
-}
-
-button {
-	padding: 0.4em 1em;
-	border: 1px solid var(--vscode-button-border, transparent);
-	border-radius: 2px;
-	background: var(--vscode-button-secondaryBackground);
-	color: var(--vscode-button-secondaryForeground);
-	font: inherit;
-	cursor: pointer;
-}
-
-button:hover {
-	background: var(--vscode-button-secondaryHoverBackground);
-}
-
 .tooltip {
 	position: absolute;
 	padding: 0.25em 0.5em;
@@ -116,10 +87,6 @@ button:hover {
 .empty {
 	text-align: center;
 	margin: 2em 0;
-}
-
-.error {
-	color: var(--vscode-errorForeground);
 }
 
 .empty {

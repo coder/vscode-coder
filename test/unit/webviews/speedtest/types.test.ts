@@ -3,21 +3,11 @@ import { ZodError } from "zod";
 
 import { parseSpeedtestResult } from "@/webviews/speedtest/types";
 
-const validJson = JSON.stringify({
-	overall: {
-		start_time_seconds: 0,
-		end_time_seconds: 5,
-		throughput_mbits: 100,
-	},
-	intervals: [
-		{ start_time_seconds: 0, end_time_seconds: 1, throughput_mbits: 95 },
-		{ start_time_seconds: 1, end_time_seconds: 2, throughput_mbits: 105 },
-	],
-});
+import validResult from "./fixtures/speedtest-result.json";
 
 describe("parseSpeedtestResult", () => {
 	it("returns parsed data for a valid payload", () => {
-		const result = parseSpeedtestResult(validJson);
+		const result = parseSpeedtestResult(JSON.stringify(validResult));
 		expect(result.overall.throughput_mbits).toBe(100);
 		expect(result.intervals).toHaveLength(2);
 	});

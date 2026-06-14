@@ -26,25 +26,40 @@ export function regionName(
 
 /** Rows for the regions table: preferred first, then by latency, then name. */
 export function buildRegionRows(report: NetcheckReport): RegionRow[] {
-	const latencies = report.derp.netcheck?.RegionLatency ?? {};
-	const preferredId = report.derp.netcheck?.PreferredDERP;
-	const rows = Object.entries(report.derp.regions).map(([key, region]) => {
-		const id = Number(key);
-		const nodes = region.node_reports;
-		const stunNodes = nodes.filter((n) => n.stun.Enabled);
-		const relayNodes = nodes.filter((n) => !(n.node?.STUNOnly ?? false));
-		return {
-			name: regionName(region, id),
-			severity: region.severity,
-			latencyMs: regionLatencyMs(latencies[key], relayNodes),
-			preferred: id === preferredId,
-			embeddedRelay: region.region?.EmbeddedRelay ?? false,
-			stun: anyTriState(stunNodes, (n) => n.stun.CanSTUN),
-			relay: anyTriState(relayNodes, (n) => n.can_exchange_messages),
-			error: region.error ?? undefined,
-		};
-	});
-	return rows.sort(compareRegionRows);
+	const probe = report.derp.netcheck;
+	return Object.entries(report.derp.regions)
+		.map(([key, region]) =>
+			toRegionRow(
+				region,
+				Number(key),
+				probe?.PreferredDERP,
+				probe?.RegionLatency[key],
+			),
+		)
+		.toSorted(compareRegionRows);
+}
+
+function toRegionRow(
+	region: NetcheckRegionReport,
+	id: number,
+	preferredId: number | undefined,
+	latencyNanos: number | undefined,
+): RegionRow {
+	// STUN and relay capability come from different node sets.
+	const relayNodes = region.node_reports.filter(
+		(n) => !(n.node?.STUNOnly ?? false),
+	);
+	const stunNodes = region.node_reports.filter((n) => n.stun.Enabled);
+	return {
+		name: regionName(region, id),
+		severity: region.severity,
+		latencyMs: regionLatencyMs(latencyNanos, relayNodes),
+		preferred: id === preferredId,
+		embeddedRelay: region.region?.EmbeddedRelay ?? false,
+		stun: anyTriState(stunNodes, (n) => n.stun.CanSTUN),
+		relay: anyTriState(relayNodes, (n) => n.can_exchange_messages),
+		error: region.error ?? undefined,
+	};
 }
 
 function regionLatencyMs(

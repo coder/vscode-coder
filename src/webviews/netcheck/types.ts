@@ -1,6 +1,50 @@
 import { z } from "zod";
 
+import type {
+	DERPHealthReport,
+	DERPNodeReport,
+	DERPRegionReport,
+	NetcheckReport as TailscaleNetcheckReport,
+} from "coder/site/src/api/typesGenerated";
+
 import type { NetcheckReport } from "@repo/shared";
+
+/**
+ * The coder SDK fields the parser reads, as a compile-time drift guard: an
+ * upstream rename or removal fails the build. (Leaf type changes are caught at
+ * runtime by the schema; the `interfaces` section has no SDK type.)
+ */
+export type NetcheckSdkFields =
+	| keyof Pick<
+			DERPHealthReport,
+			| "severity"
+			| "warnings"
+			| "error"
+			| "regions"
+			| "netcheck"
+			| "netcheck_err"
+	  >
+	| keyof Pick<
+			DERPRegionReport,
+			"severity" | "error" | "region" | "node_reports"
+	  >
+	| keyof Pick<
+			DERPNodeReport,
+			"can_exchange_messages" | "round_trip_ping_ms" | "stun" | "node"
+	  >
+	| keyof Pick<
+			TailscaleNetcheckReport,
+			| "UDP"
+			| "IPv4"
+			| "IPv6"
+			| "MappingVariesByDestIP"
+			| "HairPinning"
+			| "UPnP"
+			| "PMP"
+			| "PCP"
+			| "PreferredDERP"
+			| "RegionLatency"
+	  >;
 
 const SeveritySchema = z.enum(["ok", "warning", "error"]);
 

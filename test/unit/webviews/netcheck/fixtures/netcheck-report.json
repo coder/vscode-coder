@@ -1,0 +1,133 @@
+{
+	"derp": {
+		"severity": "ok",
+		"warnings": [],
+		"dismissed": false,
+		"healthy": true,
+		"regions": {
+			"999": {
+				"healthy": true,
+				"severity": "ok",
+				"warnings": [],
+				"region": {
+					"EmbeddedRelay": true,
+					"RegionID": 999,
+					"RegionCode": "coder",
+					"RegionName": "Council Bluffs, Iowa",
+					"Nodes": [
+						{
+							"Name": "999b",
+							"RegionID": 999,
+							"HostName": "dev.coder.com",
+							"STUNPort": -1,
+							"STUNOnly": false,
+							"DERPPort": 443
+						}
+					]
+				},
+				"node_reports": [
+					{
+						"healthy": true,
+						"severity": "ok",
+						"warnings": [],
+						"node": {
+							"Name": "999b",
+							"RegionID": 999,
+							"HostName": "dev.coder.com",
+							"STUNPort": -1,
+							"STUNOnly": false,
+							"DERPPort": 443
+						},
+						"node_info": {
+							"TokenBucketBytesPerSecond": 0,
+							"TokenBucketBytesBurst": 0
+						},
+						"can_exchange_messages": true,
+						"round_trip_ping": "60ms",
+						"round_trip_ping_ms": 60,
+						"uses_websocket": false,
+						"client_logs": [[], []],
+						"client_errs": [[], []],
+						"stun": { "Enabled": false, "CanSTUN": false, "Error": null }
+					}
+				]
+			},
+			"1000": {
+				"healthy": true,
+				"severity": "ok",
+				"warnings": [],
+				"region": {
+					"EmbeddedRelay": false,
+					"RegionID": 1000,
+					"RegionCode": "coder_stun_1000",
+					"RegionName": "Coder STUN 1000",
+					"Nodes": [
+						{
+							"Name": "1000stun0",
+							"RegionID": 1000,
+							"HostName": "stun.l.google.com",
+							"STUNPort": 19302,
+							"STUNOnly": true
+						}
+					]
+				},
+				"node_reports": [
+					{
+						"healthy": true,
+						"severity": "ok",
+						"warnings": [],
+						"node": {
+							"Name": "1000stun0",
+							"RegionID": 1000,
+							"HostName": "stun.l.google.com",
+							"STUNPort": 19302,
+							"STUNOnly": true
+						},
+						"node_info": {
+							"TokenBucketBytesPerSecond": 0,
+							"TokenBucketBytesBurst": 0
+						},
+						"can_exchange_messages": false,
+						"round_trip_ping": "",
+						"round_trip_ping_ms": 0,
+						"uses_websocket": false,
+						"client_logs": [],
+						"client_errs": [],
+						"stun": { "Enabled": true, "CanSTUN": true, "Error": null }
+					}
+				]
+			}
+		},
+		"netcheck": {
+			"UDP": true,
+			"IPv6": false,
+			"IPv4": true,
+			"IPv6CanSend": false,
+			"IPv4CanSend": true,
+			"OSHasIPv6": true,
+			"ICMPv4": false,
+			"MappingVariesByDestIP": false,
+			"HairPinning": null,
+			"UPnP": false,
+			"PMP": false,
+			"PCP": false,
+			"PreferredDERP": 999,
+			"RegionLatency": { "999": 27706829, "1000": 28003498 },
+			"RegionV4Latency": { "999": 27706829 },
+			"RegionV6Latency": {},
+			"GlobalV4": "64.130.54.176:56069",
+			"GlobalV6": "",
+			"CaptivePortal": null
+		},
+		"netcheck_logs": []
+	},
+	"interfaces": {
+		"severity": "ok",
+		"warnings": null,
+		"dismissed": false,
+		"interfaces": [
+			{ "name": "lo", "mtu": 65536, "addresses": ["127.0.0.1/8", "::1/128"] },
+			{ "name": "eth0", "mtu": 1500, "addresses": ["172.20.0.99/16"] }
+		]
+	}
+}
