@@ -351,7 +351,7 @@ importers:
     devDependencies:
       '@storybook/react-vite':
         specifier: 'catalog:'
-        version: 10.4.4(@types/react-dom@19.2.3)(@types/react@19.2.17)(esbuild@0.28.1)(react-dom@19.2.7)(react@19.2.7)(storybook@10.4.4)(typescript@6.0.3)(vite@8.0.16)
+        version: 10.4.4(@types/react-dom@19.2.3)(@types/react@19.2.17)(esbuild@0.28.1)(react-dom@19.2.7)(react@19.2.7)(storybook@10.4.5)(typescript@6.0.3)(vite@8.0.16)
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -4689,6 +4689,21 @@ packages:
       vite-plus:
         optional: true
 
+  storybook@10.4.5:
+    resolution: {integrity: sha512-QZuv1gS9Tf9RMCjDw5JOfv1XSB5IhU0uhSKQNS7l/N9zDpmSydirCspkCNT9e0zkFfPkZ9vmQUTzHY/BA07saA==}
+    hasBin: true
+    peerDependencies:
+      '@types/react': ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      prettier: ^2 || ^3
+      vite-plus: ^0.1.15
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      prettier:
+        optional: true
+      vite-plus:
+        optional: true
+
   string-ts@2.3.1:
     resolution: {integrity: sha512-xSJq+BS52SaFFAVxuStmx6n5aYZU571uYUnUrPXkPFCfdHyZMMlbP2v2Wx5sNBnAVzq/2+0+mcBLBa3Xa5ubYw==}
 
@@ -6473,9 +6488,28 @@ snapshots:
       - rollup
       - webpack
 
+  '@storybook/builder-vite@10.4.4(esbuild@0.28.1)(storybook@10.4.5)(vite@8.0.16)':
+    dependencies:
+      '@storybook/csf-plugin': 10.4.4(esbuild@0.28.1)(storybook@10.4.5)(vite@8.0.16)
+      storybook: 10.4.5(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6)
+      ts-dedent: 2.3.0
+      vite: 8.0.16(@types/node@22.19.21)(esbuild@0.28.1)
+    transitivePeerDependencies:
+      - esbuild
+      - rollup
+      - webpack
+
   '@storybook/csf-plugin@10.4.4(esbuild@0.28.1)(storybook@10.4.4)(vite@8.0.16)':
     dependencies:
       storybook: 10.4.4(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6)
+      unplugin: 2.3.11
+    optionalDependencies:
+      esbuild: 0.28.1
+      vite: 8.0.16(@types/node@22.19.21)(esbuild@0.28.1)
+
+  '@storybook/csf-plugin@10.4.4(esbuild@0.28.1)(storybook@10.4.5)(vite@8.0.16)':
+    dependencies:
+      storybook: 10.4.5(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6)
       unplugin: 2.3.11
     optionalDependencies:
       esbuild: 0.28.1
@@ -6493,6 +6527,15 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       storybook: 10.4.4(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6)
+    optionalDependencies:
+      '@types/react': 19.2.17
+      '@types/react-dom': 19.2.3(@types/react@19.2.17)
+
+  '@storybook/react-dom-shim@10.4.4(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.7)(react@19.2.7)(storybook@10.4.5)':
+    dependencies:
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+      storybook: 10.4.5(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6)
     optionalDependencies:
       '@types/react': 19.2.17
       '@types/react-dom': 19.2.3(@types/react@19.2.17)
@@ -6521,6 +6564,30 @@ snapshots:
       - typescript
       - webpack
 
+  '@storybook/react-vite@10.4.4(@types/react-dom@19.2.3)(@types/react@19.2.17)(esbuild@0.28.1)(react-dom@19.2.7)(react@19.2.7)(storybook@10.4.5)(typescript@6.0.3)(vite@8.0.16)':
+    dependencies:
+      '@joshwooding/vite-plugin-react-docgen-typescript': 0.7.0(typescript@6.0.3)(vite@8.0.16)
+      '@rollup/pluginutils': 5.4.0
+      '@storybook/builder-vite': 10.4.4(esbuild@0.28.1)(storybook@10.4.5)(vite@8.0.16)
+      '@storybook/react': 10.4.4(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.7)(react@19.2.7)(storybook@10.4.5)(typescript@6.0.3)
+      empathic: 2.0.1
+      magic-string: 0.30.21
+      react: 19.2.7
+      react-docgen: 8.0.3
+      react-dom: 19.2.7(react@19.2.7)
+      resolve: 1.22.12
+      storybook: 10.4.5(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6)
+      tsconfig-paths: 4.2.0
+      vite: 8.0.16(@types/node@22.19.21)(esbuild@0.28.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+      - esbuild
+      - rollup
+      - supports-color
+      - typescript
+      - webpack
+
   '@storybook/react@10.4.4(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.7)(react@19.2.7)(storybook@10.4.4)(typescript@6.0.3)':
     dependencies:
       '@storybook/global': 5.0.0
@@ -6530,6 +6597,22 @@ snapshots:
       react-docgen-typescript: 2.4.0(typescript@6.0.3)
       react-dom: 19.2.7(react@19.2.7)
       storybook: 10.4.4(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6)
+    optionalDependencies:
+      '@types/react': 19.2.17
+      '@types/react-dom': 19.2.3(@types/react@19.2.17)
+      typescript: 6.0.3
+    transitivePeerDependencies:
+      - supports-color
+
+  '@storybook/react@10.4.4(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.7)(react@19.2.7)(storybook@10.4.5)(typescript@6.0.3)':
+    dependencies:
+      '@storybook/global': 5.0.0
+      '@storybook/react-dom-shim': 10.4.4(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.7)(react@19.2.7)(storybook@10.4.5)
+      react: 19.2.7
+      react-docgen: 8.0.3
+      react-docgen-typescript: 2.4.0(typescript@6.0.3)
+      react-dom: 19.2.7(react@19.2.7)
+      storybook: 10.4.5(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6)
     optionalDependencies:
       '@types/react': 19.2.17
       '@types/react-dom': 19.2.3(@types/react@19.2.17)
@@ -9808,6 +9891,33 @@ snapshots:
   stdin-discarder@0.2.2: {}
 
   storybook@10.4.4(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6):
+    dependencies:
+      '@storybook/global': 5.0.0
+      '@storybook/icons': 2.0.2(react-dom@19.2.7)(react@19.2.7)
+      '@testing-library/jest-dom': 6.9.1
+      '@testing-library/user-event': 14.6.1(@testing-library/dom@10.4.1)
+      '@vitest/expect': 3.2.4
+      '@vitest/spy': 3.2.4
+      '@webcontainer/env': 1.1.1
+      esbuild: 0.27.7
+      open: 10.2.0
+      oxc-parser: 0.127.0
+      oxc-resolver: 11.20.0
+      recast: 0.23.11
+      semver: 7.8.4
+      use-sync-external-store: 1.6.0(react@19.2.7)
+      ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+    optionalDependencies:
+      '@types/react': 19.2.17
+      prettier: 3.8.4
+    transitivePeerDependencies:
+      - '@testing-library/dom'
+      - bufferutil
+      - react
+      - react-dom
+      - utf-8-validate
+
+  storybook@10.4.5(@testing-library/dom@10.4.1)(@types/react@19.2.17)(bufferutil@4.1.0)(prettier@3.8.4)(react-dom@19.2.7)(react@19.2.7)(utf-8-validate@6.0.6):
     dependencies:
       '@storybook/global': 5.0.0
       '@storybook/icons': 2.0.2(react-dom@19.2.7)(react@19.2.7)
