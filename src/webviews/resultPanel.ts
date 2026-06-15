@@ -8,6 +8,7 @@ import {
 	onWhileVisible,
 } from "./dispatch";
 import { getWebviewHtml } from "./html";
+import { openJsonBeside } from "./openJson";
 
 import type { Logger } from "../logging/logger";
 
@@ -75,20 +76,8 @@ export function showResultPanel(options: ResultPanelOptions): void {
 	);
 
 	const sendData = () => options.notify(panel.webview);
-	const openRawJson = async () => {
-		try {
-			const doc = await vscode.workspace.openTextDocument({
-				content: options.rawJson,
-				language: "json",
-			});
-			await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
-		} catch (err) {
-			logger.error(`Failed to open ${options.jsonErrorLabel} JSON`, err);
-			vscode.window.showErrorMessage(
-				`Failed to open ${options.jsonErrorLabel} JSON. Check \`Output > Coder\` for details.`,
-			);
-		}
-	};
+	const openRawJson = () =>
+		openJsonBeside(options.rawJson, options.jsonErrorLabel, logger);
 	const { commands, requests } = options.buildHandlers({
 		sendData,
 		openRawJson,

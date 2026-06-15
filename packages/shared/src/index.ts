@@ -19,7 +19,7 @@ export {
 
 // Netcheck API
 export { NetcheckApi } from "./netcheck/api";
-export { overallNetcheckSeverity } from "./netcheck/utils";
+export { overallNetcheckSeverity, worstSeverity } from "./netcheck/utils";
 export type {
 	NetcheckConnectivity,
 	NetcheckData,

@@ -1,3 +1,5 @@
+import { regionName } from "./regions";
+
 import type {
 	NetcheckReport,
 	NetcheckSectionHealth,
@@ -64,6 +66,19 @@ export function collectIssues(report: NetcheckReport): Issue[] {
 	addSection(report.derp);
 	if (report.derp.netcheck_err) {
 		errors.push({ kind: "error", message: report.derp.netcheck_err });
+	}
+	for (const [key, region] of Object.entries(report.derp.regions)) {
+		const name = regionName(region, Number(key));
+		if (region.error) {
+			errors.push({ kind: "error", message: `${name}: ${region.error}` });
+		}
+		for (const warning of region.warnings ?? []) {
+			warnings.push({
+				kind: "warning",
+				message: `${name}: ${warning.message}`,
+				...(warning.code ? { code: warning.code } : {}),
+			});
+		}
 	}
 	addSection(report.interfaces);
 	return [...errors, ...warnings];

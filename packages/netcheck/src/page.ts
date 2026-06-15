@@ -88,7 +88,7 @@ function renderConnectivity(report: NetcheckReport): HTMLElement {
 	const items = buildConnectivityItems(report);
 	if (items.length === 0) {
 		return emptyMessage(
-			"The connectivity probe returned no data. See Issues above or View JSON for details.",
+			"The connectivity probe returned no data. Use View JSON for details.",
 		);
 	}
 	const grid = el("div", "conn-grid");

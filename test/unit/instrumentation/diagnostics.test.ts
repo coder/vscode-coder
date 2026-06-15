@@ -72,8 +72,8 @@ describe("DiagnosticTelemetry", () => {
 		const { sink, telemetry } = setup();
 		const report: NetcheckReport = {
 			derp: {
-				severity: "ok",
-				warnings: [],
+				severity: "warning",
+				warnings: [{ code: "EDERP01", message: "Region latency is high" }],
 				regions: {
 					"999": { severity: "ok", node_reports: [] },
 					"1000": { severity: "ok", node_reports: [] },
@@ -94,7 +94,7 @@ describe("DiagnosticTelemetry", () => {
 		expect(sink.expectOne("command.diagnostic.completed")).toMatchObject({
 			measurements: {
 				"region.count": 2,
-				"warning.count": 1,
+				"warning.count": 2,
 			},
 			properties: {
 				command: "netcheck",

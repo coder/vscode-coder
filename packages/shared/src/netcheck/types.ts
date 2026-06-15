@@ -24,6 +24,7 @@ interface NetcheckNodeReport {
 export interface NetcheckRegionReport {
 	severity: NetcheckSeverity;
 	error?: string | null;
+	warnings?: Array<{ code: string; message: string }>;
 	region?: {
 		RegionID: number;
 		RegionName: string;

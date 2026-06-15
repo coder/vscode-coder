@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 
 import { toError } from "../error/errorUtils";
 import { withCancellableProgress, type ProgressContext } from "../progress";
+import { openJsonBeside } from "../webviews/openJson";
 
 import type { DiagnosticTrace } from "../instrumentation/diagnostics";
 import type { Logger } from "../logging/logger";
@@ -51,14 +52,13 @@ export async function runDiagnosticCli(
 		return;
 	}
 
-	// On a display failure, keep the report the user waited for recoverable by
-	// offering its raw output behind a "View Output" action.
+	// Display failed but the output is valid; offer it rather than dropping it.
 	const offerRawOutput = (message: string) => {
 		void vscode.window
 			.showErrorMessage(message, "View Output")
 			.then((choice) => {
 				if (choice === "View Output") {
-					void openRawOutput(result.value, name, logger);
+					void openJsonBeside(result.value, name, logger);
 				}
 			});
 	};
@@ -79,21 +79,5 @@ export async function runDiagnosticCli(
 		offerRawOutput(
 			`${name} could not display its results: ${toError(err).message}`,
 		);
-	}
-}
-
-async function openRawOutput(
-	rawJson: string,
-	name: string,
-	logger: Logger,
-): Promise<void> {
-	try {
-		const doc = await vscode.workspace.openTextDocument({
-			content: rawJson,
-			language: "json",
-		});
-		await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
-	} catch (err) {
-		logger.error(`Failed to open ${name} output`, err);
 	}
 }

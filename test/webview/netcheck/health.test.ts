@@ -49,6 +49,33 @@ describe("collectIssues", () => {
 		]);
 	});
 
+	it("includes per-region errors and warnings, prefixed with the region name", () => {
+		const issues = collectIssues(
+			report({
+				derp: {
+					regions: {
+						"5": {
+							severity: "error",
+							error: "region unreachable",
+							warnings: [{ code: "ERLY", message: "high latency" }],
+							region: {
+								RegionID: 5,
+								RegionName: "Tokyo",
+								EmbeddedRelay: false,
+							},
+							node_reports: [],
+						},
+					},
+				},
+			}),
+		);
+
+		expect(issues).toEqual([
+			{ kind: "error", message: "Tokyo: region unreachable" },
+			{ kind: "warning", code: "ERLY", message: "Tokyo: high latency" },
+		]);
+	});
+
 	it("returns nothing for a healthy report", () => {
 		expect(collectIssues(report())).toEqual([]);
 	});

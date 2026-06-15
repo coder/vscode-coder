@@ -68,6 +68,38 @@ describe("parseNetcheckReport", () => {
 		]);
 	});
 
+	it("rolls a region error up into the derp severity", () => {
+		const r = structuredClone(validReport) as {
+			derp: {
+				severity: string;
+				regions: Record<string, { severity: string; error?: string }>;
+			};
+		};
+		r.derp.severity = "ok";
+		r.derp.regions["999"].severity = "ok";
+		r.derp.regions["999"].error = "region check panicked";
+
+		const report = parseNetcheckReport(JSON.stringify(r));
+		expect(report.derp.regions["999"].severity).toBe("error");
+		expect(report.derp.severity).toBe("error");
+	});
+
+	it("escalates section severity from netcheck_err and interfaces error", () => {
+		const r = structuredClone(validReport) as {
+			derp: { severity: string; netcheck?: unknown; netcheck_err?: string };
+			interfaces: { severity: string; error?: string };
+		};
+		r.derp.severity = "ok";
+		delete r.derp.netcheck;
+		r.derp.netcheck_err = "probe failed";
+		r.interfaces.severity = "ok";
+		r.interfaces.error = "interface enumeration failed";
+
+		const report = parseNetcheckReport(JSON.stringify(r));
+		expect(report.derp.severity).toBe("error");
+		expect(report.interfaces.severity).toBe("error");
+	});
+
 	it("throws ZodError when a required field is missing", () => {
 		const missingSeverity = structuredClone(validReport) as {
 			derp: { severity?: string };
