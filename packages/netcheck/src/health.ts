@@ -79,6 +79,14 @@ export function collectIssues(report: NetcheckReport): Issue[] {
 				...(warning.code ? { code: warning.code } : {}),
 			});
 		}
+		// A node can be unhealthy with no message of its own (region severity
+		// already reflects it). Synthesize one so the banner isn't alone.
+		const hasMessage = Boolean(region.error) || Boolean(region.warnings?.length);
+		if (!hasMessage && region.severity === "error") {
+			errors.push({ kind: "error", message: `${name}: a node failed its health check` });
+		} else if (!hasMessage && region.severity === "warning") {
+			warnings.push({ kind: "warning", message: `${name}: a node reported a warning` });
+		}
 	}
 	addSection(report.interfaces);
 	return [...errors, ...warnings];

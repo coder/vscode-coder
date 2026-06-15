@@ -76,6 +76,32 @@ describe("collectIssues", () => {
 		]);
 	});
 
+	it("synthesizes an issue for a region whose node is unhealthy but carries no message", () => {
+		const issues = collectIssues(
+			report({
+				derp: {
+					regions: {
+						"3": {
+							severity: "error",
+							region: { RegionID: 3, RegionName: "Frankfurt", EmbeddedRelay: true },
+							node_reports: [
+								{
+									can_exchange_messages: false,
+									round_trip_ping_ms: 0,
+									stun: { Enabled: true, CanSTUN: true },
+								},
+							],
+						},
+					},
+				},
+			}),
+		);
+
+		expect(issues).toEqual([
+			{ kind: "error", message: "Frankfurt: a node failed its health check" },
+		]);
+	});
+
 	it("returns nothing for a healthy report", () => {
 		expect(collectIssues(report())).toEqual([]);
 	});
