@@ -1,5 +1,11 @@
 import { SpeedtestApi, type SpeedtestResult, toError } from "@repo/shared";
-import { sendCommand, subscribeNotifications } from "@repo/webview-shared";
+import {
+	emptyMessage,
+	errorMessage,
+	sendCommand,
+	subscribeNotifications,
+	viewJsonAction,
+} from "@repo/webview-shared";
 import "@repo/webview-shared/base.css";
 
 import { renderLineChart } from "./chart";
@@ -53,14 +59,14 @@ function renderPage(
 
 	const samples = toChartSamples(data.intervals);
 	if (samples.length === 0) {
-		root.appendChild(renderEmptyMessage());
-		root.appendChild(renderActions(onViewJson));
+		root.appendChild(emptyMessage("No samples returned from the speed test."));
+		root.appendChild(viewJsonAction(onViewJson));
 		return () => undefined;
 	}
 
 	const chart = renderChart(samples);
 	root.appendChild(chart.container);
-	root.appendChild(renderActions(onViewJson));
+	root.appendChild(viewJsonAction(onViewJson));
 	return chart.cleanup;
 }
 
@@ -191,32 +197,11 @@ function renderChart(samples: ChartPoint[]): {
 	};
 }
 
-function renderActions(onViewJson: () => void): HTMLElement {
-	const actions = document.createElement("div");
-	actions.className = "actions";
-	const viewBtn = document.createElement("button");
-	viewBtn.textContent = "View JSON";
-	viewBtn.addEventListener("click", onViewJson);
-	actions.appendChild(viewBtn);
-	return actions;
-}
-
-function renderEmptyMessage(): HTMLElement {
-	const p = document.createElement("p");
-	p.className = "empty";
-	p.textContent = "No samples returned from the speed test.";
-	return p;
-}
-
 function showError(message: string): void {
 	const root = document.getElementById("root");
-	if (!root) {
-		return;
+	if (root) {
+		root.replaceChildren(errorMessage(message));
 	}
-	const p = document.createElement("p");
-	p.className = "error";
-	p.textContent = message;
-	root.replaceChildren(p);
 }
 
 main();

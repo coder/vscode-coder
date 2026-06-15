@@ -5,6 +5,7 @@ import {
 	type NetcheckReport,
 	type NetcheckSeverity,
 } from "@repo/shared";
+import { emptyMessage, viewJsonAction } from "@repo/webview-shared";
 
 import { buildConnectivityItems } from "./connectivity";
 import { formatLatency, formatTriState } from "./format";
@@ -34,7 +35,7 @@ export function renderPage(
 			"Local interfaces",
 			renderInterfaces(report.interfaces.interfaces),
 		),
-		renderActions(onViewJson),
+		viewJsonAction(onViewJson),
 	);
 	return children;
 }
@@ -178,10 +179,10 @@ function renderTable<T>(
 	return table;
 }
 
-function renderTableHead(...labels: string[]): HTMLElement {
+function renderTableHead(...headers: string[]): HTMLElement {
 	const thead = el("thead");
 	const tr = el("tr");
-	tr.append(...labels.map((label) => el("th", undefined, label)));
+	tr.append(...headers.map((header) => el("th", undefined, header)));
 	thead.append(tr);
 	return thead;
 }
@@ -195,19 +196,6 @@ function renderSeverityCell(severity: NetcheckSeverity): HTMLTableCellElement {
 	);
 	td.append(status);
 	return td;
-}
-
-function renderActions(onViewJson: () => void): HTMLElement {
-	const actions = el("div", "actions");
-	const viewBtn = el("button", undefined, "View JSON");
-	viewBtn.addEventListener("click", onViewJson);
-	actions.append(viewBtn);
-	return actions;
-}
-
-/** Renders a top-level error message in place of the report. */
-export function renderError(message: string): HTMLElement {
-	return el("p", "error", message);
 }
 
 /** Create an element with an optional class and text content. */
@@ -228,8 +216,4 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 function badge(text: string): HTMLElement {
 	return el("span", "badge", text);
-}
-
-function emptyMessage(text: string): HTMLElement {
-	return el("p", "empty", text);
 }

@@ -12,9 +12,10 @@ import type { NetcheckReport } from "@repo/shared";
 /**
  * The coder SDK fields the parser reads, as a compile-time drift guard: an
  * upstream rename or removal fails the build. (Leaf type changes are caught at
- * runtime by the schema; the `interfaces` section has no SDK type.)
+ * runtime by the schema; the `interfaces` section has no SDK type.) Unexported
+ * and `_`-prefixed since the guard fires from its declaration alone.
  */
-export type NetcheckSdkFields =
+type _NetcheckSdkFields =
 	| keyof Pick<
 			DERPHealthReport,
 			| "severity"
@@ -141,5 +142,5 @@ const NetcheckReportSchema = z.object({
 });
 
 export function parseNetcheckReport(json: string): NetcheckReport {
-	return NetcheckReportSchema.parse(JSON.parse(json)) satisfies NetcheckReport;
+	return NetcheckReportSchema.parse(JSON.parse(json));
 }

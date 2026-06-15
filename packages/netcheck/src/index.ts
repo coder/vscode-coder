@@ -1,9 +1,13 @@
 import { NetcheckApi, toError, type NetcheckData } from "@repo/shared";
-import { sendCommand, subscribeNotifications } from "@repo/webview-shared";
+import {
+	errorMessage,
+	sendCommand,
+	subscribeNotifications,
+} from "@repo/webview-shared";
 import "@repo/webview-shared/base.css";
 
 import "./index.css";
-import { renderError, renderPage } from "./page";
+import { renderPage } from "./page";
 
 function main(): void {
 	// The extension re-sends `data` on visibility/theme changes; each render
@@ -26,7 +30,7 @@ function render(data: NetcheckData): void {
 		);
 	} catch (err) {
 		root.replaceChildren(
-			renderError(`Failed to render network check: ${toError(err).message}`),
+			errorMessage(`Failed to render network check: ${toError(err).message}`),
 		);
 	}
 }

@@ -15,8 +15,11 @@ export interface DiagnosticCliOptions {
 	progressTitle: string;
 	/** Invoke the CLI under the progress notification; resolves to raw JSON. */
 	exec: (ctx: ProgressContext) => Promise<string>;
-	/** Parse the output, record success telemetry, and show the results. */
-	display: (rawJson: string) => void;
+	/**
+	 * Parse the output, record success telemetry, and show the results. Parsing
+	 * happens here so parse failures map to the `parse_error` telemetry path.
+	 */
+	parseAndDisplay: (rawJson: string) => void;
 }
 
 /**
@@ -48,21 +51,49 @@ export async function runDiagnosticCli(
 		return;
 	}
 
+	// On a display failure, keep the report the user waited for recoverable by
+	// offering its raw output behind a "View Output" action.
+	const offerRawOutput = (message: string) => {
+		void vscode.window
+			.showErrorMessage(message, "View Output")
+			.then((choice) => {
+				if (choice === "View Output") {
+					void openRawOutput(result.value, name, logger);
+				}
+			});
+	};
+
 	try {
-		options.display(result.value);
+		options.parseAndDisplay(result.value);
 	} catch (err) {
 		if (err instanceof ZodError || err instanceof SyntaxError) {
 			telemetry.error("parse_error");
 			logger.error(`Failed to parse ${name} output`, err);
-			vscode.window.showErrorMessage(
+			offerRawOutput(
 				`${name} output did not match the expected format. Check \`Output > Coder\` for details.`,
 			);
 			return;
 		}
 		telemetry.error();
 		logger.error(`Failed to display ${name} results`, err);
-		vscode.window.showErrorMessage(
-			`${name} returned unexpected output: ${toError(err).message}`,
+		offerRawOutput(
+			`${name} could not display its results: ${toError(err).message}`,
 		);
+	}
+}
+
+async function openRawOutput(
+	rawJson: string,
+	name: string,
+	logger: Logger,
+): Promise<void> {
+	try {
+		const doc = await vscode.workspace.openTextDocument({
+			content: rawJson,
+			language: "json",
+		});
+		await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+	} catch (err) {
+		logger.error(`Failed to open ${name} output`, err);
 	}
 }

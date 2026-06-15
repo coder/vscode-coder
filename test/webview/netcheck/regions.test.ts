@@ -126,6 +126,32 @@ describe("buildRegionRows", () => {
 		});
 	});
 
+	it("marks no region preferred when PreferredDERP is the 0 sentinel", () => {
+		const region = (id: number, name: string) => ({
+			severity: "ok" as const,
+			region: { RegionID: id, RegionName: name, EmbeddedRelay: false },
+			node_reports: [baseNode],
+		});
+		const rows = buildRegionRows(
+			report({
+				derp: {
+					severity: "ok",
+					warnings: [],
+					regions: { "0": region(0, "Zero"), "1": region(1, "One") },
+					netcheck: {
+						UDP: true,
+						IPv4: true,
+						IPv6: false,
+						PreferredDERP: 0,
+						RegionLatency: {},
+					},
+				},
+			}),
+		);
+
+		expect(rows.every((r) => !r.preferred)).toBe(true);
+	});
+
 	it("falls back to a numeric name when region metadata is missing", () => {
 		const rows = buildRegionRows(
 			report({

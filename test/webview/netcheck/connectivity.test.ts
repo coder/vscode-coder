@@ -60,4 +60,54 @@ describe("buildConnectivityItems", () => {
 		});
 		expect(byLabel["Preferred relay"]).toMatchObject({ value: "Embedded" });
 	});
+
+	it("distinguishes an undetermined port mapping probe from none detected", () => {
+		const portMapping = (fields: {
+			UPnP?: boolean | null;
+			PMP?: boolean | null;
+			PCP?: boolean | null;
+		}) => {
+			const items = buildConnectivityItems(
+				report({
+					derp: {
+						netcheck: {
+							UDP: true,
+							IPv4: true,
+							IPv6: false,
+							PreferredDERP: 0,
+							RegionLatency: {},
+							...fields,
+						},
+					},
+				}),
+			);
+			return items.find((i) => i.label === "Port mapping");
+		};
+
+		expect(portMapping({ UPnP: null, PMP: null, PCP: null })).toMatchObject({
+			value: "Unknown",
+			tone: "neutral",
+		});
+		expect(portMapping({ UPnP: false, PMP: false, PCP: false })).toMatchObject({
+			value: "None detected",
+			tone: "neutral",
+		});
+	});
+
+	it("omits the preferred relay when PreferredDERP is the 0 sentinel", () => {
+		const items = buildConnectivityItems(
+			report({
+				derp: {
+					netcheck: {
+						UDP: true,
+						IPv4: true,
+						IPv6: false,
+						PreferredDERP: 0,
+						RegionLatency: {},
+					},
+				},
+			}),
+		);
+		expect(items.find((i) => i.label === "Preferred relay")).toBeUndefined();
+	});
 });

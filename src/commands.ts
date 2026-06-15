@@ -342,14 +342,16 @@ export class Commands {
 					stopProgress();
 				}
 			},
-			display: (rawJson) => {
+			parseAndDisplay: (rawJson) => {
 				const parsed = parseSpeedtestResult(rawJson);
-				telemetry.succeedSpeedtest(parsed);
 				this.speedtestPanelFactory.show({
 					result: parsed,
 					rawJson,
 					workspaceId,
 				});
+				// Record success after the panel shows, so a display failure is an
+				// error rather than a contradictory success span.
+				telemetry.succeedSpeedtest(parsed);
 			},
 		});
 	}
@@ -391,10 +393,12 @@ export class Commands {
 				});
 				return await cliExec.netcheck(env, signal);
 			},
-			display: (rawJson) => {
+			parseAndDisplay: (rawJson) => {
 				const report = parseNetcheckReport(rawJson);
-				telemetry.succeedNetcheck(report);
 				this.netcheckPanelFactory.show({ host, report }, rawJson);
+				// Record success after the panel shows, so a display failure is an
+				// error rather than a contradictory success span.
+				telemetry.succeedNetcheck(report);
 			},
 		});
 	}

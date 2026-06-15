@@ -54,7 +54,8 @@ function toRegionRow(
 		name: regionName(region, id),
 		severity: region.severity,
 		latencyMs: regionLatencyMs(latencyNanos, relayNodes),
-		preferred: id === preferredId,
+		// 0 is the "undetermined" sentinel, not a real region id.
+		preferred: Boolean(preferredId) && id === preferredId,
 		embeddedRelay: region.region?.EmbeddedRelay ?? false,
 		stun: anyTriState(stunNodes, (n) => n.stun.CanSTUN),
 		relay: anyTriState(relayNodes, (n) => n.can_exchange_messages),

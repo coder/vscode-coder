@@ -68,14 +68,23 @@ function boolItem(
 }
 
 function portMappingItem(probe: NetcheckConnectivity): ConnectivityItem {
-	const protocols = [
-		probe.UPnP ? "UPnP" : undefined,
-		probe.PMP ? "NAT-PMP" : undefined,
-		probe.PCP ? "PCP" : undefined,
-	].filter((p): p is string => p !== undefined);
-	return protocols.length > 0
-		? { label: "Port mapping", value: protocols.join(", "), tone: "good" }
-		: { label: "Port mapping", value: "None detected", tone: "neutral" };
+	const fields = [
+		[probe.UPnP, "UPnP"],
+		[probe.PMP, "NAT-PMP"],
+		[probe.PCP, "PCP"],
+	] as const;
+	const detected = fields.filter(([on]) => on).map(([, name]) => name);
+	if (detected.length > 0) {
+		return { label: "Port mapping", value: detected.join(", "), tone: "good" };
+	}
+	// A null field means "could not determine", so report "None detected" only
+	// once a protocol was actually probed.
+	const probed = fields.some(([on]) => typeof on === "boolean");
+	return {
+		label: "Port mapping",
+		value: probed ? "None detected" : "Unknown",
+		tone: "neutral",
+	};
 }
 
 function preferredRegionName(report: NetcheckReport): string | undefined {
