@@ -49,15 +49,17 @@ describe("collectIssues", () => {
 		]);
 	});
 
-	it("includes per-region errors and warnings, prefixed with the region name", () => {
+	it("lists region errors prefixed, and section warnings only once", () => {
 		const issues = collectIssues(
 			report({
 				derp: {
+					severity: "error",
+					// The CLI folds region/node warnings into the section list.
+					warnings: [{ code: "ERLY", message: "high latency" }],
 					regions: {
 						"5": {
 							severity: "error",
 							error: "region unreachable",
-							warnings: [{ code: "ERLY", message: "high latency" }],
 							region: {
 								RegionID: 5,
 								RegionName: "Tokyo",
@@ -72,7 +74,7 @@ describe("collectIssues", () => {
 
 		expect(issues).toEqual([
 			{ kind: "error", message: "Tokyo: region unreachable" },
-			{ kind: "warning", code: "ERLY", message: "Tokyo: high latency" },
+			{ kind: "warning", code: "ERLY", message: "high latency" },
 		]);
 	});
 
@@ -83,7 +85,11 @@ describe("collectIssues", () => {
 					regions: {
 						"3": {
 							severity: "error",
-							region: { RegionID: 3, RegionName: "Frankfurt", EmbeddedRelay: true },
+							region: {
+								RegionID: 3,
+								RegionName: "Frankfurt",
+								EmbeddedRelay: true,
+							},
 							node_reports: [
 								{
 									can_exchange_messages: false,

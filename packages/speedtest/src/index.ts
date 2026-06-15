@@ -2,6 +2,7 @@ import { SpeedtestApi, type SpeedtestResult, toError } from "@repo/shared";
 import {
 	emptyMessage,
 	errorMessage,
+	pageHeader,
 	sendCommand,
 	subscribeNotifications,
 	viewJsonAction,
@@ -54,7 +55,7 @@ function renderPage(
 	}
 
 	root.innerHTML = "";
-	root.appendChild(renderHeading(workspaceId));
+	root.appendChild(pageHeader("Speed Test", workspaceId, "workspace-id"));
 	root.appendChild(renderSummary(data));
 
 	const samples = toChartSamples(data.intervals);
@@ -68,22 +69,6 @@ function renderPage(
 	root.appendChild(chart.container);
 	root.appendChild(viewJsonAction(onViewJson));
 	return chart.cleanup;
-}
-
-function renderHeading(workspaceId: string): HTMLElement {
-	const header = document.createElement("header");
-	header.className = "page-header";
-
-	const eyebrow = document.createElement("p");
-	eyebrow.className = "eyebrow";
-	eyebrow.textContent = "Speed Test";
-
-	const heading = document.createElement("h1");
-	heading.className = "workspace-id";
-	heading.textContent = workspaceId;
-
-	header.append(eyebrow, heading);
-	return header;
 }
 
 function renderSummary(data: SpeedtestResult): HTMLElement {

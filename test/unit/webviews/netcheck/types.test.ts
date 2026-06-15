@@ -100,6 +100,17 @@ describe("parseNetcheckReport", () => {
 		expect(report.interfaces.severity).toBe("error");
 	});
 
+	it("escalates derp severity from a section error alone", () => {
+		const r = structuredClone(validReport) as {
+			derp: { severity: string; error?: string };
+		};
+		r.derp.severity = "ok";
+		r.derp.error = "DERP map unreachable";
+
+		const report = parseNetcheckReport(JSON.stringify(r));
+		expect(report.derp.severity).toBe("error");
+	});
+
 	it("throws ZodError when a required field is missing", () => {
 		const missingSeverity = structuredClone(validReport) as {
 			derp: { severity?: string };

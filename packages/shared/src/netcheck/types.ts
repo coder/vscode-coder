@@ -9,6 +9,7 @@ export type NetcheckSeverity = "ok" | "warning" | "error";
 
 /** Health fields shared by the DERP and interfaces sections of the report. */
 export interface NetcheckSectionHealth {
+	/** Parse-time rollup: errors (and, for DERP, probe/region severity) folded in. */
 	severity: NetcheckSeverity;
 	warnings: Array<{ code: string; message: string }>;
 	error?: string | null;
@@ -24,7 +25,6 @@ interface NetcheckNodeReport {
 export interface NetcheckRegionReport {
 	severity: NetcheckSeverity;
 	error?: string | null;
-	warnings?: Array<{ code: string; message: string }>;
 	region?: {
 		RegionID: number;
 		RegionName: string;

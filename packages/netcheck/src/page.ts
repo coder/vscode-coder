@@ -5,7 +5,7 @@ import {
 	type NetcheckReport,
 	type NetcheckSeverity,
 } from "@repo/shared";
-import { emptyMessage, viewJsonAction } from "@repo/webview-shared";
+import { emptyMessage, pageHeader, viewJsonAction } from "@repo/webview-shared";
 
 import { buildConnectivityItems } from "./connectivity";
 import { formatLatency, formatTriState } from "./format";
@@ -22,7 +22,10 @@ export function renderPage(
 	{ host, report }: NetcheckData,
 	onViewJson: () => void,
 ): HTMLElement[] {
-	const children = [renderHeading(host), renderBanner(report)];
+	const children = [
+		pageHeader("Network Check", host, "deployment-host"),
+		renderBanner(report),
+	];
 
 	const issues = collectIssues(report);
 	if (issues.length > 0) {
@@ -38,15 +41,6 @@ export function renderPage(
 		viewJsonAction(onViewJson),
 	);
 	return children;
-}
-
-function renderHeading(host: string): HTMLElement {
-	const header = el("header", "page-header");
-	header.append(
-		el("p", "eyebrow", "Network Check"),
-		el("h1", "deployment-host", host),
-	);
-	return header;
 }
 
 function renderBanner(report: NetcheckReport): HTMLElement {

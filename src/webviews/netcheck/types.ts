@@ -80,7 +80,6 @@ const RegionReportSchema = z
 	.object({
 		severity: SeveritySchema,
 		error: z.string().nullish(),
-		warnings: WarningsSchema,
 		region: z
 			.object({
 				RegionID: z.number(),

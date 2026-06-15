@@ -16,4 +16,4 @@ export {
 } from "./ipc";
 
 // DOM builders shared by the vanilla webviews.
-export { viewJsonAction, emptyMessage, errorMessage } from "./dom";
+export { pageHeader, viewJsonAction, emptyMessage, errorMessage } from "./dom";

@@ -1,5 +1,23 @@
 /** DOM builders shared by the vanilla webviews. */
 
+/** A page header: an eyebrow label above a title with the given class. */
+export function pageHeader(
+	eyebrow: string,
+	title: string,
+	titleClass: string,
+): HTMLElement {
+	const header = document.createElement("header");
+	header.className = "page-header";
+	const eyebrowEl = document.createElement("p");
+	eyebrowEl.className = "eyebrow";
+	eyebrowEl.textContent = eyebrow;
+	const titleEl = document.createElement("h1");
+	titleEl.className = titleClass;
+	titleEl.textContent = title;
+	header.append(eyebrowEl, titleEl);
+	return header;
+}
+
 /** An action bar with a "View JSON" button wired to `onClick`. */
 export function viewJsonAction(onClick: () => void): HTMLElement {
 	const actions = document.createElement("div");

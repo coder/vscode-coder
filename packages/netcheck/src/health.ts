@@ -69,23 +69,14 @@ export function collectIssues(report: NetcheckReport): Issue[] {
 	}
 	for (const [key, region] of Object.entries(report.derp.regions)) {
 		const name = regionName(region, Number(key));
+		// Region warnings are already in the section list; list only errors.
 		if (region.error) {
 			errors.push({ kind: "error", message: `${name}: ${region.error}` });
-		}
-		for (const warning of region.warnings ?? []) {
-			warnings.push({
-				kind: "warning",
-				message: `${name}: ${warning.message}`,
-				...(warning.code ? { code: warning.code } : {}),
+		} else if (region.severity === "error") {
+			errors.push({
+				kind: "error",
+				message: `${name}: a node failed its health check`,
 			});
-		}
-		// A node can be unhealthy with no message of its own (region severity
-		// already reflects it). Synthesize one so the banner isn't alone.
-		const hasMessage = Boolean(region.error) || Boolean(region.warnings?.length);
-		if (!hasMessage && region.severity === "error") {
-			errors.push({ kind: "error", message: `${name}: a node failed its health check` });
-		} else if (!hasMessage && region.severity === "warning") {
-			warnings.push({ kind: "warning", message: `${name}: a node reported a warning` });
 		}
 	}
 	addSection(report.interfaces);
