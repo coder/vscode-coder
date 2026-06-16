@@ -46,6 +46,7 @@ describe("collectSettingsFile", () => {
 				"coder.tlsCertFile": "/etc/ssl/cert.pem",
 				"coder.sshFlags": ["--disable-autostart"],
 				"coder.defaultUrl": "https://coder.example.com",
+				"coder.globalConfig": "/home/user/.config/coderv2",
 				"coder.proxyLogDirectory": "/home/user/.coder/logs",
 				"coder.insecure": true,
 				"coder.httpClientLogLevel": "debug",
@@ -71,6 +72,10 @@ describe("collectSettingsFile", () => {
 				"coder.defaultUrl": {
 					defaultValue: "",
 					globalValue: "https://coder.example.com",
+				},
+				"coder.globalConfig": {
+					defaultValue: "",
+					globalValue: "/home/user/.config/coderv2",
 				},
 				"coder.proxyLogDirectory": {
 					defaultValue: "",
@@ -105,6 +110,9 @@ describe("collectSettingsFile", () => {
 		]);
 		expect(settings["coder.defaultUrl"]?.effective).toBe(
 			"https://coder.example.com",
+		);
+		expect(settings["coder.globalConfig"]?.effective).toBe(
+			"/home/user/.config/coderv2",
 		);
 		expect(settings["coder.proxyLogDirectory"]?.effective).toBe(
 			"/home/user/.coder/logs",

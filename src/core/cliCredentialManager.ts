@@ -122,27 +122,33 @@ export class CliCredentialManager {
 	}
 
 	/**
-	 * Read a token via `coder login token --url`. Returns trimmed stdout,
-	 * or undefined on any failure (resolver, CLI, empty output).
-	 * Throws AbortError when the signal is aborted.
+	 * Read a token from CLI-managed credentials. Uses `coder login token --url`
+	 * when keyring auth is active, otherwise reads the file credentials under
+	 * --global-config. Returns undefined on any failure (resolver, CLI, empty
+	 * output). Throws AbortError when the signal is aborted.
 	 */
 	public async readToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<string | undefined> {
-		let binPath: string | undefined;
+		if (!isKeyringEnabled(configs)) {
+			return this.readCredentialFiles(url);
+		}
+
+		let binPath: string;
 		try {
-			binPath = await this.resolveKeyringBinary(
-				url,
-				configs,
-				"keyringTokenRead",
-			);
+			binPath = await this.resolveBinary(url);
+			const cliVersion = semver.parse(await version(binPath));
+			const featureSet = featureSetForVersion(cliVersion);
+			if (!featureSet.keyringAuth) {
+				return this.readCredentialFiles(url);
+			}
+			if (!featureSet.keyringTokenRead) {
+				return undefined;
+			}
 		} catch (error) {
 			this.logger.warn("Could not resolve CLI binary for token read:", error);
-			return undefined;
-		}
-		if (!binPath) {
 			return undefined;
 		}
 
@@ -249,6 +255,31 @@ export class CliCredentialManager {
 	}
 
 	/**
+	 * Read URL and token files under --global-config.
+	 */
+	private async readCredentialFiles(url: string): Promise<string | undefined> {
+		try {
+			const safeHostname = toSafeHost(url);
+			const [storedUrl, token] = await Promise.all([
+				fs.readFile(this.pathResolver.getUrlPath(safeHostname), "utf8"),
+				fs.readFile(
+					this.pathResolver.getSessionTokenPath(safeHostname),
+					"utf8",
+				),
+			]);
+			if (normalizeCredentialUrl(storedUrl) !== normalizeCredentialUrl(url)) {
+				return undefined;
+			}
+			return token.trim() || undefined;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+				this.logger.warn("Failed to read credential files:", error);
+			}
+			return undefined;
+		}
+	}
+
+	/**
 	 * Delete URL and token files. Best-effort: never throws.
 	 */
 	private async deleteCredentialFiles(url: string): Promise<void> {
@@ -316,4 +347,8 @@ export class CliCredentialManager {
 				this.logger.warn("Failed to delete temp file", tempPath, rmErr),
 		);
 	}
+}
+
+function normalizeCredentialUrl(url: string): string {
+	return url.trim().replace(/\/+$/, "");
 }

@@ -10,13 +10,15 @@ export class PathResolver {
 	) {}
 
 	/**
-	 * Return the directory for the deployment with the provided hostname to
-	 * where the global Coder configs are stored.
+	 * Return the directory where the global Coder configs are stored.
 	 *
 	 * The caller must ensure this directory exists before use.
 	 */
 	public getGlobalConfigDir(safeHostname: string): string {
-		return path.join(this.basePath, safeHostname);
+		return (
+			PathResolver.resolveOverride("coder.globalConfig", "CODER_CONFIG_DIR") ||
+			path.join(this.basePath, safeHostname)
+		);
 	}
 
 	/**

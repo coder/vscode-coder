@@ -19,6 +19,72 @@ describe("PathResolver", () => {
 		mockConfig = new MockConfigurationProvider();
 	});
 
+	describe("getGlobalConfigDir", () => {
+		it("uses per-deployment global storage when no override is configured", () => {
+			vi.stubEnv("CODER_CONFIG_DIR", "");
+			mockConfig.set("coder.globalConfig", "");
+
+			expectPathsEqual(
+				pathResolver.getGlobalConfigDir("deployment"),
+				path.join(basePath, "deployment"),
+			);
+		});
+
+		it("uses configured global config directory directly", () => {
+			mockConfig.set("coder.globalConfig", "/custom/coderv2");
+
+			expectPathsEqual(
+				pathResolver.getGlobalConfigDir("deployment"),
+				"/custom/coderv2",
+			);
+		});
+
+		it("uses CODER_CONFIG_DIR when setting is empty", () => {
+			vi.stubEnv("CODER_CONFIG_DIR", "  /env/coderv2  ");
+			mockConfig.set("coder.globalConfig", "");
+
+			expectPathsEqual(
+				pathResolver.getGlobalConfigDir("deployment"),
+				"/env/coderv2",
+			);
+		});
+
+		it("uses setting before CODER_CONFIG_DIR", () => {
+			vi.stubEnv("CODER_CONFIG_DIR", "/env/coderv2");
+			mockConfig.set("coder.globalConfig", "  /setting/coderv2  ");
+
+			expectPathsEqual(
+				pathResolver.getGlobalConfigDir("deployment"),
+				"/setting/coderv2",
+			);
+		});
+
+		it("normalizes configured global config directory", () => {
+			mockConfig.set("coder.globalConfig", "/custom/../coderv2/./dir");
+
+			expectPathsEqual(
+				pathResolver.getGlobalConfigDir("deployment"),
+				"/coderv2/dir",
+			);
+		});
+
+		it("expands paths in configured global config directory", () => {
+			mockConfig.set("coder.globalConfig", "~/coderv2");
+			const result = pathResolver.getGlobalConfigDir("deployment");
+
+			expect(result).not.toContain("~");
+			expect(result).toContain("coderv2");
+		});
+
+		it("expands paths in CODER_CONFIG_DIR", () => {
+			vi.stubEnv("CODER_CONFIG_DIR", "~/coderv2");
+			const result = pathResolver.getGlobalConfigDir("deployment");
+
+			expect(result).not.toContain("~");
+			expect(result).toContain("coderv2");
+		});
+	});
+
 	describe("getProxyLogPath", () => {
 		const defaultLogPath = path.join(basePath, "log");
 

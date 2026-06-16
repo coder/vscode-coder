@@ -131,6 +131,9 @@ const TEST_PATH_RESOLVER = new PathResolver("/mock/base", "/mock/log");
 const CRED_DIR = "/mock/base/dev.coder.com";
 const URL_FILE = `${CRED_DIR}/url`;
 const SESSION_FILE = `${CRED_DIR}/session`;
+const CUSTOM_CRED_DIR = "/custom/coderv2";
+const CUSTOM_URL_FILE = `${CUSTOM_CRED_DIR}/url`;
+const CUSTOM_SESSION_FILE = `${CUSTOM_CRED_DIR}/session`;
 
 function writeCredentialFiles(url: string, token: string) {
 	vol.mkdirSync(CRED_DIR, { recursive: true });
@@ -217,6 +220,21 @@ describe("CliCredentialManager", () => {
 					result: "success",
 				},
 			});
+		});
+
+		it("writes files under configured global config when keyring is disabled", async () => {
+			new MockConfigurationProvider().set(
+				"coder.globalConfig",
+				CUSTOM_CRED_DIR,
+			);
+			const { manager } = setup();
+
+			await expect(
+				manager.storeToken(TEST_URL, "my-token", configs),
+			).resolves.toBeUndefined();
+
+			expect(memfs.readFileSync(CUSTOM_URL_FILE, "utf8")).toBe(TEST_URL);
+			expect(memfs.readFileSync(CUSTOM_SESSION_FILE, "utf8")).toBe("my-token");
 		});
 
 		it("falls back to files when CLI version too old", async () => {
@@ -350,8 +368,55 @@ describe("CliCredentialManager", () => {
 			expect(execFile).not.toHaveBeenCalled();
 		});
 
-		it("skips CLI when keyring is disabled", async () => {
+		it("reads files when keyring is disabled", async () => {
+			writeCredentialFiles(TEST_URL, "file-token");
 			stubExecFile({ stdout: "my-token" });
+			const { manager } = setup();
+
+			expect(await manager.readToken(TEST_URL, configs)).toBe("file-token");
+			expect(execFile).not.toHaveBeenCalled();
+		});
+
+		it("reads files under configured global config when keyring is disabled", async () => {
+			new MockConfigurationProvider().set(
+				"coder.globalConfig",
+				CUSTOM_CRED_DIR,
+			);
+			vol.mkdirSync(CUSTOM_CRED_DIR, { recursive: true });
+			memfs.writeFileSync(CUSTOM_URL_FILE, `${TEST_URL}\n`);
+			memfs.writeFileSync(CUSTOM_SESSION_FILE, "custom-file-token\n");
+			const { manager } = setup();
+
+			expect(await manager.readToken(TEST_URL, configs)).toBe(
+				"custom-file-token",
+			);
+			expect(execFile).not.toHaveBeenCalled();
+		});
+
+		it("does not read files when keyring token read is unsupported", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			vi.mocked(cliExec.version).mockResolvedValueOnce("2.30.0");
+			writeCredentialFiles(TEST_URL, "file-token");
+			const { manager, resolver } = setup();
+
+			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
+			expect(resolver).toHaveBeenCalledWith(TEST_URL);
+			expect(execFile).not.toHaveBeenCalled();
+		});
+
+		it("reads files when keyring is enabled but unsupported by the CLI", async () => {
+			vi.mocked(isKeyringEnabled).mockReturnValue(true);
+			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
+			writeCredentialFiles(TEST_URL, "file-token");
+			const { manager, resolver } = setup();
+
+			expect(await manager.readToken(TEST_URL, configs)).toBe("file-token");
+			expect(resolver).toHaveBeenCalledWith(TEST_URL);
+			expect(execFile).not.toHaveBeenCalled();
+		});
+
+		it("does not read files for a different URL", async () => {
+			writeCredentialFiles("https://other.coder.com", "file-token");
 			const { manager } = setup();
 
 			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
@@ -436,6 +501,23 @@ describe("CliCredentialManager", () => {
 			expect(execFile).not.toHaveBeenCalled();
 			expect(memfs.existsSync(URL_FILE)).toBe(false);
 			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
+		});
+
+		it("deletes files under configured global config", async () => {
+			new MockConfigurationProvider().set(
+				"coder.globalConfig",
+				CUSTOM_CRED_DIR,
+			);
+			vol.mkdirSync(CUSTOM_CRED_DIR, { recursive: true });
+			memfs.writeFileSync(CUSTOM_URL_FILE, TEST_URL);
+			memfs.writeFileSync(CUSTOM_SESSION_FILE, "old-token");
+			const { manager } = setup();
+
+			await manager.deleteToken(TEST_URL, configs);
+
+			expect(execFile).not.toHaveBeenCalled();
+			expect(memfs.existsSync(CUSTOM_URL_FILE)).toBe(false);
+			expect(memfs.existsSync(CUSTOM_SESSION_FILE)).toBe(false);
 		});
 
 		it("never throws on CLI error", async () => {

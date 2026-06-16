@@ -314,30 +314,41 @@ export class LoginCoordinator implements vscode.Disposable {
 			}
 		}
 
-		// Try keyring token (picks up tokens written by `coder login` in the terminal)
+		// Try CLI-managed credentials. This reads from the OS keyring when
+		// enabled, otherwise from the resolved global config directory.
 		const configs = vscode.workspace.getConfiguration();
-		const keyringResult = await withOptionalProgress(
+		const keyringEnabled = isKeyringEnabled(configs);
+		const cliCredentialResult = await withOptionalProgress(
 			({ signal }) =>
 				this.cliCredentialManager.readToken(deployment.url, configs, {
 					signal,
 				}),
 			{
-				enabled: isKeyringEnabled(configs),
+				enabled: keyringEnabled,
 				location: vscode.ProgressLocation.Notification,
 				title: "Reading token from OS keyring...",
 				cancellable: true,
 			},
 		);
-		const keyringToken = keyringResult.ok ? keyringResult.value : undefined;
+		const cliCredentialToken = cliCredentialResult.ok
+			? cliCredentialResult.value
+			: undefined;
 		if (
-			keyringToken &&
-			keyringToken !== providedToken &&
-			keyringToken !== auth?.token
+			cliCredentialToken &&
+			cliCredentialToken !== providedToken &&
+			cliCredentialToken !== auth?.token
 		) {
-			this.logger.debug("Trying token from OS keyring");
-			const result = await this.tryTokenAuth(client, keyringToken, isAutoLogin);
+			this.logger.debug("Trying token from CLI credentials");
+			const result = await this.tryTokenAuth(
+				client,
+				cliCredentialToken,
+				isAutoLogin,
+			);
 			if (result !== "unauthorized") {
-				return withLoginMethod("keyring_token", result);
+				return withLoginMethod(
+					keyringEnabled ? "keyring_token" : "cli_token",
+					result,
+				);
 			}
 		}
 

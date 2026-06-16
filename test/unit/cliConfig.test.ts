@@ -375,5 +375,62 @@ describe("cliConfig", () => {
 				configDir: "/config/dir",
 			});
 		});
+
+		it("uses caller-provided config directory in global-config mode", () => {
+			vi.mocked(os.platform).mockReturnValue("linux");
+			const config = new MockConfigurationProvider();
+			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
+			const auth = resolveCliAuth(
+				config,
+				featureSet,
+				"https://dev.coder.com",
+				"/custom/coderv2",
+			);
+
+			expect(getGlobalFlags(config, auth)).toStrictEqual([
+				"--global-config",
+				"/custom/coderv2",
+			]);
+		});
+
+		it("keeps keyring precedence over caller-provided config directory", () => {
+			vi.mocked(os.platform).mockReturnValue("darwin");
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
+			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
+			const auth = resolveCliAuth(
+				config,
+				featureSet,
+				"https://dev.coder.com",
+				"/custom/coderv2",
+			);
+
+			expect(getGlobalFlags(config, auth)).toStrictEqual([
+				"--url",
+				"https://dev.coder.com",
+			]);
+		});
+
+		it("does not let globalFlags override caller-provided config directory", () => {
+			vi.mocked(os.platform).mockReturnValue("linux");
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", [
+				"--verbose",
+				"--global-config=/ignored/coderv2",
+			]);
+			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
+			const auth = resolveCliAuth(
+				config,
+				featureSet,
+				"https://dev.coder.com",
+				"/custom/coderv2",
+			);
+
+			expect(getGlobalFlags(config, auth)).toStrictEqual([
+				"--verbose",
+				"--global-config",
+				"/custom/coderv2",
+			]);
+		});
 	});
 });

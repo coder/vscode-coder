@@ -456,6 +456,12 @@ export class Remote {
 				getValue: () => unknown;
 			}> = [
 				{
+					setting: "coder.globalConfig",
+					title: "Global Config",
+					getValue: () =>
+						this.pathResolver.getGlobalConfigDir(parts.safeHostname),
+				},
+				{
 					setting: "coder.globalFlags",
 					title: "Global Flags",
 					getValue: () =>
