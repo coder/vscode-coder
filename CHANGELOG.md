@@ -30,6 +30,9 @@
 
 ### Added
 
+- New `coder.globalConfig` setting to override the Coder CLI `--global-config`
+  directory, with `CODER_CONFIG_DIR` fallback, so file-backed CLI login/auth can
+  be shared with the VS Code extension when keyring auth is not active.
 - New **Shared Workspaces** view in the Coder sidebar that lists workspaces
   other users have shared with you, with search and refresh actions, so you
   can find and open them just like your own.

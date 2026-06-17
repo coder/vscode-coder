@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import * as semver from "semver";
 
 import { isAbortError } from "../error/errorUtils";
-import { featureSetForVersion } from "../featureSet";
+import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import {
 	CredentialCliError,
 	CredentialFileError,
@@ -15,7 +15,7 @@ import {
 import { isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
 import { type TelemetryReporter } from "../telemetry/reporter";
-import { toSafeHost } from "../util";
+import { removeTrailingSlashes, toSafeHost } from "../uri/utils";
 import { writeAtomically } from "../util/fs";
 
 import { version } from "./cliExec";
@@ -30,6 +30,10 @@ import type { PathResolver } from "./pathResolver";
 const execFileAsync = promisify(execFile);
 
 type KeyringFeature = "keyringAuth" | "keyringTokenRead";
+type TokenReadSource =
+	| { mode: "files" }
+	| { mode: "keyring"; binPath: string }
+	| { mode: "none" };
 
 const EXEC_TIMEOUT_MS = 60_000;
 const EXEC_LOG_INTERVAL_MS = 5_000;
@@ -132,33 +136,28 @@ export class CliCredentialManager {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<string | undefined> {
-		if (!isKeyringEnabled(configs)) {
+		const source = await this.resolveTokenReadSource(url, configs);
+		if (source.mode === "files") {
 			return this.readCredentialFiles(url);
 		}
-
-		let binPath: string;
-		try {
-			binPath = await this.resolveBinary(url);
-			const cliVersion = semver.parse(await version(binPath));
-			const featureSet = featureSetForVersion(cliVersion);
-			if (!featureSet.keyringAuth) {
-				return this.readCredentialFiles(url);
-			}
-			if (!featureSet.keyringTokenRead) {
-				return undefined;
-			}
-		} catch (error) {
-			this.logger.warn("Could not resolve CLI binary for token read:", error);
+		if (source.mode === "none") {
 			return undefined;
 		}
+		return this.readKeyringToken(source.binPath, url, configs, options);
+	}
 
+	private async readKeyringToken(
+		binPath: string,
+		url: string,
+		configs: Pick<WorkspaceConfiguration, "get">,
+		options?: { signal?: AbortSignal },
+	): Promise<string | undefined> {
 		const args = [...getHeaderArgs(configs), "login", "token", "--url", url];
 		try {
 			const { stdout } = await this.execWithTimeout(binPath, args, {
 				signal: options?.signal,
 			});
-			const token = stdout.trim();
-			return token || undefined;
+			return nonEmpty(stdout);
 		} catch (error) {
 			if (isAbortError(error)) {
 				throw error;
@@ -206,8 +205,33 @@ export class CliCredentialManager {
 			return undefined;
 		}
 		const binPath = await this.resolveBinary(url);
-		const cliVersion = semver.parse(await version(binPath));
-		return featureSetForVersion(cliVersion)[feature] ? binPath : undefined;
+		return (await this.getFeatureSet(binPath))[feature] ? binPath : undefined;
+	}
+
+	private async resolveTokenReadSource(
+		url: string,
+		configs: Pick<WorkspaceConfiguration, "get">,
+	): Promise<TokenReadSource> {
+		if (!isKeyringEnabled(configs)) {
+			return { mode: "files" };
+		}
+		try {
+			const binPath = await this.resolveBinary(url);
+			const featureSet = await this.getFeatureSet(binPath);
+			if (!featureSet.keyringAuth) {
+				return { mode: "files" };
+			}
+			return featureSet.keyringTokenRead
+				? { mode: "keyring", binPath }
+				: { mode: "none" };
+		} catch (error) {
+			this.logger.warn("Could not resolve CLI binary for token read:", error);
+			return { mode: "none" };
+		}
+	}
+
+	private async getFeatureSet(binPath: string): Promise<FeatureSet> {
+		return featureSetForVersion(semver.parse(await version(binPath)));
 	}
 
 	/**
@@ -259,24 +283,27 @@ export class CliCredentialManager {
 	 */
 	private async readCredentialFiles(url: string): Promise<string | undefined> {
 		try {
-			const safeHostname = toSafeHost(url);
-			const [storedUrl, token] = await Promise.all([
-				fs.readFile(this.pathResolver.getUrlPath(safeHostname), "utf8"),
-				fs.readFile(
-					this.pathResolver.getSessionTokenPath(safeHostname),
-					"utf8",
-				),
-			]);
-			if (normalizeCredentialUrl(storedUrl) !== normalizeCredentialUrl(url)) {
-				return undefined;
-			}
-			return token.trim() || undefined;
+			const files = await this.readCredentialFilePair(url);
+			return sameCredentialUrl(files.url, url)
+				? nonEmpty(files.token)
+				: undefined;
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
 				this.logger.warn("Failed to read credential files:", error);
 			}
 			return undefined;
 		}
+	}
+
+	private async readCredentialFilePair(
+		url: string,
+	): Promise<{ url: string; token: string }> {
+		const safeHostname = toSafeHost(url);
+		const [storedUrl, token] = await Promise.all([
+			fs.readFile(this.pathResolver.getUrlPath(safeHostname), "utf8"),
+			fs.readFile(this.pathResolver.getSessionTokenPath(safeHostname), "utf8"),
+		]);
+		return { url: storedUrl, token };
 	}
 
 	/**
@@ -349,6 +376,15 @@ export class CliCredentialManager {
 	}
 }
 
-function normalizeCredentialUrl(url: string): string {
-	return url.trim().replace(/\/+$/, "");
+function sameCredentialUrl(storedUrl: string, expectedUrl: string): boolean {
+	return cleanCredentialUrl(storedUrl) === cleanCredentialUrl(expectedUrl);
+}
+
+function cleanCredentialUrl(url: string): string {
+	return removeTrailingSlashes(url.trim());
+}
+
+function nonEmpty(value: string): string | undefined {
+	const trimmed = value.trim();
+	return trimmed || undefined;
 }

@@ -20,64 +20,55 @@ describe("PathResolver", () => {
 	});
 
 	describe("getGlobalConfigDir", () => {
-		it("uses per-deployment global storage when no override is configured", () => {
-			vi.stubEnv("CODER_CONFIG_DIR", "");
-			mockConfig.set("coder.globalConfig", "");
+		it.each([
+			{
+				name: "uses per-deployment global storage when no override is configured",
+				setting: "",
+				env: "",
+				expected: path.join(basePath, "deployment"),
+			},
+			{
+				name: "uses configured global config directory directly",
+				setting: "/custom/coderv2",
+				expected: "/custom/coderv2",
+			},
+			{
+				name: "uses CODER_CONFIG_DIR when setting is empty",
+				setting: "",
+				env: "  /env/coderv2  ",
+				expected: "/env/coderv2",
+			},
+			{
+				name: "uses setting before CODER_CONFIG_DIR",
+				setting: "  /setting/coderv2  ",
+				env: "/env/coderv2",
+				expected: "/setting/coderv2",
+			},
+			{
+				name: "normalizes configured global config directory",
+				setting: "/custom/../coderv2/./dir",
+				expected: "/coderv2/dir",
+			},
+		])("$name", ({ setting, env, expected }) => {
+			vi.stubEnv("CODER_CONFIG_DIR", env);
+			mockConfig.set("coder.globalConfig", setting);
 
-			expectPathsEqual(
-				pathResolver.getGlobalConfigDir("deployment"),
-				path.join(basePath, "deployment"),
-			);
+			expectPathsEqual(pathResolver.getGlobalConfigDir("deployment"), expected);
 		});
 
-		it("uses configured global config directory directly", () => {
-			mockConfig.set("coder.globalConfig", "/custom/coderv2");
+		it.each([
+			{
+				name: "configured global config directory",
+				setting: "~/coderv2",
+			},
+			{
+				name: "CODER_CONFIG_DIR",
+				env: "~/coderv2",
+			},
+		])("expands paths in $name", ({ setting, env }) => {
+			vi.stubEnv("CODER_CONFIG_DIR", env);
+			mockConfig.set("coder.globalConfig", setting ?? "");
 
-			expectPathsEqual(
-				pathResolver.getGlobalConfigDir("deployment"),
-				"/custom/coderv2",
-			);
-		});
-
-		it("uses CODER_CONFIG_DIR when setting is empty", () => {
-			vi.stubEnv("CODER_CONFIG_DIR", "  /env/coderv2  ");
-			mockConfig.set("coder.globalConfig", "");
-
-			expectPathsEqual(
-				pathResolver.getGlobalConfigDir("deployment"),
-				"/env/coderv2",
-			);
-		});
-
-		it("uses setting before CODER_CONFIG_DIR", () => {
-			vi.stubEnv("CODER_CONFIG_DIR", "/env/coderv2");
-			mockConfig.set("coder.globalConfig", "  /setting/coderv2  ");
-
-			expectPathsEqual(
-				pathResolver.getGlobalConfigDir("deployment"),
-				"/setting/coderv2",
-			);
-		});
-
-		it("normalizes configured global config directory", () => {
-			mockConfig.set("coder.globalConfig", "/custom/../coderv2/./dir");
-
-			expectPathsEqual(
-				pathResolver.getGlobalConfigDir("deployment"),
-				"/coderv2/dir",
-			);
-		});
-
-		it("expands paths in configured global config directory", () => {
-			mockConfig.set("coder.globalConfig", "~/coderv2");
-			const result = pathResolver.getGlobalConfigDir("deployment");
-
-			expect(result).not.toContain("~");
-			expect(result).toContain("coderv2");
-		});
-
-		it("expands paths in CODER_CONFIG_DIR", () => {
-			vi.stubEnv("CODER_CONFIG_DIR", "~/coderv2");
 			const result = pathResolver.getGlobalConfigDir("deployment");
 
 			expect(result).not.toContain("~");

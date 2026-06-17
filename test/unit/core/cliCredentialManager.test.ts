@@ -129,16 +129,41 @@ const configWithHeaders = {
 
 const TEST_PATH_RESOLVER = new PathResolver("/mock/base", "/mock/log");
 const CRED_DIR = "/mock/base/dev.coder.com";
-const URL_FILE = `${CRED_DIR}/url`;
-const SESSION_FILE = `${CRED_DIR}/session`;
 const CUSTOM_CRED_DIR = "/custom/coderv2";
-const CUSTOM_URL_FILE = `${CUSTOM_CRED_DIR}/url`;
-const CUSTOM_SESSION_FILE = `${CUSTOM_CRED_DIR}/session`;
 
-function writeCredentialFiles(url: string, token: string) {
-	vol.mkdirSync(CRED_DIR, { recursive: true });
-	memfs.writeFileSync(URL_FILE, url);
-	memfs.writeFileSync(SESSION_FILE, token);
+function credentialPaths(dir = CRED_DIR) {
+	return {
+		url: `${dir}/url`,
+		session: `${dir}/session`,
+	};
+}
+
+function writeCredentialFiles(
+	url: string,
+	token: string,
+	dir = CRED_DIR,
+): void {
+	const paths = credentialPaths(dir);
+	vol.mkdirSync(dir, { recursive: true });
+	memfs.writeFileSync(paths.url, url);
+	memfs.writeFileSync(paths.session, token);
+}
+
+function readCredentialFiles(dir = CRED_DIR) {
+	const paths = credentialPaths(dir);
+	return {
+		url: memfs.readFileSync(paths.url, "utf8"),
+		session: memfs.readFileSync(paths.session, "utf8"),
+	};
+}
+
+function credentialFilesExist(dir = CRED_DIR): boolean {
+	const paths = credentialPaths(dir);
+	return memfs.existsSync(paths.url) || memfs.existsSync(paths.session);
+}
+
+function useCustomGlobalConfig(): void {
+	new MockConfigurationProvider().set("coder.globalConfig", CUSTOM_CRED_DIR);
 }
 
 function setup(resolver?: BinaryResolver) {
@@ -186,8 +211,10 @@ describe("CliCredentialManager", () => {
 			).resolves.toBeUndefined();
 
 			expect(execFile).not.toHaveBeenCalled();
-			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
-			expect(memfs.readFileSync(SESSION_FILE, "utf8")).toBe("my-token");
+			expect(readCredentialFiles()).toStrictEqual({
+				url: TEST_URL,
+				session: "my-token",
+			});
 			expect(sink.expectOne("auth.credential.store")).toMatchObject({
 				properties: {
 					category: "file",
@@ -223,18 +250,17 @@ describe("CliCredentialManager", () => {
 		});
 
 		it("writes files under configured global config when keyring is disabled", async () => {
-			new MockConfigurationProvider().set(
-				"coder.globalConfig",
-				CUSTOM_CRED_DIR,
-			);
+			useCustomGlobalConfig();
 			const { manager } = setup();
 
 			await expect(
 				manager.storeToken(TEST_URL, "my-token", configs),
 			).resolves.toBeUndefined();
 
-			expect(memfs.readFileSync(CUSTOM_URL_FILE, "utf8")).toBe(TEST_URL);
-			expect(memfs.readFileSync(CUSTOM_SESSION_FILE, "utf8")).toBe("my-token");
+			expect(readCredentialFiles(CUSTOM_CRED_DIR)).toStrictEqual({
+				url: TEST_URL,
+				session: "my-token",
+			});
 		});
 
 		it("falls back to files when CLI version too old", async () => {
@@ -247,8 +273,10 @@ describe("CliCredentialManager", () => {
 			).resolves.toBeUndefined();
 
 			expect(execFile).not.toHaveBeenCalled();
-			expect(memfs.readFileSync(URL_FILE, "utf8")).toBe(TEST_URL);
-			expect(memfs.readFileSync(SESSION_FILE, "utf8")).toBe("token");
+			expect(readCredentialFiles()).toStrictEqual({
+				url: TEST_URL,
+				session: "token",
+			});
 		});
 
 		it("throws when CLI exec fails", async () => {
@@ -378,13 +406,12 @@ describe("CliCredentialManager", () => {
 		});
 
 		it("reads files under configured global config when keyring is disabled", async () => {
-			new MockConfigurationProvider().set(
-				"coder.globalConfig",
+			useCustomGlobalConfig();
+			writeCredentialFiles(
+				`${TEST_URL}\n`,
+				"custom-file-token\n",
 				CUSTOM_CRED_DIR,
 			);
-			vol.mkdirSync(CUSTOM_CRED_DIR, { recursive: true });
-			memfs.writeFileSync(CUSTOM_URL_FILE, `${TEST_URL}\n`);
-			memfs.writeFileSync(CUSTOM_SESSION_FILE, "custom-file-token\n");
 			const { manager } = setup();
 
 			expect(await manager.readToken(TEST_URL, configs)).toBe(
@@ -481,8 +508,7 @@ describe("CliCredentialManager", () => {
 			const exec = lastExecArgs();
 			expect(exec.bin).toBe(TEST_BIN);
 			expect(exec.args).toEqual(["logout", "--url", TEST_URL, "--yes"]);
-			expect(memfs.existsSync(URL_FILE)).toBe(false);
-			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
+			expect(credentialFilesExist()).toBe(false);
 			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {
 					category: "keyring",
@@ -499,25 +525,18 @@ describe("CliCredentialManager", () => {
 			await manager.deleteToken(TEST_URL, configs);
 
 			expect(execFile).not.toHaveBeenCalled();
-			expect(memfs.existsSync(URL_FILE)).toBe(false);
-			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
+			expect(credentialFilesExist()).toBe(false);
 		});
 
 		it("deletes files under configured global config", async () => {
-			new MockConfigurationProvider().set(
-				"coder.globalConfig",
-				CUSTOM_CRED_DIR,
-			);
-			vol.mkdirSync(CUSTOM_CRED_DIR, { recursive: true });
-			memfs.writeFileSync(CUSTOM_URL_FILE, TEST_URL);
-			memfs.writeFileSync(CUSTOM_SESSION_FILE, "old-token");
+			useCustomGlobalConfig();
+			writeCredentialFiles(TEST_URL, "old-token", CUSTOM_CRED_DIR);
 			const { manager } = setup();
 
 			await manager.deleteToken(TEST_URL, configs);
 
 			expect(execFile).not.toHaveBeenCalled();
-			expect(memfs.existsSync(CUSTOM_URL_FILE)).toBe(false);
-			expect(memfs.existsSync(CUSTOM_SESSION_FILE)).toBe(false);
+			expect(credentialFilesExist(CUSTOM_CRED_DIR)).toBe(false);
 		});
 
 		it("never throws on CLI error", async () => {
@@ -573,8 +592,7 @@ describe("CliCredentialManager", () => {
 			await manager.deleteToken(TEST_URL, configs);
 
 			expect(execFile).not.toHaveBeenCalled();
-			expect(memfs.existsSync(URL_FILE)).toBe(false);
-			expect(memfs.existsSync(SESSION_FILE)).toBe(false);
+			expect(credentialFilesExist()).toBe(false);
 		});
 
 		it("passes signal through to execFile", async () => {

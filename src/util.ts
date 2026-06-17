@@ -1,6 +1,7 @@
 import os from "node:os";
-import url from "node:url";
 import * as vscode from "vscode";
+
+import { removeTrailingSlashes, toSafeHost } from "./uri/utils";
 
 export interface AuthorityParts {
 	agent: string | undefined;
@@ -121,15 +122,7 @@ export function toRemoteAuthority(
 	return remoteAuthority;
 }
 
-/**
- * Given a URL, return the host in a format that is safe to write.
- */
-export function toSafeHost(rawUrl: string): string {
-	const u = new URL(rawUrl);
-	// If the host is invalid, an empty string is returned.  Although, `new URL`
-	// should already have thrown in that case.
-	return url.domainToASCII(u.hostname) || u.hostname;
-}
+export { removeTrailingSlashes, toSafeHost };
 
 /**
  * Substitute `${env:VAR}` with `process.env.VAR` (unset → empty string),
@@ -203,11 +196,12 @@ export function escapeShellArg(arg: string): string {
  * the connection URL unchanged.
  */
 export function resolveUiUrl(connectionUrl: string): string {
-	const alt = vscode.workspace
-		.getConfiguration("coder")
-		.get<string>("alternativeWebUrl")
-		?.trim()
-		.replace(/\/+$/, "");
+	const alt = removeTrailingSlashes(
+		vscode.workspace
+			.getConfiguration("coder")
+			.get<string>("alternativeWebUrl")
+			?.trim() ?? "",
+	);
 	return alt || connectionUrl;
 }
 
