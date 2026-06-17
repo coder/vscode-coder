@@ -58,10 +58,15 @@ import {
 	expandPath,
 	parseRemoteAuthority,
 } from "../util";
+import { showDismissibleNotification } from "../util/notifications";
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
-import { applySshProxyEnvironment, SSH_PROXY_SETTINGS } from "./environment";
+import {
+	applySshProxyEnvironment,
+	getSshProxyEnvironment,
+	SSH_PROXY_SETTINGS,
+} from "./environment";
 import {
 	SshConfig,
 	type SshValues,
@@ -206,6 +211,7 @@ export class Remote {
 			disposables.push(
 				applySshProxyEnvironment(baseUrl, vscode.workspace.getConfiguration()),
 			);
+			void this.warnIfProxyEnvNotInherited(baseUrl);
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrl, safeHostname: parts.safeHostname },
@@ -825,6 +831,54 @@ export class Remote {
 			return "";
 		}
 		return this.pathResolver.getProxyLogPath();
+	}
+
+	/**
+	 * MS VS Code with `remote.SSH.useLocalServer=false` spawns ssh without
+	 * inheriting process.env, so the proxy variables never reach it. Warn once and
+	 * offer to enable the local server when a proxy applies to this deployment.
+	 * Catches internally so the caller can safely fire-and-forget.
+	 */
+	private async warnIfProxyEnvNotInherited(baseUrl: string): Promise<void> {
+		try {
+			const cfg = vscode.workspace.getConfiguration();
+			// HTTP_PROXY is only set when a proxy actually applies to this deployment.
+			if (!getSshProxyEnvironment(baseUrl, cfg).HTTP_PROXY) {
+				return;
+			}
+			if (cfg.get<boolean>("remote.SSH.useLocalServer") !== false) {
+				return;
+			}
+
+			const ENABLE = "Enable Local Server";
+			const choice = await showDismissibleNotification(
+				"Your proxy settings may not reach the SSH connection because `remote.SSH.useLocalServer` is disabled. Enable it so Coder can apply the proxy to the connection.",
+				this.extensionContext.globalState,
+				{ key: "coder.proxyUseLocalServerWarningDismissed", actions: [ENABLE] },
+			);
+			if (choice !== ENABLE) {
+				return;
+			}
+
+			await cfg.update(
+				"remote.SSH.useLocalServer",
+				true,
+				vscode.ConfigurationTarget.Global,
+			);
+			const RELOAD = "Reload";
+			const reload = await vscode.window.showInformationMessage(
+				"Local server enabled. Reload the window to apply.",
+				RELOAD,
+			);
+			if (reload === RELOAD) {
+				await vscode.commands.executeCommand("workbench.action.reloadWindow");
+			}
+		} catch (error) {
+			this.logger.debug(
+				"Failed to surface proxy useLocalServer warning",
+				error,
+			);
+		}
 	}
 
 	/**
