@@ -210,9 +210,10 @@ describe("LoginCoordinator", () => {
 				mockSuccessfulAuth,
 			} = createTestContext();
 			const user = mockSuccessfulAuth();
-			vi.mocked(mockCredentialManager.readToken).mockResolvedValueOnce(
-				"cli-credential-token",
-			);
+			vi.mocked(mockCredentialManager.readToken).mockResolvedValueOnce({
+				token: "cli-credential-token",
+				source: "files",
+			});
 
 			const result = await coordinator.ensureLoggedIn({
 				url: TEST_URL,

@@ -15,8 +15,8 @@ import {
 import { isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
 import { type TelemetryReporter } from "../telemetry/reporter";
-import { removeTrailingSlashes, toSafeHost } from "../uri/utils";
 import { writeAtomically } from "../util/fs";
+import { removeTrailingSlashes, toSafeHost } from "../util/uri";
 
 import { version } from "./cliExec";
 
@@ -34,6 +34,11 @@ type TokenReadSource =
 	| { mode: "files" }
 	| { mode: "keyring"; binPath: string }
 	| { mode: "none" };
+
+export interface CliCredential {
+	token: string;
+	source: "keyring" | "files";
+}
 
 const EXEC_TIMEOUT_MS = 60_000;
 const EXEC_LOG_INTERVAL_MS = 5_000;
@@ -128,22 +133,30 @@ export class CliCredentialManager {
 	/**
 	 * Read a token from CLI-managed credentials. Uses `coder login token --url`
 	 * when keyring auth is active, otherwise reads the file credentials under
-	 * --global-config. Returns undefined on any failure (resolver, CLI, empty
-	 * output). Throws AbortError when the signal is aborted.
+	 * --global-config. Returns the token and the source it came from, or
+	 * undefined on any failure (resolver, CLI, empty output). Throws AbortError
+	 * when the signal is aborted.
 	 */
 	public async readToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
-	): Promise<string | undefined> {
+	): Promise<CliCredential | undefined> {
 		const source = await this.resolveTokenReadSource(url, configs);
 		if (source.mode === "files") {
-			return this.readCredentialFiles(url);
+			const token = await this.readCredentialFiles(url);
+			return token ? { token, source: "files" } : undefined;
 		}
 		if (source.mode === "none") {
 			return undefined;
 		}
-		return this.readKeyringToken(source.binPath, url, configs, options);
+		const token = await this.readKeyringToken(
+			source.binPath,
+			url,
+			configs,
+			options,
+		);
+		return token ? { token, source: "keyring" } : undefined;
 	}
 
 	private async readKeyringToken(
@@ -284,7 +297,7 @@ export class CliCredentialManager {
 	private async readCredentialFiles(url: string): Promise<string | undefined> {
 		try {
 			const files = await this.readCredentialFilePair(url);
-			return sameCredentialUrl(files.url, url)
+			return sameNormalizedUrl(files.url, url)
 				? nonEmpty(files.token)
 				: undefined;
 		} catch (error) {
@@ -376,11 +389,11 @@ export class CliCredentialManager {
 	}
 }
 
-function sameCredentialUrl(storedUrl: string, expectedUrl: string): boolean {
-	return cleanCredentialUrl(storedUrl) === cleanCredentialUrl(expectedUrl);
+function sameNormalizedUrl(storedUrl: string, expectedUrl: string): boolean {
+	return normalizeUrl(storedUrl) === normalizeUrl(expectedUrl);
 }
 
-function cleanCredentialUrl(url: string): string {
+function normalizeUrl(url: string): string {
 	return removeTrailingSlashes(url.trim());
 }
 

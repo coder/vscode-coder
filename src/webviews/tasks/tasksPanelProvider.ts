@@ -25,7 +25,7 @@ import {
 	streamBuildLogs,
 } from "../../api/workspace";
 import { type Logger } from "../../logging/logger";
-import { openInBrowser } from "../../util";
+import { openInBrowser } from "../../util/uri";
 import { vscodeProposed } from "../../vscodeProposed";
 import {
 	dispatchCommand,

@@ -37,13 +37,12 @@ import {
 	resolveCliAuth,
 } from "../settings/cli";
 import { getHeaderCommand } from "../settings/headers";
+import { escapeCommandArg, expandPath } from "../util";
 import {
 	AuthorityPrefix,
 	type AuthorityParts,
-	escapeCommandArg,
-	expandPath,
 	parseRemoteAuthority,
-} from "../util";
+} from "../util/authority";
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 

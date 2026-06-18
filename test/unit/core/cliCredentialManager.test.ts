@@ -365,7 +365,7 @@ describe("CliCredentialManager", () => {
 			const token = await manager.readToken(TEST_URL, configs);
 
 			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			expect(token).toBe("my-token");
+			expect(token).toEqual({ token: "my-token", source: "keyring" });
 			expect(lastExecArgs().args).toEqual([
 				"login",
 				"token",
@@ -401,7 +401,10 @@ describe("CliCredentialManager", () => {
 			stubExecFile({ stdout: "my-token" });
 			const { manager } = setup();
 
-			expect(await manager.readToken(TEST_URL, configs)).toBe("file-token");
+			expect(await manager.readToken(TEST_URL, configs)).toEqual({
+				token: "file-token",
+				source: "files",
+			});
 			expect(execFile).not.toHaveBeenCalled();
 		});
 
@@ -414,9 +417,10 @@ describe("CliCredentialManager", () => {
 			);
 			const { manager } = setup();
 
-			expect(await manager.readToken(TEST_URL, configs)).toBe(
-				"custom-file-token",
-			);
+			expect(await manager.readToken(TEST_URL, configs)).toEqual({
+				token: "custom-file-token",
+				source: "files",
+			});
 			expect(execFile).not.toHaveBeenCalled();
 		});
 
@@ -437,7 +441,10 @@ describe("CliCredentialManager", () => {
 			writeCredentialFiles(TEST_URL, "file-token");
 			const { manager, resolver } = setup();
 
-			expect(await manager.readToken(TEST_URL, configs)).toBe("file-token");
+			expect(await manager.readToken(TEST_URL, configs)).toEqual({
+				token: "file-token",
+				source: "files",
+			});
 			expect(resolver).toHaveBeenCalledWith(TEST_URL);
 			expect(execFile).not.toHaveBeenCalled();
 		});

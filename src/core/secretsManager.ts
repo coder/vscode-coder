@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { DeploymentSchema, type Deployment } from "../deployment/types";
-import { toSafeHost } from "../util";
+import { toSafeHost } from "../util/uri";
 
 import type { OAuth2ClientRegistrationResponse } from "coder/site/src/api/typesGenerated";
 import type { Memento, SecretStorage, Disposable } from "vscode";

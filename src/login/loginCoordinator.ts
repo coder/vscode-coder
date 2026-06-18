@@ -10,7 +10,7 @@ import { buildOAuthTokenData } from "../oauth/utils";
 import { withOptionalProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 import { isKeyringEnabled } from "../settings/cli";
-import { openInBrowser } from "../util";
+import { openInBrowser } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
 
 import type { User } from "coder/site/src/api/typesGenerated";
@@ -330,23 +330,23 @@ export class LoginCoordinator implements vscode.Disposable {
 				cancellable: true,
 			},
 		);
-		const cliCredentialToken = cliCredentialResult.ok
+		const cliCredential = cliCredentialResult.ok
 			? cliCredentialResult.value
 			: undefined;
 		if (
-			cliCredentialToken &&
-			cliCredentialToken !== providedToken &&
-			cliCredentialToken !== auth?.token
+			cliCredential &&
+			cliCredential.token !== providedToken &&
+			cliCredential.token !== auth?.token
 		) {
 			this.logger.debug("Trying token from CLI credentials");
 			const result = await this.tryTokenAuth(
 				client,
-				cliCredentialToken,
+				cliCredential.token,
 				isAutoLogin,
 			);
 			if (result !== "unauthorized") {
 				return withLoginMethod(
-					keyringEnabled ? "keyring_token" : "cli_token",
+					cliCredential.source === "keyring" ? "keyring_token" : "cli_token",
 					result,
 				);
 			}

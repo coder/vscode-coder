@@ -23,8 +23,8 @@ import {
 import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
 import { isKeyringEnabled } from "../settings/cli";
-import { toSafeHost } from "../util";
 import { tempFilePath } from "../util/fs";
+import { toSafeHost } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
 
 import { BinaryLock } from "./binaryLock";

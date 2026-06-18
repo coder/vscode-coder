@@ -46,7 +46,8 @@ import {
 import { resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
-import { openInBrowser, toRemoteAuthority, toSafeHost } from "./util";
+import { toRemoteAuthority } from "./util/authority";
+import { openInBrowser, toSafeHost } from "./util/uri";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseNetcheckReport } from "./webviews/netcheck/types";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";

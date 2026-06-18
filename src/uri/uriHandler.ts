@@ -4,9 +4,8 @@ import { errToStr } from "../api/api-helper";
 import { AuthTelemetry } from "../instrumentation/auth";
 import { CALLBACK_PATH } from "../oauth/utils";
 import { maybeAskUrl } from "../promptUtils";
+import { toSafeHost } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
-
-import { toSafeHost } from "./utils";
 
 import type { Commands } from "../commands";
 import type { ServiceContainer } from "../core/container";

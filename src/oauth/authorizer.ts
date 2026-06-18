@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { resolveUiUrl } from "../util";
+import { resolveUiUrl } from "../util/uri";
 
 import {
 	AUTH_GRANT_TYPE,

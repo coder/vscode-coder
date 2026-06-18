@@ -37,7 +37,7 @@ import type { StartupMode } from "../core/mementoManager";
 import type { FeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
 import type { CliAuth } from "../settings/cli";
-import type { AuthorityParts } from "../util";
+import type { AuthorityParts } from "../util/authority";
 
 /**
  * Manages workspace and agent state transitions until ready for SSH connection.
