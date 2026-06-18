@@ -1,20 +1,10 @@
-/**
- * Sets HTTP_PROXY/HTTPS_PROXY/NO_PROXY on this extension host's process.env so
- * the spawned `coder ssh` ProxyCommand inherits them (the coder CLI reads them
- * like any Go HTTP client and has no proxy flag). We mutate process.env rather
- * than baking them into the SSH config so no credentialed proxy URL is written
- * to disk and multiple windows onto the same workspace stay independent.
- *
- * Best-effort: only processes spawned after it runs inherit the change. Notably
- * MS VS Code with `remote.SSH.useLocalServer=false` spawns ssh off a path that
- * does not inherit, so propagation there needs `useLocalServer=true`.
- */
-
 import { getProxyForUrl } from "../api/proxy";
 
 import type { WorkspaceConfiguration } from "vscode";
 
-export type SshProxyEnvironment = Partial<
+type Environment = Record<string, string | undefined>;
+type PreviousValue = [key: string, existed: boolean, value: string | undefined];
+type SshEnvironment = Partial<
 	Record<"HTTP_PROXY" | "HTTPS_PROXY" | "NO_PROXY", string>
 >;
 
@@ -31,13 +21,35 @@ export const SSH_PROXY_SETTINGS: ReadonlyArray<{
 	{ setting: "coder.proxyBypass", title: "Proxy Bypass" },
 ];
 
-type Environment = Record<string, string | undefined>;
-type PreviousValue = [key: string, existed: boolean, value: string | undefined];
+/**
+ * Sets SSH-related environment variables on this extension host's process.env so
+ * the spawned `coder ssh` ProxyCommand inherits them. For now that is just the
+ * proxy configuration (HTTP_PROXY/HTTPS_PROXY/NO_PROXY): the coder CLI reads them
+ * like any Go HTTP client and has no proxy flag. We mutate process.env rather
+ * than baking values into the SSH config so no credentialed proxy URL is written
+ * to disk and multiple windows onto the same workspace stay independent.
+ *
+ * Best-effort: only processes spawned afterwards inherit the change. MS VS Code
+ * with `remote.SSH.useLocalServer=false` spawns ssh off a path that does not
+ * inherit, so propagation there needs `useLocalServer=true`. Returns a disposable
+ * that restores the previous values.
+ */
+export function applySshEnvironment(
+	baseUrl: string,
+	cfg: Pick<WorkspaceConfiguration, "get">,
+	env: Environment = process.env,
+): { dispose(): void } {
+	return applyEnvironment(getSshProxyEnvironment(baseUrl, cfg), env);
+}
 
+/**
+ * The proxy portion of the SSH environment. Exposed so callers can check whether
+ * a proxy actually applies to a deployment via `.HTTP_PROXY`.
+ */
 export function getSshProxyEnvironment(
 	baseUrl: string,
 	cfg: Pick<WorkspaceConfiguration, "get">,
-): SshProxyEnvironment {
+): SshEnvironment {
 	const httpProxy = getSetting(cfg, "http.proxy");
 	const noProxy = getSetting(cfg, "coder.proxyBypass") ?? getHttpNoProxy(cfg);
 	const proxy = httpProxy
@@ -50,36 +62,8 @@ export function getSshProxyEnvironment(
 	};
 }
 
-export function applySshProxyEnvironment(
-	baseUrl: string,
-	cfg: Pick<WorkspaceConfiguration, "get">,
-	env: Environment = process.env,
-): { dispose(): void } {
-	return applyEnvironment(getSshProxyEnvironment(baseUrl, cfg), env);
-}
-
-function getSetting(
-	cfg: Pick<WorkspaceConfiguration, "get">,
-	setting: string,
-): string | undefined {
-	const value = cfg.get<string | null>(setting);
-	return typeof value === "string" ? value.trim() || undefined : undefined;
-}
-
-function getHttpNoProxy(
-	cfg: Pick<WorkspaceConfiguration, "get">,
-): string | undefined {
-	return (
-		cfg
-			.get<string[]>("http.noProxy", [])
-			.map((value) => value.trim())
-			.filter(Boolean)
-			.join(",") || undefined
-	);
-}
-
 function applyEnvironment(
-	values: SshProxyEnvironment,
+	values: SshEnvironment,
 	env: Environment,
 ): { dispose(): void } {
 	const previous: PreviousValue[] = [];
@@ -117,4 +101,24 @@ function getEnvKeys(env: Environment, key: string): string[] {
 		(envKey) => envKey.toLowerCase() === key.toLowerCase(),
 	);
 	return keys.length > 0 ? keys : [key];
+}
+
+function getSetting(
+	cfg: Pick<WorkspaceConfiguration, "get">,
+	setting: string,
+): string | undefined {
+	const value = cfg.get<string | null>(setting);
+	return typeof value === "string" ? value.trim() || undefined : undefined;
+}
+
+function getHttpNoProxy(
+	cfg: Pick<WorkspaceConfiguration, "get">,
+): string | undefined {
+	return (
+		cfg
+			.get<string[]>("http.noProxy", [])
+			.map((value) => value.trim())
+			.filter(Boolean)
+			.join(",") || undefined
+	);
 }

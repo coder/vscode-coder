@@ -1,9 +1,4 @@
 import { isAxiosError } from "axios";
-import { type Api } from "coder/site/src/api/api";
-import {
-	type Workspace,
-	type WorkspaceAgent,
-} from "coder/site/src/api/typesGenerated";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -20,18 +15,11 @@ import { extractAgents } from "../api/api-helper";
 import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { type Commands } from "../commands";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
 } from "../configWatcher";
 import { version as cliVersion } from "../core/cliExec";
-import { type CliManager } from "../core/cliManager";
-import { type ServiceContainer } from "../core/container";
-import { type ContextManager } from "../core/contextManager";
-import { type StartupMode } from "../core/mementoManager";
-import { type PathResolver } from "../core/pathResolver";
-import { type SecretsManager } from "../core/secretsManager";
 import { toError } from "../error/errorUtils";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { Inbox } from "../inbox";
@@ -40,8 +28,6 @@ import {
 	RemoteSetupTelemetry,
 	type RemoteSetupTracer,
 } from "../instrumentation/remoteSetup";
-import { type Logger } from "../logging/logger";
-import { type LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	type CliAuth,
@@ -58,12 +44,11 @@ import {
 	expandPath,
 	parseRemoteAuthority,
 } from "../util";
-import { showDismissibleNotification } from "../util/notifications";
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 import {
-	applySshProxyEnvironment,
+	applySshEnvironment,
 	getSshProxyEnvironment,
 	SSH_PROXY_SETTINGS,
 } from "./environment";
@@ -78,6 +63,23 @@ import { applySettingOverrides, buildSshOverrides } from "./sshOverrides";
 import { SshProcessMonitor } from "./sshProcess";
 import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
+
+import type { Api } from "coder/site/src/api/api";
+import type {
+	Workspace,
+	WorkspaceAgent,
+} from "coder/site/src/api/typesGenerated";
+
+import type { Commands } from "../commands";
+import type { CliManager } from "../core/cliManager";
+import type { ServiceContainer } from "../core/container";
+import type { ContextManager } from "../core/contextManager";
+import type { DismissibleNotifier } from "../core/dismissibleNotifier";
+import type { StartupMode } from "../core/mementoManager";
+import type { PathResolver } from "../core/pathResolver";
+import type { SecretsManager } from "../core/secretsManager";
+import type { Logger } from "../logging/logger";
+import type { LoginCoordinator } from "../login/loginCoordinator";
 
 export interface RemoteDetails extends vscode.Disposable {
 	safeHostname: string;
@@ -109,6 +111,7 @@ export class Remote {
 	private readonly contextManager: ContextManager;
 	private readonly secretsManager: SecretsManager;
 	private readonly loginCoordinator: LoginCoordinator;
+	private readonly dismissibleNotifier: DismissibleNotifier;
 	private readonly setupTelemetry: RemoteSetupTelemetry;
 	private readonly authTelemetry: AuthTelemetry;
 
@@ -123,6 +126,7 @@ export class Remote {
 		this.contextManager = serviceContainer.getContextManager();
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
+		this.dismissibleNotifier = serviceContainer.getDismissibleNotifier();
 		this.setupTelemetry = new RemoteSetupTelemetry(
 			serviceContainer.getTelemetryService(),
 		);
@@ -209,9 +213,9 @@ export class Remote {
 
 		try {
 			disposables.push(
-				applySshProxyEnvironment(baseUrl, vscode.workspace.getConfiguration()),
+				applySshEnvironment(baseUrl, vscode.workspace.getConfiguration()),
 			);
-			void this.warnIfProxyEnvNotInherited(baseUrl);
+			await this.warnIfProxyEnvNotInherited(baseUrl);
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrl, safeHostname: parts.safeHostname },
@@ -837,7 +841,10 @@ export class Remote {
 	 * MS VS Code with `remote.SSH.useLocalServer=false` spawns ssh without
 	 * inheriting process.env, so the proxy variables never reach it. Warn once and
 	 * offer to enable the local server when a proxy applies to this deployment.
-	 * Catches internally so the caller can safely fire-and-forget.
+	 *
+	 * Blocks setup with a modal: the write must land before ssh spawns (which
+	 * happens after setup returns) for it to apply without a reload. Catches
+	 * internally so a failure here never aborts the connection.
 	 */
 	private async warnIfProxyEnvNotInherited(baseUrl: string): Promise<void> {
 		try {
@@ -851,27 +858,24 @@ export class Remote {
 			}
 
 			const ENABLE = "Enable Local Server";
-			const choice = await showDismissibleNotification(
+			const choice = await this.dismissibleNotifier.showDismissible(
+				"coder.proxyUseLocalServerWarningDismissed",
 				"Your proxy settings may not reach the SSH connection because `remote.SSH.useLocalServer` is disabled. Enable it so Coder can apply the proxy to the connection.",
-				this.extensionContext.globalState,
-				{ key: "coder.proxyUseLocalServerWarningDismissed", actions: [ENABLE] },
+				{ actions: [ENABLE], modal: true },
 			);
 			if (choice !== ENABLE) {
 				return;
 			}
 
-			await cfg.update(
-				"remote.SSH.useLocalServer",
-				true,
-				vscode.ConfigurationTarget.Global,
+			// Use the jsonc writer, not cfg.update which can hang during remote setup.
+			// No reload needed: ssh hasn't spawned yet, so it picks this up on connect.
+			const ok = await applySettingOverrides(
+				this.pathResolver.getUserSettingsPath(),
+				[{ key: "remote.SSH.useLocalServer", value: true }],
+				this.logger,
 			);
-			const RELOAD = "Reload";
-			const reload = await vscode.window.showInformationMessage(
-				"Local server enabled. Reload the window to apply.",
-				RELOAD,
-			);
-			if (reload === RELOAD) {
-				await vscode.commands.executeCommand("workbench.action.reloadWindow");
+			if (!ok) {
+				this.logger.warn("Failed to enable remote.SSH.useLocalServer");
 			}
 		} catch (error) {
 			this.logger.debug(

@@ -15,6 +15,7 @@ import { CliCredentialManager } from "./cliCredentialManager";
 import { CliManager } from "./cliManager";
 import { CommandManager } from "./commandManager";
 import { ContextManager } from "./contextManager";
+import { DismissibleNotifier } from "./dismissibleNotifier";
 import { MementoManager } from "./mementoManager";
 import { PathResolver } from "./pathResolver";
 import { SecretsManager } from "./secretsManager";
@@ -39,6 +40,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
 	private readonly telemetryService: TelemetryService;
 	private readonly commandManager: CommandManager;
+	private readonly dismissibleNotifier: DismissibleNotifier;
 
 	constructor(context: vscode.ExtensionContext) {
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
@@ -119,6 +121,7 @@ export class ServiceContainer implements vscode.Disposable {
 		);
 
 		this.commandManager = new CommandManager(this.telemetryService);
+		this.dismissibleNotifier = new DismissibleNotifier(context.globalState);
 	}
 
 	getPathResolver(): PathResolver {
@@ -171,6 +174,10 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getCommandManager(): CommandManager {
 		return this.commandManager;
+	}
+
+	getDismissibleNotifier(): DismissibleNotifier {
+		return this.dismissibleNotifier;
 	}
 
 	/** Dispose logger last so telemetry teardown warnings still reach it. */
