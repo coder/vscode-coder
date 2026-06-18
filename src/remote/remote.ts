@@ -61,6 +61,7 @@ import {
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
+import { applySshProxyEnvironment, SSH_PROXY_SETTINGS } from "./environment";
 import {
 	SshConfig,
 	type SshValues,
@@ -202,6 +203,9 @@ export class Remote {
 		const { args, parts, workspaceName, baseUrl, token, disposables } = context;
 
 		try {
+			disposables.push(
+				applySshProxyEnvironment(baseUrl, vscode.workspace.getConfiguration()),
+			);
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrl, safeHostname: parts.safeHostname },
@@ -454,6 +458,11 @@ export class Remote {
 					title: "SSH Flags",
 					getValue: () => getSshFlags(vscode.workspace.getConfiguration()),
 				},
+				...SSH_PROXY_SETTINGS.map(({ setting, title }) => ({
+					setting,
+					title,
+					getValue: () => vscode.workspace.getConfiguration().get(setting),
+				})),
 			];
 			if (featureSet.proxyLogDirectory) {
 				settingsToWatch.push({
