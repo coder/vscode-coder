@@ -1348,7 +1348,6 @@ export class Commands {
 		if (!vscode.workspace.workspaceFolders?.length) {
 			newWindow = false;
 		}
-
 		if (!folderPath && useDefaultDirectory) {
 			folderPath = agent.expanded_directory;
 		}
@@ -1366,7 +1365,6 @@ export class Commands {
 				// reference a workspace without an agent name, which will be missed.
 				(opened) => opened.folderUri?.authority === remoteAuthority,
 			);
-
 			// openRecent will always use the most recent.  Otherwise, if there are
 			// multiple we ask the user which to use.
 			if (opened.length === 1 || (opened.length > 1 && openRecent)) {
@@ -1398,6 +1396,13 @@ export class Commands {
 			.catch((err: unknown) => {
 				this.logger.error(`IPC ping failed for ${remoteAuthority}`, err);
 			});
+
+		this.logger.info("Opening remote workspace", {
+			remoteAuthority,
+			workspace: `${workspace.owner_name}/${workspace.name}`,
+			agent: agent.name,
+			handoff: folderPath ? "folder" : "empty_window",
+		});
 
 		if (folderPath) {
 			await vscode.commands.executeCommand(

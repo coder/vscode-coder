@@ -12,6 +12,7 @@ import {
 	openInBrowser,
 	parseRemoteAuthority,
 	resolveUiUrl,
+	toRemoteAuthority,
 	toSafeHost,
 } from "@/util";
 
@@ -42,12 +43,16 @@ describe("parseRemoteAuthority", () => {
 
 	it.each([
 		{
-			label: "missing user and workspace",
+			label: "missing username and workspace",
 			sshHost: "coder-vscode.dev.coder.com",
 		},
 		{
 			label: "missing workspace",
 			sshHost: "coder-vscode.dev.coder.com--foo",
+		},
+		{
+			label: "manual host using Coder prefix",
+			sshHost: "coder-vscode.personal-host",
 		},
 		{
 			label: "empty username",
@@ -87,6 +92,26 @@ describe("parseRemoteAuthority", () => {
 		agent?: string;
 		username?: string;
 	}
+
+	it("round trips generated remote authorities", () => {
+		const authority = toRemoteAuthority(
+			"https://ほげ",
+			"alice",
+			"workspace",
+			"main",
+		);
+
+		expect(authority).toBe(
+			"ssh-remote+coder-vscode.xn--18j4d--alice--workspace.main",
+		);
+		expect(parseRemoteAuthority(authority)).toStrictEqual({
+			agent: "main",
+			sshHost: "coder-vscode.xn--18j4d--alice--workspace.main",
+			safeHostname: "xn--18j4d",
+			username: "alice",
+			workspace: "workspace",
+		} satisfies AuthorityParts);
+	});
 
 	it.each<ParseCase>([
 		{

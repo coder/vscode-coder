@@ -22,6 +22,7 @@ interface UriRouteContext extends UriHandlerDeps {
 }
 
 type UriRouteHandler = (ctx: UriRouteContext) => Promise<void>;
+type CoderUriRoute = "open" | "openDevContainer";
 
 const routes: Readonly<Record<string, UriRouteHandler>> = {
 	"/open": handleOpen,
@@ -48,7 +49,10 @@ export function registerUriHandler(deps: UriHandlerDeps): vscode.Disposable {
 				});
 			} catch (error) {
 				const message = errToStr(error, "No error message was provided");
-				output.warn(`Failed to handle URI ${uri.toString()}: ${message}`);
+				output.warn("Failed to handle URI", {
+					...summarizeUri(uri),
+					error: message,
+				});
 				vscodeProposed.window.showErrorMessage("Failed to handle URI", {
 					detail: message,
 					modal: true,
@@ -67,6 +71,17 @@ function getRequiredParam(params: URLSearchParams, name: string): string {
 	return value;
 }
 
+function summarizeUri(uri: vscode.Uri): Record<string, string | boolean> {
+	const params = new URLSearchParams(uri.query);
+	return {
+		path: uri.path,
+		hasOwner: params.has("owner"),
+		hasWorkspace: params.has("workspace"),
+		hasAgent: params.has("agent"),
+		hasToken: params.has("token"),
+	};
+}
+
 async function handleOpen(ctx: UriRouteContext): Promise<void> {
 	const { params, serviceContainer, deploymentManager, commands } = ctx;
 
@@ -78,7 +93,7 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		params.has("openRecent") &&
 		(!params.get("openRecent") || params.get("openRecent") === "true");
 
-	await setupDeployment(params, serviceContainer, deploymentManager);
+	await setupDeployment("open", params, serviceContainer, deploymentManager);
 
 	await commands.open({
 		workspaceOwner: owner,
@@ -108,7 +123,12 @@ async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {
 		);
 	}
 
-	await setupDeployment(params, serviceContainer, deploymentManager);
+	await setupDeployment(
+		"openDevContainer",
+		params,
+		serviceContainer,
+		deploymentManager,
+	);
 
 	await commands.openDevContainer(
 		owner,
@@ -126,6 +146,7 @@ async function handleOpenDevContainer(ctx: UriRouteContext): Promise<void> {
  * and token storage. Throws if user cancels URL input or login fails.
  */
 async function setupDeployment(
+	route: CoderUriRoute,
 	params: URLSearchParams,
 	serviceContainer: ServiceContainer,
 	deploymentManager: Pick<DeploymentManager, "setDeployment">,
@@ -154,6 +175,14 @@ async function setupDeployment(
 	}
 
 	const safeHostname = toSafeHost(url);
+	const owner = params.get("owner") ?? "";
+	const workspace = params.get("workspace") ?? "";
+	serviceContainer.getLogger().info("Handling Coder URI", {
+		route,
+		safeHostname,
+		workspace: owner && workspace ? `${owner}/${workspace}` : "",
+		agent: params.get("agent") ?? "(unspecified)",
+	});
 
 	const token: string | undefined = params.get("token") ?? undefined;
 	const result = await authTelemetry.traceLogin("uri", () =>

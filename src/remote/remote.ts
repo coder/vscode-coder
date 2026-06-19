@@ -135,13 +135,22 @@ export class Remote {
 		startupMode: StartupMode,
 		remoteSshExtensionId: string,
 	): Promise<RemoteDetails | undefined> {
-		const parts = parseRemoteAuthority(remoteAuthority);
+		let parts: AuthorityParts | null;
+		try {
+			parts = parseRemoteAuthority(remoteAuthority);
+		} catch (error) {
+			this.logger.warn("Failed to parse remote authority", {
+				remoteAuthority,
+				error: toError(error).message,
+			});
+			throw error;
+		}
 		if (!parts) {
-			// Not a Coder host.
 			return;
 		}
 
-		this.logger.debug("Setting up remote connection", {
+		this.logger.info("Setting up remote connection", {
+			remoteAuthority,
 			hostname: parts.safeHostname,
 			workspace: `${parts.username}/${parts.workspace}`,
 			agent: parts.agent || "(default)",

@@ -363,9 +363,41 @@ describe("uriHandler", () => {
 			await handleUri(createMockUri("/open", "workspace=w"));
 
 			expect(logger.warn).toHaveBeenCalledWith(
-				expect.stringContaining("Failed to handle URI"),
+				"Failed to handle URI",
+				expect.objectContaining({
+					error: expect.stringContaining("owner must be specified"),
+				}),
 			);
 			expect(showErrorMessage).toHaveBeenCalled();
+		});
+
+		it("does not log URI tokens on failure", async () => {
+			const { handleUri, commands, logger } = createTestContext();
+			commands.open.mockRejectedValue(new Error("Connection failed"));
+
+			await handleUri(
+				createMockUri(
+					"/open",
+					`owner=o&workspace=w&url=${encodeURIComponent(TEST_URL)}&token=secret-token`,
+				),
+			);
+
+			expect(logger.warn).toHaveBeenCalledWith(
+				"Failed to handle URI",
+				expect.objectContaining({
+					error: "Connection failed",
+				}),
+			);
+			const logged = [
+				...vi.mocked(logger.debug).mock.calls,
+				...vi.mocked(logger.info).mock.calls,
+				...vi.mocked(logger.warn).mock.calls,
+			]
+				.map((call) => JSON.stringify(call))
+				.join("\n");
+			expect(logged).not.toContain("secret-token");
+			expect(logged).not.toContain("token=");
+			expect(logged).not.toContain("vscode://coder.coder-remote");
 		});
 
 		it("propagates command errors", async () => {
