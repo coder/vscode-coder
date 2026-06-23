@@ -16,7 +16,7 @@ import { isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
 import { type TelemetryReporter } from "../telemetry/reporter";
 import { writeAtomically } from "../util/fs";
-import { removeTrailingSlashes, toSafeHost } from "../util/uri";
+import { normalizeUrl, toSafeHost } from "../util/uri";
 
 import { version } from "./cliExec";
 
@@ -391,10 +391,6 @@ export class CliCredentialManager {
 
 function sameNormalizedUrl(storedUrl: string, expectedUrl: string): boolean {
 	return normalizeUrl(storedUrl) === normalizeUrl(expectedUrl);
-}
-
-function normalizeUrl(url: string): string {
-	return removeTrailingSlashes(url.trim());
 }
 
 function nonEmpty(value: string): string | undefined {

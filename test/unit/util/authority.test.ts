@@ -159,3 +159,76 @@ describe("parseRemoteAuthority", () => {
 		},
 	);
 });
+
+describe("toRemoteAuthority", () => {
+	interface ToRemoteAuthorityCase {
+		url: string;
+		owner: string;
+		workspace: string;
+		agent: string | undefined;
+		expected: string;
+	}
+	it.each<ToRemoteAuthorityCase>([
+		{
+			url: "https://dev.coder.com",
+			owner: "foo",
+			workspace: "bar",
+			agent: undefined,
+			expected: "ssh-remote+coder-vscode.dev.coder.com--foo--bar",
+		},
+		{
+			url: "http://dev.coder.com:3000",
+			owner: "foo",
+			workspace: "bar",
+			agent: "baz",
+			expected: "ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz",
+		},
+		{
+			url: "https://coder.example.com/some/path?q=1",
+			owner: "alice",
+			workspace: "web",
+			agent: "",
+			expected: "ssh-remote+coder-vscode.coder.example.com--alice--web",
+		},
+		{
+			url: "http://192.168.1.5:8080",
+			owner: "foo",
+			workspace: "bar",
+			agent: undefined,
+			expected: "ssh-remote+coder-vscode.192.168.1.5--foo--bar",
+		},
+		{
+			url: "http://localhost:3000",
+			owner: "dev",
+			workspace: "ws",
+			agent: "main",
+			expected: "ssh-remote+coder-vscode.localhost--dev--ws.main",
+		},
+		{
+			url: "https://sub.DOMAIN.Example.COM",
+			owner: "foo",
+			workspace: "bar",
+			agent: undefined,
+			expected: "ssh-remote+coder-vscode.sub.domain.example.com--foo--bar",
+		},
+		{
+			url: "https://ほげ:8080",
+			owner: "foo",
+			workspace: "bar",
+			agent: undefined,
+			expected: "ssh-remote+coder-vscode.xn--18j4d--foo--bar",
+		},
+		{
+			url: "https://عربي",
+			owner: "foo",
+			workspace: "bar",
+			agent: undefined,
+			expected: "ssh-remote+coder-vscode.xn--ngbrx4e--foo--bar",
+		},
+	])(
+		"builds authority for $url",
+		({ url, owner, workspace, agent, expected }) => {
+			expect(toRemoteAuthority(url, owner, workspace, agent)).toBe(expected);
+		},
+	);
+});

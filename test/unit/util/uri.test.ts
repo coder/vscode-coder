@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import {
+	normalizeUrl,
 	openInBrowser,
 	removeTrailingSlashes,
 	resolveUiUrl,
@@ -14,6 +15,7 @@ describe("toSafeHost", () => {
 	it.each([
 		["https://foobar:8080", "foobar"],
 		["https://ほげ", "xn--18j4d"],
+		["https://عربي", "xn--ngbrx4e"],
 		["https://test.😉.invalid", "test.xn--n28h.invalid"],
 		["https://dev.😉-coder.com", "dev.xn---coder-vx74e.com"],
 		["http://ignore-port.com:8080", "ignore-port.com"],
@@ -34,6 +36,18 @@ describe("removeTrailingSlashes", () => {
 		["///", ""],
 	])("returns %j for %j", (input, expected) => {
 		expect(removeTrailingSlashes(input)).toBe(expected);
+	});
+});
+
+describe("normalizeUrl", () => {
+	it.each([
+		["https://coder.example.com", "https://coder.example.com"],
+		["  https://coder.example.com  ", "https://coder.example.com"],
+		["https://coder.example.com///", "https://coder.example.com"],
+		["  https://coder.example.com/  ", "https://coder.example.com"],
+		["", ""],
+	])("returns %j for %j", (input, expected) => {
+		expect(normalizeUrl(input)).toBe(expected);
 	});
 });
 

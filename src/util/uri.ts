@@ -15,17 +15,21 @@ export function removeTrailingSlashes(value: string): string {
 	return value.replace(/\/+$/, "");
 }
 
+/** Trim surrounding whitespace and strip trailing slashes from a URL. */
+export function normalizeUrl(value: string): string {
+	return removeTrailingSlashes(value.trim());
+}
+
 /**
  * Return the URL for opening Coder pages in the browser.  Uses the
  * `coder.alternativeWebUrl` setting when configured, otherwise returns
  * the connection URL unchanged.
  */
 export function resolveUiUrl(connectionUrl: string): string {
-	const alt = removeTrailingSlashes(
+	const alt = normalizeUrl(
 		vscode.workspace
 			.getConfiguration("coder")
-			.get<string>("alternativeWebUrl")
-			?.trim() ?? "",
+			.get<string>("alternativeWebUrl") ?? "",
 	);
 	return alt || connectionUrl;
 }
