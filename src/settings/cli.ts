@@ -8,7 +8,7 @@ import type { WorkspaceConfiguration } from "vscode";
 import type { FeatureSet } from "../featureSet";
 
 export type CliAuth =
-	| { mode: "global-config"; configDir: string }
+	| { mode: "global-config"; configDir: string; allowOverride: boolean }
 	| { mode: "url"; url: string };
 
 /**
@@ -51,27 +51,39 @@ function buildGlobalFlags(
 	escAuth: (s: string) => string,
 	escHeader: (s: string) => string,
 ): string[] {
-	const authFlags =
-		auth.mode === "url"
-			? ["--url", escAuth(auth.url)]
-			: ["--global-config", escAuth(auth.configDir)];
+	const userFlags = getExpandedUserGlobalFlags(configs);
+
+	// Honor a user `--global-config` only when allowOverride (file mode, 2.31+);
+	// otherwise strip it and emit our own so it matches where we read/write.
+	const honorOverride =
+		auth.mode === "global-config" &&
+		auth.allowOverride &&
+		userFlags.some((flag) => isFlag(flag, "--global-config"));
 
 	// Escape each user flag so expansion-introduced whitespace stays inside
 	// one shell token. `escAuth` is `identity` on the array path.
-	const filtered = stripManagedFlags(getExpandedUserGlobalFlags(configs)).map(
-		escAuth,
-	);
+	const filtered = stripManagedFlags(userFlags, !honorOverride).map(escAuth);
+
+	const authFlags =
+		auth.mode === "url"
+			? ["--url", escAuth(auth.url)]
+			: honorOverride
+				? []
+				: ["--global-config", escAuth(auth.configDir)];
 
 	return [...filtered, ...authFlags, ...getHeaderArgs(configs, escHeader)];
 }
 
-function stripManagedFlags(flags: string[]): string[] {
+function stripManagedFlags(
+	flags: string[],
+	stripGlobalConfig: boolean,
+): string[] {
 	const filtered: string[] = [];
 	for (let i = 0; i < flags.length; i++) {
 		if (isFlag(flags[i], "--use-keyring")) {
 			continue;
 		}
-		if (isFlag(flags[i], "--global-config")) {
+		if (stripGlobalConfig && isFlag(flags[i], "--global-config")) {
 			// Skip the next item too when the value is a separate entry.
 			if (flags[i] === "--global-config") {
 				i++;
@@ -113,7 +125,12 @@ export function resolveCliAuth(
 	if (isKeyringEnabled(configs) && featureSet.keyringAuth) {
 		return { mode: "url", url: deploymentUrl };
 	}
-	return { mode: "global-config", configDir };
+	// Honored only on 2.31.0+, where CLI-mediated read/write share the directory.
+	return {
+		mode: "global-config",
+		configDir,
+		allowOverride: featureSet.keyringTokenRead,
+	};
 }
 
 /**

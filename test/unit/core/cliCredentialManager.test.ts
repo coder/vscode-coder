@@ -1,6 +1,7 @@
 import { fs as memfs, vol } from "memfs";
 import { execFile } from "node:child_process";
 import * as os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -26,9 +27,11 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("node:os");
 
-vi.mock("@/settings/cli", () => ({
-	isKeyringEnabled: vi.fn().mockReturnValue(false),
-}));
+vi.mock("@/settings/cli", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/settings/cli")>("@/settings/cli");
+	return { ...actual, isKeyringEnabled: vi.fn().mockReturnValue(false) };
+});
 
 vi.mock("@/core/cliExec", async () => {
 	const actual =
@@ -119,16 +122,29 @@ function failingResolver(): BinaryResolver {
 	return vi.fn().mockRejectedValue(new Error("no binary"));
 }
 
-const configs = { get: vi.fn().mockReturnValue(undefined) };
+// Honor the defaultValue arg so getExpandedUserGlobalFlags sees [] when unset.
+const configs = {
+	get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue),
+};
 
 const configWithHeaders = {
-	get: vi.fn((key: string) =>
-		key === "coder.headerCommand" ? "my-header-cmd" : undefined,
+	get: vi.fn((key: string, defaultValue?: unknown) =>
+		key === "coder.headerCommand" ? "my-header-cmd" : defaultValue,
 	),
 };
 
+// A configs that sets a user --global-config override via coder.globalFlags.
+function configWithGlobalConfig(dir: string) {
+	return {
+		get: vi.fn((key: string, defaultValue?: unknown) =>
+			key === "coder.globalFlags" ? [`--global-config=${dir}`] : defaultValue,
+		),
+	};
+}
+
 const TEST_PATH_RESOLVER = new PathResolver("/mock/base", "/mock/log");
-const CRED_DIR = "/mock/base/dev.coder.com";
+// Built with path.join so it matches getGlobalConfigDir on Windows too.
+const CRED_DIR = path.join("/mock/base", "dev.coder.com");
 const CUSTOM_CRED_DIR = "/custom/coderv2";
 
 function credentialPaths(dir = CRED_DIR) {
@@ -160,10 +176,6 @@ function readCredentialFiles(dir = CRED_DIR) {
 function credentialFilesExist(dir = CRED_DIR): boolean {
 	const paths = credentialPaths(dir);
 	return memfs.existsSync(paths.url) || memfs.existsSync(paths.session);
-}
-
-function useCustomGlobalConfig(): void {
-	new MockConfigurationProvider().set("coder.globalConfig", CUSTOM_CRED_DIR);
 }
 
 function setup(resolver?: BinaryResolver) {
@@ -203,18 +215,25 @@ describe("CliCredentialManager", () => {
 	});
 
 	describe("storeToken", () => {
-		it("writes files when keyring is disabled", async () => {
-			const { manager, sink } = setup();
+		it("writes via coder login (file mode) when keyring is disabled", async () => {
+			stubExecFile({ stdout: "" });
+			const { manager, resolver, sink } = setup();
 
 			await expect(
 				manager.storeToken(TEST_URL, "my-token", configs),
 			).resolves.toBeUndefined();
 
-			expect(execFile).not.toHaveBeenCalled();
-			expect(readCredentialFiles()).toStrictEqual({
-				url: TEST_URL,
-				session: "my-token",
-			});
+			expect(resolver).toHaveBeenCalledWith(TEST_URL);
+			const exec = lastExecArgs();
+			expect(exec.args).toEqual([
+				"--global-config",
+				CRED_DIR,
+				"login",
+				"--use-token-as-session",
+				TEST_URL,
+			]);
+			expect(exec.env.CODER_SESSION_TOKEN).toBe("my-token");
+			expect(exec.args).not.toContain("my-token");
 			expect(sink.expectOne("auth.credential.store")).toMatchObject({
 				properties: {
 					category: "file",
@@ -249,34 +268,52 @@ describe("CliCredentialManager", () => {
 			});
 		});
 
-		it("writes files under configured global config when keyring is disabled", async () => {
-			useCustomGlobalConfig();
+		it("writes via coder login under a user --global-config override", async () => {
+			stubExecFile({ stdout: "" });
 			const { manager } = setup();
 
-			await expect(
-				manager.storeToken(TEST_URL, "my-token", configs),
-			).resolves.toBeUndefined();
+			await manager.storeToken(
+				TEST_URL,
+				"my-token",
+				configWithGlobalConfig(CUSTOM_CRED_DIR),
+			);
 
-			expect(readCredentialFiles(CUSTOM_CRED_DIR)).toStrictEqual({
+			expect(lastExecArgs().args).toEqual([
+				`--global-config=${CUSTOM_CRED_DIR}`,
+				"login",
+				"--use-token-as-session",
+				TEST_URL,
+			]);
+		});
+
+		it("writes files directly for deployments older than 0.25", async () => {
+			vi.mocked(cliExec.version).mockResolvedValue("0.24.0");
+			const { manager } = setup();
+
+			await manager.storeToken(TEST_URL, "my-token", configs);
+
+			expect(execFile).not.toHaveBeenCalled();
+			expect(readCredentialFiles()).toStrictEqual({
 				url: TEST_URL,
 				session: "my-token",
 			});
 		});
 
-		it("falls back to files when CLI version too old", async () => {
+		it("writes via coder login (file) when keyring is enabled but unsupported", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
+			stubExecFile({ stdout: "" });
 			const { manager } = setup();
 
-			await expect(
-				manager.storeToken(TEST_URL, "token", configs),
-			).resolves.toBeUndefined();
+			await manager.storeToken(TEST_URL, "token", configs);
 
-			expect(execFile).not.toHaveBeenCalled();
-			expect(readCredentialFiles()).toStrictEqual({
-				url: TEST_URL,
-				session: "token",
-			});
+			expect(lastExecArgs().args).toEqual([
+				"--global-config",
+				CRED_DIR,
+				"login",
+				"--use-token-as-session",
+				TEST_URL,
+			]);
 		});
 
 		it("throws when CLI exec fails", async () => {
@@ -396,38 +433,56 @@ describe("CliCredentialManager", () => {
 			expect(execFile).not.toHaveBeenCalled();
 		});
 
-		it("reads files when keyring is disabled", async () => {
-			writeCredentialFiles(TEST_URL, "file-token");
-			stubExecFile({ stdout: "my-token" });
-			const { manager } = setup();
+		it("reads via coder login token (file mode) when keyring is disabled", async () => {
+			stubExecFile({ stdout: "file-token\n" });
+			const { manager, resolver } = setup();
 
 			expect(await manager.readToken(TEST_URL, configs)).toEqual({
 				token: "file-token",
 				source: "files",
 			});
-			expect(execFile).not.toHaveBeenCalled();
+			expect(resolver).toHaveBeenCalledWith(TEST_URL);
+			expect(lastExecArgs().args).toEqual([
+				"--global-config",
+				CRED_DIR,
+				"login",
+				"token",
+				"--url",
+				TEST_URL,
+			]);
 		});
 
-		it("reads files under configured global config when keyring is disabled", async () => {
-			useCustomGlobalConfig();
-			writeCredentialFiles(
-				`${TEST_URL}\n`,
-				"custom-file-token\n",
-				CUSTOM_CRED_DIR,
-			);
+		it("reads via coder login token under a user --global-config override", async () => {
+			stubExecFile({ stdout: "custom-file-token" });
 			const { manager } = setup();
 
-			expect(await manager.readToken(TEST_URL, configs)).toEqual({
-				token: "custom-file-token",
-				source: "files",
-			});
+			expect(
+				await manager.readToken(
+					TEST_URL,
+					configWithGlobalConfig(CUSTOM_CRED_DIR),
+				),
+			).toEqual({ token: "custom-file-token", source: "files" });
+			expect(lastExecArgs().args).toEqual([
+				`--global-config=${CUSTOM_CRED_DIR}`,
+				"login",
+				"token",
+				"--url",
+				TEST_URL,
+			]);
+		});
+
+		it("returns undefined for file mode on deployments older than 2.31", async () => {
+			vi.mocked(cliExec.version).mockResolvedValue("2.30.0");
+			const { manager, resolver } = setup();
+
+			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
+			expect(resolver).toHaveBeenCalledWith(TEST_URL);
 			expect(execFile).not.toHaveBeenCalled();
 		});
 
-		it("does not read files when keyring token read is unsupported", async () => {
+		it("does not read when keyring token read is unsupported", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			vi.mocked(cliExec.version).mockResolvedValueOnce("2.30.0");
-			writeCredentialFiles(TEST_URL, "file-token");
 			const { manager, resolver } = setup();
 
 			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
@@ -435,25 +490,13 @@ describe("CliCredentialManager", () => {
 			expect(execFile).not.toHaveBeenCalled();
 		});
 
-		it("reads files when keyring is enabled but unsupported by the CLI", async () => {
+		it("returns undefined when keyring is enabled but unsupported by the CLI", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
-			writeCredentialFiles(TEST_URL, "file-token");
 			const { manager, resolver } = setup();
 
-			expect(await manager.readToken(TEST_URL, configs)).toEqual({
-				token: "file-token",
-				source: "files",
-			});
-			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			expect(execFile).not.toHaveBeenCalled();
-		});
-
-		it("does not read files for a different URL", async () => {
-			writeCredentialFiles("https://other.coder.com", "file-token");
-			const { manager } = setup();
-
 			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
+			expect(resolver).toHaveBeenCalledWith(TEST_URL);
 			expect(execFile).not.toHaveBeenCalled();
 		});
 
@@ -525,25 +568,22 @@ describe("CliCredentialManager", () => {
 			});
 		});
 
-		it("deletes files even when keyring is disabled", async () => {
+		it("deletes files and invokes coder logout (file) when keyring is disabled", async () => {
+			stubExecFile({ stdout: "" });
 			writeCredentialFiles(TEST_URL, "old-token");
 			const { manager } = setup();
 
 			await manager.deleteToken(TEST_URL, configs);
 
-			expect(execFile).not.toHaveBeenCalled();
+			expect(lastExecArgs().args).toEqual([
+				"--global-config",
+				CRED_DIR,
+				"logout",
+				"--url",
+				TEST_URL,
+				"--yes",
+			]);
 			expect(credentialFilesExist()).toBe(false);
-		});
-
-		it("deletes files under configured global config", async () => {
-			useCustomGlobalConfig();
-			writeCredentialFiles(TEST_URL, "old-token", CUSTOM_CRED_DIR);
-			const { manager } = setup();
-
-			await manager.deleteToken(TEST_URL, configs);
-
-			expect(execFile).not.toHaveBeenCalled();
-			expect(credentialFilesExist(CUSTOM_CRED_DIR)).toBe(false);
 		});
 
 		it("never throws on CLI error", async () => {
@@ -589,7 +629,7 @@ describe("CliCredentialManager", () => {
 			expect(lastExecArgs().args).toContain("--header-command");
 		});
 
-		it("skips keyring when CLI version too old", async () => {
+		it("logs out via coder logout (file) when keyring is enabled but unsupported", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
 			stubExecFile({ stdout: "" });
@@ -598,7 +638,14 @@ describe("CliCredentialManager", () => {
 
 			await manager.deleteToken(TEST_URL, configs);
 
-			expect(execFile).not.toHaveBeenCalled();
+			expect(lastExecArgs().args).toEqual([
+				"--global-config",
+				CRED_DIR,
+				"logout",
+				"--url",
+				TEST_URL,
+				"--yes",
+			]);
 			expect(credentialFilesExist()).toBe(false);
 		});
 

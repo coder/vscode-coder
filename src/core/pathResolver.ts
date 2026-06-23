@@ -10,15 +10,12 @@ export class PathResolver {
 	) {}
 
 	/**
-	 * Return the directory where the global Coder configs are stored.
-	 *
-	 * The caller must ensure this directory exists before use.
+	 * Per-deployment directory for the extension's Coder configs. A user
+	 * `--global-config` in `coder.globalFlags` redirects the CLI; this stays the
+	 * default. Caller must ensure it exists.
 	 */
 	public getGlobalConfigDir(safeHostname: string): string {
-		return (
-			PathResolver.resolveOverride("coder.globalConfig", "CODER_CONFIG_DIR") ||
-			path.join(this.basePath, safeHostname)
-		);
+		return path.join(this.basePath, safeHostname);
 	}
 
 	/**

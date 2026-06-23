@@ -34,6 +34,13 @@ describe("check version support", () => {
 			["v2.19.0", "v2.19.1", "v2.20.0+e491217", "v5.0.4+e491217"],
 		);
 	});
+	it("cli login", () => {
+		expectFlag(
+			"cliLogin",
+			["v0.24.0", "v0.14.0", "v0.0.1"],
+			["v0.25.0", "v0.25.1", "v2.31.0", "v3.0.0"],
+		);
+	});
 	it("keyring auth", () => {
 		expectFlag(
 			"keyringAuth",

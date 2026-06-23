@@ -20,59 +20,21 @@ describe("PathResolver", () => {
 	});
 
 	describe("getGlobalConfigDir", () => {
-		it.each([
-			{
-				name: "uses per-deployment global storage when no override is configured",
-				setting: "",
-				env: "",
-				expected: path.join(basePath, "deployment"),
-			},
-			{
-				name: "uses configured global config directory directly",
-				setting: "/custom/coderv2",
-				expected: "/custom/coderv2",
-			},
-			{
-				name: "uses CODER_CONFIG_DIR when setting is empty",
-				setting: "",
-				env: "  /env/coderv2  ",
-				expected: "/env/coderv2",
-			},
-			{
-				name: "uses setting before CODER_CONFIG_DIR",
-				setting: "  /setting/coderv2  ",
-				env: "/env/coderv2",
-				expected: "/setting/coderv2",
-			},
-			{
-				name: "normalizes configured global config directory",
-				setting: "/custom/../coderv2/./dir",
-				expected: "/coderv2/dir",
-			},
-		])("$name", ({ setting, env, expected }) => {
-			vi.stubEnv("CODER_CONFIG_DIR", env);
-			mockConfig.set("coder.globalConfig", setting);
-
-			expectPathsEqual(pathResolver.getGlobalConfigDir("deployment"), expected);
+		it("uses the per-deployment global storage directory", () => {
+			expectPathsEqual(
+				pathResolver.getGlobalConfigDir("deployment"),
+				path.join(basePath, "deployment"),
+			);
 		});
 
-		it.each([
-			{
-				name: "configured global config directory",
-				setting: "~/coderv2",
-			},
-			{
-				name: "CODER_CONFIG_DIR",
-				env: "~/coderv2",
-			},
-		])("expands paths in $name", ({ setting, env }) => {
-			vi.stubEnv("CODER_CONFIG_DIR", env);
-			mockConfig.set("coder.globalConfig", setting ?? "");
+		it("ignores coder.globalConfig and CODER_CONFIG_DIR (override lives in globalFlags)", () => {
+			vi.stubEnv("CODER_CONFIG_DIR", "/env/coderv2");
+			mockConfig.set("coder.globalConfig", "/custom/coderv2");
 
-			const result = pathResolver.getGlobalConfigDir("deployment");
-
-			expect(result).not.toContain("~");
-			expect(result).toContain("coderv2");
+			expectPathsEqual(
+				pathResolver.getGlobalConfigDir("deployment"),
+				path.join(basePath, "deployment"),
+			);
 		});
 	});
 

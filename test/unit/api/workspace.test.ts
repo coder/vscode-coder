@@ -27,6 +27,7 @@ const featureSet: FeatureSet = {
 	wildcardSSH: true,
 	buildReason: true,
 	cliUpdate: true,
+	cliLogin: true,
 	keyringAuth: true,
 	keyringTokenRead: true,
 	supportBundle: true,

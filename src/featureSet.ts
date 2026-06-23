@@ -6,6 +6,7 @@ export interface FeatureSet {
 	wildcardSSH: boolean;
 	buildReason: boolean;
 	cliUpdate: boolean;
+	cliLogin: boolean;
 	keyringAuth: boolean;
 	keyringTokenRead: boolean;
 	supportBundle: boolean;
@@ -47,6 +48,8 @@ export function featureSetForVersion(
 		buildReason: versionAtLeast(version, "2.25.0"),
 		// `coder update` with stop transition (stops before updating)
 		cliUpdate: versionAtLeast(version, "2.24.0"),
+		// `coder login --use-token-as-session` to write a token (file or keyring)
+		cliLogin: versionAtLeast(version, "0.25.0"),
 		// Keyring-backed token storage via `coder login`
 		keyringAuth: versionAtLeast(version, "2.29.0"),
 		// `coder login token` for reading tokens from the keyring

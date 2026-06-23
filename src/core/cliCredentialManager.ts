@@ -12,11 +12,11 @@ import {
 	CredentialFileError,
 	CredentialTelemetry,
 } from "../instrumentation/credentials";
-import { isKeyringEnabled } from "../settings/cli";
+import { getGlobalFlags, isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
 import { type TelemetryReporter } from "../telemetry/reporter";
 import { writeAtomically } from "../util/fs";
-import { normalizeUrl, toSafeHost } from "../util/uri";
+import { toSafeHost } from "../util/uri";
 
 import { version } from "./cliExec";
 
@@ -29,11 +29,13 @@ import type { PathResolver } from "./pathResolver";
 
 const execFileAsync = promisify(execFile);
 
-type KeyringFeature = "keyringAuth" | "keyringTokenRead";
-type TokenReadSource =
-	| { mode: "files" }
-	| { mode: "keyring"; binPath: string }
-	| { mode: "none" };
+// keyring/cli-file delegate to the CLI; legacy-file writes plaintext directly.
+type CliTransport =
+	| { kind: "keyring"; binPath: string }
+	| { kind: "cli-file"; binPath: string; allowOverride: boolean };
+
+type WriteTransport = CliTransport | { kind: "legacy-file" };
+type ReadTransport = CliTransport | { kind: "none" };
 
 export interface CliCredential {
 	token: string;
@@ -74,11 +76,8 @@ export class CliCredentialManager {
 	}
 
 	/**
-	 * Store credentials for a deployment URL. Uses the OS keyring when the
-	 * setting is enabled and the CLI supports it; otherwise writes plaintext
-	 * files under --global-config.
-	 *
-	 * Keyring and files are mutually exclusive, never both.
+	 * Store credentials via `coder login` (keyring or file-backed); falls back
+	 * to writing plaintext files directly on deployments older than 0.25.0.
 	 */
 	public storeToken(
 		url: string,
@@ -87,36 +86,35 @@ export class CliCredentialManager {
 		options?: { signal?: AbortSignal },
 	): Promise<void> {
 		return this.credentialTelemetry.traceStore(configs, async (span) => {
-			const binPath = await this.resolveKeyringBinary(
-				url,
-				configs,
-				"keyringAuth",
-			);
-			if (!binPath) {
+			const transport = await this.resolveWriteTransport(url, configs);
+			if (transport.kind === "legacy-file") {
 				span.setProperty("category", "file");
 				await this.writeCredentialFiles(url, token);
 				return;
 			}
-			span.setProperty("category", "keyring");
-			await this.storeKeyringToken(binPath, url, token, configs, options);
+			span.setProperty(
+				"category",
+				transport.kind === "keyring" ? "keyring" : "file",
+			);
+			await this.cliLogin(transport, url, token, configs, options);
 		});
 	}
 
-	private async storeKeyringToken(
-		binPath: string,
+	private async cliLogin(
+		transport: CliTransport,
 		url: string,
 		token: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<void> {
 		const args = [
-			...getHeaderArgs(configs),
+			...this.credentialGlobalFlags(transport, url, configs),
 			"login",
 			"--use-token-as-session",
 			url,
 		];
 		try {
-			await this.execWithTimeout(binPath, args, {
+			await this.execWithTimeout(transport.binPath, args, {
 				env: { ...process.env, CODER_SESSION_TOKEN: token },
 				signal: options?.signal,
 			});
@@ -131,41 +129,41 @@ export class CliCredentialManager {
 	}
 
 	/**
-	 * Read a token from CLI-managed credentials. Uses `coder login token --url`
-	 * when keyring auth is active, otherwise reads the file credentials under
-	 * --global-config. Returns the token and the source it came from, or
-	 * undefined on any failure (resolver, CLI, empty output). Throws AbortError
-	 * when the signal is aborted.
+	 * Read a token via `coder login token` (keyring or file-backed). Requires
+	 * 2.31.0+; older deployments return undefined. Returns the token and its
+	 * source, or undefined on any failure. Throws AbortError on abort.
 	 */
 	public async readToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<CliCredential | undefined> {
-		const source = await this.resolveTokenReadSource(url, configs);
-		if (source.mode === "files") {
-			const token = await this.readCredentialFiles(url);
-			return token ? { token, source: "files" } : undefined;
-		}
-		if (source.mode === "none") {
+		const transport = await this.resolveReadTransport(url, configs);
+		if (transport.kind === "none") {
 			return undefined;
 		}
-		const token = await this.readKeyringToken(
-			source.binPath,
+		const args = [
+			...this.credentialGlobalFlags(transport, url, configs),
+			"login",
+			"token",
+			"--url",
 			url,
-			configs,
-			options,
-		);
-		return token ? { token, source: "keyring" } : undefined;
+		];
+		const token = await this.runTokenRead(transport.binPath, args, options);
+		if (!token) {
+			return undefined;
+		}
+		return {
+			token,
+			source: transport.kind === "keyring" ? "keyring" : "files",
+		};
 	}
 
-	private async readKeyringToken(
+	private async runTokenRead(
 		binPath: string,
-		url: string,
-		configs: Pick<WorkspaceConfiguration, "get">,
+		args: string[],
 		options?: { signal?: AbortSignal },
 	): Promise<string | undefined> {
-		const args = [...getHeaderArgs(configs), "login", "token", "--url", url];
 		try {
 			const { stdout } = await this.execWithTimeout(binPath, args, {
 				signal: options?.signal,
@@ -181,9 +179,9 @@ export class CliCredentialManager {
 	}
 
 	/**
-	 * Delete credentials for a deployment. Runs file deletion and keyring
-	 * deletion in parallel, both best-effort. Throws AbortError when the
-	 * signal is aborted.
+	 * Delete credentials for a deployment. Removes the default-dir files and
+	 * logs out of the active store (keyring or file via --global-config), both
+	 * best-effort. Throws AbortError when the signal is aborted.
 	 */
 	public deleteToken(
 		url: string,
@@ -193,54 +191,114 @@ export class CliCredentialManager {
 		return this.credentialTelemetry.traceClear(configs, async (span) => {
 			await Promise.all([
 				this.deleteCredentialFiles(url),
-				this.deleteKeyringToken(url, configs, {
-					signal: options?.signal,
-					span,
-				}),
+				this.cliLogout(url, configs, { signal: options?.signal, span }),
 			]);
 		});
 	}
 
 	/**
-	 * Resolve a CLI binary for keyring operations. Returns the binary path
-	 * when keyring is enabled in settings and the CLI version supports the
-	 * requested feature, or undefined to fall back to file-based storage.
-	 *
-	 * Throws on binary resolution or version-check failure (caller decides
-	 * whether to catch or propagate).
+	 * Log out via `coder logout`, keyring or file (--global-config). Records
+	 * failures on the span instead of throwing (except on abort).
 	 */
-	private async resolveKeyringBinary(
+	private async cliLogout(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		feature: KeyringFeature,
-	): Promise<string | undefined> {
-		if (!isKeyringEnabled(configs)) {
-			return undefined;
+		{ signal, span }: { signal?: AbortSignal; span: Span },
+	): Promise<void> {
+		let transport: WriteTransport;
+		try {
+			transport = await this.resolveWriteTransport(url, configs);
+		} catch (error) {
+			this.logger.warn("Could not resolve CLI binary for logout:", error);
+			span.setProperty("error.type", "binary");
+			span.markError();
+			return;
 		}
-		const binPath = await this.resolveBinary(url);
-		return (await this.getFeatureSet(binPath))[feature] ? binPath : undefined;
+		if (transport.kind === "legacy-file") {
+			return;
+		}
+		const args = [
+			...this.credentialGlobalFlags(transport, url, configs),
+			"logout",
+			"--url",
+			url,
+			"--yes",
+		];
+		try {
+			await this.execWithTimeout(transport.binPath, args, { signal });
+			this.logger.info("Deleted token via CLI for", url);
+		} catch (error) {
+			if (isAbortError(error)) {
+				throw error;
+			}
+			this.logger.warn("Failed to delete token via CLI:", error);
+			span.setProperty("error.type", "cli");
+			span.markError();
+		}
 	}
 
-	private async resolveTokenReadSource(
+	private async resolveCli(
 		url: string,
-		configs: Pick<WorkspaceConfiguration, "get">,
-	): Promise<TokenReadSource> {
-		if (!isKeyringEnabled(configs)) {
-			return { mode: "files" };
-		}
+		propagateError: boolean,
+	): Promise<{ binPath: string; featureSet: FeatureSet } | undefined> {
 		try {
 			const binPath = await this.resolveBinary(url);
-			const featureSet = await this.getFeatureSet(binPath);
-			if (!featureSet.keyringAuth) {
-				return { mode: "files" };
-			}
-			return featureSet.keyringTokenRead
-				? { mode: "keyring", binPath }
-				: { mode: "none" };
+			return { binPath, featureSet: await this.getFeatureSet(binPath) };
 		} catch (error) {
-			this.logger.warn("Could not resolve CLI binary for token read:", error);
-			return { mode: "none" };
+			if (propagateError) {
+				throw error;
+			}
+			this.logger.warn("Could not resolve CLI binary:", error);
+			return undefined;
 		}
+	}
+
+	private async resolveWriteTransport(
+		url: string,
+		configs: Pick<WorkspaceConfiguration, "get">,
+	): Promise<WriteTransport> {
+		const keyringEnabled = isKeyringEnabled(configs);
+		const cli = await this.resolveCli(url, keyringEnabled);
+		if (cli && keyringEnabled && cli.featureSet.keyringAuth) {
+			return { kind: "keyring", binPath: cli.binPath };
+		}
+		if (cli?.featureSet.cliLogin) {
+			return cliFileTransport(cli);
+		}
+		return { kind: "legacy-file" };
+	}
+
+	private async resolveReadTransport(
+		url: string,
+		configs: Pick<WorkspaceConfiguration, "get">,
+	): Promise<ReadTransport> {
+		const keyringEnabled = isKeyringEnabled(configs);
+		const cli = await this.resolveCli(url, false);
+		if (cli && keyringEnabled && cli.featureSet.keyringAuth) {
+			return cli.featureSet.keyringTokenRead
+				? { kind: "keyring", binPath: cli.binPath }
+				: { kind: "none" };
+		}
+		if (cli?.featureSet.keyringTokenRead) {
+			return cliFileTransport(cli);
+		}
+		return { kind: "none" };
+	}
+
+	/** Keyring uses the default store; file mode passes --global-config. */
+	private credentialGlobalFlags(
+		transport: CliTransport,
+		url: string,
+		configs: Pick<WorkspaceConfiguration, "get">,
+	): string[] {
+		if (transport.kind === "keyring") {
+			return getHeaderArgs(configs);
+		}
+		return getGlobalFlags(configs, {
+			mode: "global-config",
+			configDir: this.pathResolver.getGlobalConfigDir(toSafeHost(url)),
+			allowOverride: transport.allowOverride,
+		});
 	}
 
 	private async getFeatureSet(binPath: string): Promise<FeatureSet> {
@@ -292,34 +350,6 @@ export class CliCredentialManager {
 	}
 
 	/**
-	 * Read URL and token files under --global-config.
-	 */
-	private async readCredentialFiles(url: string): Promise<string | undefined> {
-		try {
-			const files = await this.readCredentialFilePair(url);
-			return sameNormalizedUrl(files.url, url)
-				? nonEmpty(files.token)
-				: undefined;
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-				this.logger.warn("Failed to read credential files:", error);
-			}
-			return undefined;
-		}
-	}
-
-	private async readCredentialFilePair(
-		url: string,
-	): Promise<{ url: string; token: string }> {
-		const safeHostname = toSafeHost(url);
-		const [storedUrl, token] = await Promise.all([
-			fs.readFile(this.pathResolver.getUrlPath(safeHostname), "utf8"),
-			fs.readFile(this.pathResolver.getSessionTokenPath(safeHostname), "utf8"),
-		]);
-		return { url: storedUrl, token };
-	}
-
-	/**
 	 * Delete URL and token files. Best-effort: never throws.
 	 */
 	private async deleteCredentialFiles(url: string): Promise<void> {
@@ -337,43 +367,6 @@ export class CliCredentialManager {
 		);
 	}
 
-	/**
-	 * Delete keyring token via `coder logout`. Best-effort: records the failure
-	 * on the span instead of throwing (except on abort), so it is tagged where
-	 * it occurs.
-	 */
-	private async deleteKeyringToken(
-		url: string,
-		configs: Pick<WorkspaceConfiguration, "get">,
-		{ signal, span }: { signal?: AbortSignal; span: Span },
-	): Promise<void> {
-		let binPath: string | undefined;
-		try {
-			binPath = await this.resolveKeyringBinary(url, configs, "keyringAuth");
-		} catch (error) {
-			this.logger.warn("Could not resolve keyring binary for delete:", error);
-			span.setProperty("error.type", "binary");
-			span.markError();
-			return;
-		}
-		if (!binPath) {
-			return;
-		}
-
-		const args = [...getHeaderArgs(configs), "logout", "--url", url, "--yes"];
-		try {
-			await this.execWithTimeout(binPath, args, { signal });
-			this.logger.info("Deleted token via CLI for", url);
-		} catch (error) {
-			if (isAbortError(error)) {
-				throw error;
-			}
-			this.logger.warn("Failed to delete token via CLI:", error);
-			span.setProperty("error.type", "cli");
-			span.markError();
-		}
-	}
-
 	/** Atomically write content to a file. */
 	private async atomicWriteFile(
 		filePath: string,
@@ -389,8 +382,17 @@ export class CliCredentialManager {
 	}
 }
 
-function sameNormalizedUrl(storedUrl: string, expectedUrl: string): boolean {
-	return normalizeUrl(storedUrl) === normalizeUrl(expectedUrl);
+function cliFileTransport(cli: {
+	binPath: string;
+	featureSet: FeatureSet;
+}): CliTransport {
+	// Override applies only once read+write are CLI-mediated (2.31+), matching
+	// resolveCliAuth.
+	return {
+		kind: "cli-file",
+		binPath: cli.binPath,
+		allowOverride: cli.featureSet.keyringTokenRead,
+	};
 }
 
 function nonEmpty(value: string): string | undefined {
