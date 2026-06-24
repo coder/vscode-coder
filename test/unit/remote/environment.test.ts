@@ -100,25 +100,42 @@ describe("getSshProxyEnvironment", () => {
 });
 
 describe("applySshEnvironment", () => {
-	it("applies and restores proxy variables", () => {
+	it("applies proxy variables to process.env and the collection, and restores on dispose", () => {
 		const { config } = setup();
 		const env: Record<string, string | undefined> = {};
+		const collection = fakeEnvCollection();
 
 		const applied = applySshEnvironment(
 			config({
 				"http.proxy": proxy,
 				"coder.proxyBypass": "internal.example.com",
 			}),
+			collection,
 			env,
 		);
-		expect(env).toEqual({
+		const expected = {
 			HTTP_PROXY: proxy,
 			HTTPS_PROXY: proxy,
 			NO_PROXY: "internal.example.com",
-		});
+		};
+		expect(env).toEqual(expected);
+		expect(collection.vars).toEqual(expected);
+		expect(collection.persistent).toBe(false);
 
 		applied.dispose();
 		expect(env).toEqual({});
+		expect(collection.vars).toEqual({});
+	});
+
+	it("sets nothing when no proxy is configured", () => {
+		const { config } = setup();
+		const env: Record<string, string | undefined> = {};
+		const collection = fakeEnvCollection();
+
+		applySshEnvironment(config(), collection, env);
+
+		expect(env).toEqual({});
+		expect(collection.vars).toEqual({});
 	});
 
 	it("does not overwrite existing lowercase variables", () => {
@@ -129,7 +146,11 @@ describe("applySshEnvironment", () => {
 		};
 		const env: Record<string, string | undefined> = { ...original };
 
-		const applied = applySshEnvironment(config({ "http.proxy": proxy }), env);
+		const applied = applySshEnvironment(
+			config({ "http.proxy": proxy }),
+			fakeEnvCollection(),
+			env,
+		);
 		expect(env).toEqual({
 			...original,
 			HTTP_PROXY: proxy,
@@ -145,7 +166,11 @@ describe("applySshEnvironment", () => {
 		const original = "http://old-http-proxy.example.com:8080";
 		const env = caseInsensitiveEnvironment({ http_proxy: original });
 
-		const applied = applySshEnvironment(config({ "http.proxy": proxy }), env);
+		const applied = applySshEnvironment(
+			config({ "http.proxy": proxy }),
+			fakeEnvCollection(),
+			env,
+		);
 		expect(env.HTTP_PROXY).toBe(proxy);
 		expect(env.http_proxy).toBe(proxy);
 
@@ -156,7 +181,10 @@ describe("applySshEnvironment", () => {
 
 	it("propagates proxy variables to newly spawned child processes", () => {
 		const { config } = setup();
-		const applied = applySshEnvironment(config({ "http.proxy": proxy }));
+		const applied = applySshEnvironment(
+			config({ "http.proxy": proxy }),
+			fakeEnvCollection(),
+		);
 
 		try {
 			expect(getProxyEnvFromChild()).toEqual({ http: proxy, https: proxy });
@@ -165,6 +193,22 @@ describe("applySshEnvironment", () => {
 		}
 	});
 });
+
+function fakeEnvCollection() {
+	const vars: Record<string, string> = {};
+	return {
+		persistent: true,
+		replace: (variable: string, value: string) => {
+			vars[variable] = value;
+		},
+		clear: () => {
+			for (const key of Object.keys(vars)) {
+				delete vars[key];
+			}
+		},
+		vars,
+	};
+}
 
 function caseInsensitiveEnvironment(
 	values: Record<string, string>,

@@ -1,6 +1,9 @@
 import { joinNoProxy } from "../api/proxy";
 
-import type { WorkspaceConfiguration } from "vscode";
+import type {
+	GlobalEnvironmentVariableCollection,
+	WorkspaceConfiguration,
+} from "vscode";
 
 type Environment = Record<string, string | undefined>;
 type PreviousValue = [key: string, existed: boolean, value: string | undefined];
@@ -22,23 +25,41 @@ export const SSH_PROXY_SETTINGS: ReadonlyArray<{
 ];
 
 /**
- * Sets SSH-related environment variables on this extension host's process.env so
- * the spawned `coder ssh` ProxyCommand inherits them. For now that is just the
- * proxy configuration (HTTP_PROXY/HTTPS_PROXY/NO_PROXY): the coder CLI reads them
- * like any Go HTTP client and has no proxy flag. We mutate process.env rather
- * than baking values into the SSH config so no credentialed proxy URL is written
- * to disk and multiple windows onto the same workspace stay independent.
- *
- * Best-effort: only processes spawned afterwards inherit the change. MS VS Code
- * with `remote.SSH.useLocalServer=false` spawns ssh through a code path that
- * does not inherit, so propagation there needs `useLocalServer=true`. Returns a
- * disposable that restores the previous values.
+ * Apply the SSH environment that the spawned `coder ssh` ProxyCommand inherits.
+ * Currently just the proxy config (HTTP_PROXY/HTTPS_PROXY/NO_PROXY), read by the
+ * coder CLI like any Go HTTP client. Applied via both process.env (ssh spawned as
+ * a child, `remote.SSH.useLocalServer=true`) and the terminal env collection (ssh
+ * spawned in a terminal, `useLocalServer=false`, which can't see process.env),
+ * since the mode isn't knowable up front. Mutating env rather than the SSH config
+ * keeps credentialed URLs off disk and windows independent. Disposable restores
+ * both.
  */
 export function applySshEnvironment(
 	cfg: Pick<WorkspaceConfiguration, "get">,
+	collection: Pick<
+		GlobalEnvironmentVariableCollection,
+		"persistent" | "replace" | "clear"
+	>,
 	env: Environment = process.env,
 ): { dispose(): void } {
-	return applyEnvironment(getSshProxyEnvironment(cfg), env);
+	const values = getSshProxyEnvironment(cfg);
+	const restoreEnv = applyEnvironment(values, env);
+
+	collection.persistent = false;
+	// Drop stale vars from a prior connect (e.g. NO_PROXY set last time, not now).
+	collection.clear();
+	for (const [key, value] of Object.entries(values)) {
+		if (value) {
+			collection.replace(key, value);
+		}
+	}
+
+	return {
+		dispose() {
+			restoreEnv.dispose();
+			collection.clear();
+		},
+	};
 }
 
 /**

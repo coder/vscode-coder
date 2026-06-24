@@ -47,11 +47,7 @@ import {
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
-import {
-	applySshEnvironment,
-	getSshProxyEnvironment,
-	SSH_PROXY_SETTINGS,
-} from "./environment";
+import { applySshEnvironment, SSH_PROXY_SETTINGS } from "./environment";
 import {
 	SshConfig,
 	type SshValues,
@@ -74,7 +70,6 @@ import type { Commands } from "../commands";
 import type { CliManager } from "../core/cliManager";
 import type { ServiceContainer } from "../core/container";
 import type { ContextManager } from "../core/contextManager";
-import type { DismissibleNotifier } from "../core/dismissibleNotifier";
 import type { StartupMode } from "../core/mementoManager";
 import type { PathResolver } from "../core/pathResolver";
 import type { SecretsManager } from "../core/secretsManager";
@@ -111,7 +106,6 @@ export class Remote {
 	private readonly contextManager: ContextManager;
 	private readonly secretsManager: SecretsManager;
 	private readonly loginCoordinator: LoginCoordinator;
-	private readonly dismissibleNotifier: DismissibleNotifier;
 	private readonly setupTelemetry: RemoteSetupTelemetry;
 	private readonly authTelemetry: AuthTelemetry;
 
@@ -126,7 +120,6 @@ export class Remote {
 		this.contextManager = serviceContainer.getContextManager();
 		this.secretsManager = serviceContainer.getSecretsManager();
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
-		this.dismissibleNotifier = serviceContainer.getDismissibleNotifier();
 		this.setupTelemetry = new RemoteSetupTelemetry(
 			serviceContainer.getTelemetryService(),
 		);
@@ -213,9 +206,11 @@ export class Remote {
 
 		try {
 			disposables.push(
-				applySshEnvironment(vscode.workspace.getConfiguration()),
+				applySshEnvironment(
+					vscode.workspace.getConfiguration(),
+					this.extensionContext.environmentVariableCollection,
+				),
 			);
-			await this.warnIfProxyEnvNotInherited();
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrl, safeHostname: parts.safeHostname },
@@ -835,54 +830,6 @@ export class Remote {
 			return "";
 		}
 		return this.pathResolver.getProxyLogPath();
-	}
-
-	/**
-	 * MS VS Code with `remote.SSH.useLocalServer=false` spawns ssh without
-	 * inheriting process.env, so the proxy variables never reach it. Warn once and
-	 * offer to enable the local server when proxy settings are configured.
-	 *
-	 * Blocks setup with a modal: the write must land before ssh spawns (which
-	 * happens after setup returns) for it to apply without a reload. Catches
-	 * internally so a failure here never aborts the connection.
-	 */
-	private async warnIfProxyEnvNotInherited(): Promise<void> {
-		try {
-			const cfg = vscode.workspace.getConfiguration();
-			// HTTP_PROXY is only set when http.proxy is configured.
-			if (!getSshProxyEnvironment(cfg).HTTP_PROXY) {
-				return;
-			}
-			if (cfg.get<boolean>("remote.SSH.useLocalServer") !== false) {
-				return;
-			}
-
-			const ENABLE = "Enable Local Server";
-			const choice = await this.dismissibleNotifier.showDismissible(
-				"coder.proxyUseLocalServerWarningDismissed",
-				"Your proxy settings may not reach the SSH connection because `remote.SSH.useLocalServer` is disabled. Enable it so Coder can apply the proxy to the connection.",
-				{ actions: [ENABLE], modal: true },
-			);
-			if (choice !== ENABLE) {
-				return;
-			}
-
-			// Use the jsonc writer, not cfg.update which can hang during remote setup.
-			// No reload needed: ssh hasn't spawned yet, so it picks this up on connect.
-			const ok = await applySettingOverrides(
-				this.pathResolver.getUserSettingsPath(),
-				[{ key: "remote.SSH.useLocalServer", value: true }],
-				this.logger,
-			);
-			if (!ok) {
-				this.logger.warn("Failed to enable remote.SSH.useLocalServer");
-			}
-		} catch (error) {
-			this.logger.debug(
-				"Failed to surface proxy useLocalServer warning",
-				error,
-			);
-		}
 	}
 
 	/**
