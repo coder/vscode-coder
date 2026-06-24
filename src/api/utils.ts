@@ -4,7 +4,7 @@ import { type WorkspaceConfiguration } from "vscode";
 
 import { expandPath } from "../util";
 
-import { getProxyForUrl } from "./proxy";
+import { getProxyForUrl, joinNoProxy } from "./proxy";
 
 /**
  * Return whether the API will need a token for authorization.
@@ -56,7 +56,7 @@ export async function createHttpAgent(
 				url,
 				cfg.get("http.proxy"),
 				cfg.get("coder.proxyBypass"),
-				httpNoProxy?.map((noProxy) => noProxy.trim())?.join(","),
+				joinNoProxy(httpNoProxy),
 			);
 		},
 		headers,

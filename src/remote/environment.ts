@@ -1,4 +1,4 @@
-import { getProxyForUrl } from "../api/proxy";
+import { joinNoProxy } from "../api/proxy";
 
 import type { WorkspaceConfiguration } from "vscode";
 
@@ -30,34 +30,31 @@ export const SSH_PROXY_SETTINGS: ReadonlyArray<{
  * to disk and multiple windows onto the same workspace stay independent.
  *
  * Best-effort: only processes spawned afterwards inherit the change. MS VS Code
- * with `remote.SSH.useLocalServer=false` spawns ssh off a path that does not
- * inherit, so propagation there needs `useLocalServer=true`. Returns a disposable
- * that restores the previous values.
+ * with `remote.SSH.useLocalServer=false` spawns ssh through a code path that
+ * does not inherit, so propagation there needs `useLocalServer=true`. Returns a
+ * disposable that restores the previous values.
  */
 export function applySshEnvironment(
-	baseUrl: string,
 	cfg: Pick<WorkspaceConfiguration, "get">,
 	env: Environment = process.env,
 ): { dispose(): void } {
-	return applyEnvironment(getSshProxyEnvironment(baseUrl, cfg), env);
+	return applyEnvironment(getSshProxyEnvironment(cfg), env);
 }
 
 /**
  * The proxy portion of the SSH environment. Exposed so callers can check whether
- * a proxy actually applies to a deployment via `.HTTP_PROXY`.
+ * proxy settings are configured via `.HTTP_PROXY`.
  */
 export function getSshProxyEnvironment(
-	baseUrl: string,
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): SshEnvironment {
-	const httpProxy = getSetting(cfg, "http.proxy");
-	const noProxy = getSetting(cfg, "coder.proxyBypass") ?? getHttpNoProxy(cfg);
-	const proxy = httpProxy
-		? getProxyForUrl(baseUrl, httpProxy, noProxy, undefined)
-		: "";
+	const httpProxy = trimmed(cfg.get<string | null>("http.proxy"));
+	const noProxy =
+		trimmed(cfg.get<string | null>("coder.proxyBypass")) ??
+		joinNoProxy(cfg.get<string[]>("http.noProxy"));
 
 	return {
-		...(proxy ? { HTTP_PROXY: proxy, HTTPS_PROXY: proxy } : {}),
+		...(httpProxy ? { HTTP_PROXY: httpProxy, HTTPS_PROXY: httpProxy } : {}),
 		...(noProxy ? { NO_PROXY: noProxy } : {}),
 	};
 }
@@ -71,10 +68,9 @@ function applyEnvironment(
 		if (value === undefined) {
 			continue;
 		}
-		for (const envKey of getEnvKeys(env, key)) {
-			previous.push([envKey, Object.hasOwn(env, envKey), env[envKey]]);
-			env[envKey] = value;
-		}
+		const previousValue = env[key];
+		previous.push([key, previousValue !== undefined, previousValue]);
+		env[key] = value;
 	}
 
 	let disposed = false;
@@ -84,8 +80,7 @@ function applyEnvironment(
 				return;
 			}
 			disposed = true;
-			for (let i = previous.length - 1; i >= 0; i--) {
-				const [key, existed, value] = previous[i];
+			for (const [key, existed, value] of previous) {
 				if (existed) {
 					env[key] = value;
 				} else {
@@ -96,29 +91,6 @@ function applyEnvironment(
 	};
 }
 
-function getEnvKeys(env: Environment, key: string): string[] {
-	const keys = Object.keys(env).filter(
-		(envKey) => envKey.toLowerCase() === key.toLowerCase(),
-	);
-	return keys.length > 0 ? keys : [key];
-}
-
-function getSetting(
-	cfg: Pick<WorkspaceConfiguration, "get">,
-	setting: string,
-): string | undefined {
-	const value = cfg.get<string | null>(setting);
+function trimmed(value: string | null | undefined): string | undefined {
 	return typeof value === "string" ? value.trim() || undefined : undefined;
-}
-
-function getHttpNoProxy(
-	cfg: Pick<WorkspaceConfiguration, "get">,
-): string | undefined {
-	return (
-		cfg
-			.get<string[]>("http.noProxy", [])
-			.map((value) => value.trim())
-			.filter(Boolean)
-			.join(",") || undefined
-	);
 }

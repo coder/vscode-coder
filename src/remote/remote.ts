@@ -213,9 +213,9 @@ export class Remote {
 
 		try {
 			disposables.push(
-				applySshEnvironment(baseUrl, vscode.workspace.getConfiguration()),
+				applySshEnvironment(vscode.workspace.getConfiguration()),
 			);
-			await this.warnIfProxyEnvNotInherited(baseUrl);
+			await this.warnIfProxyEnvNotInherited();
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrl, safeHostname: parts.safeHostname },
@@ -840,17 +840,17 @@ export class Remote {
 	/**
 	 * MS VS Code with `remote.SSH.useLocalServer=false` spawns ssh without
 	 * inheriting process.env, so the proxy variables never reach it. Warn once and
-	 * offer to enable the local server when a proxy applies to this deployment.
+	 * offer to enable the local server when proxy settings are configured.
 	 *
 	 * Blocks setup with a modal: the write must land before ssh spawns (which
 	 * happens after setup returns) for it to apply without a reload. Catches
 	 * internally so a failure here never aborts the connection.
 	 */
-	private async warnIfProxyEnvNotInherited(baseUrl: string): Promise<void> {
+	private async warnIfProxyEnvNotInherited(): Promise<void> {
 		try {
 			const cfg = vscode.workspace.getConfiguration();
-			// HTTP_PROXY is only set when a proxy actually applies to this deployment.
-			if (!getSshProxyEnvironment(baseUrl, cfg).HTTP_PROXY) {
+			// HTTP_PROXY is only set when http.proxy is configured.
+			if (!getSshProxyEnvironment(cfg).HTTP_PROXY) {
 				return;
 			}
 			if (cfg.get<boolean>("remote.SSH.useLocalServer") !== false) {

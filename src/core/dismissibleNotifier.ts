@@ -5,12 +5,8 @@ import type { Memento } from "vscode";
 const DISMISS = "Don't Show Again";
 
 /** globalState keys under which "Don't Show Again" dismissals are stored. */
-export const DISMISSIBLE_NOTIFICATION_KEYS = [
-	"coder.proxyUseLocalServerWarningDismissed",
-] as const;
-
 export type DismissibleNotificationKey =
-	(typeof DISMISSIBLE_NOTIFICATION_KEYS)[number];
+	"coder.proxyUseLocalServerWarningDismissed";
 
 export class DismissibleNotifier {
 	public constructor(private readonly globalState: Memento) {}

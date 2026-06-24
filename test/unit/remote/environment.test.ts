@@ -8,7 +8,6 @@ import {
 
 import { MockConfigurationProvider } from "../../mocks/testHelpers";
 
-const URL = "https://coder.example.com";
 const proxy = "http://proxy.example.com:8080";
 
 function setup() {
@@ -32,12 +31,16 @@ describe("getSshProxyEnvironment", () => {
 			expected: { HTTP_PROXY: proxy, HTTPS_PROXY: proxy },
 		},
 		{
-			name: "drops the proxy when the deployment is bypassed",
+			name: "passes through the proxy when the deployment is bypassed",
 			settings: {
 				"http.proxy": proxy,
 				"coder.proxyBypass": "coder.example.com",
 			},
-			expected: { NO_PROXY: "coder.example.com" },
+			expected: {
+				HTTP_PROXY: proxy,
+				HTTPS_PROXY: proxy,
+				NO_PROXY: "coder.example.com",
+			},
 		},
 		{
 			name: "falls back to http.noProxy when coder.proxyBypass is unset",
@@ -64,17 +67,35 @@ describe("getSshProxyEnvironment", () => {
 				NO_PROXY: "primary.example.com",
 			},
 		},
+		{
+			name: "ignores a whitespace-only http.proxy",
+			settings: { "http.proxy": "   " },
+			expected: {},
+		},
+		{
+			name: "falls back to http.noProxy when coder.proxyBypass is whitespace",
+			settings: {
+				"http.proxy": proxy,
+				"coder.proxyBypass": "   ",
+				"http.noProxy": ["fallback.example.com"],
+			},
+			expected: {
+				HTTP_PROXY: proxy,
+				HTTPS_PROXY: proxy,
+				NO_PROXY: "fallback.example.com",
+			},
+		},
 	])("$name", ({ settings, expected }) => {
 		const { config } = setup();
 
-		expect(getSshProxyEnvironment(URL, config(settings))).toEqual(expected);
+		expect(getSshProxyEnvironment(config(settings))).toEqual(expected);
 	});
 
 	it("ignores an existing env proxy when http.proxy is unset", () => {
 		const { config } = setup();
 		vi.stubEnv("HTTPS_PROXY", "http://env-proxy.example.com:8080");
 
-		expect(getSshProxyEnvironment(URL, config())).toEqual({});
+		expect(getSshProxyEnvironment(config())).toEqual({});
 	});
 });
 
@@ -84,7 +105,6 @@ describe("applySshEnvironment", () => {
 		const env: Record<string, string | undefined> = {};
 
 		const applied = applySshEnvironment(
-			URL,
 			config({
 				"http.proxy": proxy,
 				"coder.proxyBypass": "internal.example.com",
@@ -101,7 +121,7 @@ describe("applySshEnvironment", () => {
 		expect(env).toEqual({});
 	});
 
-	it("overwrites and restores existing lowercase variables", () => {
+	it("does not overwrite existing lowercase variables", () => {
 		const { config } = setup();
 		const original = {
 			http_proxy: "http://old-http-proxy.example.com:8080",
@@ -109,20 +129,34 @@ describe("applySshEnvironment", () => {
 		};
 		const env: Record<string, string | undefined> = { ...original };
 
-		const applied = applySshEnvironment(
-			URL,
-			config({ "http.proxy": proxy }),
-			env,
-		);
-		expect(env).toEqual({ http_proxy: proxy, https_proxy: proxy });
+		const applied = applySshEnvironment(config({ "http.proxy": proxy }), env);
+		expect(env).toEqual({
+			...original,
+			HTTP_PROXY: proxy,
+			HTTPS_PROXY: proxy,
+		});
 
 		applied.dispose();
 		expect(env).toEqual(original);
 	});
 
+	it("restores existing case-insensitive variables", () => {
+		const { config } = setup();
+		const original = "http://old-http-proxy.example.com:8080";
+		const env = caseInsensitiveEnvironment({ http_proxy: original });
+
+		const applied = applySshEnvironment(config({ "http.proxy": proxy }), env);
+		expect(env.HTTP_PROXY).toBe(proxy);
+		expect(env.http_proxy).toBe(proxy);
+
+		applied.dispose();
+		expect(env.HTTP_PROXY).toBe(original);
+		expect(env.http_proxy).toBe(original);
+	});
+
 	it("propagates proxy variables to newly spawned child processes", () => {
 		const { config } = setup();
-		const applied = applySshEnvironment(URL, config({ "http.proxy": proxy }));
+		const applied = applySshEnvironment(config({ "http.proxy": proxy }));
 
 		try {
 			expect(getProxyEnvFromChild()).toEqual({ http: proxy, https: proxy });
@@ -131,6 +165,41 @@ describe("applySshEnvironment", () => {
 		}
 	});
 });
+
+function caseInsensitiveEnvironment(
+	values: Record<string, string>,
+): Record<string, string | undefined> {
+	return new Proxy(values, {
+		get(target, property) {
+			if (typeof property !== "string") {
+				return undefined;
+			}
+			return target[getCaseInsensitiveKey(target, property) ?? property];
+		},
+		set(target, property, value) {
+			if (typeof property !== "string") {
+				return false;
+			}
+			target[getCaseInsensitiveKey(target, property) ?? property] = value;
+			return true;
+		},
+		deleteProperty(target, property) {
+			if (typeof property !== "string") {
+				return false;
+			}
+			return delete target[getCaseInsensitiveKey(target, property) ?? property];
+		},
+	});
+}
+
+function getCaseInsensitiveKey(
+	values: Record<string, string | undefined>,
+	key: string,
+): string | undefined {
+	return Object.keys(values).find(
+		(valueKey) => valueKey.toLowerCase() === key.toLowerCase(),
+	);
+}
 
 function getProxyEnvFromChild(): { http: string; https: string } {
 	const result = spawnSync(
