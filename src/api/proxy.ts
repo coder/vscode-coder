@@ -12,6 +12,18 @@ const DEFAULT_PORTS: Record<string, number> = {
 	wss: 443,
 };
 
+/** Join a no-proxy list into a comma string, dropping blanks. */
+export function joinNoProxy(
+	entries: string[] | null | undefined,
+): string | undefined {
+	return (
+		entries
+			?.map((entry) => entry.trim())
+			.filter(Boolean)
+			.join(",") || undefined
+	);
+}
+
 /**
  * @param {string|object} url - The URL, or the result from url.parse.
  * @param {string} httpProxy - The proxy URL to use.

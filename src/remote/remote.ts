@@ -1,9 +1,4 @@
 import { isAxiosError } from "axios";
-import { type Api } from "coder/site/src/api/api";
-import {
-	type Workspace,
-	type WorkspaceAgent,
-} from "coder/site/src/api/typesGenerated";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -20,18 +15,11 @@ import { extractAgents } from "../api/api-helper";
 import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import { type Commands } from "../commands";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
 } from "../configWatcher";
 import { version as cliVersion } from "../core/cliExec";
-import { type CliManager } from "../core/cliManager";
-import { type ServiceContainer } from "../core/container";
-import { type ContextManager } from "../core/contextManager";
-import { type StartupMode } from "../core/mementoManager";
-import { type PathResolver } from "../core/pathResolver";
-import { type SecretsManager } from "../core/secretsManager";
 import { toError } from "../error/errorUtils";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { Inbox } from "../inbox";
@@ -40,8 +28,6 @@ import {
 	RemoteSetupTelemetry,
 	type RemoteSetupTracer,
 } from "../instrumentation/remoteSetup";
-import { type Logger } from "../logging/logger";
-import { type LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	type CliAuth,
@@ -61,6 +47,7 @@ import {
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
+import { applySshEnvironment, SSH_PROXY_SETTINGS } from "./environment";
 import {
 	SshConfig,
 	type SshValues,
@@ -72,6 +59,22 @@ import { applySettingOverrides, buildSshOverrides } from "./sshOverrides";
 import { SshProcessMonitor } from "./sshProcess";
 import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
+
+import type { Api } from "coder/site/src/api/api";
+import type {
+	Workspace,
+	WorkspaceAgent,
+} from "coder/site/src/api/typesGenerated";
+
+import type { Commands } from "../commands";
+import type { CliManager } from "../core/cliManager";
+import type { ServiceContainer } from "../core/container";
+import type { ContextManager } from "../core/contextManager";
+import type { StartupMode } from "../core/mementoManager";
+import type { PathResolver } from "../core/pathResolver";
+import type { SecretsManager } from "../core/secretsManager";
+import type { Logger } from "../logging/logger";
+import type { LoginCoordinator } from "../login/loginCoordinator";
 
 export interface RemoteDetails extends vscode.Disposable {
 	safeHostname: string;
@@ -202,6 +205,12 @@ export class Remote {
 		const { args, parts, workspaceName, baseUrl, token, disposables } = context;
 
 		try {
+			disposables.push(
+				applySshEnvironment(
+					vscode.workspace.getConfiguration(),
+					this.extensionContext.environmentVariableCollection,
+				),
+			);
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrl, safeHostname: parts.safeHostname },
@@ -454,6 +463,11 @@ export class Remote {
 					title: "SSH Flags",
 					getValue: () => getSshFlags(vscode.workspace.getConfiguration()),
 				},
+				...SSH_PROXY_SETTINGS.map(({ setting, title }) => ({
+					setting,
+					title,
+					getValue: () => vscode.workspace.getConfiguration().get(setting),
+				})),
 			];
 			if (featureSet.proxyLogDirectory) {
 				settingsToWatch.push({
