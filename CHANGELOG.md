@@ -5,6 +5,15 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- Propagate VS Code's proxy settings (`http.proxy`, `http.noProxy`, and
+  `coder.proxyBypass`) to the SSH environment as `HTTP_PROXY`/`HTTPS_PROXY`/
+  `NO_PROXY`, so the `coder ssh` ProxyCommand connects through the configured
+  proxy whether SSH runs as a child process or in a terminal.
+
 ## [v1.15.0](https://github.com/coder/vscode-coder/releases/tag/v1.15.0) 2026-06-12
 
 ### Added

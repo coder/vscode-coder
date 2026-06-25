@@ -6,7 +6,6 @@ import type {
 } from "vscode";
 
 type Environment = Record<string, string | undefined>;
-type PreviousValue = [key: string, existed: boolean, value: string | undefined];
 type SshEnvironment = Partial<
 	Record<"HTTP_PROXY" | "HTTPS_PROXY" | "NO_PROXY", string>
 >;
@@ -62,10 +61,7 @@ export function applySshEnvironment(
 	};
 }
 
-/**
- * The proxy portion of the SSH environment. Exposed so callers can check whether
- * proxy settings are configured via `.HTTP_PROXY`.
- */
+/** The proxy portion of the SSH environment, derived from VS Code's settings. */
 export function getSshProxyEnvironment(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): SshEnvironment {
@@ -75,8 +71,9 @@ export function getSshProxyEnvironment(
 		joinNoProxy(cfg.get<string[]>("http.noProxy"));
 
 	return {
-		...(httpProxy ? { HTTP_PROXY: httpProxy, HTTPS_PROXY: httpProxy } : {}),
-		...(noProxy ? { NO_PROXY: noProxy } : {}),
+		HTTP_PROXY: httpProxy,
+		HTTPS_PROXY: httpProxy,
+		NO_PROXY: noProxy,
 	};
 }
 
@@ -84,13 +81,13 @@ function applyEnvironment(
 	values: SshEnvironment,
 	env: Environment,
 ): { dispose(): void } {
-	const previous: PreviousValue[] = [];
+	// Stored `undefined` means the key was absent and should be deleted on cleanup.
+	const previous: Environment = {};
 	for (const [key, value] of Object.entries(values)) {
 		if (value === undefined) {
 			continue;
 		}
-		const previousValue = env[key];
-		previous.push([key, previousValue !== undefined, previousValue]);
+		previous[key] = env[key];
 		env[key] = value;
 	}
 
@@ -101,11 +98,11 @@ function applyEnvironment(
 				return;
 			}
 			disposed = true;
-			for (const [key, existed, value] of previous) {
-				if (existed) {
-					env[key] = value;
-				} else {
+			for (const [key, value] of Object.entries(previous)) {
+				if (value === undefined) {
 					delete env[key];
+				} else {
+					env[key] = value;
 				}
 			}
 		},
