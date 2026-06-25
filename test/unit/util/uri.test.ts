@@ -5,7 +5,7 @@ import {
 	normalizeUrl,
 	openInBrowser,
 	removeTrailingSlashes,
-	resolveUiUrl,
+	resolveCoderDashboardUrl,
 	toSafeHost,
 } from "@/util/uri";
 
@@ -51,7 +51,7 @@ describe("normalizeUrl", () => {
 	});
 });
 
-describe("resolveUiUrl", () => {
+describe("resolveCoderDashboardUrl", () => {
 	let configurationProvider: MockConfigurationProvider;
 
 	beforeEach(() => {
@@ -59,7 +59,7 @@ describe("resolveUiUrl", () => {
 	});
 
 	it("returns the connection URL when no alternative is configured", () => {
-		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
+		expect(resolveCoderDashboardUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com:7004",
 		);
 	});
@@ -71,7 +71,7 @@ describe("resolveUiUrl", () => {
 		"returns the connection URL when the alternative is $name",
 		({ value }) => {
 			configurationProvider.set("coder.alternativeWebUrl", value);
-			expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
+			expect(resolveCoderDashboardUrl("https://coder.example.com:7004")).toBe(
 				"https://coder.example.com:7004",
 			);
 		},
@@ -90,7 +90,7 @@ describe("resolveUiUrl", () => {
 		{ name: "trims whitespace", value: "  https://coder.example.com  " },
 	])("$name", ({ value }) => {
 		configurationProvider.set("coder.alternativeWebUrl", value);
-		expect(resolveUiUrl("https://coder.example.com:7004")).toBe(
+		expect(resolveCoderDashboardUrl("https://coder.example.com:7004")).toBe(
 			"https://coder.example.com",
 		);
 	});

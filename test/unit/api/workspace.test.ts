@@ -28,7 +28,7 @@ const featureSet: FeatureSet = {
 	buildReason: true,
 	cliUpdate: true,
 	keyringAuth: true,
-	keyringTokenRead: true,
+	tokenRead: true,
 	supportBundle: true,
 };
 

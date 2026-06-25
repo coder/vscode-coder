@@ -52,26 +52,25 @@ function buildGlobalFlags(
 	escHeader: (s: string) => string,
 ): string[] {
 	const userFlags = getExpandedUserGlobalFlags(configs);
+	const headers = getHeaderArgs(configs, escHeader);
 
-	// Honor a user `--global-config` only when allowOverride (file mode, 2.31+);
-	// otherwise strip it and emit our own so it matches where we read/write.
+	// Escape after stripping so expansion whitespace stays in one shell token.
+	const cleanUserFlags = (stripGlobalConfig: boolean) =>
+		stripManagedFlags(userFlags, stripGlobalConfig).map(escAuth);
+
+	// Keyring mode: --url auth; drop user --global-config (would force file storage).
+	if (auth.mode === "url") {
+		return [...cleanUserFlags(true), "--url", escAuth(auth.url), ...headers];
+	}
+
+	// File mode: keep the user's --global-config on 2.31+, else emit our own.
 	const honorOverride =
-		auth.mode === "global-config" &&
 		auth.allowOverride &&
 		userFlags.some((flag) => isFlag(flag, "--global-config"));
-
-	// Escape each user flag so expansion-introduced whitespace stays inside
-	// one shell token. `escAuth` is `identity` on the array path.
-	const filtered = stripManagedFlags(userFlags, !honorOverride).map(escAuth);
-
-	const authFlags =
-		auth.mode === "url"
-			? ["--url", escAuth(auth.url)]
-			: honorOverride
-				? []
-				: ["--global-config", escAuth(auth.configDir)];
-
-	return [...filtered, ...authFlags, ...getHeaderArgs(configs, escHeader)];
+	const authFlags = honorOverride
+		? []
+		: ["--global-config", escAuth(auth.configDir)];
+	return [...cleanUserFlags(!honorOverride), ...authFlags, ...headers];
 }
 
 function stripManagedFlags(
@@ -129,7 +128,7 @@ export function resolveCliAuth(
 	return {
 		mode: "global-config",
 		configDir,
-		allowOverride: featureSet.keyringTokenRead,
+		allowOverride: featureSet.tokenRead,
 	};
 }
 

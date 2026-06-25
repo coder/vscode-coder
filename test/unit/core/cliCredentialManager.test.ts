@@ -491,7 +491,7 @@ describe("CliCredentialManager", () => {
 
 		it("returns undefined when CLI version too old for token read", async () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			// 2.30 supports keyringAuth but not keyringTokenRead (requires 2.31+)
+			// 2.30 supports keyringAuth but not tokenRead (requires 2.31+)
 			vi.mocked(cliExec.version).mockResolvedValueOnce("2.30.0");
 			stubExecFile({ stdout: "my-token" });
 			const { manager } = setup();

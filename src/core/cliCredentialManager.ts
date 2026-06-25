@@ -257,11 +257,11 @@ export class CliCredentialManager {
 			return { kind: "none" };
 		}
 		if (isKeyringEnabled(configs) && cli.featureSet.keyringAuth) {
-			return cli.featureSet.keyringTokenRead
+			return cli.featureSet.tokenRead
 				? { kind: "keyring", binPath: cli.binPath }
 				: { kind: "none" };
 		}
-		if (cli.featureSet.keyringTokenRead) {
+		if (cli.featureSet.tokenRead) {
 			return cliFileTransport(cli);
 		}
 		return { kind: "none" };
@@ -338,7 +338,7 @@ function cliFileTransport(cli: {
 	return {
 		kind: "cli-file",
 		binPath: cli.binPath,
-		allowOverride: cli.featureSet.keyringTokenRead,
+		allowOverride: cli.featureSet.tokenRead,
 	};
 }
 

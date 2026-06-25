@@ -25,7 +25,7 @@ export function normalizeUrl(value: string): string {
  * `coder.alternativeWebUrl` setting when configured, otherwise returns
  * the connection URL unchanged.
  */
-export function resolveUiUrl(connectionUrl: string): string {
+export function resolveCoderDashboardUrl(connectionUrl: string): string {
 	const alt = normalizeUrl(
 		vscode.workspace
 			.getConfiguration("coder")
@@ -35,13 +35,13 @@ export function resolveUiUrl(connectionUrl: string): string {
 }
 
 /**
- * Open a path on the Coder deployment in the user's browser, applying
- * `coder.alternativeWebUrl` when configured.
+ * Open a path in the user's browser, resolved against `coder.alternativeWebUrl`
+ * when set, otherwise against `connectionUrl`.
  */
 export function openInBrowser(
 	connectionUrl: string,
 	path: string,
 ): Thenable<boolean> {
-	const base = vscode.Uri.parse(resolveUiUrl(connectionUrl));
+	const base = vscode.Uri.parse(resolveCoderDashboardUrl(connectionUrl));
 	return vscode.env.openExternal(vscode.Uri.joinPath(base, path));
 }
