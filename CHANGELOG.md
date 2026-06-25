@@ -18,6 +18,15 @@
   raw output. When a slow connection is detected, the network status bar
   tooltip also links to the network check alongside the latency test, for a
   deployment-wide view of the network path.
+- Share login with the terminal `coder` CLI by setting `--global-config=<dir>`
+  in `coder.globalFlags`; the extension reads file-based CLI credentials from
+  that directory (requires a deployment on 2.31.0+).
+
+### Changed
+
+- File-based credentials are now written and cleared through `coder login` and
+  `coder logout` rather than by the extension directly. The minimum supported
+  Coder version is now v0.25.0.
 
 ### Fixed
 
@@ -30,9 +39,6 @@
 
 ### Added
 
-- New `coder.globalConfig` setting to override the Coder CLI `--global-config`
-  directory, with `CODER_CONFIG_DIR` fallback, so file-backed CLI login/auth can
-  be shared with the VS Code extension when keyring auth is not active.
 - New **Shared Workspaces** view in the Coder sidebar that lists workspaces
   other users have shared with you, with search and refresh actions, so you
   can find and open them just like your own.

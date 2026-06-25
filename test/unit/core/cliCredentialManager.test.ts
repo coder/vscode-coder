@@ -165,14 +165,6 @@ function writeCredentialFiles(
 	memfs.writeFileSync(paths.session, token);
 }
 
-function readCredentialFiles(dir = CRED_DIR) {
-	const paths = credentialPaths(dir);
-	return {
-		url: memfs.readFileSync(paths.url, "utf8"),
-		session: memfs.readFileSync(paths.session, "utf8"),
-	};
-}
-
 function credentialFilesExist(dir = CRED_DIR): boolean {
 	const paths = credentialPaths(dir);
 	return memfs.existsSync(paths.url) || memfs.existsSync(paths.session);
@@ -286,17 +278,14 @@ describe("CliCredentialManager", () => {
 			]);
 		});
 
-		it("writes files directly for deployments older than 0.25", async () => {
-			vi.mocked(cliExec.version).mockResolvedValue("0.24.0");
-			const { manager } = setup();
+		it("throws and writes no files when the binary cannot be resolved", async () => {
+			const { manager } = setup(failingResolver());
 
-			await manager.storeToken(TEST_URL, "my-token", configs);
-
+			await expect(
+				manager.storeToken(TEST_URL, "my-token", configs),
+			).rejects.toThrow("no binary");
 			expect(execFile).not.toHaveBeenCalled();
-			expect(readCredentialFiles()).toStrictEqual({
-				url: TEST_URL,
-				session: "my-token",
-			});
+			expect(credentialFilesExist()).toBe(false);
 		});
 
 		it("writes via coder login (file) when keyring is enabled but unsupported", async () => {

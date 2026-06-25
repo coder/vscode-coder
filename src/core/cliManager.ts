@@ -994,8 +994,8 @@ export class CliManager {
 	/**
 	 * Configure the CLI for the deployment with the provided hostname.
 	 *
-	 * Stores credentials in the OS keyring when the setting is enabled and the
-	 * CLI supports it, otherwise writes plaintext files under --global-config.
+	 * Stores credentials via `coder login`: in the OS keyring when the setting is
+	 * enabled and the CLI supports it, otherwise file-based under --global-config.
 	 *
 	 * Both URL and token are required. Empty tokens are allowed (e.g. mTLS
 	 * authentication) but the URL must be a non-empty string.

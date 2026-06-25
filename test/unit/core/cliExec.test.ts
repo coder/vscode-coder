@@ -230,7 +230,10 @@ describe("cliExec", () => {
 				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "netcheck-err", code);
-			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const { env } = setup(
+				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
+				bin,
+			);
 			await expect(cliExec.netcheck(env)).rejects.toThrow(
 				"You are not logged in",
 			);
@@ -240,7 +243,10 @@ describe("cliExec", () => {
 			// Hangs forever so the only way out is the abort signal.
 			const code = `setInterval(() => {}, 1000);`;
 			const bin = await writeExecutable(tmp, "netcheck-hang", code);
-			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const { env } = setup(
+				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
+				bin,
+			);
 			const ac = new AbortController();
 			ac.abort();
 			await expect(cliExec.netcheck(env, ac.signal)).rejects.toMatchObject({

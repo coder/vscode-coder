@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
-import path from "node:path";
 import { promisify } from "node:util";
 import * as semver from "semver";
 
@@ -9,13 +8,11 @@ import { isAbortError } from "../error/errorUtils";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import {
 	CredentialCliError,
-	CredentialFileError,
 	CredentialTelemetry,
 } from "../instrumentation/credentials";
 import { getGlobalFlags, isKeyringEnabled } from "../settings/cli";
 import { getHeaderArgs } from "../settings/headers";
 import { type TelemetryReporter } from "../telemetry/reporter";
-import { writeAtomically } from "../util/fs";
 import { toSafeHost } from "../util/uri";
 
 import { version } from "./cliExec";
@@ -29,12 +26,11 @@ import type { PathResolver } from "./pathResolver";
 
 const execFileAsync = promisify(execFile);
 
-// keyring/cli-file delegate to the CLI; legacy-file writes plaintext directly.
+// keyring uses the CLI's default store; cli-file passes --global-config.
 type CliTransport =
 	| { kind: "keyring"; binPath: string }
 	| { kind: "cli-file"; binPath: string; allowOverride: boolean };
 
-type WriteTransport = CliTransport | { kind: "legacy-file" };
 type ReadTransport = CliTransport | { kind: "none" };
 
 export interface CliCredential {
@@ -60,8 +56,8 @@ export function isKeyringSupported(): boolean {
 }
 
 /**
- * Delegates credential storage to the Coder CLI. Owns all credential
- * persistence: keyring-backed (via CLI) and file-based (plaintext).
+ * Delegates credential storage to the Coder CLI, both keyring-backed and
+ * file-based, via `coder login`/`coder logout`.
  */
 export class CliCredentialManager {
 	private readonly credentialTelemetry: CredentialTelemetry;
@@ -76,8 +72,8 @@ export class CliCredentialManager {
 	}
 
 	/**
-	 * Store credentials via `coder login` (keyring or file-backed); falls back
-	 * to writing plaintext files directly on deployments older than 0.25.0.
+	 * Store credentials via `coder login` (keyring or file-backed). Throws if the
+	 * CLI binary cannot be resolved.
 	 */
 	public storeToken(
 		url: string,
@@ -87,11 +83,6 @@ export class CliCredentialManager {
 	): Promise<void> {
 		return this.credentialTelemetry.traceStore(configs, async (span) => {
 			const transport = await this.resolveWriteTransport(url, configs);
-			if (transport.kind === "legacy-file") {
-				span.setProperty("category", "file");
-				await this.writeCredentialFiles(url, token);
-				return;
-			}
 			span.setProperty(
 				"category",
 				transport.kind === "keyring" ? "keyring" : "file",
@@ -205,16 +196,13 @@ export class CliCredentialManager {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		{ signal, span }: { signal?: AbortSignal; span: Span },
 	): Promise<void> {
-		let transport: WriteTransport;
+		let transport: CliTransport;
 		try {
 			transport = await this.resolveWriteTransport(url, configs);
 		} catch (error) {
 			this.logger.warn("Could not resolve CLI binary for logout:", error);
 			span.setProperty("error.type", "binary");
 			span.markError();
-			return;
-		}
-		if (transport.kind === "legacy-file") {
 			return;
 		}
 		const args = [
@@ -237,49 +225,43 @@ export class CliCredentialManager {
 		}
 	}
 
+	/** Resolve the CLI binary and its feature set, or throw if unavailable. */
 	private async resolveCli(
 		url: string,
-		propagateError: boolean,
-	): Promise<{ binPath: string; featureSet: FeatureSet } | undefined> {
-		try {
-			const binPath = await this.resolveBinary(url);
-			return { binPath, featureSet: await this.getFeatureSet(binPath) };
-		} catch (error) {
-			if (propagateError) {
-				throw error;
-			}
-			this.logger.warn("Could not resolve CLI binary:", error);
-			return undefined;
-		}
+	): Promise<{ binPath: string; featureSet: FeatureSet }> {
+		const binPath = await this.resolveBinary(url);
+		return { binPath, featureSet: await this.getFeatureSet(binPath) };
 	}
 
 	private async resolveWriteTransport(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-	): Promise<WriteTransport> {
-		const keyringEnabled = isKeyringEnabled(configs);
-		const cli = await this.resolveCli(url, keyringEnabled);
-		if (cli && keyringEnabled && cli.featureSet.keyringAuth) {
+	): Promise<CliTransport> {
+		const cli = await this.resolveCli(url);
+		if (isKeyringEnabled(configs) && cli.featureSet.keyringAuth) {
 			return { kind: "keyring", binPath: cli.binPath };
 		}
-		if (cli?.featureSet.cliLogin) {
-			return cliFileTransport(cli);
-		}
-		return { kind: "legacy-file" };
+		return cliFileTransport(cli);
 	}
 
 	private async resolveReadTransport(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 	): Promise<ReadTransport> {
-		const keyringEnabled = isKeyringEnabled(configs);
-		const cli = await this.resolveCli(url, false);
-		if (cli && keyringEnabled && cli.featureSet.keyringAuth) {
+		// Reading is best-effort: a missing binary means no CLI credentials.
+		const cli = await this.resolveCli(url).catch((error) => {
+			this.logger.warn("Could not resolve CLI binary:", error);
+			return undefined;
+		});
+		if (!cli) {
+			return { kind: "none" };
+		}
+		if (isKeyringEnabled(configs) && cli.featureSet.keyringAuth) {
 			return cli.featureSet.keyringTokenRead
 				? { kind: "keyring", binPath: cli.binPath }
 				: { kind: "none" };
 		}
-		if (cli?.featureSet.keyringTokenRead) {
+		if (cli.featureSet.keyringTokenRead) {
 			return cliFileTransport(cli);
 		}
 		return { kind: "none" };
@@ -329,27 +311,6 @@ export class CliCredentialManager {
 	}
 
 	/**
-	 * Write URL and token files under --global-config.
-	 */
-	private async writeCredentialFiles(
-		url: string,
-		token: string,
-	): Promise<void> {
-		try {
-			const safeHostname = toSafeHost(url);
-			await Promise.all([
-				this.atomicWriteFile(this.pathResolver.getUrlPath(safeHostname), url),
-				this.atomicWriteFile(
-					this.pathResolver.getSessionTokenPath(safeHostname),
-					token,
-				),
-			]);
-		} catch (error) {
-			throw new CredentialFileError(error);
-		}
-	}
-
-	/**
 	 * Delete URL and token files. Best-effort: never throws.
 	 */
 	private async deleteCredentialFiles(url: string): Promise<void> {
@@ -364,20 +325,6 @@ export class CliCredentialManager {
 					this.logger.warn("Failed to remove credential file", p, error);
 				}),
 			),
-		);
-	}
-
-	/** Atomically write content to a file. */
-	private async atomicWriteFile(
-		filePath: string,
-		content: string,
-	): Promise<void> {
-		await fs.mkdir(path.dirname(filePath), { recursive: true });
-		await writeAtomically(
-			filePath,
-			(tempPath) => fs.writeFile(tempPath, content, { mode: 0o600 }),
-			(rmErr, tempPath) =>
-				this.logger.warn("Failed to delete temp file", tempPath, rmErr),
 		);
 	}
 }

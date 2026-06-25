@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { Commands } from "@/commands";
-import { toSafeHost } from "@/util";
+import { toSafeHost } from "@/util/uri";
 
 import { createTelemetryHarness } from "../mocks/telemetry";
 import { createMockLogger, MockUserInteraction } from "../mocks/testHelpers";
