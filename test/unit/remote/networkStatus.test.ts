@@ -90,6 +90,7 @@ describe("NetworkStatusReporter tooltip", () => {
 		expect(t).toContain("Directly connected peer-to-peer");
 		expect(t).toContain("Latency: 350.00ms (threshold: 100ms)");
 		expect(t).toContain("Run latency test");
+		expect(t).toContain("Run network check");
 		expect(t).toContain("Configure threshold");
 	});
 

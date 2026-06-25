@@ -13,7 +13,7 @@ import {
 const READY = "test/ready";
 const VIEW_JSON = "test/viewJson";
 const DATA = "test/data";
-const payload = { value: 1 };
+const payload = { value: 1, label: "ready", nested: { items: [1, 2, 3] } };
 
 interface Harness {
 	panel: vscode.WebviewPanel;

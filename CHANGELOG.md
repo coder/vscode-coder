@@ -15,7 +15,9 @@
   with an overall health banner, any warnings, a connectivity summary (UDP,
   IPv4/IPv6, NAT mapping, hairpinning, port mapping), per-region DERP/STUN
   results with latencies, and local interfaces. A View JSON action exposes the
-  raw output.
+  raw output. When a slow connection is detected, the network status bar
+  tooltip also links to the network check alongside the latency test, for a
+  deployment-wide view of the network path.
 
 ### Fixed
 
