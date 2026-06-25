@@ -30,6 +30,7 @@ export const CODER_COMMAND_IDS = [
 	"coder.pingWorkspace:views",
 	"coder.speedTest",
 	"coder.speedTest:views",
+	"coder.netcheck",
 	"coder.supportBundle",
 	"coder.supportBundle:views",
 	"coder.tasks.refresh",

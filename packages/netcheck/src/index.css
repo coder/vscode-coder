@@ -1,0 +1,304 @@
+/* Base reset, body, and button styles come from @repo/webview-shared/base.css. */
+
+/* Local aliases composed from VS Code theme tokens so every theme (light,
+ * dark, high contrast) renders consistently. */
+:root {
+	--border: var(
+		--vscode-widget-border,
+		var(--vscode-panel-border, rgba(128, 128, 128, 0.35))
+	);
+	--muted: var(--vscode-descriptionForeground);
+	--card-bg: var(--vscode-editorWidget-background, transparent);
+}
+
+#root {
+	max-width: 56em;
+	margin: 0 auto;
+}
+
+.page-header {
+	margin: 0 0 1.5em;
+}
+
+.eyebrow {
+	margin: 0 0 0.4em;
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.deployment-host {
+	margin: 0;
+	font-size: 1.8em;
+	font-weight: 600;
+	word-break: break-all;
+}
+
+/* Severity accents shared by the banner, issue list, and table cells. */
+.severity-ok {
+	--severity-color: var(--vscode-testing-iconPassed, #2ea043);
+}
+
+.severity-warning {
+	--severity-color: var(--vscode-editorWarning-foreground, #d29922);
+}
+
+.severity-error {
+	--severity-color: var(--vscode-errorForeground, #f85149);
+}
+
+.status-banner {
+	display: flex;
+	align-items: center;
+	gap: 0.85em;
+	padding: 0.9em 1.1em;
+	border-radius: 6px;
+	background: var(--card-bg);
+	/* Severity-tinted background; the plain card-bg above is the fallback for
+	 * engines without color-mix support. */
+	background: color-mix(in srgb, var(--severity-color) 8%, var(--card-bg));
+	border: 1px solid var(--border);
+	border-left: 3px solid var(--severity-color);
+}
+
+.status-dot {
+	flex-shrink: 0;
+	width: 0.75em;
+	height: 0.75em;
+	border-radius: 50%;
+	background: var(--severity-color);
+}
+
+.status-title {
+	margin: 0;
+	font-size: 1.1em;
+	font-weight: 600;
+}
+
+.status-detail {
+	margin: 0.2em 0 0;
+	color: var(--muted);
+}
+
+.report-section {
+	margin-top: 1.25em;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--card-bg);
+	overflow: hidden;
+}
+
+.report-section h2 {
+	margin: 0;
+	padding: 0.7em 1em;
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	border-bottom: 1px solid var(--border);
+}
+
+.section-body {
+	padding: 1em;
+	overflow-x: auto;
+}
+
+/* Tables run edge-to-edge inside the card; everything else keeps its padding. */
+.section-body:has(> .report-table) {
+	padding: 0;
+}
+
+.issue-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.issue {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.25em 0.6em;
+	padding: 0.55em 0.8em;
+	border-radius: 4px;
+	background: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.1));
+	border: 1px solid var(--border);
+	border-left: 3px solid var(--severity-color);
+}
+
+.issue-kind {
+	flex-shrink: 0;
+	font-size: 0.8em;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--severity-color);
+}
+
+.issue-message {
+	flex: 1;
+	min-width: 12em;
+}
+
+.issue-code {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.85em;
+	color: var(--muted);
+}
+
+.conn-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(11em, 1fr));
+	gap: 0.75em;
+}
+
+.conn-item {
+	padding: 0.6em 0.8em;
+	border-radius: 4px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--border);
+}
+
+.conn-label {
+	display: block;
+	font-size: 0.8em;
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	margin-bottom: 0.25em;
+}
+
+.conn-value {
+	font-weight: 600;
+}
+
+.tone-good {
+	color: var(--vscode-testing-iconPassed, #2ea043);
+}
+
+.tone-bad {
+	color: var(--vscode-errorForeground, #f85149);
+}
+
+.tone-warn {
+	color: var(--vscode-editorWarning-foreground, #d29922);
+}
+
+.tone-neutral {
+	color: var(--muted);
+}
+
+.report-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.report-table th,
+.report-table td {
+	padding: 0.5em 0.75em;
+	text-align: left;
+	border-bottom: 1px solid var(--border);
+	white-space: nowrap;
+}
+
+.report-table th:first-child,
+.report-table td:first-child {
+	padding-left: 1em;
+}
+
+.report-table th:last-child,
+.report-table td:last-child {
+	padding-right: 1em;
+}
+
+.report-table th {
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	background: var(
+		--vscode-keybindingTable-headerBackground,
+		rgba(128, 128, 128, 0.08)
+	);
+}
+
+.report-table tbody tr:last-child td {
+	border-bottom: none;
+}
+
+.report-table tbody tr:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.region-name {
+	font-weight: 600;
+	white-space: normal;
+}
+
+.severity-text {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45em;
+}
+
+.severity-text .status-dot {
+	width: 0.55em;
+	height: 0.55em;
+}
+
+.badge {
+	margin-left: 0.6em;
+	padding: 0.1em 0.55em;
+	border-radius: 1em;
+	font-size: 0.75em;
+	font-weight: 500;
+	vertical-align: middle;
+	white-space: nowrap;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+}
+
+.addresses {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.9em;
+	white-space: normal;
+	word-break: break-word;
+}
+
+.actions {
+	margin-top: 1.5em;
+}
+
+.error,
+.empty {
+	margin: 0.5em 0;
+}
+
+.empty {
+	color: var(--muted);
+}
+
+@media (max-width: 30em) {
+	body {
+		padding: 0.75em;
+	}
+
+	.page-header {
+		margin-bottom: 1em;
+	}
+
+	.deployment-host {
+		font-size: 1.4em;
+	}
+
+	.section-body {
+		padding: 0.75em;
+	}
+}

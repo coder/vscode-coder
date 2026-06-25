@@ -8,6 +8,7 @@ import { buildSession, extractExtensionVersion } from "../telemetry/event";
 import { newSessionId } from "../telemetry/ids";
 import { TelemetryService } from "../telemetry/service";
 import { LocalJsonlSink } from "../telemetry/sinks/localJsonlSink";
+import { NetcheckPanelFactory } from "../webviews/netcheck/netcheckPanelFactory";
 import { SpeedtestPanelFactory } from "../webviews/speedtest/speedtestPanelFactory";
 import { DuplicateWorkspaceIpc } from "../workspace/duplicateWorkspaceIpc";
 
@@ -37,6 +38,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly oauthCallback: OAuthCallback;
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
+	private readonly netcheckPanelFactory: NetcheckPanelFactory;
 	private readonly telemetryService: TelemetryService;
 	private readonly commandManager: CommandManager;
 
@@ -117,6 +119,10 @@ export class ServiceContainer implements vscode.Disposable {
 			context.extensionUri,
 			this.logger,
 		);
+		this.netcheckPanelFactory = new NetcheckPanelFactory(
+			context.extensionUri,
+			this.logger,
+		);
 
 		this.commandManager = new CommandManager(this.telemetryService);
 	}
@@ -163,6 +169,10 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getSpeedtestPanelFactory(): SpeedtestPanelFactory {
 		return this.speedtestPanelFactory;
+	}
+
+	getNetcheckPanelFactory(): NetcheckPanelFactory {
+		return this.netcheckPanelFactory;
 	}
 
 	getTelemetryService(): TelemetryService {

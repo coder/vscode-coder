@@ -14,3 +14,6 @@ export {
 	sendCommand,
 	subscribeNotifications,
 } from "./ipc";
+
+// DOM builders shared by the vanilla webviews.
+export { pageHeader, viewJsonAction, emptyMessage, errorMessage } from "./dom";

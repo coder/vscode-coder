@@ -124,6 +124,7 @@ export class NetworkStatusReporter {
 		if (this.isWarningActive) {
 			sections.push(
 				"[$(pulse) Run latency test](command:coder.pingWorkspace) · " +
+					"[$(globe) Run network check](command:coder.netcheck) · " +
 					"[$(gear) Configure threshold](command:workbench.action.openSettings?%22coder.networkThreshold%22)",
 			);
 		}

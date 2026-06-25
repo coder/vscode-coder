@@ -1,0 +1,44 @@
+/* Base styles shared by the vanilla webviews. Page layout lives in each webview's own index.css. */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	padding: 1.5em;
+	background: var(--vscode-editor-background);
+	color: var(--vscode-foreground, var(--vscode-editor-foreground));
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+}
+
+.actions {
+	display: flex;
+	justify-content: center;
+}
+
+button {
+	padding: 0.4em 1em;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 2px;
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	font: inherit;
+	cursor: pointer;
+}
+
+button:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+}
+
+.error {
+	color: var(--vscode-errorForeground);
+}

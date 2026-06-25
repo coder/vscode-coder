@@ -3,13 +3,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as semver from "semver";
 import * as vscode from "vscode";
-import { ZodError } from "zod";
 
 import {
 	createWorkspaceIdentifier,
 	extractAgents,
 	workspaceStatusLabel,
 } from "./api/api-helper";
+import { runDiagnosticCli } from "./command/diagnosticFlow";
 import * as cliExec from "./core/cliExec";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/errorUtils";
@@ -48,6 +48,7 @@ import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
 import { openInBrowser, toRemoteAuthority, toSafeHost } from "./util";
 import { vscodeProposed } from "./vscodeProposed";
+import { parseNetcheckReport } from "./webviews/netcheck/types";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";
 import {
 	AgentTreeItem,
@@ -70,6 +71,7 @@ import type { DeploymentManager } from "./deployment/deploymentManager";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
 import type { TelemetryService } from "./telemetry/service";
+import type { NetcheckPanelFactory } from "./webviews/netcheck/netcheckPanelFactory";
 import type { SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
 import type {
 	DuplicateWorkspaceIpc,
@@ -133,6 +135,7 @@ export class Commands {
 	private readonly loginCoordinator: LoginCoordinator;
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
+	private readonly netcheckPanelFactory: NetcheckPanelFactory;
 	private readonly telemetryService: TelemetryService;
 	private readonly authTelemetry: AuthTelemetry;
 	private readonly diagnosticTelemetry: DiagnosticTelemetry;
@@ -168,6 +171,7 @@ export class Commands {
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 		this.duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
 		this.speedtestPanelFactory = serviceContainer.getSpeedtestPanelFactory();
+		this.netcheckPanelFactory = serviceContainer.getNetcheckPanelFactory();
 	}
 
 	/**
@@ -310,8 +314,12 @@ export class Commands {
 		const seconds = Number(input.trim());
 		telemetry.setRequestedDuration(seconds);
 
-		const result = await withCancellableProgress(
-			async ({ signal, progress }) => {
+		await runDiagnosticCli({
+			telemetry,
+			logger: this.logger,
+			name: "Speed test",
+			progressTitle: `Running speed test for ${workspaceId}`,
+			exec: async ({ signal, progress }) => {
 				progress.report({ message: "Connecting..." });
 				const env = await this.resolveCliEnv(client);
 
@@ -334,49 +342,65 @@ export class Commands {
 					stopProgress();
 				}
 			},
-			{
-				location: vscode.ProgressLocation.Notification,
-				title: `Running speed test for ${workspaceId}`,
-				cancellable: true,
+			parseAndDisplay: (rawJson) => {
+				const parsed = parseSpeedtestResult(rawJson);
+				this.speedtestPanelFactory.show({
+					result: parsed,
+					rawJson,
+					workspaceId,
+				});
+				// Record success after the panel shows, so a display failure is an
+				// error rather than a contradictory success span.
+				telemetry.succeedSpeedtest(parsed);
 			},
-		);
+		});
+	}
 
-		if (!result.ok) {
-			if (result.cancelled) {
-				telemetry.abort("progress");
-				return;
-			}
+	/**
+	 * Run a network check against the current deployment and display the
+	 * report in a webview panel.  Can be triggered from the sidebar or command
+	 * palette.
+	 */
+	public async netcheck(): Promise<void> {
+		await this.diagnosticTelemetry.trace("netcheck", (telemetry) =>
+			this.runNetcheck(telemetry),
+		);
+	}
+
+	private async runNetcheck(telemetry: DiagnosticTrace): Promise<void> {
+		// Netcheck reports on the deployment as a whole, so unlike the other
+		// diagnostics there is no workspace to resolve; prefer the deployment
+		// the current remote workspace belongs to.
+		const client = this.remoteWorkspaceClient ?? this.extensionClient;
+		const baseUrl = client.getAxiosInstance().defaults.baseURL;
+		if (!baseUrl) {
 			telemetry.error();
-			this.logger.error("Speed test failed", result.error);
-			vscode.window.showErrorMessage(
-				`Speed test failed: ${toError(result.error).message}`,
-			);
+			vscode.window.showErrorMessage("You are not logged in");
 			return;
 		}
+		const host = toSafeHost(baseUrl);
 
-		try {
-			const parsed = parseSpeedtestResult(result.value);
-			telemetry.succeedSpeedtest(parsed);
-			this.speedtestPanelFactory.show({
-				result: parsed,
-				rawJson: result.value,
-				workspaceId,
-			});
-		} catch (err) {
-			if (err instanceof ZodError || err instanceof SyntaxError) {
-				telemetry.error("parse_error");
-				this.logger.error("Failed to parse speedtest output", err);
-				vscode.window.showErrorMessage(
-					"Speed test output did not match the expected format. Check `Output > Coder` for details.",
-				);
-				return;
-			}
-			telemetry.error();
-			this.logger.error("Failed to display speedtest results", err);
-			vscode.window.showErrorMessage(
-				`Speed test returned unexpected output: ${toError(err).message}`,
-			);
-		}
+		await runDiagnosticCli({
+			telemetry,
+			logger: this.logger,
+			name: "Network check",
+			progressTitle: `Running network check for ${host}`,
+			exec: async ({ signal, progress }) => {
+				progress.report({ message: "Resolving CLI..." });
+				const env = await this.resolveCliEnv(client);
+				progress.report({
+					message: "Gathering network report. This may take a few seconds...",
+				});
+				return await cliExec.netcheck(env, signal);
+			},
+			parseAndDisplay: (rawJson) => {
+				const report = parseNetcheckReport(rawJson);
+				this.netcheckPanelFactory.show({ host, report }, rawJson);
+				// Record success after the panel shows, so a display failure is an
+				// error rather than a contradictory success span.
+				telemetry.succeedNetcheck(report);
+			},
+		});
 	}
 
 	public async supportBundle(item?: OpenableTreeItem): Promise<void> {

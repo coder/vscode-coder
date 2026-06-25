@@ -4,6 +4,7 @@
 		"rootDir": "..",
 		"types": ["node", "mocha"],
 		"jsx": "react-jsx",
+		"resolveJsonModule": true,
 		// Both mappings needed: exact match for root, wildcard for subpaths
 		"paths": {
 			"@/*": ["../src/*"],
@@ -12,6 +13,7 @@
 			"@repo/webview-shared": ["../packages/webview-shared/src/index.ts"],
 			"@repo/webview-shared/*": ["../packages/webview-shared/src/*"],
 			"@repo/tasks/*": ["../packages/tasks/src/*"],
+			"@repo/netcheck/*": ["../packages/netcheck/src/*"],
 			"@repo/speedtest/*": ["../packages/speedtest/src/*"]
 		}
 	},

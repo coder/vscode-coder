@@ -19,6 +19,7 @@ import type { SecretsManager } from "@/core/secretsManager";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
 import type { LoginCoordinator, LoginResult } from "@/login/loginCoordinator";
+import type { NetcheckPanelFactory } from "@/webviews/netcheck/netcheckPanelFactory";
 import type { SpeedtestPanelFactory } from "@/webviews/speedtest/speedtestPanelFactory";
 import type { DuplicateWorkspaceIpc } from "@/workspace/duplicateWorkspaceIpc";
 
@@ -108,6 +109,7 @@ function setup(options: SetupOptions = {}) {
 		getLoginCoordinator: () => loginCoordinator,
 		getDuplicateWorkspaceIpc: () => ({}) as DuplicateWorkspaceIpc,
 		getSpeedtestPanelFactory: () => ({}) as SpeedtestPanelFactory,
+		getNetcheckPanelFactory: () => ({}) as NetcheckPanelFactory,
 	} as ServiceContainer;
 
 	const extensionClient = {

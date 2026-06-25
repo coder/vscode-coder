@@ -440,6 +440,11 @@
 				"category": "Coder"
 			},
 			{
+				"command": "coder.netcheck",
+				"title": "Network Check",
+				"category": "Coder"
+			},
+			{
 				"command": "coder.supportBundle",
 				"title": "Create Support Bundle",
 				"category": "Coder"
@@ -535,6 +540,10 @@
 					"when": "coder.authenticated"
 				},
 				{
+					"command": "coder.netcheck",
+					"when": "coder.authenticated"
+				},
+				{
 					"command": "coder.supportBundle",
 					"when": "coder.authenticated"
 				},
@@ -620,6 +629,10 @@
 			"view/title": [
 				{
 					"command": "coder.logout",
+					"when": "coder.authenticated && view == myWorkspaces"
+				},
+				{
+					"command": "coder.netcheck",
 					"when": "coder.authenticated && view == myWorkspaces"
 				},
 				{

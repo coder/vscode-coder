@@ -17,5 +17,18 @@ export {
 	type SpeedtestResult,
 } from "./speedtest/api";
 
+// Netcheck API
+export { NetcheckApi } from "./netcheck/api";
+export { overallNetcheckSeverity, worstSeverity } from "./netcheck/utils";
+export type {
+	NetcheckConnectivity,
+	NetcheckData,
+	NetcheckInterface,
+	NetcheckRegionReport,
+	NetcheckReport,
+	NetcheckSectionHealth,
+	NetcheckSeverity,
+} from "./netcheck/types";
+
 // Workspaces API
 export { WorkspacesApi } from "./workspaces/api";

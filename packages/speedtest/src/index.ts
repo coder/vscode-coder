@@ -1,5 +1,13 @@
 import { SpeedtestApi, type SpeedtestResult, toError } from "@repo/shared";
-import { sendCommand, subscribeNotifications } from "@repo/webview-shared";
+import {
+	emptyMessage,
+	errorMessage,
+	pageHeader,
+	sendCommand,
+	subscribeNotifications,
+	viewJsonAction,
+} from "@repo/webview-shared";
+import "@repo/webview-shared/base.css";
 
 import { renderLineChart } from "./chart";
 import {
@@ -47,36 +55,20 @@ function renderPage(
 	}
 
 	root.innerHTML = "";
-	root.appendChild(renderHeading(workspaceId));
+	root.appendChild(pageHeader("Speed Test", workspaceId, "workspace-id"));
 	root.appendChild(renderSummary(data));
 
 	const samples = toChartSamples(data.intervals);
 	if (samples.length === 0) {
-		root.appendChild(renderEmptyMessage());
-		root.appendChild(renderActions(onViewJson));
+		root.appendChild(emptyMessage("No samples returned from the speed test."));
+		root.appendChild(viewJsonAction(onViewJson));
 		return () => undefined;
 	}
 
 	const chart = renderChart(samples);
 	root.appendChild(chart.container);
-	root.appendChild(renderActions(onViewJson));
+	root.appendChild(viewJsonAction(onViewJson));
 	return chart.cleanup;
-}
-
-function renderHeading(workspaceId: string): HTMLElement {
-	const header = document.createElement("header");
-	header.className = "page-header";
-
-	const eyebrow = document.createElement("p");
-	eyebrow.className = "eyebrow";
-	eyebrow.textContent = "Speed Test";
-
-	const heading = document.createElement("h1");
-	heading.className = "workspace-id";
-	heading.textContent = workspaceId;
-
-	header.append(eyebrow, heading);
-	return header;
 }
 
 function renderSummary(data: SpeedtestResult): HTMLElement {
@@ -190,32 +182,11 @@ function renderChart(samples: ChartPoint[]): {
 	};
 }
 
-function renderActions(onViewJson: () => void): HTMLElement {
-	const actions = document.createElement("div");
-	actions.className = "actions";
-	const viewBtn = document.createElement("button");
-	viewBtn.textContent = "View JSON";
-	viewBtn.addEventListener("click", onViewJson);
-	actions.appendChild(viewBtn);
-	return actions;
-}
-
-function renderEmptyMessage(): HTMLElement {
-	const p = document.createElement("p");
-	p.className = "empty";
-	p.textContent = "No samples returned from the speed test.";
-	return p;
-}
-
 function showError(message: string): void {
 	const root = document.getElementById("root");
-	if (!root) {
-		return;
+	if (root) {
+		root.replaceChildren(errorMessage(message));
 	}
-	const p = document.createElement("p");
-	p.className = "error";
-	p.textContent = message;
-	root.replaceChildren(p);
 }
 
 main();

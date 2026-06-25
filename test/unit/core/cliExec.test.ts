@@ -201,6 +201,48 @@ describe("cliExec", () => {
 		});
 	});
 
+	describe("netcheck", () => {
+		it("passes global and header flags", async () => {
+			const { configs, env } = setup({
+				mode: "url",
+				url: "http://localhost:3000",
+			});
+			configs.set("coder.headerCommand", "my-header-cmd");
+			const args = (await cliExec.netcheck(env)).trim().split("\n");
+			expect(args).toEqual([
+				"--url",
+				"http://localhost:3000",
+				"--header-command",
+				"my-header-cmd",
+				"netcheck",
+			]);
+		});
+
+		it("surfaces stderr instead of full command line on failure", async () => {
+			const code = [
+				writeStderrJs("You are not logged in\n"),
+				`process.exit(1);`,
+			].join("\n");
+			const bin = await writeExecutable(tmp, "netcheck-err", code);
+			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			await expect(cliExec.netcheck(env)).rejects.toThrow(
+				"You are not logged in",
+			);
+		});
+
+		it("preserves AbortError name when cancelled via signal", async () => {
+			// Hangs forever so the only way out is the abort signal.
+			const code = `setInterval(() => {}, 1000);`;
+			const bin = await writeExecutable(tmp, "netcheck-hang", code);
+			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const ac = new AbortController();
+			ac.abort();
+			await expect(cliExec.netcheck(env, ac.signal)).rejects.toMatchObject({
+				name: "AbortError",
+			});
+		});
+	});
+
 	describe("supportBundle", () => {
 		it("passes global, header, and command-specific flags", async () => {
 			// Use a binary that writes args to the --output-file path
