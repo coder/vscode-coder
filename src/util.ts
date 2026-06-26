@@ -58,9 +58,9 @@ export function findPort(text: string): number | null {
  * SSH host names created by this extension match the format:
  *   coder-vscode.<safeHostname>--<username>--<workspace>(.<agent?>)
  *
- * If this is not a Coder host, return null.
+ * If this is not a Coder authority, return null.
  *
- * Throw an error if the host is invalid.
+ * Throw an error if a Coder authority is invalid.
  */
 export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	const authorityParts = authority.split("+");
