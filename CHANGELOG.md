@@ -5,7 +5,7 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.15.1](https://github.com/coder/vscode-coder/releases/tag/v1.15.1) 2026-06-26
 
 ### Added
 
@@ -27,6 +27,12 @@
 - File-based credentials are now written and cleared through `coder login` and
   `coder logout` rather than by the extension directly. The minimum supported
   Coder version is now v0.25.0.
+
+### Changed
+
+- Workspace opens and `coder://` URI handling now log more diagnostics (target
+  workspace, agent, and handoff) to make failed opens easier to trace. URI
+  parameter values, including tokens, are never logged.
 
 ### Fixed
 
