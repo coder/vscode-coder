@@ -19,6 +19,25 @@ describe("PathResolver", () => {
 		mockConfig = new MockConfigurationProvider();
 	});
 
+	describe("getGlobalConfigDir", () => {
+		it("uses the per-deployment global storage directory", () => {
+			expectPathsEqual(
+				pathResolver.getGlobalConfigDir("deployment"),
+				path.join(basePath, "deployment"),
+			);
+		});
+
+		it("ignores coder.globalConfig and CODER_CONFIG_DIR (override lives in globalFlags)", () => {
+			vi.stubEnv("CODER_CONFIG_DIR", "/env/coderv2");
+			mockConfig.set("coder.globalConfig", "/custom/coderv2");
+
+			expectPathsEqual(
+				pathResolver.getGlobalConfigDir("deployment"),
+				path.join(basePath, "deployment"),
+			);
+		});
+	});
+
 	describe("getProxyLogPath", () => {
 		const defaultLogPath = path.join(basePath, "log");
 

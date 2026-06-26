@@ -182,7 +182,10 @@ describe("cliExec", () => {
 				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "speedtest-err", code);
-			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const { env } = setup(
+				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
+				bin,
+			);
 			await expect(
 				cliExec.speedtest(env, "owner/workspace", "bad"),
 			).rejects.toThrow("invalid argument for -t flag");
@@ -192,7 +195,10 @@ describe("cliExec", () => {
 			// Hangs forever so the only way out is the abort signal.
 			const code = `setInterval(() => {}, 1000);`;
 			const bin = await writeExecutable(tmp, "speedtest-hang", code);
-			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const { env } = setup(
+				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
+				bin,
+			);
 			const ac = new AbortController();
 			ac.abort();
 			await expect(
@@ -224,7 +230,10 @@ describe("cliExec", () => {
 				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "netcheck-err", code);
-			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const { env } = setup(
+				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
+				bin,
+			);
 			await expect(cliExec.netcheck(env)).rejects.toThrow(
 				"You are not logged in",
 			);
@@ -234,7 +243,10 @@ describe("cliExec", () => {
 			// Hangs forever so the only way out is the abort signal.
 			const code = `setInterval(() => {}, 1000);`;
 			const bin = await writeExecutable(tmp, "netcheck-hang", code);
-			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const { env } = setup(
+				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
+				bin,
+			);
 			const ac = new AbortController();
 			ac.abort();
 			await expect(cliExec.netcheck(env, ac.signal)).rejects.toMatchObject({
@@ -281,7 +293,10 @@ describe("cliExec", () => {
 				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "sb-err", code);
-			const { env } = setup({ mode: "global-config", configDir: "/tmp" }, bin);
+			const { env } = setup(
+				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
+				bin,
+			);
 			await expect(
 				cliExec.supportBundle(env, "owner/workspace", "/tmp/bundle.zip"),
 			).rejects.toThrow("workspace not found");
@@ -338,6 +353,7 @@ describe("cliExec", () => {
 			const { configs, env } = setup({
 				mode: "global-config",
 				configDir: "/cfg",
+				allowOverride: true,
 			});
 			configs.set("coder.globalFlags", ["--verbose"]);
 

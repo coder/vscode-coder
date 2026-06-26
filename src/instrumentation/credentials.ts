@@ -6,7 +6,7 @@ import type { WorkspaceConfiguration } from "vscode";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
-export type CredentialErrorCategory = "binary" | "cli" | "file";
+export type CredentialErrorCategory = "binary" | "cli";
 
 type CredentialEvent = "auth.credential.store" | "auth.credential.clear";
 
@@ -68,9 +68,6 @@ export class CredentialTelemetry {
 }
 
 function categorizeCredentialError(error: unknown): CredentialErrorCategory {
-	if (error instanceof CredentialFileError) {
-		return "file";
-	}
 	if (error instanceof CredentialCliError) {
 		return "cli";
 	}
@@ -81,12 +78,5 @@ export class CredentialCliError extends Error {
 	public constructor(cause: unknown) {
 		super("Credential CLI operation failed", { cause });
 		this.name = "CredentialCliError";
-	}
-}
-
-export class CredentialFileError extends Error {
-	public constructor(cause: unknown) {
-		super("Credential file operation failed", { cause });
-		this.name = "CredentialFileError";
 	}
 }

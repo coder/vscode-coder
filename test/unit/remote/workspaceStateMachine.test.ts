@@ -42,7 +42,7 @@ import type { CoderApi } from "@/api/coderApi";
 import type { StartupMode } from "@/core/mementoManager";
 import type { FeatureSet } from "@/featureSet";
 import type { TelemetryService } from "@/telemetry/service";
-import type { AuthorityParts } from "@/util";
+import type { AuthorityParts } from "@/util/authority";
 
 vi.mock("@/api/workspace", async (importActual) => {
 	const { LazyStream } = await importActual<typeof import("@/api/workspace")>();

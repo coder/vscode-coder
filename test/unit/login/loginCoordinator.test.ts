@@ -202,6 +202,58 @@ describe("LoginCoordinator", () => {
 			expect(auth?.token).toBe("stored-token");
 		});
 
+		it("authenticates with CLI credential token on success", async () => {
+			const {
+				mockCredentialManager,
+				secretsManager,
+				coordinator,
+				mockSuccessfulAuth,
+			} = createTestContext();
+			const user = mockSuccessfulAuth();
+			vi.mocked(mockCredentialManager.readToken).mockResolvedValueOnce({
+				token: "cli-credential-token",
+				source: "files",
+			});
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(result).toEqual({
+				success: true,
+				method: "cli_token",
+				user,
+				token: "cli-credential-token",
+			});
+			expect(vscode.window.showInputBox).not.toHaveBeenCalled();
+
+			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
+			expect(auth?.token).toBe("cli-credential-token");
+		});
+
+		it("reports keyring_token method when the credential comes from the keyring", async () => {
+			const { mockCredentialManager, coordinator, mockSuccessfulAuth } =
+				createTestContext();
+			const user = mockSuccessfulAuth();
+			vi.mocked(mockCredentialManager.readToken).mockResolvedValueOnce({
+				token: "keyring-token",
+				source: "keyring",
+			});
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(result).toEqual({
+				success: true,
+				method: "keyring_token",
+				user,
+				token: "keyring-token",
+			});
+		});
+
 		it("prompts for token when no stored auth exists", async () => {
 			const {
 				userInteraction,

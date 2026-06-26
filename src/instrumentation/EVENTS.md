@@ -210,7 +210,7 @@ Secret-storage session read during remote setup. No custom attributes.
 | ----------------- | ------------------------------------------------- |
 | `keyring_enabled` | `true`, `false` (from settings)                   |
 | `category`        | `keyring`, `file` (the storage actually involved) |
-| `error.type`      | `binary`, `cli`, `file`                           |
+| `error.type`      | `binary`, `cli`                                   |
 
 ### Logs
 
@@ -265,12 +265,12 @@ Phase `cli.download.verify` covers binary signature verification:
 
 #### `cli.configure`
 
-| Attribute           | Values                                      |
-| ------------------- | ------------------------------------------- |
-| `silent`            | `true`, `false`                             |
-| `credential_source` | `session_token`, `empty_token`              |
-| `abort_stage`       | `credential_store`                          |
-| `error.type`        | `filesystem`, `credential_store`, `unknown` |
+| Attribute           | Values                         |
+| ------------------- | ------------------------------ |
+| `silent`            | `true`, `false`                |
+| `credential_source` | `session_token`, `empty_token` |
+| `abort_stage`       | `credential_store`             |
+| `error.type`        | `credential_store`, `unknown`  |
 
 ## Commands
 
@@ -337,8 +337,8 @@ Emitted by `RemoteSetupTelemetry` around connecting to a remote workspace.
 | --------- | -------------------------------------------------------------------------------------------- |
 | `outcome` | `workspace_not_found`, `incompatible_server` (non-throwing early exits; the span is aborted) |
 
-Phases (`remote.setup.<name>`): `cli_resolve`, `cli_configure`,
-`compatibility_check`, `workspace_lookup`, `workspace_monitor_setup`,
+Phases (`remote.setup.<name>`): `cli_resolve`, `compatibility_check`,
+`cli_configure`, `workspace_lookup`, `workspace_monitor_setup`,
 `workspace_ready`, `agent_resolve`, `ssh_config_write`, `ssh_monitor_setup`,
 `connection_handoff`.
 

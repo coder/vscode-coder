@@ -2,7 +2,7 @@ import { type AxiosError, isAxiosError } from "axios";
 
 import { AuthTelemetry } from "../instrumentation/auth";
 import { OAuthError } from "../oauth/errors";
-import { toSafeHost } from "../util";
+import { toSafeHost } from "../util/uri";
 
 import type * as vscode from "vscode";
 

@@ -21,6 +21,7 @@ vi.mock("node:os");
 const globalConfigAuth: CliAuth = {
 	mode: "global-config",
 	configDir: "/config/dir",
+	allowOverride: true,
 };
 
 describe("cliConfig", () => {
@@ -91,35 +92,41 @@ describe("cliConfig", () => {
 		interface GlobalConfigCase {
 			scenario: string;
 			flags: string[];
+			expected: string[];
 		}
 		it.each<GlobalConfigCase>([
 			{
-				scenario: "space-separated in one item",
-				flags: ["-v", "--global-config /path/to/ignored"],
-			},
-			{
 				scenario: "equals form",
-				flags: ["-v", "--global-config=/path/to/ignored"],
+				flags: ["-v", "--global-config=/custom/coderv2"],
+				expected: ["-v", "--global-config=/custom/coderv2"],
 			},
 			{
 				scenario: "separate items",
-				flags: ["-v", "--global-config", "/path/to/ignored"],
+				flags: ["-v", "--global-config", "/custom/coderv2"],
+				expected: ["-v", "--global-config", "/custom/coderv2"],
 			},
 		])(
-			"should filter --global-config ($scenario) in both auth modes",
-			({ flags }) => {
-				const urlAuth: CliAuth = {
-					mode: "url",
-					url: "https://dev.coder.com",
-				};
+			"passes user --global-config through in file mode and drops our default ($scenario)",
+			({ flags, expected }) => {
 				const config = new MockConfigurationProvider();
 				config.set("coder.globalFlags", flags);
 
-				expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual([
-					"-v",
-					"--global-config",
-					"/config/dir",
-				]);
+				expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual(
+					expected,
+				);
+			},
+		);
+
+		it.each([
+			{ scenario: "space-separated in one item", flag: "--global-config /x" },
+			{ scenario: "equals form", flag: "--global-config=/x" },
+		])(
+			"strips user --global-config in keyring (url) mode ($scenario)",
+			({ flag }) => {
+				const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
+				const config = new MockConfigurationProvider();
+				config.set("coder.globalFlags", ["-v", flag]);
+
 				expect(getGlobalShellFlags(config, urlAuth)).toStrictEqual([
 					"-v",
 					"--url",
@@ -127,6 +134,18 @@ describe("cliConfig", () => {
 				]);
 			},
 		);
+
+		it("strips user --global-config (separate items) in keyring (url) mode", () => {
+			const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", ["-v", "--global-config", "/x"]);
+
+			expect(getGlobalShellFlags(config, urlAuth)).toStrictEqual([
+				"-v",
+				"--url",
+				"https://dev.coder.com",
+			]);
+		});
 
 		it("should not filter flags with similar prefixes", () => {
 			const config = new MockConfigurationProvider();
@@ -373,7 +392,89 @@ describe("cliConfig", () => {
 			expect(auth).toEqual({
 				mode: "global-config",
 				configDir: "/config/dir",
+				// 2.29 < 2.31, so a user --global-config is not honored.
+				allowOverride: false,
 			});
+		});
+
+		it("uses caller-provided config directory in global-config mode", () => {
+			vi.mocked(os.platform).mockReturnValue("linux");
+			const config = new MockConfigurationProvider();
+			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
+			const auth = resolveCliAuth(
+				config,
+				featureSet,
+				"https://dev.coder.com",
+				"/custom/coderv2",
+			);
+
+			expect(getGlobalFlags(config, auth)).toStrictEqual([
+				"--global-config",
+				"/custom/coderv2",
+			]);
+		});
+
+		it("keeps keyring precedence over caller-provided config directory", () => {
+			vi.mocked(os.platform).mockReturnValue("darwin");
+			const config = new MockConfigurationProvider();
+			config.set("coder.useKeyring", true);
+			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
+			const auth = resolveCliAuth(
+				config,
+				featureSet,
+				"https://dev.coder.com",
+				"/custom/coderv2",
+			);
+
+			expect(getGlobalFlags(config, auth)).toStrictEqual([
+				"--url",
+				"https://dev.coder.com",
+			]);
+		});
+
+		it("lets globalFlags --global-config override the caller-provided directory on 2.31+", () => {
+			vi.mocked(os.platform).mockReturnValue("linux");
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", [
+				"--verbose",
+				"--global-config=/custom/coderv2",
+			]);
+			const featureSet = featureSetForVersion(semver.parse("2.31.0"));
+			const auth = resolveCliAuth(
+				config,
+				featureSet,
+				"https://dev.coder.com",
+				"/default/coderv2",
+			);
+
+			// User's directory passes through; our default is dropped.
+			expect(getGlobalFlags(config, auth)).toStrictEqual([
+				"--verbose",
+				"--global-config=/custom/coderv2",
+			]);
+		});
+
+		it("ignores globalFlags --global-config on deployments older than 2.31", () => {
+			vi.mocked(os.platform).mockReturnValue("linux");
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", [
+				"--verbose",
+				"--global-config=/custom/coderv2",
+			]);
+			const featureSet = featureSetForVersion(semver.parse("2.30.0"));
+			const auth = resolveCliAuth(
+				config,
+				featureSet,
+				"https://dev.coder.com",
+				"/default/coderv2",
+			);
+
+			// User override stripped; our default is used so it matches where we wrote.
+			expect(getGlobalFlags(config, auth)).toStrictEqual([
+				"--verbose",
+				"--global-config",
+				"/default/coderv2",
+			]);
 		});
 	});
 });

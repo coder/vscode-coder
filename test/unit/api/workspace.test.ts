@@ -22,13 +22,13 @@ vi.mock(import("node:child_process"), async (importOriginal) => ({
 const { spawn } = await import("node:child_process");
 
 const featureSet: FeatureSet = {
-	vscodessh: true,
+	cliLogin: true,
 	proxyLogDirectory: true,
 	wildcardSSH: true,
 	buildReason: true,
 	cliUpdate: true,
 	keyringAuth: true,
-	keyringTokenRead: true,
+	tokenRead: true,
 	supportBundle: true,
 };
 

@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 
-import { CoderApi } from "../api/coderApi";
 import { AuthTelemetry } from "../instrumentation/auth";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
@@ -83,12 +82,9 @@ export class ServiceContainer implements vscode.Disposable {
 						"BinaryResolver called before CliManager was initialised",
 					);
 				}
-				try {
-					return await this.cliManager.locateBinary(url);
-				} catch {
-					const client = CoderApi.create(url, "", this.logger);
-					return this.cliManager.fetchBinary(client);
-				}
+				// Locate-only: never download from credential ops; the connect and
+				// CLI-command flows fetch the binary first.
+				return this.cliManager.locateBinary(url);
 			},
 			this.pathResolver,
 			this.telemetryService,

@@ -34,6 +34,13 @@ describe("check version support", () => {
 			["v2.19.0", "v2.19.1", "v2.20.0+e491217", "v5.0.4+e491217"],
 		);
 	});
+	it("cli login", () => {
+		expectFlag(
+			"cliLogin",
+			["v0.24.0", "v0.14.0", "v0.0.1"],
+			["v0.25.0", "v0.25.1", "v2.31.0", "v3.0.0"],
+		);
+	});
 	it("keyring auth", () => {
 		expectFlag(
 			"keyringAuth",
@@ -41,9 +48,9 @@ describe("check version support", () => {
 			["v2.29.0", "v2.29.1", "v2.30.0", "v3.0.0"],
 		);
 	});
-	it("keyring token read", () => {
+	it("token read", () => {
 		expectFlag(
-			"keyringTokenRead",
+			"tokenRead",
 			["v2.30.0", "v2.29.0", "v2.28.0", "v1.0.0"],
 			["v2.31.0", "v2.31.1", "v2.32.0", "v3.0.0"],
 		);

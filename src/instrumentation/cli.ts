@@ -1,4 +1,3 @@
-import { CredentialFileError } from "./credentials";
 import { recordAborted, recordError } from "./outcomes";
 
 import type { CallerPropertyValue } from "../telemetry/event";
@@ -20,10 +19,7 @@ export type CliVersionCheckOutcome =
 	| "match"
 	| "mismatch"
 	| "unreadable";
-export type CliConfigureErrorType =
-	| "filesystem"
-	| "credential_store"
-	| "unknown";
+export type CliConfigureErrorType = "credential_store" | "unknown";
 export type CliResolveErrorType =
 	| "downloads_disabled"
 	| "download"
@@ -192,10 +188,6 @@ export class CliConfigureTrace {
 }
 
 function categorizeConfigureError(error: unknown): CliConfigureErrorType {
-	// A CredentialFileError is a file-write failure; anything else is keyring/CLI.
-	if (error instanceof CredentialFileError) {
-		return "filesystem";
-	}
 	return error instanceof Error ? "credential_store" : "unknown";
 }
 

@@ -1,22 +1,4 @@
 import os from "node:os";
-import url from "node:url";
-import * as vscode from "vscode";
-
-export interface AuthorityParts {
-	agent: string | undefined;
-	sshHost: string;
-	safeHostname: string;
-	username: string;
-	workspace: string;
-}
-
-// Prefix is a magic string that is prepended to SSH hosts to indicate that
-// they should be handled by this extension.
-export const AuthorityPrefix = "coder-vscode";
-
-const authorityHostPrefix = `${AuthorityPrefix}.`;
-const invalidAuthorityMessage =
-	"Invalid Coder SSH authority. Must be: <hostname>--<username>--<workspace>(.<agent?>)";
 
 // Regex patterns to find the SSH port from Remote SSH extension logs.
 // `ms-vscode-remote.remote-ssh`: `-> socksPort <port> ->` or `between local port <port>`
@@ -49,86 +31,6 @@ export function findPort(text: string): number | null {
 	}
 
 	return Number.parseInt(portStr);
-}
-
-/**
- * Given an authority, parse into the expected parts.
- *
- * The authority looks like `<scheme>://ssh-remote+<ssh host name>`, where the
- * SSH host names created by this extension match the format:
- *   coder-vscode.<safeHostname>--<username>--<workspace>(.<agent?>)
- *
- * If this is not a Coder authority, return null.
- *
- * Throw an error if a Coder authority is invalid.
- */
-export function parseRemoteAuthority(authority: string): AuthorityParts | null {
-	const authorityParts = authority.split("+");
-	const sshHost = authorityParts[1];
-	if (!sshHost) {
-		return null;
-	}
-
-	const parts = sshHost.split("--");
-	if (!parts[0].startsWith(authorityHostPrefix)) {
-		return null;
-	}
-
-	if (parts.length < 3) {
-		throw new Error(invalidAuthorityMessage);
-	}
-
-	// Parse from the right because safe hostnames can contain "--".
-	const hostPrefix = parts.slice(0, -2).join("--");
-	const safeHostname = hostPrefix.slice(authorityHostPrefix.length);
-	const username = parts[parts.length - 2];
-	const workspaceAndAgent = parts[parts.length - 1];
-	if (!safeHostname || !username || !workspaceAndAgent) {
-		throw new Error(invalidAuthorityMessage);
-	}
-
-	let workspace = workspaceAndAgent;
-	let agent = "";
-	const workspaceParts = workspaceAndAgent.split(".");
-	// Multiple dots are ambiguous because workspace and agent share this separator.
-	if (workspaceParts.length === 2) {
-		workspace = workspaceParts[0];
-		agent = workspaceParts[1];
-		if (!workspace || !agent) {
-			throw new Error(invalidAuthorityMessage);
-		}
-	}
-
-	return {
-		agent,
-		sshHost,
-		safeHostname,
-		username,
-		workspace,
-	};
-}
-
-export function toRemoteAuthority(
-	baseUrl: string,
-	workspaceOwner: string,
-	workspaceName: string,
-	workspaceAgent: string | undefined,
-): string {
-	let remoteAuthority = `ssh-remote+${AuthorityPrefix}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`;
-	if (workspaceAgent) {
-		remoteAuthority += `.${workspaceAgent}`;
-	}
-	return remoteAuthority;
-}
-
-/**
- * Given a URL, return the host in a format that is safe to write.
- */
-export function toSafeHost(rawUrl: string): string {
-	const u = new URL(rawUrl);
-	// If the host is invalid, an empty string is returned.  Although, `new URL`
-	// should already have thrown in that case.
-	return url.domainToASCII(u.hostname) || u.hostname;
 }
 
 /**
@@ -195,30 +97,4 @@ export function escapeShellArg(arg: string): string {
 		return `"${escaped}"`;
 	}
 	return `'${arg.replace(/'/g, "'\\''")}'`;
-}
-
-/**
- * Return the URL for opening Coder pages in the browser.  Uses the
- * `coder.alternativeWebUrl` setting when configured, otherwise returns
- * the connection URL unchanged.
- */
-export function resolveUiUrl(connectionUrl: string): string {
-	const alt = vscode.workspace
-		.getConfiguration("coder")
-		.get<string>("alternativeWebUrl")
-		?.trim()
-		.replace(/\/+$/, "");
-	return alt || connectionUrl;
-}
-
-/**
- * Open a path on the Coder deployment in the user's browser, applying
- * `coder.alternativeWebUrl` when configured.
- */
-export function openInBrowser(
-	connectionUrl: string,
-	path: string,
-): Thenable<boolean> {
-	const base = vscode.Uri.parse(resolveUiUrl(connectionUrl));
-	return vscode.env.openExternal(vscode.Uri.joinPath(base, path));
 }

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { resolveUiUrl } from "../util";
+import { resolveCoderDashboardUrl } from "../util/uri";
 
 import {
 	AUTH_GRANT_TYPE,
@@ -382,7 +382,7 @@ function toBrowserAuthorizationUrl(
 ): URL {
 	const endpoint = new URL(authorizationEndpoint);
 	const connectionBase = new URL(connectionUrl);
-	const browserBase = new URL(resolveUiUrl(connectionUrl));
+	const browserBase = new URL(resolveCoderDashboardUrl(connectionUrl));
 	const connectionPrefix = connectionBase.pathname.replace(/\/$/, "");
 	const browserPrefix = browserBase.pathname.replace(/\/$/, "");
 	const underConnection =

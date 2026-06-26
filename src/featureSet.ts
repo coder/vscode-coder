@@ -1,13 +1,13 @@
 import type * as semver from "semver";
 
 export interface FeatureSet {
-	vscodessh: boolean;
+	cliLogin: boolean;
 	proxyLogDirectory: boolean;
 	wildcardSSH: boolean;
 	buildReason: boolean;
 	cliUpdate: boolean;
 	keyringAuth: boolean;
-	keyringTokenRead: boolean;
+	tokenRead: boolean;
 	supportBundle: boolean;
 }
 
@@ -32,13 +32,9 @@ export function featureSetForVersion(
 	version: semver.SemVer | null,
 ): FeatureSet {
 	return {
-		vscodessh: !(
-			version?.major === 0 &&
-			version?.minor <= 14 &&
-			version?.patch < 1 &&
-			version?.prerelease.length === 0
-		),
-
+		// `coder login --use-token-as-session` to write a token (file or keyring).
+		// The extension relies on this, so 0.25.0 is the minimum supported version.
+		cliLogin: versionAtLeast(version, "0.25.0"),
 		// --log-dir flag for proxy logs; vscodessh fails if unsupported
 		proxyLogDirectory: versionAtLeast(version, "2.4.0"),
 		// Wildcard SSH host matching
@@ -49,8 +45,8 @@ export function featureSetForVersion(
 		cliUpdate: versionAtLeast(version, "2.24.0"),
 		// Keyring-backed token storage via `coder login`
 		keyringAuth: versionAtLeast(version, "2.29.0"),
-		// `coder login token` for reading tokens from the keyring
-		keyringTokenRead: versionAtLeast(version, "2.31.0"),
+		// `coder login token` for reading tokens (keyring or file)
+		tokenRead: versionAtLeast(version, "2.31.0"),
 		// `coder support bundle` (officially released/unhidden in 2.10.0)
 		supportBundle: versionAtLeast(version, "2.10.0"),
 	};

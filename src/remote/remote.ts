@@ -37,13 +37,12 @@ import {
 	resolveCliAuth,
 } from "../settings/cli";
 import { getHeaderCommand } from "../settings/headers";
+import { escapeCommandArg, expandPath } from "../util";
 import {
 	AuthorityPrefix,
 	type AuthorityParts,
-	escapeCommandArg,
-	expandPath,
 	parseRemoteAuthority,
-} from "../util";
+} from "../util/authority";
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
@@ -265,16 +264,6 @@ export class Remote {
 				this.resolveRemoteBinary(workspaceClient),
 			);
 
-			// Write token to keyring or file
-			if (baseUrl && token !== undefined) {
-				await tracer.phase("cli_configure", () =>
-					this.cliManager.configure(baseUrl, token),
-				);
-			}
-
-			// Listen for token changes for this deployment
-			disposables.push(this.watchRemoteSessionAuth(context, workspaceClient));
-
 			const { featureSet, cliAuth } = await tracer.phase(
 				"compatibility_check",
 				() =>
@@ -286,14 +275,15 @@ export class Remote {
 					}),
 			);
 
-			// Server versions before v0.14.1 don't support the vscodessh command!
-			if (!featureSet.vscodessh) {
+			// Reject deployments below our minimum supported version (v0.25.0)
+			// before configuring credentials, so they get a clear message.
+			if (!featureSet.cliLogin) {
 				tracer.markAborted("incompatible_server");
 				await vscodeProposed.window.showErrorMessage(
 					"Incompatible Server",
 					{
 						detail:
-							"Your Coder server is too old to support the Coder extension! Please upgrade to v0.14.1 or newer.",
+							"Your Coder server is too old to support the Coder extension! Please upgrade to v0.25.0 or newer.",
 						modal: true,
 						useCustom: true,
 					},
@@ -305,6 +295,16 @@ export class Remote {
 				await this.closeRemote();
 				return;
 			}
+
+			// Write token to keyring or file
+			if (baseUrl && token !== undefined) {
+				await tracer.phase("cli_configure", () =>
+					this.cliManager.configure(baseUrl, token),
+				);
+			}
+
+			// Listen for token changes for this deployment
+			disposables.push(this.watchRemoteSessionAuth(context, workspaceClient));
 
 			// Next is to find the workspace from the URI scheme provided.
 			const foundWorkspace = await tracer.phase("workspace_lookup", () =>
