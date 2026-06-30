@@ -123,7 +123,8 @@
 					"scope": "machine"
 				},
 				"coder.proxyBypass": {
-					"markdownDescription": "If not set, will inherit from the `no_proxy` or `NO_PROXY` environment variables. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
+					"markdownDescription": "If not set, will inherit from the `no_proxy` or `NO_PROXY` environment variables. Has no effect when `http.proxySupport` is set to `off`. With values other than `on`, VS Code will override the proxy agent set by the plugin.",
+					"markdownDeprecationMessage": "Deprecated: prefer `http.noProxy`.",
 					"type": "string",
 					"default": "",
 					"scope": "machine"
