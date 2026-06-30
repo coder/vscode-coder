@@ -82,6 +82,7 @@ const webSocketConfigSettings = [
 	"coder.tlsCaFile",
 	"coder.tlsAltHost",
 	"http.proxy",
+	"http.proxySupport",
 	"coder.proxyBypass",
 	"http.noProxy",
 	"http.proxyAuthorization",

@@ -5,6 +5,23 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+> **Breaking:** API requests now respect `http.proxySupport: off`. Previously
+> the extension applied VS Code's proxy settings (`http.proxy`, `http.noProxy`,
+> `coder.proxyBypass`) to API requests even when `http.proxySupport` was `off`.
+> Now `off` ignores those settings and only proxy environment variables are
+> used. If you set those settings and relied on them while proxy support was
+> `off`, either set `http.proxySupport` to `on` to keep using them, or move the
+> values into the `HTTP_PROXY`/`HTTPS_PROXY` (from `http.proxy`) and `NO_PROXY`
+> (from `http.noProxy`/`coder.proxyBypass`) environment variables.
+
+### Fixed
+
+- Honor `http.proxySupport: off` when deriving proxy settings for SSH and API
+  connections, so VS Code's proxy settings are ignored while inherited proxy
+  environment variables still apply.
+
 ## [v1.15.1](https://github.com/coder/vscode-coder/releases/tag/v1.15.1) 2026-06-26
 
 ### Added

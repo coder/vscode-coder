@@ -19,6 +19,7 @@ export const SSH_PROXY_SETTINGS: ReadonlyArray<{
 	title: string;
 }> = [
 	{ setting: "http.proxy", title: "HTTP Proxy" },
+	{ setting: "http.proxySupport", title: "HTTP Proxy Support" },
 	{ setting: "http.noProxy", title: "HTTP No Proxy" },
 	{ setting: "coder.proxyBypass", title: "Proxy Bypass" },
 ];
@@ -65,6 +66,10 @@ export function applySshEnvironment(
 export function getSshProxyEnvironment(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): SshEnvironment {
+	if (cfg.get<string>("http.proxySupport") === "off") {
+		return {};
+	}
+
 	const httpProxy = trimmed(cfg.get<string | null>("http.proxy"));
 	const noProxy =
 		trimmed(cfg.get<string | null>("coder.proxyBypass")) ??
