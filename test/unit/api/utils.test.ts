@@ -1,5 +1,5 @@
 import { vol } from "memfs";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { createHttpAgent, needToken } from "@/api/utils";
 
@@ -53,9 +53,40 @@ describe("needToken", () => {
 	});
 });
 
+const proxyEnvVars = [
+	"HTTP_PROXY",
+	"http_proxy",
+	"HTTPS_PROXY",
+	"https_proxy",
+	"ALL_PROXY",
+	"all_proxy",
+	"npm_config_http_proxy",
+	"NPM_CONFIG_HTTP_PROXY",
+	"npm_config_https_proxy",
+	"NPM_CONFIG_HTTPS_PROXY",
+	"npm_config_proxy",
+	"NPM_CONFIG_PROXY",
+	"NO_PROXY",
+	"no_proxy",
+	"npm_config_no_proxy",
+	"NPM_CONFIG_NO_PROXY",
+];
+
+function clearProxyEnv(): void {
+	for (const envVar of proxyEnvVars) {
+		vi.stubEnv(envVar, "");
+	}
+}
+
 describe("createHttpAgent", () => {
 	beforeEach(() => {
 		vol.reset();
+		vi.unstubAllEnvs();
+		clearProxyEnv();
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
 	});
 
 	describe("TLS certificates", () => {
@@ -167,6 +198,16 @@ describe("createHttpAgent", () => {
 
 			expect(agent.connectOpts?.headers).toBeUndefined();
 		});
+
+		it("ignores proxyAuthorization when proxy support is off", async () => {
+			const cfg = new MockConfigurationProvider();
+			cfg.set("http.proxySupport", "off");
+			cfg.set("http.proxyAuthorization", "Basic dXNlcjpwYXNz");
+
+			const agent = await createHttpAgent(cfg);
+
+			expect(agent.connectOpts?.headers).toBeUndefined();
+		});
 	});
 
 	describe("proxy resolution", () => {
@@ -175,15 +216,60 @@ describe("createHttpAgent", () => {
 		const mockRequest = {} as http.ClientRequest;
 		const proxy = "http://proxy.example.com:8080";
 
-		it("uses http.proxy setting", async () => {
+		interface ProxySupportCase {
+			name: string;
+			proxySupport?: string;
+		}
+
+		it.each<ProxySupportCase>([
+			{ name: "unset" },
+			{ name: "on", proxySupport: "on" },
+			{ name: "fallback", proxySupport: "fallback" },
+			{ name: "override", proxySupport: "override" },
+		])(
+			"uses http.proxy setting when proxy support is $name",
+			async ({ proxySupport }) => {
+				const cfg = new MockConfigurationProvider();
+				cfg.set("http.proxy", proxy);
+				if (proxySupport) {
+					cfg.set("http.proxySupport", proxySupport);
+				}
+
+				const agent = await createHttpAgent(cfg);
+
+				expect(
+					await agent.getProxyForUrl("https://example.com", mockRequest),
+				).toBe(proxy);
+			},
+		);
+
+		it("ignores VS Code proxy settings when proxy support is off", async () => {
 			const cfg = new MockConfigurationProvider();
+			cfg.set("http.proxySupport", "off");
 			cfg.set("http.proxy", proxy);
+			cfg.set("coder.proxyBypass", "example.com");
+			cfg.set("http.noProxy", ["example.com"]);
 
 			const agent = await createHttpAgent(cfg);
 
 			expect(
 				await agent.getProxyForUrl("https://example.com", mockRequest),
-			).toBe(proxy);
+			).toBe("");
+		});
+
+		it("preserves inherited proxy env when proxy support is off", async () => {
+			vi.stubEnv("HTTPS_PROXY", "http://env-proxy.example.com:8080");
+			const cfg = new MockConfigurationProvider();
+			cfg.set("http.proxySupport", "off");
+			cfg.set("http.proxy", proxy);
+			cfg.set("coder.proxyBypass", "example.com");
+			cfg.set("http.noProxy", ["example.com"]);
+
+			const agent = await createHttpAgent(cfg);
+
+			expect(
+				await agent.getProxyForUrl("https://example.com", mockRequest),
+			).toBe("http://env-proxy.example.com:8080");
 		});
 
 		it("bypasses proxy for hosts in coder.proxyBypass", async () => {

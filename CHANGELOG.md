@@ -9,8 +9,8 @@
 
 ### Fixed
 
-- Honor `http.proxySupport: off` when deriving the SSH proxy environment from
-  VS Code settings.
+- Honor `http.proxySupport: off` when deriving proxy settings for SSH and API
+  connections from VS Code settings.
 
 ## [v1.15.1](https://github.com/coder/vscode-coder/releases/tag/v1.15.1) 2026-06-26
 

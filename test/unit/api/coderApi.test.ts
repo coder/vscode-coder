@@ -923,25 +923,31 @@ describe("CoderApi", () => {
 			expect(sockets).toHaveLength(1);
 		});
 
-		it("reconnects sockets in DISCONNECTED state when config changes", async () => {
-			mockConfig.set("coder.insecure", false);
-			const { sockets, handlers } = setupAutoOpeningWebSocket();
-			api = createApi(CODER_URL, AXIOS_TOKEN);
-			await api.watchAgentMetadata(AGENT_ID);
-			await tick();
+		it.each([
+			["coder.insecure", false, true],
+			["http.proxySupport", "on", "off"],
+		])(
+			"reconnects sockets in DISCONNECTED state when %s changes",
+			async (setting, before, after) => {
+				mockConfig.set(setting, before);
+				const { sockets, handlers } = setupAutoOpeningWebSocket();
+				api = createApi(CODER_URL, AXIOS_TOKEN);
+				await api.watchAgentMetadata(AGENT_ID);
+				await tick();
 
-			// Trigger close with unrecoverable code to put socket in DISCONNECTED
-			handlers["close"]?.({ code: 1002, reason: "Protocol error" });
-			await tick();
+				// Trigger close with unrecoverable code to put socket in DISCONNECTED
+				handlers["close"]?.({ code: 1002, reason: "Protocol error" });
+				await tick();
 
-			mockConfig.set("coder.insecure", true);
-			await new Promise((resolve) =>
-				setTimeout(resolve, CONFIG_CHANGE_DEBOUNCE_MS + 50),
-			);
+				mockConfig.set(setting, after);
+				await new Promise((resolve) =>
+					setTimeout(resolve, CONFIG_CHANGE_DEBOUNCE_MS + 50),
+				);
 
-			// Only DISCONNECTED sockets get reconnected by config changes
-			expect(sockets).toHaveLength(2);
-		});
+				// Only DISCONNECTED sockets get reconnected by config changes
+				expect(sockets).toHaveLength(2);
+			},
+		);
 	});
 });
 

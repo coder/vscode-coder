@@ -28,8 +28,20 @@ export async function createHttpAgent(
 ): Promise<ProxyAgent> {
 	const insecure = cfg.get<boolean>("coder.insecure", false);
 	const proxyStrictSSL = cfg.get<boolean>("http.proxyStrictSSL", true);
-	const proxyAuthorization = cfg.get<string | null>("http.proxyAuthorization");
-	const httpNoProxy = cfg.get<string[]>("http.noProxy");
+	const proxySupport = cfg.get<string>("http.proxySupport");
+	const proxyEnabled = proxySupport !== "off";
+	const proxyAuthorization = proxyEnabled
+		? cfg.get<string | null>("http.proxyAuthorization")
+		: undefined;
+	const httpProxy = proxyEnabled
+		? cfg.get<string | null>("http.proxy")
+		: undefined;
+	const coderProxyBypass = proxyEnabled
+		? cfg.get<string | null>("coder.proxyBypass")
+		: undefined;
+	const httpNoProxy = proxyEnabled
+		? cfg.get<string[]>("http.noProxy")
+		: undefined;
 
 	const certFile = expandPath(
 		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
@@ -54,8 +66,8 @@ export async function createHttpAgent(
 		getProxyForUrl: (url: string) => {
 			return getProxyForUrl(
 				url,
-				cfg.get("http.proxy"),
-				cfg.get("coder.proxyBypass"),
+				httpProxy,
+				coderProxyBypass,
 				joinNoProxy(httpNoProxy),
 			);
 		},
