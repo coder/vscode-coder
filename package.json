@@ -460,6 +460,12 @@
 				"icon": "$(save)"
 			},
 			{
+				"command": "coder.viewAnnouncements",
+				"title": "View Announcements",
+				"category": "Coder",
+				"icon": "$(megaphone)"
+			},
+			{
 				"command": "coder.openAppStatus",
 				"title": "Open App Status",
 				"category": "Coder",
@@ -586,6 +592,10 @@
 				{
 					"command": "coder.exportTelemetry",
 					"when": "true"
+				},
+				{
+					"command": "coder.viewAnnouncements",
+					"when": "coder.authenticated"
 				},
 				{
 					"command": "coder.openAppStatus",
