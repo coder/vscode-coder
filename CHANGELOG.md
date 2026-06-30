@@ -5,6 +5,13 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- Honor `http.proxySupport: off` when deriving the SSH proxy environment from
+  VS Code settings.
+
 ## [v1.15.1](https://github.com/coder/vscode-coder/releases/tag/v1.15.1) 2026-06-26
 
 ### Added

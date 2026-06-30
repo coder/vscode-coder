@@ -31,6 +31,31 @@ describe("getSshProxyEnvironment", () => {
 			expected: { HTTP_PROXY: proxy, HTTPS_PROXY: proxy },
 		},
 		{
+			name: "sets both proxy variables when proxy support is on",
+			settings: { "http.proxy": proxy, "http.proxySupport": "on" },
+			expected: { HTTP_PROXY: proxy, HTTPS_PROXY: proxy },
+		},
+		{
+			name: "sets both proxy variables when proxy support is fallback",
+			settings: { "http.proxy": proxy, "http.proxySupport": "fallback" },
+			expected: { HTTP_PROXY: proxy, HTTPS_PROXY: proxy },
+		},
+		{
+			name: "sets both proxy variables when proxy support is override",
+			settings: { "http.proxy": proxy, "http.proxySupport": "override" },
+			expected: { HTTP_PROXY: proxy, HTTPS_PROXY: proxy },
+		},
+		{
+			name: "ignores VS Code proxy settings when proxy support is off",
+			settings: {
+				"http.proxy": proxy,
+				"http.proxySupport": "off",
+				"coder.proxyBypass": "coder.example.com",
+				"http.noProxy": ["fallback.example.com"],
+			},
+			expected: {},
+		},
+		{
 			name: "passes through the proxy when the deployment is bypassed",
 			settings: {
 				"http.proxy": proxy,
@@ -135,6 +160,25 @@ describe("applySshEnvironment", () => {
 		applySshEnvironment(config(), collection, env);
 
 		expect(env).toEqual({});
+		expect(collection.vars).toEqual({});
+	});
+
+	it("does not clear existing env proxy variables when proxy support is off", () => {
+		const { config } = setup();
+		const original = {
+			HTTP_PROXY: "http://old-http-proxy.example.com:8080",
+			HTTPS_PROXY: "http://old-https-proxy.example.com:8080",
+		};
+		const env: Record<string, string | undefined> = { ...original };
+		const collection = fakeEnvCollection();
+
+		applySshEnvironment(
+			config({ "http.proxy": proxy, "http.proxySupport": "off" }),
+			collection,
+			env,
+		);
+
+		expect(env).toEqual(original);
 		expect(collection.vars).toEqual({});
 	});
 
