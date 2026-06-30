@@ -3,7 +3,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { createHttpAgent, needToken } from "@/api/utils";
 
-import { MockConfigurationProvider } from "../../mocks/testHelpers";
+import {
+	config,
+	PROXY_URL as proxy,
+	withProxy,
+	type Settings,
+} from "../../mocks/testHelpers";
 
 import type * as http from "node:http";
 import type { ConnectionOptions } from "node:tls";
@@ -18,40 +23,10 @@ vi.mock("node:fs/promises", async () => {
 // resolve to `never` and drops TLS fields. Re-add them for test assertions.
 type AgentOpts = ProxyAgentOptions & ConnectionOptions;
 
-describe("needToken", () => {
-	interface NeedTokenCase {
-		name: string;
-		config: Record<string, string>;
-		expected: boolean;
-	}
-
-	it.each<NeedTokenCase>([
-		{ name: "no mTLS certificates", config: {}, expected: true },
-		{
-			name: "cert file configured",
-			config: { "coder.tlsCertFile": "/cert.pem" },
-			expected: false,
-		},
-		{
-			name: "key file configured",
-			config: { "coder.tlsKeyFile": "/key.pem" },
-			expected: false,
-		},
-		{
-			name: "both cert and key configured",
-			config: {
-				"coder.tlsCertFile": "/cert.pem",
-				"coder.tlsKeyFile": "/key.pem",
-			},
-			expected: false,
-		},
-	])("returns $expected when $name", ({ config, expected }) => {
-		const cfg = new MockConfigurationProvider();
-		Object.entries(config).forEach(([k, v]) => cfg.set(k, v));
-
-		expect(needToken(cfg)).toBe(expected);
-	});
-});
+const proxyAuthorization = "Basic dXNlcjpwYXNz";
+// Our getProxyForUrl wrapper only uses the URL, not the request object.
+// The request parameter exists to match proxy-agent's callback signature.
+const mockRequest = {} as http.ClientRequest;
 
 const proxyEnvVars = [
 	"HTTP_PROXY",
@@ -72,11 +47,62 @@ const proxyEnvVars = [
 	"NPM_CONFIG_NO_PROXY",
 ];
 
+async function createAgentOptions(settings: Settings = {}) {
+	const agent = await createHttpAgent(config(settings));
+	return agent.connectOpts as AgentOpts | undefined;
+}
+
+async function createProxyResolver(settings: Settings = {}) {
+	const agent = await createHttpAgent(config(settings));
+	return async (url = "https://example.com"): Promise<string> =>
+		await agent.getProxyForUrl(url, mockRequest);
+}
+
+async function proxyForUrl(
+	settings: Settings,
+	url = "https://example.com",
+): Promise<string> {
+	const getProxy = await createProxyResolver(settings);
+	return await getProxy(url);
+}
+
 function clearProxyEnv(): void {
 	for (const envVar of proxyEnvVars) {
 		vi.stubEnv(envVar, "");
 	}
 }
+
+describe("needToken", () => {
+	interface NeedTokenCase {
+		name: string;
+		settings: Settings;
+		expected: boolean;
+	}
+
+	it.each<NeedTokenCase>([
+		{ name: "no mTLS certificates", settings: {}, expected: true },
+		{
+			name: "cert file configured",
+			settings: { "coder.tlsCertFile": "/cert.pem" },
+			expected: false,
+		},
+		{
+			name: "key file configured",
+			settings: { "coder.tlsKeyFile": "/key.pem" },
+			expected: false,
+		},
+		{
+			name: "both cert and key configured",
+			settings: {
+				"coder.tlsCertFile": "/cert.pem",
+				"coder.tlsKeyFile": "/key.pem",
+			},
+			expected: false,
+		},
+	])("returns $expected when $name", ({ settings, expected }) => {
+		expect(needToken(config(settings))).toBe(expected);
+	});
+});
 
 describe("createHttpAgent", () => {
 	beforeEach(() => {
@@ -97,13 +123,11 @@ describe("createHttpAgent", () => {
 				"/ca.pem": "ca-content",
 			});
 
-			const cfg = new MockConfigurationProvider();
-			cfg.set("coder.tlsCertFile", "/cert.pem");
-			cfg.set("coder.tlsKeyFile", "/key.pem");
-			cfg.set("coder.tlsCaFile", "/ca.pem");
-
-			const agent = await createHttpAgent(cfg);
-			const opts = agent.connectOpts as AgentOpts | undefined;
+			const opts = await createAgentOptions({
+				"coder.tlsCertFile": "/cert.pem",
+				"coder.tlsKeyFile": "/key.pem",
+				"coder.tlsCaFile": "/ca.pem",
+			});
 
 			expect(Buffer.isBuffer(opts?.cert) && opts.cert.toString()).toBe(
 				"cert-content",
@@ -117,10 +141,7 @@ describe("createHttpAgent", () => {
 		});
 
 		it("leaves cert options undefined when files not configured", async () => {
-			const cfg = new MockConfigurationProvider();
-
-			const agent = await createHttpAgent(cfg);
-			const opts = agent.connectOpts as AgentOpts | undefined;
+			const opts = await createAgentOptions();
 
 			expect(opts?.cert).toBeUndefined();
 			expect(opts?.key).toBeUndefined();
@@ -128,11 +149,9 @@ describe("createHttpAgent", () => {
 		});
 
 		it("sets servername from tlsAltHost", async () => {
-			const cfg = new MockConfigurationProvider();
-			cfg.set("coder.tlsAltHost", "alt.example.com");
-
-			const agent = await createHttpAgent(cfg);
-			const opts = agent.connectOpts as AgentOpts | undefined;
+			const opts = await createAgentOptions({
+				"coder.tlsAltHost": "alt.example.com",
+			});
 
 			expect(opts?.servername).toBe("alt.example.com");
 		});
@@ -141,215 +160,190 @@ describe("createHttpAgent", () => {
 	describe("TLS verification", () => {
 		interface TlsVerificationCase {
 			name: string;
-			config: Record<string, boolean>;
+			settings: Settings;
 			expected: boolean;
 		}
 
 		it.each<TlsVerificationCase>([
-			{ name: "enabled by default", config: {}, expected: true },
+			{ name: "enabled by default", settings: {}, expected: true },
 			{
 				name: "disabled when proxyStrictSSL=false",
-				config: { "http.proxyStrictSSL": false },
+				settings: { "http.proxyStrictSSL": false },
 				expected: false,
 			},
 			{
 				name: "disabled when insecure=true",
-				config: { "coder.insecure": true },
+				settings: { "coder.insecure": true },
 				expected: false,
 			},
 			{
 				name: "disabled when both proxyStrictSSL=false and insecure=false",
-				config: { "http.proxyStrictSSL": false, "coder.insecure": false },
+				settings: { "http.proxyStrictSSL": false, "coder.insecure": false },
 				expected: false,
 			},
 			{
 				name: "disabled when insecure overrides proxyStrictSSL",
-				config: { "http.proxyStrictSSL": true, "coder.insecure": true },
+				settings: { "http.proxyStrictSSL": true, "coder.insecure": true },
 				expected: false,
 			},
-		])("rejectUnauthorized=$expected ($name)", async ({ config, expected }) => {
-			const cfg = new MockConfigurationProvider();
-			Object.entries(config).forEach(([k, v]) => cfg.set(k, v));
+		])(
+			"rejectUnauthorized=$expected ($name)",
+			async ({ settings, expected }) => {
+				const opts = await createAgentOptions(settings);
 
-			const agent = await createHttpAgent(cfg);
-			const opts = agent.connectOpts as AgentOpts | undefined;
-
-			expect(opts?.rejectUnauthorized).toBe(expected);
-		});
+				expect(opts?.rejectUnauthorized).toBe(expected);
+			},
+		);
 	});
 
 	describe("proxy authorization", () => {
-		it("sets Proxy-Authorization header when configured", async () => {
-			const cfg = new MockConfigurationProvider();
-			// VS Code's http.proxyAuthorization is the complete header value
-			cfg.set("http.proxyAuthorization", "Basic dXNlcjpwYXNz");
+		interface ProxyAuthorizationCase {
+			name: string;
+			settings: Settings;
+			expected: Record<string, string> | undefined;
+		}
 
-			const agent = await createHttpAgent(cfg);
+		it.each<ProxyAuthorizationCase>([
+			{
+				name: "sets Proxy-Authorization header when configured",
+				settings: { "http.proxyAuthorization": proxyAuthorization },
+				expected: { "Proxy-Authorization": proxyAuthorization },
+			},
+			{
+				name: "omits headers when proxyAuthorization is not set",
+				settings: {},
+				expected: undefined,
+			},
+			{
+				name: "ignores proxyAuthorization when proxy support is off",
+				settings: {
+					"http.proxySupport": "off",
+					"http.proxyAuthorization": proxyAuthorization,
+				},
+				expected: undefined,
+			},
+		])("$name", async ({ settings, expected }) => {
+			const opts = await createAgentOptions(settings);
 
-			expect(agent.connectOpts?.headers).toEqual({
-				"Proxy-Authorization": "Basic dXNlcjpwYXNz",
-			});
-		});
-
-		it("omits headers when proxyAuthorization is not set", async () => {
-			const cfg = new MockConfigurationProvider();
-
-			const agent = await createHttpAgent(cfg);
-
-			expect(agent.connectOpts?.headers).toBeUndefined();
-		});
-
-		it("ignores proxyAuthorization when proxy support is off", async () => {
-			const cfg = new MockConfigurationProvider();
-			cfg.set("http.proxySupport", "off");
-			cfg.set("http.proxyAuthorization", "Basic dXNlcjpwYXNz");
-
-			const agent = await createHttpAgent(cfg);
-
-			expect(agent.connectOpts?.headers).toBeUndefined();
+			expect(opts?.headers).toEqual(expected);
 		});
 	});
 
 	describe("proxy resolution", () => {
-		// Our getProxyForUrl wrapper only uses the URL, not the request object.
-		// The request parameter exists to match proxy-agent's callback signature.
-		const mockRequest = {} as http.ClientRequest;
-		const proxy = "http://proxy.example.com:8080";
-
 		interface ProxySupportCase {
 			name: string;
-			proxySupport?: string;
+			settings: Settings;
 		}
 
 		it.each<ProxySupportCase>([
-			{ name: "unset" },
-			{ name: "on", proxySupport: "on" },
-			{ name: "fallback", proxySupport: "fallback" },
-			{ name: "override", proxySupport: "override" },
+			{ name: "unset", settings: withProxy() },
+			{
+				name: "on",
+				settings: withProxy({ "http.proxySupport": "on" }),
+			},
+			{
+				name: "fallback",
+				settings: withProxy({ "http.proxySupport": "fallback" }),
+			},
+			{
+				name: "override",
+				settings: withProxy({ "http.proxySupport": "override" }),
+			},
 		])(
 			"uses http.proxy setting when proxy support is $name",
-			async ({ proxySupport }) => {
-				const cfg = new MockConfigurationProvider();
-				cfg.set("http.proxy", proxy);
-				if (proxySupport) {
-					cfg.set("http.proxySupport", proxySupport);
-				}
-
-				const agent = await createHttpAgent(cfg);
-
-				expect(
-					await agent.getProxyForUrl("https://example.com", mockRequest),
-				).toBe(proxy);
+			async ({ settings }) => {
+				expect(await proxyForUrl(settings)).toBe(proxy);
 			},
 		);
 
-		it("ignores VS Code proxy settings when proxy support is off", async () => {
-			const cfg = new MockConfigurationProvider();
-			cfg.set("http.proxySupport", "off");
-			cfg.set("http.proxy", proxy);
-			cfg.set("coder.proxyBypass", "example.com");
-			cfg.set("http.noProxy", ["example.com"]);
-
-			const agent = await createHttpAgent(cfg);
-
-			expect(
-				await agent.getProxyForUrl("https://example.com", mockRequest),
-			).toBe("");
-		});
-
 		it("preserves inherited proxy env when proxy support is off", async () => {
 			vi.stubEnv("HTTPS_PROXY", "http://env-proxy.example.com:8080");
-			const cfg = new MockConfigurationProvider();
-			cfg.set("http.proxySupport", "off");
-			cfg.set("http.proxy", proxy);
-			cfg.set("coder.proxyBypass", "example.com");
-			cfg.set("http.noProxy", ["example.com"]);
-
-			const agent = await createHttpAgent(cfg);
 
 			expect(
-				await agent.getProxyForUrl("https://example.com", mockRequest),
+				await proxyForUrl(
+					withProxy({
+						"http.proxySupport": "off",
+						"coder.proxyBypass": "example.com",
+						"http.noProxy": ["example.com"],
+					}),
+				),
 			).toBe("http://env-proxy.example.com:8080");
 		});
 
-		it("bypasses proxy for hosts in coder.proxyBypass", async () => {
-			const cfg = new MockConfigurationProvider();
-			cfg.set("http.proxy", proxy);
-			cfg.set("coder.proxyBypass", "internal.example.com");
+		interface ProxyResolutionCase {
+			name: string;
+			settings: Settings;
+			expectedByUrl: Record<string, string>;
+		}
 
-			const agent = await createHttpAgent(cfg);
-
-			expect(
-				await agent.getProxyForUrl("https://internal.example.com", mockRequest),
-			).toBe("");
-			expect(
-				await agent.getProxyForUrl("https://external.example.com", mockRequest),
-			).toBe(proxy);
-		});
-
-		it("uses http.noProxy as fallback when coder.proxyBypass is not set", async () => {
-			const cfg = new MockConfigurationProvider();
-			cfg.set("http.proxy", proxy);
-			cfg.set("http.noProxy", ["internal.example.com"]);
-
-			const agent = await createHttpAgent(cfg);
-
-			expect(
-				await agent.getProxyForUrl("https://internal.example.com", mockRequest),
-			).toBe("");
-		});
-
-		it("prefers coder.proxyBypass over http.noProxy", async () => {
-			const cfg = new MockConfigurationProvider();
-			cfg.set("http.proxy", proxy);
-			cfg.set("coder.proxyBypass", "primary.example.com");
-			cfg.set("http.noProxy", ["fallback.example.com"]);
-
-			const agent = await createHttpAgent(cfg);
-
-			expect(
-				await agent.getProxyForUrl("https://primary.example.com", mockRequest),
-			).toBe("");
-			expect(
-				await agent.getProxyForUrl("https://fallback.example.com", mockRequest),
-			).toBe(proxy);
-		});
-
-		it("trims and joins multiple http.noProxy entries", async () => {
-			const cfg = new MockConfigurationProvider();
-			cfg.set("http.proxy", proxy);
-			cfg.set("http.noProxy", [" first.example.com ", "second.example.com "]);
-
-			const agent = await createHttpAgent(cfg);
-
-			expect(
-				await agent.getProxyForUrl("https://first.example.com", mockRequest),
-			).toBe("");
-			expect(
-				await agent.getProxyForUrl("https://second.example.com", mockRequest),
-			).toBe("");
-			expect(
-				await agent.getProxyForUrl("https://other.example.com", mockRequest),
-			).toBe(proxy);
+		it.each<ProxyResolutionCase>([
+			{
+				name: "ignores VS Code proxy settings when proxy support is off",
+				settings: withProxy({
+					"http.proxySupport": "off",
+					"coder.proxyBypass": "example.com",
+					"http.noProxy": ["example.com"],
+				}),
+				expectedByUrl: { "https://example.com": "" },
+			},
+			{
+				name: "bypasses proxy for hosts in coder.proxyBypass",
+				settings: withProxy({
+					"coder.proxyBypass": "internal.example.com",
+				}),
+				expectedByUrl: {
+					"https://internal.example.com": "",
+					"https://external.example.com": proxy,
+				},
+			},
+			{
+				name: "uses http.noProxy as fallback when coder.proxyBypass is not set",
+				settings: withProxy({
+					"http.noProxy": ["internal.example.com"],
+				}),
+				expectedByUrl: { "https://internal.example.com": "" },
+			},
+			{
+				name: "prefers coder.proxyBypass over http.noProxy",
+				settings: withProxy({
+					"coder.proxyBypass": "primary.example.com",
+					"http.noProxy": ["fallback.example.com"],
+				}),
+				expectedByUrl: {
+					"https://primary.example.com": "",
+					"https://fallback.example.com": proxy,
+				},
+			},
+			{
+				name: "trims and joins multiple http.noProxy entries",
+				settings: withProxy({
+					"http.noProxy": [" first.example.com ", "second.example.com "],
+				}),
+				expectedByUrl: {
+					"https://first.example.com": "",
+					"https://second.example.com": "",
+					"https://other.example.com": proxy,
+				},
+			},
+		])("$name", async ({ settings, expectedByUrl }) => {
+			const getProxy = await createProxyResolver(settings);
+			for (const [url, expected] of Object.entries(expectedByUrl)) {
+				expect(await getProxy(url)).toBe(expected);
+			}
 		});
 
 		interface NoProxyTestCase {
 			name: string;
 			noProxy: string[] | undefined;
 		}
+
 		it.each<NoProxyTestCase>([
 			{ name: "undefined", noProxy: undefined },
 			{ name: "empty array", noProxy: [] },
 		])("uses proxy when http.noProxy is $name", async ({ noProxy }) => {
-			const cfg = new MockConfigurationProvider();
-			cfg.set("http.proxy", proxy);
-			cfg.set("http.noProxy", noProxy);
-
-			const agent = await createHttpAgent(cfg);
-
-			expect(
-				await agent.getProxyForUrl("https://example.com", mockRequest),
-			).toBe(proxy);
+			expect(await proxyForUrl(withProxy({ "http.noProxy": noProxy }))).toBe(
+				proxy,
+			);
 		});
 	});
 });

@@ -1,96 +1,84 @@
 import { spawnSync } from "node:child_process";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	applySshEnvironment,
 	getSshProxyEnvironment,
 } from "@/remote/environment";
 
-import { MockConfigurationProvider } from "../../mocks/testHelpers";
+import {
+	config,
+	PROXY_URL as proxy,
+	withProxy,
+	type Settings,
+} from "../../mocks/testHelpers";
 
-const proxy = "http://proxy.example.com:8080";
+const proxyEnv = { HTTP_PROXY: proxy, HTTPS_PROXY: proxy };
+type Environment = Record<string, string | undefined>;
 
-function setup() {
+beforeEach(() => {
 	vi.unstubAllEnvs();
-	return {
-		config(settings: Record<string, unknown> = {}): MockConfigurationProvider {
-			const cfg = new MockConfigurationProvider();
-			for (const [key, value] of Object.entries(settings)) {
-				cfg.set(key, value);
-			}
-			return cfg;
-		},
-	};
-}
+});
 
 describe("getSshProxyEnvironment", () => {
-	it.each([
+	interface ProxyEnvironmentCase {
+		name: string;
+		settings: Settings;
+		expected: Record<string, string>;
+	}
+
+	it.each<ProxyEnvironmentCase>([
 		{
 			name: "sets both proxy variables from http.proxy",
-			settings: { "http.proxy": proxy },
-			expected: { HTTP_PROXY: proxy, HTTPS_PROXY: proxy },
+			settings: withProxy(),
+			expected: proxyEnv,
 		},
 		{
 			name: "sets both proxy variables when proxy support is on",
-			settings: { "http.proxy": proxy, "http.proxySupport": "on" },
-			expected: { HTTP_PROXY: proxy, HTTPS_PROXY: proxy },
+			settings: withProxy({ "http.proxySupport": "on" }),
+			expected: proxyEnv,
 		},
 		{
 			name: "sets both proxy variables when proxy support is fallback",
-			settings: { "http.proxy": proxy, "http.proxySupport": "fallback" },
-			expected: { HTTP_PROXY: proxy, HTTPS_PROXY: proxy },
+			settings: withProxy({ "http.proxySupport": "fallback" }),
+			expected: proxyEnv,
 		},
 		{
 			name: "sets both proxy variables when proxy support is override",
-			settings: { "http.proxy": proxy, "http.proxySupport": "override" },
-			expected: { HTTP_PROXY: proxy, HTTPS_PROXY: proxy },
+			settings: withProxy({ "http.proxySupport": "override" }),
+			expected: proxyEnv,
 		},
 		{
 			name: "ignores VS Code proxy settings when proxy support is off",
-			settings: {
-				"http.proxy": proxy,
+			settings: withProxy({
 				"http.proxySupport": "off",
 				"coder.proxyBypass": "coder.example.com",
 				"http.noProxy": ["fallback.example.com"],
-			},
+			}),
 			expected: {},
 		},
 		{
 			name: "passes through the proxy when the deployment is bypassed",
-			settings: {
-				"http.proxy": proxy,
-				"coder.proxyBypass": "coder.example.com",
-			},
-			expected: {
-				HTTP_PROXY: proxy,
-				HTTPS_PROXY: proxy,
-				NO_PROXY: "coder.example.com",
-			},
+			settings: withProxy({ "coder.proxyBypass": "coder.example.com" }),
+			expected: { ...proxyEnv, NO_PROXY: "coder.example.com" },
 		},
 		{
 			name: "falls back to http.noProxy when coder.proxyBypass is unset",
-			settings: {
-				"http.proxy": proxy,
+			settings: withProxy({
 				"http.noProxy": [" first.example.com ", "second.example.com "],
-			},
+			}),
 			expected: {
-				HTTP_PROXY: proxy,
-				HTTPS_PROXY: proxy,
+				...proxyEnv,
 				NO_PROXY: "first.example.com,second.example.com",
 			},
 		},
 		{
 			name: "prefers coder.proxyBypass over http.noProxy",
-			settings: {
-				"http.proxy": proxy,
+			settings: withProxy({
 				"coder.proxyBypass": "primary.example.com",
 				"http.noProxy": ["fallback.example.com"],
-			},
-			expected: {
-				HTTP_PROXY: proxy,
-				HTTPS_PROXY: proxy,
-				NO_PROXY: "primary.example.com",
-			},
+			}),
+			expected: { ...proxyEnv, NO_PROXY: "primary.example.com" },
 		},
 		{
 			name: "ignores a whitespace-only http.proxy",
@@ -99,25 +87,17 @@ describe("getSshProxyEnvironment", () => {
 		},
 		{
 			name: "falls back to http.noProxy when coder.proxyBypass is whitespace",
-			settings: {
-				"http.proxy": proxy,
+			settings: withProxy({
 				"coder.proxyBypass": "   ",
 				"http.noProxy": ["fallback.example.com"],
-			},
-			expected: {
-				HTTP_PROXY: proxy,
-				HTTPS_PROXY: proxy,
-				NO_PROXY: "fallback.example.com",
-			},
+			}),
+			expected: { ...proxyEnv, NO_PROXY: "fallback.example.com" },
 		},
 	])("$name", ({ settings, expected }) => {
-		const { config } = setup();
-
 		expect(getSshProxyEnvironment(config(settings))).toEqual(expected);
 	});
 
 	it("ignores an existing env proxy when http.proxy is unset", () => {
-		const { config } = setup();
 		vi.stubEnv("HTTPS_PROXY", "http://env-proxy.example.com:8080");
 
 		expect(getSshProxyEnvironment(config())).toEqual({});
@@ -126,23 +106,16 @@ describe("getSshProxyEnvironment", () => {
 
 describe("applySshEnvironment", () => {
 	it("applies proxy variables to process.env and the collection, and restores on dispose", () => {
-		const { config } = setup();
-		const env: Record<string, string | undefined> = {};
+		const env: Environment = {};
 		const collection = fakeEnvCollection();
+		const expected = { ...proxyEnv, NO_PROXY: "internal.example.com" };
 
 		const applied = applySshEnvironment(
-			config({
-				"http.proxy": proxy,
-				"coder.proxyBypass": "internal.example.com",
-			}),
+			config(withProxy({ "coder.proxyBypass": "internal.example.com" })),
 			collection,
 			env,
 		);
-		const expected = {
-			HTTP_PROXY: proxy,
-			HTTPS_PROXY: proxy,
-			NO_PROXY: "internal.example.com",
-		};
+
 		expect(env).toEqual(expected);
 		expect(collection.vars).toEqual(expected);
 		expect(collection.persistent).toBe(false);
@@ -153,8 +126,7 @@ describe("applySshEnvironment", () => {
 	});
 
 	it("sets nothing when no proxy is configured", () => {
-		const { config } = setup();
-		const env: Record<string, string | undefined> = {};
+		const env: Environment = {};
 		const collection = fakeEnvCollection();
 
 		applySshEnvironment(config(), collection, env);
@@ -164,16 +136,15 @@ describe("applySshEnvironment", () => {
 	});
 
 	it("does not clear existing env proxy variables when proxy support is off", () => {
-		const { config } = setup();
 		const original = {
 			HTTP_PROXY: "http://old-http-proxy.example.com:8080",
 			HTTPS_PROXY: "http://old-https-proxy.example.com:8080",
 		};
-		const env: Record<string, string | undefined> = { ...original };
+		const env: Environment = { ...original };
 		const collection = fakeEnvCollection();
 
 		applySshEnvironment(
-			config({ "http.proxy": proxy, "http.proxySupport": "off" }),
+			config(withProxy({ "http.proxySupport": "off" })),
 			collection,
 			env,
 		);
@@ -183,35 +154,30 @@ describe("applySshEnvironment", () => {
 	});
 
 	it("does not overwrite existing lowercase variables", () => {
-		const { config } = setup();
 		const original = {
 			http_proxy: "http://old-http-proxy.example.com:8080",
 			https_proxy: "http://old-https-proxy.example.com:8080",
 		};
-		const env: Record<string, string | undefined> = { ...original };
+		const env: Environment = { ...original };
 
 		const applied = applySshEnvironment(
-			config({ "http.proxy": proxy }),
+			config(withProxy()),
 			fakeEnvCollection(),
 			env,
 		);
-		expect(env).toEqual({
-			...original,
-			HTTP_PROXY: proxy,
-			HTTPS_PROXY: proxy,
-		});
+
+		expect(env).toEqual({ ...original, ...proxyEnv });
 
 		applied.dispose();
 		expect(env).toEqual(original);
 	});
 
 	it("restores existing case-insensitive variables", () => {
-		const { config } = setup();
 		const original = "http://old-http-proxy.example.com:8080";
 		const env = caseInsensitiveEnvironment({ http_proxy: original });
 
 		const applied = applySshEnvironment(
-			config({ "http.proxy": proxy }),
+			config(withProxy()),
 			fakeEnvCollection(),
 			env,
 		);
@@ -224,9 +190,8 @@ describe("applySshEnvironment", () => {
 	});
 
 	it("propagates proxy variables to newly spawned child processes", () => {
-		const { config } = setup();
 		const applied = applySshEnvironment(
-			config({ "http.proxy": proxy }),
+			config(withProxy()),
 			fakeEnvCollection(),
 		);
 
@@ -256,7 +221,7 @@ function fakeEnvCollection() {
 
 function caseInsensitiveEnvironment(
 	values: Record<string, string>,
-): Record<string, string | undefined> {
+): Environment {
 	return new Proxy(values, {
 		get(target, property) {
 			if (typeof property !== "string") {

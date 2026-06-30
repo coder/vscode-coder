@@ -28,20 +28,16 @@ export async function createHttpAgent(
 ): Promise<ProxyAgent> {
 	const insecure = cfg.get<boolean>("coder.insecure", false);
 	const proxyStrictSSL = cfg.get<boolean>("http.proxyStrictSSL", true);
-	const proxySupport = cfg.get<string>("http.proxySupport");
-	const proxyEnabled = proxySupport !== "off";
-	const proxyAuthorization = proxyEnabled
-		? cfg.get<string | null>("http.proxyAuthorization")
-		: undefined;
-	const httpProxy = proxyEnabled
-		? cfg.get<string | null>("http.proxy")
-		: undefined;
-	const coderProxyBypass = proxyEnabled
-		? cfg.get<string | null>("coder.proxyBypass")
-		: undefined;
-	const httpNoProxy = proxyEnabled
-		? cfg.get<string[]>("http.noProxy")
-		: undefined;
+	// "off" ignores VS Code proxy config; inherited env proxies still apply.
+	const proxyEnabled = cfg.get<string>("http.proxySupport") !== "off";
+	const proxySetting = <T>(key: string) =>
+		proxyEnabled ? cfg.get<T>(key) : undefined;
+	const proxyAuthorization = proxySetting<string | null>(
+		"http.proxyAuthorization",
+	);
+	const httpProxy = proxySetting<string | null>("http.proxy");
+	const coderProxyBypass = proxySetting<string | null>("coder.proxyBypass");
+	const httpNoProxy = proxySetting<string[]>("http.noProxy");
 
 	const certFile = expandPath(
 		String(cfg.get("coder.tlsCertFile") ?? "").trim(),

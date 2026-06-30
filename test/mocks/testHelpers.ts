@@ -149,6 +149,25 @@ export class MockConfigurationProvider {
 	}
 }
 
+export type Settings = Record<string, unknown>;
+
+/** Proxy URL for proxy-config tests. */
+export const PROXY_URL = "http://proxy.example.com:8080";
+
+/** A MockConfigurationProvider seeded with the given settings. */
+export function config(settings: Settings = {}): MockConfigurationProvider {
+	const cfg = new MockConfigurationProvider();
+	for (const [key, value] of Object.entries(settings)) {
+		cfg.set(key, value);
+	}
+	return cfg;
+}
+
+/** Settings with http.proxy set. */
+export function withProxy(settings: Settings = {}): Settings {
+	return { "http.proxy": PROXY_URL, ...settings };
+}
+
 /**
  * Mock progress reporter that integrates with vscode.window.withProgress.
  * Use this to control progress reporting behavior and cancellation in tests.
