@@ -4,8 +4,6 @@ import {
 	bannerKey,
 	normalizeBanners,
 	popupMessage,
-	sourceIcon,
-	sourceLabel,
 	statusText,
 	statusTooltip,
 } from "@/announcements/banners";
@@ -100,27 +98,20 @@ describe("normalizeBanners", () => {
 			backgroundColor: "#004852",
 		});
 
-		expect(
-			bannerKey({
-				source: "service",
-				message: "Maintenance tonight",
-				backgroundColor: "#004852",
-			}),
-		).not.toBe(key);
-		expect(
-			bannerKey({
-				source: "announcement",
-				message: "Maintenance tomorrow",
-				backgroundColor: "#004852",
-			}),
-		).not.toBe(key);
-		expect(
-			bannerKey({
-				source: "announcement",
-				message: "Maintenance tonight",
-				backgroundColor: "#111111",
-			}),
-		).not.toBe(key);
+		for (const changed of [
+			{ source: "service" as const },
+			{ message: "Maintenance tomorrow" },
+			{ backgroundColor: "#111111" },
+		]) {
+			expect(
+				bannerKey({
+					source: "announcement",
+					message: "Maintenance tonight",
+					backgroundColor: "#004852",
+					...changed,
+				}),
+			).not.toBe(key);
+		}
 	});
 });
 
@@ -147,12 +138,5 @@ describe("banner copy", () => {
 		expect(popupMessage(announcements(longMessage))).toBe(
 			`Coder announcement: ${"a".repeat(119)}…`,
 		);
-	});
-
-	it("formats QuickPick source labels", () => {
-		expect(sourceIcon("service")).toBe("$(info)");
-		expect(sourceIcon("announcement")).toBe("$(megaphone)");
-		expect(sourceLabel("service")).toBe("Service banner");
-		expect(sourceLabel("announcement")).toBe("Announcement");
 	});
 });

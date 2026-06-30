@@ -62,14 +62,6 @@ export function popupMessage(banners: readonly Announcement[]): string {
 		: `Coder has ${banners.length} new deployment announcements.`;
 }
 
-export function sourceLabel(source: AnnouncementSource): string {
-	return source === "service" ? "Service banner" : "Announcement";
-}
-
-export function sourceIcon(source: AnnouncementSource): string {
-	return source === "service" ? "$(info)" : "$(megaphone)";
-}
-
 function toAnnouncement(
 	source: AnnouncementSource,
 	banner: BannerConfig,

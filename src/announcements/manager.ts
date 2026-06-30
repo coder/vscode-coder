@@ -2,10 +2,7 @@ import * as vscode from "vscode";
 
 import { type CoderApi } from "../api/coderApi";
 import { type SecretsManager } from "../core/secretsManager";
-import {
-	type SessionData,
-	type SessionState,
-} from "../deployment/sessionStore";
+import { type SessionState } from "../deployment/sessionStore";
 import { type Logger } from "../logging/logger";
 import { areNotificationsDisabled } from "../settings/notifications";
 
@@ -13,8 +10,6 @@ import {
 	type Announcement,
 	normalizeBanners,
 	popupMessage,
-	sourceIcon,
-	sourceLabel,
 	statusText,
 	statusTooltip,
 } from "./banners";
@@ -93,7 +88,7 @@ export class AnnouncementManager implements vscode.Disposable {
 
 		const selected = await vscode.window.showQuickPick(
 			banners.map((banner, index) => ({
-				label: `${sourceIcon(banner.source)} ${sourceLabel(banner.source)} ${index + 1}`,
+				label: `${banner.source === "service" ? "$(info) Service banner" : "$(megaphone) Announcement"} ${index + 1}`,
 				detail: banner.message,
 				description: banner.backgroundColor,
 				banner,
@@ -126,7 +121,7 @@ export class AnnouncementManager implements vscode.Disposable {
 		}
 
 		const banners = normalizeBanners(await this.client.getAppearance());
-		if (this.sessionChangedSince(session)) {
+		if (this.disposed || this.sessionState.current !== session) {
 			return undefined;
 		}
 		this.setBanners(banners);
@@ -135,8 +130,12 @@ export class AnnouncementManager implements vscode.Disposable {
 			this.secretsManager.getSeenBanners(session.deployment.safeHostname),
 		);
 		const unseen = banners.filter((banner) => !seen.has(banner.key));
-		if (options.notify && unseen.length > 0 && notificationsEnabled()) {
-			this.showPopup(unseen);
+		if (
+			options.notify &&
+			unseen.length > 0 &&
+			!areNotificationsDisabled(vscode.workspace.getConfiguration())
+		) {
+			void this.showPopup(unseen);
 		}
 		await this.secretsManager.setSeenBanners(
 			session.deployment.safeHostname,
@@ -156,18 +155,18 @@ export class AnnouncementManager implements vscode.Disposable {
 		this.statusBarItem.show();
 	}
 
-	private showPopup(banners: readonly Announcement[]): void {
-		void Promise.resolve(
-			vscode.window.showInformationMessage(popupMessage(banners), VIEW_ACTION),
-		)
-			.then((action) => {
-				if (action === VIEW_ACTION) {
-					void this.showAnnouncements();
-				}
-			})
-			.catch((error: unknown) => {
-				this.logger.warn("Failed to show Coder announcement popup", error);
-			});
+	private async showPopup(banners: readonly Announcement[]): Promise<void> {
+		try {
+			const action = await vscode.window.showInformationMessage(
+				popupMessage(banners),
+				VIEW_ACTION,
+			);
+			if (action === VIEW_ACTION) {
+				void this.showAnnouncements();
+			}
+		} catch (error) {
+			this.logger.warn("Failed to show Coder announcement popup", error);
+		}
 	}
 
 	private scheduleRefresh(): void {
@@ -190,14 +189,6 @@ export class AnnouncementManager implements vscode.Disposable {
 			this.refreshTimeout = undefined;
 		}
 	}
-
-	private sessionChangedSince(session: SessionData): boolean {
-		return this.disposed || this.sessionState.current !== session;
-	}
-}
-
-function notificationsEnabled(): boolean {
-	return !areNotificationsDisabled(vscode.workspace.getConfiguration());
 }
 
 function errorMessage(error: unknown): string {

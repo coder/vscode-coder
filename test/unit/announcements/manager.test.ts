@@ -15,30 +15,20 @@ import {
 	MockStatusBarItem,
 } from "../../mocks/testHelpers";
 
-import type {
-	AppearanceConfig,
-	BannerConfig,
-} from "coder/site/src/api/typesGenerated";
+import type { AppearanceConfig } from "coder/site/src/api/typesGenerated";
 
 const DEPLOYMENT = {
 	url: "https://coder.example.com",
 	safeHostname: "coder.example.com",
 };
 
-class MockAppearanceClient {
-	readonly getAppearance = vi.fn<() => Promise<AppearanceConfig>>();
+function createClient() {
+	return { getAppearance: vi.fn<() => Promise<AppearanceConfig>>() };
 }
 
-const managers: AnnouncementManager[] = [];
+type MockAppearanceClient = ReturnType<typeof createClient>;
 
-function banner(overrides: Partial<BannerConfig> = {}): BannerConfig {
-	return {
-		enabled: true,
-		message: "Maintenance tonight",
-		background_color: "#004852",
-		...overrides,
-	};
-}
+let manager: AnnouncementManager | undefined;
 
 function appearance(messages: readonly string[] = []): AppearanceConfig {
 	return {
@@ -46,13 +36,17 @@ function appearance(messages: readonly string[] = []): AppearanceConfig {
 		logo_url: "",
 		docs_url: "",
 		service_banner: { enabled: false },
-		announcement_banners: messages.map((message) => banner({ message })),
+		announcement_banners: messages.map((message) => ({
+			enabled: true,
+			message,
+			background_color: "#004852",
+		})),
 	};
 }
 
 function setup() {
 	const config = new MockConfigurationProvider();
-	const client = new MockAppearanceClient();
+	const client = createClient();
 	client.getAppearance.mockResolvedValue(appearance());
 	const session = new SessionStore();
 	const secretsManager = new SecretsManager(
@@ -62,18 +56,18 @@ function setup() {
 	);
 	const statusBar = new MockStatusBarItem();
 	const logger = createMockLogger();
-	const manager = new AnnouncementManager(
+	const announcementManager = new AnnouncementManager(
 		client,
 		session,
 		secretsManager,
 		logger,
 	);
-	managers.push(manager);
+	manager = announcementManager;
 	return {
 		client,
 		config,
 		logger,
-		manager,
+		manager: announcementManager,
 		secretsManager,
 		session,
 		statusBar,
@@ -106,9 +100,8 @@ describe("AnnouncementManager", () => {
 	});
 
 	afterEach(() => {
-		while (managers.length > 0) {
-			managers.pop()?.dispose();
-		}
+		manager?.dispose();
+		manager = undefined;
 	});
 
 	it("shows all active banners in the status bar", async () => {
@@ -165,8 +158,7 @@ describe("AnnouncementManager", () => {
 	it("shows newly seen banners on a different deployment", async () => {
 		const { client, session } = setup();
 		client.getAppearance.mockResolvedValue(appearance(["Maintenance tonight"]));
-		session.signIn(DEPLOYMENT, createMockUser());
-		await flushPromises();
+		await signIn(session);
 		vi.mocked(vscode.window.showInformationMessage).mockClear();
 
 		session.signIn(
@@ -197,7 +189,12 @@ describe("AnnouncementManager", () => {
 		await manager.showAnnouncements();
 
 		expect(vscode.window.showQuickPick).toHaveBeenCalledWith(
-			[expect.objectContaining({ detail: "Full details" })],
+			[
+				expect.objectContaining({
+					label: "$(megaphone) Announcement 1",
+					detail: "Full details",
+				}),
+			],
 			expect.objectContaining({ title: "Coder Announcements" }),
 		);
 		expectInfo("Full details");
