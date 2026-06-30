@@ -17,6 +17,7 @@ const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
 type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
 const CURRENT_DEPLOYMENT_KEY = "coder.currentDeployment";
+const SEEN_BANNERS_KEY = "seenBanners";
 const DEFAULT_MAX_DEPLOYMENTS = 10;
 
 const LEGACY_SESSION_TOKEN_KEY = "sessionToken";
@@ -28,6 +29,9 @@ const CurrentDeploymentStateSchema = z.object({
 export type CurrentDeploymentState = z.infer<
 	typeof CurrentDeploymentStateSchema
 >;
+
+const SeenBannersSchema = z.record(z.string(), z.array(z.string()));
+type SeenBanners = z.infer<typeof SeenBannersSchema>;
 
 /**
  * OAuth token data stored alongside session auth.
@@ -235,11 +239,40 @@ export class SecretsManager {
 		await Promise.all([
 			this.clearSessionAuth(safeHostname),
 			this.clearOAuthClientRegistration(safeHostname),
+			this.clearSeenBanners(safeHostname),
 			this.memento.update(
 				`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
 				undefined,
 			),
 		]);
+	}
+
+	public getSeenBanners(safeHostname: string): string[] {
+		return this.getSeenBannersState()[safeHostname] ?? [];
+	}
+
+	public async setSeenBanners(
+		safeHostname: string,
+		bannerKeys: readonly string[],
+	): Promise<void> {
+		const seenBanners = this.getSeenBannersState();
+		seenBanners[safeHostname] = [...bannerKeys];
+		await this.memento.update(SEEN_BANNERS_KEY, seenBanners);
+	}
+
+	private async clearSeenBanners(safeHostname: string): Promise<void> {
+		const seenBanners = this.getSeenBannersState();
+		delete seenBanners[safeHostname];
+		await this.memento.update(
+			SEEN_BANNERS_KEY,
+			Object.keys(seenBanners).length > 0 ? seenBanners : undefined,
+		);
+	}
+
+	private getSeenBannersState(): SeenBanners {
+		const raw = this.memento.get<unknown>(SEEN_BANNERS_KEY);
+		const result = SeenBannersSchema.safeParse(raw);
+		return result.success ? result.data : {};
 	}
 
 	/**

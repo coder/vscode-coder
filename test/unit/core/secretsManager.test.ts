@@ -170,6 +170,34 @@ describe("SecretsManager", () => {
 
 			vi.useRealTimers();
 		});
+		describe("seen banners", () => {
+			it("stores seen banner keys by safe hostname", async () => {
+				await secretsManager.setSeenBanners("example.com", ["one", "two"]);
+				await secretsManager.setSeenBanners("other.com", ["three"]);
+
+				expect(secretsManager.getSeenBanners("example.com")).toEqual([
+					"one",
+					"two",
+				]);
+				expect(secretsManager.getSeenBanners("other.com")).toEqual(["three"]);
+			});
+
+			it("clears seen banner keys with auth data", async () => {
+				await secretsManager.setSeenBanners("example.com", ["one"]);
+				await secretsManager.setSeenBanners("other.com", ["two"]);
+
+				await secretsManager.clearAllAuthData("example.com");
+
+				expect(secretsManager.getSeenBanners("example.com")).toEqual([]);
+				expect(secretsManager.getSeenBanners("other.com")).toEqual(["two"]);
+			});
+
+			it("ignores corrupted seen banner storage", async () => {
+				await memento.update("seenBanners", { "example.com": "bad" });
+
+				expect(secretsManager.getSeenBanners("example.com")).toEqual([]);
+			});
+		});
 	});
 
 	describe("current deployment", () => {
