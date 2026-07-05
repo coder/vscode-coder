@@ -22,6 +22,13 @@ const DEPLOYMENT = {
 	safeHostname: "coder.example.com",
 };
 
+const OTHER_DEPLOYMENT = {
+	url: "https://other.example.com",
+	safeHostname: "other.example.com",
+};
+
+const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+
 function createClient() {
 	return { getAppearance: vi.fn<() => Promise<AppearanceConfig>>() };
 }
@@ -74,8 +81,11 @@ function setup() {
 	};
 }
 
-async function signIn(session: SessionStore): Promise<void> {
-	session.signIn(DEPLOYMENT, createMockUser());
+async function signIn(
+	session: SessionStore,
+	deployment = DEPLOYMENT,
+): Promise<void> {
+	session.signIn(deployment, createMockUser());
 	await flushPromises();
 }
 
@@ -91,6 +101,10 @@ function expectInfo(message: string, ...items: string[]): void {
 		message,
 		...items,
 	);
+}
+
+function clearInfoMessages(): void {
+	vi.mocked(vscode.window.showInformationMessage).mockClear();
 }
 
 describe("AnnouncementManager", () => {
@@ -121,7 +135,7 @@ describe("AnnouncementManager", () => {
 		nextAppearance(client, ["First", "Second"]);
 		await signIn(session);
 		expectInfo("Coder has 2 new deployment announcements.", "View");
-		vi.mocked(vscode.window.showInformationMessage).mockClear();
+		clearInfoMessages();
 
 		nextAppearance(client, ["First", "Second", "Third"]);
 		await manager.refresh({ notify: true });
@@ -136,7 +150,7 @@ describe("AnnouncementManager", () => {
 		const { client, manager, session } = setup();
 		client.getAppearance.mockResolvedValue(appearance(["Maintenance tonight"]));
 		await signIn(session);
-		vi.mocked(vscode.window.showInformationMessage).mockClear();
+		clearInfoMessages();
 
 		await manager.refresh({ notify: true });
 
@@ -159,13 +173,9 @@ describe("AnnouncementManager", () => {
 		const { client, session } = setup();
 		client.getAppearance.mockResolvedValue(appearance(["Maintenance tonight"]));
 		await signIn(session);
-		vi.mocked(vscode.window.showInformationMessage).mockClear();
+		clearInfoMessages();
 
-		session.signIn(
-			{ url: "https://other.example.com", safeHostname: "other.example.com" },
-			createMockUser(),
-		);
-		await flushPromises();
+		await signIn(session, OTHER_DEPLOYMENT);
 
 		expectInfo("Coder announcement: Maintenance tonight", "View");
 	});
@@ -173,18 +183,11 @@ describe("AnnouncementManager", () => {
 	it("refreshes before showing announcements from the command", async () => {
 		const { client, manager, session } = setup();
 		client.getAppearance.mockResolvedValue(appearance(["Full details"]));
-		vi.mocked(vscode.window.showQuickPick).mockResolvedValueOnce({
-			label: "$(megaphone) Announcement 1",
-			detail: "Full details",
-			banner: {
-				source: "announcement",
-				message: "Full details",
-				backgroundColor: "#004852",
-				key: "key",
-			},
-		} as never);
+		vi.mocked(vscode.window.showQuickPick).mockImplementationOnce(
+			async (items) => (await items)[0],
+		);
 		await signIn(session);
-		vi.mocked(vscode.window.showInformationMessage).mockClear();
+		clearInfoMessages();
 
 		await manager.showAnnouncements();
 
@@ -203,7 +206,7 @@ describe("AnnouncementManager", () => {
 	it("shows an empty message when there are no active announcements", async () => {
 		const { manager, session } = setup();
 		await signIn(session);
-		vi.mocked(vscode.window.showInformationMessage).mockClear();
+		clearInfoMessages();
 
 		await manager.showAnnouncements();
 
@@ -213,7 +216,7 @@ describe("AnnouncementManager", () => {
 	it("shows refresh errors from the command", async () => {
 		const { client, logger, manager, session } = setup();
 		await signIn(session);
-		vi.mocked(vscode.window.showInformationMessage).mockClear();
+		clearInfoMessages();
 		client.getAppearance.mockRejectedValueOnce(new Error("boom"));
 
 		await manager.showAnnouncements();
@@ -253,10 +256,7 @@ describe("AnnouncementManager", () => {
 
 		session.signIn(DEPLOYMENT, createMockUser());
 		await Promise.resolve();
-		session.signIn(
-			{ url: "https://other.example.com", safeHostname: "other.example.com" },
-			createMockUser(),
-		);
+		session.signIn(OTHER_DEPLOYMENT, createMockUser());
 		stale.resolve(appearance(["Stale"]));
 		await flushPromises();
 
@@ -270,7 +270,7 @@ describe("AnnouncementManager", () => {
 		await signIn(session);
 		nextAppearance(client, ["Scheduled maintenance"]);
 
-		await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+		await vi.advanceTimersByTimeAsync(REFRESH_INTERVAL_MS);
 		await flushPromises();
 
 		expect(statusBar.text).toBe("$(megaphone) Coder");
@@ -278,7 +278,7 @@ describe("AnnouncementManager", () => {
 
 		session.signOut(null);
 		client.getAppearance.mockClear();
-		await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+		await vi.advanceTimersByTimeAsync(REFRESH_INTERVAL_MS);
 
 		expect(client.getAppearance).not.toHaveBeenCalled();
 	});
