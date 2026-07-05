@@ -21,7 +21,8 @@ export function normalizeBanners(
 ): readonly Announcement[] {
 	return [
 		toAnnouncement("service", appearance.service_banner),
-		...appearance.announcement_banners.map((banner) =>
+		// Nullish guards tolerate older deployments that omit banner fields.
+		...(appearance.announcement_banners ?? []).map((banner) =>
 			toAnnouncement("announcement", banner),
 		),
 	].filter((banner): banner is Announcement => banner !== undefined);
@@ -64,13 +65,13 @@ export function popupMessage(banners: readonly Announcement[]): string {
 
 function toAnnouncement(
 	source: AnnouncementSource,
-	banner: BannerConfig,
+	banner: BannerConfig | undefined,
 ): Announcement | undefined {
-	const message = banner.message?.trim();
-	const backgroundColor = banner.background_color?.trim() || undefined;
-	if (!banner.enabled || !message) {
+	const message = banner?.message?.trim();
+	if (!banner?.enabled || !message) {
 		return undefined;
 	}
+	const backgroundColor = banner.background_color?.trim() || undefined;
 	return {
 		source,
 		message,

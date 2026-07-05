@@ -193,7 +193,7 @@ describe("SecretsManager", () => {
 			});
 
 			it("ignores corrupted seen banner storage", async () => {
-				await memento.update("seenBanners", { "example.com": "bad" });
+				await memento.update("coder.seenBanners.example.com", { bad: true });
 
 				expect(secretsManager.getSeenBanners("example.com")).toEqual([]);
 			});

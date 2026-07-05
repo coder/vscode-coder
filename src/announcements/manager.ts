@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { errToStr } from "../api/api-helper";
 import { type CoderApi } from "../api/coderApi";
 import { type SecretsManager } from "../core/secretsManager";
 import { type SessionState } from "../deployment/sessionStore";
@@ -67,7 +68,7 @@ export class AnnouncementManager implements vscode.Disposable {
 			this.logger.warn("Failed to refresh Coder announcements", error);
 			if (options.showErrors) {
 				void vscode.window.showErrorMessage(
-					`Failed to refresh Coder announcements: ${errorMessage(error)}`,
+					`Failed to refresh Coder announcements: ${errToStr(error)}`,
 				);
 			}
 			return undefined;
@@ -90,7 +91,6 @@ export class AnnouncementManager implements vscode.Disposable {
 			banners.map((banner, index) => ({
 				label: `${banner.source === "service" ? "$(info) Service banner" : "$(megaphone) Announcement"} ${index + 1}`,
 				detail: banner.message,
-				description: banner.backgroundColor,
 				banner,
 			})),
 			{
@@ -129,6 +129,7 @@ export class AnnouncementManager implements vscode.Disposable {
 		const seen = new Set(
 			this.secretsManager.getSeenBanners(session.deployment.safeHostname),
 		);
+		const keys = banners.map((banner) => banner.key);
 		const unseen = banners.filter((banner) => !seen.has(banner.key));
 		if (
 			options.notify &&
@@ -137,10 +138,12 @@ export class AnnouncementManager implements vscode.Disposable {
 		) {
 			void this.showPopup(unseen);
 		}
-		await this.secretsManager.setSeenBanners(
-			session.deployment.safeHostname,
-			banners.map((banner) => banner.key),
-		);
+		if (unseen.length > 0 || seen.size !== new Set(keys).size) {
+			await this.secretsManager.setSeenBanners(
+				session.deployment.safeHostname,
+				keys,
+			);
+		}
 		return banners;
 	}
 
@@ -189,8 +192,4 @@ export class AnnouncementManager implements vscode.Disposable {
 			this.refreshTimeout = undefined;
 		}
 	}
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }

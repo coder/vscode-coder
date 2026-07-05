@@ -264,6 +264,25 @@ describe("AnnouncementManager", () => {
 		expect(statusBar.tooltip).not.toContain("Stale");
 	});
 
+	it("polls for new banners while signed in and stops after sign-out", async () => {
+		vi.useFakeTimers();
+		const { client, session, statusBar } = setup();
+		await signIn(session);
+		nextAppearance(client, ["Scheduled maintenance"]);
+
+		await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+		await flushPromises();
+
+		expect(statusBar.text).toBe("$(megaphone) Coder");
+		expectInfo("Coder announcement: Scheduled maintenance", "View");
+
+		session.signOut(null);
+		client.getAppearance.mockClear();
+		await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+
+		expect(client.getAppearance).not.toHaveBeenCalled();
+	});
+
 	it("clears status bar when signed out", async () => {
 		const { client, session, statusBar } = setup();
 		nextAppearance(client, ["Maintenance tonight"]);

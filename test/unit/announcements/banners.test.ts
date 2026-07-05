@@ -81,6 +81,13 @@ describe("normalizeBanners", () => {
 		);
 	});
 
+	it("tolerates responses missing banner fields", () => {
+		expect(normalizeBanners({} as AppearanceConfig)).toEqual([]);
+		expect(
+			normalizeBanners({ service_banner: banner() } as AppearanceConfig),
+		).toMatchObject([{ source: "service", message: "Maintenance tonight" }]);
+	});
+
 	it("keeps keys stable when banners reorder", () => {
 		const original = announcements("First", "Second");
 		const reordered = announcements("Second", "First");

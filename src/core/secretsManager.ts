@@ -13,11 +13,11 @@ import type { Logger } from "../logging/logger";
 const SESSION_KEY_PREFIX = "coder.session.";
 const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
 const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
+const SEEN_BANNERS_PREFIX = "coder.seenBanners.";
 
 type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
 const CURRENT_DEPLOYMENT_KEY = "coder.currentDeployment";
-const SEEN_BANNERS_KEY = "seenBanners";
 const DEFAULT_MAX_DEPLOYMENTS = 10;
 
 const LEGACY_SESSION_TOKEN_KEY = "sessionToken";
@@ -30,8 +30,7 @@ export type CurrentDeploymentState = z.infer<
 	typeof CurrentDeploymentStateSchema
 >;
 
-const SeenBannersSchema = z.record(z.string(), z.array(z.string()));
-type SeenBanners = z.infer<typeof SeenBannersSchema>;
+const SeenBannersSchema = z.array(z.string());
 
 /**
  * OAuth token data stored alongside session auth.
@@ -248,31 +247,27 @@ export class SecretsManager {
 	}
 
 	public getSeenBanners(safeHostname: string): string[] {
-		return this.getSeenBannersState()[safeHostname] ?? [];
+		const raw = this.memento.get<unknown>(
+			`${SEEN_BANNERS_PREFIX}${safeHostname}`,
+		);
+		const result = SeenBannersSchema.safeParse(raw);
+		return result.success ? result.data : [];
 	}
 
 	public async setSeenBanners(
 		safeHostname: string,
 		bannerKeys: readonly string[],
 	): Promise<void> {
-		const seenBanners = this.getSeenBannersState();
-		seenBanners[safeHostname] = [...bannerKeys];
-		await this.memento.update(SEEN_BANNERS_KEY, seenBanners);
+		await this.memento.update(`${SEEN_BANNERS_PREFIX}${safeHostname}`, [
+			...bannerKeys,
+		]);
 	}
 
 	private async clearSeenBanners(safeHostname: string): Promise<void> {
-		const seenBanners = this.getSeenBannersState();
-		delete seenBanners[safeHostname];
 		await this.memento.update(
-			SEEN_BANNERS_KEY,
-			Object.keys(seenBanners).length > 0 ? seenBanners : undefined,
+			`${SEEN_BANNERS_PREFIX}${safeHostname}`,
+			undefined,
 		);
-	}
-
-	private getSeenBannersState(): SeenBanners {
-		const raw = this.memento.get<unknown>(SEEN_BANNERS_KEY);
-		const result = SeenBannersSchema.safeParse(raw);
-		return result.success ? result.data : {};
 	}
 
 	/**
