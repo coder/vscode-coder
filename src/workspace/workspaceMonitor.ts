@@ -11,6 +11,7 @@ import {
 	areNotificationsDisabled,
 	areUpdateNotificationsDisabled,
 } from "../settings/notifications";
+import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
 
 import type { CoderApi } from "../api/coderApi";
@@ -64,11 +65,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		);
 		this.latestWorkspace = workspace;
 
-		const statusBarItem = vscode.window.createStatusBarItem(
-			vscode.StatusBarAlignment.Left,
-			999,
-		);
-		statusBarItem.name = "Coder Workspace Update";
+		const statusBarItem = createStatusBarItem("workspaceUpdate");
 		statusBarItem.text = "$(fold-up) Update Workspace";
 		statusBarItem.command = "coder.workspace.update";
 

@@ -43,6 +43,7 @@ import {
 	type AuthorityParts,
 	parseRemoteAuthority,
 } from "../util/authority";
+import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
@@ -1080,10 +1081,7 @@ export class Remote {
 		agent: WorkspaceAgent,
 		client: CoderApi,
 	): Promise<vscode.Disposable[]> {
-		const statusBarItem = vscode.window.createStatusBarItem(
-			"agentMetadata",
-			vscode.StatusBarAlignment.Left,
-		);
+		const statusBarItem = createStatusBarItem("agentMetadata");
 
 		const agentWatcher = await createAgentMetadataWatcher(agent.id, client);
 

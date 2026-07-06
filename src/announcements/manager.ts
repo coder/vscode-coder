@@ -1,11 +1,8 @@
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
-import { type CoderApi } from "../api/coderApi";
-import { type SecretsManager } from "../core/secretsManager";
-import { type SessionState } from "../deployment/sessionStore";
-import { type Logger } from "../logging/logger";
 import { areNotificationsDisabled } from "../settings/notifications";
+import { createStatusBarItem } from "../util/statusBar";
 
 import {
 	type Announcement,
@@ -15,7 +12,12 @@ import {
 	statusTooltip,
 } from "./banners";
 
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+import type { CoderApi } from "../api/coderApi";
+import type { SecretsManager } from "../core/secretsManager";
+import type { SessionState } from "../deployment/sessionStore";
+import type { Logger } from "../logging/logger";
+
+export const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 const VIEW_ACTION = "View";
 
 interface RefreshOptions {
@@ -24,9 +26,10 @@ interface RefreshOptions {
 }
 
 export class AnnouncementManager implements vscode.Disposable {
-	private readonly statusBarItem: vscode.StatusBarItem;
+	private readonly statusBarItem = createStatusBarItem("announcements");
 	private readonly sessionChangeDisposable: vscode.Disposable;
-	private banners: readonly Announcement[] = [];
+	#banners: readonly Announcement[] = [];
+	private fetchGeneration = 0;
 	private refreshTimeout: NodeJS.Timeout | undefined;
 	private disposed = false;
 
@@ -36,11 +39,6 @@ export class AnnouncementManager implements vscode.Disposable {
 		private readonly secretsManager: SecretsManager,
 		private readonly logger: Logger,
 	) {
-		this.statusBarItem = vscode.window.createStatusBarItem(
-			vscode.StatusBarAlignment.Left,
-			998,
-		);
-		this.statusBarItem.name = "Coder Announcements";
 		this.statusBarItem.command = "coder.viewAnnouncements";
 		this.sessionChangeDisposable = this.sessionState.onDidChange(() => {
 			this.onSessionChange();
@@ -48,22 +46,15 @@ export class AnnouncementManager implements vscode.Disposable {
 		this.onSessionChange();
 	}
 
-	public dispose(): void {
-		this.disposed = true;
-		this.cancelRefresh();
-		this.sessionChangeDisposable.dispose();
-		this.statusBarItem.dispose();
-	}
-
-	public async refresh(
-		options: RefreshOptions = {},
-	): Promise<readonly Announcement[] | undefined> {
+	/** Refreshes the banners; resolves false when the refresh failed. */
+	public async refresh(options: RefreshOptions = {}): Promise<boolean> {
 		if (this.disposed) {
-			return undefined;
+			return false;
 		}
 		this.cancelRefresh();
 		try {
-			return await this.fetch(options);
+			await this.fetch(options);
+			return true;
 		} catch (error) {
 			this.logger.warn("Failed to refresh Coder announcements", error);
 			if (options.showErrors) {
@@ -71,25 +62,116 @@ export class AnnouncementManager implements vscode.Disposable {
 					`Failed to refresh Coder announcements: ${errToStr(error)}`,
 				);
 			}
-			return undefined;
+			return false;
 		} finally {
 			this.scheduleRefresh();
 		}
 	}
 
 	public async showAnnouncements(): Promise<void> {
-		const banners =
-			(await this.refresh({ notify: false, showErrors: true })) ?? this.banners;
-		if (banners.length === 0) {
+		const refreshed = await this.refresh({ notify: false, showErrors: true });
+		if (this.banners.length > 0) {
+			await this.pickAnnouncement();
+		} else if (refreshed) {
+			// On failure the error popup is the whole story.
 			void vscode.window.showInformationMessage(
 				"No active Coder announcements.",
 			);
+		}
+	}
+
+	public dispose(): void {
+		this.disposed = true;
+		this.cancelRefresh();
+		this.sessionChangeDisposable.dispose();
+		this.banners = [];
+		this.statusBarItem.dispose();
+	}
+
+	private onSessionChange(): void {
+		this.cancelRefresh();
+		this.banners = [];
+		if (this.sessionState.current.kind === "signedIn") {
+			void this.refresh({ notify: true });
+		}
+	}
+
+	private async fetch(options: RefreshOptions): Promise<void> {
+		const session = this.sessionState.current;
+		if (session.kind !== "signedIn") {
+			this.banners = [];
 			return;
 		}
 
+		const generation = ++this.fetchGeneration;
+		const appearance = await this.client.getAppearance();
+		// A newer fetch or a session change supersedes this response.
+		if (
+			this.disposed ||
+			generation !== this.fetchGeneration ||
+			this.sessionState.current !== session
+		) {
+			return;
+		}
+		const banners = normalizeBanners(appearance);
+		this.banners = banners;
+
+		const seen = new Set(
+			this.secretsManager.getSeenBanners(session.deployment.safeHostname),
+		);
+		const unseen = banners.filter((banner) => !seen.has(banner.key));
+		if (unseen.length === 0) {
+			return;
+		}
+		const notifiable = !areNotificationsDisabled(
+			vscode.workspace.getConfiguration(),
+		);
+		if (options.notify && notifiable) {
+			this.showPopup(unseen);
+		}
+		// Mark seen only what the user could see; suppressed banners notify later.
+		if (!options.notify || notifiable) {
+			await this.secretsManager.setSeenBanners(
+				session.deployment.safeHostname,
+				[...seen, ...unseen.map((banner) => banner.key)],
+			);
+		}
+	}
+
+	/** The setter syncs the status bar so the two cannot drift apart. */
+	private get banners(): readonly Announcement[] {
+		return this.#banners;
+	}
+
+	private set banners(banners: readonly Announcement[]) {
+		this.#banners = banners;
+		if (banners.length === 0) {
+			this.statusBarItem.hide();
+			return;
+		}
+		this.statusBarItem.text = statusText(banners.length);
+		this.statusBarItem.tooltip = statusTooltip(banners);
+		this.statusBarItem.show();
+	}
+
+	/** Non-modal messages may never settle, so chain instead of awaiting. */
+	private showPopup(banners: readonly Announcement[]): void {
+		Promise.resolve(
+			vscode.window.showInformationMessage(popupMessage(banners), VIEW_ACTION),
+		)
+			.then((action) =>
+				// Banners are seconds old; skip the refetch.
+				action === VIEW_ACTION ? this.pickAnnouncement() : undefined,
+			)
+			.catch((error) => {
+				this.logger.warn("Failed to show Coder announcement popup", error);
+			});
+	}
+
+	private async pickAnnouncement(): Promise<void> {
 		const selected = await vscode.window.showQuickPick(
-			banners.map((banner, index) => ({
-				label: `${banner.source === "service" ? "$(info) Service banner" : "$(megaphone) Announcement"} ${index + 1}`,
+			this.banners.map((banner, index) => ({
+				label: `$(megaphone) Announcement ${index + 1}`,
 				detail: banner.message,
 				banner,
 			})),
@@ -100,75 +182,6 @@ export class AnnouncementManager implements vscode.Disposable {
 		);
 		if (selected) {
 			void vscode.window.showInformationMessage(selected.banner.message);
-		}
-	}
-
-	private onSessionChange(): void {
-		this.cancelRefresh();
-		this.setBanners([]);
-		if (this.sessionState.current.kind === "signedIn") {
-			void this.refresh({ notify: true });
-		}
-	}
-
-	private async fetch(
-		options: RefreshOptions,
-	): Promise<readonly Announcement[] | undefined> {
-		const session = this.sessionState.current;
-		if (session.kind !== "signedIn") {
-			this.setBanners([]);
-			return [];
-		}
-
-		const banners = normalizeBanners(await this.client.getAppearance());
-		if (this.disposed || this.sessionState.current !== session) {
-			return undefined;
-		}
-		this.setBanners(banners);
-
-		const seen = new Set(
-			this.secretsManager.getSeenBanners(session.deployment.safeHostname),
-		);
-		const keys = banners.map((banner) => banner.key);
-		const unseen = banners.filter((banner) => !seen.has(banner.key));
-		if (
-			options.notify &&
-			unseen.length > 0 &&
-			!areNotificationsDisabled(vscode.workspace.getConfiguration())
-		) {
-			void this.showPopup(unseen);
-		}
-		if (unseen.length > 0 || seen.size !== new Set(keys).size) {
-			await this.secretsManager.setSeenBanners(
-				session.deployment.safeHostname,
-				keys,
-			);
-		}
-		return banners;
-	}
-
-	private setBanners(banners: readonly Announcement[]): void {
-		this.banners = banners;
-		if (banners.length === 0) {
-			this.statusBarItem.hide();
-			return;
-		}
-		this.statusBarItem.text = statusText(banners.length);
-		this.statusBarItem.tooltip = statusTooltip(banners);
-		this.statusBarItem.show();
-	}
-
-	private async showPopup(banners: readonly Announcement[]): Promise<void> {
-		try {
-			const action = await vscode.window.showInformationMessage(
-				popupMessage(banners),
-				VIEW_ACTION,
-			);
-			if (action === VIEW_ACTION) {
-				void this.showAnnouncements();
-			}
-		} catch (error) {
-			this.logger.warn("Failed to show Coder announcement popup", error);
 		}
 	}
 

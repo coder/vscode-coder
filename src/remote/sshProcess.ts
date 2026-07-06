@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { SshTelemetry, type ProcessLossCause } from "../instrumentation/ssh";
 import { findPort } from "../util";
 import { cleanupFiles } from "../util/fileCleanup";
+import { createStatusBarItem } from "../util/statusBar";
 
 import { NetworkStatusReporter } from "./networkStatus";
 import {
@@ -140,10 +141,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 			networkPollInterval: options.networkPollInterval ?? 3000,
 		};
 		this.telemetry = new SshTelemetry(options.telemetry);
-		this.statusBarItem = vscode.window.createStatusBarItem(
-			vscode.StatusBarAlignment.Left,
-			1000,
-		);
+		this.statusBarItem = createStatusBarItem("networkStatus");
 		this.reporter = new NetworkStatusReporter(this.statusBarItem);
 	}
 

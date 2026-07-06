@@ -7,51 +7,31 @@ import type {
 
 const POPUP_MESSAGE_MAX_LENGTH = 120;
 
-export type AnnouncementSource = "announcement" | "service";
-
 export interface Announcement {
-	readonly source: AnnouncementSource;
 	readonly message: string;
-	readonly backgroundColor?: string;
+	/** Stable fingerprint used to track which banners were already seen. */
 	readonly key: string;
 }
 
 export function normalizeBanners(
 	appearance: AppearanceConfig,
 ): readonly Announcement[] {
-	return [
-		toAnnouncement("service", appearance.service_banner),
-		// Nullish guards tolerate older deployments that omit banner fields.
-		...(appearance.announcement_banners ?? []).map((banner) =>
-			toAnnouncement("announcement", banner),
-		),
-	].filter((banner): banner is Announcement => banner !== undefined);
-}
-
-export function bannerKey(
-	banner: Pick<Announcement, "source" | "message" | "backgroundColor">,
-): string {
-	return createHash("sha256")
-		.update(
-			JSON.stringify({
-				source: banner.source,
-				message: banner.message,
-				backgroundColor: banner.backgroundColor ?? "",
-			}),
-		)
-		.digest("hex")
-		.slice(0, 16);
+	// Modern servers mirror announcements[0] into the deprecated service_banner.
+	const banners = appearance.announcement_banners ?? [
+		appearance.service_banner,
+	];
+	return banners
+		.map((banner) => toAnnouncement(banner))
+		.filter((banner): banner is Announcement => banner !== undefined);
 }
 
 export function statusText(count: number): string {
-	return count === 1 ? "$(megaphone) Coder" : `$(megaphone) Coder ${count}`;
+	return `$(megaphone) Coder${count === 1 ? "" : ` ${count}`}`;
 }
 
 export function statusTooltip(banners: readonly Announcement[]): string {
 	return [
-		banners.length === 1
-			? "Coder deployment announcement"
-			: "Coder deployment announcements",
+		`Coder deployment announcement${banners.length === 1 ? "" : "s"}`,
 		"",
 		...banners.map((banner, index) => `${index + 1}. ${banner.message}`),
 	].join("\n");
@@ -64,24 +44,23 @@ export function popupMessage(banners: readonly Announcement[]): string {
 }
 
 function toAnnouncement(
-	source: AnnouncementSource,
 	banner: BannerConfig | undefined,
 ): Announcement | undefined {
 	const message = banner?.message?.trim();
 	if (!banner?.enabled || !message) {
 		return undefined;
 	}
-	const backgroundColor = banner.background_color?.trim() || undefined;
-	return {
-		source,
-		message,
-		backgroundColor,
-		key: bannerKey({ source, message, backgroundColor }),
-	};
+	return { message, key: bannerKey(message) };
+}
+
+function bannerKey(message: string): string {
+	return createHash("sha256").update(message).digest("hex").slice(0, 16);
 }
 
 function truncate(message: string): string {
-	return message.length <= POPUP_MESSAGE_MAX_LENGTH
+	// Slice code points so emoji are never cut in half.
+	const chars = [...message];
+	return chars.length <= POPUP_MESSAGE_MAX_LENGTH
 		? message
-		: `${message.slice(0, POPUP_MESSAGE_MAX_LENGTH - 1)}…`;
+		: `${chars.slice(0, POPUP_MESSAGE_MAX_LENGTH - 1).join("")}…`;
 }

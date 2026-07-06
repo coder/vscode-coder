@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	bannerKey,
 	normalizeBanners,
 	popupMessage,
 	statusText,
@@ -44,81 +43,52 @@ function announcements(...messages: string[]) {
 }
 
 describe("normalizeBanners", () => {
-	it("returns active service and announcement banners", () => {
+	it("returns active announcement banners trimmed", () => {
 		const banners = normalizeBanners(
 			appearance({
-				service_banner: banner({
-					message: " Service banner ",
-					background_color: " #123456 ",
-				}),
 				announcement_banners: [
-					banner({ message: " Announcement " }),
+					banner({ message: " First " }),
 					banner({ enabled: false, message: "Disabled" }),
 					banner({ message: "   " }),
+					banner({ message: "Second" }),
 				],
 			}),
 		);
 
-		expect(banners).toMatchObject([
-			{
-				source: "service",
-				message: "Service banner",
-				backgroundColor: "#123456",
-			},
-			{
-				source: "announcement",
-				message: "Announcement",
-				backgroundColor: "#004852",
-			},
+		expect(banners.map((banner) => banner.message)).toEqual([
+			"First",
+			"Second",
 		]);
-		expect(banners).toHaveLength(2);
-		expect(banners[0].key).toBe(
-			bannerKey({
-				source: "service",
-				message: "Service banner",
-				backgroundColor: "#123456",
-			}),
-		);
 	});
 
-	it("tolerates responses missing banner fields", () => {
+	it("ignores the service banner that modern deployments mirror from the first announcement", () => {
+		const banners = normalizeBanners(
+			appearance({
+				service_banner: banner(),
+				announcement_banners: [banner(), banner({ message: "Second" })],
+			}),
+		);
+
+		expect(banners.map((banner) => banner.message)).toEqual([
+			"Maintenance tonight",
+			"Second",
+		]);
+	});
+
+	it("falls back to the service banner on older deployments", () => {
 		expect(normalizeBanners({} as AppearanceConfig)).toEqual([]);
 		expect(
 			normalizeBanners({ service_banner: banner() } as AppearanceConfig),
-		).toMatchObject([{ source: "service", message: "Maintenance tonight" }]);
+		).toMatchObject([{ message: "Maintenance tonight" }]);
 	});
 
-	it("keeps keys stable when banners reorder", () => {
-		const original = announcements("First", "Second");
-		const reordered = announcements("Second", "First");
-		const keyFor = (message: string, banners = original) =>
-			banners.find((banner) => banner.message === message)?.key;
+	it("keys follow the message and survive reordering", () => {
+		const [first, second] = announcements("First", "Second");
+		const [reorderedSecond, reorderedFirst] = announcements("Second", "First");
 
-		expect(keyFor("First", reordered)).toBe(keyFor("First"));
-		expect(keyFor("Second", reordered)).toBe(keyFor("Second"));
-	});
-
-	it("changes keys when fingerprint fields change", () => {
-		const key = bannerKey({
-			source: "announcement",
-			message: "Maintenance tonight",
-			backgroundColor: "#004852",
-		});
-
-		for (const changed of [
-			{ source: "service" as const },
-			{ message: "Maintenance tomorrow" },
-			{ backgroundColor: "#111111" },
-		]) {
-			expect(
-				bannerKey({
-					source: "announcement",
-					message: "Maintenance tonight",
-					backgroundColor: "#004852",
-					...changed,
-				}),
-			).not.toBe(key);
-		}
+		expect(reorderedFirst.key).toBe(first.key);
+		expect(reorderedSecond.key).toBe(second.key);
+		expect(first.key).not.toBe(second.key);
 	});
 });
 
@@ -134,16 +104,20 @@ describe("banner copy", () => {
 	});
 
 	it("formats popup messages", () => {
-		const longMessage = "a".repeat(121);
-
 		expect(popupMessage(announcements("Maintenance tonight"))).toBe(
 			"Coder announcement: Maintenance tonight",
 		);
 		expect(popupMessage(announcements("First", "Second"))).toBe(
 			"Coder has 2 new deployment announcements.",
 		);
-		expect(popupMessage(announcements(longMessage))).toBe(
+	});
+
+	it("truncates long popup messages without splitting emoji", () => {
+		expect(popupMessage(announcements("a".repeat(121)))).toBe(
 			`Coder announcement: ${"a".repeat(119)}…`,
 		);
+		expect(
+			popupMessage(announcements(`${"a".repeat(118)}🚀${"b".repeat(10)}`)),
+		).toBe(`Coder announcement: ${"a".repeat(118)}🚀…`);
 	});
 });
