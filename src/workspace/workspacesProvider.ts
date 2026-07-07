@@ -1,3 +1,4 @@
+import { isAxiosError } from "axios";
 import {
 	type Workspace,
 	type WorkspaceAgent,
@@ -23,40 +24,47 @@ import { type Logger } from "../logging/logger";
 import type { SessionData, SessionState } from "../deployment/sessionStore";
 
 export enum WorkspaceQuery {
-	Mine = "owner:me",
-	All = "",
-	Shared = "shared:true",
+	Mine = "mine",
+	All = "all",
+	Shared = "shared",
 }
 
-/** Per-view rendering behavior, keyed by workspace query. */
+type SignedInSession = Extract<SessionData, { kind: "signedIn" }>;
+
+/** Per-view rendering behavior and search query, keyed by workspace view. */
 interface WorkspaceQueryConfig {
 	readonly showOwner: boolean;
 	readonly showMetadata: boolean;
-	readonly excludeOwn: boolean;
+	readonly getQuery: (session: SignedInSession) => string;
 }
 
 const WORKSPACE_QUERY_CONFIG = {
 	[WorkspaceQuery.Mine]: {
 		showOwner: false,
 		showMetadata: true,
-		excludeOwn: false,
+		getQuery: () => "owner:me",
 	},
 	[WorkspaceQuery.All]: {
 		showOwner: true,
 		showMetadata: false,
-		excludeOwn: false,
+		getQuery: () => "",
 	},
 	[WorkspaceQuery.Shared]: {
 		showOwner: true,
 		showMetadata: false,
-		// `shared:true` also returns workspaces we own and shared out; exclude
-		// them to leave only those shared with us.
-		excludeOwn: true,
+		// Only workspaces shared with the user; excludes workspaces the user
+		// owns and shared with others. Requires Coder 2.27.0+.
+		getQuery: (session) => `shared_with_user:${session.user.id}`,
 	},
 } as const satisfies Record<WorkspaceQuery, WorkspaceQueryConfig>;
 
 export interface WorkspaceProviderOptions {
 	readonly refreshIntervalMs?: number;
+	/**
+	 * Called when the server rejects the workspaces query with HTTP 400,
+	 * which indicates a deployment that does not support the query filter.
+	 */
+	readonly onQueryRejected?: () => void;
 }
 
 /**
@@ -127,6 +135,9 @@ export class WorkspaceProvider
 					this.logger.warn("Failed to fetch workspaces:", error);
 					hadError = true;
 					this.setWorkspaces([]);
+					if (isAxiosError(error) && error.response?.status === 400) {
+						this.options.onQueryRejected?.();
+					}
 				}
 			} while (this.refetchPending && !this.disposed && this.visible);
 		} finally {
@@ -163,14 +174,14 @@ export class WorkspaceProvider
 		}
 
 		const resp = await this.client.getWorkspaces({
-			q: this.getWorkspacesQuery,
+			q: this.config.getQuery(session),
 		});
 
 		if (this.sessionChangedSince(session)) {
 			return null;
 		}
 
-		const workspaces = this.filterWorkspaces(resp.workspaces, session);
+		const workspaces = resp.workspaces;
 		const oldWatcherIds = [...this.agentWatchers.keys()];
 		const reusedWatcherIds: string[] = [];
 
@@ -219,18 +230,6 @@ export class WorkspaceProvider
 	/** True if the session signed in/out or changed since `session` was read. */
 	private sessionChangedSince(session: SessionData): boolean {
 		return this.sessionState.current !== session;
-	}
-
-	private filterWorkspaces(
-		workspaces: readonly Workspace[],
-		session: Extract<SessionData, { kind: "signedIn" }>,
-	): readonly Workspace[] {
-		if (!this.config.excludeOwn) {
-			return workspaces;
-		}
-		return workspaces.filter(
-			(workspace) => workspace.owner_id !== session.user.id,
-		);
 	}
 
 	/**

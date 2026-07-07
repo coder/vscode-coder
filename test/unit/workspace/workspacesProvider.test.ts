@@ -36,7 +36,7 @@ function setup() {
 	const session = new TestSessionStore();
 	const makeProvider = (
 		query: WorkspaceQuery,
-		options?: { refreshIntervalMs?: number },
+		options?: { refreshIntervalMs?: number; onQueryRejected?: () => void },
 	): WorkspaceProvider =>
 		new WorkspaceProvider(
 			query,
@@ -138,7 +138,7 @@ describe("WorkspaceProvider", () => {
 
 	it.each([
 		[WorkspaceQuery.Mine, "owner:me"],
-		[WorkspaceQuery.Shared, "shared:true"],
+		[WorkspaceQuery.Shared, `shared_with_user:${TEST_CURRENT_USER_ID}`],
 		[WorkspaceQuery.All, ""],
 	])("fetches %s with the expected query", async (query, expectedQuery) => {
 		const { client, makeProvider } = setup();
@@ -189,48 +189,33 @@ describe("WorkspaceProvider", () => {
 		},
 	);
 
-	it("filters current-user-owned workspaces from shared results", async () => {
+	it("reports a rejected query when the server responds with HTTP 400", async () => {
 		const { client, makeProvider } = setup();
-		client.respondOnce([
-			workspace({
-				id: "owned-shared-out",
-				name: "owned",
-				owner_id: TEST_CURRENT_USER_ID,
-				owner_name: "current",
+		const onQueryRejected = vi.fn();
+		client.getWorkspaces.mockRejectedValueOnce(
+			Object.assign(new Error("invalid query"), {
+				isAxiosError: true,
+				response: { status: 400 },
 			}),
-			workspace({
-				id: "shared-with-me",
-				name: "shared",
-				owner_id: "alice-id",
-				owner_name: "alice",
-			}),
-		]);
-		const provider = makeProvider(WorkspaceQuery.Shared);
+		);
+		const provider = makeProvider(WorkspaceQuery.Shared, { onQueryRejected });
 
 		await show(provider);
 
-		expect(await labels(provider)).toEqual(["alice / shared"]);
+		expect(onQueryRejected).toHaveBeenCalledTimes(1);
+		expect(await provider.getChildren()).toEqual([]);
 	});
 
-	it.each([WorkspaceQuery.Mine, WorkspaceQuery.All])(
-		"does not apply shared ownership filtering to %s",
-		async (query) => {
-			const { client, makeProvider } = setup();
-			client.respondOnce([
-				workspace({
-					id: "owned",
-					name: "owned",
-					owner_id: TEST_CURRENT_USER_ID,
-					owner_name: "current",
-				}),
-			]);
-			const provider = makeProvider(query);
+	it("does not report a rejected query for other fetch failures", async () => {
+		const { client, makeProvider } = setup();
+		const onQueryRejected = vi.fn();
+		client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
+		const provider = makeProvider(WorkspaceQuery.Shared, { onQueryRejected });
 
-			await show(provider);
+		await show(provider);
 
-			expect(await labels(provider)).toHaveLength(1);
-		},
-	);
+		expect(onQueryRejected).not.toHaveBeenCalled();
+	});
 
 	it("clears rendered workspaces when the session signs out", async () => {
 		const { client, session, makeProvider } = setup();
