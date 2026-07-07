@@ -71,14 +71,10 @@ import type {
 const coderSessionTokenHeader = "Coder-Session-Token";
 
 /**
- * Default timeout for REST requests. Prevents requests from hanging
- * forever on half-open TCP connections (e.g. after system sleep or a
- * network drop), which would otherwise silently kill pollers that only
- * reschedule after the previous request settles.
- *
- * For streaming responses (`responseType: "stream"`, e.g. SSE and the
- * CLI binary download) axios only enforces this until response headers
- * arrive; it never aborts an in-flight stream body.
+ * Default timeout for REST requests, so requests hung on half-open TCP
+ * connections (e.g. after system sleep) don't stall pollers forever.
+ * Streaming responses are only bounded until response headers arrive;
+ * axios never aborts an in-flight stream body.
  */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 

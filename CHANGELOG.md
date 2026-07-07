@@ -5,6 +5,13 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- Apply a 60-second default timeout to REST requests, so requests hung on a
+  half-open TCP connection don't stall pollers forever.
+
 ## [v1.15.2](https://github.com/coder/vscode-coder/releases/tag/v1.15.2) 2026-06-30
 
 > **Breaking:** API requests now respect `http.proxySupport: off`. Previously
