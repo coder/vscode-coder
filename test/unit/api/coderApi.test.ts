@@ -21,7 +21,7 @@ import {
 	getRefreshCommand,
 	refreshCertificates,
 } from "@/api/certificateRefresh";
-import { CoderApi } from "@/api/coderApi";
+import { CoderApi, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/coderApi";
 import { createHttpAgent } from "@/api/utils";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
 import { ClientCertificateError } from "@/error/clientCertificateError";
@@ -131,6 +131,30 @@ describe("CoderApi", () => {
 	});
 
 	describe("HTTP Interceptors", () => {
+		it("sets a default request timeout on the axios instance", () => {
+			api = createApi();
+
+			expect(api.getAxiosInstance().defaults.timeout).toBe(
+				DEFAULT_REQUEST_TIMEOUT_MS,
+			);
+		});
+
+		it("applies the default timeout to requests", async () => {
+			api = createApi();
+			const response = await api.getAxiosInstance().get("/api/v2/users/me");
+
+			expect(response.config.timeout).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+		});
+
+		it("allows per-request timeout overrides", async () => {
+			api = createApi();
+			const response = await api
+				.getAxiosInstance()
+				.get("/api/v2/users/me", { timeout: 0 });
+
+			expect(response.config.timeout).toBe(0);
+		});
+
 		it("adds custom headers and HTTP agent to requests", async () => {
 			const mockAgent = new ProxyAgent();
 			vi.mocked(createHttpAgent).mockResolvedValue(mockAgent);

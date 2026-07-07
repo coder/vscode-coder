@@ -71,6 +71,18 @@ import type {
 const coderSessionTokenHeader = "Coder-Session-Token";
 
 /**
+ * Default timeout for REST requests. Prevents requests from hanging
+ * forever on half-open TCP connections (e.g. after system sleep or a
+ * network drop), which would otherwise silently kill pollers that only
+ * reschedule after the previous request settles.
+ *
+ * For streaming responses (`responseType: "stream"`, e.g. SSE and the
+ * CLI binary download) axios only enforces this until response headers
+ * arrive; it never aborts an in-flight stream body.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
  * Configuration settings that affect WebSocket connections.
  * Changes to these settings will trigger WebSocket reconnection.
  */
@@ -130,6 +142,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 			httpRequestsTelemetry,
 			authConfigTracker,
 		);
+		client.getAxiosInstance().defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS;
 		client.setCredentials(baseUrl, token);
 
 		setupInterceptors(client, output, httpRequestsTelemetry, authConfigTracker);
