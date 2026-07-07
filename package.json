@@ -316,20 +316,23 @@
 					"id": "myWorkspaces",
 					"name": "My Workspaces",
 					"visibility": "visible",
-					"icon": "media/logo-white.svg"
+					"icon": "media/logo-white.svg",
+					"initialSize": 2
 				},
 				{
 					"id": "sharedWorkspaces",
 					"name": "Shared Workspaces",
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
-					"when": "coder.authenticated"
+					"initialSize": 1,
+					"when": "coder.authenticated && coder.sharedWorkspacesSupported"
 				},
 				{
 					"id": "allWorkspaces",
 					"name": "All Workspaces",
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
+					"initialSize": 1,
 					"when": "coder.authenticated && coder.isOwner"
 				}
 			],
