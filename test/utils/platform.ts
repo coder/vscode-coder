@@ -104,8 +104,7 @@ export function shimExecFile<
 
 	const sym = Symbol.for("nodejs.util.promisify.custom");
 	const customPromisify = Reflect.get(original, sym) as
-		| ((...args: unknown[]) => unknown)
-		| undefined;
+		((...args: unknown[]) => unknown) | undefined;
 	if (customPromisify) {
 		Reflect.set(execFile, sym, (file: string, ...rest: unknown[]) =>
 			Reflect.apply(customPromisify, undefined, prepend(file, rest)),

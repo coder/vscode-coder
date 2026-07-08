@@ -11,8 +11,7 @@
 export interface OtlpKeyValue {
 	readonly key: string;
 	readonly value:
-		| { readonly stringValue: string }
-		| { readonly doubleValue: number };
+		{ readonly stringValue: string } | { readonly doubleValue: number };
 }
 
 export interface OtlpLogRecord {

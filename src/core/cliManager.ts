@@ -301,8 +301,7 @@ export class CliManager {
 		const progressLogPath = downloadBinPath + ".progress.log";
 
 		let lockResult:
-			| { release: () => Promise<void>; waited: boolean }
-			| undefined;
+			{ release: () => Promise<void>; waited: boolean } | undefined;
 		let latestVersion = parsedVersion;
 		try {
 			lockResult = await trace.lockWait(() =>

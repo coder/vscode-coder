@@ -80,50 +80,50 @@ export interface IpcNotification<D = unknown> {
 
 /** Requires a handler for every RequestDef in Api. Compile error if one is missing. */
 export type RequestHandlerMap<Api> = {
-	[K in keyof Api as Api[K] extends { kind: "request" }
-		? K
-		: never]: Api[K] extends RequestDef<infer P, infer R>
+	[
+		K in keyof Api as Api[K] extends { kind: "request" } ? K : never
+	]: Api[K] extends RequestDef<infer P, infer R>
 		? (params: P) => Promise<R>
 		: never;
 };
 
 /** Requires a handler for every CommandDef in Api. Compile error if one is missing. */
 export type CommandHandlerMap<Api> = {
-	[K in keyof Api as Api[K] extends { kind: "command" }
-		? K
-		: never]: Api[K] extends CommandDef<infer P>
+	[
+		K in keyof Api as Api[K] extends { kind: "command" } ? K : never
+	]: Api[K] extends CommandDef<infer P>
 		? (params: P) => void | Promise<void>
 		: never;
 };
 
 /** Requires a subscriber for every NotificationDef in Api. Compile error if one is missing. */
 export type NotificationHandlerMap<Api> = {
-	[K in keyof Api as Api[K] extends { kind: "notification" }
-		? K
-		: never]: Api[K] extends NotificationDef<infer D>
-		? (data: D) => void
-		: never;
+	[
+		K in keyof Api as Api[K] extends { kind: "notification" } ? K : never
+	]: Api[K] extends NotificationDef<infer D> ? (data: D) => void : never;
 };
 
 // --- API hook type ---
 
 /** Derives a fully typed hook interface from an API definition object. */
 export type ApiHook<Api> = {
-	[K in keyof Api as Api[K] extends { kind: "request" }
-		? K
-		: never]: Api[K] extends RequestDef<infer P, infer R>
+	[
+		K in keyof Api as Api[K] extends { kind: "request" } ? K : never
+	]: Api[K] extends RequestDef<infer P, infer R>
 		? (...args: P extends void ? [] : [params: P]) => Promise<R>
 		: never;
 } & {
-	[K in keyof Api as Api[K] extends { kind: "command" }
-		? K
-		: never]: Api[K] extends CommandDef<infer P>
+	[
+		K in keyof Api as Api[K] extends { kind: "command" } ? K : never
+	]: Api[K] extends CommandDef<infer P>
 		? (...args: P extends void ? [] : [params: P]) => void
 		: never;
 } & {
-	[K in keyof Api as Api[K] extends { kind: "notification" }
-		? `on${Capitalize<K & string>}`
-		: never]: Api[K] extends NotificationDef<infer D>
+	[
+		K in keyof Api as Api[K] extends { kind: "notification" }
+			? `on${Capitalize<K & string>}`
+			: never
+	]: Api[K] extends NotificationDef<infer D>
 		? D extends void
 			? (cb: () => void) => () => void
 			: (cb: (data: D) => void) => () => void

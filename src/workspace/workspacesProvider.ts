@@ -446,9 +446,7 @@ class AppStatusTreeItem extends vscode.TreeItem {
 }
 
 type CoderOpenableTreeItemType =
-	| "coderWorkspaceSingleAgent"
-	| "coderWorkspaceMultipleAgents"
-	| "coderAgent";
+	"coderWorkspaceSingleAgent" | "coderWorkspaceMultipleAgents" | "coderAgent";
 
 export class OpenableTreeItem extends vscode.TreeItem {
 	constructor(

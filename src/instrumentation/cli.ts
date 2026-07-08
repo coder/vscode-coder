@@ -15,15 +15,10 @@ export type CliResolveOutcome =
 	| "download_disabled_fallback"
 	| "fallback_to_existing_binary";
 export type CliVersionCheckOutcome =
-	| "missing"
-	| "match"
-	| "mismatch"
-	| "unreadable";
+	"missing" | "match" | "mismatch" | "unreadable";
 export type CliConfigureErrorType = "credential_store" | "unknown";
 export type CliResolveErrorType =
-	| "downloads_disabled"
-	| "download"
-	| "fallback_declined";
+	"downloads_disabled" | "download" | "fallback_declined";
 
 interface CliConfigureOptions {
 	readonly silent: boolean;

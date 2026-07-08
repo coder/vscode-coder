@@ -89,8 +89,7 @@ export class TelemetryService implements vscode.Disposable, TelemetryReporter {
 			[{ setting: TELEMETRY_LEVEL_SETTING, getValue: readLevel }],
 			(changes) => {
 				const next = changes.get(TELEMETRY_LEVEL_SETTING) as
-					| TelemetryLevel
-					| undefined;
+					TelemetryLevel | undefined;
 				if (!next) {
 					return;
 				}

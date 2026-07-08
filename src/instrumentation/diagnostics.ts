@@ -14,21 +14,11 @@ import type { Span } from "../telemetry/span";
 import type { WorkspacePickerErrorCategory } from "./workspaceOpen";
 
 export type DiagnosticCommand =
-	| "speed_test"
-	| "netcheck"
-	| "support_bundle"
-	| "export_telemetry";
+	"speed_test" | "netcheck" | "support_bundle" | "export_telemetry";
 export type DiagnosticErrorCategory =
-	| WorkspacePickerErrorCategory
-	| "parse_error"
-	| "unsupported_cli"
-	| "error";
+	WorkspacePickerErrorCategory | "parse_error" | "unsupported_cli" | "error";
 export type DiagnosticAbortStage =
-	| "workspace_picker"
-	| "input"
-	| "prompt"
-	| "save_dialog"
-	| "progress";
+	"workspace_picker" | "input" | "prompt" | "save_dialog" | "progress";
 
 export interface DiagnosticTrace {
 	abort(stage: DiagnosticAbortStage): void;

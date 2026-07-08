@@ -1,14 +1,9 @@
 import type { TelemetryReporter } from "../telemetry/reporter";
 
 export type DeploymentSuspendReason =
-	| "auth_config_change"
-	| "auth_failure"
-	| "credentials_removed"
-	| "logout";
+	"auth_config_change" | "auth_failure" | "credentials_removed" | "logout";
 export type DeploymentRecoveryTrigger =
-	| "auth_config"
-	| "cross_window"
-	| "token_update";
+	"auth_config" | "cross_window" | "token_update";
 
 export class DeploymentTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
