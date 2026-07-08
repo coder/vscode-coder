@@ -5,13 +5,12 @@ import type {
 	BannerConfig,
 } from "coder/site/src/api/typesGenerated";
 
-/** Popups are read at a glance; keep the single-banner message short. */
-const POPUP_MESSAGE_MAX_LENGTH = 120;
-
 export interface Announcement {
 	readonly message: string;
 	/** Fingerprint used to track which banners have been surfaced. */
 	readonly key: string;
+	/** Admin-configured hex color (e.g. "#d32f2f"), if set and valid. */
+	readonly backgroundColor?: string;
 }
 
 /**
@@ -30,23 +29,79 @@ export function normalizeBanners(
 	return [...new Map(announcements.map((a) => [a.key, a])).values()];
 }
 
+/** Status bar label: a megaphone plus the count when there's more than one. */
 export function statusText(count: number): string {
 	return `$(megaphone) Coder${count === 1 ? "" : ` ${count}`}`;
 }
 
-export function statusTooltip(banners: readonly Announcement[]): string {
+/** Hover is a quick glance; cap the list before pointing at the full preview. */
+const HOVER_BANNER_LIMIT = 5;
+
+/** Hard-breaks lines in one paragraph instead of a list: no indent, no implied order. */
+export function hoverMarkdown(banners: readonly Announcement[]): string {
+	const shown = banners.slice(0, HOVER_BANNER_LIMIT);
+	const remaining = banners.length - shown.length;
+	const list = shown.map((banner) => banner.message).join("  \n");
+	return remaining > 0
+		? `${list}\n\n+${remaining} more (click to view all)`
+		: list;
+}
+
+/** Full markdown for the preview tab: each banner boxed in its own styled div. */
+export function previewMarkdown(banners: readonly Announcement[]): string {
+	const boxes = banners.map((banner) => announcementBox(banner));
+	return [BOX_STYLE_RESET, ...boxes].join("\n\n");
+}
+
+/**
+ * <p> only gets bottom margin, skewing the box's padding. Custom-colored
+ * boxes also need links to inherit the text color instead of theme-blue.
+ */
+const BOX_STYLE_RESET =
+	"<style>.coder-announcement p { margin: 0; } " +
+	".coder-announcement-custom-color a { color: inherit; text-decoration: underline; }</style>";
+
+/** Reuses the blockquote theme colors so the box still reads as native VS Code. */
+const BOX_STYLE =
+	"padding: 10px 14px; margin-bottom: 8px; border-radius: 4px; " +
+	"background: var(--vscode-textBlockQuote-background); " +
+	"border-left: 4px solid var(--vscode-textBlockQuote-border);";
+
+/** A blank line around the content keeps it as real markdown, not opaque HTML. */
+function announcementBox(banner: Announcement): string {
+	// Admin colors stay fixed across themes, like coder/coder's dashboard.
+	const className = banner.backgroundColor
+		? "coder-announcement coder-announcement-custom-color"
+		: "coder-announcement";
+	const colorOverride = banner.backgroundColor
+		? `background: ${banner.backgroundColor}; border-left-color: ${banner.backgroundColor}; color: ${readableForegroundColor(banner.backgroundColor)};`
+		: "";
 	return [
-		`Coder deployment announcement${banners.length === 1 ? "" : "s"}`,
+		`<div class="${className}" style="${BOX_STYLE} ${colorOverride}">`,
 		"",
-		...banners.map((banner, index) => `${index + 1}. ${banner.message}`),
+		banner.message,
+		"",
+		"</div>",
 	].join("\n");
 }
 
+/** Mirrors coder/coder's dashboard heuristic so banner colors read the same way. */
+function readableForegroundColor(hexColor: string): string {
+	const r = parseInt(hexColor.slice(1, 3), 16);
+	const g = parseInt(hexColor.slice(3, 5), 16);
+	const b = parseInt(hexColor.slice(5, 7), 16);
+	const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+	return yiq >= 128 ? "#000" : "#fff";
+}
+
+/** Plain text, no markdown, so it's always a generic count, never banner content. */
 export function popupMessage(banners: readonly Announcement[]): string {
 	return banners.length === 1
-		? `Coder announcement: ${truncate(banners[0].message)}`
+		? "Coder has a new deployment announcement."
 		: `Coder has ${banners.length} new deployment announcements.`;
 }
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 function toAnnouncement(
 	banner: BannerConfig | undefined,
@@ -55,22 +110,13 @@ function toAnnouncement(
 	if (!banner?.enabled || !message) {
 		return undefined;
 	}
-	return { message, key: bannerKey(message) };
+	const backgroundColor =
+		banner.background_color && HEX_COLOR.test(banner.background_color)
+			? banner.background_color
+			: undefined;
+	return { message, key: bannerKey(message), backgroundColor };
 }
 
 function bannerKey(message: string): string {
 	return createHash("sha256").update(message).digest("hex").slice(0, 16);
-}
-
-/** Truncates to a word boundary when possible; splits on code points so emoji survive. */
-function truncate(message: string): string {
-	const chars = [...message];
-	if (chars.length <= POPUP_MESSAGE_MAX_LENGTH) {
-		return message;
-	}
-	const cut = chars.slice(0, POPUP_MESSAGE_MAX_LENGTH - 1);
-	const lastSpace = cut.lastIndexOf(" ");
-	const trimmed =
-		lastSpace > POPUP_MESSAGE_MAX_LENGTH / 2 ? cut.slice(0, lastSpace) : cut;
-	return `${trimmed.join("")}…`;
 }

@@ -1,16 +1,19 @@
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
+import { withProgress } from "../progress";
 import { areNotificationsDisabled } from "../settings/notifications";
 import { createStatusBarItem } from "../util/statusBar";
 
 import {
 	type Announcement,
+	hoverMarkdown,
 	normalizeBanners,
 	popupMessage,
+	previewMarkdown,
 	statusText,
-	statusTooltip,
 } from "./banners";
+import { AnnouncementsPreview } from "./preview";
 
 import type { CoderApi } from "../api/coderApi";
 import type { SecretsManager } from "../core/secretsManager";
@@ -26,13 +29,16 @@ interface RefreshOptions {
 	readonly showErrors?: boolean;
 }
 
+/** Fetches, tracks, and surfaces Coder deployment announcement banners. */
 export class AnnouncementManager implements vscode.Disposable {
 	private readonly statusBarItem = createStatusBarItem("announcements");
 	private readonly sessionChangeDisposable: vscode.Disposable;
+	private readonly preview = new AnnouncementsPreview();
 	#banners: readonly Announcement[] = [];
 	private fetchGeneration = 0;
 	private refreshTimeout: NodeJS.Timeout | undefined;
 	private disposed = false;
+	private loadingAnnouncements: Promise<void> | undefined;
 
 	public constructor(
 		private readonly client: Pick<CoderApi, "getAppearance">,
@@ -69,34 +75,59 @@ export class AnnouncementManager implements vscode.Disposable {
 		}
 	}
 
-	public async showAnnouncements(): Promise<void> {
-		const refreshed = await this.refresh({ notify: false, showErrors: true });
-		if (this.banners.length > 0) {
-			await this.pickAnnouncement();
-		} else if (refreshed) {
-			// On failure the error popup is the whole story.
-			void vscode.window.showInformationMessage(
-				"No active Coder announcements.",
-			);
-		}
+	/** Concurrent calls share one in-flight load, shown via a window progress indicator. */
+	public showAnnouncements(): Promise<void> {
+		this.loadingAnnouncements ??= this.loadAnnouncements().finally(() => {
+			this.loadingAnnouncements = undefined;
+		});
+		return this.loadingAnnouncements;
 	}
 
+	private async loadAnnouncements(): Promise<void> {
+		await withProgress(
+			{
+				location: vscode.ProgressLocation.Window,
+				title: "Loading Coder announcements…",
+			},
+			async () => {
+				const refreshed = await this.refresh({
+					notify: false,
+					showErrors: true,
+				});
+				if (this.banners.length > 0) {
+					await this.showAnnouncementsPreview();
+				} else if (refreshed) {
+					// On failure the error popup is the whole story.
+					void vscode.window.showInformationMessage(
+						"No active Coder announcements.",
+					);
+				}
+			},
+		);
+	}
+
+	/** Releases listeners/timers and hides the status bar item. */
 	public dispose(): void {
 		this.disposed = true;
 		this.cancelRefresh();
 		this.sessionChangeDisposable.dispose();
+		this.preview.dispose();
 		this.banners = [];
 		this.statusBarItem.dispose();
 	}
 
+	/** Re-fetches on sign-in; clears the display on sign-out. */
 	private onSessionChange(): void {
 		this.cancelRefresh();
-		this.banners = [];
-		if (this.sessionState.current.kind === "signedIn") {
-			void this.refresh({ notify: true });
+		if (this.sessionState.current.kind !== "signedIn") {
+			this.banners = [];
+			return;
 		}
+		// Leaves current banners visible while refresh() below confirms them.
+		void this.refresh({ notify: true });
 	}
 
+	/** Fetches the latest banners and reconciles popup/surfaced/attention state. */
 	private async fetch(options: RefreshOptions): Promise<void> {
 		const session = this.sessionState.current;
 		if (session.kind !== "signedIn") {
@@ -117,26 +148,74 @@ export class AnnouncementManager implements vscode.Disposable {
 		const banners = normalizeBanners(appearance);
 		this.banners = banners;
 
-		const seen = new Set(
+		const surfacedKeys = new Set(
 			this.secretsManager.getSurfacedBanners(session.deployment.safeHostname),
 		);
-		const unseen = banners.filter((banner) => !seen.has(banner.key));
-		if (unseen.length === 0) {
+		const newBanners = banners.filter(
+			(banner) => !surfacedKeys.has(banner.key),
+		);
+		if (newBanners.length === 0) {
+			this.setAttentionIndicator(false);
 			return;
 		}
 		const notifiable = !areNotificationsDisabled(
 			vscode.workspace.getConfiguration(),
 		);
 		if (options.notify && notifiable) {
-			this.showPopup(unseen);
+			this.showPopup(newBanners);
 		}
 		// Marks banners as surfaced, not read; suppressed ones notify later.
 		if (!options.notify || notifiable) {
+			await this.tryMarkSurfaced(banners, surfacedKeys);
+		} else {
+			this.setAttentionIndicator(true);
+		}
+	}
+
+	/** Like markSurfaced, but logs storage failures instead of throwing. */
+	private async tryMarkSurfaced(
+		banners: readonly Announcement[],
+		knownSurfacedKeys?: ReadonlySet<string>,
+	): Promise<void> {
+		try {
+			await this.markSurfaced(banners, knownSurfacedKeys);
+		} catch (error) {
+			this.logger.warn("Failed to mark Coder announcements as surfaced", error);
+		}
+	}
+
+	/** Marks banners surfaced and clears the attention color; skips redundant writes. */
+	private async markSurfaced(
+		banners: readonly Announcement[],
+		knownSurfacedKeys?: ReadonlySet<string>,
+	): Promise<void> {
+		const session = this.sessionState.current;
+		if (session.kind !== "signedIn") {
+			return;
+		}
+		const surfacedKeys =
+			knownSurfacedKeys ??
+			new Set(
+				this.secretsManager.getSurfacedBanners(session.deployment.safeHostname),
+			);
+		const merged = new Set([
+			...surfacedKeys,
+			...banners.map((banner) => banner.key),
+		]);
+		if (merged.size > surfacedKeys.size) {
 			await this.secretsManager.setSurfacedBanners(
 				session.deployment.safeHostname,
-				[...seen, ...unseen.map((banner) => banner.key)],
+				[...merged],
 			);
 		}
+		this.setAttentionIndicator(false);
+	}
+
+	/** Toggles a warning background so unsurfaced banners stand out in the status bar. */
+	private setAttentionIndicator(hasUnsurfaced: boolean): void {
+		this.statusBarItem.backgroundColor = hasUnsurfaced
+			? new vscode.ThemeColor("statusBarItem.warningBackground")
+			: undefined;
 	}
 
 	/** The setter syncs the status bar so the two cannot drift apart. */
@@ -151,7 +230,9 @@ export class AnnouncementManager implements vscode.Disposable {
 			return;
 		}
 		this.statusBarItem.text = statusText(banners.length);
-		this.statusBarItem.tooltip = statusTooltip(banners);
+		this.statusBarItem.tooltip = new vscode.MarkdownString(
+			hoverMarkdown(banners),
+		);
 		this.statusBarItem.show();
 	}
 
@@ -162,31 +243,29 @@ export class AnnouncementManager implements vscode.Disposable {
 		)
 			.then((action) =>
 				// Banners are seconds old; skip the refetch.
-				action === VIEW_ACTION ? this.pickAnnouncement() : undefined,
+				action === VIEW_ACTION ? this.showAnnouncementsPreview() : undefined,
 			)
 			.catch((error) => {
 				this.logger.warn("Failed to show Coder announcement popup", error);
 			});
 	}
 
-	/** Skips the picker if banners were cleared (e.g. sign-out) after the popup appeared. */
-	private async pickAnnouncement(): Promise<void> {
+	/** Skips the preview if banners were cleared (e.g. sign-out) before or during marking. */
+	private async showAnnouncementsPreview(): Promise<void> {
 		if (this.banners.length === 0) {
 			return;
 		}
-		const selected = await vscode.window.showQuickPick(
-			this.banners.map((banner, index) => ({
-				label: `$(megaphone) Announcement ${index + 1}`,
-				detail: banner.message,
-				banner,
-			})),
-			{
-				title: "Coder Announcements",
-				placeHolder: "Select an announcement to view the full message",
-			},
-		);
-		if (selected) {
-			void vscode.window.showInformationMessage(selected.banner.message);
+		await this.tryMarkSurfaced(this.banners);
+		if (this.banners.length === 0) {
+			return;
+		}
+		try {
+			await this.preview.show(previewMarkdown(this.banners));
+		} catch (error) {
+			this.logger.warn("Failed to show Coder announcements preview", error);
+			void vscode.window.showErrorMessage(
+				`Failed to show Coder announcements: ${errToStr(error)}`,
+			);
 		}
 	}
 
