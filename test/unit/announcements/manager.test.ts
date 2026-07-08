@@ -123,7 +123,7 @@ describe("AnnouncementManager", () => {
 
 		expectInfo("Coder announcement: Third", "View");
 		expect(
-			secretsManager.getSeenBanners(deployment().safeHostname),
+			secretsManager.getSurfacedBanners(deployment().safeHostname),
 		).toHaveLength(3);
 	});
 
@@ -149,9 +149,9 @@ describe("AnnouncementManager", () => {
 		expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
 		expect(statusBar.show).toHaveBeenCalled();
 		expect(statusBar.text).toBe("$(megaphone) Coder");
-		expect(secretsManager.getSeenBanners(deployment().safeHostname)).toEqual(
-			[],
-		);
+		expect(
+			secretsManager.getSurfacedBanners(deployment().safeHostname),
+		).toEqual([]);
 
 		config.set("coder.disableNotifications", false);
 		await manager.refresh({ notify: true });
@@ -250,6 +250,22 @@ describe("AnnouncementManager", () => {
 			expect.objectContaining({ title: "Coder Announcements" }),
 		);
 		expect(client.getAppearance).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not show an empty picker when banners are cleared before the popup action resolves", async () => {
+		const { client, session } = setup();
+		nextAppearance(client, ["Maintenance tonight"]);
+		const popupAction = Promise.withResolvers<string | undefined>();
+		vi.mocked(vscode.window.showInformationMessage).mockReturnValueOnce(
+			popupAction.promise as never,
+		);
+
+		await signIn(session);
+		session.signOut(null);
+		popupAction.resolve("View");
+		await flushPromises();
+
+		expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
 	});
 
 	it("ignores stale responses from an overlapping refresh", async () => {

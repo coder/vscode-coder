@@ -170,32 +170,36 @@ describe("SecretsManager", () => {
 
 			vi.useRealTimers();
 		});
-		describe("seen banners", () => {
-			it("stores seen banner keys by safe hostname", async () => {
-				await secretsManager.setSeenBanners("example.com", ["one", "two"]);
-				await secretsManager.setSeenBanners("other.com", ["three"]);
+		describe("surfaced banners", () => {
+			it("stores surfaced banner keys by safe hostname", async () => {
+				await secretsManager.setSurfacedBanners("example.com", ["one", "two"]);
+				await secretsManager.setSurfacedBanners("other.com", ["three"]);
 
-				expect(secretsManager.getSeenBanners("example.com")).toEqual([
+				expect(secretsManager.getSurfacedBanners("example.com")).toEqual([
 					"one",
 					"two",
 				]);
-				expect(secretsManager.getSeenBanners("other.com")).toEqual(["three"]);
+				expect(secretsManager.getSurfacedBanners("other.com")).toEqual([
+					"three",
+				]);
 			});
 
-			it("clears seen banner keys with auth data", async () => {
-				await secretsManager.setSeenBanners("example.com", ["one"]);
-				await secretsManager.setSeenBanners("other.com", ["two"]);
+			it("clears surfaced banner keys with auth data", async () => {
+				await secretsManager.setSurfacedBanners("example.com", ["one"]);
+				await secretsManager.setSurfacedBanners("other.com", ["two"]);
 
 				await secretsManager.clearAllAuthData("example.com");
 
-				expect(secretsManager.getSeenBanners("example.com")).toEqual([]);
-				expect(secretsManager.getSeenBanners("other.com")).toEqual(["two"]);
+				expect(secretsManager.getSurfacedBanners("example.com")).toEqual([]);
+				expect(secretsManager.getSurfacedBanners("other.com")).toEqual(["two"]);
 			});
 
-			it("ignores corrupted seen banner storage", async () => {
-				await memento.update("coder.seenBanners.example.com", { bad: true });
+			it("ignores corrupted surfaced banner storage", async () => {
+				await memento.update("coder.surfacedBanners.example.com", {
+					bad: true,
+				});
 
-				expect(secretsManager.getSeenBanners("example.com")).toEqual([]);
+				expect(secretsManager.getSurfacedBanners("example.com")).toEqual([]);
 			});
 		});
 	});

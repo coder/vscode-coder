@@ -17,6 +17,7 @@ import type { SecretsManager } from "../core/secretsManager";
 import type { SessionState } from "../deployment/sessionStore";
 import type { Logger } from "../logging/logger";
 
+/** Background poll interval; sign-in and manual refresh happen immediately either way. */
 export const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 const VIEW_ACTION = "View";
 
@@ -117,7 +118,7 @@ export class AnnouncementManager implements vscode.Disposable {
 		this.banners = banners;
 
 		const seen = new Set(
-			this.secretsManager.getSeenBanners(session.deployment.safeHostname),
+			this.secretsManager.getSurfacedBanners(session.deployment.safeHostname),
 		);
 		const unseen = banners.filter((banner) => !seen.has(banner.key));
 		if (unseen.length === 0) {
@@ -129,9 +130,9 @@ export class AnnouncementManager implements vscode.Disposable {
 		if (options.notify && notifiable) {
 			this.showPopup(unseen);
 		}
-		// Mark seen only what the user could see; suppressed banners notify later.
+		// Marks banners as surfaced, not read; suppressed ones notify later.
 		if (!options.notify || notifiable) {
-			await this.secretsManager.setSeenBanners(
+			await this.secretsManager.setSurfacedBanners(
 				session.deployment.safeHostname,
 				[...seen, ...unseen.map((banner) => banner.key)],
 			);
@@ -168,7 +169,11 @@ export class AnnouncementManager implements vscode.Disposable {
 			});
 	}
 
+	/** Skips the picker if banners were cleared (e.g. sign-out) after the popup appeared. */
 	private async pickAnnouncement(): Promise<void> {
+		if (this.banners.length === 0) {
+			return;
+		}
 		const selected = await vscode.window.showQuickPick(
 			this.banners.map((banner, index) => ({
 				label: `$(megaphone) Announcement ${index + 1}`,

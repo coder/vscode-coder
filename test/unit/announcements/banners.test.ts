@@ -90,6 +90,23 @@ describe("normalizeBanners", () => {
 		expect(reorderedSecond.key).toBe(second.key);
 		expect(first.key).not.toBe(second.key);
 	});
+
+	it("collapses banners with identical content", () => {
+		const banners = announcements("Same message", "Same message");
+
+		expect(banners).toHaveLength(1);
+	});
+
+	it("shows nothing when a modern deployment reports no announcements", () => {
+		const banners = normalizeBanners(
+			appearance({
+				service_banner: banner(),
+				announcement_banners: [],
+			}),
+		);
+
+		expect(banners).toEqual([]);
+	});
 });
 
 describe("banner copy", () => {
@@ -113,11 +130,22 @@ describe("banner copy", () => {
 	});
 
 	it("truncates long popup messages without splitting emoji", () => {
+		expect(popupMessage(announcements("a".repeat(120)))).toBe(
+			`Coder announcement: ${"a".repeat(120)}`,
+		);
 		expect(popupMessage(announcements("a".repeat(121)))).toBe(
 			`Coder announcement: ${"a".repeat(119)}…`,
 		);
 		expect(
 			popupMessage(announcements(`${"a".repeat(118)}🚀${"b".repeat(10)}`)),
 		).toBe(`Coder announcement: ${"a".repeat(118)}🚀…`);
+	});
+
+	it("truncates on a word boundary instead of mid-word", () => {
+		const message = `${"word ".repeat(24)}tail`;
+
+		expect(popupMessage(announcements(message))).toBe(
+			`Coder announcement: ${"word ".repeat(23).trimEnd()}…`,
+		);
 	});
 });

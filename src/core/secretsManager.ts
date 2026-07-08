@@ -13,7 +13,7 @@ import type { Logger } from "../logging/logger";
 const SESSION_KEY_PREFIX = "coder.session.";
 const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
 const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
-const SEEN_BANNERS_PREFIX = "coder.seenBanners.";
+const SURFACED_BANNERS_PREFIX = "coder.surfacedBanners.";
 
 type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
@@ -30,7 +30,7 @@ export type CurrentDeploymentState = z.infer<
 	typeof CurrentDeploymentStateSchema
 >;
 
-const SeenBannersSchema = z.array(z.string());
+const SurfacedBannersSchema = z.array(z.string());
 
 /**
  * OAuth token data stored alongside session auth.
@@ -238,7 +238,7 @@ export class SecretsManager {
 		await Promise.all([
 			this.clearSessionAuth(safeHostname),
 			this.clearOAuthClientRegistration(safeHostname),
-			this.clearSeenBanners(safeHostname),
+			this.clearSurfacedBanners(safeHostname),
 			this.memento.update(
 				`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
 				undefined,
@@ -246,26 +246,26 @@ export class SecretsManager {
 		]);
 	}
 
-	public getSeenBanners(safeHostname: string): string[] {
+	public getSurfacedBanners(safeHostname: string): string[] {
 		const raw = this.memento.get<unknown>(
-			`${SEEN_BANNERS_PREFIX}${safeHostname}`,
+			`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
 		);
-		const result = SeenBannersSchema.safeParse(raw);
+		const result = SurfacedBannersSchema.safeParse(raw);
 		return result.success ? result.data : [];
 	}
 
-	public async setSeenBanners(
+	public async setSurfacedBanners(
 		safeHostname: string,
 		bannerKeys: readonly string[],
 	): Promise<void> {
-		await this.memento.update(`${SEEN_BANNERS_PREFIX}${safeHostname}`, [
+		await this.memento.update(`${SURFACED_BANNERS_PREFIX}${safeHostname}`, [
 			...bannerKeys,
 		]);
 	}
 
-	private async clearSeenBanners(safeHostname: string): Promise<void> {
+	private async clearSurfacedBanners(safeHostname: string): Promise<void> {
 		await this.memento.update(
-			`${SEEN_BANNERS_PREFIX}${safeHostname}`,
+			`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
 			undefined,
 		);
 	}
