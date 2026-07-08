@@ -194,17 +194,16 @@ async function doActivate(
 		output,
 		deploymentManager.session,
 		{
-			// Deployments older than 2.27.0 reject the shared workspaces query;
-			// hide the view for them (see `when` in package.json).
+			// Older deployments reject this query; show a message instead of an
+			// empty tree (see `viewsWelcome` in package.json).
 			onQueryRejected: () =>
 				contextManager.set("coder.sharedWorkspacesSupported", false),
 		},
 	);
 	ctx.subscriptions.push(sharedWorkspacesProvider);
 
-	// Re-probe shared workspaces support whenever the session changes (login,
-	// logout, deployment switch): the view re-appears and the next fetch hides
-	// it again if the deployment still does not support the query.
+	// Re-probe support on session change (login, logout, deployment switch);
+	// the next fetch clears the message again if still unsupported.
 	ctx.subscriptions.push(
 		deploymentManager.session.onDidChange(() =>
 			contextManager.set("coder.sharedWorkspacesSupported", true),
@@ -343,8 +342,8 @@ async function doActivate(
 		commands.navigateToWorkspaceSettings.bind(commands),
 	);
 	commandManager.register("coder.refreshWorkspaces", () => {
-		// Re-probe shared workspaces support in case the deployment was upgraded;
-		// showing the view triggers its fetch, which hides it again on rejection.
+		// Re-probe in case the deployment was upgraded; the fetch below clears
+		// the message again on rejection.
 		contextManager.set("coder.sharedWorkspacesSupported", true);
 		void myWorkspacesProvider.fetchAndRefresh();
 		void sharedWorkspacesProvider.fetchAndRefresh();

@@ -325,7 +325,7 @@
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
 					"initialSize": 1,
-					"when": "coder.authenticated && coder.sharedWorkspacesSupported"
+					"when": "coder.authenticated"
 				},
 				{
 					"id": "allWorkspaces",
@@ -371,6 +371,16 @@
 				"view": "coder.tasksLogin",
 				"contents": "Sign in to view and manage Coder tasks.\n[Login](command:coder.login)",
 				"when": "!coder.authenticated && coder.loaded"
+			},
+			{
+				"view": "sharedWorkspaces",
+				"contents": "Shared workspaces require Coder 2.27.0 or newer.",
+				"when": "coder.authenticated && !coder.sharedWorkspacesSupported"
+			},
+			{
+				"view": "sharedWorkspaces",
+				"contents": "No workspaces have been shared with you.",
+				"when": "coder.authenticated && coder.sharedWorkspacesSupported"
 			}
 		],
 		"commands": [
