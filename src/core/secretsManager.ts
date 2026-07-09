@@ -4,16 +4,16 @@ import { DeploymentSchema, type Deployment } from "../deployment/types";
 import { toSafeHost } from "../util/uri";
 
 import type { OAuth2ClientRegistrationResponse } from "coder/site/src/api/typesGenerated";
-import type { Memento, SecretStorage, Disposable } from "vscode";
+import type { SecretStorage, Disposable } from "vscode";
 
 import type { Logger } from "../logging/logger";
+
+import type { MementoManager } from "./mementoManager";
 
 // Per-deployment keys ensure atomic operations (multiple windows writing to a
 // shared key could drop data) and enable proper VS Code change events.
 const SESSION_KEY_PREFIX = "coder.session.";
 const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
-const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
-const SURFACED_BANNERS_PREFIX = "coder.surfacedBanners.";
 
 type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
@@ -29,8 +29,6 @@ const CurrentDeploymentStateSchema = z.object({
 export type CurrentDeploymentState = z.infer<
 	typeof CurrentDeploymentStateSchema
 >;
-
-const SurfacedBannersSchema = z.array(z.string());
 
 /**
  * OAuth token data stored alongside session auth.
@@ -56,7 +54,7 @@ export type SessionAuth = z.infer<typeof SessionAuthSchema>;
 export class SecretsManager {
 	constructor(
 		private readonly secrets: SecretStorage,
-		private readonly memento: Memento,
+		private readonly mementoManager: MementoManager,
 		private readonly logger: Logger,
 	) {}
 
@@ -215,11 +213,7 @@ export class SecretsManager {
 		safeHostname: string,
 		maxCount = DEFAULT_MAX_DEPLOYMENTS,
 	): Promise<void> {
-		// Update this deployment's access timestamp
-		await this.memento.update(
-			`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
-			new Date().toISOString(),
-		);
+		await this.mementoManager.updateDeploymentAccess(safeHostname);
 
 		// Prune if needed - errors here shouldn't block deployment access
 		try {
@@ -232,42 +226,15 @@ export class SecretsManager {
 	}
 
 	/**
-	 * Clear all auth data for a deployment, including the access timestamp.
+	 * Clear all auth data for a deployment, including its memento-backed
+	 * state (access timestamp, surfaced banners), so both stores stay in sync.
 	 */
 	public async clearAllAuthData(safeHostname: string): Promise<void> {
 		await Promise.all([
 			this.clearSessionAuth(safeHostname),
 			this.clearOAuthClientRegistration(safeHostname),
-			this.clearSurfacedBanners(safeHostname),
-			this.memento.update(
-				`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
-				undefined,
-			),
+			this.mementoManager.clearDeploymentData(safeHostname),
 		]);
-	}
-
-	public getSurfacedBanners(safeHostname: string): string[] {
-		const raw = this.memento.get<unknown>(
-			`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
-		);
-		const result = SurfacedBannersSchema.safeParse(raw);
-		return result.success ? result.data : [];
-	}
-
-	public async setSurfacedBanners(
-		safeHostname: string,
-		bannerKeys: readonly string[],
-	): Promise<void> {
-		await this.memento.update(`${SURFACED_BANNERS_PREFIX}${safeHostname}`, [
-			...bannerKeys,
-		]);
-	}
-
-	private async clearSurfacedBanners(safeHostname: string): Promise<void> {
-		await this.memento.update(
-			`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
-			undefined,
-		);
 	}
 
 	/**
@@ -283,9 +250,7 @@ export class SecretsManager {
 		// Sort by access timestamp (most recent first)
 		const withTimestamps = sessionHostnames.map((hostname) => ({
 			hostname,
-			accessedAt:
-				this.memento.get<string>(`${DEPLOYMENT_ACCESS_PREFIX}${hostname}`) ??
-				"",
+			accessedAt: this.mementoManager.getDeploymentAccess(hostname) ?? "",
 		}));
 
 		withTimestamps.sort((a, b) => b.accessedAt.localeCompare(a.accessedAt));
@@ -297,7 +262,7 @@ export class SecretsManager {
 	 * Also sets the current deployment if none exists.
 	 */
 	public async migrateFromLegacyStorage(): Promise<string | undefined> {
-		const legacyUrl = this.memento.get<string>("url");
+		const legacyUrl = this.mementoManager.getLegacyUrl();
 		if (!legacyUrl) {
 			return undefined;
 		}
@@ -305,7 +270,7 @@ export class SecretsManager {
 		const oldToken = await this.secrets.get(LEGACY_SESSION_TOKEN_KEY);
 
 		await this.secrets.delete(LEGACY_SESSION_TOKEN_KEY);
-		await this.memento.update("url", undefined);
+		await this.mementoManager.clearLegacyUrl();
 
 		const safeHostname = toSafeHost(legacyUrl);
 		const existing = await this.getSessionAuth(safeHostname);

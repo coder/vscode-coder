@@ -64,8 +64,12 @@ function createTestContext() {
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
-	const secretsManager = new SecretsManager(secretStorage, memento, logger);
 	const mementoManager = new MementoManager(memento);
+	const secretsManager = new SecretsManager(
+		secretStorage,
+		mementoManager,
+		logger,
+	);
 	const contextManager = new MockContextManager();
 
 	// Configure CoderApi.create mock to return validation client

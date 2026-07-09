@@ -5,7 +5,7 @@ import {
 	AnnouncementManager,
 	REFRESH_INTERVAL_MS,
 } from "@/announcements/manager";
-import { SecretsManager } from "@/core/secretsManager";
+import { MementoManager } from "@/core/mementoManager";
 import { SessionStore } from "@/deployment/sessionStore";
 
 import {
@@ -13,7 +13,6 @@ import {
 	createMockUser,
 	flushPromises,
 	InMemoryMemento,
-	InMemorySecretStorage,
 	MockConfigurationProvider,
 	MockProgressReporter,
 	MockStatusBarItem,
@@ -45,17 +44,13 @@ function setup() {
 	const client = { getAppearance: vi.fn<() => Promise<AppearanceConfig>>() };
 	client.getAppearance.mockResolvedValue(appearance());
 	const session = new SessionStore();
-	const secretsManager = new SecretsManager(
-		new InMemorySecretStorage(),
-		new InMemoryMemento(),
-		createMockLogger(),
-	);
+	const mementoManager = new MementoManager(new InMemoryMemento());
 	const statusBar = new MockStatusBarItem();
 	const logger = createMockLogger();
 	const manager = new AnnouncementManager(
 		client,
 		session,
-		secretsManager,
+		mementoManager,
 		logger,
 	);
 	onTestFinished(() => manager.dispose());
@@ -64,7 +59,7 @@ function setup() {
 		config,
 		logger,
 		manager,
-		secretsManager,
+		mementoManager,
 		session,
 		statusBar,
 	};
@@ -137,7 +132,7 @@ describe("AnnouncementManager", () => {
 	});
 
 	it("notifies only newly seen banners", async () => {
-		const { client, manager, secretsManager, session } = setup();
+		const { client, manager, mementoManager, session } = setup();
 		nextAppearance(client, ["First", "Second"]);
 		await signIn(session);
 		expectInfo("Coder has 2 new deployment announcements.", "View");
@@ -148,7 +143,7 @@ describe("AnnouncementManager", () => {
 
 		expectInfo("Coder has a new deployment announcement.", "View");
 		expect(
-			secretsManager.getSurfacedBanners(deployment().safeHostname),
+			mementoManager.getSurfacedBanners(deployment().safeHostname),
 		).toHaveLength(3);
 	});
 
@@ -164,7 +159,7 @@ describe("AnnouncementManager", () => {
 	});
 
 	it("suppresses popups when notifications are disabled without marking banners seen", async () => {
-		const { client, config, manager, secretsManager, session, statusBar } =
+		const { client, config, manager, mementoManager, session, statusBar } =
 			setup();
 		config.set("coder.disableNotifications", true);
 		client.getAppearance.mockResolvedValue(appearance(["Maintenance tonight"]));
@@ -175,7 +170,7 @@ describe("AnnouncementManager", () => {
 		expect(statusBar.show).toHaveBeenCalled();
 		expect(statusBar.text).toBe("$(megaphone) Coder");
 		expect(
-			secretsManager.getSurfacedBanners(deployment().safeHostname),
+			mementoManager.getSurfacedBanners(deployment().safeHostname),
 		).toEqual([]);
 		expect(statusBar.backgroundColor).toEqual(
 			new vscode.ThemeColor("statusBarItem.warningBackground"),
@@ -335,7 +330,7 @@ describe("AnnouncementManager", () => {
 	});
 
 	it("clears the attention color as soon as the preview is opened, even if the refresh that preceded it failed", async () => {
-		const { client, config, manager, secretsManager, session, statusBar } =
+		const { client, config, manager, mementoManager, session, statusBar } =
 			setup();
 		config.set("coder.disableNotifications", true);
 		client.getAppearance.mockResolvedValue(appearance(["Maintenance tonight"]));
@@ -351,7 +346,7 @@ describe("AnnouncementManager", () => {
 		expect(previewContent()).toContain("Maintenance tonight");
 		expect(statusBar.backgroundColor).toBeUndefined();
 		expect(
-			secretsManager.getSurfacedBanners(deployment().safeHostname),
+			mementoManager.getSurfacedBanners(deployment().safeHostname),
 		).toHaveLength(1);
 	});
 

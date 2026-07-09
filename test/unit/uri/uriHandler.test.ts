@@ -68,10 +68,14 @@ function createTestContext() {
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
-	const secretsManager = new SecretsManager(secretStorage, memento, logger);
+	const mementoManager = new MementoManager(memento);
+	const secretsManager = new SecretsManager(
+		secretStorage,
+		mementoManager,
+		logger,
+	);
 	const oauthCallback = new OAuthCallback(secretStorage, logger);
 	const loginCoordinator = createMockLoginCoordinator(secretsManager);
-	const mementoManager = new MementoManager(memento);
 	const commands = new MockCommands();
 	const deploymentManager = new MockDeploymentManager();
 

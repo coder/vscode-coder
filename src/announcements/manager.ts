@@ -16,7 +16,7 @@ import {
 import { AnnouncementsPreview } from "./preview";
 
 import type { CoderApi } from "../api/coderApi";
-import type { SecretsManager } from "../core/secretsManager";
+import type { MementoManager } from "../core/mementoManager";
 import type { SessionState } from "../deployment/sessionStore";
 import type { Logger } from "../logging/logger";
 
@@ -43,7 +43,7 @@ export class AnnouncementManager implements vscode.Disposable {
 	public constructor(
 		private readonly client: Pick<CoderApi, "getAppearance">,
 		private readonly sessionState: SessionState,
-		private readonly secretsManager: SecretsManager,
+		private readonly mementoManager: MementoManager,
 		private readonly logger: Logger,
 	) {
 		this.statusBarItem.command = "coder.viewAnnouncements";
@@ -149,7 +149,7 @@ export class AnnouncementManager implements vscode.Disposable {
 		this.banners = banners;
 
 		const surfacedKeys = new Set(
-			this.secretsManager.getSurfacedBanners(session.deployment.safeHostname),
+			this.mementoManager.getSurfacedBanners(session.deployment.safeHostname),
 		);
 		const newBanners = banners.filter(
 			(banner) => !surfacedKeys.has(banner.key),
@@ -168,36 +168,20 @@ export class AnnouncementManager implements vscode.Disposable {
 			return;
 		}
 		this.showPopup(newBanners);
-		await this.markSurfaced(banners, surfacedKeys);
+		await this.markSurfaced(banners);
 	}
 
 	/** Marks banners surfaced and clears the attention color; logs storage failures. */
-	private async markSurfaced(
-		banners: readonly Announcement[],
-		knownSurfacedKeys?: ReadonlySet<string>,
-	): Promise<void> {
+	private async markSurfaced(banners: readonly Announcement[]): Promise<void> {
 		const session = this.sessionState.current;
 		if (session.kind !== "signedIn") {
 			return;
 		}
 		try {
-			const surfacedKeys =
-				knownSurfacedKeys ??
-				new Set(
-					this.secretsManager.getSurfacedBanners(
-						session.deployment.safeHostname,
-					),
-				);
-			const merged = new Set([
-				...surfacedKeys,
-				...banners.map((banner) => banner.key),
-			]);
-			if (merged.size > surfacedKeys.size) {
-				await this.secretsManager.setSurfacedBanners(
-					session.deployment.safeHostname,
-					[...merged],
-				);
-			}
+			await this.mementoManager.addSurfacedBanners(
+				session.deployment.safeHostname,
+				banners.map((banner) => banner.key),
+			);
 			this.setAttentionIndicator(false);
 		} catch (error) {
 			this.logger.warn("Failed to mark Coder announcements as surfaced", error);
