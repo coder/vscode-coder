@@ -16,8 +16,7 @@ interface ActionMenuAction {
 }
 
 export type ActionMenuItem =
-	| { separator: true }
-	| ({ separator?: false } & ActionMenuAction);
+	{ separator: true } | ({ separator?: false } & ActionMenuAction);
 
 interface ActionMenuProps {
 	items: ActionMenuItem[];

@@ -19,8 +19,7 @@ const TEMPLATE_WORKSPACE_OUT_OF_DISK = "f047f6a3-5713-40f7-85aa-0394cce9fa3a";
 
 export class Inbox implements vscode.Disposable {
 	private socket:
-		| UnidirectionalStream<GetInboxNotificationResponse>
-		| undefined;
+		UnidirectionalStream<GetInboxNotificationResponse> | undefined;
 	private disposed = false;
 
 	private constructor(private readonly logger: Logger) {}

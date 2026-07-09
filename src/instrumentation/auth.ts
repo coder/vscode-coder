@@ -6,25 +6,18 @@ export type AuthTokenRefreshTrigger = "background" | "reactive";
 export type AuthRecoveryAction = "refresh_success" | "login_required" | "none";
 export type AuthLoginPromptTrigger = "auth_required" | "missing_session";
 export type AuthLoginSource =
-	| "auto_login"
-	| "command"
-	| "switch_deployment"
-	| "uri";
+	"auto_login" | "command" | "switch_deployment" | "uri";
 
 export type LoginPromptReason =
-	| "user_dismissed"
-	| "no_url_provided"
-	| "auth_failed";
+	"user_dismissed" | "no_url_provided" | "auth_failed";
 
 export type LoginPromptOutcome =
-	| { success: true }
-	| { success: false; reason: LoginPromptReason };
+	{ success: true } | { success: false; reason: LoginPromptReason };
 export type AuthLoginOutcome =
 	| { success: true; method: LoginMethod }
 	| { success: false; method?: LoginMethod; reason: LoginPromptReason };
 export type AuthLogoutOutcome =
-	| { success: true }
-	| { success: false; reason: "not_authenticated" };
+	{ success: true } | { success: false; reason: "not_authenticated" };
 
 interface AuthLoginTrace {
 	setMethod: (method: LoginMethod) => void;

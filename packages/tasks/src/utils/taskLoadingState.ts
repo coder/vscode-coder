@@ -1,9 +1,5 @@
 export type TaskLoadingState =
-	| "pausing"
-	| "resuming"
-	| "deleting"
-	| "downloading"
-	| null;
+	"pausing" | "resuming" | "deleting" | "downloading" | null;
 
 const ACTION_LABELS: Record<NonNullable<TaskLoadingState>, string> = {
 	pausing: "Pausing...",

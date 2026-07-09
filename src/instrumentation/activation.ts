@@ -7,11 +7,7 @@ import type { TelemetryService } from "../telemetry/service";
  * doesn't distinguish). `unknown`: validation threw before classification.
  */
 export type ActivationAuthState =
-	| "none"
-	| "stored"
-	| "valid_token"
-	| "auth_failed"
-	| "unknown";
+	"none" | "stored" | "valid_token" | "auth_failed" | "unknown";
 
 /** Helpers scoped to the activation trace's lifetime. */
 export interface ActivationTracer {

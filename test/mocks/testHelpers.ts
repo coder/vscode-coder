@@ -782,8 +782,8 @@ export class MockCoderApi implements Pick<
 		this._disposed = true;
 	});
 
-	readonly getExperiments = vi.fn(
-		(): Promise<Experiment[]> => Promise.resolve([]),
+	readonly getExperiments = vi.fn((): Promise<Experiment[]> =>
+		Promise.resolve([]),
 	);
 
 	/**

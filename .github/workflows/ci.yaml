@@ -98,7 +98,7 @@ jobs:
       # PR builds gate on visual review; mainline auto-accepts.
       - name: Publish to Chromatic (non-mainline)
         if: github.ref != 'refs/heads/main' && github.repository_owner == 'coder'
-        uses: chromaui/action@7804f34e4e59c0d9b3c856848f46ad96d7897429 # v17.5.0
+        uses: chromaui/action@4a45535b6910c0b99226ebcb7648faf88fb1ee2e # v18.0.1
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           STORYBOOK: true
@@ -114,7 +114,7 @@ jobs:
       # Auto-accept on mainline to avoid blocking CI after squash merges.
       - name: Publish to Chromatic (mainline)
         if: github.ref == 'refs/heads/main' && github.repository_owner == 'coder'
-        uses: chromaui/action@7804f34e4e59c0d9b3c856848f46ad96d7897429 # v17.5.0
+        uses: chromaui/action@4a45535b6910c0b99226ebcb7648faf88fb1ee2e # v18.0.1
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           STORYBOOK: true

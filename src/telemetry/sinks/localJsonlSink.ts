@@ -170,8 +170,7 @@ export class LocalJsonlSink implements TelemetrySink, vscode.Disposable {
 			],
 			(changes) => {
 				const next = changes.get(LOCAL_TELEMETRY_SETTING) as
-					| LocalSinkConfig
-					| undefined;
+					LocalSinkConfig | undefined;
 				if (!next) {
 					return;
 				}
