@@ -158,33 +158,20 @@ export class AnnouncementManager implements vscode.Disposable {
 			this.setAttentionIndicator(false);
 			return;
 		}
-		const notifiable = !areNotificationsDisabled(
-			vscode.workspace.getConfiguration(),
-		);
-		if (options.notify && notifiable) {
-			this.showPopup(newBanners);
+		// Manual refreshes surface via the preview instead.
+		if (!options.notify) {
+			return;
 		}
-		// Marks banners as surfaced, not read; suppressed ones notify later.
-		if (!options.notify || notifiable) {
-			await this.tryMarkSurfaced(banners, surfacedKeys);
-		} else {
+		if (areNotificationsDisabled(vscode.workspace.getConfiguration())) {
+			// Marks banners as surfaced, not read; suppressed ones notify later.
 			this.setAttentionIndicator(true);
+			return;
 		}
+		this.showPopup(newBanners);
+		await this.markSurfaced(banners, surfacedKeys);
 	}
 
-	/** Like markSurfaced, but logs storage failures instead of throwing. */
-	private async tryMarkSurfaced(
-		banners: readonly Announcement[],
-		knownSurfacedKeys?: ReadonlySet<string>,
-	): Promise<void> {
-		try {
-			await this.markSurfaced(banners, knownSurfacedKeys);
-		} catch (error) {
-			this.logger.warn("Failed to mark Coder announcements as surfaced", error);
-		}
-	}
-
-	/** Marks banners surfaced and clears the attention color; skips redundant writes. */
+	/** Marks banners surfaced and clears the attention color; logs storage failures. */
 	private async markSurfaced(
 		banners: readonly Announcement[],
 		knownSurfacedKeys?: ReadonlySet<string>,
@@ -193,22 +180,28 @@ export class AnnouncementManager implements vscode.Disposable {
 		if (session.kind !== "signedIn") {
 			return;
 		}
-		const surfacedKeys =
-			knownSurfacedKeys ??
-			new Set(
-				this.secretsManager.getSurfacedBanners(session.deployment.safeHostname),
-			);
-		const merged = new Set([
-			...surfacedKeys,
-			...banners.map((banner) => banner.key),
-		]);
-		if (merged.size > surfacedKeys.size) {
-			await this.secretsManager.setSurfacedBanners(
-				session.deployment.safeHostname,
-				[...merged],
-			);
+		try {
+			const surfacedKeys =
+				knownSurfacedKeys ??
+				new Set(
+					this.secretsManager.getSurfacedBanners(
+						session.deployment.safeHostname,
+					),
+				);
+			const merged = new Set([
+				...surfacedKeys,
+				...banners.map((banner) => banner.key),
+			]);
+			if (merged.size > surfacedKeys.size) {
+				await this.secretsManager.setSurfacedBanners(
+					session.deployment.safeHostname,
+					[...merged],
+				);
+			}
+			this.setAttentionIndicator(false);
+		} catch (error) {
+			this.logger.warn("Failed to mark Coder announcements as surfaced", error);
 		}
-		this.setAttentionIndicator(false);
 	}
 
 	/** Toggles a warning background so unsurfaced banners stand out in the status bar. */
@@ -238,15 +231,13 @@ export class AnnouncementManager implements vscode.Disposable {
 
 	/** Non-modal messages may never settle, so chain instead of awaiting. */
 	private showPopup(banners: readonly Announcement[]): void {
-		Promise.resolve(
-			vscode.window.showInformationMessage(popupMessage(banners), VIEW_ACTION),
-		)
-			.then((action) =>
-				// Banners are seconds old; skip the refetch.
-				action === VIEW_ACTION ? this.showAnnouncementsPreview() : undefined,
-			)
-			.catch((error) => {
-				this.logger.warn("Failed to show Coder announcement popup", error);
+		vscode.window
+			.showInformationMessage(popupMessage(banners), VIEW_ACTION)
+			.then((action) => {
+				if (action === VIEW_ACTION) {
+					// Banners are seconds old; skip the refetch.
+					void this.showAnnouncementsPreview();
+				}
 			});
 	}
 
@@ -255,7 +246,7 @@ export class AnnouncementManager implements vscode.Disposable {
 		if (this.banners.length === 0) {
 			return;
 		}
-		await this.tryMarkSurfaced(this.banners);
+		await this.markSurfaced(this.banners);
 		if (this.banners.length === 0) {
 			return;
 		}
