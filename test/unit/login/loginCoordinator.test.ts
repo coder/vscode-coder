@@ -120,9 +120,13 @@ function createTestContext(telemetry?: TelemetryService) {
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
-	const secretsManager = new SecretsManager(secretStorage, memento, logger);
-	const oauthCallback = new OAuthCallback(secretStorage, logger);
 	const mementoManager = new MementoManager(memento);
+	const secretsManager = new SecretsManager(
+		secretStorage,
+		mementoManager,
+		logger,
+	);
+	const oauthCallback = new OAuthCallback(secretStorage, logger);
 
 	const mockCredentialManager = createMockCliCredentialManager();
 	const authTelemetry = new AuthTelemetry(

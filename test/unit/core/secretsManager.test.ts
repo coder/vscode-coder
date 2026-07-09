@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { MementoManager } from "@/core/mementoManager";
 import {
 	type CurrentDeploymentState,
 	SecretsManager,
@@ -14,15 +15,17 @@ import {
 describe("SecretsManager", () => {
 	let secretStorage: InMemorySecretStorage;
 	let memento: InMemoryMemento;
+	let mementoManager: MementoManager;
 	let secretsManager: SecretsManager;
 
 	beforeEach(() => {
 		vi.useRealTimers();
 		secretStorage = new InMemorySecretStorage();
 		memento = new InMemoryMemento();
+		mementoManager = new MementoManager(memento);
 		secretsManager = new SecretsManager(
 			secretStorage,
-			memento,
+			mementoManager,
 			createMockLogger(),
 		);
 	});
@@ -170,37 +173,14 @@ describe("SecretsManager", () => {
 
 			vi.useRealTimers();
 		});
-		describe("surfaced banners", () => {
-			it("stores surfaced banner keys by safe hostname", async () => {
-				await secretsManager.setSurfacedBanners("example.com", ["one", "two"]);
-				await secretsManager.setSurfacedBanners("other.com", ["three"]);
+		it("clears surfaced banner keys with auth data", async () => {
+			await mementoManager.addSurfacedBanners("example.com", ["one"]);
+			await mementoManager.addSurfacedBanners("other.com", ["two"]);
 
-				expect(secretsManager.getSurfacedBanners("example.com")).toEqual([
-					"one",
-					"two",
-				]);
-				expect(secretsManager.getSurfacedBanners("other.com")).toEqual([
-					"three",
-				]);
-			});
+			await secretsManager.clearAllAuthData("example.com");
 
-			it("clears surfaced banner keys with auth data", async () => {
-				await secretsManager.setSurfacedBanners("example.com", ["one"]);
-				await secretsManager.setSurfacedBanners("other.com", ["two"]);
-
-				await secretsManager.clearAllAuthData("example.com");
-
-				expect(secretsManager.getSurfacedBanners("example.com")).toEqual([]);
-				expect(secretsManager.getSurfacedBanners("other.com")).toEqual(["two"]);
-			});
-
-			it("ignores corrupted surfaced banner storage", async () => {
-				await memento.update("coder.surfacedBanners.example.com", {
-					bad: true,
-				});
-
-				expect(secretsManager.getSurfacedBanners("example.com")).toEqual([]);
-			});
+			expect(mementoManager.getSurfacedBanners("example.com")).toEqual([]);
+			expect(mementoManager.getSurfacedBanners("other.com")).toEqual(["two"]);
 		});
 	});
 

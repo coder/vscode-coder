@@ -1,6 +1,7 @@
 import { AxiosError, AxiosHeaders } from "axios";
 import { vi } from "vitest";
 
+import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { OAuthCallback } from "@/oauth/oauthCallback";
@@ -128,7 +129,11 @@ export function createBaseTestContext() {
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
-	const secretsManager = new SecretsManager(secretStorage, memento, logger);
+	const secretsManager = new SecretsManager(
+		secretStorage,
+		new MementoManager(memento),
+		logger,
+	);
 	const oauthCallback = new OAuthCallback(secretStorage, logger);
 
 	/** Sets up OAuth routes, defaulting to metadata for TEST_URL. */

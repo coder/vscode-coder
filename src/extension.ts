@@ -166,7 +166,7 @@ async function doActivate(
 	const announcementManager = new AnnouncementManager(
 		client,
 		deploymentManager.session,
-		secretsManager,
+		mementoManager,
 		output,
 	);
 	ctx.subscriptions.push(announcementManager);

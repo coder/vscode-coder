@@ -1,10 +1,17 @@
+import { z } from "zod";
+
 import type { Memento } from "vscode";
 
-// Maximum number of recent URLs to store.
+/** Maximum number of recent URLs to store. */
 const MAX_URLS = 10;
 
-// Pending values expire after this duration to guard against stale
-// state from crashes or interrupted reloads.
+const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
+const SURFACED_BANNERS_PREFIX = "coder.surfacedBanners.";
+
+const SurfacedBannersSchema = z.array(z.string());
+
+/** Pending values expire after this duration to guard against stale
+ * state from crashes or interrupted reloads. */
 const PENDING_TTL_MS = 5 * 60 * 1000;
 
 /**
@@ -70,6 +77,68 @@ export class MementoManager {
 			await this.memento.update("startupMode", undefined);
 		}
 		return value ?? "none";
+	}
+
+	/** Record when a deployment was last accessed, for most-recently-used ordering. */
+	public async updateDeploymentAccess(safeHostname: string): Promise<void> {
+		await this.memento.update(
+			`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
+			new Date().toISOString(),
+		);
+	}
+
+	public getDeploymentAccess(safeHostname: string): string | undefined {
+		return this.memento.get<string>(
+			`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
+		);
+	}
+
+	/** The pre-multi-deployment URL key, read during legacy migration. */
+	public getLegacyUrl(): string | undefined {
+		return this.memento.get<string>("url");
+	}
+
+	public async clearLegacyUrl(): Promise<void> {
+		await this.memento.update("url", undefined);
+	}
+
+	public getSurfacedBanners(safeHostname: string): string[] {
+		const raw = this.memento.get<unknown>(
+			`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
+		);
+		const result = SurfacedBannersSchema.safeParse(raw);
+		return result.success ? result.data : [];
+	}
+
+	/**
+	 * Merge banner keys into the surfaced set. The read-modify-write lives
+	 * here so a future atomic Memento update can be adopted in one place.
+	 */
+	public async addSurfacedBanners(
+		safeHostname: string,
+		bannerKeys: readonly string[],
+	): Promise<void> {
+		const existing = this.getSurfacedBanners(safeHostname);
+		const merged = new Set([...existing, ...bannerKeys]);
+		if (merged.size > existing.length) {
+			await this.memento.update(`${SURFACED_BANNERS_PREFIX}${safeHostname}`, [
+				...merged,
+			]);
+		}
+	}
+
+	/** Clear all per-deployment state (access timestamp, surfaced banners). */
+	public async clearDeploymentData(safeHostname: string): Promise<void> {
+		await Promise.all([
+			this.memento.update(
+				`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
+				undefined,
+			),
+			this.memento.update(
+				`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
+				undefined,
+			),
+		]);
 	}
 
 	private async setStamped<T>(key: string, value: T): Promise<void> {

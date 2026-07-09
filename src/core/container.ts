@@ -50,7 +50,7 @@ export class ServiceContainer implements vscode.Disposable {
 		this.mementoManager = new MementoManager(context.globalState);
 		this.secretsManager = new SecretsManager(
 			context.secrets,
-			context.globalState,
+			this.mementoManager,
 			this.logger,
 		);
 

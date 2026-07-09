@@ -5,6 +5,7 @@ import {
 	type AuthRequiredHandler,
 	AuthInterceptor,
 } from "@/api/authInterceptor";
+import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 
 import {
@@ -103,7 +104,11 @@ function createTestContext() {
 	const secretStorage = new InMemorySecretStorage();
 	const memento = new InMemoryMemento();
 	const logger = createMockLogger();
-	const secretsManager = new SecretsManager(secretStorage, memento, logger);
+	const secretsManager = new SecretsManager(
+		secretStorage,
+		new MementoManager(memento),
+		logger,
+	);
 
 	const axiosInstance = createMockAxiosInstance();
 	const mockCoderApi = createMockCoderApi(axiosInstance);

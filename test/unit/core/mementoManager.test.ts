@@ -66,6 +66,50 @@ describe("MementoManager", () => {
 		});
 	});
 
+	describe("surfaced banners", () => {
+		it("stores surfaced banner keys by safe hostname", async () => {
+			await mementoManager.addSurfacedBanners("example.com", ["one", "two"]);
+			await mementoManager.addSurfacedBanners("other.com", ["three"]);
+
+			expect(mementoManager.getSurfacedBanners("example.com")).toEqual([
+				"one",
+				"two",
+			]);
+			expect(mementoManager.getSurfacedBanners("other.com")).toEqual(["three"]);
+		});
+
+		it("merges new banner keys into the surfaced set", async () => {
+			await mementoManager.addSurfacedBanners("example.com", ["one"]);
+			await mementoManager.addSurfacedBanners("example.com", ["one", "two"]);
+
+			expect(mementoManager.getSurfacedBanners("example.com")).toEqual([
+				"one",
+				"two",
+			]);
+		});
+
+		it("ignores corrupted surfaced banner storage", async () => {
+			await memento.update("coder.surfacedBanners.example.com", {
+				bad: true,
+			});
+
+			expect(mementoManager.getSurfacedBanners("example.com")).toEqual([]);
+		});
+	});
+
+	describe("deployment data", () => {
+		it("clears access timestamp and surfaced banners together", async () => {
+			await mementoManager.updateDeploymentAccess("example.com");
+			await mementoManager.addSurfacedBanners("example.com", ["one"]);
+			expect(mementoManager.getDeploymentAccess("example.com")).toBeDefined();
+
+			await mementoManager.clearDeploymentData("example.com");
+
+			expect(mementoManager.getDeploymentAccess("example.com")).toBeUndefined();
+			expect(mementoManager.getSurfacedBanners("example.com")).toEqual([]);
+		});
+	});
+
 	describe("startupMode", () => {
 		it("should return the set mode and clear after read", async () => {
 			await mementoManager.setStartupMode("start");
