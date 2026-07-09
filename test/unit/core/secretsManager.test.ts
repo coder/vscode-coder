@@ -170,6 +170,38 @@ describe("SecretsManager", () => {
 
 			vi.useRealTimers();
 		});
+		describe("surfaced banners", () => {
+			it("stores surfaced banner keys by safe hostname", async () => {
+				await secretsManager.setSurfacedBanners("example.com", ["one", "two"]);
+				await secretsManager.setSurfacedBanners("other.com", ["three"]);
+
+				expect(secretsManager.getSurfacedBanners("example.com")).toEqual([
+					"one",
+					"two",
+				]);
+				expect(secretsManager.getSurfacedBanners("other.com")).toEqual([
+					"three",
+				]);
+			});
+
+			it("clears surfaced banner keys with auth data", async () => {
+				await secretsManager.setSurfacedBanners("example.com", ["one"]);
+				await secretsManager.setSurfacedBanners("other.com", ["two"]);
+
+				await secretsManager.clearAllAuthData("example.com");
+
+				expect(secretsManager.getSurfacedBanners("example.com")).toEqual([]);
+				expect(secretsManager.getSurfacedBanners("other.com")).toEqual(["two"]);
+			});
+
+			it("ignores corrupted surfaced banner storage", async () => {
+				await memento.update("coder.surfacedBanners.example.com", {
+					bad: true,
+				});
+
+				expect(secretsManager.getSurfacedBanners("example.com")).toEqual([]);
+			});
+		});
 	});
 
 	describe("current deployment", () => {

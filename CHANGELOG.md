@@ -7,6 +7,14 @@
 
 ## Unreleased
 
+### Added
+
+- Show active deployment announcements in a megaphone status bar item, with a
+  popup for announcements you haven't seen yet (respecting
+  `coder.disableNotifications`; suppressed announcements highlight the status
+  bar item instead). A new **Coder: View Announcements** command opens the full
+  messages in a markdown preview.
+
 ### Fixed
 
 - Apply a 60-second default timeout to REST requests, so requests hung on a

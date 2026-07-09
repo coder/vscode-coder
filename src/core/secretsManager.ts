@@ -13,6 +13,7 @@ import type { Logger } from "../logging/logger";
 const SESSION_KEY_PREFIX = "coder.session.";
 const OAUTH_CLIENT_PREFIX = "coder.oauth.client.";
 const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
+const SURFACED_BANNERS_PREFIX = "coder.surfacedBanners.";
 
 type SecretKeyPrefix = typeof SESSION_KEY_PREFIX | typeof OAUTH_CLIENT_PREFIX;
 
@@ -28,6 +29,8 @@ const CurrentDeploymentStateSchema = z.object({
 export type CurrentDeploymentState = z.infer<
 	typeof CurrentDeploymentStateSchema
 >;
+
+const SurfacedBannersSchema = z.array(z.string());
 
 /**
  * OAuth token data stored alongside session auth.
@@ -235,11 +238,36 @@ export class SecretsManager {
 		await Promise.all([
 			this.clearSessionAuth(safeHostname),
 			this.clearOAuthClientRegistration(safeHostname),
+			this.clearSurfacedBanners(safeHostname),
 			this.memento.update(
 				`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
 				undefined,
 			),
 		]);
+	}
+
+	public getSurfacedBanners(safeHostname: string): string[] {
+		const raw = this.memento.get<unknown>(
+			`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
+		);
+		const result = SurfacedBannersSchema.safeParse(raw);
+		return result.success ? result.data : [];
+	}
+
+	public async setSurfacedBanners(
+		safeHostname: string,
+		bannerKeys: readonly string[],
+	): Promise<void> {
+		await this.memento.update(`${SURFACED_BANNERS_PREFIX}${safeHostname}`, [
+			...bannerKeys,
+		]);
+	}
+
+	private async clearSurfacedBanners(safeHostname: string): Promise<void> {
+		await this.memento.update(
+			`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
+			undefined,
+		);
 	}
 
 	/**

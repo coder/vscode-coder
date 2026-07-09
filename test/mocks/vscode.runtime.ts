@@ -148,9 +148,10 @@ export const window = {
 		window.activeColorTheme = { kind };
 		onDidChangeActiveColorTheme.fire({ kind });
 	},
-	showInformationMessage: vi.fn(),
-	showWarningMessage: vi.fn(),
-	showErrorMessage: vi.fn(),
+	// The real API always returns a Thenable, so callers may chain .then().
+	showInformationMessage: vi.fn(() => Promise.resolve(undefined)),
+	showWarningMessage: vi.fn(() => Promise.resolve(undefined)),
+	showErrorMessage: vi.fn(() => Promise.resolve(undefined)),
 	showQuickPick: vi.fn(),
 	showInputBox: vi.fn(),
 	showSaveDialog: vi.fn(),
@@ -187,6 +188,7 @@ export const workspace = {
 		readDirectory: vi.fn(),
 	},
 	openTextDocument: vi.fn(),
+	registerTextDocumentContentProvider: vi.fn(() => ({ dispose: vi.fn() })),
 	onDidChangeConfiguration: onDidChangeConfiguration.event,
 	onDidChangeWorkspaceFolders: onDidChangeWorkspaceFolders.event,
 

@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+import { AnnouncementManager } from "./announcements/manager";
 import { errToStr } from "./api/api-helper";
 import { AuthInterceptor } from "./api/authInterceptor";
 import { CoderApi } from "./api/coderApi";
@@ -161,6 +162,14 @@ async function doActivate(
 		oauthSessionManager,
 	);
 	ctx.subscriptions.push(deploymentManager);
+
+	const announcementManager = new AnnouncementManager(
+		client,
+		deploymentManager.session,
+		secretsManager,
+		output,
+	);
+	ctx.subscriptions.push(announcementManager);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
 		WorkspaceQuery.Mine,
@@ -327,6 +336,10 @@ async function doActivate(
 	commandManager.register(
 		"coder.exportTelemetry",
 		commands.exportTelemetry.bind(commands),
+	);
+	commandManager.register(
+		"coder.viewAnnouncements",
+		announcementManager.showAnnouncements.bind(announcementManager),
 	);
 	commandManager.register("coder.searchMyWorkspaces", async () =>
 		showTreeViewSearch(MY_WORKSPACES_TREE_ID),
