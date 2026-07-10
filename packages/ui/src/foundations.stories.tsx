@@ -2,32 +2,41 @@ import { useVscodeTheme } from "./useVscodeTheme";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
-const COLOR_TOKENS = [
-	"--ui-foreground",
-	"--ui-background",
-	"--ui-description-foreground",
-	"--ui-icon-foreground",
-	"--ui-border",
-	"--ui-focus-border",
-	"--ui-hover-background",
-	"--ui-active-selection-background",
-	"--ui-active-selection-foreground",
-	"--ui-inactive-selection-background",
-	"--ui-link-foreground",
-	"--ui-error-foreground",
-	"--ui-warning-foreground",
-	"--ui-contrast-border",
-	"--ui-contrast-active-border",
-];
+/** All `--ui-*` tokens declared in loaded stylesheets, so the story stays in sync with tokens.css. */
+function uiTokens(): string[] {
+	const tokens = new Set<string>();
+	for (const sheet of Array.from(document.styleSheets)) {
+		let rules: CSSRuleList;
+		try {
+			rules = sheet.cssRules;
+		} catch {
+			continue;
+		}
+		for (const rule of Array.from(rules)) {
+			if (rule instanceof CSSStyleRule && rule.selectorText === ":root") {
+				for (const property of Array.from(rule.style)) {
+					if (property.startsWith("--ui-")) {
+						tokens.add(property);
+					}
+				}
+			}
+		}
+	}
+	return Array.from(tokens);
+}
 
 const Foundations = (): React.JSX.Element => {
 	const theme = useVscodeTheme();
+	const tokens = uiTokens();
+	const fontTokens = tokens.filter((token) => token.includes("font"));
+	const colorTokens = tokens.filter((token) => !token.includes("font"));
 
 	return (
 		<div
 			style={{
 				fontFamily: "var(--ui-font-family)",
 				fontSize: "var(--ui-font-size)",
+				fontWeight: "var(--ui-font-weight)",
 				color: "var(--ui-foreground)",
 				background: "var(--ui-background)",
 				border: "1px solid var(--ui-border)",
@@ -38,10 +47,10 @@ const Foundations = (): React.JSX.Element => {
 				Theme kind: <code>{theme}</code>
 			</p>
 			<p style={{ color: "var(--ui-description-foreground)" }}>
-				Semantic tokens mapped to VS Code theme variables.
+				This text is set with {fontTokens.join(", ")}.
 			</p>
 			<ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-				{COLOR_TOKENS.map((token) => (
+				{colorTokens.map((token) => (
 					<li
 						key={token}
 						style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
@@ -52,7 +61,7 @@ const Foundations = (): React.JSX.Element => {
 								height: "1rem",
 								flexShrink: 0,
 								background: `var(${token})`,
-								border: "1px solid var(--ui-border)",
+								border: "1px solid var(--ui-contrast-border)",
 							}}
 						/>
 						<code>{token}</code>

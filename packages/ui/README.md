@@ -9,8 +9,10 @@ knowledge — that lives in the consuming packages (`@repo/workspaces`,
 `tokens.css` defines semantic `--ui-*` custom properties mapped to the
 `--vscode-*` variables VS Code injects into every webview. Components
 style against the semantic tokens only, so the VS Code mapping (including
-high contrast) is adjusted in one place. Import it once per webview entry
-point:
+high contrast) is adjusted in one place. Tokens whose underlying variable
+may be absent (high contrast themes omit hover/selection fills) declare a
+fallback, so every token always resolves. Import it once per webview
+entry point:
 
 ```ts
 import "@repo/ui/tokens.css";

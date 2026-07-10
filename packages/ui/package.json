@@ -1,9 +1,12 @@
 {
 	"name": "@repo/ui",
 	"version": "1.0.0",
-	"description": "Shared VS Code webview component library (theme foundations)",
+	"description": "Shared component library for VS Code webviews",
 	"private": true,
 	"type": "module",
+	"sideEffects": [
+		"*.css"
+	],
 	"exports": {
 		".": {
 			"types": "./src/index.ts",
