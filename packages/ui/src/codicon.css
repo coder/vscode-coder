@@ -1,5 +1,2 @@
-/**
- * Codicon icon font and classes, re-exported so consumers only depend on
- * this package for icon assets.
- */
+/* Codicon assets re-exported so consumers only depend on this package. */
 @import "@vscode/codicons/dist/codicon.css";

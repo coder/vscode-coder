@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-/** Theme kinds VS Code reports to webviews. */
+/** Theme kinds VS Code reports via the `data-vscode-theme-kind` body attribute. */
 export type VscodeThemeKind =
 	"light" | "dark" | "high-contrast" | "high-contrast-light";
 
@@ -30,11 +30,7 @@ function getSnapshot(): VscodeThemeKind {
 	}
 }
 
-/**
- * The active VS Code theme kind, derived from the `data-vscode-theme-kind`
- * attribute VS Code maintains on the webview body. Re-renders when the
- * user switches themes.
- */
+/** The active VS Code theme kind; re-renders when the user switches themes. */
 export function useVscodeTheme(): VscodeThemeKind {
 	return useSyncExternalStore(subscribe, getSnapshot);
 }

@@ -1,15 +1,7 @@
-/**
- * Semantic design tokens for the shared UI library.
- *
- * Every token maps to a `--vscode-*` variable injected by VS Code into
- * webviews, so components written against these tokens follow the active
- * color theme automatically. This file is the single place where the
- * library is matched to VS Code theming.
- *
- * High contrast: `--vscode-contrastBorder` and
- * `--vscode-contrastActiveBorder` are only defined by high-contrast
- * themes, so the transparent fallbacks make the contrast tokens no-ops
- * everywhere else.
+/*
+ * Semantic tokens mapped to the `--vscode-*` variables VS Code injects
+ * into webviews — the single place the library is theme-matched to
+ * VS Code.
  */
 :root {
 	/* Typography */
@@ -19,7 +11,10 @@
 
 	/* Surfaces and text */
 	--ui-foreground: var(--vscode-foreground);
-	--ui-background: var(--vscode-sideBar-background);
+	--ui-background: var(
+		--vscode-sideBar-background,
+		var(--vscode-editor-background)
+	);
 	--ui-description-foreground: var(--vscode-descriptionForeground);
 	--ui-icon-foreground: var(--vscode-icon-foreground);
 	--ui-border: var(--vscode-sideBar-border, transparent);
@@ -46,7 +41,7 @@
 	--ui-error-foreground: var(--vscode-errorForeground);
 	--ui-warning-foreground: var(--vscode-editorWarning-foreground);
 
-	/* High contrast (transparent outside high-contrast themes) */
+	/* Only defined by high contrast themes; transparent elsewhere */
 	--ui-contrast-border: var(--vscode-contrastBorder, transparent);
 	--ui-contrast-active-border: var(--vscode-contrastActiveBorder, transparent);
 }

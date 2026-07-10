@@ -41,11 +41,9 @@ describe("useVscodeTheme", () => {
 		const { result } = renderHook(() => useVscodeTheme());
 		expect(result.current).toBe("dark");
 
-		// MutationObserver callbacks run as microtasks; the async act flushes
-		// them along with the resulting re-render.
+		// MutationObserver callbacks are microtasks; flush them inside act.
 		await act(async () => {
 			setThemeKind("vscode-light");
-			// Flush the MutationObserver microtask before act re-renders.
 			await Promise.resolve();
 		});
 		expect(result.current).toBe("light");
