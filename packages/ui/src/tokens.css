@@ -1,0 +1,52 @@
+/**
+ * Semantic design tokens for the shared UI library.
+ *
+ * Every token maps to a `--vscode-*` variable injected by VS Code into
+ * webviews, so components written against these tokens follow the active
+ * color theme automatically. This file is the single place where the
+ * library is matched to VS Code theming.
+ *
+ * High contrast: `--vscode-contrastBorder` and
+ * `--vscode-contrastActiveBorder` are only defined by high-contrast
+ * themes, so the transparent fallbacks make the contrast tokens no-ops
+ * everywhere else.
+ */
+:root {
+	/* Typography */
+	--ui-font-family: var(--vscode-font-family);
+	--ui-font-size: var(--vscode-font-size);
+	--ui-font-weight: var(--vscode-font-weight);
+
+	/* Surfaces and text */
+	--ui-foreground: var(--vscode-foreground);
+	--ui-background: var(--vscode-sideBar-background);
+	--ui-description-foreground: var(--vscode-descriptionForeground);
+	--ui-icon-foreground: var(--vscode-icon-foreground);
+	--ui-border: var(--vscode-sideBar-border, transparent);
+
+	/* Interaction */
+	--ui-focus-border: var(--vscode-focusBorder);
+	--ui-hover-background: var(--vscode-list-hoverBackground);
+	--ui-hover-foreground: var(
+		--vscode-list-hoverForeground,
+		var(--ui-foreground)
+	);
+	--ui-active-selection-background: var(
+		--vscode-list-activeSelectionBackground
+	);
+	--ui-active-selection-foreground: var(
+		--vscode-list-activeSelectionForeground
+	);
+	--ui-inactive-selection-background: var(
+		--vscode-list-inactiveSelectionBackground
+	);
+	--ui-link-foreground: var(--vscode-textLink-foreground);
+
+	/* Feedback */
+	--ui-error-foreground: var(--vscode-errorForeground);
+	--ui-warning-foreground: var(--vscode-editorWarning-foreground);
+
+	/* High contrast (transparent outside high-contrast themes) */
+	--ui-contrast-border: var(--vscode-contrastBorder, transparent);
+	--ui-contrast-active-border: var(--vscode-contrastActiveBorder, transparent);
+}

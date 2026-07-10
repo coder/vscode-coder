@@ -77,6 +77,13 @@ const preview: Preview = {
 				const root = document.documentElement.style;
 				root.setProperty("--vscode-font-family", VSCODE_FONT_FAMILY);
 
+				// Mirror the attribute VS Code maintains on the webview body so
+				// theme-aware hooks (e.g. useVscodeTheme) work in Storybook.
+				document.body.setAttribute(
+					"data-vscode-theme-kind",
+					context.globals.theme === "light" ? "vscode-light" : "vscode-dark",
+				);
+
 				// Apply CSS custom properties to the document root
 				selectedTheme.forEach(([property, value]) => {
 					root.setProperty(property, value);
@@ -88,6 +95,7 @@ const preview: Preview = {
 						root.removeProperty(property);
 					});
 					root.removeProperty("--vscode-font-family");
+					document.body.removeAttribute("data-vscode-theme-kind");
 				};
 			}, [selectedTheme]);
 
