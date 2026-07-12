@@ -4,9 +4,6 @@
 	"description": "Shared component library for VS Code webviews",
 	"private": true,
 	"type": "module",
-	"sideEffects": [
-		"*.css"
-	],
 	"exports": {
 		".": {
 			"types": "./src/index.ts",

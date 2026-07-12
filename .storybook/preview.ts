@@ -1,11 +1,13 @@
 /// <reference types="vite/client" />
 
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
+import { theme as darkTheme } from "@vscode-elements/webview-playground/dist/themes/dark-v2.js";
+import { theme as hcDarkTheme } from "@vscode-elements/webview-playground/dist/themes/hc-dark.js";
+import { theme as hcLightTheme } from "@vscode-elements/webview-playground/dist/themes/hc-light.js";
+import { theme as lightTheme } from "@vscode-elements/webview-playground/dist/themes/light-v2.js";
 import { createElement, useEffect } from "react";
 
 import "./global.css";
-import { darkTheme } from "./themes/dark-v2";
-import { lightTheme } from "./themes/light-v2";
 
 import type { Preview } from "@storybook/react-vite";
 import type { WebviewApi } from "vscode-webview";
@@ -49,6 +51,19 @@ if (
 const VSCODE_FONT_FAMILY =
 	'"Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif';
 
+const THEMES: Record<
+	string,
+	{ variables: Array<[string, string]>; kind: string }
+> = {
+	light: { variables: lightTheme, kind: "vscode-light" },
+	dark: { variables: darkTheme, kind: "vscode-dark" },
+	"high-contrast": { variables: hcDarkTheme, kind: "vscode-high-contrast" },
+	"high-contrast-light": {
+		variables: hcLightTheme,
+		kind: "vscode-high-contrast-light",
+	},
+};
+
 const preview: Preview = {
 	parameters: {
 		layout: "centered",
@@ -63,6 +78,16 @@ const preview: Preview = {
 				items: [
 					{ value: "light", icon: "circlehollow", title: "Light" },
 					{ value: "dark", icon: "circle", title: "Dark" },
+					{
+						value: "high-contrast",
+						icon: "contrast",
+						title: "High Contrast",
+					},
+					{
+						value: "high-contrast-light",
+						icon: "sun",
+						title: "High Contrast Light",
+					},
 				],
 				dynamicTitle: true,
 			},
@@ -70,33 +95,30 @@ const preview: Preview = {
 	},
 	decorators: [
 		(Story, context) => {
-			const selectedTheme =
-				context.globals.theme === "light" ? lightTheme : darkTheme;
+			const { variables, kind } =
+				THEMES[context.globals.theme as string] ?? THEMES.dark;
 
 			useEffect(() => {
 				const root = document.documentElement.style;
 				root.setProperty("--vscode-font-family", VSCODE_FONT_FAMILY);
 
 				// Mirror VS Code's body attribute so theme-aware hooks work in Storybook.
-				document.body.setAttribute(
-					"data-vscode-theme-kind",
-					context.globals.theme === "light" ? "vscode-light" : "vscode-dark",
-				);
+				document.body.setAttribute("data-vscode-theme-kind", kind);
 
 				// Apply CSS custom properties to the document root
-				selectedTheme.forEach(([property, value]) => {
+				variables.forEach(([property, value]) => {
 					root.setProperty(property, value);
 				});
 
 				// Cleanup function to remove properties when unmounting
 				return () => {
-					selectedTheme.forEach(([property]) => {
+					variables.forEach(([property]) => {
 						root.removeProperty(property);
 					});
 					root.removeProperty("--vscode-font-family");
 					document.body.removeAttribute("data-vscode-theme-kind");
 				};
-			}, [selectedTheme]);
+			}, [variables, kind]);
 
 			return createElement("div", { id: "root" }, createElement(Story));
 		},
