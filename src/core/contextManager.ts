@@ -4,6 +4,7 @@ const CONTEXT_DEFAULTS = {
 	"coder.authenticated": false,
 	"coder.isOwner": false,
 	"coder.loaded": false,
+	"coder.sharedWorkspacesSupported": true,
 	"coder.workspace.connected": false,
 	"coder.workspace.updatable": false,
 	"coder.workspacesPanelEnabled": false,

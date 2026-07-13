@@ -15,6 +15,14 @@
   bar item instead). A new **Coder: View Announcements** command opens the full
   messages in a markdown preview.
 
+### Changed
+
+- Filter the Shared Workspaces view with the server-side `shared_with_user`
+  query instead of filtering `shared:true` results on the client, so fewer
+  workspaces are fetched and the view loads faster. Deployments too old to
+  support the new filter now show a message explaining why instead of an
+  empty list.
+
 ### Fixed
 
 - Apply a 60-second default timeout to REST requests, so requests hung on a
@@ -59,8 +67,6 @@
 - File-based credentials are now written and cleared through `coder login` and
   `coder logout` rather than by the extension directly. The minimum supported
   Coder version is now v0.25.0.
-
-### Changed
 
 - Workspace opens and `coder://` URI handling now log more diagnostics (target
   workspace, agent, and handoff) to make failed opens easier to trace. URI

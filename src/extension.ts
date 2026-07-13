@@ -193,8 +193,22 @@ async function doActivate(
 		client,
 		output,
 		deploymentManager.session,
+		{
+			// Older deployments reject this query; show a message instead of an
+			// empty tree (see `viewsWelcome` in package.json).
+			onQueryRejected: () =>
+				contextManager.set("coder.sharedWorkspacesSupported", false),
+		},
 	);
 	ctx.subscriptions.push(sharedWorkspacesProvider);
+
+	// Re-probe support on session change (login, logout, deployment switch);
+	// the next fetch clears the message again if still unsupported.
+	ctx.subscriptions.push(
+		deploymentManager.session.onDidChange(() =>
+			contextManager.set("coder.sharedWorkspacesSupported", true),
+		),
+	);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
 	// (so we can see when it is visible) but otherwise they have the same effect.
@@ -328,6 +342,9 @@ async function doActivate(
 		commands.navigateToWorkspaceSettings.bind(commands),
 	);
 	commandManager.register("coder.refreshWorkspaces", () => {
+		// Re-probe in case the deployment was upgraded; the fetch below clears
+		// the message again on rejection.
+		contextManager.set("coder.sharedWorkspacesSupported", true);
 		void myWorkspacesProvider.fetchAndRefresh();
 		void sharedWorkspacesProvider.fetchAndRefresh();
 		void allWorkspacesProvider.fetchAndRefresh();
