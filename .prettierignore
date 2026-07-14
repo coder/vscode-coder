@@ -13,3 +13,6 @@ pnpm-lock.yaml
 
 # Golden snapshots are written verbatim; prettier would drift them out of sync.
 **/__golden__/
+
+# Generated VS Code theme dump; minified single line by design.
+.storybook/themes/generated/themes.json

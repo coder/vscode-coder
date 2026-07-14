@@ -37,9 +37,6 @@ catalogs:
     '@vscode-elements/react-elements':
       specifier: ^2.4.0
       version: 2.4.0
-    '@vscode-elements/webview-playground':
-      specifier: ^1.9.0
-      version: 1.9.0
     '@vscode/codicons':
       specifier: ^0.0.45
       version: 0.0.45
@@ -214,9 +211,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.10
         version: 4.1.10(vitest@4.1.10)
-      '@vscode-elements/webview-playground':
-        specifier: 'catalog:'
-        version: 1.9.0
       '@vscode/codicons':
         specifier: 'catalog:'
         version: 0.0.45
@@ -2224,9 +2218,6 @@ packages:
     peerDependencies:
       react: 17 || 18 || 19
       react-dom: 17 || 18 || 19
-
-  '@vscode-elements/webview-playground@1.9.0':
-    resolution: {integrity: sha512-0VMzdeLisbmACMXSyNhtkgca/wLmBMrVq4T0T8MGzPhLg9uDcgEaCscTdVaNg2tPwfCtmSN2BU8KGTEH1iqdhA==}
 
   '@vscode/codicons@0.0.45':
     resolution: {integrity: sha512-1KAZ7XCMagp5Gdrlr4bbbcAqgcIL623iO1wW6rfcSVGAVUQvR0WP7bQx1SbJ11gmV3fdQTSEFIJQ/5C+HuVasw==}
@@ -6881,8 +6872,6 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - '@vscode/codicons'
-
-  '@vscode-elements/webview-playground@1.9.0': {}
 
   '@vscode/codicons@0.0.45': {}
 
