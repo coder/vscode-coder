@@ -26,6 +26,10 @@ plus the shared `.ui-control` flex base in `components/control.css` — never
 with line-height or vertical padding math, which drifts off-center with
 font metrics.
 
+Every component forwards `className` and `style` to its root element, and
+default rules use single-class specificity, so a consumer class imported
+after the library overrides any default (width, height, spacing).
+
 ## Codicons
 
 `CodiconName` is derived directly from the installed

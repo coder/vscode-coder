@@ -1,10 +1,10 @@
 import { type HTMLAttributes, type ReactNode } from "react";
 
-import "./control.css";
-import { Icon } from "./Icon";
-import "./StatePanel.css";
+import "../control.css";
+import { Icon } from "../Icon/Icon";
+import "../StatePanel/StatePanel.css";
 
-import type { CodiconName } from "../codicons";
+import type { CodiconName } from "../../codicons";
 
 export interface EmptyStateProps extends Omit<
 	HTMLAttributes<HTMLDivElement>,

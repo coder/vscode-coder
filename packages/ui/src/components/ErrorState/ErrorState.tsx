@@ -1,8 +1,8 @@
 import { type HTMLAttributes, type ReactNode } from "react";
 
-import "./control.css";
-import { Icon } from "./Icon";
-import "./StatePanel.css";
+import "../control.css";
+import { Icon } from "../Icon/Icon";
+import "../StatePanel/StatePanel.css";
 
 export interface ErrorStateProps extends Omit<
 	HTMLAttributes<HTMLDivElement>,

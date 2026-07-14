@@ -106,6 +106,22 @@ describe("SearchInput", () => {
 		expect(onChange).toHaveBeenCalledWith("");
 		expect(screen.getByRole("searchbox", { name: "Search" })).toHaveFocus();
 	});
+
+	it("forwards className and style to the root element", () => {
+		render(
+			<SearchInput
+				value=""
+				onChange={vi.fn()}
+				className="custom-search"
+				style={{ width: "200px" }}
+			/>,
+		);
+		const root = screen
+			.getByRole("searchbox", { name: "Search" })
+			.closest(".ui-search-input");
+		expect(root).toHaveClass("custom-search");
+		expect(root).toHaveStyle({ width: "200px" });
+	});
 });
 
 describe("StatusPill", () => {

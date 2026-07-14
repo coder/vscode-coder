@@ -1,4 +1,4 @@
-import { FourThemeModes } from "../storybook";
+import { FourThemeModes } from "../../storybook";
 
 import { StatusPill } from "./StatusPill";
 
