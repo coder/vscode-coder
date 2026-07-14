@@ -1,28 +1,19 @@
-/* Storybook-specific layout. VS Code's default webview stylesheet is
-   imported from ./themes/generated/default-styles.css. */
+/* Storybook stand-ins for what the VS Code host provides outside the
+   webview document: the sidebar surface color and viewport sizing.
+   Typography and text color come from themes/generated/default-styles.css. */
 
-html {
+html,
+#storybook-preview-wrapper {
 	background: var(--vscode-sideBar-background);
 }
 
 body {
-	margin: 0;
+	/* Real webviews pad the body 0 20px; stories frame themselves. */
 	padding: 0;
 	overflow: hidden;
 }
 
-#storybook-preview-wrapper {
-	background-color: var(--vscode-sideBar-background);
-}
-
 #root {
-	overscroll-behavior-x: none;
-	background-color: var(--vscode-sideBar-background);
-	color: var(--vscode-editor-foreground);
-	font-family: var(--vscode-font-family);
-	font-weight: var(--vscode-font-weight);
-	font-size: var(--vscode-font-size);
-	margin: 0;
 	max-width: 100%;
 	/* arbitrary size choice for the rough VSCode sidebar size */
 	width: 300px;
