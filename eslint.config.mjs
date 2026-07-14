@@ -208,6 +208,25 @@ export default defineConfig(
 		},
 	},
 
+	// Keep the UI package independent from other workspace packages.
+	{
+		files: ["packages/ui/**/*.{ts,tsx}"],
+		rules: {
+			"import-x/no-relative-packages": "error",
+			"no-restricted-imports": [
+				"error",
+				{
+					patterns: [
+						{
+							group: ["@repo/*"],
+							message: "packages/ui must not import other workspace packages.",
+						},
+					],
+				},
+			],
+		},
+	},
+
 	// React rules with type-checked analysis (covers hooks, JSX, DOM)
 	{
 		files: ["packages/**/*.{ts,tsx}"],

@@ -16,36 +16,84 @@
 		var(--vscode-editor-background)
 	);
 	--ui-description-foreground: var(--vscode-descriptionForeground);
-	--ui-icon-foreground: var(--vscode-icon-foreground);
 	--ui-border: var(--vscode-sideBar-border, transparent);
-
-	/* Interaction. Hover/selection fills may be absent in high contrast
-	   themes, which convey state through contrast borders instead. */
-	--ui-focus-border: var(--vscode-focusBorder);
-	--ui-hover-background: var(--vscode-list-hoverBackground, transparent);
-	--ui-hover-foreground: var(
-		--vscode-list-hoverForeground,
-		var(--ui-foreground)
-	);
-	--ui-active-selection-background: var(
-		--vscode-list-activeSelectionBackground,
-		transparent
-	);
-	--ui-active-selection-foreground: var(
-		--vscode-list-activeSelectionForeground,
-		var(--ui-foreground)
-	);
-	--ui-inactive-selection-background: var(
-		--vscode-list-inactiveSelectionBackground,
-		transparent
-	);
 	--ui-link-foreground: var(--vscode-textLink-foreground);
+	--ui-focus-border: var(
+		--vscode-focusBorder,
+		var(--vscode-contrastActiveBorder, var(--ui-foreground))
+	);
+	--ui-disabled-opacity: 0.4;
 
-	/* Feedback */
+	/* Controls */
+	--ui-toolbar-foreground: var(--vscode-foreground);
+	--ui-toolbar-hover-background: var(
+		--vscode-toolbar-hoverBackground,
+		transparent
+	);
+	--ui-toolbar-hover-outline: var(--vscode-toolbar-hoverOutline, transparent);
+	--ui-toolbar-active-background: var(
+		--vscode-toolbar-activeBackground,
+		var(--ui-toolbar-hover-background)
+	);
+	--ui-input-option-active-background: var(
+		--vscode-inputOption-activeBackground,
+		var(--ui-toolbar-active-background)
+	);
+	--ui-input-option-active-foreground: var(
+		--vscode-inputOption-activeForeground,
+		var(--ui-foreground)
+	);
+	--ui-input-option-active-border: var(
+		--vscode-inputOption-activeBorder,
+		var(--ui-focus-border)
+	);
+	--ui-input-background: var(--vscode-input-background);
+	--ui-input-foreground: var(--vscode-input-foreground);
+	--ui-input-border: var(
+		--vscode-input-border,
+		var(--vscode-contrastBorder, transparent)
+	);
+	--ui-input-placeholder-foreground: var(--vscode-input-placeholderForeground);
+	--ui-button-background: var(--vscode-button-background, var(--ui-background));
+	--ui-button-foreground: var(--vscode-button-foreground, var(--ui-foreground));
+	--ui-button-border: var(
+		--vscode-button-border,
+		var(--vscode-contrastBorder, transparent)
+	);
+	--ui-button-hover-background: var(
+		--vscode-button-hoverBackground,
+		var(--ui-button-background)
+	);
+
+	/* Activity and feedback */
+	--ui-progress-foreground: var(--vscode-progressBar-background);
+	--ui-state-icon-foreground: var(--ui-description-foreground);
 	--ui-error-foreground: var(--vscode-errorForeground);
-	--ui-warning-foreground: var(--vscode-editorWarning-foreground);
+
+	/* Status and badges */
+	--ui-badge-background: var(--vscode-badge-background, transparent);
+	--ui-badge-foreground: var(--vscode-badge-foreground, var(--ui-foreground));
+	--ui-status-neutral-accent: var(
+		--vscode-descriptionForeground,
+		var(--ui-foreground)
+	);
+	--ui-status-info-accent: var(
+		--vscode-notificationsInfoIcon-foreground,
+		var(--ui-foreground)
+	);
+	--ui-status-success-accent: var(
+		--vscode-testing-iconPassed,
+		var(--ui-foreground)
+	);
+	--ui-status-warning-accent: var(
+		--vscode-editorWarning-foreground,
+		var(--ui-foreground)
+	);
+	--ui-status-danger-accent: var(
+		--vscode-errorForeground,
+		var(--ui-foreground)
+	);
 
 	/* Only defined by high contrast themes; transparent elsewhere */
 	--ui-contrast-border: var(--vscode-contrastBorder, transparent);
-	--ui-contrast-active-border: var(--vscode-contrastActiveBorder, transparent);
 }

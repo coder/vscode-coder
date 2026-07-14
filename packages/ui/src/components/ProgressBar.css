@@ -1,0 +1,46 @@
+.ui-progress-bar {
+	overflow: hidden;
+	position: relative;
+	width: 100%;
+	height: 2px;
+	background: transparent;
+}
+
+.ui-progress-bar__indicator {
+	display: block;
+	height: 100%;
+	background: var(--ui-progress-foreground);
+	transition: width 100ms linear;
+}
+
+.ui-progress-bar--indeterminate .ui-progress-bar__indicator {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: -30%;
+	width: 30%;
+	animation: ui-progress-travel 1.6s linear infinite;
+}
+
+@keyframes ui-progress-travel {
+	to {
+		inset-inline-start: 100%;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-progress-bar__indicator {
+		transition: none;
+	}
+
+	.ui-progress-bar--indeterminate .ui-progress-bar__indicator {
+		inset-inline-start: 0;
+		width: 100%;
+		animation: none;
+	}
+}
+
+@media (forced-colors: active) {
+	.ui-progress-bar__indicator {
+		background: Highlight;
+	}
+}
