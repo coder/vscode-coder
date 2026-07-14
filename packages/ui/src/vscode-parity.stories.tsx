@@ -9,12 +9,12 @@ import {
 } from "@vscode-elements/react-elements";
 
 import "./components/control.css";
-import { IconButton } from "./components/IconButton";
-import { ProgressBar } from "./components/ProgressBar";
-import { SearchInput } from "./components/SearchInput";
-import { Spinner } from "./components/Spinner";
-import "./components/StatePanel.css";
-import { StatusPill } from "./components/StatusPill";
+import { IconButton } from "./components/IconButton/IconButton";
+import { ProgressBar } from "./components/ProgressBar/ProgressBar";
+import { SearchInput } from "./components/SearchInput/SearchInput";
+import { Spinner } from "./components/Spinner/Spinner";
+import "./components/StatePanel/StatePanel.css";
+import { StatusPill } from "./components/StatusPill/StatusPill";
 import { FourThemeModes } from "./storybook";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -96,6 +96,8 @@ const Parity = (): React.JSX.Element => (
 		/>
 		<Row
 			label="Button"
+			// Narrower than the reference by design: VS Code core's
+			// monaco-text-button uses 4px/8px padding; vscode-elements uses 13px.
 			ours={
 				<div className="ui-state-panel__action" style={{ margin: 0 }}>
 					<button type="button">Try again</button>

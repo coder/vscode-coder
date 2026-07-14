@@ -1,12 +1,12 @@
 import { expect, within } from "storybook/test";
 
-import { FourThemeModes } from "../storybook";
+import { FourThemeModes } from "../../storybook";
 
 import { Icon } from "./Icon";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
-import type { CodiconName } from "../codicons";
+import type { CodiconName } from "../../codicons";
 
 const galleryIcons = [
 	"account",

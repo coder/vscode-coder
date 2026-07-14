@@ -1,10 +1,11 @@
 import { type ButtonHTMLAttributes } from "react";
 
-import "./control.css";
-import { Icon } from "./Icon";
+import "../control.css";
+import { Icon } from "../Icon/Icon";
+
 import "./IconButton.css";
 
-import type { CodiconName } from "../codicons";
+import type { CodiconName } from "../../codicons";
 
 export interface IconButtonProps extends Omit<
 	ButtonHTMLAttributes<HTMLButtonElement>,

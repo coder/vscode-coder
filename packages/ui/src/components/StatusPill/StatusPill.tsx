@@ -1,10 +1,11 @@
 import { type HTMLAttributes, type ReactNode } from "react";
 
-import "./control.css";
-import { Icon } from "./Icon";
+import "../control.css";
+import { Icon } from "../Icon/Icon";
+
 import "./StatusPill.css";
 
-import type { CodiconName } from "../codicons";
+import type { CodiconName } from "../../codicons";
 
 export type StatusPillTone =
 	"neutral" | "info" | "success" | "warning" | "danger";

@@ -1,8 +1,9 @@
 import { type ChangeEvent, type InputHTMLAttributes, useRef } from "react";
 
-import "./control.css";
-import { Icon } from "./Icon";
-import { IconButton } from "./IconButton";
+import "../control.css";
+import { Icon } from "../Icon/Icon";
+import { IconButton } from "../IconButton/IconButton";
+
 import "./SearchInput.css";
 
 export interface SearchInputProps extends Omit<
@@ -21,6 +22,7 @@ export function SearchInput({
 	value,
 	onChange,
 	className,
+	style,
 	disabled,
 	...props
 }: SearchInputProps): React.JSX.Element {
@@ -43,6 +45,7 @@ export function SearchInput({
 			]
 				.filter(Boolean)
 				.join(" ")}
+			style={style}
 		>
 			<Icon name="search" />
 			<input

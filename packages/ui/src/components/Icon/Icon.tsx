@@ -2,7 +2,7 @@ import { type HTMLAttributes } from "react";
 
 import "./Icon.css";
 
-import type { CodiconName } from "../codicons";
+import type { CodiconName } from "../../codicons";
 
 export interface IconProps extends Omit<
 	HTMLAttributes<HTMLSpanElement>,
