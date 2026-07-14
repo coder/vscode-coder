@@ -1,5 +1,7 @@
 import { type HTMLAttributes, type ReactNode } from "react";
 
+import { cx } from "#cx";
+
 import "../control.css";
 import { Icon } from "../Icon/Icon";
 import "../StatePanel/StatePanel.css";
@@ -27,9 +29,7 @@ export function ErrorState({
 	return (
 		<div
 			{...props}
-			className={["ui-state-panel", "ui-state-panel--error", className]
-				.filter(Boolean)
-				.join(" ")}
+			className={cx("ui-state-panel", "ui-state-panel--error", className)}
 			role="alert"
 		>
 			<Icon name="error" className="ui-state-panel__icon" />

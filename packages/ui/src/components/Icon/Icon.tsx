@@ -1,8 +1,10 @@
 import { type HTMLAttributes } from "react";
 
+import { cx } from "#cx";
+
 import "./Icon.css";
 
-import type { CodiconName } from "../../codicons";
+import type { CodiconName } from "#codicons";
 
 export interface IconProps extends Omit<
 	HTMLAttributes<HTMLSpanElement>,
@@ -21,15 +23,13 @@ export function Icon({
 	...props
 }: IconProps): React.JSX.Element {
 	const isLabelled = Boolean(ariaLabel || ariaLabelledBy);
-	const classes = [
+	const classes = cx(
 		"ui-icon",
 		"codicon",
 		`codicon-${name}`,
-		spin ? "ui-icon--spin" : undefined,
+		spin && "ui-icon--spin",
 		className,
-	]
-		.filter(Boolean)
-		.join(" ");
+	);
 
 	return (
 		<span

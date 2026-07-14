@@ -1,5 +1,7 @@
 import { type ChangeEvent, type InputHTMLAttributes, useRef } from "react";
 
+import { cx } from "#cx";
+
 import "../control.css";
 import { Icon } from "../Icon/Icon";
 import { IconButton } from "../IconButton/IconButton";
@@ -37,14 +39,12 @@ export function SearchInput({
 
 	return (
 		<div
-			className={[
+			className={cx(
 				"ui-control",
 				"ui-search-input",
-				disabled ? "ui-search-input--disabled" : undefined,
+				disabled && "ui-search-input--disabled",
 				className,
-			]
-				.filter(Boolean)
-				.join(" ")}
+			)}
 			style={style}
 		>
 			<Icon name="search" />

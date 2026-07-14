@@ -42,9 +42,13 @@ if (
 	document.head.appendChild(link);
 }
 
-// Theme variable dumps captured from a real VS Code instance.
-// Regenerate with `pnpm sync:vscode-themes`.
-const THEMES: Record<string, { variables: string[][]; kind: string }> = {
+/**
+ * Theme variable dumps captured from a real VS Code instance.
+ * Regenerate with `pnpm sync:vscode-themes`.
+ */
+const THEMES: Readonly<
+	Record<string, { variables: readonly string[][]; kind: string }>
+> = {
 	light: { variables: themeDumps.themes.light, kind: "vscode-light" },
 	dark: { variables: themeDumps.themes.dark, kind: "vscode-dark" },
 	"high-contrast": {

@@ -1,11 +1,13 @@
 import { type ButtonHTMLAttributes } from "react";
 
+import { cx } from "#cx";
+
 import "../control.css";
 import { Icon } from "../Icon/Icon";
 
 import "./IconButton.css";
 
-import type { CodiconName } from "../../codicons";
+import type { CodiconName } from "#codicons";
 
 export interface IconButtonProps extends Omit<
 	ButtonHTMLAttributes<HTMLButtonElement>,
@@ -29,9 +31,7 @@ export function IconButton({
 			type={type}
 			title={title}
 			aria-label={label}
-			className={["ui-control", "ui-icon-button", className]
-				.filter(Boolean)
-				.join(" ")}
+			className={cx("ui-control", "ui-icon-button", className)}
 		>
 			<Icon name={icon} />
 		</button>

@@ -12,6 +12,11 @@
 		"./codicon.css": "./src/codicon.css",
 		"./tokens.css": "./src/tokens.css"
 	},
+	"imports": {
+		"#cx": "./src/cx.ts",
+		"#codicons": "./src/codicons.ts",
+		"#storybook": "./src/storybook.ts"
+	},
 	"scripts": {
 		"typecheck": "tsc --noEmit"
 	},

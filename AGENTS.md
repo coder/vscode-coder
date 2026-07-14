@@ -41,9 +41,10 @@ doesn't make sense. Honesty over agreeableness.
 | **Integration tests**     | `pnpm test:integration`                             |
 | **Single extension test** | `pnpm test:extension ./test/unit/filename.test.ts`  |
 | **Single webview test**   | `pnpm test:webview ./test/webview/filename.test.ts` |
+| **Sync webview themes**   | `pnpm sync:vscode-themes`                           |
 
-Integration tests launch VS Code and need a display. On headless
-environments (CI, devcontainers) prefix with `xvfb-run -a`:
+Integration tests and the theme sync launch VS Code and need a display. On
+headless environments (CI, devcontainers) prefix with `xvfb-run -a`:
 
 ```sh
 xvfb-run -a pnpm test:integration

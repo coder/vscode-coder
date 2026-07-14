@@ -9,15 +9,15 @@ VS Code instance injects per built-in theme, and `default-styles.css` is the
 stylesheet VS Code injects into every webview. `preview.ts` applies both, plus
 the `data-vscode-theme-kind` body attribute.
 
-The snapshots are generated, minified, and excluded from Prettier. To refresh
-them after a VS Code release:
+To refresh the snapshots after a VS Code release, bump `VSCODE_VERSION` in
+`themes/sync.mjs` and run:
 
 ```sh
 xvfb-run -a pnpm sync:vscode-themes
 ```
 
-The script launches a real VS Code via `@vscode/test-electron`, cycles the
-four built-in themes, and dumps what each webview receives.
+The script launches the pinned VS Code via `@vscode/test-electron`, cycles
+the four built-in themes, and dumps what each webview receives.
 
 ## Fonts
 

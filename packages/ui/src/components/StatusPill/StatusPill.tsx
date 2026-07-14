@@ -1,11 +1,13 @@
 import { type HTMLAttributes, type ReactNode } from "react";
 
+import { cx } from "#cx";
+
 import "../control.css";
 import { Icon } from "../Icon/Icon";
 
 import "./StatusPill.css";
 
-import type { CodiconName } from "../../codicons";
+import type { CodiconName } from "#codicons";
 
 export type StatusPillTone =
 	"neutral" | "info" | "success" | "warning" | "danger";
@@ -28,14 +30,12 @@ export function StatusPill({
 	return (
 		<span
 			{...props}
-			className={[
+			className={cx(
 				"ui-control",
 				"ui-status-pill",
 				`ui-status-pill--${tone}`,
 				className,
-			]
-				.filter(Boolean)
-				.join(" ")}
+			)}
 		>
 			{icon ? <Icon name={icon} aria-label={iconLabel} /> : null}
 			{children}

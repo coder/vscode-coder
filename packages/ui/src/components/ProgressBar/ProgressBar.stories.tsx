@@ -1,6 +1,6 @@
 import { expect, within } from "storybook/test";
 
-import { FourThemeModes } from "../../storybook";
+import { FourThemeModes } from "#storybook";
 
 import { ProgressBar } from "./ProgressBar";
 

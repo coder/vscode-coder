@@ -1,5 +1,7 @@
 import { type HTMLAttributes } from "react";
 
+import { cx } from "#cx";
+
 import "./ProgressBar.css";
 
 export interface ProgressBarProps extends Omit<
@@ -32,13 +34,11 @@ export function ProgressBar({
 	return (
 		<div
 			{...props}
-			className={[
+			className={cx(
 				"ui-progress-bar",
-				percentage === undefined ? "ui-progress-bar--indeterminate" : undefined,
+				percentage === undefined && "ui-progress-bar--indeterminate",
 				className,
-			]
-				.filter(Boolean)
-				.join(" ")}
+			)}
 			role="progressbar"
 			aria-label={label}
 			aria-valuemin={0}
