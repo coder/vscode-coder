@@ -1,0 +1,60 @@
+.ui-state-panel {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 10rem;
+	padding: 1.5rem;
+	color: var(--ui-foreground);
+	text-align: center;
+}
+
+.ui-state-panel__icon {
+	margin-bottom: 0.75rem;
+	color: var(--ui-state-icon-foreground);
+	font-size: 2rem;
+}
+
+.ui-state-panel--error .ui-state-panel__icon {
+	color: var(--ui-error-foreground);
+}
+
+.ui-state-panel__title {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+.ui-state-panel__description {
+	max-width: 28rem;
+	margin-top: 0.375rem;
+	color: var(--ui-description-foreground);
+	line-height: 1.4;
+}
+
+.ui-state-panel__action {
+	margin-top: 1rem;
+}
+
+.ui-state-panel__action button {
+	height: 26px;
+	padding: 0 8px;
+	color: var(--ui-button-foreground);
+	background: var(--ui-button-background);
+	border: 1px solid var(--ui-button-border);
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.ui-state-panel__action button:hover {
+	background: var(--ui-button-hover-background);
+}
+
+.ui-state-panel__action button:focus-visible {
+	border-color: var(--ui-focus-border);
+	outline: 1px solid var(--ui-focus-border);
+	outline-offset: 2px;
+}

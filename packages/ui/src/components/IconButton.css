@@ -1,0 +1,43 @@
+.ui-icon-button {
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	color: var(--ui-toolbar-foreground);
+	background: transparent;
+	border: 0;
+	border-radius: 5px;
+	cursor: pointer;
+	outline: 1px solid transparent;
+	outline-offset: -1px;
+}
+
+.ui-icon-button .ui-icon {
+	font-size: 16px;
+}
+
+.ui-icon-button:hover:not(:disabled) {
+	background: var(--ui-toolbar-hover-background);
+	outline-color: var(--ui-toolbar-hover-outline);
+	outline-style: dashed;
+}
+
+.ui-icon-button:active:not(:disabled) {
+	background: var(--ui-toolbar-active-background);
+}
+
+.ui-icon-button:focus-visible {
+	outline-color: var(--ui-focus-border);
+	outline-style: solid;
+}
+
+.ui-icon-button[aria-pressed="true"] {
+	color: var(--ui-input-option-active-foreground);
+	background: var(--ui-input-option-active-background);
+	outline-color: var(--ui-input-option-active-border);
+	outline-style: solid;
+}
+
+.ui-icon-button:disabled {
+	opacity: var(--ui-disabled-opacity);
+	cursor: default;
+}
