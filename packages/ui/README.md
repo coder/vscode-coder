@@ -41,3 +41,7 @@ without a generated source file or a runtime list in the public API.
 ESLint rejects `@repo/*` imports and relative cross-package imports in
 `packages/ui` TypeScript and TSX source. `react` remains a peer dependency, and
 public consumers import from the package root or its declared CSS exports.
+
+Shared internals are reached through `package.json` subpath imports (`#cx`,
+`#codicons`, `#storybook`). These resolve only inside this package and ship
+with it, so they survive a standalone NPM split.
