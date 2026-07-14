@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
-import { FourThemeModes } from "../../storybook";
+import { FourThemeModes } from "#storybook";
 
 import { SearchInput } from "./SearchInput";
 

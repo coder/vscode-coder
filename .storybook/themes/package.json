@@ -1,0 +1,11 @@
+{
+	"name": "theme-sync-fixture",
+	"description": "Fixture extension loaded by sync.mjs (pnpm sync:vscode-themes)",
+	"publisher": "coder",
+	"version": "0.0.1",
+	"private": true,
+	"type": "commonjs",
+	"engines": {
+		"vscode": "^1.105.0"
+	}
+}

@@ -165,7 +165,7 @@ export default defineConfig(
 
 	// Build config - ESM with Node globals
 	{
-		files: ["esbuild.mjs", "scripts/*.mjs"],
+		files: ["esbuild.mjs", "scripts/*.mjs", ".storybook/themes/*.mjs"],
 		languageOptions: {
 			globals: {
 				...globals.node,

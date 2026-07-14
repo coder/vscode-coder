@@ -1,10 +1,12 @@
 import { type HTMLAttributes, type ReactNode } from "react";
 
+import { cx } from "#cx";
+
 import "../control.css";
 import { Icon } from "../Icon/Icon";
 import "../StatePanel/StatePanel.css";
 
-import type { CodiconName } from "../../codicons";
+import type { CodiconName } from "#codicons";
 
 export interface EmptyStateProps extends Omit<
 	HTMLAttributes<HTMLDivElement>,
@@ -25,10 +27,7 @@ export function EmptyState({
 	...props
 }: EmptyStateProps): React.JSX.Element {
 	return (
-		<div
-			{...props}
-			className={["ui-state-panel", className].filter(Boolean).join(" ")}
-		>
+		<div {...props} className={cx("ui-state-panel", className)}>
 			<Icon name={icon} className="ui-state-panel__icon" />
 			<h2 className="ui-state-panel__title">{title}</h2>
 			{description ? (

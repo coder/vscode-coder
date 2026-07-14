@@ -1,5 +1,7 @@
 import { type HTMLAttributes } from "react";
 
+import { cx } from "#cx";
+
 import "./Spinner.css";
 
 export interface SpinnerProps extends Omit<
@@ -19,9 +21,7 @@ export function Spinner({
 	return (
 		<span
 			{...props}
-			className={["ui-spinner", `ui-spinner--${size}`, className]
-				.filter(Boolean)
-				.join(" ")}
+			className={cx("ui-spinner", `ui-spinner--${size}`, className)}
 			role="status"
 			aria-label={label}
 		/>
