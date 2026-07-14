@@ -23,6 +23,7 @@
 	},
 	"devDependencies": {
 		"@types/react": "catalog:",
+		"@vscode-elements/react-elements": "catalog:",
 		"react": "catalog:",
 		"typescript": "catalog:"
 	}

@@ -442,6 +442,9 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.17
+      '@vscode-elements/react-elements':
+        specifier: 'catalog:'
+        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.45)(react-dom@19.2.7)(react@19.2.7)
       react:
         specifier: 'catalog:'
         version: 19.2.7
