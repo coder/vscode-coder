@@ -2,7 +2,13 @@ html {
 	background: var(--vscode-sideBar-background);
 }
 
+/* Typography lives on body like real webviews, so portalled content
+   (menus, tooltips) inherits it too. */
 body {
+	color: var(--vscode-editor-foreground);
+	font-family: var(--vscode-font-family);
+	font-weight: var(--vscode-font-weight);
+	font-size: var(--vscode-font-size);
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
@@ -15,10 +21,6 @@ body {
 #root {
 	overscroll-behavior-x: none;
 	background-color: var(--vscode-sideBar-background);
-	color: var(--vscode-editor-foreground);
-	font-family: var(--vscode-font-family);
-	font-weight: var(--vscode-font-weight);
-	font-size: var(--vscode-font-size);
 	margin: 0;
 	max-width: 100%;
 	/* arbitrary size choice for the rough VSCode sidebar size */

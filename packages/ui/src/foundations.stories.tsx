@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { FOUR_THEME_MODES } from "./storybook";
 import { useVscodeTheme } from "./useVscodeTheme";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -132,12 +133,7 @@ const meta: Meta<typeof Foundations> = {
 		// Snapshot every theme; tokens are the single theming surface, so this
 		// is where theme regressions show up.
 		chromatic: {
-			modes: {
-				light: { theme: "light" },
-				dark: { theme: "dark" },
-				"high-contrast": { theme: "high-contrast" },
-				"high-contrast-light": { theme: "high-contrast-light" },
-			},
+			modes: FOUR_THEME_MODES,
 		},
 	},
 };

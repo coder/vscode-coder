@@ -45,6 +45,37 @@
 	--ui-error-foreground: var(--vscode-errorForeground);
 	--ui-warning-foreground: var(--vscode-editorWarning-foreground);
 
+	/* Disabled text */
+	--ui-disabled-foreground: var(--vscode-disabledForeground);
+
+	/* widget.shadow is null in high contrast, hiding the shadow like native */
+	--ui-widget-shadow: 0 0 12px var(--vscode-widget-shadow, transparent);
+
+	/* Menus; radius fallbacks predate the corner radius tokens */
+	--ui-menu-background: var(--vscode-menu-background);
+	--ui-menu-foreground: var(--vscode-menu-foreground);
+	--ui-menu-border: var(
+		--vscode-menu-border,
+		var(--vscode-editorWidget-border, transparent)
+	);
+	--ui-menu-selection-background: var(
+		--vscode-menu-selectionBackground,
+		transparent
+	);
+	--ui-menu-selection-foreground: var(
+		--vscode-menu-selectionForeground,
+		var(--ui-menu-foreground)
+	);
+	--ui-menu-selection-border: var(--vscode-menu-selectionBorder, transparent);
+	--ui-menu-separator: var(--vscode-menu-separatorBackground);
+	--ui-menu-radius: var(--vscode-cornerRadius-large, 5px);
+	--ui-menu-item-radius: var(--vscode-cornerRadius-medium, 4px);
+
+	/* Tooltip (native workbench hover widget) */
+	--ui-tooltip-background: var(--vscode-editorHoverWidget-background);
+	--ui-tooltip-foreground: var(--vscode-editorHoverWidget-foreground);
+	--ui-tooltip-border: var(--vscode-editorHoverWidget-border);
+
 	/* Only defined by high contrast themes; transparent elsewhere */
 	--ui-contrast-border: var(--vscode-contrastBorder, transparent);
 	--ui-contrast-active-border: var(--vscode-contrastActiveBorder, transparent);
