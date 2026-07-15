@@ -1,0 +1,13 @@
+/* Shared base for portalled overlay surfaces (menus, tooltips). */
+.ui-overlay {
+	box-sizing: border-box;
+	overflow-y: auto;
+	box-shadow: var(--ui-widget-shadow);
+	z-index: 40;
+}
+
+@media (forced-colors: active) {
+	.ui-overlay {
+		border-color: CanvasText;
+	}
+}

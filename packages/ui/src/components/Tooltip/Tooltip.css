@@ -1,0 +1,13 @@
+/* Matches the native workbench hover widget; typography inherits from
+   the webview body. */
+.ui-tooltip {
+	max-width: min(700px, calc(100vw - 16px));
+	/* Cap to the space Radix reports; oversized content scrolls */
+	max-height: var(--radix-tooltip-content-available-height);
+	padding: 4px 8px;
+	color: var(--ui-tooltip-foreground);
+	background: var(--ui-tooltip-background);
+	border: 1px solid var(--ui-tooltip-border);
+	border-radius: var(--ui-radius-large);
+	overflow-wrap: break-word;
+}

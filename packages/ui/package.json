@@ -4,6 +4,10 @@
 	"description": "Shared component library for VS Code webviews",
 	"private": true,
 	"type": "module",
+	"sideEffects": [
+		"**/*.css",
+		"./storybook.preview.ts"
+	],
 	"exports": {
 		".": {
 			"types": "./src/index.ts",
@@ -15,12 +19,15 @@
 	"imports": {
 		"#cx": "./src/cx.ts",
 		"#codicons": "./src/codicons.ts",
-		"#storybook": "./src/storybook.ts"
+		"#storybook": "./src/storybook.tsx"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@radix-ui/react-context-menu": "catalog:",
+		"@radix-ui/react-dropdown-menu": "catalog:",
+		"@radix-ui/react-tooltip": "catalog:",
 		"@vscode/codicons": "catalog:"
 	},
 	"peerDependencies": {
