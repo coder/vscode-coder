@@ -27,6 +27,14 @@
 
 - Apply a 60-second default timeout to REST requests, so requests hung on a
   half-open TCP connection don't stall pollers forever.
+- Change `coder.binarySource`, `coder.binaryDestination`, `coder.headerCommand`,
+  `coder.tlsCertFile`, `coder.tlsKeyFile`, `coder.tlsCaFile`, `coder.tlsAltHost`,
+  `coder.tlsCertRefreshCommand`, `coder.proxyLogDirectory`, `coder.proxyBypass`,
+  `coder.sshConfig`, `coder.sshFlags`, and `coder.globalFlags` from `machine`
+  to `application` scope (still `ignoreSync`, unchanged from before). This
+  keeps workspace/folder `settings.json` from overriding them (the original
+  SEC-200 goal) while fixing #1032, where a `machine`-scoped value could
+  revert to its default in a remote window.
 
 ## [v1.15.2](https://github.com/coder/vscode-coder/releases/tag/v1.15.2) 2026-06-30
 

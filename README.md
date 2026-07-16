@@ -51,6 +51,21 @@ Alternatively, manually install the VSIX from the
 All extension settings are under the `coder.*` namespace in the Settings UI.
 Paths in settings accept `~` and `${userHome}` from VS Code's
 [variables reference](https://code.visualstudio.com/docs/editor/variables-reference).
+Several `coder.*` settings (paths, commands, hostnames, and proxy bypass
+lists) are excluded from Settings Sync via `ignoreSync`, because their
+values can depend on the specific machine or network where they were set.
+
+> [!WARNING]
+> Do not give any `coder.*` setting `"scope": "machine"`. In a remote
+> window VS Code filters `machine`-scoped keys out of the local User
+> `settings.json`, so such a value only holds until the extension
+> registers its schema on activation. After that, the next re-parse of
+> `settings.json` (from an edit, a Settings Sync write, a profile switch,
+> or a `tasks.json` load) drops the value back to its default, with no
+> remote-side copy to fall back on. This intermittent revert is the cause
+> of #1032. Use `application` scope instead: it is honored in remote
+> windows regardless of timing. See #1034 for the mechanism and
+> reproduction.
 
 ## URI Handler
 
