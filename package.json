@@ -54,7 +54,8 @@
 						"type": "string",
 						"pattern": "^[a-zA-Z0-9-]+[=\\s].*$"
 					},
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.insecure": {
 					"markdownDescription": "If true, the extension will not verify the authenticity of the remote host. This is useful for self-signed certificates.",
@@ -66,13 +67,15 @@
 					"markdownDescription": "Used to download the Coder CLI which is necessary to make SSH connections. The If-None-Match header will be set to the SHA1 of the CLI and can be used for caching. Absolute URLs will be used as-is; otherwise this value will be resolved against the deployment domain. Defaults to downloading from the Coder deployment.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.binaryDestination": {
 					"markdownDescription": "The path to the Coder CLI binary or the directory containing it. When set to a file path (e.g., `/usr/bin/coder`), the extension checks its version and downloads a replacement if it does not match the server (and downloads are enabled). When set to a directory, the extension looks for the CLI inside it (downloading if enabled). Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.enableDownloads": {
 					"markdownDescription": "Allow the plugin to download the CLI when missing or out of date.",
@@ -84,50 +87,58 @@
 					"markdownDescription": "An external command that outputs additional HTTP headers added to all requests. The command must output each header as `key=value` on its own line. The following environment variables will be available to the process: `CODER_URL`. Defaults to the value of `CODER_HEADER_COMMAND` if not set.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.tlsCertFile": {
 					"markdownDescription": "Path to file for TLS client cert. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.tlsKeyFile": {
 					"markdownDescription": "Path to file for TLS client key. When specified, token authorization will be skipped. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.tlsCaFile": {
 					"markdownDescription": "Path to file for TLS certificate authority. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.tlsAltHost": {
 					"markdownDescription": "Alternative hostname to use for TLS verification. This is useful when the hostname in the certificate does not match the hostname used to connect.\n\nSupports `${env:VAR}` substitution.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.tlsCertRefreshCommand": {
 					"markdownDescription": "Command to run when TLS client certificate errors occur (e.g., expired, revoked, or rejected certificates). If configured, the extension will automatically execute this command and retry failed requests. `http.proxySupport` must be set to `on` or `off`, otherwise VS Code will override the proxy agent set by the plugin.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.proxyLogDirectory": {
 					"markdownDescription": "Directory where the Coder CLI outputs SSH connection logs for debugging. Defaults to the value of `CODER_SSH_LOG_DIR` if not set, otherwise the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.proxyBypass": {
 					"markdownDescription": "If not set, will inherit from the `no_proxy` or `NO_PROXY` environment variables. Has no effect when `http.proxySupport` is set to `off`. With values other than `on`, VS Code will override the proxy agent set by the plugin.",
 					"markdownDeprecationMessage": "Deprecated: prefer `http.noProxy`.",
 					"type": "string",
 					"default": "",
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.defaultUrl": {
 					"markdownDescription": "This will be shown in the URL prompt, along with the CODER_URL environment variable if set, for the user to select when logging in.",
@@ -180,7 +191,8 @@
 					"default": [
 						"--disable-autostart"
 					],
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.globalFlags": {
 					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item, in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`. For `--flag=value` items the expansion applies to the value half, so `--cfg=~/coder` works.\n\nSet `--global-config` here to point the CLI at a shared config directory (e.g. `--global-config=~/.config/coderv2` to share login/auth with the Coder CLI); requires a deployment on 2.31.0+ and is ignored when `#coder.useKeyring#` is active. The `--use-keyring` flag is ignored; use `#coder.useKeyring#` instead.\n\nFor `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here.",
@@ -188,7 +200,8 @@
 					"items": {
 						"type": "string"
 					},
-					"scope": "machine"
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"coder.useKeyring": {
 					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of plaintext files. Requires CLI >= 2.29.0 (>= 2.31.0 to sync login from CLI to VS Code). This will attempt to sync between the CLI and VS Code since they share the same keyring entry. It will log you out of the CLI if you log out of the IDE, and vice versa. Has no effect on Linux.",
