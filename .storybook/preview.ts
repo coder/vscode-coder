@@ -44,7 +44,7 @@ if (
 
 // VS Code injects --vscode-font-family at runtime, but the upstream
 // vscode-elements theme data omits it. Set a static default so
-// Storybook (and Chromatic) renders with a predictable sans-serif
+// Storybook renders with a predictable sans-serif
 // stack instead of falling back to the browser default (Times).
 const VSCODE_FONT_FAMILY =
 	'"Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif';
