@@ -165,7 +165,7 @@ export default defineConfig(
 
 	// Build config - ESM with Node globals
 	{
-		files: ["esbuild.mjs", "scripts/*.mjs"],
+		files: ["esbuild.mjs", "scripts/*.mjs", ".storybook/themes/*.mjs"],
 		languageOptions: {
 			globals: {
 				...globals.node,
@@ -201,6 +201,25 @@ export default defineConfig(
 							group: ["@repo/storybook-utils", "@repo/storybook-utils/*"],
 							message:
 								"@repo/storybook-utils is for stories only. Do not import it from runtime code.",
+						},
+					],
+				},
+			],
+		},
+	},
+
+	// Keep the UI package independent from other workspace packages.
+	{
+		files: ["packages/ui/**/*.{ts,tsx}"],
+		rules: {
+			"import-x/no-relative-packages": "error",
+			"no-restricted-imports": [
+				"error",
+				{
+					patterns: [
+						{
+							group: ["@repo/*"],
+							message: "packages/ui must not import other workspace packages.",
 						},
 					],
 				},

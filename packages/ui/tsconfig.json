@@ -1,4 +1,7 @@
 {
 	"extends": "../tsconfig.packages.json",
+	"compilerOptions": {
+		"resolveJsonModule": true
+	},
 	"include": ["src", "storybook.preview.ts"]
 }

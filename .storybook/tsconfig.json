@@ -4,6 +4,7 @@
 		"types": ["node"],
 		"jsx": "react-jsx",
 		"noEmit": true,
+		"resolveJsonModule": true,
 		"rootDir": ".."
 	},
 	"include": ["*.ts", "../packages/*/storybook.preview.ts"],

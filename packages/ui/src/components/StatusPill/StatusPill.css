@@ -1,0 +1,54 @@
+.ui-status-pill {
+	--ui-status-accent: var(--ui-status-neutral-accent);
+
+	gap: 4px;
+	height: 18px;
+	padding: 0 6px;
+	color: var(--ui-badge-foreground);
+	background: var(--ui-badge-background);
+	border: 1px solid var(--ui-contrast-border);
+	border-radius: 11px;
+	font-size: 11px;
+	font-weight: 400;
+}
+
+.ui-status-pill .ui-icon {
+	color: var(--ui-status-accent);
+	font-size: 12px;
+}
+
+.ui-status-pill--info {
+	--ui-status-accent: var(--ui-status-info-accent);
+}
+
+.ui-status-pill--success {
+	--ui-status-accent: var(--ui-status-success-accent);
+}
+
+.ui-status-pill--warning {
+	--ui-status-accent: var(--ui-status-warning-accent);
+}
+
+.ui-status-pill--danger {
+	--ui-status-accent: var(--ui-status-danger-accent);
+}
+
+/* Tone accents are tuned against panel backgrounds; on the badge fill in
+   high contrast themes they can vanish, so inherit the badge foreground.
+   VS Code sets data-vscode-theme-kind on the webview body. */
+body[data-vscode-theme-kind="vscode-high-contrast"] .ui-status-pill .ui-icon,
+body[data-vscode-theme-kind="vscode-high-contrast-light"]
+	.ui-status-pill
+	.ui-icon {
+	color: var(--ui-badge-foreground);
+}
+
+@media (forced-colors: active) {
+	.ui-status-pill {
+		border-color: CanvasText;
+	}
+
+	.ui-status-pill .ui-icon {
+		color: CanvasText;
+	}
+}
