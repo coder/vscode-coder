@@ -1,0 +1,19 @@
+/* Story stand-in: a VS Code secondary button like consuming webviews render. */
+.story-trigger {
+	padding: 0.4em 1em;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 2px;
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.story-trigger:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.story-trigger:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+}

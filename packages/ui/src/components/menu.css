@@ -1,0 +1,108 @@
+/* Shared ContextMenu/DropdownMenu surface matching the native menu
+   widget; typography inherits from the webview body. */
+.ui-menu {
+	--ui-menu-gutter: 2em;
+	--ui-menu-highlight-foreground: var(--ui-menu-selection-foreground);
+	--ui-menu-highlight-background: var(--ui-menu-selection-background);
+	--ui-menu-disabled-foreground: var(--ui-disabled-foreground);
+
+	box-sizing: border-box;
+	min-width: 160px;
+	/* Cap to the space Radix reports (named per primitive) so long menus scroll */
+	max-height: var(
+		--radix-dropdown-menu-content-available-height,
+		var(--radix-context-menu-content-available-height)
+	);
+	overflow-y: auto;
+	padding: 4px;
+	color: var(--ui-menu-foreground);
+	background: var(--ui-menu-background);
+	border: 1px solid var(--ui-menu-border);
+	border-radius: var(--ui-menu-radius);
+	box-shadow: var(--ui-widget-shadow);
+	outline: 0;
+	z-index: 40;
+	animation: ui-menu-fade-in 83ms linear;
+}
+
+.ui-menu__item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	height: 24px;
+	/* Native label inset; the gutters double as the check/icon columns. */
+	padding: 0 var(--ui-menu-gutter);
+	line-height: 1;
+	white-space: nowrap;
+	border-radius: var(--ui-menu-item-radius);
+	cursor: default;
+	user-select: none;
+	outline: 1px solid transparent;
+	outline-offset: -1px;
+}
+
+/* Selection border only resolves in high contrast; an open submenu
+   keeps its parent highlighted, like native. */
+.ui-menu__item[data-highlighted],
+.ui-menu__item[data-state="open"] {
+	forced-color-adjust: none;
+	color: var(--ui-menu-highlight-foreground);
+	background: var(--ui-menu-highlight-background);
+	outline-color: var(--ui-menu-selection-border);
+}
+
+.ui-menu__item[data-disabled] {
+	color: var(--ui-menu-disabled-foreground);
+}
+
+/* Leading icons sit in the left gutter so labels stay aligned */
+.ui-menu__item > .codicon:not(.ui-menu__submenu-indicator) {
+	position: absolute;
+	left: 0;
+	width: var(--ui-menu-gutter);
+	text-align: center;
+}
+
+/* Chevron in the right gutter, like the native indicator */
+.ui-menu__submenu-indicator {
+	position: absolute;
+	right: 0;
+	width: var(--ui-menu-gutter);
+	text-align: center;
+}
+
+.ui-menu__item[data-disabled] .ui-menu__submenu-indicator {
+	opacity: 0.4;
+}
+
+.ui-menu__separator {
+	height: 1px;
+	margin: 5px 0;
+	background: var(--ui-menu-separator);
+}
+
+@keyframes ui-menu-fade-in {
+	from {
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-menu {
+		animation: none;
+	}
+}
+
+@media (forced-colors: active) {
+	.ui-menu {
+		--ui-menu-highlight-foreground: HighlightText;
+		--ui-menu-highlight-background: Highlight;
+		--ui-menu-disabled-foreground: GrayText;
+
+		border-color: CanvasText;
+	}
+
+	.ui-menu__separator {
+		background: CanvasText;
+	}
+}
