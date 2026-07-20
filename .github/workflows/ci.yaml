@@ -81,49 +81,26 @@ jobs:
         run: ${{ runner.os == 'Linux' && 'xvfb-run -a' || '' }} pnpm test:integration --label "VS Code ${{ matrix.vscode-version }}"
         shell: bash
 
-  chromatic:
-    name: Chromatic
+  pixel:
+    name: Pixel
     runs-on: ubuntu-24.04
+    # Forks and Dependabot can't read the PIXEL_KEY secret.
+    if: github.repository_owner == 'coder' && github.actor != 'dependabot[bot]'
     steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          persist-credentials: false
-
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
 
-      # PR builds gate on visual review; mainline auto-accepts.
-      - name: Publish to Chromatic (non-mainline)
-        if: github.ref != 'refs/heads/main' && github.repository_owner == 'coder'
-        uses: chromaui/action@4a45535b6910c0b99226ebcb7648faf88fb1ee2e # v18.0.1
-        env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
-          STORYBOOK: true
-        with:
-          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
-          buildScriptName: "storybook:ci"
-          exitOnceUploaded: true
-          exitZeroOnChanges: true
-          skip: "@(renovate/**|dependabot/**)"
-          onlyChanged: true
-          zip: true
+      - name: Install Chromium
+        run: pnpm exec playwright-core install --with-deps chromium
 
-      # Auto-accept on mainline to avoid blocking CI after squash merges.
-      - name: Publish to Chromatic (mainline)
-        if: github.ref == 'refs/heads/main' && github.repository_owner == 'coder'
-        uses: chromaui/action@4a45535b6910c0b99226ebcb7648faf88fb1ee2e # v18.0.1
+      # Builds the Storybook (buildCommand in pixel.jsonc) and snapshots it.
+      - name: Snapshot
+        run: pnpm exec pixel-storybook
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
-          STORYBOOK: true
-        with:
-          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
-          autoAcceptChanges: true
-          exitZeroOnChanges: true
-          buildScriptName: "storybook:build"
-          zip: true
+          PIXEL_KEY: ${{ secrets.PIXEL_KEY }}
+          # Auto-approve on mainline to avoid blocking CI after squash merges.
+          PIXEL_AUTO_REVIEW: ${{ github.ref == 'refs/heads/main' }}
 
   package:
     name: Package
