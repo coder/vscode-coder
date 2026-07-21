@@ -1,0 +1,29 @@
+{
+	"name": "@repo/ui",
+	"version": "1.0.0",
+	"description": "Shared component library for VS Code webviews",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"default": "./src/index.ts"
+		},
+		"./codicon.css": "./src/codicon.css",
+		"./tokens.css": "./src/tokens.css"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@vscode/codicons": "catalog:"
+	},
+	"peerDependencies": {
+		"react": "catalog:"
+	},
+	"devDependencies": {
+		"@types/react": "catalog:",
+		"react": "catalog:",
+		"typescript": "catalog:"
+	}
+}

@@ -1,0 +1,51 @@
+/*
+ * Semantic tokens mapped to the `--vscode-*` variables VS Code injects
+ * into webviews — the single place the library is theme-matched to
+ * VS Code.
+ */
+:root {
+	/* Typography */
+	--ui-font-family: var(--vscode-font-family);
+	--ui-font-size: var(--vscode-font-size);
+	--ui-font-weight: var(--vscode-font-weight);
+
+	/* Surfaces and text */
+	--ui-foreground: var(--vscode-foreground);
+	--ui-background: var(
+		--vscode-sideBar-background,
+		var(--vscode-editor-background)
+	);
+	--ui-description-foreground: var(--vscode-descriptionForeground);
+	--ui-icon-foreground: var(--vscode-icon-foreground);
+	--ui-border: var(--vscode-sideBar-border, transparent);
+
+	/* Interaction. Hover/selection fills may be absent in high contrast
+	   themes, which convey state through contrast borders instead. */
+	--ui-focus-border: var(--vscode-focusBorder);
+	--ui-hover-background: var(--vscode-list-hoverBackground, transparent);
+	--ui-hover-foreground: var(
+		--vscode-list-hoverForeground,
+		var(--ui-foreground)
+	);
+	--ui-active-selection-background: var(
+		--vscode-list-activeSelectionBackground,
+		transparent
+	);
+	--ui-active-selection-foreground: var(
+		--vscode-list-activeSelectionForeground,
+		var(--ui-foreground)
+	);
+	--ui-inactive-selection-background: var(
+		--vscode-list-inactiveSelectionBackground,
+		transparent
+	);
+	--ui-link-foreground: var(--vscode-textLink-foreground);
+
+	/* Feedback */
+	--ui-error-foreground: var(--vscode-errorForeground);
+	--ui-warning-foreground: var(--vscode-editorWarning-foreground);
+
+	/* Only defined by high contrast themes; transparent elsewhere */
+	--ui-contrast-border: var(--vscode-contrastBorder, transparent);
+	--ui-contrast-active-border: var(--vscode-contrastActiveBorder, transparent);
+}

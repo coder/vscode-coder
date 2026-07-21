@@ -1,0 +1,2 @@
+/* Codicon assets re-exported so consumers only depend on this package. */
+@import "@vscode/codicons/dist/codicon.css";
