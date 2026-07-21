@@ -22,9 +22,16 @@ Object.entries(supports).forEach(([version, expected]) => {
 	});
 });
 
-it("current shell supports ssh", () => {
-	expect(sshSupportsSetEnv()).toBeTruthy();
-});
+/**
+ * Spawning real `ssh` is slow on Windows CI runners, so allow a larger budget there.
+ */
+it(
+	"current shell supports ssh",
+	{ timeout: process.platform === "win32" ? 30_000 : undefined },
+	() => {
+		expect(sshSupportsSetEnv()).toBeTruthy();
+	},
+);
 
 describe("computeSshProperties", () => {
 	it("computes the config for a host", () => {
