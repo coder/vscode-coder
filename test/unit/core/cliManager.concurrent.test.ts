@@ -92,6 +92,17 @@ function setupManager(testDir: string): CliManager {
 	);
 }
 
+/**
+ * Asserts the lock and progress files are removed. The lock directory can
+ * briefly reappear while a peer re-acquires and releases it, so poll until gone.
+ */
+async function expectLockFilesRemoved(binaryPath: string): Promise<void> {
+	await vi.waitFor(async () => {
+		await expect(fs.access(binaryPath + ".lock")).rejects.toThrow();
+		await expect(fs.access(binaryPath + ".progress.log")).rejects.toThrow();
+	});
+}
+
 describe("CliManager Concurrent Downloads", () => {
 	let testDir: string;
 
@@ -124,10 +135,9 @@ describe("CliManager Concurrent Downloads", () => {
 			expect(result).toBe(binaryPath);
 		}
 
-		// Verify binary exists, and lock/progress files are cleaned up
+		// Verify binary exists, and lock/progress files are cleaned up.
 		await expect(fs.access(binaryPath)).resolves.toBeUndefined();
-		await expect(fs.access(binaryPath + ".lock")).rejects.toThrow();
-		await expect(fs.access(binaryPath + ".progress.log")).rejects.toThrow();
+		await expectLockFilesRemoved(binaryPath);
 	});
 
 	it("redownloads when version mismatch is detected concurrently", async () => {
@@ -167,8 +177,7 @@ describe("CliManager Concurrent Downloads", () => {
 		await expect(fs.access(binaryPath)).resolves.toBeUndefined();
 		const finalContent = await fs.readFile(binaryPath, "utf8");
 		expect(finalContent).toContain("v2.0.0");
-		await expect(fs.access(binaryPath + ".lock")).rejects.toThrow();
-		await expect(fs.access(binaryPath + ".progress.log")).rejects.toThrow();
+		await expectLockFilesRemoved(binaryPath);
 	});
 
 	it.each([
