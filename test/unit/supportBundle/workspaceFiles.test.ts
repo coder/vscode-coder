@@ -22,7 +22,11 @@ const appRoot = "/app";
 const productPath = `${appRoot}/product.json`;
 const remoteAuthority =
 	"ssh-remote+coder-vscode.example--owner--workspace.agent";
-const resolvedLogFiles = ["/srv/vscode/data/logs/**/*.log"];
+const resolvedLogFiles = [
+	"/srv/vscode/data/logs/**/*.log",
+	"/srv/vscode/.*.log",
+	"/srv/vscode/cli/servers/*/log.txt",
+];
 
 function setup() {
 	vol.reset();
@@ -53,6 +57,8 @@ describe("getRemoteEditorLogGlobs", () => {
 
 		await expect(collect()).resolves.toEqual([
 			`~/${serverDataFolderName}/data/logs/**/*.log`,
+			`~/${serverDataFolderName}/.*.log`,
+			`~/${serverDataFolderName}/cli/servers/*/log.txt`,
 		]);
 	});
 
