@@ -201,6 +201,16 @@ declare module "vscode" {
 		stripPathStartingSeparator?: boolean;
 	}
 
+	export interface ExecEnvironment {
+		readonly env: Record<string, string>;
+		readonly osPlatform: string;
+		readonly osRelease?: string;
+	}
+
+	export interface ExecServer {
+		env(): Thenable<ExecEnvironment>;
+	}
+
 	export namespace workspace {
 		export function registerRemoteAuthorityResolver(
 			authorityPrefix: string,
@@ -209,6 +219,9 @@ declare module "vscode" {
 		export function registerResourceLabelFormatter(
 			formatter: ResourceLabelFormatter,
 		): Disposable;
+		export function getRemoteExecServer(
+			authority: string,
+		): Thenable<ExecServer | undefined>;
 	}
 
 	export namespace env {

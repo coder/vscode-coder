@@ -12,7 +12,7 @@ import {
 import { runDiagnosticCli } from "./command/diagnosticFlow";
 import * as cliExec from "./core/cliExec";
 import { CertificateError } from "./error/certificateError";
-import { toError } from "./error/errorUtils";
+import { raceWithAbort, toError } from "./error/errorUtils";
 import { type FeatureSet, featureSetForVersion } from "./featureSet";
 import {
 	AuthTelemetry,
@@ -45,8 +45,9 @@ import {
 } from "./remote/sshOverrides";
 import { resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
+import { getRemoteEditorLogGlobs } from "./supportBundle/workspaceFiles";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
-import { toRemoteAuthority } from "./util/authority";
+import { parseRemoteAuthority, toRemoteAuthority } from "./util/authority";
 import { openInBrowser, toSafeHost } from "./util/uri";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseNetcheckReport } from "./webviews/netcheck/types";
@@ -99,8 +100,11 @@ interface LoginArgs {
 type WorkspaceResolution =
 	| {
 			readonly status: "selected";
+			readonly agentName?: string;
 			readonly client: CoderApi;
 			readonly workspaceId: string;
+			/** Active authority, only when it identifies this workspace. */
+			readonly remoteAuthority?: string;
 	  }
 	| { readonly status: "cancelled" }
 	| {
@@ -424,7 +428,7 @@ export class Commands {
 			return;
 		}
 
-		const { client, workspaceId } = resolved;
+		const { agentName, client, workspaceId, remoteAuthority } = resolved;
 
 		const outputUri = await this.promptSupportBundlePath();
 		if (!outputUri) {
@@ -435,13 +439,30 @@ export class Commands {
 		const result = await withCancellableProgress(
 			async ({ signal, progress }) => {
 				progress.report({ message: "Resolving CLI..." });
+				// Independent of the CLI and never rejects, so resolve the globs
+				// concurrently and discard them when the CLI lacks support.
+				const remoteLogGlobs = getRemoteEditorLogGlobs({
+					appRoot: vscode.env.appRoot,
+					remoteAuthority,
+					logger: this.logger,
+				});
 				const env = await this.resolveCliEnv(client);
 				if (!env.featureSet.supportBundle) {
 					throw new SupportBundleUnsupportedCliError();
 				}
 
+				// The resolution APIs take no signal, so race to keep cancel honest.
+				const workspaceFiles = env.featureSet.supportBundleWorkspaceFiles
+					? await raceWithAbort(remoteLogGlobs, signal)
+					: [];
+
 				progress.report({ message: "Collecting diagnostics..." });
-				await cliExec.supportBundle(env, workspaceId, outputUri.fsPath, signal);
+				await cliExec.supportBundle(env, workspaceId, {
+					outputPath: outputUri.fsPath,
+					agentName,
+					workspaceFiles,
+					signal,
+				});
 
 				progress.report({ message: "Adding VS Code logs..." });
 				await appendVsCodeLogs(
@@ -1133,15 +1154,29 @@ export class Commands {
 		if (item) {
 			return {
 				status: "selected",
+				agentName: item instanceof AgentTreeItem ? item.agent.name : undefined,
 				client: this.extensionClient,
 				workspaceId: createWorkspaceIdentifier(item.workspace),
 			};
 		}
 		if (this.workspace && this.remoteWorkspaceClient) {
+			const remoteAuthority = vscodeProposed.env.remoteAuthority;
+			// Agent resolution is best-effort; a malformed authority must not
+			// block diagnostics for the whole workspace.
+			let agentName: string | undefined;
+			try {
+				agentName = remoteAuthority
+					? parseRemoteAuthority(remoteAuthority)?.agent || undefined
+					: undefined;
+			} catch (error) {
+				this.logger.warn("Could not resolve the connected agent", error);
+			}
 			return {
 				status: "selected",
+				agentName,
 				client: this.remoteWorkspaceClient,
 				workspaceId: createWorkspaceIdentifier(this.workspace),
+				remoteAuthority,
 			};
 		}
 		const pick = await this.pickWorkspace("diagnostic", {

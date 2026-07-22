@@ -105,18 +105,25 @@ export async function netcheck(
 export async function supportBundle(
 	env: CliEnv,
 	workspaceName: string,
-	outputPath: string,
-	signal?: AbortSignal,
+	options: {
+		outputPath: string;
+		agentName?: string;
+		workspaceFiles?: readonly string[];
+		signal?: AbortSignal;
+	},
 ): Promise<void> {
+	const { outputPath, agentName, workspaceFiles = [], signal } = options;
 	const globalFlags = getGlobalFlags(env.configs, env.auth);
 	const args = [
 		...globalFlags,
 		"support",
 		"bundle",
 		workspaceName,
+		...(agentName ? [agentName] : []),
 		"--output-file",
 		outputPath,
 		"--yes",
+		...workspaceFiles.flatMap((file) => ["--workspace-file", file]),
 	];
 	try {
 		await execFileAsync(env.binary, args, { signal });

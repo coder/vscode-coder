@@ -271,13 +271,48 @@ describe("cliExec", () => {
 				bin,
 			);
 			configs.set("coder.headerCommand", "my-header-cmd");
-			await cliExec.supportBundle(env, "owner/workspace", outputPath);
+			await cliExec.supportBundle(env, "owner/workspace", {
+				outputPath,
+				agentName: "dev",
+				workspaceFiles: [
+					"$HOME/.vscode-server/data/logs/**/*.log",
+					"$HOME/.cursor-server/data/logs/**/*.log",
+				],
+			});
 			const args = (await fs.readFile(outputPath, "utf-8")).trim().split("\n");
 			expect(args).toEqual([
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
 				"my-header-cmd",
+				"support",
+				"bundle",
+				"owner/workspace",
+				"dev",
+				"--output-file",
+				outputPath,
+				"--yes",
+				"--workspace-file",
+				"$HOME/.vscode-server/data/logs/**/*.log",
+				"--workspace-file",
+				"$HOME/.cursor-server/data/logs/**/*.log",
+			]);
+		});
+
+		it("omits the agent and workspace files when not provided", async () => {
+			const code = [
+				`const args = process.argv.slice(2);`,
+				`const idx = args.indexOf("--output-file");`,
+				`if (idx !== -1) { require("fs").writeFileSync(args[idx+1], args.join("\\n")); }`,
+			].join("\n");
+			const bin = await writeExecutable(tmp, "sb-echo-defaults", code);
+			const outputPath = path.join(tmp, "sb-defaults-output.zip");
+			const { env } = setup({ mode: "url", url: "http://localhost:3000" }, bin);
+			await cliExec.supportBundle(env, "owner/workspace", { outputPath });
+			const args = (await fs.readFile(outputPath, "utf-8")).trim().split("\n");
+			expect(args).toEqual([
+				"--url",
+				"http://localhost:3000",
 				"support",
 				"bundle",
 				"owner/workspace",
@@ -298,7 +333,9 @@ describe("cliExec", () => {
 				bin,
 			);
 			await expect(
-				cliExec.supportBundle(env, "owner/workspace", "/tmp/bundle.zip"),
+				cliExec.supportBundle(env, "owner/workspace", {
+					outputPath: "/tmp/bundle.zip",
+				}),
 			).rejects.toThrow("workspace not found");
 		});
 	});
