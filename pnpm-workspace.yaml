@@ -37,3 +37,10 @@ allowBuilds:
 
 overrides:
   "@vscode-elements/elements": ^2.5.1
+
+minimumReleaseAgeExclude:
+  - "@coder/pixel-storybook@0.2.2"
+  - "@opentelemetry/api-logs@0.221.0"
+  - "@vitejs/plugin-react@6.0.4"
+  - react-dom@19.2.8
+  - react@19.2.8
