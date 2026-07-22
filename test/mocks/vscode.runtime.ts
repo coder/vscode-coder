@@ -180,6 +180,7 @@ export const commands = {
 
 export const workspace = {
 	getConfiguration: vi.fn(), // your helpers override this
+	getRemoteExecServer: vi.fn(),
 	workspaceFolders: [] as unknown[],
 	fs: {
 		readFile: vi.fn(),

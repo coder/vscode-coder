@@ -9,6 +9,7 @@ export interface FeatureSet {
 	keyringAuth: boolean;
 	tokenRead: boolean;
 	supportBundle: boolean;
+	supportBundleWorkspaceFiles: boolean;
 }
 
 /**
@@ -49,5 +50,7 @@ export function featureSetForVersion(
 		tokenRead: versionAtLeast(version, "2.31.0"),
 		// `coder support bundle` (officially released/unhidden in 2.10.0)
 		supportBundle: versionAtLeast(version, "2.10.0"),
+		// --workspace-file flag for `coder support bundle`
+		supportBundleWorkspaceFiles: versionAtLeast(version, "2.36.0"),
 	};
 }
