@@ -58,7 +58,11 @@ export function toRemoteLogGlobs({
 	style,
 }: RemoteServerDataPath): readonly string[] {
 	const base = style === "win32" ? value.replaceAll("\\", "/") : value;
-	return [path.posix.join(base, "data", "logs", "**", "*.log")];
+	return [
+		path.posix.join(base, "data", "logs", "**", "*.log"),
+		path.posix.join(base, ".*.log"),
+		path.posix.join(base, "cli", "servers", "*", "log.txt"),
+	];
 }
 
 async function getActiveServerDataPath(

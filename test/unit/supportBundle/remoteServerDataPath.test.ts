@@ -291,14 +291,22 @@ describe("toRemoteLogGlobs", () => {
 	it.each([
 		[
 			{ value: "/srv/vscode", style: "posix" as const },
-			["/srv/vscode/data/logs/**/*.log"],
+			[
+				"/srv/vscode/data/logs/**/*.log",
+				"/srv/vscode/.*.log",
+				"/srv/vscode/cli/servers/*/log.txt",
+			],
 		],
 		[
 			{
 				value: "C:\\Users\\coder\\.vscode-server",
 				style: "win32" as const,
 			},
-			["C:/Users/coder/.vscode-server/data/logs/**/*.log"],
+			[
+				"C:/Users/coder/.vscode-server/data/logs/**/*.log",
+				"C:/Users/coder/.vscode-server/.*.log",
+				"C:/Users/coder/.vscode-server/cli/servers/*/log.txt",
+			],
 		],
 	])("appends the log globs to $value", (serverDataPath, expected) => {
 		expect(toRemoteLogGlobs(serverDataPath)).toEqual(expected);
