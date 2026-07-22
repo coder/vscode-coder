@@ -30,6 +30,7 @@ const featureSet: FeatureSet = {
 	keyringAuth: true,
 	tokenRead: true,
 	supportBundle: true,
+	supportBundleWorkspaceFiles: true,
 };
 
 function mockStream(): UnidirectionalStream<unknown> {

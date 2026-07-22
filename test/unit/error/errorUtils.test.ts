@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 
-import { getErrorDetail, isAbortError, toError } from "@/error/errorUtils";
+import {
+	getErrorDetail,
+	isAbortError,
+	raceWithAbort,
+	toError,
+} from "@/error/errorUtils";
 
 describe("isAbortError", () => {
 	it("returns true for an Error named AbortError", () => {
@@ -40,6 +45,32 @@ describe("isAbortError", () => {
 		} else {
 			throw new Error("expected isAbortError to narrow");
 		}
+	});
+});
+
+describe("raceWithAbort", () => {
+	it("resolves with the promise result when not aborted", async () => {
+		const ac = new AbortController();
+		await expect(
+			raceWithAbort(Promise.resolve("done"), ac.signal),
+		).resolves.toBe("done");
+	});
+
+	it("rejects with an AbortError when the signal aborts first", async () => {
+		const ac = new AbortController();
+		const hanging = new Promise<never>(() => {});
+		const raced = raceWithAbort(hanging, ac.signal);
+		ac.abort();
+		await expect(raced).rejects.toSatisfy(isAbortError);
+	});
+
+	it("rejects immediately when the signal is already aborted", async () => {
+		const ac = new AbortController();
+		ac.abort();
+		const hanging = new Promise<never>(() => {});
+		await expect(raceWithAbort(hanging, ac.signal)).rejects.toSatisfy(
+			isAbortError,
+		);
 	});
 });
 

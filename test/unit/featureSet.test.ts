@@ -14,9 +14,6 @@ function expectFlag(
 	for (const v of atOrAbove) {
 		expect(featureSetForVersion(semver.parse(v))[flag]).toBeTruthy();
 	}
-	expect(
-		featureSetForVersion(semver.parse("0.0.0-devel+abc123"))[flag],
-	).toBeTruthy();
 }
 
 describe("check version support", () => {
@@ -61,5 +58,21 @@ describe("check version support", () => {
 			["v2.9.0", "v2.9.9", "v1.0.0", "v2.3.3+e491217"],
 			["v2.10.0", "v2.10.1", "v2.11.0", "v3.0.0"],
 		);
+	});
+	it("support bundle workspace files", () => {
+		expectFlag(
+			"supportBundleWorkspaceFiles",
+			["v2.35.0", "v2.35.2", "v2.35.99"],
+			["v2.36.0", "v2.36.1", "v2.37.0", "v3.0.0"],
+		);
+	});
+	it("enables all features for development builds", () => {
+		const featureSet = featureSetForVersion(
+			semver.parse("v0.0.0-devel+abc123"),
+		);
+
+		for (const [feature, enabled] of Object.entries(featureSet)) {
+			expect(enabled, feature).toBe(true);
+		}
 	});
 });
