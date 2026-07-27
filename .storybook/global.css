@@ -12,6 +12,12 @@ body {
 	padding: 0;
 }
 
+/* Outranks the body { overflow: hidden } that tasks' app CSS applies
+   globally; stories must stay scrollable. */
+html body {
+	overflow: auto;
+}
+
 #root {
 	max-width: 100%;
 	/* arbitrary size choice for the rough VSCode sidebar size; stories
