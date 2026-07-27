@@ -10,7 +10,6 @@ html,
 body {
 	/* Real webviews pad the body 0 20px; stories frame themselves. */
 	padding: 0;
-	overflow: hidden;
 }
 
 #root {

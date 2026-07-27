@@ -1,4 +1,4 @@
-import { type HTMLAttributes } from "react";
+import { type ComponentProps } from "react";
 
 import { cx } from "#cx";
 
@@ -6,10 +6,7 @@ import "./Icon.css";
 
 import type { CodiconName } from "#codicons";
 
-export interface IconProps extends Omit<
-	HTMLAttributes<HTMLSpanElement>,
-	"children"
-> {
+export interface IconProps extends Omit<ComponentProps<"span">, "children"> {
 	name: CodiconName;
 	spin?: boolean;
 }

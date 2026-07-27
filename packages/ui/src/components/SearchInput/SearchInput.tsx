@@ -1,4 +1,4 @@
-import { type ChangeEvent, type InputHTMLAttributes, useRef } from "react";
+import { type ChangeEvent, type ComponentProps, useRef } from "react";
 
 import { cx } from "#cx";
 
@@ -9,7 +9,7 @@ import { IconButton } from "../IconButton/IconButton";
 import "./SearchInput.css";
 
 export interface SearchInputProps extends Omit<
-	InputHTMLAttributes<HTMLInputElement>,
+	ComponentProps<"input">,
 	"aria-label" | "onChange" | "type" | "value"
 > {
 	clearLabel?: string;
@@ -26,6 +26,7 @@ export function SearchInput({
 	className,
 	style,
 	disabled,
+	ref,
 	...props
 }: SearchInputProps): React.JSX.Element {
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +51,16 @@ export function SearchInput({
 			<Icon name="search" />
 			<input
 				{...props}
-				ref={inputRef}
+				// Track the node for clear-and-refocus, honoring the consumer ref
+				ref={(node) => {
+					inputRef.current = node;
+					if (typeof ref === "function") {
+						return ref(node);
+					}
+					if (ref) {
+						ref.current = node;
+					}
+				}}
 				type="search"
 				value={value}
 				onChange={handleChange}

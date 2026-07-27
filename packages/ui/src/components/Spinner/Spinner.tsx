@@ -1,11 +1,11 @@
-import { type HTMLAttributes } from "react";
+import { type ComponentProps } from "react";
 
 import { cx } from "#cx";
 
 import "./Spinner.css";
 
 export interface SpinnerProps extends Omit<
-	HTMLAttributes<HTMLSpanElement>,
+	ComponentProps<"span">,
 	"aria-label" | "children" | "role"
 > {
 	label?: string;

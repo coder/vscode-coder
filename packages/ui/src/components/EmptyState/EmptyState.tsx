@@ -1,13 +1,10 @@
-import { type HTMLAttributes, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 
 import { StatePanel } from "../StatePanel/StatePanel";
 
 import type { CodiconName } from "#codicons";
 
-export interface EmptyStateProps extends Omit<
-	HTMLAttributes<HTMLDivElement>,
-	"title"
-> {
+export interface EmptyStateProps extends Omit<ComponentProps<"div">, "title"> {
 	action?: ReactNode;
 	description?: ReactNode;
 	icon?: CodiconName;

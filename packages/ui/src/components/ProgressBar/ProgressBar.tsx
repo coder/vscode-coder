@@ -1,11 +1,11 @@
-import { type HTMLAttributes } from "react";
+import { type ComponentProps } from "react";
 
 import { cx } from "#cx";
 
 import "./ProgressBar.css";
 
 export interface ProgressBarProps extends Omit<
-	HTMLAttributes<HTMLDivElement>,
+	ComponentProps<"div">,
 	| "aria-label"
 	| "aria-valuemax"
 	| "aria-valuemin"

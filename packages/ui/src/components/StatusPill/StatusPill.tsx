@@ -1,4 +1,4 @@
-import { type HTMLAttributes, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 
 import { cx } from "#cx";
 
@@ -12,7 +12,7 @@ import type { CodiconName } from "#codicons";
 export type StatusPillTone =
 	"neutral" | "info" | "success" | "warning" | "danger";
 
-export interface StatusPillProps extends HTMLAttributes<HTMLSpanElement> {
+export interface StatusPillProps extends ComponentProps<"span"> {
 	icon?: CodiconName;
 	tone?: StatusPillTone;
 	children: ReactNode;

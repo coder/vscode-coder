@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
+import { createRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -108,6 +108,15 @@ describe("SearchInput", () => {
 		render(<ControlledSearch />);
 		fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
 		expect(onChange).toHaveBeenCalledWith("");
+		expect(screen.getByRole("searchbox", { name: "Search" })).toHaveFocus();
+	});
+
+	it("exposes the input through a consumer ref alongside the internal one", () => {
+		const ref = createRef<HTMLInputElement>();
+		render(<SearchInput value="prod" onChange={vi.fn()} ref={ref} />);
+		expect(ref.current).toBe(screen.getByRole("searchbox", { name: "Search" }));
+
+		fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
 		expect(screen.getByRole("searchbox", { name: "Search" })).toHaveFocus();
 	});
 

@@ -1,4 +1,4 @@
-import { type ButtonHTMLAttributes } from "react";
+import { type ComponentProps } from "react";
 
 import { cx } from "#cx";
 
@@ -10,7 +10,7 @@ import "./IconButton.css";
 import type { CodiconName } from "#codicons";
 
 export interface IconButtonProps extends Omit<
-	ButtonHTMLAttributes<HTMLButtonElement>,
+	ComponentProps<"button">,
 	"aria-label" | "children"
 > {
 	icon: CodiconName;

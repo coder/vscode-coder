@@ -1,11 +1,11 @@
-import { type HTMLAttributes, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 
 import { cx } from "#cx";
 
 import { StatePanel } from "../StatePanel/StatePanel";
 
 export interface ErrorStateProps extends Omit<
-	HTMLAttributes<HTMLDivElement>,
+	ComponentProps<"div">,
 	"role" | "title"
 > {
 	action?: ReactNode;

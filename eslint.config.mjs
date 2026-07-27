@@ -10,6 +10,7 @@ import { createTypeScriptImportResolver } from "eslint-import-resolver-typescrip
 import { flatConfigs as importXFlatConfigs } from "eslint-plugin-import-x";
 import packageJson from "eslint-plugin-package-json";
 import eslintReact from "@eslint-react/eslint-plugin";
+import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default defineConfig(
@@ -230,10 +231,19 @@ export default defineConfig(
 	// React rules with type-checked analysis (covers hooks, JSX, DOM)
 	{
 		files: ["packages/**/*.{ts,tsx}"],
-		extends: [eslintReact.configs["recommended-type-checked"]],
+		extends: [
+			eslintReact.configs["recommended-type-checked"],
+			reactHooks.configs.flat.recommended,
+			// Keep @eslint-react's copy where both plugins ship the same rule
+			eslintReact.configs["disable-conflict-eslint-plugin-react-hooks"],
+		],
 		rules: {
 			// React Compiler auto-memoizes; exhaustive-deps false-positives on useCallback
 			"@eslint-react/exhaustive-deps": "off",
+			// Compiler rules the conflict preset drops but recommended leaves off
+			"@eslint-react/globals": "error",
+			"@eslint-react/immutability": "error",
+			"@eslint-react/refs": "error",
 			"@eslint-react/web-api-no-leaked-fetch": "error",
 			"@eslint-react/jsx-no-leaked-dollar": "error",
 		},
