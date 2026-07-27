@@ -70,11 +70,9 @@
 	--ui-state-icon-foreground: var(--ui-description-foreground);
 	--ui-error-foreground: var(--vscode-errorForeground);
 
-	/* Status */
-	--ui-status-neutral-accent: var(
-		--vscode-descriptionForeground,
-		var(--ui-foreground)
-	);
+	/* Status and badges */
+	--ui-badge-background: var(--vscode-badge-background, transparent);
+	--ui-badge-foreground: var(--vscode-badge-foreground, var(--ui-foreground));
 	--ui-status-info-accent: var(
 		--vscode-notificationsInfoIcon-foreground,
 		var(--ui-foreground)

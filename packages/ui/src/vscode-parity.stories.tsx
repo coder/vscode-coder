@@ -129,22 +129,20 @@ const Parity = (): React.JSX.Element => (
 		/>
 		<Row
 			label="Badge"
-			// Intentionally diverges: GitHub-style tinted status chips, an extra
-			// over VS Code's plain count badge.
+			// The plain pill matches the native badge; toned pills deliberately
+			// diverge into GitHub-style tinted chips.
 			ours={
 				<>
+					<StatusPill>42</StatusPill>
 					<StatusPill icon="check" tone="success">
 						Running
-					</StatusPill>
-					<StatusPill icon="error" tone="danger">
-						Failed
 					</StatusPill>
 				</>
 			}
 			reference={
 				<>
+					<VscodeBadge variant="counter">42</VscodeBadge>
 					<VscodeBadge variant="counter">Running</VscodeBadge>
-					<VscodeBadge variant="counter">Failed</VscodeBadge>
 				</>
 			}
 		/>

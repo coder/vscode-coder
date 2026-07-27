@@ -32,3 +32,8 @@ export default meta;
 type Story = StoryObj<typeof StatusPillTones>;
 
 export const Tones: Story = {};
+
+// Without an icon or tone the pill is VS Code's native badge.
+export const Native: Story = {
+	render: () => <StatusPill>42</StatusPill>,
+};
