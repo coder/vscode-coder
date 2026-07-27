@@ -129,6 +129,8 @@ const Parity = (): React.JSX.Element => (
 		/>
 		<Row
 			label="Badge"
+			// Intentionally diverges: GitHub-style tinted status chips, an extra
+			// over VS Code's plain count badge.
 			ours={
 				<>
 					<StatusPill icon="check" tone="success">

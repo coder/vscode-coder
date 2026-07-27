@@ -1,11 +1,13 @@
+/* GitHub-style subtle chip: the tone accent tints its own background, so it
+   always sits over the theme surface the accent was designed against. */
 .ui-status-pill {
 	--ui-status-accent: var(--ui-status-neutral-accent);
 
 	gap: 4px;
 	height: 18px;
 	padding: 0 6px;
-	color: var(--ui-badge-foreground);
-	background: var(--ui-badge-background);
+	color: var(--ui-foreground);
+	background: color-mix(in srgb, var(--ui-status-accent) 15%, transparent);
 	border: 1px solid var(--ui-contrast-border);
 	border-radius: 11px;
 	font-size: 11px;
@@ -13,7 +15,8 @@
 }
 
 .ui-status-pill .ui-icon {
-	color: var(--ui-status-accent);
+	/* Pulled toward the foreground so pale accents stay visible on the tint. */
+	color: color-mix(in srgb, var(--ui-status-accent) 70%, var(--ui-foreground));
 	font-size: 12px;
 }
 
@@ -31,13 +34,6 @@
 
 .ui-status-pill--danger {
 	--ui-status-accent: var(--ui-status-danger-accent);
-}
-
-/* Tone accents are tuned against panel backgrounds; on the badge fill in
-   high contrast themes they can vanish, so inherit the badge foreground.
-   VS Code sets data-vscode-theme-kind on the webview body. */
-body[data-vscode-theme-kind^="vscode-high-contrast"] .ui-status-pill .ui-icon {
-	color: var(--ui-badge-foreground);
 }
 
 @media (forced-colors: active) {
