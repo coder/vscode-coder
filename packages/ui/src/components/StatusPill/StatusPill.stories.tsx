@@ -1,4 +1,4 @@
-import { FourThemeModes } from "#storybook";
+import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { StatusPill } from "./StatusPill";
 
@@ -26,7 +26,7 @@ const StatusPillTones = (): React.JSX.Element => (
 const meta: Meta<typeof StatusPillTones> = {
 	title: "UI/StatusPill",
 	component: StatusPillTones,
-	parameters: { chromatic: { modes: FourThemeModes } },
+	parameters: { pixel: PIXEL_ALL_THEMES },
 };
 export default meta;
 type Story = StoryObj<typeof StatusPillTones>;

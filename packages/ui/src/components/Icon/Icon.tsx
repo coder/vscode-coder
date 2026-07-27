@@ -18,11 +18,9 @@ export function Icon({
 	name,
 	spin = false,
 	className,
-	"aria-label": ariaLabel,
-	"aria-labelledby": ariaLabelledBy,
 	...props
 }: IconProps): React.JSX.Element {
-	const isLabelled = Boolean(ariaLabel || ariaLabelledBy);
+	const isLabelled = Boolean(props["aria-label"] || props["aria-labelledby"]);
 	const classes = cx(
 		"ui-icon",
 		"codicon",
@@ -35,8 +33,6 @@ export function Icon({
 		<span
 			{...props}
 			className={classes}
-			aria-label={ariaLabel}
-			aria-labelledby={ariaLabelledBy}
 			aria-hidden={isLabelled ? undefined : true}
 			role={isLabelled ? "img" : undefined}
 		/>

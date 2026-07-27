@@ -8,10 +8,9 @@
  * requires. On headless environments: `xvfb-run -a pnpm sync:vscode-themes`.
  */
 
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runTests } from "@vscode/test-electron";
@@ -39,13 +38,6 @@ async function main() {
 				userDataDir,
 			],
 		});
-		// The dump arrives with VS Code's source indentation; format it so a
-		// resync never leaves a diff for format:check to reject.
-		execFileSync(
-			"pnpm",
-			["exec", "prettier", "--write", join(OUTPUT_DIR, "default-styles.css")],
-			{ cwd: resolve(HERE, "../.."), stdio: "inherit" },
-		);
 		console.log(`Snapshots written to ${OUTPUT_DIR}`);
 	} finally {
 		rmSync(userDataDir, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 import { expect, userEvent, within } from "storybook/test";
 
-import { FourThemeModes } from "#storybook";
+import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { IconButton } from "./IconButton";
 
@@ -20,7 +20,7 @@ const IconButtonStates = (): React.JSX.Element => (
 const meta: Meta<typeof IconButtonStates> = {
 	title: "UI/IconButton",
 	component: IconButtonStates,
-	parameters: { chromatic: { modes: FourThemeModes } },
+	parameters: { pixel: PIXEL_ALL_THEMES },
 };
 export default meta;
 type Story = StoryObj<typeof IconButtonStates>;

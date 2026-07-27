@@ -15,13 +15,13 @@ import { SearchInput } from "./components/SearchInput/SearchInput";
 import { Spinner } from "./components/Spinner/Spinner";
 import "./components/StatePanel/StatePanel.css";
 import { StatusPill } from "./components/StatusPill/StatusPill";
-import { FourThemeModes } from "./storybook";
+import { PIXEL_ALL_THEMES } from "./storybook";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 /**
  * Renders every `@repo/ui` control next to its `@vscode-elements`
- * counterpart under identical theme variables. Chromatic snapshots this
+ * counterpart under identical theme variables. Pixel snapshots this
  * in all four themes, so any drift from VS Code's appearance shows up as
  * a visual diff.
  */
@@ -106,6 +106,16 @@ const Parity = (): React.JSX.Element => (
 			reference={<VscodeButton>Try again</VscodeButton>}
 		/>
 		<Row
+			label="Link"
+			ours={
+				<a href="#top" style={{ color: "var(--ui-link-foreground)" }}>
+					Learn more
+				</a>
+			}
+			// Styled by the captured VS Code default webview stylesheet.
+			reference={<a href="#top">Learn more</a>}
+		/>
+		<Row
 			label="Progress"
 			ours={
 				<ProgressBar value={42} label="Progress" style={{ width: "180px" }} />
@@ -142,7 +152,8 @@ const Parity = (): React.JSX.Element => (
 const meta: Meta<typeof Parity> = {
 	title: "UI/VSCodeParity",
 	component: Parity,
-	parameters: { chromatic: { modes: FourThemeModes } },
+	// rootWidth lets the comparison grid outgrow the 300px sidebar stand-in.
+	parameters: { pixel: PIXEL_ALL_THEMES, rootWidth: "max-content" },
 };
 export default meta;
 type Story = StoryObj<typeof Parity>;

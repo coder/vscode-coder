@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
-import { FourThemeModes } from "#storybook";
+import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { SearchInput } from "./SearchInput";
 
@@ -31,7 +31,7 @@ const SearchStates = (): React.JSX.Element => {
 const meta: Meta<typeof SearchStates> = {
 	title: "UI/SearchInput",
 	component: SearchStates,
-	parameters: { chromatic: { modes: FourThemeModes } },
+	parameters: { pixel: PIXEL_ALL_THEMES },
 };
 export default meta;
 type Story = StoryObj<typeof SearchStates>;

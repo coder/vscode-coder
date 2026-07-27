@@ -28,15 +28,14 @@ export function ProgressBar({
 	const safeMax = max > 0 ? max : 100;
 	const safeValue =
 		value === undefined ? undefined : Math.min(Math.max(value, 0), safeMax);
-	const percentage =
-		safeValue === undefined ? undefined : (safeValue / safeMax) * 100;
+	const indeterminate = safeValue === undefined;
 
 	return (
 		<div
 			{...props}
 			className={cx(
 				"ui-progress-bar",
-				percentage === undefined && "ui-progress-bar--indeterminate",
+				indeterminate && "ui-progress-bar--indeterminate",
 				className,
 			)}
 			role="progressbar"
@@ -48,7 +47,9 @@ export function ProgressBar({
 			<span
 				className="ui-progress-bar__indicator"
 				style={
-					percentage === undefined ? undefined : { width: `${percentage}%` }
+					safeValue === undefined
+						? undefined
+						: { width: `${(safeValue / safeMax) * 100}%` }
 				}
 			/>
 		</div>

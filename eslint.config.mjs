@@ -26,7 +26,7 @@ export default defineConfig(
 
 	// Base ESLint recommended rules (for JS/TS/TSX files only)
 	{
-		files: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs"],
+		files: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs", "**/*.cjs"],
 		...eslint.configs.recommended,
 	},
 
@@ -165,7 +165,7 @@ export default defineConfig(
 
 	// Build config - ESM with Node globals
 	{
-		files: ["esbuild.mjs", "scripts/*.mjs", ".storybook/themes/*.mjs"],
+		files: ["esbuild.mjs", "scripts/*.mjs", ".storybook/themes/*.{mjs,cjs}"],
 		languageOptions: {
 			globals: {
 				...globals.node,

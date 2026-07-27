@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 
-import { FourThemeModes } from "./storybook";
+import { PIXEL_ALL_THEMES } from "./storybook";
 import { useVscodeTheme } from "./useVscodeTheme";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -28,6 +28,10 @@ function uiTokens(): string[] {
 	return Array.from(tokens);
 }
 
+/* Live view of the resolved values; the theme decorator applies variables
+   synchronously, and a theme change re-renders via useVscodeTheme. */
+const ROOT_STYLES = getComputedStyle(document.documentElement);
+
 /* Checkerboard so transparent and near-background swatches stay visible. */
 const swatchBackdrop: React.CSSProperties = {
 	width: "1rem",
@@ -43,31 +47,9 @@ const swatchBackdrop: React.CSSProperties = {
 
 const Foundations = (): React.JSX.Element => {
 	const theme = useVscodeTheme();
-	const [values, setValues] = useState<ReadonlyMap<string, string>>(
-		() => new Map(),
-	);
-	const tokens = uiTokens();
+	const tokens = useMemo(uiTokens, []);
 	const fontTokens = tokens.filter((token) => token.includes("font"));
 	const colorTokens = tokens.filter((token) => !token.includes("font"));
-
-	useEffect(() => {
-		// The theme decorator applies --vscode-* variables in a parent effect
-		// that runs after this one; read the resolved values a frame later.
-		const frame = requestAnimationFrame(() => {
-			const styles = getComputedStyle(document.documentElement);
-			setValues(
-				new Map(
-					uiTokens().map((token) => [
-						token,
-						styles.getPropertyValue(token).trim(),
-					]),
-				),
-			);
-		});
-		return (): void => {
-			cancelAnimationFrame(frame);
-		};
-	}, [theme]);
 
 	return (
 		<div
@@ -117,7 +99,7 @@ const Foundations = (): React.JSX.Element => {
 								backgroundColor: "transparent",
 							}}
 						>
-							{values.get(token) || "unset"}
+							{ROOT_STYLES.getPropertyValue(token).trim() || "unset"}
 						</code>
 					</li>
 				))}
@@ -132,9 +114,7 @@ const meta: Meta<typeof Foundations> = {
 	parameters: {
 		// Snapshot every theme; tokens are the single theming surface, so this
 		// is where theme regressions show up.
-		chromatic: {
-			modes: FourThemeModes,
-		},
+		pixel: PIXEL_ALL_THEMES,
 	},
 };
 

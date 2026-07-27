@@ -1,10 +1,6 @@
 import { type HTMLAttributes, type ReactNode } from "react";
 
-import { cx } from "#cx";
-
-import "../control.css";
-import { Icon } from "../Icon/Icon";
-import "../StatePanel/StatePanel.css";
+import { StatePanel } from "../StatePanel/StatePanel";
 
 import type { CodiconName } from "#codicons";
 
@@ -19,21 +15,8 @@ export interface EmptyStateProps extends Omit<
 }
 
 export function EmptyState({
-	action,
-	description,
 	icon = "inbox",
-	title,
-	className,
 	...props
 }: EmptyStateProps): React.JSX.Element {
-	return (
-		<div {...props} className={cx("ui-state-panel", className)}>
-			<Icon name={icon} className="ui-state-panel__icon" />
-			<h2 className="ui-state-panel__title">{title}</h2>
-			{description ? (
-				<div className="ui-state-panel__description">{description}</div>
-			) : null}
-			{action ? <div className="ui-state-panel__action">{action}</div> : null}
-		</div>
-	);
+	return <StatePanel {...props} icon={icon} />;
 }

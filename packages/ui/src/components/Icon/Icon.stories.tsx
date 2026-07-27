@@ -1,6 +1,6 @@
 import { expect, within } from "storybook/test";
 
-import { FourThemeModes } from "#storybook";
+import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { Icon } from "./Icon";
 
@@ -39,7 +39,7 @@ export default meta;
 type Story = StoryObj<typeof IconStates>;
 
 export const States: Story = {
-	parameters: { chromatic: { modes: FourThemeModes } },
+	parameters: { pixel: PIXEL_ALL_THEMES },
 	play: async ({ canvasElement }) => {
 		await expect(
 			within(canvasElement).getByRole("img", { name: "Syncing" }),
@@ -62,5 +62,5 @@ export const Gallery: Story = {
 			))}
 		</div>
 	),
-	parameters: { chromatic: { disableSnapshot: true } },
+	parameters: { pixel: { exclude: true } },
 };

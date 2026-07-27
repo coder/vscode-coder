@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
-import { createElement, useEffect } from "react";
+import { createElement } from "react";
 
 import "./global.css";
 import "./themes/generated/default-styles.css";
@@ -43,23 +43,32 @@ if (
 }
 
 /**
- * Theme variable dumps captured from a real VS Code instance.
- * Regenerate with `pnpm sync:vscode-themes`.
+ * Applies a captured VS Code theme dump (`pnpm sync:vscode-themes`) as one
+ * `:root` stylesheet and mirrors VS Code's body attribute for theme-aware
+ * hooks. Synchronous and idempotent, so stories render fully themed.
  */
-const THEMES: Readonly<
-	Record<string, { variables: readonly string[][]; kind: string }>
-> = {
-	light: { variables: themeDumps.themes.light, kind: "vscode-light" },
-	dark: { variables: themeDumps.themes.dark, kind: "vscode-dark" },
-	"high-contrast": {
-		variables: themeDumps.themes["high-contrast"],
-		kind: "vscode-high-contrast",
-	},
-	"high-contrast-light": {
-		variables: themeDumps.themes["high-contrast-light"],
-		kind: "vscode-high-contrast-light",
-	},
-};
+let appliedTheme: string | undefined;
+
+function applyTheme(requested: string): void {
+	const slug = (
+		requested in themeDumps.themes ? requested : "dark"
+	) as keyof typeof themeDumps.themes;
+	if (appliedTheme === slug) {
+		return;
+	}
+	appliedTheme = slug;
+
+	let style = document.getElementById("vscode-theme-variables");
+	if (!style) {
+		style = document.createElement("style");
+		style.id = "vscode-theme-variables";
+		document.head.appendChild(style);
+	}
+	style.textContent = `:root {${themeDumps.themes[slug]
+		.map(([property, value]) => `${property}: ${value};`)
+		.join("")}}`;
+	document.body.setAttribute("data-vscode-theme-kind", `vscode-${slug}`);
+}
 
 const preview: Preview = {
 	parameters: {
@@ -92,30 +101,15 @@ const preview: Preview = {
 	},
 	decorators: [
 		(Story, context) => {
-			const { variables, kind } =
-				THEMES[context.globals.theme as string] ?? THEMES.dark;
-
-			useEffect(() => {
-				const root = document.documentElement.style;
-
-				// Mirror VS Code's body attribute so theme-aware hooks work in Storybook.
-				document.body.setAttribute("data-vscode-theme-kind", kind);
-
-				// Apply CSS custom properties to the document root
-				variables.forEach(([property, value]) => {
-					root.setProperty(property, value);
-				});
-
-				// Cleanup function to remove properties when unmounting
-				return () => {
-					variables.forEach(([property]) => {
-						root.removeProperty(property);
-					});
-					document.body.removeAttribute("data-vscode-theme-kind");
-				};
-			}, [variables, kind]);
-
-			return createElement("div", { id: "root" }, createElement(Story));
+			applyTheme(context.globals.theme as string);
+			return createElement(
+				"div",
+				{
+					id: "root",
+					style: { width: context.parameters.rootWidth as string },
+				},
+				createElement(Story),
+			);
 		},
 	],
 };

@@ -11,10 +11,6 @@
 	outline-offset: -1px;
 }
 
-.ui-icon-button .ui-icon {
-	font-size: 16px;
-}
-
 .ui-icon-button:hover:not(:disabled) {
 	background: var(--ui-toolbar-hover-background);
 	outline-color: var(--ui-toolbar-hover-outline);

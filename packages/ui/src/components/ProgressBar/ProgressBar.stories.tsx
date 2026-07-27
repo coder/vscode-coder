@@ -1,6 +1,6 @@
 import { expect, within } from "storybook/test";
 
-import { FourThemeModes } from "#storybook";
+import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { ProgressBar } from "./ProgressBar";
 
@@ -18,7 +18,7 @@ const ProgressStates = (): React.JSX.Element => (
 const meta: Meta<typeof ProgressStates> = {
 	title: "UI/ProgressBar",
 	component: ProgressStates,
-	parameters: { chromatic: { modes: FourThemeModes } },
+	parameters: { pixel: PIXEL_ALL_THEMES },
 };
 export default meta;
 type Story = StoryObj<typeof ProgressStates>;

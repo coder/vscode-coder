@@ -36,10 +36,7 @@
 /* Tone accents are tuned against panel backgrounds; on the badge fill in
    high contrast themes they can vanish, so inherit the badge foreground.
    VS Code sets data-vscode-theme-kind on the webview body. */
-body[data-vscode-theme-kind="vscode-high-contrast"] .ui-status-pill .ui-icon,
-body[data-vscode-theme-kind="vscode-high-contrast-light"]
-	.ui-status-pill
-	.ui-icon {
+body[data-vscode-theme-kind^="vscode-high-contrast"] .ui-status-pill .ui-icon {
 	color: var(--ui-badge-foreground);
 }
 

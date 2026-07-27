@@ -1,4 +1,4 @@
-import { FourThemeModes } from "#storybook";
+import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { EmptyState } from "./EmptyState";
 
@@ -22,7 +22,7 @@ const EmptyStates = (): React.JSX.Element => (
 const meta: Meta<typeof EmptyStates> = {
 	title: "UI/EmptyState",
 	component: EmptyStates,
-	parameters: { chromatic: { modes: FourThemeModes } },
+	parameters: { pixel: PIXEL_ALL_THEMES },
 };
 export default meta;
 type Story = StoryObj<typeof EmptyStates>;

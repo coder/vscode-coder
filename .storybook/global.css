@@ -15,6 +15,7 @@ body {
 
 #root {
 	max-width: 100%;
-	/* arbitrary size choice for the rough VSCode sidebar size */
+	/* arbitrary size choice for the rough VSCode sidebar size; stories
+	   needing a wider canvas override it via parameters.rootWidth */
 	width: 300px;
 }

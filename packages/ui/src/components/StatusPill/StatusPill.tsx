@@ -14,14 +14,12 @@ export type StatusPillTone =
 
 export interface StatusPillProps extends HTMLAttributes<HTMLSpanElement> {
 	icon?: CodiconName;
-	iconLabel?: string;
 	tone?: StatusPillTone;
 	children: ReactNode;
 }
 
 export function StatusPill({
 	icon,
-	iconLabel,
 	tone = "neutral",
 	className,
 	children,
@@ -37,7 +35,7 @@ export function StatusPill({
 				className,
 			)}
 		>
-			{icon ? <Icon name={icon} aria-label={iconLabel} /> : null}
+			{icon ? <Icon name={icon} /> : null}
 			{children}
 		</span>
 	);

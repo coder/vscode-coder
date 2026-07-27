@@ -1,6 +1,6 @@
 import { expect, within } from "storybook/test";
 
-import { FourThemeModes } from "#storybook";
+import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { Spinner } from "./Spinner";
 
@@ -17,7 +17,7 @@ const SpinnerSizes = (): React.JSX.Element => (
 const meta: Meta<typeof SpinnerSizes> = {
 	title: "UI/Spinner",
 	component: SpinnerSizes,
-	parameters: { chromatic: { modes: FourThemeModes } },
+	parameters: { pixel: PIXEL_ALL_THEMES },
 };
 export default meta;
 type Story = StoryObj<typeof SpinnerSizes>;

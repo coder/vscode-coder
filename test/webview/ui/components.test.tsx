@@ -13,11 +13,15 @@ import {
 	StatusPill,
 } from "@repo/ui";
 
+import { qs } from "../helpers";
+
 describe("Icon", () => {
 	it("renders a decorative codicon by default", () => {
 		const { container } = render(<Icon name="search" />);
-		const icon = container.querySelector(".codicon-search");
-		expect(icon).toHaveAttribute("aria-hidden", "true");
+		expect(qs(container, ".codicon-search")).toHaveAttribute(
+			"aria-hidden",
+			"true",
+		);
 	});
 
 	it("can be labelled when it conveys meaning", () => {
@@ -136,7 +140,7 @@ describe("StatusPill", () => {
 				Running
 			</StatusPill>,
 		);
-		expect(container.querySelector(".codicon-check")).toBeInTheDocument();
+		expect(qs(container, ".codicon-check")).toBeInTheDocument();
 	});
 });
 
