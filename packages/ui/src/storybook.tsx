@@ -33,7 +33,7 @@ export function overlaySpace(
 			: { width, height };
 	return function OverlaySpace(Story) {
 		return (
-			<div style={style}>
+			<div data-overlay-space style={style}>
 				<Story />
 			</div>
 		);

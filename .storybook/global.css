@@ -26,6 +26,12 @@ html body {
 	width: 300px;
 }
 
+/* Grow the root to fit overlaySpace reservations so Pixel's autofit
+   crop keeps portalled overlays in frame. */
+#root:has([data-overlay-space]) {
+	width: max-content;
+}
+
 /* Story stand-in: a VS Code secondary button like consuming webviews render. */
 .story-trigger {
 	padding: 0.4em 1em;
