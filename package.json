@@ -815,6 +815,7 @@
 		"@typescript-eslint/parser": "^8.63.0",
 		"@vitejs/plugin-react": "catalog:",
 		"@vitest/coverage-v8": "^4.1.10",
+		"@vscode-elements/webview-playground": "catalog:",
 		"@vscode/codicons": "catalog:",
 		"@vscode/test-cli": "^0.0.15",
 		"@vscode/test-electron": "^3.0.0",
