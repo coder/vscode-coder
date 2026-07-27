@@ -1,36 +1,47 @@
 # @repo/ui
 
-Generic component library for VS Code webviews. No workspace or task
-knowledge — that lives in the consuming packages (`@repo/workspaces`,
-`@repo/tasks`).
+Generic React components for VS Code webviews. The package is currently
+source-consumed by this monorepo; it does not ship a `dist` build yet.
 
-## Theming
+Its stable separation boundary is the public root exports, no monorepo runtime
+imports, and component CSS using only semantic `--ui-*` tokens. A future package
+build can emit those same entry points without API changes.
 
-`tokens.css` defines semantic `--ui-*` custom properties mapped to the
-`--vscode-*` variables VS Code injects into every webview. Components
-style against the semantic tokens only, so the VS Code mapping (including
-high contrast) is adjusted in one place. Tokens whose underlying variable
-may be absent (high contrast themes omit hover/selection fills) declare a
-fallback, so every token always resolves. Import it once per webview
+## CSS
+
+Import the semantic token mapping and codicon assets once in each real webview
 entry point:
 
 ```ts
 import "@repo/ui/tokens.css";
+import "@repo/ui/codicon.css";
 ```
 
-`useVscodeTheme()` returns the active theme kind (`dark`, `light`,
-`high-contrast`, `high-contrast-light`) and re-renders on theme changes.
+`tokens.css` is the only layer that references VS Code's injected
+`--vscode-*` variables. Components reference `--ui-*` tokens only.
 
-`codicon.css` re-exports the codicon font and classes.
+Component CSS is inherit-first: typography and text color come from the
+webview (`font: inherit`), and controls center content with a fixed height
+plus the shared `.ui-control` flex base in `components/control.css` — never
+with line-height or vertical padding math, which drifts off-center with
+font metrics.
 
-## Rules
+Every component forwards `className` and `style` to its root element, and
+default rules use single-class specificity, so a consumer class imported
+after the library overrides any default (width, height, spacing).
 
-The package is shaped for a future standalone NPM split. Keep it that way:
+## Codicons
 
-- No `workspace:*` runtime dependencies (no `@repo/shared`,
-  `@repo/webview-shared`).
-- `react` stays a peer dependency.
-- New entry points go in the `exports` map; consumers never deep-import
-  `src/`.
-- New components define their VS Code mappings in `tokens.css`, not
-  inline `--vscode-*` references.
+`CodiconName` is derived directly from the installed
+`@vscode/codicons/dist/metadata.json` keys. TypeScript validates icon names
+without a generated source file or a runtime list in the public API.
+
+## Isolation
+
+ESLint rejects `@repo/*` imports and relative cross-package imports in
+`packages/ui` TypeScript and TSX source. `react` remains a peer dependency, and
+public consumers import from the package root or its declared CSS exports.
+
+Shared internals are reached through `package.json` subpath imports (`#cx`,
+`#codicons`, `#storybook`). These resolve only inside this package and ship
+with it, so they survive a standalone NPM split.

@@ -1,13 +1,11 @@
 /// <reference types="vite/client" />
 
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
-import { theme as darkTheme } from "@vscode-elements/webview-playground/dist/themes/dark-v2.js";
-import { theme as hcDarkTheme } from "@vscode-elements/webview-playground/dist/themes/hc-dark.js";
-import { theme as hcLightTheme } from "@vscode-elements/webview-playground/dist/themes/hc-light.js";
-import { theme as lightTheme } from "@vscode-elements/webview-playground/dist/themes/light-v2.js";
-import { createElement, useEffect } from "react";
+import { createElement } from "react";
 
 import "./global.css";
+import "./themes/generated/default-styles.css";
+import themeDumps from "./themes/generated/themes.json";
 
 import type { Preview } from "@storybook/react-vite";
 import type { WebviewApi } from "vscode-webview";
@@ -44,25 +42,33 @@ if (
 	document.head.appendChild(link);
 }
 
-// VS Code injects --vscode-font-family at runtime, but the upstream
-// vscode-elements theme data omits it. Set a static default so
-// Storybook (and Pixel) renders with a predictable sans-serif
-// stack instead of falling back to the browser default (Times).
-const VSCODE_FONT_FAMILY =
-	'"Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif';
+/**
+ * Applies a captured VS Code theme dump (`pnpm sync:vscode-themes`) as one
+ * `:root` stylesheet and mirrors VS Code's body attribute for theme-aware
+ * hooks. Synchronous and idempotent, so stories render fully themed.
+ */
+let appliedTheme: string | undefined;
 
-const THEMES: Record<
-	string,
-	{ variables: Array<[string, string]>; kind: string }
-> = {
-	light: { variables: lightTheme, kind: "vscode-light" },
-	dark: { variables: darkTheme, kind: "vscode-dark" },
-	"high-contrast": { variables: hcDarkTheme, kind: "vscode-high-contrast" },
-	"high-contrast-light": {
-		variables: hcLightTheme,
-		kind: "vscode-high-contrast-light",
-	},
-};
+function applyTheme(requested: string): void {
+	const slug = (
+		requested in themeDumps.themes ? requested : "dark"
+	) as keyof typeof themeDumps.themes;
+	if (appliedTheme === slug) {
+		return;
+	}
+	appliedTheme = slug;
+
+	let style = document.getElementById("vscode-theme-variables");
+	if (!style) {
+		style = document.createElement("style");
+		style.id = "vscode-theme-variables";
+		document.head.appendChild(style);
+	}
+	style.textContent = `:root {${themeDumps.themes[slug]
+		.map(([property, value]) => `${property}: ${value};`)
+		.join("")}}`;
+	document.body.setAttribute("data-vscode-theme-kind", `vscode-${slug}`);
+}
 
 const preview: Preview = {
 	parameters: {
@@ -95,32 +101,15 @@ const preview: Preview = {
 	},
 	decorators: [
 		(Story, context) => {
-			const { variables, kind } =
-				THEMES[context.globals.theme as string] ?? THEMES.dark;
-
-			useEffect(() => {
-				const root = document.documentElement.style;
-				root.setProperty("--vscode-font-family", VSCODE_FONT_FAMILY);
-
-				// Mirror VS Code's body attribute so theme-aware hooks work in Storybook.
-				document.body.setAttribute("data-vscode-theme-kind", kind);
-
-				// Apply CSS custom properties to the document root
-				variables.forEach(([property, value]) => {
-					root.setProperty(property, value);
-				});
-
-				// Cleanup function to remove properties when unmounting
-				return () => {
-					variables.forEach(([property]) => {
-						root.removeProperty(property);
-					});
-					root.removeProperty("--vscode-font-family");
-					document.body.removeAttribute("data-vscode-theme-kind");
-				};
-			}, [variables, kind]);
-
-			return createElement("div", { id: "root" }, createElement(Story));
+			applyTheme(context.globals.theme as string);
+			return createElement(
+				"div",
+				{
+					id: "root",
+					style: { width: context.parameters.rootWidth as string },
+				},
+				createElement(Story),
+			);
 		},
 	],
 };

@@ -1,0 +1,15 @@
+.ui-icon--spin {
+	animation: ui-icon-spin 1s linear infinite;
+}
+
+@keyframes ui-icon-spin {
+	to {
+		transform: rotate(1turn);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-icon--spin {
+		animation: none;
+	}
+}

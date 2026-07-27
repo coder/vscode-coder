@@ -37,9 +37,6 @@ catalogs:
     '@vscode-elements/react-elements':
       specifier: ^2.4.0
       version: 2.4.0
-    '@vscode-elements/webview-playground':
-      specifier: ^1.9.0
-      version: 1.9.0
     '@vscode/codicons':
       specifier: ^0.0.45
       version: 0.0.45
@@ -214,9 +211,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.10
         version: 4.1.10(vitest@4.1.10)
-      '@vscode-elements/webview-playground':
-        specifier: 'catalog:'
-        version: 1.9.0
       '@vscode/codicons':
         specifier: 'catalog:'
         version: 0.0.45
@@ -268,6 +262,9 @@ importers:
       eslint-plugin-package-json:
         specifier: ^1.5.0
         version: 1.5.0(@types/estree@1.0.9)(eslint@10.6.0)
+      eslint-plugin-react-hooks:
+        specifier: ^7.1.1
+        version: 7.1.1(eslint@10.6.0)
       eslint-plugin-storybook:
         specifier: ^10.4.6
         version: 10.4.6(eslint@10.6.0)(storybook@10.4.6)(typescript@6.0.3)
@@ -448,6 +445,9 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.17
+      '@vscode-elements/react-elements':
+        specifier: 'catalog:'
+        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.45)(react-dom@19.2.7)(react@19.2.7)
       react:
         specifier: 'catalog:'
         version: 19.2.7
@@ -2225,9 +2225,6 @@ packages:
       react: 17 || 18 || 19
       react-dom: 17 || 18 || 19
 
-  '@vscode-elements/webview-playground@1.9.0':
-    resolution: {integrity: sha512-0VMzdeLisbmACMXSyNhtkgca/wLmBMrVq4T0T8MGzPhLg9uDcgEaCscTdVaNg2tPwfCtmSN2BU8KGTEH1iqdhA==}
-
   '@vscode/codicons@0.0.45':
     resolution: {integrity: sha512-1KAZ7XCMagp5Gdrlr4bbbcAqgcIL623iO1wW6rfcSVGAVUQvR0WP7bQx1SbJ11gmV3fdQTSEFIJQ/5C+HuVasw==}
 
@@ -2982,6 +2979,12 @@ packages:
       eslint: '*'
       typescript: '*'
 
+  eslint-plugin-react-hooks@7.1.1:
+    resolution: {integrity: sha512-f2I7Gw6JbvCexzIInuSbZpfdQ44D7iqdWX01FKLvrPgqxoE7oMj8clOfto8U6vYiz4yd5oKu39rRSVOe1zRu0g==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      eslint: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0 || ^10.0.0
+
   eslint-plugin-react-jsx@5.11.3:
     resolution: {integrity: sha512-boRf3GKhb0aYCPZZDe52CEp9qEzO86ElXDEyU0bZ7ps4SLTdJ+8L0z0rDBz6sFrV+iezLdS2UK6IwrDqJCAw/g==}
     engines: {node: '>=22.0.0'}
@@ -3316,6 +3319,12 @@ packages:
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
     hasBin: true
+
+  hermes-estree@0.25.1:
+    resolution: {integrity: sha512-0wUoCcLp+5Ev5pDW2OriHC2MJCbwLwuRx+gAqMTOkGKJJiBCLjtrvy4PWUGn6MIVefecRpzoOZ/UV6iGdOr+Cw==}
+
+  hermes-parser@0.25.1:
+    resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
   hosted-git-info@4.1.0:
     resolution: {integrity: sha512-kyCuEOWjJqZuDbRHzL8V93NzQhwIB71oFWSyzVo+KPZI+pnQPPxucdkrOZvkLRnrf5URsQM+IJ09Dw29cRALIA==}
@@ -5155,6 +5164,12 @@ packages:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
 
+  zod-validation-error@4.0.2:
+    resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+
   zod@3.23.8:
     resolution: {integrity: sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==}
 
@@ -6882,8 +6897,6 @@ snapshots:
       - '@types/react'
       - '@vscode/codicons'
 
-  '@vscode-elements/webview-playground@1.9.0': {}
-
   '@vscode/codicons@0.0.45': {}
 
   '@vscode/test-cli@0.0.15':
@@ -7684,6 +7697,17 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  eslint-plugin-react-hooks@7.1.1(eslint@10.6.0):
+    dependencies:
+      '@babel/core': 7.29.7
+      '@babel/parser': 7.29.7
+      eslint: 10.6.0(supports-color@8.1.1)
+      hermes-parser: 0.25.1
+      zod: 4.4.3
+      zod-validation-error: 4.0.2(zod@4.4.3)
+    transitivePeerDependencies:
+      - supports-color
+
   eslint-plugin-react-jsx@5.11.3(eslint@10.6.0)(typescript@6.0.3):
     dependencies:
       '@eslint-react/ast': 5.11.3(eslint@10.6.0)(typescript@6.0.3)
@@ -8104,6 +8128,12 @@ snapshots:
       function-bind: 1.1.2
 
   he@1.2.0: {}
+
+  hermes-estree@0.25.1: {}
+
+  hermes-parser@0.25.1:
+    dependencies:
+      hermes-estree: 0.25.1
 
   hosted-git-info@4.1.0:
     dependencies:
@@ -10209,6 +10239,10 @@ snapshots:
       buffer-crc32: 0.2.13
 
   yocto-queue@0.1.0: {}
+
+  zod-validation-error@4.0.2(zod@4.4.3):
+    dependencies:
+      zod: 4.4.3
 
   zod@3.23.8: {}
 

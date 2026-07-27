@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { useVscodeTheme } from "./useVscodeTheme";
+import { PIXEL_ALL_THEMES } from "./storybook";
+import { useVscodeTheme, type VscodeThemeKind } from "./useVscodeTheme";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
@@ -27,6 +28,9 @@ function uiTokens(): string[] {
 	return Array.from(tokens);
 }
 
+/* Live view of the resolved custom properties. */
+const ROOT_STYLES = getComputedStyle(document.documentElement);
+
 /* Checkerboard so transparent and near-background swatches stay visible. */
 const swatchBackdrop: React.CSSProperties = {
 	width: "1rem",
@@ -42,31 +46,28 @@ const swatchBackdrop: React.CSSProperties = {
 
 const Foundations = (): React.JSX.Element => {
 	const theme = useVscodeTheme();
-	const [values, setValues] = useState<ReadonlyMap<string, string>>(
-		() => new Map(),
+	// Remount to re-read values; the compiler drops deps-array-only triggers.
+	return <TokenTable key={theme} theme={theme} />;
+};
+
+const TokenTable = ({
+	theme,
+}: {
+	theme: VscodeThemeKind;
+}): React.JSX.Element => {
+	const [tokens] = useState(uiTokens);
+	// Read once per mount; the decorator applies the theme before render.
+	const [values] = useState(
+		() =>
+			new Map(
+				tokens.map((token) => [
+					token,
+					ROOT_STYLES.getPropertyValue(token).trim(),
+				]),
+			),
 	);
-	const tokens = uiTokens();
 	const fontTokens = tokens.filter((token) => token.includes("font"));
 	const colorTokens = tokens.filter((token) => !token.includes("font"));
-
-	useEffect(() => {
-		// The theme decorator applies --vscode-* variables in a parent effect
-		// that runs after this one; read the resolved values a frame later.
-		const frame = requestAnimationFrame(() => {
-			const styles = getComputedStyle(document.documentElement);
-			setValues(
-				new Map(
-					uiTokens().map((token) => [
-						token,
-						styles.getPropertyValue(token).trim(),
-					]),
-				),
-			);
-		});
-		return (): void => {
-			cancelAnimationFrame(frame);
-		};
-	}, [theme]);
 
 	return (
 		<div
@@ -131,14 +132,7 @@ const meta: Meta<typeof Foundations> = {
 	parameters: {
 		// Snapshot every theme; tokens are the single theming surface, so this
 		// is where theme regressions show up.
-		chromatic: {
-			modes: {
-				light: { theme: "light" },
-				dark: { theme: "dark" },
-				"high-contrast": { theme: "high-contrast" },
-				"high-contrast-light": { theme: "high-contrast-light" },
-			},
-		},
+		pixel: PIXEL_ALL_THEMES,
 	},
 };
 

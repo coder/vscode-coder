@@ -6,14 +6,27 @@ export type VscodeThemeKind =
 
 const THEME_KIND_ATTRIBUTE = "data-vscode-theme-kind";
 
+// One shared observer no matter how many components use the hook.
+const listeners = new Set<() => void>();
+let observer: MutationObserver | undefined;
+
 function subscribe(onChange: () => void): () => void {
-	const observer = new MutationObserver(onChange);
-	observer.observe(document.body, {
-		attributes: true,
-		attributeFilter: [THEME_KIND_ATTRIBUTE],
-	});
+	if (!observer) {
+		observer = new MutationObserver(() => {
+			listeners.forEach((listener) => listener());
+		});
+		observer.observe(document.body, {
+			attributes: true,
+			attributeFilter: [THEME_KIND_ATTRIBUTE],
+		});
+	}
+	listeners.add(onChange);
 	return (): void => {
-		observer.disconnect();
+		listeners.delete(onChange);
+		if (listeners.size === 0) {
+			observer?.disconnect();
+			observer = undefined;
+		}
 	};
 }
 

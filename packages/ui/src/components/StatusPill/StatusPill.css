@@ -1,0 +1,60 @@
+/* The default pill is VS Code's native badge. */
+.ui-status-pill {
+	gap: 4px;
+	height: 18px;
+	padding: 0 6px;
+	color: var(--ui-badge-foreground);
+	background: var(--ui-badge-background);
+	border: 1px solid var(--ui-contrast-border);
+	border-radius: 11px;
+	font-size: 11px;
+	font-weight: 400;
+}
+
+.ui-status-pill .ui-icon {
+	font-size: 12px;
+}
+
+.ui-status-pill--info {
+	--ui-status-accent: var(--ui-status-info-accent);
+}
+
+.ui-status-pill--success {
+	--ui-status-accent: var(--ui-status-success-accent);
+}
+
+.ui-status-pill--warning {
+	--ui-status-accent: var(--ui-status-warning-accent);
+}
+
+.ui-status-pill--danger {
+	--ui-status-accent: var(--ui-status-danger-accent);
+}
+
+/* Toned pills diverge into GitHub-style chips: the accent tints its own
+   background, staying on the theme surface it was tuned for. */
+.ui-status-pill--info,
+.ui-status-pill--success,
+.ui-status-pill--warning,
+.ui-status-pill--danger {
+	color: var(--ui-foreground);
+	background: color-mix(in srgb, var(--ui-status-accent) 15%, transparent);
+}
+
+/* Icons lean toward the foreground so pale accents stay visible. */
+.ui-status-pill--info .ui-icon,
+.ui-status-pill--success .ui-icon,
+.ui-status-pill--warning .ui-icon,
+.ui-status-pill--danger .ui-icon {
+	color: color-mix(in srgb, var(--ui-status-accent) 70%, var(--ui-foreground));
+}
+
+@media (forced-colors: active) {
+	.ui-status-pill {
+		border-color: CanvasText;
+	}
+
+	.ui-status-pill .ui-icon {
+		color: CanvasText;
+	}
+}
