@@ -108,8 +108,12 @@ function connectToWorkspace(
 	commands: Commands,
 	client: CoderApi,
 	remoteAuthority: string,
+	agentName?: string,
 ): void {
 	commands.workspace = workspace;
+	commands.agent = agentName
+		? ({ id: "agent-id", name: agentName } as WorkspaceAgent)
+		: undefined;
 	commands.remoteWorkspaceClient = client;
 	setRemoteAuthority(remoteAuthority);
 }
@@ -138,7 +142,7 @@ describe("Commands.supportBundle", () => {
 	it("derives the agent and remote authority from the active connection", async () => {
 		const { commands, client } = setup();
 		const remoteAuthority = "ssh-remote+coder-vscode.example--owner--ws.main";
-		connectToWorkspace(commands, client, remoteAuthority);
+		connectToWorkspace(commands, client, remoteAuthority, "main");
 
 		await commands.supportBundle();
 
@@ -152,9 +156,9 @@ describe("Commands.supportBundle", () => {
 		);
 	});
 
-	it("degrades the agent to undefined for a malformed Coder authority", async () => {
+	it("omits the agent when the connection has not resolved one", async () => {
 		const { commands, client } = setup();
-		connectToWorkspace(commands, client, "ssh-remote+coder-vscode.malformed");
+		connectToWorkspace(commands, client, "ssh-remote+coder-vscode.example");
 
 		await commands.supportBundle();
 
@@ -175,19 +179,5 @@ describe("Commands.supportBundle", () => {
 			"owner/ws",
 			expect.objectContaining({ workspaceFiles: [] }),
 		);
-	});
-
-	describe("logging", () => {
-		it("warns when the connected agent cannot be resolved", async () => {
-			const { commands, client, logger } = setup();
-			connectToWorkspace(commands, client, "ssh-remote+coder-vscode.malformed");
-
-			await commands.supportBundle();
-
-			expect(logger.warn).toHaveBeenCalledWith(
-				expect.any(String),
-				expect.any(Error),
-			);
-		});
 	});
 });

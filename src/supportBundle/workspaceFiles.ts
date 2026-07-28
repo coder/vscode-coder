@@ -3,7 +3,6 @@ import * as path from "node:path";
 
 import {
 	getRemoteServerDataPath,
-	hasUnsafePathChars,
 	toRemoteLogGlobs,
 } from "./remoteServerDataPath";
 
@@ -11,7 +10,8 @@ import type { Logger } from "../logging/logger";
 
 interface ProductConfiguration {
 	/**
-	 * Default remote server data directory beneath the user's home directory.
+	 * Name of the server's data directory under the remote user's home
+	 * directory, such as `.vscode-server`.
 	 * @see https://github.com/microsoft/vscode/blob/085b6a1465387d070516ba8a640ccfed66417796/src/vs/server/node/server.main.ts#L39
 	 */
 	serverDataFolderName?: unknown;
@@ -32,25 +32,12 @@ export async function getRemoteEditorLogGlobs({
 	logger,
 }: RemoteEditorLogOptions): Promise<readonly string[]> {
 	const serverDataFolderName = await readServerDataFolderName(appRoot, logger);
-	const serverDataPath = remoteAuthority
-		? await getRemoteServerDataPath({
-				remoteAuthority,
-				serverDataFolderName,
-				logger,
-			})
-		: undefined;
-	if (serverDataPath) {
-		return toRemoteLogGlobs(serverDataPath);
-	}
-	// The agent expands `~/` against the remote home directory and normalizes
-	// separators before glob matching, so the posix style is portable here.
-	if (serverDataFolderName) {
-		return toRemoteLogGlobs({
-			value: `~/${serverDataFolderName}`,
-			style: "posix",
-		});
-	}
-	return [];
+	const serverDataPath = await getRemoteServerDataPath({
+		remoteAuthority,
+		serverDataFolderName,
+		logger,
+	});
+	return toRemoteLogGlobs(serverDataPath);
 }
 
 async function readServerDataFolderName(
@@ -62,25 +49,14 @@ async function readServerDataFolderName(
 			path.join(appRoot, "product.json"),
 			"utf-8",
 		);
-		const product = JSON.parse(productJson) as ProductConfiguration;
-		return isSafeServerDataFolderName(product.serverDataFolderName)
-			? product.serverDataFolderName
+		const { serverDataFolderName } = JSON.parse(
+			productJson,
+		) as ProductConfiguration;
+		return typeof serverDataFolderName === "string" && serverDataFolderName
+			? serverDataFolderName
 			: undefined;
 	} catch (error) {
 		logger.warn("Could not read the editor's product metadata", error);
 		return undefined;
 	}
-}
-
-/** Return whether the value is a single portable path segment. */
-function isSafeServerDataFolderName(value: unknown): value is string {
-	return (
-		typeof value === "string" &&
-		value.length > 0 &&
-		value !== "." &&
-		value !== ".." &&
-		!hasUnsafePathChars(value) &&
-		path.posix.basename(value) === value &&
-		path.win32.basename(value) === value
-	);
 }

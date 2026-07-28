@@ -31,7 +31,10 @@ const resolvedLogFiles = [
 function setup() {
 	vol.reset();
 	vi.mocked(getRemoteServerDataPath).mockReset();
-	vi.mocked(getRemoteServerDataPath).mockResolvedValue(undefined);
+	vi.mocked(getRemoteServerDataPath).mockResolvedValue({
+		value: "/srv/vscode",
+		style: "posix",
+	});
 	const logger = createMockLogger();
 	const collect = (overrides: { remoteAuthority?: string } = {}) =>
 		getRemoteEditorLogGlobs({ appRoot, logger, ...overrides });
@@ -45,30 +48,9 @@ function writeProduct(serverDataFolderName: unknown): void {
 }
 
 describe("getRemoteEditorLogGlobs", () => {
-	it.each([
-		".vscode-server",
-		".vscode-server-insiders",
-		".cursor-server",
-		".windsurf-server",
-		".antigravity-server",
-	])("derives the product fallback for %s", async (serverDataFolderName) => {
-		const { collect } = setup();
-		writeProduct(serverDataFolderName);
-
-		await expect(collect()).resolves.toEqual([
-			`~/${serverDataFolderName}/data/logs/**/*.log`,
-			`~/${serverDataFolderName}/.*.log`,
-			`~/${serverDataFolderName}/cli/servers/*/log.txt`,
-		]);
-	});
-
-	it("uses the resolved remote server path", async () => {
+	it("returns log globs for the resolved server data path", async () => {
 		const { logger, collect } = setup();
 		writeProduct(".vscode-server");
-		vi.mocked(getRemoteServerDataPath).mockResolvedValue({
-			value: "/srv/vscode",
-			style: "posix",
-		});
 
 		await expect(collect({ remoteAuthority })).resolves.toEqual(
 			resolvedLogFiles,
@@ -80,69 +62,50 @@ describe("getRemoteEditorLogGlobs", () => {
 		});
 	});
 
-	it.each([
-		undefined,
-		null,
-		42,
-		"",
-		".",
-		"..",
-		"../.vscode-server",
-		"nested/.vscode-server",
-		"nested\\.vscode-server",
-		"/home/coder/.vscode-server",
-		"*",
-		"wild*card",
-		"?server",
-		"[ab]server",
-		"$HOME",
-	])("rejects unsafe server data folder names: %j", async (value) => {
+	it("passes any non-empty folder name through", async () => {
 		const { collect } = setup();
-		writeProduct(value);
+		writeProduct("nested/$HOME/*server");
 
-		await expect(collect()).resolves.toEqual([]);
+		await collect();
+
+		expect(getRemoteServerDataPath).toHaveBeenCalledWith(
+			expect.objectContaining({ serverDataFolderName: "nested/$HOME/*server" }),
+		);
 	});
 
-	it("uses the active server path without product metadata", async () => {
+	it.each([undefined, null, 42, ""])(
+		"resolves without a folder name for invalid product values: %j",
+		async (value) => {
+			const { collect } = setup();
+			writeProduct(value);
+
+			await expect(collect()).resolves.toEqual(resolvedLogFiles);
+			expect(getRemoteServerDataPath).toHaveBeenCalledWith(
+				expect.objectContaining({ serverDataFolderName: undefined }),
+			);
+		},
+	);
+
+	it("resolves without a folder name when product metadata is unavailable", async () => {
 		const { logger, collect } = setup();
-		vi.mocked(getRemoteServerDataPath).mockResolvedValue({
-			value: "/srv/vscode",
-			style: "posix",
-		});
 
-		await expect(collect({ remoteAuthority })).resolves.toEqual(
-			resolvedLogFiles,
+		await expect(collect()).resolves.toEqual(resolvedLogFiles);
+		expect(getRemoteServerDataPath).toHaveBeenCalledWith(
+			expect.objectContaining({ serverDataFolderName: undefined }),
 		);
-		expect(getRemoteServerDataPath).toHaveBeenCalledWith({
-			remoteAuthority,
-			serverDataFolderName: undefined,
-			logger,
-		});
-	});
-
-	it("returns no paths when product metadata is unavailable", async () => {
-		const { collect } = setup();
-
-		await expect(collect()).resolves.toEqual([]);
-	});
-
-	it("uses the active server path when product metadata is invalid", async () => {
-		const { collect } = setup();
-		vol.fromJSON({ [productPath]: "not-json" });
-		vi.mocked(getRemoteServerDataPath).mockResolvedValue({
-			value: "/srv/vscode",
-			style: "posix",
-		});
-
-		await expect(collect({ remoteAuthority })).resolves.toEqual(
-			resolvedLogFiles,
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.anything(),
 		);
 	});
 
-	it("returns no paths when product metadata is invalid JSON", async () => {
+	it("resolves without a folder name when product metadata is invalid JSON", async () => {
 		const { collect } = setup();
 		vol.fromJSON({ [productPath]: "not-json" });
 
-		await expect(collect()).resolves.toEqual([]);
+		await expect(collect()).resolves.toEqual(resolvedLogFiles);
+		expect(getRemoteServerDataPath).toHaveBeenCalledWith(
+			expect.objectContaining({ serverDataFolderName: undefined }),
+		);
 	});
 });

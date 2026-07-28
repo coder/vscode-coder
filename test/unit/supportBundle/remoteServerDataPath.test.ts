@@ -87,11 +87,14 @@ describe("getRemoteServerDataPath", () => {
 		});
 	});
 
-	it("rejects an unsafe active environment path", async () => {
+	it("uses the active environment value verbatim", async () => {
 		const { resolve } = setup();
-		useActiveServerDataPath("$HOME/.vscode-server");
+		useActiveServerDataPath("$HOME/relative/.vscode-server");
 
-		await expect(resolve()).resolves.toBeUndefined();
+		await expect(resolve()).resolves.toEqual({
+			value: "$HOME/relative/.vscode-server",
+			style: "posix",
+		});
 	});
 
 	it.each(["ms-vscode-remote.remote-ssh", "anysphere.remote-ssh"])(
@@ -126,13 +129,33 @@ describe("getRemoteServerDataPath", () => {
 		});
 	});
 
-	it("returns undefined when resolving the active environment throws", async () => {
+	it("falls back to the home default when the active environment throws", async () => {
 		const { resolve } = setup();
 		vi.mocked(vscode.workspace.getRemoteExecServer).mockRejectedValue(
 			new Error("resolver unavailable"),
 		);
 
-		await expect(resolve()).resolves.toBeUndefined();
+		await expect(resolve()).resolves.toEqual({
+			value: "~/.vscode-server",
+			style: "posix",
+		});
+	});
+
+	it("falls back to the home default without a remote authority", async () => {
+		const { resolve } = setup();
+
+		await expect(resolve({ remoteAuthority: undefined })).resolves.toEqual({
+			value: "~/.vscode-server",
+			style: "posix",
+		});
+	});
+
+	it("defaults the home fallback folder to .vscode-remote", async () => {
+		const { resolve } = setup();
+
+		await expect(
+			resolve({ remoteAuthority: undefined, serverDataFolderName: undefined }),
+		).resolves.toEqual({ value: "~/.vscode-remote", style: "posix" });
 	});
 
 	it("does not duplicate Cursor's product folder", async () => {
@@ -238,23 +261,24 @@ describe("getRemoteServerDataPath", () => {
 			remotePlatforms: { [sshHost]: "linux" },
 		});
 
-		await expect(resolve()).resolves.toBeUndefined();
+		await expect(resolve()).resolves.toEqual({
+			value: "~/.vscode-server",
+			style: "posix",
+		});
 	});
 
-	it.each([
-		"relative/editor",
-		"$HOME/editor",
-		"/srv/*/editor",
-		"/srv/../editor",
-	])("rejects an unsafe configured path: %s", async (installPath) => {
+	it("uses a configured path verbatim", async () => {
 		const { resolve } = setup();
 		useRemoteSshExtension("ms-vscode-remote.remote-ssh");
 		setRemoteSshConfiguration({
-			installPaths: { [sshHost]: installPath },
+			installPaths: { [sshHost]: "$HOME/relative/editor" },
 			remotePlatforms: { [sshHost]: "linux" },
 		});
 
-		await expect(resolve()).resolves.toBeUndefined();
+		await expect(resolve()).resolves.toEqual({
+			value: "$HOME/relative/editor/.vscode-server",
+			style: "posix",
+		});
 	});
 
 	describe("logging", () => {
@@ -270,19 +294,6 @@ describe("getRemoteServerDataPath", () => {
 				expect.any(String),
 				expect.any(Error),
 			);
-		});
-
-		it("warns when a configured path is rejected as unsafe", async () => {
-			const { logger, resolve } = setup();
-			useRemoteSshExtension("ms-vscode-remote.remote-ssh");
-			setRemoteSshConfiguration({
-				installPaths: { [sshHost]: "$HOME/editor" },
-				remotePlatforms: { [sshHost]: "linux" },
-			});
-
-			await resolve();
-
-			expect(logger.warn).toHaveBeenCalledWith(expect.any(String));
 		});
 	});
 });
@@ -310,5 +321,15 @@ describe("toRemoteLogGlobs", () => {
 		],
 	])("appends the log globs to $value", (serverDataPath, expected) => {
 		expect(toRemoteLogGlobs(serverDataPath)).toEqual(expected);
+	});
+
+	it("escapes glob metacharacters in the base path", () => {
+		expect(
+			toRemoteLogGlobs({ value: "/srv/{v}[1]/vs*co?de", style: "posix" }),
+		).toEqual([
+			"/srv/[{]v}[[]1]/vs[*]co[?]de/data/logs/**/*.log",
+			"/srv/[{]v}[[]1]/vs[*]co[?]de/.*.log",
+			"/srv/[{]v}[[]1]/vs[*]co[?]de/cli/servers/*/log.txt",
+		]);
 	});
 });

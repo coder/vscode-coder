@@ -47,7 +47,7 @@ import { resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
 import { getRemoteEditorLogGlobs } from "./supportBundle/workspaceFiles";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
-import { parseRemoteAuthority, toRemoteAuthority } from "./util/authority";
+import { toRemoteAuthority } from "./util/authority";
 import { openInBrowser, toSafeHost } from "./util/uri";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseNetcheckReport } from "./webviews/netcheck/types";
@@ -154,6 +154,7 @@ export class Commands {
 	// are logged into (for convenience; otherwise the recents menu can be a pain
 	// if you use multiple deployments).
 	public workspace?: Workspace;
+	public agent?: WorkspaceAgent;
 	public workspaceLogPath?: string;
 	public remoteWorkspaceClient?: CoderApi;
 
@@ -1160,23 +1161,12 @@ export class Commands {
 			};
 		}
 		if (this.workspace && this.remoteWorkspaceClient) {
-			const remoteAuthority = vscodeProposed.env.remoteAuthority;
-			// Agent resolution is best-effort; a malformed authority must not
-			// block diagnostics for the whole workspace.
-			let agentName: string | undefined;
-			try {
-				agentName = remoteAuthority
-					? parseRemoteAuthority(remoteAuthority)?.agent || undefined
-					: undefined;
-			} catch (error) {
-				this.logger.warn("Could not resolve the connected agent", error);
-			}
 			return {
 				status: "selected",
-				agentName,
+				agentName: this.agent?.name,
 				client: this.remoteWorkspaceClient,
 				workspaceId: createWorkspaceIdentifier(this.workspace),
-				remoteAuthority,
+				remoteAuthority: vscodeProposed.env.remoteAuthority,
 			};
 		}
 		const pick = await this.pickWorkspace("diagnostic", {

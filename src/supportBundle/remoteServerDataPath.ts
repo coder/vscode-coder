@@ -11,7 +11,7 @@ import { vscodeProposed } from "../vscodeProposed";
 import type { Logger } from "../logging/logger";
 
 interface RemoteServerDataPathOptions {
-	readonly remoteAuthority: string;
+	readonly remoteAuthority?: string;
 	/** Product-specific server directory name, such as `.vscode-server`. */
 	readonly serverDataFolderName?: string;
 	readonly logger: Logger;
@@ -29,7 +29,7 @@ const parentInstallPathExtensions: readonly RemoteSshExtensionId[] = [
 ];
 
 /**
- * Resolve the active remote server's data directory when possible.
+ * Resolve the remote server's data directory.
  *
  * Precedence mirrors the server's own resolution, the `--server-data-dir`
  * flag over `VSCODE_AGENT_FOLDER` over the home default: supported
@@ -41,11 +41,28 @@ export async function getRemoteServerDataPath({
 	remoteAuthority,
 	serverDataFolderName,
 	logger,
-}: RemoteServerDataPathOptions): Promise<RemoteServerDataPath | undefined> {
-	const configured = serverDataFolderName
-		? getConfiguredServerDataPath(remoteAuthority, serverDataFolderName, logger)
-		: undefined;
-	return configured ?? getActiveServerDataPath(remoteAuthority, logger);
+}: RemoteServerDataPathOptions): Promise<RemoteServerDataPath> {
+	const configured =
+		remoteAuthority && serverDataFolderName
+			? getConfiguredServerDataPath(
+					remoteAuthority,
+					serverDataFolderName,
+					logger,
+				)
+			: undefined;
+	const active =
+		configured ??
+		(remoteAuthority
+			? await getActiveServerDataPath(remoteAuthority, logger)
+			: undefined);
+	// The agent expands `~/` against the remote home directory, matching the
+	// server's default when neither override is present.
+	return (
+		active ?? {
+			value: `~/${serverDataFolderName ?? ".vscode-remote"}`,
+			style: "posix",
+		}
+	);
 }
 
 /**
@@ -57,7 +74,9 @@ export function toRemoteLogGlobs({
 	value,
 	style,
 }: RemoteServerDataPath): readonly string[] {
-	const base = style === "win32" ? value.replaceAll("\\", "/") : value;
+	const base = escapeGlobChars(
+		style === "win32" ? value.replaceAll("\\", "/") : value,
+	);
 	return [
 		path.posix.join(base, "data", "logs", "**", "*.log"),
 		path.posix.join(base, ".*.log"),
@@ -83,12 +102,7 @@ async function getActiveServerDataPath(
 		if (value === undefined) {
 			return undefined;
 		}
-		const style = pathStyleForPlatform(osPlatform);
-		if (!isSafeAbsolutePath(value, style)) {
-			logger.warn(`Ignoring unsafe VSCODE_AGENT_FOLDER value: ${value}`);
-			return undefined;
-		}
-		return { value, style };
+		return { value, style: pathStyleForPlatform(osPlatform) };
 	} catch (error) {
 		logger.warn(
 			"Could not resolve the remote server data path from the active environment",
@@ -133,13 +147,6 @@ function getConfiguredServerDataPath(
 			installPath,
 			remotePlatforms[parts.sshHost],
 		);
-		if (!isSafeAbsolutePath(installPath, style)) {
-			logger.warn(
-				`Ignoring unsafe remote.SSH.serverInstallPath value: ${installPath}`,
-			);
-			return undefined;
-		}
-
 		if (extensionId === "jeanp413.open-remote-ssh") {
 			return { value: installPath, style };
 		}
@@ -216,19 +223,11 @@ function configuredPathStyle(
 		: "posix";
 }
 
-/** Reject variables and glob syntax that could broaden workspace collection. */
-export function hasUnsafePathChars(value: string): boolean {
-	return /[\0$*?[\]{}]/.test(value);
-}
-
-/** Absolute, no unsafe characters, and no `..` segments to traverse out. */
-function isSafeAbsolutePath(
-	value: string,
-	style: RemoteServerDataPath["style"],
-): boolean {
-	return (
-		path[style].isAbsolute(value) &&
-		!hasUnsafePathChars(value) &&
-		!value.split(/[\\/]/).includes("..")
-	);
+/**
+ * Escape glob metacharacters so the base path matches literally. Character
+ * classes work on every platform, while backslash escapes would be
+ * normalized into path separators for Windows agents.
+ */
+function escapeGlobChars(value: string): string {
+	return value.replace(/[*?[{]/g, (char) => `[${char}]`);
 }
