@@ -131,8 +131,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@coder/pixel-storybook':
-        specifier: ^0.2.2
-        version: 0.2.2(playwright-core@1.62.0)(storybook@10.5.5)
+        specifier: file:.pixel-experiment/pixel-storybook-cc953b4.tgz
+        version: file:.pixel-experiment/pixel-storybook-cc953b4.tgz(playwright-core@1.62.0)(storybook@10.5.5)
       '@eslint-react/eslint-plugin':
         specifier: ^5.18.0
         version: 5.18.0(eslint@10.8.0)(supports-color@8.1.1)(typescript@6.0.3)
@@ -703,11 +703,12 @@ packages:
     hasBin: true
 
   '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/2e8d80abf74d655b54ace1533b6c13102ea8d549':
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/coder/coder/tar.gz/2e8d80abf74d655b54ace1533b6c13102ea8d549}
+    resolution: {gitHosted: true, integrity: sha512-By+7tehWIsLhq3RGifYR3nvrfvc70KFpuGwurBZW+U175uQhZIqTluIcXV4bSIyW3bW9XlR1L6dlH2oH68xOXA==, tarball: https://codeload.github.com/coder/coder/tar.gz/2e8d80abf74d655b54ace1533b6c13102ea8d549}
     version: 0.0.0
 
-  '@coder/pixel-storybook@0.2.2':
-    resolution: {integrity: sha512-f1dJ7FiNCdoT9VRVH6IWFnCG3VMnavtvTx/r6sZ4hzhj/rJEZv4P69J2x4XdYaMAwi+O5xbp2UQf0dNf2U9lLA==}
+  '@coder/pixel-storybook@file:.pixel-experiment/pixel-storybook-cc953b4.tgz':
+    resolution: {integrity: sha512-Tg6DrbbL8NPbreb6M2aQcwZ+LlIUBzZLbyihHrJHLlYhtamhNR6a85cwY/iZPwR2Naug7ZGKnxEPKtQi674SlQ==, tarball: file:.pixel-experiment/pixel-storybook-cc953b4.tgz}
+    version: 0.2.2
     engines: {node: '>=22'}
     hasBin: true
     peerDependencies:
@@ -5868,7 +5869,7 @@ snapshots:
 
   '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/2e8d80abf74d655b54ace1533b6c13102ea8d549': {}
 
-  '@coder/pixel-storybook@0.2.2(playwright-core@1.62.0)(storybook@10.5.5)':
+  '@coder/pixel-storybook@file:.pixel-experiment/pixel-storybook-cc953b4.tgz(playwright-core@1.62.0)(storybook@10.5.5)':
     dependencies:
       get-port-please: 3.1.2
       jsonc-parser: 3.3.1

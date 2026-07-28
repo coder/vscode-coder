@@ -789,7 +789,7 @@
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@coder/pixel-storybook": "^0.2.2",
+		"@coder/pixel-storybook": "file:.pixel-experiment/pixel-storybook-cc953b4.tgz",
 		"@eslint-react/eslint-plugin": "^5.18.0",
 		"@eslint/js": "^10.0.1",
 		"@eslint/markdown": "^8.0.3",
