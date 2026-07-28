@@ -70,10 +70,54 @@ function applyTheme(requested: string): void {
 	document.body.setAttribute("data-vscode-theme-kind", `vscode-${slug}`);
 }
 
+/* Pixel's autofit crop follows in-flow layout, but portalled overlays
+   (menus, tooltips) are out of flow and would be cropped away. Grow the
+   story root to cover any element portalled to body. Relies on the
+   padded (top-left anchored) layout: growth only extends right and
+   down, so already-positioned overlays never move. */
+function fitRootToPortals(): void {
+	const root = document.getElementById("root");
+	if (!root) {
+		return;
+	}
+	const origin = root.getBoundingClientRect();
+	let right = 0;
+	let bottom = 0;
+	for (const el of document.body.children) {
+		// Skip Storybook chrome (root, loaders, error display, a11y helpers)
+		if (
+			!(el instanceof HTMLElement) ||
+			el.id.startsWith("storybook-") ||
+			el.classList.contains("sb-wrapper")
+		) {
+			continue;
+		}
+		const rect = el.getBoundingClientRect();
+		if (rect.width === 0 || rect.height === 0) {
+			continue;
+		}
+		right = Math.max(right, rect.right - origin.left);
+		bottom = Math.max(bottom, rect.bottom - origin.top);
+	}
+	if (right > 0 && bottom > 0) {
+		// Slack keeps shadows and focus outlines in frame
+		root.style.minWidth = `${Math.ceil(right) + 16}px`;
+		root.style.minHeight = `${Math.ceil(bottom) + 16}px`;
+	}
+}
+
 const preview: Preview = {
 	parameters: {
-		layout: "centered",
+		// Top-left anchored; fitRootToPortals depends on this
+		layout: "padded",
 	},
+	beforeEach: () => {
+		// Undo fitRootToPortals sizing when dev story switches reuse the root
+		const root = document.getElementById("root");
+		root?.style.removeProperty("min-width");
+		root?.style.removeProperty("min-height");
+	},
+	afterEach: fitRootToPortals,
 	globalTypes: {
 		theme: {
 			description: "Global theme for components",

@@ -1,6 +1,7 @@
 /* Storybook stand-ins for what the VS Code host provides outside the
    webview document: the sidebar surface color and viewport sizing.
-   Typography and text color come from themes/generated/default-styles.css. */
+   Typography and text color come from themes/generated/default-styles.css,
+   applied on body so portalled content (menus, tooltips) inherits it. */
 
 html,
 #storybook-preview-wrapper {
@@ -16,6 +17,12 @@ body {
    globally; stories must stay scrollable. */
 html body {
 	overflow: auto;
+}
+
+/* Shrink the root from a full-width block to its content so Pixel's
+   autofit crop stays tight. */
+#storybook-root {
+	width: fit-content;
 }
 
 #root {

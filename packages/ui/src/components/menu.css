@@ -1,0 +1,103 @@
+/* Shared ContextMenu/DropdownMenu surface matching the native menu
+   widget; typography inherits from the webview body. */
+.ui-menu {
+	--ui-menu-gutter: 2em;
+	--ui-overlay-border: var(--ui-menu-border);
+	/* Radix names the available-height variable per primitive */
+	--ui-overlay-available-height: var(
+		--radix-dropdown-menu-content-available-height,
+		var(--radix-context-menu-content-available-height)
+	);
+
+	min-width: 160px;
+	padding: 4px;
+	color: var(--ui-menu-foreground);
+	background: var(--ui-menu-background);
+	outline: 0;
+}
+
+.ui-menu__item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	height: 24px;
+	/* Native label inset; the gutters double as the check/icon columns. */
+	padding: 0 var(--ui-menu-gutter);
+	line-height: 1;
+	white-space: nowrap;
+	border-radius: var(--ui-radius-medium);
+	cursor: default;
+	user-select: none;
+	outline: 1px solid transparent;
+	outline-offset: -1px;
+}
+
+/* Selection border only resolves in high contrast; an open submenu
+   keeps its parent highlighted, like native. */
+.ui-menu__item[data-highlighted],
+.ui-menu__item[data-state="open"] {
+	forced-color-adjust: none;
+	color: var(--ui-menu-highlight-foreground);
+	background: var(--ui-menu-highlight-background);
+	outline-color: var(--ui-menu-selection-border);
+}
+
+.ui-menu__item[data-disabled] {
+	color: var(--ui-disabled-foreground);
+}
+
+/* Leading icons sit in the left gutter so labels stay aligned */
+.ui-menu__item > .ui-icon:not(.ui-menu__submenu-indicator) {
+	position: absolute;
+	left: 0;
+	width: var(--ui-menu-gutter);
+	text-align: center;
+}
+
+/* Chevron in the right gutter, like the native indicator */
+.ui-menu__submenu-indicator {
+	position: absolute;
+	right: 0;
+	width: var(--ui-menu-gutter);
+	text-align: center;
+}
+
+.ui-menu__item[data-disabled] .ui-menu__submenu-indicator {
+	opacity: var(--ui-disabled-opacity);
+}
+
+.ui-menu__separator {
+	height: 1px;
+	margin: 5px 0;
+	background: var(--ui-menu-separator);
+}
+
+/* Entry fade like native menus. Gated on data-state so an interrupted
+   entry animation cannot block Radix from unmounting the closed menu. */
+@media (prefers-reduced-motion: no-preference) {
+	.ui-menu:not([data-state="closed"]) {
+		animation: ui-menu-fade-in 83ms linear;
+	}
+}
+
+@keyframes ui-menu-fade-in {
+	from {
+		opacity: 0;
+	}
+}
+
+@media (forced-colors: active) {
+	.ui-menu__item[data-highlighted],
+	.ui-menu__item[data-state="open"] {
+		color: HighlightText;
+		background: Highlight;
+	}
+
+	.ui-menu__item[data-disabled] {
+		color: GrayText;
+	}
+
+	.ui-menu__separator {
+		background: CanvasText;
+	}
+}
