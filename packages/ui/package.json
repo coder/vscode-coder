@@ -31,12 +31,14 @@
 		"@vscode/codicons": "catalog:"
 	},
 	"peerDependencies": {
-		"react": "catalog:"
+		"react": "catalog:",
+		"react-dom": "catalog:"
 	},
 	"devDependencies": {
 		"@types/react": "catalog:",
 		"@vscode-elements/react-elements": "catalog:",
 		"react": "catalog:",
+		"react-dom": "catalog:",
 		"typescript": "catalog:"
 	}
 }

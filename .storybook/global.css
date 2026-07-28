@@ -19,6 +19,12 @@ html body {
 	overflow: auto;
 }
 
+/* Shrink the root from a full-width block to its content so Pixel's
+   autofit crop stays tight. */
+#storybook-root {
+	width: fit-content;
+}
+
 #root {
 	max-width: 100%;
 	/* arbitrary size choice for the rough VSCode sidebar size; stories
