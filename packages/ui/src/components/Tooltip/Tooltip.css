@@ -1,13 +1,15 @@
 /* Matches the native workbench hover widget; typography inherits from
    the webview body. */
 .ui-tooltip {
-	max-width: min(700px, calc(100vw - 16px));
-	/* Cap to the space Radix reports; oversized content scrolls */
-	max-height: var(--radix-tooltip-content-available-height);
+	--ui-overlay-border: var(--ui-tooltip-border);
+	--ui-overlay-available-height: var(--radix-tooltip-content-available-height);
+
+	max-width: min(700px, var(--radix-tooltip-content-available-width));
 	padding: 4px 8px;
 	color: var(--ui-tooltip-foreground);
 	background: var(--ui-tooltip-background);
-	border: 1px solid var(--ui-tooltip-border);
-	border-radius: var(--ui-radius-large);
+	/* Native hover: 13px/19px type and a 5px radius, not cornerRadius-large */
+	line-height: 19px;
+	border-radius: 5px;
 	overflow-wrap: break-word;
 }

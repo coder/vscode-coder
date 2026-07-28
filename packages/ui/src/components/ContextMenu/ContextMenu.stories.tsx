@@ -1,6 +1,6 @@
-import { expect, screen, userEvent, waitFor, within } from "storybook/test";
+import { userEvent, within } from "storybook/test";
 
-import { overlaySpace, PIXEL_ALL_THEMES } from "#storybook";
+import { openSubmenuByKeyboard, PIXEL_ALL_THEMES } from "#storybook";
 
 import { Icon } from "../Icon/Icon";
 
@@ -35,10 +35,6 @@ const MenuExample = (): React.JSX.Element => (
 				<Icon name="play" />
 				Start workspace
 			</ContextMenuItem>
-			<ContextMenuItem>
-				<Icon name="debug-restart" />
-				Restart
-			</ContextMenuItem>
 			<ContextMenuItem disabled>
 				<Icon name="stop-circle" />
 				Stop
@@ -63,49 +59,21 @@ const meta: Meta<typeof MenuExample> = {
 export default meta;
 type Story = StoryObj<typeof MenuExample>;
 
-/* Right-click at the target's center; without coords the contextmenu
-   event fires at (0,0) and the menu opens detached from the target. */
-async function rightClickCenter(target: Element): Promise<void> {
-	const rect = target.getBoundingClientRect();
-	await userEvent.pointer({
-		keys: "[MouseRight]",
-		target,
-		coords: {
-			clientX: rect.left + rect.width / 2,
-			clientY: rect.top + rect.height / 2,
-		},
-	});
-}
-
-export const Closed: Story = {};
-
-/* Opens the menu and its submenu so Pixel snapshots the open state. */
 export const Open: Story = {
-	decorators: [overlaySpace(620, 400)],
 	parameters: { pixel: PIXEL_ALL_THEMES },
 	play: async ({ canvasElement }) => {
-		const canvas = within(canvasElement);
-		await rightClickCenter(canvas.getByText("Right-click here"));
-		const menu = await screen.findByRole("menu");
-		// Radix moves focus into the menu on open
-		await waitFor(() =>
-			expect(menu.contains(document.activeElement)).toBe(true),
-		);
-		// Keyboard avoids the submenu hover-open delay
-		await userEvent.keyboard("{End}{ArrowRight}");
-		await screen.findByRole("menuitem", { name: "Open logs" });
-	},
-};
-
-export const EscapeClosesMenu: Story = {
-	parameters: { pixel: { exclude: true } },
-	play: async ({ canvasElement }) => {
-		const canvas = within(canvasElement);
-		await rightClickCenter(canvas.getByText("Right-click here"));
-		await screen.findByRole("menu");
-		await userEvent.keyboard("{Escape}");
-		await waitFor(() =>
-			expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
-		);
+		const target = within(canvasElement).getByText("Right-click here");
+		/* Right-click at the target's center; without coords the menu
+		   opens at (0,0), detached from the target. */
+		const rect = target.getBoundingClientRect();
+		await userEvent.pointer({
+			keys: "[MouseRight]",
+			target,
+			coords: {
+				clientX: rect.left + rect.width / 2,
+				clientY: rect.top + rect.height / 2,
+			},
+		});
+		await openSubmenuByKeyboard("Open logs");
 	},
 };

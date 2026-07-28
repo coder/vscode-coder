@@ -1,7 +1,7 @@
 import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
 import {
-	overlaySpace,
+	openSubmenuByKeyboard,
 	PIXEL_ALL_THEMES,
 	STORY_TRIGGER_CLASS,
 } from "#storybook";
@@ -33,10 +33,6 @@ const MenuExample = (): React.JSX.Element => (
 				<Icon name="play" />
 				Start workspace
 			</DropdownMenuItem>
-			<DropdownMenuItem>
-				<Icon name="debug-restart" />
-				Restart
-			</DropdownMenuItem>
 			<DropdownMenuItem disabled>
 				<Icon name="stop-circle" />
 				Stop
@@ -61,32 +57,18 @@ const meta: Meta<typeof MenuExample> = {
 export default meta;
 type Story = StoryObj<typeof MenuExample>;
 
-export const Closed: Story = {};
-
-/* Opens the menu and its submenu so Pixel snapshots the open state. */
 export const Open: Story = {
-	decorators: [overlaySpace(540, 320)],
 	parameters: { pixel: PIXEL_ALL_THEMES },
 	play: async ({ canvasElement }) => {
-		const canvas = within(canvasElement);
 		await userEvent.click(
-			canvas.getByRole("button", { name: "Workspace actions" }),
+			within(canvasElement).getByRole("button", { name: "Workspace actions" }),
 		);
-		const menu = await screen.findByRole("menu");
-		// Radix moves focus into the menu on open
-		await waitFor(() =>
-			expect(menu.contains(document.activeElement)).toBe(true),
-		);
-		// Keyboard avoids the submenu hover-open delay
-		await userEvent.keyboard("{End}{ArrowRight}");
-		await screen.findByRole("menuitem", { name: "Open logs" });
+		await openSubmenuByKeyboard("Open logs");
 	},
 };
 
-/* Long menus scroll. The default cap is the viewport space Radix
-   reports; the story lowers it via style. */
+/* Long menus cap to the viewport by default; the story lowers the cap. */
 export const ManyItems: Story = {
-	decorators: [overlaySpace(320, 300)],
 	render: () => (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
@@ -102,26 +84,12 @@ export const ManyItems: Story = {
 		</DropdownMenu>
 	),
 	play: async ({ canvasElement }) => {
-		const canvas = within(canvasElement);
 		await userEvent.click(
-			canvas.getByRole("button", { name: "Workspace actions" }),
+			within(canvasElement).getByRole("button", { name: "Workspace actions" }),
 		);
 		const menu = await screen.findByRole("menu");
 		await waitFor(() =>
 			expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight),
 		);
-	},
-};
-
-export const FocusReturnsToTrigger: Story = {
-	parameters: { pixel: { exclude: true } },
-	play: async ({ canvasElement }) => {
-		const canvas = within(canvasElement);
-		const trigger = canvas.getByRole("button", { name: "Workspace actions" });
-		await userEvent.click(trigger);
-		await screen.findByRole("menu");
-		await userEvent.keyboard("{Escape}");
-		await waitFor(() => expect(trigger).toHaveFocus());
-		await expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 	},
 };

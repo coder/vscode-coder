@@ -8,11 +8,16 @@ import "../overlay.css";
 
 import type { ComponentPropsWithRef } from "react";
 
+/** Root state container; wraps the trigger and content. */
 export const ContextMenu = ContextMenuPrimitive.Root;
+
+/** The right-click target area; renders its child element via `asChild`. */
 export const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
-export const ContextMenuGroup = ContextMenuPrimitive.Group;
+
+/** Scopes one submenu; wraps its sub trigger and sub content. */
 export const ContextMenuSub = ContextMenuPrimitive.Sub;
 
+/** The floating menu surface, portalled to `body` at the pointer. */
 export function ContextMenuContent({
 	className,
 	...props
@@ -32,6 +37,7 @@ export function ContextMenuContent({
 	);
 }
 
+/** The floating submenu surface, opened by `ContextMenuSubTrigger`. */
 export function ContextMenuSubContent({
 	className,
 	...props
@@ -51,6 +57,7 @@ export function ContextMenuSubContent({
 	);
 }
 
+/** One selectable action row; a leading `Icon` sits in the gutter. */
 export function ContextMenuItem({
 	className,
 	...props
@@ -63,6 +70,7 @@ export function ContextMenuItem({
 	);
 }
 
+/** The row that opens its submenu; renders a trailing chevron. */
 export function ContextMenuSubTrigger({
 	className,
 	children,
@@ -81,6 +89,7 @@ export function ContextMenuSubTrigger({
 	);
 }
 
+/** Thin rule between groups of items. */
 export function ContextMenuSeparator({
 	className,
 	...props

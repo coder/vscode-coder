@@ -2,21 +2,17 @@
    widget; typography inherits from the webview body. */
 .ui-menu {
 	--ui-menu-gutter: 2em;
-	--ui-menu-highlight-foreground: var(--ui-menu-selection-foreground);
-	--ui-menu-highlight-background: var(--ui-menu-selection-background);
-	--ui-menu-disabled-foreground: var(--ui-disabled-foreground);
-
-	min-width: 160px;
-	/* Cap to the space Radix reports (named per primitive) so long menus scroll */
-	max-height: var(
+	--ui-overlay-border: var(--ui-menu-border);
+	/* Radix names the available-height variable per primitive */
+	--ui-overlay-available-height: var(
 		--radix-dropdown-menu-content-available-height,
 		var(--radix-context-menu-content-available-height)
 	);
+
+	min-width: 160px;
 	padding: 4px;
 	color: var(--ui-menu-foreground);
 	background: var(--ui-menu-background);
-	border: 1px solid var(--ui-menu-border);
-	border-radius: var(--ui-radius-large);
 	outline: 0;
 }
 
@@ -47,11 +43,11 @@
 }
 
 .ui-menu__item[data-disabled] {
-	color: var(--ui-menu-disabled-foreground);
+	color: var(--ui-disabled-foreground);
 }
 
 /* Leading icons sit in the left gutter so labels stay aligned */
-.ui-menu__item > .codicon:not(.ui-menu__submenu-indicator) {
+.ui-menu__item > .ui-icon:not(.ui-menu__submenu-indicator) {
 	position: absolute;
 	left: 0;
 	width: var(--ui-menu-gutter);
@@ -67,7 +63,7 @@
 }
 
 .ui-menu__item[data-disabled] .ui-menu__submenu-indicator {
-	opacity: 0.4;
+	opacity: var(--ui-disabled-opacity);
 }
 
 .ui-menu__separator {
@@ -78,8 +74,10 @@
 
 /* Entry fade like native menus. Gated on data-state so an interrupted
    entry animation cannot block Radix from unmounting the closed menu. */
-.ui-menu:not([data-state="closed"]) {
-	animation: ui-menu-fade-in 83ms linear;
+@media (prefers-reduced-motion: no-preference) {
+	.ui-menu:not([data-state="closed"]) {
+		animation: ui-menu-fade-in 83ms linear;
+	}
 }
 
 @keyframes ui-menu-fade-in {
@@ -88,17 +86,15 @@
 	}
 }
 
-@media (prefers-reduced-motion: reduce) {
-	.ui-menu:not([data-state="closed"]) {
-		animation: none;
-	}
-}
-
 @media (forced-colors: active) {
-	.ui-menu {
-		--ui-menu-highlight-foreground: HighlightText;
-		--ui-menu-highlight-background: Highlight;
-		--ui-menu-disabled-foreground: GrayText;
+	.ui-menu__item[data-highlighted],
+	.ui-menu__item[data-state="open"] {
+		color: HighlightText;
+		background: Highlight;
+	}
+
+	.ui-menu__item[data-disabled] {
+		color: GrayText;
 	}
 
 	.ui-menu__separator {

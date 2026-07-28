@@ -7,15 +7,6 @@ settings:
 
 catalogs:
   default:
-    '@radix-ui/react-context-menu':
-      specifier: ^2.3.3
-      version: 2.3.7
-    '@radix-ui/react-dropdown-menu':
-      specifier: ^2.1.20
-      version: 2.1.24
-    '@radix-ui/react-tooltip':
-      specifier: ^1.2.12
-      version: 1.2.16
     '@rolldown/plugin-babel':
       specifier: ^0.2.3
       version: 0.2.3
@@ -47,8 +38,8 @@ catalogs:
       specifier: ^2.4.0
       version: 2.4.0
     '@vscode/codicons':
-      specifier: ^0.0.45
-      version: 0.0.45
+      specifier: 0.0.46-24
+      version: 0.0.46-24
     babel-plugin-react-compiler:
       specifier: ^1.0.0
       version: 1.0.0
@@ -222,7 +213,7 @@ importers:
         version: 4.1.10(vitest@4.1.10)
       '@vscode/codicons':
         specifier: 'catalog:'
-        version: 0.0.45
+        version: 0.0.46-24
       '@vscode/test-cli':
         specifier: ^0.0.15
         version: 0.0.15
@@ -403,10 +394,10 @@ importers:
         version: 5.101.4(react@19.2.8)
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
-        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.45)(react-dom@19.2.8)(react@19.2.8)
+        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.46-24)(react-dom@19.2.8)(react@19.2.8)
       '@vscode/codicons':
         specifier: 'catalog:'
-        version: 0.0.45
+        version: 0.0.46-24
       date-fns:
         specifier: 'catalog:'
         version: 4.4.0
@@ -448,24 +439,24 @@ importers:
   packages/ui:
     dependencies:
       '@radix-ui/react-context-menu':
-        specifier: 'catalog:'
+        specifier: ^2.3.7
         version: 2.3.7(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.8)(react@19.2.8)
       '@radix-ui/react-dropdown-menu':
-        specifier: 'catalog:'
+        specifier: ^2.1.24
         version: 2.1.24(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.8)(react@19.2.8)
       '@radix-ui/react-tooltip':
-        specifier: 'catalog:'
+        specifier: ^1.2.16
         version: 1.2.16(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.8)(react@19.2.8)
       '@vscode/codicons':
         specifier: 'catalog:'
-        version: 0.0.45
+        version: 0.0.46-24
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.17
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
-        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.45)(react-dom@19.2.8)(react@19.2.8)
+        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.46-24)(react-dom@19.2.8)(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -490,7 +481,7 @@ importers:
         version: 1.57.5
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
-        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.45)(react-dom@19.2.8)(react@19.2.8)
+        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.46-24)(react-dom@19.2.8)(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -511,10 +502,10 @@ importers:
         version: 5.101.4(react@19.2.8)
       '@vscode-elements/react-elements':
         specifier: 'catalog:'
-        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.45)(react-dom@19.2.8)(react@19.2.8)
+        version: 2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.46-24)(react-dom@19.2.8)(react@19.2.8)
       '@vscode/codicons':
         specifier: 'catalog:'
-        version: 0.0.45
+        version: 0.0.46-24
       date-fns:
         specifier: 'catalog:'
         version: 4.4.0
@@ -2582,8 +2573,8 @@ packages:
       react: 17 || 18 || 19
       react-dom: 17 || 18 || 19
 
-  '@vscode/codicons@0.0.45':
-    resolution: {integrity: sha512-1KAZ7XCMagp5Gdrlr4bbbcAqgcIL623iO1wW6rfcSVGAVUQvR0WP7bQx1SbJ11gmV3fdQTSEFIJQ/5C+HuVasw==}
+  '@vscode/codicons@0.0.46-24':
+    resolution: {integrity: sha512-KIDWUYxG6eh+DHRg+3G4bS487T+g1ZkLfB4HylOBbCcHsvLdfLMRM/m92DS1Ljhi8nglLr9ucwwWhHTEAC+DpA==}
 
   '@vscode/test-cli@0.0.15':
     resolution: {integrity: sha512-nAxk2X79wuXS7aOhyFFhFcCqd7EBUoMesu7ZgsYE/4eFjyBMuyIweVE94BxdKH1RieN8eOz2SIrljrZt6Lk9fQ==}
@@ -7722,23 +7713,23 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@vscode-elements/elements@2.5.1(@vscode/codicons@0.0.45)':
+  '@vscode-elements/elements@2.5.1(@vscode/codicons@0.0.46-24)':
     dependencies:
       '@lit/context': 1.1.6
-      '@vscode/codicons': 0.0.45
+      '@vscode/codicons': 0.0.46-24
       lit: 3.3.3
 
-  '@vscode-elements/react-elements@2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.45)(react-dom@19.2.8)(react@19.2.8)':
+  '@vscode-elements/react-elements@2.4.0(@types/react@19.2.17)(@vscode/codicons@0.0.46-24)(react-dom@19.2.8)(react@19.2.8)':
     dependencies:
       '@lit/react': 1.0.8(@types/react@19.2.17)
-      '@vscode-elements/elements': 2.5.1(@vscode/codicons@0.0.45)
+      '@vscode-elements/elements': 2.5.1(@vscode/codicons@0.0.46-24)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
     transitivePeerDependencies:
       - '@types/react'
       - '@vscode/codicons'
 
-  '@vscode/codicons@0.0.45': {}
+  '@vscode/codicons@0.0.46-24': {}
 
   '@vscode/test-cli@0.0.15':
     dependencies:

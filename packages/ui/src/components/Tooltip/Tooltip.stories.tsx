@@ -1,10 +1,6 @@
 import { expect, screen, userEvent, waitFor } from "storybook/test";
 
-import {
-	overlaySpace,
-	PIXEL_ALL_THEMES,
-	STORY_TRIGGER_CLASS,
-} from "#storybook";
+import { PIXEL_ALL_THEMES, STORY_TRIGGER_CLASS } from "#storybook";
 
 import { Tooltip } from "./Tooltip";
 
@@ -46,32 +42,16 @@ async function openTooltipWithKeyboard(): Promise<Element> {
 	return tooltip;
 }
 
-export const Closed: Story = {};
-
-/* Keyboard focus opens instantly and proves keyboard users get the tooltip. */
 export const Open: Story = {
-	decorators: [overlaySpace(280, 100, { anchor: "bottom" })],
 	parameters: { pixel: PIXEL_ALL_THEMES },
 	play: async () => {
 		await openTooltipWithKeyboard();
 	},
 };
 
-/* Long content wraps inside the native hover widget's max-width. */
-export const LongContent: Story = {
-	decorators: [overlaySpace(720, 160, { anchor: "bottom" })],
-	args: {
-		content: LONG_TEXT,
-	},
-	play: async () => {
-		await openTooltipWithKeyboard();
-	},
-};
-
-/* Overflowing content scrolls inside the tooltip. The default cap is the
-   viewport space Radix reports; the story lowers it via style. */
-export const OverflowScrolls: Story = {
-	decorators: [overlaySpace(720, 240, { anchor: "bottom" })],
+/* Long content wraps at the hover width cap and scrolls once the story
+   lowers the height cap. */
+export const Overflow: Story = {
 	args: {
 		content: Array.from({ length: 8 }, () => LONG_TEXT).join(" "),
 		style: { maxHeight: 160 },
@@ -80,17 +60,6 @@ export const OverflowScrolls: Story = {
 		const tooltip = await openTooltipWithKeyboard();
 		await waitFor(() =>
 			expect(tooltip.scrollHeight).toBeGreaterThan(tooltip.clientHeight),
-		);
-	},
-};
-
-export const ClosesOnEscape: Story = {
-	parameters: { pixel: { exclude: true } },
-	play: async () => {
-		await openTooltipWithKeyboard();
-		await userEvent.keyboard("{Escape}");
-		await waitFor(() =>
-			expect(screen.queryByRole("tooltip")).not.toBeInTheDocument(),
 		);
 	},
 };

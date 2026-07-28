@@ -29,7 +29,6 @@ export type { CodiconName } from "./codicons";
 export {
 	ContextMenu,
 	ContextMenuContent,
-	ContextMenuGroup,
 	ContextMenuItem,
 	ContextMenuSeparator,
 	ContextMenuSub,
@@ -40,7 +39,6 @@ export {
 export {
 	DropdownMenu,
 	DropdownMenuContent,
-	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
 	DropdownMenuSub,

@@ -1,3 +1,7 @@
+import { expect, screen, userEvent, waitFor } from "storybook/test";
+
+import "./storybook.css";
+
 /**
  * Pixel matrix override (`parameters.pixel`) that snapshots a story in every
  * captured VS Code theme; the base matrix in pixel.jsonc is light/dark only.
@@ -8,34 +12,13 @@ export const PIXEL_ALL_THEMES = {
 	},
 } as const;
 
-/* Story stand-in for a webview-styled button. */
+/* Story stand-in for a webview-styled button; styled in storybook.css. */
 export const STORY_TRIGGER_CLASS = "story-trigger";
 
-/* Reserves in-flow space for a portalled overlay so Pixel snapshots keep
-   it in frame; anchor "bottom" pins the trigger low for overlays that
-   open upward. */
-export function overlaySpace(
-	width: number,
-	height: number,
-	{ anchor = "top" }: { anchor?: "top" | "bottom" } = {},
-): (Story: React.ComponentType) => React.JSX.Element {
-	const style: React.CSSProperties =
-		anchor === "bottom"
-			? {
-					width,
-					height,
-					// Keeps the trigger's focus outline inside the cropped bounds
-					paddingBottom: 8,
-					display: "flex",
-					alignItems: "flex-end",
-					justifyContent: "center",
-				}
-			: { width, height };
-	return function OverlaySpace(Story) {
-		return (
-			<div data-overlay-space style={style}>
-				<Story />
-			</div>
-		);
-	};
+/* Opens the focused menu's submenu; keyboard skips the hover-open delay. */
+export async function openSubmenuByKeyboard(itemName: string): Promise<void> {
+	const menu = await screen.findByRole("menu");
+	await waitFor(() => expect(menu.contains(document.activeElement)).toBe(true));
+	await userEvent.keyboard("{End}{ArrowRight}");
+	await screen.findByRole("menuitem", { name: itemName });
 }

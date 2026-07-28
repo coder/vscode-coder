@@ -23,7 +23,6 @@ export function Tooltip({
 	content,
 	children,
 	className,
-	sideOffset = 4,
 	delayDuration = 500,
 	...props
 }: TooltipProps): React.JSX.Element {
@@ -33,8 +32,10 @@ export function Tooltip({
 				<TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
 				<TooltipPrimitive.Portal>
 					<TooltipPrimitive.Content
+						// Native hovers sit flush with the target, left-aligned
+						align="start"
+						collisionPadding={8}
 						{...props}
-						sideOffset={sideOffset}
 						className={cx("ui-overlay ui-tooltip", className)}
 					>
 						{content}

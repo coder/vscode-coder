@@ -8,11 +8,16 @@ import "../overlay.css";
 
 import type { ComponentPropsWithRef } from "react";
 
+/** Root state container; wraps the trigger and content. */
 export const DropdownMenu = DropdownMenuPrimitive.Root;
+
+/** Opens the menu on click; renders its child element via `asChild`. */
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
-export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
+
+/** Scopes one submenu; wraps its sub trigger and sub content. */
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 
+/** The floating menu surface, portalled to `body`. */
 export function DropdownMenuContent({
 	className,
 	...props
@@ -34,6 +39,7 @@ export function DropdownMenuContent({
 	);
 }
 
+/** The floating submenu surface, opened by `DropdownMenuSubTrigger`. */
 export function DropdownMenuSubContent({
 	className,
 	...props
@@ -53,6 +59,7 @@ export function DropdownMenuSubContent({
 	);
 }
 
+/** One selectable action row; a leading `Icon` sits in the gutter. */
 export function DropdownMenuItem({
 	className,
 	...props
@@ -67,6 +74,7 @@ export function DropdownMenuItem({
 	);
 }
 
+/** The row that opens its submenu; renders a trailing chevron. */
 export function DropdownMenuSubTrigger({
 	className,
 	children,
@@ -85,6 +93,7 @@ export function DropdownMenuSubTrigger({
 	);
 }
 
+/** Thin rule between groups of items. */
 export function DropdownMenuSeparator({
 	className,
 	...props
