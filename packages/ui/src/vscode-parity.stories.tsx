@@ -1,19 +1,29 @@
 import {
 	VscodeBadge,
 	VscodeButton,
+	VscodeContextMenu,
 	VscodeIcon,
 	VscodeProgressBar,
 	VscodeProgressRing,
 	VscodeTextfield,
 	VscodeToolbarButton,
 } from "@vscode-elements/react-elements";
+import { useState } from "react";
+import { screen, userEvent, within } from "storybook/test";
 
-import "./components/control.css";
+import { Button } from "./components/Button/Button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuKeybinding,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "./components/DropdownMenu/DropdownMenu";
 import { IconButton } from "./components/IconButton/IconButton";
 import { ProgressBar } from "./components/ProgressBar/ProgressBar";
 import { SearchInput } from "./components/SearchInput/SearchInput";
 import { Spinner } from "./components/Spinner/Spinner";
-import "./components/StatePanel/StatePanel.css";
 import { StatusPill } from "./components/StatusPill/StatusPill";
 import { PIXEL_ALL_THEMES } from "./storybook";
 
@@ -45,6 +55,19 @@ const Row = ({
 	</>
 );
 
+/* Stateful like the reference's own toggleable/checked handling */
+const PinToggle = (): React.JSX.Element => {
+	const [pressed, setPressed] = useState(true);
+	return (
+		<IconButton
+			icon="pinned"
+			label="Pinned"
+			aria-pressed={pressed}
+			onClick={() => setPressed(!pressed)}
+		/>
+	);
+};
+
 const Parity = (): React.JSX.Element => (
 	<div
 		style={{
@@ -60,7 +83,7 @@ const Parity = (): React.JSX.Element => (
 			ours={
 				<>
 					<IconButton icon="refresh" label="Refresh" />
-					<IconButton icon="pinned" label="Pinned" aria-pressed="true" />
+					<PinToggle />
 				</>
 			}
 			reference={
@@ -99,11 +122,17 @@ const Parity = (): React.JSX.Element => (
 			// Narrower than the reference by design: VS Code core's
 			// monaco-text-button uses 4px/8px padding; vscode-elements uses 13px.
 			ours={
-				<div className="ui-state-panel__action" style={{ margin: 0 }}>
-					<button type="button">Try again</button>
-				</div>
+				<>
+					<Button>Try again</Button>
+					<Button variant="secondary">Cancel</Button>
+				</>
 			}
-			reference={<VscodeButton>Try again</VscodeButton>}
+			reference={
+				<>
+					<VscodeButton>Try again</VscodeButton>
+					<VscodeButton secondary>Cancel</VscodeButton>
+				</>
+			}
 		/>
 		<Row
 			label="Link"
@@ -149,6 +178,44 @@ const Parity = (): React.JSX.Element => (
 	</div>
 );
 
+/* The reference menu renders inline; ours is a real portalled DropdownMenu,
+   so the play function opens it under its trigger. */
+const MenuParity = (): React.JSX.Element => (
+	<div
+		style={{
+			display: "grid",
+			gridTemplateColumns: "220px 220px",
+			gap: "16px",
+			alignItems: "start",
+			fontSize: "13px",
+		}}
+	>
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button variant="secondary">Menu</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent>
+				<DropdownMenuItem>Start workspace</DropdownMenuItem>
+				<DropdownMenuItem>Open logs</DropdownMenuItem>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem>
+					Rebuild
+					<DropdownMenuKeybinding keys="ctrl+shift+r" />
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+		<VscodeContextMenu
+			show
+			data={[
+				{ label: "Start workspace" },
+				{ label: "Open logs" },
+				{ separator: true },
+				{ label: "Rebuild", keybinding: "Ctrl+Shift+R" },
+			]}
+		/>
+	</div>
+);
+
 const meta: Meta<typeof Parity> = {
 	title: "UI/VSCodeParity",
 	component: Parity,
@@ -159,3 +226,13 @@ export default meta;
 type Story = StoryObj<typeof Parity>;
 
 export const SideBySide: Story = {};
+
+export const Menu: Story = {
+	render: () => <MenuParity />,
+	play: async ({ canvasElement }) => {
+		await userEvent.click(
+			within(canvasElement).getByRole("button", { name: "Menu" }),
+		);
+		await screen.findByRole("menu");
+	},
+};

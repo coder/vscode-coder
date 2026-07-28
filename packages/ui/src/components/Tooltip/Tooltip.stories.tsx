@@ -1,8 +1,10 @@
 import { expect, screen, userEvent, waitFor } from "storybook/test";
 
-import { PIXEL_ALL_THEMES, STORY_TRIGGER_CLASS } from "#storybook";
+import { PIXEL_ALL_THEMES } from "#storybook";
 
-import { Tooltip } from "./Tooltip";
+import { Button } from "../Button/Button";
+
+import { Tooltip, TooltipProvider } from "./Tooltip";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
@@ -14,15 +16,17 @@ const LONG_TEXT =
 const meta: Meta<typeof Tooltip> = {
 	title: "UI/Tooltip",
 	component: Tooltip,
+	decorators: [
+		// Instant in stories; the provider default is 500ms
+		(Story) => (
+			<TooltipProvider delayDuration={0}>
+				<Story />
+			</TooltipProvider>
+		),
+	],
 	args: {
 		content: "Stops the workspace",
-		// Instant in stories; the component default is 500ms
-		delayDuration: 0,
-		children: (
-			<button type="button" className={STORY_TRIGGER_CLASS}>
-				Stop
-			</button>
-		),
+		children: <Button variant="secondary">Stop</Button>,
 	},
 };
 

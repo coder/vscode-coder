@@ -46,12 +46,29 @@
 	color: var(--ui-disabled-foreground);
 }
 
-/* Leading icons sit in the left gutter so labels stay aligned */
+/* Leading icons sit in the left gutter so labels stay aligned; a checked
+   item's check renders as one, like the native menu-item-check. */
 .ui-menu__item > .ui-icon:not(.ui-menu__submenu-indicator) {
 	position: absolute;
 	left: 0;
 	width: var(--ui-menu-gutter);
 	text-align: center;
+}
+
+/* Non-interactive heading above a group of items */
+.ui-menu__label {
+	display: flex;
+	align-items: center;
+	height: 24px;
+	padding: 0 var(--ui-menu-gutter);
+	color: var(--ui-description-foreground);
+}
+
+/* Right-aligned keybinding hint, dimmed like the native .keybinding */
+.ui-menu__keybinding {
+	margin-inline-start: auto;
+	padding-inline-start: 1em;
+	opacity: 0.7;
 }
 
 /* Chevron in the right gutter, like the native indicator */

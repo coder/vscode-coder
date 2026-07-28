@@ -5,23 +5,25 @@
 	color: var(--ui-toolbar-foreground);
 	background: transparent;
 	border: 0;
-	border-radius: 5px;
+	border-radius: var(--ui-radius-medium);
 	cursor: pointer;
 	outline: 1px solid transparent;
 	outline-offset: -1px;
 }
 
-.ui-icon-button:hover:not(:disabled) {
+/* A toggled button keeps its active colors on hover, like native */
+.ui-icon-button:hover:not(:disabled, [aria-pressed="true"]) {
 	background: var(--ui-toolbar-hover-background);
 	outline-color: var(--ui-toolbar-hover-outline);
 	outline-style: dashed;
 }
 
-.ui-icon-button:active:not(:disabled) {
+.ui-icon-button:active:not(:disabled, [aria-pressed="true"]) {
 	background: var(--ui-toolbar-active-background);
 }
 
-.ui-icon-button:focus-visible {
+/* Native buttons outline on :focus, so a click shows it too */
+.ui-icon-button:focus {
 	outline-color: var(--ui-focus-border);
 	outline-style: solid;
 }

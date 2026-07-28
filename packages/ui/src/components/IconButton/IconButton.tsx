@@ -17,11 +17,12 @@ export interface IconButtonProps extends Omit<
 	label: string;
 }
 
+/* No default title: native toolbar buttons hint with the styled hover
+   widget, not the browser box. Wrap in Tooltip for that. */
 export function IconButton({
 	icon,
 	label,
 	className,
-	title = label,
 	type = "button",
 	...props
 }: IconButtonProps): React.JSX.Element {
@@ -29,7 +30,6 @@ export function IconButton({
 		<button
 			{...props}
 			type={type}
-			title={title}
 			aria-label={label}
 			className={cx("ui-control", "ui-icon-button", className)}
 		>

@@ -8,6 +8,8 @@ import "../overlay.css";
 
 import type { ComponentPropsWithRef } from "react";
 
+export { MenuKeybinding as DropdownMenuKeybinding } from "../menu";
+
 /** Root state container; wraps the trigger and content. */
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 
@@ -70,6 +72,66 @@ export function DropdownMenuItem({
 		<DropdownMenuPrimitive.Item
 			{...props}
 			className={cx("ui-menu__item", className)}
+		/>
+	);
+}
+
+/** A toggleable row; shows the native-style check in the gutter when checked. */
+export function DropdownMenuCheckboxItem({
+	className,
+	children,
+	...props
+}: ComponentPropsWithRef<
+	typeof DropdownMenuPrimitive.CheckboxItem
+>): React.JSX.Element {
+	return (
+		<DropdownMenuPrimitive.CheckboxItem
+			{...props}
+			className={cx("ui-menu__item", className)}
+		>
+			<DropdownMenuPrimitive.ItemIndicator asChild>
+				<Icon name="check" />
+			</DropdownMenuPrimitive.ItemIndicator>
+			{children}
+		</DropdownMenuPrimitive.CheckboxItem>
+	);
+}
+
+/** Groups `DropdownMenuRadioItem`s into one exclusive selection. */
+export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
+
+/** One choice in a radio group; native menus check the active choice. */
+export function DropdownMenuRadioItem({
+	className,
+	children,
+	...props
+}: ComponentPropsWithRef<
+	typeof DropdownMenuPrimitive.RadioItem
+>): React.JSX.Element {
+	return (
+		<DropdownMenuPrimitive.RadioItem
+			{...props}
+			className={cx("ui-menu__item", className)}
+		>
+			<DropdownMenuPrimitive.ItemIndicator asChild>
+				<Icon name="check" />
+			</DropdownMenuPrimitive.ItemIndicator>
+			{children}
+		</DropdownMenuPrimitive.RadioItem>
+	);
+}
+
+/** Non-interactive heading above a group of items. */
+export function DropdownMenuLabel({
+	className,
+	...props
+}: ComponentPropsWithRef<
+	typeof DropdownMenuPrimitive.Label
+>): React.JSX.Element {
+	return (
+		<DropdownMenuPrimitive.Label
+			{...props}
+			className={cx("ui-menu__label", className)}
 		/>
 	);
 }

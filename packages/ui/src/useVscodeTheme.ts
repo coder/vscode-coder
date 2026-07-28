@@ -5,6 +5,7 @@ export type VscodeThemeKind =
 	"light" | "dark" | "high-contrast" | "high-contrast-light";
 
 const THEME_KIND_ATTRIBUTE = "data-vscode-theme-kind";
+const THEME_ID_ATTRIBUTE = "data-vscode-theme-id";
 
 // One shared observer no matter how many components use the hook.
 const listeners = new Set<() => void>();
@@ -17,7 +18,7 @@ function subscribe(onChange: () => void): () => void {
 		});
 		observer.observe(document.body, {
 			attributes: true,
-			attributeFilter: [THEME_KIND_ATTRIBUTE],
+			attributeFilter: [THEME_KIND_ATTRIBUTE, THEME_ID_ATTRIBUTE],
 		});
 	}
 	listeners.add(onChange);
@@ -30,7 +31,7 @@ function subscribe(onChange: () => void): () => void {
 	};
 }
 
-function getSnapshot(): VscodeThemeKind {
+function getThemeKind(): VscodeThemeKind {
 	switch (document.body.getAttribute(THEME_KIND_ATTRIBUTE)) {
 		case "vscode-light":
 			return "light";
@@ -43,7 +44,17 @@ function getSnapshot(): VscodeThemeKind {
 	}
 }
 
-/** The active VS Code theme kind; re-renders when the user switches themes. */
+/* The kind alone misses switches between two themes of the same kind */
+function getSnapshot(): string {
+	return `${document.body.getAttribute(THEME_ID_ATTRIBUTE)}\n${document.body.getAttribute(THEME_KIND_ATTRIBUTE)}`;
+}
+
+/**
+ * The active VS Code theme kind. Re-renders on any theme switch, including
+ * between two themes of the same kind, so token values read in JS never
+ * go stale.
+ */
 export function useVscodeTheme(): VscodeThemeKind {
-	return useSyncExternalStore(subscribe, getSnapshot);
+	useSyncExternalStore(subscribe, getSnapshot);
+	return getThemeKind();
 }

@@ -11,8 +11,17 @@ function setThemeKind(kind: string | undefined): void {
 	}
 }
 
+function setThemeId(id: string | undefined): void {
+	if (id === undefined) {
+		document.body.removeAttribute("data-vscode-theme-id");
+	} else {
+		document.body.setAttribute("data-vscode-theme-id", id);
+	}
+}
+
 afterEach(() => {
 	setThemeKind(undefined);
+	setThemeId(undefined);
 });
 
 describe("useVscodeTheme", () => {
@@ -47,5 +56,25 @@ describe("useVscodeTheme", () => {
 			await Promise.resolve();
 		});
 		expect(result.current).toBe("light");
+	});
+
+	it("re-renders when switching between two themes of the same kind", async () => {
+		setThemeKind("vscode-dark");
+		setThemeId("vscode-dark-modern");
+		let renders = 0;
+
+		const { result } = renderHook(() => {
+			renders += 1;
+			return useVscodeTheme();
+		});
+		const rendersBefore = renders;
+
+		// MutationObserver callbacks are microtasks; flush them inside act.
+		await act(async () => {
+			setThemeId("vscode-dark-plus");
+			await Promise.resolve();
+		});
+		expect(renders).toBeGreaterThan(rendersBefore);
+		expect(result.current).toBe("dark");
 	});
 });

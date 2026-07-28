@@ -843,7 +843,7 @@
 		"prettier": "^3.9.6",
 		"react": "catalog:",
 		"react-dom": "catalog:",
-		"storybook": "^10.5.6",
+		"storybook": "catalog:",
 		"typescript": "catalog:",
 		"typescript-eslint": "^8.66.0",
 		"utf-8-validate": "^6.0.6",

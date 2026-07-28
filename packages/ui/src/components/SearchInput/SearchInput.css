@@ -6,7 +6,7 @@
 	color: var(--ui-input-foreground);
 	background: var(--ui-input-background);
 	border: 1px solid var(--ui-input-border);
-	border-radius: 4px;
+	border-radius: var(--ui-radius-small);
 }
 
 .ui-search-input:focus-within {

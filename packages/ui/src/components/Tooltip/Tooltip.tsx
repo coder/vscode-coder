@@ -6,7 +6,22 @@ import "../overlay.css";
 
 import "./Tooltip.css";
 
-import type { ComponentPropsWithRef, ReactNode } from "react";
+import type { ComponentProps, ComponentPropsWithRef, ReactNode } from "react";
+
+export type TooltipProviderProps = ComponentProps<
+	typeof TooltipPrimitive.Provider
+>;
+
+/**
+ * App-level tooltip context; mount once near the root. Sharing one provider
+ * lets a pointer moving between nearby triggers skip the show delay, like
+ * native hovers. The default delay is VS Code's `workbench.hover.delay`.
+ */
+export function TooltipProvider(
+	props: TooltipProviderProps,
+): React.JSX.Element {
+	return <TooltipPrimitive.Provider delayDuration={500} {...props} />;
+}
 
 export interface TooltipProps extends Omit<
 	ComponentPropsWithRef<typeof TooltipPrimitive.Content>,
@@ -15,33 +30,29 @@ export interface TooltipProps extends Omit<
 	content: ReactNode;
 	/** The trigger element; must accept a forwarded ref (asChild). */
 	children: ReactNode;
-	/** Show delay in ms. Defaults to VS Code's workbench.hover.delay. */
-	delayDuration?: number;
 }
 
+/** Hover bubble matching the native hover widget; requires a `TooltipProvider` ancestor. */
 export function Tooltip({
 	content,
 	children,
 	className,
-	delayDuration = 500,
 	...props
 }: TooltipProps): React.JSX.Element {
 	return (
-		<TooltipPrimitive.Provider delayDuration={delayDuration}>
-			<TooltipPrimitive.Root>
-				<TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
-				<TooltipPrimitive.Portal>
-					<TooltipPrimitive.Content
-						// Native hovers sit flush with the target, left-aligned
-						align="start"
-						collisionPadding={8}
-						{...props}
-						className={cx("ui-overlay ui-tooltip", className)}
-					>
-						{content}
-					</TooltipPrimitive.Content>
-				</TooltipPrimitive.Portal>
-			</TooltipPrimitive.Root>
-		</TooltipPrimitive.Provider>
+		<TooltipPrimitive.Root>
+			<TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+			<TooltipPrimitive.Portal>
+				<TooltipPrimitive.Content
+					// Native hovers sit flush with the target, left-aligned
+					align="start"
+					collisionPadding={8}
+					{...props}
+					className={cx("ui-overlay ui-tooltip", className)}
+				>
+					{content}
+				</TooltipPrimitive.Content>
+			</TooltipPrimitive.Portal>
+		</TooltipPrimitive.Root>
 	);
 }

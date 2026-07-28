@@ -8,6 +8,8 @@ import "../overlay.css";
 
 import type { ComponentPropsWithRef } from "react";
 
+export { MenuKeybinding as ContextMenuKeybinding } from "../menu";
+
 /** Root state container; wraps the trigger and content. */
 export const ContextMenu = ContextMenuPrimitive.Root;
 
@@ -66,6 +68,66 @@ export function ContextMenuItem({
 		<ContextMenuPrimitive.Item
 			{...props}
 			className={cx("ui-menu__item", className)}
+		/>
+	);
+}
+
+/** A toggleable row; shows the native-style check in the gutter when checked. */
+export function ContextMenuCheckboxItem({
+	className,
+	children,
+	...props
+}: ComponentPropsWithRef<
+	typeof ContextMenuPrimitive.CheckboxItem
+>): React.JSX.Element {
+	return (
+		<ContextMenuPrimitive.CheckboxItem
+			{...props}
+			className={cx("ui-menu__item", className)}
+		>
+			<ContextMenuPrimitive.ItemIndicator asChild>
+				<Icon name="check" />
+			</ContextMenuPrimitive.ItemIndicator>
+			{children}
+		</ContextMenuPrimitive.CheckboxItem>
+	);
+}
+
+/** Groups `ContextMenuRadioItem`s into one exclusive selection. */
+export const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup;
+
+/** One choice in a radio group; native menus check the active choice. */
+export function ContextMenuRadioItem({
+	className,
+	children,
+	...props
+}: ComponentPropsWithRef<
+	typeof ContextMenuPrimitive.RadioItem
+>): React.JSX.Element {
+	return (
+		<ContextMenuPrimitive.RadioItem
+			{...props}
+			className={cx("ui-menu__item", className)}
+		>
+			<ContextMenuPrimitive.ItemIndicator asChild>
+				<Icon name="check" />
+			</ContextMenuPrimitive.ItemIndicator>
+			{children}
+		</ContextMenuPrimitive.RadioItem>
+	);
+}
+
+/** Non-interactive heading above a group of items. */
+export function ContextMenuLabel({
+	className,
+	...props
+}: ComponentPropsWithRef<
+	typeof ContextMenuPrimitive.Label
+>): React.JSX.Element {
+	return (
+		<ContextMenuPrimitive.Label
+			{...props}
+			className={cx("ui-menu__label", className)}
 		/>
 	);
 }

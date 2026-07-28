@@ -9,7 +9,7 @@
 	border: 1px solid var(--ui-overlay-border, transparent);
 	border-radius: var(--ui-radius-large);
 	box-shadow: var(--ui-widget-shadow);
-	z-index: 40;
+	z-index: var(--ui-z-index-overlay);
 }
 
 @media (forced-colors: active) {

@@ -44,8 +44,9 @@ if (
 
 /**
  * Applies a captured VS Code theme dump (`pnpm sync:vscode-themes`) as one
- * `:root` stylesheet and mirrors VS Code's body attribute for theme-aware
- * hooks. Synchronous and idempotent, so stories render fully themed.
+ * `:root` stylesheet and mirrors VS Code's body theme attributes for
+ * theme-aware hooks. Synchronous and idempotent, so stories render fully
+ * themed.
  */
 let appliedTheme: string | undefined;
 
@@ -68,6 +69,7 @@ function applyTheme(requested: string): void {
 		.map(([property, value]) => `${property}: ${value};`)
 		.join("")}}`;
 	document.body.setAttribute("data-vscode-theme-kind", `vscode-${slug}`);
+	document.body.setAttribute("data-vscode-theme-id", slug);
 }
 
 /* Pixel's autofit crop follows in-flow layout, but portalled overlays
