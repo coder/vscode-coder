@@ -26,6 +26,7 @@ jobs:
       contents: read
     outputs:
       packageName: ${{ steps.package.outputs.packageName }}
+      vsceVersion: ${{ steps.versions.outputs.vsceVersion }}
       hasVscePat: ${{ steps.check-secrets.outputs.hasVscePat }}
       hasOvsxPat: ${{ steps.check-secrets.outputs.hasOvsxPat }}
     steps:
@@ -49,6 +50,15 @@ jobs:
           echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           echo "Package name: $PACKAGE_NAME"
 
+      - name: Determine vsce version from lockfile
+        id: versions
+        # Explicit bash enables pipefail: an extraction miss fails the job
+        # instead of silently installing latest.
+        shell: bash
+        run: |
+          VSCE_VERSION="$(grep -m 1 -o "@vscode/vsce@[0-9][^'(]*" pnpm-lock.yaml | cut -d @ -f 3)"
+          echo "vsceVersion=$VSCE_VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Check secrets
         id: check-secrets
         env:
@@ -62,8 +72,6 @@ jobs:
     name: Publish to VS Marketplace
     needs: setup
     runs-on: ubuntu-24.04
-    # Protected environment: configure required reviewers and (ideally) move
-    # VSCE_PAT/OVSX_PAT into it so publishing needs an explicit approval.
     environment: publish
     permissions:
       contents: read
@@ -74,8 +82,9 @@ jobs:
           node-version: "22"
 
       - name: Install vsce
-        # Pinned to the version locked in pnpm-lock.yaml; keep in sync.
-        run: npm install -g @vscode/vsce@3.9.2
+        env:
+          VSCE_VERSION: ${{ needs.setup.outputs.vsceVersion }}
+        run: npm install -g "@vscode/vsce@${VSCE_VERSION}"
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -83,8 +92,6 @@ jobs:
 
       - name: Publish to VS Marketplace
         env:
-          # vsce reads VSCE_PAT from the environment; never pass tokens as
-          # command-line arguments (visible in process listings).
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           echo "Publishing version ${{ inputs.version }} to VS Marketplace"
@@ -116,8 +123,6 @@ jobs:
 
       - name: Publish to Open VSX
         env:
-          # ovsx reads OVSX_PAT from the environment; never pass tokens as
-          # command-line arguments (visible in process listings).
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           echo "Publishing version ${{ inputs.version }} to Open VSX"
