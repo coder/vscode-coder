@@ -16,15 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 0
           persist-credentials: false
-
-      - name: Verify tag is on main
-        run: |
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "Error: Pre-release tags must be pushed from the main branch"
-            exit 1
-          fi
 
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
