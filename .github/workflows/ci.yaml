@@ -9,6 +9,9 @@ on:
 
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint
@@ -16,6 +19,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
 
@@ -48,6 +53,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
 
@@ -71,6 +78,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
 
@@ -88,6 +97,8 @@ jobs:
     if: github.repository_owner == 'coder' && github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
 
@@ -107,6 +118,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
 
