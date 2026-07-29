@@ -45,7 +45,10 @@ import {
 } from "./remote/sshOverrides";
 import { resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
-import { getRemoteEditorLogGlobs } from "./supportBundle/workspaceFiles";
+import {
+	getRemoteServerDataPath,
+	toRemoteLogGlobs,
+} from "./supportBundle/remoteServerDataPath";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
 import { toRemoteAuthority } from "./util/authority";
 import { openInBrowser, toSafeHost } from "./util/uri";
@@ -103,7 +106,7 @@ type WorkspaceResolution =
 			readonly agentName?: string;
 			readonly client: CoderApi;
 			readonly workspaceId: string;
-			/** Active authority, only when it identifies this workspace. */
+			/** Authority for the workspace, live or reconstructed from metadata. */
 			readonly remoteAuthority?: string;
 	  }
 	| { readonly status: "cancelled" }
@@ -442,11 +445,11 @@ export class Commands {
 				progress.report({ message: "Resolving CLI..." });
 				// Independent of the CLI and never rejects, so resolve the globs
 				// concurrently and discard them when the CLI lacks support.
-				const remoteLogGlobs = getRemoteEditorLogGlobs({
+				const remoteLogGlobs = getRemoteServerDataPath({
 					appRoot: vscode.env.appRoot,
 					remoteAuthority,
 					logger: this.logger,
-				});
+				}).then(toRemoteLogGlobs);
 				const env = await this.resolveCliEnv(client);
 				if (!env.featureSet.supportBundle) {
 					throw new SupportBundleUnsupportedCliError();
@@ -1153,11 +1156,18 @@ export class Commands {
 		item?: OpenableTreeItem,
 	): Promise<WorkspaceResolution> {
 		if (item) {
+			const agentName =
+				item instanceof AgentTreeItem ? item.agent.name : undefined;
 			return {
 				status: "selected",
-				agentName: item instanceof AgentTreeItem ? item.agent.name : undefined,
+				agentName,
 				client: this.extensionClient,
 				workspaceId: createWorkspaceIdentifier(item.workspace),
+				remoteAuthority: this.toWorkspaceAuthority(
+					this.extensionClient,
+					item.workspace,
+					agentName,
+				),
 			};
 		}
 		if (this.workspace && this.remoteWorkspaceClient) {
@@ -1180,9 +1190,34 @@ export class Commands {
 				status: "selected",
 				client: this.extensionClient,
 				workspaceId: createWorkspaceIdentifier(pick.workspace),
+				remoteAuthority: this.toWorkspaceAuthority(
+					this.extensionClient,
+					pick.workspace,
+				),
 			};
 		}
 		return pick;
+	}
+
+	/**
+	 * Reconstruct the authority Remote-SSH would use, defaulting to the
+	 * first agent like the CLI does.
+	 */
+	private toWorkspaceAuthority(
+		client: CoderApi,
+		workspace: Workspace,
+		agentName?: string,
+	): string | undefined {
+		const baseUrl = client.getAxiosInstance().defaults.baseURL;
+		if (!baseUrl) {
+			return undefined;
+		}
+		return toRemoteAuthority(
+			baseUrl,
+			workspace.owner_name,
+			workspace.name,
+			agentName ?? extractAgents(workspace.latest_build.resources)[0]?.name,
+		);
 	}
 
 	/** Resolve a CliEnv, preferring a locally cached binary over a network fetch. */

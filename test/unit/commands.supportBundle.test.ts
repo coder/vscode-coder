@@ -4,8 +4,13 @@ import * as vscode from "vscode";
 import { Commands } from "@/commands";
 import * as cliExec from "@/core/cliExec";
 import { appendVsCodeLogs } from "@/supportBundle/appendVsCodeLogs";
-import { getRemoteEditorLogGlobs } from "@/supportBundle/workspaceFiles";
-import { AgentTreeItem } from "@/workspace/workspacesProvider";
+import { getRemoteServerDataPath } from "@/supportBundle/remoteServerDataPath";
+import {
+	AgentTreeItem,
+	WorkspaceTreeItem,
+} from "@/workspace/workspacesProvider";
+
+import { agent, resource, workspace } from "@repo/mocks";
 
 import { createTelemetryHarness } from "../mocks/telemetry";
 import {
@@ -13,11 +18,6 @@ import {
 	createMockLogger,
 	MockProgressReporter,
 } from "../mocks/testHelpers";
-
-import type {
-	Workspace,
-	WorkspaceAgent,
-} from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
 import type { ServiceContainer } from "@/core/container";
@@ -32,17 +32,29 @@ vi.mock("@/supportBundle/appendVsCodeLogs", () => ({
 	appendVsCodeLogs: vi.fn(),
 }));
 
-vi.mock("@/supportBundle/workspaceFiles", () => ({
-	getRemoteEditorLogGlobs: vi.fn(),
-}));
+vi.mock("@/supportBundle/remoteServerDataPath", async (importOriginal) => {
+	const actual =
+		await importOriginal<
+			typeof import("@/supportBundle/remoteServerDataPath")
+		>();
+	return { ...actual, getRemoteServerDataPath: vi.fn() };
+});
 
 const OUTPUT_PATH = "/tmp/bundle.zip";
-const REMOTE_LOG_GLOBS = ["~/.vscode-server/data/logs/**/*.log"];
-const workspace = {
+// Derived from the mocked data path by the real toRemoteLogGlobs.
+const REMOTE_LOG_GLOBS = [
+	"~/.vscode-server/data/logs/**/*.log",
+	"~/.vscode-server/.*.log",
+	"~/.vscode-server/cli/servers/*/log.txt",
+];
+const TEST_WORKSPACE = workspace({
 	owner_name: "owner",
 	name: "ws",
-	latest_build: { status: "running" },
-} as Workspace;
+	latest_build: {
+		status: "running",
+		resources: [resource({ agents: [agent({ name: "main" })] })],
+	},
+});
 
 function setup(options: { cliVersion?: string } = {}) {
 	vi.clearAllMocks();
@@ -56,7 +68,10 @@ function setup(options: { cliVersion?: string } = {}) {
 	);
 	vi.mocked(cliExec.version).mockResolvedValue(options.cliVersion ?? "v2.36.0");
 	vi.mocked(cliExec.supportBundle).mockResolvedValue(undefined);
-	vi.mocked(getRemoteEditorLogGlobs).mockResolvedValue(REMOTE_LOG_GLOBS);
+	vi.mocked(getRemoteServerDataPath).mockResolvedValue({
+		value: "~/.vscode-server",
+		style: "posix",
+	});
 	vi.mocked(appendVsCodeLogs).mockResolvedValue(undefined);
 
 	const logger = createMockLogger();
@@ -100,8 +115,7 @@ function setRemoteAuthority(value: string | undefined): void {
 }
 
 function agentItem(agentName: string): AgentTreeItem {
-	const agent = { id: "agent-id", name: agentName } as WorkspaceAgent;
-	return new AgentTreeItem(agent, workspace);
+	return new AgentTreeItem(agent({ name: agentName }), TEST_WORKSPACE);
 }
 
 function connectToWorkspace(
@@ -110,10 +124,8 @@ function connectToWorkspace(
 	remoteAuthority: string,
 	agentName?: string,
 ): void {
-	commands.workspace = workspace;
-	commands.agent = agentName
-		? ({ id: "agent-id", name: agentName } as WorkspaceAgent)
-		: undefined;
+	commands.workspace = TEST_WORKSPACE;
+	commands.agent = agentName ? agent({ name: agentName }) : undefined;
 	commands.remoteWorkspaceClient = client;
 	setRemoteAuthority(remoteAuthority);
 }
@@ -133,9 +145,51 @@ describe("Commands.supportBundle", () => {
 				workspaceFiles: REMOTE_LOG_GLOBS,
 			}),
 		);
-		// No item authority: remote logs cannot target the workspace.
-		expect(getRemoteEditorLogGlobs).toHaveBeenCalledWith(
-			expect.objectContaining({ remoteAuthority: undefined }),
+		// The authority is reconstructed from the item's workspace and agent.
+		expect(getRemoteServerDataPath).toHaveBeenCalledWith(
+			expect.objectContaining({
+				remoteAuthority: "ssh-remote+coder-vscode.coder.test--owner--ws.dev",
+			}),
+		);
+	});
+
+	it("prefers the selected item over the active connection", async () => {
+		const { commands, client } = setup();
+		connectToWorkspace(
+			commands,
+			client,
+			"ssh-remote+coder-vscode.example--owner--ws.main",
+			"main",
+		);
+
+		await commands.supportBundle(agentItem("dev"));
+
+		expect(cliExec.supportBundle).toHaveBeenCalledWith(
+			expect.anything(),
+			"owner/ws",
+			expect.objectContaining({ agentName: "dev" }),
+		);
+		expect(getRemoteServerDataPath).toHaveBeenCalledWith(
+			expect.objectContaining({
+				remoteAuthority: "ssh-remote+coder-vscode.coder.test--owner--ws.dev",
+			}),
+		);
+	});
+
+	it("reconstructs the authority with the first agent for workspace items", async () => {
+		const { commands } = setup();
+
+		await commands.supportBundle(new WorkspaceTreeItem(TEST_WORKSPACE, false));
+
+		expect(cliExec.supportBundle).toHaveBeenCalledWith(
+			expect.anything(),
+			"owner/ws",
+			expect.objectContaining({ agentName: undefined }),
+		);
+		expect(getRemoteServerDataPath).toHaveBeenCalledWith(
+			expect.objectContaining({
+				remoteAuthority: "ssh-remote+coder-vscode.coder.test--owner--ws.main",
+			}),
 		);
 	});
 
@@ -151,7 +205,7 @@ describe("Commands.supportBundle", () => {
 			"owner/ws",
 			expect.objectContaining({ agentName: "main" }),
 		);
-		expect(getRemoteEditorLogGlobs).toHaveBeenCalledWith(
+		expect(getRemoteServerDataPath).toHaveBeenCalledWith(
 			expect.objectContaining({ remoteAuthority }),
 		);
 	});

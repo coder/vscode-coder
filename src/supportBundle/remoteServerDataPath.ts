@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
@@ -6,15 +7,24 @@ import {
 	type RemoteSshExtensionId,
 } from "../remote/sshExtension";
 import { parseRemoteAuthority } from "../util/authority";
-import { vscodeProposed } from "../vscodeProposed";
 
 import type { Logger } from "../logging/logger";
 
 interface RemoteServerDataPathOptions {
+	/** The local editor's install root, `vscode.env.appRoot`. */
+	readonly appRoot: string;
+	/** Authority identifying the target workspace's SSH host. */
 	readonly remoteAuthority?: string;
-	/** Product-specific server directory name, such as `.vscode-server`. */
-	readonly serverDataFolderName?: string;
 	readonly logger: Logger;
+}
+
+interface ProductConfiguration {
+	/**
+	 * Name of the server's data directory under the remote user's home
+	 * directory, such as `.vscode-server`.
+	 * @see https://github.com/microsoft/vscode/blob/085b6a1465387d070516ba8a640ccfed66417796/src/vs/server/node/server.main.ts#L39
+	 */
+	serverDataFolderName?: unknown;
 }
 
 export interface RemoteServerDataPath {
@@ -31,35 +41,30 @@ const parentInstallPathExtensions: readonly RemoteSshExtensionId[] = [
 /**
  * Resolve the remote server's data directory.
  *
- * Precedence mirrors the server's own resolution, the `--server-data-dir`
- * flag over `VSCODE_AGENT_FOLDER` over the home default: supported
- * implementations pass `serverInstallPath` as that flag, so its
- * interpretation outranks the environment variable.
+ * Remote-SSH implementations derive this path from `serverInstallPath` and
+ * hand it to the server at launch (as `--server-data-dir` or
+ * `VSCODE_AGENT_FOLDER`), so the setting alone resolves it without an
+ * active connection.
  * @see https://github.com/microsoft/vscode/blob/085b6a1465387d070516ba8a640ccfed66417796/src/vs/server/node/server.main.ts#L39
  */
 export async function getRemoteServerDataPath({
+	appRoot,
 	remoteAuthority,
-	serverDataFolderName,
 	logger,
 }: RemoteServerDataPathOptions): Promise<RemoteServerDataPath> {
-	const configured =
-		remoteAuthority && serverDataFolderName
-			? getConfiguredServerDataPath(
-					remoteAuthority,
-					serverDataFolderName,
-					logger,
-				)
-			: undefined;
-	const active =
-		configured ??
-		(remoteAuthority
-			? await getActiveServerDataPath(remoteAuthority, logger)
-			: undefined);
-	// The agent expands `~/` against the remote home directory, matching the
-	// server's default when neither override is present.
+	const serverDataFolderName = await readServerDataFolderName(appRoot, logger);
+	let dataPath: RemoteServerDataPath | undefined;
+	if (remoteAuthority && serverDataFolderName) {
+		dataPath = getConfiguredServerDataPath(
+			remoteAuthority,
+			serverDataFolderName,
+			logger,
+		);
+	}
+	// The agent expands `~/` against the remote home, the server's default.
 	return (
-		active ?? {
-			value: `~/${serverDataFolderName ?? ".vscode-remote"}`,
+		dataPath ?? {
+			value: `~/${serverDataFolderName || ".vscode-remote"}`,
 			style: "posix",
 		}
 	);
@@ -84,34 +89,6 @@ export function toRemoteLogGlobs({
 	];
 }
 
-async function getActiveServerDataPath(
-	remoteAuthority: string,
-	logger: Logger,
-): Promise<RemoteServerDataPath | undefined> {
-	try {
-		if (!vscodeProposed.workspace.getRemoteExecServer) {
-			return undefined;
-		}
-		const execServer =
-			await vscodeProposed.workspace.getRemoteExecServer(remoteAuthority);
-		if (!execServer) {
-			return undefined;
-		}
-		const { env, osPlatform } = await execServer.env();
-		const value = env.VSCODE_AGENT_FOLDER;
-		if (value === undefined) {
-			return undefined;
-		}
-		return { value, style: pathStyleForPlatform(osPlatform) };
-	} catch (error) {
-		logger.warn(
-			"Could not resolve the remote server data path from the active environment",
-			error,
-		);
-		return undefined;
-	}
-}
-
 function getConfiguredServerDataPath(
 	remoteAuthority: string,
 	serverDataFolderName: string,
@@ -129,6 +106,8 @@ function getConfiguredServerDataPath(
 			"serverInstallPath",
 			{},
 		);
+		// Windsurf and Antigravity have no install path setting; their
+		// servers always live in the home default.
 		let installPath: string | undefined;
 		if (extensionId === "jeanp413.open-remote-ssh") {
 			installPath = findOpenRemoteSshInstallPath(parts.sshHost, installPaths);
@@ -147,11 +126,16 @@ function getConfiguredServerDataPath(
 			installPath,
 			remotePlatforms[parts.sshHost],
 		);
+		const remotePath = path[style];
+		// SSH resolves relative paths against home; the agent only expands
+		// absolute, `~/`, and environment-variable paths.
+		if (!remotePath.isAbsolute(installPath) && !/^[~$%]/.test(installPath)) {
+			installPath = `~/${installPath}`;
+		}
 		if (extensionId === "jeanp413.open-remote-ssh") {
 			return { value: installPath, style };
 		}
 
-		const remotePath = path[style];
 		// Cursor accepts the product folder itself despite documenting a parent.
 		// Its installer strips this suffix before consistently re-appending it.
 		const parentPath =
@@ -230,4 +214,25 @@ function configuredPathStyle(
  */
 function escapeGlobChars(value: string): string {
 	return value.replace(/[*?[{]/g, (char) => `[${char}]`);
+}
+
+async function readServerDataFolderName(
+	appRoot: string,
+	logger: Logger,
+): Promise<string | undefined> {
+	try {
+		const productJson = await fs.readFile(
+			path.join(appRoot, "product.json"),
+			"utf-8",
+		);
+		const { serverDataFolderName } = JSON.parse(
+			productJson,
+		) as ProductConfiguration;
+		return typeof serverDataFolderName === "string" && serverDataFolderName
+			? serverDataFolderName
+			: undefined;
+	} catch (error) {
+		logger.warn("Could not read the editor's product metadata", error);
+		return undefined;
+	}
 }
