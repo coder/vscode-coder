@@ -65,7 +65,7 @@ export {
 	formatKeybinding,
 	type Keybinding,
 	type KeybindingPlatform,
-} from "./components/keybinding";
+} from "./keybinding";
 export {
 	Tooltip,
 	type TooltipProps,

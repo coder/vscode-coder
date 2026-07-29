@@ -46,7 +46,7 @@
 
 @media (forced-colors: active) {
 	.ui-progress-bar__indicator {
-		/* Also repaints the reduced-motion stripes in the system color */
+		/* Also repaints the reduced-motion stripes */
 		--ui-progress-foreground: Highlight;
 
 		background: Highlight;

@@ -28,8 +28,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	/* Tint the uncolored sides so the stopped ring reads as a paused
-	   spinner, not a circle */
+	/* Tint the uncolored sides so the stopped ring reads as a paused spinner */
 	.ui-spinner {
 		--ui-spinner-track: color-mix(
 			in srgb,
@@ -45,6 +44,7 @@
 
 @media (forced-colors: active) {
 	.ui-spinner {
+		/* Overrides the reduced-motion tint too */
 		border-color: Canvas;
 		border-block-start-color: Highlight;
 		border-inline-end-color: Highlight;

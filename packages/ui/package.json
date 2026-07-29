@@ -19,7 +19,7 @@
 	"imports": {
 		"#cx": "./src/cx.ts",
 		"#codicons": "./src/codicons.ts",
-		"#storybook": "./src/storybook.tsx"
+		"#storybook": "./src/storybook.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit"

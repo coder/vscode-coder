@@ -1,5 +1,4 @@
-/* Shared ContextMenu/DropdownMenu surface matching the native menu
-   widget; typography inherits from the webview body. */
+/* Shared ContextMenu/DropdownMenu surface, matching the native menu widget. */
 .ui-menu {
 	--ui-menu-gutter: 2em;
 	--ui-overlay-border: var(--ui-menu-border);
@@ -9,6 +8,7 @@
 		var(--radix-context-menu-content-available-height)
 	);
 
+	/* Native .monaco-menu min-width */
 	min-width: 160px;
 	padding: 4px;
 	color: var(--ui-menu-foreground);
@@ -16,13 +16,18 @@
 	outline: 0;
 }
 
-.ui-menu__item {
-	position: relative;
+/* Rows and headings share their metrics so their labels stay aligned; the
+   gutters double as the check/icon columns. */
+.ui-menu__item,
+.ui-menu__label {
 	display: flex;
 	align-items: center;
 	height: 24px;
-	/* Native label inset; the gutters double as the check/icon columns. */
 	padding: 0 var(--ui-menu-gutter);
+}
+
+.ui-menu__item {
+	position: relative;
 	line-height: 1;
 	white-space: nowrap;
 	border-radius: var(--ui-radius-medium);
@@ -32,8 +37,8 @@
 	outline-offset: -1px;
 }
 
-/* Selection border only resolves in high contrast; an open submenu
-   keeps its parent highlighted, like native. */
+/* An open submenu keeps its parent highlighted, like native; the selection
+   border only resolves in high contrast. */
 .ui-menu__item[data-highlighted],
 .ui-menu__item[data-state="open"] {
 	forced-color-adjust: none;
@@ -46,8 +51,8 @@
 	color: var(--ui-disabled-foreground);
 }
 
-/* Leading icons sit in the left gutter so labels stay aligned; a checked
-   item's check renders as one, like the native menu-item-check. */
+/* Left gutter, like the native menu-item-check; a checked item's check is
+   just another leading icon. */
 .ui-menu__item > .ui-icon:not(.ui-menu__submenu-indicator) {
 	position: absolute;
 	left: 0;
@@ -55,23 +60,18 @@
 	text-align: center;
 }
 
-/* Non-interactive heading above a group of items */
 .ui-menu__label {
-	display: flex;
-	align-items: center;
-	height: 24px;
-	padding: 0 var(--ui-menu-gutter);
 	color: var(--ui-description-foreground);
 }
 
-/* Right-aligned keybinding hint, dimmed like the native .keybinding */
+/* Native .keybinding: right-aligned, 1em inset, 0.7 opacity */
 .ui-menu__keybinding {
 	margin-inline-start: auto;
 	padding-inline-start: 1em;
 	opacity: 0.7;
 }
 
-/* Chevron in the right gutter, like the native indicator */
+/* Right gutter, like the native submenu-indicator */
 .ui-menu__submenu-indicator {
 	position: absolute;
 	right: 0;
@@ -89,8 +89,8 @@
 	background: var(--ui-menu-separator);
 }
 
-/* Entry fade like native menus. Gated on data-state so an interrupted
-   entry animation cannot block Radix from unmounting the closed menu. */
+/* Native fadeIn. Gated on data-state so an interrupted entry animation
+   cannot block Radix from unmounting the closed menu. */
 @media (prefers-reduced-motion: no-preference) {
 	.ui-menu:not([data-state="closed"]) {
 		animation: ui-menu-fade-in 83ms linear;

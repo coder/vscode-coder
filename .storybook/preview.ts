@@ -74,9 +74,9 @@ function applyTheme(requested: string): void {
 
 /* Pixel's autofit crop follows in-flow layout, but portalled overlays
    (menus, tooltips) are out of flow and would be cropped away. Grow the
-   story root to cover any element portalled to body. Relies on the
-   padded (top-left anchored) layout: growth only extends right and
-   down, so already-positioned overlays never move. */
+   story root to cover them. Relies on the padded (top-left anchored)
+   layout: growth only extends right and down, so already-positioned
+   overlays never move. */
 function fitRootToPortals(): void {
 	const root = document.getElementById("root");
 	if (!root) {
@@ -85,19 +85,10 @@ function fitRootToPortals(): void {
 	const origin = root.getBoundingClientRect();
 	let right = 0;
 	let bottom = 0;
-	for (const el of document.body.children) {
-		// Skip Storybook chrome (root, loaders, error display, a11y helpers)
-		if (
-			!(el instanceof HTMLElement) ||
-			el.id.startsWith("storybook-") ||
-			el.classList.contains("sb-wrapper")
-		) {
-			continue;
-		}
-		const rect = el.getBoundingClientRect();
-		if (rect.width === 0 || rect.height === 0) {
-			continue;
-		}
+	for (const overlay of document.querySelectorAll(
+		"[data-radix-popper-content-wrapper]",
+	)) {
+		const rect = overlay.getBoundingClientRect();
 		right = Math.max(right, rect.right - origin.left);
 		bottom = Math.max(bottom, rect.bottom - origin.top);
 	}

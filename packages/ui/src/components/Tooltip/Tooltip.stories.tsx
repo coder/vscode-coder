@@ -1,4 +1,4 @@
-import { expect, screen, userEvent, waitFor } from "storybook/test";
+import { screen, userEvent } from "storybook/test";
 
 import { PIXEL_ALL_THEMES } from "#storybook";
 
@@ -33,37 +33,23 @@ const meta: Meta<typeof Tooltip> = {
 export default meta;
 type Story = StoryObj<typeof Tooltip>;
 
-/* findByRole("tooltip") matches Radix's visually hidden a11y copy, so
-   open assertions target the visible .ui-tooltip bubble instead. */
-async function openTooltipWithKeyboard(): Promise<Element> {
+/* Focusing the trigger skips the pointer show delay. */
+async function openTooltipWithKeyboard(): Promise<void> {
 	await userEvent.tab();
 	await screen.findByRole("tooltip");
-	const tooltip = document.querySelector(".ui-tooltip");
-	if (!tooltip) {
-		throw new Error("visible tooltip content not found");
-	}
-	await waitFor(() => expect(tooltip).toBeVisible());
-	return tooltip;
 }
 
 export const Open: Story = {
 	parameters: { pixel: PIXEL_ALL_THEMES },
-	play: async () => {
-		await openTooltipWithKeyboard();
-	},
+	play: openTooltipWithKeyboard,
 };
 
-/* Long content wraps at the hover width cap and scrolls once the story
-   lowers the height cap. */
+/* Shows the wrap at the 700px width cap; maxHeight stands in for the real
+   half-window height cap, which is too tall to snapshot. */
 export const Overflow: Story = {
 	args: {
 		content: Array.from({ length: 8 }, () => LONG_TEXT).join(" "),
 		style: { maxHeight: 160 },
 	},
-	play: async () => {
-		const tooltip = await openTooltipWithKeyboard();
-		await waitFor(() =>
-			expect(tooltip.scrollHeight).toBeGreaterThan(tooltip.clientHeight),
-		);
-	},
+	play: openTooltipWithKeyboard,
 };

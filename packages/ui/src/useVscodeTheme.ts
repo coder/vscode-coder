@@ -7,6 +7,13 @@ export type VscodeThemeKind =
 const THEME_KIND_ATTRIBUTE = "data-vscode-theme-kind";
 const THEME_ID_ATTRIBUTE = "data-vscode-theme-id";
 
+const THEME_KINDS: ReadonlyMap<string, VscodeThemeKind> = new Map([
+	["vscode-light", "light"],
+	["vscode-dark", "dark"],
+	["vscode-high-contrast", "high-contrast"],
+	["vscode-high-contrast-light", "high-contrast-light"],
+]);
+
 // One shared observer no matter how many components use the hook.
 const listeners = new Set<() => void>();
 let observer: MutationObserver | undefined;
@@ -31,30 +38,17 @@ function subscribe(onChange: () => void): () => void {
 	};
 }
 
-function getThemeKind(): VscodeThemeKind {
-	switch (document.body.getAttribute(THEME_KIND_ATTRIBUTE)) {
-		case "vscode-light":
-			return "light";
-		case "vscode-high-contrast":
-			return "high-contrast";
-		case "vscode-high-contrast-light":
-			return "high-contrast-light";
-		default:
-			return "dark";
-	}
-}
-
-/* The kind alone misses switches between two themes of the same kind */
-function getSnapshot(): string {
-	return `${document.body.getAttribute(THEME_ID_ATTRIBUTE)}\n${document.body.getAttribute(THEME_KIND_ATTRIBUTE)}`;
+/** `<kind> <id>`, so a switch between two themes of one kind also changes it. */
+function getThemeSignature(): string {
+	const { body } = document;
+	return `${body.getAttribute(THEME_KIND_ATTRIBUTE)} ${body.getAttribute(THEME_ID_ATTRIBUTE)}`;
 }
 
 /**
- * The active VS Code theme kind. Re-renders on any theme switch, including
- * between two themes of the same kind, so token values read in JS never
- * go stale.
+ * The active VS Code theme kind, re-read on every theme switch so token
+ * values read in JS never go stale.
  */
 export function useVscodeTheme(): VscodeThemeKind {
-	useSyncExternalStore(subscribe, getSnapshot);
-	return getThemeKind();
+	const [kind] = useSyncExternalStore(subscribe, getThemeSignature).split(" ");
+	return THEME_KINDS.get(kind) ?? "dark";
 }

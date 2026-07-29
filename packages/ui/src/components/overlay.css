@@ -1,6 +1,5 @@
-/* Shared base for portalled overlay surfaces (menus, tooltips). Surfaces
-   map their border color and their primitive's Radix available-height
-   variable onto the --ui-overlay-* properties. */
+/* Shared base for portalled overlays; each surface maps its border color
+   and its Radix available-height variable onto the --ui-overlay-* names. */
 .ui-overlay {
 	box-sizing: border-box;
 	/* Cap to the space Radix reports so oversized content scrolls */

@@ -1,6 +1,6 @@
-import { expect, screen, userEvent, waitFor, within } from "storybook/test";
+import { expect, waitFor } from "storybook/test";
 
-import { openSubmenuByKeyboard, PIXEL_ALL_THEMES } from "#storybook";
+import { openMenu, openSubmenuByKeyboard, PIXEL_ALL_THEMES } from "#storybook";
 
 import { Button } from "../Button/Button";
 import { Icon } from "../Icon/Icon";
@@ -76,15 +76,7 @@ type Story = StoryObj<typeof MenuExample>;
 export const Open: Story = {
 	parameters: { pixel: PIXEL_ALL_THEMES },
 	play: async ({ canvasElement }) => {
-		await userEvent.click(
-			within(canvasElement).getByRole("button", { name: "Workspace actions" }),
-		);
-		await expect(
-			await screen.findByRole("menuitemcheckbox", { name: "Start on connect" }),
-		).toHaveAttribute("aria-checked", "true");
-		await expect(
-			screen.getByRole("menuitemradio", { name: "Name" }),
-		).toHaveAttribute("aria-checked", "true");
+		await openMenu(canvasElement, "Workspace actions");
 		await openSubmenuByKeyboard("Open logs");
 	},
 };
@@ -104,10 +96,7 @@ export const ManyItems: Story = {
 		</DropdownMenu>
 	),
 	play: async ({ canvasElement }) => {
-		await userEvent.click(
-			within(canvasElement).getByRole("button", { name: "Workspace actions" }),
-		);
-		const menu = await screen.findByRole("menu");
+		const menu = await openMenu(canvasElement, "Workspace actions");
 		await waitFor(() =>
 			expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight),
 		);

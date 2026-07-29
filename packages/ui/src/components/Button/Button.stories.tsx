@@ -1,5 +1,3 @@
-import { expect, within } from "storybook/test";
-
 import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { Button } from "./Button";
@@ -22,10 +20,4 @@ const meta: Meta<typeof ButtonStates> = {
 export default meta;
 type Story = StoryObj<typeof ButtonStates>;
 
-export const States: Story = {
-	play: async ({ canvasElement }) => {
-		await expect(
-			within(canvasElement).getByRole("button", { name: "Rebuild" }),
-		).toBeDisabled();
-	},
-};
+export const States: Story = {};

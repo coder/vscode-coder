@@ -9,7 +9,6 @@ import {
 	VscodeToolbarButton,
 } from "@vscode-elements/react-elements";
 import { useState } from "react";
-import { screen, userEvent, within } from "storybook/test";
 
 import { Button } from "./components/Button/Button";
 import {
@@ -25,7 +24,7 @@ import { ProgressBar } from "./components/ProgressBar/ProgressBar";
 import { SearchInput } from "./components/SearchInput/SearchInput";
 import { Spinner } from "./components/Spinner/Spinner";
 import { StatusPill } from "./components/StatusPill/StatusPill";
-import { PIXEL_ALL_THEMES } from "./storybook";
+import { openMenu, PIXEL_ALL_THEMES } from "./storybook";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
@@ -230,9 +229,6 @@ export const SideBySide: Story = {};
 export const Menu: Story = {
 	render: () => <MenuParity />,
 	play: async ({ canvasElement }) => {
-		await userEvent.click(
-			within(canvasElement).getByRole("button", { name: "Menu" }),
-		);
-		await screen.findByRole("menu");
+		await openMenu(canvasElement, "Menu");
 	},
 };

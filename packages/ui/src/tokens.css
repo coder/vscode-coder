@@ -16,8 +16,7 @@
 		--vscode-sideBar-background,
 		var(--vscode-editor-background)
 	);
-	/* For webviews hosted in an editor tab or the bottom panel;
-	   --ui-background assumes the sidebar */
+	/* For editor-tab and bottom-panel webviews; --ui-background assumes the sidebar */
 	--ui-panel-background: var(
 		--vscode-panel-background,
 		var(--vscode-editor-background)
@@ -116,35 +115,23 @@
 	/* Disabled text */
 	--ui-disabled-foreground: var(--vscode-disabledForeground);
 
-	/* Mirrors the native menu shadow; widget.shadow is null in high
-	   contrast, hiding the shadow like native */
+	/* widget.shadow is null in high contrast, hiding the shadow like native */
 	--ui-widget-shadow: var(
 		--vscode-shadow-lg,
 		0 0 12px var(--vscode-widget-shadow, transparent)
 	);
 
-	/* Corner radii, VS Code's scale (baseSizes.ts); fallbacks predate
-	   the host's corner radius tokens */
+	/* Corner radii, VS Code's scale (baseSizes.ts); fallbacks predate the host's */
 	--ui-radius-small: var(--vscode-cornerRadius-small, 4px);
 	--ui-radius-medium: var(--vscode-cornerRadius-medium, 6px);
 	--ui-radius-large: var(--vscode-cornerRadius-large, 8px);
 	--ui-radius-circle: var(--vscode-cornerRadius-circle, 9999px);
 
-	/* Spacing, VS Code's scale (baseSizes.ts) mirrored in full so new
-	   uses never edit this file; names are px times ten */
-	--ui-spacing-20: var(--vscode-spacing-size20, 2px);
-	--ui-spacing-40: var(--vscode-spacing-size40, 4px);
+	/* Spacing, VS Code's scale (baseSizes.ts); names are px times ten */
 	--ui-spacing-60: var(--vscode-spacing-size60, 6px);
-	--ui-spacing-80: var(--vscode-spacing-size80, 8px);
-	--ui-spacing-100: var(--vscode-spacing-size100, 10px);
 	--ui-spacing-120: var(--vscode-spacing-size120, 12px);
 	--ui-spacing-160: var(--vscode-spacing-size160, 16px);
-	--ui-spacing-200: var(--vscode-spacing-size200, 20px);
 	--ui-spacing-240: var(--vscode-spacing-size240, 24px);
-	--ui-spacing-280: var(--vscode-spacing-size280, 28px);
-	--ui-spacing-320: var(--vscode-spacing-size320, 32px);
-	--ui-spacing-360: var(--vscode-spacing-size360, 36px);
-	--ui-spacing-400: var(--vscode-spacing-size400, 40px);
 
 	/* Menus */
 	--ui-menu-background: var(--vscode-menu-background);

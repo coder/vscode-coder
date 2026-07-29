@@ -1,15 +1,15 @@
 export type KeybindingPlatform = "mac" | "win" | "linux";
 
 /**
- * A binding serialization, or one per platform using the same fields as a
- * package.json keybindings contribution (`key` is the fallback).
+ * A binding serialization, optionally overridden per platform, using the same
+ * fields as a `contributes.keybindings` entry.
  */
 export type Keybinding =
-	string | { key?: string; mac?: string; win?: string; linux?: string };
+	string | ({ key: string } & Partial<Record<KeybindingPlatform, string>>);
 
-type Modifier = "ctrl" | "shift" | "alt" | "meta";
+const MODIFIER_ORDER = ["ctrl", "shift", "alt", "meta"] as const;
 
-const MODIFIER_ORDER: readonly Modifier[] = ["ctrl", "shift", "alt", "meta"];
+type Modifier = (typeof MODIFIER_ORDER)[number];
 
 /* Modifier tokens as VS Code serializes them, aliases included */
 const MODIFIER_TOKENS: Readonly<Record<string, Modifier>> = {
@@ -54,34 +54,20 @@ function detectPlatform(): KeybindingPlatform {
 	return "linux";
 }
 
+/* Capitalization covers enter/escape/tab/space/home/end and the F-keys; add
+   numpad or OEM names to KEY_LABELS if a menu ever needs them. */
 function keyLabel(token: string): string {
-	const label = KEY_LABELS[token];
-	if (label) {
-		return label;
-	}
-	if (token.length === 1 || /^f\d+$/.test(token)) {
-		return token.toUpperCase();
-	}
-	// ponytail: capitalization covers enter/escape/tab/space/home/end;
-	// extend KEY_LABELS if a menu ever needs numpad or OEM key names
-	return token.charAt(0).toUpperCase() + token.slice(1);
+	return KEY_LABELS[token] ?? token.charAt(0).toUpperCase() + token.slice(1);
 }
 
 function formatChord(chord: string, platform: KeybindingPlatform): string {
 	const labels = MODIFIER_LABELS[platform];
-	const modifiers = new Set<Modifier>();
-	let key = "";
-	for (const token of chord.toLowerCase().split("+")) {
-		const modifier = MODIFIER_TOKENS[token];
-		if (modifier) {
-			modifiers.add(modifier);
-		} else if (token) {
-			key = token;
-		}
-	}
+	const tokens = chord.toLowerCase().split("+").filter(Boolean);
+	const modifiers = tokens.map((token) => MODIFIER_TOKENS[token]);
 	const parts = MODIFIER_ORDER.filter((modifier) =>
-		modifiers.has(modifier),
+		modifiers.includes(modifier),
 	).map((modifier) => labels[modifier]);
+	const key = tokens.findLast((token) => !MODIFIER_TOKENS[token]);
 	if (key) {
 		parts.push(keyLabel(key));
 	}
@@ -92,8 +78,7 @@ function formatChord(chord: string, platform: KeybindingPlatform): string {
  * Renders a keybinding serialization ("ctrl+shift+r", chords separated by
  * spaces) the way native menus label it on the current (or given) platform:
  * `⇧⌘R` on macOS, `Ctrl+Shift+R` elsewhere (VS Code's UILabelProvider and
- * key code uiMap). VS Code gives extensions no way to look up the effective
- * binding for a command, so callers pass their contributed defaults.
+ * key code uiMap).
  */
 export function formatKeybinding(
 	keybinding: Keybinding,
@@ -103,9 +88,6 @@ export function formatKeybinding(
 		typeof keybinding === "string"
 			? keybinding
 			: (keybinding[platform] ?? keybinding.key);
-	if (!serialized) {
-		return "";
-	}
 	return serialized
 		.trim()
 		.split(/\s+/)

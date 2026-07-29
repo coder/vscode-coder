@@ -11,23 +11,19 @@
 	outline-offset: -1px;
 }
 
-/* A toggled button keeps its active colors on hover, like native */
-.ui-icon-button:hover:not(:disabled, [aria-pressed="true"]) {
+/* One outline serves hover, toggled, and focus, so :where() keeps the
+   exclusions weightless and source order alone decides. */
+.ui-icon-button:hover:where(:not(:disabled, [aria-pressed="true"])) {
 	background: var(--ui-toolbar-hover-background);
 	outline-color: var(--ui-toolbar-hover-outline);
 	outline-style: dashed;
 }
 
-.ui-icon-button:active:not(:disabled, [aria-pressed="true"]) {
+.ui-icon-button:active:where(:not(:disabled, [aria-pressed="true"])) {
 	background: var(--ui-toolbar-active-background);
 }
 
-/* Native buttons outline on :focus, so a click shows it too */
-.ui-icon-button:focus {
-	outline-color: var(--ui-focus-border);
-	outline-style: solid;
-}
-
+/* A toggled button keeps its active colors on hover, like native */
 .ui-icon-button[aria-pressed="true"] {
 	color: var(--ui-input-option-active-foreground);
 	background: var(--ui-input-option-active-background);
@@ -35,7 +31,8 @@
 	outline-style: solid;
 }
 
-.ui-icon-button:disabled {
-	opacity: var(--ui-disabled-opacity);
-	cursor: default;
+/* Last: native's ring is an outline, the others border colors, so it wins */
+.ui-icon-button:focus {
+	outline-color: var(--ui-focus-border);
+	outline-style: solid;
 }

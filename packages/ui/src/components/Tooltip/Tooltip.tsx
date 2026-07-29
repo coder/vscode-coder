@@ -13,9 +13,9 @@ export type TooltipProviderProps = ComponentProps<
 >;
 
 /**
- * App-level tooltip context; mount once near the root. Sharing one provider
- * lets a pointer moving between nearby triggers skip the show delay, like
- * native hovers. The default delay is VS Code's `workbench.hover.delay`.
+ * App-level tooltip context; `Tooltip` throws without one. Sharing a single
+ * provider lets a pointer moving between nearby triggers skip the show delay,
+ * like native hovers. The default delay is VS Code's `workbench.hover.delay`.
  */
 export function TooltipProvider(
 	props: TooltipProviderProps,

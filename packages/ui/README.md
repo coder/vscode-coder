@@ -23,6 +23,11 @@ import "@repo/ui/codicon.css";
 hosted in an editor tab or bottom panel uses `--ui-panel-background` instead,
 since VS Code gives webviews no host signal to resolve it automatically.
 
+The radius and spacing tokens mirror VS Code's scale (`baseSizes.ts`), but
+only the rungs components actually use are declared; add one when a component
+needs it. Native menu, button, and hover paddings are hardcoded rather than
+scale-derived, so parity-pinned values stay literals.
+
 Component CSS is inherit-first: typography and text color come from the
 webview (`font: inherit`), and controls center content with a fixed height
 plus the shared `.ui-control` flex base in `components/control.css`.
@@ -59,8 +64,6 @@ an interrupted entry animation cannot delay unmounting. High contrast,
 `forced-colors`, and `prefers-reduced-motion` are handled.
 
 ## Known gaps
-
-Deliberate deferrals, fine to fix later.
 
 - Overlay shadows are darker than native in dark themes: menus in VS Code
   use `shadow-lg`, which webviews cannot read, so the closest available

@@ -17,8 +17,8 @@
 	font-size: 2rem;
 }
 
-/* The loading panel puts a spinner in the icon slot */
-.ui-state-panel > .ui-spinner {
+/* The loading panel's spinner stands in for the icon */
+.ui-state-panel__spinner {
 	margin-bottom: var(--ui-spacing-120);
 }
 
