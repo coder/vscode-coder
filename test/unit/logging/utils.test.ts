@@ -95,6 +95,22 @@ describe("Logging utils", () => {
 			const result = safeStringify(deep);
 			expect(result).toContain("level4: { value: 'deep' }");
 		});
+
+		it("bounds output size for large inputs", () => {
+			const longString = safeStringify("a".repeat(50_000));
+			expect(longString?.length).toBeLessThan(20_000);
+
+			const bigArray = safeStringify(
+				Array.from({ length: 10_000 }, (_, i) => i),
+			);
+			expect(bigArray).toContain("more items");
+
+			let nested: Record<string, unknown> = { value: "bottom" };
+			for (let i = 0; i < 30; i++) {
+				nested = { child: nested };
+			}
+			expect(safeStringify(nested)).not.toContain("bottom");
+		});
 	});
 
 	describe("createRequestId", () => {

@@ -109,4 +109,69 @@ describe("REST HTTP Logger", () => {
 			expect(logger.error).toHaveBeenCalledWith("Request error", error);
 		});
 	});
+
+	describe("redaction", () => {
+		function makeConfig(): RequestConfigWithMeta {
+			return {
+				method: "POST",
+				url: "https://api.example.com/endpoint",
+				headers: {
+					authorization: "Bearer request-secret",
+					"X-From-Command": "command-secret",
+				} as unknown as AxiosHeaders,
+				data: { refresh_token: "body-secret" },
+				headerCommandKeys: ["X-From-Command"],
+				metadata: createRequestMeta(),
+			} as RequestConfigWithMeta;
+		}
+
+		function loggedText(fn: ReturnType<typeof vi.fn>): string {
+			return fn.mock.calls.flat().map(String).join("\n");
+		}
+
+		it("redacts sensitive request headers and body fields", () => {
+			const logger = createMockLogger();
+
+			logRequest(logger, makeConfig(), HttpClientLogLevel.BODY);
+
+			const logged = loggedText(vi.mocked(logger.trace));
+			expect(logged).not.toContain("request-secret");
+			expect(logged).not.toContain("command-secret");
+			expect(logged).not.toContain("body-secret");
+			expect(logged).toContain("authorization: <redacted>");
+			expect(logged).toContain("X-From-Command: <redacted>");
+		});
+
+		it("redacts sensitive headers and body fields on error paths", () => {
+			const logger = createMockLogger();
+			const error = new AxiosError("Bad Request");
+			error.config = makeConfig();
+			error.response = {
+				status: 400,
+				headers: { "set-cookie": ["session=response-secret"] },
+				data: { access_token: "body-secret", error: "invalid_grant" },
+			} as unknown as AxiosResponse;
+
+			logError(logger, error, HttpClientLogLevel.BODY);
+
+			const logged = loggedText(vi.mocked(logger.error));
+			expect(logged).not.toContain("response-secret");
+			expect(logged).not.toContain("body-secret");
+			expect(logged).toContain("set-cookie: <redacted>");
+			expect(logged).toContain("invalid_grant");
+		});
+
+		it("redacts header-command headers on network error paths", () => {
+			const logger = createMockLogger();
+			const error = new AxiosError("Network Error", "ECONNREFUSED");
+			error.config = makeConfig();
+
+			logError(logger, error, HttpClientLogLevel.BODY);
+
+			const logged = loggedText(vi.mocked(logger.error));
+			expect(logged).not.toContain("request-secret");
+			expect(logged).not.toContain("command-secret");
+			expect(logged).not.toContain("body-secret");
+		});
+	});
 });
