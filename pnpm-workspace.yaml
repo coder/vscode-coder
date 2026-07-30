@@ -14,7 +14,8 @@ catalog:
   "@vscode-elements/react-elements": ^2.4.0
   "@vscode/codicons": 0.0.46-24
   babel-plugin-react-compiler: ^1.0.0
-  coder: github:coder/coder#v2.34.1
+  # v2.34.1, pinned to the commit SHA so the ref is immutable (tags can be re-pointed).
+  coder: github:coder/coder#2e8d80abf74d655b54ace1533b6c13102ea8d549
   date-fns: ^4.4.0
   react: ^19.2.8
   react-dom: ^19.2.8

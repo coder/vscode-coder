@@ -44,7 +44,7 @@ catalogs:
       specifier: ^1.0.0
       version: 1.0.0
     coder:
-      specifier: github:coder/coder#v2.34.1
+      specifier: github:coder/coder#2e8d80abf74d655b54ace1533b6c13102ea8d549
       version: 0.0.0
     date-fns:
       specifier: ^4.4.0
