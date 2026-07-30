@@ -12,7 +12,7 @@ import {
 import { runDiagnosticCli } from "./command/diagnosticFlow";
 import * as cliExec from "./core/cliExec";
 import { CertificateError } from "./error/certificateError";
-import { toError } from "./error/errorUtils";
+import { raceWithAbort, toError } from "./error/errorUtils";
 import { type FeatureSet, featureSetForVersion } from "./featureSet";
 import {
 	AuthTelemetry,
@@ -45,6 +45,10 @@ import {
 } from "./remote/sshOverrides";
 import { resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
+import {
+	getRemoteServerDataPath,
+	toRemoteLogGlobs,
+} from "./supportBundle/remoteServerDataPath";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
 import { toRemoteAuthority } from "./util/authority";
 import { openInBrowser, toSafeHost } from "./util/uri";
@@ -99,8 +103,11 @@ interface LoginArgs {
 type WorkspaceResolution =
 	| {
 			readonly status: "selected";
+			readonly agentName?: string;
 			readonly client: CoderApi;
 			readonly workspaceId: string;
+			/** Authority for the workspace, live or reconstructed from metadata. */
+			readonly remoteAuthority?: string;
 	  }
 	| { readonly status: "cancelled" }
 	| {
@@ -150,6 +157,7 @@ export class Commands {
 	// are logged into (for convenience; otherwise the recents menu can be a pain
 	// if you use multiple deployments).
 	public workspace?: Workspace;
+	public agent?: WorkspaceAgent;
 	public workspaceLogPath?: string;
 	public remoteWorkspaceClient?: CoderApi;
 
@@ -424,7 +432,7 @@ export class Commands {
 			return;
 		}
 
-		const { client, workspaceId } = resolved;
+		const { agentName, client, workspaceId, remoteAuthority } = resolved;
 
 		const outputUri = await this.promptSupportBundlePath();
 		if (!outputUri) {
@@ -435,13 +443,30 @@ export class Commands {
 		const result = await withCancellableProgress(
 			async ({ signal, progress }) => {
 				progress.report({ message: "Resolving CLI..." });
+				// Independent of the CLI and never rejects, so resolve the globs
+				// concurrently and discard them when the CLI lacks support.
+				const remoteLogGlobs = getRemoteServerDataPath({
+					appRoot: vscode.env.appRoot,
+					remoteAuthority,
+					logger: this.logger,
+				}).then(toRemoteLogGlobs);
 				const env = await this.resolveCliEnv(client);
 				if (!env.featureSet.supportBundle) {
 					throw new SupportBundleUnsupportedCliError();
 				}
 
+				// The resolution APIs take no signal, so race to keep cancel honest.
+				const workspaceFiles = env.featureSet.supportBundleWorkspaceFiles
+					? await raceWithAbort(remoteLogGlobs, signal)
+					: [];
+
 				progress.report({ message: "Collecting diagnostics..." });
-				await cliExec.supportBundle(env, workspaceId, outputUri.fsPath, signal);
+				await cliExec.supportBundle(env, workspaceId, {
+					outputPath: outputUri.fsPath,
+					agentName,
+					workspaceFiles,
+					signal,
+				});
 
 				progress.report({ message: "Adding VS Code logs..." });
 				await appendVsCodeLogs(
@@ -1131,17 +1156,27 @@ export class Commands {
 		item?: OpenableTreeItem,
 	): Promise<WorkspaceResolution> {
 		if (item) {
+			const agentName =
+				item instanceof AgentTreeItem ? item.agent.name : undefined;
 			return {
 				status: "selected",
+				agentName,
 				client: this.extensionClient,
 				workspaceId: createWorkspaceIdentifier(item.workspace),
+				remoteAuthority: this.toWorkspaceAuthority(
+					this.extensionClient,
+					item.workspace,
+					agentName,
+				),
 			};
 		}
 		if (this.workspace && this.remoteWorkspaceClient) {
 			return {
 				status: "selected",
+				agentName: this.agent?.name,
 				client: this.remoteWorkspaceClient,
 				workspaceId: createWorkspaceIdentifier(this.workspace),
+				remoteAuthority: vscodeProposed.env.remoteAuthority,
 			};
 		}
 		const pick = await this.pickWorkspace("diagnostic", {
@@ -1155,9 +1190,34 @@ export class Commands {
 				status: "selected",
 				client: this.extensionClient,
 				workspaceId: createWorkspaceIdentifier(pick.workspace),
+				remoteAuthority: this.toWorkspaceAuthority(
+					this.extensionClient,
+					pick.workspace,
+				),
 			};
 		}
 		return pick;
+	}
+
+	/**
+	 * Reconstruct the authority Remote-SSH would use, defaulting to the
+	 * first agent like the CLI does.
+	 */
+	private toWorkspaceAuthority(
+		client: CoderApi,
+		workspace: Workspace,
+		agentName?: string,
+	): string | undefined {
+		const baseUrl = client.getAxiosInstance().defaults.baseURL;
+		if (!baseUrl) {
+			return undefined;
+		}
+		return toRemoteAuthority(
+			baseUrl,
+			workspace.owner_name,
+			workspace.name,
+			agentName ?? extractAgents(workspace.latest_build.resources)[0]?.name,
+		);
 	}
 
 	/** Resolve a CliEnv, preferring a locally cached binary over a network fetch. */

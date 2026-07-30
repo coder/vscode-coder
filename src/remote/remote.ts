@@ -638,6 +638,7 @@ export class Remote {
 		});
 
 		this.commands.workspace = workspace;
+		this.commands.agent = agent;
 		return agent;
 	}
 
