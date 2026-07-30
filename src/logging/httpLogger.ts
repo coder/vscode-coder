@@ -46,7 +46,12 @@ export function logRequest(
 
 	const msg = [
 		`→ ${shortId(requestId)} ${method} ${url} ${requestSize}`,
-		...buildExtraLogs(config.headers, config.data, logLevel, config),
+		...buildExtraLogs(
+			config.headers,
+			config.data,
+			logLevel,
+			config.headerCommandKeys,
+		),
 	];
 	logger.trace(msg.join("\n"));
 }
@@ -73,7 +78,7 @@ export function logResponse(
 			response.headers,
 			response.data,
 			logLevel,
-			response.config,
+			response.config.headerCommandKeys,
 		),
 	];
 	logger.trace(msg.join("\n"));
@@ -115,7 +120,7 @@ export function logError(
 				error.response.headers,
 				error.response.data,
 				logLevel,
-				config,
+				config?.headerCommandKeys,
 			);
 		} else {
 			if (errorParts.length === 0) {
@@ -126,7 +131,7 @@ export function logError(
 				error?.config?.headers ?? {},
 				error.config?.data,
 				logLevel,
-				config,
+				config?.headerCommandKeys,
 			);
 		}
 
@@ -141,12 +146,12 @@ function buildExtraLogs(
 	headers: Record<string, unknown>,
 	body: unknown,
 	logLevel: HttpClientLogLevel,
-	config: RequestConfigWithMeta | undefined,
+	headerCommandKeys: readonly string[] | undefined,
 ) {
 	const msg = [];
 	if (logLevel >= HttpClientLogLevel.HEADERS) {
 		// Headers applied by the header command are treated as sensitive too.
-		msg.push(formatHeaders(headers, config?.headerCommandKeys ?? []));
+		msg.push(formatHeaders(headers, headerCommandKeys ?? []));
 	}
 	if (logLevel >= HttpClientLogLevel.BODY) {
 		msg.push(formatBody(body));

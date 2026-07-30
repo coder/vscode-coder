@@ -340,23 +340,23 @@ describe("CliManager", () => {
 		});
 
 		it.each([
-			{ scenario: "succeeds", error: undefined, failed: [] },
+			{ scenario: "succeeds", error: undefined, cleared: true },
 			{
 				scenario: "fails",
 				error: new Error("unexpected failure"),
-				failed: ["cli", "files"],
+				cleared: false,
 			},
-			{ scenario: "is cancelled", error: makeAbortError(), failed: ["cli"] },
+			{ scenario: "is cancelled", error: makeAbortError(), cleared: false },
 		])(
 			"should report cleanup state when deleteToken $scenario",
-			async ({ error, failed }) => {
+			async ({ error, cleared }) => {
 				const { manager, mockCredManager } = setupCliManager();
 				if (error) {
 					vi.mocked(mockCredManager.deleteToken).mockRejectedValueOnce(error);
 				}
-				await expect(manager.clearCredentials(CLEAR_URL)).resolves.toEqual({
-					failed,
-				});
+				await expect(manager.clearCredentials(CLEAR_URL)).resolves.toBe(
+					cleared,
+				);
 			},
 		);
 	});

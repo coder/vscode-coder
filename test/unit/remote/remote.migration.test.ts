@@ -1,5 +1,5 @@
 import { vol } from "memfs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { PathResolver } from "@/core/pathResolver";
 import { Remote } from "@/remote/remote";
@@ -76,10 +76,6 @@ function writeLegacyFiles(): void {
 }
 
 describe("Remote session auth migration", () => {
-	beforeEach(() => {
-		vol.reset();
-	});
-
 	it("moves file-based auth into secret storage and deletes the files", async () => {
 		const { remote, secretsManager } = setup();
 		writeLegacyFiles();

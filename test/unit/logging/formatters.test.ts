@@ -71,26 +71,17 @@ describe("Logging formatters", () => {
 			expect(result).toContain("accept: text/html");
 		});
 
-		it("redacts sensitive headers", () => {
-			const sensitiveHeaders = ["Coder-Session-Token", "Proxy-Authorization"];
-
-			sensitiveHeaders.forEach((header) => {
-				const result = formatHeaders({ [header]: "secret-value" });
-				expect(result).toContain(`${header}: <redacted>`);
-				expect(result).not.toContain("secret-value");
-			});
-		});
-
 		it("redacts sensitive headers regardless of casing", () => {
 			const sensitiveHeaders = [
 				"authorization",
 				"AUTHORIZATION",
+				"Coder-Session-Token",
 				"coder-session-token",
 				"cookie",
 				"set-cookie",
 				"SET-COOKIE",
 				"X-Api-Key",
-				"proxy-authorization",
+				"Proxy-Authorization",
 			];
 
 			sensitiveHeaders.forEach((header) => {

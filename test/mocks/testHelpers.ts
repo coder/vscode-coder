@@ -472,7 +472,7 @@ export function createMockCliCredentialManager(): CliCredentialManager {
 	return {
 		storeToken: vi.fn().mockResolvedValue(undefined),
 		readToken: vi.fn().mockResolvedValue(undefined),
-		deleteToken: vi.fn().mockResolvedValue({ failed: [] }),
+		deleteToken: vi.fn().mockResolvedValue(true),
 	} as unknown as CliCredentialManager;
 }
 
@@ -493,12 +493,19 @@ export interface LogEntry {
 	args: readonly unknown[];
 }
 
-/** Logger that records structured entries for tests of logging behavior. */
+/**
+ * Logger that records what was logged. Assert on `entries` for exact output,
+ * or search `text` when checking that a secret never reached the log.
+ */
 export class LogCollector implements Logger {
-	private readonly _entries: LogEntry[] = [];
+	readonly entries: LogEntry[] = [];
 
-	get entries(): readonly LogEntry[] {
-		return this._entries;
+	/** Every message and argument logged, as one searchable string. */
+	get text(): string {
+		return this.entries
+			.flatMap((entry) => [entry.message, ...entry.args])
+			.map(String)
+			.join("\n");
 	}
 
 	trace(message: string, ...args: unknown[]): void {
@@ -528,7 +535,7 @@ export class LogCollector implements Logger {
 		message: string,
 		args: readonly unknown[],
 	): void {
-		this._entries.push({ level, message, args });
+		this.entries.push({ level, message, args });
 	}
 }
 
@@ -873,7 +880,6 @@ export class MockOAuthSessionManager {
 	readonly refreshToken = vi
 		.fn()
 		.mockResolvedValue({ access_token: "test-token" });
-	readonly revokeRefreshToken = vi.fn().mockResolvedValue(undefined);
 	readonly revokeTokens = vi.fn().mockResolvedValue(undefined);
 	readonly isLoggedInWithOAuth = vi.fn().mockResolvedValue(false);
 	readonly clearOAuthState = vi.fn().mockResolvedValue(undefined);

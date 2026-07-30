@@ -89,16 +89,10 @@ describe("Headers", () => {
 
 	it("should not include command output in parse errors", async () => {
 		const command = printCommand("Authorization=Bearer SECRET-VALUE\nbad line");
-		const error = await getHeaders("localhost", command, logger).then(
-			() => {
-				throw new Error("expected getHeaders to reject");
-			},
-			(e: Error) => e,
+		// Anchored match: the message must carry the line number and nothing else.
+		await expect(getHeaders("localhost", command, logger)).rejects.toThrow(
+			/^Malformed line 2 from header command output$/,
 		);
-		expect(error.message).toMatch(/Malformed line 2/);
-		expect(error.message).not.toContain("SECRET-VALUE");
-		expect(error.message).not.toContain("Authorization");
-		expect(error.message).not.toContain("bad line");
 	});
 
 	it("should have access to environment variables", async () => {

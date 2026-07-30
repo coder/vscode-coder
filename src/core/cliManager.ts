@@ -39,10 +39,7 @@ import type { Logger } from "../logging/logger";
 import type { TelemetryService } from "../telemetry/service";
 import type { Span } from "../telemetry/span";
 
-import type {
-	CliCredentialManager,
-	CredentialClearResult,
-} from "./cliCredentialManager";
+import type { CliCredentialManager } from "./cliCredentialManager";
 import type { PathResolver } from "./pathResolver";
 
 type ResolvedBinary =
@@ -1064,10 +1061,10 @@ export class CliManager {
 
 	/**
 	 * Remove credentials for a deployment. Clears both file-based credentials
-	 * and keyring entries (via `coder logout`). Never throws; reports which
-	 * stores could not be cleared.
+	 * and keyring entries (via `coder logout`). Never throws; returns whether
+	 * every store was cleared.
 	 */
-	public async clearCredentials(url: string): Promise<CredentialClearResult> {
+	public async clearCredentials(url: string): Promise<boolean> {
 		const configs = vscode.workspace.getConfiguration();
 		const result = await withOptionalProgress(
 			({ signal }) =>
@@ -1084,10 +1081,10 @@ export class CliManager {
 		}
 		if (result.cancelled) {
 			this.output.info("Credential removal cancelled by user");
-			return { failed: ["cli"] };
+		} else {
+			this.output.warn("Failed to remove credentials:", result.error);
 		}
-		this.output.warn("Failed to remove credentials:", result.error);
-		return { failed: ["cli", "files"] };
+		return false;
 	}
 
 	private handleStoreError(error: unknown): void {

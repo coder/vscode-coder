@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { execCommand } from "@/command/exec";
 
-import { createMockLogger } from "../../mocks/testHelpers";
+import { createMockLogger, LogCollector } from "../../mocks/testHelpers";
 import {
 	exitCommand,
 	printCommand,
@@ -60,7 +60,7 @@ describe("execCommand", () => {
 	});
 
 	it("should not log the command or its output", async () => {
-		const quietLogger = createMockLogger();
+		const quietLogger = new LogCollector();
 		await execCommand(printCommand("quiet-output-value"), quietLogger, {
 			title: "Test",
 		});
@@ -70,13 +70,6 @@ describe("execCommand", () => {
 			{ title: "Test" },
 		);
 
-		const logged = [
-			...vi.mocked(quietLogger.debug).mock.calls,
-			...vi.mocked(quietLogger.warn).mock.calls,
-		]
-			.flat()
-			.map(String)
-			.join("\n");
-		expect(logged).not.toContain("quiet-output-value");
+		expect(quietLogger.text).not.toContain("quiet-output-value");
 	});
 });

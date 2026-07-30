@@ -422,25 +422,6 @@ describe("OAuthSessionManager", () => {
 		});
 	});
 
-	describe("revokeRefreshToken", () => {
-		it("revokes token via revocation endpoint", async () => {
-			const { manager, setupForOAuthOperation } = createTestContext();
-
-			let revokedToken: string | undefined;
-			await setupForOAuthOperation({
-				"/oauth2/revoke": (config: InternalAxiosRequestConfig) => {
-					const params = new URLSearchParams(config.data as string);
-					revokedToken = params.get("token") ?? undefined;
-					return {};
-				},
-			});
-
-			await manager.revokeRefreshToken();
-
-			expect(revokedToken).toBe("refresh-token");
-		});
-	});
-
 	describe("revokeTokens", () => {
 		it("revokes the refresh and access tokens", async () => {
 			const { manager, setupForOAuthOperation } = createTestContext();

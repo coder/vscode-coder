@@ -12,7 +12,7 @@ import {
 	type RequestConfigWithMeta,
 } from "@/logging/types";
 
-import { createMockLogger } from "../../mocks/testHelpers";
+import { createMockLogger, LogCollector } from "../../mocks/testHelpers";
 
 describe("REST HTTP Logger", () => {
 	describe("log level behavior", () => {
@@ -111,30 +111,24 @@ describe("REST HTTP Logger", () => {
 	});
 
 	describe("redaction", () => {
-		function makeConfig(): RequestConfigWithMeta {
-			return {
-				method: "POST",
-				url: "https://api.example.com/endpoint",
-				headers: {
-					authorization: "Bearer request-secret",
-					"X-From-Command": "command-secret",
-				} as unknown as AxiosHeaders,
-				data: { refresh_token: "body-secret" },
-				headerCommandKeys: ["X-From-Command"],
-				metadata: createRequestMeta(),
-			} as RequestConfigWithMeta;
-		}
-
-		function loggedText(fn: ReturnType<typeof vi.fn>): string {
-			return fn.mock.calls.flat().map(String).join("\n");
-		}
+		const config = {
+			method: "POST",
+			url: "https://api.example.com/endpoint",
+			headers: {
+				authorization: "Bearer request-secret",
+				"X-From-Command": "command-secret",
+			} as unknown as AxiosHeaders,
+			data: { refresh_token: "body-secret" },
+			headerCommandKeys: ["X-From-Command"],
+			metadata: createRequestMeta(),
+		} as RequestConfigWithMeta;
 
 		it("redacts sensitive request headers and body fields", () => {
-			const logger = createMockLogger();
+			const logger = new LogCollector();
 
-			logRequest(logger, makeConfig(), HttpClientLogLevel.BODY);
+			logRequest(logger, config, HttpClientLogLevel.BODY);
 
-			const logged = loggedText(vi.mocked(logger.trace));
+			const logged = logger.text;
 			expect(logged).not.toContain("request-secret");
 			expect(logged).not.toContain("command-secret");
 			expect(logged).not.toContain("body-secret");
@@ -143,9 +137,9 @@ describe("REST HTTP Logger", () => {
 		});
 
 		it("redacts sensitive headers and body fields on error paths", () => {
-			const logger = createMockLogger();
+			const logger = new LogCollector();
 			const error = new AxiosError("Bad Request");
-			error.config = makeConfig();
+			error.config = config;
 			error.response = {
 				status: 400,
 				headers: { "set-cookie": ["session=response-secret"] },
@@ -154,7 +148,7 @@ describe("REST HTTP Logger", () => {
 
 			logError(logger, error, HttpClientLogLevel.BODY);
 
-			const logged = loggedText(vi.mocked(logger.error));
+			const logged = logger.text;
 			expect(logged).not.toContain("response-secret");
 			expect(logged).not.toContain("body-secret");
 			expect(logged).toContain("set-cookie: <redacted>");
@@ -162,13 +156,13 @@ describe("REST HTTP Logger", () => {
 		});
 
 		it("redacts header-command headers on network error paths", () => {
-			const logger = createMockLogger();
+			const logger = new LogCollector();
 			const error = new AxiosError("Network Error", "ECONNREFUSED");
-			error.config = makeConfig();
+			error.config = config;
 
 			logError(logger, error, HttpClientLogLevel.BODY);
 
-			const logged = loggedText(vi.mocked(logger.error));
+			const logged = logger.text;
 			expect(logged).not.toContain("request-secret");
 			expect(logged).not.toContain("command-secret");
 			expect(logged).not.toContain("body-secret");

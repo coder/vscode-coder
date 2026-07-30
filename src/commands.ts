@@ -67,7 +67,6 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "./api/coderApi";
-import type { CredentialStore } from "./core/cliCredentialManager";
 import type { CliManager } from "./core/cliManager";
 import type { ServiceContainer } from "./core/container";
 import type { MementoManager } from "./core/mementoManager";
@@ -623,10 +622,12 @@ export class Commands {
 		await this.deploymentManager.clearDeployment("logout");
 
 		if (deployment) {
-			const cleanup = await this.cliManager.clearCredentials(deployment.url);
+			const cleared = await this.cliManager.clearCredentials(deployment.url);
 			await this.secretsManager.clearAllAuthData(deployment.safeHostname);
-			if (cleanup.failed.length > 0) {
-				this.showLogoutCleanupWarning(cleanup.failed);
+			if (!cleared) {
+				vscode.window.showWarningMessage(
+					'You\'ve been logged out of Coder, but some stored credentials could not be removed. Log out again to retry, or run "coder logout" with the Coder CLI.',
+				);
 				return { success: false, reason: "cleanup_incomplete" };
 			}
 		}
@@ -634,17 +635,6 @@ export class Commands {
 		this.showLogoutMessage();
 		this.logger.debug("Logout complete");
 		return { success: true };
-	}
-
-	private showLogoutCleanupWarning(failed: readonly CredentialStore[]): void {
-		const labels: Record<CredentialStore, string> = {
-			cli: "CLI session",
-			files: "credential files",
-		};
-		const stores = failed.map((store) => labels[store]).join(", ");
-		vscode.window.showWarningMessage(
-			`You've been logged out of Coder, but some stored credentials could not be removed: ${stores}. Log out again to retry, or run "coder logout" with the Coder CLI.`,
-		);
 	}
 
 	private showLogoutMessage(): void {

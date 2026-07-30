@@ -38,14 +38,6 @@ export interface CliCredential {
 	source: "keyring" | "files";
 }
 
-/** Credential stores that logout cleanup can fail to clear. */
-export type CredentialStore = "cli" | "files";
-
-export interface CredentialClearResult {
-	/** Stores that could not be confirmed cleared. Empty on full success. */
-	failed: CredentialStore[];
-}
-
 const EXEC_TIMEOUT_MS = 60_000;
 const EXEC_LOG_INTERVAL_MS = 5_000;
 
@@ -180,27 +172,20 @@ export class CliCredentialManager {
 	/**
 	 * Delete credentials for a deployment. Removes the default-dir files and
 	 * logs out of the active store (keyring or file via --global-config).
-	 * Reports which stores could not be cleared instead of throwing, except
+	 * Returns whether every store was cleared instead of throwing, except
 	 * for AbortError when the signal is aborted.
 	 */
 	public deleteToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
-	): Promise<CredentialClearResult> {
+	): Promise<boolean> {
 		return this.credentialTelemetry.traceClear(configs, async (span) => {
 			const [filesCleared, cliCleared] = await Promise.all([
 				this.deleteCredentialFiles(url),
 				this.cliLogout(url, configs, { signal: options?.signal, span }),
 			]);
-			const failed: CredentialStore[] = [];
-			if (!cliCleared) {
-				failed.push("cli");
-			}
-			if (!filesCleared) {
-				failed.push("files");
-			}
-			return { failed };
+			return filesCleared && cliCleared;
 		});
 	}
 
