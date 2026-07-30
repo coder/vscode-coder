@@ -66,6 +66,10 @@ function setup(options: { cliVersion?: string } = {}) {
 	vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(
 		vscode.Uri.file(OUTPUT_PATH),
 	);
+	// Accept the collection disclosure dialog by default.
+	vi.mocked(vscode.window.showInformationMessage).mockResolvedValue(
+		"Continue" as unknown as vscode.MessageItem,
+	);
 	vi.mocked(cliExec.version).mockResolvedValue(options.cliVersion ?? "v2.36.0");
 	vi.mocked(cliExec.supportBundle).mockResolvedValue(undefined);
 	vi.mocked(getRemoteServerDataPath).mockResolvedValue({
@@ -233,5 +237,32 @@ describe("Commands.supportBundle", () => {
 			"owner/ws",
 			expect.objectContaining({ workspaceFiles: [] }),
 		);
+	});
+
+	it("describes the collected data before creating the bundle", async () => {
+		const { commands } = setup();
+
+		await commands.supportBundle(agentItem("dev"));
+
+		expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({
+				modal: true,
+				detail: expect.stringContaining("telemetry"),
+			}),
+			"Continue",
+		);
+	});
+
+	it("does not create a bundle when the disclosure dialog is dismissed", async () => {
+		const { commands } = setup();
+		vi.mocked(vscode.window.showInformationMessage).mockResolvedValue(
+			undefined,
+		);
+
+		await commands.supportBundle(agentItem("dev"));
+
+		expect(vscode.window.showSaveDialog).not.toHaveBeenCalled();
+		expect(cliExec.supportBundle).not.toHaveBeenCalled();
 	});
 });

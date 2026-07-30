@@ -434,6 +434,11 @@ export class Commands {
 
 		const { agentName, client, workspaceId, remoteAuthority } = resolved;
 
+		if (!(await this.confirmSupportBundleCollection())) {
+			telemetry.abort("prompt");
+			return;
+		}
+
 		const outputUri = await this.promptSupportBundlePath();
 		if (!outputUri) {
 			telemetry.abort("save_dialog");
@@ -521,6 +526,27 @@ export class Commands {
 			filters: { "Zip files": ["zip"] },
 			title: "Save Support Bundle",
 		});
+	}
+
+	/** Modal disclosure of what a support bundle collects; the CLI's own prompt is suppressed. */
+	private async confirmSupportBundleCollection(): Promise<boolean> {
+		const detail = [
+			"A support bundle may contain sensitive information. It collects:",
+			"",
+			"\u2022 Deployment and workspace diagnostics",
+			"\u2022 Coder extension logs and workspace connection logs from recent VS Code windows",
+			"\u2022 Remote SSH extension logs",
+			"\u2022 Locally recorded telemetry entries",
+			"\u2022 A snapshot of the Coder extension settings",
+			"",
+			"Review the bundle before sharing it.",
+		].join("\n");
+		const choice = await vscode.window.showInformationMessage(
+			"Create a support bundle?",
+			{ modal: true, detail },
+			"Continue",
+		);
+		return choice === "Continue";
 	}
 
 	public async exportTelemetry(): Promise<void> {
