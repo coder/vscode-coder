@@ -129,11 +129,10 @@ describe("REST HTTP Logger", () => {
 			logRequest(logger, config, HttpClientLogLevel.BODY);
 
 			const logged = logger.text;
-			expect(logged).not.toContain("request-secret");
-			expect(logged).not.toContain("command-secret");
-			expect(logged).not.toContain("body-secret");
 			expect(logged).toContain("authorization: <redacted>");
 			expect(logged).toContain("X-From-Command: <redacted>");
+			// Every planted value contains "secret"; none may survive.
+			expect(logged).not.toContain("secret");
 		});
 
 		it("redacts sensitive headers and body fields on error paths", () => {
@@ -149,10 +148,10 @@ describe("REST HTTP Logger", () => {
 			logError(logger, error, HttpClientLogLevel.BODY);
 
 			const logged = logger.text;
-			expect(logged).not.toContain("response-secret");
-			expect(logged).not.toContain("body-secret");
 			expect(logged).toContain("set-cookie: <redacted>");
 			expect(logged).toContain("invalid_grant");
+			// Every planted value contains "secret"; none may survive.
+			expect(logged).not.toContain("secret");
 		});
 
 		it("redacts header-command headers on network error paths", () => {
@@ -162,10 +161,8 @@ describe("REST HTTP Logger", () => {
 
 			logError(logger, error, HttpClientLogLevel.BODY);
 
-			const logged = logger.text;
-			expect(logged).not.toContain("request-secret");
-			expect(logged).not.toContain("command-secret");
-			expect(logged).not.toContain("body-secret");
+			// Every planted value contains "secret"; none may survive.
+			expect(logger.text).not.toContain("secret");
 		});
 	});
 });

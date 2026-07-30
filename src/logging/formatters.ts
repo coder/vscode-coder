@@ -1,10 +1,12 @@
 import prettyBytes from "pretty-bytes";
 
+import { lowercase } from "../util";
+
 import { safeStringify } from "./utils";
 
 import type { AxiosRequestConfig } from "axios";
 
-const SENSITIVE_HEADERS = new Set([
+const SENSITIVE_HEADERS: ReadonlySet<Lowercase<string>> = new Set([
 	"authorization",
 	"coder-session-token",
 	"cookie",
@@ -13,7 +15,8 @@ const SENSITIVE_HEADERS = new Set([
 	"x-api-key",
 ]);
 
-const SENSITIVE_BODY_FIELDS = new Set([
+/** Credential fields from OAuth token requests/responses, logged at BODY level. */
+const SENSITIVE_BODY_FIELDS: ReadonlySet<Lowercase<string>> = new Set([
 	"access_token",
 	"client_secret",
 	"code",
@@ -55,10 +58,12 @@ export function formatHeaders(
 	headers: Record<string, unknown>,
 	extraSensitiveNames: readonly string[] = [],
 ): string {
-	const extra = new Set(extraSensitiveNames.map((name) => name.toLowerCase()));
+	const extra: ReadonlySet<Lowercase<string>> = new Set(
+		extraSensitiveNames.map(lowercase),
+	);
 	const formattedHeaders = Object.entries(headers)
 		.map(([key, value]) => {
-			const name = key.toLowerCase();
+			const name = lowercase(key);
 			if (SENSITIVE_HEADERS.has(name) || extra.has(name)) {
 				return `${key}: ${REDACTED}`;
 			}
@@ -79,11 +84,11 @@ export function formatBody(body: unknown): string {
 	}
 }
 
-function isSensitiveField(name: string): boolean {
-	return SENSITIVE_BODY_FIELDS.has(name.toLowerCase());
-}
-
-/** Returns a copy of the body with known credential fields redacted (objects, params, JSON/form strings). */
+/**
+ * Redact known credential fields, copying only what changes; untouched
+ * values keep their original reference. util.inspect has no replacer
+ * hook, so the value is walked before stringifying.
+ */
 function redactBodyFields(
 	value: unknown,
 	seen = new WeakSet<object>(),
@@ -92,58 +97,70 @@ function redactBodyFields(
 		return redactStringBody(value, seen);
 	}
 	if (value instanceof URLSearchParams) {
-		const redacted = new URLSearchParams();
-		for (const [key, entry] of value) {
-			redacted.append(key, isSensitiveField(key) ? REDACTED : entry);
-		}
-		return redacted;
-	}
-	if (Array.isArray(value)) {
-		if (seen.has(value)) {
+		const keys = [...value.keys()];
+		if (!keys.some((key) => SENSITIVE_BODY_FIELDS.has(lowercase(key)))) {
 			return value;
 		}
-		seen.add(value);
-		return value.map((entry) => redactBodyFields(entry, seen));
-	}
-	if (isPlainObject(value)) {
-		if (seen.has(value)) {
-			return value;
-		}
-		seen.add(value);
-		return Object.fromEntries(
-			Object.entries(value).map(([key, entry]) => [
+		return new URLSearchParams(
+			[...value].map(([key, entry]) => [
 				key,
-				isSensitiveField(key) ? REDACTED : redactBodyFields(entry, seen),
+				SENSITIVE_BODY_FIELDS.has(lowercase(key)) ? REDACTED : entry,
 			]),
 		);
 	}
-	return value;
+	if (typeof value !== "object" || value === null || seen.has(value)) {
+		return value;
+	}
+	seen.add(value);
+	if (Array.isArray(value)) {
+		const entries: readonly unknown[] = value;
+		let copy: unknown[] | undefined;
+		entries.forEach((entry, index) => {
+			const redacted = redactBodyFields(entry, seen);
+			if (redacted !== entry) {
+				copy ??= [...entries];
+				copy[index] = redacted;
+			}
+		});
+		return copy ?? value;
+	}
+	// Rebuilding a Date or Buffer from its entries would mangle its output.
+	const proto: unknown = Object.getPrototypeOf(value);
+	if (proto !== Object.prototype && proto !== null) {
+		return value;
+	}
+	let copy: Record<string, unknown> | undefined;
+	for (const [key, entry] of Object.entries(value)) {
+		const redacted = SENSITIVE_BODY_FIELDS.has(lowercase(key))
+			? REDACTED
+			: redactBodyFields(entry, seen);
+		if (redacted !== entry) {
+			copy ??= { ...value };
+			copy[key] = redacted;
+		}
+	}
+	return copy ?? value;
 }
 
+/**
+ * Axios error paths expose only the serialized body, so JSON and
+ * form-encoded strings are parsed too. Clean strings pass through as-is.
+ */
 function redactStringBody(body: string, seen: WeakSet<object>): unknown {
 	const trimmed = body.trim();
 	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
 		try {
-			return redactBodyFields(JSON.parse(trimmed), seen);
+			const parsed: unknown = JSON.parse(trimmed);
+			const redacted = redactBodyFields(parsed, seen);
+			return redacted === parsed ? body : redacted;
 		} catch {
 			// Not JSON; fall through.
 		}
 	}
 	if (trimmed.includes("=")) {
 		const params = new URLSearchParams(trimmed);
-		for (const key of params.keys()) {
-			if (isSensitiveField(key)) {
-				return redactBodyFields(params, seen);
-			}
-		}
+		const redacted = redactBodyFields(params, seen);
+		return redacted === params ? body : redacted;
 	}
 	return body;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	if (typeof value !== "object" || value === null) {
-		return false;
-	}
-	const proto: unknown = Object.getPrototypeOf(value);
-	return proto === Object.prototype || proto === null;
 }

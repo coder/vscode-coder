@@ -534,10 +534,10 @@ export class Commands {
 			"A support bundle may contain sensitive information. It collects:",
 			"",
 			"\u2022 Deployment and workspace diagnostics",
-			"\u2022 Coder extension logs and workspace connection logs from recent VS Code windows",
+			"\u2022 Coder extension and connection logs from recent VS Code windows",
 			"\u2022 Remote SSH extension logs",
-			"\u2022 Locally recorded telemetry entries",
-			"\u2022 A snapshot of the Coder extension settings",
+			"\u2022 Locally recorded telemetry",
+			"\u2022 Coder extension settings",
 			"",
 			"Review the bundle before sharing it.",
 		].join("\n");
@@ -626,7 +626,7 @@ export class Commands {
 			await this.secretsManager.clearAllAuthData(deployment.safeHostname);
 			if (!cleared) {
 				vscode.window.showWarningMessage(
-					'You\'ve been logged out of Coder, but some stored credentials could not be removed. Log out again to retry, or run "coder logout" with the Coder CLI.',
+					'You\'ve been logged out of Coder, but some credentials could not be removed. Log out again to retry, or run "coder logout" in a terminal.',
 				);
 				return { success: false, reason: "cleanup_incomplete" };
 			}

@@ -48,6 +48,7 @@ import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 import { applySshEnvironment, SSH_PROXY_SETTINGS } from "./environment";
+import { migrateAuthToSecretsStorage } from "./migration";
 import {
 	SshConfig,
 	type SshValues,
@@ -163,7 +164,12 @@ export class Remote {
 		// Both run before `remote.setup` so an auth-required retry doesn't nest
 		// traces, and migration is kept out of `auth.session_lookup` so a slow
 		// first-run migration doesn't pollute that signal.
-		await this.migrateToSecretsStorage(parts.safeHostname);
+		await migrateAuthToSecretsStorage(
+			parts.safeHostname,
+			this.pathResolver,
+			this.secretsManager,
+			this.logger,
+		);
 		const telemetry = this.serviceContainer.getTelemetryService();
 		const auth = await this.authTelemetry.traceSessionLookup(() =>
 			this.secretsManager.getSessionAuth(parts.safeHostname),
@@ -780,72 +786,6 @@ export class Remote {
 				}
 			},
 		);
-	}
-
-	/**
-	 * Migrate legacy file-based auth to secrets storage.
-	 */
-	private async migrateToSecretsStorage(safeHostname: string) {
-		await this.migrateSessionTokenFile(safeHostname);
-		await this.migrateSessionAuthFromFiles(safeHostname);
-	}
-
-	/**
-	 * Migrate the session token file from "session_token" to "session".
-	 */
-	private async migrateSessionTokenFile(safeHostname: string) {
-		const oldTokenPath =
-			this.pathResolver.getLegacySessionTokenPath(safeHostname);
-		const newTokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
-		try {
-			await fs.rename(oldTokenPath, newTokenPath);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-				throw error;
-			}
-		}
-	}
-
-	/**
-	 * Migrate URL and session token from files to the mutli-deployment secrets storage.
-	 */
-	private async migrateSessionAuthFromFiles(safeHostname: string) {
-		const existingAuth = await this.secretsManager.getSessionAuth(safeHostname);
-		if (existingAuth) {
-			return;
-		}
-
-		const urlPath = this.pathResolver.getUrlPath(safeHostname);
-		const tokenPath = this.pathResolver.getSessionTokenPath(safeHostname);
-		const [url, token] = await Promise.allSettled([
-			fs.readFile(urlPath, "utf8"),
-			fs.readFile(tokenPath, "utf8"),
-		]);
-
-		if (url.status === "fulfilled" && token.status === "fulfilled") {
-			this.logger.info("Migrating session auth from files for", safeHostname);
-			try {
-				await this.secretsManager.setSessionAuth(safeHostname, {
-					url: url.value.trim(),
-					token: token.value.trim(),
-				});
-			} catch (error) {
-				this.logger.warn("Failed to migrate session auth from files:", error);
-			}
-			// Drop the plaintext copies even on failure: a rejected pair names
-			// another deployment, and the CLI config is rewritten on connect.
-			await Promise.all(
-				[urlPath, tokenPath].map((filePath) =>
-					fs.rm(filePath, { force: true }).catch((error) => {
-						this.logger.warn(
-							"Failed to remove migrated auth file",
-							filePath,
-							error,
-						);
-					}),
-				),
-			);
-		}
 	}
 
 	/**

@@ -151,9 +151,9 @@ describe("Logging formatters", () => {
 				token: "secret-token",
 				token_type: "bearer",
 			});
-			expect(result).not.toContain("secret-");
 			expect(result).toContain("access_token: '<redacted>'");
 			expect(result).toContain("token_type: 'bearer'");
+			expect(result).not.toContain("secret-");
 		});
 
 		it("redacts sensitive fields in nested objects and arrays", () => {
@@ -161,9 +161,9 @@ describe("Logging formatters", () => {
 				data: { session: { TOKEN: "secret-value" } },
 				items: [{ password: "secret-value" }],
 			});
-			expect(result).not.toContain("secret-value");
 			expect(result).toContain("TOKEN: '<redacted>'");
 			expect(result).toContain("password: '<redacted>'");
+			expect(result).not.toContain("secret-value");
 		});
 
 		it("redacts sensitive fields in URLSearchParams", () => {
@@ -172,23 +172,23 @@ describe("Logging formatters", () => {
 				refresh_token: "secret-value",
 			});
 			const result = formatBody(params);
-			expect(result).not.toContain("secret-value");
 			expect(result).toContain("refresh_token");
 			expect(result).toContain("<redacted>");
+			expect(result).not.toContain("secret-value");
 		});
 
 		it("redacts sensitive fields in serialized bodies", () => {
 			const json = formatBody(
 				JSON.stringify({ access_token: "secret-value", expires_in: 3600 }),
 			);
-			expect(json).not.toContain("secret-value");
 			expect(json).toContain("expires_in");
+			expect(json).not.toContain("secret-value");
 
 			const form = formatBody(
 				"grant_type=authorization_code&code=secret-value",
 			);
-			expect(form).not.toContain("secret-value");
 			expect(form).toContain("grant_type");
+			expect(form).not.toContain("secret-value");
 		});
 
 		it("leaves non-sensitive strings unchanged", () => {

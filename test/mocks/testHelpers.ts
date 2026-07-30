@@ -240,6 +240,7 @@ export interface MessageCall {
 	level: "information" | "warning" | "error";
 	message: string;
 	items: string[];
+	options?: vscode.MessageOptions;
 }
 
 /**
@@ -327,7 +328,12 @@ export class MockUserInteraction {
 				const items = rest.filter(
 					(arg): arg is string => typeof arg === "string",
 				);
-				this._messageCalls.push({ level, message, items });
+				// Options object, as opposed to a MessageItem (which has a title).
+				const options = rest.find(
+					(arg): arg is vscode.MessageOptions =>
+						typeof arg === "object" && arg !== null && !("title" in arg),
+				);
+				this._messageCalls.push({ level, message, items, options });
 				return Promise.resolve(getResponse(message));
 			};
 

@@ -17,6 +17,7 @@ import {
 	config,
 	createMockLogger,
 	MockProgressReporter,
+	MockUserInteraction,
 } from "../mocks/testHelpers";
 
 import type { CoderApi } from "@/api/coderApi";
@@ -67,9 +68,8 @@ function setup(options: { cliVersion?: string } = {}) {
 		vscode.Uri.file(OUTPUT_PATH),
 	);
 	// Accept the collection disclosure dialog by default.
-	vi.mocked(vscode.window.showInformationMessage).mockResolvedValue(
-		"Continue" as unknown as vscode.MessageItem,
-	);
+	const interaction = new MockUserInteraction();
+	interaction.setResponse("Create a support bundle?", "Continue");
 	vi.mocked(cliExec.version).mockResolvedValue(options.cliVersion ?? "v2.36.0");
 	vi.mocked(cliExec.supportBundle).mockResolvedValue(undefined);
 	vi.mocked(getRemoteServerDataPath).mockResolvedValue({
@@ -111,7 +111,7 @@ function setup(options: { cliVersion?: string } = {}) {
 		{} as DeploymentManager,
 	);
 
-	return { commands, client, logger };
+	return { commands, client, logger, interaction };
 }
 
 function setRemoteAuthority(value: string | undefined): void {
@@ -240,25 +240,25 @@ describe("Commands.supportBundle", () => {
 	});
 
 	it("describes the collected data before creating the bundle", async () => {
-		const { commands } = setup();
+		const { commands, interaction } = setup();
 
 		await commands.supportBundle(agentItem("dev"));
 
-		expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-			expect.any(String),
+		expect(interaction.getMessageCalls()).toContainEqual(
 			expect.objectContaining({
-				modal: true,
-				detail: expect.stringContaining("telemetry"),
+				message: "Create a support bundle?",
+				items: ["Continue"],
+				options: expect.objectContaining({
+					modal: true,
+					detail: expect.stringContaining("telemetry"),
+				}),
 			}),
-			"Continue",
 		);
 	});
 
 	it("does not create a bundle when the disclosure dialog is dismissed", async () => {
-		const { commands } = setup();
-		vi.mocked(vscode.window.showInformationMessage).mockResolvedValue(
-			undefined,
-		);
+		const { commands, interaction } = setup();
+		interaction.setResponse("Create a support bundle?", undefined);
 
 		await commands.supportBundle(agentItem("dev"));
 

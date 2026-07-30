@@ -51,6 +51,11 @@ export function expandPath(input: string): string {
 	return tildeExpanded.replaceAll("${userHome}", userHome);
 }
 
+/** `toLowerCase` typed for indexing `Lowercase`-keyed records without a cast. */
+export function lowercase<T extends string>(value: T): Lowercase<T> {
+	return value.toLowerCase() as Lowercase<T>;
+}
+
 /**
  * Return the number of times a substring appears in a string.
  */

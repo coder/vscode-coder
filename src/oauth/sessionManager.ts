@@ -450,26 +450,29 @@ export class OAuthSessionManager implements vscode.Disposable {
 		if (!storedTokens) {
 			return;
 		}
+
+		// Refresh token first, while the access token still authenticates the call.
+		const targets: Array<[string, "access_token" | "refresh_token"]> = [];
+		if (storedTokens.refresh_token) {
+			targets.push([storedTokens.refresh_token, "refresh_token"]);
+		}
+		targets.push([storedTokens.access_token, "access_token"]);
+
 		try {
 			await this.withOAuthOperation(
 				storedTokens.access_token,
 				async ({ axiosInstance, metadata, registration }) => {
 					const endpoint = metadata.revocation_endpoint;
 					if (!endpoint) {
-						this.logger.debug(
-							"No revocation endpoint available, skipping revocation",
-						);
+						this.logger.debug("No revocation endpoint; skipping revocation");
 						return;
 					}
-					const revoke = async (
-						token: string,
-						hint: "access_token" | "refresh_token",
-					) => {
+					for (const [token, token_type_hint] of targets) {
 						const params: OAuth2TokenRevocationRequest = {
 							token,
 							client_id: registration.client_id,
 							client_secret: registration.client_secret,
-							token_type_hint: hint,
+							token_type_hint,
 						};
 						try {
 							await axiosInstance.post(endpoint, toUrlSearchParams(params), {
@@ -477,16 +480,11 @@ export class OAuthSessionManager implements vscode.Disposable {
 									"Content-Type": "application/x-www-form-urlencoded",
 								},
 							});
-							this.logger.debug("Token revocation successful");
+							this.logger.debug(`Revoked ${token_type_hint}`);
 						} catch (error) {
-							this.logger.warn(`Best-effort ${hint} revocation failed:`, error);
+							this.logger.warn(`Failed to revoke ${token_type_hint}:`, error);
 						}
-					};
-					// Revoke the refresh token while the access token still authenticates.
-					if (storedTokens.refresh_token) {
-						await revoke(storedTokens.refresh_token, "refresh_token");
 					}
-					await revoke(storedTokens.access_token, "access_token");
 				},
 			);
 		} catch (error) {

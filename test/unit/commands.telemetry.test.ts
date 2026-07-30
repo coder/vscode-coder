@@ -298,6 +298,7 @@ describe("Commands", () => {
 			expect(messages).toContainEqual(
 				expect.stringContaining("could not be removed"),
 			);
+			// The success toast must not appear alongside the warning.
 			expect(messages).not.toContainEqual(
 				expect.stringContaining("You've been logged out of Coder!"),
 			);
