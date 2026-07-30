@@ -441,6 +441,50 @@ describe("OAuthSessionManager", () => {
 		});
 	});
 
+	describe("revokeTokens", () => {
+		it("revokes the refresh and access tokens", async () => {
+			const { manager, setupForOAuthOperation } = createTestContext();
+
+			const revoked: Array<{ token: string | null; hint: string | null }> = [];
+			await setupForOAuthOperation({
+				"/oauth2/revoke": (config: InternalAxiosRequestConfig) => {
+					const params = new URLSearchParams(config.data as string);
+					revoked.push({
+						token: params.get("token"),
+						hint: params.get("token_type_hint"),
+					});
+					return {};
+				},
+			});
+
+			await manager.revokeTokens();
+
+			expect(revoked).toEqual([
+				{ token: "refresh-token", hint: "refresh_token" },
+				{ token: "access-token", hint: "access_token" },
+			]);
+		});
+
+		it("does not throw when revocation fails", async () => {
+			const { manager, setupForOAuthOperation } = createTestContext();
+
+			await setupForOAuthOperation({
+				"/oauth2/revoke": () => {
+					throw new Error("revocation endpoint unavailable");
+				},
+			});
+
+			await expect(manager.revokeTokens()).resolves.toBeUndefined();
+		});
+
+		it("is a no-op without stored tokens", async () => {
+			const { manager, mockAdapter } = createTestContext();
+
+			await expect(manager.revokeTokens()).resolves.toBeUndefined();
+			expect(mockAdapter).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("scope validation", () => {
 		it("rejects tokens with insufficient scopes", async () => {
 			const { secretsManager, manager } = createTestContext();

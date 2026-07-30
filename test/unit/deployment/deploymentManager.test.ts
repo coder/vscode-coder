@@ -153,6 +153,37 @@ describe("DeploymentManager", () => {
 			expect(currentUserId(manager)).toBeUndefined();
 			expect(manager.isAuthenticated()).toBe(false);
 		});
+
+		it("revokes OAuth tokens when clearing for logout", async () => {
+			const { manager, mockOAuthSessionManager } = createTestContext();
+
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "test-token",
+				user: createMockUser(),
+			});
+
+			await manager.clearDeployment("logout");
+
+			expect(mockOAuthSessionManager.revokeTokens).toHaveBeenCalledTimes(1);
+			expect(manager.isAuthenticated()).toBe(false);
+		});
+
+		it("does not revoke OAuth tokens for other clear reasons", async () => {
+			const { manager, mockOAuthSessionManager } = createTestContext();
+
+			await manager.setDeployment({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "test-token",
+				user: createMockUser(),
+			});
+
+			await manager.clearDeployment("credentials_removed");
+
+			expect(mockOAuthSessionManager.revokeTokens).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("setDeployment", () => {

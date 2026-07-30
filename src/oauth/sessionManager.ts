@@ -455,6 +455,25 @@ export class OAuthSessionManager implements vscode.Disposable {
 		);
 	}
 
+	/** Best-effort server-side revocation of the stored refresh and access tokens; never throws. */
+	public async revokeTokens(): Promise<void> {
+		const storedTokens = await this.getStoredTokens().catch((error) => {
+			this.logger.warn("Failed to read stored tokens for revocation:", error);
+			return undefined;
+		});
+		if (!storedTokens) {
+			return;
+		}
+		const revoke = (token: string, hint: "access_token" | "refresh_token") =>
+			this.revokeToken(storedTokens.access_token, token, hint).catch((error) =>
+				this.logger.warn(`Best-effort ${hint} revocation failed:`, error),
+			);
+		if (storedTokens.refresh_token) {
+			await revoke(storedTokens.refresh_token, "refresh_token");
+		}
+		await revoke(storedTokens.access_token, "access_token");
+	}
+
 	/**
 	 * Revoke a token using the OAuth server's revocation endpoint.
 	 *
