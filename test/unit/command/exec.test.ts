@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { execCommand } from "@/command/exec";
 
@@ -57,5 +57,26 @@ describe("execCommand", () => {
 	it("should use default title when not provided", async () => {
 		const result = await execCommand(printCommand("test"), logger);
 		expect(result.success).toBe(true);
+	});
+
+	it("should not log the command or its output", async () => {
+		const quietLogger = createMockLogger();
+		await execCommand(printCommand("quiet-output-value"), quietLogger, {
+			title: "Test",
+		});
+		await execCommand(
+			`${printCommand("quiet-output-value")} && ${exitCommand(3)}`,
+			quietLogger,
+			{ title: "Test" },
+		);
+
+		const logged = [
+			...vi.mocked(quietLogger.debug).mock.calls,
+			...vi.mocked(quietLogger.warn).mock.calls,
+		]
+			.flat()
+			.map(String)
+			.join("\n");
+		expect(logged).not.toContain("quiet-output-value");
 	});
 });

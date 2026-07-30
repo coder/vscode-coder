@@ -38,13 +38,14 @@ export async function getHeaders(
 			return headers;
 		}
 		const lines = result.stdout.replace(/\r?\n$/, "").split(/\r?\n/);
-		for (const line of lines) {
+		for (const [index, line] of lines.entries()) {
 			const [key, value] = line.split(/=(.*)/);
 			// Header names cannot be blank or contain whitespace and the Coder CLI
 			// requires that there be an equals sign (the value can be blank though).
 			if (key.length === 0 || key.includes(" ") || value === undefined) {
+				// The output can carry credentials; reference the line by number only.
 				throw new Error(
-					`Malformed line from header command: [${line}] (out: ${result.stdout})`,
+					`Malformed line ${index + 1} from header command output`,
 				);
 			}
 			headers[key] = value;
