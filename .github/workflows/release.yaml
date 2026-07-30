@@ -6,9 +6,7 @@ on:
       - "!v*-pre"
 
 permissions:
-  # Required to publish a release
-  contents: write
-  pull-requests: read
+  contents: read
 
 jobs:
   package:
@@ -20,6 +18,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify tag is on main
         run: |
@@ -74,6 +73,10 @@ jobs:
   publish:
     name: Publish Extension and Create Release
     needs: package
+    permissions:
+      # Required to create the GitHub release
+      contents: write
+      pull-requests: read
     uses: ./.github/workflows/publish-extension.yaml
     with:
       version: ${{ needs.package.outputs.version }}
