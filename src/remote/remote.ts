@@ -832,6 +832,19 @@ export class Remote {
 			} catch (error) {
 				this.logger.warn("Failed to migrate session auth from files:", error);
 			}
+			// Drop the plaintext copies even on failure: a rejected pair names
+			// another deployment, and the CLI config is rewritten on connect.
+			await Promise.all(
+				[urlPath, tokenPath].map((filePath) =>
+					fs.rm(filePath, { force: true }).catch((error) => {
+						this.logger.warn(
+							"Failed to remove migrated auth file",
+							filePath,
+							error,
+						);
+					}),
+				),
+			);
 		}
 	}
 
