@@ -27,25 +27,26 @@ export class CredentialTelemetry {
 		return this.trace("auth.credential.store", configs, fn);
 	}
 
-	public traceClear(
+	public traceClear<T>(
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: (span: Span) => Promise<void>,
-	): Promise<void> {
+		fn: (span: Span) => Promise<T>,
+	): Promise<T> {
 		return this.trace("auth.credential.clear", configs, fn);
 	}
 
-	private async trace(
+	private async trace<T>(
 		eventName: CredentialEvent,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: (span: Span) => Promise<void>,
-	): Promise<void> {
+		fn: (span: Span) => Promise<T>,
+	): Promise<T> {
 		const keyringEnabled = isKeyringEnabled(configs);
 		let aborted: Error | undefined;
+		let result: T | undefined;
 		await this.telemetry.trace(
 			eventName,
 			async (span) => {
 				try {
-					await fn(span);
+					result = await fn(span);
 				} catch (error) {
 					if (isAbortError(error)) {
 						span.markAborted();
@@ -64,6 +65,7 @@ export class CredentialTelemetry {
 		if (aborted) {
 			throw aborted;
 		}
+		return result as T;
 	}
 }
 

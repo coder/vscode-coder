@@ -17,7 +17,8 @@ export type AuthLoginOutcome =
 	| { success: true; method: LoginMethod }
 	| { success: false; method?: LoginMethod; reason: LoginPromptReason };
 export type AuthLogoutOutcome =
-	{ success: true } | { success: false; reason: "not_authenticated" };
+	| { success: true }
+	| { success: false; reason: "not_authenticated" | "cleanup_incomplete" };
 
 interface AuthLoginTrace {
 	setMethod: (method: LoginMethod) => void;

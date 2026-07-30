@@ -45,6 +45,9 @@ interface SetupOptions {
 	readonly authenticated?: boolean;
 	readonly loginResult?: LoginResultForTest;
 	readonly clearAllAuthDataError?: Error;
+	readonly clearCredentialsResult?: Awaited<
+		ReturnType<CliManager["clearCredentials"]>
+	>;
 }
 
 function setup(options: SetupOptions = {}) {
@@ -83,7 +86,9 @@ function setup(options: SetupOptions = {}) {
 	};
 
 	const cliManager: Pick<CliManager, "clearCredentials"> = {
-		clearCredentials: vi.fn(() => Promise.resolve()),
+		clearCredentials: vi.fn(() =>
+			Promise.resolve(options.clearCredentialsResult ?? { failed: [] }),
+		),
 	};
 
 	const secretsManager: Pick<
@@ -272,6 +277,37 @@ describe("Commands", () => {
 				properties: { result: "error", "error.type": "exception" },
 				error: { message: "secret clear failed" },
 			});
+		});
+
+		it("reports incomplete credential cleanup instead of success", async () => {
+			const { commands, sink } = setup({
+				authenticated: true,
+				clearCredentialsResult: { failed: ["cli"] },
+			});
+			// Recreated after setup so this instance records the dialog calls.
+			const interaction = new MockUserInteraction();
+
+			await commands.logout();
+
+			expect(sink.expectOne("auth.logout")).toMatchObject({
+				properties: {
+					result: "aborted",
+					reason: "cleanup_incomplete",
+				},
+			});
+			const messages = interaction.getMessageCalls();
+			expect(
+				messages.some(
+					(call) =>
+						call.message.includes("could not be removed") &&
+						call.message.includes("CLI session"),
+				),
+			).toBe(true);
+			expect(
+				messages.some((call) =>
+					call.message.includes("You've been logged out of Coder!"),
+				),
+			).toBe(false);
 		});
 	});
 });

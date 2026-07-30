@@ -38,6 +38,14 @@ export interface CliCredential {
 	source: "keyring" | "files";
 }
 
+/** Credential stores that logout cleanup can fail to clear. */
+export type CredentialStore = "cli" | "files";
+
+export interface CredentialClearResult {
+	/** Stores that could not be confirmed cleared. Empty on full success. */
+	failed: CredentialStore[];
+}
+
 const EXEC_TIMEOUT_MS = 60_000;
 const EXEC_LOG_INTERVAL_MS = 5_000;
 
@@ -171,31 +179,41 @@ export class CliCredentialManager {
 
 	/**
 	 * Delete credentials for a deployment. Removes the default-dir files and
-	 * logs out of the active store (keyring or file via --global-config), both
-	 * best-effort. Throws AbortError when the signal is aborted.
+	 * logs out of the active store (keyring or file via --global-config).
+	 * Reports which stores could not be cleared instead of throwing, except
+	 * for AbortError when the signal is aborted.
 	 */
 	public deleteToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
-	): Promise<void> {
+	): Promise<CredentialClearResult> {
 		return this.credentialTelemetry.traceClear(configs, async (span) => {
-			await Promise.all([
+			const [filesCleared, cliCleared] = await Promise.all([
 				this.deleteCredentialFiles(url),
 				this.cliLogout(url, configs, { signal: options?.signal, span }),
 			]);
+			const failed: CredentialStore[] = [];
+			if (!cliCleared) {
+				failed.push("cli");
+			}
+			if (!filesCleared) {
+				failed.push("files");
+			}
+			return { failed };
 		});
 	}
 
 	/**
 	 * Log out via `coder logout`, keyring or file (--global-config). Records
-	 * failures on the span instead of throwing (except on abort).
+	 * failures on the span instead of throwing (except on abort) and returns
+	 * whether the logout succeeded.
 	 */
 	private async cliLogout(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		{ signal, span }: { signal?: AbortSignal; span: Span },
-	): Promise<void> {
+	): Promise<boolean> {
 		let transport: CliTransport;
 		try {
 			transport = await this.resolveWriteTransport(url, configs);
@@ -203,7 +221,7 @@ export class CliCredentialManager {
 			this.logger.warn("Could not resolve CLI binary for logout:", error);
 			span.setProperty("error.type", "binary");
 			span.markError();
-			return;
+			return false;
 		}
 		const args = [
 			...this.credentialGlobalFlags(transport, url, configs),
@@ -215,6 +233,7 @@ export class CliCredentialManager {
 		try {
 			await this.execWithTimeout(transport.binPath, args, { signal });
 			this.logger.info("Deleted token via CLI for", url);
+			return true;
 		} catch (error) {
 			if (isAbortError(error)) {
 				throw error;
@@ -222,6 +241,7 @@ export class CliCredentialManager {
 			this.logger.warn("Failed to delete token via CLI:", error);
 			span.setProperty("error.type", "cli");
 			span.markError();
+			return false;
 		}
 	}
 
@@ -311,21 +331,27 @@ export class CliCredentialManager {
 	}
 
 	/**
-	 * Delete URL and token files. Best-effort: never throws.
+	 * Delete URL and token files. Returns whether all removals succeeded;
+	 * never throws.
 	 */
-	private async deleteCredentialFiles(url: string): Promise<void> {
+	private async deleteCredentialFiles(url: string): Promise<boolean> {
 		const safeHostname = toSafeHost(url);
 		const paths = [
 			this.pathResolver.getSessionTokenPath(safeHostname),
 			this.pathResolver.getUrlPath(safeHostname),
 		];
-		await Promise.all(
+		const results = await Promise.all(
 			paths.map((p) =>
-				fs.rm(p, { force: true }).catch((error) => {
-					this.logger.warn("Failed to remove credential file", p, error);
-				}),
+				fs.rm(p, { force: true }).then(
+					() => true,
+					(error) => {
+						this.logger.warn("Failed to remove credential file", p, error);
+						return false;
+					},
+				),
 			),
 		);
+		return results.every(Boolean);
 	}
 }
 
