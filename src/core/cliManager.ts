@@ -56,6 +56,16 @@ type SingleVerifyResult =
 	| { kind: "bypassed" }
 	| { kind: "sig_unavailable"; status: number };
 
+function versionsMatch(actual: string, expected: string): boolean {
+	const actualVersion = semver.valid(actual);
+	const expectedVersion = semver.valid(expected);
+	return (
+		actualVersion !== null &&
+		expectedVersion !== null &&
+		semver.eq(actualVersion, expectedVersion)
+	);
+}
+
 export class CliManager {
 	private readonly binaryLock: BinaryLock;
 	private readonly cliTelemetry: CliTelemetry;
@@ -166,7 +176,10 @@ export class CliManager {
 				this.checkResolvedBinary(restClient, resolved),
 			);
 
-		if (existingVersion === buildInfo.version) {
+		if (
+			existingVersion !== null &&
+			versionsMatch(existingVersion, buildInfo.version)
+		) {
 			this.output.debug("Existing binary matches server version");
 			trace.setOutcome("cache_hit");
 			return resolved.binPath;
@@ -263,7 +276,9 @@ export class CliManager {
 				parsedVersion,
 				existingVersion,
 				downloadReason: "version_mismatch",
-				outcome: existingVersion === buildInfo.version ? "match" : "mismatch",
+				outcome: versionsMatch(existingVersion, buildInfo.version)
+					? "match"
+					: "mismatch",
 			};
 		} catch (error) {
 			this.output.warn(
@@ -425,7 +440,7 @@ export class CliManager {
 			const version = await cliVersion(binPath);
 			return {
 				version,
-				matches: version === expectedVersion,
+				matches: versionsMatch(version, expectedVersion),
 			};
 		} catch (error) {
 			this.output.warn(`Unable to get version of binary: ${errToStr(error)}`);

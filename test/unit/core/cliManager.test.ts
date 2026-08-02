@@ -378,6 +378,17 @@ describe("CliManager", () => {
 			expect(memfs.existsSync(BINARY_PATH)).toBe(true);
 		});
 
+		it("reuses a binary when only SemVer build metadata differs", async () => {
+			const { manager, mockApi, mockAxios, withExistingBinary } =
+				setupCliManager();
+			mockApi.getBuildInfo = vi
+				.fn()
+				.mockResolvedValue({ version: "v2.34.0+3006da5" });
+			withExistingBinary("v2.34.0");
+			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
+			expect(mockAxios.get).not.toHaveBeenCalled();
+		});
+
 		it("downloads when versions differ", async () => {
 			const { manager, mockApi, withExistingBinary, withSuccessfulDownload } =
 				setupCliManager();
