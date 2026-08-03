@@ -17,8 +17,8 @@ import { createMockLogger } from "../../mocks/testHelpers";
 const sshFilePath = "/Path/To/UserHomeDir/.sshConfigDir/sshConfigFile";
 const sshTempFilePrefix =
 	"/Path/To/UserHomeDir/.sshConfigDir/.sshConfigFile.vscode-coder-tmp-";
-const managedHeader = `# This section is managed by the Coder VS Code extension.
-# Changes will be overwritten on the next workspace connection.`;
+const managedHeader = `# Rewritten by the Coder VS Code extension on every connection.
+# To change these options, use the "coder.sshConfig" setting instead.`;
 
 const mockFileSystem = {
 	mkdir: vi.fn(),
@@ -1095,5 +1095,72 @@ Host work-server
 			ForwardX11: "yes",
 			ForwardX11Trusted: "yes",
 		});
+	});
+});
+
+describe("updateInclude", () => {
+	const include = `# --- START CODER VSCODE INCLUDE ---
+# Your Coder workspaces, managed by the Coder VS Code extension. Keep first:
+# SSH uses the first value found, so anything above this block overrides them.
+Include ~/.ssh/coder/config
+# --- END CODER VSCODE INCLUDE ---`;
+
+	const managedBlock = `# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+  ProxyCommand some-command-here
+# --- END CODER VSCODE dev.coder.com ---`;
+
+	/** Include our config in `existing`, returning what was written, if anything. */
+	async function updateInclude(existing: string): Promise<string | undefined> {
+		mockFileSystem.readFile.mockResolvedValueOnce(existing);
+		mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
+		const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
+		await sshConfig.load();
+		await sshConfig.updateInclude("~/.ssh/coder/config", "dev.coder.com");
+		return mockFileSystem.writeFile.mock.calls.at(-1)?.[1] as
+			string | undefined;
+	}
+
+	it("goes above everything the user wrote", async () => {
+		const config =
+			"AddKeysToAgent yes\n\nInclude ~/.ssh/work\n\nHost *\n  ConnectTimeout 5";
+
+		await expect(updateInclude(config)).resolves.toBe(
+			`${include}\n\n${config}`,
+		);
+	});
+
+	it("creates the include in an empty config", async () => {
+		await expect(updateInclude("")).resolves.toBe(include);
+	});
+
+	it("leaves the file alone when the include is already first", async () => {
+		await expect(
+			updateInclude(`${include}\n\nHost *`),
+		).resolves.toBeUndefined();
+	});
+
+	it("moves an include that is no longer first", async () => {
+		const config = "Host *\n  ConnectTimeout 5";
+
+		await expect(updateInclude(`${config}\n\n${include}`)).resolves.toBe(
+			`${include}\n\n${config}`,
+		);
+	});
+
+	it("drops the block the included file supersedes", async () => {
+		const config = "Host *\n  ConnectTimeout 5";
+
+		await expect(updateInclude(`${config}\n\n${managedBlock}`)).resolves.toBe(
+			`${include}\n\n${config}`,
+		);
+	});
+
+	it("keeps blocks belonging to other deployments", async () => {
+		const other = managedBlock.replaceAll("dev.coder.com", "dev2.coder.com");
+
+		await expect(updateInclude(`${other}\n\n${managedBlock}`)).resolves.toBe(
+			`${include}\n\n${other}`,
+		);
 	});
 });

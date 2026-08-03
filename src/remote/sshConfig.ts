@@ -62,6 +62,18 @@ const KEY_ONLY_REGEX = /^[a-zA-Z0-9-]+$/;
 /** Characters that would break a value out of its config line. */
 const UNSAFE_CHARS_REGEX = /[\r\n\0]/;
 
+const START_BLOCK_PREFIX = "# --- START CODER VSCODE";
+const END_BLOCK_PREFIX = "# --- END CODER VSCODE";
+
+const INCLUDE_START = `${START_BLOCK_PREFIX} INCLUDE ---`;
+const INCLUDE_END = `${END_BLOCK_PREFIX} INCLUDE ---`;
+
+/** Matches our include block wherever it currently sits. */
+const INCLUDE_BLOCK_REGEX = new RegExp(
+	`^${INCLUDE_START}$.*?^${INCLUDE_END}$`,
+	"ms",
+);
+
 /**
  * SSH options a deployment may not set, mirroring the server's validation of
  * --ssh-config-options (codersdk.ValidateSSHConfigOption).
@@ -88,8 +100,8 @@ const DENIED_DEPLOYMENT_KEYS: ReadonlySet<Lowercase<string>> = new Set([
 ]);
 
 /**
- * Options the post-write check in remote.ts pins to Coder's own value. Setting
- * these in coder.sshConfig fails that check, so the error must not suggest it.
+ * Connection-critical options Coder always writes itself, so the error must
+ * not suggest overriding them in coder.sshConfig.
  */
 const PINNED_KEYS: ReadonlySet<Lowercase<string>> = new Set([
 	"proxycommand",
@@ -288,10 +300,10 @@ export class SshConfig {
 	private raw: string | undefined;
 
 	private startBlockComment(safeHostname: string): string {
-		return `# --- START CODER VSCODE ${safeHostname} ---`;
+		return `${START_BLOCK_PREFIX} ${safeHostname} ---`;
 	}
 	private endBlockComment(safeHostname: string): string {
-		return `# --- END CODER VSCODE ${safeHostname} ---`;
+		return `${END_BLOCK_PREFIX} ${safeHostname} ---`;
 	}
 
 	constructor(
@@ -339,6 +351,41 @@ export class SshConfig {
 	}
 
 	/**
+	 * Include `includePath` from the first line, so the options it holds win:
+	 * SSH uses the first value it obtains for each one. Also drops the
+	 * deployment's own block, which the included file supersedes.
+	 */
+	async updateInclude(includePath: string, safeHostname: string) {
+		const original = this.getRaw();
+		const block = this.getBlock(safeHostname);
+		if (block) {
+			this.logger.debug("Removing superseded SSH config block", safeHostname);
+			this.removeBlock(block);
+		}
+		const include = [
+			INCLUDE_START,
+			"# Your Coder workspaces, managed by the Coder VS Code extension. Keep first:",
+			"# SSH uses the first value found, so anything above this block overrides them.",
+			`Include ${includePath}`,
+			INCLUDE_END,
+		].join("\n");
+		const rest = this.getRaw().replace(INCLUDE_BLOCK_REGEX, "").trim();
+		this.raw = rest ? `${include}\n\n${rest}` : include;
+		if (this.getRaw() !== original) {
+			this.logger.debug("Including SSH config", includePath);
+			await this.save();
+		}
+	}
+
+	private removeBlock(block: Block) {
+		const raw = this.getRaw();
+		const start = raw.indexOf(block.raw);
+		const before = raw.slice(0, start).trimEnd();
+		const after = raw.slice(start + block.raw.length).trimStart();
+		this.raw = [before, after].filter(Boolean).join("\n\n");
+	}
+
+	/**
 	 * Get the block for the deployment with the provided hostname.
 	 */
 	private getBlock(safeHostname: string): Block | undefined {
@@ -365,14 +412,6 @@ export class SshConfig {
 		const hasBlock = startBlockIndex > -1 && endBlockIndex > -1;
 		if (!hasBlock) {
 			return;
-		}
-
-		if (startBlockIndex === -1) {
-			throw new SshConfigBadFormat("Start block not found");
-		}
-
-		if (startBlockIndex === -1) {
-			throw new SshConfigBadFormat("End block not found");
 		}
 
 		if (endBlockIndex < startBlockIndex) {
@@ -414,8 +453,8 @@ export class SshConfig {
 		const { Host, ...otherValues } = values;
 		const lines = [
 			this.startBlockComment(safeHostname),
-			"# This section is managed by the Coder VS Code extension.",
-			"# Changes will be overwritten on the next workspace connection.",
+			"# Rewritten by the Coder VS Code extension on every connection.",
+			'# To change these options, use the "coder.sshConfig" setting instead.',
 			`Host ${Host}`,
 		];
 

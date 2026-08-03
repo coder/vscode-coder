@@ -62,7 +62,6 @@ import { applySettingOverrides, buildSshOverrides } from "./sshOverrides";
 import { SshProcessMonitor } from "./sshProcess";
 import {
 	computeSshProperties,
-	findSshPropertyProblems,
 	sshSupportsSetEnv,
 	type SshProperties,
 } from "./sshSupport";
@@ -83,6 +82,13 @@ import type { PathResolver } from "../core/pathResolver";
 import type { SecretsManager } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
 import type { LoginCoordinator } from "../login/loginCoordinator";
+
+/**
+ * Our own config, included from the user's. Keep the tilde: relative includes
+ * always resolve against ~/.ssh, and an absolute path would not survive a
+ * config synced between machines.
+ */
+const CODER_SSH_CONFIG_PATH = "~/.ssh/coder/config";
 
 export interface RemoteDetails extends vscode.Disposable {
 	safeHostname: string;
@@ -897,19 +903,23 @@ export class Remote {
 		featureSet: FeatureSet,
 		cliAuth: CliAuth,
 	): Promise<SshProperties> {
-		const sshConfigFile = this.getSshConfigPath();
-
-		const sshConfig = new SshConfig(sshConfigFile, this.logger);
+		// Our blocks live in our own file; the user's only gains the include.
+		const sshConfig = new SshConfig(this.getSshConfigPath(), this.logger);
 		await sshConfig.load();
+		const coderConfig = new SshConfig(
+			expandPath(CODER_SSH_CONFIG_PATH),
+			this.logger,
+		);
+		await coderConfig.load();
 
 		// Options the user set themselves win the merge below, so they are exempt
 		// from the deny list. Both sources are local and already trusted: whoever
-		// can write the SSH config could write any Host block directly, and the
-		// post-write check below still pins the critical options.
+		// can write the SSH config could write any Host block directly.
 		const userConfigSsh = vscode.workspace
 			.getConfiguration("coder")
 			.get<string[]>("sshConfig", []);
 		const userConfig = parseSshConfig(userConfigSsh);
+		// The CLI writes its block to the user's config, so read it from there.
 		const configSshOptions = parseCoderSshOptions(sshConfig.getRaw());
 
 		let deploymentSshConfig = {};
@@ -973,51 +983,15 @@ export class Remote {
 			sshValues.SetEnv = "CODER_SSH_SESSION_TYPE=vscode";
 		}
 
-		await sshConfig.update(safeHostname, sshValues, sshConfigOverrides);
+		// Write our file before including it, so the include never dangles.
+		await coderConfig.update(safeHostname, sshValues, sshConfigOverrides);
+		await sshConfig.updateInclude(CODER_SSH_CONFIG_PATH, safeHostname);
 
-		// A user can provide a "Host *" entry in their SSH config to add options
-		// to all hosts. We need to ensure that the options we set are not
-		// overridden by the user's config.
-		const computedProperties = computeSshProperties(
+		// Mirror SSH's parse order; RemoteCommand can come from the user's config.
+		return computeSshProperties(
 			hostName,
-			sshConfig.getRaw(),
+			`${coderConfig.getRaw()}\n${sshConfig.getRaw()}`,
 		);
-		const problems = findSshPropertyProblems(computedProperties, {
-			ProxyCommand: sshValues.ProxyCommand,
-			UserKnownHostsFile: sshValues.UserKnownHostsFile,
-			StrictHostKeyChecking: sshValues.StrictHostKeyChecking,
-		});
-		if (problems.length > 0) {
-			await this.failSshConfigCheck(hostName, problems);
-		}
-
-		return computedProperties;
-	}
-
-	/** Show every unexpected option at once, close the remote, and abort. */
-	private async failSshConfigCheck(
-		hostName: string,
-		problems: string[],
-	): Promise<never> {
-		const title = `Unexpected SSH Config Option${problems.length > 1 ? "s" : ""}`;
-		const detail =
-			`Your SSH config sets unexpected values for the "${hostName}" host. ` +
-			`Please fix the following and try again:\n\n` +
-			problems.map((problem) => `- ${problem}.`).join("\n");
-		const result = await vscodeProposed.window.showErrorMessage(
-			title,
-			{
-				useCustom: true,
-				modal: true,
-				detail,
-			},
-			"Reload Window",
-		);
-		if (result === "Reload Window") {
-			await this.reloadWindow();
-		}
-		await this.closeRemote();
-		throw new Error("SSH config mismatch, closing remote");
 	}
 
 	private watchSettings(

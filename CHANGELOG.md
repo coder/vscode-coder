@@ -22,6 +22,13 @@
 
 ### Changed
 
+- Write workspace SSH hosts to `~/.ssh/coder/config` and include that file
+  from the top of your own SSH config, rather than writing the block into your
+  config directly. SSH uses the first value it obtains for each option, so a
+  catch-all like `Host *` used to override the connection's `ProxyCommand` and
+  abort it with an "Unexpected SSH Config Option" error; now the extension's
+  options win and that error is gone. Your config is only written once, to add
+  the include, and the block for a deployment moves out of it on next connect.
 - Filter the Shared Workspaces view with the server-side `shared_with_user`
   query instead of filtering `shared:true` results on the client, so fewer
   workspaces are fetched and the view loads faster. Deployments too old to
