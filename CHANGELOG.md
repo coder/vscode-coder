@@ -25,12 +25,10 @@
 
 ### Fixed
 
-- Write the SSH config to the file the active Remote-SSH extension actually
-  reads. Windsurf/Devin and Antigravity renamed the whole `remote.SSH` settings
-  section, so a custom config file set as `remote.devinSSH.configFile`,
-  `remote.windsurfSSH.configFile`, or `remote.antigravitySSH.configFile` was
-  ignored and the workspace host was written to `~/.ssh/config` instead, where
-  those editors never looked for it.
+- Ignore the SSH config file setting on Antigravity and Windsurf/Devin. They
+  launch ssh without pointing it at a config file, so it always reads
+  `~/.ssh/config`, and honoring the setting wrote the workspace host where the
+  connection never looked.
 - Apply a 60-second default timeout to REST requests, so requests hung on a
   half-open TCP connection don't stall pollers forever.
 - Change `coder.binarySource`, `coder.binaryDestination`, `coder.headerCommand`,

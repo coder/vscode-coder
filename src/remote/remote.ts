@@ -55,7 +55,7 @@ import {
 	parseCoderSshOptions,
 	parseSshConfig,
 } from "./sshConfig";
-import { getRemoteSshSetting } from "./sshExtension";
+import { getRemoteSshConfigFile } from "./sshExtension";
 import { applySettingOverrides, buildSshOverrides } from "./sshOverrides";
 import { SshProcessMonitor } from "./sshProcess";
 import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
@@ -919,7 +919,7 @@ export class Remote {
 	}
 
 	private getSshConfigPath(): string {
-		const configured = getRemoteSshSetting("configFile");
+		const configured = getRemoteSshConfigFile();
 		return expandPath(configured || path.join("~", ".ssh", "config"));
 	}
 
