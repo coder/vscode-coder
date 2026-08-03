@@ -41,6 +41,13 @@ Host coder-vscode.dev.coder.com--*
 	LogLevel ERROR
 ```
 
+Which file that entry goes in depends on the Remote - SSH extension. Microsoft's
+and Cursor's pass `remote.SSH.configFile` to ssh with `-F`, and VSCodium's parses
+the file itself instead of running ssh, so all three connect through it.
+Antigravity and Windsurf/Devin renamed the setting but spawn ssh without `-F`, so
+ssh reads `~/.ssh/config` regardless; we ignore it there rather than write the
+host where the connection never looks.
+
 If any step fails, we show an error message. Once the error message is closed
 we close the remote so the Remote - SSH connection does not continue to
 connection. Otherwise, we yield, which lets the Remote - SSH continue.
