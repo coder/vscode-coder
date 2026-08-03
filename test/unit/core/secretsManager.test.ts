@@ -81,39 +81,28 @@ describe("SecretsManager", () => {
 		});
 
 		it.each([
-			{
-				name: "malformed URL",
-				url: "not a URL",
-				expectedHostname: "(invalid URL)",
-			},
+			{ name: "malformed URL", url: "not a URL" },
 			{
 				name: "mismatched hostname",
 				url: "https://other.example.com/private?token=secret",
-				expectedHostname: "other.example.com",
 			},
-		])(
-			"should ignore stored auth with a $name",
-			async ({ url, expectedHostname }) => {
-				await secretStorage.store(
-					"coder.session.example.com",
-					JSON.stringify({ url, token: "secret-token" }),
-				);
+		])("should ignore stored auth with a $name", async ({ url }) => {
+			await secretStorage.store(
+				"coder.session.example.com",
+				JSON.stringify({ url, token: "secret-token" }),
+			);
 
-				expect(
-					await secretsManager.getSessionAuth("example.com"),
-				).toBeUndefined();
-				expect(logger.warn).toHaveBeenCalledWith(
-					"Ignoring session auth with invalid deployment hostname",
-					{
-						safeHostname: "example.com",
-						authHostname: expectedHostname,
-					},
-				);
-				expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain(
-					"secret-token",
-				);
-			},
-		);
+			expect(
+				await secretsManager.getSessionAuth("example.com"),
+			).toBeUndefined();
+			expect(logger.warn).toHaveBeenCalledWith(
+				"Ignoring session auth with invalid deployment hostname",
+				{ safeHostname: "example.com" },
+			);
+			expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain(
+				"secret-token",
+			);
+		});
 
 		it("should clear session auth", async () => {
 			await secretsManager.setSessionAuth("example.com", {

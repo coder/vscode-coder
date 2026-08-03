@@ -20,10 +20,6 @@ import {
 	watchConfigurationChanges,
 } from "../configWatcher";
 import { version as cliVersion } from "../core/cliExec";
-import {
-	SessionAuthHostnameError,
-	type SecretsManager,
-} from "../core/secretsManager";
 import { toError } from "../error/errorUtils";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import { Inbox } from "../inbox";
@@ -76,6 +72,7 @@ import type { ServiceContainer } from "../core/container";
 import type { ContextManager } from "../core/contextManager";
 import type { StartupMode } from "../core/mementoManager";
 import type { PathResolver } from "../core/pathResolver";
+import type { SecretsManager } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
 import type { LoginCoordinator } from "../login/loginCoordinator";
 
@@ -831,13 +828,9 @@ export class Remote {
 					url: url.value.trim(),
 					token: token.value.trim(),
 				});
-			} catch (error) {
-				if (!(error instanceof SessionAuthHostnameError)) {
-					throw error;
-				}
-				this.logger.warn("Ignoring invalid session auth migration", {
-					safeHostname: error.safeHostname,
-					authHostname: error.authHostname ?? "(invalid URL)",
+			} catch {
+				this.logger.warn("Failed to migrate session auth from files", {
+					safeHostname,
 				});
 			}
 		}

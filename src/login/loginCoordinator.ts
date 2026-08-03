@@ -4,12 +4,6 @@ import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/utils";
-import {
-	assertSessionAuthHostname,
-	SessionAuthHostnameError,
-	type OAuthTokenData,
-	type SecretsManager,
-} from "../core/secretsManager";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
@@ -23,6 +17,7 @@ import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { CliCredentialManager } from "../core/cliCredentialManager";
 import type { MementoManager } from "../core/mementoManager";
+import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type {
 	AuthLoginPromptTrigger,
@@ -93,9 +88,6 @@ export class LoginCoordinator implements vscode.Disposable {
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url } = options;
-		if (!this.hasValidSessionAuthHostname(safeHostname, url)) {
-			return Promise.resolve({ success: false, reason: "auth_failed" });
-		}
 		return this.executeWithGuard(async () => {
 			const result = await this.attemptLogin(
 				{ safeHostname, url },
@@ -155,9 +147,6 @@ export class LoginCoordinator implements vscode.Disposable {
 						if (!newUrl) {
 							return { success: false, reason: "no_url_provided" };
 						}
-						if (!this.hasValidSessionAuthHostname(safeHostname, newUrl)) {
-							return { success: false, reason: "auth_failed" };
-						}
 
 						const result = await this.attemptLogin(
 							{ url: newUrl, safeHostname },
@@ -184,25 +173,6 @@ export class LoginCoordinator implements vscode.Disposable {
 				disposeCrossWindowListener();
 			}
 		});
-	}
-
-	private hasValidSessionAuthHostname(
-		safeHostname: string,
-		url: string,
-	): boolean {
-		try {
-			assertSessionAuthHostname(safeHostname, url);
-			return true;
-		} catch (error) {
-			if (!(error instanceof SessionAuthHostnameError)) {
-				throw error;
-			}
-			this.logger.warn("Ignoring login with invalid deployment hostname", {
-				safeHostname: error.safeHostname,
-				authHostname: error.authHostname ?? "(invalid URL)",
-			});
-			return false;
-		}
 	}
 
 	private async persistSessionAuth(

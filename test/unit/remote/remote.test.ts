@@ -84,11 +84,8 @@ describe("Remote", () => {
 
 		expect(await secretsManager.getSessionAuth(SAFE_HOSTNAME)).toBeUndefined();
 		expect(logger.warn).toHaveBeenCalledWith(
-			"Ignoring invalid session auth migration",
-			{
-				safeHostname: SAFE_HOSTNAME,
-				authHostname: "cursor.example.com",
-			},
+			"Failed to migrate session auth from files",
+			{ safeHostname: SAFE_HOSTNAME },
 		);
 		expect(ensureLoggedInWithDialog).toHaveBeenCalledWith(
 			expect.objectContaining({

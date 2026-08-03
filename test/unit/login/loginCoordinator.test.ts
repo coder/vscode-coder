@@ -178,28 +178,6 @@ function createTestContext(telemetry?: TelemetryService) {
 }
 
 describe("LoginCoordinator", () => {
-	describe("hostname validation", () => {
-		it.each([
-			{ name: "malformed URL", url: "not a URL" },
-			{ name: "mismatched hostname", url: "https://other.example.com" },
-		])("rejects a $name before authentication", async ({ url }) => {
-			const { coordinator, logger } = createTestContext();
-
-			const result = await coordinator.ensureLoggedIn({
-				url,
-				safeHostname: TEST_HOSTNAME,
-				token: "provided-token",
-			});
-
-			expect(result).toEqual({ success: false, reason: "auth_failed" });
-			expect(mockGetAuthenticatedUser).not.toHaveBeenCalled();
-			expect(logger.warn).toHaveBeenCalledWith(
-				"Ignoring login with invalid deployment hostname",
-				expect.objectContaining({ safeHostname: TEST_HOSTNAME }),
-			);
-		});
-	});
-
 	describe("token authentication", () => {
 		it("authenticates with stored token on success", async () => {
 			const { secretsManager, coordinator, mockSuccessfulAuth } =
@@ -435,21 +413,6 @@ describe("LoginCoordinator", () => {
 	});
 
 	describe("ensureLoggedInWithDialog", () => {
-		it("returns auth failure when the selected URL hostname mismatches", async () => {
-			const { userInteraction, coordinator } = createTestContext();
-			userInteraction.setResponse("Authentication Required", "Login");
-			vi.mocked(maybeAskUrl).mockResolvedValue("https://other.example.com");
-
-			const result = await coordinator.ensureLoggedInWithDialog({
-				url: undefined,
-				safeHostname: TEST_HOSTNAME,
-				trigger: "missing_session",
-			});
-
-			expect(result).toEqual({ success: false, reason: "auth_failed" });
-			expect(mockGetAuthenticatedUser).not.toHaveBeenCalled();
-		});
-
 		it("returns success false when user dismisses dialog", async () => {
 			const { mockConfig, userInteraction, coordinator } = createTestContext();
 			// Use mTLS for simpler dialog test
