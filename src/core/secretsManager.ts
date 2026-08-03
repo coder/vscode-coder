@@ -51,6 +51,31 @@ const SessionAuthSchema = z.object({
 
 export type SessionAuth = z.infer<typeof SessionAuthSchema>;
 
+export class SessionAuthHostnameError extends Error {
+	public constructor(
+		public readonly safeHostname: string,
+		public readonly authHostname?: string,
+	) {
+		super("Session auth URL does not match its deployment hostname");
+		this.name = "SessionAuthHostnameError";
+	}
+}
+
+export function assertSessionAuthHostname(
+	safeHostname: string,
+	url: string,
+): void {
+	let authHostname: string;
+	try {
+		authHostname = toSafeHost(url);
+	} catch {
+		throw new SessionAuthHostnameError(safeHostname);
+	}
+	if (authHostname !== safeHostname) {
+		throw new SessionAuthHostnameError(safeHostname, authHostname);
+	}
+}
+
 export class SecretsManager {
 	constructor(
 		private readonly secrets: SecretStorage,
@@ -189,7 +214,25 @@ export class SecretsManager {
 			return undefined;
 		}
 		const result = SessionAuthSchema.safeParse(data);
-		return result.success ? result.data : undefined;
+		if (!result.success) {
+			return undefined;
+		}
+		try {
+			assertSessionAuthHostname(safeHostname, result.data.url);
+		} catch (error) {
+			if (!(error instanceof SessionAuthHostnameError)) {
+				throw error;
+			}
+			this.logger.warn(
+				"Ignoring session auth with invalid deployment hostname",
+				{
+					safeHostname: error.safeHostname,
+					authHostname: error.authHostname ?? "(invalid URL)",
+				},
+			);
+			return undefined;
+		}
+		return result.data;
 	}
 
 	public async setSessionAuth(
@@ -198,6 +241,7 @@ export class SecretsManager {
 	): Promise<void> {
 		// Parse through schema to strip any extra fields
 		const state = SessionAuthSchema.parse(auth);
+		assertSessionAuthHostname(safeHostname, state.url);
 		await this.setSecret(SESSION_KEY_PREFIX, safeHostname, state);
 	}
 
