@@ -9,6 +9,7 @@ import {
 import {
 	InMemoryMemento,
 	InMemorySecretStorage,
+	LogCollector,
 	createMockLogger,
 } from "../../mocks/testHelpers";
 
@@ -59,25 +60,35 @@ describe("SecretsManager", () => {
 		});
 
 		it.each([
-			{ name: "malformed URL", url: "not a URL" },
+			{
+				name: "malformed URL",
+				url: "not a URL",
+				error:
+					'Session auth hostname mismatch: expected "example.com", got an invalid URL',
+			},
 			{
 				name: "mismatched hostname",
 				url: "https://other.example.com",
+				error:
+					'Session auth hostname mismatch: expected "example.com", got "other.example.com"',
 			},
-		])("should reject a write with a $name", async ({ url }) => {
+		])("should reject a write with a $name", async ({ url, error }) => {
+			const existingAuth = {
+				url: "https://example.com",
+				token: "existing-token",
+			};
+			await secretsManager.setSessionAuth("example.com", existingAuth);
+
 			await expect(
 				secretsManager.setSessionAuth("example.com", {
 					url,
 					token: "secret-token",
 				}),
-			).rejects.toThrow(
-				"Session auth URL does not match its deployment hostname",
-			);
+			).rejects.toThrow(error);
 
-			expect(
-				await secretStorage.get("coder.session.example.com"),
-			).toBeUndefined();
-			expect(mementoManager.getDeploymentAccess("example.com")).toBeUndefined();
+			expect(await secretsManager.getSessionAuth("example.com")).toEqual(
+				existingAuth,
+			);
 		});
 
 		it.each([
@@ -95,13 +106,35 @@ describe("SecretsManager", () => {
 			expect(
 				await secretsManager.getSessionAuth("example.com"),
 			).toBeUndefined();
-			expect(logger.warn).toHaveBeenCalledWith(
-				"Ignoring session auth with invalid deployment hostname",
-				{ safeHostname: "example.com" },
-			);
-			expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain(
-				"secret-token",
-			);
+		});
+
+		describe("logging", () => {
+			it.each([
+				{ name: "malformed URL", url: "not a URL" },
+				{
+					name: "mismatched hostname",
+					url: "https://other.example.com/private?token=secret",
+				},
+			])("logs a sanitized warning for a $name", async ({ url }) => {
+				const logs = new LogCollector();
+				const manager = new SecretsManager(secretStorage, mementoManager, logs);
+				await secretStorage.store(
+					"coder.session.example.com",
+					JSON.stringify({ url, token: "secret-token" }),
+				);
+
+				await manager.getSessionAuth("example.com");
+
+				expect(logs.entries).toEqual([
+					{
+						level: "warn",
+						message: "Ignoring session auth with invalid deployment hostname",
+						args: [{ safeHostname: "example.com" }],
+					},
+				]);
+				expect(JSON.stringify(logs.entries)).not.toContain("secret-token");
+				expect(JSON.stringify(logs.entries)).not.toContain(url);
+			});
 		});
 
 		it("should clear session auth", async () => {

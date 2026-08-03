@@ -63,15 +63,17 @@ export class SecretsManager {
 	}
 
 	private assertSessionAuthHostname(safeHostname: string, url: string): void {
-		let authHostname: string | undefined;
+		let authHostname: string;
 		try {
 			authHostname = toSafeHost(url);
 		} catch {
-			authHostname = undefined;
+			throw new Error(
+				`Session auth hostname mismatch: expected "${safeHostname}", got an invalid URL`,
+			);
 		}
 		if (authHostname !== safeHostname) {
 			throw new Error(
-				"Session auth URL does not match its deployment hostname",
+				`Session auth hostname mismatch: expected "${safeHostname}", got "${authHostname}"`,
 			);
 		}
 	}
@@ -218,6 +220,12 @@ export class SecretsManager {
 		return result.data;
 	}
 
+	/**
+	 * Store session auth for a deployment.
+	 *
+	 * @throws If the auth URL is invalid or its hostname does not match the
+	 * deployment.
+	 */
 	public async setSessionAuth(
 		safeHostname: string,
 		auth: SessionAuth,
