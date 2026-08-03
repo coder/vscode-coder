@@ -11,6 +11,34 @@ export const REMOTE_SSH_EXTENSION_IDS = [
 export type RemoteSshExtensionId = (typeof REMOTE_SSH_EXTENSION_IDS)[number];
 
 /**
+ * Sections each extension reads, in order. The rebranded forks renamed the
+ * whole `remote.SSH` section, so reading it directly misses them.
+ */
+const SETTING_SECTIONS: Readonly<
+	Record<RemoteSshExtensionId, readonly string[]>
+> = {
+	"jeanp413.open-remote-ssh": ["remote.SSH"],
+	// Windsurf became Devin and reads both, preferring the new name.
+	"codeium.windsurf-remote-openssh": ["remote.devinSSH", "remote.windsurfSSH"],
+	"anysphere.remote-ssh": ["remote.SSH"],
+	"ms-vscode-remote.remote-ssh": ["remote.SSH"],
+	"google.antigravity-remote-openssh": ["remote.antigravitySSH"],
+};
+
+/** First non-empty value for a string setting, e.g. `configFile`. */
+export function getRemoteSshSetting(key: string): string | undefined {
+	const id = getRemoteSshExtension()?.id;
+	const sections = id ? SETTING_SECTIONS[id] : ["remote.SSH"];
+	for (const section of sections) {
+		const value = vscode.workspace.getConfiguration(section).get<string>(key);
+		if (value) {
+			return value;
+		}
+	}
+	return undefined;
+}
+
+/**
  * VS Code Remote-SSH log layout, shared by the live SSH monitor and the
  * support-bundle collector so a future layout change updates one place.
  */
