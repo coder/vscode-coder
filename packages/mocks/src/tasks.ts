@@ -99,6 +99,7 @@ export function template(overrides: Partial<Template> = {}): Template {
 		icon: "/icon.svg",
 		default_ttl_ms: 0,
 		activity_bump_ms: 0,
+		time_til_autostop_notify_ms: 0,
 		autostop_requirement: { days_of_week: [], weeks: 0 },
 		autostart_requirement: { days_of_week: [] },
 		created_by_id: "user-1",
