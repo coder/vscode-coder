@@ -8,7 +8,7 @@
 	border: 1px solid var(--ui-contrast-border);
 	border-radius: var(--ui-radius-circle);
 	font-size: var(--ui-font-size-small);
-	font-weight: 400;
+	font-weight: var(--ui-font-weight-regular);
 }
 
 .ui-status-pill .ui-icon {

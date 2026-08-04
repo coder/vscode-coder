@@ -7,8 +7,14 @@
 	--ui-font-family: var(--vscode-font-family);
 	--ui-font-size: var(--vscode-font-size);
 	--ui-font-weight: var(--vscode-font-weight);
-	/* Badges and pills; the native badge size */
-	--ui-font-size-small: var(--vscode-bodyFontSize-xSmall, 11px);
+	/* Badges and pills; the native badge size. The deprecated bodyFontSize
+	   rung backfills hosts older than 1.131. */
+	--ui-font-size-small: var(
+		--vscode-fontSize-body2,
+		var(--vscode-bodyFontSize-xSmall, 11px)
+	);
+	--ui-font-weight-regular: var(--vscode-fontWeight-regular, 400);
+	--ui-font-weight-semibold: var(--vscode-fontWeight-semiBold, 600);
 
 	/* Surfaces and text */
 	--ui-foreground: var(--vscode-foreground);
@@ -29,6 +35,19 @@
 		var(--vscode-contrastActiveBorder, var(--ui-foreground))
 	);
 	--ui-disabled-opacity: 0.4;
+
+	/* Modern UI surfaces; older hosts fall back to the sidebar-based tokens */
+	--ui-surface-background: var(
+		--vscode-surface-background,
+		var(--ui-background)
+	);
+	--ui-surface-foreground: var(
+		--vscode-surface-foreground,
+		var(--ui-foreground)
+	);
+	--ui-surface-border: var(--vscode-surface-border, var(--ui-border));
+	/* Native menus size their border with this (menu.ts) */
+	--ui-stroke-thickness: var(--vscode-strokeThickness, 1px);
 
 	/* Controls */
 	--ui-toolbar-foreground: var(--vscode-foreground);

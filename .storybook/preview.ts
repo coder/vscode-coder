@@ -135,9 +135,27 @@ const preview: Preview = {
 				dynamicTitle: true,
 			},
 		},
+		uiStyle: {
+			description: "packages/ui styling baseline",
+			defaultValue: "modern",
+			toolbar: {
+				title: "UI style",
+				icon: "beaker",
+				items: [
+					{ value: "modern", title: "Modern UI" },
+					{ value: "stable", title: "Stable parity" },
+				],
+				dynamicTitle: true,
+			},
+		},
 	},
 	decorators: [
 		(Story, context) => {
+			if (context.globals.uiStyle === "stable") {
+				document.documentElement.setAttribute("data-ui-style", "stable");
+			} else {
+				document.documentElement.removeAttribute("data-ui-style");
+			}
 			applyTheme(context.globals.theme as string);
 			return createElement(
 				"div",

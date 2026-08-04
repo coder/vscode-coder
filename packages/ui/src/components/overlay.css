@@ -5,7 +5,7 @@
 	/* Cap to the space Radix reports so oversized content scrolls */
 	max-height: var(--ui-overlay-available-height, none);
 	overflow-y: auto;
-	border: 1px solid var(--ui-overlay-border, transparent);
+	border: var(--ui-stroke-thickness) solid var(--ui-overlay-border, transparent);
 	border-radius: var(--ui-radius-large);
 	box-shadow: var(--ui-widget-shadow);
 	z-index: var(--ui-z-index-overlay);

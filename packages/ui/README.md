@@ -38,6 +38,13 @@ Every component forwards `className` and `style` to its root element, and
 default rules use single-class specificity, so a consumer class imported
 after the library overrides any default (width, height, spacing).
 
+Where VS Code's stable rendering and its Modern UI preview
+(`workbench.experimental.modernUI`) diverge, components follow Modern UI,
+and new components should too. Webviews get no signal for the setting, so
+the default cannot follow the host. Until the design settles,
+`data-ui-style="stable"` on the document root restores the stable-parity
+menu motion; Storybook's "UI style" toolbar switch toggles it live.
+
 ## Overlays
 
 `Tooltip`, `ContextMenu`, and `DropdownMenu` wrap the Radix primitives,
@@ -59,9 +66,10 @@ and tooltips stop growing at half the window height.
 
 Overlay content is portalled to `body`, inherits webview typography from
 there, and shares the `.ui-overlay` base for stacking, border, shadow,
-and scrolling. Menus fade in like native menus, gated on `data-state` so
-an interrupted entry animation cannot delay unmounting. High contrast,
-`forced-colors`, and `prefers-reduced-motion` are handled.
+and scrolling. Menus default to the Modern UI motion: they scale and fade in
+from the trigger corner and fade out on close, with Radix holding unmount
+until the exit animation ends. High contrast, `forced-colors`, and
+`prefers-reduced-motion` are handled.
 
 ## Known gaps
 

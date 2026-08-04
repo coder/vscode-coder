@@ -19,7 +19,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = join(HERE, "generated");
 
 /** Pinned so dumps are reproducible; bump to resync against a newer VS Code. */
-const VSCODE_VERSION = "1.128.0";
+const VSCODE_VERSION = "1.131.0";
 
 async function main() {
 	// Isolated profile: theme switching must not touch the shared

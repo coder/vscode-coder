@@ -29,7 +29,7 @@
 .ui-state-panel__title {
 	margin: 0;
 	font-size: 1rem;
-	font-weight: 600;
+	font-weight: var(--ui-font-weight-semibold);
 	line-height: 1.4;
 }
 
