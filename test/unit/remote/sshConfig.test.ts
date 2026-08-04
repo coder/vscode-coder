@@ -1100,8 +1100,9 @@ Host work-server
 
 describe("updateInclude", () => {
 	const include = `# --- START CODER VSCODE INCLUDE ---
-# Your Coder workspaces, managed by the Coder VS Code extension. Keep first:
-# SSH uses the first value found, so anything above this block overrides them.
+# Your Coder workspaces, managed by the Coder VS Code extension.
+# This block moves back to the top on every connect, since SSH uses the first
+# value it finds. To override these options, use the coder.sshConfig setting.
 Include ~/.ssh/coder/config
 # --- END CODER VSCODE INCLUDE ---`;
 
