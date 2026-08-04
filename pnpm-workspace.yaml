@@ -3,23 +3,24 @@ packages:
 
 catalog:
   "@rolldown/plugin-babel": ^0.2.3
-  "@storybook/addon-a11y": ^10.5.5
-  "@storybook/addon-docs": ^10.5.5
-  "@storybook/react-vite": ^10.5.5
+  "@storybook/addon-a11y": ^10.5.6
+  "@storybook/addon-docs": ^10.5.6
+  "@storybook/react-vite": ^10.5.6
   "@tanstack/react-query": ^5.101.4
-  "@types/react": ^19.2.17
-  "@types/react-dom": ^19.2.3
+  "@types/react": ^19.2.18
+  "@types/react-dom": ^19.2.4
   "@types/vscode-webview": ^1.57.5
-  "@vitejs/plugin-react": ^6.0.4
+  "@vitejs/plugin-react": ^6.0.5
   "@vscode-elements/react-elements": ^2.4.0
   "@vscode/codicons": 0.0.46-24
   babel-plugin-react-compiler: ^1.0.0
-  coder: github:coder/coder#v2.34.1
+  # v2.35.3, pinned to the commit SHA so the ref is immutable (tags can be re-pointed).
+  coder: github:coder/coder#65e2bfbb46808bb2572634b58e6cf43c8fc44937
   date-fns: ^4.4.0
   react: ^19.2.8
   react-dom: ^19.2.8
   typescript: ^6.0.3
-  vite: ^8.1.5
+  vite: ^8.2.0
 
 catalogMode: strict
 
@@ -37,3 +38,6 @@ allowBuilds:
 
 overrides:
   "@vscode-elements/elements": ^2.5.1
+
+# pnpm 11 defaults to 1440 (24h); 0 opts out of the release-age quarantine.
+minimumReleaseAge: 0
