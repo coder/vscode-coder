@@ -824,10 +824,14 @@ export class Remote {
 
 		if (url.status === "fulfilled" && token.status === "fulfilled") {
 			this.logger.info("Migrating session auth from files for", safeHostname);
-			await this.secretsManager.setSessionAuth(safeHostname, {
-				url: url.value.trim(),
-				token: token.value.trim(),
-			});
+			try {
+				await this.secretsManager.setSessionAuth(safeHostname, {
+					url: url.value.trim(),
+					token: token.value.trim(),
+				});
+			} catch (error) {
+				this.logger.warn("Failed to migrate session auth from files:", error);
+			}
 		}
 	}
 

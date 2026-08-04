@@ -62,6 +62,22 @@ export class SecretsManager {
 		return `${prefix}${safeHostname}`;
 	}
 
+	private assertSessionAuthHostname(safeHostname: string, url: string): void {
+		let authHostname: string;
+		try {
+			authHostname = toSafeHost(url);
+		} catch {
+			throw new Error(
+				`Session auth hostname mismatch: expected "${safeHostname}", got an invalid URL "${url}"`,
+			);
+		}
+		if (authHostname !== safeHostname) {
+			throw new Error(
+				`Session auth hostname mismatch: expected "${safeHostname}", got "${authHostname}"`,
+			);
+		}
+	}
+
 	private async getSecret<T>(
 		prefix: SecretKeyPrefix,
 		safeHostname: string,
@@ -189,15 +205,31 @@ export class SecretsManager {
 			return undefined;
 		}
 		const result = SessionAuthSchema.safeParse(data);
-		return result.success ? result.data : undefined;
+		if (!result.success) {
+			return undefined;
+		}
+		try {
+			this.assertSessionAuthHostname(safeHostname, result.data.url);
+		} catch (error) {
+			this.logger.warn("Ignoring stored session auth:", error);
+			return undefined;
+		}
+		return result.data;
 	}
 
+	/**
+	 * Store session auth for a deployment.
+	 *
+	 * @throws If the auth URL is invalid or its hostname does not match the
+	 * deployment.
+	 */
 	public async setSessionAuth(
 		safeHostname: string,
 		auth: SessionAuth,
 	): Promise<void> {
 		// Parse through schema to strip any extra fields
 		const state = SessionAuthSchema.parse(auth);
+		this.assertSessionAuthHostname(safeHostname, state.url);
 		await this.setSecret(SESSION_KEY_PREFIX, safeHostname, state);
 	}
 

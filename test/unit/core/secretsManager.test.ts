@@ -9,6 +9,7 @@ import {
 import {
 	InMemoryMemento,
 	InMemorySecretStorage,
+	LogCollector,
 	createMockLogger,
 } from "../../mocks/testHelpers";
 
@@ -16,6 +17,7 @@ describe("SecretsManager", () => {
 	let secretStorage: InMemorySecretStorage;
 	let memento: InMemoryMemento;
 	let mementoManager: MementoManager;
+	let logger: ReturnType<typeof createMockLogger>;
 	let secretsManager: SecretsManager;
 
 	beforeEach(() => {
@@ -23,11 +25,8 @@ describe("SecretsManager", () => {
 		secretStorage = new InMemorySecretStorage();
 		memento = new InMemoryMemento();
 		mementoManager = new MementoManager(memento);
-		secretsManager = new SecretsManager(
-			secretStorage,
-			mementoManager,
-			createMockLogger(),
-		);
+		logger = createMockLogger();
+		secretsManager = new SecretsManager(secretStorage, mementoManager, logger);
 	});
 
 	describe("session auth", () => {
@@ -46,6 +45,102 @@ describe("SecretsManager", () => {
 			});
 			const newAuth = await secretsManager.getSessionAuth("example.com");
 			expect(newAuth?.token).toBe("new-token");
+		});
+
+		it("should accept a URL port for a matching hostname", async () => {
+			await secretsManager.setSessionAuth("example.com", {
+				url: "https://example.com:8443",
+				token: "test-token",
+			});
+
+			expect(await secretsManager.getSessionAuth("example.com")).toEqual({
+				url: "https://example.com:8443",
+				token: "test-token",
+			});
+		});
+
+		it.each([
+			{
+				name: "malformed URL",
+				url: "not a URL",
+				error:
+					'Session auth hostname mismatch: expected "example.com", got an invalid URL "not a URL"',
+			},
+			{
+				name: "mismatched hostname",
+				url: "https://other.example.com",
+				error:
+					'Session auth hostname mismatch: expected "example.com", got "other.example.com"',
+			},
+		])("should reject a write with a $name", async ({ url, error }) => {
+			const existingAuth = {
+				url: "https://example.com",
+				token: "existing-token",
+			};
+			await secretsManager.setSessionAuth("example.com", existingAuth);
+
+			await expect(
+				secretsManager.setSessionAuth("example.com", {
+					url,
+					token: "secret-token",
+				}),
+			).rejects.toThrow(error);
+
+			expect(await secretsManager.getSessionAuth("example.com")).toEqual(
+				existingAuth,
+			);
+		});
+
+		it.each([
+			{ name: "malformed URL", url: "not a URL" },
+			{
+				name: "mismatched hostname",
+				url: "https://other.example.com/private?token=secret",
+			},
+		])("should ignore stored auth with a $name", async ({ url }) => {
+			await secretStorage.store(
+				"coder.session.example.com",
+				JSON.stringify({ url, token: "secret-token" }),
+			);
+
+			expect(
+				await secretsManager.getSessionAuth("example.com"),
+			).toBeUndefined();
+		});
+
+		describe("logging", () => {
+			it.each([
+				{
+					name: "malformed URL",
+					url: "not a URL",
+					error:
+						'Session auth hostname mismatch: expected "example.com", got an invalid URL "not a URL"',
+				},
+				{
+					// A mismatched URL can carry credentials, so only its hostname is logged.
+					name: "mismatched hostname",
+					url: "https://other.example.com/private?token=secret",
+					error:
+						'Session auth hostname mismatch: expected "example.com", got "other.example.com"',
+				},
+			])("logs why a $name was ignored", async ({ url, error }) => {
+				const logs = new LogCollector();
+				const manager = new SecretsManager(secretStorage, mementoManager, logs);
+				await secretStorage.store(
+					"coder.session.example.com",
+					JSON.stringify({ url, token: "secret-token" }),
+				);
+
+				await manager.getSessionAuth("example.com");
+
+				expect(logs.entries).toEqual([
+					{
+						level: "warn",
+						message: "Ignoring stored session auth:",
+						args: [new Error(error)],
+					},
+				]);
+			});
 		});
 
 		it("should clear session auth", async () => {
@@ -85,7 +180,7 @@ describe("SecretsManager", () => {
 				"example.com",
 			);
 
-			await secretsManager.setSessionAuth("other-com", {
+			await secretsManager.setSessionAuth("other.com", {
 				url: "https://other.com",
 				token: "other-token",
 			});
@@ -93,7 +188,7 @@ describe("SecretsManager", () => {
 				"example.com",
 			);
 			expect(await secretsManager.getKnownSafeHostnames()).toContain(
-				"other-com",
+				"other.com",
 			);
 		});
 
@@ -327,9 +422,9 @@ describe("SecretsManager", () => {
 					extraField: "should be stripped",
 				};
 
-				await secretsManager.setSessionAuth("example.com", authWithExtra);
+				await secretsManager.setSessionAuth("coder.example.com", authWithExtra);
 
-				const raw = await secretStorage.get("coder.session.example.com");
+				const raw = await secretStorage.get("coder.session.coder.example.com");
 				expect(JSON.parse(raw!)).toEqual({
 					url: "https://coder.example.com",
 					token: "test-token",
@@ -347,9 +442,9 @@ describe("SecretsManager", () => {
 					},
 				};
 
-				await secretsManager.setSessionAuth("example.com", authWithExtra);
+				await secretsManager.setSessionAuth("coder.example.com", authWithExtra);
 
-				const raw = await secretStorage.get("coder.session.example.com");
+				const raw = await secretStorage.get("coder.session.coder.example.com");
 				expect(JSON.parse(raw!)).toEqual({
 					url: "https://coder.example.com",
 					token: "test-token",
@@ -419,7 +514,6 @@ describe("SecretsManager", () => {
 		describe("backwards compatibility", () => {
 			interface BackwardsCompatTestCase {
 				name: string;
-				key: string;
 				data: Record<string, unknown>;
 				expected: unknown;
 			}
@@ -427,13 +521,11 @@ describe("SecretsManager", () => {
 			const sessionAuthCases: BackwardsCompatTestCase[] = [
 				{
 					name: "without optional oauth field",
-					key: "coder.session.example.com",
 					data: { url: "https://coder.example.com", token: "test-token" },
 					expected: { url: "https://coder.example.com", token: "test-token" },
 				},
 				{
 					name: "with OAuth without optional fields",
-					key: "coder.session.example.com",
 					data: {
 						url: "https://coder.example.com",
 						token: "test-token",
@@ -449,9 +541,13 @@ describe("SecretsManager", () => {
 
 			it.each(sessionAuthCases)(
 				"handles SessionAuth $name",
-				async ({ key, data, expected }) => {
-					await secretStorage.store(key, JSON.stringify(data));
-					const result = await secretsManager.getSessionAuth("example.com");
+				async ({ data, expected }) => {
+					await secretStorage.store(
+						"coder.session.coder.example.com",
+						JSON.stringify(data),
+					);
+					const result =
+						await secretsManager.getSessionAuth("coder.example.com");
 					expect(result).toEqual(expected);
 				},
 			);

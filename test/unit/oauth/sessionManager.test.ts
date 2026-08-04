@@ -213,22 +213,20 @@ describe("OAuthSessionManager", () => {
 	});
 
 	describe("getStoredTokens validation", () => {
-		it("returns undefined when URL mismatches", async () => {
+		it("returns undefined when the URL differs on the same hostname", async () => {
 			const { secretsManager, manager } = createTestContext();
 
-			// Manually set auth with different URL (can't use helper)
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: "https://different-coder.example.com",
+				url: `${TEST_URL}:8443`,
 				token: "access-token",
 				oauth: {
 					refresh_token: "refresh-token",
 					expiry_timestamp: Date.now() + ONE_HOUR_MS,
-					scope: "",
+					scope: DEFAULT_OAUTH_SCOPES,
 				},
 			});
 
-			const result = await manager.isLoggedInWithOAuth();
-			expect(result).toBe(false);
+			expect(await manager.isLoggedInWithOAuth()).toBe(false);
 		});
 	});
 

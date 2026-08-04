@@ -487,6 +487,51 @@ export function createMockLogger(): Logger {
 	};
 }
 
+export interface LogEntry {
+	level: "trace" | "debug" | "info" | "warn" | "error";
+	message: string;
+	args: readonly unknown[];
+}
+
+/** Logger that records structured entries for tests of logging behavior. */
+export class LogCollector implements Logger {
+	private readonly _entries: LogEntry[] = [];
+
+	get entries(): readonly LogEntry[] {
+		return this._entries;
+	}
+
+	trace(message: string, ...args: unknown[]): void {
+		this.collect("trace", message, args);
+	}
+
+	debug(message: string, ...args: unknown[]): void {
+		this.collect("debug", message, args);
+	}
+
+	info(message: string, ...args: unknown[]): void {
+		this.collect("info", message, args);
+	}
+
+	warn(message: string, ...args: unknown[]): void {
+		this.collect("warn", message, args);
+	}
+
+	error(message: string, ...args: unknown[]): void {
+		this.collect("error", message, args);
+	}
+
+	show(): void {}
+
+	private collect(
+		level: LogEntry["level"],
+		message: string,
+		args: readonly unknown[],
+	): void {
+		this._entries.push({ level, message, args });
+	}
+}
+
 /** Resolve once pending microtasks and the macrotask queue have drained. */
 export async function flush(): Promise<void> {
 	await new Promise((resolve) => setImmediate(resolve));
