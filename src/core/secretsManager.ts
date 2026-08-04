@@ -68,7 +68,7 @@ export class SecretsManager {
 			authHostname = toSafeHost(url);
 		} catch {
 			throw new Error(
-				`Session auth hostname mismatch: expected "${safeHostname}", got an invalid URL`,
+				`Session auth hostname mismatch: expected "${safeHostname}", got an invalid URL "${url}"`,
 			);
 		}
 		if (authHostname !== safeHostname) {
@@ -210,11 +210,8 @@ export class SecretsManager {
 		}
 		try {
 			this.assertSessionAuthHostname(safeHostname, result.data.url);
-		} catch {
-			this.logger.warn(
-				"Ignoring session auth with invalid deployment hostname",
-				{ safeHostname },
-			);
+		} catch (error) {
+			this.logger.warn("Ignoring stored session auth:", error);
 			return undefined;
 		}
 		return result.data;

@@ -828,10 +828,8 @@ export class Remote {
 					url: url.value.trim(),
 					token: token.value.trim(),
 				});
-			} catch {
-				this.logger.warn("Failed to migrate session auth from files", {
-					safeHostname,
-				});
+			} catch (error) {
+				this.logger.warn("Failed to migrate session auth from files:", error);
 			}
 		}
 	}

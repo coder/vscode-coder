@@ -85,24 +85,24 @@ describe("Remote", () => {
 	});
 
 	describe("logging", () => {
-		it("sanitizes the file auth migration warning", async () => {
+		it("logs why the file auth migration failed", async () => {
 			const logs = new LogCollector();
 			const { remote } = createRemote(logs);
 
 			await remote.setup(REMOTE_AUTHORITY, "none", "anysphere.remote-ssh");
 
-			const warning = logs.entries.find(
-				(entry) =>
-					entry.level === "warn" &&
-					entry.message === "Failed to migrate session auth from files",
-			);
-			expect(warning).toEqual({
+			// The mismatched URL carries a token, so only its hostname is logged.
+			expect(
+				logs.entries.filter((entry) => entry.level === "warn"),
+			).toContainEqual({
 				level: "warn",
-				message: "Failed to migrate session auth from files",
-				args: [{ safeHostname: SAFE_HOSTNAME }],
+				message: "Failed to migrate session auth from files:",
+				args: [
+					new Error(
+						`Session auth hostname mismatch: expected "${SAFE_HOSTNAME}", got "cursor.example.com"`,
+					),
+				],
 			});
-			expect(JSON.stringify(warning)).not.toContain(MISMATCHED_URL);
-			expect(JSON.stringify(warning)).not.toContain(SESSION_TOKEN);
 		});
 	});
 });

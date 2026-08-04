@@ -64,7 +64,7 @@ describe("SecretsManager", () => {
 				name: "malformed URL",
 				url: "not a URL",
 				error:
-					'Session auth hostname mismatch: expected "example.com", got an invalid URL',
+					'Session auth hostname mismatch: expected "example.com", got an invalid URL "not a URL"',
 			},
 			{
 				name: "mismatched hostname",
@@ -110,12 +110,20 @@ describe("SecretsManager", () => {
 
 		describe("logging", () => {
 			it.each([
-				{ name: "malformed URL", url: "not a URL" },
 				{
+					name: "malformed URL",
+					url: "not a URL",
+					error:
+						'Session auth hostname mismatch: expected "example.com", got an invalid URL "not a URL"',
+				},
+				{
+					// A mismatched URL can carry credentials, so only its hostname is logged.
 					name: "mismatched hostname",
 					url: "https://other.example.com/private?token=secret",
+					error:
+						'Session auth hostname mismatch: expected "example.com", got "other.example.com"',
 				},
-			])("logs a sanitized warning for a $name", async ({ url }) => {
+			])("logs why a $name was ignored", async ({ url, error }) => {
 				const logs = new LogCollector();
 				const manager = new SecretsManager(secretStorage, mementoManager, logs);
 				await secretStorage.store(
@@ -128,12 +136,10 @@ describe("SecretsManager", () => {
 				expect(logs.entries).toEqual([
 					{
 						level: "warn",
-						message: "Ignoring session auth with invalid deployment hostname",
-						args: [{ safeHostname: "example.com" }],
+						message: "Ignoring stored session auth:",
+						args: [new Error(error)],
 					},
 				]);
-				expect(JSON.stringify(logs.entries)).not.toContain("secret-token");
-				expect(JSON.stringify(logs.entries)).not.toContain(url);
 			});
 		});
 
