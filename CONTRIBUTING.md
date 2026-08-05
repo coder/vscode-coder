@@ -14,39 +14,57 @@ The `ssh-remote` scheme is registered by Microsoft's Remote - SSH extension and
 indicates that it should connect to the provided host name using SSH.
 
 The host name takes the format
-`coder-vscode.<domain>--<username>--<workspace>`. This is parsed by the CLI
-(which is invoked via SSH's `ProxyCommand`) to route SSH to the right workspace.
+`coder-<editor>.<domain>--<username>--<workspace>`, where `<editor>` comes from
+that product's URI scheme, such as `vscode`, `cursor`, or `windsurf`. The CLI is
+invoked through SSH's `ProxyCommand` with this prefix so it can route SSH to the
+right workspace. A legacy `coder-vscode` authority opened in another editor is
+reopened once with that editor's prefix; legacy recent-folder entries remain
+compatible when opening the same workspace.
 
 The Coder Remote extension also registers for the
 `onResolveRemoteAuthority:ssh-remote` [extension activation
 event](https://code.visualstudio.com/api/references/activation-events) to hook
 into this process, running before the Remote - SSH extension actually connects.
 
-On activation of this event, we check if `vscode.workspace.workspaceFolders`
-contains the `coder-vscode` prefix, and if so we delay activation to:
+On activation of this event, we check whether the remote authority belongs to
+the current editor, and if so we delay activation to:
 
 1. Parse the host name to get the domain, username, and workspace.
 2. Ensure the workspace is running.
 3. Download the matching server binary to the client.
 4. Configure the binary with the URL and token, asking the user for them if they
    are missing. Each domain gets its own config directory.
-5. Add an entry to the user's SSH config for `coder-vscode.<domain>--*`.
+5. Write an entry for `coder-<editor>.<domain>--*` to `ssh-config` in the
+   extension's global storage directory.
+6. Add a per-editor `Include` block at the top of the user's SSH config.
 
 ```text
-Host coder-vscode.dev.coder.com--*
-	ProxyCommand "/tmp/coder" --global-config "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/dev.coder.com" ssh --stdio --network-info-dir "/home/kyle/.config/Code/User/globalStorage/coder.coder-remote/net" --ssh-host-prefix coder-vscode.dev.coder.com-- %h
-	ConnectTimeout 0
-	StrictHostKeyChecking no
-	UserKnownHostsFile /dev/null
-	LogLevel ERROR
+# --- START CODER cursor ---
+Include "~/.config/Cursor/User/globalStorage/coder.coder-remote/ssh-config"
+# --- END CODER cursor ---
+
+# --- START CODER vscode ---
+Include "~/.config/Code/User/globalStorage/coder.coder-remote/ssh-config"
+# --- END CODER vscode ---
 ```
 
-Which file that entry goes in depends on the Remote - SSH extension. Microsoft's
-and Cursor's pass `remote.SSH.configFile` to ssh with `-F`, and VSCodium's parses
-the file itself instead of running ssh, so all three connect through it.
-Antigravity and Windsurf/Devin renamed the setting but spawn ssh without `-F`, so
-ssh reads `~/.ssh/config` regardless; we ignore it there rather than write the
-host where the connection never looks.
+Each included file contains only that editor's host entries:
+
+```text
+Host coder-cursor.dev.coder.com--*
+  ProxyCommand "/tmp/coder" --global-config "/home/kyle/.config/Cursor/User/globalStorage/coder.coder-remote/dev.coder.com" ssh --stdio --network-info-dir "/home/kyle/.config/Cursor/User/globalStorage/coder.coder-remote/net" --ssh-host-prefix coder-cursor.dev.coder.com-- %h
+  ConnectTimeout 0
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  LogLevel ERROR
+```
+
+Which main file gains the include depends on the Remote - SSH extension.
+Microsoft's and Cursor's pass `remote.SSH.configFile` to ssh with `-F`, and
+VSCodium's parses the file itself instead of running ssh, so all three connect
+through it. Antigravity and Windsurf/Devin renamed the setting but spawn ssh
+without `-F`, so ssh reads `~/.ssh/config` regardless; we ignore the renamed
+setting there rather than add the include where the connection never looks.
 
 If any step fails, we show an error message. Once the error message is closed
 we close the remote so the Remote - SSH connection does not continue to

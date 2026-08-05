@@ -39,9 +39,11 @@ import {
 import { getHeaderCommand } from "../settings/headers";
 import { escapeCommandArg, expandPath } from "../util";
 import {
-	AuthorityPrefix,
 	type AuthorityParts,
+	classifyRemoteAuthority,
 	parseRemoteAuthority,
+	retargetRemoteAuthority,
+	toCurrentAuthorityHostPrefix,
 } from "../util/authority";
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
@@ -82,13 +84,6 @@ import type { PathResolver } from "../core/pathResolver";
 import type { SecretsManager } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
 import type { LoginCoordinator } from "../login/loginCoordinator";
-
-/**
- * Our own config, included from the user's. Keep the tilde: relative includes
- * always resolve against ~/.ssh, and an absolute path would not survive a
- * config synced between machines.
- */
-const CODER_SSH_CONFIG_PATH = "~/.ssh/coder/config";
 
 export interface RemoteDetails extends vscode.Disposable {
 	safeHostname: string;
@@ -164,6 +159,16 @@ export class Remote {
 		}
 		if (!parts) {
 			return;
+		}
+
+		switch (classifyRemoteAuthority(parts)) {
+			case "current":
+				break;
+			case "legacy":
+				await this.migrateLegacyAuthority(remoteAuthority, startupMode);
+				return;
+			case "foreign":
+				return;
 		}
 
 		this.logger.info("Setting up remote connection", {
@@ -724,6 +729,66 @@ export class Remote {
 		return undefined;
 	}
 
+	private async migrateLegacyAuthority(
+		remoteAuthority: string,
+		startupMode: StartupMode,
+	): Promise<void> {
+		const migratedAuthority = retargetRemoteAuthority(remoteAuthority);
+		const workspaceFile = vscode.workspace.workspaceFile;
+		const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+		const savedWorkspaceFile =
+			workspaceFile?.scheme === "untitled" ? undefined : workspaceFile;
+		if (!savedWorkspaceFile && workspaceFolders.length > 1) {
+			this.logger.warn(
+				"Cannot migrate an unsaved multi-root workspace",
+				remoteAuthority,
+			);
+			const choice = await vscodeProposed.window.showWarningMessage(
+				"Opening the remote over the old coder-vscode SSH host",
+				{
+					modal: true,
+					useCustom: true,
+					detail:
+						"This editor now uses its own SSH hosts, but switching an unsaved multi-root workspace would drop its folders. " +
+						"To switch, save the workspace, then reload the window.",
+				},
+				"Learn More",
+			);
+			if (choice === "Learn More") {
+				await vscode.env.openExternal(
+					vscode.Uri.parse(
+						"https://code.visualstudio.com/docs/editing/workspaces/multi-root-workspaces",
+					),
+				);
+			}
+			return;
+		}
+
+		await this.serviceContainer
+			.getMementoManager()
+			.setStartupMode(startupMode === "none" ? "start" : startupMode);
+		this.logger.info("Migrating legacy remote authority", {
+			from: remoteAuthority,
+			to: migratedAuthority,
+		});
+
+		const currentUri = savedWorkspaceFile ?? workspaceFolders[0]?.uri;
+		if (currentUri) {
+			await vscode.commands.executeCommand(
+				"vscode.openFolder",
+				currentUri.with({
+					authority: retargetRemoteAuthority(currentUri.authority),
+				}),
+				false,
+			);
+			return;
+		}
+		await vscode.commands.executeCommand("vscode.newWindow", {
+			remoteAuthority: migratedAuthority,
+			reuseWindow: true,
+		});
+	}
+
 	private async resolveRemoteBinary(workspaceClient: Api): Promise<string> {
 		if (
 			this.extensionContext.extensionMode === vscode.ExtensionMode.Production
@@ -906,10 +971,8 @@ export class Remote {
 		// Our blocks live in our own file; the user's only gains the include.
 		const sshConfig = new SshConfig(this.getSshConfigPath(), this.logger);
 		await sshConfig.load();
-		const coderConfig = new SshConfig(
-			expandPath(CODER_SSH_CONFIG_PATH),
-			this.logger,
-		);
+		const coderConfigPath = this.pathResolver.getSshConfigPath();
+		const coderConfig = new SshConfig(coderConfigPath, this.logger);
 		await coderConfig.load();
 
 		// Options the user set themselves win the merge below, so they are exempt
@@ -954,9 +1017,7 @@ export class Remote {
 			userConfig,
 		);
 
-		const hostPrefix = safeHostname
-			? `${AuthorityPrefix}.${safeHostname}--`
-			: `${AuthorityPrefix}--`;
+		const hostPrefix = toCurrentAuthorityHostPrefix(safeHostname);
 
 		const proxyCommand = await this.buildProxyCommand(
 			binaryPath,
@@ -985,7 +1046,13 @@ export class Remote {
 
 		// Write our file before including it, so the include never dangles.
 		await coderConfig.update(safeHostname, sshValues, sshConfigOverrides);
-		await sshConfig.updateInclude(CODER_SSH_CONFIG_PATH, safeHostname);
+		await sshConfig.updateInclude(
+			{
+				id: vscode.env.uriScheme,
+				includePath: coderConfigPath,
+			},
+			safeHostname,
+		);
 
 		// Mirror SSH's parse order; RemoteCommand can come from the user's config.
 		return computeSshProperties(

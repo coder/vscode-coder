@@ -1,234 +1,241 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import * as vscode from "vscode";
 
 import {
+	type AuthorityClassification,
 	type AuthorityParts,
+	classifyRemoteAuthority,
+	isRemoteAuthorityCompatible,
 	parseRemoteAuthority,
+	retargetRemoteAuthority,
+	toCurrentAuthorityHostPrefix,
 	toRemoteAuthority,
 } from "@/util/authority";
 
+const env = vscode.env as typeof vscode.env & { uriScheme: string };
+const CURSOR_AUTHORITY = "ssh-remote+coder-cursor.dev.coder.com--foo--bar.main";
+const LEGACY_AUTHORITY = "ssh-remote+coder-vscode.dev.coder.com--foo--bar.main";
+const WINDSURF_AUTHORITY =
+	"ssh-remote+coder-windsurf.dev.coder.com--foo--bar.main";
+
+const parts = (prefix: string): AuthorityParts => ({
+	agent: "main",
+	sshHost: `${prefix}.dev.coder.com--foo--bar.main`,
+	safeHostname: "dev.coder.com",
+	username: "foo",
+	workspace: "bar",
+});
+
+afterEach(() => {
+	env.uriScheme = "vscode";
+});
+
 describe("parseRemoteAuthority", () => {
-	const remoteAuthority = (sshHost: string) => `vscode://ssh-remote+${sshHost}`;
+	interface ClassificationCase {
+		editor: string;
+		prefix: string;
+		expected: AuthorityClassification;
+	}
+	it.each<ClassificationCase>([
+		{ editor: "vscode", prefix: "coder-vscode", expected: "current" },
+		{ editor: "vscode", prefix: "coder-vscode-insiders", expected: "foreign" },
+		{ editor: "cursor", prefix: "coder-vscode", expected: "legacy" },
+		{
+			editor: "vscode-insiders",
+			prefix: "coder-vscode-insiders",
+			expected: "current",
+		},
+		{
+			editor: "vscode-insiders",
+			prefix: "coder-vscode",
+			expected: "legacy",
+		},
+	])(
+		"classifies $prefix as $expected in $editor",
+		({ editor, prefix, expected }) => {
+			env.uriScheme = editor;
+			expect(classifyRemoteAuthority(parts(prefix))).toBe(expected);
+		},
+	);
 
-	it.each([
-		{ label: "missing SSH host", input: "vscode://ssh-remote" },
-		{ label: "empty SSH host", input: "vscode://ssh-remote+" },
-		{
-			label: "non-Coder host",
-			input: remoteAuthority("some-unrelated-host.com"),
-		},
-		{
-			label: "prefix without safeHostname separator",
-			input: remoteAuthority("coder-vscode--foo--bar"),
-		},
-		{
-			label: "similar prefix",
-			input: remoteAuthority("coder-vscode-test--foo--bar"),
-		},
-		{ label: "wrong prefix", input: remoteAuthority("coder--foo--bar") },
-	])("ignores unrelated authority: $label", ({ input }) => {
-		expect(parseRemoteAuthority(input)).toBe(null);
-	});
-
-	it.each([
-		{
-			label: "missing username and workspace",
-			sshHost: "coder-vscode.dev.coder.com",
-		},
-		{
-			label: "missing workspace",
-			sshHost: "coder-vscode.dev.coder.com--foo",
-		},
-		{
-			label: "manual host using Coder prefix",
-			sshHost: "coder-vscode.personal-host",
-		},
-		{
-			label: "empty username",
-			sshHost: "coder-vscode.dev.coder.com----bar",
-		},
-		{
-			label: "empty workspace",
-			sshHost: "coder-vscode.dev.coder.com--foo--",
-		},
-		{
-			label: "empty hostname",
-			sshHost: "coder-vscode.--foo--bar",
-		},
-		{
-			label: "empty trailing segment",
-			sshHost: "coder-vscode.dev.coder.com--foo--bar--",
-		},
-		{
-			label: "empty workspace before agent separator",
-			sshHost: "coder-vscode.dev.coder.com--foo--.agent",
-		},
-		{
-			label: "empty agent after separator",
-			sshHost: "coder-vscode.dev.coder.com--foo--bar.",
-		},
-	])("rejects invalid authority: $label", ({ sshHost }) => {
-		expect(() => parseRemoteAuthority(remoteAuthority(sshHost))).toThrow(
+	interface MalformedAuthorityCase {
+		editor: string;
+		sshHost: string;
+	}
+	it.each<MalformedAuthorityCase>([
+		{ editor: "vscode", sshHost: "coder-vscode.dev.coder.com--foo" },
+		{ editor: "cursor", sshHost: "coder-vscode.dev.coder.com--foo" },
+		{ editor: "vscode", sshHost: "coder-vscode.--foo--bar" },
+		{ editor: "vscode", sshHost: "coder-vscode.dev.coder.com----bar" },
+		{ editor: "vscode", sshHost: "coder-vscode.dev.coder.com--foo--" },
+		{ editor: "vscode", sshHost: "coder-vscode.dev.coder.com--foo--.main" },
+		{ editor: "vscode", sshHost: "coder-vscode.dev.coder.com--foo--bar." },
+	])("rejects malformed current or legacy authority", ({ editor, sshHost }) => {
+		env.uriScheme = editor;
+		expect(() => parseRemoteAuthority(`ssh-remote+${sshHost}`)).toThrow(
 			"Invalid Coder SSH authority",
 		);
 	});
 
+	it("ignores unrelated and malformed foreign authorities", () => {
+		expect(parseRemoteAuthority("github.com")).toBeNull();
+		expect(parseRemoteAuthority("ssh-remote+coder-vscode")).toBeNull();
+		env.uriScheme = "cursor";
+		expect(
+			parseRemoteAuthority("ssh-remote+coder-windsurf.dev.coder.com--foo"),
+		).toBeNull();
+	});
+
+	it.each(["vscode", "cursor"])(
+		"ignores deployment-unaware historical hosts in %s",
+		(editor) => {
+			env.uriScheme = editor;
+			// Old versions created hosts matching the preserved `Host coder-vscode--*` block.
+			expect(
+				parseRemoteAuthority("ssh-remote+coder-vscode--user--workspace.main"),
+			).toBeNull();
+		},
+	);
+
 	interface ParseCase {
-		label: string;
 		sshHost: string;
 		safeHostname: string;
 		workspace: string;
-		agent?: string;
-		username?: string;
+		agent: string;
 	}
-
-	it("round trips generated remote authorities", () => {
-		const authority = toRemoteAuthority(
-			"https://ほげ",
-			"alice",
-			"workspace",
-			"main",
-		);
-
-		expect(authority).toBe(
-			"ssh-remote+coder-vscode.xn--18j4d--alice--workspace.main",
-		);
-		expect(parseRemoteAuthority(authority)).toStrictEqual({
-			agent: "main",
-			sshHost: "coder-vscode.xn--18j4d--alice--workspace.main",
-			safeHostname: "xn--18j4d",
-			username: "alice",
-			workspace: "workspace",
-		} satisfies AuthorityParts);
-	});
-
 	it.each<ParseCase>([
 		{
-			label: "hostname without agent",
 			sshHost: "coder-vscode.dev.coder.com--foo--bar",
 			safeHostname: "dev.coder.com",
 			workspace: "bar",
+			agent: "",
 		},
 		{
-			label: "hostname with agent",
-			sshHost: "coder-vscode.dev.coder.com--foo--bar.baz",
-			safeHostname: "dev.coder.com",
-			workspace: "bar",
-			agent: "baz",
-		},
-		{
-			label: "hostname containing delimiter",
-			sshHost: "coder-vscode.test--domain.com--foo--bar",
-			safeHostname: "test--domain.com",
-			workspace: "bar",
-		},
-		{
-			label: "Punycode hostname containing delimiter",
-			sshHost: "coder-vscode.xn--test---8o4.example--foo--bar",
-			safeHostname: "xn--test---8o4.example",
-			workspace: "bar",
-		},
-		{
-			label: "hostname with repeated delimiters and agent",
-			sshHost: "coder-vscode.first--middle--last.example--foo--bar.baz",
+			sshHost: "coder-vscode.first--middle--last.example--foo--bar.main",
 			safeHostname: "first--middle--last.example",
 			workspace: "bar",
-			agent: "baz",
-		},
-		{
-			label: "hostname with many consecutive dashes",
-			sshHost: "coder-vscode.foo---------------bar.com--foo--bar",
-			safeHostname: "foo---------------bar.com",
-			workspace: "bar",
-		},
-		{
-			label: "ambiguous workspace/agent separator",
-			sshHost: "coder-vscode.dev.coder.com--foo--bar.baz.qux",
-			safeHostname: "dev.coder.com",
-			workspace: "bar.baz.qux",
+			agent: "main",
 		},
 	])(
-		"parses $label",
-		({ sshHost, safeHostname, workspace, agent, username }) => {
-			expect(parseRemoteAuthority(remoteAuthority(sshHost))).toStrictEqual({
-				agent: agent ?? "",
+		"parses $sshHost from the right",
+		({ sshHost, safeHostname, workspace, agent }) => {
+			expect(parseRemoteAuthority(`ssh-remote+${sshHost}`)).toStrictEqual({
+				agent,
 				sshHost,
 				safeHostname,
-				username: username ?? "foo",
+				username: "foo",
 				workspace,
 			} satisfies AuthorityParts);
 		},
 	);
+
+	interface WrappedAuthorityCase {
+		label: string;
+		authority: string;
+	}
+	it.each<WrappedAuthorityCase>([
+		{ label: "plain", authority: CURSOR_AUTHORITY },
+		{ label: "URI", authority: `vscode://${CURSOR_AUTHORITY}` },
+		{
+			label: "multiply nested",
+			authority: `attached-container+def@dev-container+abc@${CURSOR_AUTHORITY}`,
+		},
+	])("parses $label wrapper", ({ authority }) => {
+		env.uriScheme = "cursor";
+		expect(parseRemoteAuthority(authority)).toStrictEqual(
+			parts("coder-cursor"),
+		);
+	});
 });
 
-describe("toRemoteAuthority", () => {
-	interface ToRemoteAuthorityCase {
-		url: string;
-		owner: string;
-		workspace: string;
-		agent: string | undefined;
+describe("authority construction", () => {
+	it("preserves the editor URI scheme and integrates with toSafeHost", () => {
+		env.uriScheme = "cursor--dev";
+		expect(
+			toRemoteAuthority("https://ほげ", "alice", "workspace", "main"),
+		).toBe("ssh-remote+coder-cursor--dev.xn--18j4d--alice--workspace.main");
+	});
+
+	it("omits an absent agent", () => {
+		expect(
+			toRemoteAuthority("https://dev.coder.com", "foo", "bar", undefined),
+		).toBe("ssh-remote+coder-vscode.dev.coder.com--foo--bar");
+	});
+
+	interface CurrentHostPrefixCase {
+		hostname: string | undefined;
 		expected: string;
 	}
-	it.each<ToRemoteAuthorityCase>([
+	it.each<CurrentHostPrefixCase>([
+		{ hostname: undefined, expected: "coder-vscode-insiders--" },
 		{
-			url: "https://dev.coder.com",
-			owner: "foo",
-			workspace: "bar",
-			agent: undefined,
-			expected: "ssh-remote+coder-vscode.dev.coder.com--foo--bar",
+			hostname: "dev.coder.com",
+			expected: "coder-vscode-insiders.dev.coder.com--",
+		},
+	])("formats current host prefix for $hostname", ({ hostname, expected }) => {
+		env.uriScheme = "vscode-insiders";
+		expect(toCurrentAuthorityHostPrefix(hostname)).toBe(expected);
+	});
+
+	it("rejects an empty editor URI scheme at prefix construction", () => {
+		env.uriScheme = "";
+		expect(() => toCurrentAuthorityHostPrefix()).toThrow("must not be empty");
+	});
+});
+
+describe("authority migration", () => {
+	it("leaves unrelated authorities unchanged", () => {
+		expect(retargetRemoteAuthority("github.com")).toBe("github.com");
+	});
+
+	interface RetargetCase {
+		label: string;
+		authority: string;
+		expected: string;
+	}
+	it.each<RetargetCase>([
+		{
+			label: "plain",
+			authority: LEGACY_AUTHORITY,
+			expected: CURSOR_AUTHORITY,
 		},
 		{
-			url: "http://dev.coder.com:3000",
-			owner: "foo",
-			workspace: "bar",
-			agent: "baz",
-			expected: "ssh-remote+coder-vscode.dev.coder.com--foo--bar.baz",
-		},
-		{
-			url: "https://coder.example.com/some/path?q=1",
-			owner: "alice",
-			workspace: "web",
-			agent: "",
-			expected: "ssh-remote+coder-vscode.coder.example.com--alice--web",
-		},
-		{
-			url: "http://192.168.1.5:8080",
-			owner: "foo",
-			workspace: "bar",
-			agent: undefined,
-			expected: "ssh-remote+coder-vscode.192.168.1.5--foo--bar",
-		},
-		{
-			url: "http://localhost:3000",
-			owner: "dev",
-			workspace: "ws",
-			agent: "main",
-			expected: "ssh-remote+coder-vscode.localhost--dev--ws.main",
-		},
-		{
-			url: "https://sub.DOMAIN.Example.COM",
-			owner: "foo",
-			workspace: "bar",
-			agent: undefined,
-			expected: "ssh-remote+coder-vscode.sub.domain.example.com--foo--bar",
-		},
-		{
-			url: "https://ほげ:8080",
-			owner: "foo",
-			workspace: "bar",
-			agent: undefined,
-			expected: "ssh-remote+coder-vscode.xn--18j4d--foo--bar",
-		},
-		{
-			url: "https://عربي",
-			owner: "foo",
-			workspace: "bar",
-			agent: undefined,
-			expected: "ssh-remote+coder-vscode.xn--ngbrx4e--foo--bar",
+			label: "multiply nested",
+			authority: `attached-container+def@dev-container+abc@${LEGACY_AUTHORITY}`,
+			expected: `attached-container+def@dev-container+abc@${CURSOR_AUTHORITY}`,
 		},
 	])(
-		"builds authority for $url",
-		({ url, owner, workspace, agent, expected }) => {
-			expect(toRemoteAuthority(url, owner, workspace, agent)).toBe(expected);
+		"preserves the $label wrapper while retargeting",
+		({ authority, expected }) => {
+			env.uriScheme = "cursor";
+			expect(retargetRemoteAuthority(authority)).toBe(expected);
 		},
 	);
+
+	interface CompatibilityCase {
+		label: string;
+		authority: string | undefined;
+		expected: boolean;
+	}
+	it.each<CompatibilityCase>([
+		{ label: "exact current", authority: CURSOR_AUTHORITY, expected: true },
+		{ label: "retargeted legacy", authority: LEGACY_AUTHORITY, expected: true },
+		{ label: "missing", authority: undefined, expected: false },
+		{
+			label: "malformed legacy",
+			authority: "ssh-remote+coder-vscode",
+			expected: false,
+		},
+		{ label: "foreign", authority: WINDSURF_AUTHORITY, expected: false },
+		{
+			label: "different wrapper",
+			authority: `dev-container+abc@${LEGACY_AUTHORITY}`,
+			expected: false,
+		},
+	])("requires exact compatibility for $label", ({ authority, expected }) => {
+		env.uriScheme = "cursor";
+		expect(isRemoteAuthorityCompatible(authority, CURSOR_AUTHORITY)).toBe(
+			expected,
+		);
+	});
 });

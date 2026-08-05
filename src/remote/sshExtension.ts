@@ -11,9 +11,8 @@ export const REMOTE_SSH_EXTENSION_IDS = [
 export type RemoteSshExtensionId = (typeof REMOTE_SSH_EXTENSION_IDS)[number];
 
 /**
- * Extensions that spawn ssh without `-F`, so it reads ~/.ssh/config whatever
- * their renamed setting says. Honoring one would write the workspace host
- * where the connection never looks.
+ * Extensions that spawn ssh without `-F`, so it always reads ~/.ssh/config
+ * and their renamed configFile setting never applies.
  */
 const IGNORED_CONFIG_FILE: readonly RemoteSshExtensionId[] = [
 	"google.antigravity-remote-openssh",

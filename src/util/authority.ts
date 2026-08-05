@@ -1,4 +1,8 @@
+import * as vscode from "vscode";
+
 import { toSafeHost } from "./uri";
+
+export const LegacyAuthorityPrefix = "coder-vscode";
 
 export interface AuthorityParts {
 	agent: string | undefined;
@@ -8,44 +12,89 @@ export interface AuthorityParts {
 	workspace: string;
 }
 
-// Prefix is a magic string that is prepended to SSH hosts to indicate that
-// they should be handled by this extension.
-export const AuthorityPrefix = "coder-vscode";
+export type AuthorityClassification = "current" | "legacy" | "foreign";
 
-const authorityHostPrefix = `${AuthorityPrefix}.`;
+const sshRemotePrefix = "ssh-remote+";
 const invalidAuthorityMessage =
 	"Invalid Coder SSH authority. Must be: <hostname>--<username>--<workspace>(.<agent?>)";
+
+function currentAuthorityPrefix(): string {
+	const uriScheme = vscode.env.uriScheme;
+	if (!uriScheme) {
+		throw new Error("Editor URI scheme must not be empty.");
+	}
+	return `coder-${uriScheme}`;
+}
+
+function getSshHostStart(authority: string): number | undefined {
+	if (authority.startsWith(sshRemotePrefix)) {
+		return sshRemotePrefix.length;
+	}
+
+	for (const wrapper of [`@${sshRemotePrefix}`, `://${sshRemotePrefix}`]) {
+		const index = authority.lastIndexOf(wrapper);
+		if (index !== -1) {
+			return index + wrapper.length;
+		}
+	}
+
+	return undefined;
+}
+
+function classifySshHost(sshHost: string): AuthorityClassification | undefined {
+	const currentPrefix = currentAuthorityPrefix();
+	if (sshHost.startsWith(`${currentPrefix}.`)) {
+		return "current";
+	}
+	if (
+		currentPrefix !== LegacyAuthorityPrefix &&
+		sshHost.startsWith(`${LegacyAuthorityPrefix}.`)
+	) {
+		return "legacy";
+	}
+	// Deployment-unaware hosts like coder-vscode--ws stay foreign; their
+	// preserved config block still routes them.
+	return sshHost.startsWith("coder-") ? "foreign" : undefined;
+}
+
+function authorityPrefix(classification: AuthorityClassification): string {
+	return classification === "legacy"
+		? LegacyAuthorityPrefix
+		: currentAuthorityPrefix();
+}
 
 /**
  * Given an authority, parse into the expected parts.
  *
  * The authority looks like `<scheme>://ssh-remote+<ssh host name>`, where the
  * SSH host names created by this extension match the format:
- *   coder-vscode.<safeHostname>--<username>--<workspace>(.<agent?>)
+ *   coder-<editor>.<safeHostname>--<username>--<workspace>(.<agent?>)
  *
  * If this is not a Coder authority, return null.
  *
  * Throw an error if a Coder authority is invalid.
  */
 export function parseRemoteAuthority(authority: string): AuthorityParts | null {
-	const authorityParts = authority.split("+");
-	const sshHost = authorityParts[1];
-	if (!sshHost) {
+	const sshHostStart = getSshHostStart(authority);
+	if (sshHostStart === undefined) {
 		return null;
 	}
 
-	const parts = sshHost.split("--");
-	if (!parts[0].startsWith(authorityHostPrefix)) {
+	const sshHost = authority.slice(sshHostStart);
+	const classification = classifySshHost(sshHost);
+	if (!classification || classification === "foreign") {
 		return null;
 	}
 
+	// The classification guarantees the host starts with "<prefix>.".
+	const prefix = `${authorityPrefix(classification)}.`;
+	const parts = sshHost.slice(prefix.length).split("--");
 	if (parts.length < 3) {
 		throw new Error(invalidAuthorityMessage);
 	}
 
 	// Parse from the right because safe hostnames can contain "--".
-	const hostPrefix = parts.slice(0, -2).join("--");
-	const safeHostname = hostPrefix.slice(authorityHostPrefix.length);
+	const safeHostname = parts.slice(0, -2).join("--");
 	const username = parts[parts.length - 2];
 	const workspaceAndAgent = parts[parts.length - 1];
 	if (!safeHostname || !username || !workspaceAndAgent) {
@@ -73,15 +122,57 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	};
 }
 
+export function classifyRemoteAuthority(
+	parts: AuthorityParts,
+): AuthorityClassification {
+	return classifySshHost(parts.sshHost) ?? "foreign";
+}
+
 export function toRemoteAuthority(
 	baseUrl: string,
 	workspaceOwner: string,
 	workspaceName: string,
 	workspaceAgent: string | undefined,
 ): string {
-	let remoteAuthority = `ssh-remote+${AuthorityPrefix}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`;
+	let remoteAuthority = `ssh-remote+${currentAuthorityPrefix()}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`;
 	if (workspaceAgent) {
 		remoteAuthority += `.${workspaceAgent}`;
 	}
 	return remoteAuthority;
+}
+
+export function toCurrentAuthorityHostPrefix(safeHostname?: string): string {
+	const prefix = currentAuthorityPrefix();
+	return safeHostname ? `${prefix}.${safeHostname}--` : `${prefix}--`;
+}
+
+export function retargetRemoteAuthority(authority: string): string {
+	const sshHostStart = getSshHostStart(authority);
+	if (sshHostStart === undefined) {
+		return authority;
+	}
+
+	const sshHost = authority.slice(sshHostStart);
+	if (classifySshHost(sshHost) !== "legacy") {
+		return authority;
+	}
+	parseRemoteAuthority(authority);
+	return `${authority.slice(0, sshHostStart)}${currentAuthorityPrefix()}${sshHost.slice(LegacyAuthorityPrefix.length)}`;
+}
+
+export function isRemoteAuthorityCompatible(
+	authority: string | undefined,
+	targetAuthority: string,
+): boolean {
+	if (!authority) {
+		return false;
+	}
+	if (authority === targetAuthority) {
+		return true;
+	}
+	try {
+		return retargetRemoteAuthority(authority) === targetAuthority;
+	} catch {
+		return false;
+	}
 }

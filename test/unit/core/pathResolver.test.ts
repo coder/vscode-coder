@@ -38,6 +38,15 @@ describe("PathResolver", () => {
 		});
 	});
 
+	describe("getSshConfigPath", () => {
+		it("uses the extension's global storage directory", () => {
+			expectPathsEqual(
+				pathResolver.getSshConfigPath(),
+				path.join(basePath, "ssh-config"),
+			);
+		});
+	});
+
 	describe("getProxyLogPath", () => {
 		const defaultLogPath = path.join(basePath, "log");
 

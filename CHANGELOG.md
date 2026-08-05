@@ -7,15 +7,21 @@
 
 ## Unreleased
 
+### Added
+
+- Add a **Coder: Open Generated SSH Configuration File** command that opens
+  this editor's generated workspace hosts file in a read-only editor.
+
 ### Changed
 
-- Write workspace SSH hosts to `~/.ssh/coder/config` and include that file
-  from the top of your own SSH config, rather than writing the block into your
-  config directly. SSH uses the first value it obtains for each option, so a
-  catch-all like `Host *` used to override the connection's `ProxyCommand` and
-  abort it with an "Unexpected SSH Config Option" error; now the extension's
-  options win and that error is gone. Your config is only written once, to add
-  the include, and the block for a deployment moves out of it on next connect.
+- Write workspace SSH hosts to an editor-owned file in the extension's global
+  storage and include it from the top of your SSH config, instead of writing
+  the block into your config directly. Each VS Code-based editor gets its own
+  include and SSH host prefix, so VS Code, Cursor, Windsurf, and other clones
+  no longer overwrite one another's proxy settings, and legacy `coder-vscode`
+  authorities are migrated in other editors by automatically reopening the
+  window once. SSH uses the first value it finds for each option, so a
+  catch-all `Host *` can no longer override the connection's `ProxyCommand`.
 
 ### Fixed
 

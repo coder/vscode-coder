@@ -86,6 +86,9 @@ export class Uri {
 	constructor(
 		public scheme: string,
 		public path: string,
+		public authority = "",
+		public query = "",
+		public fragment = "",
 	) {}
 	get fsPath(): string {
 		return this.path;
@@ -93,27 +96,61 @@ export class Uri {
 	static file(p: string) {
 		return new Uri("file", p);
 	}
-	static parse(v: string) {
-		if (v.startsWith("file://")) {
-			return Uri.file(v.slice("file://".length));
+	static from(components: {
+		scheme: string;
+		path?: string;
+		authority?: string;
+		query?: string;
+		fragment?: string;
+	}) {
+		return new Uri(
+			components.scheme,
+			components.path ?? "",
+			components.authority ?? "",
+			components.query ?? "",
+			components.fragment ?? "",
+		);
+	}
+	with(change: {
+		scheme?: string;
+		path?: string;
+		authority?: string;
+		query?: string;
+		fragment?: string;
+	}) {
+		return new Uri(
+			change.scheme ?? this.scheme,
+			change.path ?? this.path,
+			change.authority ?? this.authority,
+			change.query ?? this.query,
+			change.fragment ?? this.fragment,
+		);
+	}
+	static parse(value: string) {
+		if (value.startsWith("file://")) {
+			return Uri.file(value.slice("file://".length));
 		}
-		const [scheme, ...rest] = v.split(":");
+		const [scheme, ...rest] = value.split(":");
 		return new Uri(scheme, rest.join(":"));
 	}
 	toString() {
-		return this.scheme === "file"
-			? `file://${this.path}`
-			: `${this.scheme}:${this.path}`;
+		if (!this.authority && !this.query && !this.fragment) {
+			return this.scheme === "file"
+				? `file://${this.path}`
+				: `${this.scheme}:${this.path}`;
+		}
+		const authority = this.authority ? `//${this.authority}` : "";
+		const query = this.query ? `?${this.query}` : "";
+		const fragment = this.fragment ? `#${this.fragment}` : "";
+		return `${this.scheme}:${authority}${this.path}${query}${fragment}`;
 	}
 	static joinPath(base: Uri, ...paths: string[]) {
-		// Mirror vscode-uri: collapse slashes at the seams while preserving the
-		// leading "//" that separates the authority from the path.
 		const head = base.path.replace(/\/+$/, "");
 		const tail = paths
 			.map((p) => p.replace(/^\/+|\/+$/g, ""))
 			.filter(Boolean)
 			.join("/");
-		return new Uri(base.scheme, tail ? `${head}/${tail}` : head);
+		return base.with({ path: tail ? `${head}/${tail}` : head });
 	}
 }
 
@@ -181,6 +218,7 @@ export const commands = {
 export const workspace = {
 	getConfiguration: vi.fn(), // your helpers override this
 	workspaceFolders: [] as unknown[],
+	workspaceFile: undefined as Uri | undefined,
 	fs: {
 		readFile: vi.fn(),
 		writeFile: vi.fn(),

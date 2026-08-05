@@ -50,7 +50,10 @@ import {
 	toRemoteLogGlobs,
 } from "./supportBundle/remoteServerDataPath";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
-import { toRemoteAuthority } from "./util/authority";
+import {
+	isRemoteAuthorityCompatible,
+	toRemoteAuthority,
+} from "./util/authority";
 import { openInBrowser, toSafeHost } from "./util/uri";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseNetcheckReport } from "./webviews/netcheck/types";
@@ -563,6 +566,24 @@ export class Commands {
 			this.telemetryService.getContext(),
 			telemetry,
 		);
+	}
+
+	/**
+	 * Open this editor's generated SSH config with the Coder workspace hosts.
+	 */
+	public async openSshConfig(): Promise<void> {
+		const configPath = this.pathResolver.getSshConfigPath();
+		try {
+			await openFile(configPath);
+			// The file is rewritten on every connection, so edits would be lost.
+			await vscode.commands.executeCommand(
+				"workbench.action.files.setActiveEditorReadonlyInSession",
+			);
+		} catch {
+			vscode.window.showInformationMessage(
+				"No SSH config has been generated yet. It is written when you connect to a workspace.",
+			);
+		}
 	}
 
 	/**
@@ -1475,12 +1496,11 @@ export class Commands {
 			const output: {
 				workspaces: Array<{ folderUri: vscode.Uri; remoteAuthority: string }>;
 			} = await vscode.commands.executeCommand("_workbench.getRecentlyOpened");
-			const opened = output.workspaces.filter(
-				// Remove recents that do not belong to this connection.  The remote
-				// authority maps to a workspace/agent combination (using the SSH host
-				// name).  There may also be some legacy connections that still may
-				// reference a workspace without an agent name, which will be missed.
-				(opened) => opened.folderUri?.authority === remoteAuthority,
+			const opened = output.workspaces.filter((opened) =>
+				isRemoteAuthorityCompatible(
+					opened.folderUri?.authority,
+					remoteAuthority,
+				),
 			);
 			// openRecent will always use the most recent.  Otherwise, if there are
 			// multiple we ask the user which to use.

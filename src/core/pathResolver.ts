@@ -42,6 +42,10 @@ export class PathResolver {
 		return path.join(this.basePath, "net");
 	}
 
+	public getSshConfigPath(): string {
+		return path.join(this.basePath, "ssh-config");
+	}
+
 	/**
 	 * Return the directory where telemetry files are written.
 	 */

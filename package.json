@@ -478,12 +478,20 @@
 			},
 			{
 				"command": "coder.viewLogs",
-				"title": "Coder: View Logs",
+				"title": "View Logs",
+				"category": "Coder",
 				"icon": "$(list-unordered)"
 			},
 			{
+				"command": "coder.openSshConfig",
+				"title": "Open Generated SSH Configuration File",
+				"category": "Coder",
+				"icon": "$(file-code)"
+			},
+			{
 				"command": "coder.exportTelemetry",
-				"title": "Coder: Export Telemetry",
+				"title": "Export Telemetry",
+				"category": "Coder",
 				"icon": "$(save)"
 			},
 			{
@@ -614,6 +622,10 @@
 				},
 				{
 					"command": "coder.viewLogs",
+					"when": "true"
+				},
+				{
+					"command": "coder.openSshConfig",
 					"when": "true"
 				},
 				{
